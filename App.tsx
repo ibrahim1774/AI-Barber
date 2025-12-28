@@ -13,17 +13,33 @@ const App: React.FC = () => {
   const handleGenerate = async (inputs: ShopInputs) => {
     setState('loading');
     try {
+      // Direct check for API_KEY to provide better onboarding for new deployments
+      if (!process.env.API_KEY && !window.aistudio) {
+        throw new Error("Configuration Missing: API_KEY environment variable not found. Please add 'API_KEY' in your Vercel Dashboard -> Settings -> Environment Variables and redeploy.");
+      }
+
       const data = await generateContent(inputs);
       setGeneratedData(data);
       setState('generated');
     } catch (error: any) {
-      console.error("Failed to generate website:", error);
+      console.error("Website generation failed:", error);
       
-      // If the request fails with this specific message, prompt for API key selection again
-      if (error.message?.includes("Requested entity was not found.") && window.aistudio) {
+      const msg = error.message || "";
+      
+      // Handle the case where a user needs to pick a key via the AI Studio dialog
+      if (msg.includes("Requested entity was not found.") && window.aistudio) {
         await window.aistudio.openSelectKey();
+        setState('dashboard');
+        return;
+      }
+
+      // Targeted alerts for deployment configuration issues
+      if (msg.includes("Configuration Missing")) {
+        alert(msg);
+      } else if (msg.includes("API key not valid") || error.status === 403) {
+        alert("The API Key in your project settings appears to be invalid. Please verify it in the Google AI Studio dashboard.");
       } else {
-        alert("Something went wrong during generation. Please try again.");
+        alert(`Generation Error: ${msg || "An unknown error occurred. Please try again later."}`);
       }
       
       setState('dashboard');
