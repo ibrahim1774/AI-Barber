@@ -38,8 +38,9 @@
         }
     </style>
     <script>
-        // Global shim for SDKs that expect process.env to be defined
-        window.process = window.process || { env: {} };
+        // Ensure process.env is safely initialized without overwriting injected values
+        window.process = window.process || {};
+        window.process.env = window.process.env || {};
     </script>
 <script type="importmap">
 {
@@ -56,7 +57,6 @@
 </head>
 <body>
     <div id="root"></div>
-    <!-- Entry point for the application -->
     <script type="module" src="./index.tsx"></script>
 </body>
 </html>

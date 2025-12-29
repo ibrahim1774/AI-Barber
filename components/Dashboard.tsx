@@ -7,42 +7,17 @@ interface DashboardProps {
   onGenerate: (inputs: ShopInputs) => void;
 }
 
-declare global {
-  interface AIStudio {
-    hasSelectedApiKey: () => Promise<boolean>;
-    openSelectKey: () => Promise<void>;
-  }
-  interface Window {
-    aistudio?: AIStudio;
-  }
-}
-
 export const Dashboard: React.FC<DashboardProps> = ({ onGenerate }) => {
   const [inputs, setInputs] = React.useState<ShopInputs>({
     shopName: '',
     area: '',
     phone: '',
   });
-  const [isCheckingKey, setIsCheckingKey] = React.useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (inputs.shopName && inputs.area && inputs.phone) {
-      setIsCheckingKey(true);
-      try {
-        if (window.aistudio) {
-          const hasKey = await window.aistudio.hasSelectedApiKey();
-          if (!hasKey) {
-            await window.aistudio.openSelectKey();
-          }
-        }
-        onGenerate(inputs);
-      } catch (err) {
-        console.error("Key selection failed", err);
-        onGenerate(inputs); 
-      } finally {
-        setIsCheckingKey(false);
-      }
+      onGenerate(inputs);
     }
   };
 
@@ -116,15 +91,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ onGenerate }) => {
 
               <button 
                 type="submit"
-                disabled={isCheckingKey}
-                className={`w-full py-4 md:py-6 mt-4 md:mt-8 bg-[#f4a100] text-[#1a1a1a] font-montserrat font-black uppercase tracking-[3px] md:tracking-[4px] text-[10px] md:text-sm hover:bg-white transition-all duration-500 shadow-[0_0_20px_rgba(244,161,0,0.15)] active:scale-[0.98] ${isCheckingKey ? 'opacity-50 cursor-not-allowed' : ''}`}
+                className="w-full py-4 md:py-6 mt-4 md:mt-8 bg-[#f4a100] text-[#1a1a1a] font-montserrat font-black uppercase tracking-[3px] md:tracking-[4px] text-[10px] md:text-sm hover:bg-white transition-all duration-500 shadow-[0_0_20px_rgba(244,161,0,0.15)] active:scale-[0.98]"
               >
-                {isCheckingKey ? 'Verifying Key...' : (
-                  <span className="flex flex-col leading-tight gap-0.5 md:gap-1">
-                    <span>Generate My</span>
-                    <span>Barbershop Website</span>
-                  </span>
-                )}
+                <span className="flex flex-col leading-tight gap-0.5 md:gap-1">
+                  <span>Generate My</span>
+                  <span>Barbershop Website</span>
+                </span>
               </button>
             </form>
             
