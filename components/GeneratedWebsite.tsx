@@ -63,49 +63,21 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
     }
   };
 
+  const handleClaimWebsite = async () => {
+    // Deploy to GitHub silently in the background
+    deployWebsite(data).catch(err => {
+      console.error('Background deployment failed:', err);
+      // Continue to Stripe even if deployment fails
+    });
+
+    // Immediately redirect to Stripe payment (don't wait for deployment)
+    window.open('https://buy.stripe.com/8x2bJ0eCo8yGgrE8Ym3cc05', '_blank');
+  };
+
   const formattedPhone = data.phone.replace(/\s+/g, '');
 
   return (
     <div className="bg-[#0d0d0d] text-white overflow-hidden scroll-smooth">
-      {/* Deployment Status Notification */}
-      {deploymentResult && (
-        <div className={`fixed top-4 right-4 z-[70] max-w-md p-6 rounded shadow-2xl ${deploymentResult.success ? 'bg-green-600' : 'bg-red-600'} text-white`}>
-          <div className="flex justify-between items-start mb-2">
-            <h3 className="font-bold text-lg">
-              {deploymentResult.success ? '✅ Deployment Successful!' : '❌ Deployment Failed'}
-            </h3>
-            <button
-              onClick={() => setDeploymentResult(null)}
-              className="text-white hover:text-gray-200 text-xl font-bold"
-            >
-              ×
-            </button>
-          </div>
-          {deploymentResult.success ? (
-            <div className="space-y-2 text-sm">
-              {deploymentResult.githubUrl && (
-                <p>
-                  <strong>GitHub:</strong>{' '}
-                  <a href={deploymentResult.githubUrl} target="_blank" rel="noopener noreferrer" className="underline">
-                    View Repository
-                  </a>
-                </p>
-              )}
-              {deploymentResult.deploymentUrl && (
-                <p>
-                  <strong>Live Site:</strong>{' '}
-                  <a href={deploymentResult.deploymentUrl} target="_blank" rel="noopener noreferrer" className="underline">
-                    {deploymentResult.deploymentUrl}
-                  </a>
-                </p>
-              )}
-            </div>
-          ) : (
-            <p className="text-sm">{deploymentResult.details || deploymentResult.error}</p>
-          )}
-        </div>
-      )}
-
       {/* Header */}
       <header className={`fixed top-0 left-0 w-full z-50 transition-all duration-300 ${isScrolled ? 'bg-[#1a1a1a]/95 backdrop-blur-md shadow-xl py-3 md:py-4' : 'bg-black/20 py-5 md:py-8'}`}>
         <div className="container mx-auto flex justify-between items-center px-4 md:px-6">
@@ -138,13 +110,6 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
                 </a>
               ))}
             </div>
-            <button
-              onClick={handleDeploy}
-              disabled={isDeploying}
-              className="px-4 py-2 md:px-7 md:py-3 bg-[#f4a100] text-[#1a1a1a] text-[10px] md:text-[13px] font-black uppercase tracking-widest hover:bg-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isDeploying ? 'DEPLOYING...' : 'DEPLOY'}
-            </button>
             <button
               onClick={onBack}
               className="px-4 py-2 md:px-7 md:py-3 border-2 border-[#f4a100] text-[#f4a100] text-[10px] md:text-[13px] font-black uppercase tracking-widest hover:bg-[#f4a100] hover:text-[#1a1a1a] transition-all"
@@ -389,14 +354,12 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         <div className="bg-[#f4a100] text-[#1a1a1a] p-4 md:p-6 shadow-2xl rounded-sm border border-[#1a1a1a]/20 max-w-[220px] md:max-w-[280px]">
           <h5 className="font-montserrat font-black text-[10px] md:text-sm tracking-widest uppercase mb-1 md:mb-2">Claim Custom Barber Site</h5>
           <p className="text-[9px] md:text-[11px] font-bold uppercase mb-3 md:mb-4 opacity-90 leading-tight">Claim this website forever for only $10/month hosting.</p>
-          <a 
-            href="https://buy.stripe.com/8x2bJ0eCo8yGgrE8Ym3cc05" 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="block w-full text-center py-2 bg-[#1a1a1a] text-[#f4a100] text-[9px] md:text-[10px] font-bold tracking-widest uppercase hover:bg-black transition-colors"
+          <button
+            onClick={handleClaimWebsite}
+            className="block w-full text-center py-2 bg-[#1a1a1a] text-[#f4a100] text-[9px] md:text-[10px] font-bold tracking-widest uppercase hover:bg-black transition-colors cursor-pointer"
           >
             GET FULL ACCESS
-          </a>
+          </button>
           <p className="text-[6px] md:text-[8px] mt-2 opacity-70 uppercase tracking-tighter text-center italic">
             The Prime Barber team can edit the site after purchase
           </p>

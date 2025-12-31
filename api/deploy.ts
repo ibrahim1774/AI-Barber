@@ -1,9 +1,7 @@
 import { Octokit } from '@octokit/rest';
-import axios from 'axios';
 import { WebsiteData } from '../types';
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '';
-const VERCEL_TOKEN = process.env.VERCEL_TOKEN || '';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
@@ -13,9 +11,9 @@ export default async function handler(req: any, res: any) {
   try {
     const websiteData: WebsiteData = req.body;
 
-    if (!GITHUB_TOKEN || !VERCEL_TOKEN) {
+    if (!GITHUB_TOKEN) {
       return res.status(500).json({
-        error: 'Missing API tokens. Please configure GITHUB_TOKEN and VERCEL_TOKEN environment variables.'
+        error: 'Missing GitHub token. Please configure GITHUB_TOKEN environment variable.'
       });
     }
 
@@ -44,71 +42,40 @@ export default async function handler(req: any, res: any) {
 
     // Step 2: Generate HTML content
     const htmlContent = generateHTML(websiteData);
-    const packageJsonContent = generatePackageJson(websiteData);
-    const vercelJsonContent = generateVercelJson();
 
-    // Step 3: Create files in the repository
-    console.log('Pushing files to GitHub...');
-
-    // Create index.html
+    // Step 3: Create index.html in the repository
+    console.log('Pushing website to GitHub...');
     await octokit.repos.createOrUpdateFileContents({
       owner: user.login,
       repo: fullRepoName,
       path: 'index.html',
-      message: 'Add generated website',
+      message: 'Add generated barbershop website',
       content: Buffer.from(htmlContent).toString('base64'),
     });
 
-    // Create package.json
-    await octokit.repos.createOrUpdateFileContents({
-      owner: user.login,
-      repo: fullRepoName,
-      path: 'package.json',
-      message: 'Add package.json',
-      content: Buffer.from(packageJsonContent).toString('base64'),
-    });
+    // Step 4: Generate GitHub Pages URL
+    const githubPagesUrl = `https://${user.login}.github.io/${fullRepoName}`;
 
-    // Create vercel.json
-    await octokit.repos.createOrUpdateFileContents({
-      owner: user.login,
-      repo: fullRepoName,
-      path: 'vercel.json',
-      message: 'Add Vercel configuration',
-      content: Buffer.from(vercelJsonContent).toString('base64'),
-    });
-
-    // Step 4: Deploy to Vercel
-    console.log('Deploying to Vercel...');
-    const vercelResponse = await axios.post(
-      'https://api.vercel.com/v13/deployments',
-      {
-        name: fullRepoName,
-        gitSource: {
-          type: 'github',
-          repo: `${user.login}/${fullRepoName}`,
-          ref: 'main',
+    // Enable GitHub Pages (optional - requires additional API call)
+    try {
+      await octokit.repos.createPagesSite({
+        owner: user.login,
+        repo: fullRepoName,
+        source: {
+          branch: 'main',
+          path: '/',
         },
-        projectSettings: {
-          framework: null,
-          buildCommand: null,
-          outputDirectory: null,
-        },
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${VERCEL_TOKEN}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    const deploymentUrl = `https://${vercelResponse.data.url}`;
+      });
+    } catch (pagesError: any) {
+      console.log('GitHub Pages setup note:', pagesError.message);
+      // Continue even if Pages setup fails - user can enable manually
+    }
 
     return res.status(200).json({
       success: true,
       githubUrl: repo.html_url,
-      deploymentUrl,
-      message: 'Website deployed successfully!',
+      deploymentUrl: githubPagesUrl,
+      message: 'Website deployed successfully to GitHub!',
     });
 
   } catch (error: any) {
@@ -308,25 +275,4 @@ function generateHTML(data: WebsiteData): string {
   </script>
 </body>
 </html>`;
-}
-
-function generatePackageJson(data: WebsiteData): string {
-  return JSON.stringify({
-    name: data.shopName.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-    version: '1.0.0',
-    description: `Website for ${data.shopName}`,
-    private: true,
-  }, null, 2);
-}
-
-function generateVercelJson(): string {
-  return JSON.stringify({
-    version: 2,
-    builds: [
-      {
-        src: 'index.html',
-        use: '@vercel/static',
-      },
-    ],
-  }, null, 2);
 }
