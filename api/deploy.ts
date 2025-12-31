@@ -26,11 +26,15 @@ export default async function handler(req: any, res: any) {
     const projectName = shopName
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '');
+      .replace(/^-|-$/g, '')
+      .substring(0, 50); // Vercel has name length limits
 
-    const fullProjectName = `${projectName}-barber-site`;
+    const fullProjectName = `${projectName}-barber`;
 
-    // Deploy to Vercel
+    // Encode HTML content as base64
+    const base64Html = Buffer.from(htmlContent).toString('base64');
+
+    // Deploy to Vercel using correct API format
     console.log('Deploying to Vercel...');
     const vercelResponse = await axios.post(
       'https://api.vercel.com/v13/deployments',
@@ -39,22 +43,23 @@ export default async function handler(req: any, res: any) {
         files: [
           {
             file: 'index.html',
-            data: htmlContent
+            data: base64Html,
+            encoding: 'base64'
           }
         ],
-        projectSettings: {
-          framework: null,
-        },
+        target: 'production'
       },
       {
         headers: {
           Authorization: `Bearer ${VERCEL_TOKEN}`,
           'Content-Type': 'application/json',
         },
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity
       }
     );
 
-    const deploymentUrl = `https://${vercelResponse.data.url}`;
+    const deploymentUrl = vercelResponse.data.url ? `https://${vercelResponse.data.url}` : vercelResponse.data.inspectorUrl;
 
     return res.status(200).json({
       success: true,
@@ -63,10 +68,10 @@ export default async function handler(req: any, res: any) {
     });
 
   } catch (error: any) {
-    console.error('Deployment error:', error);
+    console.error('Deployment error:', error.response?.data || error.message);
     return res.status(500).json({
       error: 'Deployment failed',
-      details: error.response?.data || error.message || 'Unknown error occurred',
+      details: error.response?.data?.error?.message || error.message || 'Unknown error occurred',
     });
   }
 }
