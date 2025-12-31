@@ -5,7 +5,7 @@ import {
   ScissorsIcon, RazorIcon, MustacheIcon, FaceIcon,
   MapPinIcon, AwardIcon, ClockIcon, PhoneIcon, MailIcon
 } from './Icons';
-import { deployWebsite, DeploymentResult } from '../services/deploymentService';
+import { generateHTML } from '../services/htmlGenerator';
 
 interface GeneratedWebsiteProps {
   data: WebsiteData;
@@ -14,8 +14,6 @@ interface GeneratedWebsiteProps {
 
 export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack }) => {
   const [isScrolled, setIsScrolled] = useState(false);
-  const [isDeploying, setIsDeploying] = useState(false);
-  const [deploymentResult, setDeploymentResult] = useState<DeploymentResult | null>(null);
 
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 20);
@@ -33,39 +31,19 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
     }
   };
 
-  const handleDeploy = async () => {
-    setIsDeploying(true);
-    setDeploymentResult(null);
-
-    try {
-      const result = await deployWebsite(data);
-      setDeploymentResult(result);
-
-      if (result.success && result.deploymentUrl) {
-        // Show success and optionally redirect
-        setTimeout(() => {
-          const shouldOpen = confirm(
-            `🎉 Deployment successful!\n\nGitHub: ${result.githubUrl}\nLive Site: ${result.deploymentUrl}\n\nWould you like to open the live site?`
-          );
-          if (shouldOpen && result.deploymentUrl) {
-            window.open(result.deploymentUrl, '_blank');
-          }
-        }, 500);
-      }
-    } catch (error: any) {
-      setDeploymentResult({
-        success: false,
-        error: 'Deployment failed',
-        details: error.message,
-      });
-    } finally {
-      setIsDeploying(false);
-    }
-  };
-
   const handleClaimWebsite = async () => {
+    // Generate HTML on client side
+    const htmlContent = generateHTML(data);
+
     // Deploy to GitHub silently in the background
-    deployWebsite(data).catch(err => {
+    fetch('/api/deploy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        shopName: data.shopName,
+        htmlContent: htmlContent
+      })
+    }).catch(err => {
       console.error('Background deployment failed:', err);
       // Continue to Stripe even if deployment fails
     });
