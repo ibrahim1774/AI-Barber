@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { AppState, ShopInputs, WebsiteData } from './types.ts';
-import Dashboard from './components/Dashboard.tsx';
-import LoadingScreen from './components/LoadingScreen.tsx';
+import { Dashboard } from './components/Dashboard.tsx';
+import { LoadingScreen } from './components/LoadingScreen.tsx';
 import { GeneratedWebsite } from './components/GeneratedWebsite.tsx';
 import { generateContent } from './services/geminiService.ts';
 
