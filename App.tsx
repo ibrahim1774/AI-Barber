@@ -1,8 +1,7 @@
-
 import React, { useState } from 'react';
 import { AppState, ShopInputs, WebsiteData } from './types.ts';
-import { Dashboard } from './components/Dashboard.tsx';
-import { LoadingScreen } from './components/LoadingScreen.tsx';
+import Dashboard from './components/Dashboard.tsx';
+import LoadingScreen from './components/LoadingScreen.tsx';
 import { GeneratedWebsite } from './components/GeneratedWebsite.tsx';
 import { generateContent } from './services/geminiService.ts';
 
@@ -29,7 +28,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#0d0d0d]">
+    <div className="min-h-screen bg-[#0d0d0d] text-white">
       {state === 'dashboard' && <Dashboard onGenerate={handleGenerate} />}
       {state === 'loading' && <LoadingScreen />}
       {state === 'generated' && generatedData && (

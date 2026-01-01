@@ -1,9 +1,10 @@
 
 import React, { useEffect, useState } from 'react';
 import { WebsiteData } from '../types';
-import { 
-  ScissorsIcon, RazorIcon, MustacheIcon, FaceIcon, 
-  MapPinIcon, AwardIcon, ClockIcon, PhoneIcon, MailIcon 
+import {
+  ScissorsIcon, RazorIcon, MustacheIcon, FaceIcon,
+  MapPinIcon, AwardIcon, ClockIcon, PhoneIcon, MailIcon,
+  CameraIcon
 } from './Icons';
 
 interface GeneratedWebsiteProps {
@@ -12,6 +13,7 @@ interface GeneratedWebsiteProps {
 }
 
 export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack }) => {
+  const [siteData, setSiteData] = useState<WebsiteData>(data);
   const [isScrolled, setIsScrolled] = useState(false);
   const [isDeploying, setIsDeploying] = useState(false);
   const [deploymentResult, setDeploymentResult] = useState<{
@@ -19,6 +21,65 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
     stripeLink?: string;
     error?: string;
   } | null>(null);
+
+  // Handle text changes
+  const handleTextChange = (path: string, value: string) => {
+    const newData = { ...siteData };
+    const parts = path.split('.');
+    let current: any = newData;
+
+    for (let i = 0; i < parts.length - 1; i++) {
+      current = current[parts[i]];
+    }
+
+    current[parts[parts.length - 1]] = value;
+    setSiteData(newData);
+  };
+
+  // Handle image changes
+  const handleImageChange = (path: string, event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result as string;
+        const newData = { ...siteData };
+        const parts = path.split('.');
+        let current: any = newData;
+
+        for (let i = 0; i < parts.length - 1; i++) {
+          current = current[parts[i]];
+        }
+
+        current[parts[parts.length - 1]] = base64String;
+        setSiteData(newData);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // ContentEditable component wrapper for convenience
+  const EditableText = ({ text, onSave, className = "", tagName: Tag = "span" }: { text: string, onSave: (val: string) => void, className?: string, tagName?: any }) => (
+    <Tag
+      contentEditable
+      suppressContentEditableWarning
+      onBlur={(e: any) => onSave(e.target.innerText)}
+      className={`outline-none focus:ring-1 focus:ring-[#f4a100]/50 rounded px-1 -mx-1 transition-all ${className}`}
+    >
+      {text}
+    </Tag>
+  );
+
+  // Image replacement overlay component
+  const ImageOverlay = ({ onImageUpload, className = "" }: { onImageUpload: (e: React.ChangeEvent<HTMLInputElement>) => void, className?: string }) => (
+    <div className={`absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer z-10 ${className}`}>
+      <label className="cursor-pointer flex flex-col items-center gap-2">
+        <CameraIcon className="w-8 h-8 text-white" />
+        <span className="text-white text-[10px] md:text-xs font-bold uppercase tracking-wider">Replace Image</span>
+        <input type="file" className="hidden" accept="image/*" onChange={onImageUpload} />
+      </label>
+    </div>
+  );
 
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 20);
@@ -143,7 +204,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       }
 
       // Step 3: Generate HTML with placeholders (will be replaced on backend)
-      const html = generateHTMLWithPlaceholders(data);
+      const html = generateHTMLWithPlaceholders(siteData);
 
       // Step 4: Call deployment API with only HTML/CSS and image URLs (no base64)
       const response = await fetch('/api/deploy-site', {
@@ -288,8 +349,8 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
   </section>
 
   <section class="bg-[#1a1a1a]">
-    <div class="grid grid-cols-2 lg:grid-cols-4">
-      ${siteData.gallery.slice(0, 8).map((_, i) => `
+    <div class="grid grid-cols-1 md:grid-cols-3">
+      ${siteData.gallery.slice(0, 3).map((_, i) => `
         <div class="aspect-square relative group overflow-hidden">
           <img src="{{gallery${i}}}" alt="Gallery ${i}" class="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-700">
         </div>
@@ -347,32 +408,55 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
 </html>`;
   };
 
-  const formattedPhone = data.phone.replace(/\s+/g, '');
+  const formattedPhone = siteData.phone.replace(/\s+/g, '');
 
   return (
-    <div className="bg-[#0d0d0d] text-white overflow-hidden scroll-smooth">
+    <div className="bg-[#0d0d0d] text-white overflow-hidden scroll-smooth pt-[40px] md:pt-[50px]">
+      {/* Instructional Banner */}
+      <div className="fixed top-0 left-0 w-full bg-[#cc0000] text-white py-2 md:py-3 px-4 z-[70] text-center shadow-lg">
+        <p className="text-[10px] md:text-sm font-bold uppercase tracking-wider flex items-center justify-center gap-2">
+          <span className="shrink-0">Text and images can be edited. Once ready, click Claim Site to start $10/month website hosting and launch your site.</span>
+        </p>
+      </div>
+
       {/* Header */}
-      <header className={`fixed top-0 left-0 w-full z-50 transition-all duration-300 ${isScrolled ? 'bg-[#1a1a1a]/95 backdrop-blur-md shadow-xl py-3 md:py-4' : 'bg-black/20 py-5 md:py-8'}`}>
+      <header className={`fixed top-[40px] md:top-[50px] left-0 w-full z-50 transition-all duration-300 ${isScrolled ? 'bg-[#1a1a1a]/95 backdrop-blur-md shadow-xl py-3 md:py-4' : 'bg-black/20 py-5 md:py-8'}`}>
         <div className="container mx-auto flex justify-between items-center px-4 md:px-6">
           <div className="flex items-center gap-4 md:gap-8">
             <div className="flex items-center gap-3 md:gap-5">
               <ScissorsIcon className="w-8 h-8 md:w-12 md:h-12 text-[#f4a100]" />
               <span className="font-montserrat font-black text-lg md:text-3xl lg:text-4xl tracking-[1px] md:tracking-[2px] uppercase whitespace-nowrap">
-                {data.shopName.split(' ')[0]} <span className="text-[#f4a100]">{data.shopName.split(' ').slice(1).join(' ')}</span>
+                <EditableText
+                  text={siteData.shopName.split(' ')[0]}
+                  onSave={(val) => {
+                    const rest = siteData.shopName.split(' ').slice(1).join(' ');
+                    handleTextChange('shopName', `${val} ${rest}`);
+                  }}
+                /> <span className="text-[#f4a100]">
+                  <EditableText
+                    text={siteData.shopName.split(' ').slice(1).join(' ')}
+                    onSave={(val) => {
+                      const first = siteData.shopName.split(' ')[0];
+                      handleTextChange('shopName', `${first} ${val}`);
+                    }}
+                  />
+                </span>
               </span>
             </div>
-            
-            <a 
-              href={`tel:${formattedPhone}`} 
+
+            <a
+              href={`tel:${formattedPhone}`}
               className="flex items-center gap-2 md:gap-4 text-[#f4a100] border-l-2 border-white/20 pl-4 md:pl-8 hover:text-white transition-colors hidden sm:flex"
             >
               <PhoneIcon className="w-5 h-5 md:w-7 md:h-7" />
-              <span className="text-sm md:text-xl lg:text-2xl font-bold tracking-tight">{data.phone}</span>
+              <span className="text-sm md:text-xl lg:text-2xl font-bold tracking-tight">
+                <EditableText text={siteData.phone} onSave={(val) => handleTextChange('phone', val)} />
+              </span>
             </a>
           </div>
 
           <div className="flex items-center">
-            <button 
+            <button
               onClick={onBack}
               className="px-4 py-2 md:px-7 md:py-3 border-2 border-[#f4a100] text-[#f4a100] text-[10px] md:text-[13px] font-black uppercase tracking-widest hover:bg-[#f4a100] hover:text-[#1a1a1a] transition-all"
             >
@@ -384,30 +468,31 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
 
       {/* Hero Section */}
       <section id="home" className="relative h-screen flex flex-col justify-center items-center overflow-hidden">
-        <div className="absolute inset-0 z-0">
-          <img 
-            src={data.hero.imageUrl} 
-            alt="Main Hero" 
-            className="w-full h-full object-cover" 
+        <div className="absolute inset-0 z-0 group">
+          <img
+            src={siteData.hero.imageUrl}
+            alt="Main Hero"
+            className="w-full h-full object-cover"
           />
           <div className="absolute inset-0 bg-black/70 bg-gradient-to-b from-black/60 via-transparent to-[#0d0d0d]"></div>
+          <ImageOverlay onImageUpload={(e) => handleImageChange('hero.imageUrl', e)} />
         </div>
-        
+
         <div className="relative z-10 text-center px-4 md:px-6 max-w-5xl -mt-20 md:mt-0">
           <p className="text-[#f4a100] font-montserrat font-bold text-[8px] md:text-sm tracking-[3px] md:tracking-[5px] uppercase mb-3 md:mb-6 opacity-90">
-            {data.hero.tagline}
+            <EditableText text={siteData.hero.tagline} onSave={(val) => handleTextChange('hero.tagline', val)} />
           </p>
-          
+
           <h1 className="text-3xl md:text-6xl lg:text-7xl font-montserrat font-black text-white leading-tight uppercase tracking-[1px] md:tracking-[4px] mb-8 md:mb-12">
-            {data.hero.heading}
+            <EditableText text={siteData.hero.heading} onSave={(val) => handleTextChange('hero.heading', val)} />
           </h1>
 
-          <a 
+          <a
             href={`tel:${formattedPhone}`}
             className="inline-flex items-center gap-3 border-2 border-[#f4a100] text-[#f4a100] px-6 py-4 md:px-12 md:py-6 font-montserrat font-black tracking-[2px] uppercase hover:bg-[#f4a100] hover:text-[#1a1a1a] transition-all duration-300 group shadow-lg text-xs md:text-base"
           >
             <PhoneIcon className="w-4 h-4 md:w-5 md:h-5 group-hover:scale-110 transition-transform" />
-            <span>Call Now: {data.phone}</span>
+            <span>Call Now: <EditableText text={siteData.phone} onSave={(val) => handleTextChange('phone', val)} /></span>
           </a>
         </div>
 
@@ -440,15 +525,28 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
               <span className="text-[#f4a100] text-[10px] md:text-xs font-bold tracking-[3px] md:tracking-[4px] uppercase font-montserrat">About Us</span>
             </div>
             <h2 className="text-2xl md:text-5xl font-montserrat font-black text-white mb-6 md:mb-8 leading-tight uppercase tracking-[2px]">
-              {data.about.heading}
+              <EditableText text={siteData.about.heading} onSave={(val) => handleTextChange('about.heading', val)} />
             </h2>
             <div className="space-y-4 md:space-y-6 text-[#cccccc] font-light leading-relaxed text-sm md:text-base">
-              {data.about.description.map((p, i) => <p key={i}>{p}</p>)}
+              {siteData.about.description.map((p, i) => (
+                <div key={i}>
+                  <EditableText
+                    text={p}
+                    tagName="p"
+                    onSave={(val) => {
+                      const newDesc = [...siteData.about.description];
+                      newDesc[i] = val;
+                      handleTextChange('about.description', newDesc as any);
+                    }}
+                  />
+                </div>
+              ))}
             </div>
           </div>
           <div className="relative group mt-6 lg:mt-0">
             <div className="absolute -inset-2 md:-inset-4 border border-[#f4a100]/30 -z-10 transform translate-x-2 translate-y-2 md:translate-x-4 md:translate-y-4 transition-transform duration-500"></div>
-            <img src={data.about.imageUrl} alt="Barber Shop Atmosphere" className="w-full grayscale hover:grayscale-0 transition-all duration-700 shadow-2xl" />
+            <img src={siteData.about.imageUrl} alt="Barber Shop Atmosphere" className="w-full grayscale hover:grayscale-0 transition-all duration-700 shadow-2xl" />
+            <ImageOverlay onImageUpload={(e) => handleImageChange('about.imageUrl', e)} />
           </div>
         </div>
       </section>
@@ -461,28 +559,32 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
             <div className="lg:w-1/2 order-2 lg:order-1">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-4">
-                  <div className="bg-[#1a1a1a] p-1 border border-white/5">
-                    <img src={data.gallery[2]} alt="Professional Barber Tools" className="w-full h-40 md:h-64 object-cover" />
+                  <div className="bg-[#1a1a1a] p-1 border border-white/5 relative group">
+                    <img src={siteData.gallery[2]} alt="Professional Barber Tools" className="w-full h-40 md:h-64 object-cover" />
+                    <ImageOverlay onImageUpload={(e) => handleImageChange('gallery.2', e)} />
                   </div>
-                  <div className="bg-[#1a1a1a] p-1 border border-white/5">
-                    <img src={data.gallery[3]} alt="Clean Haircut Detail" className="w-full h-32 md:h-48 object-cover" />
+                  <div className="bg-[#1a1a1a] p-1 border border-white/5 relative group">
+                    <img src={siteData.gallery[3]} alt="Clean Haircut Detail" className="w-full h-32 md:h-48 object-cover" />
+                    <ImageOverlay onImageUpload={(e) => handleImageChange('gallery.3', e)} />
                   </div>
                 </div>
                 <div className="space-y-4 pt-8">
-                  <div className="bg-[#1a1a1a] p-1 border border-white/5">
-                    <img src={data.gallery[4]} alt="Shaving Ritual" className="w-full h-32 md:h-48 object-cover" />
+                  <div className="bg-[#1a1a1a] p-1 border border-white/5 relative group">
+                    <img src={siteData.gallery[4]} alt="Shaving Ritual" className="w-full h-32 md:h-48 object-cover" />
+                    <ImageOverlay onImageUpload={(e) => handleImageChange('gallery.4', e)} />
                   </div>
-                  <div className="bg-[#1a1a1a] p-1 border border-white/5">
-                    <img src={data.gallery[5]} alt="Hair Styling Session" className="w-full h-40 md:h-64 object-cover" />
+                  <div className="bg-[#1a1a1a] p-1 border border-white/5 relative group">
+                    <img src={siteData.gallery[5]} alt="Hair Styling Session" className="w-full h-40 md:h-64 object-cover" />
+                    <ImageOverlay onImageUpload={(e) => handleImageChange('gallery.5', e)} />
                   </div>
                 </div>
               </div>
             </div>
-            
+
             <div className="lg:w-1/2 order-1 lg:order-2">
               <h3 className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4">Master Barbers</h3>
               <h2 className="text-3xl md:text-5xl font-montserrat font-black text-white leading-tight uppercase tracking-[2px] mb-8">
-                The Pinnacle of <br/> Professional Craftsmanship
+                The Pinnacle of <br /> Professional Craftsmanship
               </h2>
               <div className="space-y-8">
                 <div className="flex items-start gap-6">
@@ -522,14 +624,41 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       <section id="our-services" className="py-12 md:py-32 bg-[#0d0d0d] px-6">
         <div className="container mx-auto">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-8 max-w-6xl mx-auto">
-            {data.services.map((service, i) => (
+            {siteData.services.map((service, i) => (
               <div key={i} className="group border-2 border-[#f4a100] p-6 md:p-12 text-center flex flex-col items-center hover:bg-[#1a1a1a] transition-all duration-500">
                 <div className="mb-4 md:mb-8 transform group-hover:scale-110 transition-transform duration-300">
                   {getServiceIcon(service.icon)}
                 </div>
-                <h3 className="font-montserrat font-black text-white text-base md:text-xl tracking-[1.5px] mb-2 uppercase">{service.title}</h3>
-                <p className="text-[#f4a100] text-[9px] md:text-[11px] font-bold tracking-[2px] mb-3 md:mb-4 uppercase">{service.subtitle}</p>
-                <p className="text-[#999999] text-xs md:text-sm leading-relaxed">{service.description}</p>
+                <h3 className="font-montserrat font-black text-white text-base md:text-xl tracking-[1.5px] mb-2 uppercase">
+                  <EditableText
+                    text={service.title}
+                    onSave={(val) => {
+                      const newServices = [...siteData.services];
+                      newServices[i].title = val;
+                      handleTextChange('services', newServices as any);
+                    }}
+                  />
+                </h3>
+                <p className="text-[#f4a100] text-[9px] md:text-[11px] font-bold tracking-[2px] mb-3 md:mb-4 uppercase">
+                  <EditableText
+                    text={service.subtitle}
+                    onSave={(val) => {
+                      const newServices = [...siteData.services];
+                      newServices[i].subtitle = val;
+                      handleTextChange('services', newServices as any);
+                    }}
+                  />
+                </p>
+                <p className="text-[#999999] text-xs md:text-sm leading-relaxed">
+                  <EditableText
+                    text={service.description}
+                    onSave={(val) => {
+                      const newServices = [...siteData.services];
+                      newServices[i].description = val;
+                      handleTextChange('services', newServices as any);
+                    }}
+                  />
+                </p>
               </div>
             ))}
           </div>
@@ -538,10 +667,11 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
 
       {/* Gallery Section */}
       <section className="bg-[#1a1a1a]">
-        <div className="grid grid-cols-2 lg:grid-cols-4">
-          {data.gallery.slice(4, 8).map((img, i) => (
+        <div className="grid grid-cols-1 md:grid-cols-3">
+          {siteData.gallery.slice(0, 3).map((img, i) => (
             <div key={i} className="aspect-square relative group overflow-hidden">
               <img src={img} alt={`Gallery Style ${i}`} className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-700" />
+              <ImageOverlay onImageUpload={(e) => handleImageChange(`gallery.${i}`, e)} />
             </div>
           ))}
         </div>
@@ -557,27 +687,33 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
                 <MapPinIcon className="w-8 h-8 text-[#f4a100]" />
                 <div>
                   <h4 className="text-[#f4a100] font-bold text-[10px] md:text-xs tracking-[2px] mb-2 font-montserrat uppercase">Location</h4>
-                  <p className="text-[#cccccc] text-xs md:text-sm leading-relaxed">{data.contact.address}</p>
+                  <p className="text-[#cccccc] text-xs md:text-sm leading-relaxed">
+                    <EditableText text={siteData.contact.address} onSave={(val) => handleTextChange('contact.address', val)} />
+                  </p>
                 </div>
               </div>
               <a href={`tel:${formattedPhone}`} className="flex flex-col items-center gap-4 group">
                 <PhoneIcon className="w-8 h-8 text-[#f4a100] group-hover:scale-110 transition-transform" />
                 <div>
                   <h4 className="text-[#f4a100] font-bold text-[10px] md:text-xs tracking-[2px] mb-2 font-montserrat uppercase">Phone</h4>
-                  <p className="text-[#cccccc] text-xs md:text-sm leading-relaxed group-hover:text-white transition-colors">{data.phone}</p>
+                  <p className="text-[#cccccc] text-xs md:text-sm leading-relaxed group-hover:text-white transition-colors">
+                    <EditableText text={siteData.phone} onSave={(val) => handleTextChange('phone', val)} />
+                  </p>
                 </div>
               </a>
               <div className="flex flex-col items-center gap-4">
                 <MailIcon className="w-8 h-8 text-[#f4a100]" />
                 <div>
                   <h4 className="text-[#f4a100] font-bold text-[10px] md:text-xs tracking-[2px] mb-2 font-montserrat uppercase">Email</h4>
-                  <p className="text-[#cccccc] text-xs md:text-sm leading-relaxed">{data.contact.email}</p>
+                  <p className="text-[#cccccc] text-xs md:text-sm leading-relaxed">
+                    <EditableText text={siteData.contact.email} onSave={(val) => handleTextChange('contact.email', val)} />
+                  </p>
                 </div>
               </div>
             </div>
-            
+
             <div className="mt-12 md:mt-20 pt-12 md:pt-16 border-t border-white/5 w-full">
-              <a 
+              <a
                 href={`tel:${formattedPhone}`}
                 className="inline-block py-4 md:py-6 px-10 md:px-16 bg-[#f4a100] text-[#1a1a1a] font-montserrat font-black tracking-[3px] uppercase hover:bg-white transition-colors duration-300 shadow-lg text-xs md:text-base"
               >
@@ -594,15 +730,29 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           <div className="flex items-center justify-center gap-2 md:gap-3 mb-3 md:mb-4">
             <ScissorsIcon className="w-5 h-5 md:w-8 md:h-8 text-[#f4a100]" />
             <span className="font-montserrat font-black text-sm md:text-2xl tracking-[2px] md:tracking-[4px] uppercase">
-              {data.shopName.split(' ')[0]} <span className="text-[#f4a100]">{data.shopName.split(' ').slice(1).join(' ')}</span>
+              <EditableText
+                text={siteData.shopName.split(' ')[0]}
+                onSave={(val) => {
+                  const rest = siteData.shopName.split(' ').slice(1).join(' ');
+                  handleTextChange('shopName', `${val} ${rest}`);
+                }}
+              /> <span className="text-[#f4a100]">
+                <EditableText
+                  text={siteData.shopName.split(' ').slice(1).join(' ')}
+                  onSave={(val) => {
+                    const first = siteData.shopName.split(' ')[0];
+                    handleTextChange('shopName', `${first} ${val}`);
+                  }}
+                />
+              </span>
             </span>
           </div>
           <p className="text-[#666666] text-[8px] md:text-xs uppercase tracking-[2px] md:tracking-[4px] mb-8 md:mb-12 max-w-lg mx-auto leading-loose px-4">
-            Premium Grooming Excellence in {data.area}
+            Premium Grooming Excellence in <EditableText text={siteData.area} onSave={(val) => handleTextChange('area', val)} />
           </p>
-          
+
           <div className="pt-8 md:pt-10 border-t border-white/5 text-[#444444] text-[8px] uppercase tracking-[2px]">
-            Copyright &copy; 2025 {data.shopName}. Built by Prime Barber AI.
+            Copyright &copy; 2025 <EditableText text={siteData.shopName} onSave={(val) => handleTextChange('shopName', val)} />. Built by Prime Barber AI.
           </div>
         </div>
       </footer>
@@ -624,7 +774,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
                 disabled={isDeploying}
                 className="block w-full text-center py-2 bg-[#1a1a1a] text-[#f4a100] text-[9px] md:text-[10px] font-bold tracking-widest uppercase hover:bg-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isDeploying ? 'DEPLOYING...' : 'DEPLOY WEBSITE'}
+                {isDeploying ? 'DEPLOYING...' : 'LAUNCH WEBSITE'}
               </button>
               <p className="text-[6px] md:text-[8px] mt-2 opacity-70 uppercase tracking-tighter text-center italic">
                 The Prime Barber team can edit the site after purchase
@@ -667,7 +817,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
                   rel="noopener noreferrer"
                   className="block w-full text-center py-2 bg-black text-[#f4a100] text-[9px] md:text-[10px] font-bold tracking-widest uppercase hover:bg-[#1a1a1a] transition-colors"
                 >
-                  GET FULL ACCESS
+                  LAUNCH WEBSITE
                 </a>
               )}
               <p className="text-[6px] md:text-[8px] mt-2 opacity-70 uppercase tracking-tighter text-center italic">
