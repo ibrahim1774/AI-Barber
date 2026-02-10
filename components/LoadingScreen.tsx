@@ -64,6 +64,13 @@ export const LoadingScreen: React.FC = () => {
       <div className="text-white/40 font-mono text-xs tracking-widest">
         GENERATING LUXURY ASSETS: {progress}%
       </div>
+
+      <div className="flex items-center gap-2 mt-6 text-[#888] text-xs tracking-wide">
+        <svg className="w-4 h-4 text-[#f4a100] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86l-8.6 14.86A1 1 0 002.54 20h18.92a1 1 0 00.85-1.28l-8.6-14.86a1 1 0 00-1.72 0z" />
+        </svg>
+        <span>Do not close or navigate away — your website build may fail.</span>
+      </div>
     </div>
   );
 };
