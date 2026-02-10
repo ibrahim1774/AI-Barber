@@ -148,16 +148,22 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
 
         // Get signed URLs for all images
         const filenames = imagesToUpload.map(img => img.filename);
-        const signedUrlsResponse = await fetch('/api/get-upload-urls', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ siteId, filenames }),
-        });
+        let signedUrlsResponse;
+        try {
+          signedUrlsResponse = await fetch('/api/get-upload-urls', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ siteId, filenames }),
+          });
+        } catch (fetchErr: any) {
+          throw new Error(`[Step 1: get-upload-urls] ${fetchErr.message}`);
+        }
 
         if (!signedUrlsResponse.ok) {
-          throw new Error('Failed to get signed URLs for image upload');
+          const errText = await signedUrlsResponse.text().catch(() => '');
+          throw new Error(`[Step 1: get-upload-urls] HTTP ${signedUrlsResponse.status}: ${errText}`);
         }
 
         const { urls } = await signedUrlsResponse.json();
@@ -181,16 +187,21 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
             const blob = new Blob([byteArray], { type: 'image/jpeg' });
 
             // Upload to GCS using signed URL
-            const uploadResponse = await fetch(signedUrlData.signedUrl, {
-              method: 'PUT',
-              headers: {
-                'Content-Type': 'image/jpeg',
-              },
-              body: blob,
-            });
+            let uploadResponse;
+            try {
+              uploadResponse = await fetch(signedUrlData.signedUrl, {
+                method: 'PUT',
+                headers: {
+                  'Content-Type': 'image/jpeg',
+                },
+                body: blob,
+              });
+            } catch (fetchErr: any) {
+              throw new Error(`[Step 2: GCS upload ${image.filename}] ${fetchErr.message}`);
+            }
 
             if (!uploadResponse.ok) {
-              throw new Error(`Failed to upload ${image.filename} to GCS`);
+              throw new Error(`[Step 2: GCS upload ${image.filename}] HTTP ${uploadResponse.status}`);
             }
 
             // Use the public URL from the response
@@ -207,17 +218,22 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       const html = generateHTMLWithPlaceholders(siteData);
 
       // Step 4: Call deployment API with only HTML/CSS and image URLs (no base64)
-      const response = await fetch('/api/deploy-site', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          siteId,
-          html,
-          imageUrls: imageUrlMap, // Send URLs instead of base64
-        }),
-      });
+      let response;
+      try {
+        response = await fetch('/api/deploy-site', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            siteId,
+            html,
+            imageUrls: imageUrlMap,
+          }),
+        });
+      } catch (fetchErr: any) {
+        throw new Error(`[Step 3: deploy-site] ${fetchErr.message}`);
+      }
 
       // Handle non-JSON responses (like 413 errors)
       let result;
@@ -226,11 +242,11 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         result = await response.json();
       } else {
         const text = await response.text();
-        throw new Error(`Deployment failed: ${text || `HTTP ${response.status}`}`);
+        throw new Error(`[Step 3: deploy-site] ${text || `HTTP ${response.status}`}`);
       }
 
       if (!response.ok) {
-        throw new Error(result.error || result.details || 'Deployment failed');
+        throw new Error(`[Step 3: deploy-site] ${result.error || result.details || 'Deployment failed'}`);
       }
 
       setDeploymentResult({
@@ -242,11 +258,6 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       console.error('Deployment error:', error);
 
       let errorMessage = error.message || 'Failed to deploy website.';
-
-      // Enhance error message for common issues
-      if (errorMessage.toLowerCase().includes('load failed') || errorMessage.toLowerCase().includes('failed to fetch')) {
-        errorMessage = 'Network error: Unable to connect to server. Please check your internet connection or try again later. (CORS/Network)';
-      }
 
       setDeploymentResult({
         error: errorMessage
