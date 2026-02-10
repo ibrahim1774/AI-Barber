@@ -86,10 +86,10 @@ async function deployToVercel(projectName: string, files: VercelFile[]) {
   );
 
   const data = response.data;
-  // Prefer the production alias (clean subdomain like project-name.vercel.app)
-  // over the hash-based unique deployment URL
-  let deploymentUrl = (data.alias?.length > 0) ? `https://${data.alias[0]}` :
-    `https://${sanitizedProjectName}.vercel.app`;
+  // Always construct the clean URL from the sanitized project name.
+  // Do NOT use data.alias — on team accounts it includes the team scope suffix
+  // (e.g. "mikes-barbershop-client-sites-f087a1f8.vercel.app" instead of "mikes-barbershop.vercel.app")
+  const deploymentUrl = `https://${sanitizedProjectName}.vercel.app`;
 
   console.log(`[Vercel Deploy] Success: ${deploymentUrl}`);
 
