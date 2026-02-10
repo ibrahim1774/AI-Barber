@@ -16,24 +16,6 @@ interface GeneratedWebsiteProps {
 export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
   const formattedPhone = siteData.phone.replace(/\s+/g, '');
 
-  // Only include gallery items that have actual images
-  const galleryItems = siteData.gallery
-    .slice(0, 3)
-    .map((url, i) => ({ url, index: i }))
-    .filter(item => item.url);
-
-  const gallerySection = galleryItems.length > 0
-    ? `<section class="bg-[#1a1a1a]">
-    <div class="grid grid-cols-1 md:grid-cols-${Math.min(galleryItems.length, 3)}">
-      ${galleryItems.map(item => `
-        <div class="aspect-square relative group overflow-hidden">
-          <img src="{{gallery${item.index}}}" alt="Gallery ${item.index}" class="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-700">
-        </div>
-      `).join('')}
-    </div>
-  </section>`
-    : '';
-
   // Master Barbers section uses gallery[2-5]
   const masterBarberImages = siteData.gallery
     .slice(2, 6)
@@ -195,8 +177,6 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
       </div>
     </div>
   </section>
-
-  ${gallerySection}
 
   ${masterBarbersSection}
 
@@ -769,24 +749,6 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         </div>
       </section>
 
-      {/* Gallery Section */}
-      <section className="bg-[#1a1a1a]">
-        <div className="grid grid-cols-1 md:grid-cols-3">
-          {siteData.gallery.slice(0, 3).map((img, i) => (
-            <div key={i} className="aspect-square relative group overflow-hidden">
-              {img ? (
-                <>
-                  <img src={img} alt={`Gallery Style ${i}`} className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-700" />
-                  <ImageOverlay onImageUpload={(e) => handleImageChange(`gallery.${i}`, e)} />
-                </>
-              ) : (
-                <ImagePlaceholder onImageUpload={(e) => handleImageChange(`gallery.${i}`, e)} heightClass="h-full" />
-              )}
-            </div>
-          ))}
-        </div>
-      </section>
-
       {/* Contact Section */}
       <section id="contact-us" className="py-12 md:py-32 bg-[#0d0d0d] px-4 md:px-6">
         <div className="container mx-auto max-w-4xl shadow-2xl overflow-hidden bg-[#1a1a1a]">
@@ -822,14 +784,6 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
               </div>
             </div>
 
-            <div className="mt-12 md:mt-20 pt-12 md:pt-16 border-t border-white/5 w-full">
-              <a
-                href={`tel:${formattedPhone}`}
-                className="inline-block py-4 md:py-6 px-10 md:px-16 bg-[#f4a100] text-[#1a1a1a] font-montserrat font-black tracking-[3px] uppercase hover:bg-white transition-colors duration-300 shadow-lg text-xs md:text-base"
-              >
-                Book Your Appointment
-              </a>
-            </div>
           </div>
         </div>
       </section>
