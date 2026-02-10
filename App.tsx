@@ -13,6 +13,7 @@ const App: React.FC = () => {
   const [deployResult, setDeployResult] = useState<{ url?: string; error?: string } | null>(null);
   const [deployCountdown, setDeployCountdown] = useState(DEPLOY_TIMER_SECONDS);
   const [deployShopName, setDeployShopName] = useState('');
+  const [copied, setCopied] = useState(false);
 
   // Check for Stripe return on mount
   useEffect(() => {
@@ -211,9 +212,32 @@ const App: React.FC = () => {
               <h2 className="text-2xl font-montserrat font-black uppercase tracking-[4px] mb-4 text-center">
                 YOUR SITE IS <span className="text-[#f4a100]">LIVE!</span>
               </h2>
-              <p className="text-[#cccccc] text-sm mb-8 text-center max-w-md">
+              <p className="text-[#cccccc] text-sm mb-6 text-center max-w-md">
                 Your barbershop website has been deployed and is now live on the web.
               </p>
+              <div className="flex items-center gap-3 bg-[#1a1a1a] border border-white/10 rounded px-4 py-3 mb-8 max-w-md w-full">
+                <span className="text-[#f4a100] text-sm font-mono truncate">{deployResult.url}</span>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(deployResult.url!);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  }}
+                  className="shrink-0 text-[#888] hover:text-white transition-colors"
+                  title="Copy URL"
+                >
+                  {copied ? (
+                    <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <rect x="9" y="9" width="13" height="13" rx="2" strokeWidth="2"/>
+                      <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" strokeWidth="2"/>
+                    </svg>
+                  )}
+                </button>
+              </div>
               <a
                 href={deployResult.url}
                 target="_blank"
