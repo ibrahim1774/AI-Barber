@@ -34,6 +34,67 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
   </section>`
     : '';
 
+  // Master Barbers section uses gallery[2-5]
+  const masterBarberImages = siteData.gallery
+    .slice(2, 6)
+    .map((url, i) => ({ url, index: i + 2 }))
+    .filter(item => item.url);
+
+  const masterBarbersSection = masterBarberImages.length > 0
+    ? `<section class="py-16 md:py-32 bg-[#0d0d0d] px-6 border-y border-white/5 relative overflow-hidden">
+    <div class="absolute top-0 right-0 w-1/3 h-full bg-[#1a1a1a] -z-10 transform skew-x-12 translate-x-32 hidden lg:block"></div>
+    <div class="container mx-auto">
+      <div class="flex flex-col lg:flex-row items-center gap-12 lg:gap-20">
+        <div class="lg:w-1/2">
+          <div class="grid grid-cols-2 gap-4">
+            <div class="space-y-4">
+              ${siteData.gallery[2] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{gallery2}}" alt="Professional Barber Tools" class="w-full h-40 md:h-64 object-cover"></div>` : ''}
+              ${siteData.gallery[3] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{gallery3}}" alt="Clean Haircut Detail" class="w-full h-32 md:h-48 object-cover"></div>` : ''}
+            </div>
+            <div class="space-y-4 pt-8">
+              ${siteData.gallery[4] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{gallery4}}" alt="Shaving Ritual" class="w-full h-32 md:h-48 object-cover"></div>` : ''}
+              ${siteData.gallery[5] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{gallery5}}" alt="Hair Styling Session" class="w-full h-40 md:h-64 object-cover"></div>` : ''}
+            </div>
+          </div>
+        </div>
+        <div class="lg:w-1/2">
+          <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4">Master Barbers</h3>
+          <h2 class="text-3xl md:text-5xl font-montserrat font-black text-white leading-tight uppercase tracking-[2px] mb-8">The Pinnacle of <br> Professional Craftsmanship</h2>
+          <div class="space-y-8">
+            <div class="flex items-start gap-6">
+              <div class="bg-[#1a1a1a] p-3 rounded-full border border-[#f4a100]/30 shrink-0">
+                <svg class="w-6 h-6 text-[#f4a100]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M6 18L18 6"></path></svg>
+              </div>
+              <div>
+                <h4 class="text-white font-montserrat font-bold text-lg uppercase mb-2">Signature Cuts</h4>
+                <p class="text-[#888888] leading-relaxed">Our master barbers blend classic techniques with modern trends to create styles that define your personality.</p>
+              </div>
+            </div>
+            <div class="flex items-start gap-6">
+              <div class="bg-[#1a1a1a] p-3 rounded-full border border-[#f4a100]/30 shrink-0">
+                <svg class="w-6 h-6 text-[#f4a100]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M6 18L18 6"></path></svg>
+              </div>
+              <div>
+                <h4 class="text-white font-montserrat font-bold text-lg uppercase mb-2">Artisan Shaves</h4>
+                <p class="text-[#888888] leading-relaxed">Experience the ritual of a traditional hot-towel shave, utilizing the world's finest blades and soothing balsams.</p>
+              </div>
+            </div>
+            <div class="flex items-start gap-6">
+              <div class="bg-[#1a1a1a] p-3 rounded-full border border-[#f4a100]/30 shrink-0">
+                <svg class="w-6 h-6 text-[#f4a100]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M6 18L18 6"></path></svg>
+              </div>
+              <div>
+                <h4 class="text-white font-montserrat font-bold text-lg uppercase mb-2">Elite Consulting</h4>
+                <p class="text-[#888888] leading-relaxed">We don't just cut hair; we analyze your face shape and hair type to recommend the perfect look for your lifestyle.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>`
+    : '';
+
   const aboutImageSection = siteData.about.imageUrl
     ? `<div class="relative group mt-6 lg:mt-0">
         <img src="{{about}}" alt="Barber Shop Atmosphere" class="w-full grayscale hover:grayscale-0 transition-all duration-700 shadow-2xl">
@@ -137,6 +198,8 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
 
   ${gallerySection}
 
+  ${masterBarbersSection}
+
   <section id="contact" class="py-12 md:py-32 bg-[#0d0d0d] px-4 md:px-6">
     <div class="container mx-auto max-w-6xl bg-[#1a1a1a] p-8 md:p-20">
       <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white mb-8 md:mb-12 uppercase tracking-[2px]">Contact Us</h2>
@@ -195,12 +258,19 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
     error?: string;
   } | null>(null);
 
-  // Handle text changes
+  // Handle text changes (deep-clone nested objects so React detects the update)
   const handleTextChange = (path: string, value: string) => {
     const newData = { ...siteData };
     const parts = path.split('.');
-    let current: any = newData;
 
+    // Deep-clone the nested object being modified
+    if (parts[0] === 'hero') newData.hero = { ...newData.hero };
+    else if (parts[0] === 'about') newData.about = { ...newData.about };
+    else if (parts[0] === 'gallery') newData.gallery = [...newData.gallery];
+    else if (parts[0] === 'contact') newData.contact = { ...newData.contact };
+    else if (parts[0] === 'services') newData.services = [...newData.services];
+
+    let current: any = newData;
     for (let i = 0; i < parts.length - 1; i++) {
       current = current[parts[i]];
     }
@@ -236,7 +306,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
     });
   };
 
-  // Handle image changes
+  // Handle image changes (deep-clone nested objects so React detects the update)
   const handleImageChange = async (path: string, event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
@@ -244,8 +314,13 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         const base64String = await compressImage(file);
         const newData = { ...siteData };
         const parts = path.split('.');
-        let current: any = newData;
 
+        // Deep-clone the nested object being modified
+        if (parts[0] === 'hero') newData.hero = { ...newData.hero };
+        else if (parts[0] === 'about') newData.about = { ...newData.about };
+        else if (parts[0] === 'gallery') newData.gallery = [...newData.gallery];
+
+        let current: any = newData;
         for (let i = 0; i < parts.length - 1; i++) {
           current = current[parts[i]];
         }
