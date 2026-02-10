@@ -52,11 +52,11 @@ async function uploadToGCS(siteId: string, filename: string, base64DataUrl: stri
 // Inlined from src/lib/vercelDeploy.ts (Vercel serverless can't resolve ../src/lib imports)
 async function deployToVercel(projectName: string, files: VercelFile[]) {
   const vercelToken = process.env.VERCEL_TOKEN;
-  const vercelProjectName = process.env.VERCEL_PROJECT_NAME || process.env.PROJECT_NAME;
-
   if (!vercelToken) throw new Error('VERCEL_TOKEN environment variable is not set');
 
-  const finalProjectName = vercelProjectName || projectName;
+  // Always use the siteId (derived from shop name) as the project name
+  // so each customer site gets its own Vercel project and clean subdomain
+  const finalProjectName = projectName;
   const sanitizedProjectName = finalProjectName
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
@@ -85,8 +85,10 @@ async function deployToVercel(projectName: string, files: VercelFile[]) {
   );
 
   const data = response.data;
-  let deploymentUrl = data.url ? `https://${data.url}` :
-    (data.alias?.length > 0 ? `https://${data.alias[0]}` : data.inspectorUrl || 'Unknown');
+  // Prefer the production alias (clean subdomain like project-name.vercel.app)
+  // over the hash-based unique deployment URL
+  let deploymentUrl = (data.alias?.length > 0) ? `https://${data.alias[0]}` :
+    (data.url ? `https://${data.url}` : data.inspectorUrl || 'Unknown');
 
   console.log(`[Vercel Deploy] Success: ${deploymentUrl}`);
   return { deploymentUrl, inspectorUrl: data.inspectorUrl, deploymentId: data.id };

@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { WebsiteData } from '../types';
 import {
   ScissorsIcon, RazorIcon, MustacheIcon, FaceIcon,
@@ -258,6 +258,15 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
     error?: string;
   } | null>(null);
 
+  // Derive URL-friendly slug from shop name (updates live as user edits)
+  const siteSlug = useMemo(() => {
+    return siteData.shopName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .substring(0, 50);
+  }, [siteData.shopName]);
+
   // Handle text changes (deep-clone nested objects so React detects the update)
   const handleTextChange = (path: string, value: string) => {
     const newData = { ...siteData };
@@ -386,11 +395,8 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
     setDeploymentResult(null);
 
     try {
-      // Generate unique site ID from shop name
-      const siteId = siteData.shopName
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-|-$/g, '');
+      // Use the pre-computed slug as siteId (matches the URL preview shown to the user)
+      const siteId = siteSlug;
 
       // Step 1: Prepare images to upload (only base64 data URLs)
       const imagesToUpload: Array<{ key: string; filename: string; base64: string }> = [];
@@ -872,6 +878,10 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
               <p className="text-[9px] md:text-[11px] font-bold uppercase mb-3 md:mb-4 opacity-90 leading-tight">
                 Launch your custom barbershop website for $10/month.
               </p>
+              <div className="bg-[#1a1a1a]/40 px-2 py-1.5 rounded mb-3 md:mb-4">
+                <p className="text-[7px] md:text-[8px] uppercase tracking-wider opacity-70 mb-0.5">Your site URL</p>
+                <p className="text-[8px] md:text-[10px] font-mono font-bold break-all">{siteSlug}.vercel.app</p>
+              </div>
               <button
                 onClick={handleClaimSite}
                 disabled={isDeploying}
