@@ -49,7 +49,7 @@ export default async function handler(req: any, res: any) {
       // Images were already uploaded client-side, use provided URLs
       // Note: Files are already public due to bucket configuration (allUsers access)
       console.log(`[Deploy Site] Using ${Object.keys(body.imageUrls).length} pre-uploaded image URLs`);
-      
+
       imageUrlMap = body.imageUrls;
       Object.assign(uploadedImages, body.imageUrls);
     } else if (body.images && body.images.length > 0) {
@@ -144,7 +144,7 @@ export default async function handler(req: any, res: any) {
     // Step 5: Prepare files for Vercel deployment (ONLY HTML and CSS, NO images)
     const htmlBuffer = Buffer.from(processedHtml, 'utf-8');
     const cssBuffer = Buffer.from(cssContent, 'utf-8');
-    
+
     const files = [
       {
         file: 'index.html',
@@ -162,7 +162,7 @@ export default async function handler(req: any, res: any) {
     const totalSize = htmlBuffer.length + cssBuffer.length;
     const totalSizeMB = totalSize / (1024 * 1024);
     console.log(`[Deploy Site] Deployment payload size: ${totalSizeMB.toFixed(2)} MB (HTML: ${(htmlBuffer.length / 1024).toFixed(2)} KB, CSS: ${(cssBuffer.length / 1024).toFixed(2)} KB)`);
-    
+
     if (totalSizeMB > 4.5) {
       console.warn(`[Deploy Site] Warning: Payload size (${totalSizeMB.toFixed(2)} MB) exceeds Vercel's recommended limit of 4.5 MB`);
     }
