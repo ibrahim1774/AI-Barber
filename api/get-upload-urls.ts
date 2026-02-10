@@ -50,6 +50,16 @@ export default async function handler(req: any, res: any) {
 
     const bucket = storage.bucket(bucketName);
 
+    // Ensure CORS is configured on the bucket (idempotent)
+    await bucket.setCorsConfiguration([
+      {
+        origin: ['*'],
+        method: ['PUT'],
+        responseHeader: ['Content-Type'],
+        maxAgeSeconds: 3600,
+      },
+    ]);
+
     // Generate a signed URL and public URL for each image
     const urls = await Promise.all(filenames.map(async (name: string) => {
       const file = bucket.file(`${siteId}/${name}`);
