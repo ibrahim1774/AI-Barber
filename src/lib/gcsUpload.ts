@@ -26,7 +26,7 @@ export async function uploadToGCS(
     }
 
     // Get environment variables
-    const serviceAccountJson = process.env.GCP_SERVICE_ACCOUNT_JSON;
+    const serviceAccountJson = process.env.GCP_SERVICE_ACCOUNT_JSON || process.env.GCS_CREDENTIALS;
     const bucketName = process.env.GCS_BUCKET_NAME;
 
     if (!serviceAccountJson) {

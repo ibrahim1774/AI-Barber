@@ -36,7 +36,7 @@ export async function deployToVercel(
 
     // Get environment variables
     const vercelToken = process.env.VERCEL_TOKEN;
-    const vercelProjectName = process.env.VERCEL_PROJECT_NAME;
+    const vercelProjectName = process.env.VERCEL_PROJECT_NAME || process.env.PROJECT_NAME;
 
     if (!vercelToken) {
       throw new Error('VERCEL_TOKEN environment variable is not set');
