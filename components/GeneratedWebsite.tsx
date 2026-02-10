@@ -209,13 +209,39 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
     setSiteData(newData);
   };
 
+  // Compress image client-side to avoid 413 payload errors on serverless
+  const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const MAX_DIM = 1200;
+        let { width, height } = img;
+        if (width > MAX_DIM || height > MAX_DIM) {
+          const scale = MAX_DIM / Math.max(width, height);
+          width = Math.round(width * scale);
+          height = Math.round(height * scale);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { reject(new Error('Canvas not supported')); return; }
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.80));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Failed to load image')); };
+      img.src = url;
+    });
+  };
+
   // Handle image changes
-  const handleImageChange = (path: string, event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = async (path: string, event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64String = reader.result as string;
+      try {
+        const base64String = await compressImage(file);
         const newData = { ...siteData };
         const parts = path.split('.');
         let current: any = newData;
@@ -226,8 +252,9 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
 
         current[parts[parts.length - 1]] = base64String;
         setSiteData(newData);
-      };
-      reader.readAsDataURL(file);
+      } catch (err) {
+        console.error('Image compression failed:', err);
+      }
     }
   };
 
