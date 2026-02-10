@@ -5,7 +5,7 @@ import { LoadingScreen } from './components/LoadingScreen.tsx';
 import { GeneratedWebsite, generateHTMLWithPlaceholders } from './components/GeneratedWebsite.tsx';
 import { generateContent } from './services/geminiService.ts';
 
-const DEPLOY_TIMER_SECONDS = 8;
+const DEPLOY_TIMER_SECONDS = 15;
 
 const App: React.FC = () => {
   const [state, setState] = useState<AppState>('dashboard');
