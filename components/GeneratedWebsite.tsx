@@ -240,8 +240,16 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
 
     } catch (error: any) {
       console.error('Deployment error:', error);
+
+      let errorMessage = error.message || 'Failed to deploy website.';
+
+      // Enhance error message for common issues
+      if (errorMessage.toLowerCase().includes('load failed') || errorMessage.toLowerCase().includes('failed to fetch')) {
+        errorMessage = 'Network error: Unable to connect to server. Please check your internet connection or try again later. (CORS/Network)';
+      }
+
       setDeploymentResult({
-        error: error.message || 'Failed to deploy website. Please try again.'
+        error: errorMessage
       });
     } finally {
       setIsDeploying(false);
