@@ -9,7 +9,7 @@ export const LoadingScreen: React.FC = () => {
   const messages = [
     "Sharpening the blades...",
     "Designing luxury layouts...",
-    "Generating premium AI imagery (8/8)...",
+    "Generating premium AI imagery (2/2)...",
     "Crafting custom descriptions...",
     "Clipping the final code...",
     "Styling your unique identity...",
@@ -19,7 +19,7 @@ export const LoadingScreen: React.FC = () => {
   ];
 
   useEffect(() => {
-    // Total time around 25 seconds given 8 images + text
+    // Total time around 10 seconds given 2 images + text
     const timer = setInterval(() => {
       setProgress((prev) => {
         if (prev >= 100) {
@@ -28,7 +28,7 @@ export const LoadingScreen: React.FC = () => {
         }
         return prev + 1;
       });
-    }, 250); 
+    }, 100);
 
     const messageTimer = setInterval(() => {
       setMessageIndex((prev) => (prev + 1) % messages.length);

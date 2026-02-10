@@ -35,4 +35,4 @@ export interface WebsiteData {
   };
 }
 
-export type AppState = 'dashboard' | 'loading' | 'generated';
+export type AppState = 'dashboard' | 'loading' | 'generated' | 'deploying';

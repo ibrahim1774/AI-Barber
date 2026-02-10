@@ -76,16 +76,10 @@ export default async function handler(req: any, res: any) {
       }
     });
 
-    // 2. Prepare Image Generation Prompts
+    // 2. Prepare Image Generation Prompts (only 2 — hero + 1 gallery)
     const imagePrompts = [
       `Cinematic hero image of a barber in a luxury shop in ${inputs.area}, moody atmosphere, professional photography, 16:9`,
-      `Styled interior of ${inputs.shopName}, leather vintage chairs, marble floors, soft lighting, 4:3`,
-      `Close-up of premium gold-plated barber scissors and a silver straight razor, 1:1`,
       `A sharp skin fade haircut at ${inputs.shopName}, clean edges, 1:1`,
-      `A barber applying warm lather with a silver brush, luxury ritual, 1:1`,
-      `Modern masculine hair styling session at ${inputs.shopName}, dynamic movement, 1:1`,
-      `Close-up of barber's hands using a straight razor for precision beard lineup, 1:1`,
-      `Sophisticated entrance of ${inputs.shopName} in ${inputs.area}, architectural detail, 1:1`,
     ];
 
     // Execute text and first few images in parallel to stay within timeout
@@ -126,14 +120,14 @@ export default async function handler(req: any, res: any) {
       about: {
         heading: content.about?.heading || "The Artisan Standard",
         description: content.about?.paragraphs || ["Dedicated to traditional craft and modern style."],
-        imageUrl: imageUrls[1] || "",
+        imageUrl: "",
       },
       services: (content.services || []).map((s: any, i: number) => ({
         ...s,
         icon: serviceIcons[i % 4],
-        imageUrl: imageUrls[i + 2] || imageUrls[2] || "",
+        imageUrl: "",
       })),
-      gallery: imageUrls.filter(url => url !== ""),
+      gallery: [imageUrls[1] || "", "", "", "", "", ""],
       contact: content.contact || { 
         address: inputs.area, 
         email: `contact@${inputs.shopName.toLowerCase().replace(/\s/g, '')}.com` 

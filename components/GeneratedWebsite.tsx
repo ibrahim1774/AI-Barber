@@ -12,228 +12,35 @@ interface GeneratedWebsiteProps {
   onBack: () => void;
 }
 
-export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack }) => {
-  const [siteData, setSiteData] = useState<WebsiteData>(data);
-  const [isScrolled, setIsScrolled] = useState(false);
-  const [isDeploying, setIsDeploying] = useState(false);
-  const [deploymentResult, setDeploymentResult] = useState<{
-    deploymentUrl?: string;
-    stripeLink?: string;
-    error?: string;
-  } | null>(null);
+// Exported so App.tsx can reuse it for post-payment deploy
+export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
+  const formattedPhone = siteData.phone.replace(/\s+/g, '');
 
-  // Handle text changes
-  const handleTextChange = (path: string, value: string) => {
-    const newData = { ...siteData };
-    const parts = path.split('.');
-    let current: any = newData;
+  // Only include gallery items that have actual images
+  const galleryItems = siteData.gallery
+    .slice(0, 3)
+    .map((url, i) => ({ url, index: i }))
+    .filter(item => item.url);
 
-    for (let i = 0; i < parts.length - 1; i++) {
-      current = current[parts[i]];
-    }
-
-    current[parts[parts.length - 1]] = value;
-    setSiteData(newData);
-  };
-
-  // Handle image changes
-  const handleImageChange = (path: string, event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64String = reader.result as string;
-        const newData = { ...siteData };
-        const parts = path.split('.');
-        let current: any = newData;
-
-        for (let i = 0; i < parts.length - 1; i++) {
-          current = current[parts[i]];
-        }
-
-        current[parts[parts.length - 1]] = base64String;
-        setSiteData(newData);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  // ContentEditable component wrapper for convenience
-  const EditableText = ({ text, onSave, className = "", tagName: Tag = "span" }: { text: string, onSave: (val: string) => void, className?: string, tagName?: any }) => (
-    <Tag
-      contentEditable
-      suppressContentEditableWarning
-      onBlur={(e: any) => onSave(e.target.innerText)}
-      className={`outline-none focus:ring-1 focus:ring-[#f4a100]/50 rounded px-1 -mx-1 transition-all ${className}`}
-    >
-      {text}
-    </Tag>
-  );
-
-  // Image replacement overlay component
-  const ImageOverlay = ({ onImageUpload, className = "" }: { onImageUpload: (e: React.ChangeEvent<HTMLInputElement>) => void, className?: string }) => (
-    <div className={`absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer z-10 ${className}`}>
-      <label className="cursor-pointer flex flex-col items-center gap-2">
-        <CameraIcon className="w-8 h-8 text-white" />
-        <span className="text-white text-[10px] md:text-xs font-bold uppercase tracking-wider">Replace Image</span>
-        <input type="file" className="hidden" accept="image/*" onChange={onImageUpload} />
-      </label>
+  const gallerySection = galleryItems.length > 0
+    ? `<section class="bg-[#1a1a1a]">
+    <div class="grid grid-cols-1 md:grid-cols-${Math.min(galleryItems.length, 3)}">
+      ${galleryItems.map(item => `
+        <div class="aspect-square relative group overflow-hidden">
+          <img src="{{gallery${item.index}}}" alt="Gallery ${item.index}" class="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-700">
+        </div>
+      `).join('')}
     </div>
-  );
+  </section>`
+    : '';
 
-  useEffect(() => {
-    const handleScroll = () => setIsScrolled(window.scrollY > 20);
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+  const aboutImageSection = siteData.about.imageUrl
+    ? `<div class="relative group mt-6 lg:mt-0">
+        <img src="{{about}}" alt="Barber Shop Atmosphere" class="w-full grayscale hover:grayscale-0 transition-all duration-700 shadow-2xl">
+      </div>`
+    : '';
 
-  const getServiceIcon = (type: string) => {
-    switch (type) {
-      case 'scissors': return <ScissorsIcon className="w-10 h-10 md:w-12 md:h-12 text-[#f4a100]" />;
-      case 'razor': return <RazorIcon className="w-10 h-10 md:w-12 md:h-12 text-[#f4a100]" />;
-      case 'mustache': return <MustacheIcon className="w-10 h-10 md:w-12 md:h-12 text-[#f4a100]" />;
-      case 'face': return <FaceIcon className="w-10 h-10 md:w-12 md:h-12 text-[#f4a100]" />;
-      default: return <ScissorsIcon className="w-10 h-10 md:w-12 md:h-12 text-[#f4a100]" />;
-    }
-  };
-
-  const handleDeployWebsite = async () => {
-    setIsDeploying(true);
-    setDeploymentResult(null);
-
-    try {
-      // Generate unique site ID from shop name
-      const siteId = data.shopName
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-|-$/g, '');
-
-      // Step 1: Prepare images array with keys and filenames
-      const imagesToUpload: Array<{ key: string; filename: string; base64: string }> = [];
-
-      // Hero image
-      if (data.hero.imageUrl) {
-        imagesToUpload.push({
-          key: 'hero',
-          filename: 'hero.jpg',
-          base64: data.hero.imageUrl
-        });
-      }
-
-      // About image
-      if (data.about.imageUrl) {
-        imagesToUpload.push({
-          key: 'about',
-          filename: 'about.jpg',
-          base64: data.about.imageUrl
-        });
-      }
-
-      // Gallery images
-      data.gallery.forEach((imageUrl, index) => {
-        if (imageUrl) {
-          imagesToUpload.push({
-            key: `gallery${index}`,
-            filename: `gallery-${index}.jpg`,
-            base64: imageUrl
-          });
-        }
-      });
-
-      // Step 2: Upload images to GCS via proxy API (avoids CORS issues)
-      const imageUrlMap: Record<string, string> = {};
-
-      if (imagesToUpload.length > 0) {
-        console.log(`[Deploy] Uploading ${imagesToUpload.length} images via proxy...`);
-
-        await Promise.all(
-          imagesToUpload.map(async (image) => {
-            let uploadResponse;
-            try {
-              uploadResponse = await fetch('/api/upload-image', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  siteId,
-                  filename: image.filename,
-                  base64: image.base64,
-                }),
-              });
-            } catch (fetchErr: any) {
-              throw new Error(`[Upload ${image.filename}] ${fetchErr.message}`);
-            }
-
-            if (!uploadResponse.ok) {
-              const errText = await uploadResponse.text().catch(() => '');
-              throw new Error(`[Upload ${image.filename}] HTTP ${uploadResponse.status}: ${errText}`);
-            }
-
-            const { publicUrl } = await uploadResponse.json();
-            imageUrlMap[image.key] = publicUrl;
-            console.log(`[Deploy] Uploaded ${image.key} -> ${publicUrl}`);
-          })
-        );
-
-        console.log(`[Deploy] All ${imagesToUpload.length} images uploaded successfully`);
-      }
-
-      // Step 3: Generate HTML with placeholders (will be replaced on backend)
-      const html = generateHTMLWithPlaceholders(siteData);
-
-      // Step 4: Call deployment API with only HTML/CSS and image URLs (no base64)
-      let response;
-      try {
-        response = await fetch('/api/deploy-site', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            siteId,
-            html,
-            imageUrls: imageUrlMap,
-          }),
-        });
-      } catch (fetchErr: any) {
-        throw new Error(`[Step 3: deploy-site] ${fetchErr.message}`);
-      }
-
-      // Handle non-JSON responses (like 413 errors)
-      let result;
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
-        result = await response.json();
-      } else {
-        const text = await response.text();
-        throw new Error(`[Step 3: deploy-site] ${text || `HTTP ${response.status}`}`);
-      }
-
-      if (!response.ok) {
-        throw new Error(`[Step 3: deploy-site] ${result.error || result.details || 'Deployment failed'}`);
-      }
-
-      setDeploymentResult({
-        deploymentUrl: result.deploymentUrl,
-        stripeLink: result.stripeLink
-      });
-
-    } catch (error: any) {
-      console.error('Deployment error:', error);
-
-      let errorMessage = error.message || 'Failed to deploy website.';
-
-      setDeploymentResult({
-        error: errorMessage
-      });
-    } finally {
-      setIsDeploying(false);
-    }
-  };
-
-  const generateHTMLWithPlaceholders = (siteData: WebsiteData): string => {
-    const formattedPhone = siteData.phone.replace(/\s+/g, '');
-
-    return `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -296,7 +103,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
   </section>
 
   <section id="about-us" class="py-12 md:py-32 px-6 bg-[#1a1a1a]">
-    <div class="container mx-auto grid lg:grid-cols-2 gap-10 md:gap-20 items-center">
+    <div class="container mx-auto grid ${siteData.about.imageUrl ? 'lg:grid-cols-2' : ''} gap-10 md:gap-20 items-center">
       <div class="relative">
         <h2 class="text-2xl md:text-5xl font-montserrat font-black text-white mb-6 md:mb-8 leading-tight uppercase tracking-[2px]">
           ${siteData.about.heading}
@@ -305,9 +112,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           ${siteData.about.description.map(p => `<p>${p}</p>`).join('')}
         </div>
       </div>
-      <div class="relative group mt-6 lg:mt-0">
-        <img src="{{about}}" alt="Barber Shop Atmosphere" class="w-full grayscale hover:grayscale-0 transition-all duration-700 shadow-2xl">
-      </div>
+      ${aboutImageSection}
     </div>
   </section>
 
@@ -330,15 +135,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
     </div>
   </section>
 
-  <section class="bg-[#1a1a1a]">
-    <div class="grid grid-cols-1 md:grid-cols-3">
-      ${siteData.gallery.slice(0, 3).map((_, i) => `
-        <div class="aspect-square relative group overflow-hidden">
-          <img src="{{gallery${i}}}" alt="Gallery ${i}" class="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-700">
-        </div>
-      `).join('')}
-    </div>
-  </section>
+  ${gallerySection}
 
   <section id="contact" class="py-12 md:py-32 bg-[#0d0d0d] px-4 md:px-6">
     <div class="container mx-auto max-w-6xl bg-[#1a1a1a] p-8 md:p-20">
@@ -388,6 +185,190 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
   </script>
 </body>
 </html>`;
+}
+
+export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack }) => {
+  const [siteData, setSiteData] = useState<WebsiteData>(data);
+  const [isScrolled, setIsScrolled] = useState(false);
+  const [isDeploying, setIsDeploying] = useState(false);
+  const [deploymentResult, setDeploymentResult] = useState<{
+    error?: string;
+  } | null>(null);
+
+  // Handle text changes
+  const handleTextChange = (path: string, value: string) => {
+    const newData = { ...siteData };
+    const parts = path.split('.');
+    let current: any = newData;
+
+    for (let i = 0; i < parts.length - 1; i++) {
+      current = current[parts[i]];
+    }
+
+    current[parts[parts.length - 1]] = value;
+    setSiteData(newData);
+  };
+
+  // Handle image changes
+  const handleImageChange = (path: string, event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result as string;
+        const newData = { ...siteData };
+        const parts = path.split('.');
+        let current: any = newData;
+
+        for (let i = 0; i < parts.length - 1; i++) {
+          current = current[parts[i]];
+        }
+
+        current[parts[parts.length - 1]] = base64String;
+        setSiteData(newData);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // ContentEditable component wrapper for convenience
+  const EditableText = ({ text, onSave, className = "", tagName: Tag = "span" }: { text: string, onSave: (val: string) => void, className?: string, tagName?: any }) => (
+    <Tag
+      contentEditable
+      suppressContentEditableWarning
+      onBlur={(e: any) => onSave(e.target.innerText)}
+      className={`outline-none focus:ring-1 focus:ring-[#f4a100]/50 rounded px-1 -mx-1 transition-all ${className}`}
+    >
+      {text}
+    </Tag>
+  );
+
+  // Image replacement overlay component (for existing images)
+  const ImageOverlay = ({ onImageUpload, className = "" }: { onImageUpload: (e: React.ChangeEvent<HTMLInputElement>) => void, className?: string }) => (
+    <div className={`absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer z-10 ${className}`}>
+      <label className="cursor-pointer flex flex-col items-center gap-2">
+        <CameraIcon className="w-8 h-8 text-white" />
+        <span className="text-white text-[10px] md:text-xs font-bold uppercase tracking-wider">Replace Image</span>
+        <input type="file" className="hidden" accept="image/*" onChange={onImageUpload} />
+      </label>
+    </div>
+  );
+
+  // "Add Your Own Image" placeholder for empty image slots
+  const ImagePlaceholder = ({ onImageUpload, heightClass = "h-64" }: { onImageUpload: (e: React.ChangeEvent<HTMLInputElement>) => void, heightClass?: string }) => (
+    <label className={`cursor-pointer flex flex-col items-center justify-center w-full ${heightClass} bg-[#1a1a1a] border-2 border-dashed border-[#f4a100]/30 hover:border-[#f4a100] transition-all`}>
+      <CameraIcon className="w-10 h-10 md:w-12 md:h-12 text-[#f4a100]/50 mb-3" />
+      <span className="text-[#f4a100]/70 text-[10px] md:text-xs font-bold uppercase tracking-wider">Add Your Own Image</span>
+      <input type="file" className="hidden" accept="image/*" onChange={onImageUpload} />
+    </label>
+  );
+
+  useEffect(() => {
+    const handleScroll = () => setIsScrolled(window.scrollY > 20);
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const getServiceIcon = (type: string) => {
+    switch (type) {
+      case 'scissors': return <ScissorsIcon className="w-10 h-10 md:w-12 md:h-12 text-[#f4a100]" />;
+      case 'razor': return <RazorIcon className="w-10 h-10 md:w-12 md:h-12 text-[#f4a100]" />;
+      case 'mustache': return <MustacheIcon className="w-10 h-10 md:w-12 md:h-12 text-[#f4a100]" />;
+      case 'face': return <FaceIcon className="w-10 h-10 md:w-12 md:h-12 text-[#f4a100]" />;
+      default: return <ScissorsIcon className="w-10 h-10 md:w-12 md:h-12 text-[#f4a100]" />;
+    }
+  };
+
+  const handleClaimSite = async () => {
+    setIsDeploying(true);
+    setDeploymentResult(null);
+
+    try {
+      // Generate unique site ID from shop name
+      const siteId = siteData.shopName
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '');
+
+      // Step 1: Prepare images to upload (only base64 data URLs)
+      const imagesToUpload: Array<{ key: string; filename: string; base64: string }> = [];
+
+      if (siteData.hero.imageUrl && siteData.hero.imageUrl.startsWith('data:')) {
+        imagesToUpload.push({ key: 'hero', filename: 'hero.jpg', base64: siteData.hero.imageUrl });
+      }
+      if (siteData.about.imageUrl && siteData.about.imageUrl.startsWith('data:')) {
+        imagesToUpload.push({ key: 'about', filename: 'about.jpg', base64: siteData.about.imageUrl });
+      }
+      siteData.gallery.forEach((imageUrl, index) => {
+        if (imageUrl && imageUrl.startsWith('data:')) {
+          imagesToUpload.push({ key: `gallery${index}`, filename: `gallery-${index}.jpg`, base64: imageUrl });
+        }
+      });
+
+      // Step 2: Upload images to GCS via proxy
+      const imageUrlMap: Record<string, string> = {};
+
+      if (imagesToUpload.length > 0) {
+        console.log(`[Claim] Uploading ${imagesToUpload.length} images via proxy...`);
+
+        await Promise.all(
+          imagesToUpload.map(async (image) => {
+            const uploadResponse = await fetch('/api/upload-image', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ siteId, filename: image.filename, base64: image.base64 }),
+            });
+
+            if (!uploadResponse.ok) {
+              const errText = await uploadResponse.text().catch(() => '');
+              throw new Error(`[Upload ${image.filename}] HTTP ${uploadResponse.status}: ${errText}`);
+            }
+
+            const { publicUrl } = await uploadResponse.json();
+            imageUrlMap[image.key] = publicUrl;
+            console.log(`[Claim] Uploaded ${image.key} -> ${publicUrl}`);
+          })
+        );
+      }
+
+      // Also include images that are already GCS URLs
+      if (siteData.hero.imageUrl && siteData.hero.imageUrl.startsWith('http')) {
+        imageUrlMap['hero'] = siteData.hero.imageUrl;
+      }
+      if (siteData.about.imageUrl && siteData.about.imageUrl.startsWith('http')) {
+        imageUrlMap['about'] = siteData.about.imageUrl;
+      }
+      siteData.gallery.forEach((url, index) => {
+        if (url && url.startsWith('http')) {
+          imageUrlMap[`gallery${index}`] = url;
+        }
+      });
+
+      // Step 3: Save to localStorage (text + GCS URLs only, no base64)
+      const pendingSite = {
+        siteId,
+        siteData: {
+          ...siteData,
+          hero: { ...siteData.hero, imageUrl: imageUrlMap['hero'] ? 'uploaded' : '' },
+          about: { ...siteData.about, imageUrl: imageUrlMap['about'] ? 'uploaded' : '' },
+          gallery: siteData.gallery.map((_, i) => imageUrlMap[`gallery${i}`] ? 'uploaded' : ''),
+          services: siteData.services.map(s => ({ ...s, imageUrl: '' })),
+        },
+        imageUrlMap,
+        timestamp: Date.now(),
+      };
+
+      localStorage.setItem('pendingSite', JSON.stringify(pendingSite));
+      console.log('[Claim] Saved pending site to localStorage, redirecting to Stripe...');
+
+      // Step 4: Redirect to Stripe Payment Link
+      window.location.href = `https://buy.stripe.com/test_eVq5kC8e016e5N05Ma3cc01?client_reference_id=${encodeURIComponent(siteId)}`;
+
+    } catch (error: any) {
+      console.error('Claim site error:', error);
+      setDeploymentResult({ error: error.message || 'Failed to prepare site for payment.' });
+      setIsDeploying(false);
+    }
   };
 
   const formattedPhone = siteData.phone.replace(/\s+/g, '');
@@ -451,13 +432,15 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       {/* Hero Section */}
       <section id="home" className="relative h-screen flex flex-col justify-center items-center overflow-hidden">
         <div className="absolute inset-0 z-0 group">
-          <img
-            src={siteData.hero.imageUrl}
-            alt="Main Hero"
-            className="w-full h-full object-cover"
-          />
-          <div className="absolute inset-0 bg-black/70 bg-gradient-to-b from-black/60 via-transparent to-[#0d0d0d]"></div>
-          <ImageOverlay onImageUpload={(e) => handleImageChange('hero.imageUrl', e)} />
+          {siteData.hero.imageUrl ? (
+            <>
+              <img src={siteData.hero.imageUrl} alt="Main Hero" className="w-full h-full object-cover" />
+              <ImageOverlay onImageUpload={(e) => handleImageChange('hero.imageUrl', e)} />
+            </>
+          ) : (
+            <ImagePlaceholder onImageUpload={(e) => handleImageChange('hero.imageUrl', e)} heightClass="h-full" />
+          )}
+          <div className="absolute inset-0 bg-black/70 bg-gradient-to-b from-black/60 via-transparent to-[#0d0d0d] pointer-events-none"></div>
         </div>
 
         <div className="relative z-10 text-center px-4 md:px-6 max-w-5xl -mt-20 md:mt-0">
@@ -527,8 +510,14 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           </div>
           <div className="relative group mt-6 lg:mt-0">
             <div className="absolute -inset-2 md:-inset-4 border border-[#f4a100]/30 -z-10 transform translate-x-2 translate-y-2 md:translate-x-4 md:translate-y-4 transition-transform duration-500"></div>
-            <img src={siteData.about.imageUrl} alt="Barber Shop Atmosphere" className="w-full grayscale hover:grayscale-0 transition-all duration-700 shadow-2xl" />
-            <ImageOverlay onImageUpload={(e) => handleImageChange('about.imageUrl', e)} />
+            {siteData.about.imageUrl ? (
+              <>
+                <img src={siteData.about.imageUrl} alt="Barber Shop Atmosphere" className="w-full grayscale hover:grayscale-0 transition-all duration-700 shadow-2xl" />
+                <ImageOverlay onImageUpload={(e) => handleImageChange('about.imageUrl', e)} />
+              </>
+            ) : (
+              <ImagePlaceholder onImageUpload={(e) => handleImageChange('about.imageUrl', e)} heightClass="h-64 md:h-96" />
+            )}
           </div>
         </div>
       </section>
@@ -542,22 +531,46 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-4">
                   <div className="bg-[#1a1a1a] p-1 border border-white/5 relative group">
-                    <img src={siteData.gallery[2]} alt="Professional Barber Tools" className="w-full h-40 md:h-64 object-cover" />
-                    <ImageOverlay onImageUpload={(e) => handleImageChange('gallery.2', e)} />
+                    {siteData.gallery[2] ? (
+                      <>
+                        <img src={siteData.gallery[2]} alt="Professional Barber Tools" className="w-full h-40 md:h-64 object-cover" />
+                        <ImageOverlay onImageUpload={(e) => handleImageChange('gallery.2', e)} />
+                      </>
+                    ) : (
+                      <ImagePlaceholder onImageUpload={(e) => handleImageChange('gallery.2', e)} heightClass="h-40 md:h-64" />
+                    )}
                   </div>
                   <div className="bg-[#1a1a1a] p-1 border border-white/5 relative group">
-                    <img src={siteData.gallery[3]} alt="Clean Haircut Detail" className="w-full h-32 md:h-48 object-cover" />
-                    <ImageOverlay onImageUpload={(e) => handleImageChange('gallery.3', e)} />
+                    {siteData.gallery[3] ? (
+                      <>
+                        <img src={siteData.gallery[3]} alt="Clean Haircut Detail" className="w-full h-32 md:h-48 object-cover" />
+                        <ImageOverlay onImageUpload={(e) => handleImageChange('gallery.3', e)} />
+                      </>
+                    ) : (
+                      <ImagePlaceholder onImageUpload={(e) => handleImageChange('gallery.3', e)} heightClass="h-32 md:h-48" />
+                    )}
                   </div>
                 </div>
                 <div className="space-y-4 pt-8">
                   <div className="bg-[#1a1a1a] p-1 border border-white/5 relative group">
-                    <img src={siteData.gallery[4]} alt="Shaving Ritual" className="w-full h-32 md:h-48 object-cover" />
-                    <ImageOverlay onImageUpload={(e) => handleImageChange('gallery.4', e)} />
+                    {siteData.gallery[4] ? (
+                      <>
+                        <img src={siteData.gallery[4]} alt="Shaving Ritual" className="w-full h-32 md:h-48 object-cover" />
+                        <ImageOverlay onImageUpload={(e) => handleImageChange('gallery.4', e)} />
+                      </>
+                    ) : (
+                      <ImagePlaceholder onImageUpload={(e) => handleImageChange('gallery.4', e)} heightClass="h-32 md:h-48" />
+                    )}
                   </div>
                   <div className="bg-[#1a1a1a] p-1 border border-white/5 relative group">
-                    <img src={siteData.gallery[5]} alt="Hair Styling Session" className="w-full h-40 md:h-64 object-cover" />
-                    <ImageOverlay onImageUpload={(e) => handleImageChange('gallery.5', e)} />
+                    {siteData.gallery[5] ? (
+                      <>
+                        <img src={siteData.gallery[5]} alt="Hair Styling Session" className="w-full h-40 md:h-64 object-cover" />
+                        <ImageOverlay onImageUpload={(e) => handleImageChange('gallery.5', e)} />
+                      </>
+                    ) : (
+                      <ImagePlaceholder onImageUpload={(e) => handleImageChange('gallery.5', e)} heightClass="h-40 md:h-64" />
+                    )}
                   </div>
                 </div>
               </div>
@@ -652,8 +665,14 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         <div className="grid grid-cols-1 md:grid-cols-3">
           {siteData.gallery.slice(0, 3).map((img, i) => (
             <div key={i} className="aspect-square relative group overflow-hidden">
-              <img src={img} alt={`Gallery Style ${i}`} className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-700" />
-              <ImageOverlay onImageUpload={(e) => handleImageChange(`gallery.${i}`, e)} />
+              {img ? (
+                <>
+                  <img src={img} alt={`Gallery Style ${i}`} className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-700" />
+                  <ImageOverlay onImageUpload={(e) => handleImageChange(`gallery.${i}`, e)} />
+                </>
+              ) : (
+                <ImagePlaceholder onImageUpload={(e) => handleImageChange(`gallery.${i}`, e)} heightClass="h-full" />
+              )}
             </div>
           ))}
         </div>
@@ -739,27 +758,27 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         </div>
       </footer>
 
-      {/* Deployment Popup */}
+      {/* Claim Site Popup */}
       <div className="fixed bottom-4 right-4 md:bottom-8 md:right-8 z-[60] scale-[0.85] md:scale-100 origin-bottom-right">
         <div className="bg-[#f4a100] text-[#1a1a1a] p-4 md:p-6 shadow-2xl rounded-sm border border-[#1a1a1a]/20 max-w-[220px] md:max-w-[280px]">
           <h5 className="font-montserrat font-black text-[10px] md:text-sm tracking-widest uppercase mb-1 md:mb-2">
-            {deploymentResult?.deploymentUrl ? 'Site Deployed!' : 'Deploy Your Website'}
+            Claim Your Website
           </h5>
 
           {!deploymentResult && (
             <>
               <p className="text-[9px] md:text-[11px] font-bold uppercase mb-3 md:mb-4 opacity-90 leading-tight">
-                Deploy your custom barbershop website and get full access.
+                Launch your custom barbershop website for $10/month.
               </p>
               <button
-                onClick={handleDeployWebsite}
+                onClick={handleClaimSite}
                 disabled={isDeploying}
                 className="block w-full text-center py-2 bg-[#1a1a1a] text-[#f4a100] text-[9px] md:text-[10px] font-bold tracking-widest uppercase hover:bg-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isDeploying ? 'DEPLOYING...' : 'LAUNCH WEBSITE'}
+                {isDeploying ? 'UPLOADING IMAGES...' : 'CLAIM SITE'}
               </button>
               <p className="text-[6px] md:text-[8px] mt-2 opacity-70 uppercase tracking-tighter text-center italic">
-                The Prime Barber team can edit the site after purchase
+                You'll be redirected to secure checkout
               </p>
             </>
           )}
@@ -770,41 +789,12 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
                 {deploymentResult.error}
               </p>
               <button
-                onClick={handleDeployWebsite}
+                onClick={handleClaimSite}
                 disabled={isDeploying}
                 className="block w-full text-center py-2 bg-[#1a1a1a] text-[#f4a100] text-[9px] md:text-[10px] font-bold tracking-widest uppercase hover:bg-black transition-colors"
               >
                 TRY AGAIN
               </button>
-            </>
-          )}
-
-          {deploymentResult?.deploymentUrl && (
-            <>
-              <p className="text-[9px] md:text-[11px] font-bold uppercase mb-2 md:mb-3 opacity-90 leading-tight">
-                Your website is live!
-              </p>
-              <a
-                href={deploymentResult.deploymentUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block w-full text-center py-2 bg-[#1a1a1a] text-[#f4a100] text-[9px] md:text-[10px] font-bold tracking-widest uppercase hover:bg-black transition-colors mb-2"
-              >
-                VIEW SITE
-              </a>
-              {deploymentResult.stripeLink && (
-                <a
-                  href={deploymentResult.stripeLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block w-full text-center py-2 bg-black text-[#f4a100] text-[9px] md:text-[10px] font-bold tracking-widest uppercase hover:bg-[#1a1a1a] transition-colors"
-                >
-                  LAUNCH WEBSITE
-                </a>
-              )}
-              <p className="text-[6px] md:text-[8px] mt-2 opacity-70 uppercase tracking-tighter text-center italic">
-                Click to claim ownership for $10/month
-              </p>
             </>
           )}
         </div>
