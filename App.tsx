@@ -5,11 +5,14 @@ import { LoadingScreen } from './components/LoadingScreen.tsx';
 import { GeneratedWebsite, generateHTMLWithPlaceholders } from './components/GeneratedWebsite.tsx';
 import { generateContent } from './services/geminiService.ts';
 
+const DEPLOY_TIMER_SECONDS = 8;
+
 const App: React.FC = () => {
   const [state, setState] = useState<AppState>('dashboard');
   const [generatedData, setGeneratedData] = useState<WebsiteData | null>(null);
-  const [deployStatus, setDeployStatus] = useState<string>('');
   const [deployResult, setDeployResult] = useState<{ url?: string; error?: string } | null>(null);
+  const [deployCountdown, setDeployCountdown] = useState(DEPLOY_TIMER_SECONDS);
+  const [deployShopName, setDeployShopName] = useState('');
 
   // Check for Stripe return on mount
   useEffect(() => {
@@ -25,101 +28,119 @@ const App: React.FC = () => {
 
   const handleStripeReturn = async (sessionId: string) => {
     setState('deploying');
-    setDeployStatus('Verifying payment...');
+    setDeployCountdown(DEPLOY_TIMER_SECONDS);
 
+    // Read shop name from localStorage for the progress screen
     try {
-      // Read pending site data from localStorage
       const pendingJson = localStorage.getItem('pendingSite');
-      if (!pendingJson) {
-        throw new Error('No pending site data found. Please generate a new site and try again.');
+      if (pendingJson) {
+        const pending = JSON.parse(pendingJson);
+        setDeployShopName(pending.siteData?.shopName || '');
       }
+    } catch { /* ignore parse errors */ }
 
-      const pending = JSON.parse(pendingJson);
-      const { siteId, siteData, imageUrlMap } = pending as {
-        siteId: string;
-        siteData: WebsiteData;
-        imageUrlMap: Record<string, string>;
-      };
+    // Start the visual countdown timer
+    const timerPromise = new Promise<void>((resolve) => {
+      let remaining = DEPLOY_TIMER_SECONDS;
+      const interval = setInterval(() => {
+        remaining -= 1;
+        setDeployCountdown(remaining);
+        if (remaining <= 0) {
+          clearInterval(interval);
+          resolve();
+        }
+      }, 1000);
+    });
 
-      // Step 1: Verify payment
-      setDeployStatus('Verifying payment...');
-      const verifyResponse = await fetch('/api/verify-stripe-session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId }),
-      });
+    // Run the actual deployment concurrently
+    const deployPromise = (async () => {
+      try {
+        const pendingJson = localStorage.getItem('pendingSite');
+        if (!pendingJson) {
+          throw new Error('No pending site data found. Please generate a new site and try again.');
+        }
 
-      const verifyResult = await verifyResponse.json();
-      if (!verifyResult.verified) {
-        throw new Error(`Payment not verified: ${verifyResult.reason || 'Unknown error'}`);
+        const pending = JSON.parse(pendingJson);
+        const { siteId, siteData, imageUrlMap } = pending as {
+          siteId: string;
+          siteData: WebsiteData;
+          imageUrlMap: Record<string, string>;
+        };
+
+        // Step 1: Verify payment
+        const verifyResponse = await fetch('/api/verify-stripe-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId }),
+        });
+
+        const verifyResult = await verifyResponse.json();
+        if (!verifyResult.verified) {
+          throw new Error(`Payment not verified: ${verifyResult.reason || 'Unknown error'}`);
+        }
+
+        console.log('[Deploy] Payment verified, deploying site...');
+
+        // Step 2: Generate HTML with placeholders
+        const restoredSiteData: WebsiteData = {
+          ...siteData,
+          hero: { ...siteData.hero, imageUrl: imageUrlMap['hero'] ? 'has-image' : '' },
+          about: { ...siteData.about, imageUrl: imageUrlMap['about'] ? 'has-image' : '' },
+          gallery: siteData.gallery.map((_: string, i: number) =>
+            imageUrlMap[`gallery${i}`] ? 'has-image' : ''
+          ),
+        };
+
+        const html = generateHTMLWithPlaceholders(restoredSiteData);
+
+        // Step 3: Deploy to Vercel
+        const deployResponse = await fetch('/api/deploy-site', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ siteId, html, imageUrls: imageUrlMap }),
+        });
+
+        const contentType = deployResponse.headers.get('content-type');
+        let deployData;
+        if (contentType && contentType.includes('application/json')) {
+          deployData = await deployResponse.json();
+        } else {
+          const text = await deployResponse.text();
+          throw new Error(`Deployment failed: ${text || `HTTP ${deployResponse.status}`}`);
+        }
+
+        if (!deployResponse.ok) {
+          throw new Error(`Deployment failed: ${deployData.error || deployData.details || 'Unknown error'}`);
+        }
+
+        console.log('[Deploy] Site deployed:', deployData.deploymentUrl);
+
+        // Step 4: Fire Facebook CAPI Purchase event (fire-and-forget)
+        fetch('/api/fb-purchase', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            eventId: sessionId,
+            value: 10.0,
+            currency: 'USD',
+            customerEmail: verifyResult.customerEmail || null,
+            eventSourceUrl: window.location.origin,
+            clientUserAgent: navigator.userAgent,
+          }),
+        }).catch((err) => console.error('[FB CAPI] Error (non-blocking):', err));
+
+        localStorage.removeItem('pendingSite');
+        return { url: deployData.deploymentUrl } as { url?: string; error?: string };
+
+      } catch (error: any) {
+        console.error('[Deploy] Error:', error);
+        return { error: error.message || 'Deployment failed' } as { url?: string; error?: string };
       }
+    })();
 
-      console.log('[Deploy] Payment verified, deploying site...');
-
-      // Step 2: Generate HTML with placeholders
-      setDeployStatus('Building your website...');
-
-      // Restore image URLs in siteData for HTML generation
-      // (siteData has 'uploaded' markers; use imageUrlMap to check which images exist)
-      const restoredSiteData: WebsiteData = {
-        ...siteData,
-        hero: { ...siteData.hero, imageUrl: imageUrlMap['hero'] ? 'has-image' : '' },
-        about: { ...siteData.about, imageUrl: imageUrlMap['about'] ? 'has-image' : '' },
-        gallery: siteData.gallery.map((_: string, i: number) =>
-          imageUrlMap[`gallery${i}`] ? 'has-image' : ''
-        ),
-      };
-
-      const html = generateHTMLWithPlaceholders(restoredSiteData);
-
-      // Step 3: Deploy to Vercel
-      setDeployStatus('Deploying to the web...');
-      const deployResponse = await fetch('/api/deploy-site', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ siteId, html, imageUrls: imageUrlMap }),
-      });
-
-      const contentType = deployResponse.headers.get('content-type');
-      let deployData;
-      if (contentType && contentType.includes('application/json')) {
-        deployData = await deployResponse.json();
-      } else {
-        const text = await deployResponse.text();
-        throw new Error(`Deployment failed: ${text || `HTTP ${deployResponse.status}`}`);
-      }
-
-      if (!deployResponse.ok) {
-        throw new Error(`Deployment failed: ${deployData.error || deployData.details || 'Unknown error'}`);
-      }
-
-      console.log('[Deploy] Site deployed:', deployData.deploymentUrl);
-
-      // Step 4: Fire Facebook CAPI Purchase event (fire-and-forget)
-      fetch('/api/fb-purchase', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          eventId: sessionId,
-          value: 10.0,
-          currency: 'USD',
-          customerEmail: verifyResult.customerEmail || null,
-          eventSourceUrl: window.location.origin,
-          clientUserAgent: navigator.userAgent,
-        }),
-      }).catch((err) => console.error('[FB CAPI] Error (non-blocking):', err));
-
-      // Clear localStorage
-      localStorage.removeItem('pendingSite');
-
-      setDeployResult({ url: deployData.deploymentUrl });
-      setDeployStatus('');
-
-    } catch (error: any) {
-      console.error('[Deploy] Error:', error);
-      setDeployResult({ error: error.message || 'Deployment failed' });
-      setDeployStatus('');
-    }
+    // Wait for BOTH timer and deployment to finish before showing result
+    const [result] = await Promise.all([deployPromise, timerPromise]);
+    setDeployResult(result);
   };
 
   const handleGenerate = async (inputs: ShopInputs) => {
@@ -151,17 +172,32 @@ const App: React.FC = () => {
         <div className="fixed inset-0 bg-[#0d0d0d] flex flex-col items-center justify-center z-[100] px-6">
           {!deployResult && (
             <>
-              <div className="mb-8 animate-spin">
-                <svg className="w-16 h-16 text-[#f4a100]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="mb-6">
+                <svg className="w-14 h-14 text-[#f4a100] animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
               </div>
-              <h2 className="text-2xl font-montserrat font-black uppercase tracking-[4px] mb-4 text-center">
+              {deployShopName && (
+                <p className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-3">{deployShopName}</p>
+              )}
+              <h2 className="text-2xl font-montserrat font-black uppercase tracking-[4px] mb-3 text-center">
                 DEPLOYING YOUR <span className="text-[#f4a100]">SITE</span>
               </h2>
-              <p className="text-[#f4a100] mb-8 animate-pulse text-xs uppercase tracking-[3px] text-center">
-                {deployStatus}
+              <p className="text-[#888888] text-sm mb-8 text-center">
+                Your website is being created...
               </p>
+              <div className="text-5xl font-montserrat font-black text-[#f4a100] mb-6 tabular-nums">
+                {deployCountdown}<span className="text-lg text-[#666666] ml-2">s</span>
+              </div>
+              <div className="w-64 md:w-80 h-1.5 bg-[#1a1a1a] rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-[#f4a100] rounded-full transition-none"
+                  style={{
+                    width: `${((DEPLOY_TIMER_SECONDS - deployCountdown) / DEPLOY_TIMER_SECONDS) * 100}%`,
+                    transition: 'width 1s linear',
+                  }}
+                />
+              </div>
             </>
           )}
 

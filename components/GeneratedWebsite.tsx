@@ -878,10 +878,6 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
               <p className="text-[9px] md:text-[11px] font-bold uppercase mb-3 md:mb-4 opacity-90 leading-tight">
                 Launch your custom barbershop website for $10/month.
               </p>
-              <div className="bg-[#1a1a1a]/40 px-2 py-1.5 rounded mb-3 md:mb-4">
-                <p className="text-[7px] md:text-[8px] uppercase tracking-wider opacity-70 mb-0.5">Your site URL</p>
-                <p className="text-[8px] md:text-[10px] font-mono font-bold break-all">{siteSlug}.vercel.app</p>
-              </div>
               <button
                 onClick={handleClaimSite}
                 disabled={isDeploying}

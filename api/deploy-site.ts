@@ -91,6 +91,27 @@ async function deployToVercel(projectName: string, files: VercelFile[]) {
     (data.url ? `https://${data.url}` : data.inspectorUrl || 'Unknown');
 
   console.log(`[Vercel Deploy] Success: ${deploymentUrl}`);
+
+  // Disable Vercel Authentication so deployed sites are publicly accessible
+  try {
+    await axios.patch(
+      `https://api.vercel.com/v9/projects/${sanitizedProjectName}`,
+      {
+        passwordProtection: null,
+        vercelAuthentication: null,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${vercelToken}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+    console.log(`[Vercel Deploy] Disabled deployment protection for ${sanitizedProjectName}`);
+  } catch (e: any) {
+    console.warn('[Vercel Deploy] Could not disable deployment protection:', e.message);
+  }
+
   return { deploymentUrl, inspectorUrl: data.inspectorUrl, deploymentId: data.id };
 }
 
