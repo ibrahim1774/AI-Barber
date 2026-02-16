@@ -4,6 +4,7 @@ import { Dashboard } from './components/Dashboard.tsx';
 import { LoadingScreen } from './components/LoadingScreen.tsx';
 import { GeneratedWebsite, generateHTMLWithPlaceholders } from './components/GeneratedWebsite.tsx';
 import { generateContent } from './services/geminiService.ts';
+import { captureLead } from './services/leadCaptureService.ts';
 
 const DEPLOY_TIMER_SECONDS = 15;
 
@@ -145,6 +146,7 @@ const App: React.FC = () => {
   };
 
   const handleGenerate = async (inputs: ShopInputs) => {
+    captureLead(inputs).catch((err) => console.error("[Lead Capture] Error (non-blocking):", err));
     setState('loading');
     try {
       const data = await generateContent(inputs);
