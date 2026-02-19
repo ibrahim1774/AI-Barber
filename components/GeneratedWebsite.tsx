@@ -527,7 +527,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
   };
 
   return (
-    <div className="bg-[#0d0d0d] text-white overflow-hidden scroll-smooth pt-[40px] md:pt-[50px]">
+    <div className={`bg-[#0d0d0d] text-white overflow-hidden scroll-smooth pt-[40px] md:pt-[50px] ${!isPostPayment ? 'pb-[320px] md:pb-[220px]' : ''}`}>
       {/* Toolbar: EditorToolbar for post-payment, red banner for pre-payment */}
       {isPostPayment ? (
         <EditorToolbar
@@ -538,11 +538,50 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           isPublishing={isPublishing}
         />
       ) : (
-        <div className="fixed top-0 left-0 w-full bg-[#cc0000] text-white py-2 md:py-3 px-4 z-[70] text-center shadow-lg">
-          <p className="text-[10px] md:text-sm font-bold uppercase tracking-wider flex items-center justify-center gap-2">
-            <span className="shrink-0">Text and images can be edited. Once ready, click Claim Site to start $10/month website hosting and launch your site.</span>
-          </p>
-        </div>
+        <>
+          <style>{`
+            @keyframes marquee {
+              0% { transform: translateX(100%); }
+              100% { transform: translateX(-100%); }
+            }
+          `}</style>
+          <div className="fixed top-0 left-0 w-full bg-red-600 text-white py-2 px-3 md:py-2.5 md:px-4 z-[70] shadow-md flex items-center justify-between gap-3">
+            {/* Left: Back arrow + scrolling marquee */}
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <button onClick={onBack} className="shrink-0 p-1 hover:bg-white/20 rounded transition-colors">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <div className="overflow-hidden flex-1">
+                <p className="whitespace-nowrap text-[10px] md:text-xs font-bold uppercase tracking-wider" style={{ animation: 'marquee 12s linear infinite' }}>
+                  Tap to edit text &amp; images, then deploy below.
+                </p>
+              </div>
+            </div>
+
+            {/* Right: Status pill */}
+            <div className="shrink-0 rounded-full bg-white/20 px-3 py-1 flex items-center gap-1.5">
+              {saveStatus === 'saving' ? (
+                <span className="flex items-center gap-1.5 text-white text-[10px] uppercase tracking-wider font-bold">
+                  <svg className="w-3 h-3 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Saving...
+                </span>
+              ) : saveStatus === 'saved' ? (
+                <span className="flex items-center gap-1.5 text-white text-[10px] uppercase tracking-wider font-bold">
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Saved
+                </span>
+              ) : (
+                <span className="text-white/80 text-[10px] uppercase tracking-wider font-bold">Editor</span>
+              )}
+            </div>
+          </div>
+        </>
       )}
 
       {/* Header */}
@@ -895,46 +934,63 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         </div>
       </footer>
 
-      {/* Claim Site Popup (pre-payment only) */}
+      {/* Bottom Bar (pre-payment only) */}
       {!isPostPayment && (
-        <div className="fixed bottom-4 right-4 md:bottom-8 md:right-8 z-[60] scale-[0.85] md:scale-100 origin-bottom-right">
-          <div className="bg-[#f4a100] text-[#1a1a1a] p-4 md:p-6 shadow-2xl rounded-sm border border-[#1a1a1a]/20 max-w-[220px] md:max-w-[280px]">
-            <h5 className="font-montserrat font-black text-[10px] md:text-sm tracking-widest uppercase mb-1 md:mb-2">
-              Claim Your Website
-            </h5>
+        <div className="fixed bottom-0 left-0 w-full z-[60] bg-white border-t border-gray-200 shadow-[0_-4px_20px_rgba(0,0,0,0.1)]">
+          <div className="max-w-4xl mx-auto px-4 py-4 md:px-6 md:py-5">
+            {/* How It Works */}
+            <div className="mb-4">
+              <h3 className="font-montserrat font-black text-black text-xs md:text-sm uppercase tracking-[3px] mb-3">
+                How It Works
+              </h3>
+              <div className="flex flex-col md:flex-row md:gap-6 gap-2 text-left">
+                <p className="text-black text-xs md:text-sm font-montserrat"><span className="font-black">1.</span> Edit or replace any text and images.</p>
+                <p className="text-black text-xs md:text-sm font-montserrat"><span className="font-black">2.</span> Deploy your site and pay only the monthly hosting fee to keep it live.</p>
+                <p className="text-black text-xs md:text-sm font-montserrat"><span className="font-black">3.</span> After purchasing hosting, create an account on our website to update text, images, or make changes to your site at any time.</p>
+              </div>
+            </div>
 
-            {!deploymentResult && (
-              <>
-                <p className="text-[9px] md:text-[11px] font-bold uppercase mb-3 md:mb-4 opacity-90 leading-tight">
-                  Launch your custom barbershop website for $10/month.
-                </p>
+            {/* Pricing + CTA */}
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+              <p className="font-montserrat font-black text-black text-xs md:text-sm uppercase tracking-[2px]">
+                Pay only $10/month to host your site
+              </p>
+
+              {deploymentResult?.error ? (
+                <div className="flex flex-col gap-2">
+                  <p className="text-red-600 text-xs font-bold">{deploymentResult.error}</p>
+                  <button
+                    onClick={handleClaimSite}
+                    disabled={isDeploying}
+                    className="w-full md:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white text-xs md:text-sm font-black uppercase tracking-wider rounded-lg transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    TRY AGAIN
+                  </button>
+                </div>
+              ) : (
                 <button
                   onClick={handleClaimSite}
                   disabled={isDeploying}
-                  className="block w-full text-center py-2 bg-[#1a1a1a] text-[#f4a100] text-[9px] md:text-[10px] font-bold tracking-widest uppercase hover:bg-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full md:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white text-xs md:text-sm font-black uppercase tracking-wider rounded-lg transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {isDeploying ? 'UPLOADING IMAGES...' : 'CLAIM SITE'}
+                  {isDeploying ? (
+                    <>
+                      <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Uploading Images...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.63 8.41m5.96 5.96a14.926 14.926 0 01-5.84 2.58m0 0a14.926 14.926 0 01-5.96-5.96M9.63 8.41A6 6 0 012.25 14.2" />
+                      </svg>
+                      Deploy My Site
+                    </>
+                  )}
                 </button>
-                <p className="text-[6px] md:text-[8px] mt-2 opacity-70 uppercase tracking-tighter text-center italic">
-                  You'll be redirected to secure checkout
-                </p>
-              </>
-            )}
-
-            {deploymentResult?.error && (
-              <>
-                <p className="text-[9px] md:text-[11px] font-bold mb-3 md:mb-4 text-red-800 leading-tight">
-                  {deploymentResult.error}
-                </p>
-                <button
-                  onClick={handleClaimSite}
-                  disabled={isDeploying}
-                  className="block w-full text-center py-2 bg-[#1a1a1a] text-[#f4a100] text-[9px] md:text-[10px] font-bold tracking-widest uppercase hover:bg-black transition-colors"
-                >
-                  TRY AGAIN
-                </button>
-              </>
-            )}
+              )}
+            </div>
           </div>
         </div>
       )}
