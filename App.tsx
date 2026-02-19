@@ -295,7 +295,12 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#0d0d0d] text-white">
-      {state === 'generator' && <GeneratorForm onGenerate={handleGenerate} />}
+      {state === 'generator' && (
+        <GeneratorForm
+          onGenerate={handleGenerate}
+          onSignIn={() => { setAuthModalMode('signin'); setShowAuthModal(true); }}
+        />
+      )}
       {state === 'loading' && <LoadingScreen />}
       {state === 'editor' && generatedData && (
         <GeneratedWebsite

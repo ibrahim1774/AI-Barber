@@ -5,9 +5,10 @@ import { ScissorsIcon } from './Icons';
 
 interface GeneratorFormProps {
   onGenerate: (inputs: ShopInputs) => void;
+  onSignIn?: () => void;
 }
 
-export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate }) => {
+export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSignIn }) => {
   const [inputs, setInputs] = React.useState<ShopInputs>({
     shopName: '',
     area: '',
@@ -32,6 +33,16 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate }) => {
             Prime<span className="text-[#f4a100]">Barber</span> AI
           </span>
         </div>
+
+        {/* Sign In button in the Upper Right Hand Corner */}
+        {onSignIn && (
+          <button
+            onClick={onSignIn}
+            className="absolute top-6 right-6 md:top-8 md:right-8 z-20 text-[10px] md:text-xs font-montserrat font-bold uppercase tracking-[2px] text-white/70 hover:text-[#f4a100] transition-colors"
+          >
+            Sign In
+          </button>
+        )}
 
         {/* Left Side: Main Headline Section - Full Height */}
         <div className="p-10 md:p-24 flex flex-col justify-center items-center text-center bg-[#1a1a1a] border-b md:border-b-0 md:border-r border-white/5 relative min-h-[40vh] md:min-h-screen">
