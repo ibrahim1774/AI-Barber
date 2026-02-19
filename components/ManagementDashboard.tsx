@@ -56,16 +56,25 @@ export const ManagementDashboard: React.FC<ManagementDashboardProps> = ({
         }
       }
 
-      // Also check IndexedDB for any sites not in Supabase
+      // Also check IndexedDB — prefer whichever source has the fresher data
       try {
         const localSites = await getAllLocalSites();
         for (const local of localSites) {
-          if (!allSites.find(s => s.id === local.id)) {
+          const existingIdx = allSites.findIndex(s => s.id === local.id);
+          if (existingIdx === -1) {
+            // Site only in IndexedDB — add and sync to Supabase
             allSites.push(local);
-            // Sync to Supabase if authenticated
             if (user) {
               dualWriteSave(local, user.id).catch(err =>
                 console.error('[Dashboard] Sync local site failed:', err)
+              );
+            }
+          } else if (local.lastSaved > allSites[existingIdx].lastSaved) {
+            // IndexedDB version is newer (e.g. Supabase save failed for large images) — prefer it
+            allSites[existingIdx] = local;
+            if (user) {
+              dualWriteSave(local, user.id).catch(err =>
+                console.error('[Dashboard] Re-sync fresher local site failed:', err)
               );
             }
           }
@@ -261,8 +270,8 @@ export const ManagementDashboard: React.FC<ManagementDashboardProps> = ({
                   <span className="text-[10px] text-[#888] font-bold uppercase tracking-wider">Support</span>
                 </div>
                 <p className="text-[#999] text-xs mb-1">Questions / Support / Cancellations</p>
-                <a href="mailto:support@primebarber.ai" className="text-blue-400 hover:text-blue-300 text-sm transition-colors">
-                  support@primebarber.ai
+                <a href="mailto:Ibrahim3709@gmail.com" className="text-blue-400 hover:text-blue-300 text-sm transition-colors">
+                  Ibrahim3709@gmail.com
                 </a>
               </div>
 
