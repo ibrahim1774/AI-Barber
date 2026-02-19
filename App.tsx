@@ -30,6 +30,7 @@ const App: React.FC = () => {
   const [showPostDeployModal, setShowPostDeployModal] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'signin' | 'signup'>('signup');
+  const [authSignInOnly, setAuthSignInOnly] = useState(false);
 
   // App ready guard: don't render until auth state is determined
   const [appReady, setAppReady] = useState(false);
@@ -298,7 +299,7 @@ const App: React.FC = () => {
       {state === 'generator' && (
         <GeneratorForm
           onGenerate={handleGenerate}
-          onSignIn={() => { setAuthModalMode('signin'); setShowAuthModal(true); }}
+          onSignIn={() => { setAuthModalMode('signin'); setAuthSignInOnly(true); setShowAuthModal(true); }}
         />
       )}
       {state === 'loading' && <LoadingScreen />}
@@ -441,8 +442,9 @@ const App: React.FC = () => {
       {/* Auth modal */}
       <AuthModal
         isOpen={showAuthModal}
-        onClose={() => setShowAuthModal(false)}
+        onClose={() => { setShowAuthModal(false); setAuthSignInOnly(false); }}
         initialMode={authModalMode}
+        signInOnly={authSignInOnly}
         onSuccess={handleAuthSuccess}
       />
     </div>

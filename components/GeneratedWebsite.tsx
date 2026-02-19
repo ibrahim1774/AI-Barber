@@ -408,16 +408,17 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
 
       // Step 1: Prepare images to upload (only base64 data URLs)
       const imagesToUpload: Array<{ key: string; filename: string; base64: string }> = [];
+      const timestamp = Date.now(); // Cache-busting: unique filename per deploy
 
       if (siteData.hero.imageUrl && siteData.hero.imageUrl.startsWith('data:')) {
-        imagesToUpload.push({ key: 'hero', filename: 'hero.jpg', base64: siteData.hero.imageUrl });
+        imagesToUpload.push({ key: 'hero', filename: `hero-${timestamp}.jpg`, base64: siteData.hero.imageUrl });
       }
       if (siteData.about.imageUrl && siteData.about.imageUrl.startsWith('data:')) {
-        imagesToUpload.push({ key: 'about', filename: 'about.jpg', base64: siteData.about.imageUrl });
+        imagesToUpload.push({ key: 'about', filename: `about-${timestamp}.jpg`, base64: siteData.about.imageUrl });
       }
       siteData.gallery.forEach((imageUrl, index) => {
         if (imageUrl && imageUrl.startsWith('data:')) {
-          imagesToUpload.push({ key: `gallery${index}`, filename: `gallery-${index}.jpg`, base64: imageUrl });
+          imagesToUpload.push({ key: `gallery${index}`, filename: `gallery-${index}-${timestamp}.jpg`, base64: imageUrl });
         }
       });
 

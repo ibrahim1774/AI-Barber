@@ -16,23 +16,24 @@ export async function publishSite(site: SiteInstance, userId: string | null): Pr
   // Step 2: Upload any base64 images to GCS (sequential to avoid overload)
   const imageUrlMap: Record<string, string> = {};
   const imagesToUpload: Array<{ key: string; filename: string; base64: string }> = [];
+  const timestamp = Date.now(); // Cache-busting: unique filename per publish
 
   // Collect base64 images
   if (site.data.hero.imageUrl?.startsWith('data:')) {
-    imagesToUpload.push({ key: 'hero', filename: 'hero.jpg', base64: site.data.hero.imageUrl });
+    imagesToUpload.push({ key: 'hero', filename: `hero-${timestamp}.jpg`, base64: site.data.hero.imageUrl });
   } else if (site.data.hero.imageUrl?.startsWith('http')) {
     imageUrlMap['hero'] = site.data.hero.imageUrl;
   }
 
   if (site.data.about.imageUrl?.startsWith('data:')) {
-    imagesToUpload.push({ key: 'about', filename: 'about.jpg', base64: site.data.about.imageUrl });
+    imagesToUpload.push({ key: 'about', filename: `about-${timestamp}.jpg`, base64: site.data.about.imageUrl });
   } else if (site.data.about.imageUrl?.startsWith('http')) {
     imageUrlMap['about'] = site.data.about.imageUrl;
   }
 
   site.data.gallery.forEach((url, i) => {
     if (url?.startsWith('data:')) {
-      imagesToUpload.push({ key: `gallery${i}`, filename: `gallery-${i}.jpg`, base64: url });
+      imagesToUpload.push({ key: `gallery${i}`, filename: `gallery-${i}-${timestamp}.jpg`, base64: url });
     } else if (url?.startsWith('http')) {
       imageUrlMap[`gallery${i}`] = url;
     }

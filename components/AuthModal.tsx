@@ -6,10 +6,11 @@ interface AuthModalProps {
   onClose: () => void;
   initialMode?: 'signin' | 'signup';
   onSuccess?: () => void;
+  signInOnly?: boolean;
 }
 
-export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 'signup', onSuccess }) => {
-  const [mode, setMode] = useState<'signin' | 'signup'>(initialMode);
+export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 'signup', onSuccess, signInOnly = false }) => {
+  const [mode, setMode] = useState<'signin' | 'signup'>(signInOnly ? 'signin' : initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -74,21 +75,25 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMo
           </svg>
         </button>
 
-        {/* Tab toggle */}
-        <div className="flex mb-8 border-b border-white/10">
-          <button
-            onClick={() => { setMode('signin'); setError(''); }}
-            className={`flex-1 pb-3 text-xs font-black uppercase tracking-[3px] transition-colors ${mode === 'signin' ? 'text-[#f4a100] border-b-2 border-[#f4a100]' : 'text-[#666] hover:text-white'}`}
-          >
-            Sign In
-          </button>
-          <button
-            onClick={() => { setMode('signup'); setError(''); }}
-            className={`flex-1 pb-3 text-xs font-black uppercase tracking-[3px] transition-colors ${mode === 'signup' ? 'text-[#f4a100] border-b-2 border-[#f4a100]' : 'text-[#666] hover:text-white'}`}
-          >
-            Sign Up
-          </button>
-        </div>
+        {/* Tab toggle (hidden in signInOnly mode) */}
+        {signInOnly ? (
+          <h2 className="text-xs font-black uppercase tracking-[3px] text-[#f4a100] mb-8 pb-3 border-b border-white/10">Sign In</h2>
+        ) : (
+          <div className="flex mb-8 border-b border-white/10">
+            <button
+              onClick={() => { setMode('signin'); setError(''); }}
+              className={`flex-1 pb-3 text-xs font-black uppercase tracking-[3px] transition-colors ${mode === 'signin' ? 'text-[#f4a100] border-b-2 border-[#f4a100]' : 'text-[#666] hover:text-white'}`}
+            >
+              Sign In
+            </button>
+            <button
+              onClick={() => { setMode('signup'); setError(''); }}
+              className={`flex-1 pb-3 text-xs font-black uppercase tracking-[3px] transition-colors ${mode === 'signup' ? 'text-[#f4a100] border-b-2 border-[#f4a100]' : 'text-[#666] hover:text-white'}`}
+            >
+              Sign Up
+            </button>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
           {/* Full name (signup only) */}
@@ -155,14 +160,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMo
           </button>
         </form>
 
-        {/* Toggle link */}
-        <p className="text-center text-[#666] text-xs mt-6">
-          {mode === 'signin' ? (
-            <>Don't have an account?{' '}<button onClick={switchMode} className="text-[#f4a100] hover:text-white transition-colors">Sign Up</button></>
-          ) : (
-            <>Already have an account?{' '}<button onClick={switchMode} className="text-[#f4a100] hover:text-white transition-colors">Sign In</button></>
-          )}
-        </p>
+        {/* Toggle link (hidden in signInOnly mode) */}
+        {!signInOnly && (
+          <p className="text-center text-[#666] text-xs mt-6">
+            {mode === 'signin' ? (
+              <>Don't have an account?{' '}<button onClick={switchMode} className="text-[#f4a100] hover:text-white transition-colors">Sign Up</button></>
+            ) : (
+              <>Already have an account?{' '}<button onClick={switchMode} className="text-[#f4a100] hover:text-white transition-colors">Sign In</button></>
+            )}
+          </p>
+        )}
       </div>
     </div>
   );
