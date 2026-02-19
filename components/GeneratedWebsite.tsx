@@ -527,7 +527,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
   };
 
   return (
-    <div className={`bg-[#0d0d0d] text-white overflow-hidden scroll-smooth pt-[40px] md:pt-[50px] ${!isPostPayment ? 'pb-[320px] md:pb-[220px]' : ''}`}>
+    <div className={`bg-[#0d0d0d] text-white overflow-hidden scroll-smooth pt-[32px] md:pt-[40px] ${!isPostPayment ? 'pb-[250px] md:pb-[180px]' : ''}`}>
       {/* Toolbar: EditorToolbar for post-payment, red banner for pre-payment */}
       {isPostPayment ? (
         <EditorToolbar
@@ -545,39 +545,39 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
               100% { transform: translateX(-100%); }
             }
           `}</style>
-          <div className="fixed top-0 left-0 w-full bg-red-600 text-white py-2 px-3 md:py-2.5 md:px-4 z-[70] shadow-md flex items-center justify-between gap-3">
+          <div className="fixed top-0 left-0 w-full bg-[#111111] border-b border-white/10 text-white py-1.5 px-2 md:py-2 md:px-3 z-[70] shadow-lg flex items-center justify-between gap-2">
             {/* Left: Back arrow + scrolling marquee */}
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-              <button onClick={onBack} className="shrink-0 p-1 hover:bg-white/20 rounded transition-colors">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="flex items-center gap-1.5 min-w-0 flex-1">
+              <button onClick={onBack} className="shrink-0 p-1 hover:bg-white/10 rounded transition-colors">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
               </button>
               <div className="overflow-hidden flex-1">
-                <p className="whitespace-nowrap text-[10px] md:text-xs font-bold uppercase tracking-wider" style={{ animation: 'marquee 12s linear infinite' }}>
+                <p className="whitespace-nowrap text-[8px] md:text-[10px] font-bold uppercase tracking-wider text-[#f4a100]" style={{ animation: 'marquee 12s linear infinite' }}>
                   Tap to edit text &amp; images, then deploy below.
                 </p>
               </div>
             </div>
 
             {/* Right: Status pill */}
-            <div className="shrink-0 rounded-full bg-white/20 px-3 py-1 flex items-center gap-1.5">
+            <div className="shrink-0 rounded-full bg-white/10 px-2.5 py-0.5 flex items-center gap-1">
               {saveStatus === 'saving' ? (
-                <span className="flex items-center gap-1.5 text-white text-[10px] uppercase tracking-wider font-bold">
-                  <svg className="w-3 h-3 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <span className="flex items-center gap-1 text-[#f4a100] text-[8px] uppercase tracking-wider font-bold">
+                  <svg className="w-2.5 h-2.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
                   Saving...
                 </span>
               ) : saveStatus === 'saved' ? (
-                <span className="flex items-center gap-1.5 text-white text-[10px] uppercase tracking-wider font-bold">
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <span className="flex items-center gap-1 text-green-400 text-[8px] uppercase tracking-wider font-bold">
+                  <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
                   Saved
                 </span>
               ) : (
-                <span className="text-white/80 text-[10px] uppercase tracking-wider font-bold">Editor</span>
+                <span className="text-[#999] text-[8px] uppercase tracking-wider font-bold">Editor</span>
               )}
             </div>
           </div>
@@ -585,7 +585,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       )}
 
       {/* Header */}
-      <header className={`fixed top-[40px] md:top-[50px] left-0 w-full z-50 transition-all duration-300 ${isScrolled ? 'bg-[#1a1a1a]/95 backdrop-blur-md shadow-xl py-3 md:py-4' : 'bg-black/20 py-5 md:py-8'}`}>
+      <header className={`fixed top-[32px] md:top-[40px] left-0 w-full z-50 transition-all duration-300 ${isScrolled ? 'bg-[#1a1a1a]/95 backdrop-blur-md shadow-xl py-3 md:py-4' : 'bg-black/20 py-5 md:py-8'}`}>
         <div className="container mx-auto flex justify-between items-center px-4 md:px-6">
           <div className="flex items-center gap-4 md:gap-8">
             <div className="flex items-center gap-3 md:gap-5">
@@ -936,33 +936,33 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
 
       {/* Bottom Bar (pre-payment only) */}
       {!isPostPayment && (
-        <div className="fixed bottom-0 left-0 w-full z-[60] bg-white border-t border-gray-200 shadow-[0_-4px_20px_rgba(0,0,0,0.1)]">
-          <div className="max-w-4xl mx-auto px-4 py-4 md:px-6 md:py-5">
+        <div className="fixed bottom-0 left-0 w-full z-[60] bg-[#111111] border-t border-white/10 shadow-[0_-4px_20px_rgba(0,0,0,0.3)]">
+          <div className="max-w-4xl mx-auto px-3 py-3 md:px-5 md:py-4">
             {/* How It Works */}
-            <div className="mb-4">
-              <h3 className="font-montserrat font-black text-black text-xs md:text-sm uppercase tracking-[3px] mb-3">
+            <div className="mb-3">
+              <h3 className="font-montserrat font-black text-white text-[10px] md:text-xs uppercase tracking-[2px] mb-2">
                 How It Works
               </h3>
-              <div className="flex flex-col md:flex-row md:gap-6 gap-2 text-left">
-                <p className="text-black text-xs md:text-sm font-montserrat"><span className="font-black">1.</span> Edit or replace any text and images.</p>
-                <p className="text-black text-xs md:text-sm font-montserrat"><span className="font-black">2.</span> Deploy your site and pay only the monthly hosting fee to keep it live.</p>
-                <p className="text-black text-xs md:text-sm font-montserrat"><span className="font-black">3.</span> After purchasing hosting, create an account on our website to update text, images, or make changes to your site at any time.</p>
+              <div className="flex flex-col md:flex-row md:gap-5 gap-1.5 text-left">
+                <p className="text-[#ccc] text-[10px] md:text-xs font-montserrat"><span className="font-black text-[#f4a100]">1.</span> Edit or replace any text and images.</p>
+                <p className="text-[#ccc] text-[10px] md:text-xs font-montserrat"><span className="font-black text-[#f4a100]">2.</span> Deploy your site and pay only the monthly hosting fee to keep it live.</p>
+                <p className="text-[#ccc] text-[10px] md:text-xs font-montserrat"><span className="font-black text-[#f4a100]">3.</span> After purchasing hosting, create an account on our website to update text, images, or make changes to your site at any time.</p>
               </div>
             </div>
 
             {/* Pricing + CTA */}
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-              <p className="font-montserrat font-black text-black text-xs md:text-sm uppercase tracking-[2px]">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2.5">
+              <p className="font-montserrat font-black text-white text-[10px] md:text-xs uppercase tracking-[1.5px]">
                 Pay only $10/month to host your site
               </p>
 
               {deploymentResult?.error ? (
-                <div className="flex flex-col gap-2">
-                  <p className="text-red-600 text-xs font-bold">{deploymentResult.error}</p>
+                <div className="flex flex-col gap-1.5">
+                  <p className="text-red-400 text-[10px] font-bold">{deploymentResult.error}</p>
                   <button
                     onClick={handleClaimSite}
                     disabled={isDeploying}
-                    className="w-full md:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white text-xs md:text-sm font-black uppercase tracking-wider rounded-lg transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full md:w-auto inline-flex items-center justify-center gap-1.5 px-5 py-2.5 bg-[#f4a100] hover:bg-[#d4880d] text-black text-[10px] md:text-xs font-black uppercase tracking-wider rounded-md transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     TRY AGAIN
                   </button>
@@ -971,18 +971,18 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
                 <button
                   onClick={handleClaimSite}
                   disabled={isDeploying}
-                  className="w-full md:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white text-xs md:text-sm font-black uppercase tracking-wider rounded-lg transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full md:w-auto inline-flex items-center justify-center gap-1.5 px-5 py-2.5 bg-[#f4a100] hover:bg-[#d4880d] text-black text-[10px] md:text-xs font-black uppercase tracking-wider rounded-md transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isDeploying ? (
                     <>
-                      <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                       </svg>
                       Uploading Images...
                     </>
                   ) : (
                     <>
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.63 8.41m5.96 5.96a14.926 14.926 0 01-5.84 2.58m0 0a14.926 14.926 0 01-5.96-5.96M9.63 8.41A6 6 0 012.25 14.2" />
                       </svg>
                       Deploy My Site
