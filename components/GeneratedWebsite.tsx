@@ -247,6 +247,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [isPublishing, setIsPublishing] = useState(false);
   const [showPublishOverlay, setShowPublishOverlay] = useState(false);
+  const [imageInputKey, setImageInputKey] = useState(0);
 
   // Keep a ref to the current site instance for auto-save
   const siteRef = useRef<SiteInstance | null>(site ?? null);
@@ -343,6 +344,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
 
         current[parts[parts.length - 1]] = base64String;
         setSiteData(newData);
+        setImageInputKey(prev => prev + 1);
         if (isPostPayment) triggerSave();
       } catch (err) {
         console.error('Image compression failed:', err);
@@ -368,7 +370,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       <label className="cursor-pointer flex flex-col items-center gap-2">
         <CameraIcon className="w-8 h-8 text-white" />
         <span className="text-white text-[10px] md:text-xs font-bold uppercase tracking-wider">Replace Image</span>
-        <input type="file" className="hidden" accept="image/*" onChange={onImageUpload} />
+        <input key={imageInputKey} type="file" className="hidden" accept="image/*" onChange={onImageUpload} />
       </label>
     </div>
   );
@@ -378,7 +380,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
     <label className={`cursor-pointer flex flex-col items-center justify-center w-full ${heightClass} bg-[#1a1a1a] border-2 border-dashed border-[#f4a100]/30 hover:border-[#f4a100] transition-all`}>
       <CameraIcon className="w-10 h-10 md:w-12 md:h-12 text-[#f4a100]/50 mb-3" />
       <span className="text-[#f4a100]/70 text-[10px] md:text-xs font-bold uppercase tracking-wider">Add Your Own Image</span>
-      <input type="file" className="hidden" accept="image/*" onChange={onImageUpload} />
+      <input key={imageInputKey} type="file" className="hidden" accept="image/*" onChange={onImageUpload} />
     </label>
   );
 
@@ -510,6 +512,18 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
   const handlePublishClose = () => {
     setShowPublishOverlay(false);
     setIsPublishing(false);
+  };
+
+  // After publish, replace base64 images with their new GCS URLs in editor state
+  const handleImageUrlsUpdated = (imageUrlMap: Record<string, string>) => {
+    setSiteData(prev => ({
+      ...prev,
+      hero: { ...prev.hero, imageUrl: imageUrlMap['hero'] || prev.hero.imageUrl },
+      about: { ...prev.about, imageUrl: imageUrlMap['about'] || prev.about.imageUrl },
+      gallery: prev.gallery.map((url, i) =>
+        imageUrlMap[`gallery${i}`] || url || ''
+      ),
+    }));
   };
 
   return (
@@ -931,6 +945,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           site={siteRef.current}
           userId={userId}
           onComplete={handlePublishComplete}
+          onImageUrlsUpdated={handleImageUrlsUpdated}
           onError={handlePublishError}
           onClose={handlePublishClose}
         />

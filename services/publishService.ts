@@ -2,7 +2,7 @@ import { SiteInstance, WebsiteData } from '../types';
 import { generateHTMLWithPlaceholders } from '../components/GeneratedWebsite';
 import { dualWriteSave } from './saveService';
 
-export async function publishSite(site: SiteInstance, userId: string | null): Promise<{ url: string }> {
+export async function publishSite(site: SiteInstance, userId: string | null): Promise<{ url: string; imageUrlMap: Record<string, string> }> {
   // Step 1: Force save before publish
   await dualWriteSave(site, userId);
 
@@ -86,5 +86,5 @@ export async function publishSite(site: SiteInstance, userId: string | null): Pr
     throw new Error(`Deployment failed: ${deployData.error || deployData.details || 'Unknown error'}`);
   }
 
-  return { url: deployData.deploymentUrl };
+  return { url: deployData.deploymentUrl, imageUrlMap };
 }

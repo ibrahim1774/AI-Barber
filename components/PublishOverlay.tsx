@@ -7,6 +7,7 @@ interface PublishOverlayProps {
   site: SiteInstance;
   userId: string | null;
   onComplete: (url: string) => void;
+  onImageUrlsUpdated?: (imageUrlMap: Record<string, string>) => void;
   onError: () => void;
   onClose: () => void;
 }
@@ -15,6 +16,7 @@ export const PublishOverlay: React.FC<PublishOverlayProps> = ({
   site,
   userId,
   onComplete,
+  onImageUrlsUpdated,
   onError,
   onClose,
 }) => {
@@ -34,9 +36,22 @@ export const PublishOverlay: React.FC<PublishOverlayProps> = ({
 
         setDeployedUrl(result.url);
 
-        // Update site with new deployment info and save
+        // Notify parent of the new GCS URLs so editor state updates
+        onImageUrlsUpdated?.(result.imageUrlMap);
+
+        // Update site with new deployment info + replace base64 with GCS URLs before saving
+        const updatedData = {
+          ...site.data,
+          hero: { ...site.data.hero, imageUrl: result.imageUrlMap['hero'] || site.data.hero.imageUrl },
+          about: { ...site.data.about, imageUrl: result.imageUrlMap['about'] || site.data.about.imageUrl },
+          gallery: site.data.gallery.map((_: string, i: number) =>
+            result.imageUrlMap[`gallery${i}`] || site.data.gallery[i] || ''
+          ),
+        };
+
         const updatedSite: SiteInstance = {
           ...site,
+          data: updatedData,
           deployedUrl: result.url,
           deploymentStatus: 'deployed',
           lastSaved: Date.now(),
