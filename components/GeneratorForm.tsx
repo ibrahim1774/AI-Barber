@@ -3,11 +3,11 @@ import React from 'react';
 import { ShopInputs } from '../types';
 import { ScissorsIcon } from './Icons';
 
-interface DashboardProps {
+interface GeneratorFormProps {
   onGenerate: (inputs: ShopInputs) => void;
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ onGenerate }) => {
+export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate }) => {
   const [inputs, setInputs] = React.useState<ShopInputs>({
     shopName: '',
     area: '',

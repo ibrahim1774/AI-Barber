@@ -1,15 +1,22 @@
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { WebsiteData } from '../types';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { WebsiteData, SiteInstance, SaveStatus } from '../types';
 import {
   ScissorsIcon, RazorIcon, MustacheIcon, FaceIcon,
   MapPinIcon, AwardIcon, ClockIcon, PhoneIcon, MailIcon,
   CameraIcon
 } from './Icons';
+import { EditorToolbar } from './EditorToolbar';
+import { PublishOverlay } from './PublishOverlay';
+import { useAutoSave } from '../hooks/useAutoSave';
 
 interface GeneratedWebsiteProps {
   data: WebsiteData;
   onBack: () => void;
+  site?: SiteInstance;
+  onNavigateDashboard?: () => void;
+  isPostPayment?: boolean;
+  userId?: string | null;
 }
 
 // Exported so App.tsx can reuse it for post-payment deploy
@@ -230,13 +237,31 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
 </html>`;
 }
 
-export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack }) => {
+export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack, site, onNavigateDashboard, isPostPayment = false, userId = null }) => {
   const [siteData, setSiteData] = useState<WebsiteData>(data);
   const [isScrolled, setIsScrolled] = useState(false);
   const [isDeploying, setIsDeploying] = useState(false);
   const [deploymentResult, setDeploymentResult] = useState<{
     error?: string;
   } | null>(null);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [showPublishOverlay, setShowPublishOverlay] = useState(false);
+
+  // Keep a ref to the current site instance for auto-save
+  const siteRef = useRef<SiteInstance | null>(site ?? null);
+
+  // Update siteRef whenever siteData changes
+  useEffect(() => {
+    if (siteRef.current) {
+      siteRef.current = { ...siteRef.current, data: siteData };
+    }
+  }, [siteData]);
+
+  const getSite = useCallback(() => siteRef.current, []);
+
+  // Auto-save hook (only active in post-payment mode)
+  const { triggerSave, saveNow } = useAutoSave(getSite, userId, setSaveStatus);
 
   // Derive URL-friendly slug from shop name (updates live as user edits)
   const siteSlug = useMemo(() => {
@@ -267,6 +292,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
 
     current[parts[parts.length - 1]] = value;
     setSiteData(newData);
+    if (isPostPayment) triggerSave();
   };
 
   // Compress image client-side to avoid 413 payload errors on serverless
@@ -317,6 +343,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
 
         current[parts[parts.length - 1]] = base64String;
         setSiteData(newData);
+        if (isPostPayment) triggerSave();
       } catch (err) {
         console.error('Image compression failed:', err);
       }
@@ -462,14 +489,46 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
 
   const formattedPhone = siteData.phone.replace(/\s+/g, '');
 
+  const handlePublish = () => {
+    setShowPublishOverlay(true);
+    setIsPublishing(true);
+  };
+
+  const handlePublishComplete = (url: string) => {
+    setIsPublishing(false);
+    // Update the site ref with the new deployment URL
+    if (siteRef.current) {
+      siteRef.current = { ...siteRef.current, deployedUrl: url, deploymentStatus: 'deployed' };
+    }
+  };
+
+  const handlePublishError = () => {
+    setIsPublishing(false);
+  };
+
+  const handlePublishClose = () => {
+    setShowPublishOverlay(false);
+    setIsPublishing(false);
+  };
+
   return (
     <div className="bg-[#0d0d0d] text-white overflow-hidden scroll-smooth pt-[40px] md:pt-[50px]">
-      {/* Instructional Banner */}
-      <div className="fixed top-0 left-0 w-full bg-[#cc0000] text-white py-2 md:py-3 px-4 z-[70] text-center shadow-lg">
-        <p className="text-[10px] md:text-sm font-bold uppercase tracking-wider flex items-center justify-center gap-2">
-          <span className="shrink-0">Text and images can be edited. Once ready, click Claim Site to start $10/month website hosting and launch your site.</span>
-        </p>
-      </div>
+      {/* Toolbar: EditorToolbar for post-payment, red banner for pre-payment */}
+      {isPostPayment ? (
+        <EditorToolbar
+          saveStatus={saveStatus}
+          onSave={saveNow}
+          onPublish={handlePublish}
+          onBack={() => onNavigateDashboard?.()}
+          isPublishing={isPublishing}
+        />
+      ) : (
+        <div className="fixed top-0 left-0 w-full bg-[#cc0000] text-white py-2 md:py-3 px-4 z-[70] text-center shadow-lg">
+          <p className="text-[10px] md:text-sm font-bold uppercase tracking-wider flex items-center justify-center gap-2">
+            <span className="shrink-0">Text and images can be edited. Once ready, click Claim Site to start $10/month website hosting and launch your site.</span>
+          </p>
+        </div>
+      )}
 
       {/* Header */}
       <header className={`fixed top-[40px] md:top-[50px] left-0 w-full z-50 transition-all duration-300 ${isScrolled ? 'bg-[#1a1a1a]/95 backdrop-blur-md shadow-xl py-3 md:py-4' : 'bg-black/20 py-5 md:py-8'}`}>
@@ -821,47 +880,60 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         </div>
       </footer>
 
-      {/* Claim Site Popup */}
-      <div className="fixed bottom-4 right-4 md:bottom-8 md:right-8 z-[60] scale-[0.85] md:scale-100 origin-bottom-right">
-        <div className="bg-[#f4a100] text-[#1a1a1a] p-4 md:p-6 shadow-2xl rounded-sm border border-[#1a1a1a]/20 max-w-[220px] md:max-w-[280px]">
-          <h5 className="font-montserrat font-black text-[10px] md:text-sm tracking-widest uppercase mb-1 md:mb-2">
-            Claim Your Website
-          </h5>
+      {/* Claim Site Popup (pre-payment only) */}
+      {!isPostPayment && (
+        <div className="fixed bottom-4 right-4 md:bottom-8 md:right-8 z-[60] scale-[0.85] md:scale-100 origin-bottom-right">
+          <div className="bg-[#f4a100] text-[#1a1a1a] p-4 md:p-6 shadow-2xl rounded-sm border border-[#1a1a1a]/20 max-w-[220px] md:max-w-[280px]">
+            <h5 className="font-montserrat font-black text-[10px] md:text-sm tracking-widest uppercase mb-1 md:mb-2">
+              Claim Your Website
+            </h5>
 
-          {!deploymentResult && (
-            <>
-              <p className="text-[9px] md:text-[11px] font-bold uppercase mb-3 md:mb-4 opacity-90 leading-tight">
-                Launch your custom barbershop website for $10/month.
-              </p>
-              <button
-                onClick={handleClaimSite}
-                disabled={isDeploying}
-                className="block w-full text-center py-2 bg-[#1a1a1a] text-[#f4a100] text-[9px] md:text-[10px] font-bold tracking-widest uppercase hover:bg-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isDeploying ? 'UPLOADING IMAGES...' : 'CLAIM SITE'}
-              </button>
-              <p className="text-[6px] md:text-[8px] mt-2 opacity-70 uppercase tracking-tighter text-center italic">
-                You'll be redirected to secure checkout
-              </p>
-            </>
-          )}
+            {!deploymentResult && (
+              <>
+                <p className="text-[9px] md:text-[11px] font-bold uppercase mb-3 md:mb-4 opacity-90 leading-tight">
+                  Launch your custom barbershop website for $10/month.
+                </p>
+                <button
+                  onClick={handleClaimSite}
+                  disabled={isDeploying}
+                  className="block w-full text-center py-2 bg-[#1a1a1a] text-[#f4a100] text-[9px] md:text-[10px] font-bold tracking-widest uppercase hover:bg-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isDeploying ? 'UPLOADING IMAGES...' : 'CLAIM SITE'}
+                </button>
+                <p className="text-[6px] md:text-[8px] mt-2 opacity-70 uppercase tracking-tighter text-center italic">
+                  You'll be redirected to secure checkout
+                </p>
+              </>
+            )}
 
-          {deploymentResult?.error && (
-            <>
-              <p className="text-[9px] md:text-[11px] font-bold mb-3 md:mb-4 text-red-800 leading-tight">
-                {deploymentResult.error}
-              </p>
-              <button
-                onClick={handleClaimSite}
-                disabled={isDeploying}
-                className="block w-full text-center py-2 bg-[#1a1a1a] text-[#f4a100] text-[9px] md:text-[10px] font-bold tracking-widest uppercase hover:bg-black transition-colors"
-              >
-                TRY AGAIN
-              </button>
-            </>
-          )}
+            {deploymentResult?.error && (
+              <>
+                <p className="text-[9px] md:text-[11px] font-bold mb-3 md:mb-4 text-red-800 leading-tight">
+                  {deploymentResult.error}
+                </p>
+                <button
+                  onClick={handleClaimSite}
+                  disabled={isDeploying}
+                  className="block w-full text-center py-2 bg-[#1a1a1a] text-[#f4a100] text-[9px] md:text-[10px] font-bold tracking-widest uppercase hover:bg-black transition-colors"
+                >
+                  TRY AGAIN
+                </button>
+              </>
+            )}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Publish Overlay (post-payment only) */}
+      {showPublishOverlay && siteRef.current && (
+        <PublishOverlay
+          site={siteRef.current}
+          userId={userId}
+          onComplete={handlePublishComplete}
+          onError={handlePublishError}
+          onClose={handlePublishClose}
+        />
+      )}
     </div>
   );
 };

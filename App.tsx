@@ -1,32 +1,74 @@
-import React, { useState, useEffect } from 'react';
-import { AppState, ShopInputs, WebsiteData } from './types.ts';
-import { Dashboard } from './components/Dashboard.tsx';
+import React, { useState, useEffect, useCallback } from 'react';
+import { AppState, ShopInputs, WebsiteData, SiteInstance } from './types.ts';
+import { GeneratorForm } from './components/GeneratorForm.tsx';
 import { LoadingScreen } from './components/LoadingScreen.tsx';
 import { GeneratedWebsite, generateHTMLWithPlaceholders } from './components/GeneratedWebsite.tsx';
 import { generateContent } from './services/geminiService.ts';
 import { captureLead } from './services/leadCaptureService.ts';
+import { useAuth } from './contexts/AuthContext.tsx';
+import { saveSite } from './services/indexedDBService.ts';
+import { upsertSiteToSupabase, fetchUserSites } from './services/supabaseDataService.ts';
+import { getAllSites as getAllLocalSites } from './services/indexedDBService.ts';
+import { PostDeploymentModal } from './components/PostDeploymentModal.tsx';
+import { ManagementDashboard } from './components/ManagementDashboard.tsx';
+import { AuthModal } from './components/AuthModal.tsx';
 
 const DEPLOY_TIMER_SECONDS = 15;
 
 const App: React.FC = () => {
-  const [state, setState] = useState<AppState>('dashboard');
+  const { isAuthenticated, isLoading: authLoading, user, signOut } = useAuth();
+
+  const [state, setState] = useState<AppState>('generator');
   const [generatedData, setGeneratedData] = useState<WebsiteData | null>(null);
+  const [activeSite, setActiveSite] = useState<SiteInstance | null>(null);
   const [deployResult, setDeployResult] = useState<{ url?: string; error?: string } | null>(null);
   const [deployCountdown, setDeployCountdown] = useState(DEPLOY_TIMER_SECONDS);
   const [deployShopName, setDeployShopName] = useState('');
   const [copied, setCopied] = useState(false);
 
-  // Check for Stripe return on mount
+  // Post-deployment modal state
+  const [showPostDeployModal, setShowPostDeployModal] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState<'signin' | 'signup'>('signup');
+
+  // App ready guard: don't render until auth state is determined
+  const [appReady, setAppReady] = useState(false);
+
+  // Determine initial view based on auth state
   useEffect(() => {
+    if (authLoading) return;
+
     const params = new URLSearchParams(window.location.search);
     const stripeSessionId = params.get('stripe_session');
+    const domainPayment = params.get('domain_payment');
 
+    // Handle Stripe return (takes priority)
     if (stripeSessionId) {
-      // Clean URL
-      window.history.replaceState({}, '', '/');
+      window.history.replaceState({}, '', window.location.pathname);
+      setAppReady(true);
       handleStripeReturn(stripeSessionId);
+      return;
     }
-  }, []);
+
+    // Handle domain payment return
+    if (domainPayment === 'success') {
+      window.history.replaceState({}, '', window.location.pathname);
+      setAppReady(true);
+      if (isAuthenticated) {
+        setState('dashboard');
+      }
+      return;
+    }
+
+    // Normal load: if authenticated, try to go to dashboard
+    if (isAuthenticated) {
+      setState('dashboard');
+    } else {
+      setState('generator');
+    }
+
+    setAppReady(true);
+  }, [authLoading, isAuthenticated]);
 
   const handleStripeReturn = async (sessionId: string) => {
     setState('deploying');
@@ -131,6 +173,32 @@ const App: React.FC = () => {
           }),
         }).catch((err) => console.error('[FB CAPI] Error (non-blocking):', err));
 
+        // Step 5: Create SiteInstance and save to IndexedDB
+        // Restore the full image URLs back into siteData for the SiteInstance
+        const fullSiteData: WebsiteData = {
+          ...siteData,
+          hero: { ...siteData.hero, imageUrl: imageUrlMap['hero'] || siteData.hero.imageUrl || '' },
+          about: { ...siteData.about, imageUrl: imageUrlMap['about'] || siteData.about.imageUrl || '' },
+          gallery: siteData.gallery.map((_: string, i: number) =>
+            imageUrlMap[`gallery${i}`] || ''
+          ),
+        };
+
+        const newSite: SiteInstance = {
+          id: crypto.randomUUID(),
+          data: fullSiteData,
+          lastSaved: Date.now(),
+          formInputs: { shopName: siteData.shopName, area: siteData.area, phone: siteData.phone },
+          deployedUrl: deployData.deploymentUrl,
+          deploymentStatus: 'deployed',
+          customDomain: null,
+          domainOrderId: null,
+        };
+
+        // Save to IndexedDB
+        await saveSite(newSite);
+        setActiveSite(newSite);
+
         localStorage.removeItem('pendingSite');
         return { url: deployData.deploymentUrl } as { url?: string; error?: string };
 
@@ -143,6 +211,11 @@ const App: React.FC = () => {
     // Wait for BOTH timer and deployment to finish before showing result
     const [result] = await Promise.all([deployPromise, timerPromise]);
     setDeployResult(result);
+
+    // After successful deployment, show the post-deployment modal
+    if (result.url) {
+      setShowPostDeployModal(true);
+    }
   };
 
   const handleGenerate = async (inputs: ShopInputs) => {
@@ -151,25 +224,95 @@ const App: React.FC = () => {
     try {
       const data = await generateContent(inputs);
       setGeneratedData(data);
-      setState('generated');
+      setState('editor');
     } catch (error: any) {
       console.error("Website generation failed:", error);
       alert(`Generation Error: ${error.message || "An unexpected error occurred. Please try again."}`);
-      setState('dashboard');
+      setState('generator');
     }
   };
 
   const handleBack = () => {
-    setState('dashboard');
+    setState('generator');
     setGeneratedData(null);
+    setActiveSite(null);
   };
+
+  const handleEditSite = (site: SiteInstance) => {
+    setActiveSite(site);
+    setGeneratedData(site.data);
+    setState('editor');
+  };
+
+  const handleNavigateDashboard = () => {
+    setState('dashboard');
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
+    setActiveSite(null);
+    setGeneratedData(null);
+    setDeployResult(null);
+    setState('generator');
+  };
+
+  const handleCreateAccount = () => {
+    setShowPostDeployModal(false);
+    setAuthModalMode('signup');
+    setShowAuthModal(true);
+  };
+
+  const handleAuthSuccess = async () => {
+    setShowAuthModal(false);
+
+    // Auto-migrate the current site to Supabase if we have one
+    if (activeSite && user) {
+      try {
+        await upsertSiteToSupabase(activeSite, user.id);
+        console.log('[Migration] Site migrated to Supabase');
+      } catch (err) {
+        console.error('[Migration] Failed to migrate site (non-blocking):', err);
+      }
+    }
+
+    setState('dashboard');
+    setDeployResult(null);
+  };
+
+  const handleSkipAccountCreation = () => {
+    setShowPostDeployModal(false);
+    // Stay on deploying view showing the success state — user can click "Create Another Site" or just leave
+  };
+
+  // Don't render until auth state is determined
+  if (!appReady) {
+    return (
+      <div className="min-h-screen bg-[#0d0d0d] flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-[#f4a100] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#0d0d0d] text-white">
-      {state === 'dashboard' && <Dashboard onGenerate={handleGenerate} />}
+      {state === 'generator' && <GeneratorForm onGenerate={handleGenerate} />}
       {state === 'loading' && <LoadingScreen />}
-      {state === 'generated' && generatedData && (
-        <GeneratedWebsite data={generatedData} onBack={handleBack} />
+      {state === 'editor' && generatedData && (
+        <GeneratedWebsite
+          data={generatedData}
+          onBack={handleBack}
+          site={activeSite ?? undefined}
+          onNavigateDashboard={handleNavigateDashboard}
+          isPostPayment={!!activeSite?.deployedUrl}
+          userId={user?.id ?? null}
+        />
+      )}
+      {state === 'dashboard' && (
+        <ManagementDashboard
+          onEditSite={handleEditSite}
+          onCreateNewSite={() => setState('generator')}
+          onSignOut={handleSignOut}
+        />
       )}
       {state === 'deploying' && (
         <div className="fixed inset-0 bg-[#0d0d0d] flex flex-col items-center justify-center z-[100] px-6">
@@ -204,7 +347,7 @@ const App: React.FC = () => {
             </>
           )}
 
-          {deployResult?.url && (
+          {deployResult?.url && !showPostDeployModal && (
             <>
               <div className="mb-8">
                 <svg className="w-20 h-20 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -249,7 +392,7 @@ const App: React.FC = () => {
                 VIEW YOUR SITE
               </a>
               <button
-                onClick={() => { setState('dashboard'); setDeployResult(null); }}
+                onClick={() => { setState('generator'); setDeployResult(null); }}
                 className="text-[#666666] text-xs uppercase tracking-[2px] hover:text-white transition-colors mt-4"
               >
                 Create Another Site
@@ -271,7 +414,7 @@ const App: React.FC = () => {
                 {deployResult.error}
               </p>
               <button
-                onClick={() => { setState('dashboard'); setDeployResult(null); }}
+                onClick={() => { setState('generator'); setDeployResult(null); }}
                 className="inline-block py-4 px-12 border-2 border-[#f4a100] text-[#f4a100] font-montserrat font-black tracking-[3px] uppercase hover:bg-[#f4a100] hover:text-[#1a1a1a] transition-all duration-300 text-sm"
               >
                 GO BACK
@@ -280,6 +423,23 @@ const App: React.FC = () => {
           )}
         </div>
       )}
+
+      {/* Post-deployment success modal (for unauthenticated users) */}
+      {showPostDeployModal && deployResult?.url && !isAuthenticated && (
+        <PostDeploymentModal
+          deployedUrl={deployResult.url}
+          onCreateAccount={handleCreateAccount}
+          onSkip={handleSkipAccountCreation}
+        />
+      )}
+
+      {/* Auth modal */}
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        initialMode={authModalMode}
+        onSuccess={handleAuthSuccess}
+      />
     </div>
   );
 };
