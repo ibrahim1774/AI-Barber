@@ -38,7 +38,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onGenerate }) => {
           <div className="relative z-10 pt-8 md:pt-0">
             <h1 className="text-2xl md:text-5xl lg:text-6xl font-montserrat font-black uppercase tracking-[1px] md:tracking-[2px] leading-tight text-white mb-4 md:mb-8">
               Generate Custom <br className="hidden md:block"/> Barbershop <br className="hidden md:block"/> Website <br/> 
-              <span className="text-[#f4a100] mt-1 md:mt-2 block">Under 1 Minute</span>
+              <span className="text-[#f4a100] mt-1 md:mt-2 block">in about 30 seconds</span>
             </h1>
             
             <div className="w-12 md:w-20 h-1 bg-[#f4a100] mx-auto mb-4 md:mb-8"></div>
