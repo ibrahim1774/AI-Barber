@@ -22,7 +22,7 @@ export default async function handler(req: any, res: any) {
       contents: `Generate luxury barbershop website content for "${inputs.shopName}" in "${inputs.area}". 
       Phone: ${inputs.phone}.
       Tone: Premium, high-end, masculine, professional. 
-      Hero heading MUST explicitly include both the shop name ("${inputs.shopName}") and the area ("${inputs.area}"). 
+      Hero heading must be SHORT (max 5 words), punchy, and include only the shop name ("${inputs.shopName}"). Do NOT include the area in the heading.
       Include: 
       1. A catchy hero heading and tagline.
       2. "About Us" section with 2 detailed paragraphs.

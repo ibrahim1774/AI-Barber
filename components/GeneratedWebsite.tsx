@@ -139,7 +139,7 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
       <img src="{{hero}}" alt="Main Hero" class="w-full h-full object-cover">
       <div class="absolute inset-0 bg-black/40 bg-gradient-to-b from-black/30 via-transparent to-[#0d0d0d]"></div>
     </div>
-    <div class="relative z-10 text-center px-4 md:px-6 max-w-5xl -mt-20 md:mt-0">
+    <div class="relative z-10 text-center px-4 md:px-6 max-w-5xl pb-28 md:pb-32 pt-20 md:pt-0">
       <p class="text-[#f4a100] font-montserrat font-bold text-[8px] md:text-sm tracking-[3px] md:tracking-[5px] uppercase mb-3 md:mb-6 opacity-90">
         ${siteData.hero.tagline}
       </p>
@@ -192,16 +192,12 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
       <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white mb-8 md:mb-12 uppercase tracking-[2px]">Contact Us</h2>
       <div class="space-y-6 md:space-y-10">
         <div>
-          <h4 class="text-[#f4a100] font-bold text-[10px] md:text-xs tracking-[2px] mb-1 md:mb-2 font-montserrat">ADDRESS</h4>
-          <p class="text-[#cccccc] text-xs md:text-sm leading-relaxed">${siteData.contact.address}</p>
+          <h4 class="text-[#f4a100] font-bold text-[10px] md:text-xs tracking-[2px] mb-1 md:mb-2 font-montserrat">LOCATION</h4>
+          <p class="text-[#cccccc] text-xs md:text-sm leading-relaxed">${siteData.contact.address.charAt(0).toUpperCase() + siteData.contact.address.slice(1)}</p>
         </div>
         <div>
           <h4 class="text-[#f4a100] font-bold text-[10px] md:text-xs tracking-[2px] mb-1 md:mb-2 font-montserrat">PHONE</h4>
           <p class="text-[#cccccc] text-xs md:text-sm leading-relaxed">${siteData.phone}</p>
-        </div>
-        <div>
-          <h4 class="text-[#f4a100] font-bold text-[10px] md:text-xs tracking-[2px] mb-1 md:mb-2 font-montserrat">EMAIL</h4>
-          <p class="text-[#cccccc] text-xs md:text-sm leading-relaxed">${siteData.contact.email}</p>
         </div>
       </div>
     </div>
@@ -646,7 +642,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           <div className="absolute inset-0 bg-black/40 bg-gradient-to-b from-black/30 via-transparent to-[#0d0d0d] pointer-events-none"></div>
         </div>
 
-        <div className="relative z-10 text-center px-4 md:px-6 max-w-5xl -mt-20 md:mt-0">
+        <div className="relative z-10 text-center px-4 md:px-6 max-w-5xl pb-28 md:pb-32 pt-20 md:pt-0">
           <p className="text-[#f4a100] font-montserrat font-bold text-[8px] md:text-sm tracking-[3px] md:tracking-[5px] uppercase mb-3 md:mb-6 opacity-90">
             <EditableText text={siteData.hero.tagline} onSave={(val) => handleTextChange('hero.tagline', val)} />
           </p>
@@ -868,12 +864,12 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         <div className="container mx-auto max-w-4xl shadow-2xl overflow-hidden bg-[#1a1a1a]">
           <div className="w-full p-8 md:p-20 flex flex-col items-center text-center bg-[#1a1a1a]">
             <h2 className="text-2xl md:text-4xl font-montserrat font-black text-white mb-8 md:mb-12 uppercase tracking-[2px]">Visit Us</h2>
-            <div className="grid md:grid-cols-3 gap-8 md:gap-12 w-full">
+            <div className="grid md:grid-cols-2 gap-8 md:gap-12 w-full max-w-2xl">
               <div className="flex flex-col items-center gap-4">
                 <MapPinIcon className="w-8 h-8 text-[#f4a100]" />
                 <div>
                   <h4 className="text-[#f4a100] font-bold text-[10px] md:text-xs tracking-[2px] mb-2 font-montserrat uppercase">Location</h4>
-                  <p className="text-[#cccccc] text-xs md:text-sm leading-relaxed">
+                  <p className="text-[#cccccc] text-xs md:text-sm leading-relaxed capitalize">
                     <EditableText text={siteData.contact.address} onSave={(val) => handleTextChange('contact.address', val)} />
                   </p>
                 </div>
@@ -887,15 +883,6 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
                   </p>
                 </div>
               </a>
-              <div className="flex flex-col items-center gap-4">
-                <MailIcon className="w-8 h-8 text-[#f4a100]" />
-                <div>
-                  <h4 className="text-[#f4a100] font-bold text-[10px] md:text-xs tracking-[2px] mb-2 font-montserrat uppercase">Email</h4>
-                  <p className="text-[#cccccc] text-xs md:text-sm leading-relaxed">
-                    <EditableText text={siteData.contact.email} onSave={(val) => handleTextChange('contact.email', val)} />
-                  </p>
-                </div>
-              </div>
             </div>
 
           </div>
