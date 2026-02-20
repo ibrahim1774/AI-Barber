@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { WebsiteData, SiteInstance, SaveStatus } from '../types';
 import {
   ScissorsIcon, RazorIcon, MustacheIcon, FaceIcon, SparklesIcon,
-  MapPinIcon, AwardIcon, ClockIcon, PhoneIcon, MailIcon,
+  MapPinIcon, AwardIcon, ClockIcon, PhoneIcon,
   CameraIcon
 } from './Icons';
 import { EditorToolbar } from './EditorToolbar';
@@ -23,62 +23,24 @@ interface GeneratedWebsiteProps {
 export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
   const formattedPhone = siteData.phone.replace(/\s+/g, '');
 
-  // Master Barbers section uses gallery[2-5]
-  const masterBarberImages = siteData.gallery
+  // Gallery section uses gallery[2-5]
+  const galleryImages = siteData.gallery
     .slice(2, 6)
     .map((url, i) => ({ url, index: i + 2 }))
     .filter(item => item.url);
 
-  const masterBarbersSection = masterBarberImages.length > 0
-    ? `<section class="py-16 md:py-32 bg-[#0d0d0d] px-6 border-y border-white/5 relative overflow-hidden">
-    <div class="absolute top-0 right-0 w-1/3 h-full bg-[#1a1a1a] -z-10 transform skew-x-12 translate-x-32 hidden lg:block"></div>
-    <div class="container mx-auto">
-      <div class="flex flex-col lg:flex-row items-center gap-12 lg:gap-20">
-        <div class="lg:w-1/2">
-          <div class="grid grid-cols-2 gap-4">
-            <div class="space-y-4">
-              ${siteData.gallery[2] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{gallery2}}" alt="Professional Barber Tools" class="w-full h-40 md:h-64 object-cover"></div>` : ''}
-              ${siteData.gallery[3] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{gallery3}}" alt="Clean Haircut Detail" class="w-full h-32 md:h-48 object-cover"></div>` : ''}
-            </div>
-            <div class="space-y-4 pt-8">
-              ${siteData.gallery[4] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{gallery4}}" alt="Shaving Ritual" class="w-full h-32 md:h-48 object-cover"></div>` : ''}
-              ${siteData.gallery[5] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{gallery5}}" alt="Hair Styling Session" class="w-full h-40 md:h-64 object-cover"></div>` : ''}
-            </div>
-          </div>
-        </div>
-        <div class="lg:w-1/2">
-          <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4">Master Barbers</h3>
-          <h2 class="text-3xl md:text-5xl font-montserrat font-black text-white leading-tight uppercase tracking-[2px] mb-8">The Pinnacle of <br> Professional Craftsmanship</h2>
-          <div class="space-y-8">
-            <div class="flex items-start gap-6">
-              <div class="bg-[#1a1a1a] p-3 rounded-full border border-[#f4a100]/30 shrink-0">
-                <svg class="w-6 h-6 text-[#f4a100]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M6 18L18 6"></path></svg>
-              </div>
-              <div>
-                <h4 class="text-white font-montserrat font-bold text-lg uppercase mb-2">Signature Cuts</h4>
-                <p class="text-[#888888] leading-relaxed">Our master barbers blend classic techniques with modern trends to create styles that define your personality.</p>
-              </div>
-            </div>
-            <div class="flex items-start gap-6">
-              <div class="bg-[#1a1a1a] p-3 rounded-full border border-[#f4a100]/30 shrink-0">
-                <svg class="w-6 h-6 text-[#f4a100]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M6 18L18 6"></path></svg>
-              </div>
-              <div>
-                <h4 class="text-white font-montserrat font-bold text-lg uppercase mb-2">Artisan Shaves</h4>
-                <p class="text-[#888888] leading-relaxed">Experience the ritual of a traditional hot-towel shave, utilizing the world's finest blades and soothing balsams.</p>
-              </div>
-            </div>
-            <div class="flex items-start gap-6">
-              <div class="bg-[#1a1a1a] p-3 rounded-full border border-[#f4a100]/30 shrink-0">
-                <svg class="w-6 h-6 text-[#f4a100]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M6 18L18 6"></path></svg>
-              </div>
-              <div>
-                <h4 class="text-white font-montserrat font-bold text-lg uppercase mb-2">Elite Consulting</h4>
-                <p class="text-[#888888] leading-relaxed">We don't just cut hair; we analyze your face shape and hair type to recommend the perfect look for your lifestyle.</p>
-              </div>
-            </div>
-          </div>
-        </div>
+  const gallerySection = galleryImages.length > 0
+    ? `<section class="py-16 md:py-32 bg-[#0d0d0d] px-6 border-y border-white/5">
+    <div class="container mx-auto max-w-4xl">
+      <div class="text-center mb-10 md:mb-16">
+        <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">Gallery</h3>
+        <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">Our Work</h2>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        ${siteData.gallery[2] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{gallery2}}" alt="Gallery Image 1" class="w-full h-48 sm:h-56 md:h-72 object-cover"></div>` : ''}
+        ${siteData.gallery[3] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{gallery3}}" alt="Gallery Image 2" class="w-full h-48 sm:h-56 md:h-72 object-cover"></div>` : ''}
+        ${siteData.gallery[4] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{gallery4}}" alt="Gallery Image 3" class="w-full h-48 sm:h-56 md:h-72 object-cover"></div>` : ''}
+        ${siteData.gallery[5] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{gallery5}}" alt="Gallery Image 4" class="w-full h-48 sm:h-56 md:h-72 object-cover"></div>` : ''}
       </div>
     </div>
   </section>`
@@ -185,7 +147,7 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
     </div>
   </section>
 
-  ${masterBarbersSection}
+  ${gallerySection}
 
   <section id="contact" class="py-12 md:py-32 bg-[#0d0d0d] px-4 md:px-6">
     <div class="container mx-auto max-w-6xl bg-[#1a1a1a] p-8 md:p-20">
@@ -536,25 +498,17 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         />
       ) : (
         <>
-          <style>{`
-            @keyframes marquee {
-              0% { transform: translateX(100%); }
-              100% { transform: translateX(-100%); }
-            }
-          `}</style>
           <div className="fixed top-0 left-0 w-full bg-[#111111] border-b border-white/10 text-white py-1.5 px-2 md:py-2 md:px-3 z-[70] shadow-lg flex items-center justify-between gap-2">
-            {/* Left: Back arrow + scrolling marquee */}
+            {/* Left: Back arrow + static label */}
             <div className="flex items-center gap-1.5 min-w-0 flex-1">
               <button onClick={onBack} className="shrink-0 p-1 hover:bg-white/10 rounded transition-colors">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
               </button>
-              <div className="overflow-hidden flex-1">
-                <p className="whitespace-nowrap text-[8px] md:text-[10px] font-bold uppercase tracking-wider text-[#f4a100]" style={{ animation: 'marquee 12s linear infinite' }}>
-                  Tap to edit text &amp; images, then deploy below.
-                </p>
-              </div>
+              <p className="text-[8px] md:text-[10px] font-bold uppercase tracking-wider text-[#f4a100] truncate">
+                Tap to edit text &amp; images, then deploy below.
+              </p>
             </div>
 
             {/* Right: Status pill */}
@@ -630,14 +584,9 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
 
       {/* Hero Section */}
       <section id="home" className="relative h-[75vh] flex flex-col justify-center items-center overflow-hidden">
-        <div className="absolute inset-0 z-0 group">
-          {siteData.hero.imageUrl ? (
-            <>
-              <img src={siteData.hero.imageUrl} alt="Main Hero" className="w-full h-full object-cover" />
-              <ImageOverlay onImageUpload={(e) => handleImageChange('hero.imageUrl', e)} />
-            </>
-          ) : (
-            <ImagePlaceholder onImageUpload={(e) => handleImageChange('hero.imageUrl', e)} heightClass="h-full" />
+        <div className="absolute inset-0 z-0">
+          {siteData.hero.imageUrl && (
+            <img src={siteData.hero.imageUrl} alt="Main Hero" className="w-full h-full object-cover" />
           )}
           <div className="absolute inset-0 bg-black/40 bg-gradient-to-b from-black/30 via-transparent to-[#0d0d0d] pointer-events-none"></div>
         </div>
@@ -721,95 +670,26 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         </div>
       </section>
 
-      {/* Master Barbers Expertise */}
-      <section className="py-16 md:py-32 bg-[#0d0d0d] px-6 border-y border-white/5 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-1/3 h-full bg-[#1a1a1a] -z-10 transform skew-x-12 translate-x-32 hidden lg:block"></div>
-        <div className="container mx-auto">
-          <div className="flex flex-col lg:flex-row items-center gap-12 lg:gap-20">
-            <div className="lg:w-1/2 order-2 lg:order-1">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-4">
-                  <div className="bg-[#1a1a1a] p-1 border border-white/5 relative group">
-                    {siteData.gallery[2] ? (
-                      <>
-                        <img src={siteData.gallery[2]} alt="Professional Barber Tools" className="w-full h-40 md:h-64 object-cover" />
-                        <ImageOverlay onImageUpload={(e) => handleImageChange('gallery.2', e)} />
-                      </>
-                    ) : (
-                      <ImagePlaceholder onImageUpload={(e) => handleImageChange('gallery.2', e)} heightClass="h-40 md:h-64" />
-                    )}
-                  </div>
-                  <div className="bg-[#1a1a1a] p-1 border border-white/5 relative group">
-                    {siteData.gallery[3] ? (
-                      <>
-                        <img src={siteData.gallery[3]} alt="Clean Haircut Detail" className="w-full h-32 md:h-48 object-cover" />
-                        <ImageOverlay onImageUpload={(e) => handleImageChange('gallery.3', e)} />
-                      </>
-                    ) : (
-                      <ImagePlaceholder onImageUpload={(e) => handleImageChange('gallery.3', e)} heightClass="h-32 md:h-48" />
-                    )}
-                  </div>
-                </div>
-                <div className="space-y-4 pt-8">
-                  <div className="bg-[#1a1a1a] p-1 border border-white/5 relative group">
-                    {siteData.gallery[4] ? (
-                      <>
-                        <img src={siteData.gallery[4]} alt="Shaving Ritual" className="w-full h-32 md:h-48 object-cover" />
-                        <ImageOverlay onImageUpload={(e) => handleImageChange('gallery.4', e)} />
-                      </>
-                    ) : (
-                      <ImagePlaceholder onImageUpload={(e) => handleImageChange('gallery.4', e)} heightClass="h-32 md:h-48" />
-                    )}
-                  </div>
-                  <div className="bg-[#1a1a1a] p-1 border border-white/5 relative group">
-                    {siteData.gallery[5] ? (
-                      <>
-                        <img src={siteData.gallery[5]} alt="Hair Styling Session" className="w-full h-40 md:h-64 object-cover" />
-                        <ImageOverlay onImageUpload={(e) => handleImageChange('gallery.5', e)} />
-                      </>
-                    ) : (
-                      <ImagePlaceholder onImageUpload={(e) => handleImageChange('gallery.5', e)} heightClass="h-40 md:h-64" />
-                    )}
-                  </div>
-                </div>
+      {/* Gallery Section */}
+      <section className="py-16 md:py-32 bg-[#0d0d0d] px-6 border-y border-white/5">
+        <div className="container mx-auto max-w-4xl">
+          <div className="text-center mb-10 md:mb-16">
+            <h3 className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">Gallery</h3>
+            <h2 className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">Our Work</h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {[2, 3, 4, 5].map((idx) => (
+              <div key={idx} className="bg-[#1a1a1a] p-1 border border-white/5 relative group">
+                {siteData.gallery[idx] ? (
+                  <>
+                    <img src={siteData.gallery[idx]} alt={`Gallery Image ${idx - 1}`} className="w-full h-48 sm:h-56 md:h-72 object-cover" />
+                    <ImageOverlay onImageUpload={(e) => handleImageChange(`gallery.${idx}`, e)} />
+                  </>
+                ) : (
+                  <ImagePlaceholder onImageUpload={(e) => handleImageChange(`gallery.${idx}`, e)} heightClass="h-48 sm:h-56 md:h-72" />
+                )}
               </div>
-            </div>
-
-            <div className="lg:w-1/2 order-1 lg:order-2">
-              <h3 className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4">Master Barbers</h3>
-              <h2 className="text-3xl md:text-5xl font-montserrat font-black text-white leading-tight uppercase tracking-[2px] mb-8">
-                The Pinnacle of <br /> Professional Craftsmanship
-              </h2>
-              <div className="space-y-8">
-                <div className="flex items-start gap-6">
-                  <div className="bg-[#1a1a1a] p-3 rounded-full border border-[#f4a100]/30 shrink-0">
-                    <ScissorsIcon className="w-6 h-6 text-[#f4a100]" />
-                  </div>
-                  <div>
-                    <h4 className="text-white font-montserrat font-bold text-lg uppercase mb-2">Signature Cuts</h4>
-                    <p className="text-[#888888] leading-relaxed">Our master barbers blend classic techniques with modern trends to create styles that define your personality.</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-6">
-                  <div className="bg-[#1a1a1a] p-3 rounded-full border border-[#f4a100]/30 shrink-0">
-                    <RazorIcon className="w-6 h-6 text-[#f4a100]" />
-                  </div>
-                  <div>
-                    <h4 className="text-white font-montserrat font-bold text-lg uppercase mb-2">Artisan Shaves</h4>
-                    <p className="text-[#888888] leading-relaxed">Experience the ritual of a traditional hot-towel shave, utilizing the world's finest blades and soothing balsams.</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-6">
-                  <div className="bg-[#1a1a1a] p-3 rounded-full border border-[#f4a100]/30 shrink-0">
-                    <AwardIcon className="w-6 h-6 text-[#f4a100]" />
-                  </div>
-                  <div>
-                    <h4 className="text-white font-montserrat font-bold text-lg uppercase mb-2">Elite Consulting</h4>
-                    <p className="text-[#888888] leading-relaxed">We don't just cut hair; we analyze your face shape and hair type to recommend the perfect look for your lifestyle.</p>
-                  </div>
-                </div>
-              </div>
-            </div>
+            ))}
           </div>
         </div>
       </section>
