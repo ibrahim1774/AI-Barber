@@ -9,7 +9,7 @@ export interface ServiceItem {
   title: string;
   subtitle: string;
   description: string;
-  icon: 'scissors' | 'razor' | 'mustache' | 'face';
+  icon: 'scissors' | 'razor' | 'mustache' | 'face' | 'sparkles';
   imageUrl: string;
 }
 

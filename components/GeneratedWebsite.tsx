@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { WebsiteData, SiteInstance, SaveStatus } from '../types';
 import {
-  ScissorsIcon, RazorIcon, MustacheIcon, FaceIcon,
+  ScissorsIcon, RazorIcon, MustacheIcon, FaceIcon, SparklesIcon,
   MapPinIcon, AwardIcon, ClockIcon, PhoneIcon, MailIcon,
   CameraIcon
 } from './Icons';
@@ -134,10 +134,10 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
     </div>
   </header>
 
-  <section id="home" class="relative h-screen flex flex-col justify-center items-center overflow-hidden">
+  <section id="home" class="relative h-[75vh] flex flex-col justify-center items-center overflow-hidden">
     <div class="absolute inset-0 z-0">
       <img src="{{hero}}" alt="Main Hero" class="w-full h-full object-cover">
-      <div class="absolute inset-0 bg-black/70 bg-gradient-to-b from-black/60 via-transparent to-[#0d0d0d]"></div>
+      <div class="absolute inset-0 bg-black/40 bg-gradient-to-b from-black/30 via-transparent to-[#0d0d0d]"></div>
     </div>
     <div class="relative z-10 text-center px-4 md:px-6 max-w-5xl -mt-20 md:mt-0">
       <p class="text-[#f4a100] font-montserrat font-bold text-[8px] md:text-sm tracking-[3px] md:tracking-[5px] uppercase mb-3 md:mb-6 opacity-90">
@@ -168,7 +168,7 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
 
   <section id="services" class="py-12 md:py-32 bg-[#0d0d0d] px-6">
     <div class="container mx-auto">
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-8 max-w-6xl mx-auto">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 md:gap-6 max-w-7xl mx-auto">
         ${siteData.services.map(service => `
           <div class="group border-2 border-[#f4a100] p-6 md:p-12 text-center flex flex-col items-center hover:bg-[#1a1a1a] transition-all duration-500">
             <div class="mb-4 md:mb-8 transform group-hover:scale-110 transition-transform duration-300">
@@ -396,6 +396,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       case 'razor': return <RazorIcon className="w-10 h-10 md:w-12 md:h-12 text-[#f4a100]" />;
       case 'mustache': return <MustacheIcon className="w-10 h-10 md:w-12 md:h-12 text-[#f4a100]" />;
       case 'face': return <FaceIcon className="w-10 h-10 md:w-12 md:h-12 text-[#f4a100]" />;
+      case 'sparkles': return <SparklesIcon className="w-10 h-10 md:w-12 md:h-12 text-[#f4a100]" />;
       default: return <ScissorsIcon className="w-10 h-10 md:w-12 md:h-12 text-[#f4a100]" />;
     }
   };
@@ -632,7 +633,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       </header>
 
       {/* Hero Section */}
-      <section id="home" className="relative h-screen flex flex-col justify-center items-center overflow-hidden">
+      <section id="home" className="relative h-[75vh] flex flex-col justify-center items-center overflow-hidden">
         <div className="absolute inset-0 z-0 group">
           {siteData.hero.imageUrl ? (
             <>
@@ -642,7 +643,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           ) : (
             <ImagePlaceholder onImageUpload={(e) => handleImageChange('hero.imageUrl', e)} heightClass="h-full" />
           )}
-          <div className="absolute inset-0 bg-black/70 bg-gradient-to-b from-black/60 via-transparent to-[#0d0d0d] pointer-events-none"></div>
+          <div className="absolute inset-0 bg-black/40 bg-gradient-to-b from-black/30 via-transparent to-[#0d0d0d] pointer-events-none"></div>
         </div>
 
         <div className="relative z-10 text-center px-4 md:px-6 max-w-5xl -mt-20 md:mt-0">
@@ -820,7 +821,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       {/* Services Grid Section */}
       <section id="our-services" className="py-12 md:py-32 bg-[#0d0d0d] px-6">
         <div className="container mx-auto">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-8 max-w-6xl mx-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 md:gap-6 max-w-7xl mx-auto">
             {siteData.services.map((service, i) => (
               <div key={i} className="group border-2 border-[#f4a100] p-6 md:p-12 text-center flex flex-col items-center hover:bg-[#1a1a1a] transition-all duration-500">
                 <div className="mb-4 md:mb-8 transform group-hover:scale-110 transition-transform duration-300">

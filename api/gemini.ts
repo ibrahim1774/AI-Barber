@@ -26,9 +26,8 @@ export default async function handler(req: any, res: any) {
       Include: 
       1. A catchy hero heading and tagline.
       2. "About Us" section with 2 detailed paragraphs.
-      3. Details for 4 services: Haircuts, Beard Styling, Traditional Shave, and Precision Fade.
-      4. A professional email.
-      5. A full address in ${inputs.area}.`,
+      3. Details for 5 services: Classic Haircut, Beard Trim & Styling, Hot Towel Shave, Skin Fade, and Hair & Scalp Treatment.
+      4. A professional email.`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -66,9 +65,8 @@ export default async function handler(req: any, res: any) {
               type: Type.OBJECT,
               properties: {
                 email: { type: Type.STRING },
-                address: { type: Type.STRING },
               },
-              required: ["email", "address"],
+              required: ["email"],
             }
           },
           required: ["hero", "about", "services", "contact"],
@@ -106,7 +104,7 @@ export default async function handler(req: any, res: any) {
       return part ? `data:image/png;base64,${part.inlineData.data}` : "";
     });
 
-    const serviceIcons: ('scissors' | 'razor' | 'mustache' | 'face')[] = ['scissors', 'razor', 'mustache', 'face'];
+    const serviceIcons: ('scissors' | 'razor' | 'mustache' | 'face' | 'sparkles')[] = ['scissors', 'razor', 'mustache', 'face', 'sparkles'];
 
     const finalData = {
       shopName: inputs.shopName,
@@ -124,13 +122,13 @@ export default async function handler(req: any, res: any) {
       },
       services: (content.services || []).map((s: any, i: number) => ({
         ...s,
-        icon: serviceIcons[i % 4],
+        icon: serviceIcons[i % 5],
         imageUrl: "",
       })),
       gallery: [imageUrls[1] || "", "", "", "", "", ""],
-      contact: content.contact || { 
-        address: inputs.area, 
-        email: `contact@${inputs.shopName.toLowerCase().replace(/\s/g, '')}.com` 
+      contact: {
+        address: inputs.area,
+        email: content.contact?.email || `contact@${inputs.shopName.toLowerCase().replace(/\s/g, '')}.com`,
       },
     };
 
