@@ -74,9 +74,10 @@ export default async function handler(req: any, res: any) {
       }
     });
 
-    // 2. Prepare Image Generation Prompts (only 2 — hero + 1 gallery)
+    // 2. Prepare Image Generation Prompts (hero + about + 1 gallery)
     const imagePrompts = [
       `Cinematic hero image of a barber in a luxury shop in ${inputs.area}, moody atmosphere, professional photography, 16:9`,
+      `Interior of a premium barbershop, leather chairs, warm lighting, clean and professional atmosphere, editorial photography style`,
       `A sharp skin fade haircut at ${inputs.shopName}, clean edges, 1:1`,
     ];
 
@@ -118,14 +119,14 @@ export default async function handler(req: any, res: any) {
       about: {
         heading: content.about?.heading || "The Artisan Standard",
         description: content.about?.paragraphs || ["Dedicated to traditional craft and modern style."],
-        imageUrl: "",
+        imageUrl: imageUrls[1] || "",
       },
       services: (content.services || []).map((s: any, i: number) => ({
         ...s,
         icon: serviceIcons[i % 5],
         imageUrl: "",
       })),
-      gallery: [imageUrls[1] || "", "", "", "", "", ""],
+      gallery: [imageUrls[2] || "", "", "", "", "", ""],
       contact: {
         address: inputs.area,
         email: content.contact?.email || `contact@${inputs.shopName.toLowerCase().replace(/\s/g, '')}.com`,

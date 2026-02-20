@@ -439,8 +439,17 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       localStorage.setItem('pendingSite', JSON.stringify(pendingSite));
       console.log('[Claim] Saved pending site to localStorage, redirecting to Stripe...');
 
-      // Step 4: Redirect to Stripe Payment Link
-      window.location.href = `https://buy.stripe.com/test_eVq5kC8e016e5N05Ma3cc01?client_reference_id=${encodeURIComponent(siteId)}`;
+      // Step 4: Create Stripe Checkout Session and redirect
+      const checkoutResponse = await fetch('/api/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ siteId }),
+      });
+      const checkoutData = await checkoutResponse.json();
+      if (!checkoutResponse.ok || !checkoutData.url) {
+        throw new Error(checkoutData.error || 'Failed to create checkout session');
+      }
+      window.location.href = checkoutData.url;
 
     } catch (error: any) {
       console.error('Claim site error:', error);
@@ -656,17 +665,12 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
               ))}
             </div>
           </div>
-          <div className="relative group mt-6 lg:mt-0">
-            <div className="absolute -inset-2 md:-inset-4 border border-[#f4a100]/30 -z-10 transform translate-x-2 translate-y-2 md:translate-x-4 md:translate-y-4 transition-transform duration-500"></div>
-            {siteData.about.imageUrl ? (
-              <>
-                <img src={siteData.about.imageUrl} alt="Barber Shop Atmosphere" className="w-full grayscale hover:grayscale-0 transition-all duration-700 shadow-2xl" />
-                <ImageOverlay onImageUpload={(e) => handleImageChange('about.imageUrl', e)} />
-              </>
-            ) : (
-              <ImagePlaceholder onImageUpload={(e) => handleImageChange('about.imageUrl', e)} heightClass="h-64 md:h-96" />
-            )}
-          </div>
+          {siteData.about.imageUrl && (
+            <div className="relative mt-6 lg:mt-0">
+              <div className="absolute -inset-2 md:-inset-4 border border-[#f4a100]/30 -z-10 transform translate-x-2 translate-y-2 md:translate-x-4 md:translate-y-4 transition-transform duration-500"></div>
+              <img src={siteData.about.imageUrl} alt="Barber Shop Atmosphere" className="w-full grayscale hover:grayscale-0 transition-all duration-700 shadow-2xl" />
+            </div>
+          )}
         </div>
       </section>
 
