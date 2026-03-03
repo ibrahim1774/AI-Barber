@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AppState, ShopInputs, WebsiteData, SiteInstance } from './types.ts';
 import { GeneratorForm } from './components/GeneratorForm.tsx';
 import { LoadingScreen } from './components/LoadingScreen.tsx';
@@ -6,7 +6,7 @@ import { GeneratedWebsite, generateHTMLWithPlaceholders } from './components/Gen
 import { generateContent } from './services/geminiService.ts';
 import { captureLead } from './services/leadCaptureService.ts';
 import { useAuth } from './contexts/AuthContext.tsx';
-import { saveSite } from './services/indexedDBService.ts';
+import { saveSite, getSite } from './services/indexedDBService.ts';
 import { upsertSiteToSupabase, fetchUserSites } from './services/supabaseDataService.ts';
 import { getAllSites as getAllLocalSites } from './services/indexedDBService.ts';
 import { PostDeploymentModal } from './components/PostDeploymentModal.tsx';
@@ -34,10 +34,65 @@ const App: React.FC = () => {
 
   // App ready guard: don't render until auth state is determined
   const [appReady, setAppReady] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(true);
+  const generationFailedRef = useRef(false);
+
+  const persistView = useCallback((view: AppState, siteId?: string) => {
+    setState(view);
+    sessionStorage.setItem('appView', view);
+    if (siteId) {
+      sessionStorage.setItem('activeSiteId', siteId);
+    } else if (view === 'generator') {
+      sessionStorage.removeItem('activeSiteId');
+      sessionStorage.removeItem('pendingFormInputs');
+    }
+  }, []);
+
+  // Session restore on mount
+  useEffect(() => {
+    if (authLoading) return;
+
+    const savedView = sessionStorage.getItem('appView') as AppState | null;
+    const savedSiteId = sessionStorage.getItem('activeSiteId');
+    const savedInputs = sessionStorage.getItem('pendingFormInputs');
+
+    if (savedView === 'editor' && savedSiteId) {
+      getSite(savedSiteId).then(site => {
+        if (site) {
+          setActiveSite(site);
+          setGeneratedData(site.data);
+          setState('editor');
+        }
+        setIsRestoring(false);
+      }).catch(() => setIsRestoring(false));
+    } else if (savedView === 'editor' && savedInputs) {
+      setIsRestoring(false);
+      try { handleGenerate(JSON.parse(savedInputs)); } catch { setIsRestoring(false); }
+    } else {
+      setIsRestoring(false);
+    }
+  }, [authLoading]);
+
+  // Auto-retry on visibility change (background generation protection)
+  useEffect(() => {
+    const handler = () => {
+      if (document.visibilityState === 'visible' && generationFailedRef.current) {
+        generationFailedRef.current = false;
+        const saved = sessionStorage.getItem('pendingFormInputs');
+        if (saved) {
+          try { handleGenerate(JSON.parse(saved)); } catch { persistView('generator'); }
+        } else {
+          persistView('generator');
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handler);
+    return () => document.removeEventListener('visibilitychange', handler);
+  }, []);
 
   // Determine initial view based on auth state
   useEffect(() => {
-    if (authLoading) return;
+    if (authLoading || isRestoring) return;
 
     const params = new URLSearchParams(window.location.search);
     const stripeSessionId = params.get('stripe_session');
@@ -56,20 +111,23 @@ const App: React.FC = () => {
       window.history.replaceState({}, '', window.location.pathname);
       setAppReady(true);
       if (isAuthenticated) {
-        setState('dashboard');
+        persistView('dashboard');
       }
       return;
     }
 
     // Normal load: if authenticated, try to go to dashboard
     if (isAuthenticated) {
-      setState('dashboard');
+      persistView('dashboard');
     } else {
-      setState('generator');
+      // Only reset to generator if not already in a restored state
+      if (state === 'generator') {
+        persistView('generator');
+      }
     }
 
     setAppReady(true);
-  }, [authLoading, isAuthenticated]);
+  }, [authLoading, isAuthenticated, isRestoring]);
 
   const handleStripeReturn = async (sessionId: string) => {
     setState('deploying');
@@ -221,20 +279,26 @@ const App: React.FC = () => {
 
   const handleGenerate = async (inputs: ShopInputs) => {
     captureLead(inputs).catch((err) => console.error("[Lead Capture] Error (non-blocking):", err));
+    sessionStorage.setItem('pendingFormInputs', JSON.stringify(inputs));
     setState('loading');
     try {
       const data = await generateContent(inputs);
       setGeneratedData(data);
-      setState('editor');
+      persistView('editor');
+      sessionStorage.removeItem('pendingFormInputs');
     } catch (error: any) {
+      if (document.hidden && sessionStorage.getItem('pendingFormInputs')) {
+        generationFailedRef.current = true;
+        return;
+      }
       console.error("Website generation failed:", error);
       alert(`Generation Error: ${error.message || "An unexpected error occurred. Please try again."}`);
-      setState('generator');
+      persistView('generator');
     }
   };
 
   const handleBack = () => {
-    setState('generator');
+    persistView('generator');
     setGeneratedData(null);
     setActiveSite(null);
   };
@@ -242,11 +306,11 @@ const App: React.FC = () => {
   const handleEditSite = (site: SiteInstance) => {
     setActiveSite(site);
     setGeneratedData(site.data);
-    setState('editor');
+    persistView('editor');
   };
 
   const handleNavigateDashboard = () => {
-    setState('dashboard');
+    persistView('dashboard');
   };
 
   const handleSignOut = async () => {
@@ -254,7 +318,7 @@ const App: React.FC = () => {
     setActiveSite(null);
     setGeneratedData(null);
     setDeployResult(null);
-    setState('generator');
+    persistView('generator');
   };
 
   const handleCreateAccount = () => {
@@ -276,7 +340,7 @@ const App: React.FC = () => {
       }
     }
 
-    setState('dashboard');
+    persistView('dashboard');
     setDeployResult(null);
   };
 
@@ -286,7 +350,7 @@ const App: React.FC = () => {
   };
 
   // Don't render until auth state is determined
-  if (!appReady) {
+  if (!appReady || isRestoring) {
     return (
       <div className="min-h-screen bg-[#0d0d0d] flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-[#f4a100] border-t-transparent rounded-full animate-spin" />
@@ -316,7 +380,7 @@ const App: React.FC = () => {
       {state === 'dashboard' && (
         <ManagementDashboard
           onEditSite={handleEditSite}
-          onCreateNewSite={() => setState('generator')}
+          onCreateNewSite={() => persistView('generator')}
           onSignOut={handleSignOut}
         />
       )}
@@ -398,7 +462,7 @@ const App: React.FC = () => {
                 VIEW YOUR SITE
               </a>
               <button
-                onClick={() => { setState('generator'); setDeployResult(null); }}
+                onClick={() => { persistView('generator'); setDeployResult(null); }}
                 className="text-[#666666] text-xs uppercase tracking-[2px] hover:text-white transition-colors mt-4"
               >
                 Create Another Site
@@ -420,7 +484,7 @@ const App: React.FC = () => {
                 {deployResult.error}
               </p>
               <button
-                onClick={() => { setState('generator'); setDeployResult(null); }}
+                onClick={() => { persistView('generator'); setDeployResult(null); }}
                 className="inline-block py-4 px-12 border-2 border-[#f4a100] text-[#f4a100] font-montserrat font-black tracking-[3px] uppercase hover:bg-[#f4a100] hover:text-[#1a1a1a] transition-all duration-300 text-sm"
               >
                 GO BACK

@@ -9,6 +9,7 @@ import {
 import { EditorToolbar } from './EditorToolbar';
 import { PublishOverlay } from './PublishOverlay';
 import { useAutoSave } from '../hooks/useAutoSave';
+import PrePaymentBanner from './PrePaymentBanner.tsx';
 
 interface GeneratedWebsiteProps {
   data: WebsiteData;
@@ -199,7 +200,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
   const [siteData, setSiteData] = useState<WebsiteData>(data);
   const [isScrolled, setIsScrolled] = useState(false);
   const [isDeploying, setIsDeploying] = useState(false);
-  const [deploymentResult, setDeploymentResult] = useState<{
+  const [, setDeploymentResult] = useState<{
     error?: string;
   } | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
@@ -806,65 +807,13 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         </div>
       </footer>
 
-      {/* Bottom Bar (pre-payment only) */}
+      {/* PrePaymentBanner (pre-payment only) */}
       {!isPostPayment && (
-        <div className="fixed bottom-0 left-0 w-full z-[60] bg-[#111111] border-t border-white/10 shadow-[0_-4px_20px_rgba(0,0,0,0.3)]">
-          <div className="max-w-4xl mx-auto px-3 py-3 md:px-5 md:py-4">
-            {/* How It Works */}
-            <div className="mb-3">
-              <h3 className="font-montserrat font-black text-white text-[10px] md:text-xs uppercase tracking-[2px] mb-2">
-                How It Works
-              </h3>
-              <div className="flex flex-col md:flex-row md:gap-5 gap-1.5 text-left">
-                <p className="text-[#ccc] text-[10px] md:text-xs font-montserrat"><span className="font-black text-[#f4a100]">1.</span> Edit or replace any text and images.</p>
-                <p className="text-[#ccc] text-[10px] md:text-xs font-montserrat"><span className="font-black text-[#f4a100]">2.</span> Deploy your site and pay only the monthly hosting fee to keep it live.</p>
-                <p className="text-[#ccc] text-[10px] md:text-xs font-montserrat"><span className="font-black text-[#f4a100]">3.</span> After purchasing hosting, create an account on our website to update text, images, or make changes to your site at any time.</p>
-              </div>
-            </div>
-
-            {/* Pricing + CTA */}
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2.5">
-              <p className="font-montserrat font-black text-white text-[10px] md:text-xs uppercase tracking-[1.5px]">
-                Pay only $10/month to host your site
-              </p>
-
-              {deploymentResult?.error ? (
-                <div className="flex flex-col gap-1.5">
-                  <p className="text-red-400 text-[10px] font-bold">{deploymentResult.error}</p>
-                  <button
-                    onClick={handleClaimSite}
-                    disabled={isDeploying}
-                    className="w-full md:w-auto inline-flex items-center justify-center gap-1.5 px-5 py-2.5 bg-[#f4a100] hover:bg-[#d4880d] text-black text-[10px] md:text-xs font-black uppercase tracking-wider rounded-md transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    TRY AGAIN
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={handleClaimSite}
-                  disabled={isDeploying}
-                  className="w-full md:w-auto inline-flex items-center justify-center gap-1.5 px-5 py-2.5 bg-[#f4a100] hover:bg-[#d4880d] text-black text-[10px] md:text-xs font-black uppercase tracking-wider rounded-md transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isDeploying ? (
-                    <>
-                      <svg className="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                      Uploading Images...
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.63 8.41m5.96 5.96a14.926 14.926 0 01-5.84 2.58m0 0a14.926 14.926 0 01-5.96-5.96M9.63 8.41A6 6 0 012.25 14.2" />
-                      </svg>
-                      Deploy My Site
-                    </>
-                  )}
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
+        <PrePaymentBanner
+          onDeploy={handleClaimSite}
+          isDeploying={isDeploying}
+          industry="barbershop"
+        />
       )}
 
       {/* Publish Overlay (post-payment only) */}
