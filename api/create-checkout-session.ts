@@ -15,11 +15,16 @@ export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).end();
 
   try {
-    const { siteId } = req.body;
+    const { siteId, plan = 'monthly' } = req.body;
 
     if (!siteId) {
       return res.status(400).json({ error: 'Missing required field: siteId' });
     }
+
+    const isYearly = plan === 'yearly';
+    const unitAmount = isYearly ? '4900' : '1000';
+    const interval = isYearly ? 'year' : 'month';
+    const productName = isYearly ? 'Prime Barber AI - Yearly Hosting' : 'Prime Barber AI - Monthly Hosting';
 
     const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
     if (!stripeSecretKey) {
@@ -28,19 +33,20 @@ export default async function handler(req: any, res: any) {
 
     const origin = req.headers.origin || req.headers.referer?.replace(/\/$/, '') || 'http://localhost:3000';
 
-    // Create Stripe Checkout Session for $10/month subscription
+    // Create Stripe Checkout Session for subscription
     const params = new URLSearchParams();
     params.append('mode', 'subscription');
     params.append('success_url', `${origin}?stripe_session={CHECKOUT_SESSION_ID}`);
     params.append('cancel_url', `${origin}?stripe_cancelled=true`);
     params.append('line_items[0][price_data][currency]', 'usd');
-    params.append('line_items[0][price_data][product_data][name]', 'Prime Barber AI - Monthly Hosting');
-    params.append('line_items[0][price_data][unit_amount]', '1000');
-    params.append('line_items[0][price_data][recurring][interval]', 'month');
+    params.append('line_items[0][price_data][product_data][name]', productName);
+    params.append('line_items[0][price_data][unit_amount]', unitAmount);
+    params.append('line_items[0][price_data][recurring][interval]', interval);
     params.append('line_items[0][quantity]', '1');
     params.append('client_reference_id', siteId);
     params.append('metadata[type]', 'site_hosting');
     params.append('metadata[siteId]', siteId);
+    params.append('metadata[plan]', plan);
 
     const response = await fetch('https://api.stripe.com/v1/checkout/sessions', {
       method: 'POST',

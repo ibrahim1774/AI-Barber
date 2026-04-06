@@ -360,7 +360,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
     }
   };
 
-  const handleClaimSite = async () => {
+  const handleClaimSite = async (plan: 'monthly' | 'yearly' = 'monthly') => {
     setIsDeploying(true);
     setDeploymentResult(null);
 
@@ -444,7 +444,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       const checkoutResponse = await fetch('/api/create-checkout-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ siteId }),
+        body: JSON.stringify({ siteId, plan }),
       });
       const checkoutData = await checkoutResponse.json();
       if (!checkoutResponse.ok || !checkoutData.url) {
