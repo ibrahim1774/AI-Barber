@@ -36,6 +36,7 @@ const App: React.FC = () => {
   const [appReady, setAppReady] = useState(false);
   const [isRestoring, setIsRestoring] = useState(true);
   const generationFailedRef = useRef(false);
+  const isLegitDeployRef = useRef(false);
 
   const persistView = useCallback((view: AppState, siteId?: string) => {
     setState(view);
@@ -47,6 +48,40 @@ const App: React.FC = () => {
       sessionStorage.removeItem('pendingFormInputs');
     }
   }, []);
+
+  // Guard: if we land on the deploying screen without an active deployment
+  // (e.g. browser back from Stripe checkout via bfcache), restore the preview.
+  useEffect(() => {
+    if (state === 'deploying' && !isLegitDeployRef.current) {
+      if (generatedData) {
+        setState('editor');
+      } else {
+        setState('generator');
+      }
+      setDeployResult(null);
+      setDeployCountdown(DEPLOY_TIMER_SECONDS);
+    }
+  }, [state]);
+
+  // Handle bfcache restore (browser back/forward preserving JS heap)
+  useEffect(() => {
+    const handlePageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) {
+        // Page was restored from bfcache — any in-flight deploy is stale
+        isLegitDeployRef.current = false;
+        setState((prev) => {
+          if (prev === 'deploying') {
+            setDeployResult(null);
+            setDeployCountdown(DEPLOY_TIMER_SECONDS);
+            return generatedData ? 'editor' : 'generator';
+          }
+          return prev;
+        });
+      }
+    };
+    window.addEventListener('pageshow', handlePageShow);
+    return () => window.removeEventListener('pageshow', handlePageShow);
+  }, [generatedData]);
 
   // Session restore on mount
   useEffect(() => {
@@ -130,6 +165,7 @@ const App: React.FC = () => {
   }, [authLoading, isAuthenticated, isRestoring]);
 
   const handleStripeReturn = async (sessionId: string) => {
+    isLegitDeployRef.current = true;
     setState('deploying');
     setDeployCountdown(DEPLOY_TIMER_SECONDS);
 
