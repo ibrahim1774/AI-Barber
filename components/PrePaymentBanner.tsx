@@ -57,7 +57,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
               <div className="absolute inset-0 w-2.5 h-2.5 bg-[#f4a100] rounded-full animate-ping" />
             </div>
             <p className="text-gray-300 text-sm leading-relaxed">
-              Just pay for hosting—it's <span className="text-white font-bold">$10/month</span>. You can make an account after deploying the site and change the text and images as well.
+              Just pay for hosting—it's <span className="text-white font-bold">$10/month</span>. You can make an account after publishing the site and change the text and images as well.
             </p>
           </div>
 
@@ -82,7 +82,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
               ) : (
                 <Rocket size={14} />
               )}
-              Deploy — $10/mo
+              Publish — $10/mo
             </button>
           </div>
         </div>
@@ -126,7 +126,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
             </h2>
 
             <p className="text-gray-400 text-sm mb-3 leading-relaxed">
-              Deploy your site and get full account access — edit text, swap images, and update anything at any time.
+              Publish your site and get full account access — edit text, swap images, and update anything at any time.
             </p>
 
             <div className="space-y-1.5">
@@ -201,7 +201,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
                 <Loader2 className="animate-spin" size={18} />
               ) : (
                 <>
-                  Deploy My Site — $10/mo
+                  Publish My Site — $10/mo
                   <ArrowRight size={18} />
                 </>
               )}

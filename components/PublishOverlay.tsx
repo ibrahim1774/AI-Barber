@@ -103,7 +103,7 @@ export const PublishOverlay: React.FC<PublishOverlayProps> = ({
             Publishing your <span className="text-blue-500">changes</span>...
           </h2>
           <p className="text-[#888] text-sm text-center">
-            Uploading images and deploying your site
+            Uploading images and publishing your site
           </p>
         </>
       )}
@@ -116,7 +116,7 @@ export const PublishOverlay: React.FC<PublishOverlayProps> = ({
             </svg>
           </div>
           <h2 className="text-xl font-montserrat font-black uppercase tracking-[3px] mb-3 text-center">
-            Deploying... <span className="text-blue-500">{countdown}s</span>
+            Publishing... <span className="text-blue-500">{countdown}s</span>
           </h2>
         </>
       )}

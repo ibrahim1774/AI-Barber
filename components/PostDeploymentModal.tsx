@@ -31,7 +31,7 @@ export const PostDeploymentModal: React.FC<PostDeploymentModalProps> = ({
         </h2>
 
         <p className="text-[#999] text-sm mb-6">
-          Your website has been deployed successfully.
+          Your website has been published successfully.
         </p>
 
         {/* URL display */}

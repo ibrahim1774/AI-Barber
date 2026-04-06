@@ -517,7 +517,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
                 </svg>
               </button>
               <p className="text-[8px] md:text-[10px] font-bold uppercase tracking-wider text-[#f4a100] truncate">
-                Tap to edit text &amp; images, then deploy below.
+                Tap to edit text &amp; images, then publish below.
               </p>
             </div>
 

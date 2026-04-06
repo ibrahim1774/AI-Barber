@@ -428,7 +428,7 @@ const App: React.FC = () => {
                 YOUR SITE IS <span className="text-[#f4a100]">LIVE!</span>
               </h2>
               <p className="text-[#cccccc] text-sm mb-6 text-center max-w-md">
-                Your barbershop website has been deployed and is now live on the web.
+                Your barbershop website has been published and is now live on the web.
               </p>
               <div className="flex items-center gap-3 bg-[#1a1a1a] border border-white/10 rounded px-4 py-3 mb-8 max-w-md w-full">
                 <span className="text-[#f4a100] text-sm font-mono truncate">{deployResult.url}</span>
@@ -478,7 +478,7 @@ const App: React.FC = () => {
                 </svg>
               </div>
               <h2 className="text-2xl font-montserrat font-black uppercase tracking-[4px] mb-4 text-center">
-                DEPLOYMENT <span className="text-red-500">FAILED</span>
+                PUBLISHING <span className="text-red-500">FAILED</span>
               </h2>
               <p className="text-red-400 text-sm mb-8 text-center max-w-md">
                 {deployResult.error}
