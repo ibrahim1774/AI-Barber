@@ -22,7 +22,7 @@ export default async function handler(req: any, res: any) {
     }
 
     const isYearly = plan === 'yearly';
-    const unitAmount = isYearly ? '4900' : '1000';
+    const unitAmount = isYearly ? '7200' : '1000';
     const interval = isYearly ? 'year' : 'month';
     const productName = isYearly ? 'Prime Barber AI - Yearly Hosting' : 'Prime Barber AI - Monthly Hosting';
 
