@@ -51,68 +51,68 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
           </button>
         )}
 
-        {/* Left Side: Main Headline Section - Full Height */}
-        <div className="p-10 md:p-24 flex flex-col justify-center items-center text-center bg-[#1a1a1a] border-b md:border-b-0 md:border-r border-white/5 relative min-h-[40vh] md:min-h-screen">
-          <div className="relative z-10 pt-8 md:pt-0">
-            <h1 className="text-2xl md:text-5xl lg:text-6xl font-montserrat font-black uppercase tracking-[1px] md:tracking-[2px] leading-tight text-white mb-4 md:mb-8">
-              Generate Custom <br className="hidden md:block"/> Barbershop <br className="hidden md:block"/> Website <br/>
-              <span className="text-[#f4a100] mt-1 md:mt-2 block">in about 30 seconds</span>
+        {/* Left Side: Main Headline Section */}
+        <div className="px-6 py-12 md:p-16 flex flex-col justify-center items-center text-center bg-[#1a1a1a] border-b md:border-b-0 md:border-r border-white/5 relative md:min-h-screen">
+          <div className="relative z-10 pt-6 md:pt-0">
+            <h1 className="text-xl md:text-4xl lg:text-5xl font-montserrat font-black uppercase tracking-[1px] md:tracking-[2px] leading-[1.15] text-white mb-3 md:mb-5">
+              Generate Custom <br className="hidden md:block"/> Barbershop Website <br/>
+              <span className="text-[#f4a100] mt-1 block">in about 30 seconds</span>
             </h1>
 
-            <div className="w-12 md:w-20 h-1 bg-[#f4a100] mx-auto mb-4 md:mb-8"></div>
+            <div className="w-10 md:w-16 h-[3px] bg-[#f4a100] mx-auto mb-3 md:mb-5"></div>
 
-            <p className="text-white text-[9px] md:text-sm font-medium leading-relaxed uppercase tracking-[3px] md:tracking-[4px] max-w-[280px] md:max-w-sm mx-auto opacity-80">
-              AI-crafted luxury layouts tailored to your unique brand identity.
+            <p className="text-white text-[9px] md:text-xs font-medium leading-relaxed uppercase tracking-[2.5px] md:tracking-[3px] max-w-[280px] md:max-w-xs mx-auto opacity-80">
+              AI-crafted luxury layouts tailored to your brand.
             </p>
           </div>
         </div>
 
-        {/* Right Side: Form - Full Height and Centered Content */}
-        <div className="p-6 md:p-20 lg:p-32 bg-[#0d0d0d] flex flex-col justify-center min-h-[60vh] md:min-h-screen">
+        {/* Right Side: Form */}
+        <div className="px-6 py-10 md:px-16 md:py-12 lg:px-24 bg-[#0d0d0d] flex flex-col justify-center md:min-h-screen">
           <div className="max-w-xl w-full mx-auto">
-            <form onSubmit={handleSubmit} className="space-y-6 md:space-y-10">
-              <div className="space-y-1 md:space-y-2">
+            <form onSubmit={handleSubmit} className="space-y-4 md:space-y-5">
+              <div className="space-y-1">
                 <label className="block text-[10px] md:text-xs uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Barber Shop Name</label>
                 <input
                   required
                   type="text"
                   placeholder="The Gentlemen's Lounge"
-                  className="w-full bg-transparent border-b border-white/40 focus:border-[#f4a100] py-2 md:py-4 text-white transition-all outline-none font-montserrat text-sm md:text-xl placeholder:text-white/20"
+                  className="w-full bg-transparent border-b border-white/40 focus:border-[#f4a100] py-1.5 md:py-2.5 text-white transition-all outline-none font-montserrat text-sm md:text-lg placeholder:text-white/20"
                   value={inputs.shopName}
                   onChange={e => setInputs({...inputs, shopName: e.target.value})}
                 />
               </div>
 
-              <div className="space-y-1 md:space-y-2">
+              <div className="space-y-1">
                 <label className="block text-[10px] md:text-xs uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Service Area</label>
                 <input
                   required
                   type="text"
                   placeholder="Beverly Hills, CA"
-                  className="w-full bg-transparent border-b border-white/40 focus:border-[#f4a100] py-2 md:py-4 text-white transition-all outline-none font-montserrat text-sm md:text-xl placeholder:text-white/20"
+                  className="w-full bg-transparent border-b border-white/40 focus:border-[#f4a100] py-1.5 md:py-2.5 text-white transition-all outline-none font-montserrat text-sm md:text-lg placeholder:text-white/20"
                   value={inputs.area}
                   onChange={e => setInputs({...inputs, area: e.target.value})}
                 />
               </div>
 
-              <div className="space-y-1 md:space-y-2">
+              <div className="space-y-1">
                 <label className="block text-[10px] md:text-xs uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Phone Number</label>
                 <input
                   required
                   type="tel"
                   placeholder="+1 234 567 8900"
-                  className="w-full bg-transparent border-b border-white/40 focus:border-[#f4a100] py-2 md:py-4 text-white transition-all outline-none font-montserrat text-sm md:text-xl placeholder:text-white/20"
+                  className="w-full bg-transparent border-b border-white/40 focus:border-[#f4a100] py-1.5 md:py-2.5 text-white transition-all outline-none font-montserrat text-sm md:text-lg placeholder:text-white/20"
                   value={inputs.phone}
                   onChange={e => setInputs({...inputs, phone: e.target.value})}
                 />
               </div>
 
               {/* Template Picker */}
-              <div className="space-y-3 md:space-y-4 pt-2">
+              <div className="space-y-2 pt-1">
                 <label className="block text-[10px] md:text-xs uppercase tracking-[3px] md:tracking-[4px] text-white font-black">
                   Choose Your Design
                 </label>
-                <div className="grid grid-cols-2 gap-3 md:gap-4">
+                <div className="grid grid-cols-2 gap-2.5 md:gap-3">
                   <TemplateCard
                     id="luxe"
                     selected={inputs.template === 'luxe'}
@@ -134,16 +134,13 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
 
               <button
                 type="submit"
-                className="w-full py-4 md:py-6 mt-4 md:mt-8 bg-[#f4a100] text-[#1a1a1a] font-montserrat font-black uppercase tracking-[3px] md:tracking-[4px] text-[10px] md:text-sm hover:bg-white transition-all duration-500 shadow-[0_0_20px_rgba(244,161,0,0.15)] active:scale-[0.98]"
+                className="w-full py-3 md:py-4 mt-2 md:mt-3 bg-[#f4a100] text-[#1a1a1a] font-montserrat font-black uppercase tracking-[3px] md:tracking-[4px] text-[10px] md:text-sm hover:bg-white transition-all duration-500 shadow-[0_0_20px_rgba(244,161,0,0.15)] active:scale-[0.98]"
               >
-                <span className="flex flex-col leading-tight gap-0.5 md:gap-1">
-                  <span>Generate My</span>
-                  <span>Barbershop Website</span>
-                </span>
+                Generate My Barbershop Website
               </button>
             </form>
 
-            <div className="mt-8 md:mt-16 flex items-center justify-center gap-3 md:gap-4">
+            <div className="mt-5 md:mt-8 flex items-center justify-center gap-3 md:gap-4">
               <div className="h-[1px] flex-1 bg-white/10"></div>
               <p className="text-white/30 text-[7px] md:text-[9px] uppercase tracking-[3px] md:tracking-[5px] whitespace-nowrap">
                 Premium Builder • Prime Barber AI
@@ -184,15 +181,15 @@ const TemplateCard: React.FC<TemplateCardProps> = ({ id, selected, onSelect, nam
       </div>
 
       {/* Footer label */}
-      <div className="px-3 py-2.5 md:px-4 md:py-3 border-t border-white/10 bg-[#0d0d0d]">
+      <div className="px-2.5 py-1.5 md:px-3 md:py-2 border-t border-white/10 bg-[#0d0d0d]">
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
-            <p className="text-white text-[10px] md:text-xs font-montserrat font-black uppercase tracking-[2px] truncate">{name}</p>
-            <p className="text-white/40 text-[7px] md:text-[9px] uppercase tracking-[1.5px] mt-0.5 truncate">{tagline}</p>
+            <p className="text-white text-[9px] md:text-[11px] font-montserrat font-black uppercase tracking-[1.5px] truncate">{name}</p>
+            <p className="text-white/40 text-[7px] md:text-[8px] uppercase tracking-[1.5px] mt-0.5 truncate">{tagline}</p>
           </div>
           {selected && (
-            <div className="shrink-0 w-4 h-4 md:w-5 md:h-5 rounded-full bg-[#f4a100] flex items-center justify-center">
-              <svg className="w-2.5 h-2.5 md:w-3 md:h-3 text-[#1a1a1a]" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
+            <div className="shrink-0 w-3.5 h-3.5 md:w-4 md:h-4 rounded-full bg-[#f4a100] flex items-center justify-center">
+              <svg className="w-2 h-2 md:w-2.5 md:h-2.5 text-[#1a1a1a]" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             </div>

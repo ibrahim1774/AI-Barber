@@ -13,12 +13,11 @@ export async function publishSite(site: SiteInstance, userId: string | null): Pr
     .replace(/^-|-$/g, '')
     .substring(0, 50);
 
-  // Step 2: Upload any base64 images to GCS (sequential to avoid overload)
+  // Step 2: Collect base64 images, then upload in parallel
   const imageUrlMap: Record<string, string> = {};
   const imagesToUpload: Array<{ key: string; filename: string; base64: string }> = [];
   const timestamp = Date.now(); // Cache-busting: unique filename per publish
 
-  // Collect base64 images
   if (site.data.hero.imageUrl?.startsWith('data:')) {
     imagesToUpload.push({ key: 'hero', filename: `hero-${timestamp}.jpg`, base64: site.data.hero.imageUrl });
   } else if (site.data.hero.imageUrl?.startsWith('http')) {
@@ -39,20 +38,23 @@ export async function publishSite(site: SiteInstance, userId: string | null): Pr
     }
   });
 
-  // Sequential uploads (one at a time)
-  for (const image of imagesToUpload) {
-    const response = await fetch('/api/upload-image', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ siteId: siteSlug, filename: image.filename, base64: image.base64 }),
-    });
-    if (!response.ok) {
-      const errText = await response.text().catch(() => '');
-      throw new Error(`Image upload failed for ${image.key}: ${errText}`);
-    }
-    const { publicUrl } = await response.json();
-    imageUrlMap[image.key] = publicUrl;
-  }
+  // Parallel uploads — matches the pre-payment publish path. GCS handles
+  // concurrent writes fine; sequential here was making re-publish take 6–12s.
+  await Promise.all(
+    imagesToUpload.map(async (image) => {
+      const response = await fetch('/api/upload-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ siteId: siteSlug, filename: image.filename, base64: image.base64 }),
+      });
+      if (!response.ok) {
+        const errText = await response.text().catch(() => '');
+        throw new Error(`Image upload failed for ${image.key}: ${errText}`);
+      }
+      const { publicUrl } = await response.json();
+      imageUrlMap[image.key] = publicUrl;
+    })
+  );
 
   // Step 3: Generate HTML with placeholder markers
   const restoredSiteData: WebsiteData = {
