@@ -2,7 +2,9 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AppState, ShopInputs, WebsiteData, SiteInstance } from './types.ts';
 import { GeneratorForm } from './components/GeneratorForm.tsx';
 import { LoadingScreen } from './components/LoadingScreen.tsx';
-import { GeneratedWebsite, generateHTMLWithPlaceholders } from './components/GeneratedWebsite.tsx';
+import { GeneratedWebsite } from './components/GeneratedWebsite.tsx';
+import { EuphoriaWebsite } from './components/EuphoriaWebsite.tsx';
+import { generateHTMLForTemplate } from './services/templateRenderer.ts';
 import { generateContent } from './services/geminiService.ts';
 import { captureLead } from './services/leadCaptureService.ts';
 import { useAuth } from './contexts/AuthContext.tsx';
@@ -230,7 +232,7 @@ const App: React.FC = () => {
           ),
         };
 
-        const html = generateHTMLWithPlaceholders(restoredSiteData);
+        const html = generateHTMLForTemplate(restoredSiteData);
 
         // Step 3: Deploy to Vercel
         const deployResponse = await fetch('/api/deploy-site', {
@@ -404,14 +406,25 @@ const App: React.FC = () => {
       )}
       {state === 'loading' && <LoadingScreen />}
       {state === 'editor' && generatedData && (
-        <GeneratedWebsite
-          data={generatedData}
-          onBack={handleBack}
-          site={activeSite ?? undefined}
-          onNavigateDashboard={handleNavigateDashboard}
-          isPostPayment={!!activeSite?.deployedUrl}
-          userId={user?.id ?? null}
-        />
+        generatedData.template === 'euphoria' ? (
+          <EuphoriaWebsite
+            data={generatedData}
+            onBack={handleBack}
+            site={activeSite ?? undefined}
+            onNavigateDashboard={handleNavigateDashboard}
+            isPostPayment={!!activeSite?.deployedUrl}
+            userId={user?.id ?? null}
+          />
+        ) : (
+          <GeneratedWebsite
+            data={generatedData}
+            onBack={handleBack}
+            site={activeSite ?? undefined}
+            onNavigateDashboard={handleNavigateDashboard}
+            isPostPayment={!!activeSite?.deployedUrl}
+            userId={user?.id ?? null}
+          />
+        )
       )}
       {state === 'dashboard' && (
         <ManagementDashboard

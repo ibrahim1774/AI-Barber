@@ -1,5 +1,5 @@
 import { SiteInstance, WebsiteData } from '../types';
-import { generateHTMLWithPlaceholders } from '../components/GeneratedWebsite';
+import { generateHTMLForTemplate } from './templateRenderer';
 import { dualWriteSave } from './saveService';
 
 export async function publishSite(site: SiteInstance, userId: string | null): Promise<{ url: string; imageUrlMap: Record<string, string> }> {
@@ -64,7 +64,7 @@ export async function publishSite(site: SiteInstance, userId: string | null): Pr
     ),
   };
 
-  const html = generateHTMLWithPlaceholders(restoredSiteData);
+  const html = generateHTMLForTemplate(restoredSiteData);
 
   // Step 4: Deploy to Vercel
   const deployResponse = await fetch('/api/deploy-site', {

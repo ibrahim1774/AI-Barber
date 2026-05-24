@@ -1,8 +1,11 @@
 
+export type TemplateId = 'luxe' | 'euphoria';
+
 export interface ShopInputs {
   shopName: string;
   area: string;
   phone: string;
+  template?: TemplateId;
 }
 
 export interface ServiceItem {
@@ -17,6 +20,7 @@ export interface WebsiteData {
   shopName: string;
   area: string;
   phone: string;
+  template?: TemplateId;
   hero: {
     heading: string;
     tagline: string;

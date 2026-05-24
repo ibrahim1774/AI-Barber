@@ -75,11 +75,18 @@ export default async function handler(req: any, res: any) {
     });
 
     // 2. Prepare Image Generation Prompts (hero + about + 1 gallery)
-    const imagePrompts = [
-      `Cinematic hero image of a barber in a luxury shop in ${inputs.area}, moody atmosphere, professional photography, 16:9`,
-      `Interior of a premium barbershop, leather chairs, warm lighting, clean and professional atmosphere, editorial photography style`,
-      `A sharp skin fade haircut at ${inputs.shopName}, clean edges, 1:1`,
-    ];
+    const template = inputs.template === 'euphoria' ? 'euphoria' : 'luxe';
+    const imagePrompts = template === 'euphoria'
+      ? [
+          `Editorial portrait of a barber at work in ${inputs.area}, natural window light, muted desaturated tones, fine-art photography, soft shadows, 16:9`,
+          `Quiet interior of a refined barbershop, warm wood, soft daylight, simple and modern, magazine editorial style, calm and uncluttered`,
+          `Close-up of a clean classic haircut at ${inputs.shopName}, soft natural lighting, neutral palette, editorial detail shot, 1:1`,
+        ]
+      : [
+          `Cinematic hero image of a barber in a luxury shop in ${inputs.area}, moody atmosphere, professional photography, 16:9`,
+          `Interior of a premium barbershop, leather chairs, warm lighting, clean and professional atmosphere, editorial photography style`,
+          `A sharp skin fade haircut at ${inputs.shopName}, clean edges, 1:1`,
+        ];
 
     // Execute text and first few images in parallel to stay within timeout
     const [textResponse, ...imageResponses] = await Promise.all([
@@ -111,6 +118,7 @@ export default async function handler(req: any, res: any) {
       shopName: inputs.shopName,
       area: inputs.area,
       phone: inputs.phone,
+      template,
       hero: {
         heading: content.hero?.heading || `${inputs.shopName} in ${inputs.area}`,
         tagline: content.hero?.tagline || "Elite Grooming Standards",
