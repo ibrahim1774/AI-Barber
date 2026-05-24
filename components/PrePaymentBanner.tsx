@@ -11,7 +11,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
   const [isDismissed, setIsDismissed] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const [showHowItWorks, setShowHowItWorks] = useState(false);
-  const [pricingPlan, setPricingPlan] = useState<'monthly' | 'yearly'>('yearly');
+  const [pricingPlan, setPricingPlan] = useState<'monthly' | 'yearly'>('monthly');
 
   const displayIndustry = industry || 'barbershop';
 
@@ -58,7 +58,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
               <div className="absolute inset-0 w-2.5 h-2.5 bg-[#f4a100] rounded-full animate-ping" />
             </div>
             <p className="text-gray-300 text-sm leading-relaxed">
-              Just pay for hosting—{pricingPlan === 'yearly' ? <>it's <span className="text-white font-bold">$72/year</span> <span className="text-gray-500 line-through text-xs">$120/yr</span> — save 40%</> : <>it's <span className="text-white font-bold">$10/month</span></>}. You can make an account after publishing the site and change the text and images as well.
+              Just {pricingPlan === 'yearly' ? <><span className="text-white font-bold">$72/year</span> <span className="text-gray-500 line-through text-xs">$120/yr</span> — save 40%</> : <><span className="text-white font-bold">$10/month</span></>} for hosting. Edit your text and images anytime with a free account — and if you want a new design, we'll make one just for your shop.
             </p>
           </div>
 
