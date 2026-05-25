@@ -127,9 +127,12 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
                   <span className="text-[8px] md:text-[9px] uppercase tracking-[2px] text-[#f4a100]/80 border border-[#f4a100]/40 px-1.5 py-0.5">Optional</span>
                 </div>
                 <input
-                  type="url"
+                  type="text"
                   inputMode="url"
-                  placeholder="https://booksy.com/your-shop"
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  placeholder="booksy.com/your-shop"
                   className="w-full bg-transparent border-b border-white/40 focus:border-[#f4a100] py-1.5 md:py-2.5 text-white transition-all outline-none font-montserrat text-sm md:text-lg placeholder:text-white/20"
                   value={inputs.bookingUrl || ''}
                   onChange={e => setInputs({...inputs, bookingUrl: e.target.value})}
