@@ -33,7 +33,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
   };
 
   return (
-    <div className="min-h-screen bg-[#0d0d0d] flex items-stretch overflow-x-hidden">
+    <div className="md:min-h-screen bg-[#0d0d0d] flex items-start md:items-stretch overflow-x-hidden">
       <div className="w-full grid md:grid-cols-[40%_60%] luxury-gradient relative">
 
         {/* Logo in the Upper Left Hand Corner */}
@@ -55,7 +55,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
         )}
 
         {/* Left Side: Main Headline Section */}
-        <div className="px-6 py-12 md:p-16 flex flex-col justify-center items-center text-center border-b md:border-b-0 md:border-r border-white/5 relative md:min-h-screen overflow-hidden">
+        <div className="px-6 pt-16 pb-8 md:p-16 flex flex-col justify-center items-center text-center border-b md:border-b-0 md:border-r border-white/5 relative md:min-h-screen overflow-hidden">
           {/* Premium barbershop background */}
           <div
             className="absolute inset-0 bg-cover bg-center"
@@ -82,7 +82,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
         </div>
 
         {/* Right Side: Form */}
-        <div className="px-6 py-10 md:px-16 md:py-12 lg:px-24 bg-[#0d0d0d] flex flex-col justify-center md:min-h-screen">
+        <div className="px-6 pt-6 pb-10 md:px-16 md:py-12 lg:px-24 bg-[#0d0d0d] flex flex-col justify-center md:min-h-screen">
           <div className="max-w-xl w-full mx-auto">
             <form onSubmit={handleSubmit} className="space-y-4 md:space-y-5">
               <div className="space-y-1">
