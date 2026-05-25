@@ -254,6 +254,7 @@ ${EUPHORIA_SCOPED_CSS}
       </p>
       <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;">
         <a href="tel:${formattedPhone}" class="eu-cta eu-cta-solid">Call ${escapeHtml(siteData.phone)}</a>
+        ${siteData.bookingUrl ? `<a href="${escapeHtml(siteData.bookingUrl)}" target="_blank" rel="noopener noreferrer" class="eu-cta eu-cta-solid">Book Appointment</a>` : ''}
         <a href="#services" class="eu-cta">View services</a>
       </div>
     </div>
@@ -305,6 +306,7 @@ ${EUPHORIA_SCOPED_CSS}
           <div><div style="color:var(--eu-ink-muted);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;margin-bottom:6px;">Location</div>${escapeHtml(siteData.contact.address)}</div>
           <div><div style="color:var(--eu-ink-muted);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;margin-bottom:6px;">Phone</div><a href="tel:${formattedPhone}" style="color:var(--eu-ink);text-decoration:none;">${escapeHtml(siteData.phone)}</a></div>
           ${siteData.contact.email ? `<div><div style="color:var(--eu-ink-muted);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;margin-bottom:6px;">Email</div><a href="mailto:${escapeHtml(siteData.contact.email)}" style="color:var(--eu-ink);text-decoration:none;">${escapeHtml(siteData.contact.email)}</a></div>` : ''}
+          ${siteData.bookingUrl ? `<div style="margin-top:16px;"><a href="${escapeHtml(siteData.bookingUrl)}" target="_blank" rel="noopener noreferrer" class="eu-cta eu-cta-solid">Book Appointment</a></div>` : ''}
         </div>
       </div>
       <div>
@@ -340,6 +342,21 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
   const [isPublishing, setIsPublishing] = useState(false);
   const [showPublishOverlay, setShowPublishOverlay] = useState(false);
   const [imageInputKey, setImageInputKey] = useState(0);
+  const [showBookingToast, setShowBookingToast] = useState(false);
+
+  useEffect(() => {
+    if (!showBookingToast) return;
+    const t = setTimeout(() => setShowBookingToast(false), 4000);
+    return () => clearTimeout(t);
+  }, [showBookingToast]);
+
+  // Pre-deploy: explain instead of navigating. Post-deploy: follow the link.
+  const handleBookClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (!isPostPayment) {
+      e.preventDefault();
+      setShowBookingToast(true);
+    }
+  };
 
   const siteRef = useRef<SiteInstance | null>(site ?? null);
   useEffect(() => {
@@ -601,6 +618,17 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
             <a href={`tel:${formattedPhone}`} className="eu-cta eu-cta-solid">
               Call <Editable text={siteData.phone} onSave={v => handleTextChange('phone', v)} />
             </a>
+            {siteData.bookingUrl && (
+              <a
+                href={siteData.bookingUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={handleBookClick}
+                className="eu-cta eu-cta-solid"
+              >
+                Book Appointment
+              </a>
+            )}
             <a href="#services" className="eu-cta">View services</a>
           </div>
         </div>
@@ -728,6 +756,19 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
                   <Editable text={siteData.contact.email} onSave={v => handleTextChange('contact.email', v)} />
                 </div>
               )}
+              {siteData.bookingUrl && (
+                <div style={{ marginTop: 16 }}>
+                  <a
+                    href={siteData.bookingUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={handleBookClick}
+                    className="eu-cta eu-cta-solid"
+                  >
+                    Book Appointment
+                  </a>
+                </div>
+              )}
             </div>
           </div>
           <div>
@@ -768,6 +809,25 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
           onError={handlePublishError}
           onClose={handlePublishClose}
         />
+      )}
+
+      {/* Pre-deploy hint when the user taps a Book Appointment button in the preview */}
+      {showBookingToast && (
+        <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 150, maxWidth: 480, width: 'calc(100% - 32px)', background: '#0c0c0c', border: '1px solid rgba(232,192,116,0.4)', boxShadow: '0 20px 50px rgba(0,0,0,0.5)', padding: '14px 16px', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+          <div style={{ flexShrink: 0, width: 8, height: 8, borderRadius: '50%', background: '#e8c074', marginTop: 6 }} />
+          <p style={{ flex: 1, margin: 0, color: '#f0ece4', fontSize: 14, lineHeight: 1.5 }}>
+            After you publish below, customers who tap <strong style={{ color: '#e8c074' }}>Book Appointment</strong> will land on your booking page.
+          </p>
+          <button
+            onClick={() => setShowBookingToast(false)}
+            style={{ flexShrink: 0, background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', padding: 0 }}
+            aria-label="Dismiss"
+          >
+            <svg style={{ width: 16, height: 16 }} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
       )}
     </div>
   );

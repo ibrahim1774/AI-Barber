@@ -119,6 +119,7 @@ export default async function handler(req: any, res: any) {
       area: inputs.area,
       phone: inputs.phone,
       template,
+      bookingUrl: inputs.bookingUrl || undefined,
       hero: {
         heading: content.hero?.heading || `${inputs.shopName} in ${inputs.area}`,
         tagline: content.hero?.tagline || "Elite Grooming Standards",

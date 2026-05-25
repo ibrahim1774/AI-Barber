@@ -116,9 +116,12 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
       <h1 class="text-3xl md:text-6xl lg:text-7xl font-montserrat font-black text-white leading-tight uppercase tracking-[1px] md:tracking-[4px] mb-8 md:mb-12">
         ${siteData.hero.heading}
       </h1>
-      <a href="tel:${formattedPhone}" class="inline-flex items-center gap-3 border-2 border-[#f4a100] text-[#f4a100] px-6 py-4 md:px-12 md:py-6 font-montserrat font-black tracking-[2px] uppercase hover:bg-[#f4a100] hover:text-[#1a1a1a] transition-all duration-300 group shadow-lg text-xs md:text-base">
-        <span>Call Now: ${siteData.phone}</span>
-      </a>
+      <div class="flex flex-col sm:flex-row items-center justify-center gap-3 md:gap-4">
+        <a href="tel:${formattedPhone}" class="inline-flex items-center gap-3 border-2 border-[#f4a100] text-[#f4a100] px-6 py-4 md:px-12 md:py-6 font-montserrat font-black tracking-[2px] uppercase hover:bg-[#f4a100] hover:text-[#1a1a1a] transition-all duration-300 group shadow-lg text-xs md:text-base">
+          <span>Call Now: ${siteData.phone}</span>
+        </a>
+        ${siteData.bookingUrl ? `<a href="${siteData.bookingUrl}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-3 bg-[#f4a100] text-[#1a1a1a] px-6 py-4 md:px-12 md:py-6 font-montserrat font-black tracking-[2px] uppercase hover:bg-white transition-all duration-300 shadow-lg text-xs md:text-base"><span>Book Appointment</span></a>` : ''}
+      </div>
     </div>
   </section>
 
@@ -169,6 +172,7 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
           <h4 class="text-[#f4a100] font-bold text-[10px] md:text-xs tracking-[2px] mb-1 md:mb-2 font-montserrat">PHONE</h4>
           <p class="text-[#cccccc] text-xs md:text-sm leading-relaxed">${siteData.phone}</p>
         </div>
+        ${siteData.bookingUrl ? `<div class="pt-4"><a href="${siteData.bookingUrl}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-3 bg-[#f4a100] text-[#1a1a1a] px-8 py-4 md:px-12 md:py-5 font-montserrat font-black tracking-[2px] uppercase hover:bg-white transition-all duration-300 shadow-lg text-xs md:text-sm">Book Appointment</a></div>` : ''}
       </div>
     </div>
   </section>
@@ -214,6 +218,23 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
   const [isPublishing, setIsPublishing] = useState(false);
   const [showPublishOverlay, setShowPublishOverlay] = useState(false);
   const [imageInputKey, setImageInputKey] = useState(0);
+  const [showBookingToast, setShowBookingToast] = useState(false);
+
+  // Auto-dismiss the booking-CTA hint
+  useEffect(() => {
+    if (!showBookingToast) return;
+    const t = setTimeout(() => setShowBookingToast(false), 4000);
+    return () => clearTimeout(t);
+  }, [showBookingToast]);
+
+  // Pre-deploy: clicking a Book button shows the explanation toast instead of navigating.
+  // Post-deploy: lets the browser follow the link (open in new tab).
+  const handleBookClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (!isPostPayment) {
+      e.preventDefault();
+      setShowBookingToast(true);
+    }
+  };
 
   // Keep a ref to the current site instance for auto-save
   const siteRef = useRef<SiteInstance | null>(site ?? null);
@@ -617,13 +638,26 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
             <EditableText text={siteData.hero.heading} onSave={(val) => handleTextChange('hero.heading', val)} />
           </h1>
 
-          <a
-            href={`tel:${formattedPhone}`}
-            className="inline-flex items-center gap-3 border-2 border-[#f4a100] text-[#f4a100] px-6 py-4 md:px-12 md:py-6 font-montserrat font-black tracking-[2px] uppercase hover:bg-[#f4a100] hover:text-[#1a1a1a] transition-all duration-300 group shadow-lg text-xs md:text-base"
-          >
-            <PhoneIcon className="w-4 h-4 md:w-5 md:h-5 group-hover:scale-110 transition-transform" />
-            <span>Call Now: <EditableText text={siteData.phone} onSave={(val) => handleTextChange('phone', val)} /></span>
-          </a>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 md:gap-4">
+            <a
+              href={`tel:${formattedPhone}`}
+              className="inline-flex items-center gap-3 border-2 border-[#f4a100] text-[#f4a100] px-6 py-4 md:px-12 md:py-6 font-montserrat font-black tracking-[2px] uppercase hover:bg-[#f4a100] hover:text-[#1a1a1a] transition-all duration-300 group shadow-lg text-xs md:text-base"
+            >
+              <PhoneIcon className="w-4 h-4 md:w-5 md:h-5 group-hover:scale-110 transition-transform" />
+              <span>Call Now: <EditableText text={siteData.phone} onSave={(val) => handleTextChange('phone', val)} /></span>
+            </a>
+            {siteData.bookingUrl && (
+              <a
+                href={siteData.bookingUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={handleBookClick}
+                className="inline-flex items-center gap-3 bg-[#f4a100] text-[#1a1a1a] px-6 py-4 md:px-12 md:py-6 font-montserrat font-black tracking-[2px] uppercase hover:bg-white transition-all duration-300 shadow-lg text-xs md:text-base"
+              >
+                <span>Book Appointment</span>
+              </a>
+            )}
+          </div>
         </div>
 
         {/* Feature Cards */}
@@ -777,6 +811,17 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
               </a>
             </div>
 
+            {siteData.bookingUrl && (
+              <a
+                href={siteData.bookingUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={handleBookClick}
+                className="inline-flex items-center gap-3 bg-[#f4a100] text-[#1a1a1a] px-8 py-4 md:px-12 md:py-5 mt-8 md:mt-12 font-montserrat font-black tracking-[2px] uppercase hover:bg-white transition-all duration-300 shadow-lg text-xs md:text-sm"
+              >
+                Book Appointment
+              </a>
+            )}
           </div>
         </div>
       </section>
@@ -833,6 +878,25 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           onError={handlePublishError}
           onClose={handlePublishClose}
         />
+      )}
+
+      {/* Pre-deploy hint when the user taps a Book Appointment button in the preview */}
+      {showBookingToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[150] max-w-md w-[calc(100%-2rem)] bg-[#1a1a1a] border border-[#f4a100]/40 shadow-2xl px-4 py-3 flex items-start gap-3 animate-[fadeIn_200ms_ease-out]">
+          <div className="shrink-0 w-2 h-2 rounded-full bg-[#f4a100] mt-1.5" />
+          <p className="text-white text-xs md:text-sm leading-relaxed flex-1">
+            After you publish below, customers who tap <span className="text-[#f4a100] font-bold">Book Appointment</span> will land on your booking page.
+          </p>
+          <button
+            onClick={() => setShowBookingToast(false)}
+            className="shrink-0 text-white/40 hover:text-white transition-colors"
+            aria-label="Dismiss"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
       )}
     </div>
   );

@@ -6,6 +6,7 @@ export interface ShopInputs {
   area: string;
   phone: string;
   template?: TemplateId;
+  bookingUrl?: string;
 }
 
 export interface ServiceItem {
@@ -21,6 +22,7 @@ export interface WebsiteData {
   area: string;
   phone: string;
   template?: TemplateId;
+  bookingUrl?: string;
   hero: {
     heading: string;
     tagline: string;

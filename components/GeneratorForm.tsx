@@ -14,12 +14,21 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
     area: '',
     phone: '',
     template: 'luxe',
+    bookingUrl: '',
   });
+
+  // Normalize a user-entered booking link: trim, drop if empty, prepend https:// if missing.
+  const normalizeBookingUrl = (raw: string): string | undefined => {
+    const trimmed = raw.trim();
+    if (!trimmed) return undefined;
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    return `https://${trimmed}`;
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (inputs.shopName && inputs.area && inputs.phone) {
-      onGenerate(inputs);
+      onGenerate({ ...inputs, bookingUrl: normalizeBookingUrl(inputs.bookingUrl || '') });
     }
   };
 
@@ -46,16 +55,27 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
         )}
 
         {/* Left Side: Main Headline Section */}
-        <div className="px-6 py-12 md:p-16 flex flex-col justify-center items-center text-center bg-[#1a1a1a] border-b md:border-b-0 md:border-r border-white/5 relative md:min-h-screen">
+        <div className="px-6 py-12 md:p-16 flex flex-col justify-center items-center text-center border-b md:border-b-0 md:border-r border-white/5 relative md:min-h-screen overflow-hidden">
+          {/* Premium barbershop background */}
+          <div
+            className="absolute inset-0 bg-cover bg-center"
+            style={{
+              backgroundImage:
+                "url('https://images.unsplash.com/photo-1503951914875-452162b0f3f1?auto=format&fit=crop&w=1920&q=80')",
+            }}
+            aria-hidden="true"
+          />
+          {/* Darkening overlay for text legibility */}
+          <div className="absolute inset-0 bg-gradient-to-br from-black/85 via-black/70 to-black/85" aria-hidden="true" />
           <div className="relative z-10 pt-6 md:pt-0">
             <h1 className="text-xl md:text-4xl lg:text-5xl font-montserrat font-black uppercase tracking-[1px] md:tracking-[2px] leading-[1.15] text-white mb-3 md:mb-5">
               Generate Custom <br className="hidden md:block"/> Barbershop Website <br/>
-              <span className="text-[#f4a100] mt-1 block">in about 30 seconds</span>
+              <span className="text-[#f4a100] mt-1 block">in about 15 seconds</span>
             </h1>
 
             <div className="w-10 md:w-16 h-[3px] bg-[#f4a100] mx-auto mb-3 md:mb-5"></div>
 
-            <p className="text-white text-[9px] md:text-xs font-medium leading-relaxed uppercase tracking-[2.5px] md:tracking-[3px] max-w-[280px] md:max-w-xs mx-auto opacity-80">
+            <p className="text-white text-[9px] md:text-xs font-medium leading-relaxed uppercase tracking-[2.5px] md:tracking-[3px] max-w-[280px] md:max-w-xs mx-auto opacity-90">
               AI-crafted luxury layouts tailored to your brand.
             </p>
           </div>
@@ -99,6 +119,22 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
                   value={inputs.phone}
                   onChange={e => setInputs({...inputs, phone: e.target.value})}
                 />
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <label className="block text-[10px] md:text-xs uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Booking Link</label>
+                  <span className="text-[8px] md:text-[9px] uppercase tracking-[2px] text-[#f4a100]/80 border border-[#f4a100]/40 px-1.5 py-0.5">Optional</span>
+                </div>
+                <input
+                  type="url"
+                  inputMode="url"
+                  placeholder="https://booksy.com/your-shop"
+                  className="w-full bg-transparent border-b border-white/40 focus:border-[#f4a100] py-1.5 md:py-2.5 text-white transition-all outline-none font-montserrat text-sm md:text-lg placeholder:text-white/20"
+                  value={inputs.bookingUrl || ''}
+                  onChange={e => setInputs({...inputs, bookingUrl: e.target.value})}
+                />
+                <p className="text-white/40 text-[9px] md:text-[10px] mt-1">Booksy, Cal.com, Vagaro — any booking page works.</p>
               </div>
 
               <button
