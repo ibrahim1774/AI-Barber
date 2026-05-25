@@ -16,6 +16,7 @@ export const captureLead = (inputs: ShopInputs): Promise<void> => {
       companyName: inputs.shopName,
       location: inputs.area,
       phone: inputs.phone,
+      bookingLink: inputs.bookingUrl || "",
       brandColor: "#f4a100",
       timestamp: new Date().toISOString(),
       source: window.location.hostname,
