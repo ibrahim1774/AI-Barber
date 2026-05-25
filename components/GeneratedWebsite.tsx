@@ -882,20 +882,25 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
 
       {/* Pre-deploy hint when the user taps a Book Appointment button in the preview */}
       {showBookingToast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[150] max-w-md w-[calc(100%-2rem)] bg-[#1a1a1a] border border-[#f4a100]/40 shadow-2xl px-4 py-3 flex items-start gap-3 animate-[fadeIn_200ms_ease-out]">
-          <div className="shrink-0 w-2 h-2 rounded-full bg-[#f4a100] mt-1.5" />
-          <p className="text-white text-xs md:text-sm leading-relaxed flex-1">
-            After you publish below, customers who tap <span className="text-[#f4a100] font-bold">Book Appointment</span> will land on your booking page.
-          </p>
-          <button
-            onClick={() => setShowBookingToast(false)}
-            className="shrink-0 text-white/40 hover:text-white transition-colors"
-            aria-label="Dismiss"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+        <div
+          className="fixed inset-0 z-[150] flex items-center justify-center px-4 pointer-events-none"
+          aria-live="polite"
+        >
+          <div className="pointer-events-auto max-w-md w-full bg-[#1a1a1a] border border-[#f4a100]/40 shadow-[0_20px_60px_rgba(0,0,0,0.6)] px-5 py-5 flex items-start gap-3">
+            <div className="shrink-0 w-2 h-2 rounded-full bg-[#f4a100] mt-2" />
+            <p className="text-white text-sm md:text-base leading-relaxed flex-1">
+              After you publish below, customers who tap <span className="text-[#f4a100] font-bold">Book Appointment</span> will land on your booking page.
+            </p>
+            <button
+              onClick={() => setShowBookingToast(false)}
+              className="shrink-0 text-white/40 hover:text-white transition-colors -mt-1 -mr-1"
+              aria-label="Dismiss"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
       )}
     </div>

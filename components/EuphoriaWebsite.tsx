@@ -813,20 +813,35 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
 
       {/* Pre-deploy hint when the user taps a Book Appointment button in the preview */}
       {showBookingToast && (
-        <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 150, maxWidth: 480, width: 'calc(100% - 32px)', background: '#0c0c0c', border: '1px solid rgba(232,192,116,0.4)', boxShadow: '0 20px 50px rgba(0,0,0,0.5)', padding: '14px 16px', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-          <div style={{ flexShrink: 0, width: 8, height: 8, borderRadius: '50%', background: '#e8c074', marginTop: 6 }} />
-          <p style={{ flex: 1, margin: 0, color: '#f0ece4', fontSize: 14, lineHeight: 1.5 }}>
-            After you publish below, customers who tap <strong style={{ color: '#e8c074' }}>Book Appointment</strong> will land on your booking page.
-          </p>
-          <button
-            onClick={() => setShowBookingToast(false)}
-            style={{ flexShrink: 0, background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', padding: 0 }}
-            aria-label="Dismiss"
+        <div
+          style={{ position: 'fixed', inset: 0, zIndex: 150, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, pointerEvents: 'none' }}
+          aria-live="polite"
+        >
+          <div
+            style={{
+              pointerEvents: 'auto',
+              maxWidth: 480, width: '100%',
+              background: '#0c0c0c',
+              border: '1px solid rgba(232,192,116,0.4)',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
+              padding: '20px',
+              display: 'flex', alignItems: 'flex-start', gap: 12,
+            }}
           >
-            <svg style={{ width: 16, height: 16 }} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+            <div style={{ flexShrink: 0, width: 8, height: 8, borderRadius: '50%', background: '#e8c074', marginTop: 8 }} />
+            <p style={{ flex: 1, margin: 0, color: '#f0ece4', fontSize: 15, lineHeight: 1.5 }}>
+              After you publish below, customers who tap <strong style={{ color: '#e8c074' }}>Book Appointment</strong> will land on your booking page.
+            </p>
+            <button
+              onClick={() => setShowBookingToast(false)}
+              style={{ flexShrink: 0, background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', padding: 0, marginTop: -4, marginRight: -4 }}
+              aria-label="Dismiss"
+            >
+              <svg style={{ width: 18, height: 18 }} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
       )}
     </div>

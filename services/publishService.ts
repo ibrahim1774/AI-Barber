@@ -3,8 +3,12 @@ import { generateHTMLForTemplate } from './templateRenderer';
 import { dualWriteSave } from './saveService';
 
 export async function publishSite(site: SiteInstance, userId: string | null): Promise<{ url: string; imageUrlMap: Record<string, string> }> {
-  // Step 1: Force save before publish
-  await dualWriteSave(site, userId);
+  // Step 1: Save before publish — fire-and-forget so it doesn't gate the deploy.
+  // Failures only mean the local snapshot lags; the post-publish save (with the
+  // deployed URL stamped on) is the one that actually matters.
+  dualWriteSave(site, userId).catch(err =>
+    console.error('[publishSite] Pre-deploy save failed (non-blocking):', err)
+  );
 
   const siteSlug = site.data.shopName
     .toLowerCase()

@@ -23,7 +23,7 @@ import { PostDeploymentModal } from './components/PostDeploymentModal.tsx';
 import { ManagementDashboard } from './components/ManagementDashboard.tsx';
 import { AuthModal } from './components/AuthModal.tsx';
 
-const DEPLOY_TIMER_SECONDS = 15;
+const DEPLOY_TIMER_SECONDS = 5;
 
 const App: React.FC = () => {
   const { isAuthenticated, isLoading: authLoading, user, signOut } = useAuth();

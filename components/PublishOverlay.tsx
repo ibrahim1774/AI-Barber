@@ -20,8 +20,7 @@ export const PublishOverlay: React.FC<PublishOverlayProps> = ({
   onError,
   onClose,
 }) => {
-  const [phase, setPhase] = useState<'publishing' | 'countdown' | 'success' | 'error'>('publishing');
-  const [countdown, setCountdown] = useState(3);
+  const [phase, setPhase] = useState<'publishing' | 'success' | 'error'>('publishing');
   const [errorMessage, setErrorMessage] = useState('');
   const [deployedUrl, setDeployedUrl] = useState('');
 
@@ -60,22 +59,10 @@ export const PublishOverlay: React.FC<PublishOverlayProps> = ({
           console.error('[PublishOverlay] Post-publish save error:', err)
         );
 
-        // Start countdown
-        setPhase('countdown');
-        let remaining = 3;
-        const interval = setInterval(() => {
-          remaining -= 1;
-          setCountdown(remaining);
-          if (remaining <= 0) {
-            clearInterval(interval);
-            setPhase('success');
-            onComplete(result.url);
-            // Auto-open the live site after 1 second
-            setTimeout(() => {
-              window.open(result.url, '_blank');
-            }, 1000);
-          }
-        }, 1000);
+        // Go straight to success — no artificial countdown, no delay before opening
+        setPhase('success');
+        onComplete(result.url);
+        window.open(result.url, '_blank');
       } catch (err: any) {
         if (cancelled) return;
         console.error('[Publish] Error:', err);
@@ -105,19 +92,6 @@ export const PublishOverlay: React.FC<PublishOverlayProps> = ({
           <p className="text-[#888] text-sm text-center">
             Uploading images and publishing your site
           </p>
-        </>
-      )}
-
-      {phase === 'countdown' && (
-        <>
-          <div className="mb-6">
-            <svg className="w-14 h-14 text-blue-500 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-          </div>
-          <h2 className="text-xl font-montserrat font-black uppercase tracking-[3px] mb-3 text-center">
-            Publishing... <span className="text-blue-500">{countdown}s</span>
-          </h2>
         </>
       )}
 
