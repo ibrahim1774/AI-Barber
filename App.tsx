@@ -1,5 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AppState, ShopInputs, WebsiteData, SiteInstance } from './types.ts';
+
+// Meta Pixel global (loaded in index.html). `fbq` is added to window at runtime.
+declare global {
+  interface Window {
+    fbq?: (...args: any[]) => void;
+  }
+}
+
 import { GeneratorForm } from './components/GeneratorForm.tsx';
 import { LoadingScreen } from './components/LoadingScreen.tsx';
 import { GeneratedWebsite } from './components/GeneratedWebsite.tsx';
@@ -256,14 +264,29 @@ const App: React.FC = () => {
 
         console.log('[Deploy] Site deployed:', deployData.deploymentUrl);
 
-        // Step 4: Fire Facebook CAPI Purchase event (fire-and-forget)
+        // Step 4: Fire Meta Purchase event — browser pixel + CAPI dedupe on event_id.
+        // Use the verified amount from Stripe rather than a hardcoded value.
+        const purchaseValue = typeof verifyResult.amountTotal === 'number' ? verifyResult.amountTotal : 10.0;
+        const purchaseCurrency = verifyResult.currency || 'USD';
+
+        try {
+          window.fbq?.(
+            'track',
+            'Purchase',
+            { value: purchaseValue, currency: purchaseCurrency },
+            { eventID: sessionId }
+          );
+        } catch (err) {
+          console.warn('[FB Pixel Purchase] browser fire failed:', err);
+        }
+
         fetch('/api/fb-purchase', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             eventId: sessionId,
-            value: 10.0,
-            currency: 'USD',
+            value: purchaseValue,
+            currency: purchaseCurrency,
             customerEmail: verifyResult.customerEmail || null,
             eventSourceUrl: window.location.origin,
             clientUserAgent: navigator.userAgent,
@@ -317,6 +340,26 @@ const App: React.FC = () => {
 
   const handleGenerate = async (inputs: ShopInputs) => {
     captureLead(inputs).catch((err) => console.error("[Lead Capture] Error (non-blocking):", err));
+
+    // Meta Lead event — browser pixel + CAPI share the same event_id for dedupe
+    const leadEventId = `lead_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    try {
+      window.fbq?.('track', 'Lead', { content_name: 'Barbershop Site Generated' }, { eventID: leadEventId });
+    } catch (err) {
+      console.warn('[FB Pixel Lead] browser fire failed:', err);
+    }
+    fetch('/api/fb-lead', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        eventId: leadEventId,
+        phone: inputs.phone || null,
+        contentName: 'Barbershop Site Generated',
+        eventSourceUrl: window.location.origin,
+        clientUserAgent: navigator.userAgent,
+      }),
+    }).catch((err) => console.error('[FB CAPI Lead] Error (non-blocking):', err));
+
     sessionStorage.setItem('pendingFormInputs', JSON.stringify(inputs));
     setState('loading');
     try {

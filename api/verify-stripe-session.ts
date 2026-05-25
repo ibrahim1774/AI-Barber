@@ -44,9 +44,14 @@ export default async function handler(req: any, res: any) {
     const session = await response.json();
 
     if (session.payment_status === 'paid') {
+      // amount_total is in the smallest currency unit (cents for USD)
+      const amountTotal = typeof session.amount_total === 'number' ? session.amount_total / 100 : null;
       return res.status(200).json({
         verified: true,
         customerEmail: session.customer_details?.email || null,
+        amountTotal,
+        currency: (session.currency || 'usd').toUpperCase(),
+        plan: session.metadata?.plan || null,
       });
     }
 
