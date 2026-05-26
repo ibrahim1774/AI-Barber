@@ -18,7 +18,14 @@ export const captureLead = (inputs: ShopInputs): Promise<void> => {
       phone: inputs.phone,
       bookingLink: inputs.bookingUrl || "",
       brandColor: "#f4a100",
-      timestamp: new Date().toISOString(),
+      timestamp: new Date().toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      }),
       source: window.location.hostname,
     }),
   }).then(() => {
