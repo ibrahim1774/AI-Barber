@@ -25,7 +25,7 @@ export default async function handler(req: any, res: any) {
       Hero heading must be SHORT (max 5 words), punchy, and include only the shop name ("${inputs.shopName}"). Do NOT include the area in the heading.
       Include: 
       1. A catchy hero heading and tagline.
-      2. "About Us" section with 2 detailed paragraphs.
+      2. "About Us" section: ONE short paragraph, 2-3 sentences, max 50 words. Keep it GENERIC and welcoming — describe the type of services and reference the area. Do NOT invent specifics: no claims about years of experience, awards, customer count, reputation, "master barbers", "decades of craft", "renowned", or anything that cannot be verified. Stick to factual, neutral, friendly language. Return as a single-element array.
       3. Details for 5 services: Classic Haircut, Beard Trim & Styling, Hot Towel Shave, Skin Fade, and Hair & Scalp Treatment.
       4. A professional email.`,
       config: {
