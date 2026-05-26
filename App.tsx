@@ -365,7 +365,23 @@ const App: React.FC = () => {
     try {
       const data = await generateContent(inputs);
       setGeneratedData(data);
-      persistView('editor');
+
+      // Persist a draft SiteInstance to IndexedDB so refresh, navigate-away,
+      // and back-from-Stripe restore the generated site instead of dropping
+      // the user back to the form. Marked 'draft' until publish completes.
+      const draftSite: SiteInstance = {
+        id: crypto.randomUUID(),
+        data,
+        lastSaved: Date.now(),
+        formInputs: inputs,
+        deployedUrl: null,
+        deploymentStatus: 'draft',
+        customDomain: null,
+        domainOrderId: null,
+      };
+      await saveSite(draftSite);
+      setActiveSite(draftSite);
+      persistView('editor', draftSite.id);
       sessionStorage.removeItem('pendingFormInputs');
     } catch (error: any) {
       if (document.hidden && sessionStorage.getItem('pendingFormInputs')) {
