@@ -177,6 +177,22 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
     </div>
   </section>
 
+  <section id="find-us" class="py-12 md:py-20 bg-[#0d0d0d] px-4 md:px-6 border-t border-white/5">
+    <div class="container mx-auto max-w-4xl text-center">
+      <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-3 md:mb-4 font-montserrat">Find Us</h3>
+      <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px] mb-8 md:mb-12">Stop By</h2>
+      <div class="bg-[#1a1a1a] p-1 border border-white/5">
+        <iframe
+          title="${siteData.shopName.replace(/"/g, '&quot;')} on Google Maps"
+          src="https://maps.google.com/maps?q=${encodeURIComponent(`${siteData.shopName} ${siteData.contact.address}`)}&output=embed"
+          width="100%" height="360"
+          loading="lazy"
+          referrerpolicy="no-referrer-when-downgrade"
+          style="border:0;display:block;filter:grayscale(0.2) contrast(1.05);"></iframe>
+      </div>
+    </div>
+  </section>
+
   <footer class="py-12 md:py-20 bg-[#0a0a0a] border-t border-white/5 text-center">
     <div class="container mx-auto px-6">
       <span class="font-montserrat font-black text-sm md:text-2xl tracking-[2px] md:tracking-[4px] uppercase">
@@ -822,6 +838,25 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
                 Book Appointment
               </a>
             )}
+          </div>
+        </div>
+      </section>
+
+      {/* Find Us — Google Maps embed driven by the entered address */}
+      <section id="find-us" className="py-12 md:py-20 bg-[#0d0d0d] px-4 md:px-6 border-t border-white/5">
+        <div className="container mx-auto max-w-4xl text-center">
+          <h3 className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-3 md:mb-4 font-montserrat">Find Us</h3>
+          <h2 className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px] mb-8 md:mb-12">Stop By</h2>
+          <div className="bg-[#1a1a1a] p-1 border border-white/5">
+            <iframe
+              title={`${siteData.shopName} on Google Maps`}
+              src={`https://maps.google.com/maps?q=${encodeURIComponent(`${siteData.shopName} ${siteData.contact.address}`)}&output=embed`}
+              width="100%"
+              height={360}
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+              style={{ border: 0, display: 'block', filter: 'grayscale(0.2) contrast(1.05)' }}
+            />
           </div>
         </div>
       </section>
