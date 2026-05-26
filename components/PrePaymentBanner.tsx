@@ -143,7 +143,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
             </h2>
 
             <p className="text-gray-400 text-sm mb-3 leading-relaxed">
-              Publish your site and get full account access — edit text, swap images, and update anything at any time.
+              Publish your site and get full account access — edit text and swap images anytime from your account
             </p>
 
             {/* Monthly / Yearly Toggle (modal) */}
