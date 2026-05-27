@@ -163,14 +163,14 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
             <button
               type="button"
               onClick={() => { setWizardStep(0); setShowCustomWizard(true); }}
-              className="group mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg border border-[#e8c074]/30 bg-[#e8c074]/5 px-3 py-2 text-[11px] text-gray-300 transition hover:border-[#e8c074]/60 hover:bg-[#e8c074]/10 hover:text-white"
+              className="group mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-[#e8c074]/30 bg-[#e8c074]/5 px-4 py-3 text-sm text-gray-200 transition hover:border-[#e8c074]/60 hover:bg-[#e8c074]/10 hover:text-white"
             >
-              <Sparkles size={12} className="text-[#e8c074]" />
+              <Sparkles size={15} className="text-[#e8c074]" />
               <span>
                 Don't like the design? Get a custom one —{' '}
                 <span className="font-semibold text-[#e8c074]">$20/mo</span>
               </span>
-              <ArrowRight size={11} className="transition group-hover:translate-x-0.5 text-[#e8c074]" />
+              <ArrowRight size={14} className="text-[#e8c074] transition group-hover:translate-x-0.5" />
             </button>
           )}
         </div>
