@@ -25,6 +25,11 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
   // Computed once on mount; URL doesn't change within a session.
   const fiveDeal = React.useMemo(() => isFiveDealPath(), []);
 
+  // Custom-design upsell: $20/mo on /5, $25/mo everywhere else (homepage).
+  const customPlan: 'custom' | 'custom25' = fiveDeal ? 'custom' : 'custom25';
+  const customPriceLabel = fiveDeal ? '$20/mo' : '$25/mo';
+  const customPriceFull = fiveDeal ? '$20/month' : '$25/month';
+
   const [isDismissed, setIsDismissed] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const [showHowItWorks, setShowHowItWorks] = useState(false);
@@ -33,16 +38,26 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
   const [isCustomCheckingOut, setIsCustomCheckingOut] = useState(false);
   const [pricingPlan, setPricingPlan] = useState<'monthly' | 'yearly'>('monthly');
 
-  // Kicks off the $20/mo custom-design Stripe checkout. After success the
-  // backend routes the customer to the Google Form to capture their
-  // design preferences (style, booking provider, photos, etc).
+  // Cancel any in-flight checkout fetch when the wizard is closed so the
+  // step-4 button doesn't stay stuck in its loading state on reopen.
+  const customCheckoutAbortRef = React.useRef<AbortController | null>(null);
+
+  // Kicks off the custom-design Stripe checkout. The plan ($20 or $25) is
+  // determined by the page the visitor is on. After success the backend
+  // routes the customer to the Google Form to capture preferences.
   const handleCustomCheckout = async () => {
+    // Abort any prior in-flight request before starting a new one
+    customCheckoutAbortRef.current?.abort();
+    const controller = new AbortController();
+    customCheckoutAbortRef.current = controller;
+
     setIsCustomCheckingOut(true);
     try {
       const response = await fetch('/api/create-checkout-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ siteId: 'custom-design-request', plan: 'custom' }),
+        body: JSON.stringify({ siteId: 'custom-design-request', plan: customPlan }),
+        signal: controller.signal,
       });
       const data = await response.json();
       if (!response.ok || !data.url) {
@@ -50,10 +65,19 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
       }
       window.location.href = data.url;
     } catch (err: any) {
+      if (err?.name === 'AbortError') return; // user closed wizard mid-flight
       console.error('[Custom Design] checkout error:', err);
       alert(err.message || 'Could not start checkout. Please try again.');
       setIsCustomCheckingOut(false);
     }
+  };
+
+  const closeCustomWizard = () => {
+    customCheckoutAbortRef.current?.abort();
+    customCheckoutAbortRef.current = null;
+    setShowCustomWizard(false);
+    setWizardStep(0);
+    setIsCustomCheckingOut(false);
   };
 
   const displayIndustry = industry || 'barbershop';
@@ -156,23 +180,20 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
             </button>
           </div>
 
-          {/* /5-only — "Don't like the design? Get a custom one for $20/mo".
-              Lives in the sticky banner itself, below the How It Works /
-              Publish row, so it's visible without opening any modal. */}
-          {fiveDeal && (
-            <button
-              type="button"
-              onClick={() => { setWizardStep(0); setShowCustomWizard(true); }}
-              className="group mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-[#e8c074]/30 bg-[#e8c074]/5 px-4 py-3 text-sm text-gray-200 transition hover:border-[#e8c074]/60 hover:bg-[#e8c074]/10 hover:text-white"
-            >
-              <Sparkles size={15} className="text-[#e8c074]" />
-              <span>
-                Don't like the design? Get a custom one —{' '}
-                <span className="font-semibold text-[#e8c074]">$20/mo</span>
-              </span>
-              <ArrowRight size={14} className="text-[#e8c074] transition group-hover:translate-x-0.5" />
-            </button>
-          )}
+          {/* "Don't like the design? Get a custom one" — appears on every
+              path. Price differs: $20/mo on /5, $25/mo on the homepage. */}
+          <button
+            type="button"
+            onClick={() => { setWizardStep(0); setShowCustomWizard(true); }}
+            className="group mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-[#e8c074]/30 bg-[#e8c074]/5 px-4 py-3 text-sm text-gray-200 transition hover:border-[#e8c074]/60 hover:bg-[#e8c074]/10 hover:text-white"
+          >
+            <Sparkles size={15} className="text-[#e8c074]" />
+            <span>
+              Don't like the design? Get a custom one —{' '}
+              <span className="font-semibold text-[#e8c074]">{customPriceLabel}</span>
+            </span>
+            <ArrowRight size={14} className="text-[#e8c074] transition group-hover:translate-x-0.5" />
+          </button>
         </div>
       </div>
 
@@ -315,17 +336,17 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
         </div>
       )}
 
-      {/* Multi-step custom-design wizard — only triggerable from /5 */}
+      {/* Multi-step custom-design wizard. Price flexes per-path:
+          $20/mo on /5, $25/mo on the homepage. */}
       {showCustomWizard && (() => {
         const totalSteps = 4;
-        const close = () => { setShowCustomWizard(false); setWizardStep(0); };
         const next = () => setWizardStep((s) => Math.min(totalSteps - 1, s + 1));
         const back = () => setWizardStep((s) => Math.max(0, s - 1));
 
         return (
           <div
             className="fixed inset-0 z-[210] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 md:p-6"
-            onClick={close}
+            onClick={closeCustomWizard}
           >
             <div
               className="relative w-full max-w-xl max-h-[92vh] overflow-y-auto rounded-3xl border border-white/10 shadow-2xl animate-[modalIn_0.3s_ease-out]"
@@ -336,7 +357,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
               onClick={(e) => e.stopPropagation()}
             >
               <button
-                onClick={close}
+                onClick={closeCustomWizard}
                 aria-label="Close"
                 className="absolute top-3 right-3 z-10 rounded-md p-1 text-gray-400 hover:bg-white/5 hover:text-white transition"
               >
@@ -375,7 +396,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
                       A custom website, designed for your shop.
                     </h2>
                     <p className="text-sm text-gray-400 leading-relaxed mb-4">
-                      Not loving the template? We'll design a site from scratch around your brand, your barbers, and your vibe — for a flat $20 a month.
+                      Not loving the template? We'll design a site from scratch around your brand, your barbers, and your vibe — for a flat {customPriceFull}.
                     </p>
                     <ul className="space-y-2">
                       {[
@@ -475,7 +496,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
                     <h2 className="text-xl md:text-2xl font-bold text-white leading-tight mb-2">
                       All in for{' '}
                       <span style={{ fontFamily: '"Instrument Serif", serif' }} className="text-[#e8c074]">
-                        $20/month
+                        {customPriceFull}
                       </span>
                     </h2>
                     <p className="text-sm text-gray-400 leading-relaxed mb-4">
@@ -501,7 +522,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
                       <div>
                         <p className="text-xs uppercase tracking-[0.18em] text-gray-500">Total</p>
                         <p className="text-lg font-bold text-white" style={{ fontFamily: '"Instrument Serif", serif' }}>
-                          $20/month
+                          {customPriceFull}
                         </p>
                       </div>
                       <div className="text-right">
@@ -520,7 +541,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
                         <Loader2 className="animate-spin" size={16} />
                       ) : (
                         <>
-                          Continue to Checkout — $20/mo
+                          Continue to Checkout — {customPriceLabel}
                           <ArrowRight size={16} />
                         </>
                       )}

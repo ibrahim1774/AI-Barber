@@ -21,12 +21,15 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ error: 'Missing required field: siteId' });
     }
 
-    // `five` = /5 launch-special ($5/mo). `custom` = /5 "Don't like this?
-    // Get a custom website design" upsell ($20/mo) — visitor completes
-    // checkout, then is sent to a Google Form to share preferences.
+    // `five`     = /5 launch-special ($5/mo).
+    // `custom`   = /5 "Don't like this? Get a custom website design" ($20/mo).
+    // `custom25` = home-page variant of the custom-design upsell ($25/mo).
+    // Both custom plans route to the same Google Form after checkout.
     const isYearly = plan === 'yearly';
     const isFive = plan === 'five';
     const isCustom = plan === 'custom';
+    const isCustom25 = plan === 'custom25';
+    const isCustomAny = isCustom || isCustom25;
 
     let unitAmount: string;
     let interval: 'month' | 'year';
@@ -43,6 +46,10 @@ export default async function handler(req: any, res: any) {
       unitAmount = '2000';
       interval = 'month';
       productName = 'Prime Barber AI - Custom Website Design ($20/mo)';
+    } else if (isCustom25) {
+      unitAmount = '2500';
+      interval = 'month';
+      productName = 'Prime Barber AI - Custom Website Design ($25/mo)';
     } else {
       unitAmount = '1000';
       interval = 'month';
@@ -56,11 +63,11 @@ export default async function handler(req: any, res: any) {
 
     const origin = req.headers.origin || req.headers.referer?.replace(/\/$/, '') || 'http://localhost:3000';
 
-    // Custom-design plan: after payment send the visitor to the Google Form
-    // so we can collect their design preferences (look they like, booking
-    // provider, photos, etc). All other plans return to the app to continue
-    // the deploy pipeline.
-    const successUrl = isCustom
+    // Custom-design plans (custom + custom25): after payment send the visitor
+    // to the Google Form so we can collect their design preferences (look
+    // they like, booking provider, photos, etc). All other plans return to
+    // the app to continue the deploy pipeline.
+    const successUrl = isCustomAny
       ? 'https://docs.google.com/forms/d/e/1FAIpQLSdS2iaBt6ee0AGWv7pQPSLHoicovQuTOKLFktuiEG4tobBIPw/viewform'
       : `${origin}?stripe_session={CHECKOUT_SESSION_ID}`;
 
@@ -75,7 +82,7 @@ export default async function handler(req: any, res: any) {
     params.append('line_items[0][price_data][recurring][interval]', interval);
     params.append('line_items[0][quantity]', '1');
     params.append('client_reference_id', siteId);
-    params.append('metadata[type]', isCustom ? 'custom_design' : 'site_hosting');
+    params.append('metadata[type]', isCustomAny ? 'custom_design' : 'site_hosting');
     params.append('metadata[siteId]', siteId);
     params.append('metadata[plan]', plan);
 
