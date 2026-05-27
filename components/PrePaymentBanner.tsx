@@ -396,12 +396,12 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
                       A custom website, designed for your shop.
                     </h2>
                     <p className="text-sm text-gray-400 leading-relaxed mb-4">
-                      Not loving the template? We'll design a site from scratch around your brand, your barbers, and your vibe — for a flat {customPriceFull}.
+                      Not loving the template? We'll design a site from scratch around your brand, your barbers, and your vibe — for a flat {customPriceFull}. You may choose a design you like after checkout.
                     </p>
                     <ul className="space-y-2">
                       {[
                         'Get a custom design — built from scratch for your shop',
-                        'You have the option to choose the look you like',
+                        'You have the option to choose the design you like',
                         'Booking links + multiple pages included',
                       ].map((line) => (
                         <li key={line} className="flex items-start gap-2.5 text-sm text-gray-200">
@@ -463,13 +463,13 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
                       </span>
                     </h2>
                     <p className="text-sm text-gray-400 leading-relaxed mb-4">
-                      One simple price. Cancel anytime. After checkout, you'll fill a quick form so we know your style, booking provider, and photos to use.
+                      One simple price. Cancel anytime. After checkout you may choose the design you like and fill out a short form so we know your style, booking provider, and photos to use.
                     </p>
 
                     <div className="space-y-2 mb-4">
                       {[
                         'Custom design from scratch',
-                        'You choose the look you like',
+                        'You may choose the design you like',
                         'Multiple pages',
                         'Booking links included',
                         'Custom photos',
