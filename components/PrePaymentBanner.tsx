@@ -155,6 +155,24 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
               {fiveDeal ? 'Publish — $5/mo' : (pricingPlan === 'yearly' ? 'Publish — $72/yr' : 'Publish — $10/mo')}
             </button>
           </div>
+
+          {/* /5-only — "Don't like the design? Get a custom one for $20/mo".
+              Lives in the sticky banner itself, below the How It Works /
+              Publish row, so it's visible without opening any modal. */}
+          {fiveDeal && (
+            <button
+              type="button"
+              onClick={() => { setWizardStep(0); setShowCustomWizard(true); }}
+              className="group mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg border border-[#e8c074]/30 bg-[#e8c074]/5 px-3 py-2 text-[11px] text-gray-300 transition hover:border-[#e8c074]/60 hover:bg-[#e8c074]/10 hover:text-white"
+            >
+              <Sparkles size={12} className="text-[#e8c074]" />
+              <span>
+                Don't like the design? Get a custom one —{' '}
+                <span className="font-semibold text-[#e8c074]">$20/mo</span>
+              </span>
+              <ArrowRight size={11} className="transition group-hover:translate-x-0.5 text-[#e8c074]" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -293,40 +311,6 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
               )}
             </button>
 
-            {/* /5-only upsell — "Don't like this? Get a custom design for $20/mo" */}
-            {fiveDeal && (
-              <>
-                <div className="mt-4 mb-3 flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-gray-500">
-                  <div className="h-px flex-1 bg-white/10" />
-                  <span>Or</span>
-                  <div className="h-px flex-1 bg-white/10" />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowHowItWorks(false);
-                    setWizardStep(0);
-                    setShowCustomWizard(true);
-                  }}
-                  className="group relative w-full overflow-hidden rounded-xl border border-[#e8c074]/40 bg-gradient-to-br from-[#e8c074]/10 to-transparent px-4 py-3 text-left transition hover:border-[#e8c074]/70 hover:from-[#e8c074]/15"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#e8c074]/20">
-                      <Sparkles size={16} className="text-[#e8c074]" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-bold text-white">
-                        Don't like this? Get a custom website design
-                      </p>
-                      <p className="text-[11px] leading-snug text-gray-400">
-                        Designed for your shop · <span className="font-semibold text-[#e8c074]">$20/month</span>
-                      </p>
-                    </div>
-                    <ChevronRight size={18} className="shrink-0 text-[#e8c074] transition group-hover:translate-x-0.5" />
-                  </div>
-                </button>
-              </>
-            )}
           </div>
         </div>
       )}
