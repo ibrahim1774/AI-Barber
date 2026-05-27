@@ -131,7 +131,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
                 </>
               ) : (
                 <>
-                  Just {pricingPlan === 'yearly' ? <><span className="text-white font-bold">$72/year</span> <span className="text-gray-500 line-through text-xs">$120/yr</span> — save 40%</> : <><span className="text-white font-bold">$10/month</span></>} for hosting. Edit your text and images anytime with a free account — and if you want a new design, we'll make one just for your shop.
+                  Just {pricingPlan === 'yearly' ? <><span className="text-white font-bold">$72/year</span> <span className="text-gray-500 line-through text-xs">$120/yr</span> — save 40%</> : <><span className="text-white font-bold">$10/month</span></>} for hosting. Edit your text and images anytime with a free account.
                 </>
               )}
             </p>
