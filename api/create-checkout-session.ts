@@ -21,10 +21,12 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ error: 'Missing required field: siteId' });
     }
 
-    // `five` is the /5 launch-special landing-page plan ($5/mo monthly).
-    // Existing 'monthly' and 'yearly' paths are untouched.
+    // `five` = /5 launch-special ($5/mo). `custom` = /5 "Don't like this?
+    // Get a custom website design" upsell ($20/mo) — visitor completes
+    // checkout, then is sent to a Google Form to share preferences.
     const isYearly = plan === 'yearly';
     const isFive = plan === 'five';
+    const isCustom = plan === 'custom';
 
     let unitAmount: string;
     let interval: 'month' | 'year';
@@ -37,6 +39,10 @@ export default async function handler(req: any, res: any) {
       unitAmount = '500';
       interval = 'month';
       productName = 'Prime Barber AI - Launch Special Hosting ($5/mo)';
+    } else if (isCustom) {
+      unitAmount = '2000';
+      interval = 'month';
+      productName = 'Prime Barber AI - Custom Website Design ($20/mo)';
     } else {
       unitAmount = '1000';
       interval = 'month';
@@ -50,10 +56,18 @@ export default async function handler(req: any, res: any) {
 
     const origin = req.headers.origin || req.headers.referer?.replace(/\/$/, '') || 'http://localhost:3000';
 
+    // Custom-design plan: after payment send the visitor to the Google Form
+    // so we can collect their design preferences (look they like, booking
+    // provider, photos, etc). All other plans return to the app to continue
+    // the deploy pipeline.
+    const successUrl = isCustom
+      ? 'https://docs.google.com/forms/d/e/1FAIpQLSdS2iaBt6ee0AGWv7pQPSLHoicovQuTOKLFktuiEG4tobBIPw/viewform'
+      : `${origin}?stripe_session={CHECKOUT_SESSION_ID}`;
+
     // Create Stripe Checkout Session for subscription
     const params = new URLSearchParams();
     params.append('mode', 'subscription');
-    params.append('success_url', `${origin}?stripe_session={CHECKOUT_SESSION_ID}`);
+    params.append('success_url', successUrl);
     params.append('cancel_url', `${origin}?stripe_cancelled=true`);
     params.append('line_items[0][price_data][currency]', 'usd');
     params.append('line_items[0][price_data][product_data][name]', productName);
@@ -61,7 +75,7 @@ export default async function handler(req: any, res: any) {
     params.append('line_items[0][price_data][recurring][interval]', interval);
     params.append('line_items[0][quantity]', '1');
     params.append('client_reference_id', siteId);
-    params.append('metadata[type]', 'site_hosting');
+    params.append('metadata[type]', isCustom ? 'custom_design' : 'site_hosting');
     params.append('metadata[siteId]', siteId);
     params.append('metadata[plan]', plan);
 
