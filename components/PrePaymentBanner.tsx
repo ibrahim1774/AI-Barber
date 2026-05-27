@@ -339,7 +339,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
       {/* Multi-step custom-design wizard. Price flexes per-path:
           $20/mo on /5, $25/mo on the homepage. */}
       {showCustomWizard && (() => {
-        const totalSteps = 4;
+        const totalSteps = 3;
         const next = () => setWizardStep((s) => Math.min(totalSteps - 1, s + 1));
         const back = () => setWizardStep((s) => Math.max(0, s - 1));
 
@@ -414,45 +414,8 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
                 )}
 
                 {/* Step 2 */}
+                {/* Step 2 — Pages & Booking (formerly step 3) */}
                 {wizardStep === 1 && (
-                  <div>
-                    <div className="mb-2 flex items-center gap-2">
-                      <Sparkles size={14} className="text-[#e8c074]" />
-                      <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#e8c074]">
-                        Step 2 — Choose the Look
-                      </span>
-                    </div>
-                    <h2 className="text-xl md:text-2xl font-bold text-white leading-tight mb-1">
-                      You have the option to choose the look you like.
-                    </h2>
-                    <p className="text-sm text-gray-400 leading-relaxed mb-4">
-                      After checkout, you'll pick the design direction that fits your brand best. We'll build from your choice.
-                    </p>
-                    <div className="grid grid-cols-2 gap-2.5">
-                      {[
-                        { label: 'Modern', img: WIZARD_IMAGES.modern },
-                        { label: 'Editorial', img: WIZARD_IMAGES.editorial },
-                        { label: 'Luxury', img: WIZARD_IMAGES.luxury },
-                        { label: 'Minimal', img: WIZARD_IMAGES.minimal },
-                      ].map((opt) => (
-                        <div
-                          key={opt.label}
-                          className="group relative overflow-hidden rounded-xl border border-white/10 bg-white/5"
-                        >
-                          <img src={opt.img} alt={opt.label} className="h-24 w-full object-cover md:h-28" />
-                          <div className="px-3 py-2">
-                            <span className="text-xs font-bold uppercase tracking-[0.15em] text-white">
-                              {opt.label}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Step 3 */}
-                {wizardStep === 2 && (
                   <div>
                     <div className="overflow-hidden rounded-2xl border border-white/5 mb-4">
                       <img src={WIZARD_IMAGES.pages} alt="" className="h-40 w-full object-cover md:h-48" />
@@ -460,7 +423,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
                     <div className="mb-2 flex items-center gap-2">
                       <Sparkles size={14} className="text-[#e8c074]" />
                       <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#e8c074]">
-                        Step 3 — Pages & Booking
+                        Step 2 — Pages & Booking
                       </span>
                     </div>
                     <h2 className="text-xl md:text-2xl font-bold text-white leading-tight mb-2">
@@ -484,13 +447,13 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
                   </div>
                 )}
 
-                {/* Step 4 — Pricing + Checkout */}
-                {wizardStep === 3 && (
+                {/* Step 3 — Pricing + Checkout (formerly step 4) */}
+                {wizardStep === 2 && (
                   <div>
                     <div className="mb-2 flex items-center gap-2">
                       <Sparkles size={14} className="text-[#e8c074]" />
                       <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#e8c074]">
-                        Step 4 — Get Started
+                        Step 3 — Get Started
                       </span>
                     </div>
                     <h2 className="text-xl md:text-2xl font-bold text-white leading-tight mb-2">
