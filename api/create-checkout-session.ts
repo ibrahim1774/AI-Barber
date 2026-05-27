@@ -21,10 +21,27 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ error: 'Missing required field: siteId' });
     }
 
+    // `five` is the /5 launch-special landing-page plan ($5/mo monthly).
+    // Existing 'monthly' and 'yearly' paths are untouched.
     const isYearly = plan === 'yearly';
-    const unitAmount = isYearly ? '7200' : '1000';
-    const interval = isYearly ? 'year' : 'month';
-    const productName = isYearly ? 'Prime Barber AI - Yearly Hosting' : 'Prime Barber AI - Monthly Hosting';
+    const isFive = plan === 'five';
+
+    let unitAmount: string;
+    let interval: 'month' | 'year';
+    let productName: string;
+    if (isYearly) {
+      unitAmount = '7200';
+      interval = 'year';
+      productName = 'Prime Barber AI - Yearly Hosting';
+    } else if (isFive) {
+      unitAmount = '500';
+      interval = 'month';
+      productName = 'Prime Barber AI - Launch Special Hosting ($5/mo)';
+    } else {
+      unitAmount = '1000';
+      interval = 'month';
+      productName = 'Prime Barber AI - Monthly Hosting';
+    }
 
     const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
     if (!stripeSecretKey) {

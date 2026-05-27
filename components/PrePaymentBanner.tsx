@@ -1,13 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { X, ArrowRight, Rocket, Loader2 } from 'lucide-react';
+import { isFiveDealPath } from '../lib/dealMode.ts';
 
 interface PrePaymentBannerProps {
-  onDeploy: (plan: 'monthly' | 'yearly') => void;
+  onDeploy: (plan: 'monthly' | 'yearly' | 'five') => void;
   isDeploying: boolean;
   industry?: string;
 }
 
 const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeploying, industry }) => {
+  // /5 lands the visitor on a hard-locked $5/mo flow — no yearly toggle.
+  // Computed once on mount; URL doesn't change within a session.
+  const fiveDeal = React.useMemo(() => isFiveDealPath(), []);
+
   const [isDismissed, setIsDismissed] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const [showHowItWorks, setShowHowItWorks] = useState(false);
@@ -58,25 +63,35 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
               <div className="absolute inset-0 w-2.5 h-2.5 bg-[#f4a100] rounded-full animate-ping" />
             </div>
             <p className="text-gray-300 text-sm leading-relaxed">
-              Just {pricingPlan === 'yearly' ? <><span className="text-white font-bold">$72/year</span> <span className="text-gray-500 line-through text-xs">$120/yr</span> — save 40%</> : <><span className="text-white font-bold">$10/month</span></>} for hosting. Edit your text and images anytime with a free account — and if you want a new design, we'll make one just for your shop.
+              {fiveDeal ? (
+                <>
+                  Special launch price — <span className="text-white font-bold">$5/month</span> for hosting. Edit your text and images anytime with a free account.
+                </>
+              ) : (
+                <>
+                  Just {pricingPlan === 'yearly' ? <><span className="text-white font-bold">$72/year</span> <span className="text-gray-500 line-through text-xs">$120/yr</span> — save 40%</> : <><span className="text-white font-bold">$10/month</span></>} for hosting. Edit your text and images anytime with a free account — and if you want a new design, we'll make one just for your shop.
+                </>
+              )}
             </p>
           </div>
 
-          {/* Monthly / Yearly Toggle */}
-          <div className="flex items-center justify-center gap-1 mb-3 bg-white/5 rounded-xl p-1">
-            <button
-              onClick={() => setPricingPlan('monthly')}
-              className={`flex-1 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${pricingPlan === 'monthly' ? 'bg-[#f4a100] text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
-            >
-              Monthly
-            </button>
-            <button
-              onClick={() => setPricingPlan('yearly')}
-              className={`flex-1 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${pricingPlan === 'yearly' ? 'bg-[#f4a100] text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
-            >
-              Yearly <span className="text-[10px] opacity-80">(-40%)</span>
-            </button>
-          </div>
+          {/* Monthly / Yearly Toggle — hidden in /5 deal mode */}
+          {!fiveDeal && (
+            <div className="flex items-center justify-center gap-1 mb-3 bg-white/5 rounded-xl p-1">
+              <button
+                onClick={() => setPricingPlan('monthly')}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${pricingPlan === 'monthly' ? 'bg-[#f4a100] text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
+              >
+                Monthly
+              </button>
+              <button
+                onClick={() => setPricingPlan('yearly')}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${pricingPlan === 'yearly' ? 'bg-[#f4a100] text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
+              >
+                Yearly <span className="text-[10px] opacity-80">(-40%)</span>
+              </button>
+            </div>
+          )}
 
           <div className="flex items-center gap-3">
             <button
@@ -87,7 +102,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
             </button>
 
             <button
-              onClick={() => onDeploy(pricingPlan)}
+              onClick={() => onDeploy(fiveDeal ? 'five' : pricingPlan)}
               disabled={isDeploying}
               className="flex-1 py-2.5 rounded-xl text-xs font-bold text-white flex items-center justify-center gap-1.5 shadow-lg shadow-[#f4a100]/20 hover:opacity-90 active:scale-[0.97] transition-all uppercase tracking-wider disabled:opacity-50"
               style={{
@@ -99,7 +114,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
               ) : (
                 <Rocket size={14} />
               )}
-              {pricingPlan === 'yearly' ? 'Publish — $72/yr' : 'Publish — $10/mo'}
+              {fiveDeal ? 'Publish — $5/mo' : (pricingPlan === 'yearly' ? 'Publish — $72/yr' : 'Publish — $10/mo')}
             </button>
           </div>
         </div>
