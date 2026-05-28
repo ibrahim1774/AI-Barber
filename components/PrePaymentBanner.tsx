@@ -204,144 +204,164 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
         </div>
       </div>
 
-      {showHowItWorks && (
+      {showHowItWorks && (() => {
+        // Premium-leaning rewrite of the How-It-Works modal. Drops the
+        // emoji+card aesthetic for a quieter editorial layout: serif
+        // italic headline, gold reserved only for the price and CTA,
+        // Roman-numeral rows separated by hairlines instead of cards.
+        const gold = '#e8c074';
+        const cream = '#ece6da';
+        const headlinePrice = dealMode
+          ? dealPriceMo
+          : pricingPlan === 'yearly' ? '$72/yr' : '$10/mo';
+        const ctaPrice = dealMode
+          ? dealPriceMo
+          : pricingPlan === 'yearly' ? '$72/yr' : '$10/mo';
+
+        const rows: { numeral: string; title: string }[] = [
+          { numeral: 'I', title: 'Professional & Modern Site' },
+          { numeral: 'II', title: 'Published Instantly' },
+          { numeral: 'III', title: 'Edit Anytime' },
+          { numeral: 'IV', title: `Custom for Your ${displayIndustry.charAt(0).toUpperCase()}${displayIndustry.slice(1)}` },
+          { numeral: 'V', title: 'One Small Hosting Fee' },
+        ];
+
+        return (
         <div
-          className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 md:p-6"
+          className="fixed inset-0 z-[200] bg-black/85 backdrop-blur-md flex items-center justify-center p-4 md:p-6"
           onClick={() => setShowHowItWorks(false)}
         >
           <div
-            className="relative max-w-lg w-full max-h-[90vh] overflow-y-auto rounded-3xl border border-white/10 p-4 md:p-6 shadow-2xl animate-[modalIn_0.3s_ease-out]"
+            className="relative max-w-md w-full max-h-[92vh] overflow-y-auto border border-white/10 px-6 pt-8 pb-7 md:px-8 md:pt-9 md:pb-8 shadow-2xl animate-[modalIn_0.3s_ease-out]"
             style={{
-              background: 'linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%)',
+              background: 'linear-gradient(180deg, #0a0a0a 0%, #14110c 100%)',
               fontFamily: '"DM Sans", sans-serif',
+              color: cream,
             }}
             onClick={(e) => e.stopPropagation()}
           >
             <button
               onClick={() => setShowHowItWorks(false)}
-              className="absolute top-4 right-4 text-gray-500 hover:text-white transition-colors"
+              className="absolute top-3 right-3 text-white/40 hover:text-white transition-colors"
+              aria-label="Close"
             >
-              <X size={20} />
+              <X size={18} />
             </button>
 
-            <div className="flex items-center gap-2 mb-2">
-              <div className="relative">
-                <div className="w-2 h-2 bg-[#f4a100] rounded-full" />
-                <div className="absolute inset-0 w-2 h-2 bg-[#f4a100] rounded-full animate-ping" />
-              </div>
-              <span className="text-xs font-bold uppercase tracking-[0.2em] text-[#f4a100]">
+            {/* Eyebrow — thin gold hairline + label, no pulsing dot */}
+            <div className="flex items-center gap-3 mb-5">
+              <span className="h-px w-6" style={{ background: gold }} />
+              <span className="text-[10px] font-medium uppercase tracking-[0.32em]" style={{ color: gold }}>
                 How It Works
               </span>
+              <span className="h-px flex-1" style={{ background: 'rgba(232,192,116,0.2)' }} />
             </div>
 
-            <h2 className="text-xl md:text-2xl font-bold text-white mb-1 leading-tight">
-              Your Fully Custom Website —{' '}
-              <span style={{ fontFamily: '"Instrument Serif", serif' }} className="text-[#f4a100]">
-                {pricingPlan === 'yearly' ? <>Just $72/yr <span className="text-gray-500 line-through text-base">$120/yr</span></> : 'Just $10/mo'}
-              </span>
+            {/* Headline — serif italic, generous size, gold accent on the punchline */}
+            <h2
+              className="leading-[1.05] mb-2"
+              style={{ fontFamily: '"Instrument Serif", serif', fontSize: '2.25rem', fontWeight: 400 }}
+            >
+              <span style={{ color: cream }}>Publish within </span>
+              <span style={{ color: gold, fontStyle: 'italic' }}>seconds.</span>
             </h2>
 
-            <p className="text-gray-400 text-sm mb-3 leading-relaxed">
-              Publish your site and get full account access — edit text and swap images anytime from your account
+            {/* Sub — single line, gray, no padding bloat */}
+            <p className="text-sm leading-relaxed mb-6" style={{ color: 'rgba(236,230,218,0.55)' }}>
+              A custom website for your barbershop, yours to edit anytime.
             </p>
 
-            {/* Monthly / Yearly Toggle (modal) */}
-            <div className="flex items-center justify-center gap-1 mb-3 bg-white/5 rounded-xl p-1">
-              <button
-                onClick={() => setPricingPlan('monthly')}
-                className={`flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${pricingPlan === 'monthly' ? 'bg-[#f4a100] text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
-              >
-                Monthly — $10/mo
-              </button>
-              <button
-                onClick={() => setPricingPlan('yearly')}
-                className={`flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${pricingPlan === 'yearly' ? 'bg-[#f4a100] text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
-              >
-                Yearly — $72/yr <span className="text-[10px] opacity-80">(-40%)</span>
-              </button>
+            {/* Monthly / Yearly toggle — quiet text-based with gold underline,
+                hidden when locked to /5 or /7 deal pricing */}
+            {!dealMode && (
+              <div className="flex items-center justify-center gap-6 mb-7">
+                <button
+                  onClick={() => setPricingPlan('monthly')}
+                  className="text-[11px] font-medium uppercase tracking-[0.22em] pb-1.5 transition-colors"
+                  style={{
+                    color: pricingPlan === 'monthly' ? cream : 'rgba(236,230,218,0.4)',
+                    borderBottom: pricingPlan === 'monthly' ? `1px solid ${gold}` : '1px solid transparent',
+                  }}
+                >
+                  Monthly · $10/mo
+                </button>
+                <button
+                  onClick={() => setPricingPlan('yearly')}
+                  className="text-[11px] font-medium uppercase tracking-[0.22em] pb-1.5 transition-colors"
+                  style={{
+                    color: pricingPlan === 'yearly' ? cream : 'rgba(236,230,218,0.4)',
+                    borderBottom: pricingPlan === 'yearly' ? `1px solid ${gold}` : '1px solid transparent',
+                  }}
+                >
+                  Yearly · $72/yr <span style={{ color: gold }}>−40%</span>
+                </button>
+              </div>
+            )}
+
+            {/* Five Roman-numeral rows — hairline dividers, no cards */}
+            <div className="border-t border-white/10">
+              {rows.map((row) => (
+                <div
+                  key={row.numeral}
+                  className="flex items-baseline gap-5 py-3.5 border-b border-white/10"
+                >
+                  <span
+                    className="shrink-0 text-[11px] font-medium tracking-[0.18em] w-7"
+                    style={{ color: gold, fontFamily: '"Instrument Serif", serif', fontStyle: 'italic' }}
+                  >
+                    {row.numeral}
+                  </span>
+                  <span className="text-[15px] font-normal leading-snug" style={{ color: cream }}>
+                    {row.title}
+                  </span>
+                </div>
+              ))}
             </div>
 
-            <div className="space-y-1.5">
-              <div className="bg-white/5 border border-white/10 rounded-xl p-3">
-                <div className="flex items-start gap-3">
-                  <span className="text-xs font-bold text-gray-500 mt-0.5">01</span>
-                  <div>
-                    <h3 className="text-white font-bold text-sm">
-                      <span className="mr-1.5">🎨</span>Professional & Modern Website
-                    </h3>
-                    <p className="text-gray-400 text-xs leading-snug">
-                      A clean, modern website built for your {displayIndustry} business — fully customizable.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white/5 border border-white/10 rounded-xl p-3">
-                <div className="flex items-start gap-3">
-                  <span className="text-xs font-bold text-gray-500 mt-0.5">02</span>
-                  <div>
-                    <h3 className="text-white font-bold text-sm">
-                      <span className="mr-1.5">🔧</span>Account Access
-                    </h3>
-                    <p className="text-gray-400 text-xs leading-snug">
-                      Create an account to swap images, change text, and update your page anytime.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white/5 border border-white/10 rounded-xl p-3">
-                <div className="flex items-start gap-3">
-                  <span className="text-xs font-bold text-gray-500 mt-0.5">03</span>
-                  <div>
-                    <h3 className="text-white font-bold text-sm">
-                      <span className="mr-1.5">💰</span>Save Time & Money
-                    </h3>
-                    <p className="text-gray-400 text-xs leading-snug">
-                      No developer needed. Just a small monthly hosting fee — everything else is handled.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white/5 border border-white/10 rounded-xl p-2 px-3 mt-1.5 flex items-center justify-between gap-2">
-              <p className="text-white font-bold text-sm shrink-0" style={{ fontFamily: '"Instrument Serif", serif' }}>
-                {pricingPlan === 'yearly' ? <><span className="text-gray-500 line-through text-xs" style={{ fontFamily: '"DM Sans", sans-serif' }}>$120/yr</span> $72/yr</> : '$10/mo'} —{' '}
-                <span className="text-gray-400 font-normal text-xs" style={{ fontFamily: '"DM Sans", sans-serif' }}>
-                  hosting only
+            {/* Price line — serif, generous, with hairline meta on the second row */}
+            <div className="mt-7 mb-5 text-center">
+              <p
+                style={{ fontFamily: '"Instrument Serif", serif', fontSize: '1.6rem', color: cream, fontWeight: 400 }}
+              >
+                {!dealMode && pricingPlan === 'yearly' && (
+                  <span style={{ color: 'rgba(236,230,218,0.3)', textDecoration: 'line-through', fontSize: '1rem', marginRight: '0.4em' }}>
+                    $120/yr
+                  </span>
+                )}
+                <span style={{ color: gold }}>{headlinePrice}</span>
+                <span style={{ color: 'rgba(236,230,218,0.55)', fontSize: '0.9rem', fontFamily: '"DM Sans", sans-serif', marginLeft: '0.4em' }}>
+                  — hosting only
                 </span>
               </p>
-              <div className="flex gap-x-1.5 text-[10px] text-gray-500">
-                <span>No fees</span>
-                <span>•</span>
-                <span>No contracts</span>
-                <span>•</span>
-                <span>Cancel anytime</span>
-              </div>
+              <p className="mt-1.5 text-[10px] uppercase tracking-[0.28em]" style={{ color: 'rgba(236,230,218,0.35)' }}>
+                No design fee · No contracts · Cancel anytime
+              </p>
             </div>
 
             <button
               onClick={() => { setShowHowItWorks(false); onDeploy(dealPlan ?? pricingPlan); }}
               disabled={isDeploying}
-              className="w-full mt-2 py-3 rounded-xl text-sm font-bold text-white flex items-center justify-center gap-2 shadow-lg shadow-[#f4a100]/20 hover:opacity-90 active:scale-[0.97] transition-all uppercase tracking-wider disabled:opacity-50"
+              className="w-full py-3.5 text-[11px] font-bold flex items-center justify-center gap-2.5 hover:opacity-90 active:scale-[0.98] transition-all uppercase tracking-[0.24em] disabled:opacity-50"
               style={{
-                background: 'linear-gradient(135deg, #f4a100 0%, #d4890e 100%)',
+                background: gold,
+                color: '#0a0a0a',
+                fontFamily: '"DM Sans", sans-serif',
               }}
             >
               {isDeploying ? (
-                <Loader2 className="animate-spin" size={18} />
+                <Loader2 className="animate-spin" size={16} />
               ) : (
                 <>
-                  {dealMode ? `Publish My Site — ${dealPriceMo}` : (pricingPlan === 'yearly' ? 'Publish My Site — $72/yr' : 'Publish My Site — $10/mo')}
-                  <ArrowRight size={18} />
+                  Publish My Site — {ctaPrice}
+                  <ArrowRight size={14} />
                 </>
               )}
             </button>
 
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Multi-step custom-design wizard. Price flexes per-path:
           $20/mo on /5, $25/mo on the homepage. */}
