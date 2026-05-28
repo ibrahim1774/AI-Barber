@@ -414,7 +414,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
     }
   };
 
-  const handleClaimSite = async (plan: 'monthly' | 'yearly' | 'five' = 'monthly') => {
+  const handleClaimSite = async (plan: 'monthly' | 'yearly' | 'five' | 'seven' = 'monthly') => {
     setIsDeploying(true);
     setDeploymentResult(null);
 

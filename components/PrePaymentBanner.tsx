@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, ArrowRight, Rocket, Loader2, Sparkles, Check, ChevronLeft, ChevronRight } from 'lucide-react';
-import { isFiveDealPath } from '../lib/dealMode.ts';
+import { isFiveDealPath, isSevenDealPath } from '../lib/dealMode.ts';
 
 // Sample imagery for the custom-design wizard. Swap to local files in
 // /public/ later if desired — keep the same array length.
@@ -15,20 +15,27 @@ const WIZARD_IMAGES = {
 };
 
 interface PrePaymentBannerProps {
-  onDeploy: (plan: 'monthly' | 'yearly' | 'five') => void;
+  onDeploy: (plan: 'monthly' | 'yearly' | 'five' | 'seven') => void;
   isDeploying: boolean;
   industry?: string;
 }
 
 const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeploying, industry }) => {
-  // /5 lands the visitor on a hard-locked $5/mo flow — no yearly toggle.
-  // Computed once on mount; URL doesn't change within a session.
+  // /5 and /7 lock the visitor into a hard $5/mo or $7/mo flow — no
+  // yearly toggle. Computed once on mount; URL doesn't change in-session.
   const fiveDeal = React.useMemo(() => isFiveDealPath(), []);
+  const sevenDeal = React.useMemo(() => isSevenDealPath(), []);
+  // Either deal-mode collapses the pricing UI the same way; only the
+  // numbers shown and the plan string sent to Stripe differ.
+  const dealMode = fiveDeal || sevenDeal;
+  const dealPlan: 'five' | 'seven' | null = fiveDeal ? 'five' : sevenDeal ? 'seven' : null;
+  const dealPriceMo = sevenDeal ? '$7/mo' : '$5/mo';
+  const dealPriceMonth = sevenDeal ? '$7/month' : '$5/month';
 
-  // Custom-design upsell: $20/mo on /5, $25/mo everywhere else (homepage).
-  const customPlan: 'custom' | 'custom25' = fiveDeal ? 'custom' : 'custom25';
-  const customPriceLabel = fiveDeal ? '$20/mo' : '$25/mo';
-  const customPriceFull = fiveDeal ? '$20/month' : '$25/month';
+  // Custom-design upsell: $20/mo on /5 and /7, $25/mo on the homepage.
+  const customPlan: 'custom' | 'custom25' = dealMode ? 'custom' : 'custom25';
+  const customPriceLabel = dealMode ? '$20/mo' : '$25/mo';
+  const customPriceFull = dealMode ? '$20/month' : '$25/month';
 
   const [isDismissed, setIsDismissed] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
@@ -125,9 +132,9 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
               <div className="absolute inset-0 w-2.5 h-2.5 bg-[#f4a100] rounded-full animate-ping" />
             </div>
             <p className="text-gray-300 text-sm leading-relaxed">
-              {fiveDeal ? (
+              {dealMode ? (
                 <>
-                  Special launch price — <span className="text-white font-bold">$5/month</span> for hosting. Edit your text and images anytime with a free account.
+                  Special launch price — <span className="text-white font-bold">{dealPriceMonth}</span> for hosting. Edit your text and images anytime with a free account.
                 </>
               ) : (
                 <>
@@ -137,8 +144,8 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
             </p>
           </div>
 
-          {/* Monthly / Yearly Toggle — hidden in /5 deal mode */}
-          {!fiveDeal && (
+          {/* Monthly / Yearly Toggle — hidden in /5 and /7 deal mode */}
+          {!dealMode && (
             <div className="flex items-center justify-center gap-1 mb-3 bg-white/5 rounded-xl p-1">
               <button
                 onClick={() => setPricingPlan('monthly')}
@@ -164,7 +171,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
             </button>
 
             <button
-              onClick={() => onDeploy(fiveDeal ? 'five' : pricingPlan)}
+              onClick={() => onDeploy(dealPlan ?? pricingPlan)}
               disabled={isDeploying}
               className="flex-1 py-2.5 rounded-xl text-xs font-bold text-white flex items-center justify-center gap-1.5 shadow-lg shadow-[#f4a100]/20 hover:opacity-90 active:scale-[0.97] transition-all uppercase tracking-wider disabled:opacity-50"
               style={{
@@ -176,7 +183,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
               ) : (
                 <Rocket size={14} />
               )}
-              {fiveDeal ? 'Publish — $5/mo' : (pricingPlan === 'yearly' ? 'Publish — $72/yr' : 'Publish — $10/mo')}
+              {dealMode ? `Publish — ${dealPriceMo}` : (pricingPlan === 'yearly' ? 'Publish — $72/yr' : 'Publish — $10/mo')}
             </button>
           </div>
 
@@ -315,7 +322,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
             </div>
 
             <button
-              onClick={() => { setShowHowItWorks(false); onDeploy(fiveDeal ? 'five' : pricingPlan); }}
+              onClick={() => { setShowHowItWorks(false); onDeploy(dealPlan ?? pricingPlan); }}
               disabled={isDeploying}
               className="w-full mt-2 py-3 rounded-xl text-sm font-bold text-white flex items-center justify-center gap-2 shadow-lg shadow-[#f4a100]/20 hover:opacity-90 active:scale-[0.97] transition-all uppercase tracking-wider disabled:opacity-50"
               style={{
@@ -326,7 +333,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
                 <Loader2 className="animate-spin" size={18} />
               ) : (
                 <>
-                  {fiveDeal ? 'Publish My Site — $5/mo' : (pricingPlan === 'yearly' ? 'Publish My Site — $72/yr' : 'Publish My Site — $10/mo')}
+                  {dealMode ? `Publish My Site — ${dealPriceMo}` : (pricingPlan === 'yearly' ? 'Publish My Site — $72/yr' : 'Publish My Site — $10/mo')}
                   <ArrowRight size={18} />
                 </>
               )}

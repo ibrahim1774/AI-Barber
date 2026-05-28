@@ -472,7 +472,7 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
     </label>
   );
 
-  const handleClaimSite = async (plan: 'monthly' | 'yearly' | 'five' = 'monthly') => {
+  const handleClaimSite = async (plan: 'monthly' | 'yearly' | 'five' | 'seven' = 'monthly') => {
     setIsDeploying(true);
     setDeploymentResult(null);
     try {

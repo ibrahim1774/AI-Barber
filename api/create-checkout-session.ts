@@ -22,11 +22,13 @@ export default async function handler(req: any, res: any) {
     }
 
     // `five`     = /5 launch-special ($5/mo).
+    // `seven`    = /7 launch-special ($7/mo).
     // `custom`   = /5 "Don't like this? Get a custom website design" ($20/mo).
     // `custom25` = home-page variant of the custom-design upsell ($25/mo).
     // Both custom plans route to the same Google Form after checkout.
     const isYearly = plan === 'yearly';
     const isFive = plan === 'five';
+    const isSeven = plan === 'seven';
     const isCustom = plan === 'custom';
     const isCustom25 = plan === 'custom25';
     const isCustomAny = isCustom || isCustom25;
@@ -42,6 +44,10 @@ export default async function handler(req: any, res: any) {
       unitAmount = '500';
       interval = 'month';
       productName = 'Prime Barber AI - Launch Special Hosting ($5/mo)';
+    } else if (isSeven) {
+      unitAmount = '700';
+      interval = 'month';
+      productName = 'Prime Barber AI - Launch Special Hosting ($7/mo)';
     } else if (isCustom) {
       unitAmount = '2000';
       interval = 'month';
