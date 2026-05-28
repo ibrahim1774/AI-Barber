@@ -13,6 +13,44 @@ export const PostDeploymentModal: React.FC<PostDeploymentModalProps> = ({
 }) => {
   const [copied, setCopied] = useState(false);
 
+  // Copy the full URL (with protocol) to clipboard. Uses the modern
+  // navigator.clipboard API when available, falls back to the
+  // execCommand textarea trick on older Safari / non-HTTPS contexts /
+  // when permissions are denied. Only flips the copied state on success
+  // so we never give a false confirmation.
+  const handleCopy = async () => {
+    let ok = false;
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(deployedUrl);
+        ok = true;
+      } else {
+        throw new Error('clipboard API unavailable');
+      }
+    } catch {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = deployedUrl;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+      } catch (e) {
+        console.error('[Clipboard] copy fallback failed:', e);
+      }
+    }
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } else {
+      // Last resort — show the URL so the user can manually copy it
+      window.prompt('Copy your site URL:', deployedUrl);
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[150] px-4">
       <div className="bg-[#1a1a1a] border border-white/10 rounded-lg w-full max-w-md p-8 text-center">
@@ -52,11 +90,7 @@ export const PostDeploymentModal: React.FC<PostDeploymentModalProps> = ({
         <div className="flex items-center gap-2 bg-[#0d0d0d] border border-white/10 rounded px-3 py-2.5 mb-2">
           <span className="text-[#f4a100] text-xs font-mono truncate flex-1 text-left">{deployedUrl}</span>
           <button
-            onClick={() => {
-              navigator.clipboard.writeText(deployedUrl);
-              setCopied(true);
-              setTimeout(() => setCopied(false), 2000);
-            }}
+            onClick={handleCopy}
             className="shrink-0 text-[#888] hover:text-white transition-colors"
             aria-label="Copy URL"
           >
@@ -76,11 +110,7 @@ export const PostDeploymentModal: React.FC<PostDeploymentModalProps> = ({
         {/* Standalone "Click to Copy" button — second affordance so the
             URL pill above doesn't get mistaken for static text. */}
         <button
-          onClick={() => {
-            navigator.clipboard.writeText(deployedUrl);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
-          }}
+          onClick={handleCopy}
           className="block w-full py-2.5 border border-white/15 hover:border-white/30 text-white font-montserrat font-black uppercase tracking-[2px] text-xs transition-colors mb-6"
         >
           {copied ? 'Copied' : 'Click to Copy'}
