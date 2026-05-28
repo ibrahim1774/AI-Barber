@@ -30,12 +30,26 @@ export const PostDeploymentModal: React.FC<PostDeploymentModalProps> = ({
           Site is <span className="text-green-500">Live!</span>
         </h2>
 
-        <p className="text-[#999] text-sm mb-6">
+        <p className="text-[#999] text-sm mb-5">
           Your website has been published successfully.
         </p>
 
+        {/* Red warning — push the user to actually copy the URL before
+            they close or navigate away. */}
+        <div
+          className="flex items-center justify-center gap-2 border border-red-500/40 bg-red-500/10 px-3 py-2 mb-2"
+          role="alert"
+        >
+          <svg className="w-4 h-4 text-red-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <p className="text-red-300 text-xs font-montserrat font-black uppercase tracking-[0.18em]">
+            Make sure you copy this
+          </p>
+        </div>
+
         {/* URL display */}
-        <div className="flex items-center gap-2 bg-[#0d0d0d] border border-white/10 rounded px-3 py-2.5 mb-6">
+        <div className="flex items-center gap-2 bg-[#0d0d0d] border border-white/10 rounded px-3 py-2.5 mb-2">
           <span className="text-[#f4a100] text-xs font-mono truncate flex-1 text-left">{deployedUrl}</span>
           <button
             onClick={() => {
@@ -44,6 +58,7 @@ export const PostDeploymentModal: React.FC<PostDeploymentModalProps> = ({
               setTimeout(() => setCopied(false), 2000);
             }}
             className="shrink-0 text-[#888] hover:text-white transition-colors"
+            aria-label="Copy URL"
           >
             {copied ? (
               <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -58,15 +73,18 @@ export const PostDeploymentModal: React.FC<PostDeploymentModalProps> = ({
           </button>
         </div>
 
-        {/* View Live Site button */}
-        <a
-          href={deployedUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="block w-full py-3 bg-green-600 hover:bg-green-500 text-white font-montserrat font-black uppercase tracking-[2px] text-xs transition-colors mb-6"
+        {/* Standalone "Click to Copy" button — second affordance so the
+            URL pill above doesn't get mistaken for static text. */}
+        <button
+          onClick={() => {
+            navigator.clipboard.writeText(deployedUrl);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          }}
+          className="block w-full py-2.5 border border-white/15 hover:border-white/30 text-white font-montserrat font-black uppercase tracking-[2px] text-xs transition-colors mb-6"
         >
-          View Live Site
-        </a>
+          {copied ? 'Copied' : 'Click to Copy'}
+        </button>
 
         {/* Divider */}
         <div className="border-t border-white/10 my-6" />
