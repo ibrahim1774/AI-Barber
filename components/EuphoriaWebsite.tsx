@@ -507,6 +507,10 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
 
       const pendingSite = {
         siteId,
+        // Same draft-preservation as GeneratedWebsite — pass the
+        // existing site UUID so handleStripeReturn mutates the draft
+        // in place instead of orphaning it.
+        existingSiteId: site?.id ?? null,
         siteData: {
           ...siteData,
           hero: { ...siteData.hero, imageUrl: imageUrlMap['hero'] ? 'uploaded' : '' },

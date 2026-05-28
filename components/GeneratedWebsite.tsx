@@ -492,6 +492,13 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       // Step 3: Save to localStorage (text + GCS URLs only, no base64)
       const pendingSite = {
         siteId,
+        // Pass the existing draft's UUID through to handleStripeReturn so
+        // it can mutate the same IndexedDB/Supabase record instead of
+        // creating an orphan with a fresh UUID. Without this, the
+        // dashboard ends up showing both the (stale, image-less) draft
+        // and the deployed copy, and "Edit My Website" opens the empty
+        // draft instead of the deployed site with GCS image URLs.
+        existingSiteId: site?.id ?? null,
         siteData: {
           ...siteData,
           hero: { ...siteData.hero, imageUrl: imageUrlMap['hero'] ? 'uploaded' : '' },

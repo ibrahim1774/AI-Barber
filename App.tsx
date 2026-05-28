@@ -210,10 +210,16 @@ const App: React.FC = () => {
         }
 
         const pending = JSON.parse(pendingJson);
-        const { siteId, siteData, imageUrlMap } = pending as {
+        const { siteId, siteData, imageUrlMap, existingSiteId } = pending as {
           siteId: string;
           siteData: WebsiteData;
           imageUrlMap: Record<string, string>;
+          // Optional. The publish flow now passes the existing draft's
+          // UUID through so we can mutate that record in place instead
+          // of orphaning it with a new randomUUID. Falls back to siteId
+          // (the slug) for older pendingSite payloads written before
+          // this fix landed.
+          existingSiteId?: string | null;
         };
 
         // Step 1: Verify payment
@@ -304,8 +310,14 @@ const App: React.FC = () => {
           ),
         };
 
+        // Reuse the existing draft's UUID so saveSite overwrites that
+        // record instead of creating a parallel one. Without this the
+        // user ends up with two records in IndexedDB (draft + deployed)
+        // and the dashboard surfaces the draft, which has no GCS image
+        // URLs — that's why Edit My Website opened an empty page and
+        // status read "Draft" even though the site was live.
         const newSite: SiteInstance = {
-          id: crypto.randomUUID(),
+          id: existingSiteId || siteId || crypto.randomUUID(),
           data: fullSiteData,
           lastSaved: Date.now(),
           formInputs: { shopName: siteData.shopName, area: siteData.area, phone: siteData.phone },
@@ -315,7 +327,9 @@ const App: React.FC = () => {
           domainOrderId: null,
         };
 
-        // Save to IndexedDB
+        // Save to IndexedDB (and Supabase if user is signed in via
+        // handleAuthSuccess later). Same UUID → upsert overwrites
+        // the draft instead of creating a sibling row.
         await saveSite(newSite);
         setActiveSite(newSite);
 

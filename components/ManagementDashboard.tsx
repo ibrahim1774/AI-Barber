@@ -83,7 +83,26 @@ export const ManagementDashboard: React.FC<ManagementDashboardProps> = ({
         console.error('[Dashboard] IndexedDB fetch failed:', err);
       }
 
-      setSites(allSites);
+      // Drop draft orphans. The pre-fix publish flow created a new
+      // SiteInstance with a fresh UUID for the deployed copy, leaving
+      // the original draft behind. If we find a draft whose shopName
+      // matches a deployed site, the draft is the stale leftover and
+      // should not appear in the dashboard (it has no GCS image URLs
+      // and confuses "Edit My Website"). Compare on shopName + phone
+      // because that's the stable identifier across the flow.
+      const deployedSig = new Set(
+        allSites
+          .filter(s => s.deploymentStatus === 'deployed')
+          .map(s => `${s.data.shopName?.toLowerCase().trim()}|${s.data.phone?.replace(/\D/g, '')}`)
+      );
+      const cleaned = allSites.filter(s => {
+        if (s.deploymentStatus === 'deployed') return true;
+        const sig = `${s.data.shopName?.toLowerCase().trim()}|${s.data.phone?.replace(/\D/g, '')}`;
+        // Keep drafts that have no deployed twin; drop drafts that do.
+        return !deployedSig.has(sig);
+      });
+
+      setSites(cleaned);
     } finally {
       setIsLoading(false);
     }
