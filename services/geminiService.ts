@@ -162,6 +162,9 @@ export const generateContent = async (inputs: ShopInputs): Promise<WebsiteData> 
     phone,
     template,
     bookingUrl: inputs.bookingUrl || undefined,
+    // Carry the picked color theme onto the site so the renderer can
+    // restore the matching canvas + accent after publish.
+    colorTheme: inputs.colorTheme || 'goldBlack',
     hero: {
       heading: copy.heroHeading,
       tagline: copy.heroTagline,

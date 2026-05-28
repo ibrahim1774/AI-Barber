@@ -8,6 +8,17 @@ interface GeneratorFormProps {
   onSignIn?: () => void;
 }
 
+// Color-theme presets — matches the PrimeHub /barber set so the two
+// products stay visually consistent. The slug is written onto
+// ShopInputs.colorTheme and consumed by the LUXE + EUPHORIA renderers
+// to drive their CSS variables.
+const THEME_PRESETS: { slug: string; label: string; bg: string; accent: string }[] = [
+  { slug: 'goldBlack',   label: 'Gold & Black',   bg: '#000000', accent: '#f4a100' },
+  { slug: 'blackWhite',  label: 'Black & White',  bg: '#000000', accent: '#f5f5f5' },
+  { slug: 'redBlack',    label: 'Red & Black',    bg: '#000000', accent: '#dc2626' },
+  { slug: 'purpleGreen', label: 'Purple & Green', bg: '#160328', accent: '#22c55e' },
+];
+
 export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSignIn }) => {
   const [inputs, setInputs] = React.useState<ShopInputs>({
     shopName: '',
@@ -15,6 +26,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
     phone: '',
     template: 'luxe',
     bookingUrl: '',
+    colorTheme: 'goldBlack',
   });
 
   // Normalize a user-entered booking link: trim, drop if empty, prepend https:// if missing.
@@ -78,6 +90,14 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
             <p className="text-white text-[9px] md:text-xs font-medium leading-relaxed uppercase tracking-[2.5px] md:tracking-[3px] max-w-[280px] md:max-w-xs mx-auto opacity-90">
               AI-crafted luxury layouts tailored to your brand.
             </p>
+            {/* Small italic serif subhead — instruction for the visitor,
+                mirrors the one used on PrimeHub /barber. */}
+            <p
+              className="mt-3 text-[11px] md:text-xs italic text-white/65 max-w-[260px] md:max-w-xs mx-auto"
+              style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
+            >
+              Please fill in the info below so your custom website can be generated.
+            </p>
           </div>
         </div>
 
@@ -86,7 +106,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
           <div className="max-w-xl w-full mx-auto">
             <form onSubmit={handleSubmit} className="space-y-4 md:space-y-5">
               <div className="space-y-1">
-                <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Barber Shop Name</label>
+                <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Your Barbershop Name</label>
                 <input
                   required
                   type="text"
@@ -98,7 +118,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
               </div>
 
               <div className="space-y-1">
-                <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Service Area</label>
+                <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Your Barbershop Address</label>
                 <input
                   required
                   type="text"
@@ -110,7 +130,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
               </div>
 
               <div className="space-y-1">
-                <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Phone Number</label>
+                <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Your Barbershop Phone Number</label>
                 <input
                   required
                   type="tel"
@@ -123,7 +143,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
 
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Booking Link</label>
+                  <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Your Booking Link</label>
                   <span className="text-[8px] md:text-[9px] uppercase tracking-[2px] text-[#f4a100]/80 border border-[#f4a100]/40 px-1.5 py-0.5">Optional</span>
                 </div>
                 <input
@@ -138,6 +158,48 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
                   onChange={e => setInputs({...inputs, bookingUrl: e.target.value})}
                 />
                 <p className="text-white/40 text-[9px] md:text-[10px] mt-1">Booksy, Cal.com, Vagaro — any booking page works.</p>
+              </div>
+
+              {/* Color-theme picker — 4 presets in a 2x2 grid. Every chip
+                  shows its label inline so the visitor can read every
+                  option at a glance. Tap any chip to pick. */}
+              <div className="space-y-1.5">
+                <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">
+                  Choose Your Colors{' '}
+                  <span className="text-white/40 normal-case tracking-normal">(pick a theme)</span>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {THEME_PRESETS.map((t) => {
+                    const selected = (inputs.colorTheme || 'goldBlack') === t.slug;
+                    return (
+                      <button
+                        key={t.slug}
+                        type="button"
+                        onClick={() => setInputs({ ...inputs, colorTheme: t.slug })}
+                        aria-pressed={selected}
+                        className={`flex min-w-0 items-center gap-1.5 rounded-lg border px-2 py-1.5 transition-all ${
+                          selected
+                            ? 'border-white bg-white/10'
+                            : 'border-white/20 bg-white/[0.03] hover:border-white/40'
+                        }`}
+                      >
+                        <span className="relative flex shrink-0 items-center">
+                          <span
+                            className="h-3.5 w-3.5 rounded-full border border-white/25"
+                            style={{ background: t.bg }}
+                          />
+                          <span
+                            className="-ml-1.5 h-3.5 w-3.5 rounded-full border border-white/25"
+                            style={{ background: t.accent }}
+                          />
+                        </span>
+                        <span className="min-w-0 truncate text-[8.5px] sm:text-[9.5px] font-bold uppercase tracking-[0.08em] sm:tracking-[0.1em] text-white/90">
+                          {t.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               <button

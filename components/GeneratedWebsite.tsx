@@ -21,6 +21,25 @@ interface GeneratedWebsiteProps {
   userId?: string | null;
 }
 
+// ---------------------------------------------------------------------------
+// Color themes — picked on the GeneratorForm. The slug is persisted on
+// WebsiteData.colorTheme. Renderer sets CSS variables on its root and
+// a scoped <style> block rewires the hardcoded #f4a100 / #0d0d0d
+// utility classes so the same JSX paints correctly for every theme.
+// ---------------------------------------------------------------------------
+interface AibTheme {
+  bgRgb: string;
+  textRgb: string;
+  accent: string;
+  accentHover: string;
+}
+const AIB_THEMES: Record<string, AibTheme> = {
+  goldBlack:   { bgRgb: '13 13 13',  textRgb: '255 255 255', accent: '#f4a100', accentHover: '#ffb43a' },
+  blackWhite:  { bgRgb: '13 13 13',  textRgb: '245 245 245', accent: '#ffffff', accentHover: '#e5e5e5' },
+  redBlack:    { bgRgb: '13 13 13',  textRgb: '255 255 255', accent: '#dc2626', accentHover: '#ef4444' },
+  purpleGreen: { bgRgb: '22 3 40',   textRgb: '240 236 228', accent: '#22c55e', accentHover: '#4ade80' },
+};
+
 // Exported so App.tsx can reuse it for post-payment deploy
 export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
   const formattedPhone = siteData.phone.replace(/\s+/g, '');
@@ -571,8 +590,44 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
     }));
   };
 
+  // Resolve color theme — falls back to gold/black when unset or unknown.
+  const theme = AIB_THEMES[(siteData as any).colorTheme as string] || AIB_THEMES.goldBlack;
   return (
-    <div className={`bg-[#0d0d0d] text-white overflow-hidden scroll-smooth pt-[32px] md:pt-[40px] ${!isPostPayment ? 'pb-[250px] md:pb-[180px]' : ''}`}>
+    <div
+      className={`aib-themed bg-[#0d0d0d] text-white overflow-hidden scroll-smooth pt-[32px] md:pt-[40px] ${!isPostPayment ? 'pb-[250px] md:pb-[180px]' : ''}`}
+      style={{
+        ['--aib-bg' as any]: `rgb(${theme.bgRgb})`,
+        ['--aib-bg-rgb' as any]: theme.bgRgb,
+        ['--aib-text' as any]: `rgb(${theme.textRgb})`,
+        ['--aib-text-rgb' as any]: theme.textRgb,
+        ['--aib-accent' as any]: theme.accent,
+        ['--aib-accent-hover' as any]: theme.accentHover,
+      }}
+    >
+      <style>{`
+        /* Rewire the hardcoded LUXE color utilities onto the picked theme.
+           Specificity bump via .aib-themed parent so these win against
+           the standalone utility classes. */
+        .aib-themed.bg-\\[\\#0d0d0d\\], .aib-themed .bg-\\[\\#0d0d0d\\] { background-color: var(--aib-bg) !important; }
+        .aib-themed .bg-\\[\\#111111\\] { background-color: rgb(var(--aib-bg-rgb) / 0.92) !important; }
+        .aib-themed .bg-\\[\\#0c0c0c\\] { background-color: rgb(var(--aib-bg-rgb) / 0.95) !important; }
+        .aib-themed .bg-\\[\\#1a1a1a\\] { background-color: rgb(var(--aib-bg-rgb) / 0.85) !important; }
+
+        .aib-themed .text-\\[\\#f4a100\\] { color: var(--aib-accent) !important; }
+        .aib-themed .bg-\\[\\#f4a100\\] { background-color: var(--aib-accent) !important; }
+        .aib-themed .border-\\[\\#f4a100\\] { border-color: var(--aib-accent) !important; }
+        .aib-themed .from-\\[\\#f4a100\\] { --tw-gradient-from: var(--aib-accent) !important; }
+        .aib-themed .to-\\[\\#f4a100\\] { --tw-gradient-to: var(--aib-accent) !important; }
+        .aib-themed .hover\\:bg-\\[\\#f4a100\\]:hover { background-color: var(--aib-accent) !important; }
+        .aib-themed .hover\\:text-\\[\\#f4a100\\]:hover { color: var(--aib-accent) !important; }
+        .aib-themed .hover\\:border-\\[\\#f4a100\\]:hover { border-color: var(--aib-accent) !important; }
+        .aib-themed .focus\\:border-\\[\\#f4a100\\]:focus { border-color: var(--aib-accent) !important; }
+        .aib-themed .ring-\\[\\#f4a100\\] { --tw-ring-color: var(--aib-accent) !important; }
+
+        /* Light cream variants used for hovers / pull quotes */
+        .aib-themed .text-\\[\\#e8c074\\] { color: var(--aib-accent-hover) !important; }
+        .aib-themed .bg-\\[\\#e8c074\\] { background-color: var(--aib-accent-hover) !important; }
+      `}</style>
       {/* Toolbar: EditorToolbar for post-payment, red banner for pre-payment */}
       {isPostPayment ? (
         <EditorToolbar

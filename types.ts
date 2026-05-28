@@ -7,6 +7,9 @@ export interface ShopInputs {
   phone: string;
   template?: TemplateId;
   bookingUrl?: string;
+  // Optional color-theme slug — maps to the same four presets used on
+  // PrimeHub /barber. Drives the rendered site's bg + accent.
+  colorTheme?: string;
 }
 
 export interface ServiceItem {
@@ -23,6 +26,9 @@ export interface WebsiteData {
   phone: string;
   template?: TemplateId;
   bookingUrl?: string;
+  // Picked color-theme slug, persisted with the site so renderers can
+  // restore the right canvas + accent after publish.
+  colorTheme?: string;
   hero: {
     heading: string;
     tagline: string;

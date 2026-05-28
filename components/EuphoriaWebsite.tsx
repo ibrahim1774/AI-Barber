@@ -567,8 +567,29 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
     return Array.from({ length: Math.max(filledCount, 4) }, (_, i) => i);
   }, [siteData.gallery]);
 
+  // Resolve color theme — matches the set used by GeneratedWebsite. Override
+  // the existing Euphoria CSS variables on the root rather than rewriting
+  // every utility — Euphoria is already token-driven.
+  const themeOverride = (() => {
+    const slug = (siteData as any).colorTheme as string;
+    if (slug === 'blackWhite') return { brand: '#ffffff', brandBright: '#f5f5f5', bg: '#000', bg2: '#0c0c0c', bg3: '#141414' };
+    if (slug === 'redBlack')   return { brand: '#dc2626', brandBright: '#ef4444', bg: '#000', bg2: '#0c0c0c', bg3: '#141414' };
+    if (slug === 'purpleGreen') return { brand: '#22c55e', brandBright: '#4ade80', bg: '#160328', bg2: '#1f0436', bg3: '#2a0747' };
+    return null; // goldBlack falls through to the defaults defined in EUPHORIA_SCOPED_CSS
+  })();
+  const themeStyle: React.CSSProperties = themeOverride
+    ? {
+        ['--eu-brand' as any]: themeOverride.brand,
+        ['--eu-brand-bright' as any]: themeOverride.brandBright,
+        ['--eu-bg' as any]: themeOverride.bg,
+        ['--eu-bg-2' as any]: themeOverride.bg2,
+        ['--eu-bg-3' as any]: themeOverride.bg3,
+        background: themeOverride.bg,
+      }
+    : {};
+
   return (
-    <div className={`euphoria-root pt-[32px] md:pt-[40px] ${!isPostPayment ? 'pb-[250px] md:pb-[180px]' : ''}`}>
+    <div className={`euphoria-root pt-[32px] md:pt-[40px] ${!isPostPayment ? 'pb-[250px] md:pb-[180px]' : ''}`} style={themeStyle}>
       {/* Toolbar / pre-payment banner */}
       {isPostPayment ? (
         <EditorToolbar
