@@ -4,6 +4,7 @@ import { CameraIcon } from './Icons';
 import { EditorToolbar } from './EditorToolbar';
 import { PublishOverlay } from './PublishOverlay';
 import { useAutoSave } from '../hooks/useAutoSave';
+import { useResetOnReturnFromStripe } from '../hooks/useResetOnReturnFromStripe';
 import PrePaymentBanner from './PrePaymentBanner.tsx';
 
 interface EuphoriaWebsiteProps {
@@ -338,6 +339,13 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
   const [siteData, setSiteData] = useState<WebsiteData>(data);
   const [isDeploying, setIsDeploying] = useState(false);
   const [, setDeploymentResult] = useState<{ error?: string } | null>(null);
+  // Same Stripe-return reset as GeneratedWebsite — without this the
+  // Publish button stays stuck when the user comes back from Stripe
+  // without paying.
+  const { markRedirecting } = useResetOnReturnFromStripe(useCallback(() => {
+    setIsDeploying(false);
+    setDeploymentResult(null);
+  }, []));
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [isPublishing, setIsPublishing] = useState(false);
   const [showPublishOverlay, setShowPublishOverlay] = useState(false);
@@ -519,6 +527,9 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
       if (!checkoutResponse.ok || !checkoutData.url) {
         throw new Error(checkoutData.error || 'Failed to create checkout session');
       }
+      // Mark the Stripe redirect so the reset-on-return hook clears
+      // isDeploying when the user comes back without paying.
+      markRedirecting();
       window.location.href = checkoutData.url;
     } catch (error: any) {
       console.error('Claim site error:', error);

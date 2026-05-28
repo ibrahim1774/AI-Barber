@@ -9,6 +9,7 @@ import {
 import { EditorToolbar } from './EditorToolbar';
 import { PublishOverlay } from './PublishOverlay';
 import { useAutoSave } from '../hooks/useAutoSave';
+import { useResetOnReturnFromStripe } from '../hooks/useResetOnReturnFromStripe';
 import PrePaymentBanner from './PrePaymentBanner.tsx';
 
 interface GeneratedWebsiteProps {
@@ -230,6 +231,15 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
   const [, setDeploymentResult] = useState<{
     error?: string;
   } | null>(null);
+  // Reset Publish button state when the user returns from Stripe
+  // Checkout without completing payment (back button, closed tab, etc).
+  // Without this the button stays stuck on its loading spinner because
+  // bfcache preserves React state and we never get the chance to clear
+  // it from the Stripe redirect path.
+  const { markRedirecting } = useResetOnReturnFromStripe(useCallback(() => {
+    setIsDeploying(false);
+    setDeploymentResult(null);
+  }, []));
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [isPublishing, setIsPublishing] = useState(false);
   const [showPublishOverlay, setShowPublishOverlay] = useState(false);
@@ -494,6 +504,9 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       if (!checkoutResponse.ok || !checkoutData.url) {
         throw new Error(checkoutData.error || 'Failed to create checkout session');
       }
+      // Flag the redirect so useResetOnReturnFromStripe knows to clear
+      // isDeploying when the user comes back (back button, closed tab).
+      markRedirecting();
       window.location.href = checkoutData.url;
 
     } catch (error: any) {
