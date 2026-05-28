@@ -68,7 +68,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
           {/* Darkening overlay for text legibility */}
           <div className="absolute inset-0 bg-gradient-to-br from-black/85 via-black/70 to-black/85" aria-hidden="true" />
           <div className="relative z-10 pt-6 md:pt-0">
-            <h1 className="text-xl md:text-4xl lg:text-5xl font-montserrat font-black uppercase tracking-[1px] md:tracking-[2px] leading-[1.15] text-white mb-3 md:mb-5">
+            <h1 className="text-2xl md:text-5xl lg:text-6xl font-montserrat font-black uppercase tracking-[1px] md:tracking-[2px] leading-[1.15] text-white mb-3 md:mb-5">
               Generate Custom <br className="hidden md:block"/> Barbershop Website <br/>
               <span className="text-[#f4a100] mt-1 block">in About 2 Seconds</span>
             </h1>
@@ -86,7 +86,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
           <div className="max-w-xl w-full mx-auto">
             <form onSubmit={handleSubmit} className="space-y-4 md:space-y-5">
               <div className="space-y-1">
-                <label className="block text-[10px] md:text-xs uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Barber Shop Name</label>
+                <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Barber Shop Name</label>
                 <input
                   required
                   type="text"
@@ -98,7 +98,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
               </div>
 
               <div className="space-y-1">
-                <label className="block text-[10px] md:text-xs uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Service Area</label>
+                <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Service Area</label>
                 <input
                   required
                   type="text"
@@ -110,7 +110,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
               </div>
 
               <div className="space-y-1">
-                <label className="block text-[10px] md:text-xs uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Phone Number</label>
+                <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Phone Number</label>
                 <input
                   required
                   type="tel"
@@ -123,7 +123,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
 
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <label className="block text-[10px] md:text-xs uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Booking Link</label>
+                  <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Booking Link</label>
                   <span className="text-[8px] md:text-[9px] uppercase tracking-[2px] text-[#f4a100]/80 border border-[#f4a100]/40 px-1.5 py-0.5">Optional</span>
                 </div>
                 <input
