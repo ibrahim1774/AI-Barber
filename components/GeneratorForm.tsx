@@ -66,8 +66,12 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
           </button>
         )}
 
-        {/* Left Side: Main Headline Section */}
-        <div className="px-6 pt-16 pb-8 md:p-16 flex flex-col justify-center items-center text-center border-b md:border-b-0 md:border-r border-white/5 relative md:min-h-screen overflow-hidden">
+        {/* Left Side: Main Headline Section — tightened vertical padding
+            on mobile so the headline + subhead don't push the inputs
+            below the fold. Removed the marketing "AI-crafted luxury
+            layouts ..." line and the orange divider — the italic
+            instruction subhead carries enough weight on its own. */}
+        <div className="px-6 pt-10 pb-4 md:p-16 flex flex-col justify-center items-center text-center border-b md:border-b-0 md:border-r border-white/5 relative md:min-h-screen overflow-hidden">
           {/* Premium barbershop background */}
           <div
             className="absolute inset-0 bg-cover bg-center"
@@ -79,21 +83,15 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
           />
           {/* Darkening overlay for text legibility */}
           <div className="absolute inset-0 bg-gradient-to-br from-black/85 via-black/70 to-black/85" aria-hidden="true" />
-          <div className="relative z-10 pt-6 md:pt-0">
-            <h1 className="text-2xl md:text-5xl lg:text-6xl font-montserrat font-black uppercase tracking-[1px] md:tracking-[2px] leading-[1.15] text-white mb-3 md:mb-5">
+          <div className="relative z-10 pt-4 md:pt-0">
+            <h1 className="text-2xl md:text-5xl lg:text-6xl font-montserrat font-black uppercase tracking-[1px] md:tracking-[2px] leading-[1.15] text-white mb-2 md:mb-4">
               Generate Custom <br className="hidden md:block"/> Barbershop Website <br/>
               <span className="text-[#f4a100] mt-1 block">in About 2 Seconds</span>
             </h1>
-
-            <div className="w-10 md:w-16 h-[3px] bg-[#f4a100] mx-auto mb-3 md:mb-5"></div>
-
-            <p className="text-white text-[9px] md:text-xs font-medium leading-relaxed uppercase tracking-[2.5px] md:tracking-[3px] max-w-[280px] md:max-w-xs mx-auto opacity-90">
-              AI-crafted luxury layouts tailored to your brand.
-            </p>
             {/* Small italic serif subhead — instruction for the visitor,
                 mirrors the one used on PrimeHub /barber. */}
             <p
-              className="mt-3 text-[11px] md:text-xs italic text-white/65 max-w-[260px] md:max-w-xs mx-auto"
+              className="text-[11px] md:text-xs italic text-white/70 max-w-[280px] md:max-w-xs mx-auto"
               style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
             >
               Please fill in the info below so your custom website can be generated.
@@ -101,10 +99,11 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
           </div>
         </div>
 
-        {/* Right Side: Form */}
-        <div className="px-6 pt-6 pb-10 md:px-16 md:py-12 lg:px-24 bg-[#0d0d0d] flex flex-col justify-center md:min-h-screen">
+        {/* Right Side: Form — tighter vertical padding on mobile so the
+            first input sits right under the headline section. */}
+        <div className="px-6 pt-4 pb-8 md:px-16 md:py-12 lg:px-24 bg-[#0d0d0d] flex flex-col justify-center md:min-h-screen">
           <div className="max-w-xl w-full mx-auto">
-            <form onSubmit={handleSubmit} className="space-y-4 md:space-y-5">
+            <form onSubmit={handleSubmit} className="space-y-3 md:space-y-5">
               <div className="space-y-1">
                 <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Your Barbershop Name</label>
                 <input
