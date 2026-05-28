@@ -117,7 +117,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
         }`}
       >
         <div
-          className="relative px-5 pt-4 pb-4 md:px-7 md:pt-5 md:pb-5 shadow-[0_-12px_36px_rgba(0,0,0,0.5)] border-t"
+          className="relative px-3.5 pt-2 pb-2.5 md:px-5 md:pt-2.5 md:pb-3 shadow-[0_-10px_30px_rgba(0,0,0,0.5)] border-t"
           style={{
             background: 'linear-gradient(180deg, #0a0a0a 0%, #14110c 100%)',
             borderTopColor: 'rgba(232,192,116,0.18)',
@@ -127,54 +127,52 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
         >
           <button
             onClick={() => setIsDismissed(true)}
-            className="absolute top-2.5 right-2.5 text-white/35 hover:text-white transition-colors"
+            className="absolute top-1.5 right-1.5 text-white/35 hover:text-white transition-colors"
             aria-label="Dismiss"
           >
-            <X size={15} />
+            <X size={13} />
           </button>
 
-          {/* Price line — serif, centered. Replaces the pulsing-dot
-              paragraph; the type carries the value on its own. */}
-          <div className="text-center mb-3.5 pr-5">
+          {/* Price line — serif, centered, ~20% smaller than before */}
+          <div className="text-center mb-2 pr-4">
             <p
               className="leading-none"
-              style={{ fontFamily: '"Instrument Serif", serif', fontSize: '1.4rem', color: '#ece6da', fontWeight: 400 }}
+              style={{ fontFamily: '"Instrument Serif", serif', fontSize: '1.15rem', color: '#ece6da', fontWeight: 400 }}
             >
               {dealMode ? (
                 <>
                   <span style={{ color: '#e8c074', fontStyle: 'italic' }}>{dealPriceMonth}</span>
-                  <span style={{ color: 'rgba(236,230,218,0.55)', fontSize: '0.85rem', fontFamily: '"DM Sans", sans-serif', marginLeft: '0.4em' }}>
-                    — hosting only
+                  <span style={{ color: 'rgba(236,230,218,0.55)', fontSize: '0.72rem', fontFamily: '"DM Sans", sans-serif', marginLeft: '0.4em' }}>
+                    — hosting/maintenance only
                   </span>
                 </>
               ) : (
                 <>
                   {pricingPlan === 'yearly' && (
-                    <span style={{ color: 'rgba(236,230,218,0.3)', textDecoration: 'line-through', fontSize: '0.85rem', marginRight: '0.4em', fontFamily: '"DM Sans", sans-serif' }}>
+                    <span style={{ color: 'rgba(236,230,218,0.3)', textDecoration: 'line-through', fontSize: '0.72rem', marginRight: '0.4em', fontFamily: '"DM Sans", sans-serif' }}>
                       $120/yr
                     </span>
                   )}
                   <span style={{ color: '#e8c074', fontStyle: 'italic' }}>
                     {pricingPlan === 'yearly' ? '$72/yr' : '$10/mo'}
                   </span>
-                  <span style={{ color: 'rgba(236,230,218,0.55)', fontSize: '0.85rem', fontFamily: '"DM Sans", sans-serif', marginLeft: '0.4em' }}>
-                    — hosting only
+                  <span style={{ color: 'rgba(236,230,218,0.55)', fontSize: '0.72rem', fontFamily: '"DM Sans", sans-serif', marginLeft: '0.4em' }}>
+                    — hosting/maintenance only
                   </span>
                 </>
               )}
             </p>
-            <p className="mt-1.5 text-[9px] uppercase tracking-[0.28em]" style={{ color: 'rgba(236,230,218,0.4)' }}>
+            <p className="mt-1 text-[8px] uppercase tracking-[0.28em]" style={{ color: 'rgba(236,230,218,0.4)' }}>
               Edit anytime · Cancel anytime
             </p>
           </div>
 
-          {/* Monthly / Yearly toggle — text + gold underline, no pill.
-              Hidden in /5 and /7 deal mode. */}
+          {/* Monthly / Yearly toggle — quieter, smaller. Hidden in /5 + /7. */}
           {!dealMode && (
-            <div className="flex items-center justify-center gap-6 mb-4">
+            <div className="flex items-center justify-center gap-5 mb-2.5">
               <button
                 onClick={() => setPricingPlan('monthly')}
-                className="text-[10px] font-medium uppercase tracking-[0.22em] pb-1 transition-colors"
+                className="text-[9px] font-medium uppercase tracking-[0.22em] pb-0.5 transition-colors"
                 style={{
                   color: pricingPlan === 'monthly' ? '#ece6da' : 'rgba(236,230,218,0.4)',
                   borderBottom: pricingPlan === 'monthly' ? '1px solid #e8c074' : '1px solid transparent',
@@ -184,7 +182,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
               </button>
               <button
                 onClick={() => setPricingPlan('yearly')}
-                className="text-[10px] font-medium uppercase tracking-[0.22em] pb-1 transition-colors"
+                className="text-[9px] font-medium uppercase tracking-[0.22em] pb-0.5 transition-colors"
                 style={{
                   color: pricingPlan === 'yearly' ? '#ece6da' : 'rgba(236,230,218,0.4)',
                   borderBottom: pricingPlan === 'yearly' ? '1px solid #e8c074' : '1px solid transparent',
@@ -195,11 +193,11 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
             </div>
           )}
 
-          {/* Action row — hairline-outlined secondary, solid-gold primary */}
-          <div className="flex items-center gap-2.5">
+          {/* Action row — slimmer buttons */}
+          <div className="flex items-center gap-2">
             <button
               onClick={() => setShowHowItWorks(true)}
-              className="flex-1 py-3 text-[10px] font-medium border hover:border-white/40 hover:text-white transition-colors uppercase tracking-[0.24em] text-center"
+              className="flex-1 py-2 text-[9px] font-medium border hover:border-white/40 hover:text-white transition-colors uppercase tracking-[0.24em] text-center"
               style={{
                 color: 'rgba(236,230,218,0.75)',
                 borderColor: 'rgba(236,230,218,0.2)',
@@ -212,7 +210,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
             <button
               onClick={() => onDeploy(dealPlan ?? pricingPlan)}
               disabled={isDeploying}
-              className="flex-1 py-3 text-[10px] font-bold flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all uppercase tracking-[0.24em] disabled:opacity-50"
+              className="flex-1 py-2 text-[9px] font-bold flex items-center justify-center gap-1.5 hover:opacity-90 active:scale-[0.98] transition-all uppercase tracking-[0.24em] disabled:opacity-50"
               style={{
                 background: '#e8c074',
                 color: '#0a0a0a',
@@ -220,34 +218,39 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
               }}
             >
               {isDeploying ? (
-                <Loader2 className="animate-spin" size={13} />
+                <Loader2 className="animate-spin" size={11} />
               ) : (
-                <Rocket size={12} />
+                <Rocket size={11} />
               )}
               Publish · {dealMode ? dealPriceMo : (pricingPlan === 'yearly' ? '$72/yr' : '$10/mo')}
             </button>
           </div>
 
-          {/* Custom-design upsell — kept but rephrased in the editorial
-              voice and stripped of card chrome. Hairline rule above
-              separates it from the action row. */}
-          <div className="mt-4 pt-3.5 border-t" style={{ borderTopColor: 'rgba(232,192,116,0.18)' }}>
-            <button
-              type="button"
-              onClick={() => { setWizardStep(0); setShowCustomWizard(true); }}
-              className="group flex w-full items-center justify-center gap-2 text-[11px] transition-colors"
-              style={{ color: 'rgba(236,230,218,0.7)' }}
-            >
-              <span>
-                Prefer a different look?{' '}
-                <span style={{ color: '#e8c074', fontStyle: 'italic', fontFamily: '"Instrument Serif", serif', fontSize: '0.95rem' }}>
-                  Commission a custom design
-                </span>{' '}
-                <span style={{ color: 'rgba(236,230,218,0.5)' }}>— {customPriceLabel}</span>
+          {/* "Don't like the design?" — highlighted gold-tinted box, simpler
+              copy, sits as its own card so the eye catches it. */}
+          <button
+            type="button"
+            onClick={() => { setWizardStep(0); setShowCustomWizard(true); }}
+            className="group mt-2.5 flex w-full items-center justify-between gap-2 px-3 py-2 border transition-all hover:border-[#e8c074]/70"
+            style={{
+              background: 'linear-gradient(180deg, rgba(232,192,116,0.06) 0%, rgba(232,192,116,0.02) 100%)',
+              borderColor: 'rgba(232,192,116,0.35)',
+              color: '#ece6da',
+            }}
+          >
+            <span className="flex items-center gap-2">
+              <Sparkles size={12} style={{ color: '#e8c074' }} />
+              <span className="text-[11px]">
+                <span style={{ fontFamily: '"Instrument Serif", serif', fontStyle: 'italic', fontSize: '0.95rem', color: '#e8c074' }}>
+                  Don't like the design?
+                </span>
               </span>
-              <ArrowRight size={11} style={{ color: '#e8c074' }} className="transition group-hover:translate-x-0.5" />
-            </button>
-          </div>
+            </span>
+            <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.2em]" style={{ color: '#e8c074' }}>
+              {customPriceLabel}
+              <ArrowRight size={11} className="transition group-hover:translate-x-0.5" />
+            </span>
+          </button>
         </div>
       </div>
 
@@ -429,210 +432,241 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
         );
       })()}
 
-      {/* Multi-step custom-design wizard. Price flexes per-path:
-          $20/mo on /5, $25/mo on the homepage. */}
+      {/* Multi-step custom-design wizard — premium editorial treatment
+          matching the How-It-Works modal: cream + gold on warm dark,
+          serif italic headlines, hairline lists, sharper corners. */}
       {showCustomWizard && (() => {
         const totalSteps = 3;
+        const gold = '#e8c074';
+        const cream = '#ece6da';
         const next = () => setWizardStep((s) => Math.min(totalSteps - 1, s + 1));
         const back = () => setWizardStep((s) => Math.max(0, s - 1));
 
+        const stepEyebrows = ['Custom Design', 'Pages & Booking', 'Get Started'];
+        const stepNumerals = ['I', 'II', 'III'];
+
         return (
           <div
-            className="fixed inset-0 z-[210] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 md:p-6"
+            className="fixed inset-0 z-[210] bg-black/85 backdrop-blur-md flex items-center justify-center p-4 md:p-6"
             onClick={closeCustomWizard}
           >
             <div
-              className="relative w-full max-w-xl max-h-[92vh] overflow-y-auto rounded-3xl border border-white/10 shadow-2xl animate-[modalIn_0.3s_ease-out]"
+              className="relative w-full max-w-md max-h-[92vh] overflow-y-auto border border-white/10 shadow-2xl animate-[modalIn_0.3s_ease-out]"
               style={{
-                background: 'linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%)',
+                background: 'linear-gradient(180deg, #0a0a0a 0%, #14110c 100%)',
                 fontFamily: '"DM Sans", sans-serif',
+                color: cream,
               }}
               onClick={(e) => e.stopPropagation()}
             >
               <button
                 onClick={closeCustomWizard}
                 aria-label="Close"
-                className="absolute top-3 right-3 z-10 rounded-md p-1 text-gray-400 hover:bg-white/5 hover:text-white transition"
+                className="absolute top-3 right-3 z-10 p-1 text-white/40 hover:text-white transition"
               >
-                <X size={18} />
+                <X size={16} />
               </button>
 
-              {/* Progress dots */}
-              <div className="flex items-center justify-center gap-2 pt-5 pb-1">
+              {/* Progress dots — gold, thin */}
+              <div className="flex items-center justify-center gap-1.5 pt-6 pb-1">
                 {Array.from({ length: totalSteps }, (_, i) => (
                   <button
                     key={i}
                     type="button"
                     aria-label={`Step ${i + 1}`}
                     onClick={() => setWizardStep(i)}
-                    className={`h-1.5 rounded-full transition-all ${
-                      i === wizardStep ? 'w-7 bg-[#e8c074]' : i < wizardStep ? 'w-3 bg-[#e8c074]/60' : 'w-3 bg-white/15'
+                    className={`h-[2px] transition-all ${
+                      i === wizardStep ? 'w-8' : i < wizardStep ? 'w-4' : 'w-4'
                     }`}
+                    style={{
+                      background: i === wizardStep ? gold : i < wizardStep ? 'rgba(232,192,116,0.5)' : 'rgba(236,230,218,0.15)',
+                    }}
                   />
                 ))}
               </div>
 
-              <div className="px-5 pt-3 pb-5 md:px-7 md:pt-4 md:pb-7">
-                {/* Step 1 */}
+              <div className="px-6 pt-4 pb-6 md:px-8 md:pt-5 md:pb-7">
+                {/* Eyebrow — hairline + label, consistent across steps */}
+                <div className="flex items-center gap-3 mb-5">
+                  <span className="h-px w-5" style={{ background: gold }} />
+                  <span
+                    className="shrink-0 text-[10px] tracking-[0.18em]"
+                    style={{ color: gold, fontFamily: '"Instrument Serif", serif', fontStyle: 'italic' }}
+                  >
+                    {stepNumerals[wizardStep]}
+                  </span>
+                  <span className="text-[10px] font-medium uppercase tracking-[0.32em]" style={{ color: gold }}>
+                    {stepEyebrows[wizardStep]}
+                  </span>
+                  <span className="h-px flex-1" style={{ background: 'rgba(232,192,116,0.2)' }} />
+                </div>
+
+                {/* Step 1 — Pitch */}
                 {wizardStep === 0 && (
                   <div>
-                    <div className="overflow-hidden rounded-2xl border border-white/5 mb-4">
-                      <img src={WIZARD_IMAGES.hero} alt="" className="h-44 w-full object-cover md:h-52" />
-                    </div>
-                    <div className="mb-2 flex items-center gap-2">
-                      <Sparkles size={14} className="text-[#e8c074]" />
-                      <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#e8c074]">
-                        Custom Design
-                      </span>
-                    </div>
-                    <h2 className="text-xl md:text-2xl font-bold text-white leading-tight mb-2">
-                      A custom website, designed for your shop.
+                    <h2
+                      className="leading-[1.05] mb-3"
+                      style={{ fontFamily: '"Instrument Serif", serif', fontSize: '1.9rem', fontWeight: 400 }}
+                    >
+                      <span style={{ color: cream }}>A site built </span>
+                      <span style={{ color: gold, fontStyle: 'italic' }}>around your shop.</span>
                     </h2>
-                    <p className="text-sm text-gray-400 leading-relaxed mb-4">
-                      Not loving the template? We'll design a site from scratch around your brand, your barbers, and your vibe — for a flat {customPriceFull}. You may choose a design you like after checkout.
+                    <p className="text-sm leading-relaxed mb-5" style={{ color: 'rgba(236,230,218,0.6)' }}>
+                      Not loving the template? We'll design a site from scratch around your brand and your vibe — flat {customPriceFull}.
                     </p>
-                    <ul className="space-y-2">
+                    <div className="border-t border-white/10">
                       {[
-                        'Get a custom design — built from scratch for your shop',
-                        'You have the option to choose the design you like',
-                        'Booking links + multiple pages included',
-                      ].map((line) => (
-                        <li key={line} className="flex items-start gap-2.5 text-sm text-gray-200">
-                          <Check size={16} className="mt-0.5 shrink-0 text-[#e8c074]" />
-                          <span>{line}</span>
-                        </li>
+                        'Built from scratch for your shop',
+                        'Choose the design you like',
+                        'Multiple pages + booking links included',
+                      ].map((line, i) => (
+                        <div key={line} className="flex items-baseline gap-4 py-3 border-b border-white/10">
+                          <span
+                            className="shrink-0 text-[10px] tracking-[0.18em] w-5"
+                            style={{ color: gold, fontFamily: '"Instrument Serif", serif', fontStyle: 'italic' }}
+                          >
+                            {['I', 'II', 'III'][i]}
+                          </span>
+                          <span className="text-[14px] leading-snug" style={{ color: cream }}>{line}</span>
+                        </div>
                       ))}
-                    </ul>
+                    </div>
                   </div>
                 )}
 
-                {/* Step 2 */}
-                {/* Step 2 — Pages & Booking (formerly step 3) */}
+                {/* Step 2 — Pages & Booking */}
                 {wizardStep === 1 && (
                   <div>
-                    <div className="overflow-hidden rounded-2xl border border-white/5 mb-4">
-                      <img src={WIZARD_IMAGES.pages} alt="" className="h-40 w-full object-cover md:h-48" />
-                    </div>
-                    <div className="mb-2 flex items-center gap-2">
-                      <Sparkles size={14} className="text-[#e8c074]" />
-                      <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#e8c074]">
-                        Step 2 — Pages & Booking
-                      </span>
-                    </div>
-                    <h2 className="text-xl md:text-2xl font-bold text-white leading-tight mb-2">
-                      Multiple pages + booking links built in.
+                    <h2
+                      className="leading-[1.05] mb-3"
+                      style={{ fontFamily: '"Instrument Serif", serif', fontSize: '1.9rem', fontWeight: 400 }}
+                    >
+                      <span style={{ color: cream }}>Multiple pages, </span>
+                      <span style={{ color: gold, fontStyle: 'italic' }}>booking built in.</span>
                     </h2>
-                    <ul className="space-y-2 mb-4">
+                    <p className="text-sm leading-relaxed mb-5" style={{ color: 'rgba(236,230,218,0.6)' }}>
+                      Separate pages, real booking provider, real photos — not one long scroll.
+                    </p>
+                    <div className="border-t border-white/10">
                       {[
-                        'Home, Services, About, Gallery, Contact — separate pages, not one long scroll',
-                        'Booking integrated (Calendly, Acuity, Square — your choice)',
-                        'Custom photography sourced or your own uploaded',
-                      ].map((line) => (
-                        <li key={line} className="flex items-start gap-2.5 text-sm text-gray-200">
-                          <Check size={16} className="mt-0.5 shrink-0 text-[#e8c074]" />
-                          <span>{line}</span>
-                        </li>
+                        'Home · Services · About · Gallery · Contact',
+                        'Booking (Calendly, Acuity, Square — your choice)',
+                        'Custom photography sourced or your own',
+                      ].map((line, i) => (
+                        <div key={line} className="flex items-baseline gap-4 py-3 border-b border-white/10">
+                          <span
+                            className="shrink-0 text-[10px] tracking-[0.18em] w-5"
+                            style={{ color: gold, fontFamily: '"Instrument Serif", serif', fontStyle: 'italic' }}
+                          >
+                            {['I', 'II', 'III'][i]}
+                          </span>
+                          <span className="text-[14px] leading-snug" style={{ color: cream }}>{line}</span>
+                        </div>
                       ))}
-                    </ul>
-                    <div className="overflow-hidden rounded-xl border border-white/5">
-                      <img src={WIZARD_IMAGES.booking} alt="" className="h-32 w-full object-cover md:h-36" />
                     </div>
                   </div>
                 )}
 
-                {/* Step 3 — Pricing + Checkout (formerly step 4) */}
+                {/* Step 3 — Checkout */}
                 {wizardStep === 2 && (
                   <div>
-                    <div className="mb-2 flex items-center gap-2">
-                      <Sparkles size={14} className="text-[#e8c074]" />
-                      <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#e8c074]">
-                        Step 3 — Get Started
-                      </span>
-                    </div>
-                    <h2 className="text-xl md:text-2xl font-bold text-white leading-tight mb-2">
-                      All in for{' '}
-                      <span style={{ fontFamily: '"Instrument Serif", serif' }} className="text-[#e8c074]">
-                        {customPriceFull}
-                      </span>
+                    <h2
+                      className="leading-[1.05] mb-3"
+                      style={{ fontFamily: '"Instrument Serif", serif', fontSize: '1.9rem', fontWeight: 400 }}
+                    >
+                      <span style={{ color: cream }}>All in for </span>
+                      <span style={{ color: gold, fontStyle: 'italic' }}>{customPriceFull}.</span>
                     </h2>
-                    <p className="text-sm text-gray-400 leading-relaxed mb-4">
-                      One simple price. Cancel anytime. After checkout you may choose the design you like and fill out a short form so we know your style, booking provider, and photos to use.
+                    <p className="text-sm leading-relaxed mb-5" style={{ color: 'rgba(236,230,218,0.6)' }}>
+                      One simple price. Cancel anytime. After checkout, fill out a short form so we know your style, booking provider, and photos to use.
                     </p>
 
-                    <div className="space-y-2 mb-4">
+                    <div className="border-t border-white/10 mb-5">
                       {[
-                        'Custom design from scratch',
-                        'You may choose the design you like',
+                        'Custom design, built from scratch',
+                        'Choose the design you like',
                         'Multiple pages',
-                        'Booking links included',
+                        'Booking integration',
                         'Custom photos',
-                      ].map((line) => (
-                        <div key={line} className="flex items-start gap-2.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-gray-200">
-                          <Check size={15} className="mt-0.5 shrink-0 text-[#e8c074]" />
-                          <span>{line}</span>
+                      ].map((line, i) => (
+                        <div key={line} className="flex items-baseline gap-4 py-2.5 border-b border-white/10">
+                          <span
+                            className="shrink-0 text-[10px] tracking-[0.18em] w-5"
+                            style={{ color: gold, fontFamily: '"Instrument Serif", serif', fontStyle: 'italic' }}
+                          >
+                            {['I', 'II', 'III', 'IV', 'V'][i]}
+                          </span>
+                          <span className="text-[14px] leading-snug" style={{ color: cream }}>{line}</span>
                         </div>
                       ))}
                     </div>
 
-                    <div className="mb-4 flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-3">
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.18em] text-gray-500">Total</p>
-                        <p className="text-lg font-bold text-white" style={{ fontFamily: '"Instrument Serif", serif' }}>
-                          {customPriceFull}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-[10px] uppercase tracking-[0.18em] text-gray-500">Includes</p>
-                        <p className="text-[11px] text-gray-300">Design · Pages · Booking · Photos</p>
-                      </div>
+                    {/* Price + CTA — solid gold, uppercase */}
+                    <div className="text-center mb-3">
+                      <p
+                        className="leading-none"
+                        style={{ fontFamily: '"Instrument Serif", serif', fontSize: '1.5rem', color: cream, fontWeight: 400 }}
+                      >
+                        <span style={{ color: gold, fontStyle: 'italic' }}>{customPriceFull}</span>
+                        <span style={{ color: 'rgba(236,230,218,0.55)', fontSize: '0.85rem', fontFamily: '"DM Sans", sans-serif', marginLeft: '0.4em' }}>
+                          — all in
+                        </span>
+                      </p>
                     </div>
 
                     <button
                       type="button"
                       onClick={handleCustomCheckout}
                       disabled={isCustomCheckingOut}
-                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-[#e8c074] to-[#d4a64a] py-3 text-sm font-bold uppercase tracking-wider text-[#1a1a1a] shadow-lg shadow-[#e8c074]/20 transition hover:opacity-90 active:scale-[0.97] disabled:opacity-50"
+                      className="flex w-full items-center justify-center gap-2 py-3.5 text-[11px] font-bold uppercase tracking-[0.24em] transition hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
+                      style={{
+                        background: gold,
+                        color: '#0a0a0a',
+                        fontFamily: '"DM Sans", sans-serif',
+                      }}
                     >
                       {isCustomCheckingOut ? (
-                        <Loader2 className="animate-spin" size={16} />
+                        <Loader2 className="animate-spin" size={15} />
                       ) : (
                         <>
-                          Continue to Checkout — {customPriceLabel}
-                          <ArrowRight size={16} />
+                          Continue · {customPriceLabel}
+                          <ArrowRight size={13} />
                         </>
                       )}
                     </button>
-                    <p className="mt-2 text-center text-[10px] text-gray-500">
-                      Secure checkout via Stripe. Cancel anytime.
+                    <p className="mt-2 text-center text-[9px] uppercase tracking-[0.22em]" style={{ color: 'rgba(236,230,218,0.4)' }}>
+                      Secure checkout · Stripe · Cancel anytime
                     </p>
                   </div>
                 )}
 
-                {/* Wizard navigation */}
-                <div className="mt-5 flex items-center justify-between border-t border-white/5 pt-4">
+                {/* Wizard navigation — quieter */}
+                <div className="mt-6 flex items-center justify-between pt-4 border-t" style={{ borderColor: 'rgba(232,192,116,0.18)' }}>
                   <button
                     type="button"
                     onClick={back}
                     disabled={wizardStep === 0}
-                    className="flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-gray-400 hover:text-white transition disabled:opacity-30 disabled:cursor-not-allowed"
+                    className="flex items-center gap-1 text-[10px] uppercase tracking-[0.24em] transition disabled:opacity-30 disabled:cursor-not-allowed"
+                    style={{ color: 'rgba(236,230,218,0.6)' }}
                   >
-                    <ChevronLeft size={14} />
+                    <ChevronLeft size={12} />
                     Back
                   </button>
-                  <span className="text-[10px] uppercase tracking-[0.2em] text-gray-500">
+                  <span className="text-[9px] uppercase tracking-[0.28em]" style={{ color: 'rgba(236,230,218,0.4)' }}>
                     {wizardStep + 1} / {totalSteps}
                   </span>
                   {wizardStep < totalSteps - 1 ? (
                     <button
                       type="button"
                       onClick={next}
-                      className="flex items-center gap-1 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-white transition hover:bg-white/15"
+                      className="flex items-center gap-1 text-[10px] uppercase tracking-[0.24em] transition"
+                      style={{ color: gold }}
                     >
                       Next
-                      <ChevronRight size={14} />
+                      <ChevronRight size={12} />
                     </button>
                   ) : (
-                    <span className="text-[10px] uppercase tracking-[0.2em] text-gray-500">Last step</span>
+                    <span className="text-[9px] uppercase tracking-[0.28em]" style={{ color: 'rgba(236,230,218,0.4)' }}>Last step</span>
                   )}
                 </div>
               </div>
