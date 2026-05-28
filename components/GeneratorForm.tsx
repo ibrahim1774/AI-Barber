@@ -70,7 +70,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
           <div className="relative z-10 pt-6 md:pt-0">
             <h1 className="text-xl md:text-4xl lg:text-5xl font-montserrat font-black uppercase tracking-[1px] md:tracking-[2px] leading-[1.15] text-white mb-3 md:mb-5">
               Generate Custom <br className="hidden md:block"/> Barbershop Website <br/>
-              <span className="text-[#f4a100] mt-1 block">in about 15 seconds</span>
+              <span className="text-[#f4a100] mt-1 block">in About 2 Seconds</span>
             </h1>
 
             <div className="w-10 md:w-16 h-[3px] bg-[#f4a100] mx-auto mb-3 md:mb-5"></div>
@@ -144,7 +144,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
                 type="submit"
                 className="w-full py-4 md:py-5 mt-2 md:mt-3 bg-[#f4a100] text-[#1a1a1a] font-montserrat font-black uppercase tracking-[1.5px] md:tracking-[2px] text-xs md:text-base hover:bg-white transition-all duration-500 shadow-[0_0_20px_rgba(244,161,0,0.15)] active:scale-[0.98]"
               >
-                Generate My Website
+                Generate My Barbershop Website
               </button>
             </form>
 
