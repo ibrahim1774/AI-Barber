@@ -176,6 +176,14 @@ export const generateContent = async (inputs: ShopInputs): Promise<WebsiteData> 
     // 6-slot gallery: first slot pre-filled, rest empty for the shop
     // owner to upload their actual work.
     gallery: [images.gallerySeed, '', '', '', '', ''],
+    // Hero feature cards — every value here is editable in the preview.
+    // Defaults to a Mon-Fri schedule with normal shop hours so no shop
+    // ever ships with a vague "Open Daily" claim.
+    featureCards: [
+      { title: 'Experience', sub: 'Professional' },
+      { title: 'Service', sub: 'Trusted' },
+      { title: 'Open Monday to Friday', sub: '9am - 7pm' },
+    ],
     contact: {
       address: area,
       email: buildEmail(shopName),

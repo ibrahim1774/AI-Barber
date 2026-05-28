@@ -298,6 +298,18 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
     else if (parts[0] === 'gallery') newData.gallery = [...newData.gallery];
     else if (parts[0] === 'contact') newData.contact = { ...newData.contact };
     else if (parts[0] === 'services') newData.services = [...newData.services];
+    else if (parts[0] === 'featureCards') {
+      // Initialize from defaults if missing so the path walk can index
+      // featureCards[i] without crashing. Older saved sites predate
+      // this field entirely.
+      newData.featureCards = newData.featureCards
+        ? newData.featureCards.map(c => ({ ...c }))
+        : [
+            { title: 'Experience', sub: 'Professional' },
+            { title: 'Service', sub: 'Trusted' },
+            { title: 'Open Monday to Friday', sub: '9am - 7pm' },
+          ];
+    }
 
     let current: any = newData;
     for (let i = 0; i < parts.length - 1; i++) {
@@ -689,22 +701,46 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           </div>
         </div>
 
-        {/* Feature Cards */}
+        {/* Feature Cards — title + sub are both editable. Defaults
+            seeded by geminiService (Experience/Professional,
+            Service/Trusted, Open Monday to Friday/9am-7pm). Older saved
+            sites without featureCards fall back to the same defaults. */}
         <div className="absolute bottom-6 md:bottom-10 left-0 w-full px-4 md:px-6">
           <div className="container mx-auto grid grid-cols-3 gap-2 md:gap-6 max-w-5xl">
-            {[
-              { icon: <MapPinIcon className="w-5 h-5 md:w-8 md:h-8 text-[#f4a100]" />, title: 'EXPERIENCE', sub: 'Elite' },
-              { icon: <AwardIcon className="w-5 h-5 md:w-8 md:h-8 text-[#f4a100]" />, title: 'RECOGNIZED', sub: 'Masters' },
-              { icon: <ClockIcon className="w-5 h-5 md:w-8 md:h-8 text-[#f4a100]" />, title: 'OPEN DAILY', sub: '9:00 - 18:00' }
-            ].map((card, i) => (
-              <div key={i} className="bg-[#1a1a1a]/90 backdrop-blur-sm p-2 md:p-8 flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-1 md:gap-6 border border-[#f4a100]/20 hover:border-[#f4a100]/50 transition-all duration-300">
-                <div className="shrink-0">{card.icon}</div>
-                <div className="text-center sm:text-left">
-                  <h4 className="font-montserrat font-black text-[7px] md:text-xs tracking-[0.5px] md:tracking-[1px] text-white uppercase">{card.title}</h4>
-                  <p className="text-[#cccccc] text-[6px] md:text-[10px] uppercase tracking-[0.5px] md:tracking-[1px] mt-0.5">{card.sub}</p>
+            {(() => {
+              const defaults = [
+                { title: 'Experience', sub: 'Professional' },
+                { title: 'Service', sub: 'Trusted' },
+                { title: 'Open Monday to Friday', sub: '9am - 7pm' },
+              ];
+              const icons = [
+                <MapPinIcon className="w-5 h-5 md:w-8 md:h-8 text-[#f4a100]" />,
+                <AwardIcon className="w-5 h-5 md:w-8 md:h-8 text-[#f4a100]" />,
+                <ClockIcon className="w-5 h-5 md:w-8 md:h-8 text-[#f4a100]" />,
+              ];
+              const cards = (siteData.featureCards && siteData.featureCards.length === 3)
+                ? siteData.featureCards
+                : defaults;
+              return cards.map((card, i) => (
+                <div key={i} className="bg-[#1a1a1a]/90 backdrop-blur-sm p-2 md:p-8 flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-1 md:gap-6 border border-[#f4a100]/20 hover:border-[#f4a100]/50 transition-all duration-300">
+                  <div className="shrink-0">{icons[i]}</div>
+                  <div className="text-center sm:text-left">
+                    <h4 className="font-montserrat font-black text-[7px] md:text-xs tracking-[0.5px] md:tracking-[1px] text-white uppercase">
+                      <EditableText
+                        text={card.title}
+                        onSave={(val) => handleTextChange(`featureCards.${i}.title`, val)}
+                      />
+                    </h4>
+                    <p className="text-[#cccccc] text-[6px] md:text-[10px] uppercase tracking-[0.5px] md:tracking-[1px] mt-0.5">
+                      <EditableText
+                        text={card.sub}
+                        onSave={(val) => handleTextChange(`featureCards.${i}.sub`, val)}
+                      />
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ));
+            })()}
           </div>
         </div>
       </section>

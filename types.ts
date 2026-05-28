@@ -35,6 +35,11 @@ export interface WebsiteData {
   };
   services: ServiceItem[];
   gallery: string[];
+  // Optional small hero feature cards — "EXPERIENCE / Elite",
+  // "RECOGNIZED / Masters", "OPEN DAILY / 9-6" style. Editable in
+  // the preview. Falls back to defaults when omitted (older saved
+  // sites predate this field).
+  featureCards?: { title: string; sub: string }[];
   contact: {
     address: string;
     email: string;

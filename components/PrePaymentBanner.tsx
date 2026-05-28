@@ -226,27 +226,35 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
             </button>
           </div>
 
-          {/* "Don't like the design?" — highlighted gold-tinted box, simpler
-              copy, sits as its own card so the eye catches it. */}
+          {/* "Don't like the design?" — highlighted gold-tinted box.
+              Headline in serif italic gold, concise subtitle beneath
+              explaining the offer. Price + arrow anchored right. */}
           <button
             type="button"
             onClick={() => { setWizardStep(0); setShowCustomWizard(true); }}
-            className="group mt-2.5 flex w-full items-center justify-between gap-2 px-3 py-2 border transition-all hover:border-[#e8c074]/70"
+            className="group mt-2.5 flex w-full items-center justify-between gap-3 px-3 py-2 border transition-all hover:border-[#e8c074]/70"
             style={{
               background: 'linear-gradient(180deg, rgba(232,192,116,0.06) 0%, rgba(232,192,116,0.02) 100%)',
               borderColor: 'rgba(232,192,116,0.35)',
               color: '#ece6da',
+              textAlign: 'left',
             }}
           >
-            <span className="flex items-center gap-2">
-              <Sparkles size={12} style={{ color: '#e8c074' }} />
-              <span className="text-[11px]">
-                <span style={{ fontFamily: '"Instrument Serif", serif', fontStyle: 'italic', fontSize: '0.95rem', color: '#e8c074' }}>
+            <span className="flex items-start gap-2 min-w-0">
+              <Sparkles size={12} className="mt-[3px] shrink-0" style={{ color: '#e8c074' }} />
+              <span className="min-w-0">
+                <span
+                  className="block"
+                  style={{ fontFamily: '"Instrument Serif", serif', fontStyle: 'italic', fontSize: '0.95rem', color: '#e8c074', lineHeight: 1.1 }}
+                >
                   Don't like the design?
+                </span>
+                <span className="block text-[10px] leading-tight mt-0.5" style={{ color: 'rgba(236,230,218,0.65)' }}>
+                  We'll build a custom one for your barber business.
                 </span>
               </span>
             </span>
-            <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.2em]" style={{ color: '#e8c074' }}>
+            <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.2em] shrink-0" style={{ color: '#e8c074' }}>
               {customPriceLabel}
               <ArrowRight size={11} className="transition group-hover:translate-x-0.5" />
             </span>
@@ -541,16 +549,16 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
                       className="leading-[1.05] mb-3"
                       style={{ fontFamily: '"Instrument Serif", serif', fontSize: '1.9rem', fontWeight: 400 }}
                     >
-                      <span style={{ color: cream }}>Multiple pages, </span>
-                      <span style={{ color: gold, fontStyle: 'italic' }}>booking built in.</span>
+                      <span style={{ color: cream }}>Your custom </span>
+                      <span style={{ color: gold, fontStyle: 'italic' }}>booking link, built in.</span>
                     </h2>
                     <p className="text-sm leading-relaxed mb-5" style={{ color: 'rgba(236,230,218,0.6)' }}>
-                      Separate pages, real booking provider, real photos — not one long scroll.
+                      Separate pages, real photos, and your own booking link — not one long scroll.
                     </p>
                     <div className="border-t border-white/10">
                       {[
                         'Home · Services · About · Gallery · Contact',
-                        'Booking (Calendly, Acuity, Square — your choice)',
+                        'Calendly, Acuity, Booksy — your choice',
                         'Custom photography sourced or your own',
                       ].map((line, i) => (
                         <div key={line} className="flex items-baseline gap-4 py-3 border-b border-white/10">
