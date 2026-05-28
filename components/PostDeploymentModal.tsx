@@ -78,16 +78,9 @@ export const PostDeploymentModal: React.FC<PostDeploymentModalProps> = ({
 
         <button
           onClick={onCreateAccount}
-          className="block w-full py-3 bg-white hover:bg-gray-100 text-[#1a1a1a] font-montserrat font-black uppercase tracking-[2px] text-xs transition-colors mb-4"
+          className="block w-full py-3 bg-white hover:bg-gray-100 text-[#1a1a1a] font-montserrat font-black uppercase tracking-[2px] text-xs transition-colors"
         >
           Create Account
-        </button>
-
-        <button
-          onClick={onSkip}
-          className="text-[#666] text-xs hover:text-white transition-colors"
-        >
-          Skip for now
         </button>
       </div>
     </div>
