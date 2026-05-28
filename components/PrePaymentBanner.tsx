@@ -193,14 +193,14 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
             </div>
           )}
 
-          {/* Action row — slimmer buttons */}
+          {/* Action row — buttons bumped ~10% + bolded */}
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowHowItWorks(true)}
-              className="flex-1 py-2 text-[9px] font-medium border hover:border-white/40 hover:text-white transition-colors uppercase tracking-[0.24em] text-center"
+              className="flex-1 py-2.5 text-[10px] font-bold border hover:border-white/40 hover:text-white transition-colors uppercase tracking-[0.24em] text-center"
               style={{
-                color: 'rgba(236,230,218,0.75)',
-                borderColor: 'rgba(236,230,218,0.2)',
+                color: '#ece6da',
+                borderColor: 'rgba(236,230,218,0.25)',
                 fontFamily: '"DM Sans", sans-serif',
               }}
             >
@@ -210,7 +210,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
             <button
               onClick={() => onDeploy(dealPlan ?? pricingPlan)}
               disabled={isDeploying}
-              className="flex-1 py-2 text-[9px] font-bold flex items-center justify-center gap-1.5 hover:opacity-90 active:scale-[0.98] transition-all uppercase tracking-[0.24em] disabled:opacity-50"
+              className="flex-1 py-2.5 text-[10px] font-bold flex items-center justify-center gap-1.5 hover:opacity-90 active:scale-[0.98] transition-all uppercase tracking-[0.24em] disabled:opacity-50"
               style={{
                 background: '#e8c074',
                 color: '#0a0a0a',
@@ -218,9 +218,9 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
               }}
             >
               {isDeploying ? (
-                <Loader2 className="animate-spin" size={11} />
+                <Loader2 className="animate-spin" size={12} />
               ) : (
-                <Rocket size={11} />
+                <Rocket size={12} />
               )}
               Publish · {dealMode ? dealPriceMo : (pricingPlan === 'yearly' ? '$72/yr' : '$10/mo')}
             </button>
