@@ -118,7 +118,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
               </div>
 
               <div className="space-y-1">
-                <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Your Barbershop Address</label>
+                <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Your Barbershop Service Area</label>
                 <input
                   required
                   type="text"

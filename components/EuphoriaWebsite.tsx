@@ -172,11 +172,22 @@ function escapeHtml(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
+// Extracts the trailing "City, State" portion of an area string so the
+// hero eyebrow never echoes a full street address even if the user
+// pastes one in. Inputs with two or fewer comma-separated parts pass
+// through unchanged.
+const cityStateOnly = (raw: string): string => {
+  const parts = (raw || '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (parts.length <= 2) return raw || '';
+  return parts.slice(-2).join(', ');
+};
+
 // Exported so App.tsx / publish path can reuse for post-payment deploy
 export function generateEuphoriaHTMLWithPlaceholders(siteData: WebsiteData): string {
   const formattedPhone = siteData.phone.replace(/\s+/g, '');
   const safeName = escapeHtml(siteData.shopName);
   const safeArea = escapeHtml(siteData.area);
+  const safeAreaShort = escapeHtml(cityStateOnly(siteData.area));
   const mapQuery = encodeURIComponent(`${siteData.shopName} ${siteData.area}`);
 
   const galleryTiles = siteData.gallery
@@ -246,7 +257,7 @@ ${EUPHORIA_SCOPED_CSS}
     ${siteData.hero.imageUrl ? `<img src="{{hero}}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0.45;">` : ''}
     <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,0.4) 0%,rgba(0,0,0,0.7) 100%);"></div>
     <div class="eu-container" style="position:relative;text-align:center;padding:96px 24px;">
-      <div class="eu-eyebrow" style="margin-bottom:24px;">${safeArea}</div>
+      <div class="eu-eyebrow" style="margin-bottom:24px;">${safeAreaShort}</div>
       <h1 class="eu-display" style="font-size:clamp(40px,8vw,96px);margin:0 0 28px;font-weight:500;color:var(--eu-ink);">
         ${escapeHtml(siteData.hero.heading)}
       </h1>
@@ -642,7 +653,7 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg,rgba(0,0,0,0.4) 0%,rgba(0,0,0,0.7) 100%)', pointerEvents: 'none' }} />
         <div className="eu-container" style={{ position: 'relative', textAlign: 'center', padding: '96px 24px' }}>
           <div className="eu-eyebrow" style={{ marginBottom: 24 }}>
-            <Editable text={siteData.area} onSave={v => handleTextChange('area', v)} />
+            <Editable text={cityStateOnly(siteData.area)} onSave={v => handleTextChange('area', v)} />
           </div>
           <h1 className="eu-display" style={{ fontSize: 'clamp(40px,8vw,96px)', margin: '0 0 28px', fontWeight: 500 }}>
             <Editable text={siteData.hero.heading} onSave={v => handleTextChange('hero.heading', v)} />

@@ -21,6 +21,16 @@ interface GeneratedWebsiteProps {
   userId?: string | null;
 }
 
+// Extracts the trailing "City, State [ZIP]" portion of an area string so
+// the hero "Premium Grooming Excellence in ..." line never echoes the
+// full street address even if the user pastes one in. Inputs with two
+// or fewer comma-separated parts pass through unchanged.
+const cityStateOnly = (raw: string): string => {
+  const parts = (raw || '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (parts.length <= 2) return raw || '';
+  return parts.slice(-2).join(', ');
+};
+
 // ---------------------------------------------------------------------------
 // Color themes — picked on the GeneratorForm. The slug is persisted on
 // WebsiteData.colorTheme. Renderer sets CSS variables on its root and
@@ -219,7 +229,7 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
         ${siteData.shopName.split(' ')[0]} <span class="text-[#f4a100]">${siteData.shopName.split(' ').slice(1).join(' ')}</span>
       </span>
       <p class="text-[#666666] text-[8px] md:text-xs uppercase tracking-[2px] md:tracking-[4px] mt-8 mb-12">
-        Premium Grooming Excellence in ${siteData.area}
+        Premium Grooming Excellence in ${cityStateOnly(siteData.area)}
       </p>
       <div class="pt-8 border-t border-white/5 text-[#444444] text-[8px] uppercase tracking-[2px]">
         Copyright &copy; 2025 ${siteData.shopName}. Built by Prime Barber AI.
@@ -996,7 +1006,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
             </span>
           </div>
           <p className="text-[#666666] text-[8px] md:text-xs uppercase tracking-[2px] md:tracking-[4px] mb-8 md:mb-12 max-w-lg mx-auto leading-loose px-4">
-            Premium Grooming Excellence in <EditableText text={siteData.area} onSave={(val) => handleTextChange('area', val)} />
+            Premium Grooming Excellence in <EditableText text={cityStateOnly(siteData.area)} onSave={(val) => handleTextChange('area', val)} />
           </p>
 
           <div className="pt-8 md:pt-10 border-t border-white/5 text-[#444444] text-[8px] uppercase tracking-[2px]">
