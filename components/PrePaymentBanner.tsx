@@ -107,65 +107,104 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
 
   return (
     <>
+      {/* Premium sticky-bottom CTA. Same design language as the
+          How-It-Works modal: cream + gold on dark, serif italic for
+          the price line, hairline rules instead of cards, no pulsing
+          orange. Reads as editorial rather than promotional. */}
       <div
         className={`fixed bottom-0 left-0 right-0 z-[100] transition-transform duration-700 ease-out ${
           isVisible ? 'translate-y-0' : 'translate-y-full'
         }`}
       >
         <div
-          className="relative p-4 md:p-5 shadow-[0_-8px_30px_rgba(0,0,0,0.3)]"
+          className="relative px-5 pt-4 pb-4 md:px-7 md:pt-5 md:pb-5 shadow-[0_-12px_36px_rgba(0,0,0,0.5)] border-t"
           style={{
-            background: 'linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%)',
+            background: 'linear-gradient(180deg, #0a0a0a 0%, #14110c 100%)',
+            borderTopColor: 'rgba(232,192,116,0.18)',
             fontFamily: '"DM Sans", sans-serif',
+            color: '#ece6da',
           }}
         >
           <button
             onClick={() => setIsDismissed(true)}
-            className="absolute top-3 right-3 text-gray-500 hover:text-white transition-colors"
+            className="absolute top-2.5 right-2.5 text-white/35 hover:text-white transition-colors"
+            aria-label="Dismiss"
           >
-            <X size={18} />
+            <X size={15} />
           </button>
 
-          <div className="flex items-start gap-3 mb-3 pr-8">
-            <div className="relative mt-1.5 shrink-0">
-              <div className="w-2.5 h-2.5 bg-[#f4a100] rounded-full" />
-              <div className="absolute inset-0 w-2.5 h-2.5 bg-[#f4a100] rounded-full animate-ping" />
-            </div>
-            <p className="text-gray-300 text-sm leading-relaxed">
+          {/* Price line — serif, centered. Replaces the pulsing-dot
+              paragraph; the type carries the value on its own. */}
+          <div className="text-center mb-3.5 pr-5">
+            <p
+              className="leading-none"
+              style={{ fontFamily: '"Instrument Serif", serif', fontSize: '1.4rem', color: '#ece6da', fontWeight: 400 }}
+            >
               {dealMode ? (
                 <>
-                  Special launch price — <span className="text-white font-bold">{dealPriceMonth}</span> for hosting. Edit your text and images anytime with a free account.
+                  <span style={{ color: '#e8c074', fontStyle: 'italic' }}>{dealPriceMonth}</span>
+                  <span style={{ color: 'rgba(236,230,218,0.55)', fontSize: '0.85rem', fontFamily: '"DM Sans", sans-serif', marginLeft: '0.4em' }}>
+                    — hosting only
+                  </span>
                 </>
               ) : (
                 <>
-                  Just {pricingPlan === 'yearly' ? <><span className="text-white font-bold">$72/year</span> <span className="text-gray-500 line-through text-xs">$120/yr</span> — save 40%</> : <><span className="text-white font-bold">$10/month</span></>} for hosting. Edit your text and images anytime with a free account.
+                  {pricingPlan === 'yearly' && (
+                    <span style={{ color: 'rgba(236,230,218,0.3)', textDecoration: 'line-through', fontSize: '0.85rem', marginRight: '0.4em', fontFamily: '"DM Sans", sans-serif' }}>
+                      $120/yr
+                    </span>
+                  )}
+                  <span style={{ color: '#e8c074', fontStyle: 'italic' }}>
+                    {pricingPlan === 'yearly' ? '$72/yr' : '$10/mo'}
+                  </span>
+                  <span style={{ color: 'rgba(236,230,218,0.55)', fontSize: '0.85rem', fontFamily: '"DM Sans", sans-serif', marginLeft: '0.4em' }}>
+                    — hosting only
+                  </span>
                 </>
               )}
             </p>
+            <p className="mt-1.5 text-[9px] uppercase tracking-[0.28em]" style={{ color: 'rgba(236,230,218,0.4)' }}>
+              Edit anytime · Cancel anytime
+            </p>
           </div>
 
-          {/* Monthly / Yearly Toggle — hidden in /5 and /7 deal mode */}
+          {/* Monthly / Yearly toggle — text + gold underline, no pill.
+              Hidden in /5 and /7 deal mode. */}
           {!dealMode && (
-            <div className="flex items-center justify-center gap-1 mb-3 bg-white/5 rounded-xl p-1">
+            <div className="flex items-center justify-center gap-6 mb-4">
               <button
                 onClick={() => setPricingPlan('monthly')}
-                className={`flex-1 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${pricingPlan === 'monthly' ? 'bg-[#f4a100] text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
+                className="text-[10px] font-medium uppercase tracking-[0.22em] pb-1 transition-colors"
+                style={{
+                  color: pricingPlan === 'monthly' ? '#ece6da' : 'rgba(236,230,218,0.4)',
+                  borderBottom: pricingPlan === 'monthly' ? '1px solid #e8c074' : '1px solid transparent',
+                }}
               >
                 Monthly
               </button>
               <button
                 onClick={() => setPricingPlan('yearly')}
-                className={`flex-1 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${pricingPlan === 'yearly' ? 'bg-[#f4a100] text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
+                className="text-[10px] font-medium uppercase tracking-[0.22em] pb-1 transition-colors"
+                style={{
+                  color: pricingPlan === 'yearly' ? '#ece6da' : 'rgba(236,230,218,0.4)',
+                  borderBottom: pricingPlan === 'yearly' ? '1px solid #e8c074' : '1px solid transparent',
+                }}
               >
-                Yearly <span className="text-[10px] opacity-80">(-40%)</span>
+                Yearly <span style={{ color: '#e8c074' }}>−40%</span>
               </button>
             </div>
           )}
 
-          <div className="flex items-center gap-3">
+          {/* Action row — hairline-outlined secondary, solid-gold primary */}
+          <div className="flex items-center gap-2.5">
             <button
               onClick={() => setShowHowItWorks(true)}
-              className="flex-1 py-2.5 rounded-xl text-xs font-bold text-white border border-white/20 hover:bg-white/10 transition-colors uppercase tracking-wider text-center"
+              className="flex-1 py-3 text-[10px] font-medium border hover:border-white/40 hover:text-white transition-colors uppercase tracking-[0.24em] text-center"
+              style={{
+                color: 'rgba(236,230,218,0.75)',
+                borderColor: 'rgba(236,230,218,0.2)',
+                fontFamily: '"DM Sans", sans-serif',
+              }}
             >
               How It Works
             </button>
@@ -173,34 +212,42 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
             <button
               onClick={() => onDeploy(dealPlan ?? pricingPlan)}
               disabled={isDeploying}
-              className="flex-1 py-2.5 rounded-xl text-xs font-bold text-white flex items-center justify-center gap-1.5 shadow-lg shadow-[#f4a100]/20 hover:opacity-90 active:scale-[0.97] transition-all uppercase tracking-wider disabled:opacity-50"
+              className="flex-1 py-3 text-[10px] font-bold flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all uppercase tracking-[0.24em] disabled:opacity-50"
               style={{
-                background: 'linear-gradient(135deg, #f4a100 0%, #d4890e 100%)',
+                background: '#e8c074',
+                color: '#0a0a0a',
+                fontFamily: '"DM Sans", sans-serif',
               }}
             >
               {isDeploying ? (
-                <Loader2 className="animate-spin" size={14} />
+                <Loader2 className="animate-spin" size={13} />
               ) : (
-                <Rocket size={14} />
+                <Rocket size={12} />
               )}
-              {dealMode ? `Publish — ${dealPriceMo}` : (pricingPlan === 'yearly' ? 'Publish — $72/yr' : 'Publish — $10/mo')}
+              Publish · {dealMode ? dealPriceMo : (pricingPlan === 'yearly' ? '$72/yr' : '$10/mo')}
             </button>
           </div>
 
-          {/* "Don't like the design? Get a custom one" — appears on every
-              path. Price differs: $20/mo on /5, $25/mo on the homepage. */}
-          <button
-            type="button"
-            onClick={() => { setWizardStep(0); setShowCustomWizard(true); }}
-            className="group mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-[#e8c074]/30 bg-[#e8c074]/5 px-4 py-3 text-sm text-gray-200 transition hover:border-[#e8c074]/60 hover:bg-[#e8c074]/10 hover:text-white"
-          >
-            <Sparkles size={15} className="text-[#e8c074]" />
-            <span>
-              Don't like the design? Get a custom one —{' '}
-              <span className="font-semibold text-[#e8c074]">{customPriceLabel}</span>
-            </span>
-            <ArrowRight size={14} className="text-[#e8c074] transition group-hover:translate-x-0.5" />
-          </button>
+          {/* Custom-design upsell — kept but rephrased in the editorial
+              voice and stripped of card chrome. Hairline rule above
+              separates it from the action row. */}
+          <div className="mt-4 pt-3.5 border-t" style={{ borderTopColor: 'rgba(232,192,116,0.18)' }}>
+            <button
+              type="button"
+              onClick={() => { setWizardStep(0); setShowCustomWizard(true); }}
+              className="group flex w-full items-center justify-center gap-2 text-[11px] transition-colors"
+              style={{ color: 'rgba(236,230,218,0.7)' }}
+            >
+              <span>
+                Prefer a different look?{' '}
+                <span style={{ color: '#e8c074', fontStyle: 'italic', fontFamily: '"Instrument Serif", serif', fontSize: '0.95rem' }}>
+                  Commission a custom design
+                </span>{' '}
+                <span style={{ color: 'rgba(236,230,218,0.5)' }}>— {customPriceLabel}</span>
+              </span>
+              <ArrowRight size={11} style={{ color: '#e8c074' }} className="transition group-hover:translate-x-0.5" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -223,7 +270,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
           { numeral: 'II', title: 'Published Instantly' },
           { numeral: 'III', title: 'Edit Anytime' },
           { numeral: 'IV', title: `Custom for Your ${displayIndustry.charAt(0).toUpperCase()}${displayIndustry.slice(1)}` },
-          { numeral: 'V', title: 'One Small Hosting Fee' },
+          { numeral: 'V', title: 'One small hosting/maintenance fee' },
         ];
 
         return (
@@ -338,25 +385,44 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
               </p>
             </div>
 
-            <button
-              onClick={() => { setShowHowItWorks(false); onDeploy(dealPlan ?? pricingPlan); }}
-              disabled={isDeploying}
-              className="w-full py-3.5 text-[11px] font-bold flex items-center justify-center gap-2.5 hover:opacity-90 active:scale-[0.98] transition-all uppercase tracking-[0.24em] disabled:opacity-50"
-              style={{
-                background: gold,
-                color: '#0a0a0a',
-                fontFamily: '"DM Sans", sans-serif',
-              }}
-            >
-              {isDeploying ? (
-                <Loader2 className="animate-spin" size={16} />
-              ) : (
-                <>
-                  Publish My Site — {ctaPrice}
-                  <ArrowRight size={14} />
-                </>
-              )}
-            </button>
+            {/* Save + Publish action row. Save closes the modal —
+                the editor's useAutoSave hook already persisted the
+                draft, so coming back later just resumes the same
+                site. Publish goes to Stripe and deploys. */}
+            <div className="flex items-center gap-2.5">
+              <button
+                onClick={() => setShowHowItWorks(false)}
+                disabled={isDeploying}
+                className="flex-1 py-3.5 text-[11px] font-medium border hover:border-white/40 transition-colors uppercase tracking-[0.24em] disabled:opacity-50"
+                style={{
+                  color: cream,
+                  borderColor: 'rgba(236,230,218,0.25)',
+                  fontFamily: '"DM Sans", sans-serif',
+                }}
+              >
+                Save Design
+              </button>
+
+              <button
+                onClick={() => { setShowHowItWorks(false); onDeploy(dealPlan ?? pricingPlan); }}
+                disabled={isDeploying}
+                className="flex-1 py-3.5 text-[11px] font-bold flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all uppercase tracking-[0.24em] disabled:opacity-50"
+                style={{
+                  background: gold,
+                  color: '#0a0a0a',
+                  fontFamily: '"DM Sans", sans-serif',
+                }}
+              >
+                {isDeploying ? (
+                  <Loader2 className="animate-spin" size={16} />
+                ) : (
+                  <>
+                    Publish — {ctaPrice}
+                    <ArrowRight size={14} />
+                  </>
+                )}
+              </button>
+            </div>
 
           </div>
         </div>
