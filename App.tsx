@@ -299,6 +299,29 @@ const App: React.FC = () => {
           }),
         }).catch((err) => console.error('[FB CAPI] Error (non-blocking):', err));
 
+        // TikTok Purchase — browser pixel + CAPI dedupe on event_id.
+        try {
+          (window as any).ttq?.track(
+            'Purchase',
+            { value: purchaseValue, currency: purchaseCurrency },
+            { event_id: sessionId }
+          );
+        } catch (err) {
+          console.warn('[TikTok Pixel Purchase] browser fire failed:', err);
+        }
+        fetch('/api/tiktok-event', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            event: 'Purchase',
+            event_id: sessionId,
+            event_source_url: window.location.origin,
+            user_agent: navigator.userAgent,
+            value: purchaseValue,
+            currency: purchaseCurrency,
+          }),
+        }).catch((err) => console.error('[TikTok CAPI Purchase] Error (non-blocking):', err));
+
         // Step 5: Create SiteInstance and save to IndexedDB
         // Restore the full image URLs back into siteData for the SiteInstance
         const fullSiteData: WebsiteData = {
@@ -373,6 +396,23 @@ const App: React.FC = () => {
         clientUserAgent: navigator.userAgent,
       }),
     }).catch((err) => console.error('[FB CAPI Lead] Error (non-blocking):', err));
+
+    // TikTok Lead — browser pixel + CAPI dedupe on the same event_id.
+    try {
+      (window as any).ttq?.track('Lead', { content_name: 'Barbershop Site Generated' }, { event_id: leadEventId });
+    } catch (err) {
+      console.warn('[TikTok Pixel Lead] browser fire failed:', err);
+    }
+    fetch('/api/tiktok-event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event: 'Lead',
+        event_id: leadEventId,
+        event_source_url: window.location.origin,
+        user_agent: navigator.userAgent,
+      }),
+    }).catch((err) => console.error('[TikTok CAPI Lead] Error (non-blocking):', err));
 
     sessionStorage.setItem('pendingFormInputs', JSON.stringify(inputs));
     setState('loading');
