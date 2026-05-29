@@ -105,7 +105,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
           <div className="max-w-xl w-full mx-auto">
             <form onSubmit={handleSubmit} className="space-y-3 md:space-y-5">
               <div className="space-y-1">
-                <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Your Barbershop Name</label>
+                <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Barbershop Name</label>
                 <input
                   required
                   type="text"
@@ -117,7 +117,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
               </div>
 
               <div className="space-y-1">
-                <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Your Barbershop Service Area</label>
+                <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Barbershop Service Area</label>
                 <input
                   required
                   type="text"
@@ -129,7 +129,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
               </div>
 
               <div className="space-y-1">
-                <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Your Barbershop Phone Number</label>
+                <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Phone Number</label>
                 <input
                   required
                   type="tel"
@@ -142,7 +142,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
 
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Your Booking Link</label>
+                  <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Booking Link</label>
                   <span className="text-[8px] md:text-[9px] uppercase tracking-[2px] text-[#f4a100]/80 border border-[#f4a100]/40 px-1.5 py-0.5">Optional</span>
                 </div>
                 <input
