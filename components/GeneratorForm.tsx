@@ -86,7 +86,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
           <div className="relative z-10 pt-4 md:pt-0">
             <h1 className="text-2xl md:text-5xl lg:text-6xl font-montserrat font-black uppercase tracking-[1px] md:tracking-[2px] leading-[1.15] text-white mb-2 md:mb-4">
               Generate Custom <br className="hidden md:block"/> Barbershop Website <br/>
-              <span className="text-[#f4a100] mt-1 block">in About 2 Seconds</span>
+              <span className="text-[#f4a100] mt-1 block">in Seconds</span>
             </h1>
             {/* Small italic serif subhead — instruction for the visitor,
                 mirrors the one used on PrimeHub /barber. */}
