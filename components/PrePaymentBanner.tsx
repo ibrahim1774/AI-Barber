@@ -244,8 +244,8 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
               <Sparkles size={12} className="mt-[3px] shrink-0" style={{ color: '#e8c074' }} />
               <span className="min-w-0">
                 <span
-                  className="block"
-                  style={{ fontFamily: '"Instrument Serif", serif', fontStyle: 'italic', fontSize: '0.95rem', color: '#e8c074', lineHeight: 1.1 }}
+                  className="block font-extrabold"
+                  style={{ fontSize: '0.95rem', color: '#e8c074', lineHeight: 1.15, letterSpacing: '-0.005em' }}
                 >
                   Don't like the design?
                 </span>
@@ -255,15 +255,15 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
               </span>
             </span>
             <span
-              className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-[0.18em] shrink-0 rounded-full px-2 py-[3px]"
+              className="flex items-center gap-1.5 text-[12px] font-black uppercase tracking-[0.16em] shrink-0 rounded-full px-2.5 py-[4px]"
               style={{
                 color: '#0a0a0a',
                 background: '#e8c074',
-                boxShadow: '0 0 0 1px rgba(232,192,116,0.5), 0 2px 8px -2px rgba(232,192,116,0.45)',
+                boxShadow: '0 0 0 1.5px rgba(232,192,116,0.7), 0 4px 14px -3px rgba(232,192,116,0.65)',
               }}
             >
               {customPriceLabel}
-              <ArrowRight size={11} className="transition group-hover:translate-x-0.5" />
+              <ArrowRight size={12} className="transition group-hover:translate-x-0.5" />
             </span>
           </button>
         </div>
