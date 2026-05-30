@@ -32,10 +32,10 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
   const dealPriceMo = sevenDeal ? '$7/mo' : '$5/mo';
   const dealPriceMonth = sevenDeal ? '$7/month' : '$5/month';
 
-  // Custom-design upsell: $20/mo on /5 and /7, $25/mo on the homepage.
+  // Custom-design upsell: flat $19/mo across every entry path.
   const customPlan: 'custom' | 'custom25' = dealMode ? 'custom' : 'custom25';
-  const customPriceLabel = dealMode ? '$20/mo' : '$25/mo';
-  const customPriceFull = dealMode ? '$20/month' : '$25/month';
+  const customPriceLabel = '$19/mo';
+  const customPriceFull = '$19/month';
 
   const [isDismissed, setIsDismissed] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
@@ -49,7 +49,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
   // step-4 button doesn't stay stuck in its loading state on reopen.
   const customCheckoutAbortRef = React.useRef<AbortController | null>(null);
 
-  // Kicks off the custom-design Stripe checkout. The plan ($20 or $25) is
+  // Kicks off the custom-design Stripe checkout. Flat $19/mo —
   // determined by the page the visitor is on. After success the backend
   // routes the customer to the Google Form to capture preferences.
   const handleCustomCheckout = async () => {
@@ -254,7 +254,14 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
                 </span>
               </span>
             </span>
-            <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.2em] shrink-0" style={{ color: '#e8c074' }}>
+            <span
+              className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-[0.18em] shrink-0 rounded-full px-2 py-[3px]"
+              style={{
+                color: '#0a0a0a',
+                background: '#e8c074',
+                boxShadow: '0 0 0 1px rgba(232,192,116,0.5), 0 2px 8px -2px rgba(232,192,116,0.45)',
+              }}
+            >
               {customPriceLabel}
               <ArrowRight size={11} className="transition group-hover:translate-x-0.5" />
             </span>
