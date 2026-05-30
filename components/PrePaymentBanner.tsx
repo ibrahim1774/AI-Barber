@@ -249,8 +249,11 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
                 >
                   Don't like the design?
                 </span>
-                <span className="block text-[10px] leading-tight mt-0.5" style={{ color: 'rgba(236,230,218,0.65)' }}>
-                  We'll build a custom one for your barber business.
+                <span
+                  className="block font-bold leading-snug mt-0.5"
+                  style={{ fontSize: '11.5px', color: 'rgba(236,230,218,0.92)' }}
+                >
+                  We'll build you a custom design for your barber business.
                 </span>
               </span>
             </span>
