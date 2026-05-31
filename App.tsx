@@ -163,16 +163,14 @@ const App: React.FC = () => {
       return;
     }
 
-    // Normal load: if authenticated, try to go to dashboard
-    if (isAuthenticated) {
+    // Normal load. Respect whatever the restoration logic already put
+    // the user on (editor with an active site, /booksy, etc.) so a
+    // page refresh while signed in DOESN'T yank them off their work.
+    // Only land on dashboard when they had nothing restored AND they
+    // are signed in — i.e. they showed up on the bare home page.
+    if (isAuthenticated && state === 'generator' && !activeSite) {
       persistView('dashboard');
-    } else {
-      // Only reset to generator if not already in a restored state
-      if (state === 'generator') {
-        persistView('generator');
-      }
     }
-
     setAppReady(true);
   }, [authLoading, isAuthenticated, isRestoring]);
 
@@ -454,9 +452,13 @@ const App: React.FC = () => {
   };
 
   const handleBack = () => {
-    persistView('generator');
+    // Auth-aware: signed-in users go back to their dashboard (where
+    // their drafts + deployed sites live). Anonymous users go back
+    // to the home form. Was always sending everyone to the home page
+    // — even users who had just generated a site while logged in.
     setGeneratedData(null);
     setActiveSite(null);
+    persistView(isAuthenticated ? 'dashboard' : 'generator');
   };
 
   const handleEditSite = (site: SiteInstance) => {
