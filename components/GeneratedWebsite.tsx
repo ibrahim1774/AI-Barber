@@ -273,6 +273,10 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
   const [isPublishing, setIsPublishing] = useState(false);
   const [showPublishOverlay, setShowPublishOverlay] = useState(false);
   const [imageInputKey, setImageInputKey] = useState(0);
+  // Per-slot "currently uploading" set so we can show a spinner on
+  // the exact tile the user just tapped, instead of a global blocker.
+  const [uploadingSlots, setUploadingSlots] = useState<Set<string>>(new Set());
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [showBookingToast, setShowBookingToast] = useState(false);
 
   // Auto-dismiss the booking-CTA hint
@@ -377,32 +381,56 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
     });
   };
 
-  // Handle image changes (deep-clone nested objects so React detects the update)
+  // Write `value` at a dot-path inside a WebsiteData object,
+  // deep-cloning the branches it touches so React's reconciler picks
+  // up the change. Pure — doesn't reach into state.
+  const writeAt = (src: WebsiteData, path: string, value: string): WebsiteData => {
+    const next: any = { ...src };
+    const parts = path.split('.');
+    if (parts[0] === 'hero') next.hero = { ...next.hero };
+    else if (parts[0] === 'about') next.about = { ...next.about };
+    else if (parts[0] === 'gallery') next.gallery = [...next.gallery];
+    let cur: any = next;
+    for (let i = 0; i < parts.length - 1; i++) cur = cur[parts[i]];
+    cur[parts[parts.length - 1]] = value;
+    return next;
+  };
+
+  // Handle image changes. Shows the picked file INSTANTLY via
+  // createObjectURL so the preview reacts in <1ms, then swaps in the
+  // compressed base64 in the background. Surfaces errors so the user
+  // knows when something (HEIC, oversized) didn't work — was silently
+  // doing nothing before.
   const handleImageChange = async (path: string, event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) {
-      try {
-        const base64String = await compressImage(file);
-        const newData = { ...siteData };
-        const parts = path.split('.');
+    if (!file) return;
 
-        // Deep-clone the nested object being modified
-        if (parts[0] === 'hero') newData.hero = { ...newData.hero };
-        else if (parts[0] === 'about') newData.about = { ...newData.about };
-        else if (parts[0] === 'gallery') newData.gallery = [...newData.gallery];
+    const previewUrl = URL.createObjectURL(file);
+    setSiteData(prev => writeAt(prev, path, previewUrl));
+    setUploadingSlots(prev => new Set(prev).add(path));
+    setUploadError(null);
 
-        let current: any = newData;
-        for (let i = 0; i < parts.length - 1; i++) {
-          current = current[parts[i]];
-        }
-
-        current[parts[parts.length - 1]] = base64String;
-        setSiteData(newData);
-        setImageInputKey(prev => prev + 1);
-        if (isPostPayment) triggerSave();
-      } catch (err) {
-        console.error('Image compression failed:', err);
-      }
+    try {
+      const base64String = await compressImage(file);
+      setSiteData(prev => writeAt(prev, path, base64String));
+      setImageInputKey(p => p + 1);
+      if (isPostPayment) triggerSave();
+    } catch (err: any) {
+      console.error('Image compression failed:', err);
+      setUploadError(
+        /\.heic$/i.test(file.name || '')
+          ? 'HEIC photos aren\'t supported yet — export as JPG from your phone and try again.'
+          : `Couldn't process that photo. Try a smaller JPG or PNG. (${err?.message || 'unknown error'})`,
+      );
+      // Roll back the optimistic preview.
+      setSiteData(prev => writeAt(prev, path, ''));
+    } finally {
+      setUploadingSlots(prev => {
+        const n = new Set(prev);
+        n.delete(path);
+        return n;
+      });
+      try { URL.revokeObjectURL(previewUrl); } catch {}
     }
   };
 
@@ -1068,6 +1096,30 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           onError={handlePublishError}
           onClose={handlePublishClose}
         />
+      )}
+
+      {/* Image-upload error toast — surfaces compression failures so
+          the user knows when an upload silently didn't take. Dismissed
+          on click or when the next upload succeeds. */}
+      {uploadError && (
+        <div
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[180] w-[min(420px,calc(100vw-2rem))] pointer-events-auto"
+          role="alert"
+        >
+          <div className="flex items-start gap-3 bg-[#1a0a0a] border border-red-500/50 shadow-[0_20px_60px_rgba(0,0,0,0.6)] px-4 py-3">
+            <div className="shrink-0 w-2 h-2 rounded-full bg-red-500 mt-1.5" />
+            <p className="text-red-200 text-xs md:text-sm leading-relaxed flex-1">{uploadError}</p>
+            <button
+              onClick={() => setUploadError(null)}
+              className="shrink-0 text-red-300/60 hover:text-white transition-colors"
+              aria-label="Dismiss"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Pre-deploy hint when the user taps a Book Appointment button in the preview */}
