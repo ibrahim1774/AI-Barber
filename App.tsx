@@ -143,7 +143,25 @@ const App: React.FC = () => {
 
     const params = new URLSearchParams(window.location.search);
     const stripeSessionId = params.get('stripe_session');
+    const stripePlan = params.get('plan') || '';
+    const stripeRedirect = params.get('redirect') || '';
     const domainPayment = params.get('domain_payment');
+
+    // Custom-design plans (custom, custom25) bounce through the app
+    // ONLY so the Purchase pixels can fire — then we forward to the
+    // Google Form. There's no site to deploy in this flow.
+    const isCustomPlan = stripePlan === 'custom' || stripePlan === 'custom25';
+    if (stripeSessionId && isCustomPlan) {
+      window.history.replaceState({}, '', window.location.pathname);
+      setAppReady(true);
+      fireCustomDesignPixels(stripeSessionId);
+      // Whitelist redirect target so an attacker can't open-redirect us.
+      const allowed = /^https:\/\/docs\.google\.com\/forms\//i.test(stripeRedirect);
+      const target = allowed ? stripeRedirect : 'https://docs.google.com/forms/d/e/1FAIpQLSdS2iaBt6ee0AGWv7pQPSLHoicovQuTOKLFktuiEG4tobBIPw/viewform';
+      // Give the pixel beacons ~600ms to leave the wire before navigating.
+      setTimeout(() => { window.location.href = target; }, 600);
+      return;
+    }
 
     // Handle Stripe return (takes priority)
     if (stripeSessionId) {
@@ -173,6 +191,51 @@ const App: React.FC = () => {
     }
     setAppReady(true);
   }, [authLoading, isAuthenticated, isRestoring]);
+
+  // Fires Purchase events for the custom-design plan ($19/mo). No
+  // verify-stripe-session call here — that endpoint is wired for the
+  // deploy flow only. Stripe's session id is the dedup event_id so
+  // browser + (any future) server-side CAPI call line up in Meta/TikTok.
+  const fireCustomDesignPixels = (sessionId: string) => {
+    const value = 19;
+    const currency = 'USD';
+    try {
+      window.fbq?.('track', 'Purchase', { value, currency }, { eventID: sessionId });
+    } catch (err) {
+      console.warn('[FB Pixel Purchase / Custom] fire failed:', err);
+    }
+    fetch('/api/fb-purchase', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        eventId: sessionId,
+        value,
+        currency,
+        eventSourceUrl: window.location.origin,
+        clientUserAgent: navigator.userAgent,
+      }),
+      keepalive: true,
+    }).catch((err) => console.error('[FB CAPI / Custom] non-blocking:', err));
+
+    try {
+      (window as any).ttq?.track('Purchase', { value, currency }, { event_id: sessionId });
+    } catch (err) {
+      console.warn('[TikTok Pixel Purchase / Custom] fire failed:', err);
+    }
+    fetch('/api/tiktok-event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event: 'Purchase',
+        event_id: sessionId,
+        event_source_url: window.location.origin,
+        user_agent: navigator.userAgent,
+        value,
+        currency,
+      }),
+      keepalive: true,
+    }).catch((err) => console.error('[TikTok CAPI / Custom] non-blocking:', err));
+  };
 
   const handleStripeReturn = async (sessionId: string) => {
     isLegitDeployRef.current = true;

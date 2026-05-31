@@ -66,13 +66,17 @@ export default async function handler(req: any, res: any) {
 
     const origin = req.headers.origin || req.headers.referer?.replace(/\/$/, '') || 'http://localhost:3000';
 
-    // Custom-design plans (custom + custom25): after payment send the visitor
-    // to the Google Form so we can collect their design preferences (look
-    // they like, booking provider, photos, etc). All other plans return to
-    // the app to continue the deploy pipeline.
+    // Custom-design plans (custom + custom25): after payment we still
+    // bounce back through the app first so the Facebook Pixel + CAPI +
+    // TikTok pixel Purchase events fire — docs.google.com can't load
+    // our pixel. The app reads `redirect` and forwards to the Google
+    // Form once tracking has fired. All other plans return to the app
+    // and continue straight into the deploy pipeline.
+    const GOOGLE_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSdS2iaBt6ee0AGWv7pQPSLHoicovQuTOKLFktuiEG4tobBIPw/viewform';
+    const baseReturn = `${origin}?stripe_session={CHECKOUT_SESSION_ID}&plan=${encodeURIComponent(plan)}`;
     const successUrl = isCustomAny
-      ? 'https://docs.google.com/forms/d/e/1FAIpQLSdS2iaBt6ee0AGWv7pQPSLHoicovQuTOKLFktuiEG4tobBIPw/viewform'
-      : `${origin}?stripe_session={CHECKOUT_SESSION_ID}`;
+      ? `${baseReturn}&redirect=${encodeURIComponent(GOOGLE_FORM_URL)}`
+      : baseReturn;
 
     // Create Stripe Checkout Session for subscription
     const params = new URLSearchParams();
