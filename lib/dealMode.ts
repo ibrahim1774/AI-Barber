@@ -26,11 +26,15 @@ export function isSevenDealPath(pathname?: string): boolean {
   return p === SEVEN_DEAL_PATH || p === `${SEVEN_DEAL_PATH}/`;
 }
 
-// /booksy lands on a Booksy-URL-only generator. User pastes their
-// Booksy link → Apify scrapes name, address, services, photos, reviews
-// → LUXE renderer paints the pre-filled site.
-export const BOOKSY_PATH = '/booksy';
-export function isBooksyPath(pathname?: string): boolean {
+// /import (or legacy /booksy) lands on a single-URL generator. User
+// pastes any supported booking-platform link (Booksy, Fresha, StyleSeat,
+// Square Appointments, Vagaro) → we scrape shop name, address,
+// services, photos, reviews → LUXE renderer paints the pre-filled site.
+export const IMPORT_PATHS = ['/import', '/booksy'];
+export function isImportPath(pathname?: string): boolean {
   const p = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
-  return p === BOOKSY_PATH || p === `${BOOKSY_PATH}/`;
+  return IMPORT_PATHS.some((base) => p === base || p === `${base}/`);
 }
+// Back-compat alias — keep until all callsites migrate.
+export const BOOKSY_PATH = '/booksy';
+export const isBooksyPath = isImportPath;

@@ -25,7 +25,7 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn }) =
     setError(null);
 
     try {
-      const resp = await fetch('/api/booksy-scrape', {
+      const resp = await fetch('/api/import-scrape', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: url.trim() }),
@@ -126,13 +126,14 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn }) =
           <div className="relative z-10 pt-4 md:pt-0">
             <h1 className="text-2xl md:text-5xl lg:text-6xl font-montserrat font-black uppercase tracking-[1px] md:tracking-[2px] leading-[1.15] text-white mb-2 md:mb-4">
               Build Your Site From{' '}
-              <span className="text-[#f4a100] mt-1 block">Your Booksy Page</span>
+              <span className="text-[#f4a100] mt-1 block">Your Booking Page</span>
             </h1>
             <p
               className="text-[11px] md:text-xs italic text-white/70 max-w-[280px] md:max-w-xs mx-auto"
               style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
             >
-              Paste your Booksy link below — we'll pull your services, photos, and reviews automatically.
+              Paste your Booksy, Fresha, StyleSeat, Square Appointments, or Vagaro link — we'll pull your
+              services, photos, and reviews automatically.
             </p>
           </div>
         </div>
@@ -143,7 +144,7 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn }) =
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-1.5">
                 <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">
-                  Your Booksy URL
+                  Your Booking URL
                 </label>
                 <input
                   required
@@ -152,16 +153,16 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn }) =
                   autoCapitalize="off"
                   autoCorrect="off"
                   spellCheck={false}
-                  placeholder="booksy.com/en-us/12345_the-gentlemens-lounge"
+                  placeholder="booksy.com/en-us/... · fresha.com/a/... · vagaro.com/..."
                   className="w-full bg-transparent border-b border-white/40 focus:border-[#f4a100] py-1.5 md:py-2.5 text-white transition-all outline-none font-montserrat text-sm md:text-lg placeholder:text-white/20"
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
                 />
                 <p className="text-white/40 text-[10px] mt-1">
-                  Any Booksy link works — your short link
-                  (<span className="text-white/60">yourshop.booksy.com</span>), the canonical URL
-                  (<span className="text-white/60">booksy.com/en-us/12345_your-shop-name</span>),
-                  or the share link from your Booksy profile. We'll find your shop either way.
+                  Supported: Booksy, Fresha, StyleSeat, Square Appointments, Vagaro. Short links like
+                  <span className="text-white/60"> yourshop.booksy.com</span> work too — we'll resolve them.
+                  TheCut and Squire don't publish shop info publicly, so paste those as your booking link in
+                  the regular generator instead.
                 </p>
               </div>
 
@@ -176,7 +177,7 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn }) =
                 disabled={busy}
                 className="w-full py-4 md:py-5 mt-2 md:mt-3 bg-[#f4a100] text-[#1a1a1a] font-montserrat font-black uppercase tracking-[1.5px] md:tracking-[2px] text-xs md:text-base hover:bg-white transition-all duration-500 shadow-[0_0_20px_rgba(244,161,0,0.15)] active:scale-[0.98] disabled:opacity-60 disabled:cursor-wait"
               >
-                {busy ? 'Pulling From Booksy…' : 'Generate My Website'}
+                {busy ? 'Pulling Your Shop Info…' : 'Generate My Website'}
               </button>
 
               <p className="text-white/40 text-[10px] mt-3 text-center">
