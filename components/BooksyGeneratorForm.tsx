@@ -158,10 +158,10 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn }) =
                   onChange={(e) => setUrl(e.target.value)}
                 />
                 <p className="text-white/40 text-[10px] mt-1">
-                  Open your shop on Booksy and copy the full URL from the address bar — should look like
-                  <span className="text-white/60"> booksy.com/en-us/12345_your-shop-name</span>. Short links like
-                  <span className="text-white/60"> yourshop.booksy.com</span> won't work — Booksy strips the shop
-                  info from those.
+                  Any Booksy link works — your short link
+                  (<span className="text-white/60">yourshop.booksy.com</span>), the canonical URL
+                  (<span className="text-white/60">booksy.com/en-us/12345_your-shop-name</span>),
+                  or the share link from your Booksy profile. We'll find your shop either way.
                 </p>
               </div>
 

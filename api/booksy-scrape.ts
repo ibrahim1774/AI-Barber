@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { findCanonicalBooksyUrl, extractVanitySubdomainSlug } from '../lib/booksySitemap.js';
 
 // Booksy scraper endpoint. Drives the /booksy generator page.
 //
@@ -178,9 +179,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const url = ((req.body || {}) as { url?: string }).url?.trim() || '';
-  const normalized = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+  let normalized = /^https?:\/\//i.test(url) ? url : `https://${url}`;
   if (!isLikelyBooksyUrl(normalized)) {
     return res.status(400).json({ error: 'That does not look like a Booksy URL.' });
+  }
+
+  // Vanity-subdomain recovery — `gyroshop.booksy.com` and similar
+  // short links 302 to the bare homepage and lose all shop context.
+  // We can't fix that from the redirect, but Booksy publishes a full
+  // sitemap of every public business URL — so we look up the slug
+  // there and silently swap in the canonical URL before scraping.
+  const vanitySlug = extractVanitySubdomainSlug(normalized);
+  if (vanitySlug) {
+    try {
+      const canonical = await findCanonicalBooksyUrl(vanitySlug);
+      if (canonical) {
+        console.log(`[Booksy] Vanity '${vanitySlug}' → ${canonical}`);
+        normalized = canonical;
+      } else {
+        return res.status(422).json({
+          error: `Couldn't find a Booksy shop matching "${vanitySlug}". Open your shop on Booksy in a browser and copy the full URL from the address bar — it should look like booksy.com/en-us/12345_your-shop-name.`,
+        });
+      }
+    } catch (e: any) {
+      console.error('[Booksy] Sitemap lookup failed:', e?.message || e);
+      // Fall through and try the original URL — worst case it returns
+      // the homepage-redirect error message from below.
+    }
   }
 
   console.log(`[Booksy] Scraping ${normalized}`);
