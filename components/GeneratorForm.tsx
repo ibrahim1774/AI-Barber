@@ -216,6 +216,9 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
               </p>
               <div className="h-[1px] flex-1 bg-white/10"></div>
             </div>
+            <p className="mt-2 md:mt-3 text-center text-white/40 text-[9px] md:text-[11px]">
+              Support: <a href="mailto:support@davoxa.com" className="text-white/60 hover:text-[#f4a100] transition-colors">support@davoxa.com</a>
+            </p>
           </div>
         </div>
       </div>
