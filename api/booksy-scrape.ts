@@ -123,16 +123,31 @@ function cleanBooksyAddress(streetAddress: string, locality: string, postal: str
   return [street, tail].filter(Boolean).join(', ');
 }
 
-async function fetchBooksyHtml(url: string): Promise<string> {
+async function fetchBooksyHtml(url: string): Promise<{ html: string; finalUrl: string }> {
   const resp = await fetch(url, {
     headers: {
       'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
       'Accept': 'text/html,application/xhtml+xml',
       'Accept-Language': 'en-US,en;q=0.9',
     },
+    redirect: 'follow',
   });
   if (!resp.ok) throw new Error(`Booksy returned ${resp.status}`);
-  return resp.text();
+  return { html: await resp.text(), finalUrl: resp.url };
+}
+
+// Booksy bounces vanity subdomains (clipperonthego.booksy.com) and
+// some short links straight to the generic homepage instead of the
+// shop. Detect by checking the final URL we landed on.
+function isBooksyHomepage(finalUrl: string): boolean {
+  try {
+    const u = new URL(finalUrl);
+    if (!/(^|\.)booksy\.com$/i.test(u.hostname)) return false;
+    const path = u.pathname.replace(/\/+$/, '');
+    return path === '' || /^\/[a-z]{2}-[a-z]{2}$/i.test(path); // "" or "/en-us"
+  } catch {
+    return false;
+  }
 }
 
 async function callApify(url: string, token: string): Promise<{ services: any[]; photos: string[]; reviews: any[] } | null> {
@@ -172,11 +187,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // ── Step 1: server-side JSON-LD fetch ──
   let ld: any = null;
+  let finalUrl = normalized;
   try {
-    const html = await fetchBooksyHtml(normalized);
-    ld = parseBooksyJsonLd(html);
+    const fetched = await fetchBooksyHtml(normalized);
+    finalUrl = fetched.finalUrl;
+    ld = parseBooksyJsonLd(fetched.html);
   } catch (e: any) {
     console.error('[Booksy] HTML fetch failed:', e?.message || e);
+  }
+
+  // Vanity-subdomain short link case — Booksy redirected us to the
+  // generic homepage and the shop identity is gone. Spell out the fix
+  // so the user knows exactly what to paste instead.
+  if (!ld?.name && isBooksyHomepage(finalUrl)) {
+    return res.status(422).json({
+      error:
+        'That short link redirected to the Booksy homepage and dropped your shop info. Open your shop on Booksy in a browser and copy the full URL from the address bar — it should look like booksy.com/en-us/12345_your-shop-name.',
+    });
   }
 
   if (!ld?.name) {
