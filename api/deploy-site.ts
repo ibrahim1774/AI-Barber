@@ -116,6 +116,35 @@ async function deployToVercel(projectName: string, files: VercelFile[]) {
   return { deploymentUrl, inspectorUrl: data.inspectorUrl, deploymentId: data.id };
 }
 
+// Poll the Vercel deployment until its readyState is READY (or we
+// time out). Without this, "Publish" was returning the moment Vercel
+// accepted the deploy — but the alias was still pointing at the old
+// production deployment for another 5-15s. Users would click the URL
+// and see stale content.
+async function waitForDeploymentReady(deploymentId: string, vercelToken: string, maxWaitMs = 60_000): Promise<void> {
+  const start = Date.now();
+  const pollInterval = 1500;
+  while (Date.now() - start < maxWaitMs) {
+    try {
+      const resp = await fetch(`https://api.vercel.com/v13/deployments/${deploymentId}`, {
+        headers: { Authorization: `Bearer ${vercelToken}` },
+      });
+      if (resp.ok) {
+        const data = await resp.json() as { readyState?: string };
+        if (data.readyState === 'READY') return;
+        if (data.readyState === 'ERROR' || data.readyState === 'CANCELED') {
+          throw new Error(`Vercel deployment ${data.readyState.toLowerCase()}`);
+        }
+      }
+    } catch (e: any) {
+      // Transient errors — keep polling until timeout.
+      console.warn('[Deploy Poll] transient:', e?.message || e);
+    }
+    await new Promise((r) => setTimeout(r, pollInterval));
+  }
+  console.warn(`[Deploy Poll] Timed out after ${maxWaitMs}ms — proceeding anyway`);
+}
+
 export default async function handler(req: any, res: any) {
   // CORS Headers
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -225,9 +254,34 @@ export default async function handler(req: any, res: any) {
     const htmlBuffer = Buffer.from(processedHtml, 'utf-8');
     const cssBuffer = Buffer.from(cssContent, 'utf-8');
 
+    // Cache-Control headers so visitors revalidate HTML on every load
+    // (catching publish updates immediately) while still benefitting
+    // from edge caching for the CSS / images. Without this, the
+    // deployed HTML was getting cached by browsers + Vercel's CDN
+    // and re-publishing didn't appear to "do anything" — the user's
+    // exact complaint.
+    const vercelConfig = JSON.stringify({
+      headers: [
+        {
+          source: '/index.html',
+          headers: [
+            { key: 'Cache-Control', value: 'public, max-age=0, must-revalidate' },
+          ],
+        },
+        {
+          source: '/',
+          headers: [
+            { key: 'Cache-Control', value: 'public, max-age=0, must-revalidate' },
+          ],
+        },
+      ],
+    });
+    const vercelConfigBuffer = Buffer.from(vercelConfig, 'utf-8');
+
     const files: VercelFile[] = [
       { file: 'index.html', data: htmlBuffer.toString('base64'), encoding: 'base64' },
-      { file: 'styles.css', data: cssBuffer.toString('base64'), encoding: 'base64' }
+      { file: 'styles.css', data: cssBuffer.toString('base64'), encoding: 'base64' },
+      { file: 'vercel.json', data: vercelConfigBuffer.toString('base64'), encoding: 'base64' },
     ];
 
     const totalSize = htmlBuffer.length + cssBuffer.length;
@@ -243,7 +297,16 @@ export default async function handler(req: any, res: any) {
     // Step 6: Deploy to Vercel (only lightweight HTML/CSS files)
     const vercelResult = await deployToVercel(body.siteId, files);
 
-    console.log(`[Deploy Site] Deployment successful: ${vercelResult.deploymentUrl}`);
+    console.log(`[Deploy Site] Deployment created: ${vercelResult.deploymentUrl}, waiting for READY...`);
+
+    // Step 6b: Wait for the deployment to actually be READY before
+    // returning success — otherwise the user clicks their URL and
+    // sees the previous version while Vercel is still building.
+    if (process.env.VERCEL_TOKEN) {
+      await waitForDeploymentReady(vercelResult.deploymentId, process.env.VERCEL_TOKEN);
+    }
+
+    console.log(`[Deploy Site] Deployment ready: ${vercelResult.deploymentUrl}`);
 
     // Step 7: Return success response
     return res.status(200).json({

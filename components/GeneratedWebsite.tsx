@@ -83,11 +83,21 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
       </div>`
     : '';
 
+  // Cache-bust marker so each publish forces a fresh fetch even if
+  // a browser / CDN had the previous HTML cached. Combined with the
+  // short Cache-Control header set by api/deploy-site, this means
+  // "Publish" is genuinely real-time for repeat visitors.
+  const publishedAt = String(Date.now());
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="published-at" content="${publishedAt}">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>${siteData.shopName} - Premium Barbershop in ${siteData.area}</title>
   <meta name="description" content="Premium grooming services at ${siteData.shopName} in ${siteData.area}. Expert barbers, luxury experience.">
   <script type="text/javascript">

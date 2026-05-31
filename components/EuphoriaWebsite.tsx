@@ -216,11 +216,18 @@ export function generateEuphoriaHTMLWithPlaceholders(siteData: WebsiteData): str
     ? `<div class="eu-img-tile" style="aspect-ratio: 4/5;"><img src="{{about}}" alt="${safeName}"></div>`
     : '';
 
+  // Cache-bust marker so each publish forces a fresh fetch.
+  const publishedAt = String(Date.now());
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="published-at" content="${publishedAt}">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>${safeName} — Barbershop in ${safeArea}</title>
   <meta name="description" content="${safeName}. A refined barbershop in ${safeArea}. Quiet luxury. Precise cuts. Book online.">
   <script type="text/javascript">
