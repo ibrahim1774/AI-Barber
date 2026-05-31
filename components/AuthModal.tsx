@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
 interface AuthModalProps {
@@ -17,6 +17,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMo
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { signIn, signUp } = useAuth();
+
+  // Sync mode to props whenever the modal opens or the caller's
+  // intent changes. Without this, mode is locked to whatever it was
+  // at first mount (typically 'signup') because useState only reads
+  // the initial value once — so clicking "Sign In" from the homepage
+  // header was still showing the Create Account form underneath.
+  useEffect(() => {
+    if (isOpen) {
+      setMode(signInOnly ? 'signin' : initialMode);
+      setError('');
+    }
+  }, [isOpen, signInOnly, initialMode]);
 
   if (!isOpen) return null;
 
