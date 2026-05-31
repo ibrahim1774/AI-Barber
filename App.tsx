@@ -9,6 +9,8 @@ declare global {
 }
 
 import { GeneratorForm } from './components/GeneratorForm.tsx';
+import { BooksyGeneratorForm } from './components/BooksyGeneratorForm.tsx';
+import { isBooksyPath } from './lib/dealMode.ts';
 import { LoadingScreen } from './components/LoadingScreen.tsx';
 import { GeneratedWebsite } from './components/GeneratedWebsite.tsx';
 import { EuphoriaWebsite } from './components/EuphoriaWebsite.tsx';
@@ -375,7 +377,10 @@ const App: React.FC = () => {
     }
   };
 
-  const handleGenerate = async (inputs: ShopInputs) => {
+  // The optional `prebuilt` arg lets the /booksy form skip the
+  // generateContent() template call — the Apify scraper has already
+  // produced a complete WebsiteData payload from the real Booksy page.
+  const handleGenerate = async (inputs: ShopInputs, prebuilt?: WebsiteData) => {
     captureLead(inputs).catch((err) => console.error("[Lead Capture] Error (non-blocking):", err));
 
     // Meta Lead event — browser pixel + CAPI share the same event_id for dedupe
@@ -417,7 +422,7 @@ const App: React.FC = () => {
     sessionStorage.setItem('pendingFormInputs', JSON.stringify(inputs));
     setState('loading');
     try {
-      const data = await generateContent(inputs);
+      const data = prebuilt ?? await generateContent(inputs);
       setGeneratedData(data);
 
       // Persist a draft SiteInstance to IndexedDB so refresh, navigate-away,
@@ -512,10 +517,17 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#0d0d0d] text-white">
       {state === 'generator' && (
-        <GeneratorForm
-          onGenerate={handleGenerate}
-          onSignIn={() => { setAuthModalMode('signin'); setAuthSignInOnly(true); setShowAuthModal(true); }}
-        />
+        isBooksyPath() ? (
+          <BooksyGeneratorForm
+            onGenerate={(inputs, scraped) => handleGenerate(inputs, scraped)}
+            onSignIn={() => { setAuthModalMode('signin'); setAuthSignInOnly(true); setShowAuthModal(true); }}
+          />
+        ) : (
+          <GeneratorForm
+            onGenerate={handleGenerate}
+            onSignIn={() => { setAuthModalMode('signin'); setAuthSignInOnly(true); setShowAuthModal(true); }}
+          />
+        )
       )}
       {state === 'loading' && <LoadingScreen />}
       {state === 'editor' && generatedData && (

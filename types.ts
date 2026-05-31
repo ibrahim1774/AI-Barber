@@ -41,6 +41,10 @@ export interface WebsiteData {
   };
   services: ServiceItem[];
   gallery: string[];
+  // Optional real customer reviews (from Booksy scrape). When present
+  // the LUXE renderer shows a Reviews section. Older saved sites lack
+  // this field — renderer skips the section when omitted/empty.
+  reviews?: { author: string; rating: number; comment: string; date?: string }[];
   // Optional small hero feature cards — "EXPERIENCE / Elite",
   // "RECOGNIZED / Masters", "OPEN DAILY / 9-6" style. Editable in
   // the preview. Falls back to defaults when omitted (older saved

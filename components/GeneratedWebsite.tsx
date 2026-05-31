@@ -877,6 +877,40 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         </div>
       </section>
 
+      {/* Reviews Section — only rendered when scraped reviews exist
+          (e.g. from the /booksy flow). Older saved sites have no
+          reviews field and skip this section entirely. */}
+      {siteData.reviews && siteData.reviews.length > 0 && (
+        <section className="py-16 md:py-28 bg-[#0a0a0a] px-6 border-y border-white/5">
+          <div className="container mx-auto max-w-5xl">
+            <div className="text-center mb-10 md:mb-14">
+              <h3 className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">Reviews</h3>
+              <h2 className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">
+                What Our Clients Say
+              </h2>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+              {siteData.reviews.slice(0, 6).map((r, i) => (
+                <div key={i} className="border border-white/10 bg-[#111111] p-5 md:p-7 flex flex-col gap-3">
+                  <div className="flex items-center gap-1" aria-label={`${r.rating} out of 5 stars`}>
+                    {Array.from({ length: 5 }, (_, s) => (
+                      <span key={s} className={s < r.rating ? 'text-[#f4a100]' : 'text-white/15'}>★</span>
+                    ))}
+                  </div>
+                  <p className="text-white/80 text-sm md:text-base leading-relaxed italic">
+                    “{r.comment}”
+                  </p>
+                  <div className="flex items-center justify-between text-[10px] uppercase tracking-[2px] text-white/50 mt-auto pt-2 border-t border-white/5">
+                    <span className="font-bold text-white/80">{r.author}</span>
+                    {r.date && <span>{r.date}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Services Grid Section */}
       <section id="our-services" className="py-12 md:py-32 bg-[#0d0d0d] px-6">
         <div className="container mx-auto">
