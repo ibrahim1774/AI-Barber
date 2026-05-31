@@ -253,7 +253,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
                   className="block font-bold leading-snug mt-0.5"
                   style={{ fontSize: '11.5px', color: 'rgba(236,230,218,0.92)' }}
                 >
-                  We'll build you a custom design for your barber business.
+                  You may choose the design you like if you want.
                 </span>
               </span>
             </span>
@@ -530,7 +530,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
                       <span style={{ color: gold, fontStyle: 'italic' }}>around your shop.</span>
                     </h2>
                     <p className="text-sm leading-relaxed mb-5" style={{ color: 'rgba(236,230,218,0.6)' }}>
-                      Not loving the template? We'll design a site from scratch around your brand and your vibe — flat {customPriceFull}.
+                      Not loving the template? We'll design a site from scratch around your brand and your vibe — your real photos, your own booking link, flat {customPriceFull}.
                     </p>
                     <div className="border-t border-white/10">
                       {[
@@ -596,7 +596,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
                       <span style={{ color: gold, fontStyle: 'italic' }}>{customPriceFull}.</span>
                     </h2>
                     <p className="text-sm leading-relaxed mb-5" style={{ color: 'rgba(236,230,218,0.6)' }}>
-                      One simple price. Cancel anytime. After checkout, fill out a short form so we know your style, booking provider, and photos to use.
+                      You may choose the design you like — your real photos, your own booking link. One simple price. Cancel anytime. After checkout, a short form captures your style and the photos to use.
                     </p>
 
                     <div className="border-t border-white/10 mb-5">
@@ -605,7 +605,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
                         'Choose the design you like',
                         'Multiple pages',
                         'Booking integration',
-                        'Custom photos',
+                        'You can have us add your custom photos',
                       ].map((line, i) => (
                         <div key={line} className="flex items-baseline gap-4 py-2.5 border-b border-white/10">
                           <span
