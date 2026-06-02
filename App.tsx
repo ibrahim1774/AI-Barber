@@ -10,7 +10,16 @@ declare global {
 
 import { GeneratorForm } from './components/GeneratorForm.tsx';
 import { BooksyGeneratorForm } from './components/BooksyGeneratorForm.tsx';
+import { NewLeadQuizForm } from './components/NewLeadQuizForm.tsx';
 import { isBooksyPath } from './lib/dealMode.ts';
+// /new subpage detection — premium multi-step quiz funnel mirroring
+// PrimeHub /barber. Same downstream pipeline as the homepage form,
+// just a different presentation + a post-generation intro modal.
+const isNewLeadPath = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  const p = window.location.pathname.replace(/\/+$/, '');
+  return p === '/new' || p.startsWith('/new/');
+};
 import { LoadingScreen } from './components/LoadingScreen.tsx';
 import { GeneratedWebsite } from './components/GeneratedWebsite.tsx';
 import { EuphoriaWebsite } from './components/EuphoriaWebsite.tsx';
@@ -40,6 +49,12 @@ const App: React.FC = () => {
 
   // Post-deployment modal state
   const [showPostDeployModal, setShowPostDeployModal] = useState(false);
+
+  // Post-generation intro modal — fires once after a /new visitor lands
+  // in the editor. Mirrors the "Your site is fully editable" tour from
+  // PrimeHub /barber. Persists until the user X's out.
+  const [showEditorIntro, setShowEditorIntro] = useState(false);
+  const cameFromNewRef = useRef(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'signin' | 'signup'>('signup');
   const [authSignInOnly, setAuthSignInOnly] = useState(false);
@@ -503,6 +518,12 @@ const App: React.FC = () => {
       setActiveSite(draftSite);
       persistView('editor', draftSite.id);
       sessionStorage.removeItem('pendingFormInputs');
+      // Fire the post-generation intro modal once if the visitor came
+      // through the /new quiz funnel. Ref resets to false right after.
+      if (cameFromNewRef.current) {
+        cameFromNewRef.current = false;
+        setShowEditorIntro(true);
+      }
     } catch (error: any) {
       if (document.hidden && sessionStorage.getItem('pendingFormInputs')) {
         generationFailedRef.current = true;
@@ -585,6 +606,16 @@ const App: React.FC = () => {
         isBooksyPath() ? (
           <BooksyGeneratorForm
             onGenerate={(inputs, scraped) => handleGenerate(inputs, scraped)}
+            onSignIn={() => { setAuthModalMode('signin'); setAuthSignInOnly(true); setShowAuthModal(true); }}
+          />
+        ) : isNewLeadPath() ? (
+          <NewLeadQuizForm
+            onGenerate={(inputs) => {
+              // Mark this visitor as coming from /new so the post-
+              // generation intro modal fires after the editor mounts.
+              cameFromNewRef.current = true;
+              handleGenerate(inputs);
+            }}
             onSignIn={() => { setAuthModalMode('signin'); setAuthSignInOnly(true); setShowAuthModal(true); }}
           />
         ) : (
@@ -750,6 +781,122 @@ const App: React.FC = () => {
         signInOnly={authSignInOnly}
         onSuccess={handleAuthSuccess}
       />
+
+      {/* /new post-generation intro modal — mirrors the "Your site is
+          fully editable" tour from PrimeHub /barber. Fires once after
+          the editor mounts when the visitor came through /new. */}
+      {showEditorIntro && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4 md:p-6"
+          role="dialog"
+          aria-modal="true"
+          style={{
+            background: 'rgba(5, 7, 10, 0.78)',
+            backdropFilter: 'blur(14px) saturate(140%)',
+            WebkitBackdropFilter: 'blur(14px) saturate(140%)',
+          }}
+        >
+          <div
+            className="relative w-full max-w-md overflow-hidden rounded-[20px] p-7 md:p-8"
+            style={{
+              background: 'linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.015) 60%, rgba(255,255,255,0.01))',
+              border: '1px solid rgba(255,255,255,0.10)',
+              backdropFilter: 'blur(28px) saturate(180%)',
+              WebkitBackdropFilter: 'blur(28px) saturate(180%)',
+              boxShadow:
+                '0 40px 120px -20px rgba(0,0,0,0.75),' +
+                '0 12px 40px -12px rgba(0,0,0,0.5),' +
+                'inset 0 1px 0 0 rgba(255,255,255,0.08),' +
+                '0 0 0 1px rgba(244,161,0,0.10)',
+            }}
+          >
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 top-0 h-32"
+              style={{ background: 'radial-gradient(60% 100% at 50% 0%, rgba(244,161,0,0.20), transparent 70%)' }}
+            />
+            <div
+              aria-hidden
+              className="pointer-events-none absolute left-0 right-12 top-[44px] h-px"
+              style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0.12), transparent)' }}
+            />
+
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={() => setShowEditorIntro(false)}
+              className="absolute right-3.5 top-3.5 flex h-9 w-9 items-center justify-center rounded-full border border-white/10 text-white/55 transition hover:border-white/30 hover:bg-white/[0.06] hover:text-white"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+
+            <p
+              className="relative mb-1 text-[10px] font-bold uppercase tracking-[0.34em]"
+              style={{ color: '#ef4444' }}
+            >
+              Important
+            </p>
+            <h2
+              className="relative mb-1 leading-[1.08] text-white"
+              style={{ fontSize: '1.7rem', letterSpacing: '-0.02em', fontWeight: 600, fontFamily: '"Manrope", "Inter", sans-serif' }}
+            >
+              Your site is{' '}
+              <span
+                className="italic"
+                style={{
+                  fontFamily: '"Instrument Serif", "Times New Roman", serif',
+                  fontWeight: 400,
+                  color: '#f4a100',
+                  letterSpacing: '-0.015em',
+                }}
+              >
+                fully editable.
+              </span>
+            </h2>
+            <p
+              className="relative mb-6 italic text-white/55"
+              style={{ fontFamily: '"Instrument Serif", "Times New Roman", serif', fontSize: '14px' }}
+            >
+              A quick tour of what you can do from here.
+            </p>
+
+            <ul className="relative space-y-3.5 text-[13.5px] leading-relaxed text-white/85 md:text-[14px]" style={{ fontFamily: '"Manrope", "Inter", sans-serif' }}>
+              {[
+                { text: 'Tap any text on the site to edit it.', bold: false },
+                { text: 'Add your own images.', bold: false },
+                { text: "Publish when you're ready, then make an account to edit text & images anytime.", bold: false },
+                { text: "Don't like the design? Scroll to the bottom to request a custom one.", bold: true },
+              ].map((item, i) => (
+                <li key={i} className="flex items-start gap-3">
+                  <span
+                    className="mt-[8px] inline-block h-[2px] w-3 shrink-0 rounded-full"
+                    style={{ background: '#f4a100', opacity: 0.85 }}
+                  />
+                  <span className={item.bold ? 'font-semibold text-white' : ''}>
+                    {item.text}
+                  </span>
+                </li>
+              ))}
+            </ul>
+
+            <button
+              type="button"
+              onClick={() => setShowEditorIntro(false)}
+              className="relative mt-7 w-full overflow-hidden rounded-full py-3 text-[12px] font-bold uppercase tracking-[0.22em] text-black transition active:scale-[0.985] md:text-[13px]"
+              style={{
+                background: 'linear-gradient(180deg, #ffffff 0%, #f1f1f3 100%)',
+                boxShadow:
+                  '0 8px 24px -6px rgba(0,0,0,0.5),' +
+                  'inset 0 1px 0 0 rgba(255,255,255,0.9),' +
+                  '0 0 0 1px rgba(244,161,0,0.26)',
+                fontFamily: '"Manrope", "Inter", sans-serif',
+              }}
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
