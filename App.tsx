@@ -8,18 +8,12 @@ declare global {
   }
 }
 
-import { GeneratorForm } from './components/GeneratorForm.tsx';
 import { BooksyGeneratorForm } from './components/BooksyGeneratorForm.tsx';
 import { NewLeadQuizForm } from './components/NewLeadQuizForm.tsx';
 import { isBooksyPath } from './lib/dealMode.ts';
-// /new subpage detection — premium multi-step quiz funnel mirroring
-// PrimeHub /barber. Same downstream pipeline as the homepage form,
-// just a different presentation + a post-generation intro modal.
-const isNewLeadPath = (): boolean => {
-  if (typeof window === 'undefined') return false;
-  const p = window.location.pathname.replace(/\/+$/, '');
-  return p === '/new' || p.startsWith('/new/');
-};
+// Note: the legacy single-page GeneratorForm + isNewLeadPath() detector
+// were removed when the premium quiz funnel took over the homepage too.
+// /new keeps working as an alias since both routes render the same form.
 import { LoadingScreen } from './components/LoadingScreen.tsx';
 import { GeneratedWebsite } from './components/GeneratedWebsite.tsx';
 import { EuphoriaWebsite } from './components/EuphoriaWebsite.tsx';
@@ -608,19 +602,18 @@ const App: React.FC = () => {
             onGenerate={(inputs, scraped) => handleGenerate(inputs, scraped)}
             onSignIn={() => { setAuthModalMode('signin'); setAuthSignInOnly(true); setShowAuthModal(true); }}
           />
-        ) : isNewLeadPath() ? (
+        ) : (
+          // Homepage AND /new now both render the premium multi-step
+          // quiz funnel — same UX, same post-generation intro modal.
+          // The legacy single-page GeneratorForm is no longer routed
+          // (kept in the codebase as a fallback in case we need it).
           <NewLeadQuizForm
             onGenerate={(inputs) => {
-              // Mark this visitor as coming from /new so the post-
-              // generation intro modal fires after the editor mounts.
+              // Flag every quiz visitor so the post-generation intro
+              // modal fires after the editor mounts.
               cameFromNewRef.current = true;
               handleGenerate(inputs);
             }}
-            onSignIn={() => { setAuthModalMode('signin'); setAuthSignInOnly(true); setShowAuthModal(true); }}
-          />
-        ) : (
-          <GeneratorForm
-            onGenerate={handleGenerate}
             onSignIn={() => { setAuthModalMode('signin'); setAuthSignInOnly(true); setShowAuthModal(true); }}
           />
         )
