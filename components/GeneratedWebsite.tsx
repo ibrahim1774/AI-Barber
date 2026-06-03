@@ -618,7 +618,60 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       localStorage.setItem('pendingSite', JSON.stringify(pendingSite));
       console.log('[Claim] Saved pending site to localStorage, redirecting to Stripe...');
 
-      // Step 4: Create Stripe Checkout Session and redirect
+      // Step 4: Fire FB + TikTok InitiateCheckout (pixel + CAPI) before
+      // the Stripe redirect. Shared event_id dedupes pixel vs CAPI.
+      try {
+        const checkoutEventId =
+          typeof crypto !== 'undefined' && (crypto as any).randomUUID
+            ? (crypto as any).randomUUID()
+            : `co_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+        const PLAN_VALUES: Record<string, number> = {
+          monthly: 10,
+          yearly: 72,
+          five: 5,
+          seven: 7,
+        };
+        const checkoutValue = PLAN_VALUES[plan] ?? 10;
+        const checkoutCurrency = 'USD';
+        (window as any).fbq?.(
+          'track',
+          'InitiateCheckout',
+          { value: checkoutValue, currency: checkoutCurrency },
+          { eventID: checkoutEventId },
+        );
+        (window as any).ttq?.track(
+          'InitiateCheckout',
+          { value: checkoutValue, currency: checkoutCurrency },
+          { event_id: checkoutEventId },
+        );
+        fetch('/api/fb-checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            eventId: checkoutEventId,
+            value: checkoutValue,
+            currency: checkoutCurrency,
+            eventSourceUrl: window.location.href,
+            clientUserAgent: navigator.userAgent,
+          }),
+        }).catch(err => console.error('[FB CAPI InitiateCheckout] Failed:', err));
+        fetch('/api/tiktok-event', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            event: 'InitiateCheckout',
+            event_id: checkoutEventId,
+            event_source_url: window.location.href,
+            user_agent: navigator.userAgent,
+            value: checkoutValue,
+            currency: checkoutCurrency,
+          }),
+        }).catch(err => console.error('[TikTok CAPI InitiateCheckout] Failed:', err));
+      } catch (e) {
+        console.error('[InitiateCheckout] Tracking failed:', e);
+      }
+
+      // Step 5: Create Stripe Checkout Session and redirect
       const checkoutResponse = await fetch('/api/create-checkout-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

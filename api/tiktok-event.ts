@@ -9,7 +9,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 const PIXEL_ID = 'D81SNARC77UATASKVG10';
 
 interface Body {
-  event: 'Lead' | 'Purchase';
+  event: 'Lead' | 'Purchase' | 'InitiateCheckout';
   event_id: string;
   event_source_url?: string;
   user_agent?: string;
@@ -29,7 +29,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { event, event_id, event_source_url, user_agent, value, currency } = (req.body || {}) as Body;
 
   if (!event_id || !event) return res.status(400).json({ error: 'Missing event or event_id' });
-  if (event !== 'Lead' && event !== 'Purchase') {
+  if (event !== 'Lead' && event !== 'Purchase' && event !== 'InitiateCheckout') {
     return res.status(400).json({ error: 'Unsupported event type' });
   }
 
@@ -41,7 +41,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const TEST_EVENT_CODE = process.env.TIKTOK_TEST_EVENT_CODE;
   const properties: Record<string, unknown> = {};
-  if (event === 'Purchase') {
+  if (event === 'Purchase' || event === 'InitiateCheckout') {
     properties.currency = (currency || 'USD').toUpperCase();
     properties.value = value ?? 10.0;
   }
