@@ -24,7 +24,7 @@ import { ShopInputs, WebsiteData, ServiceItem } from "../types.ts";
 
 const LUXE_IMAGES = {
   hero:
-    'https://cop5lgctumpj5e0w.public.blob.vercel-storage.com/barber/agustin-fernandez-Znyjl9pbaUs-unsplash.jpg',
+    'https://cop5lgctumpj5e0w.public.blob.vercel-storage.com/barber/nate-johnston-tgPrIYnW3g4-unsplash.jpg',
   about:
     'https://images.unsplash.com/photo-1503951914875-452162b0f3f1?auto=format&fit=crop&w=1200&q=70',
   gallerySeed:
@@ -38,7 +38,7 @@ const LUXE_IMAGES = {
 const CRAFT_DEFAULTS = [
   'https://cop5lgctumpj5e0w.public.blob.vercel-storage.com/barber/gulom-nazarov-DrG4V5skbMY-unsplash.jpg',
   'https://cop5lgctumpj5e0w.public.blob.vercel-storage.com/barber/jason-leung-2seUdPQNy_I-unsplash.jpg',
-  'https://cop5lgctumpj5e0w.public.blob.vercel-storage.com/barber/nate-johnston-tgPrIYnW3g4-unsplash.jpg',
+  'https://cop5lgctumpj5e0w.public.blob.vercel-storage.com/barber/agustin-fernandez-Znyjl9pbaUs-unsplash.jpg',
   'https://cop5lgctumpj5e0w.public.blob.vercel-storage.com/barber/salah-regouane-MRCdF3qUbp0-unsplash.jpg',
 ];
 
