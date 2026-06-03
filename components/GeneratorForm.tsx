@@ -60,7 +60,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
         {onSignIn && (
           <button
             onClick={onSignIn}
-            className="absolute top-6 right-6 md:top-8 md:right-8 z-20 text-[10px] md:text-xs font-montserrat font-bold uppercase tracking-[2px] text-white/70 hover:text-[#f4a100] transition-colors"
+            className="absolute top-6 right-6 md:top-8 md:right-8 z-20 text-[12px] md:text-[14.4px] font-montserrat font-bold uppercase tracking-[2px] text-white/70 hover:text-[#f4a100] transition-colors"
           >
             Sign In
           </button>
@@ -177,9 +177,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
               </p>
               <div className="h-[1px] flex-1 bg-white/10"></div>
             </div>
-            <p className="mt-3 md:mt-4 text-center text-white/65 text-[12px] md:text-[14px] font-bold">
-              Support: <a href="mailto:support@davoxa.com" className="text-white hover:text-[#f4a100] transition-colors font-bold">support@davoxa.com</a>
-            </p>
+            {/* Support email line removed per product decision. */}
           </div>
         </div>
       </div>
