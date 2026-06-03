@@ -32,10 +32,10 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
   const dealPriceMo = sevenDeal ? '$7/mo' : '$5/mo';
   const dealPriceMonth = sevenDeal ? '$7/month' : '$5/month';
 
-  // Custom-design upsell: flat $19/mo across every entry path.
+  // Custom-design upsell: flat $15/mo across every entry path.
   const customPlan: 'custom' | 'custom25' = dealMode ? 'custom' : 'custom25';
-  const customPriceLabel = '$19/mo';
-  const customPriceFull = '$19/month';
+  const customPriceLabel = '$15/mo';
+  const customPriceFull = '$15/month';
 
   const [isDismissed, setIsDismissed] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
@@ -49,7 +49,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
   // step-4 button doesn't stay stuck in its loading state on reopen.
   const customCheckoutAbortRef = React.useRef<AbortController | null>(null);
 
-  // Kicks off the custom-design Stripe checkout. Flat $19/mo —
+  // Kicks off the custom-design Stripe checkout. Flat $15/mo —
   // determined by the page the visitor is on. After success the backend
   // routes the customer to the Google Form to capture preferences.
   const handleCustomCheckout = async () => {
@@ -68,7 +68,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
         typeof crypto !== 'undefined' && (crypto as any).randomUUID
           ? (crypto as any).randomUUID()
           : `co_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-      const checkoutValue = 19;
+      const checkoutValue = 15;
       const checkoutCurrency = 'USD';
       (window as any).fbq?.(
         'track',
