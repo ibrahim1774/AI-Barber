@@ -187,11 +187,13 @@ export const generateContent = async (inputs: ShopInputs): Promise<WebsiteData> 
       imageUrl: images.about,
     },
     services: copy.services.map((s) => ({ ...s, imageUrl: '' })),
-    // 6-slot gallery — slot 0 is the about-section seed, slot 1 stays
-    // unused, slots 2..5 are hydrated from CRAFT_DEFAULTS so the new
-    // "The Craft" editorial section paints pre-filled instead of
-    // waiting on owner uploads. Each slot remains user-replaceable.
-    gallery: [images.gallerySeed, '', ...CRAFT_DEFAULTS],
+    // 6-slot gallery — slot 0 is the about-section seed, slots 1..5
+    // are the owner's "Our Work" portfolio (empty so the shop owner
+    // uploads their real work). "The Craft" lives on a separate
+    // craftImages array so the two sections never share slots.
+    gallery: [images.gallerySeed, '', '', '', '', ''],
+    // "The Craft" — 4 pre-seeded atmospheric shots, replaceable.
+    craftImages: [...CRAFT_DEFAULTS],
     // Hero feature cards — every value here is editable in the preview.
     // Defaults to a Mon-Fri schedule with normal shop hours so no shop
     // ever ships with a vague "Open Daily" claim.

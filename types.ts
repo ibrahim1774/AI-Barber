@@ -41,6 +41,11 @@ export interface WebsiteData {
   };
   services: ServiceItem[];
   gallery: string[];
+  // "The Craft" editorial section — 4 atmospheric shots pre-seeded
+  // from the Vercel Blob barber/ folder. Each slot is user-replaceable
+  // in the editor. Separate from `gallery` (which is the owner's
+  // own work / portfolio section).
+  craftImages?: string[];
   // Optional real customer reviews (from Booksy scrape). When present
   // the LUXE renderer shows a Reviews section. Older saved sites lack
   // this field — renderer skips the section when omitted/empty.

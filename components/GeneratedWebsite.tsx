@@ -61,6 +61,27 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
     .filter(item => item.url);
 
   const gallerySection = galleryImages.length > 0
+    ? `<section class="py-16 md:py-32 bg-[#0d0d0d] px-6 border-y border-white/5">
+    <div class="container mx-auto max-w-4xl">
+      <div class="text-center mb-10 md:mb-16">
+        <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">Gallery</h3>
+        <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">Our Work</h2>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        ${siteData.gallery[2] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{gallery2}}" alt="Gallery Image 1" class="w-full h-48 sm:h-56 md:h-72 object-cover"></div>` : ''}
+        ${siteData.gallery[3] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{gallery3}}" alt="Gallery Image 2" class="w-full h-48 sm:h-56 md:h-72 object-cover"></div>` : ''}
+        ${siteData.gallery[4] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{gallery4}}" alt="Gallery Image 3" class="w-full h-48 sm:h-56 md:h-72 object-cover"></div>` : ''}
+        ${siteData.gallery[5] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{gallery5}}" alt="Gallery Image 4" class="w-full h-48 sm:h-56 md:h-72 object-cover"></div>` : ''}
+      </div>
+    </div>
+  </section>`
+    : '';
+
+  // "The Craft" — separate editorial break with 4 pre-seeded shots
+  // from the Vercel Blob barber/ folder. Independent of the owner's
+  // Gallery above. Renders right before the contact section.
+  const craftImagesData = siteData.craftImages || [];
+  const craftSection = craftImagesData.length > 0
     ? `<section class="py-16 md:py-28 bg-[#0d0d0d] px-6 border-y border-white/5">
     <div class="container mx-auto max-w-4xl">
       <div class="text-center mb-10 md:mb-14">
@@ -69,10 +90,10 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
         <p class="text-[#cccccc]/70 text-xs md:text-sm leading-relaxed mt-4 max-w-md mx-auto">Barbering is craft — pace, attention, and care given to every detail of the cut.</p>
       </div>
       <div class="grid grid-cols-2 gap-3 md:gap-4">
-        ${siteData.gallery[2] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{gallery2}}" alt="The Craft 1" class="w-full aspect-square object-cover"></div>` : ''}
-        ${siteData.gallery[3] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{gallery3}}" alt="The Craft 2" class="w-full aspect-square object-cover"></div>` : ''}
-        ${siteData.gallery[4] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{gallery4}}" alt="The Craft 3" class="w-full aspect-square object-cover"></div>` : ''}
-        ${siteData.gallery[5] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{gallery5}}" alt="The Craft 4" class="w-full aspect-square object-cover"></div>` : ''}
+        ${craftImagesData[0] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{craft0}}" alt="The Craft 1" class="w-full aspect-square object-cover"></div>` : ''}
+        ${craftImagesData[1] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{craft1}}" alt="The Craft 2" class="w-full aspect-square object-cover"></div>` : ''}
+        ${craftImagesData[2] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{craft2}}" alt="The Craft 3" class="w-full aspect-square object-cover"></div>` : ''}
+        ${craftImagesData[3] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{craft3}}" alt="The Craft 4" class="w-full aspect-square object-cover"></div>` : ''}
       </div>
     </div>
   </section>`
@@ -200,6 +221,8 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
   </section>
 
   ${gallerySection}
+
+  ${craftSection}
 
   <section id="contact" class="py-12 md:py-32 bg-[#0d0d0d] px-4 md:px-6">
     <div class="container mx-auto max-w-6xl bg-[#1a1a1a] p-8 md:p-20">
@@ -401,6 +424,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
     if (parts[0] === 'hero') next.hero = { ...next.hero };
     else if (parts[0] === 'about') next.about = { ...next.about };
     else if (parts[0] === 'gallery') next.gallery = [...next.gallery];
+    else if (parts[0] === 'craftImages') next.craftImages = [...(next.craftImages || [])];
     let cur: any = next;
     for (let i = 0; i < parts.length - 1; i++) cur = cur[parts[i]];
     cur[parts[parts.length - 1]] = value;
@@ -519,6 +543,11 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           imagesToUpload.push({ key: `gallery${index}`, filename: `gallery-${index}-${timestamp}.jpg`, base64: imageUrl });
         }
       });
+      (siteData.craftImages || []).forEach((imageUrl, index) => {
+        if (imageUrl && imageUrl.startsWith('data:')) {
+          imagesToUpload.push({ key: `craft${index}`, filename: `craft-${index}-${timestamp}.jpg`, base64: imageUrl });
+        }
+      });
 
       // Step 2: Upload images to GCS via proxy
       const imageUrlMap: Record<string, string> = {};
@@ -558,6 +587,11 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           imageUrlMap[`gallery${index}`] = url;
         }
       });
+      (siteData.craftImages || []).forEach((url, index) => {
+        if (url && url.startsWith('http')) {
+          imageUrlMap[`craft${index}`] = url;
+        }
+      });
 
       // Step 3: Save to localStorage (text + GCS URLs only, no base64)
       const pendingSite = {
@@ -574,6 +608,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           hero: { ...siteData.hero, imageUrl: imageUrlMap['hero'] ? 'uploaded' : '' },
           about: { ...siteData.about, imageUrl: imageUrlMap['about'] ? 'uploaded' : '' },
           gallery: siteData.gallery.map((_, i) => imageUrlMap[`gallery${i}`] ? 'uploaded' : ''),
+          craftImages: (siteData.craftImages || []).map((_, i) => imageUrlMap[`craft${i}`] ? 'uploaded' : ''),
           services: siteData.services.map(s => ({ ...s, imageUrl: '' })),
         },
         imageUrlMap,
@@ -894,11 +929,36 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         </div>
       </section>
 
-      {/* "The Craft" — 4-image editorial break before contact. Copy
-          is general (no "our gallery" framing) — celebrates the craft
-          itself, not the shop's portfolio. Pre-seeded from the
-          Vercel Blob barber/ folder via geminiService LUXE template;
-          each slot stays user-replaceable. */}
+      {/* Gallery Section — owner's portfolio ("Our Work"). Slots
+          gallery[2..5] start empty so the shop owner uploads their
+          actual work. Section hides if every slot is empty. */}
+      <section className="py-16 md:py-32 bg-[#0d0d0d] px-6 border-y border-white/5">
+        <div className="container mx-auto max-w-4xl">
+          <div className="text-center mb-10 md:mb-16">
+            <h3 className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">Gallery</h3>
+            <h2 className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">Our Work</h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {[2, 3, 4, 5].map((idx) => (
+              <div key={idx} className="bg-[#1a1a1a] p-1 border border-white/5 relative group">
+                {siteData.gallery[idx] ? (
+                  <>
+                    <img src={siteData.gallery[idx]} alt={`Gallery Image ${idx - 1}`} className="w-full h-48 sm:h-56 md:h-72 object-cover" />
+                    <ImageOverlay onImageUpload={(e) => handleImageChange(`gallery.${idx}`, e)} />
+                  </>
+                ) : (
+                  <ImagePlaceholder onImageUpload={(e) => handleImageChange(`gallery.${idx}`, e)} heightClass="h-48 sm:h-56 md:h-72" />
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* "The Craft" — separate editorial break with 4 pre-seeded
+          shots from the Vercel Blob barber/ folder. Independent of
+          the owner's Gallery above. Each slot is replaceable via the
+          centered Replace Photo pill. */}
       <section className="py-16 md:py-28 bg-[#0d0d0d] px-6 border-y border-white/5">
         <div className="container mx-auto max-w-4xl">
           <div className="text-center mb-10 md:mb-14">
@@ -909,18 +969,21 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
             </p>
           </div>
           <div className="grid grid-cols-2 gap-3 md:gap-4">
-            {[2, 3, 4, 5].map((idx) => (
-              <div key={idx} className="bg-[#1a1a1a] p-1 border border-white/5 relative group aspect-square">
-                {siteData.gallery[idx] ? (
-                  <>
-                    <img src={siteData.gallery[idx]} alt={`The Craft ${idx - 1}`} className="w-full h-full object-cover" />
-                    <ImageOverlay onImageUpload={(e) => handleImageChange(`gallery.${idx}`, e)} />
-                  </>
-                ) : (
-                  <ImagePlaceholder onImageUpload={(e) => handleImageChange(`gallery.${idx}`, e)} heightClass="h-full" />
-                )}
-              </div>
-            ))}
+            {[0, 1, 2, 3].map((idx) => {
+              const src = siteData.craftImages?.[idx];
+              return (
+                <div key={idx} className="bg-[#1a1a1a] p-1 border border-white/5 relative group aspect-square">
+                  {src ? (
+                    <>
+                      <img src={src} alt={`The Craft ${idx + 1}`} className="w-full h-full object-cover" />
+                      <ImageOverlay onImageUpload={(e) => handleImageChange(`craftImages.${idx}`, e)} />
+                    </>
+                  ) : (
+                    <ImagePlaceholder onImageUpload={(e) => handleImageChange(`craftImages.${idx}`, e)} heightClass="h-full" />
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>
