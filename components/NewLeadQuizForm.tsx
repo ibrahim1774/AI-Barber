@@ -211,31 +211,25 @@ export const NewLeadQuizForm: React.FC<Props> = ({ onGenerate, onSignIn }) => {
             style={{ background: `radial-gradient(60% 100% at 50% 0%, ${accent}22, transparent 70%)` }}
           />
 
-          {/* Progress bar — one continuous track, accent-tinted fill at
-              SHIMMER_PCT with a shimmer sweep parked under the marker. */}
-          <div className="relative mb-6">
-            <div className="h-[3px] w-full overflow-hidden rounded-full bg-white/8">
-              <div
-                className="relative h-full rounded-full"
-                style={{
-                  width: `${SHIMMER_PCT}%`,
-                  background: `linear-gradient(90deg, ${accent}55, ${accent})`,
-                }}
-              >
-                <div
-                  className="absolute inset-y-0 right-0 w-12 rounded-full"
-                  style={{
-                    background: `linear-gradient(90deg, transparent, ${accent}cc, transparent)`,
-                    animation: 'quizShimmer 1.6s ease-in-out infinite',
-                  }}
-                />
-              </div>
-            </div>
+          {/* Progress bar — matches PrimeHub's shimmer pattern: a
+              static fill parked at SHIMMER_PCT with a smooth
+              accent→white→accent gradient sliding continuously
+              left-to-right via background-position animation. Reads
+              as "loading" the whole quiz. */}
+          <div className="relative mb-6 h-[3px] w-full overflow-hidden rounded-full bg-white/10">
+            <div
+              className="absolute inset-y-0 left-0"
+              style={{
+                width: `${SHIMMER_PCT}%`,
+                background: `linear-gradient(90deg, ${accent}, #ffffff, ${accent})`,
+                backgroundSize: '200% 100%',
+                animation: 'quizShimmer 1.4s linear infinite',
+              }}
+            />
             <style>{`
               @keyframes quizShimmer {
-                0%   { transform: translateX(-150%); opacity: 0.4; }
-                50%  { opacity: 1; }
-                100% { transform: translateX(150%); opacity: 0.4; }
+                0%   { background-position: 200% 0; }
+                100% { background-position: -200% 0; }
               }
             `}</style>
           </div>
