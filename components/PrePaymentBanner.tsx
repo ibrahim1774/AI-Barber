@@ -174,13 +174,8 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
             color: '#ece6da',
           }}
         >
-          <button
-            onClick={() => setIsDismissed(true)}
-            className="absolute top-1.5 right-1.5 text-white/35 hover:text-white transition-colors"
-            aria-label="Dismiss"
-          >
-            <X size={13} />
-          </button>
+          {/* Top-right "X" dismiss button removed — keeps the publish
+              CTA persistent so the visitor can't accidentally hide it. */}
 
           {/* Price headline removed — the Publish CTA below still shows
               the live price ("Publish $10/mo"), so the standalone
