@@ -236,7 +236,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
               ) : (
                 <Rocket size={12} />
               )}
-              Publish · {dealMode ? dealPriceMo : (pricingPlan === 'yearly' ? '$72/yr' : '$9/mo')}
+              Publish site · {dealMode ? dealPriceMo : (pricingPlan === 'yearly' ? '$72/year' : '$9/month')}
             </button>
           </div>
 
@@ -298,7 +298,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
           : pricingPlan === 'yearly' ? '$72/yr' : '$9/mo';
         const ctaPrice = dealMode
           ? dealPriceMo
-          : pricingPlan === 'yearly' ? '$72/yr' : '$9/mo';
+          : pricingPlan === 'yearly' ? '$72/year' : '$9/month';
 
         const rows: { numeral: string; title: string }[] = [
           { numeral: 'I', title: 'Professional & Modern Site' },
@@ -452,7 +452,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
                   <Loader2 className="animate-spin" size={16} />
                 ) : (
                   <>
-                    Publish — {ctaPrice}
+                    Publish site — {ctaPrice}
                     <ArrowRight size={14} />
                   </>
                 )}
