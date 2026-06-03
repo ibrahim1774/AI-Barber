@@ -24,12 +24,23 @@ import { ShopInputs, WebsiteData, ServiceItem } from "../types.ts";
 
 const LUXE_IMAGES = {
   hero:
-    'https://images.unsplash.com/photo-1599351431202-1e0f0137899a?auto=format&fit=crop&w=1600&q=70',
+    'https://cop5lgctumpj5e0w.public.blob.vercel-storage.com/barber/agustin-fernandez-Znyjl9pbaUs-unsplash.jpg',
   about:
     'https://images.unsplash.com/photo-1503951914875-452162b0f3f1?auto=format&fit=crop&w=1200&q=70',
   gallerySeed:
     'https://images.unsplash.com/photo-1605497788044-5a32c7078486?auto=format&fit=crop&w=900&q=65',
 };
+
+// "The Craft" pre-seeds — 4 atmospheric shots from the
+// prime-hub-ai-10-month-blob/barber/ Vercel Blob folder. Hydrated
+// into gallery[2..5] so the editorial section paints pre-filled
+// instead of waiting on owner uploads. Each slot stays replaceable.
+const CRAFT_DEFAULTS = [
+  'https://cop5lgctumpj5e0w.public.blob.vercel-storage.com/barber/gulom-nazarov-DrG4V5skbMY-unsplash.jpg',
+  'https://cop5lgctumpj5e0w.public.blob.vercel-storage.com/barber/jason-leung-2seUdPQNy_I-unsplash.jpg',
+  'https://cop5lgctumpj5e0w.public.blob.vercel-storage.com/barber/nate-johnston-tgPrIYnW3g4-unsplash.jpg',
+  'https://cop5lgctumpj5e0w.public.blob.vercel-storage.com/barber/salah-regouane-MRCdF3qUbp0-unsplash.jpg',
+];
 
 const EUPHORIA_IMAGES = {
   hero:
@@ -176,9 +187,11 @@ export const generateContent = async (inputs: ShopInputs): Promise<WebsiteData> 
       imageUrl: images.about,
     },
     services: copy.services.map((s) => ({ ...s, imageUrl: '' })),
-    // 6-slot gallery: first slot pre-filled, rest empty for the shop
-    // owner to upload their actual work.
-    gallery: [images.gallerySeed, '', '', '', '', ''],
+    // 6-slot gallery — slot 0 is the about-section seed, slot 1 stays
+    // unused, slots 2..5 are hydrated from CRAFT_DEFAULTS so the new
+    // "The Craft" editorial section paints pre-filled instead of
+    // waiting on owner uploads. Each slot remains user-replaceable.
+    gallery: [images.gallerySeed, '', ...CRAFT_DEFAULTS],
     // Hero feature cards — every value here is editable in the preview.
     // Defaults to a Mon-Fri schedule with normal shop hours so no shop
     // ever ships with a vague "Open Daily" claim.

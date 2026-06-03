@@ -61,17 +61,18 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
     .filter(item => item.url);
 
   const gallerySection = galleryImages.length > 0
-    ? `<section class="py-16 md:py-32 bg-[#0d0d0d] px-6 border-y border-white/5">
+    ? `<section class="py-16 md:py-28 bg-[#0d0d0d] px-6 border-y border-white/5">
     <div class="container mx-auto max-w-4xl">
-      <div class="text-center mb-10 md:mb-16">
-        <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">Gallery</h3>
-        <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">Our Work</h2>
+      <div class="text-center mb-10 md:mb-14">
+        <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">The Craft</h3>
+        <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">An eye for the work.</h2>
+        <p class="text-[#cccccc]/70 text-xs md:text-sm leading-relaxed mt-4 max-w-md mx-auto">Barbering is craft — pace, attention, and care given to every detail of the cut.</p>
       </div>
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        ${siteData.gallery[2] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{gallery2}}" alt="Gallery Image 1" class="w-full h-48 sm:h-56 md:h-72 object-cover"></div>` : ''}
-        ${siteData.gallery[3] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{gallery3}}" alt="Gallery Image 2" class="w-full h-48 sm:h-56 md:h-72 object-cover"></div>` : ''}
-        ${siteData.gallery[4] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{gallery4}}" alt="Gallery Image 3" class="w-full h-48 sm:h-56 md:h-72 object-cover"></div>` : ''}
-        ${siteData.gallery[5] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{gallery5}}" alt="Gallery Image 4" class="w-full h-48 sm:h-56 md:h-72 object-cover"></div>` : ''}
+      <div class="grid grid-cols-2 gap-3 md:gap-4">
+        ${siteData.gallery[2] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{gallery2}}" alt="The Craft 1" class="w-full aspect-square object-cover"></div>` : ''}
+        ${siteData.gallery[3] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{gallery3}}" alt="The Craft 2" class="w-full aspect-square object-cover"></div>` : ''}
+        ${siteData.gallery[4] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{gallery4}}" alt="The Craft 3" class="w-full aspect-square object-cover"></div>` : ''}
+        ${siteData.gallery[5] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{gallery5}}" alt="The Craft 4" class="w-full aspect-square object-cover"></div>` : ''}
       </div>
     </div>
   </section>`
@@ -144,7 +145,7 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
     </div>
   </header>
 
-  <section id="home" class="relative h-[75vh] flex flex-col justify-center items-center overflow-hidden">
+  <section id="home" class="relative h-[55vh] flex flex-col justify-center items-center overflow-hidden">
     <div class="absolute inset-0 z-0">
       <img src="{{hero}}" alt="Main Hero" class="w-full h-full object-cover">
       <div class="absolute inset-0 bg-black/40 bg-gradient-to-b from-black/30 via-transparent to-[#0d0d0d]"></div>
@@ -456,12 +457,14 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
     </Tag>
   );
 
-  // Image replacement overlay component (for existing images)
+  // Image replacement overlay (for existing images). Always-visible
+  // centered Camera pill so the Replace target is unmistakable —
+  // matches the PrimeHub "The Craft" affordance.
   const ImageOverlay = ({ onImageUpload, className = "" }: { onImageUpload: (e: React.ChangeEvent<HTMLInputElement>) => void, className?: string }) => (
-    <div className={`absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer z-10 ${className}`}>
-      <label className="cursor-pointer flex flex-col items-center gap-2">
-        <CameraIcon className="w-8 h-8 text-white" />
-        <span className="text-white text-[10px] md:text-xs font-bold uppercase tracking-wider">Replace Image</span>
+    <div className={`absolute inset-0 z-10 flex items-center justify-center bg-black/15 transition-colors group-hover:bg-black/35 ${className}`}>
+      <label className="cursor-pointer flex items-center gap-2 rounded-full bg-black/80 px-4 py-2.5 text-white shadow-xl backdrop-blur-sm">
+        <CameraIcon className="w-4 h-4" />
+        <span className="text-[11px] font-bold uppercase tracking-[0.18em]">Replace Photo</span>
         <input key={imageInputKey} type="file" className="hidden" accept="image/*" onChange={onImageUpload} />
       </label>
     </div>
@@ -772,7 +775,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       </header>
 
       {/* Hero Section */}
-      <section id="home" className="relative h-[75vh] flex flex-col justify-center items-center overflow-hidden">
+      <section id="home" className="relative h-[55vh] flex flex-col justify-center items-center overflow-hidden">
         <div className="absolute inset-0 z-0">
           {siteData.hero.imageUrl && (
             <img src={siteData.hero.imageUrl} alt="Main Hero" className="w-full h-full object-cover" />
@@ -891,23 +894,30 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         </div>
       </section>
 
-      {/* Gallery Section */}
-      <section className="py-16 md:py-32 bg-[#0d0d0d] px-6 border-y border-white/5">
+      {/* "The Craft" — 4-image editorial break before contact. Copy
+          is general (no "our gallery" framing) — celebrates the craft
+          itself, not the shop's portfolio. Pre-seeded from the
+          Vercel Blob barber/ folder via geminiService LUXE template;
+          each slot stays user-replaceable. */}
+      <section className="py-16 md:py-28 bg-[#0d0d0d] px-6 border-y border-white/5">
         <div className="container mx-auto max-w-4xl">
-          <div className="text-center mb-10 md:mb-16">
-            <h3 className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">Gallery</h3>
-            <h2 className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">Our Work</h2>
+          <div className="text-center mb-10 md:mb-14">
+            <h3 className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">The Craft</h3>
+            <h2 className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">An eye for the work.</h2>
+            <p className="text-[#cccccc]/70 text-xs md:text-sm leading-relaxed mt-4 max-w-md mx-auto">
+              Barbering is craft — pace, attention, and care given to every detail of the cut.
+            </p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-3 md:gap-4">
             {[2, 3, 4, 5].map((idx) => (
-              <div key={idx} className="bg-[#1a1a1a] p-1 border border-white/5 relative group">
+              <div key={idx} className="bg-[#1a1a1a] p-1 border border-white/5 relative group aspect-square">
                 {siteData.gallery[idx] ? (
                   <>
-                    <img src={siteData.gallery[idx]} alt={`Gallery Image ${idx - 1}`} className="w-full h-48 sm:h-56 md:h-72 object-cover" />
+                    <img src={siteData.gallery[idx]} alt={`The Craft ${idx - 1}`} className="w-full h-full object-cover" />
                     <ImageOverlay onImageUpload={(e) => handleImageChange(`gallery.${idx}`, e)} />
                   </>
                 ) : (
-                  <ImagePlaceholder onImageUpload={(e) => handleImageChange(`gallery.${idx}`, e)} heightClass="h-48 sm:h-56 md:h-72" />
+                  <ImagePlaceholder onImageUpload={(e) => handleImageChange(`gallery.${idx}`, e)} heightClass="h-full" />
                 )}
               </div>
             ))}
