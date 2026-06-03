@@ -261,7 +261,6 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
           { numeral: 'II', title: 'Published Instantly' },
           { numeral: 'III', title: 'Edit Anytime' },
           { numeral: 'IV', title: `Custom for Your ${displayIndustry.charAt(0).toUpperCase()}${displayIndustry.slice(1)}` },
-          { numeral: 'V', title: 'One small hosting/maintenance fee' },
         ];
 
         return (
