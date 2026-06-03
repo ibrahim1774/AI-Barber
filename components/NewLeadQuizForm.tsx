@@ -54,7 +54,7 @@ const STEPS: StepDef[] = [
 // Static barbershop hero image — the looping Pexels video was
 // chewing CPU/GPU on desktop. The image alone reads the same mood
 // without the compositor cost.
-const HERO_IMAGE = 'https://cop5lgctumpj5e0w.public.blob.vercel-storage.com/barber/jason-leung-2seUdPQNy_I-unsplash.jpg';
+const HERO_IMAGE = 'https://cop5lgctumpj5e0w.public.blob.vercel-storage.com/barber/nate-johnston-tgPrIYnW3g4-unsplash.jpg';
 
 const SANS = '"Manrope", "Inter", system-ui, sans-serif';
 const SERIF = '"Instrument Serif", "Times New Roman", Georgia, serif';
@@ -122,7 +122,7 @@ export const NewLeadQuizForm: React.FC<Props> = ({ onGenerate, onSignIn }) => {
           src={HERO_IMAGE}
           alt=""
           className="h-full w-full object-cover"
-          style={{ filter: 'brightness(0.42) saturate(1.05)' }}
+          style={{ filter: 'brightness(0.7) saturate(1.05)' }}
           aria-hidden="true"
         />
         <div
@@ -131,7 +131,7 @@ export const NewLeadQuizForm: React.FC<Props> = ({ onGenerate, onSignIn }) => {
           style={{
             background:
               'radial-gradient(60% 80% at 50% 0%, rgba(244,161,0,0.10), transparent 65%),' +
-              'linear-gradient(180deg, rgba(5,7,10,0.55) 0%, rgba(5,7,10,0.85) 60%, rgba(5,7,10,0.95) 100%)',
+              'linear-gradient(180deg, rgba(5,7,10,0.25) 0%, rgba(5,7,10,0.55) 60%, rgba(5,7,10,0.78) 100%)',
           }}
         />
       </div>
@@ -308,6 +308,18 @@ export const NewLeadQuizForm: React.FC<Props> = ({ onGenerate, onSignIn }) => {
 
         <p className="mt-4 text-[10px] uppercase tracking-[0.22em] text-white/40">
           Sharp · Considered · Made for the work
+        </p>
+
+        {/* Support line — sits below the form on every entry path so
+            visitors can reach the team before/after submission. */}
+        <p className="mt-5 text-center text-[13px] font-bold text-white/65 md:text-[14px]">
+          Support:{' '}
+          <a
+            href="mailto:support@davoxa.com"
+            className="font-bold text-white/95 transition-colors hover:text-white"
+          >
+            support@davoxa.com
+          </a>
         </p>
       </main>
     </div>

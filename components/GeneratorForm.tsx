@@ -177,7 +177,9 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
               </p>
               <div className="h-[1px] flex-1 bg-white/10"></div>
             </div>
-            {/* Support email line removed per product decision. */}
+            <p className="mt-3 md:mt-4 text-center text-white/65 text-[12px] md:text-[14px] font-bold">
+              Support: <a href="mailto:support@davoxa.com" className="text-white hover:text-[#f4a100] transition-colors font-bold">support@davoxa.com</a>
+            </p>
           </div>
         </div>
       </div>
