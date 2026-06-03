@@ -54,7 +54,7 @@ const STEPS: StepDef[] = [
 // Static barbershop hero image — the looping Pexels video was
 // chewing CPU/GPU on desktop. The image alone reads the same mood
 // without the compositor cost.
-const HERO_IMAGE = 'https://images.unsplash.com/photo-1599351431202-1e0f0137899a?auto=format&fit=crop&w=1600&q=70';
+const HERO_IMAGE = 'https://cop5lgctumpj5e0w.public.blob.vercel-storage.com/barber/jason-leung-2seUdPQNy_I-unsplash.jpg';
 
 const SANS = '"Manrope", "Inter", system-ui, sans-serif';
 const SERIF = '"Instrument Serif", "Times New Roman", Georgia, serif';
@@ -231,9 +231,6 @@ export const NewLeadQuizForm: React.FC<Props> = ({ onGenerate, onSignIn }) => {
                 />
               </div>
             </div>
-            <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.22em] text-white/45">
-              Step {step + 1} of {total}
-            </p>
             <style>{`
               @keyframes quizShimmer {
                 0%   { transform: translateX(-150%); opacity: 0.4; }
