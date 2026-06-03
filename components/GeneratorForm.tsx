@@ -60,7 +60,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
         {onSignIn && (
           <button
             onClick={onSignIn}
-            className="absolute top-6 right-6 md:top-8 md:right-8 z-20 text-[12px] md:text-[14.4px] font-montserrat font-bold uppercase tracking-[2px] text-white/70 hover:text-[#f4a100] transition-colors"
+            className="absolute top-6 right-6 md:top-8 md:right-8 z-20 rounded-full border border-white/30 bg-white/[0.06] px-4 py-1.5 md:px-5 md:py-2 text-[14px] md:text-[17px] font-montserrat font-black uppercase tracking-[2px] text-white shadow-sm hover:border-white hover:bg-white/15 hover:text-[#f4a100] transition-all"
           >
             Sign In
           </button>

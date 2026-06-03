@@ -153,7 +153,7 @@ export const NewLeadQuizForm: React.FC<Props> = ({ onGenerate, onSignIn }) => {
           <button
             type="button"
             onClick={onSignIn}
-            className="text-[12px] font-bold uppercase tracking-[0.22em] text-white/55 transition-colors hover:text-white md:text-[13.2px]"
+            className="rounded-full border border-white/30 bg-white/[0.06] px-4 py-1.5 text-[13px] font-black uppercase tracking-[0.18em] text-white shadow-sm transition-all hover:border-white hover:bg-white/15 md:px-5 md:py-2 md:text-[15px]"
           >
             Sign In
           </button>
