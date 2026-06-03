@@ -133,36 +133,9 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
             <X size={13} />
           </button>
 
-          {/* Price line — serif, centered, ~20% smaller than before */}
-          <div className="text-center mb-2 pr-4">
-            <p
-              className="leading-none"
-              style={{ fontFamily: '"Instrument Serif", serif', fontSize: '1.15rem', color: '#ece6da', fontWeight: 400 }}
-            >
-              {dealMode ? (
-                <>
-                  <span style={{ color: '#e8c074', fontStyle: 'italic' }}>{dealPriceMonth}</span>
-                  <span style={{ color: 'rgba(236,230,218,0.55)', fontSize: '0.72rem', fontFamily: '"DM Sans", sans-serif', marginLeft: '0.4em' }}>
-                    — hosting/maintenance only
-                  </span>
-                </>
-              ) : (
-                <>
-                  {pricingPlan === 'yearly' && (
-                    <span style={{ color: 'rgba(236,230,218,0.3)', textDecoration: 'line-through', fontSize: '0.72rem', marginRight: '0.4em', fontFamily: '"DM Sans", sans-serif' }}>
-                      $120/yr
-                    </span>
-                  )}
-                  <span style={{ color: '#e8c074', fontStyle: 'italic' }}>
-                    {pricingPlan === 'yearly' ? '$72/yr' : '$10/mo'}
-                  </span>
-                  <span style={{ color: 'rgba(236,230,218,0.55)', fontSize: '0.72rem', fontFamily: '"DM Sans", sans-serif', marginLeft: '0.4em' }}>
-                    — hosting/maintenance only
-                  </span>
-                </>
-              )}
-            </p>
-          </div>
+          {/* Price headline removed — the Publish CTA below still shows
+              the live price ("Publish $10/mo"), so the standalone
+              "$10/mo — hosting/maintenance only" line was redundant. */}
 
           {/* Monthly / Yearly toggle — quieter, smaller. Hidden in /5 + /7. */}
           {!dealMode && (
