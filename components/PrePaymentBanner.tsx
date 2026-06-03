@@ -162,9 +162,6 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
                 </>
               )}
             </p>
-            <p className="mt-1 text-[8px] uppercase tracking-[0.28em]" style={{ color: 'rgba(236,230,218,0.4)' }}>
-              Edit anytime · Cancel anytime
-            </p>
           </div>
 
           {/* Monthly / Yearly toggle — quieter, smaller. Hidden in /5 + /7. */}
