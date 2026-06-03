@@ -51,8 +51,10 @@ const STEPS: StepDef[] = [
   },
 ];
 
-const PEXELS_VIDEO = 'https://videos.pexels.com/video-files/7697073/7697073-hd_1280_720_30fps.mp4';
-const VIDEO_POSTER = 'https://images.unsplash.com/photo-1599351431202-1e0f0137899a?auto=format&fit=crop&w=1100&q=65';
+// Static barbershop hero image — the looping Pexels video was
+// chewing CPU/GPU on desktop. The image alone reads the same mood
+// without the compositor cost.
+const HERO_IMAGE = 'https://images.unsplash.com/photo-1599351431202-1e0f0137899a?auto=format&fit=crop&w=1600&q=70';
 
 const SANS = '"Manrope", "Inter", system-ui, sans-serif';
 const SERIF = '"Instrument Serif", "Times New Roman", Georgia, serif';
@@ -113,21 +115,16 @@ export const NewLeadQuizForm: React.FC<Props> = ({ onGenerate, onSignIn }) => {
       className="relative min-h-screen overflow-hidden"
       style={{ background: '#05070A', fontFamily: SANS, color: 'white' }}
     >
-      {/* Hero video background — same Pexels clip PrimeHub /barber uses. */}
+      {/* Static barbershop hero — no autoplay video, keeps the page
+          light + paint-cheap on desktop. */}
       <div className="absolute inset-0 z-0">
-        <video
-          autoPlay
-          loop
-          muted
-          playsInline
-          preload="metadata"
-          poster={VIDEO_POSTER}
+        <img
+          src={HERO_IMAGE}
+          alt=""
           className="h-full w-full object-cover"
-          style={{ filter: 'brightness(0.42) saturate(1.05)', transform: 'translateZ(0)' }}
+          style={{ filter: 'brightness(0.42) saturate(1.05)' }}
           aria-hidden="true"
-        >
-          <source src={PEXELS_VIDEO} type="video/mp4" />
-        </video>
+        />
         <div
           aria-hidden
           className="absolute inset-0"
