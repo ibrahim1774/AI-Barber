@@ -180,11 +180,33 @@ export const NewLeadQuizForm: React.FC<Props> = ({ onGenerate, onSignIn }) => {
           barbershop website in{' '}
           <span
             className="italic"
-            style={{ fontFamily: SERIF, fontWeight: 400, color: accent }}
+            style={{ fontFamily: SERIF, fontWeight: 400, color: accent, display: 'inline-block' }}
+            aria-label="seconds."
           >
-            seconds.
+            {'seconds.'.split('').map((ch, i) => (
+              <span
+                key={i}
+                aria-hidden
+                style={{
+                  display: 'inline-block',
+                  // Each letter rides the same sine wave with a tiny
+                  // stagger so the wave appears to roll left-to-right.
+                  animation: 'aibWave 1.8s ease-in-out infinite',
+                  animationDelay: `${i * 0.08}s`,
+                  whiteSpace: 'pre',
+                }}
+              >
+                {ch}
+              </span>
+            ))}
           </span>
         </h1>
+        <style>{`
+          @keyframes aibWave {
+            0%, 100% { transform: translateY(0); }
+            50%      { transform: translateY(-8px); }
+          }
+        `}</style>
         <p
           className="mx-auto mt-4 max-w-md text-[13px] italic text-white/65 md:text-[14px]"
           style={{ fontFamily: SERIF }}

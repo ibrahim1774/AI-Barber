@@ -267,7 +267,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
                   className="block font-bold leading-snug mt-0.5"
                   style={{ fontSize: '11.5px', color: 'rgba(236,230,218,0.92)' }}
                 >
-                  Choose a design, or let our team custom-build a different multi-page site for you in 24–48 hours.
+                  Choose a design, or let our team custom-build a different multi-page site for you.
                 </span>
               </span>
             </span>
