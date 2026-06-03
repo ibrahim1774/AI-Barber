@@ -664,7 +664,10 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
     setIsPublishing(false);
   };
 
-  // After publish, replace base64 images with their new GCS URLs in editor state
+  // After publish, replace base64 images with their new GCS URLs in
+  // editor state. craftImages mirrors gallery — fall back to existing
+  // url so untouched defaults (still hotlinked from Vercel Blob) stay
+  // in place.
   const handleImageUrlsUpdated = (imageUrlMap: Record<string, string>) => {
     setSiteData(prev => ({
       ...prev,
@@ -672,6 +675,9 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       about: { ...prev.about, imageUrl: imageUrlMap['about'] || prev.about.imageUrl },
       gallery: prev.gallery.map((url, i) =>
         imageUrlMap[`gallery${i}`] || url || ''
+      ),
+      craftImages: (prev.craftImages || []).map((url, i) =>
+        imageUrlMap[`craft${i}`] || url || ''
       ),
     }));
   };

@@ -395,13 +395,18 @@ const App: React.FC = () => {
         }).catch((err) => console.error('[TikTok CAPI Purchase] Error (non-blocking):', err));
 
         // Step 5: Create SiteInstance and save to IndexedDB
-        // Restore the full image URLs back into siteData for the SiteInstance
+        // Restore the full image URLs back into siteData for the SiteInstance.
+        // Without restoring craftImages here, the dashboard would re-open
+        // with <img src="uploaded"> placeholders for the Craft section.
         const fullSiteData: WebsiteData = {
           ...siteData,
           hero: { ...siteData.hero, imageUrl: imageUrlMap['hero'] || siteData.hero.imageUrl || '' },
           about: { ...siteData.about, imageUrl: imageUrlMap['about'] || siteData.about.imageUrl || '' },
           gallery: siteData.gallery.map((_: string, i: number) =>
             imageUrlMap[`gallery${i}`] || ''
+          ),
+          craftImages: (siteData.craftImages || []).map((_: string, i: number) =>
+            imageUrlMap[`craft${i}`] || ''
           ),
         };
 
