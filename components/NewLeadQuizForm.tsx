@@ -175,31 +175,46 @@ export const NewLeadQuizForm: React.FC<Props> = ({ onGenerate, onSignIn }) => {
             fontWeight: 600,
             letterSpacing: '-0.02em',
           }}
+          aria-label="Generate your custom barbershop website in seconds."
         >
-          Generate your custom <br className="hidden sm:inline" />
-          barbershop website in{' '}
-          <span
-            className="italic"
-            style={{ fontFamily: SERIF, fontWeight: 400, color: accent, display: 'inline-block' }}
-            aria-label="seconds."
-          >
-            {'seconds.'.split('').map((ch, i) => (
-              <span
-                key={i}
-                aria-hidden
-                style={{
-                  display: 'inline-block',
-                  // Each letter rides the same sine wave with a tiny
-                  // stagger so the wave appears to roll left-to-right.
-                  animation: 'aibWave 1.8s ease-in-out infinite',
-                  animationDelay: `${i * 0.08}s`,
-                  whiteSpace: 'pre',
-                }}
-              >
-                {ch}
-              </span>
-            ))}
-          </span>
+          {/* Every letter of the headline rides the same sine wave
+              with a 0.04s stagger so a single wave rolls continuously
+              left-to-right through the whole sentence. */}
+          {(() => {
+            const STAGGER = 0.04; // seconds between adjacent letters
+            const renderWord = (text: string, startIdx: number, extraStyle: React.CSSProperties = {}) =>
+              text.split('').map((ch, i) => (
+                <span
+                  key={`${startIdx}-${i}`}
+                  aria-hidden
+                  style={{
+                    display: 'inline-block',
+                    animation: 'aibWave 1.6s ease-in-out infinite',
+                    animationDelay: `${(startIdx + i) * STAGGER}s`,
+                    whiteSpace: 'pre',
+                    ...extraStyle,
+                  }}
+                >
+                  {ch}
+                </span>
+              ));
+            const part1 = 'Generate your custom ';
+            const part2 = 'barbershop website in ';
+            const part3 = 'seconds.';
+            return (
+              <>
+                {renderWord(part1, 0)}
+                <br className="hidden sm:inline" />
+                {renderWord(part2, part1.length)}
+                <span
+                  className="italic"
+                  style={{ fontFamily: SERIF, fontWeight: 400, color: accent }}
+                >
+                  {renderWord(part3, part1.length + part2.length)}
+                </span>
+              </>
+            );
+          })()}
         </h1>
         <style>{`
           @keyframes aibWave {
