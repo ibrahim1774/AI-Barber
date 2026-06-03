@@ -87,7 +87,7 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
       <div class="text-center mb-10 md:mb-14">
         <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">The Craft</h3>
         <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">An eye for the work.</h2>
-        <p class="text-[#cccccc]/70 text-xs md:text-sm leading-relaxed mt-4 max-w-md mx-auto">Barbering is craft — pace, attention, and care given to every detail of the cut.</p>
+        <p class="text-[#cccccc]/70 text-xs md:text-sm leading-relaxed mt-4 max-w-lg mx-auto">There's a rhythm to good barbering — the right tools, the right pace, the right finish. The same care given to every chair, every cut, every visit.</p>
       </div>
       <div class="grid grid-cols-2 gap-3 md:gap-4">
         ${craftImagesData[0] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{craft0}}" alt="The Craft 1" class="w-full aspect-square object-cover"></div>` : ''}
@@ -964,8 +964,8 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           <div className="text-center mb-10 md:mb-14">
             <h3 className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">The Craft</h3>
             <h2 className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">An eye for the work.</h2>
-            <p className="text-[#cccccc]/70 text-xs md:text-sm leading-relaxed mt-4 max-w-md mx-auto">
-              Barbering is craft — pace, attention, and care given to every detail of the cut.
+            <p className="text-[#cccccc]/70 text-xs md:text-sm leading-relaxed mt-4 max-w-lg mx-auto">
+              There's a rhythm to good barbering — the right tools, the right pace, the right finish. The same care given to every chair, every cut, every visit.
             </p>
           </div>
           <div className="grid grid-cols-2 gap-3 md:gap-4">
