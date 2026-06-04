@@ -32,10 +32,17 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
   const dealPriceMo = sevenDeal ? '$7/mo' : '$5/mo';
   const dealPriceMonth = sevenDeal ? '$7/month' : '$5/month';
 
-  // Custom-design upsell: flat $19/mo across every entry path.
-  const customPlan: 'custom' | 'custom25' = dealMode ? 'custom' : 'custom25';
-  const customPriceLabel = '$19/mo';
-  const customPriceFull = '$19/month';
+  // Custom-design upsell. The /5 launch-special drops the custom
+  // price to $15/mo to keep the relative gap small; every other
+  // entry path stays at $19/mo. Plan slug routes server-side:
+  //   custom15  → $15/mo (only fiveDeal)
+  //   custom    → $19/mo (sevenDeal)
+  //   custom25  → $19/mo (standard)
+  const customPlan: 'custom' | 'custom25' | 'custom15' = fiveDeal
+    ? 'custom15'
+    : (dealMode ? 'custom' : 'custom25');
+  const customPriceLabel = fiveDeal ? '$15/mo' : '$19/mo';
+  const customPriceFull = fiveDeal ? '$15/month' : '$19/month';
 
   const [isDismissed, setIsDismissed] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
@@ -68,7 +75,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
         typeof crypto !== 'undefined' && (crypto as any).randomUUID
           ? (crypto as any).randomUUID()
           : `co_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-      const checkoutValue = 19;
+      const checkoutValue = fiveDeal ? 15 : 19;
       const checkoutCurrency = 'USD';
       (window as any).fbq?.(
         'track',

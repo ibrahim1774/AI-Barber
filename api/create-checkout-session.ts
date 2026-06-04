@@ -26,13 +26,17 @@ export default async function handler(req: any, res: any) {
     // `custom`   = "Don't like this? Get a custom website design" ($19/mo).
     // `custom25` = legacy alias for the custom-design upsell — same $19/mo
     //              price now, kept so old client links don't break.
-    // Both custom plans route to the same Google Form after checkout.
+    // `custom15` = /5-deal-only custom-design upsell ($15/mo). Keeps the
+    //              relative gap between $5 hosting and the custom-build
+    //              upsell small on the /5 launch-special page.
+    // All custom plans route to the same Google Form after checkout.
     const isYearly = plan === 'yearly';
     const isFive = plan === 'five';
     const isSeven = plan === 'seven';
     const isCustom = plan === 'custom';
     const isCustom25 = plan === 'custom25';
-    const isCustomAny = isCustom || isCustom25;
+    const isCustom15 = plan === 'custom15';
+    const isCustomAny = isCustom || isCustom25 || isCustom15;
 
     let unitAmount: string;
     let interval: 'month' | 'year';
@@ -49,6 +53,10 @@ export default async function handler(req: any, res: any) {
       unitAmount = '700';
       interval = 'month';
       productName = 'Prime Barber AI - Launch Special Hosting ($7/mo)';
+    } else if (isCustom15) {
+      unitAmount = '1500';
+      interval = 'month';
+      productName = 'Prime Barber AI - Custom Website Design ($15/mo)';
     } else if (isCustom || isCustom25) {
       unitAmount = '1900';
       interval = 'month';

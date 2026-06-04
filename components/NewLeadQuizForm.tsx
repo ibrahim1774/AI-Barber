@@ -298,9 +298,49 @@ export const NewLeadQuizForm: React.FC<Props> = ({ onGenerate, onSignIn }) => {
                 </p>
               )}
 
-              {/* Color theme picker removed — every generated site
-                  ships the goldBlack default so the look stays
-                  consistent across submissions. */}
+              {/* Color theme picker — only on step 1 alongside the
+                  barbershop name. Picked theme drives the accent across
+                  this page (button, halo, progress) and feeds into
+                  ShopInputs.colorTheme so the generated site uses it. */}
+              {step === 0 && (
+                <div className="pt-4">
+                  <label className="mb-2 block text-[11px] font-bold uppercase tracking-[0.18em] text-white/65">
+                    Pick your color theme
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {THEME_PRESETS.map((t) => {
+                      const selected = (inputs.colorTheme || 'goldBlack') === t.slug;
+                      return (
+                        <button
+                          key={t.slug}
+                          type="button"
+                          onClick={() => setInputs({ ...inputs, colorTheme: t.slug })}
+                          aria-pressed={selected}
+                          className={`flex min-w-0 items-center gap-1.5 rounded-lg border px-2 py-1.5 transition-all ${
+                            selected
+                              ? 'border-white bg-white/10'
+                              : 'border-white/15 bg-white/[0.03] hover:border-white/40'
+                          }`}
+                        >
+                          <span className="relative flex shrink-0 items-center">
+                            <span
+                              className="h-3.5 w-3.5 rounded-full border border-white/25"
+                              style={{ background: t.bg }}
+                            />
+                            <span
+                              className="-ml-1.5 h-3.5 w-3.5 rounded-full border border-white/25"
+                              style={{ background: t.accent }}
+                            />
+                          </span>
+                          <span className="min-w-0 truncate text-[8.5px] font-bold uppercase tracking-[0.08em] text-white/90 sm:text-[9.5px] sm:tracking-[0.1em]">
+                            {t.label}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center justify-between gap-2 pt-2">

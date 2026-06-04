@@ -159,8 +159,47 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
                 <p className="text-white/40 text-[9px] md:text-[10px] mt-1">Booksy, Cal.com, Vagaro — any booking page works.</p>
               </div>
 
-              {/* Color-theme picker removed — every generated site
-                  ships the goldBlack default. */}
+              {/* Color-theme picker — 4 presets in a 2x2 grid. Every chip
+                  shows its label inline so the visitor can read every
+                  option at a glance. Tap any chip to pick. */}
+              <div className="space-y-1.5">
+                <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">
+                  Choose Your Colors{' '}
+                  <span className="text-white/40 normal-case tracking-normal">(pick a theme)</span>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {THEME_PRESETS.map((t) => {
+                    const selected = (inputs.colorTheme || 'goldBlack') === t.slug;
+                    return (
+                      <button
+                        key={t.slug}
+                        type="button"
+                        onClick={() => setInputs({ ...inputs, colorTheme: t.slug })}
+                        aria-pressed={selected}
+                        className={`flex min-w-0 items-center gap-1.5 rounded-lg border px-2 py-1.5 transition-all ${
+                          selected
+                            ? 'border-white bg-white/10'
+                            : 'border-white/20 bg-white/[0.03] hover:border-white/40'
+                        }`}
+                      >
+                        <span className="relative flex shrink-0 items-center">
+                          <span
+                            className="h-3.5 w-3.5 rounded-full border border-white/25"
+                            style={{ background: t.bg }}
+                          />
+                          <span
+                            className="-ml-1.5 h-3.5 w-3.5 rounded-full border border-white/25"
+                            style={{ background: t.accent }}
+                          />
+                        </span>
+                        <span className="min-w-0 truncate text-[8.5px] sm:text-[9.5px] font-bold uppercase tracking-[0.08em] sm:tracking-[0.1em] text-white/90">
+                          {t.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
               <button
                 type="submit"
