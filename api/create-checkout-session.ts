@@ -62,7 +62,7 @@ export default async function handler(req: any, res: any) {
       interval = 'month';
       productName = 'Prime Barber AI - Custom Website Design ($19/mo)';
     } else {
-      unitAmount = '900';
+      unitAmount = '1000';
       interval = 'month';
       productName = 'Prime Barber AI - Monthly Hosting';
     }

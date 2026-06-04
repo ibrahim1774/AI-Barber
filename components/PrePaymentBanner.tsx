@@ -185,8 +185,8 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
               CTA persistent so the visitor can't accidentally hide it. */}
 
           {/* Price headline removed — the Publish CTA below still shows
-              the live price ("Publish $9/mo"), so the standalone
-              "$9/mo — hosting/maintenance only" line was redundant. */}
+              the live price ("Publish $10/mo"), so the standalone
+              "$10/mo — hosting/maintenance only" line was redundant. */}
 
           {/* Monthly / Yearly toggle — quieter, smaller. Hidden in /5 + /7. */}
           {!dealMode && (
@@ -243,7 +243,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
               ) : (
                 <Rocket size={12} />
               )}
-              Publish site · {dealMode ? dealPriceMo : (pricingPlan === 'yearly' ? '$72/year' : '$9/month')}
+              Publish site · {dealMode ? dealPriceMo : (pricingPlan === 'yearly' ? '$72/year' : '$10/month')}
             </button>
           </div>
 
@@ -268,7 +268,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
                   className="block font-extrabold"
                   style={{ fontSize: '0.95rem', color: '#e8c074', lineHeight: 1.15, letterSpacing: '-0.005em' }}
                 >
-                  Don't like the design?
+                  Want a new {displayIndustry.toLowerCase()} website instead?
                 </span>
                 <span
                   className="block font-bold leading-snug mt-0.5"
@@ -302,10 +302,10 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
         const cream = '#ece6da';
         const headlinePrice = dealMode
           ? dealPriceMo
-          : pricingPlan === 'yearly' ? '$72/yr' : '$9/mo';
+          : pricingPlan === 'yearly' ? '$72/yr' : '$10/mo';
         const ctaPrice = dealMode
           ? dealPriceMo
-          : pricingPlan === 'yearly' ? '$72/year' : '$9/month';
+          : pricingPlan === 'yearly' ? '$72/year' : '$10/month';
 
         const rows: { numeral: string; title: string }[] = [
           { numeral: 'I', title: 'Professional & Modern Site' },
@@ -372,7 +372,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
                     borderBottom: pricingPlan === 'monthly' ? `1px solid ${gold}` : '1px solid transparent',
                   }}
                 >
-                  Monthly · $9/mo
+                  Monthly · $10/mo
                 </button>
                 <button
                   onClick={() => setPricingPlan('yearly')}

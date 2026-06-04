@@ -344,7 +344,7 @@ const App: React.FC = () => {
 
         // Step 4: Fire Meta Purchase event — browser pixel + CAPI dedupe on event_id.
         // Use the verified amount from Stripe rather than a hardcoded value.
-        const purchaseValue = typeof verifyResult.amountTotal === 'number' ? verifyResult.amountTotal : 9.0;
+        const purchaseValue = typeof verifyResult.amountTotal === 'number' ? verifyResult.amountTotal : 10.0;
         const purchaseCurrency = verifyResult.currency || 'USD';
 
         try {
