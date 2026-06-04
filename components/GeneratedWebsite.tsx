@@ -77,27 +77,12 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
   </section>`
     : '';
 
-  // "The Craft" — separate editorial break with 4 pre-seeded shots
-  // from the Vercel Blob barber/ folder. Independent of the owner's
-  // Gallery above. Renders right before the contact section.
-  const craftImagesData = siteData.craftImages || [];
-  const craftSection = craftImagesData.length > 0
-    ? `<section class="py-16 md:py-28 bg-[#0d0d0d] px-6 border-y border-white/5">
-    <div class="container mx-auto max-w-4xl">
-      <div class="text-center mb-10 md:mb-14">
-        <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">The Craft</h3>
-        <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">An eye for the work.</h2>
-        <p class="text-[#cccccc]/70 text-xs md:text-sm leading-relaxed mt-4 max-w-lg mx-auto">There's a rhythm to good barbering — the right tools, the right pace, the right finish. The same care given to every chair, every cut, every visit.</p>
-      </div>
-      <div class="grid grid-cols-2 gap-3 md:gap-4">
-        ${craftImagesData[0] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{craft0}}" alt="The Craft 1" class="w-full aspect-square object-cover"></div>` : ''}
-        ${craftImagesData[1] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{craft1}}" alt="The Craft 2" class="w-full aspect-square object-cover"></div>` : ''}
-        ${craftImagesData[2] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{craft2}}" alt="The Craft 3" class="w-full aspect-square object-cover"></div>` : ''}
-        ${craftImagesData[3] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{craft3}}" alt="The Craft 4" class="w-full aspect-square object-cover"></div>` : ''}
-      </div>
-    </div>
-  </section>`
-    : '';
+  // "The Craft" / "An eye for the work" section removed per product
+  // decision — keep craftImages data plumbing alive (defaults +
+  // upload paths) so in-flight sites don't break, but the section
+  // no longer renders on either the HTML template or the JSX
+  // preview.
+  const craftSection = '';
 
   const aboutImageSection = siteData.about.imageUrl
     ? `<div class="relative group mt-6 lg:mt-0">
@@ -1094,38 +1079,9 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         </section>
       )}
 
-      {/* "The Craft" — editorial break right before contact. 4
-          pre-seeded shots from the Vercel Blob barber/ folder.
-          Independent of the owner's Gallery above. Each slot is
-          replaceable via the centered Replace Photo pill. */}
-      <section className="py-16 md:py-28 bg-[#0d0d0d] px-6 border-y border-white/5">
-        <div className="container mx-auto max-w-4xl">
-          <div className="text-center mb-10 md:mb-14">
-            <h3 className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">The Craft</h3>
-            <h2 className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">An eye for the work.</h2>
-            <p className="text-[#cccccc]/70 text-xs md:text-sm leading-relaxed mt-4 max-w-lg mx-auto">
-              There's a rhythm to good barbering — the right tools, the right pace, the right finish. The same care given to every chair, every cut, every visit.
-            </p>
-          </div>
-          <div className="grid grid-cols-2 gap-3 md:gap-4">
-            {[0, 1, 2, 3].map((idx) => {
-              const src = siteData.craftImages?.[idx];
-              return (
-                <div key={idx} className="bg-[#1a1a1a] p-1 border border-white/5 relative group aspect-square">
-                  {src ? (
-                    <>
-                      <img src={src} alt={`The Craft ${idx + 1}`} className="w-full h-full object-cover" />
-                      <ImageOverlay onImageUpload={(e) => handleImageChange(`craftImages.${idx}`, e)} />
-                    </>
-                  ) : (
-                    <ImagePlaceholder onImageUpload={(e) => handleImageChange(`craftImages.${idx}`, e)} heightClass="h-full" />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
+      {/* "The Craft" / "An eye for the work" section removed —
+          editor preview no longer shows it so the editor matches
+          the deployed HTML. */}
 
       {/* Contact Section */}
       <section id="contact-us" className="py-12 md:py-32 bg-[#0d0d0d] px-4 md:px-6">
