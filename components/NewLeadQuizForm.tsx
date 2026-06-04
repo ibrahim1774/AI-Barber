@@ -175,74 +175,16 @@ export const NewLeadQuizForm: React.FC<Props> = ({ onGenerate, onSignIn }) => {
             fontWeight: 600,
             letterSpacing: '-0.02em',
           }}
-          aria-label="Generate your custom barbershop website in seconds."
         >
-          {/* Every letter rides the same sine wave with a 0.04s
-              stagger. Words are wrapped as inline-block non-breakable
-              units so the browser only breaks lines at spaces, never
-              mid-word. */}
-          {(() => {
-            const STAGGER = 0.04; // seconds between adjacent letters
-            // Render one word's letters as wave-staggered spans.
-            const renderLetters = (word: string, startIdx: number) =>
-              word.split('').map((ch, i) => (
-                <span
-                  key={i}
-                  aria-hidden
-                  style={{
-                    display: 'inline-block',
-                    animation: 'aibWave 1.6s ease-in-out infinite',
-                    animationDelay: `${(startIdx + i) * STAGGER}s`,
-                  }}
-                >
-                  {ch}
-                </span>
-              ));
-            // Render a phrase: split into words, each word wrapped in
-            // an inline-block (whiteSpace:nowrap) so it can't be
-            // broken mid-character. Spaces between words are real
-            // text so the browser can break lines there.
-            let globalIdx = 0;
-            const renderPhrase = (text: string, extraStyle: React.CSSProperties = {}) => {
-              const words = text.split(' ');
-              return words.map((word, wi) => {
-                const wordStart = globalIdx;
-                globalIdx += word.length;
-                const trailingSpace = wi < words.length - 1 ? ' ' : '';
-                if (trailingSpace) globalIdx += 1;
-                return (
-                  <React.Fragment key={`${wordStart}-${wi}`}>
-                    <span style={{ display: 'inline-block', whiteSpace: 'nowrap', ...extraStyle }}>
-                      {renderLetters(word, wordStart)}
-                    </span>
-                    {trailingSpace}
-                  </React.Fragment>
-                );
-              });
-            };
-            return (
-              <>
-                {renderPhrase('Generate your custom')}
-                {' '}
-                <br className="hidden sm:inline" />
-                {renderPhrase('barbershop website in')}
-                {' '}
-                {renderPhrase('seconds.', {
-                  fontFamily: SERIF,
-                  fontWeight: 400,
-                  color: accent,
-                  fontStyle: 'italic',
-                })}
-              </>
-            );
-          })()}
+          Generate your custom <br className="hidden sm:inline" />
+          barbershop website in{' '}
+          <span
+            className="italic"
+            style={{ fontFamily: SERIF, fontWeight: 400, color: accent }}
+          >
+            seconds.
+          </span>
         </h1>
-        <style>{`
-          @keyframes aibWave {
-            0%, 100% { transform: translateY(0); }
-            50%      { transform: translateY(-8px); }
-          }
-        `}</style>
         <p
           className="mx-auto mt-4 max-w-md text-[13px] italic text-white/65 md:text-[14px]"
           style={{ fontFamily: SERIF }}
