@@ -458,41 +458,69 @@ const App: React.FC = () => {
   const handleGenerate = async (inputs: ShopInputs, prebuilt?: WebsiteData) => {
     captureLead(inputs).catch((err) => console.error("[Lead Capture] Error (non-blocking):", err));
 
-    // Meta Lead event — browser pixel + CAPI share the same event_id for dedupe
-    const leadEventId = `lead_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    try {
-      window.fbq?.('track', 'Lead', { content_name: 'Barbershop Site Generated' }, { eventID: leadEventId });
-    } catch (err) {
-      console.warn('[FB Pixel Lead] browser fire failed:', err);
-    }
-    fetch('/api/fb-lead', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        eventId: leadEventId,
-        phone: inputs.phone || null,
-        contentName: 'Barbershop Site Generated',
-        eventSourceUrl: window.location.origin,
-        clientUserAgent: navigator.userAgent,
-      }),
-    }).catch((err) => console.error('[FB CAPI Lead] Error (non-blocking):', err));
+    // Per-visitor Lead dedup: only fire Meta + TikTok Lead events
+    // ONCE per browser within Meta's 90-day attribution window.
+    // Repeat submissions by the same visitor (re-fill the form,
+    // come back via another ad, /new vs /, etc.) skip the pixel
+    // block entirely so Meta + TikTok ROAS sees a clean
+    // 1-lead-per-person count. captureLead above still fires every
+    // time so the CRM keeps every submission.
+    const LEAD_DEDUP_KEY = 'aibarber_lead_fired_at';
+    const LEAD_DEDUP_TTL_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
+    const shouldFireLead = (): boolean => {
+      try {
+        const raw = localStorage.getItem(LEAD_DEDUP_KEY);
+        if (!raw) return true;
+        const ts = parseInt(raw, 10);
+        if (!Number.isFinite(ts)) return true;
+        return (Date.now() - ts) > LEAD_DEDUP_TTL_MS;
+      } catch { return true; }
+    };
+    const markLeadFired = () => {
+      try { localStorage.setItem(LEAD_DEDUP_KEY, String(Date.now())); } catch {}
+    };
 
-    // TikTok Lead — browser pixel + CAPI dedupe on the same event_id.
-    try {
-      (window as any).ttq?.track('Lead', { content_name: 'Barbershop Site Generated' }, { event_id: leadEventId });
-    } catch (err) {
-      console.warn('[TikTok Pixel Lead] browser fire failed:', err);
+    if (shouldFireLead()) {
+      // Meta Lead event — browser pixel + CAPI share the same event_id for dedupe
+      const leadEventId = `lead_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      try {
+        window.fbq?.('track', 'Lead', { content_name: 'Barbershop Site Generated' }, { eventID: leadEventId });
+      } catch (err) {
+        console.warn('[FB Pixel Lead] browser fire failed:', err);
+      }
+      fetch('/api/fb-lead', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventId: leadEventId,
+          phone: inputs.phone || null,
+          contentName: 'Barbershop Site Generated',
+          eventSourceUrl: window.location.origin,
+          clientUserAgent: navigator.userAgent,
+        }),
+      }).catch((err) => console.error('[FB CAPI Lead] Error (non-blocking):', err));
+
+      // TikTok Lead — browser pixel + CAPI dedupe on the same event_id.
+      try {
+        (window as any).ttq?.track('Lead', { content_name: 'Barbershop Site Generated' }, { event_id: leadEventId });
+      } catch (err) {
+        console.warn('[TikTok Pixel Lead] browser fire failed:', err);
+      }
+      fetch('/api/tiktok-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event: 'Lead',
+          event_id: leadEventId,
+          event_source_url: window.location.origin,
+          user_agent: navigator.userAgent,
+        }),
+      }).catch((err) => console.error('[TikTok CAPI Lead] Error (non-blocking):', err));
+
+      markLeadFired();
+    } else {
+      console.log('[Lead tracking] Skipping Lead event — already fired for this visitor within 90 days.');
     }
-    fetch('/api/tiktok-event', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        event: 'Lead',
-        event_id: leadEventId,
-        event_source_url: window.location.origin,
-        user_agent: navigator.userAgent,
-      }),
-    }).catch((err) => console.error('[TikTok CAPI Lead] Error (non-blocking):', err));
 
     sessionStorage.setItem('pendingFormInputs', JSON.stringify(inputs));
     setState('loading');
