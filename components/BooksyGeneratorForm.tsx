@@ -83,6 +83,19 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn }) =
         throw new Error(data?.error || 'Scrape failed');
       }
 
+      // Diagnostic — surfaces in browser DevTools so we can tell at a
+      // glance whether the gallery being empty is a scraper miss or a
+      // renderer bug. Counts only; full URLs would flood the console.
+      console.log('[Booksy Scrape] platform=%s photos=%d services=%d reviews=%d staff=%d bio=%s hours=%d',
+        data._platform || '?',
+        (data.photos || []).length,
+        (data.services || []).length,
+        (data.reviews || []).length,
+        (data.staff || []).length,
+        data.description ? 'yes' : 'no',
+        (data.hours || []).length,
+      );
+
       // Snap the progress to 100 before handing off — gives the loading
       // screen a satisfying "complete" beat instead of an abrupt cut.
       setProgress(100);
@@ -401,14 +414,11 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn }) =
             </div>
 
             <h2
-              className="relative mb-2 text-white leading-tight"
+              className="relative mb-8 text-white leading-tight"
               style={{ fontFamily: SERIF, fontSize: '1.9rem', fontWeight: 400, fontStyle: 'italic' }}
             >
               Crafting your <span style={{ color: ACCENT }}>website</span>
             </h2>
-            <p className="relative mb-8 text-[11px] uppercase tracking-[0.22em] text-white/50 font-bold">
-              This takes about 20–40 seconds
-            </p>
 
             <div className="relative h-[3px] w-full overflow-hidden rounded-full bg-white/10 mb-6">
               <div

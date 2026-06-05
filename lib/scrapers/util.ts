@@ -86,9 +86,17 @@ export function ldToScrapedShop(ld: any): Partial<ScrapedShop> {
       .join(', ');
   }
 
-  // Image
+  // Image — Booksy often ships these as `{@type: 'ImageObject', url: '...'}`
+  // (or `contentUrl`) instead of plain strings. Accept both forms so we
+  // don't drop a venue's whole gallery on a JSON-LD shape detail.
   const imgs = Array.isArray(ld?.image) ? ld.image : ld?.image ? [ld.image] : [];
-  result.photos = imgs.filter((x: any) => typeof x === 'string');
+  result.photos = imgs
+    .map((x: any) => {
+      if (typeof x === 'string') return x;
+      if (x && typeof x === 'object') return x.url || x.contentUrl || '';
+      return '';
+    })
+    .filter((s: string) => typeof s === 'string' && /^https?:\/\//i.test(s));
 
   // Services — `hasOfferCatalog.itemListElement[].itemOffered.name` is
   // the schema.org pattern. Also handle `makesOffer` and `offers` arrays.

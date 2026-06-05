@@ -16,10 +16,16 @@ async function pageFunction(context) {
     const all = (sel) => Array.from(document.querySelectorAll(sel));
     const t = (el) => (el?.textContent || '').trim();
 
-    // Photos — pull up to 25, filter the obvious junk.
+    // Photos — pull up to 25, filter the obvious junk. Do NOT strip
+    // dimension suffixes (Booksy URLs like .../image_900x600.jpg need
+    // them — removing produces 404s). Strip query strings only to
+    // dedupe duplicate-with-different-query entries.
     const photos = Array.from(new Set(all('img').map(i => i.currentSrc || i.src || '')
-      .filter(s => s && /cloudfront|booksy|cdn/i.test(s) && !/icon|logo|avatar|sprite|placeholder/i.test(s))
-      .map(s => s.replace(/_\\d+x\\d+/, '').replace(/\\?.*$/, '')))).slice(0, 25);
+      .filter(s => s && /^https?:/i.test(s))
+      .filter(s => /cloudfront|booksy|cdn/i.test(s))
+      .filter(s => !/icon|logo|avatar|sprite|placeholder|favicon/i.test(s))
+      .map(s => s.split('?')[0])
+      .filter(s => /\.(jpe?g|png|webp|avif)$/i.test(s) || /\/(image|photo|gallery|venue|business)/i.test(s)))).slice(0, 25);
 
     // Services — try to capture category headings + duration in addition to title/price.
     // Booksy renders service cards under category section headers; we walk the DOM in order
