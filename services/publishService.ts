@@ -42,6 +42,17 @@ export async function publishSite(site: SiteInstance, userId: string | null): Pr
     }
   });
 
+  // Staff photos — mirror the gallery pattern. Each entry's photo
+  // gets either uploaded (base64) or hotlinked (http) so the LUXE
+  // template's `{{staff${i}}}` placeholder resolves either way.
+  (site.data.staff || []).forEach((s, i) => {
+    if (s?.photo?.startsWith('data:')) {
+      imagesToUpload.push({ key: `staff${i}`, filename: `staff-${i}-${timestamp}.jpg`, base64: s.photo });
+    } else if (s?.photo?.startsWith('http')) {
+      imageUrlMap[`staff${i}`] = s.photo;
+    }
+  });
+
   // Parallel uploads — matches the pre-payment publish path. GCS handles
   // concurrent writes fine; sequential here was making re-publish take 6–12s.
   await Promise.all(
@@ -68,6 +79,13 @@ export async function publishSite(site: SiteInstance, userId: string | null): Pr
     gallery: site.data.gallery.map((_: string, i: number) =>
       imageUrlMap[`gallery${i}`] ? 'has-image' : ''
     ),
+    // Staff entries — keep the name + role, swap photo to a marker so
+    // the LUXE template emits `{{staff${i}}}` placeholders that the
+    // deploy endpoint string-substitutes with the GCS URLs.
+    staff: (site.data.staff || []).map((s, i) => ({
+      ...s,
+      photo: imageUrlMap[`staff${i}`] ? 'has-image' : '',
+    })),
   };
 
   const html = generateHTMLForTemplate(restoredSiteData);

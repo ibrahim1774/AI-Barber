@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ShopInputs, WebsiteData } from '../types';
 import { ScissorsIcon } from './Icons';
 
@@ -10,13 +10,52 @@ interface Props {
   onSignIn?: () => void;
 }
 
+// Step labels for the scrape loading screen. The scrape itself is one
+// blocking fetch (no streaming), so progress is timed against typical
+// 20-40s wall-clock — not real per-step events. We snap to 100% the
+// moment the fetch resolves.
+const LOADING_STEPS = [
+  { pct: 18, label: 'Fetching your shop info…' },
+  { pct: 42, label: 'Pulling services & pricing…' },
+  { pct: 66, label: 'Loading photos & reviews…' },
+  { pct: 88, label: 'Building your custom website…' },
+];
+
 // Single-input generator for /booksy. The visitor pastes a Booksy URL,
-// we hand it to /api/booksy-scrape, and the returned data pre-fills
-// the LUXE renderer (shopName, area, services, gallery, reviews).
+// we hand it to /api/import-scrape, and the returned rich data pre-fills
+// the LUXE renderer (shopName, area, services, gallery, reviews, bio,
+// hours, staff, aggregate rating).
 export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn }) => {
   const [url, setUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [stepIdx, setStepIdx] = useState(0);
+  const [progress, setProgress] = useState(0);
+  const stepTimerRef = useRef<number | null>(null);
+
+  // Drive the fake step ladder while the scrape is in flight. We hold
+  // at the LAST step's pct (88) if the scrape takes longer than the
+  // ladder; the moment the fetch resolves we snap to 100 and unmount.
+  useEffect(() => {
+    if (!busy) {
+      setStepIdx(0);
+      setProgress(0);
+      if (stepTimerRef.current) window.clearInterval(stepTimerRef.current);
+      return;
+    }
+    const startedAt = Date.now();
+    // Roughly 7s per step → ladder reaches 88% around 28s, then holds.
+    stepTimerRef.current = window.setInterval(() => {
+      const elapsed = (Date.now() - startedAt) / 1000;
+      const idx = Math.min(LOADING_STEPS.length - 1, Math.floor(elapsed / 7));
+      const target = LOADING_STEPS[idx].pct;
+      setStepIdx(idx);
+      setProgress((p) => (p < target ? Math.min(target, p + 0.7) : p));
+    }, 120) as unknown as number;
+    return () => {
+      if (stepTimerRef.current) window.clearInterval(stepTimerRef.current);
+    };
+  }, [busy]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,6 +74,12 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn }) =
         throw new Error(data?.error || 'Scrape failed');
       }
 
+      // Snap the progress to 100 before handing off — gives the loading
+      // screen a satisfying "complete" beat instead of an abrupt cut.
+      setProgress(100);
+      setStepIdx(LOADING_STEPS.length - 1);
+      await new Promise((r) => setTimeout(r, 350));
+
       // Map the scraper output into our existing WebsiteData shape so
       // it flows through the same loading screen → editor pipeline.
       const inputs: ShopInputs = {
@@ -43,6 +88,26 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn }) =
         phone: data.phone || '',
         template: 'luxe',
       };
+
+      // Icon ladder cycles through the 5 available service icons. Older
+      // sites used the same pattern; we keep it stable so re-published
+      // sites don't shuffle icons unexpectedly.
+      const SERVICE_ICONS = ['scissors', 'razor', 'mustache', 'face', 'sparkles'] as const;
+
+      // Build a usable about-description: prefer the scraped bio split
+      // into ~2 paragraphs; fall back to the universal copy when empty.
+      const bio: string = (data.description || '').trim();
+      const aboutParas: string[] = bio
+        ? bio
+            .replace(/\s+/g, ' ')
+            .match(/.{1,420}(\s|$)/g)
+            ?.map((s: string) => s.trim())
+            .filter(Boolean)
+            .slice(0, 2) || [bio]
+        : [
+            `${data.shopName} is a neighborhood barbershop built around honest work and consistent craft.`,
+            'Every visit starts with a real conversation and ends with a cut you can wear with confidence.',
+          ];
 
       const scraped: WebsiteData = {
         shopName: data.shopName,
@@ -56,28 +121,41 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn }) =
         },
         about: {
           heading: 'About the Shop',
-          description: [
-            `${data.shopName} is a neighborhood barbershop built around honest work and consistent craft.`,
-            'Every visit starts with a real conversation and ends with a cut you can wear with confidence.',
-          ],
+          description: aboutParas,
           imageUrl: data.photos?.[1] || data.photos?.[0] || '',
         },
-        services: (data.services || []).slice(0, 6).map((s: { title: string; price?: string }, i: number) => ({
-          title: s.title,
-          subtitle: s.price || '',
-          description: s.price ? `Starting at ${s.price}.` : 'Book ahead — same care every visit.',
-          icon: (['scissors', 'razor', 'mustache', 'face', 'sparkles', 'scissors'] as const)[i % 6],
-          imageUrl: '',
-        })),
-        // 6 gallery slots — fill what we have, leave the rest blank for
-        // the owner to swap in the editor.
-        gallery: Array.from({ length: 6 }, (_, i) => data.photos?.[i] || ''),
+        // Services raised cap 6 → 12. Map richer fields: duration goes
+        // into subtitle when present, price into the dedicated price
+        // field, description preserved verbatim.
+        services: (data.services || []).slice(0, 12).map((s: any, i: number) => {
+          const subtitleParts = [s.duration, s.price].filter(Boolean);
+          return {
+            title: s.title,
+            subtitle: subtitleParts.join(' · ') || s.category || '',
+            description: s.description || (s.price ? `Starting at ${s.price}.` : 'Book ahead — same care every visit.'),
+            icon: SERVICE_ICONS[i % SERVICE_ICONS.length],
+            imageUrl: '',
+            duration: s.duration || '',
+            category: s.category || '',
+            price: s.price || '',
+          };
+        }),
+        // 20 gallery slots — fill what we have, leave the rest blank for
+        // the owner to swap in via the in-editor replace-image overlay.
+        gallery: Array.from({ length: 20 }, (_, i) => data.photos?.[i] || ''),
         featureCards: [
           { title: 'Experience', sub: 'Professional' },
           { title: 'Service', sub: 'Trusted' },
-          { title: 'Open Monday to Friday', sub: '9am - 7pm' },
+          {
+            title: 'Open Monday to Friday',
+            sub: '9am - 7pm',
+          },
         ],
-        reviews: data.reviews || [],
+        reviews: (data.reviews || []).slice(0, 12),
+        bio,
+        aggregateRating: data.aggregateRating,
+        hours: data.hours || [],
+        staff: (data.staff || []).slice(0, 12),
         contact: {
           address: data.address || data.area,
           email: '',
@@ -93,6 +171,78 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn }) =
 
   return (
     <div className="md:min-h-screen bg-[#0d0d0d] flex items-start md:items-stretch overflow-x-hidden">
+      {/* Scrape-in-progress overlay. Renders above the form on submit
+          and stays until App.tsx transitions to its own loading screen.
+          Step ladder is timed (not stream-driven) because the scrape
+          API is a single blocking call. */}
+      {busy && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-br from-[#0a0a0a] via-[#141414] to-[#0a0a0a] px-6">
+          <div className="absolute inset-0 opacity-[0.04]" aria-hidden="true" style={{
+            backgroundImage:
+              "url('https://images.unsplash.com/photo-1503951914875-452162b0f3f1?auto=format&fit=crop&w=1920&q=80')",
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+          }} />
+          <div className="relative w-full max-w-md text-center">
+            {/* Logo */}
+            <div className="flex items-center justify-center gap-2 mb-8">
+              <ScissorsIcon className="w-5 h-5 text-[#f4a100]" />
+              <span className="text-[11px] font-montserrat font-black uppercase tracking-[3px] text-white">
+                Prime<span className="text-[#f4a100]">Barber</span> AI
+              </span>
+            </div>
+
+            {/* Headline */}
+            <h2
+              className="text-3xl md:text-4xl text-white mb-2 leading-tight"
+              style={{ fontFamily: '"Instrument Serif", "Times New Roman", serif', fontWeight: 400 }}
+            >
+              Crafting your <em className="text-[#f4a100]">website</em>
+            </h2>
+            <p className="text-white/50 text-[11px] uppercase tracking-[3px] mb-10 font-montserrat font-bold">
+              This takes about 20–40 seconds
+            </p>
+
+            {/* Progress bar — gold fill on hairline track. */}
+            <div className="relative h-[2px] w-full bg-white/10 mb-6 overflow-hidden">
+              <div
+                className="absolute inset-y-0 left-0 bg-gradient-to-r from-[#f4a100] via-[#ffc24d] to-[#f4a100] transition-[width] duration-300 ease-out"
+                style={{ width: `${progress}%`, boxShadow: '0 0 12px rgba(244,161,0,0.6)' }}
+              />
+            </div>
+
+            {/* Step list. Active = white, done = white/60, pending = white/25. */}
+            <ul className="space-y-3 text-left">
+              {LOADING_STEPS.map((step, i) => {
+                const done = i < stepIdx || progress >= 100;
+                const active = i === stepIdx && progress < 100;
+                return (
+                  <li
+                    key={step.label}
+                    className={`flex items-center gap-3 text-[12px] font-montserrat tracking-[1.5px] uppercase ${
+                      done ? 'text-white/60' : active ? 'text-white font-bold' : 'text-white/25'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block w-[18px] h-[18px] border flex items-center justify-center text-[10px] font-black flex-shrink-0 ${
+                        done
+                          ? 'bg-[#f4a100] border-[#f4a100] text-[#0a0a0a]'
+                          : active
+                            ? 'border-[#f4a100] text-[#f4a100] animate-pulse'
+                            : 'border-white/20 text-white/25'
+                      }`}
+                    >
+                      {done ? '✓' : i + 1}
+                    </span>
+                    {step.label}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </div>
+      )}
+
       <div className="w-full grid md:grid-cols-[40%_60%] luxury-gradient relative min-h-screen">
 
         {/* Logo */}

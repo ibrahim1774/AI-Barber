@@ -54,24 +54,119 @@ const AIB_THEMES: Record<string, AibTheme> = {
 export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
   const formattedPhone = siteData.phone.replace(/\s+/g, '');
 
-  // Gallery section uses gallery[2-5]
-  const galleryImages = siteData.gallery
-    .slice(2, 6)
-    .map((url, i) => ({ url, index: i + 2 }))
-    .filter(item => item.url);
+  // Gallery — slot 0 doubles as the about-section seed and slot 1 as
+  // the hero/about fallback, so the "Our Work" portfolio renders
+  // slots [2..21] (up to 20 photos). Renders only the filled slots so
+  // partial galleries don't leave empty tiles.
+  const GALLERY_PORTFOLIO_INDICES = Array.from({ length: 20 }, (_, i) => i + 2);
+  const galleryImages = GALLERY_PORTFOLIO_INDICES
+    .map((idx) => ({ url: siteData.gallery[idx], index: idx }))
+    .filter((item) => item.url);
 
   const gallerySection = galleryImages.length > 0
     ? `<section class="py-16 md:py-32 bg-[#0d0d0d] px-6 border-y border-white/5">
-    <div class="container mx-auto max-w-4xl">
+    <div class="container mx-auto max-w-6xl">
       <div class="text-center mb-10 md:mb-16">
         <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">Gallery</h3>
         <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">Our Work</h2>
       </div>
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        ${siteData.gallery[2] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{gallery2}}" alt="Gallery Image 1" class="w-full h-48 sm:h-56 md:h-72 object-cover"></div>` : ''}
-        ${siteData.gallery[3] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{gallery3}}" alt="Gallery Image 2" class="w-full h-48 sm:h-56 md:h-72 object-cover"></div>` : ''}
-        ${siteData.gallery[4] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{gallery4}}" alt="Gallery Image 3" class="w-full h-48 sm:h-56 md:h-72 object-cover"></div>` : ''}
-        ${siteData.gallery[5] ? `<div class="bg-[#1a1a1a] p-1 border border-white/5"><img src="{{gallery5}}" alt="Gallery Image 4" class="w-full h-48 sm:h-56 md:h-72 object-cover"></div>` : ''}
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
+        ${galleryImages.map((g) => `<div class="bg-[#1a1a1a] p-1 border border-white/5 group relative overflow-hidden"><img src="{{gallery${g.index}}}" alt="Gallery Image ${g.index - 1}" class="w-full h-44 sm:h-52 md:h-56 lg:h-64 object-cover transition-transform duration-700 group-hover:scale-105"></div>`).join('')}
+      </div>
+    </div>
+  </section>`
+    : '';
+
+  // ── Bio section — shows the shop's Booksy description as a pull
+  //    quote between hero and about. Skipped when bio is empty (e.g.
+  //    manual-form sites or platforms without descriptions).
+  const bioSection = siteData.bio && siteData.bio.trim().length > 20
+    ? `<section class="py-12 md:py-20 bg-[#0d0d0d] px-6 border-y border-white/5">
+    <div class="container mx-auto max-w-3xl text-center">
+      <svg class="w-8 h-8 mx-auto mb-6 text-[#f4a100]/40" viewBox="0 0 24 24" fill="currentColor"><path d="M6 17h3l2-4V7H5v6h3l-2 4zm8 0h3l2-4V7h-6v6h3l-2 4z"/></svg>
+      <p class="text-white/85 text-base md:text-xl leading-relaxed" style="font-family:'Instrument Serif',Georgia,serif;font-style:italic;">${siteData.bio.replace(/</g, '&lt;')}</p>
+    </div>
+  </section>`
+    : '';
+
+  // ── Meet the Team section — staff cards with photo + name + role.
+  //    Skipped when no staff array.
+  const teamSection = siteData.staff && siteData.staff.length > 0
+    ? `<section class="py-16 md:py-28 bg-[#0a0a0a] px-6 border-y border-white/5">
+    <div class="container mx-auto max-w-6xl">
+      <div class="text-center mb-10 md:mb-16">
+        <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">The Team</h3>
+        <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">Meet Our Barbers</h2>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+        ${siteData.staff.map((s, i) => `
+          <div class="flex flex-col items-center text-center group">
+            <div class="relative w-full aspect-square mb-3 overflow-hidden bg-[#1a1a1a] border border-white/5">
+              ${s.photo ? `<img src="{{staff${i}}}" alt="${(s.name || 'Staff').replace(/"/g, '&quot;')}" class="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-700">` : `<div class="w-full h-full flex items-center justify-center text-[#f4a100]/30"><svg class="w-12 h-12" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 22v-2c0-3.31 3.58-6 8-6s8 2.69 8 6v2H4z"/></svg></div>`}
+            </div>
+            <h4 class="font-montserrat font-black text-white text-sm md:text-base tracking-[1px] uppercase">${(s.name || '').replace(/</g, '&lt;')}</h4>
+            ${s.role ? `<p class="text-[#f4a100] text-[10px] md:text-[11px] font-bold tracking-[2px] uppercase mt-1">${s.role.replace(/</g, '&lt;')}</p>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  </section>`
+    : '';
+
+  // ── Hours section — Mon-Sun rows. Skipped when no hours array.
+  const hoursSection = siteData.hours && siteData.hours.length > 0
+    ? `<section class="py-16 md:py-24 bg-[#0d0d0d] px-6 border-y border-white/5">
+    <div class="container mx-auto max-w-2xl">
+      <div class="text-center mb-8 md:mb-12">
+        <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">Hours</h3>
+        <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">When We're Open</h2>
+      </div>
+      <div class="bg-[#1a1a1a] border border-white/5 divide-y divide-white/5">
+        ${siteData.hours.map((h) => `
+          <div class="flex items-center justify-between px-5 md:px-8 py-3.5 md:py-4">
+            <span class="text-white text-sm md:text-base font-bold uppercase tracking-[2px]">${h.day}</span>
+            <span class="text-[#f4a100] text-sm md:text-base font-bold tracking-[1px]">${h.closed ? 'Closed' : `${h.open} – ${h.close}`}</span>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  </section>`
+    : '';
+
+  // ── Aggregate-rating header — small block above the existing
+  //    reviews grid when set. Renderer (and template) read .reviews
+  //    separately so the header alone doesn't try to render reviews.
+  const ratingHeader = siteData.aggregateRating
+    ? `<div class="text-center mb-10 md:mb-12">
+        <div class="inline-flex items-center gap-3 bg-[#1a1a1a] border border-[#f4a100]/30 px-5 py-3 md:px-7 md:py-4">
+          <span class="text-[#f4a100] text-2xl md:text-3xl">★</span>
+          <span class="text-white text-2xl md:text-3xl font-montserrat font-black">${siteData.aggregateRating.rating.toFixed(1)}</span>
+          ${siteData.aggregateRating.count > 0 ? `<span class="text-white/60 text-[10px] md:text-xs uppercase tracking-[2px] font-bold">from ${siteData.aggregateRating.count.toLocaleString()} reviews</span>` : ''}
+        </div>
+      </div>`
+    : '';
+
+  // ── Reviews — render up to 12, with optional aggregate-rating
+  //    header above. Skipped when no reviews.
+  const reviewsSection = siteData.reviews && siteData.reviews.length > 0
+    ? `<section class="py-16 md:py-28 bg-[#0a0a0a] px-6 border-y border-white/5">
+    <div class="container mx-auto max-w-6xl">
+      ${ratingHeader}
+      <div class="text-center mb-10 md:mb-14">
+        <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">Reviews</h3>
+        <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">What Our Clients Say</h2>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+        ${siteData.reviews.slice(0, 12).map((r) => `
+          <div class="border border-white/10 bg-[#111111] p-5 md:p-7 flex flex-col gap-3">
+            <div class="flex items-center gap-1">${Array.from({ length: 5 }, (_, s) => `<span class="${s < r.rating ? 'text-[#f4a100]' : 'text-white/15'}">★</span>`).join('')}</div>
+            <p class="text-white/80 text-sm md:text-base leading-relaxed italic">"${(r.comment || '').replace(/</g, '&lt;').replace(/"/g, '&quot;')}"</p>
+            <div class="flex items-center justify-between text-[10px] uppercase tracking-[2px] text-white/50 mt-auto pt-2 border-t border-white/5">
+              <span class="font-bold text-white/80">${(r.author || 'Customer').replace(/</g, '&lt;')}</span>
+              ${r.date ? `<span>${String(r.date).replace(/</g, '&lt;')}</span>` : ''}
+            </div>
+          </div>
+        `).join('')}
       </div>
     </div>
   </section>`
@@ -116,12 +211,30 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;700;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;700;900&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="styles.css">
   <style>
     * { font-family: 'Montserrat', sans-serif; }
     html { scroll-behavior: smooth; }
+    /* Glossy LUXE pass — keeps every existing utility intact, layers
+       depth via gradient surfaces + a hairline highlight on every
+       section seam + a soft gold glow on accent buttons. Scoped tight
+       so the upgrade doesn't bleed into elements that should stay flat. */
+    .serif-accent { font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400; }
+    section.py-12, section.py-16 {
+      background-image: linear-gradient(180deg, rgba(255,255,255,0.025) 0%, transparent 35%, transparent 65%, rgba(0,0,0,0.4) 100%);
+      background-blend-mode: overlay;
+    }
+    section + section { box-shadow: inset 0 1px 0 rgba(244,161,0,0.06); }
+    a[href^="tel:"][class*="bg-[#f4a100]"], a[class*="bg-[#f4a100]"][class*="px-"] {
+      box-shadow: 0 0 30px rgba(244,161,0,0.18), 0 8px 20px rgba(0,0,0,0.35);
+    }
+    /* Glass-card treatment on bordered service / review / team cards. */
+    .border-2.border-\\[\\#f4a100\\], .border.border-white\\/10 {
+      background-image: linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0));
+      backdrop-filter: blur(2px);
+    }
   </style>
 </head>
 <body class="bg-[#0d0d0d] text-white overflow-x-hidden">
@@ -172,6 +285,8 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
     </div>
   </section>
 
+  ${bioSection}
+
   <section id="about-us" class="py-12 md:py-32 px-6 bg-[#1a1a1a]">
     <div class="container mx-auto grid ${siteData.about.imageUrl ? 'lg:grid-cols-2' : ''} gap-10 md:gap-20 items-center">
       <div class="relative">
@@ -189,23 +304,31 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
   ${gallerySection}
 
   <section id="services" class="py-12 md:py-32 bg-[#0d0d0d] px-6">
-    <div class="container mx-auto">
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 md:gap-6 max-w-7xl mx-auto">
+    <div class="container mx-auto max-w-7xl">
+      <div class="text-center mb-10 md:mb-16">
+        <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">Services</h3>
+        <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">What We Offer</h2>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
         ${siteData.services.map(service => `
-          <div class="group border-2 border-[#f4a100] p-6 md:p-12 text-center flex flex-col items-center hover:bg-[#1a1a1a] transition-all duration-500">
-            <div class="mb-4 md:mb-8 transform group-hover:scale-110 transition-transform duration-300">
-              <svg class="w-10 h-10 md:w-12 md:h-12 text-[#f4a100]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 6l12 12M6 18L18 6"></path>
-              </svg>
+          <div class="group border-2 border-[#f4a100] p-6 md:p-10 flex flex-col hover:bg-[#1a1a1a] transition-all duration-500">
+            <div class="flex items-start justify-between gap-3 mb-3 md:mb-4">
+              <h3 class="font-montserrat font-black text-white text-base md:text-lg tracking-[1px] uppercase leading-tight flex-1">${service.title}</h3>
+              ${service.price ? `<span class="font-montserrat font-black text-[#f4a100] text-base md:text-lg whitespace-nowrap">${service.price}</span>` : ''}
             </div>
-            <h3 class="font-montserrat font-black text-white text-base md:text-xl tracking-[1.5px] mb-2 uppercase">${service.title}</h3>
-            <p class="text-[#f4a100] text-[9px] md:text-[11px] font-bold tracking-[2px] mb-3 md:mb-4 uppercase">${service.subtitle}</p>
+            ${(service.duration || service.subtitle) ? `<p class="text-[#f4a100] text-[10px] md:text-[11px] font-bold tracking-[2px] mb-3 uppercase">${service.duration || service.subtitle}</p>` : ''}
             <p class="text-[#999999] text-xs md:text-sm leading-relaxed">${service.description}</p>
           </div>
         `).join('')}
       </div>
     </div>
   </section>
+
+  ${reviewsSection}
+
+  ${teamSection}
+
+  ${hoursSection}
 
   ${craftSection}
 
@@ -533,6 +656,14 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           imagesToUpload.push({ key: `craft${index}`, filename: `craft-${index}-${timestamp}.jpg`, base64: imageUrl });
         }
       });
+      // Staff photos — every entry on the staff array with a base64
+      // photo. Key pattern matches the `{{staff${i}}}` placeholder the
+      // LUXE template emits in its teamSection block.
+      (siteData.staff || []).forEach((s, index) => {
+        if (s?.photo && s.photo.startsWith('data:')) {
+          imagesToUpload.push({ key: `staff${index}`, filename: `staff-${index}-${timestamp}.jpg`, base64: s.photo });
+        }
+      });
 
       // Step 2: Upload images to GCS via proxy
       const imageUrlMap: Record<string, string> = {};
@@ -577,6 +708,14 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           imageUrlMap[`craft${index}`] = url;
         }
       });
+      // Same for staff photos already hosted as URLs (typical: a fresh
+      // Booksy import — staff photos are CDN-hosted images we keep as
+      // direct hotlinks instead of re-uploading).
+      (siteData.staff || []).forEach((s, index) => {
+        if (s?.photo && s.photo.startsWith('http')) {
+          imageUrlMap[`staff${index}`] = s.photo;
+        }
+      });
 
       // Step 3: Save to localStorage (text + GCS URLs only, no base64)
       const pendingSite = {
@@ -595,6 +734,14 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           gallery: siteData.gallery.map((_, i) => imageUrlMap[`gallery${i}`] ? 'uploaded' : ''),
           craftImages: (siteData.craftImages || []).map((_, i) => imageUrlMap[`craft${i}`] ? 'uploaded' : ''),
           services: siteData.services.map(s => ({ ...s, imageUrl: '' })),
+          // Replace base64 staff photos with placeholder markers — the
+          // post-Stripe restore swaps them back to the GCS URLs in
+          // imageUrlMap. Plain HTTP staff photos (Booksy CDN hotlinks)
+          // stay as-is.
+          staff: (siteData.staff || []).map((s, i) => ({
+            ...s,
+            photo: imageUrlMap[`staff${i}`] ? 'uploaded' : (s.photo?.startsWith('http') ? s.photo : ''),
+          })),
         },
         imageUrlMap,
         timestamp: Date.now(),
@@ -705,7 +852,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
   // After publish, replace base64 images with their new GCS URLs in
   // editor state. craftImages mirrors gallery — fall back to existing
   // url so untouched defaults (still hotlinked from Vercel Blob) stay
-  // in place.
+  // in place. Staff array gets the same treatment per-entry.
   const handleImageUrlsUpdated = (imageUrlMap: Record<string, string>) => {
     setSiteData(prev => ({
       ...prev,
@@ -717,6 +864,10 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       craftImages: (prev.craftImages || []).map((url, i) =>
         imageUrlMap[`craft${i}`] || url || ''
       ),
+      staff: (prev.staff || []).map((s, i) => ({
+        ...s,
+        photo: imageUrlMap[`staff${i}`] || s.photo || '',
+      })),
     }));
   };
 
@@ -735,6 +886,15 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       }}
     >
       <style>{`
+        /* Glossy LUXE pass — gradient depth + hairline section seam +
+           gold glow on accent buttons + glass-card treatment. Same
+           rules ship in the deployed HTML so editor matches live. */
+        .aib-themed .serif-accent { font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400; }
+        .aib-themed section + section { box-shadow: inset 0 1px 0 rgba(244,161,0,0.06); }
+        .aib-themed a[class*="bg-[#f4a100]"][class*="px-"] {
+          box-shadow: 0 0 30px rgba(244,161,0,0.18), 0 8px 20px rgba(0,0,0,0.35);
+        }
+
         /* Rewire the hardcoded LUXE color utilities onto the picked theme.
            Specificity bump via .aib-themed parent so these win against
            the standalone utility classes. */
@@ -937,6 +1097,30 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         </div>
       </section>
 
+      {/* Bio quote — Booksy shop description as a pull quote between
+          hero and about. Skipped when bio is empty. Editable inline. */}
+      {siteData.bio && siteData.bio.trim().length > 20 && (
+        <section className="py-12 md:py-20 bg-[#0d0d0d] px-6 border-y border-white/5">
+          <div className="container mx-auto max-w-3xl text-center">
+            <svg className="w-8 h-8 mx-auto mb-6 text-[#f4a100]/40" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M6 17h3l2-4V7H5v6h3l-2 4zm8 0h3l2-4V7h-6v6h3l-2 4z" />
+            </svg>
+            <p
+              className="text-white/85 text-base md:text-xl leading-relaxed"
+              style={{ fontFamily: '"Instrument Serif", Georgia, serif', fontStyle: 'italic' }}
+            >
+              <EditableText
+                text={siteData.bio}
+                onSave={(val) => {
+                  setSiteData(prev => ({ ...prev, bio: val }));
+                  if (isPostPayment) triggerSave();
+                }}
+              />
+            </p>
+          </div>
+        </section>
+      )}
+
       {/* About Section */}
       <section id="about-us" className="py-12 md:py-32 px-6 bg-[#1a1a1a]">
         <div className="container mx-auto grid lg:grid-cols-2 gap-10 md:gap-20 items-center">
@@ -973,25 +1157,28 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         </div>
       </section>
 
-      {/* Gallery Section — owner's portfolio ("Our Work"). Slots
-          gallery[2..5] start empty so the shop owner uploads their
-          actual work. Section hides if every slot is empty. */}
+      {/* Gallery Section — owner's portfolio ("Our Work"). 20 slots
+          [2..21] so a fully-scraped Booksy/Fresha shop fills the wall.
+          Each slot has a Replace Photo overlay when filled, or an
+          "Add Your Own Image" placeholder when empty. Section header
+          shows even if all slots are empty so the upload affordance is
+          discoverable on manual-form sites. */}
       <section className="py-16 md:py-32 bg-[#0d0d0d] px-6 border-y border-white/5">
-        <div className="container mx-auto max-w-4xl">
+        <div className="container mx-auto max-w-6xl">
           <div className="text-center mb-10 md:mb-16">
             <h3 className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">Gallery</h3>
             <h2 className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">Our Work</h2>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {[2, 3, 4, 5].map((idx) => (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
+            {Array.from({ length: 20 }, (_, i) => i + 2).map((idx) => (
               <div key={idx} className="bg-[#1a1a1a] p-1 border border-white/5 relative group">
                 {siteData.gallery[idx] ? (
                   <>
-                    <img src={siteData.gallery[idx]} alt={`Gallery Image ${idx - 1}`} className="w-full h-48 sm:h-56 md:h-72 object-cover" />
+                    <img src={siteData.gallery[idx]} alt={`Gallery Image ${idx - 1}`} className="w-full h-44 sm:h-52 md:h-56 lg:h-64 object-cover" />
                     <ImageOverlay onImageUpload={(e) => handleImageChange(`gallery.${idx}`, e)} />
                   </>
                 ) : (
-                  <ImagePlaceholder onImageUpload={(e) => handleImageChange(`gallery.${idx}`, e)} heightClass="h-48 sm:h-56 md:h-72" />
+                  <ImagePlaceholder onImageUpload={(e) => handleImageChange(`gallery.${idx}`, e)} heightClass="h-44 sm:h-52 md:h-56 lg:h-64" />
                 )}
               </div>
             ))}
@@ -999,36 +1186,56 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         </div>
       </section>
 
-      {/* Services Grid Section — placed right after Gallery so the
-          shop's portfolio leads into the service menu. */}
+      {/* Services Grid — 3-column menu layout with title + price on
+          one row, duration/subtitle below, then description. Price is
+          editable separately when present (only set by scraped Booksy
+          imports). Empty fields just don't render in deployed HTML. */}
       <section id="our-services" className="py-12 md:py-32 bg-[#0d0d0d] px-6">
-        <div className="container mx-auto">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 md:gap-6 max-w-7xl mx-auto">
+        <div className="container mx-auto max-w-7xl">
+          <div className="text-center mb-10 md:mb-16">
+            <h3 className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">Services</h3>
+            <h2 className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">What We Offer</h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
             {siteData.services.map((service, i) => (
-              <div key={i} className="group border-2 border-[#f4a100] p-6 md:p-12 text-center flex flex-col items-center hover:bg-[#1a1a1a] transition-all duration-500">
-                <div className="mb-4 md:mb-8 transform group-hover:scale-110 transition-transform duration-300">
-                  {getServiceIcon(service.icon)}
+              <div key={i} className="group border-2 border-[#f4a100] p-6 md:p-10 flex flex-col hover:bg-[#1a1a1a] transition-all duration-500">
+                <div className="flex items-start justify-between gap-3 mb-3 md:mb-4">
+                  <h3 className="font-montserrat font-black text-white text-base md:text-lg tracking-[1px] uppercase leading-tight flex-1">
+                    <EditableText
+                      text={service.title}
+                      onSave={(val) => {
+                        const newServices = [...siteData.services];
+                        newServices[i].title = val;
+                        handleTextChange('services', newServices as any);
+                      }}
+                    />
+                  </h3>
+                  {(service.price || '') && (
+                    <span className="font-montserrat font-black text-[#f4a100] text-base md:text-lg whitespace-nowrap">
+                      <EditableText
+                        text={service.price || ''}
+                        onSave={(val) => {
+                          const newServices = [...siteData.services];
+                          newServices[i].price = val;
+                          handleTextChange('services', newServices as any);
+                        }}
+                      />
+                    </span>
+                  )}
                 </div>
-                <h3 className="font-montserrat font-black text-white text-base md:text-xl tracking-[1.5px] mb-2 uppercase">
-                  <EditableText
-                    text={service.title}
-                    onSave={(val) => {
-                      const newServices = [...siteData.services];
-                      newServices[i].title = val;
-                      handleTextChange('services', newServices as any);
-                    }}
-                  />
-                </h3>
-                <p className="text-[#f4a100] text-[9px] md:text-[11px] font-bold tracking-[2px] mb-3 md:mb-4 uppercase">
-                  <EditableText
-                    text={service.subtitle}
-                    onSave={(val) => {
-                      const newServices = [...siteData.services];
-                      newServices[i].subtitle = val;
-                      handleTextChange('services', newServices as any);
-                    }}
-                  />
-                </p>
+                {(service.duration || service.subtitle) && (
+                  <p className="text-[#f4a100] text-[10px] md:text-[11px] font-bold tracking-[2px] mb-3 uppercase">
+                    <EditableText
+                      text={service.duration || service.subtitle}
+                      onSave={(val) => {
+                        const newServices = [...siteData.services];
+                        if (service.duration) newServices[i].duration = val;
+                        else newServices[i].subtitle = val;
+                        handleTextChange('services', newServices as any);
+                      }}
+                    />
+                  </p>
+                )}
                 <p className="text-[#999999] text-xs md:text-sm leading-relaxed">
                   <EditableText
                     text={service.description}
@@ -1045,20 +1252,35 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         </div>
       </section>
 
-      {/* Reviews Section — only rendered when scraped reviews exist
-          (e.g. from the /booksy flow). Older saved sites have no
-          reviews field and skip this section entirely. */}
+      {/* Reviews Section — shows aggregate rating header when set
+          (Booksy JSON-LD ships it), then up to 12 review cards. Older
+          saved sites without reviews skip this entire section. */}
       {siteData.reviews && siteData.reviews.length > 0 && (
         <section className="py-16 md:py-28 bg-[#0a0a0a] px-6 border-y border-white/5">
-          <div className="container mx-auto max-w-5xl">
+          <div className="container mx-auto max-w-6xl">
+            {siteData.aggregateRating && (
+              <div className="text-center mb-10 md:mb-12">
+                <div className="inline-flex items-center gap-3 bg-[#1a1a1a] border border-[#f4a100]/30 px-5 py-3 md:px-7 md:py-4">
+                  <span className="text-[#f4a100] text-2xl md:text-3xl">★</span>
+                  <span className="text-white text-2xl md:text-3xl font-montserrat font-black">
+                    {siteData.aggregateRating.rating.toFixed(1)}
+                  </span>
+                  {siteData.aggregateRating.count > 0 && (
+                    <span className="text-white/60 text-[10px] md:text-xs uppercase tracking-[2px] font-bold">
+                      from {siteData.aggregateRating.count.toLocaleString()} reviews
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
             <div className="text-center mb-10 md:mb-14">
               <h3 className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">Reviews</h3>
               <h2 className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">
                 What Our Clients Say
               </h2>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-              {siteData.reviews.slice(0, 6).map((r, i) => (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+              {siteData.reviews.slice(0, 12).map((r, i) => (
                 <div key={i} className="border border-white/10 bg-[#111111] p-5 md:p-7 flex flex-col gap-3">
                   <div className="flex items-center gap-1" aria-label={`${r.rating} out of 5 stars`}>
                     {Array.from({ length: 5 }, (_, s) => (
@@ -1072,6 +1294,167 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
                     <span className="font-bold text-white/80">{r.author}</span>
                     {r.date && <span>{r.date}</span>}
                   </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Meet the Team — staff cards with replaceable photos. Each
+          card's name + role are inline-editable; photo gets the same
+          Replace/Add affordances as the gallery. Skipped when no
+          staff data (manual-form sites). */}
+      {siteData.staff && siteData.staff.length > 0 && (
+        <section className="py-16 md:py-28 bg-[#0a0a0a] px-6 border-y border-white/5">
+          <div className="container mx-auto max-w-6xl">
+            <div className="text-center mb-10 md:mb-16">
+              <h3 className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">The Team</h3>
+              <h2 className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">Meet Our Barbers</h2>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+              {siteData.staff.map((s, i) => (
+                <div key={i} className="flex flex-col items-center text-center">
+                  <div className="relative w-full aspect-square mb-3 overflow-hidden bg-[#1a1a1a] border border-white/5 group">
+                    {s.photo ? (
+                      <>
+                        <img src={s.photo} alt={s.name || 'Staff'} className="w-full h-full object-cover" />
+                        <ImageOverlay onImageUpload={(e) => {
+                          const file = e.target.files?.[0]; if (!file) return;
+                          const previewUrl = URL.createObjectURL(file);
+                          setSiteData(prev => {
+                            const staff = [...(prev.staff || [])];
+                            staff[i] = { ...staff[i], photo: previewUrl };
+                            return { ...prev, staff };
+                          });
+                          compressImage(file).then(b64 => {
+                            setSiteData(prev => {
+                              const staff = [...(prev.staff || [])];
+                              staff[i] = { ...staff[i], photo: b64 };
+                              return { ...prev, staff };
+                            });
+                            setImageInputKey(p => p + 1);
+                            if (isPostPayment) triggerSave();
+                          }).catch(err => {
+                            console.error('Staff photo compress failed', err);
+                            setUploadError(`Couldn't process that photo. Try a smaller JPG or PNG.`);
+                          }).finally(() => { try { URL.revokeObjectURL(previewUrl); } catch {} });
+                        }} />
+                      </>
+                    ) : (
+                      <ImagePlaceholder
+                        heightClass="h-full"
+                        onImageUpload={(e) => {
+                          const file = e.target.files?.[0]; if (!file) return;
+                          const previewUrl = URL.createObjectURL(file);
+                          setSiteData(prev => {
+                            const staff = [...(prev.staff || [])];
+                            staff[i] = { ...staff[i], photo: previewUrl };
+                            return { ...prev, staff };
+                          });
+                          compressImage(file).then(b64 => {
+                            setSiteData(prev => {
+                              const staff = [...(prev.staff || [])];
+                              staff[i] = { ...staff[i], photo: b64 };
+                              return { ...prev, staff };
+                            });
+                            setImageInputKey(p => p + 1);
+                            if (isPostPayment) triggerSave();
+                          }).catch(err => {
+                            console.error('Staff photo compress failed', err);
+                            setUploadError(`Couldn't process that photo. Try a smaller JPG or PNG.`);
+                          }).finally(() => { try { URL.revokeObjectURL(previewUrl); } catch {} });
+                        }}
+                      />
+                    )}
+                  </div>
+                  <h4 className="font-montserrat font-black text-white text-sm md:text-base tracking-[1px] uppercase">
+                    <EditableText
+                      text={s.name || ''}
+                      onSave={(val) => {
+                        setSiteData(prev => {
+                          const staff = [...(prev.staff || [])];
+                          staff[i] = { ...staff[i], name: val };
+                          return { ...prev, staff };
+                        });
+                        if (isPostPayment) triggerSave();
+                      }}
+                    />
+                  </h4>
+                  <p className="text-[#f4a100] text-[10px] md:text-[11px] font-bold tracking-[2px] uppercase mt-1">
+                    <EditableText
+                      text={s.role || 'Barber'}
+                      onSave={(val) => {
+                        setSiteData(prev => {
+                          const staff = [...(prev.staff || [])];
+                          staff[i] = { ...staff[i], role: val };
+                          return { ...prev, staff };
+                        });
+                        if (isPostPayment) triggerSave();
+                      }}
+                    />
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Hours — Mon-Sun rows. Editable times. Click a day to flip its
+          Closed flag. Skipped when no hours data. */}
+      {siteData.hours && siteData.hours.length > 0 && (
+        <section className="py-16 md:py-24 bg-[#0d0d0d] px-6 border-y border-white/5">
+          <div className="container mx-auto max-w-2xl">
+            <div className="text-center mb-8 md:mb-12">
+              <h3 className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">Hours</h3>
+              <h2 className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">When We're Open</h2>
+            </div>
+            <div className="bg-[#1a1a1a] border border-white/5 divide-y divide-white/5">
+              {siteData.hours.map((h, i) => (
+                <div key={h.day} className="flex items-center justify-between px-5 md:px-8 py-3.5 md:py-4">
+                  <span className="text-white text-sm md:text-base font-bold uppercase tracking-[2px]">{h.day}</span>
+                  {h.closed ? (
+                    <button
+                      onClick={() => {
+                        setSiteData(prev => {
+                          const hours = [...(prev.hours || [])];
+                          hours[i] = { ...hours[i], closed: false, open: hours[i].open || '09:00', close: hours[i].close || '19:00' };
+                          return { ...prev, hours };
+                        });
+                        if (isPostPayment) triggerSave();
+                      }}
+                      className="text-[#f4a100]/60 text-sm md:text-base font-bold tracking-[1px] hover:text-[#f4a100] uppercase"
+                    >
+                      Closed (tap to open)
+                    </button>
+                  ) : (
+                    <span className="text-[#f4a100] text-sm md:text-base font-bold tracking-[1px]">
+                      <EditableText
+                        text={h.open}
+                        onSave={(val) => {
+                          setSiteData(prev => {
+                            const hours = [...(prev.hours || [])];
+                            hours[i] = { ...hours[i], open: val };
+                            return { ...prev, hours };
+                          });
+                          if (isPostPayment) triggerSave();
+                        }}
+                      />
+                      {' – '}
+                      <EditableText
+                        text={h.close}
+                        onSave={(val) => {
+                          setSiteData(prev => {
+                            const hours = [...(prev.hours || [])];
+                            hours[i] = { ...hours[i], close: val };
+                            return { ...prev, hours };
+                          });
+                          if (isPostPayment) triggerSave();
+                        }}
+                      />
+                    </span>
+                  )}
                 </div>
               ))}
             </div>

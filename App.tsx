@@ -316,6 +316,10 @@ const App: React.FC = () => {
           gallery: siteData.gallery.map((_: string, i: number) =>
             imageUrlMap[`gallery${i}`] ? 'has-image' : ''
           ),
+          staff: (siteData.staff || []).map((s, i) => ({
+            ...s,
+            photo: imageUrlMap[`staff${i}`] ? 'has-image' : '',
+          })),
         };
 
         const html = generateHTMLForTemplate(restoredSiteData);
@@ -408,6 +412,13 @@ const App: React.FC = () => {
           craftImages: (siteData.craftImages || []).map((_: string, i: number) =>
             imageUrlMap[`craft${i}`] || ''
           ),
+          // Staff: restore real photo URLs from imageUrlMap (uploaded
+          // ones) or carry over the existing URL (hotlinked Booksy CDN).
+          // Without this, dashboard re-open would show <img src="uploaded">.
+          staff: (siteData.staff || []).map((s, i) => ({
+            ...s,
+            photo: imageUrlMap[`staff${i}`] || s.photo || '',
+          })),
         };
 
         // Reuse the existing draft's UUID so saveSite overwrites that

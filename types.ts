@@ -18,6 +18,14 @@ export interface ServiceItem {
   description: string;
   icon: 'scissors' | 'razor' | 'mustache' | 'face' | 'sparkles';
   imageUrl: string;
+  // Optional richer fields from Booksy scrape — duration ("30 min"),
+  // category grouping ("Haircuts", "Beards"), and price as a separate
+  // field so renderers can show it in a dedicated column instead of
+  // shoving it into subtitle. All optional so manual-form sites and
+  // older saved sites still work.
+  duration?: string;
+  category?: string;
+  price?: string;
 }
 
 export interface WebsiteData {
@@ -55,6 +63,20 @@ export interface WebsiteData {
   // the preview. Falls back to defaults when omitted (older saved
   // sites predate this field).
   featureCards?: { title: string; sub: string }[];
+  // Optional shop bio — typically pulled from Booksy `description`.
+  // Renderer shows it as a quote-styled paragraph in the About section
+  // when present; older saved sites without it render exactly as before.
+  bio?: string;
+  // Optional aggregate rating header — "4.9 ★ from 1,247 reviews".
+  // Renders above the Reviews section when set.
+  aggregateRating?: { rating: number; count: number };
+  // Optional Mon-Sun hours. When present, renderer shows an Hours
+  // section. `closed: true` rows render as "Closed" instead of times.
+  hours?: { day: string; open: string; close: string; closed?: boolean }[];
+  // Optional staff cards — name, role, photo. Renderer shows a
+  // "Meet the Team" section when at least one staff entry exists.
+  // Photo is editable in the preview (replace-image overlay).
+  staff?: { name: string; role?: string; photo?: string }[];
   contact: {
     address: string;
     email: string;

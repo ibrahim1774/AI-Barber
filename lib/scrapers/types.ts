@@ -5,7 +5,26 @@ export interface ScrapedShop {
   area: string;
   address: string;
   phone?: string;
-  services: { title: string; price?: string }[];
+  // Shop bio / description — pulled from JSON-LD `description` on Booksy
+  // and a few platforms. Empty when the platform doesn't ship it.
+  description?: string;
+  // Mon-Sun hours, in the order Booksy/JSON-LD lists them. Empty array
+  // when the platform doesn't expose hours.
+  hours?: { day: string; open: string; close: string; closed?: boolean }[];
+  // "4.9 from 1,247 reviews" — JSON-LD aggregateRating.
+  aggregateRating?: { rating: number; count: number };
+  // Optional staff list. Booksy has barber profiles in the page; other
+  // platforms usually don't. Always optional.
+  staff?: { name: string; role?: string; photo?: string }[];
+  // Services with the richer fields Booksy exposes. `category` lets the
+  // renderer group "Haircuts / Beards / Color" sections.
+  services: {
+    title: string;
+    price?: string;
+    duration?: string;
+    description?: string;
+    category?: string;
+  }[];
   photos: string[];
   reviews: { author: string; rating: number; comment: string; date?: string }[];
 }
