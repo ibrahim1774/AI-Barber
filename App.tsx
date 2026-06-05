@@ -156,14 +156,18 @@ const App: React.FC = () => {
     const stripeRedirect = params.get('redirect') || '';
     const domainPayment = params.get('domain_payment');
 
-    // Custom-design plans (custom, custom25) bounce through the app
-    // ONLY so the Purchase pixels can fire — then we forward to the
-    // Google Form. There's no site to deploy in this flow.
-    const isCustomPlan = stripePlan === 'custom' || stripePlan === 'custom25';
+    // Custom-design plans bounce through the app ONLY so the Purchase
+    // pixels can fire — then we forward to the Google Form. There's no
+    // site to deploy in this flow.
+    const isCustomPlan =
+      stripePlan === 'custom' ||
+      stripePlan === 'custom25' ||
+      stripePlan === 'custom15' ||
+      stripePlan === 'custom-booksy';
     if (stripeSessionId && isCustomPlan) {
       window.history.replaceState({}, '', window.location.pathname);
       setAppReady(true);
-      fireCustomDesignPixels(stripeSessionId);
+      fireCustomDesignPixels(stripeSessionId, stripePlan);
       // Whitelist redirect target so an attacker can't open-redirect us.
       const allowed = /^https:\/\/docs\.google\.com\/forms\//i.test(stripeRedirect);
       const target = allowed ? stripeRedirect : 'https://docs.google.com/forms/d/e/1FAIpQLSdS2iaBt6ee0AGWv7pQPSLHoicovQuTOKLFktuiEG4tobBIPw/viewform';
@@ -201,12 +205,18 @@ const App: React.FC = () => {
     setAppReady(true);
   }, [authLoading, isAuthenticated, isRestoring]);
 
-  // Fires Purchase events for the custom-design plan ($11/mo). No
-  // verify-stripe-session call here — that endpoint is wired for the
-  // deploy flow only. Stripe's session id is the dedup event_id so
+  // Fires Purchase events for the custom-design plan. Value mirrors
+  // the Stripe price for the slug: custom15=$15, custom-booksy=$19,
+  // custom/custom25=$11. Stripe's session id is the dedup event_id so
   // browser + (any future) server-side CAPI call line up in Meta/TikTok.
-  const fireCustomDesignPixels = (sessionId: string) => {
-    const value = 11;
+  const fireCustomDesignPixels = (sessionId: string, plan: string) => {
+    const PLAN_VALUES: Record<string, number> = {
+      custom15: 15,
+      'custom-booksy': 19,
+      custom: 11,
+      custom25: 11,
+    };
+    const value = PLAN_VALUES[plan] ?? 11;
     const currency = 'USD';
     try {
       window.fbq?.('track', 'Purchase', { value, currency }, { eventID: sessionId });

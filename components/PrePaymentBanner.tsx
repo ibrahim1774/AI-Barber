@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, ArrowRight, Rocket, Loader2, Sparkles, Check, ChevronLeft, ChevronRight } from 'lucide-react';
-import { isFiveDealPath, isSevenDealPath } from '../lib/dealMode.ts';
+import { isFiveDealPath, isSevenDealPath, isBooksyPath } from '../lib/dealMode.ts';
 
 // Sample imagery for the custom-design wizard. Swap to local files in
 // /public/ later if desired — keep the same array length.
@@ -15,7 +15,10 @@ const WIZARD_IMAGES = {
 };
 
 interface PrePaymentBannerProps {
-  onDeploy: (plan: 'monthly' | 'yearly' | 'five' | 'seven') => void;
+  // 'monthly-booksy' = $10/mo via /booksy import flow; other monthly
+  // entry paths use 'monthly' ($9/mo). Server-side routes both into
+  // the same hosting product, different Stripe unit_amount.
+  onDeploy: (plan: 'monthly' | 'monthly-booksy' | 'yearly' | 'five' | 'seven') => void;
   isDeploying: boolean;
   industry?: string;
 }
@@ -25,6 +28,10 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
   // yearly toggle. Computed once on mount; URL doesn't change in-session.
   const fiveDeal = React.useMemo(() => isFiveDealPath(), []);
   const sevenDeal = React.useMemo(() => isSevenDealPath(), []);
+  // /booksy import flow runs at premium pricing ($10/mo + $19 custom)
+  // because the AI-fill-from-link service is more valuable than the
+  // manual lead-quiz funnel. dealMode (5/7) still wins when both apply.
+  const booksyMode = React.useMemo(() => isBooksyPath(), []);
   // Either deal-mode collapses the pricing UI the same way; only the
   // numbers shown and the plan string sent to Stripe differ.
   const dealMode = fiveDeal || sevenDeal;
@@ -32,17 +39,29 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
   const dealPriceMo = sevenDeal ? '$7/mo' : '$5/mo';
   const dealPriceMonth = sevenDeal ? '$7/month' : '$5/month';
 
+  // Standard monthly price varies by entry path:
+  //   /5 / /7      → handled by dealMode branches
+  //   /booksy      → $10/mo (plan 'monthly-booksy')
+  //   everywhere   → $9/mo  (plan 'monthly')
+  const stdMonthlyPriceMo = booksyMode ? '$10/mo' : '$9/mo';
+  const stdMonthlyPriceMonth = booksyMode ? '$10/month' : '$9/month';
+  const stdMonthlyPlan: 'monthly' | 'monthly-booksy' = booksyMode ? 'monthly-booksy' : 'monthly';
+
   // Custom-design upsell. The /5 launch-special drops the custom
-  // price to $15/mo to keep the relative gap small; every other
-  // entry path stays at $19/mo. Plan slug routes server-side:
-  //   custom15  → $15/mo (only fiveDeal)
-  //   custom    → $11/mo (sevenDeal)
-  //   custom25  → $11/mo (standard)
-  const customPlan: 'custom' | 'custom25' | 'custom15' = fiveDeal
+  // price to $15/mo to keep the relative gap small; /booksy stays at
+  // the legacy $19/mo; everywhere else dropped to $11/mo. Plan slug
+  // routes server-side:
+  //   custom15      → $15/mo (only fiveDeal)
+  //   custom-booksy → $19/mo (/booksy)
+  //   custom        → $11/mo (sevenDeal)
+  //   custom25      → $11/mo (standard)
+  const customPlan: 'custom' | 'custom25' | 'custom15' | 'custom-booksy' = fiveDeal
     ? 'custom15'
-    : (dealMode ? 'custom' : 'custom25');
-  const customPriceLabel = fiveDeal ? '$15/mo' : '$11/mo';
-  const customPriceFull = fiveDeal ? '$15/month' : '$11/month';
+    : booksyMode
+      ? 'custom-booksy'
+      : (dealMode ? 'custom' : 'custom25');
+  const customPriceLabel = fiveDeal ? '$15/mo' : booksyMode ? '$19/mo' : '$11/mo';
+  const customPriceFull = fiveDeal ? '$15/month' : booksyMode ? '$19/month' : '$11/month';
 
   const [isDismissed, setIsDismissed] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
@@ -75,7 +94,10 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
         typeof crypto !== 'undefined' && (crypto as any).randomUUID
           ? (crypto as any).randomUUID()
           : `co_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-      const checkoutValue = fiveDeal ? 15 : 19;
+      // Custom-design InitiateCheckout amount mirrors the price label
+      // shown above the button — keeps Meta/TikTok ROAS math aligned
+      // with what Stripe actually charges.
+      const checkoutValue = fiveDeal ? 15 : booksyMode ? 19 : 11;
       const checkoutCurrency = 'USD';
       (window as any).fbq?.(
         'track',
@@ -229,7 +251,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
             </button>
 
             <button
-              onClick={() => onDeploy(dealPlan ?? pricingPlan)}
+              onClick={() => onDeploy(dealPlan ?? (pricingPlan === 'monthly' ? stdMonthlyPlan : pricingPlan))}
               disabled={isDeploying}
               className="flex-1 py-2.5 text-[10px] font-bold flex items-center justify-center gap-1.5 hover:opacity-90 active:scale-[0.98] transition-all uppercase tracking-[0.24em] disabled:opacity-50"
               style={{
@@ -243,7 +265,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
               ) : (
                 <Rocket size={12} />
               )}
-              Publish <span className="font-extrabold">{dealMode ? dealPriceMo : (pricingPlan === 'yearly' ? '$72/year' : '$9/month')}</span>
+              Publish <span className="font-extrabold">{dealMode ? dealPriceMo : (pricingPlan === 'yearly' ? '$72/year' : stdMonthlyPriceMonth)}</span>
             </button>
           </div>
 
@@ -302,10 +324,10 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
         const cream = '#ece6da';
         const headlinePrice = dealMode
           ? dealPriceMo
-          : pricingPlan === 'yearly' ? '$72/yr' : '$9/mo';
+          : pricingPlan === 'yearly' ? '$72/yr' : stdMonthlyPriceMo;
         const ctaPrice = dealMode
           ? dealPriceMo
-          : pricingPlan === 'yearly' ? '$72/year' : '$9/month';
+          : pricingPlan === 'yearly' ? '$72/year' : stdMonthlyPriceMonth;
 
         const rows: { numeral: string; title: string }[] = [
           { numeral: 'I', title: 'Professional & Modern Site' },
@@ -372,7 +394,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
                     borderBottom: pricingPlan === 'monthly' ? `1px solid ${gold}` : '1px solid transparent',
                   }}
                 >
-                  Monthly · $9/mo
+                  Monthly · {stdMonthlyPriceMo}
                 </button>
                 <button
                   onClick={() => setPricingPlan('yearly')}
@@ -446,7 +468,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
               </button>
 
               <button
-                onClick={() => { setShowHowItWorks(false); onDeploy(dealPlan ?? pricingPlan); }}
+                onClick={() => { setShowHowItWorks(false); onDeploy(dealPlan ?? (pricingPlan === 'monthly' ? stdMonthlyPlan : pricingPlan)); }}
                 disabled={isDeploying}
                 className="flex-1 py-3.5 text-[11px] font-bold flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all uppercase tracking-[0.24em] disabled:opacity-50"
                 style={{
