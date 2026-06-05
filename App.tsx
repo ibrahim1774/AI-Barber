@@ -556,11 +556,13 @@ const App: React.FC = () => {
       setActiveSite(draftSite);
       persistView('editor', draftSite.id);
       sessionStorage.removeItem('pendingFormInputs');
-      // Fire the post-generation intro modal once if the visitor came
-      // through the /new quiz funnel. Ref resets to false right after.
+      // Post-generation intro modal disabled per product decision —
+      // visitors land straight in the editable preview without a popup
+      // explaining the editor. Ref still flips so the funnel state
+      // resets cleanly. Modal JSX kept in place (~150 lines below) so
+      // we can re-enable cheaply if the conversion data argues for it.
       if (cameFromNewRef.current) {
         cameFromNewRef.current = false;
-        setShowEditorIntro(true);
       }
     } catch (error: any) {
       if (document.hidden && sessionStorage.getItem('pendingFormInputs')) {
