@@ -97,24 +97,50 @@ export const booksyAdapter: PlatformAdapter = {
   async scrape(rawUrl, opts) {
     let url = rawUrl;
 
-    // Vanity subdomain rescue.
-    const vanity = extractVanitySubdomainSlug(url);
-    if (vanity) {
-      const canonical = await findCanonicalBooksyUrl(vanity).catch(() => null);
-      if (!canonical) {
-        throw new ScrapeError(`Couldn't find a Booksy shop matching "${vanity}". Open your shop on Booksy in a browser and copy the full URL from the address bar.`);
-      }
-      url = canonical;
+    // Fetch the URL the user gave us FIRST. Vanity URLs like
+    // `ivothebarber1.booksy.com/a/` and shareable branch.io referral
+    // links redirect server-side to a real shop page that ships
+    // valid JSON-LD — we don't need the sitemap rescue when the
+    // direct fetch already works. Sitemap rescue is only used for
+    // vanity URLs that redirect to the bare Booksy homepage (the
+    // original failure mode it was built for).
+    let html = '';
+    let finalUrl = '';
+    try {
+      const fetched = await fetchHtml(url);
+      html = fetched.html;
+      finalUrl = fetched.finalUrl;
+    } catch (e) {
+      console.warn('[Booksy] direct fetch failed, will try sitemap rescue:', e);
     }
 
-    const { html, finalUrl } = await fetchHtml(url);
-    const ld = findBusinessLd(html);
+    let ld = html ? findBusinessLd(html) : null;
+
+    // Direct fetch landed on the homepage (or otherwise has no shop
+    // schema) AND the URL is a vanity subdomain → try the sitemap.
+    if (!ld?.name) {
+      const vanity = extractVanitySubdomainSlug(url);
+      if (vanity) {
+        const canonical = await findCanonicalBooksyUrl(vanity).catch(() => null);
+        if (canonical) {
+          try {
+            const fetched = await fetchHtml(canonical);
+            html = fetched.html;
+            finalUrl = fetched.finalUrl;
+            ld = findBusinessLd(html);
+            url = canonical;
+          } catch (e) {
+            console.warn('[Booksy] sitemap-resolved fetch failed:', e);
+          }
+        }
+      }
+    }
 
     if (!ld?.name && isHomepage(finalUrl)) {
       throw new ScrapeError('That link redirected to the Booksy homepage. Copy the full URL from your shop page on Booksy — it should look like booksy.com/en-us/12345_your-shop-name.');
     }
     if (!ld?.name) {
-      throw new ScrapeError('Could not pull shop data from that Booksy URL.');
+      throw new ScrapeError('Could not pull shop data from that Booksy URL. Open your shop on Booksy in a browser, copy the URL from the address bar after the page fully loads, and try again.');
     }
 
     const base = ldToScrapedShop(ld);
