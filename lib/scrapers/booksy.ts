@@ -132,6 +132,33 @@ export const booksyAdapter: PlatformAdapter = {
       reviews: base.reviews || [],
     };
 
+    // ── Raw-HTML photo scrape ──────────────────────────────────────────
+    // Booksy JSON-LD only ships ONE photo (the cover). The actual gallery
+    // — what the visitor sees on the Booksy shop page — lives in
+    // `service_photos/` URLs embedded throughout the SSR'd HTML (Next.js
+    // initial state, og:image variants, lazy-load attrs, etc.). Regex-
+    // scan the whole HTML for d2zdpiztbgorvt.cloudfront.net URLs so the
+    // gallery populates even when APIFY_TOKEN isn't configured. Filter
+    // out logos and user/review avatars; prefer service_photos first.
+    const cdnRe = /https:\/\/d2zdpiztbgorvt\.cloudfront\.net\/[^\s"'<>?]+\.(?:jpe?g|png|webp)/gi;
+    const rawUrls = Array.from(new Set(html.match(cdnRe) || []))
+      .filter((u) => !/\/(?:logo|users?|avatars?|icons?)\//i.test(u));
+    // Ordering: service_photos first (the real gallery), then biz_photo
+    // (cover), then everything else. Keeps the hero/about/gallery
+    // selection paths deterministic.
+    const scored = rawUrls
+      .map((u) => ({
+        u,
+        pri: /\/service_photos\//i.test(u) ? 0 : /\/biz_photo\//i.test(u) ? 1 : 2,
+      }))
+      .sort((a, b) => a.pri - b.pri);
+    const htmlPhotos = scored.map((s) => s.u);
+    if (htmlPhotos.length) {
+      // Merge with whatever JSON-LD gave us (usually the cover). dedupe
+      // happens in finalize().
+      shop.photos = [...shop.photos, ...htmlPhotos];
+    }
+
     // Apify enrichment for the bits JSON-LD doesn't expose on Booksy
     // (full services list with duration/category, staff profiles, full
     // gallery up to 25, more reviews).
