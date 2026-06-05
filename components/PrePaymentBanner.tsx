@@ -36,13 +36,13 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
   // price to $15/mo to keep the relative gap small; every other
   // entry path stays at $19/mo. Plan slug routes server-side:
   //   custom15  → $15/mo (only fiveDeal)
-  //   custom    → $19/mo (sevenDeal)
-  //   custom25  → $19/mo (standard)
+  //   custom    → $11/mo (sevenDeal)
+  //   custom25  → $11/mo (standard)
   const customPlan: 'custom' | 'custom25' | 'custom15' = fiveDeal
     ? 'custom15'
     : (dealMode ? 'custom' : 'custom25');
-  const customPriceLabel = fiveDeal ? '$15/mo' : '$19/mo';
-  const customPriceFull = fiveDeal ? '$15/month' : '$19/month';
+  const customPriceLabel = fiveDeal ? '$15/mo' : '$11/mo';
+  const customPriceFull = fiveDeal ? '$15/month' : '$11/month';
 
   const [isDismissed, setIsDismissed] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
@@ -56,7 +56,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
   // step-4 button doesn't stay stuck in its loading state on reopen.
   const customCheckoutAbortRef = React.useRef<AbortController | null>(null);
 
-  // Kicks off the custom-design Stripe checkout. Flat $19/mo —
+  // Kicks off the custom-design Stripe checkout. Flat $11/mo —
   // determined by the page the visitor is on. After success the backend
   // routes the customer to the Google Form to capture preferences.
   const handleCustomCheckout = async () => {
@@ -185,8 +185,8 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
               CTA persistent so the visitor can't accidentally hide it. */}
 
           {/* Price headline removed — the Publish CTA below still shows
-              the live price ("Publish $10/mo"), so the standalone
-              "$10/mo — hosting/maintenance only" line was redundant. */}
+              the live price ("Publish $9/mo"), so the standalone
+              "$9/mo — hosting/maintenance only" line was redundant. */}
 
           {/* Monthly / Yearly toggle — quieter, smaller. Hidden in /5 + /7. */}
           {!dealMode && (
@@ -243,7 +243,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
               ) : (
                 <Rocket size={12} />
               )}
-              Publish <span className="font-extrabold">{dealMode ? dealPriceMo : (pricingPlan === 'yearly' ? '$72/year' : '$10/month')}</span>
+              Publish <span className="font-extrabold">{dealMode ? dealPriceMo : (pricingPlan === 'yearly' ? '$72/year' : '$9/month')}</span>
             </button>
           </div>
 
@@ -302,10 +302,10 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
         const cream = '#ece6da';
         const headlinePrice = dealMode
           ? dealPriceMo
-          : pricingPlan === 'yearly' ? '$72/yr' : '$10/mo';
+          : pricingPlan === 'yearly' ? '$72/yr' : '$9/mo';
         const ctaPrice = dealMode
           ? dealPriceMo
-          : pricingPlan === 'yearly' ? '$72/year' : '$10/month';
+          : pricingPlan === 'yearly' ? '$72/year' : '$9/month';
 
         const rows: { numeral: string; title: string }[] = [
           { numeral: 'I', title: 'Professional & Modern Site' },
@@ -372,7 +372,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
                     borderBottom: pricingPlan === 'monthly' ? `1px solid ${gold}` : '1px solid transparent',
                   }}
                 >
-                  Monthly · $10/mo
+                  Monthly · $9/mo
                 </button>
                 <button
                   onClick={() => setPricingPlan('yearly')}

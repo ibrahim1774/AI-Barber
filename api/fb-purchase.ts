@@ -53,7 +53,7 @@ export default async function handler(req: any, res: any) {
           user_data: userData,
           custom_data: {
             currency: currency || 'USD',
-            value: value || 10.0,
+            value: value || 9.0,
           },
         },
       ],

@@ -43,7 +43,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const properties: Record<string, unknown> = {};
   if (event === 'Purchase' || event === 'InitiateCheckout') {
     properties.currency = (currency || 'USD').toUpperCase();
-    properties.value = value ?? 10.0;
+    properties.value = value ?? 9.0;
   }
 
   const payload = {

@@ -550,12 +550,12 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
             ? (crypto as any).randomUUID()
             : `co_${Date.now()}_${Math.random().toString(36).slice(2)}`;
         const PLAN_VALUES: Record<string, number> = {
-          monthly: 10,
+          monthly: 9,
           yearly: 72,
           five: 5,
           seven: 7,
         };
-        const checkoutValue = PLAN_VALUES[plan] ?? 10;
+        const checkoutValue = PLAN_VALUES[plan] ?? 9;
         const checkoutCurrency = 'USD';
         (window as any).fbq?.(
           'track',

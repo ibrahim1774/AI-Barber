@@ -201,12 +201,12 @@ const App: React.FC = () => {
     setAppReady(true);
   }, [authLoading, isAuthenticated, isRestoring]);
 
-  // Fires Purchase events for the custom-design plan ($19/mo). No
+  // Fires Purchase events for the custom-design plan ($11/mo). No
   // verify-stripe-session call here — that endpoint is wired for the
   // deploy flow only. Stripe's session id is the dedup event_id so
   // browser + (any future) server-side CAPI call line up in Meta/TikTok.
   const fireCustomDesignPixels = (sessionId: string) => {
-    const value = 19;
+    const value = 11;
     const currency = 'USD';
     try {
       window.fbq?.('track', 'Purchase', { value, currency }, { eventID: sessionId });
