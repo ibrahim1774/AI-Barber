@@ -56,22 +56,22 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
 
   // Gallery — slot 0 doubles as the about-section seed and slot 1 as
   // the hero/about fallback, so the "Our Work" portfolio renders
-  // slots [2..21] (up to 20 photos). Renders only the filled slots so
+  // slots [2..7] (6 photos max). Renders only the filled slots so
   // partial galleries don't leave empty tiles.
-  const GALLERY_PORTFOLIO_INDICES = Array.from({ length: 20 }, (_, i) => i + 2);
+  const GALLERY_PORTFOLIO_INDICES = [2, 3, 4, 5, 6, 7];
   const galleryImages = GALLERY_PORTFOLIO_INDICES
     .map((idx) => ({ url: siteData.gallery[idx], index: idx }))
     .filter((item) => item.url);
 
   const gallerySection = galleryImages.length > 0
     ? `<section class="py-16 md:py-32 bg-[#0d0d0d] px-6 border-y border-white/5">
-    <div class="container mx-auto max-w-6xl">
+    <div class="container mx-auto max-w-5xl">
       <div class="text-center mb-10 md:mb-16">
         <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">Gallery</h3>
         <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">Our Work</h2>
       </div>
-      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
-        ${galleryImages.map((g) => `<div class="bg-[#1a1a1a] p-1 border border-white/5 group relative overflow-hidden"><img src="{{gallery${g.index}}}" alt="Gallery Image ${g.index - 1}" class="w-full h-44 sm:h-52 md:h-56 lg:h-64 object-cover transition-transform duration-700 group-hover:scale-105"></div>`).join('')}
+      <div class="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
+        ${galleryImages.map((g) => `<div class="bg-[#1a1a1a] p-1 border border-white/5 group relative overflow-hidden"><img src="{{gallery${g.index}}}" alt="Gallery Image ${g.index - 1}" class="w-full h-48 sm:h-56 md:h-64 object-cover transition-transform duration-700 group-hover:scale-105"></div>`).join('')}
       </div>
     </div>
   </section>`
@@ -1157,28 +1157,26 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         </div>
       </section>
 
-      {/* Gallery Section — owner's portfolio ("Our Work"). 20 slots
-          [2..21] so a fully-scraped Booksy/Fresha shop fills the wall.
-          Each slot has a Replace Photo overlay when filled, or an
-          "Add Your Own Image" placeholder when empty. Section header
-          shows even if all slots are empty so the upload affordance is
-          discoverable on manual-form sites. */}
+      {/* Gallery Section — owner's portfolio ("Our Work"). 6 slots
+          [2..7] populated from the scraped booking-link photos (Booksy,
+          Fresha, etc.) or left empty for the owner to upload via the
+          Replace Photo overlay on each tile. */}
       <section className="py-16 md:py-32 bg-[#0d0d0d] px-6 border-y border-white/5">
-        <div className="container mx-auto max-w-6xl">
+        <div className="container mx-auto max-w-5xl">
           <div className="text-center mb-10 md:mb-16">
             <h3 className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">Gallery</h3>
             <h2 className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">Our Work</h2>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
-            {Array.from({ length: 20 }, (_, i) => i + 2).map((idx) => (
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
+            {[2, 3, 4, 5, 6, 7].map((idx) => (
               <div key={idx} className="bg-[#1a1a1a] p-1 border border-white/5 relative group">
                 {siteData.gallery[idx] ? (
                   <>
-                    <img src={siteData.gallery[idx]} alt={`Gallery Image ${idx - 1}`} className="w-full h-44 sm:h-52 md:h-56 lg:h-64 object-cover" />
+                    <img src={siteData.gallery[idx]} alt={`Gallery Image ${idx - 1}`} className="w-full h-48 sm:h-56 md:h-64 object-cover" />
                     <ImageOverlay onImageUpload={(e) => handleImageChange(`gallery.${idx}`, e)} />
                   </>
                 ) : (
-                  <ImagePlaceholder onImageUpload={(e) => handleImageChange(`gallery.${idx}`, e)} heightClass="h-44 sm:h-52 md:h-56 lg:h-64" />
+                  <ImagePlaceholder onImageUpload={(e) => handleImageChange(`gallery.${idx}`, e)} heightClass="h-48 sm:h-56 md:h-64" />
                 )}
               </div>
             ))}
