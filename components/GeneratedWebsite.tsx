@@ -1515,6 +1515,38 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         </div>
       </section>
 
+      {/* Custom-design footer CTA — second touchpoint to the same
+          wizard the bottom banner opens. Glow + pop animation matches
+          the Launch My Site button. */}
+      <section className="py-10 md:py-16 bg-[#0d0d0d] border-t border-white/5 px-6">
+        <style>{`
+          @keyframes aibFooterPop { 0%,100% { transform: scale(1); } 50% { transform: scale(1.025); } }
+          @keyframes aibFooterGlow {
+            0%,100% { box-shadow: 0 0 0 0 rgba(244,161,0,0), 0 8px 24px rgba(244,161,0,0.30); }
+            50%     { box-shadow: 0 0 28px 6px rgba(244,161,0,0.55), 0 10px 32px rgba(244,161,0,0.55); }
+          }
+          .aib-footer-cta { animation: aibFooterPop 2.6s ease-in-out infinite, aibFooterGlow 2.6s ease-in-out infinite; }
+          .aib-footer-cta:hover { animation-play-state: paused; transform: scale(1.035); }
+        `}</style>
+        <div className="container mx-auto max-w-3xl text-center">
+          <p className="text-[10px] md:text-[11px] font-bold uppercase tracking-[0.32em] text-[#f4a100] mb-3">
+            Want something different?
+          </p>
+          <h3 className="font-montserrat text-2xl md:text-4xl font-black text-white tracking-[1px] uppercase mb-6 md:mb-8">
+            Not loving this design?
+          </h3>
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new Event('open-custom-design-wizard'))}
+            className="aib-footer-cta inline-flex items-center gap-2 md:gap-3 px-6 py-3.5 md:px-9 md:py-4 text-[11px] md:text-[13px] font-black uppercase tracking-[0.22em] bg-[#f4a100] text-[#0a0a0a] hover:opacity-95 active:scale-[0.98] transition-transform"
+            style={{ fontFamily: '"DM Sans", sans-serif' }}
+          >
+            <CameraIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
+            <span>Get My Custom Website Design</span>
+          </button>
+        </div>
+      </section>
+
       {/* Footer */}
       <footer className="py-12 md:py-20 bg-[#0a0a0a] border-t border-white/5 text-center">
         <div className="container mx-auto px-6">

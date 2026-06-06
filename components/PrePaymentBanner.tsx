@@ -78,6 +78,15 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
   // step-4 button doesn't stay stuck in its loading state on reopen.
   const customCheckoutAbortRef = React.useRef<AbortController | null>(null);
 
+  // Footer CTAs in the generated-site renderers dispatch this event so
+  // the existing wizard opens without prop-drilling. Listen window-wide
+  // so it works from any descendant.
+  React.useEffect(() => {
+    const open = () => { setWizardStep(0); setShowCustomWizard(true); };
+    window.addEventListener('open-custom-design-wizard', open);
+    return () => window.removeEventListener('open-custom-design-wizard', open);
+  }, []);
+
   // Kicks off the custom-design Stripe checkout. Flat $11/mo —
   // determined by the page the visitor is on. After success the backend
   // routes the customer to the Google Form to capture preferences.
@@ -253,10 +262,24 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
               How It Works
             </button>
 
+            <style>{`
+              @keyframes aibCtaPop {
+                0%, 100% { transform: scale(1); }
+                50% { transform: scale(1.035); }
+              }
+              @keyframes aibCtaGlow {
+                0%, 100% { box-shadow: 0 0 0 0 rgba(232,192,116,0), 0 4px 14px rgba(232,192,116,0.45); }
+                50%      { box-shadow: 0 0 18px 4px rgba(232,192,116,0.65), 0 6px 22px rgba(232,192,116,0.75); }
+              }
+              .aib-cta-launch {
+                animation: aibCtaPop 2.4s ease-in-out infinite, aibCtaGlow 2.4s ease-in-out infinite;
+              }
+              .aib-cta-launch:hover { animation-play-state: paused; transform: scale(1.04); }
+            `}</style>
             <button
               onClick={() => onDeploy(dealPlan ?? (pricingPlan === 'monthly' ? stdMonthlyPlan : pricingPlan))}
               disabled={isDeploying}
-              className="flex-1 py-2.5 text-[10px] font-bold flex items-center justify-center gap-1.5 hover:opacity-90 active:scale-[0.98] transition-all uppercase tracking-[0.24em] disabled:opacity-50"
+              className="aib-cta-launch flex-1 py-2.5 text-[10px] font-bold flex items-center justify-center gap-1.5 hover:opacity-95 active:scale-[0.98] transition-transform uppercase tracking-[0.24em] disabled:opacity-50"
               style={{
                 background: '#e8c074',
                 color: '#0a0a0a',
