@@ -99,29 +99,29 @@ const EUPHORIA_SCOPED_CSS = `
    header (BACK / banner) at the top of the hero. */
 .euphoria-root .eu-img-overlay {
   position: absolute;
-  bottom: 14px;
-  right: 14px;
+  bottom: 12px;
+  right: 12px;
   z-index: 5;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
+  gap: 5px;
+  padding: 6px 10px;
   border-radius: 999px;
   background: rgba(0,0,0,0.72);
   color: #fff;
   font-family: 'Inter', system-ui, sans-serif;
-  font-size: 10px;
+  font-size: 8px;
   font-weight: 700;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   cursor: pointer;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  box-shadow: 0 6px 18px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.12);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.32), 0 0 0 1px rgba(255,255,255,0.12);
   transition: background 150ms ease, transform 150ms ease;
 }
 .euphoria-root .eu-img-overlay:hover { background: rgba(0,0,0,0.88); transform: translateY(-1px); }
-.euphoria-root .eu-img-overlay svg { width: 14px; height: 14px; }
+.euphoria-root .eu-img-overlay svg { width: 11px; height: 11px; }
 .euphoria-root .eu-img-placeholder {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   width: 100%; height: 100%;

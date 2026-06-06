@@ -594,9 +594,9 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
   // matches the PrimeHub "The Craft" affordance.
   const ImageOverlay = ({ onImageUpload, className = "" }: { onImageUpload: (e: React.ChangeEvent<HTMLInputElement>) => void, className?: string }) => (
     <div className={`absolute inset-0 z-10 flex items-center justify-center bg-black/15 transition-colors group-hover:bg-black/35 ${className}`}>
-      <label className="cursor-pointer flex items-center gap-2 rounded-full bg-black/80 px-4 py-2.5 text-white shadow-xl backdrop-blur-sm">
-        <CameraIcon className="w-4 h-4" />
-        <span className="text-[11px] font-bold uppercase tracking-[0.18em]">Replace Photo</span>
+      <label className="cursor-pointer flex items-center gap-1.5 rounded-full bg-black/80 px-3 py-1.5 text-white shadow-lg backdrop-blur-sm">
+        <CameraIcon className="w-3 h-3" />
+        <span className="text-[9px] font-bold uppercase tracking-[0.16em]">Replace Photo</span>
         <input key={imageInputKey} type="file" className="hidden" accept="image/*" onChange={onImageUpload} />
       </label>
     </div>
@@ -1025,10 +1025,11 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         {/* Bottom-right corner Replace pill. Top-right is occupied by
             the fixed header (logo / phone / BACK), and the hero CTAs
             sit dead-center — so we anchor above the bottom feature
-            cards. z-30 keeps it clickable over every hero layer. */}
-        <label className="absolute bottom-28 right-3 md:bottom-44 md:right-6 z-30 cursor-pointer flex items-center gap-2 rounded-full bg-black/85 hover:bg-black px-3.5 py-2 text-white shadow-xl backdrop-blur-sm border border-white/15 transition-colors">
-          <CameraIcon className="w-3.5 h-3.5" />
-          <span className="text-[10px] font-bold uppercase tracking-[0.18em]">Replace Photo</span>
+            cards AND above the CTA stack (which extends down on
+            mobile when Book an Appointment wraps to a new row). */}
+        <label className="absolute bottom-36 right-2.5 md:bottom-52 md:right-5 z-30 cursor-pointer flex items-center gap-1.5 rounded-full bg-black/85 hover:bg-black px-2.5 py-1.5 text-white shadow-lg backdrop-blur-sm border border-white/15 transition-colors">
+          <CameraIcon className="w-3 h-3" />
+          <span className="text-[8px] font-bold uppercase tracking-[0.16em]">Replace Photo</span>
           <input key={imageInputKey} type="file" className="hidden" accept="image/*" onChange={(e) => handleImageChange('hero.imageUrl', e)} />
         </label>
 
