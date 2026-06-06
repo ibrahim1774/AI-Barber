@@ -63,8 +63,8 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
     : booksyMode
       ? 'custom-booksy'
       : (dealMode ? 'custom' : 'custom25');
-  const customPriceLabel = fiveDeal ? '$15/mo' : booksyMode ? '$19/mo' : '$11/mo';
-  const customPriceFull = fiveDeal ? '$15/month' : booksyMode ? '$19/month' : '$11/month';
+  const customPriceLabel = fiveDeal ? '$15/mo' : booksyMode ? '$11/mo' : '$11/mo';
+  const customPriceFull = fiveDeal ? '$15/month' : booksyMode ? '$11/month' : '$11/month';
 
   const [isDismissed, setIsDismissed] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
@@ -109,7 +109,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
       // Custom-design InitiateCheckout amount mirrors the price label
       // shown above the button — keeps Meta/TikTok ROAS math aligned
       // with what Stripe actually charges.
-      const checkoutValue = fiveDeal ? 15 : booksyMode ? 19 : 11;
+      const checkoutValue = fiveDeal ? 15 : booksyMode ? 11 : 11;
       const checkoutCurrency = 'USD';
       (window as any).fbq?.(
         'track',

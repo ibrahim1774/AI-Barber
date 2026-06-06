@@ -212,7 +212,7 @@ const App: React.FC = () => {
   const fireCustomDesignPixels = (sessionId: string, plan: string) => {
     const PLAN_VALUES: Record<string, number> = {
       custom15: 15,
-      'custom-booksy': 19,
+      'custom-booksy': 11,
       custom: 11,
       custom25: 11,
     };

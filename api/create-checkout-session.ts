@@ -67,9 +67,9 @@ export default async function handler(req: any, res: any) {
       interval = 'month';
       productName = 'Prime Barber AI - Custom Website Design ($15/mo)';
     } else if (isCustomBooksy) {
-      unitAmount = '1900';
+      unitAmount = '1100';
       interval = 'month';
-      productName = 'Prime Barber AI - Custom Website Design ($19/mo)';
+      productName = 'Prime Barber AI - Custom Website Design ($11/mo)';
     } else if (isCustom || isCustom25) {
       unitAmount = '1100';
       interval = 'month';
