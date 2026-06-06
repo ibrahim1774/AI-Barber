@@ -93,16 +93,35 @@ const EUPHORIA_SCOPED_CSS = `
   background: var(--eu-bg-3);
 }
 .euphoria-root .eu-img-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* Always-visible corner pill so the Replace affordance survives
+   mobile (no hover) and never depends on .eu-img-tile wrapping.
+   On desktop hover, the tile dims slightly via .eu-img-tile:hover
+   so the pill still reads as the primary action. */
 .euphoria-root .eu-img-overlay {
-  position: absolute; inset: 0;
-  background: rgba(0,0,0,0.45);
-  opacity: 0;
-  transition: opacity 200ms ease;
-  display: flex; align-items: center; justify-content: center;
-  cursor: pointer;
+  position: absolute;
+  top: 12px;
+  right: 12px;
   z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.72);
+  color: #fff;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.12);
+  transition: background 150ms ease, transform 150ms ease;
 }
-.euphoria-root .eu-img-tile:hover .eu-img-overlay { opacity: 1; }
+.euphoria-root .eu-img-overlay:hover { background: rgba(0,0,0,0.88); transform: translateY(-1px); }
+.euphoria-root .eu-img-overlay svg { width: 14px; height: 14px; }
 .euphoria-root .eu-img-placeholder {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   width: 100%; height: 100%;
@@ -474,10 +493,8 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
 
   const ImageOverlay: React.FC<{ onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void }> = ({ onUpload }) => (
     <label className="eu-img-overlay">
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, color: '#fff' }}>
-        <CameraIcon className="w-7 h-7" />
-        <span style={{ fontSize: 11, letterSpacing: '0.2em', textTransform: 'uppercase', fontWeight: 600 }}>Replace</span>
-      </div>
+      <CameraIcon />
+      <span>Replace photo</span>
       <input key={imageInputKey} type="file" accept="image/*" style={{ display: 'none' }} onChange={onUpload} />
     </label>
   );
