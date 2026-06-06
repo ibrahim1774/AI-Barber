@@ -930,18 +930,18 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         />
       ) : (
         <>
-          <div className="fixed top-0 left-0 w-full bg-[#111111] border-b border-white/10 text-white py-1.5 px-2 md:py-2 md:px-3 z-[70] shadow-lg flex items-center justify-between gap-2">
-            {/* Left: Back arrow + static label */}
-            <div className="flex items-center gap-1.5 min-w-0 flex-1">
-              <button onClick={onBack} className="shrink-0 p-1 hover:bg-white/10 rounded transition-colors">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-              </button>
-              <p className="text-[8px] md:text-[10px] font-bold uppercase tracking-wider text-[#f4a100] truncate">
-                Tap to edit text &amp; images, then publish below.
-              </p>
-            </div>
+          <div className="fixed top-0 left-0 w-full bg-[#111111] border-b border-white/10 text-white py-2 px-2 md:py-2.5 md:px-3 z-[70] shadow-lg flex items-center gap-2">
+            {/* Left: Back arrow */}
+            <button onClick={onBack} className="shrink-0 p-1 hover:bg-white/10 rounded transition-colors">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            {/* Center: Static label — centered via flex-1 + text-center
+                so it sits between the back arrow and the status pill. */}
+            <p className="flex-1 text-center text-[10px] md:text-[13px] font-bold uppercase tracking-wider text-[#f4a100]">
+              Tap to edit text &amp; images, then publish below.
+            </p>
 
             {/* Right: Status pill */}
             <div className="shrink-0 rounded-full bg-white/10 px-2.5 py-0.5 flex items-center gap-1">
@@ -1022,12 +1022,11 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           )}
           <div className="absolute inset-0 bg-black/40 bg-gradient-to-b from-black/30 via-transparent to-[#0d0d0d] pointer-events-none"></div>
         </div>
-        {/* Bottom-right corner Replace pill. Top-right is occupied by
-            the fixed header (logo / phone / BACK), and the hero CTAs
-            sit dead-center — so we anchor above the bottom feature
-            cards AND above the CTA stack (which extends down on
-            mobile when Book an Appointment wraps to a new row). */}
-        <label className="absolute bottom-36 right-2.5 md:bottom-52 md:right-5 z-30 cursor-pointer flex items-center gap-1.5 rounded-full bg-black/85 hover:bg-black px-2.5 py-1.5 text-white shadow-lg backdrop-blur-sm border border-white/15 transition-colors">
+        {/* Middle-right Replace pill. Vertically centered along the
+            right edge of the hero — clear of the fixed header at top,
+            the stacked CTAs in the lower-middle, and the feature
+            cards at the bottom. z-30 keeps it clickable. */}
+        <label className="absolute top-1/2 -translate-y-1/2 right-2.5 md:right-5 z-30 cursor-pointer flex items-center gap-1.5 rounded-full bg-black/85 hover:bg-black px-2.5 py-1.5 text-white shadow-lg backdrop-blur-sm border border-white/15 transition-colors">
           <CameraIcon className="w-3 h-3" />
           <span className="text-[8px] font-bold uppercase tracking-[0.16em]">Replace Photo</span>
           <input key={imageInputKey} type="file" className="hidden" accept="image/*" onChange={(e) => handleImageChange('hero.imageUrl', e)} />

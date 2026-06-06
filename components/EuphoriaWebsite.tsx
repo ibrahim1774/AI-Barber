@@ -690,17 +690,15 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
           isPublishing={isPublishing}
         />
       ) : (
-        <div className="fixed top-0 left-0 w-full bg-[#0c0c0c] border-b border-white/10 text-white py-1.5 px-2 md:py-2 md:px-3 z-[70] shadow-lg flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 min-w-0 flex-1">
-            <button onClick={onBack} className="shrink-0 p-1 hover:bg-white/10 rounded transition-colors">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            <p className="text-[8px] md:text-[10px] font-bold uppercase tracking-wider text-[#e8c074] truncate">
-              Tap to edit text &amp; images, then publish below.
-            </p>
-          </div>
+        <div className="fixed top-0 left-0 w-full bg-[#0c0c0c] border-b border-white/10 text-white py-2 px-2 md:py-2.5 md:px-3 z-[70] shadow-lg flex items-center gap-2">
+          <button onClick={onBack} className="shrink-0 p-1 hover:bg-white/10 rounded transition-colors">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <p className="flex-1 text-center text-[10px] md:text-[13px] font-bold uppercase tracking-wider text-[#e8c074]">
+            Tap to edit text &amp; images, then publish below.
+          </p>
           <div className="shrink-0 rounded-full bg-white/10 px-2.5 py-0.5">
             <span className="text-[#9a958e] text-[8px] uppercase tracking-wider font-bold">Editor · Euphoria</span>
           </div>
