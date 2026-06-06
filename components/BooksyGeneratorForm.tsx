@@ -285,7 +285,7 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn }) =
             letterSpacing: '-0.02em',
           }}
         >
-          Generate my{' '}
+          Generate your{' '}
           <span
             className="italic"
             style={{ fontFamily: SERIF, fontWeight: 400, color: ACCENT }}
