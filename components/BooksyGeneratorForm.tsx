@@ -285,7 +285,14 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn }) =
             letterSpacing: '-0.02em',
           }}
         >
-          Generate my custom barber website in{' '}
+          Generate my{' '}
+          <span
+            className="italic"
+            style={{ fontFamily: SERIF, fontWeight: 400, color: ACCENT }}
+          >
+            free
+          </span>{' '}
+          barber website in{' '}
           <span
             className="italic"
             style={{ fontFamily: SERIF, fontWeight: 400, color: ACCENT }}
