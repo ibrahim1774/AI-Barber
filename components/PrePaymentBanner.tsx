@@ -248,20 +248,10 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
             </div>
           )}
 
-          {/* Action row — buttons bumped ~10% + bolded */}
+          {/* Action row — Launch My Site full-width. How It Works
+              button removed so the CTA spans the row and the
+              animated glow has more visual presence. */}
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowHowItWorks(true)}
-              className="flex-1 py-2.5 text-[10px] font-bold border hover:border-white/40 hover:text-white transition-colors uppercase tracking-[0.24em] text-center"
-              style={{
-                color: '#ece6da',
-                borderColor: 'rgba(236,230,218,0.25)',
-                fontFamily: '"DM Sans", sans-serif',
-              }}
-            >
-              How It Works
-            </button>
-
             <style>{`
               @keyframes aibCtaPop {
                 0%, 100% { transform: scale(1); }
@@ -279,7 +269,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
             <button
               onClick={() => onDeploy(dealPlan ?? (pricingPlan === 'monthly' ? stdMonthlyPlan : pricingPlan))}
               disabled={isDeploying}
-              className="aib-cta-launch flex-1 py-2.5 text-[10px] font-bold flex items-center justify-center gap-1.5 hover:opacity-95 active:scale-[0.98] transition-transform uppercase tracking-[0.24em] disabled:opacity-50"
+              className="aib-cta-launch w-full py-3 text-[11px] md:text-[12px] font-bold flex items-center justify-center gap-2 hover:opacity-95 active:scale-[0.98] transition-transform uppercase tracking-[0.24em] disabled:opacity-50"
               style={{
                 background: '#e8c074',
                 color: '#0a0a0a',
