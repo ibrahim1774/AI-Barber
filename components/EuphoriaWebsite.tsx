@@ -95,12 +95,12 @@ const EUPHORIA_SCOPED_CSS = `
 .euphoria-root .eu-img-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
 /* Always-visible corner pill so the Replace affordance survives
    mobile (no hover) and never depends on .eu-img-tile wrapping.
-   On desktop hover, the tile dims slightly via .eu-img-tile:hover
-   so the pill still reads as the primary action. */
+   Bottom-right so the pill never collides with the fixed editor
+   header (BACK / banner) at the top of the hero. */
 .euphoria-root .eu-img-overlay {
   position: absolute;
-  top: 12px;
-  right: 12px;
+  bottom: 14px;
+  right: 14px;
   z-index: 5;
   display: inline-flex;
   align-items: center;

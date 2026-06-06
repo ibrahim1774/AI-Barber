@@ -1022,9 +1022,11 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           )}
           <div className="absolute inset-0 bg-black/40 bg-gradient-to-b from-black/30 via-transparent to-[#0d0d0d] pointer-events-none"></div>
         </div>
-        {/* Corner-only Replace pill so it never blocks the hero CTAs.
-            Sits above the content z-10 layer so it remains clickable. */}
-        <label className="absolute top-4 right-4 z-30 cursor-pointer flex items-center gap-2 rounded-full bg-black/80 hover:bg-black px-3.5 py-2 text-white shadow-xl backdrop-blur-sm border border-white/15 transition-colors">
+        {/* Bottom-right corner Replace pill. Top-right is occupied by
+            the fixed header (logo / phone / BACK), and the hero CTAs
+            sit dead-center — so we anchor above the bottom feature
+            cards. z-30 keeps it clickable over every hero layer. */}
+        <label className="absolute bottom-28 right-3 md:bottom-44 md:right-6 z-30 cursor-pointer flex items-center gap-2 rounded-full bg-black/85 hover:bg-black px-3.5 py-2 text-white shadow-xl backdrop-blur-sm border border-white/15 transition-colors">
           <CameraIcon className="w-3.5 h-3.5" />
           <span className="text-[10px] font-bold uppercase tracking-[0.18em]">Replace Photo</span>
           <input key={imageInputKey} type="file" className="hidden" accept="image/*" onChange={(e) => handleImageChange('hero.imageUrl', e)} />
