@@ -292,19 +292,21 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn }) =
           >
             free
           </span>{' '}
-          barber website in{' '}
+          barber website <br className="hidden sm:inline" />
+          from your{' '}
           <span
             className="italic"
-            style={{ fontFamily: SERIF, fontWeight: 400, color: ACCENT }}
+            style={{ fontFamily: SERIF, fontWeight: 400, color: BOOKSY_TEAL }}
           >
-            a few seconds.
-          </span>
+            Booksy
+          </span>{' '}
+          link.
         </h1>
         <p
           className="mx-auto mt-4 max-w-md text-[13px] italic text-white/65 md:text-[14px]"
           style={{ fontFamily: SERIF }}
         >
-          Paste your <span style={{ color: BOOKSY_TEAL }}>Booksy</span> link — we'll pull your services, photos, hours, and reviews automatically.
+          We'll pull your services, photos, hours, and reviews automatically — ready in a few seconds.
         </p>
 
         {/* Glass form card — identical surface treatment to homepage:
