@@ -30,6 +30,15 @@ export function isFiveDealPath(pathname?: string): boolean {
   );
 }
 
+// Specifically matches /free-barber so marketing copy (headline,
+// CTAs) can emphasize "free" on that single URL without affecting
+// /5. Pricing / plan behavior is still driven by isFiveDealPath
+// (which matches both) — this helper only gates copy.
+export function isFreeBarberPath(pathname?: string): boolean {
+  const p = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
+  return p === FREE_BARBER_PATH || p === `${FREE_BARBER_PATH}/`;
+}
+
 export function isSevenDealPath(pathname?: string): boolean {
   const p = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
   return p === SEVEN_DEAL_PATH || p === `${SEVEN_DEAL_PATH}/`;

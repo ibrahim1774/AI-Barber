@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ShopInputs } from '../types';
 import { ArrowRight } from 'lucide-react';
+import { isFreeBarberPath } from '../lib/dealMode.ts';
 
 // /new — premium multi-step quiz form mirroring PrimeHub /barber.
 // Same fields as the existing GeneratorForm (shopName, area, phone,
@@ -67,6 +68,10 @@ const normalizeBookingUrl = (raw: string): string | undefined => {
 };
 
 export const NewLeadQuizForm: React.FC<Props> = ({ onGenerate, onSignIn }) => {
+  // /free-barber swaps the headline to emphasize "free website" — the
+  // pricing flow is still the $5/mo five-deal (inherited from
+  // isFiveDealPath matching both /5 and /free-barber).
+  const freeBarberMode = React.useMemo(() => isFreeBarberPath(), []);
   const [inputs, setInputs] = useState<ShopInputs>({
     shopName: '',
     area: '',
@@ -176,14 +181,36 @@ export const NewLeadQuizForm: React.FC<Props> = ({ onGenerate, onSignIn }) => {
             letterSpacing: '-0.02em',
           }}
         >
-          Generate your custom <br className="hidden sm:inline" />
-          barbershop website in{' '}
-          <span
-            className="italic"
-            style={{ fontFamily: SERIF, fontWeight: 400, color: accent }}
-          >
-            seconds.
-          </span>
+          {freeBarberMode ? (
+            <>
+              Generate your{' '}
+              <span
+                className="italic"
+                style={{ fontFamily: SERIF, fontWeight: 400, color: accent }}
+              >
+                free
+              </span>{' '}
+              barbershop <br className="hidden sm:inline" />
+              website in{' '}
+              <span
+                className="italic"
+                style={{ fontFamily: SERIF, fontWeight: 400, color: accent }}
+              >
+                seconds.
+              </span>
+            </>
+          ) : (
+            <>
+              Generate your custom <br className="hidden sm:inline" />
+              barbershop website in{' '}
+              <span
+                className="italic"
+                style={{ fontFamily: SERIF, fontWeight: 400, color: accent }}
+              >
+                seconds.
+              </span>
+            </>
+          )}
         </h1>
         <p
           className="mx-auto mt-4 max-w-md text-[13px] italic text-white/65 md:text-[14px]"
