@@ -1022,6 +1022,13 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           )}
           <div className="absolute inset-0 bg-black/40 bg-gradient-to-b from-black/30 via-transparent to-[#0d0d0d] pointer-events-none"></div>
         </div>
+        {/* Corner-only Replace pill so it never blocks the hero CTAs.
+            Sits above the content z-10 layer so it remains clickable. */}
+        <label className="absolute top-4 right-4 z-30 cursor-pointer flex items-center gap-2 rounded-full bg-black/80 hover:bg-black px-3.5 py-2 text-white shadow-xl backdrop-blur-sm border border-white/15 transition-colors">
+          <CameraIcon className="w-3.5 h-3.5" />
+          <span className="text-[10px] font-bold uppercase tracking-[0.18em]">Replace Photo</span>
+          <input key={imageInputKey} type="file" className="hidden" accept="image/*" onChange={(e) => handleImageChange('hero.imageUrl', e)} />
+        </label>
 
         <div className="relative z-10 text-center px-4 md:px-6 max-w-5xl pb-28 md:pb-32 pt-20 md:pt-0">
           <p className="text-[#f4a100] font-montserrat font-bold text-[8px] md:text-sm tracking-[3px] md:tracking-[5px] uppercase mb-3 md:mb-6 opacity-90">
@@ -1048,7 +1055,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
                 onClick={handleBookClick}
                 className="inline-flex items-center gap-3 bg-[#f4a100] text-[#1a1a1a] px-6 py-4 md:px-12 md:py-6 font-montserrat font-black tracking-[2px] uppercase hover:bg-white transition-all duration-300 shadow-lg text-xs md:text-base"
               >
-                <span>Book Appointment</span>
+                <span>Book an Appointment</span>
               </a>
             )}
           </div>
@@ -1149,10 +1156,15 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
               ))}
             </div>
           </div>
-          {siteData.about.imageUrl && (
-            <div className="relative mt-6 lg:mt-0">
+          {siteData.about.imageUrl ? (
+            <div className="relative mt-6 lg:mt-0 group">
               <div className="absolute -inset-2 md:-inset-4 border border-[#f4a100]/30 -z-10 transform translate-x-2 translate-y-2 md:translate-x-4 md:translate-y-4 transition-transform duration-500"></div>
               <img src={siteData.about.imageUrl} alt="Barber Shop Atmosphere" className="w-full grayscale hover:grayscale-0 transition-all duration-700 shadow-2xl" />
+              <ImageOverlay onImageUpload={(e) => handleImageChange('about.imageUrl', e)} />
+            </div>
+          ) : (
+            <div className="mt-6 lg:mt-0">
+              <ImagePlaceholder onImageUpload={(e) => handleImageChange('about.imageUrl', e)} heightClass="h-72 md:h-96" />
             </div>
           )}
         </div>

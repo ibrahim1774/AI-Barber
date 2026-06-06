@@ -107,11 +107,17 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn }) =
 
       // Map the scraper output into our existing WebsiteData shape so
       // it flows through the same loading screen → editor pipeline.
+      // The pasted URL IS the customer-facing booking link, so it's
+      // also what the Book Appointment CTA links to on the generated
+      // site. If the scraper returned a normalized one, prefer that.
+      const customerBookingUrl: string = data.bookingUrl || url.trim();
+
       const inputs: ShopInputs = {
         shopName: data.shopName,
         area: data.area,
         phone: data.phone || '',
         template: 'luxe',
+        bookingUrl: customerBookingUrl,
       };
 
       // Icon ladder cycles through the 5 available service icons. Older
@@ -139,6 +145,7 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn }) =
         area: data.area,
         phone: data.phone || '',
         template: 'luxe',
+        bookingUrl: customerBookingUrl,
         hero: {
           heading: data.shopName,
           tagline: 'Premium grooming services tailored to your style.',
