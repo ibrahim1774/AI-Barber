@@ -268,9 +268,9 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
               ) : (
                 <Rocket size={12} />
               )}
+              <span>Launch My Site</span>
               {booksyMode && pricingPlan === 'monthly' ? (
                 <>
-                  <span>Publish My Website</span>
                   <span className="opacity-60 line-through font-medium">{booksyAnchorMo}</span>
                   <span
                     className="font-extrabold px-1.5 py-0.5 rounded"
@@ -280,9 +280,12 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
                   </span>
                 </>
               ) : (
-                <>
-                  Publish <span className="font-extrabold">{dealMode ? dealPriceMo : (pricingPlan === 'yearly' ? '$72/year' : stdMonthlyPriceMonth)}</span>
-                </>
+                <span
+                  className="font-extrabold px-1.5 py-0.5 rounded"
+                  style={{ background: 'rgba(10,10,10,0.18)', color: '#0a0a0a' }}
+                >
+                  {dealMode ? dealPriceMo : (pricingPlan === 'yearly' ? '$72/year' : stdMonthlyPriceMonth)}
+                </span>
               )}
             </button>
           </div>
@@ -499,7 +502,13 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
                   <Loader2 className="animate-spin" size={16} />
                 ) : (
                   <>
-                    Publish <span className="font-extrabold">{ctaPrice}</span>
+                    <span>Launch My Site</span>
+                    <span
+                      className="font-extrabold px-1.5 py-0.5 rounded"
+                      style={{ background: 'rgba(10,10,10,0.18)', color: '#0a0a0a' }}
+                    >
+                      {ctaPrice}
+                    </span>
                     <ArrowRight size={14} />
                   </>
                 )}
