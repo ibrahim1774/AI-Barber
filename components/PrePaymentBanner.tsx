@@ -18,7 +18,7 @@ interface PrePaymentBannerProps {
   // 'monthly-booksy' = $5/mo via /booksy import flow (anchor $7); other monthly
   // entry paths use 'monthly' ($9/mo). Server-side routes both into
   // the same hosting product, different Stripe unit_amount.
-  onDeploy: (plan: 'monthly' | 'monthly-booksy' | 'yearly' | 'five' | 'seven') => void;
+  onDeploy: (plan: 'monthly' | 'monthly-booksy' | 'yearly' | 'yearly-booksy' | 'five' | 'seven') => void;
   isDeploying: boolean;
   industry?: string;
 }
@@ -43,12 +43,20 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
   //   /5 / /7      → handled by dealMode branches
   //   /booksy      → $5/mo with $7 anchor (plan 'monthly-booksy')
   //   everywhere   → $9/mo  (plan 'monthly')
-  const stdMonthlyPriceMo = booksyMode ? '$5/mo' : '$9/mo';
-  const stdMonthlyPriceMonth = booksyMode ? '$5/month' : '$9/month';
+  const stdMonthlyPriceDollars = booksyMode ? 5 : 9;
+  const stdMonthlyPriceMo = `$${stdMonthlyPriceDollars}/mo`;
+  const stdMonthlyPriceMonth = `$${stdMonthlyPriceDollars}/month`;
   // Anchor price displayed strikethrough beside the live price for
   // /booksy only — visual "was $7, now $5" framing on the Publish CTA.
   const booksyAnchorMo = '$7/mo';
   const stdMonthlyPlan: 'monthly' | 'monthly-booksy' = booksyMode ? 'monthly-booksy' : 'monthly';
+  // Yearly = 20% off monthly × 12, rounded. Booksy charges its own
+  // 'yearly-booksy' Stripe plan so the amount actually billed matches
+  // the price label displayed here.
+  const stdYearlyPriceDollars = Math.round(stdMonthlyPriceDollars * 12 * 0.8);
+  const stdYearlyPriceYr = `$${stdYearlyPriceDollars}/yr`;
+  const stdYearlyPriceYear = `$${stdYearlyPriceDollars}/year`;
+  const stdYearlyPlan: 'yearly' | 'yearly-booksy' = booksyMode ? 'yearly-booksy' : 'yearly';
 
   // Custom-design upsell. The /5 launch-special drops the custom
   // price to $15/mo to keep the relative gap small; /booksy stays at
@@ -243,7 +251,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
                   borderBottom: pricingPlan === 'yearly' ? '1px solid #e8c074' : '1px solid transparent',
                 }}
               >
-                Yearly <span style={{ color: '#e8c074' }}>−40%</span>
+                Yearly <span style={{ color: '#e8c074' }}>−20%</span>
               </button>
             </div>
           )}
@@ -267,7 +275,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
               .aib-cta-launch:hover { animation-play-state: paused; transform: scale(1.04); }
             `}</style>
             <button
-              onClick={() => onDeploy(dealPlan ?? (pricingPlan === 'monthly' ? stdMonthlyPlan : pricingPlan))}
+              onClick={() => onDeploy(dealPlan ?? (pricingPlan === 'monthly' ? stdMonthlyPlan : stdYearlyPlan))}
               disabled={isDeploying}
               className="aib-cta-launch w-full py-3 text-[11px] md:text-[12px] font-bold flex items-center justify-center gap-2 hover:opacity-95 active:scale-[0.98] transition-transform uppercase tracking-[0.24em] disabled:opacity-50"
               style={{
@@ -297,7 +305,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
                   className="font-extrabold px-1.5 py-0.5 rounded"
                   style={{ background: 'rgba(10,10,10,0.18)', color: '#0a0a0a' }}
                 >
-                  {dealMode ? dealPriceMo : (pricingPlan === 'yearly' ? '$72/year' : stdMonthlyPriceMonth)}
+                  {dealMode ? dealPriceMo : (pricingPlan === 'yearly' ? stdYearlyPriceYear : stdMonthlyPriceMonth)}
                 </span>
               )}
             </button>
@@ -358,10 +366,10 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
         const cream = '#ece6da';
         const headlinePrice = dealMode
           ? dealPriceMo
-          : pricingPlan === 'yearly' ? '$72/yr' : stdMonthlyPriceMo;
+          : pricingPlan === 'yearly' ? stdYearlyPriceYr : stdMonthlyPriceMo;
         const ctaPrice = dealMode
           ? dealPriceMo
-          : pricingPlan === 'yearly' ? '$72/year' : stdMonthlyPriceMonth;
+          : pricingPlan === 'yearly' ? stdYearlyPriceYear : stdMonthlyPriceMonth;
 
         const rows: { numeral: string; title: string }[] = [
           { numeral: 'I', title: 'Professional & Modern Site' },
@@ -438,7 +446,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
                     borderBottom: pricingPlan === 'yearly' ? `1px solid ${gold}` : '1px solid transparent',
                   }}
                 >
-                  Yearly · $72/yr <span style={{ color: gold }}>−40%</span>
+                  Yearly · {stdYearlyPriceYr} <span style={{ color: gold }}>−20%</span>
                 </button>
               </div>
             )}
@@ -502,7 +510,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
               </button>
 
               <button
-                onClick={() => { setShowHowItWorks(false); onDeploy(dealPlan ?? (pricingPlan === 'monthly' ? stdMonthlyPlan : pricingPlan)); }}
+                onClick={() => { setShowHowItWorks(false); onDeploy(dealPlan ?? (pricingPlan === 'monthly' ? stdMonthlyPlan : stdYearlyPlan)); }}
                 disabled={isDeploying}
                 className="flex-1 py-3.5 text-[11px] font-bold flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all uppercase tracking-[0.24em] disabled:opacity-50"
                 style={{

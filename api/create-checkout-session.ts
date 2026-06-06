@@ -31,6 +31,8 @@ export default async function handler(req: any, res: any) {
     //              upsell small on the /5 launch-special page.
     // All custom plans route to the same Google Form after checkout.
     const isYearly = plan === 'yearly';
+    // 'yearly-booksy' = /booksy yearly (20% off $5/mo × 12 = $48/yr).
+    const isYearlyBooksy = plan === 'yearly-booksy';
     const isFive = plan === 'five';
     const isSeven = plan === 'seven';
     const isMonthlyBooksy = plan === 'monthly-booksy';
@@ -47,9 +49,15 @@ export default async function handler(req: any, res: any) {
     let interval: 'month' | 'year';
     let productName: string;
     if (isYearly) {
-      unitAmount = '7200';
+      // Standard yearly: 20% off $9/mo × 12 = $86/yr.
+      unitAmount = '8600';
       interval = 'year';
-      productName = 'Prime Barber AI - Yearly Hosting';
+      productName = 'Prime Barber AI - Yearly Hosting ($86/yr)';
+    } else if (isYearlyBooksy) {
+      // /booksy yearly: 20% off $5/mo × 12 = $48/yr.
+      unitAmount = '4800';
+      interval = 'year';
+      productName = 'Prime Barber AI - Yearly Hosting (Import Plan, $48/yr)';
     } else if (isFive) {
       unitAmount = '500';
       interval = 'month';
