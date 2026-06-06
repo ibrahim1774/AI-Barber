@@ -1107,30 +1107,6 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         </div>
       </section>
 
-      {/* Bio quote — Booksy shop description as a pull quote between
-          hero and about. Skipped when bio is empty. Editable inline. */}
-      {siteData.bio && siteData.bio.trim().length > 20 && (
-        <section className="py-12 md:py-20 bg-[#0d0d0d] px-6 border-y border-white/5">
-          <div className="container mx-auto max-w-3xl text-center">
-            <svg className="w-8 h-8 mx-auto mb-6 text-[#f4a100]/40" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M6 17h3l2-4V7H5v6h3l-2 4zm8 0h3l2-4V7h-6v6h3l-2 4z" />
-            </svg>
-            <p
-              className="text-white/85 text-base md:text-xl leading-relaxed"
-              style={{ fontFamily: '"Instrument Serif", Georgia, serif', fontStyle: 'italic' }}
-            >
-              <EditableText
-                text={siteData.bio}
-                onSave={(val) => {
-                  setSiteData(prev => ({ ...prev, bio: val }));
-                  if (isPostPayment) triggerSave();
-                }}
-              />
-            </p>
-          </div>
-        </section>
-      )}
-
       {/* About Section */}
       <section id="about-us" className="py-12 md:py-32 px-6 bg-[#1a1a1a]">
         <div className="container mx-auto grid lg:grid-cols-2 gap-10 md:gap-20 items-center">
