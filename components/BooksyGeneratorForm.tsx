@@ -10,6 +10,9 @@ const HERO_IMAGE = 'https://cop5lgctumpj5e0w.public.blob.vercel-storage.com/barb
 const SANS = '"Manrope", "Inter", system-ui, sans-serif';
 const SERIF = '"Instrument Serif", "Times New Roman", Georgia, serif';
 const ACCENT = '#f4a100';
+// Booksy brand teal — used for the "Booksy" callout in the headline
+// + field label so the subpage visually reads as a Booksy importer.
+const BOOKSY_TEAL = '#1AE3B9';
 
 interface Props {
   // Called with the prepared inputs once the scrape resolves. Mirrors
@@ -275,20 +278,20 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn }) =
             letterSpacing: '-0.02em',
           }}
         >
-          Generate your custom barbershop site from <br className="hidden sm:inline" />
-          booking page in{' '}
+          Generate custom barbershop from your{' '}
           <span
             className="italic"
-            style={{ fontFamily: SERIF, fontWeight: 400, color: ACCENT }}
+            style={{ fontFamily: SERIF, fontWeight: 400, color: BOOKSY_TEAL }}
           >
-            a few seconds.
-          </span>
+            Booksy
+          </span>{' '}
+          link.
         </h1>
         <p
           className="mx-auto mt-4 max-w-md text-[13px] italic text-white/65 md:text-[14px]"
           style={{ fontFamily: SERIF }}
         >
-          Paste your Booksy, Fresha, StyleSeat, Square, or Vagaro link — we'll pull your services, photos, hours, and reviews automatically.
+          Generate design in <span style={{ color: ACCENT }}>a few seconds.</span>
         </p>
 
         {/* Glass form card — identical surface treatment to homepage:
@@ -314,7 +317,7 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn }) =
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2">
               <label className="block text-lg font-bold leading-snug text-white md:text-xl">
-                Paste your booking link
+                Insert your <span style={{ color: BOOKSY_TEAL }}>Booksy</span> booking link
               </label>
               <input
                 required
