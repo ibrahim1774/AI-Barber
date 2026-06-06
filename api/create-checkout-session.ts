@@ -33,9 +33,14 @@ export default async function handler(req: any, res: any) {
     const isYearly = plan === 'yearly';
     // 'yearly-booksy' = /booksy yearly (20% off $5/mo × 12 = $48/yr).
     const isYearlyBooksy = plan === 'yearly-booksy';
+    // 'yearly-free' = /free-barber yearly ($48/yr — same math as
+    // booksy, but tracked separately for analytics + product name).
+    const isYearlyFree = plan === 'yearly-free';
     const isFive = plan === 'five';
     const isSeven = plan === 'seven';
     const isMonthlyBooksy = plan === 'monthly-booksy';
+    // 'monthly-free' = /free-barber monthly ($5/mo).
+    const isMonthlyFree = plan === 'monthly-free';
     const isCustom = plan === 'custom';
     const isCustom25 = plan === 'custom25';
     const isCustom15 = plan === 'custom15';
@@ -58,6 +63,11 @@ export default async function handler(req: any, res: any) {
       unitAmount = '4800';
       interval = 'year';
       productName = 'Prime Barber AI - Yearly Hosting (Import Plan, $48/yr)';
+    } else if (isYearlyFree) {
+      // /free-barber yearly: same $48/yr as booksy yearly.
+      unitAmount = '4800';
+      interval = 'year';
+      productName = 'Prime Barber AI - Yearly Hosting (Free Plan, $48/yr)';
     } else if (isFive) {
       unitAmount = '500';
       interval = 'month';
@@ -70,6 +80,11 @@ export default async function handler(req: any, res: any) {
       unitAmount = '500';
       interval = 'month';
       productName = 'Prime Barber AI - Monthly Hosting (Import Plan, $5/mo)';
+    } else if (isMonthlyFree) {
+      // /free-barber monthly: same $5/mo as booksy monthly.
+      unitAmount = '500';
+      interval = 'month';
+      productName = 'Prime Barber AI - Monthly Hosting (Free Plan, $5/mo)';
     } else if (isCustom15) {
       unitAmount = '1500';
       interval = 'month';

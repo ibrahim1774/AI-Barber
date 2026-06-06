@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, ArrowRight, Rocket, Loader2, Sparkles, Check, ChevronLeft, ChevronRight } from 'lucide-react';
-import { isFiveDealPath, isSevenDealPath, isBooksyPath } from '../lib/dealMode.ts';
+import { isFiveDealPath, isSevenDealPath, isBooksyPath, isFreeBarberPath } from '../lib/dealMode.ts';
 
 // Sample imagery for the custom-design wizard. Swap to local files in
 // /public/ later if desired — keep the same array length.
@@ -18,7 +18,7 @@ interface PrePaymentBannerProps {
   // 'monthly-booksy' = $5/mo via /booksy import flow (anchor $7); other monthly
   // entry paths use 'monthly' ($9/mo). Server-side routes both into
   // the same hosting product, different Stripe unit_amount.
-  onDeploy: (plan: 'monthly' | 'monthly-booksy' | 'yearly' | 'yearly-booksy' | 'five' | 'seven') => void;
+  onDeploy: (plan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'yearly' | 'yearly-booksy' | 'yearly-free' | 'five' | 'seven') => void;
   isDeploying: boolean;
   industry?: string;
 }
@@ -32,6 +32,10 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
   // because the AI-fill-from-link service is more valuable than the
   // manual lead-quiz funnel. dealMode (5/7) still wins when both apply.
   const booksyMode = React.useMemo(() => isBooksyPath(), []);
+  // /free-barber: $5/mo entry with yearly toggle visible — NOT a
+  // hard-locked deal, just a $5/mo flow with its own plan slugs so
+  // Stripe + analytics still distinguish it from /booksy + homepage.
+  const freeBarberMode = React.useMemo(() => isFreeBarberPath(), []);
   // Either deal-mode collapses the pricing UI the same way; only the
   // numbers shown and the plan string sent to Stripe differ.
   const dealMode = fiveDeal || sevenDeal;
@@ -40,23 +44,32 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
   const dealPriceMonth = sevenDeal ? '$7/month' : '$5/month';
 
   // Standard monthly price varies by entry path:
-  //   /5 / /7      → handled by dealMode branches
-  //   /booksy      → $5/mo with $7 anchor (plan 'monthly-booksy')
-  //   everywhere   → $9/mo  (plan 'monthly')
-  const stdMonthlyPriceDollars = booksyMode ? 5 : 9;
+  //   /5 / /7              → handled by dealMode branches
+  //   /booksy              → $5/mo with $7 anchor (plan 'monthly-booksy')
+  //   /free-barber         → $5/mo (plan 'monthly-free')
+  //   everywhere else      → $9/mo (plan 'monthly')
+  const stdMonthlyPriceDollars = (booksyMode || freeBarberMode) ? 5 : 9;
   const stdMonthlyPriceMo = `$${stdMonthlyPriceDollars}/mo`;
   const stdMonthlyPriceMonth = `$${stdMonthlyPriceDollars}/month`;
   // Anchor price displayed strikethrough beside the live price for
   // /booksy only — visual "was $7, now $5" framing on the Publish CTA.
   const booksyAnchorMo = '$7/mo';
-  const stdMonthlyPlan: 'monthly' | 'monthly-booksy' = booksyMode ? 'monthly-booksy' : 'monthly';
-  // Yearly = 20% off monthly × 12, rounded. Booksy charges its own
-  // 'yearly-booksy' Stripe plan so the amount actually billed matches
+  const stdMonthlyPlan: 'monthly' | 'monthly-booksy' | 'monthly-free' = booksyMode
+    ? 'monthly-booksy'
+    : freeBarberMode
+      ? 'monthly-free'
+      : 'monthly';
+  // Yearly = 20% off monthly × 12, rounded. Booksy + free-barber use
+  // their own Stripe plan slugs so the amount actually billed matches
   // the price label displayed here.
   const stdYearlyPriceDollars = Math.round(stdMonthlyPriceDollars * 12 * 0.8);
   const stdYearlyPriceYr = `$${stdYearlyPriceDollars}/yr`;
   const stdYearlyPriceYear = `$${stdYearlyPriceDollars}/year`;
-  const stdYearlyPlan: 'yearly' | 'yearly-booksy' = booksyMode ? 'yearly-booksy' : 'yearly';
+  const stdYearlyPlan: 'yearly' | 'yearly-booksy' | 'yearly-free' = booksyMode
+    ? 'yearly-booksy'
+    : freeBarberMode
+      ? 'yearly-free'
+      : 'yearly';
 
   // Custom-design upsell. The /5 launch-special drops the custom
   // price to $15/mo to keep the relative gap small; /booksy stays at

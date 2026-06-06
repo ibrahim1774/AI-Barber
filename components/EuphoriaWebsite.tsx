@@ -507,7 +507,7 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
     </label>
   );
 
-  const handleClaimSite = async (plan: 'monthly' | 'monthly-booksy' | 'yearly' | 'yearly-booksy' | 'five' | 'seven' = 'monthly') => {
+  const handleClaimSite = async (plan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'yearly' | 'yearly-booksy' | 'yearly-free' | 'five' | 'seven' = 'monthly') => {
     setIsDeploying(true);
     setDeploymentResult(null);
     try {
@@ -569,8 +569,10 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
         const PLAN_VALUES: Record<string, number> = {
           monthly: 9,
           'monthly-booksy': 5,
+          'monthly-free': 5,
           yearly: 86,
           'yearly-booksy': 48,
+          'yearly-free': 48,
           five: 5,
           seven: 7,
         };
