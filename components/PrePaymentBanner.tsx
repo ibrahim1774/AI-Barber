@@ -15,7 +15,7 @@ const WIZARD_IMAGES = {
 };
 
 interface PrePaymentBannerProps {
-  // 'monthly-booksy' = $10/mo via /booksy import flow; other monthly
+  // 'monthly-booksy' = $5/mo via /booksy import flow (anchor $7); other monthly
   // entry paths use 'monthly' ($9/mo). Server-side routes both into
   // the same hosting product, different Stripe unit_amount.
   onDeploy: (plan: 'monthly' | 'monthly-booksy' | 'yearly' | 'five' | 'seven') => void;
@@ -41,10 +41,13 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
 
   // Standard monthly price varies by entry path:
   //   /5 / /7      → handled by dealMode branches
-  //   /booksy      → $10/mo (plan 'monthly-booksy')
+  //   /booksy      → $5/mo with $7 anchor (plan 'monthly-booksy')
   //   everywhere   → $9/mo  (plan 'monthly')
-  const stdMonthlyPriceMo = booksyMode ? '$10/mo' : '$9/mo';
-  const stdMonthlyPriceMonth = booksyMode ? '$10/month' : '$9/month';
+  const stdMonthlyPriceMo = booksyMode ? '$5/mo' : '$9/mo';
+  const stdMonthlyPriceMonth = booksyMode ? '$5/month' : '$9/month';
+  // Anchor price displayed strikethrough beside the live price for
+  // /booksy only — visual "was $7, now $5" framing on the Publish CTA.
+  const booksyAnchorMo = '$7/mo';
   const stdMonthlyPlan: 'monthly' | 'monthly-booksy' = booksyMode ? 'monthly-booksy' : 'monthly';
 
   // Custom-design upsell. The /5 launch-special drops the custom
@@ -265,7 +268,22 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
               ) : (
                 <Rocket size={12} />
               )}
-              Publish <span className="font-extrabold">{dealMode ? dealPriceMo : (pricingPlan === 'yearly' ? '$72/year' : stdMonthlyPriceMonth)}</span>
+              {booksyMode && pricingPlan === 'monthly' ? (
+                <>
+                  <span>Publish My Website</span>
+                  <span className="opacity-60 line-through font-medium">{booksyAnchorMo}</span>
+                  <span
+                    className="font-extrabold px-1.5 py-0.5 rounded"
+                    style={{ background: 'rgba(10,10,10,0.18)', color: '#0a0a0a' }}
+                  >
+                    {stdMonthlyPriceMonth}
+                  </span>
+                </>
+              ) : (
+                <>
+                  Publish <span className="font-extrabold">{dealMode ? dealPriceMo : (pricingPlan === 'yearly' ? '$72/year' : stdMonthlyPriceMonth)}</span>
+                </>
+              )}
             </button>
           </div>
 

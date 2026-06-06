@@ -59,9 +59,9 @@ export default async function handler(req: any, res: any) {
       interval = 'month';
       productName = 'Prime Barber AI - Launch Special Hosting ($7/mo)';
     } else if (isMonthlyBooksy) {
-      unitAmount = '1000';
+      unitAmount = '500';
       interval = 'month';
-      productName = 'Prime Barber AI - Monthly Hosting (Import Plan, $10/mo)';
+      productName = 'Prime Barber AI - Monthly Hosting (Import Plan, $5/mo)';
     } else if (isCustom15) {
       unitAmount = '1500';
       interval = 'month';
