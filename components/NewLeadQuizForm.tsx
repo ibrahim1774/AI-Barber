@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ShopInputs } from '../types';
+import { ShopInputs, WebsiteData } from '../types';
 import { ArrowRight } from 'lucide-react';
 import { isFreeBarberPath } from '../lib/dealMode.ts';
+import { isSupportedBookingHost } from '../lib/supportedBookingHost.ts';
+import { buildSiteFromScrape } from '../lib/buildSiteFromScrape.ts';
 
 // /new — premium multi-step quiz form mirroring PrimeHub /barber.
 // Same fields as the existing GeneratorForm (shopName, area, phone,
@@ -11,7 +13,12 @@ import { isFreeBarberPath } from '../lib/dealMode.ts';
 // the existing form uses so the downstream pipeline is unchanged.
 
 interface Props {
-  onGenerate: (inputs: ShopInputs) => void;
+  // Optional `scraped` second arg lets the quiz pass a pre-filled
+  // WebsiteData payload when the visitor pasted a supported booking
+  // link (Booksy / Fresha / Square / Vagaro / StyleSeat). App.tsx
+  // hands it straight through to handleGenerate's `prebuilt` arg,
+  // skipping the Gemini template call. Same contract /booksy uses.
+  onGenerate: (inputs: ShopInputs, scraped?: WebsiteData) => void;
   onSignIn?: () => void;
 }
 
@@ -82,6 +89,12 @@ export const NewLeadQuizForm: React.FC<Props> = ({ onGenerate, onSignIn }) => {
   });
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  // Scrape progress UI — only shown when the visitor's bookingUrl is
+  // a supported platform. Mirrors the Booksy form's step ladder.
+  const [scraping, setScraping] = useState(false);
+  const [scrapeStepIdx, setScrapeStepIdx] = useState(0);
+  const [scrapeProgress, setScrapeProgress] = useState(0);
+  const scrapeTimerRef = useRef<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const accent = ACCENT_BY_SLUG[inputs.colorTheme || 'goldBlack'] || '#f4a100';
@@ -101,17 +114,88 @@ export const NewLeadQuizForm: React.FC<Props> = ({ onGenerate, onSignIn }) => {
   // PrimeHub /barber implementation so the two products feel identical.
   const SHIMMER_PCT = 75;
 
-  const handleNext = (e: React.FormEvent) => {
+  // Booksy-style step ladder while the scrape is in flight (only shown
+  // when the pasted bookingUrl is a supported platform). Auto-advances
+  // every ~7s; snaps to 100 on resolve.
+  const SCRAPE_STEPS = [
+    { pct: 18, label: 'Fetching your shop info…' },
+    { pct: 42, label: 'Loading photos & services…' },
+    { pct: 66, label: 'Pulling reviews & hours…' },
+    { pct: 88, label: 'Building your custom site…' },
+  ];
+  useEffect(() => {
+    if (!scraping) {
+      setScrapeStepIdx(0);
+      setScrapeProgress(0);
+      if (scrapeTimerRef.current) window.clearInterval(scrapeTimerRef.current);
+      return;
+    }
+    const startedAt = Date.now();
+    scrapeTimerRef.current = window.setInterval(() => {
+      const elapsed = (Date.now() - startedAt) / 1000;
+      const idx = Math.min(SCRAPE_STEPS.length - 1, Math.floor(elapsed / 7));
+      const target = SCRAPE_STEPS[idx].pct;
+      setScrapeStepIdx(idx);
+      setScrapeProgress((p) => (p < target ? Math.min(target, p + 0.7) : p));
+    }, 120) as unknown as number;
+    return () => {
+      if (scrapeTimerRef.current) window.clearInterval(scrapeTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scraping]);
+
+  const handleNext = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!current.optional && !fieldVal.trim()) return;
     if (!isLast) {
       setStep((s) => s + 1);
       return;
     }
+
+    const normalizedUrl = normalizeBookingUrl(inputs.bookingUrl || '');
+
+    // Auto-scrape path: visitor pasted a supported booking link. Run
+    // the same /api/import-scrape pipeline /booksy uses, merge with
+    // typed identity (manual wins), hand a prebuilt WebsiteData to App
+    // so the Gemini call is skipped and the site renders with real
+    // photos, services, hours, reviews.
+    if (normalizedUrl && isSupportedBookingHost(normalizedUrl)) {
+      setScraping(true);
+      try {
+        const resp = await fetch('/api/import-scrape', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: normalizedUrl }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data?.error || 'Scrape failed');
+
+        const { inputs: builtInputs, scraped } = buildSiteFromScrape(data, normalizedUrl, {
+          manual: { ...inputs, bookingUrl: normalizedUrl },
+          template: inputs.template === 'euphoria' ? 'euphoria' : 'luxe',
+        });
+        setScrapeProgress(100);
+        setScrapeStepIdx(SCRAPE_STEPS.length - 1);
+        await new Promise((r) => setTimeout(r, 300));
+        setScraping(false);
+        setSubmitting(true);
+        onGenerate(builtInputs, scraped);
+        return;
+      } catch (err) {
+        // Silent fallback — scrape failed (404, timeout, schema
+        // mismatch). Drop to the manual flow with the visitor's typed
+        // fields. They still get a site; we just lose the auto-fill.
+        console.warn('[Auto-scrape] Falling back to manual generation:', err);
+        setScraping(false);
+      }
+    }
+
+    // Manual-only path: no URL, unsupported platform, or scrape fell
+    // back. Original behavior — single onGenerate call, no second arg.
     setSubmitting(true);
     onGenerate({
       ...inputs,
-      bookingUrl: normalizeBookingUrl(inputs.bookingUrl || ''),
+      bookingUrl: normalizedUrl,
     });
   };
 
@@ -120,6 +204,68 @@ export const NewLeadQuizForm: React.FC<Props> = ({ onGenerate, onSignIn }) => {
       className="relative min-h-screen overflow-hidden"
       style={{ background: '#05070A', fontFamily: SANS, color: 'white' }}
     >
+      {/* Auto-scrape loading overlay — only shown when the visitor's
+          bookingUrl is a supported platform. Same step ladder + glass
+          card as the dedicated /booksy form. */}
+      {scraping && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center px-6"
+          style={{ background: 'rgba(5,7,10,0.82)', backdropFilter: 'blur(14px)' }}
+        >
+          <div className="relative w-full max-w-md overflow-hidden rounded-2xl border border-white/10 p-7 text-center md:p-9"
+            style={{
+              background: 'linear-gradient(180deg, rgba(10,14,22,0.92), rgba(10,14,22,0.96))',
+              boxShadow: `0 24px 80px -12px rgba(0,0,0,0.7), inset 0 1px 0 0 rgba(255,255,255,0.08), 0 0 0 1px ${accent}33`,
+            }}
+          >
+            <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-32"
+              style={{ background: `radial-gradient(60% 100% at 50% 0%, ${accent}33, transparent 70%)` }}
+            />
+            <h2 className="relative mb-6 text-white leading-tight"
+              style={{ fontFamily: SERIF, fontSize: '1.9rem', fontWeight: 400, fontStyle: 'italic' }}
+            >
+              Pulling from your <span style={{ color: accent }}>booking page</span>
+            </h2>
+            <div className="relative mb-6 h-[3px] w-full overflow-hidden rounded-full bg-white/10">
+              <div className="absolute inset-y-0 left-0 transition-[width] duration-300 ease-out"
+                style={{
+                  width: `${scrapeProgress}%`,
+                  background: `linear-gradient(90deg, ${accent}, #ffffff, ${accent})`,
+                  backgroundSize: '200% 100%',
+                  animation: 'autoScrapeShimmer 1.4s linear infinite',
+                  boxShadow: `0 0 12px ${accent}99`,
+                }}
+              />
+              <style>{`@keyframes autoScrapeShimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }`}</style>
+            </div>
+            <ul className="relative space-y-3 text-left">
+              {SCRAPE_STEPS.map((s, i) => {
+                const done = i < scrapeStepIdx || scrapeProgress >= 100;
+                const active = i === scrapeStepIdx && scrapeProgress < 100;
+                return (
+                  <li key={s.label}
+                    className={`flex items-center gap-3 text-[12px] tracking-[1.5px] uppercase ${
+                      done ? 'text-white/60' : active ? 'text-white font-bold' : 'text-white/25'
+                    }`}
+                  >
+                    <span
+                      className="inline-block w-[18px] h-[18px] rounded-full flex items-center justify-center text-[10px] font-black flex-shrink-0"
+                      style={{
+                        background: done ? accent : 'transparent',
+                        border: `1px solid ${done || active ? accent : 'rgba(255,255,255,0.2)'}`,
+                        color: done ? '#000' : active ? accent : 'rgba(255,255,255,0.25)',
+                      }}
+                    >
+                      {done ? '✓' : i + 1}
+                    </span>
+                    {s.label}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </div>
+      )}
+
       {/* Static barbershop hero — no autoplay video, keeps the page
           light + paint-cheap on desktop. */}
       <div className="absolute inset-0 z-0">

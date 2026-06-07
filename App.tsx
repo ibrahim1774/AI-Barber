@@ -664,11 +664,15 @@ const App: React.FC = () => {
           // The legacy single-page GeneratorForm is no longer routed
           // (kept in the codebase as a fallback in case we need it).
           <NewLeadQuizForm
-            onGenerate={(inputs) => {
+            onGenerate={(inputs, scraped) => {
               // Flag every quiz visitor so the post-generation intro
               // modal fires after the editor mounts.
               cameFromNewRef.current = true;
-              handleGenerate(inputs);
+              // `scraped` is populated when the visitor pasted a
+              // supported booking link (Booksy / Fresha / Square /
+              // Vagaro / StyleSeat) — same prebuilt-payload path
+              // /booksy uses. Undefined for manual-only submissions.
+              handleGenerate(inputs, scraped);
             }}
             onSignIn={() => { setAuthModalMode('signin'); setAuthSignInOnly(true); setShowAuthModal(true); }}
           />
