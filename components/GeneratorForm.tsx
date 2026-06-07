@@ -287,16 +287,10 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
 
             <form onSubmit={handleSubmit} className="mx-auto max-w-md space-y-5">
               <div className="space-y-1">
-                <div className="flex items-center justify-center gap-2">
+                <div className="flex items-center justify-center">
                   <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">
                     <span style={{ color: BOOKSY_TEAL }}>Booksy</span> Link
                   </label>
-                  <span
-                    className="text-[8px] md:text-[9px] uppercase tracking-[2px] px-1.5 py-0.5"
-                    style={{ color: BOOKSY_TEAL, border: `1px solid ${BOOKSY_TEAL}66` }}
-                  >
-                    Required
-                  </span>
                 </div>
                 <input
                   required
@@ -305,8 +299,8 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
                   autoCapitalize="off"
                   autoCorrect="off"
                   spellCheck={false}
-                  placeholder="booksy.com/en-us/your-shop"
-                  className="w-full bg-transparent border-b py-2 md:py-3 text-white text-center transition-all outline-none font-montserrat text-sm md:text-lg placeholder:text-white/20"
+                  placeholder="booksy.com / app.booksy.com / yourshop.booksy.com"
+                  className="w-full bg-transparent border-b py-2 md:py-3 text-white text-center transition-all outline-none font-montserrat text-[12px] md:text-base placeholder:text-white/20"
                   style={{
                     borderBottomColor: `${BOOKSY_TEAL}99`,
                     caretColor: BOOKSY_TEAL,
@@ -464,14 +458,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
                       'Booking Link'
                     )}
                   </label>
-                  {booksyMode ? (
-                    <span
-                      className="text-[8px] md:text-[9px] uppercase tracking-[2px] px-1.5 py-0.5"
-                      style={{ color: BOOKSY_TEAL, border: `1px solid ${BOOKSY_TEAL}66` }}
-                    >
-                      Required
-                    </span>
-                  ) : (
+                  {!booksyMode && (
                     <span className="text-[8px] md:text-[9px] uppercase tracking-[2px] text-[#f4a100]/80 border border-[#f4a100]/40 px-1.5 py-0.5">Optional</span>
                   )}
                 </div>
@@ -482,7 +469,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
                   autoCapitalize="off"
                   autoCorrect="off"
                   spellCheck={false}
-                  placeholder={booksyMode ? 'booksy.com/en-us/your-shop' : 'booksy.com/your-shop'}
+                  placeholder={booksyMode ? 'booksy.com / app.booksy.com / yourshop.booksy.com' : 'booksy.com/your-shop'}
                   className={`w-full bg-transparent border-b py-1.5 md:py-2.5 text-white transition-all outline-none font-montserrat text-sm md:text-lg placeholder:text-white/20 ${booksyMode ? 'text-center' : ''}`}
                   style={{
                     borderBottomColor: booksyMode ? `${BOOKSY_TEAL}99` : 'rgba(255,255,255,0.40)',
