@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ShopInputs, WebsiteData } from '../types';
 import { ArrowRight } from 'lucide-react';
 import { isFreeBarberPath } from '../lib/dealMode.ts';
-import { isSupportedBookingHost } from '../lib/supportedBookingHost.ts';
+import { isSupportedBookingHost, extractFirstUrl } from '../lib/supportedBookingHost.ts';
 import { buildSiteFromScrape } from '../lib/buildSiteFromScrape.ts';
 
 // /new — premium multi-step quiz form mirroring PrimeHub /barber.
@@ -67,11 +67,12 @@ const HERO_IMAGE = 'https://cop5lgctumpj5e0w.public.blob.vercel-storage.com/barb
 const SANS = '"Manrope", "Inter", system-ui, sans-serif';
 const SERIF = '"Instrument Serif", "Times New Roman", Georgia, serif';
 
+// Recover a URL from pasted text — handles Booksy share-text
+// dumps like "Check it out on Booksy here: https://booksy.com/..."
+// or bare domains "booksy.com/en-us/...". Returns undefined when
+// the input contains nothing URL-shaped.
 const normalizeBookingUrl = (raw: string): string | undefined => {
-  const trimmed = (raw || '').trim();
-  if (!trimmed) return undefined;
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  return `https://${trimmed}`;
+  return extractFirstUrl(raw) ?? undefined;
 };
 
 export const NewLeadQuizForm: React.FC<Props> = ({ onGenerate, onSignIn }) => {

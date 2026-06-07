@@ -25,3 +25,30 @@ export function isSupportedBookingHost(url: string | null | undefined): boolean 
     return false;
   }
 }
+
+// Booksy's share sheet hands the user a sentence like:
+//   "I'm using Willi Barber … Check it out on Booksy here:
+//    https://booksy.com/en-us/dl/show-business/998736"
+// — paste-as-is shouldn't fail. This helper pulls the first URL
+// out of arbitrary text. Three passes:
+//   1. Explicit http(s) URL anywhere in the string.
+//   2. Bare host on a known booking platform (covers
+//      "booksy.com/…" with no protocol).
+//   3. Any bare host that looks domain-shaped.
+// Returns the URL with https:// prepended when missing, or null
+// if nothing URL-shaped was found.
+export function extractFirstUrl(text: string | null | undefined): string | null {
+  const trimmed = (text || '').trim();
+  if (!trimmed) return null;
+
+  const explicit = trimmed.match(/https?:\/\/[^\s<>"'\]]+/i);
+  if (explicit) return explicit[0];
+
+  const knownBare = trimmed.match(/(?:[\w-]+\.)+(?:booksy|fresha|styleseat|squareup|square|vagaro)\.(?:com|site)(?:\/[^\s<>"'\]]*)?/i);
+  if (knownBare) return `https://${knownBare[0]}`;
+
+  const genericBare = trimmed.match(/(?:[\w-]+\.)+[a-z]{2,}(?:\/[^\s<>"'\]]*)?/i);
+  if (genericBare) return `https://${genericBare[0]}`;
+
+  return null;
+}

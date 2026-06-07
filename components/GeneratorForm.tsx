@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ShopInputs, WebsiteData } from '../types';
 import { ScissorsIcon } from './Icons';
-import { isSupportedBookingHost } from '../lib/supportedBookingHost.ts';
+import { isSupportedBookingHost, extractFirstUrl } from '../lib/supportedBookingHost.ts';
 import { buildSiteFromScrape } from '../lib/buildSiteFromScrape.ts';
 import { isBooksyPath } from '../lib/dealMode.ts';
 
@@ -88,12 +88,13 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scraping]);
 
-  // Normalize a user-entered booking link: trim, drop if empty, prepend https:// if missing.
+  // Normalize a user-entered booking link. Uses extractFirstUrl so
+  // pasting a sentence that contains the URL (e.g. Booksy's share
+  // text: "Check it out on Booksy here: https://booksy.com/...")
+  // still recovers the URL instead of treating the whole sentence
+  // as a single bogus link.
   const normalizeBookingUrl = (raw: string): string | undefined => {
-    const trimmed = raw.trim();
-    if (!trimmed) return undefined;
-    if (/^https?:\/\//i.test(trimmed)) return trimmed;
-    return `https://${trimmed}`;
+    return extractFirstUrl(raw) ?? undefined;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
