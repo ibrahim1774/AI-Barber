@@ -1,9 +1,15 @@
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ShopInputs, WebsiteData } from '../types';
 import { ScissorsIcon } from './Icons';
 import { isSupportedBookingHost } from '../lib/supportedBookingHost.ts';
 import { buildSiteFromScrape } from '../lib/buildSiteFromScrape.ts';
+import { isBooksyPath } from '../lib/dealMode.ts';
+
+// Booksy brand teal — used to highlight Booksy-specific copy in
+// booksyMode. Lives here (not THEME_PRESETS) because it's an
+// accent on a single field, not a sitewide theme.
+const BOOKSY_TEAL = '#1AE3B9';
 
 interface GeneratorFormProps {
   // Optional `scraped` second arg — populated when the visitor pasted
@@ -27,6 +33,12 @@ const THEME_PRESETS: { slug: string; label: string; bg: string; accent: string }
 ];
 
 export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSignIn }) => {
+  // Path-aware headline + field treatment. On /booksy the form
+  // pivots to a Booksy-first framing (FREE callout, teal Booksy
+  // brand emphasis on the link field, "Required" instead of
+  // "Optional"). The 4-input layout + auto-scrape pipeline is
+  // shared — only the copy + accent change.
+  const booksyMode = useMemo(() => isBooksyPath(), []);
   const [inputs, setInputs] = useState<ShopInputs>({
     shopName: '',
     area: '',
@@ -225,17 +237,27 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
           {/* Darkening overlay for text legibility */}
           <div className="absolute inset-0 bg-gradient-to-br from-black/85 via-black/70 to-black/85" aria-hidden="true" />
           <div className="relative z-10 pt-4 md:pt-0">
-            <h1 className="text-2xl md:text-5xl lg:text-6xl font-montserrat font-black uppercase tracking-[1px] md:tracking-[2px] leading-[1.15] text-white mb-2 md:mb-4">
-              Generate Custom <br className="hidden md:block"/> Barbershop Website <br/>
-              <span className="text-[#f4a100] mt-1 block">in Seconds</span>
-            </h1>
+            {booksyMode ? (
+              <h1 className="text-2xl md:text-5xl lg:text-6xl font-montserrat font-black uppercase tracking-[1px] md:tracking-[2px] leading-[1.15] text-white mb-2 md:mb-4">
+                Generate Your <span style={{ color: '#f4a100' }}>FREE</span> <br className="hidden md:block"/>
+                Barber Website <br className="hidden md:block"/>
+                From Your <span style={{ color: BOOKSY_TEAL }}>Booksy</span> Link
+              </h1>
+            ) : (
+              <h1 className="text-2xl md:text-5xl lg:text-6xl font-montserrat font-black uppercase tracking-[1px] md:tracking-[2px] leading-[1.15] text-white mb-2 md:mb-4">
+                Generate Custom <br className="hidden md:block"/> Barbershop Website <br/>
+                <span className="text-[#f4a100] mt-1 block">in Seconds</span>
+              </h1>
+            )}
             {/* Small italic serif subhead — instruction for the visitor,
                 mirrors the one used on PrimeHub /barber. */}
             <p
               className="text-[11px] md:text-xs italic text-white/70 max-w-[280px] md:max-w-xs mx-auto"
               style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
             >
-              Please fill in the info below so your custom website can be generated.
+              {booksyMode
+                ? "Paste your Booksy link — we'll pull your services, photos, hours, and reviews automatically."
+                : 'Please fill in the info below so your custom website can be generated.'}
             </p>
           </div>
         </div>
@@ -283,21 +305,45 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
 
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Booking Link</label>
-                  <span className="text-[8px] md:text-[9px] uppercase tracking-[2px] text-[#f4a100]/80 border border-[#f4a100]/40 px-1.5 py-0.5">Optional</span>
+                  <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">
+                    {booksyMode ? (
+                      <><span style={{ color: BOOKSY_TEAL }}>Booksy</span> Link</>
+                    ) : (
+                      'Booking Link'
+                    )}
+                  </label>
+                  {booksyMode ? (
+                    <span
+                      className="text-[8px] md:text-[9px] uppercase tracking-[2px] px-1.5 py-0.5"
+                      style={{ color: BOOKSY_TEAL, border: `1px solid ${BOOKSY_TEAL}66` }}
+                    >
+                      Required
+                    </span>
+                  ) : (
+                    <span className="text-[8px] md:text-[9px] uppercase tracking-[2px] text-[#f4a100]/80 border border-[#f4a100]/40 px-1.5 py-0.5">Optional</span>
+                  )}
                 </div>
                 <input
+                  required={booksyMode}
                   type="text"
                   inputMode="url"
                   autoCapitalize="off"
                   autoCorrect="off"
                   spellCheck={false}
-                  placeholder="booksy.com/your-shop"
-                  className="w-full bg-transparent border-b border-white/40 focus:border-[#f4a100] py-1.5 md:py-2.5 text-white transition-all outline-none font-montserrat text-sm md:text-lg placeholder:text-white/20"
+                  placeholder={booksyMode ? 'booksy.com/en-us/your-shop' : 'booksy.com/your-shop'}
+                  className="w-full bg-transparent border-b py-1.5 md:py-2.5 text-white transition-all outline-none font-montserrat text-sm md:text-lg placeholder:text-white/20"
+                  style={{
+                    borderBottomColor: booksyMode ? `${BOOKSY_TEAL}99` : 'rgba(255,255,255,0.40)',
+                    caretColor: booksyMode ? BOOKSY_TEAL : undefined,
+                  }}
                   value={inputs.bookingUrl || ''}
                   onChange={e => setInputs({...inputs, bookingUrl: e.target.value})}
                 />
-                <p className="text-white/40 text-[9px] md:text-[10px] mt-1">Booksy, Cal.com, Vagaro — any booking page works.</p>
+                <p className="text-white/40 text-[9px] md:text-[10px] mt-1">
+                  {booksyMode
+                    ? 'Short links like yourshop.booksy.com work too — we resolve them.'
+                    : 'Booksy, Cal.com, Vagaro — any booking page works.'}
+                </p>
               </div>
 
               {/* Color-theme picker — 4 presets in a 2x2 grid. Every chip

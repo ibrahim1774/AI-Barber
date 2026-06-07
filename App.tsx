@@ -8,7 +8,6 @@ declare global {
   }
 }
 
-import { BooksyGeneratorForm } from './components/BooksyGeneratorForm.tsx';
 import { NewLeadQuizForm } from './components/NewLeadQuizForm.tsx';
 import { GeneratorForm } from './components/GeneratorForm.tsx';
 import { isBooksyPath, isFreeBarberPath } from './lib/dealMode.ts';
@@ -652,12 +651,7 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#0d0d0d] text-white">
       {state === 'generator' && (
-        isBooksyPath() ? (
-          <BooksyGeneratorForm
-            onGenerate={(inputs, scraped) => handleGenerate(inputs, scraped)}
-            onSignIn={() => { setAuthModalMode('signin'); setAuthSignInOnly(true); setShowAuthModal(true); }}
-          />
-        ) : isFreeBarberPath() ? (
+        isFreeBarberPath() ? (
           // /free-barber keeps the premium multi-step quiz funnel
           // (with the auto-scrape + "FREE" headline emphasis).
           <NewLeadQuizForm
@@ -668,10 +662,11 @@ const App: React.FC = () => {
             onSignIn={() => { setAuthModalMode('signin'); setAuthSignInOnly(true); setShowAuthModal(true); }}
           />
         ) : (
-          // Homepage reverted to the original single-page 4-input
-          // GeneratorForm (shopName / area / phone / bookingUrl with
-          // the color-theme picker). Side-by-side luxury-gradient
-          // layout with the static barbershop hero.
+          // Homepage AND /booksy both render the side-by-side legacy
+          // GeneratorForm. The form internally detects isBooksyPath()
+          // and adjusts the headline + booking-link field accordingly
+          // (FREE callout + Booksy teal + Required badge) while the
+          // 4-input layout + auto-scrape pipeline stays shared.
           <GeneratorForm
             onGenerate={(inputs, scraped) => handleGenerate(inputs, scraped)}
             onSignIn={() => { setAuthModalMode('signin'); setAuthSignInOnly(true); setShowAuthModal(true); }}
