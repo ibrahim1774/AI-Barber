@@ -226,6 +226,123 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
           </div>
         </div>
       )}
+
+      {/* /booksy: single full-bleed layout — barber image fills the
+          whole viewport, headline + single Booksy-link input + submit
+          button stack centered in the middle of the screen. */}
+      {booksyMode ? (
+        <div className="relative w-full min-h-screen overflow-hidden flex items-center justify-center px-5 py-12 md:py-16">
+          {/* Full-bleed barber background */}
+          <div
+            className="absolute inset-0 bg-cover bg-center"
+            style={{
+              backgroundImage:
+                "url('https://images.unsplash.com/photo-1503951914875-452162b0f3f1?auto=format&fit=crop&w=1920&q=80')",
+            }}
+            aria-hidden="true"
+          />
+          {/* Vignette + darkening — pulls focus to center while
+              keeping the barber chair visible at the edges. */}
+          <div
+            className="absolute inset-0"
+            aria-hidden="true"
+            style={{
+              background:
+                'radial-gradient(60% 75% at 50% 50%, rgba(5,7,10,0.55) 0%, rgba(5,7,10,0.85) 65%, rgba(5,7,10,0.95) 100%)',
+            }}
+          />
+
+          {/* Logo (top-left) */}
+          <div className="absolute top-6 left-6 md:top-8 md:left-8 flex items-center gap-2 md:gap-3 z-20 pointer-events-none">
+            <ScissorsIcon className="w-5 h-5 md:w-6 md:h-6 text-[#f4a100]" />
+            <span className="text-[10px] md:text-sm font-montserrat font-black uppercase tracking-[2px] text-white">
+              Prime<span className="text-[#f4a100]">Barber</span> AI
+            </span>
+          </div>
+
+          {/* Sign In (top-right) */}
+          {onSignIn && (
+            <button
+              onClick={onSignIn}
+              className="absolute top-6 right-6 md:top-8 md:right-8 z-20 rounded-full border border-white/30 bg-white/[0.06] px-4 py-1.5 md:px-5 md:py-2 text-[14px] md:text-[17px] font-montserrat font-black uppercase tracking-[2px] text-white shadow-sm hover:border-white hover:bg-white/15 hover:text-[#f4a100] transition-all"
+            >
+              Sign In
+            </button>
+          )}
+
+          {/* Centered headline + form column */}
+          <div className="relative z-10 w-full max-w-2xl text-center">
+            <h1 className="text-3xl md:text-5xl lg:text-6xl font-montserrat font-black uppercase tracking-[1px] md:tracking-[2px] leading-[1.1] text-white mb-6 md:mb-8">
+              Generate Your <span style={{ color: '#f4a100' }}>FREE</span> <br className="hidden md:block"/>
+              Barber Website From <br className="hidden md:block"/>
+              Your <span style={{ color: BOOKSY_TEAL }}>Booksy</span> Link
+              <span className="text-[#f4a100] mt-2 block">in a Few Seconds</span>
+            </h1>
+            <p
+              className="text-[11px] md:text-sm italic text-white/70 max-w-md mx-auto mb-8 md:mb-10"
+              style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
+            >
+              Paste your Booksy link — we'll pull your services, photos, hours, and reviews automatically.
+            </p>
+
+            <form onSubmit={handleSubmit} className="mx-auto max-w-md space-y-5">
+              <div className="space-y-1">
+                <div className="flex items-center justify-center gap-2">
+                  <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">
+                    <span style={{ color: BOOKSY_TEAL }}>Booksy</span> Link
+                  </label>
+                  <span
+                    className="text-[8px] md:text-[9px] uppercase tracking-[2px] px-1.5 py-0.5"
+                    style={{ color: BOOKSY_TEAL, border: `1px solid ${BOOKSY_TEAL}66` }}
+                  >
+                    Required
+                  </span>
+                </div>
+                <input
+                  required
+                  type="text"
+                  inputMode="url"
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  placeholder="booksy.com/en-us/your-shop"
+                  className="w-full bg-transparent border-b py-2 md:py-3 text-white text-center transition-all outline-none font-montserrat text-sm md:text-lg placeholder:text-white/20"
+                  style={{
+                    borderBottomColor: `${BOOKSY_TEAL}99`,
+                    caretColor: BOOKSY_TEAL,
+                  }}
+                  value={inputs.bookingUrl || ''}
+                  onChange={e => setInputs({ ...inputs, bookingUrl: e.target.value })}
+                />
+                <p className="text-white/40 text-[9px] md:text-[10px] mt-1 text-center">
+                  Short links like yourshop.booksy.com work too — we resolve them.
+                </p>
+              </div>
+
+              {scrapeError && (
+                <div
+                  className="rounded-lg px-3 py-2 text-[11px] md:text-[12px]"
+                  style={{
+                    border: '1px solid rgba(248,113,113,0.4)',
+                    background: 'rgba(248,113,113,0.08)',
+                    color: '#fecaca',
+                  }}
+                >
+                  {scrapeError}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={scraping}
+                className="w-full py-4 md:py-5 bg-[#f4a100] text-[#1a1a1a] font-montserrat font-black uppercase tracking-[1.5px] md:tracking-[2px] text-xs md:text-base hover:bg-white transition-all duration-500 shadow-[0_0_20px_rgba(244,161,0,0.15)] active:scale-[0.98] disabled:opacity-60"
+              >
+                Generate My Barbershop Website
+              </button>
+            </form>
+          </div>
+        </div>
+      ) : (
       <div className="w-full grid md:grid-cols-[40%_60%] luxury-gradient relative">
 
         {/* Logo in the Upper Left Hand Corner */}
@@ -460,6 +577,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 };
