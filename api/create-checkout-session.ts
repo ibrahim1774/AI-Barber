@@ -64,10 +64,10 @@ export default async function handler(req: any, res: any) {
       interval = 'year';
       productName = 'Prime Barber AI Booksy - Yearly Hosting ($48/yr)';
     } else if (isYearlyFree) {
-      // /free-barber yearly: same $48/yr as booksy yearly.
-      unitAmount = '4800';
+      // /free-barber yearly: 20% off $7/mo × 12 = $67.20/yr → $67.
+      unitAmount = '6700';
       interval = 'year';
-      productName = 'Prime Barber AI Free - Yearly Hosting ($48/yr)';
+      productName = 'Prime Barber AI Free - Yearly Hosting ($67/yr)';
     } else if (isFive) {
       unitAmount = '500';
       interval = 'month';
@@ -81,10 +81,10 @@ export default async function handler(req: any, res: any) {
       interval = 'month';
       productName = 'Prime Barber AI Booksy - Monthly Hosting ($5/mo)';
     } else if (isMonthlyFree) {
-      // /free-barber monthly: same $5/mo as booksy monthly.
-      unitAmount = '500';
+      // /free-barber monthly: $7/mo.
+      unitAmount = '700';
       interval = 'month';
-      productName = 'Prime Barber AI Free - Monthly Hosting ($5/mo)';
+      productName = 'Prime Barber AI Free - Monthly Hosting ($7/mo)';
     } else if (isCustom15) {
       unitAmount = '1500';
       interval = 'month';

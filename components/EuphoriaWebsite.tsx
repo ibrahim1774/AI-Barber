@@ -569,10 +569,10 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
         const PLAN_VALUES: Record<string, number> = {
           monthly: 9,
           'monthly-booksy': 5,
-          'monthly-free': 5,
+          'monthly-free': 7,
           yearly: 86,
           'yearly-booksy': 48,
-          'yearly-free': 48,
+          'yearly-free': 67,
           five: 5,
           seven: 7,
         };

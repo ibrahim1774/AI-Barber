@@ -46,9 +46,9 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
   // Standard monthly price varies by entry path:
   //   /5 / /7              → handled by dealMode branches
   //   /booksy              → $5/mo with $7 anchor (plan 'monthly-booksy')
-  //   /free-barber         → $5/mo (plan 'monthly-free')
+  //   /free-barber         → $7/mo (plan 'monthly-free')
   //   everywhere else      → $9/mo (plan 'monthly')
-  const stdMonthlyPriceDollars = (booksyMode || freeBarberMode) ? 5 : 9;
+  const stdMonthlyPriceDollars = booksyMode ? 5 : freeBarberMode ? 7 : 9;
   const stdMonthlyPriceMo = `$${stdMonthlyPriceDollars}/mo`;
   const stdMonthlyPriceMonth = `$${stdMonthlyPriceDollars}/month`;
   // Anchor price displayed strikethrough beside the live price for

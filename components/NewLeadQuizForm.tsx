@@ -186,9 +186,15 @@ export const NewLeadQuizForm: React.FC<Props> = ({ onGenerate, onSignIn }) => {
               Generate your{' '}
               <span
                 className="italic"
-                style={{ fontFamily: SERIF, fontWeight: 400, color: accent }}
+                style={{
+                  fontFamily: SERIF,
+                  fontWeight: 700,
+                  color: accent,
+                  fontSize: '1.18em',
+                  letterSpacing: '0.01em',
+                }}
               >
-                free
+                FREE
               </span>{' '}
               barbershop <br className="hidden sm:inline" />
               website in{' '}
