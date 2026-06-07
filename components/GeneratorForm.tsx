@@ -263,12 +263,13 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
           />
           {/* Darkening overlay for text legibility */}
           <div className="absolute inset-0 bg-gradient-to-br from-black/85 via-black/70 to-black/85" aria-hidden="true" />
-          <div className="relative z-10 pt-4 md:pt-0">
+          <div className="relative z-10 pt-4 md:pt-0 mx-auto max-w-2xl">
             {booksyMode ? (
-              <h1 className="text-2xl md:text-5xl lg:text-6xl font-montserrat font-black uppercase tracking-[1px] md:tracking-[2px] leading-[1.15] text-white mb-2 md:mb-4">
+              <h1 className="text-2xl md:text-5xl lg:text-6xl font-montserrat font-black uppercase tracking-[1px] md:tracking-[2px] leading-[1.15] text-white mb-2 md:mb-4 text-center">
                 Generate Your <span style={{ color: '#f4a100' }}>FREE</span> <br className="hidden md:block"/>
-                Barber Website <br className="hidden md:block"/>
-                From Your <span style={{ color: BOOKSY_TEAL }}>Booksy</span> Link
+                Barber Website From <br className="hidden md:block"/>
+                Your <span style={{ color: BOOKSY_TEAL }}>Booksy</span> Link
+                <span className="text-[#f4a100] mt-1 block">in a Few Seconds</span>
               </h1>
             ) : (
               <h1 className="text-2xl md:text-5xl lg:text-6xl font-montserrat font-black uppercase tracking-[1px] md:tracking-[2px] leading-[1.15] text-white mb-2 md:mb-4">
@@ -290,9 +291,12 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
         </div>
 
         {/* Right Side: Form — tighter vertical padding on mobile so the
-            first input sits right under the headline section. */}
-        <div className="px-6 pt-4 pb-8 md:px-16 md:py-12 lg:px-24 bg-[#0d0d0d] flex flex-col justify-center md:min-h-screen">
-          <div className="max-w-xl w-full mx-auto">
+            first input sits right under the headline section.
+            On /booksy the form is just one input, so it gets extra
+            vertical padding + a narrower max-width so the field +
+            button sit visually centered with breathing room. */}
+        <div className={`px-6 ${booksyMode ? 'pt-8 pb-12 md:px-16 md:py-20 lg:px-24' : 'pt-4 pb-8 md:px-16 md:py-12 lg:px-24'} bg-[#0d0d0d] flex flex-col justify-center md:min-h-screen`}>
+          <div className={`${booksyMode ? 'max-w-md' : 'max-w-xl'} w-full mx-auto`}>
             <form onSubmit={handleSubmit} className="space-y-3 md:space-y-5">
               {!booksyMode && (
                 <>
@@ -335,7 +339,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
               )}
 
               <div className="space-y-1">
-                <div className="flex items-center gap-2">
+                <div className={`flex items-center gap-2 ${booksyMode ? 'justify-center' : ''}`}>
                   <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">
                     {booksyMode ? (
                       <><span style={{ color: BOOKSY_TEAL }}>Booksy</span> Link</>
@@ -362,7 +366,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
                   autoCorrect="off"
                   spellCheck={false}
                   placeholder={booksyMode ? 'booksy.com/en-us/your-shop' : 'booksy.com/your-shop'}
-                  className="w-full bg-transparent border-b py-1.5 md:py-2.5 text-white transition-all outline-none font-montserrat text-sm md:text-lg placeholder:text-white/20"
+                  className={`w-full bg-transparent border-b py-1.5 md:py-2.5 text-white transition-all outline-none font-montserrat text-sm md:text-lg placeholder:text-white/20 ${booksyMode ? 'text-center' : ''}`}
                   style={{
                     borderBottomColor: booksyMode ? `${BOOKSY_TEAL}99` : 'rgba(255,255,255,0.40)',
                     caretColor: booksyMode ? BOOKSY_TEAL : undefined,
@@ -370,7 +374,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
                   value={inputs.bookingUrl || ''}
                   onChange={e => setInputs({...inputs, bookingUrl: e.target.value})}
                 />
-                <p className="text-white/40 text-[9px] md:text-[10px] mt-1">
+                <p className={`text-white/40 text-[9px] md:text-[10px] mt-1 ${booksyMode ? 'text-center' : ''}`}>
                   {booksyMode
                     ? 'Short links like yourshop.booksy.com work too — we resolve them.'
                     : 'Booksy, Cal.com, Vagaro — any booking page works.'}
