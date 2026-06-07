@@ -10,7 +10,8 @@ declare global {
 
 import { BooksyGeneratorForm } from './components/BooksyGeneratorForm.tsx';
 import { NewLeadQuizForm } from './components/NewLeadQuizForm.tsx';
-import { isBooksyPath } from './lib/dealMode.ts';
+import { GeneratorForm } from './components/GeneratorForm.tsx';
+import { isBooksyPath, isFreeBarberPath } from './lib/dealMode.ts';
 // Note: the legacy single-page GeneratorForm + isNewLeadPath() detector
 // were removed when the premium quiz funnel took over the homepage too.
 // /new keeps working as an alias since both routes render the same form.
@@ -656,22 +657,23 @@ const App: React.FC = () => {
             onGenerate={(inputs, scraped) => handleGenerate(inputs, scraped)}
             onSignIn={() => { setAuthModalMode('signin'); setAuthSignInOnly(true); setShowAuthModal(true); }}
           />
-        ) : (
-          // Homepage AND /new now both render the premium multi-step
-          // quiz funnel — same UX, same post-generation intro modal.
-          // The legacy single-page GeneratorForm is no longer routed
-          // (kept in the codebase as a fallback in case we need it).
+        ) : isFreeBarberPath() ? (
+          // /free-barber keeps the premium multi-step quiz funnel
+          // (with the auto-scrape + "FREE" headline emphasis).
           <NewLeadQuizForm
             onGenerate={(inputs, scraped) => {
-              // Flag every quiz visitor so the post-generation intro
-              // modal fires after the editor mounts.
               cameFromNewRef.current = true;
-              // `scraped` is populated when the visitor pasted a
-              // supported booking link (Booksy / Fresha / Square /
-              // Vagaro / StyleSeat) — same prebuilt-payload path
-              // /booksy uses. Undefined for manual-only submissions.
               handleGenerate(inputs, scraped);
             }}
+            onSignIn={() => { setAuthModalMode('signin'); setAuthSignInOnly(true); setShowAuthModal(true); }}
+          />
+        ) : (
+          // Homepage reverted to the original single-page 4-input
+          // GeneratorForm (shopName / area / phone / bookingUrl with
+          // the color-theme picker). Side-by-side luxury-gradient
+          // layout with the static barbershop hero.
+          <GeneratorForm
+            onGenerate={(inputs) => handleGenerate(inputs)}
             onSignIn={() => { setAuthModalMode('signin'); setAuthSignInOnly(true); setShowAuthModal(true); }}
           />
         )
