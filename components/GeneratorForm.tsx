@@ -54,6 +54,11 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
   const [scrapeStepIdx, setScrapeStepIdx] = useState(0);
   const [scrapeProgress, setScrapeProgress] = useState(0);
   const scrapeTimerRef = useRef<number | null>(null);
+  // booksyMode error surface — when the visitor's only input is the
+  // Booksy link, we can't silently fall back to manual generation
+  // because the other identity fields aren't collected. Surface a
+  // friendly message instead.
+  const [scrapeError, setScrapeError] = useState<string | null>(null);
 
   const SCRAPE_STEPS = [
     { pct: 18, label: 'Fetching your shop info…' },
@@ -93,9 +98,24 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!(inputs.shopName && inputs.area && inputs.phone)) return;
+    setScrapeError(null);
+    // Homepage path requires the three identity fields. In booksyMode
+    // those fields aren't shown — the Booksy link is the sole input,
+    // and the scrape provides shopName/area/phone via buildSiteFromScrape.
+    if (!booksyMode && !(inputs.shopName && inputs.area && inputs.phone)) return;
 
     const normalizedUrl = normalizeBookingUrl(inputs.bookingUrl || '');
+
+    if (booksyMode) {
+      if (!normalizedUrl) {
+        setScrapeError('Paste your Booksy link to continue.');
+        return;
+      }
+      if (!isSupportedBookingHost(normalizedUrl)) {
+        setScrapeError('That link isn\'t Booksy / Fresha / Square / Vagaro / StyleSeat. Try the homepage to fill in your details manually.');
+        return;
+      }
+    }
 
     // Auto-scrape path: visitor pasted a supported booking link.
     // Run /api/import-scrape, merge with the typed identity (manual
@@ -123,11 +143,18 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
         setScraping(false);
         onGenerate(builtInputs, scraped);
         return;
-      } catch (err) {
-        // Silent fallback — scrape failed. Drop to manual generation
-        // so the visitor still gets a site; they just lose auto-fill.
-        console.warn('[Auto-scrape] Falling back to manual generation:', err);
+      } catch (err: any) {
         setScraping(false);
+        if (booksyMode) {
+          // No fallback in booksyMode — the other identity fields
+          // weren't collected, so we can't generate a usable site.
+          // Surface the error and let the visitor try a different link.
+          setScrapeError(err?.message || 'Couldn\'t pull from that link — try a different one.');
+          return;
+        }
+        // Homepage path: silently fall back so the visitor still
+        // gets a site from their manually-typed fields.
+        console.warn('[Auto-scrape] Falling back to manual generation:', err);
       }
     }
 
@@ -267,41 +294,45 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
         <div className="px-6 pt-4 pb-8 md:px-16 md:py-12 lg:px-24 bg-[#0d0d0d] flex flex-col justify-center md:min-h-screen">
           <div className="max-w-xl w-full mx-auto">
             <form onSubmit={handleSubmit} className="space-y-3 md:space-y-5">
-              <div className="space-y-1">
-                <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Barbershop Name</label>
-                <input
-                  required
-                  type="text"
-                  placeholder="The Gentlemen's Lounge"
-                  className="w-full bg-transparent border-b border-white/40 focus:border-[#f4a100] py-1.5 md:py-2.5 text-white transition-all outline-none font-montserrat text-sm md:text-lg placeholder:text-white/20"
-                  value={inputs.shopName}
-                  onChange={e => setInputs({...inputs, shopName: e.target.value})}
-                />
-              </div>
+              {!booksyMode && (
+                <>
+                  <div className="space-y-1">
+                    <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Barbershop Name</label>
+                    <input
+                      required
+                      type="text"
+                      placeholder="The Gentlemen's Lounge"
+                      className="w-full bg-transparent border-b border-white/40 focus:border-[#f4a100] py-1.5 md:py-2.5 text-white transition-all outline-none font-montserrat text-sm md:text-lg placeholder:text-white/20"
+                      value={inputs.shopName}
+                      onChange={e => setInputs({...inputs, shopName: e.target.value})}
+                    />
+                  </div>
 
-              <div className="space-y-1">
-                <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Barbershop Service Area</label>
-                <input
-                  required
-                  type="text"
-                  placeholder="Beverly Hills, CA"
-                  className="w-full bg-transparent border-b border-white/40 focus:border-[#f4a100] py-1.5 md:py-2.5 text-white transition-all outline-none font-montserrat text-sm md:text-lg placeholder:text-white/20"
-                  value={inputs.area}
-                  onChange={e => setInputs({...inputs, area: e.target.value})}
-                />
-              </div>
+                  <div className="space-y-1">
+                    <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Barbershop Service Area</label>
+                    <input
+                      required
+                      type="text"
+                      placeholder="Beverly Hills, CA"
+                      className="w-full bg-transparent border-b border-white/40 focus:border-[#f4a100] py-1.5 md:py-2.5 text-white transition-all outline-none font-montserrat text-sm md:text-lg placeholder:text-white/20"
+                      value={inputs.area}
+                      onChange={e => setInputs({...inputs, area: e.target.value})}
+                    />
+                  </div>
 
-              <div className="space-y-1">
-                <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Phone Number</label>
-                <input
-                  required
-                  type="tel"
-                  placeholder="+1 234 567 8900"
-                  className="w-full bg-transparent border-b border-white/40 focus:border-[#f4a100] py-1.5 md:py-2.5 text-white transition-all outline-none font-montserrat text-sm md:text-lg placeholder:text-white/20"
-                  value={inputs.phone}
-                  onChange={e => setInputs({...inputs, phone: e.target.value})}
-                />
-              </div>
+                  <div className="space-y-1">
+                    <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Phone Number</label>
+                    <input
+                      required
+                      type="tel"
+                      placeholder="+1 234 567 8900"
+                      className="w-full bg-transparent border-b border-white/40 focus:border-[#f4a100] py-1.5 md:py-2.5 text-white transition-all outline-none font-montserrat text-sm md:text-lg placeholder:text-white/20"
+                      value={inputs.phone}
+                      onChange={e => setInputs({...inputs, phone: e.target.value})}
+                    />
+                  </div>
+                </>
+              )}
 
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
@@ -346,53 +377,69 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
                 </p>
               </div>
 
-              {/* Color-theme picker — 4 presets in a 2x2 grid. Every chip
-                  shows its label inline so the visitor can read every
-                  option at a glance. Tap any chip to pick. */}
-              <div className="space-y-1.5">
-                <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">
-                  Choose Your Colors{' '}
-                  <span className="text-white/40 normal-case tracking-normal">(pick a theme)</span>
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {THEME_PRESETS.map((t) => {
-                    const selected = (inputs.colorTheme || 'goldBlack') === t.slug;
-                    return (
-                      <button
-                        key={t.slug}
-                        type="button"
-                        onClick={() => setInputs({ ...inputs, colorTheme: t.slug })}
-                        aria-pressed={selected}
-                        className={`flex min-w-0 items-center gap-1.5 rounded-lg border px-2 py-1.5 transition-all ${
-                          selected
-                            ? 'border-white bg-white/10'
-                            : 'border-white/20 bg-white/[0.03] hover:border-white/40'
-                        }`}
-                      >
-                        <span className="relative flex shrink-0 items-center">
-                          <span
-                            className="h-3.5 w-3.5 rounded-full border border-white/25"
-                            style={{ background: t.bg }}
-                          />
-                          <span
-                            className="-ml-1.5 h-3.5 w-3.5 rounded-full border border-white/25"
-                            style={{ background: t.accent }}
-                          />
-                        </span>
-                        <span className="min-w-0 truncate text-[8.5px] sm:text-[9.5px] font-bold uppercase tracking-[0.08em] sm:tracking-[0.1em] text-white/90">
-                          {t.label}
-                        </span>
-                      </button>
-                    );
-                  })}
+              {/* Color-theme picker — homepage only. /booksy skips this:
+                  the scraped page provides everything we need, so we
+                  default to the gold/black preset and move on. */}
+              {!booksyMode && (
+                <div className="space-y-1.5">
+                  <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">
+                    Choose Your Colors{' '}
+                    <span className="text-white/40 normal-case tracking-normal">(pick a theme)</span>
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {THEME_PRESETS.map((t) => {
+                      const selected = (inputs.colorTheme || 'goldBlack') === t.slug;
+                      return (
+                        <button
+                          key={t.slug}
+                          type="button"
+                          onClick={() => setInputs({ ...inputs, colorTheme: t.slug })}
+                          aria-pressed={selected}
+                          className={`flex min-w-0 items-center gap-1.5 rounded-lg border px-2 py-1.5 transition-all ${
+                            selected
+                              ? 'border-white bg-white/10'
+                              : 'border-white/20 bg-white/[0.03] hover:border-white/40'
+                          }`}
+                        >
+                          <span className="relative flex shrink-0 items-center">
+                            <span
+                              className="h-3.5 w-3.5 rounded-full border border-white/25"
+                              style={{ background: t.bg }}
+                            />
+                            <span
+                              className="-ml-1.5 h-3.5 w-3.5 rounded-full border border-white/25"
+                              style={{ background: t.accent }}
+                            />
+                          </span>
+                          <span className="min-w-0 truncate text-[8.5px] sm:text-[9.5px] font-bold uppercase tracking-[0.08em] sm:tracking-[0.1em] text-white/90">
+                            {t.label}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {scrapeError && (
+                <div
+                  className="rounded-lg px-3 py-2 text-[11px] md:text-[12px]"
+                  style={{
+                    border: '1px solid rgba(248,113,113,0.4)',
+                    background: 'rgba(248,113,113,0.08)',
+                    color: '#fecaca',
+                  }}
+                >
+                  {scrapeError}
+                </div>
+              )}
 
               <button
                 type="submit"
-                className="w-full py-4 md:py-5 mt-2 md:mt-3 bg-[#f4a100] text-[#1a1a1a] font-montserrat font-black uppercase tracking-[1.5px] md:tracking-[2px] text-xs md:text-base hover:bg-white transition-all duration-500 shadow-[0_0_20px_rgba(244,161,0,0.15)] active:scale-[0.98]"
+                disabled={scraping}
+                className="w-full py-4 md:py-5 mt-2 md:mt-3 bg-[#f4a100] text-[#1a1a1a] font-montserrat font-black uppercase tracking-[1.5px] md:tracking-[2px] text-xs md:text-base hover:bg-white transition-all duration-500 shadow-[0_0_20px_rgba(244,161,0,0.15)] active:scale-[0.98] disabled:opacity-60"
               >
-                Generate My Barbershop Website
+                {booksyMode ? 'Generate My Barbershop Website' : 'Generate My Barbershop Website'}
               </button>
             </form>
 
