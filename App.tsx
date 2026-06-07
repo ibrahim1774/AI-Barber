@@ -673,7 +673,7 @@ const App: React.FC = () => {
           // the color-theme picker). Side-by-side luxury-gradient
           // layout with the static barbershop hero.
           <GeneratorForm
-            onGenerate={(inputs) => handleGenerate(inputs)}
+            onGenerate={(inputs, scraped) => handleGenerate(inputs, scraped)}
             onSignIn={() => { setAuthModalMode('signin'); setAuthSignInOnly(true); setShowAuthModal(true); }}
           />
         )

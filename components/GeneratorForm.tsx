@@ -1,10 +1,17 @@
 
-import React from 'react';
-import { ShopInputs } from '../types';
+import React, { useEffect, useRef, useState } from 'react';
+import { ShopInputs, WebsiteData } from '../types';
 import { ScissorsIcon } from './Icons';
+import { isSupportedBookingHost } from '../lib/supportedBookingHost.ts';
+import { buildSiteFromScrape } from '../lib/buildSiteFromScrape.ts';
 
 interface GeneratorFormProps {
-  onGenerate: (inputs: ShopInputs) => void;
+  // Optional `scraped` second arg — populated when the visitor pasted
+  // a supported booking URL (Booksy / Fresha / Square / Vagaro /
+  // StyleSeat) and the auto-scrape succeeded. Same prebuilt-payload
+  // contract /booksy uses; App.tsx forwards it to handleGenerate's
+  // prebuilt param so the Gemini call is skipped.
+  onGenerate: (inputs: ShopInputs, scraped?: WebsiteData) => void;
   onSignIn?: () => void;
 }
 
@@ -20,7 +27,7 @@ const THEME_PRESETS: { slug: string; label: string; bg: string; accent: string }
 ];
 
 export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSignIn }) => {
-  const [inputs, setInputs] = React.useState<ShopInputs>({
+  const [inputs, setInputs] = useState<ShopInputs>({
     shopName: '',
     area: '',
     phone: '',
@@ -28,6 +35,41 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
     bookingUrl: '',
     colorTheme: 'goldBlack',
   });
+
+  // Auto-scrape state — only kicks in when bookingUrl is a supported
+  // platform. Mirrors the step ladder UX from /booksy.
+  const [scraping, setScraping] = useState(false);
+  const [scrapeStepIdx, setScrapeStepIdx] = useState(0);
+  const [scrapeProgress, setScrapeProgress] = useState(0);
+  const scrapeTimerRef = useRef<number | null>(null);
+
+  const SCRAPE_STEPS = [
+    { pct: 18, label: 'Fetching your shop info…' },
+    { pct: 42, label: 'Loading photos & services…' },
+    { pct: 66, label: 'Pulling reviews & hours…' },
+    { pct: 88, label: 'Building your custom site…' },
+  ];
+
+  useEffect(() => {
+    if (!scraping) {
+      setScrapeStepIdx(0);
+      setScrapeProgress(0);
+      if (scrapeTimerRef.current) window.clearInterval(scrapeTimerRef.current);
+      return;
+    }
+    const startedAt = Date.now();
+    scrapeTimerRef.current = window.setInterval(() => {
+      const elapsed = (Date.now() - startedAt) / 1000;
+      const idx = Math.min(SCRAPE_STEPS.length - 1, Math.floor(elapsed / 7));
+      const target = SCRAPE_STEPS[idx].pct;
+      setScrapeStepIdx(idx);
+      setScrapeProgress((p) => (p < target ? Math.min(target, p + 0.7) : p));
+    }, 120) as unknown as number;
+    return () => {
+      if (scrapeTimerRef.current) window.clearInterval(scrapeTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scraping]);
 
   // Normalize a user-entered booking link: trim, drop if empty, prepend https:// if missing.
   const normalizeBookingUrl = (raw: string): string | undefined => {
@@ -37,15 +79,114 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
     return `https://${trimmed}`;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (inputs.shopName && inputs.area && inputs.phone) {
-      onGenerate({ ...inputs, bookingUrl: normalizeBookingUrl(inputs.bookingUrl || '') });
+    if (!(inputs.shopName && inputs.area && inputs.phone)) return;
+
+    const normalizedUrl = normalizeBookingUrl(inputs.bookingUrl || '');
+
+    // Auto-scrape path: visitor pasted a supported booking link.
+    // Run /api/import-scrape, merge with the typed identity (manual
+    // wins), pass a prebuilt WebsiteData to App so the Gemini
+    // template call is skipped and the site renders with real
+    // photos, services, hours, reviews. Mirrors /booksy + the quiz.
+    if (normalizedUrl && isSupportedBookingHost(normalizedUrl)) {
+      setScraping(true);
+      try {
+        const resp = await fetch('/api/import-scrape', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: normalizedUrl }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data?.error || 'Scrape failed');
+
+        const { inputs: builtInputs, scraped } = buildSiteFromScrape(data, normalizedUrl, {
+          manual: { ...inputs, bookingUrl: normalizedUrl },
+          template: inputs.template === 'euphoria' ? 'euphoria' : 'luxe',
+        });
+        setScrapeProgress(100);
+        setScrapeStepIdx(SCRAPE_STEPS.length - 1);
+        await new Promise((r) => setTimeout(r, 300));
+        setScraping(false);
+        onGenerate(builtInputs, scraped);
+        return;
+      } catch (err) {
+        // Silent fallback — scrape failed. Drop to manual generation
+        // so the visitor still gets a site; they just lose auto-fill.
+        console.warn('[Auto-scrape] Falling back to manual generation:', err);
+        setScraping(false);
+      }
     }
+
+    // Manual-only path: no URL, unsupported platform, or scrape failed.
+    onGenerate({ ...inputs, bookingUrl: normalizedUrl });
   };
 
   return (
     <div className="md:min-h-screen bg-[#0d0d0d] flex items-start md:items-stretch overflow-x-hidden">
+      {/* Auto-scrape overlay — only shown when bookingUrl is a
+          supported platform. Same step ladder as /booksy + the quiz. */}
+      {scraping && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center px-6"
+          style={{ background: 'rgba(5,7,10,0.82)', backdropFilter: 'blur(14px)' }}
+        >
+          <div
+            className="relative w-full max-w-md overflow-hidden rounded-2xl border border-white/10 p-7 text-center md:p-9"
+            style={{
+              background: 'linear-gradient(180deg, rgba(10,14,22,0.92), rgba(10,14,22,0.96))',
+              boxShadow: '0 24px 80px -12px rgba(0,0,0,0.7), inset 0 1px 0 0 rgba(255,255,255,0.08), 0 0 0 1px rgba(244,161,0,0.30)',
+            }}
+          >
+            <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-32"
+              style={{ background: 'radial-gradient(60% 100% at 50% 0%, rgba(244,161,0,0.30), transparent 70%)' }}
+            />
+            <h2 className="relative mb-6 text-white leading-tight"
+              style={{ fontFamily: '"Instrument Serif", "Times New Roman", Georgia, serif', fontSize: '1.9rem', fontWeight: 400, fontStyle: 'italic' }}
+            >
+              Pulling from your <span style={{ color: '#f4a100' }}>booking page</span>
+            </h2>
+            <div className="relative mb-6 h-[3px] w-full overflow-hidden rounded-full bg-white/10">
+              <div className="absolute inset-y-0 left-0 transition-[width] duration-300 ease-out"
+                style={{
+                  width: `${scrapeProgress}%`,
+                  background: 'linear-gradient(90deg, #f4a100, #ffffff, #f4a100)',
+                  backgroundSize: '200% 100%',
+                  animation: 'gfAutoScrapeShimmer 1.4s linear infinite',
+                  boxShadow: '0 0 12px rgba(244,161,0,0.6)',
+                }}
+              />
+              <style>{`@keyframes gfAutoScrapeShimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }`}</style>
+            </div>
+            <ul className="relative space-y-3 text-left">
+              {SCRAPE_STEPS.map((s, i) => {
+                const done = i < scrapeStepIdx || scrapeProgress >= 100;
+                const active = i === scrapeStepIdx && scrapeProgress < 100;
+                return (
+                  <li key={s.label}
+                    className={`flex items-center gap-3 text-[12px] tracking-[1.5px] uppercase ${
+                      done ? 'text-white/60' : active ? 'text-white font-bold' : 'text-white/25'
+                    }`}
+                  >
+                    <span
+                      className="inline-block w-[18px] h-[18px] rounded-full flex items-center justify-center text-[10px] font-black flex-shrink-0"
+                      style={{
+                        background: done ? '#f4a100' : 'transparent',
+                        border: `1px solid ${done || active ? '#f4a100' : 'rgba(255,255,255,0.2)'}`,
+                        color: done ? '#000' : active ? '#f4a100' : 'rgba(255,255,255,0.25)',
+                      }}
+                    >
+                      {done ? '✓' : i + 1}
+                    </span>
+                    {s.label}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </div>
+      )}
       <div className="w-full grid md:grid-cols-[40%_60%] luxury-gradient relative">
 
         {/* Logo in the Upper Left Hand Corner */}
