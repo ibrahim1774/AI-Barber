@@ -89,9 +89,9 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
     return () => window.removeEventListener('open-custom-design-wizard', open);
   }, []);
 
-  // Kicks off the custom-design Stripe checkout. Flat $11/mo —
-  // determined by the page the visitor is on. After success the backend
-  // routes the customer to the Google Form to capture preferences.
+  // Kicks off the custom-design Stripe checkout. Flat $15/mo across
+  // every entry path. After success the backend routes the customer
+  // to the Google Form to capture preferences.
   const handleCustomCheckout = async () => {
     // Abort any prior in-flight request before starting a new one
     customCheckoutAbortRef.current?.abort();
