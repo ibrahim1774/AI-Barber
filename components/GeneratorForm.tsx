@@ -272,11 +272,11 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
 
           {/* Centered headline + form column */}
           <div className="relative z-10 w-full max-w-2xl text-center">
-            <h1 className="text-3xl md:text-5xl lg:text-6xl font-montserrat font-black uppercase tracking-[1px] md:tracking-[2px] leading-[1.1] text-white mb-6 md:mb-8">
-              Generate Your <span style={{ color: '#f4a100' }}>FREE</span> <br className="hidden md:block"/>
-              Barber Website From <br className="hidden md:block"/>
+            <h1 className="text-xl md:text-4xl lg:text-5xl font-montserrat font-black uppercase tracking-[1px] md:tracking-[2px] leading-[1.15] text-white mb-5 md:mb-7">
+              Generate Your <span style={{ color: '#f4a100' }}>FREE</span> <br/>
+              Barber Website From <br/>
               Your <span style={{ color: BOOKSY_TEAL }}>Booksy</span> Link
-              <span className="text-[#f4a100] mt-2 block">in a Few Seconds</span>
+              <span className="text-[#f4a100] mt-1 md:mt-2 block">in a Few Seconds</span>
             </h1>
             <p
               className="text-[11px] md:text-sm italic text-white/70 max-w-md mx-auto mb-8 md:mb-10"
