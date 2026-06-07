@@ -84,8 +84,10 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
     : booksyMode
       ? 'custom-booksy'
       : (dealMode ? 'custom' : 'custom25');
-  const customPriceLabel = fiveDeal ? '$15/mo' : booksyMode ? '$11/mo' : '$11/mo';
-  const customPriceFull = fiveDeal ? '$15/month' : booksyMode ? '$11/month' : '$11/month';
+  // Custom website design is flat $15/mo across every AI-Barber
+  // entry path — same upsell, same price, simpler mental model.
+  const customPriceLabel = '$15/mo';
+  const customPriceFull = '$15/month';
 
   const [isDismissed, setIsDismissed] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
@@ -130,7 +132,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
       // Custom-design InitiateCheckout amount mirrors the price label
       // shown above the button — keeps Meta/TikTok ROAS math aligned
       // with what Stripe actually charges.
-      const checkoutValue = fiveDeal ? 15 : booksyMode ? 11 : 11;
+      const checkoutValue = 15;
       const checkoutCurrency = 'USD';
       (window as any).fbq?.(
         'track',

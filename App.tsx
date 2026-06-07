@@ -212,9 +212,9 @@ const App: React.FC = () => {
   const fireCustomDesignPixels = (sessionId: string, plan: string) => {
     const PLAN_VALUES: Record<string, number> = {
       custom15: 15,
-      'custom-booksy': 11,
-      custom: 11,
-      custom25: 11,
+      'custom-booksy': 15,
+      custom: 15,
+      custom25: 15,
     };
     const value = PLAN_VALUES[plan] ?? 11;
     const currency = 'USD';
