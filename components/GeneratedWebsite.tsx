@@ -628,7 +628,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
     }
   };
 
-  const handleClaimSite = async (plan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'yearly' | 'yearly-booksy' | 'yearly-free' | 'five' | 'seven' = 'monthly') => {
+  const handleClaimSite = async (plan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'yearly' | 'yearly-booksy' | 'yearly-free' = 'monthly') => {
     setIsDeploying(true);
     setDeploymentResult(null);
 
@@ -764,8 +764,6 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           yearly: 86,
           'yearly-booksy': 48,
           'yearly-free': 67,
-          five: 5,
-          seven: 7,
         };
         const checkoutValue = PLAN_VALUES[plan] ?? 9;
         const checkoutCurrency = 'USD';

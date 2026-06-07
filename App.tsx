@@ -162,7 +162,6 @@ const App: React.FC = () => {
     const isCustomPlan =
       stripePlan === 'custom' ||
       stripePlan === 'custom25' ||
-      stripePlan === 'custom15' ||
       stripePlan === 'custom-booksy';
     if (stripeSessionId && isCustomPlan) {
       window.history.replaceState({}, '', window.location.pathname);
@@ -205,18 +204,17 @@ const App: React.FC = () => {
     setAppReady(true);
   }, [authLoading, isAuthenticated, isRestoring]);
 
-  // Fires Purchase events for the custom-design plan. Value mirrors
-  // the Stripe price for the slug: custom15=$15, custom-booksy=$19,
-  // custom/custom25=$11. Stripe's session id is the dedup event_id so
-  // browser + (any future) server-side CAPI call line up in Meta/TikTok.
+  // Fires Purchase events for the custom-design plan. Every custom
+  // slug is flat $15/mo now; the slug only differentiates analytics
+  // attribution. Stripe's session id is the dedup event_id so browser
+  // + (any future) server-side CAPI calls line up in Meta/TikTok.
   const fireCustomDesignPixels = (sessionId: string, plan: string) => {
     const PLAN_VALUES: Record<string, number> = {
-      custom15: 15,
       'custom-booksy': 15,
       custom: 15,
       custom25: 15,
     };
-    const value = PLAN_VALUES[plan] ?? 11;
+    const value = PLAN_VALUES[plan] ?? 15;
     const currency = 'USD';
     try {
       window.fbq?.('track', 'Purchase', { value, currency }, { eventID: sessionId });

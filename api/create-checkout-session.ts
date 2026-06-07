@@ -21,34 +21,27 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ error: 'Missing required field: siteId' });
     }
 
-    // `five`     = /5 launch-special ($5/mo).
-    // `seven`    = /7 launch-special ($7/mo).
-    // `custom`   = "Don't like this? Get a custom website design" ($19/mo).
-    // `custom25` = legacy alias for the custom-design upsell — same $19/mo
-    //              price now, kept so old client links don't break.
-    // `custom15` = /5-deal-only custom-design upsell ($15/mo). Keeps the
-    //              relative gap between $5 hosting and the custom-build
-    //              upsell small on the /5 launch-special page.
+    // `custom`        = "Don't like this? Get a custom website design" ($15/mo).
+    // `custom25`      = legacy alias for the custom-design upsell — same
+    //                   $15/mo price, kept so old client links don't break.
+    // `custom-booksy` = /booksy custom-design upsell ($15/mo). Same price
+    //                   as the others; separate slug for analytics.
     // All custom plans route to the same Google Form after checkout.
     const isYearly = plan === 'yearly';
     // 'yearly-booksy' = /booksy yearly (20% off $5/mo × 12 = $48/yr).
     const isYearlyBooksy = plan === 'yearly-booksy';
-    // 'yearly-free' = /free-barber yearly ($48/yr — same math as
-    // booksy, but tracked separately for analytics + product name).
+    // 'yearly-free' = /free-barber yearly ($67/yr — 20% off $7 × 12).
     const isYearlyFree = plan === 'yearly-free';
-    const isFive = plan === 'five';
-    const isSeven = plan === 'seven';
     const isMonthlyBooksy = plan === 'monthly-booksy';
-    // 'monthly-free' = /free-barber monthly ($5/mo).
+    // 'monthly-free' = /free-barber monthly ($7/mo).
     const isMonthlyFree = plan === 'monthly-free';
     const isCustom = plan === 'custom';
     const isCustom25 = plan === 'custom25';
-    const isCustom15 = plan === 'custom15';
-    // `custom-booksy` = /booksy import flow custom-design upsell ($19/mo).
+    // 'custom-booksy' = /booksy custom-design upsell ($15/mo).
     // Routes to the same Google Form post-checkout as the other custom
-    // plans — only the price differs.
+    // plans — only the analytics tag differs.
     const isCustomBooksy = plan === 'custom-booksy';
-    const isCustomAny = isCustom || isCustom25 || isCustom15 || isCustomBooksy;
+    const isCustomAny = isCustom || isCustom25 || isCustomBooksy;
 
     let unitAmount: string;
     let interval: 'month' | 'year';
@@ -68,14 +61,6 @@ export default async function handler(req: any, res: any) {
       unitAmount = '6700';
       interval = 'year';
       productName = 'Prime Barber AI Free - Yearly Hosting ($67/yr)';
-    } else if (isFive) {
-      unitAmount = '500';
-      interval = 'month';
-      productName = 'Prime Barber AI - Launch Special Hosting ($5/mo)';
-    } else if (isSeven) {
-      unitAmount = '700';
-      interval = 'month';
-      productName = 'Prime Barber AI - Launch Special Hosting ($7/mo)';
     } else if (isMonthlyBooksy) {
       unitAmount = '500';
       interval = 'month';
@@ -85,10 +70,6 @@ export default async function handler(req: any, res: any) {
       unitAmount = '700';
       interval = 'month';
       productName = 'Prime Barber AI Free - Monthly Hosting ($7/mo)';
-    } else if (isCustom15) {
-      unitAmount = '1500';
-      interval = 'month';
-      productName = 'Prime Barber AI - Custom Website Design ($15/mo)';
     } else if (isCustomBooksy) {
       unitAmount = '1500';
       interval = 'month';

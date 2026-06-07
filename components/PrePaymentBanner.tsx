@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, ArrowRight, Rocket, Loader2, Sparkles, Check, ChevronLeft, ChevronRight } from 'lucide-react';
-import { isFiveDealPath, isSevenDealPath, isBooksyPath, isFreeBarberPath } from '../lib/dealMode.ts';
+import { isBooksyPath, isFreeBarberPath } from '../lib/dealMode.ts';
 
 // Sample imagery for the custom-design wizard. Swap to local files in
 // /public/ later if desired — keep the same array length.
@@ -18,33 +18,20 @@ interface PrePaymentBannerProps {
   // 'monthly-booksy' = $5/mo via /booksy import flow (anchor $7); other monthly
   // entry paths use 'monthly' ($9/mo). Server-side routes both into
   // the same hosting product, different Stripe unit_amount.
-  onDeploy: (plan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'yearly' | 'yearly-booksy' | 'yearly-free' | 'five' | 'seven') => void;
+  onDeploy: (plan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'yearly' | 'yearly-booksy' | 'yearly-free') => void;
   isDeploying: boolean;
   industry?: string;
 }
 
 const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeploying, industry }) => {
-  // /5 and /7 lock the visitor into a hard $5/mo or $7/mo flow — no
-  // yearly toggle. Computed once on mount; URL doesn't change in-session.
-  const fiveDeal = React.useMemo(() => isFiveDealPath(), []);
-  const sevenDeal = React.useMemo(() => isSevenDealPath(), []);
-  // /booksy import flow runs at premium pricing ($10/mo + $19 custom)
-  // because the AI-fill-from-link service is more valuable than the
-  // manual lead-quiz funnel. dealMode (5/7) still wins when both apply.
+  // /booksy import flow: $5/mo + $7 strikethrough anchor.
   const booksyMode = React.useMemo(() => isBooksyPath(), []);
-  // /free-barber: $5/mo entry with yearly toggle visible — NOT a
-  // hard-locked deal, just a $5/mo flow with its own plan slugs so
-  // Stripe + analytics still distinguish it from /booksy + homepage.
+  // /free-barber: $7/mo entry with yearly toggle visible — its own
+  // plan slugs so Stripe + analytics distinguish it from /booksy and
+  // the homepage.
   const freeBarberMode = React.useMemo(() => isFreeBarberPath(), []);
-  // Either deal-mode collapses the pricing UI the same way; only the
-  // numbers shown and the plan string sent to Stripe differ.
-  const dealMode = fiveDeal || sevenDeal;
-  const dealPlan: 'five' | 'seven' | null = fiveDeal ? 'five' : sevenDeal ? 'seven' : null;
-  const dealPriceMo = sevenDeal ? '$7/mo' : '$5/mo';
-  const dealPriceMonth = sevenDeal ? '$7/month' : '$5/month';
 
   // Standard monthly price varies by entry path:
-  //   /5 / /7              → handled by dealMode branches
   //   /booksy              → $5/mo with $7 anchor (plan 'monthly-booksy')
   //   /free-barber         → $7/mo (plan 'monthly-free')
   //   everywhere else      → $9/mo (plan 'monthly')
@@ -71,21 +58,13 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
       ? 'yearly-free'
       : 'yearly';
 
-  // Custom-design upsell. The /5 launch-special drops the custom
-  // price to $15/mo to keep the relative gap small; /booksy stays at
-  // the legacy $19/mo; everywhere else dropped to $11/mo. Plan slug
-  // routes server-side:
-  //   custom15      → $15/mo (only fiveDeal)
-  //   custom-booksy → $19/mo (/booksy)
-  //   custom        → $11/mo (sevenDeal)
-  //   custom25      → $11/mo (standard)
-  const customPlan: 'custom' | 'custom25' | 'custom15' | 'custom-booksy' = fiveDeal
-    ? 'custom15'
-    : booksyMode
-      ? 'custom-booksy'
-      : (dealMode ? 'custom' : 'custom25');
-  // Custom website design is flat $15/mo across every AI-Barber
-  // entry path — same upsell, same price, simpler mental model.
+  // Custom-design upsell. Flat $15/mo across every entry path.
+  // Plan slug per path for analytics attribution:
+  //   custom-booksy → /booksy
+  //   custom25      → everywhere else
+  const customPlan: 'custom25' | 'custom-booksy' = booksyMode
+    ? 'custom-booksy'
+    : 'custom25';
   const customPriceLabel = '$15/mo';
   const customPriceFull = '$15/month';
 
@@ -245,31 +224,29 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
               the live price ("Publish $9/mo"), so the standalone
               "$9/mo — hosting/maintenance only" line was redundant. */}
 
-          {/* Monthly / Yearly toggle — quieter, smaller. Hidden in /5 + /7. */}
-          {!dealMode && (
-            <div className="flex items-center justify-center gap-5 mb-2.5">
-              <button
-                onClick={() => setPricingPlan('monthly')}
-                className="text-[9px] font-medium uppercase tracking-[0.22em] pb-0.5 transition-colors"
-                style={{
-                  color: pricingPlan === 'monthly' ? '#ece6da' : 'rgba(236,230,218,0.4)',
-                  borderBottom: pricingPlan === 'monthly' ? '1px solid #e8c074' : '1px solid transparent',
-                }}
-              >
-                Monthly
-              </button>
-              <button
-                onClick={() => setPricingPlan('yearly')}
-                className="text-[9px] font-medium uppercase tracking-[0.22em] pb-0.5 transition-colors"
-                style={{
-                  color: pricingPlan === 'yearly' ? '#ece6da' : 'rgba(236,230,218,0.4)',
-                  borderBottom: pricingPlan === 'yearly' ? '1px solid #e8c074' : '1px solid transparent',
-                }}
-              >
-                Yearly <span style={{ color: '#e8c074' }}>−20%</span>
-              </button>
-            </div>
-          )}
+          {/* Monthly / Yearly toggle — quieter, smaller. */}
+          <div className="flex items-center justify-center gap-5 mb-2.5">
+            <button
+              onClick={() => setPricingPlan('monthly')}
+              className="text-[9px] font-medium uppercase tracking-[0.22em] pb-0.5 transition-colors"
+              style={{
+                color: pricingPlan === 'monthly' ? '#ece6da' : 'rgba(236,230,218,0.4)',
+                borderBottom: pricingPlan === 'monthly' ? '1px solid #e8c074' : '1px solid transparent',
+              }}
+            >
+              Monthly
+            </button>
+            <button
+              onClick={() => setPricingPlan('yearly')}
+              className="text-[9px] font-medium uppercase tracking-[0.22em] pb-0.5 transition-colors"
+              style={{
+                color: pricingPlan === 'yearly' ? '#ece6da' : 'rgba(236,230,218,0.4)',
+                borderBottom: pricingPlan === 'yearly' ? '1px solid #e8c074' : '1px solid transparent',
+              }}
+            >
+              Yearly <span style={{ color: '#e8c074' }}>−20%</span>
+            </button>
+          </div>
 
           {/* Action row — Launch My Site full-width. How It Works
               button removed so the CTA spans the row and the
@@ -290,7 +267,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
               .aib-cta-launch:hover { animation-play-state: paused; transform: scale(1.04); }
             `}</style>
             <button
-              onClick={() => onDeploy(dealPlan ?? (pricingPlan === 'monthly' ? stdMonthlyPlan : stdYearlyPlan))}
+              onClick={() => onDeploy(pricingPlan === 'monthly' ? stdMonthlyPlan : stdYearlyPlan)}
               disabled={isDeploying}
               className="aib-cta-launch w-full py-3 text-[11px] md:text-[12px] font-bold flex items-center justify-center gap-2 hover:opacity-95 active:scale-[0.98] transition-transform uppercase tracking-[0.24em] disabled:opacity-50"
               style={{
@@ -320,7 +297,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
                   className="font-extrabold px-1.5 py-0.5 rounded"
                   style={{ background: 'rgba(10,10,10,0.18)', color: '#0a0a0a' }}
                 >
-                  {dealMode ? dealPriceMo : (pricingPlan === 'yearly' ? stdYearlyPriceYear : stdMonthlyPriceMonth)}
+                  {pricingPlan === 'yearly' ? stdYearlyPriceYear : stdMonthlyPriceMonth}
                 </span>
               )}
             </button>
@@ -379,12 +356,8 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
         // Roman-numeral rows separated by hairlines instead of cards.
         const gold = '#e8c074';
         const cream = '#ece6da';
-        const headlinePrice = dealMode
-          ? dealPriceMo
-          : pricingPlan === 'yearly' ? stdYearlyPriceYr : stdMonthlyPriceMo;
-        const ctaPrice = dealMode
-          ? dealPriceMo
-          : pricingPlan === 'yearly' ? stdYearlyPriceYear : stdMonthlyPriceMonth;
+        const headlinePrice = pricingPlan === 'yearly' ? stdYearlyPriceYr : stdMonthlyPriceMo;
+        const ctaPrice = pricingPlan === 'yearly' ? stdYearlyPriceYear : stdMonthlyPriceMonth;
 
         const rows: { numeral: string; title: string }[] = [
           { numeral: 'I', title: 'Professional & Modern Site' },
@@ -439,32 +412,29 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
               A custom website for your barbershop, yours to edit anytime.
             </p>
 
-            {/* Monthly / Yearly toggle — quiet text-based with gold underline,
-                hidden when locked to /5 or /7 deal pricing */}
-            {!dealMode && (
-              <div className="flex items-center justify-center gap-6 mb-7">
-                <button
-                  onClick={() => setPricingPlan('monthly')}
-                  className="text-[11px] font-medium uppercase tracking-[0.22em] pb-1.5 transition-colors"
-                  style={{
-                    color: pricingPlan === 'monthly' ? cream : 'rgba(236,230,218,0.4)',
-                    borderBottom: pricingPlan === 'monthly' ? `1px solid ${gold}` : '1px solid transparent',
-                  }}
-                >
-                  Monthly · {stdMonthlyPriceMo}
-                </button>
-                <button
-                  onClick={() => setPricingPlan('yearly')}
-                  className="text-[11px] font-medium uppercase tracking-[0.22em] pb-1.5 transition-colors"
-                  style={{
-                    color: pricingPlan === 'yearly' ? cream : 'rgba(236,230,218,0.4)',
-                    borderBottom: pricingPlan === 'yearly' ? `1px solid ${gold}` : '1px solid transparent',
-                  }}
-                >
-                  Yearly · {stdYearlyPriceYr} <span style={{ color: gold }}>−20%</span>
-                </button>
-              </div>
-            )}
+            {/* Monthly / Yearly toggle — quiet text-based with gold underline */}
+            <div className="flex items-center justify-center gap-6 mb-7">
+              <button
+                onClick={() => setPricingPlan('monthly')}
+                className="text-[11px] font-medium uppercase tracking-[0.22em] pb-1.5 transition-colors"
+                style={{
+                  color: pricingPlan === 'monthly' ? cream : 'rgba(236,230,218,0.4)',
+                  borderBottom: pricingPlan === 'monthly' ? `1px solid ${gold}` : '1px solid transparent',
+                }}
+              >
+                Monthly · {stdMonthlyPriceMo}
+              </button>
+              <button
+                onClick={() => setPricingPlan('yearly')}
+                className="text-[11px] font-medium uppercase tracking-[0.22em] pb-1.5 transition-colors"
+                style={{
+                  color: pricingPlan === 'yearly' ? cream : 'rgba(236,230,218,0.4)',
+                  borderBottom: pricingPlan === 'yearly' ? `1px solid ${gold}` : '1px solid transparent',
+                }}
+              >
+                Yearly · {stdYearlyPriceYr} <span style={{ color: gold }}>−20%</span>
+              </button>
+            </div>
 
             {/* Five Roman-numeral rows — hairline dividers, no cards */}
             <div className="border-t border-white/10">
@@ -491,7 +461,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
               <p
                 style={{ fontFamily: '"Instrument Serif", serif', fontSize: '1.6rem', color: cream, fontWeight: 400 }}
               >
-                {!dealMode && pricingPlan === 'yearly' && (
+                {pricingPlan === 'yearly' && (
                   <span style={{ color: 'rgba(236,230,218,0.3)', textDecoration: 'line-through', fontSize: '1rem', marginRight: '0.4em' }}>
                     $120/yr
                   </span>
@@ -525,7 +495,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
               </button>
 
               <button
-                onClick={() => { setShowHowItWorks(false); onDeploy(dealPlan ?? (pricingPlan === 'monthly' ? stdMonthlyPlan : stdYearlyPlan)); }}
+                onClick={() => { setShowHowItWorks(false); onDeploy(pricingPlan === 'monthly' ? stdMonthlyPlan : stdYearlyPlan); }}
                 disabled={isDeploying}
                 className="flex-1 py-3.5 text-[11px] font-bold flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all uppercase tracking-[0.24em] disabled:opacity-50"
                 style={{

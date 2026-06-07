@@ -1,44 +1,23 @@
-// Marketing deal-mode detection.
+// Marketing entry-path detection.
 //
-// `/5` and `/7` are hard-locked launch-special pricing — no yearly
-// toggle. `/free-barber` and `/booksy` share the $5/mo monthly but
-// keep the yearly toggle visible so a 20%-off yearly offer reads
-// alongside (handled in PrePaymentBanner, not here):
-//   /5            → $5/month, no yearly toggle, hard-locked
-//   /7            → $7/month, no yearly toggle, hard-locked
-//   /free-barber  → $5/month + $48/year toggle, plan 'monthly-free'
+// Active paths:
+//   /free-barber  → $7/month + $67/year toggle, plan 'monthly-free'
 //   /booksy       → $5/month + $48/year toggle, plan 'monthly-booksy'
 //   home          → $9/month + $86/year toggle (plan 'monthly')
 //
-// The catch-all rewrite in vercel.json already routes these to the
-// SPA, so no extra rewrite entry is required.
+// The /5 and /7 deal subpages were retired — those URLs now fall
+// through to the homepage flow via the catch-all SPA rewrite.
 
-export type DealPlan = 'five' | 'seven';
-
-export const FIVE_DEAL_PATH = '/5';
-// `/free-barber` is a separate $5/mo entry path that keeps the
-// yearly toggle visible — NOT a hard-locked deal. Pricing wiring
-// lives in PrePaymentBanner via isFreeBarberPath().
+// `/free-barber` is a $7/mo entry path with the yearly toggle visible.
+// Pricing wiring lives in PrePaymentBanner via isFreeBarberPath().
 export const FREE_BARBER_PATH = '/free-barber';
-export const SEVEN_DEAL_PATH = '/7';
 
-export function isFiveDealPath(pathname?: string): boolean {
-  const p = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
-  return p === FIVE_DEAL_PATH || p === `${FIVE_DEAL_PATH}/`;
-}
-
-// Specifically matches /free-barber so marketing copy (headline,
-// CTAs) can emphasize "free" on that single URL without affecting
-// /5. Pricing / plan behavior is still driven by isFiveDealPath
-// (which matches both) — this helper only gates copy.
+// Specifically matches /free-barber so the headline can emphasize
+// "free" and PrePaymentBanner can route to the 'monthly-free'
+// plan slug.
 export function isFreeBarberPath(pathname?: string): boolean {
   const p = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
   return p === FREE_BARBER_PATH || p === `${FREE_BARBER_PATH}/`;
-}
-
-export function isSevenDealPath(pathname?: string): boolean {
-  const p = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
-  return p === SEVEN_DEAL_PATH || p === `${SEVEN_DEAL_PATH}/`;
 }
 
 // /import (or legacy /booksy) lands on a single-URL generator. User
