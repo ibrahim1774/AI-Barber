@@ -1,6 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { X, ArrowRight, Rocket, Loader2, Sparkles, Check, ChevronLeft, ChevronRight } from 'lucide-react';
 import { isBooksyPath, isFreeBarberPath } from '../lib/dealMode.ts';
+import { loadStripe, type Stripe } from '@stripe/stripe-js';
+import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js';
+
+const STRIPE_PK = (import.meta as any).env?.VITE_STRIPE_PUBLISHABLE_KEY as string | undefined;
+let stripePromise: Promise<Stripe | null> | null = null;
+function getStripe(): Promise<Stripe | null> {
+  if (!stripePromise && STRIPE_PK) stripePromise = loadStripe(STRIPE_PK);
+  return stripePromise ?? Promise.resolve(null);
+}
 
 // Sample imagery for the custom-design wizard. Swap to local files in
 // /public/ later if desired — keep the same array length.
@@ -75,6 +84,17 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
   const [wizardStep, setWizardStep] = useState(0);
   const [isCustomCheckingOut, setIsCustomCheckingOut] = useState(false);
   const [pricingPlan, setPricingPlan] = useState<'monthly' | 'yearly'>('monthly');
+  // Benefits-popup state. When STRIPE_PK is present, the Launch My
+  // Site CTA opens a modal with 5 plain-language bullets + the
+  // embedded Stripe checkout below — no redirect to checkout.stripe.com.
+  const [showBenefits, setShowBenefits] = useState(false);
+  const [embedSecret, setEmbedSecret] = useState<string | null>(null);
+  const [embedError, setEmbedError] = useState<string | null>(null);
+  const embedAbortRef = React.useRef<AbortController | null>(null);
+  // Embedded checkout state for the custom-design wizard's step-3
+  // Continue button — same pattern as the main flow.
+  const [customEmbedSecret, setCustomEmbedSecret] = useState<string | null>(null);
+  const [customEmbedError, setCustomEmbedError] = useState<string | null>(null);
 
   // Cancel any in-flight checkout fetch when the wizard is closed so the
   // step-4 button doesn't stay stuck in its loading state on reopen.
@@ -88,6 +108,47 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
     window.addEventListener('open-custom-design-wizard', open);
     return () => window.removeEventListener('open-custom-design-wizard', open);
   }, []);
+
+  // Fetch the embedded client_secret for the bottom-banner Launch CTA.
+  // Refetches whenever the visitor toggles monthly/yearly inside the
+  // modal so the price in the iframe matches the selected plan.
+  const fetchEmbeddedSecret = useCallback(async (planSlug: string) => {
+    embedAbortRef.current?.abort();
+    const controller = new AbortController();
+    embedAbortRef.current = controller;
+    setEmbedSecret(null);
+    setEmbedError(null);
+    try {
+      const res = await fetch('/api/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          siteId: 'pre-publish',
+          plan: planSlug,
+          embedded: true,
+        }),
+        signal: controller.signal,
+      });
+      const data = await res.json();
+      if (!res.ok || !data.clientSecret) throw new Error(data.error || 'Could not start checkout.');
+      setEmbedSecret(data.clientSecret);
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return;
+      console.error('[Embedded Checkout] fetch failed:', err);
+      setEmbedError(err.message || 'Could not load the payment form.');
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (!showBenefits) {
+      setEmbedSecret(null);
+      embedAbortRef.current?.abort();
+      return;
+    }
+    const planSlug = pricingPlan === 'monthly' ? stdMonthlyPlan : stdYearlyPlan;
+    fetchEmbeddedSecret(planSlug);
+    return () => embedAbortRef.current?.abort();
+  }, [showBenefits, pricingPlan, stdMonthlyPlan, stdYearlyPlan, fetchEmbeddedSecret]);
 
   // Kicks off the custom-design Stripe checkout. Flat $15/mo across
   // every entry path. After success the backend routes the customer
@@ -151,22 +212,40 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
       console.error('[InitiateCheckout - Custom] Tracking failed:', e);
     }
 
+    const useEmbedded = !!STRIPE_PK;
+    setCustomEmbedSecret(null);
+    setCustomEmbedError(null);
+
     try {
       const response = await fetch('/api/create-checkout-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ siteId: 'custom-design-request', plan: customPlan }),
+        body: JSON.stringify({
+          siteId: 'custom-design-request',
+          plan: customPlan,
+          embedded: useEmbedded,
+        }),
         signal: controller.signal,
       });
       const data = await response.json();
-      if (!response.ok || !data.url) {
-        throw new Error(data.error || 'Failed to create custom-design checkout');
+      if (!response.ok) throw new Error(data.error || 'Failed to create custom-design checkout');
+
+      if (useEmbedded) {
+        if (!data.clientSecret) throw new Error('Missing client secret from Stripe.');
+        setCustomEmbedSecret(data.clientSecret);
+        setIsCustomCheckingOut(false);
+      } else {
+        if (!data.url) throw new Error('Missing redirect URL from Stripe.');
+        window.location.href = data.url;
       }
-      window.location.href = data.url;
     } catch (err: any) {
       if (err?.name === 'AbortError') return; // user closed wizard mid-flight
       console.error('[Custom Design] checkout error:', err);
-      alert(err.message || 'Could not start checkout. Please try again.');
+      if (useEmbedded) {
+        setCustomEmbedError(err.message || 'Could not load the payment form.');
+      } else {
+        alert(err.message || 'Could not start checkout. Please try again.');
+      }
       setIsCustomCheckingOut(false);
     }
   };
@@ -174,6 +253,8 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
   const closeCustomWizard = () => {
     customCheckoutAbortRef.current?.abort();
     customCheckoutAbortRef.current = null;
+    setCustomEmbedSecret(null);
+    setCustomEmbedError(null);
     setShowCustomWizard(false);
     setWizardStep(0);
     setIsCustomCheckingOut(false);
@@ -187,13 +268,13 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
   }, []);
 
   useEffect(() => {
-    if (showHowItWorks || showCustomWizard) {
+    if (showHowItWorks || showCustomWizard || showBenefits) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = '';
     }
     return () => { document.body.style.overflow = ''; };
-  }, [showHowItWorks, showCustomWizard]);
+  }, [showHowItWorks, showCustomWizard, showBenefits]);
 
   if (isDismissed) return null;
 
@@ -267,7 +348,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
               .aib-cta-launch:hover { animation-play-state: paused; transform: scale(1.04); }
             `}</style>
             <button
-              onClick={() => onDeploy(pricingPlan === 'monthly' ? stdMonthlyPlan : stdYearlyPlan)}
+              onClick={() => STRIPE_PK ? setShowBenefits(true) : onDeploy(pricingPlan === 'monthly' ? stdMonthlyPlan : stdYearlyPlan)}
               disabled={isDeploying}
               className="aib-cta-launch w-full py-3 text-[11px] md:text-[12px] font-bold flex items-center justify-center gap-2 hover:opacity-95 active:scale-[0.98] transition-transform uppercase tracking-[0.24em] disabled:opacity-50"
               style={{
@@ -708,26 +789,50 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
                       </p>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={handleCustomCheckout}
-                      disabled={isCustomCheckingOut}
-                      className="flex w-full items-center justify-center gap-2 py-3.5 text-[11px] font-bold uppercase tracking-[0.24em] transition hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
-                      style={{
-                        background: gold,
-                        color: '#0a0a0a',
-                        fontFamily: '"DM Sans", sans-serif',
-                      }}
-                    >
-                      {isCustomCheckingOut ? (
-                        <Loader2 className="animate-spin" size={15} />
-                      ) : (
-                        <>
-                          Continue · {customPriceLabel}
-                          <ArrowRight size={13} />
-                        </>
-                      )}
-                    </button>
+                    {customEmbedSecret && STRIPE_PK ? (
+                      <div className="rounded-md overflow-hidden bg-white" style={{ minHeight: 360 }}>
+                        <EmbeddedCheckoutProvider
+                          key={customEmbedSecret}
+                          stripe={getStripe()}
+                          options={{ clientSecret: customEmbedSecret }}
+                        >
+                          <EmbeddedCheckout />
+                        </EmbeddedCheckoutProvider>
+                      </div>
+                    ) : customEmbedError ? (
+                      <div className="rounded-md px-4 py-5 text-center text-[12px]" style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.4)', color: '#fecaca' }}>
+                        {customEmbedError}
+                        <button
+                          type="button"
+                          onClick={handleCustomCheckout}
+                          className="block mx-auto mt-2 text-[11px] underline"
+                          style={{ color: '#fecaca' }}
+                        >
+                          Try again
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleCustomCheckout}
+                        disabled={isCustomCheckingOut}
+                        className="flex w-full items-center justify-center gap-2 py-3.5 text-[11px] font-bold uppercase tracking-[0.24em] transition hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
+                        style={{
+                          background: gold,
+                          color: '#0a0a0a',
+                          fontFamily: '"DM Sans", sans-serif',
+                        }}
+                      >
+                        {isCustomCheckingOut ? (
+                          <Loader2 className="animate-spin" size={15} />
+                        ) : (
+                          <>
+                            Continue · {customPriceLabel}
+                            <ArrowRight size={13} />
+                          </>
+                        )}
+                      </button>
+                    )}
                     <p className="mt-2 text-center text-[9px] uppercase tracking-[0.22em]" style={{ color: 'rgba(236,230,218,0.4)' }}>
                       Secure checkout · Stripe · Cancel anytime
                     </p>
@@ -763,6 +868,134 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
                     <span className="text-[9px] uppercase tracking-[0.28em]" style={{ color: 'rgba(236,230,218,0.4)' }}>Last step</span>
                   )}
                 </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ─── Benefits Modal w/ Embedded Stripe Checkout ──────────
+          Intercepts Launch My Site on every AI-Barber subpage when
+          STRIPE_PK is available. 5 tight bullets at the top, monthly/
+          yearly toggle, then the Stripe payment form embedded inline
+          (no redirect to checkout.stripe.com). */}
+      {showBenefits && (() => {
+        const cream = '#ece6da';
+        const gold = '#e8c074';
+        const monthlyLabel = stdMonthlyPriceMo;
+        const yearlyLabel = `$${stdYearlyPriceDollars}/yr`;
+        const benefits: string[] = [
+          'Edit your text and photos anytime',
+          'Your site is saved to your own account',
+          'Goes live in seconds — share the link right away',
+          'Use it on Google, Instagram, or in your text messages',
+          'One small fee · cancel anytime · no contract',
+        ];
+
+        return (
+          <div
+            className="fixed inset-0 z-[220] bg-black/85 backdrop-blur-md flex items-start md:items-center justify-center p-3 md:p-6 overflow-y-auto"
+            onClick={() => setShowBenefits(false)}
+          >
+            <div
+              className="relative w-full max-w-md my-4 md:my-0 border border-white/10 shadow-2xl animate-[modalIn_0.3s_ease-out]"
+              style={{
+                background: 'linear-gradient(180deg, #0a0a0a 0%, #14110c 100%)',
+                fontFamily: '"DM Sans", sans-serif',
+                color: cream,
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                onClick={() => setShowBenefits(false)}
+                aria-label="Close"
+                className="absolute top-3 right-3 z-10 p-1 text-white/40 hover:text-white transition"
+              >
+                <X size={16} />
+              </button>
+
+              <div className="px-5 pt-5 pb-5 md:px-7 md:pt-6 md:pb-6">
+                <div className="flex items-center gap-2.5 mb-2.5">
+                  <span className="h-px w-4" style={{ background: gold }} />
+                  <span className="text-[9px] font-medium uppercase tracking-[0.32em]" style={{ color: gold }}>
+                    Here's what you get
+                  </span>
+                  <span className="h-px flex-1" style={{ background: `${gold}33` }} />
+                </div>
+
+                <h2
+                  className="leading-[1.05] mb-3"
+                  style={{ fontFamily: '"Instrument Serif", serif', fontSize: '1.5rem', fontWeight: 400 }}
+                >
+                  <span style={{ color: cream }}>A website for </span>
+                  <span style={{ color: gold, fontStyle: 'italic' }}>your barbershop.</span>
+                </h2>
+
+                <ul className="mb-4 space-y-1.5">
+                  {benefits.map((line, i) => (
+                    <li key={i} className="flex items-start gap-2 text-[12.5px] leading-snug" style={{ color: cream }}>
+                      <span
+                        className="mt-[6px] h-[5px] w-[5px] shrink-0 rounded-full"
+                        style={{ background: gold }}
+                      />
+                      <span>{line}</span>
+                    </li>
+                  ))}
+                </ul>
+
+                <div className="flex items-center justify-center gap-4 mb-3">
+                  <button
+                    onClick={() => setPricingPlan('monthly')}
+                    className="text-[10px] font-medium uppercase tracking-[0.22em] pb-1 transition-colors"
+                    style={{
+                      color: pricingPlan === 'monthly' ? cream : 'rgba(236,230,218,0.4)',
+                      borderBottom: pricingPlan === 'monthly' ? `1px solid ${gold}` : '1px solid transparent',
+                    }}
+                  >
+                    Monthly · {monthlyLabel}
+                  </button>
+                  <button
+                    onClick={() => setPricingPlan('yearly')}
+                    className="text-[10px] font-medium uppercase tracking-[0.22em] pb-1 transition-colors"
+                    style={{
+                      color: pricingPlan === 'yearly' ? cream : 'rgba(236,230,218,0.4)',
+                      borderBottom: pricingPlan === 'yearly' ? `1px solid ${gold}` : '1px solid transparent',
+                    }}
+                  >
+                    Yearly · {yearlyLabel} <span style={{ color: gold }}>−20%</span>
+                  </button>
+                </div>
+
+                <div className="rounded-md overflow-hidden bg-white" style={{ minHeight: 360 }}>
+                  {embedError ? (
+                    <div className="px-4 py-6 text-center text-[12px] text-red-600">
+                      {embedError}
+                      <button
+                        type="button"
+                        onClick={() => fetchEmbeddedSecret(pricingPlan === 'monthly' ? stdMonthlyPlan : stdYearlyPlan)}
+                        className="block mx-auto mt-2 text-[11px] underline"
+                      >
+                        Try again
+                      </button>
+                    </div>
+                  ) : !embedSecret ? (
+                    <div className="flex items-center justify-center py-12">
+                      <Loader2 className="animate-spin text-gray-500" size={20} />
+                    </div>
+                  ) : (
+                    <EmbeddedCheckoutProvider
+                      key={embedSecret}
+                      stripe={getStripe()}
+                      options={{ clientSecret: embedSecret }}
+                    >
+                      <EmbeddedCheckout />
+                    </EmbeddedCheckoutProvider>
+                  )}
+                </div>
+
+                <p className="mt-3 text-center text-[9px] uppercase tracking-[0.22em]" style={{ color: 'rgba(236,230,218,0.4)' }}>
+                  Secure checkout · Powered by Stripe
+                </p>
               </div>
             </div>
           </div>

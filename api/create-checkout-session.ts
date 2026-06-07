@@ -15,11 +15,16 @@ export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).end();
 
   try {
-    const { siteId, plan = 'monthly' } = req.body;
+    const { siteId, plan = 'monthly', embedded: bodyEmbedded } = req.body;
 
     if (!siteId) {
       return res.status(400).json({ error: 'Missing required field: siteId' });
     }
+
+    // Embedded mode swaps the hosted-page redirect for an inline
+    // <EmbeddedCheckout> rendered inside our modal. Returns
+    // client_secret instead of the hosted url.
+    const isEmbedded = bodyEmbedded === true;
 
     // `custom`        = "Don't like this? Get a custom website design" ($15/mo).
     // `custom25`      = legacy alias for the custom-design upsell — same
@@ -106,8 +111,13 @@ export default async function handler(req: any, res: any) {
     // Create Stripe Checkout Session for subscription
     const params = new URLSearchParams();
     params.append('mode', 'subscription');
-    params.append('success_url', successUrl);
-    params.append('cancel_url', `${origin}?stripe_cancelled=true`);
+    if (isEmbedded) {
+      params.append('ui_mode', 'embedded');
+      params.append('return_url', successUrl);
+    } else {
+      params.append('success_url', successUrl);
+      params.append('cancel_url', `${origin}?stripe_cancelled=true`);
+    }
     params.append('line_items[0][price_data][currency]', 'usd');
     params.append('line_items[0][price_data][product_data][name]', productName);
     params.append('line_items[0][price_data][unit_amount]', unitAmount);
@@ -134,7 +144,11 @@ export default async function handler(req: any, res: any) {
     }
 
     const session = await response.json();
-    return res.status(200).json({ url: session.url });
+    return res.status(200).json(
+      isEmbedded
+        ? { clientSecret: session.client_secret, sessionId: session.id }
+        : { url: session.url },
+    );
   } catch (error: any) {
     console.error('[CreateCheckoutSession] Error:', error);
     return res.status(500).json({ error: error.message || 'Internal error' });
