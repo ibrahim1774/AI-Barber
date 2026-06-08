@@ -4,7 +4,7 @@ import { ShopInputs, WebsiteData } from '../types';
 import { ScissorsIcon } from './Icons';
 import { isSupportedBookingHost, extractFirstUrl } from '../lib/supportedBookingHost.ts';
 import { buildSiteFromScrape } from '../lib/buildSiteFromScrape.ts';
-import { isBooksyPath } from '../lib/dealMode.ts';
+import { isBooksyPath, isFreeBarberPath } from '../lib/dealMode.ts';
 
 // Booksy brand teal — used to highlight Booksy-specific copy in
 // booksyMode. Lives here (not THEME_PRESETS) because it's an
@@ -39,6 +39,10 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
   // "Optional"). The 4-input layout + auto-scrape pipeline is
   // shared — only the copy + accent change.
   const booksyMode = useMemo(() => isBooksyPath(), []);
+  // /free-barber uses the same side-by-side layout as the homepage —
+  // only the headline pivots to lead with "FREE" so the offer is
+  // explicit. Pricing ($7/mo) is handled separately by PrePaymentBanner.
+  const freeBarberMode = useMemo(() => isFreeBarberPath(), []);
   const [inputs, setInputs] = useState<ShopInputs>({
     shopName: '',
     area: '',
@@ -421,6 +425,12 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
                 Barber Website From <br className="hidden md:block"/>
                 Your <span style={{ color: BOOKSY_TEAL }}>Booksy</span> Link
                 <span className="text-[#f4a100] mt-1 block">in a Few Seconds</span>
+              </h1>
+            ) : freeBarberMode ? (
+              <h1 className="text-2xl md:text-5xl lg:text-6xl font-montserrat font-black uppercase tracking-[1px] md:tracking-[2px] leading-[1.15] text-white mb-2 md:mb-4">
+                Generate Your <span style={{ color: '#f4a100' }}>FREE</span> <br className="hidden md:block"/>
+                Barbershop Website <br/>
+                <span className="text-[#f4a100] mt-1 block">in Seconds</span>
               </h1>
             ) : (
               <h1 className="text-2xl md:text-5xl lg:text-6xl font-montserrat font-black uppercase tracking-[1px] md:tracking-[2px] leading-[1.15] text-white mb-2 md:mb-4">

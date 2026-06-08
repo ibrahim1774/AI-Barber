@@ -651,27 +651,16 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#0d0d0d] text-white">
       {state === 'generator' && (
-        isFreeBarberPath() ? (
-          // /free-barber keeps the premium multi-step quiz funnel
-          // (with the auto-scrape + "FREE" headline emphasis).
-          <NewLeadQuizForm
-            onGenerate={(inputs, scraped) => {
-              cameFromNewRef.current = true;
-              handleGenerate(inputs, scraped);
-            }}
-            onSignIn={() => { setAuthModalMode('signin'); setAuthSignInOnly(true); setShowAuthModal(true); }}
-          />
-        ) : (
-          // Homepage AND /booksy both render the side-by-side legacy
-          // GeneratorForm. The form internally detects isBooksyPath()
-          // and adjusts the headline + booking-link field accordingly
-          // (FREE callout + Booksy teal + Required badge) while the
-          // 4-input layout + auto-scrape pipeline stays shared.
-          <GeneratorForm
-            onGenerate={(inputs, scraped) => handleGenerate(inputs, scraped)}
-            onSignIn={() => { setAuthModalMode('signin'); setAuthSignInOnly(true); setShowAuthModal(true); }}
-          />
-        )
+        // Homepage, /booksy, AND /free-barber all render the same
+        // side-by-side GeneratorForm. The form internally detects
+        // the path (isBooksyPath / isFreeBarberPath) and adjusts the
+        // headline + accent treatment accordingly. The 4-input layout
+        // + auto-scrape pipeline (Booksy/Fresha/Square/Vagaro/StyleSeat)
+        // is shared across all three entry points.
+        <GeneratorForm
+          onGenerate={(inputs, scraped) => handleGenerate(inputs, scraped)}
+          onSignIn={() => { setAuthModalMode('signin'); setAuthSignInOnly(true); setShowAuthModal(true); }}
+        />
       )}
       {state === 'loading' && <LoadingScreen />}
       {state === 'editor' && generatedData && (
