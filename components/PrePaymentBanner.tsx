@@ -28,11 +28,21 @@ interface PrePaymentBannerProps {
   // entry paths use 'monthly' ($9/mo). Server-side routes both into
   // the same hosting product, different Stripe unit_amount.
   onDeploy: (plan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'yearly' | 'yearly-booksy' | 'yearly-free') => void;
+  // Embedded checkout requires the parent to first upload images +
+  // write pendingSite to localStorage so handleStripeReturn can deploy
+  // after the customer pays. Returns the real siteId we then pass to
+  // /api/create-checkout-session so Stripe metadata + the
+  // post-payment dashboard view both have the right ID. When this
+  // prop is omitted, the banner falls back to onDeploy (legacy
+  // redirect flow) even if STRIPE_PK is set.
+  onPrepareCheckout?: (
+    plan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'yearly' | 'yearly-booksy' | 'yearly-free',
+  ) => Promise<{ siteId: string } | { error: string }>;
   isDeploying: boolean;
   industry?: string;
 }
 
-const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeploying, industry }) => {
+const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepareCheckout, isDeploying, industry }) => {
   // /booksy import flow: $5/mo + $7 strikethrough anchor.
   const booksyMode = React.useMemo(() => isBooksyPath(), []);
   // /free-barber: $7/mo entry with yearly toggle visible — its own
@@ -91,6 +101,12 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
   const [embedSecret, setEmbedSecret] = useState<string | null>(null);
   const [embedError, setEmbedError] = useState<string | null>(null);
   const embedAbortRef = React.useRef<AbortController | null>(null);
+  // Real siteId from onPrepareCheckout. Used as the siteId in the
+  // embedded /api/create-checkout-session call so Stripe metadata
+  // matches the actual site, and so handleStripeReturn can find the
+  // matching pendingSite in localStorage after payment.
+  const embedSiteIdRef = React.useRef<string | null>(null);
+  const [isPreparingEmbed, setIsPreparingEmbed] = useState(false);
   // Embedded checkout state for the custom-design wizard's step-3
   // Continue button — same pattern as the main flow.
   const [customEmbedSecret, setCustomEmbedSecret] = useState<string | null>(null);
@@ -123,7 +139,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          siteId: 'pre-publish',
+          siteId: embedSiteIdRef.current || 'pre-publish',
           plan: planSlug,
           embedded: true,
         }),
@@ -348,8 +364,30 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
               .aib-cta-launch:hover { animation-play-state: paused; transform: scale(1.04); }
             `}</style>
             <button
-              onClick={() => STRIPE_PK ? setShowBenefits(true) : onDeploy(pricingPlan === 'monthly' ? stdMonthlyPlan : stdYearlyPlan)}
-              disabled={isDeploying}
+              onClick={async () => {
+                const planSlug = pricingPlan === 'monthly' ? stdMonthlyPlan : stdYearlyPlan;
+                // No embedded support → legacy redirect flow.
+                if (!STRIPE_PK || !onPrepareCheckout) {
+                  onDeploy(planSlug);
+                  return;
+                }
+                // Embedded flow — write pendingSite + upload images
+                // BEFORE opening the modal so handleStripeReturn can
+                // restore + deploy after Stripe sends the visitor back.
+                setIsPreparingEmbed(true);
+                try {
+                  const prep = await onPrepareCheckout(planSlug);
+                  if ('error' in prep) {
+                    alert(prep.error);
+                    return;
+                  }
+                  embedSiteIdRef.current = prep.siteId;
+                  setShowBenefits(true);
+                } finally {
+                  setIsPreparingEmbed(false);
+                }
+              }}
+              disabled={isDeploying || isPreparingEmbed}
               className="aib-cta-launch w-full py-3 text-[11px] md:text-[12px] font-bold flex items-center justify-center gap-2 hover:opacity-95 active:scale-[0.98] transition-transform uppercase tracking-[0.24em] disabled:opacity-50"
               style={{
                 background: '#e8c074',
@@ -357,7 +395,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, isDeployi
                 fontFamily: '"DM Sans", sans-serif',
               }}
             >
-              {isDeploying ? (
+              {isDeploying || isPreparingEmbed ? (
                 <Loader2 className="animate-spin" size={12} />
               ) : (
                 <Rocket size={12} />

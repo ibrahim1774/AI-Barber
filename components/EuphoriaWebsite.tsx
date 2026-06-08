@@ -507,9 +507,14 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
     </label>
   );
 
-  const handleClaimSite = async (plan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'yearly' | 'yearly-booksy' | 'yearly-free' = 'monthly') => {
-    setIsDeploying(true);
-    setDeploymentResult(null);
+  // Prep step (shared by redirect + embedded checkout). Uploads images,
+  // builds imageUrlMap, writes pendingSite to localStorage, fires
+  // InitiateCheckout pixels. Returns siteId on success. The embedded
+  // checkout in PrePaymentBanner needs this to run before opening its
+  // modal so handleStripeReturn can find the pendingSite after Stripe.
+  const preparePendingSite = async (
+    plan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'yearly' | 'yearly-booksy' | 'yearly-free' = 'monthly',
+  ): Promise<{ siteId: string } | { error: string }> => {
     try {
       const siteId = siteSlug;
       const imagesToUpload: Array<{ key: string; filename: string; base64: string }> = [];
@@ -542,9 +547,6 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
 
       const pendingSite = {
         siteId,
-        // Same draft-preservation as GeneratedWebsite — pass the
-        // existing site UUID so handleStripeReturn mutates the draft
-        // in place instead of orphaning it.
         existingSiteId: site?.id ?? null,
         siteData: {
           ...siteData,
@@ -558,65 +560,51 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
       };
       localStorage.setItem('pendingSite', JSON.stringify(pendingSite));
 
-      // Fire FB + TikTok InitiateCheckout (pixel + CAPI) before the
-      // Stripe redirect. Shared event_id so Meta/TikTok dedupe the
-      // browser pixel against the server-side CAPI hit.
       try {
         const checkoutEventId =
           typeof crypto !== 'undefined' && (crypto as any).randomUUID
             ? (crypto as any).randomUUID()
             : `co_${Date.now()}_${Math.random().toString(36).slice(2)}`;
         const PLAN_VALUES: Record<string, number> = {
-          monthly: 9,
-          'monthly-booksy': 5,
-          'monthly-free': 7,
-          yearly: 86,
-          'yearly-booksy': 48,
-          'yearly-free': 67,
+          monthly: 9, 'monthly-booksy': 5, 'monthly-free': 7,
+          yearly: 86, 'yearly-booksy': 48, 'yearly-free': 67,
         };
         const checkoutValue = PLAN_VALUES[plan] ?? 9;
         const checkoutCurrency = 'USD';
-        (window as any).fbq?.(
-          'track',
-          'InitiateCheckout',
-          { value: checkoutValue, currency: checkoutCurrency },
-          { eventID: checkoutEventId },
-        );
-        (window as any).ttq?.track(
-          'InitiateCheckout',
-          { value: checkoutValue, currency: checkoutCurrency },
-          { event_id: checkoutEventId },
-        );
+        (window as any).fbq?.('track', 'InitiateCheckout', { value: checkoutValue, currency: checkoutCurrency }, { eventID: checkoutEventId });
+        (window as any).ttq?.track('InitiateCheckout', { value: checkoutValue, currency: checkoutCurrency }, { event_id: checkoutEventId });
         fetch('/api/fb-checkout', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            eventId: checkoutEventId,
-            value: checkoutValue,
-            currency: checkoutCurrency,
-            eventSourceUrl: window.location.href,
-            clientUserAgent: navigator.userAgent,
-          }),
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ eventId: checkoutEventId, value: checkoutValue, currency: checkoutCurrency, eventSourceUrl: window.location.href, clientUserAgent: navigator.userAgent }),
         }).catch(err => console.error('[FB CAPI InitiateCheckout] Failed:', err));
         fetch('/api/tiktok-event', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            event: 'InitiateCheckout',
-            event_id: checkoutEventId,
-            event_source_url: window.location.href,
-            user_agent: navigator.userAgent,
-            value: checkoutValue,
-            currency: checkoutCurrency,
-          }),
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ event: 'InitiateCheckout', event_id: checkoutEventId, event_source_url: window.location.href, user_agent: navigator.userAgent, value: checkoutValue, currency: checkoutCurrency }),
         }).catch(err => console.error('[TikTok CAPI InitiateCheckout] Failed:', err));
       } catch (e) {
-        console.error('[InitiateCheckout] Tracking failed:', e);
+        console.error('[InitiateCheckout] Tracking failed (non-blocking):', e);
       }
 
+      return { siteId };
+    } catch (error: any) {
+      console.error('[preparePendingSite] failed:', error);
+      return { error: error.message || 'Failed to prepare site for payment.' };
+    }
+  };
+
+  const handleClaimSite = async (plan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'yearly' | 'yearly-booksy' | 'yearly-free' = 'monthly') => {
+    setIsDeploying(true);
+    setDeploymentResult(null);
+    const prep = await preparePendingSite(plan);
+    if ('error' in prep) {
+      setDeploymentResult({ error: prep.error });
+      setIsDeploying(false);
+      return;
+    }
+    try {
       const checkoutResponse = await fetch('/api/create-checkout-session', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ siteId, plan }),
+        body: JSON.stringify({ siteId: prep.siteId, plan }),
       });
       const checkoutData = await checkoutResponse.json();
       if (!checkoutResponse.ok || !checkoutData.url) {
@@ -919,6 +907,7 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
       {!isPostPayment && (
         <PrePaymentBanner
           onDeploy={handleClaimSite}
+          onPrepareCheckout={preparePendingSite}
           isDeploying={isDeploying}
           industry="barbershop"
         />

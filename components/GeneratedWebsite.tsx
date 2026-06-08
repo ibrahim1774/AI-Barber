@@ -647,17 +647,21 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
     }
   };
 
-  const handleClaimSite = async (plan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'yearly' | 'yearly-booksy' | 'yearly-free' = 'monthly') => {
-    setIsDeploying(true);
-    setDeploymentResult(null);
-
+  // Prep step: upload images, build imageUrlMap, write pendingSite to
+  // localStorage, fire InitiateCheckout pixels. Returns the siteId on
+  // success so the caller can route it to either the hosted-checkout
+  // redirect (handleClaimSite below) OR the embedded checkout flow in
+  // PrePaymentBanner. WITHOUT this prep, the embedded checkout has no
+  // pendingSite to restore from after Stripe return → deploy fails.
+  const preparePendingSite = async (
+    plan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'yearly' | 'yearly-booksy' | 'yearly-free' = 'monthly',
+  ): Promise<{ siteId: string } | { error: string }> => {
     try {
-      // Use the pre-computed slug as siteId (matches the URL preview shown to the user)
       const siteId = siteSlug;
 
       // Step 1: Prepare images to upload (only base64 data URLs)
       const imagesToUpload: Array<{ key: string; filename: string; base64: string }> = [];
-      const timestamp = Date.now(); // Cache-busting: unique filename per deploy
+      const timestamp = Date.now();
 
       if (siteData.hero.imageUrl && siteData.hero.imageUrl.startsWith('data:')) {
         imagesToUpload.push({ key: 'hero', filename: `hero-${timestamp}.jpg`, base64: siteData.hero.imageUrl });
@@ -675,9 +679,6 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           imagesToUpload.push({ key: `craft${index}`, filename: `craft-${index}-${timestamp}.jpg`, base64: imageUrl });
         }
       });
-      // Staff photos — every entry on the staff array with a base64
-      // photo. Key pattern matches the `{{staff${i}}}` placeholder the
-      // LUXE template emits in its teamSection block.
       (siteData.staff || []).forEach((s, index) => {
         if (s?.photo && s.photo.startsWith('data:')) {
           imagesToUpload.push({ key: `staff${index}`, filename: `staff-${index}-${timestamp}.jpg`, base64: s.photo });
@@ -686,10 +687,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
 
       // Step 2: Upload images to GCS via proxy
       const imageUrlMap: Record<string, string> = {};
-
       if (imagesToUpload.length > 0) {
-        console.log(`[Claim] Uploading ${imagesToUpload.length} images via proxy...`);
-
         await Promise.all(
           imagesToUpload.map(async (image) => {
             const uploadResponse = await fetch('/api/upload-image', {
@@ -697,54 +695,28 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ siteId, filename: image.filename, base64: image.base64 }),
             });
-
             if (!uploadResponse.ok) {
               const errText = await uploadResponse.text().catch(() => '');
               throw new Error(`[Upload ${image.filename}] HTTP ${uploadResponse.status}: ${errText}`);
             }
-
             const { publicUrl } = await uploadResponse.json();
             imageUrlMap[image.key] = publicUrl;
-            console.log(`[Claim] Uploaded ${image.key} -> ${publicUrl}`);
-          })
+          }),
         );
       }
 
-      // Also include images that are already GCS URLs
-      if (siteData.hero.imageUrl && siteData.hero.imageUrl.startsWith('http')) {
-        imageUrlMap['hero'] = siteData.hero.imageUrl;
-      }
-      if (siteData.about.imageUrl && siteData.about.imageUrl.startsWith('http')) {
-        imageUrlMap['about'] = siteData.about.imageUrl;
-      }
-      siteData.gallery.forEach((url, index) => {
-        if (url && url.startsWith('http')) {
-          imageUrlMap[`gallery${index}`] = url;
-        }
-      });
-      (siteData.craftImages || []).forEach((url, index) => {
-        if (url && url.startsWith('http')) {
-          imageUrlMap[`craft${index}`] = url;
-        }
-      });
-      // Same for staff photos already hosted as URLs (typical: a fresh
-      // Booksy import — staff photos are CDN-hosted images we keep as
-      // direct hotlinks instead of re-uploading).
-      (siteData.staff || []).forEach((s, index) => {
-        if (s?.photo && s.photo.startsWith('http')) {
-          imageUrlMap[`staff${index}`] = s.photo;
-        }
-      });
+      // Carry over existing GCS URLs
+      if (siteData.hero.imageUrl && siteData.hero.imageUrl.startsWith('http')) imageUrlMap['hero'] = siteData.hero.imageUrl;
+      if (siteData.about.imageUrl && siteData.about.imageUrl.startsWith('http')) imageUrlMap['about'] = siteData.about.imageUrl;
+      siteData.gallery.forEach((url, i) => { if (url && url.startsWith('http')) imageUrlMap[`gallery${i}`] = url; });
+      (siteData.craftImages || []).forEach((url, i) => { if (url && url.startsWith('http')) imageUrlMap[`craft${i}`] = url; });
+      (siteData.staff || []).forEach((s, i) => { if (s?.photo && s.photo.startsWith('http')) imageUrlMap[`staff${i}`] = s.photo; });
 
-      // Step 3: Save to localStorage (text + GCS URLs only, no base64)
+      // Step 3: Write pendingSite to localStorage so handleStripeReturn
+      // in App.tsx can restore + deploy after Stripe sends the visitor
+      // back. This is the step the embedded checkout path was missing.
       const pendingSite = {
         siteId,
-        // Pass the existing draft's UUID through to handleStripeReturn so
-        // it can mutate the same IndexedDB/Supabase record instead of
-        // creating an orphan with a fresh UUID. Without this, the
-        // dashboard ends up showing both the (stale, image-less) draft
-        // and the deployed copy, and "Edit My Website" opens the empty
-        // draft instead of the deployed site with GCS image URLs.
         existingSiteId: site?.id ?? null,
         siteData: {
           ...siteData,
@@ -753,10 +725,6 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           gallery: siteData.gallery.map((_, i) => imageUrlMap[`gallery${i}`] ? 'uploaded' : ''),
           craftImages: (siteData.craftImages || []).map((_, i) => imageUrlMap[`craft${i}`] ? 'uploaded' : ''),
           services: siteData.services.map(s => ({ ...s, imageUrl: '' })),
-          // Replace base64 staff photos with placeholder markers — the
-          // post-Stripe restore swaps them back to the GCS URLs in
-          // imageUrlMap. Plain HTTP staff photos (Booksy CDN hotlinks)
-          // stay as-is.
           staff: (siteData.staff || []).map((s, i) => ({
             ...s,
             photo: imageUrlMap[`staff${i}`] ? 'uploaded' : (s.photo?.startsWith('http') ? s.photo : ''),
@@ -765,70 +733,57 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         imageUrlMap,
         timestamp: Date.now(),
       };
-
       localStorage.setItem('pendingSite', JSON.stringify(pendingSite));
-      console.log('[Claim] Saved pending site to localStorage, redirecting to Stripe...');
 
-      // Step 4: Fire FB + TikTok InitiateCheckout (pixel + CAPI) before
-      // the Stripe redirect. Shared event_id dedupes pixel vs CAPI.
+      // Step 4: Fire FB + TikTok InitiateCheckout (pixel + CAPI)
       try {
         const checkoutEventId =
           typeof crypto !== 'undefined' && (crypto as any).randomUUID
             ? (crypto as any).randomUUID()
             : `co_${Date.now()}_${Math.random().toString(36).slice(2)}`;
         const PLAN_VALUES: Record<string, number> = {
-          monthly: 9,
-          'monthly-booksy': 5,
-          'monthly-free': 7,
-          yearly: 86,
-          'yearly-booksy': 48,
-          'yearly-free': 67,
+          monthly: 9, 'monthly-booksy': 5, 'monthly-free': 7,
+          yearly: 86, 'yearly-booksy': 48, 'yearly-free': 67,
         };
         const checkoutValue = PLAN_VALUES[plan] ?? 9;
         const checkoutCurrency = 'USD';
-        (window as any).fbq?.(
-          'track',
-          'InitiateCheckout',
-          { value: checkoutValue, currency: checkoutCurrency },
-          { eventID: checkoutEventId },
-        );
-        (window as any).ttq?.track(
-          'InitiateCheckout',
-          { value: checkoutValue, currency: checkoutCurrency },
-          { event_id: checkoutEventId },
-        );
+        (window as any).fbq?.('track', 'InitiateCheckout', { value: checkoutValue, currency: checkoutCurrency }, { eventID: checkoutEventId });
+        (window as any).ttq?.track('InitiateCheckout', { value: checkoutValue, currency: checkoutCurrency }, { event_id: checkoutEventId });
         fetch('/api/fb-checkout', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            eventId: checkoutEventId,
-            value: checkoutValue,
-            currency: checkoutCurrency,
-            eventSourceUrl: window.location.href,
-            clientUserAgent: navigator.userAgent,
-          }),
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ eventId: checkoutEventId, value: checkoutValue, currency: checkoutCurrency, eventSourceUrl: window.location.href, clientUserAgent: navigator.userAgent }),
         }).catch(err => console.error('[FB CAPI InitiateCheckout] Failed:', err));
         fetch('/api/tiktok-event', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            event: 'InitiateCheckout',
-            event_id: checkoutEventId,
-            event_source_url: window.location.href,
-            user_agent: navigator.userAgent,
-            value: checkoutValue,
-            currency: checkoutCurrency,
-          }),
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ event: 'InitiateCheckout', event_id: checkoutEventId, event_source_url: window.location.href, user_agent: navigator.userAgent, value: checkoutValue, currency: checkoutCurrency }),
         }).catch(err => console.error('[TikTok CAPI InitiateCheckout] Failed:', err));
       } catch (e) {
-        console.error('[InitiateCheckout] Tracking failed:', e);
+        console.error('[InitiateCheckout] Tracking failed (non-blocking):', e);
       }
 
-      // Step 5: Create Stripe Checkout Session and redirect
+      return { siteId };
+    } catch (error: any) {
+      console.error('[preparePendingSite] failed:', error);
+      return { error: error.message || 'Failed to prepare site for payment.' };
+    }
+  };
+
+  const handleClaimSite = async (plan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'yearly' | 'yearly-booksy' | 'yearly-free' = 'monthly') => {
+    setIsDeploying(true);
+    setDeploymentResult(null);
+
+    const prep = await preparePendingSite(plan);
+    if ('error' in prep) {
+      setDeploymentResult({ error: prep.error });
+      setIsDeploying(false);
+      return;
+    }
+
+    try {
       const checkoutResponse = await fetch('/api/create-checkout-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ siteId, plan }),
+        body: JSON.stringify({ siteId: prep.siteId, plan }),
       });
       const checkoutData = await checkoutResponse.json();
       if (!checkoutResponse.ok || !checkoutData.url) {
@@ -838,10 +793,9 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       // isDeploying when the user comes back (back button, closed tab).
       markRedirecting();
       window.location.href = checkoutData.url;
-
     } catch (error: any) {
       console.error('Claim site error:', error);
-      setDeploymentResult({ error: error.message || 'Failed to prepare site for payment.' });
+      setDeploymentResult({ error: error.message || 'Failed to start checkout.' });
       setIsDeploying(false);
     }
   };
@@ -1578,6 +1532,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       {!isPostPayment && (
         <PrePaymentBanner
           onDeploy={handleClaimSite}
+          onPrepareCheckout={preparePendingSite}
           isDeploying={isDeploying}
           industry="barbershop"
         />
