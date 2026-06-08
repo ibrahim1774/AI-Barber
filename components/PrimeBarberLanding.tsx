@@ -454,48 +454,8 @@ export const PrimeBarberLanding: React.FC = () => {
         </div>
       </section>
 
-      {/* ─── SELL PRODUCTS — product card row ───────────────────── */}
-      <section className="py-12 md:py-16 px-5 md:px-8" style={{ background: '#080808' }}>
-        <div className="mx-auto max-w-6xl">
-          <div className="text-center max-w-2xl mx-auto mb-8">
-            <Eyebrow>Beyond Haircuts</Eyebrow>
-            <SectionHeading serifAccent="than haircuts.">Sell more</SectionHeading>
-            <p className="text-[14px] md:text-[15px]" style={{ color: SOFT }}>
-              Your website doubles as your storefront. Sell direct, under your brand.
-            </p>
-          </div>
-          <div className="grid grid-cols-3 gap-2 md:gap-3">
-            {[
-              { img: IMG.pomade, label: 'Pomades' },
-              { img: IMG.beardOil, label: 'Beard Oils' },
-              { img: IMG.merch, label: 'Merchandise' },
-            ].map((p) => (
-              <div key={p.label} className="relative overflow-hidden rounded-md aspect-square group">
-                <img
-                  src={p.img}
-                  alt={p.label}
-                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                />
-                <div
-                  className="absolute inset-0"
-                  style={{ background: 'linear-gradient(180deg, transparent 40%, rgba(10,10,10,0.85) 100%)' }}
-                />
-                <div className="absolute bottom-0 left-0 right-0 p-3 md:p-4">
-                  <div className="text-[11px] md:text-[13px] font-black uppercase tracking-[0.16em]" style={{ color: CREAM }}>
-                    {p.label}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-          <p className="mt-5 text-center text-[12px] md:text-[13px]" style={{ color: SOFT }}>
-            + Hair Products · Gift Cards · Anything else you stock
-          </p>
-        </div>
-      </section>
-
       {/* ─── PRICING — compact card ─────────────────────────────── */}
-      <section className="py-12 md:py-16 px-5 md:px-8">
+      <section className="py-12 md:py-16 px-5 md:px-8" style={{ background: '#080808' }}>
         <div className="mx-auto max-w-xl text-center">
           <Eyebrow>Simple Pricing</Eyebrow>
           <SectionHeading>One price. Everything included.</SectionHeading>
@@ -527,7 +487,7 @@ export const PrimeBarberLanding: React.FC = () => {
       </section>
 
       {/* ─── FAQ — compact accordion ────────────────────────────── */}
-      <section className="py-12 md:py-16 px-5 md:px-8" style={{ background: '#080808' }}>
+      <section className="py-12 md:py-16 px-5 md:px-8">
         <div className="mx-auto max-w-3xl">
           <div className="text-center mb-8">
             <Eyebrow>FAQ</Eyebrow>
