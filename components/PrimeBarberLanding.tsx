@@ -217,12 +217,12 @@ export const PrimeBarberLanding: React.FC = () => {
           style={{ background: 'linear-gradient(180deg, rgba(10,10,10,0.7) 0%, rgba(10,10,10,0.95) 100%)' }}
           aria-hidden="true"
         />
-        <div className="relative mx-auto max-w-6xl px-5 md:px-8 py-12 md:py-20 pb-fade-in">
-          <div className="grid md:grid-cols-[1.1fr_1fr] gap-8 md:gap-12 items-center">
+        <div className="relative mx-auto max-w-6xl px-5 md:px-8 py-10 md:py-14 pb-fade-in">
+          <div className="grid md:grid-cols-[1.7fr_1fr] gap-6 md:gap-10 items-center">
             <div>
               <Eyebrow>Custom Website Platform for Barbershops</Eyebrow>
               <h1
-                className="text-4xl md:text-6xl font-black tracking-tight leading-[0.98] mb-4"
+                className="text-3xl md:text-5xl font-black tracking-tight leading-[0.98] mb-3"
                 style={{ color: CREAM, letterSpacing: '-0.02em' }}
               >
                 Your Shop. Your Brand.{' '}
@@ -230,35 +230,60 @@ export const PrimeBarberLanding: React.FC = () => {
                   Your Website.
                 </span>
               </h1>
-              <p className="text-[15px] md:text-[17px] leading-snug max-w-xl mb-2" style={{ color: SOFT }}>
+              <p className="text-[14px] md:text-[16px] leading-snug max-w-xl mb-2" style={{ color: SOFT }}>
                 A custom website with booking, payments, your own product store, galleries, and a mobile app — all under your brand.
               </p>
-              <p className="text-[13px] md:text-[14px] mb-6" style={{ color: CREAM }}>
+              <p className="text-[12px] md:text-[14px] mb-5" style={{ color: CREAM }}>
                 <span style={{ color: GOLD, fontWeight: 700 }}>7-day free trial.</span> Then $49/month. No contract.
               </p>
-              <PrimaryCTA />
+              <PrimaryCTA size="md" />
               <p className="mt-3 text-[10px] uppercase tracking-[0.22em]" style={{ color: 'rgba(240,236,228,0.45)' }}>
                 <Lock size={9} className="inline mr-1.5 -mt-0.5" />
                 Secure checkout · Powered by Stripe
               </p>
             </div>
 
-            {/* Image collage — hidden on small screens (the bg image
-                does the lifting there). 2x2 staggered grid feels
-                editorial, not stock-y. */}
-            <div className="hidden md:grid grid-cols-2 gap-3 relative">
-              <img src={IMG.heroMain} alt="Barbershop interior" className="rounded-md w-full object-cover aspect-[3/4]" />
-              <div className="grid gap-3">
-                <img src={IMG.beardWork} alt="Beard trim" className="rounded-md w-full object-cover aspect-[4/3]" />
-                <img src={IMG.toolsFlat} alt="Barber tools" className="rounded-md w-full object-cover aspect-[4/3]" />
-              </div>
+            {/* Single compact hero image — ~50% smaller than the
+                prior 3-photo collage. Hidden on mobile (the
+                full-bleed bg image carries the visual weight). */}
+            <div className="hidden md:block">
+              <img
+                src={IMG.heroMain}
+                alt="Barbershop interior"
+                className="rounded-md w-full object-cover aspect-[3/4] max-w-[260px] ml-auto"
+              />
             </div>
           </div>
         </div>
       </section>
 
-      {/* ─── PROBLEM — image + pain points side by side ─────────── */}
+      {/* ─── FEATURES GRID — moved up to be section 2 ───────────── */}
       <section className="py-12 md:py-16 px-5 md:px-8" style={{ background: '#080808' }}>
+        <div className="mx-auto max-w-6xl">
+          <div className="text-center max-w-2xl mx-auto mb-8 md:mb-10">
+            <Eyebrow>What You Get</Eyebrow>
+            <SectionHeading serifAccent="That’s Yours">Everything on a Site</SectionHeading>
+            <p className="text-[14px] md:text-[15px]" style={{ color: SOFT }}>
+              One site under your brand. Bookings, payments, products, galleries — in a home base you control.
+            </p>
+          </div>
+          <div className="grid gap-px sm:grid-cols-2 md:grid-cols-4" style={{ background: 'rgba(255,255,255,0.06)' }}>
+            {features.map((f, i) => {
+              const Icon = f.icon;
+              return (
+                <div key={i} className="p-5 md:p-6" style={{ background: BLACK }}>
+                  <Icon size={22} style={{ color: GOLD }} />
+                  <h3 className="mt-3 mb-1 text-[14px] md:text-[15px] font-black" style={{ color: CREAM }}>{f.title}</h3>
+                  <p className="text-[12px] md:text-[13px] leading-snug" style={{ color: SOFT }}>{f.body}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* ─── PROBLEM — image + pain points side by side ─────────── */}
+      <section className="py-12 md:py-16 px-5 md:px-8">
         <div className="mx-auto max-w-6xl">
           <div className="grid md:grid-cols-[1fr_1.3fr] gap-8 md:gap-12 items-start">
             <div className="relative">
@@ -294,31 +319,6 @@ export const PrimeBarberLanding: React.FC = () => {
                 It works… until none of it is actually yours.
               </p>
             </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ─── FEATURES GRID — compact with icons ─────────────────── */}
-      <section className="py-12 md:py-16 px-5 md:px-8">
-        <div className="mx-auto max-w-6xl">
-          <div className="text-center max-w-2xl mx-auto mb-8 md:mb-10">
-            <Eyebrow>What You Get</Eyebrow>
-            <SectionHeading serifAccent="That’s Yours">Everything on a Site</SectionHeading>
-            <p className="text-[14px] md:text-[15px]" style={{ color: SOFT }}>
-              One site under your brand. Bookings, payments, products, galleries — in a home base you control.
-            </p>
-          </div>
-          <div className="grid gap-px sm:grid-cols-2 md:grid-cols-4" style={{ background: 'rgba(255,255,255,0.06)' }}>
-            {features.map((f, i) => {
-              const Icon = f.icon;
-              return (
-                <div key={i} className="p-5 md:p-6" style={{ background: BLACK }}>
-                  <Icon size={22} style={{ color: GOLD }} />
-                  <h3 className="mt-3 mb-1 text-[14px] md:text-[15px] font-black" style={{ color: CREAM }}>{f.title}</h3>
-                  <p className="text-[12px] md:text-[13px] leading-snug" style={{ color: SOFT }}>{f.body}</p>
-                </div>
-              );
-            })}
           </div>
         </div>
       </section>
