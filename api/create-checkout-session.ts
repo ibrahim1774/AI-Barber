@@ -46,7 +46,12 @@ export default async function handler(req: any, res: any) {
     // Routes to the same Google Form post-checkout as the other custom
     // plans — only the analytics tag differs.
     const isCustomBooksy = plan === 'custom-booksy';
-    const isCustomAny = isCustom || isCustom25 || isCustomBooksy;
+    // 'primebarber' = the standalone /primebarber landing page —
+    // $49/mo with a 7-day free trial. Treated like a custom plan for
+    // routing purposes (same Google Form after payment) but with its
+    // own price + Stripe trial config.
+    const isPrimeBarber = plan === 'primebarber';
+    const isCustomAny = isCustom || isCustom25 || isCustomBooksy || isPrimeBarber;
 
     let unitAmount: string;
     let interval: 'month' | 'year';
@@ -83,6 +88,10 @@ export default async function handler(req: any, res: any) {
       unitAmount = '1500';
       interval = 'month';
       productName = 'Prime Barber AI - Custom Website Design ($15/mo)';
+    } else if (isPrimeBarber) {
+      unitAmount = '4900';
+      interval = 'month';
+      productName = 'Prime Barber - Custom Website Platform ($49/mo, 7-day free trial)';
     } else {
       unitAmount = '900';
       interval = 'month';
@@ -124,9 +133,15 @@ export default async function handler(req: any, res: any) {
     params.append('line_items[0][price_data][recurring][interval]', interval);
     params.append('line_items[0][quantity]', '1');
     params.append('client_reference_id', siteId);
-    params.append('metadata[type]', isCustomAny ? 'custom_design' : 'site_hosting');
+    params.append('metadata[type]', isPrimeBarber ? 'primebarber' : isCustomAny ? 'custom_design' : 'site_hosting');
     params.append('metadata[siteId]', siteId);
     params.append('metadata[plan]', plan);
+    // 7-day free trial for /primebarber. Card is collected now, first
+    // charge happens on day 7 unless the customer cancels via the
+    // billing portal in the meantime.
+    if (isPrimeBarber) {
+      params.append('subscription_data[trial_period_days]', '7');
+    }
 
     const response = await fetch('https://api.stripe.com/v1/checkout/sessions', {
       method: 'POST',

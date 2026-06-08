@@ -32,3 +32,16 @@ export function isImportPath(pathname?: string): boolean {
 // Back-compat alias — keep until all callsites migrate.
 export const BOOKSY_PATH = '/booksy';
 export const isBooksyPath = isImportPath;
+
+// `/primebarber` = standalone SaaS landing page for the full Prime
+// Barber custom-website platform ($49/mo, 7-day free trial). Unlike
+// the other entry paths, this one is NOT a site generator — it's a
+// marketing page that opens an embedded Stripe checkout. After
+// payment the visitor is forwarded to the Google Form so we can
+// collect their build requirements (same form the legacy custom-
+// design upsell uses).
+export const PRIMEBARBER_PATH = '/primebarber';
+export function isPrimeBarberPath(pathname?: string): boolean {
+  const p = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
+  return p === PRIMEBARBER_PATH || p === `${PRIMEBARBER_PATH}/`;
+}

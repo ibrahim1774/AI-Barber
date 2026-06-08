@@ -10,7 +10,8 @@ declare global {
 
 import { NewLeadQuizForm } from './components/NewLeadQuizForm.tsx';
 import { GeneratorForm } from './components/GeneratorForm.tsx';
-import { isBooksyPath, isFreeBarberPath } from './lib/dealMode.ts';
+import { isBooksyPath, isFreeBarberPath, isPrimeBarberPath } from './lib/dealMode.ts';
+import { PrimeBarberLanding } from './components/PrimeBarberLanding.tsx';
 // Note: the legacy single-page GeneratorForm + isNewLeadPath() detector
 // were removed when the premium quiz funnel took over the homepage too.
 // /new keeps working as an alias since both routes render the same form.
@@ -162,7 +163,8 @@ const App: React.FC = () => {
     const isCustomPlan =
       stripePlan === 'custom' ||
       stripePlan === 'custom25' ||
-      stripePlan === 'custom-booksy';
+      stripePlan === 'custom-booksy' ||
+      stripePlan === 'primebarber';
     if (stripeSessionId && isCustomPlan) {
       window.history.replaceState({}, '', window.location.pathname);
       setAppReady(true);
@@ -213,6 +215,7 @@ const App: React.FC = () => {
       'custom-booksy': 15,
       custom: 15,
       custom25: 15,
+      primebarber: 49,
     };
     const value = PLAN_VALUES[plan] ?? 15;
     const currency = 'USD';
@@ -638,6 +641,13 @@ const App: React.FC = () => {
     setShowPostDeployModal(false);
     // Stay on deploying view showing the success state — user can click "Create Another Site" or just leave
   };
+
+  // /primebarber is a standalone marketing page — no generator state,
+  // no editor, no dashboard. Render it as early as possible so the
+  // auth/restore overhead doesn't block first paint of the landing.
+  if (isPrimeBarberPath()) {
+    return <PrimeBarberLanding />;
+  }
 
   // Don't render until auth state is determined
   if (!appReady || isRestoring) {
