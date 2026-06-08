@@ -164,7 +164,8 @@ const App: React.FC = () => {
       stripePlan === 'custom' ||
       stripePlan === 'custom25' ||
       stripePlan === 'custom-booksy' ||
-      stripePlan === 'primebarber';
+      stripePlan === 'primebarber' ||
+      stripePlan === 'primebarber-site';
     if (stripeSessionId && isCustomPlan) {
       window.history.replaceState({}, '', window.location.pathname);
       setAppReady(true);
@@ -216,6 +217,7 @@ const App: React.FC = () => {
       custom: 15,
       custom25: 15,
       primebarber: 49,
+      'primebarber-site': 19,
     };
     const value = PLAN_VALUES[plan] ?? 15;
     const currency = 'USD';

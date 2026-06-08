@@ -51,7 +51,11 @@ export default async function handler(req: any, res: any) {
     // routing purposes (same Google Form after payment) but with its
     // own price + Stripe trial config.
     const isPrimeBarber = plan === 'primebarber';
-    const isCustomAny = isCustom || isCustom25 || isCustomBooksy || isPrimeBarber;
+    // 'primebarber-site' = the cheaper "Custom Site Only" option on
+    // /primebarber — just the website, no booking/payments/app/team
+    // features. $19/mo, NO free trial. Same Google Form routing.
+    const isPrimeBarberSite = plan === 'primebarber-site';
+    const isCustomAny = isCustom || isCustom25 || isCustomBooksy || isPrimeBarber || isPrimeBarberSite;
 
     let unitAmount: string;
     let interval: 'month' | 'year';
@@ -92,6 +96,10 @@ export default async function handler(req: any, res: any) {
       unitAmount = '4900';
       interval = 'month';
       productName = 'Prime Barber - Custom Website Platform ($49/mo, 7-day free trial)';
+    } else if (isPrimeBarberSite) {
+      unitAmount = '1900';
+      interval = 'month';
+      productName = 'Prime Barber - Custom Site Only ($19/mo)';
     } else {
       unitAmount = '900';
       interval = 'month';
@@ -133,7 +141,7 @@ export default async function handler(req: any, res: any) {
     params.append('line_items[0][price_data][recurring][interval]', interval);
     params.append('line_items[0][quantity]', '1');
     params.append('client_reference_id', siteId);
-    params.append('metadata[type]', isPrimeBarber ? 'primebarber' : isCustomAny ? 'custom_design' : 'site_hosting');
+    params.append('metadata[type]', isPrimeBarber ? 'primebarber' : isPrimeBarberSite ? 'primebarber_site' : isCustomAny ? 'custom_design' : 'site_hosting');
     params.append('metadata[siteId]', siteId);
     params.append('metadata[plan]', plan);
     // 7-day free trial for /primebarber. Card is collected now, first

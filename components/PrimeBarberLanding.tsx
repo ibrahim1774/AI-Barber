@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, X, Loader2, ChevronDown, Calendar, CreditCard, ShoppingBag, Image as ImageIcon, Smartphone, Settings, Layers, Smartphone as PhoneIcon, Lock, Bell, Star, Scissors, Users } from 'lucide-react';
+import { Check, X, Loader2, ChevronDown, Calendar, CreditCard, ShoppingBag, Image as ImageIcon, Smartphone, Settings, Layers, Smartphone as PhoneIcon, Lock, Bell, Star, Scissors, Users, CalendarCheck, MessageSquare, Rocket, ArrowRight } from 'lucide-react';
 import { loadStripe, type Stripe } from '@stripe/stripe-js';
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js';
 
@@ -105,6 +105,11 @@ export const PrimeBarberLanding: React.FC = () => {
   const [embedError, setEmbedError] = useState<string | null>(null);
   const [isStartingCheckout, setIsStartingCheckout] = useState(false);
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null);
+  // Which plan the visitor selected — drives the embedded checkout's
+  // price + trial period + modal copy.
+  //   'primebarber'      = full platform $49/mo + 7-day trial (default)
+  //   'primebarber-site' = "Custom Site Only" $19/mo, no trial
+  const [activePlan, setActivePlan] = useState<'primebarber' | 'primebarber-site'>('primebarber');
 
   useEffect(() => {
     if (showCheckout) document.body.style.overflow = 'hidden';
@@ -112,7 +117,7 @@ export const PrimeBarberLanding: React.FC = () => {
     return () => { document.body.style.overflow = ''; };
   }, [showCheckout]);
 
-  const fetchEmbeddedSecret = useCallback(async () => {
+  const fetchEmbeddedSecret = useCallback(async (plan: 'primebarber' | 'primebarber-site') => {
     setEmbedSecret(null);
     setEmbedError(null);
     try {
@@ -121,7 +126,7 @@ export const PrimeBarberLanding: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           siteId: 'primebarber-landing',
-          plan: 'primebarber',
+          plan,
           embedded: true,
         }),
       });
@@ -134,13 +139,14 @@ export const PrimeBarberLanding: React.FC = () => {
     }
   }, []);
 
-  const handleStartCheckout = useCallback(async () => {
+  const handleStartCheckout = useCallback(async (plan: 'primebarber' | 'primebarber-site' = 'primebarber') => {
+    setActivePlan(plan);
     try {
       const eventId =
         typeof crypto !== 'undefined' && (crypto as any).randomUUID
           ? (crypto as any).randomUUID()
           : `pb_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-      const value = 49;
+      const value = plan === 'primebarber-site' ? 19 : 49;
       const currency = 'USD';
       (window as any).fbq?.('track', 'InitiateCheckout', { value, currency }, { eventID: eventId });
       (window as any).ttq?.track('InitiateCheckout', { value, currency }, { event_id: eventId });
@@ -159,7 +165,7 @@ export const PrimeBarberLanding: React.FC = () => {
     setIsStartingCheckout(true);
     setShowCheckout(true);
     try {
-      await fetchEmbeddedSecret();
+      await fetchEmbeddedSecret(plan);
     } finally {
       setIsStartingCheckout(false);
     }
@@ -198,18 +204,27 @@ export const PrimeBarberLanding: React.FC = () => {
     { q: 'Do I get a mobile app?', a: 'Yes. You’ll get mobile notifications when someone books, pays, sends an inquiry, or reaches out.' },
   ];
 
-  const PrimaryCTA: React.FC<{ size?: 'sm' | 'md' | 'lg'; label?: string }> = ({ size = 'lg', label = 'Start 7-Day Free Trial' }) => {
+  const PrimaryCTA: React.FC<{
+    size?: 'sm' | 'md' | 'lg';
+    label?: string;
+    plan?: 'primebarber' | 'primebarber-site';
+    variant?: 'gold' | 'ghost';
+  }> = ({ size = 'lg', label = 'Start 7-Day Free Trial', plan = 'primebarber', variant = 'gold' }) => {
     const sizes = {
       sm: 'px-5 py-2.5 text-[10px]',
       md: 'px-7 py-3.5 text-[11px]',
       lg: 'px-8 py-4 md:px-10 md:py-5 text-[11px] md:text-[13px]',
     };
+    const variantStyle =
+      variant === 'ghost'
+        ? { background: 'transparent', color: CREAM, border: `1px solid ${GOLD}` }
+        : { background: GOLD, color: BLACK, border: '1px solid transparent' };
     return (
       <button
-        onClick={handleStartCheckout}
+        onClick={() => handleStartCheckout(plan)}
         disabled={isStartingCheckout}
-        className={`pb-cta inline-flex items-center gap-2.5 font-black uppercase tracking-[0.22em] transition disabled:opacity-50 ${sizes[size]}`}
-        style={{ background: GOLD, color: BLACK, fontFamily: 'inherit' }}
+        className={`${variant === 'gold' ? 'pb-cta' : ''} inline-flex items-center gap-2.5 font-black uppercase tracking-[0.22em] transition disabled:opacity-50 ${sizes[size]}`}
+        style={{ ...variantStyle, fontFamily: 'inherit' }}
       >
         {isStartingCheckout ? <Loader2 className="animate-spin" size={14} /> : null}
         {label}
@@ -365,6 +380,114 @@ export const PrimeBarberLanding: React.FC = () => {
               );
             })}
           </div>
+        </div>
+      </section>
+
+      {/* ─── HOW IT WORKS — 3 numbered steps from payment → live site ─ */}
+      <section className="py-12 md:py-16 px-5 md:px-8">
+        <div className="mx-auto max-w-5xl">
+          <Reveal>
+            <div className="text-center mb-10 md:mb-12">
+              <Eyebrow>How It Works</Eyebrow>
+              <SectionHeading serifAccent="three steps.">From payment to live site —</SectionHeading>
+              <p className="text-[13px] md:text-[15px] max-w-xl mx-auto" style={{ color: SOFT }}>
+                Once you start your trial, our onboarding team takes it from here.
+              </p>
+            </div>
+          </Reveal>
+
+          {/* Steps — desktop: 3 columns with a gold connector line; mobile: stacked */}
+          <div className="relative">
+            {/* Connector line — desktop only, between the icon circles */}
+            <div
+              className="hidden md:block absolute"
+              style={{
+                top: 36,
+                left: '16.66%',
+                right: '16.66%',
+                height: 1,
+                background: `linear-gradient(90deg, transparent, ${GOLD}55, ${GOLD}55, transparent)`,
+              }}
+              aria-hidden="true"
+            />
+
+            <div className="grid gap-8 md:gap-6 md:grid-cols-3 relative">
+              {[
+                {
+                  icon: CalendarCheck,
+                  title: 'Book Your Onboarding Call',
+                  body: 'After payment, schedule a 1-on-1 with our onboarding team. They walk you through the whole process.',
+                },
+                {
+                  icon: MessageSquare,
+                  title: 'Tell Us About Your Shop',
+                  body: 'Fill out a short form. Then call, text, or meet — whatever you’re comfortable with — so we know exactly what you want.',
+                },
+                {
+                  icon: Rocket,
+                  title: 'Live in 24–48 Hours',
+                  body: 'Our team builds your full Prime Barber setup. Your custom website is live within 1–2 days.',
+                },
+              ].map((step, i) => {
+                const Icon = step.icon;
+                return (
+                  <Reveal key={i} delay={i * 120}>
+                    <div className="relative text-center md:text-left flex flex-col items-center md:items-start">
+                      {/* Numbered icon circle */}
+                      <div
+                        className="relative flex items-center justify-center mb-4"
+                        style={{
+                          width: 72,
+                          height: 72,
+                          borderRadius: '50%',
+                          background: BLACK,
+                          border: `1.5px solid ${GOLD}`,
+                          boxShadow: `0 0 0 6px rgba(10,10,10,1), 0 8px 30px rgba(212,164,100,0.25)`,
+                        }}
+                      >
+                        <Icon size={26} style={{ color: GOLD }} />
+                        {/* Step number badge */}
+                        <div
+                          className="absolute -top-2 -right-2 flex items-center justify-center"
+                          style={{
+                            width: 24,
+                            height: 24,
+                            borderRadius: '50%',
+                            background: GOLD,
+                            color: BLACK,
+                            fontSize: 11,
+                            fontWeight: 900,
+                            fontFamily: '"Instrument Serif", serif',
+                            fontStyle: 'italic',
+                          }}
+                        >
+                          {['I', 'II', 'III'][i]}
+                        </div>
+                      </div>
+                      <h3 className="text-[15px] md:text-[16px] font-black mb-2" style={{ color: CREAM }}>
+                        {step.title}
+                      </h3>
+                      <p className="text-[13px] md:text-[13.5px] leading-snug max-w-xs" style={{ color: SOFT }}>
+                        {step.body}
+                      </p>
+                      {/* Mobile-only arrow between steps */}
+                      {i < 2 && (
+                        <div className="md:hidden mt-6 flex justify-center">
+                          <ArrowRight size={20} style={{ color: GOLD, transform: 'rotate(90deg)' }} />
+                        </div>
+                      )}
+                    </div>
+                  </Reveal>
+                );
+              })}
+            </div>
+          </div>
+
+          <Reveal delay={400}>
+            <p className="mt-10 text-center text-[13px] md:text-[14px]" style={{ color: CREAM, fontFamily: '"Instrument Serif", serif', fontStyle: 'italic' }}>
+              You don’t lift a finger. We handle the setup.
+            </p>
+          </Reveal>
         </div>
       </section>
 
@@ -586,35 +709,115 @@ export const PrimeBarberLanding: React.FC = () => {
         </div>
       </section>
 
-      {/* ─── PRICING — compact card ─────────────────────────────── */}
+      {/* ─── PRICING — two-card option compare ──────────────────── */}
       <section className="py-12 md:py-16 px-5 md:px-8" style={{ background: '#080808' }}>
-        <div className="mx-auto max-w-xl text-center">
-          <Eyebrow>Simple Pricing</Eyebrow>
-          <SectionHeading>One price. Everything included.</SectionHeading>
-          <div className="mt-6 mb-5 p-6 md:p-8" style={{ background: 'rgba(212,164,100,0.06)', border: `1px solid rgba(212,164,100,0.35)` }}>
-            <div className="text-[11px] uppercase tracking-[0.24em] mb-2" style={{ color: GOLD }}>
-              7-Day Free Trial · Then
+        <div className="mx-auto max-w-4xl">
+          <Reveal>
+            <div className="text-center mb-8 md:mb-10">
+              <Eyebrow>Simple Pricing</Eyebrow>
+              <SectionHeading serifAccent="your shop.">Pick what fits</SectionHeading>
             </div>
-            <div className="flex items-baseline justify-center gap-1">
-              <span style={{ color: CREAM, fontFamily: '"Instrument Serif", serif', fontWeight: 400, fontSize: '4rem', lineHeight: 1 }}>
-                $49
-              </span>
-              <span className="text-[15px]" style={{ color: SOFT }}>/month</span>
-            </div>
-            <div
-              className="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5"
-              style={{ background: 'rgba(212,164,100,0.12)', border: `1px solid rgba(212,164,100,0.4)`, color: CREAM }}
-            >
-              <Users size={12} style={{ color: GOLD }} />
-              <span className="text-[11px] md:text-[12px] font-bold uppercase tracking-[0.14em]">
-                Unlimited staff — no per-barber fees
-              </span>
-            </div>
-            <p className="mt-4 text-[12px] md:text-[13px]" style={{ color: SOFT }}>
-              No setup fee. No contract. Cancel anytime — during or after your trial.
-            </p>
+          </Reveal>
+
+          <div className="grid md:grid-cols-2 gap-4 md:gap-5">
+            {/* CARD 1 — Custom Site Only ($19/mo, no trial) */}
+            <Reveal delay={50}>
+              <div
+                className="p-6 md:p-7 h-full flex flex-col"
+                style={{
+                  background: 'rgba(255,255,255,0.02)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                }}
+              >
+                <div className="text-[11px] uppercase tracking-[0.24em] mb-2 font-bold" style={{ color: 'rgba(240,236,228,0.65)' }}>
+                  Custom Site Only
+                </div>
+                <div className="flex items-baseline gap-1 mb-1">
+                  <span style={{ color: CREAM, fontFamily: '"Instrument Serif", serif', fontWeight: 400, fontSize: '3rem', lineHeight: 1 }}>
+                    $19
+                  </span>
+                  <span className="text-[14px]" style={{ color: SOFT }}>/month</span>
+                </div>
+                <p className="text-[12px] md:text-[13px] mb-5" style={{ color: SOFT }}>
+                  Just the website. No booking system, no payments, no app.
+                </p>
+                <ul className="space-y-2 mb-6 flex-1">
+                  {[
+                    'Custom-built website',
+                    'Your branding & photos',
+                    'Mobile-friendly',
+                    'Edit anytime',
+                    'Ongoing support',
+                  ].map((line) => (
+                    <li key={line} className="flex items-start gap-2 text-[13px]" style={{ color: CREAM }}>
+                      <Check size={14} strokeWidth={2.5} style={{ color: SOFT, marginTop: 3, flexShrink: 0 }} />
+                      <span>{line}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="text-[10px] uppercase tracking-[0.2em] mb-3" style={{ color: 'rgba(240,236,228,0.45)' }}>
+                  No free trial · Cancel anytime
+                </div>
+                <PrimaryCTA size="md" label="Get Custom Site" plan="primebarber-site" variant="ghost" />
+              </div>
+            </Reveal>
+
+            {/* CARD 2 — Full Platform ($49/mo, 7-day trial) — recommended */}
+            <Reveal delay={150}>
+              <div
+                className="relative p-6 md:p-7 h-full flex flex-col"
+                style={{
+                  background: 'rgba(212,164,100,0.06)',
+                  border: `1.5px solid ${GOLD}`,
+                  boxShadow: `0 20px 50px rgba(212,164,100,0.15)`,
+                }}
+              >
+                {/* Recommended badge */}
+                <div
+                  className="absolute -top-2.5 left-6 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.2em]"
+                  style={{ background: GOLD, color: BLACK }}
+                >
+                  Recommended
+                </div>
+                <div className="text-[11px] uppercase tracking-[0.24em] mb-2 font-bold" style={{ color: GOLD }}>
+                  Prime Barber Platform
+                </div>
+                <div className="flex items-baseline gap-1 mb-1">
+                  <span style={{ color: CREAM, fontFamily: '"Instrument Serif", serif', fontWeight: 400, fontSize: '3rem', lineHeight: 1 }}>
+                    $49
+                  </span>
+                  <span className="text-[14px]" style={{ color: SOFT }}>/month</span>
+                </div>
+                <p className="text-[12px] md:text-[13px] mb-5" style={{ color: SOFT }}>
+                  Everything. Site, booking, payments, mobile app, store.
+                </p>
+                <ul className="space-y-2 mb-5 flex-1">
+                  {[
+                    'Everything in Custom Site',
+                    'Calendar & online booking',
+                    'Payment processing',
+                    'Mobile app + alerts',
+                    'Product store',
+                    'Unlimited staff',
+                  ].map((line) => (
+                    <li key={line} className="flex items-start gap-2 text-[13px]" style={{ color: CREAM }}>
+                      <Check size={14} strokeWidth={2.5} style={{ color: GOLD, marginTop: 3, flexShrink: 0 }} />
+                      <span>{line}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div
+                  className="mb-3 inline-flex items-center gap-1.5 px-2.5 py-1 self-start"
+                  style={{ background: 'rgba(212,164,100,0.12)', border: `1px solid rgba(212,164,100,0.4)`, color: CREAM }}
+                >
+                  <span className="text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: GOLD }}>
+                    7-Day Free Trial
+                  </span>
+                </div>
+                <PrimaryCTA size="md" label="Start 7-Day Free Trial" plan="primebarber" />
+              </div>
+            </Reveal>
           </div>
-          <PrimaryCTA />
         </div>
       </section>
 
@@ -736,18 +939,31 @@ export const PrimeBarberLanding: React.FC = () => {
               <div className="flex items-center gap-2.5 mb-2.5">
                 <span className="h-px w-4" style={{ background: GOLD }} />
                 <span className="text-[9px] font-medium uppercase tracking-[0.32em]" style={{ color: GOLD }}>
-                  7-Day Free Trial
+                  {activePlan === 'primebarber-site' ? 'Custom Site Only' : '7-Day Free Trial'}
                 </span>
                 <span className="h-px flex-1" style={{ background: 'rgba(212,164,100,0.2)' }} />
               </div>
               <h3 className="text-xl md:text-2xl font-black tracking-tight leading-[1.1] mb-1.5" style={{ color: CREAM }}>
-                Try Prime Barber{' '}
-                <span style={{ fontFamily: '"Instrument Serif", serif', fontStyle: 'italic', fontWeight: 400, color: GOLD }}>
-                  free for 7 days.
-                </span>
+                {activePlan === 'primebarber-site' ? (
+                  <>
+                    Custom Site for{' '}
+                    <span style={{ fontFamily: '"Instrument Serif", serif', fontStyle: 'italic', fontWeight: 400, color: GOLD }}>
+                      $19/month.
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    Try Prime Barber{' '}
+                    <span style={{ fontFamily: '"Instrument Serif", serif', fontStyle: 'italic', fontWeight: 400, color: GOLD }}>
+                      free for 7 days.
+                    </span>
+                  </>
+                )}
               </h3>
               <p className="text-[12.5px] mb-4 leading-snug" style={{ color: SOFT }}>
-                Card collected today. First charge on day 7. Cancel anytime during the trial — no charge.
+                {activePlan === 'primebarber-site'
+                  ? 'Just the website. No booking, payments, or app. Cancel anytime.'
+                  : 'Card collected today. First charge on day 7. Cancel anytime during the trial — no charge.'}
               </p>
 
               <div className="rounded-md overflow-hidden bg-white" style={{ minHeight: 360 }}>
