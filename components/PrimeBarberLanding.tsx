@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, X, Loader2, ChevronDown, Calendar, CreditCard, ShoppingBag, Image as ImageIcon, Smartphone, Settings, Layers, Smartphone as PhoneIcon, Lock, Bell, Star, Scissors, Users } from 'lucide-react';
 import { loadStripe, type Stripe } from '@stripe/stripe-js';
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js';
@@ -29,6 +29,51 @@ const IMG = {
   pomade:     'https://images.unsplash.com/photo-1583248369069-9d91f1640fe6?auto=format&fit=crop&w=700&q=80',
   beardOil:   'https://images.unsplash.com/photo-1631730486572-226d1f595b68?auto=format&fit=crop&w=700&q=80',
   merch:      'https://images.unsplash.com/photo-1554141420-c4b8be9af1a6?auto=format&fit=crop&w=700&q=80',
+};
+
+// Scroll-trigger reveal — minimal IntersectionObserver wrapper.
+// One-shot: once a section enters the viewport, it stays revealed
+// (no re-animate on scroll-back, which would feel twitchy).
+function useInView<T extends HTMLElement>(threshold = 0.15): [React.RefObject<T>, boolean] {
+  const ref = useRef<T | null>(null);
+  const [inView, setInView] = useState(false);
+  useEffect(() => {
+    if (!ref.current) return;
+    const node = ref.current;
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setInView(true);
+          obs.disconnect();
+        }
+      },
+      { threshold, rootMargin: '0px 0px -10% 0px' },
+    );
+    obs.observe(node);
+    return () => obs.disconnect();
+  }, [threshold]);
+  return [ref as React.RefObject<T>, inView];
+}
+
+const Reveal: React.FC<{ children: React.ReactNode; delay?: number; y?: number }> = ({
+  children,
+  delay = 0,
+  y = 20,
+}) => {
+  const [ref, inView] = useInView<HTMLDivElement>(0.12);
+  return (
+    <div
+      ref={ref}
+      style={{
+        opacity: inView ? 1 : 0,
+        transform: inView ? 'translateY(0)' : `translateY(${y}px)`,
+        transition: `opacity 0.7s cubic-bezier(0.22,1,0.36,1) ${delay}ms, transform 0.7s cubic-bezier(0.22,1,0.36,1) ${delay}ms`,
+        willChange: 'opacity, transform',
+      }}
+    >
+      {children}
+    </div>
+  );
 };
 
 const Eyebrow: React.FC<{ children: React.ReactNode; mb?: number }> = ({ children, mb = 3 }) => (
@@ -121,14 +166,14 @@ export const PrimeBarberLanding: React.FC = () => {
   }, [fetchEmbeddedSecret]);
 
   const features = [
-    { icon: Calendar,    title: 'Calendar & Scheduler',    body: 'Clients book on your built-in calendar.' },
-    { icon: CreditCard,  title: 'Payment System',          body: 'Accept and get paid right on your site.' },
-    { icon: ShoppingBag, title: 'Product Store',           body: 'Sell pomades, beard oil, and merch.' },
-    { icon: ImageIcon,   title: 'Your Galleries',          body: 'Showcase your work and your customers.' },
-    { icon: Layers,      title: 'Custom Pages',            body: 'Service pages, about, contact, more.' },
-    { icon: Smartphone,  title: 'Mobile App',              body: 'Notified the second something happens.' },
-    { icon: Settings,    title: 'Your Account',            body: 'Edit hours, prices, photos anytime.' },
-    { icon: Users,       title: 'Unlimited Staff',         body: 'Add your whole team — no per-barber fees.' },
+    { icon: Calendar,    title: 'Online Booking',     body: 'Built-in calendar.' },
+    { icon: CreditCard,  title: 'Get Paid',           body: 'Right on your site.' },
+    { icon: ShoppingBag, title: 'Sell Products',      body: 'Pomades. Oils. Merch.' },
+    { icon: ImageIcon,   title: 'Galleries',          body: 'Show off your work.' },
+    { icon: Layers,      title: 'Custom Pages',       body: 'Services. About. Contact.' },
+    { icon: Smartphone,  title: 'Mobile App',         body: 'Real-time alerts.' },
+    { icon: Settings,    title: 'Edit Anytime',       body: 'Log in. Done.' },
+    { icon: Users,       title: 'Unlimited Staff',    body: 'No per-barber fees.' },
   ];
 
   const painPoints = [
@@ -184,9 +229,33 @@ export const PrimeBarberLanding: React.FC = () => {
           0%,100% { box-shadow: 0 0 0 0 rgba(212,164,100,0), 0 6px 20px rgba(212,164,100,0.35); }
           50%     { box-shadow: 0 0 22px 5px rgba(212,164,100,0.55), 0 8px 28px rgba(212,164,100,0.55); }
         }
+        @keyframes pbHeroFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+        @keyframes pbPulse {
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50%      { transform: scale(1.15); opacity: 0.85; }
+        }
+        @keyframes pbNotifSlide {
+          from { opacity: 0; transform: translateX(-12px); }
+          to   { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes pbLivePulse {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.55); }
+          50%      { box-shadow: 0 0 0 8px rgba(34,197,94,0); }
+        }
         .pb-cta { animation: pbCtaPop 2.4s ease-in-out infinite, pbCtaGlow 2.4s ease-in-out infinite; }
         .pb-cta:hover { animation-play-state: paused; transform: scale(1.04); }
         .pb-fade-in { animation: pbFadeIn 0.6s ease-out both; }
+        .pb-feature-card {
+          transition: transform 0.3s cubic-bezier(0.22,1,0.36,1), background 0.3s;
+        }
+        .pb-feature-card:hover {
+          transform: translateY(-3px);
+          background: linear-gradient(180deg, ${BLACK} 0%, rgba(212,164,100,0.04) 100%) !important;
+        }
+        .pb-feature-card:hover .pb-feature-icon {
+          animation: pbPulse 0.6s ease-in-out;
+          color: ${GOLD} !important;
+        }
       `}</style>
 
       {/* ─── Sticky Top Nav ─────────────────────────────────────── */}
@@ -220,38 +289,50 @@ export const PrimeBarberLanding: React.FC = () => {
         <div className="relative mx-auto max-w-6xl px-5 md:px-8 py-10 md:py-14 pb-fade-in">
           <div className="grid md:grid-cols-[1.7fr_1fr] gap-6 md:gap-10 items-center">
             <div>
-              <Eyebrow>Custom Website Platform for Barbershops</Eyebrow>
+              <Eyebrow>For Barbershops</Eyebrow>
               <h1
                 className="text-3xl md:text-5xl font-black tracking-tight leading-[0.98] mb-3"
                 style={{ color: CREAM, letterSpacing: '-0.02em' }}
               >
-                Your Shop. Your Brand.{' '}
+                Your Shop.<br />Your Brand.<br />
                 <span style={{ fontFamily: '"Instrument Serif", serif', fontStyle: 'italic', fontWeight: 400, color: GOLD }}>
                   Your Website.
                 </span>
               </h1>
-              <p className="text-[14px] md:text-[16px] leading-snug max-w-xl mb-2" style={{ color: SOFT }}>
-                A custom website with booking, payments, your own product store, galleries, and a mobile app — all under your brand.
+              <p className="text-[13px] md:text-[15px] mb-5" style={{ color: SOFT }}>
+                Booking. Payments. Galleries. Mobile app. <span style={{ color: CREAM }}>All yours.</span>
               </p>
-              <p className="text-[12px] md:text-[14px] mb-5" style={{ color: CREAM }}>
-                <span style={{ color: GOLD, fontWeight: 700 }}>7-day free trial.</span> Then $49/month. No contract.
-              </p>
+              <div className="flex items-center gap-2 mb-5">
+                <span
+                  className="inline-block w-2 h-2 rounded-full"
+                  style={{ background: GOLD, boxShadow: `0 0 8px ${GOLD}` }}
+                />
+                <span className="text-[12px] md:text-[13px]" style={{ color: CREAM }}>
+                  <span style={{ color: GOLD, fontWeight: 700 }}>7-day free trial.</span> Then $49/mo.
+                </span>
+              </div>
               <PrimaryCTA size="md" />
               <p className="mt-3 text-[10px] uppercase tracking-[0.22em]" style={{ color: 'rgba(240,236,228,0.45)' }}>
                 <Lock size={9} className="inline mr-1.5 -mt-0.5" />
-                Secure checkout · Powered by Stripe
+                Powered by Stripe
               </p>
             </div>
 
-            {/* Single compact hero image — ~50% smaller than the
-                prior 3-photo collage. Hidden on mobile (the
-                full-bleed bg image carries the visual weight). */}
+            {/* Single compact hero image, capped tight. */}
             <div className="hidden md:block">
-              <img
-                src={IMG.heroMain}
-                alt="Barbershop interior"
-                className="rounded-md w-full object-cover aspect-[3/4] max-w-[260px] ml-auto"
-              />
+              <div
+                className="rounded-md overflow-hidden max-w-[260px] ml-auto"
+                style={{
+                  boxShadow: `0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(212,164,100,0.15)`,
+                  animation: 'pbHeroFloat 6s ease-in-out infinite',
+                }}
+              >
+                <img
+                  src={IMG.heroMain}
+                  alt="Barbershop interior"
+                  className="w-full object-cover aspect-[3/4]"
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -271,55 +352,91 @@ export const PrimeBarberLanding: React.FC = () => {
             {features.map((f, i) => {
               const Icon = f.icon;
               return (
-                <div key={i} className="p-5 md:p-6" style={{ background: BLACK }}>
-                  <Icon size={22} style={{ color: GOLD }} />
-                  <h3 className="mt-3 mb-1 text-[14px] md:text-[15px] font-black" style={{ color: CREAM }}>{f.title}</h3>
-                  <p className="text-[12px] md:text-[13px] leading-snug" style={{ color: SOFT }}>{f.body}</p>
-                </div>
+                <Reveal key={i} delay={i * 50}>
+                  <div
+                    className="pb-feature-card p-5 md:p-6 h-full"
+                    style={{ background: BLACK }}
+                  >
+                    <Icon size={22} className="pb-feature-icon" style={{ color: GOLD, transition: 'color 0.3s' }} />
+                    <h3 className="mt-3 mb-1 text-[14px] md:text-[15px] font-black" style={{ color: CREAM }}>{f.title}</h3>
+                    <p className="text-[12px] md:text-[13px] leading-snug" style={{ color: SOFT }}>{f.body}</p>
+                  </div>
+                </Reveal>
               );
             })}
           </div>
         </div>
       </section>
 
-      {/* ─── PROBLEM — image + pain points side by side ─────────── */}
+      {/* ─── PROBLEM — visual vs comparison (faster than bullets) ─ */}
       <section className="py-12 md:py-16 px-5 md:px-8">
-        <div className="mx-auto max-w-6xl">
-          <div className="grid md:grid-cols-[1fr_1.3fr] gap-8 md:gap-12 items-start">
-            <div className="relative">
-              <img
-                src={IMG.chair}
-                alt="Empty barber chair"
-                className="rounded-md w-full object-cover aspect-[4/5] md:aspect-[3/4]"
-              />
+        <div className="mx-auto max-w-5xl">
+          <Reveal>
+            <div className="text-center mb-8 md:mb-10">
+              <Eyebrow>Booking Apps vs Your Own Site</Eyebrow>
+              <SectionHeading serifAccent="owning.">Renting vs</SectionHeading>
+            </div>
+          </Reveal>
+
+          <Reveal delay={100}>
+            <div className="grid md:grid-cols-2 gap-3 md:gap-4">
+              {/* LEFT — Renting (Booksy / theCut) */}
               <div
-                className="absolute inset-0 rounded-md"
-                style={{ background: 'linear-gradient(180deg, transparent 40%, rgba(10,10,10,0.5) 100%)' }}
-              />
+                className="p-5 md:p-6 relative"
+                style={{ background: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.2)' }}
+              >
+                <div className="text-[10px] uppercase tracking-[0.28em] mb-4 font-bold" style={{ color: '#ef4444' }}>
+                  On Booksy / theCut
+                </div>
+                <ul className="space-y-2.5">
+                  {[
+                    'Their platform, their rules',
+                    'Listed next to every competitor',
+                    'Extra fees to reach customers',
+                    'Per-barber pricing tiers',
+                    'Slow, confusing payments',
+                    'Leave = start from zero',
+                  ].map((p, i) => (
+                    <li key={i} className="flex items-start gap-2.5">
+                      <X size={14} strokeWidth={3} style={{ color: '#ef4444', marginTop: 3, flexShrink: 0 }} />
+                      <span className="text-[13px] md:text-[14px] leading-snug" style={{ color: CREAM }}>{p}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* RIGHT — Owning (Prime Barber) */}
+              <div
+                className="p-5 md:p-6 relative"
+                style={{ background: 'rgba(212,164,100,0.06)', border: '1px solid rgba(212,164,100,0.4)' }}
+              >
+                <div className="text-[10px] uppercase tracking-[0.28em] mb-4 font-bold" style={{ color: GOLD }}>
+                  On Prime Barber
+                </div>
+                <ul className="space-y-2.5">
+                  {[
+                    'Your brand, your rules',
+                    'No competitors on your site',
+                    'No extras — flat $49/mo',
+                    'Unlimited staff included',
+                    'Stripe-powered checkout',
+                    'You own your clients',
+                  ].map((p, i) => (
+                    <li key={i} className="flex items-start gap-2.5">
+                      <Check size={14} strokeWidth={3} style={{ color: GOLD, marginTop: 3, flexShrink: 0 }} />
+                      <span className="text-[13px] md:text-[14px] leading-snug" style={{ color: CREAM }}>{p}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
-            <div>
-              <Eyebrow>The Catch With Booking Apps</Eyebrow>
-              <SectionHeading serifAccent="just renting.">On a Booking App, You’re</SectionHeading>
-              <p className="text-[14px] md:text-[15px] mb-6" style={{ color: SOFT }}>
-                On Booksy and theCut, you don’t really own anything — your clients, reviews, and reputation live on someone else’s platform.
-              </p>
-              <ul className="grid gap-2">
-                {painPoints.map((p, i) => (
-                  <li
-                    key={i}
-                    className="flex items-start gap-2.5 py-2.5 px-3.5"
-                    style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}
-                  >
-                    <X size={15} strokeWidth={2.5} style={{ color: '#ef4444', marginTop: 2, flexShrink: 0 }} />
-                    <span className="text-[13px] md:text-[14px] leading-snug" style={{ color: CREAM }}>{p}</span>
-                  </li>
-                ))}
-              </ul>
-              <p className="mt-5 text-[15px] md:text-[17px]" style={{ color: CREAM, fontFamily: '"Instrument Serif", serif', fontStyle: 'italic' }}>
-                It works… until none of it is actually yours.
-              </p>
-            </div>
-          </div>
+          </Reveal>
+
+          <Reveal delay={200}>
+            <p className="mt-6 text-center text-[15px] md:text-[18px]" style={{ color: CREAM, fontFamily: '"Instrument Serif", serif', fontStyle: 'italic' }}>
+              Own the home base.
+            </p>
+          </Reveal>
         </div>
       </section>
 
@@ -398,8 +515,18 @@ export const PrimeBarberLanding: React.FC = () => {
                       Prime<span style={{ color: GOLD }}>Barber</span>
                     </div>
                   </div>
-                  {/* Notifications */}
-                  <div className="px-3 py-2 space-y-2 flex-1">
+                  {/* Live indicator */}
+                  <div className="flex items-center gap-1.5 px-4 mb-1">
+                    <span
+                      className="inline-block w-1.5 h-1.5 rounded-full"
+                      style={{ background: '#22c55e', animation: 'pbLivePulse 1.6s ease-out infinite' }}
+                    />
+                    <span className="text-[8px] uppercase tracking-[0.2em]" style={{ color: 'rgba(240,236,228,0.55)' }}>
+                      Live
+                    </span>
+                  </div>
+                  {/* Notifications — stagger in from left when phone scrolls into view */}
+                  <div className="px-3 py-1 space-y-2 flex-1">
                     {[
                       { icon: Calendar, color: GOLD, label: 'New Booking', body: 'Marcus J. — Sat 2:30 PM' },
                       { icon: CreditCard, color: '#22c55e', label: 'Payment $35', body: 'David K. — Fade + line up' },
@@ -411,7 +538,12 @@ export const PrimeBarberLanding: React.FC = () => {
                         <div
                           key={i}
                           className="flex items-start gap-2 p-2 rounded-md"
-                          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
+                          style={{
+                            background: 'rgba(255,255,255,0.04)',
+                            border: '1px solid rgba(255,255,255,0.06)',
+                            opacity: 0,
+                            animation: `pbNotifSlide 0.5s cubic-bezier(0.22,1,0.36,1) ${0.4 + i * 0.25}s forwards`,
+                          }}
                         >
                           <Icon size={11} style={{ color: n.color, marginTop: 1, flexShrink: 0 }} />
                           <div className="min-w-0">
