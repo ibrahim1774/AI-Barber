@@ -708,12 +708,15 @@ export const PrimeBarberLanding: React.FC = () => {
       {/* ─── Embedded Stripe Modal ───────────────────────────────── */}
       {showCheckout && (
         <div
-          className="fixed inset-0 z-[200] flex items-start md:items-center justify-center p-3 md:p-6 overflow-y-auto"
+          className="fixed inset-0 z-[200] overflow-y-auto"
           style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)' }}
           onClick={() => setShowCheckout(false)}
         >
+        {/* min-h-full wrapper: short modals stay centered, tall
+            modals top-align so nothing clips above the viewport. */}
+        <div className="flex min-h-full items-start md:items-center justify-center p-3 md:p-4">
           <div
-            className="relative w-full max-w-md my-4 md:my-0 border"
+            className="relative w-full max-w-md my-2 md:my-6 border"
             style={{
               background: 'linear-gradient(180deg, #0a0a0a 0%, #14110c 100%)',
               borderColor: 'rgba(255,255,255,0.1)',
@@ -784,6 +787,7 @@ export const PrimeBarberLanding: React.FC = () => {
               </p>
             </div>
           </div>
+        </div>
         </div>
       )}
     </div>

@@ -932,11 +932,15 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
 
         return (
           <div
-            className="fixed inset-0 z-[220] bg-black/85 backdrop-blur-md flex items-start md:items-center justify-center p-3 md:p-6 overflow-y-auto"
+            className="fixed inset-0 z-[220] bg-black/85 backdrop-blur-md overflow-y-auto"
             onClick={() => setShowBenefits(false)}
           >
+            {/* min-h-full wrapper lets items-center center short modals
+                AND lets tall modals top-align with scroll. Without
+                this, desktop centering clips the top off-screen. */}
+            <div className="flex min-h-full items-start md:items-center justify-center p-3 md:p-4">
             <div
-              className="relative w-full max-w-md my-4 md:my-0 border border-white/10 shadow-2xl animate-[modalIn_0.3s_ease-out]"
+              className="relative w-full max-w-md my-2 md:my-6 border border-white/10 shadow-2xl animate-[modalIn_0.3s_ease-out]"
               style={{
                 background: 'linear-gradient(180deg, #0a0a0a 0%, #14110c 100%)',
                 fontFamily: '"DM Sans", sans-serif',
@@ -952,7 +956,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                 <X size={16} />
               </button>
 
-              <div className="px-5 pt-5 pb-5 md:px-7 md:pt-6 md:pb-6">
+              <div className="px-5 pt-5 pb-5 md:px-6 md:pt-5 md:pb-5">
                 <div className="flex items-center gap-2.5 mb-2.5">
                   <span className="h-px w-4" style={{ background: gold }} />
                   <span className="text-[9px] font-medium uppercase tracking-[0.32em]" style={{ color: gold }}>
@@ -962,18 +966,18 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                 </div>
 
                 <h2
-                  className="leading-[1.05] mb-3"
-                  style={{ fontFamily: '"Instrument Serif", serif', fontSize: '1.5rem', fontWeight: 400 }}
+                  className="leading-[1.05] mb-2"
+                  style={{ fontFamily: '"Instrument Serif", serif', fontSize: '1.35rem', fontWeight: 400 }}
                 >
                   <span style={{ color: cream }}>A website for </span>
                   <span style={{ color: gold, fontStyle: 'italic' }}>your barbershop.</span>
                 </h2>
 
-                <ul className="mb-4 space-y-1.5">
+                <ul className="mb-3 space-y-1 md:space-y-0.5">
                   {benefits.map((line, i) => (
-                    <li key={i} className="flex items-start gap-2 text-[12.5px] leading-snug" style={{ color: cream }}>
+                    <li key={i} className="flex items-start gap-2 text-[12px] md:text-[11.5px] leading-snug" style={{ color: cream }}>
                       <span
-                        className="mt-[6px] h-[5px] w-[5px] shrink-0 rounded-full"
+                        className="mt-[6px] h-[4px] w-[4px] shrink-0 rounded-full"
                         style={{ background: gold }}
                       />
                       <span>{line}</span>
@@ -981,7 +985,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                   ))}
                 </ul>
 
-                <div className="flex items-center justify-center gap-4 mb-3">
+                <div className="flex items-center justify-center gap-4 mb-2.5">
                   <button
                     onClick={() => setPricingPlan('monthly')}
                     className="text-[10px] font-medium uppercase tracking-[0.22em] pb-1 transition-colors"
@@ -1035,6 +1039,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                   Secure checkout · Powered by Stripe
                 </p>
               </div>
+            </div>
             </div>
           </div>
         );
