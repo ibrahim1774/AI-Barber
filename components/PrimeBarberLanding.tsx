@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Check, X, Loader2, ChevronDown, Calendar, CreditCard, ShoppingBag, Image as ImageIcon, Smartphone, Settings, Layers, Smartphone as PhoneIcon, Lock, Bell, Star, Scissors } from 'lucide-react';
+import { Check, X, Loader2, ChevronDown, Calendar, CreditCard, ShoppingBag, Image as ImageIcon, Smartphone, Settings, Layers, Smartphone as PhoneIcon, Lock, Bell, Star, Scissors, Users } from 'lucide-react';
 import { loadStripe, type Stripe } from '@stripe/stripe-js';
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js';
 
@@ -128,7 +128,7 @@ export const PrimeBarberLanding: React.FC = () => {
     { icon: Layers,      title: 'Custom Pages',            body: 'Service pages, about, contact, more.' },
     { icon: Smartphone,  title: 'Mobile App',              body: 'Notified the second something happens.' },
     { icon: Settings,    title: 'Your Account',            body: 'Edit hours, prices, photos anytime.' },
-    { icon: PhoneIcon,   title: 'Mobile-Optimized',        body: 'Sharp on every phone and browser.' },
+    { icon: Users,       title: 'Unlimited Staff',         body: 'Add your whole team — no per-barber fees.' },
   ];
 
   const painPoints = [
@@ -143,6 +143,7 @@ export const PrimeBarberLanding: React.FC = () => {
   const faqs = [
     { q: 'Is there a setup or upfront fee?', a: 'No. Your site is built and launched as part of your $49/month — no large upfront website cost. The first 7 days are free.' },
     { q: 'How long until my site is live?', a: 'Most shops are up within a week of submitting their details. You’ll see a preview and can request changes before it goes live.' },
+    { q: 'Does it cost more to add my staff?', a: 'No. Add as many barbers as you want — your $49/month is flat. No per-barber fees, no team-size tiers, no extras as you grow.' },
     { q: 'Are there extra fees on payments?', a: 'Standard payment processing fees apply (the same small per-transaction fee any card processor charges). We don’t add fees on top.' },
     { q: 'Do I own my domain and content?', a: 'Yes. Your domain, photos, and content are yours.' },
     { q: 'Can I edit my site myself?', a: 'Yes. Log in and update hours, prices, photos, products, and pages anytime. Need a bigger change? Support handles it for you.' },
@@ -508,7 +509,16 @@ export const PrimeBarberLanding: React.FC = () => {
               </span>
               <span className="text-[15px]" style={{ color: SOFT }}>/month</span>
             </div>
-            <p className="mt-3 text-[12px] md:text-[13px]" style={{ color: SOFT }}>
+            <div
+              className="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5"
+              style={{ background: 'rgba(212,164,100,0.12)', border: `1px solid rgba(212,164,100,0.4)`, color: CREAM }}
+            >
+              <Users size={12} style={{ color: GOLD }} />
+              <span className="text-[11px] md:text-[12px] font-bold uppercase tracking-[0.14em]">
+                Unlimited staff — no per-barber fees
+              </span>
+            </div>
+            <p className="mt-4 text-[12px] md:text-[13px]" style={{ color: SOFT }}>
               No setup fee. No contract. Cancel anytime — during or after your trial.
             </p>
           </div>
