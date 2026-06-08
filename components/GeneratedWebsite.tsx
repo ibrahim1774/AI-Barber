@@ -1,6 +1,25 @@
 
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { WebsiteData, SiteInstance, SaveStatus } from '../types';
+
+// 24h → 12h with AM/PM. Idempotent: if the input already contains an
+// AM/PM marker, return it unchanged. Handles "09:00", "9:00", "9", "20:30".
+// Anything that doesn't parse cleanly is returned as-is so user-typed
+// values like "9am-1pm" or "By appointment" survive unchanged.
+const to12h = (raw: string | null | undefined): string => {
+  if (!raw) return raw ?? '';
+  const s = String(raw).trim();
+  if (!s) return s;
+  if (/\b(AM|PM|am|pm|noon|midnight)\b/i.test(s)) return s.replace(/\s+/g, ' ').toUpperCase().replace('NOON', 'Noon').replace('MIDNIGHT', 'Midnight');
+  const m = s.match(/^(\d{1,2})(?::(\d{2}))?$/);
+  if (!m) return s;
+  const h24 = parseInt(m[1], 10);
+  const mm = m[2] || '00';
+  if (isNaN(h24) || h24 < 0 || h24 > 24) return s;
+  const period = h24 >= 12 && h24 < 24 ? 'PM' : 'AM';
+  const h12 = h24 === 0 || h24 === 24 ? 12 : h24 > 12 ? h24 - 12 : h24;
+  return `${h12}:${mm} ${period}`;
+};
 import {
   ScissorsIcon, RazorIcon, MustacheIcon, FaceIcon, SparklesIcon,
   MapPinIcon, AwardIcon, ClockIcon, PhoneIcon,
@@ -125,7 +144,7 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
         ${siteData.hours.map((h) => `
           <div class="flex items-center justify-between px-5 md:px-8 py-3.5 md:py-4">
             <span class="text-white text-sm md:text-base font-bold uppercase tracking-[2px]">${h.day}</span>
-            <span class="text-[#f4a100] text-sm md:text-base font-bold tracking-[1px]">${h.closed ? 'Closed' : `${h.open} – ${h.close}`}</span>
+            <span class="text-[#f4a100] text-sm md:text-base font-bold tracking-[1px]">${h.closed ? 'Closed' : `${to12h(h.open)} – ${to12h(h.close)}`}</span>
           </div>
         `).join('')}
       </div>
@@ -1421,7 +1440,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
                   ) : (
                     <span className="text-[#f4a100] text-sm md:text-base font-bold tracking-[1px]">
                       <EditableText
-                        text={h.open}
+                        text={to12h(h.open)}
                         onSave={(val) => {
                           setSiteData(prev => {
                             const hours = [...(prev.hours || [])];
@@ -1433,7 +1452,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
                       />
                       {' – '}
                       <EditableText
-                        text={h.close}
+                        text={to12h(h.close)}
                         onSave={(val) => {
                           setSiteData(prev => {
                             const hours = [...(prev.hours || [])];
@@ -1522,37 +1541,6 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           ~241-380) doesn't reference this section either, so even
           if isPostPayment were misconfigured the published HTML
           stays clean. */}
-      {!isPostPayment && (
-        <section className="py-10 md:py-16 bg-[#0d0d0d] border-t border-white/5 px-6">
-          <style>{`
-            @keyframes aibFooterPop { 0%,100% { transform: scale(1); } 50% { transform: scale(1.025); } }
-            @keyframes aibFooterGlow {
-              0%,100% { box-shadow: 0 0 0 0 rgba(244,161,0,0), 0 8px 24px rgba(244,161,0,0.30); }
-              50%     { box-shadow: 0 0 28px 6px rgba(244,161,0,0.55), 0 10px 32px rgba(244,161,0,0.55); }
-            }
-            .aib-footer-cta { animation: aibFooterPop 2.6s ease-in-out infinite, aibFooterGlow 2.6s ease-in-out infinite; }
-            .aib-footer-cta:hover { animation-play-state: paused; transform: scale(1.035); }
-          `}</style>
-          <div className="container mx-auto max-w-3xl text-center">
-            <p className="text-[10px] md:text-[11px] font-bold uppercase tracking-[0.32em] text-[#f4a100] mb-3">
-              Want something different?
-            </p>
-            <h3 className="font-montserrat text-2xl md:text-4xl font-black text-white tracking-[1px] uppercase mb-6 md:mb-8">
-              Not loving this design?
-            </h3>
-            <button
-              type="button"
-              onClick={() => window.dispatchEvent(new Event('open-custom-design-wizard'))}
-              className="aib-footer-cta inline-flex items-center gap-2 md:gap-3 px-6 py-3.5 md:px-9 md:py-4 text-[11px] md:text-[13px] font-black uppercase tracking-[0.22em] bg-[#f4a100] text-[#0a0a0a] hover:opacity-95 active:scale-[0.98] transition-transform"
-              style={{ fontFamily: '"DM Sans", sans-serif' }}
-            >
-              <CameraIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
-              <span>Get My Custom Website Design</span>
-            </button>
-          </div>
-        </section>
-      )}
-
       {/* Footer */}
       <footer className="py-12 md:py-20 bg-[#0a0a0a] border-t border-white/5 text-center">
         <div className="container mx-auto px-6">

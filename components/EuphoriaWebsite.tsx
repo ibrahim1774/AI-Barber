@@ -907,52 +907,6 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
         </div>
       </section>
 
-      {/* Custom-design footer CTA — editor-only. Hidden after the
-          site is published so it can never leak into the deployed
-          static HTML the customer's visitors see. The deploy template
-          (separate render path) doesn't reference this block, and the
-          isPostPayment gate guarantees it never paints in the
-          post-publish editor view either. */}
-      {!isPostPayment && (
-        <section style={{ padding: '64px 24px', borderTop: '1px solid var(--eu-line-soft)', background: 'var(--eu-bg-2)', textAlign: 'center' }}>
-          <style>{`
-            @keyframes euFooterPop { 0%,100% { transform: scale(1); } 50% { transform: scale(1.025); } }
-            @keyframes euFooterGlow {
-              0%,100% { box-shadow: 0 0 0 0 rgba(232,192,116,0), 0 8px 24px rgba(232,192,116,0.30); }
-              50%     { box-shadow: 0 0 28px 6px rgba(232,192,116,0.55), 0 10px 32px rgba(232,192,116,0.55); }
-            }
-            .eu-footer-cta { animation: euFooterPop 2.6s ease-in-out infinite, euFooterGlow 2.6s ease-in-out infinite; }
-            .eu-footer-cta:hover { animation-play-state: paused; transform: scale(1.035); }
-          `}</style>
-          <div className="eu-container">
-            <div className="eu-eyebrow" style={{ marginBottom: 12, color: '#e8c074' }}>Want something different?</div>
-            <h3 className="eu-display" style={{ fontSize: 'clamp(28px,4vw,42px)', margin: '0 0 28px' }}>Not loving this design?</h3>
-            <button
-              type="button"
-              onClick={() => window.dispatchEvent(new Event('open-custom-design-wizard'))}
-              className="eu-footer-cta"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 10,
-                padding: '14px 28px',
-                fontSize: 12,
-                fontWeight: 900,
-                letterSpacing: '0.22em',
-                textTransform: 'uppercase',
-                background: '#e8c074',
-                color: '#0a0a0a',
-                border: 'none',
-                cursor: 'pointer',
-                fontFamily: '"DM Sans", sans-serif',
-              }}
-            >
-              Get My Custom Website Design
-            </button>
-          </div>
-        </section>
-      )}
-
       {/* Footer */}
       <footer style={{ padding: '48px 24px', borderTop: '1px solid var(--eu-line-soft)', textAlign: 'center' }}>
         <div className="eu-container">
