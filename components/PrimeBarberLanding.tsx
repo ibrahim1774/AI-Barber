@@ -365,7 +365,7 @@ export const PrimeBarberLanding: React.FC = () => {
                 </span>
               </h1>
               <p className="text-[13px] md:text-[15px] mb-4 leading-snug" style={{ color: SOFT }}>
-                Built for barbershops. Sell your products, add your team, and get found on Google — <span style={{ color: CREAM }}>all under your brand.</span>
+                Custom site, booking scheduler, payment integration, sell your own products, SEO optimized, mobile app — <span style={{ color: CREAM }}>all under your brand.</span>
               </p>
 
               {/* Feature pills — visual showcase of the "all in one"
