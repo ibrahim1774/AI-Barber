@@ -354,33 +354,48 @@ export const PrimeBarberLanding: React.FC = () => {
         <div className="relative mx-auto max-w-6xl px-5 md:px-8 py-10 md:py-14 pb-fade-in">
           <div className="grid md:grid-cols-[1.7fr_1fr] gap-6 md:gap-10 items-center">
             <div>
-              <Eyebrow>For Barbershops</Eyebrow>
+              <Eyebrow>All-In-One Barbershop Platform</Eyebrow>
               <h1
-                className="text-3xl md:text-5xl font-black tracking-tight leading-[0.98] mb-3"
+                className="text-[28px] md:text-[44px] font-black tracking-tight leading-[1.02] mb-3"
                 style={{ color: CREAM, letterSpacing: '-0.02em' }}
               >
-                Your Shop.<br />Your Brand.<br />
+                Custom site, booking,<br />payments, SEO —<br />
                 <span style={{ fontFamily: '"Instrument Serif", serif', fontStyle: 'italic', fontWeight: 400, color: GOLD }}>
-                  Your Website.
+                  all in one place.
                 </span>
               </h1>
-              <p className="text-[13px] md:text-[15px] mb-5" style={{ color: SOFT }}>
-                Booking. Payments. Galleries. Mobile app. <span style={{ color: CREAM }}>All yours.</span>
+              <p className="text-[13px] md:text-[15px] mb-4 leading-snug" style={{ color: SOFT }}>
+                Built for barbershops. Sell your products, add your team, and get found on Google — <span style={{ color: CREAM }}>all under your brand.</span>
               </p>
-              <div className="flex items-center gap-2 mb-5">
+
+              {/* Feature pills — visual showcase of the "all in one"
+                  promise. Compact, gold-tinted, dark bg. */}
+              <div className="flex flex-wrap gap-1.5 mb-5">
+                {['Custom Site', 'Booking', 'Payments', 'SEO', 'Products', 'Mobile App'].map((label) => (
+                  <span
+                    key={label}
+                    className="px-2 py-1 text-[9.5px] md:text-[10px] font-bold uppercase tracking-[0.14em]"
+                    style={{
+                      background: 'rgba(212,164,100,0.06)',
+                      border: '1px solid rgba(212,164,100,0.3)',
+                      color: CREAM,
+                    }}
+                  >
+                    {label}
+                  </span>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-2 mb-4">
                 <span
                   className="inline-block w-2 h-2 rounded-full"
                   style={{ background: GOLD, boxShadow: `0 0 8px ${GOLD}` }}
                 />
                 <span className="text-[12px] md:text-[13px]" style={{ color: CREAM }}>
-                  <span style={{ color: GOLD, fontWeight: 700 }}>7-day free trial.</span> Then $49/mo.
+                  <span style={{ color: GOLD, fontWeight: 700 }}>7-day free trial.</span> Then $49/mo. No contract.
                 </span>
               </div>
               <PrimaryCTA size="md" />
-              <p className="mt-3 text-[10px] uppercase tracking-[0.22em]" style={{ color: 'rgba(240,236,228,0.45)' }}>
-                <Lock size={9} className="inline mr-1.5 -mt-0.5" />
-                Powered by Stripe
-              </p>
             </div>
 
             {/* Single compact hero image, capped tight. */}
