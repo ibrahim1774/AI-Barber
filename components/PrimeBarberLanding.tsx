@@ -354,19 +354,29 @@ export const PrimeBarberLanding: React.FC = () => {
         <div className="relative mx-auto max-w-6xl px-5 md:px-8 py-10 md:py-14 pb-fade-in">
           <div className="grid md:grid-cols-[1.7fr_1fr] gap-6 md:gap-10 items-center">
             <div>
-              <Eyebrow>Barbershops · All-In-One Platform</Eyebrow>
-              <h1
-                className="text-[28px] md:text-[44px] font-black tracking-tight leading-[1.02] mb-3"
-                style={{ color: CREAM, letterSpacing: '-0.02em' }}
+              {/* Audience callout — bigger, prominent. */}
+              <div
+                className="font-black uppercase mb-4"
+                style={{
+                  color: GOLD,
+                  letterSpacing: '0.22em',
+                  fontSize: 'clamp(13px, 1.6vw, 17px)',
+                }}
               >
-                Custom site, booking,<br />payments, SEO —<br />
+                Barbershops · All-In-One Platform
+              </div>
+              {/* Headline — full feature list as the main hero
+                  statement. Long sentence so leading tightens to
+                  keep the wrap readable. */}
+              <h1
+                className="text-[22px] md:text-[34px] font-black tracking-tight leading-[1.12] mb-5"
+                style={{ color: CREAM, letterSpacing: '-0.015em' }}
+              >
+                Custom site, booking scheduler, payment integration, sell your own products, SEO optimized, mobile app —{' '}
                 <span style={{ fontFamily: '"Instrument Serif", serif', fontStyle: 'italic', fontWeight: 400, color: GOLD }}>
-                  all in one place.
+                  all under your brand.
                 </span>
               </h1>
-              <p className="text-[13px] md:text-[15px] mb-4 leading-snug" style={{ color: SOFT }}>
-                Custom site, booking scheduler, payment integration, sell your own products, SEO optimized, mobile app — <span style={{ color: CREAM }}>all under your brand.</span>
-              </p>
 
               {/* Feature pills — visual showcase of the "all in one"
                   promise. Compact, gold-tinted, dark bg. */}
