@@ -172,14 +172,46 @@ export const PrimeBarberLanding: React.FC = () => {
   }, [fetchEmbeddedSecret]);
 
   const features = [
-    { icon: Calendar,    title: 'Online Booking',     body: 'Built-in calendar.' },
-    { icon: CreditCard,  title: 'Get Paid',           body: 'Right on your site.' },
-    { icon: ShoppingBag, title: 'Sell Products',      body: 'Pomades. Oils. Merch.' },
-    { icon: ImageIcon,   title: 'Galleries',          body: 'Show off your work.' },
-    { icon: Layers,      title: 'Custom Pages',       body: 'Services. About. Contact.' },
-    { icon: Smartphone,  title: 'Mobile App',         body: 'Real-time alerts.' },
-    { icon: Settings,    title: 'Edit Anytime',       body: 'Log in. Done.' },
-    { icon: Users,       title: 'Unlimited Staff',    body: 'No per-barber fees.' },
+    {
+      icon: Calendar,
+      title: 'Online Booking',
+      body: 'Clients book themselves 24/7 — even while you’re mid-cut. No more back-and-forth texts.',
+    },
+    {
+      icon: CreditCard,
+      title: 'Get Paid Fast',
+      body: 'Cards, Apple Pay, tap-to-pay — straight to your account. No marketplace cut.',
+    },
+    {
+      icon: ShoppingBag,
+      title: 'Sell Your Products',
+      body: 'Stock pomades, beard oil, or merch right next to your services. One checkout.',
+    },
+    {
+      icon: ImageIcon,
+      title: 'Show Off Your Work',
+      body: 'Real before-and-after galleries that prove why clients pick you over the shop next door.',
+    },
+    {
+      icon: Layers,
+      title: 'Custom Pages',
+      body: 'Services menu, about your team, contact form — built around how your shop actually runs.',
+    },
+    {
+      icon: Smartphone,
+      title: 'Stay In The Loop',
+      body: 'Mobile alerts the second someone books, pays, sends an inquiry, or leaves a review.',
+    },
+    {
+      icon: Settings,
+      title: 'Edit In Seconds',
+      body: 'Change prices, hours, photos, or services yourself. No support ticket. No waiting.',
+    },
+    {
+      icon: Users,
+      title: 'Unlimited Staff',
+      body: 'Add your whole team for the same flat fee. No per-barber pricing, no tier tax. Ever.',
+    },
   ];
 
   const painPoints = [
@@ -376,7 +408,7 @@ export const PrimeBarberLanding: React.FC = () => {
                   >
                     <Icon size={22} className="pb-feature-icon" style={{ color: GOLD, transition: 'color 0.3s' }} />
                     <h3 className="mt-3 mb-1 text-[14px] md:text-[15px] font-black" style={{ color: CREAM }}>{f.title}</h3>
-                    <p className="text-[12px] md:text-[13px] leading-snug" style={{ color: SOFT }}>{f.body}</p>
+                    <p className="text-[12.5px] md:text-[13px] leading-[1.45]" style={{ color: SOFT }}>{f.body}</p>
                   </div>
                 </Reveal>
               );
