@@ -179,8 +179,8 @@ export const PrimeBarberLanding: React.FC = () => {
     },
     {
       icon: CreditCard,
-      title: 'Get Paid Fast',
-      body: 'Cards, Apple Pay, tap-to-pay — straight to your account. No marketplace cut.',
+      title: 'Payment Integration',
+      body: 'Accept and receive payments right on your site. Cards, Apple Pay, tap-to-pay.',
     },
     {
       icon: ShoppingBag,
@@ -200,7 +200,7 @@ export const PrimeBarberLanding: React.FC = () => {
     {
       icon: Smartphone,
       title: 'Stay In The Loop',
-      body: 'Mobile alerts the second someone books, pays, sends an inquiry, or leaves a review.',
+      body: 'Mobile alerts the second someone books, pays, or sends an inquiry.',
     },
     {
       icon: Settings,
@@ -210,7 +210,7 @@ export const PrimeBarberLanding: React.FC = () => {
     {
       icon: Users,
       title: 'Unlimited Staff',
-      body: 'Add your whole team for the same flat fee. No per-barber pricing, no tier tax. Ever.',
+      body: 'Add your whole team without the extra cost. Same flat fee — no per-barber pricing, ever.',
     },
   ];
 
