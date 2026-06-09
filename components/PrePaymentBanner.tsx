@@ -84,8 +84,8 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   const customPlan: 'custom25' | 'custom-booksy' = booksyMode
     ? 'custom-booksy'
     : 'custom25';
-  const customPriceLabel = '$15/mo';
-  const customPriceFull = '$15/month';
+  const customPriceLabel = '$19/mo';
+  const customPriceFull = '$19/month';
 
   const [isDismissed, setIsDismissed] = useState(false);
   const [isVisible, setIsVisible] = useState(false);

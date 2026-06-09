@@ -213,9 +213,9 @@ const App: React.FC = () => {
   // + (any future) server-side CAPI calls line up in Meta/TikTok.
   const fireCustomDesignPixels = (sessionId: string, plan: string) => {
     const PLAN_VALUES: Record<string, number> = {
-      'custom-booksy': 15,
-      custom: 15,
-      custom25: 15,
+      'custom-booksy': 19,
+      custom: 19,
+      custom25: 19,
       primebarber: 49,
       'primebarber-site': 19,
     };
