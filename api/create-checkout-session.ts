@@ -64,46 +64,46 @@ export default async function handler(req: any, res: any) {
       // Standard yearly: 20% off $9/mo × 12 = $86/yr.
       unitAmount = '8600';
       interval = 'year';
-      productName = 'Prime Barber AI - Yearly Hosting ($86/yr)';
+      productName = 'aibarber.org — Yearly Hosting ($86/yr)';
     } else if (isYearlyBooksy) {
       // /booksy yearly: 20% off $5/mo × 12 = $48/yr.
       unitAmount = '4800';
       interval = 'year';
-      productName = 'Prime Barber AI Booksy - Yearly Hosting ($48/yr)';
+      productName = 'aibarber.org/booksy — Yearly Hosting ($48/yr)';
     } else if (isYearlyFree) {
       // /free-barber yearly: 20% off $7/mo × 12 = $67.20/yr → $67.
       unitAmount = '6700';
       interval = 'year';
-      productName = 'Prime Barber AI Free - Yearly Hosting ($67/yr)';
+      productName = 'aibarber.org/free-barber — Yearly Hosting ($67/yr)';
     } else if (isMonthlyBooksy) {
       unitAmount = '500';
       interval = 'month';
-      productName = 'Prime Barber AI Booksy - Monthly Hosting ($5/mo)';
+      productName = 'aibarber.org/booksy — Monthly Hosting ($5/mo)';
     } else if (isMonthlyFree) {
       // /free-barber monthly: $7/mo.
       unitAmount = '700';
       interval = 'month';
-      productName = 'Prime Barber AI Free - Monthly Hosting ($7/mo)';
+      productName = 'aibarber.org/free-barber — Monthly Hosting ($7/mo)';
     } else if (isCustomBooksy) {
       unitAmount = '1900';
       interval = 'month';
-      productName = 'Prime Barber AI Booksy - Custom Website Design ($19/mo)';
+      productName = 'aibarber.org/booksy — Custom Website Design ($19/mo)';
     } else if (isCustom || isCustom25) {
       unitAmount = '1900';
       interval = 'month';
-      productName = 'Prime Barber AI - Custom Website Design ($19/mo)';
+      productName = 'aibarber.org — Custom Website Design ($19/mo)';
     } else if (isPrimeBarber) {
       unitAmount = '4900';
       interval = 'month';
-      productName = 'Prime Barber - Custom Website Platform ($49/mo, 7-day free trial)';
+      productName = 'aibarber.org/primebarber — Custom Website Platform ($49/mo, 7-day free trial)';
     } else if (isPrimeBarberSite) {
       unitAmount = '1900';
       interval = 'month';
-      productName = 'Prime Barber - Custom Site Only ($19/mo)';
+      productName = 'aibarber.org/primebarber — Custom Site Only ($19/mo)';
     } else {
       unitAmount = '900';
       interval = 'month';
-      productName = 'Prime Barber AI - Monthly Hosting';
+      productName = 'aibarber.org — Monthly Hosting';
     }
 
     const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
