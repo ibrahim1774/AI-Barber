@@ -354,7 +354,7 @@ export const PrimeBarberLanding: React.FC = () => {
         <div className="relative mx-auto max-w-6xl px-5 md:px-8 py-10 md:py-14 pb-fade-in">
           <div className="grid md:grid-cols-[1.7fr_1fr] gap-6 md:gap-10 items-center">
             <div>
-              <Eyebrow>All-In-One Barbershop Platform</Eyebrow>
+              <Eyebrow>Barbershops · All-In-One Platform</Eyebrow>
               <h1
                 className="text-[28px] md:text-[44px] font-black tracking-tight leading-[1.02] mb-3"
                 style={{ color: CREAM, letterSpacing: '-0.02em' }}
