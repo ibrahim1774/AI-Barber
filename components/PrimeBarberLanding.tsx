@@ -20,7 +20,7 @@ const SOFT = '#9a958e';
 // work, products. These URLs are pinned + autoformatted for fast
 // delivery via Unsplash's CDN.
 const IMG = {
-  heroMain:   'https://images.unsplash.com/photo-1599351431202-1e0f0137899a?auto=format&fit=crop&w=1200&q=80',
+  heroMain:   '/primebarber-hero.png',
   heroBg:     'https://images.unsplash.com/photo-1503951914875-452162b0f3f1?auto=format&fit=crop&w=1920&q=80',
   beardWork:  'https://images.unsplash.com/photo-1622286342621-4bd786c2447c?auto=format&fit=crop&w=900&q=80',
   interior:   'https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?auto=format&fit=crop&w=900&q=80',
