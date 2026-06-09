@@ -1060,11 +1060,45 @@ export const PrimeBarberLanding: React.FC = () => {
                   </>
                 )}
               </h3>
-              <p className="text-[12.5px] mb-4 leading-snug" style={{ color: SOFT }}>
+              <p className="text-[12.5px] mb-3 leading-snug" style={{ color: SOFT }}>
                 {activePlan === 'primebarber-site'
                   ? 'Just the website. No booking, payments, or app. Cancel anytime.'
                   : 'Card collected today. First charge on day 7. Cancel anytime during the trial — no charge.'}
               </p>
+
+              {/* Plan-aware benefit bullets — same pattern as the
+                  /booksy and /free-barber modals. Reassures the
+                  visitor RIGHT before they enter card details. */}
+              <ul className="mb-4 space-y-1 md:space-y-0.5">
+                {(activePlan === 'primebarber-site'
+                  ? [
+                      'Custom-built website under your brand',
+                      'Mobile-friendly + SEO optimized',
+                      'Onboarding call · live in 24-48 hours',
+                      'Edit anytime from your account',
+                      'Cancel anytime · no contract',
+                    ]
+                  : [
+                      'Custom site, booking, payments — all in one',
+                      'Mobile app with real-time alerts',
+                      'Unlimited staff · no per-barber fees',
+                      'Onboarding call · live in 24-48 hours',
+                      '7-day risk-free trial · cancel anytime',
+                    ]
+                ).map((line, i) => (
+                  <li
+                    key={i}
+                    className="flex items-start gap-2 text-[12px] md:text-[11.5px] leading-snug"
+                    style={{ color: CREAM }}
+                  >
+                    <span
+                      className="mt-[6px] h-[4px] w-[4px] shrink-0 rounded-full"
+                      style={{ background: GOLD }}
+                    />
+                    <span>{line}</span>
+                  </li>
+                ))}
+              </ul>
 
               <div className="rounded-md overflow-hidden bg-white" style={{ minHeight: 360 }}>
                 {embedError ? (
@@ -1072,7 +1106,7 @@ export const PrimeBarberLanding: React.FC = () => {
                     {embedError}
                     <button
                       type="button"
-                      onClick={fetchEmbeddedSecret}
+                      onClick={() => fetchEmbeddedSecret(activePlan)}
                       className="block mx-auto mt-2 text-[11px] underline"
                     >
                       Try again
