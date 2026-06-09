@@ -357,10 +357,12 @@ export const PrimeBarberLanding: React.FC = () => {
       <section className="py-12 md:py-16 px-5 md:px-8" style={{ background: '#080808' }}>
         <div className="mx-auto max-w-6xl">
           <div className="text-center max-w-2xl mx-auto mb-8 md:mb-10">
-            <Eyebrow>What You Get</Eyebrow>
-            <SectionHeading serifAccent="That’s Yours">Everything on a Site</SectionHeading>
+            <Eyebrow>Everything Included</Eyebrow>
+            <SectionHeading serifAccent="all under your brand.">
+              Look pro, book more, run smoother —
+            </SectionHeading>
             <p className="text-[14px] md:text-[15px]" style={{ color: SOFT }}>
-              One site under your brand. Bookings, payments, products, galleries — in a home base you control.
+              One branded site that handles your whole shop. No app juggling. No paying just to reach your own customers.
             </p>
           </div>
           <div className="grid gap-px sm:grid-cols-2 md:grid-cols-4" style={{ background: 'rgba(255,255,255,0.06)' }}>
