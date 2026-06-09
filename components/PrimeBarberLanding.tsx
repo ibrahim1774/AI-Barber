@@ -141,6 +141,11 @@ export const PrimeBarberLanding: React.FC = () => {
 
   const handleStartCheckout = useCallback(async (plan: 'primebarber' | 'primebarber-site' = 'primebarber') => {
     setActivePlan(plan);
+    setShowCheckout(true);
+    // Pixel fires on initial open only. Switching plans inside the
+    // popup re-fetches the embedded secret (see effect below) but
+    // does NOT re-fire InitiateCheckout — same shopping intent, just
+    // a different product choice.
     try {
       const eventId =
         typeof crypto !== 'undefined' && (crypto as any).randomUUID
@@ -161,15 +166,16 @@ export const PrimeBarberLanding: React.FC = () => {
     } catch (e) {
       console.error('[InitiateCheckout] Tracking failed (non-blocking):', e);
     }
+  }, []);
 
+  // Re-fetch the embedded client_secret whenever the modal opens or
+  // the visitor toggles the plan inside it. Drives the iframe price
+  // + trial period without re-firing pixels.
+  useEffect(() => {
+    if (!showCheckout) return;
     setIsStartingCheckout(true);
-    setShowCheckout(true);
-    try {
-      await fetchEmbeddedSecret(plan);
-    } finally {
-      setIsStartingCheckout(false);
-    }
-  }, [fetchEmbeddedSecret]);
+    fetchEmbeddedSecret(activePlan).finally(() => setIsStartingCheckout(false));
+  }, [showCheckout, activePlan, fetchEmbeddedSecret]);
 
   const features = [
     {
@@ -241,7 +247,8 @@ export const PrimeBarberLanding: React.FC = () => {
     label?: string;
     plan?: 'primebarber' | 'primebarber-site';
     variant?: 'gold' | 'ghost';
-  }> = ({ size = 'lg', label = 'Start 7-Day Free Trial', plan = 'primebarber', variant = 'gold' }) => {
+    showGuarantee?: boolean;
+  }> = ({ size = 'lg', label = 'Start 7-Day Free Trial', plan = 'primebarber', variant = 'gold', showGuarantee = true }) => {
     const sizes = {
       sm: 'px-5 py-2.5 text-[10px]',
       md: 'px-7 py-3.5 text-[11px]',
@@ -252,15 +259,26 @@ export const PrimeBarberLanding: React.FC = () => {
         ? { background: 'transparent', color: CREAM, border: `1px solid ${GOLD}` }
         : { background: GOLD, color: BLACK, border: '1px solid transparent' };
     return (
-      <button
-        onClick={() => handleStartCheckout(plan)}
-        disabled={isStartingCheckout}
-        className={`${variant === 'gold' ? 'pb-cta' : ''} inline-flex items-center gap-2.5 font-black uppercase tracking-[0.22em] transition disabled:opacity-50 ${sizes[size]}`}
-        style={{ ...variantStyle, fontFamily: 'inherit' }}
-      >
-        {isStartingCheckout ? <Loader2 className="animate-spin" size={14} /> : null}
-        {label}
-      </button>
+      <span className="inline-flex flex-col items-center">
+        <button
+          onClick={() => handleStartCheckout(plan)}
+          disabled={isStartingCheckout}
+          className={`${variant === 'gold' ? 'pb-cta' : ''} inline-flex items-center gap-2.5 font-black uppercase tracking-[0.22em] transition disabled:opacity-50 ${sizes[size]}`}
+          style={{ ...variantStyle, fontFamily: 'inherit' }}
+        >
+          {isStartingCheckout ? <Loader2 className="animate-spin" size={14} /> : null}
+          {label}
+        </button>
+        {showGuarantee && (
+          <span
+            className="mt-2 inline-flex items-center gap-1.5 text-[9.5px] md:text-[10px] uppercase tracking-[0.22em] font-medium"
+            style={{ color: 'rgba(240,236,228,0.55)' }}
+          >
+            <Check size={11} strokeWidth={3} style={{ color: GOLD }} />
+            Risk-Free Guarantee · Cancel Anytime
+          </span>
+        )}
+      </span>
     );
   };
 
@@ -317,7 +335,7 @@ export const PrimeBarberLanding: React.FC = () => {
               Prime<span style={{ color: GOLD }}>Barber</span>
             </div>
           </div>
-          <PrimaryCTA size="sm" label="Start Free Trial" />
+          <PrimaryCTA size="sm" label="Start Free Trial" showGuarantee={false} />
         </div>
       </header>
 
@@ -970,6 +988,39 @@ export const PrimeBarberLanding: React.FC = () => {
               <X size={18} />
             </button>
             <div className="px-5 pt-6 pb-5 md:px-7 md:pt-7 md:pb-6">
+              {/* Plan toggle — lets the visitor switch between the
+                  $49 trial and the $19 Custom Site Only without
+                  closing the modal. Refetches embedded secret. */}
+              <div
+                className="grid grid-cols-2 gap-1 p-1 mb-4 rounded-md"
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
+              >
+                {([
+                  { key: 'primebarber',      label: '7-Day Trial',    sub: '$49/mo' },
+                  { key: 'primebarber-site', label: 'Custom Site',    sub: '$19/mo' },
+                ] as const).map((opt) => {
+                  const active = activePlan === opt.key;
+                  return (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() => setActivePlan(opt.key)}
+                      className="py-2 px-2 text-center transition-all rounded"
+                      style={{
+                        background: active ? GOLD : 'transparent',
+                        color: active ? BLACK : 'rgba(240,236,228,0.7)',
+                        fontFamily: 'inherit',
+                      }}
+                    >
+                      <div className="text-[10px] font-black uppercase tracking-[0.18em]">{opt.label}</div>
+                      <div className="text-[9px] mt-0.5 font-bold" style={{ opacity: active ? 0.7 : 0.55 }}>
+                        {opt.sub}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
               <div className="flex items-center gap-2.5 mb-2.5">
                 <span className="h-px w-4" style={{ background: GOLD }} />
                 <span className="text-[9px] font-medium uppercase tracking-[0.32em]" style={{ color: GOLD }}>
