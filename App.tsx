@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { AppState, ShopInputs, WebsiteData, SiteInstance } from './types.ts';
 
 // Meta Pixel global (loaded in index.html). `fbq` is added to window at runtime.
@@ -8,16 +8,9 @@ declare global {
   }
 }
 
-import { NewLeadQuizForm } from './components/NewLeadQuizForm.tsx';
 import { GeneratorForm } from './components/GeneratorForm.tsx';
 import { isBooksyPath, isFreeBarberPath, isPrimeBarberPath } from './lib/dealMode.ts';
-import { PrimeBarberLanding } from './components/PrimeBarberLanding.tsx';
-// Note: the legacy single-page GeneratorForm + isNewLeadPath() detector
-// were removed when the premium quiz funnel took over the homepage too.
-// /new keeps working as an alias since both routes render the same form.
 import { LoadingScreen } from './components/LoadingScreen.tsx';
-import { GeneratedWebsite } from './components/GeneratedWebsite.tsx';
-import { EuphoriaWebsite } from './components/EuphoriaWebsite.tsx';
 import { generateHTMLForTemplate } from './services/templateRenderer.ts';
 import { generateContent } from './services/geminiService.ts';
 import { captureLead } from './services/leadCaptureService.ts';
@@ -25,9 +18,18 @@ import { useAuth } from './contexts/AuthContext.tsx';
 import { saveSite, getSite } from './services/indexedDBService.ts';
 import { upsertSiteToSupabase, fetchUserSites } from './services/supabaseDataService.ts';
 import { getAllSites as getAllLocalSites } from './services/indexedDBService.ts';
-import { PostDeploymentModal } from './components/PostDeploymentModal.tsx';
-import { ManagementDashboard } from './components/ManagementDashboard.tsx';
-import { AuthModal } from './components/AuthModal.tsx';
+
+// Heavy components — lazy-loaded so first paint only ships the
+// active-path form (GeneratorForm) + LoadingScreen. Editor, dashboard,
+// modals, /primebarber landing stream in only when the visitor's
+// flow actually needs them.
+const NewLeadQuizForm = lazy(() => import('./components/NewLeadQuizForm.tsx').then(m => ({ default: m.NewLeadQuizForm })));
+const PrimeBarberLanding = lazy(() => import('./components/PrimeBarberLanding.tsx').then(m => ({ default: m.PrimeBarberLanding })));
+const GeneratedWebsite = lazy(() => import('./components/GeneratedWebsite.tsx').then(m => ({ default: m.GeneratedWebsite })));
+const EuphoriaWebsite = lazy(() => import('./components/EuphoriaWebsite.tsx').then(m => ({ default: m.EuphoriaWebsite })));
+const PostDeploymentModal = lazy(() => import('./components/PostDeploymentModal.tsx').then(m => ({ default: m.PostDeploymentModal })));
+const ManagementDashboard = lazy(() => import('./components/ManagementDashboard.tsx').then(m => ({ default: m.ManagementDashboard })));
+const AuthModal = lazy(() => import('./components/AuthModal.tsx').then(m => ({ default: m.AuthModal })));
 
 const DEPLOY_TIMER_SECONDS = 5;
 
@@ -335,7 +337,7 @@ const App: React.FC = () => {
           })),
         };
 
-        const html = generateHTMLForTemplate(restoredSiteData);
+        const html = await generateHTMLForTemplate(restoredSiteData);
 
         // Step 3: Deploy to Vercel
         const deployResponse = await fetch('/api/deploy-site', {
@@ -648,7 +650,11 @@ const App: React.FC = () => {
   // no editor, no dashboard. Render it as early as possible so the
   // auth/restore overhead doesn't block first paint of the landing.
   if (isPrimeBarberPath()) {
-    return <PrimeBarberLanding />;
+    return (
+      <Suspense fallback={<div className="min-h-screen bg-[#0d0d0d]" />}>
+        <PrimeBarberLanding />
+      </Suspense>
+    );
   }
 
   // Don't render until auth state is determined
@@ -662,6 +668,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#0d0d0d] text-white">
+    <Suspense fallback={null}>
       {state === 'generator' && (
         // Homepage, /booksy, AND /free-barber all render the same
         // side-by-side GeneratorForm. The form internally detects
@@ -946,6 +953,7 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
+    </Suspense>
     </div>
   );
 };

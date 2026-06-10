@@ -5,8 +5,10 @@ import { ShopInputs, WebsiteData } from '../types';
 // Visual system shared with NewLeadQuizForm (the homepage). Same hero
 // image + same Manrope/Instrument Serif type stack + same accent halo +
 // same glass card so /booksy reads as part of the same product instead
-// of an alternate-flow detour.
-const HERO_IMAGE = 'https://cop5lgctumpj5e0w.public.blob.vercel-storage.com/barber/nate-johnston-tgPrIYnW3g4-unsplash.jpg';
+// of an alternate-flow detour. Hero proxied through images.weserv.nl
+// for on-the-fly resize + WebP since the raw blob is a 4MB+ phone JPG.
+const HERO_BLOB = 'https://cop5lgctumpj5e0w.public.blob.vercel-storage.com/barber/nate-johnston-tgPrIYnW3g4-unsplash.jpg';
+const HERO_IMAGE = `https://images.weserv.nl/?url=${encodeURIComponent(HERO_BLOB.replace(/^https?:\/\//, ''))}&w=1600&q=70&output=webp`;
 const SANS = '"Manrope", "Inter", system-ui, sans-serif';
 const SERIF = '"Instrument Serif", "Times New Roman", Georgia, serif';
 const ACCENT = '#f4a100';
@@ -227,9 +229,17 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn }) =
         <img
           src={HERO_IMAGE}
           alt=""
+          loading="eager"
+          // @ts-ignore - fetchpriority is valid HTML but not in React types yet
+          fetchpriority="high"
+          decoding="async"
           className="h-full w-full object-cover"
           style={{ filter: 'brightness(0.7) saturate(1.05)' }}
           aria-hidden="true"
+          onError={(e) => {
+            const img = e.currentTarget as HTMLImageElement;
+            if (img.src !== HERO_BLOB) img.src = HERO_BLOB;
+          }}
         />
         <div
           aria-hidden

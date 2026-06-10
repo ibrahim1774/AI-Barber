@@ -88,7 +88,7 @@ export async function publishSite(site: SiteInstance, userId: string | null): Pr
     })),
   };
 
-  const html = generateHTMLForTemplate(restoredSiteData);
+  const html = await generateHTMLForTemplate(restoredSiteData);
 
   // Step 4: Deploy to Vercel
   const deployResponse = await fetch('/api/deploy-site', {

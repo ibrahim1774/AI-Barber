@@ -61,8 +61,10 @@ const STEPS: StepDef[] = [
 
 // Static barbershop hero image — the looping Pexels video was
 // chewing CPU/GPU on desktop. The image alone reads the same mood
-// without the compositor cost.
-const HERO_IMAGE = 'https://cop5lgctumpj5e0w.public.blob.vercel-storage.com/barber/nate-johnston-tgPrIYnW3g4-unsplash.jpg';
+// without the compositor cost. Proxied through images.weserv.nl for
+// on-the-fly resize + WebP since the raw blob is a 4MB+ phone JPG.
+const HERO_BLOB = 'https://cop5lgctumpj5e0w.public.blob.vercel-storage.com/barber/nate-johnston-tgPrIYnW3g4-unsplash.jpg';
+const HERO_IMAGE = `https://images.weserv.nl/?url=${encodeURIComponent(HERO_BLOB.replace(/^https?:\/\//, ''))}&w=1600&q=70&output=webp`;
 
 const SANS = '"Manrope", "Inter", system-ui, sans-serif';
 const SERIF = '"Instrument Serif", "Times New Roman", Georgia, serif';
@@ -273,9 +275,18 @@ export const NewLeadQuizForm: React.FC<Props> = ({ onGenerate, onSignIn }) => {
         <img
           src={HERO_IMAGE}
           alt=""
+          loading="eager"
+          // @ts-ignore - fetchpriority is valid HTML but not in React types yet
+          fetchpriority="high"
+          decoding="async"
           className="h-full w-full object-cover"
           style={{ filter: 'brightness(0.7) saturate(1.05)' }}
           aria-hidden="true"
+          onError={(e) => {
+            // Fallback to raw blob URL if weserv.nl is unreachable
+            const img = e.currentTarget as HTMLImageElement;
+            if (img.src !== HERO_BLOB) img.src = HERO_BLOB;
+          }}
         />
         <div
           aria-hidden

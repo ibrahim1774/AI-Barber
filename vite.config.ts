@@ -24,6 +24,20 @@ export default defineConfig(({ mode }) => {
         alias: {
           '@': path.resolve(__dirname, '.'),
         }
-      }
+      },
+      build: {
+        // Split heavy deps into vendor chunks so the browser downloads
+        // them in parallel + caches them across deploys. Lucide-react
+        // intentionally NOT chunked so tree-shaking strips unused icons.
+        rollupOptions: {
+          output: {
+            manualChunks: {
+              'vendor-react': ['react', 'react-dom'],
+              'vendor-stripe': ['@stripe/stripe-js', '@stripe/react-stripe-js'],
+              'vendor-supabase': ['@supabase/supabase-js'],
+            },
+          },
+        },
+      },
     };
 });

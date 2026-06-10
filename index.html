@@ -2,41 +2,60 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- Facebook Pixel Code -->
+<!-- Pixel init deferred ~500ms after `load` so the bootstrap scripts
+     (fbevents.js ~97KB, TikTok pixel, Clarity) don't compete with the
+     LCP image for the main thread. Stubs queue any pre-bootstrap
+     fbq()/ttq() calls so PageView + InitiateCheckout + Purchase events
+     fired before this point still flush correctly when the real
+     scripts load. -->
 <script>
- !function(f,b,e,v,n,t,s)
- {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
- n.callMethod.apply(n,arguments):n.queue.push(arguments)};
- if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
- n.queue=[];t=b.createElement(e);t.async=!0;
- t.src=v;s=b.getElementsByTagName(e)[0];
- s.parentNode.insertBefore(t,s)}(window, document,'script',
-  'https://connect.facebook.net/en_US/fbevents.js');
- fbq('init', '26490568997297314');
- fbq('track', 'PageView');
-</script>
-
-<!-- End Facebook Pixel Code -->
-
-<!-- TikTok Pixel Code -->
-<script>
-!function (w, d, t) {
-  w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie","holdConsent","revokeConsent","grantConsent"],ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.instance=function(t){for(
-var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n]);return e},ttq.load=function(e,n){var r="https://analytics.tiktok.com/i18n/pixel/events.js",o=n&&n.partner;ttq._i=ttq._i||{},ttq._i[e]=[],ttq._i[e]._u=r,ttq._t=ttq._t||{},ttq._t[e]=+new Date,ttq._o=ttq._o||{},ttq._o[e]=n||{};n=document.createElement("script")
-;n.type="text/javascript",n.async=!0,n.src=r+"?sdkid="+e+"&lib="+t;e=document.getElementsByTagName("script")[0];e.parentNode.insertBefore(n,e)};
-
-  ttq.load('D81SNARC77UATASKVG10');
-  ttq.page();
-}(window, document, 'ttq');
-</script>
-<!-- TikTok Pixel Code End -->
-
-<script type="text/javascript">
-  (function(c,l,a,r,i,t,y){
-    c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
-        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
-    y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
-  })(window, document, "clarity", "script", "w5jdq6huun");
+  (function () {
+    if (!window.fbq) {
+      var q = [];
+      window.fbq = function () { q.push(arguments); };
+      window.fbq.queue = q;
+    }
+    var ttqMethods = ['page','track','identify','instances','debug','on','off','once','ready','alias','group','enableCookie','disableCookie','holdConsent','revokeConsent','grantConsent'];
+    var ttq = window.ttq = window.ttq || [];
+    ttq.methods = ttqMethods;
+    ttqMethods.forEach(function (m) {
+      ttq[m] = ttq[m] || function () { ttq.push([m].concat([].slice.call(arguments))); };
+    });
+    var loadPixels = function () {
+      // Meta Pixel
+      (function(f,b,e,v,n,t,s){
+        if(f.fbq && f.fbq.loaded)return;
+        n=f.fbq=f.fbq||function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+        if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+        n.queue=n.queue||[];t=b.createElement(e);t.async=!0;
+        t.src=v;s=b.getElementsByTagName(e)[0];
+        s.parentNode.insertBefore(t,s);
+      })(window, document, 'script', 'https://connect.facebook.net/en_US/fbevents.js');
+      window.fbq('init', '26490568997297314');
+      window.fbq('track', 'PageView');
+      // TikTok Pixel
+      (function (w, d, t) {
+        w.TiktokAnalyticsObject=t;var q=w[t];q.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};
+        q.instance=function(t){for(var e=q._i[t]||[],n=0;n<q.methods.length;n++)q.setAndDefer(e,q.methods[n]);return e};
+        q.load=function(e,n){var r='https://analytics.tiktok.com/i18n/pixel/events.js',o=n&&n.partner;q._i=q._i||{},q._i[e]=[],q._i[e]._u=r,q._t=q._t||{},q._t[e]=+new Date,q._o=q._o||{},q._o[e]=n||{};var s=document.createElement('script');s.type='text/javascript';s.async=!0;s.src=r+'?sdkid='+e+'&lib='+t;var f=document.getElementsByTagName('script')[0];f.parentNode.insertBefore(s,f)};
+        q.load('D81SNARC77UATASKVG10');
+        q.page();
+      }(window, document, 'ttq'));
+      // Microsoft Clarity
+      (function(c,l,a,r,i,t,y){
+        c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+        t=l.createElement(r);t.async=1;t.src='https://www.clarity.ms/tag/'+i;
+        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+      })(window, document, 'clarity', 'script', 'w5jdq6huun');
+    };
+    if (document.readyState === 'complete') {
+      setTimeout(loadPixels, 500);
+    } else {
+      window.addEventListener('load', function () {
+        setTimeout(loadPixels, 500);
+      });
+    }
+  })();
 </script>
     
     <meta charset="UTF-8">
@@ -63,6 +82,18 @@ var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
     <!-- Pexels CDN preconnect for the /new subpage hero video. -->
     <link rel="preconnect" href="https://videos.pexels.com" crossorigin />
+    <!-- Pre-warm image CDNs so hero loads in parallel with the JS bundle. -->
+    <link rel="preconnect" href="https://images.weserv.nl" crossorigin />
+    <link rel="dns-prefetch" href="https://images.weserv.nl" />
+    <link rel="preconnect" href="https://images.unsplash.com" crossorigin />
+    <link rel="dns-prefetch" href="https://images.unsplash.com" />
+    <link rel="preconnect" href="https://cop5lgctumpj5e0w.public.blob.vercel-storage.com" crossorigin />
+    <!-- Preload the barber hero used on /, /booksy, /free-barber, /new
+         so the LCP image starts downloading before the JS bundle parses.
+         Same weserv.nl wrapper as the React img so no duplicate fetch. -->
+    <link rel="preload" as="image"
+      href="https://images.weserv.nl/?url=cop5lgctumpj5e0w.public.blob.vercel-storage.com%2Fbarber%2Fnate-johnston-tgPrIYnW3g4-unsplash.jpg&w=1600&q=70&output=webp"
+      fetchpriority="high" />
     <style>
         html {
             -webkit-text-size-adjust: 100%;
