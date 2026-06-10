@@ -576,8 +576,8 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
             ? (crypto as any).randomUUID()
             : `co_${Date.now()}_${Math.random().toString(36).slice(2)}`;
         const PLAN_VALUES: Record<string, number> = {
-          monthly: 9, 'monthly-booksy': 5, 'monthly-free': 7,
-          yearly: 86, 'yearly-booksy': 48, 'yearly-free': 67,
+          monthly: 9, 'monthly-booksy': 9, 'monthly-free': 7,
+          yearly: 86, 'yearly-booksy': 86, 'yearly-free': 67,
         };
         const checkoutValue = PLAN_VALUES[plan] ?? 9;
         const checkoutCurrency = 'USD';

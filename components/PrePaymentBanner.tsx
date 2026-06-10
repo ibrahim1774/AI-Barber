@@ -24,9 +24,9 @@ const WIZARD_IMAGES = {
 };
 
 interface PrePaymentBannerProps {
-  // 'monthly-booksy' = $5/mo via /booksy import flow (anchor $7); other monthly
-  // entry paths use 'monthly' ($9/mo). Server-side routes both into
-  // the same hosting product, different Stripe unit_amount.
+  // 'monthly-booksy' = /booksy import flow; 'monthly-free' = /free-barber;
+  // 'monthly' = homepage. Booksy + homepage are both $9/mo now — the
+  // separate slug stays only for analytics attribution on the receipt.
   onDeploy: (plan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'yearly' | 'yearly-booksy' | 'yearly-free') => void;
   // Embedded checkout requires the parent to first upload images +
   // write pendingSite to localStorage so handleStripeReturn can deploy
@@ -43,7 +43,9 @@ interface PrePaymentBannerProps {
 }
 
 const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepareCheckout, isDeploying, industry }) => {
-  // /booksy import flow: $5/mo + $7 strikethrough anchor.
+  // /booksy import flow: same $9/mo pricing as the homepage now —
+  // booksyMode is still tracked so the receipt tags the source as
+  // "(Booksy)" via the monthly-booksy plan slug.
   const booksyMode = React.useMemo(() => isBooksyPath(), []);
   // /free-barber: $7/mo entry with yearly toggle visible — its own
   // plan slugs so Stripe + analytics distinguish it from /booksy and
@@ -51,15 +53,11 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   const freeBarberMode = React.useMemo(() => isFreeBarberPath(), []);
 
   // Standard monthly price varies by entry path:
-  //   /booksy              → $5/mo with $7 anchor (plan 'monthly-booksy')
   //   /free-barber         → $7/mo (plan 'monthly-free')
-  //   everywhere else      → $9/mo (plan 'monthly')
-  const stdMonthlyPriceDollars = booksyMode ? 5 : freeBarberMode ? 7 : 9;
+  //   /booksy + everywhere → $9/mo (plan 'monthly-booksy' / 'monthly')
+  const stdMonthlyPriceDollars = freeBarberMode ? 7 : 9;
   const stdMonthlyPriceMo = `$${stdMonthlyPriceDollars}/mo`;
   const stdMonthlyPriceMonth = `$${stdMonthlyPriceDollars}/month`;
-  // Anchor price displayed strikethrough beside the live price for
-  // /booksy only — visual "was $7, now $5" framing on the Publish CTA.
-  const booksyAnchorMo = '$7/mo';
   const stdMonthlyPlan: 'monthly' | 'monthly-booksy' | 'monthly-free' = booksyMode
     ? 'monthly-booksy'
     : freeBarberMode
@@ -401,24 +399,12 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                 <Rocket size={12} />
               )}
               <span>Launch My Site</span>
-              {booksyMode && pricingPlan === 'monthly' ? (
-                <>
-                  <span className="opacity-60 line-through font-medium">{booksyAnchorMo}</span>
-                  <span
-                    className="font-extrabold px-1.5 py-0.5 rounded"
-                    style={{ background: 'rgba(10,10,10,0.18)', color: '#0a0a0a' }}
-                  >
-                    {stdMonthlyPriceMonth}
-                  </span>
-                </>
-              ) : (
-                <span
-                  className="font-extrabold px-1.5 py-0.5 rounded"
-                  style={{ background: 'rgba(10,10,10,0.18)', color: '#0a0a0a' }}
-                >
-                  {pricingPlan === 'yearly' ? stdYearlyPriceYear : stdMonthlyPriceMonth}
-                </span>
-              )}
+              <span
+                className="font-extrabold px-1.5 py-0.5 rounded"
+                style={{ background: 'rgba(10,10,10,0.18)', color: '#0a0a0a' }}
+              >
+                {pricingPlan === 'yearly' ? stdYearlyPriceYear : stdMonthlyPriceMonth}
+              </span>
             </button>
           </div>
 
