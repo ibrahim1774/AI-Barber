@@ -560,6 +560,16 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
       };
       localStorage.setItem('pendingSite', JSON.stringify(pendingSite));
 
+      // Server-side recovery copy — see GeneratedWebsite.tsx for the
+      // same pattern + rationale. Saves the deploy when localStorage
+      // is lost between Stripe checkout and return.
+      fetch('/api/save-pending-site', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ siteId, data: pendingSite }),
+        keepalive: true,
+      }).catch((err) => console.warn('[save-pending-site] non-blocking:', err));
+
       try {
         const checkoutEventId =
           typeof crypto !== 'undefined' && (crypto as any).randomUUID

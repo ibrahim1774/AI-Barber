@@ -291,12 +291,42 @@ const App: React.FC = () => {
     // Run the actual deployment concurrently
     const deployPromise = (async () => {
       try {
-        const pendingJson = localStorage.getItem('pendingSite');
-        if (!pendingJson) {
-          throw new Error('No pending site data found. Please generate a new site and try again.');
+        // Primary: localStorage (set by preparePendingSite before
+        // Stripe modal opened). Fallback: server-side recovery from
+        // GCS, keyed by the Stripe session's metadata.siteId. The
+        // fallback rescues the deploy when the visitor returns from
+        // Stripe in a different browser / incognito / cleared cache —
+        // the exact case that produced the "PUBLISHING FAILED" screen
+        // while the site had actually deployed fine.
+        let pending: any = null;
+        try {
+          const pendingJson = localStorage.getItem('pendingSite');
+          if (pendingJson) pending = JSON.parse(pendingJson);
+        } catch { /* private mode etc. — fall through to recovery */ }
+
+        if (!pending) {
+          console.warn('[Deploy] localStorage pendingSite missing — recovering from server');
+          try {
+            const recoverResp = await fetch('/api/recover-pending-site', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ sessionId }),
+            });
+            if (recoverResp.ok) {
+              const recovered = await recoverResp.json();
+              if (recovered?.ok && recovered?.data) {
+                pending = recovered.data;
+                console.log('[Deploy] Recovered pendingSite from server');
+              }
+            }
+          } catch (recoverErr) {
+            console.warn('[Deploy] Recovery fetch failed:', recoverErr);
+          }
         }
 
-        const pending = JSON.parse(pendingJson);
+        if (!pending) {
+          throw new Error('We could not find your site data. Please contact support — your payment is safe and we can finish publishing manually.');
+        }
         const { siteId, siteData, imageUrlMap, existingSiteId } = pending as {
           siteId: string;
           siteData: WebsiteData;
@@ -453,13 +483,33 @@ const App: React.FC = () => {
           domainOrderId: null,
         };
 
-        // Save to IndexedDB (and Supabase if user is signed in via
-        // handleAuthSuccess later). Same UUID → upsert overwrites
-        // the draft instead of creating a sibling row.
-        await saveSite(newSite);
-        setActiveSite(newSite);
-
-        localStorage.removeItem('pendingSite');
+        // ALL operations below this point are post-deploy success —
+        // the site IS published, the URL exists. We must NEVER surface
+        // "Publishing Failed" because of an IndexedDB / localStorage /
+        // setState side-effect failing (private browsing, storage quota,
+        // etc). Wrap them so any throw is logged but the deploy result
+        // still flows through to the success UI.
+        try {
+          await saveSite(newSite);
+        } catch (saveErr) {
+          console.warn('[Deploy] saveSite failed (non-fatal, site is still live):', saveErr);
+        }
+        try {
+          setActiveSite(newSite);
+        } catch (setErr) {
+          console.warn('[Deploy] setActiveSite failed (non-fatal):', setErr);
+        }
+        try {
+          localStorage.removeItem('pendingSite');
+        } catch { /* ignore — private mode etc. */ }
+        // Best-effort server-side cleanup of the recovery copy. Doesn't
+        // block the success UI.
+        fetch('/api/save-pending-site', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ siteId }),
+          keepalive: true,
+        }).catch(() => { /* ignore */ });
         return { url: deployData.deploymentUrl } as { url?: string; error?: string };
 
       } catch (error: any) {
@@ -473,7 +523,15 @@ const App: React.FC = () => {
     setDeployResult(result);
 
     // After successful deployment, show the post-deployment modal
-    if (result.url) {
+    // for unauthenticated visitors (it prompts them to create an
+    // account so the site lands in a dashboard). Authenticated users
+    // skip the modal — they already have a dashboard — and fall
+    // through to the "YOUR SITE IS LIVE" success screen rendered
+    // when !showPostDeployModal && deployResult.url. Without this
+    // guard, authenticated users got a blank screen after deploy
+    // (modal blocked by !isAuthenticated, success screen blocked
+    // by !showPostDeployModal).
+    if (result.url && !isAuthenticated) {
       setShowPostDeployModal(true);
     }
   };

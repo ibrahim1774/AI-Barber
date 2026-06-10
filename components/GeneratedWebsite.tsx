@@ -735,6 +735,18 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       };
       localStorage.setItem('pendingSite', JSON.stringify(pendingSite));
 
+      // Server-side recovery copy. Fire-and-forget — if it fails, the
+      // localStorage write above is still the primary source. This
+      // copy is what saves the deploy when the visitor returns from
+      // Stripe in a different browser, incognito window, or after
+      // their localStorage was cleared.
+      fetch('/api/save-pending-site', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ siteId, data: pendingSite }),
+        keepalive: true,
+      }).catch((err) => console.warn('[save-pending-site] non-blocking:', err));
+
       // Step 4: Fire FB + TikTok InitiateCheckout (pixel + CAPI)
       try {
         const checkoutEventId =
