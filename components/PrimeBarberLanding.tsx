@@ -106,9 +106,9 @@ export const PrimeBarberLanding: React.FC = () => {
   const [isStartingCheckout, setIsStartingCheckout] = useState(false);
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null);
   // Which plan the visitor selected — drives the embedded checkout's
-  // price + trial period + modal copy.
-  //   'primebarber'      = full platform $49/mo + 7-day trial (default)
-  //   'primebarber-site' = "Custom Site Only" $19/mo, no trial
+  // price + modal copy.
+  //   'primebarber'      = full platform $29/mo (default)
+  //   'primebarber-site' = "Custom Site Only" $19/mo
   const [activePlan, setActivePlan] = useState<'primebarber' | 'primebarber-site'>('primebarber');
 
   useEffect(() => {
@@ -151,7 +151,7 @@ export const PrimeBarberLanding: React.FC = () => {
         typeof crypto !== 'undefined' && (crypto as any).randomUUID
           ? (crypto as any).randomUUID()
           : `pb_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-      const value = plan === 'primebarber-site' ? 19 : 49;
+      const value = plan === 'primebarber-site' ? 19 : 29;
       const currency = 'USD';
       (window as any).fbq?.('track', 'InitiateCheckout', { value, currency }, { eventID: eventId });
       (window as any).ttq?.track('InitiateCheckout', { value, currency }, { event_id: eventId });
@@ -170,7 +170,7 @@ export const PrimeBarberLanding: React.FC = () => {
 
   // Re-fetch the embedded client_secret whenever the modal opens or
   // the visitor toggles the plan inside it. Drives the iframe price
-  // + trial period without re-firing pixels.
+  // without re-firing pixels.
   useEffect(() => {
     if (!showCheckout) return;
     setIsStartingCheckout(true);
@@ -230,13 +230,13 @@ export const PrimeBarberLanding: React.FC = () => {
   ];
 
   const faqs = [
-    { q: 'Is there a setup or upfront fee?', a: 'No. Your site is built and launched as part of your $49/month — no large upfront website cost. The first 7 days are free.' },
+    { q: 'Is there a setup or upfront fee?', a: 'No. Your site is built and launched as part of your $29/month — no large upfront website cost.' },
     { q: 'How long until my site is live?', a: 'Most shops are up within a week of submitting their details. You’ll see a preview and can request changes before it goes live.' },
-    { q: 'Does it cost more to add my staff?', a: 'No. Add as many barbers as you want — your $49/month is flat. No per-barber fees, no team-size tiers, no extras as you grow.' },
+    { q: 'Does it cost more to add my staff?', a: 'No. Add as many barbers as you want — your $29/month is flat. No per-barber fees, no team-size tiers, no extras as you grow.' },
     { q: 'Are there extra fees on payments?', a: 'Standard payment processing fees apply (the same small per-transaction fee any card processor charges). We don’t add fees on top.' },
     { q: 'Do I own my domain and content?', a: 'Yes. Your domain, photos, and content are yours.' },
     { q: 'Can I edit my site myself?', a: 'Yes. Log in and update hours, prices, photos, products, and pages anytime. Need a bigger change? Support handles it for you.' },
-    { q: 'What happens if I cancel?', a: 'No contracts — cancel anytime, including during the free trial. We’ll help you export your content and point your domain wherever you want.' },
+    { q: 'What happens if I cancel?', a: 'No contracts — cancel anytime. We’ll help you export your content and point your domain wherever you want.' },
     { q: 'Can I submit a design I already like?', a: 'Yes. Send over a site or style you like and yours can be built to match it as closely as possible.' },
     { q: 'Can I use my own photos, sell products, take bookings, and collect payments?', a: 'Yes to all — that’s the whole point. Everything runs through one site under your brand.' },
     { q: 'Do I get a mobile app?', a: 'Yes. You’ll get mobile notifications when someone books, pays, sends an inquiry, or reaches out.' },
@@ -248,7 +248,7 @@ export const PrimeBarberLanding: React.FC = () => {
     plan?: 'primebarber' | 'primebarber-site';
     variant?: 'gold' | 'ghost';
     showGuarantee?: boolean;
-  }> = ({ size = 'lg', label = 'Start 7-Day Free Trial', plan = 'primebarber', variant = 'gold', showGuarantee = true }) => {
+  }> = ({ size = 'lg', label = 'Get Started', plan = 'primebarber', variant = 'gold', showGuarantee = true }) => {
     const sizes = {
       sm: 'px-5 py-2.5 text-[10px]',
       md: 'px-7 py-3.5 text-[11px]',
@@ -335,7 +335,7 @@ export const PrimeBarberLanding: React.FC = () => {
               Prime<span style={{ color: GOLD }}>Barber</span>
             </div>
           </div>
-          <PrimaryCTA size="sm" label="Start Free Trial" showGuarantee={false} />
+          <PrimaryCTA size="sm" label="Get Started" showGuarantee={false} />
         </div>
       </header>
 
@@ -402,7 +402,7 @@ export const PrimeBarberLanding: React.FC = () => {
                   style={{ background: GOLD, boxShadow: `0 0 8px ${GOLD}` }}
                 />
                 <span className="text-[12px] md:text-[13px]" style={{ color: CREAM }}>
-                  <span style={{ color: GOLD, fontWeight: 700 }}>7-day free trial.</span> Then $49/mo. No contract.
+                  <span style={{ color: GOLD, fontWeight: 700 }}>Just $29/mo.</span> No contract.
                 </span>
               </div>
               <PrimaryCTA size="md" />
@@ -468,7 +468,7 @@ export const PrimeBarberLanding: React.FC = () => {
               <Eyebrow>How It Works</Eyebrow>
               <SectionHeading serifAccent="three steps.">From payment to live site —</SectionHeading>
               <p className="text-[13px] md:text-[15px] max-w-xl mx-auto" style={{ color: SOFT }}>
-                Once you start your trial, our onboarding team takes it from here.
+                Once you sign up, our onboarding team takes it from here.
               </p>
             </div>
           </Reveal>
@@ -617,7 +617,7 @@ export const PrimeBarberLanding: React.FC = () => {
                   {[
                     'Your brand, your rules',
                     'No competitors on your site',
-                    'No extras — flat $49/mo',
+                    'No extras — flat $29/mo',
                     'Unlimited staff included',
                     'Stripe-powered checkout',
                     'You own your clients',
@@ -797,7 +797,7 @@ export const PrimeBarberLanding: React.FC = () => {
           </Reveal>
 
           <div className="grid md:grid-cols-2 gap-4 md:gap-5">
-            {/* CARD 1 — Custom Site Only ($19/mo, no trial) */}
+            {/* CARD 1 — Custom Site Only ($19/mo) */}
             <Reveal delay={50}>
               <div
                 className="p-6 md:p-7 h-full flex flex-col"
@@ -833,13 +833,13 @@ export const PrimeBarberLanding: React.FC = () => {
                   ))}
                 </ul>
                 <div className="text-[10px] uppercase tracking-[0.2em] mb-3" style={{ color: 'rgba(240,236,228,0.45)' }}>
-                  No free trial · Cancel anytime
+                  Cancel anytime
                 </div>
                 <PrimaryCTA size="md" label="Get Custom Site" plan="primebarber-site" variant="ghost" />
               </div>
             </Reveal>
 
-            {/* CARD 2 — Full Platform ($49/mo, 7-day trial) — recommended */}
+            {/* CARD 2 — Full Platform ($29/mo) — recommended */}
             <Reveal delay={150}>
               <div
                 className="relative p-6 md:p-7 h-full flex flex-col"
@@ -861,7 +861,7 @@ export const PrimeBarberLanding: React.FC = () => {
                 </div>
                 <div className="flex items-baseline gap-1 mb-1">
                   <span style={{ color: CREAM, fontFamily: '"Instrument Serif", serif', fontWeight: 400, fontSize: '3rem', lineHeight: 1 }}>
-                    $49
+                    $29
                   </span>
                   <span className="text-[14px]" style={{ color: SOFT }}>/month</span>
                 </div>
@@ -883,15 +883,7 @@ export const PrimeBarberLanding: React.FC = () => {
                     </li>
                   ))}
                 </ul>
-                <div
-                  className="mb-3 inline-flex items-center gap-1.5 px-2.5 py-1 self-start"
-                  style={{ background: 'rgba(212,164,100,0.12)', border: `1px solid rgba(212,164,100,0.4)`, color: CREAM }}
-                >
-                  <span className="text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: GOLD }}>
-                    7-Day Free Trial
-                  </span>
-                </div>
-                <PrimaryCTA size="md" label="Start 7-Day Free Trial" plan="primebarber" />
+                <PrimaryCTA size="md" label="Get Started" plan="primebarber" />
               </div>
             </Reveal>
           </div>
@@ -964,7 +956,7 @@ export const PrimeBarberLanding: React.FC = () => {
             A custom website with booking, payments, products, galleries, and a mobile app — all yours.
           </p>
           <p className="text-[12px] md:text-[14px] mb-6" style={{ color: CREAM }}>
-            <span style={{ color: GOLD, fontWeight: 700 }}>7-day free trial.</span> Then $49/month. No contract.
+            <span style={{ color: GOLD, fontWeight: 700 }}>Just $29/month.</span> No contract.
           </p>
           <PrimaryCTA />
         </div>
@@ -1014,15 +1006,15 @@ export const PrimeBarberLanding: React.FC = () => {
             </button>
             <div className="px-5 pt-6 pb-5 md:px-7 md:pt-7 md:pb-6">
               {/* Plan toggle — lets the visitor switch between the
-                  $49 trial and the $19 Custom Site Only without
+                  $29 full platform and the $19 Custom Site Only without
                   closing the modal. Refetches embedded secret. */}
               <div
                 className="grid grid-cols-2 gap-1 p-1 mb-4 rounded-md"
                 style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
               >
                 {([
-                  { key: 'primebarber',      label: '7-Day Trial',    sub: '$49/mo' },
-                  { key: 'primebarber-site', label: 'Custom Site',    sub: '$19/mo' },
+                  { key: 'primebarber',      label: 'Full Platform', sub: '$29/mo' },
+                  { key: 'primebarber-site', label: 'Custom Site',   sub: '$19/mo' },
                 ] as const).map((opt) => {
                   const active = activePlan === opt.key;
                   return (
@@ -1049,7 +1041,7 @@ export const PrimeBarberLanding: React.FC = () => {
               <div className="flex items-center gap-2.5 mb-2.5">
                 <span className="h-px w-4" style={{ background: GOLD }} />
                 <span className="text-[9px] font-medium uppercase tracking-[0.32em]" style={{ color: GOLD }}>
-                  {activePlan === 'primebarber-site' ? 'Custom Site Only' : '7-Day Free Trial'}
+                  {activePlan === 'primebarber-site' ? 'Custom Site Only' : 'Full Platform'}
                 </span>
                 <span className="h-px flex-1" style={{ background: 'rgba(212,164,100,0.2)' }} />
               </div>
@@ -1063,9 +1055,9 @@ export const PrimeBarberLanding: React.FC = () => {
                   </>
                 ) : (
                   <>
-                    Try Prime Barber{' '}
+                    Get Prime Barber for{' '}
                     <span style={{ fontFamily: '"Instrument Serif", serif', fontStyle: 'italic', fontWeight: 400, color: GOLD }}>
-                      free for 7 days.
+                      $29/month.
                     </span>
                   </>
                 )}
@@ -1073,7 +1065,7 @@ export const PrimeBarberLanding: React.FC = () => {
               <p className="text-[12.5px] mb-3 leading-snug" style={{ color: SOFT }}>
                 {activePlan === 'primebarber-site'
                   ? 'Just the website. No booking, payments, or app. Cancel anytime.'
-                  : 'Card collected today. First charge on day 7. Cancel anytime during the trial — no charge.'}
+                  : 'Card charged today. Cancel anytime — no contract.'}
               </p>
 
               {/* Plan-aware benefit bullets — same pattern as the
@@ -1093,7 +1085,7 @@ export const PrimeBarberLanding: React.FC = () => {
                       'Mobile app with real-time alerts',
                       'Unlimited staff · no per-barber fees',
                       'Onboarding call · live in 24-48 hours',
-                      '7-day risk-free trial · cancel anytime',
+                      'Risk-free · cancel anytime',
                     ]
                 ).map((line, i) => (
                   <li

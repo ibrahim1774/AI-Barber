@@ -216,7 +216,7 @@ const App: React.FC = () => {
       'custom-booksy': 19,
       custom: 19,
       custom25: 19,
-      primebarber: 49,
+      primebarber: 29,
       'primebarber-site': 19,
     };
     const value = PLAN_VALUES[plan] ?? 15;

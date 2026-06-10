@@ -34,7 +34,7 @@ export const BOOKSY_PATH = '/booksy';
 export const isBooksyPath = isImportPath;
 
 // `/primebarber` = standalone SaaS landing page for the full Prime
-// Barber custom-website platform ($49/mo, 7-day free trial). Unlike
+// Barber custom-website platform ($29/mo). Unlike
 // the other entry paths, this one is NOT a site generator — it's a
 // marketing page that opens an embedded Stripe checkout. After
 // payment the visitor is forwarded to the Google Form so we can

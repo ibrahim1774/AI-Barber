@@ -47,9 +47,8 @@ export default async function handler(req: any, res: any) {
     // plans — only the analytics tag differs.
     const isCustomBooksy = plan === 'custom-booksy';
     // 'primebarber' = the standalone /primebarber landing page —
-    // $49/mo with a 7-day free trial. Treated like a custom plan for
-    // routing purposes (same Google Form after payment) but with its
-    // own price + Stripe trial config.
+    // $29/mo, no free trial. Treated like a custom plan for routing
+    // purposes (same Google Form after payment).
     const isPrimeBarber = plan === 'primebarber';
     // 'primebarber-site' = the cheaper "Custom Site Only" option on
     // /primebarber — just the website, no booking/payments/app/team
@@ -93,7 +92,7 @@ export default async function handler(req: any, res: any) {
       interval = 'month';
       productName = 'aibarber.org — Custom Website Design';
     } else if (isPrimeBarber) {
-      unitAmount = '4900';
+      unitAmount = '2900';
       interval = 'month';
       productName = 'aibarber.org — Custom Website Platform';
     } else if (isPrimeBarberSite) {
@@ -144,12 +143,6 @@ export default async function handler(req: any, res: any) {
     params.append('metadata[type]', isPrimeBarber ? 'primebarber' : isPrimeBarberSite ? 'primebarber_site' : isCustomAny ? 'custom_design' : 'site_hosting');
     params.append('metadata[siteId]', siteId);
     params.append('metadata[plan]', plan);
-    // 7-day free trial for /primebarber. Card is collected now, first
-    // charge happens on day 7 unless the customer cancels via the
-    // billing portal in the meantime.
-    if (isPrimeBarber) {
-      params.append('subscription_data[trial_period_days]', '7');
-    }
 
     const response = await fetch('https://api.stripe.com/v1/checkout/sessions', {
       method: 'POST',
