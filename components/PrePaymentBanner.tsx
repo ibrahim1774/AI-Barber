@@ -183,20 +183,21 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
         typeof crypto !== 'undefined' && (crypto as any).randomUUID
           ? (crypto as any).randomUUID()
           : `co_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-      // Custom-design InitiateCheckout amount mirrors the price label
-      // shown above the button — keeps Meta/TikTok ROAS math aligned
-      // with what Stripe actually charges.
-      const checkoutValue = 15;
+      // Custom-design InitiateCheckout — matches the actual Stripe
+      // charge ($19/mo) so Meta/TikTok ROAS math stays aligned.
+      const checkoutValue = 19;
       const checkoutCurrency = 'USD';
+      const { getPlanContentMeta } = await import('../lib/pixelMeta');
+      const m = getPlanContentMeta(customPlan, checkoutValue);
       (window as any).fbq?.(
         'track',
         'InitiateCheckout',
-        { value: checkoutValue, currency: checkoutCurrency },
+        { value: checkoutValue, currency: checkoutCurrency, content_ids: [m.content_id], content_type: m.content_type, contents: m.contents },
         { eventID: checkoutEventId },
       );
       (window as any).ttq?.track(
         'InitiateCheckout',
-        { value: checkoutValue, currency: checkoutCurrency },
+        { value: checkoutValue, currency: checkoutCurrency, content_id: m.content_id, content_type: m.content_type, contents: m.contents },
         { event_id: checkoutEventId },
       );
       fetch('/api/fb-checkout', {
@@ -208,6 +209,10 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
           currency: checkoutCurrency,
           eventSourceUrl: window.location.href,
           clientUserAgent: navigator.userAgent,
+          content_id: m.content_id,
+          content_name: m.content_name,
+          content_type: m.content_type,
+          contents: m.contents,
         }),
       }).catch(err => console.error('[FB CAPI InitiateCheckout - Custom] Failed:', err));
       fetch('/api/tiktok-event', {
@@ -220,6 +225,10 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
           user_agent: navigator.userAgent,
           value: checkoutValue,
           currency: checkoutCurrency,
+          content_id: m.content_id,
+          content_name: m.content_name,
+          content_type: m.content_type,
+          contents: m.contents,
         }),
       }).catch(err => console.error('[TikTok CAPI InitiateCheckout - Custom] Failed:', err));
     } catch (e) {

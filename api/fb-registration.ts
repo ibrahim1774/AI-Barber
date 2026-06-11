@@ -1,10 +1,10 @@
 import { hashEmail, hashPhone } from './_hashPii';
 
-// Meta CAPI Purchase event. Mirrors the browser-side fbq('track',
-// 'Purchase', ...) with shared event_id so Meta dedupes them.
-// Adds advanced matching (em + ph) and content_id metadata to clear
-// the "Email and phone are missing" + "Content ID is missing"
-// warnings in Meta Events Manager.
+// Meta CAPI CompleteRegistration event. Fires after a visitor creates
+// an account via the PostDeploymentModal → AuthModal signup flow.
+// Closes out the funnel: ViewContent → Lead → InitiateCheckout →
+// Purchase → CompleteRegistration. Meta's "Missing events" warning
+// clears once all five events flow through the pixel.
 
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -25,29 +25,26 @@ export default async function handler(req: any, res: any) {
   try {
     const {
       eventId,
-      value,
-      currency,
-      customerEmail,
-      customerPhone,
       eventSourceUrl,
       clientUserAgent,
+      email,
+      phone,
       content_id,
       content_name,
       content_type,
-      contents,
     } = req.body || {};
 
     const accessToken = process.env.FB_ACCESS_TOKEN;
     const pixelId = process.env.FB_PIXEL_ID;
 
     if (!accessToken || !pixelId) {
-      console.error('[FB CAPI] Missing FB_ACCESS_TOKEN or FB_PIXEL_ID');
+      console.error('[FB CAPI CompleteRegistration] Missing FB_ACCESS_TOKEN or FB_PIXEL_ID');
       return res.status(500).json({ error: 'Server configuration error' });
     }
 
     const userData: Record<string, any> = {};
-    const emHash = hashEmail(customerEmail);
-    const phHash = hashPhone(customerPhone);
+    const emHash = hashEmail(email);
+    const phHash = hashPhone(phone);
     if (emHash) userData.em = [emHash];
     if (phHash) userData.ph = [phHash];
 
@@ -59,29 +56,23 @@ export default async function handler(req: any, res: any) {
       userData.client_user_agent = clientUserAgent;
     }
 
-    const customData: Record<string, any> = {
-      currency: currency || 'USD',
-      value: value || 9.0,
-    };
+    const customData: Record<string, any> = {};
     if (content_id) {
       customData.content_ids = [content_id];
       customData.content_type = content_type || 'product';
       if (content_name) customData.content_name = content_name;
-      customData.contents = Array.isArray(contents) && contents.length > 0
-        ? contents
-        : [{ id: content_id, quantity: 1, item_price: typeof value === 'number' ? value : 9 }];
     }
 
     const eventData = {
       data: [
         {
-          event_name: 'Purchase',
+          event_name: 'CompleteRegistration',
           event_time: Math.floor(Date.now() / 1000),
-          event_id: eventId || `purchase_${Date.now()}`,
+          event_id: eventId || `register_${Date.now()}`,
           action_source: 'website',
           event_source_url: eventSourceUrl || 'https://www.aibarber.org/',
           user_data: userData,
-          custom_data: customData,
+          ...(Object.keys(customData).length > 0 ? { custom_data: customData } : {}),
         },
       ],
       access_token: accessToken,
@@ -99,14 +90,14 @@ export default async function handler(req: any, res: any) {
     const fbResult = await fbResponse.json();
 
     if (!fbResponse.ok) {
-      console.error('[FB CAPI] Error:', fbResult);
+      console.error('[FB CAPI CompleteRegistration] Error:', fbResult);
       return res.status(fbResponse.status).json({ error: fbResult.error?.message || 'FB API error' });
     }
 
-    console.log(`[FB CAPI] Purchase sent. event_id=${eventId}, content_id=${content_id || '-'}, em=${emHash ? 'yes' : 'no'}, ph=${phHash ? 'yes' : 'no'}`);
+    console.log(`[FB CAPI CompleteRegistration] sent. event_id=${eventId}, em=${emHash ? 'yes' : 'no'}`);
     return res.status(200).json({ success: true, result: fbResult });
   } catch (error: any) {
-    console.error('[FB CAPI] Error:', error);
+    console.error('[FB CAPI CompleteRegistration] Error:', error);
     return res.status(500).json({ error: error.message || 'Internal error' });
   }
 }

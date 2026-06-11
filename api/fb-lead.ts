@@ -1,7 +1,10 @@
-import crypto from 'crypto';
+import { hashEmail, hashPhone } from './_hashPii';
 
-// Server-side companion to the browser-side `fbq('track', 'Lead')` call.
-// Send the same event_id from both so Meta deduplicates them.
+// Server-side companion to `fbq('track', 'Lead')`. Same event_id from
+// both ends so Meta dedupes. Now also forwards advanced matching (em +
+// ph) + content_id metadata so Events Manager doesn't flag the Lead
+// event as missing required parameters.
+
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -23,8 +26,12 @@ export default async function handler(req: any, res: any) {
       eventId,
       eventSourceUrl,
       clientUserAgent,
+      email,
       phone,
       contentName,
+      content_id,
+      content_name,
+      content_type,
     } = req.body || {};
 
     const accessToken = process.env.FB_ACCESS_TOKEN;
@@ -36,14 +43,10 @@ export default async function handler(req: any, res: any) {
     }
 
     const userData: Record<string, any> = {};
-
-    if (phone) {
-      // Normalize: strip non-digits, then hash. Meta expects E.164-style or digits only.
-      const normalized = String(phone).replace(/\D/g, '');
-      if (normalized) {
-        userData.ph = [crypto.createHash('sha256').update(normalized).digest('hex')];
-      }
-    }
+    const emHash = hashEmail(email);
+    const phHash = hashPhone(phone);
+    if (emHash) userData.em = [emHash];
+    if (phHash) userData.ph = [phHash];
 
     const clientIp = req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || '';
     if (clientIp) {
@@ -51,6 +54,15 @@ export default async function handler(req: any, res: any) {
     }
     if (clientUserAgent) {
       userData.client_user_agent = clientUserAgent;
+    }
+
+    const customData: Record<string, any> = {};
+    if (content_id) {
+      customData.content_ids = [content_id];
+      customData.content_type = content_type || 'product';
+      customData.content_name = content_name || contentName || content_id;
+    } else if (contentName) {
+      customData.content_name = contentName;
     }
 
     const eventData = {
@@ -62,7 +74,7 @@ export default async function handler(req: any, res: any) {
           action_source: 'website',
           event_source_url: eventSourceUrl || 'https://www.aibarber.org/',
           user_data: userData,
-          custom_data: contentName ? { content_name: contentName } : undefined,
+          ...(Object.keys(customData).length > 0 ? { custom_data: customData } : {}),
         },
       ],
       access_token: accessToken,
@@ -84,7 +96,7 @@ export default async function handler(req: any, res: any) {
       return res.status(fbResponse.status).json({ error: fbResult.error?.message || 'FB API error' });
     }
 
-    console.log('[FB CAPI Lead] Lead event sent:', fbResult);
+    console.log(`[FB CAPI Lead] sent. event_id=${eventId}, content_id=${content_id || '-'}, em=${emHash ? 'yes' : 'no'}, ph=${phHash ? 'yes' : 'no'}`);
     return res.status(200).json({ success: true, result: fbResult });
   } catch (error: any) {
     console.error('[FB CAPI Lead] Error:', error);

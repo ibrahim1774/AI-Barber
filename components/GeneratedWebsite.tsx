@@ -747,7 +747,9 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         keepalive: true,
       }).catch((err) => console.warn('[save-pending-site] non-blocking:', err));
 
-      // Step 4: Fire FB + TikTok InitiateCheckout (pixel + CAPI)
+      // Step 4: Fire FB + TikTok InitiateCheckout (pixel + CAPI).
+      // content_id + contents + phone close out the TikTok Events
+      // Manager warnings about missing match params.
       try {
         const checkoutEventId =
           typeof crypto !== 'undefined' && (crypto as any).randomUUID
@@ -759,15 +761,18 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         };
         const checkoutValue = PLAN_VALUES[plan] ?? 9;
         const checkoutCurrency = 'USD';
-        (window as any).fbq?.('track', 'InitiateCheckout', { value: checkoutValue, currency: checkoutCurrency }, { eventID: checkoutEventId });
-        (window as any).ttq?.track('InitiateCheckout', { value: checkoutValue, currency: checkoutCurrency }, { event_id: checkoutEventId });
+        const { getPlanContentMeta } = await import('../lib/pixelMeta');
+        const m = getPlanContentMeta(plan, checkoutValue);
+        const ph = (siteData as any)?.phone || null;
+        (window as any).fbq?.('track', 'InitiateCheckout', { value: checkoutValue, currency: checkoutCurrency, content_ids: [m.content_id], content_type: m.content_type, contents: m.contents }, { eventID: checkoutEventId });
+        (window as any).ttq?.track('InitiateCheckout', { value: checkoutValue, currency: checkoutCurrency, content_id: m.content_id, content_type: m.content_type, contents: m.contents }, { event_id: checkoutEventId });
         fetch('/api/fb-checkout', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ eventId: checkoutEventId, value: checkoutValue, currency: checkoutCurrency, eventSourceUrl: window.location.href, clientUserAgent: navigator.userAgent }),
+          body: JSON.stringify({ eventId: checkoutEventId, value: checkoutValue, currency: checkoutCurrency, eventSourceUrl: window.location.href, clientUserAgent: navigator.userAgent, customerPhone: ph, content_id: m.content_id, content_name: m.content_name, content_type: m.content_type, contents: m.contents }),
         }).catch(err => console.error('[FB CAPI InitiateCheckout] Failed:', err));
         fetch('/api/tiktok-event', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ event: 'InitiateCheckout', event_id: checkoutEventId, event_source_url: window.location.href, user_agent: navigator.userAgent, value: checkoutValue, currency: checkoutCurrency }),
+          body: JSON.stringify({ event: 'InitiateCheckout', event_id: checkoutEventId, event_source_url: window.location.href, user_agent: navigator.userAgent, value: checkoutValue, currency: checkoutCurrency, phone: ph, content_id: m.content_id, content_name: m.content_name, content_type: m.content_type, contents: m.contents }),
         }).catch(err => console.error('[TikTok CAPI InitiateCheckout] Failed:', err));
       } catch (e) {
         console.error('[InitiateCheckout] Tracking failed (non-blocking):', e);

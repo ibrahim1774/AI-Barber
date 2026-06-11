@@ -17,6 +17,7 @@ import { captureLead } from './services/leadCaptureService.ts';
 import { useAuth } from './contexts/AuthContext.tsx';
 import { saveSite, getSite } from './services/indexedDBService.ts';
 import { upsertSiteToSupabase, fetchUserSites } from './services/supabaseDataService.ts';
+import { getPlanContentMeta, getViewContentMeta } from './lib/pixelMeta';
 import { getAllSites as getAllLocalSites } from './services/indexedDBService.ts';
 
 // Heavy components — lazy-loaded so first paint only ships the
@@ -149,6 +150,55 @@ const App: React.FC = () => {
     return () => document.removeEventListener('visibilitychange', handler);
   }, []);
 
+  // ─── ViewContent pixel fire on first paint ───
+  // Resolves the "Missing events" warning in TikTok + Meta Events
+  // Manager. Fires once per page-load for every subpage (homepage,
+  // /booksy, /free-barber, /new, /primebarber, niches). content_id
+  // resolution comes from lib/pixelMeta so the value matches what
+  // /api/tiktok-event + /api/fb-view-content receive on the server
+  // side. The fire is gated behind a ref so React StrictMode's
+  // double-mount doesn't double-fire.
+  const viewContentFiredRef = useRef(false);
+  useEffect(() => {
+    if (viewContentFiredRef.current) return;
+    viewContentFiredRef.current = true;
+    // Skip the post-payment return because the deploying screen
+    // doesn't represent a real landing-page view, and the visitor's
+    // Purchase event already fires the conversion signal.
+    if (window.location.search.includes('stripe_session') || window.location.search.includes('payment=success')) {
+      return;
+    }
+    (async () => {
+      try {
+        const meta = getViewContentMeta(window.location.pathname);
+        const eventId =
+          typeof crypto !== 'undefined' && (crypto as any).randomUUID
+            ? (crypto as any).randomUUID()
+            : `vc_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+        const url = window.location.href;
+        const ua = navigator.userAgent;
+        // Browser pixels — same event_id pairs with CAPI hits below.
+        try { window.fbq?.('track', 'ViewContent', { content_ids: [meta.content_id], content_type: meta.content_type, content_name: meta.content_name }, { eventID: eventId }); } catch {}
+        try { (window as any).ttq?.track('ViewContent', { content_id: meta.content_id, content_type: meta.content_type, content_name: meta.content_name }, { event_id: eventId }); } catch {}
+        // CAPI hits
+        fetch('/api/fb-view-content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ eventId, eventSourceUrl: url, clientUserAgent: ua, content_id: meta.content_id, content_name: meta.content_name, content_type: meta.content_type }),
+          keepalive: true,
+        }).catch(() => { /* non-blocking */ });
+        fetch('/api/tiktok-event', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ event: 'ViewContent', event_id: eventId, event_source_url: url, user_agent: ua, content_id: meta.content_id, content_name: meta.content_name, content_type: meta.content_type }),
+          keepalive: true,
+        }).catch(() => { /* non-blocking */ });
+      } catch (err) {
+        console.warn('[ViewContent] fire failed (non-blocking):', err);
+      }
+    })();
+  }, []);
+
   // Determine initial view based on auth state
   useEffect(() => {
     if (authLoading || isRestoring) return;
@@ -223,8 +273,12 @@ const App: React.FC = () => {
     };
     const value = PLAN_VALUES[plan] ?? 15;
     const currency = 'USD';
+    // Resolve content_id + contents[] from the plan slug so advanced
+    // matching + Events Manager warnings are addressed in one place.
+    const meta = getPlanContentMeta(plan, value);
+    const phone = activeSite?.data?.phone || null;
     try {
-      window.fbq?.('track', 'Purchase', { value, currency }, { eventID: sessionId });
+      window.fbq?.('track', 'Purchase', { value, currency, content_ids: [meta.content_id], content_type: meta.content_type, contents: meta.contents }, { eventID: sessionId });
     } catch (err) {
       console.warn('[FB Pixel Purchase / Custom] fire failed:', err);
     }
@@ -237,12 +291,17 @@ const App: React.FC = () => {
         currency,
         eventSourceUrl: window.location.origin,
         clientUserAgent: navigator.userAgent,
+        customerPhone: phone,
+        content_id: meta.content_id,
+        content_name: meta.content_name,
+        content_type: meta.content_type,
+        contents: meta.contents,
       }),
       keepalive: true,
     }).catch((err) => console.error('[FB CAPI / Custom] non-blocking:', err));
 
     try {
-      (window as any).ttq?.track('Purchase', { value, currency }, { event_id: sessionId });
+      (window as any).ttq?.track('Purchase', { value, currency, content_id: meta.content_id, content_type: meta.content_type, contents: meta.contents }, { event_id: sessionId });
     } catch (err) {
       console.warn('[TikTok Pixel Purchase / Custom] fire failed:', err);
     }
@@ -256,6 +315,11 @@ const App: React.FC = () => {
         user_agent: navigator.userAgent,
         value,
         currency,
+        phone,
+        content_id: meta.content_id,
+        content_name: meta.content_name,
+        content_type: meta.content_type,
+        contents: meta.contents,
       }),
       keepalive: true,
     }).catch((err) => console.error('[TikTok CAPI / Custom] non-blocking:', err));
@@ -395,12 +459,15 @@ const App: React.FC = () => {
         // Use the verified amount from Stripe rather than a hardcoded value.
         const purchaseValue = typeof verifyResult.amountTotal === 'number' ? verifyResult.amountTotal : 10.0;
         const purchaseCurrency = verifyResult.currency || 'USD';
+        const purchaseMeta = getPlanContentMeta(stripePlan || 'monthly', purchaseValue);
+        const purchasePhone = siteData?.phone || null;
+        const purchaseEmail = verifyResult.customerEmail || null;
 
         try {
           window.fbq?.(
             'track',
             'Purchase',
-            { value: purchaseValue, currency: purchaseCurrency },
+            { value: purchaseValue, currency: purchaseCurrency, content_ids: [purchaseMeta.content_id], content_type: purchaseMeta.content_type, contents: purchaseMeta.contents },
             { eventID: sessionId }
           );
         } catch (err) {
@@ -414,9 +481,14 @@ const App: React.FC = () => {
             eventId: sessionId,
             value: purchaseValue,
             currency: purchaseCurrency,
-            customerEmail: verifyResult.customerEmail || null,
+            customerEmail: purchaseEmail,
+            customerPhone: purchasePhone,
             eventSourceUrl: window.location.origin,
             clientUserAgent: navigator.userAgent,
+            content_id: purchaseMeta.content_id,
+            content_name: purchaseMeta.content_name,
+            content_type: purchaseMeta.content_type,
+            contents: purchaseMeta.contents,
           }),
         }).catch((err) => console.error('[FB CAPI] Error (non-blocking):', err));
 
@@ -424,7 +496,7 @@ const App: React.FC = () => {
         try {
           (window as any).ttq?.track(
             'Purchase',
-            { value: purchaseValue, currency: purchaseCurrency },
+            { value: purchaseValue, currency: purchaseCurrency, content_id: purchaseMeta.content_id, content_type: purchaseMeta.content_type, contents: purchaseMeta.contents },
             { event_id: sessionId }
           );
         } catch (err) {
@@ -440,6 +512,12 @@ const App: React.FC = () => {
             user_agent: navigator.userAgent,
             value: purchaseValue,
             currency: purchaseCurrency,
+            email: purchaseEmail,
+            phone: purchasePhone,
+            content_id: purchaseMeta.content_id,
+            content_name: purchaseMeta.content_name,
+            content_type: purchaseMeta.content_type,
+            contents: purchaseMeta.contents,
           }),
         }).catch((err) => console.error('[TikTok CAPI Purchase] Error (non-blocking):', err));
 
@@ -567,8 +645,11 @@ const App: React.FC = () => {
     if (shouldFireLead()) {
       // Meta Lead event — browser pixel + CAPI share the same event_id for dedupe
       const leadEventId = `lead_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const leadViewMeta = getViewContentMeta(window.location.pathname);
+      const leadEmail = (inputs as any).email || null;
+      const leadPhone = inputs.phone || null;
       try {
-        window.fbq?.('track', 'Lead', { content_name: 'Barbershop Site Generated' }, { eventID: leadEventId });
+        window.fbq?.('track', 'Lead', { content_name: 'Barbershop Site Generated', content_ids: [leadViewMeta.content_id], content_type: leadViewMeta.content_type }, { eventID: leadEventId });
       } catch (err) {
         console.warn('[FB Pixel Lead] browser fire failed:', err);
       }
@@ -577,8 +658,12 @@ const App: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           eventId: leadEventId,
-          phone: inputs.phone || null,
+          email: leadEmail,
+          phone: leadPhone,
           contentName: 'Barbershop Site Generated',
+          content_id: leadViewMeta.content_id,
+          content_name: leadViewMeta.content_name,
+          content_type: leadViewMeta.content_type,
           eventSourceUrl: window.location.origin,
           clientUserAgent: navigator.userAgent,
         }),
@@ -586,7 +671,7 @@ const App: React.FC = () => {
 
       // TikTok Lead — browser pixel + CAPI dedupe on the same event_id.
       try {
-        (window as any).ttq?.track('Lead', { content_name: 'Barbershop Site Generated' }, { event_id: leadEventId });
+        (window as any).ttq?.track('Lead', { content_name: 'Barbershop Site Generated', content_id: leadViewMeta.content_id, content_type: leadViewMeta.content_type }, { event_id: leadEventId });
       } catch (err) {
         console.warn('[TikTok Pixel Lead] browser fire failed:', err);
       }
@@ -598,6 +683,11 @@ const App: React.FC = () => {
           event_id: leadEventId,
           event_source_url: window.location.origin,
           user_agent: navigator.userAgent,
+          email: leadEmail,
+          phone: leadPhone,
+          content_id: leadViewMeta.content_id,
+          content_name: leadViewMeta.content_name,
+          content_type: leadViewMeta.content_type,
         }),
       }).catch((err) => console.error('[TikTok CAPI Lead] Error (non-blocking):', err));
 
@@ -693,6 +783,37 @@ const App: React.FC = () => {
       } catch (err) {
         console.error('[Migration] Failed to migrate site (non-blocking):', err);
       }
+    }
+
+    // CompleteRegistration pixel + CAPI fire. Closes the conversion
+    // funnel (ViewContent → Lead → InitiateCheckout → Purchase →
+    // CompleteRegistration). Same event_id browser-side + server-side
+    // so TikTok + Meta dedupe.
+    try {
+      const eventId =
+        typeof crypto !== 'undefined' && (crypto as any).randomUUID
+          ? (crypto as any).randomUUID()
+          : `reg_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      const email = user?.email || activeSite?.data?.email || null;
+      const phone = activeSite?.data?.phone || null;
+      const url = window.location.href;
+      const ua = navigator.userAgent;
+      try { window.fbq?.('track', 'CompleteRegistration', {}, { eventID: eventId }); } catch {}
+      try { (window as any).ttq?.track('CompleteRegistration', {}, { event_id: eventId }); } catch {}
+      fetch('/api/fb-registration', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventId, eventSourceUrl: url, clientUserAgent: ua, email, phone }),
+        keepalive: true,
+      }).catch(() => { /* non-blocking */ });
+      fetch('/api/tiktok-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event: 'CompleteRegistration', event_id: eventId, event_source_url: url, user_agent: ua, email, phone }),
+        keepalive: true,
+      }).catch(() => { /* non-blocking */ });
+    } catch (err) {
+      console.warn('[CompleteRegistration] fire failed (non-blocking):', err);
     }
 
     persistView('dashboard');

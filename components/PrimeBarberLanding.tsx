@@ -153,15 +153,17 @@ export const PrimeBarberLanding: React.FC = () => {
           : `pb_${Date.now()}_${Math.random().toString(36).slice(2)}`;
       const value = plan === 'primebarber-site' ? 19 : 29;
       const currency = 'USD';
-      (window as any).fbq?.('track', 'InitiateCheckout', { value, currency }, { eventID: eventId });
-      (window as any).ttq?.track('InitiateCheckout', { value, currency }, { event_id: eventId });
+      const { getPlanContentMeta } = await import('../lib/pixelMeta');
+      const m = getPlanContentMeta(plan, value);
+      (window as any).fbq?.('track', 'InitiateCheckout', { value, currency, content_ids: [m.content_id], content_type: m.content_type, contents: m.contents }, { eventID: eventId });
+      (window as any).ttq?.track('InitiateCheckout', { value, currency, content_id: m.content_id, content_type: m.content_type, contents: m.contents }, { event_id: eventId });
       fetch('/api/fb-checkout', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eventId, value, currency, eventSourceUrl: window.location.href, clientUserAgent: navigator.userAgent }),
+        body: JSON.stringify({ eventId, value, currency, eventSourceUrl: window.location.href, clientUserAgent: navigator.userAgent, content_id: m.content_id, content_name: m.content_name, content_type: m.content_type, contents: m.contents }),
       }).catch(err => console.error('[FB CAPI InitiateCheckout] Failed:', err));
       fetch('/api/tiktok-event', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ event: 'InitiateCheckout', event_id: eventId, event_source_url: window.location.href, user_agent: navigator.userAgent, value, currency }),
+        body: JSON.stringify({ event: 'InitiateCheckout', event_id: eventId, event_source_url: window.location.href, user_agent: navigator.userAgent, value, currency, content_id: m.content_id, content_name: m.content_name, content_type: m.content_type, contents: m.contents }),
       }).catch(err => console.error('[TikTok CAPI InitiateCheckout] Failed:', err));
     } catch (e) {
       console.error('[InitiateCheckout] Tracking failed (non-blocking):', e);
