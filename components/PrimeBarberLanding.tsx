@@ -230,13 +230,14 @@ export const PrimeBarberLanding: React.FC = () => {
   ];
 
   const faqs = [
-    { q: 'Is there a setup or upfront fee?', a: 'No. Your site is built and launched as part of your $29/month — no large upfront website cost.' },
+    { q: 'How does the 7-day free trial work?', a: 'Start your trial today — card is collected at signup but you’re not charged for 7 days. To unlock the full platform during the trial, end it early from your billing portal. Otherwise the $29/month subscription begins automatically on day 7.' },
+    { q: 'Is there a setup or upfront fee?', a: 'No. Your site is built and launched as part of your $29/month — no large upfront website cost. The first 7 days are free.' },
     { q: 'How long until my site is live?', a: 'Most shops are up within a week of submitting their details. You’ll see a preview and can request changes before it goes live.' },
     { q: 'Does it cost more to add my staff?', a: 'No. Add as many barbers as you want — your $29/month is flat. No per-barber fees, no team-size tiers, no extras as you grow.' },
     { q: 'Are there extra fees on payments?', a: 'Standard payment processing fees apply (the same small per-transaction fee any card processor charges). We don’t add fees on top.' },
     { q: 'Do I own my domain and content?', a: 'Yes. Your domain, photos, and content are yours.' },
     { q: 'Can I edit my site myself?', a: 'Yes. Log in and update hours, prices, photos, products, and pages anytime. Need a bigger change? Support handles it for you.' },
-    { q: 'What happens if I cancel?', a: 'No contracts — cancel anytime. We’ll help you export your content and point your domain wherever you want.' },
+    { q: 'What happens if I cancel?', a: 'No contracts — cancel anytime, including during the free trial. We’ll help you export your content and point your domain wherever you want.' },
     { q: 'Can I submit a design I already like?', a: 'Yes. Send over a site or style you like and yours can be built to match it as closely as possible.' },
     { q: 'Can I use my own photos, sell products, take bookings, and collect payments?', a: 'Yes to all — that’s the whole point. Everything runs through one site under your brand.' },
     { q: 'Do I get a mobile app?', a: 'Yes. You’ll get mobile notifications when someone books, pays, sends an inquiry, or reaches out.' },
@@ -248,7 +249,11 @@ export const PrimeBarberLanding: React.FC = () => {
     plan?: 'primebarber' | 'primebarber-site';
     variant?: 'gold' | 'ghost';
     showGuarantee?: boolean;
-  }> = ({ size = 'lg', label = 'Get Started', plan = 'primebarber', variant = 'gold', showGuarantee = true }) => {
+    // Bolded $29/month price line underneath the button. Only renders
+    // for the default primebarber plan and only on md/lg sizes so the
+    // sticky-nav sm CTA stays compact.
+    showPrice?: boolean;
+  }> = ({ size = 'lg', label = 'Start 7-Day Free Trial', plan = 'primebarber', variant = 'gold', showGuarantee = true, showPrice = true }) => {
     const sizes = {
       sm: 'px-5 py-2.5 text-[10px]',
       md: 'px-7 py-3.5 text-[11px]',
@@ -258,6 +263,7 @@ export const PrimeBarberLanding: React.FC = () => {
       variant === 'ghost'
         ? { background: 'transparent', color: CREAM, border: `1px solid ${GOLD}` }
         : { background: GOLD, color: BLACK, border: '1px solid transparent' };
+    const isPlatformPlan = plan === 'primebarber';
     return (
       <span className="inline-flex flex-col items-center">
         <button
@@ -269,6 +275,14 @@ export const PrimeBarberLanding: React.FC = () => {
           {isStartingCheckout ? <Loader2 className="animate-spin" size={14} /> : null}
           {label}
         </button>
+        {isPlatformPlan && showPrice && size !== 'sm' && (
+          <span
+            className="mt-2 text-[18px] md:text-[22px] font-black tracking-tight"
+            style={{ color: CREAM, fontFamily: 'inherit' }}
+          >
+            then <span style={{ color: GOLD }}>$29/month</span>
+          </span>
+        )}
         {showGuarantee && (
           <span
             className="mt-2 inline-flex items-center gap-1.5 text-[9.5px] md:text-[10px] uppercase tracking-[0.22em] font-medium"
@@ -335,7 +349,7 @@ export const PrimeBarberLanding: React.FC = () => {
               AI <span style={{ color: GOLD }}>Barber</span>
             </div>
           </div>
-          <PrimaryCTA size="sm" label="Get Started" showGuarantee={false} />
+          <PrimaryCTA size="sm" label="Start Free Trial" showGuarantee={false} />
         </div>
       </header>
 
@@ -402,7 +416,7 @@ export const PrimeBarberLanding: React.FC = () => {
                   style={{ background: GOLD, boxShadow: `0 0 8px ${GOLD}` }}
                 />
                 <span className="text-[12px] md:text-[13px]" style={{ color: CREAM }}>
-                  <span style={{ color: GOLD, fontWeight: 700 }}>Just $29/mo.</span> No contract.
+                  <span style={{ color: GOLD, fontWeight: 700 }}>7-day free trial.</span> Then $29/mo. No contract.
                 </span>
               </div>
               <PrimaryCTA size="md" />
@@ -439,6 +453,9 @@ export const PrimeBarberLanding: React.FC = () => {
             <p className="text-[14px] md:text-[15px]" style={{ color: SOFT }}>
               One branded site that handles your whole shop. No app juggling. No paying just to reach your own customers.
             </p>
+            <p className="mt-3 text-[11px] md:text-[12px] max-w-xl mx-auto leading-relaxed" style={{ color: 'rgba(240,236,228,0.45)' }}>
+              <sup style={{ color: GOLD }}>*</sup> Full feature access kicks in once your trial ends — end it early from the billing portal to unlock everything sooner.
+            </p>
           </div>
           <div className="grid gap-px sm:grid-cols-2 md:grid-cols-4" style={{ background: 'rgba(255,255,255,0.06)' }}>
             {features.map((f, i) => {
@@ -469,6 +486,9 @@ export const PrimeBarberLanding: React.FC = () => {
               <SectionHeading serifAccent="three steps.">From payment to live site —</SectionHeading>
               <p className="text-[13px] md:text-[15px] max-w-xl mx-auto" style={{ color: SOFT }}>
                 Once you sign up, our onboarding team takes it from here.
+              </p>
+              <p className="mt-3 text-[11px] md:text-[12px] max-w-xl mx-auto leading-relaxed" style={{ color: 'rgba(240,236,228,0.45)' }}>
+                <sup style={{ color: GOLD }}>*</sup> To unlock the full platform during your 7-day trial, end the trial early from your billing portal.
               </p>
             </div>
           </Reveal>
@@ -883,7 +903,18 @@ export const PrimeBarberLanding: React.FC = () => {
                     </li>
                   ))}
                 </ul>
-                <PrimaryCTA size="md" label="Get Started" plan="primebarber" />
+                <div
+                  className="mb-3 inline-flex items-center gap-1.5 px-2.5 py-1 self-start"
+                  style={{ background: 'rgba(212,164,100,0.12)', border: `1px solid rgba(212,164,100,0.4)`, color: CREAM }}
+                >
+                  <span className="text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: GOLD }}>
+                    7-Day Free Trial
+                  </span>
+                </div>
+                <PrimaryCTA size="md" label="Start 7-Day Free Trial" plan="primebarber" />
+                <p className="mt-3 text-[10px] md:text-[11px] leading-snug" style={{ color: 'rgba(240,236,228,0.45)' }}>
+                  <sup style={{ color: GOLD }}>*</sup> End the trial early from your billing portal to unlock full platform features.
+                </p>
               </div>
             </Reveal>
           </div>
@@ -956,9 +987,12 @@ export const PrimeBarberLanding: React.FC = () => {
             A custom website with booking, payments, products, galleries, and a mobile app — all yours.
           </p>
           <p className="text-[12px] md:text-[14px] mb-6" style={{ color: CREAM }}>
-            <span style={{ color: GOLD, fontWeight: 700 }}>Just $29/month.</span> No contract.
+            <span style={{ color: GOLD, fontWeight: 700 }}>7-day free trial.</span> Then $29/month. No contract.
           </p>
           <PrimaryCTA />
+          <p className="mt-4 text-[11px] md:text-[12px] max-w-md mx-auto leading-relaxed" style={{ color: 'rgba(240,236,228,0.45)' }}>
+            <sup style={{ color: GOLD }}>*</sup> To unlock the full platform during your trial, end it early from your billing portal.
+          </p>
         </div>
       </section>
 
@@ -1013,8 +1047,8 @@ export const PrimeBarberLanding: React.FC = () => {
                 style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
               >
                 {([
-                  { key: 'primebarber',      label: 'Full Platform', sub: '$29/mo' },
-                  { key: 'primebarber-site', label: 'Custom Site',   sub: '$19/mo' },
+                  { key: 'primebarber',      label: '7-Day Trial', sub: '$29/mo' },
+                  { key: 'primebarber-site', label: 'Custom Site', sub: '$19/mo' },
                 ] as const).map((opt) => {
                   const active = activePlan === opt.key;
                   return (
@@ -1041,7 +1075,7 @@ export const PrimeBarberLanding: React.FC = () => {
               <div className="flex items-center gap-2.5 mb-2.5">
                 <span className="h-px w-4" style={{ background: GOLD }} />
                 <span className="text-[9px] font-medium uppercase tracking-[0.32em]" style={{ color: GOLD }}>
-                  {activePlan === 'primebarber-site' ? 'Custom Site Only' : 'Full Platform'}
+                  {activePlan === 'primebarber-site' ? 'Custom Site Only' : '7-Day Free Trial'}
                 </span>
                 <span className="h-px flex-1" style={{ background: 'rgba(212,164,100,0.2)' }} />
               </div>
@@ -1055,9 +1089,9 @@ export const PrimeBarberLanding: React.FC = () => {
                   </>
                 ) : (
                   <>
-                    Get Prime Barber for{' '}
+                    Try Prime Barber{' '}
                     <span style={{ fontFamily: '"Instrument Serif", serif', fontStyle: 'italic', fontWeight: 400, color: GOLD }}>
-                      $29/month.
+                      free for 7 days.
                     </span>
                   </>
                 )}
@@ -1065,7 +1099,7 @@ export const PrimeBarberLanding: React.FC = () => {
               <p className="text-[12.5px] mb-3 leading-snug" style={{ color: SOFT }}>
                 {activePlan === 'primebarber-site'
                   ? 'Just the website. No booking, payments, or app. Cancel anytime.'
-                  : 'Card charged today. Cancel anytime — no contract.'}
+                  : 'Card collected today. First charge on day 7. Cancel anytime during the trial — no charge.'}
               </p>
 
               {/* Plan-aware benefit bullets — same pattern as the
@@ -1085,7 +1119,7 @@ export const PrimeBarberLanding: React.FC = () => {
                       'Mobile app with real-time alerts',
                       'Unlimited staff · no per-barber fees',
                       'Onboarding call · live in 24-48 hours',
-                      'Risk-free · cancel anytime',
+                      '7-day risk-free trial · cancel anytime',
                     ]
                 ).map((line, i) => (
                   <li
@@ -1101,6 +1135,12 @@ export const PrimeBarberLanding: React.FC = () => {
                   </li>
                 ))}
               </ul>
+
+              {activePlan === 'primebarber' && (
+                <p className="mb-3 text-[10.5px] md:text-[11px] leading-snug" style={{ color: 'rgba(240,236,228,0.55)' }}>
+                  <sup style={{ color: GOLD }}>*</sup> End your trial early from the billing portal to unlock the full platform.
+                </p>
+              )}
 
               <div className="rounded-md overflow-hidden bg-white" style={{ minHeight: 360 }}>
                 {embedError ? (
