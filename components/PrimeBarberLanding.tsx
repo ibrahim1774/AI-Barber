@@ -230,7 +230,7 @@ export const PrimeBarberLanding: React.FC = () => {
   ];
 
   const faqs = [
-    { q: 'How does the 7-day free trial work?', a: 'Start your trial today — card is collected at signup but you’re not charged for 7 days. To unlock the full platform during the trial, end it early from your billing portal. Otherwise the $29/month subscription begins automatically on day 7.' },
+    { q: 'How does the 7-day free trial work?', a: 'Start your trial today — card is collected at signup but you’re not charged for 7 days. To fully use your entire account, you’ll need to end your trial early. Otherwise the $29/month subscription begins automatically on day 7.' },
     { q: 'Is there a setup or upfront fee?', a: 'No. Your site is built and launched as part of your $29/month — no large upfront website cost. The first 7 days are free.' },
     { q: 'How long until my site is live?', a: 'Most shops are up within a week of submitting their details. You’ll see a preview and can request changes before it goes live.' },
     { q: 'Does it cost more to add my staff?', a: 'No. Add as many barbers as you want — your $29/month is flat. No per-barber fees, no team-size tiers, no extras as you grow.' },
@@ -454,7 +454,7 @@ export const PrimeBarberLanding: React.FC = () => {
               One branded site that handles your whole shop. No app juggling. No paying just to reach your own customers.
             </p>
             <p className="mt-3 text-[11px] md:text-[12px] max-w-xl mx-auto leading-relaxed" style={{ color: 'rgba(240,236,228,0.45)' }}>
-              <sup style={{ color: GOLD }}>*</sup> Full feature access kicks in once your trial ends — end it early from the billing portal to unlock everything sooner.
+              <sup style={{ color: GOLD }}>*</sup> To fully use your entire account, you’ll need to end your trial early.
             </p>
           </div>
           <div className="grid gap-px sm:grid-cols-2 md:grid-cols-4" style={{ background: 'rgba(255,255,255,0.06)' }}>
@@ -488,7 +488,7 @@ export const PrimeBarberLanding: React.FC = () => {
                 Once you sign up, our onboarding team takes it from here.
               </p>
               <p className="mt-3 text-[11px] md:text-[12px] max-w-xl mx-auto leading-relaxed" style={{ color: 'rgba(240,236,228,0.45)' }}>
-                <sup style={{ color: GOLD }}>*</sup> To unlock the full platform during your 7-day trial, end the trial early from your billing portal.
+                <sup style={{ color: GOLD }}>*</sup> To fully use your entire account, you’ll need to end your trial early.
               </p>
             </div>
           </Reveal>
@@ -913,7 +913,7 @@ export const PrimeBarberLanding: React.FC = () => {
                 </div>
                 <PrimaryCTA size="md" label="Start 7-Day Free Trial" plan="primebarber" />
                 <p className="mt-3 text-[10px] md:text-[11px] leading-snug" style={{ color: 'rgba(240,236,228,0.45)' }}>
-                  <sup style={{ color: GOLD }}>*</sup> End the trial early from your billing portal to unlock full platform features.
+                  <sup style={{ color: GOLD }}>*</sup> To fully use your entire account, you’ll need to end your trial early.
                 </p>
               </div>
             </Reveal>
@@ -991,7 +991,7 @@ export const PrimeBarberLanding: React.FC = () => {
           </p>
           <PrimaryCTA />
           <p className="mt-4 text-[11px] md:text-[12px] max-w-md mx-auto leading-relaxed" style={{ color: 'rgba(240,236,228,0.45)' }}>
-            <sup style={{ color: GOLD }}>*</sup> To unlock the full platform during your trial, end it early from your billing portal.
+            <sup style={{ color: GOLD }}>*</sup> To fully use your entire account, you’ll need to end your trial early.
           </p>
         </div>
       </section>
@@ -1138,7 +1138,7 @@ export const PrimeBarberLanding: React.FC = () => {
 
               {activePlan === 'primebarber' && (
                 <p className="mb-3 text-[10.5px] md:text-[11px] leading-snug" style={{ color: 'rgba(240,236,228,0.55)' }}>
-                  <sup style={{ color: GOLD }}>*</sup> End your trial early from the billing portal to unlock the full platform.
+                  <sup style={{ color: GOLD }}>*</sup> To fully use your entire account, you’ll need to end your trial early.
                 </p>
               )}
 
