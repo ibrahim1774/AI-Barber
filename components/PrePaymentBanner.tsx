@@ -53,9 +53,10 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   const freeBarberMode = React.useMemo(() => isFreeBarberPath(), []);
 
   // Standard monthly price varies by entry path:
-  //   /free-barber         → $7/mo (plan 'monthly-free')
-  //   /booksy + everywhere → $9/mo (plan 'monthly-booksy' / 'monthly')
-  const stdMonthlyPriceDollars = freeBarberMode ? 7 : 9;
+  //   /free-barber → $7/mo (plan 'monthly-free')
+  //   /booksy      → $7/mo (plan 'monthly-booksy')
+  //   everywhere   → $9/mo (plan 'monthly')
+  const stdMonthlyPriceDollars = (freeBarberMode || booksyMode) ? 7 : 9;
   const stdMonthlyPriceMo = `$${stdMonthlyPriceDollars}/mo`;
   const stdMonthlyPriceMonth = `$${stdMonthlyPriceDollars}/month`;
   const stdMonthlyPlan: 'monthly' | 'monthly-booksy' | 'monthly-free' = booksyMode

@@ -68,8 +68,8 @@ export default async function handler(req: any, res: any) {
       interval = 'year';
       productName = 'aibarber.org — Yearly Website Hosting';
     } else if (isYearlyBooksy) {
-      // /booksy yearly: matches standard pricing ($86/yr = 20% off $9 × 12).
-      unitAmount = '8600';
+      // /booksy yearly: 20% off $7/mo × 12 = $67/yr.
+      unitAmount = '6700';
       interval = 'year';
       productName = 'aibarber.org — Yearly Website Hosting (Booksy)';
     } else if (isYearlyFree) {
@@ -78,8 +78,8 @@ export default async function handler(req: any, res: any) {
       interval = 'year';
       productName = 'aibarber.org — Yearly Website Hosting (Free Barber)';
     } else if (isMonthlyBooksy) {
-      // /booksy monthly: matches standard pricing ($9/mo).
-      unitAmount = '900';
+      // /booksy monthly: $7/mo (entry-point discount vs $9 standard).
+      unitAmount = '700';
       interval = 'month';
       productName = 'aibarber.org — Monthly Website Hosting (Booksy)';
     } else if (isMonthlyFree) {

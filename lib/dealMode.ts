@@ -2,7 +2,7 @@
 //
 // Active paths:
 //   /free-barber  → $7/month + $67/year toggle, plan 'monthly-free'
-//   /booksy       → $5/month + $48/year toggle, plan 'monthly-booksy'
+//   /booksy       → $7/month + $67/year toggle, plan 'monthly-booksy'
 //   home          → $9/month + $86/year toggle (plan 'monthly')
 //
 // The /5 and /7 deal subpages were retired — those URLs now fall
