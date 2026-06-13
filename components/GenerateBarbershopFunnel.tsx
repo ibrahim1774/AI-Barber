@@ -21,13 +21,75 @@ export const GenerateBarbershopFunnel: React.FC<GenerateBarbershopFunnelProps> =
   const [bookingUrl, setBookingUrl] = useState('');
   const [siteData, setSiteData] = useState<WebsiteData | null>(null);
 
-  // Unused for now — wired in Task 5/6. Hook is here so the state
-  // machine is in place from the first commit.
-  void phase;
+  // Stubs — real implementations land in Task 5 (name) and Task 6 (link).
+  const runNameGeneration = async (_name: string) => { console.log('[funnel] name path stub'); };
+  const runLinkGeneration = async (_url: string, _typedName: string) => { console.log('[funnel] link path stub'); };
+
+  // Theatrical progress steps shown during the generation phase. Both
+  // paths show the same general arc; the messages diverge by source so
+  // the visitor sees the system "doing something" with their input.
+  const [progressStep, setProgressStep] = useState(0);
+  const [progressSource, setProgressSource] = useState<'name' | 'link'>('name');
+
+  const nameSteps = ['Writing your services...', 'Designing your pages...', 'Finalizing your site...'];
+  const linkSteps = ['Found your booking page', 'Importing your services', 'Adding your photos'];
+  const steps = progressSource === 'link' ? linkSteps : nameSteps;
+
+  // Unused for now — wired in Task 5/7.
   void siteData;
   void setSiteData;
-  void setPhase;
 
+  if (phase === 'generation') {
+    return (
+      <div
+        className="min-h-screen flex items-center justify-center px-5 py-12"
+        style={{ background: BG, color: 'white', fontFamily: SANS }}
+      >
+        <div className="w-full max-w-md text-center">
+          <Sparkles size={28} style={{ color: GOLD }} className="mx-auto mb-6 animate-pulse" />
+          <h2 className="text-xl md:text-2xl font-black tracking-tight mb-8" style={{ letterSpacing: '-0.01em' }}>
+            Building your{' '}
+            <span style={{ fontFamily: SERIF, fontStyle: 'italic', fontWeight: 400, color: GOLD }}>
+              barbershop site
+            </span>
+          </h2>
+          <ul className="space-y-3 text-left">
+            {steps.map((s, i) => (
+              <li
+                key={s}
+                className="flex items-center gap-3 text-[14px]"
+                style={{ color: i <= progressStep ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.3)' }}
+              >
+                <span
+                  className="inline-flex items-center justify-center w-5 h-5 rounded-full"
+                  style={{
+                    background: i < progressStep ? GOLD : 'transparent',
+                    border: `1px solid ${i <= progressStep ? GOLD : 'rgba(255,255,255,0.18)'}`,
+                    color: '#0a0a0a',
+                  }}
+                >
+                  {i < progressStep ? '✓' : ''}
+                </span>
+                <span>{s}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    );
+  }
+
+  if (phase === 'reveal') {
+    // Mounted in Task 7. For now, render a placeholder so this branch
+    // doesn't error if hit during integration testing.
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: BG, color: 'white', fontFamily: SANS }}>
+        <p>Reveal phase — wired in Task 7.</p>
+      </div>
+    );
+  }
+
+  // Default: input phase
   return (
     <div
       className="min-h-screen flex items-center justify-center px-5 md:px-8 py-12"
@@ -62,7 +124,11 @@ export const GenerateBarbershopFunnel: React.FC<GenerateBarbershopFunnelProps> =
           className="mb-5"
           onSubmit={(e) => {
             e.preventDefault();
-            // Submit handler wired in Task 4.
+            if (!shopName.trim()) return;
+            setProgressSource('name');
+            setProgressStep(0);
+            setPhase('generation');
+            void runNameGeneration(shopName);
           }}
         >
           <label htmlFor="shop-name" className="block text-[10px] font-bold uppercase tracking-[0.22em] mb-2" style={{ color: 'rgba(255,255,255,0.55)' }}>
@@ -108,7 +174,11 @@ export const GenerateBarbershopFunnel: React.FC<GenerateBarbershopFunnelProps> =
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              // Submit handler wired in Task 4.
+              if (!bookingUrl.trim()) return;
+              setProgressSource('link');
+              setProgressStep(0);
+              setPhase('generation');
+              void runLinkGeneration(bookingUrl, shopName);
             }}
           >
             <input
