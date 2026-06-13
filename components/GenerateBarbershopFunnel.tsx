@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, Suspense, lazy } from 'react';
+import React, { useState, useRef, useEffect, useCallback, Suspense, lazy } from 'react';
 import { Sparkles, ArrowRight, Zap } from 'lucide-react';
 import type { WebsiteData } from '../types';
 import { generateContent } from '../services/geminiService';
@@ -159,13 +159,15 @@ export const GenerateBarbershopFunnel: React.FC<GenerateBarbershopFunnelProps> =
 
   const { user } = useAuth();
 
-  const handleBarChange = (field: 'area' | 'phone', value: string) => {
+  const handleBarChange = useCallback((field: 'area' | 'phone', value: string) => {
     setSiteData((prev) => {
       if (!prev) return prev;
       if (field === 'area') return { ...prev, area: value };
       return { ...prev, phone: value };
     });
-  };
+  }, []);
+
+  const closeBar = useCallback(() => setShowBar(false), []);
 
   const steps = progressSource === 'link' ? LINK_STEPS : NAME_STEPS;
 
@@ -229,7 +231,7 @@ export const GenerateBarbershopFunnel: React.FC<GenerateBarbershopFunnelProps> =
         {showBar && (
           <DetailCollectionBar
             onChange={handleBarChange}
-            onClose={() => setShowBar(false)}
+            onClose={closeBar}
             initialArea={siteData.area || ''}
             initialPhone={siteData.phone || ''}
           />
