@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ArrowRight, X } from 'lucide-react';
 
 export interface DetailCollectionBarProps {
@@ -26,6 +26,17 @@ export const DetailCollectionBar: React.FC<DetailCollectionBarProps> = ({
   const [phone, setPhone] = useState(initialPhone);
   const [closing, setClosing] = useState(false);
 
+  // Deduplicate close calls. The auto-hide sequence sets a 350ms
+  // setTimeout to call onClose; if the visitor clicks X during that
+  // window, we'd fire onClose twice. The ref ensures the parent only
+  // hears about the close once.
+  const closedRef = useRef(false);
+  const safeClose = () => {
+    if (closedRef.current) return;
+    closedRef.current = true;
+    onClose();
+  };
+
   // Auto-hide after both filled. We require BOTH non-empty so a
   // visitor who advances to step 1 without typing in step 0 isn't
   // auto-dismissed before they fill anything.
@@ -33,7 +44,7 @@ export const DetailCollectionBar: React.FC<DetailCollectionBarProps> = ({
     if (step === 1 && area.trim() && phone.trim()) {
       const t = setTimeout(() => {
         setClosing(true);
-        const t2 = setTimeout(() => onClose(), 350);
+        const t2 = setTimeout(() => safeClose(), 350);
         return () => clearTimeout(t2);
       }, 600);
       return () => clearTimeout(t);
@@ -65,7 +76,7 @@ export const DetailCollectionBar: React.FC<DetailCollectionBarProps> = ({
         </span>
         <button
           type="button"
-          onClick={() => onClose()}
+          onClick={() => safeClose()}
           aria-label="Dismiss"
           className="text-white/40 hover:text-white/80 transition-colors"
         >
@@ -81,7 +92,11 @@ export const DetailCollectionBar: React.FC<DetailCollectionBarProps> = ({
           }}
           className="flex items-center gap-2"
         >
+          <label htmlFor="detail-bar-area" className="sr-only">
+            Service area
+          </label>
           <input
+            id="detail-bar-area"
             type="text"
             autoFocus
             value={area}
@@ -110,7 +125,11 @@ export const DetailCollectionBar: React.FC<DetailCollectionBarProps> = ({
           }}
           className="flex items-center gap-2"
         >
+          <label htmlFor="detail-bar-phone" className="sr-only">
+            Phone number
+          </label>
           <input
+            id="detail-bar-phone"
             type="tel"
             autoFocus
             value={phone}
