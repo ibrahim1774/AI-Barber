@@ -1,9 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, Suspense, lazy } from 'react';
 import { Sparkles, ArrowRight, Zap } from 'lucide-react';
 import type { WebsiteData } from '../types';
 import { generateContent } from '../services/geminiService';
 import type { ShopInputs } from '../types';
 import { buildSiteFromScrape } from '../lib/buildSiteFromScrape';
+import { useAuth } from '../contexts/AuthContext';
 
 type Phase = 'input' | 'generation' | 'reveal';
 
@@ -19,6 +20,8 @@ const GOLD = '#e8c074';
 const BG = '#0a0a0a';
 const NAME_STEPS = ['Writing your services...', 'Designing your pages...', 'Finalizing your site...'];
 const LINK_STEPS = ['Found your booking page', 'Importing your services', 'Adding your photos'];
+
+const EuphoriaWebsite = lazy(() => import('./EuphoriaWebsite').then((m) => ({ default: m.EuphoriaWebsite })));
 
 export const GenerateBarbershopFunnel: React.FC<GenerateBarbershopFunnelProps> = () => {
   const [phase, setPhase] = useState<Phase>('input');
@@ -152,6 +155,8 @@ export const GenerateBarbershopFunnel: React.FC<GenerateBarbershopFunnelProps> =
     };
   }, []);
 
+  const { user } = useAuth();
+
   const steps = progressSource === 'link' ? LINK_STEPS : NAME_STEPS;
 
   if (phase === 'generation') {
@@ -195,13 +200,24 @@ export const GenerateBarbershopFunnel: React.FC<GenerateBarbershopFunnelProps> =
     );
   }
 
-  if (phase === 'reveal') {
-    // Mounted in Task 7. For now, render a placeholder so this branch
-    // doesn't error if hit during integration testing.
+  if (phase === 'reveal' && siteData) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: BG, color: 'white', fontFamily: SANS }}>
-        <p>Reveal phase — wired in Task 7.</p>
-      </div>
+      <Suspense fallback={<div style={{ background: BG, minHeight: '100vh' }} />}>
+        <EuphoriaWebsite
+          data={siteData}
+          onBack={() => {
+            // Returning from the editor resets to input so the visitor
+            // can try a different name / link. Existing pending site in
+            // GCS/localStorage persists — it's keyed on siteId not on
+            // funnel state, so no cleanup needed here.
+            setPhase('input');
+            setSiteData(null);
+            setProgressStep(0);
+          }}
+          userId={user?.id ?? null}
+          isPostPayment={false}
+        />
+      </Suspense>
     );
   }
 
