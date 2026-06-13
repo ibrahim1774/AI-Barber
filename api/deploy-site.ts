@@ -97,17 +97,22 @@ async function deployToVercel(projectName: string, files: VercelFile[]) {
   );
 
   const data = response.data;
-  // Always construct the clean URL from the sanitized project name.
-  // Do NOT use data.alias — on team accounts it includes the team scope suffix
-  // (e.g. "mikes-barbershop-client-sites-f087a1f8.vercel.app" instead of "mikes-barbershop.vercel.app")
-  const deploymentUrl = `https://${sanitizedProjectName}.vercel.app`;
+  // Use the project name Vercel actually assigned. When the requested
+  // slug collides (taken in another scope), Vercel auto-suffixes the
+  // project name — e.g. requested "asd" → actual "asd-pearl-phi".
+  // Hardcoding `${sanitizedProjectName}.vercel.app` made customers
+  // copy a URL that 404'd while their site was live at the suffixed
+  // alias. data.name carries the real project name; alias[] is unsafe
+  // on team accounts because it includes the team-scope domain.
+  const actualProjectName = (data.name as string | undefined) || sanitizedProjectName;
+  const deploymentUrl = `https://${actualProjectName}.vercel.app`;
 
-  console.log(`[Vercel Deploy] Success: ${deploymentUrl}`);
+  console.log(`[Vercel Deploy] Success: ${deploymentUrl} (requested slug: ${sanitizedProjectName}, actual project: ${actualProjectName})`);
 
   // Disable Vercel Authentication so deployed sites are publicly accessible
   try {
     await axios.patch(
-      `https://api.vercel.com/v9/projects/${sanitizedProjectName}`,
+      `https://api.vercel.com/v9/projects/${actualProjectName}`,
       {
         passwordProtection: null,
         vercelAuthentication: null,
@@ -119,7 +124,7 @@ async function deployToVercel(projectName: string, files: VercelFile[]) {
         },
       }
     );
-    console.log(`[Vercel Deploy] Disabled deployment protection for ${sanitizedProjectName}`);
+    console.log(`[Vercel Deploy] Disabled deployment protection for ${actualProjectName}`);
   } catch (e: any) {
     console.warn('[Vercel Deploy] Could not disable deployment protection:', e.message);
   }
