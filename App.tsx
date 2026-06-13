@@ -235,7 +235,7 @@ const App: React.FC = () => {
     if (stripeSessionId) {
       window.history.replaceState({}, '', window.location.pathname);
       setAppReady(true);
-      handleStripeReturn(stripeSessionId);
+      handleStripeReturn(stripeSessionId, stripePlan);
       return;
     }
 
@@ -326,7 +326,7 @@ const App: React.FC = () => {
     }).catch((err) => console.error('[TikTok CAPI / Custom] non-blocking:', err));
   };
 
-  const handleStripeReturn = async (sessionId: string) => {
+  const handleStripeReturn = async (sessionId: string, plan: string = 'monthly') => {
     isLegitDeployRef.current = true;
     setState('deploying');
     setDeployCountdown(DEPLOY_TIMER_SECONDS);
@@ -418,6 +418,76 @@ const App: React.FC = () => {
 
         console.log('[Deploy] Payment verified, deploying site...');
 
+        // Step 1.5: Fire Purchase pixel BEFORE deploy. Payment is
+        // verified at this point — the customer was charged. If the
+        // deploy step below fails (Vercel timeout, missing data, etc.)
+        // we still want Meta/TikTok to see the conversion. Otherwise
+        // ad attribution silently drops on every failed publish.
+        const purchaseValue = typeof verifyResult.amountTotal === 'number' ? verifyResult.amountTotal : 10.0;
+        const purchaseCurrency = verifyResult.currency || 'USD';
+        const purchaseMeta = getPlanContentMeta(plan || 'monthly', purchaseValue);
+        const purchasePhone = siteData?.phone || null;
+        const purchaseEmail = verifyResult.customerEmail || null;
+
+        try {
+          window.fbq?.(
+            'track',
+            'Purchase',
+            { value: purchaseValue, currency: purchaseCurrency, content_ids: [purchaseMeta.content_id], content_type: purchaseMeta.content_type, contents: purchaseMeta.contents },
+            { eventID: sessionId }
+          );
+        } catch (err) {
+          console.warn('[FB Pixel Purchase] browser fire failed:', err);
+        }
+
+        fetch('/api/fb-purchase', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            eventId: sessionId,
+            value: purchaseValue,
+            currency: purchaseCurrency,
+            customerEmail: purchaseEmail,
+            customerPhone: purchasePhone,
+            eventSourceUrl: window.location.origin,
+            clientUserAgent: navigator.userAgent,
+            content_id: purchaseMeta.content_id,
+            content_name: purchaseMeta.content_name,
+            content_type: purchaseMeta.content_type,
+            contents: purchaseMeta.contents,
+          }),
+          keepalive: true,
+        }).catch((err) => console.error('[FB CAPI Purchase] Error (non-blocking):', err));
+
+        try {
+          (window as any).ttq?.track(
+            'Purchase',
+            { value: purchaseValue, currency: purchaseCurrency, content_id: purchaseMeta.content_id, content_type: purchaseMeta.content_type, contents: purchaseMeta.contents },
+            { event_id: sessionId }
+          );
+        } catch (err) {
+          console.warn('[TikTok Pixel Purchase] browser fire failed:', err);
+        }
+        fetch('/api/tiktok-event', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            event: 'Purchase',
+            event_id: sessionId,
+            event_source_url: window.location.origin,
+            user_agent: navigator.userAgent,
+            value: purchaseValue,
+            currency: purchaseCurrency,
+            email: purchaseEmail,
+            phone: purchasePhone,
+            content_id: purchaseMeta.content_id,
+            content_name: purchaseMeta.content_name,
+            content_type: purchaseMeta.content_type,
+            contents: purchaseMeta.contents,
+          }),
+          keepalive: true,
+        }).catch((err) => console.error('[TikTok CAPI Purchase] Error (non-blocking):', err));
+
         // Step 2: Generate HTML with placeholders
         const restoredSiteData: WebsiteData = {
           ...siteData,
@@ -456,73 +526,7 @@ const App: React.FC = () => {
 
         console.log('[Deploy] Site deployed:', deployData.deploymentUrl);
 
-        // Step 4: Fire Meta Purchase event — browser pixel + CAPI dedupe on event_id.
-        // Use the verified amount from Stripe rather than a hardcoded value.
-        const purchaseValue = typeof verifyResult.amountTotal === 'number' ? verifyResult.amountTotal : 10.0;
-        const purchaseCurrency = verifyResult.currency || 'USD';
-        const purchaseMeta = getPlanContentMeta(stripePlan || 'monthly', purchaseValue);
-        const purchasePhone = siteData?.phone || null;
-        const purchaseEmail = verifyResult.customerEmail || null;
-
-        try {
-          window.fbq?.(
-            'track',
-            'Purchase',
-            { value: purchaseValue, currency: purchaseCurrency, content_ids: [purchaseMeta.content_id], content_type: purchaseMeta.content_type, contents: purchaseMeta.contents },
-            { eventID: sessionId }
-          );
-        } catch (err) {
-          console.warn('[FB Pixel Purchase] browser fire failed:', err);
-        }
-
-        fetch('/api/fb-purchase', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            eventId: sessionId,
-            value: purchaseValue,
-            currency: purchaseCurrency,
-            customerEmail: purchaseEmail,
-            customerPhone: purchasePhone,
-            eventSourceUrl: window.location.origin,
-            clientUserAgent: navigator.userAgent,
-            content_id: purchaseMeta.content_id,
-            content_name: purchaseMeta.content_name,
-            content_type: purchaseMeta.content_type,
-            contents: purchaseMeta.contents,
-          }),
-        }).catch((err) => console.error('[FB CAPI] Error (non-blocking):', err));
-
-        // TikTok Purchase — browser pixel + CAPI dedupe on event_id.
-        try {
-          (window as any).ttq?.track(
-            'Purchase',
-            { value: purchaseValue, currency: purchaseCurrency, content_id: purchaseMeta.content_id, content_type: purchaseMeta.content_type, contents: purchaseMeta.contents },
-            { event_id: sessionId }
-          );
-        } catch (err) {
-          console.warn('[TikTok Pixel Purchase] browser fire failed:', err);
-        }
-        fetch('/api/tiktok-event', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            event: 'Purchase',
-            event_id: sessionId,
-            event_source_url: window.location.origin,
-            user_agent: navigator.userAgent,
-            value: purchaseValue,
-            currency: purchaseCurrency,
-            email: purchaseEmail,
-            phone: purchasePhone,
-            content_id: purchaseMeta.content_id,
-            content_name: purchaseMeta.content_name,
-            content_type: purchaseMeta.content_type,
-            contents: purchaseMeta.contents,
-          }),
-        }).catch((err) => console.error('[TikTok CAPI Purchase] Error (non-blocking):', err));
-
-        // Step 5: Create SiteInstance and save to IndexedDB
+        // Step 4: Create SiteInstance and save to IndexedDB
         // Restore the full image URLs back into siteData for the SiteInstance.
         // Without restoring craftImages here, the dashboard would re-open
         // with <img src="uploaded"> placeholders for the Craft section.
