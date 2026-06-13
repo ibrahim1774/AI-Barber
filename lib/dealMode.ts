@@ -45,3 +45,14 @@ export function isPrimeBarberPath(pathname?: string): boolean {
   const p = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
   return p === PRIMEBARBER_PATH || p === `${PRIMEBARBER_PATH}/`;
 }
+
+// `/recover` = standalone page for customers who paid + got the
+// "Publishing Failed" screen but whose site actually deployed to
+// Vercel. Lets them enter their email or Stripe session ID, look up
+// the GCS pending-site backup, and sign up to claim the deployed
+// site into their dashboard.
+export const RECOVER_PATH = '/recover';
+export function isRecoverPath(pathname?: string): boolean {
+  const p = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
+  return p === RECOVER_PATH || p === `${RECOVER_PATH}/`;
+}

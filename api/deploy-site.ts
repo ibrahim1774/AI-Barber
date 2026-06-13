@@ -1,6 +1,17 @@
 import { Storage } from '@google-cloud/storage';
 import axios from 'axios';
 
+// Vercel kills serverless functions at the plan's default cap (60s
+// on Pro) unless told otherwise. /api/deploy-site is the slowest
+// route — it downloads images from GCS, builds the bundle, calls
+// the Vercel deploy API, then polls until READY. A site with a few
+// uploaded photos easily takes 60-90s, so the default cap was
+// returning 504 to the browser even though the Vercel deploy
+// itself had already succeeded. Customers saw "Publishing Failed"
+// while their site was live and Stripe had charged them. 300s
+// (Pro plan max with maxDuration) gives ~5× headroom.
+export const config = { maxDuration: 300 };
+
 interface DeploymentRequest {
   siteId: string;
   html: string;
@@ -121,10 +132,11 @@ async function deployToVercel(projectName: string, files: VercelFile[]) {
 // accepted the deploy — but the alias was still pointing at the old
 // production deployment for another 5-15s. Users would click the URL
 // and see stale content.
-async function waitForDeploymentReady(deploymentId: string, vercelToken: string, maxWaitMs = 60_000): Promise<void> {
+async function waitForDeploymentReady(deploymentId: string, vercelToken: string, maxWaitMs = 30_000): Promise<void> {
   const start = Date.now();
   const pollInterval = 1500;
   while (Date.now() - start < maxWaitMs) {
+    let terminal: string | null = null;
     try {
       const resp = await fetch(`https://api.vercel.com/v13/deployments/${deploymentId}`, {
         headers: { Authorization: `Bearer ${vercelToken}` },
@@ -133,12 +145,19 @@ async function waitForDeploymentReady(deploymentId: string, vercelToken: string,
         const data = await resp.json() as { readyState?: string };
         if (data.readyState === 'READY') return;
         if (data.readyState === 'ERROR' || data.readyState === 'CANCELED') {
-          throw new Error(`Vercel deployment ${data.readyState.toLowerCase()}`);
+          terminal = data.readyState.toLowerCase();
         }
       }
     } catch (e: any) {
-      // Transient errors — keep polling until timeout.
+      // Transient network errors — keep polling until timeout.
       console.warn('[Deploy Poll] transient:', e?.message || e);
+    }
+    // Surface real Vercel deployment failure to the caller — was
+    // previously swallowed by the same catch as transient network
+    // errors, so a customer's Vercel-side build failure looked
+    // identical to a network blip.
+    if (terminal) {
+      throw new Error(`Vercel deployment ${terminal}`);
     }
     await new Promise((r) => setTimeout(r, pollInterval));
   }

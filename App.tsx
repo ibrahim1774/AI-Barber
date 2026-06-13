@@ -9,7 +9,7 @@ declare global {
 }
 
 import { GeneratorForm } from './components/GeneratorForm.tsx';
-import { isBooksyPath, isFreeBarberPath, isPrimeBarberPath } from './lib/dealMode.ts';
+import { isBooksyPath, isFreeBarberPath, isPrimeBarberPath, isRecoverPath } from './lib/dealMode.ts';
 import { LoadingScreen } from './components/LoadingScreen.tsx';
 import { generateHTMLForTemplate } from './services/templateRenderer.ts';
 import { generateContent } from './services/geminiService.ts';
@@ -31,6 +31,7 @@ const EuphoriaWebsite = lazy(() => import('./components/EuphoriaWebsite.tsx').th
 const PostDeploymentModal = lazy(() => import('./components/PostDeploymentModal.tsx').then(m => ({ default: m.PostDeploymentModal })));
 const ManagementDashboard = lazy(() => import('./components/ManagementDashboard.tsx').then(m => ({ default: m.ManagementDashboard })));
 const AuthModal = lazy(() => import('./components/AuthModal.tsx').then(m => ({ default: m.AuthModal })));
+const RecoverPage = lazy(() => import('./components/RecoverPage.tsx').then(m => ({ default: m.RecoverPage })));
 
 const DEPLOY_TIMER_SECONDS = 5;
 
@@ -825,6 +826,22 @@ const App: React.FC = () => {
     // Stay on deploying view showing the success state — user can click "Create Another Site" or just leave
   };
 
+  // /recover entry — the visitor enters their email or Stripe
+  // session ID on the RecoverPage, the server pulls their site data
+  // out of the GCS pending-site backup, and this handler hydrates
+  // activeSite so the very next signup writes a Supabase sites row
+  // that's linked to their deployed Vercel URL. No new server-side
+  // admin code needed: existing handleAuthSuccess does the upsert.
+  const [recoveryEmail, setRecoveryEmail] = useState<string | undefined>(undefined);
+  const handleRecoveredSite = (site: SiteInstance, customerEmail: string | null) => {
+    setActiveSite(site);
+    setDeployResult({ url: site.deployedUrl || undefined });
+    setRecoveryEmail(customerEmail || undefined);
+    setAuthModalMode('signup');
+    setAuthSignInOnly(false);
+    setShowAuthModal(true);
+  };
+
   // /primebarber is a standalone marketing page — no generator state,
   // no editor, no dashboard. Render it as early as possible so the
   // auth/restore overhead doesn't block first paint of the landing.
@@ -832,6 +849,27 @@ const App: React.FC = () => {
     return (
       <Suspense fallback={<div className="min-h-screen bg-[#0d0d0d]" />}>
         <PrimeBarberLanding />
+      </Suspense>
+    );
+  }
+
+  // /recover is a standalone page that customers reach AFTER seeing
+  // "Publishing Failed" while their site is in fact live on Vercel.
+  // Rendered early like /primebarber so the visitor can land on it
+  // without any generator/auth restoration getting in the way.
+  if (isRecoverPath()) {
+    return (
+      <Suspense fallback={<div className="min-h-screen bg-[#0a0a0a]" />}>
+        <RecoverPage onRecovered={handleRecoveredSite} />
+        <Suspense fallback={null}>
+          <AuthModal
+            isOpen={showAuthModal}
+            onClose={() => { setShowAuthModal(false); setRecoveryEmail(undefined); }}
+            initialMode={authModalMode}
+            initialEmail={recoveryEmail}
+            onSuccess={handleAuthSuccess}
+          />
+        </Suspense>
       </Suspense>
     );
   }
@@ -1011,8 +1049,9 @@ const App: React.FC = () => {
       {/* Auth modal */}
       <AuthModal
         isOpen={showAuthModal}
-        onClose={() => { setShowAuthModal(false); setAuthSignInOnly(false); }}
+        onClose={() => { setShowAuthModal(false); setAuthSignInOnly(false); setRecoveryEmail(undefined); }}
         initialMode={authModalMode}
+        initialEmail={recoveryEmail}
         signInOnly={authSignInOnly}
         onSuccess={handleAuthSuccess}
       />

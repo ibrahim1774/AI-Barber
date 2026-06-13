@@ -7,11 +7,15 @@ interface AuthModalProps {
   initialMode?: 'signin' | 'signup';
   onSuccess?: () => void;
   signInOnly?: boolean;
+  // Pre-filled email — used by the /recover flow to lock the signup
+  // email to whatever was on the visitor's Stripe session, so the
+  // newly-created Supabase user matches the customer who already paid.
+  initialEmail?: string;
 }
 
-export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 'signup', onSuccess, signInOnly = false }) => {
+export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 'signup', onSuccess, signInOnly = false, initialEmail }) => {
   const [mode, setMode] = useState<'signin' | 'signup'>(signInOnly ? 'signin' : initialMode);
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(initialEmail || '');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [error, setError] = useState('');
@@ -27,8 +31,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMo
     if (isOpen) {
       setMode(signInOnly ? 'signin' : initialMode);
       setError('');
+      if (initialEmail) setEmail(initialEmail);
     }
-  }, [isOpen, signInOnly, initialMode]);
+  }, [isOpen, signInOnly, initialMode, initialEmail]);
 
   if (!isOpen) return null;
 
