@@ -14,6 +14,8 @@ const SANS = '"Manrope", "Inter", system-ui, sans-serif';
 const SERIF = '"Instrument Serif", "Times New Roman", Georgia, serif';
 const GOLD = '#e8c074';
 const BG = '#0a0a0a';
+const NAME_STEPS = ['Writing your services...', 'Designing your pages...', 'Finalizing your site...'];
+const LINK_STEPS = ['Found your booking page', 'Importing your services', 'Adding your photos'];
 
 export const GenerateBarbershopFunnel: React.FC<GenerateBarbershopFunnelProps> = () => {
   const [phase, setPhase] = useState<Phase>('input');
@@ -31,9 +33,7 @@ export const GenerateBarbershopFunnel: React.FC<GenerateBarbershopFunnelProps> =
   const [progressStep, setProgressStep] = useState(0);
   const [progressSource, setProgressSource] = useState<'name' | 'link'>('name');
 
-  const nameSteps = ['Writing your services...', 'Designing your pages...', 'Finalizing your site...'];
-  const linkSteps = ['Found your booking page', 'Importing your services', 'Adding your photos'];
-  const steps = progressSource === 'link' ? linkSteps : nameSteps;
+  const steps = progressSource === 'link' ? LINK_STEPS : NAME_STEPS;
 
   // Unused for now — wired in Task 5/7.
   void siteData;
@@ -53,10 +53,11 @@ export const GenerateBarbershopFunnel: React.FC<GenerateBarbershopFunnelProps> =
               barbershop site
             </span>
           </h2>
-          <ul className="space-y-3 text-left">
+          <ul className="space-y-3 text-left" aria-live="polite" aria-atomic="false">
             {steps.map((s, i) => (
               <li
                 key={s}
+                aria-current={i === progressStep ? 'step' : undefined}
                 className="flex items-center gap-3 text-[14px]"
                 style={{ color: i <= progressStep ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.3)' }}
               >
