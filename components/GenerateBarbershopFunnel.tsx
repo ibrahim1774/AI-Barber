@@ -5,6 +5,7 @@ import { generateContent } from '../services/geminiService';
 import type { ShopInputs } from '../types';
 import { buildSiteFromScrape } from '../lib/buildSiteFromScrape';
 import { useAuth } from '../contexts/AuthContext';
+import { DetailCollectionBar } from './DetailCollectionBar';
 
 type Phase = 'input' | 'generation' | 'reveal';
 
@@ -28,6 +29,7 @@ export const GenerateBarbershopFunnel: React.FC<GenerateBarbershopFunnelProps> =
   const [shopName, setShopName] = useState('');
   const [bookingUrl, setBookingUrl] = useState('');
   const [siteData, setSiteData] = useState<WebsiteData | null>(null);
+  const [showBar, setShowBar] = useState(true);
 
   // Advance the theatrical progress on a fixed cadence so visitors see
   // motion even when the network call completes quickly. Total wall
@@ -157,6 +159,14 @@ export const GenerateBarbershopFunnel: React.FC<GenerateBarbershopFunnelProps> =
 
   const { user } = useAuth();
 
+  const handleBarChange = (field: 'area' | 'phone', value: string) => {
+    setSiteData((prev) => {
+      if (!prev) return prev;
+      if (field === 'area') return { ...prev, area: value };
+      return { ...prev, phone: value };
+    });
+  };
+
   const steps = progressSource === 'link' ? LINK_STEPS : NAME_STEPS;
 
   if (phase === 'generation') {
@@ -202,22 +212,29 @@ export const GenerateBarbershopFunnel: React.FC<GenerateBarbershopFunnelProps> =
 
   if (phase === 'reveal' && siteData) {
     return (
-      <Suspense fallback={<div style={{ background: BG, minHeight: '100vh' }} />}>
-        <EuphoriaWebsite
-          data={siteData}
-          onBack={() => {
-            // Returning from the editor resets to input so the visitor
-            // can try a different name / link. Existing pending site in
-            // GCS/localStorage persists — it's keyed on siteId not on
-            // funnel state, so no cleanup needed here.
-            setPhase('input');
-            setSiteData(null);
-            setProgressStep(0);
-          }}
-          userId={user?.id ?? null}
-          isPostPayment={false}
-        />
-      </Suspense>
+      <>
+        <Suspense fallback={<div style={{ background: BG, minHeight: '100vh' }} />}>
+          <EuphoriaWebsite
+            data={siteData}
+            onBack={() => {
+              setPhase('input');
+              setSiteData(null);
+              setProgressStep(0);
+              setShowBar(true);
+            }}
+            userId={user?.id ?? null}
+            isPostPayment={false}
+          />
+        </Suspense>
+        {showBar && (
+          <DetailCollectionBar
+            onChange={handleBarChange}
+            onClose={() => setShowBar(false)}
+            initialArea={siteData.area || ''}
+            initialPhone={siteData.phone || ''}
+          />
+        )}
+      </>
     );
   }
 
