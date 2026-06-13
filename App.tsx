@@ -781,14 +781,36 @@ const App: React.FC = () => {
   const handleAuthSuccess = async () => {
     setShowAuthModal(false);
 
-    // Auto-migrate the current site to Supabase if we have one
-    if (activeSite && user) {
+    // Auto-migrate the current site to Supabase. Read the user fresh
+    // from Supabase — the `user` React state lags the auth listener,
+    // so right after a signup `user` is still null and the upsert
+    // would silently skip, leaving the dashboard preview blank because
+    // fetchUserSites returned []. Wait briefly for the auth state to
+    // settle and retry up to 3x so an authoritative session is always
+    // resolved before we write site_data.
+    let authedUser = user;
+    if (!authedUser) {
       try {
-        await upsertSiteToSupabase(activeSite, user.id);
-        console.log('[Migration] Site migrated to Supabase');
+        const { supabase } = await import('./lib/supabase');
+        for (let i = 0; i < 3; i++) {
+          const { data } = await supabase.auth.getUser();
+          if (data?.user) { authedUser = data.user as any; break; }
+          await new Promise(r => setTimeout(r, 400));
+        }
+      } catch (err) {
+        console.warn('[Auth] getUser lookup failed:', err);
+      }
+    }
+
+    if (activeSite && authedUser) {
+      try {
+        await upsertSiteToSupabase(activeSite, authedUser.id);
+        console.log('[Migration] Site migrated to Supabase for user', authedUser.id);
       } catch (err) {
         console.error('[Migration] Failed to migrate site (non-blocking):', err);
       }
+    } else if (!authedUser) {
+      console.warn('[Migration] Skipped — could not resolve authenticated user after signup');
     }
 
     // CompleteRegistration pixel + CAPI fire. Closes the conversion
