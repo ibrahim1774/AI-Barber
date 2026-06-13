@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Sparkles, ArrowRight, Zap } from 'lucide-react';
 import type { WebsiteData } from '../types';
+import { generateContent } from '../services/geminiService';
+import type { ShopInputs } from '../types';
 
 type Phase = 'input' | 'generation' | 'reveal';
 
@@ -23,8 +25,49 @@ export const GenerateBarbershopFunnel: React.FC<GenerateBarbershopFunnelProps> =
   const [bookingUrl, setBookingUrl] = useState('');
   const [siteData, setSiteData] = useState<WebsiteData | null>(null);
 
-  // Stubs — real implementations land in Task 5 (name) and Task 6 (link).
-  const runNameGeneration = async (_name: string) => { console.log('[funnel] name path stub'); };
+  // Advance the theatrical progress on a fixed cadence so visitors see
+  // motion even when the network call completes quickly. Total wall
+  // clock ~3s. Resolves AFTER the real generateContent so callers can
+  // await both before flipping to reveal.
+  const advanceProgress = (totalSteps: number, perStepMs = 900) =>
+    new Promise<void>((resolve) => {
+      let i = 0;
+      const id = setInterval(() => {
+        i += 1;
+        setProgressStep(i);
+        if (i >= totalSteps) {
+          clearInterval(id);
+          resolve();
+        }
+      }, perStepMs);
+    });
+
+  const runNameGeneration = async (name: string) => {
+    const inputs: ShopInputs = { shopName: name, area: '', phone: '' };
+    // Race: don't transition to reveal until BOTH the Gemini call and
+    // the theatrical progress have finished. Visitors should never see
+    // an empty site or a stalled progress list.
+    const [data] = await Promise.all([
+      generateContent(inputs).catch((err) => {
+        // Hard error from Gemini — surface a console log and fall back
+        // to a minimum-viable WebsiteData. Per spec we NEVER show error
+        // states to the visitor mid-funnel.
+        console.error('[funnel] generateContent failed:', err);
+        return null;
+      }),
+      advanceProgress(3),
+    ]);
+    if (!data) {
+      // Catastrophic Gemini failure — bounce back to input so the
+      // visitor can retry. This is the only place we leave the funnel.
+      setPhase('input');
+      return;
+    }
+    setSiteData(data);
+    setPhase('reveal');
+  };
+
+  // Stub — real implementation lands in Task 6 (link).
   const runLinkGeneration = async (_url: string, _typedName: string) => { console.log('[funnel] link path stub'); };
 
   // Theatrical progress steps shown during the generation phase. Both
@@ -34,10 +77,6 @@ export const GenerateBarbershopFunnel: React.FC<GenerateBarbershopFunnelProps> =
   const [progressSource, setProgressSource] = useState<'name' | 'link'>('name');
 
   const steps = progressSource === 'link' ? LINK_STEPS : NAME_STEPS;
-
-  // Unused for now — wired in Task 5/7.
-  void siteData;
-  void setSiteData;
 
   if (phase === 'generation') {
     return (
