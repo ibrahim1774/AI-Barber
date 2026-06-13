@@ -3,6 +3,7 @@ import { Sparkles, ArrowRight, Zap } from 'lucide-react';
 import type { WebsiteData } from '../types';
 import { generateContent } from '../services/geminiService';
 import type { ShopInputs } from '../types';
+import { buildSiteFromScrape } from '../lib/buildSiteFromScrape';
 
 type Phase = 'input' | 'generation' | 'reveal';
 
@@ -69,8 +70,67 @@ export const GenerateBarbershopFunnel: React.FC<GenerateBarbershopFunnelProps> =
     setPhase('reveal');
   };
 
-  // Stub — real implementation lands in Task 6 (link).
-  const runLinkGeneration = async (_url: string, _typedName: string) => { console.log('[funnel] link path stub'); };
+  const runLinkGeneration = async (url: string, typedName: string) => {
+    // Race: the scrape against a 5-second wall-clock timeout. On
+    // success we use the scrape; on timeout OR error we silently fall
+    // back to name-path generation using either the typed name OR
+    // a name derived from the URL.
+    const fallbackName = typedName.trim() || deriveNameFromUrl(url);
+
+    const scrapePromise = (async () => {
+      const resp = await fetch('/api/import-scrape', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+      if (!resp.ok) throw new Error(`scrape ${resp.status}`);
+      return resp.json();
+    })();
+
+    const timeoutPromise = new Promise<{ __timeout: true }>((resolve) =>
+      setTimeout(() => resolve({ __timeout: true }), 5_000),
+    );
+
+    const winner = await Promise.race([
+      scrapePromise.catch((err) => ({ __error: err })) as Promise<any>,
+      timeoutPromise as Promise<any>,
+    ]);
+
+    if (winner?.__timeout || winner?.__error || !winner) {
+      console.warn('[funnel] link path fallback to name path:', winner?.__error || 'timeout');
+      // Silent fall-through. Same theater, name path.
+      setProgressSource('name');
+      await runNameGeneration(fallbackName);
+      return;
+    }
+
+    // Scrape returned a payload. buildSiteFromScrape merges scraped
+    // fields with the typed name (manual override wins).
+    let data;
+    try {
+      data = buildSiteFromScrape(winner, url, { manual: { shopName: fallbackName, area: '', phone: '' } });
+    } catch (err) {
+      console.warn('[funnel] buildSiteFromScrape threw, falling back to name path:', err);
+      setProgressSource('name');
+      await runNameGeneration(fallbackName);
+      return;
+    }
+
+    await advanceProgress(3);
+    setSiteData(data.scraped);
+    setPhase('reveal');
+  };
+
+  // "https://booksy.com/en_us/the-gentlemens-lounge" → "The Gentlemens Lounge"
+  const deriveNameFromUrl = (raw: string): string => {
+    try {
+      const u = new URL(raw.startsWith('http') ? raw : `https://${raw}`);
+      const last = u.pathname.split('/').filter(Boolean).pop() || u.hostname.split('.')[0];
+      return last.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) || 'Barbershop';
+    } catch {
+      return 'Barbershop';
+    }
+  };
 
   // Theatrical progress steps shown during the generation phase. Both
   // paths show the same general arc; the messages diverge by source so
