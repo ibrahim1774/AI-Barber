@@ -941,7 +941,7 @@ const App: React.FC = () => {
             onBack={handleBack}
             site={activeSite ?? undefined}
             onNavigateDashboard={handleNavigateDashboard}
-            isPostPayment={!!activeSite?.deployedUrl}
+            isPostPayment={!!activeSite?.deployedUrl || activeSite?.deploymentStatus === 'deployed'}
             userId={user?.id ?? null}
           />
         ) : (
@@ -950,7 +950,7 @@ const App: React.FC = () => {
             onBack={handleBack}
             site={activeSite ?? undefined}
             onNavigateDashboard={handleNavigateDashboard}
-            isPostPayment={!!activeSite?.deployedUrl}
+            isPostPayment={!!activeSite?.deployedUrl || activeSite?.deploymentStatus === 'deployed'}
             userId={user?.id ?? null}
           />
         )
