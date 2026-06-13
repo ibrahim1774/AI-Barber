@@ -16,6 +16,12 @@ export default defineConfig(({ mode }) => {
         //},
       },
       plugins: [react()],
+      // Treat .html files as static assets — prevents Vite v6's
+      // import-analysis plugin from trying to parse index.html as a
+      // JS module (which fails on inline <script> closing tags). Does
+      // not affect the entry index.html which still goes through
+      // Vite's HTML transform pipeline.
+      assetsInclude: ['**/*.html'],
       define: {
         'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
         'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)

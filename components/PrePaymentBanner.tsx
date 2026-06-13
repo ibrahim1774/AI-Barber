@@ -390,6 +390,11 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                   }
                   embedSiteIdRef.current = prep.siteId;
                   setShowBenefits(true);
+                } catch (err: any) {
+                  // Surface backend failures (image upload, pending-site
+                  // save, etc.) instead of silently no-op'ing the click.
+                  console.error('[Launch My Site] failed:', err);
+                  alert(`Could not start checkout: ${err?.message || 'Unknown error'}. Please try again.`);
                 } finally {
                   setIsPreparingEmbed(false);
                 }

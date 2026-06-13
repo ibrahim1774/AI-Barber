@@ -32,3 +32,5 @@ server.ts
 service-account.json
 
 package-backup.json
+.vercel
+.env*
