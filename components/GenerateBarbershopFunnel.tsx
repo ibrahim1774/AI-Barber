@@ -65,10 +65,11 @@ export const GenerateBarbershopFunnel: React.FC<GenerateBarbershopFunnelProps> =
             // Submit handler wired in Task 4.
           }}
         >
-          <label className="block text-[10px] font-bold uppercase tracking-[0.22em] mb-2" style={{ color: 'rgba(255,255,255,0.55)' }}>
+          <label htmlFor="shop-name" className="block text-[10px] font-bold uppercase tracking-[0.22em] mb-2" style={{ color: 'rgba(255,255,255,0.55)' }}>
             Barbershop name
           </label>
           <input
+            id="shop-name"
             type="text"
             value={shopName}
             onChange={(e) => setShopName(e.target.value)}
@@ -112,6 +113,7 @@ export const GenerateBarbershopFunnel: React.FC<GenerateBarbershopFunnelProps> =
           >
             <input
               type="url"
+              aria-label="Booking page URL"
               value={bookingUrl}
               onChange={(e) => setBookingUrl(e.target.value)}
               placeholder="booksy.com/your-shop"
