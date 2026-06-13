@@ -2,46 +2,55 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- Pixel init deferred ~500ms after `load` so the bootstrap scripts
-     (fbevents.js ~97KB, TikTok pixel, Clarity) don't compete with the
-     LCP image for the main thread. Stubs queue any pre-bootstrap
-     fbq()/ttq() calls so PageView + InitiateCheckout + Purchase events
-     fired before this point still flush correctly when the real
-     scripts load. -->
+<!-- Meta Pixel — OFFICIAL base code pattern (with callMethod switch).
+     Runs inline so that any fbq() call (Lead on form submit, Purchase
+     on Stripe return, etc.) queues correctly. The actual fbevents.js
+     network request is still deferred below so it doesn't compete
+     with the LCP image. -->
+<script>
+  !function(f,b,e,v,n,t,s){
+    if(f.fbq)return;
+    n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+    if(!f._fbq)f._fbq=n;
+    n.push=n;n.loaded=!1;n.version='2.0';
+    n.queue=[];
+  }(window,document,'script');
+</script>
+<!-- TikTok Pixel — official base code pattern, same queue-then-flush
+     mechanism so ttq.track() calls before the SDK loads still fire. -->
+<script>
+  !function (w, d, t) {
+    w.TiktokAnalyticsObject=t;
+    var ttq=w[t]=w[t]||[];
+    ttq.methods=['page','track','identify','instances','debug','on','off','once','ready','alias','group','enableCookie','disableCookie','holdConsent','revokeConsent','grantConsent'];
+    ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};
+    for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);
+    ttq.instance=function(t){for(var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n]);return e};
+  }(window, document, 'ttq');
+</script>
+<!-- Deferred network load (fbevents.js + TikTok analytics + Clarity).
+     Stubs above queue any early calls; loaders below process the queue
+     once the actual SDKs land. Delayed to `load + 500ms` so the heavy
+     scripts don't compete with the LCP image. -->
 <script>
   (function () {
-    if (!window.fbq) {
-      var q = [];
-      window.fbq = function () { q.push(arguments); };
-      window.fbq.queue = q;
-    }
-    var ttqMethods = ['page','track','identify','instances','debug','on','off','once','ready','alias','group','enableCookie','disableCookie','holdConsent','revokeConsent','grantConsent'];
-    var ttq = window.ttq = window.ttq || [];
-    ttq.methods = ttqMethods;
-    ttqMethods.forEach(function (m) {
-      ttq[m] = ttq[m] || function () { ttq.push([m].concat([].slice.call(arguments))); };
-    });
     var loadPixels = function () {
-      // Meta Pixel
-      (function(f,b,e,v,n,t,s){
-        if(f.fbq && f.fbq.loaded)return;
-        n=f.fbq=f.fbq||function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-        if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-        n.queue=n.queue||[];t=b.createElement(e);t.async=!0;
-        t.src=v;s=b.getElementsByTagName(e)[0];
-        s.parentNode.insertBefore(t,s);
-      })(window, document, 'script', 'https://connect.facebook.net/en_US/fbevents.js');
+      // Meta — insert fbevents.js, fire init + PageView (queued + flushed).
+      if (!window.fbq.loaded) {
+        var fbScript = document.createElement('script');
+        fbScript.async = true;
+        fbScript.src = 'https://connect.facebook.net/en_US/fbevents.js';
+        var firstScript = document.getElementsByTagName('script')[0];
+        firstScript.parentNode.insertBefore(fbScript, firstScript);
+      }
       window.fbq('init', '26490568997297314');
       window.fbq('track', 'PageView');
-      // TikTok Pixel
-      (function (w, d, t) {
-        w.TiktokAnalyticsObject=t;var q=w[t];q.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};
-        q.instance=function(t){for(var e=q._i[t]||[],n=0;n<q.methods.length;n++)q.setAndDefer(e,q.methods[n]);return e};
-        q.load=function(e,n){var r='https://analytics.tiktok.com/i18n/pixel/events.js',o=n&&n.partner;q._i=q._i||{},q._i[e]=[],q._i[e]._u=r,q._t=q._t||{},q._t[e]=+new Date,q._o=q._o||{},q._o[e]=n||{};var s=document.createElement('script');s.type='text/javascript';s.async=!0;s.src=r+'?sdkid='+e+'&lib='+t;var f=document.getElementsByTagName('script')[0];f.parentNode.insertBefore(s,f)};
-        q.load('D81SNARC77UATASKVG10');
-        q.page();
-      }(window, document, 'ttq'));
-      // Microsoft Clarity
+      // TikTok — load() inserts the analytics SDK, then queue flushes.
+      var ttq = window.ttq;
+      ttq.load = function(e,n){var r='https://analytics.tiktok.com/i18n/pixel/events.js',o=n&&n.partner;ttq._i=ttq._i||{},ttq._i[e]=[],ttq._i[e]._u=r,ttq._t=ttq._t||{},ttq._t[e]=+new Date,ttq._o=ttq._o||{},ttq._o[e]=n||{};var s=document.createElement('script');s.type='text/javascript';s.async=!0;s.src=r+'?sdkid='+e+'&lib=ttq';var f=document.getElementsByTagName('script')[0];f.parentNode.insertBefore(s,f)};
+      ttq.load('D81SNARC77UATASKVG10');
+      ttq.page();
+      // Microsoft Clarity — independent of fbq/ttq.
       (function(c,l,a,r,i,t,y){
         c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
         t=l.createElement(r);t.async=1;t.src='https://www.clarity.ms/tag/'+i;
