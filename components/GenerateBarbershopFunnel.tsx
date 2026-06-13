@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Sparkles, ArrowRight, Zap } from 'lucide-react';
 import type { WebsiteData } from '../types';
 import { generateContent } from '../services/geminiService';
@@ -37,9 +37,11 @@ export const GenerateBarbershopFunnel: React.FC<GenerateBarbershopFunnelProps> =
         setProgressStep(i);
         if (i >= totalSteps) {
           clearInterval(id);
+          activeIntervalsRef.current.delete(id);
           resolve();
         }
       }, perStepMs);
+      activeIntervalsRef.current.add(id);
     });
 
   const runNameGeneration = async (name: string) => {
@@ -75,6 +77,20 @@ export const GenerateBarbershopFunnel: React.FC<GenerateBarbershopFunnelProps> =
   // the visitor sees the system "doing something" with their input.
   const [progressStep, setProgressStep] = useState(0);
   const [progressSource, setProgressSource] = useState<'name' | 'link'>('name');
+
+  // Track every live interval started by advanceProgress so we can
+  // clear them all if the component unmounts mid-generation. Without
+  // this the interval keeps firing setProgressStep on a dead component
+  // and React 18 strict mode warns about state updates on unmounted
+  // components.
+  const activeIntervalsRef = useRef<Set<ReturnType<typeof setInterval>>>(new Set());
+  useEffect(() => {
+    const set = activeIntervalsRef.current;
+    return () => {
+      for (const id of set) clearInterval(id);
+      set.clear();
+    };
+  }, []);
 
   const steps = progressSource === 'link' ? LINK_STEPS : NAME_STEPS;
 
