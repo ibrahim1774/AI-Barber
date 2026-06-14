@@ -1141,21 +1141,9 @@ const App: React.FC = () => {
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
 
-            {/* Local keyframes for the flashing IMPORTANT pill. Stronger
-                than Tailwind's animate-pulse (which only fades opacity);
-                this also blinks color so the eye locks onto it. */}
-            <style>{`
-              @keyframes editorIntroImportantFlash {
-                0%, 100% { color: #ef4444; opacity: 1; }
-                50% { color: #ffffff; opacity: 0.55; }
-              }
-            `}</style>
             <p
               className="relative mb-1 text-[10px] font-bold uppercase tracking-[0.34em]"
-              style={{
-                color: '#ef4444',
-                animation: 'editorIntroImportantFlash 0.9s ease-in-out infinite',
-              }}
+              style={{ color: '#ef4444' }}
             >
               Important
             </p>
