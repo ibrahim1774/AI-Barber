@@ -724,11 +724,13 @@ const App: React.FC = () => {
       setActiveSite(draftSite);
       persistView('editor', draftSite.id);
       sessionStorage.removeItem('pendingFormInputs');
-      // Post-generation intro modal disabled per product decision —
-      // visitors land straight in the editable preview without a popup
-      // explaining the editor. Ref still flips so the funnel state
-      // resets cleanly. Modal JSX kept in place (~150 lines below) so
-      // we can re-enable cheaply if the conversion data argues for it.
+      // Fire the post-generation intro modal on /booksy. Tells the
+      // visitor the site is editable now AND that signing up after
+      // payment preserves their edits. Other entry paths (/, /new,
+      // /free-barber) still skip the modal per product decision.
+      if (isBooksyPath()) {
+        setShowEditorIntro(true);
+      }
       if (cameFromNewRef.current) {
         cameFromNewRef.current = false;
       }
@@ -1130,9 +1132,21 @@ const App: React.FC = () => {
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
 
+            {/* Local keyframes for the flashing IMPORTANT pill. Stronger
+                than Tailwind's animate-pulse (which only fades opacity);
+                this also blinks color so the eye locks onto it. */}
+            <style>{`
+              @keyframes editorIntroImportantFlash {
+                0%, 100% { color: #ef4444; opacity: 1; }
+                50% { color: #ffffff; opacity: 0.55; }
+              }
+            `}</style>
             <p
               className="relative mb-1 text-[10px] font-bold uppercase tracking-[0.34em]"
-              style={{ color: '#ef4444' }}
+              style={{
+                color: '#ef4444',
+                animation: 'editorIntroImportantFlash 0.9s ease-in-out infinite',
+              }}
             >
               Important
             </p>
@@ -1157,15 +1171,14 @@ const App: React.FC = () => {
               className="relative mb-6 italic text-white/55"
               style={{ fontFamily: '"Instrument Serif", "Times New Roman", serif', fontSize: '14px' }}
             >
-              A quick tour of what you can do from here.
+              Here's how to make it yours.
             </p>
 
             <ul className="relative space-y-3.5 text-[13.5px] leading-relaxed text-white/85 md:text-[14px]" style={{ fontFamily: '"Manrope", "Inter", sans-serif' }}>
               {[
-                { text: 'Tap any text on the site to edit it.', bold: false },
-                { text: 'Add your own images.', bold: false },
-                { text: "Publish when you're ready, then make an account to edit text & images anytime.", bold: false },
-                { text: "Don't like the design? Scroll to the bottom to request a custom one.", bold: true },
+                { text: 'Tap any text or image to edit.', bold: false },
+                { text: 'Click Launch Site below to get your URL.', bold: false },
+                { text: 'Create an account afterward — your site stays saved so you can edit text or images anytime.', bold: true },
               ].map((item, i) => (
                 <li key={i} className="flex items-start gap-3">
                   <span
