@@ -25,6 +25,7 @@ export default async function handler(req: any, res: any) {
   try {
     const {
       eventId,
+      eventTime, // optional Unix seconds for backfill flows; defaults to now
       value,
       currency,
       customerEmail,
@@ -76,7 +77,12 @@ export default async function handler(req: any, res: any) {
       data: [
         {
           event_name: 'Purchase',
-          event_time: Math.floor(Date.now() / 1000),
+          // Allow callers to backdate event_time (e.g. backfill scripts
+          // replaying Stripe Checkout Sessions after a CAPI outage).
+          // Meta accepts event_time up to 7 days in the past.
+          event_time: typeof eventTime === 'number' && eventTime > 0
+            ? Math.floor(eventTime)
+            : Math.floor(Date.now() / 1000),
           event_id: eventId || `purchase_${Date.now()}`,
           action_source: 'website',
           event_source_url: eventSourceUrl || 'https://www.aibarber.org/',
