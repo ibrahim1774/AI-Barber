@@ -97,9 +97,16 @@ export const GenerateBarbershopFunnel: React.FC<GenerateBarbershopFunnelProps> =
       setTimeout(() => resolve({ __timeout: true }), 5_000),
     );
 
-    const winner = await Promise.race([
-      scrapePromise.catch((err) => ({ __error: err })) as Promise<any>,
-      timeoutPromise as Promise<any>,
+    // Race scrape + theatrical progress CONCURRENTLY so the progress
+    // list doesn't freeze on step 0 while the network call is in
+    // flight. Was awaiting scrape, then awaiting progress sequentially
+    // — visitors saw a stalled progress bar for up to 5s.
+    const [winner] = await Promise.all([
+      Promise.race([
+        scrapePromise.catch((err) => ({ __error: err })) as Promise<any>,
+        timeoutPromise as Promise<any>,
+      ]),
+      advanceProgress(3),
     ]);
 
     if (winner?.__timeout || winner?.__error || !winner) {
@@ -122,7 +129,6 @@ export const GenerateBarbershopFunnel: React.FC<GenerateBarbershopFunnelProps> =
       return;
     }
 
-    await advanceProgress(3);
     setSiteData(data.scraped);
     setPhase('reveal');
   };

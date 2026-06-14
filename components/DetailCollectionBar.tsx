@@ -26,6 +26,16 @@ export const DetailCollectionBar: React.FC<DetailCollectionBarProps> = ({
   const [phone, setPhone] = useState(initialPhone);
   const [closing, setClosing] = useState(false);
 
+  // Track whether the visitor has typed in each field. Gemini's
+  // generateContent returns placeholder values for area/phone, so the
+  // bar received non-empty `initialPhone` — which made the auto-hide
+  // condition (area && phone) true the instant the visitor advanced
+  // to step 1, dismissing the bar before they had a chance to type
+  // their real phone. Now we require an actual keystroke in BOTH
+  // fields, not just non-empty values, before auto-dismissing.
+  const [areaTyped, setAreaTyped] = useState(false);
+  const [phoneTyped, setPhoneTyped] = useState(false);
+
   // Deduplicate close calls. The auto-hide sequence sets a 350ms
   // setTimeout to call onClose; if the visitor clicks X during that
   // window, we'd fire onClose twice. The ref ensures the parent only
@@ -37,11 +47,10 @@ export const DetailCollectionBar: React.FC<DetailCollectionBarProps> = ({
     onClose();
   };
 
-  // Auto-hide after both filled. We require BOTH non-empty so a
-  // visitor who advances to step 1 without typing in step 0 isn't
-  // auto-dismissed before they fill anything.
+  // Auto-hide only after the visitor has TYPED in both fields. Bare
+  // non-empty values aren't enough — see comment above on areaTyped.
   useEffect(() => {
-    if (step === 1 && area.trim() && phone.trim()) {
+    if (step === 1 && areaTyped && phoneTyped && area.trim() && phone.trim()) {
       const t = setTimeout(() => {
         setClosing(true);
         const t2 = setTimeout(() => safeClose(), 350);
@@ -49,7 +58,7 @@ export const DetailCollectionBar: React.FC<DetailCollectionBarProps> = ({
       }, 600);
       return () => clearTimeout(t);
     }
-  }, [step, area, phone, onClose]);
+  }, [step, area, phone, areaTyped, phoneTyped, onClose]);
 
   return (
     <div
@@ -113,6 +122,7 @@ export const DetailCollectionBar: React.FC<DetailCollectionBarProps> = ({
             value={area}
             onChange={(e) => {
               setArea(e.target.value);
+              setAreaTyped(true);
               onChange('area', e.target.value);
             }}
             placeholder="Where's your shop located?"
@@ -146,6 +156,7 @@ export const DetailCollectionBar: React.FC<DetailCollectionBarProps> = ({
             value={phone}
             onChange={(e) => {
               setPhone(e.target.value);
+              setPhoneTyped(true);
               onChange('phone', e.target.value);
             }}
             placeholder="What's your phone number?"
