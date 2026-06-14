@@ -1,4 +1,4 @@
-import { hashEmail, hashPhone } from './_hashPii';
+import { hashEmail, hashPhone } from './_hashPii.js';
 
 // Meta CAPI Purchase event. Mirrors the browser-side fbq('track',
 // 'Purchase', ...) with shared event_id so Meta dedupes them.

@@ -1,4 +1,4 @@
-import { hashEmail, hashPhone } from './_hashPii';
+import { hashEmail, hashPhone } from './_hashPii.js';
 
 // Meta CAPI ViewContent event. Fires when a visitor lands on any
 // /booksy /free-barber /primebarber /new or the homepage funnel.

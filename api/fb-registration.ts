@@ -1,4 +1,4 @@
-import { hashEmail, hashPhone } from './_hashPii';
+import { hashEmail, hashPhone } from './_hashPii.js';
 
 // Meta CAPI CompleteRegistration event. Fires after a visitor creates
 // an account via the PostDeploymentModal → AuthModal signup flow.
