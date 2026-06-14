@@ -1,236 +1,191 @@
 import React, { useState, useRef, useEffect, useCallback, Suspense, lazy } from 'react';
-import { Sparkles, ArrowRight, Zap } from 'lucide-react';
-import type { WebsiteData } from '../types';
+import { Sparkles, ArrowRight, Zap, Loader2 } from 'lucide-react';
+import type { WebsiteData, ShopInputs } from '../types';
 import { generateContent } from '../services/geminiService';
-import type { ShopInputs } from '../types';
 import { buildSiteFromScrape } from '../lib/buildSiteFromScrape';
 import { useAuth } from '../contexts/AuthContext';
-import { DetailCollectionBar } from './DetailCollectionBar';
+import { BarbershopMidSitePrompts } from './BarbershopMidSitePrompts';
 
-type Phase = 'input' | 'generation' | 'reveal';
+// /generatebarbershop funnel — rebuilt to mirror PrimeHub's
+// /landscaping flow:
+//   1. Hero with a single barbershop-name input + optional Booksy
+//      accelerator card.
+//   2. Submit → spinner while generation + (optional) scrape run.
+//   3. Reveal phase renders the full barber site preview AND a
+//      centered BarbershopMidSitePrompts overlay that asks for area
+//      and phone sequentially. The overlay has no X button — both
+//      questions must be answered before it auto-dismisses.
+//   4. Every keystroke in the overlay updates siteData so the live
+//      preview behind reflects the answers in real time.
+//   5. When the visitor clicks Launch My Site, the embedded Stripe
+//      modal opens and the overlay hides (onCheckoutFlowChange from
+//      PrePaymentBanner → EuphoriaWebsite/GeneratedWebsite → here).
+//      Closing the Stripe modal brings the overlay back so the
+//      visitor can finish answering if they bailed mid-checkout.
 
-interface GenerateBarbershopFunnelProps {
-  // No props yet — the funnel is self-contained until Task 7 wires the
-  // EuphoriaWebsite handoff for the reveal phase. Auth + dashboard wiring
-  // is done by App.tsx's existing post-payment flow.
-}
+type Phase = 'input' | 'generating' | 'reveal';
 
 const SANS = '"Manrope", "Inter", system-ui, sans-serif';
 const SERIF = '"Instrument Serif", "Times New Roman", Georgia, serif';
 const GOLD = '#e8c074';
 const BG = '#0a0a0a';
-const NAME_STEPS = ['Writing your services...', 'Designing your pages...', 'Finalizing your site...'];
-const LINK_STEPS = ['Found your booking page', 'Importing your services', 'Adding your photos'];
 
 const EuphoriaWebsite = lazy(() => import('./EuphoriaWebsite').then((m) => ({ default: m.EuphoriaWebsite })));
 const GeneratedWebsite = lazy(() => import('./GeneratedWebsite').then((m) => ({ default: m.GeneratedWebsite })));
 
-export const GenerateBarbershopFunnel: React.FC<GenerateBarbershopFunnelProps> = () => {
+// "https://booksy.com/en_us/the-gentlemens-lounge" → "The Gentlemens Lounge"
+const deriveNameFromUrl = (raw: string): string => {
+  try {
+    const u = new URL(raw.startsWith('http') ? raw : `https://${raw}`);
+    const last = u.pathname.split('/').filter(Boolean).pop() || u.hostname.split('.')[0];
+    return last.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) || 'Barbershop';
+  } catch {
+    return 'Barbershop';
+  }
+};
+
+export const GenerateBarbershopFunnel: React.FC = () => {
   const [phase, setPhase] = useState<Phase>('input');
   const [shopName, setShopName] = useState('');
   const [bookingUrl, setBookingUrl] = useState('');
   const [siteData, setSiteData] = useState<WebsiteData | null>(null);
-  const [showBar, setShowBar] = useState(true);
+  // Mounts the BarbershopMidSitePrompts overlay during the reveal
+  // phase. Cleared once the visitor finishes both prompts.
+  const [showMidSitePrompts, setShowMidSitePrompts] = useState(true);
+  // True while the visitor has the Launch checkout open. Hides the
+  // mid-site overlay so the Stripe modal isn't sharing the screen.
+  const [isCheckoutFlowOpen, setIsCheckoutFlowOpen] = useState(false);
 
-  // Advance the theatrical progress on a fixed cadence so visitors see
-  // motion even when the network call completes quickly. Total wall
-  // clock ~3s. Resolves AFTER the real generateContent so callers can
-  // await both before flipping to reveal.
-  const advanceProgress = (totalSteps: number, perStepMs = 900) =>
-    new Promise<void>((resolve) => {
-      let i = 0;
-      const id = setInterval(() => {
-        i += 1;
-        setProgressStep(i);
-        if (i >= totalSteps) {
-          clearInterval(id);
-          activeIntervalsRef.current.delete(id);
-          resolve();
-        }
-      }, perStepMs);
-      activeIntervalsRef.current.add(id);
-    });
+  const { user } = useAuth();
 
-  const runNameGeneration = async (name: string) => {
+  // Name path — instant generation. The visitor sees the spinner for
+  // however long generateContent takes (~2–5s) then drops straight
+  // into the reveal phase with the mid-site overlay on top.
+  const runNameGeneration = useCallback(async (name: string) => {
     const inputs: ShopInputs = { shopName: name, area: '', phone: '' };
-    // Race: don't transition to reveal until BOTH the Gemini call and
-    // the theatrical progress have finished. Visitors should never see
-    // an empty site or a stalled progress list.
-    const [data] = await Promise.all([
-      generateContent(inputs).catch((err) => {
-        // Hard error from Gemini — surface a console log and fall back
-        // to a minimum-viable WebsiteData. Per spec we NEVER show error
-        // states to the visitor mid-funnel.
-        console.error('[funnel] generateContent failed:', err);
-        return null;
-      }),
-      advanceProgress(3),
-    ]);
+    const data = await generateContent(inputs).catch((err) => {
+      console.error('[funnel] generateContent failed:', err);
+      return null;
+    });
     if (!data) {
-      // Catastrophic Gemini failure — bounce back to input so the
-      // visitor can retry. This is the only place we leave the funnel.
       setPhase('input');
       return;
     }
     setSiteData(data);
+    setShowMidSitePrompts(true);
     setPhase('reveal');
-  };
+  }, []);
 
-  const runLinkGeneration = async (url: string, typedName: string) => {
-    // Race: the scrape against a 5-second wall-clock timeout. On
-    // success we use the scrape; on timeout OR error we silently fall
-    // back to name-path generation using either the typed name OR
-    // a name derived from the URL.
-    const fallbackName = typedName.trim() || deriveNameFromUrl(url);
-
-    const scrapePromise = (async () => {
-      const resp = await fetch('/api/import-scrape', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url }),
-      });
-      if (!resp.ok) throw new Error(`scrape ${resp.status}`);
-      return resp.json();
-    })();
-
-    const timeoutPromise = new Promise<{ __timeout: true }>((resolve) =>
-      setTimeout(() => resolve({ __timeout: true }), 5_000),
-    );
-
-    // Race scrape + theatrical progress CONCURRENTLY so the progress
-    // list doesn't freeze on step 0 while the network call is in
-    // flight. Was awaiting scrape, then awaiting progress sequentially
-    // — visitors saw a stalled progress bar for up to 5s.
-    const [winner] = await Promise.all([
-      Promise.race([
+  // Link path — race the Booksy scrape against a 5-second wall clock.
+  // On success use the scrape; on timeout or error silently fall back
+  // to the name path so the visitor never sees an error state.
+  const runLinkGeneration = useCallback(
+    async (url: string, typedName: string) => {
+      const fallbackName = typedName.trim() || deriveNameFromUrl(url);
+      const scrapePromise = (async () => {
+        const resp = await fetch('/api/import-scrape', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url }),
+        });
+        if (!resp.ok) throw new Error(`scrape ${resp.status}`);
+        return resp.json();
+      })();
+      const timeoutPromise = new Promise<{ __timeout: true }>((resolve) =>
+        setTimeout(() => resolve({ __timeout: true }), 5_000),
+      );
+      const winner = await Promise.race([
         scrapePromise.catch((err) => ({ __error: err })) as Promise<any>,
         timeoutPromise as Promise<any>,
-      ]),
-      advanceProgress(3),
-    ]);
+      ]);
+      if (winner?.__timeout || winner?.__error || !winner) {
+        console.warn('[funnel] link path fallback to name path:', winner?.__error || 'timeout');
+        await runNameGeneration(fallbackName);
+        return;
+      }
+      let data: { scraped: WebsiteData };
+      try {
+        data = buildSiteFromScrape(winner, url, {
+          manual: { shopName: fallbackName, area: '', phone: '' },
+        });
+      } catch (err) {
+        console.warn('[funnel] buildSiteFromScrape threw, falling back to name path:', err);
+        await runNameGeneration(fallbackName);
+        return;
+      }
+      setSiteData(data.scraped);
+      setShowMidSitePrompts(true);
+      setPhase('reveal');
+    },
+    [runNameGeneration],
+  );
 
-    if (winner?.__timeout || winner?.__error || !winner) {
-      console.warn('[funnel] link path fallback to name path:', winner?.__error || 'timeout');
-      // Silent fall-through. Same theater, name path.
-      setProgressSource('name');
-      await runNameGeneration(fallbackName);
-      return;
-    }
+  // Per-keystroke live preview wiring. The mid-site overlay calls
+  // this on every keypress for area + phone — we mutate siteData
+  // synchronously so the rendered preview re-renders immediately.
+  const handlePromptChange = useCallback(
+    (field: 'area' | 'phone', value: string) => {
+      setSiteData((prev) => {
+        if (!prev) return prev;
+        if (field === 'area') return { ...prev, area: value };
+        return { ...prev, phone: value };
+      });
+    },
+    [],
+  );
 
-    // Scrape returned a payload. buildSiteFromScrape merges scraped
-    // fields with the typed name (manual override wins).
-    let data;
-    try {
-      data = buildSiteFromScrape(winner, url, { manual: { shopName: fallbackName, area: '', phone: '' } });
-    } catch (err) {
-      console.warn('[funnel] buildSiteFromScrape threw, falling back to name path:', err);
-      setProgressSource('name');
-      await runNameGeneration(fallbackName);
-      return;
-    }
+  // Fires when the visitor submits each step in the mid-site overlay.
+  // Captures the lead to Make.com / Supabase via the existing
+  // leadCaptureService so a partial visitor still lands in the CRM.
+  const handlePromptStepSubmit = useCallback(
+    (field: 'area' | 'phone', value: string) => {
+      const current = siteData;
+      if (!current) return;
+      const merged: ShopInputs = {
+        shopName: current.shopName || shopName,
+        area: field === 'area' ? value : current.area || '',
+        phone: field === 'phone' ? value : current.phone || '',
+      };
+      import('../services/leadCaptureService')
+        .then(({ captureLead }) =>
+          captureLead(merged).catch((err) => console.warn('[funnel] captureLead failed:', err)),
+        )
+        .catch((err) => console.warn('[funnel] leadCaptureService import failed:', err));
+    },
+    [siteData, shopName],
+  );
 
-    setSiteData(data.scraped);
-    setPhase('reveal');
-  };
-
-  // "https://booksy.com/en_us/the-gentlemens-lounge" → "The Gentlemens Lounge"
-  const deriveNameFromUrl = (raw: string): string => {
-    try {
-      const u = new URL(raw.startsWith('http') ? raw : `https://${raw}`);
-      const last = u.pathname.split('/').filter(Boolean).pop() || u.hostname.split('.')[0];
-      return last.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) || 'Barbershop';
-    } catch {
-      return 'Barbershop';
-    }
-  };
-
-  // Theatrical progress steps shown during the generation phase. Both
-  // paths show the same general arc; the messages diverge by source so
-  // the visitor sees the system "doing something" with their input.
-  const [progressStep, setProgressStep] = useState(0);
-  const [progressSource, setProgressSource] = useState<'name' | 'link'>('name');
-
-  // Track every live interval started by advanceProgress so we can
-  // clear them all if the component unmounts mid-generation. Without
-  // this the interval keeps firing setProgressStep on a dead component
-  // and React 18 strict mode warns about state updates on unmounted
-  // components.
-  const activeIntervalsRef = useRef<Set<ReturnType<typeof setInterval>>>(new Set());
-  useEffect(() => {
-    const set = activeIntervalsRef.current;
-    return () => {
-      for (const id of set) clearInterval(id);
-      set.clear();
-    };
+  const handlePromptComplete = useCallback(() => {
+    setShowMidSitePrompts(false);
   }, []);
 
-  const { user } = useAuth();
-
-  const handleBarChange = useCallback((field: 'area' | 'phone', value: string) => {
-    setSiteData((prev) => {
-      if (!prev) return prev;
-      if (field === 'area') return { ...prev, area: value };
-      return { ...prev, phone: value };
-    });
+  const handleBack = useCallback(() => {
+    setPhase('input');
+    setSiteData(null);
+    setShowMidSitePrompts(true);
+    setIsCheckoutFlowOpen(false);
   }, []);
 
-  const closeBar = useCallback(() => setShowBar(false), []);
-
-  const steps = progressSource === 'link' ? LINK_STEPS : NAME_STEPS;
-
-  if (phase === 'generation') {
+  // ───────────────────────── Phase: generating ─────────────────────────
+  if (phase === 'generating') {
     return (
       <div
         className="min-h-screen flex items-center justify-center px-5 py-12"
         style={{ background: BG, color: 'white', fontFamily: SANS }}
       >
-        <div className="w-full max-w-md text-center">
-          <Sparkles size={28} style={{ color: GOLD }} className="mx-auto mb-6 animate-pulse" />
-          <h2 className="text-xl md:text-2xl font-black tracking-tight mb-8" style={{ letterSpacing: '-0.01em' }}>
-            Building your{' '}
-            <span style={{ fontFamily: SERIF, fontStyle: 'italic', fontWeight: 400, color: GOLD }}>
-              barbershop site
-            </span>
-          </h2>
-          <ul className="space-y-3 text-left" aria-live="polite" aria-atomic="false">
-            {steps.map((s, i) => (
-              <li
-                key={s}
-                aria-current={i === progressStep ? 'step' : undefined}
-                className="flex items-center gap-3 text-[14px]"
-                style={{ color: i <= progressStep ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.3)' }}
-              >
-                <span
-                  className="inline-flex items-center justify-center w-5 h-5 rounded-full"
-                  style={{
-                    background: i < progressStep ? GOLD : 'transparent',
-                    border: `1px solid ${i <= progressStep ? GOLD : 'rgba(255,255,255,0.18)'}`,
-                    color: '#0a0a0a',
-                  }}
-                >
-                  {i < progressStep ? '✓' : ''}
-                </span>
-                <span>{s}</span>
-              </li>
-            ))}
-          </ul>
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 size={36} className="animate-spin" style={{ color: GOLD }} />
+          <p className="text-[13px] text-white/70">Building your barbershop site…</p>
         </div>
       </div>
     );
   }
 
+  // ───────────────────────── Phase: reveal ─────────────────────────
   if (phase === 'reveal' && siteData) {
-    const handleBack = () => {
-      setPhase('input');
-      setSiteData(null);
-      setProgressStep(0);
-      setShowBar(true);
-    };
-    // Mirror App.tsx's editor template switch — the homepage flow uses
-    // GeneratedWebsite by default and only hands off to Euphoria when
-    // `data.template === 'euphoria'`. The funnel was hardcoded to
-    // Euphoria, which is why customers landed on a different design
-    // than what they see on the / homepage.
+    // Mirror App.tsx's editor template switch — the homepage flow
+    // uses GeneratedWebsite by default and only hands off to Euphoria
+    // when `data.template === 'euphoria'`.
     const useEuphoria = (siteData as any)?.template === 'euphoria';
     return (
       <>
@@ -241,6 +196,7 @@ export const GenerateBarbershopFunnel: React.FC<GenerateBarbershopFunnelProps> =
               onBack={handleBack}
               userId={user?.id ?? null}
               isPostPayment={false}
+              onCheckoutFlowChange={setIsCheckoutFlowOpen}
             />
           ) : (
             <GeneratedWebsite
@@ -248,13 +204,15 @@ export const GenerateBarbershopFunnel: React.FC<GenerateBarbershopFunnelProps> =
               onBack={handleBack}
               userId={user?.id ?? null}
               isPostPayment={false}
+              onCheckoutFlowChange={setIsCheckoutFlowOpen}
             />
           )}
         </Suspense>
-        {showBar && (
-          <DetailCollectionBar
-            onChange={handleBarChange}
-            onClose={closeBar}
+        {showMidSitePrompts && !isCheckoutFlowOpen && (
+          <BarbershopMidSitePrompts
+            onChange={handlePromptChange}
+            onStepSubmit={handlePromptStepSubmit}
+            onComplete={handlePromptComplete}
             initialArea={siteData.area || ''}
             initialPhone={siteData.phone || ''}
           />
@@ -263,21 +221,26 @@ export const GenerateBarbershopFunnel: React.FC<GenerateBarbershopFunnelProps> =
     );
   }
 
-  // Default: input phase
+  // ───────────────────────── Phase: input (default) ─────────────────────────
   return (
     <div
       className="min-h-screen flex items-center justify-center px-5 md:px-8 py-12"
       style={{ background: BG, color: 'white', fontFamily: SANS }}
     >
       <div className="w-full max-w-lg">
-        {/* HERO */}
         <div className="text-center mb-8">
           <div
             className="inline-flex items-center gap-1.5 px-2.5 py-1 mb-4"
-            style={{ background: 'rgba(232,192,116,0.12)', border: `1px solid rgba(232,192,116,0.35)` }}
+            style={{
+              background: 'rgba(232,192,116,0.12)',
+              border: `1px solid rgba(232,192,116,0.35)`,
+            }}
           >
             <Sparkles size={11} style={{ color: GOLD }} />
-            <span className="text-[10px] font-bold uppercase tracking-[0.22em]" style={{ color: GOLD }}>
+            <span
+              className="text-[10px] font-bold uppercase tracking-[0.22em]"
+              style={{ color: GOLD }}
+            >
               Free barbershop website
             </span>
           </div>
@@ -287,26 +250,29 @@ export const GenerateBarbershopFunnel: React.FC<GenerateBarbershopFunnelProps> =
           >
             Generate your{' '}
             <span style={{ fontFamily: SERIF, fontStyle: 'italic', fontWeight: 400, color: GOLD }}>
-              FREE
+              barbershop website
             </span>{' '}
-            barbershop website in seconds
+            in seconds
           </h1>
         </div>
 
-        {/* NAME INPUT */}
+        {/* Name input — single required field. */}
         <form
           className="mb-5"
           onSubmit={(e) => {
             e.preventDefault();
-            if (!shopName.trim()) return;
-            setProgressSource('name');
-            setProgressStep(0);
-            setPhase('generation');
-            void runNameGeneration(shopName);
+            const name = shopName.trim();
+            if (!name) return;
+            setPhase('generating');
+            void runNameGeneration(name);
           }}
         >
-          <label htmlFor="shop-name" className="block text-[10px] font-bold uppercase tracking-[0.22em] mb-2" style={{ color: 'rgba(255,255,255,0.55)' }}>
-            Barbershop name
+          <label
+            htmlFor="shop-name"
+            className="block text-[10px] font-bold uppercase tracking-[0.22em] mb-2"
+            style={{ color: 'rgba(255,255,255,0.55)' }}
+          >
+            What is your barbershop name?
           </label>
           <input
             id="shop-name"
@@ -315,6 +281,7 @@ export const GenerateBarbershopFunnel: React.FC<GenerateBarbershopFunnelProps> =
             onChange={(e) => setShopName(e.target.value)}
             placeholder="The Gentlemen's Lounge"
             required
+            autoFocus
             className="w-full px-4 py-3 bg-transparent text-white placeholder-white/30 text-[14px] outline-none transition-colors mb-3"
             style={{
               border: '1px solid rgba(255,255,255,0.12)',
@@ -324,35 +291,49 @@ export const GenerateBarbershopFunnel: React.FC<GenerateBarbershopFunnelProps> =
           />
           <button
             type="submit"
-            className="w-full inline-flex items-center justify-center gap-2 px-7 py-3.5 font-black uppercase tracking-[0.22em] text-[11px] transition"
-            style={{ background: GOLD, color: '#0a0a0a', border: '1px solid transparent', fontFamily: 'inherit' }}
+            disabled={!shopName.trim()}
+            className="w-full inline-flex items-center justify-center gap-2 px-7 py-3.5 font-black uppercase tracking-[0.22em] text-[11px] transition disabled:opacity-50"
+            style={{
+              background: GOLD,
+              color: '#0a0a0a',
+              border: '1px solid transparent',
+              fontFamily: 'inherit',
+            }}
           >
-            <span>Generate my website</span>
+            <span>Generate My Barbershop Website</span>
             <ArrowRight size={14} />
           </button>
         </form>
 
-        {/* ACCELERATOR */}
+        {/* Optional Booksy accelerator. If the visitor has a booking
+            page we scrape it (services + photos) and use that instead
+            of generating from name alone. Silently falls back on
+            timeout/error so the visitor never sees a stalled state. */}
         <div
           className="p-4 rounded"
-          style={{ background: 'rgba(232,192,116,0.04)', border: `1px solid rgba(232,192,116,0.18)` }}
+          style={{
+            background: 'rgba(232,192,116,0.04)',
+            border: `1px solid rgba(232,192,116,0.18)`,
+          }}
         >
           <div className="flex items-start gap-2 mb-3">
             <Zap size={14} style={{ color: GOLD }} className="shrink-0 mt-0.5" />
-            <p className="text-[12px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.75)' }}>
-              Have a <strong style={{ color: 'white' }}>Booksy, Fresha, Square, Vagaro,</strong> or{' '}
-              <strong style={{ color: 'white' }}>StyleSeat</strong> link? Paste it and we'll build from your real
-              services & photos.
+            <p
+              className="text-[12px] leading-relaxed"
+              style={{ color: 'rgba(255,255,255,0.75)' }}
+            >
+              Have a <strong style={{ color: 'white' }}>Booksy, Fresha, Square, Vagaro,</strong>{' '}
+              or <strong style={{ color: 'white' }}>StyleSeat</strong> link? Paste it and we'll
+              build from your real services & photos.
             </p>
           </div>
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              if (!bookingUrl.trim()) return;
-              setProgressSource('link');
-              setProgressStep(0);
-              setPhase('generation');
-              void runLinkGeneration(bookingUrl, shopName);
+              const url = bookingUrl.trim();
+              if (!url) return;
+              setPhase('generating');
+              void runLinkGeneration(url, shopName);
             }}
           >
             <input
@@ -370,7 +351,8 @@ export const GenerateBarbershopFunnel: React.FC<GenerateBarbershopFunnelProps> =
             />
             <button
               type="submit"
-              className="w-full inline-flex items-center justify-center gap-2 px-5 py-2.5 font-bold uppercase tracking-[0.22em] text-[10px] transition"
+              disabled={!bookingUrl.trim()}
+              className="w-full inline-flex items-center justify-center gap-2 px-5 py-2.5 font-bold uppercase tracking-[0.22em] text-[10px] transition disabled:opacity-50"
               style={{
                 background: 'transparent',
                 color: GOLD,

@@ -40,9 +40,17 @@ interface PrePaymentBannerProps {
   ) => Promise<{ siteId: string } | { error: string }>;
   isDeploying: boolean;
   industry?: string;
+  // Optional. Fires whenever the visitor enters or leaves the Launch
+  // checkout flow (preparing the embedded checkout, or the Benefits
+  // modal showing). Used by /generatebarbershop to hide the
+  // BarbershopMidSitePrompts overlay so it doesn't sit on top of the
+  // Stripe form. Every other entry path (homepage, /booksy, /free-barber,
+  // /primebarber, post-payment editor) omits this prop and behavior is
+  // unchanged for them.
+  onCheckoutFlowChange?: (open: boolean) => void;
 }
 
-const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepareCheckout, isDeploying, industry }) => {
+const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepareCheckout, isDeploying, industry, onCheckoutFlowChange }) => {
   // /booksy import flow: same $9/mo pricing as the homepage now —
   // booksyMode is still tracked so the receipt tags the source as
   // "(Booksy)" via the monthly-booksy plan slug.
@@ -106,6 +114,14 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   // matching pendingSite in localStorage after payment.
   const embedSiteIdRef = React.useRef<string | null>(null);
   const [isPreparingEmbed, setIsPreparingEmbed] = useState(false);
+
+  // Notify the parent (when one is listening) whenever the checkout
+  // flow opens or closes. Tracks both phases: preparing the pending
+  // site and the Benefits/embedded checkout modal being visible. Used
+  // by /generatebarbershop to hide overlays during checkout.
+  useEffect(() => {
+    onCheckoutFlowChange?.(isPreparingEmbed || showBenefits);
+  }, [isPreparingEmbed, showBenefits, onCheckoutFlowChange]);
   // Embedded checkout state for the custom-design wizard's step-3
   // Continue button — same pattern as the main flow.
   const [customEmbedSecret, setCustomEmbedSecret] = useState<string | null>(null);
