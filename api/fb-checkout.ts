@@ -1,4 +1,4 @@
-import { hashEmail, hashPhone } from './_hashPii';
+import { hashEmail, hashPhone } from './_hashPii.js';
 
 // Facebook Conversions API — InitiateCheckout event. Mirrors
 // fb-purchase.ts exactly. Browser fires

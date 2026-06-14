@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { hashEmail, hashPhone } from './_hashPii';
+import { hashEmail, hashPhone } from './_hashPii.js';
 
 // TikTok Events API (v1.3). Fires server-side Lead, Purchase,
 // InitiateCheckout, ViewContent, CompleteRegistration events.

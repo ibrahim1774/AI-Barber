@@ -1,4 +1,4 @@
-import { hashEmail, hashPhone } from './_hashPii';
+import { hashEmail, hashPhone } from './_hashPii.js';
 
 // Server-side companion to `fbq('track', 'Lead')`. Same event_id from
 // both ends so Meta dedupes. Now also forwards advanced matching (em +
