@@ -16,6 +16,8 @@ const SUPPORTED: SupportedEvent[] = ['Lead', 'Purchase', 'InitiateCheckout', 'Vi
 interface Body {
   event: SupportedEvent;
   event_id: string;
+  // Optional Unix seconds for backfill flows; defaults to now.
+  event_time?: number;
   event_source_url?: string;
   user_agent?: string;
   value?: number;
@@ -45,6 +47,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const {
     event,
     event_id,
+    event_time, // optional Unix seconds for backfill flows; defaults to now
     event_source_url,
     user_agent,
     value,
@@ -112,7 +115,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     data: [
       {
         event,
-        event_time: Math.floor(Date.now() / 1000),
+        // Allow callers to backdate event_time for backfill flows.
+        event_time: typeof event_time === 'number' && event_time > 0
+          ? Math.floor(event_time)
+          : Math.floor(Date.now() / 1000),
         event_id,
         user: userObj,
         properties,
