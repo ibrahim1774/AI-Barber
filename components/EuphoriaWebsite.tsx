@@ -374,6 +374,14 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
   useEuphoriaAssets();
 
   const [siteData, setSiteData] = useState<WebsiteData>(data);
+
+  // Sync external `data` prop changes into internal state. Same
+  // rationale as GeneratedWebsite: the /generatebarbershop funnel
+  // pipes per-keystroke DetailCollectionBar updates through this prop.
+  useEffect(() => {
+    setSiteData(data);
+  }, [data]);
+
   const [isDeploying, setIsDeploying] = useState(false);
   const [, setDeploymentResult] = useState<{ error?: string } | null>(null);
   // Same Stripe-return reset as GeneratedWebsite — without this the

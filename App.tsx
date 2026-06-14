@@ -9,7 +9,7 @@ declare global {
 }
 
 import { GeneratorForm } from './components/GeneratorForm.tsx';
-import { isBooksyPath, isFreeBarberPath, isPrimeBarberPath, isRecoverPath } from './lib/dealMode.ts';
+import { isBooksyPath, isFreeBarberPath, isPrimeBarberPath, isRecoverPath, isGenerateBarbershopPath } from './lib/dealMode.ts';
 import { LoadingScreen } from './components/LoadingScreen.tsx';
 import { generateHTMLForTemplate } from './services/templateRenderer.ts';
 import { generateContent } from './services/geminiService.ts';
@@ -32,6 +32,7 @@ const PostDeploymentModal = lazy(() => import('./components/PostDeploymentModal.
 const ManagementDashboard = lazy(() => import('./components/ManagementDashboard.tsx').then(m => ({ default: m.ManagementDashboard })));
 const AuthModal = lazy(() => import('./components/AuthModal.tsx').then(m => ({ default: m.AuthModal })));
 const RecoverPage = lazy(() => import('./components/RecoverPage.tsx').then(m => ({ default: m.RecoverPage })));
+const GenerateBarbershopFunnel = lazy(() => import('./components/GenerateBarbershopFunnel.tsx').then(m => ({ default: m.GenerateBarbershopFunnel })));
 
 const DEPLOY_TIMER_SECONDS = 5;
 
@@ -898,6 +899,14 @@ const App: React.FC = () => {
             onSuccess={handleAuthSuccess}
           />
         </Suspense>
+      </Suspense>
+    );
+  }
+
+  if (isGenerateBarbershopPath()) {
+    return (
+      <Suspense fallback={<LoadingScreen />}>
+        <GenerateBarbershopFunnel />
       </Suspense>
     );
   }

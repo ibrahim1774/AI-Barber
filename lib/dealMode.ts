@@ -56,3 +56,13 @@ export function isRecoverPath(pathname?: string): boolean {
   const p = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
   return p === RECOVER_PATH || p === `${RECOVER_PATH}/`;
 }
+
+// `/generatebarbershop` — fast-conversion funnel. Single-input hero
+// for shop name, accelerator below for Booksy/Fresha/Square/Vagaro/
+// StyleSeat link. See docs/superpowers/specs/2026-06-13-generate-barbershop-funnel-design.md
+export const GENERATE_BARBERSHOP_PATH = '/generatebarbershop';
+
+export function isGenerateBarbershopPath(pathname?: string): boolean {
+  const p = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
+  return p === GENERATE_BARBERSHOP_PATH || p === `${GENERATE_BARBERSHOP_PATH}/`;
+}

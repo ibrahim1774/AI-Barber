@@ -416,6 +416,18 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
 
 export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack, site, onNavigateDashboard, isPostPayment = false, userId = null }) => {
   const [siteData, setSiteData] = useState<WebsiteData>(data);
+
+  // Sync external `data` prop changes into internal state. Needed for
+  // the /generatebarbershop funnel, which keeps its own siteData state
+  // and pipes per-keystroke updates from DetailCollectionBar (area,
+  // phone) down through this prop — without this useEffect the live
+  // preview wouldn't reflect those keystrokes because useState only
+  // reads its initializer once. Homepage flow is unaffected: App.tsx
+  // sets generatedData exactly once after generation, so this never
+  // overwrites any in-progress inline edits there.
+  useEffect(() => {
+    setSiteData(data);
+  }, [data]);
   const [isScrolled, setIsScrolled] = useState(false);
   const [isDeploying, setIsDeploying] = useState(false);
   const [, setDeploymentResult] = useState<{
