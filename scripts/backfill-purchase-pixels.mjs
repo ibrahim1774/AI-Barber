@@ -37,6 +37,14 @@ const args = new Set(process.argv.slice(2));
 const hours = Number(([...args].find((a) => a.startsWith('--hours=')) || '--hours=48').split('=')[1]) || 48;
 const dryRun = args.has('--dry-run');
 const apiBase = (([...args].find((a) => a.startsWith('--base=')) || '--base=https://www.aibarber.org').split('=')[1]).replace(/\/$/, '');
+// Comma-separated emails to exclude (case-insensitive). Use for own test purchases.
+const skipEmails = new Set(
+  (([...args].find((a) => a.startsWith('--skip-emails=')) || '--skip-emails=').split('=')[1] || '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+);
+if (skipEmails.size) console.log(`[Backfill] Skip emails: ${[...skipEmails].join(', ')}`);
 
 const since = Math.floor(Date.now() / 1000) - hours * 60 * 60;
 console.log(`[Backfill] Window: last ${hours}h (since ${new Date(since * 1000).toISOString()})`);
@@ -63,6 +71,7 @@ while (true) {
 
 const paid = sessions
   .filter((s) => s.payment_status === 'paid' && s.amount_total > 0)
+  .filter((s) => !skipEmails.has((s.customer_details?.email || '').toLowerCase()))
   .sort((a, b) => a.created - b.created);
 
 console.log(`[Backfill] ${sessions.length} sessions in window, ${paid.length} paid:`);
@@ -97,13 +106,24 @@ const PLAN_CONTENT = {
 
 let metaOk = 0, metaErr = 0, ttOk = 0, ttErr = 0;
 
+function splitName(full) {
+  if (!full || typeof full !== 'string') return { firstName: null, lastName: null };
+  const parts = full.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { firstName: null, lastName: null };
+  if (parts.length === 1) return { firstName: parts[0], lastName: null };
+  return { firstName: parts.slice(0, -1).join(' '), lastName: parts[parts.length - 1] };
+}
+
 for (const s of paid) {
   const eventId = s.id;
   const eventTime = s.created;
   const value = s.amount_total / 100;
   const currency = (s.currency || 'usd').toUpperCase();
-  const email = s.customer_details?.email || null;
-  const phone = s.customer_details?.phone || null;
+  const cd = s.customer_details || {};
+  const addr = cd.address || {};
+  const email = cd.email || null;
+  const phone = cd.phone || null;
+  const { firstName, lastName } = splitName(cd.name);
   const plan = s.metadata?.plan || 'monthly';
   const cfg = PLAN_CONTENT[plan] || PLAN_CONTENT.monthly;
   const contents = [{ id: cfg.id, quantity: 1, item_price: value }];
@@ -120,6 +140,13 @@ for (const s of paid) {
         currency,
         customerEmail: email,
         customerPhone: phone,
+        firstName,
+        lastName,
+        city: addr.city || null,
+        state: addr.state || null,
+        zip: addr.postal_code || null,
+        country: addr.country || null,
+        externalId: eventId, // Stripe session id → hashed by server
         eventSourceUrl: 'https://www.aibarber.org/',
         clientUserAgent: 'AI-Barber Backfill Script/1.0',
         content_id: cfg.id,
@@ -156,6 +183,7 @@ for (const s of paid) {
         currency,
         email,
         phone,
+        external_id: eventId,
         content_id: cfg.id,
         content_name: cfg.name,
         content_type: 'product',

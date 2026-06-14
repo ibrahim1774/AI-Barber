@@ -189,7 +189,9 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
       const checkoutValue = 19;
       const checkoutCurrency = 'USD';
       const { getPlanContentMeta } = await import('../lib/pixelMeta');
+      const { readMetaCookies } = await import('../services/metaMatchParams');
       const m = getPlanContentMeta(customPlan, checkoutValue);
+      const { fbc, fbp } = readMetaCookies();
       (window as any).fbq?.(
         'track',
         'InitiateCheckout',
@@ -210,6 +212,9 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
           currency: checkoutCurrency,
           eventSourceUrl: window.location.href,
           clientUserAgent: navigator.userAgent,
+          externalId: checkoutEventId,
+          fbc,
+          fbp,
           content_id: m.content_id,
           content_name: m.content_name,
           content_type: m.content_type,
@@ -226,6 +231,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
           user_agent: navigator.userAgent,
           value: checkoutValue,
           currency: checkoutCurrency,
+          external_id: checkoutEventId,
           content_id: m.content_id,
           content_name: m.content_name,
           content_type: m.content_type,

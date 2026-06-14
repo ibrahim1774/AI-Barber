@@ -46,9 +46,19 @@ export default async function handler(req: any, res: any) {
     if (session.payment_status === 'paid') {
       // amount_total is in the smallest currency unit (cents for USD)
       const amountTotal = typeof session.amount_total === 'number' ? session.amount_total / 100 : null;
+      const cd = session.customer_details || {};
+      const addr = cd.address || {};
       return res.status(200).json({
         verified: true,
-        customerEmail: session.customer_details?.email || null,
+        customerEmail: cd.email || null,
+        customerPhone: cd.phone || null,
+        customerName: cd.name || null,
+        customerAddress: {
+          city: addr.city || null,
+          state: addr.state || null,
+          zip: addr.postal_code || null,
+          country: addr.country || null,
+        },
         amountTotal,
         currency: (session.currency || 'usd').toUpperCase(),
         plan: session.metadata?.plan || null,

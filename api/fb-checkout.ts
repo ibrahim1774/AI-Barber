@@ -1,12 +1,12 @@
-import { hashEmail, hashPhone } from './_hashPii.js';
+import { buildUserData, extractClientIp } from './_buildUserData.js';
 
 // Facebook Conversions API — InitiateCheckout event. Mirrors
-// fb-purchase.ts exactly. Browser fires
+// fb-purchase.ts. Browser fires
 // `fbq('track','InitiateCheckout',{value,currency},{eventID})` with
 // the same event_id so Meta dedupes browser-pixel against CAPI.
 //
-// Advanced matching (em + ph) + content_id added to clear Meta
-// Events Manager warnings about missing match parameters.
+// Accepts the full advanced-matching field set so the
+// InitiateCheckout EMQ score tracks Purchase EMQ.
 
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -30,6 +30,15 @@ export default async function handler(req: any, res: any) {
       currency,
       customerEmail,
       customerPhone,
+      firstName,
+      lastName,
+      city,
+      state,
+      zip,
+      country,
+      externalId,
+      fbc,
+      fbp,
       eventSourceUrl,
       clientUserAgent,
       content_id,
@@ -46,23 +55,25 @@ export default async function handler(req: any, res: any) {
       return res.status(500).json({ error: 'Server configuration error' });
     }
 
-    const userData: Record<string, any> = {};
-    const emHash = hashEmail(customerEmail);
-    const phHash = hashPhone(customerPhone);
-    if (emHash) userData.em = [emHash];
-    if (phHash) userData.ph = [phHash];
-
-    const clientIp = req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || '';
-    if (clientIp) {
-      userData.client_ip_address = Array.isArray(clientIp) ? clientIp[0] : clientIp.split(',')[0].trim();
-    }
-    if (clientUserAgent) {
-      userData.client_user_agent = clientUserAgent;
-    }
+    const userData = buildUserData({
+      email: customerEmail,
+      phone: customerPhone,
+      firstName,
+      lastName,
+      city,
+      state,
+      zip,
+      country,
+      externalId: externalId || eventId || null,
+      fbc,
+      fbp,
+      clientIp: extractClientIp(req.headers),
+      clientUserAgent: clientUserAgent || req.headers['user-agent'] || '',
+    });
 
     const customData: Record<string, any> = {
       currency: currency || 'USD',
-      value: value || 10.0,
+      value: typeof value === 'number' ? value : 10.0,
     };
     if (content_id) {
       customData.content_ids = [content_id];
@@ -104,7 +115,10 @@ export default async function handler(req: any, res: any) {
       return res.status(fbResponse.status).json({ error: fbResult.error?.message || 'FB API error' });
     }
 
-    console.log(`[FB Checkout CAPI] InitiateCheckout sent. event_id=${eventId}, content_id=${content_id || '-'}, em=${emHash ? 'yes' : 'no'}, ph=${phHash ? 'yes' : 'no'}`);
+    console.log(
+      `[FB Checkout CAPI] InitiateCheckout sent. event_id=${eventId}, content_id=${content_id || '-'}, ` +
+      `fields=${Object.keys(userData).filter((k) => !['client_ip_address', 'client_user_agent'].includes(k)).join(',')}`
+    );
     return res.status(200).json({ success: true, result: fbResult });
   } catch (error: any) {
     console.error('[FB Checkout CAPI] Error:', error);
