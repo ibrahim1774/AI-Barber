@@ -23,6 +23,7 @@ const NAME_STEPS = ['Writing your services...', 'Designing your pages...', 'Fina
 const LINK_STEPS = ['Found your booking page', 'Importing your services', 'Adding your photos'];
 
 const EuphoriaWebsite = lazy(() => import('./EuphoriaWebsite').then((m) => ({ default: m.EuphoriaWebsite })));
+const GeneratedWebsite = lazy(() => import('./GeneratedWebsite').then((m) => ({ default: m.GeneratedWebsite })));
 
 export const GenerateBarbershopFunnel: React.FC<GenerateBarbershopFunnelProps> = () => {
   const [phase, setPhase] = useState<Phase>('input');
@@ -213,20 +214,36 @@ export const GenerateBarbershopFunnel: React.FC<GenerateBarbershopFunnelProps> =
   }
 
   if (phase === 'reveal' && siteData) {
+    const handleBack = () => {
+      setPhase('input');
+      setSiteData(null);
+      setProgressStep(0);
+      setShowBar(true);
+    };
+    // Mirror App.tsx's editor template switch — the homepage flow uses
+    // GeneratedWebsite by default and only hands off to Euphoria when
+    // `data.template === 'euphoria'`. The funnel was hardcoded to
+    // Euphoria, which is why customers landed on a different design
+    // than what they see on the / homepage.
+    const useEuphoria = (siteData as any)?.template === 'euphoria';
     return (
       <>
         <Suspense fallback={<div style={{ background: BG, minHeight: '100vh' }} />}>
-          <EuphoriaWebsite
-            data={siteData}
-            onBack={() => {
-              setPhase('input');
-              setSiteData(null);
-              setProgressStep(0);
-              setShowBar(true);
-            }}
-            userId={user?.id ?? null}
-            isPostPayment={false}
-          />
+          {useEuphoria ? (
+            <EuphoriaWebsite
+              data={siteData}
+              onBack={handleBack}
+              userId={user?.id ?? null}
+              isPostPayment={false}
+            />
+          ) : (
+            <GeneratedWebsite
+              data={siteData}
+              onBack={handleBack}
+              userId={user?.id ?? null}
+              isPostPayment={false}
+            />
+          )}
         </Suspense>
         {showBar && (
           <DetailCollectionBar

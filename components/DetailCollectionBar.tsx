@@ -53,10 +53,19 @@ export const DetailCollectionBar: React.FC<DetailCollectionBarProps> = ({
 
   return (
     <div
-      className="fixed left-1/2 z-50 px-4 py-3 rounded-lg backdrop-blur-md transition-all duration-300"
+      className="fixed left-1/2 px-4 py-3 rounded-lg backdrop-blur-md transition-all duration-300"
       style={{
-        bottom: closing ? '-100px' : '88px',
-        transform: 'translateX(-50%)',
+        // Dock in the vertical middle of the viewport. Was bottom:88px
+        // which sat behind the PrePaymentBanner (PrePaymentBanner is
+        // fixed-bottom, full-width, and ~280px tall on mobile — it
+        // completely covered the bar). z-index also bumped above the
+        // PrePaymentBanner's z-[70] and the editor toolbar's z-[80]
+        // so the bar wins the stacking contest.
+        top: '50%',
+        transform: closing
+          ? 'translate(-50%, 200%)'
+          : 'translate(-50%, -50%)',
+        zIndex: 120,
         background: BG_BAR,
         border: `1px solid rgba(232,192,116,0.35)`,
         boxShadow: '0 12px 32px -6px rgba(0,0,0,0.55)',
