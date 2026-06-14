@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { hashEmail, hashPhone } from './_hashPii';
+import { hashEmail, hashPhone, hashExternalId } from './_hashPii.js';
 
 // TikTok Events API (v1.3). Fires server-side Lead, Purchase,
 // InitiateCheckout, ViewContent, CompleteRegistration events.
@@ -27,6 +27,10 @@ interface Body {
   // they're hashed before being sent to TikTok.
   email?: string;
   phone?: string;
+  // external_id boosts EMQ in TikTok Events Manager — we hash the
+  // Stripe session id (or auth user id) so the matching is
+  // deterministic without exposing PII.
+  external_id?: string;
   // content_id + contents resolve the "Content ID is missing" issue.
   // Both are propagated to TikTok's required event properties.
   content_id?: string;
@@ -54,6 +58,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     currency,
     email,
     phone,
+    external_id,
     content_id,
     content_name,
     content_type,
@@ -105,8 +110,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const userObj: Record<string, string> = { ip: client_ip, user_agent: client_user_agent };
   const emHash = hashEmail(email);
   const phHash = hashPhone(phone);
+  const eidHash = hashExternalId(external_id);
   if (emHash) userObj.email = emHash;
   if (phHash) userObj.phone = phHash;
+  if (eidHash) userObj.external_id = eidHash;
 
   const payload = {
     event_source: 'web',

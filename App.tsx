@@ -19,6 +19,7 @@ import { saveSite, getSite } from './services/indexedDBService.ts';
 import { upsertSiteToSupabase, fetchUserSites } from './services/supabaseDataService.ts';
 import { getPlanContentMeta, getViewContentMeta } from './lib/pixelMeta';
 import { getAllSites as getAllLocalSites } from './services/indexedDBService.ts';
+import { readMetaCookies, splitName } from './services/metaMatchParams.ts';
 
 // Heavy components — lazy-loaded so first paint only ships the
 // active-path form (GeneratorForm) + LoadingScreen. Editor, dashboard,
@@ -179,6 +180,10 @@ const App: React.FC = () => {
             : `vc_${Date.now()}_${Math.random().toString(36).slice(2)}`;
         const url = window.location.href;
         const ua = navigator.userAgent;
+        // Read fbc/fbp cookies so CAPI ViewContent inherits the match
+        // quality the browser pixel gets, plus carries first-touch
+        // attribution forward into Lead / Purchase later in the funnel.
+        const { fbc, fbp } = readMetaCookies();
         // Browser pixels — same event_id pairs with CAPI hits below.
         try { window.fbq?.('track', 'ViewContent', { content_ids: [meta.content_id], content_type: meta.content_type, content_name: meta.content_name }, { eventID: eventId }); } catch {}
         try { (window as any).ttq?.track('ViewContent', { content_id: meta.content_id, content_type: meta.content_type, content_name: meta.content_name }, { event_id: eventId }); } catch {}
@@ -186,7 +191,7 @@ const App: React.FC = () => {
         fetch('/api/fb-view-content', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ eventId, eventSourceUrl: url, clientUserAgent: ua, content_id: meta.content_id, content_name: meta.content_name, content_type: meta.content_type }),
+          body: JSON.stringify({ eventId, eventSourceUrl: url, clientUserAgent: ua, fbc, fbp, externalId: eventId, content_id: meta.content_id, content_name: meta.content_name, content_type: meta.content_type }),
           keepalive: true,
         }).catch(() => { /* non-blocking */ });
         fetch('/api/tiktok-event', {
@@ -279,52 +284,83 @@ const App: React.FC = () => {
     // matching + Events Manager warnings are addressed in one place.
     const meta = getPlanContentMeta(plan, value);
     const phone = activeSite?.data?.phone || null;
+    const { fbc, fbp } = readMetaCookies();
     try {
       window.fbq?.('track', 'Purchase', { value, currency, content_ids: [meta.content_id], content_type: meta.content_type, contents: meta.contents }, { eventID: sessionId });
     } catch (err) {
       console.warn('[FB Pixel Purchase / Custom] fire failed:', err);
     }
-    fetch('/api/fb-purchase', {
+    // Pull customer name + address from Stripe so the custom-design
+    // Purchase fire reaches the same EMQ tier as the hosting Purchase
+    // fire in handleStripeReturn. Fire-and-forget — pixel must not
+    // wait on a Stripe round-trip.
+    fetch('/api/verify-stripe-session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        eventId: sessionId,
-        value,
-        currency,
-        eventSourceUrl: window.location.origin,
-        clientUserAgent: navigator.userAgent,
-        customerPhone: phone,
-        content_id: meta.content_id,
-        content_name: meta.content_name,
-        content_type: meta.content_type,
-        contents: meta.contents,
-      }),
-      keepalive: true,
-    }).catch((err) => console.error('[FB CAPI / Custom] non-blocking:', err));
+      body: JSON.stringify({ sessionId }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((verify) => {
+        const email = verify?.customerEmail || null;
+        const ph = verify?.customerPhone || phone;
+        const { firstName, lastName } = splitName(verify?.customerName);
+        const addr = verify?.customerAddress || {};
+        fetch('/api/fb-purchase', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            eventId: sessionId,
+            value,
+            currency,
+            eventSourceUrl: window.location.origin,
+            clientUserAgent: navigator.userAgent,
+            customerEmail: email,
+            customerPhone: ph,
+            firstName,
+            lastName,
+            city: addr.city || null,
+            state: addr.state || null,
+            zip: addr.zip || null,
+            country: addr.country || null,
+            externalId: sessionId,
+            fbc,
+            fbp,
+            content_id: meta.content_id,
+            content_name: meta.content_name,
+            content_type: meta.content_type,
+            contents: meta.contents,
+          }),
+          keepalive: true,
+        }).catch((err) => console.error('[FB CAPI / Custom] non-blocking:', err));
+
+        fetch('/api/tiktok-event', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            event: 'Purchase',
+            event_id: sessionId,
+            event_source_url: window.location.origin,
+            user_agent: navigator.userAgent,
+            value,
+            currency,
+            email,
+            phone: ph,
+            external_id: sessionId,
+            content_id: meta.content_id,
+            content_name: meta.content_name,
+            content_type: meta.content_type,
+            contents: meta.contents,
+          }),
+          keepalive: true,
+        }).catch((err) => console.error('[TikTok CAPI / Custom] non-blocking:', err));
+      })
+      .catch((err) => console.warn('[FB/TT Purchase Custom] verify lookup failed (firing without name/addr):', err));
 
     try {
       (window as any).ttq?.track('Purchase', { value, currency, content_id: meta.content_id, content_type: meta.content_type, contents: meta.contents }, { event_id: sessionId });
     } catch (err) {
       console.warn('[TikTok Pixel Purchase / Custom] fire failed:', err);
     }
-    fetch('/api/tiktok-event', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        event: 'Purchase',
-        event_id: sessionId,
-        event_source_url: window.location.origin,
-        user_agent: navigator.userAgent,
-        value,
-        currency,
-        phone,
-        content_id: meta.content_id,
-        content_name: meta.content_name,
-        content_type: meta.content_type,
-        contents: meta.contents,
-      }),
-      keepalive: true,
-    }).catch((err) => console.error('[TikTok CAPI / Custom] non-blocking:', err));
   };
 
   const handleStripeReturn = async (sessionId: string, plan: string = 'monthly') => {
@@ -427,8 +463,15 @@ const App: React.FC = () => {
         const purchaseValue = typeof verifyResult.amountTotal === 'number' ? verifyResult.amountTotal : 10.0;
         const purchaseCurrency = verifyResult.currency || 'USD';
         const purchaseMeta = getPlanContentMeta(plan || 'monthly', purchaseValue);
-        const purchasePhone = siteData?.phone || null;
+        // Stripe gives us name + address from the Checkout form. We
+        // hash & forward each field server-side so Event Match Quality
+        // moves from em-only (5/10) to em+ph+fn+ln+ct+st+zp+country+
+        // external_id+fbc+fbp (9–10/10).
+        const purchasePhone = verifyResult.customerPhone || siteData?.phone || null;
         const purchaseEmail = verifyResult.customerEmail || null;
+        const { firstName: purchaseFirstName, lastName: purchaseLastName } = splitName(verifyResult.customerName);
+        const purchaseAddr = verifyResult.customerAddress || {};
+        const { fbc: purchaseFbc, fbp: purchaseFbp } = readMetaCookies();
 
         try {
           window.fbq?.(
@@ -450,6 +493,15 @@ const App: React.FC = () => {
             currency: purchaseCurrency,
             customerEmail: purchaseEmail,
             customerPhone: purchasePhone,
+            firstName: purchaseFirstName,
+            lastName: purchaseLastName,
+            city: purchaseAddr.city || null,
+            state: purchaseAddr.state || null,
+            zip: purchaseAddr.zip || null,
+            country: purchaseAddr.country || null,
+            externalId: sessionId,
+            fbc: purchaseFbc,
+            fbp: purchaseFbp,
             eventSourceUrl: window.location.origin,
             clientUserAgent: navigator.userAgent,
             content_id: purchaseMeta.content_id,
@@ -481,6 +533,7 @@ const App: React.FC = () => {
             currency: purchaseCurrency,
             email: purchaseEmail,
             phone: purchasePhone,
+            external_id: sessionId,
             content_id: purchaseMeta.content_id,
             content_name: purchaseMeta.content_name,
             content_type: purchaseMeta.content_type,
@@ -654,8 +707,9 @@ const App: React.FC = () => {
       const leadViewMeta = getViewContentMeta(window.location.pathname);
       const leadEmail = (inputs as any).email || null;
       const leadPhone = inputs.phone || null;
+      const { fbc: leadFbc, fbp: leadFbp } = readMetaCookies();
       try {
-        window.fbq?.('track', 'Lead', { content_name: 'Barbershop Site Generated', content_ids: [leadViewMeta.content_id], content_type: leadViewMeta.content_type }, { eventID: leadEventId });
+        window.fbq?.('track', 'Lead', { value: 9.0, currency: 'USD', content_name: 'Barbershop Site Generated', content_ids: [leadViewMeta.content_id], content_type: leadViewMeta.content_type }, { eventID: leadEventId });
       } catch (err) {
         console.warn('[FB Pixel Lead] browser fire failed:', err);
       }
@@ -666,6 +720,11 @@ const App: React.FC = () => {
           eventId: leadEventId,
           email: leadEmail,
           phone: leadPhone,
+          externalId: leadEventId,
+          fbc: leadFbc,
+          fbp: leadFbp,
+          value: 9.0,
+          currency: 'USD',
           contentName: 'Barbershop Site Generated',
           content_id: leadViewMeta.content_id,
           content_name: leadViewMeta.content_name,
@@ -828,18 +887,23 @@ const App: React.FC = () => {
       const phone = activeSite?.data?.phone || null;
       const url = window.location.href;
       const ua = navigator.userAgent;
+      const { fbc: regFbc, fbp: regFbp } = readMetaCookies();
+      // Use the auth user id (already opaque + stable per visitor) as
+      // external_id so Meta can match this registration back to the
+      // visitor's other lifecycle events.
+      const externalId = (authedUser?.id as string | undefined) || eventId;
       try { window.fbq?.('track', 'CompleteRegistration', {}, { eventID: eventId }); } catch {}
       try { (window as any).ttq?.track('CompleteRegistration', {}, { event_id: eventId }); } catch {}
       fetch('/api/fb-registration', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eventId, eventSourceUrl: url, clientUserAgent: ua, email, phone }),
+        body: JSON.stringify({ eventId, eventSourceUrl: url, clientUserAgent: ua, email, phone, externalId, fbc: regFbc, fbp: regFbp }),
         keepalive: true,
       }).catch(() => { /* non-blocking */ });
       fetch('/api/tiktok-event', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ event: 'CompleteRegistration', event_id: eventId, event_source_url: url, user_agent: ua, email, phone }),
+        body: JSON.stringify({ event: 'CompleteRegistration', event_id: eventId, event_source_url: url, user_agent: ua, email, phone, external_id: externalId }),
         keepalive: true,
       }).catch(() => { /* non-blocking */ });
     } catch (err) {

@@ -1,9 +1,12 @@
-import { hashEmail, hashPhone } from './_hashPii';
+import { buildUserData, extractClientIp } from './_buildUserData.js';
 
 // Server-side companion to `fbq('track', 'Lead')`. Same event_id from
-// both ends so Meta dedupes. Now also forwards advanced matching (em +
-// ph) + content_id metadata so Events Manager doesn't flag the Lead
-// event as missing required parameters.
+// both ends so Meta dedupes. Carries the full advanced-matching field
+// set so the Lead EMQ score matches Purchase / InitiateCheckout.
+//
+// Always emits `currency` + a default `value` in custom_data — Meta
+// flags Lead events without currency under "Send valid currency codes
+// for more accurate ROAS" in Events Manager Diagnostics.
 
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -28,6 +31,17 @@ export default async function handler(req: any, res: any) {
       clientUserAgent,
       email,
       phone,
+      firstName,
+      lastName,
+      city,
+      state,
+      zip,
+      country,
+      externalId,
+      fbc,
+      fbp,
+      value,
+      currency,
       contentName,
       content_id,
       content_name,
@@ -42,21 +56,30 @@ export default async function handler(req: any, res: any) {
       return res.status(500).json({ error: 'Server configuration error' });
     }
 
-    const userData: Record<string, any> = {};
-    const emHash = hashEmail(email);
-    const phHash = hashPhone(phone);
-    if (emHash) userData.em = [emHash];
-    if (phHash) userData.ph = [phHash];
+    const userData = buildUserData({
+      email,
+      phone,
+      firstName,
+      lastName,
+      city,
+      state,
+      zip,
+      country,
+      externalId: externalId || eventId || null,
+      fbc,
+      fbp,
+      clientIp: extractClientIp(req.headers),
+      clientUserAgent: clientUserAgent || req.headers['user-agent'] || '',
+    });
 
-    const clientIp = req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || '';
-    if (clientIp) {
-      userData.client_ip_address = Array.isArray(clientIp) ? clientIp[0] : clientIp.split(',')[0].trim();
-    }
-    if (clientUserAgent) {
-      userData.client_user_agent = clientUserAgent;
-    }
-
-    const customData: Record<string, any> = {};
+    // Lead events: ROAS modelling in Events Manager flags missing
+    // currency as a high-priority diagnostic. Emit a valid ISO code +
+    // a default value (the predicted LTV of a Lead, set to the
+    // monthly plan price) so the diagnostic clears.
+    const customData: Record<string, any> = {
+      currency: (typeof currency === 'string' && currency.trim() ? currency : 'USD').toUpperCase(),
+      value: typeof value === 'number' ? value : 9.0,
+    };
     if (content_id) {
       customData.content_ids = [content_id];
       customData.content_type = content_type || 'product';
@@ -74,7 +97,7 @@ export default async function handler(req: any, res: any) {
           action_source: 'website',
           event_source_url: eventSourceUrl || 'https://www.aibarber.org/',
           user_data: userData,
-          ...(Object.keys(customData).length > 0 ? { custom_data: customData } : {}),
+          custom_data: customData,
         },
       ],
       access_token: accessToken,
@@ -96,7 +119,10 @@ export default async function handler(req: any, res: any) {
       return res.status(fbResponse.status).json({ error: fbResult.error?.message || 'FB API error' });
     }
 
-    console.log(`[FB CAPI Lead] sent. event_id=${eventId}, content_id=${content_id || '-'}, em=${emHash ? 'yes' : 'no'}, ph=${phHash ? 'yes' : 'no'}`);
+    console.log(
+      `[FB CAPI Lead] sent. event_id=${eventId}, content_id=${content_id || '-'}, ` +
+      `fields=${Object.keys(userData).filter((k) => !['client_ip_address', 'client_user_agent'].includes(k)).join(',')}`
+    );
     return res.status(200).json({ success: true, result: fbResult });
   } catch (error: any) {
     console.error('[FB CAPI Lead] Error:', error);
