@@ -14,6 +14,10 @@ interface EuphoriaWebsiteProps {
   onNavigateDashboard?: () => void;
   isPostPayment?: boolean;
   userId?: string | null;
+  // Optional — pass-through to PrePaymentBanner. Used by
+  // /generatebarbershop so it can hide the mid-site prompt overlay
+  // while the visitor is inside the embedded Stripe checkout.
+  onCheckoutFlowChange?: (open: boolean) => void;
 }
 
 // Shared Euphoria CSS — scoped inside `.euphoria-root` so it can't leak into the Luxe flow.
@@ -370,14 +374,14 @@ ${EUPHORIA_SCOPED_CSS}
 </html>`;
 }
 
-export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, site, onNavigateDashboard, isPostPayment = false, userId = null }) => {
+export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, site, onNavigateDashboard, isPostPayment = false, userId = null, onCheckoutFlowChange }) => {
   useEuphoriaAssets();
 
   const [siteData, setSiteData] = useState<WebsiteData>(data);
 
   // Sync external `data` prop changes into internal state. Same
   // rationale as GeneratedWebsite: the /generatebarbershop funnel
-  // pipes per-keystroke DetailCollectionBar updates through this prop.
+  // pipes per-keystroke BarbershopMidSitePrompts updates through this prop.
   useEffect(() => {
     setSiteData(data);
   }, [data]);
@@ -931,6 +935,7 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
           onPrepareCheckout={preparePendingSite}
           isDeploying={isDeploying}
           industry="barbershop"
+          onCheckoutFlowChange={onCheckoutFlowChange}
         />
       )}
 

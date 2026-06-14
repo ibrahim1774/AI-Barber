@@ -38,6 +38,10 @@ interface GeneratedWebsiteProps {
   onNavigateDashboard?: () => void;
   isPostPayment?: boolean;
   userId?: string | null;
+  // Optional — pass-through to PrePaymentBanner. Used by
+  // /generatebarbershop so it can hide the mid-site prompt overlay
+  // while the visitor is inside the embedded Stripe checkout.
+  onCheckoutFlowChange?: (open: boolean) => void;
 }
 
 // Extracts the trailing "City, State [ZIP]" portion of an area string so
@@ -414,12 +418,12 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
 </html>`;
 }
 
-export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack, site, onNavigateDashboard, isPostPayment = false, userId = null }) => {
+export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack, site, onNavigateDashboard, isPostPayment = false, userId = null, onCheckoutFlowChange }) => {
   const [siteData, setSiteData] = useState<WebsiteData>(data);
 
   // Sync external `data` prop changes into internal state. Needed for
   // the /generatebarbershop funnel, which keeps its own siteData state
-  // and pipes per-keystroke updates from DetailCollectionBar (area,
+  // and pipes per-keystroke updates from BarbershopMidSitePrompts (area,
   // phone) down through this prop — without this useEffect the live
   // preview wouldn't reflect those keystrokes because useState only
   // reads its initializer once. Homepage flow is unaffected: App.tsx
@@ -1564,6 +1568,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           onPrepareCheckout={preparePendingSite}
           isDeploying={isDeploying}
           industry="barbershop"
+          onCheckoutFlowChange={onCheckoutFlowChange}
         />
       )}
 
