@@ -98,9 +98,8 @@ export const AdminGenerator: React.FC = () => {
         }
       }
 
-      const siteId = `admin-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
       const site: SiteInstance = {
-        id: siteId,
+        id: crypto.randomUUID(),
         data,
         formInputs: inputs,
         lastSaved: Date.now(),
