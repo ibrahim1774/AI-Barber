@@ -9,7 +9,7 @@ declare global {
 }
 
 import { GeneratorForm } from './components/GeneratorForm.tsx';
-import { isBooksyPath, isFreeBarberPath, isPrimeBarberPath, isRecoverPath, isGenerateBarbershopPath } from './lib/dealMode.ts';
+import { isBooksyPath, isFreeBarberPath, isPrimeBarberPath, isRecoverPath, isGenerateBarbershopPath, isAdminGeneratePath } from './lib/dealMode.ts';
 import { LoadingScreen } from './components/LoadingScreen.tsx';
 import { generateHTMLForTemplate } from './services/templateRenderer.ts';
 import { generateContent } from './services/geminiService.ts';
@@ -34,6 +34,7 @@ const ManagementDashboard = lazy(() => import('./components/ManagementDashboard.
 const AuthModal = lazy(() => import('./components/AuthModal.tsx').then(m => ({ default: m.AuthModal })));
 const RecoverPage = lazy(() => import('./components/RecoverPage.tsx').then(m => ({ default: m.RecoverPage })));
 const GenerateBarbershopFunnel = lazy(() => import('./components/GenerateBarbershopFunnel.tsx').then(m => ({ default: m.GenerateBarbershopFunnel })));
+const AdminGenerator = lazy(() => import('./components/AdminGenerator.tsx').then(m => ({ default: m.AdminGenerator })));
 
 const DEPLOY_TIMER_SECONDS = 5;
 
@@ -971,6 +972,17 @@ const App: React.FC = () => {
     return (
       <Suspense fallback={<LoadingScreen />}>
         <GenerateBarbershopFunnel />
+      </Suspense>
+    );
+  }
+
+  // /admin-generate — operator-only white-glove flow for off-platform
+  // paid customers. Renders early like the other standalone paths so
+  // none of the normal generator/auth restoration machinery runs.
+  if (isAdminGeneratePath()) {
+    return (
+      <Suspense fallback={<LoadingScreen />}>
+        <AdminGenerator />
       </Suspense>
     );
   }
