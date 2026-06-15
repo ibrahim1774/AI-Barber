@@ -145,9 +145,9 @@ export const PrimeBarberLanding: React.FC = () => {
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null);
   // Which plan the visitor selected — drives the embedded checkout's
   // price + modal copy.
-  //   'primebarber'        = full platform billed monthly at $29/mo (default)
-  //   'primebarber-yearly' = full platform billed yearly at $278/yr
-  //                          (20% off $29/mo × 12 = $278.40 → $278)
+  //   'primebarber'        = full platform billed monthly at $20/mo (default)
+  //   'primebarber-yearly' = full platform billed yearly at $192/yr
+  //                          (20% off $20/mo × 12 = $192 → $192)
   const [activePlan, setActivePlan] = useState<'primebarber' | 'primebarber-yearly'>('primebarber');
 
   useEffect(() => {
@@ -190,7 +190,7 @@ export const PrimeBarberLanding: React.FC = () => {
         typeof crypto !== 'undefined' && (crypto as any).randomUUID
           ? (crypto as any).randomUUID()
           : `pb_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-      const value = plan === 'primebarber-yearly' ? 278 : 29;
+      const value = plan === 'primebarber-yearly' ? 192 : 20;
       const currency = 'USD';
       const { getPlanContentMeta } = await import('../lib/pixelMeta');
       const m = getPlanContentMeta(plan, value);
@@ -271,10 +271,10 @@ export const PrimeBarberLanding: React.FC = () => {
   ];
 
   const faqs = [
-    { q: 'How does billing work?', a: 'You’re charged $29/month starting today. No contract — cancel anytime from the billing portal and you won’t be charged again.' },
-    { q: 'Is there a setup or upfront fee?', a: 'No. Your site is built and launched as part of your $29/month — no large upfront website cost.' },
+    { q: 'How does billing work?', a: 'You’re charged $20/month starting today. No contract — cancel anytime from the billing portal and you won’t be charged again.' },
+    { q: 'Is there a setup or upfront fee?', a: 'No. Your site is built and launched as part of your $20/month — no large upfront website cost.' },
     { q: 'How long until my site is live?', a: 'Most shops are up within a week of submitting their details. You’ll see a preview and can request changes before it goes live.' },
-    { q: 'Does it cost more to add my staff?', a: 'No. Add as many barbers as you want — your $29/month is flat. No per-barber fees, no team-size tiers, no extras as you grow.' },
+    { q: 'Does it cost more to add my staff?', a: 'No. Add as many barbers as you want — your $20/month is flat. No per-barber fees, no team-size tiers, no extras as you grow.' },
     { q: 'Are there extra fees on payments?', a: 'Standard payment processing fees apply (the same small per-transaction fee any card processor charges). We don’t add fees on top.' },
     { q: 'Do I own my domain and content?', a: 'Yes. Your domain, photos, and content are yours.' },
     { q: 'Can I edit my site myself?', a: 'Yes. Log in and update hours, prices, photos, products, and pages anytime. Need a bigger change? Support handles it for you.' },
@@ -290,11 +290,11 @@ export const PrimeBarberLanding: React.FC = () => {
     plan?: 'primebarber' | 'primebarber-yearly';
     variant?: 'gold' | 'ghost';
     showGuarantee?: boolean;
-    // Bolded $29/month price line underneath the button. Only renders
+    // Bolded $20/month price line underneath the button. Only renders
     // for the default primebarber plan and only on md/lg sizes so the
     // sticky-nav sm CTA stays compact.
     showPrice?: boolean;
-  }> = ({ size = 'lg', label = 'Get Started — $29/month', plan = 'primebarber', variant = 'gold', showGuarantee = true, showPrice = true }) => {
+  }> = ({ size = 'lg', label = 'Get Started — $20/month', plan = 'primebarber', variant = 'gold', showGuarantee = true, showPrice = true }) => {
     const sizes = {
       sm: 'px-5 py-2.5 text-[10px]',
       md: 'px-7 py-3.5 text-[11px]',
@@ -321,7 +321,7 @@ export const PrimeBarberLanding: React.FC = () => {
             className="mt-2 text-[18px] md:text-[22px] font-black tracking-tight"
             style={{ color: CREAM, fontFamily: 'inherit' }}
           >
-            <span style={{ color: GOLD }}>$29/month</span> · cancel anytime
+            <span style={{ color: GOLD }}>$20/month</span> · cancel anytime
           </span>
         )}
         {showGuarantee && (
@@ -517,7 +517,7 @@ export const PrimeBarberLanding: React.FC = () => {
                   style={{ background: GOLD, boxShadow: `0 0 8px ${GOLD}` }}
                 />
                 <span className="text-[12px] md:text-[13px]" style={{ color: CREAM }}>
-                  <span style={{ color: GOLD, fontWeight: 700 }}>$29/month.</span> No contract. Cancel anytime.
+                  <span style={{ color: GOLD, fontWeight: 700 }}>$20/month.</span> No contract. Cancel anytime.
                 </span>
               </div>
               <PrimaryCTA size="md" />
@@ -589,8 +589,8 @@ export const PrimeBarberLanding: React.FC = () => {
           </Reveal>
 
           {/* Billing-frequency toggle. Flips activePlan between
-              'primebarber' (monthly $29) and 'primebarber-yearly'
-              ($278/yr = 20% off). The same state drives the embedded
+              'primebarber' (monthly $20) and 'primebarber-yearly'
+              ($192/yr = 20% off). The same state drives the embedded
               checkout below so whatever the visitor sees on this card
               is what Stripe charges them. */}
           <Reveal delay={50}>
@@ -659,12 +659,12 @@ export const PrimeBarberLanding: React.FC = () => {
                 <>
                   <div className="flex items-baseline gap-1 mb-1">
                     <span style={{ color: CREAM, fontFamily: '"Instrument Serif", serif', fontWeight: 400, fontSize: '3rem', lineHeight: 1 }}>
-                      $278
+                      $192
                     </span>
                     <span className="text-[14px]" style={{ color: SOFT }}>/year</span>
                   </div>
                   <p className="text-[12px] md:text-[13px] mb-5" style={{ color: SOFT }}>
-                    Billed once a year. Works out to about <strong style={{ color: CREAM }}>$23/month</strong>{' '}
+                    Billed once a year. Works out to about <strong style={{ color: CREAM }}>$16/month</strong>{' '}
                     — a 20% discount vs paying monthly.
                   </p>
                 </>
@@ -672,7 +672,7 @@ export const PrimeBarberLanding: React.FC = () => {
                 <>
                   <div className="flex items-baseline gap-1 mb-1">
                     <span style={{ color: CREAM, fontFamily: '"Instrument Serif", serif', fontWeight: 400, fontSize: '3rem', lineHeight: 1 }}>
-                      $29
+                      $20
                     </span>
                     <span className="text-[14px]" style={{ color: SOFT }}>/month</span>
                   </div>
@@ -703,12 +703,12 @@ export const PrimeBarberLanding: React.FC = () => {
                 style={{ background: 'rgba(212,164,100,0.12)', border: `1px solid rgba(212,164,100,0.4)`, color: CREAM }}
               >
                 <span className="text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: GOLD }}>
-                  {activePlan === 'primebarber-yearly' ? '$278/year · Cancel Anytime' : '$29/month · Cancel Anytime'}
+                  {activePlan === 'primebarber-yearly' ? '$192/year · Cancel Anytime' : '$20/month · Cancel Anytime'}
                 </span>
               </div>
               <PrimaryCTA
                 size="md"
-                label={activePlan === 'primebarber-yearly' ? 'Get Started — $278/year' : 'Get Started — $29/month'}
+                label={activePlan === 'primebarber-yearly' ? 'Get Started — $192/year' : 'Get Started — $20/month'}
                 plan={activePlan}
                 showPrice={false}
               />
@@ -812,8 +812,8 @@ export const PrimeBarberLanding: React.FC = () => {
                 style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
               >
                 {([
-                  { key: 'primebarber',        label: 'Monthly', sub: '$29/mo' },
-                  { key: 'primebarber-yearly', label: 'Yearly',  sub: '$278/yr · Save 20%' },
+                  { key: 'primebarber',        label: 'Monthly', sub: '$20/mo' },
+                  { key: 'primebarber-yearly', label: 'Yearly',  sub: '$192/yr · Save 20%' },
                 ] as const).map((opt) => {
                   const active = activePlan === opt.key;
                   return (
@@ -849,22 +849,22 @@ export const PrimeBarberLanding: React.FC = () => {
                   <>
                     Prime Barber yearly —{' '}
                     <span style={{ fontFamily: '"Instrument Serif", serif', fontStyle: 'italic', fontWeight: 400, color: GOLD }}>
-                      $278/year.
+                      $192/year.
                     </span>
                   </>
                 ) : (
                   <>
                     Prime Barber monthly —{' '}
                     <span style={{ fontFamily: '"Instrument Serif", serif', fontStyle: 'italic', fontWeight: 400, color: GOLD }}>
-                      $29/month.
+                      $20/month.
                     </span>
                   </>
                 )}
               </h3>
               <p className="text-[12.5px] mb-3 leading-snug" style={{ color: SOFT }}>
                 {activePlan === 'primebarber-yearly'
-                  ? 'Billed once a year ($278). Works out to about $23/month — a 20% discount vs paying monthly.'
-                  : 'Charged today at $29/month. No contract. Cancel anytime from the billing portal.'}
+                  ? 'Billed once a year ($192). Works out to about $16/month — a 20% discount vs paying monthly.'
+                  : 'Charged today at $20/month. No contract. Cancel anytime from the billing portal.'}
               </p>
 
               {/* Benefit bullets — same product across billing
@@ -892,7 +892,7 @@ export const PrimeBarberLanding: React.FC = () => {
               </ul>
 
               <p className="mb-3 text-[10.5px] md:text-[11px] leading-snug" style={{ color: 'rgba(240,236,228,0.55)' }}>
-                {activePlan === 'primebarber-yearly' ? '$278/year · cancel anytime.' : '$29/month · cancel anytime.'}
+                {activePlan === 'primebarber-yearly' ? '$192/year · cancel anytime.' : '$20/month · cancel anytime.'}
               </p>
 
               <div className="rounded-md overflow-hidden bg-white" style={{ minHeight: 360 }}>
