@@ -126,6 +126,12 @@ export const AdminGenerator: React.FC = () => {
         deploymentStatus: 'deployed',
         lastSaved: Date.now(),
       };
+      // Note: custom_domain + domain_order_id are intentionally omitted —
+      // they're in the migration file but were never applied to the
+      // live Supabase schema, and including them throws "Could not
+      // find the 'domain_order_id' column in the schema cache". The
+      // customer flow silently swallows the same error via .catch.
+      // If those columns are ever added later, restore them here.
       const { error: upsertError } = await adminSignupClient.from('sites').upsert(
         {
           id: deployedSite.id,
@@ -138,8 +144,6 @@ export const AdminGenerator: React.FC = () => {
           site_data: deployedSite.data,
           deployed_url: deployedSite.deployedUrl,
           deployment_status: deployedSite.deploymentStatus,
-          custom_domain: deployedSite.customDomain,
-          domain_order_id: deployedSite.domainOrderId,
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'id' }
