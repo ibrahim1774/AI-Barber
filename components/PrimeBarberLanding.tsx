@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, X, Loader2, ChevronDown, Calendar, CreditCard, ShoppingBag, Image as ImageIcon, Smartphone, Settings, Layers, Smartphone as PhoneIcon, Lock, Bell, Star, Scissors, Users } from 'lucide-react';
+import { Check, X, Loader2, ChevronDown, Calendar, CreditCard, ShoppingBag, Image as ImageIcon, Smartphone, Settings, Layers, Lock, Scissors, Users } from 'lucide-react';
 import { loadStripe, type Stripe } from '@stripe/stripe-js';
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js';
 
@@ -573,118 +573,6 @@ export const PrimeBarberLanding: React.FC = () => {
                 </Reveal>
               );
             })}
-          </div>
-        </div>
-      </section>
-
-      {/* ─── MOBILE APP — phone mockup + notifications ──────────── */}
-      <section className="py-12 md:py-16 px-5 md:px-8">
-        <div className="mx-auto max-w-6xl">
-          <div className="grid md:grid-cols-[1fr_1.2fr] gap-8 md:gap-12 items-center">
-            {/* Phone mockup — CSS only, no image dependency */}
-            <div className="flex justify-center">
-              <div
-                className="relative"
-                style={{
-                  width: 240,
-                  maxWidth: '70vw',
-                  aspectRatio: '9/19',
-                  background: '#000',
-                  borderRadius: 36,
-                  border: '8px solid #1a1a1a',
-                  boxShadow: '0 20px 50px rgba(0,0,0,0.5), 0 0 0 2px rgba(212,164,100,0.1)',
-                  overflow: 'hidden',
-                }}
-              >
-                <div
-                  className="absolute inset-0 flex flex-col"
-                  style={{
-                    background: 'linear-gradient(180deg, #0a0a0a 0%, #14110c 100%)',
-                  }}
-                >
-                  {/* Status bar */}
-                  <div className="flex justify-between items-center px-5 pt-3.5 pb-2 text-[10px]" style={{ color: CREAM }}>
-                    <span>9:41</span>
-                    <span style={{ color: GOLD }}>● ● ●</span>
-                  </div>
-                  {/* Notch */}
-                  <div
-                    className="absolute top-1.5 left-1/2 -translate-x-1/2 rounded-full"
-                    style={{ width: 80, height: 18, background: '#000' }}
-                  />
-                  {/* Header */}
-                  <div className="px-4 pt-2 pb-2">
-                    <div className="text-[12px] font-black" style={{ color: CREAM }}>
-                      Prime<span style={{ color: GOLD }}>Barber</span>
-                    </div>
-                  </div>
-                  {/* Live indicator */}
-                  <div className="flex items-center gap-1.5 px-4 mb-1">
-                    <span
-                      className="inline-block w-1.5 h-1.5 rounded-full"
-                      style={{ background: '#22c55e', animation: 'pbLivePulse 1.6s ease-out infinite' }}
-                    />
-                    <span className="text-[8px] uppercase tracking-[0.2em]" style={{ color: 'rgba(240,236,228,0.55)' }}>
-                      Live
-                    </span>
-                  </div>
-                  {/* Notifications — stagger in from left when phone scrolls into view */}
-                  <div className="px-3 py-1 space-y-2 flex-1">
-                    {[
-                      { icon: Calendar, color: GOLD, label: 'New Booking', body: 'Marcus J. — Sat 2:30 PM' },
-                      { icon: CreditCard, color: '#22c55e', label: 'Payment $35', body: 'David K. — Fade + line up' },
-                      { icon: Star, color: GOLD, label: '5-star Review', body: '"Best fade in town!"' },
-                      { icon: Bell, color: GOLD, label: 'New Inquiry', body: 'Wedding party — 6 cuts' },
-                    ].map((n, i) => {
-                      const Icon = n.icon;
-                      return (
-                        <div
-                          key={i}
-                          className="flex items-start gap-2 p-2 rounded-md"
-                          style={{
-                            background: 'rgba(255,255,255,0.04)',
-                            border: '1px solid rgba(255,255,255,0.06)',
-                            opacity: 0,
-                            animation: `pbNotifSlide 0.5s cubic-bezier(0.22,1,0.36,1) ${0.4 + i * 0.25}s forwards`,
-                          }}
-                        >
-                          <Icon size={11} style={{ color: n.color, marginTop: 1, flexShrink: 0 }} />
-                          <div className="min-w-0">
-                            <div className="text-[9px] font-black truncate" style={{ color: CREAM }}>{n.label}</div>
-                            <div className="text-[8px] truncate" style={{ color: SOFT }}>{n.body}</div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <Eyebrow>Manage From Anywhere</Eyebrow>
-              <SectionHeading serifAccent="in your pocket.">Your shop —</SectionHeading>
-              <p className="text-[14px] md:text-[15px] mb-5 max-w-md" style={{ color: SOFT }}>
-                Get notified the moment something happens. Stay connected without juggling multiple platforms.
-              </p>
-              <ul className="grid gap-2">
-                {[
-                  { icon: Calendar, text: 'Someone books an appointment' },
-                  { icon: CreditCard, text: 'A customer pays you' },
-                  { icon: Bell, text: 'A new lead comes in' },
-                  { icon: Star, text: 'A customer leaves a review' },
-                ].map(({ icon: Icon, text }, i) => (
-                  <li
-                    key={i}
-                    className="flex items-center gap-2.5 py-2.5 px-3.5"
-                    style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}
-                  >
-                    <Icon size={14} style={{ color: GOLD, flexShrink: 0 }} />
-                    <span className="text-[13px] md:text-[14px]" style={{ color: CREAM }}>{text}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
           </div>
         </div>
       </section>
