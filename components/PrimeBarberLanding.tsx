@@ -1,7 +1,44 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, X, Loader2, ChevronDown, Calendar, CreditCard, ShoppingBag, Image as ImageIcon, Smartphone, Settings, Layers, Smartphone as PhoneIcon, Lock, Bell, Star, Scissors, Users, CalendarCheck, MessageSquare, Rocket, ArrowRight } from 'lucide-react';
+import { Check, X, Loader2, ChevronDown, Calendar, CreditCard, ShoppingBag, Image as ImageIcon, Smartphone, Settings, Layers, Smartphone as PhoneIcon, Lock, Bell, Star, Scissors, Users, CalendarCheck, MessageSquare, Rocket, ArrowRight, Play } from 'lucide-react';
 import { loadStripe, type Stripe } from '@stripe/stripe-js';
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js';
+
+// Wistia custom element — declared so TSX doesn't complain about the
+// unknown <wistia-player> tag. The actual element is registered at
+// runtime by the script loaded in useWistiaScripts() below.
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace JSX {
+    interface IntrinsicElements {
+      'wistia-player': React.DetailedHTMLProps<
+        React.HTMLAttributes<HTMLElement> & { 'media-id'?: string; aspect?: string },
+        HTMLElement
+      >;
+    }
+  }
+}
+
+// Wistia media id of the PrimeBarber explainer video. Bumping this is
+// the only change required to swap the explainer for a new cut.
+const WISTIA_MEDIA_ID = 'ght2cnw6a0';
+
+// Loads Wistia's player runtime + the per-media embed script once per
+// page mount. Idempotent — re-mounts of the landing skip the second
+// injection because the script src already exists in the DOM.
+function useWistiaScripts() {
+  useEffect(() => {
+    const ensure = (src: string, opts: { module?: boolean } = {}) => {
+      if (document.querySelector(`script[src="${src}"]`)) return;
+      const s = document.createElement('script');
+      s.src = src;
+      s.async = true;
+      if (opts.module) s.type = 'module';
+      document.head.appendChild(s);
+    };
+    ensure('https://fast.wistia.com/player.js');
+    ensure(`https://fast.wistia.com/embed/${WISTIA_MEDIA_ID}.js`, { module: true });
+  }, []);
+}
 
 // Same publishable-key loader pattern used elsewhere in the app.
 const STRIPE_PK = (import.meta as any).env?.VITE_STRIPE_PUBLISHABLE_KEY as string | undefined;
@@ -100,6 +137,7 @@ const SectionHeading: React.FC<{ children: React.ReactNode; serifAccent?: string
 );
 
 export const PrimeBarberLanding: React.FC = () => {
+  useWistiaScripts();
   const [showCheckout, setShowCheckout] = useState(false);
   const [embedSecret, setEmbedSecret] = useState<string | null>(null);
   const [embedError, setEmbedError] = useState<string | null>(null);
@@ -232,14 +270,14 @@ export const PrimeBarberLanding: React.FC = () => {
   ];
 
   const faqs = [
-    { q: 'How does the 7-day free trial work?', a: 'Start your trial today — card is collected at signup but you’re not charged for 7 days. To fully use your entire account, you’ll need to end your trial early. Otherwise the $29/month subscription begins automatically on day 7.' },
-    { q: 'Is there a setup or upfront fee?', a: 'No. Your site is built and launched as part of your $29/month — no large upfront website cost. The first 7 days are free.' },
+    { q: 'How does billing work?', a: 'You’re charged $29/month starting today. No contract — cancel anytime from the billing portal and you won’t be charged again.' },
+    { q: 'Is there a setup or upfront fee?', a: 'No. Your site is built and launched as part of your $29/month — no large upfront website cost.' },
     { q: 'How long until my site is live?', a: 'Most shops are up within a week of submitting their details. You’ll see a preview and can request changes before it goes live.' },
     { q: 'Does it cost more to add my staff?', a: 'No. Add as many barbers as you want — your $29/month is flat. No per-barber fees, no team-size tiers, no extras as you grow.' },
     { q: 'Are there extra fees on payments?', a: 'Standard payment processing fees apply (the same small per-transaction fee any card processor charges). We don’t add fees on top.' },
     { q: 'Do I own my domain and content?', a: 'Yes. Your domain, photos, and content are yours.' },
     { q: 'Can I edit my site myself?', a: 'Yes. Log in and update hours, prices, photos, products, and pages anytime. Need a bigger change? Support handles it for you.' },
-    { q: 'What happens if I cancel?', a: 'No contracts — cancel anytime, including during the free trial. We’ll help you export your content and point your domain wherever you want.' },
+    { q: 'What happens if I cancel?', a: 'No contracts — cancel anytime. We’ll help you export your content and point your domain wherever you want.' },
     { q: 'Can I submit a design I already like?', a: 'Yes. Send over a site or style you like and yours can be built to match it as closely as possible.' },
     { q: 'Can I use my own photos, sell products, take bookings, and collect payments?', a: 'Yes to all — that’s the whole point. Everything runs through one site under your brand.' },
     { q: 'Do I get a mobile app?', a: 'Yes. You’ll get mobile notifications when someone books, pays, sends an inquiry, or reaches out.' },
@@ -255,7 +293,7 @@ export const PrimeBarberLanding: React.FC = () => {
     // for the default primebarber plan and only on md/lg sizes so the
     // sticky-nav sm CTA stays compact.
     showPrice?: boolean;
-  }> = ({ size = 'lg', label = 'Start 7-Day Free Trial', plan = 'primebarber', variant = 'gold', showGuarantee = true, showPrice = true }) => {
+  }> = ({ size = 'lg', label = 'Get Started — $29/month', plan = 'primebarber', variant = 'gold', showGuarantee = true, showPrice = true }) => {
     const sizes = {
       sm: 'px-5 py-2.5 text-[10px]',
       md: 'px-7 py-3.5 text-[11px]',
@@ -282,7 +320,7 @@ export const PrimeBarberLanding: React.FC = () => {
             className="mt-2 text-[18px] md:text-[22px] font-black tracking-tight"
             style={{ color: CREAM, fontFamily: 'inherit' }}
           >
-            then <span style={{ color: GOLD }}>$29/month</span>
+            <span style={{ color: GOLD }}>$29/month</span> · cancel anytime
           </span>
         )}
         {showGuarantee && (
@@ -351,9 +389,69 @@ export const PrimeBarberLanding: React.FC = () => {
               AI <span style={{ color: GOLD }}>Barber</span>
             </div>
           </div>
-          <PrimaryCTA size="sm" label="Start Free Trial" showGuarantee={false} />
+          <PrimaryCTA size="sm" label="Get Started" showGuarantee={false} />
         </div>
       </header>
+
+      {/* ─── VIDEO INTRO — Wistia explainer, first thing the visitor
+          sees after the sticky nav. Built around the standard 16:9
+          ratio (aspect="1.7777…") so the player stays legible on
+          mobile + desktop. Below the player sits a tight subheadline
+          spelling out what they're about to watch. */}
+      <section
+        className="relative overflow-hidden border-b"
+        style={{
+          background: '#070707',
+          borderBottomColor: 'rgba(255,255,255,0.06)',
+        }}
+      >
+        <div className="relative mx-auto max-w-4xl px-5 md:px-8 py-10 md:py-14 pb-fade-in">
+          <div className="text-center mb-5 md:mb-6">
+            <Eyebrow>Watch · 1-Minute Overview</Eyebrow>
+            <h1
+              className="text-[22px] md:text-[32px] font-black tracking-tight leading-[1.15] mb-3"
+              style={{ color: CREAM, letterSpacing: '-0.015em' }}
+            >
+              See the{' '}
+              <span style={{ fontFamily: '"Instrument Serif", serif', fontStyle: 'italic', fontWeight: 400, color: GOLD }}>
+                Prime Barber
+              </span>{' '}
+              system in 1 minute
+            </h1>
+            <p
+              className="text-[13px] md:text-[15px] max-w-2xl mx-auto leading-[1.55]"
+              style={{ color: SOFT }}
+            >
+              Custom branded site, built-in booking, accept payments, sell your own products
+              — everything your shop needs in one place.
+            </p>
+          </div>
+
+          <div
+            className="relative mx-auto"
+            style={{
+              maxWidth: 880,
+              borderRadius: 12,
+              overflow: 'hidden',
+              boxShadow: '0 30px 80px -20px rgba(0,0,0,0.8), 0 0 0 1px rgba(212,164,100,0.18)',
+            }}
+          >
+            <style>{`
+              wistia-player[media-id='${WISTIA_MEDIA_ID}']:not(:defined) {
+                background: center / contain no-repeat url('https://fast.wistia.com/embed/medias/${WISTIA_MEDIA_ID}/swatch');
+                display: block;
+                filter: blur(5px);
+                padding-top: 56.25%;
+              }
+            `}</style>
+            <wistia-player media-id={WISTIA_MEDIA_ID} aspect="1.7777777777777777"></wistia-player>
+          </div>
+
+          <div className="mt-6 md:mt-8 flex flex-col items-center">
+            <PrimaryCTA size="lg" />
+          </div>
+        </div>
+      </section>
 
       {/* ─── HERO — split image + text ──────────────────────────── */}
       <section className="relative overflow-hidden border-b" style={{ borderBottomColor: 'rgba(255,255,255,0.06)' }}>
@@ -384,7 +482,7 @@ export const PrimeBarberLanding: React.FC = () => {
               {/* Headline — full feature list as the main hero
                   statement. Long sentence so leading tightens to
                   keep the wrap readable. */}
-              <h1
+              <h2
                 className="text-[22px] md:text-[34px] font-black tracking-tight leading-[1.12] mb-5"
                 style={{ color: CREAM, letterSpacing: '-0.015em' }}
               >
@@ -392,7 +490,7 @@ export const PrimeBarberLanding: React.FC = () => {
                 <span style={{ fontFamily: '"Instrument Serif", serif', fontStyle: 'italic', fontWeight: 400, color: GOLD }}>
                   all under your brand.
                 </span>
-              </h1>
+              </h2>
 
               {/* Feature pills — visual showcase of the "all in one"
                   promise. Compact, gold-tinted, dark bg. */}
@@ -418,7 +516,7 @@ export const PrimeBarberLanding: React.FC = () => {
                   style={{ background: GOLD, boxShadow: `0 0 8px ${GOLD}` }}
                 />
                 <span className="text-[12px] md:text-[13px]" style={{ color: CREAM }}>
-                  <span style={{ color: GOLD, fontWeight: 700 }}>7-day free trial.</span> Then $29/mo. No contract.
+                  <span style={{ color: GOLD, fontWeight: 700 }}>$29/month.</span> No contract. Cancel anytime.
                 </span>
               </div>
               <PrimaryCTA size="md" />
@@ -456,7 +554,7 @@ export const PrimeBarberLanding: React.FC = () => {
               One branded site that handles your whole shop. No app juggling. No paying just to reach your own customers.
             </p>
             <p className="mt-3 text-[11px] md:text-[12px] max-w-xl mx-auto leading-relaxed" style={{ color: 'rgba(240,236,228,0.45)' }}>
-              <sup style={{ color: GOLD }}>*</sup> To fully use your entire account, you’ll need to end your trial early.
+              No contract. Cancel anytime.
             </p>
           </div>
           <div className="grid gap-px sm:grid-cols-2 md:grid-cols-4" style={{ background: 'rgba(255,255,255,0.06)' }}>
@@ -490,7 +588,7 @@ export const PrimeBarberLanding: React.FC = () => {
                 Once you sign up, our onboarding team takes it from here.
               </p>
               <p className="mt-3 text-[11px] md:text-[12px] max-w-xl mx-auto leading-relaxed" style={{ color: 'rgba(240,236,228,0.45)' }}>
-                <sup style={{ color: GOLD }}>*</sup> To fully use your entire account, you’ll need to end your trial early.
+                No contract. Cancel anytime.
               </p>
             </div>
           </Reveal>
@@ -910,12 +1008,12 @@ export const PrimeBarberLanding: React.FC = () => {
                   style={{ background: 'rgba(212,164,100,0.12)', border: `1px solid rgba(212,164,100,0.4)`, color: CREAM }}
                 >
                   <span className="text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: GOLD }}>
-                    7-Day Free Trial
+                    $29/month · Cancel Anytime
                   </span>
                 </div>
-                <PrimaryCTA size="md" label="Start 7-Day Free Trial" plan="primebarber" />
+                <PrimaryCTA size="md" label="Get Started — $29/month" plan="primebarber" />
                 <p className="mt-3 text-[10px] md:text-[11px] leading-snug" style={{ color: 'rgba(240,236,228,0.45)' }}>
-                  <sup style={{ color: GOLD }}>*</sup> To fully use your entire account, you’ll need to end your trial early.
+                  No contract. Cancel anytime.
                 </p>
               </div>
             </Reveal>
@@ -989,11 +1087,11 @@ export const PrimeBarberLanding: React.FC = () => {
             A custom website with booking, payments, products, galleries, and a mobile app — all yours.
           </p>
           <p className="text-[12px] md:text-[14px] mb-6" style={{ color: CREAM }}>
-            <span style={{ color: GOLD, fontWeight: 700 }}>7-day free trial.</span> Then $29/month. No contract.
+            <span style={{ color: GOLD, fontWeight: 700 }}>$29/month.</span> No contract. Cancel anytime.
           </p>
           <PrimaryCTA />
           <p className="mt-4 text-[11px] md:text-[12px] max-w-md mx-auto leading-relaxed" style={{ color: 'rgba(240,236,228,0.45)' }}>
-            <sup style={{ color: GOLD }}>*</sup> To fully use your entire account, you’ll need to end your trial early.
+            No contract. Cancel anytime.
           </p>
         </div>
       </section>
@@ -1049,7 +1147,7 @@ export const PrimeBarberLanding: React.FC = () => {
                 style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
               >
                 {([
-                  { key: 'primebarber',      label: '7-Day Trial', sub: '$29/mo' },
+                  { key: 'primebarber',      label: 'Full Platform', sub: '$29/mo' },
                   { key: 'primebarber-site', label: 'Custom Site', sub: '$19/mo' },
                 ] as const).map((opt) => {
                   const active = activePlan === opt.key;
@@ -1077,7 +1175,7 @@ export const PrimeBarberLanding: React.FC = () => {
               <div className="flex items-center gap-2.5 mb-2.5">
                 <span className="h-px w-4" style={{ background: GOLD }} />
                 <span className="text-[9px] font-medium uppercase tracking-[0.32em]" style={{ color: GOLD }}>
-                  {activePlan === 'primebarber-site' ? 'Custom Site Only' : '7-Day Free Trial'}
+                  {activePlan === 'primebarber-site' ? 'Custom Site Only' : 'Cancel Anytime'}
                 </span>
                 <span className="h-px flex-1" style={{ background: 'rgba(212,164,100,0.2)' }} />
               </div>
@@ -1101,7 +1199,7 @@ export const PrimeBarberLanding: React.FC = () => {
               <p className="text-[12.5px] mb-3 leading-snug" style={{ color: SOFT }}>
                 {activePlan === 'primebarber-site'
                   ? 'Just the website. No booking, payments, or app. Cancel anytime.'
-                  : 'Card collected today. First charge on day 7. Cancel anytime during the trial — no charge.'}
+                  : 'Charged today at $29/month. No contract. Cancel anytime from the billing portal.'}
               </p>
 
               {/* Plan-aware benefit bullets — same pattern as the
@@ -1121,7 +1219,7 @@ export const PrimeBarberLanding: React.FC = () => {
                       'Mobile app with real-time alerts',
                       'Unlimited staff · no per-barber fees',
                       'Onboarding call · live in 24-48 hours',
-                      '7-day risk-free trial · cancel anytime',
+                      'No contract · cancel anytime',
                     ]
                 ).map((line, i) => (
                   <li
@@ -1140,7 +1238,7 @@ export const PrimeBarberLanding: React.FC = () => {
 
               {activePlan === 'primebarber' && (
                 <p className="mb-3 text-[10.5px] md:text-[11px] leading-snug" style={{ color: 'rgba(240,236,228,0.55)' }}>
-                  <sup style={{ color: GOLD }}>*</sup> To fully use your entire account, you’ll need to end your trial early.
+                  $29/month · cancel anytime.
                 </p>
               )}
 

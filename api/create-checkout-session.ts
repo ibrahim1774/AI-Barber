@@ -47,15 +47,12 @@ export default async function handler(req: any, res: any) {
     // plans — only the analytics tag differs.
     const isCustomBooksy = plan === 'custom-booksy';
     // 'primebarber' = the standalone /primebarber landing page —
-    // $29/mo with a 7-day free trial. Card is collected today; first
-    // charge happens on day 7 unless the customer ends the trial
-    // early (required to unlock full account features) or cancels.
-    // Treated like a custom plan for routing — same Google Form after
-    // payment.
+    // $29/mo charged immediately at signup. No free trial. Treated
+    // like a custom plan for routing — same Google Form after payment.
     const isPrimeBarber = plan === 'primebarber';
     // 'primebarber-site' = the cheaper "Custom Site Only" option on
     // /primebarber — just the website, no booking/payments/app/team
-    // features. $19/mo, NO free trial. Same Google Form routing.
+    // features. $19/mo. Same Google Form routing.
     const isPrimeBarberSite = plan === 'primebarber-site';
     const isCustomAny = isCustom || isCustom25 || isCustomBooksy || isPrimeBarber || isPrimeBarberSite;
 
@@ -147,13 +144,10 @@ export default async function handler(req: any, res: any) {
     params.append('metadata[type]', isPrimeBarber ? 'primebarber' : isPrimeBarberSite ? 'primebarber_site' : isCustomAny ? 'custom_design' : 'site_hosting');
     params.append('metadata[siteId]', siteId);
     params.append('metadata[plan]', plan);
-    // 7-day free trial for /primebarber. Card is collected at signup;
-    // first charge of $29 happens on day 7 unless the customer ends
-    // the trial early (required to unlock full account features) or
-    // cancels via the billing portal.
-    if (isPrimeBarber) {
-      params.append('subscription_data[trial_period_days]', '7');
-    }
+    // /primebarber: $29/mo charged immediately at signup. The 7-day
+    // free trial that previously gated the first charge has been
+    // removed — customers are billed today, full subscription starts
+    // immediately. They can still cancel anytime via the billing portal.
 
     const response = await fetch('https://api.stripe.com/v1/checkout/sessions', {
       method: 'POST',
