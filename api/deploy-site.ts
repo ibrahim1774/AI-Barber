@@ -97,24 +97,12 @@ async function deployToVercel(projectName: string, files: VercelFile[]) {
   );
 
   const data = response.data;
-  // On team accounts (which we are — ibrahims-projects-e5ab879e),
-  // Vercel auto-suffixes the public alias with the team scope, e.g.
-  // requested "afa" → actual production alias "afa-pearl-phi.vercel
-  // .app". The Vercel dashboard surfaces that suffixed alias as the
-  // project's Production URL. We previously rebuilt the URL from the
-  // requested slug ("afa.vercel.app") which 404'd because the team-
-  // scoped alias is the one that actually resolves. data.alias[] is
-  // the canonical source — it carries exactly what shows in the
-  // dashboard. Prefer it; fall back to ${data.name}.vercel.app only
-  // when alias[] is empty (hobby/personal accounts).
-  const aliases: string[] = Array.isArray(data?.alias) ? data.alias : [];
   const actualProjectName = (data.name as string | undefined) || sanitizedProjectName;
-  // Pick the cleanest alias: prefer one that starts with our project
-  // name (filters out any wildcard staging aliases Vercel may attach).
-  const matchingAlias = aliases.find((a) => typeof a === 'string' && a.startsWith(`${actualProjectName}-`)) || aliases[0];
-  const deploymentUrl = matchingAlias
-    ? `https://${matchingAlias}`
-    : `https://${actualProjectName}.vercel.app`;
+  // Use the clean project alias <projectName>.vercel.app — the URL
+  // shown in the Vercel dashboard's "Domains" row. The per-deployment
+  // URL (data.url) and team-scoped aliases include hashes and are
+  // ugly to share.
+  const deploymentUrl = `https://${actualProjectName}.vercel.app`;
 
   console.log(`[Vercel Deploy] Success: ${deploymentUrl} (requested slug: ${sanitizedProjectName}, actual project: ${actualProjectName})`);
 
