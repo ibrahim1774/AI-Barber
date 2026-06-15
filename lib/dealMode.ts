@@ -66,3 +66,15 @@ export function isGenerateBarbershopPath(pathname?: string): boolean {
   const p = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
   return p === GENERATE_BARBERSHOP_PATH || p === `${GENERATE_BARBERSHOP_PATH}/`;
 }
+
+// `/admin-generate` — operator-only white-glove flow for customers who
+// paid off-platform (Cash App, Venmo, in person, etc.) but can't or
+// won't navigate the funnel themselves. Builds a site, creates the
+// customer's Supabase account, publishes, attaches. No payment.
+// The route is intentionally OPEN — no password gate. Add one if abuse
+// shows up.
+export const ADMIN_GENERATE_PATH = '/admin-generate';
+export function isAdminGeneratePath(pathname?: string): boolean {
+  const p = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
+  return p === ADMIN_GENERATE_PATH || p === `${ADMIN_GENERATE_PATH}/`;
+}
