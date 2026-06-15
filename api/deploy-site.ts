@@ -98,11 +98,25 @@ async function deployToVercel(projectName: string, files: VercelFile[]) {
 
   const data = response.data;
   const actualProjectName = (data.name as string | undefined) || sanitizedProjectName;
-  // Use the clean project alias <projectName>.vercel.app — the URL
-  // shown in the Vercel dashboard's "Domains" row. The per-deployment
-  // URL (data.url) and team-scoped aliases include hashes and are
-  // ugly to share.
-  const deploymentUrl = `https://${actualProjectName}.vercel.app`;
+  // Pick what Vercel actually attached to this project — data.alias[]
+  // is the authoritative list. Sort by length and take the shortest
+  // alias that mentions our project name. That naturally selects the
+  // clean team-scoped form (`ada-pearl-phi.vercel.app`) over the
+  // per-deployment URL when both are returned.
+  //
+  // Constructing `${actualProjectName}.vercel.app` directly is unsafe:
+  // for short / common project names ("ada", "joe") that URL lives in
+  // Vercel's public namespace and is owned by some unrelated user, so
+  // it 404s or sends customers to the wrong site. The alias list is
+  // the only source of truth for URLs that actually resolve to THIS
+  // project.
+  const aliases: string[] = Array.isArray(data?.alias) ? data.alias : [];
+  const matchingAliases = aliases
+    .filter((a) => typeof a === 'string' && a.toLowerCase().includes(actualProjectName.toLowerCase()))
+    .sort((a, b) => a.length - b.length);
+  const deploymentUrl = matchingAliases[0]
+    ? `https://${matchingAliases[0]}`
+    : `https://${actualProjectName}.vercel.app`;
 
   console.log(`[Vercel Deploy] Success: ${deploymentUrl} (requested slug: ${sanitizedProjectName}, actual project: ${actualProjectName})`);
 

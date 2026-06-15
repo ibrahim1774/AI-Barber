@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { GeneratorForm } from './GeneratorForm';
+import { BooksyGeneratorForm } from './BooksyGeneratorForm';
 import { ShopInputs, WebsiteData, SiteInstance } from '../types';
 import { generateContent } from '../services/geminiService';
 import { publishSite } from '../services/publishService';
@@ -31,9 +32,11 @@ function generateTempPassword(): string {
 }
 
 type Step = 'setup' | 'generating' | 'publishing' | 'done' | 'error';
+type Mode = 'full' | 'booksy';
 
 export const AdminGenerator: React.FC = () => {
   const [step, setStep] = useState<Step>('setup');
+  const [mode, setMode] = useState<Mode>('full');
   const initialPassword = useMemo(() => generateTempPassword(), []);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState(initialPassword);
@@ -261,12 +264,46 @@ export const AdminGenerator: React.FC = () => {
             </p>
           </div>
         </div>
-        <p className="text-[#666] text-xs mb-8">
+        <p className="text-[#666] text-xs mb-6">
           Fill the shop form below, then click Generate. The site builds → account is created → site goes live → you get the URL + creds to hand off.
+        </p>
+
+        <div className="flex gap-2 mb-2">
+          <button
+            type="button"
+            onClick={() => setMode('full')}
+            className={`flex-1 py-3 px-4 text-xs font-bold uppercase tracking-[2px] rounded border transition-colors ${
+              mode === 'full'
+                ? 'bg-[#f4a100] text-[#1a1a1a] border-[#f4a100]'
+                : 'bg-[#0d0d0d] text-[#888] border-white/10 hover:border-white/30'
+            }`}
+          >
+            Full AI Barber form
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('booksy')}
+            className={`flex-1 py-3 px-4 text-xs font-bold uppercase tracking-[2px] rounded border transition-colors ${
+              mode === 'booksy'
+                ? 'bg-[#f4a100] text-[#1a1a1a] border-[#f4a100]'
+                : 'bg-[#0d0d0d] text-[#888] border-white/10 hover:border-white/30'
+            }`}
+          >
+            Paste Booksy link
+          </button>
+        </div>
+        <p className="text-[#666] text-[10px] mb-8">
+          {mode === 'full'
+            ? 'Build from scratch — fill in shop name, location, services, and a Booksy/Fresha/Square link is optional.'
+            : 'Paste the customer’s Booksy / Fresha / Square / Vagaro / StyleSeat link. We scrape everything and build the site automatically.'}
         </p>
       </div>
 
-      <GeneratorForm onGenerate={handleGenerate} />
+      {mode === 'full' ? (
+        <GeneratorForm onGenerate={handleGenerate} />
+      ) : (
+        <BooksyGeneratorForm onGenerate={handleGenerate} />
+      )}
     </div>
   );
 };
