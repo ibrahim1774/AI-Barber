@@ -47,12 +47,12 @@ export default async function handler(req: any, res: any) {
     // plans — only the analytics tag differs.
     const isCustomBooksy = plan === 'custom-booksy';
     // 'primebarber' = the standalone /primebarber landing page —
-    // $29/mo charged immediately at signup. No free trial. Treated
+    // $20/mo charged immediately at signup. No free trial. Treated
     // like a custom plan for routing — same Google Form after payment.
     const isPrimeBarber = plan === 'primebarber';
     // 'primebarber-yearly' = the yearly billing option on /primebarber
     // — same full platform as 'primebarber' but billed annually at a
-    // 20% discount ($29/mo × 12 × 0.8 = $278.40 → $278/yr). Same
+    // 20% discount ($20/mo × 12 × 0.8 = $192 → $192/yr). Same
     // Google Form routing as the monthly plan.
     const isPrimeBarberYearly = plan === 'primebarber-yearly';
     const isCustomAny = isCustom || isCustom25 || isCustomBooksy || isPrimeBarber || isPrimeBarberYearly;
@@ -94,12 +94,12 @@ export default async function handler(req: any, res: any) {
       interval = 'month';
       productName = 'aibarber.org — Custom Website Design';
     } else if (isPrimeBarber) {
-      unitAmount = '2900';
+      unitAmount = '2000';
       interval = 'month';
       productName = 'aibarber.org — Custom Website Platform (PrimeBarber)';
     } else if (isPrimeBarberYearly) {
-      // 20% off $29/mo × 12 = $278.40 → $278/yr.
-      unitAmount = '27800';
+      // 20% off $20/mo × 12 = $192 → $192/yr.
+      unitAmount = '19200';
       interval = 'year';
       productName = 'aibarber.org — Custom Website Platform (PrimeBarber, Yearly)';
     } else {
@@ -146,7 +146,7 @@ export default async function handler(req: any, res: any) {
     params.append('metadata[type]', (isPrimeBarber || isPrimeBarberYearly) ? 'primebarber' : isCustomAny ? 'custom_design' : 'site_hosting');
     params.append('metadata[siteId]', siteId);
     params.append('metadata[plan]', plan);
-    // /primebarber: $29/mo charged immediately at signup. The 7-day
+    // /primebarber: $20/mo charged immediately at signup. The 7-day
     // free trial that previously gated the first charge has been
     // removed — customers are billed today, full subscription starts
     // immediately. They can still cancel anytime via the billing portal.
