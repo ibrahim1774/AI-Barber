@@ -94,7 +94,13 @@ export const AdminGenerator: React.FC = () => {
       };
 
       setStep('publishing');
-      const { url } = await publishSite(site, newUserId);
+      // skipIndexedDB=true: admin flow never writes to the operator's
+      // browser-local IndexedDB. Otherwise sites the operator has
+      // generated for OTHER customers get picked up by the
+      // dashboard's local→Supabase sync when the operator (or anyone
+      // else) signs into this browser as a customer, attaching those
+      // sites to the wrong user. See ManagementDashboard.loadSites.
+      const { url } = await publishSite(site, newUserId, { skipIndexedDB: true });
 
       // Post-publish save so the customer sees status='deployed' + the
       // live URL in their dashboard. publishSite() only does the pre-
@@ -105,7 +111,7 @@ export const AdminGenerator: React.FC = () => {
         deploymentStatus: 'deployed',
         lastSaved: Date.now(),
       };
-      await dualWriteSave(deployedSite, newUserId);
+      await dualWriteSave(deployedSite, newUserId, { skipIndexedDB: true });
 
       setResultUrl(url);
       setStep('done');
