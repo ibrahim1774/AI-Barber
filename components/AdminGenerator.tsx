@@ -5,7 +5,6 @@ import { BooksyGeneratorForm } from './BooksyGeneratorForm';
 import { ShopInputs, WebsiteData, SiteInstance } from '../types';
 import { generateContent } from '../services/geminiService';
 import { publishSite } from '../services/publishService';
-import { dualWriteSave } from '../services/saveService';
 
 const SUPABASE_URL = (import.meta as any).env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON_KEY = (import.meta as any).env.VITE_SUPABASE_ANON_KEY as string;
@@ -81,6 +80,24 @@ export const AdminGenerator: React.FC = () => {
         throw new Error('Supabase signUp returned no user id.');
       }
 
+      // RLS on the `sites` table requires `auth.uid() = user_id` for
+      // INSERT/UPDATE. To attach the new site to the new customer we
+      // must do the upsert through a client that's authenticated AS
+      // the customer. signUp auto-signs-in only when "Confirm email"
+      // is OFF; if it's ON we try signInWithPassword as a fallback,
+      // which fails clearly so the operator knows what to fix.
+      if (!signUpData.session) {
+        const { error: signInError } = await adminSignupClient.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (signInError) {
+          throw new Error(
+            `Site won't attach — customer needs to confirm their email first. Fix: Supabase dashboard → Authentication → Providers → Email → turn OFF "Confirm email". Then retry. (Underlying: ${signInError.message})`
+          );
+        }
+      }
+
       const siteId = `admin-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
       const site: SiteInstance = {
         id: siteId,
@@ -95,23 +112,46 @@ export const AdminGenerator: React.FC = () => {
 
       setStep('publishing');
       // skipIndexedDB=true: admin flow never writes to the operator's
-      // browser-local IndexedDB. Otherwise sites the operator has
-      // generated for OTHER customers get picked up by the
-      // dashboard's local→Supabase sync when the operator (or anyone
-      // else) signs into this browser as a customer, attaching those
-      // sites to the wrong user. See ManagementDashboard.loadSites.
+      // browser-local IndexedDB (would otherwise pollute customer
+      // dashboards via the local→Supabase sync — see PR #18 fix).
+      // publishSite's internal dualWriteSave Supabase write goes
+      // through the shared client and silently fails RLS — harmless
+      // (fire-and-forget); the canonical save is below using the
+      // ephemeral client that's authenticated as the customer.
       const { url } = await publishSite(site, newUserId, { skipIndexedDB: true });
 
-      // Post-publish save so the customer sees status='deployed' + the
-      // live URL in their dashboard. publishSite() only does the pre-
-      // deploy save (status='deploying').
       const deployedSite: SiteInstance = {
         ...site,
         deployedUrl: url,
         deploymentStatus: 'deployed',
         lastSaved: Date.now(),
       };
-      await dualWriteSave(deployedSite, newUserId, { skipIndexedDB: true });
+      const { error: upsertError } = await adminSignupClient.from('sites').upsert(
+        {
+          id: deployedSite.id,
+          user_id: newUserId,
+          company_name: deployedSite.data.shopName,
+          industry: 'barbershop',
+          service_area: deployedSite.data.area,
+          phone: deployedSite.data.phone,
+          brand_colour: '#f4a100',
+          site_data: deployedSite.data,
+          deployed_url: deployedSite.deployedUrl,
+          deployment_status: deployedSite.deploymentStatus,
+          custom_domain: deployedSite.customDomain,
+          domain_order_id: deployedSite.domainOrderId,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'id' }
+      );
+      if (upsertError) {
+        throw new Error(`Site attach failed: ${upsertError.message}`);
+      }
+
+      // Sign the ephemeral client back out so it's clean for the
+      // next admin run. persistSession=false already prevents any
+      // global leak, but explicit signOut is tidy.
+      await adminSignupClient.auth.signOut();
 
       setResultUrl(url);
       setStep('done');
