@@ -50,11 +50,12 @@ export default async function handler(req: any, res: any) {
     // $29/mo charged immediately at signup. No free trial. Treated
     // like a custom plan for routing — same Google Form after payment.
     const isPrimeBarber = plan === 'primebarber';
-    // 'primebarber-site' = the cheaper "Custom Site Only" option on
-    // /primebarber — just the website, no booking/payments/app/team
-    // features. $19/mo. Same Google Form routing.
-    const isPrimeBarberSite = plan === 'primebarber-site';
-    const isCustomAny = isCustom || isCustom25 || isCustomBooksy || isPrimeBarber || isPrimeBarberSite;
+    // 'primebarber-yearly' = the yearly billing option on /primebarber
+    // — same full platform as 'primebarber' but billed annually at a
+    // 20% discount ($29/mo × 12 × 0.8 = $278.40 → $278/yr). Same
+    // Google Form routing as the monthly plan.
+    const isPrimeBarberYearly = plan === 'primebarber-yearly';
+    const isCustomAny = isCustom || isCustom25 || isCustomBooksy || isPrimeBarber || isPrimeBarberYearly;
 
     let unitAmount: string;
     let interval: 'month' | 'year';
@@ -96,10 +97,11 @@ export default async function handler(req: any, res: any) {
       unitAmount = '2900';
       interval = 'month';
       productName = 'aibarber.org — Custom Website Platform (PrimeBarber)';
-    } else if (isPrimeBarberSite) {
-      unitAmount = '1900';
-      interval = 'month';
-      productName = 'aibarber.org — Custom Site Only (PrimeBarber)';
+    } else if (isPrimeBarberYearly) {
+      // 20% off $29/mo × 12 = $278.40 → $278/yr.
+      unitAmount = '27800';
+      interval = 'year';
+      productName = 'aibarber.org — Custom Website Platform (PrimeBarber, Yearly)';
     } else {
       unitAmount = '900';
       interval = 'month';
@@ -141,7 +143,7 @@ export default async function handler(req: any, res: any) {
     params.append('line_items[0][price_data][recurring][interval]', interval);
     params.append('line_items[0][quantity]', '1');
     params.append('client_reference_id', siteId);
-    params.append('metadata[type]', isPrimeBarber ? 'primebarber' : isPrimeBarberSite ? 'primebarber_site' : isCustomAny ? 'custom_design' : 'site_hosting');
+    params.append('metadata[type]', (isPrimeBarber || isPrimeBarberYearly) ? 'primebarber' : isCustomAny ? 'custom_design' : 'site_hosting');
     params.append('metadata[siteId]', siteId);
     params.append('metadata[plan]', plan);
     // /primebarber: $29/mo charged immediately at signup. The 7-day

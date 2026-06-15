@@ -145,9 +145,10 @@ export const PrimeBarberLanding: React.FC = () => {
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null);
   // Which plan the visitor selected — drives the embedded checkout's
   // price + modal copy.
-  //   'primebarber'      = full platform $29/mo (default)
-  //   'primebarber-site' = "Custom Site Only" $19/mo
-  const [activePlan, setActivePlan] = useState<'primebarber' | 'primebarber-site'>('primebarber');
+  //   'primebarber'        = full platform billed monthly at $29/mo (default)
+  //   'primebarber-yearly' = full platform billed yearly at $278/yr
+  //                          (20% off $29/mo × 12 = $278.40 → $278)
+  const [activePlan, setActivePlan] = useState<'primebarber' | 'primebarber-yearly'>('primebarber');
 
   useEffect(() => {
     if (showCheckout) document.body.style.overflow = 'hidden';
@@ -155,7 +156,7 @@ export const PrimeBarberLanding: React.FC = () => {
     return () => { document.body.style.overflow = ''; };
   }, [showCheckout]);
 
-  const fetchEmbeddedSecret = useCallback(async (plan: 'primebarber' | 'primebarber-site') => {
+  const fetchEmbeddedSecret = useCallback(async (plan: 'primebarber' | 'primebarber-yearly') => {
     setEmbedSecret(null);
     setEmbedError(null);
     try {
@@ -177,7 +178,7 @@ export const PrimeBarberLanding: React.FC = () => {
     }
   }, []);
 
-  const handleStartCheckout = useCallback(async (plan: 'primebarber' | 'primebarber-site' = 'primebarber') => {
+  const handleStartCheckout = useCallback(async (plan: 'primebarber' | 'primebarber-yearly' = 'primebarber') => {
     setActivePlan(plan);
     setShowCheckout(true);
     // Pixel fires on initial open only. Switching plans inside the
@@ -189,7 +190,7 @@ export const PrimeBarberLanding: React.FC = () => {
         typeof crypto !== 'undefined' && (crypto as any).randomUUID
           ? (crypto as any).randomUUID()
           : `pb_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-      const value = plan === 'primebarber-site' ? 19 : 29;
+      const value = plan === 'primebarber-yearly' ? 278 : 29;
       const currency = 'USD';
       const { getPlanContentMeta } = await import('../lib/pixelMeta');
       const m = getPlanContentMeta(plan, value);
@@ -286,7 +287,7 @@ export const PrimeBarberLanding: React.FC = () => {
   const PrimaryCTA: React.FC<{
     size?: 'sm' | 'md' | 'lg';
     label?: string;
-    plan?: 'primebarber' | 'primebarber-site';
+    plan?: 'primebarber' | 'primebarber-yearly';
     variant?: 'gold' | 'ghost';
     showGuarantee?: boolean;
     // Bolded $29/month price line underneath the button. Only renders
@@ -577,9 +578,9 @@ export const PrimeBarberLanding: React.FC = () => {
         </div>
       </section>
 
-      {/* ─── PRICING — two-card option compare ──────────────────── */}
+      {/* ─── PRICING — one card, Monthly / Yearly billing toggle ── */}
       <section className="py-12 md:py-16 px-5 md:px-8" style={{ background: '#080808' }}>
-        <div className="mx-auto max-w-4xl">
+        <div className="mx-auto max-w-xl">
           <Reveal>
             <div className="text-center mb-8 md:mb-10">
               <Eyebrow>Simple Pricing</Eyebrow>
@@ -587,108 +588,135 @@ export const PrimeBarberLanding: React.FC = () => {
             </div>
           </Reveal>
 
-          <div className="grid md:grid-cols-2 gap-4 md:gap-5">
-            {/* CARD 1 — Custom Site Only ($19/mo) */}
-            <Reveal delay={50}>
-              <div
-                className="p-6 md:p-7 h-full flex flex-col"
-                style={{
-                  background: 'rgba(255,255,255,0.02)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                }}
-              >
-                <div className="text-[11px] uppercase tracking-[0.24em] mb-2 font-bold" style={{ color: 'rgba(240,236,228,0.65)' }}>
-                  Custom Site Only
-                </div>
-                <div className="flex items-baseline gap-1 mb-1">
-                  <span style={{ color: CREAM, fontFamily: '"Instrument Serif", serif', fontWeight: 400, fontSize: '3rem', lineHeight: 1 }}>
-                    $19
-                  </span>
-                  <span className="text-[14px]" style={{ color: SOFT }}>/month</span>
-                </div>
-                <p className="text-[12px] md:text-[13px] mb-5" style={{ color: SOFT }}>
-                  Just the website. No booking system, no payments, no app.
-                </p>
-                <ul className="space-y-2 mb-6 flex-1">
-                  {[
-                    'Custom-built website',
-                    'Your branding & photos',
-                    'Mobile-friendly',
-                    'Edit anytime',
-                    'Ongoing support',
-                  ].map((line) => (
-                    <li key={line} className="flex items-start gap-2 text-[13px]" style={{ color: CREAM }}>
-                      <Check size={14} strokeWidth={2.5} style={{ color: SOFT, marginTop: 3, flexShrink: 0 }} />
-                      <span>{line}</span>
-                    </li>
-                  ))}
-                </ul>
-                <div className="text-[10px] uppercase tracking-[0.2em] mb-3" style={{ color: 'rgba(240,236,228,0.45)' }}>
-                  Cancel anytime
-                </div>
-                <PrimaryCTA size="md" label="Get Custom Site" plan="primebarber-site" variant="ghost" />
-              </div>
-            </Reveal>
+          {/* Billing-frequency toggle. Flips activePlan between
+              'primebarber' (monthly $29) and 'primebarber-yearly'
+              ($278/yr = 20% off). The same state drives the embedded
+              checkout below so whatever the visitor sees on this card
+              is what Stripe charges them. */}
+          <Reveal delay={50}>
+            <div
+              className="mx-auto mb-5 grid max-w-sm grid-cols-2 gap-1 p-1 rounded-full"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
+            >
+              {([
+                { key: 'primebarber',        label: 'Monthly' },
+                { key: 'primebarber-yearly', label: 'Yearly', badge: 'Save 20%' },
+              ] as const).map((opt) => {
+                const active = activePlan === opt.key;
+                return (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    onClick={() => setActivePlan(opt.key)}
+                    className="py-2 px-3 text-center transition-all rounded-full inline-flex items-center justify-center gap-1.5"
+                    style={{
+                      background: active ? GOLD : 'transparent',
+                      color: active ? BLACK : 'rgba(240,236,228,0.75)',
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    <span className="text-[11px] font-black uppercase tracking-[0.2em]">{opt.label}</span>
+                    {opt.badge && (
+                      <span
+                        className="text-[8.5px] font-black uppercase tracking-[0.12em] px-1.5 py-0.5 rounded-full"
+                        style={{
+                          background: active ? 'rgba(10,10,10,0.18)' : 'rgba(212,164,100,0.18)',
+                          color: active ? BLACK : GOLD,
+                        }}
+                      >
+                        {opt.badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </Reveal>
 
-            {/* CARD 2 — Full Platform ($29/mo) — recommended */}
-            <Reveal delay={150}>
+          {/* Single recommended card — content stays the same across
+              both billing intervals (it's the same product); only the
+              price + CTA label change. */}
+          <Reveal delay={150}>
+            <div
+              className="relative p-6 md:p-8"
+              style={{
+                background: 'rgba(212,164,100,0.06)',
+                border: `1.5px solid ${GOLD}`,
+                boxShadow: `0 20px 50px rgba(212,164,100,0.15)`,
+              }}
+            >
               <div
-                className="relative p-6 md:p-7 h-full flex flex-col"
-                style={{
-                  background: 'rgba(212,164,100,0.06)',
-                  border: `1.5px solid ${GOLD}`,
-                  boxShadow: `0 20px 50px rgba(212,164,100,0.15)`,
-                }}
+                className="absolute -top-2.5 left-6 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.2em]"
+                style={{ background: GOLD, color: BLACK }}
               >
-                {/* Recommended badge */}
-                <div
-                  className="absolute -top-2.5 left-6 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.2em]"
-                  style={{ background: GOLD, color: BLACK }}
-                >
-                  Recommended
-                </div>
-                <div className="text-[11px] uppercase tracking-[0.24em] mb-2 font-bold" style={{ color: GOLD }}>
-                  Prime Barber Platform
-                </div>
-                <div className="flex items-baseline gap-1 mb-1">
-                  <span style={{ color: CREAM, fontFamily: '"Instrument Serif", serif', fontWeight: 400, fontSize: '3rem', lineHeight: 1 }}>
-                    $29
-                  </span>
-                  <span className="text-[14px]" style={{ color: SOFT }}>/month</span>
-                </div>
-                <p className="text-[12px] md:text-[13px] mb-5" style={{ color: SOFT }}>
-                  Everything. Site, booking, payments, mobile app, store.
-                </p>
-                <ul className="space-y-2 mb-5 flex-1">
-                  {[
-                    'Everything in Custom Site',
-                    'Calendar & online booking',
-                    'Payment processing',
-                    'Mobile app + alerts',
-                    'Product store',
-                    'Unlimited staff',
-                  ].map((line) => (
-                    <li key={line} className="flex items-start gap-2 text-[13px]" style={{ color: CREAM }}>
-                      <Check size={14} strokeWidth={2.5} style={{ color: GOLD, marginTop: 3, flexShrink: 0 }} />
-                      <span>{line}</span>
-                    </li>
-                  ))}
-                </ul>
-                <div
-                  className="mb-3 inline-flex items-center gap-1.5 px-2.5 py-1 self-start"
-                  style={{ background: 'rgba(212,164,100,0.12)', border: `1px solid rgba(212,164,100,0.4)`, color: CREAM }}
-                >
-                  <span className="text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: GOLD }}>
-                    $29/month · Cancel Anytime
-                  </span>
-                </div>
-                <PrimaryCTA size="md" label="Get Started — $29/month" plan="primebarber" />
-                <p className="mt-3 text-[10px] md:text-[11px] leading-snug" style={{ color: 'rgba(240,236,228,0.45)' }}>
-                  No contract. Cancel anytime.
-                </p>
+                Recommended
               </div>
-            </Reveal>
-          </div>
+              <div className="text-[11px] uppercase tracking-[0.24em] mb-2 font-bold" style={{ color: GOLD }}>
+                Prime Barber Platform
+              </div>
+
+              {activePlan === 'primebarber-yearly' ? (
+                <>
+                  <div className="flex items-baseline gap-1 mb-1">
+                    <span style={{ color: CREAM, fontFamily: '"Instrument Serif", serif', fontWeight: 400, fontSize: '3rem', lineHeight: 1 }}>
+                      $278
+                    </span>
+                    <span className="text-[14px]" style={{ color: SOFT }}>/year</span>
+                  </div>
+                  <p className="text-[12px] md:text-[13px] mb-5" style={{ color: SOFT }}>
+                    Billed once a year. Works out to about <strong style={{ color: CREAM }}>$23/month</strong>{' '}
+                    — a 20% discount vs paying monthly.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-baseline gap-1 mb-1">
+                    <span style={{ color: CREAM, fontFamily: '"Instrument Serif", serif', fontWeight: 400, fontSize: '3rem', lineHeight: 1 }}>
+                      $29
+                    </span>
+                    <span className="text-[14px]" style={{ color: SOFT }}>/month</span>
+                  </div>
+                  <p className="text-[12px] md:text-[13px] mb-5" style={{ color: SOFT }}>
+                    Billed monthly. Save 20% by switching to yearly above.
+                  </p>
+                </>
+              )}
+
+              <ul className="space-y-2 mb-5">
+                {[
+                  'Custom-built website under your brand',
+                  'Calendar & online booking',
+                  'Payment processing',
+                  'Mobile app + alerts',
+                  'Product store',
+                  'Unlimited staff · no per-barber fees',
+                ].map((line) => (
+                  <li key={line} className="flex items-start gap-2 text-[13px]" style={{ color: CREAM }}>
+                    <Check size={14} strokeWidth={2.5} style={{ color: GOLD, marginTop: 3, flexShrink: 0 }} />
+                    <span>{line}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <div
+                className="mb-3 inline-flex items-center gap-1.5 px-2.5 py-1 self-start"
+                style={{ background: 'rgba(212,164,100,0.12)', border: `1px solid rgba(212,164,100,0.4)`, color: CREAM }}
+              >
+                <span className="text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: GOLD }}>
+                  {activePlan === 'primebarber-yearly' ? '$278/year · Cancel Anytime' : '$29/month · Cancel Anytime'}
+                </span>
+              </div>
+              <PrimaryCTA
+                size="md"
+                label={activePlan === 'primebarber-yearly' ? 'Get Started — $278/year' : 'Get Started — $29/month'}
+                plan={activePlan}
+                showPrice={false}
+              />
+              <p className="mt-3 text-[10px] md:text-[11px] leading-snug" style={{ color: 'rgba(240,236,228,0.45)' }}>
+                No contract. Cancel anytime.
+              </p>
+            </div>
+          </Reveal>
         </div>
       </section>
 
@@ -774,16 +802,18 @@ export const PrimeBarberLanding: React.FC = () => {
               <X size={18} />
             </button>
             <div className="px-5 pt-6 pb-5 md:px-7 md:pt-7 md:pb-6">
-              {/* Plan toggle — lets the visitor switch between the
-                  $29 full platform and the $19 Custom Site Only without
-                  closing the modal. Refetches embedded secret. */}
+              {/* Billing-frequency toggle inside the embedded
+                  checkout. Mirrors the toggle in the Pricing section
+                  above so visitors who landed in the modal via a Hero
+                  / Nav CTA can still switch to yearly without closing.
+                  Refetches the embedded client_secret on change. */}
               <div
                 className="grid grid-cols-2 gap-1 p-1 mb-4 rounded-md"
                 style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
               >
                 {([
-                  { key: 'primebarber',      label: 'Full Platform', sub: '$29/mo' },
-                  { key: 'primebarber-site', label: 'Custom Site', sub: '$19/mo' },
+                  { key: 'primebarber',        label: 'Monthly', sub: '$29/mo' },
+                  { key: 'primebarber-yearly', label: 'Yearly',  sub: '$278/yr · Save 20%' },
                 ] as const).map((opt) => {
                   const active = activePlan === opt.key;
                   return (
@@ -810,53 +840,43 @@ export const PrimeBarberLanding: React.FC = () => {
               <div className="flex items-center gap-2.5 mb-2.5">
                 <span className="h-px w-4" style={{ background: GOLD }} />
                 <span className="text-[9px] font-medium uppercase tracking-[0.32em]" style={{ color: GOLD }}>
-                  {activePlan === 'primebarber-site' ? 'Custom Site Only' : 'Cancel Anytime'}
+                  {activePlan === 'primebarber-yearly' ? 'Yearly · Save 20%' : 'Monthly · Cancel Anytime'}
                 </span>
                 <span className="h-px flex-1" style={{ background: 'rgba(212,164,100,0.2)' }} />
               </div>
               <h3 className="text-xl md:text-2xl font-black tracking-tight leading-[1.1] mb-1.5" style={{ color: CREAM }}>
-                {activePlan === 'primebarber-site' ? (
+                {activePlan === 'primebarber-yearly' ? (
                   <>
-                    Custom Site for{' '}
+                    Prime Barber yearly —{' '}
                     <span style={{ fontFamily: '"Instrument Serif", serif', fontStyle: 'italic', fontWeight: 400, color: GOLD }}>
-                      $19/month.
+                      $278/year.
                     </span>
                   </>
                 ) : (
                   <>
-                    Try Prime Barber{' '}
+                    Prime Barber monthly —{' '}
                     <span style={{ fontFamily: '"Instrument Serif", serif', fontStyle: 'italic', fontWeight: 400, color: GOLD }}>
-                      free for 7 days.
+                      $29/month.
                     </span>
                   </>
                 )}
               </h3>
               <p className="text-[12.5px] mb-3 leading-snug" style={{ color: SOFT }}>
-                {activePlan === 'primebarber-site'
-                  ? 'Just the website. No booking, payments, or app. Cancel anytime.'
+                {activePlan === 'primebarber-yearly'
+                  ? 'Billed once a year ($278). Works out to about $23/month — a 20% discount vs paying monthly.'
                   : 'Charged today at $29/month. No contract. Cancel anytime from the billing portal.'}
               </p>
 
-              {/* Plan-aware benefit bullets — same pattern as the
-                  /booksy and /free-barber modals. Reassures the
-                  visitor RIGHT before they enter card details. */}
+              {/* Benefit bullets — same product across billing
+                  intervals, so the bullets don't need to branch. */}
               <ul className="mb-4 space-y-1 md:space-y-0.5">
-                {(activePlan === 'primebarber-site'
-                  ? [
-                      'Custom-built website under your brand',
-                      'Mobile-friendly + SEO optimized',
-                      'Onboarding call · live in 24-48 hours',
-                      'Edit anytime from your account',
-                      'Cancel anytime · no contract',
-                    ]
-                  : [
-                      'Custom site, booking, payments — all in one',
-                      'Mobile app with real-time alerts',
-                      'Unlimited staff · no per-barber fees',
-                      'Onboarding call · live in 24-48 hours',
-                      'No contract · cancel anytime',
-                    ]
-                ).map((line, i) => (
+                {[
+                  'Custom site, booking, payments — all in one',
+                  'Mobile app with real-time alerts',
+                  'Unlimited staff · no per-barber fees',
+                  'Onboarding call · live in 24-48 hours',
+                  'No contract · cancel anytime',
+                ].map((line, i) => (
                   <li
                     key={i}
                     className="flex items-start gap-2 text-[12px] md:text-[11.5px] leading-snug"
@@ -871,11 +891,9 @@ export const PrimeBarberLanding: React.FC = () => {
                 ))}
               </ul>
 
-              {activePlan === 'primebarber' && (
-                <p className="mb-3 text-[10.5px] md:text-[11px] leading-snug" style={{ color: 'rgba(240,236,228,0.55)' }}>
-                  $29/month · cancel anytime.
-                </p>
-              )}
+              <p className="mb-3 text-[10.5px] md:text-[11px] leading-snug" style={{ color: 'rgba(240,236,228,0.55)' }}>
+                {activePlan === 'primebarber-yearly' ? '$278/year · cancel anytime.' : '$29/month · cancel anytime.'}
+              </p>
 
               <div className="rounded-md overflow-hidden bg-white" style={{ minHeight: 360 }}>
                 {embedError ? (
