@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, X, Loader2, ChevronDown, Lock, Scissors } from 'lucide-react';
+import { Check, X, Loader2, ChevronDown, Calendar, CreditCard, ShoppingBag, Image as ImageIcon, Smartphone, Settings, Layers, Lock, Scissors, Users } from 'lucide-react';
 import { loadStripe, type Stripe } from '@stripe/stripe-js';
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js';
 
@@ -218,6 +218,49 @@ export const PrimeBarberLanding: React.FC = () => {
     fetchEmbeddedSecret(activePlan).finally(() => setIsStartingCheckout(false));
   }, [showCheckout, activePlan, fetchEmbeddedSecret]);
 
+  const features = [
+    {
+      icon: Calendar,
+      title: 'Online Booking',
+      body: 'Clients book themselves 24/7 — even while you’re mid-cut. No more back-and-forth texts.',
+    },
+    {
+      icon: CreditCard,
+      title: 'Payment Integration',
+      body: 'Accept and receive payments right on your site. Cards, Apple Pay, tap-to-pay.',
+    },
+    {
+      icon: ShoppingBag,
+      title: 'Sell Your Products',
+      body: 'Stock pomades, beard oil, or merch right next to your services. One checkout.',
+    },
+    {
+      icon: ImageIcon,
+      title: 'Show Off Your Work',
+      body: 'Real before-and-after galleries that prove why clients pick you over the shop next door.',
+    },
+    {
+      icon: Layers,
+      title: 'Custom Pages',
+      body: 'Services menu, about your team, contact form — built around how your shop actually runs.',
+    },
+    {
+      icon: Smartphone,
+      title: 'Stay In The Loop',
+      body: 'Mobile alerts the second someone books, pays, or sends an inquiry.',
+    },
+    {
+      icon: Settings,
+      title: 'Edit In Seconds',
+      body: 'Change prices, hours, photos, or services yourself. No support ticket. No waiting.',
+    },
+    {
+      icon: Users,
+      title: 'Unlimited Staff',
+      body: 'Add your whole team without the extra cost. Same flat fee — no per-barber pricing, ever.',
+    },
+  ];
+
   const painPoints = [
     'Your clients and reviews live on someone else’s platform',
     'You’re listed next to every competing barber in town',
@@ -385,33 +428,6 @@ export const PrimeBarberLanding: React.FC = () => {
             </p>
           </div>
 
-          {/* "Click for sound" prompt — small pulsing speaker icon
-              that cues the visitor to unmute Wistia's autoplay. */}
-          <div className="flex items-center justify-center gap-2 mb-3 md:mb-4" aria-hidden="true">
-            <style>{`
-              @keyframes pbSpeakerPulse {
-                0%, 100% { transform: scale(1); }
-                50%      { transform: scale(1.18); }
-              }
-              @keyframes pbSpeakerRing1 {
-                0%   { opacity: 0; transform: scaleX(0.6); }
-                40%  { opacity: 1; }
-                100% { opacity: 0; transform: scaleX(1.4); }
-              }
-              .pb-speaker-icon { animation: pbSpeakerPulse 1.4s ease-in-out infinite; transform-origin: 30% 50%; }
-              .pb-speaker-ring-a { animation: pbSpeakerRing1 1.4s ease-out infinite; transform-origin: 30% 50%; }
-              .pb-speaker-ring-b { animation: pbSpeakerRing1 1.4s ease-out infinite; animation-delay: 0.35s; transform-origin: 30% 50%; }
-            `}</style>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="pb-speaker-icon">
-              <path d="M3 10v4h3l5 4V6L6 10H3z" fill={GOLD} />
-              <path className="pb-speaker-ring-a" d="M14 9c1.2 0.9 1.2 5.1 0 6" stroke={GOLD} strokeWidth="1.6" strokeLinecap="round" fill="none" />
-              <path className="pb-speaker-ring-b" d="M17 6c2.8 2.2 2.8 9.8 0 12" stroke={GOLD} strokeWidth="1.6" strokeLinecap="round" fill="none" />
-            </svg>
-            <span className="text-[11px] md:text-[12px] font-bold uppercase tracking-[0.18em]" style={{ color: GOLD }}>
-              Click for sound
-            </span>
-          </div>
-
           <div
             className="relative mx-auto"
             style={{
@@ -523,6 +539,41 @@ export const PrimeBarberLanding: React.FC = () => {
                 />
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── FEATURES GRID — moved up to be section 2 ───────────── */}
+      <section className="py-12 md:py-16 px-5 md:px-8" style={{ background: '#080808' }}>
+        <div className="mx-auto max-w-6xl">
+          <div className="text-center max-w-2xl mx-auto mb-8 md:mb-10">
+            <Eyebrow>Everything Included</Eyebrow>
+            <SectionHeading serifAccent="all under your brand.">
+              Look pro, book more, run smoother —
+            </SectionHeading>
+            <p className="text-[14px] md:text-[15px]" style={{ color: SOFT }}>
+              One branded site that handles your whole shop. No app juggling. No paying just to reach your own customers.
+            </p>
+            <p className="mt-3 text-[11px] md:text-[12px] max-w-xl mx-auto leading-relaxed" style={{ color: 'rgba(240,236,228,0.45)' }}>
+              No contract. Cancel anytime.
+            </p>
+          </div>
+          <div className="grid gap-px sm:grid-cols-2 md:grid-cols-4" style={{ background: 'rgba(255,255,255,0.06)' }}>
+            {features.map((f, i) => {
+              const Icon = f.icon;
+              return (
+                <Reveal key={i} delay={i * 50}>
+                  <div
+                    className="pb-feature-card p-5 md:p-6 h-full"
+                    style={{ background: BLACK }}
+                  >
+                    <Icon size={22} className="pb-feature-icon" style={{ color: GOLD, transition: 'color 0.3s' }} />
+                    <h3 className="mt-3 mb-1 text-[14px] md:text-[15px] font-black" style={{ color: CREAM }}>{f.title}</h3>
+                    <p className="text-[12.5px] md:text-[13px] leading-[1.45]" style={{ color: SOFT }}>{f.body}</p>
+                  </div>
+                </Reveal>
+              );
+            })}
           </div>
         </div>
       </section>
