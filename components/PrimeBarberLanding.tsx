@@ -454,6 +454,27 @@ export const PrimeBarberLanding: React.FC = () => {
         </div>
       </section>
 
+      {/* ─── CONTACT — post-purchase support, gated to subscribers ── */}
+      <section className="border-b" style={{ borderBottomColor: 'rgba(255,255,255,0.06)' }}>
+        <div className="mx-auto max-w-3xl px-5 md:px-8 py-10 md:py-12 text-center">
+          <h2 className="font-serif text-[24px] md:text-[30px] leading-tight tracking-[-0.01em] mb-3" style={{ color: CREAM }}>
+            Contact Our Team
+          </h2>
+          <p className="text-[13px] md:text-[14px] leading-relaxed mb-5" style={{ color: SOFT }}>
+            Please only reach out <span style={{ color: CREAM, fontWeight: 600 }}>after your purchase</span> so we can start onboarding your shop. We&apos;re open 7 days a week — during high-demand periods, support is reserved for active Prime Barber subscribers.
+          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-6 text-[14px]">
+            <a href="mailto:support@devoxa.com" className="hover:underline" style={{ color: GOLD }}>
+              support@devoxa.com
+            </a>
+            <span className="hidden sm:inline" style={{ color: SOFT }}>·</span>
+            <a href="tel:+13476131906" className="hover:underline" style={{ color: GOLD }}>
+              347-613-1906
+            </a>
+          </div>
+        </div>
+      </section>
+
       {/* ─── HERO — split image + text ──────────────────────────── */}
       <section className="relative overflow-hidden border-b" style={{ borderBottomColor: 'rgba(255,255,255,0.06)' }}>
         <div
