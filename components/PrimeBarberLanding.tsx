@@ -408,6 +408,18 @@ export const PrimeBarberLanding: React.FC = () => {
       >
         <div className="relative mx-auto max-w-4xl px-5 md:px-8 py-10 md:py-14 pb-fade-in">
           <div className="text-center mb-5 md:mb-6">
+            {/* Lead-in headline above the eyebrow — full descriptive
+                sentence about what the system delivers. Replaces the
+                old separate hero section below. */}
+            <p
+              className="text-[18px] md:text-[26px] font-black tracking-tight leading-[1.2] mb-5 md:mb-6 max-w-3xl mx-auto"
+              style={{ color: CREAM, letterSpacing: '-0.015em' }}
+            >
+              Custom site, booking scheduler, payment integration, sell your own products, SEO optimized, mobile app —{' '}
+              <span style={{ fontFamily: '"Instrument Serif", serif', fontStyle: 'italic', fontWeight: 400, color: GOLD }}>
+                all under your barber brand.
+              </span>
+            </p>
             <Eyebrow>Watch · 1-Minute Overview</Eyebrow>
             <h1
               className="text-[22px] md:text-[32px] font-black tracking-tight leading-[1.15] mb-3"
@@ -477,95 +489,6 @@ export const PrimeBarberLanding: React.FC = () => {
 
           <div className="mt-6 md:mt-8 flex flex-col items-center">
             <PrimaryCTA size="lg" />
-          </div>
-        </div>
-      </section>
-
-      {/* ─── HERO — split image + text ──────────────────────────── */}
-      <section className="relative overflow-hidden border-b" style={{ borderBottomColor: 'rgba(255,255,255,0.06)' }}>
-        <div
-          className="absolute inset-0 opacity-15"
-          style={{ backgroundImage: `url(${IMG.heroBg})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
-          aria-hidden="true"
-        />
-        <div
-          className="absolute inset-0"
-          style={{ background: 'linear-gradient(180deg, rgba(10,10,10,0.7) 0%, rgba(10,10,10,0.95) 100%)' }}
-          aria-hidden="true"
-        />
-        <div className="relative mx-auto max-w-6xl px-5 md:px-8 py-10 md:py-14 pb-fade-in">
-          <div className="grid md:grid-cols-[1.7fr_1fr] gap-6 md:gap-10 items-center">
-            <div>
-              {/* Audience callout — bigger, prominent. */}
-              <div
-                className="font-black uppercase mb-4"
-                style={{
-                  color: GOLD,
-                  letterSpacing: '0.22em',
-                  fontSize: 'clamp(13px, 1.6vw, 17px)',
-                }}
-              >
-                Barbershops · All-In-One Platform
-              </div>
-              {/* Headline — full feature list as the main hero
-                  statement. Long sentence so leading tightens to
-                  keep the wrap readable. */}
-              <h2
-                className="text-[22px] md:text-[34px] font-black tracking-tight leading-[1.12] mb-5"
-                style={{ color: CREAM, letterSpacing: '-0.015em' }}
-              >
-                Custom site, booking scheduler, payment integration, sell your own products, SEO optimized, mobile app —{' '}
-                <span style={{ fontFamily: '"Instrument Serif", serif', fontStyle: 'italic', fontWeight: 400, color: GOLD }}>
-                  all under your brand.
-                </span>
-              </h2>
-
-              {/* Feature pills — visual showcase of the "all in one"
-                  promise. Compact, gold-tinted, dark bg. */}
-              <div className="flex flex-wrap gap-1.5 mb-5">
-                {['Custom Site', 'Booking', 'Payments', 'SEO', 'Products', 'Mobile App'].map((label) => (
-                  <span
-                    key={label}
-                    className="px-2 py-1 text-[9.5px] md:text-[10px] font-bold uppercase tracking-[0.14em]"
-                    style={{
-                      background: 'rgba(212,164,100,0.06)',
-                      border: '1px solid rgba(212,164,100,0.3)',
-                      color: CREAM,
-                    }}
-                  >
-                    {label}
-                  </span>
-                ))}
-              </div>
-
-              <div className="flex items-center gap-2 mb-4">
-                <span
-                  className="inline-block w-2 h-2 rounded-full"
-                  style={{ background: GOLD, boxShadow: `0 0 8px ${GOLD}` }}
-                />
-                <span className="text-[12px] md:text-[13px]" style={{ color: CREAM }}>
-                  <span style={{ color: GOLD, fontWeight: 700 }}>$20/month.</span> No contract. Cancel anytime.
-                </span>
-              </div>
-              <PrimaryCTA size="md" />
-            </div>
-
-            {/* Single compact hero image, capped tight. */}
-            <div className="hidden md:block">
-              <div
-                className="rounded-md overflow-hidden max-w-[260px] ml-auto"
-                style={{
-                  boxShadow: `0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(212,164,100,0.15)`,
-                  animation: 'pbHeroFloat 6s ease-in-out infinite',
-                }}
-              >
-                <img
-                  src={IMG.heroMain}
-                  alt="Barbershop interior"
-                  className="w-full object-cover aspect-[3/4]"
-                />
-              </div>
-            </div>
           </div>
         </div>
       </section>
