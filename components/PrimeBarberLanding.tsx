@@ -469,37 +469,25 @@ export const PrimeBarberLanding: React.FC = () => {
         <div className="relative mx-auto max-w-6xl px-5 md:px-8 py-10 md:py-14 pb-fade-in">
           <div className="grid md:grid-cols-[1.7fr_1fr] gap-6 md:gap-10 items-center">
             <div>
-              {/* Audience callout — bigger, prominent. */}
-              <div
-                className="font-black uppercase mb-4"
+              {/* Main title — single word, huge presence. */}
+              <h1
+                className="font-black tracking-tight leading-[0.92] mb-6"
                 style={{
-                  color: GOLD,
-                  letterSpacing: '0.22em',
-                  fontSize: 'clamp(13px, 1.6vw, 17px)',
+                  color: CREAM,
+                  fontSize: 'clamp(56px, 11vw, 130px)',
+                  letterSpacing: '-0.035em',
                 }}
               >
-                Barbershops · All-In-One Platform
-              </div>
-              {/* Headline — full feature list as the main hero
-                  statement. Long sentence so leading tightens to
-                  keep the wrap readable. */}
-              <h2
-                className="text-[22px] md:text-[34px] font-black tracking-tight leading-[1.12] mb-5"
-                style={{ color: CREAM, letterSpacing: '-0.015em' }}
-              >
-                Custom site, booking scheduler, payment integration, sell your own products, SEO optimized, mobile app —{' '}
-                <span style={{ fontFamily: '"Instrument Serif", serif', fontStyle: 'italic', fontWeight: 400, color: GOLD }}>
-                  all under your brand.
-                </span>
-              </h2>
+                Barbers<span style={{ color: GOLD }}>.</span>
+              </h1>
 
-              {/* Feature pills — visual showcase of the "all in one"
-                  promise. Compact, gold-tinted, dark bg. */}
-              <div className="flex flex-wrap gap-1.5 mb-5">
+              {/* Feature pills as the main headline — the "all-in-one"
+                  promise stated as discrete capability chips. */}
+              <div className="flex flex-wrap gap-2 mb-6">
                 {['Custom Site', 'Booking', 'Payments', 'SEO', 'Products', 'Mobile App'].map((label) => (
                   <span
                     key={label}
-                    className="px-2 py-1 text-[9.5px] md:text-[10px] font-bold uppercase tracking-[0.14em]"
+                    className="px-3 py-2 text-[11px] md:text-[13px] font-bold uppercase tracking-[0.14em]"
                     style={{
                       background: 'rgba(212,164,100,0.06)',
                       border: '1px solid rgba(212,164,100,0.3)',
@@ -543,21 +531,9 @@ export const PrimeBarberLanding: React.FC = () => {
         </div>
       </section>
 
-      {/* ─── FEATURES GRID — moved up to be section 2 ───────────── */}
+      {/* ─── FEATURES GRID — 8-card breakdown, no intro text ──── */}
       <section className="py-12 md:py-16 px-5 md:px-8" style={{ background: '#080808' }}>
         <div className="mx-auto max-w-6xl">
-          <div className="text-center max-w-2xl mx-auto mb-8 md:mb-10">
-            <Eyebrow>Everything Included</Eyebrow>
-            <SectionHeading serifAccent="all under your brand.">
-              Look pro, book more, run smoother —
-            </SectionHeading>
-            <p className="text-[14px] md:text-[15px]" style={{ color: SOFT }}>
-              One branded site that handles your whole shop. No app juggling. No paying just to reach your own customers.
-            </p>
-            <p className="mt-3 text-[11px] md:text-[12px] max-w-xl mx-auto leading-relaxed" style={{ color: 'rgba(240,236,228,0.45)' }}>
-              No contract. Cancel anytime.
-            </p>
-          </div>
           <div className="grid gap-px sm:grid-cols-2 md:grid-cols-4" style={{ background: 'rgba(255,255,255,0.06)' }}>
             {features.map((f, i) => {
               const Icon = f.icon;
