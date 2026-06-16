@@ -1070,6 +1070,26 @@ const App: React.FC = () => {
                   }}
                 />
               </div>
+              {/* Hard warning. The deploy runs client-side during this
+                  countdown — visitors who close the tab here have lost
+                  their site multiple times. Red border + bold copy
+                  makes it impossible to miss. */}
+              <div
+                role="alert"
+                className="mt-8 w-full max-w-md rounded-xl border-2 px-5 py-4 text-center"
+                style={{
+                  borderColor: '#ef4444',
+                  background: 'linear-gradient(180deg, rgba(239,68,68,0.18), rgba(239,68,68,0.08))',
+                  boxShadow: '0 0 0 1px rgba(239,68,68,0.35), 0 8px 28px -10px rgba(239,68,68,0.55)',
+                }}
+              >
+                <p className="text-[11px] font-black uppercase tracking-[0.28em] text-red-400">
+                  ⚠ Important
+                </p>
+                <p className="mt-2 text-[13px] font-bold leading-snug text-red-100 md:text-[14px]">
+                  Please do not move away from this page or your website won't be generated.
+                </p>
+              </div>
             </>
           )}
 
