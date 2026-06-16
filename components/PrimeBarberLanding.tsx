@@ -410,7 +410,7 @@ export const PrimeBarberLanding: React.FC = () => {
           <div className="text-center mb-5 md:mb-6">
             <Eyebrow>Watch · 1-Minute Overview</Eyebrow>
             <h1
-              className="text-[22px] md:text-[32px] font-black tracking-tight leading-[1.15] mb-3"
+              className="text-[15px] md:text-[22px] font-black tracking-tight leading-[1.15]"
               style={{ color: CREAM, letterSpacing: '-0.015em' }}
             >
               See the{' '}
@@ -419,13 +419,6 @@ export const PrimeBarberLanding: React.FC = () => {
               </span>{' '}
               system in 1 minute
             </h1>
-            <p
-              className="text-[13px] md:text-[15px] max-w-2xl mx-auto leading-[1.55]"
-              style={{ color: SOFT }}
-            >
-              Custom branded site, built-in booking, accept payments, sell your own products
-              — everything your shop needs in one place.
-            </p>
           </div>
 
           <div
