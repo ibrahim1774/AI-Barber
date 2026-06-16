@@ -415,7 +415,18 @@ export const PrimeBarberLanding: React.FC = () => {
               className="text-[18px] md:text-[26px] font-black tracking-tight leading-[1.2] mb-5 md:mb-6 max-w-3xl mx-auto"
               style={{ color: CREAM, letterSpacing: '-0.015em' }}
             >
-              Custom site, booking scheduler, payment integration, sell your own products, SEO optimized, mobile app —{' '}
+              Brandable BARBER site, booking scheduler, payment integration,{' '}
+              <span
+                style={{
+                  background: 'rgba(250, 204, 21, 0.35)',
+                  boxShadow: '0 0 0 2px rgba(250, 204, 21, 0.35)',
+                  borderRadius: '2px',
+                  color: CREAM,
+                }}
+              >
+                sell your own products
+              </span>
+              , SEO optimized, mobile app —{' '}
               <span style={{ fontFamily: '"Instrument Serif", serif', fontStyle: 'italic', fontWeight: 400, color: GOLD }}>
                 all under your barber brand.
               </span>
