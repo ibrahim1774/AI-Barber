@@ -469,25 +469,24 @@ export const PrimeBarberLanding: React.FC = () => {
         <div className="relative mx-auto max-w-6xl px-5 md:px-8 py-10 md:py-14 pb-fade-in">
           <div className="grid md:grid-cols-[1.7fr_1fr] gap-6 md:gap-10 items-center">
             <div>
-              {/* Main title — single word, huge presence. */}
+              {/* Main headline — the full descriptive sentence about
+                  what the platform does. */}
               <h1
-                className="font-black tracking-tight leading-[0.92] mb-6"
-                style={{
-                  color: CREAM,
-                  fontSize: 'clamp(56px, 11vw, 130px)',
-                  letterSpacing: '-0.035em',
-                }}
+                className="text-[26px] md:text-[40px] font-black tracking-tight leading-[1.12] mb-6"
+                style={{ color: CREAM, letterSpacing: '-0.015em' }}
               >
-                Barbers<span style={{ color: GOLD }}>.</span>
+                Custom site, booking scheduler, payment integration, sell your own products, SEO optimized, mobile app —{' '}
+                <span style={{ fontFamily: '"Instrument Serif", serif', fontStyle: 'italic', fontWeight: 400, color: GOLD }}>
+                  all under your brand.
+                </span>
               </h1>
 
-              {/* Feature pills as the main headline — the "all-in-one"
-                  promise stated as discrete capability chips. */}
-              <div className="flex flex-wrap gap-2 mb-6">
+              {/* Capability chips — secondary visual reinforcement. */}
+              <div className="flex flex-wrap gap-1.5 mb-6">
                 {['Custom Site', 'Booking', 'Payments', 'SEO', 'Products', 'Mobile App'].map((label) => (
                   <span
                     key={label}
-                    className="px-3 py-2 text-[11px] md:text-[13px] font-bold uppercase tracking-[0.14em]"
+                    className="px-2 py-1 text-[10px] md:text-[11px] font-bold uppercase tracking-[0.14em]"
                     style={{
                       background: 'rgba(212,164,100,0.06)',
                       border: '1px solid rgba(212,164,100,0.3)',
