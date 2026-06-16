@@ -428,6 +428,33 @@ export const PrimeBarberLanding: React.FC = () => {
             </p>
           </div>
 
+          {/* "Click for sound" prompt — small pulsing speaker icon
+              that cues the visitor to unmute Wistia's autoplay. */}
+          <div className="flex items-center justify-center gap-2 mb-3 md:mb-4" aria-hidden="true">
+            <style>{`
+              @keyframes pbSpeakerPulse {
+                0%, 100% { transform: scale(1); }
+                50%      { transform: scale(1.18); }
+              }
+              @keyframes pbSpeakerRing1 {
+                0%   { opacity: 0; transform: scaleX(0.6); }
+                40%  { opacity: 1; }
+                100% { opacity: 0; transform: scaleX(1.4); }
+              }
+              .pb-speaker-icon { animation: pbSpeakerPulse 1.4s ease-in-out infinite; transform-origin: 30% 50%; }
+              .pb-speaker-ring-a { animation: pbSpeakerRing1 1.4s ease-out infinite; transform-origin: 30% 50%; }
+              .pb-speaker-ring-b { animation: pbSpeakerRing1 1.4s ease-out infinite; animation-delay: 0.35s; transform-origin: 30% 50%; }
+            `}</style>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="pb-speaker-icon">
+              <path d="M3 10v4h3l5 4V6L6 10H3z" fill={GOLD} />
+              <path className="pb-speaker-ring-a" d="M14 9c1.2 0.9 1.2 5.1 0 6" stroke={GOLD} strokeWidth="1.6" strokeLinecap="round" fill="none" />
+              <path className="pb-speaker-ring-b" d="M17 6c2.8 2.2 2.8 9.8 0 12" stroke={GOLD} strokeWidth="1.6" strokeLinecap="round" fill="none" />
+            </svg>
+            <span className="text-[11px] md:text-[12px] font-bold uppercase tracking-[0.18em]" style={{ color: GOLD }}>
+              Click for sound
+            </span>
+          </div>
+
           <div
             className="relative mx-auto"
             style={{
