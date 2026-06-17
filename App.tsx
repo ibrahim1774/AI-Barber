@@ -9,7 +9,7 @@ declare global {
 }
 
 import { GeneratorForm } from './components/GeneratorForm.tsx';
-import { isBooksyPath, isFreeBarberPath, isPrimeBarberPath, isRecoverPath, isGenerateBarbershopPath, isAdminGeneratePath } from './lib/dealMode.ts';
+import { isBooksyPath, isFreeBarberPath, isPrimeBarberPath, isRecoverPath, isGenerateBarbershopPath, isAdminGeneratePath, isOwnBrandPath } from './lib/dealMode.ts';
 import { LoadingScreen } from './components/LoadingScreen.tsx';
 import { generateHTMLForTemplate } from './services/templateRenderer.ts';
 import { generateContent } from './services/geminiService.ts';
@@ -35,6 +35,7 @@ const AuthModal = lazy(() => import('./components/AuthModal.tsx').then(m => ({ d
 const RecoverPage = lazy(() => import('./components/RecoverPage.tsx').then(m => ({ default: m.RecoverPage })));
 const GenerateBarbershopFunnel = lazy(() => import('./components/GenerateBarbershopFunnel.tsx').then(m => ({ default: m.GenerateBarbershopFunnel })));
 const AdminGenerator = lazy(() => import('./components/AdminGenerator.tsx').then(m => ({ default: m.AdminGenerator })));
+const OwnBrandLanding = lazy(() => import('./components/OwnBrandLanding.tsx').then(m => ({ default: m.OwnBrandLanding })));
 
 const DEPLOY_TIMER_SECONDS = 5;
 
@@ -943,6 +944,18 @@ const App: React.FC = () => {
     return (
       <Suspense fallback={<div className="min-h-screen bg-[#0d0d0d]" />}>
         <PrimeBarberLanding />
+      </Suspense>
+    );
+  }
+
+  // /own-brand — standalone static demo barbershop site (Euphoria
+  // visual shell + booking calendar, product store, reviews, FAQ,
+  // Google Maps). Rendered early like /primebarber so none of the
+  // generator/auth/restore machinery runs. Single CTA → homepage.
+  if (isOwnBrandPath()) {
+    return (
+      <Suspense fallback={<div className="min-h-screen bg-black" />}>
+        <OwnBrandLanding />
       </Suspense>
     );
   }
