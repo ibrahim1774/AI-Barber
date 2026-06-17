@@ -78,3 +78,15 @@ export function isAdminGeneratePath(pathname?: string): boolean {
   const p = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
   return p === ADMIN_GENERATE_PATH || p === `${ADMIN_GENERATE_PATH}/`;
 }
+
+// `/own-brand` — standalone static demo barbershop site. Shows what a
+// fully branded shop site looks like (booking calendar, product store,
+// reviews, FAQ, Google Maps) using the same Euphoria visual shell the
+// /booksy flow generates. No generator/auth/editor machinery — it's a
+// plain marketing landing whose single CTA points at the homepage so
+// the visitor can launch their own branded site.
+export const OWN_BRAND_PATH = '/own-brand';
+export function isOwnBrandPath(pathname?: string): boolean {
+  const p = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
+  return p === OWN_BRAND_PATH || p === `${OWN_BRAND_PATH}/`;
+}
