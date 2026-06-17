@@ -104,13 +104,13 @@ const OB_SCOPED_CSS = `
 .ob-root h1, .ob-root h2, .ob-root h3 { font-family: 'Newsreader', Georgia, serif; font-weight: 500; letter-spacing: -0.01em; margin: 0; }
 .ob-root p { margin: 0; }
 .ob-root .ob-eyebrow { font-family: 'Inter', sans-serif; text-transform: uppercase; letter-spacing: 0.28em; font-size: 11px; color: var(--ob-ink-muted); }
-.ob-root .ob-section { padding: 72px 22px; }
-@media (min-width: 768px) { .ob-root .ob-section { padding: 120px 48px; } }
+.ob-root .ob-section { padding: 44px 20px; }
+@media (min-width: 768px) { .ob-root .ob-section { padding: 64px 48px; } }
 .ob-root .ob-container { max-width: 1200px; margin: 0 auto; }
 .ob-root .ob-rule { height: 1px; background: var(--ob-line-soft); width: 100%; }
 .ob-root .ob-cta {
   display: inline-flex; align-items: center; justify-content: center; gap: 10px;
-  padding: 16px 28px; border: 1px solid var(--ob-line); color: var(--ob-ink);
+  padding: 14px 24px; border: 1px solid var(--ob-line); color: var(--ob-ink);
   text-transform: uppercase; letter-spacing: 0.22em; font-size: 11px; font-weight: 500;
   background: transparent; text-decoration: none; cursor: pointer; font-family: 'Inter', sans-serif;
   transition: background 200ms ease, color 200ms ease, border-color 200ms ease, opacity 200ms ease;
@@ -121,10 +121,10 @@ const OB_SCOPED_CSS = `
 .ob-root .ob-cta:disabled { opacity: 0.35; cursor: not-allowed; }
 .ob-root .ob-img-tile { position: relative; overflow: hidden; background: var(--ob-bg-3); }
 .ob-root .ob-img-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.ob-root .ob-two { display: grid; grid-template-columns: 1fr; gap: 40px; align-items: center; }
-@media (min-width: 768px) { .ob-root .ob-two { grid-template-columns: 1fr 1fr; gap: 64px; } }
+.ob-root .ob-two { display: grid; grid-template-columns: 1fr; gap: 28px; align-items: center; }
+@media (min-width: 768px) { .ob-root .ob-two { grid-template-columns: 1fr 1fr; gap: 44px; } }
 /* services */
-.ob-root .ob-service-row { display: grid; grid-template-columns: auto 1fr auto; gap: 18px; padding: 26px 0; border-top: 1px solid var(--ob-line-soft); align-items: baseline; }
+.ob-root .ob-service-row { display: grid; grid-template-columns: auto 1fr auto; gap: 18px; padding: 16px 0; border-top: 1px solid var(--ob-line-soft); align-items: baseline; }
 .ob-root .ob-service-row:last-child { border-bottom: 1px solid var(--ob-line-soft); }
 .ob-root .ob-service-num { font-family: 'Newsreader', Georgia, serif; font-style: italic; color: var(--ob-ink-muted); font-size: 14px; letter-spacing: 0.06em; min-width: 32px; }
 .ob-root .ob-service-price { font-family: 'Newsreader', Georgia, serif; color: var(--ob-brand); font-size: 22px; white-space: nowrap; }
@@ -135,15 +135,15 @@ const OB_SCOPED_CSS = `
 .ob-root .ob-store { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
 @media (min-width: 768px) { .ob-root .ob-store { grid-template-columns: repeat(4, 1fr); gap: 24px; } }
 .ob-root .ob-product { display: flex; flex-direction: column; }
-.ob-root .ob-product .ob-img-tile { aspect-ratio: 3 / 4; margin-bottom: 14px; }
+.ob-root .ob-product .ob-img-tile { aspect-ratio: 3 / 4; margin-bottom: 12px; }
 /* reviews */
-.ob-root .ob-reviews { display: grid; grid-template-columns: 1fr; gap: 16px; }
-@media (min-width: 768px) { .ob-root .ob-reviews { grid-template-columns: repeat(2, 1fr); gap: 24px; } }
-.ob-root .ob-review { border: 1px solid var(--ob-line-soft); padding: 28px; background: var(--ob-bg-2); }
+.ob-root .ob-reviews { display: grid; grid-template-columns: 1fr; gap: 14px; }
+@media (min-width: 768px) { .ob-root .ob-reviews { grid-template-columns: repeat(2, 1fr); gap: 18px; } }
+.ob-root .ob-review { border: 1px solid var(--ob-line-soft); padding: 22px; background: var(--ob-bg-2); }
 /* booking calendar */
-.ob-root .ob-cal-card { border: 1px solid var(--ob-line-soft); background: var(--ob-bg-2); padding: 22px; }
-@media (min-width: 768px) { .ob-root .ob-cal-card { padding: 32px; } }
-.ob-root .ob-cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+.ob-root .ob-cal-card { border: 1px solid var(--ob-line-soft); background: var(--ob-bg-2); padding: 20px; }
+@media (min-width: 768px) { .ob-root .ob-cal-card { padding: 26px; } }
+.ob-root .ob-cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
 .ob-root .ob-cal-nav { width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--ob-line-soft); background: transparent; color: var(--ob-ink); cursor: pointer; transition: background 150ms ease; }
 .ob-root .ob-cal-nav:hover { background: var(--ob-bg-3); }
 .ob-root .ob-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
@@ -160,10 +160,10 @@ const OB_SCOPED_CSS = `
 /* faq */
 .ob-root .ob-faq-item { border-top: 1px solid var(--ob-line-soft); }
 .ob-root .ob-faq-item:last-child { border-bottom: 1px solid var(--ob-line-soft); }
-.ob-root .ob-faq-q { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 24px 0; background: transparent; border: none; color: var(--ob-ink); cursor: pointer; text-align: left; font-family: 'Newsreader', Georgia, serif; font-size: 20px; }
+.ob-root .ob-faq-q { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 0; background: transparent; border: none; color: var(--ob-ink); cursor: pointer; text-align: left; font-family: 'Newsreader', Georgia, serif; font-size: 19px; }
 .ob-root .ob-faq-a { overflow: hidden; max-height: 0; transition: max-height 280ms ease; }
 .ob-root .ob-faq-a.ob-open { max-height: 240px; }
-.ob-root .ob-faq-a-inner { padding: 0 0 24px; color: var(--ob-ink-soft); font-size: 15px; line-height: 1.65; max-width: 640px; }
+.ob-root .ob-faq-a-inner { padding: 0 0 18px; color: var(--ob-ink-soft); font-size: 15px; line-height: 1.6; max-width: 640px; }
 .ob-root .ob-chev { transition: transform 240ms ease; flex-shrink: 0; color: var(--ob-brand); }
 .ob-root .ob-chev.ob-open { transform: rotate(180deg); }
 /* toast */
@@ -294,20 +294,22 @@ export const OwnBrandLanding: React.FC = () => {
       </nav>
 
       {/* ── Hero ──────────────────────────────────────────────── */}
-      <section style={{ position: 'relative', minHeight: '82vh', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+      <section style={{ position: 'relative', minHeight: '56vh', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
         <img src={IMG.hero} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.45 }} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg,rgba(0,0,0,0.45) 0%,rgba(0,0,0,0.78) 100%)' }} />
-        <div className="ob-container" style={{ position: 'relative', textAlign: 'center', padding: '88px 22px' }}>
-          <Eyebrow style={{ marginBottom: 22 }}>{DEMO_AREA}</Eyebrow>
-          <h1 className="ob-display" style={{ fontSize: 'clamp(40px,8vw,92px)', margin: '0 0 24px', fontWeight: 500 }}>
-            Sharp cuts.<br />Your brand.
+        <div className="ob-container" style={{ position: 'relative', textAlign: 'center', padding: '52px 20px' }}>
+          <Eyebrow style={{ marginBottom: 14 }}>{DEMO_AREA}</Eyebrow>
+          <h1 className="ob-display" style={{ fontSize: 'clamp(36px,7vw,76px)', margin: '0 0 14px', fontWeight: 500 }}>
+            Your own branded<br />barbershop site.
           </h1>
-          <p className="ob-serif" style={{ fontSize: 'clamp(16px,2.2vw,22px)', fontStyle: 'italic', color: 'var(--ob-ink-soft)', maxWidth: 600, margin: '0 auto 36px' }}>
-            A premium barbershop site with its own booking system and its own product store — yours to launch in minutes.
+          <p className="ob-serif" style={{ fontSize: 'clamp(15px,2vw,20px)', fontStyle: 'italic', color: 'var(--ob-ink-soft)', maxWidth: 580, margin: '0 auto 22px' }}>
+            Launch your own personal branded barbershop site — sell your products, take bookings, all in one. Just $20/month.
           </p>
-          <div style={{ display: 'flex', gap: 14, justifyContent: 'center', flexWrap: 'wrap' }}>
-            <a href="#booking" className="ob-cta ob-cta-solid">Book Appointment</a>
-            <a href="#services" className="ob-cta">View Services</a>
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <a href={LAUNCH_HREF} className="ob-cta ob-cta-solid">
+              Launch My Site · $20/mo <ArrowRight size={14} />
+            </a>
+            <a href="#booking" className="ob-cta">See the Demo</a>
           </div>
         </div>
       </section>
@@ -334,7 +336,7 @@ export const OwnBrandLanding: React.FC = () => {
       {/* ── Booking calendar (demo) ───────────────────────────── */}
       <section id="booking" className="ob-section" style={{ background: 'var(--ob-bg-2)' }}>
         <div className="ob-container">
-          <div style={{ marginBottom: 40, textAlign: 'center' }}>
+          <div style={{ marginBottom: 26, textAlign: 'center' }}>
             <Eyebrow>Book online</Eyebrow>
             <h2 className="ob-display" style={{ fontSize: 'clamp(30px,5vw,52px)', marginTop: 14 }}>Reserve your chair.</h2>
             <p className="ob-serif" style={{ fontSize: 17, fontStyle: 'italic', color: 'var(--ob-ink-soft)', marginTop: 14 }}>
@@ -431,7 +433,7 @@ export const OwnBrandLanding: React.FC = () => {
       {/* ── Services ──────────────────────────────────────────── */}
       <section id="services" className="ob-section">
         <div className="ob-container">
-          <div style={{ marginBottom: 44, textAlign: 'center' }}>
+          <div style={{ marginBottom: 26, textAlign: 'center' }}>
             <Eyebrow>Services</Eyebrow>
             <h2 className="ob-display" style={{ fontSize: 'clamp(30px,5vw,52px)', marginTop: 14 }}>Considered grooming.</h2>
           </div>
@@ -454,7 +456,7 @@ export const OwnBrandLanding: React.FC = () => {
       {/* ── Product store ─────────────────────────────────────── */}
       <section id="shop" className="ob-section" style={{ background: 'var(--ob-bg-2)' }}>
         <div className="ob-container">
-          <div style={{ marginBottom: 44, textAlign: 'center' }}>
+          <div style={{ marginBottom: 26, textAlign: 'center' }}>
             <Eyebrow>The Shop</Eyebrow>
             <h2 className="ob-display" style={{ fontSize: 'clamp(30px,5vw,52px)', marginTop: 14 }}>Sell your own products.</h2>
             <p className="ob-serif" style={{ fontSize: 17, fontStyle: 'italic', color: 'var(--ob-ink-soft)', marginTop: 14, maxWidth: 560, marginLeft: 'auto', marginRight: 'auto' }}>
@@ -482,7 +484,7 @@ export const OwnBrandLanding: React.FC = () => {
       {/* ── Reviews ───────────────────────────────────────────── */}
       <section className="ob-section">
         <div className="ob-container">
-          <div style={{ marginBottom: 44, textAlign: 'center' }}>
+          <div style={{ marginBottom: 26, textAlign: 'center' }}>
             <Eyebrow>Reviews</Eyebrow>
             <h2 className="ob-display" style={{ fontSize: 'clamp(30px,5vw,52px)', marginTop: 14 }}>Loved by regulars.</h2>
           </div>
@@ -525,7 +527,7 @@ export const OwnBrandLanding: React.FC = () => {
       {/* ── FAQ ───────────────────────────────────────────────── */}
       <section className="ob-section">
         <div className="ob-container" style={{ maxWidth: 820 }}>
-          <div style={{ marginBottom: 36, textAlign: 'center' }}>
+          <div style={{ marginBottom: 24, textAlign: 'center' }}>
             <Eyebrow>FAQ</Eyebrow>
             <h2 className="ob-display" style={{ fontSize: 'clamp(30px,5vw,52px)', marginTop: 14 }}>Good to know.</h2>
           </div>
@@ -586,15 +588,15 @@ export const OwnBrandLanding: React.FC = () => {
       {/* ── Final CTA band ────────────────────────────────────── */}
       <section className="ob-section" style={{ textAlign: 'center', borderTop: '1px solid var(--ob-line-soft)' }}>
         <div className="ob-container" style={{ maxWidth: 760 }}>
-          <Scissors size={26} color="#d4a64a" style={{ marginBottom: 22 }} />
-          <h2 className="ob-display" style={{ fontSize: 'clamp(34px,6vw,68px)', margin: '0 0 22px', fontWeight: 500 }}>
+          <Scissors size={24} color="#d4a64a" style={{ marginBottom: 16 }} />
+          <h2 className="ob-display" style={{ fontSize: 'clamp(32px,5.5vw,60px)', margin: '0 0 16px', fontWeight: 500 }}>
             This could be <span style={{ fontStyle: 'italic', color: 'var(--ob-brand)' }}>your site.</span>
           </h2>
-          <p className="ob-serif" style={{ fontSize: 'clamp(17px,2.4vw,21px)', color: 'var(--ob-ink-soft)', maxWidth: 600, margin: '0 auto 36px', lineHeight: 1.55 }}>
-            Launch your own branded barbershop site where you can sell your own products and run your own booking system.
+          <p className="ob-serif" style={{ fontSize: 'clamp(16px,2.2vw,20px)', color: 'var(--ob-ink-soft)', maxWidth: 600, margin: '0 auto 24px', lineHeight: 1.5 }}>
+            Launch your own personal branded barbershop site — sell your own products, take bookings with a built-in booking system, all in one. Just <span style={{ color: 'var(--ob-ink)', fontStyle: 'italic' }}>$20/month.</span>
           </p>
-          <a href={LAUNCH_HREF} className="ob-cta ob-cta-solid" style={{ padding: '20px 40px', fontSize: 12 }}>
-            Launch My Barbershop Site <ArrowRight size={15} />
+          <a href={LAUNCH_HREF} className="ob-cta ob-cta-solid" style={{ padding: '18px 36px', fontSize: 12 }}>
+            Launch My Site · $20/mo <ArrowRight size={15} />
           </a>
         </div>
       </section>
