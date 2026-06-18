@@ -33,9 +33,9 @@ export default async function handler(req: any, res: any) {
     //                   as the others; separate slug for analytics.
     // All custom plans route to the same Google Form after checkout.
     const isYearly = plan === 'yearly';
-    // 'yearly-booksy' = /booksy yearly (20% off $5/mo × 12 = $48/yr).
+    // 'yearly-booksy' = /booksy yearly (flat $59/yr).
     const isYearlyBooksy = plan === 'yearly-booksy';
-    // 'yearly-free' = /free-barber yearly ($67/yr — 20% off $7 × 12).
+    // 'yearly-free' = /free-barber yearly (flat $59/yr).
     const isYearlyFree = plan === 'yearly-free';
     const isMonthlyBooksy = plan === 'monthly-booksy';
     // 'monthly-free' = /free-barber monthly ($7/mo).
@@ -61,22 +61,22 @@ export default async function handler(req: any, res: any) {
     let interval: 'month' | 'year';
     let productName: string;
     if (isYearly) {
-      // Standard yearly: 20% off $9/mo × 12 = $86/yr.
-      unitAmount = '8600';
+      // Standard yearly: flat $59/yr (≈51% off $10/mo × 12).
+      unitAmount = '5900';
       interval = 'year';
       productName = 'aibarber.org — Yearly Website Hosting';
     } else if (isYearlyBooksy) {
-      // /booksy yearly: 20% off $7/mo × 12 = $67/yr.
-      unitAmount = '6700';
+      // /booksy yearly: flat $59/yr (≈30% off $7/mo × 12).
+      unitAmount = '5900';
       interval = 'year';
       productName = 'aibarber.org — Yearly Website Hosting (Booksy)';
     } else if (isYearlyFree) {
-      // /free-barber yearly: 20% off $7/mo × 12 = $67.20/yr → $67.
-      unitAmount = '6700';
+      // /free-barber yearly: flat $59/yr (≈30% off $7/mo × 12).
+      unitAmount = '5900';
       interval = 'year';
       productName = 'aibarber.org — Yearly Website Hosting (Free Barber)';
     } else if (isMonthlyBooksy) {
-      // /booksy monthly: $7/mo (entry-point discount vs $9 standard).
+      // /booksy monthly: $7/mo (entry-point discount vs $10 standard).
       unitAmount = '700';
       interval = 'month';
       productName = 'aibarber.org — Monthly Website Hosting (Booksy)';
@@ -103,7 +103,8 @@ export default async function handler(req: any, res: any) {
       interval = 'year';
       productName = 'aibarber.org — Custom Website Platform (PrimeBarber, Yearly)';
     } else {
-      unitAmount = '900';
+      // Standard (home page) monthly: $10/mo.
+      unitAmount = '1000';
       interval = 'month';
       productName = 'aibarber.org — Monthly Website Hosting';
     }

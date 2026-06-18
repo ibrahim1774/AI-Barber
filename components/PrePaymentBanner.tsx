@@ -24,9 +24,9 @@ const WIZARD_IMAGES = {
 };
 
 interface PrePaymentBannerProps {
-  // 'monthly-booksy' = /booksy import flow; 'monthly-free' = /free-barber;
-  // 'monthly' = homepage. Booksy + homepage are both $9/mo now — the
-  // separate slug stays only for analytics attribution on the receipt.
+  // 'monthly-booksy' = /booksy import flow ($7/mo); 'monthly-free' =
+  // /free-barber ($7/mo); 'monthly' = homepage ($10/mo). The separate
+  // slugs also drive analytics attribution on the receipt.
   onDeploy: (plan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'yearly' | 'yearly-booksy' | 'yearly-free') => void;
   // Embedded checkout requires the parent to first upload images +
   // write pendingSite to localStorage so handleStripeReturn can deploy
@@ -51,9 +51,9 @@ interface PrePaymentBannerProps {
 }
 
 const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepareCheckout, isDeploying, industry, onCheckoutFlowChange }) => {
-  // /booksy import flow: same $9/mo pricing as the homepage now —
-  // booksyMode is still tracked so the receipt tags the source as
-  // "(Booksy)" via the monthly-booksy plan slug.
+  // /booksy import flow: $7/mo (vs the $10/mo homepage). booksyMode is
+  // tracked so the receipt tags the source as "(Booksy)" via the
+  // monthly-booksy plan slug.
   const booksyMode = React.useMemo(() => isBooksyPath(), []);
   // /free-barber: $7/mo entry with yearly toggle visible — its own
   // plan slugs so Stripe + analytics distinguish it from /booksy and
@@ -63,8 +63,8 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   // Standard monthly price varies by entry path:
   //   /free-barber → $7/mo (plan 'monthly-free')
   //   /booksy      → $7/mo (plan 'monthly-booksy')
-  //   everywhere   → $9/mo (plan 'monthly')
-  const stdMonthlyPriceDollars = (freeBarberMode || booksyMode) ? 7 : 9;
+  //   home page    → $10/mo (plan 'monthly')
+  const stdMonthlyPriceDollars = (freeBarberMode || booksyMode) ? 7 : 10;
   const stdMonthlyPriceMo = `$${stdMonthlyPriceDollars}/mo`;
   const stdMonthlyPriceMonth = `$${stdMonthlyPriceDollars}/month`;
   const stdMonthlyPlan: 'monthly' | 'monthly-booksy' | 'monthly-free' = booksyMode
@@ -72,12 +72,18 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
     : freeBarberMode
       ? 'monthly-free'
       : 'monthly';
-  // Yearly = 20% off monthly × 12, rounded. Booksy + free-barber use
-  // their own Stripe plan slugs so the amount actually billed matches
-  // the price label displayed here.
-  const stdYearlyPriceDollars = Math.round(stdMonthlyPriceDollars * 12 * 0.8);
+  // Flat $59/yr on every entry path. The discount % is computed off the
+  // path's own monthly × 12 anchor so the "Save X%" label always
+  // reflects the real saving ($10/mo home → −51%, $7/mo booksy/free →
+  // −30%). Keep the server amounts in api/create-checkout-session.ts in
+  // sync.
+  const stdYearlyPriceDollars = 59;
   const stdYearlyPriceYr = `$${stdYearlyPriceDollars}/yr`;
   const stdYearlyPriceYear = `$${stdYearlyPriceDollars}/year`;
+  const stdYearlyDiscountPct = Math.max(
+    0,
+    Math.round((1 - stdYearlyPriceDollars / (stdMonthlyPriceDollars * 12)) * 100),
+  );
   const stdYearlyPlan: 'yearly' | 'yearly-booksy' | 'yearly-free' = booksyMode
     ? 'yearly-booksy'
     : freeBarberMode
@@ -371,7 +377,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                 borderBottom: pricingPlan === 'yearly' ? '1px solid #e8c074' : '1px solid transparent',
               }}
             >
-              Yearly <span style={{ color: '#ffffff', fontWeight: 700 }}>Save 20%</span>
+              Yearly <span style={{ color: '#ffffff', fontWeight: 700 }}>Save {stdYearlyDiscountPct}%</span>
             </button>
           </div>
 
@@ -569,7 +575,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                   borderBottom: pricingPlan === 'yearly' ? `1px solid ${gold}` : '1px solid transparent',
                 }}
               >
-                Yearly · {stdYearlyPriceYr} <span style={{ color: gold }}>−20%</span>
+                Yearly · {stdYearlyPriceYr} <span style={{ color: '#ffffff', fontWeight: 700 }}>Save {stdYearlyDiscountPct}%</span>
               </button>
             </div>
 
@@ -1022,7 +1028,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                       borderBottom: pricingPlan === 'yearly' ? `1px solid ${gold}` : '1px solid transparent',
                     }}
                   >
-                    Yearly · {yearlyLabel} <span style={{ color: gold }}>−20%</span>
+                    Yearly · {yearlyLabel} <span style={{ color: '#ffffff', fontWeight: 700 }}>Save {stdYearlyDiscountPct}%</span>
                   </button>
                 </div>
 
