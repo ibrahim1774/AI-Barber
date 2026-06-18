@@ -41,16 +41,22 @@ export default async function handler(req: any, res: any) {
   try {
     const body = (req.body || {}) as Record<string, any>;
     // Stamp the timestamp server-side so it's consistent regardless of
-    // the visitor's browser clock + locale.
+    // the visitor's browser clock + locale. Rendered in Eastern Time
+    // (America/New_York) with the EST/EDT label so every lead lands in
+    // one single, predictable zone — the Vercel function itself runs in
+    // UTC, so without an explicit timeZone the time read as UTC with no
+    // label. `receivedAtIso` keeps the raw UTC value.
     const enriched = {
       ...body,
       timestamp: new Date().toLocaleString('en-US', {
+        timeZone: 'America/New_York',
         month: 'short',
         day: 'numeric',
         year: 'numeric',
         hour: 'numeric',
         minute: '2-digit',
         hour12: true,
+        timeZoneName: 'short',
       }),
       receivedAtIso: new Date().toISOString(),
       ip: (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
