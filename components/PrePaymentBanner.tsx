@@ -371,7 +371,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                 borderBottom: pricingPlan === 'yearly' ? '1px solid #e8c074' : '1px solid transparent',
               }}
             >
-              Yearly <span style={{ color: '#e8c074' }}>−20% discount</span>
+              Yearly <span style={{ color: '#e8c074' }}>Save 20%</span>
             </button>
           </div>
 
