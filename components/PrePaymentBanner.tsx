@@ -121,13 +121,15 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   const embedSiteIdRef = React.useRef<string | null>(null);
   const [isPreparingEmbed, setIsPreparingEmbed] = useState(false);
 
-  // Notify the parent (when one is listening) whenever the checkout
-  // flow opens or closes. Tracks both phases: preparing the pending
-  // site and the Benefits/embedded checkout modal being visible. Used
-  // by /generatebarbershop to hide overlays during checkout.
+  // Notify the parent (when one is listening) whenever ANY banner
+  // overlay opens or closes: preparing the pending site, the
+  // Benefits/embedded checkout modal, the "How It Works" modal, and the
+  // "Want a new barbershop website" custom-design wizard. The homepage
+  // funnel uses this to hide its mid-site prompt so the clicked overlay
+  // sits cleanly on top instead of the prompt covering it.
   useEffect(() => {
-    onCheckoutFlowChange?.(isPreparingEmbed || showBenefits);
-  }, [isPreparingEmbed, showBenefits, onCheckoutFlowChange]);
+    onCheckoutFlowChange?.(isPreparingEmbed || showBenefits || showCustomWizard || showHowItWorks);
+  }, [isPreparingEmbed, showBenefits, showCustomWizard, showHowItWorks, onCheckoutFlowChange]);
   // Embedded checkout state for the custom-design wizard's step-3
   // Continue button — same pattern as the main flow.
   const [customEmbedSecret, setCustomEmbedSecret] = useState<string | null>(null);
