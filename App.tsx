@@ -9,6 +9,8 @@ declare global {
 }
 
 import { GeneratorForm } from './components/GeneratorForm.tsx';
+import { HomeBookingPrompts } from './components/HomeBookingPrompts.tsx';
+import { buildSiteFromScrape } from './lib/buildSiteFromScrape.ts';
 import { isBooksyPath, isFreeBarberPath, isPrimeBarberPath, isRecoverPath, isGenerateBarbershopPath, isAdminGeneratePath, isOwnBrandPath } from './lib/dealMode.ts';
 import { LoadingScreen } from './components/LoadingScreen.tsx';
 import { generateHTMLForTemplate } from './services/templateRenderer.ts';
@@ -39,6 +41,13 @@ const OwnBrandLanding = lazy(() => import('./components/OwnBrandLanding.tsx').th
 
 const DEPLOY_TIMER_SECONDS = 5;
 
+// True only for the bare root path "/" — the homepage progressive
+// funnel (name-only generation → booking-link / area-phone prompt).
+// /booksy, /free-barber, /new keep the original 4-field GeneratorForm.
+const isRootHomePath = (): boolean => {
+  try { return window.location.pathname.replace(/\/+$/, '') === ''; } catch { return false; }
+};
+
 const App: React.FC = () => {
   const { isAuthenticated, isLoading: authLoading, user, signOut } = useAuth();
 
@@ -57,6 +66,11 @@ const App: React.FC = () => {
   // in the editor. Mirrors the "Your site is fully editable" tour from
   // PrimeHub /barber. Persists until the user X's out.
   const [showEditorIntro, setShowEditorIntro] = useState(false);
+  // Homepage progressive funnel: the booking-link / area-phone prompt
+  // overlay shown after a name-only generation, and a flag that hides
+  // it while the Stripe checkout modal is open.
+  const [showHomePrompts, setShowHomePrompts] = useState(false);
+  const [isCheckoutFlowOpen, setIsCheckoutFlowOpen] = useState(false);
   const cameFromNewRef = useRef(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'signin' | 'signup'>('signup');
@@ -793,6 +807,12 @@ const App: React.FC = () => {
       if (isBooksyPath()) {
         setShowEditorIntro(true);
       }
+      // Root homepage progressive funnel: after a name-only generation
+      // (no area/phone, not a prebuilt scrape), surface the booking-link
+      // / area-phone prompt over the live preview.
+      if (isRootHomePath() && !prebuilt && !inputs.area && !inputs.phone) {
+        setShowHomePrompts(true);
+      }
       if (cameFromNewRef.current) {
         cameFromNewRef.current = false;
       }
@@ -807,17 +827,97 @@ const App: React.FC = () => {
     }
   };
 
+  // Update the live editor data AND the persisted draft together so a
+  // mid-prompt refresh or checkout uses the latest content.
+  const applyGeneratedData = (data: WebsiteData) => {
+    setGeneratedData(data);
+    setActiveSite((prev) => {
+      if (!prev) return prev;
+      const updated: SiteInstance = {
+        ...prev,
+        data,
+        formInputs: { shopName: data.shopName, area: data.area, phone: data.phone },
+        lastSaved: Date.now(),
+      };
+      saveSite(updated).catch(() => {});
+      return updated;
+    });
+  };
+
+  // Homepage prompt — live preview as the visitor types area / phone.
+  const handleHomePromptChange = (field: 'area' | 'phone', value: string) => {
+    setGeneratedData((prev) => {
+      if (!prev) return prev;
+      if (field === 'area') return { ...prev, area: value, contact: { ...prev.contact, address: value } };
+      return { ...prev, phone: value };
+    });
+  };
+
+  // Homepage prompt — "Generate" with a booking link: scrape the real
+  // listing and rebuild the site (services / photos / reviews / hours),
+  // preserving the typed name + chosen theme. Returns false on failure
+  // so the prompt falls back to the area/phone step.
+  const handleHomePromptBookingLink = async (link: string): Promise<boolean> => {
+    const current = generatedData;
+    if (!current) return false;
+    try {
+      const resp = await fetch('/api/import-scrape', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: link }),
+      });
+      if (!resp.ok) return false;
+      const scrapeData = await resp.json();
+      const built = buildSiteFromScrape(scrapeData, link, {
+        manual: { shopName: current.shopName, area: '', phone: '', colorTheme: current.colorTheme },
+        template: current.template === 'euphoria' ? 'euphoria' : 'luxe',
+      });
+      if (!built?.scraped?.shopName) return false;
+      // Keep the homepage look — carry the chosen theme through.
+      const rebuilt: WebsiteData = { ...built.scraped, colorTheme: current.colorTheme };
+      applyGeneratedData(rebuilt);
+      captureLead({ shopName: rebuilt.shopName, area: rebuilt.area, phone: rebuilt.phone, bookingUrl: link }).catch(() => {});
+      return true;
+    } catch (err) {
+      console.warn('[home funnel] booking-link scrape failed:', err);
+      return false;
+    }
+  };
+
+  // Homepage prompt — "Finish generating" with area + phone: re-run the
+  // template generation so the copy bakes in the real service area.
+  const handleHomePromptFinish = async (area: string, phone: string) => {
+    const current = generatedData;
+    if (!current) return;
+    captureLead({ shopName: current.shopName, area, phone, bookingUrl: current.bookingUrl }).catch(() => {});
+    try {
+      const data = await generateContent({
+        shopName: current.shopName,
+        area,
+        phone,
+        template: current.template,
+        colorTheme: current.colorTheme,
+        bookingUrl: current.bookingUrl,
+      });
+      applyGeneratedData(data);
+    } catch {
+      applyGeneratedData({ ...current, area, phone, contact: { ...current.contact, address: area } });
+    }
+  };
+
   const handleBack = () => {
     // Auth-aware: signed-in users go back to their dashboard (where
     // their drafts + deployed sites live). Anonymous users go back
     // to the home form. Was always sending everyone to the home page
     // — even users who had just generated a site while logged in.
+    setShowHomePrompts(false);
     setGeneratedData(null);
     setActiveSite(null);
     persistView(isAuthenticated ? 'dashboard' : 'generator');
   };
 
   const handleEditSite = (site: SiteInstance) => {
+    setShowHomePrompts(false);
     setActiveSite(site);
     setGeneratedData(site.data);
     persistView('editor');
@@ -1014,11 +1114,11 @@ const App: React.FC = () => {
     <Suspense fallback={null}>
       {state === 'generator' && (
         // Homepage, /booksy, AND /free-barber all render the same
-        // side-by-side GeneratorForm. The form internally detects
-        // the path (isBooksyPath / isFreeBarberPath) and adjusts the
-        // headline + accent treatment accordingly. The 4-input layout
-        // + auto-scrape pipeline (Booksy/Fresha/Square/Vagaro/StyleSeat)
-        // is shared across all three entry points.
+        // GeneratorForm — identical visual shell. On the root "/" the
+        // form runs name-only (collects just the barbershop name; the
+        // booking link / area + phone are gathered by HomeBookingPrompts
+        // after the site generates). /booksy and /free-barber keep their
+        // full layouts unchanged.
         <GeneratorForm
           onGenerate={(inputs, scraped) => handleGenerate(inputs, scraped)}
           onSignIn={() => { setAuthModalMode('signin'); setAuthSignInOnly(true); setShowAuthModal(true); }}
@@ -1026,25 +1126,43 @@ const App: React.FC = () => {
       )}
       {state === 'loading' && <LoadingScreen />}
       {state === 'editor' && generatedData && (
-        generatedData.template === 'euphoria' ? (
-          <EuphoriaWebsite
-            data={generatedData}
-            onBack={handleBack}
-            site={activeSite ?? undefined}
-            onNavigateDashboard={handleNavigateDashboard}
-            isPostPayment={!!activeSite?.deployedUrl || activeSite?.deploymentStatus === 'deployed'}
-            userId={user?.id ?? null}
-          />
-        ) : (
-          <GeneratedWebsite
-            data={generatedData}
-            onBack={handleBack}
-            site={activeSite ?? undefined}
-            onNavigateDashboard={handleNavigateDashboard}
-            isPostPayment={!!activeSite?.deployedUrl || activeSite?.deploymentStatus === 'deployed'}
-            userId={user?.id ?? null}
-          />
-        )
+        <>
+          {generatedData.template === 'euphoria' ? (
+            <EuphoriaWebsite
+              data={generatedData}
+              onBack={handleBack}
+              site={activeSite ?? undefined}
+              onNavigateDashboard={handleNavigateDashboard}
+              isPostPayment={!!activeSite?.deployedUrl || activeSite?.deploymentStatus === 'deployed'}
+              userId={user?.id ?? null}
+              onCheckoutFlowChange={setIsCheckoutFlowOpen}
+            />
+          ) : (
+            <GeneratedWebsite
+              data={generatedData}
+              onBack={handleBack}
+              site={activeSite ?? undefined}
+              onNavigateDashboard={handleNavigateDashboard}
+              isPostPayment={!!activeSite?.deployedUrl || activeSite?.deploymentStatus === 'deployed'}
+              userId={user?.id ?? null}
+              onCheckoutFlowChange={setIsCheckoutFlowOpen}
+            />
+          )}
+          {/* Homepage progressive prompt — only for a fresh root "/"
+              name-only generation, hidden while checkout is open and
+              never over an already-deployed (post-payment) site. */}
+          {isRootHomePath() && showHomePrompts && !isCheckoutFlowOpen &&
+            !(activeSite?.deployedUrl || activeSite?.deploymentStatus === 'deployed') && (
+            <HomeBookingPrompts
+              onAreaPhoneChange={handleHomePromptChange}
+              onSubmitBookingLink={handleHomePromptBookingLink}
+              onFinish={handleHomePromptFinish}
+              onComplete={() => setShowHomePrompts(false)}
+              initialArea={generatedData.area || ''}
+              initialPhone={generatedData.phone || ''}
+            />
+          )}
+        </>
       )}
       {state === 'dashboard' && (
         <ManagementDashboard

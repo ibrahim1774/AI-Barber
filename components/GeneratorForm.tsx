@@ -43,6 +43,17 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
   // only the headline pivots to lead with "FREE" so the offer is
   // explicit. Pricing ($7/mo) is handled separately by PrePaymentBanner.
   const freeBarberMode = useMemo(() => isFreeBarberPath(), []);
+  // Root homepage "/" runs the progressive funnel: collect ONLY the
+  // barbershop name here (same visual shell), then ask for the booking
+  // link / service area + phone via HomeBookingPrompts after the site
+  // generates. /free-barber and /booksy keep their full layouts.
+  const nameOnly = useMemo(() => {
+    try {
+      return window.location.pathname.replace(/\/+$/, '') === '' && !isBooksyPath() && !isFreeBarberPath();
+    } catch {
+      return false;
+    }
+  }, []);
   const [inputs, setInputs] = useState<ShopInputs>({
     shopName: '',
     area: '',
@@ -104,6 +115,14 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setScrapeError(null);
+    // Root homepage name-only funnel: only the name is collected here.
+    // Generate from the name alone — the booking link / area + phone are
+    // gathered by HomeBookingPrompts after the site reveals.
+    if (nameOnly) {
+      if (!inputs.shopName.trim()) return;
+      onGenerate({ ...inputs, area: '', phone: '', bookingUrl: '' });
+      return;
+    }
     // Homepage path requires the three identity fields. In booksyMode
     // those fields aren't shown — the Booksy link is the sole input,
     // and the scrape provides shopName/area/phone via buildSiteFromScrape.
@@ -446,7 +465,9 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
             >
               {booksyMode
                 ? "Paste your Booksy link — we'll pull your services, photos, hours, and reviews automatically."
-                : 'Please fill in the info below so your custom website can be generated.'}
+                : nameOnly
+                  ? "Enter your barbershop name to generate your site — you'll add the rest in a moment."
+                  : 'Please fill in the info below so your custom website can be generated.'}
             </p>
           </div>
         </div>
@@ -460,19 +481,21 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
           <div className={`${booksyMode ? 'max-w-md' : 'max-w-xl'} w-full mx-auto`}>
             <form onSubmit={handleSubmit} className="space-y-3 md:space-y-5">
               {!booksyMode && (
-                <>
-                  <div className="space-y-1">
-                    <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Barbershop Name</label>
-                    <input
-                      required
-                      type="text"
-                      placeholder="The Gentlemen's Lounge"
-                      className="w-full bg-transparent border-b border-white/40 focus:border-[#f4a100] py-1.5 md:py-2.5 text-white transition-all outline-none font-montserrat text-sm md:text-lg placeholder:text-white/20"
-                      value={inputs.shopName}
-                      onChange={e => setInputs({...inputs, shopName: e.target.value})}
-                    />
-                  </div>
+                <div className="space-y-1">
+                  <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Barbershop Name</label>
+                  <input
+                    required
+                    type="text"
+                    placeholder="The Gentlemen's Lounge"
+                    className="w-full bg-transparent border-b border-white/40 focus:border-[#f4a100] py-1.5 md:py-2.5 text-white transition-all outline-none font-montserrat text-sm md:text-lg placeholder:text-white/20"
+                    value={inputs.shopName}
+                    onChange={e => setInputs({...inputs, shopName: e.target.value})}
+                  />
+                </div>
+              )}
 
+              {!booksyMode && !nameOnly && (
+                <>
                   <div className="space-y-1">
                     <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Barbershop Service Area</label>
                     <input
@@ -499,6 +522,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
                 </>
               )}
 
+              {(booksyMode || !nameOnly) && (
               <div className="space-y-1">
                 <div className={`flex items-center gap-2 ${booksyMode ? 'justify-center' : ''}`}>
                   <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">
@@ -534,6 +558,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
                     : 'Booksy, Cal.com, Vagaro — any booking page works.'}
                 </p>
               </div>
+              )}
 
               {/* Color-theme picker — homepage only. /booksy skips this:
                   the scraped page provides everything we need, so we
