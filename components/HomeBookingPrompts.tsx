@@ -155,8 +155,16 @@ export const HomeBookingPrompts: React.FC<HomeBookingPromptsProps> = ({
               Paste your Booksy, Fresha, or Squareup link and we'll build from your real
               services, photos &amp; reviews. No link? Skip it.
             </p>
+            {/* Plain text input (not type="url") so the browser never
+                blocks submit with "enter a URL" on pasted links missing
+                https://. The parent extracts the URL from whatever is
+                pasted via extractFirstUrl, mirroring /booksy. */}
             <input
-              type="url"
+              type="text"
+              inputMode="url"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
               autoFocus
               value={bookingUrl}
               onChange={(e) => setBookingUrl(e.target.value)}
