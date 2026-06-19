@@ -11,6 +11,7 @@ declare global {
 import { GeneratorForm } from './components/GeneratorForm.tsx';
 import { HomeBookingPrompts } from './components/HomeBookingPrompts.tsx';
 import { buildSiteFromScrape } from './lib/buildSiteFromScrape.ts';
+import { extractFirstUrl, isSupportedBookingHost } from './lib/supportedBookingHost.ts';
 import { isBooksyPath, isFreeBarberPath, isPrimeBarberPath, isRecoverPath, isGenerateBarbershopPath, isAdminGeneratePath, isOwnBrandPath } from './lib/dealMode.ts';
 import { LoadingScreen } from './components/LoadingScreen.tsx';
 import { generateHTMLForTemplate } from './services/templateRenderer.ts';
@@ -860,23 +861,31 @@ const App: React.FC = () => {
   const handleHomePromptBookingLink = async (link: string): Promise<boolean> => {
     const current = generatedData;
     if (!current) return false;
+    // Mirror the proven /booksy + homepage auto-scrape path exactly:
+    // normalize the pasted text to a URL, confirm it's a supported
+    // booking host (Booksy / Fresha / Square / Vagaro / StyleSeat),
+    // then scrape + rebuild from the real listing.
+    const normalizedUrl = extractFirstUrl(link) ?? undefined;
+    if (!normalizedUrl || !isSupportedBookingHost(normalizedUrl)) return false;
     try {
       const resp = await fetch('/api/import-scrape', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: link }),
+        body: JSON.stringify({ url: normalizedUrl }),
       });
-      if (!resp.ok) return false;
       const scrapeData = await resp.json();
-      const built = buildSiteFromScrape(scrapeData, link, {
-        manual: { shopName: current.shopName, area: '', phone: '', colorTheme: current.colorTheme },
+      if (!resp.ok) throw new Error(scrapeData?.error || 'Scrape failed');
+      const built = buildSiteFromScrape(scrapeData, normalizedUrl, {
+        // Keep the name the visitor typed; let the scrape fill area /
+        // phone / services / photos / reviews / hours.
+        manual: { shopName: current.shopName, area: '', phone: '', bookingUrl: normalizedUrl, colorTheme: current.colorTheme },
         template: current.template === 'euphoria' ? 'euphoria' : 'luxe',
       });
       if (!built?.scraped?.shopName) return false;
       // Keep the homepage look — carry the chosen theme through.
       const rebuilt: WebsiteData = { ...built.scraped, colorTheme: current.colorTheme };
       applyGeneratedData(rebuilt);
-      captureLead({ shopName: rebuilt.shopName, area: rebuilt.area, phone: rebuilt.phone, bookingUrl: link }).catch(() => {});
+      captureLead({ shopName: rebuilt.shopName, area: rebuilt.area, phone: rebuilt.phone, bookingUrl: normalizedUrl }).catch(() => {});
       return true;
     } catch (err) {
       console.warn('[home funnel] booking-link scrape failed:', err);
