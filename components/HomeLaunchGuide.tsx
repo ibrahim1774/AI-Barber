@@ -80,7 +80,7 @@ export const HomeLaunchGuide: React.FC<HomeLaunchGuideProps> = ({ onClose }) => 
 
           <div className="space-y-2.5">
             <SectionTitle>After Launch</SectionTitle>
-            <CheckRow>Update your website anytime</CheckRow>
+            <CheckRow>You can edit the text and add images after you launch your site as well</CheckRow>
           </div>
         </div>
 
