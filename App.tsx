@@ -10,6 +10,7 @@ declare global {
 
 import { GeneratorForm } from './components/GeneratorForm.tsx';
 import { HomeBookingPrompts } from './components/HomeBookingPrompts.tsx';
+import { HomeLaunchGuide } from './components/HomeLaunchGuide.tsx';
 import { buildSiteFromScrape } from './lib/buildSiteFromScrape.ts';
 import { extractFirstUrl, isSupportedBookingHost } from './lib/supportedBookingHost.ts';
 import { isBooksyPath, isFreeBarberPath, isPrimeBarberPath, isRecoverPath, isGenerateBarbershopPath, isAdminGeneratePath, isOwnBrandPath } from './lib/dealMode.ts';
@@ -72,6 +73,9 @@ const App: React.FC = () => {
   // it while the Stripe checkout modal is open.
   const [showHomePrompts, setShowHomePrompts] = useState(false);
   const [isCheckoutFlowOpen, setIsCheckoutFlowOpen] = useState(false);
+  // Short "how it works" guide shown once after the homepage funnel
+  // finishes generating, before the visitor edits / launches.
+  const [showLaunchGuide, setShowLaunchGuide] = useState(false);
   const cameFromNewRef = useRef(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'signin' | 'signup'>('signup');
@@ -920,6 +924,7 @@ const App: React.FC = () => {
     // to the home form. Was always sending everyone to the home page
     // — even users who had just generated a site while logged in.
     setShowHomePrompts(false);
+    setShowLaunchGuide(false);
     setGeneratedData(null);
     setActiveSite(null);
     persistView(isAuthenticated ? 'dashboard' : 'generator');
@@ -927,6 +932,7 @@ const App: React.FC = () => {
 
   const handleEditSite = (site: SiteInstance) => {
     setShowHomePrompts(false);
+    setShowLaunchGuide(false);
     setActiveSite(site);
     setGeneratedData(site.data);
     persistView('editor');
@@ -1166,10 +1172,16 @@ const App: React.FC = () => {
               onAreaPhoneChange={handleHomePromptChange}
               onSubmitBookingLink={handleHomePromptBookingLink}
               onFinish={handleHomePromptFinish}
-              onComplete={() => setShowHomePrompts(false)}
+              onComplete={() => { setShowHomePrompts(false); setShowLaunchGuide(true); }}
               initialArea={generatedData.area || ''}
               initialPhone={generatedData.phone || ''}
             />
+          )}
+          {/* "How it works" guide — shown once after the funnel finishes,
+              before editing/launching. Same gating as the prompt. */}
+          {isRootHomePath() && showLaunchGuide && !showHomePrompts && !isCheckoutFlowOpen &&
+            !(activeSite?.deployedUrl || activeSite?.deploymentStatus === 'deployed') && (
+            <HomeLaunchGuide onClose={() => setShowLaunchGuide(false)} />
           )}
         </>
       )}
