@@ -1,10 +1,8 @@
 import React from 'react';
-import { Check } from 'lucide-react';
 
 // Shown once after the homepage funnel finishes generating the site —
-// a short "here's what happens next" guide before the visitor edits /
-// launches. Same dark-glass + gold aesthetic as the rest of the
-// generator (gold checkmarks, not green).
+// a short numbered "here's what happens next" guide before the visitor
+// edits / launches. Dark-glass + gold aesthetic to match the generator.
 
 export interface HomeLaunchGuideProps {
   onClose: () => void;
@@ -14,23 +12,21 @@ const GOLD = '#e8c074';
 const GOLD_DARK = '#8a6b30';
 const BG_CARD = 'rgba(14, 12, 8, 0.96)';
 
-const GoldCheck: React.FC = () => (
-  <span
-    className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px]"
-    style={{ background: GOLD }}
-    aria-hidden="true"
-  >
-    <Check size={13} strokeWidth={3} color="#0a0a0a" />
-  </span>
-);
+const STEPS: React.ReactNode[] = [
+  'You can edit the text & add your own images',
+  <>Click <span className="font-bold text-white">“Launch My Site”</span></>,
+  'After launching your site, you can edit the text and images anytime',
+];
 
-const SectionTitle: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <h4 className="text-[13px] font-bold uppercase tracking-[0.18em] text-white">{children}</h4>
-);
-
-const CheckRow: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <div className="flex items-start gap-2.5">
-    <GoldCheck />
+const NumberStep: React.FC<{ n: number; children: React.ReactNode }> = ({ n, children }) => (
+  <div className="flex items-start gap-3">
+    <span
+      className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[12px] font-black"
+      style={{ background: GOLD, color: '#0a0a0a' }}
+      aria-hidden="true"
+    >
+      {n}
+    </span>
     <span className="text-[14px] leading-snug text-white/85">{children}</span>
   </div>
 );
@@ -64,24 +60,10 @@ export const HomeLaunchGuide: React.FC<HomeLaunchGuideProps> = ({ onClose }) => 
           How it works
         </span>
 
-        <div className="space-y-5">
-          <div className="space-y-2.5">
-            <SectionTitle>Before Launch</SectionTitle>
-            <CheckRow>You can now edit the text and add your own images</CheckRow>
-          </div>
-
-          <div className="space-y-1.5">
-            <SectionTitle>Launch</SectionTitle>
-            <p className="text-[14px] leading-snug text-white/85">
-              Click <span className="font-bold text-white">“Launch My Site”</span>, pay for hosting,
-              and create your account.
-            </p>
-          </div>
-
-          <div className="space-y-2.5">
-            <SectionTitle>After Launch</SectionTitle>
-            <CheckRow>You can edit the text and add images after you launch your site as well</CheckRow>
-          </div>
+        <div className="space-y-3.5">
+          {STEPS.map((step, i) => (
+            <NumberStep key={i} n={i + 1}>{step}</NumberStep>
+          ))}
         </div>
 
         <button
