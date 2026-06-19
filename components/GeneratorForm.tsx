@@ -449,12 +449,12 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
               <span className="text-[#f4a100] mt-1 block">in Seconds</span>
             </h1>
             <div
-              className="mx-auto mb-8 md:mb-10 max-w-md rounded-xl border px-4 py-3"
+              className="mx-auto mb-8 md:mb-10 w-fit max-w-full rounded-xl border px-4 py-3"
               style={{ borderColor: 'rgba(232,192,116,0.45)', background: 'rgba(232,192,116,0.08)' }}
             >
               <p
-                className="text-[13px] md:text-base italic text-white/90"
-                style={{ fontFamily: 'Georgia, "Times New Roman", serif', animation: 'gfSubheadFlash 1.6s ease-in-out infinite' }}
+                className="whitespace-nowrap font-bold text-white/90"
+                style={{ fontFamily: 'Georgia, "Times New Roman", serif', fontSize: 'clamp(9px, 2.4vw, 16px)', animation: 'gfSubheadFlash 1.6s ease-in-out infinite' }}
               >
                 After your site generates, you can edit the text and also add your own images.
               </p>
