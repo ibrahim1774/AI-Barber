@@ -72,12 +72,12 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
     : freeBarberMode
       ? 'monthly-free'
       : 'monthly';
-  // Flat $59/yr on every entry path. The discount % is computed off the
+  // Flat $49/yr on every entry path. The discount % is computed off the
   // path's own monthly × 12 anchor so the "Save X%" label always
-  // reflects the real saving ($10/mo home → −51%, $7/mo booksy/free →
-  // −30%). Keep the server amounts in api/create-checkout-session.ts in
+  // reflects the real saving ($10/mo home → −59%, $7/mo booksy/free →
+  // −42%). Keep the server amounts in api/create-checkout-session.ts in
   // sync.
-  const stdYearlyPriceDollars = 59;
+  const stdYearlyPriceDollars = 49;
   const stdYearlyPriceYr = `$${stdYearlyPriceDollars}/yr`;
   const stdYearlyPriceYear = `$${stdYearlyPriceDollars}/year`;
   const stdYearlyDiscountPct = Math.max(
@@ -377,7 +377,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                 borderBottom: pricingPlan === 'yearly' ? '1px solid #e8c074' : '1px solid transparent',
               }}
             >
-              Yearly <span style={{ color: '#ffffff', fontWeight: 700 }}>Save {stdYearlyDiscountPct}%</span>
+              Yearly <span style={{ color: '#ffffff', fontWeight: 700 }}>(Save {stdYearlyDiscountPct}%)</span>
             </button>
           </div>
 
@@ -575,7 +575,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                   borderBottom: pricingPlan === 'yearly' ? `1px solid ${gold}` : '1px solid transparent',
                 }}
               >
-                Yearly · {stdYearlyPriceYr} <span style={{ color: '#ffffff', fontWeight: 700 }}>Save {stdYearlyDiscountPct}%</span>
+                Yearly · {stdYearlyPriceYr} <span style={{ color: '#ffffff', fontWeight: 700 }}>(Save {stdYearlyDiscountPct}%)</span>
               </button>
             </div>
 
@@ -1028,7 +1028,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                       borderBottom: pricingPlan === 'yearly' ? `1px solid ${gold}` : '1px solid transparent',
                     }}
                   >
-                    Yearly · {yearlyLabel} <span style={{ color: '#ffffff', fontWeight: 700 }}>Save {stdYearlyDiscountPct}%</span>
+                    Yearly · {yearlyLabel} <span style={{ color: '#ffffff', fontWeight: 700 }}>(Save {stdYearlyDiscountPct}%)</span>
                   </button>
                 </div>
 

@@ -251,6 +251,19 @@ export const HomeBookingPrompts: React.FC<HomeBookingPromptsProps> = ({
             </button>
           </form>
         )}
+
+        {/* Skip — the visitor can dismiss the prompt and publish with
+            whatever's entered so far (the site already generated from
+            their name). They're never forced to complete this. */}
+        {step !== 'done' && (
+          <button
+            type="button"
+            onClick={onComplete}
+            className="mt-3 w-full text-center text-[11px] font-semibold uppercase tracking-[0.18em] text-white/45 transition hover:text-white/80"
+          >
+            Skip — I'll edit it myself
+          </button>
+        )}
       </div>
     </div>
   );
