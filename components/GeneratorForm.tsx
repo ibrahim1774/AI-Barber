@@ -187,7 +187,8 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
   };
 
   return (
-    <div className="md:min-h-screen bg-[#0d0d0d] flex items-start md:items-stretch overflow-x-hidden">
+    <div className={`bg-[#0d0d0d] flex overflow-x-hidden ${nameOnly ? 'min-h-screen items-center md:items-stretch' : 'md:min-h-screen items-start md:items-stretch'}`}>
+
       {/* Auto-scrape overlay — only shown when bookingUrl is a
           supported platform. Same step ladder as /booksy + the quiz. */}
       {scraping && (
