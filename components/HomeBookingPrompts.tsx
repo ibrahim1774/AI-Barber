@@ -61,6 +61,22 @@ export const HomeBookingPrompts: React.FC<HomeBookingPromptsProps> = ({
   const [scraping, setScraping] = useState(false);
   const [scrapeNote, setScrapeNote] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
+  // Countdown shown while we pull + rebuild from the booking link. The
+  // estimate reflects the average pull time (a quick JSON-LD read up to
+  // a deeper render). It ticks to 0, then shows "Almost there…" if a
+  // particular shop takes longer than average.
+  const PULL_ESTIMATE_SECONDS = 20;
+  const [countdown, setCountdown] = useState(PULL_ESTIMATE_SECONDS);
+
+  useEffect(() => {
+    if (!scraping) {
+      setCountdown(PULL_ESTIMATE_SECONDS);
+      return;
+    }
+    setCountdown(PULL_ESTIMATE_SECONDS);
+    const id = setInterval(() => setCountdown((c) => (c > 0 ? c - 1 : 0)), 1000);
+    return () => clearInterval(id);
+  }, [scraping]);
 
   // After the final step, slide out then call onComplete.
   useEffect(() => {
@@ -192,7 +208,7 @@ export const HomeBookingPrompts: React.FC<HomeBookingPromptsProps> = ({
                 {scraping ? (
                   <>
                     <Loader2 size={13} className="animate-spin" />
-                    <span>Pulling…</span>
+                    <span>{countdown > 0 ? `Pulling… ${countdown}s` : 'Almost there…'}</span>
                   </>
                 ) : (
                   <>
