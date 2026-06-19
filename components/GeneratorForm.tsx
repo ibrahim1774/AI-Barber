@@ -449,11 +449,12 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
               <span className="text-[#f4a100] mt-1 block">in Seconds</span>
             </h1>
             <p
-              className="text-[11px] md:text-sm italic text-white/70 max-w-md mx-auto mb-8 md:mb-10"
-              style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
+              className="text-[11px] md:text-sm italic text-white/80 max-w-md mx-auto mb-8 md:mb-10"
+              style={{ fontFamily: 'Georgia, "Times New Roman", serif', animation: 'gfSubheadFlash 1.6s ease-in-out infinite' }}
             >
-              Enter your barbershop name to generate your site — you'll add the rest in a moment.
+              After your site generates, you can edit the text and also add your own images.
             </p>
+            <style>{`@keyframes gfSubheadFlash { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }`}</style>
 
             <form onSubmit={handleSubmit} className="mx-auto max-w-md space-y-5">
               <div className="space-y-1">
