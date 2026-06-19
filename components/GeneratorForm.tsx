@@ -448,12 +448,17 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
               Generate Custom <br className="hidden md:block" /> Barbershop Website
               <span className="text-[#f4a100] mt-1 block">in Seconds</span>
             </h1>
-            <p
-              className="text-[11px] md:text-sm italic text-white/80 max-w-md mx-auto mb-8 md:mb-10"
-              style={{ fontFamily: 'Georgia, "Times New Roman", serif', animation: 'gfSubheadFlash 1.6s ease-in-out infinite' }}
+            <div
+              className="mx-auto mb-8 md:mb-10 max-w-md rounded-xl border px-4 py-3"
+              style={{ borderColor: 'rgba(232,192,116,0.45)', background: 'rgba(232,192,116,0.08)' }}
             >
-              After your site generates, you can edit the text and also add your own images.
-            </p>
+              <p
+                className="text-[13px] md:text-base italic text-white/90"
+                style={{ fontFamily: 'Georgia, "Times New Roman", serif', animation: 'gfSubheadFlash 1.6s ease-in-out infinite' }}
+              >
+                After your site generates, you can edit the text and also add your own images.
+              </p>
+            </div>
             <style>{`@keyframes gfSubheadFlash { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }`}</style>
 
             <form onSubmit={handleSubmit} className="mx-auto max-w-md space-y-5">
