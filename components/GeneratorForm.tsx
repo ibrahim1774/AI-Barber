@@ -454,9 +454,9 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
             >
               <p
                 className="whitespace-nowrap font-bold text-white/90"
-                style={{ fontFamily: 'Georgia, "Times New Roman", serif', fontSize: 'clamp(9px, 2.4vw, 16px)', animation: 'gfSubheadFlash 1.6s ease-in-out infinite' }}
+                style={{ fontFamily: 'Georgia, "Times New Roman", serif', fontSize: 'clamp(13px, 3.7vw, 18px)', animation: 'gfSubheadFlash 1.6s ease-in-out infinite' }}
               >
-                After your site generates, you can edit the text and also add your own images.
+                Edit text &amp; add images after it generates
               </p>
             </div>
             <style>{`@keyframes gfSubheadFlash { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }`}</style>
