@@ -11,9 +11,14 @@ interface AuthModalProps {
   // email to whatever was on the visitor's Stripe session, so the
   // newly-created Supabase user matches the customer who already paid.
   initialEmail?: string;
+  // When true (and initialEmail is set), the email field is read-only.
+  // Used by the post-payment signup so the account email is guaranteed
+  // to equal the Stripe customer email — the precondition for both the
+  // same-session site upsert and the email-based recovery to work.
+  lockEmail?: boolean;
 }
 
-export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 'signup', onSuccess, signInOnly = false, initialEmail }) => {
+export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 'signup', onSuccess, signInOnly = false, initialEmail, lockEmail = false }) => {
   const [mode, setMode] = useState<'signin' | 'signup'>(signInOnly ? 'signin' : initialMode);
   const [email, setEmail] = useState(initialEmail || '');
   const [password, setPassword] = useState('');
@@ -140,8 +145,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMo
               placeholder="Email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-transparent border-b border-white/20 focus:border-blue-500 py-3 pl-7 text-white text-sm outline-none transition-colors placeholder:text-[#555]"
+              readOnly={lockEmail && !!email}
+              title={lockEmail && !!email ? 'This is the email you paid with — your site is attached to it.' : undefined}
+              className={`w-full bg-transparent border-b border-white/20 focus:border-blue-500 py-3 pl-7 text-white text-sm outline-none transition-colors placeholder:text-[#555] ${lockEmail && !!email ? 'opacity-70 cursor-not-allowed' : ''}`}
             />
+            {lockEmail && !!email && mode === 'signup' && (
+              <p className="text-[#888] text-[10px] mt-1.5 pl-7">Using the email you paid with, so your site stays attached.</p>
+            )}
           </div>
 
           {/* Password */}
