@@ -6,6 +6,7 @@ import { getAllSites as getAllLocalSites } from '../services/indexedDBService';
 import { ScissorsIcon } from './Icons';
 import { DomainManager } from './DomainManager';
 import { dualWriteSave } from '../services/saveService';
+import { ensureUuid } from '../lib/ensureUuid';
 
 interface ManagementDashboardProps {
   onEditSite: (site: SiteInstance) => void;
@@ -101,6 +102,42 @@ export const ManagementDashboard: React.FC<ManagementDashboardProps> = ({
         // Keep drafts that have no deployed twin; drop drafts that do.
         return !deployedSig.has(sig);
       });
+
+      // Cross-device self-heal. If the dashboard would otherwise show
+      // "No sites yet" (nothing in Supabase AND nothing in this browser's
+      // IndexedDB — the classic "paid on phone, signed in on laptop"
+      // case), try to recover the paid site by the account's email.
+      // recover-site searches Stripe by customer_email, pulls the
+      // deployed site from the GCS backup, and returns a SiteInstance.
+      // We then attach it to this user so it persists for next time.
+      if (cleaned.length === 0 && user?.email) {
+        try {
+          const resp = await fetch('/api/recover-site', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: user.email }),
+          });
+          if (resp.ok) {
+            const result = await resp.json();
+            if (result?.ok && result?.siteInstance) {
+              // Guarantee a UUID id before the Supabase write — the
+              // recovered instance may carry the slug as its id.
+              const recovered: SiteInstance = {
+                ...result.siteInstance,
+                id: ensureUuid(result.siteInstance.id),
+                lastSaved: result.siteInstance.lastSaved || Date.now(),
+              };
+              await dualWriteSave(recovered, user.id).catch(err =>
+                console.error('[Dashboard] Self-heal attach failed:', err)
+              );
+              cleaned.push(recovered);
+              console.log('[Dashboard] Self-healed site by email for user', user.id);
+            }
+          }
+        } catch (err) {
+          console.error('[Dashboard] recover-site self-heal failed:', err);
+        }
+      }
 
       setSites(cleaned);
     } finally {

@@ -12,6 +12,7 @@ import { GeneratorForm } from './components/GeneratorForm.tsx';
 import { HomeBookingPrompts } from './components/HomeBookingPrompts.tsx';
 import { HomeLaunchGuide } from './components/HomeLaunchGuide.tsx';
 import { buildSiteFromScrape } from './lib/buildSiteFromScrape.ts';
+import { ensureUuid } from './lib/ensureUuid.ts';
 import { extractFirstUrl, isSupportedBookingHost } from './lib/supportedBookingHost.ts';
 import { isBooksyPath, isFreeBarberPath, isPrimeBarberPath, isRecoverPath, isGenerateBarbershopPath, isAdminGeneratePath, isOwnBrandPath } from './lib/dealMode.ts';
 import { LoadingScreen } from './components/LoadingScreen.tsx';
@@ -490,6 +491,13 @@ const App: React.FC = () => {
         // external_id+fbc+fbp (9–10/10).
         const purchasePhone = verifyResult.customerPhone || siteData?.phone || null;
         const purchaseEmail = verifyResult.customerEmail || null;
+        // Lock the post-deploy signup to the email that just paid. This
+        // guarantees the new account's email == the Stripe customer
+        // email, which is what makes BOTH the same-session upsert and the
+        // email-based recovery/self-heal reliable (recover-site searches
+        // Stripe by customer_email). Without this, a customer who pays
+        // with email X but signs up with email Y is orphaned.
+        if (purchaseEmail) setRecoveryEmail(purchaseEmail);
         const { firstName: purchaseFirstName, lastName: purchaseLastName } = splitName(verifyResult.customerName);
         const purchaseAddr = verifyResult.customerAddress || {};
         const { fbc: purchaseFbc, fbp: purchaseFbp } = readMetaCookies();
@@ -631,7 +639,9 @@ const App: React.FC = () => {
         // URLs — that's why Edit My Website opened an empty page and
         // status read "Draft" even though the site was live.
         const newSite: SiteInstance = {
-          id: existingSiteId || siteId || crypto.randomUUID(),
+          // Reuse the draft's id only when it's a real UUID; never fall
+          // back to the slug (siteId) — that breaks the Supabase upsert.
+          id: ensureUuid(existingSiteId),
           data: fullSiteData,
           lastSaved: Date.now(),
           formInputs: { shopName: siteData.shopName, area: siteData.area, phone: siteData.phone },
@@ -953,6 +963,10 @@ const App: React.FC = () => {
   const handleCreateAccount = () => {
     setShowPostDeployModal(false);
     setAuthModalMode('signup');
+    // recoveryEmail was set to the Stripe customer email in
+    // handleStripeReturn. Lock the field so the account is created under
+    // that exact email — the precondition for the site to stay attached.
+    setLockSignupEmail(true);
     setShowAuthModal(true);
   };
 
@@ -980,12 +994,30 @@ const App: React.FC = () => {
       }
     }
 
+    setLockSignupEmail(false);
+
     if (activeSite && authedUser) {
-      try {
-        await upsertSiteToSupabase(activeSite, authedUser.id);
-        console.log('[Migration] Site migrated to Supabase for user', authedUser.id);
-      } catch (err) {
-        console.error('[Migration] Failed to migrate site (non-blocking):', err);
+      // Guarantee a UUID id before writing — a slug here makes the
+      // upsert throw on the UUID column and silently orphan the site.
+      const siteToAttach = { ...activeSite, id: ensureUuid(activeSite.id) };
+      // Retry the attach a couple of times — a transient failure here is
+      // the difference between the customer owning their paid site or
+      // seeing "No sites yet". The dashboard self-heal (recover-site by
+      // email) is the final backstop if every attempt still fails.
+      let attached = false;
+      for (let i = 0; i < 3 && !attached; i++) {
+        try {
+          await upsertSiteToSupabase(siteToAttach, authedUser.id);
+          attached = true;
+          if (siteToAttach.id !== activeSite.id) setActiveSite(siteToAttach);
+          console.log('[Migration] Site attached to Supabase for user', authedUser.id);
+        } catch (err) {
+          console.error(`[Migration] Attach attempt ${i + 1} failed:`, err);
+          if (i < 2) await new Promise(r => setTimeout(r, 600));
+        }
+      }
+      if (!attached) {
+        console.error('[Migration] All attach attempts failed — dashboard self-heal will retry by email.');
       }
     } else if (!authedUser) {
       console.warn('[Migration] Skipped — could not resolve authenticated user after signup');
@@ -1043,6 +1075,9 @@ const App: React.FC = () => {
   // that's linked to their deployed Vercel URL. No new server-side
   // admin code needed: existing handleAuthSuccess does the upsert.
   const [recoveryEmail, setRecoveryEmail] = useState<string | undefined>(undefined);
+  // When true, the AuthModal email field is read-only (post-payment
+  // signup — locked to the Stripe customer email).
+  const [lockSignupEmail, setLockSignupEmail] = useState(false);
   const handleRecoveredSite = (site: SiteInstance, customerEmail: string | null) => {
     setActiveSite(site);
     setDeployResult({ url: site.deployedUrl || undefined });
@@ -1336,9 +1371,10 @@ const App: React.FC = () => {
       {/* Auth modal */}
       <AuthModal
         isOpen={showAuthModal}
-        onClose={() => { setShowAuthModal(false); setAuthSignInOnly(false); setRecoveryEmail(undefined); }}
+        onClose={() => { setShowAuthModal(false); setAuthSignInOnly(false); setRecoveryEmail(undefined); setLockSignupEmail(false); }}
         initialMode={authModalMode}
         initialEmail={recoveryEmail}
+        lockEmail={lockSignupEmail}
         signInOnly={authSignInOnly}
         onSuccess={handleAuthSuccess}
       />
