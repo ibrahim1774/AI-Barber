@@ -805,12 +805,12 @@ const App: React.FC = () => {
       setActiveSite(draftSite);
       persistView('editor', draftSite.id);
       sessionStorage.removeItem('pendingFormInputs');
-      // Fire the post-generation intro modal on /booksy. Tells the
-      // visitor the site is editable now AND that signing up after
-      // payment preserves their edits. Other entry paths (/, /new,
-      // /free-barber) still skip the modal per product decision.
-      if (isBooksyPath()) {
-        setShowEditorIntro(true);
+      // Show the "how it works" guide after generation on the non-root
+      // generator subpages (/booksy, /free-barber) — the same box the
+      // homepage shows. Root triggers it after the booking / area-phone
+      // prompt completes instead (handled below).
+      if (!isRootHomePath()) {
+        setShowLaunchGuide(true);
       }
       // Root homepage progressive funnel: after a name-only generation
       // (no area/phone, not a prebuilt scrape), surface the booking-link
@@ -1177,9 +1177,11 @@ const App: React.FC = () => {
               initialPhone={generatedData.phone || ''}
             />
           )}
-          {/* "How it works" guide — shown once after the funnel finishes,
-              before editing/launching. Same gating as the prompt. */}
-          {isRootHomePath() && showLaunchGuide && !showHomePrompts && !isCheckoutFlowOpen &&
+          {/* "How it works" guide — shown once after generation on the
+              homepage AND the other generator subpages (/booksy,
+              /free-barber). Hidden during checkout / over a deployed site;
+              on root it waits for the booking prompt to finish. */}
+          {showLaunchGuide && !showHomePrompts && !isCheckoutFlowOpen &&
             !(activeSite?.deployedUrl || activeSite?.deploymentStatus === 'deployed') && (
             <HomeLaunchGuide onClose={() => setShowLaunchGuide(false)} />
           )}
