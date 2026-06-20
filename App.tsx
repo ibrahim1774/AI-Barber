@@ -9,7 +9,6 @@ declare global {
 }
 
 import { GeneratorForm } from './components/GeneratorForm.tsx';
-import { HomeBookingPrompts } from './components/HomeBookingPrompts.tsx';
 import { HomeLaunchGuide } from './components/HomeLaunchGuide.tsx';
 import { buildSiteFromScrape } from './lib/buildSiteFromScrape.ts';
 import { ensureUuid } from './lib/ensureUuid.ts';
@@ -72,7 +71,6 @@ const App: React.FC = () => {
   // Homepage progressive funnel: the booking-link / area-phone prompt
   // overlay shown after a name-only generation, and a flag that hides
   // it while the Stripe checkout modal is open.
-  const [showHomePrompts, setShowHomePrompts] = useState(false);
   const [isCheckoutFlowOpen, setIsCheckoutFlowOpen] = useState(false);
   // Short "how it works" guide shown once after the homepage funnel
   // finishes generating, before the visitor edits / launches.
@@ -815,19 +813,12 @@ const App: React.FC = () => {
       setActiveSite(draftSite);
       persistView('editor', draftSite.id);
       sessionStorage.removeItem('pendingFormInputs');
-      // Show the "how it works" guide after generation on the non-root
-      // generator subpages (/booksy, /free-barber) — the same box the
-      // homepage shows. Root triggers it after the booking / area-phone
-      // prompt completes instead (handled below).
-      if (!isRootHomePath()) {
-        setShowLaunchGuide(true);
-      }
-      // Root homepage progressive funnel: after a name-only generation
-      // (no area/phone, not a prebuilt scrape), surface the booking-link
-      // / area-phone prompt over the live preview.
-      if (isRootHomePath() && !prebuilt && !inputs.area && !inputs.phone) {
-        setShowHomePrompts(true);
-      }
+      // Show the "how it works" guide after generation on every
+      // generator entry — homepage, /booksy, /free-barber. The homepage
+      // now uses the full multi-field form (reverted from the name-only
+      // progressive funnel), so it shows the guide directly like the
+      // others, directly after generation.
+      setShowLaunchGuide(true);
       if (cameFromNewRef.current) {
         cameFromNewRef.current = false;
       }
@@ -859,81 +850,11 @@ const App: React.FC = () => {
     });
   };
 
-  // Homepage prompt — live preview as the visitor types area / phone.
-  const handleHomePromptChange = (field: 'area' | 'phone', value: string) => {
-    setGeneratedData((prev) => {
-      if (!prev) return prev;
-      if (field === 'area') return { ...prev, area: value, contact: { ...prev.contact, address: value } };
-      return { ...prev, phone: value };
-    });
-  };
-
-  // Homepage prompt — "Generate" with a booking link: scrape the real
-  // listing and rebuild the site (services / photos / reviews / hours),
-  // preserving the typed name + chosen theme. Returns false on failure
-  // so the prompt falls back to the area/phone step.
-  const handleHomePromptBookingLink = async (link: string): Promise<boolean> => {
-    const current = generatedData;
-    if (!current) return false;
-    // Mirror the proven /booksy + homepage auto-scrape path exactly:
-    // normalize the pasted text to a URL, confirm it's a supported
-    // booking host (Booksy / Fresha / Square / Vagaro / StyleSeat),
-    // then scrape + rebuild from the real listing.
-    const normalizedUrl = extractFirstUrl(link) ?? undefined;
-    if (!normalizedUrl || !isSupportedBookingHost(normalizedUrl)) return false;
-    try {
-      const resp = await fetch('/api/import-scrape', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: normalizedUrl }),
-      });
-      const scrapeData = await resp.json();
-      if (!resp.ok) throw new Error(scrapeData?.error || 'Scrape failed');
-      const built = buildSiteFromScrape(scrapeData, normalizedUrl, {
-        // Keep the name the visitor typed; let the scrape fill area /
-        // phone / services / photos / reviews / hours.
-        manual: { shopName: current.shopName, area: '', phone: '', bookingUrl: normalizedUrl, colorTheme: current.colorTheme },
-        template: current.template === 'euphoria' ? 'euphoria' : 'luxe',
-      });
-      if (!built?.scraped?.shopName) return false;
-      // Keep the homepage look — carry the chosen theme through.
-      const rebuilt: WebsiteData = { ...built.scraped, colorTheme: current.colorTheme };
-      applyGeneratedData(rebuilt);
-      captureLead({ shopName: rebuilt.shopName, area: rebuilt.area, phone: rebuilt.phone, bookingUrl: normalizedUrl }).catch(() => {});
-      return true;
-    } catch (err) {
-      console.warn('[home funnel] booking-link scrape failed:', err);
-      return false;
-    }
-  };
-
-  // Homepage prompt — "Finish generating" with area + phone: re-run the
-  // template generation so the copy bakes in the real service area.
-  const handleHomePromptFinish = async (area: string, phone: string) => {
-    const current = generatedData;
-    if (!current) return;
-    captureLead({ shopName: current.shopName, area, phone, bookingUrl: current.bookingUrl }).catch(() => {});
-    try {
-      const data = await generateContent({
-        shopName: current.shopName,
-        area,
-        phone,
-        template: current.template,
-        colorTheme: current.colorTheme,
-        bookingUrl: current.bookingUrl,
-      });
-      applyGeneratedData(data);
-    } catch {
-      applyGeneratedData({ ...current, area, phone, contact: { ...current.contact, address: area } });
-    }
-  };
-
   const handleBack = () => {
     // Auth-aware: signed-in users go back to their dashboard (where
     // their drafts + deployed sites live). Anonymous users go back
     // to the home form. Was always sending everyone to the home page
     // — even users who had just generated a site while logged in.
-    setShowHomePrompts(false);
     setShowLaunchGuide(false);
     setGeneratedData(null);
     setActiveSite(null);
@@ -941,7 +862,6 @@ const App: React.FC = () => {
   };
 
   const handleEditSite = (site: SiteInstance) => {
-    setShowHomePrompts(false);
     setShowLaunchGuide(false);
     setActiveSite(site);
     setGeneratedData(site.data);
@@ -1164,11 +1084,10 @@ const App: React.FC = () => {
     <Suspense fallback={null}>
       {state === 'generator' && (
         // Homepage, /booksy, AND /free-barber all render the same
-        // GeneratorForm — identical visual shell. On the root "/" the
-        // form runs name-only (collects just the barbershop name; the
-        // booking link / area + phone are gathered by HomeBookingPrompts
-        // after the site generates). /booksy and /free-barber keep their
-        // full layouts unchanged.
+        // GeneratorForm — identical visual shell. The homepage and
+        // /free-barber use the full multi-field form (name + service
+        // area + phone + optional booking link, which auto-scrapes when
+        // a supported platform is pasted). /booksy leads with the link.
         <GeneratorForm
           onGenerate={(inputs, scraped) => handleGenerate(inputs, scraped)}
           onSignIn={() => { setAuthModalMode('signin'); setAuthSignInOnly(true); setShowAuthModal(true); }}
@@ -1198,25 +1117,10 @@ const App: React.FC = () => {
               onCheckoutFlowChange={setIsCheckoutFlowOpen}
             />
           )}
-          {/* Homepage progressive prompt — only for a fresh root "/"
-              name-only generation, hidden while checkout is open and
-              never over an already-deployed (post-payment) site. */}
-          {isRootHomePath() && showHomePrompts && !isCheckoutFlowOpen &&
-            !(activeSite?.deployedUrl || activeSite?.deploymentStatus === 'deployed') && (
-            <HomeBookingPrompts
-              onAreaPhoneChange={handleHomePromptChange}
-              onSubmitBookingLink={handleHomePromptBookingLink}
-              onFinish={handleHomePromptFinish}
-              onComplete={() => { setShowHomePrompts(false); setShowLaunchGuide(true); }}
-              initialArea={generatedData.area || ''}
-              initialPhone={generatedData.phone || ''}
-            />
-          )}
           {/* "How it works" guide — shown once after generation on the
               homepage AND the other generator subpages (/booksy,
-              /free-barber). Hidden during checkout / over a deployed site;
-              on root it waits for the booking prompt to finish. */}
-          {showLaunchGuide && !showHomePrompts && !isCheckoutFlowOpen &&
+              /free-barber). Hidden during checkout / over a deployed site. */}
+          {showLaunchGuide && !isCheckoutFlowOpen &&
             !(activeSite?.deployedUrl || activeSite?.deploymentStatus === 'deployed') && (
             <HomeLaunchGuide onClose={() => setShowLaunchGuide(false)} />
           )}
