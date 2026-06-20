@@ -144,6 +144,10 @@ export default async function handler(req: any, res: any) {
     params.append('line_items[0][price_data][recurring][interval]', interval);
     params.append('line_items[0][quantity]', '1');
     params.append('client_reference_id', siteId);
+    // `app` lets the Stripe webhook (api/stripe-webhook) attribute the
+    // server-side Purchase to this app and ignore another app's sessions
+    // if AI-Barber + PrimeHub ever share one Stripe account.
+    params.append('metadata[app]', 'aibarber');
     params.append('metadata[type]', (isPrimeBarber || isPrimeBarberYearly) ? 'primebarber' : isCustomAny ? 'custom_design' : 'site_hosting');
     params.append('metadata[siteId]', siteId);
     params.append('metadata[plan]', plan);
