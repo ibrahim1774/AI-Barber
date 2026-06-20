@@ -5,6 +5,7 @@ import { generateContent } from '../services/geminiService';
 import { buildSiteFromScrape } from '../lib/buildSiteFromScrape';
 import { useAuth } from '../contexts/AuthContext';
 import { BarbershopMidSitePrompts } from './BarbershopMidSitePrompts';
+import { HomeLaunchGuide } from './HomeLaunchGuide';
 
 // /generatebarbershop funnel — rebuilt to mirror PrimeHub's
 // /landscaping flow:
@@ -52,6 +53,8 @@ export const GenerateBarbershopFunnel: React.FC = () => {
   // Mounts the BarbershopMidSitePrompts overlay during the reveal
   // phase. Cleared once the visitor finishes both prompts.
   const [showMidSitePrompts, setShowMidSitePrompts] = useState(true);
+  // The "how it works" guide, shown once the mid-site prompts finish.
+  const [showLaunchGuide, setShowLaunchGuide] = useState(false);
   // True while the visitor has the Launch checkout open. Hides the
   // mid-site overlay so the Stripe modal isn't sharing the screen.
   const [isCheckoutFlowOpen, setIsCheckoutFlowOpen] = useState(false);
@@ -157,12 +160,14 @@ export const GenerateBarbershopFunnel: React.FC = () => {
 
   const handlePromptComplete = useCallback(() => {
     setShowMidSitePrompts(false);
+    setShowLaunchGuide(true);
   }, []);
 
   const handleBack = useCallback(() => {
     setPhase('input');
     setSiteData(null);
     setShowMidSitePrompts(true);
+    setShowLaunchGuide(false);
     setIsCheckoutFlowOpen(false);
   }, []);
 
@@ -216,6 +221,9 @@ export const GenerateBarbershopFunnel: React.FC = () => {
             initialArea={siteData.area || ''}
             initialPhone={siteData.phone || ''}
           />
+        )}
+        {showLaunchGuide && !showMidSitePrompts && !isCheckoutFlowOpen && (
+          <HomeLaunchGuide onClose={() => setShowLaunchGuide(false)} />
         )}
       </>
     );
