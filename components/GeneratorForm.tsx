@@ -62,17 +62,10 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
   // only the headline pivots to lead with "FREE" so the offer is
   // explicit. Pricing ($7/mo) is handled separately by PrePaymentBanner.
   const freeBarberMode = useMemo(() => isFreeBarberPath(), []);
-  // Root homepage "/" runs the progressive funnel: collect ONLY the
-  // barbershop name here (same visual shell), then ask for the booking
-  // link / service area + phone via HomeBookingPrompts after the site
-  // generates. /free-barber and /booksy keep their full layouts.
-  const nameOnly = useMemo(() => {
-    try {
-      return window.location.pathname.replace(/\/+$/, '') === '' && !isBooksyPath() && !isFreeBarberPath();
-    } catch {
-      return false;
-    }
-  }, []);
+  // The homepage and /free-barber both use the full multi-field form
+  // (name + service area + phone + optional booking link). The booking
+  // link auto-scrapes via handleSubmit when a supported platform is
+  // pasted. (Reverted from the name-only progressive homepage funnel.)
   const [inputs, setInputs] = useState<ShopInputs>({
     shopName: '',
     area: '',
@@ -134,14 +127,6 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setScrapeError(null);
-    // Root homepage name-only funnel: only the name is collected here.
-    // Generate from the name alone — the booking link / area + phone are
-    // gathered by HomeBookingPrompts after the site reveals.
-    if (nameOnly) {
-      if (!inputs.shopName.trim()) return;
-      onGenerate({ ...inputs, area: '', phone: '', bookingUrl: '' });
-      return;
-    }
     // Homepage path requires the three identity fields. In booksyMode
     // those fields aren't shown — the Booksy link is the sole input,
     // and the scrape provides shopName/area/phone via buildSiteFromScrape.
@@ -420,115 +405,6 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
             </form>
           </div>
         </div>
-      ) : nameOnly ? (
-        /* Homepage "/" — single full-bleed layout (same shell as
-           /booksy): the barber image fills the whole viewport up to the
-           very top, logo top-left, Sign In top-right, and the name-only
-           form sits centered over it. No blank band at the top. */
-        <div className="relative w-full min-h-screen overflow-hidden flex items-center justify-center px-5 py-12 md:py-16">
-          {/* Full-bleed barber background */}
-          <div
-            className="absolute inset-0 bg-cover bg-center"
-            style={{
-              backgroundImage:
-                "url('https://images.unsplash.com/photo-1503951914875-452162b0f3f1?auto=format&fit=crop&w=1920&q=80')",
-            }}
-            aria-hidden="true"
-          />
-          {/* Vignette + darkening for legibility */}
-          <div
-            className="absolute inset-0"
-            aria-hidden="true"
-            style={{
-              background:
-                'radial-gradient(60% 75% at 50% 50%, rgba(5,7,10,0.55) 0%, rgba(5,7,10,0.85) 65%, rgba(5,7,10,0.95) 100%)',
-            }}
-          />
-
-          {/* Logo (top-left) */}
-          <div className="absolute top-6 left-6 md:top-8 md:left-8 flex items-center gap-2 md:gap-3 z-20 pointer-events-none">
-            <ScissorsIcon className="w-5 h-5 md:w-6 md:h-6 text-[#f4a100]" />
-            <span className="text-[10px] md:text-sm font-montserrat font-black uppercase tracking-[2px] text-white">
-              Prime<span className="text-[#f4a100]">Barber</span> AI
-            </span>
-          </div>
-
-          {/* Sign In (top-right) */}
-          {onSignIn && (
-            <button
-              onClick={onSignIn}
-              className="absolute top-6 right-6 md:top-8 md:right-8 z-20 rounded-full border border-white/30 bg-white/[0.06] px-4 py-1.5 md:px-5 md:py-2 text-[14px] md:text-[17px] font-montserrat font-black uppercase tracking-[2px] text-white shadow-sm hover:border-white hover:bg-white/15 hover:text-[#f4a100] transition-all"
-            >
-              Sign In
-            </button>
-          )}
-
-          {/* Centered headline + name-only form */}
-          <div className="relative z-10 w-full max-w-2xl text-center">
-            <h1 className="text-2xl md:text-5xl lg:text-6xl font-montserrat font-black uppercase tracking-[1px] md:tracking-[2px] leading-[1.15] text-white mb-3 md:mb-5">
-              Generate Custom <br className="hidden md:block" /> Barbershop Website
-              <span className="text-[#f4a100] mt-1 block">in Seconds</span>
-            </h1>
-            <EditNote />
-
-            <form onSubmit={handleSubmit} className="mx-auto max-w-md space-y-5">
-              <div className="space-y-1">
-                <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">
-                  Barbershop Name
-                </label>
-                <input
-                  required
-                  type="text"
-                  placeholder="The Gentlemen's Lounge"
-                  className="w-full bg-transparent border-b border-white/40 focus:border-[#f4a100] py-2 md:py-3 text-white text-center transition-all outline-none font-montserrat text-sm md:text-lg placeholder:text-white/20"
-                  value={inputs.shopName}
-                  onChange={e => setInputs({ ...inputs, shopName: e.target.value })}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black text-center">
-                  Choose Your Colors{' '}
-                  <span className="text-white/40 normal-case tracking-normal">(pick a theme)</span>
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {THEME_PRESETS.map((t) => {
-                    const selected = (inputs.colorTheme || 'goldBlack') === t.slug;
-                    return (
-                      <button
-                        key={t.slug}
-                        type="button"
-                        onClick={() => setInputs({ ...inputs, colorTheme: t.slug })}
-                        aria-pressed={selected}
-                        className={`flex min-w-0 items-center gap-1.5 rounded-lg border px-2 py-1.5 transition-all ${
-                          selected
-                            ? 'border-white bg-white/10'
-                            : 'border-white/20 bg-white/[0.03] hover:border-white/40'
-                        }`}
-                      >
-                        <span className="relative flex shrink-0 items-center">
-                          <span className="h-3.5 w-3.5 rounded-full border border-white/25" style={{ background: t.bg }} />
-                          <span className="-ml-1.5 h-3.5 w-3.5 rounded-full border border-white/25" style={{ background: t.accent }} />
-                        </span>
-                        <span className="min-w-0 truncate text-[8.5px] sm:text-[9.5px] font-bold uppercase tracking-[0.08em] sm:tracking-[0.1em] text-white/90">
-                          {t.label}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={scraping}
-                className="w-full py-4 md:py-5 bg-[#f4a100] text-[#1a1a1a] font-montserrat font-black uppercase tracking-[1.5px] md:tracking-[2px] text-xs md:text-base hover:bg-white transition-all duration-500 shadow-[0_0_20px_rgba(244,161,0,0.15)] active:scale-[0.98] disabled:opacity-60"
-              >
-                Generate My Barbershop Website
-              </button>
-            </form>
-          </div>
-        </div>
       ) : (
       <div className="w-full grid md:grid-cols-[40%_60%] luxury-gradient relative">
 
@@ -595,9 +471,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
             >
               {booksyMode
                 ? "Paste your Booksy link — we'll pull your services, photos, hours, and reviews automatically."
-                : nameOnly
-                  ? "Enter your barbershop name to generate your site — you'll add the rest in a moment."
-                  : 'Please fill in the info below so your custom website can be generated.'}
+                : 'Please fill in the info below so your custom website can be generated.'}
             </p>
             <div className="mt-5">
               <EditNote />
@@ -627,7 +501,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
                 </div>
               )}
 
-              {!booksyMode && !nameOnly && (
+              {!booksyMode && (
                 <>
                   <div className="space-y-1">
                     <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Barbershop Service Area</label>
@@ -655,7 +529,6 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
                 </>
               )}
 
-              {(booksyMode || !nameOnly) && (
               <div className="space-y-1">
                 <div className={`flex items-center gap-2 ${booksyMode ? 'justify-center' : ''}`}>
                   <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">
@@ -691,7 +564,6 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
                     : 'Booksy, Cal.com, Vagaro — any booking page works.'}
                 </p>
               </div>
-              )}
 
               {/* Color-theme picker — homepage only. /booksy skips this:
                   the scraped page provides everything we need, so we
