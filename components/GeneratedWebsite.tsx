@@ -670,7 +670,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
   // PrePaymentBanner. WITHOUT this prep, the embedded checkout has no
   // pendingSite to restore from after Stripe return → deploy fails.
   const preparePendingSite = async (
-    plan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'yearly' | 'yearly-booksy' | 'yearly-free' = 'monthly',
+    plan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'monthly-booking' | 'yearly' | 'yearly-booksy' | 'yearly-free' | 'yearly-booking' = 'monthly',
   ): Promise<{ siteId: string } | { error: string }> => {
     try {
       const siteId = siteSlug;
@@ -801,7 +801,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
     }
   };
 
-  const handleClaimSite = async (plan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'yearly' | 'yearly-booksy' | 'yearly-free' = 'monthly') => {
+  const handleClaimSite = async (plan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'monthly-booking' | 'yearly' | 'yearly-booksy' | 'yearly-free' | 'yearly-booking' = 'monthly') => {
     setIsDeploying(true);
     setDeploymentResult(null);
 

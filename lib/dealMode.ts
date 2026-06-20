@@ -33,6 +33,17 @@ export function isImportPath(pathname?: string): boolean {
 export const BOOKSY_PATH = '/booksy';
 export const isBooksyPath = isImportPath;
 
+// `/booking` = generic version of /booksy. Same single-URL generator and
+// scrape pipeline, but platform-neutral copy ("paste your Booksy / Fresha
+// / Square / Vagaro / StyleSeat link"). Pricing is its own: $10/mo +
+// $59/yr (plans 'monthly-booking' / 'yearly-booking'), wired in
+// PrePaymentBanner via isBookingPath().
+export const BOOKING_PATH = '/booking';
+export function isBookingPath(pathname?: string): boolean {
+  const p = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
+  return p === BOOKING_PATH || p === `${BOOKING_PATH}/`;
+}
+
 // `/primebarber` = standalone SaaS landing page for the full Prime
 // Barber custom-website platform ($29/mo with a 7-day free trial). Unlike
 // the other entry paths, this one is NOT a site generator — it's a

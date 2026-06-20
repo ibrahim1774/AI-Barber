@@ -4,7 +4,7 @@ import { ShopInputs, WebsiteData } from '../types';
 import { ScissorsIcon } from './Icons';
 import { isSupportedBookingHost, extractFirstUrl } from '../lib/supportedBookingHost.ts';
 import { buildSiteFromScrape } from '../lib/buildSiteFromScrape.ts';
-import { isBooksyPath, isFreeBarberPath } from '../lib/dealMode.ts';
+import { isBooksyPath, isFreeBarberPath, isBookingPath } from '../lib/dealMode.ts';
 
 // Booksy brand teal — used to highlight Booksy-specific copy in
 // booksyMode. Lives here (not THEME_PRESETS) because it's an
@@ -62,6 +62,13 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
   // only the headline pivots to lead with "FREE" so the offer is
   // explicit. Pricing ($7/mo) is handled separately by PrePaymentBanner.
   const freeBarberMode = useMemo(() => isFreeBarberPath(), []);
+  // /booking — generic clone of /booksy: same single-link layout + scrape
+  // pipeline, platform-neutral copy + gold accent (not Booksy teal).
+  const bookingMode = useMemo(() => isBookingPath(), []);
+  // Both /booksy and /booking use the single booking-link layout (one URL
+  // field, scrape required, no manual identity fields).
+  const linkMode = booksyMode || bookingMode;
+  const linkAccent = bookingMode ? '#f4a100' : BOOKSY_TEAL;
   // The homepage and /free-barber both use the full multi-field form
   // (name + service area + phone + optional booking link). The booking
   // link auto-scrapes via handleSubmit when a supported platform is
@@ -127,16 +134,17 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setScrapeError(null);
-    // Homepage path requires the three identity fields. In booksyMode
-    // those fields aren't shown — the Booksy link is the sole input,
-    // and the scrape provides shopName/area/phone via buildSiteFromScrape.
-    if (!booksyMode && !(inputs.shopName && inputs.area && inputs.phone)) return;
+    // Homepage path requires the three identity fields. In the single-
+    // link modes (/booksy + /booking) those fields aren't shown — the
+    // booking link is the sole input, and the scrape provides
+    // shopName/area/phone via buildSiteFromScrape.
+    if (!linkMode && !(inputs.shopName && inputs.area && inputs.phone)) return;
 
     const normalizedUrl = normalizeBookingUrl(inputs.bookingUrl || '');
 
-    if (booksyMode) {
+    if (linkMode) {
       if (!normalizedUrl) {
-        setScrapeError('Paste your Booksy link to continue.');
+        setScrapeError('Paste your booking link to continue.');
         return;
       }
       if (!isSupportedBookingHost(normalizedUrl)) {
@@ -173,8 +181,8 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
         return;
       } catch (err: any) {
         setScraping(false);
-        if (booksyMode) {
-          // No fallback in booksyMode — the other identity fields
+        if (linkMode) {
+          // No fallback in the single-link modes — the other identity fields
           // weren't collected, so we can't generate a usable site.
           // Surface the error and let the visitor try a different link.
           setScrapeError(err?.message || 'Couldn\'t pull from that link — try a different one.');
@@ -255,10 +263,10 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
         </div>
       )}
 
-      {/* /booksy: single full-bleed layout — barber image fills the
-          whole viewport, headline + single Booksy-link input + submit
+      {/* /booksy + /booking: single full-bleed layout — barber image fills
+          the whole viewport, headline + single booking-link input + submit
           button stack centered in the middle of the screen. */}
-      {booksyMode ? (
+      {linkMode ? (
         <div className="relative w-full min-h-screen overflow-hidden flex items-center justify-center px-5 py-12 md:py-16">
           {/* Full-bleed barber background */}
           <div
@@ -303,14 +311,16 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
             <h1 className="text-xl md:text-4xl lg:text-5xl font-montserrat font-black uppercase tracking-[1px] md:tracking-[2px] leading-[1.15] text-white mb-5 md:mb-7">
               Generate Your <span style={{ color: '#f4a100' }}>FREE</span> <br/>
               Barber Website From <br/>
-              Your <span style={{ color: BOOKSY_TEAL }}>Booksy</span> Link
+              Your <span style={{ color: linkAccent }}>{bookingMode ? 'Booking' : 'Booksy'}</span> Link
               <span className="text-[#f4a100] mt-1 md:mt-2 block">in a Few Seconds</span>
             </h1>
             <p
               className="text-[11px] md:text-sm italic text-white/70 max-w-md mx-auto mb-8 md:mb-10"
               style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
             >
-              Paste your Booksy link — we'll pull your services, photos, hours, and reviews automatically.
+              {bookingMode
+                ? "Paste your Booksy, Fresha, Square, Vagaro, or StyleSeat link — we'll pull your services, photos, hours, and reviews automatically."
+                : "Paste your Booksy link — we'll pull your services, photos, hours, and reviews automatically."}
             </p>
 
             <EditNote />
@@ -319,7 +329,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
               <div className="space-y-1">
                 <div className="flex items-center justify-center">
                   <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">
-                    <span style={{ color: BOOKSY_TEAL }}>Booksy</span> Link
+                    <span style={{ color: linkAccent }}>{bookingMode ? 'Booking' : 'Booksy'}</span> Link
                   </label>
                 </div>
                 <input
@@ -329,17 +339,19 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
                   autoCapitalize="off"
                   autoCorrect="off"
                   spellCheck={false}
-                  placeholder="booksy.com / app.booksy.com / yourshop.booksy.com"
+                  placeholder={bookingMode ? 'Booksy, Fresha, Square, Vagaro, or StyleSeat link' : 'booksy.com / app.booksy.com / yourshop.booksy.com'}
                   className="w-full bg-transparent border-b py-2 md:py-3 text-white text-center transition-all outline-none font-montserrat text-[12px] md:text-base placeholder:text-white/20"
                   style={{
-                    borderBottomColor: `${BOOKSY_TEAL}99`,
-                    caretColor: BOOKSY_TEAL,
+                    borderBottomColor: `${linkAccent}99`,
+                    caretColor: linkAccent,
                   }}
                   value={inputs.bookingUrl || ''}
                   onChange={e => setInputs({ ...inputs, bookingUrl: e.target.value })}
                 />
                 <p className="text-white/40 text-[9px] md:text-[10px] mt-1 text-center">
-                  Short links like yourshop.booksy.com work too — we resolve them.
+                  {bookingMode
+                    ? 'Booksy, Fresha, Square, Vagaro & StyleSeat all work — short links too.'
+                    : 'Short links like yourshop.booksy.com work too — we resolve them.'}
                 </p>
               </div>
 

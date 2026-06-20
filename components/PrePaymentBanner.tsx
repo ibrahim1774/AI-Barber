@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, ArrowRight, Rocket, Loader2, Sparkles, Check, ChevronLeft, ChevronRight } from 'lucide-react';
-import { isBooksyPath, isFreeBarberPath } from '../lib/dealMode.ts';
+import { isBooksyPath, isFreeBarberPath, isBookingPath } from '../lib/dealMode.ts';
 import { loadStripe, type Stripe } from '@stripe/stripe-js';
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js';
 
@@ -27,7 +27,7 @@ interface PrePaymentBannerProps {
   // 'monthly-booksy' = /booksy import flow ($7/mo); 'monthly-free' =
   // /free-barber ($7/mo); 'monthly' = homepage ($10/mo). The separate
   // slugs also drive analytics attribution on the receipt.
-  onDeploy: (plan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'yearly' | 'yearly-booksy' | 'yearly-free') => void;
+  onDeploy: (plan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'monthly-booking' | 'yearly' | 'yearly-booksy' | 'yearly-free' | 'yearly-booking') => void;
   // Embedded checkout requires the parent to first upload images +
   // write pendingSite to localStorage so handleStripeReturn can deploy
   // after the customer pays. Returns the real siteId we then pass to
@@ -36,7 +36,7 @@ interface PrePaymentBannerProps {
   // prop is omitted, the banner falls back to onDeploy (legacy
   // redirect flow) even if STRIPE_PK is set.
   onPrepareCheckout?: (
-    plan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'yearly' | 'yearly-booksy' | 'yearly-free',
+    plan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'monthly-booking' | 'yearly' | 'yearly-booksy' | 'yearly-free' | 'yearly-booking',
   ) => Promise<{ siteId: string } | { error: string }>;
   isDeploying: boolean;
   industry?: string;
@@ -59,36 +59,43 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   // plan slugs so Stripe + analytics distinguish it from /booksy and
   // the homepage.
   const freeBarberMode = React.useMemo(() => isFreeBarberPath(), []);
+  // /booking: generic booking-link entry. Its own pricing — $10/mo +
+  // $59/yr — and its own plan slugs so Stripe + analytics distinguish it.
+  const bookingMode = React.useMemo(() => isBookingPath(), []);
 
   // Standard monthly price varies by entry path:
   //   /free-barber → $7/mo (plan 'monthly-free')
   //   /booksy      → $7/mo (plan 'monthly-booksy')
+  //   /booking     → $10/mo (plan 'monthly-booking')
   //   home page    → $10/mo (plan 'monthly')
   const stdMonthlyPriceDollars = (freeBarberMode || booksyMode) ? 7 : 10;
   const stdMonthlyPriceMo = `$${stdMonthlyPriceDollars}/mo`;
   const stdMonthlyPriceMonth = `$${stdMonthlyPriceDollars}/month`;
-  const stdMonthlyPlan: 'monthly' | 'monthly-booksy' | 'monthly-free' = booksyMode
-    ? 'monthly-booksy'
-    : freeBarberMode
-      ? 'monthly-free'
-      : 'monthly';
-  // Flat $49/yr on every entry path. The discount % is computed off the
-  // path's own monthly × 12 anchor so the "Save X%" label always
-  // reflects the real saving ($10/mo home → −59%, $7/mo booksy/free →
-  // −42%). Keep the server amounts in api/create-checkout-session.ts in
-  // sync.
-  const stdYearlyPriceDollars = 49;
+  const stdMonthlyPlan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'monthly-booking' = bookingMode
+    ? 'monthly-booking'
+    : booksyMode
+      ? 'monthly-booksy'
+      : freeBarberMode
+        ? 'monthly-free'
+        : 'monthly';
+  // Yearly is $49/yr everywhere EXCEPT /booking ($59/yr). The discount %
+  // is computed off the path's own monthly × 12 anchor so "Save X%"
+  // always reflects the real saving. Keep the server amounts in
+  // api/create-checkout-session.ts in sync.
+  const stdYearlyPriceDollars = bookingMode ? 59 : 49;
   const stdYearlyPriceYr = `$${stdYearlyPriceDollars}/yr`;
   const stdYearlyPriceYear = `$${stdYearlyPriceDollars}/year`;
   const stdYearlyDiscountPct = Math.max(
     0,
     Math.round((1 - stdYearlyPriceDollars / (stdMonthlyPriceDollars * 12)) * 100),
   );
-  const stdYearlyPlan: 'yearly' | 'yearly-booksy' | 'yearly-free' = booksyMode
-    ? 'yearly-booksy'
-    : freeBarberMode
-      ? 'yearly-free'
-      : 'yearly';
+  const stdYearlyPlan: 'yearly' | 'yearly-booksy' | 'yearly-free' | 'yearly-booking' = bookingMode
+    ? 'yearly-booking'
+    : booksyMode
+      ? 'yearly-booksy'
+      : freeBarberMode
+        ? 'yearly-free'
+        : 'yearly';
 
   // Custom-design upsell. Flat $15/mo across every entry path.
   // Plan slug per path for analytics attribution:
