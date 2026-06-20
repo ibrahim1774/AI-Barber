@@ -525,7 +525,7 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
   // checkout in PrePaymentBanner needs this to run before opening its
   // modal so handleStripeReturn can find the pendingSite after Stripe.
   const preparePendingSite = async (
-    plan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'yearly' | 'yearly-booksy' | 'yearly-free' = 'monthly',
+    plan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'monthly-booking' | 'yearly' | 'yearly-booksy' | 'yearly-free' | 'yearly-booking' = 'monthly',
   ): Promise<{ siteId: string } | { error: string }> => {
     try {
       const siteId = siteSlug;
@@ -617,7 +617,7 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
     }
   };
 
-  const handleClaimSite = async (plan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'yearly' | 'yearly-booksy' | 'yearly-free' = 'monthly') => {
+  const handleClaimSite = async (plan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'monthly-booking' | 'yearly' | 'yearly-booksy' | 'yearly-free' | 'yearly-booking' = 'monthly') => {
     setIsDeploying(true);
     setDeploymentResult(null);
     const prep = await preparePendingSite(plan);

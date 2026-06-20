@@ -8,6 +8,7 @@ export type PlanSlug =
   | 'monthly' | 'yearly'
   | 'monthly-booksy' | 'yearly-booksy'
   | 'monthly-free' | 'yearly-free'
+  | 'monthly-booking' | 'yearly-booking'
   | 'custom' | 'custom25' | 'custom-booksy'
   | 'primebarber' | 'primebarber-site';
 
@@ -25,6 +26,8 @@ const PLAN_CONTENT: Record<PlanSlug, { content_id: string; content_name: string;
   'yearly-booksy':     { content_id: 'aibarber-hosting-yearly-booksy',   content_name: 'aibarber.org Yearly Website Hosting (Booksy)',   price: 67 },
   'monthly-free':      { content_id: 'aibarber-hosting-monthly-free',    content_name: 'aibarber.org Monthly Website Hosting (Free Barber)', price: 7 },
   'yearly-free':       { content_id: 'aibarber-hosting-yearly-free',     content_name: 'aibarber.org Yearly Website Hosting (Free Barber)',  price: 67 },
+  'monthly-booking':   { content_id: 'aibarber-hosting-monthly-booking', content_name: 'aibarber.org Monthly Website Hosting (Booking)',  price: 10 },
+  'yearly-booking':    { content_id: 'aibarber-hosting-yearly-booking',  content_name: 'aibarber.org Yearly Website Hosting (Booking)',   price: 59 },
   'custom':            { content_id: 'aibarber-custom-design',           content_name: 'aibarber.org Custom Website Design',             price: 19 },
   'custom25':          { content_id: 'aibarber-custom-design',           content_name: 'aibarber.org Custom Website Design',             price: 19 },
   'custom-booksy':     { content_id: 'aibarber-custom-design',           content_name: 'aibarber.org Custom Website Design (Booksy)',    price: 19 },
