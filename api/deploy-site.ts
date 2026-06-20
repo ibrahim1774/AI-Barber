@@ -140,7 +140,38 @@ async function deployToVercel(projectName: string, files: VercelFile[]) {
     console.warn('[Vercel Deploy] Could not disable deployment protection:', e.message);
   }
 
-  return { deploymentUrl, inspectorUrl: data.inspectorUrl, deploymentId: data.id };
+  return { deploymentUrl, inspectorUrl: data.inspectorUrl, deploymentId: data.id, actualProjectName };
+}
+
+// Re-resolve the cleanest public URL AFTER the deployment is READY.
+// The alias[] returned by the deploy-creation POST is incomplete — the
+// clean project alias (e.g. `trapp-cutz.vercel.app`) is attached a
+// moment later, so at creation time the shortest available is the
+// team-scoped form (`trapp-cutz-client-sites-xxxx.vercel.app`) or the
+// per-deploy hash URL. Once READY, the deployment's alias[] is fully
+// populated; pick the shortest alias that mentions this project so we
+// store + show the clean short URL in the dashboard / admin screen.
+// Returns null if nothing better is found (caller keeps its fallback).
+async function resolveBestAlias(
+  deploymentId: string,
+  vercelToken: string,
+  projectName: string
+): Promise<string | null> {
+  try {
+    const resp = await fetch(`https://api.vercel.com/v13/deployments/${deploymentId}`, {
+      headers: { Authorization: `Bearer ${vercelToken}` },
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json() as { alias?: unknown };
+    const aliases: string[] = Array.isArray(data?.alias) ? (data.alias as string[]) : [];
+    const matching = aliases
+      .filter((a) => typeof a === 'string' && a.toLowerCase().includes(projectName.toLowerCase()))
+      .sort((a, b) => a.length - b.length);
+    return matching[0] ? `https://${matching[0]}` : null;
+  } catch (e: any) {
+    console.warn('[Vercel Deploy] resolveBestAlias failed (keeping fallback):', e?.message || e);
+    return null;
+  }
 }
 
 // Poll the Vercel deployment until its readyState is READY (or we
@@ -337,16 +368,24 @@ export default async function handler(req: any, res: any) {
     // Step 6b: Wait for the deployment to actually be READY before
     // returning success — otherwise the user clicks their URL and
     // sees the previous version while Vercel is still building.
+    let finalUrl = vercelResult.deploymentUrl;
     if (process.env.VERCEL_TOKEN) {
       await waitForDeploymentReady(vercelResult.deploymentId, process.env.VERCEL_TOKEN);
+      // Now that it's READY, re-resolve to the clean short alias.
+      const best = await resolveBestAlias(
+        vercelResult.deploymentId,
+        process.env.VERCEL_TOKEN,
+        vercelResult.actualProjectName
+      );
+      if (best) finalUrl = best;
     }
 
-    console.log(`[Deploy Site] Deployment ready: ${vercelResult.deploymentUrl}`);
+    console.log(`[Deploy Site] Deployment ready: ${finalUrl}`);
 
     // Step 7: Return success response
     return res.status(200).json({
       ok: true,
-      deploymentUrl: vercelResult.deploymentUrl,
+      deploymentUrl: finalUrl,
       uploadedImages: uploadedImages,
       stripeLink: process.env.STRIPE_PAYMENT_LINK || null
     });
