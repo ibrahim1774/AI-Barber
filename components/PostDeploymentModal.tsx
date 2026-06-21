@@ -68,8 +68,19 @@ export const PostDeploymentModal: React.FC<PostDeploymentModalProps> = ({
           Site is <span className="text-green-500">Live!</span>
         </h2>
 
-        <p className="text-[#999] text-sm mb-5">
-          Your website has been published successfully.
+        {/* Reassurance headline — ask the customer to keep their site URL
+            (and details) somewhere safe, with a supportive tone. */}
+        <p className="text-white text-sm font-bold leading-relaxed mb-3">
+          Please save all these in a safe place so you can refer back to it with
+          any questions or concerns. We want to make sure you have the best
+          possible experience.
+        </p>
+
+        {/* Support contact line. */}
+        <p className="text-[#999] text-xs leading-relaxed mb-5">
+          For any questions/concerns/support<br />
+          <span className="text-white font-bold">Support Email: </span>
+          <a href="mailto:support@davoxa.com" className="text-[#f4a100] font-bold hover:underline">support@davoxa.com</a>
         </p>
 
         {/* Red warning — push the user to actually copy the URL before

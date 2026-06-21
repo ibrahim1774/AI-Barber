@@ -326,8 +326,8 @@ export const ManagementDashboard: React.FC<ManagementDashboardProps> = ({
                   <span className="text-[10px] text-[#888] font-bold uppercase tracking-wider">Support</span>
                 </div>
                 <p className="text-[#999] text-xs mb-1">Questions / Support / Cancellations</p>
-                <a href="mailto:Ibrahim3709@gmail.com" className="text-blue-400 hover:text-blue-300 text-sm transition-colors">
-                  Ibrahim3709@gmail.com
+                <a href="mailto:support@davoxa.com" className="text-blue-400 hover:text-blue-300 text-sm transition-colors">
+                  support@davoxa.com
                 </a>
               </div>
 
