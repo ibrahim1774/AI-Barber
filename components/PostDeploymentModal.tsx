@@ -12,42 +12,57 @@ export const PostDeploymentModal: React.FC<PostDeploymentModalProps> = ({
   onSkip,
 }) => {
   const [copied, setCopied] = useState(false);
+  const [emailCopied, setEmailCopied] = useState(false);
 
-  // Copy the full URL (with protocol) to clipboard. Uses the modern
-  // navigator.clipboard API when available, falls back to the
-  // execCommand textarea trick on older Safari / non-HTTPS contexts /
-  // when permissions are denied. Only flips the copied state on success
-  // so we never give a false confirmation.
-  const handleCopy = async () => {
-    let ok = false;
+  const SUPPORT_EMAIL = 'support@davoxa.com';
+
+  // Copy text to clipboard. Uses the modern navigator.clipboard API when
+  // available, falls back to the execCommand textarea trick on older
+  // Safari / non-HTTPS contexts / when permissions are denied. Returns
+  // true only on success so we never give a false confirmation.
+  const copyToClipboard = async (text: string): Promise<boolean> => {
     try {
       if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(deployedUrl);
-        ok = true;
-      } else {
-        throw new Error('clipboard API unavailable');
+        await navigator.clipboard.writeText(text);
+        return true;
       }
+      throw new Error('clipboard API unavailable');
     } catch {
       try {
         const ta = document.createElement('textarea');
-        ta.value = deployedUrl;
+        ta.value = text;
         ta.style.position = 'fixed';
         ta.style.left = '-9999px';
         document.body.appendChild(ta);
         ta.focus();
         ta.select();
-        ok = document.execCommand('copy');
+        const ok = document.execCommand('copy');
         document.body.removeChild(ta);
+        return ok;
       } catch (e) {
         console.error('[Clipboard] copy fallback failed:', e);
+        return false;
       }
     }
+  };
+
+  const handleCopy = async () => {
+    const ok = await copyToClipboard(deployedUrl);
     if (ok) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } else {
-      // Last resort — show the URL so the user can manually copy it
       window.prompt('Copy your site URL:', deployedUrl);
+    }
+  };
+
+  const handleCopyEmail = async () => {
+    const ok = await copyToClipboard(SUPPORT_EMAIL);
+    if (ok) {
+      setEmailCopied(true);
+      setTimeout(() => setEmailCopied(false), 2000);
+    } else {
+      window.prompt('Copy our support email:', SUPPORT_EMAIL);
     }
   };
 
@@ -68,19 +83,9 @@ export const PostDeploymentModal: React.FC<PostDeploymentModalProps> = ({
           Site is <span className="text-green-500">Live!</span>
         </h2>
 
-        {/* Reassurance headline — ask the customer to keep their site URL
-            (and details) somewhere safe, with a supportive tone. */}
-        <p className="text-white text-sm font-bold leading-relaxed mb-3">
-          Please save all these in a safe place so you can refer back to it with
-          any questions or concerns. We want to make sure you have the best
-          possible experience.
-        </p>
-
-        {/* Support contact line. */}
-        <p className="text-[#999] text-xs leading-relaxed mb-5">
-          For any questions/concerns/support<br />
-          <span className="text-white font-bold">Support Email: </span>
-          <a href="mailto:support@davoxa.com" className="text-[#f4a100] font-bold hover:underline">support@davoxa.com</a>
+        {/* Reassurance headline — keep it short: save the details below. */}
+        <p className="text-white text-sm font-bold leading-relaxed mb-5">
+          Please save the details below somewhere safe so you can refer back to them anytime.
         </p>
 
         {/* Red warning — push the user to actually copy the URL before
@@ -125,6 +130,34 @@ export const PostDeploymentModal: React.FC<PostDeploymentModalProps> = ({
           className="block w-full py-2.5 border border-white/15 hover:border-white/30 text-white font-montserrat font-black uppercase tracking-[2px] text-xs transition-colors mb-6"
         >
           {copied ? 'Copied' : 'Click to Copy'}
+        </button>
+
+        {/* Support email — same copyable pill treatment as the site URL. */}
+        <p className="text-[#999] text-xs text-left mb-2">For any questions/concerns/support</p>
+        <div className="flex items-center gap-2 bg-[#0d0d0d] border border-white/10 rounded px-3 py-2.5 mb-2">
+          <span className="text-[#f4a100] text-xs font-mono truncate flex-1 text-left">{SUPPORT_EMAIL}</span>
+          <button
+            onClick={handleCopyEmail}
+            className="shrink-0 text-[#888] hover:text-white transition-colors"
+            aria-label="Copy support email"
+          >
+            {emailCopied ? (
+              <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <rect x="9" y="9" width="13" height="13" rx="2" strokeWidth="2"/>
+                <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" strokeWidth="2"/>
+              </svg>
+            )}
+          </button>
+        </div>
+        <button
+          onClick={handleCopyEmail}
+          className="block w-full py-2.5 border border-white/15 hover:border-white/30 text-white font-montserrat font-black uppercase tracking-[2px] text-xs transition-colors mb-6"
+        >
+          {emailCopied ? 'Copied' : 'Click to Copy'}
         </button>
 
         {/* Divider */}
