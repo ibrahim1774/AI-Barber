@@ -117,6 +117,21 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMo
           </div>
         )}
 
+        {/* Save-your-credentials reminder — sign up only. */}
+        {mode === 'signup' && (
+          <div
+            className="flex items-center justify-center gap-2 border border-red-500/40 bg-red-500/10 px-3 py-2.5 mb-5"
+            role="alert"
+          >
+            <svg className="w-4 h-4 text-red-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-red-300 text-xs font-bold leading-snug">
+              Please save the email &amp; password you use here — you'll need them to sign back in.
+            </p>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-5">
           {/* Full name (signup only) */}
           {mode === 'signup' && (
