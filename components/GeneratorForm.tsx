@@ -309,7 +309,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
           {/* Centered headline + form column */}
           <div className="relative z-10 w-full max-w-2xl text-center">
             <h1 className="text-xl md:text-4xl lg:text-5xl font-montserrat font-black uppercase tracking-[1px] md:tracking-[2px] leading-[1.15] text-white mb-5 md:mb-7">
-              Generate Your <span style={{ color: '#f4a100' }}>FREE</span> <br/>
+              Generate Your {!bookingMode && (<><span style={{ color: '#f4a100' }}>FREE</span>{' '}</>)}<br/>
               Barber Website From <br/>
               Your <span style={{ color: linkAccent }}>{bookingMode ? 'Booking' : 'Booksy'}</span> Link
               <span className="text-[#f4a100] mt-1 md:mt-2 block">in a Few Seconds</span>
