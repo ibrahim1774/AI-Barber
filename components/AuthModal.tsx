@@ -23,6 +23,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMo
   const [email, setEmail] = useState(initialEmail || '');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [phone, setPhone] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { signIn, signUp } = useAuth();
@@ -54,7 +55,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMo
           setIsSubmitting(false);
           return;
         }
-        const { error } = await signUp(email, password, fullName);
+        if (!phone.trim()) {
+          setError('Please enter a phone number');
+          setIsSubmitting(false);
+          return;
+        }
+        const { error } = await signUp(email, password, fullName, phone.trim());
         if (error) {
           setError(error.message);
           setIsSubmitting(false);
@@ -144,6 +150,23 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMo
                 placeholder="Full Name (optional)"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
+                className="w-full bg-transparent border-b border-white/20 focus:border-blue-500 py-3 pl-7 text-white text-sm outline-none transition-colors placeholder:text-[#555]"
+              />
+            </div>
+          )}
+
+          {/* Phone number (signup only, required) */}
+          {mode === 'signup' && (
+            <div className="relative">
+              <svg className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 text-[#666]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+              </svg>
+              <input
+                type="tel"
+                required
+                placeholder="Phone Number"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
                 className="w-full bg-transparent border-b border-white/20 focus:border-blue-500 py-3 pl-7 text-white text-sm outline-none transition-colors placeholder:text-[#555]"
               />
             </div>
