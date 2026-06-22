@@ -790,7 +790,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
             ? (crypto as any).randomUUID()
             : `co_${Date.now()}_${Math.random().toString(36).slice(2)}`;
         const PLAN_VALUES: Record<string, number> = {
-          monthly: 9, 'monthly-booksy': 7, 'monthly-free': 7,
+          monthly: 9, 'monthly-booksy': 10, 'monthly-free': 7,
           yearly: 86, 'yearly-booksy': 67, 'yearly-free': 67,
         };
         const checkoutValue = PLAN_VALUES[plan] ?? 9;
