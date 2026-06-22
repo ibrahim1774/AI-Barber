@@ -77,6 +77,10 @@ const AIB_THEMES: Record<string, AibTheme> = {
 export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
   const formattedPhone = siteData.phone.replace(/\s+/g, '');
 
+  // Owner-editable label override lookup. Falls back to the hardcoded
+  // default when the key is absent, so older saved sites render unchanged.
+  const lbl = (key: string, fallback: string) => (siteData.labels && siteData.labels[key]) || fallback;
+
   // Gallery — slot 0 doubles as the about-section seed and slot 1 as
   // the hero/about fallback, so the "Our Work" portfolio renders
   // slots [2..7] (6 photos max). Renders only the filled slots so
@@ -90,8 +94,8 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
     ? `<section class="py-16 md:py-32 bg-[#0d0d0d] px-6 border-y border-white/5">
     <div class="container mx-auto max-w-5xl">
       <div class="text-center mb-10 md:mb-16">
-        <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">Gallery</h3>
-        <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">Our Work</h2>
+        <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">${lbl('galleryEyebrow', 'Gallery')}</h3>
+        <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">${lbl('galleryHeading', 'Our Work')}</h2>
       </div>
       <div class="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
         ${galleryImages.map((g) => `<div class="bg-[#1a1a1a] p-1 border border-white/5 group relative overflow-hidden"><img src="{{gallery${g.index}}}" alt="Gallery Image ${g.index - 1}" class="w-full h-48 sm:h-56 md:h-64 object-cover transition-transform duration-700 group-hover:scale-105"></div>`).join('')}
@@ -118,8 +122,8 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
     ? `<section class="py-16 md:py-28 bg-[#0a0a0a] px-6 border-y border-white/5">
     <div class="container mx-auto max-w-6xl">
       <div class="text-center mb-10 md:mb-16">
-        <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">The Team</h3>
-        <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">Meet Our Barbers</h2>
+        <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">${lbl('teamEyebrow', 'The Team')}</h3>
+        <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">${lbl('teamHeading', 'Meet Our Barbers')}</h2>
       </div>
       <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
         ${siteData.staff.map((s, i) => `
@@ -141,8 +145,8 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
     ? `<section class="py-16 md:py-24 bg-[#0d0d0d] px-6 border-y border-white/5">
     <div class="container mx-auto max-w-2xl">
       <div class="text-center mb-8 md:mb-12">
-        <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">Hours</h3>
-        <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">When We're Open</h2>
+        <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">${lbl('hoursEyebrow', 'Hours')}</h3>
+        <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">${lbl('hoursHeading', "When We're Open")}</h2>
       </div>
       <div class="bg-[#1a1a1a] border border-white/5 divide-y divide-white/5">
         ${siteData.hours.map((h) => `
@@ -176,8 +180,8 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
     <div class="container mx-auto max-w-6xl">
       ${ratingHeader}
       <div class="text-center mb-10 md:mb-14">
-        <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">Reviews</h3>
-        <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">What Our Clients Say</h2>
+        <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">${lbl('reviewsEyebrow', 'Reviews')}</h3>
+        <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">${lbl('reviewsHeading', 'What Our Clients Say')}</h2>
       </div>
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
         ${siteData.reviews.slice(0, 12).map((r) => `
@@ -329,8 +333,8 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
   <section id="services" class="py-12 md:py-32 bg-[#0d0d0d] px-6">
     <div class="container mx-auto max-w-7xl">
       <div class="text-center mb-10 md:mb-16">
-        <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">Services</h3>
-        <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">What We Offer</h2>
+        <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">${lbl('servicesEyebrow', 'Services')}</h3>
+        <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">${lbl('servicesHeading', 'What We Offer')}</h2>
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
         ${siteData.services.map(service => `
@@ -357,14 +361,14 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
 
   <section id="contact" class="py-12 md:py-32 bg-[#0d0d0d] px-4 md:px-6">
     <div class="container mx-auto max-w-6xl bg-[#1a1a1a] p-8 md:p-20">
-      <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white mb-8 md:mb-12 uppercase tracking-[2px]">Contact Us</h2>
+      <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white mb-8 md:mb-12 uppercase tracking-[2px]">${lbl('contactHeading', 'Contact Us')}</h2>
       <div class="space-y-6 md:space-y-10">
         <div>
-          <h4 class="text-[#f4a100] font-bold text-[10px] md:text-xs tracking-[2px] mb-1 md:mb-2 font-montserrat">LOCATION</h4>
+          <h4 class="text-[#f4a100] font-bold text-[10px] md:text-xs tracking-[2px] mb-1 md:mb-2 font-montserrat">${lbl('contactLocationLabel', 'LOCATION')}</h4>
           <p class="text-[#cccccc] text-xs md:text-sm leading-relaxed">${siteData.contact.address.charAt(0).toUpperCase() + siteData.contact.address.slice(1)}</p>
         </div>
         <div>
-          <h4 class="text-[#f4a100] font-bold text-[10px] md:text-xs tracking-[2px] mb-1 md:mb-2 font-montserrat">PHONE</h4>
+          <h4 class="text-[#f4a100] font-bold text-[10px] md:text-xs tracking-[2px] mb-1 md:mb-2 font-montserrat">${lbl('contactPhoneLabel', 'PHONE')}</h4>
           <p class="text-[#cccccc] text-xs md:text-sm leading-relaxed">${siteData.phone}</p>
         </div>
         ${siteData.bookingUrl ? `<div class="pt-4"><a href="${siteData.bookingUrl}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-3 bg-[#f4a100] text-[#1a1a1a] px-8 py-4 md:px-12 md:py-5 font-montserrat font-black tracking-[2px] uppercase hover:bg-white transition-all duration-300 shadow-lg text-xs md:text-sm">Book Appointment</a></div>` : ''}
@@ -374,8 +378,8 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
 
   <section id="find-us" class="py-12 md:py-20 bg-[#0d0d0d] px-4 md:px-6 border-t border-white/5">
     <div class="container mx-auto max-w-4xl text-center">
-      <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-3 md:mb-4 font-montserrat">Find Us</h3>
-      <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px] mb-8 md:mb-12">Stop By</h2>
+      <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-3 md:mb-4 font-montserrat">${lbl('mapEyebrow', 'Find Us')}</h3>
+      <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px] mb-8 md:mb-12">${lbl('mapHeading', 'Stop By')}</h2>
       <div class="bg-[#1a1a1a] p-1 border border-white/5">
         <iframe
           title="${siteData.shopName.replace(/"/g, '&quot;')} on Google Maps"
@@ -486,6 +490,16 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
 
   // Auto-save hook (only active in post-payment mode)
   const { triggerSave, saveNow } = useAutoSave(getSite, userId, setSaveStatus);
+
+  // Owner-editable section eyebrows/headings & small labels. `lbl` reads
+  // the override (falling back to the hardcoded default); `setLabel`
+  // writes it and triggers a save post-payment — mirrors the hours
+  // editing pattern below.
+  const lbl = (key: string, fallback: string) => (siteData.labels && siteData.labels[key]) || fallback;
+  const setLabel = (key: string, value: string) => {
+    setSiteData(prev => ({ ...prev, labels: { ...(prev.labels || {}), [key]: value } }));
+    if (isPostPayment) triggerSave();
+  };
 
   // Derive URL-friendly slug from shop name (updates live as user edits)
   const siteSlug = useMemo(() => {
@@ -1127,7 +1141,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           <div className="relative">
             <div className="flex items-center gap-3 mb-4 md:mb-6">
               <ScissorsIcon className="w-4 h-4 md:w-5 md:h-5 text-[#f4a100]" />
-              <span className="text-[#f4a100] text-[10px] md:text-xs font-bold tracking-[3px] md:tracking-[4px] uppercase font-montserrat">About Us</span>
+              <EditableText className="text-[#f4a100] text-[10px] md:text-xs font-bold tracking-[3px] md:tracking-[4px] uppercase font-montserrat" tagName="span" text={lbl('aboutEyebrow', 'About Us')} onSave={(v) => setLabel('aboutEyebrow', v)} />
             </div>
             <h2 className="text-2xl md:text-5xl font-montserrat font-black text-white mb-6 md:mb-8 leading-tight uppercase tracking-[2px]">
               <EditableText text={siteData.about.heading} onSave={(val) => handleTextChange('about.heading', val)} />
@@ -1169,8 +1183,8 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       <section className="py-16 md:py-32 bg-[#0d0d0d] px-6 border-y border-white/5">
         <div className="container mx-auto max-w-5xl">
           <div className="text-center mb-10 md:mb-16">
-            <h3 className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">Gallery</h3>
-            <h2 className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">Our Work</h2>
+            <EditableText className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat" tagName="h3" text={lbl('galleryEyebrow', 'Gallery')} onSave={(v) => setLabel('galleryEyebrow', v)} />
+            <EditableText className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]" tagName="h2" text={lbl('galleryHeading', 'Our Work')} onSave={(v) => setLabel('galleryHeading', v)} />
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
             {[2, 3, 4, 5, 6, 7].map((idx) => (
@@ -1196,8 +1210,8 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       <section id="our-services" className="py-12 md:py-32 bg-[#0d0d0d] px-6">
         <div className="container mx-auto max-w-7xl">
           <div className="text-center mb-10 md:mb-16">
-            <h3 className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">Services</h3>
-            <h2 className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">What We Offer</h2>
+            <EditableText className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat" tagName="h3" text={lbl('servicesEyebrow', 'Services')} onSave={(v) => setLabel('servicesEyebrow', v)} />
+            <EditableText className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]" tagName="h2" text={lbl('servicesHeading', 'What We Offer')} onSave={(v) => setLabel('servicesHeading', v)} />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
             {siteData.services.map((service, i) => (
@@ -1277,10 +1291,8 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
               </div>
             )}
             <div className="text-center mb-10 md:mb-14">
-              <h3 className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">Reviews</h3>
-              <h2 className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">
-                What Our Clients Say
-              </h2>
+              <EditableText className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat" tagName="h3" text={lbl('reviewsEyebrow', 'Reviews')} onSave={(v) => setLabel('reviewsEyebrow', v)} />
+              <EditableText className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]" tagName="h2" text={lbl('reviewsHeading', 'What Our Clients Say')} onSave={(v) => setLabel('reviewsHeading', v)} />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
               {siteData.reviews.slice(0, 12).map((r, i) => (
@@ -1312,8 +1324,8 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         <section className="py-16 md:py-28 bg-[#0a0a0a] px-6 border-y border-white/5">
           <div className="container mx-auto max-w-6xl">
             <div className="text-center mb-10 md:mb-16">
-              <h3 className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">The Team</h3>
-              <h2 className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">Meet Our Barbers</h2>
+              <EditableText className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat" tagName="h3" text={lbl('teamEyebrow', 'The Team')} onSave={(v) => setLabel('teamEyebrow', v)} />
+              <EditableText className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]" tagName="h2" text={lbl('teamHeading', 'Meet Our Barbers')} onSave={(v) => setLabel('teamHeading', v)} />
             </div>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
               {siteData.staff.map((s, i) => (
@@ -1410,8 +1422,8 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         <section className="py-16 md:py-24 bg-[#0d0d0d] px-6 border-y border-white/5">
           <div className="container mx-auto max-w-2xl">
             <div className="text-center mb-8 md:mb-12">
-              <h3 className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">Hours</h3>
-              <h2 className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">When We're Open</h2>
+              <EditableText className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat" tagName="h3" text={lbl('hoursEyebrow', 'Hours')} onSave={(v) => setLabel('hoursEyebrow', v)} />
+              <EditableText className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]" tagName="h2" text={lbl('hoursHeading', "When We're Open")} onSave={(v) => setLabel('hoursHeading', v)} />
             </div>
             <div className="bg-[#1a1a1a] border border-white/5 divide-y divide-white/5">
               {siteData.hours.map((h, i) => (
@@ -1484,12 +1496,12 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       <section id="contact-us" className="py-12 md:py-32 bg-[#0d0d0d] px-4 md:px-6">
         <div className="container mx-auto max-w-4xl shadow-2xl overflow-hidden bg-[#1a1a1a]">
           <div className="w-full p-8 md:p-20 flex flex-col items-center text-center bg-[#1a1a1a]">
-            <h2 className="text-2xl md:text-4xl font-montserrat font-black text-white mb-8 md:mb-12 uppercase tracking-[2px]">Visit Us</h2>
+            <EditableText className="text-2xl md:text-4xl font-montserrat font-black text-white mb-8 md:mb-12 uppercase tracking-[2px]" tagName="h2" text={lbl('contactHeading', 'Visit Us')} onSave={(v) => setLabel('contactHeading', v)} />
             <div className="grid md:grid-cols-2 gap-8 md:gap-12 w-full max-w-2xl">
               <div className="flex flex-col items-center gap-4">
                 <MapPinIcon className="w-8 h-8 text-[#f4a100]" />
                 <div>
-                  <h4 className="text-[#f4a100] font-bold text-[10px] md:text-xs tracking-[2px] mb-2 font-montserrat uppercase">Location</h4>
+                  <EditableText className="text-[#f4a100] font-bold text-[10px] md:text-xs tracking-[2px] mb-2 font-montserrat uppercase" tagName="h4" text={lbl('contactLocationLabel', 'Location')} onSave={(v) => setLabel('contactLocationLabel', v)} />
                   <p className="text-[#cccccc] text-xs md:text-sm leading-relaxed capitalize">
                     <EditableText text={siteData.contact.address} onSave={(val) => handleTextChange('contact.address', val)} />
                   </p>
@@ -1498,7 +1510,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
               <a href={`tel:${formattedPhone}`} className="flex flex-col items-center gap-4 group">
                 <PhoneIcon className="w-8 h-8 text-[#f4a100] group-hover:scale-110 transition-transform" />
                 <div>
-                  <h4 className="text-[#f4a100] font-bold text-[10px] md:text-xs tracking-[2px] mb-2 font-montserrat uppercase">Phone</h4>
+                  <EditableText className="text-[#f4a100] font-bold text-[10px] md:text-xs tracking-[2px] mb-2 font-montserrat uppercase" tagName="h4" text={lbl('contactPhoneLabel', 'Phone')} onSave={(v) => setLabel('contactPhoneLabel', v)} />
                   <p className="text-[#cccccc] text-xs md:text-sm leading-relaxed group-hover:text-white transition-colors">
                     <EditableText text={siteData.phone} onSave={(val) => handleTextChange('phone', val)} />
                   </p>
@@ -1524,8 +1536,8 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       {/* Find Us — Google Maps embed driven by the entered address */}
       <section id="find-us" className="py-12 md:py-20 bg-[#0d0d0d] px-4 md:px-6 border-t border-white/5">
         <div className="container mx-auto max-w-4xl text-center">
-          <h3 className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-3 md:mb-4 font-montserrat">Find Us</h3>
-          <h2 className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px] mb-8 md:mb-12">Stop By</h2>
+          <EditableText className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-3 md:mb-4 font-montserrat" tagName="h3" text={lbl('mapEyebrow', 'Find Us')} onSave={(v) => setLabel('mapEyebrow', v)} />
+          <EditableText className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px] mb-8 md:mb-12" tagName="h2" text={lbl('mapHeading', 'Stop By')} onSave={(v) => setLabel('mapHeading', v)} />
           <div className="bg-[#1a1a1a] p-1 border border-white/5">
             <iframe
               title={`${siteData.shopName} on Google Maps`}
