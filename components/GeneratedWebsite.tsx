@@ -627,14 +627,18 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
   // Image replacement overlay (for existing images). Always-visible
   // centered Camera pill so the Replace target is unmistakable —
   // matches the PrimeHub "The Craft" affordance.
+  // The ENTIRE image area is the click target (the label covers the whole
+  // image via inset-0), so tapping anywhere on the photo opens the file
+  // picker. The centered pill is just a visual affordance (pointer-events
+  // none) so it never blocks the surrounding click area.
   const ImageOverlay = ({ onImageUpload, className = "" }: { onImageUpload: (e: React.ChangeEvent<HTMLInputElement>) => void, className?: string }) => (
-    <div className={`absolute inset-0 z-10 flex items-center justify-center bg-black/15 transition-colors group-hover:bg-black/35 ${className}`}>
-      <label className="cursor-pointer flex items-center gap-1.5 rounded-full bg-black/80 px-3 py-1.5 text-white shadow-lg backdrop-blur-sm">
+    <label className={`absolute inset-0 z-10 flex items-center justify-center bg-black/15 transition-colors group-hover:bg-black/35 cursor-pointer ${className}`}>
+      <span className="pointer-events-none flex items-center gap-1.5 rounded-full bg-black/80 px-3 py-1.5 text-white shadow-lg backdrop-blur-sm">
         <CameraIcon className="w-3 h-3" />
         <span className="text-[9px] font-bold uppercase tracking-[0.16em]">Replace Photo</span>
-        <input key={imageInputKey} type="file" className="hidden" accept="image/*" onChange={onImageUpload} />
-      </label>
-    </div>
+      </span>
+      <input key={imageInputKey} type="file" className="hidden" accept="image/*" onChange={onImageUpload} />
+    </label>
   );
 
   // "Add Your Own Image" placeholder for empty image slots
@@ -1029,13 +1033,16 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           )}
           <div className="absolute inset-0 bg-black/40 bg-gradient-to-b from-black/30 via-transparent to-[#0d0d0d] pointer-events-none"></div>
         </div>
-        {/* Middle-right Replace pill. Vertically centered along the
-            right edge of the hero — clear of the fixed header at top,
-            the stacked CTAs in the lower-middle, and the feature
-            cards at the bottom. z-30 keeps it clickable. */}
-        <label className="absolute top-1/2 -translate-y-1/2 right-2.5 md:right-5 z-30 cursor-pointer flex items-center gap-1.5 rounded-full bg-black/85 hover:bg-black px-2.5 py-1.5 text-white shadow-lg backdrop-blur-sm border border-white/15 transition-colors">
-          <CameraIcon className="w-3 h-3" />
-          <span className="text-[8px] font-bold uppercase tracking-[0.16em]">Replace Photo</span>
+        {/* The whole hero photo is the replace target — tapping anywhere on
+            it (outside the centered CTAs/text, which sit above at z-10+)
+            opens the file picker. A corner pill marks the affordance. The
+            label sits at z-0's level but below the z-10 content so the CTAs
+            stay clickable. */}
+        <label className="group absolute inset-0 z-[5] cursor-pointer">
+          <span className="pointer-events-none absolute top-2.5 right-2.5 md:right-5 flex items-center gap-1.5 rounded-full bg-black/85 px-2.5 py-1.5 text-white shadow-lg backdrop-blur-sm border border-white/15 opacity-80 group-hover:opacity-100 transition-opacity">
+            <CameraIcon className="w-3 h-3" />
+            <span className="text-[8px] font-bold uppercase tracking-[0.16em]">Replace Photo</span>
+          </span>
           <input key={imageInputKey} type="file" className="hidden" accept="image/*" onChange={(e) => handleImageChange('hero.imageUrl', e)} />
         </label>
 
@@ -1408,8 +1415,19 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
             </div>
             <div className="bg-[#1a1a1a] border border-white/5 divide-y divide-white/5">
               {siteData.hours.map((h, i) => (
-                <div key={h.day} className="flex items-center justify-between px-5 md:px-8 py-3.5 md:py-4">
-                  <span className="text-white text-sm md:text-base font-bold uppercase tracking-[2px]">{h.day}</span>
+                <div key={i} className="flex items-center justify-between px-5 md:px-8 py-3.5 md:py-4">
+                  <EditableText
+                    className="text-white text-sm md:text-base font-bold uppercase tracking-[2px]"
+                    text={h.day}
+                    onSave={(val) => {
+                      setSiteData(prev => {
+                        const hours = [...(prev.hours || [])];
+                        hours[i] = { ...hours[i], day: val };
+                        return { ...prev, hours };
+                      });
+                      if (isPostPayment) triggerSave();
+                    }}
+                  />
                   {h.closed ? (
                     <button
                       onClick={() => {
