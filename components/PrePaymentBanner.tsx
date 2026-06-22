@@ -65,10 +65,11 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
 
   // Standard monthly price varies by entry path:
   //   /free-barber → $7/mo (plan 'monthly-free')
-  //   /booksy      → $7/mo (plan 'monthly-booksy')
+  //   /booksy      → $10/mo (plan 'monthly-booksy')
   //   /booking     → $10/mo (plan 'monthly-booking')
   //   home page    → $10/mo (plan 'monthly')
-  const stdMonthlyPriceDollars = (freeBarberMode || booksyMode) ? 7 : 10;
+  //   /free-barber → $7/mo (plan 'monthly-free')
+  const stdMonthlyPriceDollars = freeBarberMode ? 7 : 10;
   const stdMonthlyPriceMo = `$${stdMonthlyPriceDollars}/mo`;
   const stdMonthlyPriceMonth = `$${stdMonthlyPriceDollars}/month`;
   const stdMonthlyPlan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'monthly-booking' = bookingMode

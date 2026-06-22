@@ -79,8 +79,8 @@ export default async function handler(req: any, res: any) {
       interval = 'year';
       productName = 'aibarber.org — Yearly Website Hosting (Free Barber)';
     } else if (isMonthlyBooksy) {
-      // /booksy monthly: $7/mo (entry-point discount vs $10 standard).
-      unitAmount = '700';
+      // /booksy monthly: $10/mo.
+      unitAmount = '1000';
       interval = 'month';
       productName = 'aibarber.org — Monthly Website Hosting (Booksy)';
     } else if (isMonthlyFree) {
