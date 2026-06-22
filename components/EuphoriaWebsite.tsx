@@ -97,15 +97,27 @@ const EUPHORIA_SCOPED_CSS = `
   background: var(--eu-bg-3);
 }
 .euphoria-root .eu-img-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
-/* Always-visible corner pill so the Replace affordance survives
-   mobile (no hover) and never depends on .eu-img-tile wrapping.
-   Bottom-right so the pill never collides with the fixed editor
-   header (BACK / banner) at the top of the hero. */
+/* Full-cover click target: tapping ANYWHERE on the image opens the file
+   picker (not just a small pill). z-index:1 sits above the photo but below
+   any section content (e.g. the hero CTAs/text, which we raise to z-index:2)
+   so those stay clickable/editable. The pill (.eu-img-pill) is a
+   visual-only affordance, pinned bottom-right, that survives mobile (no
+   hover) and never collides with the fixed editor header at the top. */
 .euphoria-root .eu-img-overlay {
   position: absolute;
-  bottom: 12px;
-  right: 12px;
-  z-index: 5;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 12px;
+  cursor: pointer;
+  background: transparent;
+  transition: background 150ms ease;
+}
+.euphoria-root .eu-img-overlay:hover { background: rgba(0,0,0,0.12); }
+.euphoria-root .eu-img-pill {
+  pointer-events: none;
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -118,14 +130,12 @@ const EUPHORIA_SCOPED_CSS = `
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  cursor: pointer;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   box-shadow: 0 4px 14px rgba(0,0,0,0.32), 0 0 0 1px rgba(255,255,255,0.12);
-  transition: background 150ms ease, transform 150ms ease;
 }
-.euphoria-root .eu-img-overlay:hover { background: rgba(0,0,0,0.88); transform: translateY(-1px); }
-.euphoria-root .eu-img-overlay svg { width: 11px; height: 11px; }
+.euphoria-root .eu-img-overlay:hover .eu-img-pill { background: rgba(0,0,0,0.88); }
+.euphoria-root .eu-img-pill svg { width: 11px; height: 11px; }
 .euphoria-root .eu-img-placeholder {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   width: 100%; height: 100%;
@@ -504,9 +514,13 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
   );
 
   const ImageOverlay: React.FC<{ onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void }> = ({ onUpload }) => (
+    // Whole image is the click target (label covers it via inset:0); the
+    // pill is a visual-only affordance (pointer-events:none).
     <label className="eu-img-overlay">
-      <CameraIcon />
-      <span>Replace photo</span>
+      <span className="eu-img-pill">
+        <CameraIcon />
+        <span>Replace photo</span>
+      </span>
       <input key={imageInputKey} type="file" accept="image/*" style={{ display: 'none' }} onChange={onUpload} />
     </label>
   );
@@ -742,7 +756,7 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
           </div>
         )}
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg,rgba(0,0,0,0.4) 0%,rgba(0,0,0,0.7) 100%)', pointerEvents: 'none' }} />
-        <div className="eu-container" style={{ position: 'relative', textAlign: 'center', padding: '96px 24px' }}>
+        <div className="eu-container" style={{ position: 'relative', zIndex: 2, textAlign: 'center', padding: '96px 24px' }}>
           <div className="eu-eyebrow" style={{ marginBottom: 24 }}>
             <Editable text={cityStateOnly(siteData.area)} onSave={v => handleTextChange('area', v)} />
           </div>
