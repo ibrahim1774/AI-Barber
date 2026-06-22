@@ -73,6 +73,11 @@ export interface WebsiteData {
   // Optional Mon-Sun hours. When present, renderer shows an Hours
   // section. `closed: true` rows render as "Closed" instead of times.
   hours?: { day: string; open: string; close: string; closed?: boolean }[];
+  // Optional owner-editable overrides for section eyebrows/headings and
+  // small labels (keyed by stable string, e.g. "galleryHeading"). When a
+  // key is absent the renderer falls back to its hardcoded default, so
+  // older saved sites render exactly as before.
+  labels?: Record<string, string>;
   // Optional staff cards — name, role, photo. Renderer shows a
   // "Meet the Team" section when at least one staff entry exists.
   // Photo is editable in the preview (replace-image overlay).
