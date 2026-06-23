@@ -14,7 +14,7 @@ const BG_CARD = 'rgba(14, 12, 8, 0.96)';
 
 const STEPS: React.ReactNode[] = [
   'You can edit your text and images now, or publish first.',
-  <>Create an account after you click <span className="font-bold text-white">“Launch My Site”</span> below to update your site anytime.</>,
+  <>Create an account after you click <span className="font-bold text-white">“Launch My Site”</span> to update your site anytime.</>,
   <>Click <span className="font-bold text-white">“Launch My Site”</span> when you’re ready.</>,
 ];
 
