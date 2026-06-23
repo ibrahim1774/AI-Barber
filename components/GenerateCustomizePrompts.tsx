@@ -243,7 +243,15 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
 
             {choice === 'yes' && (
               <input
-                type="url"
+                // type="text" (not "url") so a pasted share-sheet blob —
+                // "…book on Booksy here: https://booksy.com/…" — isn't
+                // rejected by native URL validation before extractFirstUrl
+                // can pull the link out of it. Mirrors the /booksy page.
+                type="text"
+                inputMode="url"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
                 autoFocus
                 value={bookingUrl}
                 onChange={(e) => setBookingUrl(e.target.value)}
