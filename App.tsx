@@ -18,7 +18,7 @@ import { isBooksyPath, isFreeBarberPath, isPrimeBarberPath, isRecoverPath, isGen
 import { LoadingScreen } from './components/LoadingScreen.tsx';
 import { generateHTMLForTemplate } from './services/templateRenderer.ts';
 import { generateContent } from './services/geminiService.ts';
-import { captureLead } from './services/leadCaptureService.ts';
+import { fireLead, isLeadComplete } from './lib/leadEvents.ts';
 import { useAuth } from './contexts/AuthContext.tsx';
 import { saveSite, getSite } from './services/indexedDBService.ts';
 import { upsertSiteToSupabase, fetchUserSites } from './services/supabaseDataService.ts';
@@ -709,89 +709,12 @@ const App: React.FC = () => {
   // generateContent() template call — the Apify scraper has already
   // produced a complete WebsiteData payload from the real Booksy page.
   const handleGenerate = async (inputs: ShopInputs, prebuilt?: WebsiteData) => {
-    captureLead(inputs).catch((err) => console.error("[Lead Capture] Error (non-blocking):", err));
-
-    // Per-visitor Lead dedup: only fire Meta + TikTok Lead events
-    // ONCE per browser within Meta's 90-day attribution window.
-    // Repeat submissions by the same visitor (re-fill the form,
-    // come back via another ad, /new vs /, etc.) skip the pixel
-    // block entirely so Meta + TikTok ROAS sees a clean
-    // 1-lead-per-person count. captureLead above still fires every
-    // time so the CRM keeps every submission.
-    const LEAD_DEDUP_KEY = 'aibarber_lead_fired_at';
-    const LEAD_DEDUP_TTL_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
-    const shouldFireLead = (): boolean => {
-      try {
-        const raw = localStorage.getItem(LEAD_DEDUP_KEY);
-        if (!raw) return true;
-        const ts = parseInt(raw, 10);
-        if (!Number.isFinite(ts)) return true;
-        return (Date.now() - ts) > LEAD_DEDUP_TTL_MS;
-      } catch { return true; }
-    };
-    const markLeadFired = () => {
-      try { localStorage.setItem(LEAD_DEDUP_KEY, String(Date.now())); } catch {}
-    };
-
-    if (shouldFireLead()) {
-      // Meta Lead event — browser pixel + CAPI share the same event_id for dedupe
-      const leadEventId = `lead_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      const leadViewMeta = getViewContentMeta(window.location.pathname);
-      const leadEmail = (inputs as any).email || null;
-      const leadPhone = inputs.phone || null;
-      const { fbc: leadFbc, fbp: leadFbp } = readMetaCookies();
-      try {
-        window.fbq?.('track', 'Lead', { value: 9.0, currency: 'USD', content_name: 'Barbershop Site Generated', content_ids: [leadViewMeta.content_id], content_type: leadViewMeta.content_type }, { eventID: leadEventId });
-      } catch (err) {
-        console.warn('[FB Pixel Lead] browser fire failed:', err);
-      }
-      fetch('/api/fb-lead', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          eventId: leadEventId,
-          email: leadEmail,
-          phone: leadPhone,
-          externalId: leadEventId,
-          fbc: leadFbc,
-          fbp: leadFbp,
-          value: 9.0,
-          currency: 'USD',
-          contentName: 'Barbershop Site Generated',
-          content_id: leadViewMeta.content_id,
-          content_name: leadViewMeta.content_name,
-          content_type: leadViewMeta.content_type,
-          eventSourceUrl: window.location.origin,
-          clientUserAgent: navigator.userAgent,
-        }),
-      }).catch((err) => console.error('[FB CAPI Lead] Error (non-blocking):', err));
-
-      // TikTok Lead — browser pixel + CAPI dedupe on the same event_id.
-      try {
-        (window as any).ttq?.track('Lead', { content_name: 'Barbershop Site Generated', content_id: leadViewMeta.content_id, content_type: leadViewMeta.content_type }, { event_id: leadEventId });
-      } catch (err) {
-        console.warn('[TikTok Pixel Lead] browser fire failed:', err);
-      }
-      fetch('/api/tiktok-event', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          event: 'Lead',
-          event_id: leadEventId,
-          event_source_url: window.location.origin,
-          user_agent: navigator.userAgent,
-          email: leadEmail,
-          phone: leadPhone,
-          content_id: leadViewMeta.content_id,
-          content_name: leadViewMeta.content_name,
-          content_type: leadViewMeta.content_type,
-        }),
-      }).catch((err) => console.error('[TikTok CAPI Lead] Error (non-blocking):', err));
-
-      markLeadFired();
-    } else {
-      console.log('[Lead tracking] Skipping Lead event — already fired for this visitor within 90 days.');
-    }
+    // Fire the lead ONLY when this is a real completion — a booking link,
+    // or both service area + phone filled (the full /booksy, /free-barber
+    // and /new forms always are). The homepage name-only submit defers:
+    // its lead fires later from the booking-link / area+phone prompts.
+    // fireLead() handles all dedup (CRM once/session, Meta+TikTok 90 days).
+    if (isLeadComplete(inputs)) fireLead(inputs);
 
     sessionStorage.setItem('pendingFormInputs', JSON.stringify(inputs));
     setState('loading');
@@ -900,7 +823,8 @@ const App: React.FC = () => {
       // Keep the homepage look — carry the chosen theme through.
       const rebuilt: WebsiteData = { ...built.scraped, colorTheme: current.colorTheme };
       applyGeneratedData(rebuilt);
-      captureLead({ shopName: rebuilt.shopName, area: rebuilt.area, phone: rebuilt.phone, bookingUrl: normalizedUrl }).catch(() => {});
+      // Booking link submitted on the homepage prompt → completion.
+      fireLead({ shopName: rebuilt.shopName, area: rebuilt.area, phone: rebuilt.phone, bookingUrl: normalizedUrl });
       return true;
     } catch (err) {
       console.warn('[home funnel] booking-link scrape failed:', err);
@@ -913,7 +837,8 @@ const App: React.FC = () => {
   const handleHomePromptFinish = async (area: string, phone: string) => {
     const current = generatedData;
     if (!current) return;
-    captureLead({ shopName: current.shopName, area, phone, bookingUrl: current.bookingUrl }).catch(() => {});
+    // Area + phone completed on the homepage prompt → completion.
+    fireLead({ shopName: current.shopName, area, phone, bookingUrl: current.bookingUrl });
     try {
       const data = await generateContent({
         shopName: current.shopName,
