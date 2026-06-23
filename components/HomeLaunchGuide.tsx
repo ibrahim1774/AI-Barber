@@ -13,9 +13,9 @@ const GOLD_DARK = '#8a6b30';
 const BG_CARD = 'rgba(14, 12, 8, 0.96)';
 
 const STEPS: React.ReactNode[] = [
-  'You can edit the text & add your own images',
-  <>Click <span className="font-bold text-white">“Launch My Site”</span></>,
-  'After launching your site, you can edit the text and images anytime',
+  'You can edit your text and images now, or publish first.',
+  'Create an account to come back and update your site anytime.',
+  <>Click <span className="font-bold text-white">“Launch My Site”</span> when you’re ready.</>,
 ];
 
 const NumberStep: React.FC<{ n: number; children: React.ReactNode }> = ({ n, children }) => (
@@ -53,11 +53,18 @@ export const HomeLaunchGuide: React.FC<HomeLaunchGuideProps> = ({ onClose }) => 
         }}
         onClick={(e) => e.stopPropagation()}
       >
+        <style>{`
+          @keyframes hlgBadgePulse {
+            0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 ${GOLD}00; }
+            50% { transform: scale(1.06); box-shadow: 0 0 16px 2px ${GOLD}66; }
+          }
+          .hlg-badge-anim { animation: hlgBadgePulse 1.5s ease-in-out infinite; transform-origin: left center; }
+        `}</style>
         <span
-          className="mb-4 inline-block text-[9px] font-bold uppercase tracking-[0.28em] px-2 py-0.5 rounded-full"
+          className="hlg-badge-anim mb-4 inline-block text-[9px] font-bold uppercase tracking-[0.28em] px-2 py-0.5 rounded-full"
           style={{ background: `${GOLD}22`, color: GOLD }}
         >
-          How it works
+          Read this before you exit
         </span>
 
         <div className="space-y-3.5">
