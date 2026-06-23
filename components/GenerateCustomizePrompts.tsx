@@ -70,6 +70,23 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
   const [note, setNote] = useState('');
   const [closing, setClosing] = useState(false);
 
+  // Countdown shown while we pull + rebuild from the booking link, so the
+  // wait feels measured rather than open-ended. ~10s reflects the average
+  // pull time; it ticks to 0, then shows "Almost there…" if a particular
+  // shop takes longer.
+  const PULL_ESTIMATE_SECONDS = 10;
+  const [countdown, setCountdown] = useState(PULL_ESTIMATE_SECONDS);
+
+  useEffect(() => {
+    if (!scraping) {
+      setCountdown(PULL_ESTIMATE_SECONDS);
+      return;
+    }
+    setCountdown(PULL_ESTIMATE_SECONDS);
+    const id = setInterval(() => setCountdown((c) => (c > 0 ? c - 1 : 0)), 1000);
+    return () => clearInterval(id);
+  }, [scraping]);
+
   // After the flow finishes, slide out then call onComplete.
   useEffect(() => {
     if (step !== 'done') return;
@@ -292,7 +309,7 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
                   {scraping ? (
                     <>
                       <Loader2 size={14} className="animate-spin" />
-                      <span>Pulling…</span>
+                      <span>{countdown > 0 ? `Pulling… ${countdown}s` : 'Almost there…'}</span>
                     </>
                   ) : (
                     <>
