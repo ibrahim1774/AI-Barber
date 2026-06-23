@@ -78,6 +78,19 @@ export function isGenerateBarbershopPath(pathname?: string): boolean {
   return p === GENERATE_BARBERSHOP_PATH || p === `${GENERATE_BARBERSHOP_PATH}/`;
 }
 
+// `/generate` — "Customize Your Barbershop Site" subpage. A barber
+// site is generated and shown immediately, then a centered overlay
+// asks "Do you have a booking link?" (Yes → paste any booking link;
+// No → barbershop name + service area + phone). Pricing is its own
+// $10/mo + $59/yr toggle (plans 'monthly-generate' / 'yearly-generate').
+// Matches ONLY /generate — /generatebarbershop is a separate path
+// handled above via isGenerateBarbershopPath().
+export const GENERATE_PATH = '/generate';
+export function isGeneratePath(pathname?: string): boolean {
+  const p = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
+  return p === GENERATE_PATH || p === `${GENERATE_PATH}/`;
+}
+
 // `/admin-generate` — operator-only white-glove flow for customers who
 // paid off-platform (Cash App, Venmo, in person, etc.) but can't or
 // won't navigate the funnel themselves. Builds a site, creates the
