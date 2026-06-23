@@ -8,6 +8,7 @@
 // Keep in sync with the adapter `hostMatchers` arrays.
 const SUPPORTED_HOST_PATTERNS: RegExp[] = [
   /(^|\.)booksy\.com$/i,
+  /(^|\.)thecut\.co$/i,
   /(^|\.)fresha\.com$/i,
   /(^|\.)styleseat\.com$/i,
   /(^|\.)squareup\.com$/i,
@@ -44,7 +45,7 @@ export function extractFirstUrl(text: string | null | undefined): string | null 
   const explicit = trimmed.match(/https?:\/\/[^\s<>"'\]]+/i);
   if (explicit) return explicit[0];
 
-  const knownBare = trimmed.match(/(?:[\w-]+\.)+(?:booksy|fresha|styleseat|squareup|square|vagaro)\.(?:com|site)(?:\/[^\s<>"'\]]*)?/i);
+  const knownBare = trimmed.match(/(?:[\w-]+\.)+(?:booksy|fresha|styleseat|squareup|square|vagaro|thecut)\.(?:com|site|co)(?:\/[^\s<>"'\]]*)?/i);
   if (knownBare) return `https://${knownBare[0]}`;
 
   const genericBare = trimmed.match(/(?:[\w-]+\.)+[a-z]{2,}(?:\/[^\s<>"'\]]*)?/i);

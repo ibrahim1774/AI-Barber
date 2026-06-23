@@ -7,6 +7,7 @@ import { freshaAdapter } from './fresha.js';
 import { styleseatAdapter } from './styleseat.js';
 import { squareAdapter } from './square.js';
 import { vagaroAdapter } from './vagaro.js';
+import { theCutAdapter } from './thecut.js';
 
 const ADAPTERS: PlatformAdapter[] = [
   booksyAdapter,
@@ -14,15 +15,12 @@ const ADAPTERS: PlatformAdapter[] = [
   styleseatAdapter,
   squareAdapter,
   vagaroAdapter,
+  theCutAdapter,
 ];
 
 // Platforms we recognise but can't autofill from. These return a
 // specific message instead of trying-and-failing.
 const UNSUPPORTED: { host: RegExp; reason: string }[] = [
-  {
-    host: /(^|\.)thecut\.(co|app)$/i,
-    reason: "TheCut keeps your shop info inside their app — it isn't published on the public web, so we can't pull it in. Use the regular generator and add your booking link there.",
-  },
   {
     host: /(^|\.)getsquire\.com$/i,
     reason: "Squire keeps shop info inside their app, not on the public web. Use the regular generator and paste your Squire link as your booking link.",
@@ -73,7 +71,7 @@ export async function scrapeBookingUrl(rawUrl: string, opts: ScrapeOptions): Pro
   if (unsupportedReason) throw new ScrapeError(unsupportedReason);
   if (!adapter) {
     throw new ScrapeError(
-      "We don't recognise that booking site yet. Supported: Booksy, Fresha, StyleSeat, Square Appointments, Vagaro.",
+      "We don't recognise that booking site yet. Supported: Booksy, theCut, Fresha, StyleSeat, Square Appointments, Vagaro.",
     );
   }
 
