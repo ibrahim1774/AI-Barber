@@ -43,6 +43,9 @@ export default async function handler(req: any, res: any) {
     // /booking entry: $10/mo + $59/yr.
     const isMonthlyBooking = plan === 'monthly-booking';
     const isYearlyBooking = plan === 'yearly-booking';
+    // /generate entry ("Customize Your Barbershop Site"): $10/mo + $59/yr.
+    const isMonthlyGenerate = plan === 'monthly-generate';
+    const isYearlyGenerate = plan === 'yearly-generate';
     const isCustom = plan === 'custom';
     const isCustom25 = plan === 'custom25';
     // 'custom-booksy' = /booksy custom-design upsell ($15/mo).
@@ -98,6 +101,16 @@ export default async function handler(req: any, res: any) {
       unitAmount = '1000';
       interval = 'month';
       productName = 'aibarber.org — Monthly Website Hosting (Booking)';
+    } else if (isYearlyGenerate) {
+      // /generate yearly: $59/yr.
+      unitAmount = '5900';
+      interval = 'year';
+      productName = 'aibarber.org — Yearly Website Hosting (Generate)';
+    } else if (isMonthlyGenerate) {
+      // /generate monthly: $10/mo.
+      unitAmount = '1000';
+      interval = 'month';
+      productName = 'aibarber.org — Monthly Website Hosting (Generate)';
     } else if (isCustomBooksy) {
       unitAmount = '1900';
       interval = 'month';

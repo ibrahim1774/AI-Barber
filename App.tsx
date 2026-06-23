@@ -14,7 +14,7 @@ import { HomeLaunchGuide } from './components/HomeLaunchGuide.tsx';
 import { buildSiteFromScrape } from './lib/buildSiteFromScrape.ts';
 import { ensureUuid } from './lib/ensureUuid.ts';
 import { extractFirstUrl, isSupportedBookingHost } from './lib/supportedBookingHost.ts';
-import { isBooksyPath, isFreeBarberPath, isPrimeBarberPath, isRecoverPath, isGenerateBarbershopPath, isAdminGeneratePath, isOwnBrandPath } from './lib/dealMode.ts';
+import { isBooksyPath, isFreeBarberPath, isPrimeBarberPath, isRecoverPath, isGenerateBarbershopPath, isGeneratePath, isAdminGeneratePath, isOwnBrandPath } from './lib/dealMode.ts';
 import { LoadingScreen } from './components/LoadingScreen.tsx';
 import { generateHTMLForTemplate } from './services/templateRenderer.ts';
 import { generateContent } from './services/geminiService.ts';
@@ -39,6 +39,7 @@ const ManagementDashboard = lazy(() => import('./components/ManagementDashboard.
 const AuthModal = lazy(() => import('./components/AuthModal.tsx').then(m => ({ default: m.AuthModal })));
 const RecoverPage = lazy(() => import('./components/RecoverPage.tsx').then(m => ({ default: m.RecoverPage })));
 const GenerateBarbershopFunnel = lazy(() => import('./components/GenerateBarbershopFunnel.tsx').then(m => ({ default: m.GenerateBarbershopFunnel })));
+const GeneratePage = lazy(() => import('./components/GeneratePage.tsx').then(m => ({ default: m.GeneratePage })));
 const AdminGenerator = lazy(() => import('./components/AdminGenerator.tsx').then(m => ({ default: m.AdminGenerator })));
 const OwnBrandLanding = lazy(() => import('./components/OwnBrandLanding.tsx').then(m => ({ default: m.OwnBrandLanding })));
 
@@ -1135,6 +1136,19 @@ const App: React.FC = () => {
     return (
       <Suspense fallback={<LoadingScreen />}>
         <GenerateBarbershopFunnel />
+      </Suspense>
+    );
+  }
+
+  // /generate — "Customize Your Barbershop Site". A barber site is
+  // generated immediately and shown behind a centered overlay that asks
+  // "Do you have a booking link?" (Yes → paste any booking link; No →
+  // name + service area + phone). Rendered early like the other
+  // standalone funnels so the normal restore machinery doesn't block it.
+  if (isGeneratePath()) {
+    return (
+      <Suspense fallback={<LoadingScreen />}>
+        <GeneratePage />
       </Suspense>
     );
   }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, ArrowRight, Rocket, Loader2, Sparkles, Check, ChevronLeft, ChevronRight } from 'lucide-react';
-import { isBooksyPath, isFreeBarberPath, isBookingPath } from '../lib/dealMode.ts';
+import { isBooksyPath, isFreeBarberPath, isBookingPath, isGeneratePath } from '../lib/dealMode.ts';
 import { loadStripe, type Stripe } from '@stripe/stripe-js';
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js';
 
@@ -62,6 +62,9 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   // /booking: generic booking-link entry. Its own pricing — $10/mo +
   // $59/yr — and its own plan slugs so Stripe + analytics distinguish it.
   const bookingMode = React.useMemo(() => isBookingPath(), []);
+  // /generate: "Customize Your Barbershop Site". Same $10/mo + $59/yr as
+  // /booking, with its own plan slugs for analytics attribution.
+  const generateMode = React.useMemo(() => isGeneratePath(), []);
 
   // Standard monthly price varies by entry path:
   //   /free-barber → $7/mo (plan 'monthly-free')
@@ -72,31 +75,35 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   const stdMonthlyPriceDollars = freeBarberMode ? 7 : 10;
   const stdMonthlyPriceMo = `$${stdMonthlyPriceDollars}/mo`;
   const stdMonthlyPriceMonth = `$${stdMonthlyPriceDollars}/month`;
-  const stdMonthlyPlan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'monthly-booking' = bookingMode
-    ? 'monthly-booking'
-    : booksyMode
-      ? 'monthly-booksy'
-      : freeBarberMode
-        ? 'monthly-free'
-        : 'monthly';
+  const stdMonthlyPlan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'monthly-booking' | 'monthly-generate' = generateMode
+    ? 'monthly-generate'
+    : bookingMode
+      ? 'monthly-booking'
+      : booksyMode
+        ? 'monthly-booksy'
+        : freeBarberMode
+          ? 'monthly-free'
+          : 'monthly';
   // Yearly is $49/yr everywhere EXCEPT /booking ($59/yr). The discount %
   // is computed off the path's own monthly × 12 anchor so "Save X%"
   // always reflects the real saving. Keep the server amounts in
   // api/create-checkout-session.ts in sync.
-  const stdYearlyPriceDollars = bookingMode ? 59 : 49;
+  const stdYearlyPriceDollars = (bookingMode || generateMode) ? 59 : 49;
   const stdYearlyPriceYr = `$${stdYearlyPriceDollars}/yr`;
   const stdYearlyPriceYear = `$${stdYearlyPriceDollars}/year`;
   const stdYearlyDiscountPct = Math.max(
     0,
     Math.round((1 - stdYearlyPriceDollars / (stdMonthlyPriceDollars * 12)) * 100),
   );
-  const stdYearlyPlan: 'yearly' | 'yearly-booksy' | 'yearly-free' | 'yearly-booking' = bookingMode
-    ? 'yearly-booking'
-    : booksyMode
-      ? 'yearly-booksy'
-      : freeBarberMode
-        ? 'yearly-free'
-        : 'yearly';
+  const stdYearlyPlan: 'yearly' | 'yearly-booksy' | 'yearly-free' | 'yearly-booking' | 'yearly-generate' = generateMode
+    ? 'yearly-generate'
+    : bookingMode
+      ? 'yearly-booking'
+      : booksyMode
+        ? 'yearly-booksy'
+        : freeBarberMode
+          ? 'yearly-free'
+          : 'yearly';
 
   // Custom-design upsell. Flat $15/mo across every entry path.
   // Plan slug per path for analytics attribution:
