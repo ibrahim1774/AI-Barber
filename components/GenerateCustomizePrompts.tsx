@@ -164,7 +164,7 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
       aria-live="polite"
     >
       <div
-        className="pointer-events-auto w-full max-w-[440px] rounded-2xl p-6 md:p-7 transition-all duration-300"
+        className="pointer-events-auto w-full max-w-[352px] rounded-2xl p-5 transition-all duration-300"
         style={{
           background: BG_CARD,
           border: `1px solid ${GOLD_DARK}`,
@@ -181,7 +181,7 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
         aria-modal="false"
         aria-labelledby="generate-prompt-title"
       >
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-2">
           <span
             className="text-[9px] font-bold uppercase tracking-[0.28em] px-2 py-0.5 rounded-full"
             style={{ background: `${GOLD}22`, color: GOLD }}
@@ -192,7 +192,7 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
 
         <h2
           id="generate-prompt-title"
-          className="text-[20px] md:text-[22px] leading-tight font-semibold text-white mb-4"
+          className="text-[17px] md:text-[18px] leading-tight font-semibold text-white mb-3"
           style={{ letterSpacing: '-0.015em' }}
         >
           Customize Your Barbershop Site
@@ -224,7 +224,12 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
               </button>
               <button
                 type="button"
-                onClick={() => setChoice('no')}
+                onClick={() => {
+                  // No link → jump straight to the 3 detail questions.
+                  setChoice('no');
+                  setNote('');
+                  setStep('name');
+                }}
                 className="px-3 py-3 text-[12px] font-bold uppercase tracking-[0.14em] rounded-md transition"
                 style={{
                   background: choice === 'no' ? GOLD : 'transparent',
@@ -242,7 +247,7 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
                 autoFocus
                 value={bookingUrl}
                 onChange={(e) => setBookingUrl(e.target.value)}
-                placeholder="booksy.com/your-shop"
+                placeholder="Booksy, Squareup, Fresha, etc…"
                 className="w-full px-3 py-3 bg-transparent text-white placeholder-white/35 text-[14px] outline-none mb-3"
                 style={inputStyle}
               />
