@@ -3,6 +3,7 @@ import { Loader2 } from 'lucide-react';
 import type { WebsiteData, ShopInputs } from '../types';
 import { generateContent } from '../services/geminiService';
 import { buildSiteFromScrape } from '../lib/buildSiteFromScrape';
+import { extractFirstUrl } from '../lib/supportedBookingHost';
 import { useAuth } from '../contexts/AuthContext';
 import { GenerateCustomizePrompts } from './GenerateCustomizePrompts';
 import { HomeLaunchGuide } from './HomeLaunchGuide';
@@ -89,8 +90,17 @@ export const GeneratePage: React.FC = () => {
   // Yes-link path: scrape the booking URL and rebuild the site. Returns
   // false on any failure so the overlay falls through to the detail
   // questions instead of stranding the visitor.
+  //
+  // Robust like the /booksy subpage: extractFirstUrl pulls the real link
+  // out of whatever the visitor pastes — a bare host ("booksy.com/x"), a
+  // full https URL, or a whole blob of share-sheet text with a URL buried
+  // in it — and prepends https:// when missing. Any booking platform is
+  // accepted; if the backend can't scrape it the overlay falls through to
+  // the manual questions so the visitor still finishes.
   const handleSubmitBookingLink = useCallback(
-    async (url: string): Promise<boolean> => {
+    async (rawUrl: string): Promise<boolean> => {
+      const url = extractFirstUrl(rawUrl) ?? rawUrl.trim();
+      if (!url) return false;
       try {
         const resp = await fetch('/api/import-scrape', {
           method: 'POST',

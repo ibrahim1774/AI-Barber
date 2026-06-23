@@ -374,29 +374,46 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
               the live price ("Publish $9/mo"), so the standalone
               "$9/mo — hosting/maintenance only" line was redundant. */}
 
-          {/* Monthly / Yearly toggle — quieter, smaller. */}
-          <div className="flex items-center justify-center gap-5 mb-2.5">
-            <button
-              onClick={() => setPricingPlan('monthly')}
-              className="text-[9px] font-medium uppercase tracking-[0.22em] pb-0.5 transition-colors"
-              style={{
-                color: pricingPlan === 'monthly' ? '#ece6da' : 'rgba(236,230,218,0.4)',
-                borderBottom: pricingPlan === 'monthly' ? '1px solid #e8c074' : '1px solid transparent',
-              }}
-            >
-              Monthly
-            </button>
-            <button
-              onClick={() => setPricingPlan('yearly')}
-              className="text-[9px] font-medium uppercase tracking-[0.22em] pb-0.5 transition-colors"
-              style={{
-                color: pricingPlan === 'yearly' ? '#ece6da' : 'rgba(236,230,218,0.4)',
-                borderBottom: pricingPlan === 'yearly' ? '1px solid #e8c074' : '1px solid transparent',
-              }}
-            >
-              Yearly <span style={{ color: '#ffffff', fontWeight: 700 }}>(Save {stdYearlyDiscountPct}%)</span>
-            </button>
-          </div>
+          {/* Monthly / Yearly toggle. On /generate the toggles are larger
+              and Yearly is shown first; every other entry path keeps the
+              original quieter/smaller monthly-first layout. */}
+          {(() => {
+            const sizeCls = generateMode
+              ? 'text-[12px] md:text-[13px] pb-1'
+              : 'text-[9px] pb-0.5';
+            const underline = generateMode ? '2px' : '1px';
+            const monthlyBtn = (
+              <button
+                key="monthly"
+                onClick={() => setPricingPlan('monthly')}
+                className={`${sizeCls} font-medium uppercase tracking-[0.22em] transition-colors`}
+                style={{
+                  color: pricingPlan === 'monthly' ? '#ece6da' : 'rgba(236,230,218,0.4)',
+                  borderBottom: pricingPlan === 'monthly' ? `${underline} solid #e8c074` : `${underline} solid transparent`,
+                }}
+              >
+                Monthly
+              </button>
+            );
+            const yearlyBtn = (
+              <button
+                key="yearly"
+                onClick={() => setPricingPlan('yearly')}
+                className={`${sizeCls} font-medium uppercase tracking-[0.22em] transition-colors`}
+                style={{
+                  color: pricingPlan === 'yearly' ? '#ece6da' : 'rgba(236,230,218,0.4)',
+                  borderBottom: pricingPlan === 'yearly' ? `${underline} solid #e8c074` : `${underline} solid transparent`,
+                }}
+              >
+                Yearly <span style={{ color: '#ffffff', fontWeight: 700 }}>(Save {stdYearlyDiscountPct}%)</span>
+              </button>
+            );
+            return (
+              <div className={`flex items-center justify-center ${generateMode ? 'gap-7 mb-3' : 'gap-5 mb-2.5'}`}>
+                {generateMode ? [yearlyBtn, monthlyBtn] : [monthlyBtn, yearlyBtn]}
+              </div>
+            );
+          })()}
 
           {/* Action row — Launch My Site full-width. How It Works
               button removed so the CTA spans the row and the
@@ -469,7 +486,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
           <button
             type="button"
             onClick={() => { setWizardStep(0); setShowCustomWizard(true); }}
-            className="group mt-2.5 flex w-full items-center justify-between gap-3 px-3 py-2 border transition-all hover:border-[#e8c074]/70"
+            className={`group flex w-full items-center justify-between border transition-all hover:border-[#e8c074]/70 ${generateMode ? 'mt-2 gap-2 px-2.5 py-1.5' : 'mt-2.5 gap-3 px-3 py-2'}`}
             style={{
               background: 'linear-gradient(180deg, rgba(232,192,116,0.06) 0%, rgba(232,192,116,0.02) 100%)',
               borderColor: 'rgba(232,192,116,0.35)',
@@ -477,25 +494,25 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
               textAlign: 'left',
             }}
           >
-            <span className="flex items-start gap-2 min-w-0">
-              <Sparkles size={12} className="mt-[3px] shrink-0" style={{ color: '#e8c074' }} />
+            <span className={`flex items-start min-w-0 ${generateMode ? 'gap-1.5' : 'gap-2'}`}>
+              <Sparkles size={generateMode ? 10 : 12} className="mt-[3px] shrink-0" style={{ color: '#e8c074' }} />
               <span className="min-w-0">
                 <span
                   className="block font-extrabold"
-                  style={{ fontSize: '0.95rem', color: '#e8c074', lineHeight: 1.15, letterSpacing: '-0.005em' }}
+                  style={{ fontSize: generateMode ? '0.76rem' : '0.95rem', color: '#e8c074', lineHeight: 1.15, letterSpacing: '-0.005em' }}
                 >
                   Want a new {displayIndustry.toLowerCase()} website instead?
                 </span>
                 <span
                   className="block font-bold leading-snug mt-0.5"
-                  style={{ fontSize: '11.5px', color: 'rgba(236,230,218,0.92)' }}
+                  style={{ fontSize: generateMode ? '9px' : '11.5px', color: 'rgba(236,230,218,0.92)' }}
                 >
                   Choose a design, or let our team custom-build a different multi-page site for you.
                 </span>
               </span>
             </span>
             <span
-              className="flex items-center gap-1.5 text-[12px] font-black uppercase tracking-[0.16em] shrink-0 rounded-full px-2.5 py-[4px]"
+              className={`flex items-center gap-1.5 font-black uppercase tracking-[0.16em] shrink-0 rounded-full ${generateMode ? 'text-[10px] px-2 py-[3px]' : 'text-[12px] px-2.5 py-[4px]'}`}
               style={{
                 color: '#0a0a0a',
                 background: '#e8c074',
@@ -503,7 +520,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
               }}
             >
               {customPriceLabel}
-              <ArrowRight size={12} className="transition group-hover:translate-x-0.5" />
+              <ArrowRight size={generateMode ? 10 : 12} className="transition group-hover:translate-x-0.5" />
             </span>
           </button>
         </div>
