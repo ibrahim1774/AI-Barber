@@ -4,6 +4,7 @@ import type { WebsiteData, ShopInputs } from '../types';
 import { generateContent } from '../services/geminiService';
 import { buildSiteFromScrape } from '../lib/buildSiteFromScrape';
 import { extractFirstUrl } from '../lib/supportedBookingHost';
+import { fireLead } from '../lib/leadEvents';
 import { useAuth } from '../contexts/AuthContext';
 import { GenerateCustomizePrompts } from './GenerateCustomizePrompts';
 import { HomeLaunchGuide } from './HomeLaunchGuide';
@@ -69,23 +70,8 @@ export const GeneratePage: React.FC = () => {
     [],
   );
 
-  // Capture a partial lead at each detail step.
-  const handleStepSubmit = useCallback(
-    (field: 'name' | 'area' | 'phone', value: string) => {
-      const current = siteData;
-      const merged: ShopInputs = {
-        shopName: field === 'name' ? value : current?.shopName || SEED_NAME,
-        area: field === 'area' ? value : current?.area || '',
-        phone: field === 'phone' ? value : current?.phone || '',
-      };
-      import('../services/leadCaptureService')
-        .then(({ captureLead }) =>
-          captureLead(merged).catch((err) => console.warn('[generate] captureLead failed:', err)),
-        )
-        .catch((err) => console.warn('[generate] leadCaptureService import failed:', err));
-    },
-    [siteData],
-  );
+  // No per-step lead capture — a lead fires only at completion (booking
+  // link submit or all 3 fields done), handled below via fireLead().
 
   // Yes-link path: scrape the booking URL and rebuild the site. Returns
   // false on any failure so the overlay falls through to the detail
@@ -101,6 +87,9 @@ export const GeneratePage: React.FC = () => {
     async (rawUrl: string): Promise<boolean> => {
       const url = extractFirstUrl(rawUrl) ?? rawUrl.trim();
       if (!url) return false;
+      // Booking link submitted → completion. Fire now (on submit) so the
+      // lead is captured even if the scrape later fails.
+      fireLead({ shopName: siteData?.shopName || SEED_NAME, area: siteData?.area || '', phone: siteData?.phone || '', bookingUrl: url });
       try {
         const resp = await fetch('/api/import-scrape', {
           method: 'POST',
@@ -135,11 +124,8 @@ export const GeneratePage: React.FC = () => {
       return null;
     });
     if (data) setSiteData(data);
-    import('../services/leadCaptureService')
-      .then(({ captureLead }) =>
-        captureLead(inputs).catch((err) => console.warn('[generate] captureLead failed:', err)),
-      )
-      .catch(() => {});
+    // All 3 fields completed → completion.
+    fireLead(inputs);
   }, []);
 
   const handlePromptComplete = useCallback(() => {
@@ -197,7 +183,6 @@ export const GeneratePage: React.FC = () => {
           onChange={handlePromptChange}
           onSubmitBookingLink={handleSubmitBookingLink}
           onFinish={handleFinish}
-          onStepSubmit={handleStepSubmit}
           onComplete={handlePromptComplete}
           initialName={siteData.shopName === SEED_NAME ? '' : siteData.shopName || ''}
           initialArea={siteData.area || ''}

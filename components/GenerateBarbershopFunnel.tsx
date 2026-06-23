@@ -3,6 +3,7 @@ import { Sparkles, ArrowRight, Zap, Loader2 } from 'lucide-react';
 import type { WebsiteData, ShopInputs } from '../types';
 import { generateContent } from '../services/geminiService';
 import { buildSiteFromScrape } from '../lib/buildSiteFromScrape';
+import { fireLead } from '../lib/leadEvents';
 import { useAuth } from '../contexts/AuthContext';
 import { BarbershopMidSitePrompts } from './BarbershopMidSitePrompts';
 import { HomeLaunchGuide } from './HomeLaunchGuide';
@@ -85,6 +86,9 @@ export const GenerateBarbershopFunnel: React.FC = () => {
   const runLinkGeneration = useCallback(
     async (url: string, typedName: string) => {
       const fallbackName = typedName.trim() || deriveNameFromUrl(url);
+      // Booking link submitted → completion. Fire on submit so the lead
+      // is captured even if the scrape times out / falls back.
+      fireLead({ shopName: fallbackName, area: '', phone: '', bookingUrl: url });
       const scrapePromise = (async () => {
         const resp = await fetch('/api/import-scrape', {
           method: 'POST',
@@ -137,31 +141,22 @@ export const GenerateBarbershopFunnel: React.FC = () => {
     [],
   );
 
-  // Fires when the visitor submits each step in the mid-site overlay.
-  // Captures the lead to Make.com / Supabase via the existing
-  // leadCaptureService so a partial visitor still lands in the CRM.
-  const handlePromptStepSubmit = useCallback(
-    (field: 'area' | 'phone', value: string) => {
-      const current = siteData;
-      if (!current) return;
-      const merged: ShopInputs = {
-        shopName: current.shopName || shopName,
-        area: field === 'area' ? value : current.area || '',
-        phone: field === 'phone' ? value : current.phone || '',
-      };
-      import('../services/leadCaptureService')
-        .then(({ captureLead }) =>
-          captureLead(merged).catch((err) => console.warn('[funnel] captureLead failed:', err)),
-        )
-        .catch((err) => console.warn('[funnel] leadCaptureService import failed:', err));
-    },
-    [siteData, shopName],
-  );
+  // No per-step lead capture — a partial visitor no longer creates a
+  // lead. The lead fires once at completion (handlePromptComplete) or on
+  // a booking-link submit (runLinkGeneration).
+  const handlePromptStepSubmit = useCallback((_field: 'area' | 'phone', _value: string) => {}, []);
 
   const handlePromptComplete = useCallback(() => {
+    // Both prompts done (area + phone) → completion.
+    const current = siteData;
+    fireLead({
+      shopName: current?.shopName || shopName,
+      area: current?.area || '',
+      phone: current?.phone || '',
+    });
     setShowMidSitePrompts(false);
     setShowLaunchGuide(true);
-  }, []);
+  }, [siteData, shopName]);
 
   const handleBack = useCallback(() => {
     setPhase('input');
