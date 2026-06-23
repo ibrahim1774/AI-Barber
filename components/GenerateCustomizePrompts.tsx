@@ -248,24 +248,58 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
               />
             )}
 
-            <button
-              type="submit"
-              disabled={!choice || (choice === 'yes' && (!bookingUrl.trim() || scraping))}
-              className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 text-[11px] font-black uppercase tracking-[0.22em] transition disabled:opacity-50"
-              style={primaryBtnStyle}
-            >
-              {scraping ? (
-                <>
-                  <Loader2 size={14} className="animate-spin" />
-                  <span>Pulling your site…</span>
-                </>
-              ) : (
-                <>
-                  <span>Generate</span>
-                  <ArrowRight size={13} />
-                </>
-              )}
-            </button>
+            {choice === 'yes' ? (
+              // Once they've said they have a link, offer Skip (jump
+              // straight to the 3 detail questions) on the left and
+              // Generate (scrape the link) on the right.
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNote('');
+                    setStep('name');
+                  }}
+                  disabled={scraping}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-3 text-[11px] font-black uppercase tracking-[0.22em] transition disabled:opacity-50"
+                  style={{
+                    background: 'transparent',
+                    color: 'white',
+                    border: '1px solid rgba(255,255,255,0.22)',
+                    borderRadius: '6px',
+                  }}
+                >
+                  <span>Skip</span>
+                </button>
+                <button
+                  type="submit"
+                  disabled={!bookingUrl.trim() || scraping}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-3 text-[11px] font-black uppercase tracking-[0.22em] transition disabled:opacity-50"
+                  style={primaryBtnStyle}
+                >
+                  {scraping ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" />
+                      <span>Pulling…</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Generate</span>
+                      <ArrowRight size={13} />
+                    </>
+                  )}
+                </button>
+              </div>
+            ) : (
+              <button
+                type="submit"
+                disabled={!choice}
+                className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 text-[11px] font-black uppercase tracking-[0.22em] transition disabled:opacity-50"
+                style={primaryBtnStyle}
+              >
+                <span>Generate</span>
+                <ArrowRight size={13} />
+              </button>
+            )}
           </form>
         )}
 
