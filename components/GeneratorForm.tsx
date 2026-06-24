@@ -32,25 +32,6 @@ const THEME_PRESETS: { slug: string; label: string; bg: string; accent: string }
   { slug: 'purpleGreen', label: 'Purple & Green', bg: '#160328', accent: '#22c55e' },
 ];
 
-// Flashing "you can edit after generating" note shown under the
-// headline on every entry point (homepage, /booksy, /free-barber).
-const EditNote: React.FC = () => (
-  <>
-    <div
-      className="mx-auto mb-8 md:mb-10 w-fit max-w-full rounded-xl border px-4 py-3"
-      style={{ borderColor: 'rgba(232,192,116,0.45)', background: 'rgba(232,192,116,0.08)' }}
-    >
-      <p
-        className="whitespace-nowrap font-bold text-white/90"
-        style={{ fontFamily: 'Georgia, "Times New Roman", serif', fontSize: 'clamp(10px, 2.8vw, 14px)', animation: 'gfSubheadFlash 1.6s ease-in-out infinite' }}
-      >
-        You can edit text and add images after site generates
-      </p>
-    </div>
-    <style>{`@keyframes gfSubheadFlash { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }`}</style>
-  </>
-);
-
 export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSignIn }) => {
   // Path-aware headline + field treatment. On /booksy the form
   // pivots to a Booksy-first framing (FREE callout, teal Booksy
@@ -331,7 +312,6 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
                 : "Paste your Booksy link — we'll pull your services, photos, hours, and reviews automatically."}
             </p>
 
-            <EditNote />
 
             <form onSubmit={handleSubmit} className="mx-auto max-w-md space-y-5">
               <div className="space-y-1">
@@ -474,7 +454,6 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
               Generate Custom <br className="hidden md:block" /> Barbershop Website
               <span className="text-[#f4a100] mt-1 block">in Seconds</span>
             </h1>
-            <EditNote />
 
             <form onSubmit={handleSubmit} className="mx-auto max-w-md space-y-5">
               <div className="space-y-1">
@@ -605,7 +584,6 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
                   : 'Please fill in the info below so your custom website can be generated.'}
             </p>
             <div className="mt-5">
-              <EditNote />
             </div>
           </div>
         </div>
