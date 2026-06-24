@@ -69,18 +69,11 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
   // field, scrape required, no manual identity fields).
   const linkMode = booksyMode || bookingMode;
   const linkAccent = bookingMode ? '#f4a100' : BOOKSY_TEAL;
-  // Root homepage "/" runs the progressive funnel: collect ONLY the
-  // barbershop name here (same visual shell), then ask for the booking
-  // link / service area + phone via HomeBookingPrompts after the site
-  // generates. /free-barber, /booksy and /booking keep their own layouts.
-  const nameOnly = useMemo(() => {
-    try {
-      const p = window.location.pathname.replace(/\/+$/, '');
-      return p === '' && !isBooksyPath() && !isBookingPath() && !isFreeBarberPath();
-    } catch {
-      return false;
-    }
-  }, []);
+  // Home ("/") now renders the full multi-field form (Barbershop Name +
+  // Service Area + Phone + Booking Link), the same layout as /new —
+  // reverted from the name-only progressive funnel. nameOnly stays false
+  // everywhere; /free-barber, /booksy and /booking keep their own layouts.
+  const nameOnly = false;
   const [inputs, setInputs] = useState<ShopInputs>({
     shopName: '',
     area: '',

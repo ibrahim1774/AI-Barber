@@ -739,19 +739,11 @@ const App: React.FC = () => {
       setActiveSite(draftSite);
       persistView('editor', draftSite.id);
       sessionStorage.removeItem('pendingFormInputs');
-      // Show the "how it works" guide after generation on the non-root
-      // generator subpages (/booksy, /free-barber) — the same box the
-      // homepage shows. Root triggers it after the booking / area-phone
-      // prompt completes instead (handled below).
-      if (!isRootHomePath()) {
-        setShowLaunchGuide(true);
-      }
-      // Root homepage progressive funnel: after a name-only generation
-      // (no area/phone, not a prebuilt scrape), surface the booking-link
-      // / area-phone prompt over the live preview.
-      if (isRootHomePath() && !prebuilt && !inputs.area && !inputs.phone) {
-        setShowHomePrompts(true);
-      }
+      // Show the "how it works" guide after generation on every generator
+      // entry — homepage, /booksy, /free-barber. The homepage now uses the
+      // full multi-field form (reverted from the name-only progressive
+      // funnel), so it shows the guide directly like the others.
+      setShowLaunchGuide(true);
       if (cameFromNewRef.current) {
         cameFromNewRef.current = false;
       }
