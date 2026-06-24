@@ -1,66 +1,112 @@
-// Vagaro adapter. Booking pages live at vagaro.com/<slug> — SPA that
-// requires browser hydration, so Apify-only.
-import { runApifyWebScraper, finalize } from './util.js';
+// Vagaro adapter.
+//
+// Vagaro (vagaro.com/<slug>) is a client-rendered SPA — its bookable
+// service menu, hours and reviews load from an AES-encrypted-id public
+// API whose endpoints aren't reachable without the live app, so those
+// can't be pulled instantly. BUT the booking page IS server-rendered
+// with rich Open Graph + breadcrumb metadata, which gives the shop's
+// name, city/state and a profile image from a plain GET — no browser or
+// Apify run (verified across multiple shops).
+//
+//   og:title       → "<Shop Name> - <City ST> | Vagaro"
+//   breadcrumb     → /listings/barber/<city>--<st>  (cleanest location)
+//   og:description → shop blurb
+//   og:image       → profile/cover image (a 340×340 thumbnail)
+//
+// Services, hours and reviews come back empty; the generator/renderer
+// fills or omits them.
+
+import { fetchHtml, finalize } from './util.js';
 import type { PlatformAdapter, ScrapedShop } from './types.js';
 import { ScrapeError } from './types.js';
 
-const APIFY_PAGE_FUNCTION = `
-async function pageFunction(context) {
-  const { page } = context;
-  await page.waitForLoadState?.('networkidle').catch(() => {});
-  await new Promise(r => setTimeout(r, 2000));
-  return await page.evaluate(() => {
-    const all = (sel) => Array.from(document.querySelectorAll(sel));
-    const t = (el) => (el?.textContent || '').trim();
-    const meta = (n) => (document.querySelector('meta[name="' + n + '"]')?.getAttribute('content') || '').trim();
-    const shopName = t(document.querySelector('h1')) || meta('og:title') || document.title.split('|')[0].trim();
-    const addr = t(document.querySelector('[class*="address" i], [data-test*="address" i]'));
-    const phone = (t(document.querySelector('[href^="tel:"]')) || '').replace(/[^\\d()+\\- ]/g, '');
-    const photos = Array.from(new Set(all('img').map(i => i.currentSrc || i.src || '')
-      .filter(s => s && /vagaro|cloudfront|cdn/i.test(s) && !/icon|logo|avatar|sprite|placeholder/i.test(s))
-      .map(s => s.replace(/\\?.*$/, '')))).slice(0, 12);
-    const services = all('[data-bind*="service" i], [class*="service" i] [class*="card" i], [class*="ServiceItem" i]').slice(0, 30).map(n => ({
-      title: (t(n.querySelector('h3,h4,[class*="title" i],[class*="name" i]')) || t(n).split('\\n')[0]).slice(0, 80),
-      price: t(n.querySelector('[class*="price" i]')),
-    })).filter(s => s.title.length > 1 && s.title.length < 80);
-    const reviews = all('[class*="Review" i] [class*="card" i], [class*="testimonial" i], [data-bind*="review" i]').slice(0, 12).map(n => {
-      const ratingEl = n.querySelector('[aria-label*="star" i], [class*="rating" i]');
-      const m = ratingEl ? (ratingEl.getAttribute('aria-label') || '').match(/([0-9.]+)/) : null;
-      return {
-        author: t(n.querySelector('[class*="author" i], h4, h5')) || 'Customer',
-        rating: m ? Math.min(5, Math.round(parseFloat(m[1]))) : 5,
-        comment: t(n.querySelector('[class*="comment" i], [class*="text" i], p')),
-        date: t(n.querySelector('time, [class*="date" i]')),
-      };
-    }).filter(r => r.comment && r.comment.length > 10);
-    return { shopName, addr, phone, services, photos, reviews };
-  });
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&amp;/g, '&')
+    .replace(/&#0*39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&#0*34;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
 }
-`.trim();
+
+// Read a <meta property|name="key" content="…"> value. Scopes the
+// search to a single <meta> tag (so a missing key never lets the
+// content capture run across tags and grab garbage), uses a backref to
+// the opening quote so apostrophes inside the value (Dan's) don't
+// truncate it, and handles either attribute order.
+function metaContent(html: string, key: string): string {
+  const k = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const keyRe = new RegExp(`(?:property|name)=("|')${k}\\1`, 'i');
+  const tags = html.match(/<meta\b[^>]*>/gi) || [];
+  for (const tag of tags) {
+    if (!keyRe.test(tag)) continue;
+    const m = tag.match(/\bcontent=("|')([\s\S]*?)\1/i);
+    if (m) return decodeEntities(m[2]).trim();
+  }
+  return '';
+}
+
+function titleCase(s: string): string {
+  return s.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()).trim();
+}
+
+// Location, in priority order: the breadcrumb slug (clean "city--st"),
+// then the "City ST" tail of og:title.
+function deriveLocation(html: string, titleLoc: string): string {
+  const bc = html.match(/\/listings\/[a-z0-9-]+\/([a-z0-9-]+)/i);
+  if (bc) {
+    const parts = bc[1].split('--');
+    const city = titleCase(parts[0] || '');
+    const state = (parts[1] || '').toUpperCase();
+    if (city) return state ? `${city}, ${state}` : city;
+  }
+  return titleLoc.replace(/\s+([A-Za-z]{2})$/, ', $1').trim();
+}
 
 export const vagaroAdapter: PlatformAdapter = {
   id: 'vagaro',
   displayName: 'Vagaro',
   hostMatchers: [/(^|\.)vagaro\.com$/i],
 
-  async scrape(url, opts) {
-    if (!opts.apifyToken) {
-      throw new ScrapeError('Vagaro pages render in the browser, so we need APIFY_TOKEN set to scrape them. Add it in Vercel or paste your shop info in the regular generator.');
+  async scrape(url, _opts) {
+    let html: string;
+    try {
+      ({ html } = await fetchHtml(/^https?:\/\//i.test(url) ? url : `https://${url}`));
+    } catch {
+      throw new ScrapeError('Could not reach Vagaro. Try again in a moment.');
     }
-    const data = await runApifyWebScraper({ url, pageFunction: APIFY_PAGE_FUNCTION, token: opts.apifyToken, timeoutSec: 120 });
-    if (!data?.shopName) {
-      throw new ScrapeError('Could not pull data from that Vagaro page — is the link public?');
+
+    let title = metaContent(html, 'og:title').replace(/\s*\|\s*Vagaro\s*$/i, '').trim();
+    if (!title) {
+      throw new ScrapeError(
+        "Couldn't read that Vagaro page — make sure it's your public vagaro.com booking link.",
+      );
     }
-    const addr: string = data.addr || '';
-    const parts = addr.split(',').map((s: string) => s.trim()).filter(Boolean);
+    // Split off the trailing "<City ST>" segment; shop names may contain
+    // their own " - " so keep everything before the last separator.
+    let shopName = title;
+    let titleLoc = '';
+    const parts = title.split(' - ');
+    if (parts.length > 1) {
+      titleLoc = (parts.pop() || '').trim();
+      shopName = parts.join(' - ').trim();
+    }
+
+    const area = deriveLocation(html, titleLoc);
+    const img = metaContent(html, 'og:image');
+
     const shop: ScrapedShop = {
-      shopName: data.shopName,
-      area: parts.length >= 2 ? parts.slice(-2).join(', ') : addr,
-      address: addr,
-      phone: data.phone || '',
-      services: data.services || [],
-      photos: data.photos || [],
-      reviews: data.reviews || [],
+      shopName,
+      area,
+      address: '',
+      phone: '',
+      description: metaContent(html, 'og:description') || '',
+      hours: [],
+      services: [],
+      photos: img && /^https?:\/\//i.test(img) ? [img] : [],
+      reviews: [],
     };
     return finalize(shop);
   },
