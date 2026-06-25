@@ -898,7 +898,12 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
   };
 
   // Resolve color theme — falls back to gold/black when unset or unknown.
-  const theme = AIB_THEMES[(siteData as any).colorTheme as string] || AIB_THEMES.goldBlack;
+  // A custom picked color arrives as a raw hex ("#3b82f6"); paint it on the
+  // dark canvas as the accent. Otherwise it's one of the named presets.
+  const ctRaw = (siteData as any).colorTheme as string | undefined;
+  const theme: AibTheme = ctRaw && ctRaw.charAt(0) === '#'
+    ? { bgRgb: '13 13 13', textRgb: '255 255 255', accent: ctRaw, accentHover: ctRaw }
+    : (AIB_THEMES[ctRaw as string] || AIB_THEMES.goldBlack);
   return (
     <div
       className={`aib-themed bg-[#0d0d0d] text-white overflow-hidden scroll-smooth pt-[32px] md:pt-[40px] ${!isPostPayment ? 'pb-[250px] md:pb-[180px]' : ''}`}

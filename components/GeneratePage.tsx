@@ -47,7 +47,16 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
   const [showPrompts, setShowPrompts] = useState(true);
   const [showLaunchGuide, setShowLaunchGuide] = useState(false);
   const [isCheckoutFlowOpen, setIsCheckoutFlowOpen] = useState(false);
+  // Brand color the visitor picked in the overlay. Carried into every
+  // (re)generation and applied to the live preview instantly. A raw hex
+  // ('#3b82f6') the renderers paint as the accent on the dark canvas.
+  const [colorTheme, setColorTheme] = useState<string>('goldBlack');
   const startedRef = useRef(false);
+
+  const handleColorChange = useCallback((hex: string) => {
+    setColorTheme(hex);
+    setSiteData((prev) => (prev ? { ...prev, colorTheme: hex } : prev));
+  }, []);
 
   const { user } = useAuth();
 
@@ -112,6 +121,7 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
             shopName: siteData?.shopName || SEED_NAME,
             area: siteData?.area || '',
             phone: siteData?.phone || '',
+            colorTheme,
           },
           template: (siteData as any)?.template === 'euphoria' ? 'euphoria' : 'luxe',
         });
@@ -122,12 +132,12 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
         return false;
       }
     },
-    [siteData],
+    [siteData, colorTheme],
   );
 
   // No-link path: regenerate the whole site from the entered details.
   const handleFinish = useCallback(async (name: string, area: string, phone: string) => {
-    const inputs: ShopInputs = { shopName: name || SEED_NAME, area, phone };
+    const inputs: ShopInputs = { shopName: name || SEED_NAME, area, phone, colorTheme };
     const data = await generateContent(inputs).catch((err) => {
       console.error('[generate] finish generateContent failed:', err);
       return null;
@@ -135,7 +145,7 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
     if (data) setSiteData(data);
     // All 3 fields completed → completion.
     fireLead(inputs);
-  }, []);
+  }, [colorTheme]);
 
   const handlePromptComplete = useCallback(() => {
     setShowPrompts(false);
@@ -197,6 +207,8 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
           initialArea={siteData.area || ''}
           initialPhone={siteData.phone || ''}
           variant={variant}
+          onColorChange={variant === 'booksy' ? handleColorChange : undefined}
+          initialColor={colorTheme.charAt(0) === '#' ? colorTheme : '#f4a100'}
         />
       )}
       {showLaunchGuide && !showPrompts && !isCheckoutFlowOpen && (
