@@ -484,7 +484,9 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
 
           {/* "Don't like the design?" — highlighted gold-tinted box.
               Headline in serif italic gold, concise subtitle beneath
-              explaining the offer. Price + arrow anchored right. */}
+              explaining the offer. Price + arrow anchored right.
+              Hidden on /booksy per request. */}
+          {!booksyMode && (
           <button
             type="button"
             onClick={() => { setWizardStep(0); setShowCustomWizard(true); }}
@@ -525,6 +527,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
               <ArrowRight size={generateMode ? 10 : 12} className="transition group-hover:translate-x-0.5" />
             </span>
           </button>
+          )}
         </div>
       </div>
 
