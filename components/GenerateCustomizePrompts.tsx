@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowRight, Loader2 } from 'lucide-react';
+import { ArrowRight, Loader2, ChevronLeft } from 'lucide-react';
 
 // Centered glass overlay for the /generate subpage. A barber site is
 // already generated and rendered behind this card; the overlay asks the
@@ -172,6 +172,16 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
     }
   };
 
+  // Back navigation for the detail steps — lets a visitor who picked "No,
+  // I don't have" return to the booking-link step (or step back through the
+  // questions). The booking step is the first step, so it has no back.
+  const goBack = () => {
+    setNote('');
+    if (step === 'name') { setChoice(isBooksy ? 'yes' : null); setStep('booking'); }
+    else if (step === 'area') setStep('name');
+    else if (step === 'phone') setStep('area');
+  };
+
   const stepLabel =
     step === 'booking'
       ? 'Customize'
@@ -221,6 +231,18 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
         aria-labelledby="generate-prompt-title"
       >
         <div className="flex items-center justify-between mb-2">
+          {step !== 'booking' ? (
+            <button
+              type="button"
+              onClick={goBack}
+              className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white/55 hover:text-white transition"
+              aria-label="Go back"
+            >
+              <ChevronLeft size={13} /> Back
+            </button>
+          ) : (
+            <span />
+          )}
           <span
             className="text-[9px] font-bold uppercase tracking-[0.28em] px-2 py-0.5 rounded-full"
             style={{ background: `${GOLD}22`, color: GOLD }}
@@ -234,7 +256,7 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
           className="text-[17px] md:text-[18px] leading-tight font-semibold text-white mb-3"
           style={{ letterSpacing: '-0.015em' }}
         >
-          {isBooksy ? 'Custom Barber Site - Built From Your Booking Link' : 'Customize Your Barbershop Site'}
+          {isBooksy ? 'Insert your booking link' : 'Customize Your Barbershop Site'}
         </h2>
 
         {/* ───────── Step 1: booking link question ───────── */}
@@ -363,7 +385,7 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
                 </>
               ) : (
                 <>
-                  <span>Generate</span>
+                  <span>{isBooksy ? 'Generate My Barbershop Site' : 'Generate'}</span>
                   <ArrowRight size={13} />
                 </>
               )}
