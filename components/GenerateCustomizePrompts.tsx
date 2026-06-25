@@ -234,20 +234,24 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
           className="text-[17px] md:text-[18px] leading-tight font-semibold text-white mb-3"
           style={{ letterSpacing: '-0.015em' }}
         >
-          {isBooksy ? 'Your Barbershop Site — Built From Booksy' : 'Customize Your Barbershop Site'}
+          {isBooksy ? 'Custom Barber Site - Built From Your Booking Link' : 'Customize Your Barbershop Site'}
         </h2>
 
         {/* ───────── Step 1: booking link question ───────── */}
         {step === 'booking' && (
           <form onSubmit={handleBookingGenerate}>
-            <h3 className="text-[15px] font-semibold text-white mb-1">
-              {isBooksy ? 'Add your Booksy link' : 'Do you have a booking link?'}
-            </h3>
-            <p className="text-[12px] text-white/55 mb-4">
-              {isBooksy
-                ? "Paste your Booksy link and we'll pull your services, photos, hours & reviews into this site. Fresha, Square & Vagaro work too."
-                : "Booksy, Fresha, Vagaro — any booking link works. We'll pull your real services and photos from it."}
-            </p>
+            {/* On /booksy the title above already frames this, so the
+                per-step heading + blurb are hidden. /generate keeps them. */}
+            {!isBooksy && (
+              <>
+                <h3 className="text-[15px] font-semibold text-white mb-1">
+                  Do you have a booking link?
+                </h3>
+                <p className="text-[12px] text-white/55 mb-4">
+                  Booksy, Fresha, Vagaro — any booking link works. We'll pull your real services and photos from it.
+                </p>
+              </>
+            )}
 
             {/* Brand color picker — re-themes the live preview instantly and
                 carries into the generated site. */}
