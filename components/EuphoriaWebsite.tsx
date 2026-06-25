@@ -18,9 +18,9 @@ interface EuphoriaWebsiteProps {
   // /generatebarbershop so it can hide the mid-site prompt overlay
   // while the visitor is inside the embedded Stripe checkout.
   onCheckoutFlowChange?: (open: boolean) => void;
-  // Pass-through to PrePaymentBanner — hides the Launch CTA price chip
-  // (used by /booksy until the visitor enters their link / generates).
-  hideLaunchPrice?: boolean;
+  // When true, the entire PrePaymentBanner (Launch CTA) is hidden. Used by
+  // /booksy to hide the CTA until the visitor enters their link / generates.
+  hidePrepaymentBanner?: boolean;
 }
 
 // Shared Euphoria CSS — scoped inside `.euphoria-root` so it can't leak into the Luxe flow.
@@ -387,7 +387,7 @@ ${EUPHORIA_SCOPED_CSS}
 </html>`;
 }
 
-export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, site, onNavigateDashboard, isPostPayment = false, userId = null, onCheckoutFlowChange, hideLaunchPrice }) => {
+export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, site, onNavigateDashboard, isPostPayment = false, userId = null, onCheckoutFlowChange, hidePrepaymentBanner }) => {
   useEuphoriaAssets();
 
   const [siteData, setSiteData] = useState<WebsiteData>(data);
@@ -948,15 +948,14 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
         </div>
       </footer>
 
-      {/* PrePaymentBanner (pre-payment only) */}
-      {!isPostPayment && (
+      {/* PrePaymentBanner (pre-payment only; hidden until generated on /booksy) */}
+      {!isPostPayment && !hidePrepaymentBanner && (
         <PrePaymentBanner
           onDeploy={handleClaimSite}
           onPrepareCheckout={preparePendingSite}
           isDeploying={isDeploying}
           industry="barbershop"
           onCheckoutFlowChange={onCheckoutFlowChange}
-          hideLaunchPrice={hideLaunchPrice}
         />
       )}
 

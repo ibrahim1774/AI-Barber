@@ -42,9 +42,9 @@ interface GeneratedWebsiteProps {
   // /generatebarbershop so it can hide the mid-site prompt overlay
   // while the visitor is inside the embedded Stripe checkout.
   onCheckoutFlowChange?: (open: boolean) => void;
-  // Pass-through to PrePaymentBanner — hides the Launch CTA price chip
-  // (used by /booksy until the visitor enters their link / generates).
-  hideLaunchPrice?: boolean;
+  // When true, the entire PrePaymentBanner (Launch CTA) is hidden. Used by
+  // /booksy to hide the CTA until the visitor enters their link / generates.
+  hidePrepaymentBanner?: boolean;
 }
 
 // Extracts the trailing "City, State [ZIP]" portion of an area string so
@@ -425,7 +425,7 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
 </html>`;
 }
 
-export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack, site, onNavigateDashboard, isPostPayment = false, userId = null, onCheckoutFlowChange, hideLaunchPrice }) => {
+export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack, site, onNavigateDashboard, isPostPayment = false, userId = null, onCheckoutFlowChange, hidePrepaymentBanner }) => {
   const [siteData, setSiteData] = useState<WebsiteData>(data);
 
   // Sync external `data` prop changes into internal state. Needed for
@@ -1599,15 +1599,14 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         </div>
       </footer>
 
-      {/* PrePaymentBanner (pre-payment only) */}
-      {!isPostPayment && (
+      {/* PrePaymentBanner (pre-payment only; hidden until generated on /booksy) */}
+      {!isPostPayment && !hidePrepaymentBanner && (
         <PrePaymentBanner
           onDeploy={handleClaimSite}
           onPrepareCheckout={preparePendingSite}
           isDeploying={isDeploying}
           industry="barbershop"
           onCheckoutFlowChange={onCheckoutFlowChange}
-          hideLaunchPrice={hideLaunchPrice}
         />
       )}
 
