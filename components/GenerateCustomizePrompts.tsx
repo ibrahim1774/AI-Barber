@@ -40,6 +40,15 @@ export interface GenerateCustomizePromptsProps {
   initialName?: string;
   initialArea?: string;
   initialPhone?: string;
+  // 'generate' (default) = the neutral "Customize Your Barbershop Site"
+  // copy. 'booksy' = the /booksy entry: Booksy-flavored headline and the
+  // overlay opens straight to the booking-link field (lead with the link).
+  variant?: 'generate' | 'booksy';
+  // When provided, a brand-color picker is shown in the first step; each
+  // pick fires onColorChange so the parent re-themes the live preview and
+  // carries the color into the generated site.
+  onColorChange?: (hex: string) => void;
+  initialColor?: string;
 }
 
 type Step = 'booking' | 'name' | 'area' | 'phone' | 'done';
@@ -58,9 +67,22 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
   initialName = '',
   initialArea = '',
   initialPhone = '',
+  variant = 'generate',
+  onColorChange,
+  initialColor = '#f4a100',
 }) => {
+  const isBooksy = variant === 'booksy';
+  const [color, setColor] = useState(initialColor);
+  // Preset quick-pick swatches + a free custom color input below.
+  const COLOR_SWATCHES = ['#f4a100', '#ffffff', '#dc2626', '#22c55e', '#3b82f6', '#a855f7'];
+  const pickColor = (hex: string) => {
+    setColor(hex);
+    onColorChange?.(hex);
+  };
   const [step, setStep] = useState<Step>('booking');
-  const [choice, setChoice] = useState<Choice>(null);
+  // On /booksy the visitor came specifically to move their booking link
+  // over, so open straight to the link field instead of the Yes/No split.
+  const [choice, setChoice] = useState<Choice>(isBooksy ? 'yes' : null);
   const [bookingUrl, setBookingUrl] = useState('');
   const [name, setName] = useState(initialName);
   const [area, setArea] = useState(initialArea);
@@ -212,19 +234,63 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
           className="text-[17px] md:text-[18px] leading-tight font-semibold text-white mb-3"
           style={{ letterSpacing: '-0.015em' }}
         >
-          Customize Your Barbershop Site
+          {isBooksy ? 'Your Barbershop Site — Built From Booksy' : 'Customize Your Barbershop Site'}
         </h2>
 
         {/* ───────── Step 1: booking link question ───────── */}
         {step === 'booking' && (
           <form onSubmit={handleBookingGenerate}>
             <h3 className="text-[15px] font-semibold text-white mb-1">
-              Do you have a booking link?
+              {isBooksy ? 'Add your Booksy link' : 'Do you have a booking link?'}
             </h3>
             <p className="text-[12px] text-white/55 mb-4">
-              Booksy, Fresha, Vagaro — any booking link works. We'll pull your
-              real services and photos from it.
+              {isBooksy
+                ? "Paste your Booksy link and we'll pull your services, photos, hours & reviews into this site. Fresha, Square & Vagaro work too."
+                : "Booksy, Fresha, Vagaro — any booking link works. We'll pull your real services and photos from it."}
             </p>
+
+            {/* Brand color picker — re-themes the live preview instantly and
+                carries into the generated site. */}
+            {onColorChange && (
+              <div className="mb-4">
+                <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-white/45 mb-2">
+                  Brand color
+                </p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {COLOR_SWATCHES.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => pickColor(c)}
+                      aria-label={`Use color ${c}`}
+                      className="w-7 h-7 rounded-full transition"
+                      style={{
+                        background: c,
+                        boxShadow: color.toLowerCase() === c.toLowerCase()
+                          ? '0 0 0 2px #0e0c08, 0 0 0 4px #e8c074'
+                          : 'inset 0 0 0 1px rgba(255,255,255,0.18)',
+                      }}
+                    />
+                  ))}
+                  {/* Custom any-color picker */}
+                  <label
+                    className="relative w-7 h-7 rounded-full overflow-hidden cursor-pointer"
+                    title="Pick any color"
+                    style={{
+                      background: 'conic-gradient(from 0deg, #f4a100, #dc2626, #a855f7, #3b82f6, #22c55e, #f4a100)',
+                      boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.25)',
+                    }}
+                  >
+                    <input
+                      type="color"
+                      value={/^#[0-9a-fA-F]{6}$/.test(color) ? color : '#888888'}
+                      onChange={(e) => pickColor(e.target.value)}
+                      className="absolute -inset-2 cursor-pointer opacity-0"
+                    />
+                  </label>
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-2 mb-4">
               <button
@@ -278,58 +344,26 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
               />
             )}
 
-            {choice === 'yes' ? (
-              // Once they've said they have a link, offer Skip (jump
-              // straight to the 3 detail questions) on the left and
-              // Generate (scrape the link) on the right.
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setNote('');
-                    setStep('name');
-                  }}
-                  disabled={scraping}
-                  className="inline-flex items-center justify-center gap-2 px-4 py-3 text-[11px] font-black uppercase tracking-[0.22em] transition disabled:opacity-50"
-                  style={{
-                    background: 'transparent',
-                    color: 'white',
-                    border: '1px solid rgba(255,255,255,0.22)',
-                    borderRadius: '6px',
-                  }}
-                >
-                  <span>Skip</span>
-                </button>
-                <button
-                  type="submit"
-                  disabled={!bookingUrl.trim() || scraping}
-                  className="inline-flex items-center justify-center gap-2 px-4 py-3 text-[11px] font-black uppercase tracking-[0.22em] transition disabled:opacity-50"
-                  style={primaryBtnStyle}
-                >
-                  {scraping ? (
-                    <>
-                      <Loader2 size={14} className="animate-spin" />
-                      <span>{countdown > 0 ? `Pulling… ${countdown}s` : 'Almost there…'}</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>Generate</span>
-                      <ArrowRight size={13} />
-                    </>
-                  )}
-                </button>
-              </div>
-            ) : (
-              <button
-                type="submit"
-                disabled={!choice}
-                className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 text-[11px] font-black uppercase tracking-[0.22em] transition disabled:opacity-50"
-                style={primaryBtnStyle}
-              >
-                <span>Generate</span>
-                <ArrowRight size={13} />
-              </button>
-            )}
+            {/* No Skip button — the "No, I don't have" option above already
+                routes a visitor without a link to the detail questions. */}
+            <button
+              type="submit"
+              disabled={choice !== 'yes' || !bookingUrl.trim() || scraping}
+              className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 text-[11px] font-black uppercase tracking-[0.22em] transition disabled:opacity-50"
+              style={primaryBtnStyle}
+            >
+              {scraping ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  <span>{countdown > 0 ? `Pulling… ${countdown}s` : 'Almost there…'}</span>
+                </>
+              ) : (
+                <>
+                  <span>Generate</span>
+                  <ArrowRight size={13} />
+                </>
+              )}
+            </button>
           </form>
         )}
 

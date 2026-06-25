@@ -1070,6 +1070,20 @@ const App: React.FC = () => {
     );
   }
 
+  // /booksy — same instant-preview + customize-overlay flow as /generate,
+  // but Booksy-flavored: an AI-generated barber site renders immediately
+  // and the overlay leads with "Add your Booksy link". Booksy pricing
+  // ($10/mo · $49/yr) + analytics are auto-applied by isBooksyPath()
+  // inside the renderer's PrePaymentBanner. Rendered early like /generate
+  // so the form/restore machinery is bypassed.
+  if (isBooksyPath()) {
+    return (
+      <Suspense fallback={<LoadingScreen />}>
+        <GeneratePage variant="booksy" />
+      </Suspense>
+    );
+  }
+
   // /admin-generate — operator-only white-glove flow for off-platform
   // paid customers. Renders early like the other standalone paths so
   // none of the normal generator/auth restoration machinery runs.

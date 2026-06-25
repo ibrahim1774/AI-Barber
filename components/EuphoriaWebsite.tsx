@@ -690,6 +690,9 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
   // every utility — Euphoria is already token-driven.
   const themeOverride = (() => {
     const slug = (siteData as any).colorTheme as string;
+    // Custom picked color (raw hex) → use it as the brand accent on the
+    // default dark canvas.
+    if (slug && slug.charAt(0) === '#') return { brand: slug, brandBright: slug, bg: '#000', bg2: '#0c0c0c', bg3: '#141414' };
     if (slug === 'blackWhite') return { brand: '#ffffff', brandBright: '#f5f5f5', bg: '#000', bg2: '#0c0c0c', bg3: '#141414' };
     if (slug === 'redBlack')   return { brand: '#dc2626', brandBright: '#ef4444', bg: '#000', bg2: '#0c0c0c', bg3: '#141414' };
     if (slug === 'purpleGreen') return { brand: '#22c55e', brandBright: '#4ade80', bg: '#160328', bg2: '#1f0436', bg3: '#2a0747' };

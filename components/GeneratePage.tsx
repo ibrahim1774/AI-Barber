@@ -33,12 +33,30 @@ const SEED_NAME = 'Premium Cuts';
 const EuphoriaWebsite = lazy(() => import('./EuphoriaWebsite').then((m) => ({ default: m.EuphoriaWebsite })));
 const GeneratedWebsite = lazy(() => import('./GeneratedWebsite').then((m) => ({ default: m.GeneratedWebsite })));
 
-export const GeneratePage: React.FC = () => {
+export interface GeneratePageProps {
+  // 'generate' (default) = the /generate entry. 'booksy' = the /booksy
+  // entry — same instant-preview + overlay flow, but the overlay leads
+  // with the Booksy link field and uses Booksy-flavored copy. Pricing +
+  // analytics are still path-detected (isBooksyPath) inside the renderer's
+  // PrePaymentBanner, so no extra wiring is needed here.
+  variant?: 'generate' | 'booksy';
+}
+
+export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate' }) => {
   const [siteData, setSiteData] = useState<WebsiteData | null>(null);
   const [showPrompts, setShowPrompts] = useState(true);
   const [showLaunchGuide, setShowLaunchGuide] = useState(false);
   const [isCheckoutFlowOpen, setIsCheckoutFlowOpen] = useState(false);
+  // Brand color the visitor picked in the overlay. Carried into every
+  // (re)generation and applied to the live preview instantly. A raw hex
+  // ('#3b82f6') the renderers paint as the accent on the dark canvas.
+  const [colorTheme, setColorTheme] = useState<string>('goldBlack');
   const startedRef = useRef(false);
+
+  const handleColorChange = useCallback((hex: string) => {
+    setColorTheme(hex);
+    setSiteData((prev) => (prev ? { ...prev, colorTheme: hex } : prev));
+  }, []);
 
   const { user } = useAuth();
 
@@ -103,6 +121,7 @@ export const GeneratePage: React.FC = () => {
             shopName: siteData?.shopName || SEED_NAME,
             area: siteData?.area || '',
             phone: siteData?.phone || '',
+            colorTheme,
           },
           template: (siteData as any)?.template === 'euphoria' ? 'euphoria' : 'luxe',
         });
@@ -113,12 +132,12 @@ export const GeneratePage: React.FC = () => {
         return false;
       }
     },
-    [siteData],
+    [siteData, colorTheme],
   );
 
   // No-link path: regenerate the whole site from the entered details.
   const handleFinish = useCallback(async (name: string, area: string, phone: string) => {
-    const inputs: ShopInputs = { shopName: name || SEED_NAME, area, phone };
+    const inputs: ShopInputs = { shopName: name || SEED_NAME, area, phone, colorTheme };
     const data = await generateContent(inputs).catch((err) => {
       console.error('[generate] finish generateContent failed:', err);
       return null;
@@ -126,7 +145,7 @@ export const GeneratePage: React.FC = () => {
     if (data) setSiteData(data);
     // All 3 fields completed → completion.
     fireLead(inputs);
-  }, []);
+  }, [colorTheme]);
 
   const handlePromptComplete = useCallback(() => {
     setShowPrompts(false);
@@ -187,6 +206,9 @@ export const GeneratePage: React.FC = () => {
           initialName={siteData.shopName === SEED_NAME ? '' : siteData.shopName || ''}
           initialArea={siteData.area || ''}
           initialPhone={siteData.phone || ''}
+          variant={variant}
+          onColorChange={variant === 'booksy' ? handleColorChange : undefined}
+          initialColor={colorTheme.charAt(0) === '#' ? colorTheme : '#f4a100'}
         />
       )}
       {showLaunchGuide && !showPrompts && !isCheckoutFlowOpen && (

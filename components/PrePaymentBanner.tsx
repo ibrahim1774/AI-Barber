@@ -72,7 +72,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   //   /booking     → $10/mo (plan 'monthly-booking')
   //   home page    → $10/mo (plan 'monthly')
   //   /free-barber → $7/mo (plan 'monthly-free')
-  const stdMonthlyPriceDollars = freeBarberMode ? 7 : 10;
+  const stdMonthlyPriceDollars = freeBarberMode ? 7 : booksyMode ? 15 : 10;
   const stdMonthlyPriceMo = `$${stdMonthlyPriceDollars}/mo`;
   const stdMonthlyPriceMonth = `$${stdMonthlyPriceDollars}/month`;
   const stdMonthlyPlan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'monthly-booking' | 'monthly-generate' = generateMode
@@ -88,7 +88,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   // is computed off the path's own monthly × 12 anchor so "Save X%"
   // always reflects the real saving. Keep the server amounts in
   // api/create-checkout-session.ts in sync.
-  const stdYearlyPriceDollars = (bookingMode || generateMode) ? 59 : 49;
+  const stdYearlyPriceDollars = (bookingMode || generateMode || booksyMode) ? 59 : 49;
   const stdYearlyPriceYr = `$${stdYearlyPriceDollars}/yr`;
   const stdYearlyPriceYear = `$${stdYearlyPriceDollars}/year`;
   const stdYearlyDiscountPct = Math.max(
@@ -121,7 +121,9 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   const [showCustomWizard, setShowCustomWizard] = useState(false);
   const [wizardStep, setWizardStep] = useState(0);
   const [isCustomCheckingOut, setIsCustomCheckingOut] = useState(false);
-  const [pricingPlan, setPricingPlan] = useState<'monthly' | 'yearly'>('monthly');
+  // /booksy defaults to the yearly plan (shown first); every other path
+  // defaults to monthly.
+  const [pricingPlan, setPricingPlan] = useState<'monthly' | 'yearly'>(booksyMode ? 'yearly' : 'monthly');
   // Benefits-popup state. When STRIPE_PK is present, the Launch My
   // Site CTA opens a modal with 5 plain-language bullets + the
   // embedded Stripe checkout below — no redirect to checkout.stripe.com.
@@ -410,7 +412,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
             );
             return (
               <div className={`flex items-center justify-center ${generateMode ? 'gap-7 mb-3' : 'gap-5 mb-2.5'}`}>
-                {generateMode ? [yearlyBtn, monthlyBtn] : [monthlyBtn, yearlyBtn]}
+                {(generateMode || booksyMode) ? [yearlyBtn, monthlyBtn] : [monthlyBtn, yearlyBtn]}
               </div>
             );
           })()}
@@ -589,8 +591,9 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
               A custom website for your barbershop, yours to edit anytime.
             </p>
 
-            {/* Monthly / Yearly toggle — quiet text-based with gold underline */}
-            <div className="flex items-center justify-center gap-6 mb-7">
+            {/* Monthly / Yearly toggle — quiet text-based with gold underline.
+                /booksy shows Yearly first (row-reverse). */}
+            <div className="flex items-center justify-center gap-6 mb-7" style={booksyMode ? { flexDirection: 'row-reverse' } : undefined}>
               <button
                 onClick={() => setPricingPlan('monthly')}
                 className="text-[11px] font-medium uppercase tracking-[0.22em] pb-1.5 transition-colors"
