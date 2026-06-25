@@ -48,9 +48,13 @@ interface PrePaymentBannerProps {
   // /primebarber, post-payment editor) omits this prop and behavior is
   // unchanged for them.
   onCheckoutFlowChange?: (open: boolean) => void;
+  // When true, the "Launch My Site" CTA hides its price chip. Used by
+  // /booksy to withhold the price until the visitor has entered their
+  // booking link / generated the site.
+  hideLaunchPrice?: boolean;
 }
 
-const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepareCheckout, isDeploying, industry, onCheckoutFlowChange }) => {
+const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepareCheckout, isDeploying, industry, onCheckoutFlowChange, hideLaunchPrice }) => {
   // /booksy import flow: $7/mo (vs the $10/mo homepage). booksyMode is
   // tracked so the receipt tags the source as "(Booksy)" via the
   // monthly-booksy plan slug.
@@ -473,12 +477,14 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                 <Rocket size={12} />
               )}
               <span>Launch My Site</span>
-              <span
-                className="font-extrabold px-1.5 py-0.5 rounded"
-                style={{ background: 'rgba(10,10,10,0.18)', color: '#0a0a0a' }}
-              >
-                {pricingPlan === 'yearly' ? stdYearlyPriceYear : stdMonthlyPriceMonth}
-              </span>
+              {!hideLaunchPrice && (
+                <span
+                  className="font-extrabold px-1.5 py-0.5 rounded"
+                  style={{ background: 'rgba(10,10,10,0.18)', color: '#0a0a0a' }}
+                >
+                  {pricingPlan === 'yearly' ? stdYearlyPriceYear : stdMonthlyPriceMonth}
+                </span>
+              )}
             </button>
           </div>
 
@@ -692,12 +698,14 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                 ) : (
                   <>
                     <span>Launch My Site</span>
-                    <span
-                      className="font-extrabold px-1.5 py-0.5 rounded"
-                      style={{ background: 'rgba(10,10,10,0.18)', color: '#0a0a0a' }}
-                    >
-                      {ctaPrice}
-                    </span>
+                    {!hideLaunchPrice && (
+                      <span
+                        className="font-extrabold px-1.5 py-0.5 rounded"
+                        style={{ background: 'rgba(10,10,10,0.18)', color: '#0a0a0a' }}
+                      >
+                        {ctaPrice}
+                      </span>
+                    )}
                     <ArrowRight size={14} />
                   </>
                 )}
