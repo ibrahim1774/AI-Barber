@@ -33,7 +33,16 @@ const SEED_NAME = 'Premium Cuts';
 const EuphoriaWebsite = lazy(() => import('./EuphoriaWebsite').then((m) => ({ default: m.EuphoriaWebsite })));
 const GeneratedWebsite = lazy(() => import('./GeneratedWebsite').then((m) => ({ default: m.GeneratedWebsite })));
 
-export const GeneratePage: React.FC = () => {
+export interface GeneratePageProps {
+  // 'generate' (default) = the /generate entry. 'booksy' = the /booksy
+  // entry — same instant-preview + overlay flow, but the overlay leads
+  // with the Booksy link field and uses Booksy-flavored copy. Pricing +
+  // analytics are still path-detected (isBooksyPath) inside the renderer's
+  // PrePaymentBanner, so no extra wiring is needed here.
+  variant?: 'generate' | 'booksy';
+}
+
+export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate' }) => {
   const [siteData, setSiteData] = useState<WebsiteData | null>(null);
   const [showPrompts, setShowPrompts] = useState(true);
   const [showLaunchGuide, setShowLaunchGuide] = useState(false);
@@ -187,6 +196,7 @@ export const GeneratePage: React.FC = () => {
           initialName={siteData.shopName === SEED_NAME ? '' : siteData.shopName || ''}
           initialArea={siteData.area || ''}
           initialPhone={siteData.phone || ''}
+          variant={variant}
         />
       )}
       {showLaunchGuide && !showPrompts && !isCheckoutFlowOpen && (

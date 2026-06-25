@@ -40,6 +40,10 @@ export interface GenerateCustomizePromptsProps {
   initialName?: string;
   initialArea?: string;
   initialPhone?: string;
+  // 'generate' (default) = the neutral "Customize Your Barbershop Site"
+  // copy. 'booksy' = the /booksy entry: Booksy-flavored headline and the
+  // overlay opens straight to the booking-link field (lead with the link).
+  variant?: 'generate' | 'booksy';
 }
 
 type Step = 'booking' | 'name' | 'area' | 'phone' | 'done';
@@ -58,9 +62,13 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
   initialName = '',
   initialArea = '',
   initialPhone = '',
+  variant = 'generate',
 }) => {
+  const isBooksy = variant === 'booksy';
   const [step, setStep] = useState<Step>('booking');
-  const [choice, setChoice] = useState<Choice>(null);
+  // On /booksy the visitor came specifically to move their booking link
+  // over, so open straight to the link field instead of the Yes/No split.
+  const [choice, setChoice] = useState<Choice>(isBooksy ? 'yes' : null);
   const [bookingUrl, setBookingUrl] = useState('');
   const [name, setName] = useState(initialName);
   const [area, setArea] = useState(initialArea);
@@ -212,18 +220,19 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
           className="text-[17px] md:text-[18px] leading-tight font-semibold text-white mb-3"
           style={{ letterSpacing: '-0.015em' }}
         >
-          Customize Your Barbershop Site
+          {isBooksy ? 'Your Barbershop Site — Built From Booksy' : 'Customize Your Barbershop Site'}
         </h2>
 
         {/* ───────── Step 1: booking link question ───────── */}
         {step === 'booking' && (
           <form onSubmit={handleBookingGenerate}>
             <h3 className="text-[15px] font-semibold text-white mb-1">
-              Do you have a booking link?
+              {isBooksy ? 'Add your Booksy link' : 'Do you have a booking link?'}
             </h3>
             <p className="text-[12px] text-white/55 mb-4">
-              Booksy, Fresha, Vagaro — any booking link works. We'll pull your
-              real services and photos from it.
+              {isBooksy
+                ? "Paste your Booksy link and we'll pull your services, photos, hours & reviews into this site. Fresha, Square & Vagaro work too."
+                : "Booksy, Fresha, Vagaro — any booking link works. We'll pull your real services and photos from it."}
             </p>
 
             <div className="grid grid-cols-2 gap-2 mb-4">
