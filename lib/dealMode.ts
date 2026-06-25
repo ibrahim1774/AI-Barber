@@ -57,6 +57,19 @@ export function isPrimeBarberPath(pathname?: string): boolean {
   return p === PRIMEBARBER_PATH || p === `${PRIMEBARBER_PATH}/`;
 }
 
+// `/prime-barber` = the Prime Barber System sample-site funnel. A
+// FULLY SELF-CONTAINED subpage (its own component + its own checkout
+// endpoint) — deliberately shares nothing with any other route. The
+// visitor enters shop name / phone / optional booking link, generates a
+// static sample barbershop site (Euphoria style) with a demo booking
+// calendar + product store, and can start a 7-day free trial ($97/mo)
+// that forwards to the Go High Level onboarding. Nothing deploys.
+export const PRIME_BARBER_SAMPLE_PATH = '/prime-barber';
+export function isPrimeBarberSamplePath(pathname?: string): boolean {
+  const p = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
+  return p === PRIME_BARBER_SAMPLE_PATH || p === `${PRIME_BARBER_SAMPLE_PATH}/`;
+}
+
 // `/recover` = standalone page for customers who paid + got the
 // "Publishing Failed" screen but whose site actually deployed to
 // Vercel. Lets them enter their email or Stripe session ID, look up
