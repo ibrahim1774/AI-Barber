@@ -186,7 +186,7 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
             userId={user?.id ?? null}
             isPostPayment={false}
             onCheckoutFlowChange={setIsCheckoutFlowOpen}
-            hideLaunchPrice={variant === 'booksy' && showPrompts}
+            hidePrepaymentBanner={variant === 'booksy' && showPrompts}
           />
         ) : (
           <GeneratedWebsite
@@ -195,7 +195,7 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
             userId={user?.id ?? null}
             isPostPayment={false}
             onCheckoutFlowChange={setIsCheckoutFlowOpen}
-            hideLaunchPrice={variant === 'booksy' && showPrompts}
+            hidePrepaymentBanner={variant === 'booksy' && showPrompts}
           />
         )}
       </Suspense>
