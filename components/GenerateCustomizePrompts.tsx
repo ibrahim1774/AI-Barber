@@ -226,7 +226,7 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
       aria-live="polite"
     >
       <div
-        className="pointer-events-auto w-full max-w-[352px] rounded-2xl p-5 transition-all duration-300"
+        className="pointer-events-auto w-full max-w-[262px] rounded-xl p-3.5 transition-all duration-300"
         style={{
           background: BG_CARD,
           border: `1px solid ${GOLD_DARK}`,
@@ -243,21 +243,21 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
         aria-modal="false"
         aria-labelledby="generate-prompt-title"
       >
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between mb-1.5">
           {step !== 'booking' ? (
             <button
               type="button"
               onClick={goBack}
-              className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white/55 hover:text-white transition"
+              className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-[0.16em] text-white/55 hover:text-white transition"
               aria-label="Go back"
             >
-              <ChevronLeft size={13} /> Back
+              <ChevronLeft size={12} /> Back
             </button>
           ) : (
             <span />
           )}
           <span
-            className="text-[9px] font-bold uppercase tracking-[0.28em] px-2 py-0.5 rounded-full"
+            className="text-[8px] font-bold uppercase tracking-[0.28em] px-1.5 py-0.5 rounded-full"
             style={{ background: `${GOLD}22`, color: GOLD }}
           >
             {stepLabel}
@@ -266,7 +266,7 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
 
         <h2
           id="generate-prompt-title"
-          className="text-[17px] md:text-[18px] leading-tight font-semibold text-white mb-3"
+          className="text-[14px] md:text-[15px] leading-tight font-semibold text-white mb-2.5"
           style={{ letterSpacing: '-0.015em' }}
         >
           {isBooksy ? 'Insert your booking link' : 'Customize Your Barbershop Site'}
@@ -279,10 +279,10 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
                 per-step heading + blurb are hidden. /generate keeps them. */}
             {!isBooksy && (
               <>
-                <h3 className="text-[15px] font-semibold text-white mb-1">
+                <h3 className="text-[13px] font-semibold text-white mb-1">
                   Do you have a booking link?
                 </h3>
-                <p className="text-[12px] text-white/55 mb-4">
+                <p className="text-[11px] text-white/55 mb-3">
                   Booksy, Fresha, Vagaro — any booking link works. We'll pull your real services and photos from it.
                 </p>
               </>
@@ -292,26 +292,35 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
                 the live preview instantly and carries into the generated
                 site. /booksy only (shown when onTemplateChange provided). */}
             {onTemplateChange && (
-              <div className="mb-4">
-                <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-white/45 mb-2">
+              <div className="mb-3">
+                <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-white/45 mb-1.5">
                   Design
                 </p>
-                <div className="grid grid-cols-2 gap-2">
-                  {([['luxe', 'Design 1'], ['prime', 'Design 2']] as const).map(([key, label]) => (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => pickTemplate(key)}
-                      className="px-3 py-2.5 text-[12px] font-bold uppercase tracking-[0.14em] rounded-md transition"
-                      style={{
-                        background: template === key ? GOLD : 'transparent',
-                        color: template === key ? '#0a0a0a' : 'white',
-                        border: `1px solid ${template === key ? GOLD : 'rgba(255,255,255,0.22)'}`,
-                      }}
-                    >
-                      {label}
-                    </button>
-                  ))}
+                <div className="grid grid-cols-2 gap-1.5">
+                  {([['luxe', 'Design 1', 'Bold'], ['prime', 'Design 2', 'Editorial']] as const).map(([key, label, name]) => {
+                    const active = template === key;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => pickTemplate(key)}
+                        className="px-2 py-1.5 rounded-md transition text-left"
+                        style={{
+                          background: active ? GOLD : 'transparent',
+                          color: active ? '#0a0a0a' : 'white',
+                          border: `1px solid ${active ? GOLD : 'rgba(255,255,255,0.22)'}`,
+                        }}
+                      >
+                        <span className="block text-[11px] font-bold uppercase tracking-[0.12em] leading-tight">{label}</span>
+                        <span
+                          className="block text-[8.5px] font-medium uppercase tracking-[0.18em] leading-tight mt-0.5"
+                          style={{ color: active ? 'rgba(10,10,10,0.6)' : 'rgba(255,255,255,0.45)', fontStyle: 'italic' }}
+                        >
+                          {name}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -319,18 +328,18 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
             {/* Brand color picker — re-themes the live preview instantly and
                 carries into the generated site. */}
             {onColorChange && (
-              <div className="mb-4">
-                <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-white/45 mb-2">
+              <div className="mb-3">
+                <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-white/45 mb-1.5">
                   Brand color
                 </p>
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5 flex-wrap">
                   {COLOR_SWATCHES.map((c) => (
                     <button
                       key={c}
                       type="button"
                       onClick={() => pickColor(c)}
                       aria-label={`Use color ${c}`}
-                      className="w-7 h-7 rounded-full transition"
+                      className="w-6 h-6 rounded-full transition"
                       style={{
                         background: c,
                         boxShadow: color.toLowerCase() === c.toLowerCase()
@@ -341,7 +350,7 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
                   ))}
                   {/* Custom any-color picker */}
                   <label
-                    className="relative w-7 h-7 rounded-full overflow-hidden cursor-pointer"
+                    className="relative w-6 h-6 rounded-full overflow-hidden cursor-pointer"
                     title="Pick any color"
                     style={{
                       background: 'conic-gradient(from 0deg, #f4a100, #dc2626, #a855f7, #3b82f6, #22c55e, #f4a100)',
@@ -359,11 +368,11 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-2 mb-4">
+            <div className="grid grid-cols-2 gap-1.5 mb-3">
               <button
                 type="button"
                 onClick={() => setChoice('yes')}
-                className="px-3 py-3 text-[12px] font-bold uppercase tracking-[0.14em] rounded-md transition"
+                className="px-2 py-2.5 text-[11px] font-bold uppercase tracking-[0.12em] rounded-md transition"
                 style={{
                   background: choice === 'yes' ? GOLD : 'transparent',
                   color: choice === 'yes' ? '#0a0a0a' : 'white',
@@ -380,7 +389,7 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
                   setNote('');
                   setStep('name');
                 }}
-                className="px-3 py-3 text-[12px] font-bold uppercase tracking-[0.14em] rounded-md transition"
+                className="px-2 py-2.5 text-[11px] font-bold uppercase tracking-[0.12em] rounded-md transition"
                 style={{
                   background: choice === 'no' ? GOLD : 'transparent',
                   color: choice === 'no' ? '#0a0a0a' : 'white',
@@ -406,7 +415,7 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
                 value={bookingUrl}
                 onChange={(e) => setBookingUrl(e.target.value)}
                 placeholder="Booksy, Squareup, Fresha, etc…"
-                className="w-full px-3 py-3 bg-transparent text-white placeholder-white/35 text-[14px] outline-none mb-3"
+                className="w-full px-2.5 py-2.5 bg-transparent text-white placeholder-white/35 text-[13px] outline-none mb-2.5"
                 style={inputStyle}
               />
             )}
@@ -416,7 +425,7 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
             <button
               type="submit"
               disabled={choice !== 'yes' || !bookingUrl.trim() || scraping}
-              className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 text-[11px] font-black uppercase tracking-[0.22em] transition disabled:opacity-50"
+              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.22em] transition disabled:opacity-50"
               style={primaryBtnStyle}
             >
               {scraping ? (
@@ -437,10 +446,10 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
         {/* ───────── Step 2: barbershop name ───────── */}
         {step === 'name' && (
           <form onSubmit={handleDetailSubmit}>
-            <h3 className="text-[15px] font-semibold text-white mb-1">
+            <h3 className="text-[13px] font-semibold text-white mb-1">
               What is your barbershop name?
             </h3>
-            <p className="text-[12px] text-white/55 mb-4">
+            <p className="text-[11px] text-white/55 mb-3">
               {note || "We'll use this across your site's headline and footer."}
             </p>
             <input
@@ -452,13 +461,13 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
                 onChange('name', e.target.value);
               }}
               placeholder="The Gentlemen's Lounge"
-              className="w-full px-3 py-3 bg-transparent text-white placeholder-white/35 text-[14px] outline-none mb-3"
+              className="w-full px-2.5 py-2.5 bg-transparent text-white placeholder-white/35 text-[13px] outline-none mb-2.5"
               style={inputStyle}
             />
             <button
               type="submit"
               disabled={!name.trim()}
-              className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 text-[11px] font-black uppercase tracking-[0.22em] transition disabled:opacity-50"
+              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.22em] transition disabled:opacity-50"
               style={primaryBtnStyle}
             >
               <span>Continue</span>
@@ -470,10 +479,10 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
         {/* ───────── Step 3: service area ───────── */}
         {step === 'area' && (
           <form onSubmit={handleDetailSubmit}>
-            <h3 className="text-[15px] font-semibold text-white mb-1">
+            <h3 className="text-[13px] font-semibold text-white mb-1">
               What is your service area?
             </h3>
-            <p className="text-[12px] text-white/55 mb-4">
+            <p className="text-[11px] text-white/55 mb-3">
               We'll show this throughout your site so locals know you're nearby.
             </p>
             <input
@@ -485,13 +494,13 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
                 onChange('area', e.target.value);
               }}
               placeholder="Dallas, TX"
-              className="w-full px-3 py-3 bg-transparent text-white placeholder-white/35 text-[14px] outline-none mb-3"
+              className="w-full px-2.5 py-2.5 bg-transparent text-white placeholder-white/35 text-[13px] outline-none mb-2.5"
               style={inputStyle}
             />
             <button
               type="submit"
               disabled={!area.trim()}
-              className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 text-[11px] font-black uppercase tracking-[0.22em] transition disabled:opacity-50"
+              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.22em] transition disabled:opacity-50"
               style={primaryBtnStyle}
             >
               <span>Continue</span>
@@ -503,10 +512,10 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
         {/* ───────── Step 4: phone → finish ───────── */}
         {step === 'phone' && (
           <form onSubmit={handleDetailSubmit}>
-            <h3 className="text-[15px] font-semibold text-white mb-1">
+            <h3 className="text-[13px] font-semibold text-white mb-1">
               What is your phone number?
             </h3>
-            <p className="text-[12px] text-white/55 mb-4">
+            <p className="text-[11px] text-white/55 mb-3">
               Calls from every "Call" button on your site go straight to this number.
             </p>
             <input
@@ -519,13 +528,13 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
                 onChange('phone', e.target.value);
               }}
               placeholder="(555) 123-4567"
-              className="w-full px-3 py-3 bg-transparent text-white placeholder-white/35 text-[14px] outline-none mb-3"
+              className="w-full px-2.5 py-2.5 bg-transparent text-white placeholder-white/35 text-[13px] outline-none mb-2.5"
               style={inputStyle}
             />
             <button
               type="submit"
               disabled={!phone.trim() || finishing}
-              className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 text-[11px] font-black uppercase tracking-[0.22em] transition disabled:opacity-50"
+              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.22em] transition disabled:opacity-50"
               style={primaryBtnStyle}
             >
               {finishing ? (
