@@ -32,7 +32,7 @@ interface BuildOptions {
   manual?: Partial<ShopInputs>;
   // Template choice — defaults to 'luxe' (matches /booksy). Quiz
   // passes the user's picked template if any.
-  template?: 'luxe' | 'euphoria';
+  template?: 'luxe' | 'euphoria' | 'prime';
 }
 
 export interface BuiltSite {

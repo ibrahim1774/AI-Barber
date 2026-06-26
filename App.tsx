@@ -34,6 +34,7 @@ const NewLeadQuizForm = lazy(() => import('./components/NewLeadQuizForm.tsx').th
 const PrimeBarberLanding = lazy(() => import('./components/PrimeBarberLanding.tsx').then(m => ({ default: m.PrimeBarberLanding })));
 const GeneratedWebsite = lazy(() => import('./components/GeneratedWebsite.tsx').then(m => ({ default: m.GeneratedWebsite })));
 const EuphoriaWebsite = lazy(() => import('./components/EuphoriaWebsite.tsx').then(m => ({ default: m.EuphoriaWebsite })));
+const PrimeWebsite = lazy(() => import('./components/PrimeWebsite.tsx').then(m => ({ default: m.PrimeWebsite })));
 const PostDeploymentModal = lazy(() => import('./components/PostDeploymentModal.tsx').then(m => ({ default: m.PostDeploymentModal })));
 const ManagementDashboard = lazy(() => import('./components/ManagementDashboard.tsx').then(m => ({ default: m.ManagementDashboard })));
 const AuthModal = lazy(() => import('./components/AuthModal.tsx').then(m => ({ default: m.AuthModal })));
@@ -1122,7 +1123,17 @@ const App: React.FC = () => {
       {state === 'loading' && <LoadingScreen />}
       {state === 'editor' && generatedData && (
         <>
-          {generatedData.template === 'euphoria' ? (
+          {generatedData.template === 'prime' ? (
+            <PrimeWebsite
+              data={generatedData}
+              onBack={handleBack}
+              site={activeSite ?? undefined}
+              onNavigateDashboard={handleNavigateDashboard}
+              isPostPayment={!!activeSite?.deployedUrl || activeSite?.deploymentStatus === 'deployed'}
+              userId={user?.id ?? null}
+              onCheckoutFlowChange={setIsCheckoutFlowOpen}
+            />
+          ) : generatedData.template === 'euphoria' ? (
             <EuphoriaWebsite
               data={generatedData}
               onBack={handleBack}

@@ -6,6 +6,10 @@ import { WebsiteData } from '../types';
 // ~84KB, EuphoriaWebsite ~44KB) don't end up in the first-paint bundle —
 // they're only needed on publish or re-render, never on the landing page.
 export async function generateHTMLForTemplate(siteData: WebsiteData): Promise<string> {
+  if (siteData.template === 'prime') {
+    const mod = await import('../components/PrimeWebsite');
+    return mod.generatePrimeHTMLWithPlaceholders(siteData);
+  }
   if (siteData.template === 'euphoria') {
     const mod = await import('../components/EuphoriaWebsite');
     return mod.generateEuphoriaHTMLWithPlaceholders(siteData);
