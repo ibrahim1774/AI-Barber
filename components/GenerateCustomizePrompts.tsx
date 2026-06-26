@@ -49,6 +49,11 @@ export interface GenerateCustomizePromptsProps {
   // carries the color into the generated site.
   onColorChange?: (hex: string) => void;
   initialColor?: string;
+  // When provided, a Design 1 / Design 2 picker is shown in the first step
+  // (booksy only). Each pick re-skins the live preview instantly and carries
+  // the choice into the generated site. Design 1 = luxe, Design 2 = prime.
+  onTemplateChange?: (template: 'luxe' | 'prime') => void;
+  initialTemplate?: string;
 }
 
 type Step = 'booking' | 'name' | 'area' | 'phone' | 'done';
@@ -70,6 +75,8 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
   variant = 'generate',
   onColorChange,
   initialColor = '#f4a100',
+  onTemplateChange,
+  initialTemplate = 'luxe',
 }) => {
   const isBooksy = variant === 'booksy';
   const [color, setColor] = useState(initialColor);
@@ -78,6 +85,12 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
   const pickColor = (hex: string) => {
     setColor(hex);
     onColorChange?.(hex);
+  };
+  // Design 1 / Design 2 selection (booksy only).
+  const [template, setTemplate] = useState<'luxe' | 'prime'>(initialTemplate === 'prime' ? 'prime' : 'luxe');
+  const pickTemplate = (t: 'luxe' | 'prime') => {
+    setTemplate(t);
+    onTemplateChange?.(t);
   };
   const [step, setStep] = useState<Step>('booking');
   // On /booksy the visitor came specifically to move their booking link
@@ -273,6 +286,34 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
                   Booksy, Fresha, Vagaro — any booking link works. We'll pull your real services and photos from it.
                 </p>
               </>
+            )}
+
+            {/* Design picker — Design 1 (luxe) / Design 2 (prime). Re-skins
+                the live preview instantly and carries into the generated
+                site. /booksy only (shown when onTemplateChange provided). */}
+            {onTemplateChange && (
+              <div className="mb-4">
+                <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-white/45 mb-2">
+                  Design
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {([['luxe', 'Design 1'], ['prime', 'Design 2']] as const).map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => pickTemplate(key)}
+                      className="px-3 py-2.5 text-[12px] font-bold uppercase tracking-[0.14em] rounded-md transition"
+                      style={{
+                        background: template === key ? GOLD : 'transparent',
+                        color: template === key ? '#0a0a0a' : 'white',
+                        border: `1px solid ${template === key ? GOLD : 'rgba(255,255,255,0.22)'}`,
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
 
             {/* Brand color picker — re-themes the live preview instantly and

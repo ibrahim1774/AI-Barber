@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, Suspense, lazy } from 'react';
 import { Loader2 } from 'lucide-react';
-import type { WebsiteData, ShopInputs } from '../types';
+import type { WebsiteData, ShopInputs, TemplateId } from '../types';
 import { generateContent } from '../services/geminiService';
 import { buildSiteFromScrape } from '../lib/buildSiteFromScrape';
 import { extractFirstUrl } from '../lib/supportedBookingHost';
@@ -32,6 +32,7 @@ const SEED_NAME = 'Premium Cuts';
 
 const EuphoriaWebsite = lazy(() => import('./EuphoriaWebsite').then((m) => ({ default: m.EuphoriaWebsite })));
 const GeneratedWebsite = lazy(() => import('./GeneratedWebsite').then((m) => ({ default: m.GeneratedWebsite })));
+const PrimeWebsite = lazy(() => import('./PrimeWebsite').then((m) => ({ default: m.PrimeWebsite })));
 
 export interface GeneratePageProps {
   // 'generate' (default) = the /generate entry. 'booksy' = the /booksy
@@ -51,11 +52,20 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
   // (re)generation and applied to the live preview instantly. A raw hex
   // ('#3b82f6') the renderers paint as the accent on the dark canvas.
   const [colorTheme, setColorTheme] = useState<string>('goldBlack');
+  // Picked design (Design 1 = luxe default, Design 2 = prime). Carried into
+  // every (re)generation and applied to the live preview instantly so the
+  // overlay re-skins the site as the visitor toggles. /booksy only.
+  const [template, setTemplate] = useState<TemplateId>('luxe');
   const startedRef = useRef(false);
 
   const handleColorChange = useCallback((hex: string) => {
     setColorTheme(hex);
     setSiteData((prev) => (prev ? { ...prev, colorTheme: hex } : prev));
+  }, []);
+
+  const handleTemplateChange = useCallback((t: TemplateId) => {
+    setTemplate(t);
+    setSiteData((prev) => (prev ? { ...prev, template: t } : prev));
   }, []);
 
   const { user } = useAuth();
@@ -71,7 +81,7 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
         console.error('[generate] seed generateContent failed:', err);
         return null;
       });
-      if (data) setSiteData(data);
+      if (data) setSiteData({ ...data, template });
     })();
   }, []);
 
@@ -123,7 +133,7 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
             phone: siteData?.phone || '',
             colorTheme,
           },
-          template: (siteData as any)?.template === 'euphoria' ? 'euphoria' : 'luxe',
+          template,
         });
         setSiteData(scraped);
         return true;
@@ -132,20 +142,20 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
         return false;
       }
     },
-    [siteData, colorTheme],
+    [siteData, colorTheme, template],
   );
 
   // No-link path: regenerate the whole site from the entered details.
   const handleFinish = useCallback(async (name: string, area: string, phone: string) => {
-    const inputs: ShopInputs = { shopName: name || SEED_NAME, area, phone, colorTheme };
+    const inputs: ShopInputs = { shopName: name || SEED_NAME, area, phone, colorTheme, template };
     const data = await generateContent(inputs).catch((err) => {
       console.error('[generate] finish generateContent failed:', err);
       return null;
     });
-    if (data) setSiteData(data);
+    if (data) setSiteData({ ...data, template });
     // All 3 fields completed → completion.
     fireLead(inputs);
-  }, [colorTheme]);
+  }, [colorTheme, template]);
 
   const handlePromptComplete = useCallback(() => {
     setShowPrompts(false);
@@ -174,12 +184,21 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
     );
   }
 
-  const useEuphoria = (siteData as any)?.template === 'euphoria';
+  const activeTemplate = (siteData as any)?.template as TemplateId | undefined;
 
   return (
     <>
       <Suspense fallback={<div style={{ background: BG, minHeight: '100vh' }} />}>
-        {useEuphoria ? (
+        {activeTemplate === 'prime' ? (
+          <PrimeWebsite
+            data={siteData}
+            onBack={handleBack}
+            userId={user?.id ?? null}
+            isPostPayment={false}
+            onCheckoutFlowChange={setIsCheckoutFlowOpen}
+            hidePrepaymentBanner={variant === 'booksy' && showPrompts}
+          />
+        ) : activeTemplate === 'euphoria' ? (
           <EuphoriaWebsite
             data={siteData}
             onBack={handleBack}
@@ -211,6 +230,8 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
           variant={variant}
           onColorChange={variant === 'booksy' ? handleColorChange : undefined}
           initialColor={colorTheme.charAt(0) === '#' ? colorTheme : '#f4a100'}
+          onTemplateChange={variant === 'booksy' ? handleTemplateChange : undefined}
+          initialTemplate={template}
         />
       )}
       {showLaunchGuide && !showPrompts && !isCheckoutFlowOpen && (
