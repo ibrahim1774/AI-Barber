@@ -196,6 +196,7 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
             isPostPayment={false}
             onCheckoutFlowChange={setIsCheckoutFlowOpen}
             hidePrepaymentBanner={variant === 'booksy' && showPrompts}
+            variant={variant}
           />
         )}
       </Suspense>

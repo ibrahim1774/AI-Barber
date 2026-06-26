@@ -45,6 +45,10 @@ interface GeneratedWebsiteProps {
   // When true, the entire PrePaymentBanner (Launch CTA) is hidden. Used by
   // /booksy to hide the CTA until the visitor enters their link / generates.
   hidePrepaymentBanner?: boolean;
+  // Entry variant. On 'booksy' the redundant top-right "BACK" button in the
+  // site header is removed and the top-left arrow is labelled "Back" — its
+  // onBack reopens the booking-link form so the visitor can paste a new link.
+  variant?: 'generate' | 'booksy';
 }
 
 // Extracts the trailing "City, State [ZIP]" portion of an area string so
@@ -425,7 +429,7 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
 </html>`;
 }
 
-export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack, site, onNavigateDashboard, isPostPayment = false, userId = null, onCheckoutFlowChange, hidePrepaymentBanner }) => {
+export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack, site, onNavigateDashboard, isPostPayment = false, userId = null, onCheckoutFlowChange, hidePrepaymentBanner, variant = 'generate' }) => {
   const [siteData, setSiteData] = useState<WebsiteData>(data);
 
   // Sync external `data` prop changes into internal state. Needed for
@@ -964,11 +968,17 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       ) : (
         <>
           <div className="fixed top-0 left-0 w-full bg-[#111111] border-b border-white/10 text-white py-2 px-2 md:py-2.5 md:px-3 z-[70] shadow-lg flex items-center gap-2">
-            {/* Left: Back arrow */}
-            <button onClick={onBack} className="shrink-0 p-1 hover:bg-white/10 rounded transition-colors">
+            {/* Left: Back. On /booksy it's labelled "Back" and returns to
+                the booking-link form so the visitor can paste a new link.
+                It lives in this top bar (above the site header), so it never
+                overlaps the logo. */}
+            <button onClick={onBack} className="shrink-0 flex items-center gap-1.5 px-1.5 py-1 hover:bg-white/10 rounded transition-colors">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
+              {variant === 'booksy' && (
+                <span className="text-[10px] md:text-[12px] font-bold uppercase tracking-wider">Back</span>
+              )}
             </button>
             {/* Center: Static label — centered via flex-1 + text-center
                 so it sits between the back arrow and the status pill. */}
@@ -1036,14 +1046,19 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
             </a>
           </div>
 
-          <div className="flex items-center">
-            <button
-              onClick={onBack}
-              className="px-4 py-2 md:px-7 md:py-3 border-2 border-[#f4a100] text-[#f4a100] text-[10px] md:text-[13px] font-black uppercase tracking-widest hover:bg-[#f4a100] hover:text-[#1a1a1a] transition-all"
-            >
-              BACK
-            </button>
-          </div>
+          {/* Top-right "BACK" — kept for /generate, removed on /booksy where
+              the labelled top-left Back (in the top bar) is the single,
+              working way back to the booking-link form. */}
+          {variant !== 'booksy' && (
+            <div className="flex items-center">
+              <button
+                onClick={onBack}
+                className="px-4 py-2 md:px-7 md:py-3 border-2 border-[#f4a100] text-[#f4a100] text-[10px] md:text-[13px] font-black uppercase tracking-widest hover:bg-[#f4a100] hover:text-[#1a1a1a] transition-all"
+              >
+                BACK
+              </button>
+            </div>
+          )}
         </div>
       </header>
 
