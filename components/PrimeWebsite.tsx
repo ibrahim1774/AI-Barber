@@ -343,7 +343,7 @@ export function generatePrimeHTMLWithPlaceholders(siteData: WebsiteData): string
   </div>
 </section>`;
 
-  // Hours.
+  // Hours — or a map fallback when none, mirroring the editor's Visit column.
   const hours = siteData.hours || [];
   const hoursMarkup = hours.length > 0
     ? `<div>
@@ -352,7 +352,7 @@ export function generatePrimeHTMLWithPlaceholders(siteData: WebsiteData): string
           ${hours.map((h) => `<li class="p-hours-row"><span style="text-transform:uppercase;font-size:12px;letter-spacing:0.08em;">${escapeHtml(h.day)}</span><span class="p-serif p-italic" style="font-size:1.05rem;color:var(--p-brand);">${escapeHtml(fmtHours(h))}</span></li>`).join('')}
         </ul>
       </div>`
-    : '';
+    : `<div><iframe src="https://maps.google.com/maps?q=${mapQuery}&output=embed" width="100%" height="320" style="border:0;display:block;" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="${safeName} on Google Maps"></iframe></div>`;
 
   const publishedAt = String(Date.now());
 
