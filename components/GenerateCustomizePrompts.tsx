@@ -368,37 +368,43 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-1.5 mb-3">
-              <button
-                type="button"
-                onClick={() => setChoice('yes')}
-                className="px-2 py-2 text-[11px] font-bold uppercase tracking-[0.12em] rounded-md transition whitespace-nowrap"
-                style={{
-                  background: choice === 'yes' ? GOLD : 'transparent',
-                  color: choice === 'yes' ? '#0a0a0a' : 'white',
-                  border: `1px solid ${choice === 'yes' ? GOLD : 'rgba(255,255,255,0.22)'}`,
-                }}
-              >
-                Yes, I have
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  // No link → jump straight to the 3 detail questions.
-                  setChoice('no');
-                  setNote('');
-                  setStep('name');
-                }}
-                className="px-2 py-2 text-[11px] font-bold uppercase tracking-[0.12em] rounded-md transition whitespace-nowrap"
-                style={{
-                  background: choice === 'no' ? GOLD : 'transparent',
-                  color: choice === 'no' ? '#0a0a0a' : 'white',
-                  border: `1px solid ${choice === 'no' ? GOLD : 'rgba(255,255,255,0.22)'}`,
-                }}
-              >
-                No, I don't have
-              </button>
-            </div>
+            {/* /booksy leads with the booking link as the only option — no
+                Yes/No split. /generate keeps the split so a linkless visitor
+                can route to the manual name/area/phone questions. (On a failed
+                scrape, /booksy still falls through to those steps.) */}
+            {!isBooksy && (
+              <div className="grid grid-cols-2 gap-1.5 mb-3">
+                <button
+                  type="button"
+                  onClick={() => setChoice('yes')}
+                  className="px-2 py-2 text-[11px] font-bold uppercase tracking-[0.12em] rounded-md transition whitespace-nowrap"
+                  style={{
+                    background: choice === 'yes' ? GOLD : 'transparent',
+                    color: choice === 'yes' ? '#0a0a0a' : 'white',
+                    border: `1px solid ${choice === 'yes' ? GOLD : 'rgba(255,255,255,0.22)'}`,
+                  }}
+                >
+                  Yes, I have
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    // No link → jump straight to the 3 detail questions.
+                    setChoice('no');
+                    setNote('');
+                    setStep('name');
+                  }}
+                  className="px-2 py-2 text-[11px] font-bold uppercase tracking-[0.12em] rounded-md transition whitespace-nowrap"
+                  style={{
+                    background: choice === 'no' ? GOLD : 'transparent',
+                    color: choice === 'no' ? '#0a0a0a' : 'white',
+                    border: `1px solid ${choice === 'no' ? GOLD : 'rgba(255,255,255,0.22)'}`,
+                  }}
+                >
+                  No, I don't have
+                </button>
+              </div>
+            )}
 
             {choice === 'yes' && (
               <>
