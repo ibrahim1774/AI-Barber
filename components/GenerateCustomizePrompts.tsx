@@ -226,7 +226,7 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
       aria-live="polite"
     >
       <div
-        className="pointer-events-auto w-full max-w-[262px] rounded-xl p-3.5 transition-all duration-300"
+        className="pointer-events-auto w-full max-w-[320px] rounded-lg p-3.5 transition-all duration-300"
         style={{
           background: BG_CARD,
           border: `1px solid ${GOLD_DARK}`,
@@ -304,17 +304,17 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
                         key={key}
                         type="button"
                         onClick={() => pickTemplate(key)}
-                        className="px-2 py-1.5 rounded-md transition text-left"
+                        className="flex items-center justify-center gap-1.5 px-2 py-2 rounded-md transition whitespace-nowrap"
                         style={{
                           background: active ? GOLD : 'transparent',
                           color: active ? '#0a0a0a' : 'white',
                           border: `1px solid ${active ? GOLD : 'rgba(255,255,255,0.22)'}`,
                         }}
                       >
-                        <span className="block text-[11px] font-bold uppercase tracking-[0.12em] leading-tight">{label}</span>
+                        <span className="text-[10px] font-bold uppercase tracking-[0.08em]">{label}</span>
                         <span
-                          className="block text-[8.5px] font-medium uppercase tracking-[0.18em] leading-tight mt-0.5"
-                          style={{ color: active ? 'rgba(10,10,10,0.6)' : 'rgba(255,255,255,0.45)', fontStyle: 'italic' }}
+                          className="text-[9px] italic"
+                          style={{ color: active ? 'rgba(10,10,10,0.6)' : 'rgba(255,255,255,0.5)' }}
                         >
                           {name}
                         </span>
@@ -372,7 +372,7 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
               <button
                 type="button"
                 onClick={() => setChoice('yes')}
-                className="px-2 py-2.5 text-[11px] font-bold uppercase tracking-[0.12em] rounded-md transition"
+                className="px-2 py-2 text-[11px] font-bold uppercase tracking-[0.12em] rounded-md transition whitespace-nowrap"
                 style={{
                   background: choice === 'yes' ? GOLD : 'transparent',
                   color: choice === 'yes' ? '#0a0a0a' : 'white',
@@ -389,7 +389,7 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
                   setNote('');
                   setStep('name');
                 }}
-                className="px-2 py-2.5 text-[11px] font-bold uppercase tracking-[0.12em] rounded-md transition"
+                className="px-2 py-2 text-[11px] font-bold uppercase tracking-[0.12em] rounded-md transition whitespace-nowrap"
                 style={{
                   background: choice === 'no' ? GOLD : 'transparent',
                   color: choice === 'no' ? '#0a0a0a' : 'white',
@@ -401,23 +401,28 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
             </div>
 
             {choice === 'yes' && (
-              <input
-                // type="text" (not "url") so a pasted share-sheet blob —
-                // "…book on Booksy here: https://booksy.com/…" — isn't
-                // rejected by native URL validation before extractFirstUrl
-                // can pull the link out of it. Mirrors the /booksy page.
-                type="text"
-                inputMode="url"
-                autoCapitalize="off"
-                autoCorrect="off"
-                spellCheck={false}
-                autoFocus
-                value={bookingUrl}
-                onChange={(e) => setBookingUrl(e.target.value)}
-                placeholder="Booksy, Squareup, Fresha, etc…"
-                className="w-full px-2.5 py-2.5 bg-transparent text-white placeholder-white/35 text-[13px] outline-none mb-2.5"
-                style={inputStyle}
-              />
+              <>
+                <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-white/45 mb-1.5">
+                  Enter your barber booking link here
+                </p>
+                <input
+                  // type="text" (not "url") so a pasted share-sheet blob —
+                  // "…book on Booksy here: https://booksy.com/…" — isn't
+                  // rejected by native URL validation before extractFirstUrl
+                  // can pull the link out of it. Mirrors the /booksy page.
+                  type="text"
+                  inputMode="url"
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  autoFocus
+                  value={bookingUrl}
+                  onChange={(e) => setBookingUrl(e.target.value)}
+                  placeholder="Booksy, Squareup, Fresha, etc…"
+                  className="w-full px-3 py-3.5 bg-transparent text-white placeholder-white/35 text-[15px] outline-none mb-3"
+                  style={inputStyle}
+                />
+              </>
             )}
 
             {/* No Skip button — the "No, I don't have" option above already
