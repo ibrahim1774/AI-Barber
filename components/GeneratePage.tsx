@@ -8,6 +8,7 @@ import { fireLead } from '../lib/leadEvents';
 import { useAuth } from '../contexts/AuthContext';
 import { GenerateCustomizePrompts } from './GenerateCustomizePrompts';
 import { HomeLaunchGuide } from './HomeLaunchGuide';
+import { BooksyDesignSwitcher } from './BooksyDesignSwitcher';
 
 // /generate — "Customize Your Barbershop Site".
 //
@@ -66,6 +67,17 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
   const handleTemplateChange = useCallback((t: TemplateId) => {
     setTemplate(t);
     setSiteData((prev) => (prev ? { ...prev, template: t } : prev));
+  }, []);
+
+  // In-editor design switch (floating bubble). Re-skins the SAME content with
+  // a brief loading beat — no re-scrape, lossless. /booksy only. The switcher
+  // disables the active button, so this only fires for a real change.
+  const [switching, setSwitching] = useState(false);
+  const handleDesignSwitch = useCallback((t: 'luxe' | 'prime') => {
+    setSwitching(true);
+    setTemplate(t);
+    setSiteData((prev) => (prev ? { ...prev, template: t } : prev));
+    window.setTimeout(() => setSwitching(false), 850);
   }, []);
 
   const { user } = useAuth();
@@ -236,6 +248,30 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
       )}
       {showLaunchGuide && !showPrompts && !isCheckoutFlowOpen && (
         <HomeLaunchGuide onClose={() => setShowLaunchGuide(false)} />
+      )}
+
+      {/* Floating Design 1 / Design 2 switcher — /booksy only, once the
+          customize overlay is closed and checkout isn't open. */}
+      {variant === 'booksy' && !showPrompts && !isCheckoutFlowOpen && (
+        <BooksyDesignSwitcher
+          current={activeTemplate ?? 'luxe'}
+          onSelect={handleDesignSwitch}
+          busy={switching}
+        />
+      )}
+
+      {/* Brief loading beat while the design re-skins. */}
+      {switching && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center"
+          style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(2px)' }}
+          aria-live="polite"
+        >
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 size={40} className="animate-spin" style={{ color: GOLD }} />
+            <p className="text-[12px] uppercase tracking-[0.2em] text-white/80 font-bold">Reskinning your site…</p>
+          </div>
+        </div>
       )}
     </>
   );
