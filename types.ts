@@ -1,5 +1,5 @@
 
-export type TemplateId = 'luxe' | 'euphoria';
+export type TemplateId = 'luxe' | 'euphoria' | 'prime';
 
 export interface ShopInputs {
   shopName: string;
@@ -82,6 +82,13 @@ export interface WebsiteData {
   // "Meet the Team" section when at least one staff entry exists.
   // Photo is editable in the preview (replace-image overlay).
   staff?: { name: string; role?: string; photo?: string }[];
+  // Optional "Before you arrive" policy box — used by the Prime (Design 2)
+  // barbershop template. Seeded with a default when a prime site is
+  // generated; editable in the preview. Other templates ignore it.
+  policy?: { title: string; body: string };
+  // Optional full-width pull-quote — used by the Prime (Design 2) template.
+  // Seeded with a default; editable. Other templates ignore it.
+  pullQuote?: { text: string; accent?: string };
   contact: {
     address: string;
     email: string;
