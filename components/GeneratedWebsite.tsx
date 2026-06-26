@@ -45,6 +45,10 @@ interface GeneratedWebsiteProps {
   // When true, the entire PrePaymentBanner (Launch CTA) is hidden. Used by
   // /booksy to hide the CTA until the visitor enters their link / generates.
   hidePrepaymentBanner?: boolean;
+  // When provided, echoes internal edited state up to the parent on every
+  // user edit (not on prop-sync). The /booksy funnel uses this so the
+  // floating design switcher re-skins with EDITED content, not stale content.
+  onUpdate?: (data: WebsiteData) => void;
 }
 
 // Extracts the trailing "City, State [ZIP]" portion of an area string so
@@ -425,8 +429,11 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
 </html>`;
 }
 
-export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack, site, onNavigateDashboard, isPostPayment = false, userId = null, onCheckoutFlowChange, hidePrepaymentBanner }) => {
+export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack, site, onNavigateDashboard, isPostPayment = false, userId = null, onCheckoutFlowChange, hidePrepaymentBanner, onUpdate }) => {
   const [siteData, setSiteData] = useState<WebsiteData>(data);
+  // Echo guard for onUpdate — see PrimeWebsite for the rationale. Only active
+  // when onUpdate is provided (the /booksy funnel); a no-op otherwise.
+  const skipNextUpdate = useRef(true);
 
   // Sync external `data` prop changes into internal state. Needed for
   // the /generatebarbershop funnel, which keeps its own siteData state
@@ -437,8 +444,15 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
   // sets generatedData exactly once after generation, so this never
   // overwrites any in-progress inline edits there.
   useEffect(() => {
+    skipNextUpdate.current = true;
     setSiteData(data);
   }, [data]);
+  // Echo internal edits up to the parent (skipping prop-sync bounces) so the
+  // /booksy design switcher re-skins with the edited content.
+  useEffect(() => {
+    if (skipNextUpdate.current) { skipNextUpdate.current = false; return; }
+    onUpdate?.(siteData);
+  }, [siteData]);
   const [isScrolled, setIsScrolled] = useState(false);
   const [isDeploying, setIsDeploying] = useState(false);
   const [, setDeploymentResult] = useState<{

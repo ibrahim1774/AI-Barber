@@ -29,17 +29,22 @@ interface PrimeWebsiteProps {
   userId?: string | null;
   onCheckoutFlowChange?: (open: boolean) => void;
   hidePrepaymentBanner?: boolean;
+  // When provided, the component echoes its internal edited state up to the
+  // parent on every user edit (not on prop-sync). The /booksy funnel uses
+  // this so the floating design switcher re-skins with the EDITED content,
+  // not the stale generated content — "keep content, re-skin only".
+  onUpdate?: (data: WebsiteData) => void;
 }
 
 // Seed copy used when a prime site has no policy / pull-quote of its own
 // (e.g. an existing booksy luxe site switched over to Design 2). Both the
 // editor and the deploy builder fall back to these so the design always
 // looks complete; edits write back onto WebsiteData.policy / .pullQuote.
-const DEFAULT_POLICY = {
+const DEFAULT_POLICY: { title: string; body: string } = {
   title: 'Before you arrive',
   body: 'We work appointment-only — your booked time is held for you. Cancellations within 4 hours of the appointment, and no-shows, are billed in full. Please come freshly washed; products and a hot-towel finish are included in every cut.',
 };
-const DEFAULT_PULLQUOTE = {
+const DEFAULT_PULLQUOTE: { text: string; accent?: string } = {
   text: "A great cut isn't a transaction — it's a craft.",
 };
 
@@ -476,11 +481,20 @@ ${PRIME_SCOPED_CSS}
 // ===========================================================================
 // Editor component
 // ===========================================================================
-export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, onNavigateDashboard, isPostPayment = false, userId = null, onCheckoutFlowChange, hidePrepaymentBanner }) => {
+export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, onNavigateDashboard, isPostPayment = false, userId = null, onCheckoutFlowChange, hidePrepaymentBanner, onUpdate }) => {
   usePrimeAssets();
 
   const [siteData, setSiteData] = useState<WebsiteData>(data);
-  useEffect(() => { setSiteData(data); }, [data]);
+  // Echo guard: a prop-driven sync (parent → child) must NOT bounce back up
+  // as an onUpdate (which would loop). Set true before each sync; the
+  // siteData effect below clears it and skips that one echo. Starts true so
+  // the initial mount/seed doesn't echo.
+  const skipNextUpdate = useRef(true);
+  useEffect(() => { skipNextUpdate.current = true; setSiteData(data); }, [data]);
+  useEffect(() => {
+    if (skipNextUpdate.current) { skipNextUpdate.current = false; return; }
+    onUpdate?.(siteData);
+  }, [siteData]);
 
   const [isDeploying, setIsDeploying] = useState(false);
   const [, setDeploymentResult] = useState<{ error?: string } | null>(null);
