@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { WebsiteData, SiteInstance, SaveStatus } from '../types';
 import { CameraIcon } from './Icons';
 import { EditorToolbar } from './EditorToolbar';
+import { EditorColorPicker } from './EditorColorPicker';
 import { PublishOverlay } from './PublishOverlay';
 import { useAutoSave } from '../hooks/useAutoSave';
 import { useResetOnReturnFromStripe } from '../hooks/useResetOnReturnFromStripe';
@@ -208,6 +209,27 @@ function escapeHtml(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
+// Resolve the picked color theme onto Euphoria's CSS variables. Shared by the
+// editor preview AND the deployed static HTML so they stay identical. Returns
+// null for the default gold (falls through to EUPHORIA_SCOPED_CSS defaults).
+export function resolveEuphoriaTheme(slug?: string):
+  | { brand: string; brandBright: string; bg: string; bg2: string; bg3: string }
+  | null {
+  if (slug && slug.charAt(0) === '#') return { brand: slug, brandBright: slug, bg: '#000', bg2: '#0c0c0c', bg3: '#141414' };
+  if (slug === 'blackWhite') return { brand: '#ffffff', brandBright: '#f5f5f5', bg: '#000', bg2: '#0c0c0c', bg3: '#141414' };
+  if (slug === 'redBlack')   return { brand: '#dc2626', brandBright: '#ef4444', bg: '#000', bg2: '#0c0c0c', bg3: '#141414' };
+  if (slug === 'purpleGreen') return { brand: '#22c55e', brandBright: '#4ade80', bg: '#160328', bg2: '#1f0436', bg3: '#2a0747' };
+  return null;
+}
+
+// Build the inline style string that overrides Euphoria's root CSS vars from a
+// resolved theme. Empty when the theme is the default (no override needed).
+function euphoriaRootStyle(slug?: string): string {
+  const t = resolveEuphoriaTheme(slug);
+  if (!t) return '';
+  return `--eu-brand:${t.brand};--eu-brand-bright:${t.brandBright};--eu-bg:${t.bg};--eu-bg-2:${t.bg2};--eu-bg-3:${t.bg3};background:${t.bg};`;
+}
+
 // Extracts the trailing "City, State" portion of an area string so the
 // hero eyebrow never echoes a full street address even if the user
 // pastes one in. Inputs with two or fewer comma-separated parts pass
@@ -225,6 +247,7 @@ export function generateEuphoriaHTMLWithPlaceholders(siteData: WebsiteData): str
   const safeArea = escapeHtml(siteData.area);
   const safeAreaShort = escapeHtml(cityStateOnly(siteData.area));
   const mapQuery = encodeURIComponent(`${siteData.shopName} ${siteData.area}`);
+  const rootStyle = euphoriaRootStyle((siteData as any).colorTheme);
 
   const galleryTiles = siteData.gallery
     .map((url, i) => ({ url, i }))
@@ -285,7 +308,7 @@ ${EUPHORIA_SCOPED_CSS}
   </style>
 </head>
 <body>
-<div class="euphoria-root">
+<div class="euphoria-root"${rootStyle ? ` style="${rootStyle}"` : ''}>
 
   <!-- Nav -->
   <nav style="position:sticky;top:0;z-index:50;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--eu-line-soft);">
@@ -435,6 +458,13 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
 
   const getSite = useCallback(() => siteRef.current, []);
   const { triggerSave, saveNow } = useAutoSave(getSite, userId, setSaveStatus);
+
+  // Theme color — written by the floating EditorColorPicker. The renderer
+  // (preview + deployed HTML) reads siteData.colorTheme via resolveEuphoriaTheme.
+  const handleColorChange = (hex: string) => {
+    setSiteData(prev => ({ ...prev, colorTheme: hex }));
+    if (isPostPayment) triggerSave();
+  };
 
   const siteSlug = useMemo(() => {
     return siteData.shopName
@@ -688,19 +718,11 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
     return Array.from({ length: Math.max(filledCount, 4) }, (_, i) => i);
   }, [siteData.gallery]);
 
-  // Resolve color theme — matches the set used by GeneratedWebsite. Override
-  // the existing Euphoria CSS variables on the root rather than rewriting
-  // every utility — Euphoria is already token-driven.
-  const themeOverride = (() => {
-    const slug = (siteData as any).colorTheme as string;
-    // Custom picked color (raw hex) → use it as the brand accent on the
-    // default dark canvas.
-    if (slug && slug.charAt(0) === '#') return { brand: slug, brandBright: slug, bg: '#000', bg2: '#0c0c0c', bg3: '#141414' };
-    if (slug === 'blackWhite') return { brand: '#ffffff', brandBright: '#f5f5f5', bg: '#000', bg2: '#0c0c0c', bg3: '#141414' };
-    if (slug === 'redBlack')   return { brand: '#dc2626', brandBright: '#ef4444', bg: '#000', bg2: '#0c0c0c', bg3: '#141414' };
-    if (slug === 'purpleGreen') return { brand: '#22c55e', brandBright: '#4ade80', bg: '#160328', bg2: '#1f0436', bg3: '#2a0747' };
-    return null; // goldBlack falls through to the defaults defined in EUPHORIA_SCOPED_CSS
-  })();
+  // Resolve color theme via the shared resolver (same one the deployed HTML
+  // uses) so the editor preview and the live site stay identical. Override the
+  // existing Euphoria CSS variables on the root rather than rewriting every
+  // utility — Euphoria is already token-driven.
+  const themeOverride = resolveEuphoriaTheme((siteData as any).colorTheme);
   const themeStyle: React.CSSProperties = themeOverride
     ? {
         ['--eu-brand' as any]: themeOverride.brand,
@@ -716,13 +738,16 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
     <div className={`euphoria-root pt-[32px] md:pt-[40px] ${!isPostPayment ? 'pb-[250px] md:pb-[180px]' : ''}`} style={themeStyle}>
       {/* Toolbar / pre-payment banner */}
       {isPostPayment ? (
-        <EditorToolbar
-          saveStatus={saveStatus}
-          onSave={saveNow}
-          onPublish={handlePublish}
-          onBack={() => onNavigateDashboard?.()}
-          isPublishing={isPublishing}
-        />
+        <>
+          <EditorToolbar
+            saveStatus={saveStatus}
+            onSave={saveNow}
+            onPublish={handlePublish}
+            onBack={() => onNavigateDashboard?.()}
+            isPublishing={isPublishing}
+          />
+          <EditorColorPicker current={siteData.colorTheme} onPick={handleColorChange} />
+        </>
       ) : (
         <div className="fixed top-0 left-0 w-full bg-[#0c0c0c] border-b border-white/10 text-white py-2 px-2 md:py-2.5 md:px-3 z-[70] shadow-lg flex items-center gap-2">
           <button onClick={onBack} className="shrink-0 p-1 hover:bg-white/10 rounded transition-colors">

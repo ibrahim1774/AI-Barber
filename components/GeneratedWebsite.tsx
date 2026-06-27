@@ -26,6 +26,7 @@ import {
   CameraIcon
 } from './Icons';
 import { EditorToolbar } from './EditorToolbar';
+import { EditorColorPicker } from './EditorColorPicker';
 import { PublishOverlay } from './PublishOverlay';
 import { useAutoSave } from '../hooks/useAutoSave';
 import { useResetOnReturnFromStripe } from '../hooks/useResetOnReturnFromStripe';
@@ -80,9 +81,63 @@ const AIB_THEMES: Record<string, AibTheme> = {
   purpleGreen: { bgRgb: '22 3 40',   textRgb: '240 236 228', accent: '#22c55e', accentHover: '#4ade80' },
 };
 
+// Theming CSS shared by the editor preview (<style> in the component) and the
+// deployed static HTML (generateHTMLWithPlaceholders) so a picked color looks
+// identical live and in the editor. Scoped under .aib-themed; rewires LUXE's
+// hardcoded color utilities onto the CSS variables set on the root element.
+const AIB_THEME_CSS = `
+        /* Glossy LUXE pass — gradient depth + hairline section seam +
+           gold glow on accent buttons + glass-card treatment. */
+        .aib-themed .serif-accent { font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400; }
+        .aib-themed section + section { box-shadow: inset 0 1px 0 rgba(244,161,0,0.06); }
+        .aib-themed a[class*="bg-[#f4a100]"][class*="px-"] {
+          box-shadow: 0 0 30px rgba(244,161,0,0.18), 0 8px 20px rgba(0,0,0,0.35);
+        }
+
+        /* Rewire the hardcoded LUXE color utilities onto the picked theme.
+           Specificity bump via .aib-themed parent so these win against
+           the standalone utility classes. */
+        .aib-themed.bg-\\[\\#0d0d0d\\], .aib-themed .bg-\\[\\#0d0d0d\\] { background-color: var(--aib-bg) !important; }
+        .aib-themed .bg-\\[\\#111111\\] { background-color: rgb(var(--aib-bg-rgb) / 0.92) !important; }
+        .aib-themed .bg-\\[\\#0c0c0c\\] { background-color: rgb(var(--aib-bg-rgb) / 0.95) !important; }
+        .aib-themed .bg-\\[\\#1a1a1a\\] { background-color: rgb(var(--aib-bg-rgb) / 0.85) !important; }
+
+        .aib-themed .text-\\[\\#f4a100\\] { color: var(--aib-accent) !important; }
+        .aib-themed .bg-\\[\\#f4a100\\] { background-color: var(--aib-accent) !important; }
+        .aib-themed .border-\\[\\#f4a100\\] { border-color: var(--aib-accent) !important; }
+        .aib-themed .from-\\[\\#f4a100\\] { --tw-gradient-from: var(--aib-accent) !important; }
+        .aib-themed .to-\\[\\#f4a100\\] { --tw-gradient-to: var(--aib-accent) !important; }
+        .aib-themed .hover\\:bg-\\[\\#f4a100\\]:hover { background-color: var(--aib-accent) !important; }
+        .aib-themed .hover\\:text-\\[\\#f4a100\\]:hover { color: var(--aib-accent) !important; }
+        .aib-themed .hover\\:border-\\[\\#f4a100\\]:hover { border-color: var(--aib-accent) !important; }
+        .aib-themed .focus\\:border-\\[\\#f4a100\\]:focus { border-color: var(--aib-accent) !important; }
+        .aib-themed .ring-\\[\\#f4a100\\] { --tw-ring-color: var(--aib-accent) !important; }
+
+        /* Light cream variants used for hovers / pull quotes */
+        .aib-themed .text-\\[\\#e8c074\\] { color: var(--aib-accent-hover) !important; }
+        .aib-themed .bg-\\[\\#e8c074\\] { background-color: var(--aib-accent-hover) !important; }
+`;
+
+// Resolve the picked color theme. A custom hex paints as the accent on the dark
+// canvas; named slugs map to presets; unset/unknown falls back to gold/black.
+function resolveAibTheme(siteData: WebsiteData): AibTheme {
+  const ctRaw = (siteData as any).colorTheme as string | undefined;
+  return ctRaw && ctRaw.charAt(0) === '#'
+    ? { bgRgb: '13 13 13', textRgb: '255 255 255', accent: ctRaw, accentHover: ctRaw }
+    : (AIB_THEMES[ctRaw as string] || AIB_THEMES.goldBlack);
+}
+
+// Inline style string that sets the theme CSS vars on the deployed <body>.
+function aibThemeVars(theme: AibTheme): string {
+  return `--aib-bg:rgb(${theme.bgRgb});--aib-bg-rgb:${theme.bgRgb};--aib-text:rgb(${theme.textRgb});--aib-text-rgb:${theme.textRgb};--aib-accent:${theme.accent};--aib-accent-hover:${theme.accentHover};`;
+}
+
 // Exported so App.tsx can reuse it for post-payment deploy
 export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
   const formattedPhone = siteData.phone.replace(/\s+/g, '');
+  // Picked theme — applied via .aib-themed CSS vars on <body> so the deployed
+  // site matches the editor preview. Defaults to gold/black when unset.
+  const luxeTheme = resolveAibTheme(siteData);
 
   // Owner-editable label override lookup. Falls back to the hardcoded
   // default when the key is absent, so older saved sites render unchanged.
@@ -270,8 +325,9 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
       backdrop-filter: blur(2px);
     }
   </style>
+  <style>${AIB_THEME_CSS}</style>
 </head>
-<body class="bg-[#0d0d0d] text-white overflow-x-hidden">
+<body class="aib-themed bg-[#0d0d0d] text-white overflow-x-hidden" style="${aibThemeVars(luxeTheme)}">
   <header id="header" class="fixed top-0 left-0 w-full z-50 transition-all duration-300 bg-black/20 py-5 md:py-8">
     <div class="container mx-auto flex justify-between items-center px-4 md:px-6">
       <div class="flex items-center gap-4 md:gap-8">
@@ -507,6 +563,13 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
 
   // Auto-save hook (only active in post-payment mode)
   const { triggerSave, saveNow } = useAutoSave(getSite, userId, setSaveStatus);
+
+  // Theme color — written by the floating EditorColorPicker. resolveAibTheme
+  // (preview + deployed HTML) reads siteData.colorTheme to recolor everything.
+  const handleColorChange = (hex: string) => {
+    setSiteData(prev => ({ ...prev, colorTheme: hex }));
+    if (isPostPayment) triggerSave();
+  };
 
   // Owner-editable section eyebrows/headings & small labels. `lbl` reads
   // the override (falling back to the hardcoded default); `setLabel`
@@ -917,10 +980,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
   // Resolve color theme — falls back to gold/black when unset or unknown.
   // A custom picked color arrives as a raw hex ("#3b82f6"); paint it on the
   // dark canvas as the accent. Otherwise it's one of the named presets.
-  const ctRaw = (siteData as any).colorTheme as string | undefined;
-  const theme: AibTheme = ctRaw && ctRaw.charAt(0) === '#'
-    ? { bgRgb: '13 13 13', textRgb: '255 255 255', accent: ctRaw, accentHover: ctRaw }
-    : (AIB_THEMES[ctRaw as string] || AIB_THEMES.goldBlack);
+  const theme: AibTheme = resolveAibTheme(siteData);
   return (
     <div
       className={`aib-themed bg-[#0d0d0d] text-white overflow-hidden scroll-smooth pt-[32px] md:pt-[40px] ${!isPostPayment ? 'pb-[250px] md:pb-[180px]' : ''}`}
@@ -933,48 +993,19 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         ['--aib-accent-hover' as any]: theme.accentHover,
       }}
     >
-      <style>{`
-        /* Glossy LUXE pass — gradient depth + hairline section seam +
-           gold glow on accent buttons + glass-card treatment. Same
-           rules ship in the deployed HTML so editor matches live. */
-        .aib-themed .serif-accent { font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400; }
-        .aib-themed section + section { box-shadow: inset 0 1px 0 rgba(244,161,0,0.06); }
-        .aib-themed a[class*="bg-[#f4a100]"][class*="px-"] {
-          box-shadow: 0 0 30px rgba(244,161,0,0.18), 0 8px 20px rgba(0,0,0,0.35);
-        }
-
-        /* Rewire the hardcoded LUXE color utilities onto the picked theme.
-           Specificity bump via .aib-themed parent so these win against
-           the standalone utility classes. */
-        .aib-themed.bg-\\[\\#0d0d0d\\], .aib-themed .bg-\\[\\#0d0d0d\\] { background-color: var(--aib-bg) !important; }
-        .aib-themed .bg-\\[\\#111111\\] { background-color: rgb(var(--aib-bg-rgb) / 0.92) !important; }
-        .aib-themed .bg-\\[\\#0c0c0c\\] { background-color: rgb(var(--aib-bg-rgb) / 0.95) !important; }
-        .aib-themed .bg-\\[\\#1a1a1a\\] { background-color: rgb(var(--aib-bg-rgb) / 0.85) !important; }
-
-        .aib-themed .text-\\[\\#f4a100\\] { color: var(--aib-accent) !important; }
-        .aib-themed .bg-\\[\\#f4a100\\] { background-color: var(--aib-accent) !important; }
-        .aib-themed .border-\\[\\#f4a100\\] { border-color: var(--aib-accent) !important; }
-        .aib-themed .from-\\[\\#f4a100\\] { --tw-gradient-from: var(--aib-accent) !important; }
-        .aib-themed .to-\\[\\#f4a100\\] { --tw-gradient-to: var(--aib-accent) !important; }
-        .aib-themed .hover\\:bg-\\[\\#f4a100\\]:hover { background-color: var(--aib-accent) !important; }
-        .aib-themed .hover\\:text-\\[\\#f4a100\\]:hover { color: var(--aib-accent) !important; }
-        .aib-themed .hover\\:border-\\[\\#f4a100\\]:hover { border-color: var(--aib-accent) !important; }
-        .aib-themed .focus\\:border-\\[\\#f4a100\\]:focus { border-color: var(--aib-accent) !important; }
-        .aib-themed .ring-\\[\\#f4a100\\] { --tw-ring-color: var(--aib-accent) !important; }
-
-        /* Light cream variants used for hovers / pull quotes */
-        .aib-themed .text-\\[\\#e8c074\\] { color: var(--aib-accent-hover) !important; }
-        .aib-themed .bg-\\[\\#e8c074\\] { background-color: var(--aib-accent-hover) !important; }
-      `}</style>
+      <style>{AIB_THEME_CSS}</style>
       {/* Toolbar: EditorToolbar for post-payment, red banner for pre-payment */}
       {isPostPayment ? (
-        <EditorToolbar
-          saveStatus={saveStatus}
-          onSave={saveNow}
-          onPublish={handlePublish}
-          onBack={() => onNavigateDashboard?.()}
-          isPublishing={isPublishing}
-        />
+        <>
+          <EditorToolbar
+            saveStatus={saveStatus}
+            onSave={saveNow}
+            onPublish={handlePublish}
+            onBack={() => onNavigateDashboard?.()}
+            isPublishing={isPublishing}
+          />
+          <EditorColorPicker current={siteData.colorTheme} onPick={handleColorChange} />
+        </>
       ) : (
         <>
           <div className="fixed top-0 left-0 w-full bg-[#111111] border-b border-white/10 text-white py-2 px-2 md:py-2.5 md:px-3 z-[70] shadow-lg flex items-center gap-2">
