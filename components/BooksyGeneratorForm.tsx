@@ -22,6 +22,11 @@ interface Props {
   // into the same loading → editor flow without branching.
   onGenerate: (inputs: ShopInputs, scraped: WebsiteData) => void;
   onSignIn?: () => void;
+  // Which generated-site design the scrape result is stamped with.
+  // Defaults to 'luxe' (Design 1) so the public /booksy flow is
+  // unchanged; the admin generator passes 'prime' (Design 2) when the
+  // operator picks it, so admin-built sites deploy with the chosen design.
+  template?: 'luxe' | 'prime';
 }
 
 // Step labels for the scrape loading screen. The scrape itself is one
@@ -39,7 +44,7 @@ const LOADING_STEPS = [
 // we hand it to /api/import-scrape, and the returned rich data pre-fills
 // the LUXE renderer (shopName, area, services, gallery, reviews, bio,
 // hours, staff, aggregate rating).
-export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn }) => {
+export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn, template = 'luxe' }) => {
   const [url, setUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -118,7 +123,7 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn }) =
         shopName: data.shopName,
         area: data.area,
         phone: data.phone || '',
-        template: 'luxe',
+        template,
         bookingUrl: customerBookingUrl,
       };
 
@@ -146,7 +151,7 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn }) =
         shopName: data.shopName,
         area: data.area,
         phone: data.phone || '',
-        template: 'luxe',
+        template,
         bookingUrl: customerBookingUrl,
         hero: {
           heading: data.shopName,

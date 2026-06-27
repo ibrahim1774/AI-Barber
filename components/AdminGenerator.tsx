@@ -32,10 +32,16 @@ function generateTempPassword(): string {
 
 type Step = 'setup' | 'generating' | 'publishing' | 'done' | 'error';
 type Mode = 'full' | 'booksy';
+// The two generated-site designs offered on /booksy: 'luxe' (Design 1)
+// and 'prime' (Design 2). The admin picks one and it flows through the
+// scrape → publish → save path exactly like a client's pick, so the
+// deployed + dashboard-editable site uses the chosen design.
+type AdminTemplate = 'luxe' | 'prime';
 
 export const AdminGenerator: React.FC = () => {
   const [step, setStep] = useState<Step>('setup');
   const [mode, setMode] = useState<Mode>('full');
+  const [template, setTemplate] = useState<AdminTemplate>('luxe');
   const initialPassword = useMemo(() => generateTempPassword(), []);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState(initialPassword);
@@ -346,12 +352,53 @@ export const AdminGenerator: React.FC = () => {
             ? 'Build from scratch — fill in shop name, location, services, and a Booksy/Fresha/Square link is optional.'
             : 'Paste the customer’s Booksy / Fresha / Square / Vagaro / StyleSeat link. We scrape everything and build the site automatically.'}
         </p>
+
+        {/* Design picker — booksy mode only (the two /booksy designs).
+            The choice is stamped on the scraped site data and flows
+            through publish + Supabase save, so the deployed site and the
+            customer's editable dashboard both use the chosen design. */}
+        {mode === 'booksy' && (
+          <>
+            <label className="block text-[10px] font-bold uppercase tracking-[3px] text-[#888] mb-2">
+              Design
+            </label>
+            <div className="flex gap-2 mb-2">
+              <button
+                type="button"
+                onClick={() => setTemplate('luxe')}
+                className={`flex-1 py-3 px-4 text-xs font-bold uppercase tracking-[2px] rounded border transition-colors ${
+                  template === 'luxe'
+                    ? 'bg-[#f4a100] text-[#1a1a1a] border-[#f4a100]'
+                    : 'bg-[#0d0d0d] text-[#888] border-white/10 hover:border-white/30'
+                }`}
+              >
+                Design 1 · Luxe
+              </button>
+              <button
+                type="button"
+                onClick={() => setTemplate('prime')}
+                className={`flex-1 py-3 px-4 text-xs font-bold uppercase tracking-[2px] rounded border transition-colors ${
+                  template === 'prime'
+                    ? 'bg-[#f4a100] text-[#1a1a1a] border-[#f4a100]'
+                    : 'bg-[#0d0d0d] text-[#888] border-white/10 hover:border-white/30'
+                }`}
+              >
+                Design 2 · Prime
+              </button>
+            </div>
+            <p className="text-[#666] text-[10px] mb-8">
+              {template === 'luxe'
+                ? 'Design 1 — the classic luxe barber layout.'
+                : 'Design 2 — the editorial “prime” layout (PrimeHub port).'}
+            </p>
+          </>
+        )}
       </div>
 
       {mode === 'full' ? (
         <GeneratorForm onGenerate={handleGenerate} />
       ) : (
-        <BooksyGeneratorForm onGenerate={handleGenerate} />
+        <BooksyGeneratorForm onGenerate={handleGenerate} template={template} />
       )}
     </div>
   );
