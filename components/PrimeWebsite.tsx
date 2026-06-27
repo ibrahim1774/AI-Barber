@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { WebsiteData, SiteInstance, SaveStatus } from '../types';
 import { CameraIcon } from './Icons';
 import { EditorToolbar } from './EditorToolbar';
+import { EditorColorPicker } from './EditorColorPicker';
 import { PublishOverlay } from './PublishOverlay';
 import { useAutoSave } from '../hooks/useAutoSave';
 import { useResetOnReturnFromStripe } from '../hooks/useResetOnReturnFromStripe';
@@ -538,6 +539,14 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
       .substring(0, 50);
   }, [siteData.shopName]);
 
+  // Theme color — written by the floating EditorColorPicker. The Prime
+  // renderer (preview + deployed HTML) already reads siteData.colorTheme via
+  // resolvePrimeTheme, so this is all the wiring it needs.
+  const handleColorChange = (hex: string) => {
+    setSiteData(prev => ({ ...prev, colorTheme: hex }));
+    if (isPostPayment) triggerSave();
+  };
+
   const handleTextChange = (path: string, value: string | string[]) => {
     const newData: any = { ...siteData };
     const parts = path.split('.');
@@ -797,13 +806,16 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
     <div className={`prime-root pt-[32px] md:pt-[40px] ${!isPostPayment ? 'pb-[250px] md:pb-[180px]' : ''}`} style={themeStyle}>
       {/* Toolbar / pre-payment banner */}
       {isPostPayment ? (
-        <EditorToolbar
-          saveStatus={saveStatus}
-          onSave={saveNow}
-          onPublish={handlePublish}
-          onBack={() => onNavigateDashboard?.()}
-          isPublishing={isPublishing}
-        />
+        <>
+          <EditorToolbar
+            saveStatus={saveStatus}
+            onSave={saveNow}
+            onPublish={handlePublish}
+            onBack={() => onNavigateDashboard?.()}
+            isPublishing={isPublishing}
+          />
+          <EditorColorPicker current={siteData.colorTheme} onPick={handleColorChange} />
+        </>
       ) : (
         <div className="fixed top-0 left-0 w-full bg-[#0a0a0a] border-b border-white/10 text-white py-2 px-2 md:py-2.5 md:px-3 z-[70] shadow-lg flex items-center gap-2">
           <button onClick={onBack} className="shrink-0 p-1 hover:bg-white/10 rounded transition-colors">
