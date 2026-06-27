@@ -1,8 +1,8 @@
 import React from 'react';
 
-// Floating Design 1 / Design 2 switcher for the /booksy editor. Mirrors the
-// landscaping switcher's UX: a desktop panel pinned left-center and a mobile
-// bottom pill, both above the editor toolbar (z 70) but below modals (z 150).
+// Floating Design 1 / Design 2 switcher for the /booksy editor. A single
+// vertical panel pinned to the LEFT, vertically centered (left-middle) on all
+// screen sizes — above the editor toolbar (z 70) but below modals (z 150).
 // Selecting a design re-skins the SAME content (no re-scrape) via the parent's
 // onSelect; the parent shows a brief loading overlay while it swaps. Booksy
 // only — never rendered on /generate.
@@ -56,29 +56,16 @@ export const BooksyDesignSwitcher: React.FC<BooksyDesignSwitcherProps> = ({ curr
   };
 
   return (
-    <>
-      {/* Desktop — left-center vertical panel */}
-      <div
-        className="hidden md:flex fixed left-3 top-1/2 -translate-y-1/2 z-[78] flex-col gap-2 rounded-2xl p-3"
-        style={cardStyle}
-        role="group"
-        aria-label="Switch site design"
-      >
-        <span className="text-[9px] font-bold uppercase tracking-[0.28em] text-white/45 text-center mb-0.5">Design</span>
-        {OPTIONS.map((o) => <Btn key={o.key} k={o.key} label={o.label} />)}
-      </div>
-
-      {/* Mobile — bottom-center horizontal pill, lifted above the pre-payment banner */}
-      <div
-        className="flex md:hidden fixed left-1/2 -translate-x-1/2 z-[78] items-center gap-2 rounded-full px-3 py-2"
-        style={{ ...cardStyle, bottom: 'calc(env(safe-area-inset-bottom, 0px) + 270px)' }}
-        role="group"
-        aria-label="Switch site design"
-      >
-        <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/45 pl-1">Design</span>
-        {OPTIONS.map((o) => <Btn key={o.key} k={o.key} label={o.label} />)}
-      </div>
-    </>
+    // Single left-middle vertical panel on all screen sizes (desktop + mobile).
+    <div
+      className="flex fixed left-3 top-1/2 -translate-y-1/2 z-[78] flex-col gap-2 rounded-2xl p-3"
+      style={cardStyle}
+      role="group"
+      aria-label="Switch site design"
+    >
+      <span className="text-[9px] font-bold uppercase tracking-[0.28em] text-white/45 text-center mb-0.5">Design</span>
+      {OPTIONS.map((o) => <Btn key={o.key} k={o.key} label={o.label} />)}
+    </div>
   );
 };
 
