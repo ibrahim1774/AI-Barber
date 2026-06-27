@@ -127,9 +127,6 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
     async (rawUrl: string): Promise<boolean> => {
       const url = extractFirstUrl(rawUrl) ?? rawUrl.trim();
       if (!url) return false;
-      // Booking link submitted → completion. Fire now (on submit) so the
-      // lead is captured even if the scrape later fails.
-      fireLead({ shopName: siteData?.shopName || SEED_NAME, area: siteData?.area || '', phone: siteData?.phone || '', bookingUrl: url });
       try {
         const resp = await fetch('/api/import-scrape', {
           method: 'POST',
@@ -155,6 +152,19 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
           template,
         });
         setSiteData(scraped);
+        // Booking link → completion. Fire the lead AFTER the scrape resolves
+        // so the CRM/Make.com row carries the REAL Booksy shop name, not the
+        // 'Premium Cuts' seed. (fireLead is once-per-session, so firing early
+        // with the seed permanently locked the wrong name in.) On scrape
+        // failure we don't fire here — the overlay falls through to the manual
+        // questions, whose completion fires the lead with the typed name.
+        // Mirrors PrimeHub's barber-generate timing.
+        fireLead({
+          shopName: scraped.shopName || siteData?.shopName || SEED_NAME,
+          area: scraped.area || siteData?.area || '',
+          phone: scraped.phone || siteData?.phone || '',
+          bookingUrl: url,
+        });
         return true;
       } catch (err) {
         console.warn('[generate] booking-link scrape failed:', err);
