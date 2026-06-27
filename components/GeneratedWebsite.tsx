@@ -1551,6 +1551,18 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
                 Book Appointment
               </a>
             )}
+
+            {/* Editor-only: booking URL input (never appears in deployed HTML) */}
+            <div className="mt-6 w-full max-w-md">
+              <label className="block text-[#f4a100] font-bold text-[9px] md:text-[10px] tracking-[2px] uppercase font-montserrat mb-1">Booking link (Book Appointment button)</label>
+              <input
+                type="url"
+                defaultValue={siteData.bookingUrl || ''}
+                onBlur={(e) => handleTextChange('bookingUrl', e.target.value)}
+                placeholder="https://booksy.com/…"
+                className="w-full bg-[#111] border border-white/20 text-[#ccc] text-xs px-3 py-2 outline-none focus:border-[#f4a100]/60 rounded"
+              />
+            </div>
           </div>
         </div>
       </section>

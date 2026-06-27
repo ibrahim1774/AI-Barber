@@ -823,7 +823,7 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
       {/* Welcome bar */}
       <div className="p-welcome">
         <span>Welcome</span>
-        {cityStateOnly(siteData.area) && <span style={{ color: 'var(--p-ink-muted)' }}>{cityStateOnly(siteData.area)}</span>}
+        {cityStateOnly(siteData.area) && <span style={{ color: 'var(--p-ink-muted)' }}><Editable text={cityStateOnly(siteData.area)} onSave={v => handleTextChange('area', v)} /></span>}
         {agg && <span style={{ color: 'var(--p-brand)' }}>★ {agg.rating.toFixed(1)}{agg.count > 0 ? ` · ${agg.count.toLocaleString()} reviews` : ''}</span>}
       </div>
 
@@ -1072,6 +1072,18 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
                   <a href={siteData.bookingUrl} target="_blank" rel="noopener noreferrer" onClick={handleBookClick} className="p-serif p-italic" style={{ color: 'var(--p-ink)', fontSize: '1.1rem' }}>Book online → confirmed instantly</a>
                 </div>
               )}
+              {/* Editor-only: booking URL input (never appears in deployed HTML) */}
+              <div>
+                <div className="p-eyebrow" style={{ marginBottom: 6 }}>Booking link (Book Appointment button)</div>
+                <input
+                  type="url"
+                  defaultValue={siteData.bookingUrl || ''}
+                  onBlur={e => handleTextChange('bookingUrl', e.target.value)}
+                  placeholder="https://booksy.com/…"
+                  className="p-editable"
+                  style={{ width: '100%', background: 'rgba(212,166,74,0.06)', border: '1px solid rgba(212,166,74,0.3)', color: 'var(--p-ink)', fontSize: '1rem', padding: '6px 10px', outline: 'none' }}
+                />
+              </div>
             </div>
           </div>
           {hours.length > 0 ? (
