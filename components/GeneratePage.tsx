@@ -140,7 +140,14 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
         const json = await resp.json();
         const { scraped } = buildSiteFromScrape(json, url, {
           manual: {
-            shopName: siteData?.shopName || SEED_NAME,
+            // Only pass the name as a manual override if the visitor
+            // actually TYPED one. The seed ('Premium Cuts') is a
+            // placeholder, not a real entry — passing it here made
+            // buildSiteFromScrape (manual wins over scrape) overwrite the
+            // real Booksy shop name with 'Premium Cuts'. Leaving it blank
+            // lets the scraped name win, which is what we want when the
+            // visitor only pasted a link. Same for area/phone.
+            shopName: siteData?.shopName && siteData.shopName !== SEED_NAME ? siteData.shopName : '',
             area: siteData?.area || '',
             phone: siteData?.phone || '',
             colorTheme,
