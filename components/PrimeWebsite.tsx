@@ -405,13 +405,13 @@ ${PRIME_SCOPED_CSS}
   </nav>
 
   <!-- Hero -->
-  <section id="top" style="position:relative;min-height:64vh;display:flex;align-items:center;justify-content:center;overflow:hidden;">
+  <section id="top" style="position:relative;min-height:42vh;display:flex;align-items:center;justify-content:center;overflow:hidden;">
     ${siteData.hero.imageUrl ? `<img src="{{hero}}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:brightness(0.5) contrast(1.08);">` : ''}
     <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.55) 70%), linear-gradient(180deg, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0.7) 100%);"></div>
-    <div class="p-container" style="position:relative;text-align:center;padding:64px 6vw;">
-      <div class="p-eyebrow" style="margin-bottom:22px;">Welcome to</div>
-      <h1 class="p-display p-italic" style="font-size:clamp(2.6rem,6.5vw,5.6rem);margin:0 0 24px;color:var(--p-brand);">${escapeHtml(siteData.hero.heading)}</h1>
-      <p class="p-serif p-italic" style="font-size:clamp(1rem,2.2vw,1.4rem);color:var(--p-ink-soft);max-width:640px;margin:0 auto 36px;">${escapeHtml(siteData.hero.tagline)}</p>
+    <div class="p-container" style="position:relative;text-align:center;padding:32px 6vw;">
+      <div class="p-eyebrow" style="margin-bottom:12px;">Welcome to</div>
+      <h1 class="p-display p-italic" style="font-size:clamp(2.2rem,5.5vw,4.6rem);margin:0 0 14px;color:var(--p-brand);">${escapeHtml(siteData.hero.heading)}</h1>
+      <p class="p-serif p-italic" style="font-size:clamp(1rem,2.2vw,1.4rem);color:var(--p-ink-soft);max-width:640px;margin:0 auto 22px;">${escapeHtml(siteData.hero.tagline)}</p>
       <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;">
         <a href="${escapeHtml(bookHref)}"${siteData.bookingUrl ? ' target="_blank" rel="noopener noreferrer"' : ''} class="p-cta p-cta-solid">Book an Appointment</a>
         <a href="#services" class="p-cta">View Services</a>
@@ -838,7 +838,7 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
       </nav>
 
       {/* Hero */}
-      <section style={{ position: 'relative', minHeight: '64vh', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }} className="group">
+      <section style={{ position: 'relative', minHeight: '42vh', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }} className="group">
         {siteData.hero.imageUrl ? (
           <>
             <img src={siteData.hero.imageUrl} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', filter: 'brightness(0.5) contrast(1.08)' }} />
@@ -850,12 +850,12 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
           </div>
         )}
         <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse at center, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.55) 70%), linear-gradient(180deg, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0.7) 100%)', pointerEvents: 'none' }} />
-        <div className="p-container" style={{ position: 'relative', zIndex: 2, textAlign: 'center', padding: '64px 6vw' }}>
-          <div className="p-eyebrow" style={{ marginBottom: 22 }}>Welcome to</div>
-          <h1 className="p-display p-italic" style={{ fontSize: 'clamp(2.6rem,6.5vw,5.6rem)', margin: '0 0 24px', color: 'var(--p-brand)' }}>
+        <div className="p-container" style={{ position: 'relative', zIndex: 2, textAlign: 'center', padding: '32px 6vw' }}>
+          <div className="p-eyebrow" style={{ marginBottom: 12 }}>Welcome to</div>
+          <h1 className="p-display p-italic" style={{ fontSize: 'clamp(2.2rem,5.5vw,4.6rem)', margin: '0 0 14px', color: 'var(--p-brand)' }}>
             <Editable text={siteData.hero.heading} onSave={v => handleTextChange('hero.heading', v)} />
           </h1>
-          <p className="p-serif p-italic" style={{ fontSize: 'clamp(1rem,2.2vw,1.4rem)', color: 'var(--p-ink-soft)', maxWidth: 640, margin: '0 auto 36px' }}>
+          <p className="p-serif p-italic" style={{ fontSize: 'clamp(1rem,2.2vw,1.4rem)', color: 'var(--p-ink-soft)', maxWidth: 640, margin: '0 auto 22px' }}>
             <Editable text={siteData.hero.tagline} onSave={v => handleTextChange('hero.tagline', v)} />
           </p>
           <div style={{ display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
