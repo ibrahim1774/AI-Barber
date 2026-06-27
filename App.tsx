@@ -377,6 +377,21 @@ const App: React.FC = () => {
           }),
           keepalive: true,
         }).catch((err) => console.error('[TikTok CAPI / Custom] non-blocking:', err));
+
+        // Triple Whale Purchase — orderId == Stripe session id so it joins
+        // the order pushed from the Stripe webhook. email/phone is required
+        // for TW to attribute; we have it here after the verify lookup.
+        try {
+          (window as any).TriplePixel?.('Purchase', {
+            orderId: sessionId,
+            email: email || undefined,
+            phone: ph || undefined,
+            lineItems: [{ i: meta.content_id, q: 1, v: meta.content_id }],
+          });
+          if (email) (window as any).TriplePixel?.('Contact', { email });
+        } catch (err) {
+          console.warn('[TriplePixel Purchase / Custom] fire failed:', err);
+        }
       })
       .catch((err) => console.warn('[FB/TT Purchase Custom] verify lookup failed (firing without name/addr):', err));
 
@@ -513,6 +528,20 @@ const App: React.FC = () => {
           );
         } catch (err) {
           console.warn('[FB Pixel Purchase] browser fire failed:', err);
+        }
+
+        // Triple Whale Purchase — orderId == Stripe session id so it joins
+        // the order pushed from the Stripe webhook (api/_twOrder.ts).
+        try {
+          (window as any).TriplePixel?.('Purchase', {
+            orderId: sessionId,
+            email: purchaseEmail || undefined,
+            phone: purchasePhone || undefined,
+            lineItems: [{ i: purchaseMeta.content_id, q: 1, v: purchaseMeta.content_id }],
+          });
+          if (purchaseEmail) (window as any).TriplePixel?.('Contact', { email: purchaseEmail });
+        } catch (err) {
+          console.warn('[TriplePixel Purchase] browser fire failed:', err);
         }
 
         fetch('/api/fb-purchase', {

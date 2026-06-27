@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { buildUserData } from './_buildUserData.js';
 import { splitName } from './_hashPii.js';
 import { getPlanContentMeta } from '../lib/pixelMeta.js';
+import { pushOrderToTripleWhale } from './_twOrder.js';
 
 // Stripe webhook -> Meta CAPI Purchase. The browser pixel + client CAPI
 // only fire if the customer returns to ?stripe_session=...; closed tabs,
@@ -157,7 +158,22 @@ export default async function handler(req: any, res: any) {
       return res.status(500).json({ error: fbResult.error?.message || 'FB API error' });
     }
     console.log(`[Stripe Webhook] Purchase → Meta ok. event_id=${eventId} value=${value} ${currency} plan=${plan}`);
-    return res.status(200).json({ received: true, result: fbResult });
+
+    // Push the order to Triple Whale (source-of-truth revenue; joins the
+    // client-side TriplePixel Purchase on order_id == Stripe session id).
+    // No-op until TW_API_KEY is set, so this is safe to ship ahead of the
+    // key. A transient (5xx/network) failure returns 500 so Stripe retries
+    // — re-sending the same order_id is an idempotent upsert on TW's side.
+    // A 4xx is logged but NOT retried (would loop forever) and does not
+    // block the already-succeeded Meta report.
+    const tw = await pushOrderToTripleWhale(session);
+    if (!tw.ok && !tw.skipped) {
+      console.error(`[Stripe Webhook] Triple Whale order push failed (retryable=${tw.retryable}):`, tw.error);
+      if (tw.retryable) return res.status(500).json({ error: 'TW order push failed (retryable)' });
+    } else if (tw.ok) {
+      console.log(`[Stripe Webhook] Order → Triple Whale ok. order_id=${eventId}`);
+    }
+    return res.status(200).json({ received: true, result: fbResult, tw: tw.ok ? 'ok' : tw.skipped ? 'skipped' : 'error' });
   } catch (error: any) {
     console.error('[Stripe Webhook] Meta CAPI failed:', error.message);
     return res.status(500).json({ error: error.message || 'Internal error' });
