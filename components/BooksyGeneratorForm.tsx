@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowRight } from 'lucide-react';
 import { ShopInputs, WebsiteData } from '../types';
+import { extractFirstUrl } from '../lib/supportedBookingHost';
+import { buildSiteFromScrape } from '../lib/buildSiteFromScrape';
 
 // Visual system shared with NewLeadQuizForm (the homepage). Same hero
 // image + same Manrope/Instrument Serif type stack + same accent halo +
@@ -12,9 +14,6 @@ const HERO_IMAGE = `https://images.weserv.nl/?url=${encodeURIComponent(HERO_BLOB
 const SANS = '"Manrope", "Inter", system-ui, sans-serif';
 const SERIF = '"Instrument Serif", "Times New Roman", Georgia, serif';
 const ACCENT = '#f4a100';
-// Booksy brand teal — used for the "Booksy" callout in the headline
-// + field label so the subpage visually reads as a Booksy importer.
-const BOOKSY_TEAL = '#1AE3B9';
 
 // Brand-color picker swatches (6 presets + any-color wheel) — the picked
 // hex rides on the generated site's colorTheme so the renderer recolors it.
@@ -88,11 +87,18 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn, tem
     setBusy(true);
     setError(null);
 
+    // Pull a usable URL out of whatever was pasted — a bare host
+    // ("yourshop.booksy.com"), a full https link, or a blob of share text
+    // with the link buried in it — and prepend https:// when missing. This
+    // is what the previous /booksy flow did; without it bare/short links
+    // (which the hint below promises to resolve) fail to scrape.
+    const cleanUrl = extractFirstUrl(url) ?? url.trim();
+
     try {
       const resp = await fetch('/api/import-scrape', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: url.trim() }),
+        body: JSON.stringify({ url: cleanUrl }),
       });
       const data = await resp.json();
       if (!resp.ok) {
@@ -118,110 +124,14 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn, tem
       setStepIdx(LOADING_STEPS.length - 1);
       await new Promise((r) => setTimeout(r, 350));
 
-      // Map the scraper output into our existing WebsiteData shape so
-      // it flows through the same loading screen → editor pipeline.
-      // The pasted URL IS the customer-facing booking link, so it's
-      // also what the Book Appointment CTA links to on the generated
-      // site. If the scraper returned a normalized one, prefer that.
-      const customerBookingUrl: string = data.bookingUrl || url.trim();
-
-      const inputs: ShopInputs = {
-        shopName: data.shopName,
-        area: data.area,
-        phone: data.phone || '',
+      // Use the shared builder — the SAME proven mapping the homepage and
+      // the previous /booksy overlay used — so identity defaults (e.g. a
+      // missing shop name) are filled safely and behaviour matches exactly.
+      // The picked brand color rides through manual.colorTheme.
+      const { inputs, scraped } = buildSiteFromScrape(data, cleanUrl, {
+        manual: { colorTheme: brandColor },
         template,
-        colorTheme: brandColor,
-        bookingUrl: customerBookingUrl,
-      };
-
-      // Icon ladder cycles through the 5 available service icons. Older
-      // sites used the same pattern; we keep it stable so re-published
-      // sites don't shuffle icons unexpectedly.
-      const SERVICE_ICONS = ['scissors', 'razor', 'mustache', 'face', 'sparkles'] as const;
-
-      // Build a usable about-description: prefer the scraped bio split
-      // into ~2 paragraphs; fall back to the universal copy when empty.
-      const bio: string = (data.description || '').trim();
-      const aboutParas: string[] = bio
-        ? bio
-            .replace(/\s+/g, ' ')
-            .match(/.{1,420}(\s|$)/g)
-            ?.map((s: string) => s.trim())
-            .filter(Boolean)
-            .slice(0, 2) || [bio]
-        : [
-            `${data.shopName} is a neighborhood barbershop built around honest work and consistent craft.`,
-            'Every visit starts with a real conversation and ends with a cut you can wear with confidence.',
-          ];
-
-      const scraped: WebsiteData = {
-        shopName: data.shopName,
-        area: data.area,
-        phone: data.phone || '',
-        template,
-        colorTheme: brandColor,
-        bookingUrl: customerBookingUrl,
-        hero: {
-          heading: data.shopName,
-          tagline: 'Premium grooming services tailored to your style.',
-          imageUrl: data.photos?.[0] || '',
-        },
-        about: {
-          heading: 'About the Shop',
-          description: aboutParas,
-          imageUrl: data.photos?.[1] || data.photos?.[0] || '',
-        },
-        // Services raised cap 6 → 12. Map richer fields: duration goes
-        // into subtitle when present, price into the dedicated price
-        // field, description preserved verbatim.
-        services: (data.services || []).slice(0, 12).map((s: any, i: number) => {
-          const subtitleParts = [s.duration, s.price].filter(Boolean);
-          return {
-            title: s.title,
-            subtitle: subtitleParts.join(' · ') || s.category || '',
-            description: s.description || (s.price ? `Starting at ${s.price}.` : 'Book ahead — same care every visit.'),
-            icon: SERVICE_ICONS[i % SERVICE_ICONS.length],
-            imageUrl: '',
-            duration: s.duration || '',
-            category: s.category || '',
-            price: s.price || '',
-          };
-        }),
-        // 8-slot gallery array. Slots 0/1 stay reserved for the
-        // about-section seed + hero fallback the renderer expects;
-        // slots 2..7 are the visible "Our Work" portfolio (6 photos
-        // max). We seed slots 2..7 directly from photos 2..7 since
-        // photo 0 is already used as the hero and photo 1 as the
-        // about image, so duplicating them in the gallery would look
-        // repetitive.
-        gallery: [
-          data.photos?.[0] || '',
-          data.photos?.[1] || '',
-          data.photos?.[2] || '',
-          data.photos?.[3] || '',
-          data.photos?.[4] || '',
-          data.photos?.[5] || '',
-          data.photos?.[6] || '',
-          data.photos?.[7] || '',
-        ],
-        featureCards: [
-          { title: 'Experience', sub: 'Professional' },
-          { title: 'Service', sub: 'Trusted' },
-          {
-            title: 'Open Monday to Friday',
-            sub: '9am - 7pm',
-          },
-        ],
-        reviews: (data.reviews || []).slice(0, 12),
-        bio,
-        aggregateRating: data.aggregateRating,
-        hours: data.hours || [],
-        staff: (data.staff || []).slice(0, 12),
-        contact: {
-          address: data.address || data.area,
-          email: '',
-        },
-      };
+      });
 
       onGenerate(inputs, scraped);
     } catch (err: any) {
@@ -308,34 +218,20 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn, tem
             letterSpacing: '-0.02em',
           }}
         >
-          Generate your{' '}
+          Generate your barber website <br className="hidden sm:inline" />
+          from your booking link{' '}
           <span
             className="italic"
-            style={{
-              fontFamily: SERIF,
-              fontWeight: 700,
-              color: ACCENT,
-              fontSize: '1.18em',
-              letterSpacing: '0.01em',
-            }}
+            style={{ fontFamily: SERIF, fontWeight: 400, color: ACCENT }}
           >
-            FREE
-          </span>{' '}
-          barber website <br className="hidden sm:inline" />
-          from your{' '}
-          <span
-            className="italic"
-            style={{ fontFamily: SERIF, fontWeight: 400, color: BOOKSY_TEAL }}
-          >
-            Booksy
-          </span>{' '}
-          link.
+            in a few seconds
+          </span>.
         </h1>
         <p
           className="mx-auto mt-4 max-w-md text-[13px] italic text-white/65 md:text-[14px]"
           style={{ fontFamily: SERIF }}
         >
-          We'll pull your services, photos, hours, and reviews automatically — ready in a few seconds.
+          Paste your Booksy, Fresha, Square, Vagaro, or StyleSeat link — we'll pull your services, photos, hours, and reviews automatically.
         </p>
 
         {/* Glass form card — identical surface treatment to homepage:
@@ -361,7 +257,7 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn, tem
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2">
               <label className="block text-lg font-bold leading-snug text-white md:text-xl">
-                Insert your <span style={{ color: BOOKSY_TEAL }}>Booksy</span> booking link
+                Insert your <span style={{ color: ACCENT }}>Booksy</span> booking link
               </label>
               <input
                 required
