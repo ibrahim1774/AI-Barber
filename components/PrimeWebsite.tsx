@@ -128,6 +128,10 @@ const PRIME_SCOPED_CSS = `
   box-shadow: 0 4px 14px rgba(0,0,0,0.32), 0 0 0 1px rgba(255,255,255,0.12);
 }
 .prime-root .p-img-pill svg { width: 11px; height: 11px; }
+/* Large hero variant — matches Design 1's hero "Replace Photo" pill size. */
+.prime-root .p-img-overlay--lg { padding: 18px; }
+.prime-root .p-img-pill--lg { font-size: 11px; padding: 11px 18px; gap: 8px; }
+.prime-root .p-img-pill--lg svg { width: 18px; height: 18px; }
 .prime-root .p-img-placeholder {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   width: 100%; height: 100%; background: var(--p-bg-3); border: 1px dashed var(--p-line);
@@ -627,9 +631,9 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
     }, text)
   );
 
-  const ImageOverlay: React.FC<{ onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void }> = ({ onUpload }) => (
-    <label className="p-img-overlay">
-      <span className="p-img-pill">
+  const ImageOverlay: React.FC<{ onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void; big?: boolean }> = ({ onUpload, big }) => (
+    <label className={`p-img-overlay${big ? ' p-img-overlay--lg' : ''}`}>
+      <span className={`p-img-pill${big ? ' p-img-pill--lg' : ''}`}>
         <CameraIcon />
         <span>Replace photo</span>
       </span>
@@ -856,7 +860,7 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
         {siteData.hero.imageUrl ? (
           <>
             <img src={siteData.hero.imageUrl} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', filter: 'brightness(0.5) contrast(1.08)' }} />
-            <ImageOverlay onUpload={e => handleImageChange('hero.imageUrl', e)} />
+            <ImageOverlay big onUpload={e => handleImageChange('hero.imageUrl', e)} />
           </>
         ) : (
           <div style={{ position: 'absolute', inset: 0 }}>
