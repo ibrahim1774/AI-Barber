@@ -382,13 +382,17 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
           {(() => {
             const sizeCls = generateMode
               ? 'text-[12px] md:text-[13px] pb-1'
-              : 'text-[9px] pb-0.5';
+              : booksyMode
+                ? 'text-[11px] pb-0.5'
+                : 'text-[9px] pb-0.5';
+            // /booksy: bolder + ~20% bigger monthly/yearly toggle.
+            const weightCls = booksyMode ? 'font-bold' : 'font-medium';
             const underline = generateMode ? '2px' : '1px';
             const monthlyBtn = (
               <button
                 key="monthly"
                 onClick={() => setPricingPlan('monthly')}
-                className={`${sizeCls} font-medium uppercase tracking-[0.22em] transition-colors`}
+                className={`${sizeCls} ${weightCls} uppercase tracking-[0.22em] transition-colors`}
                 style={{
                   color: pricingPlan === 'monthly' ? '#ece6da' : 'rgba(236,230,218,0.4)',
                   borderBottom: pricingPlan === 'monthly' ? `${underline} solid #e8c074` : `${underline} solid transparent`,
@@ -401,7 +405,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
               <button
                 key="yearly"
                 onClick={() => setPricingPlan('yearly')}
-                className={`${sizeCls} font-medium uppercase tracking-[0.22em] transition-colors`}
+                className={`${sizeCls} ${weightCls} uppercase tracking-[0.22em] transition-colors`}
                 style={{
                   color: pricingPlan === 'yearly' ? '#ece6da' : 'rgba(236,230,218,0.4)',
                   borderBottom: pricingPlan === 'yearly' ? `${underline} solid #e8c074` : `${underline} solid transparent`,
@@ -599,7 +603,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
             <div className="flex items-center justify-center gap-6 mb-7" style={booksyMode ? { flexDirection: 'row-reverse' } : undefined}>
               <button
                 onClick={() => setPricingPlan('monthly')}
-                className="text-[11px] font-medium uppercase tracking-[0.22em] pb-1.5 transition-colors"
+                className={`${booksyMode ? 'text-[13px] font-bold' : 'text-[11px] font-medium'} uppercase tracking-[0.22em] pb-1.5 transition-colors`}
                 style={{
                   color: pricingPlan === 'monthly' ? cream : 'rgba(236,230,218,0.4)',
                   borderBottom: pricingPlan === 'monthly' ? `1px solid ${gold}` : '1px solid transparent',
@@ -609,7 +613,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
               </button>
               <button
                 onClick={() => setPricingPlan('yearly')}
-                className="text-[11px] font-medium uppercase tracking-[0.22em] pb-1.5 transition-colors"
+                className={`${booksyMode ? 'text-[13px] font-bold' : 'text-[11px] font-medium'} uppercase tracking-[0.22em] pb-1.5 transition-colors`}
                 style={{
                   color: pricingPlan === 'yearly' ? cream : 'rgba(236,230,218,0.4)',
                   borderBottom: pricingPlan === 'yearly' ? `1px solid ${gold}` : '1px solid transparent',
