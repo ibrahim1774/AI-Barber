@@ -49,14 +49,16 @@ const DEFAULT_PULLQUOTE: { text: string; accent?: string } = {
   text: "A great cut isn't a transaction — it's a craft.",
 };
 
-// 6-tile editorial mosaic spec (matches the PrimeHub "The Work" gallery).
+// Even 2-column × 3-row grid of compact square tiles (matches the PrimeHub
+// barber "The Work" gallery). Each tile spans 6 of 12 columns (→ 2 per row)
+// at a 1:1 aspect, so the gallery reads as a tidy block, not a mixed mosaic.
 const GALLERY_SPEC: { col: string; ratio: string }[] = [
-  { col: 'span 4', ratio: '3 / 4' },
-  { col: 'span 4', ratio: '3 / 4' },
-  { col: 'span 4', ratio: '3 / 4' },
-  { col: 'span 5', ratio: '4 / 5' },
-  { col: 'span 7', ratio: '7 / 5' },
-  { col: 'span 12', ratio: '12 / 5' },
+  { col: 'span 6', ratio: '1 / 1' },
+  { col: 'span 6', ratio: '1 / 1' },
+  { col: 'span 6', ratio: '1 / 1' },
+  { col: 'span 6', ratio: '1 / 1' },
+  { col: 'span 6', ratio: '1 / 1' },
+  { col: 'span 6', ratio: '1 / 1' },
 ];
 
 // Scoped CSS — everything lives under `.prime-root` so it can't leak into
@@ -137,7 +139,7 @@ const PRIME_SCOPED_CSS = `
   border-bottom: 1px dashed rgba(212,166,74,0.22); align-items: baseline;
 }
 .prime-root .p-svc-row:last-child { border-bottom: none; }
-.prime-root .p-gallery { display: grid; grid-template-columns: repeat(12, 1fr); gap: 10px; max-width: 1300px; margin: 0 auto; }
+.prime-root .p-gallery { display: grid; grid-template-columns: repeat(12, 1fr); gap: 12px; max-width: 760px; margin: 0 auto; }
 .prime-root .p-review-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
 .prime-root .p-review-card { background: var(--p-bg-3); border: 1px solid var(--p-line); border-radius: 4px; padding: 22px; transition: all 200ms ease; }
 .prime-root .p-review-card:hover { border-color: var(--p-brand); transform: translateY(-3px); box-shadow: 0 8px 24px rgba(212,166,74,0.08); }
