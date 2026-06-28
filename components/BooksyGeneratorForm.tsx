@@ -16,6 +16,11 @@ const ACCENT = '#f4a100';
 // + field label so the subpage visually reads as a Booksy importer.
 const BOOKSY_TEAL = '#1AE3B9';
 
+// Brand-color picker swatches (6 presets + any-color wheel) — the picked
+// hex rides on the generated site's colorTheme so the renderer recolors it.
+const COLOR_SWATCHES = ['#f4a100', '#ffffff', '#dc2626', '#22c55e', '#3b82f6', '#a855f7'];
+const COLOR_WHEEL = 'conic-gradient(from 0deg, #f4a100, #dc2626, #a855f7, #3b82f6, #22c55e, #f4a100)';
+
 interface Props {
   // Called with the prepared inputs once the scrape resolves. Mirrors
   // the homepage GeneratorForm contract so App.tsx can route the user
@@ -46,6 +51,7 @@ const LOADING_STEPS = [
 // hours, staff, aggregate rating).
 export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn, template = 'luxe' }) => {
   const [url, setUrl] = useState('');
+  const [brandColor, setBrandColor] = useState('#f4a100');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stepIdx, setStepIdx] = useState(0);
@@ -124,6 +130,7 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn, tem
         area: data.area,
         phone: data.phone || '',
         template,
+        colorTheme: brandColor,
         bookingUrl: customerBookingUrl,
       };
 
@@ -152,6 +159,7 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn, tem
         area: data.area,
         phone: data.phone || '',
         template,
+        colorTheme: brandColor,
         bookingUrl: customerBookingUrl,
         hero: {
           heading: data.shopName,
@@ -374,6 +382,42 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn, tem
               >
                 Short links like yourshop.booksy.com work too — we'll resolve them.
               </p>
+            </div>
+
+            {/* Brand color — picked hex rides onto the generated site. */}
+            <div className="space-y-2">
+              <span className="block text-[11px] font-bold uppercase tracking-[0.18em] text-white/55">
+                Brand color <span className="normal-case tracking-normal text-white/40">(pick any color)</span>
+              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                {COLOR_SWATCHES.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setBrandColor(c)}
+                    aria-label={`Use color ${c}`}
+                    className="h-7 w-7 rounded-full transition"
+                    style={{
+                      background: c,
+                      boxShadow: brandColor.toLowerCase() === c.toLowerCase()
+                        ? '0 0 0 2px #05070A, 0 0 0 4px ' + ACCENT
+                        : 'inset 0 0 0 1px rgba(255,255,255,0.18)',
+                    }}
+                  />
+                ))}
+                <label
+                  className="relative h-7 w-7 cursor-pointer overflow-hidden rounded-full"
+                  title="Pick any color"
+                  style={{ background: COLOR_WHEEL, boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.25)' }}
+                >
+                  <input
+                    type="color"
+                    value={/^#[0-9a-fA-F]{6}$/.test(brandColor) ? brandColor : '#888888'}
+                    onChange={(e) => setBrandColor(e.target.value)}
+                    className="absolute -inset-2 cursor-pointer opacity-0"
+                  />
+                </label>
+              </div>
             </div>
 
             {error && (

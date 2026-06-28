@@ -9,6 +9,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { GenerateCustomizePrompts } from './GenerateCustomizePrompts';
 import { HomeLaunchGuide } from './HomeLaunchGuide';
 import { BooksyDesignSwitcher } from './BooksyDesignSwitcher';
+import { BooksyGeneratorForm } from './BooksyGeneratorForm';
 
 // /generate — "Customize Your Barbershop Site".
 //
@@ -46,7 +47,10 @@ export interface GeneratePageProps {
 
 export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate' }) => {
   const [siteData, setSiteData] = useState<WebsiteData | null>(null);
-  const [showPrompts, setShowPrompts] = useState(true);
+  // /booksy leads with the BooksyGeneratorForm input form (no instant-preview
+  // overlay), so the customize overlay starts hidden there; Design 1/2 is then
+  // switched live via the floating BooksyDesignSwitcher after generation.
+  const [showPrompts, setShowPrompts] = useState(variant !== 'booksy');
   const [showLaunchGuide, setShowLaunchGuide] = useState(false);
   const [isCheckoutFlowOpen, setIsCheckoutFlowOpen] = useState(false);
   // Brand color the visitor picked in the overlay. Carried into every
@@ -83,8 +87,10 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
   const { user } = useAuth();
 
   // Build the seed site immediately on mount so the preview is populated
-  // before the visitor answers anything.
+  // before the visitor answers anything. Skipped on /booksy, which leads
+  // with the input form and only renders the preview after generation.
   useEffect(() => {
+    if (variant === 'booksy') return;
     if (startedRef.current) return;
     startedRef.current = true;
     (async () => {
@@ -95,6 +101,23 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
       });
       if (data) setSiteData({ ...data, template });
     })();
+  }, []);
+
+  // /booksy form submit — the BooksyGeneratorForm has already scraped and
+  // built the WebsiteData (with the picked colorTheme + default template).
+  // Fire the lead with the REAL scraped shop name (not the seed), reveal the
+  // preview, and let the floating Design 1/2 switcher take over.
+  const handleBooksyFormGenerate = useCallback((_inputs: ShopInputs, scraped: WebsiteData) => {
+    fireLead({
+      shopName: scraped.shopName || SEED_NAME,
+      area: scraped.area || '',
+      phone: scraped.phone || '',
+      bookingUrl: scraped.bookingUrl,
+    });
+    if (scraped.template) setTemplate(scraped.template);
+    if (scraped.colorTheme) setColorTheme(scraped.colorTheme);
+    setSiteData(scraped);
+    setShowPrompts(false);
   }, []);
 
   // Live preview wiring for the detail questions (No-link path).
@@ -187,6 +210,12 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
     setShowLaunchGuide(false);
     setIsCheckoutFlowOpen(false);
   }, []);
+
+  // /booksy: lead with the input form (paste link + brand color). The
+  // preview + floating Design 1/2 switcher appear once the form generates.
+  if (variant === 'booksy' && !siteData) {
+    return <BooksyGeneratorForm onGenerate={handleBooksyFormGenerate} />;
+  }
 
   // Loading state until the seed site is ready.
   if (!siteData) {
