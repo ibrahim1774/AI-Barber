@@ -302,10 +302,10 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
 
         <h2
           id="generate-prompt-title"
-          className="text-[14px] md:text-[15px] leading-tight font-semibold text-white mb-2.5"
+          className={`leading-tight font-semibold text-white mb-2.5 ${isBooksy ? 'text-[13px] md:text-[15px] whitespace-nowrap' : 'text-[14px] md:text-[15px]'}`}
           style={{ letterSpacing: '-0.015em' }}
         >
-          {isBooksy ? 'Insert your booking link' : 'Customize Your Barbershop Site'}
+          {isBooksy ? 'Generate Custom Barber Site in Seconds' : 'Customize Your Barbershop Site'}
         </h2>
 
         {/* ───────── Step 1: booking link question ───────── */}
@@ -444,7 +444,7 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
 
             {choice === 'yes' && (
               <>
-                <p className="text-[18px] md:text-[21px] font-extrabold tracking-tight text-white leading-snug mb-1">
+                <p className="text-[13px] md:text-[15px] font-bold tracking-tight text-white leading-snug mb-1 whitespace-nowrap">
                   Enter your barber booking link here
                   <span className="text-white/35"> ::</span>
                 </p>
