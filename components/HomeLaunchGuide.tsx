@@ -12,25 +12,6 @@ const GOLD = '#e8c074';
 const GOLD_DARK = '#8a6b30';
 const BG_CARD = 'rgba(14, 12, 8, 0.96)';
 
-const STEPS: React.ReactNode[] = [
-  'You can edit your text and images now, or publish first.',
-  <>Create an account after you click <span className="font-bold text-white">“Launch My Site”</span> to update your site anytime.</>,
-  <>Click <span className="font-bold text-white">“Launch My Site”</span> when you’re ready.</>,
-];
-
-const NumberStep: React.FC<{ n: number; children: React.ReactNode }> = ({ n, children }) => (
-  <div className="flex items-start gap-3">
-    <span
-      className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[12px] font-black"
-      style={{ background: GOLD, color: '#0a0a0a' }}
-      aria-hidden="true"
-    >
-      {n}
-    </span>
-    <span className="text-[14px] leading-snug text-white/85">{children}</span>
-  </div>
-);
-
 export const HomeLaunchGuide: React.FC<HomeLaunchGuideProps> = ({ onClose }) => {
   return (
     <div
@@ -59,6 +40,12 @@ export const HomeLaunchGuide: React.FC<HomeLaunchGuideProps> = ({ onClose }) => 
             50% { transform: scale(1.06); box-shadow: 0 0 16px 2px ${GOLD}66; }
           }
           .hlg-badge-anim { animation: hlgBadgePulse 1.5s ease-in-out infinite; transform-origin: left center; }
+          @keyframes hlgPopLoop {
+            0%, 100% { transform: scale(1); }
+            45% { transform: scale(1.05); }
+            55% { transform: scale(1.05); }
+          }
+          .hlg-pop { animation: hlgPopLoop 1.8s ease-in-out infinite; transform-origin: center; }
         `}</style>
         <span
           className="hlg-badge-anim mb-4 inline-block text-[9px] font-bold uppercase tracking-[0.28em] px-2 py-0.5 rounded-full"
@@ -67,11 +54,10 @@ export const HomeLaunchGuide: React.FC<HomeLaunchGuideProps> = ({ onClose }) => 
           Read this before you exit
         </span>
 
-        <div className="space-y-3.5">
-          {STEPS.map((step, i) => (
-            <NumberStep key={i} n={i + 1}>{step}</NumberStep>
-          ))}
-        </div>
+        <p className="hlg-pop my-2 text-center text-[18px] md:text-[20px] font-extrabold leading-snug text-white">
+          You can edit your website anytime by creating an account after clicking{' '}
+          <span style={{ color: GOLD }}>“Publish your website.”</span>
+        </p>
 
         <button
           type="button"

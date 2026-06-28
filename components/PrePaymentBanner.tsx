@@ -472,7 +472,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
               ) : (
                 <Rocket size={12} />
               )}
-              <span>Launch My Site</span>
+              <span>Publish Your Website</span>
               <span
                 className="font-extrabold px-1.5 py-0.5 rounded"
                 style={{ background: 'rgba(10,10,10,0.18)', color: '#0a0a0a' }}
@@ -691,7 +691,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                   <Loader2 className="animate-spin" size={16} />
                 ) : (
                   <>
-                    <span>Launch My Site</span>
+                    <span>Publish Your Website</span>
                     <span
                       className="font-extrabold px-1.5 py-0.5 rounded"
                       style={{ background: 'rgba(10,10,10,0.18)', color: '#0a0a0a' }}
