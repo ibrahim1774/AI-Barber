@@ -257,7 +257,7 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn, tem
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2">
               <label className="block text-lg font-bold leading-snug text-white md:text-xl">
-                Insert your <span style={{ color: ACCENT }}>Booksy</span> booking link
+                Insert your barber booking link
               </label>
               <input
                 required
@@ -266,7 +266,7 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn, tem
                 autoCapitalize="off"
                 autoCorrect="off"
                 spellCheck={false}
-                placeholder="booksy.com/en-us/... · fresha.com/a/... · vagaro.com/..."
+                placeholder="Booksy, theCut, Fresha, Square, StyleSeat, Vagaro or Goldie link"
                 className="w-full border-b border-white/15 bg-transparent px-0 py-2.5 text-base text-white placeholder:text-white/25 transition-colors focus:border-white/45 focus:outline-none md:text-lg"
                 style={{ caretColor: ACCENT }}
                 value={url}
@@ -276,7 +276,7 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn, tem
                 className="pt-1 text-[11px] italic md:text-[12px]"
                 style={{ color: ACCENT, fontFamily: SERIF }}
               >
-                Short links like yourshop.booksy.com work too — we'll resolve them.
+                Short links work too — we'll resolve them.
               </p>
             </div>
 
