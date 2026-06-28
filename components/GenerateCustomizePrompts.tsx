@@ -63,6 +63,42 @@ const GOLD = '#e8c074';
 const GOLD_DARK = '#8a6b30';
 const BG_CARD = 'rgba(14, 12, 8, 0.94)';
 
+// Looping typewriter that demos pasting a booking link: types out an
+// example URL, holds, erases it, then moves to the next platform — forever.
+// Shown under the "Enter your barber booking link here ::" label so the
+// visitor sees exactly what to drop in (Booksy, Square, Squire, Fresha…).
+const TYPE_SAMPLES = [
+  'booksy.com/your-shop',
+  'squareup.com/appointments',
+  'getsquire.com/your-shop',
+  'fresha.com/your-shop',
+];
+const BookingLinkTypewriter: React.FC<{ color: string }> = ({ color }) => {
+  const [idx, setIdx] = useState(0);
+  const [sub, setSub] = useState(0);
+  const [deleting, setDeleting] = useState(false);
+  useEffect(() => {
+    const full = TYPE_SAMPLES[idx];
+    if (!deleting && sub === full.length) {
+      const t = setTimeout(() => setDeleting(true), 1400);
+      return () => clearTimeout(t);
+    }
+    if (deleting && sub === 0) {
+      setDeleting(false);
+      setIdx((i) => (i + 1) % TYPE_SAMPLES.length);
+      return;
+    }
+    const t = setTimeout(() => setSub((s) => s + (deleting ? -1 : 1)), deleting ? 40 : 85);
+    return () => clearTimeout(t);
+  }, [sub, deleting, idx]);
+  return (
+    <span style={{ fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace', color }}>
+      {TYPE_SAMPLES[idx].slice(0, sub)}
+      <span className="animate-pulse" style={{ color }}>|</span>
+    </span>
+  );
+};
+
 export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> = ({
   onChange,
   onSubmitBookingLink,
@@ -408,8 +444,12 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
 
             {choice === 'yes' && (
               <>
-                <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-white/45 mb-1.5">
+                <p className="text-[18px] md:text-[21px] font-extrabold tracking-tight text-white leading-snug mb-1">
                   Enter your barber booking link here
+                  <span className="text-white/35"> ::</span>
+                </p>
+                <p className="text-[12px] md:text-[13px] font-semibold mb-3 min-h-[18px]">
+                  <BookingLinkTypewriter color={color} />
                 </p>
                 <input
                   // type="text" (not "url") so a pasted share-sheet blob —
@@ -424,7 +464,7 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
                   autoFocus
                   value={bookingUrl}
                   onChange={(e) => setBookingUrl(e.target.value)}
-                  placeholder="Booksy, Squareup, Fresha, etc…"
+                  placeholder="Paste your link here…"
                   className="w-full px-3 py-3.5 bg-transparent text-white placeholder-white/35 text-[15px] outline-none mb-3"
                   style={inputStyle}
                 />
