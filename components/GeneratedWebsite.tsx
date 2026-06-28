@@ -1106,9 +1106,9 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
             label sits at z-0's level but below the z-10 content so the CTAs
             stay clickable. */}
         <label className="group absolute inset-0 z-[5] cursor-pointer">
-          <span className="pointer-events-none absolute top-2.5 right-2.5 md:right-5 flex items-center gap-1.5 rounded-full bg-black/85 px-2.5 py-1.5 text-white shadow-lg backdrop-blur-sm border border-white/15 opacity-80 group-hover:opacity-100 transition-opacity">
-            <CameraIcon className="w-3 h-3" />
-            <span className="text-[8px] font-bold uppercase tracking-[0.16em]">Replace Photo</span>
+          <span className="pointer-events-none absolute bottom-3 right-3 md:bottom-5 md:right-5 flex items-center gap-2 rounded-full bg-black/85 px-4 py-2.5 md:px-5 md:py-3 text-white shadow-xl backdrop-blur-sm border border-white/20">
+            <CameraIcon className="w-4 h-4 md:w-5 md:h-5" />
+            <span className="text-[10px] md:text-[12px] font-bold uppercase tracking-[0.16em]">Replace Photo</span>
           </span>
           <input key={imageInputKey} type="file" className="hidden" accept="image/*" onChange={(e) => handleImageChange('hero.imageUrl', e)} />
         </label>

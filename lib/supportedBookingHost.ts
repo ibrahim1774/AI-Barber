@@ -14,6 +14,7 @@ const SUPPORTED_HOST_PATTERNS: RegExp[] = [
   /(^|\.)squareup\.com$/i,
   /(^|\.)square\.site$/i,
   /(^|\.)vagaro\.com$/i,
+  /(^|\.)heygoldie\.com$/i,
 ];
 
 export function isSupportedBookingHost(url: string | null | undefined): boolean {
@@ -45,7 +46,7 @@ export function extractFirstUrl(text: string | null | undefined): string | null 
   const explicit = trimmed.match(/https?:\/\/[^\s<>"'\]]+/i);
   if (explicit) return explicit[0];
 
-  const knownBare = trimmed.match(/(?:[\w-]+\.)+(?:booksy|fresha|styleseat|squareup|square|vagaro|thecut)\.(?:com|site|co)(?:\/[^\s<>"'\]]*)?/i);
+  const knownBare = trimmed.match(/(?:[\w-]+\.)+(?:booksy|fresha|styleseat|squareup|square|vagaro|thecut|heygoldie)\.(?:com|site|co)(?:\/[^\s<>"'\]]*)?/i);
   if (knownBare) return `https://${knownBare[0]}`;
 
   const genericBare = trimmed.match(/(?:[\w-]+\.)+[a-z]{2,}(?:\/[^\s<>"'\]]*)?/i);

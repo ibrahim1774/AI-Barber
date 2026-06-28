@@ -118,6 +118,9 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
     if (scraped.colorTheme) setColorTheme(scraped.colorTheme);
     setSiteData(scraped);
     setShowPrompts(false);
+    // Show the "read this before you exit" launch guide once the site is up —
+    // same popup the old /booksy overlay flow surfaced after generating.
+    setShowLaunchGuide(true);
   }, []);
 
   // Live preview wiring for the detail questions (No-link path).
@@ -205,11 +208,17 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
   }, []);
 
   const handleBack = useCallback(() => {
-    // No prior phase to return to — restart the customize flow.
-    setShowPrompts(true);
     setShowLaunchGuide(false);
     setIsCheckoutFlowOpen(false);
-  }, []);
+    if (variant === 'booksy') {
+      // /booksy is form-first — return to the paste-link input form by
+      // clearing the generated site (re-renders BooksyGeneratorForm).
+      setSiteData(null);
+      return;
+    }
+    // /generate: restart the customize overlay.
+    setShowPrompts(true);
+  }, [variant]);
 
   // /booksy: lead with the input form (paste link + brand color). The
   // preview + floating Design 1/2 switcher appear once the form generates.
