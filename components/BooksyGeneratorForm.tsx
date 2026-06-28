@@ -322,7 +322,7 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn, tem
               </div>
             )}
 
-            <div className="flex items-center justify-end gap-2 pt-2">
+            <div className="flex items-center justify-center gap-2 pt-2">
               <button
                 type="submit"
                 disabled={busy}
@@ -330,7 +330,7 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn, tem
               >
                 {busy ? 'Building your site…' : (
                   <>
-                    Generate My Site
+                    Generate My Barbershop Site
                     <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
                   </>
                 )}
