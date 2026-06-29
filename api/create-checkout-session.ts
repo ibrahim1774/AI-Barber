@@ -112,7 +112,7 @@ export default async function handler(req: any, res: any) {
       interval = 'month';
       productName = 'aibarber.org — Monthly Website Hosting (Generate)';
     } else if (isCustomBooksy) {
-      unitAmount = '1900';
+      unitAmount = '2900';
       interval = 'month';
       productName = 'aibarber.org — Custom Website Design (Booksy)';
     } else if (isCustom || isCustom25) {

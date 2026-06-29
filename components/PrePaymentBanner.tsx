@@ -112,8 +112,9 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   const customPlan: 'custom25' | 'custom-booksy' = booksyMode
     ? 'custom-booksy'
     : 'custom25';
-  const customPriceLabel = '$19/mo';
-  const customPriceFull = '$19/month';
+  // /booksy custom-design upsell is $29/mo; every other path stays $19/mo.
+  const customPriceLabel = booksyMode ? '$29/mo' : '$19/mo';
+  const customPriceFull = booksyMode ? '$29/month' : '$19/month';
 
   const [isDismissed, setIsDismissed] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
@@ -227,7 +228,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
           : `co_${Date.now()}_${Math.random().toString(36).slice(2)}`;
       // Custom-design InitiateCheckout — matches the actual Stripe
       // charge ($19/mo) so Meta/TikTok ROAS math stays aligned.
-      const checkoutValue = 19;
+      const checkoutValue = booksyMode ? 29 : 19;
       const checkoutCurrency = 'USD';
       const { getPlanContentMeta } = await import('../lib/pixelMeta');
       const { readMetaCookies } = await import('../services/metaMatchParams');
@@ -487,10 +488,9 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
           </div>
 
           {/* "Don't like the design?" — highlighted gold-tinted box.
-              Headline in serif italic gold, concise subtitle beneath
-              explaining the offer. Price + arrow anchored right.
-              Hidden on /booksy per request. */}
-          {!booksyMode && (
+              Headline in gold, optional subtitle beneath, price + arrow
+              anchored right. On /booksy: a custom-site headline, no subtext,
+              $29/mo. */}
           <button
             type="button"
             onClick={() => { setWizardStep(0); setShowCustomWizard(true); }}
@@ -509,14 +509,18 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                   className="block font-extrabold"
                   style={{ fontSize: generateMode ? '0.76rem' : '0.95rem', color: '#e8c074', lineHeight: 1.15, letterSpacing: '-0.005em' }}
                 >
-                  Want a new {displayIndustry.toLowerCase()} website instead?
+                  {booksyMode
+                    ? 'Custom 20+ Page Barber Website with On-Page SEO Included'
+                    : `Want a new ${displayIndustry.toLowerCase()} website instead?`}
                 </span>
-                <span
-                  className="block font-bold leading-snug mt-0.5"
-                  style={{ fontSize: generateMode ? '9px' : '11.5px', color: 'rgba(236,230,218,0.92)' }}
-                >
-                  Choose a design, or let our team custom-build a different multi-page site for you.
-                </span>
+                {!booksyMode && (
+                  <span
+                    className="block font-bold leading-snug mt-0.5"
+                    style={{ fontSize: generateMode ? '9px' : '11.5px', color: 'rgba(236,230,218,0.92)' }}
+                  >
+                    Choose a design, or let our team custom-build a different multi-page site for you.
+                  </span>
+                )}
               </span>
             </span>
             <span
@@ -531,7 +535,6 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
               <ArrowRight size={generateMode ? 10 : 12} className="transition group-hover:translate-x-0.5" />
             </span>
           </button>
-          )}
         </div>
       </div>
 
