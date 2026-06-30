@@ -219,8 +219,8 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
             userId={user?.id ?? null}
             isPostPayment={false}
             onCheckoutFlowChange={setIsCheckoutFlowOpen}
-            hidePrepaymentBanner={variant === 'booksy' && showPrompts}
-            onUpdate={variant === 'booksy' ? setSiteData : undefined}
+            hidePrepaymentBanner={showPrompts}
+            onUpdate={setSiteData}
           />
         ) : activeTemplate === 'euphoria' ? (
           <EuphoriaWebsite
@@ -229,7 +229,7 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
             userId={user?.id ?? null}
             isPostPayment={false}
             onCheckoutFlowChange={setIsCheckoutFlowOpen}
-            hidePrepaymentBanner={variant === 'booksy' && showPrompts}
+            hidePrepaymentBanner={showPrompts}
           />
         ) : (
           <GeneratedWebsite
@@ -238,8 +238,8 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
             userId={user?.id ?? null}
             isPostPayment={false}
             onCheckoutFlowChange={setIsCheckoutFlowOpen}
-            hidePrepaymentBanner={variant === 'booksy' && showPrompts}
-            onUpdate={variant === 'booksy' ? setSiteData : undefined}
+            hidePrepaymentBanner={showPrompts}
+            onUpdate={setSiteData}
           />
         )}
       </Suspense>
@@ -253,9 +253,9 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
           initialArea={siteData.area || ''}
           initialPhone={siteData.phone || ''}
           variant={variant}
-          onColorChange={variant === 'booksy' ? handleColorChange : undefined}
+          onColorChange={handleColorChange}
           initialColor={colorTheme.charAt(0) === '#' ? colorTheme : '#f4a100'}
-          onTemplateChange={variant === 'booksy' ? handleTemplateChange : undefined}
+          onTemplateChange={handleTemplateChange}
           initialTemplate={template}
         />
       )}
@@ -263,9 +263,9 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
         <HomeLaunchGuide onClose={() => setShowLaunchGuide(false)} />
       )}
 
-      {/* Floating Design 1 / Design 2 switcher — /booksy only, once the
-          customize overlay is closed and checkout isn't open. */}
-      {variant === 'booksy' && !showPrompts && !isCheckoutFlowOpen && (
+      {/* Floating Design 1 / Design 2 switcher — both /generate and /booksy,
+          once the customize overlay is closed and checkout isn't open. */}
+      {!showPrompts && !isCheckoutFlowOpen && (
         <BooksyDesignSwitcher
           current={activeTemplate ?? 'luxe'}
           onSelect={handleDesignSwitch}

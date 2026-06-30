@@ -41,6 +41,7 @@ const AuthModal = lazy(() => import('./components/AuthModal.tsx').then(m => ({ d
 const RecoverPage = lazy(() => import('./components/RecoverPage.tsx').then(m => ({ default: m.RecoverPage })));
 const GenerateBarbershopFunnel = lazy(() => import('./components/GenerateBarbershopFunnel.tsx').then(m => ({ default: m.GenerateBarbershopFunnel })));
 const GeneratePage = lazy(() => import('./components/GeneratePage.tsx').then(m => ({ default: m.GeneratePage })));
+const BooksyDesignSwitcher = lazy(() => import('./components/BooksyDesignSwitcher.tsx').then(m => ({ default: m.BooksyDesignSwitcher })));
 const AdminGenerator = lazy(() => import('./components/AdminGenerator.tsx').then(m => ({ default: m.AdminGenerator })));
 const OwnBrandLanding = lazy(() => import('./components/OwnBrandLanding.tsx').then(m => ({ default: m.OwnBrandLanding })));
 
@@ -76,6 +77,14 @@ const App: React.FC = () => {
   // it while the Stripe checkout modal is open.
   const [showHomePrompts, setShowHomePrompts] = useState(false);
   const [isCheckoutFlowOpen, setIsCheckoutFlowOpen] = useState(false);
+  // Homepage/free-barber floating Design 1/2 switcher — brief busy beat while
+  // the editor re-skins between luxe (Design 1) and prime (Design 2).
+  const [homeSwitching, setHomeSwitching] = useState(false);
+  const handleHomeDesignSwitch = useCallback((t: 'luxe' | 'prime') => {
+    setHomeSwitching(true);
+    setGeneratedData((prev) => (prev ? { ...prev, template: t } : prev));
+    window.setTimeout(() => setHomeSwitching(false), 850);
+  }, []);
   // Short "how it works" guide shown once after the homepage funnel
   // finishes generating, before the visitor edits / launches.
   const [showLaunchGuide, setShowLaunchGuide] = useState(false);
@@ -1161,6 +1170,7 @@ const App: React.FC = () => {
               isPostPayment={!!activeSite?.deployedUrl || activeSite?.deploymentStatus === 'deployed'}
               userId={user?.id ?? null}
               onCheckoutFlowChange={setIsCheckoutFlowOpen}
+              onUpdate={setGeneratedData}
             />
           ) : generatedData.template === 'euphoria' ? (
             <EuphoriaWebsite
@@ -1181,6 +1191,19 @@ const App: React.FC = () => {
               isPostPayment={!!activeSite?.deployedUrl || activeSite?.deploymentStatus === 'deployed'}
               userId={user?.id ?? null}
               onCheckoutFlowChange={setIsCheckoutFlowOpen}
+              onUpdate={setGeneratedData}
+            />
+          )}
+          {/* Floating Design 1 / Design 2 switcher — homepage + /free-barber
+              generation flow, pre-deploy only (hidden while the booking
+              prompt or checkout is open, and over a deployed site). Toggles
+              luxe↔prime; edits are preserved via onUpdate above. */}
+          {!isCheckoutFlowOpen && !showHomePrompts &&
+            !(activeSite?.deployedUrl || activeSite?.deploymentStatus === 'deployed') && (
+            <BooksyDesignSwitcher
+              current={generatedData.template === 'prime' ? 'prime' : 'luxe'}
+              onSelect={handleHomeDesignSwitch}
+              busy={homeSwitching}
             />
           )}
           {/* Homepage progressive prompt — only for a fresh root "/"
