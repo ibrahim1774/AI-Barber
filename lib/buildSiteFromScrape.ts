@@ -40,12 +40,69 @@ export interface BuiltSite {
   scraped: WebsiteData;
 }
 
+// Derive a plausible shop name from the booking URL the visitor pasted.
+// Used as a fallback when the scrape returns no name (or fails) so the
+// generated site never shows the seed placeholder ("Premium Cuts") or a
+// generic "Your Barbershop" — it reflects the real link instead.
+//   booksy.com/en-us/123456_kingdom-barber-shop_barber-shop_brooklyn → "Kingdom Barber Shop"
+//   book.heygoldie.com/Royal-Original-Empire                         → "Royal Original Empire"
+//   kingdomcuts.booksy.com                                           → "Kingdomcuts"
+export function deriveShopNameFromUrl(url: string): string {
+  if (!url) return '';
+  try {
+    const u = new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`);
+    const host = u.hostname.replace(/^www\./, '');
+    const segs = u.pathname.split('/').filter(Boolean).map((s) => decodeURIComponent(s));
+    const titleCase = (s: string) =>
+      s.replace(/[-_+]+/g, ' ').replace(/\s+/g, ' ').trim()
+        .split(' ').filter(Boolean)
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
+
+    // Booksy canonical path: /{lang}/{id}_{name}_{category}_{city}
+    const booksySeg = segs.find((s) => /^\d+_/.test(s));
+    if (booksySeg) {
+      const parts = booksySeg.split('_');
+      if (parts[1]) return titleCase(parts[1]);
+    }
+
+    // Otherwise the most descriptive path segment (skip routing words).
+    const skip = new Set([
+      'en-us', 'en', 'us', 'dl', 'show-business', 'b', 's', 'book', 'booking',
+      'widget', 'barber', 'barber-shop', 'barbershop', 'pro', 'p', 'biz', 'business',
+    ]);
+    const cand = [...segs].reverse().find(
+      (s) => /[a-z]/i.test(s) && !/^\d+$/.test(s) && !skip.has(s.toLowerCase()),
+    );
+    if (cand) {
+      const name = titleCase(cand.replace(/^\d+[-_]?/, ''));
+      if (name.length >= 2) return name;
+    }
+
+    // Vanity subdomain (kingdomcuts.booksy.com) — skip platform/common subs.
+    const sub = host.split('.')[0];
+    const common = new Set([
+      'www', 'booksy', 'app', 'book', 'thecut', 'fresha', 'vagaro', 'squareup',
+      'getsquire', 'square', 'styleseat', 'heygoldie', 'widget', 'my', 'm',
+    ]);
+    if (sub && !common.has(sub.toLowerCase()) && /[a-z]/i.test(sub)) return titleCase(sub);
+
+    return '';
+  } catch {
+    return '';
+  }
+}
+
 export function buildSiteFromScrape(data: ScrapeResponse, fallbackUrl: string, opts: BuildOptions = {}): BuiltSite {
   const manual = opts.manual ?? {};
   const template = opts.template ?? manual.template ?? 'luxe';
 
-  // Manual fields win over scraped identity. Empty manual = use scrape.
-  const shopName = (manual.shopName || '').trim() || (data.shopName || '').trim() || 'Your Barbershop';
+  // Manual fields win over scraped identity. Empty manual = use scrape, then
+  // a name derived from the booking URL, and only then a generic default.
+  const shopName = (manual.shopName || '').trim()
+    || (data.shopName || '').trim()
+    || deriveShopNameFromUrl(fallbackUrl)
+    || 'Your Barbershop';
   const area = (manual.area || '').trim() || (data.area || '').trim() || '';
   const phone = (manual.phone || '').trim() || (data.phone || '').trim() || '';
   const bookingUrl = (manual.bookingUrl || data.bookingUrl || fallbackUrl || '').trim();

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, Suspense, lazy } from 
 import { Loader2 } from 'lucide-react';
 import type { WebsiteData, ShopInputs, TemplateId } from '../types';
 import { generateContent } from '../services/geminiService';
-import { buildSiteFromScrape } from '../lib/buildSiteFromScrape';
+import { buildSiteFromScrape, deriveShopNameFromUrl } from '../lib/buildSiteFromScrape';
 import { extractFirstUrl } from '../lib/supportedBookingHost';
 import { fireLead } from '../lib/leadEvents';
 import { useAuth } from '../contexts/AuthContext';
@@ -134,13 +134,21 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
       // Booking link submitted → completion. Fire now (on submit) so the
       // lead is captured even if the scrape later fails.
       fireLead({ shopName: siteData?.shopName || SEED_NAME, area: siteData?.area || '', phone: siteData?.phone || '', bookingUrl: url });
+      // Name derived from the pasted link — used to replace the seed
+      // ("Premium Cuts") even if the scrape fails, so the visitor never
+      // ends up with the placeholder as their barbershop name.
+      const derivedName = deriveShopNameFromUrl(url);
+      const applyDerivedName = () => {
+        if (!derivedName) return;
+        setSiteData((prev) => (prev ? { ...prev, shopName: derivedName, hero: { ...prev.hero, heading: derivedName } } : prev));
+      };
       try {
         const resp = await fetch('/api/import-scrape', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url }),
         });
-        if (!resp.ok) return false;
+        if (!resp.ok) { applyDerivedName(); return false; }
         const json = await resp.json();
         const { scraped } = buildSiteFromScrape(json, url, {
           manual: {
@@ -162,6 +170,7 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
         return true;
       } catch (err) {
         console.warn('[generate] booking-link scrape failed:', err);
+        applyDerivedName();
         return false;
       }
     },
