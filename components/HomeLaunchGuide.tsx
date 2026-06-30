@@ -55,7 +55,7 @@ export const HomeLaunchGuide: React.FC<HomeLaunchGuideProps> = ({ onClose }) => 
         </span>
 
         <p className="hlg-pop my-2 text-center text-[18px] md:text-[20px] font-extrabold leading-snug text-white">
-          You can edit your website anytime by creating an account after clicking{' '}
+          You can <span style={{ color: '#ef4444' }}>edit your website anytime</span> by creating an account after clicking{' '}
           <span style={{ color: GOLD }}>“Publish your website.”</span>
         </p>
 
