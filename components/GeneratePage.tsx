@@ -230,6 +230,7 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
             onCheckoutFlowChange={setIsCheckoutFlowOpen}
             hidePrepaymentBanner={showPrompts}
             onUpdate={setSiteData}
+            showThemePicker={!showPrompts}
           />
         ) : activeTemplate === 'euphoria' ? (
           <EuphoriaWebsite
@@ -239,6 +240,7 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
             isPostPayment={false}
             onCheckoutFlowChange={setIsCheckoutFlowOpen}
             hidePrepaymentBanner={showPrompts}
+            showThemePicker={!showPrompts}
           />
         ) : (
           <GeneratedWebsite
@@ -249,6 +251,7 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
             onCheckoutFlowChange={setIsCheckoutFlowOpen}
             hidePrepaymentBanner={showPrompts}
             onUpdate={setSiteData}
+            showThemePicker={!showPrompts}
           />
         )}
       </Suspense>

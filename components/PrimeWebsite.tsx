@@ -35,6 +35,9 @@ interface PrimeWebsiteProps {
   // this so the floating design switcher re-skins with the EDITED content,
   // not the stale generated content — "keep content, re-skin only".
   onUpdate?: (data: WebsiteData) => void;
+  // When true, shows the floating EditorColorPicker pre-payment too (not just
+  // post-payment) so the visitor can recolor right after the site generates.
+  showThemePicker?: boolean;
 }
 
 // Seed copy used when a prime site has no policy / pull-quote of its own
@@ -488,7 +491,7 @@ ${PRIME_SCOPED_CSS}
 // ===========================================================================
 // Editor component
 // ===========================================================================
-export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, onNavigateDashboard, isPostPayment = false, userId = null, onCheckoutFlowChange, hidePrepaymentBanner, onUpdate }) => {
+export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, onNavigateDashboard, isPostPayment = false, userId = null, onCheckoutFlowChange, hidePrepaymentBanner, onUpdate, showThemePicker = false }) => {
   usePrimeAssets();
 
   const [siteData, setSiteData] = useState<WebsiteData>(data);
@@ -810,6 +813,11 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
 
   return (
     <div className={`prime-root pt-[32px] md:pt-[40px] ${!isPostPayment ? 'pb-[250px] md:pb-[180px]' : ''}`} style={themeStyle}>
+      {/* Floating theme-color picker — post-payment always, and pre-payment
+          when the generation flow opts in via showThemePicker. */}
+      {(isPostPayment || showThemePicker) && (
+        <EditorColorPicker current={siteData.colorTheme} onPick={handleColorChange} />
+      )}
       {/* Toolbar / pre-payment banner */}
       {isPostPayment ? (
         <>
@@ -820,7 +828,6 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
             onBack={() => onNavigateDashboard?.()}
             isPublishing={isPublishing}
           />
-          <EditorColorPicker current={siteData.colorTheme} onPick={handleColorChange} />
         </>
       ) : (
         <div className="fixed top-0 left-0 w-full bg-[#0a0a0a] border-b border-white/10 text-white py-2 px-2 md:py-2.5 md:px-3 z-[70] shadow-lg flex items-center gap-2">
