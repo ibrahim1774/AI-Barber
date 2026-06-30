@@ -50,6 +50,10 @@ interface GeneratedWebsiteProps {
   // user edit (not on prop-sync). The /booksy funnel uses this so the
   // floating design switcher re-skins with EDITED content, not stale content.
   onUpdate?: (data: WebsiteData) => void;
+  // When true, shows the floating EditorColorPicker pre-payment too (not just
+  // post-payment). Used by the homepage + subpage generation flows so the
+  // visitor can recolor the site right after it generates.
+  showThemePicker?: boolean;
 }
 
 // Extracts the trailing "City, State [ZIP]" portion of an area string so
@@ -485,7 +489,7 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
 </html>`;
 }
 
-export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack, site, onNavigateDashboard, isPostPayment = false, userId = null, onCheckoutFlowChange, hidePrepaymentBanner, onUpdate }) => {
+export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack, site, onNavigateDashboard, isPostPayment = false, userId = null, onCheckoutFlowChange, hidePrepaymentBanner, onUpdate, showThemePicker = false }) => {
   const [siteData, setSiteData] = useState<WebsiteData>(data);
   // Echo guard for onUpdate — see PrimeWebsite for the rationale. Only active
   // when onUpdate is provided (the /booksy funnel); a no-op otherwise.
@@ -1008,6 +1012,9 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         </>
       ) : (
         <>
+          {showThemePicker && (
+            <EditorColorPicker current={siteData.colorTheme} onPick={handleColorChange} />
+          )}
           <div className="fixed top-0 left-0 w-full bg-[#111111] border-b border-white/10 text-white py-2 px-2 md:py-2.5 md:px-3 z-[70] shadow-lg flex items-center gap-2">
             {/* Left: Back arrow */}
             <button onClick={onBack} className="shrink-0 p-1 hover:bg-white/10 rounded transition-colors">

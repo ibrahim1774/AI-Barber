@@ -22,6 +22,9 @@ interface EuphoriaWebsiteProps {
   // When true, the entire PrePaymentBanner (Launch CTA) is hidden. Used by
   // /booksy to hide the CTA until the visitor enters their link / generates.
   hidePrepaymentBanner?: boolean;
+  // When true, shows the floating EditorColorPicker pre-payment too (not just
+  // post-payment) so the visitor can recolor right after the site generates.
+  showThemePicker?: boolean;
 }
 
 // Shared Euphoria CSS — scoped inside `.euphoria-root` so it can't leak into the Luxe flow.
@@ -410,7 +413,7 @@ ${EUPHORIA_SCOPED_CSS}
 </html>`;
 }
 
-export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, site, onNavigateDashboard, isPostPayment = false, userId = null, onCheckoutFlowChange, hidePrepaymentBanner }) => {
+export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, site, onNavigateDashboard, isPostPayment = false, userId = null, onCheckoutFlowChange, hidePrepaymentBanner, showThemePicker = false }) => {
   useEuphoriaAssets();
 
   const [siteData, setSiteData] = useState<WebsiteData>(data);
@@ -736,6 +739,11 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
 
   return (
     <div className={`euphoria-root pt-[32px] md:pt-[40px] ${!isPostPayment ? 'pb-[250px] md:pb-[180px]' : ''}`} style={themeStyle}>
+      {/* Floating theme-color picker — post-payment always, and pre-payment
+          when the generation flow opts in via showThemePicker. */}
+      {(isPostPayment || showThemePicker) && (
+        <EditorColorPicker current={siteData.colorTheme} onPick={handleColorChange} />
+      )}
       {/* Toolbar / pre-payment banner */}
       {isPostPayment ? (
         <>
@@ -746,7 +754,6 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
             onBack={() => onNavigateDashboard?.()}
             isPublishing={isPublishing}
           />
-          <EditorColorPicker current={siteData.colorTheme} onPick={handleColorChange} />
         </>
       ) : (
         <div className="fixed top-0 left-0 w-full bg-[#0c0c0c] border-b border-white/10 text-white py-2 px-2 md:py-2.5 md:px-3 z-[70] shadow-lg flex items-center gap-2">

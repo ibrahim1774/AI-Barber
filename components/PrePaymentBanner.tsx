@@ -105,16 +105,16 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
           ? 'yearly-free'
           : 'yearly';
 
-  // Custom-design upsell. Flat $15/mo across every entry path.
+  // Custom-design upsell. Flat $29/mo across every entry path.
   // Plan slug per path for analytics attribution:
   //   custom-booksy → /booksy
   //   custom25      → everywhere else
   const customPlan: 'custom25' | 'custom-booksy' = booksyMode
     ? 'custom-booksy'
     : 'custom25';
-  // /booksy custom-design upsell is $29/mo; every other path stays $19/mo.
-  const customPriceLabel = booksyMode ? '$29/mo' : '$19/mo';
-  const customPriceFull = booksyMode ? '$29/month' : '$19/month';
+  // Custom-design upsell is $29/mo on every entry path.
+  const customPriceLabel = '$29/mo';
+  const customPriceFull = '$29/month';
 
   const [isDismissed, setIsDismissed] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
@@ -227,8 +227,8 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
           ? (crypto as any).randomUUID()
           : `co_${Date.now()}_${Math.random().toString(36).slice(2)}`;
       // Custom-design InitiateCheckout — matches the actual Stripe
-      // charge ($19/mo) so Meta/TikTok ROAS math stays aligned.
-      const checkoutValue = booksyMode ? 29 : 19;
+      // charge ($29/mo) so Meta/TikTok ROAS math stays aligned.
+      const checkoutValue = 29;
       const checkoutCurrency = 'USD';
       const { getPlanContentMeta } = await import('../lib/pixelMeta');
       const { readMetaCookies } = await import('../services/metaMatchParams');
@@ -487,14 +487,14 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
             </button>
           </div>
 
-          {/* "Don't like the design?" — highlighted gold-tinted box.
-              Headline in gold, optional subtitle beneath, price + arrow
-              anchored right. On /booksy: a custom-site headline, no subtext,
-              $29/mo. */}
+          {/* Custom-site upsell — highlighted gold-tinted box. Single
+              headline (no subtext), price + arrow anchored right. Same on
+              every entry path: "Custom 20+ Page Barber Website…", $29/mo,
+              and the compact (~20% smaller) sizing across all subpages. */}
           <button
             type="button"
             onClick={() => { setWizardStep(0); setShowCustomWizard(true); }}
-            className={`group flex w-full items-center justify-between border transition-all hover:border-[#e8c074]/70 ${generateMode ? 'mt-2 gap-2 px-2.5 py-1.5' : 'mt-2.5 gap-3 px-3 py-2'}`}
+            className="group mt-2 flex w-full items-center justify-between gap-2 border px-2.5 py-1.5 transition-all hover:border-[#e8c074]/70"
             style={{
               background: 'linear-gradient(180deg, rgba(232,192,116,0.06) 0%, rgba(232,192,116,0.02) 100%)',
               borderColor: 'rgba(232,192,116,0.35)',
@@ -502,29 +502,19 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
               textAlign: 'left',
             }}
           >
-            <span className={`flex items-start min-w-0 ${generateMode ? 'gap-1.5' : 'gap-2'}`}>
-              <Sparkles size={generateMode ? 10 : 12} className="mt-[3px] shrink-0" style={{ color: '#e8c074' }} />
+            <span className="flex items-start min-w-0 gap-1.5">
+              <Sparkles size={10} className="mt-[3px] shrink-0" style={{ color: '#e8c074' }} />
               <span className="min-w-0">
                 <span
                   className="block font-extrabold"
-                  style={{ fontSize: generateMode ? '0.76rem' : '0.95rem', color: '#e8c074', lineHeight: 1.15, letterSpacing: '-0.005em' }}
+                  style={{ fontSize: '0.76rem', color: '#e8c074', lineHeight: 1.15, letterSpacing: '-0.005em' }}
                 >
-                  {booksyMode
-                    ? 'Custom 20+ Page Barber Website with On-Page SEO Included'
-                    : `Want a new ${displayIndustry.toLowerCase()} website instead?`}
+                  Custom 20+ Page Barber Website with On-Page SEO Included
                 </span>
-                {!booksyMode && (
-                  <span
-                    className="block font-bold leading-snug mt-0.5"
-                    style={{ fontSize: generateMode ? '9px' : '11.5px', color: 'rgba(236,230,218,0.92)' }}
-                  >
-                    Choose a design, or let our team custom-build a different multi-page site for you.
-                  </span>
-                )}
               </span>
             </span>
             <span
-              className={`flex items-center gap-1.5 font-black uppercase tracking-[0.16em] shrink-0 rounded-full ${generateMode ? 'text-[10px] px-2 py-[3px]' : 'text-[12px] px-2.5 py-[4px]'}`}
+              className="flex items-center gap-1.5 font-black uppercase tracking-[0.16em] shrink-0 rounded-full text-[10px] px-2 py-[3px]"
               style={{
                 color: '#0a0a0a',
                 background: '#e8c074',
@@ -532,7 +522,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
               }}
             >
               {customPriceLabel}
-              <ArrowRight size={generateMode ? 10 : 12} className="transition group-hover:translate-x-0.5" />
+              <ArrowRight size={10} className="transition group-hover:translate-x-0.5" />
             </span>
           </button>
         </div>

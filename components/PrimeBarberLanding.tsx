@@ -385,9 +385,9 @@ export const PrimeBarberLanding: React.FC = () => {
       >
         <div className="mx-auto max-w-7xl px-5 md:px-8 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Scissors size={18} style={{ color: GOLD }} />
-            <div className="text-[15px] md:text-[18px] font-black tracking-tight uppercase" style={{ color: CREAM, letterSpacing: '0.02em' }}>
-              AI <span style={{ color: GOLD }}>Barber</span>
+            <Scissors size={22} style={{ color: GOLD }} />
+            <div className="text-[18px] md:text-[22px] font-black tracking-tight uppercase" style={{ color: CREAM, letterSpacing: '0.02em' }}>
+              AI<span style={{ color: GOLD }}>Barber</span>
             </div>
           </div>
           <PrimaryCTA size="sm" label="Get Started" showGuarantee={false} />

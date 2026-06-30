@@ -1171,6 +1171,7 @@ const App: React.FC = () => {
               userId={user?.id ?? null}
               onCheckoutFlowChange={setIsCheckoutFlowOpen}
               onUpdate={setGeneratedData}
+              showThemePicker
             />
           ) : generatedData.template === 'euphoria' ? (
             <EuphoriaWebsite
@@ -1181,6 +1182,7 @@ const App: React.FC = () => {
               isPostPayment={!!activeSite?.deployedUrl || activeSite?.deploymentStatus === 'deployed'}
               userId={user?.id ?? null}
               onCheckoutFlowChange={setIsCheckoutFlowOpen}
+              showThemePicker
             />
           ) : (
             <GeneratedWebsite
@@ -1192,6 +1194,7 @@ const App: React.FC = () => {
               userId={user?.id ?? null}
               onCheckoutFlowChange={setIsCheckoutFlowOpen}
               onUpdate={setGeneratedData}
+              showThemePicker
             />
           )}
           {/* Floating Design 1 / Design 2 switcher — homepage + /free-barber
