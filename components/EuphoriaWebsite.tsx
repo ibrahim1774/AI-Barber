@@ -25,6 +25,9 @@ interface EuphoriaWebsiteProps {
   // When true, shows the floating EditorColorPicker pre-payment too (not just
   // post-payment) so the visitor can recolor right after the site generates.
   showThemePicker?: boolean;
+  // Where the pre-payment floating picker anchors ('below-design' default;
+  // 'center' where there is no Design switcher, e.g. the funnel).
+  themePickerPlacement?: 'center' | 'below-design';
 }
 
 // Shared Euphoria CSS — scoped inside `.euphoria-root` so it can't leak into the Luxe flow.
@@ -413,7 +416,7 @@ ${EUPHORIA_SCOPED_CSS}
 </html>`;
 }
 
-export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, site, onNavigateDashboard, isPostPayment = false, userId = null, onCheckoutFlowChange, hidePrepaymentBanner, showThemePicker = false }) => {
+export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, site, onNavigateDashboard, isPostPayment = false, userId = null, onCheckoutFlowChange, hidePrepaymentBanner, showThemePicker = false, themePickerPlacement = 'below-design' }) => {
   useEuphoriaAssets();
 
   const [siteData, setSiteData] = useState<WebsiteData>(data);
@@ -742,7 +745,7 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
       {/* Floating theme-color picker — post-payment always, and pre-payment
           when the generation flow opts in via showThemePicker. */}
       {(isPostPayment || showThemePicker) && (
-        <EditorColorPicker current={siteData.colorTheme} onPick={handleColorChange} placement={isPostPayment ? 'center' : 'below-design'} />
+        <EditorColorPicker current={siteData.colorTheme} onPick={handleColorChange} placement={isPostPayment ? 'center' : themePickerPlacement} />
       )}
       {/* Toolbar / pre-payment banner */}
       {isPostPayment ? (

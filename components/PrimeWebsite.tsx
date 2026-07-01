@@ -38,6 +38,9 @@ interface PrimeWebsiteProps {
   // When true, shows the floating EditorColorPicker pre-payment too (not just
   // post-payment) so the visitor can recolor right after the site generates.
   showThemePicker?: boolean;
+  // Where the pre-payment floating picker anchors ('below-design' default;
+  // 'center' where there is no Design switcher).
+  themePickerPlacement?: 'center' | 'below-design';
 }
 
 // Seed copy used when a prime site has no policy / pull-quote of its own
@@ -491,7 +494,7 @@ ${PRIME_SCOPED_CSS}
 // ===========================================================================
 // Editor component
 // ===========================================================================
-export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, onNavigateDashboard, isPostPayment = false, userId = null, onCheckoutFlowChange, hidePrepaymentBanner, onUpdate, showThemePicker = false }) => {
+export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, onNavigateDashboard, isPostPayment = false, userId = null, onCheckoutFlowChange, hidePrepaymentBanner, onUpdate, showThemePicker = false, themePickerPlacement = 'below-design' }) => {
   usePrimeAssets();
 
   const [siteData, setSiteData] = useState<WebsiteData>(data);
@@ -816,7 +819,7 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
       {/* Floating theme-color picker — post-payment always, and pre-payment
           when the generation flow opts in via showThemePicker. */}
       {(isPostPayment || showThemePicker) && (
-        <EditorColorPicker current={siteData.colorTheme} onPick={handleColorChange} placement={isPostPayment ? 'center' : 'below-design'} />
+        <EditorColorPicker current={siteData.colorTheme} onPick={handleColorChange} placement={isPostPayment ? 'center' : themePickerPlacement} />
       )}
       {/* Toolbar / pre-payment banner */}
       {isPostPayment ? (
