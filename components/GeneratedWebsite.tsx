@@ -468,7 +468,7 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
         Premium Grooming Excellence in ${cityStateOnly(siteData.area)}
       </p>
       <div class="pt-8 border-t border-white/5 text-[#444444] text-[8px] uppercase tracking-[2px]">
-        Copyright &copy; 2025 ${siteData.shopName}. Built by Prime Barber AI.
+        Copyright &copy; 2025 ${siteData.shopName}. Built by AIBarber.
       </div>
     </div>
   </footer>
@@ -1658,7 +1658,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           </p>
 
           <div className="pt-8 md:pt-10 border-t border-white/5 text-[#444444] text-[8px] uppercase tracking-[2px]">
-            Copyright &copy; 2025 <EditableText text={siteData.shopName} onSave={(val) => handleTextChange('shopName', val)} />. Built by Prime Barber AI.
+            Copyright &copy; 2025 <EditableText text={siteData.shopName} onSave={(val) => handleTextChange('shopName', val)} />. Built by AIBarber.
           </div>
         </div>
       </footer>

@@ -47,7 +47,7 @@ export const LoadingScreen: React.FC = () => {
       </div>
       
       <h2 className="text-2xl font-montserrat font-black uppercase tracking-[4px] mb-4 text-center">
-        PRIME <span className="text-[#f4a100]">BARBER</span> AI
+        AI<span className="text-[#f4a100]">BARBER</span>
       </h2>
       
       <p className="text-[#f4a100] mb-8 animate-pulse text-xs uppercase tracking-[3px] h-6 text-center">
