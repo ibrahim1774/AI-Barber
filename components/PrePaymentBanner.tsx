@@ -122,9 +122,8 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   const [showCustomWizard, setShowCustomWizard] = useState(false);
   const [wizardStep, setWizardStep] = useState(0);
   const [isCustomCheckingOut, setIsCustomCheckingOut] = useState(false);
-  // /booksy defaults to the yearly plan (shown first); every other path
-  // defaults to monthly.
-  const [pricingPlan, setPricingPlan] = useState<'monthly' | 'yearly'>(booksyMode ? 'yearly' : 'monthly');
+  // Every entry path defaults to the monthly plan, shown first.
+  const [pricingPlan, setPricingPlan] = useState<'monthly' | 'yearly'>('monthly');
   // Benefits-popup state. When STRIPE_PK is present, the Launch My
   // Site CTA opens a modal with 5 plain-language bullets + the
   // embedded Stripe checkout below — no redirect to checkout.stripe.com.
@@ -377,9 +376,8 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
               the live price ("Publish $9/mo"), so the standalone
               "$9/mo — hosting/maintenance only" line was redundant. */}
 
-          {/* Monthly / Yearly toggle. On /generate the toggles are larger
-              and Yearly is shown first; every other entry path keeps the
-              original quieter/smaller monthly-first layout. */}
+          {/* Monthly / Yearly toggle. On /generate the toggles are larger;
+              every path shows Monthly first (Monthly is the default plan). */}
           {(() => {
             const sizeCls = generateMode
               ? 'text-[12px] md:text-[13px] pb-1'
@@ -417,7 +415,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
             );
             return (
               <div className={`flex items-center justify-center ${generateMode ? 'gap-7 mb-3' : 'gap-5 mb-2.5'}`}>
-                {(generateMode || booksyMode) ? [yearlyBtn, monthlyBtn] : [monthlyBtn, yearlyBtn]}
+                {[monthlyBtn, yearlyBtn]}
               </div>
             );
           })()}
@@ -592,8 +590,8 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
             </p>
 
             {/* Monthly / Yearly toggle — quiet text-based with gold underline.
-                /booksy shows Yearly first (row-reverse). */}
-            <div className="flex items-center justify-center gap-6 mb-7" style={booksyMode ? { flexDirection: 'row-reverse' } : undefined}>
+                Monthly is shown first everywhere (Monthly is the default plan). */}
+            <div className="flex items-center justify-center gap-6 mb-7">
               <button
                 onClick={() => setPricingPlan('monthly')}
                 className={`${booksyMode ? 'text-[13px] font-bold' : 'text-[11px] font-medium'} uppercase tracking-[0.22em] pb-1.5 transition-colors`}
