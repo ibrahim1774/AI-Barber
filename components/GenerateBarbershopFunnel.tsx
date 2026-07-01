@@ -197,6 +197,8 @@ export const GenerateBarbershopFunnel: React.FC = () => {
               userId={user?.id ?? null}
               isPostPayment={false}
               onCheckoutFlowChange={setIsCheckoutFlowOpen}
+              showThemePicker
+              themePickerPlacement="center"
             />
           ) : (
             <GeneratedWebsite
@@ -205,6 +207,9 @@ export const GenerateBarbershopFunnel: React.FC = () => {
               userId={user?.id ?? null}
               isPostPayment={false}
               onCheckoutFlowChange={setIsCheckoutFlowOpen}
+              onUpdate={setSiteData}
+              showThemePicker
+              themePickerPlacement="center"
             />
           )}
         </Suspense>

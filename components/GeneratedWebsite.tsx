@@ -54,6 +54,10 @@ interface GeneratedWebsiteProps {
   // post-payment). Used by the homepage + subpage generation flows so the
   // visitor can recolor the site right after it generates.
   showThemePicker?: boolean;
+  // Where the pre-payment floating picker anchors. 'below-design' (default)
+  // stacks it under the Design switcher; 'center' is used where there is no
+  // Design switcher (e.g. the /generatebarbershop funnel).
+  themePickerPlacement?: 'center' | 'below-design';
 }
 
 // Extracts the trailing "City, State [ZIP]" portion of an area string so
@@ -489,7 +493,7 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
 </html>`;
 }
 
-export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack, site, onNavigateDashboard, isPostPayment = false, userId = null, onCheckoutFlowChange, hidePrepaymentBanner, onUpdate, showThemePicker = false }) => {
+export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack, site, onNavigateDashboard, isPostPayment = false, userId = null, onCheckoutFlowChange, hidePrepaymentBanner, onUpdate, showThemePicker = false, themePickerPlacement = 'below-design' }) => {
   const [siteData, setSiteData] = useState<WebsiteData>(data);
   // Echo guard for onUpdate — see PrimeWebsite for the rationale. Only active
   // when onUpdate is provided (the /booksy funnel); a no-op otherwise.
@@ -1013,7 +1017,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       ) : (
         <>
           {showThemePicker && (
-            <EditorColorPicker current={siteData.colorTheme} onPick={handleColorChange} placement="below-design" />
+            <EditorColorPicker current={siteData.colorTheme} onPick={handleColorChange} placement={themePickerPlacement} />
           )}
           <div className="fixed top-0 left-0 w-full bg-[#111111] border-b border-white/10 text-white py-2 px-2 md:py-2.5 md:px-3 z-[70] shadow-lg flex items-center gap-2">
             {/* Left: Back arrow */}
