@@ -1111,17 +1111,18 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           )}
           <div className="absolute inset-0 bg-black/40 bg-gradient-to-b from-black/30 via-transparent to-[#0d0d0d] pointer-events-none"></div>
         </div>
-        {/* The whole hero photo is the replace target — tapping anywhere on
-            it (outside the centered CTAs/text, which sit above at z-10+)
-            opens the file picker. A corner pill marks the affordance. The
-            label sits at z-0's level but below the z-10 content so the CTAs
-            stay clickable. */}
-        <label className="group absolute inset-0 z-[5] cursor-pointer">
-          <span className="pointer-events-none absolute bottom-3 right-3 md:bottom-5 md:right-5 flex items-center gap-2 rounded-full bg-black/85 px-4 py-2.5 md:px-5 md:py-3 text-white shadow-xl backdrop-blur-sm border border-white/20">
-            <CameraIcon className="w-4 h-4 md:w-5 md:h-5" />
-            <span className="text-[10px] md:text-[12px] font-bold uppercase tracking-[0.16em]">Replace Photo</span>
-          </span>
+        {/* The whole hero photo is a replace target for the areas NOT covered
+            by the centered text/CTAs (which sit above at z-10). */}
+        <label className="group absolute inset-0 z-[5] cursor-pointer" aria-label="Replace hero photo">
           <input key={imageInputKey} type="file" className="hidden" accept="image/*" onChange={(e) => handleImageChange('hero.imageUrl', e)} />
+        </label>
+        {/* Dedicated Replace-Photo pill — its own clickable label ABOVE the
+            z-10 hero text, so it stays tappable even where the centered
+            text/CTA block overlaps the corner. This is the reliable target. */}
+        <label className="absolute bottom-3 right-3 md:bottom-5 md:right-5 z-20 flex items-center gap-2 rounded-full bg-black/85 px-4 py-2.5 md:px-5 md:py-3 text-white shadow-xl backdrop-blur-sm border border-white/20 cursor-pointer hover:bg-black transition-colors">
+          <CameraIcon className="w-4 h-4 md:w-5 md:h-5" />
+          <span className="text-[10px] md:text-[12px] font-bold uppercase tracking-[0.16em]">Replace Photo</span>
+          <input key={`${imageInputKey}-hero-pill`} type="file" className="hidden" accept="image/*" onChange={(e) => handleImageChange('hero.imageUrl', e)} />
         </label>
 
         <div className="relative z-10 text-center px-4 md:px-6 max-w-5xl pb-28 md:pb-32 pt-20 md:pt-0">
