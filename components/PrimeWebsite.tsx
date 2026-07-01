@@ -479,7 +479,7 @@ ${PRIME_SCOPED_CSS}
   <footer style="padding:48px 6vw;border-top:1px solid var(--p-line-soft);text-align:center;">
     <div class="p-container">
       <div class="p-serif p-italic" style="font-size:18px;color:var(--p-brand);margin-bottom:8px;">${safeName}</div>
-      <div class="p-eyebrow" style="color:var(--p-ink-muted);">© 2025 · Built by Prime Barber AI</div>
+      <div class="p-eyebrow" style="color:var(--p-ink-muted);">© 2025 · Built by AIBarber</div>
     </div>
   </footer>
 
@@ -1158,7 +1158,7 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
       <footer style={{ padding: '48px 6vw', borderTop: '1px solid var(--p-line-soft)', textAlign: 'center' }}>
         <div className="p-container">
           <div className="p-serif p-italic" style={{ fontSize: 18, color: 'var(--p-brand)', marginBottom: 8 }}>{siteData.shopName}</div>
-          <div className="p-eyebrow" style={{ color: 'var(--p-ink-muted)' }}>© 2025 · Built by Prime Barber AI</div>
+          <div className="p-eyebrow" style={{ color: 'var(--p-ink-muted)' }}>© 2025 · Built by AIBarber</div>
         </div>
       </footer>
 

@@ -279,9 +279,9 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
 
           {/* Logo (top-left) */}
           <div className="absolute top-6 left-6 md:top-8 md:left-8 flex items-center gap-2 md:gap-3 z-20 pointer-events-none">
-            <ScissorsIcon className="w-5 h-5 md:w-6 md:h-6 text-[#f4a100]" />
-            <span className="text-[10px] md:text-sm font-montserrat font-black uppercase tracking-[2px] text-white">
-              Prime<span className="text-[#f4a100]">Barber</span> AI
+            <ScissorsIcon className="w-6 h-6 md:w-7 md:h-7 text-[#f4a100]" />
+            <span className="text-[12px] md:text-base font-montserrat font-black uppercase tracking-[2px] text-white">
+              AI<span className="text-[#f4a100]">Barber</span>
             </span>
           </div>
 
@@ -432,9 +432,9 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
 
           {/* Logo (top-left) */}
           <div className="absolute top-6 left-6 md:top-8 md:left-8 flex items-center gap-2 md:gap-3 z-20 pointer-events-none">
-            <ScissorsIcon className="w-5 h-5 md:w-6 md:h-6 text-[#f4a100]" />
-            <span className="text-[10px] md:text-sm font-montserrat font-black uppercase tracking-[2px] text-white">
-              Prime<span className="text-[#f4a100]">Barber</span> AI
+            <ScissorsIcon className="w-6 h-6 md:w-7 md:h-7 text-[#f4a100]" />
+            <span className="text-[12px] md:text-base font-montserrat font-black uppercase tracking-[2px] text-white">
+              AI<span className="text-[#f4a100]">Barber</span>
             </span>
           </div>
 
@@ -518,9 +518,9 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
 
         {/* Logo in the Upper Left Hand Corner */}
         <div className="absolute top-6 left-6 md:top-8 md:left-8 flex items-center gap-2 md:gap-3 z-20 pointer-events-none">
-          <ScissorsIcon className="w-5 h-5 md:w-6 md:h-6 text-[#f4a100]" />
-          <span className="text-[10px] md:text-sm font-montserrat font-black uppercase tracking-[2px] text-white">
-            Prime<span className="text-[#f4a100]">Barber</span> AI
+          <ScissorsIcon className="w-6 h-6 md:w-7 md:h-7 text-[#f4a100]" />
+          <span className="text-[12px] md:text-base font-montserrat font-black uppercase tracking-[2px] text-white">
+            AI<span className="text-[#f4a100]">Barber</span>
           </span>
         </div>
 
@@ -745,7 +745,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
             <div className="mt-5 md:mt-8 flex items-center justify-center gap-3 md:gap-4">
               <div className="h-[1px] flex-1 bg-white/10"></div>
               <p className="text-white/30 text-[7px] md:text-[9px] uppercase tracking-[3px] md:tracking-[5px] whitespace-nowrap">
-                Premium Builder • Prime Barber AI
+                Premium Builder • AIBarber
               </p>
               <div className="h-[1px] flex-1 bg-white/10"></div>
             </div>

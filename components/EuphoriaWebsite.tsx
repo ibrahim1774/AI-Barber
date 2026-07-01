@@ -404,7 +404,7 @@ ${EUPHORIA_SCOPED_CSS}
   <footer style="padding:48px 24px;border-top:1px solid var(--eu-line-soft);text-align:center;">
     <div class="eu-container">
       <div class="eu-serif" style="font-size:18px;color:var(--eu-ink);margin-bottom:8px;">${safeName}</div>
-      <div class="eu-eyebrow">© 2025 · Built by Prime Barber AI</div>
+      <div class="eu-eyebrow">© 2025 · Built by AIBarber</div>
     </div>
   </footer>
 
@@ -976,7 +976,7 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
       <footer style={{ padding: '48px 24px', borderTop: '1px solid var(--eu-line-soft)', textAlign: 'center' }}>
         <div className="eu-container">
           <div className="eu-serif" style={{ fontSize: 18, marginBottom: 8 }}>{siteData.shopName}</div>
-          <div className="eu-eyebrow">© 2025 · Built by Prime Barber AI</div>
+          <div className="eu-eyebrow">© 2025 · Built by AIBarber</div>
         </div>
       </footer>
 

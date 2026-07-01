@@ -164,7 +164,7 @@ export const ManagementDashboard: React.FC<ManagementDashboardProps> = ({
           <div className="flex items-center gap-2">
             <ScissorsIcon className="w-5 h-5 text-[#f4a100]" />
             <span className="text-xs font-montserrat font-black uppercase tracking-[2px] text-white">
-              Prime<span className="text-[#f4a100]">Barber</span> AI
+              AI<span className="text-[#f4a100]">Barber</span>
             </span>
           </div>
 
