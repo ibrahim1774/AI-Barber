@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowRight, Loader2, ChevronLeft } from 'lucide-react';
+import { BrandSwatchGrid } from './BrandSwatchGrid';
 
 // Centered glass overlay for the /generate subpage. A barber site is
 // already generated and rendered behind this card; the overlay asks the
@@ -116,8 +117,6 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
 }) => {
   const isBooksy = variant === 'booksy';
   const [color, setColor] = useState(initialColor);
-  // Preset quick-pick swatches + a free custom color input below.
-  const COLOR_SWATCHES = ['#f4a100', '#ffffff', '#dc2626', '#22c55e', '#3b82f6', '#a855f7'];
   const pickColor = (hex: string) => {
     setColor(hex);
     onColorChange?.(hex);
@@ -368,39 +367,7 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
                 <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-white/45 mb-1.5">
                   Brand color
                 </p>
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {COLOR_SWATCHES.map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => pickColor(c)}
-                      aria-label={`Use color ${c}`}
-                      className="w-6 h-6 rounded-full transition"
-                      style={{
-                        background: c,
-                        boxShadow: color.toLowerCase() === c.toLowerCase()
-                          ? '0 0 0 2px #0e0c08, 0 0 0 4px #e8c074'
-                          : 'inset 0 0 0 1px rgba(255,255,255,0.18)',
-                      }}
-                    />
-                  ))}
-                  {/* Custom any-color picker */}
-                  <label
-                    className="relative w-6 h-6 rounded-full overflow-hidden cursor-pointer"
-                    title="Pick any color"
-                    style={{
-                      background: 'conic-gradient(from 0deg, #f4a100, #dc2626, #a855f7, #3b82f6, #22c55e, #f4a100)',
-                      boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.25)',
-                    }}
-                  >
-                    <input
-                      type="color"
-                      value={/^#[0-9a-fA-F]{6}$/.test(color) ? color : '#888888'}
-                      onChange={(e) => pickColor(e.target.value)}
-                      className="absolute -inset-2 cursor-pointer opacity-0"
-                    />
-                  </label>
-                </div>
+                <BrandSwatchGrid current={color} onPick={pickColor} columns={6} size="sm" className="justify-items-start" />
               </div>
             )}
 
