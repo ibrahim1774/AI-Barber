@@ -300,7 +300,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
               style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
             >
               {bookingMode
-                ? "Paste your Booksy, Fresha, Square, Vagaro, or StyleSeat link — we'll pull your services, photos, hours, and reviews automatically."
+                ? "Paste your Booksy, Fresha, Square, Vagaro, StyleSeat, or Setmore link — we'll pull your services, photos, hours, and reviews automatically."
                 : "Paste your Booksy link — we'll pull your services, photos, hours, and reviews automatically."}
             </p>
 
@@ -319,7 +319,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
                   autoCapitalize="off"
                   autoCorrect="off"
                   spellCheck={false}
-                  placeholder={bookingMode ? 'Booksy, Fresha, Square, Vagaro, or StyleSeat link' : 'booksy.com / app.booksy.com / yourshop.booksy.com'}
+                  placeholder={bookingMode ? 'Booksy, Fresha, Square, Vagaro, StyleSeat, or Setmore link' : 'booksy.com / app.booksy.com / yourshop.booksy.com'}
                   className="w-full bg-transparent border-b py-2 md:py-3 text-white text-center transition-all outline-none font-montserrat text-[12px] md:text-base placeholder:text-white/20"
                   style={{
                     borderBottomColor: `${linkAccent}99`,
@@ -330,7 +330,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
                 />
                 <p className="text-white/40 text-[9px] md:text-[10px] mt-1 text-center">
                   {bookingMode
-                    ? 'Booksy, Fresha, Square, Vagaro & StyleSeat all work — short links too.'
+                    ? 'Booksy, Fresha, Square, Vagaro, StyleSeat & Setmore all work — short links too.'
                     : 'Short links like yourshop.booksy.com work too — we resolve them.'}
                 </p>
               </div>
