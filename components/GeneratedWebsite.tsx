@@ -1013,7 +1013,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       ) : (
         <>
           {showThemePicker && (
-            <EditorColorPicker current={siteData.colorTheme} onPick={handleColorChange} />
+            <EditorColorPicker current={siteData.colorTheme} onPick={handleColorChange} placement="below-design" />
           )}
           <div className="fixed top-0 left-0 w-full bg-[#111111] border-b border-white/10 text-white py-2 px-2 md:py-2.5 md:px-3 z-[70] shadow-lg flex items-center gap-2">
             {/* Left: Back arrow */}
