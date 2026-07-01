@@ -870,7 +870,21 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
         {siteData.hero.imageUrl ? (
           <>
             <img src={siteData.hero.imageUrl} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', filter: 'brightness(0.5) contrast(1.08)' }} />
-            <ImageOverlay big onUpload={e => handleImageChange('hero.imageUrl', e)} />
+            {/* Full-bleed click target for the areas not covered by the
+                centered hero text (which sits above at zIndex 2). */}
+            <label className="p-img-overlay p-img-overlay--lg" aria-label="Replace hero photo">
+              <input key={imageInputKey} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleImageChange('hero.imageUrl', e)} />
+            </label>
+            {/* Dedicated pill ABOVE the hero text (zIndex 3) so Replace photo
+                stays clickable even where the text/CTA block overlaps. */}
+            <label
+              className="p-img-pill p-img-pill--lg"
+              style={{ position: 'absolute', bottom: 18, right: 18, zIndex: 3, cursor: 'pointer', pointerEvents: 'auto' }}
+            >
+              <CameraIcon />
+              <span>Replace photo</span>
+              <input key={`${imageInputKey}-hero-pill`} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleImageChange('hero.imageUrl', e)} />
+            </label>
           </>
         ) : (
           <div style={{ position: 'absolute', inset: 0 }}>
