@@ -742,7 +742,7 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
       {/* Floating theme-color picker — post-payment always, and pre-payment
           when the generation flow opts in via showThemePicker. */}
       {(isPostPayment || showThemePicker) && (
-        <EditorColorPicker current={siteData.colorTheme} onPick={handleColorChange} />
+        <EditorColorPicker current={siteData.colorTheme} onPick={handleColorChange} placement={isPostPayment ? 'center' : 'below-design'} />
       )}
       {/* Toolbar / pre-payment banner */}
       {isPostPayment ? (

@@ -518,8 +518,8 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
 
         {/* Logo in the Upper Left Hand Corner */}
         <div className="absolute top-6 left-6 md:top-8 md:left-8 flex items-center gap-2 md:gap-3 z-20 pointer-events-none">
-          <ScissorsIcon className="w-6 h-6 md:w-7 md:h-7 text-[#f4a100]" />
-          <span className="text-[12px] md:text-base font-montserrat font-black uppercase tracking-[2px] text-white">
+          <ScissorsIcon className="w-5 h-5 md:w-6 md:h-6 text-[#f4a100]" />
+          <span className="text-[14px] md:text-[17px] font-montserrat font-black uppercase tracking-[2px] text-white">
             AI<span className="text-[#f4a100]">Barber</span>
           </span>
         </div>
@@ -551,7 +551,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
           />
           {/* Darkening overlay for text legibility */}
           <div className="absolute inset-0 bg-gradient-to-br from-black/85 via-black/70 to-black/85" aria-hidden="true" />
-          <div className="relative z-10 pt-4 md:pt-0 mx-auto max-w-2xl">
+          <div className="relative z-10 pt-4 md:pt-0 mt-[8vh] md:mt-[10vh] mx-auto max-w-2xl">
             {booksyMode ? (
               <h1 className="text-2xl md:text-5xl lg:text-6xl font-montserrat font-black uppercase tracking-[1px] md:tracking-[2px] leading-[1.15] text-white mb-2 md:mb-4 text-center">
                 Generate Your <span style={{ color: '#f4a100' }}>FREE</span> <br className="hidden md:block"/>

@@ -9,6 +9,12 @@ const WHEEL = 'conic-gradient(from 0deg, #f4a100, #dc2626, #a855f7, #3b82f6, #22
 interface Props {
   current?: string;
   onPick: (hex: string) => void;
+  // Where the floating panel anchors on the left rail.
+  //   'center'       → vertically centered (post-payment editor, no other rail).
+  //   'below-design' → sits just under the floating Design switcher so the two
+  //                    don't overlap (pre-payment generation flow, where both
+  //                    the Design switcher and this picker are visible).
+  placement?: 'center' | 'below-design';
 }
 
 const isHex = (c?: string): c is string => !!c && /^#[0-9a-fA-F]{6}$/.test(c);
@@ -18,12 +24,20 @@ const isHex = (c?: string): c is string => !!c && /^#[0-9a-fA-F]{6}$/.test(c);
 // future. Collapsed to a single dot to stay out of the way; expands to the
 // swatch row + any-color wheel on tap. Calls onPick(hex) which writes
 // siteData.colorTheme — the renderer re-themes live and autosave persists it.
-export const EditorColorPicker: React.FC<Props> = ({ current, onPick }) => {
+export const EditorColorPicker: React.FC<Props> = ({ current, onPick, placement = 'center' }) => {
   const [open, setOpen] = useState(false);
   const active = (current || '').toLowerCase();
 
+  // 'below-design' anchors the panel's top ~just under the Design switcher
+  // (which is centered on the left rail) so the two floating panels stack
+  // instead of overlapping.
+  const positionCls =
+    placement === 'below-design'
+      ? 'top-[calc(50%+66px)]'
+      : 'top-1/2 -translate-y-1/2';
+
   return (
-    <div className="fixed left-3 top-1/2 -translate-y-1/2 z-[78] flex flex-col items-center gap-1.5 rounded-2xl border border-white/10 bg-black/80 p-2.5 shadow-xl backdrop-blur">
+    <div className={`fixed left-3 ${positionCls} z-[78] flex flex-col items-center gap-1.5 rounded-2xl border border-white/10 bg-black/80 p-2.5 shadow-xl backdrop-blur`}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
