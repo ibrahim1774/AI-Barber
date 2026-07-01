@@ -9,6 +9,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { GenerateCustomizePrompts } from './GenerateCustomizePrompts';
 import { HomeLaunchGuide } from './HomeLaunchGuide';
 import { BooksyDesignSwitcher } from './BooksyDesignSwitcher';
+import { BooksyGeneratorForm } from './BooksyGeneratorForm';
 
 // /generate — "Customize Your Barbershop Site".
 //
@@ -36,9 +37,11 @@ const GeneratedWebsite = lazy(() => import('./GeneratedWebsite').then((m) => ({ 
 const PrimeWebsite = lazy(() => import('./PrimeWebsite').then((m) => ({ default: m.PrimeWebsite })));
 
 export interface GeneratePageProps {
-  // 'generate' (default) = the /generate entry. 'booksy' = the /booksy
-  // entry — same instant-preview + overlay flow, but the overlay leads
-  // with the Booksy link field and uses Booksy-flavored copy. Pricing +
+  // 'generate' (default) = the /generate entry — instant-preview site +
+  // centered customize overlay. 'booksy' = the /booksy entry — FORM-FIRST:
+  // nothing generates on landing; the visitor pastes a booking link into
+  // BooksyGeneratorForm, we scrape it, and only then does the site render
+  // (with the floating Design 1/2 switcher + color picker). Pricing +
   // analytics are still path-detected (isBooksyPath) inside the renderer's
   // PrePaymentBanner, so no extra wiring is needed here.
   variant?: 'generate' | 'booksy';
@@ -87,8 +90,11 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
   const { user } = useAuth();
 
   // Build the seed site immediately on mount so the preview is populated
-  // before the visitor answers anything (both /generate and /booksy).
+  // before the visitor answers anything. /generate ONLY — /booksy is
+  // form-first: nothing generates until the visitor pastes a link into
+  // BooksyGeneratorForm (rendered below while siteData is null).
   useEffect(() => {
+    if (variant === 'booksy') return;
     if (startedRef.current) return;
     startedRef.current = true;
     (async () => {
@@ -194,14 +200,42 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
     setShowLaunchGuide(true);
   }, []);
 
+  // /booksy form-first entry: BooksyGeneratorForm scraped the pasted link
+  // and handed back a finished site. Drop straight into the editor with the
+  // floating Design 1/2 switcher + color picker (both gated on !showPrompts).
+  // No customize overlay, no launch guide — the visitor's next move is to
+  // pick a design/color on the live site.
+  const handleBooksyGenerate = useCallback((_inputs: ShopInputs, scraped: WebsiteData) => {
+    setSiteData({ ...scraped, template: (scraped as any).template ?? template });
+    setShowPrompts(false);
+  }, [template]);
+
   const handleBack = useCallback(() => {
     setShowLaunchGuide(false);
     setIsCheckoutFlowOpen(false);
+    if (variant === 'booksy') {
+      // Back to the paste-your-link entry form (siteData null → form renders).
+      setSiteData(null);
+      setShowPrompts(true);
+      return;
+    }
     // Restart the customize overlay over the live preview.
     setShowPrompts(true);
-  }, []);
+  }, [variant]);
 
-  // Loading state until the seed site is ready.
+  // /booksy is form-first: no site until the visitor pastes a link. Render
+  // the single-URL BooksyGeneratorForm (its own hero + progress screen) and
+  // wait. On submit it scrapes the link and hands back a finished site.
+  if (!siteData && variant === 'booksy') {
+    return (
+      <BooksyGeneratorForm
+        onGenerate={handleBooksyGenerate}
+        template={template}
+      />
+    );
+  }
+
+  // /generate loading state until the seed site is ready.
   if (!siteData) {
     return (
       <div
@@ -255,7 +289,7 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
           />
         )}
       </Suspense>
-      {showPrompts && !isCheckoutFlowOpen && (
+      {showPrompts && variant !== 'booksy' && !isCheckoutFlowOpen && (
         <GenerateCustomizePrompts
           onChange={handlePromptChange}
           onSubmitBookingLink={handleSubmitBookingLink}
