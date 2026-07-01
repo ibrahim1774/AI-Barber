@@ -5,10 +5,12 @@ import { ScissorsIcon } from './Icons';
 import { isSupportedBookingHost, extractFirstUrl } from '../lib/supportedBookingHost.ts';
 import { buildSiteFromScrape } from '../lib/buildSiteFromScrape.ts';
 import { isBooksyPath, isFreeBarberPath, isBookingPath } from '../lib/dealMode.ts';
+import { BrandSwatchGrid } from './BrandSwatchGrid';
+import { DEFAULT_SWATCH } from '../lib/brandSwatches';
 
 // Booksy brand teal — used to highlight Booksy-specific copy in
-// booksyMode. Lives here (not THEME_PRESETS) because it's an
-// accent on a single field, not a sitewide theme.
+// booksyMode. A single-field accent, not a sitewide theme (the sitewide
+// palette comes from the shared BrandSwatchGrid).
 const BOOKSY_TEAL = '#1AE3B9';
 
 interface GeneratorFormProps {
@@ -21,16 +23,6 @@ interface GeneratorFormProps {
   onSignIn?: () => void;
 }
 
-// Color-theme presets — matches the PrimeHub /barber set so the two
-// products stay visually consistent. The slug is written onto
-// ShopInputs.colorTheme and consumed by the LUXE + EUPHORIA renderers
-// to drive their CSS variables.
-const THEME_PRESETS: { slug: string; label: string; bg: string; accent: string }[] = [
-  { slug: 'goldBlack',   label: 'Gold & Black',   bg: '#000000', accent: '#f4a100' },
-  { slug: 'blackWhite',  label: 'Black & White',  bg: '#000000', accent: '#f5f5f5' },
-  { slug: 'redBlack',    label: 'Red & Black',    bg: '#000000', accent: '#dc2626' },
-  { slug: 'purpleGreen', label: 'Purple & Green', bg: '#160328', accent: '#22c55e' },
-];
 
 export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSignIn }) => {
   // Path-aware headline + field treatment. On /booksy the form
@@ -61,7 +53,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
     phone: '',
     template: 'luxe',
     bookingUrl: '',
-    colorTheme: 'goldBlack',
+    colorTheme: DEFAULT_SWATCH,
   });
 
   // Auto-scrape state — only kicks in when bookingUrl is a supported
@@ -348,38 +340,13 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
                   Choose Your Colors{' '}
                   <span className="text-white/40 normal-case tracking-normal">(pick a theme)</span>
                 </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {THEME_PRESETS.map((t) => {
-                    const selected = (inputs.colorTheme || 'goldBlack') === t.slug;
-                    return (
-                      <button
-                        key={t.slug}
-                        type="button"
-                        onClick={() => setInputs({ ...inputs, colorTheme: t.slug })}
-                        aria-pressed={selected}
-                        className={`flex min-w-0 items-center gap-1.5 rounded-lg border px-2 py-1.5 transition-all ${
-                          selected
-                            ? 'border-white bg-white/10'
-                            : 'border-white/20 bg-white/[0.03] hover:border-white/40'
-                        }`}
-                      >
-                        <span className="relative flex shrink-0 items-center">
-                          <span
-                            className="h-3.5 w-3.5 rounded-full border border-white/25"
-                            style={{ background: t.bg }}
-                          />
-                          <span
-                            className="-ml-1.5 h-3.5 w-3.5 rounded-full border border-white/25"
-                            style={{ background: t.accent }}
-                          />
-                        </span>
-                        <span className="min-w-0 truncate text-[8.5px] sm:text-[9.5px] font-bold uppercase tracking-[0.08em] sm:tracking-[0.1em] text-white/90">
-                          {t.label}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
+                <BrandSwatchGrid
+                  current={inputs.colorTheme}
+                  onPick={(hex) => setInputs({ ...inputs, colorTheme: hex })}
+                  columns={6}
+                  size="md"
+                  className="mx-auto max-w-xs"
+                />
               </div>
 
               {scrapeError && (
@@ -475,32 +442,13 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
                   Choose Your Colors{' '}
                   <span className="text-white/40 normal-case tracking-normal">(pick a theme)</span>
                 </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {THEME_PRESETS.map((t) => {
-                    const selected = (inputs.colorTheme || 'goldBlack') === t.slug;
-                    return (
-                      <button
-                        key={t.slug}
-                        type="button"
-                        onClick={() => setInputs({ ...inputs, colorTheme: t.slug })}
-                        aria-pressed={selected}
-                        className={`flex min-w-0 items-center gap-1.5 rounded-lg border px-2 py-1.5 transition-all ${
-                          selected
-                            ? 'border-white bg-white/10'
-                            : 'border-white/20 bg-white/[0.03] hover:border-white/40'
-                        }`}
-                      >
-                        <span className="relative flex shrink-0 items-center">
-                          <span className="h-3.5 w-3.5 rounded-full border border-white/25" style={{ background: t.bg }} />
-                          <span className="-ml-1.5 h-3.5 w-3.5 rounded-full border border-white/25" style={{ background: t.accent }} />
-                        </span>
-                        <span className="min-w-0 truncate text-[8.5px] sm:text-[9.5px] font-bold uppercase tracking-[0.08em] sm:tracking-[0.1em] text-white/90">
-                          {t.label}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
+                <BrandSwatchGrid
+                  current={inputs.colorTheme}
+                  onPick={(hex) => setInputs({ ...inputs, colorTheme: hex })}
+                  columns={6}
+                  size="md"
+                  className="mx-auto max-w-xs"
+                />
               </div>
 
               <button
@@ -685,38 +633,13 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
                     Choose Your Colors{' '}
                     <span className="text-white/40 normal-case tracking-normal">(pick a theme)</span>
                   </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {THEME_PRESETS.map((t) => {
-                      const selected = (inputs.colorTheme || 'goldBlack') === t.slug;
-                      return (
-                        <button
-                          key={t.slug}
-                          type="button"
-                          onClick={() => setInputs({ ...inputs, colorTheme: t.slug })}
-                          aria-pressed={selected}
-                          className={`flex min-w-0 items-center gap-1.5 rounded-lg border px-2 py-1.5 transition-all ${
-                            selected
-                              ? 'border-white bg-white/10'
-                              : 'border-white/20 bg-white/[0.03] hover:border-white/40'
-                          }`}
-                        >
-                          <span className="relative flex shrink-0 items-center">
-                            <span
-                              className="h-3.5 w-3.5 rounded-full border border-white/25"
-                              style={{ background: t.bg }}
-                            />
-                            <span
-                              className="-ml-1.5 h-3.5 w-3.5 rounded-full border border-white/25"
-                              style={{ background: t.accent }}
-                            />
-                          </span>
-                          <span className="min-w-0 truncate text-[8.5px] sm:text-[9.5px] font-bold uppercase tracking-[0.08em] sm:tracking-[0.1em] text-white/90">
-                            {t.label}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <BrandSwatchGrid
+                    current={inputs.colorTheme}
+                    onPick={(hex) => setInputs({ ...inputs, colorTheme: hex })}
+                    columns={6}
+                    size="md"
+                    className="mx-auto max-w-xs"
+                  />
                 </div>
               )}
 
