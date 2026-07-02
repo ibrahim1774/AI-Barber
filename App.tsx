@@ -14,7 +14,7 @@ import { HomeLaunchGuide } from './components/HomeLaunchGuide.tsx';
 import { buildSiteFromScrape } from './lib/buildSiteFromScrape.ts';
 import { ensureUuid } from './lib/ensureUuid.ts';
 import { extractFirstUrl, isSupportedBookingHost } from './lib/supportedBookingHost.ts';
-import { isBooksyPath, isFreeBarberPath, isPrimeBarberPath, isRecoverPath, isGenerateBarbershopPath, isGeneratePath, isAdminGeneratePath, isOwnBrandPath } from './lib/dealMode.ts';
+import { isBooksyPath, isFreeBarberPath, isPrimeBarberPath, isRecoverPath, isGenerateBarbershopPath, isGeneratePath, isAdminGeneratePath, isOwnBrandPath, isPrimeBarberSamplePath } from './lib/dealMode.ts';
 import { LoadingScreen } from './components/LoadingScreen.tsx';
 import { generateHTMLForTemplate } from './services/templateRenderer.ts';
 import { generateContent } from './services/geminiService.ts';
@@ -44,6 +44,7 @@ const GeneratePage = lazy(() => import('./components/GeneratePage.tsx').then(m =
 const BooksyDesignSwitcher = lazy(() => import('./components/BooksyDesignSwitcher.tsx').then(m => ({ default: m.BooksyDesignSwitcher })));
 const AdminGenerator = lazy(() => import('./components/AdminGenerator.tsx').then(m => ({ default: m.AdminGenerator })));
 const OwnBrandLanding = lazy(() => import('./components/OwnBrandLanding.tsx').then(m => ({ default: m.OwnBrandLanding })));
+const PrimeBarberSampleSite = lazy(() => import('./components/PrimeBarberSampleSite.tsx').then(m => ({ default: m.PrimeBarberSampleSite })));
 
 const DEPLOY_TIMER_SECONDS = 5;
 
@@ -1051,6 +1052,18 @@ const App: React.FC = () => {
     return (
       <Suspense fallback={<div className="min-h-screen bg-[#0d0d0d]" />}>
         <PrimeBarberLanding />
+      </Suspense>
+    );
+  }
+
+  // /prime-barber — fully self-contained Prime Barber System sample
+  // funnel. Rendered early (like /primebarber + /own-brand) so none of
+  // the generator/auth/restore machinery runs and it stays isolated
+  // from every other subpage.
+  if (isPrimeBarberSamplePath()) {
+    return (
+      <Suspense fallback={<div className="min-h-screen bg-black" />}>
+        <PrimeBarberSampleSite />
       </Suspense>
     );
   }
