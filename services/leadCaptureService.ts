@@ -1,4 +1,5 @@
 import { ShopInputs } from "../types";
+import { getAdAttribution } from "./adAttribution";
 
 // Hands the lead to /api/capture-lead which forwards it to the
 // configured Make.com webhook server-side. Server-side capture is
@@ -21,6 +22,10 @@ export const captureLead = async (inputs: ShopInputs): Promise<void> => {
     brandColor: "#f4a100",
     source: window.location.hostname,
     sourcePath: window.location.pathname,
+    // Which Facebook campaign/ad drove this lead (tw_source, tw_adid,
+    // tw_campaign, utm_*, …). Empty object if the visitor didn't arrive
+    // from a tagged ad link. capture-lead forwards these to Make.com.
+    ...getAdAttribution(),
   };
 
   try {
