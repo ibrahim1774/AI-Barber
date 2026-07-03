@@ -205,7 +205,14 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
   // floating Design 1/2 switcher + color picker (both gated on !showPrompts).
   // No customize overlay, no launch guide — the visitor's next move is to
   // pick a design/color on the live site.
-  const handleBooksyGenerate = useCallback((_inputs: ShopInputs, scraped: WebsiteData) => {
+  const handleBooksyGenerate = useCallback((inputs: ShopInputs, scraped: WebsiteData) => {
+    // Booking link submitted + site built = a completed lead. Fire the CRM
+    // webhook (Make.com via /api/capture-lead) + Meta/TikTok Lead now. inputs
+    // carries the booking URL + scraped shop name/area/phone; fireLead dedups
+    // (CRM once/session). Without this the /booksy form-first flow never
+    // triggered Make.com — the old customize-overlay flow fired it, but the
+    // rebuilt single-input form dropped it.
+    fireLead(inputs);
     setSiteData({ ...scraped, template: (scraped as any).template ?? template });
     setShowPrompts(false);
   }, [template]);
