@@ -25,6 +25,7 @@ import { upsertSiteToSupabase, fetchUserSites } from './services/supabaseDataSer
 import { getPlanContentMeta, getViewContentMeta } from './lib/pixelMeta';
 import { getAllSites as getAllLocalSites } from './services/indexedDBService.ts';
 import { readMetaCookies, splitName } from './services/metaMatchParams.ts';
+import { captureAdParamsOnLoad } from './services/adAttribution.ts';
 
 // Heavy components — lazy-loaded so first paint only ships the
 // active-path form (GeneratorForm) + LoadingScreen. Editor, dashboard,
@@ -108,6 +109,14 @@ const App: React.FC = () => {
       sessionStorage.removeItem('activeSiteId');
       sessionStorage.removeItem('pendingFormInputs');
     }
+  }, []);
+
+  // Capture Facebook-ad attribution (tw_source, tw_adid, tw_campaign, utm_*,
+  // fbclid, …) from the landing URL on first load, for every subpage. Persisted
+  // to localStorage + the aib_attr cookie so it can be attached to the Lead
+  // (Make.com) and the Purchase (Stripe metadata) later in the funnel.
+  useEffect(() => {
+    captureAdParamsOnLoad();
   }, []);
 
   // Guard: if we land on the deploying screen without an active deployment

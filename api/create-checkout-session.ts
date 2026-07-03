@@ -177,6 +177,27 @@ export default async function handler(req: any, res: any) {
     params.append('metadata[type]', (isPrimeBarber || isPrimeBarberYearly) ? 'primebarber' : isCustomAny ? 'custom_design' : 'site_hosting');
     params.append('metadata[siteId]', siteId);
     params.append('metadata[plan]', plan);
+
+    // Ad attribution — stamp which Facebook campaign/ad drove this purchase
+    // onto the Stripe session metadata (visible on the payment, and available
+    // to the Stripe webhook + Triple Whale order push). Read from the aib_attr
+    // cookie set by services/adAttribution.ts on the landing page, so we don't
+    // have to thread the params through every client checkout call. tw_source,
+    // tw_adid, tw_campaign, utm_*, etc. Stripe caps: ≤50 keys, ≤40-char keys,
+    // ≤500-char values — we forward a bounded, sanitized subset.
+    try {
+      const cookieHeader = req.headers.cookie || '';
+      const match = cookieHeader.split(/;\s*/).find((c) => c.startsWith('aib_attr='));
+      if (match) {
+        const attr = JSON.parse(decodeURIComponent(match.slice('aib_attr='.length)));
+        if (attr && typeof attr === 'object') {
+          Object.entries(attr)
+            .filter(([k, v]) => typeof v === 'string' && v && /^[a-z0-9_]{1,36}$/i.test(k))
+            .slice(0, 20)
+            .forEach(([k, v]) => params.append(`metadata[${k}]`, String(v).slice(0, 500)));
+        }
+      }
+    } catch { /* attribution is best-effort — never block checkout */ }
     // /primebarber: $20/mo charged immediately at signup. The 7-day
     // free trial that previously gated the first charge has been
     // removed — customers are billed today, full subscription starts
