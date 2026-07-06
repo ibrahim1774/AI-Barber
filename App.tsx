@@ -14,7 +14,7 @@ import { HomeLaunchGuide } from './components/HomeLaunchGuide.tsx';
 import { buildSiteFromScrape } from './lib/buildSiteFromScrape.ts';
 import { ensureUuid } from './lib/ensureUuid.ts';
 import { extractFirstUrl, isSupportedBookingHost } from './lib/supportedBookingHost.ts';
-import { isBooksyPath, isFreeBarberPath, isPrimeBarberPath, isRecoverPath, isGenerateBarbershopPath, isGeneratePath, isAdminGeneratePath, isOwnBrandPath } from './lib/dealMode.ts';
+import { isBooksyPath, isFreeBarberPath, isPrimeBarberPath, isRecoverPath, isGenerateBarbershopPath, isGeneratePath, isBarberGeneratePath, isAdminGeneratePath, isOwnBrandPath } from './lib/dealMode.ts';
 import { LoadingScreen } from './components/LoadingScreen.tsx';
 import { generateHTMLForTemplate } from './services/templateRenderer.ts';
 import { generateContent } from './services/geminiService.ts';
@@ -1114,6 +1114,20 @@ const App: React.FC = () => {
     return (
       <Suspense fallback={<LoadingScreen />}>
         <GeneratePage />
+      </Suspense>
+    );
+  }
+
+  // /barber-generate — /booksy minus the form-first gate. The barber site
+  // is seeded and shown immediately, with the Booksy-flavored customize
+  // overlay (booking-link field + Design 1/2 switcher + color picker) over
+  // it. Booksy pricing/analytics apply via isBarberGeneratePath() inside
+  // PrePaymentBanner's booksyMode. Checked BEFORE /booksy (kept out of
+  // IMPORT_PATHS so it doesn't fall into the form-first route below).
+  if (isBarberGeneratePath()) {
+    return (
+      <Suspense fallback={<LoadingScreen />}>
+        <GeneratePage variant="barber-generate" />
       </Suspense>
     );
   }
