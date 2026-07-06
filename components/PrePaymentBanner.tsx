@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, ArrowRight, Rocket, Loader2, Sparkles, Check, ChevronLeft, ChevronRight } from 'lucide-react';
-import { isBooksyPath, isFreeBarberPath, isBookingPath, isGeneratePath } from '../lib/dealMode.ts';
+import { isBooksyPath, isFreeBarberPath, isBookingPath, isGeneratePath, isBarberGeneratePath } from '../lib/dealMode.ts';
 import { loadStripe, type Stripe } from '@stripe/stripe-js';
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js';
 
@@ -53,8 +53,10 @@ interface PrePaymentBannerProps {
 const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepareCheckout, isDeploying, industry, onCheckoutFlowChange }) => {
   // /booksy import flow: $7/mo (vs the $10/mo homepage). booksyMode is
   // tracked so the receipt tags the source as "(Booksy)" via the
-  // monthly-booksy plan slug.
-  const booksyMode = React.useMemo(() => isBooksyPath(), []);
+  // monthly-booksy plan slug. /barber-generate is "/booksy minus the front
+  // form" — it reuses the exact Booksy pricing + plan slugs, so it folds in
+  // here rather than defining its own.
+  const booksyMode = React.useMemo(() => isBooksyPath() || isBarberGeneratePath(), []);
   // /free-barber: $7/mo entry with yearly toggle visible — its own
   // plan slugs so Stripe + analytics distinguish it from /booksy and
   // the homepage.

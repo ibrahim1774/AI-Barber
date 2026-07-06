@@ -91,6 +91,21 @@ export function isGeneratePath(pathname?: string): boolean {
   return p === GENERATE_PATH || p === `${GENERATE_PATH}/`;
 }
 
+// `/barber-generate` — the /booksy experience with the form-first
+// "paste your link" gate removed. A barber site is seeded and shown
+// immediately (like /generate), and the SAME Booksy-flavored customize
+// overlay (booking-link field + Design 1/2 switcher + color picker)
+// sits over it. Pricing/analytics reuse the Booksy plan slugs
+// ($10/mo · $49/yr, 'monthly-booksy'/'yearly-booksy') via booksyMode in
+// PrePaymentBanner — an "exact duplicate of /booksy" minus the front form.
+// Kept OUT of IMPORT_PATHS so isBooksyPath() stays false here (it drives
+// the form-first /booksy route in App.tsx); pricing is inherited surgically.
+export const BARBER_GENERATE_PATH = '/barber-generate';
+export function isBarberGeneratePath(pathname?: string): boolean {
+  const p = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
+  return p === BARBER_GENERATE_PATH || p === `${BARBER_GENERATE_PATH}/`;
+}
+
 // `/admin-generate` — operator-only white-glove flow for customers who
 // paid off-platform (Cash App, Venmo, in person, etc.) but can't or
 // won't navigate the funnel themselves. Builds a site, creates the

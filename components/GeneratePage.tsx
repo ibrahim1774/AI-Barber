@@ -38,13 +38,18 @@ const PrimeWebsite = lazy(() => import('./PrimeWebsite').then((m) => ({ default:
 
 export interface GeneratePageProps {
   // 'generate' (default) = the /generate entry — instant-preview site +
-  // centered customize overlay. 'booksy' = the /booksy entry — FORM-FIRST:
-  // nothing generates on landing; the visitor pastes a booking link into
-  // BooksyGeneratorForm, we scrape it, and only then does the site render
-  // (with the floating Design 1/2 switcher + color picker). Pricing +
-  // analytics are still path-detected (isBooksyPath) inside the renderer's
+  // centered customize overlay leading with the Yes/No booking-link split.
+  // 'booksy' = the /booksy entry — FORM-FIRST: nothing generates on landing;
+  // the visitor pastes a booking link into BooksyGeneratorForm, we scrape
+  // it, and only then does the site render (with the floating Design 1/2
+  // switcher + color picker).
+  // 'barber-generate' = the /barber-generate entry — /booksy minus the front
+  // form: the site is seeded immediately (like 'generate') and the SAME
+  // Booksy-flavored overlay (leads straight with the booking-link field +
+  // Design 1/2 + color) sits over it. Pricing + analytics are path-detected
+  // (isBooksyPath / isBarberGeneratePath) inside the renderer's
   // PrePaymentBanner, so no extra wiring is needed here.
-  variant?: 'generate' | 'booksy';
+  variant?: 'generate' | 'booksy' | 'barber-generate';
 }
 
 export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate' }) => {
@@ -305,7 +310,9 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
           initialName={siteData.shopName === SEED_NAME ? '' : siteData.shopName || ''}
           initialArea={siteData.area || ''}
           initialPhone={siteData.phone || ''}
-          variant={variant}
+          // 'barber-generate' uses the Booksy-flavored overlay (leads with the
+          // booking-link field, no Yes/No split) over the instantly-seeded site.
+          variant={variant === 'generate' ? 'generate' : 'booksy'}
           onColorChange={handleColorChange}
           initialColor={colorTheme.charAt(0) === '#' ? colorTheme : '#f4a100'}
           onTemplateChange={handleTemplateChange}
