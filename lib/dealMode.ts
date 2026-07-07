@@ -106,6 +106,17 @@ export function isBarberGeneratePath(pathname?: string): boolean {
   return p === BARBER_GENERATE_PATH || p === `${BARBER_GENERATE_PATH}/`;
 }
 
+// `/edit` — the Client Sites portal. Login for owners of the hand-built
+// static client sites (Vercel "Client Sites" team): they edit text/images
+// on their pages and publish. Completely separate system from the barber
+// site generator — its own `client_sites` table + `client-sites` storage
+// bucket; shares only Supabase auth and the app shell.
+export const CLIENT_EDIT_PATH = '/edit';
+export function isClientEditPath(pathname?: string): boolean {
+  const p = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
+  return p === CLIENT_EDIT_PATH || p === `${CLIENT_EDIT_PATH}/`;
+}
+
 // `/admin-generate` — operator-only white-glove flow for customers who
 // paid off-platform (Cash App, Venmo, in person, etc.) but can't or
 // won't navigate the funnel themselves. Builds a site, creates the

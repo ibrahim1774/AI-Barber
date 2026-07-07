@@ -14,7 +14,7 @@ import { HomeLaunchGuide } from './components/HomeLaunchGuide.tsx';
 import { buildSiteFromScrape } from './lib/buildSiteFromScrape.ts';
 import { ensureUuid } from './lib/ensureUuid.ts';
 import { extractFirstUrl, isSupportedBookingHost } from './lib/supportedBookingHost.ts';
-import { isBooksyPath, isFreeBarberPath, isPrimeBarberPath, isRecoverPath, isGenerateBarbershopPath, isGeneratePath, isBarberGeneratePath, isAdminGeneratePath, isOwnBrandPath } from './lib/dealMode.ts';
+import { isBooksyPath, isFreeBarberPath, isPrimeBarberPath, isRecoverPath, isGenerateBarbershopPath, isGeneratePath, isBarberGeneratePath, isClientEditPath, isAdminGeneratePath, isOwnBrandPath } from './lib/dealMode.ts';
 import { LoadingScreen } from './components/LoadingScreen.tsx';
 import { generateHTMLForTemplate } from './services/templateRenderer.ts';
 import { generateContent } from './services/geminiService.ts';
@@ -42,6 +42,7 @@ const AuthModal = lazy(() => import('./components/AuthModal.tsx').then(m => ({ d
 const RecoverPage = lazy(() => import('./components/RecoverPage.tsx').then(m => ({ default: m.RecoverPage })));
 const GenerateBarbershopFunnel = lazy(() => import('./components/GenerateBarbershopFunnel.tsx').then(m => ({ default: m.GenerateBarbershopFunnel })));
 const GeneratePage = lazy(() => import('./components/GeneratePage.tsx').then(m => ({ default: m.GeneratePage })));
+const ClientPortal = lazy(() => import('./components/ClientPortal.tsx').then(m => ({ default: m.ClientPortal })));
 const BooksyDesignSwitcher = lazy(() => import('./components/BooksyDesignSwitcher.tsx').then(m => ({ default: m.BooksyDesignSwitcher })));
 const AdminGenerator = lazy(() => import('./components/AdminGenerator.tsx').then(m => ({ default: m.AdminGenerator })));
 const OwnBrandLanding = lazy(() => import('./components/OwnBrandLanding.tsx').then(m => ({ default: m.OwnBrandLanding })));
@@ -1093,6 +1094,18 @@ const App: React.FC = () => {
             onSuccess={handleAuthSuccess}
           />
         </Suspense>
+      </Suspense>
+    );
+  }
+
+  // /edit — Client Sites portal. Owners of the hand-built static client
+  // sites log in, edit text/images, and publish. Fully self-contained
+  // (own table/bucket/API); rendered early like the other standalone
+  // routes so the barber restore machinery never runs here.
+  if (isClientEditPath()) {
+    return (
+      <Suspense fallback={<LoadingScreen />}>
+        <ClientPortal />
       </Suspense>
     );
   }
