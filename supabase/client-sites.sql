@@ -58,7 +58,7 @@ create policy "client reads own site files"
     and exists (
       select 1 from public.client_sites cs
       where cs.owner = auth.uid()
-        and (storage.foldername(name))[1] = cs.slug
+        and (storage.foldername(objects.name))[1] = cs.slug
     )
   );
 
@@ -72,7 +72,7 @@ create policy "client writes own site files"
     and exists (
       select 1 from public.client_sites cs
       where cs.owner = auth.uid()
-        and (storage.foldername(name))[1] = cs.slug
+        and (storage.foldername(objects.name))[1] = cs.slug
     )
   );
 
@@ -85,7 +85,7 @@ create policy "client updates own site files"
     and exists (
       select 1 from public.client_sites cs
       where cs.owner = auth.uid()
-        and (storage.foldername(name))[1] = cs.slug
+        and (storage.foldername(objects.name))[1] = cs.slug
     )
   );
 
@@ -98,6 +98,6 @@ create policy "client deletes own site files"
     and exists (
       select 1 from public.client_sites cs
       where cs.owner = auth.uid()
-        and (storage.foldername(name))[1] = cs.slug
+        and (storage.foldername(objects.name))[1] = cs.slug
     )
   );
