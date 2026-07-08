@@ -108,6 +108,9 @@ function serializeForSave(doc: Document, slug: string): string {
   clone.querySelectorAll('img[data-editor-img]').forEach((el) => {
     el.removeAttribute('data-editor-img');
   });
+  clone.querySelectorAll('[data-editor-selected]').forEach((el) => {
+    el.removeAttribute('data-editor-selected');
+  });
 
   const doctype = doc.doctype ? `<!DOCTYPE ${doc.doctype.name}>\n` : '<!DOCTYPE html>\n';
   let html = doctype + clone.outerHTML;
@@ -203,6 +206,11 @@ export const ClientPortal: React.FC = () => {
   const [publishing, setPublishing] = useState(false);
   const [toast, setToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [publishedUrl, setPublishedUrl] = useState<string | null>(null);
+  // Clicked photo awaiting replacement. Browsers only open a file chooser
+  // from a click in the SAME document as the input — a click inside the
+  // sandboxed iframe can't trigger it. So image click selects the photo and
+  // this panel's own button (a real parent-document click) opens the picker.
+  const [pendingImage, setPendingImage] = useState<{ src: string } | null>(null);
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -290,6 +298,9 @@ export const ClientPortal: React.FC = () => {
       if (cancelled) return;
       setSrcDoc(rewriteForEditor(html, site.slug, activePage));
       setDirtyBoth(false);
+      // A page change replaces the document — any selected photo is stale.
+      setPendingImage(null);
+      pendingImgRef.current = null;
     })();
     return () => {
       cancelled = true;
@@ -320,6 +331,7 @@ export const ClientPortal: React.FC = () => {
       [data-editor-editable]:hover { outline: 1.5px dashed rgba(232,192,116,0.85) !important; outline-offset: 2px; cursor: text; }
       [data-editor-editable]:focus { outline: 2px solid rgba(232,192,116,1) !important; outline-offset: 2px; }
       img[data-editor-img]:hover { outline: 2px dashed rgba(232,192,116,0.95) !important; outline-offset: 2px; cursor: pointer !important; filter: brightness(0.85); }
+      img[data-editor-selected] { outline: 3px solid rgba(232,192,116,1) !important; outline-offset: 2px; }
     `;
     doc.head.appendChild(style);
 
@@ -347,8 +359,13 @@ export const ClientPortal: React.FC = () => {
         if (img && img.hasAttribute('data-editor-img')) {
           e.preventDefault();
           e.stopPropagation();
+          // Select the photo and open the parent-side panel; the panel's
+          // "Choose new photo" button (a real click in THIS document) is
+          // what opens the file chooser — an iframe click can't.
+          doc.querySelectorAll('img[data-editor-selected]').forEach((el) => el.removeAttribute('data-editor-selected'));
+          img.setAttribute('data-editor-selected', '1');
           pendingImgRef.current = img;
-          fileInputRef.current?.click();
+          setPendingImage({ src: img.currentSrc || img.src });
           return;
         }
         if (a) e.preventDefault();
@@ -364,8 +381,10 @@ export const ClientPortal: React.FC = () => {
   const handleImageFile = useCallback(
     async (file: File) => {
       const img = pendingImgRef.current;
+      setPendingImage(null);
       if (!img || !site) return;
       pendingImgRef.current = null;
+      img.removeAttribute('data-editor-selected');
       try {
         const { blob, ext } = await compressImage(file);
         const path = `${site.slug}/images/edit-${Date.now()}.${ext}`;
@@ -690,6 +709,41 @@ export const ClientPortal: React.FC = () => {
           if (f) void handleImageFile(f);
         }}
       />
+
+      {/* Photo-replace panel. The file chooser must be opened by a click in
+          THIS document (browser rule), so the iframe click only selects the
+          photo and this button does the actual open. */}
+      {pendingImage && (
+        <div className="fixed bottom-14 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-2xl border border-white/10 bg-[#141414] p-3 pr-4 shadow-2xl">
+          <img
+            src={pendingImage.src}
+            alt="Selected photo"
+            className="h-14 w-14 rounded-lg object-cover"
+          />
+          <div className="min-w-0">
+            <p className="text-[13px] font-semibold text-white">Replace this photo?</p>
+            <p className="text-[11px] text-white/45">JPG or PNG — we&apos;ll resize it for you.</p>
+          </div>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="ml-2 shrink-0 rounded-lg px-4 py-2.5 text-[11px] font-black uppercase tracking-[0.12em]"
+            style={{ background: GOLD, color: '#0a0a0a' }}
+          >
+            Choose new photo
+          </button>
+          <button
+            onClick={() => {
+              pendingImgRef.current?.removeAttribute('data-editor-selected');
+              pendingImgRef.current = null;
+              setPendingImage(null);
+            }}
+            className="shrink-0 rounded-lg border border-white/15 p-2.5 text-white/60 hover:text-white"
+            aria-label="Cancel"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       {/* Toast */}
       {toast && (
