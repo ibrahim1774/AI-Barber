@@ -355,7 +355,12 @@ export const ClientPortal: React.FC = () => {
       (e) => {
         const target = e.target as Element | null;
         const a = target?.closest?.('a');
-        const img = target instanceof HTMLImageElement ? target : null;
+        // NOT `instanceof HTMLImageElement`: the element lives in the
+        // IFRAME's realm, so the parent window's constructor never matches
+        // and the branch silently never runs. Tag check is realm-safe.
+        // closest() also catches clicks landing on a wrapper (<picture>).
+        const img = (target?.closest?.('img') ??
+          (target && target.tagName === 'IMG' ? target : null)) as HTMLImageElement | null;
         if (img && img.hasAttribute('data-editor-img')) {
           e.preventDefault();
           e.stopPropagation();
