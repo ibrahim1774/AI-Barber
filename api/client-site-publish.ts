@@ -52,6 +52,8 @@ async function listAllFiles(sb: any, prefix: string): Promise<string[]> {
       .list(prefix, { limit: PAGE, offset, sortBy: { column: 'name', order: 'asc' } });
     if (error) throw new Error(`storage list(${prefix}) failed: ${error.message}`);
     for (const entry of data || []) {
+      // Per-page Undo backups (editor-only) — must never deploy.
+      if (entry.name === '_history') continue;
       const full = `${prefix}/${entry.name}`;
       if (entry.id === null) {
         out.push(...(await listAllFiles(sb, full)));

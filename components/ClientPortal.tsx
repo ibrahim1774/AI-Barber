@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Loader2, Globe, LogOut, Save, Rocket, CheckCircle2, X } from 'lucide-react';
+import { Loader2, Globe, LogOut, Save, Rocket, CheckCircle2, X, RotateCcw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -25,6 +25,14 @@ const BG = '#0a0a0a';
 
 const SUPABASE_URL = (import.meta as any).env?.VITE_SUPABASE_URL as string | undefined;
 const publicBase = `${SUPABASE_URL || ''}/storage/v1/object/public/${BUCKET}`;
+
+// Per-page save history lives in <slug>/_history/ (flat, page path encoded
+// with "__" so one list() call finds a page's versions). The publish API and
+// the page list both exclude _history so backups never deploy.
+const HISTORY_DIR = '_history';
+const HISTORY_KEEP = 10;
+const historyPrefix = (page: string) => `${page.replace(/\//g, '__')}@@`;
+const historyKey = (page: string) => `${historyPrefix(page)}${Date.now()}`;
 
 interface ClientSite {
   slug: string;
@@ -201,6 +209,9 @@ export const ClientPortal: React.FC = () => {
   // editor
   const [srcDoc, setSrcDoc] = useState<string | null>(null);
   const [pageLoading, setPageLoading] = useState(false);
+  // Bumped to force the active page to reload from the bucket (used by Undo).
+  const [reloadKey, setReloadKey] = useState(0);
+  const [undoing, setUndoing] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -261,7 +272,7 @@ export const ClientPortal: React.FC = () => {
           if (cancelled) return;
           const html = files
             .map((f) => f.slice((data as ClientSite).slug.length + 1))
-            .filter((f) => f.endsWith('.html'))
+            .filter((f) => f.endsWith('.html') && !f.startsWith(`${HISTORY_DIR}/`))
             .sort((a, b) =>
               a === 'index.html' ? -1 : b === 'index.html' ? 1 : a.localeCompare(b)
             );
@@ -305,7 +316,7 @@ export const ClientPortal: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [site, activePage, showToast, setDirtyBoth]);
+  }, [site, activePage, reloadKey, showToast, setDirtyBoth]);
 
   // Warn about unsaved edits on tab close.
   useEffect(() => {
@@ -416,12 +427,40 @@ export const ClientPortal: React.FC = () => {
     [site, setDirtyBoth, showToast]
   );
 
+  // Back up the page's CURRENT version into _history before overwriting it,
+  // pruned to the newest HISTORY_KEEP entries per page. Best-effort — a
+  // backup failure never blocks the save itself.
+  const backupCurrentVersion = useCallback(async (slug: string, page: string) => {
+    try {
+      const { data: current } = await supabase.storage.from(BUCKET).download(`${slug}/${page}`);
+      if (!current) return;
+      await supabase.storage
+        .from(BUCKET)
+        .upload(`${slug}/${HISTORY_DIR}/${historyKey(page)}`, current, {
+          contentType: 'text/html',
+          upsert: true,
+        });
+      // Prune old versions of this page.
+      const { data: entries } = await supabase.storage
+        .from(BUCKET)
+        .list(`${slug}/${HISTORY_DIR}`, { limit: 1000 });
+      const mine = (entries || [])
+        .filter((e) => e.name.startsWith(historyPrefix(page)))
+        .sort((a, b) => b.name.localeCompare(a.name)); // ts suffix → newest first
+      const stale = mine.slice(HISTORY_KEEP).map((e) => `${slug}/${HISTORY_DIR}/${e.name}`);
+      if (stale.length) await supabase.storage.from(BUCKET).remove(stale);
+    } catch (e) {
+      console.warn('[portal] history backup failed (save continues):', e);
+    }
+  }, []);
+
   const handleSave = useCallback(async () => {
     const doc = iframeRef.current?.contentDocument;
     if (!doc || !site || !activePage) return;
     setSaving(true);
     try {
       const html = serializeForSave(doc, site.slug);
+      await backupCurrentVersion(site.slug, activePage);
       const { error } = await supabase.storage
         .from(BUCKET)
         .upload(`${site.slug}/${activePage}`, new Blob([html], { type: 'text/html' }), {
@@ -437,7 +476,57 @@ export const ClientPortal: React.FC = () => {
     } finally {
       setSaving(false);
     }
-  }, [site, activePage, setDirtyBoth, showToast]);
+  }, [site, activePage, setDirtyBoth, showToast, backupCurrentVersion]);
+
+  // Undo, two stages:
+  //  - Unsaved edits on screen → discard them (reload the saved version).
+  //  - Nothing unsaved → swap the page with its previous saved version
+  //    (the current one is backed up first, so pressing Undo again brings
+  //    it right back — undo/redo toggle).
+  const handleUndo = useCallback(async () => {
+    if (!site || !activePage || saving || undoing) return;
+
+    if (dirtyRef.current) {
+      if (!window.confirm('Throw away the edits you just made on this page?')) return;
+      setReloadKey((k) => k + 1); // reload from the bucket → unsaved edits gone
+      return;
+    }
+
+    setUndoing(true);
+    try {
+      const { data: entries } = await supabase.storage
+        .from(BUCKET)
+        .list(`${site.slug}/${HISTORY_DIR}`, { limit: 1000 });
+      const mine = (entries || [])
+        .filter((e) => e.name.startsWith(historyPrefix(activePage)))
+        .sort((a, b) => b.name.localeCompare(a.name));
+      if (!mine.length) {
+        showToast('err', 'Nothing to undo yet on this page.');
+        return;
+      }
+      if (!window.confirm('Put this page back to how it was before your last save?')) return;
+
+      const prevKey = `${site.slug}/${HISTORY_DIR}/${mine[0].name}`;
+      const { data: prev, error: prevErr } = await supabase.storage.from(BUCKET).download(prevKey);
+      if (prevErr || !prev) throw new Error(prevErr?.message || 'Could not load the previous version');
+
+      // Current version → history (so Undo can be undone), then restore.
+      await backupCurrentVersion(site.slug, activePage);
+      const { error: putErr } = await supabase.storage
+        .from(BUCKET)
+        .upload(`${site.slug}/${activePage}`, prev, { contentType: 'text/html', upsert: true });
+      if (putErr) throw new Error(putErr.message);
+      await supabase.storage.from(BUCKET).remove([prevKey]);
+
+      setReloadKey((k) => k + 1);
+      showToast('ok', 'Went back to the previous version — Publish to make it live.');
+    } catch (e: any) {
+      console.error('[portal] undo failed:', e);
+      showToast('err', `Undo failed: ${e?.message || 'unknown error'}`);
+    } finally {
+      setUndoing(false);
+    }
+  }, [site, activePage, saving, undoing, showToast, backupCurrentVersion]);
 
   const handlePublish = useCallback(async () => {
     if (!site) return;
@@ -606,6 +695,15 @@ export const ClientPortal: React.FC = () => {
             </a>
           )}
         </div>
+        <button
+          onClick={handleUndo}
+          disabled={saving || undoing || pageLoading}
+          title="Undo — go back to how this page was"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 px-3.5 py-2.5 text-[11px] font-black uppercase tracking-[0.14em] text-white/70 transition hover:text-white disabled:opacity-40"
+        >
+          {undoing ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />}
+          <span className="hidden sm:inline">Undo</span>
+        </button>
         <button
           onClick={handleSave}
           disabled={!dirty || saving || pageLoading}
