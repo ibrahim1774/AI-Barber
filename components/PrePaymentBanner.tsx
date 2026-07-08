@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { X, ArrowRight, Rocket, Loader2, Sparkles, Check, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, ArrowRight, Rocket, Loader2, Sparkles, Check } from 'lucide-react';
 import { isBooksyPath, isFreeBarberPath, isBookingPath, isGeneratePath, isBarberGeneratePath } from '../lib/dealMode.ts';
 import { loadStripe, type Stripe } from '@stripe/stripe-js';
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js';
@@ -122,7 +122,6 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   const [isVisible, setIsVisible] = useState(false);
   const [showHowItWorks, setShowHowItWorks] = useState(false);
   const [showCustomWizard, setShowCustomWizard] = useState(false);
-  const [wizardStep, setWizardStep] = useState(0);
   const [isCustomCheckingOut, setIsCustomCheckingOut] = useState(false);
   // Every entry path defaults to the monthly plan, shown first.
   const [pricingPlan, setPricingPlan] = useState<'monthly' | 'yearly'>('monthly');
@@ -162,7 +161,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   // the existing wizard opens without prop-drilling. Listen window-wide
   // so it works from any descendant.
   React.useEffect(() => {
-    const open = () => { setWizardStep(0); setShowCustomWizard(true); };
+    const open = () => setShowCustomWizard(true);
     window.addEventListener('open-custom-design-wizard', open);
     return () => window.removeEventListener('open-custom-design-wizard', open);
   }, []);
@@ -329,7 +328,6 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
     setCustomEmbedSecret(null);
     setCustomEmbedError(null);
     setShowCustomWizard(false);
-    setWizardStep(0);
     setIsCustomCheckingOut(false);
   };
 
@@ -489,40 +487,41 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
 
           {/* Custom-site upsell — highlighted gold-tinted box. Single
               headline (no subtext), price + arrow anchored right. Same on
-              every entry path: "Custom 20+ Page Barber Website…", $29/mo,
-              and the compact (~20% smaller) sizing across all subpages. */}
+              every entry path: "Custom 20+ Page Barber Website…", $29/mo.
+              ~20% larger than the standard CTAs with the price pill as the
+              visual anchor — opens straight into the checkout modal. */}
           <button
             type="button"
-            onClick={() => { setWizardStep(0); setShowCustomWizard(true); }}
-            className="group mt-2 flex w-full items-center justify-between gap-2 border px-2.5 py-1.5 transition-all hover:border-[#e8c074]/70"
+            onClick={() => setShowCustomWizard(true)}
+            className="group mt-2 flex w-full items-center justify-between gap-2.5 border px-3 py-2.5 transition-all hover:border-[#e8c074]/70"
             style={{
-              background: 'linear-gradient(180deg, rgba(232,192,116,0.06) 0%, rgba(232,192,116,0.02) 100%)',
-              borderColor: 'rgba(232,192,116,0.35)',
+              background: 'linear-gradient(180deg, rgba(232,192,116,0.08) 0%, rgba(232,192,116,0.03) 100%)',
+              borderColor: 'rgba(232,192,116,0.45)',
               color: '#ece6da',
               textAlign: 'left',
             }}
           >
-            <span className="flex items-start min-w-0 gap-1.5">
-              <Sparkles size={10} className="mt-[3px] shrink-0" style={{ color: '#e8c074' }} />
+            <span className="flex items-start min-w-0 gap-2">
+              <Sparkles size={13} className="mt-[2px] shrink-0" style={{ color: '#e8c074' }} />
               <span className="min-w-0">
                 <span
                   className="block font-extrabold"
-                  style={{ fontSize: '0.76rem', color: '#e8c074', lineHeight: 1.15, letterSpacing: '-0.005em' }}
+                  style={{ fontSize: '0.92rem', color: '#e8c074', lineHeight: 1.18, letterSpacing: '-0.005em' }}
                 >
                   Custom 20+ Page Barber Website with On-Page SEO Included
                 </span>
               </span>
             </span>
             <span
-              className="flex items-center gap-1.5 font-black uppercase tracking-[0.16em] shrink-0 rounded-full text-[10px] px-2 py-[3px]"
+              className="flex items-center gap-1.5 font-black uppercase tracking-[0.16em] shrink-0 rounded-full text-[12.5px] px-3 py-1.5"
               style={{
                 color: '#0a0a0a',
                 background: '#e8c074',
-                boxShadow: '0 0 0 1.5px rgba(232,192,116,0.7), 0 4px 14px -3px rgba(232,192,116,0.65)',
+                boxShadow: '0 0 0 2px rgba(232,192,116,0.85), 0 6px 20px -4px rgba(232,192,116,0.8)',
               }}
             >
               {customPriceLabel}
-              <ArrowRight size={10} className="transition group-hover:translate-x-0.5" />
+              <ArrowRight size={12} className="transition group-hover:translate-x-0.5" />
             </span>
           </button>
         </div>
@@ -706,18 +705,13 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
         );
       })()}
 
-      {/* Multi-step custom-design wizard — premium editorial treatment
-          matching the How-It-Works modal: cream + gold on warm dark,
-          serif italic headlines, hairline lists, sharper corners. */}
+      {/* Custom-design checkout — single screen (the old 3-step wizard
+          collapsed to just the final step, straight into Stripe). Premium
+          editorial treatment matching the How-It-Works modal: cream + gold
+          on warm dark, serif italic headline, hairline list. */}
       {showCustomWizard && (() => {
-        const totalSteps = 3;
         const gold = '#e8c074';
         const cream = '#ece6da';
-        const next = () => setWizardStep((s) => Math.min(totalSteps - 1, s + 1));
-        const back = () => setWizardStep((s) => Math.max(0, s - 1));
-
-        const stepEyebrows = ['Custom Design', 'Pages & Booking', 'Get Started'];
-        const stepNumerals = ['I', 'II', 'III'];
 
         return (
           <div
@@ -741,108 +735,17 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                 <X size={16} />
               </button>
 
-              {/* Progress dots — gold, thin */}
-              <div className="flex items-center justify-center gap-1.5 pt-6 pb-1">
-                {Array.from({ length: totalSteps }, (_, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    aria-label={`Step ${i + 1}`}
-                    onClick={() => setWizardStep(i)}
-                    className={`h-[2px] transition-all ${
-                      i === wizardStep ? 'w-8' : i < wizardStep ? 'w-4' : 'w-4'
-                    }`}
-                    style={{
-                      background: i === wizardStep ? gold : i < wizardStep ? 'rgba(232,192,116,0.5)' : 'rgba(236,230,218,0.15)',
-                    }}
-                  />
-                ))}
-              </div>
-
-              <div className="px-6 pt-4 pb-6 md:px-8 md:pt-5 md:pb-7">
-                {/* Eyebrow — hairline + label, consistent across steps */}
+              <div className="px-6 pt-8 pb-6 md:px-8 md:pt-9 md:pb-7">
+                {/* Eyebrow — hairline + label (no step numbering) */}
                 <div className="flex items-center gap-3 mb-5">
                   <span className="h-px w-5" style={{ background: gold }} />
-                  <span
-                    className="shrink-0 text-[10px] tracking-[0.18em]"
-                    style={{ color: gold, fontFamily: '"Instrument Serif", serif', fontStyle: 'italic' }}
-                  >
-                    {stepNumerals[wizardStep]}
-                  </span>
                   <span className="text-[10px] font-medium uppercase tracking-[0.32em]" style={{ color: gold }}>
-                    {stepEyebrows[wizardStep]}
+                    Get Started
                   </span>
                   <span className="h-px flex-1" style={{ background: 'rgba(232,192,116,0.2)' }} />
                 </div>
 
-                {/* Step 1 — Pitch */}
-                {wizardStep === 0 && (
-                  <div>
-                    <h2
-                      className="leading-[1.05] mb-3"
-                      style={{ fontFamily: '"Instrument Serif", serif', fontSize: '1.9rem', fontWeight: 400 }}
-                    >
-                      <span style={{ color: cream }}>A site built </span>
-                      <span style={{ color: gold, fontStyle: 'italic' }}>around your shop.</span>
-                    </h2>
-                    <p className="text-sm leading-relaxed mb-5" style={{ color: 'rgba(236,230,218,0.6)' }}>
-                      Not loving the template? We'll design a site from scratch around your brand and your vibe — your real photos, your own booking link, flat {customPriceFull}.
-                    </p>
-                    <div className="border-t border-white/10">
-                      {[
-                        'Built from scratch for your shop',
-                        'Choose the design you like',
-                        'Multiple pages + booking links included',
-                      ].map((line, i) => (
-                        <div key={line} className="flex items-baseline gap-4 py-3 border-b border-white/10">
-                          <span
-                            className="shrink-0 text-[10px] tracking-[0.18em] w-5"
-                            style={{ color: gold, fontFamily: '"Instrument Serif", serif', fontStyle: 'italic' }}
-                          >
-                            {['I', 'II', 'III'][i]}
-                          </span>
-                          <span className="text-[14px] leading-snug" style={{ color: cream }}>{line}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Step 2 — Pages & Booking */}
-                {wizardStep === 1 && (
-                  <div>
-                    <h2
-                      className="leading-[1.05] mb-3"
-                      style={{ fontFamily: '"Instrument Serif", serif', fontSize: '1.9rem', fontWeight: 400 }}
-                    >
-                      <span style={{ color: cream }}>Your custom </span>
-                      <span style={{ color: gold, fontStyle: 'italic' }}>booking link, built in.</span>
-                    </h2>
-                    <p className="text-sm leading-relaxed mb-5" style={{ color: 'rgba(236,230,218,0.6)' }}>
-                      Separate pages, real photos, and your own booking link — not one long scroll.
-                    </p>
-                    <div className="border-t border-white/10">
-                      {[
-                        'Home · Services · About · Gallery · Contact',
-                        'Calendly, Acuity, Booksy — your choice',
-                        'Custom photography sourced or your own',
-                      ].map((line, i) => (
-                        <div key={line} className="flex items-baseline gap-4 py-3 border-b border-white/10">
-                          <span
-                            className="shrink-0 text-[10px] tracking-[0.18em] w-5"
-                            style={{ color: gold, fontFamily: '"Instrument Serif", serif', fontStyle: 'italic' }}
-                          >
-                            {['I', 'II', 'III'][i]}
-                          </span>
-                          <span className="text-[14px] leading-snug" style={{ color: cream }}>{line}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Step 3 — Checkout */}
-                {wizardStep === 2 && (
+                {/* Checkout — the one and only screen */}
                   <div>
                     <h2
                       className="leading-[1.05] mb-3"
@@ -851,14 +754,17 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                       <span style={{ color: cream }}>All in for </span>
                       <span style={{ color: gold, fontStyle: 'italic' }}>{customPriceFull}.</span>
                     </h2>
-                    <p className="text-sm leading-relaxed mb-5" style={{ color: 'rgba(236,230,218,0.6)' }}>
-                      You may choose the design you like — your real photos, your own booking link. One simple price. Cancel anytime. After checkout, a short form captures your style and the photos to use.
+                    <p className="text-sm leading-relaxed mb-4" style={{ color: 'rgba(236,230,218,0.6)' }}>
+                      Your real photos, your own booking link. One simple price. Cancel anytime. After checkout, a short form captures your style and the photos to use.
+                    </p>
+
+                    <p className="text-[14.5px] leading-snug font-bold mb-4" style={{ color: cream }}>
+                      You get access to your barbershop account — so you can edit the text and images almost anytime.
                     </p>
 
                     <div className="border-t border-white/10 mb-5">
                       {[
-                        'Custom design, built from scratch',
-                        'Choose the design you like',
+                        'Custom Barbershop Website — 20+ Pages',
                         'Multiple pages',
                         'Booking integration',
                         'You can have us add your custom photos',
@@ -868,7 +774,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                             className="shrink-0 text-[10px] tracking-[0.18em] w-5"
                             style={{ color: gold, fontFamily: '"Instrument Serif", serif', fontStyle: 'italic' }}
                           >
-                            {['I', 'II', 'III', 'IV', 'V'][i]}
+                            {['I', 'II', 'III', 'IV'][i]}
                           </span>
                           <span className="text-[14px] leading-snug" style={{ color: cream }}>{line}</span>
                         </div>
@@ -936,37 +842,6 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                       Secure checkout · Stripe · Cancel anytime
                     </p>
                   </div>
-                )}
-
-                {/* Wizard navigation — quieter */}
-                <div className="mt-6 flex items-center justify-between pt-4 border-t" style={{ borderColor: 'rgba(232,192,116,0.18)' }}>
-                  <button
-                    type="button"
-                    onClick={back}
-                    disabled={wizardStep === 0}
-                    className="flex items-center gap-1 text-[10px] uppercase tracking-[0.24em] transition disabled:opacity-30 disabled:cursor-not-allowed"
-                    style={{ color: 'rgba(236,230,218,0.6)' }}
-                  >
-                    <ChevronLeft size={12} />
-                    Back
-                  </button>
-                  <span className="text-[9px] uppercase tracking-[0.28em]" style={{ color: 'rgba(236,230,218,0.4)' }}>
-                    {wizardStep + 1} / {totalSteps}
-                  </span>
-                  {wizardStep < totalSteps - 1 ? (
-                    <button
-                      type="button"
-                      onClick={next}
-                      className="flex items-center gap-1 text-[10px] uppercase tracking-[0.24em] transition"
-                      style={{ color: gold }}
-                    >
-                      Next
-                      <ChevronRight size={12} />
-                    </button>
-                  ) : (
-                    <span className="text-[9px] uppercase tracking-[0.28em]" style={{ color: 'rgba(236,230,218,0.4)' }}>Last step</span>
-                  )}
-                </div>
               </div>
             </div>
           </div>
