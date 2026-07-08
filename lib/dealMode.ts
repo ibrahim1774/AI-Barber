@@ -117,6 +117,16 @@ export function isClientEditPath(pathname?: string): boolean {
   return p === CLIENT_EDIT_PATH || p === `${CLIENT_EDIT_PATH}/`;
 }
 
+// `/onboard` — operator page that sets up a Client Site portal from the
+// browser: pulls the live Vercel files + creates the client login via
+// /api/client-site-onboard. Open like /admin-generate; the API guards
+// shared-auth accounts server-side.
+export const ONBOARD_PATH = '/onboard';
+export function isOnboardPath(pathname?: string): boolean {
+  const p = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
+  return p === ONBOARD_PATH || p === `${ONBOARD_PATH}/`;
+}
+
 // `/admin-generate` — operator-only white-glove flow for customers who
 // paid off-platform (Cash App, Venmo, in person, etc.) but can't or
 // won't navigate the funnel themselves. Builds a site, creates the
