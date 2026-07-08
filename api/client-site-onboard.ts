@@ -7,18 +7,25 @@ import { createClient } from '@supabase/supabase-js';
  * POST { site, email, password }
  *   site     — Vercel project name, *.vercel.app URL, or the site's custom
  *              domain (resolved against the Client Sites team token)
- *   email    — client login to create (or re-use, see guard below)
+ *   email    — client login to create
  *   password — client password (min 8 chars)
  *
  * Pulls the project's live production files from Vercel, uploads them to the
  * `client-sites` bucket, provisions the login, and upserts the client_sites
- * row. Re-running for the same site re-syncs files and resets the password.
+ * row.
  *
- * The page is deliberately unauthenticated (like /admin-generate), so the
- * one guard that matters: auth is SHARED with the main product's customers.
- * If the email already has an account, we only proceed when that account
- * already owns THIS site — otherwise anyone who found this URL could reset
- * a real customer's password. New emails are always fine.
+ * SECURITY MODEL — the page is deliberately unauthenticated (operator
+ * convenience, like /admin-generate), and auth is SHARED with the main
+ * product's paying customers, so this endpoint must never be usable to take
+ * over an account or an existing site. Rules:
+ *   1. A site that is already onboarded (row with an owner) can only be
+ *      RE-SYNCED (files re-imported) — and only when the submitted email is
+ *      the current owner's. Ownership and passwords are never changed here;
+ *      that stays in the CLI script only an operator can run.
+ *   2. A brand-new onboard only proceeds with an email that has no existing
+ *      account (no password resets of arbitrary customers).
+ *   3. The login is provisioned AFTER the file import succeeds, so a failed
+ *      run never strands a half-created account that blocks retries.
  *
  * Env: SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL (falls back to
  * VITE_SUPABASE_URL), VERCEL_CLIENT_SITES_TOKEN.
@@ -28,6 +35,7 @@ import { createClient } from '@supabase/supabase-js';
 export const config = { maxDuration: 300 };
 
 const BUCKET = 'client-sites';
+const HISTORY_DIR = '_history';
 
 const CONTENT_TYPES: Record<string, string> = {
   html: 'text/html', css: 'text/css', js: 'text/javascript',
@@ -44,19 +52,45 @@ const contentTypeFor = (p: string) => {
 };
 const SKIP = new Set(['.vercel', 'node_modules', '.git', '.DS_Store']);
 
-// "https://mrperfect-atlanta.vercel.app/about" → hostname → candidate names.
+// "https://mrperfect-atlanta.vercel.app/about" → hostname.
 function hostnameOf(input: string): string {
   return input.trim().replace(/^https?:\/\//i, '').split(/[/?#]/)[0].toLowerCase();
 }
 
-export default async function handler(req: any, res: any) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
+// Object keys are `${slug}/${path}` — never let a crafted deployment tree
+// escape the slug folder or shadow the editor's history backups.
+function isSafePath(p: string): boolean {
+  return (
+    !p.startsWith('/') &&
+    !p.split('/').some((seg) => seg === '..' || seg === '') &&
+    !p.startsWith(`${HISTORY_DIR}/`)
+  );
+}
+
+// Recursively list every stored file under `prefix` (offset-paginated —
+// a single list() call silently truncates past its limit).
+async function listAllFiles(sb: any, prefix: string): Promise<string[]> {
+  const out: string[] = [];
+  const PAGE = 1000;
+  for (let offset = 0; ; offset += PAGE) {
+    const { data, error } = await sb.storage
+      .from(BUCKET)
+      .list(prefix, { limit: PAGE, offset, sortBy: { column: 'name', order: 'asc' } });
+    if (error) throw new Error(`storage list(${prefix}) failed: ${error.message}`);
+    for (const entry of data || []) {
+      if (entry.name === HISTORY_DIR) continue; // editor Undo backups — keep
+      const full = `${prefix}/${entry.name}`;
+      if (entry.id === null) out.push(...(await listAllFiles(sb, full)));
+      else out.push(full);
+    }
+    if (!data || data.length < PAGE) break;
   }
+  return out;
+}
+
+export default async function handler(req: any, res: any) {
+  // Same-origin page → no CORS headers on purpose: a wildcard here would let
+  // any third-party page drive this state-changing endpoint from a browser.
   if (req.method !== 'POST') {
     return res.status(405).json({ ok: false, error: 'Method not allowed' });
   }
@@ -124,7 +158,7 @@ export default async function handler(req: any, res: any) {
     if (!project) {
       return res.status(404).json({
         ok: false,
-        error: `Could not find that site on the Client Sites team. Paste the ___.vercel.app URL or the exact project name.`,
+        error: 'Could not find that site on the Client Sites team. Paste the ___.vercel.app URL or the exact project name.',
       });
     }
     const slug: string = project.name;
@@ -142,42 +176,40 @@ export default async function handler(req: any, res: any) {
 
     const sb = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
 
-    // ── 2. Provision the login FIRST (fail before the slow file pull) ─────
-    let ownerId: string;
-    const { data: created, error: createErr } = await sb.auth.admin.createUser({
-      email: clientEmail,
-      password,
-      email_confirm: true,
-    });
-    if (createErr) {
-      // Email already registered. Auth is shared with the main product, so
-      // only allow a password reset when that account already owns THIS
-      // site — never an arbitrary customer account.
-      let found: any = null;
-      for (let page = 1; page <= 50 && !found; page++) {
-        const { data, error } = await sb.auth.admin.listUsers({ page, perPage: 1000 });
-        if (error) throw new Error(`listUsers failed: ${error.message}`);
-        found = data.users.find((u: any) => u.email?.toLowerCase() === clientEmail);
-        if (!data.users.length) break;
-      }
-      if (!found) {
-        return res.status(500).json({ ok: false, error: `Could not create the login: ${createErr.message}` });
-      }
-      const { data: owned } = await sb.from('client_sites').select('slug').eq('owner', found.id);
-      const ownsThis = (owned || []).some((r: any) => r.slug === slug);
-      if (!ownsThis) {
+    // ── 2. Enforce the security rules BEFORE any slow/mutating work ───────
+    const { data: existingRows, error: rowReadErr } = await sb
+      .from('client_sites')
+      .select('slug, owner')
+      .eq('slug', slug)
+      .limit(1);
+    if (rowReadErr) throw new Error(`client_sites lookup failed: ${rowReadErr.message}`);
+    const existing = existingRows?.[0] || null;
+
+    // Look up the submitted email once; used by both branches.
+    let existingUser: any = null;
+    for (let page = 1; page <= 50 && !existingUser; page++) {
+      const { data, error } = await sb.auth.admin.listUsers({ page, perPage: 1000 });
+      if (error) throw new Error(`listUsers failed: ${error.message}`);
+      existingUser = data.users.find((u: any) => u.email?.toLowerCase() === clientEmail) || null;
+      if (!data.users.length) break;
+    }
+
+    const resync = Boolean(existing?.owner);
+    if (resync) {
+      // Already onboarded: files-only re-sync, and only for the current
+      // owner's email. No owner change, no password reset — ever.
+      if (!existingUser || existingUser.id !== existing.owner) {
         return res.status(409).json({
           ok: false,
-          error: 'That email already has an account on this platform. Use a different email for this client (or the exact email already assigned to this site).',
+          error: 'This site is already set up. To re-import its files, enter the exact email currently assigned to it. To change the login itself, use the onboarding script.',
         });
       }
-      const { error: updErr } = await sb.auth.admin.updateUserById(found.id, { password });
-      if (updErr) {
-        return res.status(500).json({ ok: false, error: `Password reset failed: ${updErr.message}` });
-      }
-      ownerId = found.id;
-    } else {
-      ownerId = created.user.id;
+    } else if (existingUser) {
+      // New onboard must not touch an existing account (shared auth!).
+      return res.status(409).json({
+        ok: false,
+        error: 'That email can\'t be used here. Use a fresh email for this client.',
+      });
     }
 
     // ── 3. Pull the live production files from Vercel ─────────────────────
@@ -200,7 +232,7 @@ export default async function handler(req: any, res: any) {
         if (SKIP.has(n.name)) continue;
         const p = prefix ? `${prefix}/${n.name}` : n.name;
         if (n.type === 'directory') flatten(n.children, p);
-        else if (n.type === 'file') flat.push({ path: p, uid: n.uid });
+        else if (n.type === 'file' && isSafePath(p)) flat.push({ path: p, uid: n.uid });
       }
     };
     // Static deploys wrap user files under a top-level "src" directory.
@@ -216,14 +248,16 @@ export default async function handler(req: any, res: any) {
     for (const f of flat) {
       const fileRes = await vercel(`/v7/deployments/${dep.uid}/files/${f.uid}`);
       if (!fileRes.ok) throw new Error(`Could not download ${f.path} (${fileRes.status})`);
-      const ct = fileRes.headers.get('content-type') || '';
-      let buf: Buffer;
-      if (ct.includes('application/json')) {
-        // v7 returns { data: "<base64>" } for most files.
-        const body = await fileRes.json();
-        buf = Buffer.from(body.data, 'base64');
-      } else {
-        buf = Buffer.from(await fileRes.arrayBuffer());
+      const raw = Buffer.from(await fileRes.arrayBuffer());
+      let buf = raw;
+      // v7 usually wraps content as {"data":"<base64>"} — but a site's OWN
+      // json file can also arrive raw with a json content-type, so only
+      // unwrap when the body really is that exact wrapper.
+      if ((fileRes.headers.get('content-type') || '').includes('application/json')) {
+        try {
+          const body = JSON.parse(raw.toString('utf-8'));
+          if (body && typeof body.data === 'string') buf = Buffer.from(body.data, 'base64');
+        } catch { /* raw json file — keep bytes as-is */ }
       }
       if (f.path.endsWith('.html')) htmlCount++;
       const { error } = await sb.storage
@@ -232,7 +266,36 @@ export default async function handler(req: any, res: any) {
       if (error) throw new Error(`Upload failed for ${f.path}: ${error.message}`);
     }
 
-    // ── 5. Record the site row ─────────────────────────────────────────────
+    // Re-sync means "match the live deployment": drop bucket files the new
+    // deployment no longer has (renamed pages, old assets) — else they stay
+    // editable and would ship again on the next publish. _history is kept.
+    if (resync) {
+      const keep = new Set(flat.map((f) => `${slug}/${f.path}`));
+      const stored = await listAllFiles(sb, slug);
+      const stale = stored.filter((p) => !keep.has(p));
+      if (stale.length) {
+        const { error } = await sb.storage.from(BUCKET).remove(stale);
+        if (error) console.warn(`[client-site-onboard] stale cleanup failed: ${error.message}`);
+      }
+    }
+
+    // ── 5. Provision the login (new onboards only — see security model) ───
+    let ownerId: string;
+    if (resync) {
+      ownerId = existing.owner;
+    } else {
+      const { data: created, error: createErr } = await sb.auth.admin.createUser({
+        email: clientEmail,
+        password,
+        email_confirm: true,
+      });
+      if (createErr || !created?.user) {
+        throw new Error(`Could not create the login: ${createErr?.message || 'unknown error'}`);
+      }
+      ownerId = created.user.id;
+    }
+
+    // ── 6. Record the site row ─────────────────────────────────────────────
     const displayName = slug.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
     const { error: rowErr } = await sb.from('client_sites').upsert(
       {
@@ -248,7 +311,9 @@ export default async function handler(req: any, res: any) {
     );
     if (rowErr) throw new Error(`client_sites save failed: ${rowErr.message}`);
 
-    console.log(`[client-site-onboard] ${slug}: ${flat.length} files (${htmlCount} pages) for ${clientEmail}`);
+    console.log(
+      `[client-site-onboard] ${slug}: ${resync ? 're-synced' : 'onboarded'} ${flat.length} files (${htmlCount} pages) for ${clientEmail}`
+    );
     return res.status(200).json({
       ok: true,
       slug,
@@ -256,6 +321,7 @@ export default async function handler(req: any, res: any) {
       liveUrl,
       files: flat.length,
       pages: htmlCount,
+      resync,
     });
   } catch (err: any) {
     const detail = err?.message || 'Onboarding failed';

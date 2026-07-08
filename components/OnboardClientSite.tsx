@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Loader2, Globe, KeyRound, CheckCircle2, Copy, Check, RotateCcw } from 'lucide-react';
 
 /*
@@ -22,9 +22,10 @@ function generatePassword(): string {
   const buf = new Uint32Array(3);
   crypto.getRandomValues(buf);
   const word = words[buf[0] % words.length];
-  const num = 100 + (buf[1] % 900);
-  const tail = buf[2].toString(36).slice(0, 4);
-  return `${word}-${num}-${tail}`;
+  // Two padded base36 blocks ≈ 41 bits of entropy on top of the word —
+  // still easy to read out over the phone, no longer enumerable.
+  const block = (n: number) => (n % 36 ** 4).toString(36).padStart(4, '0');
+  return `${word}-${block(buf[1])}-${block(buf[2])}`;
 }
 
 const inputCls =
@@ -36,9 +37,22 @@ const CopyRow: React.FC<{ label: string; value: string }> = ({ label, value }) =
     <button
       type="button"
       onClick={async () => {
+        // Only show the checkmark when the copy actually landed — a false
+        // "Copied" makes the operator paste stale clipboard content.
         try {
           await navigator.clipboard.writeText(value);
-        } catch { /* clipboard unavailable — value stays visible */ }
+        } catch {
+          try {
+            const ta = document.createElement('textarea');
+            ta.value = value;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+          } catch {
+            return; // value stays visible on screen — copy it manually
+          }
+        }
         setCopied(true);
         setTimeout(() => setCopied(false), 1800);
       }}
@@ -59,6 +73,11 @@ interface OnboardResult {
   liveUrl: string;
   files: number;
   pages: number;
+  // Snapshot of what was actually submitted — the form fields stay editable
+  // state, and showing live state on the success card could hand the client
+  // credentials the server never saw.
+  email: string;
+  password: string;
 }
 
 export const OnboardClientSite: React.FC = () => {
@@ -71,16 +90,33 @@ export const OnboardClientSite: React.FC = () => {
 
   const portalUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/edit`;
 
+  // Warn before closing the tab mid-run: a generated password lives only in
+  // this component's state until the success card is shown.
+  const busyRef = useRef(false);
+  busyRef.current = busy;
+  useEffect(() => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (busyRef.current) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, []);
+
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
+      if (busyRef.current) return; // a second overlapping run would race the first
+      const submitted = { site: site.trim(), email: email.trim(), password };
       setBusy(true);
       setError(null);
       try {
         const resp = await fetch('/api/client-site-onboard', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ site: site.trim(), email: email.trim(), password }),
+          body: JSON.stringify(submitted),
         });
         let json: { ok?: boolean; error?: string } & Partial<OnboardResult> = {};
         try {
@@ -99,6 +135,8 @@ export const OnboardClientSite: React.FC = () => {
           liveUrl: json.liveUrl || '',
           files: json.files || 0,
           pages: json.pages || 0,
+          email: submitted.email,
+          password: submitted.password,
         });
       } catch (err: any) {
         setError(err?.message || 'Onboarding failed');
@@ -121,8 +159,8 @@ export const OnboardClientSite: React.FC = () => {
           </p>
           <div className="space-y-2">
             <CopyRow label="Portal link" value={portalUrl} />
-            <CopyRow label="Email" value={email.trim()} />
-            <CopyRow label="Password" value={password} />
+            <CopyRow label="Email" value={result.email} />
+            <CopyRow label="Password" value={result.password} />
           </div>
           <a
             href={result.liveUrl}
@@ -157,57 +195,65 @@ export const OnboardClientSite: React.FC = () => {
         <h1 className="mb-1 text-xl font-bold text-white">Onboard a client site</h1>
         <p className="mb-6 text-[12.5px] text-white/50">
           Paste the site&apos;s Vercel URL, set the client&apos;s login, and their edit portal is created
-          automatically. Running it again for the same site re-imports the live files and resets the password.
+          automatically. Running it again for the same site (with its assigned email) re-imports the live
+          files; password changes stay in the onboarding script.
         </p>
 
-        <label className="mb-1 block text-[10px] font-bold uppercase tracking-[0.18em] text-white/40">
+        <label htmlFor="onboard-site" className="mb-1 block text-[10px] font-bold uppercase tracking-[0.18em] text-white/40">
           Vercel site URL or project name
         </label>
         <input
+          id="onboard-site"
           required
           autoFocus
+          disabled={busy}
           value={site}
           onChange={(e) => setSite(e.target.value)}
           placeholder="mrperfect-atlanta.vercel.app"
-          className={`${inputCls} mb-4`}
+          className={`${inputCls} mb-4 disabled:opacity-50`}
         />
 
-        <label className="mb-1 block text-[10px] font-bold uppercase tracking-[0.18em] text-white/40">
+        <label htmlFor="onboard-email" className="mb-1 block text-[10px] font-bold uppercase tracking-[0.18em] text-white/40">
           Client email
         </label>
         <input
+          id="onboard-email"
           type="email"
           required
+          disabled={busy}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="client@example.com"
-          className={`${inputCls} mb-4`}
+          className={`${inputCls} mb-4 disabled:opacity-50`}
         />
 
-        <label className="mb-1 block text-[10px] font-bold uppercase tracking-[0.18em] text-white/40">
+        <label htmlFor="onboard-password" className="mb-1 block text-[10px] font-bold uppercase tracking-[0.18em] text-white/40">
           Client password
         </label>
         <div className="mb-5 flex gap-2">
           <input
+            id="onboard-password"
             type="text"
             required
             minLength={8}
+            disabled={busy}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="At least 8 characters"
-            className={inputCls}
+            className={`${inputCls} disabled:opacity-50`}
           />
           <button
             type="button"
+            disabled={busy}
             onClick={() => setPassword(generatePassword())}
             title="Generate a password"
-            className="shrink-0 rounded-lg border border-white/15 px-3.5 text-white/60 hover:text-white"
+            className="shrink-0 rounded-lg border border-white/15 px-3.5 text-white/60 hover:text-white disabled:opacity-50"
           >
             <KeyRound size={15} />
           </button>
         </div>
 
-        {error && <p className="mb-4 text-[12px] text-red-400">{error}</p>}
+        {error && <p role="alert" className="mb-4 text-[12px] text-red-400">{error}</p>}
 
         <button
           type="submit"
@@ -219,7 +265,7 @@ export const OnboardClientSite: React.FC = () => {
           {busy ? 'Setting everything up…' : 'Create client portal'}
         </button>
         {busy && (
-          <p className="mt-3 text-center text-[11.5px] text-white/40">
+          <p aria-live="polite" className="mt-3 text-center text-[11.5px] text-white/40">
             Pulling the live site and creating the account — this can take a minute or two. Keep this tab open.
           </p>
         )}
