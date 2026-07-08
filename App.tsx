@@ -14,7 +14,7 @@ import { HomeLaunchGuide } from './components/HomeLaunchGuide.tsx';
 import { buildSiteFromScrape } from './lib/buildSiteFromScrape.ts';
 import { ensureUuid } from './lib/ensureUuid.ts';
 import { extractFirstUrl, isSupportedBookingHost } from './lib/supportedBookingHost.ts';
-import { isBooksyPath, isFreeBarberPath, isPrimeBarberPath, isRecoverPath, isGenerateBarbershopPath, isGeneratePath, isBarberGeneratePath, isClientEditPath, isAdminGeneratePath, isOwnBrandPath } from './lib/dealMode.ts';
+import { isBooksyPath, isFreeBarberPath, isPrimeBarberPath, isRecoverPath, isGenerateBarbershopPath, isGeneratePath, isBarberGeneratePath, isClientEditPath, isOnboardPath, isAdminGeneratePath, isOwnBrandPath } from './lib/dealMode.ts';
 import { LoadingScreen } from './components/LoadingScreen.tsx';
 import { generateHTMLForTemplate } from './services/templateRenderer.ts';
 import { generateContent } from './services/geminiService.ts';
@@ -43,6 +43,7 @@ const RecoverPage = lazy(() => import('./components/RecoverPage.tsx').then(m => 
 const GenerateBarbershopFunnel = lazy(() => import('./components/GenerateBarbershopFunnel.tsx').then(m => ({ default: m.GenerateBarbershopFunnel })));
 const GeneratePage = lazy(() => import('./components/GeneratePage.tsx').then(m => ({ default: m.GeneratePage })));
 const ClientPortal = lazy(() => import('./components/ClientPortal.tsx').then(m => ({ default: m.ClientPortal })));
+const OnboardClientSite = lazy(() => import('./components/OnboardClientSite.tsx').then(m => ({ default: m.OnboardClientSite })));
 const BooksyDesignSwitcher = lazy(() => import('./components/BooksyDesignSwitcher.tsx').then(m => ({ default: m.BooksyDesignSwitcher })));
 const AdminGenerator = lazy(() => import('./components/AdminGenerator.tsx').then(m => ({ default: m.AdminGenerator })));
 const OwnBrandLanding = lazy(() => import('./components/OwnBrandLanding.tsx').then(m => ({ default: m.OwnBrandLanding })));
@@ -156,10 +157,10 @@ const App: React.FC = () => {
 
   // Session restore on mount
   useEffect(() => {
-    // /edit is the Client Sites portal — leftover barber session state
-    // (appView/pendingFormInputs) must never trigger a restore or an
+    // /edit + /onboard are Client Sites pages — leftover barber session
+    // state (appView/pendingFormInputs) must never trigger a restore or an
     // invisible handleGenerate there.
-    if (isClientEditPath()) { setIsRestoring(false); return; }
+    if (isClientEditPath() || isOnboardPath()) { setIsRestoring(false); return; }
     if (authLoading) return;
 
     const savedView = sessionStorage.getItem('appView') as AppState | null;
@@ -212,9 +213,9 @@ const App: React.FC = () => {
   useEffect(() => {
     if (viewContentFiredRef.current) return;
     viewContentFiredRef.current = true;
-    // /edit = existing clients editing their site, not landing-page
+    // /edit + /onboard = client-sites operations, not landing-page
     // traffic — don't pollute the shared pixel with ViewContent.
-    if (isClientEditPath()) return;
+    if (isClientEditPath() || isOnboardPath()) return;
     // Skip the post-payment return because the deploying screen
     // doesn't represent a real landing-page view, and the visitor's
     // Purchase event already fires the conversion signal.
@@ -1113,6 +1114,14 @@ const App: React.FC = () => {
     return (
       <Suspense fallback={<LoadingScreen />}>
         <ClientPortal />
+      </Suspense>
+    );
+  }
+
+  if (isOnboardPath()) {
+    return (
+      <Suspense fallback={<LoadingScreen />}>
+        <OnboardClientSite />
       </Suspense>
     );
   }
