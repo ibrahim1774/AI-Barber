@@ -191,9 +191,11 @@ if (EMAIL) {
   });
   if (createErr) {
     // Already registered → find them and reset the password instead.
+    // Auth is shared with the barber product, so page far enough to cover a
+    // large user base (50 × 1000) instead of dying at 4k users.
     let found = null;
-    for (let page = 1; page <= 20 && !found; page++) {
-      const { data, error } = await supabase.auth.admin.listUsers({ page, perPage: 200 });
+    for (let page = 1; page <= 50 && !found; page++) {
+      const { data, error } = await supabase.auth.admin.listUsers({ page, perPage: 1000 });
       if (error) die(`listUsers failed: ${error.message}`);
       found = data.users.find((u) => u.email?.toLowerCase() === EMAIL.toLowerCase());
       if (!data.users.length) break;

@@ -37,14 +37,20 @@ interface ClientSite {
 
 async function listAllFiles(prefix: string): Promise<string[]> {
   const out: string[] = [];
-  const { data, error } = await supabase.storage
-    .from(BUCKET)
-    .list(prefix, { limit: 1000, sortBy: { column: 'name', order: 'asc' } });
-  if (error) throw new Error(error.message);
-  for (const entry of data || []) {
-    const full = `${prefix}/${entry.name}`;
-    if ((entry as any).id === null) out.push(...(await listAllFiles(full)));
-    else out.push(full);
+  const PAGE = 1000;
+  // Offset-paginate: a single list() call truncates past `limit`, and image
+  // replacement adds a new images/edit-* file per swap — folders grow.
+  for (let offset = 0; ; offset += PAGE) {
+    const { data, error } = await supabase.storage
+      .from(BUCKET)
+      .list(prefix, { limit: PAGE, offset, sortBy: { column: 'name', order: 'asc' } });
+    if (error) throw new Error(error.message);
+    for (const entry of data || []) {
+      const full = `${prefix}/${entry.name}`;
+      if ((entry as any).id === null) out.push(...(await listAllFiles(full)));
+      else out.push(full);
+    }
+    if (!data || data.length < PAGE) break;
   }
   return out;
 }
@@ -70,11 +76,21 @@ function rewriteForEditor(html: string, slug: string, pagePath: string): string 
     /(\s(?:href|src|poster))=(["'])\/(?!\/)/g,
     (_m, attr, q) => `${attr}=${q}${absPrefix(slug)}`
   );
+  // srcset holds comma-separated candidates ("/img-800.jpg 800w, /img.jpg") —
+  // rewrite each root-absolute candidate or the browser resolves them against
+  // the injected <base> (supabase origin) and shows broken responsive images.
+  out = out.replace(/(\ssrcset=)(["'])([^"']*)\2/gi, (_m, attr, q, val) => {
+    const rewritten = String(val).replace(/(^|,)(\s*)\/(?!\/)/g, (_s, sep, ws) => `${sep}${ws}${absPrefix(slug)}`);
+    return `${attr}${q}${rewritten}${q}`;
+  });
   out = out.replace(/url\(\s*(["']?)\/(?!\/)/g, (_m, q) => `url(${q}${absPrefix(slug)}`);
 
   // <base> so relative refs ("images/x.jpg", "../styles.css") resolve.
+  // (?=[\s>]) so "<header ...>" can't match as the <head> tag.
   const baseTag = `<base data-editor-base href="${baseHref}">`;
-  if (/<head[^>]*>/i.test(out)) out = out.replace(/<head[^>]*>/i, (m) => `${m}\n${baseTag}`);
+  const headRe = /<head(?=[\s>])[^>]*>/i;
+  if (headRe.test(out)) out = out.replace(headRe, (m) => `${m}\n${baseTag}`);
+  else if (/<html(?=[\s>])[^>]*>/i.test(out)) out = out.replace(/<html(?=[\s>])[^>]*>/i, (m) => `${m}\n${baseTag}`);
   else out = `${baseTag}\n${out}`;
 
   return out;
@@ -114,6 +130,22 @@ function hasDirectText(el: Element): boolean {
   return false;
 }
 
+// Container-level tags: if an element has one of these as a child, making it
+// editable would let a stray Ctrl+A/Delete wipe whole layout sections (grids,
+// cards, inline scripts). Editing stays scoped to leaf-ish text elements.
+const BLOCK_CHILD_TAGS = new Set([
+  'DIV', 'SECTION', 'ARTICLE', 'HEADER', 'FOOTER', 'NAV', 'ASIDE', 'MAIN',
+  'UL', 'OL', 'TABLE', 'FIGURE', 'FORM', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'P',
+  'SCRIPT', 'STYLE',
+]);
+
+function hasBlockChildren(el: Element): boolean {
+  for (const child of Array.from(el.children)) {
+    if (BLOCK_CHILD_TAGS.has(child.tagName)) return true;
+  }
+  return false;
+}
+
 // Browser-side image shrink so client phone photos don't bloat the site.
 async function compressImage(file: File): Promise<{ blob: Blob; ext: string }> {
   if (file.type === 'image/svg+xml' || file.type === 'image/gif') {
@@ -149,7 +181,7 @@ function pageLabel(path: string): string {
 // ── component ──────────────────────────────────────────────────────────────
 
 export const ClientPortal: React.FC = () => {
-  const { user, signIn, signOut } = useAuth();
+  const { user, signIn, signOut, isLoading: authLoading } = useAuth();
 
   // login form
   const [email, setEmail] = useState('');
@@ -195,13 +227,25 @@ export const ClientPortal: React.FC = () => {
     }
     let cancelled = false;
     (async () => {
-      const { data } = await supabase
+      // limit(1) instead of maybeSingle(): an account owning 2+ sites (the
+      // onboard script allows it) must not error into the "no site" screen —
+      // it gets its first site. A real query failure is surfaced, not
+      // silently rendered as "no site assigned".
+      const { data: rows, error: siteErr } = await supabase
         .from('client_sites')
         .select('slug, name, vercel_project_name, live_url')
         .eq('owner', user.id)
-        .maybeSingle();
+        .order('created_at', { ascending: true })
+        .limit(1);
       if (cancelled) return;
-      setSite((data as ClientSite) || null);
+      if (siteErr) {
+        console.error('[portal] site lookup failed:', siteErr);
+        setSiteLoaded(true);
+        showToast('err', 'Could not load your site — check your connection and refresh.');
+        return;
+      }
+      const data = (rows?.[0] as ClientSite) || null;
+      setSite(data);
       setSiteLoaded(true);
       if (data) {
         try {
@@ -279,12 +323,16 @@ export const ClientPortal: React.FC = () => {
     `;
     doc.head.appendChild(style);
 
-    // Text: any element with its own text becomes editable in place.
+    // Text: leaf-ish elements with their own text become editable in place.
+    // 'plaintext-only' keeps Enter/paste from injecting <div>/<span> junk
+    // into the saved HTML; skipping elements with block children keeps a
+    // stray select-all+delete from wiping whole sections.
     doc.body.querySelectorAll('*').forEach((el) => {
       if (NON_EDITABLE_TAGS.has(el.tagName)) return;
       if (el.closest('script, style, svg')) return;
       if (!hasDirectText(el)) return;
-      el.setAttribute('contenteditable', 'true');
+      if (hasBlockChildren(el)) return;
+      el.setAttribute('contenteditable', 'plaintext-only');
       el.setAttribute('data-editor-editable', '1');
     });
     doc.body.addEventListener('input', () => setDirtyBoth(true));
@@ -330,6 +378,10 @@ export const ClientPortal: React.FC = () => {
         // srcset would override our new src at some widths — drop it.
         img.removeAttribute('srcset');
         img.removeAttribute('data-src');
+        // Inside <picture>, sibling <source> elements outrank the <img> —
+        // remove them or the live site keeps showing the OLD image.
+        const picture = img.closest('picture');
+        if (picture) picture.querySelectorAll('source').forEach((s) => s.remove());
         setDirtyBoth(true);
         showToast('ok', 'Image replaced — remember to Save');
       } catch (e: any) {
@@ -380,9 +432,20 @@ export const ClientPortal: React.FC = () => {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ slug: site.slug }),
       });
-      const json = await resp.json();
+      // A platform 502/504 returns an HTML error page, not JSON — don't let
+      // the parse error mask the real outcome.
+      let json: { ok?: boolean; url?: string; error?: string } = {};
+      try {
+        json = await resp.json();
+      } catch {
+        throw new Error(
+          resp.ok
+            ? 'Publish finished but the response was unreadable — check your live site.'
+            : `Publish failed (${resp.status}). Give it a minute, then check your live site before retrying.`
+        );
+      }
       if (!resp.ok || !json.ok) throw new Error(json.error || 'Publish failed');
-      setPublishedUrl(json.url);
+      setPublishedUrl(json.url || site.live_url || '');
     } catch (e: any) {
       console.error('[portal] publish failed:', e);
       showToast('err', e?.message || 'Publish failed');
@@ -415,6 +478,16 @@ export const ClientPortal: React.FC = () => {
   );
 
   // ── screens ──────────────────────────────────────────────────────────────
+
+  // Session restore in flight — don't flash the login form at a signed-in
+  // client on every refresh.
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: BG }}>
+        <Loader2 size={32} className="animate-spin" style={{ color: GOLD }} />
+      </div>
+    );
+  }
 
   if (!user) {
     return (
@@ -588,7 +661,13 @@ export const ClientPortal: React.FC = () => {
               onLoad={handleIframeLoad}
               title="Page editor"
               className="h-full min-h-[70vh] w-full border-0"
-              sandbox="allow-same-origin allow-scripts"
+              // No allow-scripts ON PURPOSE: (1) the site's own JS would run
+              // same-origin with the portal and could read the Supabase
+              // session from localStorage; (2) script-driven DOM mutations
+              // (nav clones, banners, lazy-loaders) would get baked into
+              // every Save and compound per publish. Editing is parent-driven
+              // and needs only allow-same-origin.
+              sandbox="allow-same-origin"
             />
           )}
         </main>

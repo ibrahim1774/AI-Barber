@@ -39,20 +39,27 @@ function extOf(path: string): string {
 }
 
 // Recursively list every file under `<slug>/` in the bucket. Supabase list()
-// is per-folder (directories come back with id === null), so walk.
+// is per-folder (directories come back with id === null) AND per-page —
+// without offset pagination anything past `limit` is silently dropped, and
+// a truncated listing here would DEPLOY AN INCOMPLETE SITE (the inline
+// deploy replaces the whole file set). So page until exhausted.
 async function listAllFiles(sb: any, prefix: string): Promise<string[]> {
   const out: string[] = [];
-  const { data, error } = await sb.storage
-    .from(BUCKET)
-    .list(prefix, { limit: 1000, sortBy: { column: 'name', order: 'asc' } });
-  if (error) throw new Error(`storage list(${prefix}) failed: ${error.message}`);
-  for (const entry of data || []) {
-    const full = `${prefix}/${entry.name}`;
-    if (entry.id === null) {
-      out.push(...(await listAllFiles(sb, full)));
-    } else {
-      out.push(full);
+  const PAGE = 1000;
+  for (let offset = 0; ; offset += PAGE) {
+    const { data, error } = await sb.storage
+      .from(BUCKET)
+      .list(prefix, { limit: PAGE, offset, sortBy: { column: 'name', order: 'asc' } });
+    if (error) throw new Error(`storage list(${prefix}) failed: ${error.message}`);
+    for (const entry of data || []) {
+      const full = `${prefix}/${entry.name}`;
+      if (entry.id === null) {
+        out.push(...(await listAllFiles(sb, full)));
+      } else {
+        out.push(full);
+      }
     }
+    if (!data || data.length < PAGE) break;
   }
   return out;
 }
@@ -97,7 +104,11 @@ export default async function handler(req: any, res: any) {
   try {
     const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const vercelToken = process.env.VERCEL_CLIENT_SITES_TOKEN || process.env.VERCEL_TOKEN;
+    // No VERCEL_TOKEN fallback on purpose: that token belongs to the barber
+    // account, and a name-based v13 deploy with a wrong-team token can
+    // auto-create a same-named project THERE and report success while the
+    // client's real site never updates. Fail loudly instead.
+    const vercelToken = process.env.VERCEL_CLIENT_SITES_TOKEN;
     if (!supabaseUrl || !serviceKey) {
       return res.status(500).json({ ok: false, error: 'Server missing Supabase configuration' });
     }

@@ -156,6 +156,10 @@ const App: React.FC = () => {
 
   // Session restore on mount
   useEffect(() => {
+    // /edit is the Client Sites portal — leftover barber session state
+    // (appView/pendingFormInputs) must never trigger a restore or an
+    // invisible handleGenerate there.
+    if (isClientEditPath()) { setIsRestoring(false); return; }
     if (authLoading) return;
 
     const savedView = sessionStorage.getItem('appView') as AppState | null;
@@ -208,6 +212,9 @@ const App: React.FC = () => {
   useEffect(() => {
     if (viewContentFiredRef.current) return;
     viewContentFiredRef.current = true;
+    // /edit = existing clients editing their site, not landing-page
+    // traffic — don't pollute the shared pixel with ViewContent.
+    if (isClientEditPath()) return;
     // Skip the post-payment return because the deploying screen
     // doesn't represent a real landing-page view, and the visitor's
     // Purchase event already fires the conversion signal.
