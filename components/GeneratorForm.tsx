@@ -47,6 +47,21 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
   // reverted from the name-only progressive funnel. nameOnly stays false
   // everywhere; /free-barber, /booksy and /booking keep their own layouts.
   const nameOnly = false;
+  // Root homepage "/" asks one question before showing any fields: "Do you
+  // have a booking link?" Yes → single required link field (auto-scrape);
+  // No → the manual trio (name + area + phone). Both keep the color picker.
+  // /new, /free-barber, /booksy, /booking are untouched.
+  const homeGate = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    const p = window.location.pathname;
+    return !isBooksyPath() && !isBookingPath() && !isFreeBarberPath() && (p === '/' || p === '');
+  }, []);
+  // null = question not answered yet; true = has a link; false = manual.
+  const [hasBooking, setHasBooking] = useState<boolean | null>(null);
+  // Yes-branch behaves like the single-link modes: the link is the only
+  // identity input, so scrape failures surface instead of falling back.
+  const gateLink = homeGate && hasBooking === true;
+  const gateManual = homeGate && hasBooking === false;
   const [inputs, setInputs] = useState<ShopInputs>({
     shopName: '',
     area: '',
@@ -119,17 +134,21 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
     // The single-link modes (/booksy + /booking) collect only the booking
     // link — the scrape provides shopName/area/phone via buildSiteFromScrape.
     // Every other path (/free-barber) requires the three identity fields.
-    if (!linkMode && !(inputs.shopName && inputs.area && inputs.phone)) return;
+    if (!linkMode && !gateLink && !(inputs.shopName && inputs.area && inputs.phone)) return;
 
-    const normalizedUrl = normalizeBookingUrl(inputs.bookingUrl || '');
+    const normalizedUrl = normalizeBookingUrl(gateManual ? '' : inputs.bookingUrl || '');
 
-    if (linkMode) {
+    if (linkMode || gateLink) {
       if (!normalizedUrl) {
         setScrapeError('Paste your booking link to continue.');
         return;
       }
       if (!isSupportedBookingHost(normalizedUrl)) {
-        setScrapeError('That link isn\'t Booksy / Fresha / Square / Vagaro / StyleSeat. Try the homepage to fill in your details manually.');
+        setScrapeError(
+          gateLink
+            ? "That link isn't Booksy / theCut / Fresha / Square / Vagaro / StyleSeat. Tap \u201cI don't have a link\u201d below to enter your details instead."
+            : 'That link isn\'t Booksy / Fresha / Square / Vagaro / StyleSeat. Try the homepage to fill in your details manually.'
+        );
         return;
       }
     }
@@ -162,7 +181,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
         return;
       } catch (err: any) {
         setScraping(false);
-        if (linkMode) {
+        if (linkMode || gateLink) {
           // No fallback in the single-link modes — the other identity fields
           // weren't collected, so we can't generate a usable site.
           // Surface the error and let the visitor try a different link.
@@ -527,9 +546,11 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
             >
               {booksyMode
                 ? "Paste your Booksy link — we'll pull your services, photos, hours, and reviews automatically."
-                : nameOnly
-                  ? "Enter your barbershop name to generate your site — you'll add the rest in a moment."
-                  : 'Please fill in the info below so your custom website can be generated.'}
+                : homeGate && hasBooking === null
+                  ? 'One quick question — your website takes seconds either way.'
+                  : gateLink
+                    ? "Paste your booking link — we'll pull your services, photos, hours, and reviews automatically."
+                    : 'Please fill in the info below so your custom website can be generated.'}
             </p>
             <div className="mt-5">
             </div>
@@ -543,8 +564,39 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
             button sit visually centered with breathing room. */}
         <div className={`px-6 ${booksyMode ? 'pt-8 pb-12 md:px-16 md:py-20 lg:px-24' : 'pt-4 pb-8 md:px-16 md:py-12 lg:px-24'} bg-[#0d0d0d] flex flex-col justify-center md:min-h-screen`}>
           <div className={`${booksyMode ? 'max-w-md' : 'max-w-xl'} w-full mx-auto`}>
+            {homeGate && hasBooking === null ? (
+              <div className="space-y-6 text-center">
+                <div>
+                  <p className="text-[13px] md:text-[15px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">
+                    Do you have a booking link?
+                  </p>
+                  <p className="mt-2 text-white/45 text-[11px] md:text-[12px]">
+                    (Booksy, theCut, Square, Fresha, Vagaro, StyleSeat…)
+                  </p>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => { setScrapeError(null); setHasBooking(true); }}
+                    className="w-full py-4 md:py-5 bg-[#f4a100] text-[#1a1a1a] font-montserrat font-black uppercase tracking-[1.5px] md:tracking-[2px] text-xs md:text-sm hover:bg-white transition-all duration-300 shadow-[0_0_20px_rgba(244,161,0,0.15)] active:scale-[0.98]"
+                  >
+                    Yes — I have one
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setScrapeError(null); setHasBooking(false); }}
+                    className="w-full py-4 md:py-5 border border-white/30 text-white font-montserrat font-black uppercase tracking-[1.5px] md:tracking-[2px] text-xs md:text-sm hover:border-[#f4a100] hover:text-[#f4a100] transition-all duration-300 active:scale-[0.98]"
+                  >
+                    No — build it for me
+                  </button>
+                </div>
+                <p className="text-white/35 text-[10px] md:text-[11px]">
+                  With a link we pull your services, photos, hours, and reviews automatically.
+                </p>
+              </div>
+            ) : (
             <form onSubmit={handleSubmit} className="space-y-3 md:space-y-5">
-              {!booksyMode && (
+              {!booksyMode && !gateLink && (
                 <div className="space-y-1">
                   <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Barbershop Name</label>
                   <input
@@ -558,7 +610,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
                 </div>
               )}
 
-              {!booksyMode && !nameOnly && (
+              {!booksyMode && !nameOnly && !gateLink && (
                 <>
                   <div className="space-y-1">
                     <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">Barbershop Service Area</label>
@@ -586,7 +638,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
                 </>
               )}
 
-              {(booksyMode || !nameOnly) && (
+              {(booksyMode || !nameOnly) && !gateManual && (
               <div className="space-y-1">
                 <div className={`flex items-center gap-2 ${booksyMode ? 'justify-center' : ''}`}>
                   <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">
@@ -596,18 +648,18 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
                       'Booking Link'
                     )}
                   </label>
-                  {!booksyMode && (
+                  {!booksyMode && !gateLink && (
                     <span className="text-[8px] md:text-[9px] uppercase tracking-[2px] text-[#f4a100]/80 border border-[#f4a100]/40 px-1.5 py-0.5">Optional</span>
                   )}
                 </div>
                 <input
-                  required={booksyMode}
+                  required={booksyMode || gateLink}
                   type="text"
                   inputMode="url"
                   autoCapitalize="off"
                   autoCorrect="off"
                   spellCheck={false}
-                  placeholder={booksyMode ? 'booksy.com / app.booksy.com / yourshop.booksy.com' : 'booksy.com/your-shop'}
+                  placeholder={booksyMode ? 'booksy.com / app.booksy.com / yourshop.booksy.com' : gateLink ? 'Booksy, theCut, Fresha, Square, Vagaro, or StyleSeat link' : 'booksy.com/your-shop'}
                   className={`w-full bg-transparent border-b py-1.5 md:py-2.5 text-white transition-all outline-none font-montserrat text-sm md:text-lg placeholder:text-white/20 ${booksyMode ? 'text-center' : ''}`}
                   style={{
                     borderBottomColor: booksyMode ? `${BOOKSY_TEAL}99` : 'rgba(255,255,255,0.40)',
@@ -619,7 +671,9 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
                 <p className={`text-white/40 text-[9px] md:text-[10px] mt-1 ${booksyMode ? 'text-center' : ''}`}>
                   {booksyMode
                     ? 'Short links like yourshop.booksy.com work too — we resolve them.'
-                    : 'Booksy, Cal.com, Vagaro — any booking page works.'}
+                    : gateLink
+                      ? "We pull your services, photos, hours, and reviews from it — short links work too."
+                      : 'Booksy, Cal.com, Vagaro — any booking page works.'}
                 </p>
               </div>
               )}
@@ -663,7 +717,18 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
               >
                 {booksyMode ? 'Generate My Barbershop Website' : 'Generate My Barbershop Website'}
               </button>
+
+              {homeGate && hasBooking !== null && (
+                <button
+                  type="button"
+                  onClick={() => { setScrapeError(null); setHasBooking(hasBooking === true ? false : null); }}
+                  className="block mx-auto text-white/40 hover:text-[#f4a100] text-[10px] md:text-[11px] uppercase tracking-[2px] transition-colors"
+                >
+                  {hasBooking === true ? "← I don't have a link" : '← Back'}
+                </button>
+              )}
             </form>
+            )}
 
             <div className="mt-5 md:mt-8 flex items-center justify-center gap-3 md:gap-4">
               <div className="h-[1px] flex-1 bg-white/10"></div>
