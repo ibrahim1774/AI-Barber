@@ -580,14 +580,14 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
                     onClick={() => { setScrapeError(null); setHasBooking(true); }}
                     className="w-full py-4 md:py-5 bg-[#f4a100] text-[#1a1a1a] font-montserrat font-black uppercase tracking-[1.5px] md:tracking-[2px] text-xs md:text-sm hover:bg-white transition-all duration-300 shadow-[0_0_20px_rgba(244,161,0,0.15)] active:scale-[0.98]"
                   >
-                    Yes — I have one
+                    Yes
                   </button>
                   <button
                     type="button"
                     onClick={() => { setScrapeError(null); setHasBooking(false); }}
                     className="w-full py-4 md:py-5 border border-white/30 text-white font-montserrat font-black uppercase tracking-[1.5px] md:tracking-[2px] text-xs md:text-sm hover:border-[#f4a100] hover:text-[#f4a100] transition-all duration-300 active:scale-[0.98]"
                   >
-                    No — build it for me
+                    No
                   </button>
                 </div>
                 <p className="text-white/35 text-[10px] md:text-[11px]">
@@ -722,7 +722,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
                 <button
                   type="button"
                   onClick={() => { setScrapeError(null); setHasBooking(hasBooking === true ? false : null); }}
-                  className="block mx-auto text-white/40 hover:text-[#f4a100] text-[10px] md:text-[11px] uppercase tracking-[2px] transition-colors"
+                  className="block mx-auto text-white font-black hover:text-[#f4a100] text-[12px] md:text-[13px] uppercase tracking-[2px] transition-colors"
                 >
                   {hasBooking === true ? "← I don't have a link" : '← Back'}
                 </button>
