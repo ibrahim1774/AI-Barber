@@ -568,9 +568,9 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
               <div className="space-y-6 text-center">
                 <div>
                   <p className="text-[13px] md:text-[15px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">
-                    Do you have a booking link?
+                    Do you have a barber booking link?
                   </p>
-                  <p className="mt-2 text-white/45 text-[11px] md:text-[12px]">
+                  <p className="mt-2 text-white font-bold text-[11px] md:text-[12px]">
                     (Booksy, theCut, Square, Fresha, Vagaro, StyleSeat…)
                   </p>
                 </div>
