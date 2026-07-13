@@ -279,12 +279,16 @@ const App: React.FC = () => {
     if (stripeSessionId && isCustomPlan) {
       window.history.replaceState({}, '', window.location.pathname);
       setAppReady(true);
-      fireCustomDesignPixels(stripeSessionId, stripePlan);
       // Whitelist redirect target so an attacker can't open-redirect us.
       const allowed = /^https:\/\/docs\.google\.com\/forms\//i.test(stripeRedirect);
       const target = allowed ? stripeRedirect : 'https://docs.google.com/forms/d/e/1FAIpQLSdS2iaBt6ee0AGWv7pQPSLHoicovQuTOKLFktuiEG4tobBIPw/viewform';
-      // Give the pixel beacons ~600ms to leave the wire before navigating.
-      setTimeout(() => { window.location.href = target; }, 600);
+      // The pixels need the Stripe-verified amount before they fire, so
+      // navigation waits for them (the verify lookup inside is capped at
+      // 2.5s — the redirect can't hang). Then ~600ms for the beacons to
+      // leave the wire.
+      fireCustomDesignPixels(stripeSessionId, stripePlan).finally(() => {
+        setTimeout(() => { window.location.href = target; }, 600);
+      });
       return;
     }
 
@@ -317,115 +321,127 @@ const App: React.FC = () => {
     setAppReady(true);
   }, [authLoading, isAuthenticated, isRestoring]);
 
-  // Fires Purchase events for the custom-design plan. Every custom
-  // slug is flat $15/mo now; the slug only differentiates analytics
-  // attribution. Stripe's session id is the dedup event_id so browser
-  // + (any future) server-side CAPI calls line up in Meta/TikTok.
-  const fireCustomDesignPixels = (sessionId: string, plan: string) => {
-    const PLAN_VALUES: Record<string, number> = {
-      'custom-booksy': 19,
-      custom: 19,
-      custom25: 19,
-      primebarber: 29,
+  // Fires Purchase events for the custom-design plans. Stripe's
+  // amount_total (via verify-stripe-session) is the source of truth for
+  // the value — the old hardcoded plan→value map drifted every time
+  // checkout prices changed (fired $19 while Stripe charged $29). The
+  // same verify lookup supplies customer name/address so the fire
+  // reaches the same EMQ tier as the hosting Purchase in
+  // handleStripeReturn. Stripe's session id is the dedup event_id so
+  // browser + server CAPI calls line up in Meta/TikTok.
+  const fireCustomDesignPixels = async (sessionId: string, plan: string) => {
+    // Used only when the Stripe lookup fails; keep in sync with
+    // api/create-checkout-session.ts unitAmount values.
+    const FALLBACK_VALUES: Record<string, number> = {
+      'custom-booksy': 29,
+      custom: 29,
+      custom25: 29,
+      primebarber: 20,
       'primebarber-site': 19,
     };
-    const value = PLAN_VALUES[plan] ?? 15;
     const currency = 'USD';
+    const phone = activeSite?.data?.phone || null;
+    const { fbc, fbp } = readMetaCookies();
+
+    let verify: any = null;
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 2500);
+      const r = await fetch('/api/verify-stripe-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId }),
+        signal: ctrl.signal,
+      });
+      clearTimeout(timer);
+      verify = r.ok ? await r.json() : null;
+    } catch (err) {
+      console.warn('[Purchase / Custom] verify lookup failed (falling back to plan map):', err);
+    }
+
+    const value = typeof verify?.amountTotal === 'number' && verify.amountTotal > 0
+      ? verify.amountTotal
+      : (FALLBACK_VALUES[plan] ?? 29);
     // Resolve content_id + contents[] from the plan slug so advanced
     // matching + Events Manager warnings are addressed in one place.
     const meta = getPlanContentMeta(plan, value);
-    const phone = activeSite?.data?.phone || null;
-    const { fbc, fbp } = readMetaCookies();
+    const email = verify?.customerEmail || null;
+    const ph = verify?.customerPhone || phone;
+    const { firstName, lastName } = splitName(verify?.customerName);
+    const addr = verify?.customerAddress || {};
+
     try {
       window.fbq?.('track', 'Purchase', { value, currency, content_ids: [meta.content_id], content_type: meta.content_type, contents: meta.contents }, { eventID: sessionId });
     } catch (err) {
       console.warn('[FB Pixel Purchase / Custom] fire failed:', err);
     }
-    // Pull customer name + address from Stripe so the custom-design
-    // Purchase fire reaches the same EMQ tier as the hosting Purchase
-    // fire in handleStripeReturn. Fire-and-forget — pixel must not
-    // wait on a Stripe round-trip.
-    fetch('/api/verify-stripe-session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId }),
-    })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((verify) => {
-        const email = verify?.customerEmail || null;
-        const ph = verify?.customerPhone || phone;
-        const { firstName, lastName } = splitName(verify?.customerName);
-        const addr = verify?.customerAddress || {};
-        fetch('/api/fb-purchase', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            eventId: sessionId,
-            value,
-            currency,
-            eventSourceUrl: window.location.origin,
-            clientUserAgent: navigator.userAgent,
-            customerEmail: email,
-            customerPhone: ph,
-            firstName,
-            lastName,
-            city: addr.city || null,
-            state: addr.state || null,
-            zip: addr.zip || null,
-            country: addr.country || null,
-            externalId: sessionId,
-            fbc,
-            fbp,
-            content_id: meta.content_id,
-            content_name: meta.content_name,
-            content_type: meta.content_type,
-            contents: meta.contents,
-          }),
-          keepalive: true,
-        }).catch((err) => console.error('[FB CAPI / Custom] non-blocking:', err));
-
-        fetch('/api/tiktok-event', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            event: 'Purchase',
-            event_id: sessionId,
-            event_source_url: window.location.origin,
-            user_agent: navigator.userAgent,
-            value,
-            currency,
-            email,
-            phone: ph,
-            external_id: sessionId,
-            content_id: meta.content_id,
-            content_name: meta.content_name,
-            content_type: meta.content_type,
-            contents: meta.contents,
-          }),
-          keepalive: true,
-        }).catch((err) => console.error('[TikTok CAPI / Custom] non-blocking:', err));
-
-        // Triple Whale Purchase — orderId == Stripe session id so it joins
-        // the order pushed from the Stripe webhook. email/phone is required
-        // for TW to attribute; we have it here after the verify lookup.
-        try {
-          (window as any).TriplePixel?.('Purchase', {
-            orderId: sessionId,
-            email: email || undefined,
-            phone: ph || undefined,
-            lineItems: [{ i: meta.content_id, q: 1, v: meta.content_id }],
-          });
-          if (email) (window as any).TriplePixel?.('Contact', { email });
-        } catch (err) {
-          console.warn('[TriplePixel Purchase / Custom] fire failed:', err);
-        }
-      })
-      .catch((err) => console.warn('[FB/TT Purchase Custom] verify lookup failed (firing without name/addr):', err));
-
     try {
       (window as any).ttq?.track('Purchase', { value, currency, content_id: meta.content_id, content_type: meta.content_type, contents: meta.contents }, { event_id: sessionId });
     } catch (err) {
       console.warn('[TikTok Pixel Purchase / Custom] fire failed:', err);
+    }
+    fetch('/api/fb-purchase', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        eventId: sessionId,
+        value,
+        currency,
+        eventSourceUrl: window.location.origin,
+        clientUserAgent: navigator.userAgent,
+        customerEmail: email,
+        customerPhone: ph,
+        firstName,
+        lastName,
+        city: addr.city || null,
+        state: addr.state || null,
+        zip: addr.zip || null,
+        country: addr.country || null,
+        externalId: sessionId,
+        fbc,
+        fbp,
+        content_id: meta.content_id,
+        content_name: meta.content_name,
+        content_type: meta.content_type,
+        contents: meta.contents,
+      }),
+      keepalive: true,
+    }).catch((err) => console.error('[FB CAPI / Custom] non-blocking:', err));
+
+    fetch('/api/tiktok-event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event: 'Purchase',
+        event_id: sessionId,
+        event_source_url: window.location.origin,
+        user_agent: navigator.userAgent,
+        value,
+        currency,
+        email,
+        phone: ph,
+        external_id: sessionId,
+        content_id: meta.content_id,
+        content_name: meta.content_name,
+        content_type: meta.content_type,
+        contents: meta.contents,
+      }),
+      keepalive: true,
+    }).catch((err) => console.error('[TikTok CAPI / Custom] non-blocking:', err));
+
+    // Triple Whale Purchase — orderId == Stripe session id so it joins
+    // the order pushed from the Stripe webhook. email/phone is required
+    // for TW to attribute; we have it here after the verify lookup.
+    try {
+      (window as any).TriplePixel?.('Purchase', {
+        orderId: sessionId,
+        email: email || undefined,
+        phone: ph || undefined,
+        lineItems: [{ i: meta.content_id, q: 1, v: meta.content_id }],
+      });
+      if (email) (window as any).TriplePixel?.('Contact', { email });
+    } catch (err) {
+      console.warn('[TriplePixel Purchase / Custom] fire failed:', err);
     }
   };
 
