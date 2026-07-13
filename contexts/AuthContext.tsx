@@ -50,11 +50,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signUp = async (email: string, password: string, fullName?: string, phone?: string) => {
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: { data: { full_name: fullName || '', phone: phone || '' } },
     });
+    // options.data only reaches user_metadata — the Auth dashboard's Phone
+    // column reads auth.users.phone, which the client can't set. Mirror it
+    // server-side (fire-and-forget; signup must not wait on it).
+    if (!error && phone && data?.user?.id) {
+      fetch('/api/sync-auth-phone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: data.user.id }),
+        keepalive: true,
+      }).catch(() => {});
+    }
     return { error: error as Error | null };
   };
 
