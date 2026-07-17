@@ -50,81 +50,100 @@ interface Sub {
   account: AccountInfo | null;
 }
 
+// Stripe-style status vocabulary. Order = chip order.
+const STATUS_DEFS: { key: string; label: string; color: string }[] = [
+  { key: 'active', label: 'Active', color: '#2fd679' },
+  { key: 'trialing', label: 'Trialing', color: '#4cc3ff' },
+  { key: 'past_due', label: 'Retrying', color: '#ffb224' },
+  { key: 'unpaid', label: 'Unpaid', color: '#ff8a4c' },
+  { key: 'incomplete', label: 'Incomplete', color: '#c9a0ff' },
+  { key: 'incomplete_expired', label: 'Expired', color: '#8b94a7' },
+  { key: 'paused', label: 'Paused', color: '#8b94a7' },
+  { key: 'canceled', label: 'Canceled', color: '#ff5c5c' },
+];
+const statusDef = (key: string) => STATUS_DEFS.find((d) => d.key === key);
+
+const GOLD = '#f4b73f';
+const INK = '#e9ecf3';
+const MUTED = '#8f99ac';
+const LINE = 'rgba(148,163,196,0.14)';
+
 const page: React.CSSProperties = {
   minHeight: '100vh',
-  background: '#0b0e13',
-  color: '#e7e9ee',
-  fontFamily: "'Inter', -apple-system, system-ui, sans-serif",
-  padding: '24px 16px 80px',
+  background: 'radial-gradient(1200px 600px at 50% -200px, #171d2a 0%, #0b0e14 55%, #07090d 100%)',
+  color: INK,
+  fontFamily: "'Manrope', 'Inter', -apple-system, system-ui, sans-serif",
+  padding: '28px 20px 90px',
 };
 const card: React.CSSProperties = {
-  background: '#141922',
-  border: '1px solid #232b38',
-  borderRadius: 12,
-  padding: 16,
+  background: 'linear-gradient(180deg, rgba(24,30,42,0.9) 0%, rgba(16,20,28,0.9) 100%)',
+  border: `1px solid ${LINE}`,
+  borderRadius: 16,
+  padding: 18,
+  boxShadow: '0 10px 30px rgba(0,0,0,0.35)',
 };
 const inputStyle: React.CSSProperties = {
   width: '100%',
-  padding: '12px 14px',
-  borderRadius: 8,
-  border: '1px solid #2c3648',
-  background: '#0e1219',
-  color: '#e7e9ee',
+  padding: '13px 16px',
+  borderRadius: 12,
+  border: `1px solid ${LINE}`,
+  background: 'rgba(10,13,19,0.8)',
+  color: INK,
   fontSize: 15,
+  fontFamily: 'inherit',
   outline: 'none',
 };
 const btn: React.CSSProperties = {
-  padding: '12px 18px',
-  borderRadius: 8,
+  padding: '13px 20px',
+  borderRadius: 12,
   border: 'none',
-  background: '#f4a100',
-  color: '#131313',
-  fontWeight: 700,
+  background: `linear-gradient(180deg, ${GOLD} 0%, #dd9a14 100%)`,
+  color: '#171204',
+  fontWeight: 800,
   fontSize: 15,
+  fontFamily: 'inherit',
+  letterSpacing: '0.01em',
   cursor: 'pointer',
 };
-const chip = (on: boolean): React.CSSProperties => ({
-  padding: '6px 12px',
+const chip = (on: boolean, accent: string = GOLD): React.CSSProperties => ({
+  padding: '7px 14px',
   borderRadius: 999,
-  border: `1px solid ${on ? '#f4a100' : '#2c3648'}`,
-  background: on ? 'rgba(244,161,0,0.15)' : 'transparent',
-  color: on ? '#f4a100' : '#9aa4b5',
-  fontSize: 13,
-  fontWeight: 600,
+  border: `1px solid ${on ? accent : LINE}`,
+  background: on ? `${accent}1f` : 'rgba(15,19,27,0.6)',
+  color: on ? accent : MUTED,
+  fontSize: 12.5,
+  fontWeight: 700,
+  fontFamily: 'inherit',
+  letterSpacing: '0.02em',
   cursor: 'pointer',
+  whiteSpace: 'nowrap',
 });
 const th: React.CSSProperties = {
   textAlign: 'left',
-  padding: '10px 12px',
-  fontSize: 11,
+  padding: '12px 14px',
+  fontSize: 10.5,
   textTransform: 'uppercase',
-  letterSpacing: '0.08em',
-  color: '#8b94a7',
-  borderBottom: '1px solid #232b38',
+  letterSpacing: '0.12em',
+  fontWeight: 800,
+  color: MUTED,
+  borderBottom: `1px solid ${LINE}`,
   whiteSpace: 'nowrap',
+  position: 'sticky',
+  top: 0,
+  background: '#12161f',
+  zIndex: 1,
 };
 const td: React.CSSProperties = {
-  padding: '12px 12px',
-  fontSize: 14,
-  borderBottom: '1px solid #1b2230',
+  padding: '13px 14px',
+  fontSize: 13.5,
+  borderBottom: `1px solid rgba(148,163,196,0.08)`,
   verticalAlign: 'top',
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  active: '#22c55e',
-  trialing: '#38bdf8',
-  past_due: '#f59e0b',
-  unpaid: '#f59e0b',
-  incomplete: '#f59e0b',
-  incomplete_expired: '#ef4444',
-  canceled: '#ef4444',
-  paused: '#9aa4b5',
-};
-
 const statusLabel = (s: Sub): string => {
-  if (s.status === 'past_due' || s.status === 'unpaid') return 'payment failed';
-  if (s.status === 'active' && s.cancelAtPeriodEnd) return 'active (canceling)';
-  return s.status.replace(/_/g, ' ');
+  const base = statusDef(s.status)?.label || s.status.replace(/_/g, ' ');
+  if (s.status === 'active' && s.cancelAtPeriodEnd) return 'Active · canceling';
+  return base;
 };
 
 const fmtDate = (v: number | string | null): string => {
@@ -152,11 +171,31 @@ export const AdminDashboard: React.FC = () => {
     typeof window !== 'undefined' && /primehub/i.test(window.location.hostname) ? 'primehub' : 'aibarber';
   const [family, setFamily] = useState<Family>(defaultFamily);
   const [tab, setTab] = useState<'hosting' | 'custom' | 'accounts'>('hosting');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'failed' | 'canceled'>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   // Yearly plans excluded by default — the owner tracks monthly
   // recurring only; the chip re-includes them (normalized to $/12).
   const [includeYearly, setIncludeYearly] = useState(false);
   const [search, setSearch] = useState('');
+
+  // Premium display font + row-hover styles (inline styles can't do :hover).
+  useEffect(() => {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap';
+    document.head.appendChild(link);
+    const style = document.createElement('style');
+    style.textContent = `
+      .adm-row { transition: background 0.12s ease; }
+      .adm-row:hover { background: rgba(244,183,63,0.05); }
+      .adm-num { font-variant-numeric: tabular-nums; }
+      .adm * { -webkit-font-smoothing: antialiased; }
+    `;
+    document.head.appendChild(style);
+    return () => {
+      document.head.removeChild(link);
+      document.head.removeChild(style);
+    };
+  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -216,6 +255,19 @@ export const AdminDashboard: React.FC = () => {
     return rows;
   }, [subs, family, includeYearly]);
 
+  const tabSubs = useMemo(
+    () => familySubs.filter((s) => (tab === 'custom' ? s.isCustomDesign : !s.isCustomDesign)),
+    [familySubs, tab],
+  );
+
+  // Counts per Stripe status for the current family+tab — the chip row
+  // only shows statuses that actually occur, each with its count.
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const s of tabSubs) counts[s.status] = (counts[s.status] || 0) + 1;
+    return counts;
+  }, [tabSubs]);
+
   const summary = useMemo(() => {
     const active = familySubs.filter((s) => s.status === 'active' || s.status === 'trialing');
     const failed = familySubs.filter((s) => ['past_due', 'unpaid', 'incomplete', 'incomplete_expired'].includes(s.status));
@@ -224,10 +276,8 @@ export const AdminDashboard: React.FC = () => {
   }, [familySubs]);
 
   const visibleSubs = useMemo(() => {
-    let rows = familySubs.filter((s) => (tab === 'custom' ? s.isCustomDesign : !s.isCustomDesign));
-    if (statusFilter === 'active') rows = rows.filter((s) => s.status === 'active' || s.status === 'trialing');
-    if (statusFilter === 'failed') rows = rows.filter((s) => ['past_due', 'unpaid', 'incomplete', 'incomplete_expired'].includes(s.status));
-    if (statusFilter === 'canceled') rows = rows.filter((s) => s.status === 'canceled');
+    let rows = tabSubs;
+    if (statusFilter !== 'all') rows = rows.filter((s) => s.status === statusFilter);
     const q = search.trim().toLowerCase();
     if (q) {
       rows = rows.filter((s) =>
@@ -237,7 +287,7 @@ export const AdminDashboard: React.FC = () => {
       );
     }
     return [...rows].sort((a, b) => b.created - a.created);
-  }, [familySubs, tab, statusFilter, search]);
+  }, [tabSubs, statusFilter, search]);
 
   const visibleAccounts = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -253,25 +303,28 @@ export const AdminDashboard: React.FC = () => {
   }, [accountsOnly, search]);
 
   if (!authChecked) {
-    return <div style={{ ...page, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Loading…</div>;
+    return <div className="adm" style={{ ...page, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Loading…</div>;
   }
 
   if (!isAdmin) {
     return (
-      <div style={{ ...page, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <form onSubmit={handleLogin} style={{ ...card, width: '100%', maxWidth: 380, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>Admin sign in</h1>
+      <div className="adm" style={{ ...page, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <form onSubmit={handleLogin} style={{ ...card, width: '100%', maxWidth: 380, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div>
+            <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.16em', color: GOLD, fontWeight: 800, marginBottom: 6 }}>Owner access</div>
+            <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0, letterSpacing: '-0.02em' }}>Admin sign in</h1>
+          </div>
           {sessionEmail && (
-            <div style={{ fontSize: 13, color: '#f59e0b' }}>
+            <div style={{ fontSize: 13, color: '#ffb224' }}>
               Signed in as {sessionEmail} — not an admin account.{' '}
-              <button type="button" onClick={() => supabase.auth.signOut()} style={{ background: 'none', border: 'none', color: '#f4a100', cursor: 'pointer', padding: 0, fontSize: 13 }}>
+              <button type="button" onClick={() => supabase.auth.signOut()} style={{ background: 'none', border: 'none', color: GOLD, cursor: 'pointer', padding: 0, fontSize: 13, fontFamily: 'inherit' }}>
                 Sign out
               </button>
             </div>
           )}
           <input style={inputStyle} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" autoComplete="username" />
           <input style={inputStyle} type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" autoComplete="current-password" />
-          {loginError && <div style={{ fontSize: 13, color: '#ef4444' }}>{loginError}</div>}
+          {loginError && <div style={{ fontSize: 13, color: '#ff5c5c' }}>{loginError}</div>}
           <button style={btn} type="submit" disabled={loggingIn}>
             {loggingIn ? 'Signing in…' : 'Sign in'}
           </button>
@@ -281,19 +334,22 @@ export const AdminDashboard: React.FC = () => {
   }
 
   return (
-    <div style={page}>
-      <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
-          <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0 }}>Customer admin</h1>
+    <div className="adm" style={page}>
+      <div style={{ maxWidth: 1240, margin: '0 auto' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 22 }}>
+          <div>
+            <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.16em', color: GOLD, fontWeight: 800, marginBottom: 4 }}>Owner dashboard</div>
+            <h1 style={{ fontSize: 27, fontWeight: 800, margin: 0, letterSpacing: '-0.03em' }}>Customers</h1>
+          </div>
           <button
             onClick={() => supabase.auth.signOut()}
-            style={{ background: 'none', border: '1px solid #2c3648', color: '#9aa4b5', borderRadius: 8, padding: '8px 14px', cursor: 'pointer', fontSize: 13 }}
+            style={{ background: 'rgba(15,19,27,0.6)', border: `1px solid ${LINE}`, color: MUTED, borderRadius: 10, padding: '9px 16px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}
           >
             Sign out
           </button>
         </div>
 
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}>
           {(
             [
               ['aibarber', 'AI-Barber'],
@@ -309,15 +365,15 @@ export const AdminDashboard: React.FC = () => {
           ))}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 20 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 14, marginBottom: 22 }}>
           {[
-            ['Active subs', String(summary.active), '#22c55e'],
-            ['Payment failed', String(summary.failed), '#f59e0b'],
-            ['Canceled', String(summary.canceled), '#ef4444'],
+            ['Active subscriptions', String(summary.active), '#2fd679'],
+            ['Payment issues', String(summary.failed), '#ffb224'],
+            ['Canceled', String(summary.canceled), '#ff5c5c'],
           ].map(([label, value, color]) => (
             <div key={label} style={card}>
-              <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#8b94a7', marginBottom: 6 }}>{label}</div>
-              <div style={{ fontSize: 26, fontWeight: 800, color }}>{value}</div>
+              <div style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.14em', fontWeight: 800, color: MUTED, marginBottom: 8 }}>{label}</div>
+              <div className="adm-num" style={{ fontSize: 30, fontWeight: 800, color, letterSpacing: '-0.02em' }}>{value}</div>
             </div>
           ))}
         </div>
@@ -335,37 +391,37 @@ export const AdminDashboard: React.FC = () => {
             </button>
           ))}
           <div style={{ flex: 1 }} />
-          {tab !== 'accounts' &&
-            (
-              [
-                ['all', 'All'],
-                ['active', 'Active'],
-                ['failed', 'Failed'],
-                ['canceled', 'Canceled'],
-              ] as ['all' | 'active' | 'failed' | 'canceled', string][]
-            ).map(([key, label]) => (
-              <button key={key} style={chip(statusFilter === key)} onClick={() => setStatusFilter(key)}>
-                {label}
-              </button>
-            ))}
           <button style={chip(includeYearly)} onClick={() => setIncludeYearly((v) => !v)}>
             {includeYearly ? '✓ Yearly included' : 'Yearly excluded'}
           </button>
         </div>
 
+        {tab !== 'accounts' && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+            <button style={chip(statusFilter === 'all')} onClick={() => setStatusFilter('all')}>
+              All statuses ({tabSubs.length})
+            </button>
+            {STATUS_DEFS.filter((d) => statusCounts[d.key]).map((d) => (
+              <button key={d.key} style={chip(statusFilter === d.key, d.color)} onClick={() => setStatusFilter(statusFilter === d.key ? 'all' : d.key)}>
+                {d.label} ({statusCounts[d.key]})
+              </button>
+            ))}
+          </div>
+        )}
+
         <input
-          style={{ ...inputStyle, marginBottom: 16 }}
+          style={{ ...inputStyle, marginBottom: 18 }}
           placeholder="Search email, name, shop, phone, URL…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
 
-        {loading && <div style={{ ...card, textAlign: 'center', color: '#9aa4b5' }}>Loading customers…</div>}
-        {dataError && <div style={{ ...card, color: '#ef4444' }}>{dataError}</div>}
+        {loading && <div style={{ ...card, textAlign: 'center', color: MUTED }}>Loading customers…</div>}
+        {dataError && <div style={{ ...card, color: '#ff5c5c' }}>{dataError}</div>}
 
         {!loading && !dataError && tab !== 'accounts' && (
           <div style={{ ...card, padding: 0, overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1000 }}>
               <thead>
                 <tr>
                   <th style={th}>Customer</th>
@@ -380,7 +436,7 @@ export const AdminDashboard: React.FC = () => {
               <tbody>
                 {visibleSubs.length === 0 && (
                   <tr>
-                    <td style={{ ...td, textAlign: 'center', color: '#8b94a7' }} colSpan={7}>
+                    <td style={{ ...td, textAlign: 'center', color: MUTED }} colSpan={7}>
                       No subscriptions match.
                     </td>
                   </tr>
@@ -388,49 +444,58 @@ export const AdminDashboard: React.FC = () => {
                 {visibleSubs.map((s) => {
                   const phone = s.account?.signupPhone || s.stripePhone;
                   const sites = s.account?.sites || [];
+                  const def = statusDef(s.status);
                   return (
-                    <tr key={s.subId}>
+                    <tr key={s.subId} className="adm-row">
                       <td style={td}>
-                        <div style={{ fontWeight: 600 }}>{s.email}</div>
-                        <div style={{ fontSize: 12, color: '#8b94a7' }}>
+                        <div style={{ fontWeight: 700 }}>{s.email}</div>
+                        <div style={{ fontSize: 12, color: MUTED }}>
                           {s.name || s.account?.fullName || ''}
-                          {!s.account && <span style={{ color: '#f59e0b' }}> · no account</span>}
+                          {!s.account && <span style={{ color: '#ffb224' }}> · no account</span>}
                         </div>
                       </td>
-                      <td style={{ ...td, whiteSpace: 'nowrap' }}>{phone || '—'}</td>
+                      <td className="adm-num" style={{ ...td, whiteSpace: 'nowrap' }}>{phone || '—'}</td>
                       <td style={td}>
-                        {sites.length === 0 && <span style={{ color: '#8b94a7' }}>—</span>}
+                        {sites.length === 0 && <span style={{ color: MUTED }}>—</span>}
                         {sites.map((x) => (
-                          <div key={x.siteId} style={{ marginBottom: 4 }}>
-                            <div style={{ fontSize: 13 }}>{x.shopName || x.siteId}</div>
+                          <div key={x.siteId} style={{ whiteSpace: 'nowrap' }}>
+                            {x.shopName || x.siteId}
                             {x.url && (
-                              <a href={x.url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#38bdf8', wordBreak: 'break-all' }}>
-                                {x.url.replace(/^https?:\/\//, '')}
-                              </a>
+                              <>
+                                {' · '}
+                                <a href={x.url} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, color: '#4cc3ff', textDecoration: 'none' }}>
+                                  {x.url.replace(/^https?:\/\//, '').replace(/\.vercel\.app$/, '')} ↗
+                                </a>
+                              </>
                             )}
                           </div>
                         ))}
                       </td>
-                      <td style={{ ...td, fontSize: 13 }}>
-                        {s.product}
-                        <div style={{ fontSize: 12, color: '#8b94a7' }}>
-                          {money(s.amount)}/{s.interval}
-                        </div>
+                      <td style={{ ...td, whiteSpace: 'nowrap', fontSize: 13 }}>
+                        {s.product} <span style={{ color: MUTED }}>· {money(s.amount)}/{s.interval === 'year' ? 'yr' : 'mo'}</span>
                       </td>
-                      <td style={{ ...td, whiteSpace: 'nowrap', fontWeight: 700 }}>{money(s.amountMonthly)}</td>
+                      <td className="adm-num" style={{ ...td, whiteSpace: 'nowrap', fontWeight: 800 }}>{money(s.amountMonthly)}</td>
                       <td style={{ ...td, whiteSpace: 'nowrap' }}>
                         <span
                           style={{
-                            color: STATUS_COLORS[s.status] || '#9aa4b5',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 7,
+                            padding: '4px 11px',
+                            borderRadius: 999,
+                            background: `${def?.color || MUTED}17`,
+                            border: `1px solid ${def?.color || MUTED}40`,
+                            color: def?.color || MUTED,
                             fontWeight: 700,
-                            fontSize: 13,
+                            fontSize: 12.5,
                           }}
                         >
-                          ● {statusLabel(s)}
+                          <span style={{ width: 6, height: 6, borderRadius: 999, background: def?.color || MUTED }} />
+                          {statusLabel(s)}
                         </span>
-                        {s.status === 'canceled' && <div style={{ fontSize: 11, color: '#8b94a7' }}>{fmtDate(s.canceledAt)}</div>}
+                        {s.status === 'canceled' && <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>{fmtDate(s.canceledAt)}</div>}
                       </td>
-                      <td style={{ ...td, whiteSpace: 'nowrap', fontSize: 13 }}>{fmtDate(s.created)}</td>
+                      <td className="adm-num" style={{ ...td, whiteSpace: 'nowrap', fontSize: 13, color: MUTED }}>{fmtDate(s.created)}</td>
                     </tr>
                   );
                 })}
@@ -441,7 +506,7 @@ export const AdminDashboard: React.FC = () => {
 
         {!loading && !dataError && tab === 'accounts' && (
           <div style={{ ...card, padding: 0, overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
               <thead>
                 <tr>
                   <th style={th}>Email</th>
@@ -454,33 +519,36 @@ export const AdminDashboard: React.FC = () => {
               <tbody>
                 {visibleAccounts.length === 0 && (
                   <tr>
-                    <td style={{ ...td, textAlign: 'center', color: '#8b94a7' }} colSpan={5}>
+                    <td style={{ ...td, textAlign: 'center', color: MUTED }} colSpan={5}>
                       No accounts match.
                     </td>
                   </tr>
                 )}
                 {visibleAccounts.map((a) => (
-                  <tr key={a.userId}>
+                  <tr key={a.userId} className="adm-row">
                     <td style={td}>
-                      <div style={{ fontWeight: 600 }}>{a.email}</div>
-                      <div style={{ fontSize: 12, color: '#8b94a7' }}>{a.fullName || ''}</div>
+                      <div style={{ fontWeight: 700 }}>{a.email}</div>
+                      <div style={{ fontSize: 12, color: MUTED }}>{a.fullName || ''}</div>
                     </td>
-                    <td style={{ ...td, whiteSpace: 'nowrap' }}>{a.signupPhone || '—'}</td>
+                    <td className="adm-num" style={{ ...td, whiteSpace: 'nowrap' }}>{a.signupPhone || '—'}</td>
                     <td style={td}>
-                      {a.sites.length === 0 && <span style={{ color: '#8b94a7' }}>—</span>}
+                      {a.sites.length === 0 && <span style={{ color: MUTED }}>—</span>}
                       {a.sites.map((x) => (
-                        <div key={x.siteId} style={{ marginBottom: 4 }}>
-                          <div style={{ fontSize: 13 }}>{x.shopName || x.siteId}</div>
+                        <div key={x.siteId} style={{ whiteSpace: 'nowrap' }}>
+                          {x.shopName || x.siteId}
                           {x.url && (
-                            <a href={x.url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#38bdf8', wordBreak: 'break-all' }}>
-                              {x.url.replace(/^https?:\/\//, '')}
-                            </a>
+                            <>
+                              {' · '}
+                              <a href={x.url} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, color: '#4cc3ff', textDecoration: 'none' }}>
+                                {x.url.replace(/^https?:\/\//, '').replace(/\.vercel\.app$/, '')} ↗
+                              </a>
+                            </>
                           )}
                         </div>
                       ))}
                     </td>
-                    <td style={{ ...td, whiteSpace: 'nowrap', fontSize: 13 }}>{fmtDate(a.signedUp)}</td>
-                    <td style={{ ...td, whiteSpace: 'nowrap', fontSize: 13 }}>{fmtDate(a.lastSignIn)}</td>
+                    <td className="adm-num" style={{ ...td, whiteSpace: 'nowrap', fontSize: 13, color: MUTED }}>{fmtDate(a.signedUp)}</td>
+                    <td className="adm-num" style={{ ...td, whiteSpace: 'nowrap', fontSize: 13, color: MUTED }}>{fmtDate(a.lastSignIn)}</td>
                   </tr>
                 ))}
               </tbody>
