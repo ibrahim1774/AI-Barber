@@ -26,7 +26,32 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMo
   const [phone, setPhone] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
   const { signIn, signUp } = useAuth();
+
+  // Forgot-password: sends the Supabase recovery email. The link signs
+  // the user in with a recovery session; AuthContext detects the
+  // PASSWORD_RECOVERY event and App shows the set-new-password prompt.
+  const handleForgotPassword = async () => {
+    setError('');
+    if (!email.trim()) {
+      setError('Enter your email above first, then tap "Forgot password?" again.');
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      const { supabase } = await import('../lib/supabase');
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: window.location.origin,
+      });
+      if (error) setError(error.message);
+      else setResetSent(true);
+    } catch (err: any) {
+      setError(err.message || 'Could not send the reset email');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   // Sync mode to props whenever the modal opens or the caller's
   // intent changes. Without this, mode is locked to whatever it was
@@ -229,7 +254,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMo
         {!signInOnly && (
           <p className="text-center text-[#666] text-xs mt-6">
             {mode === 'signin' ? (
-              <>Don't have an account?{' '}<button onClick={switchMode} className="text-[#f4a100] hover:text-white transition-colors">Sign Up</button></>
+              <>
+                Don't have an account?{' '}<button onClick={switchMode} className="text-[#f4a100] hover:text-white transition-colors">Sign Up</button>
+                <span className="block mt-2">
+                  {resetSent
+                    ? <span className="text-emerald-400">Reset link sent — check your email.</span>
+                    : <button type="button" onClick={handleForgotPassword} className="text-[#888] hover:text-white underline transition-colors">Forgot password?</button>}
+                </span>
+              </>
             ) : (
               <>Already have an account?{' '}<button onClick={switchMode} className="text-[#f4a100] hover:text-white transition-colors">Sign In</button></>
             )}

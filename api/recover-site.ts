@@ -147,7 +147,12 @@ export default async function handler(req: any, res: any) {
     }
 
     // 3. Compute the deployed Vercel URL (deterministic from siteId).
-    const deployedUrl = `https://${siteId}.vercel.app`;
+    // Prefer the URL the deploy API actually resolved (the post-deploy
+    // backup refresh stamps it onto the pending payload). The computed
+    // `https://<siteId>.vercel.app` fallback is unsafe — Vercel suffixes
+    // collided project names, so the slug URL can 404 or belong to a
+    // stranger's project.
+    const deployedUrl = pending.deployedUrl || `https://${siteId}.vercel.app`;
 
     // 4. Build the SiteInstance payload the client expects. Mirror the
     //    same shape handleStripeReturn produces on success (lines

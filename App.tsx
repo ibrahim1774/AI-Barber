@@ -744,12 +744,17 @@ const App: React.FC = () => {
         try {
           localStorage.removeItem('pendingSite');
         } catch { /* ignore — private mode etc. */ }
-        // Best-effort server-side cleanup of the recovery copy. Doesn't
-        // block the success UI.
+        // Refresh the server-side recovery copy (same pending shape
+        // recover-site parses) with the REAL deployed URL stamped on,
+        // instead of deleting it. Until a Supabase sites row exists under
+        // a user, this file is the ONLY cross-device recovery source —
+        // the old delete here made /recover and the dashboard self-heal
+        // 404 for every customer. handleAuthSuccess removes it after a
+        // successful account attach.
         fetch('/api/save-pending-site', {
-          method: 'DELETE',
+          method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ siteId }),
+          body: JSON.stringify({ siteId, data: { ...pending, deployedUrl: deployData.deploymentUrl } }),
           keepalive: true,
         }).catch(() => { /* ignore */ });
         return { url: deployData.deploymentUrl } as { url?: string; error?: string };
@@ -1010,6 +1015,10 @@ const App: React.FC = () => {
       if (!attached) {
         console.error('[Migration] All attach attempts failed — dashboard self-heal will retry by email.');
       }
+      // NOTE: the GCS pending-site backup is deliberately retained even
+      // after a successful attach — it's keyed by the pending slug (not
+      // this UUID), it's private, tiny, and it stays useful as a
+      // recovery source (password resets, account mixups, support).
     } else if (!authedUser) {
       console.warn('[Migration] Skipped — could not resolve authenticated user after signup');
     }
