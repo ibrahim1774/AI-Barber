@@ -110,7 +110,11 @@ export const ManagementDashboard: React.FC<ManagementDashboardProps> = ({
       // recover-site searches Stripe by customer_email, pulls the
       // deployed site from the GCS backup, and returns a SiteInstance.
       // We then attach it to this user so it persists for next time.
-      if (cleaned.length === 0 && user?.email) {
+      // Runs when the user has no DEPLOYED site anywhere (not only when
+      // the dashboard is fully empty) — a stray local draft used to
+      // suppress recovery of the actual paid site.
+      const hasDeployed = cleaned.some(s => s.deploymentStatus === 'deployed');
+      if (!hasDeployed && user?.email) {
         try {
           const resp = await fetch('/api/recover-site', {
             method: 'POST',
