@@ -157,7 +157,15 @@ export default async function handler(req: any, res: any) {
 
     const [exists] = await file.exists();
     if (!exists) {
-      return res.status(404).json({ ok: false, error: 'Pending-site backup not found on the server — site may need manual recovery' });
+      // Include what Stripe knows so manual/backfill recovery can still
+      // locate the deployed Vercel project even without the backup.
+      return res.status(404).json({
+        ok: false,
+        error: 'Pending-site backup not found on the server — site may need manual recovery',
+        siteId,
+        sessionCreated: session.created || null,
+        amountTotal: typeof session.amount_total === 'number' ? session.amount_total / 100 : null,
+      });
     }
     const [buf] = await file.download();
     let backup: any;
