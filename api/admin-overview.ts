@@ -31,6 +31,7 @@ interface SubRow {
   cancelAtPeriodEnd: boolean;
   family: 'aibarber' | 'primehub' | 'other-biz' | 'unknown';
   isCustomDesign: boolean;
+  paidCount: number;       // successfully paid non-zero invoices
 }
 
 const familyOf = (product: string): SubRow['family'] => {
@@ -39,6 +40,30 @@ const familyOf = (product: string): SubRow['family'] => {
   if (/primehub/i.test(product)) return 'primehub';
   return 'unknown';
 };
+
+// Count of successfully-paid, non-zero invoices per subscription — one
+// global sweep over paid invoices instead of a call per subscription.
+async function fetchPaidCounts(stripeKey: string): Promise<Record<string, number>> {
+  const counts: Record<string, number> = {};
+  let startingAfter: string | null = null;
+  for (let page = 0; page < 50; page++) {
+    const params = new URLSearchParams({ limit: '100', status: 'paid' });
+    if (startingAfter) params.set('starting_after', startingAfter);
+    const resp = await fetch(`https://api.stripe.com/v1/invoices?${params}`, {
+      headers: { Authorization: `Bearer ${stripeKey}` },
+    });
+    if (!resp.ok) throw new Error(`Stripe invoices list failed (${resp.status})`);
+    const data = await resp.json();
+    for (const inv of data.data || []) {
+      if (inv.subscription && (inv.amount_paid || 0) > 0) {
+        counts[inv.subscription] = (counts[inv.subscription] || 0) + 1;
+      }
+    }
+    if (!data.has_more || !data.data?.length) break;
+    startingAfter = data.data[data.data.length - 1].id;
+  }
+  return counts;
+}
 
 async function fetchAllSubscriptions(stripeKey: string): Promise<any[]> {
   const subs: any[] = [];
@@ -83,8 +108,9 @@ export default async function handler(req: any, res: any) {
 
   try {
     // Three sources in parallel: Stripe subs, auth users, sites rows.
-    const [stripeSubs, users, sitesResult] = await Promise.all([
+    const [stripeSubs, paidCounts, users, sitesResult] = await Promise.all([
       fetchAllSubscriptions(stripeKey),
+      fetchPaidCounts(stripeKey),
       (async () => {
         const all: any[] = [];
         for (let page = 1; page <= 20; page++) {
@@ -153,6 +179,7 @@ export default async function handler(req: any, res: any) {
         cancelAtPeriodEnd: !!s.cancel_at_period_end,
         family: familyOf(product),
         isCustomDesign: /custom website design/i.test(product),
+        paidCount: paidCounts[s.id] || 0,
         account: accountByEmail.get(email) || null,
       };
       subs.push(row);
