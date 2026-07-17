@@ -47,6 +47,7 @@ interface Sub {
   cancelAtPeriodEnd: boolean;
   family: Exclude<Family, 'all'>;
   isCustomDesign: boolean;
+  paidCount: number;
   account: AccountInfo | null;
 }
 
@@ -175,6 +176,8 @@ export const AdminDashboard: React.FC = () => {
   // Yearly plans excluded by default — the owner tracks monthly
   // recurring only; the chip re-includes them (normalized to $/12).
   const [includeYearly, setIncludeYearly] = useState(false);
+  // 0 = any; N = only subs with at least N successful non-zero payments.
+  const [minPayments, setMinPayments] = useState(0);
   const [search, setSearch] = useState('');
 
   // Premium display font + row-hover styles (inline styles can't do :hover).
@@ -278,6 +281,7 @@ export const AdminDashboard: React.FC = () => {
   const visibleSubs = useMemo(() => {
     let rows = tabSubs;
     if (statusFilter !== 'all') rows = rows.filter((s) => s.status === statusFilter);
+    if (minPayments > 0) rows = rows.filter((s) => (s.paidCount || 0) >= minPayments);
     const q = search.trim().toLowerCase();
     if (q) {
       rows = rows.filter((s) =>
@@ -287,7 +291,7 @@ export const AdminDashboard: React.FC = () => {
       );
     }
     return [...rows].sort((a, b) => b.created - a.created);
-  }, [tabSubs, statusFilter, search]);
+  }, [tabSubs, statusFilter, minPayments, search]);
 
   const visibleAccounts = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -391,6 +395,18 @@ export const AdminDashboard: React.FC = () => {
             </button>
           ))}
           <div style={{ flex: 1 }} />
+          <select
+            value={minPayments}
+            onChange={(e) => setMinPayments(Number(e.target.value))}
+            style={{ ...chip(minPayments > 0), appearance: 'none', WebkitAppearance: 'none' }}
+          >
+            <option value={0}>Payments: any</option>
+            {[2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+              <option key={n} value={n}>
+                Paid ≥ {n}×
+              </option>
+            ))}
+          </select>
           <button style={chip(includeYearly)} onClick={() => setIncludeYearly((v) => !v)}>
             {includeYearly ? '✓ Yearly included' : 'Yearly excluded'}
           </button>
@@ -429,6 +445,7 @@ export const AdminDashboard: React.FC = () => {
                   <th style={th}>Site</th>
                   <th style={th}>Product</th>
                   <th style={th}>$/mo</th>
+                  <th style={th}>Payments</th>
                   <th style={th}>Status</th>
                   <th style={th}>Started</th>
                 </tr>
@@ -436,7 +453,7 @@ export const AdminDashboard: React.FC = () => {
               <tbody>
                 {visibleSubs.length === 0 && (
                   <tr>
-                    <td style={{ ...td, textAlign: 'center', color: MUTED }} colSpan={7}>
+                    <td style={{ ...td, textAlign: 'center', color: MUTED }} colSpan={8}>
                       No subscriptions match.
                     </td>
                   </tr>
@@ -475,6 +492,7 @@ export const AdminDashboard: React.FC = () => {
                         {s.product} <span style={{ color: MUTED }}>· {money(s.amount)}/{s.interval === 'year' ? 'yr' : 'mo'}</span>
                       </td>
                       <td className="adm-num" style={{ ...td, whiteSpace: 'nowrap', fontWeight: 800 }}>{money(s.amountMonthly)}</td>
+                      <td className="adm-num" style={{ ...td, whiteSpace: 'nowrap', color: (s.paidCount || 0) > 1 ? '#2fd679' : MUTED, fontWeight: 700 }}>{s.paidCount || 0}×</td>
                       <td style={{ ...td, whiteSpace: 'nowrap' }}>
                         <span
                           style={{
