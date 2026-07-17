@@ -79,18 +79,44 @@ export default async function handler(req: any, res: any) {
       // created desc and pick the most recent paid one — for the
       // recovery use-case this is what the customer means by "my
       // session".
-      const query = `customer_email:'${email.replace(/'/g, "\\'")}'`;
-      const searchUrl = `https://api.stripe.com/v1/checkout/sessions/search?query=${encodeURIComponent(query)}&limit=20`;
-      const resp = await fetch(searchUrl, {
-        headers: { Authorization: `Bearer ${stripeSecretKey}` },
-      });
-      if (!resp.ok) {
-        const errBody = await resp.json().catch(() => ({}));
-        console.error('[recover-site] Stripe search error:', resp.status, errBody);
-        return res.status(502).json({ ok: false, error: 'Could not search Stripe for that email' });
+      // Stripe has NO /checkout/sessions/search endpoint (the old code
+      // called one and 502'd on every request — recover-by-email never
+      // worked). The real API: list sessions filtered by
+      // customer_details[email], with a Customers-search fallback for
+      // sessions created against a Customer whose email was set there.
+      const sessions: any[] = [];
+      const listResp = await fetch(
+        `https://api.stripe.com/v1/checkout/sessions?customer_details%5Bemail%5D=${encodeURIComponent(email)}&limit=100`,
+        { headers: { Authorization: `Bearer ${stripeSecretKey}` } },
+      );
+      if (listResp.ok) {
+        const listBody = await listResp.json();
+        sessions.push(...(listBody?.data || []));
+      } else {
+        const errBody = await listResp.json().catch(() => ({}));
+        console.error('[recover-site] Stripe session list error:', listResp.status, errBody);
       }
-      const result = await resp.json();
-      const sessions = (result?.data || []) as any[];
+      if (sessions.length === 0) {
+        // Fallback: find the Customer by email (Customers ARE searchable),
+        // then list their sessions.
+        const custResp = await fetch(
+          `https://api.stripe.com/v1/customers/search?query=${encodeURIComponent(`email:'${email.replace(/'/g, "\\'")}'`)}&limit=5`,
+          { headers: { Authorization: `Bearer ${stripeSecretKey}` } },
+        );
+        if (custResp.ok) {
+          const custBody = await custResp.json();
+          for (const cust of custBody?.data || []) {
+            const byCust = await fetch(
+              `https://api.stripe.com/v1/checkout/sessions?customer=${encodeURIComponent(cust.id)}&limit=100`,
+              { headers: { Authorization: `Bearer ${stripeSecretKey}` } },
+            );
+            if (byCust.ok) {
+              const byCustBody = await byCust.json();
+              sessions.push(...(byCustBody?.data || []));
+            }
+          }
+        }
+      }
       const paid = sessions
         .filter(s => s.payment_status === 'paid')
         .sort((a, b) => (b.created || 0) - (a.created || 0));
