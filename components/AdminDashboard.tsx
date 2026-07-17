@@ -153,7 +153,7 @@ export const AdminDashboard: React.FC = () => {
   const [family, setFamily] = useState<Family>(defaultFamily);
   const [tab, setTab] = useState<'hosting' | 'custom' | 'accounts'>('hosting');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'failed' | 'canceled'>('all');
-  // Yearly plans excluded by default — the owner tracks MRR as monthly
+  // Yearly plans excluded by default — the owner tracks monthly
   // recurring only; the chip re-includes them (normalized to $/12).
   const [includeYearly, setIncludeYearly] = useState(false);
   const [search, setSearch] = useState('');
@@ -220,8 +220,7 @@ export const AdminDashboard: React.FC = () => {
     const active = familySubs.filter((s) => s.status === 'active' || s.status === 'trialing');
     const failed = familySubs.filter((s) => ['past_due', 'unpaid', 'incomplete', 'incomplete_expired'].includes(s.status));
     const canceled = familySubs.filter((s) => s.status === 'canceled');
-    const mrr = active.reduce((sum, s) => sum + s.amountMonthly, 0);
-    return { active: active.length, failed: failed.length, canceled: canceled.length, mrr };
+    return { active: active.length, failed: failed.length, canceled: canceled.length };
   }, [familySubs]);
 
   const visibleSubs = useMemo(() => {
@@ -315,7 +314,6 @@ export const AdminDashboard: React.FC = () => {
             ['Active subs', String(summary.active), '#22c55e'],
             ['Payment failed', String(summary.failed), '#f59e0b'],
             ['Canceled', String(summary.canceled), '#ef4444'],
-            ['MRR', money(Math.round(summary.mrr * 100) / 100), '#f4a100'],
           ].map(([label, value, color]) => (
             <div key={label} style={card}>
               <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#8b94a7', marginBottom: 6 }}>{label}</div>
