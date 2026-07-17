@@ -14,7 +14,7 @@ import { HomeLaunchGuide } from './components/HomeLaunchGuide.tsx';
 import { buildSiteFromScrape } from './lib/buildSiteFromScrape.ts';
 import { ensureUuid } from './lib/ensureUuid.ts';
 import { extractFirstUrl, isSupportedBookingHost } from './lib/supportedBookingHost.ts';
-import { isBooksyPath, isFreeBarberPath, isPrimeBarberPath, isRecoverPath, isGenerateBarbershopPath, isGeneratePath, isBarberGeneratePath, isClientEditPath, isOnboardPath, isAdminGeneratePath, isOwnBrandPath } from './lib/dealMode.ts';
+import { isBooksyPath, isFreeBarberPath, isPrimeBarberPath, isRecoverPath, isGenerateBarbershopPath, isGeneratePath, isBarberGeneratePath, isClientEditPath, isOnboardPath, isAdminGeneratePath, isAdminDashboardPath, isOwnBrandPath } from './lib/dealMode.ts';
 import { LoadingScreen } from './components/LoadingScreen.tsx';
 import { generateHTMLForTemplate } from './services/templateRenderer.ts';
 import { generateContent } from './services/geminiService.ts';
@@ -46,6 +46,7 @@ const ClientPortal = lazy(() => import('./components/ClientPortal.tsx').then(m =
 const OnboardClientSite = lazy(() => import('./components/OnboardClientSite.tsx').then(m => ({ default: m.OnboardClientSite })));
 const BooksyDesignSwitcher = lazy(() => import('./components/BooksyDesignSwitcher.tsx').then(m => ({ default: m.BooksyDesignSwitcher })));
 const AdminGenerator = lazy(() => import('./components/AdminGenerator.tsx').then(m => ({ default: m.AdminGenerator })));
+const AdminDashboard = lazy(() => import('./components/AdminDashboard.tsx').then(m => ({ default: m.AdminDashboard })));
 const OwnBrandLanding = lazy(() => import('./components/OwnBrandLanding.tsx').then(m => ({ default: m.OwnBrandLanding })));
 
 const DEPLOY_TIMER_SECONDS = 5;
@@ -1147,6 +1148,16 @@ const App: React.FC = () => {
     return (
       <Suspense fallback={<LoadingScreen />}>
         <OnboardClientSite />
+      </Suspense>
+    );
+  }
+
+  // /admin — owner-only customer dashboard (Stripe ⋈ accounts ⋈ sites).
+  // Handles its own Supabase login; data API enforces the admin email.
+  if (isAdminDashboardPath()) {
+    return (
+      <Suspense fallback={<LoadingScreen />}>
+        <AdminDashboard />
       </Suspense>
     );
   }
