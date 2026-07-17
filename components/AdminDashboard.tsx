@@ -153,6 +153,9 @@ export const AdminDashboard: React.FC = () => {
   const [family, setFamily] = useState<Family>(defaultFamily);
   const [tab, setTab] = useState<'hosting' | 'custom' | 'accounts'>('hosting');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'failed' | 'canceled'>('all');
+  // Yearly plans excluded by default — the owner tracks MRR as monthly
+  // recurring only; the chip re-includes them (normalized to $/12).
+  const [includeYearly, setIncludeYearly] = useState(false);
   const [search, setSearch] = useState('');
 
   useEffect(() => {
@@ -207,10 +210,11 @@ export const AdminDashboard: React.FC = () => {
     setLoggingIn(false);
   };
 
-  const familySubs = useMemo(
-    () => (family === 'all' ? subs : subs.filter((s) => s.family === family)),
-    [subs, family],
-  );
+  const familySubs = useMemo(() => {
+    let rows = family === 'all' ? subs : subs.filter((s) => s.family === family);
+    if (!includeYearly) rows = rows.filter((s) => s.interval !== 'year');
+    return rows;
+  }, [subs, family, includeYearly]);
 
   const summary = useMemo(() => {
     const active = familySubs.filter((s) => s.status === 'active' || s.status === 'trialing');
@@ -346,6 +350,9 @@ export const AdminDashboard: React.FC = () => {
                 {label}
               </button>
             ))}
+          <button style={chip(includeYearly)} onClick={() => setIncludeYearly((v) => !v)}>
+            {includeYearly ? '✓ Yearly included' : 'Yearly excluded'}
+          </button>
         </div>
 
         <input
