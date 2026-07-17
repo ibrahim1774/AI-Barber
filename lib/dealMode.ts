@@ -139,6 +139,15 @@ export function isAdminGeneratePath(pathname?: string): boolean {
   return p === ADMIN_GENERATE_PATH || p === `${ADMIN_GENERATE_PATH}/`;
 }
 
+// `/admin` — owner-only customer dashboard: Stripe subscriptions joined
+// to Supabase accounts + deployed sites. The page itself is only a
+// login shell; /api/admin-overview enforces the admin email.
+export const ADMIN_DASHBOARD_PATH = '/admin';
+export function isAdminDashboardPath(pathname?: string): boolean {
+  const p = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
+  return p === ADMIN_DASHBOARD_PATH || p === `${ADMIN_DASHBOARD_PATH}/`;
+}
+
 // `/own-brand` — standalone static demo barbershop site. Shows what a
 // fully branded shop site looks like (booking calendar, product store,
 // reviews, FAQ, Google Maps) using the same Euphoria visual shell the
