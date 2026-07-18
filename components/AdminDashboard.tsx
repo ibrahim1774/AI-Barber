@@ -8,10 +8,14 @@ import { supabase } from '../lib/supabase';
  * payload from /api/admin-overview (which enforces the admin email
  * server-side) and renders every Stripe subscription joined to its
  * Supabase account + deployed site(s), plus accounts that never paid.
- * Read-only by design.
+ *
+ * Read-only against Stripe/Supabase. "Remove" only hides rows from this
+ * dashboard (persisted in localStorage, restorable) — it never cancels
+ * or deletes anything upstream.
  */
 
 const ADMIN_EMAIL = 'ibrahim3709@gmail.com';
+const HIDDEN_KEY = 'admin-hidden-rows-v1';
 
 type Family = 'aibarber' | 'primehub' | 'unknown' | 'other-biz' | 'all';
 
@@ -51,100 +55,95 @@ interface Sub {
   account: AccountInfo | null;
 }
 
-// Stripe-style status vocabulary. Order = chip order.
 const STATUS_DEFS: { key: string; label: string; color: string }[] = [
-  { key: 'active', label: 'Active', color: '#2fd679' },
-  { key: 'trialing', label: 'Trialing', color: '#4cc3ff' },
-  { key: 'past_due', label: 'Retrying', color: '#ffb224' },
-  { key: 'unpaid', label: 'Unpaid', color: '#ff8a4c' },
-  { key: 'incomplete', label: 'Incomplete', color: '#c9a0ff' },
-  { key: 'incomplete_expired', label: 'Expired', color: '#8b94a7' },
-  { key: 'paused', label: 'Paused', color: '#8b94a7' },
-  { key: 'canceled', label: 'Canceled', color: '#ff5c5c' },
+  { key: 'active', label: 'Active', color: '#3fb950' },
+  { key: 'trialing', label: 'Trialing', color: '#58a6ff' },
+  { key: 'past_due', label: 'Retrying', color: '#d29922' },
+  { key: 'unpaid', label: 'Unpaid', color: '#db6d28' },
+  { key: 'incomplete', label: 'Incomplete', color: '#a371f7' },
+  { key: 'incomplete_expired', label: 'Expired', color: '#8b949e' },
+  { key: 'paused', label: 'Paused', color: '#8b949e' },
+  { key: 'canceled', label: 'Canceled', color: '#f85149' },
 ];
 const statusDef = (key: string) => STATUS_DEFS.find((d) => d.key === key);
 
-const GOLD = '#f4b73f';
-const INK = '#e9ecf3';
-const MUTED = '#8f99ac';
-const LINE = 'rgba(148,163,196,0.14)';
+// ─── design tokens ───
+const BG = '#0b0c0f';
+const PANEL = '#12141a';
+const PANEL_2 = '#171a21';
+const LINE = 'rgba(148,158,180,0.13)';
+const INK = '#e6e8ee';
+const MUTED = '#9aa1af';
+const FAINT = '#6c7380';
+const ACCENT = '#7c86ff';
+const FONT = "'Inter', -apple-system, 'Segoe UI', system-ui, sans-serif";
 
 const page: React.CSSProperties = {
   minHeight: '100vh',
-  background: 'radial-gradient(1200px 600px at 50% -200px, #171d2a 0%, #0b0e14 55%, #07090d 100%)',
+  background: BG,
   color: INK,
-  fontFamily: "'Manrope', 'Inter', -apple-system, system-ui, sans-serif",
-  padding: '28px 20px 90px',
+  fontFamily: FONT,
+  fontSize: 13,
+  padding: '0 0 80px',
 };
-const card: React.CSSProperties = {
-  background: 'linear-gradient(180deg, rgba(24,30,42,0.9) 0%, rgba(16,20,28,0.9) 100%)',
+const panel: React.CSSProperties = {
+  background: PANEL,
   border: `1px solid ${LINE}`,
-  borderRadius: 16,
-  padding: 18,
-  boxShadow: '0 10px 30px rgba(0,0,0,0.35)',
+  borderRadius: 10,
 };
 const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '13px 16px',
-  borderRadius: 12,
+  padding: '7px 10px',
+  borderRadius: 8,
   border: `1px solid ${LINE}`,
-  background: 'rgba(10,13,19,0.8)',
+  background: PANEL,
   color: INK,
-  fontSize: 15,
-  fontFamily: 'inherit',
+  fontSize: 13,
+  fontFamily: FONT,
   outline: 'none',
 };
-const btn: React.CSSProperties = {
-  padding: '13px 20px',
-  borderRadius: 12,
+const primaryBtn: React.CSSProperties = {
+  padding: '8px 14px',
+  borderRadius: 8,
   border: 'none',
-  background: `linear-gradient(180deg, ${GOLD} 0%, #dd9a14 100%)`,
-  color: '#171204',
-  fontWeight: 800,
-  fontSize: 15,
-  fontFamily: 'inherit',
-  letterSpacing: '0.01em',
+  background: ACCENT,
+  color: '#0b0c0f',
+  fontWeight: 600,
+  fontSize: 13,
+  fontFamily: FONT,
   cursor: 'pointer',
 };
-const chip = (on: boolean, accent: string = GOLD): React.CSSProperties => ({
-  padding: '7px 14px',
-  borderRadius: 999,
-  border: `1px solid ${on ? accent : LINE}`,
-  background: on ? `${accent}1f` : 'rgba(15,19,27,0.6)',
-  color: on ? accent : MUTED,
-  fontSize: 12.5,
-  fontWeight: 700,
-  fontFamily: 'inherit',
-  letterSpacing: '0.02em',
+const ghostBtn: React.CSSProperties = {
+  padding: '7px 12px',
+  borderRadius: 8,
+  border: `1px solid ${LINE}`,
+  background: 'transparent',
+  color: MUTED,
+  fontWeight: 500,
+  fontSize: 13,
+  fontFamily: FONT,
   cursor: 'pointer',
-  whiteSpace: 'nowrap',
-});
+};
 const th: React.CSSProperties = {
   textAlign: 'left',
-  padding: '12px 14px',
-  fontSize: 10.5,
+  padding: '0 12px',
+  height: 38,
+  fontSize: 11,
   textTransform: 'uppercase',
-  letterSpacing: '0.12em',
-  fontWeight: 800,
-  color: MUTED,
+  letterSpacing: '0.06em',
+  fontWeight: 600,
+  color: FAINT,
   borderBottom: `1px solid ${LINE}`,
   whiteSpace: 'nowrap',
   position: 'sticky',
   top: 0,
-  background: '#12161f',
-  zIndex: 1,
+  background: PANEL_2,
+  zIndex: 2,
 };
 const td: React.CSSProperties = {
-  padding: '13px 14px',
-  fontSize: 13.5,
-  borderBottom: `1px solid rgba(148,163,196,0.08)`,
+  padding: '10px 12px',
+  fontSize: 13,
+  borderBottom: `1px solid rgba(148,158,180,0.07)`,
   verticalAlign: 'top',
-};
-
-const statusLabel = (s: Sub): string => {
-  const base = statusDef(s.status)?.label || s.status.replace(/_/g, ' ');
-  if (s.status === 'active' && s.cancelAtPeriodEnd) return 'Active · canceling';
-  return base;
 };
 
 const fmtDate = (v: number | string | null): string => {
@@ -152,8 +151,45 @@ const fmtDate = (v: number | string | null): string => {
   const d = typeof v === 'number' ? new Date(v * 1000) : new Date(v);
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 };
-
 const money = (n: number): string => (Number.isInteger(n) ? `$${n}` : `$${n.toFixed(2)}`);
+
+// Per-column facet definitions for the subscriptions table. Each column
+// menu shows the distinct values of `extract` with checkboxes.
+const FACETS: { key: string; label: string; extract: (s: Sub) => string }[] = [
+  { key: 'customer', label: 'Customer', extract: (s) => s.email },
+  { key: 'phone', label: 'Phone', extract: (s) => (s.account?.signupPhone || s.stripePhone ? 'Has phone' : 'No phone') },
+  { key: 'site', label: 'Site', extract: (s) => ((s.account?.sites || []).length ? 'Has site' : 'No site') },
+  { key: 'product', label: 'Product', extract: (s) => s.product },
+  { key: 'amount', label: '$/mo', extract: (s) => money(s.amountMonthly) },
+  { key: 'payments', label: 'Payments', extract: (s) => `${s.paidCount || 0}×` },
+  { key: 'status', label: 'Status', extract: (s) => statusDef(s.status)?.label || s.status },
+  { key: 'started', label: 'Started', extract: (s) => new Date(s.created * 1000).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) },
+];
+
+const Checkbox: React.FC<{ checked: boolean; indeterminate?: boolean; onChange: () => void }> = ({ checked, indeterminate, onChange }) => (
+  <span
+    onClick={(e) => { e.stopPropagation(); onChange(); }}
+    style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: 15,
+      height: 15,
+      borderRadius: 4,
+      border: `1.5px solid ${checked || indeterminate ? ACCENT : 'rgba(148,158,180,0.4)'}`,
+      background: checked || indeterminate ? ACCENT : 'transparent',
+      color: '#0b0c0f',
+      fontSize: 11,
+      fontWeight: 800,
+      lineHeight: 1,
+      cursor: 'pointer',
+      flexShrink: 0,
+      userSelect: 'none',
+    }}
+  >
+    {indeterminate ? '–' : checked ? '✓' : ''}
+  </span>
+);
 
 export const AdminDashboard: React.FC = () => {
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
@@ -172,32 +208,46 @@ export const AdminDashboard: React.FC = () => {
     typeof window !== 'undefined' && /primehub/i.test(window.location.hostname) ? 'primehub' : 'aibarber';
   const [family, setFamily] = useState<Family>(defaultFamily);
   const [tab, setTab] = useState<'hosting' | 'custom' | 'accounts'>('hosting');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  // Yearly plans excluded by default — the owner tracks monthly
-  // recurring only; the chip re-includes them (normalized to $/12).
   const [includeYearly, setIncludeYearly] = useState(false);
-  // 0 = any; N = only subs with at least N successful non-zero payments.
   const [minPayments, setMinPayments] = useState(0);
   const [search, setSearch] = useState('');
 
-  // Premium display font + row-hover styles (inline styles can't do :hover).
+  // Column facet filters: key -> Set of allowed values; absent key = no
+  // filter on that column (everything shows).
+  const [colFilters, setColFilters] = useState<Record<string, Set<string>>>({});
+  const [menu, setMenu] = useState<{ key: string; x: number; y: number } | null>(null);
+  const [menuSearch, setMenuSearch] = useState('');
+
+  // Row selection + dashboard-only hidden rows (persisted locally).
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [hidden, setHidden] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem(HIDDEN_KEY) || '[]'); } catch { return []; }
+  });
+  const [showHidden, setShowHidden] = useState(false);
+  const hiddenSet = useMemo(() => new Set(hidden), [hidden]);
+  const persistHidden = (next: string[]) => {
+    setHidden(next);
+    try { localStorage.setItem(HIDDEN_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+  };
+
   useEffect(() => {
     const link = document.createElement('link');
     link.rel = 'stylesheet';
-    link.href = 'https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap';
+    link.href = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap';
     document.head.appendChild(link);
     const style = document.createElement('style');
     style.textContent = `
-      .adm-row { transition: background 0.12s ease; }
-      .adm-row:hover { background: rgba(244,183,63,0.05); }
+      .adm * { -webkit-font-smoothing: antialiased; box-sizing: border-box; }
+      .adm-row { transition: background 0.1s ease; }
+      .adm-row:hover { background: rgba(148,158,180,0.055); }
       .adm-num { font-variant-numeric: tabular-nums; }
-      .adm * { -webkit-font-smoothing: antialiased; }
+      .adm input::placeholder { color: #6c7380; }
+      .adm input:focus { border-color: rgba(124,134,255,0.6); }
+      .adm-th-btn:hover { color: #e6e8ee !important; }
+      .adm-menu-item:hover { background: rgba(148,158,180,0.08); }
     `;
     document.head.appendChild(style);
-    return () => {
-      document.head.removeChild(link);
-      document.head.removeChild(style);
-    };
+    return () => { document.head.removeChild(link); document.head.removeChild(style); };
   }, []);
 
   useEffect(() => {
@@ -223,9 +273,7 @@ export const AdminDashboard: React.FC = () => {
         const { data } = await supabase.auth.getSession();
         const token = data.session?.access_token;
         if (!token) throw new Error('Session expired — sign in again');
-        const resp = await fetch('/api/admin-overview', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const resp = await fetch('/api/admin-overview', { headers: { Authorization: `Bearer ${token}` } });
         const json = await resp.json();
         if (!resp.ok || !json.ok) throw new Error(json.error || `Request failed (${resp.status})`);
         if (!cancelled) {
@@ -238,9 +286,7 @@ export const AdminDashboard: React.FC = () => {
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [isAdmin]);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -252,6 +298,7 @@ export const AdminDashboard: React.FC = () => {
     setLoggingIn(false);
   };
 
+  // ─── row pipeline ───
   const familySubs = useMemo(() => {
     let rows = family === 'all' ? subs : subs.filter((s) => s.family === family);
     if (!includeYearly) rows = rows.filter((s) => s.interval !== 'year');
@@ -263,14 +310,6 @@ export const AdminDashboard: React.FC = () => {
     [familySubs, tab],
   );
 
-  // Counts per Stripe status for the current family+tab — the chip row
-  // only shows statuses that actually occur, each with its count.
-  const statusCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const s of tabSubs) counts[s.status] = (counts[s.status] || 0) + 1;
-    return counts;
-  }, [tabSubs]);
-
   const summary = useMemo(() => {
     const active = familySubs.filter((s) => s.status === 'active' || s.status === 'trialing');
     const failed = familySubs.filter((s) => ['past_due', 'unpaid', 'incomplete', 'incomplete_expired'].includes(s.status));
@@ -280,8 +319,12 @@ export const AdminDashboard: React.FC = () => {
 
   const visibleSubs = useMemo(() => {
     let rows = tabSubs;
-    if (statusFilter !== 'all') rows = rows.filter((s) => s.status === statusFilter);
     if (minPayments > 0) rows = rows.filter((s) => (s.paidCount || 0) >= minPayments);
+    for (const f of FACETS) {
+      const allow = colFilters[f.key];
+      if (allow) rows = rows.filter((s) => allow.has(f.extract(s)));
+    }
+    rows = rows.filter((s) => (showHidden ? true : !hiddenSet.has(s.subId)));
     const q = search.trim().toLowerCase();
     if (q) {
       rows = rows.filter((s) =>
@@ -291,11 +334,11 @@ export const AdminDashboard: React.FC = () => {
       );
     }
     return [...rows].sort((a, b) => b.created - a.created);
-  }, [tabSubs, statusFilter, minPayments, search]);
+  }, [tabSubs, minPayments, colFilters, hiddenSet, showHidden, search]);
 
   const visibleAccounts = useMemo(() => {
+    let rows = accountsOnly.filter((a) => (showHidden ? true : !hiddenSet.has(`acct:${a.userId}`)));
     const q = search.trim().toLowerCase();
-    let rows = accountsOnly;
     if (q) {
       rows = rows.filter((a) =>
         [a.email, a.fullName, a.signupPhone, ...a.sites.flatMap((x) => [x.shopName, x.url, x.siteId])]
@@ -304,7 +347,70 @@ export const AdminDashboard: React.FC = () => {
       );
     }
     return rows;
-  }, [accountsOnly, search]);
+  }, [accountsOnly, hiddenSet, showHidden, search]);
+
+  // Facet menu values come from the current tab's rows filtered by every
+  // OTHER column's filter, each with its row count.
+  const menuValues = useMemo(() => {
+    if (!menu) return [] as [string, number][];
+    const facet = FACETS.find((f) => f.key === menu.key);
+    if (!facet) return [] as [string, number][];
+    const others = tabSubs.filter((s) =>
+      FACETS.every((f) => f.key === facet.key || !colFilters[f.key] || colFilters[f.key].has(f.extract(s))),
+    );
+    const counts = new Map<string, number>();
+    for (const s of others) {
+      const v = facet.extract(s);
+      counts.set(v, (counts.get(v) || 0) + 1);
+    }
+    let vals = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+    const q = menuSearch.trim().toLowerCase();
+    if (q) vals = vals.filter(([v]) => v.toLowerCase().includes(q));
+    return vals;
+  }, [menu, menuSearch, tabSubs, colFilters]);
+
+  const toggleFacetValue = (key: string, value: string, allValues: string[]) => {
+    setColFilters((prev) => {
+      const cur = prev[key];
+      let next: Set<string>;
+      if (!cur) next = new Set(allValues.filter((v) => v !== value));
+      else {
+        next = new Set(cur);
+        if (next.has(value)) next.delete(value); else next.add(value);
+      }
+      const out = { ...prev };
+      if (next.size >= allValues.length) delete out[key]; else out[key] = next;
+      return out;
+    });
+  };
+
+  // Selection helpers (subs tab + accounts tab share the mechanism).
+  const currentIds = tab === 'accounts' ? visibleAccounts.map((a) => `acct:${a.userId}`) : visibleSubs.map((s) => s.subId);
+  const allSelected = currentIds.length > 0 && currentIds.every((id) => selected.has(id));
+  const someSelected = currentIds.some((id) => selected.has(id));
+  const toggleAll = () => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allSelected) currentIds.forEach((id) => next.delete(id));
+      else currentIds.forEach((id) => next.add(id));
+      return next;
+    });
+  };
+  const toggleOne = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const removeSelected = () => {
+    persistHidden([...new Set([...hidden, ...selected])]);
+    setSelected(new Set());
+  };
+  const restoreAll = () => { persistHidden([]); setShowHidden(false); };
+  const restoreOne = (id: string) => persistHidden(hidden.filter((h) => h !== id));
+
+  const activeFilterCount = Object.keys(colFilters).length + (minPayments > 0 ? 1 : 0);
 
   if (!authChecked) {
     return <div className="adm" style={{ ...page, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Loading…</div>;
@@ -313,23 +419,26 @@ export const AdminDashboard: React.FC = () => {
   if (!isAdmin) {
     return (
       <div className="adm" style={{ ...page, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <form onSubmit={handleLogin} style={{ ...card, width: '100%', maxWidth: 380, display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div>
-            <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.16em', color: GOLD, fontWeight: 800, marginBottom: 6 }}>Owner access</div>
-            <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0, letterSpacing: '-0.02em' }}>Admin sign in</h1>
+        <form onSubmit={handleLogin} style={{ ...panel, width: '100%', maxWidth: 360, padding: 28, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+            <span style={{ width: 26, height: 26, borderRadius: 7, background: ACCENT, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#0b0c0f', fontWeight: 700, fontSize: 13 }}>A</span>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 600 }}>Admin</div>
+              <div style={{ fontSize: 12, color: FAINT }}>Owner sign in</div>
+            </div>
           </div>
           {sessionEmail && (
-            <div style={{ fontSize: 13, color: '#ffb224' }}>
+            <div style={{ fontSize: 12.5, color: '#d29922' }}>
               Signed in as {sessionEmail} — not an admin account.{' '}
-              <button type="button" onClick={() => supabase.auth.signOut()} style={{ background: 'none', border: 'none', color: GOLD, cursor: 'pointer', padding: 0, fontSize: 13, fontFamily: 'inherit' }}>
+              <button type="button" onClick={() => supabase.auth.signOut()} style={{ background: 'none', border: 'none', color: ACCENT, cursor: 'pointer', padding: 0, fontSize: 12.5, fontFamily: FONT }}>
                 Sign out
               </button>
             </div>
           )}
-          <input style={inputStyle} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" autoComplete="username" />
-          <input style={inputStyle} type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" autoComplete="current-password" />
-          {loginError && <div style={{ fontSize: 13, color: '#ff5c5c' }}>{loginError}</div>}
-          <button style={btn} type="submit" disabled={loggingIn}>
+          <input style={{ ...inputStyle, padding: '10px 12px' }} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" autoComplete="username" />
+          <input style={{ ...inputStyle, padding: '10px 12px' }} type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" autoComplete="current-password" />
+          {loginError && <div style={{ fontSize: 12.5, color: '#f85149' }}>{loginError}</div>}
+          <button style={{ ...primaryBtn, padding: '10px 14px' }} type="submit" disabled={loggingIn}>
             {loggingIn ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
@@ -337,243 +446,466 @@ export const AdminDashboard: React.FC = () => {
     );
   }
 
+  const siteCell = (sites: SiteInfo[]) => (
+    <>
+      {sites.length === 0 && <span style={{ color: FAINT }}>—</span>}
+      {sites.map((x) => (
+        <div key={x.siteId} style={{ whiteSpace: 'nowrap' }}>
+          {x.shopName || x.siteId}
+          {x.url && (
+            <>
+              {' '}
+              <a href={x.url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: ACCENT, textDecoration: 'none' }}>
+                {x.url.replace(/^https?:\/\//, '').replace(/\.vercel\.app$/, '')} ↗
+              </a>
+            </>
+          )}
+        </div>
+      ))}
+    </>
+  );
+
   return (
     <div className="adm" style={page}>
-      <div style={{ maxWidth: 1240, margin: '0 auto' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 22 }}>
-          <div>
-            <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.16em', color: GOLD, fontWeight: 800, marginBottom: 4 }}>Owner dashboard</div>
-            <h1 style={{ fontSize: 27, fontWeight: 800, margin: 0, letterSpacing: '-0.03em' }}>Customers</h1>
+      {/* top bar */}
+      <div style={{ borderBottom: `1px solid ${LINE}`, background: PANEL, position: 'sticky', top: 0, zIndex: 5 }}>
+        <div style={{ maxWidth: 1280, margin: '0 auto', padding: '0 20px', height: 52, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ width: 24, height: 24, borderRadius: 6, background: ACCENT, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#0b0c0f', fontWeight: 700, fontSize: 12 }}>A</span>
+            <span style={{ fontSize: 14, fontWeight: 600 }}>Customers</span>
+            <span style={{ fontSize: 12, color: FAINT, borderLeft: `1px solid ${LINE}`, paddingLeft: 10 }}>Stripe · Supabase · Vercel</span>
           </div>
-          <button
-            onClick={() => supabase.auth.signOut()}
-            style={{ background: 'rgba(15,19,27,0.6)', border: `1px solid ${LINE}`, color: MUTED, borderRadius: 10, padding: '9px 16px', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}
-          >
-            Sign out
-          </button>
+          <button onClick={() => supabase.auth.signOut()} style={ghostBtn}>Sign out</button>
         </div>
+      </div>
 
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}>
-          {(
-            [
-              ['aibarber', 'AI-Barber'],
-              ['primehub', 'PrimeHub'],
-              ['unknown', 'Unlabeled'],
-              ['other-biz', 'Other businesses'],
-              ['all', 'All'],
-            ] as [Family, string][]
-          ).map(([key, label]) => (
-            <button key={key} style={chip(family === key)} onClick={() => setFamily(key)}>
-              {label}
-            </button>
-          ))}
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 14, marginBottom: 22 }}>
+      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '20px 20px 0' }}>
+        {/* KPI strip */}
+        <div style={{ ...panel, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: 16 }}>
           {[
-            ['Active subscriptions', String(summary.active), '#2fd679'],
-            ['Payment issues', String(summary.failed), '#ffb224'],
-            ['Canceled', String(summary.canceled), '#ff5c5c'],
-          ].map(([label, value, color]) => (
-            <div key={label} style={card}>
-              <div style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.14em', fontWeight: 800, color: MUTED, marginBottom: 8 }}>{label}</div>
-              <div className="adm-num" style={{ fontSize: 30, fontWeight: 800, color, letterSpacing: '-0.02em' }}>{value}</div>
+            ['Active subscriptions', summary.active, '#3fb950'],
+            ['Payment issues', summary.failed, '#d29922'],
+            ['Canceled', summary.canceled, '#f85149'],
+          ].map(([label, value, color], i) => (
+            <div key={String(label)} style={{ padding: '14px 18px', borderLeft: i ? `1px solid ${LINE}` : 'none', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ fontSize: 12, color: MUTED, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ width: 7, height: 7, borderRadius: 999, background: String(color) }} />
+                {label}
+              </span>
+              <span className="adm-num" style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em' }}>{String(value)}</span>
             </div>
           ))}
         </div>
 
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+        {/* tabs */}
+        <div style={{ display: 'flex', gap: 2, borderBottom: `1px solid ${LINE}`, marginBottom: 14 }}>
           {(
             [
               ['hosting', 'Generated sites'],
-              ['custom', 'Custom Website Design'],
-              ['accounts', `Signed up, never paid (${accountsOnly.length})`],
+              ['custom', 'Custom design'],
+              ['accounts', `Never paid · ${accountsOnly.length}`],
             ] as ['hosting' | 'custom' | 'accounts', string][]
           ).map(([key, label]) => (
-            <button key={key} style={chip(tab === key)} onClick={() => setTab(key)}>
+            <button
+              key={key}
+              onClick={() => { setTab(key); setSelected(new Set()); }}
+              style={{
+                padding: '9px 14px',
+                background: 'none',
+                border: 'none',
+                borderBottom: `2px solid ${tab === key ? ACCENT : 'transparent'}`,
+                color: tab === key ? INK : MUTED,
+                fontWeight: tab === key ? 600 : 500,
+                fontSize: 13,
+                fontFamily: FONT,
+                cursor: 'pointer',
+                marginBottom: -1,
+              }}
+            >
               {label}
             </button>
           ))}
-          <div style={{ flex: 1 }} />
-          <select
-            value={minPayments}
-            onChange={(e) => setMinPayments(Number(e.target.value))}
-            style={{ ...chip(minPayments > 0), appearance: 'none', WebkitAppearance: 'none' }}
-          >
-            <option value={0}>Payments: any</option>
-            {[2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
-              <option key={n} value={n}>
-                Paid ≥ {n}×
-              </option>
-            ))}
-          </select>
-          <button style={chip(includeYearly)} onClick={() => setIncludeYearly((v) => !v)}>
-            {includeYearly ? '✓ Yearly included' : 'Yearly excluded'}
-          </button>
         </div>
 
-        {tab !== 'accounts' && (
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
-            <button style={chip(statusFilter === 'all')} onClick={() => setStatusFilter('all')}>
-              All statuses ({tabSubs.length})
-            </button>
-            {STATUS_DEFS.filter((d) => statusCounts[d.key]).map((d) => (
-              <button key={d.key} style={chip(statusFilter === d.key, d.color)} onClick={() => setStatusFilter(statusFilter === d.key ? 'all' : d.key)}>
-                {d.label} ({statusCounts[d.key]})
+        {/* toolbar */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+          <div style={{ display: 'inline-flex', border: `1px solid ${LINE}`, borderRadius: 8, overflow: 'hidden' }}>
+            {(
+              [
+                ['aibarber', 'AI-Barber'],
+                ['primehub', 'PrimeHub'],
+                ['unknown', 'Unlabeled'],
+                ['other-biz', 'Other'],
+                ['all', 'All'],
+              ] as [Family, string][]
+            ).map(([key, label], i) => (
+              <button
+                key={key}
+                onClick={() => setFamily(key)}
+                style={{
+                  padding: '7px 12px',
+                  background: family === key ? 'rgba(124,134,255,0.14)' : 'transparent',
+                  border: 'none',
+                  borderLeft: i ? `1px solid ${LINE}` : 'none',
+                  color: family === key ? ACCENT : MUTED,
+                  fontWeight: family === key ? 600 : 500,
+                  fontSize: 12.5,
+                  fontFamily: FONT,
+                  cursor: 'pointer',
+                }}
+              >
+                {label}
               </button>
             ))}
           </div>
-        )}
+          <input
+            style={{ ...inputStyle, width: 240 }}
+            placeholder="Search…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {/* live result count — updates with every filter so rows never
+              need hand-counting; highlighted whenever a filter narrows. */}
+          {(() => {
+            const shown = tab === 'accounts' ? visibleAccounts.length : visibleSubs.length;
+            const total = tab === 'accounts' ? accountsOnly.length : tabSubs.length;
+            const narrowed = shown !== total;
+            return (
+              <span
+                className="adm-num"
+                style={{
+                  fontSize: 12.5,
+                  padding: '6px 11px',
+                  borderRadius: 8,
+                  border: `1px solid ${narrowed ? 'rgba(124,134,255,0.5)' : LINE}`,
+                  background: narrowed ? 'rgba(124,134,255,0.12)' : 'transparent',
+                  color: narrowed ? ACCENT : MUTED,
+                  fontWeight: 600,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {narrowed ? `Showing ${shown} of ${total}` : `${total} rows`}
+              </span>
+            );
+          })()}
+          <div style={{ flex: 1 }} />
+          {tab !== 'accounts' && (
+            <>
+              <select
+                value={minPayments}
+                onChange={(e) => setMinPayments(Number(e.target.value))}
+                style={{ ...inputStyle, color: minPayments > 0 ? ACCENT : MUTED, cursor: 'pointer' }}
+              >
+                <option value={0}>Payments: any</option>
+                {[2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                  <option key={n} value={n}>Paid ≥ {n}×</option>
+                ))}
+              </select>
+              <button style={{ ...ghostBtn, color: includeYearly ? ACCENT : MUTED, borderColor: includeYearly ? 'rgba(124,134,255,0.5)' : LINE }} onClick={() => setIncludeYearly((v) => !v)}>
+                Yearly {includeYearly ? 'on' : 'off'}
+              </button>
+            </>
+          )}
+          {activeFilterCount > 0 && (
+            <button style={{ ...ghostBtn, color: ACCENT, borderColor: 'rgba(124,134,255,0.5)' }} onClick={() => { setColFilters({}); setMinPayments(0); }}>
+              Clear filters · {activeFilterCount}
+            </button>
+          )}
+          {hidden.length > 0 && (
+            <button style={{ ...ghostBtn, color: showHidden ? '#d29922' : MUTED }} onClick={() => setShowHidden((v) => !v)}>
+              {showHidden ? 'Hide removed' : `Removed · ${hidden.length}`}
+            </button>
+          )}
+        </div>
 
-        <input
-          style={{ ...inputStyle, marginBottom: 18 }}
-          placeholder="Search email, name, shop, phone, URL…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+        {loading && <div style={{ ...panel, padding: 24, textAlign: 'center', color: MUTED }}>Loading customers…</div>}
+        {dataError && <div style={{ ...panel, padding: 24, color: '#f85149' }}>{dataError}</div>}
 
-        {loading && <div style={{ ...card, textAlign: 'center', color: MUTED }}>Loading customers…</div>}
-        {dataError && <div style={{ ...card, color: '#ff5c5c' }}>{dataError}</div>}
-
+        {/* subscriptions table */}
         {!loading && !dataError && tab !== 'accounts' && (
-          <div style={{ ...card, padding: 0, overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1000 }}>
-              <thead>
-                <tr>
-                  <th style={th}>Customer</th>
-                  <th style={th}>Phone</th>
-                  <th style={th}>Site</th>
-                  <th style={th}>Product</th>
-                  <th style={th}>$/mo</th>
-                  <th style={th}>Payments</th>
-                  <th style={th}>Status</th>
-                  <th style={th}>Started</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleSubs.length === 0 && (
+          <div style={{ ...panel, overflow: 'hidden' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1020 }}>
+                <thead>
                   <tr>
-                    <td style={{ ...td, textAlign: 'center', color: MUTED }} colSpan={8}>
-                      No subscriptions match.
-                    </td>
-                  </tr>
-                )}
-                {visibleSubs.map((s) => {
-                  const phone = s.account?.signupPhone || s.stripePhone;
-                  const sites = s.account?.sites || [];
-                  const def = statusDef(s.status);
-                  return (
-                    <tr key={s.subId} className="adm-row">
-                      <td style={td}>
-                        <div style={{ fontWeight: 700 }}>{s.email}</div>
-                        <div style={{ fontSize: 12, color: MUTED }}>
-                          {s.name || s.account?.fullName || ''}
-                          {!s.account && <span style={{ color: '#ffb224' }}> · no account</span>}
-                        </div>
-                      </td>
-                      <td className="adm-num" style={{ ...td, whiteSpace: 'nowrap' }}>{phone || '—'}</td>
-                      <td style={td}>
-                        {sites.length === 0 && <span style={{ color: MUTED }}>—</span>}
-                        {sites.map((x) => (
-                          <div key={x.siteId} style={{ whiteSpace: 'nowrap' }}>
-                            {x.shopName || x.siteId}
-                            {x.url && (
-                              <>
-                                {' · '}
-                                <a href={x.url} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, color: '#4cc3ff', textDecoration: 'none' }}>
-                                  {x.url.replace(/^https?:\/\//, '').replace(/\.vercel\.app$/, '')} ↗
-                                </a>
-                              </>
-                            )}
-                          </div>
-                        ))}
-                      </td>
-                      <td style={{ ...td, whiteSpace: 'nowrap', fontSize: 13 }}>
-                        {s.product} <span style={{ color: MUTED }}>· {money(s.amount)}/{s.interval === 'year' ? 'yr' : 'mo'}</span>
-                      </td>
-                      <td className="adm-num" style={{ ...td, whiteSpace: 'nowrap', fontWeight: 800 }}>{money(s.amountMonthly)}</td>
-                      <td className="adm-num" style={{ ...td, whiteSpace: 'nowrap', color: (s.paidCount || 0) > 1 ? '#2fd679' : MUTED, fontWeight: 700 }}>{s.paidCount || 0}×</td>
-                      <td style={{ ...td, whiteSpace: 'nowrap' }}>
-                        <span
+                    <th style={{ ...th, width: 34, padding: '0 0 0 12px' }}>
+                      <Checkbox checked={allSelected} indeterminate={!allSelected && someSelected} onChange={toggleAll} />
+                    </th>
+                    {FACETS.map((f) => (
+                      <th key={f.key} style={th}>
+                        <button
+                          className="adm-th-btn"
+                          onClick={(e) => {
+                            const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                            setMenuSearch('');
+                            setMenu(menu?.key === f.key ? null : { key: f.key, x: r.left, y: r.bottom + 4 });
+                          }}
                           style={{
+                            background: 'none',
+                            border: 'none',
+                            padding: 0,
+                            font: 'inherit',
+                            color: colFilters[f.key] ? ACCENT : 'inherit',
+                            textTransform: 'inherit',
+                            letterSpacing: 'inherit',
+                            cursor: 'pointer',
                             display: 'inline-flex',
                             alignItems: 'center',
-                            gap: 7,
-                            padding: '4px 11px',
-                            borderRadius: 999,
-                            background: `${def?.color || MUTED}17`,
-                            border: `1px solid ${def?.color || MUTED}40`,
-                            color: def?.color || MUTED,
-                            fontWeight: 700,
-                            fontSize: 12.5,
+                            gap: 5,
                           }}
                         >
-                          <span style={{ width: 6, height: 6, borderRadius: 999, background: def?.color || MUTED }} />
-                          {statusLabel(s)}
-                        </span>
-                        {s.status === 'canceled' && <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>{fmtDate(s.canceledAt)}</div>}
+                          {f.label}
+                          <span style={{ fontSize: 8, opacity: 0.8 }}>▼</span>
+                          {colFilters[f.key] && (
+                            <span style={{ background: 'rgba(124,134,255,0.18)', borderRadius: 4, padding: '1px 5px', fontSize: 10 }}>{colFilters[f.key].size}</span>
+                          )}
+                        </button>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleSubs.length === 0 && (
+                    <tr>
+                      <td style={{ ...td, textAlign: 'center', color: FAINT, padding: 28 }} colSpan={FACETS.length + 1}>
+                        No rows match the current filters.
                       </td>
-                      <td className="adm-num" style={{ ...td, whiteSpace: 'nowrap', fontSize: 13, color: MUTED }}>{fmtDate(s.created)}</td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  )}
+                  {visibleSubs.map((s) => {
+                    const phone = s.account?.signupPhone || s.stripePhone;
+                    const def = statusDef(s.status);
+                    const isHiddenRow = hiddenSet.has(s.subId);
+                    return (
+                      <tr key={s.subId} className="adm-row" style={isHiddenRow ? { opacity: 0.45 } : undefined}>
+                        <td style={{ ...td, padding: '10px 0 10px 12px' }}>
+                          <Checkbox checked={selected.has(s.subId)} onChange={() => toggleOne(s.subId)} />
+                        </td>
+                        <td style={td}>
+                          <div style={{ fontWeight: 500 }}>{s.email}</div>
+                          <div style={{ fontSize: 12, color: FAINT }}>
+                            {s.name || s.account?.fullName || ''}
+                            {!s.account && <span style={{ color: '#d29922' }}> · no account</span>}
+                            {isHiddenRow && (
+                              <button onClick={() => restoreOne(s.subId)} style={{ background: 'none', border: 'none', color: ACCENT, fontSize: 12, cursor: 'pointer', fontFamily: FONT, padding: 0, marginLeft: 6 }}>
+                                Restore
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                        <td className="adm-num" style={{ ...td, whiteSpace: 'nowrap' }}>{phone || '—'}</td>
+                        <td style={td}>{siteCell(s.account?.sites || [])}</td>
+                        <td style={{ ...td, whiteSpace: 'nowrap' }}>
+                          {s.product} <span style={{ color: FAINT }}>· {money(s.amount)}/{s.interval === 'year' ? 'yr' : 'mo'}</span>
+                        </td>
+                        <td className="adm-num" style={{ ...td, whiteSpace: 'nowrap', fontWeight: 600 }}>{money(s.amountMonthly)}</td>
+                        <td className="adm-num" style={{ ...td, whiteSpace: 'nowrap', color: (s.paidCount || 0) > 1 ? '#3fb950' : FAINT }}>{s.paidCount || 0}×</td>
+                        <td style={{ ...td, whiteSpace: 'nowrap' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: def?.color || MUTED, fontWeight: 500, fontSize: 12.5 }}>
+                            <span style={{ width: 6, height: 6, borderRadius: 999, background: def?.color || MUTED }} />
+                            {statusDef(s.status)?.label || s.status}
+                            {s.status === 'active' && s.cancelAtPeriodEnd && <span style={{ color: FAINT, fontWeight: 400 }}>· canceling</span>}
+                          </span>
+                          {s.status === 'canceled' && <div style={{ fontSize: 11, color: FAINT, marginTop: 2 }}>{fmtDate(s.canceledAt)}</div>}
+                        </td>
+                        <td className="adm-num" style={{ ...td, whiteSpace: 'nowrap', color: MUTED }}>{fmtDate(s.created)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ padding: '9px 14px', borderTop: `1px solid ${LINE}`, fontSize: 12, color: FAINT, display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+              <span>{visibleSubs.length} {visibleSubs.length === 1 ? 'row' : 'rows'}</span>
+              <span>Removed rows are hidden from this dashboard only — Stripe is never modified.</span>
+            </div>
           </div>
         )}
 
+        {/* accounts table */}
         {!loading && !dataError && tab === 'accounts' && (
-          <div style={{ ...card, padding: 0, overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
-              <thead>
-                <tr>
-                  <th style={th}>Email</th>
-                  <th style={th}>Phone</th>
-                  <th style={th}>Sites</th>
-                  <th style={th}>Signed up</th>
-                  <th style={th}>Last sign-in</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleAccounts.length === 0 && (
+          <div style={{ ...panel, overflow: 'hidden' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
+                <thead>
                   <tr>
-                    <td style={{ ...td, textAlign: 'center', color: MUTED }} colSpan={5}>
-                      No accounts match.
-                    </td>
+                    <th style={{ ...th, width: 34, padding: '0 0 0 12px' }}>
+                      <Checkbox checked={allSelected} indeterminate={!allSelected && someSelected} onChange={toggleAll} />
+                    </th>
+                    <th style={th}>Email</th>
+                    <th style={th}>Phone</th>
+                    <th style={th}>Sites</th>
+                    <th style={th}>Signed up</th>
+                    <th style={th}>Last sign-in</th>
                   </tr>
-                )}
-                {visibleAccounts.map((a) => (
-                  <tr key={a.userId} className="adm-row">
-                    <td style={td}>
-                      <div style={{ fontWeight: 700 }}>{a.email}</div>
-                      <div style={{ fontSize: 12, color: MUTED }}>{a.fullName || ''}</div>
-                    </td>
-                    <td className="adm-num" style={{ ...td, whiteSpace: 'nowrap' }}>{a.signupPhone || '—'}</td>
-                    <td style={td}>
-                      {a.sites.length === 0 && <span style={{ color: MUTED }}>—</span>}
-                      {a.sites.map((x) => (
-                        <div key={x.siteId} style={{ whiteSpace: 'nowrap' }}>
-                          {x.shopName || x.siteId}
-                          {x.url && (
-                            <>
-                              {' · '}
-                              <a href={x.url} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, color: '#4cc3ff', textDecoration: 'none' }}>
-                                {x.url.replace(/^https?:\/\//, '').replace(/\.vercel\.app$/, '')} ↗
-                              </a>
-                            </>
-                          )}
-                        </div>
-                      ))}
-                    </td>
-                    <td className="adm-num" style={{ ...td, whiteSpace: 'nowrap', fontSize: 13, color: MUTED }}>{fmtDate(a.signedUp)}</td>
-                    <td className="adm-num" style={{ ...td, whiteSpace: 'nowrap', fontSize: 13, color: MUTED }}>{fmtDate(a.lastSignIn)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {visibleAccounts.length === 0 && (
+                    <tr>
+                      <td style={{ ...td, textAlign: 'center', color: FAINT, padding: 28 }} colSpan={6}>No accounts match.</td>
+                    </tr>
+                  )}
+                  {visibleAccounts.map((a) => {
+                    const id = `acct:${a.userId}`;
+                    const isHiddenRow = hiddenSet.has(id);
+                    return (
+                      <tr key={a.userId} className="adm-row" style={isHiddenRow ? { opacity: 0.45 } : undefined}>
+                        <td style={{ ...td, padding: '10px 0 10px 12px' }}>
+                          <Checkbox checked={selected.has(id)} onChange={() => toggleOne(id)} />
+                        </td>
+                        <td style={td}>
+                          <div style={{ fontWeight: 500 }}>{a.email}</div>
+                          <div style={{ fontSize: 12, color: FAINT }}>
+                            {a.fullName || ''}
+                            {isHiddenRow && (
+                              <button onClick={() => restoreOne(id)} style={{ background: 'none', border: 'none', color: ACCENT, fontSize: 12, cursor: 'pointer', fontFamily: FONT, padding: 0, marginLeft: 6 }}>
+                                Restore
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                        <td className="adm-num" style={{ ...td, whiteSpace: 'nowrap' }}>{a.signupPhone || '—'}</td>
+                        <td style={td}>{siteCell(a.sites)}</td>
+                        <td className="adm-num" style={{ ...td, whiteSpace: 'nowrap', color: MUTED }}>{fmtDate(a.signedUp)}</td>
+                        <td className="adm-num" style={{ ...td, whiteSpace: 'nowrap', color: MUTED }}>{fmtDate(a.lastSignIn)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ padding: '9px 14px', borderTop: `1px solid ${LINE}`, fontSize: 12, color: FAINT }}>
+              {visibleAccounts.length} {visibleAccounts.length === 1 ? 'row' : 'rows'}
+            </div>
           </div>
         )}
       </div>
+
+      {/* column facet menu */}
+      {menu && (
+        <>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 8 }} onClick={() => setMenu(null)} />
+          <div
+            style={{
+              position: 'fixed',
+              left: Math.min(menu.x, (typeof window !== 'undefined' ? window.innerWidth : 1200) - 300),
+              top: menu.y,
+              zIndex: 9,
+              width: 280,
+              maxHeight: 380,
+              overflowY: 'auto',
+              background: PANEL_2,
+              border: `1px solid ${LINE}`,
+              borderRadius: 10,
+              boxShadow: '0 12px 32px rgba(0,0,0,0.5)',
+              padding: 8,
+            }}
+          >
+            {(() => {
+              const facet = FACETS.find((f) => f.key === menu.key)!;
+              const allVals = menuValues.map(([v]) => v);
+              const cur = colFilters[facet.key];
+              return (
+                <>
+                  <input
+                    autoFocus
+                    style={{ ...inputStyle, width: '100%', marginBottom: 8 }}
+                    placeholder={`Filter ${facet.label.toLowerCase()}…`}
+                    value={menuSearch}
+                    onChange={(e) => setMenuSearch(e.target.value)}
+                  />
+                  <div style={{ display: 'flex', gap: 10, marginBottom: 6, padding: '0 2px' }}>
+                    <button
+                      style={{ background: 'none', border: 'none', color: ACCENT, fontSize: 12, cursor: 'pointer', fontFamily: FONT, padding: 0 }}
+                      onClick={() => setColFilters((prev) => { const out = { ...prev }; delete out[facet.key]; return out; })}
+                    >
+                      Select all
+                    </button>
+                    <button
+                      style={{ background: 'none', border: 'none', color: MUTED, fontSize: 12, cursor: 'pointer', fontFamily: FONT, padding: 0 }}
+                      onClick={() => setColFilters((prev) => ({ ...prev, [facet.key]: new Set<string>() }))}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                  {menuValues.length === 0 && <div style={{ padding: 10, color: FAINT, fontSize: 12.5 }}>No values.</div>}
+                  {menuValues.map(([v, count]) => {
+                    const checked = !cur || cur.has(v);
+                    return (
+                      <div
+                        key={v}
+                        className="adm-menu-item"
+                        onClick={() => toggleFacetValue(facet.key, v, allVals)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '7px 8px', borderRadius: 7, cursor: 'pointer' }}
+                      >
+                        <Checkbox checked={checked} onChange={() => toggleFacetValue(facet.key, v, allVals)} />
+                        <span style={{ flex: 1, fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v}</span>
+                        <span className="adm-num" style={{ fontSize: 11.5, color: FAINT }}>{count}</span>
+                      </div>
+                    );
+                  })}
+                </>
+              );
+            })()}
+          </div>
+        </>
+      )}
+
+      {/* selection action bar */}
+      {selected.size > 0 && (
+        <div
+          style={{
+            position: 'fixed',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            bottom: 22,
+            zIndex: 10,
+            background: PANEL_2,
+            border: `1px solid ${LINE}`,
+            borderRadius: 12,
+            boxShadow: '0 12px 32px rgba(0,0,0,0.55)',
+            padding: '10px 14px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+          }}
+        >
+          <span style={{ fontSize: 13, fontWeight: 500 }}>{selected.size} selected</span>
+          <button style={{ ...primaryBtn, background: '#f85149', color: '#fff', padding: '7px 12px' }} onClick={removeSelected}>
+            Remove from dashboard
+          </button>
+          {showHidden && (
+            <button style={ghostBtn} onClick={() => { [...selected].forEach(restoreOne); setSelected(new Set()); }}>
+              Restore
+            </button>
+          )}
+          <button style={ghostBtn} onClick={() => setSelected(new Set())}>Cancel</button>
+        </div>
+      )}
+
+      {/* removed-rows management strip */}
+      {showHidden && hidden.length > 0 && (
+        <div
+          style={{
+            position: 'fixed',
+            right: 22,
+            bottom: 22,
+            zIndex: 9,
+            background: PANEL_2,
+            border: `1px solid rgba(210,153,34,0.5)`,
+            borderRadius: 10,
+            padding: '9px 12px',
+            fontSize: 12.5,
+            color: '#d29922',
+            display: 'flex',
+            gap: 10,
+            alignItems: 'center',
+          }}
+        >
+          Showing {hidden.length} removed
+          <button style={{ ...ghostBtn, padding: '5px 10px' }} onClick={restoreAll}>Restore all</button>
+        </div>
+      )}
     </div>
   );
 };
