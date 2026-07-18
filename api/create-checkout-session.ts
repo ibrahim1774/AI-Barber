@@ -46,6 +46,9 @@ export default async function handler(req: any, res: any) {
     // /generate entry ("Customize Your Barbershop Site"): $10/mo + $59/yr.
     const isMonthlyGenerate = plan === 'monthly-generate';
     const isYearlyGenerate = plan === 'yearly-generate';
+    // '/home-2' price test: exact homepage funnel at $19/mo + $99/yr.
+    const isMonthlyHome2 = plan === 'monthly-home2';
+    const isYearlyHome2 = plan === 'yearly-home2';
     const isCustom = plan === 'custom';
     const isCustom25 = plan === 'custom25';
     // 'custom-booksy' = /booksy custom-design upsell ($15/mo).
@@ -111,6 +114,16 @@ export default async function handler(req: any, res: any) {
       unitAmount = '1000';
       interval = 'month';
       productName = 'aibarber.org — Monthly Website Hosting (Generate)';
+    } else if (isYearlyHome2) {
+      // /home-2 yearly: $99/yr (≈57% off $19/mo × 12).
+      unitAmount = '9900';
+      interval = 'year';
+      productName = 'aibarber.org — Yearly Website Hosting (Home 2)';
+    } else if (isMonthlyHome2) {
+      // /home-2 monthly: $19/mo.
+      unitAmount = '1900';
+      interval = 'month';
+      productName = 'aibarber.org — Monthly Website Hosting (Home 2)';
     } else if (isCustomBooksy) {
       unitAmount = '2900';
       interval = 'month';

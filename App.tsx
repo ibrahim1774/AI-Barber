@@ -51,11 +51,16 @@ const OwnBrandLanding = lazy(() => import('./components/OwnBrandLanding.tsx').th
 
 const DEPLOY_TIMER_SECONDS = 5;
 
-// True only for the bare root path "/" — the homepage progressive
-// funnel (name-only generation → booking-link / area-phone prompt).
-// /booksy, /free-barber, /new keep the original 4-field GeneratorForm.
+// True for the bare root path "/" AND its /home-2 pricing duplicate —
+// the homepage progressive funnel (name-only generation → booking-link /
+// area-phone prompt). /home-2 is the exact same experience at
+// $19/mo + $99/yr. /booksy, /free-barber, /new keep the original
+// 4-field GeneratorForm.
 const isRootHomePath = (): boolean => {
-  try { return window.location.pathname.replace(/\/+$/, '') === ''; } catch { return false; }
+  try {
+    const p = window.location.pathname.replace(/\/+$/, '');
+    return p === '' || p === '/home-2';
+  } catch { return false; }
 };
 
 const App: React.FC = () => {
