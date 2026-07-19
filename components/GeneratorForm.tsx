@@ -58,6 +58,10 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
   }, []);
   // null = question not answered yet; true = has a link; false = manual.
   const [hasBooking, setHasBooking] = useState<boolean | null>(null);
+  // /home-2 price-test page: the Yes branch also requires the visitor's
+  // phone number (required only — no format rules). It rides inputs.phone
+  // into the lead webhook (Make → Sheet "Number" column) and the site.
+  const home2 = useMemo(() => isHome2Path(), []);
   // Yes-branch behaves like the single-link modes: the link is the only
   // identity input, so scrape failures surface instead of falling back.
   const gateLink = homeGate && hasBooking === true;
@@ -141,6 +145,10 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
     if (linkMode || gateLink) {
       if (!normalizedUrl) {
         setScrapeError('Paste your booking link to continue.');
+        return;
+      }
+      if (gateLink && home2 && !(inputs.phone && inputs.phone.trim())) {
+        setScrapeError('Enter your phone number to continue.');
         return;
       }
       if (!isSupportedBookingHost(normalizedUrl)) {
@@ -676,6 +684,24 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
                       : 'Booksy, Cal.com, Vagaro — any booking page works.'}
                 </p>
               </div>
+              )}
+
+              {gateLink && home2 && (
+                <div className="space-y-1">
+                  <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">
+                    Your Phone Number
+                  </label>
+                  <input
+                    required
+                    type="tel"
+                    inputMode="tel"
+                    placeholder="(555) 000-0000"
+                    className="w-full bg-transparent border-b py-1.5 md:py-2.5 text-white transition-all outline-none font-montserrat text-sm md:text-lg placeholder:text-white/20"
+                    style={{ borderBottomColor: 'rgba(255,255,255,0.40)' }}
+                    value={inputs.phone}
+                    onChange={e => setInputs({ ...inputs, phone: e.target.value })}
+                  />
+                </div>
               )}
 
               {/* Color-theme picker — homepage only. /booksy skips this:
