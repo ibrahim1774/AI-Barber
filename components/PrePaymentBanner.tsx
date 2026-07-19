@@ -756,10 +756,11 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                   <div>
                     <h2
                       className="leading-[1.05] mb-3"
-                      style={{ fontFamily: '"Instrument Serif", serif', fontSize: '1.9rem', fontWeight: 400 }}
+                      style={{ fontFamily: '"Instrument Serif", serif', fontSize: '1.6rem', fontWeight: 400 }}
                     >
-                      <span style={{ color: cream }}>All in for </span>
-                      <span style={{ color: gold, fontStyle: 'italic' }}>{customPriceFull}.</span>
+                      <span style={{ color: cream }}>Custom 20+ page site, </span>
+                      <span style={{ color: gold, fontStyle: 'italic' }}>with your own account, </span>
+                      <span style={{ color: cream }}>on-page SEO included</span>
                     </h2>
                     <p className="text-sm leading-relaxed mb-4" style={{ color: 'rgba(236,230,218,0.6)' }}>
                       Your real photos, your own booking link. One simple price. Cancel anytime. After checkout, a short form captures your style and the photos to use.
@@ -772,8 +773,10 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                     <div className="border-t border-white/10 mb-5">
                       {[
                         'Custom Barbershop Website — 20+ Pages',
-                        'Multiple pages',
+                        'Custom site delivered within 24–48 hours',
+                        'On-Page SEO included',
                         'Booking integration',
+                        'Optional: you may choose a design you personally like',
                         'You can have us add your custom photos',
                       ].map((line, i) => (
                         <div key={line} className="flex items-baseline gap-4 py-2.5 border-b border-white/10">
@@ -781,7 +784,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                             className="shrink-0 text-[10px] tracking-[0.18em] w-5"
                             style={{ color: gold, fontFamily: '"Instrument Serif", serif', fontStyle: 'italic' }}
                           >
-                            {['I', 'II', 'III', 'IV'][i]}
+                            {['I', 'II', 'III', 'IV', 'V', 'VI'][i]}
                           </span>
                           <span className="text-[14px] leading-snug" style={{ color: cream }}>{line}</span>
                         </div>
