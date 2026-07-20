@@ -119,6 +119,17 @@ function serializeForSave(doc: Document, slug: string): string {
   clone.querySelectorAll('[data-editor-selected]').forEach((el) => {
     el.removeAttribute('data-editor-selected');
   });
+  clone.querySelectorAll('[data-editor-bg-badge]').forEach((el) => el.remove());
+  clone.querySelectorAll('[data-editor-bg]').forEach((el) => {
+    // Revert the positioning context we added for the badge.
+    if (el.hasAttribute('data-editor-bg-pos')) {
+      (el as HTMLElement).style.removeProperty('position');
+      if (!(el as HTMLElement).getAttribute('style')) el.removeAttribute('style');
+      el.removeAttribute('data-editor-bg-pos');
+    }
+    el.removeAttribute('data-editor-bg');
+    el.removeAttribute('data-editor-bg-selected');
+  });
 
   const doctype = doc.doctype ? `<!DOCTYPE ${doc.doctype.name}>\n` : '<!DOCTYPE html>\n';
   let html = doctype + clone.outerHTML;
@@ -221,11 +232,13 @@ export const ClientPortal: React.FC = () => {
   // from a click in the SAME document as the input — a click inside the
   // sandboxed iframe can't trigger it. So image click selects the photo and
   // this panel's own button (a real parent-document click) opens the picker.
-  const [pendingImage, setPendingImage] = useState<{ src: string } | null>(null);
+  const [pendingImage, setPendingImage] = useState<{ src: string; kind: 'img' | 'bg' } | null>(null);
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingImgRef = useRef<HTMLImageElement | null>(null);
+  // Element whose CSS background-image is being replaced (hero sections etc.).
+  const pendingBgRef = useRef<HTMLElement | null>(null);
   const dirtyRef = useRef(false);
   const setDirtyBoth = useCallback((v: boolean) => {
     dirtyRef.current = v;
@@ -312,6 +325,7 @@ export const ClientPortal: React.FC = () => {
       // A page change replaces the document — any selected photo is stale.
       setPendingImage(null);
       pendingImgRef.current = null;
+      pendingBgRef.current = null;
     })();
     return () => {
       cancelled = true;
@@ -343,6 +357,19 @@ export const ClientPortal: React.FC = () => {
       [data-editor-editable]:focus { outline: 2px solid rgba(232,192,116,1) !important; outline-offset: 2px; }
       img[data-editor-img]:hover { outline: 2px dashed rgba(232,192,116,0.95) !important; outline-offset: 2px; cursor: pointer !important; filter: brightness(0.85); }
       img[data-editor-selected] { outline: 3px solid rgba(232,192,116,1) !important; outline-offset: 2px; }
+      [data-editor-bg-badge] {
+        position: absolute; top: 14px; right: 14px; z-index: 2147483000;
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 10px 14px; border-radius: 999px;
+        background: rgba(10,10,10,0.82); color: rgba(232,192,116,1);
+        border: 1.5px solid rgba(232,192,116,0.9);
+        font: 700 12px/1 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        letter-spacing: 0.04em; white-space: nowrap; cursor: pointer;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.45);
+      }
+      [data-editor-bg-badge]:hover { background: rgba(232,192,116,1); color: #0a0a0a; }
+      [data-editor-bg]:hover { outline: 2px dashed rgba(232,192,116,0.55) !important; outline-offset: -2px; }
+      [data-editor-bg-selected] { outline: 3px solid rgba(232,192,116,1) !important; outline-offset: -3px; }
     `;
     doc.head.appendChild(style);
 
@@ -365,6 +392,26 @@ export const ClientPortal: React.FC = () => {
       'click',
       (e) => {
         const target = e.target as Element | null;
+        // "Change background" badge → select the host section and open the
+        // parent-side panel (same pattern as photos: the real file-chooser
+        // click happens in the parent document).
+        const badge = target?.closest?.('[data-editor-bg-badge]');
+        if (badge) {
+          e.preventDefault();
+          e.stopPropagation();
+          const host = badge.closest('[data-editor-bg]') as HTMLElement | null;
+          if (host) {
+            doc.querySelectorAll('img[data-editor-selected]').forEach((el) => el.removeAttribute('data-editor-selected'));
+            doc.querySelectorAll('[data-editor-bg-selected]').forEach((el) => el.removeAttribute('data-editor-bg-selected'));
+            host.setAttribute('data-editor-bg-selected', '1');
+            pendingImgRef.current = null;
+            pendingBgRef.current = host;
+            const bg = doc.defaultView?.getComputedStyle(host).backgroundImage || '';
+            const m = bg.match(/url\(["']?([^"')]+)["']?\)/i);
+            setPendingImage({ src: m?.[1] || '', kind: 'bg' });
+          }
+          return;
+        }
         const a = target?.closest?.('a');
         // NOT `instanceof HTMLImageElement`: the element lives in the
         // IFRAME's realm, so the parent window's constructor never matches
@@ -380,8 +427,10 @@ export const ClientPortal: React.FC = () => {
           // what opens the file chooser — an iframe click can't.
           doc.querySelectorAll('img[data-editor-selected]').forEach((el) => el.removeAttribute('data-editor-selected'));
           img.setAttribute('data-editor-selected', '1');
+          doc.querySelectorAll('[data-editor-bg-selected]').forEach((el) => el.removeAttribute('data-editor-bg-selected'));
+          pendingBgRef.current = null;
           pendingImgRef.current = img;
-          setPendingImage({ src: img.currentSrc || img.src });
+          setPendingImage({ src: img.currentSrc || img.src, kind: 'img' });
           return;
         }
         if (a) e.preventDefault();
@@ -391,11 +440,73 @@ export const ClientPortal: React.FC = () => {
 
     // Images: click-to-replace.
     doc.body.querySelectorAll('img').forEach((img) => img.setAttribute('data-editor-img', '1'));
+
+    // CSS background images (hero sections etc.): sizeable elements whose
+    // background is a real url() get an always-visible "Change background"
+    // badge. A badge — not click-anywhere — because these sections are full
+    // of editable text; tapping the headline must keep editing text.
+    const win = doc.defaultView;
+    if (win) {
+      doc.body.querySelectorAll<HTMLElement>('*').forEach((el) => {
+        if (el.closest('script, style, svg, [data-editor-bg-badge]')) return;
+        // Nested background layers: the outermost host already got a badge.
+        if (el.parentElement?.closest('[data-editor-bg]')) return;
+        const bg = win.getComputedStyle(el).backgroundImage;
+        if (!bg || bg === 'none' || !/url\(/i.test(bg)) return;
+        // Data-URI textures (tiny inline patterns) aren't client photos.
+        if (/url\(["']?data:/i.test(bg) && !/url\(["']?https?:/i.test(bg) && !/url\(["']?\//i.test(bg)) return;
+        const r = el.getBoundingClientRect();
+        // Skip icons/textures — only section-scale backgrounds are editable.
+        if (r.width < 220 || r.height < 140) return;
+        el.setAttribute('data-editor-bg', '1');
+        // The badge is absolutely positioned — give static hosts a
+        // positioning context, reverted on save.
+        if (win.getComputedStyle(el).position === 'static') {
+          el.style.position = 'relative';
+          el.setAttribute('data-editor-bg-pos', '1');
+        }
+        const badge = doc.createElement('button');
+        badge.type = 'button';
+        badge.setAttribute('data-editor-bg-badge', '1');
+        badge.setAttribute('contenteditable', 'false');
+        badge.textContent = '📷 Change background';
+        el.appendChild(badge);
+      });
+    }
   }, [setDirtyBoth]);
 
   // Replace the clicked image with an uploaded (compressed) one.
   const handleImageFile = useCallback(
     async (file: File) => {
+      // Background replacement: swap only the url(...) layer of the host's
+      // computed background-image so gradient overlays survive, and write it
+      // inline (inline longhand beats the stylesheet).
+      const bgEl = pendingBgRef.current;
+      if (bgEl && site) {
+        setPendingImage(null);
+        pendingBgRef.current = null;
+        bgEl.removeAttribute('data-editor-bg-selected');
+        try {
+          const { blob, ext } = await compressImage(file);
+          const path = `${site.slug}/images/edit-${Date.now()}.${ext}`;
+          const { error } = await supabase.storage.from(BUCKET).upload(path, blob, {
+            contentType: blob.type || 'application/octet-stream',
+            upsert: true,
+          });
+          if (error) throw new Error(error.message);
+          const newUrl = `${publicBase}/${path}`;
+          const doc = bgEl.ownerDocument;
+          const computed = doc.defaultView?.getComputedStyle(bgEl).backgroundImage || '';
+          const swapped = computed.replace(/url\((["']?)(?:(?!\1\)).)*\1\)/i, `url("${newUrl}")`);
+          bgEl.style.backgroundImage = /url\(/i.test(swapped) && swapped !== computed ? swapped : `url("${newUrl}")`;
+          setDirtyBoth(true);
+          showToast('ok', 'Background replaced — remember to Save');
+        } catch (e: any) {
+          console.error('[portal] background upload failed:', e);
+          showToast('err', `Background upload failed: ${e?.message || 'unknown error'}`);
+        }
+        return;
+      }
       const img = pendingImgRef.current;
       setPendingImage(null);
       if (!img || !site) return;
@@ -797,7 +908,7 @@ export const ClientPortal: React.FC = () => {
 
       {/* Hint bar */}
       <div className="border-t border-white/10 px-4 py-2 text-center text-[11px] text-white/40">
-        Click any text to edit it. Click any photo to replace it. Save, then Publish to update your live site.
+        Click any text to edit it. Click any photo to replace it. Use the 📷 Change background button on photo backdrops. Save, then Publish to update your live site.
       </div>
 
       {/* Hidden picker for image replacement */}
@@ -818,13 +929,19 @@ export const ClientPortal: React.FC = () => {
           photo and this button does the actual open. */}
       {pendingImage && (
         <div className="fixed bottom-14 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-2xl border border-white/10 bg-[#141414] p-3 pr-4 shadow-2xl">
-          <img
-            src={pendingImage.src}
-            alt="Selected photo"
-            className="h-14 w-14 rounded-lg object-cover"
-          />
+          {pendingImage.src ? (
+            <img
+              src={pendingImage.src}
+              alt="Selected photo"
+              className="h-14 w-14 rounded-lg object-cover"
+            />
+          ) : (
+            <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-white/5 text-[20px]">📷</div>
+          )}
           <div className="min-w-0">
-            <p className="text-[13px] font-semibold text-white">Replace this photo?</p>
+            <p className="text-[13px] font-semibold text-white">
+              {pendingImage.kind === 'bg' ? 'Change this background photo?' : 'Replace this photo?'}
+            </p>
             <p className="text-[11px] text-white/45">JPG or PNG — we&apos;ll resize it for you.</p>
           </div>
           <button
@@ -838,6 +955,8 @@ export const ClientPortal: React.FC = () => {
             onClick={() => {
               pendingImgRef.current?.removeAttribute('data-editor-selected');
               pendingImgRef.current = null;
+              pendingBgRef.current?.removeAttribute('data-editor-bg-selected');
+              pendingBgRef.current = null;
               setPendingImage(null);
             }}
             className="shrink-0 rounded-lg border border-white/15 p-2.5 text-white/60 hover:text-white"
