@@ -53,6 +53,9 @@ interface Sub {
   isCustomDesign: boolean;
   paidCount: number;
   account: AccountInfo | null;
+  manualPhone?: string | null;
+  manualSite?: string | null;
+  manualLabel?: string | null;
 }
 
 const STATUS_DEFS: { key: string; label: string; color: string }[] = [
@@ -157,8 +160,8 @@ const money = (n: number): string => (Number.isInteger(n) ? `$${n}` : `$${n.toFi
 // menu shows the distinct values of `extract` with checkboxes.
 const FACETS: { key: string; label: string; extract: (s: Sub) => string }[] = [
   { key: 'customer', label: 'Customer', extract: (s) => s.email },
-  { key: 'phone', label: 'Phone', extract: (s) => (s.account?.signupPhone || s.stripePhone ? 'Has phone' : 'No phone') },
-  { key: 'site', label: 'Site', extract: (s) => ((s.account?.sites || []).length ? 'Has site' : 'No site') },
+  { key: 'phone', label: 'Phone', extract: (s) => (s.account?.signupPhone || s.stripePhone || s.manualPhone ? 'Has phone' : 'No phone') },
+  { key: 'site', label: 'Site', extract: (s) => ((s.account?.sites || []).length || s.manualSite ? 'Has site' : 'No site') },
   { key: 'product', label: 'Product', extract: (s) => s.product },
   { key: 'amount', label: '$/mo', extract: (s) => money(s.amountMonthly) },
   { key: 'payments', label: 'Payments', extract: (s) => `${s.paidCount || 0}×` },
@@ -328,7 +331,7 @@ export const AdminDashboard: React.FC = () => {
     const q = search.trim().toLowerCase();
     if (q) {
       rows = rows.filter((s) =>
-        [s.email, s.name, s.product, s.account?.signupPhone, s.stripePhone, ...(s.account?.sites || []).flatMap((x) => [x.shopName, x.url, x.siteId])]
+        [s.email, s.name, s.product, s.account?.signupPhone, s.stripePhone, s.manualPhone, s.manualSite, s.manualLabel, ...(s.account?.sites || []).flatMap((x) => [x.shopName, x.url, x.siteId])]
           .filter(Boolean)
           .some((v) => String(v).toLowerCase().includes(q)),
       );
@@ -673,7 +676,7 @@ export const AdminDashboard: React.FC = () => {
                     </tr>
                   )}
                   {visibleSubs.map((s) => {
-                    const phone = s.account?.signupPhone || s.stripePhone;
+                    const phone = s.account?.signupPhone || s.stripePhone || s.manualPhone;
                     const def = statusDef(s.status);
                     const isHiddenRow = hiddenSet.has(s.subId);
                     return (
@@ -694,7 +697,13 @@ export const AdminDashboard: React.FC = () => {
                           </div>
                         </td>
                         <td className="adm-num" style={{ ...td, whiteSpace: 'nowrap' }}>{phone || '—'}</td>
-                        <td style={td}>{siteCell(s.account?.sites || [])}</td>
+                        <td style={td}>{siteCell(
+                          (s.account?.sites || []).length
+                            ? s.account!.sites
+                            : s.manualSite
+                              ? [{ siteId: `manual-${s.subId}`, shopName: s.manualLabel || null, url: s.manualSite, sitePhone: null }]
+                              : []
+                        )}</td>
                         <td style={{ ...td, whiteSpace: 'nowrap' }}>
                           {s.product} <span style={{ color: FAINT }}>· {money(s.amount)}/{s.interval === 'year' ? 'yr' : 'mo'}</span>
                         </td>
