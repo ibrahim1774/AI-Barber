@@ -154,6 +154,18 @@ export default async function handler(req: any, res: any) {
       });
     }
 
+    // Hand-verified identities for generic-named subs (owner-confirmed
+    // 2026-07-18 by matching each phone against the live site's tel: buttons).
+    // These customers paid via Stripe but have no Supabase account under that
+    // email, so the email join can't fill phone/site — filled manually.
+    const MANUAL_IDENTITIES: Record<string, { phone: string; site: string; label: string }> = {
+      'medrano8@gmail.com':        { phone: '8572057123', site: 'https://www.euphoriabarbers.com', label: 'Euphoria Barbershop' },
+      'cathy.nguyen718@gmail.com': { phone: '5713957215', site: 'https://www.uniquefreshcut.com', label: 'Unique Fresh Cut' },
+      'brodricksvenby2@gmail.com': { phone: '3343549926', site: 'https://hoffs-exterior-cleaning.vercel.app', label: 'Hoffs Exterior Cleaning' },
+      'hmpalmer1@gmail.com':       { phone: '6189218028', site: 'https://palmer-clean.vercel.app', label: 'Palmer & Co Barber Lounge' },
+      'osmundb40@gmail.com':       { phone: '9732776417', site: 'https://alyozbarbershop.com', label: 'Alyoz Barbershop' },
+    };
+
     const emailsWithSubs = new Set<string>();
     const subs: any[] = [];
     for (const s of stripeSubs) {
@@ -164,7 +176,7 @@ export default async function handler(req: any, res: any) {
       const amount = (plan.amount || 0) / 100;
       const interval = plan.interval || 'month';
       if (email) emailsWithSubs.add(email);
-      const row: SubRow & { account: any } = {
+      const row: SubRow & { account: any; manualPhone: string | null; manualSite: string | null; manualLabel: string | null } = {
         subId: s.id,
         email: email || '(no email)',
         name: customer.name || null,
@@ -181,6 +193,9 @@ export default async function handler(req: any, res: any) {
         isCustomDesign: /custom website design/i.test(product),
         paidCount: paidCounts[s.id] || 0,
         account: accountByEmail.get(email) || null,
+        manualPhone: MANUAL_IDENTITIES[email]?.phone || null,
+        manualSite: MANUAL_IDENTITIES[email]?.site || null,
+        manualLabel: MANUAL_IDENTITIES[email]?.label || null,
       };
       subs.push(row);
     }
