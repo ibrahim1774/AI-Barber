@@ -164,6 +164,8 @@ export default async function handler(req: any, res: any) {
       'brodricksvenby2@gmail.com': { phone: '3343549926', site: 'https://hoffs-exterior-cleaning.vercel.app', label: 'Hoffs Exterior Cleaning' },
       'hmpalmer1@gmail.com':       { phone: '6189218028', site: 'https://palmer-clean.vercel.app', label: 'Palmer & Co Barber Lounge' },
       'osmundb40@gmail.com':       { phone: '9732776417', site: 'https://alyozbarbershop.com', label: 'Alyoz Barbershop' },
+      // $29/mo custom design; ig handle shown in the phone cell per owner.
+      'arthuperez@yahoo.com':      { phone: '9513128652, ig handle: mratomic101', site: 'https://mratomic-barber.vercel.app', label: 'Mr Atomic Barber' },
     };
 
     const emailsWithSubs = new Set<string>();
