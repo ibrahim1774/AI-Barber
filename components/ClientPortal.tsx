@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Loader2, Globe, LogOut, Save, Rocket, CheckCircle2, X, RotateCcw } from 'lucide-react';
+import { Loader2, Globe, LogOut, Save, Rocket, CheckCircle2, X, RotateCcw, Palette } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -138,6 +138,13 @@ function serializeForSave(doc: Document, slug: string): string {
   return html;
 }
 
+// Curated replacement swatches for the Colors panel — spans the palettes
+// clients actually ask for (golds, reds, greens, blues, neutrals).
+const COLOR_SUGGESTIONS = [
+  '#C8A24A', '#B91C1C', '#EA580C', '#CA8A04', '#15803D', '#0F766E',
+  '#2563EB', '#4F46E5', '#7C3AED', '#DB2777', '#334155', '#0A0A0A',
+];
+
 // Tags that never get contentEditable (structure, media, form controls).
 const NON_EDITABLE_TAGS = new Set([
   'HTML', 'HEAD', 'BODY', 'SCRIPT', 'STYLE', 'NOSCRIPT', 'META', 'LINK', 'TITLE',
@@ -233,6 +240,11 @@ export const ClientPortal: React.FC = () => {
   // sandboxed iframe can't trigger it. So image click selects the photo and
   // this panel's own button (a real parent-document click) opens the picker.
   const [pendingImage, setPendingImage] = useState<{ src: string; kind: 'img' | 'bg' } | null>(null);
+  // "Colors" re-theme panel: detected accent colors from the rendered page.
+  const [showColors, setShowColors] = useState(false);
+  const [siteColors, setSiteColors] = useState<string[]>([]);
+  const [colorTarget, setColorTarget] = useState<string | null>(null);
+  const [customColor, setCustomColor] = useState('#c8a24a');
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -370,6 +382,11 @@ export const ClientPortal: React.FC = () => {
       [data-editor-bg-badge]:hover { background: rgba(232,192,116,1); color: #0a0a0a; }
       [data-editor-bg]:hover { outline: 2px dashed rgba(232,192,116,0.55) !important; outline-offset: -2px; }
       [data-editor-bg-selected] { outline: 3px solid rgba(232,192,116,1) !important; outline-offset: -3px; }
+      /* Touch devices have no hover — show a persistent hint outline so
+         customers can see photos are tappable. */
+      @media (hover: none) {
+        img[data-editor-img] { outline: 1.5px dashed rgba(232,192,116,0.55) !important; outline-offset: 2px; }
+      }
     `;
     doc.head.appendChild(style);
 
@@ -537,6 +554,67 @@ export const ClientPortal: React.FC = () => {
     },
     [site, setDirtyBoth, showToast]
   );
+
+  // ── Site colors (re-theme) ─────────────────────────────────────────
+  // Detect the page's non-neutral accent colors from computed styles.
+  // Grays/whites/blacks are skipped so body text is never offered for
+  // repainting. Returns rgb() strings sorted by how prominent they are.
+  const detectSiteColors = useCallback((): string[] => {
+    const doc = iframeRef.current?.contentDocument;
+    const win = doc?.defaultView;
+    if (!doc || !win || !doc.body) return [];
+    const counts = new Map<string, number>();
+    const tally = (val: string | undefined, weight: number) => {
+      if (!val) return;
+      const m = val.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)$/);
+      if (!m) return;
+      const r = Number(m[1]), g = Number(m[2]), b = Number(m[3]);
+      const a = m[4] === undefined ? 1 : Number(m[4]);
+      if (a < 0.5) return;
+      if (Math.max(r, g, b) - Math.min(r, g, b) < 30) return; // gray/white/black
+      const key = `rgb(${r}, ${g}, ${b})`;
+      counts.set(key, (counts.get(key) || 0) + weight);
+    };
+    doc.body.querySelectorAll('*').forEach((el) => {
+      if (el.closest('script, style, svg') || el.hasAttribute('data-editor-bg-badge')) return;
+      const cs = win.getComputedStyle(el);
+      tally(cs.backgroundColor, 3); // backgrounds define the theme most
+      tally(cs.color, 1);
+      tally(cs.borderTopColor, 1);
+    });
+    return [...counts.entries()].sort((x, y) => y[1] - x[1]).slice(0, 6).map(([c]) => c);
+  }, []);
+
+  const openColors = useCallback(() => {
+    setSiteColors(detectSiteColors());
+    setColorTarget(null);
+    setShowColors(true);
+  }, [detectSiteColors]);
+
+  // Swap every element whose computed color/background/border matches
+  // `from` to `to`, written as inline styles — overrides the stylesheet
+  // and persists through Save/Publish exactly like text and photo edits.
+  const applyColorSwap = useCallback((from: string, to: string) => {
+    const doc = iframeRef.current?.contentDocument;
+    const win = doc?.defaultView;
+    if (!doc || !win || !doc.body) return;
+    let touched = 0;
+    doc.body.querySelectorAll('*').forEach((el) => {
+      if (el.closest('script, style, svg') || el.hasAttribute('data-editor-bg-badge')) return;
+      const cs = win.getComputedStyle(el);
+      const h = el as HTMLElement;
+      if (cs.backgroundColor === from) { h.style.backgroundColor = to; touched++; }
+      if (cs.color === from) { h.style.color = to; touched++; }
+      if (cs.borderTopColor === from && cs.borderTopWidth !== '0px') { h.style.borderColor = to; touched++; }
+    });
+    if (touched) {
+      setDirtyBoth(true);
+      setSiteColors(detectSiteColors());
+      showToast('ok', 'Colors updated — remember to Save');
+    } else {
+      showToast('err', 'Could not find that color on this page anymore.');
+    }
+  }, [detectSiteColors, setDirtyBoth, showToast]);
 
   // Back up the page's CURRENT version into _history before overwriting it,
   // pruned to the newest HISTORY_KEEP entries per page. Best-effort — a
@@ -816,6 +894,15 @@ export const ClientPortal: React.FC = () => {
           <span className="hidden sm:inline">Undo</span>
         </button>
         <button
+          onClick={openColors}
+          disabled={saving || pageLoading || srcDoc === null}
+          title="Change your site's colors"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 px-3.5 py-2.5 text-[11px] font-black uppercase tracking-[0.14em] text-white/70 transition hover:text-white disabled:opacity-40"
+        >
+          <Palette size={13} />
+          <span className="hidden sm:inline">Colors</span>
+        </button>
+        <button
           onClick={handleSave}
           disabled={!dirty || saving || pageLoading}
           className="inline-flex items-center gap-1.5 rounded-lg border px-4 py-2.5 text-[11px] font-black uppercase tracking-[0.14em] transition disabled:opacity-40"
@@ -928,7 +1015,7 @@ export const ClientPortal: React.FC = () => {
           THIS document (browser rule), so the iframe click only selects the
           photo and this button does the actual open. */}
       {pendingImage && (
-        <div className="fixed bottom-14 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-2xl border border-white/10 bg-[#141414] p-3 pr-4 shadow-2xl">
+        <div className="fixed inset-x-2 bottom-2 z-50 flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-[#141414] p-3 shadow-2xl sm:inset-x-auto sm:bottom-14 sm:left-1/2 sm:w-auto sm:-translate-x-1/2 sm:flex-nowrap sm:pr-4">
           {pendingImage.src ? (
             <img
               src={pendingImage.src}
@@ -944,26 +1031,99 @@ export const ClientPortal: React.FC = () => {
             </p>
             <p className="text-[11px] text-white/45">JPG or PNG — we&apos;ll resize it for you.</p>
           </div>
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="ml-2 shrink-0 rounded-lg px-4 py-2.5 text-[11px] font-black uppercase tracking-[0.12em]"
-            style={{ background: GOLD, color: '#0a0a0a' }}
-          >
-            Choose new photo
-          </button>
-          <button
-            onClick={() => {
-              pendingImgRef.current?.removeAttribute('data-editor-selected');
-              pendingImgRef.current = null;
-              pendingBgRef.current?.removeAttribute('data-editor-bg-selected');
-              pendingBgRef.current = null;
-              setPendingImage(null);
-            }}
-            className="shrink-0 rounded-lg border border-white/15 p-2.5 text-white/60 hover:text-white"
-            aria-label="Cancel"
-          >
-            <X size={14} />
-          </button>
+          <div className="flex w-full items-center gap-2 sm:ml-2 sm:w-auto">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="min-h-[46px] flex-1 rounded-lg px-4 py-2.5 text-[12px] font-black uppercase tracking-[0.12em] sm:flex-none sm:min-h-0 sm:text-[11px]"
+              style={{ background: GOLD, color: '#0a0a0a' }}
+            >
+              Choose new photo
+            </button>
+            <button
+              onClick={() => {
+                pendingImgRef.current?.removeAttribute('data-editor-selected');
+                pendingImgRef.current = null;
+                pendingBgRef.current?.removeAttribute('data-editor-bg-selected');
+                pendingBgRef.current = null;
+                setPendingImage(null);
+              }}
+              className="min-h-[46px] shrink-0 rounded-lg border border-white/15 px-3.5 text-white/60 hover:text-white sm:min-h-0 sm:p-2.5 sm:px-2.5"
+              aria-label="Cancel"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Colors panel — bottom sheet on mobile, floating card on desktop */}
+      {showColors && (
+        <div className="fixed inset-x-2 bottom-2 z-50 mx-auto w-auto max-w-lg rounded-2xl border border-white/10 bg-[#141414] p-4 shadow-2xl sm:inset-x-0 sm:bottom-6">
+          <div className="mb-3 flex items-center justify-between">
+            <p className="text-[13px] font-semibold text-white">Site colors</p>
+            <button
+              onClick={() => setShowColors(false)}
+              className="rounded-lg border border-white/15 p-2 text-white/60 hover:text-white"
+              aria-label="Close colors"
+            >
+              <X size={14} />
+            </button>
+          </div>
+          {siteColors.length === 0 ? (
+            <p className="text-[12px] text-white/45">No accent colors detected on this page.</p>
+          ) : !colorTarget ? (
+            <>
+              <p className="mb-2 text-[11px] text-white/45">Tap the color you want to change:</p>
+              <div className="flex flex-wrap gap-2">
+                {siteColors.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => setColorTarget(c)}
+                    className="h-11 w-11 rounded-xl border border-white/25 transition hover:scale-105"
+                    style={{ background: c }}
+                    aria-label={`Change ${c}`}
+                  />
+                ))}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="mb-2 flex items-center gap-2">
+                <span className="h-6 w-6 shrink-0 rounded-md border border-white/25" style={{ background: colorTarget }} />
+                <span className="text-[12px] text-white/60">Replace this color with:</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {COLOR_SUGGESTIONS.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => { applyColorSwap(colorTarget, c); setColorTarget(null); }}
+                    className="h-11 w-11 rounded-xl border border-white/25 transition hover:scale-105"
+                    style={{ background: c }}
+                    aria-label={`Use ${c}`}
+                  />
+                ))}
+                <span className="inline-flex h-11 items-center gap-2 rounded-xl border border-white/15 px-3">
+                  <input
+                    type="color"
+                    value={customColor}
+                    onChange={(e) => setCustomColor(e.target.value)}
+                    className="h-7 w-9 cursor-pointer border-0 bg-transparent p-0"
+                    aria-label="Pick a custom color"
+                  />
+                  <button
+                    onClick={() => { applyColorSwap(colorTarget, customColor); setColorTarget(null); }}
+                    className="rounded-lg px-2.5 py-1.5 text-[11px] font-black uppercase tracking-[0.1em]"
+                    style={{ background: GOLD, color: '#0a0a0a' }}
+                  >
+                    Apply
+                  </button>
+                </span>
+              </div>
+              <button onClick={() => setColorTarget(null)} className="mt-3 text-[11px] text-white/50 underline">
+                ← Back to site colors
+              </button>
+            </>
+          )}
         </div>
       )}
 
