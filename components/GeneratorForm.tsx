@@ -5,6 +5,7 @@ import { ScissorsIcon } from './Icons';
 import { isSupportedBookingHost, extractFirstUrl } from '../lib/supportedBookingHost.ts';
 import { buildSiteFromScrape } from '../lib/buildSiteFromScrape.ts';
 import { isBooksyPath, isFreeBarberPath, isBookingPath, isHome2Path } from '../lib/dealMode.ts';
+import { fireCrmLead } from '../lib/leadEvents';
 import { BrandSwatchGrid } from './BrandSwatchGrid';
 import { DEFAULT_SWATCH } from '../lib/brandSwatches';
 
@@ -151,6 +152,12 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
         setScrapeError('Enter your phone number to continue.');
         return;
       }
+      // Capture the CRM lead NOW — the visitor has handed over their
+      // booking link (and on /home-2 their phone). Firing only after a
+      // successful scrape loses the row whenever the pull fails, the
+      // link is unsupported, or the visitor bails during the ~20s wait.
+      // Session dedup makes the post-scrape fireLead a no-op for CRM.
+      if (gateLink) fireCrmLead({ ...inputs, bookingUrl: normalizedUrl });
       if (!isSupportedBookingHost(normalizedUrl)) {
         setScrapeError(
           gateLink
