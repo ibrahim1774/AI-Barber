@@ -70,7 +70,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   // /home-2: exact homepage duplicate at $19/mo + $99/yr — its own plan
   // slugs so Stripe products + analytics distinguish the price test.
   const home2Mode = React.useMemo(() => isHome2Path(), []);
-  // /15: exact homepage duplicate at $15/mo + $144/yr (20% off 15 x 12) —
+  // /15: exact homepage duplicate at $15/mo + $126/yr (30% off 15 x 12) —
   // its own plan slugs so Stripe products + analytics distinguish it.
   const home15Mode = React.useMemo(() => isHome15Path(), []);
 
@@ -100,7 +100,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   // is computed off the path's own monthly × 12 anchor so "Save X%"
   // always reflects the real saving. Keep the server amounts in
   // api/create-checkout-session.ts in sync.
-  const stdYearlyPriceDollars = home2Mode ? 99 : home15Mode ? 144 : (bookingMode || generateMode || booksyMode) ? 59 : 49;
+  const stdYearlyPriceDollars = home2Mode ? 99 : home15Mode ? 126 : (bookingMode || generateMode || booksyMode) ? 59 : 49;
   const stdYearlyPriceYr = `$${stdYearlyPriceDollars}/yr`;
   const stdYearlyPriceYear = `$${stdYearlyPriceDollars}/year`;
   const stdYearlyDiscountPct = Math.max(

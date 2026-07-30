@@ -36,7 +36,7 @@ const PLAN_CONTENT: Record<PlanSlug, { content_id: string; content_name: string;
   'monthly-home2':     { content_id: 'aibarber-hosting-monthly-home2',   content_name: 'aibarber.org Monthly Website Hosting (Home 2)',   price: 19 },
   'yearly-home2':      { content_id: 'aibarber-hosting-yearly-home2',    content_name: 'aibarber.org Yearly Website Hosting (Home 2)',    price: 99 },
   'monthly-15':        { content_id: 'aibarber-hosting-monthly-15',      content_name: 'aibarber.org Monthly Website Hosting (Home 15)',  price: 15 },
-  'yearly-15':         { content_id: 'aibarber-hosting-yearly-15',       content_name: 'aibarber.org Yearly Website Hosting (Home 15)',   price: 144 },
+  'yearly-15':         { content_id: 'aibarber-hosting-yearly-15',       content_name: 'aibarber.org Yearly Website Hosting (Home 15)',   price: 126 },
   'custom':            { content_id: 'aibarber-custom-design',           content_name: 'aibarber.org Custom Website Design',             price: 29 },
   'custom25':          { content_id: 'aibarber-custom-design',           content_name: 'aibarber.org Custom Website Design',             price: 29 },
   'custom-booksy':     { content_id: 'aibarber-custom-design',           content_name: 'aibarber.org Custom Website Design (Booksy)',    price: 29 },
