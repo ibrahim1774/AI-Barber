@@ -10,6 +10,7 @@ export type PlanSlug =
   | 'monthly-free' | 'yearly-free'
   | 'monthly-booking' | 'yearly-booking'
   | 'monthly-home2' | 'yearly-home2'
+  | 'monthly-15' | 'yearly-15'
   | 'custom' | 'custom25' | 'custom-booksy'
   | 'primebarber' | 'primebarber-site';
 
@@ -34,6 +35,8 @@ const PLAN_CONTENT: Record<PlanSlug, { content_id: string; content_name: string;
   'yearly-booking':    { content_id: 'aibarber-hosting-yearly-booking',  content_name: 'aibarber.org Yearly Website Hosting (Booking)',   price: 59 },
   'monthly-home2':     { content_id: 'aibarber-hosting-monthly-home2',   content_name: 'aibarber.org Monthly Website Hosting (Home 2)',   price: 19 },
   'yearly-home2':      { content_id: 'aibarber-hosting-yearly-home2',    content_name: 'aibarber.org Yearly Website Hosting (Home 2)',    price: 99 },
+  'monthly-15':        { content_id: 'aibarber-hosting-monthly-15',      content_name: 'aibarber.org Monthly Website Hosting (Home 15)',  price: 15 },
+  'yearly-15':         { content_id: 'aibarber-hosting-yearly-15',       content_name: 'aibarber.org Yearly Website Hosting (Home 15)',   price: 144 },
   'custom':            { content_id: 'aibarber-custom-design',           content_name: 'aibarber.org Custom Website Design',             price: 29 },
   'custom25':          { content_id: 'aibarber-custom-design',           content_name: 'aibarber.org Custom Website Design',             price: 29 },
   'custom-booksy':     { content_id: 'aibarber-custom-design',           content_name: 'aibarber.org Custom Website Design (Booksy)',    price: 29 },
@@ -63,6 +66,7 @@ const VIEW_CONTENT: Record<string, { content_id: string; content_name: string }>
   '':            { content_id: 'aibarber-homepage',         content_name: 'aibarber.org Homepage (Quiz Funnel)' },
   'new':         { content_id: 'aibarber-homepage',         content_name: 'aibarber.org Homepage (Quiz Funnel)' },
   'home-2':      { content_id: 'aibarber-homepage-2',       content_name: 'aibarber.org Homepage 2 ($19 Price Test)' },
+  '15':          { content_id: 'aibarber-homepage-15',      content_name: 'aibarber.org Homepage 15 ($15 Price Test)' },
   'booksy':      { content_id: 'aibarber-booksy-landing',   content_name: 'aibarber.org /booksy Landing' },
   'free-barber': { content_id: 'aibarber-free-barber-landing', content_name: 'aibarber.org /free-barber Landing' },
   'primebarber': { content_id: 'aibarber-primebarber-landing', content_name: 'aibarber.org /primebarber Landing' },
