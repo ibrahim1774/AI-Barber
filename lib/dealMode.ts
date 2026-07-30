@@ -149,6 +149,17 @@ export function isHome2Path(pathname?: string): boolean {
   return p === HOME2_PATH || p === `${HOME2_PATH}/`;
 }
 
+// `/15` — exact duplicate of the root homepage funnel, but priced
+// $15/mo + $126/yr (30% off 15 × 12; plan slugs monthly-15 / yearly-15).
+// Same pattern as /home-2: every "is this the homepage?" check treats it
+// as home; only PrePaymentBanner pricing + create-checkout-session
+// amounts differ. Custom design stays the flat $29/mo.
+export const HOME15_PATH = '/15';
+export function isHome15Path(pathname?: string): boolean {
+  const p = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
+  return p === HOME15_PATH || p === `${HOME15_PATH}/`;
+}
+
 // `/admin` — owner-only customer dashboard: Stripe subscriptions joined
 // to Supabase accounts + deployed sites. The page itself is only a
 // login shell; /api/admin-overview enforces the admin email.
