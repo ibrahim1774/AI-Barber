@@ -121,3 +121,13 @@ export function fireLead(inputs: ShopInputs): void {
   captureLeadOnce(inputs);
   firePixelLead(inputs);
 }
+
+// CRM-only lead: for funnels that collect contact info BEFORE their
+// completion point (the homepage/home-2 Yes path takes a booking link +
+// phone, then runs a ~20s scrape that can fail or be abandoned — waiting
+// for it loses the row). Shares the session dedup with fireLead, so a
+// later completion-point fireLead never double-rows; the Meta/TikTok
+// Lead pixel still fires only at the real completion.
+export function fireCrmLead(inputs: ShopInputs): void {
+  captureLeadOnce(inputs);
+}
