@@ -6,6 +6,7 @@ import { isSupportedBookingHost, extractFirstUrl } from '../lib/supportedBooking
 import { buildSiteFromScrape } from '../lib/buildSiteFromScrape.ts';
 import { isBooksyPath, isFreeBarberPath, isBookingPath, isHome2Path, isHome15Path } from '../lib/dealMode.ts';
 import { fireCrmLead } from '../lib/leadEvents';
+import { deriveShopNameFromUrl } from '../lib/buildSiteFromScrape.ts';
 import { BrandSwatchGrid } from './BrandSwatchGrid';
 import { DEFAULT_SWATCH } from '../lib/brandSwatches';
 
@@ -157,7 +158,18 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
       // successful scrape loses the row whenever the pull fails, the
       // link is unsupported, or the visitor bails during the ~20s wait.
       // Session dedup makes the post-scrape fireLead a no-op for CRM.
-      if (gateLink) fireCrmLead({ ...inputs, bookingUrl: normalizedUrl });
+      // The Yes branch has no name field, so without this the CRM row
+      // landed with an empty company column (and the post-scrape lead
+      // carrying the real name is a no-op — same session dedup). Derive
+      // the shop name from the pasted URL so every row is named:
+      // booksy.com/en-us/12345_kingdom-barber-shop_… → "Kingdom Barber Shop".
+      if (gateLink) {
+        fireCrmLead({
+          ...inputs,
+          bookingUrl: normalizedUrl,
+          shopName: (inputs.shopName || '').trim() || deriveShopNameFromUrl(normalizedUrl),
+        });
+      }
       if (!isSupportedBookingHost(normalizedUrl)) {
         setScrapeError(
           gateLink
