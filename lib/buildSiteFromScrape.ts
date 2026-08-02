@@ -7,6 +7,7 @@
 //     wins; scrape fills the visual + content gaps (photos,
 //     services, hours, reviews, bio, staff).
 import type { WebsiteData, ShopInputs } from '../types';
+import { detectBooksyNiche } from './booksyNiche';
 
 const SERVICE_ICONS = ['scissors', 'razor', 'mustache', 'face', 'sparkles'] as const;
 
@@ -99,10 +100,18 @@ export function buildSiteFromScrape(data: ScrapeResponse, fallbackUrl: string, o
 
   // Manual fields win over scraped identity. Empty manual = use scrape, then
   // a name derived from the booking URL, and only then a generic default.
+  // What kind of business is this? Booksy hosts hair, nails, lashes,
+  // massage, tattoo, pet grooming and more — the copy below adapts so a
+  // nail tech's site never calls itself a barbershop.
+  const nicheProfile = detectBooksyNiche(
+    fallbackUrl || data.bookingUrl || '',
+    (manual.shopName || data.shopName || ''),
+    (data.services || []).map((s: any) => `${s?.title || ''} ${s?.category || ''}`),
+  );
   const shopName = (manual.shopName || '').trim()
     || (data.shopName || '').trim()
     || deriveShopNameFromUrl(fallbackUrl)
-    || 'Your Barbershop';
+    || nicheProfile.fallbackName;
   const area = (manual.area || '').trim() || (data.area || '').trim() || '';
   const phone = (manual.phone || '').trim() || (data.phone || '').trim() || '';
   const bookingUrl = (manual.bookingUrl || data.bookingUrl || fallbackUrl || '').trim();
@@ -117,8 +126,8 @@ export function buildSiteFromScrape(data: ScrapeResponse, fallbackUrl: string, o
         .filter(Boolean)
         .slice(0, 2) || [bio])
     : [
-        `${shopName} is a neighborhood barbershop built around honest work and consistent craft.`,
-        'Every visit starts with a real conversation and ends with a cut you can wear with confidence.',
+        `${shopName} ${nicheProfile.aboutFallback[0]}`,
+        nicheProfile.aboutFallback[1],
       ];
 
   const inputs: ShopInputs = {
@@ -128,7 +137,10 @@ export function buildSiteFromScrape(data: ScrapeResponse, fallbackUrl: string, o
     template,
     bookingUrl,
     colorTheme: manual.colorTheme,
-  };
+    // Rides into the Make.com lead row so "Barbershop" isn't reported
+    // for a lash studio (see services/leadCaptureService.ts).
+    industry: nicheProfile.industry,
+  } as ShopInputs;
 
   const scraped: WebsiteData = {
     shopName,
@@ -139,11 +151,11 @@ export function buildSiteFromScrape(data: ScrapeResponse, fallbackUrl: string, o
     colorTheme: manual.colorTheme,
     hero: {
       heading: shopName,
-      tagline: 'Premium grooming services tailored to your style.',
+      tagline: nicheProfile.heroTagline,
       imageUrl: data.photos?.[0] || '',
     },
     about: {
-      heading: 'About the Shop',
+      heading: nicheProfile.aboutHeading,
       description: aboutParas,
       imageUrl: data.photos?.[1] || data.photos?.[0] || '',
     },

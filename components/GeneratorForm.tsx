@@ -7,6 +7,7 @@ import { buildSiteFromScrape } from '../lib/buildSiteFromScrape.ts';
 import { isBooksyPath, isFreeBarberPath, isBookingPath, isHome2Path, isHome15Path } from '../lib/dealMode.ts';
 import { fireCrmLead } from '../lib/leadEvents';
 import { deriveShopNameFromUrl } from '../lib/buildSiteFromScrape.ts';
+import { detectBooksyNiche } from '../lib/booksyNiche.ts';
 import { BrandSwatchGrid } from './BrandSwatchGrid';
 import { DEFAULT_SWATCH } from '../lib/brandSwatches';
 
@@ -168,7 +169,11 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
           ...inputs,
           bookingUrl: normalizedUrl,
           shopName: (inputs.shopName || '').trim() || deriveShopNameFromUrl(normalizedUrl),
-        });
+          // The Booksy path carries the category, so the row can say
+          // "Nail Salon" / "Lash & Brow Studio" from the very first
+          // hit — before the scrape has even run.
+          industry: detectBooksyNiche(normalizedUrl, inputs.shopName).industry,
+        } as any);
       }
       if (!isSupportedBookingHost(normalizedUrl)) {
         setScrapeError(

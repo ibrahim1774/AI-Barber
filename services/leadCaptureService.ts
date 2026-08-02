@@ -14,7 +14,10 @@ import { getAdAttribution } from "./adAttribution";
 
 export const captureLead = async (inputs: ShopInputs): Promise<void> => {
   const payload = {
-    industry: "Barbershop",
+    // Booksy hosts far more than barbershops — buildSiteFromScrape /
+    // the booking-link gate stamp the detected trade so the CRM row is
+    // right for a nail, lash, massage or tattoo business.
+    industry: (inputs as any).industry || "Barbershop",
     companyName: inputs.shopName,
     location: inputs.area,
     phone: inputs.phone,
