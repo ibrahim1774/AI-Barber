@@ -78,6 +78,17 @@ export const BOOKSY_NICHES: Array<BooksyNiche & { keywords: string[] }> = [
     keywords: ['nail', 'manicure', 'pedicure', 'mani', 'pedi', 'gel-x', 'acrylic', 'polish'],
   },
   {
+    key: 'medspa', industry: 'Medical Aesthetics', noun: 'medical aesthetics clinic',
+    heroTagline: 'Aesthetic treatments planned around what you actually want changed.',
+    aboutHeading: 'About the Clinic',
+    aboutFallback: [
+      'is a medical aesthetics clinic built around careful assessment before any treatment.',
+      'Every visit starts with a consultation so the plan fits your face and your budget.',
+    ],
+    fallbackName: 'Your Clinic',
+    keywords: ['med-spa', 'medspa', 'med spa', 'botox', 'filler', 'injectable', 'aesthetics-medical', 'medical-aesthetic', 'prp', 'lipo', 'coolsculpt', 'iv-therapy'],
+  },
+  {
     key: 'skin', industry: 'Skin Care Studio', noun: 'skin care studio',
     heroTagline: 'Facials and skin treatments matched to your skin.',
     aboutHeading: 'About the Studio',
@@ -153,6 +164,50 @@ export const BOOKSY_NICHES: Array<BooksyNiche & { keywords: string[] }> = [
     ],
     fallbackName: 'Your Training Studio',
     keywords: ['fitness', 'personal-train', 'personal train', 'gym', 'yoga', 'pilates', 'coach'],
+  },
+  {
+    key: 'dental', industry: 'Dental & Orthodontics', noun: 'dental practice',
+    heroTagline: 'Dental care explained plainly, at a pace you are comfortable with.',
+    aboutHeading: 'About the Practice',
+    aboutFallback: [
+      'is a dental practice built around clear explanations and unhurried appointments.',
+      'Every visit starts by listening, so you know what is happening and why.',
+    ],
+    fallbackName: 'Your Practice',
+    keywords: ['dental', 'dentist', 'orthodont', 'teeth', 'braces', 'invisalign', 'whitening-teeth', 'hygienist'],
+  },
+  {
+    key: 'health', industry: 'Health & Wellness', noun: 'wellness clinic',
+    heroTagline: 'Care that treats the cause, not just the symptom.',
+    aboutHeading: 'About the Clinic',
+    aboutFallback: [
+      'is a wellness clinic built around getting to the root of the problem.',
+      'Every plan is built around your history and how your body actually responds.',
+    ],
+    fallbackName: 'Your Clinic',
+    keywords: ['chiro', 'physio', 'physical-therapy', 'acupunctur', 'nutrition', 'dietit', 'therapy-clinic', 'rehabilitation', 'osteopath', 'podiatr'],
+  },
+  {
+    key: 'home', industry: 'Home Services', noun: 'home services company',
+    heroTagline: 'Reliable work at your place, when we say we will be there.',
+    aboutHeading: 'About Us',
+    aboutFallback: [
+      'is a local home services company built around showing up on time and doing the job properly.',
+      'Every job is quoted clearly up front, so there are no surprises at the end.',
+    ],
+    fallbackName: 'Your Company',
+    keywords: ['cleaning', 'housekeep', 'handyman', 'plumb', 'electric', 'hvac', 'landscap', 'lawn', 'pest', 'moving', 'junk-removal', 'pressure-wash', 'carpet-clean', 'window-clean', 'home-service', 'repair'],
+  },
+  {
+    key: 'professional', industry: 'Professional Services', noun: 'local business',
+    heroTagline: 'Straightforward service from someone who answers the phone.',
+    aboutHeading: 'About Us',
+    aboutFallback: [
+      'is a local business built around doing right by the people it works with.',
+      'Every job starts with a proper conversation about what you actually need.',
+    ],
+    fallbackName: 'Your Business',
+    keywords: ['photograph', 'videograph', 'tutor', 'consult', 'coaching', 'legal', 'attorney', 'account', 'bookkeep', 'notary', 'insurance', 'real-estate', 'event-plan', 'catering', 'professional-service'],
   },
   {
     key: 'hair', industry: 'Hair Salon', noun: 'hair salon',
