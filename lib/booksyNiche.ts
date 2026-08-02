@@ -108,7 +108,7 @@ export const BOOKSY_NICHES: Array<BooksyNiche & { keywords: string[] }> = [
       'Every session is adjusted to how you feel that day, not a fixed routine.',
     ],
     fallbackName: 'Your Massage Studio',
-    keywords: ['massage', 'spa', 'bodywork', 'deep-tissue', 'deep tissue', 'reflexolog', 'sauna', 'wellness'],
+    keywords: ['massage', '=spa', '=spas', 'bodywork', 'deep-tissue', 'deep tissue', 'reflexolog', 'sauna', 'wellness'],
   },
   {
     key: 'waxing', industry: 'Waxing & Hair Removal', noun: 'waxing studio',
@@ -141,7 +141,7 @@ export const BOOKSY_NICHES: Array<BooksyNiche & { keywords: string[] }> = [
       'Every piece starts with a consult so the design is right before the needle.',
     ],
     fallbackName: 'Your Tattoo Studio',
-    keywords: ['tattoo', 'piercing', 'ink', 'body-art', 'pierc'],
+    keywords: ['tattoo', 'piercing', '=ink', 'body-art', 'pierc'],
   },
   {
     key: 'pet', industry: 'Pet Grooming', noun: 'pet grooming salon',
@@ -152,7 +152,7 @@ export const BOOKSY_NICHES: Array<BooksyNiche & { keywords: string[] }> = [
       'Every groom goes at your pet’s pace, however long that takes.',
     ],
     fallbackName: 'Your Grooming Salon',
-    keywords: ['pet', 'dog-groom', 'grooming-pet', 'puppy', 'canine', 'doggy', 'pet-service'],
+    keywords: ['=pet', '=pets', 'dog-groom', 'grooming-pet', 'puppy', 'canine', 'doggy', 'pet-service'],
   },
   {
     key: 'fitness', industry: 'Fitness & Training', noun: 'training studio',
@@ -235,8 +235,23 @@ export function detectBooksyNiche(
     (serviceTitles || []).join(' ').toLowerCase(),
   ].join(' ');
   if (!haystack.trim()) return BARBER;
+  // Word-aware matching. Naive substring matching mis-fires badly on
+  // real shop names — "Sparkle Home Cleaning" contains "spa" and was
+  // being read as a massage studio. Rules:
+  //   "=word"        → the token must equal it exactly (short, ambiguous
+  //                    words like spa / pet)
+  //   "two words"    → substring, for phrases the tokenizer would split
+  //   anything else  → a token must START with it, so "nail" catches
+  //                    "nails" and "wax" catches "waxing" without
+  //                    matching mid-word inside an unrelated name.
+  const tokens = haystack.split(/[^a-z0-9]+/).filter(Boolean);
+  const hits = (keyword: string): boolean => {
+    if (keyword.startsWith('=')) return tokens.includes(keyword.slice(1));
+    if (/[\s-]/.test(keyword)) return haystack.includes(keyword);
+    return tokens.some((t) => t.startsWith(keyword));
+  };
   for (const n of BOOKSY_NICHES) {
-    if (n.keywords.some((k) => haystack.includes(k))) {
+    if (n.keywords.some(hits)) {
       const { keywords, ...profile } = n;
       return profile;
     }
