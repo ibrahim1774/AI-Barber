@@ -11,7 +11,7 @@ export type PlanSlug =
   | 'monthly-booking' | 'yearly-booking'
   | 'monthly-home2' | 'yearly-home2'
   | 'monthly-15' | 'yearly-15'
-  | 'custom' | 'custom25' | 'custom-booksy'
+  | 'custom' | 'custom25' | 'custom-booksy' | 'custom-15'
   | 'primebarber' | 'primebarber-site';
 
 export interface ContentMeta {
@@ -40,6 +40,7 @@ const PLAN_CONTENT: Record<PlanSlug, { content_id: string; content_name: string;
   'custom':            { content_id: 'aibarber-custom-design',           content_name: 'aibarber.org Custom Website Design',             price: 29 },
   'custom25':          { content_id: 'aibarber-custom-design',           content_name: 'aibarber.org Custom Website Design',             price: 29 },
   'custom-booksy':     { content_id: 'aibarber-custom-design',           content_name: 'aibarber.org Custom Website Design (Booksy)',    price: 29 },
+  'custom-15':         { content_id: 'aibarber-custom-design',           content_name: 'aibarber.org Custom Website Design (Home 15)',   price: 19 },
   'primebarber':       { content_id: 'aibarber-primebarber-platform',    content_name: 'aibarber.org PrimeBarber Custom Website Platform',price: 20 },
   'primebarber-site':  { content_id: 'aibarber-primebarber-site',        content_name: 'aibarber.org PrimeBarber Custom Site Only',      price: 19 },
 };
