@@ -58,6 +58,8 @@ export default async function handler(req: any, res: any) {
     // Routes to the same Google Form post-checkout as the other custom
     // plans — only the analytics tag differs.
     const isCustomBooksy = plan === 'custom-booksy';
+    // '/15' custom-design upsell — $19/mo price test (vs $29 elsewhere).
+    const isCustom15 = plan === 'custom-15';
     // 'primebarber' = the standalone /primebarber landing page —
     // $20/mo charged immediately at signup. No free trial. Treated
     // like a custom plan for routing — same Google Form after payment.
@@ -67,7 +69,7 @@ export default async function handler(req: any, res: any) {
     // 20% discount ($20/mo × 12 × 0.8 = $192 → $192/yr). Same
     // Google Form routing as the monthly plan.
     const isPrimeBarberYearly = plan === 'primebarber-yearly';
-    const isCustomAny = isCustom || isCustom25 || isCustomBooksy || isPrimeBarber || isPrimeBarberYearly;
+    const isCustomAny = isCustom || isCustom25 || isCustomBooksy || isCustom15 || isPrimeBarber || isPrimeBarberYearly;
 
     let unitAmount: string;
     let interval: 'month' | 'year';
@@ -137,6 +139,11 @@ export default async function handler(req: any, res: any) {
       unitAmount = '1500';
       interval = 'month';
       productName = 'aibarber.org — Monthly Website Hosting (Home 15)';
+    } else if (isCustom15) {
+      // /15 custom design: $19/mo.
+      unitAmount = '1900';
+      interval = 'month';
+      productName = 'aibarber.org — Custom Website Design (Home 15)';
     } else if (isCustomBooksy) {
       unitAmount = '2900';
       interval = 'month';

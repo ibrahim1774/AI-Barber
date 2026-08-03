@@ -121,16 +121,19 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
           ? 'yearly-free'
           : 'yearly';
 
-  // Custom-design upsell. Flat $29/mo across every entry path.
-  // Plan slug per path for analytics attribution:
+  // Custom-design upsell — $29/mo everywhere EXCEPT /15, which tests
+  // it at $19/mo. Plan slug per path for analytics attribution:
   //   custom-booksy → /booksy
-  //   custom25      → everywhere else
-  const customPlan: 'custom25' | 'custom-booksy' = booksyMode
+  //   custom-15     → /15 ($19/mo)
+  //   custom25      → everywhere else ($29/mo)
+  const customPlan: 'custom25' | 'custom-booksy' | 'custom-15' = booksyMode
     ? 'custom-booksy'
-    : 'custom25';
-  // Custom-design upsell is $29/mo on every entry path.
-  const customPriceLabel = '$29/mo';
-  const customPriceFull = '$29/month';
+    : home15Mode
+      ? 'custom-15'
+      : 'custom25';
+  const customPriceDollars = home15Mode ? 19 : 29;
+  const customPriceLabel = `$${customPriceDollars}/mo`;
+  const customPriceFull = `$${customPriceDollars}/month`;
 
   const [isDismissed, setIsDismissed] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
@@ -241,8 +244,8 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
           ? (crypto as any).randomUUID()
           : `co_${Date.now()}_${Math.random().toString(36).slice(2)}`;
       // Custom-design InitiateCheckout — matches the actual Stripe
-      // charge ($29/mo) so Meta/TikTok ROAS math stays aligned.
-      const checkoutValue = 29;
+      // charge ($29/mo, $19 on /15) so Meta/TikTok ROAS math stays aligned.
+      const checkoutValue = customPriceDollars;
       const checkoutCurrency = 'USD';
       const { getPlanContentMeta } = await import('../lib/pixelMeta');
       const { readMetaCookies } = await import('../services/metaMatchParams');
