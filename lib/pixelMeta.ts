@@ -27,7 +27,7 @@ export interface ContentMeta {
 // values in api/create-checkout-session.ts.
 const PLAN_CONTENT: Record<PlanSlug, { content_id: string; content_name: string; price: number }> = {
   'monthly':           { content_id: 'aibarber-hosting-monthly',         content_name: 'aibarber.org Monthly Website Hosting',           price: 10 },
-  'yearly':            { content_id: 'aibarber-hosting-yearly',          content_name: 'aibarber.org Yearly Website Hosting',            price: 49 },
+  'yearly':            { content_id: 'aibarber-hosting-yearly',          content_name: 'aibarber.org Yearly Website Hosting',            price: 79 },
   'monthly-booksy':    { content_id: 'aibarber-hosting-monthly-booksy',  content_name: 'aibarber.org Monthly Website Hosting (Booksy)',  price: 10 },
   'yearly-booksy':     { content_id: 'aibarber-hosting-yearly-booksy',   content_name: 'aibarber.org Yearly Website Hosting (Booksy)',   price: 59 },
   'monthly-free':      { content_id: 'aibarber-hosting-monthly-free',    content_name: 'aibarber.org Monthly Website Hosting (Free Barber)', price: 7 },

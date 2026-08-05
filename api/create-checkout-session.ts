@@ -78,8 +78,8 @@ export default async function handler(req: any, res: any) {
     let interval: 'month' | 'year';
     let productName: string;
     if (isYearly) {
-      // Standard yearly: flat $49/yr (≈59% off $10/mo × 12).
-      unitAmount = '4900';
+      // Standard yearly: flat $79/yr (≈34% off $10/mo × 12).
+      unitAmount = '7900';
       interval = 'year';
       productName = 'aibarber.org — Yearly Website Hosting';
     } else if (isYearlyBooksy) {
