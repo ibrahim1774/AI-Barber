@@ -59,7 +59,7 @@ const DEPLOY_TIMER_SECONDS = 5;
 const isRootHomePath = (): boolean => {
   try {
     const p = window.location.pathname.replace(/\/+$/, '');
-    return p === '' || p === '/home-2' || p === '/15';
+    return p === '' || p === '/home-2' || p === '/15' || p === '/7';
   } catch { return false; }
 };
 
