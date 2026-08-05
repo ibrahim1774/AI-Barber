@@ -14,6 +14,8 @@
 
 const STORAGE_KEY = 'aibarber_ad_attribution';
 const COOKIE_NAME = 'aib_attr';
+const FIRST_STORAGE_KEY = STORAGE_KEY + '_first';
+const FIRST_COOKIE_NAME = 'aib_attr_f';
 const COOKIE_MAX_AGE_DAYS = 30;
 
 // Param keys we forward (anything else on the URL is ignored).
@@ -60,6 +62,17 @@ export function captureAdParamsOnLoad(): void {
     // without threading the params through every client fetch.
     document.cookie =
       `${COOKIE_NAME}=${encodeURIComponent(json)}; path=/; max-age=${COOKIE_MAX_AGE_DAYS * 24 * 60 * 60}; SameSite=Lax`;
+    // FIRST touch — written once and never overwritten, so the ad that
+    // originally brought this visitor keeps its credit even if a later
+    // ad click replaces the last-touch set above. /tracking offers both
+    // attribution models; checkout stamps this set with an fc_ prefix.
+    try {
+      if (!localStorage.getItem(FIRST_STORAGE_KEY)) {
+        localStorage.setItem(FIRST_STORAGE_KEY, json);
+        document.cookie =
+          `${FIRST_COOKIE_NAME}=${encodeURIComponent(json)}; path=/; max-age=${COOKIE_MAX_AGE_DAYS * 24 * 60 * 60}; SameSite=Lax`;
+      }
+    } catch { /* first-touch is best-effort too */ }
   } catch {
     /* storage/cookies unavailable — attribution is best-effort */
   }

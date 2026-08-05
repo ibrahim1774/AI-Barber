@@ -51,6 +51,10 @@ interface ConversionRow {
   adset: string;
   ad: string;
   adId: string;
+  fcCampaign: string;
+  fcAdset: string;
+  fcAd: string;
+  fcAdId: string;
   fbclid: boolean;
 }
 
@@ -116,6 +120,11 @@ async function fetchStripeConversions(fromUnix: number, toUnix: number): Promise
         adset: m.utm_adset || '',
         ad: m.utm_content || '',
         adId: String(m.utm_id || m.tw_adid || ''),
+        // first-touch set (fc_ prefix) — the ad that first brought them
+        fcCampaign: m.fc_utm_campaign || '',
+        fcAdset: m.fc_utm_adset || '',
+        fcAd: m.fc_utm_content || '',
+        fcAdId: String(m.fc_utm_id || ''),
         fbclid: !!m.fbclid,
       });
     }
