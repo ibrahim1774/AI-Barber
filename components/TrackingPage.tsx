@@ -12,7 +12,7 @@ import { supabase } from '../lib/supabase';
 // like /admin, not a customer surface.
 
 interface SpendRow { date: string; campaign: string; adset: string; ad: string; adId: string; spend: number; impressions: number; clicks: number; }
-interface ConversionRow { id: string; created: number; amount: number; currency: string; plan: string; type: string; customerEmail: string | null; campaign: string; adset: string; ad: string; adId: string; fbclid: boolean; }
+interface ConversionRow { id: string; created: number; amount: number; currency: string; plan: string; type: string; customerEmail: string | null; campaign: string; adset: string; ad: string; adId: string; fcCampaign: string; fcAdset: string; fcAd: string; fcAdId: string; fbclid: boolean; }
 interface Payload { range: { from: number; to: number }; spend: SpendRow[]; spendError: string | null; conversions: ConversionRow[]; conversionsError: string | null; }
 
 const INK = '#0d0d0f', CARD = '#151519', LINE = 'rgba(255,255,255,0.09)', PAPER = '#f2f2ef', SMOKE = '#9a9aa2', GOLD = '#e8c074', GREEN = '#34d399', RED = '#f87171';
@@ -38,6 +38,9 @@ export default function TrackingPage() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
   const [openAd, setOpenAd] = useState<string | null>(null);
+  // Attribution model. Last click = the ad clicked most recently before
+  // purchase; first click = the ad that originally brought the visitor.
+  const [model, setModel] = useState<'last' | 'first'>('last');
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setAuthed(!!data.session));
@@ -87,9 +90,14 @@ export default function TrackingPage() {
     }
     const unattributed: ConversionRow[] = [];
     for (const c of data.conversions) {
-      let hit = c.adId && [...byAd.values()].find((a) => a.adId === c.adId);
-      if (!hit && c.ad) hit = [...byAd.values()].find((a) => a.ad === c.ad);
-      if (!hit && c.campaign) hit = [...byAd.values()].find((a) => a.campaign === c.campaign);
+      // Pick the touch for the selected model; first-click falls back to
+      // last-touch when the purchase predates first-touch capture.
+      const adId = model === 'first' ? (c.fcAdId || c.adId) : c.adId;
+      const adName = model === 'first' ? (c.fcAd || c.ad) : c.ad;
+      const camp = model === 'first' ? (c.fcCampaign || c.campaign) : c.campaign;
+      let hit = adId && [...byAd.values()].find((a) => a.adId === adId);
+      if (!hit && adName) hit = [...byAd.values()].find((a) => a.ad === adName);
+      if (!hit && camp) hit = [...byAd.values()].find((a) => a.campaign === camp);
       if (hit) { hit.purchases += 1; hit.revenue += c.amount; hit.convs.push(c); }
       else unattributed.push(c);
     }
@@ -101,7 +109,7 @@ export default function TrackingPage() {
       revenue: data.conversions.reduce((s, c) => s + c.amount, 0),
     };
     return { ads, unattributed, totals };
-  }, [data]);
+  }, [data, model]);
 
   if (authed === null) return <div style={{ minHeight: '100vh', background: INK }} />;
 
@@ -132,7 +140,15 @@ export default function TrackingPage() {
             <p style={{ fontSize: 10, letterSpacing: '0.3em', color: GOLD, textTransform: 'uppercase' }}>aibarber.org</p>
             <h1 style={{ fontSize: 22, fontWeight: 800, marginTop: 3 }}>Ads Tracking</h1>
           </div>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <div style={{ display: 'flex', border: `1px solid ${LINE}`, borderRadius: 8, overflow: 'hidden', marginRight: 8 }}>
+              {([['last', 'Last click'], ['first', 'First click']] as const).map(([k, label]) => (
+                <button key={k} onClick={() => setModel(k)}
+                  style={{ padding: '7px 12px', cursor: 'pointer', fontWeight: 700, fontSize: 12, border: 0, background: model === k ? GOLD : 'transparent', color: model === k ? '#141414' : SMOKE }}>
+                  {label}
+                </button>
+              ))}
+            </div>
             {PRESETS.map((p) => (
               <button key={p.key} onClick={() => setPreset(p.key)}
                 style={{ padding: '7px 13px', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: 12, border: `1px solid ${preset === p.key ? GOLD : LINE}`, background: preset === p.key ? GOLD : 'transparent', color: preset === p.key ? '#141414' : SMOKE }}>

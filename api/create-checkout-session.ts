@@ -136,27 +136,27 @@ export default async function handler(req: any, res: any) {
       // /7 yearly: $67/yr (20% off $7/mo x 12 = $84).
       unitAmount = '6700';
       interval = 'year';
-      productName = 'aibarber.org — Yearly Website Hosting (Home 7)';
+      productName = 'aibarber.org — Yearly Website Hosting (7)';
     } else if (isMonthly7) {
       // /7 monthly: $7/mo.
       unitAmount = '700';
       interval = 'month';
-      productName = 'aibarber.org — Monthly Website Hosting (Home 7)';
+      productName = 'aibarber.org — Monthly Website Hosting (7)';
     } else if (isYearly15) {
       // /15 yearly: $126/yr (30% off $15/mo × 12).
       unitAmount = '12600';
       interval = 'year';
-      productName = 'aibarber.org — Yearly Website Hosting (Home 15)';
+      productName = 'aibarber.org — Yearly Website Hosting (15)';
     } else if (isMonthly15) {
       // /15 monthly: $15/mo.
       unitAmount = '1500';
       interval = 'month';
-      productName = 'aibarber.org — Monthly Website Hosting (Home 15)';
+      productName = 'aibarber.org — Monthly Website Hosting (15)';
     } else if (isCustom15) {
       // /15 custom design: $19/mo.
       unitAmount = '1900';
       interval = 'month';
-      productName = 'aibarber.org — Custom Website Design (Home 15)';
+      productName = 'aibarber.org — Custom Website Design (15)';
     } else if (isCustomBooksy) {
       unitAmount = '2900';
       interval = 'month';
@@ -244,6 +244,22 @@ export default async function handler(req: any, res: any) {
         }
       }
     } catch { /* attribution is best-effort — never block checkout */ }
+    // First-touch set (aib_attr_f) — the ad that ORIGINALLY brought this
+    // visitor. Stamped under an fc_ prefix so /tracking can offer both
+    // first-click and last-click attribution models.
+    try {
+      const cookieHeader = req.headers.cookie || '';
+      const match = cookieHeader.split(/;\s*/).find((c) => c.startsWith('aib_attr_f='));
+      if (match) {
+        const attr = JSON.parse(decodeURIComponent(match.slice('aib_attr_f='.length)));
+        if (attr && typeof attr === 'object') {
+          Object.entries(attr)
+            .filter(([k, v]) => typeof v === 'string' && v && /^[a-z0-9_]{1,33}$/i.test(k))
+            .slice(0, 12)
+            .forEach(([k, v]) => params.append(`metadata[fc_${k}]`, String(v).slice(0, 500)));
+        }
+      }
+    } catch { /* first-touch is best-effort too */ }
     // /primebarber: $20/mo charged immediately at signup. The 7-day
     // free trial that previously gated the first charge has been
     // removed — customers are billed today, full subscription starts
