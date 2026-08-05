@@ -154,6 +154,14 @@ export function isHome2Path(pathname?: string): boolean {
 // Same pattern as /home-2: every "is this the homepage?" check treats it
 // as home; only PrePaymentBanner pricing + create-checkout-session
 // amounts differ. Custom design stays the flat $29/mo.
+// `/7` — same funnel as /15, priced $7/mo + $67/yr (20% off 7 x 12 = 84).
+// Custom design matches /15 at $19/mo.
+export const HOME7_PATH = '/7';
+export function isHome7Path(pathname?: string): boolean {
+  const p = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
+  return p === HOME7_PATH || p === `${HOME7_PATH}/`;
+}
+
 export const HOME15_PATH = '/15';
 export function isHome15Path(pathname?: string): boolean {
   const p = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
