@@ -14,7 +14,7 @@ import { HomeLaunchGuide } from './components/HomeLaunchGuide.tsx';
 import { buildSiteFromScrape } from './lib/buildSiteFromScrape.ts';
 import { ensureUuid } from './lib/ensureUuid.ts';
 import { extractFirstUrl, isSupportedBookingHost } from './lib/supportedBookingHost.ts';
-import { isBooksyPath, isFreeBarberPath, isPrimeBarberPath, isRecoverPath, isGenerateBarbershopPath, isGeneratePath, isBarberGeneratePath, isClientEditPath, isOnboardPath, isAdminGeneratePath, isAdminDashboardPath, isOwnBrandPath } from './lib/dealMode.ts';
+import { isBooksyPath, isFreeBarberPath, isPrimeBarberPath, isRecoverPath, isGenerateBarbershopPath, isGeneratePath, isBarberGeneratePath, isClientEditPath, isOnboardPath, isAdminGeneratePath, isAdminDashboardPath, isTrackingPath, isOwnBrandPath } from './lib/dealMode.ts';
 import { LoadingScreen } from './components/LoadingScreen.tsx';
 import { generateHTMLForTemplate } from './services/templateRenderer.ts';
 import { generateContent } from './services/geminiService.ts';
@@ -47,6 +47,7 @@ const OnboardClientSite = lazy(() => import('./components/OnboardClientSite.tsx'
 const BooksyDesignSwitcher = lazy(() => import('./components/BooksyDesignSwitcher.tsx').then(m => ({ default: m.BooksyDesignSwitcher })));
 const AdminGenerator = lazy(() => import('./components/AdminGenerator.tsx').then(m => ({ default: m.AdminGenerator })));
 const AdminDashboard = lazy(() => import('./components/AdminDashboard.tsx').then(m => ({ default: m.AdminDashboard })));
+const TrackingPage = lazy(() => import('./components/TrackingPage.tsx'));
 const OwnBrandLanding = lazy(() => import('./components/OwnBrandLanding.tsx').then(m => ({ default: m.OwnBrandLanding })));
 
 const DEPLOY_TIMER_SECONDS = 5;
@@ -1153,6 +1154,16 @@ const App: React.FC = () => {
     return (
       <Suspense fallback={<LoadingScreen />}>
         <OnboardClientSite />
+      </Suspense>
+    );
+  }
+
+  // /tracking — owner-only ads dashboard (Meta spend ⋈ Stripe
+  // conversions per creative). Same auth model as /admin.
+  if (isTrackingPath()) {
+    return (
+      <Suspense fallback={<LoadingScreen />}>
+        <TrackingPage />
       </Suspense>
     );
   }

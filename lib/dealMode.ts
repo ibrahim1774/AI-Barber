@@ -171,6 +171,15 @@ export function isHome15Path(pathname?: string): boolean {
 // `/admin` — owner-only customer dashboard: Stripe subscriptions joined
 // to Supabase accounts + deployed sites. The page itself is only a
 // login shell; /api/admin-overview enforces the admin email.
+// `/tracking` — owner-only ads dashboard (Meta spend ⋈ Stripe
+// conversions per ad creative). Login shell only; the data API
+// enforces the admin email.
+export const TRACKING_PATH = '/tracking';
+export function isTrackingPath(pathname?: string): boolean {
+  const p = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
+  return p === TRACKING_PATH || p === `${TRACKING_PATH}/`;
+}
+
 export const ADMIN_DASHBOARD_PATH = '/admin';
 export function isAdminDashboardPath(pathname?: string): boolean {
   const p = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
