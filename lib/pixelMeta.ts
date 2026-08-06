@@ -43,7 +43,7 @@ const PLAN_CONTENT: Record<PlanSlug, { content_id: string; content_name: string;
   'custom':            { content_id: 'aibarber-custom-design',           content_name: 'aibarber.org Custom Website Design',             price: 29 },
   'custom25':          { content_id: 'aibarber-custom-design',           content_name: 'aibarber.org Custom Website Design',             price: 29 },
   'custom-booksy':     { content_id: 'aibarber-custom-design',           content_name: 'aibarber.org Custom Website Design (Booksy)',    price: 29 },
-  'custom-15':         { content_id: 'aibarber-custom-design',           content_name: 'aibarber.org Custom Website Design (Home 15)',   price: 19 },
+  'custom-15':         { content_id: 'aibarber-custom-design',           content_name: 'aibarber.org Custom Website Design (7)',         price: 19 },
   'primebarber':       { content_id: 'aibarber-primebarber-platform',    content_name: 'aibarber.org PrimeBarber Custom Website Platform',price: 20 },
   'primebarber-site':  { content_id: 'aibarber-primebarber-site',        content_name: 'aibarber.org PrimeBarber Custom Site Only',      price: 19 },
 };

@@ -153,10 +153,11 @@ export default async function handler(req: any, res: any) {
       interval = 'month';
       productName = 'aibarber.org — Monthly Website Hosting (15)';
     } else if (isCustom15) {
-      // /15 custom design: $19/mo.
+      // /7 custom design: $19/mo (slug kept from the old /15 test;
+      // /15 now upsells the standard $29 custom25).
       unitAmount = '1900';
       interval = 'month';
-      productName = 'aibarber.org — Custom Website Design (15)';
+      productName = 'aibarber.org — Custom Website Design (7)';
     } else if (isCustomBooksy) {
       unitAmount = '2900';
       interval = 'month';

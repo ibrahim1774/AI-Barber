@@ -128,17 +128,17 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
           ? 'yearly-free'
           : 'yearly';
 
-  // Custom-design upsell — $29/mo everywhere EXCEPT /15, which tests
+  // Custom-design upsell — $29/mo everywhere EXCEPT /7, which tests
   // it at $19/mo. Plan slug per path for analytics attribution:
   //   custom-booksy → /booksy
-  //   custom-15     → /15 ($19/mo)
-  //   custom25      → everywhere else ($29/mo)
+  //   custom-15     → /7 ($19/mo; slug kept for continuity)
+  //   custom25      → everywhere else incl. /15 ($29/mo)
   const customPlan: 'custom25' | 'custom-booksy' | 'custom-15' = booksyMode
     ? 'custom-booksy'
-    : (home15Mode || home7Mode)
+    : home7Mode
       ? 'custom-15'
       : 'custom25';
-  const customPriceDollars = (home15Mode || home7Mode) ? 19 : 29;
+  const customPriceDollars = home7Mode ? 19 : 29;
   const customPriceLabel = `$${customPriceDollars}/mo`;
   const customPriceFull = `$${customPriceDollars}/month`;
 
