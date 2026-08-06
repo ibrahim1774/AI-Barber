@@ -1026,7 +1026,37 @@ const App: React.FC = () => {
       // after a successful attach — it's keyed by the pending slug (not
       // this UUID), it's private, tiny, and it stays useful as a
       // recovery source (password resets, account mixups, support).
-    } else if (!authedUser) {
+    } else if (authedUser) {
+      // No activeSite in THIS browser (paid in the IG in-app browser,
+      // signed up here; or storage was cleared). Recover the paid site
+      // by the account email and attach it NOW, synchronously — the
+      // dashboard self-heal covers this too, but only if the customer
+      // sticks around for it; most one-visit signups never come back
+      // (the tcgrider/otn-teezy/fofanaswarry orphans all had exactly
+      // one sign-in).
+      try {
+        const resp = await fetch('/api/recover-site', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: authedUser.email }),
+        });
+        if (resp.ok) {
+          const result = await resp.json();
+          if (result?.ok && result?.siteInstance) {
+            const recovered = {
+              ...result.siteInstance,
+              id: ensureUuid(result.siteInstance.id),
+              lastSaved: result.siteInstance.lastSaved || Date.now(),
+            };
+            await upsertSiteToSupabase(recovered, authedUser.id);
+            setActiveSite(recovered);
+            console.log('[Migration] Recovered + attached site by email for user', authedUser.id);
+          }
+        }
+      } catch (err) {
+        console.warn('[Migration] Email recovery attach failed (dashboard self-heal will retry):', err);
+      }
+    } else {
       console.warn('[Migration] Skipped — could not resolve authenticated user after signup');
     }
 

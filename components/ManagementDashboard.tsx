@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { SiteInstance } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchUserSites } from '../services/supabaseDataService';
-import { getAllSites as getAllLocalSites } from '../services/indexedDBService';
+import { getAllSites as getAllLocalSites, deleteSite as deleteLocalSite } from '../services/indexedDBService';
 import { ScissorsIcon } from './Icons';
 import { DomainManager } from './DomainManager';
 import { dualWriteSave } from '../services/saveService';
@@ -60,7 +60,21 @@ export const ManagementDashboard: React.FC<ManagementDashboardProps> = ({
       // Also check IndexedDB — prefer whichever source has the fresher data
       try {
         const localSites = await getAllLocalSites();
-        for (const local of localSites) {
+        for (const rawLocal of localSites) {
+          // Slug-id sites (older deploy flow) MUST be re-keyed before the
+          // Supabase sync: the sites.id column is a UUID, so a slug makes
+          // the fire-and-forget upsert throw 22P02 on every load — the
+          // site renders fine from IndexedDB, the account row is never
+          // written, and the customer shows up site-less in /admin (the
+          // tcgrider/otn-teezy/fofanaswarry orphans). The self-heal can't
+          // catch it either: it only runs when NO deployed site is visible.
+          const local = rawLocal.id === ensureUuid(rawLocal.id)
+            ? rawLocal
+            : { ...rawLocal, id: ensureUuid(rawLocal.id) };
+          if (local !== rawLocal) {
+            // Drop the slug-keyed copy so the next load doesn't resurrect it.
+            deleteLocalSite(rawLocal.id).catch(() => {});
+          }
           const existingIdx = allSites.findIndex(s => s.id === local.id);
           if (existingIdx === -1) {
             // Site only in IndexedDB — add and sync to Supabase
