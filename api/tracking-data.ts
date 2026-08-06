@@ -35,6 +35,21 @@ interface SpendRow {
   spend: number;
   impressions: number;
   clicks: number;
+  // Meta's own cross-device attribution claim for this ad (pixel + CAPI
+  // matched by Meta's identity graph). Shown next to the click-verified
+  // numbers as ceiling vs floor — Meta grades its own homework.
+  metaPurchases: number;
+  metaRevenue: number;
+}
+
+// Meta reports conversions as an actions list with overlapping rollups
+// ('purchase' aggregates the pixel/omni variants). Prefer the aggregate,
+// fall back to the variants — never sum them (double count).
+function pickPurchase(list: any): number {
+  if (!Array.isArray(list)) return 0;
+  const by: Record<string, number> = {};
+  for (const a of list) by[a.action_type] = parseFloat(a.value || '0') || 0;
+  return by['purchase'] ?? by['offsite_conversion.fb_pixel_purchase'] ?? by['omni_purchase'] ?? 0;
 }
 
 interface ConversionRow {
@@ -64,7 +79,7 @@ async function fetchMetaSpend(since: string, until: string): Promise<{ rows: Spe
   const rows: SpendRow[] = [];
   let url =
     `${GRAPH}/${AD_ACCOUNT_ID}/insights?level=ad` +
-    `&fields=campaign_name,adset_name,ad_name,ad_id,spend,impressions,clicks` +
+    `&fields=campaign_name,adset_name,ad_name,ad_id,spend,impressions,clicks,actions,action_values` +
     `&time_range=${encodeURIComponent(JSON.stringify({ since, until }))}` +
     `&time_increment=1&limit=200&access_token=${encodeURIComponent(token)}`;
   // Follow Graph API paging; hard cap keeps a runaway range from hanging.
@@ -82,6 +97,8 @@ async function fetchMetaSpend(since: string, until: string): Promise<{ rows: Spe
         spend: parseFloat(r.spend || '0') || 0,
         impressions: parseInt(r.impressions || '0', 10) || 0,
         clicks: parseInt(r.clicks || '0', 10) || 0,
+        metaPurchases: pickPurchase(r.actions),
+        metaRevenue: pickPurchase(r.action_values),
       });
     }
     url = data?.paging?.next || '';
