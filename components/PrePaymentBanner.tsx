@@ -100,11 +100,12 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
         : freeBarberMode
           ? 'monthly-free'
           : 'monthly';
-  // Yearly is $49/yr everywhere EXCEPT /booking ($59/yr). The discount %
-  // is computed off the path's own monthly × 12 anchor so "Save X%"
+  // Yearly is $79/yr on the homepage; /free-barber stays $49/yr and
+  // /booking, /generate + /booksy stay $59/yr. The discount % is
+  // computed off the path's own monthly × 12 anchor so "Save X%"
   // always reflects the real saving. Keep the server amounts in
   // api/create-checkout-session.ts in sync.
-  const stdYearlyPriceDollars = home2Mode ? 99 : home15Mode ? 126 : home7Mode ? 67 : (bookingMode || generateMode || booksyMode) ? 59 : 49;
+  const stdYearlyPriceDollars = home2Mode ? 99 : home15Mode ? 126 : home7Mode ? 67 : (bookingMode || generateMode || booksyMode) ? 59 : freeBarberMode ? 49 : 79;
   const stdYearlyPriceYr = `$${stdYearlyPriceDollars}/yr`;
   const stdYearlyPriceYear = `$${stdYearlyPriceDollars}/year`;
   const stdYearlyDiscountPct = Math.max(
