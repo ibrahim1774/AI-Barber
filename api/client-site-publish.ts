@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import axios from 'axios';
 import { createClient } from '@supabase/supabase-js';
 
@@ -24,18 +25,15 @@ export const config = { maxDuration: 300 };
 
 const BUCKET = 'client-sites';
 
-// Text files ship utf-8; everything else base64. Matches Vercel's inline-file API.
-const TEXT_EXT = new Set(['html', 'css', 'js', 'json', 'xml', 'txt', 'svg', 'webmanifest']);
-
-interface VercelFile {
+// Deployment references files by sha (uploaded via v2/files) instead of
+// inlining them: the inline flow puts the whole site (base64-inflated)
+// into ONE request that Vercel caps at 10MB — image-heavy client sites
+// blew past it ("Request body too large. Limit: 10mb"). Per-file uploads
+// have no such total cap, and unchanged files dedupe server-side by sha.
+interface VercelFileRef {
   file: string;
-  data: string;
-  encoding: 'base64' | 'utf-8';
-}
-
-function extOf(path: string): string {
-  const i = path.lastIndexOf('.');
-  return i === -1 ? '' : path.slice(i + 1).toLowerCase();
+  sha: string;
+  size: number;
 }
 
 // Recursively list every file under `<slug>/` in the bucket. Supabase list()
@@ -150,25 +148,43 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ ok: false, error: 'No files found for this site' });
     }
 
-    const files: VercelFile[] = [];
+    const blobs: { rel: string; buf: Buffer }[] = [];
     for (const fullPath of paths) {
       const { data: blob, error: dlErr } = await sb.storage.from(BUCKET).download(fullPath);
       if (dlErr || !blob) throw new Error(`download ${fullPath} failed: ${dlErr?.message}`);
-      const buf = Buffer.from(await blob.arrayBuffer());
-      const rel = fullPath.slice(slug.length + 1); // strip "<slug>/"
-      const isText = TEXT_EXT.has(extOf(rel));
-      files.push({
-        file: rel,
-        data: isText ? buf.toString('utf-8') : buf.toString('base64'),
-        encoding: isText ? 'utf-8' : 'base64',
+      blobs.push({
+        rel: fullPath.slice(slug.length + 1), // strip "<slug>/"
+        buf: Buffer.from(await blob.arrayBuffer()),
       });
+    }
+
+    // ── Upload each file by sha (v2/files), then reference by digest ─────
+    const files: VercelFileRef[] = [];
+    const CONCURRENCY = 5;
+    for (let i = 0; i < blobs.length; i += CONCURRENCY) {
+      await Promise.all(
+        blobs.slice(i, i + CONCURRENCY).map(async ({ rel, buf }) => {
+          const sha = crypto.createHash('sha1').update(buf).digest('hex');
+          await axios.post('https://api.vercel.com/v2/files', buf, {
+            headers: {
+              Authorization: `Bearer ${vercelToken}`,
+              'Content-Type': 'application/octet-stream',
+              'x-vercel-digest': sha,
+            },
+            maxBodyLength: Infinity,
+            maxContentLength: Infinity,
+            timeout: 120000,
+          });
+          files.push({ file: rel, sha, size: buf.length });
+        })
+      );
     }
 
     console.log(
       `[client-site-publish] ${slug}: deploying ${files.length} files to ${site.vercel_project_name}`
     );
 
-    // ── Deploy (same inline-files flow as api/deploy-site.ts) ────────────
+    // ── Deploy referencing the uploaded shas ─────────────────────────────
     const deployResp = await axios.post(
       'https://api.vercel.com/v13/deployments',
       {
