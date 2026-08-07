@@ -297,18 +297,30 @@ export default async function handler(req: any, res: any) {
 
     // ── 6. Record the site row ─────────────────────────────────────────────
     const displayName = slug.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
-    const { error: rowErr } = await sb.from('client_sites').upsert(
-      {
-        slug,
-        name: displayName,
-        vercel_project_id: project.id,
-        vercel_project_name: project.name,
-        live_url: liveUrl,
-        owner: ownerId,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'slug' }
-    );
+    const baseRow = {
+      slug,
+      name: displayName,
+      vercel_project_id: project.id,
+      vercel_project_name: project.name,
+      live_url: liveUrl,
+      owner: ownerId,
+      updated_at: new Date().toISOString(),
+    };
+    // Remember the credentials we issued so "what's my password again?" is
+    // answerable from /admin. A re-sync never touches the login, so it must
+    // not overwrite a good record with this request's value.
+    const credRow = resync
+      ? baseRow
+      : { ...baseRow, portal_password: password, password_issued_at: new Date().toISOString() };
+
+    let { error: rowErr } = await sb.from('client_sites').upsert(credRow, { onConflict: 'slug' });
+    // The credential columns arrive with supabase/client-sites.sql. Until
+    // that migration runs, save the site anyway rather than failing an
+    // onboard over a bookkeeping field.
+    if (rowErr && /portal_password|password_issued_at|schema cache/i.test(rowErr.message)) {
+      console.warn('[client-site-onboard] credential columns missing — run supabase/client-sites.sql');
+      ({ error: rowErr } = await sb.from('client_sites').upsert(baseRow, { onConflict: 'slug' }));
+    }
     if (rowErr) throw new Error(`client_sites save failed: ${rowErr.message}`);
 
     console.log(

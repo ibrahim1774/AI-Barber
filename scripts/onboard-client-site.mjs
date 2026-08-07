@@ -26,7 +26,20 @@
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, extname } from 'node:path';
+import { randomInt } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
+
+// Password we ISSUE to the client. Generated rather than invented so the
+// string exists nowhere else in their life — that's what makes storing it
+// on client_sites.portal_password acceptable: a leak can't be replayed
+// against their email or bank. Ambiguous glyphs (0/O, 1/l/I) are omitted
+// because these get read aloud and retyped off a text message.
+const PW_ALPHABET = 'abcdefghijkmnpqrstuvwxyzACDEFGHJKLMNPQRSTUVWXYZ23456789';
+function generatePassword(length = 14) {
+  let out = '';
+  for (let i = 0; i < length; i++) out += PW_ALPHABET[randomInt(PW_ALPHABET.length)];
+  return out;
+}
 
 // ── args ─────────────────────────────────────────────────────────────────
 const args = {};
@@ -39,7 +52,10 @@ for (let i = 0; i < argv.length; i++) {
 
 const SLUG = args.slug;
 const EMAIL = args.email;
-const PASSWORD = args.password;
+// --password is optional now: omit it and we mint one, record it on the
+// site row, and print it at the end for you to send on.
+const PASSWORD = args.password || (EMAIL ? generatePassword() : undefined);
+const PASSWORD_WAS_GENERATED = Boolean(EMAIL && !args.password);
 const FOLDER = args.folder;
 const PROJECT_NAME = args.project || SLUG;
 const DISPLAY_NAME =
@@ -182,8 +198,9 @@ if (files.length) {
 // ── 4. Client login (create or reset) ────────────────────────────────────
 let ownerId = null;
 if (EMAIL) {
-  if (!PASSWORD) die('--email requires --password');
-  console.log(`▸ Provisioning login for ${EMAIL}…`);
+  console.log(
+    `▸ Provisioning login for ${EMAIL}${PASSWORD_WAS_GENERATED ? ' (generated password)' : ''}…`
+  );
   const { data: created, error: createErr } = await supabase.auth.admin.createUser({
     email: EMAIL,
     password: PASSWORD,
@@ -223,17 +240,33 @@ const row = {
   live_url: liveUrl,
   updated_at: new Date().toISOString(),
   ...(ownerId ? { owner: ownerId } : {}),
+  // Remember what we handed the client. Only written when this run set a
+  // password, so re-running for files alone never blanks a good record.
+  ...(EMAIL ? { portal_password: PASSWORD, password_issued_at: new Date().toISOString() } : {}),
 };
-const { error: rowErr } = await supabase
-  .from('client_sites')
-  .upsert(row, { onConflict: 'slug' });
+let { error: rowErr } = await supabase.from('client_sites').upsert(row, { onConflict: 'slug' });
+// The credential columns arrive with supabase/client-sites.sql. If that
+// migration hasn't been run yet, save the site anyway rather than failing
+// an onboard over a bookkeeping field.
+if (rowErr && /portal_password|password_issued_at|schema cache/i.test(rowErr.message)) {
+  console.warn('  ! portal_password column missing — run supabase/client-sites.sql to record passwords');
+  const { portal_password, password_issued_at, ...rowWithoutCreds } = row;
+  ({ error: rowErr } = await supabase
+    .from('client_sites')
+    .upsert(rowWithoutCreds, { onConflict: 'slug' }));
+}
 if (rowErr) die(`client_sites upsert failed: ${rowErr.message}`);
 
 console.log(`\n✅ ${SLUG} onboarded`);
 console.log(`   live site : ${liveUrl}`);
 console.log(`   vercel    : ${project.name} (${project.id})`);
 if (EMAIL) {
-  console.log(`   login     : ${EMAIL} / ${PASSWORD}`);
-  console.log('   portal    : https://www.aibarber.org/edit');
+  console.log('');
+  console.log('   ── send this to the client ──────────────────────────');
+  console.log('   Your website editor: https://www.aibarber.org/edit');
+  console.log(`   Email:    ${EMAIL}`);
+  console.log(`   Password: ${PASSWORD}`);
+  console.log('   ─────────────────────────────────────────────────────');
+  console.log('   (also saved on the site row — visible in /admin)');
 }
 console.log('');

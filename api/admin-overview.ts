@@ -205,7 +205,37 @@ export default async function handler(req: any, res: any) {
     // Accounts that never bought anything — visible so ghosts don't hide.
     const accountsOnly = [...accountByEmail.values()].filter((a) => !emailsWithSubs.has(a.email));
 
-    return res.status(200).json({ ok: true, generatedAt: Date.now(), subs, accountsOnly });
+    // Client Sites portal (/edit) logins. These accounts are created FOR the
+    // client during onboarding, so the password we issued is stored on the
+    // row — this is the only place it can be looked up again. Service-role
+    // read: the credential columns are revoked from `authenticated`, so they
+    // never reach a client's browser. Non-fatal if the table/columns are
+    // missing (the SQL migration may not have been run yet).
+    let clientSites: any[] = [];
+    try {
+      const { data: csRows } = await admin
+        .from('client_sites')
+        .select('slug, name, live_url, owner, portal_password, password_issued_at, created_at')
+        .order('created_at', { ascending: true });
+      const userById = new Map(users.map((u: any) => [u.id, u]));
+      clientSites = (csRows || []).map((r: any) => {
+        const owner = r.owner ? userById.get(r.owner) : null;
+        return {
+          slug: r.slug,
+          name: r.name,
+          liveUrl: r.live_url,
+          email: owner?.email || null,
+          password: r.portal_password || null,
+          passwordIssuedAt: r.password_issued_at || null,
+          lastSignIn: owner?.last_sign_in_at || null,
+          onboardedAt: r.created_at,
+        };
+      });
+    } catch (csErr: any) {
+      console.warn('[admin-overview] client_sites read skipped:', csErr?.message);
+    }
+
+    return res.status(200).json({ ok: true, generatedAt: Date.now(), subs, accountsOnly, clientSites });
   } catch (err: any) {
     console.error('[admin-overview]', err);
     return res.status(500).json({ ok: false, error: err?.message || 'Failed to build overview' });

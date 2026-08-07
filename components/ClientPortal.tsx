@@ -217,6 +217,7 @@ export const ClientPortal: React.FC = () => {
   const [password, setPassword] = useState('');
   const [loginBusy, setLoginBusy] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [resetSent, setResetSent] = useState(false);
 
   // site + pages
   const [site, setSite] = useState<ClientSite | null>(null);
@@ -772,12 +773,33 @@ export const ClientPortal: React.FC = () => {
       e.preventDefault();
       setLoginBusy(true);
       setLoginError(null);
+      setResetSent(false);
       const { error } = await signIn(email.trim(), password);
       setLoginBusy(false);
       if (error) setLoginError('Wrong email or password. Check the login you were given.');
     },
     [email, password, signIn]
   );
+
+  // Self-serve password reset. The emailed link returns here with a recovery
+  // session; PasswordRecoveryModal (mounted globally in index.tsx, so it
+  // covers /edit too) catches PASSWORD_RECOVERY and prompts for the new
+  // password. Without this the only way back in was asking us to reset it.
+  const handleForgotPassword = useCallback(async () => {
+    const target = email.trim();
+    if (!target) {
+      setLoginError('Enter your email above first, then tap "Forgot password?" again.');
+      return;
+    }
+    setLoginBusy(true);
+    setLoginError(null);
+    const { error } = await supabase.auth.resetPasswordForEmail(target, {
+      redirectTo: `${window.location.origin}/edit`,
+    });
+    setLoginBusy(false);
+    if (error) setLoginError(error.message);
+    else setResetSent(true);
+  }, [email]);
 
   // ── screens ──────────────────────────────────────────────────────────────
 
@@ -826,6 +848,11 @@ export const ClientPortal: React.FC = () => {
             className="w-full mb-3 rounded-lg border border-white/15 bg-transparent px-3.5 py-3 text-[14px] text-white placeholder-white/30 outline-none focus:border-white/40"
           />
           {loginError && <p className="mb-3 text-[12px] text-red-400">{loginError}</p>}
+          {resetSent && (
+            <p className="mb-3 text-[12px]" style={{ color: GOLD }}>
+              Check your email for a link to set a new password.
+            </p>
+          )}
           <button
             type="submit"
             disabled={loginBusy}
@@ -833,6 +860,13 @@ export const ClientPortal: React.FC = () => {
             style={{ background: GOLD, color: '#0a0a0a' }}
           >
             {loginBusy ? 'Signing in…' : 'Sign in'}
+          </button>
+          <button
+            type="button"
+            onClick={handleForgotPassword}
+            className="mt-3 w-full text-[12px] text-white/45 underline hover:text-white/75 transition"
+          >
+            Forgot password?
           </button>
         </form>
       </div>
