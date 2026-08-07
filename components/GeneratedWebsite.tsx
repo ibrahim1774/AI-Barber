@@ -1,6 +1,6 @@
-
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { WebsiteData, SiteInstance, SaveStatus } from '../types';
+import { isCustomDesignAnyPath } from '../lib/dealMode.ts';
 
 // 24h → 12h with AM/PM. Idempotent: if the input already contains an
 // AM/PM marker, return it unchanged. Handles "09:00", "9:00", "9", "20:30".
@@ -1029,7 +1029,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
             {/* Center: Static label — centered via flex-1 + text-center
                 so it sits between the back arrow and the status pill. */}
             <p className="flex-1 text-center text-[10px] md:text-[13px] font-bold uppercase tracking-wider text-[#f4a100]">
-              Tap to edit text &amp; images, then publish below.
+              {isCustomDesignAnyPath() ? 'Preview only \u2014 pick your design below, then get your custom site.' : 'Tap to edit text & images, then publish below.'}
             </p>
 
             {/* Right: Status pill */}

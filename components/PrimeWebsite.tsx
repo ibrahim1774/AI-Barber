@@ -7,6 +7,7 @@ import { PublishOverlay } from './PublishOverlay';
 import { useAutoSave } from '../hooks/useAutoSave';
 import { useResetOnReturnFromStripe } from '../hooks/useResetOnReturnFromStripe';
 import PrePaymentBanner from './PrePaymentBanner.tsx';
+import { isCustomDesignAnyPath } from '../lib/dealMode.ts';
 
 // ---------------------------------------------------------------------------
 // PrimeWebsite — "Design 2" on /booksy. A faithful port of PrimeHub's live
@@ -840,7 +841,7 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
             </svg>
           </button>
           <p className="flex-1 text-center text-[10px] md:text-[13px] font-bold uppercase tracking-wider text-[#e8c074]">
-            Tap to edit text &amp; images, then publish below.
+            {isCustomDesignAnyPath() ? 'Preview only \u2014 pick your design below, then get your custom site.' : 'Tap to edit text & images, then publish below.'}
           </p>
           <div className="shrink-0 rounded-full bg-white/10 px-2.5 py-0.5">
             <span className="text-[#9a958e] text-[8px] uppercase tracking-wider font-bold">Editor · Design 2</span>

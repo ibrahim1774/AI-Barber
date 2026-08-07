@@ -14,7 +14,7 @@ import { HomeLaunchGuide } from './components/HomeLaunchGuide.tsx';
 import { buildSiteFromScrape } from './lib/buildSiteFromScrape.ts';
 import { ensureUuid } from './lib/ensureUuid.ts';
 import { extractFirstUrl, isSupportedBookingHost } from './lib/supportedBookingHost.ts';
-import { isBooksyPath, isFreeBarberPath, isPrimeBarberPath, isRecoverPath, isGenerateBarbershopPath, isGeneratePath, isBarberGeneratePath, isCustomDesign29Path, isClientEditPath, isOnboardPath, isAdminGeneratePath, isAdminDashboardPath, isTrackingPath, isOwnBrandPath } from './lib/dealMode.ts';
+import { isBooksyPath, isFreeBarberPath, isPrimeBarberPath, isRecoverPath, isGenerateBarbershopPath, isGeneratePath, isBarberGeneratePath, isCustomDesignPath, isCustomDesign29Path, isClientEditPath, isOnboardPath, isAdminGeneratePath, isAdminDashboardPath, isTrackingPath, isOwnBrandPath } from './lib/dealMode.ts';
 import { LoadingScreen } from './components/LoadingScreen.tsx';
 import { generateHTMLForTemplate } from './services/templateRenderer.ts';
 import { generateContent } from './services/geminiService.ts';
@@ -57,11 +57,12 @@ const DEPLOY_TIMER_SECONDS = 5;
 // booking-link / area-phone prompt). /home-2 is the exact same
 // experience at $19/mo + $99/yr; /15 at $15/mo + $126/yr; /9 at $9/mo +
 // $79/yr; /7 at $7/mo + $67/yr. /booksy, /free-barber, /new keep the
-// original 4-field GeneratorForm.
+// original 4-field GeneratorForm. /custom-design is NOT here — it is
+// form-first (paste a booking link) and routes to GeneratePage below.
 const isRootHomePath = (): boolean => {
   try {
     const p = window.location.pathname.replace(/\/+$/, '');
-    return p === '' || p === '/home-2' || p === '/15' || p === '/9' || p === '/7' || p === '/custom-design';
+    return p === '' || p === '/home-2' || p === '/15' || p === '/9' || p === '/7';
   } catch { return false; }
 };
 
@@ -1240,6 +1241,20 @@ const App: React.FC = () => {
     return (
       <Suspense fallback={<LoadingScreen />}>
         <GeneratePage variant="barber-generate" />
+      </Suspense>
+    );
+  }
+
+  // /custom-design — form-first, like /booksy: nothing generates until the
+  // visitor pastes a booking link. The form wears custom-design copy
+  // ("Turn your barber booking link into a custom website" + the platform
+  // typewriter); after the scrape the editor shows the design/colour
+  // controls above a single $29/mo custom-build CTA (no $10 publish, no
+  // yearly) — all path-detected by isCustomDesignAnyPath().
+  if (isCustomDesignPath()) {
+    return (
+      <Suspense fallback={<LoadingScreen />}>
+        <GeneratePage variant="custom-design" />
       </Suspense>
     );
   }
