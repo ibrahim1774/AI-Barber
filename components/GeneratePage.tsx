@@ -237,6 +237,11 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
     // rebuilt single-input form dropped it.
     fireLead(inputs);
     setSiteData({ ...scraped, template: (scraped as any).template ?? template });
+    // Carry the colour picked in the form into our own state, so the
+    // floating controls open with that swatch marked active instead of
+    // falling back to gold.
+    const picked = (scraped as any).colorTheme as string | undefined;
+    if (picked && picked.charAt(0) === '#') setColorTheme(picked);
     setShowPrompts(false);
   }, [template]);
 
