@@ -244,9 +244,17 @@ const row = {
   // password, so re-running for files alone never blanks a good record.
   ...(EMAIL ? { portal_password: PASSWORD, password_issued_at: new Date().toISOString() } : {}),
 };
-const { error: rowErr } = await supabase
-  .from('client_sites')
-  .upsert(row, { onConflict: 'slug' });
+let { error: rowErr } = await supabase.from('client_sites').upsert(row, { onConflict: 'slug' });
+// The credential columns arrive with supabase/client-sites.sql. If that
+// migration hasn't been run yet, save the site anyway rather than failing
+// an onboard over a bookkeeping field.
+if (rowErr && /portal_password|password_issued_at|schema cache/i.test(rowErr.message)) {
+  console.warn('  ! portal_password column missing — run supabase/client-sites.sql to record passwords');
+  const { portal_password, password_issued_at, ...rowWithoutCreds } = row;
+  ({ error: rowErr } = await supabase
+    .from('client_sites')
+    .upsert(rowWithoutCreds, { onConflict: 'slug' }));
+}
 if (rowErr) die(`client_sites upsert failed: ${rowErr.message}`);
 
 console.log(`\n✅ ${SLUG} onboarded`);
