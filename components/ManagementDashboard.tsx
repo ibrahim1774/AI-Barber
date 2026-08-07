@@ -49,9 +49,11 @@ export const ManagementDashboard: React.FC<ManagementDashboardProps> = ({
       let allSites: SiteInstance[] = [];
 
       // Try Supabase first
+      let cloudSites: SiteInstance[] = [];
       if (user) {
         try {
-          allSites = await fetchUserSites(user.id);
+          cloudSites = await fetchUserSites(user.id);
+          allSites = [...cloudSites];
         } catch (err) {
           console.error('[Dashboard] Supabase fetch failed:', err);
         }
@@ -127,8 +129,16 @@ export const ManagementDashboard: React.FC<ManagementDashboardProps> = ({
       // Runs when the user has no DEPLOYED site anywhere (not only when
       // the dashboard is fully empty) — a stray local draft used to
       // suppress recovery of the actual paid site.
-      const hasDeployed = cleaned.some(s => s.deploymentStatus === 'deployed');
-      if (!hasDeployed && user?.email) {
+      // Deliberately measured against cloudSites, NOT the merged list: a
+      // stale local draft marked 'deployed' would otherwise convince us the
+      // account already has its site and suppress the rescue forever — the
+      // draft being both the symptom and the reason it never heals. (Seen
+      // in the wild: paid at 3pm on a phone, signed up at 7pm on a laptop,
+      // account owned nothing, editor kept serving a months-old local draft
+      // while the live site was current.) Runs on every dashboard load, so
+      // a customer who pays and signs in hours later still gets attached.
+      const accountHasDeployed = cloudSites.some(s => s.deploymentStatus === 'deployed');
+      if (!accountHasDeployed && user?.email) {
         try {
           const resp = await fetch('/api/recover-site', {
             method: 'POST',
@@ -148,7 +158,16 @@ export const ManagementDashboard: React.FC<ManagementDashboardProps> = ({
               await dualWriteSave(recovered, user.id).catch(err =>
                 console.error('[Dashboard] Self-heal attach failed:', err)
               );
-              cleaned.push(recovered);
+              // Always attach (that's the point — the account owns nothing).
+              // Only SHOW it if this browser isn't already displaying the
+              // same shop under a different id, or she'd see her site twice.
+              const recoveredSig = `${recovered.data?.shopName?.toLowerCase().trim()}|${recovered.data?.phone?.replace(/\D/g, '')}`;
+              const alreadyShown = cleaned.some(
+                (x) =>
+                  x.id === recovered.id ||
+                  `${x.data?.shopName?.toLowerCase().trim()}|${x.data?.phone?.replace(/\D/g, '')}` === recoveredSig
+              );
+              if (!alreadyShown) cleaned.push(recovered);
               console.log('[Dashboard] Self-healed site by email for user', user.id);
             }
           }
