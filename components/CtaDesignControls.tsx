@@ -94,8 +94,11 @@ export const CtaDesignControls: React.FC<CtaDesignControlsProps> = ({
   };
 
   return (
+    // Design and colour sit side by side once there's room; on a phone the two
+    // rows stack, because squeezing both into one row collapses the swatches
+    // into an overlapping smear.
     <div
-      className="fixed left-1/2 -translate-x-1/2 z-[78] flex items-center gap-3 rounded-2xl px-3.5 py-2.5"
+      className="fixed left-1/2 -translate-x-1/2 z-[78] flex flex-col sm:flex-row items-center gap-2 sm:gap-3 rounded-2xl px-3.5 py-2.5"
       style={{
         bottom: barHeight + 12,
         background: 'rgba(14,12,8,0.94)',
@@ -108,17 +111,21 @@ export const CtaDesignControls: React.FC<CtaDesignControlsProps> = ({
       role="group"
       aria-label="Choose your design"
     >
-      <div className="flex flex-col gap-1.5">
-        <span className="text-[8px] font-bold uppercase tracking-[0.28em] text-white/45">Design</span>
+      <div className="flex flex-col gap-1.5 shrink-0">
+        <span className="text-[8px] font-bold uppercase tracking-[0.28em] text-white/45 text-center sm:text-left">Design</span>
         <div className="flex items-center gap-1.5">
           {OPTIONS.map((o) => (
             <Btn key={o.key} k={o.key} label={o.label} />
           ))}
         </div>
       </div>
-      <div className="h-9 w-px shrink-0" style={{ background: 'rgba(232,192,116,0.22)' }} aria-hidden="true" />
-      <div className="flex flex-col gap-1.5">
-        <span className="text-[8px] font-bold uppercase tracking-[0.28em] text-white/45">Color</span>
+      <div
+        className="hidden sm:block h-9 w-px shrink-0"
+        style={{ background: 'rgba(232,192,116,0.22)' }}
+        aria-hidden="true"
+      />
+      <div className="flex flex-col gap-1.5 shrink-0">
+        <span className="text-[8px] font-bold uppercase tracking-[0.28em] text-white/45 text-center sm:text-left">Color</span>
         <BrandSwatchGrid current={color} onPick={onColorChange} columns={6} size="sm" />
       </div>
     </div>
