@@ -9,6 +9,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { GenerateCustomizePrompts } from './GenerateCustomizePrompts';
 import { HomeLaunchGuide } from './HomeLaunchGuide';
 import { BooksyDesignSwitcher } from './BooksyDesignSwitcher';
+import { CtaDesignControls } from './CtaDesignControls';
 import { BooksyGeneratorForm } from './BooksyGeneratorForm';
 
 // /generate — "Customize Your Barbershop Site".
@@ -49,10 +50,24 @@ export interface GeneratePageProps {
   // Design 1/2 + color) sits over it. Pricing + analytics are path-detected
   // (isBooksyPath / isBarberGeneratePath) inside the renderer's
   // PrePaymentBanner, so no extra wiring is needed here.
-  variant?: 'generate' | 'booksy' | 'barber-generate' | 'custom-design-29';
+  // 'custom-design' = the /custom-design entry — form-first like 'booksy',
+  // but the form wears custom-design copy and the editor behind it sells only
+  // the $29/mo custom build (no $10 publish, no yearly). Pricing is
+  // path-detected by isCustomDesignAnyPath() inside PrePaymentBanner.
+  // 'custom-design-29' = the /custom-design-29 entry — same $29 offer, but the
+  // sample site is seeded instantly and the overlay asks for design + colour only.
+  variant?: 'generate' | 'booksy' | 'barber-generate' | 'custom-design' | 'custom-design-29';
 }
 
 export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate' }) => {
+  // Form-first entries: nothing generates on landing — BooksyGeneratorForm
+  // takes a booking link, scrapes it, and hands back a finished site.
+  const formFirst = variant === 'booksy' || variant === 'custom-design';
+  // /custom-design + /custom-design-29 sell the custom build only. The
+  // publish CTA, the monthly/yearly toggle and the "edit anytime" exit
+  // guide are all suppressed, and the design/colour controls move into a
+  // single pill floating just above the one remaining CTA.
+  const customOnly = variant === 'custom-design' || variant === 'custom-design-29';
   const [siteData, setSiteData] = useState<WebsiteData | null>(null);
   // Both /generate and /booksy lead with an instant-preview site + the
   // centered GenerateCustomizePrompts overlay. On /booksy the overlay leads
@@ -99,7 +114,7 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
   // form-first: nothing generates until the visitor pastes a link into
   // BooksyGeneratorForm (rendered below while siteData is null).
   useEffect(() => {
-    if (variant === 'booksy') return;
+    if (formFirst) return;
     if (startedRef.current) return;
     startedRef.current = true;
     (async () => {
@@ -202,8 +217,11 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
 
   const handlePromptComplete = useCallback(() => {
     setShowPrompts(false);
-    setShowLaunchGuide(true);
-  }, []);
+    // The launch guide explains "publish your website" — on the
+    // custom-design pages that button doesn't exist, so it would send the
+    // visitor looking for a CTA that isn't there.
+    if (!customOnly) setShowLaunchGuide(true);
+  }, [customOnly]);
 
   // /booksy form-first entry: BooksyGeneratorForm scraped the pasted link
   // and handed back a finished site. Drop straight into the editor with the
@@ -225,7 +243,7 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
   const handleBack = useCallback(() => {
     setShowLaunchGuide(false);
     setIsCheckoutFlowOpen(false);
-    if (variant === 'booksy') {
+    if (formFirst) {
       // Back to the paste-your-link entry form (siteData null → form renders).
       setSiteData(null);
       setShowPrompts(true);
@@ -233,16 +251,17 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
     }
     // Restart the customize overlay over the live preview.
     setShowPrompts(true);
-  }, [variant]);
+  }, [formFirst]);
 
   // /booksy is form-first: no site until the visitor pastes a link. Render
   // the single-URL BooksyGeneratorForm (its own hero + progress screen) and
   // wait. On submit it scrapes the link and hands back a finished site.
-  if (!siteData && variant === 'booksy') {
+  if (!siteData && formFirst) {
     return (
       <BooksyGeneratorForm
         onGenerate={handleBooksyGenerate}
         template={template}
+        customDesign={variant === 'custom-design'}
       />
     );
   }
@@ -276,7 +295,7 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
             onCheckoutFlowChange={setIsCheckoutFlowOpen}
             hidePrepaymentBanner={showPrompts}
             onUpdate={setSiteData}
-            showThemePicker={!showPrompts}
+            showThemePicker={!showPrompts && !customOnly}
           />
         ) : activeTemplate === 'euphoria' ? (
           <EuphoriaWebsite
@@ -286,7 +305,7 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
             isPostPayment={false}
             onCheckoutFlowChange={setIsCheckoutFlowOpen}
             hidePrepaymentBanner={showPrompts}
-            showThemePicker={!showPrompts}
+            showThemePicker={!showPrompts && !customOnly}
           />
         ) : (
           <GeneratedWebsite
@@ -297,11 +316,11 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
             onCheckoutFlowChange={setIsCheckoutFlowOpen}
             hidePrepaymentBanner={showPrompts}
             onUpdate={setSiteData}
-            showThemePicker={!showPrompts}
+            showThemePicker={!showPrompts && !customOnly}
           />
         )}
       </Suspense>
-      {showPrompts && variant !== 'booksy' && !isCheckoutFlowOpen && (
+      {showPrompts && !formFirst && !isCheckoutFlowOpen && (
         <GenerateCustomizePrompts
           onChange={handlePromptChange}
           onSubmitBookingLink={handleSubmitBookingLink}
@@ -331,14 +350,27 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
         <HomeLaunchGuide onClose={() => setShowLaunchGuide(false)} />
       )}
 
-      {/* Floating Design 1 / Design 2 switcher — both /generate and /booksy,
-          once the customize overlay is closed and checkout isn't open. */}
+      {/* Design 1 / Design 2 switcher — floating once the customize overlay
+          is closed and checkout isn't open. On the custom-design pages the
+          design AND colour controls ride together in one pill anchored just
+          above the single CTA; everywhere else the switcher keeps its
+          left-middle position and colour lives in the top-left theme picker. */}
       {!showPrompts && !isCheckoutFlowOpen && (
-        <BooksyDesignSwitcher
-          current={activeTemplate ?? 'luxe'}
-          onSelect={handleDesignSwitch}
-          busy={switching}
-        />
+        customOnly ? (
+          <CtaDesignControls
+            current={activeTemplate ?? 'luxe'}
+            onSelect={handleDesignSwitch}
+            busy={switching}
+            color={colorTheme.charAt(0) === '#' ? colorTheme : '#f4a100'}
+            onColorChange={handleColorChange}
+          />
+        ) : (
+          <BooksyDesignSwitcher
+            current={activeTemplate ?? 'luxe'}
+            onSelect={handleDesignSwitch}
+            busy={switching}
+          />
+        )
       )}
 
       {/* Brief loading beat while the design re-skins. */}

@@ -24,6 +24,10 @@ interface Props {
   // Which generated-site design the scrape result is stamped with. Defaults to
   // 'luxe' (Design 1); the admin generator passes 'prime' (Design 2).
   template?: 'luxe' | 'prime';
+  // /custom-design wears the same form with custom-build copy: the page sells
+  // a hand-built 20+ page site, so the headline promises a custom website
+  // rather than an instantly-generated one. Layout and behavior are identical.
+  customDesign?: boolean;
 }
 
 // Step labels for the scrape loading overlay — timed against a typical
@@ -91,7 +95,7 @@ function useTypingPlaceholder(): string {
   return text;
 }
 
-export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn, template = 'luxe' }) => {
+export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn, template = 'luxe', customDesign = false }) => {
   const [url, setUrl] = useState('');
   const typingPlaceholder = useTypingPlaceholder();
   const [brandColor, setBrandColor] = useState<string>(DEFAULT_SWATCH);
@@ -282,15 +286,27 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn, tem
           />
           <div className="relative z-10 pt-4 md:pt-0 mt-[8vh] md:mt-[10vh] mx-auto max-w-2xl">
             <h1 className="text-2xl md:text-5xl lg:text-6xl font-montserrat font-black uppercase tracking-[1px] md:tracking-[2px] leading-[1.15] text-white mb-2 md:mb-4 text-center">
-              <span className="booksy-lux-line" style={{ animationDelay: '0.1s' }}>Generate Your Barber Website </span><br className="hidden md:block"/>
-              <span className="booksy-lux-line" style={{ animationDelay: '0.22s' }}>From Your Booking Link</span>
-              <span className="text-[#f4a100] mt-1 block booksy-lux-line" style={{ animationDelay: '0.34s' }}>in a Few Seconds</span>
+              {customDesign ? (
+                <>
+                  <span className="booksy-lux-line" style={{ animationDelay: '0.1s' }}>Turn Your Barber Booking Link </span><br className="hidden md:block"/>
+                  <span className="booksy-lux-line" style={{ animationDelay: '0.22s' }}>Into Your Custom</span>
+                  <span className="text-[#f4a100] mt-1 block booksy-lux-line" style={{ animationDelay: '0.34s' }}>Professional Website</span>
+                </>
+              ) : (
+                <>
+                  <span className="booksy-lux-line" style={{ animationDelay: '0.1s' }}>Generate Your Barber Website </span><br className="hidden md:block"/>
+                  <span className="booksy-lux-line" style={{ animationDelay: '0.22s' }}>From Your Booking Link</span>
+                  <span className="text-[#f4a100] mt-1 block booksy-lux-line" style={{ animationDelay: '0.34s' }}>in a Few Seconds</span>
+                </>
+              )}
             </h1>
             <p
               className="text-[11px] md:text-xs italic text-white/70 max-w-[280px] md:max-w-xs mx-auto booksy-lux-line"
               style={{ fontFamily: 'Georgia, "Times New Roman", serif', animationDelay: '0.48s' }}
             >
-              Paste your Booksy, Fresha, Square, Vagaro, StyleSeat or Setmore link — we&apos;ll pull your services, photos, hours, and reviews automatically.
+              {customDesign
+                ? 'Works with Booksy, theCut, Fresha, StyleSeat, Square, Vagaro, Goldie and Setmore — paste your link and we build your custom site around your real services, photos, hours and reviews.'
+                : 'Paste your Booksy, Fresha, Square, Vagaro, StyleSeat or Setmore link — we\u2019ll pull your services, photos, hours, and reviews automatically.'}
             </p>
           </div>
         </div>
@@ -357,7 +373,7 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn, tem
                 disabled={busy}
                 className="booksy-lux-cta w-full py-4 md:py-5 mt-2 md:mt-3 bg-[#f4a100] text-[#1a1a1a] font-montserrat font-black uppercase tracking-[1.5px] md:tracking-[2px] text-xs md:text-base hover:bg-white transition-all duration-500 shadow-[0_0_28px_rgba(244,161,0,0.28)] active:scale-[0.98] disabled:opacity-60"
               >
-                Generate My Barbershop Website
+                {customDesign ? 'Generate My Custom Website' : 'Generate My Barbershop Website'}
               </button>
             </form>
 

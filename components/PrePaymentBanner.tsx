@@ -401,6 +401,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
         }`}
       >
         <div
+          data-aib-cta-bar
           className="relative px-3.5 pt-2 pb-2.5 md:px-5 md:pt-2.5 md:pb-3 shadow-[0_-10px_30px_rgba(0,0,0,0.5)] border-t"
           style={{
             background: 'linear-gradient(180deg, #0a0a0a 0%, #14110c 100%)',
@@ -417,8 +418,10 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
               "$9/mo — hosting/maintenance only" line was redundant. */}
 
           {/* Monthly / Yearly toggle. On /generate the toggles are larger;
-              every path shows Monthly first (Monthly is the default plan). */}
-          {(() => {
+              every path shows Monthly first (Monthly is the default plan).
+              Never on /custom-design + /custom-design-29 — those sell one
+              $29/mo custom build with no yearly option. */}
+          {!customOnlyMode && (() => {
             const sizeCls = generateMode
               ? 'text-[12px] md:text-[13px] pb-1'
               : booksyMode
@@ -462,8 +465,10 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
 
           {/* Action row — Launch My Site full-width. How It Works
               button removed so the CTA spans the row and the
-              animated glow has more visual presence. */}
-          <div className="flex items-center gap-2">
+              animated glow has more visual presence. Hidden on the
+              custom-design pages: the $29 custom build is the only offer
+              there, so a $10 hosting CTA beside it just splits the choice. */}
+          <div className="flex items-center gap-2" style={{ display: customOnlyMode ? 'none' : undefined }}>
             <style>{`
               @keyframes aibCtaPop {
                 0%, 100% { transform: scale(1); }
@@ -533,7 +538,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
           <button
             type="button"
             onClick={() => setShowCustomWizard(true)}
-            className="group mt-2 flex w-full items-center justify-between gap-2.5 border px-3 py-2.5 transition-all hover:border-[#e8c074]/70"
+            className={`group ${customOnlyMode ? '' : 'mt-2'} flex w-full items-center justify-between gap-2.5 border px-3 py-2.5 transition-all hover:border-[#e8c074]/70`}
             style={{
               background: 'linear-gradient(180deg, rgba(232,192,116,0.08) 0%, rgba(232,192,116,0.03) 100%)',
               borderColor: 'rgba(232,192,116,0.45)',
