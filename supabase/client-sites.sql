@@ -39,6 +39,31 @@ create policy "client reads own site"
   to authenticated
   using (owner = auth.uid());
 
+-- ── Issued portal credentials (operator memory) ──────────────────────────
+-- We create these accounts FOR the client and hand them the login, so the
+-- password we issued has to be recoverable — otherwise "what's my password
+-- again?" is unanswerable. Stored as issued; `password_issued_at` dates it
+-- so a stale value is obvious. Onboarding generates a random password by
+-- default, which is what makes storing it acceptable: the string exists
+-- nowhere else in that person's life, so a leak here can't be replayed
+-- against their email or bank.
+alter table public.client_sites
+  add column if not exists portal_password text,
+  add column if not exists password_issued_at timestamptz;
+
+-- RLS is row-level, so the policy above would otherwise let a client read
+-- every column of their own row — including the credential ones — with a
+-- hand-written PostgREST query. Column privileges are the fix: swap the
+-- blanket table grant for an explicit column list. Only the service role
+-- (which bypasses both) can read the credentials, so they never reach a
+-- browser. NOTE: a new column added later must be added to this grant, or
+-- the portal's select will start failing with a permission error.
+revoke select on public.client_sites from authenticated;
+grant select (
+  id, slug, name, vercel_project_id, vercel_project_name,
+  live_url, owner, created_at, updated_at
+) on public.client_sites to authenticated;
+
 -- ── Storage bucket ───────────────────────────────────────────────────────
 -- Public read: these files ARE the public website content, and public URLs
 -- let the editor iframe load pages/assets directly.

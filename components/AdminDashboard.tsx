@@ -26,6 +26,18 @@ interface SiteInfo {
   sitePhone: string | null;
 }
 
+// A /edit portal login we issued to a custom-design client.
+interface ClientSiteLogin {
+  slug: string;
+  name: string | null;
+  liveUrl: string | null;
+  email: string | null;
+  password: string | null;
+  passwordIssuedAt: string | null;
+  lastSignIn: string | null;
+  onboardedAt: string;
+}
+
 interface AccountInfo {
   userId: string;
   email: string;
@@ -204,6 +216,8 @@ export const AdminDashboard: React.FC = () => {
 
   const [subs, setSubs] = useState<Sub[]>([]);
   const [accountsOnly, setAccountsOnly] = useState<AccountInfo[]>([]);
+  const [clientSites, setClientSites] = useState<ClientSiteLogin[]>([]);
+  const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [dataError, setDataError] = useState('');
 
@@ -282,6 +296,7 @@ export const AdminDashboard: React.FC = () => {
         if (!cancelled) {
           setSubs(json.subs || []);
           setAccountsOnly(json.accountsOnly || []);
+          setClientSites(json.clientSites || []);
         }
       } catch (err: any) {
         if (!cancelled) setDataError(err?.message || 'Could not load data');
@@ -889,6 +904,66 @@ export const AdminDashboard: React.FC = () => {
             </button>
           )}
           <button style={ghostBtn} onClick={() => setSelected(new Set())}>Cancel</button>
+        </div>
+      )}
+
+      {/* Client Sites portal logins. These accounts are created FOR the
+          client at onboarding, so the issued password lives on the site row
+          — this panel is where you look it up when they ask. */}
+      {clientSites.length > 0 && (
+        <div style={{ maxWidth: 1180, margin: '26px auto 0', padding: '0 18px 70px' }}>
+          <div style={{ background: PANEL, border: `1px solid ${LINE}`, borderRadius: 12, overflow: 'hidden' }}>
+            <div style={{ padding: '13px 16px', borderBottom: `1px solid ${LINE}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>Client portal logins</span>
+              <span style={{ fontSize: 12, color: MUTED }}>custom-design clients · aibarber.org/edit</span>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 820 }}>
+                <thead>
+                  <tr style={{ color: MUTED, textAlign: 'left' }}>
+                    {['Site', 'Login email', 'Password', 'Issued', 'Last sign-in', 'Live'].map((h) => (
+                      <th key={h} style={{ padding: '9px 14px', borderBottom: `1px solid ${LINE}`, fontWeight: 500, whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {clientSites.map((c) => (
+                    <tr key={c.slug}>
+                      <td style={{ padding: '9px 14px', borderBottom: `1px solid ${LINE}` }}>{c.name || c.slug}</td>
+                      <td style={{ padding: '9px 14px', borderBottom: `1px solid ${LINE}`, color: MUTED }}>{c.email || '—'}</td>
+                      <td style={{ padding: '9px 14px', borderBottom: `1px solid ${LINE}` }}>
+                        {c.password ? (
+                          <button
+                            onClick={() => {
+                              navigator.clipboard?.writeText(c.password!).catch(() => {});
+                              setCopiedSlug(c.slug);
+                              setTimeout(() => setCopiedSlug((s) => (s === c.slug ? null : s)), 1400);
+                            }}
+                            title="Click to copy"
+                            className="adm-num"
+                            style={{ ...ghostBtn, padding: '4px 9px', fontSize: 12.5, color: INK }}
+                          >
+                            {copiedSlug === c.slug ? 'copied ✓' : c.password}
+                          </button>
+                        ) : (
+                          <span style={{ color: MUTED }} title="Onboarded before passwords were recorded — reset it to capture a new one">not recorded</span>
+                        )}
+                      </td>
+                      <td style={{ padding: '9px 14px', borderBottom: `1px solid ${LINE}`, color: MUTED, whiteSpace: 'nowrap' }}>
+                        {c.passwordIssuedAt ? new Date(c.passwordIssuedAt).toLocaleDateString() : '—'}
+                      </td>
+                      <td style={{ padding: '9px 14px', borderBottom: `1px solid ${LINE}`, color: MUTED, whiteSpace: 'nowrap' }}>
+                        {c.lastSignIn ? new Date(c.lastSignIn).toLocaleDateString() : 'never'}
+                      </td>
+                      <td style={{ padding: '9px 14px', borderBottom: `1px solid ${LINE}` }}>
+                        {c.liveUrl ? <a href={c.liveUrl} target="_blank" rel="noreferrer" style={{ color: ACCENT }}>open ↗</a> : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
 

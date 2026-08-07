@@ -306,6 +306,12 @@ export default async function handler(req: any, res: any) {
         live_url: liveUrl,
         owner: ownerId,
         updated_at: new Date().toISOString(),
+        // Remember the credentials we issued so "what's my password again?"
+        // is answerable from /admin. A re-sync never touches the login, so
+        // it must not overwrite a good record with this request's value.
+        ...(resync
+          ? {}
+          : { portal_password: password, password_issued_at: new Date().toISOString() }),
       },
       { onConflict: 'slug' }
     );
