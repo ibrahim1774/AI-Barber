@@ -922,7 +922,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       const checkoutResponse = await fetch('/api/create-checkout-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ siteId: prep.siteId, plan }),
+        body: JSON.stringify({ siteId: prep.siteId, plan, page: window.location.pathname }),
       });
       const checkoutData = await checkoutResponse.json();
       if (!checkoutResponse.ok || !checkoutData.url) {

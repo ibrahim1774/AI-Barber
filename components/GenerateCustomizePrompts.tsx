@@ -44,7 +44,7 @@ export interface GenerateCustomizePromptsProps {
   // 'generate' (default) = the neutral "Customize Your Barbershop Site"
   // copy. 'booksy' = the /booksy entry: Booksy-flavored headline and the
   // overlay opens straight to the booking-link field (lead with the link).
-  variant?: 'generate' | 'booksy';
+  variant?: 'generate' | 'booksy' | 'design-only';
   // When provided, a brand-color picker is shown in the first step; each
   // pick fires onColorChange so the parent re-themes the live preview and
   // carries the color into the generated site.
@@ -68,13 +68,20 @@ const BG_CARD = 'rgba(14, 12, 8, 0.94)';
 // example URL, holds, erases it, then moves to the next platform — forever.
 // Shown under the "Enter your barber booking link here ::" label so the
 // visitor sees exactly what to drop in (Booksy, Square, Squire, Fresha…).
+// Exactly the hosts lib/supportedBookingHost.ts accepts — demoing a
+// platform the scraper then rejects burns the click at the moment of
+// highest intent (getsquire.com used to be in here and is NOT supported).
 const TYPE_SAMPLES = [
   'booksy.com/your-shop',
-  'squareup.com/appointments',
-  'getsquire.com/your-shop',
+  'thecut.co/your-name',
   'fresha.com/your-shop',
+  'styleseat.com/your-name',
+  'squareup.com/appointments',
+  'vagaro.com/your-shop',
+  'heygoldie.com/your-shop',
+  'setmore.com/your-shop',
 ];
-const BookingLinkTypewriter: React.FC<{ color: string }> = ({ color }) => {
+export const BookingLinkTypewriter: React.FC<{ color: string }> = ({ color }) => {
   const [idx, setIdx] = useState(0);
   const [sub, setSub] = useState(0);
   const [deleting, setDeleting] = useState(false);
@@ -116,6 +123,9 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
   initialTemplate = 'luxe',
 }) => {
   const isBooksy = variant === 'booksy';
+  // /custom-design-29: the sample site is already on screen and no
+  // details are collected — the overlay is just design + colour.
+  const isDesignOnly = variant === 'design-only';
   const [color, setColor] = useState(initialColor);
   const pickColor = (hex: string) => {
     setColor(hex);
@@ -170,6 +180,12 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
 
   // Step 1 primary action.
   const handleBookingGenerate = async (e: React.FormEvent) => {
+    if (isDesignOnly) {
+      e.preventDefault();
+      setStep('done');
+      await onFinish('', '', '');
+      return;
+    }
     e.preventDefault();
     if (choice === 'no') {
       setStep('name');
@@ -304,7 +320,7 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
           className={`leading-tight font-semibold text-white mb-2.5 ${isBooksy ? 'text-[13px] md:text-[15px] whitespace-nowrap' : 'text-[14px] md:text-[15px]'}`}
           style={{ letterSpacing: '-0.015em' }}
         >
-          {isBooksy ? 'Generate Custom Barber Site in Seconds' : 'Customize Your Barbershop Site'}
+          {isDesignOnly ? 'Pick Your Design' : isBooksy ? 'Generate Custom Barber Site in Seconds' : 'Customize Your Barbershop Site'}
         </h2>
 
         {/* ───────── Step 1: booking link question ───────── */}
@@ -312,7 +328,7 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
           <form onSubmit={handleBookingGenerate}>
             {/* On /booksy the title above already frames this, so the
                 per-step heading + blurb are hidden. /generate keeps them. */}
-            {!isBooksy && (
+            {!isBooksy && !isDesignOnly && (
               <>
                 <h3 className="text-[13px] font-semibold text-white mb-1">
                   Do you have a booking link?
@@ -375,7 +391,7 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
                 Yes/No split. /generate keeps the split so a linkless visitor
                 can route to the manual name/area/phone questions. (On a failed
                 scrape, /booksy still falls through to those steps.) */}
-            {!isBooksy && (
+            {!isBooksy && !isDesignOnly && (
               <div className="grid grid-cols-2 gap-1.5 mb-3">
                 <button
                   type="button"
@@ -442,7 +458,7 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
                 routes a visitor without a link to the detail questions. */}
             <button
               type="submit"
-              disabled={choice !== 'yes' || !bookingUrl.trim() || scraping}
+              disabled={isDesignOnly ? false : choice !== 'yes' || !bookingUrl.trim() || scraping}
               className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.22em] transition disabled:opacity-50"
               style={primaryBtnStyle}
             >
@@ -453,7 +469,7 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
                 </>
               ) : (
                 <>
-                  <span>{isBooksy ? 'Generate My Barbershop Site' : 'Generate'}</span>
+                  <span>{isDesignOnly ? 'Looks Good — Continue' : isBooksy ? 'Generate My Barbershop Site' : 'Generate'}</span>
                   <ArrowRight size={13} />
                 </>
               )}

@@ -176,6 +176,30 @@ export function isHome9Path(pathname?: string): boolean {
   return p === HOME9_PATH || p === `${HOME9_PATH}/`;
 }
 
+// `/custom-design` — the homepage funnel sold as custom-design ONLY: the
+// $10 hosting and the yearly option are hidden after generation, leaving
+// the $29/mo custom build. Headline leads with the booking-link import.
+export const CUSTOM_DESIGN_PATH = '/custom-design';
+export function isCustomDesignPath(pathname?: string): boolean {
+  const p = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
+  return p === CUSTOM_DESIGN_PATH || p === `${CUSTOM_DESIGN_PATH}/`;
+}
+
+// `/custom-design-29` — same $29 offer, but the sample site is already on
+// screen when they land: no name field, no booking link, just the design
+// + colour pickers. Own plan slug so the two variants stay comparable.
+export const CUSTOM_DESIGN_29_PATH = '/custom-design-29';
+export function isCustomDesign29Path(pathname?: string): boolean {
+  const p = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
+  return p === CUSTOM_DESIGN_29_PATH || p === `${CUSTOM_DESIGN_29_PATH}/`;
+}
+
+// Either custom-design-only funnel — used wherever the two behave alike
+// (custom-only pricing, lead capture, homepage-style routing).
+export function isCustomDesignAnyPath(pathname?: string): boolean {
+  return isCustomDesignPath(pathname) || isCustomDesign29Path(pathname);
+}
+
 // `/admin` — owner-only customer dashboard: Stripe subscriptions joined
 // to Supabase accounts + deployed sites. The page itself is only a
 // login shell; /api/admin-overview enforces the admin email.

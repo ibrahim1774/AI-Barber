@@ -167,6 +167,7 @@ export const PrimeBarberLanding: React.FC = () => {
           siteId: 'primebarber-landing',
           plan,
           embedded: true,
+          page: window.location.pathname,
         }),
       });
       const data = await res.json();
