@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, ArrowRight, Rocket, Loader2, Sparkles, Check } from 'lucide-react';
-import { isBooksyPath, isFreeBarberPath, isBookingPath, isGeneratePath, isBarberGeneratePath, isHome2Path, isHome15Path, isHome7Path } from '../lib/dealMode.ts';
+import { isBooksyPath, isFreeBarberPath, isBookingPath, isGeneratePath, isBarberGeneratePath, isHome2Path, isHome15Path, isHome7Path, isHome9Path } from '../lib/dealMode.ts';
 import { loadStripe, type Stripe } from '@stripe/stripe-js';
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js';
 
@@ -75,6 +75,8 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   const home15Mode = React.useMemo(() => isHome15Path(), []);
   // /7: same funnel at $7/mo + $67/yr (20% off 7 x 12 = 84).
   const home7Mode = React.useMemo(() => isHome7Path(), []);
+  // /9: same funnel at $9/mo + $79/yr (27% off 9 x 12 = 108).
+  const home9Mode = React.useMemo(() => isHome9Path(), []);
 
   // Standard monthly price varies by entry path:
   //   /free-barber → $7/mo (plan 'monthly-free')
@@ -82,13 +84,15 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   //   /booking     → $10/mo (plan 'monthly-booking')
   //   home page    → $10/mo (plan 'monthly')
   //   /free-barber → $7/mo (plan 'monthly-free')
-  const stdMonthlyPriceDollars = home2Mode ? 19 : home15Mode ? 15 : home7Mode ? 7 : freeBarberMode ? 7 : 10;
+  const stdMonthlyPriceDollars = home2Mode ? 19 : home15Mode ? 15 : home9Mode ? 9 : home7Mode ? 7 : freeBarberMode ? 7 : 10;
   const stdMonthlyPriceMo = `$${stdMonthlyPriceDollars}/mo`;
   const stdMonthlyPriceMonth = `$${stdMonthlyPriceDollars}/month`;
-  const stdMonthlyPlan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'monthly-booking' | 'monthly-generate' | 'monthly-home2' | 'monthly-15' | 'monthly-7' = home2Mode
+  const stdMonthlyPlan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'monthly-booking' | 'monthly-generate' | 'monthly-home2' | 'monthly-15' | 'monthly-7' | 'monthly-9' = home2Mode
     ? 'monthly-home2'
     : home15Mode
     ? 'monthly-15'
+    : home9Mode
+    ? 'monthly-9'
     : home7Mode
     ? 'monthly-7'
     : generateMode
@@ -105,17 +109,19 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   // computed off the path's own monthly × 12 anchor so "Save X%"
   // always reflects the real saving. Keep the server amounts in
   // api/create-checkout-session.ts in sync.
-  const stdYearlyPriceDollars = home2Mode ? 99 : home15Mode ? 126 : home7Mode ? 67 : (bookingMode || generateMode || booksyMode) ? 59 : freeBarberMode ? 49 : 79;
+  const stdYearlyPriceDollars = home2Mode ? 99 : home15Mode ? 126 : home9Mode ? 79 : home7Mode ? 67 : (bookingMode || generateMode || booksyMode) ? 59 : freeBarberMode ? 49 : 79;
   const stdYearlyPriceYr = `$${stdYearlyPriceDollars}/yr`;
   const stdYearlyPriceYear = `$${stdYearlyPriceDollars}/year`;
   const stdYearlyDiscountPct = Math.max(
     0,
     Math.round((1 - stdYearlyPriceDollars / (stdMonthlyPriceDollars * 12)) * 100),
   );
-  const stdYearlyPlan: 'yearly' | 'yearly-booksy' | 'yearly-free' | 'yearly-booking' | 'yearly-generate' | 'yearly-home2' | 'yearly-15' | 'yearly-7' = home2Mode
+  const stdYearlyPlan: 'yearly' | 'yearly-booksy' | 'yearly-free' | 'yearly-booking' | 'yearly-generate' | 'yearly-home2' | 'yearly-15' | 'yearly-7' | 'yearly-9' = home2Mode
     ? 'yearly-home2'
     : home15Mode
     ? 'yearly-15'
+    : home9Mode
+    ? 'yearly-9'
     : home7Mode
     ? 'yearly-7'
     : generateMode

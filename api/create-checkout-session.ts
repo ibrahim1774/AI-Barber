@@ -55,6 +55,9 @@ export default async function handler(req: any, res: any) {
     // '/7' price test: exact homepage funnel at $7/mo + $67/yr.
     const isMonthly7 = plan === 'monthly-7';
     const isYearly7 = plan === 'yearly-7';
+    // '/9' price test: exact homepage funnel at $9/mo + $79/yr.
+    const isMonthly9 = plan === 'monthly-9';
+    const isYearly9 = plan === 'yearly-9';
     const isCustom = plan === 'custom';
     const isCustom25 = plan === 'custom25';
     // 'custom-booksy' = /booksy custom-design upsell ($15/mo).
@@ -132,6 +135,16 @@ export default async function handler(req: any, res: any) {
       unitAmount = '1900';
       interval = 'month';
       productName = 'aibarber.org — Monthly Website Hosting (Home 2)';
+    } else if (isYearly9) {
+      // /9 yearly: $79/yr (27% off $9/mo x 12 = $108).
+      unitAmount = '7900';
+      interval = 'year';
+      productName = 'aibarber.org — Yearly Website Hosting (9)';
+    } else if (isMonthly9) {
+      // /9 monthly: $9/mo.
+      unitAmount = '900';
+      interval = 'month';
+      productName = 'aibarber.org — Monthly Website Hosting (9)';
     } else if (isYearly7) {
       // /7 yearly: $67/yr (20% off $7/mo x 12 = $84).
       unitAmount = '6700';
