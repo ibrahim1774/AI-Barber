@@ -58,6 +58,7 @@ interface ConversionRow {
   amount: number;  // dollars
   currency: string;
   plan: string;
+  page: string;
   type: string;
   status: string;
   customerEmail: string | null;
@@ -130,6 +131,7 @@ async function fetchStripeConversions(fromUnix: number, toUnix: number): Promise
         amount: (s.amount_total || 0) / 100,
         currency: (s.currency || 'usd').toUpperCase(),
         plan: m.plan || '',
+        page: m.page || '',
         type: m.type || '',
         status: s.status,
         customerEmail: s.customer_details?.email || null,

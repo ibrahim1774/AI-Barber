@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, ArrowRight, Rocket, Loader2, Sparkles, Check } from 'lucide-react';
-import { isBooksyPath, isFreeBarberPath, isBookingPath, isGeneratePath, isBarberGeneratePath, isHome2Path, isHome15Path, isHome7Path, isHome9Path } from '../lib/dealMode.ts';
+import { isBooksyPath, isFreeBarberPath, isBookingPath, isGeneratePath, isBarberGeneratePath, isHome2Path, isHome15Path, isHome7Path, isHome9Path, isCustomDesignAnyPath, isCustomDesignPath, isCustomDesign29Path } from '../lib/dealMode.ts';
 import { loadStripe, type Stripe } from '@stripe/stripe-js';
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js';
 
@@ -77,6 +77,10 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   const home7Mode = React.useMemo(() => isHome7Path(), []);
   // /9: same funnel at $9/mo + $79/yr (27% off 9 x 12 = 108).
   const home9Mode = React.useMemo(() => isHome9Path(), []);
+  // /custom-design + /custom-design-29 sell the custom build ONLY — the
+  // $10 hosting and the yearly option are suppressed everywhere below, so
+  // the page presents a single $29/mo choice.
+  const customOnlyMode = React.useMemo(() => isCustomDesignAnyPath(), []);
 
   // Standard monthly price varies by entry path:
   //   /free-barber → $7/mo (plan 'monthly-free')
@@ -139,7 +143,11 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   //   custom-booksy → /booksy
   //   custom-15     → /7 ($19/mo; slug kept for continuity)
   //   custom25      → everywhere else incl. /15 ($29/mo)
-  const customPlan: 'custom25' | 'custom-booksy' | 'custom-15' = booksyMode
+  const customPlan: 'custom25' | 'custom-booksy' | 'custom-15' | 'custom-design' | 'custom-design-29' = isCustomDesign29Path()
+    ? 'custom-design-29'
+    : isCustomDesignPath()
+    ? 'custom-design'
+    : booksyMode
     ? 'custom-booksy'
     : home7Mode
       ? 'custom-15'
@@ -213,6 +221,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
           siteId: embedSiteIdRef.current || 'pre-publish',
           plan: planSlug,
           embedded: true,
+          page: window.location.pathname,
         }),
         signal: controller.signal,
       });
@@ -232,7 +241,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
       embedAbortRef.current?.abort();
       return;
     }
-    const planSlug = pricingPlan === 'monthly' ? stdMonthlyPlan : stdYearlyPlan;
+    const planSlug = customOnlyMode ? customPlan : pricingPlan === 'monthly' ? stdMonthlyPlan : stdYearlyPlan;
     fetchEmbeddedSecret(planSlug);
     return () => embedAbortRef.current?.abort();
   }, [showBenefits, pricingPlan, stdMonthlyPlan, stdYearlyPlan, fetchEmbeddedSecret]);
@@ -326,6 +335,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
           siteId: 'custom-design-request',
           plan: customPlan,
           embedded: useEmbedded,
+          page: window.location.pathname,
         }),
         signal: controller.signal,
       });
@@ -564,8 +574,8 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
         // Roman-numeral rows separated by hairlines instead of cards.
         const gold = '#e8c074';
         const cream = '#ece6da';
-        const headlinePrice = pricingPlan === 'yearly' ? stdYearlyPriceYr : stdMonthlyPriceMo;
-        const ctaPrice = pricingPlan === 'yearly' ? stdYearlyPriceYear : stdMonthlyPriceMonth;
+        const headlinePrice = customOnlyMode ? customPriceLabel : pricingPlan === 'yearly' ? stdYearlyPriceYr : stdMonthlyPriceMo;
+        const ctaPrice = customOnlyMode ? customPriceFull : pricingPlan === 'yearly' ? stdYearlyPriceYear : stdMonthlyPriceMonth;
 
         const rows: { numeral: string; title: string }[] = [
           { numeral: 'I', title: 'Professional & Modern Site' },
@@ -622,7 +632,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
 
             {/* Monthly / Yearly toggle — quiet text-based with gold underline.
                 Monthly is shown first everywhere (Monthly is the default plan). */}
-            <div className="flex items-center justify-center gap-6 mb-7">
+            <div className="flex items-center justify-center gap-6 mb-7" style={{ display: customOnlyMode ? 'none' : undefined }}>
               <button
                 onClick={() => setPricingPlan('monthly')}
                 className={`${booksyMode ? 'text-[13px] font-bold' : 'text-[11px] font-medium'} uppercase tracking-[0.22em] pb-1.5 transition-colors`}
@@ -704,7 +714,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
               </button>
 
               <button
-                onClick={() => { setShowHowItWorks(false); onDeploy(pricingPlan === 'monthly' ? stdMonthlyPlan : stdYearlyPlan); }}
+                onClick={() => { setShowHowItWorks(false); onDeploy(customOnlyMode ? customPlan : pricingPlan === 'monthly' ? stdMonthlyPlan : stdYearlyPlan); }}
                 disabled={isDeploying}
                 className="flex-1 py-3.5 text-[11px] font-bold flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all uppercase tracking-[0.24em] disabled:opacity-50"
                 style={{
@@ -954,7 +964,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                   ))}
                 </ul>
 
-                <div className="flex items-center justify-center gap-4 mb-2.5">
+                <div className="flex items-center justify-center gap-4 mb-2.5" style={{ display: customOnlyMode ? 'none' : undefined }}>
                   <button
                     onClick={() => setPricingPlan('monthly')}
                     className="text-[10px] font-medium uppercase tracking-[0.22em] pb-1 transition-colors"
@@ -983,7 +993,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                       {embedError}
                       <button
                         type="button"
-                        onClick={() => fetchEmbeddedSecret(pricingPlan === 'monthly' ? stdMonthlyPlan : stdYearlyPlan)}
+                        onClick={() => fetchEmbeddedSecret(customOnlyMode ? customPlan : pricingPlan === 'monthly' ? stdMonthlyPlan : stdYearlyPlan)}
                         className="block mx-auto mt-2 text-[11px] underline"
                       >
                         Try again

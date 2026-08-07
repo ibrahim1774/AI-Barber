@@ -4,7 +4,7 @@ import { ShopInputs, WebsiteData } from '../types';
 import { ScissorsIcon } from './Icons';
 import { isSupportedBookingHost, extractFirstUrl } from '../lib/supportedBookingHost.ts';
 import { buildSiteFromScrape } from '../lib/buildSiteFromScrape.ts';
-import { isBooksyPath, isFreeBarberPath, isBookingPath, isHome2Path, isHome15Path, isHome7Path, isHome9Path } from '../lib/dealMode.ts';
+import { isBooksyPath, isFreeBarberPath, isBookingPath, isHome2Path, isHome15Path, isHome7Path, isHome9Path, isCustomDesignPath } from '../lib/dealMode.ts';
 import { fireCrmLead } from '../lib/leadEvents';
 import { deriveShopNameFromUrl } from '../lib/buildSiteFromScrape.ts';
 import { detectBooksyNiche } from '../lib/booksyNiche.ts';
@@ -57,7 +57,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
   const homeGate = useMemo(() => {
     if (typeof window === 'undefined') return false;
     const p = window.location.pathname;
-    return !isBooksyPath() && !isBookingPath() && !isFreeBarberPath() && (p === '/' || p === '' || isHome2Path() || isHome15Path() || isHome7Path() || isHome9Path());
+    return !isBooksyPath() && !isBookingPath() && !isFreeBarberPath() && (p === '/' || p === '' || isHome2Path() || isHome15Path() || isHome7Path() || isHome9Path() || isCustomDesignPath());
   }, []);
   // null = question not answered yet; true = has a link; false = manual.
   const [hasBooking, setHasBooking] = useState<boolean | null>(null);

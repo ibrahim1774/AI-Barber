@@ -49,7 +49,7 @@ export interface GeneratePageProps {
   // Design 1/2 + color) sits over it. Pricing + analytics are path-detected
   // (isBooksyPath / isBarberGeneratePath) inside the renderer's
   // PrePaymentBanner, so no extra wiring is needed here.
-  variant?: 'generate' | 'booksy' | 'barber-generate';
+  variant?: 'generate' | 'booksy' | 'barber-generate' | 'custom-design-29';
 }
 
 export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate' }) => {
@@ -312,7 +312,15 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
           initialPhone={siteData.phone || ''}
           // 'barber-generate' uses the Booksy-flavored overlay (leads with the
           // booking-link field, no Yes/No split) over the instantly-seeded site.
-          variant={variant === 'generate' ? 'generate' : 'booksy'}
+          // /custom-design-29 collects nothing — the sample site is already
+          // on screen, so the overlay is design + colour only.
+          variant={
+            variant === 'custom-design-29'
+              ? 'design-only'
+              : variant === 'generate'
+                ? 'generate'
+                : 'booksy'
+          }
           onColorChange={handleColorChange}
           initialColor={colorTheme.charAt(0) === '#' ? colorTheme : '#f4a100'}
           onTemplateChange={handleTemplateChange}

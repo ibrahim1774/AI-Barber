@@ -6,6 +6,8 @@ import { buildSiteFromScrape } from '../lib/buildSiteFromScrape';
 import { fireLead } from '../lib/leadEvents';
 import { useAuth } from '../contexts/AuthContext';
 import { BarbershopMidSitePrompts } from './BarbershopMidSitePrompts';
+import { BookingLinkTypewriter } from './GenerateCustomizePrompts';
+import { isCustomDesignPath } from '../lib/dealMode.ts';
 import { HomeLaunchGuide } from './HomeLaunchGuide';
 
 // /generatebarbershop funnel — rebuilt to mirror PrimeHub's
@@ -47,6 +49,10 @@ const deriveNameFromUrl = (raw: string): string => {
 };
 
 export const GenerateBarbershopFunnel: React.FC = () => {
+  // /custom-design leads with the booking-link import instead of the
+  // generic 'generate in seconds' pitch.
+  const customDesignMode = React.useMemo(() => isCustomDesignPath(), []);
+
   const [phase, setPhase] = useState<Phase>('input');
   const [shopName, setShopName] = useState('');
   const [bookingUrl, setBookingUrl] = useState('');
@@ -249,19 +255,37 @@ export const GenerateBarbershopFunnel: React.FC = () => {
               className="text-[10px] font-bold uppercase tracking-[0.22em]"
               style={{ color: GOLD }}
             >
-              Free barbershop website
+              {customDesignMode ? 'Custom barbershop website' : 'Free barbershop website'}
             </span>
           </div>
-          <h1
-            className="text-3xl md:text-4xl font-black tracking-tight leading-[1.05] mb-3"
-            style={{ color: 'white', letterSpacing: '-0.02em' }}
-          >
-            Generate your{' '}
-            <span style={{ fontFamily: SERIF, fontStyle: 'italic', fontWeight: 400, color: GOLD }}>
-              barbershop website
-            </span>{' '}
-            in seconds
-          </h1>
+          {customDesignMode ? (
+            <>
+              <h1
+                className="text-3xl md:text-4xl font-black tracking-tight leading-[1.05] mb-3"
+                style={{ color: 'white', letterSpacing: '-0.02em' }}
+              >
+                Turn your barber booking link into a{' '}
+                <span style={{ fontFamily: SERIF, fontStyle: 'italic', fontWeight: 400, color: GOLD }}>
+                  custom website
+                </span>
+              </h1>
+              <p className="text-[13px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.55)' }}>
+                Works with Booksy, theCut, Fresha, StyleSeat, Square, Vagaro, Goldie and Setmore —{' '}
+                <BookingLinkTypewriter color={GOLD} />
+              </p>
+            </>
+          ) : (
+            <h1
+              className="text-3xl md:text-4xl font-black tracking-tight leading-[1.05] mb-3"
+              style={{ color: 'white', letterSpacing: '-0.02em' }}
+            >
+              Generate your{' '}
+              <span style={{ fontFamily: SERIF, fontStyle: 'italic', fontWeight: 400, color: GOLD }}>
+                barbershop website
+              </span>{' '}
+              in seconds
+            </h1>
+          )}
         </div>
 
         {/* Name input — single required field. */}

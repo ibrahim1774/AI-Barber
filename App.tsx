@@ -14,7 +14,7 @@ import { HomeLaunchGuide } from './components/HomeLaunchGuide.tsx';
 import { buildSiteFromScrape } from './lib/buildSiteFromScrape.ts';
 import { ensureUuid } from './lib/ensureUuid.ts';
 import { extractFirstUrl, isSupportedBookingHost } from './lib/supportedBookingHost.ts';
-import { isBooksyPath, isFreeBarberPath, isPrimeBarberPath, isRecoverPath, isGenerateBarbershopPath, isGeneratePath, isBarberGeneratePath, isClientEditPath, isOnboardPath, isAdminGeneratePath, isAdminDashboardPath, isTrackingPath, isOwnBrandPath } from './lib/dealMode.ts';
+import { isBooksyPath, isFreeBarberPath, isPrimeBarberPath, isRecoverPath, isGenerateBarbershopPath, isGeneratePath, isBarberGeneratePath, isCustomDesign29Path, isClientEditPath, isOnboardPath, isAdminGeneratePath, isAdminDashboardPath, isTrackingPath, isOwnBrandPath } from './lib/dealMode.ts';
 import { LoadingScreen } from './components/LoadingScreen.tsx';
 import { generateHTMLForTemplate } from './services/templateRenderer.ts';
 import { generateContent } from './services/geminiService.ts';
@@ -61,7 +61,7 @@ const DEPLOY_TIMER_SECONDS = 5;
 const isRootHomePath = (): boolean => {
   try {
     const p = window.location.pathname.replace(/\/+$/, '');
-    return p === '' || p === '/home-2' || p === '/15' || p === '/9' || p === '/7';
+    return p === '' || p === '/home-2' || p === '/15' || p === '/9' || p === '/7' || p === '/custom-design';
   } catch { return false; }
 };
 
@@ -1240,6 +1240,17 @@ const App: React.FC = () => {
     return (
       <Suspense fallback={<LoadingScreen />}>
         <GeneratePage variant="barber-generate" />
+      </Suspense>
+    );
+  }
+
+  // /custom-design-29 — the sample site is seeded instantly (no name field,
+  // no booking link); the overlay offers only the design + colour choice and
+  // the banner sells the single $29/mo custom build.
+  if (isCustomDesign29Path()) {
+    return (
+      <Suspense fallback={<LoadingScreen />}>
+        <GeneratePage variant="custom-design-29" />
       </Suspense>
     );
   }

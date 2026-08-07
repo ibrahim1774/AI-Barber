@@ -15,11 +15,20 @@ export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).end();
 
   try {
-    const { siteId, plan = 'monthly', embedded: bodyEmbedded } = req.body;
+    const { siteId, plan = 'monthly', embedded: bodyEmbedded, page } = req.body;
 
     if (!siteId) {
       return res.status(400).json({ error: 'Missing required field: siteId' });
     }
+
+    // Path the checkout was opened from, sent by the client. Sanitized
+    // rather than trusted: it only ever lands in our own metadata, but a
+    // junk value there is noise in every dashboard that reads it. Query
+    // and hash are dropped so /15?utm_source=… collapses to /15.
+    const sourcePage: string =
+      typeof page === 'string' && page.startsWith('/')
+        ? page.split(/[?#]/)[0].slice(0, 100)
+        : '';
 
     // Embedded mode swaps the hosted-page redirect for an inline
     // <EmbeddedCheckout> rendered inside our modal. Returns
@@ -75,7 +84,15 @@ export default async function handler(req: any, res: any) {
     // 20% discount ($20/mo × 12 × 0.8 = $192 → $192/yr). Same
     // Google Form routing as the monthly plan.
     const isPrimeBarberYearly = plan === 'primebarber-yearly';
-    const isCustomAny = isCustom || isCustom25 || isCustomBooksy || isCustom15 || isPrimeBarber || isPrimeBarberYearly;
+    // '/custom-design' + '/custom-design-29' — custom-design-only funnels
+    // ($29/mo, no hosting or yearly option on the page). Two slugs for one
+    // price so the two page variants stay comparable in Stripe/analytics
+    // even though they bill under the same product name.
+    const isCustomDesignPage = plan === 'custom-design';
+    const isCustomDesign29 = plan === 'custom-design-29';
+    const isCustomAny =
+      isCustom || isCustom25 || isCustomBooksy || isCustom15 ||
+      isCustomDesignPage || isCustomDesign29 || isPrimeBarber || isPrimeBarberYearly;
 
     let unitAmount: string;
     let interval: 'month' | 'year';
@@ -89,96 +106,96 @@ export default async function handler(req: any, res: any) {
       // /booksy yearly: flat $59/yr (≈51% off $10/mo × 12).
       unitAmount = '5900';
       interval = 'year';
-      productName = 'aibarber.org — Yearly Website Hosting (Booksy)';
+      productName = 'aibarber.org — Yearly Website Hosting';
     } else if (isYearlyFree) {
       // /free-barber yearly: flat $49/yr (≈42% off $7/mo × 12).
       unitAmount = '4900';
       interval = 'year';
-      productName = 'aibarber.org — Yearly Website Hosting (Free Barber)';
+      productName = 'aibarber.org — Yearly Website Hosting';
     } else if (isMonthlyBooksy) {
       // /booksy monthly: $10/mo.
       unitAmount = '1000';
       interval = 'month';
-      productName = 'aibarber.org — Monthly Website Hosting (Booksy)';
+      productName = 'aibarber.org — Monthly Website Hosting';
     } else if (isMonthlyFree) {
       // /free-barber monthly: $7/mo.
       unitAmount = '700';
       interval = 'month';
-      productName = 'aibarber.org — Monthly Website Hosting (Free Barber)';
+      productName = 'aibarber.org — Monthly Website Hosting';
     } else if (isYearlyBooking) {
       // /booking yearly: $59/yr.
       unitAmount = '5900';
       interval = 'year';
-      productName = 'aibarber.org — Yearly Website Hosting (Booking)';
+      productName = 'aibarber.org — Yearly Website Hosting';
     } else if (isMonthlyBooking) {
       // /booking monthly: $10/mo.
       unitAmount = '1000';
       interval = 'month';
-      productName = 'aibarber.org — Monthly Website Hosting (Booking)';
+      productName = 'aibarber.org — Monthly Website Hosting';
     } else if (isYearlyGenerate) {
       // /generate yearly: $59/yr.
       unitAmount = '5900';
       interval = 'year';
-      productName = 'aibarber.org — Yearly Website Hosting (Generate)';
+      productName = 'aibarber.org — Yearly Website Hosting';
     } else if (isMonthlyGenerate) {
       // /generate monthly: $10/mo.
       unitAmount = '1000';
       interval = 'month';
-      productName = 'aibarber.org — Monthly Website Hosting (Generate)';
+      productName = 'aibarber.org — Monthly Website Hosting';
     } else if (isYearlyHome2) {
       // /home-2 yearly: $99/yr (≈57% off $19/mo × 12).
       unitAmount = '9900';
       interval = 'year';
-      productName = 'aibarber.org — Yearly Website Hosting (Home 2)';
+      productName = 'aibarber.org — Yearly Website Hosting';
     } else if (isMonthlyHome2) {
       // /home-2 monthly: $19/mo.
       unitAmount = '1900';
       interval = 'month';
-      productName = 'aibarber.org — Monthly Website Hosting (Home 2)';
+      productName = 'aibarber.org — Monthly Website Hosting';
     } else if (isYearly9) {
       // /9 yearly: $79/yr (27% off $9/mo x 12 = $108).
       unitAmount = '7900';
       interval = 'year';
-      productName = 'aibarber.org — Yearly Website Hosting (9)';
+      productName = 'aibarber.org — Yearly Website Hosting';
     } else if (isMonthly9) {
       // /9 monthly: $9/mo.
       unitAmount = '900';
       interval = 'month';
-      productName = 'aibarber.org — Monthly Website Hosting (9)';
+      productName = 'aibarber.org — Monthly Website Hosting';
     } else if (isYearly7) {
       // /7 yearly: $67/yr (20% off $7/mo x 12 = $84).
       unitAmount = '6700';
       interval = 'year';
-      productName = 'aibarber.org — Yearly Website Hosting (7)';
+      productName = 'aibarber.org — Yearly Website Hosting';
     } else if (isMonthly7) {
       // /7 monthly: $7/mo.
       unitAmount = '700';
       interval = 'month';
-      productName = 'aibarber.org — Monthly Website Hosting (7)';
+      productName = 'aibarber.org — Monthly Website Hosting';
     } else if (isYearly15) {
       // /15 yearly: $126/yr (30% off $15/mo × 12).
       unitAmount = '12600';
       interval = 'year';
-      productName = 'aibarber.org — Yearly Website Hosting (15)';
+      productName = 'aibarber.org — Yearly Website Hosting';
     } else if (isMonthly15) {
       // /15 monthly: $15/mo.
       unitAmount = '1500';
       interval = 'month';
-      productName = 'aibarber.org — Monthly Website Hosting (15)';
+      productName = 'aibarber.org — Monthly Website Hosting';
     } else if (isCustom15) {
       // /7 custom design: $19/mo (slug kept from the old /15 test;
       // /15 now upsells the standard $29 custom25).
       unitAmount = '1900';
       interval = 'month';
-      productName = 'aibarber.org — Custom Website Design (7)';
+      productName = 'aibarber.org — Website Hosting (Custom)';
     } else if (isCustomBooksy) {
       unitAmount = '2900';
       interval = 'month';
-      productName = 'aibarber.org — Custom Website Design (Booksy)';
-    } else if (isCustom || isCustom25) {
+      productName = 'aibarber.org — Website Hosting (Custom)';
+    } else if (isCustom || isCustom25 || isCustomDesignPage || isCustomDesign29) {
       unitAmount = '2900';
       interval = 'month';
-      productName = 'aibarber.org — Custom Website Design';
+      productName = 'aibarber.org — Website Hosting (Custom)';
     } else if (isPrimeBarber) {
       unitAmount = '2000';
       interval = 'month';
@@ -237,6 +254,21 @@ export default async function handler(req: any, res: any) {
     params.append('metadata[type]', (isPrimeBarber || isPrimeBarberYearly) ? 'primebarber' : isCustomAny ? 'custom_design' : 'site_hosting');
     params.append('metadata[siteId]', siteId);
     params.append('metadata[plan]', plan);
+    // Which subpage this checkout was opened from (/15, /custom-design-29,
+    // /booksy…). Product names deliberately no longer encode the page —
+    // the customer's receipt shouldn't advertise which price test they
+    // landed on — so this is the only page signal, and it has to live on
+    // the SUBSCRIPTION too (mirrored below): /admin reads subscriptions,
+    // and session metadata isn't visible from the Stripe subscription view.
+    if (sourcePage) params.append('metadata[page]', sourcePage);
+
+    // Mirror the identifying keys onto the subscription. Without this the
+    // Stripe subscription page shows no metadata at all and a sale can't
+    // be traced back to its funnel after the fact.
+    params.append('subscription_data[metadata][app]', 'aibarber');
+    params.append('subscription_data[metadata][plan]', plan);
+    params.append('subscription_data[metadata][siteId]', siteId);
+    if (sourcePage) params.append('subscription_data[metadata][page]', sourcePage);
 
     // Ad attribution — stamp which Facebook campaign/ad drove this purchase
     // onto the Stripe session metadata (visible on the payment, and available

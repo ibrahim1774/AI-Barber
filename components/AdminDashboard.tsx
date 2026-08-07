@@ -54,6 +54,7 @@ interface Sub {
   name: string | null;
   stripePhone: string | null;
   product: string;
+  page: string;
   amount: number;
   amountMonthly: number;
   interval: string;
@@ -346,7 +347,7 @@ export const AdminDashboard: React.FC = () => {
     const q = search.trim().toLowerCase();
     if (q) {
       rows = rows.filter((s) =>
-        [s.email, s.name, s.product, s.account?.signupPhone, s.stripePhone, s.manualPhone, s.manualSite, s.manualLabel, ...(s.account?.sites || []).flatMap((x) => [x.shopName, x.url, x.siteId])]
+        [s.email, s.name, s.product, s.page, s.account?.signupPhone, s.stripePhone, s.manualPhone, s.manualSite, s.manualLabel, ...(s.account?.sites || []).flatMap((x) => [x.shopName, x.url, x.siteId])]
           .filter(Boolean)
           .some((v) => String(v).toLowerCase().includes(q)),
       );
@@ -721,6 +722,9 @@ export const AdminDashboard: React.FC = () => {
                         )}</td>
                         <td style={{ ...td, whiteSpace: 'nowrap' }}>
                           {s.product} <span style={{ color: FAINT }}>· {money(s.amount)}/{s.interval === 'year' ? 'yr' : 'mo'}</span>
+                          {s.page && (
+                            <span className="adm-num" style={{ color: ACCENT, marginLeft: 7, fontSize: 11.5 }} title="Subpage this sale came from">{s.page}</span>
+                          )}
                         </td>
                         <td className="adm-num" style={{ ...td, whiteSpace: 'nowrap', fontWeight: 600 }}>{money(s.amountMonthly)}</td>
                         <td className="adm-num" style={{ ...td, whiteSpace: 'nowrap', color: (s.paidCount || 0) > 1 ? '#3fb950' : FAINT }}>{s.paidCount || 0}×</td>

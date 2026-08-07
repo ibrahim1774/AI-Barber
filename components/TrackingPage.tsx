@@ -12,7 +12,7 @@ import { supabase } from '../lib/supabase';
 // like /admin, not a customer surface.
 
 interface SpendRow { date: string; campaign: string; adset: string; ad: string; adId: string; spend: number; impressions: number; clicks: number; metaPurchases: number; metaRevenue: number; }
-interface ConversionRow { id: string; created: number; amount: number; currency: string; plan: string; type: string; customerEmail: string | null; campaign: string; adset: string; ad: string; adId: string; fcCampaign: string; fcAdset: string; fcAd: string; fcAdId: string; fbclid: boolean; }
+interface ConversionRow { id: string; created: number; amount: number; currency: string; plan: string; page: string; type: string; customerEmail: string | null; campaign: string; adset: string; ad: string; adId: string; fcCampaign: string; fcAdset: string; fcAd: string; fcAdId: string; fbclid: boolean; }
 interface Payload { range: { from: number; to: number }; spend: SpendRow[]; spendError: string | null; conversions: ConversionRow[]; conversionsError: string | null; }
 
 const INK = '#0d0d0f', CARD = '#151519', LINE = 'rgba(255,255,255,0.09)', PAPER = '#f2f2ef', SMOKE = '#9a9aa2', GOLD = '#e8c074', GREEN = '#34d399', RED = '#f87171';
@@ -219,7 +219,7 @@ export default function TrackingPage() {
                           <tr key={c.id} style={{ background: 'rgba(52,211,153,0.04)' }}>
                             <td colSpan={10} style={{ padding: '8px 14px 8px 30px', borderBottom: `1px solid ${LINE}`, fontSize: 12, color: SMOKE }}>
                               <span style={{ color: GREEN, fontWeight: 700 }}>{money(c.amount)} {c.currency}</span>
-                              {' · '}{c.plan || c.type || 'purchase'}
+                              {' · '}{c.plan || c.type || 'purchase'}{c.page ? ` · ${c.page}` : ''}
                               {' · '}{new Date(c.created * 1000).toLocaleString()}
                               {c.customerEmail ? ` · ${c.customerEmail}` : ''}
                             </td>
@@ -246,7 +246,7 @@ export default function TrackingPage() {
               {agg.unattributed.map((c) => (
                 <li key={c.id} style={{ padding: '8px 18px', fontSize: 12.5, color: SMOKE, borderBottom: `1px solid ${LINE}` }}>
                   <span style={{ color: GREEN, fontWeight: 700 }}>{money(c.amount)} {c.currency}</span>
-                  {' · '}{c.plan || c.type || 'purchase'}
+                  {' · '}{c.plan || c.type || 'purchase'}{c.page ? ` · ${c.page}` : ''}
                   {' · '}{new Date(c.created * 1000).toLocaleString()}
                   {c.customerEmail ? ` · ${c.customerEmail}` : ''}
                 </li>

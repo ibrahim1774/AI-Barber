@@ -30,6 +30,7 @@ interface SubRow {
   canceledAt: number | null;
   cancelAtPeriodEnd: boolean;
   family: 'aibarber' | 'primehub' | 'other-biz' | 'unknown';
+  page: string;            // subpage the checkout was opened from ('' pre-dates the change)
   isCustomDesign: boolean;
   paidCount: number;       // successfully paid non-zero invoices
 }
@@ -192,7 +193,11 @@ export default async function handler(req: any, res: any) {
         canceledAt: s.canceled_at || null,
         cancelAtPeriodEnd: !!s.cancel_at_period_end,
         family: familyOf(product),
-        isCustomDesign: /custom website design/i.test(product),
+        // Which subpage the sale came from. Product names no longer encode
+        // it (receipts shouldn't advertise the price test), so this is the
+        // signal — present only on subscriptions created after that change.
+        page: s.metadata?.page || '',
+        isCustomDesign: /custom website design|website hosting \(custom\)/i.test(product),
         paidCount: paidCounts[s.id] || 0,
         account: accountByEmail.get(email) || null,
         manualPhone: MANUAL_IDENTITIES[email]?.phone || null,
