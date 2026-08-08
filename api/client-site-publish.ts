@@ -148,13 +148,24 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ ok: false, error: 'No files found for this site' });
     }
 
+    // NOT storage.download(): the bucket is public, so /storage/v1/object/*
+    // responses are CDN-cached for an hour — cf-cache-status: HIT even on
+    // authenticated reads. A publish that follows another read of the same
+    // object within that hour deploys the CACHED copy: save → publish →
+    // fix a typo → save → publish again shipped the FIRST version (hit in
+    // production while verifying the save-on-publish fix). A fresh query
+    // string per read changes the CDN cache key, so every publish deploys
+    // what is actually in the bucket.
     const blobs: { rel: string; buf: Buffer }[] = [];
     for (const fullPath of paths) {
-      const { data: blob, error: dlErr } = await sb.storage.from(BUCKET).download(fullPath);
-      if (dlErr || !blob) throw new Error(`download ${fullPath} failed: ${dlErr?.message}`);
+      const dlResp = await fetch(
+        `${supabaseUrl}/storage/v1/object/${BUCKET}/${encodeURI(fullPath)}?cb=${Date.now()}`,
+        { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, 'Cache-Control': 'no-cache' } }
+      );
+      if (!dlResp.ok) throw new Error(`download ${fullPath} failed: ${dlResp.status}`);
       blobs.push({
         rel: fullPath.slice(slug.length + 1), // strip "<slug>/"
-        buf: Buffer.from(await blob.arrayBuffer()),
+        buf: Buffer.from(await dlResp.arrayBuffer()),
       });
     }
 

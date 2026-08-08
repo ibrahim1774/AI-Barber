@@ -24,6 +24,7 @@ const GOLD = '#e8c074';
 const BG = '#0a0a0a';
 
 const SUPABASE_URL = (import.meta as any).env?.VITE_SUPABASE_URL as string | undefined;
+const SUPABASE_ANON_KEY = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY as string | undefined;
 const publicBase = `${SUPABASE_URL || ''}/storage/v1/object/public/${BUCKET}`;
 
 // Per-page save history lives in <slug>/_history/ (flat, page path encoded
@@ -322,17 +323,35 @@ export const ClientPortal: React.FC = () => {
     setPageLoading(true);
     setSrcDoc(null);
     (async () => {
-      const { data, error } = await supabase.storage
-        .from(BUCKET)
-        .download(`${site.slug}/${activePage}`);
-      if (cancelled) return;
-      setPageLoading(false);
-      if (error || !data) {
+      // Cache-busted read, not storage.download(): the public bucket's
+      // object endpoint is CDN-cached (~1h) even for authenticated reads,
+      // so after a save or an undo this could render the PREVIOUS copy of
+      // the page — edits that saved fine looked lost. A per-read query
+      // string forces the real bucket copy.
+      const { data: sess } = await supabase.auth.getSession();
+      const accessToken = sess?.session?.access_token;
+      let html = '';
+      try {
+        const resp = await fetch(
+          `${SUPABASE_URL}/storage/v1/object/${BUCKET}/${encodeURI(`${site.slug}/${activePage}`)}?cb=${Date.now()}`,
+          {
+            headers: {
+              apikey: SUPABASE_ANON_KEY || '',
+              Authorization: `Bearer ${accessToken || SUPABASE_ANON_KEY || ''}`,
+              'Cache-Control': 'no-cache',
+            },
+          }
+        );
+        if (!resp.ok) throw new Error(String(resp.status));
+        html = await resp.text();
+      } catch {
+        if (cancelled) return;
+        setPageLoading(false);
         showToast('err', `Could not open ${activePage}`);
         return;
       }
-      const html = await data.text();
       if (cancelled) return;
+      setPageLoading(false);
       setSrcDoc(rewriteForEditor(html, site.slug, activePage));
       setDirtyBoth(false);
       // A page change replaces the document — any selected photo is stale.
