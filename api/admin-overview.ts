@@ -170,7 +170,7 @@ export default async function handler(req: any, res: any) {
       // 2026-08-07 custom-design cohort. Numbers are the ones the sites were
       // arranged over by text; each site title was read off the live build.
       'jamesdbarber01@gmail.com':  { phone: '9106706695', site: 'https://jamesd-barber.vercel.app', label: 'James D Barber @ One Stop Barbershop (Raeford NC)' },
-      'raydawson.rd@gmail.com':    { phone: '2405332126', site: 'https://nstyle-hair-grooming.vercel.app', label: 'N Style Hair Grooming (Bowie MD)' },
+      'raydawson.rd@gmail.com':    { phone: '5013888810', site: 'https://beardhouse-cuts.vercel.app', label: 'BeardHouse Cuts (Searcy AR)' },
     };
 
     const emailsWithSubs = new Set<string>();
