@@ -468,21 +468,30 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
               animated glow has more visual presence. Hidden on the
               custom-design pages: the $29 custom build is the only offer
               there, so a $10 hosting CTA beside it just splits the choice. */}
+          <style>{`
+            @keyframes aibCtaPop {
+              0%, 100% { transform: scale(1); }
+              50% { transform: scale(1.035); }
+            }
+            @keyframes aibCtaGlow {
+              0%, 100% { box-shadow: 0 0 0 0 rgba(232,192,116,0), 0 4px 14px rgba(232,192,116,0.45); }
+              50%      { box-shadow: 0 0 18px 4px rgba(232,192,116,0.65), 0 6px 22px rgba(232,192,116,0.75); }
+            }
+            .aib-cta-launch {
+              animation: aibCtaPop 2.4s ease-in-out infinite, aibCtaGlow 2.4s ease-in-out infinite;
+            }
+            .aib-cta-launch:hover { animation-play-state: paused; transform: scale(1.04); }
+            /* Custom-design pages: the $29 CTA is the page's only offer, so it
+               takes the same pulse the publish button wears elsewhere. */
+            .aib-cta-custom {
+              animation: aibCtaPop 2.4s ease-in-out infinite, aibCtaGlow 2.4s ease-in-out infinite;
+            }
+            .aib-cta-custom:hover { animation-play-state: paused; transform: scale(1.04); }
+            @media (prefers-reduced-motion: reduce) {
+              .aib-cta-launch, .aib-cta-custom { animation: none; }
+            }
+          `}</style>
           <div className="flex items-center gap-2" style={{ display: customOnlyMode ? 'none' : undefined }}>
-            <style>{`
-              @keyframes aibCtaPop {
-                0%, 100% { transform: scale(1); }
-                50% { transform: scale(1.035); }
-              }
-              @keyframes aibCtaGlow {
-                0%, 100% { box-shadow: 0 0 0 0 rgba(232,192,116,0), 0 4px 14px rgba(232,192,116,0.45); }
-                50%      { box-shadow: 0 0 18px 4px rgba(232,192,116,0.65), 0 6px 22px rgba(232,192,116,0.75); }
-              }
-              .aib-cta-launch {
-                animation: aibCtaPop 2.4s ease-in-out infinite, aibCtaGlow 2.4s ease-in-out infinite;
-              }
-              .aib-cta-launch:hover { animation-play-state: paused; transform: scale(1.04); }
-            `}</style>
             <button
               onClick={async () => {
                 const planSlug = pricingPlan === 'monthly' ? stdMonthlyPlan : stdYearlyPlan;
@@ -538,7 +547,9 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
           <button
             type="button"
             onClick={() => setShowCustomWizard(true)}
-            className={`group ${customOnlyMode ? '' : 'mt-2'} flex w-full items-center justify-between gap-2.5 border px-3 py-2.5 transition-all hover:border-[#e8c074]/70`}
+            className={`group flex w-full items-center justify-between gap-2.5 border transition-all hover:border-[#e8c074]/70 ${
+              customOnlyMode ? 'aib-cta-custom px-3.5 py-3' : 'mt-2 px-3 py-2.5'
+            }`}
             style={{
               background: 'linear-gradient(180deg, rgba(232,192,116,0.08) 0%, rgba(232,192,116,0.03) 100%)',
               borderColor: 'rgba(232,192,116,0.45)',
@@ -547,18 +558,25 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
             }}
           >
             <span className="flex items-start min-w-0 gap-2">
-              <Sparkles size={13} className="mt-[2px] shrink-0" style={{ color: '#e8c074' }} />
+              <Sparkles size={customOnlyMode ? 16 : 13} className="mt-[2px] shrink-0" style={{ color: '#e8c074' }} />
               <span className="min-w-0">
                 <span
                   className="block font-extrabold"
-                  style={{ fontSize: '0.92rem', color: '#e8c074', lineHeight: 1.18, letterSpacing: '-0.005em' }}
+                  style={{
+                    fontSize: customOnlyMode ? '1.1rem' : '0.92rem',
+                    color: '#e8c074',
+                    lineHeight: 1.18,
+                    letterSpacing: '-0.005em',
+                  }}
                 >
                   Custom 20+ Page Barber Website with On-Page SEO Included
                 </span>
               </span>
             </span>
             <span
-              className="flex items-center gap-1.5 font-black uppercase tracking-[0.16em] shrink-0 rounded-full text-[12.5px] px-3 py-1.5"
+              className={`flex items-center gap-1.5 font-black uppercase tracking-[0.16em] shrink-0 rounded-full ${
+                customOnlyMode ? 'text-[15px] px-3.5 py-2' : 'text-[12.5px] px-3 py-1.5'
+              }`}
               style={{
                 color: '#0a0a0a',
                 background: '#e8c074',
@@ -566,7 +584,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
               }}
             >
               {customPriceLabel}
-              <ArrowRight size={12} className="transition group-hover:translate-x-0.5" />
+              <ArrowRight size={customOnlyMode ? 14 : 12} className="transition group-hover:translate-x-0.5" />
             </span>
           </button>
         </div>
