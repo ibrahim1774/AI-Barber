@@ -30,9 +30,14 @@ interface Props {
   customDesign?: boolean;
 }
 
-// Step labels for the scrape loading overlay — timed against a typical
-// 20-40s wall-clock (the scrape is one blocking fetch). We snap to 100% the
-// moment the fetch resolves. Same ladder + copy as the homepage auto-scrape.
+// Step labels for the scrape loading overlay. Paced at STEP_SECONDS each and
+// held at the last step if the scrape runs long; the fetch resolving snaps us
+// to 100%. Measured Booksy/Fresha/theCut scrapes land near 7s (JSON-LD first,
+// Apify only to fill gaps), so a slower ladder left the bar at ~40% when the
+// work was already done — which reads as a stall, not as speed. The Apify-only
+// platforms (StyleSeat, Square, Vagaro) are the long ones; they hold on the
+// final step instead. Same copy as the homepage auto-scrape.
+const STEP_SECONDS = 2.5;
 const LOADING_STEPS = [
   { pct: 18, label: 'Fetching your shop info…' },
   { pct: 42, label: 'Loading photos & services…' },
@@ -118,10 +123,10 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn, tem
     const startedAt = Date.now();
     stepTimerRef.current = window.setInterval(() => {
       const elapsed = (Date.now() - startedAt) / 1000;
-      const idx = Math.min(LOADING_STEPS.length - 1, Math.floor(elapsed / 7));
+      const idx = Math.min(LOADING_STEPS.length - 1, Math.floor(elapsed / STEP_SECONDS));
       const target = LOADING_STEPS[idx].pct;
       setStepIdx(idx);
-      setProgress((p) => (p < target ? Math.min(target, p + 0.7) : p));
+      setProgress((p) => (p < target ? Math.min(target, p + 2) : p));
     }, 120) as unknown as number;
     return () => {
       if (stepTimerRef.current) window.clearInterval(stepTimerRef.current);
@@ -321,8 +326,15 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn, tem
           <div className="max-w-md w-full mx-auto booksy-lux-form">
             <form onSubmit={handleSubmit} className="space-y-3 md:space-y-5">
               <div className="space-y-1">
-                <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black">
-                  Booking Link
+                {/* /custom-design asks in plain words and sets the field ~30%
+                    larger — it's the page's single input, so it carries the
+                    whole ask. Every other entry keeps the compact label. */}
+                <label
+                  className={`block uppercase tracking-[3px] md:tracking-[4px] text-white font-black ${
+                    customDesign ? 'text-[14px] md:text-[17px]' : 'text-[11px] md:text-[13px]'
+                  }`}
+                >
+                  {customDesign ? 'Insert Your Booking Link' : 'Booking Link'}
                 </label>
                 <input
                   required
@@ -332,7 +344,11 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn, tem
                   autoCorrect="off"
                   spellCheck={false}
                   placeholder={typingPlaceholder}
-                  className="w-full bg-transparent border-b border-white/40 focus:border-[#f4a100] py-1.5 md:py-2.5 text-white transition-all outline-none font-montserrat text-sm md:text-lg placeholder:text-white/20"
+                  className={`w-full bg-transparent border-b border-white/40 focus:border-[#f4a100] text-white transition-all outline-none font-montserrat placeholder:text-white/20 ${
+                    customDesign
+                      ? 'py-2 md:py-3.5 text-[18px] md:text-[23px]'
+                      : 'py-1.5 md:py-2.5 text-sm md:text-lg'
+                  }`}
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
                 />
