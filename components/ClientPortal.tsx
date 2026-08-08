@@ -1202,32 +1202,62 @@ export const ClientPortal: React.FC = () => {
 
       {/* Publish success */}
       {publishedUrl && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-5">
-          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#141414] p-7 text-center">
-            <button
-              onClick={() => setPublishedUrl(null)}
-              className="absolute-close float-right -mt-2 -mr-2 p-1 text-white/40 hover:text-white"
-              aria-label="Close"
-            >
-              <X size={16} />
-            </button>
-            <CheckCircle2 size={40} className="mx-auto mb-3 text-emerald-400" />
-            <p className="text-lg font-bold text-white">Your site is live!</p>
-            <p className="mt-1 text-[12.5px] text-white/50">
-              Changes are on your website now. It can take a few seconds to show everywhere.
-            </p>
-            <a
-              href={publishedUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-5 inline-block w-full rounded-lg py-3 text-[12px] font-black uppercase tracking-[0.16em]"
-              style={{ background: GOLD, color: '#0a0a0a' }}
-            >
-              View my website
-            </a>
-          </div>
-        </div>
+        <PublishSuccess url={publishedUrl} onClose={() => setPublishedUrl(null)} />
       )}
+    </div>
+  );
+};
+
+// "Your site is live!" panel. Two guards against a truthful publish LOOKING
+// broken (a real client hit both in one morning):
+//  - The domain points at the new deployment a couple of seconds AFTER the
+//    deployment reports ready — an instant click can land on the previous
+//    version. The button counts down 3s before it's clickable.
+//  - The client's browser may re-show a cached copy of their site from an
+//    earlier visit. A per-click ?v= query forces a fresh load.
+const PublishSuccess: React.FC<{ url: string; onClose: () => void }> = ({ url, onClose }) => {
+  const [wait, setWait] = useState(3);
+  useEffect(() => {
+    if (wait <= 0) return;
+    const t = window.setTimeout(() => setWait((w) => w - 1), 1000);
+    return () => window.clearTimeout(t);
+  }, [wait]);
+  const ready = wait <= 0;
+  const freshUrl = `${url}${url.includes('?') ? '&' : '?'}v=${Date.now()}`;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-5">
+      <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#141414] p-7 text-center">
+        <button
+          onClick={onClose}
+          className="absolute-close float-right -mt-2 -mr-2 p-1 text-white/40 hover:text-white"
+          aria-label="Close"
+        >
+          <X size={16} />
+        </button>
+        <CheckCircle2 size={40} className="mx-auto mb-3 text-emerald-400" />
+        <p className="text-lg font-bold text-white">Your site is live!</p>
+        <p className="mt-1 text-[12.5px] text-white/50">
+          Changes are on your website now. It can take a few seconds to show everywhere.
+        </p>
+        {ready ? (
+          <a
+            href={freshUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-5 inline-block w-full rounded-lg py-3 text-[12px] font-black uppercase tracking-[0.16em]"
+            style={{ background: GOLD, color: '#0a0a0a' }}
+          >
+            View my website
+          </a>
+        ) : (
+          <span
+            className="mt-5 inline-block w-full cursor-default rounded-lg py-3 text-[12px] font-black uppercase tracking-[0.16em]"
+            style={{ background: 'rgba(232,192,116,0.35)', color: 'rgba(10,10,10,0.7)' }}
+          >
+            View my website ({wait}…)
+          </span>
+        )}
+      </div>
     </div>
   );
 };
