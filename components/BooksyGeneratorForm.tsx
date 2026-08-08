@@ -346,7 +346,7 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn, tem
                   placeholder={typingPlaceholder}
                   className={`w-full bg-transparent border-b border-white/40 focus:border-[#f4a100] text-white transition-all outline-none font-montserrat placeholder:text-white/20 ${
                     customDesign
-                      ? 'py-2 md:py-3.5 text-[18px] md:text-[23px]'
+                      ? 'aib-booking-input-lg py-2 md:py-3.5 text-[18px] md:text-[23px]'
                       : 'py-1.5 md:py-2.5 text-sm md:text-lg'
                   }`}
                   value={url}
@@ -409,6 +409,13 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn, tem
 
       {/* Premium-pass styles — scoped by booksy-lux-* class names. */}
       <style>{`
+        /* index.html pins every input to 16px !important below 768px so iOS
+           Safari doesn't auto-zoom on focus. That silently capped the larger
+           /custom-design field on phones, so out-specify it — 18px is still
+           above the 16px threshold that triggers the zoom. */
+        @media (max-width: 767px) {
+          input.aib-booking-input-lg { font-size: 18px !important; }
+        }
         @keyframes booksyLuxKenburns {
           0% { transform: scale(1.02) translateY(0); }
           100% { transform: scale(1.1) translateY(-1.6%); }
