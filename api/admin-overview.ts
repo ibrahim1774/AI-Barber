@@ -171,6 +171,7 @@ export default async function handler(req: any, res: any) {
       // arranged over by text; each site title was read off the live build.
       'jamesdbarber01@gmail.com':  { phone: '9106706695', site: 'https://jamesd-barber.vercel.app', label: 'James D Barber @ One Stop Barbershop (Raeford NC)' },
       'raydawson.rd@gmail.com':    { phone: '5013888810', site: 'https://beardhouse-cuts.vercel.app', label: 'BeardHouse Cuts (Searcy AR)' },
+      'adio74mazi@gmail.com':      { phone: '2405332126', site: 'https://nstyle-hair-grooming.vercel.app', label: 'N Style Hair Grooming (Bowie MD)' },
     };
 
     const emailsWithSubs = new Set<string>();
