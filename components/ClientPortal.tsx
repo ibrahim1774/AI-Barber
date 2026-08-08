@@ -644,9 +644,10 @@ export const ClientPortal: React.FC = () => {
     }
   }, []);
 
-  const handleSave = useCallback(async () => {
+  // Returns true on success so Publish can chain off it.
+  const handleSave = useCallback(async (): Promise<boolean> => {
     const doc = iframeRef.current?.contentDocument;
-    if (!doc || !site || !activePage) return;
+    if (!doc || !site || !activePage) return false;
     setSaving(true);
     try {
       const html = serializeForSave(doc, site.slug);
@@ -660,9 +661,11 @@ export const ClientPortal: React.FC = () => {
       if (error) throw new Error(error.message);
       setDirtyBoth(false);
       showToast('ok', 'Saved. Publish when you want it live.');
+      return true;
     } catch (e: any) {
       console.error('[portal] save failed:', e);
       showToast('err', `Save failed: ${e?.message || 'unknown error'}`);
+      return false;
     } finally {
       setSaving(false);
     }
@@ -720,9 +723,15 @@ export const ClientPortal: React.FC = () => {
 
   const handlePublish = useCallback(async () => {
     if (!site) return;
+    // Publish means "make my edits live" — clients (usually on a phone,
+    // keyboard open) tap it with edits still unsaved, and the old
+    // hit-Save-first toast was easy to miss. It looked exactly like a
+    // broken publish: the button "did nothing", a later reload dropped the
+    // edits, and the next Publish shipped the unchanged site. So save for
+    // them; only a save that FAILS blocks the publish.
     if (dirtyRef.current) {
-      showToast('err', 'You have unsaved edits — hit Save first.');
-      return;
+      const savedOk = await handleSave();
+      if (!savedOk) return;
     }
     setPublishing(true);
     setPublishedUrl(null);
@@ -755,7 +764,7 @@ export const ClientPortal: React.FC = () => {
     } finally {
       setPublishing(false);
     }
-  }, [site, showToast]);
+  }, [site, showToast, handleSave]);
 
   const switchPage = useCallback(
     (page: string) => {
@@ -1029,7 +1038,7 @@ export const ClientPortal: React.FC = () => {
 
       {/* Hint bar */}
       <div className="border-t border-white/10 px-4 py-2 text-center text-[11px] text-white/40">
-        Click any text to edit it. Click any photo to replace it. Use the 📷 Change background button on photo backdrops. Save, then Publish to update your live site.
+        Click any text to edit it. Click any photo to replace it. Use the 📷 Change background button on photo backdrops. Publish saves your edits and updates your live site.
       </div>
 
       {/* Hidden picker for image replacement */}
