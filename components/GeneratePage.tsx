@@ -33,6 +33,19 @@ const BG = '#0a0a0a';
 // Neutral seed so the site behind the overlay looks real immediately.
 const SEED_NAME = 'Premium Cuts';
 
+// /custom-design-29 demo gallery — the sample site IS the page there (no
+// overlay, nothing to generate), so six empty "Add Your Own Image" slots
+// would read as broken. All six are barbershop shots already used across
+// the app's own UI, URL-checked. slot 0 = the standard gallery seed.
+const CD29_GALLERY = [
+  'https://images.unsplash.com/photo-1605497788044-5a32c7078486?auto=format&fit=crop&w=900&q=65',
+  'https://images.unsplash.com/photo-1585747860715-2ba37e788b70?auto=format&fit=crop&w=900&q=65',
+  'https://images.unsplash.com/photo-1621605815971-fbc98d665033?auto=format&fit=crop&w=900&q=65',
+  'https://images.unsplash.com/photo-1599351431202-1e0f0137899a?auto=format&fit=crop&w=900&q=65',
+  'https://images.unsplash.com/photo-1622286342621-4bd786c2447c?auto=format&fit=crop&w=900&q=65',
+  'https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?auto=format&fit=crop&w=900&q=65',
+];
+
 const EuphoriaWebsite = lazy(() => import('./EuphoriaWebsite').then((m) => ({ default: m.EuphoriaWebsite })));
 const GeneratedWebsite = lazy(() => import('./GeneratedWebsite').then((m) => ({ default: m.GeneratedWebsite })));
 const PrimeWebsite = lazy(() => import('./PrimeWebsite').then((m) => ({ default: m.PrimeWebsite })));
@@ -73,7 +86,9 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
   // centered GenerateCustomizePrompts overlay. On /booksy the overlay leads
   // with the booking-link field (plus color picker + Design 1/2 toggle); the
   // floating BooksyDesignSwitcher takes over once the overlay is closed.
-  const [showPrompts, setShowPrompts] = useState(true);
+  // /custom-design-29 has NO overlay at all — the sample site with its
+  // filled gallery is the page; the $29 CTA + design/colour pill do the rest.
+  const [showPrompts, setShowPrompts] = useState(variant !== 'custom-design-29');
   const [showLaunchGuide, setShowLaunchGuide] = useState(false);
   const [isCheckoutFlowOpen, setIsCheckoutFlowOpen] = useState(false);
   // Brand color the visitor picked in the overlay. Carried into every
@@ -123,7 +138,12 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
         console.error('[generate] seed generateContent failed:', err);
         return null;
       });
-      if (data) setSiteData({ ...data, template });
+      if (data)
+        setSiteData({
+          ...data,
+          template,
+          ...(variant === 'custom-design-29' ? { gallery: [...CD29_GALLERY] } : {}),
+        });
     })();
   }, []);
 
@@ -254,9 +274,11 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
       setShowPrompts(true);
       return;
     }
+    // cd29 has no overlay to restart — Back is a no-op there.
+    if (variant === 'custom-design-29') return;
     // Restart the customize overlay over the live preview.
     setShowPrompts(true);
-  }, [formFirst]);
+  }, [formFirst, variant]);
 
   // /booksy is form-first: no site until the visitor pastes a link. Render
   // the single-URL BooksyGeneratorForm (its own hero + progress screen) and
