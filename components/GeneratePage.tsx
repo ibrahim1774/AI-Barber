@@ -56,7 +56,11 @@ export interface GeneratePageProps {
   // path-detected by isCustomDesignAnyPath() inside PrePaymentBanner.
   // 'custom-design-29' = the /custom-design-29 entry — same $29 offer, but the
   // sample site is seeded instantly and the overlay asks for design + colour only.
-  variant?: 'generate' | 'booksy' | 'barber-generate' | 'custom-design' | 'custom-design-29';
+  // 'custom-10' = the /custom-10 entry — pay-first: the sample site is the
+  // whole page (no overlay at all); design + colour ride in the left-middle
+  // pill, and the only CTA is the $10/mo plan. The booking link is collected
+  // post-payment inside the account.
+  variant?: 'generate' | 'booksy' | 'barber-generate' | 'custom-design' | 'custom-design-29' | 'custom-10';
 }
 
 export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate' }) => {
@@ -68,12 +72,14 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
   // guide are all suppressed, and the design/colour controls move into a
   // single pill floating just above the one remaining CTA.
   const customOnly = variant === 'custom-design' || variant === 'custom-design-29';
+  // /custom-10: sample site only — no overlay, pay-first, $10/mo CTA.
+  const custom10 = variant === 'custom-10';
   const [siteData, setSiteData] = useState<WebsiteData | null>(null);
   // Both /generate and /booksy lead with an instant-preview site + the
   // centered GenerateCustomizePrompts overlay. On /booksy the overlay leads
   // with the booking-link field (plus color picker + Design 1/2 toggle); the
   // floating BooksyDesignSwitcher takes over once the overlay is closed.
-  const [showPrompts, setShowPrompts] = useState(true);
+  const [showPrompts, setShowPrompts] = useState(variant !== 'custom-10');
   const [showLaunchGuide, setShowLaunchGuide] = useState(false);
   const [isCheckoutFlowOpen, setIsCheckoutFlowOpen] = useState(false);
   // Brand color the visitor picked in the overlay. Carried into every
@@ -298,9 +304,9 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
             userId={user?.id ?? null}
             isPostPayment={false}
             onCheckoutFlowChange={setIsCheckoutFlowOpen}
-            hidePrepaymentBanner={showPrompts}
+            hidePrepaymentBanner={showPrompts && variant !== 'custom-design-29'}
             onUpdate={setSiteData}
-            showThemePicker={!showPrompts && !customOnly}
+            showThemePicker={!showPrompts && !customOnly && !custom10}
           />
         ) : activeTemplate === 'euphoria' ? (
           <EuphoriaWebsite
@@ -309,8 +315,8 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
             userId={user?.id ?? null}
             isPostPayment={false}
             onCheckoutFlowChange={setIsCheckoutFlowOpen}
-            hidePrepaymentBanner={showPrompts}
-            showThemePicker={!showPrompts && !customOnly}
+            hidePrepaymentBanner={showPrompts && variant !== 'custom-design-29'}
+            showThemePicker={!showPrompts && !customOnly && !custom10}
           />
         ) : (
           <GeneratedWebsite
@@ -319,9 +325,9 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
             userId={user?.id ?? null}
             isPostPayment={false}
             onCheckoutFlowChange={setIsCheckoutFlowOpen}
-            hidePrepaymentBanner={showPrompts}
+            hidePrepaymentBanner={showPrompts && variant !== 'custom-design-29'}
             onUpdate={setSiteData}
-            showThemePicker={!showPrompts && !customOnly}
+            showThemePicker={!showPrompts && !customOnly && !custom10}
           />
         )}
       </Suspense>
@@ -345,9 +351,11 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
                 ? 'generate'
                 : 'booksy'
           }
-          onColorChange={handleColorChange}
+          // /custom-design-29: design + colour live in the floating pill
+          // (visible alongside the box), so the box itself stays input-only.
+          onColorChange={variant === 'custom-design-29' ? undefined : handleColorChange}
           initialColor={colorTheme.charAt(0) === '#' ? colorTheme : '#f4a100'}
-          onTemplateChange={handleTemplateChange}
+          onTemplateChange={variant === 'custom-design-29' ? undefined : handleTemplateChange}
           initialTemplate={template}
         />
       )}
@@ -360,8 +368,10 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
           design AND colour controls ride together in one pill anchored just
           above the single CTA; everywhere else the switcher keeps its
           left-middle position and colour lives in the top-left theme picker. */}
-      {!showPrompts && !isCheckoutFlowOpen && (
+      {!isCheckoutFlowOpen && (customOnly || custom10 || !showPrompts) && (
         customOnly ? (
+          // cd29: pill above the CTA, visible even while the insert-link box
+          // is open — the box no longer holds the pickers.
           <CtaDesignControls
             current={activeTemplate ?? 'luxe'}
             onSelect={handleDesignSwitch}
@@ -370,10 +380,14 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
             onColorChange={handleColorChange}
           />
         ) : (
+          // custom-10 keeps the classic left-middle pill, with the colour
+          // swatches folded in; other variants unchanged (design only).
           <BooksyDesignSwitcher
             current={activeTemplate ?? 'luxe'}
             onSelect={handleDesignSwitch}
             busy={switching}
+            color={custom10 ? (colorTheme.charAt(0) === '#' ? colorTheme : '#f4a100') : undefined}
+            onColorChange={custom10 ? handleColorChange : undefined}
           />
         )
       )}

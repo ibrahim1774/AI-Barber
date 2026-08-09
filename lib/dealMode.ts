@@ -200,6 +200,15 @@ export function isCustomDesignAnyPath(pathname?: string): boolean {
   return isCustomDesignPath(pathname) || isCustomDesign29Path(pathname);
 }
 
+// `/custom-10` — pay-first funnel: a sample site is the backdrop, the only
+// CTA is $10/mo, and the booking link is collected AFTER payment inside the
+// account (the editor prompts for it, scrapes, and rebuilds the site).
+export const CUSTOM_10_PATH = '/custom-10';
+export function isCustom10Path(pathname?: string): boolean {
+  const p = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
+  return p === CUSTOM_10_PATH || p === `${CUSTOM_10_PATH}/`;
+}
+
 // `/admin` — owner-only customer dashboard: Stripe subscriptions joined
 // to Supabase accounts + deployed sites. The page itself is only a
 // login shell; /api/admin-overview enforces the admin email.

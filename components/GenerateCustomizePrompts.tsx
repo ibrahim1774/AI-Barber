@@ -107,6 +107,39 @@ export const BookingLinkTypewriter: React.FC<{ color: string }> = ({ color }) =>
   );
 };
 
+// String version of the typewriter for use as an <input> placeholder —
+// placeholders can't hold JSX, so this types the same platform samples
+// directly into the empty field. Freezes on the static first sample for
+// reduced-motion users.
+function useTypingPlaceholder(): string {
+  const [text, setText] = useState('');
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setText(TYPE_SAMPLES[0]);
+      return;
+    }
+    let idx = 0, pos = 0, deleting = false;
+    let t = 0;
+    const tick = () => {
+      const full = TYPE_SAMPLES[idx];
+      if (!deleting) {
+        pos++;
+        setText(full.slice(0, pos));
+        t = window.setTimeout(tick, pos >= full.length ? 1400 : 60 + Math.random() * 40);
+        if (pos >= full.length) deleting = true;
+      } else {
+        pos -= 2;
+        setText(full.slice(0, Math.max(0, pos)));
+        if (pos <= 0) { deleting = false; pos = 0; idx = (idx + 1) % TYPE_SAMPLES.length; t = window.setTimeout(tick, 450); }
+        else t = window.setTimeout(tick, 24);
+      }
+    };
+    t = window.setTimeout(tick, 700);
+    return () => window.clearTimeout(t);
+  }, []);
+  return text;
+}
+
 export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> = ({
   onChange,
   onSubmitBookingLink,
@@ -126,6 +159,7 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
   // /custom-design-29: the sample site is already on screen and no
   // details are collected — the overlay is just design + colour.
   const isDesignOnly = variant === 'design-only';
+  const typingPlaceholder = useTypingPlaceholder();
   const [color, setColor] = useState(initialColor);
   const pickColor = (hex: string) => {
     setColor(hex);
@@ -181,9 +215,23 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
   // Step 1 primary action.
   const handleBookingGenerate = async (e: React.FormEvent) => {
     if (isDesignOnly) {
+      // /custom-design-29: the box is a demo generator — scrape the pasted
+      // link and rebuild the preview behind it. Purchase lives in the $29
+      // CTA below, which stays on screen the whole time. On a failed
+      // scrape, keep the sample site and say so — there are no manual
+      // detail steps on this page to fall through to.
       e.preventDefault();
-      setStep('done');
-      await onFinish('', '', '');
+      const url = bookingUrl.trim();
+      if (!url) return;
+      setScraping(true);
+      setNote('');
+      const ok = await onSubmitBookingLink(url).catch(() => false);
+      setScraping(false);
+      if (ok) {
+        setStep('done');
+      } else {
+        setNote("We couldn't pull that link — double-check it and try again.");
+      }
       return;
     }
     e.preventDefault();
@@ -277,7 +325,7 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
       aria-live="polite"
     >
       <div
-        className="pointer-events-auto w-full max-w-[320px] rounded-lg p-3.5 transition-all duration-300"
+        className={`pointer-events-auto w-full ${isDesignOnly ? 'max-w-[290px]' : 'max-w-[320px]'} rounded-lg p-3.5 transition-all duration-300`}
         style={{
           background: BG_CARD,
           border: `1px solid ${GOLD_DARK}`,
@@ -320,7 +368,7 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
           className={`leading-tight font-semibold text-white mb-2.5 ${isBooksy ? 'text-[13px] md:text-[15px] whitespace-nowrap' : 'text-[14px] md:text-[15px]'}`}
           style={{ letterSpacing: '-0.015em' }}
         >
-          {isDesignOnly ? 'Pick Your Design' : isBooksy ? 'Generate Custom Barber Site in Seconds' : 'Customize Your Barbershop Site'}
+          {isDesignOnly ? 'Insert Your Booking Link' : isBooksy ? 'Generate Custom Barber Site in Seconds' : 'Customize Your Barbershop Site'}
         </h2>
 
         {/* ───────── Step 1: booking link question ───────── */}
@@ -425,15 +473,22 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
               </div>
             )}
 
-            {choice === 'yes' && (
+            {(choice === 'yes' || isDesignOnly) && (
               <>
-                <p className="text-[13px] md:text-[15px] font-bold tracking-tight text-white leading-snug mb-1 whitespace-nowrap">
-                  Enter your barber booking link here
-                  <span className="text-white/35"> ::</span>
-                </p>
-                <p className="text-[12px] md:text-[13px] font-semibold mb-3 min-h-[18px]">
-                  <BookingLinkTypewriter color={color} />
-                </p>
+                {/* design-only: the box title is already the ask, and the
+                    typing demo lives INSIDE the field as its placeholder —
+                    the separate heading + demo line would double the box. */}
+                {!isDesignOnly && (
+                  <>
+                    <p className="text-[13px] md:text-[15px] font-bold tracking-tight text-white leading-snug mb-1 whitespace-nowrap">
+                      Enter your barber booking link here
+                      <span className="text-white/35"> ::</span>
+                    </p>
+                    <p className="text-[12px] md:text-[13px] font-semibold mb-3 min-h-[18px]">
+                      <BookingLinkTypewriter color={color} />
+                    </p>
+                  </>
+                )}
                 <input
                   // type="text" (not "url") so a pasted share-sheet blob —
                   // "…book on Booksy here: https://booksy.com/…" — isn't
@@ -444,10 +499,10 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
                   autoCapitalize="off"
                   autoCorrect="off"
                   spellCheck={false}
-                  autoFocus
+                  autoFocus={!isDesignOnly}
                   value={bookingUrl}
                   onChange={(e) => setBookingUrl(e.target.value)}
-                  placeholder="Paste your link here…"
+                  placeholder={isDesignOnly ? typingPlaceholder : 'Paste your link here…'}
                   className="w-full px-3 py-3.5 bg-transparent text-white placeholder-white/35 text-[15px] outline-none mb-3"
                   style={inputStyle}
                 />
@@ -458,7 +513,7 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
                 routes a visitor without a link to the detail questions. */}
             <button
               type="submit"
-              disabled={isDesignOnly ? false : choice !== 'yes' || !bookingUrl.trim() || scraping}
+              disabled={isDesignOnly ? !bookingUrl.trim() || scraping : choice !== 'yes' || !bookingUrl.trim() || scraping}
               className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.22em] transition disabled:opacity-50"
               style={primaryBtnStyle}
             >
@@ -469,7 +524,7 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
                 </>
               ) : (
                 <>
-                  <span>{isDesignOnly ? 'Looks Good — Continue' : isBooksy ? 'Generate My Barbershop Site' : 'Generate'}</span>
+                  <span>{isDesignOnly ? 'Generate My Site' : isBooksy ? 'Generate My Barbershop Site' : 'Generate'}</span>
                   <ArrowRight size={13} />
                 </>
               )}

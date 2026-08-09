@@ -1,4 +1,5 @@
 import React from 'react';
+import { BrandSwatchGrid } from './BrandSwatchGrid';
 
 // Floating Design 1 / Design 2 switcher for the /booksy editor. A single
 // vertical panel pinned to the LEFT, vertically centered (left-middle) on all
@@ -11,6 +12,10 @@ export interface BooksyDesignSwitcherProps {
   current: 'luxe' | 'euphoria' | 'prime';
   onSelect: (template: 'luxe' | 'prime') => void;
   busy?: boolean;
+  // When both are provided, the six brand swatches render under the design
+  // buttons — /custom-10 keeps design + colour together in this one pill.
+  color?: string;
+  onColorChange?: (hex: string) => void;
 }
 
 const GOLD = '#e8c074';
@@ -20,7 +25,7 @@ const OPTIONS: { key: 'luxe' | 'prime'; label: string }[] = [
   { key: 'prime', label: 'Design 2' },
 ];
 
-export const BooksyDesignSwitcher: React.FC<BooksyDesignSwitcherProps> = ({ current, onSelect, busy }) => {
+export const BooksyDesignSwitcher: React.FC<BooksyDesignSwitcherProps> = ({ current, onSelect, busy, color, onColorChange }) => {
   // Treat any non-prime template (luxe/euphoria) as "Design 1" for the active
   // highlight, since Design 2 is specifically the prime design.
   const activeKey: 'luxe' | 'prime' = current === 'prime' ? 'prime' : 'luxe';
@@ -65,6 +70,12 @@ export const BooksyDesignSwitcher: React.FC<BooksyDesignSwitcherProps> = ({ curr
     >
       <span className="text-[9px] font-bold uppercase tracking-[0.28em] text-white/45 text-center mb-0.5">Design</span>
       {OPTIONS.map((o) => <Btn key={o.key} k={o.key} label={o.label} />)}
+      {color !== undefined && onColorChange && (
+        <>
+          <span className="text-[9px] font-bold uppercase tracking-[0.28em] text-white/45 text-center mt-1">Color</span>
+          <BrandSwatchGrid current={color} onPick={onColorChange} columns={3} size="sm" />
+        </>
+      )}
     </div>
   );
 };
