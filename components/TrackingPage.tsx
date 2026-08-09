@@ -50,6 +50,10 @@ type StatusFilter = 'all' | 'active' | 'paused';
 interface Node {
   id: string;
   name: string;
+  // Campaign › ad set, set on ad nodes only. Meta lets you name ads "1",
+  // "2", "3" — and this account does — so the winning creative is
+  // unidentifiable without the branch it hangs off.
+  path?: string;
   status?: string;
   spend: number;
   impressions: number;
@@ -71,24 +75,33 @@ const roasOf = (n: Node) => (n.spend > 0 ? n.revenue / n.spend : null);
 const cpaOf = (n: Node) => (n.purchases > 0 ? n.spend / n.purchases : null);
 
 function sortNodes(nodes: Node[], key: SortKey, dir: 'asc' | 'desc'): Node[] {
-  const val = (n: Node): number | string => {
+  // A row with no purchases has no cost-per-purchase and no ROAS — that's
+  // absent data, not a value. Sorting it as a number puts "—" at the top of
+  // the descending list, which reads as "these are my most expensive ads".
+  // Nulls are held out and appended last whichever way the column points.
+  const val = (n: Node): number | string | null => {
     switch (key) {
       case 'name': return n.name.toLowerCase();
-      case 'roas': return roasOf(n) ?? -1;
-      // No purchases = no CPA. Park those last in both directions rather
-      // than letting a null masquerade as the cheapest ad on the account.
-      case 'cpa': return cpaOf(n) ?? Number.MAX_SAFE_INTEGER;
+      case 'roas': return roasOf(n);
+      case 'cpa': return cpaOf(n);
       default: return (n as any)[key] ?? 0;
     }
   };
-  return [...nodes].sort((a, b) => {
-    const av = val(a), bv = val(b);
+  const withVal: Node[] = [];
+  const nulls: Node[] = [];
+  for (const n of nodes) (val(n) === null ? nulls : withVal).push(n);
+  withVal.sort((a, b) => {
+    const av = val(a)!, bv = val(b)!;
     if (typeof av === 'string' || typeof bv === 'string') {
       const r = String(av).localeCompare(String(bv));
       return dir === 'asc' ? r : -r;
     }
-    return dir === 'asc' ? av - bv : bv - av;
-  }).map((n) => ({ ...n, children: n.children.length ? sortNodes(n.children, key, dir) : n.children }));
+    return dir === 'asc' ? (av as number) - (bv as number) : (bv as number) - (av as number);
+  });
+  return [...withVal, ...nulls].map((n) => ({
+    ...n,
+    children: n.children.length ? sortNodes(n.children, key, dir) : n.children,
+  }));
 }
 
 export default function TrackingPage() {
@@ -197,7 +210,12 @@ export default function TrackingPage() {
       let st = adsetOf.get(sId);
       if (!st) { st = blankNode(sId, r.adset || '(no ad set)', statuses[r.adsetId]); adsetOf.set(sId, st); c.children.push(st); }
       let ad = adOf.get(aId);
-      if (!ad) { ad = blankNode(aId, r.ad || '(no ad)', statuses[r.adId]); adOf.set(aId, ad); st.children.push(ad); }
+      if (!ad) {
+        ad = blankNode(aId, r.ad || '(no ad)', statuses[r.adId]);
+        ad.path = `${c.name} › ${st.name}`;
+        adOf.set(aId, ad);
+        st.children.push(ad);
+      }
       for (const n of [c, st, ad]) {
         n.spend += r.spend; n.impressions += r.impressions; n.clicks += r.clicks;
         n.metaPurchases += r.metaPurchases || 0; n.metaRevenue += r.metaRevenue || 0;
@@ -494,7 +512,10 @@ export default function TrackingPage() {
         {best && (
           <div style={{ ...box, padding: '13px 16px', marginBottom: 14, borderColor: 'rgba(52,211,153,0.3)', background: 'rgba(52,211,153,0.05)', display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.18em', textTransform: 'uppercase', color: GREEN }}>Best creative</span>
-            <span style={{ fontWeight: 700, fontSize: 14 }}>{best.name}</span>
+            <span style={{ fontWeight: 700, fontSize: 14 }}>
+              {best.path ? <span style={{ color: SMOKE, fontWeight: 500 }}>{best.path} › </span> : null}
+              {best.name}
+            </span>
             <StatusPill s={best.status} />
             <span style={{ fontSize: 12.5, color: SMOKE }}>
               {money(best.spend)} spend · {best.purchases} purchase{best.purchases === 1 ? '' : 's'} · {money(best.revenue)} revenue ·{' '}
