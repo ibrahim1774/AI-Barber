@@ -31,7 +31,9 @@ const GRAPH = 'https://graph.facebook.com/v21.0';
 interface SpendRow {
   date: string;
   campaign: string;
+  campaignId: string;
   adset: string;
+  adsetId: string;
   ad: string;
   adId: string;
   spend: number;
@@ -82,7 +84,7 @@ async function fetchMetaSpend(since: string, until: string): Promise<{ rows: Spe
   const rows: SpendRow[] = [];
   let url =
     `${GRAPH}/${AD_ACCOUNT_ID}/insights?level=ad` +
-    `&fields=campaign_name,adset_name,ad_name,ad_id,spend,impressions,clicks,actions,action_values` +
+    `&fields=campaign_name,campaign_id,adset_name,adset_id,ad_name,ad_id,spend,impressions,clicks,actions,action_values` +
     `&time_range=${encodeURIComponent(JSON.stringify({ since, until }))}` +
     // No time_increment: Meta then returns ONE row per ad for the whole
     // range instead of one per ad PER DAY. The dashboard aggregates by ad
@@ -100,7 +102,9 @@ async function fetchMetaSpend(since: string, until: string): Promise<{ rows: Spe
         // Whole-range totals now, so date_start is the range start.
         date: r.date_start || since,
         campaign: r.campaign_name || '',
+        campaignId: String(r.campaign_id || ''),
         adset: r.adset_name || '',
+        adsetId: String(r.adset_id || ''),
         ad: r.ad_name || '',
         adId: String(r.ad_id || ''),
         spend: parseFloat(r.spend || '0') || 0,
@@ -113,6 +117,37 @@ async function fetchMetaSpend(since: string, until: string): Promise<{ rows: Spe
     url = data?.paging?.next || '';
   }
   return { rows };
+}
+
+// Delivery status per object, so the console can separate what is actually
+// running from what is paused/archived. Insights alone can't tell you: a
+// paused campaign still reports the spend it made while it was live, which
+// is exactly the row an operator wants to stop staring at.
+async function fetchMetaStatuses(): Promise<Record<string, string>> {
+  const token = process.env.META_ADS_TOKEN;
+  if (!token) return {};
+  const out: Record<string, string> = {};
+  await Promise.all(
+    ['campaigns', 'adsets', 'ads'].map(async (edge) => {
+      let url =
+        `${GRAPH}/${AD_ACCOUNT_ID}/${edge}?fields=id,effective_status&limit=500` +
+        `&access_token=${encodeURIComponent(token)}`;
+      for (let page = 0; url && page < 6; page++) {
+        try {
+          const res = await fetch(url);
+          const data: any = await res.json();
+          if (data?.error) return;
+          for (const o of data?.data || []) {
+            if (o?.id) out[String(o.id)] = String(o.effective_status || 'UNKNOWN');
+          }
+          url = data?.paging?.next || '';
+        } catch {
+          return;
+        }
+      }
+    }),
+  );
+  return out;
 }
 
 async function fetchStripeConversions(fromUnix: number, toUnix: number): Promise<{ rows: ConversionRow[]; error?: string }> {
@@ -190,15 +225,17 @@ export default async function handler(req: any, res: any) {
   const since = isDate(req.query.since) ? String(req.query.since) : fmt(from);
   const until = isDate(req.query.until) ? String(req.query.until) : fmt(to);
 
-  const [meta, stripe] = await Promise.all([
+  const [meta, stripe, statuses] = await Promise.all([
     fetchMetaSpend(since, until),
     fetchStripeConversions(from, to),
+    fetchMetaStatuses(),
   ]);
 
   return res.status(200).json({
     range: { from, to, since, until },
     adAccount: AD_ACCOUNT_ID,
     spend: meta.rows,
+    statuses,
     spendError: meta.error || null,
     conversions: stripe.rows,
     conversionsError: stripe.error || null,
