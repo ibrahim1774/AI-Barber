@@ -298,7 +298,7 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
             userId={user?.id ?? null}
             isPostPayment={false}
             onCheckoutFlowChange={setIsCheckoutFlowOpen}
-            hidePrepaymentBanner={showPrompts}
+            hidePrepaymentBanner={showPrompts && variant !== 'custom-design-29'}
             onUpdate={setSiteData}
             showThemePicker={!showPrompts && !customOnly}
           />
@@ -309,7 +309,7 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
             userId={user?.id ?? null}
             isPostPayment={false}
             onCheckoutFlowChange={setIsCheckoutFlowOpen}
-            hidePrepaymentBanner={showPrompts}
+            hidePrepaymentBanner={showPrompts && variant !== 'custom-design-29'}
             showThemePicker={!showPrompts && !customOnly}
           />
         ) : (
@@ -319,7 +319,7 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
             userId={user?.id ?? null}
             isPostPayment={false}
             onCheckoutFlowChange={setIsCheckoutFlowOpen}
-            hidePrepaymentBanner={showPrompts}
+            hidePrepaymentBanner={showPrompts && variant !== 'custom-design-29'}
             onUpdate={setSiteData}
             showThemePicker={!showPrompts && !customOnly}
           />
@@ -345,9 +345,11 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
                 ? 'generate'
                 : 'booksy'
           }
-          onColorChange={handleColorChange}
+          // /custom-design-29: design + colour live in the floating pill
+          // (visible alongside the box), so the box itself stays input-only.
+          onColorChange={variant === 'custom-design-29' ? undefined : handleColorChange}
           initialColor={colorTheme.charAt(0) === '#' ? colorTheme : '#f4a100'}
-          onTemplateChange={handleTemplateChange}
+          onTemplateChange={variant === 'custom-design-29' ? undefined : handleTemplateChange}
           initialTemplate={template}
         />
       )}
@@ -360,8 +362,10 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
           design AND colour controls ride together in one pill anchored just
           above the single CTA; everywhere else the switcher keeps its
           left-middle position and colour lives in the top-left theme picker. */}
-      {!showPrompts && !isCheckoutFlowOpen && (
+      {!isCheckoutFlowOpen && (customOnly || !showPrompts) && (
         customOnly ? (
+          // cd29: pill above the CTA, visible even while the insert-link box
+          // is open — the box no longer holds the pickers.
           <CtaDesignControls
             current={activeTemplate ?? 'luxe'}
             onSelect={handleDesignSwitch}
