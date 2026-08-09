@@ -175,6 +175,9 @@ export default async function handler(req: any, res: any) {
       // 2026-08-08. No number for him — reached on Instagram, so the handle
       // goes in the phone cell (same convention as Mr Atomic above).
       'jabfadezbarbe@gmail.com':   { phone: 'ig handle: jab.fadez', site: 'https://jab-fadez.vercel.app', label: 'Jab Fadez (Oxford MS)' },
+      // 2026-08-09, $29/mo custom design bought off /15. Instagram is the
+      // contact — no phone given.
+      'jeanosbeauty.barber@yahoo.com': { phone: 'ig handle: jeanosbeauty.barber', site: 'https://jeanos-beauty-barber.vercel.app', label: 'Jeanosbeauty & Barber (Kinston NC)' },
     };
 
     const emailsWithSubs = new Set<string>();
