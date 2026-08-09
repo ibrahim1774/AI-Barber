@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 
 // /tracking — first-party ads dashboard (the Triple-Whale-style view).
@@ -13,7 +13,7 @@ import { supabase } from '../lib/supabase';
 
 interface SpendRow { date: string; campaign: string; adset: string; ad: string; adId: string; spend: number; impressions: number; clicks: number; metaPurchases: number; metaRevenue: number; }
 interface ConversionRow { id: string; created: number; amount: number; currency: string; plan: string; page: string; type: string; customerEmail: string | null; campaign: string; adset: string; ad: string; adId: string; fcCampaign: string; fcAdset: string; fcAd: string; fcAdId: string; fbclid: boolean; }
-interface Payload { range: { from: number; to: number }; spend: SpendRow[]; spendError: string | null; conversions: ConversionRow[]; conversionsError: string | null; }
+interface Payload { range: { from: number; to: number; since?: string; until?: string }; spend: SpendRow[]; spendError: string | null; conversions: ConversionRow[]; conversionsError: string | null; }
 
 const INK = '#0d0d0f', CARD = '#151519', LINE = 'rgba(255,255,255,0.09)', PAPER = '#f2f2ef', SMOKE = '#9a9aa2', GOLD = '#e8c074', GREEN = '#34d399', RED = '#f87171';
 
@@ -38,6 +38,12 @@ export default function TrackingPage() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
   const [openAd, setOpenAd] = useState<string | null>(null);
+  // Monotonic request id. Ranges take wildly different times to fetch (one
+  // day is a single Meta page; 90 days is several), so a slow earlier
+  // request could land AFTER a fast later one and overwrite it — the
+  // dashboard then showed 7-day numbers with "Today" highlighted. Only the
+  // newest request is allowed to touch state.
+  const reqSeq = useRef(0);
   // Attribution model. Last click = the ad clicked most recently before
   // purchase; first click = the ad that originally brought the visitor.
   const [model, setModel] = useState<'last' | 'first'>('last');
@@ -55,6 +61,8 @@ export default function TrackingPage() {
   };
 
   const load = async (p: Preset) => {
+    const seq = ++reqSeq.current;
+    const isStale = () => seq !== reqSeq.current;
     setLoading(true);
     setErr('');
     try {
@@ -63,15 +71,35 @@ export default function TrackingPage() {
       if (!token) { setAuthed(false); return; }
       const now = Math.floor(Date.now() / 1000);
       const days = PRESETS.find((x) => x.key === p)?.days ?? 7;
-      const from = p === 'today' ? Math.floor(new Date().setHours(0, 0, 0, 0) / 1000) : now - days * 86400;
-      const resp = await fetch(`/api/tracking-data?from=${from}&to=${now}`, { headers: { Authorization: `Bearer ${token}` } });
+      // N days INCLUDING today: "7 days" = today + the 6 before it. The old
+      // now-7*86400 math spanned 8 calendar days once Meta rounded it to
+      // whole days, so every preset reported one day more than its label.
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      start.setDate(start.getDate() - (days - 1));
+      const from = Math.floor(start.getTime() / 1000);
+      // Meta reads since/until as calendar dates in the ad account's
+      // timezone. Deriving them server-side from a UTC timestamp shifted
+      // the window after ~8pm ET, when UTC has already rolled over — so
+      // send the browser's own local dates, which is what "today" means
+      // to whoever is looking at the screen.
+      const d2 = (n: number) => String(n).padStart(2, '0');
+      const localDate = (d: Date) => `${d.getFullYear()}-${d2(d.getMonth() + 1)}-${d2(d.getDate())}`;
+      const since = localDate(start);
+      const until = localDate(new Date());
+      const resp = await fetch(
+        `/api/tracking-data?from=${from}&to=${now}&since=${since}&until=${until}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
       const json = await resp.json();
+      if (isStale()) return;
       if (!resp.ok) throw new Error(json.error || `HTTP ${resp.status}`);
       setData(json);
     } catch (e: any) {
+      if (isStale()) return;
       setErr(e.message || 'Failed to load');
     } finally {
-      setLoading(false);
+      if (!isStale()) setLoading(false);
     }
   };
 
