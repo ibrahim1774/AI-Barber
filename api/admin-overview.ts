@@ -172,6 +172,9 @@ export default async function handler(req: any, res: any) {
       'jamesdbarber01@gmail.com':  { phone: '9106706695', site: 'https://jamesd-barber.vercel.app', label: 'James D Barber @ One Stop Barbershop (Raeford NC)' },
       'raydawson.rd@gmail.com':    { phone: '5013888810', site: 'https://beardhouse-cuts.vercel.app', label: 'BeardHouse Cuts (Searcy AR)' },
       'adio74mazi@gmail.com':      { phone: '2405332126', site: 'https://nstyle-hair-grooming.vercel.app', label: 'N Style Hair Grooming (Bowie MD)' },
+      // 2026-08-08. No number for him — reached on Instagram, so the handle
+      // goes in the phone cell (same convention as Mr Atomic above).
+      'jabfadezbarbe@gmail.com':   { phone: 'ig handle: jab.fadez', site: 'https://jab-fadez.vercel.app', label: 'Jab Fadez (Oxford MS)' },
     };
 
     const emailsWithSubs = new Set<string>();
