@@ -20,7 +20,9 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-export const config = { maxDuration: 60 };
+// Meta paging over a long range can outlast the 60s default; 300 is the
+// Pro-plan cap and matches the other long-running endpoints.
+export const config = { maxDuration: 300 };
 
 const ADMIN_EMAIL = 'ibrahim3709@gmail.com';
 const AD_ACCOUNT_ID = 'act_1731743557488859';
@@ -82,7 +84,12 @@ async function fetchMetaSpend(since: string, until: string): Promise<{ rows: Spe
     `${GRAPH}/${AD_ACCOUNT_ID}/insights?level=ad` +
     `&fields=campaign_name,adset_name,ad_name,ad_id,spend,impressions,clicks,actions,action_values` +
     `&time_range=${encodeURIComponent(JSON.stringify({ since, until }))}` +
-    `&time_increment=1&limit=200&access_token=${encodeURIComponent(token)}`;
+    // No time_increment: Meta then returns ONE row per ad for the whole
+    // range instead of one per ad PER DAY. The dashboard aggregates by ad
+    // and never reads SpendRow.date, so the daily split was ~90x the rows
+    // for nothing — 90 days blew past the function timeout and the page
+    // 504'd. One row per ad keeps every range inside a single page or two.
+    `&limit=500&access_token=${encodeURIComponent(token)}`;
   // Follow Graph API paging; hard cap keeps a runaway range from hanging.
   for (let page = 0; url && page < 10; page++) {
     const res = await fetch(url);
@@ -90,6 +97,7 @@ async function fetchMetaSpend(since: string, until: string): Promise<{ rows: Spe
     if (data?.error) return { rows, error: String(data.error.message || 'Meta API error').slice(0, 300) };
     for (const r of data?.data || []) {
       rows.push({
+        // Whole-range totals now, so date_start is the range start.
         date: r.date_start || since,
         campaign: r.campaign_name || '',
         adset: r.adset_name || '',
