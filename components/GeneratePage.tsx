@@ -37,6 +37,9 @@ const SEED_NAME = 'Premium Cuts';
 // overlay, nothing to generate), so six empty "Add Your Own Image" slots
 // would read as broken. All six are barbershop shots already used across
 // the app's own UI, URL-checked. slot 0 = the standard gallery seed.
+// The luxe "Our Work" grid renders gallery[2..7] (slot 0 seeds About,
+// slot 1 is outside the grid) — a 6-entry array left the last two tiles
+// as empty "Add Your Own Image" placeholders. 8 entries fills the grid.
 const CD29_GALLERY = [
   'https://images.unsplash.com/photo-1605497788044-5a32c7078486?auto=format&fit=crop&w=900&q=65',
   'https://images.unsplash.com/photo-1585747860715-2ba37e788b70?auto=format&fit=crop&w=900&q=65',
@@ -44,6 +47,8 @@ const CD29_GALLERY = [
   'https://images.unsplash.com/photo-1599351431202-1e0f0137899a?auto=format&fit=crop&w=900&q=65',
   'https://images.unsplash.com/photo-1622286342621-4bd786c2447c?auto=format&fit=crop&w=900&q=65',
   'https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?auto=format&fit=crop&w=900&q=65',
+  'https://images.unsplash.com/photo-1512690459411-b9245aed614b?auto=format&fit=crop&w=900&q=65',
+  'https://images.unsplash.com/photo-1517832606299-7ae9b720a186?auto=format&fit=crop&w=900&q=65',
 ];
 
 const EuphoriaWebsite = lazy(() => import('./EuphoriaWebsite').then((m) => ({ default: m.EuphoriaWebsite })));
