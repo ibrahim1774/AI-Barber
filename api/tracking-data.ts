@@ -173,14 +173,22 @@ export default async function handler(req: any, res: any) {
   const from = parseInt(String(req.query.from || ''), 10) || now - 7 * 86400;
   const to = parseInt(String(req.query.to || ''), 10) || now;
   const fmt = (u: number) => new Date(u * 1000).toISOString().slice(0, 10);
+  // Meta reads since/until as calendar dates in the ad account's timezone.
+  // Deriving them here from a UTC timestamp shifted the window whenever the
+  // caller's local day and the UTC day disagreed (after ~8pm ET), so the
+  // client now sends its own local dates. Fall back to the UTC derivation
+  // for older clients / direct calls.
+  const isDate = (v: unknown) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+  const since = isDate(req.query.since) ? String(req.query.since) : fmt(from);
+  const until = isDate(req.query.until) ? String(req.query.until) : fmt(to);
 
   const [meta, stripe] = await Promise.all([
-    fetchMetaSpend(fmt(from), fmt(to)),
+    fetchMetaSpend(since, until),
     fetchStripeConversions(from, to),
   ]);
 
   return res.status(200).json({
-    range: { from, to },
+    range: { from, to, since, until },
     adAccount: AD_ACCOUNT_ID,
     spend: meta.rows,
     spendError: meta.error || null,
