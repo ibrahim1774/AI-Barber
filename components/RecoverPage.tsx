@@ -23,6 +23,10 @@ export const RecoverPage: React.FC<RecoverPageProps> = ({ onRecovered }) => {
   const [error, setError] = useState<string | null>(null);
   const [foundShop, setFoundShop] = useState<string | null>(null);
   const [foundUrl, setFoundUrl] = useState<string | null>(null);
+  // Paid but never published: we're about to hand off to the deploy
+  // path. Keeps the button busy through the redirect so nobody
+  // double-submits into two deploys.
+  const [finishing, setFinishing] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,6 +56,29 @@ export const RecoverPage: React.FC<RecoverPageProps> = ({ onRecovered }) => {
         setError(data.error || `Recovery failed (HTTP ${resp.status})`);
         return;
       }
+      // Paid, but the site was never built — the buyer's browser never
+      // made it back from Stripe to run the deploy. Replay that exact
+      // path: drop the pending payload where it expects to find it and
+      // load the return URL. App.tsx then verifies the session, builds
+      // the site and publishes it, same as a normal checkout.
+      if (data.needsDeploy && data.pendingSite && data.sessionId) {
+        setFoundShop(data.shopName || 'Your site');
+        setFinishing(true);
+        try {
+          localStorage.setItem('pendingSite', JSON.stringify(data.pendingSite));
+        } catch {
+          setError(
+            'Your browser is blocking local storage, so we cannot finish publishing here. ' +
+            'Try again in a normal (non-private) window, or email support@davoxa.com.'
+          );
+          setFinishing(false);
+          return;
+        }
+        const planParam = data.plan ? `&plan=${encodeURIComponent(data.plan)}` : '';
+        window.location.href = `/?stripe_session=${encodeURIComponent(data.sessionId)}${planParam}`;
+        return;
+      }
+
       // Show the found-site confirmation briefly, then hand off to
       // the parent (which opens the signup modal).
       setFoundShop(data.shopName || 'Your site');
@@ -186,6 +213,21 @@ export const RecoverPage: React.FC<RecoverPageProps> = ({ onRecovered }) => {
             </div>
           )}
 
+          {finishing && (
+            <div
+              className="flex items-start gap-2 p-3 rounded text-[12px]"
+              style={{ background: 'rgba(244,161,0,0.08)', border: '1px solid rgba(244,161,0,0.35)', color: '#f8d38a' }}
+            >
+              <Loader2 size={14} className="shrink-0 mt-0.5 animate-spin" />
+              <div>
+                <div className="font-bold">Found your payment — {foundShop}</div>
+                <div className="mt-0.5 text-white/70">
+                  Your site was never published. Publishing it now — this takes about a minute.
+                </div>
+              </div>
+            </div>
+          )}
+
           {foundShop && foundUrl && (
             <div
               className="flex items-start gap-2 p-3 rounded text-[12px]"
@@ -202,7 +244,7 @@ export const RecoverPage: React.FC<RecoverPageProps> = ({ onRecovered }) => {
 
           <button
             type="submit"
-            disabled={busy || !!foundShop}
+            disabled={busy || finishing || !!foundShop}
             className="w-full inline-flex items-center justify-center gap-2 px-7 py-3.5 font-black uppercase tracking-[0.22em] text-[11px] transition disabled:opacity-50"
             style={{
               background: GOLD,
@@ -211,8 +253,8 @@ export const RecoverPage: React.FC<RecoverPageProps> = ({ onRecovered }) => {
               fontFamily: 'inherit',
             }}
           >
-            {busy ? <Loader2 size={14} className="animate-spin" /> : <ArrowRight size={14} />}
-            <span>{busy ? 'Searching…' : 'Find My Site'}</span>
+            {busy || finishing ? <Loader2 size={14} className="animate-spin" /> : <ArrowRight size={14} />}
+            <span>{finishing ? 'Publishing…' : busy ? 'Searching…' : 'Find My Site'}</span>
           </button>
         </form>
 

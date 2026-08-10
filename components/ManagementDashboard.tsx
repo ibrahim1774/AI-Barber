@@ -147,7 +147,14 @@ export const ManagementDashboard: React.FC<ManagementDashboardProps> = ({
           });
           if (resp.ok) {
             const result = await resp.json();
-            if (result?.ok && result?.siteInstance) {
+            // Paid but never published. Attaching here would write a
+            // row for a site that does not exist — and because the row
+            // is never 'deployed', this self-heal would re-fire and
+            // re-attach on every single dashboard load. /recover is the
+            // path that can actually finish publishing it.
+            if (result?.needsDeploy) {
+              console.warn('[Dashboard] Paid site was never published — send the customer to /recover:', result.siteId);
+            } else if (result?.ok && result?.siteInstance) {
               // Guarantee a UUID id before the Supabase write — the
               // recovered instance may carry the slug as its id.
               const recovered: SiteInstance = {
