@@ -3,6 +3,8 @@ import { buildUserData } from './_buildUserData.js';
 import { splitName } from './_hashPii.js';
 import { getPlanContentMeta } from '../lib/pixelMeta.js';
 import { pushOrderToTripleWhale } from './_twOrder.js';
+import { waitUntil } from '@vercel/functions';
+import { publishSite } from '../lib/publishSite.js';
 
 // Stripe webhook -> Meta CAPI Purchase. The browser pixel + client CAPI
 // only fire if the customer returns to ?stripe_session=...; closed tabs,
@@ -16,7 +18,12 @@ import { pushOrderToTripleWhale } from './_twOrder.js';
 const APP_NAME = 'aibarber';
 
 // Stripe signature verification needs the raw, unparsed request body.
-export const config = { api: { bodyParser: false } };
+// bodyParser off: Stripe signature verification needs the raw bytes.
+// maxDuration 300: this handler now BUILDS AND DEPLOYS the paid site. Stripe
+// gets its 200 in the usual second or two — the deploy continues afterwards
+// under waitUntil (see the publish step at the end), and the function has to
+// stay alive for the 60-90s that takes.
+export const config = { api: { bodyParser: false }, maxDuration: 300 };
 
 function readRawBody(req: any): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -173,7 +180,52 @@ export default async function handler(req: any, res: any) {
     } else if (tw.ok) {
       console.log(`[Stripe Webhook] Order → Triple Whale ok. order_id=${eventId}`);
     }
-    return res.status(200).json({ received: true, result: fbResult, tw: tw.ok ? 'ok' : tw.skipped ? 'skipped' : 'error' });
+
+    // ── Build and deploy the site they just paid for ────────────────────
+    // Started AFTER the pixel work: an ad platform must never lose a Purchase
+    // because a deploy failed — the same ordering the browser path uses.
+    //
+    // Handed to waitUntil rather than awaited. A deploy takes 60-90s and
+    // Stripe gives a webhook ~30s to respond, so awaiting it would make every
+    // successful publish look like a failed delivery, and a permanently
+    // "failing" endpoint is one Stripe eventually disables — taking the
+    // conversion reporting down with it. waitUntil keeps the function alive
+    // past the response (maxDuration 300 covers the deploy) while Stripe gets
+    // its 200 immediately.
+    //
+    // The cost of not awaiting is that a failed publish can't trigger Stripe's
+    // retry. api/publish-sweeper is the backstop: it re-checks every paid
+    // session for 48h and publishes anything with no live site.
+    //
+    // Custom-design ($29 Google-Form) sales have no pending payload and
+    // nothing to deploy — publishSite reports 'no-backup' and that's fine.
+    const siteId = typeof session.metadata?.siteId === 'string' ? session.metadata.siteId : '';
+    if (siteId) {
+      waitUntil(
+        publishSite(siteId)
+          .then((outcome) => {
+            if (!outcome.ok) {
+              console[outcome.reason === 'deploy-failed' ? 'error' : 'warn'](
+                `[Stripe Webhook] Publish ${outcome.reason} for ${siteId}${outcome.error ? `: ${outcome.error}` : ''} — sweeper will retry`,
+              );
+            } else {
+              console.log(
+                `[Stripe Webhook] Publish ${outcome.alreadyLive ? 'already-live' : 'deployed'}: ${outcome.deployedUrl}`,
+              );
+            }
+          })
+          .catch((e: any) => {
+            console.error('[Stripe Webhook] Publish threw:', e?.message || e);
+          }),
+      );
+    }
+
+    return res.status(200).json({
+      received: true,
+      result: fbResult,
+      tw: tw.ok ? 'ok' : tw.skipped ? 'skipped' : 'error',
+      publish: siteId ? 'started' : 'skipped',
+    });
   } catch (error: any) {
     console.error('[Stripe Webhook] Meta CAPI failed:', error.message);
     return res.status(500).json({ error: error.message || 'Internal error' });

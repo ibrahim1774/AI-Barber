@@ -73,20 +73,9 @@ async function fetchPage(url: string): Promise<string | null> {
   }
 }
 
-// Compare a shop name against page text. Entities first (a shop called
-// "3000 Kuttz Barbershop & Studio" renders as `&amp;`), then strip to
-// alphanumerics so punctuation, casing, and the stray non-breaking
-// space some shops paste into their name can't cause a mismatch.
-const decodeEntities = (s: string): string =>
-  s
-    .replace(/&amp;/g, '&')
-    .replace(/&#39;|&apos;/g, "'")
-    .replace(/&quot;/g, '"')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>');
-
-const alnum = (s: string): string => decodeEntities(String(s || '')).toLowerCase().replace(/[^a-z0-9]/g, '');
+// Every page these renderers produce carries this meta tag, and nothing
+// else does — it is the marker for "this URL is a site WE built".
+const OURS_MARKER = 'name="published-at"';
 
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -241,18 +230,20 @@ export default async function handler(req: any, res: any) {
     // collided project names, so the slug URL can 404 or belong to a
     // stranger's project — and it's also what a never-deployed site
     // looks like. One request settles which case this is.
-    const stampedUrl: string | null = pending.deployedUrl || null;
-    const candidateUrl = stampedUrl || `https://${siteId}.vercel.app`;
+    const candidateUrl = pending.deployedUrl || `https://${siteId}.vercel.app`;
     const page = await fetchPage(candidateUrl);
 
-    // A stamped URL came back from our own deploy call, so a live page
-    // settles it. A guessed slug URL is different: the slug may belong
-    // to a stranger's project that got there first, and handing this
-    // customer someone else's site is worse than telling them theirs
-    // isn't built. So require the page to actually name this shop.
-    const shopName = alnum(pending.siteData?.shopName || '');
-    const isLive =
-      page !== null && (Boolean(stampedUrl) || (shopName.length > 2 && alnum(page).includes(shopName)));
+    // A 200 is not enough, and a stamp is not either. Both the guessed slug
+    // and the STAMP can point at a stranger: pending-sites/asr.json carries a
+    // stamped https://asr.vercel.app that belongs to someone else entirely.
+    // So the test is whether the page is one WE generated — every template
+    // emits the published-at meta, and nothing else does.
+    //
+    // Deliberately not a shop-name match. That reads as the obvious check and
+    // is wrong twice over: too weak for short names (punctuation-stripped,
+    // "ASR" matches inside ordinary prose like "...has resources..."), and it
+    // would report a customer who RENAMED their shop as unpublished.
+    const isLive = page !== null && page.includes(OURS_MARKER);
     const deployedUrl = isLive ? candidateUrl : null;
 
     // 4. Build the SiteInstance payload the client expects. Mirror the
