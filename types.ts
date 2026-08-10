@@ -37,6 +37,11 @@ export interface WebsiteData {
   // Picked color-theme slug, persisted with the site so renderers can
   // restore the right canvas + accent after publish.
   colorTheme?: string;
+  // /custom-10 pay-first funnel: true when the customer paid before giving
+  // a booking link. The post-payment editor prompts for the link, rebuilds
+  // the site from it, and clears this. Persisted with the site so the
+  // prompt survives devices/sessions until the link is actually given.
+  awaitingBookingLink?: boolean;
   hero: {
     heading: string;
     tagline: string;

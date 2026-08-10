@@ -67,6 +67,11 @@ export default async function handler(req: any, res: any) {
     // '/9' price test: exact homepage funnel at $9/mo + $79/yr.
     const isMonthly9 = plan === 'monthly-9';
     const isYearly9 = plan === 'yearly-9';
+    // 'monthly-custom10' = the /custom-10 pay-first funnel — standard
+    // $10/mo hosting, but the booking link is collected AFTER payment in
+    // the account. Normal deploy routing (NOT the Google Form): the page
+    // metadata is what marks the source subpage.
+    const isMonthlyCustom10 = plan === 'monthly-custom10';
     const isCustom = plan === 'custom';
     const isCustom25 = plan === 'custom25';
     // 'custom-booksy' = /booksy custom-design upsell ($15/mo).
@@ -157,6 +162,12 @@ export default async function handler(req: any, res: any) {
       unitAmount = '7900';
       interval = 'year';
       productName = 'aibarber.org — Yearly Website Hosting';
+    } else if (isMonthlyCustom10) {
+      // /custom-10: standard $10/mo hosting under its own slug so the
+      // pay-first funnel is separable in Stripe/admin/pixels.
+      unitAmount = '1000';
+      interval = 'month';
+      productName = 'aibarber.org — Monthly Website Hosting';
     } else if (isMonthly9) {
       // /9 monthly: $9/mo.
       unitAmount = '900';
