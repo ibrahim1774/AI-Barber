@@ -48,13 +48,13 @@ const slugify = (raw: string): string =>
     .replace(/^-|-$/g, '')
     .substring(0, 50);
 
-// Does this URL serve a real page? A never-deployed slug and a
-// deleted project both return Vercel's 404, which is the whole
-// signal we need. Anything that isn't a clean response — timeout,
-// DNS failure, network error — counts as not live: claiming
-// "deployed" wrongly is the bug being fixed, so uncertainty has to
-// fall on the safe side.
-async function urlIsLive(url: string): Promise<boolean> {
+// Fetch the page body, or null if the URL doesn't serve one. A
+// never-deployed slug and a deleted project both return Vercel's 404,
+// which is the whole signal we need. Anything that isn't a clean
+// response — timeout, DNS failure, network error — counts as not live:
+// claiming "deployed" wrongly is the bug being fixed, so uncertainty
+// has to fall on the safe side.
+async function fetchPage(url: string): Promise<string | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 8000);
   try {
@@ -64,13 +64,29 @@ async function urlIsLive(url: string): Promise<boolean> {
       signal: controller.signal,
       headers: { 'User-Agent': 'aibarber-recover/1.0' },
     });
-    return resp.status >= 200 && resp.status < 400;
+    if (resp.status < 200 || resp.status >= 400) return null;
+    return await resp.text();
   } catch {
-    return false;
+    return null;
   } finally {
     clearTimeout(timer);
   }
 }
+
+// Compare a shop name against page text. Entities first (a shop called
+// "3000 Kuttz Barbershop & Studio" renders as `&amp;`), then strip to
+// alphanumerics so punctuation, casing, and the stray non-breaking
+// space some shops paste into their name can't cause a mismatch.
+const decodeEntities = (s: string): string =>
+  s
+    .replace(/&amp;/g, '&')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+
+const alnum = (s: string): string => decodeEntities(String(s || '')).toLowerCase().replace(/[^a-z0-9]/g, '');
 
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -225,8 +241,18 @@ export default async function handler(req: any, res: any) {
     // collided project names, so the slug URL can 404 or belong to a
     // stranger's project — and it's also what a never-deployed site
     // looks like. One request settles which case this is.
-    const candidateUrl = pending.deployedUrl || `https://${siteId}.vercel.app`;
-    const isLive = await urlIsLive(candidateUrl);
+    const stampedUrl: string | null = pending.deployedUrl || null;
+    const candidateUrl = stampedUrl || `https://${siteId}.vercel.app`;
+    const page = await fetchPage(candidateUrl);
+
+    // A stamped URL came back from our own deploy call, so a live page
+    // settles it. A guessed slug URL is different: the slug may belong
+    // to a stranger's project that got there first, and handing this
+    // customer someone else's site is worse than telling them theirs
+    // isn't built. So require the page to actually name this shop.
+    const shopName = alnum(pending.siteData?.shopName || '');
+    const isLive =
+      page !== null && (Boolean(stampedUrl) || (shopName.length > 2 && alnum(page).includes(shopName)));
     const deployedUrl = isLive ? candidateUrl : null;
 
     // 4. Build the SiteInstance payload the client expects. Mirror the
