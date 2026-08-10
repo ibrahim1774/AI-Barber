@@ -1044,7 +1044,13 @@ const App: React.FC = () => {
         });
         if (resp.ok) {
           const result = await resp.json();
-          if (result?.ok && result?.siteInstance) {
+          // Paid, but the site was never published — their browser
+          // never returned from Stripe to run the deploy. Don't attach:
+          // the row would point at a URL that 404s. /recover replays
+          // the deploy and is the only path that can fix this.
+          if (result?.needsDeploy) {
+            console.warn('[Migration] Paid site was never published — needs /recover:', result.siteId);
+          } else if (result?.ok && result?.siteInstance) {
             const recovered = {
               ...result.siteInstance,
               id: ensureUuid(result.siteInstance.id),

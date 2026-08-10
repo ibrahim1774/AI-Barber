@@ -14,12 +14,26 @@ import { Storage } from '@google-cloud/storage';
 //      (preparePendingSite wrote this BEFORE the Stripe modal opened,
 //      so it exists for every customer who got as far as paying)
 //   5. Build the SiteInstance payload the client needs to hydrate
-//      activeSite + return the deployedUrl computed from the siteId.
+//      activeSite + return the deployedUrl — AFTER checking that URL
+//      actually serves a page (see below).
 //
 // This endpoint does NOT touch Supabase. The client takes the
 // returned payload, sets it as activeSite, and runs the normal
 // AuthModal signup flow — handleAuthSuccess then upserts the recovered
 // SiteInstance into Supabase under the new user.id automatically.
+//
+// Deploying happens ONLY in the buyer's browser after it returns from
+// Stripe, so a closed tab or a lost redirect means the payment lands
+// and the site is never built. This endpoint used to paper over that:
+// it synthesised `https://{slug}.vercel.app`, stamped
+// deploymentStatus:'deployed', and returned 200 — handing the customer
+// a URL that 404s and writing a row that claims a site exists. Two
+// $15/mo customers hit exactly that on 2026-08-10.
+//
+// So: verify the URL before claiming it, and when the site was never
+// built, say so and return the pending payload + session id. /recover
+// replays them through the normal post-Stripe deploy path, which is
+// the one code path that can actually build the site.
 
 interface RecoverBody {
   email?: string;
@@ -33,6 +47,46 @@ const slugify = (raw: string): string =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
     .substring(0, 50);
+
+// Fetch the page body, or null if the URL doesn't serve one. A
+// never-deployed slug and a deleted project both return Vercel's 404,
+// which is the whole signal we need. Anything that isn't a clean
+// response — timeout, DNS failure, network error — counts as not live:
+// claiming "deployed" wrongly is the bug being fixed, so uncertainty
+// has to fall on the safe side.
+async function fetchPage(url: string): Promise<string | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const resp = await fetch(url, {
+      method: 'GET',
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: { 'User-Agent': 'aibarber-recover/1.0' },
+    });
+    if (resp.status < 200 || resp.status >= 400) return null;
+    return await resp.text();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Compare a shop name against page text. Entities first (a shop called
+// "3000 Kuttz Barbershop & Studio" renders as `&amp;`), then strip to
+// alphanumerics so punctuation, casing, and the stray non-breaking
+// space some shops paste into their name can't cause a mismatch.
+const decodeEntities = (s: string): string =>
+  s
+    .replace(/&amp;/g, '&')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+
+const alnum = (s: string): string => decodeEntities(String(s || '')).toLowerCase().replace(/[^a-z0-9]/g, '');
 
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -180,13 +234,26 @@ export default async function handler(req: any, res: any) {
       return res.status(500).json({ ok: false, error: 'Pending-site backup missing required fields' });
     }
 
-    // 3. Compute the deployed Vercel URL (deterministic from siteId).
+    // 3. Resolve the deployed Vercel URL, then CHECK it.
     // Prefer the URL the deploy API actually resolved (the post-deploy
     // backup refresh stamps it onto the pending payload). The computed
     // `https://<siteId>.vercel.app` fallback is unsafe — Vercel suffixes
     // collided project names, so the slug URL can 404 or belong to a
-    // stranger's project.
-    const deployedUrl = pending.deployedUrl || `https://${siteId}.vercel.app`;
+    // stranger's project — and it's also what a never-deployed site
+    // looks like. One request settles which case this is.
+    const stampedUrl: string | null = pending.deployedUrl || null;
+    const candidateUrl = stampedUrl || `https://${siteId}.vercel.app`;
+    const page = await fetchPage(candidateUrl);
+
+    // A stamped URL came back from our own deploy call, so a live page
+    // settles it. A guessed slug URL is different: the slug may belong
+    // to a stranger's project that got there first, and handing this
+    // customer someone else's site is worse than telling them theirs
+    // isn't built. So require the page to actually name this shop.
+    const shopName = alnum(pending.siteData?.shopName || '');
+    const isLive =
+      page !== null && (Boolean(stampedUrl) || (shopName.length > 2 && alnum(page).includes(shopName)));
+    const deployedUrl = isLive ? candidateUrl : null;
 
     // 4. Build the SiteInstance payload the client expects. Mirror the
     //    same shape handleStripeReturn produces on success (lines
@@ -220,7 +287,10 @@ export default async function handler(req: any, res: any) {
         phone: siteData.phone,
       },
       deployedUrl,
-      deploymentStatus: 'deployed' as const,
+      // Honest status. A recovered-but-unbuilt site is a draft; saying
+      // 'deployed' here is what let dead URLs reach both the dashboard
+      // self-heal and the Supabase row it writes.
+      deploymentStatus: (isLive ? 'deployed' : 'draft') as 'deployed' | 'draft',
       customDomain: null,
       domainOrderId: null,
     };
@@ -232,6 +302,12 @@ export default async function handler(req: any, res: any) {
       customerEmail: session.customer_details?.email || session.customer_email || null,
       shopName: siteData.shopName || null,
       siteInstance,
+      // Paid, but the site was never built. The client can finish the
+      // job by replaying the post-Stripe deploy path with these two.
+      needsDeploy: !isLive,
+      sessionId: session.id || null,
+      plan: session.metadata?.plan || null,
+      pendingSite: isLive ? null : pending,
     });
   } catch (error: any) {
     console.error('[recover-site] Error:', error);
