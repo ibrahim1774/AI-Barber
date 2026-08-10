@@ -176,6 +176,14 @@ export function isHome9Path(pathname?: string): boolean {
   return p === HOME9_PATH || p === `${HOME9_PATH}/`;
 }
 
+// `/20` — duplicate of the /15 funnel priced $20/mo + $192/yr (20% off
+// 20 × 12 = 240). Custom design stays the flat $29/mo.
+export const HOME20_PATH = '/20';
+export function isHome20Path(pathname?: string): boolean {
+  const p = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
+  return p === HOME20_PATH || p === `${HOME20_PATH}/`;
+}
+
 // `/custom-design` — the homepage funnel sold as custom-design ONLY: the
 // $10 hosting and the yearly option are hidden after generation, leaving
 // the $29/mo custom build. Headline leads with the booking-link import.

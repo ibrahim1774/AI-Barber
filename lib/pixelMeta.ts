@@ -11,6 +11,7 @@ export type PlanSlug =
   | 'monthly-booking' | 'yearly-booking'
   | 'monthly-home2' | 'yearly-home2'
   | 'monthly-15' | 'yearly-15'
+  | 'monthly-20' | 'yearly-20'
   | 'monthly-7' | 'yearly-7'
   | 'monthly-9' | 'yearly-9'
   | 'monthly-custom10'
@@ -41,6 +42,8 @@ const PLAN_CONTENT: Record<PlanSlug, { content_id: string; content_name: string;
   'yearly-home2':      { content_id: 'aibarber-hosting-yearly-home2',    content_name: 'aibarber.org Yearly Website Hosting (Home 2)',    price: 99 },
   'monthly-15':        { content_id: 'aibarber-hosting-monthly-15',      content_name: 'aibarber.org Monthly Website Hosting (Home 15)',  price: 15 },
   'yearly-15':         { content_id: 'aibarber-hosting-yearly-15',       content_name: 'aibarber.org Yearly Website Hosting (Home 15)',   price: 126 },
+  'monthly-20':        { content_id: 'aibarber-hosting-monthly-20',      content_name: 'aibarber.org Monthly Website Hosting (Home 20)',  price: 20 },
+  'yearly-20':         { content_id: 'aibarber-hosting-yearly-20',       content_name: 'aibarber.org Yearly Website Hosting (Home 20)',   price: 192 },
   'monthly-7':         { content_id: 'aibarber-hosting-monthly-7',       content_name: 'aibarber.org Monthly Website Hosting (Home 7)',   price: 7 },
   'yearly-7':          { content_id: 'aibarber-hosting-yearly-7',        content_name: 'aibarber.org Yearly Website Hosting (Home 7)',    price: 67 },
   'monthly-9':         { content_id: 'aibarber-hosting-monthly-9',       content_name: 'aibarber.org Monthly Website Hosting (9)',        price: 9 },

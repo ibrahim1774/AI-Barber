@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, ArrowRight, Rocket, Loader2, Sparkles, Check } from 'lucide-react';
-import { isBooksyPath, isFreeBarberPath, isBookingPath, isGeneratePath, isBarberGeneratePath, isHome2Path, isHome15Path, isHome7Path, isHome9Path, isCustomDesignAnyPath, isCustomDesignPath, isCustomDesign29Path, isCustom10Path } from '../lib/dealMode.ts';
+import { isBooksyPath, isFreeBarberPath, isBookingPath, isGeneratePath, isBarberGeneratePath, isHome2Path, isHome15Path, isHome20Path, isHome7Path, isHome9Path, isCustomDesignAnyPath, isCustomDesignPath, isCustomDesign29Path, isCustom10Path } from '../lib/dealMode.ts';
 import { loadStripe, type Stripe } from '@stripe/stripe-js';
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js';
 
@@ -27,7 +27,7 @@ interface PrePaymentBannerProps {
   // 'monthly-booksy' = /booksy import flow ($7/mo); 'monthly-free' =
   // /free-barber ($7/mo); 'monthly' = homepage ($10/mo). The separate
   // slugs also drive analytics attribution on the receipt.
-  onDeploy: (plan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'monthly-booking' | 'monthly-home2' | 'monthly-15' | 'monthly-7' | 'yearly' | 'yearly-booksy' | 'yearly-free' | 'yearly-booking' | 'yearly-home2' | 'yearly-15' | 'yearly-7') => void;
+  onDeploy: (plan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'monthly-booking' | 'monthly-home2' | 'monthly-15' | 'monthly-20' | 'monthly-7' | 'yearly' | 'yearly-booksy' | 'yearly-free' | 'yearly-booking' | 'yearly-home2' | 'yearly-15' | 'yearly-20' | 'yearly-7') => void;
   // Embedded checkout requires the parent to first upload images +
   // write pendingSite to localStorage so handleStripeReturn can deploy
   // after the customer pays. Returns the real siteId we then pass to
@@ -36,7 +36,7 @@ interface PrePaymentBannerProps {
   // prop is omitted, the banner falls back to onDeploy (legacy
   // redirect flow) even if STRIPE_PK is set.
   onPrepareCheckout?: (
-    plan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'monthly-booking' | 'monthly-home2' | 'monthly-15' | 'monthly-7' | 'yearly' | 'yearly-booksy' | 'yearly-free' | 'yearly-booking' | 'yearly-home2' | 'yearly-15' | 'yearly-7',
+    plan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'monthly-booking' | 'monthly-home2' | 'monthly-15' | 'monthly-20' | 'monthly-7' | 'yearly' | 'yearly-booksy' | 'yearly-free' | 'yearly-booking' | 'yearly-home2' | 'yearly-15' | 'yearly-20' | 'yearly-7',
   ) => Promise<{ siteId: string } | { error: string }>;
   isDeploying: boolean;
   industry?: string;
@@ -73,6 +73,8 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   // /15: exact homepage duplicate at $15/mo + $126/yr (30% off 15 x 12) —
   // its own plan slugs so Stripe products + analytics distinguish it.
   const home15Mode = React.useMemo(() => isHome15Path(), []);
+  // /20: same funnel at $20/mo + $192/yr (20% off 20 x 12 = 240).
+  const home20Mode = React.useMemo(() => isHome20Path(), []);
   // /7: same funnel at $7/mo + $67/yr (20% off 7 x 12 = 84).
   const home7Mode = React.useMemo(() => isHome7Path(), []);
   // /9: same funnel at $9/mo + $79/yr (27% off 9 x 12 = 108).
@@ -92,13 +94,15 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   //   /booking     → $10/mo (plan 'monthly-booking')
   //   home page    → $10/mo (plan 'monthly')
   //   /free-barber → $7/mo (plan 'monthly-free')
-  const stdMonthlyPriceDollars = home2Mode ? 19 : home15Mode ? 15 : home9Mode ? 9 : home7Mode ? 7 : freeBarberMode ? 7 : 10;
+  const stdMonthlyPriceDollars = home2Mode ? 19 : home20Mode ? 20 : home15Mode ? 15 : home9Mode ? 9 : home7Mode ? 7 : freeBarberMode ? 7 : 10;
   const stdMonthlyPriceMo = `$${stdMonthlyPriceDollars}/mo`;
   const stdMonthlyPriceMonth = `$${stdMonthlyPriceDollars}/month`;
-  const stdMonthlyPlan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'monthly-booking' | 'monthly-generate' | 'monthly-home2' | 'monthly-15' | 'monthly-7' | 'monthly-9' | 'monthly-custom10' = custom10Mode
+  const stdMonthlyPlan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'monthly-booking' | 'monthly-generate' | 'monthly-home2' | 'monthly-15' | 'monthly-20' | 'monthly-7' | 'monthly-9' | 'monthly-custom10' = custom10Mode
     ? 'monthly-custom10'
     : home2Mode
     ? 'monthly-home2'
+    : home20Mode
+    ? 'monthly-20'
     : home15Mode
     ? 'monthly-15'
     : home9Mode
@@ -119,15 +123,17 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   // computed off the path's own monthly × 12 anchor so "Save X%"
   // always reflects the real saving. Keep the server amounts in
   // api/create-checkout-session.ts in sync.
-  const stdYearlyPriceDollars = home2Mode ? 99 : home15Mode ? 126 : home9Mode ? 79 : home7Mode ? 67 : (bookingMode || generateMode || booksyMode) ? 59 : freeBarberMode ? 49 : 79;
+  const stdYearlyPriceDollars = home2Mode ? 99 : home20Mode ? 192 : home15Mode ? 126 : home9Mode ? 79 : home7Mode ? 67 : (bookingMode || generateMode || booksyMode) ? 59 : freeBarberMode ? 49 : 79;
   const stdYearlyPriceYr = `$${stdYearlyPriceDollars}/yr`;
   const stdYearlyPriceYear = `$${stdYearlyPriceDollars}/year`;
   const stdYearlyDiscountPct = Math.max(
     0,
     Math.round((1 - stdYearlyPriceDollars / (stdMonthlyPriceDollars * 12)) * 100),
   );
-  const stdYearlyPlan: 'yearly' | 'yearly-booksy' | 'yearly-free' | 'yearly-booking' | 'yearly-generate' | 'yearly-home2' | 'yearly-15' | 'yearly-7' | 'yearly-9' = home2Mode
+  const stdYearlyPlan: 'yearly' | 'yearly-booksy' | 'yearly-free' | 'yearly-booking' | 'yearly-generate' | 'yearly-home2' | 'yearly-15' | 'yearly-20' | 'yearly-7' | 'yearly-9' = home2Mode
     ? 'yearly-home2'
+    : home20Mode
+    ? 'yearly-20'
     : home15Mode
     ? 'yearly-15'
     : home9Mode
@@ -148,7 +154,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   // it at $19/mo. Plan slug per path for analytics attribution:
   //   custom-booksy → /booksy
   //   custom-15     → /7 ($19/mo; slug kept for continuity)
-  //   custom25      → everywhere else incl. /15 ($29/mo)
+  //   custom25      → everywhere else incl. /15 + /20 ($29/mo)
   const customPlan: 'custom25' | 'custom-booksy' | 'custom-15' | 'custom-design' | 'custom-design-29' = isCustomDesign29Path()
     ? 'custom-design-29'
     : isCustomDesignPath()
