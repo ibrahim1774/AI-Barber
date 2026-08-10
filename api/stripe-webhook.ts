@@ -17,6 +17,11 @@ import { publishSite } from '../lib/publishSite.js';
 
 const APP_NAME = 'aibarber';
 
+// How long to let the returning browser publish before the server does it.
+// The browser path starts within a few seconds of the Stripe redirect and a
+// deploy takes 60-90s, so this covers a normal successful publish end to end.
+const PUBLISH_GRACE_MS = 90_000;
+
 // Stripe signature verification needs the raw, unparsed request body.
 // bodyParser off: Stripe signature verification needs the raw bytes.
 // maxDuration 300: this handler now BUILDS AND DEPLOYS the paid site. Stripe
@@ -202,7 +207,18 @@ export default async function handler(req: any, res: any) {
     const siteId = typeof session.metadata?.siteId === 'string' ? session.metadata.siteId : '';
     if (siteId) {
       waitUntil(
-        publishSite(siteId)
+        // Give the browser first refusal. When the customer's tab DOES come
+        // back it starts its own deploy within a few seconds, and both paths
+        // building the same project at once means a wasted deploy and a
+        // nondeterministic winner. Waiting means the common case is one deploy
+        // plus a cheap liveness check here, and the server only actually
+        // builds when the tab never returned — which is the case this exists
+        // for, and nobody is watching a screen for it.
+        //
+        // Cost is bounded: this runs under waitUntil with maxDuration 300, so
+        // the delay plus a 60-90s deploy still fits comfortably.
+        new Promise((r) => setTimeout(r, PUBLISH_GRACE_MS))
+          .then(() => publishSite(siteId))
           .then((outcome) => {
             if (!outcome.ok) {
               console[outcome.reason === 'deploy-failed' ? 'error' : 'warn'](
