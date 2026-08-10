@@ -156,7 +156,12 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
         setSiteData({
           ...data,
           template,
-          ...(variant === 'custom-design-29' ? { gallery: [...CD29_GALLERY] } : {}),
+          // Both no-overlay pages show the sample site bare, so both need a
+          // filled Our Work grid — the luxe template renders gallery[2..7],
+          // so a short array leaves visible empty tiles.
+          ...(variant === 'custom-design-29' || variant === 'custom-10'
+            ? { gallery: [...CD29_GALLERY] }
+            : {}),
         });
     })();
   }, []);
@@ -288,8 +293,10 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
       setShowPrompts(true);
       return;
     }
-    // cd29 has no overlay to restart — Back is a no-op there.
-    if (variant === 'custom-design-29') return;
+    // cd29 and /custom-10 have no overlay to restart — Back is a no-op on
+    // both. Without the /custom-10 guard, Back reopened the booking-link
+    // overlay on a page whose whole point is that it never asks for one.
+    if (variant === 'custom-design-29' || variant === 'custom-10') return;
     // Restart the customize overlay over the live preview.
     setShowPrompts(true);
   }, [formFirst, variant]);
