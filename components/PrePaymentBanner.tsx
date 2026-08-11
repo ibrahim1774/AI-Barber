@@ -207,6 +207,16 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   // step-4 button doesn't stay stuck in its loading state on reopen.
   const customCheckoutAbortRef = React.useRef<AbortController | null>(null);
 
+  // The wizard's headline + bullet list push the embedded Stripe form
+  // below the modal's fold, so after Continue the payment form loads
+  // out of sight. Scroll the modal to the form the moment it mounts.
+  const customCheckoutBoxRef = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    if (customEmbedSecret) {
+      customCheckoutBoxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [customEmbedSecret]);
+
   // Footer CTAs in the generated-site renderers dispatch this event so
   // the existing wizard opens without prop-drilling. Listen window-wide
   // so it works from any descendant.
@@ -886,7 +896,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                     </div>
 
                     {customEmbedSecret && STRIPE_PK ? (
-                      <div className="rounded-md overflow-hidden bg-white" style={{ minHeight: 360 }}>
+                      <div ref={customCheckoutBoxRef} className="rounded-md overflow-hidden bg-white" style={{ minHeight: 360, scrollMarginTop: '2.25rem' }}>
                         <EmbeddedCheckoutProvider
                           key={customEmbedSecret}
                           stripe={getStripe()}
