@@ -71,6 +71,13 @@ export default async function handler(req: any, res: any) {
     // '/9' price test: exact homepage funnel at $9/mo + $79/yr.
     const isMonthly9 = plan === 'monthly-9';
     const isYearly9 = plan === 'yearly-9';
+    // '/barber-generate' hosting: $15/mo, monthly only (no yearly slug —
+    // the page hides the toggle).
+    const isMonthlyBargen = plan === 'monthly-bargen';
+    // '/barber-generate' custom build: $29/mo, or yearly at 20% off
+    // ($29 × 12 × 0.8 = $278.40 → $278/yr, rounded in the buyer's favor).
+    const isCustomBargen = plan === 'custom-bargen';
+    const isCustomBargenYearly = plan === 'custom-bargen-yearly';
     // 'monthly-custom10' = the /custom-10 pay-first funnel — standard
     // $10/mo hosting, but the booking link is collected AFTER payment in
     // the account. Normal deploy routing (NOT the Google Form): the page
@@ -101,6 +108,7 @@ export default async function handler(req: any, res: any) {
     const isCustomDesign29 = plan === 'custom-design-29';
     const isCustomAny =
       isCustom || isCustom25 || isCustomBooksy || isCustom15 ||
+      isCustomBargen || isCustomBargenYearly ||
       isCustomDesignPage || isCustomDesign29 || isPrimeBarber || isPrimeBarberYearly;
 
     let unitAmount: string;
@@ -207,6 +215,21 @@ export default async function handler(req: any, res: any) {
       unitAmount = '2000';
       interval = 'month';
       productName = 'aibarber.org — Monthly Website Hosting';
+    } else if (isMonthlyBargen) {
+      // /barber-generate monthly: $15/mo.
+      unitAmount = '1500';
+      interval = 'month';
+      productName = 'aibarber.org — Monthly Website Hosting';
+    } else if (isCustomBargenYearly) {
+      // /barber-generate custom build, yearly: $278/yr (20% off $29 × 12).
+      unitAmount = '27800';
+      interval = 'year';
+      productName = 'aibarber.org — Website Hosting (Custom)';
+    } else if (isCustomBargen) {
+      // /barber-generate custom build: $29/mo.
+      unitAmount = '2900';
+      interval = 'month';
+      productName = 'aibarber.org — Website Hosting (Custom)';
     } else if (isCustom15) {
       // /7 custom design: $19/mo (slug kept from the old /15 test;
       // /15 now upsells the standard $29 custom25).
