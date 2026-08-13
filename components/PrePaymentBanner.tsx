@@ -57,6 +57,10 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   // form" — it reuses the exact Booksy pricing + plan slugs, so it folds in
   // here rather than defining its own.
   const booksyMode = React.useMemo(() => isBooksyPath() || isBarberGeneratePath(), []);
+  // /barber-generate: keeps the /booksy look but prices its own way —
+  // $15/mo hosting with NO yearly option; the $29 custom build gains a
+  // yearly billing choice at 20% off ($278/yr). Own slugs for analytics.
+  const barberGenMode = React.useMemo(() => isBarberGeneratePath(), []);
   // /free-barber: $7/mo entry with yearly toggle visible — its own
   // plan slugs so Stripe + analytics distinguish it from /booksy and
   // the homepage.
@@ -94,11 +98,13 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   //   /booking     → $10/mo (plan 'monthly-booking')
   //   home page    → $10/mo (plan 'monthly')
   //   /free-barber → $7/mo (plan 'monthly-free')
-  const stdMonthlyPriceDollars = home2Mode ? 19 : home20Mode ? 20 : home15Mode ? 15 : home9Mode ? 9 : home7Mode ? 7 : freeBarberMode ? 7 : 10;
+  const stdMonthlyPriceDollars = barberGenMode ? 15 : home2Mode ? 19 : home20Mode ? 20 : home15Mode ? 15 : home9Mode ? 9 : home7Mode ? 7 : freeBarberMode ? 7 : 10;
   const stdMonthlyPriceMo = `$${stdMonthlyPriceDollars}/mo`;
   const stdMonthlyPriceMonth = `$${stdMonthlyPriceDollars}/month`;
-  const stdMonthlyPlan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'monthly-booking' | 'monthly-generate' | 'monthly-home2' | 'monthly-15' | 'monthly-20' | 'monthly-7' | 'monthly-9' | 'monthly-custom10' = custom10Mode
+  const stdMonthlyPlan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'monthly-booking' | 'monthly-generate' | 'monthly-home2' | 'monthly-15' | 'monthly-20' | 'monthly-7' | 'monthly-9' | 'monthly-custom10' | 'monthly-bargen' = custom10Mode
     ? 'monthly-custom10'
+    : barberGenMode
+    ? 'monthly-bargen'
     : home2Mode
     ? 'monthly-home2'
     : home20Mode
@@ -155,18 +161,23 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   //   custom-booksy → /booksy
   //   custom-15     → /7 ($19/mo; slug kept for continuity)
   //   custom25      → everywhere else incl. /15 + /20 ($29/mo)
-  const customPlan: 'custom25' | 'custom-booksy' | 'custom-15' | 'custom-design' | 'custom-design-29' = isCustomDesign29Path()
+  // /barber-generate's custom build can bill yearly (20% off $29 × 12 = $278).
+  const [customBilling, setCustomBilling] = React.useState<'monthly' | 'yearly'>('monthly');
+  const customPlan: 'custom25' | 'custom-booksy' | 'custom-15' | 'custom-design' | 'custom-design-29' | 'custom-bargen' | 'custom-bargen-yearly' = isCustomDesign29Path()
     ? 'custom-design-29'
     : isCustomDesignPath()
     ? 'custom-design'
+    : barberGenMode
+    ? (customBilling === 'yearly' ? 'custom-bargen-yearly' : 'custom-bargen')
     : booksyMode
     ? 'custom-booksy'
     : home7Mode
       ? 'custom-15'
       : 'custom25';
-  const customPriceDollars = home7Mode ? 19 : 29;
-  const customPriceLabel = `$${customPriceDollars}/mo`;
-  const customPriceFull = `$${customPriceDollars}/month`;
+  const customYearly = barberGenMode && customBilling === 'yearly';
+  const customPriceDollars = customYearly ? 278 : home7Mode ? 19 : 29;
+  const customPriceLabel = customYearly ? `$${customPriceDollars}/yr` : `$${customPriceDollars}/mo`;
+  const customPriceFull = customYearly ? `$${customPriceDollars}/year` : `$${customPriceDollars}/month`;
 
   const [isDismissed, setIsDismissed] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
@@ -443,7 +454,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
               every path shows Monthly first (Monthly is the default plan).
               Never on /custom-design + /custom-design-29 — those sell one
               $29/mo custom build with no yearly option. */}
-          {!customOnlyMode && !custom10Mode && (() => {
+          {!customOnlyMode && !custom10Mode && !barberGenMode && (() => {
             const sizeCls = generateMode
               ? 'text-[12px] md:text-[13px] pb-1'
               : booksyMode
@@ -690,7 +701,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
 
             {/* Monthly / Yearly toggle — quiet text-based with gold underline.
                 Monthly is shown first everywhere (Monthly is the default plan). */}
-            <div className="flex items-center justify-center gap-6 mb-7" style={{ display: customOnlyMode ? 'none' : undefined }}>
+            <div className="flex items-center justify-center gap-6 mb-7" style={{ display: customOnlyMode || barberGenMode ? 'none' : undefined }}>
               <button
                 onClick={() => setPricingPlan('monthly')}
                 className={`${booksyMode ? 'text-[13px] font-bold' : 'text-[11px] font-medium'} uppercase tracking-[0.22em] pb-1.5 transition-colors`}
@@ -882,6 +893,32 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                       ))}
                     </div>
 
+                    {barberGenMode && (
+                      <div className="flex items-center justify-center gap-5 mb-3">
+                        {(['monthly', 'yearly'] as const).map((b) => (
+                          <button
+                            key={b}
+                            type="button"
+                            onClick={() => {
+                              if (b === customBilling) return;
+                              setCustomBilling(b);
+                              setCustomEmbedSecret(null);
+                              setCustomEmbedError(null);
+                            }}
+                            className="text-[11px] font-bold uppercase tracking-[0.22em] pb-1 transition-colors"
+                            style={{
+                              color: customBilling === b ? cream : 'rgba(236,230,218,0.4)',
+                              borderBottom: customBilling === b ? `1px solid ${gold}` : '1px solid transparent',
+                            }}
+                          >
+                            {b === 'monthly' ? 'Monthly · $29/mo' : (
+                              <>Yearly · $278/yr <span style={{ color: '#ffffff', fontWeight: 700 }}>(Save 20%)</span></>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
                     {/* Price + CTA — solid gold, uppercase */}
                     <div className="text-center mb-3">
                       <p
@@ -1030,7 +1067,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                   ))}
                 </ul>
 
-                <div className="flex items-center justify-center gap-4 mb-2.5" style={{ display: customOnlyMode || custom10Mode ? 'none' : undefined }}>
+                <div className="flex items-center justify-center gap-4 mb-2.5" style={{ display: customOnlyMode || custom10Mode || barberGenMode ? 'none' : undefined }}>
                   <button
                     onClick={() => setPricingPlan('monthly')}
                     className="text-[10px] font-medium uppercase tracking-[0.22em] pb-1 transition-colors"
