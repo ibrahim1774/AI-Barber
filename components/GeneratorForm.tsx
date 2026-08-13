@@ -59,8 +59,12 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
     const p = window.location.pathname;
     return !isBooksyPath() && !isBookingPath() && !isFreeBarberPath() && (p === '/' || p === '' || isHome2Path() || isHome15Path() || isHome20Path() || isHome7Path() || isHome9Path() || isCustomDesignPath());
   }, []);
+  // /15 skips the yes/no question — the booking-link field IS the form.
+  // "I don't have a link" still drops to the manual trio, but Back from
+  // there returns to the link field, never to the removed question.
+  const home15 = useMemo(() => isHome15Path(), []);
   // null = question not answered yet; true = has a link; false = manual.
-  const [hasBooking, setHasBooking] = useState<boolean | null>(null);
+  const [hasBooking, setHasBooking] = useState<boolean | null>(() => (isHome15Path() ? true : null));
   // /home-2 price-test page: the Yes branch also requires the visitor's
   // phone number (required only — no format rules). It rides inputs.phone
   // into the lead webhook (Make → Sheet "Number" column) and the site.
@@ -771,7 +775,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
               {homeGate && hasBooking !== null && (
                 <button
                   type="button"
-                  onClick={() => { setScrapeError(null); setHasBooking(hasBooking === true ? false : null); }}
+                  onClick={() => { setScrapeError(null); setHasBooking(hasBooking === true ? false : home15 ? true : null); }}
                   className="block mx-auto text-white font-black hover:text-[#f4a100] text-[12px] md:text-[13px] uppercase tracking-[2px] transition-colors"
                 >
                   {hasBooking === true ? "← I don't have a link" : '← Back'}
