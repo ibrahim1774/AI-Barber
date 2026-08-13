@@ -568,6 +568,11 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
                 Barbershop Website <br/>
                 <span className="text-[#f4a100] mt-1 block">in Seconds</span>
               </h1>
+            ) : home15 ? (
+              <h1 className="text-2xl md:text-5xl lg:text-6xl font-montserrat font-black uppercase tracking-[1px] md:tracking-[2px] leading-[1.15] text-white mb-2 md:mb-4">
+                Barber Booking Link <br className="hidden md:block"/> to a <br/>
+                <span className="text-[#f4a100] mt-1 block">Custom Barbershop Site</span>
+              </h1>
             ) : (
               <h1 className="text-2xl md:text-5xl lg:text-6xl font-montserrat font-black uppercase tracking-[1px] md:tracking-[2px] leading-[1.15] text-white mb-2 md:mb-4">
                 Generate Custom <br className="hidden md:block"/> Barbershop Website <br/>
@@ -582,6 +587,8 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
             >
               {booksyMode
                 ? "Paste your Booksy link — we'll pull your services, photos, hours, and reviews automatically."
+                : home15 && gateLink
+                ? 'Paste your barber booking link — we turn it into your own custom barbershop site, services, photos, and reviews included.'
                 : homeGate && hasBooking === null
                   ? 'One quick question — your website takes seconds either way.'
                   : gateLink
