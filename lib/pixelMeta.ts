@@ -17,7 +17,7 @@ export type PlanSlug =
   | 'monthly-custom10'
   | 'custom-design' | 'custom-design-29'
   | 'custom' | 'custom25' | 'custom-booksy' | 'custom-15'
-  | 'monthly-bargen' | 'custom-bargen' | 'custom-bargen-yearly'
+  | 'monthly-bargen' | 'yearly-bargen' | 'custom-bargen'
   | 'primebarber' | 'primebarber-site';
 
 export interface ContentMeta {
@@ -61,8 +61,8 @@ const PLAN_CONTENT: Record<PlanSlug, { content_id: string; content_name: string;
   'custom-booksy':     { content_id: 'aibarber-custom-design',           content_name: 'aibarber.org Custom Website Design (Booksy)',    price: 29 },
   'custom-15':         { content_id: 'aibarber-custom-design',           content_name: 'aibarber.org Custom Website Design (7)',         price: 19 },
   'monthly-bargen':    { content_id: 'aibarber-hosting-monthly-bargen',  content_name: 'aibarber.org Monthly Website Hosting (Barber Generate)', price: 15 },
+  'yearly-bargen':     { content_id: 'aibarber-hosting-yearly-bargen',   content_name: 'aibarber.org Yearly Website Hosting (Barber Generate)',  price: 144 },
   'custom-bargen':     { content_id: 'aibarber-custom-design',           content_name: 'aibarber.org Custom Website Design (Barber Generate)',   price: 29 },
-  'custom-bargen-yearly': { content_id: 'aibarber-custom-design',        content_name: 'aibarber.org Custom Website Design (Barber Generate, Yearly)', price: 278 },
   'primebarber':       { content_id: 'aibarber-primebarber-platform',    content_name: 'aibarber.org PrimeBarber Custom Website Platform',price: 20 },
   'primebarber-site':  { content_id: 'aibarber-primebarber-site',        content_name: 'aibarber.org PrimeBarber Custom Site Only',      price: 19 },
 };
