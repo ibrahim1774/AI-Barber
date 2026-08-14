@@ -96,9 +96,9 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   //   /free-barber → $7/mo (plan 'monthly-free')
   //   /booksy      → $10/mo (plan 'monthly-booksy')
   //   /booking     → $10/mo (plan 'monthly-booking')
-  //   home page    → $10/mo (plan 'monthly')
+  //   home page    → $15/mo (plan 'monthly')
   //   /free-barber → $7/mo (plan 'monthly-free')
-  const stdMonthlyPriceDollars = barberGenMode ? 15 : home2Mode ? 19 : home20Mode ? 20 : home15Mode ? 15 : home9Mode ? 9 : home7Mode ? 7 : freeBarberMode ? 7 : 10;
+  const stdMonthlyPriceDollars = barberGenMode ? 15 : home2Mode ? 19 : home20Mode ? 20 : home15Mode ? 15 : home9Mode ? 9 : home7Mode ? 7 : freeBarberMode ? 7 : 15;
   const stdMonthlyPriceMo = `$${stdMonthlyPriceDollars}/mo`;
   const stdMonthlyPriceMonth = `$${stdMonthlyPriceDollars}/month`;
   const stdMonthlyPlan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'monthly-booking' | 'monthly-generate' | 'monthly-home2' | 'monthly-15' | 'monthly-20' | 'monthly-7' | 'monthly-9' | 'monthly-custom10' | 'monthly-bargen' = custom10Mode
@@ -129,7 +129,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   // computed off the path's own monthly × 12 anchor so "Save X%"
   // always reflects the real saving. Keep the server amounts in
   // api/create-checkout-session.ts in sync.
-  const stdYearlyPriceDollars = barberGenMode ? 144 : home2Mode ? 99 : home20Mode ? 192 : home15Mode ? 126 : home9Mode ? 79 : home7Mode ? 67 : (bookingMode || generateMode || booksyMode) ? 59 : freeBarberMode ? 49 : 79;
+  const stdYearlyPriceDollars = barberGenMode ? 144 : home2Mode ? 99 : home20Mode ? 192 : home15Mode ? 126 : home9Mode ? 79 : home7Mode ? 67 : (bookingMode || generateMode || booksyMode) ? 59 : freeBarberMode ? 49 : 144;
   const stdYearlyPriceYr = `$${stdYearlyPriceDollars}/yr`;
   const stdYearlyPriceYear = `$${stdYearlyPriceDollars}/year`;
   const stdYearlyDiscountPct = Math.max(
