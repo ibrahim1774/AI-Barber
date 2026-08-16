@@ -181,6 +181,9 @@ export default async function handler(req: any, res: any) {
       // 2026-08-14, $29/mo custom design bought off /15. Number is the one
       // the site was delivered over by text; matches the live tel: button.
       'allensdraughn@gmail.com':   { phone: '6786374696', site: 'https://truth-cuts.vercel.app', label: 'Truth Cuts (Riverdale GA)' },
+      // 2026-08-12, $29/mo custom design bought off /15. Number is the one
+      // the site was delivered over by text (the site itself has no tel:).
+      'cheistopherpolk@gmail.com': { phone: '6785490686', site: 'https://cuts-by-christopher-polk.vercel.app', label: 'Cuts by Christopher Polk (Atlanta GA)' },
     };
 
     const emailsWithSubs = new Set<string>();
