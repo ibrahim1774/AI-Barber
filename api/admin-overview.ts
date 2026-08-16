@@ -178,6 +178,9 @@ export default async function handler(req: any, res: any) {
       // 2026-08-09, $29/mo custom design bought off /15. Instagram is the
       // contact — no phone given.
       'jeanosbeauty.barber@yahoo.com': { phone: 'ig handle: jeanosbeauty.barber', site: 'https://jeanos-beauty-barber.vercel.app', label: 'Jeanosbeauty & Barber (Kinston NC)' },
+      // 2026-08-14, $29/mo custom design bought off /15. Number is the one
+      // the site was delivered over by text; matches the live tel: button.
+      'allensdraughn@gmail.com':   { phone: '6786374696', site: 'https://truth-cuts.vercel.app', label: 'Truth Cuts (Riverdale GA)' },
     };
 
     const emailsWithSubs = new Set<string>();
