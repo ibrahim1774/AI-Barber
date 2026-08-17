@@ -48,7 +48,7 @@ const PLAN_CONTENT: Record<PlanSlug, { content_id: string; content_name: string;
   'monthly-7':         { content_id: 'aibarber-hosting-monthly-7',       content_name: 'aibarber.org Monthly Website Hosting (Home 7)',   price: 7 },
   'yearly-7':          { content_id: 'aibarber-hosting-yearly-7',        content_name: 'aibarber.org Yearly Website Hosting (Home 7)',    price: 67 },
   'monthly-9':         { content_id: 'aibarber-hosting-monthly-9',       content_name: 'aibarber.org Monthly Website Hosting (9)',        price: 19 },
-  'yearly-9':          { content_id: 'aibarber-hosting-yearly-9',        content_name: 'aibarber.org Yearly Website Hosting (9)',         price: 159 },
+  'yearly-9':          { content_id: 'aibarber-hosting-yearly-9',        content_name: 'aibarber.org Yearly Website Hosting (9)',         price: 137 },
   // /custom-10 pay-first funnel — $10/mo hosting, booking link collected
   // post-payment in the account.
   'monthly-custom10':  { content_id: 'aibarber-hosting-monthly-custom10', content_name: 'aibarber.org Monthly Website Hosting (Custom 10)', price: 10 },
