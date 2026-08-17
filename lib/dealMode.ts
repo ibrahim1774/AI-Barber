@@ -168,8 +168,8 @@ export function isHome15Path(pathname?: string): boolean {
   return p === HOME15_PATH || p === `${HOME15_PATH}/`;
 }
 
-// `/9` — duplicate of the /15 funnel priced $9/mo + $79/yr (27% off
-// 9 × 12 = 108). Custom design matches /15 at the flat $29/mo.
+// `/9` — duplicate of the /15 funnel priced $19/mo + $159/yr (30% off
+// 19 × 12 = 228). Custom design matches /15 at the flat $29/mo.
 export const HOME9_PATH = '/9';
 export function isHome9Path(pathname?: string): boolean {
   const p = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
