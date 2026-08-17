@@ -163,6 +163,8 @@ export default async function handler(req: any, res: any) {
       'medrano8@gmail.com':        { phone: '8572057123', site: 'https://www.euphoriabarbers.com', label: 'Euphoria Barbershop' },
       'cathy.nguyen718@gmail.com': { phone: '5713957215', site: 'https://www.uniquefreshcut.com', label: 'Unique Fresh Cut' },
       'brodricksvenby2@gmail.com': { phone: '3343549926', site: 'https://hoffs-exterior-cleaning.vercel.app', label: 'Hoffs Exterior Cleaning' },
+      // Owner re-confirmed 2026-08-17: 8028 is the right contact even though
+      // the live site's tel: button now shows the shop line 618-207-0067.
       'hmpalmer1@gmail.com':       { phone: '6189218028', site: 'https://palmer-clean.vercel.app', label: 'Palmer & Co Barber Lounge' },
       'osmundb40@gmail.com':       { phone: '9732776417', site: 'https://alyozbarbershop.com', label: 'Alyoz Barbershop' },
       // $29/mo custom design; ig handle shown in the phone cell per owner.
