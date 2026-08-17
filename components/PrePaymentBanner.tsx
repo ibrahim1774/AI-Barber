@@ -81,7 +81,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   const home20Mode = React.useMemo(() => isHome20Path(), []);
   // /7: same funnel at $7/mo + $67/yr (20% off 7 x 12 = 84).
   const home7Mode = React.useMemo(() => isHome7Path(), []);
-  // /9: same funnel at $19/mo + $159/yr (30% off 19 x 12 = 228).
+  // /9: same funnel at $19/mo + $137/yr (40% off 19 x 12 = 228). Custom $19.
   const home9Mode = React.useMemo(() => isHome9Path(), []);
   // /custom-design + /custom-design-29 sell the custom build ONLY — the
   // $10 hosting and the yearly option are suppressed everywhere below, so
@@ -129,7 +129,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   // computed off the path's own monthly × 12 anchor so "Save X%"
   // always reflects the real saving. Keep the server amounts in
   // api/create-checkout-session.ts in sync.
-  const stdYearlyPriceDollars = barberGenMode ? 144 : home2Mode ? 99 : home20Mode ? 192 : home15Mode ? 126 : home9Mode ? 159 : home7Mode ? 67 : (bookingMode || generateMode || booksyMode) ? 59 : freeBarberMode ? 49 : 144;
+  const stdYearlyPriceDollars = barberGenMode ? 144 : home2Mode ? 99 : home20Mode ? 192 : home15Mode ? 126 : home9Mode ? 137 : home7Mode ? 67 : (bookingMode || generateMode || booksyMode) ? 59 : freeBarberMode ? 49 : 144;
   const stdYearlyPriceYr = `$${stdYearlyPriceDollars}/yr`;
   const stdYearlyPriceYear = `$${stdYearlyPriceDollars}/year`;
   const stdYearlyDiscountPct = Math.max(
@@ -161,7 +161,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   // Custom-design upsell — $29/mo everywhere EXCEPT /7, which tests
   // it at $19/mo. Plan slug per path for analytics attribution:
   //   custom-booksy → /booksy
-  //   custom-15     → /7 ($19/mo; slug kept for continuity)
+  //   custom-15     → /7 + /9 ($19/mo; slug kept for continuity)
   //   custom25      → everywhere else incl. /15 + /20 ($29/mo)
   const customPlan: 'custom25' | 'custom-booksy' | 'custom-15' | 'custom-design' | 'custom-design-29' | 'custom-bargen' = isCustomDesign29Path()
     ? 'custom-design-29'
@@ -171,10 +171,10 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
     ? 'custom-bargen'
     : booksyMode
     ? 'custom-booksy'
-    : home7Mode
+    : (home7Mode || home9Mode)
       ? 'custom-15'
       : 'custom25';
-  const customPriceDollars = home7Mode ? 19 : 29;
+  const customPriceDollars = (home7Mode || home9Mode) ? 19 : 29;
   const customPriceLabel = `$${customPriceDollars}/mo`;
   const customPriceFull = `$${customPriceDollars}/month`;
 
