@@ -74,7 +74,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   // /home-2: exact homepage duplicate at $19/mo + $99/yr — its own plan
   // slugs so Stripe products + analytics distinguish the price test.
   const home2Mode = React.useMemo(() => isHome2Path(), []);
-  // /15: exact homepage duplicate at $15/mo + $126/yr (30% off 15 x 12) —
+  // /15: exact homepage duplicate at $15/mo + $144/yr (20% off, same as home) —
   // its own plan slugs so Stripe products + analytics distinguish it.
   const home15Mode = React.useMemo(() => isHome15Path(), []);
   // /20: same funnel at $20/mo + $192/yr (20% off 20 x 12 = 240).
@@ -129,7 +129,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   // computed off the path's own monthly × 12 anchor so "Save X%"
   // always reflects the real saving. Keep the server amounts in
   // api/create-checkout-session.ts in sync.
-  const stdYearlyPriceDollars = barberGenMode ? 144 : home2Mode ? 99 : home20Mode ? 192 : home15Mode ? 126 : home9Mode ? 137 : home7Mode ? 67 : (bookingMode || generateMode || booksyMode) ? 59 : freeBarberMode ? 49 : 144;
+  const stdYearlyPriceDollars = barberGenMode ? 144 : home2Mode ? 99 : home20Mode ? 192 : home15Mode ? 144 : home9Mode ? 137 : home7Mode ? 67 : (bookingMode || generateMode || booksyMode) ? 59 : freeBarberMode ? 49 : 144;
   const stdYearlyPriceYr = `$${stdYearlyPriceDollars}/yr`;
   const stdYearlyPriceYear = `$${stdYearlyPriceDollars}/year`;
   const stdYearlyDiscountPct = Math.max(

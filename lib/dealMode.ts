@@ -150,7 +150,7 @@ export function isHome2Path(pathname?: string): boolean {
 }
 
 // `/15` — exact duplicate of the root homepage funnel, but priced
-// $15/mo + $126/yr (30% off 15 × 12; plan slugs monthly-15 / yearly-15).
+// $15/mo + $144/yr (20% off, same as the homepage; slugs monthly-15 / yearly-15).
 // Same pattern as /home-2: every "is this the homepage?" check treats it
 // as home; only PrePaymentBanner pricing + create-checkout-session
 // amounts differ. Custom design stays the flat $29/mo.
