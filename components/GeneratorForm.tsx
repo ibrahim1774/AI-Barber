@@ -63,8 +63,19 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
   // "I don't have a link" still drops to the manual trio, but Back from
   // there returns to the link field, never to the removed question.
   const home15 = useMemo(() => isHome15Path(), []);
+  // The root homepage "/" gets the same link-first treatment as /15
+  // (2026-08-18). The other price-test duplicates keep the question.
+  const linkFirst = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    const p = window.location.pathname.replace(/\/+$/, '');
+    return isHome15Path() || p === '' || p === '/';
+  }, []);
   // null = question not answered yet; true = has a link; false = manual.
-  const [hasBooking, setHasBooking] = useState<boolean | null>(() => (isHome15Path() ? true : null));
+  const [hasBooking, setHasBooking] = useState<boolean | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const p = window.location.pathname.replace(/\/+$/, '');
+    return (isHome15Path() || p === '' || p === '/') ? true : null;
+  });
   // /home-2 price-test page: the Yes branch also requires the visitor's
   // phone number (required only — no format rules). It rides inputs.phone
   // into the lead webhook (Make → Sheet "Number" column) and the site.
@@ -782,7 +793,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
               {homeGate && hasBooking !== null && (
                 <button
                   type="button"
-                  onClick={() => { setScrapeError(null); setHasBooking(hasBooking === true ? false : home15 ? true : null); }}
+                  onClick={() => { setScrapeError(null); setHasBooking(hasBooking === true ? false : linkFirst ? true : null); }}
                   className="block mx-auto text-white font-black hover:text-[#f4a100] text-[12px] md:text-[13px] uppercase tracking-[2px] transition-colors"
                 >
                   {hasBooking === true ? "← I don't have a link" : '← Back'}
