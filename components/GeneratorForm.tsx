@@ -59,22 +59,23 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
     const p = window.location.pathname;
     return !isBooksyPath() && !isBookingPath() && !isFreeBarberPath() && (p === '/' || p === '' || isHome2Path() || isHome15Path() || isHome20Path() || isHome7Path() || isHome9Path() || isCustomDesignPath());
   }, []);
-  // /15 skips the yes/no question — the booking-link field IS the form.
-  // "I don't have a link" still drops to the manual trio, but Back from
-  // there returns to the link field, never to the removed question.
   const home15 = useMemo(() => isHome15Path(), []);
-  // The root homepage "/" gets the same link-first treatment as /15
-  // (2026-08-18). The other price-test duplicates keep the question.
+  // Link-first pages skip the yes/no question — the booking-link field IS
+  // the form, "I don't have a link" drops to the manual trio, and Back
+  // from there returns to the link field. Currently ONLY the root
+  // homepage "/": /15 went link-first on 2026-08-13 and back to the
+  // question on 2026-08-20 (owner call) — Yes → link field, No → the
+  // three-field manual form, like every other homepage duplicate.
   const linkFirst = useMemo(() => {
     if (typeof window === 'undefined') return false;
     const p = window.location.pathname.replace(/\/+$/, '');
-    return isHome15Path() || p === '' || p === '/';
+    return p === '' || p === '/';
   }, []);
   // null = question not answered yet; true = has a link; false = manual.
   const [hasBooking, setHasBooking] = useState<boolean | null>(() => {
     if (typeof window === 'undefined') return null;
     const p = window.location.pathname.replace(/\/+$/, '');
-    return (isHome15Path() || p === '' || p === '/') ? true : null;
+    return (p === '' || p === '/') ? true : null;
   });
   // /home-2 price-test page: the Yes branch also requires the visitor's
   // phone number (required only — no format rules). It rides inputs.phone
