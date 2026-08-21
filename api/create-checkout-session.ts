@@ -76,11 +76,11 @@ export default async function handler(req: any, res: any) {
     const isYearlyBargen = plan === 'yearly-bargen';
     // '/barber-generate' custom build: flat $29/mo, no yearly.
     const isCustomBargen = plan === 'custom-bargen';
-    // 'monthly-custom10' = the /custom-10 pay-first funnel — standard
+    // 'monthly-custom15' = the /custom-15 pay-first funnel — standard
     // $10/mo hosting, but the booking link is collected AFTER payment in
     // the account. Normal deploy routing (NOT the Google Form): the page
     // metadata is what marks the source subpage.
-    const isMonthlyCustom10 = plan === 'monthly-custom10';
+    const isMonthlyCustom15 = plan === 'monthly-custom15';
     const isCustom = plan === 'custom';
     const isCustom25 = plan === 'custom25';
     // 'custom-booksy' = /booksy custom-design upsell ($15/mo).
@@ -172,10 +172,11 @@ export default async function handler(req: any, res: any) {
       unitAmount = '13700';
       interval = 'year';
       productName = 'aibarber.org — Yearly Website Hosting';
-    } else if (isMonthlyCustom10) {
-      // /custom-10: standard $10/mo hosting under its own slug so the
-      // pay-first funnel is separable in Stripe/admin/pixels.
-      unitAmount = '1000';
+    } else if (isMonthlyCustom15) {
+      // /custom-15: standard $15/mo hosting under its own slug so the
+      // pay-first funnel is separable in Stripe/admin/pixels. (Was
+      // $10/mo as /custom-10 until 2026-08-21.)
+      unitAmount = '1500';
       interval = 'month';
       productName = 'aibarber.org — Monthly Website Hosting';
     } else if (isMonthly9) {

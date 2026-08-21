@@ -11,11 +11,11 @@ declare global {
 import { GeneratorForm } from './components/GeneratorForm.tsx';
 import { HomeBookingPrompts } from './components/HomeBookingPrompts.tsx';
 import { HomeLaunchGuide } from './components/HomeLaunchGuide.tsx';
-import { Custom10BookingPrompt } from './components/Custom10BookingPrompt.tsx';
+import { Custom15BookingPrompt } from './components/Custom15BookingPrompt.tsx';
 import { buildSiteFromScrape } from './lib/buildSiteFromScrape.ts';
 import { ensureUuid } from './lib/ensureUuid.ts';
 import { extractFirstUrl, isSupportedBookingHost } from './lib/supportedBookingHost.ts';
-import { isBooksyPath, isFreeBarberPath, isPrimeBarberPath, isRecoverPath, isGenerateBarbershopPath, isGeneratePath, isBarberGeneratePath, isCustomDesignPath, isCustomDesign29Path, isCustom10Path, isClientEditPath, isOnboardPath, isAdminGeneratePath, isAdminDashboardPath, isTrackingPath, isOwnBrandPath } from './lib/dealMode.ts';
+import { isBooksyPath, isFreeBarberPath, isPrimeBarberPath, isRecoverPath, isGenerateBarbershopPath, isGeneratePath, isBarberGeneratePath, isCustomDesignPath, isCustomDesign29Path, isCustom15Path, isClientEditPath, isOnboardPath, isAdminGeneratePath, isAdminDashboardPath, isTrackingPath, isOwnBrandPath } from './lib/dealMode.ts';
 import { LoadingScreen } from './components/LoadingScreen.tsx';
 import { generateHTMLForTemplate } from './services/templateRenderer.ts';
 import { generateContent } from './services/geminiService.ts';
@@ -82,10 +82,10 @@ const App: React.FC = () => {
   // Post-deployment modal state
   const [showPostDeployModal, setShowPostDeployModal] = useState(false);
 
-  // /custom-10 pay-first: hide the booking-link prompt for this visit only.
+  // /custom-15 pay-first: hide the booking-link prompt for this visit only.
   // The awaitingBookingLink flag persists with the site, so the prompt
   // returns next session until a link is actually given.
-  const [custom10PromptDismissed, setCustom10PromptDismissed] = useState(false);
+  const [custom15PromptDismissed, setCustom15PromptDismissed] = useState(false);
 
   // Post-generation intro modal — fires once after a /new visitor lands
   // in the editor. Mirrors the "Your site is fully editable" tour from
@@ -704,9 +704,9 @@ const App: React.FC = () => {
         // Without restoring craftImages here, the dashboard would re-open
         // with <img src="uploaded"> placeholders for the Craft section.
         const fullSiteData: WebsiteData = {
-          // /custom-10 pay-first: what just deployed is the sample. The
+          // /custom-15 pay-first: what just deployed is the sample. The
           // editor prompts for the booking link until this clears.
-          ...(plan === 'monthly-custom10' ? { awaitingBookingLink: true } : {}),
+          ...((plan === 'monthly-custom15' || plan === 'monthly-custom10') ? { awaitingBookingLink: true } : {}),
           ...siteData,
           hero: { ...siteData.hero, imageUrl: imageUrlMap['hero'] || siteData.hero.imageUrl || '' },
           about: { ...siteData.about, imageUrl: imageUrlMap['about'] || siteData.about.imageUrl || '' },
@@ -1275,13 +1275,13 @@ const App: React.FC = () => {
     );
   }
 
-  // /custom-10 — pay-first: sample site as the backdrop, design + colour in
+  // /custom-15 — pay-first: sample site as the backdrop, design + colour in
   // the left pill, single $10/mo CTA. Booking link is collected after
-  // payment inside the account (Custom10BookingPrompt in the editor).
-  if (isCustom10Path()) {
+  // payment inside the account (Custom15BookingPrompt in the editor).
+  if (isCustom15Path()) {
     return (
       <Suspense fallback={<LoadingScreen />}>
-        <GeneratePage variant="custom-10" />
+        <GeneratePage variant="custom-15" />
       </Suspense>
     );
   }
@@ -1397,13 +1397,13 @@ const App: React.FC = () => {
               busy={homeSwitching}
             />
           )}
-          {/* /custom-10 pay-first: the deployed site is still the sample —
+          {/* /custom-15 pay-first: the deployed site is still the sample —
               collect the booking link, rebuild from it, persist, and clear
               the flag so this never comes back once satisfied. */}
-          {generatedData.awaitingBookingLink && !custom10PromptDismissed && !isCheckoutFlowOpen && (
-            <Custom10BookingPrompt
+          {generatedData.awaitingBookingLink && !custom15PromptDismissed && !isCheckoutFlowOpen && (
+            <Custom15BookingPrompt
               data={generatedData}
-              onDismiss={() => setCustom10PromptDismissed(true)}
+              onDismiss={() => setCustom15PromptDismissed(true)}
               onRebuilt={(merged) => {
                 setGeneratedData(merged);
                 if (activeSite) {
@@ -1412,10 +1412,10 @@ const App: React.FC = () => {
                   // Same dual-write the editors use: IndexedDB now, Supabase
                   // fire-and-forget — the rebuild must survive a reload even
                   // if the customer never touches another edit.
-                  saveSite(updated).catch((e) => console.warn('[custom-10] local save failed:', e));
+                  saveSite(updated).catch((e) => console.warn('[custom-15] local save failed:', e));
                   if (user?.id) {
                     upsertSiteToSupabase(updated, user.id).catch((e) =>
-                      console.warn('[custom-10] cloud save failed:', e)
+                      console.warn('[custom-15] cloud save failed:', e)
                     );
                   }
                 }

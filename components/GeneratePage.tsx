@@ -74,11 +74,11 @@ export interface GeneratePageProps {
   // path-detected by isCustomDesignAnyPath() inside PrePaymentBanner.
   // 'custom-design-29' = the /custom-design-29 entry — same $29 offer, but the
   // sample site is seeded instantly and the overlay asks for design + colour only.
-  // 'custom-10' = the /custom-10 entry — pay-first: the sample site is the
+  // 'custom-15' = the /custom-15 entry — pay-first: the sample site is the
   // whole page (no overlay at all); design + colour ride in the left-middle
-  // pill, and the only CTA is the $10/mo plan. The booking link is collected
+  // pill, and the only CTA is the $15/mo plan. The booking link is collected
   // post-payment inside the account.
-  variant?: 'generate' | 'booksy' | 'barber-generate' | 'custom-design' | 'custom-design-29' | 'custom-10';
+  variant?: 'generate' | 'booksy' | 'barber-generate' | 'custom-design' | 'custom-design-29' | 'custom-15';
 }
 
 export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate' }) => {
@@ -90,18 +90,18 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
   // guide are all suppressed, and the design/colour controls move into a
   // single pill floating just above the one remaining CTA.
   const customOnly = variant === 'custom-design' || variant === 'custom-design-29';
-  // /custom-10: sample site only — no overlay, pay-first, $10/mo CTA.
-  const custom10 = variant === 'custom-10';
+  // /custom-15: sample site only — no overlay, pay-first, $15/mo CTA.
+  const custom15 = variant === 'custom-15';
   const [siteData, setSiteData] = useState<WebsiteData | null>(null);
   // Both /generate and /booksy lead with an instant-preview site + the
   // centered GenerateCustomizePrompts overlay. On /booksy the overlay leads
   // with the booking-link field (plus color picker + Design 1/2 toggle); the
   // floating BooksyDesignSwitcher takes over once the overlay is closed.
-  // /custom-design-29 and /custom-10 have NO overlay at all — the sample
+  // /custom-design-29 and /custom-15 have NO overlay at all — the sample
   // site with its filled gallery is the page; the single CTA + the
   // design/colour pill do the rest.
   const [showPrompts, setShowPrompts] = useState(
-    variant !== 'custom-design-29' && variant !== 'custom-10'
+    variant !== 'custom-design-29' && variant !== 'custom-15'
   );
   const [showLaunchGuide, setShowLaunchGuide] = useState(false);
   const [isCheckoutFlowOpen, setIsCheckoutFlowOpen] = useState(false);
@@ -159,7 +159,7 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
           // Both no-overlay pages show the sample site bare, so both need a
           // filled Our Work grid — the luxe template renders gallery[2..7],
           // so a short array leaves visible empty tiles.
-          ...(variant === 'custom-design-29' || variant === 'custom-10'
+          ...(variant === 'custom-design-29' || variant === 'custom-15'
             ? { gallery: [...CD29_GALLERY] }
             : {}),
         });
@@ -293,10 +293,10 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
       setShowPrompts(true);
       return;
     }
-    // cd29 and /custom-10 have no overlay to restart — Back is a no-op on
-    // both. Without the /custom-10 guard, Back reopened the booking-link
+    // cd29 and /custom-15 have no overlay to restart — Back is a no-op on
+    // both. Without the /custom-15 guard, Back reopened the booking-link
     // overlay on a page whose whole point is that it never asks for one.
-    if (variant === 'custom-design-29' || variant === 'custom-10') return;
+    if (variant === 'custom-design-29' || variant === 'custom-15') return;
     // Restart the customize overlay over the live preview.
     setShowPrompts(true);
   }, [formFirst, variant]);
@@ -343,7 +343,7 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
             onCheckoutFlowChange={setIsCheckoutFlowOpen}
             hidePrepaymentBanner={showPrompts && variant !== 'custom-design-29'}
             onUpdate={setSiteData}
-            showThemePicker={!showPrompts && !customOnly && !custom10}
+            showThemePicker={!showPrompts && !customOnly && !custom15}
           />
         ) : activeTemplate === 'euphoria' ? (
           <EuphoriaWebsite
@@ -353,7 +353,7 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
             isPostPayment={false}
             onCheckoutFlowChange={setIsCheckoutFlowOpen}
             hidePrepaymentBanner={showPrompts && variant !== 'custom-design-29'}
-            showThemePicker={!showPrompts && !customOnly && !custom10}
+            showThemePicker={!showPrompts && !customOnly && !custom15}
           />
         ) : (
           <GeneratedWebsite
@@ -364,7 +364,7 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
             onCheckoutFlowChange={setIsCheckoutFlowOpen}
             hidePrepaymentBanner={showPrompts && variant !== 'custom-design-29'}
             onUpdate={setSiteData}
-            showThemePicker={!showPrompts && !customOnly && !custom10}
+            showThemePicker={!showPrompts && !customOnly && !custom15}
           />
         )}
       </Suspense>
@@ -405,7 +405,7 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
           design AND colour controls ride together in one pill anchored just
           above the single CTA; everywhere else the switcher keeps its
           left-middle position and colour lives in the top-left theme picker. */}
-      {!isCheckoutFlowOpen && (customOnly || custom10 || !showPrompts) && (
+      {!isCheckoutFlowOpen && (customOnly || custom15 || !showPrompts) && (
         customOnly ? (
           // cd29: pill above the CTA, visible even while the insert-link box
           // is open — the box no longer holds the pickers.
@@ -417,14 +417,14 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
             onColorChange={handleColorChange}
           />
         ) : (
-          // custom-10 keeps the classic left-middle pill, with the colour
+          // custom-15 keeps the classic left-middle pill, with the colour
           // swatches folded in; other variants unchanged (design only).
           <BooksyDesignSwitcher
             current={activeTemplate ?? 'luxe'}
             onSelect={handleDesignSwitch}
             busy={switching}
-            color={custom10 ? (colorTheme.charAt(0) === '#' ? colorTheme : '#f4a100') : undefined}
-            onColorChange={custom10 ? handleColorChange : undefined}
+            color={custom15 ? (colorTheme.charAt(0) === '#' ? colorTheme : '#f4a100') : undefined}
+            onColorChange={custom15 ? handleColorChange : undefined}
           />
         )
       )}

@@ -208,13 +208,18 @@ export function isCustomDesignAnyPath(pathname?: string): boolean {
   return isCustomDesignPath(pathname) || isCustomDesign29Path(pathname);
 }
 
-// `/custom-10` — pay-first funnel: a sample site is the backdrop, the only
-// CTA is $10/mo, and the booking link is collected AFTER payment inside the
+// `/custom-15` — pay-first funnel: a sample site is the backdrop, the only
+// CTA is $15/mo, and the booking link is collected AFTER payment inside the
 // account (the editor prompts for it, scrapes, and rebuilds the site).
-export const CUSTOM_10_PATH = '/custom-10';
-export function isCustom10Path(pathname?: string): boolean {
+// Was /custom-10 at $10/mo until 2026-08-21 (owner call) — the old URL
+// stays live as an alias so any ad or link already pointing at
+// /custom-10 keeps working (at the new $15 price).
+export const CUSTOM_15_PATH = '/custom-15';
+const LEGACY_CUSTOM_10_PATH = '/custom-10';
+export function isCustom15Path(pathname?: string): boolean {
   const p = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
-  return p === CUSTOM_10_PATH || p === `${CUSTOM_10_PATH}/`;
+  return p === CUSTOM_15_PATH || p === `${CUSTOM_15_PATH}/`
+    || p === LEGACY_CUSTOM_10_PATH || p === `${LEGACY_CUSTOM_10_PATH}/`;
 }
 
 // `/admin` — owner-only customer dashboard: Stripe subscriptions joined
