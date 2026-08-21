@@ -14,7 +14,7 @@ export type PlanSlug =
   | 'monthly-20' | 'yearly-20'
   | 'monthly-7' | 'yearly-7'
   | 'monthly-9' | 'yearly-9'
-  | 'monthly-custom10'
+  | 'monthly-custom15'
   | 'custom-design' | 'custom-design-29'
   | 'custom' | 'custom25' | 'custom-booksy' | 'custom-15'
   | 'monthly-bargen' | 'yearly-bargen' | 'custom-bargen'
@@ -49,9 +49,9 @@ const PLAN_CONTENT: Record<PlanSlug, { content_id: string; content_name: string;
   'yearly-7':          { content_id: 'aibarber-hosting-yearly-7',        content_name: 'aibarber.org Yearly Website Hosting (Home 7)',    price: 67 },
   'monthly-9':         { content_id: 'aibarber-hosting-monthly-9',       content_name: 'aibarber.org Monthly Website Hosting (9)',        price: 19 },
   'yearly-9':          { content_id: 'aibarber-hosting-yearly-9',        content_name: 'aibarber.org Yearly Website Hosting (9)',         price: 137 },
-  // /custom-10 pay-first funnel — $10/mo hosting, booking link collected
+  // /custom-15 pay-first funnel — $15/mo hosting, booking link collected
   // post-payment in the account.
-  'monthly-custom10':  { content_id: 'aibarber-hosting-monthly-custom10', content_name: 'aibarber.org Monthly Website Hosting (Custom 10)', price: 10 },
+  'monthly-custom15':  { content_id: 'aibarber-hosting-monthly-custom15', content_name: 'aibarber.org Monthly Website Hosting (Custom 15)', price: 15 },
   // Two slugs, one $29 offer — /custom-design vs /custom-design-29 are an
   // A/B of the same product, kept apart for reporting.
   'custom-design':     { content_id: 'aibarber-custom-design',           content_name: 'aibarber.org Website Hosting (Custom)',           price: 29 },

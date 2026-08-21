@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, ArrowRight, Rocket, Loader2, Sparkles, Check } from 'lucide-react';
-import { isBooksyPath, isFreeBarberPath, isBookingPath, isGeneratePath, isBarberGeneratePath, isHome2Path, isHome15Path, isHome20Path, isHome7Path, isHome9Path, isCustomDesignAnyPath, isCustomDesignPath, isCustomDesign29Path, isCustom10Path } from '../lib/dealMode.ts';
+import { isBooksyPath, isFreeBarberPath, isBookingPath, isGeneratePath, isBarberGeneratePath, isHome2Path, isHome15Path, isHome20Path, isHome7Path, isHome9Path, isCustomDesignAnyPath, isCustomDesignPath, isCustomDesign29Path, isCustom15Path } from '../lib/dealMode.ts';
 import { loadStripe, type Stripe } from '@stripe/stripe-js';
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js';
 
@@ -87,10 +87,10 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   // $10 hosting and the yearly option are suppressed everywhere below, so
   // the page presents a single $29/mo choice.
   const customOnlyMode = React.useMemo(() => isCustomDesignAnyPath(), []);
-  // /custom-10 sells ONE thing: the standard $10/mo hosting, pitched as
+  // /custom-15 sells ONE thing: the standard $15/mo hosting, pitched as
   // "we build your custom site from your booking link" — the link itself is
   // collected after payment inside the account. No yearly, no $29 upsell.
-  const custom10Mode = React.useMemo(() => isCustom10Path(), []);
+  const custom15Mode = React.useMemo(() => isCustom15Path(), []);
 
   // Standard monthly price varies by entry path:
   //   /free-barber → $7/mo (plan 'monthly-free')
@@ -101,8 +101,8 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   const stdMonthlyPriceDollars = barberGenMode ? 15 : home2Mode ? 19 : home20Mode ? 20 : home15Mode ? 15 : home9Mode ? 19 : home7Mode ? 7 : freeBarberMode ? 7 : 15;
   const stdMonthlyPriceMo = `$${stdMonthlyPriceDollars}/mo`;
   const stdMonthlyPriceMonth = `$${stdMonthlyPriceDollars}/month`;
-  const stdMonthlyPlan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'monthly-booking' | 'monthly-generate' | 'monthly-home2' | 'monthly-15' | 'monthly-20' | 'monthly-7' | 'monthly-9' | 'monthly-custom10' | 'monthly-bargen' = custom10Mode
-    ? 'monthly-custom10'
+  const stdMonthlyPlan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'monthly-booking' | 'monthly-generate' | 'monthly-home2' | 'monthly-15' | 'monthly-20' | 'monthly-7' | 'monthly-9' | 'monthly-custom15' | 'monthly-bargen' = custom15Mode
+    ? 'monthly-custom15'
     : barberGenMode
     ? 'monthly-bargen'
     : home2Mode
@@ -453,7 +453,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
               every path shows Monthly first (Monthly is the default plan).
               Never on /custom-design + /custom-design-29 — those sell one
               $29/mo custom build with no yearly option. */}
-          {!customOnlyMode && !custom10Mode && (() => {
+          {!customOnlyMode && !custom15Mode && (() => {
             const sizeCls = generateMode
               ? 'text-[12px] md:text-[13px] pb-1'
               : booksyMode
@@ -523,10 +523,10 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
               .aib-cta-launch, .aib-cta-custom { animation: none; }
             }
           `}</style>
-          {/* /custom-10: one line of context above the single CTA — the
+          {/* /custom-15: one line of context above the single CTA — the
               page promises a custom site from their booking link, and the
               link comes after payment. */}
-          {custom10Mode && (
+          {custom15Mode && (
             <p
               className="mb-2 text-center text-[10px] font-semibold"
               style={{ color: 'rgba(236,230,218,0.65)' }}
@@ -572,7 +572,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
               ) : (
                 <Rocket size={12} />
               )}
-              <span>{custom10Mode ? 'Get My Custom Website' : 'Publish Your Website'}</span>
+              <span>{custom15Mode ? '20+ Page Custom Barbershop Site' : 'Publish Your Website'}</span>
               <span
                 className="font-extrabold px-1.5 py-0.5 rounded"
                 style={{ background: 'rgba(10,10,10,0.18)', color: '#0a0a0a' }}
@@ -587,7 +587,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
               every entry path: "Custom 20+ Page Barber Website…", $29/mo.
               ~20% larger than the standard CTAs with the price pill as the
               visual anchor — opens straight into the checkout modal. */}
-          {!custom10Mode && (
+          {!custom15Mode && (
           <button
             type="button"
             onClick={() => setShowCustomWizard(true)}
@@ -795,7 +795,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                   <Loader2 className="animate-spin" size={16} />
                 ) : (
                   <>
-                    <span>{custom10Mode ? 'Get My Custom Website' : 'Publish Your Website'}</span>
+                    <span>{custom15Mode ? '20+ Page Custom Barbershop Site' : 'Publish Your Website'}</span>
                     <span
                       className="font-extrabold px-1.5 py-0.5 rounded"
                       style={{ background: 'rgba(10,10,10,0.18)', color: '#0a0a0a' }}
@@ -969,13 +969,13 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
         const gold = '#e8c074';
         const monthlyLabel = stdMonthlyPriceMo;
         const yearlyLabel = `$${stdYearlyPriceDollars}/yr`;
-        const benefits: string[] = custom10Mode
+        const benefits: string[] = custom15Mode
           ? [
               'We build your custom site from your booking link',
               'Your own account — edit text and photos anytime',
               'Your site goes live right away',
               'Use it on Google, Instagram, or in your text messages',
-              '$10/month · cancel anytime · no contract',
+              '$15/month · cancel anytime · no contract',
             ]
           : [
           'Edit your text and photos anytime',
@@ -1040,7 +1040,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                   ))}
                 </ul>
 
-                <div className="flex items-center justify-center gap-4 mb-2.5" style={{ display: customOnlyMode || custom10Mode ? 'none' : undefined }}>
+                <div className="flex items-center justify-center gap-4 mb-2.5" style={{ display: customOnlyMode || custom15Mode ? 'none' : undefined }}>
                   <button
                     onClick={() => setPricingPlan('monthly')}
                     className="text-[10px] font-medium uppercase tracking-[0.22em] pb-1 transition-colors"

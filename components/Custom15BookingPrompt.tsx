@@ -4,7 +4,7 @@ import type { WebsiteData } from '../types';
 import { buildSiteFromScrape } from '../lib/buildSiteFromScrape';
 import { extractFirstUrl } from '../lib/supportedBookingHost';
 
-// Post-payment step for /custom-10 buyers. They paid BEFORE giving a booking
+// Post-payment step for /custom-15 buyers. They paid BEFORE giving a booking
 // link, so what deployed is the sample site — this overlay says so plainly
 // ("the sample isn't what you bought") and collects the link. Submit scrapes
 // it, rebuilds the site from their real services/photos/hours/reviews, and
@@ -16,13 +16,13 @@ import { extractFirstUrl } from '../lib/supportedBookingHost';
 
 const GOLD = '#e8c074';
 
-export interface Custom10BookingPromptProps {
+export interface Custom15BookingPromptProps {
   data: WebsiteData;
   onRebuilt: (merged: WebsiteData) => void;
   onDismiss: () => void;
 }
 
-export const Custom10BookingPrompt: React.FC<Custom10BookingPromptProps> = ({ data, onRebuilt, onDismiss }) => {
+export const Custom15BookingPrompt: React.FC<Custom15BookingPromptProps> = ({ data, onRebuilt, onDismiss }) => {
   const [url, setUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState('');
@@ -52,7 +52,7 @@ export const Custom10BookingPrompt: React.FC<Custom10BookingPromptProps> = ({ da
         awaitingBookingLink: undefined,
       });
     } catch (err: any) {
-      console.error('[custom-10] booking-link scrape failed:', err);
+      console.error('[custom-15] booking-link scrape failed:', err);
       setNote("We couldn't pull that link — double-check it and try again, or edit the site by hand.");
     } finally {
       setBusy(false);
@@ -73,7 +73,7 @@ export const Custom10BookingPrompt: React.FC<Custom10BookingPromptProps> = ({ da
         }}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="custom10-prompt-title"
+        aria-labelledby="custom15-prompt-title"
       >
         <button
           type="button"
@@ -89,7 +89,7 @@ export const Custom10BookingPrompt: React.FC<Custom10BookingPromptProps> = ({ da
         >
           One last step
         </span>
-        <h2 id="custom10-prompt-title" className="text-[16px] font-bold text-white leading-snug mt-2 mb-1">
+        <h2 id="custom15-prompt-title" className="text-[16px] font-bold text-white leading-snug mt-2 mb-1">
           Your account is live — paste your booking link and we&apos;ll build your site.
         </h2>
         <p className="text-[11.5px] text-white/55 mb-3.5">
@@ -144,4 +144,4 @@ export const Custom10BookingPrompt: React.FC<Custom10BookingPromptProps> = ({ da
   );
 };
 
-export default Custom10BookingPrompt;
+export default Custom15BookingPrompt;

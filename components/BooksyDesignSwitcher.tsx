@@ -13,7 +13,7 @@ export interface BooksyDesignSwitcherProps {
   onSelect: (template: 'luxe' | 'prime') => void;
   busy?: boolean;
   // When both are provided, the six brand swatches render under the design
-  // buttons — /custom-10 keeps design + colour together in this one pill.
+  // buttons — /custom-15 keeps design + colour together in this one pill.
   color?: string;
   onColorChange?: (hex: string) => void;
 }
