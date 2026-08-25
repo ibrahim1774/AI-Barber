@@ -6,8 +6,11 @@
 // name-only submit. Every funnel calls fireLead() at its completion
 // point and this module enforces the dedup rules:
 //   - CRM webhook  → once per browser SESSION (sessionStorage)
-//   - Meta/TikTok Lead pixel + CAPI → once per 90 days (localStorage),
-//     matching Meta's attribution window so ROAS counts 1 lead/person.
+//   - Meta/TikTok Lead pixel + CAPI → the SAME once-per-session rule.
+//     Owner call 2026-08-25: every Sheet row must also reach Meta — the
+//     previous 90-day localStorage gate silently dropped 11 of 29 leads
+//     in the prior week (repeat visitors, second devices, anyone who
+//     had generated a site before).
 
 import type { ShopInputs } from '../types';
 import { captureLead } from '../services/leadCaptureService';
@@ -15,8 +18,7 @@ import { getViewContentMeta } from './pixelMeta';
 import { readMetaCookies } from '../services/metaMatchParams';
 
 const WEBHOOK_SESSION_KEY = 'aibarber_lead_captured';
-const LEAD_DEDUP_KEY = 'aibarber_lead_fired_at';
-const LEAD_DEDUP_TTL_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
+const PIXEL_SESSION_KEY = 'aibarber_lead_pixel_fired';
 
 // CRM webhook — once per session so the same visitor filling the form
 // twice (or a booking link then the manual fallback) yields one row.
@@ -29,17 +31,11 @@ function captureLeadOnce(inputs: ShopInputs): void {
 }
 
 function shouldFirePixelLead(): boolean {
-  try {
-    const raw = localStorage.getItem(LEAD_DEDUP_KEY);
-    if (!raw) return true;
-    const ts = parseInt(raw, 10);
-    if (!Number.isFinite(ts)) return true;
-    return (Date.now() - ts) > LEAD_DEDUP_TTL_MS;
-  } catch { return true; }
+  try { return !sessionStorage.getItem(PIXEL_SESSION_KEY); } catch { return true; }
 }
 
 function markPixelLeadFired(): void {
-  try { localStorage.setItem(LEAD_DEDUP_KEY, String(Date.now())); } catch {}
+  try { sessionStorage.setItem(PIXEL_SESSION_KEY, '1'); } catch {}
 }
 
 // Fire the Meta + TikTok Lead event (browser pixel + server CAPI share
@@ -47,7 +43,7 @@ function markPixelLeadFired(): void {
 function firePixelLead(inputs: ShopInputs): void {
   if (typeof window === 'undefined') return;
   if (!shouldFirePixelLead()) {
-    console.log('[Lead tracking] Skipping Lead pixel — already fired for this visitor within 90 days.');
+    console.log('[Lead tracking] Skipping Lead pixel — already fired this session.');
     return;
   }
   const leadEventId = `lead_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
