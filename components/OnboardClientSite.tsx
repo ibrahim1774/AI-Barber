@@ -78,6 +78,11 @@ interface OnboardResult {
   // credentials the server never saw.
   email: string;
   password: string;
+  // True when the site was ALREADY onboarded and the server only
+  // re-imported files. The API never changes the login on a re-sync, so
+  // the typed password must NOT be shown as if it had been applied
+  // (owner report 2026-08-27: card showed a password that didn't work).
+  resync: boolean;
 }
 
 export const OnboardClientSite: React.FC = () => {
@@ -136,7 +141,8 @@ export const OnboardClientSite: React.FC = () => {
           files: json.files || 0,
           pages: json.pages || 0,
           email: submitted.email,
-          password: submitted.password,
+          password: json.resync ? '' : submitted.password,
+          resync: Boolean(json.resync),
         });
       } catch (err: any) {
         setError(err?.message || 'Onboarding failed');
@@ -154,13 +160,22 @@ export const OnboardClientSite: React.FC = () => {
           <CheckCircle2 size={38} className="mb-3 text-emerald-400" />
           <h1 className="text-xl font-bold text-white">{result.name} is ready</h1>
           <p className="mt-1 mb-5 text-[12.5px] text-white/50">
-            {result.pages} pages ({result.files} files) imported. Send the client these details — they can
-            start editing right away.
+            {result.resync
+              ? `${result.pages} pages (${result.files} files) re-imported from the live site. This site was already set up — the client's existing login still works.`
+              : `${result.pages} pages (${result.files} files) imported. Send the client these details — they can start editing right away.`}
           </p>
           <div className="space-y-2">
             <CopyRow label="Portal link" value={portalUrl} />
             <CopyRow label="Email" value={result.email} />
-            <CopyRow label="Password" value={result.password} />
+            {result.resync ? (
+              <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-[12px] leading-relaxed text-amber-200">
+                <span className="font-bold uppercase tracking-[0.14em] text-[10px]">Password not changed</span>
+                <br />
+                The password you typed was <span className="font-semibold">not</span> applied — re-syncs never touch the login. The client keeps the password they were originally given (see /admin). To reset it, use the onboarding script.
+              </div>
+            ) : (
+              <CopyRow label="Password" value={result.password} />
+            )}
           </div>
           <a
             href={result.liveUrl}
