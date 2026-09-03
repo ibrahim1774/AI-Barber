@@ -16,7 +16,7 @@ export type PlanSlug =
   | 'monthly-9' | 'yearly-9'
   | 'monthly-custom15'
   | 'custom-design' | 'custom-design-29'
-  | 'custom' | 'custom25' | 'custom-booksy' | 'custom-15'
+  | 'custom' | 'custom25' | 'custom-booksy' | 'custom-15' | 'custom-home'
   | 'monthly-bargen' | 'yearly-bargen' | 'custom-bargen'
   | 'primebarber' | 'primebarber-site';
 
@@ -31,8 +31,8 @@ export interface ContentMeta {
 // amount to pass as valueOverride. Keep in sync with the unitAmount
 // values in api/create-checkout-session.ts.
 const PLAN_CONTENT: Record<PlanSlug, { content_id: string; content_name: string; price: number }> = {
-  'monthly':           { content_id: 'aibarber-hosting-monthly',         content_name: 'aibarber.org Monthly Website Hosting',           price: 15 },
-  'yearly':            { content_id: 'aibarber-hosting-yearly',          content_name: 'aibarber.org Yearly Website Hosting',            price: 144 },
+  'monthly':           { content_id: 'aibarber-hosting-monthly',         content_name: 'aibarber.org Monthly Website Hosting',           price: 10 },
+  'yearly':            { content_id: 'aibarber-hosting-yearly',          content_name: 'aibarber.org Yearly Website Hosting',            price: 84 },
   'monthly-booksy':    { content_id: 'aibarber-hosting-monthly-booksy',  content_name: 'aibarber.org Monthly Website Hosting (Booksy)',  price: 10 },
   'yearly-booksy':     { content_id: 'aibarber-hosting-yearly-booksy',   content_name: 'aibarber.org Yearly Website Hosting (Booksy)',   price: 59 },
   'monthly-free':      { content_id: 'aibarber-hosting-monthly-free',    content_name: 'aibarber.org Monthly Website Hosting (Free Barber)', price: 7 },
@@ -60,6 +60,7 @@ const PLAN_CONTENT: Record<PlanSlug, { content_id: string; content_name: string;
   'custom25':          { content_id: 'aibarber-custom-design',           content_name: 'aibarber.org Custom Website Design',             price: 29 },
   'custom-booksy':     { content_id: 'aibarber-custom-design',           content_name: 'aibarber.org Custom Website Design (Booksy)',    price: 29 },
   'custom-15':         { content_id: 'aibarber-custom-design',           content_name: 'aibarber.org Custom Website Design (7)',         price: 19 },
+  'custom-home':       { content_id: 'aibarber-custom-design',           content_name: 'aibarber.org Custom Website Design (Home)',      price: 19 },
   'monthly-bargen':    { content_id: 'aibarber-hosting-monthly-bargen',  content_name: 'aibarber.org Monthly Website Hosting (Barber Generate)', price: 15 },
   'yearly-bargen':     { content_id: 'aibarber-hosting-yearly-bargen',   content_name: 'aibarber.org Yearly Website Hosting (Barber Generate)',  price: 144 },
   'custom-bargen':     { content_id: 'aibarber-custom-design',           content_name: 'aibarber.org Custom Website Design (Barber Generate)',   price: 29 },
