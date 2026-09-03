@@ -289,6 +289,7 @@ const App: React.FC = () => {
     const isCustomPlan =
       stripePlan === 'custom' ||
       stripePlan === 'custom25' ||
+      stripePlan === 'custom-home' ||
       stripePlan === 'custom-booksy' ||
       stripePlan === 'primebarber' ||
       stripePlan === 'primebarber-site';
@@ -352,6 +353,7 @@ const App: React.FC = () => {
       'custom-booksy': 29,
       custom: 29,
       custom25: 29,
+      'custom-home': 19,
       primebarber: 20,
       'primebarber-site': 19,
     };

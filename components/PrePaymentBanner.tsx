@@ -96,9 +96,9 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   //   /free-barber → $7/mo (plan 'monthly-free')
   //   /booksy      → $10/mo (plan 'monthly-booksy')
   //   /booking     → $10/mo (plan 'monthly-booking')
-  //   home page    → $15/mo (plan 'monthly')
+  //   home page    → $10/mo (plan 'monthly') — owner call 2026-09-02
   //   /free-barber → $7/mo (plan 'monthly-free')
-  const stdMonthlyPriceDollars = barberGenMode ? 15 : home2Mode ? 19 : home20Mode ? 20 : home15Mode ? 15 : home9Mode ? 19 : home7Mode ? 7 : freeBarberMode ? 7 : 15;
+  const stdMonthlyPriceDollars = barberGenMode ? 15 : home2Mode ? 19 : home20Mode ? 20 : home15Mode ? 15 : home9Mode ? 19 : home7Mode ? 7 : freeBarberMode ? 7 : 10;
   const stdMonthlyPriceMo = `$${stdMonthlyPriceDollars}/mo`;
   const stdMonthlyPriceMonth = `$${stdMonthlyPriceDollars}/month`;
   const stdMonthlyPlan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'monthly-booking' | 'monthly-generate' | 'monthly-home2' | 'monthly-15' | 'monthly-20' | 'monthly-7' | 'monthly-9' | 'monthly-custom15' | 'monthly-bargen' = custom15Mode
@@ -124,12 +124,12 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
         : freeBarberMode
           ? 'monthly-free'
           : 'monthly';
-  // Yearly is $79/yr on the homepage; /free-barber stays $49/yr and
-  // /booking, /generate + /booksy stay $59/yr. The discount % is
-  // computed off the path's own monthly × 12 anchor so "Save X%"
-  // always reflects the real saving. Keep the server amounts in
-  // api/create-checkout-session.ts in sync.
-  const stdYearlyPriceDollars = barberGenMode ? 144 : home2Mode ? 99 : home20Mode ? 192 : home15Mode ? 144 : home9Mode ? 137 : home7Mode ? 67 : (bookingMode || generateMode || booksyMode) ? 59 : freeBarberMode ? 49 : 144;
+  // Yearly is $84/yr on the homepage (30% off $10 × 12 = $120);
+  // /free-barber stays $49/yr and /booking, /generate + /booksy stay
+  // $59/yr. The discount % is computed off the path's own monthly × 12
+  // anchor so "Save X%" always reflects the real saving. Keep the server
+  // amounts in api/create-checkout-session.ts in sync.
+  const stdYearlyPriceDollars = barberGenMode ? 144 : home2Mode ? 99 : home20Mode ? 192 : home15Mode ? 144 : home9Mode ? 137 : home7Mode ? 67 : (bookingMode || generateMode || booksyMode) ? 59 : freeBarberMode ? 49 : 84;
   const stdYearlyPriceYr = `$${stdYearlyPriceDollars}/yr`;
   const stdYearlyPriceYear = `$${stdYearlyPriceDollars}/year`;
   const stdYearlyDiscountPct = Math.max(
@@ -158,12 +158,19 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
           ? 'yearly-free'
           : 'yearly';
 
-  // Custom-design upsell — $29/mo everywhere EXCEPT /7, which tests
-  // it at $19/mo. Plan slug per path for analytics attribution:
+  // Custom-design upsell — $29/mo everywhere EXCEPT the homepage ($19/mo,
+  // owner call 2026-09-02) and /7 + /9 (their $19 test). Plan slug per
+  // path for analytics attribution:
   //   custom-booksy → /booksy
   //   custom-15     → /7 + /9 ($19/mo; slug kept for continuity)
+  //   custom-home   → homepage ($19/mo)
   //   custom25      → everywhere else incl. /15 + /20 ($29/mo)
-  const customPlan: 'custom25' | 'custom-booksy' | 'custom-15' | 'custom-design' | 'custom-design-29' | 'custom-bargen' = isCustomDesign29Path()
+  // The homepage is "none of the entry paths" — same fall-through the
+  // monthly/yearly plan slugs use above.
+  const homeMode =
+    !barberGenMode && !home2Mode && !home20Mode && !home15Mode && !home9Mode && !home7Mode &&
+    !generateMode && !bookingMode && !booksyMode && !freeBarberMode && !custom15Mode && !customOnlyMode;
+  const customPlan: 'custom25' | 'custom-booksy' | 'custom-15' | 'custom-home' | 'custom-design' | 'custom-design-29' | 'custom-bargen' = isCustomDesign29Path()
     ? 'custom-design-29'
     : isCustomDesignPath()
     ? 'custom-design'
@@ -173,8 +180,10 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
     ? 'custom-booksy'
     : (home7Mode || home9Mode)
       ? 'custom-15'
-      : 'custom25';
-  const customPriceDollars = (home7Mode || home9Mode) ? 19 : 29;
+      : homeMode
+        ? 'custom-home'
+        : 'custom25';
+  const customPriceDollars = (home7Mode || home9Mode || homeMode) ? 19 : 29;
   const customPriceLabel = `$${customPriceDollars}/mo`;
   const customPriceFull = `$${customPriceDollars}/month`;
 

@@ -104,8 +104,11 @@ export default async function handler(req: any, res: any) {
     // even though they bill under the same product name.
     const isCustomDesignPage = plan === 'custom-design';
     const isCustomDesign29 = plan === 'custom-design-29';
+    // 'custom-home' = the homepage custom-design upsell at $19/mo (owner
+    // call 2026-09-02); every other page's upsell stays $29 (custom25).
+    const isCustomHome = plan === 'custom-home';
     const isCustomAny =
-      isCustom || isCustom25 || isCustomBooksy || isCustom15 ||
+      isCustom || isCustom25 || isCustomBooksy || isCustom15 || isCustomHome ||
       isCustomBargen ||
       isCustomDesignPage || isCustomDesign29 || isPrimeBarber || isPrimeBarberYearly;
 
@@ -113,8 +116,8 @@ export default async function handler(req: any, res: any) {
     let interval: 'month' | 'year';
     let productName: string;
     if (isYearly) {
-      // Standard yearly: $144/yr (20% off $15/mo × 12 = $180).
-      unitAmount = '14400';
+      // Standard (home page) yearly: $84/yr (30% off $10/mo × 12 = $120).
+      unitAmount = '8400';
       interval = 'year';
       productName = 'aibarber.org — Yearly Website Hosting';
     } else if (isYearlyBooksy) {
@@ -239,6 +242,11 @@ export default async function handler(req: any, res: any) {
       unitAmount = '2900';
       interval = 'month';
       productName = 'aibarber.org — Website Hosting (Custom)';
+    } else if (isCustomHome) {
+      // Homepage custom-design upsell: $19/mo.
+      unitAmount = '1900';
+      interval = 'month';
+      productName = 'aibarber.org — Website Hosting (Custom)';
     } else if (isCustom || isCustom25 || isCustomDesignPage || isCustomDesign29) {
       unitAmount = '2900';
       interval = 'month';
@@ -253,8 +261,8 @@ export default async function handler(req: any, res: any) {
       interval = 'year';
       productName = 'aibarber.org — Custom Website Platform (PrimeBarber, Yearly)';
     } else {
-      // Standard (home page) monthly: $15/mo.
-      unitAmount = '1500';
+      // Standard (home page) monthly: $10/mo (owner call 2026-09-02).
+      unitAmount = '1000';
       interval = 'month';
       productName = 'aibarber.org — Monthly Website Hosting';
     }
