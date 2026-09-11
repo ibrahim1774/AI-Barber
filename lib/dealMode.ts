@@ -168,7 +168,7 @@ export function isHome15Path(pathname?: string): boolean {
   return p === HOME15_PATH || p === `${HOME15_PATH}/`;
 }
 
-// `/9` — duplicate of the /15 funnel priced $9/mo + $76/yr (30% off
+// `/9` — duplicate of the /15 funnel priced $9/mo + $86/yr (20% off
 // 9 × 12 = 108). Custom design is $19/mo (custom-15 slug, like /7).
 export const HOME9_PATH = '/9';
 export function isHome9Path(pathname?: string): boolean {

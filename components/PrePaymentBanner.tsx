@@ -81,7 +81,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   const home20Mode = React.useMemo(() => isHome20Path(), []);
   // /7: same funnel at $7/mo + $67/yr (20% off 7 x 12 = 84).
   const home7Mode = React.useMemo(() => isHome7Path(), []);
-  // /9: same funnel at $9/mo + $76/yr (30% off 9 x 12 = 108). Custom $19.
+  // /9: same funnel at $9/mo + $86/yr (20% off 9 x 12 = 108). Custom $19.
   const home9Mode = React.useMemo(() => isHome9Path(), []);
   // /custom-design + /custom-design-29 sell the custom build ONLY — the
   // $10 hosting and the yearly option are suppressed everywhere below, so
@@ -129,7 +129,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   // $59/yr. The discount % is computed off the path's own monthly × 12
   // anchor so "Save X%" always reflects the real saving. Keep the server
   // amounts in api/create-checkout-session.ts in sync.
-  const stdYearlyPriceDollars = barberGenMode ? 144 : home2Mode ? 99 : home20Mode ? 192 : home15Mode ? 144 : home9Mode ? 76 : home7Mode ? 67 : (bookingMode || generateMode || booksyMode) ? 59 : freeBarberMode ? 49 : 84;
+  const stdYearlyPriceDollars = barberGenMode ? 144 : home2Mode ? 99 : home20Mode ? 192 : home15Mode ? 144 : home9Mode ? 86 : home7Mode ? 67 : (bookingMode || generateMode || booksyMode) ? 59 : freeBarberMode ? 49 : 84;
   const stdYearlyPriceYr = `$${stdYearlyPriceDollars}/yr`;
   const stdYearlyPriceYear = `$${stdYearlyPriceDollars}/year`;
   const stdYearlyDiscountPct = Math.max(
