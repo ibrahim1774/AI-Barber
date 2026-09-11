@@ -30,6 +30,8 @@ interface SiteInfo {
 interface ClientSiteLogin {
   slug: string;
   name: string | null;
+  contact: string | null;
+  phone: string | null;
   liveUrl: string | null;
   email: string | null;
   password: string | null;
@@ -925,7 +927,7 @@ export const AdminDashboard: React.FC = () => {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 820 }}>
                 <thead>
                   <tr style={{ color: MUTED, textAlign: 'left' }}>
-                    {['Site', 'Login email', 'Password', 'Issued', 'Last sign-in', 'Live'].map((h) => (
+                    {['Site', 'Contact', 'Login email', 'Password', 'Issued', 'Last sign-in', 'Live'].map((h) => (
                       <th key={h} style={{ padding: '9px 14px', borderBottom: `1px solid ${LINE}`, fontWeight: 500, whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
@@ -934,6 +936,11 @@ export const AdminDashboard: React.FC = () => {
                   {clientSites.map((c) => (
                     <tr key={c.slug}>
                       <td style={{ padding: '9px 14px', borderBottom: `1px solid ${LINE}` }}>{c.name || c.slug}</td>
+                      <td style={{ padding: '9px 14px', borderBottom: `1px solid ${LINE}`, whiteSpace: 'nowrap' }}>
+                        {c.contact || c.phone ? (
+                          <>{c.contact}{c.contact && c.phone ? ' · ' : ''}{c.phone ? <a href={`tel:${c.phone}`} className="adm-num" style={{ color: INK }}>{c.phone.replace(/^(\d{3})(\d{3})(\d{4})$/, '($1) $2-$3')}</a> : null}</>
+                        ) : <span style={{ color: MUTED }}>—</span>}
+                      </td>
                       <td style={{ padding: '9px 14px', borderBottom: `1px solid ${LINE}`, color: MUTED }}>{c.email || '—'}</td>
                       <td style={{ padding: '9px 14px', borderBottom: `1px solid ${LINE}` }}>
                         {c.password ? (

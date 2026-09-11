@@ -186,6 +186,12 @@ export default async function handler(req: any, res: any) {
       // 2026-08-12, $29/mo custom design bought off /15. Number is the one
       // the site was delivered over by text (the site itself has no tel:).
       'cheistopherpolk@gmail.com': { phone: '6785490686', site: 'https://cuts-by-christopher-polk.vercel.app', label: 'Cuts by Christopher Polk (Atlanta GA)' },
+      // 2026-09-11 (owner): hand-built Client Sites team builds + their contacts.
+      // Shavon has two Stripe customers (icloud + gmail) — both map to Clipps Edge.
+      'shavon.taylor1@icloud.com': { phone: '3476766993', site: 'https://www.clippsedgebarber.com', label: 'Clipps Edge Barber — Shavon Taylor' },
+      'clippsedge1@gmail.com':     { phone: '3476766993', site: 'https://www.clippsedgebarber.com', label: 'Clipps Edge Barber — Shavon Taylor' },
+      'deejay0404@gmail.com':      { phone: '8032880925', site: 'https://www.fadecitybarber.com', label: 'Fade City Barber — David Jeter' },
+      'bippdabarber@yahoo.com':    { phone: '2565299486', site: 'https://iconic-cutz.vercel.app', label: 'Iconic Cutz — Bivens Mayo' },
     };
 
     const emailsWithSubs = new Set<string>();
@@ -242,10 +248,18 @@ export default async function handler(req: any, res: any) {
         .select('slug, name, live_url, owner, portal_password, password_issued_at, created_at')
         .order('created_at', { ascending: true });
       const userById = new Map(users.map((u: any) => [u.id, u]));
+      // Contact person + mobile per portal site (owner-supplied; the table
+      // has no contact columns, so this lives here like MANUAL_IDENTITIES).
+      const CLIENT_SITE_CONTACTS: Record<string, { contact: string; phone: string }> = {
+        'clipps-edge': { contact: 'Shavon Taylor', phone: '3476766993' },
+        'iconic-cutz': { contact: 'Bivens Mayo', phone: '2565299486' },
+      };
       clientSites = (csRows || []).map((r: any) => {
         const owner = r.owner ? userById.get(r.owner) : null;
         return {
           slug: r.slug,
+          contact: CLIENT_SITE_CONTACTS[r.slug]?.contact || null,
+          phone: CLIENT_SITE_CONTACTS[r.slug]?.phone || null,
           name: r.name,
           liveUrl: r.live_url,
           email: owner?.email || null,
