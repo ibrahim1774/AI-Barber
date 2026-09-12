@@ -192,6 +192,10 @@ export default async function handler(req: any, res: any) {
       'clippsedge1@gmail.com':     { phone: '3476766993', site: 'https://www.clippsedgebarber.com', label: 'Clipps Edge Barber — Shavon Taylor' },
       'deejay0404@gmail.com':      { phone: '8032880925', site: 'https://www.fadecitybarber.com', label: 'Fade City Barber — David Jeter' },
       'bippdabarber@yahoo.com':    { phone: '2565299486', site: 'https://iconic-cutz.vercel.app', label: 'Iconic Cutz — Bivens Mayo' },
+      // 2026-09-12: $19/mo PrimeHub barber custom design off a Facebook ad
+      // (/barber). Site hand-built in the Client Sites team; no portal login
+      // issued yet, so there is no client_sites row for it.
+      'cutzbyantdabarber@yahoo.com': { phone: '2294496675', site: 'https://cutz-by-ant.vercel.app', label: 'Cutz By Ant — Anthony Ross' },
     };
 
     const emailsWithSubs = new Set<string>();
@@ -253,6 +257,8 @@ export default async function handler(req: any, res: any) {
       const CLIENT_SITE_CONTACTS: Record<string, { contact: string; phone: string }> = {
         'clipps-edge': { contact: 'Shavon Taylor', phone: '3476766993' },
         'iconic-cutz': { contact: 'Bivens Mayo', phone: '2565299486' },
+        // Pre-staged: only renders once the site is onboarded to /edit.
+        'cutz-by-ant': { contact: 'Anthony Ross', phone: '2294496675' },
       };
       clientSites = (csRows || []).map((r: any) => {
         const owner = r.owner ? userById.get(r.owner) : null;
