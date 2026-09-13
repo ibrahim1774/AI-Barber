@@ -191,7 +191,7 @@ export default async function handler(req: any, res: any) {
       'shavon.taylor1@icloud.com': { phone: '3476766993', site: 'https://www.clippsedgebarber.com', label: 'Clipps Edge Barber — Shavon Taylor' },
       'clippsedge1@gmail.com':     { phone: '3476766993', site: 'https://www.clippsedgebarber.com', label: 'Clipps Edge Barber — Shavon Taylor' },
       'deejay0404@gmail.com':      { phone: '8032880925', site: 'https://www.fadecitybarber.com', label: 'Fade City Barber — David Jeter' },
-      'bippdabarber@yahoo.com':    { phone: '2565299486', site: 'https://iconic-cutz.vercel.app', label: 'Iconic Cutz — Bivens Mayo' },
+      'bippdabarber@yahoo.com':    { phone: '2565299486', site: 'https://www.iconiccutzbarber.com', label: 'Iconic Cutz — Bivens Mayo' },
       // 2026-09-12: $19/mo PrimeHub barber custom design off a Facebook ad
       // (/barber). Site hand-built in the Client Sites team; no portal login
       // issued yet, so there is no client_sites row for it.
