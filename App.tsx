@@ -50,6 +50,9 @@ const AdminGenerator = lazy(() => import('./components/AdminGenerator.tsx').then
 const AdminDashboard = lazy(() => import('./components/AdminDashboard.tsx').then(m => ({ default: m.AdminDashboard })));
 const TrackingPage = lazy(() => import('./components/TrackingPage.tsx'));
 const OwnBrandLanding = lazy(() => import('./components/OwnBrandLanding.tsx').then(m => ({ default: m.OwnBrandLanding })));
+// Homepage importer, ported from PrimeHub's /barber gate. Renders on the
+// bare root "/" INSTEAD of GeneratorForm; every other path is untouched.
+const GbpImportPage = lazy(() => import('./components/GbpImportPage.tsx'));
 
 const DEPLOY_TIMER_SECONDS = 5;
 
@@ -66,6 +69,15 @@ const isRootHomePath = (): boolean => {
     const p = window.location.pathname.replace(/\/+$/, '');
     return p === '' || p === '/home-2' || p === '/20' || p === '/15' || p === '/9' || p === '/7';
   } catch { return false; }
+};
+
+// The BARE root "/" only — where the Google Business / booking-link
+// importer (GbpImportPage) replaces GeneratorForm. Deliberately narrower
+// than isRootHomePath(): the pricing duplicates (/home-2, /20, /15, /9,
+// /7) and every named funnel (/booksy, /free-barber, /new, /generate, …)
+// keep the original GeneratorForm exactly as it is.
+const isBareRootPath = (): boolean => {
+  try { return window.location.pathname.replace(/\/+$/, '') === ''; } catch { return false; }
 };
 
 const App: React.FC = () => {
@@ -96,6 +108,10 @@ const App: React.FC = () => {
   // it while the Stripe checkout modal is open.
   const [showHomePrompts, setShowHomePrompts] = useState(false);
   const [isCheckoutFlowOpen, setIsCheckoutFlowOpen] = useState(false);
+  // Root "/" escape hatch: the importer's "fill in your details manually"
+  // link drops the visitor onto the classic GeneratorForm for the rest of
+  // the session. Mirrors PrimeHub's onUseManualForm.
+  const [useManualForm, setUseManualForm] = useState(false);
   // Homepage/free-barber floating Design 1/2 switcher — brief busy beat while
   // the editor re-skins between luxe (Design 1) and prime (Design 2).
   const [homeSwitching, setHomeSwitching] = useState(false);
@@ -1337,16 +1353,40 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-[#0d0d0d] text-white">
     <Suspense fallback={null}>
       {state === 'generator' && (
-        // Homepage, /booksy, AND /free-barber all render the same
-        // GeneratorForm — identical visual shell. On the root "/" the
-        // form runs name-only (collects just the barbershop name; the
-        // booking link / area + phone are gathered by HomeBookingPrompts
-        // after the site generates). /booksy and /free-barber keep their
-        // full layouts unchanged.
-        <GeneratorForm
-          onGenerate={(inputs, scraped) => handleGenerate(inputs, scraped)}
-          onSignIn={() => { setAuthModalMode('signin'); setAuthSignInOnly(true); setShowAuthModal(true); }}
-        />
+        isBareRootPath() && !useManualForm ? (
+          // Bare root "/" — the Google Business / booking-link importer
+          // ported from PrimeHub's /barber gate. It asks "Do you have a
+          // booking link?", then either scrapes the booking page
+          // (/api/import-scrape) or finds the Google listing
+          // (/api/find-business → /api/import-business), and hands
+          // handleGenerate a PREBUILT WebsiteData so generateContent is
+          // skipped over real scraped data. "Fill in manually" falls
+          // back to GeneratorForm below.
+          <Suspense
+            fallback={
+              <div className="min-h-screen flex items-center justify-center bg-[#070709]">
+                <div className="w-8 h-8 border-2 border-[#f4a100] border-t-transparent rounded-full animate-spin" />
+              </div>
+            }
+          >
+            <GbpImportPage
+              onImported={(inputs, prebuilt) => handleGenerate(inputs, prebuilt)}
+              onUseManualForm={() => setUseManualForm(true)}
+              onSignIn={() => { setAuthModalMode('signin'); setAuthSignInOnly(true); setShowAuthModal(true); }}
+            />
+          </Suspense>
+        ) : (
+          // /booksy, /free-barber, /new, the pricing duplicates, and the
+          // root's manual escape hatch all render the same GeneratorForm —
+          // identical visual shell, unchanged behaviour. On the root "/"
+          // the form runs name-only (collects just the barbershop name;
+          // the booking link / area + phone are gathered by
+          // HomeBookingPrompts after the site generates).
+          <GeneratorForm
+            onGenerate={(inputs, scraped) => handleGenerate(inputs, scraped)}
+            onSignIn={() => { setAuthModalMode('signin'); setAuthSignInOnly(true); setShowAuthModal(true); }}
+          />
+        )
       )}
       {state === 'loading' && <LoadingScreen />}
       {state === 'editor' && generatedData && (
