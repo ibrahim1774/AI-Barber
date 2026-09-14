@@ -475,8 +475,8 @@ const GbpImportPage: React.FC<Props> = ({ onImported, onUseManualForm, onSignIn 
     return hit ? { colorTheme: hit } : {};
   };
 
-  const toShopSite = (data: ScrapePayload, fallbackUrl: string) =>
-    buildSiteFromScrape(data, fallbackUrl, {
+  const toShopSite = (data: ScrapePayload, fallbackUrl: string, source: 'booking' | 'gbp') => {
+    const built = buildSiteFromScrape(data, fallbackUrl, {
       manual: {
         shopName: (data.shopName || '').trim(),
         area: (data.area || data.address || '').trim(),
@@ -485,6 +485,10 @@ const GbpImportPage: React.FC<Props> = ({ onImported, onUseManualForm, onSignIn 
         ...themeForInputs(),
       },
     });
+    // Stamp the successful-import marker: App fires the lead only for a
+    // site that actually generated from a booking link or a Google listing.
+    return { ...built, inputs: { ...built.inputs, importedFrom: source } };
+  };
 
   // Snap to 100 and hand off. 100% ALWAYS means "ready" — the only
   // thing after it is the navigation itself.
@@ -553,7 +557,7 @@ const GbpImportPage: React.FC<Props> = ({ onImported, onUseManualForm, onSignIn 
         payload.services = DEFAULT_BARBER_SERVICES.map((s) => ({ ...s }));
       }
 
-      const { inputs, scraped } = toShopSite(payload, fallbackUrl);
+      const { inputs, scraped } = toShopSite(payload, fallbackUrl, endpoint === '/api/import-scrape' ? 'booking' : 'gbp');
       await finishAndGo(runId, inputs, scraped);
     } catch (err: any) {
       if (runId !== runIdRef.current) return;

@@ -826,18 +826,19 @@ const App: React.FC = () => {
   // generateContent() template call — the Apify scraper has already
   // produced a complete WebsiteData payload from the real Booksy page.
   const handleGenerate = async (inputs: ShopInputs, prebuilt?: WebsiteData) => {
-    // Fire the lead ONLY when this is a real completion — a booking link,
-    // or both service area + phone filled (the full /booksy, /free-barber
-    // and /new forms always are). The homepage name-only submit defers:
-    // its lead fires later from the booking-link / area+phone prompts.
-    // fireLead() handles all dedup (CRM once/session, Meta+TikTok 90 days).
-    if (isLeadComplete(inputs)) fireLead(inputs);
+    // The lead fires only AFTER a site actually generates (owner,
+    // 2026-09-14): a completed form (booking link, or area + phone) or a
+    // successful booking-link / Google Business Profile import
+    // (inputs.importedFrom). Never on a failed generation. fireLead()
+    // handles all dedup (CRM once/session, Meta+TikTok 90 days).
+    const leadReady = isLeadComplete(inputs);
 
     sessionStorage.setItem('pendingFormInputs', JSON.stringify(inputs));
     setState('loading');
     try {
       const data = prebuilt ?? await generateContent(inputs);
       setGeneratedData(data);
+      if (leadReady) fireLead(inputs);
 
       // Persist a draft SiteInstance to IndexedDB so refresh, navigate-away,
       // and back-from-Stripe restore the generated site instead of dropping
@@ -946,8 +947,9 @@ const App: React.FC = () => {
   const handleHomePromptFinish = async (area: string, phone: string) => {
     const current = generatedData;
     if (!current) return;
-    // Area + phone completed on the homepage prompt → completion.
-    fireLead({ shopName: current.shopName, area, phone, bookingUrl: current.bookingUrl });
+    // Area + phone typed into the homepage prompt is NOT a lead on its own
+    // (owner, 2026-09-14): leads fire only for a site generated from a
+    // booking link or a Google Business Profile import.
     try {
       const data = await generateContent({
         shopName: current.shopName,
