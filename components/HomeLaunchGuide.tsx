@@ -1,4 +1,5 @@
 import React from 'react';
+import { isHomeRootPath } from '../lib/dealMode.ts';
 
 // Shown once after the homepage funnel finishes generating the site —
 // a short numbered "here's what happens next" guide before the visitor
@@ -13,6 +14,11 @@ const GOLD_DARK = '#8a6b30';
 const BG_CARD = 'rgba(14, 12, 8, 0.96)';
 
 export const HomeLaunchGuide: React.FC<HomeLaunchGuideProps> = ({ onClose }) => {
+  // The bare homepage sells only the custom 20+ page site (owner,
+  // 2026-09-13), so its CTA is not "Publish your website" — name the
+  // button the visitor will actually see. /booksy and /free-barber keep
+  // the publish wording.
+  const homeCustom = isHomeRootPath();
   return (
     <div
       className="fixed inset-0 z-[250] flex items-center justify-center px-4"
@@ -56,7 +62,7 @@ export const HomeLaunchGuide: React.FC<HomeLaunchGuideProps> = ({ onClose }) => 
 
         <p className="hlg-pop my-2 text-center text-[18px] md:text-[20px] font-extrabold leading-snug text-white">
           You can <span style={{ color: '#ef4444' }}>edit your website anytime</span> by creating an account after clicking{' '}
-          <span style={{ color: GOLD }}>“Publish your website.”</span>
+          <span style={{ color: GOLD }}>{homeCustom ? '“Custom 20+ Page Barber Website.”' : '“Publish your website.”'}</span>
         </p>
 
         <button
