@@ -10,6 +10,10 @@ export interface ShopInputs {
   // Optional color-theme slug — maps to the same four presets used on
   // PrimeHub /barber. Drives the rendered site's bg + accent.
   colorTheme?: string;
+  // Set only by the homepage importer AFTER a booking-link or Google
+  // Business Profile import succeeds. Marks the inputs as a completed
+  // generation for lead firing (lib/leadEvents.ts isLeadComplete).
+  importedFrom?: 'booking' | 'gbp';
 }
 
 export interface ServiceItem {

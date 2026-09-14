@@ -106,6 +106,9 @@ function firePixelLead(inputs: ShopInputs): void {
 // link, OR both service area and phone filled. Callers that already know
 // they're at a completion point can skip this and call fireLead directly.
 export function isLeadComplete(inputs: ShopInputs): boolean {
+  // A successful booking-link or Google Business Profile import IS a
+  // completion even when the listing carried no phone (owner, 2026-09-14).
+  if (inputs.importedFrom) return true;
   const hasLink = !!(inputs.bookingUrl && inputs.bookingUrl.trim());
   const hasFields = !!(inputs.area && inputs.area.trim() && inputs.phone && inputs.phone.trim());
   return hasLink || hasFields;
