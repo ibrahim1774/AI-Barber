@@ -16,7 +16,7 @@ export type PlanSlug =
   | 'monthly-9' | 'yearly-9'
   | 'monthly-custom15'
   | 'custom-design' | 'custom-design-29'
-  | 'custom' | 'custom25' | 'custom-booksy' | 'custom-15' | 'custom-home'
+  | 'custom' | 'custom25' | 'custom-booksy' | 'custom-15' | 'custom-home' | 'yearly-custom-home'
   | 'monthly-bargen' | 'yearly-bargen' | 'custom-bargen'
   | 'primebarber' | 'primebarber-site';
 
@@ -60,7 +60,8 @@ const PLAN_CONTENT: Record<PlanSlug, { content_id: string; content_name: string;
   'custom25':          { content_id: 'aibarber-custom-design',           content_name: 'aibarber.org Custom Website Design',             price: 29 },
   'custom-booksy':     { content_id: 'aibarber-custom-design',           content_name: 'aibarber.org Custom Website Design (Booksy)',    price: 29 },
   'custom-15':         { content_id: 'aibarber-custom-design',           content_name: 'aibarber.org Custom Website Design (7)',         price: 19 },
-  'custom-home':       { content_id: 'aibarber-custom-design',           content_name: 'aibarber.org Custom Website Design (Home)',      price: 19 },
+  'custom-home':       { content_id: 'aibarber-custom-design',           content_name: 'aibarber.org Custom Website Design (Home)',      price: 20 },
+  'yearly-custom-home':{ content_id: 'aibarber-custom-design',           content_name: 'aibarber.org Custom Website Design (Home, Yearly)', price: 199 },
   'monthly-bargen':    { content_id: 'aibarber-hosting-monthly-bargen',  content_name: 'aibarber.org Monthly Website Hosting (Barber Generate)', price: 15 },
   'yearly-bargen':     { content_id: 'aibarber-hosting-yearly-bargen',   content_name: 'aibarber.org Yearly Website Hosting (Barber Generate)',  price: 144 },
   'custom-bargen':     { content_id: 'aibarber-custom-design',           content_name: 'aibarber.org Custom Website Design (Barber Generate)',   price: 29 },

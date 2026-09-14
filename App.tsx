@@ -306,6 +306,7 @@ const App: React.FC = () => {
       stripePlan === 'custom' ||
       stripePlan === 'custom25' ||
       stripePlan === 'custom-home' ||
+      stripePlan === 'yearly-custom-home' ||
       stripePlan === 'custom-booksy' ||
       stripePlan === 'primebarber' ||
       stripePlan === 'primebarber-site';
@@ -369,7 +370,8 @@ const App: React.FC = () => {
       'custom-booksy': 29,
       custom: 29,
       custom25: 29,
-      'custom-home': 19,
+      'custom-home': 20,
+      'yearly-custom-home': 199,
       primebarber: 20,
       'primebarber-site': 19,
     };

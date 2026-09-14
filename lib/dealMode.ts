@@ -251,3 +251,11 @@ export function isOwnBrandPath(pathname?: string): boolean {
   const p = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
   return p === OWN_BRAND_PATH || p === `${OWN_BRAND_PATH}/`;
 }
+
+// Bare homepage "/" — the custom-only 20+ page offer (owner, 2026-09-13).
+// Trailing slashes tolerated; every other path (incl. /9, /15, /home-2)
+// stays on its own pricing.
+export function isHomeRootPath(pathname?: string): boolean {
+  const p = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
+  return p.replace(/\/+$/, '') === '';
+}
