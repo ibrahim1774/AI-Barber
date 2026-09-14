@@ -1,5 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { scrapeGoogleBusiness, isGbpUrl } from '../lib/gbp/gbp.js';
+import { scrapeViaPlaces, placesKey } from '../lib/gbp/gbpPlaces.js';
+import type { GbpBusiness } from '../lib/gbp/types.js';
 import { ScrapeError } from '../lib/scrapers/types.js';
 
 // Google Business Profile import for the homepage importer.
@@ -17,6 +19,15 @@ import { ScrapeError } from '../lib/scrapers/types.js';
 // hours{open,close} …) rather than PrimeHub's ScrapedBusiness, so the
 // client can hand it straight to lib/buildSiteFromScrape.ts with no
 // second mapping layer.
+//
+// TWO PATHS, one response shape:
+//   1. Google Places API (New) — ~1s. Used whenever
+//      GOOGLE_PLACES_SERVER_KEY is configured on the project.
+//   2. The Apify Google-Places crawler — 10-60s. Used when the key is
+//      absent, when Places matches nothing, or when Places errors.
+// Both produce a `GbpBusiness`, so ONE mapper below builds the
+// response and the client contract is identical either way. Each
+// request logs which path served it ("places 840ms" / "apify 12400ms").
 //
 // Error contract (matches import-scrape):
 //   400 — missing or empty URL
@@ -67,15 +78,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const url = ((req.body || {}) as { url?: string }).url?.trim() || '';
   if (!url) return res.status(400).json({ error: 'Missing URL' });
 
-  const apifyToken = process.env.APIFY_TOKEN || '';
-  if (!apifyToken) {
-    return res.status(422).json({
-      error: "We can't reach Google right now. Use the manual form below and we'll build your site from what you type.",
-    });
-  }
-
   // A typed name ("Fade Factory, Houston") is not a URL — route it
-  // through the same Google search query the adapter understands.
+  // through the same Google search query both adapters understand.
   const target = isGbpUrl(url)
     ? url
     : `https://www.google.com/search?q=${encodeURIComponent(url)}`;
@@ -83,14 +87,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   console.log('[ImportBiz] scrape requested', target);
   const startedAt = Date.now();
 
-  try {
-    const data = await scrapeGoogleBusiness(target, { apifyToken });
+  // lib/buildSiteFromScrape.ts ScrapeResponse shape. Shared by BOTH
+  // paths so the client contract can't drift between them.
+  const toResponse = (data: GbpBusiness, via: 'places' | 'apify') => {
     const elapsed = Date.now() - startedAt;
     console.log(
-      `[ImportBiz] gbp → ${data.companyName} in ${elapsed}ms; photos=${data.photos.length}; reviews=${data.reviews.length}`,
+      `[import-business] ${via} ${elapsed}ms — ${data.companyName}; photos=${data.photos.length}; reviews=${data.reviews.length}`,
     );
-    return res.status(200).json({
-      // lib/buildSiteFromScrape.ts ScrapeResponse shape
+    return {
       shopName: data.companyName,
       area: data.location,
       address: data.address,
@@ -101,8 +105,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // booking-link branch stays the only source of one.
       bookingUrl: data.bookingUrl,
       photos: data.photos,
-      // Google exposes no service menu — the client seeds a barber
-      // default so the services section isn't an empty shell.
+      // Google exposes no service menu — on EITHER path — so the client
+      // seeds a barber default and the services section isn't an empty
+      // shell. Unchanged by the Places fast path.
       services: [],
       reviews: data.reviews,
       hours: splitHours(data.hours),
@@ -110,10 +115,48 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       aggregateRating: data.aggregateRating,
       // Metadata (underscore-prefixed, ignored by buildSiteFromScrape)
       _platform: 'gbp',
+      _via: via,
       _website: data.website,
       _categories: data.categories,
+      // Raw Places photo refs when the fast path served this import, so
+      // photos can be re-resolved/re-hosted later without re-importing.
+      _photoRefs: data.photoRefs || [],
       _elapsedMs: elapsed,
+    };
+  };
+
+  // ── Fast path ─────────────────────────────────────────────────────
+  // Photo provenance follows whichever path served the import: there is
+  // no hybrid. Apify's /gps-cs-s/ image URLs are the more proven-durable
+  // form, and they win by construction whenever they exist — because
+  // they only exist when Apify actually ran (Places missed, errored, or
+  // had no key), and in that branch its photos are the only ones used.
+  // Sourcing photos from Apify while taking text from Places is not an
+  // option: Apify IS the 10-60s, so paying for it would delete the
+  // entire speed win this fast path exists for.
+  const key = placesKey();
+  if (key) {
+    try {
+      const fast = await scrapeViaPlaces(target, key);
+      if (fast) return res.status(200).json(toResponse(fast, 'places'));
+      console.log(`[import-business] places miss after ${Date.now() - startedAt}ms → apify`);
+    } catch (e: any) {
+      // Never fatal: Places is an accelerator, Apify is the contract.
+      console.warn('[import-business] places errored → apify:', e?.message || e);
+    }
+  }
+
+  // ── Fallback: the existing Apify path, unchanged ──────────────────
+  const apifyToken = process.env.APIFY_TOKEN || '';
+  if (!apifyToken) {
+    return res.status(422).json({
+      error: "We can't reach Google right now. Use the manual form below and we'll build your site from what you type.",
     });
+  }
+
+  try {
+    const data = await scrapeGoogleBusiness(target, { apifyToken });
+    return res.status(200).json(toResponse(data, 'apify'));
   } catch (e: any) {
     if (e instanceof ScrapeError) {
       return res.status(422).json({ error: e.message });

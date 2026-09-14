@@ -33,6 +33,12 @@ export interface GbpBusiness {
   // on them.
   categories: string[];
   photos: string[];
+  // Raw Google Places photo resource names ("places/<id>/photos/<ref>"),
+  // parallel to `photos`, when the Places fast path served the import.
+  // Carried so a photo can be re-resolved or re-hosted later without
+  // redoing the whole import. Absent on the Apify path (Apify hands back
+  // final image URLs with no re-resolvable reference).
+  photoRefs?: string[];
   reviews: { author: string; rating: number; comment: string; date?: string }[];
 }
 

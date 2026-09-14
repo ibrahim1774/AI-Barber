@@ -240,6 +240,8 @@ const GbpImportPage: React.FC<Props> = ({ onImported, onUseManualForm, onSignIn 
   >(null);
   const [suggestHint, setSuggestHint] = useState<string | null>(null);
   const sugTimer = useRef<number | null>(null);
+  // Browser-side Places key (VITE_ = baked into the bundle at build time).
+  const PLACES_KEY: string = (import.meta as any).env?.VITE_GOOGLE_PLACES_KEY || '';
   const geoRef = useRef<{ lat: number; lng: number } | null>(null);
   const requestGeo = () => {
     if (geoRef.current || typeof navigator === 'undefined' || !navigator.geolocation) return;
@@ -374,6 +376,44 @@ const GbpImportPage: React.FC<Props> = ({ onImported, onUseManualForm, onSignIn 
     if (q.length < 3) { setSuggestions(null); return; }
     sugTimer.current = window.setTimeout(async () => {
       try {
+        // Two keys, same as PrimeHub (owner, 2026-09-13): when the
+        // BROWSER key is present, ask Google directly from the visitor's
+        // browser — no server hop, suggestions land fastest. Without it,
+        // fall through to our own /api/places-autocomplete, which uses
+        // the SERVER key. Either way the dropdown works; the browser key
+        // just shaves the round trip. The browser key must be referrer-
+        // restricted to aibarber.org in Google Cloud, or Google rejects
+        // it and we quietly fall back to the server route.
+        if (PLACES_KEY) {
+          const body: Record<string, unknown> = { input: q, includedRegionCodes: ['us', 'ca'] };
+          if (geoRef.current) {
+            body.locationBias = {
+              circle: { center: { latitude: geoRef.current.lat, longitude: geoRef.current.lng }, radius: 50000 },
+            };
+          }
+          const r = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': PLACES_KEY },
+            body: JSON.stringify(body),
+          });
+          if (r.ok) {
+            const d = await r.json();
+            const sugs = ((d.suggestions || []) as any[])
+              .map((sg) => sg.placePrediction)
+              .filter(Boolean)
+              .map((pp) => ({
+                placeId: String(pp.placeId || ''),
+                main: String(pp.structuredFormat?.mainText?.text || pp.text?.text || ''),
+                secondary: String(pp.structuredFormat?.secondaryText?.text || ''),
+              }))
+              .filter((sg) => sg.placeId && sg.main)
+              .slice(0, 6);
+            setSuggestHint(null);
+            setSuggestions(sugs.length ? sugs : null);
+            return;
+          }
+          // Browser key rejected (referrer list, quota) → server route below.
+        }
         const body: Record<string, unknown> = { input: q };
         if (geoRef.current) { body.lat = geoRef.current.lat; body.lng = geoRef.current.lng; }
         const r = await fetch('/api/places-autocomplete', {

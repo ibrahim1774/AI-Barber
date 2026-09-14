@@ -12,11 +12,17 @@
 //      URLs are unsigned and hot-linkable (unlike Instagram/Facebook's
 //      expiring signed URLs), so we pass them straight through — the
 //      same thing AI-Barber's existing Booksy/Fresha adapters do.
-//   3. No Places API (New) fast path. That path needs
-//      GOOGLE_PLACES_SERVER_KEY (absent here) AND it builds photo URLs
-//      with the API key embedded in the query string, which would leak
-//      the key into every deployed customer site once photos are no
-//      longer re-hosted. Apify is the only path.
+//   3. The Places API (New) fast path lives in a SEPARATE module
+//      (./gbpPlaces.ts) rather than inside this one. The API routes try
+//      Places first when GOOGLE_PLACES_SERVER_KEY is set and fall back
+//      to this file when the key is absent, when Places matches
+//      nothing, or when Places errors. This module is therefore still
+//      the complete, self-sufficient importer — nothing here depends on
+//      Places, and deleting the key reverts behaviour to Apify-only.
+//      Unlike PrimeHub, gbpPlaces.ts never puts the API key in a photo
+//      URL: it resolves each photo server-side (key in the
+//      X-Goog-Api-Key header) to a final googleusercontent URL, so no
+//      keyed URL can be baked into a deployed customer site.
 //
 // Live-testing learning kept from PrimeHub: the actor's `startUrls`
 // input fails with "Unexpected value of fid: 'null'" on most
