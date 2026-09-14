@@ -107,8 +107,10 @@ export default async function handler(req: any, res: any) {
     // 'custom-home' = the homepage custom-design upsell at $19/mo (owner
     // call 2026-09-02); every other page's upsell stays $29 (custom25).
     const isCustomHome = plan === 'custom-home';
+    // 'yearly-custom-home' = the same homepage custom site billed yearly at $199.
+    const isYearlyCustomHome = plan === 'yearly-custom-home';
     const isCustomAny =
-      isCustom || isCustom25 || isCustomBooksy || isCustom15 || isCustomHome ||
+      isCustom || isCustom25 || isCustomBooksy || isCustom15 || isCustomHome || isYearlyCustomHome ||
       isCustomBargen ||
       isCustomDesignPage || isCustomDesign29 || isPrimeBarber || isPrimeBarberYearly;
 
@@ -242,9 +244,14 @@ export default async function handler(req: any, res: any) {
       unitAmount = '2900';
       interval = 'month';
       productName = 'aibarber.org — Website Hosting (Custom)';
+    } else if (isYearlyCustomHome) {
+      // Homepage custom 20+ page site, yearly: $199/yr (owner, 2026-09-13).
+      unitAmount = '19900';
+      interval = 'year';
+      productName = 'aibarber.org — Website Hosting (Custom, Yearly)';
     } else if (isCustomHome) {
-      // Homepage custom-design upsell: $19/mo.
-      unitAmount = '1900';
+      // Homepage custom 20+ page site: $20/mo (owner, 2026-09-13; was $19).
+      unitAmount = '2000';
       interval = 'month';
       productName = 'aibarber.org — Website Hosting (Custom)';
     } else if (isCustom || isCustom25 || isCustomDesignPage || isCustomDesign29) {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, ArrowRight, Rocket, Loader2, Sparkles, Check } from 'lucide-react';
-import { isBooksyPath, isFreeBarberPath, isBookingPath, isGeneratePath, isBarberGeneratePath, isHome2Path, isHome15Path, isHome20Path, isHome7Path, isHome9Path, isCustomDesignAnyPath, isCustomDesignPath, isCustomDesign29Path, isCustom15Path } from '../lib/dealMode.ts';
+import { isBooksyPath, isFreeBarberPath, isBookingPath, isGeneratePath, isBarberGeneratePath, isHome2Path, isHome15Path, isHome20Path, isHome7Path, isHome9Path, isCustomDesignAnyPath, isCustomDesignPath, isCustomDesign29Path, isCustom15Path, isHomeRootPath } from '../lib/dealMode.ts';
 import { loadStripe, type Stripe } from '@stripe/stripe-js';
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js';
 
@@ -86,7 +86,10 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   // /custom-design + /custom-design-29 sell the custom build ONLY — the
   // $10 hosting and the yearly option are suppressed everywhere below, so
   // the page presents a single $29/mo choice.
-  const customOnlyMode = React.useMemo(() => isCustomDesignAnyPath(), []);
+  // Homepage "/" sells ONE thing (owner, 2026-09-13): the custom 20+ page
+  // site at $20/mo or $199/yr; after checkout → Google Form. No self-publish.
+  const homeCustomMode = React.useMemo(() => isHomeRootPath(), []);
+  const customOnlyMode = React.useMemo(() => isCustomDesignAnyPath() || homeCustomMode, [homeCustomMode]);
   // /custom-15 sells ONE thing: the standard $15/mo hosting, pitched as
   // "we build your custom site from your booking link" — the link itself is
   // collected after payment inside the account. No yearly, no $29 upsell.
@@ -174,6 +177,8 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
     ? 'custom-design-29'
     : isCustomDesignPath()
     ? 'custom-design'
+    : homeCustomMode
+    ? 'custom-home'
     : barberGenMode
     ? 'custom-bargen'
     : booksyMode
@@ -183,9 +188,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
       : homeMode
         ? 'custom-home'
         : 'custom25';
-  const customPriceDollars = (home7Mode || home9Mode || homeMode) ? 19 : 29;
-  const customPriceLabel = `$${customPriceDollars}/mo`;
-  const customPriceFull = `$${customPriceDollars}/month`;
+  const customPriceDollars = homeCustomMode ? 20 : (home7Mode || home9Mode || homeMode) ? 19 : 29;
 
   const [isDismissed, setIsDismissed] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
@@ -194,6 +197,15 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   const [isCustomCheckingOut, setIsCustomCheckingOut] = useState(false);
   // Every entry path defaults to the monthly plan, shown first.
   const [pricingPlan, setPricingPlan] = useState<'monthly' | 'yearly'>('monthly');
+  // Homepage custom has a yearly option: $199/yr vs $240 (12 × $20) → 17% off.
+  // Every other custom-only path stays monthly-only.
+  const customYearlyDollars = 199;
+  const customIsYearly = homeCustomMode && pricingPlan === 'yearly';
+  const customYearlyDiscountPct = Math.round((1 - customYearlyDollars / (customPriceDollars * 12)) * 100);
+  const customPlanSlug: typeof customPlan | 'yearly-custom-home' = customIsYearly ? 'yearly-custom-home' : customPlan;
+  const customCheckoutDollars = customIsYearly ? customYearlyDollars : customPriceDollars;
+  const customPriceLabel = customIsYearly ? `$${customYearlyDollars}/yr` : `$${customPriceDollars}/mo`;
+  const customPriceFull = customIsYearly ? `$${customYearlyDollars}/year` : `$${customPriceDollars}/month`;
   // Benefits-popup state. When STRIPE_PK is present, the Launch My
   // Site CTA opens a modal with 5 plain-language bullets + the
   // embedded Stripe checkout below — no redirect to checkout.stripe.com.
@@ -282,7 +294,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
       embedAbortRef.current?.abort();
       return;
     }
-    const planSlug = customOnlyMode ? customPlan : pricingPlan === 'monthly' ? stdMonthlyPlan : stdYearlyPlan;
+    const planSlug = customOnlyMode ? customPlanSlug : pricingPlan === 'monthly' ? stdMonthlyPlan : stdYearlyPlan;
     fetchEmbeddedSecret(planSlug);
     return () => embedAbortRef.current?.abort();
   }, [showBenefits, pricingPlan, stdMonthlyPlan, stdYearlyPlan, fetchEmbeddedSecret]);
@@ -308,11 +320,11 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
           : `co_${Date.now()}_${Math.random().toString(36).slice(2)}`;
       // Custom-design InitiateCheckout — matches the actual Stripe
       // charge ($29/mo, $19 on /15) so Meta/TikTok ROAS math stays aligned.
-      const checkoutValue = customPriceDollars;
+      const checkoutValue = customCheckoutDollars;
       const checkoutCurrency = 'USD';
       const { getPlanContentMeta } = await import('../lib/pixelMeta');
       const { readMetaCookies } = await import('../services/metaMatchParams');
-      const m = getPlanContentMeta(customPlan, checkoutValue);
+      const m = getPlanContentMeta(customPlanSlug, checkoutValue);
       const { fbc, fbp } = readMetaCookies();
       (window as any).fbq?.(
         'track',
@@ -374,7 +386,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           siteId: 'custom-design-request',
-          plan: customPlan,
+          plan: customPlanSlug,
           embedded: useEmbedded,
           page: window.location.pathname,
         }),
@@ -462,7 +474,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
               every path shows Monthly first (Monthly is the default plan).
               Never on /custom-design + /custom-design-29 — those sell one
               $29/mo custom build with no yearly option. */}
-          {!customOnlyMode && !custom15Mode && (() => {
+          {(!customOnlyMode || homeCustomMode) && !custom15Mode && (() => {
             const sizeCls = generateMode
               ? 'text-[12px] md:text-[13px] pb-1'
               : booksyMode
@@ -494,7 +506,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                   borderBottom: pricingPlan === 'yearly' ? `${underline} solid #e8c074` : `${underline} solid transparent`,
                 }}
               >
-                Yearly <span style={{ color: '#ffffff', fontWeight: 700 }}>(Save {stdYearlyDiscountPct}%)</span>
+                Yearly <span style={{ color: '#ffffff', fontWeight: 700 }}>(Save {homeCustomMode ? customYearlyDiscountPct : stdYearlyDiscountPct}%)</span>
               </button>
             );
             return (
@@ -581,7 +593,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
               ) : (
                 <Rocket size={12} />
               )}
-              <span>{custom15Mode ? '20+ Page Custom Barbershop Site' : 'Publish Your Website'}</span>
+              <span>{(custom15Mode || homeCustomMode) ? '20+ Page Custom Barbershop Site' : 'Publish Your Website'}</span>
               <span
                 className="font-extrabold px-1.5 py-0.5 rounded"
                 style={{ background: 'rgba(10,10,10,0.18)', color: '#0a0a0a' }}
@@ -656,7 +668,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
 
         const rows: { numeral: string; title: string }[] = [
           { numeral: 'I', title: 'Professional & Modern Site' },
-          { numeral: 'II', title: 'Published Instantly' },
+          { numeral: 'II', title: homeCustomMode ? 'Custom-built for you' : 'Published Instantly' },
           { numeral: 'III', title: 'Edit Anytime' },
           { numeral: 'IV', title: `Custom for Your ${displayIndustry.charAt(0).toUpperCase()}${displayIndustry.slice(1)}` },
           { numeral: 'V', title: 'One small hosting/maintenance fee' },
@@ -698,8 +710,8 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
               className="leading-[1.05] mb-2"
               style={{ fontFamily: '"Instrument Serif", serif', fontSize: '2.25rem', fontWeight: 400 }}
             >
-              <span style={{ color: cream }}>Publish within </span>
-              <span style={{ color: gold, fontStyle: 'italic' }}>seconds.</span>
+              <span style={{ color: cream }}>{homeCustomMode ? 'Custom 20+ pages, ' : 'Publish within '}</span>
+              <span style={{ color: gold, fontStyle: 'italic' }}>{homeCustomMode ? 'built for you.' : 'seconds.'}</span>
             </h2>
 
             {/* Sub — single line, gray, no padding bloat */}
@@ -728,7 +740,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                   borderBottom: pricingPlan === 'yearly' ? `1px solid ${gold}` : '1px solid transparent',
                 }}
               >
-                Yearly · {stdYearlyPriceYr} <span style={{ color: '#ffffff', fontWeight: 700 }}>(Save {stdYearlyDiscountPct}%)</span>
+                Yearly · {stdYearlyPriceYr} <span style={{ color: '#ffffff', fontWeight: 700 }}>(Save {homeCustomMode ? customYearlyDiscountPct : stdYearlyDiscountPct}%)</span>
               </button>
             </div>
 
@@ -791,7 +803,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
               </button>
 
               <button
-                onClick={() => { setShowHowItWorks(false); onDeploy(customOnlyMode ? customPlan : pricingPlan === 'monthly' ? stdMonthlyPlan : stdYearlyPlan); }}
+                onClick={() => { setShowHowItWorks(false); onDeploy(customOnlyMode ? customPlanSlug : pricingPlan === 'monthly' ? stdMonthlyPlan : stdYearlyPlan); }}
                 disabled={isDeploying}
                 className="flex-1 py-3.5 text-[11px] font-bold flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all uppercase tracking-[0.24em] disabled:opacity-50"
                 style={{
@@ -804,7 +816,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                   <Loader2 className="animate-spin" size={16} />
                 ) : (
                   <>
-                    <span>{custom15Mode ? '20+ Page Custom Barbershop Site' : 'Publish Your Website'}</span>
+                    <span>{(custom15Mode || homeCustomMode) ? '20+ Page Custom Barbershop Site' : 'Publish Your Website'}</span>
                     <span
                       className="font-extrabold px-1.5 py-0.5 rounded"
                       style={{ background: 'rgba(10,10,10,0.18)', color: '#0a0a0a' }}
@@ -1068,7 +1080,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                       borderBottom: pricingPlan === 'yearly' ? `1px solid ${gold}` : '1px solid transparent',
                     }}
                   >
-                    Yearly · {yearlyLabel} <span style={{ color: '#ffffff', fontWeight: 700 }}>(Save {stdYearlyDiscountPct}%)</span>
+                    Yearly · {yearlyLabel} <span style={{ color: '#ffffff', fontWeight: 700 }}>(Save {homeCustomMode ? customYearlyDiscountPct : stdYearlyDiscountPct}%)</span>
                   </button>
                 </div>
 
@@ -1078,7 +1090,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                       {embedError}
                       <button
                         type="button"
-                        onClick={() => fetchEmbeddedSecret(customOnlyMode ? customPlan : pricingPlan === 'monthly' ? stdMonthlyPlan : stdYearlyPlan)}
+                        onClick={() => fetchEmbeddedSecret(customOnlyMode ? customPlanSlug : pricingPlan === 'monthly' ? stdMonthlyPlan : stdYearlyPlan)}
                         className="block mx-auto mt-2 text-[11px] underline"
                       >
                         Try again
