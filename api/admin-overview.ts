@@ -196,6 +196,10 @@ export default async function handler(req: any, res: any) {
       // (/barber). Site hand-built in the Client Sites team; no portal login
       // issued yet, so there is no client_sites row for it.
       'cutzbyantdabarber@yahoo.com': { phone: '2294496675', site: 'https://cutz-by-ant.vercel.app', label: 'Cutz By Ant — Anthony Ross' },
+      // 2026-09-15: first $20/mo custom-home order off the new aibarber.org
+      // homepage (plan custom-home, page "/"). Site hand-built in the Client
+      // Sites team; no portal login issued yet, so no client_sites row.
+      'mizzler2014@gmail.com':     { phone: '3012328506', site: 'https://mizzler37.vercel.app', label: 'Mizzler37 — Michael Johnson' },
     };
 
     const emailsWithSubs = new Set<string>();
@@ -257,6 +261,7 @@ export default async function handler(req: any, res: any) {
       const CLIENT_SITE_CONTACTS: Record<string, { contact: string; phone: string }> = {
         'clipps-edge': { contact: 'Shavon Taylor', phone: '3476766993' },
         'iconic-cutz': { contact: 'Bivens Mayo', phone: '2565299486' },
+        'mizzler37': { contact: 'Michael Johnson', phone: '3012328506' },
         // Pre-staged: only renders once the site is onboarded to /edit.
         'cutz-by-ant': { contact: 'Anthony Ross', phone: '2294496675' },
       };
