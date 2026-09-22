@@ -65,9 +65,20 @@ export default async function handler(req: any, res: any) {
       });
     }
 
+    // Unpaid (usually: a session that was created but never completed).
+    // `verified` stays false and no caller's behaviour changes — but the
+    // amount is reported anyway, because creating a session and reading its
+    // price back is the ONLY way to confirm a price change actually reached
+    // Stripe. Without this the check is impossible: the hosted checkout page
+    // fetches its line items client-side, so the amount is not in its HTML.
+    // Not sensitive: a session id is unguessable, and the amount is the
+    // number Stripe is about to show the buyer anyway.
     return res.status(200).json({
       verified: false,
       reason: `Payment status: ${session.payment_status}`,
+      amountTotal: typeof session.amount_total === 'number' ? session.amount_total / 100 : null,
+      currency: (session.currency || 'usd').toUpperCase(),
+      plan: session.metadata?.plan || null,
     });
   } catch (error: any) {
     console.error('[Stripe Verify] Error:', error);
