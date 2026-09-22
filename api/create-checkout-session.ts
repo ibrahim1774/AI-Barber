@@ -118,8 +118,10 @@ export default async function handler(req: any, res: any) {
     let interval: 'month' | 'year';
     let productName: string;
     if (isYearly) {
-      // Standard (home page) yearly: $84/yr (30% off $10/mo × 12 = $120).
-      unitAmount = '8400';
+      // Standard (home page) yearly: $86/yr (20% off $9/mo × 12 = $108,
+      // owner call 2026-09-21). Matches PrimeHub /barber's barber9 tier
+      // exactly, which is the point — the two pages are sold as one offer.
+      unitAmount = '8600';
       interval = 'year';
       productName = 'aibarber.org — Yearly Website Hosting';
     } else if (isYearlyBooksy) {
@@ -268,8 +270,10 @@ export default async function handler(req: any, res: any) {
       interval = 'year';
       productName = 'aibarber.org — Custom Website Platform (PrimeBarber, Yearly)';
     } else {
-      // Standard (home page) monthly: $10/mo (owner call 2026-09-02).
-      unitAmount = '1000';
+      // Standard (home page) monthly: $9/mo (owner call 2026-09-21,
+      // down from $10). Doubles as the fallback for an unrecognised
+      // slug — 'monthly' is the only one the client actually sends here.
+      unitAmount = '900';
       interval = 'month';
       productName = 'aibarber.org — Monthly Website Hosting';
     }

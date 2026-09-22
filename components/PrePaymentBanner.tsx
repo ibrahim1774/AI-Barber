@@ -89,7 +89,12 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   // Homepage "/" sells ONE thing (owner, 2026-09-13): the custom 20+ page
   // site at $20/mo or $199/yr; after checkout → Google Form. No self-publish.
   const homeCustomMode = React.useMemo(() => isHomeRootPath(), []);
-  const customOnlyMode = React.useMemo(() => isCustomDesignAnyPath() || homeCustomMode, [homeCustomMode]);
+  // NOTE: homeCustomMode is deliberately NOT part of this any more (owner,
+  // 2026-09-21: put the publish feature back on the homepage). It still
+  // picks the $20 custom-home plan and its $199 yearly variant below; it
+  // just no longer suppresses the publish CTA. Only /custom-design(-29)
+  // are genuinely custom-only now.
+  const customOnlyMode = React.useMemo(() => isCustomDesignAnyPath(), []);
   // /custom-15 sells ONE thing: the standard $15/mo hosting, pitched as
   // "we build your custom site from your booking link" — the link itself is
   // collected after payment inside the account. No yearly, no $29 upsell.
@@ -101,7 +106,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   //   /booking     → $10/mo (plan 'monthly-booking')
   //   home page    → $10/mo (plan 'monthly') — owner call 2026-09-02
   //   /free-barber → $7/mo (plan 'monthly-free')
-  const stdMonthlyPriceDollars = barberGenMode ? 15 : home2Mode ? 19 : home20Mode ? 20 : home15Mode ? 15 : home9Mode ? 9 : home7Mode ? 7 : freeBarberMode ? 7 : 10;
+  const stdMonthlyPriceDollars = barberGenMode ? 15 : home2Mode ? 19 : home20Mode ? 20 : home15Mode ? 15 : home9Mode ? 9 : home7Mode ? 7 : freeBarberMode ? 7 : 9;
   const stdMonthlyPriceMo = `$${stdMonthlyPriceDollars}/mo`;
   const stdMonthlyPriceMonth = `$${stdMonthlyPriceDollars}/month`;
   const stdMonthlyPlan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'monthly-booking' | 'monthly-generate' | 'monthly-home2' | 'monthly-15' | 'monthly-20' | 'monthly-7' | 'monthly-9' | 'monthly-custom15' | 'monthly-bargen' = custom15Mode
@@ -132,7 +137,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
   // $59/yr. The discount % is computed off the path's own monthly × 12
   // anchor so "Save X%" always reflects the real saving. Keep the server
   // amounts in api/create-checkout-session.ts in sync.
-  const stdYearlyPriceDollars = barberGenMode ? 144 : home2Mode ? 99 : home20Mode ? 192 : home15Mode ? 144 : home9Mode ? 86 : home7Mode ? 67 : (bookingMode || generateMode || booksyMode) ? 59 : freeBarberMode ? 49 : 84;
+  const stdYearlyPriceDollars = barberGenMode ? 144 : home2Mode ? 99 : home20Mode ? 192 : home15Mode ? 144 : home9Mode ? 86 : home7Mode ? 67 : (bookingMode || generateMode || booksyMode) ? 59 : freeBarberMode ? 49 : 86;
   const stdYearlyPriceYr = `$${stdYearlyPriceDollars}/yr`;
   const stdYearlyPriceYear = `$${stdYearlyPriceDollars}/year`;
   const stdYearlyDiscountPct = Math.max(
@@ -506,7 +511,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                   borderBottom: pricingPlan === 'yearly' ? `${underline} solid #e8c074` : `${underline} solid transparent`,
                 }}
               >
-                Yearly <span style={{ color: '#ffffff', fontWeight: 700 }}>(Save {homeCustomMode ? customYearlyDiscountPct : stdYearlyDiscountPct}%)</span>
+                Yearly <span style={{ color: '#ffffff', fontWeight: 700 }}>(Save {customOnlyMode ? customYearlyDiscountPct : stdYearlyDiscountPct}%)</span>
               </button>
             );
             return (
@@ -593,7 +598,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
               ) : (
                 <Rocket size={12} />
               )}
-              <span>{(custom15Mode || homeCustomMode) ? '20+ Page Custom Barbershop Site' : 'Publish Your Website'}</span>
+              <span>{custom15Mode ? '20+ Page Custom Barbershop Site' : 'Publish Your Website'}</span>
               <span
                 className="font-extrabold px-1.5 py-0.5 rounded"
                 style={{ background: 'rgba(10,10,10,0.18)', color: '#0a0a0a' }}
@@ -740,7 +745,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                   borderBottom: pricingPlan === 'yearly' ? `1px solid ${gold}` : '1px solid transparent',
                 }}
               >
-                Yearly · {stdYearlyPriceYr} <span style={{ color: '#ffffff', fontWeight: 700 }}>(Save {homeCustomMode ? customYearlyDiscountPct : stdYearlyDiscountPct}%)</span>
+                Yearly · {stdYearlyPriceYr} <span style={{ color: '#ffffff', fontWeight: 700 }}>(Save {customOnlyMode ? customYearlyDiscountPct : stdYearlyDiscountPct}%)</span>
               </button>
             </div>
 
@@ -816,7 +821,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                   <Loader2 className="animate-spin" size={16} />
                 ) : (
                   <>
-                    <span>{(custom15Mode || homeCustomMode) ? '20+ Page Custom Barbershop Site' : 'Publish Your Website'}</span>
+                    <span>{custom15Mode ? '20+ Page Custom Barbershop Site' : 'Publish Your Website'}</span>
                     <span
                       className="font-extrabold px-1.5 py-0.5 rounded"
                       style={{ background: 'rgba(10,10,10,0.18)', color: '#0a0a0a' }}
@@ -1080,7 +1085,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
                       borderBottom: pricingPlan === 'yearly' ? `1px solid ${gold}` : '1px solid transparent',
                     }}
                   >
-                    Yearly · {yearlyLabel} <span style={{ color: '#ffffff', fontWeight: 700 }}>(Save {homeCustomMode ? customYearlyDiscountPct : stdYearlyDiscountPct}%)</span>
+                    Yearly · {yearlyLabel} <span style={{ color: '#ffffff', fontWeight: 700 }}>(Save {customOnlyMode ? customYearlyDiscountPct : stdYearlyDiscountPct}%)</span>
                   </button>
                 </div>
 
