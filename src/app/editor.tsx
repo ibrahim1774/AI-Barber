@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import type { WebsiteData } from '@/web/types';
@@ -8,6 +8,7 @@ import { track } from '@/lib/analytics';
 import { getPath, setPath } from '@/lib/editable';
 import { applyBookingLink, applyHomePrompts, fieldLabel, setColour, switchDesign } from '@/lib/editor';
 import { advanceOverlay, hasSeen, markSeen, nextOverlay, type Overlay } from '@/lib/overlayFlags';
+import { resetTo } from '@/lib/nav';
 import { pickAndUploadPhoto } from '@/lib/photos';
 import { loadSite, saveSite, type SiteRecord } from '@/lib/siteStore';
 import SitePreview from '@/components/SitePreview';
@@ -18,6 +19,7 @@ import { ColourSheet } from '@/components/ColourSheet';
 import { HomePrompts } from '@/components/HomePrompts';
 import { LaunchGuide } from '@/components/LaunchGuide';
 import { PublishBar } from '@/components/PublishBar';
+import { ChevronLeftIcon } from '@/components/Icons';
 
 type SheetKind = 'fields' | 'photos' | 'colour' | 'edit';
 
@@ -230,6 +232,13 @@ export default function Editor() {
     router.push('/publishing');
   }, []);
 
+  // The editor's way out: the Dashboard, never back into the importer.
+  const toDashboard = useCallback(() => {
+    if (uploadingRef.current) return;
+    track('editor_closed');
+    resetTo('/dashboard');
+  }, []);
+
   if (!site) return <View style={styles.root} />;
 
   const data = site.data;
@@ -237,74 +246,97 @@ export default function Editor() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
-      <View style={styles.preview}>
-        <SitePreview data={data} editable onEditText={onPreviewText} onEditImage={onPreviewImage} />
-        {/* Hidden over a published site and while the prompts / guide are up. */}
-        {site.slug == null && overlay == null && (
-          <DesignSwitcher current={data.template} onSelect={handleDesign} busy={switching} />
-        )}
-        {uploading && (
-          <View style={styles.uploading} pointerEvents="none">
-            <ActivityIndicator color={colors.accent} />
-            <Text style={styles.uploadingText}>Uploading photo…</Text>
-          </View>
-        )}
+      <View style={styles.topBar}>
+        <Pressable
+          onPress={toDashboard}
+          disabled={uploading}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel="Back to Dashboard"
+          style={styles.back}
+        >
+          <ChevronLeftIcon size={20} color={colors.text} />
+          <Text style={styles.backText}>Dashboard</Text>
+        </Pressable>
       </View>
+      {/* The prompts / guide cover this body only, so the way out stays usable. */}
+      <View style={styles.body}>
+        <View style={styles.preview}>
+          <SitePreview data={data} editable onEditText={onPreviewText} onEditImage={onPreviewImage} />
+          {/* Hidden over a published site and while the prompts / guide are up. */}
+          {site.slug == null && overlay == null && (
+            <DesignSwitcher current={data.template} onSelect={handleDesign} busy={switching} />
+          )}
+          {uploading && (
+            <View style={styles.uploading} pointerEvents="none">
+              <ActivityIndicator color={colors.accent} />
+              <Text style={styles.uploadingText}>Uploading photo…</Text>
+            </View>
+          )}
+        </View>
 
-      <PublishBar
-        onEdit={() => setSheet('fields')}
-        onPhotos={() => setSheet('photos')}
-        onColour={() => setSheet('colour')}
-        onPublish={handlePublish}
-        disabled={uploading || overlay != null}
-      />
-
-      <AllFieldsSheet
-        visible={sheet === 'fields'}
-        data={data}
-        onPick={(path) => closeThen(() => openEdit(path, true))}
-        onClose={() => setSheet(null)}
-        onDismiss={onSheetDismiss}
-      />
-      <PhotosSheet
-        visible={sheet === 'photos'}
-        data={data}
-        onPick={(path) => closeThen(() => pickPhoto(path))}
-        onClose={() => setSheet(null)}
-        onDismiss={onSheetDismiss}
-      />
-      <ColourSheet
-        visible={sheet === 'colour'}
-        current={data.colorTheme}
-        onPick={(hex) => commit((d) => setColour(d, hex))}
-        onClose={() => setSheet(null)}
-      />
-      <EditSheet
-        visible={sheet === 'edit'}
-        path={edit.path}
-        label={fieldLabel(edit.path)}
-        value={typeof editValue === 'string' ? editValue : ''}
-        onSave={(v) => commit((d) => setPath(d, edit.path, v))}
-        onClose={closeEdit}
-        onDismiss={onSheetDismiss}
-      />
-
-      {overlay === 'prompts' && (
-        <HomePrompts
-          onSubmitBookingLink={handleBookingLink}
-          onFinish={handlePromptFinish}
-          onComplete={onPromptsComplete}
-          initialArea={data.area || ''}
-          initialPhone={data.phone || ''}
+        <PublishBar
+          onEdit={() => setSheet('fields')}
+          onPhotos={() => setSheet('photos')}
+          onColour={() => setSheet('colour')}
+          onPublish={handlePublish}
+          disabled={uploading || overlay != null}
         />
-      )}
-      {overlay === 'guide' && <LaunchGuide onClose={onGuideClose} />}
+
+        <AllFieldsSheet
+          visible={sheet === 'fields'}
+          data={data}
+          onPick={(path) => closeThen(() => openEdit(path, true))}
+          onClose={() => setSheet(null)}
+          onDismiss={onSheetDismiss}
+        />
+        <PhotosSheet
+          visible={sheet === 'photos'}
+          data={data}
+          onPick={(path) => closeThen(() => pickPhoto(path))}
+          onClose={() => setSheet(null)}
+          onDismiss={onSheetDismiss}
+        />
+        <ColourSheet
+          visible={sheet === 'colour'}
+          current={data.colorTheme}
+          onPick={(hex) => commit((d) => setColour(d, hex))}
+          onClose={() => setSheet(null)}
+        />
+        <EditSheet
+          visible={sheet === 'edit'}
+          path={edit.path}
+          label={fieldLabel(edit.path)}
+          value={typeof editValue === 'string' ? editValue : ''}
+          onSave={(v) => commit((d) => setPath(d, edit.path, v))}
+          onClose={closeEdit}
+          onDismiss={onSheetDismiss}
+        />
+
+        {overlay === 'prompts' && (
+          <HomePrompts
+            onSubmitBookingLink={handleBookingLink}
+            onFinish={handlePromptFinish}
+            onComplete={onPromptsComplete}
+            initialArea={data.area || ''}
+            initialPhone={data.phone || ''}
+          />
+        )}
+        {overlay === 'guide' && <LaunchGuide onClose={onGuideClose} />}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
+  topBar: {
+    height: 44, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(255,255,255,0.1)',
+  },
+  back: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingVertical: 6, paddingRight: 8 },
+  backText: { fontFamily: fonts.bodySemi, fontSize: 15, color: colors.text },
+  body: { flex: 1 },
   preview: { flex: 1 },
   uploading: {
     position: 'absolute', alignSelf: 'center', top: '45%',

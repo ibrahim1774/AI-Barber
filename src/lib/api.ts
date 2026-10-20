@@ -163,6 +163,15 @@ export const api = {
     return post('/api/ios/site', { transactionId }, { failMessage: 'Could not load your site' });
   },
 
+  /**
+   * Like the web's AuthContext after signUp: copies the user's own metadata
+   * phone into auth.users.phone. Callers fire and forget.
+   */
+  async syncAuthPhone(userId: string): Promise<void> {
+    await post('/api/sync-auth-phone', { userId }, { failMessage: 'Could not save your phone number' });
+  },
+
+  /** Deletes the signed-in user and their `sites` rows. Published sites stay up. */
   async deleteAccount(accessToken: string): Promise<void> {
     await post('/api/ios/delete-account', {}, {
       headers: { Authorization: `Bearer ${accessToken}` },

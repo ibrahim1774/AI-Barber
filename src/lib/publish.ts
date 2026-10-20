@@ -31,7 +31,14 @@ export interface PublishDeps {
   latestTransactionId(): Promise<string | null>;
   iosPublish: typeof api.iosPublish;
   store: typeof import('./siteStore');
+  /** The signed-in Supabase user, so the server can link the purchase to the account. */
   userId(): string | null;
+  /**
+   * After a publish is saved locally (publishFlow and the launch retry alike):
+   * keeps the account's `sites` row current. Not awaited, and its failure
+   * never turns a live site into an error.
+   */
+  onLive?(site: SiteRecord): Promise<void> | void;
 }
 
 export type PublishOutcome =
@@ -142,17 +149,24 @@ async function send(
   }
   // Merge into the latest record: the editor may have saved since this started.
   const cur = await deps.store.loadSite();
+  let saved: SiteRecord | null = null;
   if (cur) {
-    await deps.store.saveSite({
-      ...cur,
-      slug: res.siteId,
-      deployedUrl: res.deployedUrl,
-      transactionId: pending.transactionId,
-    });
+    saved = { ...cur, slug: res.siteId, deployedUrl: res.deployedUrl, transactionId: pending.transactionId };
+    await deps.store.saveSite(saved);
   }
   await deps.store.savePendingPublish(null);
   track('site_published', { republished: res.republished });
+  if (saved) notifyLive(deps, saved);
   return { kind: 'live', url: res.deployedUrl, republished: res.republished };
+}
+
+function notifyLive(deps: PublishDeps, site: SiteRecord): void {
+  const warn = (e: unknown) => console.warn('[publish] after-publish hook failed:', e);
+  try {
+    Promise.resolve(deps.onLive?.(site)).catch(warn);
+  } catch (e) {
+    warn(e);
+  }
 }
 
 // The launch retry and a Publish tap must never send at the same time.

@@ -5,7 +5,7 @@ import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
 import { SuperwallProvider } from 'expo-superwall';
 import { fontAssets } from '@/constants/theme';
-import { SubscriptionSync, SUPERWALL_KEY, superwallActive, usePublishDeps } from '@/lib/paywall';
+import { SubscriptionSync, SUPERWALL_KEY, SUPERWALL_OPTIONS, superwallActive, usePublishDeps } from '@/lib/paywall';
 import { publishBusy, resumePendingPublish } from '@/lib/publish';
 
 export default function RootLayout() {
@@ -18,7 +18,9 @@ export default function RootLayout() {
       <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }}>
         <Stack.Screen name="generating" options={{ gestureEnabled: false, animation: 'fade' }} />
-        {/* The editor is the stack's root once a site exists: no swipe back to the importer. */}
+        {/* Home once a site exists; nothing underneath to swipe back to. */}
+        <Stack.Screen name="dashboard" options={{ gestureEnabled: false, animation: 'fade' }} />
+        {/* Left by its Dashboard button only: no swipe back into the importer. */}
         <Stack.Screen name="editor" options={{ gestureEnabled: false, animation: 'fade' }} />
         {/* Over the editor: clear while the paywall is up, then the publish overlay. No leaving mid-publish. */}
         <Stack.Screen
@@ -30,7 +32,10 @@ export default function RootLayout() {
             contentStyle: { backgroundColor: 'transparent' },
           }}
         />
-        <Stack.Screen name="live" options={{ animation: 'fade' }} />
+        <Stack.Screen name="live" options={{ animation: 'fade', gestureEnabled: false }} />
+        <Stack.Screen name="settings" />
+        <Stack.Screen name="sign-in" />
+        <Stack.Screen name="sign-up" />
       </Stack>
     </>
   );
@@ -46,6 +51,7 @@ export default function RootLayout() {
   return (
     <SuperwallProvider
       apiKeys={{ ios: SUPERWALL_KEY }}
+      options={SUPERWALL_OPTIONS}
       onConfigurationError={(e) => console.warn('Superwall configuration failed', e)}>
       <SubscriptionSync />
       <ResumePublish />

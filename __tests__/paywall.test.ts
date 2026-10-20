@@ -8,7 +8,10 @@ import { PRODUCT_IDS } from '@/lib/publish';
 process.env.EXPO_PUBLIC_SUPERWALL_API_KEY = 'pk_test';
 /* eslint-disable @typescript-eslint/no-require-imports */
 const { sw } = require('expo-superwall');
-const { usePaywall, superwallActive } = require('@/lib/paywall');
+const { usePaywall, useRestorePurchases, superwallActive } = require('@/lib/paywall');
+const { api } = require('@/lib/api');
+const analytics = require('@/lib/analytics');
+const siteStore = require('@/lib/siteStore');
 // No @types/react-test-renderer in the project: the two calls used here.
 const { act, create } = require('react-test-renderer') as {
   act(fn: () => void): void;
@@ -20,8 +23,11 @@ type Result = 'purchased' | 'restored' | 'declined';
 let show: (placement: 'publish') => Promise<Result>;
 let renderer: { unmount(): void };
 
+let restorePurchases: () => Promise<any>;
+
 function Harness() {
   show = usePaywall();
+  restorePurchases = useRestorePurchases();
   return null;
 }
 
@@ -166,4 +172,56 @@ test('an error with no active subscription is declined', async () => {
   sw.callbacks.onError?.('no network');
   await jest.advanceTimersByTimeAsync(5000);
   expect(run.current()).toBe('declined');
+});
+
+describe('Restore purchases', () => {
+  const BOUND = {
+    siteId: 'fade-factory',
+    deployedUrl: 'https://fade-factory.aibarber.org',
+    siteData: { shopName: 'Fade Factory', area: 'Brooklyn, NY', phone: '555' },
+    active: true,
+  };
+
+  beforeEach(async () => {
+    await siteStore.clearSite();
+  });
+
+  test('restores the site bound to the active subscription and tracks the tap once', async () => {
+    sw.subscriptions = [ACTIVE];
+    const iosSite = jest.spyOn(api, 'iosSite').mockResolvedValue(BOUND);
+    const trackSpy = jest.spyOn(analytics, 'track');
+
+    const site = await restorePurchases();
+
+    expect(iosSite).toHaveBeenCalledWith('tx-1');
+    expect(site).toMatchObject({ slug: 'fade-factory', transactionId: 'tx-1' });
+    expect(await siteStore.loadSite()).toMatchObject({ slug: 'fade-factory' });
+    expect(trackSpy.mock.calls.filter((c: unknown[]) => c[0] === 'restore_tapped')).toHaveLength(1);
+    expect(Alert.alert).not.toHaveBeenCalled(); // Settings shows the outcome
+  });
+
+  test('no subscription resolves null', async () => {
+    const iosSite = jest.spyOn(api, 'iosSite');
+    const p = restorePurchases();
+    await jest.advanceTimersByTimeAsync(10_000);
+    expect(await p).toBeNull();
+    expect(iosSite).not.toHaveBeenCalled();
+  });
+
+  test('a failed App Store sync with nothing cached resolves null (Superwall shows its alert)', async () => {
+    sw.restore = async () => ({ result: 'failed', errorMessage: 'offline' });
+    const p = restorePurchases();
+    await jest.advanceTimersByTimeAsync(10_000);
+    expect(await p).toBeNull();
+    expect(Alert.alert).not.toHaveBeenCalled();
+  });
+
+  test('a failed sync that still finds a cached subscription restores', async () => {
+    sw.restore = async () => {
+      throw new Error('StoreKit');
+    };
+    sw.subscriptions = [ACTIVE];
+    jest.spyOn(api, 'iosSite').mockResolvedValue(BOUND);
+    expect(await restorePurchases()).toMatchObject({ slug: 'fade-factory' });
+  });
 });

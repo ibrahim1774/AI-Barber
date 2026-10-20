@@ -2,11 +2,14 @@ import { usePlacement, useSuperwall, useSuperwallEvents, useUser } from 'expo-su
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Alert } from 'react-native';
 
+import { restore, syncIfSignedIn } from '@/lib/account';
 import { track, trackConversion } from '@/lib/analytics';
 import { api } from '@/lib/api';
+import { currentUserId } from '@/lib/auth';
 import { PaywallSettle, type PaywallResult } from '@/lib/paywallSettle';
 import { findTransactionId, pickLatestTransactionId, type PublishDeps } from '@/lib/publish';
 import * as siteStore from '@/lib/siteStore';
+import type { SiteRecord } from '@/lib/siteStore';
 
 /** Placements configured in the Superwall dashboard (AI Barber campaign). */
 export type Placement = 'publish';
@@ -140,33 +143,69 @@ export function usePublishDeps(): PublishDeps {
       latestTransactionId,
       iosPublish: api.iosPublish,
       store: siteStore,
-      // No accounts yet: the site is bound to the Apple transaction.
-      userId: () => null,
+      // The site is bound to the Apple transaction; a signed-in user is linked to it too.
+      userId: currentUserId,
+      // Keeps the account's `sites` row (deployed_url, status) current.
+      onLive: (site) => syncIfSignedIn(site),
     }),
     [paywall, latestTransactionId],
   );
 }
 
-/** Restore Purchases (App Review 3.1.2). */
-export function useRestorePurchases() {
+export const NO_KEY_MESSAGE = 'Subscriptions are not set up in this build.';
+
+/**
+ * Superwall shows this alert itself whenever a restore ends without an active
+ * subscription (none found, or StoreKit failed). It can only be reworded, not
+ * turned off, so it is the app's one "nothing to restore" message.
+ */
+export const SUPERWALL_OPTIONS = {
+  paywalls: {
+    restoreFailed: {
+      title: 'No subscription found',
+      message:
+        'We couldn’t find an active AI Barber subscription for this Apple ID. Make sure this phone is signed in to the App Store with the Apple ID you subscribed with.',
+      closeButtonTitle: 'OK',
+    },
+  },
+};
+
+/**
+ * Restore Purchases (App Review 3.1.2): syncs StoreKit, then loads the site
+ * bound to this Apple ID's subscription (account.restore). Resolves the
+ * restored site, or null when there is no subscription — Superwall has then
+ * already shown its restoreFailed alert (SUPERWALL_OPTIONS). Throws the
+ * /api/ios/site ApiError, or NO_KEY_MESSAGE without a Superwall key.
+ */
+export function useRestorePurchases(): () => Promise<SiteRecord | null> {
   // eslint-disable-next-line react-hooks/rules-of-hooks
   return superwallActive ? useSuperwallRestore() : noKeyRestore;
 }
 
-async function noKeyRestore() {
+async function noKeyRestore(): Promise<SiteRecord | null> {
   track('restore_tapped', { paywall: 'off' });
-  Alert.alert('Restore purchases', 'Subscriptions are not set up in this build.');
+  throw new Error(NO_KEY_MESSAGE);
 }
 
 function useSuperwallRestore() {
   const restorePurchases = useSuperwall((s) => s.restorePurchases);
-  return async () => {
-    try {
-      const result = await restorePurchases();
-      track('restore_tapped', { result: JSON.stringify(result).slice(0, 80) });
-      Alert.alert('Restore purchases', 'If this Apple ID has an active AI Barber subscription, it has been restored.');
-    } catch {
-      Alert.alert('Restore purchases', 'We could not reach the App Store. Try again in a moment.');
-    }
-  };
+  const latestTransactionId = useLatestTransactionId();
+  return useCallback(
+    () =>
+      restore({
+        restorePurchases: async () => {
+          // A failed StoreKit sync may still leave a cached subscription to find.
+          try {
+            const result = await restorePurchases();
+            track('restore_tapped', { result: result?.result ?? 'unknown' });
+          } catch {
+            track('restore_tapped', { result: 'error' });
+          }
+        },
+        latestTransactionId,
+        iosSite: api.iosSite,
+        store: siteStore,
+      }),
+    [restorePurchases, latestTransactionId],
+  );
 }

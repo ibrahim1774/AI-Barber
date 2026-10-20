@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Pressable, Share, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import * as WebBrowser from 'expo-web-browser';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
-import { CheckCircleIcon, CheckIcon, CopyIcon } from '@/components/Icons';
+import { CheckCircleIcon, CheckIcon, CloseIcon, CopyIcon } from '@/components/Icons';
 import { track } from '@/lib/analytics';
+import { useSession } from '@/lib/auth';
+import { resetTo } from '@/lib/nav';
 import { loadSite } from '@/lib/siteStore';
 
 const GREEN = '#22c55e';
@@ -17,6 +19,8 @@ export default function Live() {
   const insets = useSafeAreaInsets();
   const [url, setUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const { session, ready } = useSession();
+  const [saveDismissed, setSaveDismissed] = useState(false);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -25,7 +29,7 @@ export default function Live() {
     loadSite().then((s) => {
       if (!alive) return;
       if (!s?.deployedUrl) {
-        router.replace('/editor');
+        resetTo(s ? '/dashboard' : '/start');
         return;
       }
       setUrl(s.deployedUrl);
@@ -54,14 +58,14 @@ export default function Live() {
     track('live_share_tapped');
     void Share.share({ url, message: url });
   };
-  const backToEditor = () => {
-    if (router.canGoBack()) router.back();
-    else router.replace('/editor');
+  const toDashboard = () => {
+    track('live_dashboard_tapped');
+    resetTo('/dashboard');
   };
 
   return (
     <View style={[styles.root, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-      <View style={styles.main}>
+      <ScrollView contentContainerStyle={styles.main}>
         <View style={styles.icon}>
           <CheckCircleIcon size={80} color={GREEN} />
         </View>
@@ -89,15 +93,43 @@ export default function Live() {
           <Button variant="ghost" title={copied ? 'Copied' : 'Copy link'} onPress={copy} style={styles.half} />
           <Button variant="ghost" title="Share" onPress={share} style={styles.half} />
         </View>
-        <Button variant="link" title="Back to Editor" onPress={backToEditor} style={styles.link} />
-      </View>
+        <Button variant="link" title="Go to dashboard" onPress={toDashboard} style={styles.link} />
+
+        {ready && !session?.user && !saveDismissed && (
+          <View style={styles.save}>
+            <Pressable
+              onPress={() => setSaveDismissed(true)}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel="Not now"
+              style={styles.saveClose}
+            >
+              <CloseIcon size={16} color={colors.grey} />
+            </Pressable>
+            <Text style={styles.saveTitle}>Save your site to an account</Text>
+            {/* PostDeploymentModal.tsx's prompt */}
+            <Text style={styles.saveBody}>
+              Create a free account to manage your site, make edits, and republish anytime.
+            </Text>
+            <Button
+              variant="solid"
+              title="Create Account"
+              onPress={() => {
+                track('live_create_account_tapped');
+                router.push('/sign-up');
+              }}
+              style={styles.wide}
+            />
+          </View>
+        )}
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  main: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
+  main: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 24 },
   icon: { marginBottom: 32 },
   // text-2xl font-montserrat font-black uppercase tracking-[4px]
   title: {
@@ -120,4 +152,15 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: 12, alignSelf: 'stretch', marginTop: 12 },
   half: { flex: 1, paddingHorizontal: 12 },
   link: { marginTop: 20 },
+  // The web's post-deploy account prompt, as a dismissible card that never blocks.
+  save: {
+    alignSelf: 'stretch', marginTop: 32, padding: 20, paddingTop: 22, borderRadius: 8,
+    backgroundColor: colors.track, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+  },
+  saveClose: { position: 'absolute', top: 12, right: 12 },
+  saveTitle: {
+    fontFamily: fonts.headingBlack, fontSize: 12, letterSpacing: 2, textTransform: 'uppercase', color: '#fff',
+    marginBottom: 8, paddingRight: 24,
+  },
+  saveBody: { fontFamily: fonts.body, fontSize: 13, lineHeight: 19, color: '#cccccc', marginBottom: 16 },
 });

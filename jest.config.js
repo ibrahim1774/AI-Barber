@@ -6,6 +6,7 @@ module.exports = {
     '^expo-sqlite/kv-store$': '<rootDir>/test/mocks/kv.ts',
     '^expo-sqlite$': '<rootDir>/test/mocks/sqlite.ts',
     '^@/lib/analytics$': '<rootDir>/test/mocks/analytics.ts',
+    '^@/lib/supabase$': '<rootDir>/test/mocks/supabase.ts',
     '^expo-image-manipulator$': '<rootDir>/test/mocks/image-manipulator.ts',
     '^expo-image-picker$': '<rootDir>/test/mocks/image-picker.ts',
     '^expo-crypto$': '<rootDir>/test/mocks/crypto.ts',

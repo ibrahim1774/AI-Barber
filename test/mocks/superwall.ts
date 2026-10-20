@@ -17,11 +17,14 @@ export const sw = {
   subscriptions: [] as any[],
   /** Replace to make getCustomerInfo hang or fail (native waits for config with no timeout). */
   customerInfo: null as null | (() => Promise<any>),
+  /** What useSuperwall().restorePurchases resolves (or throws). */
+  restore: async (): Promise<any> => ({ result: 'restored' }),
   reset() {
     sw.callbacks = {};
     sw.register = async () => {};
     sw.subscriptions = [];
     sw.customerInfo = null;
+    sw.restore = async () => ({ result: 'restored' });
   },
 };
 
@@ -45,6 +48,6 @@ export function SuperwallProvider({ children }: { children: unknown }) {
 }
 
 export function useSuperwall(selector?: (s: Record<string, unknown>) => unknown) {
-  const state = { isConfigured: true, restorePurchases: async () => ({}) };
+  const state = { isConfigured: true, restorePurchases: () => sw.restore() };
   return selector ? selector(state) : state;
 }

@@ -4,8 +4,11 @@ import { colors, fonts } from '@/constants/theme';
 
 export interface FieldProps extends Omit<TextInputProps, 'style' | 'placeholder'> {
   label: string;
-  /** 'card' = big ink input on the white import card; 'dark' = classic form. */
-  tone?: 'card' | 'dark';
+  /**
+   * 'card' = big ink input on the white import card; 'dark' = classic form;
+   * 'form' = left-aligned underline input on the dark account screens.
+   */
+  tone?: 'card' | 'dark' | 'form';
   /** card only: example values typed out as an animated placeholder. */
   typeExamples?: readonly string[];
   placeholder?: string;
@@ -20,7 +23,7 @@ export const Field = forwardRef<TextInput, FieldProps>(function Field(
   const card = tone === 'card';
   return (
     <View>
-      <Text style={card ? styles.cardLabel : styles.darkLabel}>{label}</Text>
+      <Text style={card ? styles.cardLabel : tone === 'form' ? styles.formLabel : styles.darkLabel}>{label}</Text>
       <View>
         <TextInput
           ref={ref}
@@ -32,7 +35,7 @@ export const Field = forwardRef<TextInput, FieldProps>(function Field(
           selectionColor={card ? colors.ink : colors.accent}
           onFocus={(e) => { setFocused(true); onFocus?.(e); }}
           onBlur={(e) => { setFocused(false); onBlur?.(e); }}
-          style={card ? styles.cardInput : styles.darkInput}
+          style={card ? styles.cardInput : tone === 'form' ? styles.formInput : styles.darkInput}
         />
         {card && !value && typeExamples && (
           <View pointerEvents="none" style={styles.typedWrap}>
@@ -124,6 +127,10 @@ const styles = StyleSheet.create({
     fontFamily: fonts.headingBlack, fontSize: 11, letterSpacing: 3, textTransform: 'uppercase',
     color: '#ffffff', textAlign: 'center', marginBottom: 4,
   },
+  formLabel: {
+    fontFamily: fonts.bodyBold, fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', color: colors.muted,
+  },
+  formInput: { fontFamily: fonts.body, fontSize: 16, color: '#ffffff', paddingTop: 10, paddingBottom: 12 },
   darkInput: {
     fontFamily: fonts.label, fontSize: 14, color: '#ffffff', textAlign: 'center', paddingVertical: 8,
   },
