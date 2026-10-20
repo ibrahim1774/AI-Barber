@@ -1,9 +1,6 @@
-import { Text, View } from 'react-native';
+import { Redirect } from 'expo-router';
 
+// Later tasks route to the dashboard when a site exists.
 export default function Index() {
-  return (
-    <View style={{ flex: 1, backgroundColor: '#0d0d0d', alignItems: 'center', justifyContent: 'center' }}>
-      <Text style={{ color: '#fff' }}>AI Barber</Text>
-    </View>
-  );
+  return <Redirect href="/start" />;
 }
