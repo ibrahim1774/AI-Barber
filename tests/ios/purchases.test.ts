@@ -79,6 +79,15 @@ describe('supabasePurchases', () => {
     const payload = find(calls, 'upsert')!.args[0] as Record<string, unknown>;
     expect(payload).toMatchObject({ original_transaction_id: 'o1', product_id: 'p', last_notification: 'DID_RENEW' });
     for (const k of ['site_slug', 'user_id', 'published_at', 'revoked_at']) expect(Object.keys(payload)).not.toContain(k);
+    expect(payload.expires_at).toBe(new Date(5000).toISOString());
+  });
+
+  it('applyNotification omits expires_at when expiresAt is null', async () => {
+    const { client, calls } = fakeClient();
+    await supabasePurchases(client).applyNotification({
+      otid: 'o1', productId: 'p', environment: 'Production', expiresAt: null, revokedAt: null, type: 'DID_CHANGE_RENEWAL_STATUS',
+    });
+    expect(Object.keys(find(calls, 'upsert')!.args[0] as object)).not.toContain('expires_at');
   });
 
   it('applyNotification sets revoked_at when given', async () => {

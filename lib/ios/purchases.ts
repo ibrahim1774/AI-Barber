@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import type { VerifiedTx } from './appleVerify.js';
+import type { VerifiedTx, IosEnv } from './appleVerify.js';
 
 export interface PurchaseRow {
   original_transaction_id: string; product_id: string; environment: 'Production' | 'Sandbox';
@@ -14,7 +14,7 @@ export interface PurchasesRepo {
   slugTaken(slug: string): Promise<boolean>;
   markPublished(otid: string): Promise<void>;
   setUser(otid: string, userId: string): Promise<void>;
-  applyNotification(n: { otid: string; productId: string; environment: string; expiresAt: number | null; revokedAt: number | null; type: string }): Promise<void>;
+  applyNotification(n: { otid: string; productId: string; environment: IosEnv; expiresAt: number | null; revokedAt: number | null; type: string }): Promise<void>;
   unpublishedBound(limit: number): Promise<PurchaseRow[]>;
 }
 
@@ -83,9 +83,9 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
         original_transaction_id: n.otid,
         product_id: n.productId,
         environment: n.environment,
-        expires_at: iso(n.expiresAt),
         last_notification: n.type,
       };
+      if (n.expiresAt != null) payload.expires_at = iso(n.expiresAt);
       if (n.revokedAt != null) payload.revoked_at = iso(n.revokedAt);
       const { error } = await db().from(TABLE).upsert(payload, { onConflict: 'original_transaction_id' });
       if (error) fail('applyNotification', error);
