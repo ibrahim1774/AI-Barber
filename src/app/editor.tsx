@@ -65,10 +65,19 @@ export default function Editor() {
     };
   }, []);
 
-  // Coming back from /publishing re-arms the Publish button.
+  // Coming back from /publishing or /live re-arms the Publish button and picks
+  // up the publish result (slug hides the design switcher), keeping any edits.
   useFocusEffect(
     useCallback(() => {
       publishing.current = false;
+      loadSite().then((s) => {
+        const cur = siteRef.current;
+        if (!s || !cur || s.draftId !== cur.draftId) return;
+        if (s.slug === cur.slug && s.deployedUrl === cur.deployedUrl && s.transactionId === cur.transactionId) return;
+        const next = { ...cur, slug: s.slug, deployedUrl: s.deployedUrl, transactionId: s.transactionId };
+        siteRef.current = next;
+        setSite(next);
+      });
     }, []),
   );
 
@@ -213,8 +222,8 @@ export default function Editor() {
   const onPromptsComplete = useCallback(() => void finishOverlay('prompts'), [finishOverlay]);
   const onGuideClose = useCallback(() => void finishOverlay('guide'), [finishOverlay]);
 
+  // /publishing shows the paywall over the editor, then publishes.
   const handlePublish = useCallback(() => {
-    // Task 8 replaces this with the Superwall paywall + publish flow.
     if (publishing.current) return; // double tap
     publishing.current = true;
     track('publish_tapped');

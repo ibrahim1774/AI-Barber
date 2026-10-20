@@ -4,12 +4,16 @@ export function usePlacement() {
 }
 export function useSuperwallEvents() {}
 export function useUser() {
-  return { subscriptionStatus: { status: 'UNKNOWN' } };
+  return {
+    subscriptionStatus: { status: 'UNKNOWN' },
+    getCustomerInfo: async () => ({ userId: '', subscriptions: [], nonSubscriptions: [], entitlements: [] }),
+  };
 }
 export function SuperwallProvider({ children }: { children: unknown }) {
   return children;
 }
 
-export function useSuperwall() {
-  return { restorePurchases: async () => ({}) };
+export function useSuperwall(selector?: (s: Record<string, unknown>) => unknown) {
+  const state = { isConfigured: true, restorePurchases: async () => ({}) };
+  return selector ? selector(state) : state;
 }
