@@ -14,6 +14,8 @@
 // short-circuits on anything already serving, so a quiet sweep is a handful of
 // HEAD-ish requests and no deploys.
 import { publishSite } from '../lib/publishSite.js';
+import { sweepIos } from '../lib/ios/sweep.js';
+import { supabasePurchases } from '../lib/ios/purchases.js';
 
 export const config = { maxDuration: 300 };
 
@@ -112,12 +114,23 @@ export default async function handler(req: any, res: any) {
       if (!startingAfter) break;
     }
 
+    // iOS purchases are an independent branch: if it throws, the Stripe result
+    // above is still returned.
+    let ios: unknown;
+    try {
+      ios = await sweepIos({ repo: supabasePurchases(), publish: (slug) => publishSite(slug) });
+    } catch (err: any) {
+      console.error('[Sweeper] iOS branch threw:', err?.message || err);
+      ios = { error: err?.message || 'iOS sweep failed' };
+    }
+
     return res.status(200).json({
       ok: true,
       lookbackHours: LOOKBACK_HOURS,
       paidSitesChecked: checked.length,
       repaired,
       skipped: failed,
+      ios,
     });
   } catch (err: any) {
     console.error('[Sweeper] threw:', err?.message || err);
