@@ -23,7 +23,9 @@ export async function sweepIos(
   const rows = await deps.repo.unpublishedBound(limit);
   const out: IosSweepSummary = { checked: rows.length, published: [], failed: [], missing: [], deferred: [] };
   const now = opts.now ?? Date.now;
-  const deadlineMs = opts.deadlineMs ?? 200_000;
+  // One publishSite can take ~150 s and the function is capped at 300 s, so stop
+  // starting new rows after 140 s.
+  const deadlineMs = opts.deadlineMs ?? 140_000;
   const start = now();
 
   // Sequential on purpose: deploys are heavy.

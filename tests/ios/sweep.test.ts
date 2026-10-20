@@ -78,6 +78,15 @@ describe('sweepIos extras', () => {
     expect(out).toEqual({ checked: 3, published: ['a'], failed: [], missing: [], deferred: ['b', 'c'] });
   });
 
+  it('default start deadline is 140 s: a ~150 s deploy leaves no time to start another', async () => {
+    const { r } = repo([row('o1', 'a'), row('o2', 'b'), row('o3', 'c')]);
+    let t = 0;
+    const publish = vi.fn(async (s: string) => { t += 150_000; return ok(s); });
+    const out = await sweepIos({ repo: r, publish }, 50, { now: () => t });
+    expect(publish.mock.calls).toEqual([['a']]);
+    expect(out).toEqual({ checked: 3, published: ['a'], failed: [], missing: [], deferred: ['b', 'c'] });
+  });
+
   it('a markPublished throw is isolated per row', async () => {
     const { r, markPublished } = repo([row('o1', 'a'), row('o2', 'b')]);
     markPublished.mockRejectedValueOnce(new Error('db'));
