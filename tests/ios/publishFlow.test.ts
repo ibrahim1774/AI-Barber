@@ -7,6 +7,7 @@ import {
   type PublishDeps,
 } from '../../lib/ios/publishFlow.js';
 import { VerifyFailure, type VerifiedTx } from '../../lib/ios/appleVerify.js';
+import { makeIsTaken, vercelProjectExists } from '../../lib/ios/slug.js';
 import type { PurchaseRow, PurchasesRepo } from '../../lib/ios/purchases.js';
 import type { PendingSite, PublishOutcome } from '../../lib/publishSite.js';
 import type { WebsiteData } from '../../types.js';
@@ -349,6 +350,45 @@ describe('runIosPublish', () => {
     (repo.markPublished as any).mockRejectedValueOnce(new Error('db blip'));
     const r = await runIosPublish(input(), deps);
     expect(r.status).toBe(200);
+  });
+
+  it('a slug that is an existing Vercel project (no pending file, URL 404) gets a suffix', async () => {
+    const { deps } = fakes();
+    deps.isTaken = makeIsTaken({
+      pendingExists: async () => false,
+      repoTaken: async () => false,
+      projectExists: async (s) => s === 'fresh-cuts',
+      urlServes: async () => false,
+    });
+    const r: any = await runIosPublish(input(), deps);
+    expect(r.status).toBe(200);
+    expect(r.body.siteId).toMatch(/^fresh-cuts-[a-z0-9]{4}$/);
+    expect((deps.publish as any).mock.calls[0][0]).toBe(r.body.siteId);
+  });
+
+  it('Vercel project API 500 → chooseSlug throws → 503 and nothing bound, written or deployed', async () => {
+    const { deps, repo } = fakes();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.stubEnv('VERCEL_TOKEN', 'tok');
+    const fetchMock = vi.fn(async () => ({ status: 500 }));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      deps.isTaken = makeIsTaken({
+        pendingExists: async () => false,
+        repoTaken: async () => false,
+        projectExists: vercelProjectExists,
+        urlServes: async () => false,
+      });
+      expect(await runIosPublish(input(), deps)).toEqual({ status: 503, body: { error: 'temporarily-unavailable' } });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(repo.bindSlug).not.toHaveBeenCalled();
+      expect(deps.writePending).not.toHaveBeenCalled();
+      expect(deps.publish).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+      vi.restoreAllMocks();
+    }
   });
 
   it('sandbox purchases get the ios-test- prefix', async () => {

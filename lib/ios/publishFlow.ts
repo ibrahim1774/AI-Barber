@@ -16,7 +16,7 @@ import {
 } from '../publishSite.js';
 import { VerifyFailure, defaultVerifier, isActive, type VerifiedTx } from './appleVerify.js';
 import { supabasePurchases, type PurchasesRepo } from './purchases.js';
-import { chooseSlug, makeIsTaken, urlServes } from './slug.js';
+import { chooseSlug, makeIsTaken, urlServes, vercelProjectExists } from './slug.js';
 
 export interface IosPublishInput {
   transactionId: string;
@@ -268,11 +268,12 @@ export function liveDeps(): PublishDeps {
       return verifier(id);
     },
     repo,
-    // Pending file and repo are authoritative: their errors propagate (→ 503).
-    // urlServes fails open (false) on network errors by design.
+    // Pending file, repo and Vercel project lookup are authoritative: their errors
+    // propagate (→ 503). urlServes fails open (false) on network errors by design.
     isTaken: makeIsTaken({
       pendingExists: async (s) => (await readPendingSite(s)) !== null,
       repoTaken: (s) => repo.slugTaken(s),
+      projectExists: vercelProjectExists,
       urlServes,
     }),
     writePending: writePendingSite,
