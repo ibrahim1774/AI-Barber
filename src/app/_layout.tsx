@@ -6,7 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SuperwallProvider } from 'expo-superwall';
 import { fontAssets } from '@/constants/theme';
 import { SubscriptionSync, SUPERWALL_KEY, superwallActive, usePublishDeps } from '@/lib/paywall';
-import { resumePendingPublish } from '@/lib/publish';
+import { publishBusy, resumePendingPublish } from '@/lib/publish';
 
 export default function RootLayout() {
   const [loaded, error] = useFonts(fontAssets);
@@ -72,7 +72,8 @@ function ResumePublish() {
     const resume = () => {
       resumePendingPublish(depsRef.current)
         .then((out) => {
-          if (out?.kind !== 'live') return;
+          // A user publish queued behind this retry navigates for itself.
+          if (out?.kind !== 'live' || publishBusy()) return;
           if (router.canDismiss()) router.dismissAll();
           router.replace('/live');
         })

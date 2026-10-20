@@ -3,6 +3,7 @@ import { track } from '@/lib/analytics';
 import { ApiError, type api } from '@/lib/api';
 import { stripMarkers } from '@/lib/editable';
 import type { SiteRecord } from '@/lib/siteStore';
+import { LOOKUP_TIMEOUT_MS, withTimeout } from '@/lib/timeout';
 
 /** The two App Store products that entitle one hosted site (Superwall entitlement `hosting`). */
 export const PRODUCT_IDS = [
@@ -213,9 +214,10 @@ export async function resumePendingPublish(deps: PublishDeps): Promise<PublishOu
     let transactionId = pending.transactionId;
     if (!transactionId) {
       try {
-        transactionId = await deps.latestTransactionId();
+        transactionId = await withTimeout(deps.latestTransactionId(), LOOKUP_TIMEOUT_MS);
       } catch {
-        return { kind: 'pending', message: PENDING_MESSAGE } as const; // lookup failed: try again later
+        // Lookup failed or timed out (no Superwall config yet): keep the record, try again later.
+        return { kind: 'pending', message: UPDATING_MESSAGE } as const;
       }
       if (!transactionId) {
         await deps.store.savePendingPublish(null);

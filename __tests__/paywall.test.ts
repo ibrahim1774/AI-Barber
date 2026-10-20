@@ -89,6 +89,48 @@ test('feature first, then a skip, with no active subscription is declined', asyn
   sw.callbacks.onSkip?.({ type: 'NoAudienceMatch' });
   await jest.advanceTimersByTimeAsync(5000);
   expect(run.current()).toBe('declined');
+  // No paywall ever showed: say why nothing happened.
+  expect(Alert.alert).toHaveBeenCalled();
+});
+
+test('skip first, then feature, with no active subscription is declined with the Alert', async () => {
+  let release!: () => void;
+  sw.register = () => new Promise<void>((r) => { release = r; });
+  const run = open();
+  sw.callbacks.onSkip?.({ type: 'Holdout' });
+  release();
+  await jest.advanceTimersByTimeAsync(5000);
+  expect(run.current()).toBe('declined');
+  expect(Alert.alert).toHaveBeenCalledTimes(1);
+});
+
+test('a registerPlacement rejection is declined', async () => {
+  sw.register = async () => { throw new Error('Superwall configure did not complete'); };
+  const run = open();
+  await jest.advanceTimersByTimeAsync(5000);
+  expect(run.current()).toBe('declined');
+  expect(Alert.alert).toHaveBeenCalled();
+});
+
+test('verify that never resolves settles declined after the timeout', async () => {
+  sw.register = hold;
+  sw.customerInfo = () => new Promise(() => {}); // no Superwall config: native never answers
+  const run = open();
+  sw.callbacks.onError?.('config fetch failed');
+  await jest.advanceTimersByTimeAsync(5999);
+  expect(run.current()).toBeNull();
+  await jest.advanceTimersByTimeAsync(1);
+  expect(run.current()).toBe('declined');
+  expect(Alert.alert).toHaveBeenCalled();
+});
+
+test('a paywall the user saw and closed is declined quietly, even if feature came first', async () => {
+  const run = open(); // feature runs at once (a non-gated paywall)
+  sw.callbacks.onPresent?.({ name: 'AI Barber Publish' });
+  sw.callbacks.onDismiss?.({ closeReason: 'manualClose' }, { type: 'declined' });
+  await jest.advanceTimersByTimeAsync(5000);
+  expect(run.current()).toBe('declined');
+  expect(Alert.alert).not.toHaveBeenCalled();
 });
 
 test('feature with an active subscription is purchased', async () => {

@@ -1,3 +1,5 @@
+import { LOOKUP_TIMEOUT_MS, withTimeout } from '@/lib/timeout';
+
 export type PaywallResult = 'purchased' | 'restored' | 'declined';
 export type SettleCause = 'dismiss' | 'feature' | 'skip' | 'error';
 
@@ -8,16 +10,25 @@ export type SettleCause = 'dismiss' | 'feature' | 'skip' | 'error';
  * missing placement, or a declined non-gated paywall. So only a `purchased` /
  * `restored` dismiss is trusted as is; every other signal settles after
  * `verify` (an active AI Barber transaction exists). The first answer wins.
+ * `verify` is capped at `timeoutMs` (false): native CustomerInfo waits forever
+ * when Superwall has no config, and a stuck verify would block publishing.
  */
 export class PaywallSettle {
   private done = false;
   private checking = false;
+  private shown = false;
 
   constructor(
     /** `patient`: keep looking for a while (a purchase may still be landing). */
     private readonly verify: (patient: boolean) => Promise<boolean>,
-    private readonly onSettle: (result: PaywallResult, cause: SettleCause) => void,
+    /** `presented`: the user saw a paywall, so a decline needs no explanation. */
+    private readonly onSettle: (result: PaywallResult, info: { cause: SettleCause; presented: boolean }) => void,
+    private readonly timeoutMs = LOOKUP_TIMEOUT_MS,
   ) {}
+
+  present(): void {
+    this.shown = true;
+  }
 
   get settled(): boolean {
     return this.done;
@@ -25,6 +36,7 @@ export class PaywallSettle {
 
   dismiss(type: PaywallResult, closeReason?: string): void {
     if (closeReason === 'forNextPaywall') return; // another paywall follows
+    this.shown = true; // a dismiss means a paywall was on screen
     if (type === 'purchased' || type === 'restored') this.settle(type, 'dismiss');
     else this.check('dismiss', false);
   }
@@ -51,7 +63,7 @@ export class PaywallSettle {
   private check(cause: SettleCause, patient: boolean): void {
     if (this.done || this.checking) return;
     this.checking = true;
-    this.verify(patient)
+    withTimeout(this.verify(patient), this.timeoutMs)
       .catch(() => false)
       .then((ok) => this.settle(ok ? 'purchased' : 'declined', cause));
   }
@@ -59,6 +71,6 @@ export class PaywallSettle {
   private settle(result: PaywallResult, cause: SettleCause): void {
     if (this.done) return;
     this.done = true;
-    this.onSettle(result, cause);
+    this.onSettle(result, { cause, presented: this.shown });
   }
 }

@@ -79,6 +79,7 @@ function useSuperwallPaywall() {
   const session = useRef<PaywallSettle | null>(null);
 
   const { registerPlacement } = usePlacement({
+    onPresent: () => session.current?.present(),
     onDismiss: (info, result) => session.current?.dismiss(result.type, info.closeReason),
     onSkip: (reason) => {
       console.warn('Superwall paywall skipped', reason.type);
@@ -96,10 +97,10 @@ function useSuperwallPaywall() {
         session.current?.supersede();
         const verify = async (patient: boolean) =>
           (patient ? await findTransactionId(latestTransactionId) : await latestTransactionId()) != null;
-        const s = new PaywallSettle(verify, (result, cause) => {
+        const s = new PaywallSettle(verify, (result, { presented }) => {
           if (session.current === s) session.current = null;
-          // A paywall that never showed (skip / error) shouldn't fail silently.
-          if (result === 'declined' && (cause === 'skip' || cause === 'error')) Alert.alert('Publish', PAYWALL_ERROR);
+          // No paywall ever showed (skip, holdout, error, timeout): say why nothing happened.
+          if (result === 'declined' && !presented) Alert.alert('Publish', PAYWALL_ERROR);
           resolve(result);
         });
         session.current = s;

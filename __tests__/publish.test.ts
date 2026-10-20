@@ -1,8 +1,8 @@
 import * as store from '@/lib/siteStore';
 import { ApiError } from '@/lib/api';
 import {
-  PENDING_MESSAGE, PRODUCT_IDS, UNCONFIRMED_MESSAGE, UPDATING_MESSAGE, pickLatestTransactionId, publishFlow,
-  resumePendingPublish, type PublishDeps,
+  PENDING_MESSAGE, PRODUCT_IDS, UNCONFIRMED_MESSAGE, UPDATING_MESSAGE, pickLatestTransactionId, publishBusy,
+  publishFlow, resumePendingPublish, type PublishDeps,
 } from '@/lib/publish';
 import type { SiteRecord } from '@/lib/siteStore';
 
@@ -266,8 +266,46 @@ test('a null-id pending publish with no subscription is dropped', async () => {
 test('a failed lookup keeps a null-id pending publish', async () => {
   await store.savePendingPublish({ transactionId: null, data: site.data, createdAt: Date.now() });
   const deps = makeDeps({ latestTransactionId: jest.fn(async () => { throw new Error('not configured'); }) });
-  expect(await resumePendingPublish(deps)).toMatchObject({ kind: 'pending' });
+  // Unverified at this point: never "payment went through".
+  expect(await resumePendingPublish(deps)).toEqual({ kind: 'pending', message: UPDATING_MESSAGE });
   expect(await store.loadPendingPublish()).toMatchObject({ transactionId: null });
+});
+
+test('resume lookup timeout keeps the null-id record', async () => {
+  jest.useFakeTimers();
+  await store.savePendingPublish({ transactionId: null, data: site.data, createdAt: Date.now() });
+  const deps = makeDeps({ latestTransactionId: jest.fn(() => new Promise<string | null>(() => {})) });
+  let out: unknown = 'unsettled';
+  const p = resumePendingPublish(deps).then((o) => (out = o));
+  await jest.advanceTimersByTimeAsync(5999);
+  expect(out).toBe('unsettled');
+  await jest.advanceTimersByTimeAsync(1);
+  await p;
+  expect(out).toEqual({ kind: 'pending', message: UPDATING_MESSAGE });
+  expect(deps.iosPublish).not.toHaveBeenCalled();
+  expect(await store.loadPendingPublish()).toMatchObject({ transactionId: null });
+  // The queue is free again for the next publish.
+  expect(publishBusy()).toBe(false);
+});
+
+test('publishBusy is true after a retry only while a user publish waits behind it', async () => {
+  await store.savePendingPublish({ transactionId: 'tx-9', data: site.data, createdAt: Date.now() });
+  let release: (() => void) | null = null;
+  const slow = makeDeps({
+    iosPublish: jest.fn(() => new Promise<typeof LIVE>((r) => { release = () => r(LIVE); })),
+  });
+  const seen: boolean[] = [];
+  const retry = resumePendingPublish(slow).then((o) => { seen.push(publishBusy()); return o; });
+  const tap = publishFlow(site, makeDeps({ hasEntitlement: jest.fn(async () => true) }));
+  for (let i = 0; i < 100 && !release; i++) await Promise.resolve(); // until the retry is sending
+  release!();
+  expect(await retry).toMatchObject({ kind: 'live' });
+  await tap;
+  expect(seen).toEqual([true]); // the layout leaves navigation to the queued tap
+  // Alone, a finished retry leaves the queue idle.
+  await store.savePendingPublish({ transactionId: 'tx-9', data: site.data, createdAt: Date.now() });
+  const alone = await resumePendingPublish(makeDeps()).then((o) => ({ o, busy: publishBusy() }));
+  expect(alone).toMatchObject({ o: { kind: 'live' }, busy: false });
 });
 
 test('a pending publish older than 7 days is dropped', async () => {

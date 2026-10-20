@@ -4,6 +4,7 @@
  * set the customer's subscriptions.
  */
 type Callbacks = {
+  onPresent?: (info: any) => void;
   onDismiss?: (info: any, result: any) => void;
   onSkip?: (reason: any) => void;
   onError?: (error: string) => void;
@@ -14,10 +15,13 @@ export const sw = {
   /** What registerPlacement awaits before running `feature` (the real hook does the same). */
   register: async () => {},
   subscriptions: [] as any[],
+  /** Replace to make getCustomerInfo hang or fail (native waits for config with no timeout). */
+  customerInfo: null as null | (() => Promise<any>),
   reset() {
     sw.callbacks = {};
     sw.register = async () => {};
     sw.subscriptions = [];
+    sw.customerInfo = null;
   },
 };
 
@@ -31,7 +35,8 @@ export function usePlacement(callbacks: Callbacks = {}) {
   };
 }
 export function useSuperwallEvents() {}
-const getCustomerInfo = async () => ({ userId: '', subscriptions: sw.subscriptions, nonSubscriptions: [], entitlements: [] });
+const getCustomerInfo = async () =>
+  sw.customerInfo ? sw.customerInfo() : { userId: '', subscriptions: sw.subscriptions, nonSubscriptions: [], entitlements: [] };
 export function useUser() {
   return { subscriptionStatus: { status: 'UNKNOWN' }, getCustomerInfo };
 }
