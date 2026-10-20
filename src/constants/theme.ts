@@ -45,6 +45,13 @@ export const colors = {
   buttonInk: '#1a1a1a',
   track: '#1a1a1a',
   grey: '#888888',
+  // Editor overlays (HomeBookingPrompts / HomeLaunchGuide / BooksyDesignSwitcher
+  // use their own softer gold on a warm glass card).
+  overlayGold: '#e8c074',
+  overlayGoldDark: '#8a6b30',
+  overlayCard: 'rgba(14,12,8,0.94)',
+  sheet: '#141414',
+  danger: '#ef4444',
 } as const;
 
 // Spoken names for BRAND_SWATCHES (the web labels them by hex only).

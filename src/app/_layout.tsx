@@ -13,6 +13,8 @@ export default function RootLayout() {
       <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }}>
         <Stack.Screen name="generating" options={{ gestureEnabled: false, animation: 'fade' }} />
+        {/* The editor is the stack's root once a site exists: no swipe back to the importer. */}
+        <Stack.Screen name="editor" options={{ gestureEnabled: false, animation: 'fade' }} />
       </Stack>
     </>
   );

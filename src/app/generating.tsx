@@ -33,7 +33,11 @@ export default function Generating() {
     const done = setTimeout(() => {
       clearInterval(timer);
       setProgress(100);
-      go = setTimeout(() => router.replace('/editor'), 150);
+      // Reset the stack so back / swipe from the editor never returns to the importer.
+      go = setTimeout(() => {
+        if (router.canDismiss()) router.dismissAll();
+        router.replace('/editor');
+      }, 150);
     }, HOLD_MS);
     return () => {
       clearInterval(timer);
