@@ -16,11 +16,12 @@ export function PublishBar({
   const insets = useSafeAreaInsets();
   return (
     <View style={[styles.bar, { paddingBottom: 10 + insets.bottom }]}>
-      <Tool title="Edit" onPress={onEdit} disabled={disabled} />
+      <Tool title="Edit" hint="All text fields" onPress={onEdit} disabled={disabled} />
       <Tool title="Photos" onPress={onPhotos} disabled={disabled} />
       <Tool title="Colour" onPress={onColour} disabled={disabled} />
       <Pressable
         accessibilityRole="button"
+        accessibilityState={{ disabled: !!disabled }}
         onPress={onPublish}
         disabled={disabled}
         style={({ pressed }) => [styles.publish, (pressed || disabled) && { opacity: 0.7 }]}
@@ -32,10 +33,12 @@ export function PublishBar({
   );
 }
 
-function Tool({ title, onPress, disabled }: { title: string; onPress(): void; disabled?: boolean }) {
+function Tool({ title, hint, onPress, disabled }: { title: string; hint?: string; onPress(): void; disabled?: boolean }) {
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityHint={hint}
+      accessibilityState={{ disabled: !!disabled }}
       onPress={onPress}
       disabled={disabled}
       style={({ pressed }) => [styles.tool, (pressed || disabled) && { opacity: 0.6 }]}

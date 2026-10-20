@@ -1,13 +1,14 @@
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { WebsiteData } from '@/web/types';
 import { colors, fonts } from '@/constants/theme';
-import { IMAGE_PATHS, editableTextPaths, getPath } from '@/lib/editable';
-import { fieldLabel, imageLabel } from '@/lib/editor';
+import { editableTextPaths, getPath } from '@/lib/editable';
+import { fieldLabel, imageLabel, photoSlots } from '@/lib/editor';
 import { Sheet, SheetAction } from '@/components/EditSheet';
 
 // The two "every slot" lists: all text fields ("Edit") and all photos
 // ("Photos"). They cover what the preview can't tap (SHEET_ONLY_PATHS,
-// sheetOnlyImagePaths, the luxe logo's shopName).
+// sheetOnlyImagePaths, the luxe logo's shopName). Photos skips craftImages,
+// which no template renders (see photoSlots).
 
 interface ListSheetProps {
   visible: boolean;
@@ -48,7 +49,7 @@ export function PhotosSheet({ visible, data, onPick, onClose, onDismiss }: ListS
   return (
     <Sheet visible={visible} title="Photos" onClose={onClose} onDismiss={onDismiss} right={<SheetAction title="Done" onPress={onClose} />}>
       <ScrollView style={styles.list} contentContainerStyle={styles.grid}>
-        {IMAGE_PATHS(data).map((path) => {
+        {photoSlots(data).map((path) => {
           const url = getPath(data, path);
           const src = typeof url === 'string' && url ? url : null;
           return (

@@ -78,8 +78,10 @@ describe('uploadPhoto', () => {
 describe('pickAndUploadPhoto', () => {
   it('returns null when cancelled', async () => {
     (picker.launchImageLibraryAsync as jest.Mock).mockResolvedValue({ canceled: true, assets: null });
-    expect(await pickAndUploadPhoto(FOLDER)).toBeNull();
+    const onPicked = jest.fn();
+    expect(await pickAndUploadPhoto(FOLDER, onPicked)).toBeNull();
     expect(api.getUploadUrls).not.toHaveBeenCalled();
+    expect(onPicked).not.toHaveBeenCalled();
   });
 
   it('launches an images-only single picker and uploads the pick', async () => {
@@ -91,7 +93,9 @@ describe('pickAndUploadPhoto', () => {
     const orig = global.fetch;
     global.fetch = fetchFn as any;
     try {
-      const url = await pickAndUploadPhoto(FOLDER);
+      const onPicked = jest.fn(() => expect(api.getUploadUrls).not.toHaveBeenCalled());
+      const url = await pickAndUploadPhoto(FOLDER, onPicked);
+      expect(onPicked).toHaveBeenCalledTimes(1);
       expect(url).toMatch(/^https:\/\/storage\.googleapis\.com\//);
     } finally {
       global.fetch = orig;

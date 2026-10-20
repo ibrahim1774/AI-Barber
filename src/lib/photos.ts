@@ -55,13 +55,17 @@ export async function uploadPhoto(
   return target.publicUrl;
 }
 
-/** Opens the photo library; null when the barber cancels. */
-export async function pickAndUploadPhoto(folder: string): Promise<string | null> {
+/**
+ * Opens the photo library; null when the barber cancels. `onPicked` runs once
+ * a photo is chosen, just before the upload starts (progress UI).
+ */
+export async function pickAndUploadPhoto(folder: string, onPicked?: () => void): Promise<string | null> {
   const res = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ['images'],
     allowsMultipleSelection: false,
     base64: false,
   });
   if (res.canceled || !res.assets?.length) return null;
+  onPicked?.();
   return uploadPhoto(res.assets[0].uri, folder);
 }

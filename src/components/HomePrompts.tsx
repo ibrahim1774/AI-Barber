@@ -92,8 +92,8 @@ export function HomePrompts({ onSubmitBookingLink, onFinish, onComplete, initial
   };
 
   return (
-    <KeyboardAvoidingView behavior="padding" style={styles.overlay} accessibilityLiveRegion="polite">
-      <Animated.View style={[styles.card, cardMotion]} accessibilityViewIsModal>
+    <KeyboardAvoidingView behavior="padding" style={styles.overlay} accessibilityLiveRegion="polite" accessibilityViewIsModal>
+      <Animated.View style={[styles.card, cardMotion]}>
         <View style={styles.badgeRow}>
           <Text style={styles.badge}>{step === 'booking' ? 'Step 1' : step === 'areaphone' ? 'Last step' : 'Done'}</Text>
         </View>

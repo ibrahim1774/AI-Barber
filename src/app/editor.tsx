@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import type { WebsiteData } from '@/web/types';
 import { colors, fonts } from '@/constants/theme';
 import { track } from '@/lib/analytics';
 import { getPath, setPath } from '@/lib/editable';
-import {
-  applyBookingLink, applyHomePrompts, fieldLabel, markSeen, nextOverlay, setColour, switchDesign, type Overlay,
-} from '@/lib/editor';
+import { applyBookingLink, applyHomePrompts, fieldLabel, setColour, switchDesign } from '@/lib/editor';
+import { advanceOverlay, hasSeen, markSeen, nextOverlay, type Overlay } from '@/lib/overlayFlags';
 import { pickAndUploadPhoto } from '@/lib/photos';
 import { loadSite, saveSite, type SiteRecord } from '@/lib/siteStore';
 import SitePreview from '@/components/SitePreview';
@@ -29,13 +28,19 @@ export default function Editor() {
   // change on top of whatever was edited meanwhile, never on a stale copy.
   const siteRef = useRef<SiteRecord | null>(null);
   const [overlay, setOverlay] = useState<Overlay | null>(null);
+  // Mirrors `overlay` for the preview callbacks: no edits while one is up.
+  const overlayRef = useRef<Overlay | null>(null);
+  overlayRef.current = overlay;
   const [sheet, setSheet] = useState<SheetKind | null>(null);
   // Kept after the edit sheet closes so its label/value don't blank mid-slide.
   const [edit, setEdit] = useState<{ path: string; fromList: boolean }>({ path: 'shopName', fromList: false });
   const [uploading, setUploading] = useState(false);
   const uploadingRef = useRef(false);
   const [switching, setSwitching] = useState(false);
+  const switchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const afterDismiss = useRef<(() => void) | null>(null);
+  const saveErrorShown = useRef(false);
+  const publishing = useRef(false);
 
   useEffect(() => {
     track('editor_opened');
@@ -46,15 +51,26 @@ export default function Editor() {
         router.replace('/start');
         return;
       }
-      siteRef.current = s;
-      setSite(s);
+      // Resolve the overlay before showing anything, so the editor is never
+      // interactive while the prompts / guide are still to come.
       const o = await nextOverlay(s);
-      if (alive) setOverlay(o);
+      if (!alive) return;
+      siteRef.current = s;
+      setOverlay(o);
+      setSite(s);
     });
     return () => {
       alive = false;
+      if (switchTimer.current) clearTimeout(switchTimer.current);
     };
   }, []);
+
+  // Coming back from /publishing re-arms the Publish button.
+  useFocusEffect(
+    useCallback(() => {
+      publishing.current = false;
+    }, []),
+  );
 
   /** Every change goes through here: new record, state, and saveSite. */
   const commitRecord = useCallback((change: (r: SiteRecord) => SiteRecord) => {
@@ -63,7 +79,12 @@ export default function Editor() {
     const next = { ...change(cur), updatedAt: Date.now() };
     siteRef.current = next;
     setSite(next);
-    saveSite(next).catch((e) => console.warn('[editor] save failed:', e));
+    saveSite(next).catch((e) => {
+      console.warn('[editor] save failed:', e);
+      if (saveErrorShown.current) return;
+      saveErrorShown.current = true;
+      Alert.alert("Couldn't save your last change. Check your storage and try again.");
+    });
   }, []);
 
   const commit = useCallback(
@@ -88,12 +109,18 @@ export default function Editor() {
       const cur = siteRef.current;
       if (!cur || uploadingRef.current) return;
       uploadingRef.current = true;
-      setUploading(true);
       try {
-        const url = await pickAndUploadPhoto(`ios-drafts/${cur.draftId}`);
-        if (url) commit((d) => setPath(d, path, url));
-      } catch (e: any) {
-        Alert.alert('Photo upload failed', e?.message ?? 'Please try again.');
+        const url = await pickAndUploadPhoto(`ios-drafts/${cur.draftId}`, () => {
+          setUploading(true);
+          AccessibilityInfo.announceForAccessibility('Uploading photo');
+        });
+        if (url) {
+          commit((d) => setPath(d, path, url));
+          AccessibilityInfo.announceForAccessibility('Photo updated');
+        }
+      } catch (e) {
+        console.warn('[editor] photo upload failed:', e);
+        Alert.alert('Photo upload failed', 'Please try again or pick a different photo.');
       } finally {
         uploadingRef.current = false;
         setUploading(false);
@@ -106,7 +133,12 @@ export default function Editor() {
     setEdit({ path, fromList });
     setSheet('edit');
   }, []);
-  const onPreviewText = useCallback((path: string) => openEdit(path), [openEdit]);
+  const onPreviewText = useCallback((path: string) => {
+    if (!overlayRef.current) openEdit(path);
+  }, [openEdit]);
+  const onPreviewImage = useCallback((path: string) => {
+    if (!overlayRef.current) void pickPhoto(path);
+  }, [pickPhoto]);
 
   // From "All fields", closing the edit sheet goes back to the list.
   const closeEdit = useCallback(() => {
@@ -118,13 +150,15 @@ export default function Editor() {
     (t: 'luxe' | 'prime') => {
       setSwitching(true);
       commit((d) => switchDesign(d, t));
-      setTimeout(() => setSwitching(false), 850);
+      if (switchTimer.current) clearTimeout(switchTimer.current);
+      switchTimer.current = setTimeout(() => setSwitching(false), 850);
     },
     [commit],
   );
 
   // HomePrompts → handleHomePromptBookingLink / handleHomePromptFinish. Like
-  // the web's applyGeneratedData, the inputs follow the new name/area/phone.
+  // the web's applyGeneratedData, the inputs follow the new name/area/phone;
+  // a rebuilt-from-link site is marked as a booking import for attribution.
   const handleBookingLink = useCallback(
     async (link: string) => {
       const cur = siteRef.current;
@@ -134,7 +168,14 @@ export default function Editor() {
       commitRecord((r) => ({
         ...r,
         data: rebuilt,
-        inputs: { ...r.inputs, shopName: rebuilt.shopName, area: rebuilt.area, phone: rebuilt.phone },
+        inputs: {
+          ...r.inputs,
+          shopName: rebuilt.shopName,
+          area: rebuilt.area,
+          phone: rebuilt.phone,
+          bookingUrl: rebuilt.bookingUrl,
+          importedFrom: 'booking',
+        },
       }));
       return true;
     },
@@ -156,18 +197,26 @@ export default function Editor() {
     [commitRecord],
   );
 
-  // Each overlay's flag is written when it finishes, then the next one shows.
+  // Each overlay's flag is written when it finishes; the next step is decided
+  // in memory, so a failed write can't bring the same overlay straight back.
   const finishOverlay = useCallback(async (kind: Overlay) => {
     const cur = siteRef.current;
     if (!cur) return;
-    await markSeen(kind, cur.draftId).catch(() => {});
-    setOverlay(await nextOverlay(cur));
+    try {
+      await markSeen(kind, cur.draftId);
+    } catch (e) {
+      console.warn(`[editor] could not save the ${kind} flag:`, e);
+    }
+    const guideSeen = kind === 'guide' || (await hasSeen('guide', cur.draftId));
+    setOverlay(advanceOverlay(kind, guideSeen));
   }, []);
   const onPromptsComplete = useCallback(() => void finishOverlay('prompts'), [finishOverlay]);
   const onGuideClose = useCallback(() => void finishOverlay('guide'), [finishOverlay]);
 
   const handlePublish = useCallback(() => {
     // Task 8 replaces this with the Superwall paywall + publish flow.
+    if (publishing.current) return; // double tap
+    publishing.current = true;
     track('publish_tapped');
     router.push('/publishing');
   }, []);
@@ -180,7 +229,7 @@ export default function Editor() {
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <View style={styles.preview}>
-        <SitePreview data={data} editable onEditText={onPreviewText} onEditImage={pickPhoto} />
+        <SitePreview data={data} editable onEditText={onPreviewText} onEditImage={onPreviewImage} />
         {/* Hidden over a published site and while the prompts / guide are up. */}
         {site.slug == null && overlay == null && (
           <DesignSwitcher current={data.template} onSelect={handleDesign} busy={switching} />
@@ -198,7 +247,7 @@ export default function Editor() {
         onPhotos={() => setSheet('photos')}
         onColour={() => setSheet('colour')}
         onPublish={handlePublish}
-        disabled={uploading}
+        disabled={uploading || overlay != null}
       />
 
       <AllFieldsSheet

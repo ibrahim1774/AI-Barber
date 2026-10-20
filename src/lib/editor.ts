@@ -1,11 +1,10 @@
-import Storage from 'expo-sqlite/kv-store';
 import type { WebsiteData } from '@/web/types';
 import { buildSiteFromScrape } from '@/web/lib/buildSiteFromScrape';
 import { extractFirstUrl, isSupportedBookingHost } from '@/web/lib/supportedBookingHost';
 import { generateContent } from '@/web/services/geminiService';
 import { DEFAULT_POLICY, DEFAULT_PULLQUOTE } from '@/web/lib/render/prime';
 import { api } from '@/lib/api';
-import type { SiteRecord } from '@/lib/siteStore';
+import { IMAGE_PATHS } from '@/lib/editable';
 
 /**
  * Port of App.tsx handleHomeDesignSwitch: the same content re-skinned, only
@@ -61,7 +60,8 @@ export async function applyBookingLink(d: WebsiteData, link: string): Promise<We
     });
     if (!built?.scraped?.shopName) return null;
     return { ...built.scraped, colorTheme: d.colorTheme };
-  } catch {
+  } catch (err) {
+    console.warn('[home funnel] booking-link scrape failed:', err);
     return null;
   }
 }
@@ -114,43 +114,11 @@ export function imageLabel(path: string): string {
   return path;
 }
 
-// ---------------------------------------------------------------------------
-// Once-per-draft overlays: HomePrompts, then LaunchGuide
-// ---------------------------------------------------------------------------
-
-export type Overlay = 'prompts' | 'guide';
-
-const flagKey = (kind: Overlay, draftId: string) => `${kind}.v1.${draftId}`;
-
-async function seen(kind: Overlay, draftId: string): Promise<boolean> {
-  try {
-    return (await Storage.getItem(flagKey(kind, draftId))) === '1';
-  } catch {
-    return false;
-  }
-}
-
-export async function markSeen(kind: Overlay, draftId: string): Promise<void> {
-  await Storage.setItem(flagKey(kind, draftId), '1');
-}
-
 /**
- * A new generation shows the prompts and guide again. startDraft keeps the
- * draftId across re-imports (one site per install), so it resets the flags.
+ * The slots the Photos sheet offers: every IMAGE_PATHS slot (sheet-only ones
+ * included) except craftImages, which no template renders — a photo put
+ * there would never appear. The data field itself is left alone.
  */
-export async function clearOverlayFlags(draftId: string): Promise<void> {
-  await Promise.all([Storage.removeItem(flagKey('prompts', draftId)), Storage.removeItem(flagKey('guide', draftId))]);
-}
-
-/**
- * Which overlay the editor should show now, if any. Neither shows over a
- * published site (as on the web). The booking-link / area-phone prompts are
- * the web's name-only funnel: they regenerate the site, so an imported site
- * (booking link or Google listing) goes straight to the guide.
- */
-export async function nextOverlay(site: SiteRecord): Promise<Overlay | null> {
-  if (site.slug != null) return null;
-  if (!site.inputs.importedFrom && !(await seen('prompts', site.draftId))) return 'prompts';
-  if (!(await seen('guide', site.draftId))) return 'guide';
-  return null;
+export function photoSlots(d: WebsiteData): string[] {
+  return IMAGE_PATHS(d).filter((p) => !p.startsWith('craftImages.'));
 }

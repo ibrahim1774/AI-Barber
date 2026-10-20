@@ -4,7 +4,7 @@ import { loadSite, saveSite, type SiteRecord } from '@/lib/siteStore';
 import { track } from '@/lib/analytics';
 import { api } from '@/lib/api';
 import { toShopSite } from '@/lib/importer';
-import { clearOverlayFlags } from '@/lib/editor';
+import { clearOverlayFlags } from '@/lib/overlayFlags';
 
 type ShopSite = { inputs: ShopInputs; site: WebsiteData };
 
@@ -26,9 +26,14 @@ export async function startDraft(result: ShopSite): Promise<SiteRecord> {
     deployedUrl: prev?.deployedUrl ?? null,
     transactionId: prev?.transactionId ?? null,
   };
-  await saveSite(record);
   // New content: the editor's prompts and launch guide show again for it.
-  await clearOverlayFlags(record.draftId);
+  // Best effort — a failed clear must never lose the generated draft.
+  try {
+    await clearOverlayFlags(record.draftId);
+  } catch (e) {
+    console.warn('[flow] could not reset editor overlay flags:', e);
+  }
+  await saveSite(record);
   track('site_generated', { importedFrom: result.inputs.importedFrom ?? 'manual' });
   return record;
 }
