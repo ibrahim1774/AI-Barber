@@ -42,8 +42,14 @@ export default function Settings() {
         void syncIfSignedIn(site);
         resetTo('/dashboard');
         Alert.alert('Restore purchases', 'Your subscription and your website have been restored.');
+      } else if (hasEntitlement()) {
+        // Superwall says subscribed (so it showed no alert), but the transaction isn't readable yet.
+        Alert.alert(
+          'Restore purchases',
+          `Your subscription is active, but we couldn’t load your website yet. Try again in a moment, or email ${SUPPORT_EMAIL}.`,
+        );
       }
-      // null: no subscription. Superwall has already shown its restoreFailed alert.
+      // Otherwise null means no subscription: Superwall has already shown its restoreFailed alert.
     } catch (e) {
       Alert.alert('Restore purchases', restoreError(e));
     } finally {
