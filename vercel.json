@@ -14,5 +14,17 @@
       "path": "/api/publish-sweeper",
       "schedule": "*/10 * * * *"
     }
-  ]
+  ],
+  "functions": {
+    "api/ios/publish.ts": {
+      "maxDuration": 60,
+      "includeFiles": "lib/ios/certs/**"
+    },
+    "api/ios/site.ts": {
+      "includeFiles": "lib/ios/certs/**"
+    },
+    "api/publish-sweeper.ts": {
+      "maxDuration": 300
+    }
+  }
 }
