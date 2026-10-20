@@ -1,0 +1,87 @@
+{
+  "shopName": "Kings Barber Shop & Unisex",
+  "area": "Brooklyn, NY",
+  "address": "123 Bay 53rd St, Brooklyn, NY 11214, USA",
+  "phone": "(718) 513-4171",
+  "description": "",
+  "bookingUrl": "",
+  "photos": [
+    "https://lh3.googleusercontent.com/grass-cs/AABkmLewxSCaaho7cSEeBIBfZuEjrcDasgSdPWhrnr-O6MjGBvthb3ve8RzLa0bXk2BKZVEccDX1Y1eZxn1ne4UB3d9xjItPLNuoB79Rl-Jf3xA9yhEnu3TsEDC6S8RaA7PFVfnNgXrpoWJ8lFA=s4800-w1200",
+    "https://lh3.googleusercontent.com/grass-cs/AABkmLd_HWNn8zPVrKnLYpmiysycvH0sz3h2Uy1yTSPq_BMSdoBXoZu4edq899-MK2HuPxZg5Fs5tbvOzzY6jFE0g2VAZSt9tJM6OhLbbVNDi_2WEEQckCwo8GkZyge-q47-XyHrTSCTrOVTH8AV=s4800-w1200",
+    "https://lh3.googleusercontent.com/grass-cs/AABkmLcPmTwPQzD17iscLegayBn2m3DrWqwQ38P8ek0yn8amLgqEhzkLKnRw5TOYcTdfhwu1zlp77LvnAGXluDFlzg--Lo2ZLb7kxjKydTtcyKrX7-l0UJf-8r8KJuqvDWBCgbLWkEq2Sg=s4800-w1200"
+  ],
+  "services": [],
+  "reviews": [
+    {
+      "author": "Carlom",
+      "rating": 5,
+      "comment": "This is by far THE BEST barber shop I’ve taken my son to. Don is absolutely amazing!! I showed him what I wanted, and he did exactly that. He’s fantastic with kids. My son actually enjoys getting a haircut! They also have great hours which is very convenient. The before (black shirt) & after. Thank you soooo much Don for your amazing work!!! Only person I trust to cut my sons hair.",
+      "date": "2025-06-29T03:06:01.815444334Z"
+    },
+    {
+      "author": "Nasaiah M",
+      "rating": 5,
+      "comment": "been coming to this shop for 5+ years. doesn't matter who you go to, all the barbers give great cuts. my barber is Don and he cuts my hair exactly the way i want it all the time, even giving suggestions too. there's parking spots available, always making it quick and easy to get in and out. haircuts take a while to get but because they focus on all the details. 12/10 never gonna stop coming here 🔥",
+      "date": "2025-05-27T19:43:45.727491Z"
+    },
+    {
+      "author": "Jabaran Akram",
+      "rating": 5,
+      "comment": "Great experience at Kings Barbershop! Plenty of parking, almost no wait time, and the service was quick and professional. Highly recommend for anyone looking for a hassle-free haircut.",
+      "date": "2025-05-24T17:40:56.189795Z"
+    }
+  ],
+  "hours": [
+    {
+      "day": "Monday",
+      "open": "9:00 AM",
+      "close": "7:00 PM"
+    },
+    {
+      "day": "Tuesday",
+      "open": "9:00 AM",
+      "close": "7:00 PM"
+    },
+    {
+      "day": "Wednesday",
+      "open": "9:00 AM",
+      "close": "7:00 PM"
+    },
+    {
+      "day": "Thursday",
+      "open": "9:00 AM",
+      "close": "7:00 PM"
+    },
+    {
+      "day": "Friday",
+      "open": "9:00 AM",
+      "close": "7:00 PM"
+    },
+    {
+      "day": "Saturday",
+      "open": "9:00 AM",
+      "close": "7:00 PM"
+    },
+    {
+      "day": "Sunday",
+      "open": "10:00 AM",
+      "close": "5:00 PM"
+    }
+  ],
+  "staff": [],
+  "aggregateRating": {
+    "rating": 4.5,
+    "count": 225
+  },
+  "_platform": "gbp",
+  "_via": "places",
+  "_website": "",
+  "_categories": [
+    "Barber shop",
+    "Barber shop",
+    "Hair care"
+  ],
+  "_photoRefs": [
+    "places/ChIJt9pPj7NFwokRaNtSecfFc-4/photos/Aa-ngMaSiaLBnRxMdc"
+  ]
+}

@@ -1,0 +1,101 @@
+{
+  "shopName": "Willi Barber",
+  "area": "Dallas, TX",
+  "address": "11407 Emerald St, Suite 109, Dallas, 75229, Dallas, TX, 75229",
+  "phone": "",
+  "description": "",
+  "hours": [
+    {
+      "day": "Monday",
+      "open": "08:00",
+      "close": "12:00"
+    },
+    {
+      "day": "Tuesday",
+      "open": "08:00",
+      "close": "12:00"
+    },
+    {
+      "day": "Wednesday",
+      "open": "08:00",
+      "close": "12:00"
+    },
+    {
+      "day": "Thursday",
+      "open": "08:00",
+      "close": "12:00"
+    },
+    {
+      "day": "Friday",
+      "open": "08:00",
+      "close": "12:00"
+    },
+    {
+      "day": "Saturday",
+      "open": "09:00",
+      "close": "20:00"
+    },
+    {
+      "day": "Sunday",
+      "open": "10:00",
+      "close": "20:00"
+    }
+  ],
+  "aggregateRating": {
+    "rating": 4.9,
+    "count": 13
+  },
+  "staff": [],
+  "services": [
+    {
+      "title": "Beard maintenance/ Alineación de Barba",
+      "price": "$20",
+      "duration": "",
+      "description": ""
+    },
+    {
+      "title": "Haircut / Corte de Cabello",
+      "price": "$35",
+      "duration": "",
+      "description": ""
+    },
+    {
+      "title": "Corte de Cabello con Alineación de Barba / Haircut",
+      "price": "$50",
+      "duration": "",
+      "description": ""
+    },
+    {
+      "title": "Aplicacion de Tinte Negro/Black Dye Application",
+      "price": "$30",
+      "duration": "",
+      "description": ""
+    }
+  ],
+  "photos": [
+    "https://d2zdpiztbgorvt.cloudfront.net/region1/us/998736/biz_photo/1fd75110c72c494080af7d8c57615a-willi-barber-biz-photo-f5f8e7d825f54f838fa5119613d348-booksy.jpeg",
+    "https://d2zdpiztbgorvt.cloudfront.net/region1/us/998736/service_photos/3d81d88df918412baacd1347eb95e6d8.jpeg",
+    "https://d2zdpiztbgorvt.cloudfront.net/region1/us/998736/service_photos/d2cf083142e54483a2d44c1f2c4b15aa.jpeg"
+  ],
+  "reviews": [
+    {
+      "author": "gettu m…",
+      "rating": 5,
+      "comment": "Willi understood what I asked for and delivered! He was clean and concise. I would definitely come again to get a cut from him.",
+      "date": "2026-05-23"
+    },
+    {
+      "author": "Cris C…",
+      "rating": 5,
+      "comment": "Best Barber in Dallas! Keep up the Good work!",
+      "date": "2024-10-07"
+    },
+    {
+      "author": "Alejandro G…",
+      "rating": 5,
+      "comment": "La mejor barbería cubana en Dallas tx no duden en pasar para q queden así como yo",
+      "date": "2024-07-27"
+    }
+  ],
+  "_platform": "booksy"
+}
