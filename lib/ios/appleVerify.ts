@@ -87,6 +87,19 @@ function loadRootCerts(): Buffer[] {
   return CERT_FILES.map((f) => fs.readFileSync(path.join(process.cwd(), 'lib/ios/certs', f)));
 }
 
+const apiEnvFor = { Production: Environment.PRODUCTION, Sandbox: Environment.SANDBOX } as const;
+const signedDataVerifiers: Partial<Record<IosEnv, SignedDataVerifier>> = {};
+
+/** Shared (cached) SignedDataVerifier per environment: Apple root certs + APPLE_BUNDLE_ID / APPLE_APP_ID. */
+export function signedDataVerifierFor(env: IosEnv): SignedDataVerifier {
+  const bundleId = process.env.APPLE_BUNDLE_ID;
+  if (!bundleId) throw new VerifyFailure('apple-unavailable');
+  const appAppleIdRaw = Number(process.env.APPLE_APP_ID);
+  const appAppleId = Number.isFinite(appAppleIdRaw) && appAppleIdRaw > 0 ? appAppleIdRaw : undefined;
+  return (signedDataVerifiers[env] ??= new SignedDataVerifier(
+    loadRootCerts(), true, apiEnvFor[env], bundleId, env === 'Production' ? appAppleId : undefined));
+}
+
 export function defaultVerifier() {
   const keyId = process.env.APPLE_IAP_KEY_ID;
   const issuerId = process.env.APPLE_IAP_ISSUER_ID;
@@ -98,7 +111,6 @@ export function defaultVerifier() {
 
   const apiEnv = { Production: Environment.PRODUCTION, Sandbox: Environment.SANDBOX } as const;
   const clients: Partial<Record<IosEnv, AppStoreServerAPIClient>> = {};
-  const verifiers: Partial<Record<IosEnv, SignedDataVerifier>> = {};
 
   const lookup: AppleLookup = async (env, transactionId) => {
     // Pre-launch: no app id yet, so production can't be verified; go straight to sandbox.
@@ -114,11 +126,9 @@ export function defaultVerifier() {
   };
 
   const decode: AppleDecode = async (env, signed) => {
-    verifiers[env] ??= new SignedDataVerifier(
-      loadRootCerts(), true, apiEnv[env], bundleId, env === 'Production' ? appAppleId : undefined);
     let p;
     try {
-      p = await verifiers[env].verifyAndDecodeTransaction(signed);
+      p = await signedDataVerifierFor(env).verifyAndDecodeTransaction(signed);
     } catch (e) {
       if (e instanceof VerificationException) {
         if (e.status === VerificationStatus.INVALID_APP_IDENTIFIER) throw new VerifyFailure('bad-bundle');

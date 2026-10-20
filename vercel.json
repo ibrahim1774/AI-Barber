@@ -23,6 +23,9 @@
     "api/ios/site.ts": {
       "includeFiles": "lib/ios/certs/**"
     },
+    "api/ios/apple-notification.ts": {
+      "includeFiles": "lib/ios/certs/**"
+    },
     "api/publish-sweeper.ts": {
       "maxDuration": 300
     }
