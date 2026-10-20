@@ -158,6 +158,61 @@ describe('runIosPublish', () => {
     expect(pending.get('fresh-cuts-ab12')!.siteData.shopName).toBe('Elite Fades');
   });
 
+  it('a bound slug that never went live is force-deployed but not reported as republished', async () => {
+    const { deps } = fakes({ existing: row({ site_slug: 'fresh-cuts', published_at: null }) });
+    const r = await runIosPublish(input(), deps);
+    expect(deps.publish).toHaveBeenCalledWith('fresh-cuts', { force: true });
+    expect(r).toEqual({ status: 200, body: { siteId: 'fresh-cuts', deployedUrl: 'https://fresh-cuts.vercel.app', republished: false } });
+  });
+
+  it('non-array gallery → 400 before verify or any repo call', async () => {
+    const { deps, repo } = fakes();
+    const r = await runIosPublish(input({ siteData: site({ gallery: 'x' as any }) }), deps);
+    expect(r).toEqual({ status: 400, body: { error: 'bad-request' } });
+    expect(deps.verify).not.toHaveBeenCalled();
+    expect(repo.upsertVerified).not.toHaveBeenCalled();
+    expect(repo.bindSlug).not.toHaveBeenCalled();
+  });
+
+  it('non-object hero → 400', async () => {
+    const { deps } = fakes();
+    expect(await runIosPublish(input({ siteData: site({ hero: 'x' as any }) }), deps)).toEqual({ status: 400, body: { error: 'bad-request' } });
+    expect(deps.verify).not.toHaveBeenCalled();
+  });
+
+  it('non-array services, craftImages or staff → 400; absent craftImages/staff is fine', async () => {
+    for (const bad of [{ services: {} }, { craftImages: 'x' }, { staff: { name: 'a' } }]) {
+      const { deps } = fakes();
+      expect(await runIosPublish(input({ siteData: site(bad as any) }), deps)).toEqual({ status: 400, body: { error: 'bad-request' } });
+    }
+    const { deps } = fakes();
+    const sd: any = site();
+    delete sd.craftImages;
+    delete sd.staff;
+    expect((await runIosPublish(input({ siteData: sd }), deps)).status).toBe(200);
+  });
+
+  it('text that merely contains "data:" is accepted', async () => {
+    const { deps } = fakes();
+    const r = await runIosPublish(input({ siteData: site({ bio: 'Metadata: walk-ins welcome' }) }), deps);
+    expect(r.status).toBe(200);
+  });
+
+  it('a data URL in hero.imageUrl → 400 (case-insensitive, leading whitespace)', async () => {
+    for (const v of ['data:image/jpeg;base64,AAAA', '  DATA:image/png;base64,AAAA']) {
+      const { deps } = fakes();
+      const sd = site({ hero: { heading: 'H', tagline: 'T', imageUrl: v } });
+      expect(await runIosPublish(input({ siteData: sd }), deps)).toEqual({ status: 400, body: { error: 'bad-request' } });
+      expect(deps.verify).not.toHaveBeenCalled();
+    }
+  });
+
+  it('a nested staff[0].photo data URL → 400', async () => {
+    const { deps } = fakes();
+    const sd = site({ staff: [{ name: 'Sam', photo: 'data:image/jpeg;base64,AAAA' }] });
+    expect(await runIosPublish(input({ siteData: sd }), deps)).toEqual({ status: 400, body: { error: 'bad-request' } });
+  });
+
   it('expired subscription cannot republish', async () => {
     const { deps, repo } = fakes({ verified: tx({ expiresAt: NOW - 1 }), existing: row({ site_slug: 'fresh-cuts' }) });
     const r = await runIosPublish(input(), deps);
@@ -375,6 +430,14 @@ describe('runIosSiteLookup', () => {
     expect(r.body.active).toBe(false);
     expect(r.body.siteData).toBeNull();
     expect(r.body.deployedUrl).toBeNull();
+  });
+
+  it('site lookup judges activity by the injected clock', async () => {
+    // NOW - 1 is still in the future by the wall clock, but expired by deps.now().
+    expect(NOW - 1).toBeGreaterThan(Date.now());
+    const { deps } = fakes({ verified: tx({ expiresAt: NOW - 1 }), existing: row({ site_slug: 'fresh-cuts' }) });
+    const r: any = await runIosSiteLookup('t-123', deps);
+    expect(r.body.active).toBe(false);
   });
 
   it('site lookup maps verify failures', async () => {

@@ -94,8 +94,22 @@ function validInput(input: unknown): input is IosPublishInput {
   const { transactionId, siteData, userId } = input;
   if (typeof transactionId !== 'string' || !transactionId.trim()) return false;
   if (!isObj(siteData) || typeof siteData.shopName !== 'string' || !siteData.shopName.trim()) return false;
+  // Shape checks for everything the pending transform and renderers touch, so
+  // a malformed payload is a 400 before anything is verified or written.
+  if (!isObj(siteData.hero) || !isObj(siteData.about)) return false;
+  if (!Array.isArray(siteData.gallery) || !Array.isArray(siteData.services)) return false;
+  if (siteData.craftImages != null && !Array.isArray(siteData.craftImages)) return false;
+  if (siteData.staff != null && !Array.isArray(siteData.staff)) return false;
   if (userId != null && typeof userId !== 'string') return false;
   return true;
+}
+
+/** True if any string value, at any depth, is a data: URL (inline image bytes). */
+function hasDataUrl(v: unknown): boolean {
+  if (typeof v === 'string') return /^\s*data:/i.test(v);
+  if (Array.isArray(v)) return v.some(hasDataUrl);
+  if (isObj(v)) return Object.values(v).some(hasDataUrl);
+  return false;
 }
 
 const badRequest = { status: 400 as const, body: { error: 'bad-request' } };
@@ -113,7 +127,17 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps): 
   if (Buffer.byteLength(raw, 'utf8') > MAX_BODY_BYTES) return badRequest;
   if (!validInput(input)) return badRequest;
   const sd = input.siteData;
-  if (JSON.stringify(sd).includes('data:')) return badRequest;
+  if (hasDataUrl(sd)) return badRequest;
+  // Build the pending payload up front: any shape problem surfaces here as a
+  // 400, never after a slug has been bound.
+  let imageUrlMap: Record<string, string>;
+  let pendingData: WebsiteData;
+  try {
+    imageUrlMap = buildImageUrlMap(sd);
+    pendingData = toPendingSiteData(sd, imageUrlMap);
+  } catch {
+    return badRequest;
+  }
 
   let tx: VerifiedTx;
   try {
@@ -137,16 +161,18 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps): 
         console.warn(`[ios/publish] ${otid}: setUser failed (ignored):`, e?.message || e));
     }
 
+    // "republished" means the site was live before; any bound slug is force-deployed.
+    const republished = !!row.published_at;
     let slug: string;
-    let republished: boolean;
+    let force: boolean;
     let previous: PendingSite | null = null;
     if (row.site_slug) {
-      // Republish: the bound slug is permanent, whatever the shop is now called.
+      // Bound slug is permanent, whatever the shop is now called.
       slug = row.site_slug;
-      republished = true;
+      force = true;
       previous = await deps.readPending(slug);
     } else {
-      republished = false;
+      force = false;
       let candidate: string;
       try {
         candidate = await chooseSlug(sd.shopName, tx.environment, deps.isTaken);
@@ -164,11 +190,10 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps): 
       }
     }
 
-    const imageUrlMap = buildImageUrlMap(sd);
     const pending: PendingSite = {
       siteId: slug,
       existingSiteId: null,
-      siteData: toPendingSiteData(sd, imageUrlMap),
+      siteData: pendingData,
       imageUrlMap,
       timestamp: deps.now(),
     };
@@ -176,7 +201,7 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps): 
     if (previous?.deployedUrl) pending.deployedUrl = previous.deployedUrl;
     await deps.writePending(slug, pending);
 
-    const outcome = await deps.publish(slug, { force: republished });
+    const outcome = await deps.publish(slug, { force });
     if (!outcome.ok) {
       console.error(`[ios/publish] ${slug}: publish failed (${outcome.reason}) ${outcome.error || ''}`);
       return { status: 502, body: { error: 'publish-failed', reason: outcome.reason } };
@@ -196,7 +221,7 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps): 
 
 export async function runIosSiteLookup(
   transactionId: string,
-  deps: Pick<PublishDeps, 'verify' | 'repo' | 'readPending'>,
+  deps: Pick<PublishDeps, 'verify' | 'repo' | 'readPending' | 'now'>,
 ): Promise<IosSiteLookupResult> {
   let tx: VerifiedTx;
   try {
@@ -218,7 +243,7 @@ export async function runIosSiteLookup(
         siteId: row.site_slug,
         deployedUrl: pending?.deployedUrl || null,
         siteData: pending?.siteData ? restoreImageUrls(pending.siteData, pending.imageUrlMap || {}) : null,
-        active: isActive(tx),
+        active: isActive(tx, deps.now()),
       },
     };
   } catch (e) {
