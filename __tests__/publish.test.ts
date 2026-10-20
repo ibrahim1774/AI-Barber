@@ -1,8 +1,8 @@
 import * as store from '@/lib/siteStore';
 import { ApiError } from '@/lib/api';
 import {
-  PENDING_MESSAGE, PRODUCT_IDS, pickLatestTransactionId, publishFlow, resumePendingPublish,
-  type PublishDeps,
+  PENDING_MESSAGE, PRODUCT_IDS, UNCONFIRMED_MESSAGE, UPDATING_MESSAGE, pickLatestTransactionId, publishFlow,
+  resumePendingPublish, type PublishDeps,
 } from '@/lib/publish';
 import type { SiteRecord } from '@/lib/siteStore';
 
@@ -94,13 +94,16 @@ test('waits for a lagging transaction id, then gives up as pending', async () =>
   const deps = makeDeps({ latestTransactionId: never });
   const p2 = publishFlow(site, deps);
   await jest.advanceTimersByTimeAsync(5000);
-  expect(await p2).toEqual({ kind: 'pending', message: PENDING_MESSAGE });
+  // Paid per the paywall but no transaction found: never "payment went through".
+  expect(await p2).toEqual({ kind: 'pending', message: UNCONFIRMED_MESSAGE });
   expect(never).toHaveBeenCalledTimes(4); // first try + 3 retries, 1 s apart
   expect(deps.iosPublish).not.toHaveBeenCalled();
+  // The purchase is remembered without an id, for the launch retry to look up.
+  expect(await store.loadPendingPublish()).toMatchObject({ transactionId: null });
 });
 
 test('retries a pending publish on launch', async () => {
-  await store.savePendingPublish({ transactionId: 'tx-9', data: site.data, createdAt: 1 });
+  await store.savePendingPublish({ transactionId: 'tx-9', data: site.data, createdAt: Date.now() });
   const deps = makeDeps({ iosPublish: jest.fn(async () => ({ ...LIVE, republished: true })) });
   const out = await resumePendingPublish(deps);
   expect(deps.iosPublish).toHaveBeenCalledWith({ transactionId: 'tx-9', siteData: site.data, userId: null });
@@ -112,7 +115,7 @@ test('retries a pending publish on launch', async () => {
   // Nothing pending: nothing to do.
   expect(await resumePendingPublish(makeDeps())).toBeNull();
   // Still offline: the pending publish stays for the next launch.
-  await store.savePendingPublish({ transactionId: 'tx-9', data: site.data, createdAt: 1 });
+  await store.savePendingPublish({ transactionId: 'tx-9', data: site.data, createdAt: Date.now() });
   const offline = makeDeps({ iosPublish: jest.fn(async () => { throw new ApiError(0, 'network', 'offline'); }) });
   expect(await resumePendingPublish(offline)).toEqual({ kind: 'pending', message: PENDING_MESSAGE });
   expect(await store.loadPendingPublish()).not.toBeNull();
@@ -127,7 +130,7 @@ test('402 shows inactive and keeps the site', async () => {
   expect(await store.loadPendingPublish()).toBeNull();
 });
 
-test('a rejected payload (4xx) clears the pending publish and throws', async () => {
+test('bad-request clears the pending publish and throws', async () => {
   const deps = makeDeps({
     iosPublish: jest.fn(async () => { throw new ApiError(400, 'bad-request', 'bad-request'); }),
   });
@@ -191,4 +194,93 @@ test('latestTransactionId picks the newest active AI Barber subscription', () =>
   ).toBe('newest');
   expect(pickLatestTransactionId([])).toBeNull();
   expect(pickLatestTransactionId([sub('x', monthly, '2026-10-01T00:00:00Z', false)])).toBeNull();
+});
+
+const fail = (status: number, code: string) =>
+  jest.fn(async () => { throw new ApiError(status, code, code); });
+
+test.each([
+  [404, 'not-found'],
+  [400, 'bad-bundle'],
+  [400, 'bad-product'],
+  [408, 'http-408'],
+  [429, 'http-429'],
+  [200, 'bad-response'],
+  [502, 'publish-failed'],
+  [0, 'network'],
+])('%i %s keeps the pending publish and returns pending', async (status, code) => {
+  const out = await publishFlow(site, makeDeps({ iosPublish: fail(status, code) }));
+  expect(out).toEqual({ kind: 'pending', message: PENDING_MESSAGE });
+  expect(await store.loadPendingPublish()).toMatchObject({ transactionId: 'tx-1' });
+});
+
+test('the pending record (with no id yet) is saved as soon as the purchase is verified', async () => {
+  let pendingAtLookup: store.PendingPublish | null = null;
+  await publishFlow(site, makeDeps({
+    latestTransactionId: jest.fn(async () => {
+      pendingAtLookup = await store.loadPendingPublish();
+      return 'tx-1';
+    }),
+  }));
+  expect(pendingAtLookup).toMatchObject({ transactionId: null, data: { shopName: 'Fade' } });
+});
+
+test('an entitled republish that hits a 5xx says the site is still updating, never "payment went through"', async () => {
+  const deps = makeDeps({ hasEntitlement: jest.fn(async () => true), iosPublish: fail(503, 'temporarily-unavailable') });
+  expect(await publishFlow(site, deps)).toEqual({ kind: 'pending', message: UPDATING_MESSAGE });
+  // No purchase this run: nothing saved before the transaction was found.
+  const net = makeDeps({ hasEntitlement: jest.fn(async () => true), iosPublish: fail(0, 'network') });
+  expect(await publishFlow(site, net)).toEqual({ kind: 'pending', message: UPDATING_MESSAGE });
+});
+
+test('an entitled user with no transaction found is unconfirmed and saves nothing', async () => {
+  jest.useFakeTimers();
+  const deps = makeDeps({ hasEntitlement: jest.fn(async () => true), latestTransactionId: jest.fn(async () => null) });
+  const p = publishFlow(site, deps);
+  await jest.advanceTimersByTimeAsync(5000);
+  expect(await p).toEqual({ kind: 'pending', message: UNCONFIRMED_MESSAGE });
+  expect(await store.loadPendingPublish()).toBeNull();
+});
+
+test('a null-id pending publish looks up the transaction on resume', async () => {
+  await store.savePendingPublish({ transactionId: null, data: site.data, createdAt: Date.now() });
+  const deps = makeDeps({ latestTransactionId: jest.fn(async () => 'tx-found'), iosPublish: fail(503, 'temporarily-unavailable') });
+  expect(await resumePendingPublish(deps)).toMatchObject({ kind: 'pending' });
+  expect(deps.iosPublish).toHaveBeenCalledWith(expect.objectContaining({ transactionId: 'tx-found' }));
+  // The found id is kept on the record for the next try.
+  expect(await store.loadPendingPublish()).toMatchObject({ transactionId: 'tx-found' });
+
+  const ok = makeDeps();
+  expect(await resumePendingPublish(ok)).toMatchObject({ kind: 'live' });
+  expect(ok.latestTransactionId).not.toHaveBeenCalled();
+});
+
+test('a null-id pending publish with no subscription is dropped', async () => {
+  await store.savePendingPublish({ transactionId: null, data: site.data, createdAt: Date.now() });
+  const deps = makeDeps({ latestTransactionId: jest.fn(async () => null) });
+  expect(await resumePendingPublish(deps)).toBeNull();
+  expect(deps.iosPublish).not.toHaveBeenCalled();
+  expect(await store.loadPendingPublish()).toBeNull();
+});
+
+test('a failed lookup keeps a null-id pending publish', async () => {
+  await store.savePendingPublish({ transactionId: null, data: site.data, createdAt: Date.now() });
+  const deps = makeDeps({ latestTransactionId: jest.fn(async () => { throw new Error('not configured'); }) });
+  expect(await resumePendingPublish(deps)).toMatchObject({ kind: 'pending' });
+  expect(await store.loadPendingPublish()).toMatchObject({ transactionId: null });
+});
+
+test('a pending publish older than 7 days is dropped', async () => {
+  const old = Date.now() - 8 * 24 * 60 * 60 * 1000;
+  await store.savePendingPublish({ transactionId: 'tx-old', data: site.data, createdAt: old });
+  const deps = makeDeps();
+  expect(await resumePendingPublish(deps)).toBeNull();
+  expect(deps.iosPublish).not.toHaveBeenCalled();
+  expect(await store.loadPendingPublish()).toBeNull();
+});
+
+test('a bad-request on resume clears the record and throws', async () => {
+  await store.savePendingPublish({ transactionId: 'tx-9', data: site.data, createdAt: Date.now() });
+  await expect(resumePendingPublish(makeDeps({ iosPublish: fail(400, 'bad-request') }))).rejects.toMatchObject({ code: 'bad-request' });
+  expect(await store.loadPendingPublish()).toBeNull();
 });

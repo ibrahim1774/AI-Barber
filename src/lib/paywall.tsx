@@ -4,12 +4,13 @@ import { Alert } from 'react-native';
 
 import { track, trackConversion } from '@/lib/analytics';
 import { api } from '@/lib/api';
-import { pickLatestTransactionId, type PublishDeps } from '@/lib/publish';
+import { PaywallSettle, type PaywallResult } from '@/lib/paywallSettle';
+import { findTransactionId, pickLatestTransactionId, type PublishDeps } from '@/lib/publish';
 import * as siteStore from '@/lib/siteStore';
 
 /** Placements configured in the Superwall dashboard (AI Barber campaign). */
 export type Placement = 'publish';
-export type PaywallResult = 'purchased' | 'restored' | 'declined';
+export type { PaywallResult };
 
 const ENTITLEMENT = 'hosting';
 
@@ -70,48 +71,45 @@ function useNoKeyPaywall() {
 }
 
 function useSuperwallPaywall() {
-  // Native only resolves registerPlacement when access is granted (the feature
-  // closure); a declined gated paywall or an error never resolves it. So one
-  // promise settles on whichever comes first: feature, dismiss, skip or error.
-  const settle = useRef<((r: PaywallResult) => void) | null>(null);
-  const finish = useCallback((r: PaywallResult) => {
-    const s = settle.current;
-    settle.current = null;
-    s?.(r);
-  }, []);
+  // Native only resolves registerPlacement through the feature closure, and
+  // never on a declined gated paywall or an error, so the result comes from
+  // whichever signal settles a PaywallSettle first. Only a found transaction
+  // (or a purchased / restored dismiss) counts as paid.
+  const latestTransactionId = useLatestTransactionId();
+  const session = useRef<PaywallSettle | null>(null);
 
   const { registerPlacement } = usePlacement({
-    onDismiss: (_info, result) => finish(result.type),
-    // Holdout / no audience / placement missing: the `publish` paywall is gated,
-    // so a skip is never a purchase.
+    onDismiss: (info, result) => session.current?.dismiss(result.type, info.closeReason),
     onSkip: (reason) => {
-      if (!settle.current) return;
       console.warn('Superwall paywall skipped', reason.type);
-      finish('declined');
-      Alert.alert('Publish', PAYWALL_ERROR);
+      session.current?.skip();
     },
     onError: (error) => {
-      if (!settle.current) return;
       console.warn('Superwall placement error', error);
-      finish('declined');
-      Alert.alert('Publish', PAYWALL_ERROR);
+      session.current?.error();
     },
   });
 
   return useCallback(
     (placement: Placement) =>
       new Promise<PaywallResult>((resolve) => {
-        finish('declined'); // supersede any call still waiting
-        settle.current = resolve;
+        session.current?.supersede();
+        const verify = async (patient: boolean) =>
+          (patient ? await findTransactionId(latestTransactionId) : await latestTransactionId()) != null;
+        const s = new PaywallSettle(verify, (result, cause) => {
+          if (session.current === s) session.current = null;
+          // A paywall that never showed (skip / error) shouldn't fail silently.
+          if (result === 'declined' && (cause === 'skip' || cause === 'error')) Alert.alert('Publish', PAYWALL_ERROR);
+          resolve(result);
+        });
+        session.current = s;
         track('placement_registered', { placement });
-        registerPlacement({ placement, feature: () => finish('purchased') }).catch((e) => {
+        registerPlacement({ placement, feature: () => s.feature() }).catch((e) => {
           console.warn('Superwall register failed', e);
-          if (!settle.current) return;
-          finish('declined');
-          Alert.alert('Publish', PAYWALL_ERROR);
+          s.error();
         });
       }),
-    [finish, registerPlacement],
+    [latestTransactionId, registerPlacement],
   );
 }
 
@@ -160,7 +158,7 @@ async function noKeyRestore() {
 }
 
 function useSuperwallRestore() {
-  const { restorePurchases } = useSuperwall();
+  const restorePurchases = useSuperwall((s) => s.restorePurchases);
   return async () => {
     try {
       const result = await restorePurchases();

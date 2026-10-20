@@ -12,7 +12,8 @@ export interface SiteRecord {
 }
 
 export interface PendingPublish {
-  transactionId: string;
+  /** null: the user paid, but the transaction id hasn't been looked up yet. */
+  transactionId: string | null;
   data: WebsiteData;
   createdAt: number;
 }

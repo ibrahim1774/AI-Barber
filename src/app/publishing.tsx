@@ -6,10 +6,11 @@ import { Button } from '@/components/Button';
 import { AlertCircleIcon, RefreshIcon } from '@/components/Icons';
 import { track } from '@/lib/analytics';
 import { usePublishDeps } from '@/lib/paywall';
-import { PENDING_MESSAGE, publishFlow, type PublishDeps } from '@/lib/publish';
+import { publishBusy, publishFlow, type PublishDeps } from '@/lib/publish';
 import { loadSite } from '@/lib/siteStore';
 
 type Phase = 'paywall' | 'publishing' | 'pending' | 'inactive' | 'error';
+type Pending = { message: string };
 
 const FAILED_MESSAGE =
   "Something went wrong publishing your site. Please try again — if it keeps happening, email support@davoxa.com.";
@@ -22,6 +23,7 @@ const FAILED_MESSAGE =
 export default function Publishing() {
   const deps = usePublishDeps();
   const [phase, setPhase] = useState<Phase>('paywall');
+  const [pending, setPending] = useState<Pending>({ message: '' });
   const running = useRef(false);
 
   const back = useCallback(() => {
@@ -33,13 +35,14 @@ export default function Publishing() {
     async (forcePaywall = false) => {
       if (running.current) return;
       running.current = true;
-      setPhase('paywall');
+      // Waiting behind a launch retry: show the spinner, not a clear screen.
+      setPhase(publishBusy() ? 'publishing' : 'paywall');
       // Show the publish overlay only once the user has access.
       const shown: PublishDeps = {
         ...deps,
         hasEntitlement: async () => {
           const ok = !forcePaywall && (await deps.hasEntitlement());
-          if (ok) setPhase('publishing');
+          setPhase(ok ? 'publishing' : 'paywall');
           return ok;
         },
         showPaywall: async () => {
@@ -60,8 +63,11 @@ export default function Publishing() {
         } else if (out.kind === 'declined') {
           track('paywall_declined');
           back();
+        } else if (out.kind === 'pending') {
+          setPending({ message: out.message });
+          setPhase('pending');
         } else {
-          setPhase(out.kind);
+          setPhase('inactive');
         }
       } catch (e) {
         console.warn('[publish] failed:', e);
@@ -105,7 +111,7 @@ export default function Publishing() {
           icon={<RefreshIcon size={40} color={colors.accent} />}
           tint="rgba(244,161,0,0.2)"
           title={<>Almost <Text style={{ color: colors.accent }}>live</Text></>}
-          message={PENDING_MESSAGE}
+          message={pending.message}
         >
           <Button variant="ghost" title="Back to Editor" onPress={back} style={styles.wide} />
         </Result>
@@ -131,7 +137,8 @@ export default function Publishing() {
           message={FAILED_MESSAGE}
           messageColor="#f87171"
         >
-          <Button variant="ghost" title="Dismiss" onPress={back} style={styles.wide} />
+          <Button title="Try again" onPress={() => void run()} style={styles.wide} />
+          <Button variant="ghost" title="Dismiss" onPress={back} style={[styles.wide, styles.gap]} />
         </Result>
       )}
     </View>
@@ -190,4 +197,5 @@ const styles = StyleSheet.create({
   },
   wide: { alignSelf: 'stretch' },
   link: { marginTop: 16 },
+  gap: { marginTop: 12 },
 });

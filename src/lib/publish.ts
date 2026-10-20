@@ -10,8 +10,17 @@ export const PRODUCT_IDS = [
   'com.ibrahim1774.aibarber.hosting.yearly',
 ] as const;
 
+/** Only after a purchase verified in this run, once its pending publish is saved. */
 export const PENDING_MESSAGE =
   "Your payment went through. We're finishing your website — it'll be live in a few minutes.";
+/** No active AI Barber transaction found: never claim a payment. */
+export const UNCONFIRMED_MESSAGE =
+  "We couldn't confirm your purchase yet. If you were charged, tap Publish again in a minute or use Restore Purchases.";
+/** An entitled republish (nothing bought this run) that couldn't finish yet. */
+export const UPDATING_MESSAGE = "Your website is still being updated. We'll finish publishing it shortly.";
+
+/** A pending publish older than this is dropped instead of retried. */
+const PENDING_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 export interface PublishDeps {
   hasEntitlement(): Promise<boolean>;
@@ -60,9 +69,10 @@ export function pickLatestTransactionId(subs: SubscriptionLike[]): string | null
   return best?.transactionId ?? null;
 }
 
-async function transactionIdWithRetry(deps: PublishDeps): Promise<string | null> {
+/** `lookup` until it finds an id: first try plus 3 retries, 1 s apart. A throw counts as not found. */
+export async function findTransactionId(lookup: () => Promise<string | null>): Promise<string | null> {
   for (let attempt = 0; ; attempt++) {
-    const id = await deps.latestTransactionId().catch(() => null);
+    const id = await lookup().catch(() => null);
     if (id) return id;
     if (attempt >= TX_RETRIES) return null;
     await sleep(TX_RETRY_MS);
@@ -100,32 +110,34 @@ export function publishPayload(data: WebsiteData): WebsiteData {
   };
 }
 
-const retryLater = (e: unknown) => e instanceof ApiError && (e.status === 0 || e.status >= 500);
-
 /**
- * Sends the saved pending publish. The pending record is only cleared once
- * the server has answered for good: live, inactive (402), or rejected (other
- * 4xx, rethrown). Network failures and 5xx keep it for the launch retry.
+ * Sends the saved pending publish. The pending record is only cleared on a
+ * final answer: live, inactive (402), or a malformed payload (400
+ * bad-request, rethrown). Everything else — network, 5xx, 404 while Apple
+ * catches up, other 4xx, a garbled 200 — keeps it for the next retry and
+ * returns `pending` with `retryMessage`.
  */
 async function send(
   pending: { transactionId: string; data: WebsiteData },
   deps: PublishDeps,
+  retryMessage: string,
 ): Promise<PublishOutcome> {
   let res: Awaited<ReturnType<PublishDeps['iosPublish']>>;
   try {
     res = await deps.iosPublish({ transactionId: pending.transactionId, siteData: pending.data, userId: deps.userId() });
   } catch (e) {
-    if (retryLater(e)) {
-      track('publish_pending', { code: (e as ApiError).code });
-      return { kind: 'pending', message: PENDING_MESSAGE };
-    }
-    await deps.store.savePendingPublish(null);
     if (e instanceof ApiError && e.status === 402) {
+      await deps.store.savePendingPublish(null);
       track('publish_inactive');
       return { kind: 'inactive' };
     }
-    track('publish_failed', { code: e instanceof ApiError ? e.code : 'unknown' });
-    throw e;
+    if (e instanceof ApiError && e.status === 400 && e.code === 'bad-request') {
+      await deps.store.savePendingPublish(null);
+      track('publish_failed', { code: e.code });
+      throw e;
+    }
+    track('publish_pending', { code: e instanceof ApiError ? e.code : 'unknown' });
+    return { kind: 'pending', message: retryMessage };
   }
   // Merge into the latest record: the editor may have saved since this started.
   const cur = await deps.store.loadSite();
@@ -144,36 +156,74 @@ async function send(
 
 // The launch retry and a Publish tap must never send at the same time.
 let queue: Promise<unknown> = Promise.resolve();
+let queued = 0;
 function serial<T>(fn: () => Promise<T>): Promise<T> {
-  const run = queue.then(fn, fn);
+  queued++;
+  const run = queue.then(fn, fn).finally(() => queued--);
   queue = run.catch(() => undefined);
   return run;
 }
 
+/** True while a publish or retry is running, so a new one would wait its turn. */
+export function publishBusy(): boolean {
+  return queued > 0;
+}
+
 /**
  * Pay (unless already entitled) → transaction id → save the pending publish →
- * POST /api/ios/publish. The purchase conversion is tracked by SubscriptionSync
- * from Superwall's own events, not here.
+ * POST /api/ios/publish. Only a found, active transaction for our products
+ * proves payment; showPaywall's 'purchased' is itself verified (paywall.tsx).
+ * The purchase conversion is tracked by SubscriptionSync from Superwall's own
+ * events, not here.
  */
 export async function publishFlow(site: SiteRecord, deps: PublishDeps): Promise<PublishOutcome> {
   return serial(async () => {
+    const data = publishPayload(site.data);
+    let paid = false;
     if (!(await deps.hasEntitlement().catch(() => false))) {
       const result = await deps.showPaywall();
       if (result === 'declined') return { kind: 'declined' } as const;
+      paid = true;
+      // Remember the purchase before anything else can fail; the id is looked up next.
+      await deps.store.savePendingPublish({ transactionId: null, data, createdAt: Date.now() });
     }
-    const transactionId = await transactionIdWithRetry(deps);
-    if (!transactionId) return { kind: 'pending', message: PENDING_MESSAGE } as const;
-    const pending = { transactionId, data: publishPayload(site.data), createdAt: Date.now() };
+    const transactionId = await findTransactionId(deps.latestTransactionId);
+    if (!transactionId) return { kind: 'pending', message: UNCONFIRMED_MESSAGE } as const;
+    const pending = { transactionId, data, createdAt: Date.now() };
     await deps.store.savePendingPublish(pending);
-    return send(pending, deps);
+    return send(pending, deps, paid ? PENDING_MESSAGE : UPDATING_MESSAGE);
   });
 }
 
-/** Run once at launch: finishes a publish that was paid for but never confirmed. */
+/**
+ * At launch and whenever the app comes back to the foreground: finishes a
+ * publish that was paid for but never confirmed. A record saved before its
+ * transaction id was found looks the id up first, and is dropped if there is
+ * no active subscription.
+ */
 export async function resumePendingPublish(deps: PublishDeps): Promise<PublishOutcome | null> {
   return serial(async () => {
     const pending = await deps.store.loadPendingPublish();
     if (!pending) return null;
-    return send(pending, deps);
+    if (Date.now() - pending.createdAt > PENDING_MAX_AGE_MS) {
+      await deps.store.savePendingPublish(null);
+      track('publish_pending_expired');
+      return null;
+    }
+    let transactionId = pending.transactionId;
+    if (!transactionId) {
+      try {
+        transactionId = await deps.latestTransactionId();
+      } catch {
+        return { kind: 'pending', message: PENDING_MESSAGE } as const; // lookup failed: try again later
+      }
+      if (!transactionId) {
+        await deps.store.savePendingPublish(null);
+        track('publish_unconfirmed_dropped');
+        return null;
+      }
+      await deps.store.savePendingPublish({ ...pending, transactionId });
+    }
+    return send({ transactionId, data: pending.data }, deps, PENDING_MESSAGE);
   });
 }
