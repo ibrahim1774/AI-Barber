@@ -2,7 +2,13 @@ import type { ShopInputs, WebsiteData } from '@/web/types';
 import { buildSiteFromScrape } from '@/web/lib/buildSiteFromScrape';
 import { extractFirstUrl, isSupportedBookingHost } from '@/web/lib/supportedBookingHost';
 import { generateContent } from '@/web/services/geminiService';
+import { BRAND_SWATCHES, DEFAULT_SWATCH } from '@/web/lib/brandSwatches';
 import type { ScrapePayload } from '@/lib/api';
+
+// Same rule as the web's themeForInputs(): only a known swatch is carried over.
+function resolveTheme(brandColor: string): string | undefined {
+  return BRAND_SWATCHES.find((c) => c.toLowerCase() === brandColor.toLowerCase());
+}
 
 // A Google listing has no service menu — seed the barber default so the
 // services section isn't an empty shell (copied from GbpImportPage.tsx).
@@ -31,16 +37,19 @@ export function toShopSite(
   payload: ScrapePayload,
   fallbackUrl: string,
   source: 'booking' | 'gbp',
+  brandColor: string = DEFAULT_SWATCH,
 ): { inputs: ShopInputs; site: WebsiteData } {
   const data: ScrapePayload = payload.services?.length
     ? payload
     : { ...payload, services: DEFAULT_BARBER_SERVICES.map((s) => ({ ...s })) };
+  const theme = resolveTheme(brandColor);
   const built = buildSiteFromScrape(data, fallbackUrl, {
     manual: {
       shopName: (data.shopName || '').trim(),
       area: (data.area || data.address || '').trim(),
       phone: (data.phone || '').trim(),
       bookingUrl: (data.bookingUrl || '').trim(),
+      ...(theme ? { colorTheme: theme } : {}),
     },
   });
   // Success marker: the lead fires only for a site generated from a booking
@@ -48,8 +57,8 @@ export function toShopSite(
   return { inputs: { ...built.inputs, importedFrom: source }, site: built.scraped };
 }
 
-export async function manualSite(shopName: string): Promise<{ inputs: ShopInputs; site: WebsiteData }> {
-  const inputs = { shopName: shopName.trim(), area: '', phone: '' } as ShopInputs;
+export async function manualSite(shopName: string, brandColor: string = DEFAULT_SWATCH): Promise<{ inputs: ShopInputs; site: WebsiteData }> {
+  const inputs = { shopName: shopName.trim(), area: '', phone: '', colorTheme: resolveTheme(brandColor) } as ShopInputs;
   const site = await generateContent(inputs);
   return { inputs, site };
 }

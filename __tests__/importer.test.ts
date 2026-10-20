@@ -1,16 +1,13 @@
 import { checkBookingLink, toShopSite, manualSite } from '@/lib/importer';
-import { api } from '@/lib/api';
 
 const booksy = require('./fixtures/scrape-booksy.json');
 const gbp = require('./fixtures/import-business.json');
 
 describe('importer', () => {
-  it('unsupported host is rejected before calling the API', () => {
-    const spy = jest.spyOn(api, 'importScrape');
+  it('checkBookingLink rejects an unsupported host', () => {
     const r = checkBookingLink('https://example.com/my-shop');
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.message).toMatch(/isn't Booksy/);
-    expect(spy).not.toHaveBeenCalled();
   });
 
   it('empty input asks for the booking link', () => {
@@ -33,7 +30,7 @@ describe('importer', () => {
     const { inputs, site } = toShopSite(gbp, '', 'gbp');
     expect(inputs.importedFrom).toBe('gbp');
     expect(site.shopName).toBe(gbp.shopName);
-    expect(site.hours?.length ?? (site as any).about?.hours?.length ?? 0).toBeGreaterThan(0);
+    expect(site.hours).toHaveLength(gbp.hours.length);
     expect(JSON.stringify(site)).toContain(gbp.reviews[0].author);
   });
 
@@ -42,6 +39,20 @@ describe('importer', () => {
     const { site } = toShopSite(gbp, '', 'gbp');
     expect(JSON.stringify(gbp)).toBe(before);
     expect(site.services.length).toBeGreaterThan(0);
+  });
+
+  it('default import carries the default swatch colorTheme on inputs and site', () => {
+    const { inputs, site } = toShopSite(booksy, '', 'booking');
+    expect(inputs.colorTheme).toBe('#f4a100');
+    expect(site.colorTheme).toBe('#f4a100');
+  });
+
+  it('honours a passed swatch and ignores a non-swatch colour', () => {
+    const a = toShopSite(booksy, '', 'booking', '#3B82F6');
+    expect(a.site.colorTheme).toBe('#3b82f6');
+    expect(a.inputs.colorTheme).toBe('#3b82f6');
+    const b = toShopSite(booksy, '', 'booking', '#123456');
+    expect(b.inputs.colorTheme).toBeUndefined();
   });
 
   it('manualSite generates from the shop name', async () => {

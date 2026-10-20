@@ -94,4 +94,33 @@ describe('api', () => {
     expect(err.status).toBe(401);
     expect(err.code).toBe('unauthorized');
   });
+
+  it('aborts after the timeout and reports code network', async () => {
+    jest.useFakeTimers();
+    try {
+      mockFetch.mockImplementation(
+        (_u: string, init: any) =>
+          new Promise((_r, reject) => {
+            init.signal.addEventListener('abort', () =>
+              reject(Object.assign(new Error('aborted'), { name: 'AbortError' })),
+            );
+          }),
+      );
+      const p = api.iosSite('t').catch((e) => e);
+      await jest.advanceTimersByTimeAsync(30_001);
+      const err = await p;
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err.code).toBe('network');
+      expect(err.status).toBe(0);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('maps a 200 with a non-JSON body to bad-response', async () => {
+    mockFetch.mockResolvedValue(res(200, '<html>oops</html>', true));
+    const err = await api.importScrape('https://booksy.com/x').catch((e) => e);
+    expect(err.code).toBe('bad-response');
+    expect(err.status).toBe(200);
+  });
 });
