@@ -11,18 +11,29 @@ export interface IosSweepSummary {
   failed: string[];
   /** Bound rows whose pending file is missing; the app retries with its own content. */
   missing: string[];
+  /** Rows not started because the time budget ran out; picked up next sweep. */
+  deferred: string[];
 }
 
 export async function sweepIos(
   deps: { repo: PurchasesRepo; publish(slug: string): Promise<PublishOutcome> },
   limit = 50,
+  opts: { deadlineMs?: number; now?: () => number } = {},
 ): Promise<IosSweepSummary> {
   const rows = await deps.repo.unpublishedBound(limit);
-  const out: IosSweepSummary = { checked: rows.length, published: [], failed: [], missing: [] };
+  const out: IosSweepSummary = { checked: rows.length, published: [], failed: [], missing: [], deferred: [] };
+  const now = opts.now ?? Date.now;
+  const deadlineMs = opts.deadlineMs ?? 200_000;
+  const start = now();
 
   // Sequential on purpose: deploys are heavy.
   for (const row of rows) {
     const slug = row.site_slug as string;
+    // Stop STARTING rows once the budget is spent, so the function returns before Vercel kills it.
+    if (now() - start >= deadlineMs) {
+      out.deferred.push(slug);
+      continue;
+    }
     const otid = row.original_transaction_id;
     try {
       const outcome = await deps.publish(slug);

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { sweepIos } from '../../lib/ios/sweep.js';
 import type { PurchaseRow, PurchasesRepo } from '../../lib/ios/purchases.js';
 import type { PublishOutcome } from '../../lib/publishSite.js';
@@ -16,6 +16,8 @@ function repo(rows: PurchaseRow[]) {
 }
 
 describe('sweepIos', () => {
+  afterEach(() => vi.restoreAllMocks());
+
   it('publishes bound unpublished rows', async () => {
     const { r, markPublished, unpublishedBound } = repo([row('o1', 'a'), row('o2', 'b')]);
     const publish = vi.fn(async (s: string) => ok(s));
@@ -23,7 +25,7 @@ describe('sweepIos', () => {
     expect(unpublishedBound).toHaveBeenCalledWith(50);
     expect(publish.mock.calls).toEqual([['a'], ['b']]);
     expect(markPublished.mock.calls).toEqual([['o1'], ['o2']]);
-    expect(out).toEqual({ checked: 2, published: ['a', 'b'], failed: [], missing: [] });
+    expect(out).toEqual({ checked: 2, published: ['a', 'b'], failed: [], missing: [], deferred: [] });
   });
 
   it('leaves failures for next run', async () => {
@@ -31,13 +33,13 @@ describe('sweepIos', () => {
     const publish = vi.fn(async (s: string): Promise<PublishOutcome> => ({ ok: false, siteId: s, reason: 'deploy-failed', error: 'boom' }));
     const out = await sweepIos({ repo: r, publish });
     expect(markPublished).not.toHaveBeenCalled();
-    expect(out).toEqual({ checked: 1, published: [], failed: ['a'], missing: [] });
+    expect(out).toEqual({ checked: 1, published: [], failed: ['a'], missing: [], deferred: [] });
   });
 
   it('no rows → zero work', async () => {
     const { r } = repo([]);
     const publish = vi.fn();
-    expect(await sweepIos({ repo: r, publish })).toEqual({ checked: 0, published: [], failed: [], missing: [] });
+    expect(await sweepIos({ repo: r, publish })).toEqual({ checked: 0, published: [], failed: [], missing: [], deferred: [] });
     expect(publish).not.toHaveBeenCalled();
   });
 
@@ -57,29 +59,37 @@ describe('sweepIos', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const publish = vi.fn(async (s: string) => { if (s === 'a') throw new Error('kaboom'); return ok(s); });
     const out = await sweepIos({ repo: r, publish });
-    expect(out).toEqual({ checked: 2, published: ['b'], failed: ['a'], missing: [] });
+    expect(out).toEqual({ checked: 2, published: ['b'], failed: ['a'], missing: [], deferred: [] });
     expect(markPublished.mock.calls).toEqual([['o2']]);
   });
 });
 
-describe('publish-sweeper handler', () => {
-  beforeEach(() => { vi.resetModules(); vi.restoreAllMocks(); });
 
-  it('sweeper still returns the Stripe result when the iOS branch throws', async () => {
-    vi.doMock('../../lib/publishSite.js', () => ({ publishSite: vi.fn() }));
-    vi.doMock('../../lib/ios/purchases.js', () => ({
-      supabasePurchases: () => ({ unpublishedBound: async () => { throw new Error('db down'); } }),
-    }));
-    process.env.STRIPE_SECRET_KEY = 'sk_test';
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ data: [], has_more: false }) })));
+describe('sweepIos extras', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('defers rows once the time budget is spent', async () => {
+    const { r, markPublished } = repo([row('o1', 'a'), row('o2', 'b'), row('o3', 'c')]);
+    let t = 0;
+    const publish = vi.fn(async (s: string) => { t += 500_000; return ok(s); });
+    const out = await sweepIos({ repo: r, publish }, 50, { deadlineMs: 200_000, now: () => t });
+    expect(publish.mock.calls).toEqual([['a']]);
+    expect(markPublished.mock.calls).toEqual([['o1']]);
+    expect(out).toEqual({ checked: 3, published: ['a'], failed: [], missing: [], deferred: ['b', 'c'] });
+  });
+
+  it('a markPublished throw is isolated per row', async () => {
+    const { r, markPublished } = repo([row('o1', 'a'), row('o2', 'b')]);
+    markPublished.mockRejectedValueOnce(new Error('db'));
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    const { default: handler } = await import('../../api/publish-sweeper.js');
-    const res: any = { status: vi.fn().mockReturnThis(), json: vi.fn() };
-    await handler({ headers: { 'user-agent': 'vercel-cron/1.0' } }, res);
-    expect(res.status).toHaveBeenCalledWith(200);
-    const body = res.json.mock.calls[0][0];
-    expect(body).toMatchObject({ ok: true, paidSitesChecked: 0, repaired: [], skipped: [] });
-    expect(body.ios).toEqual({ error: 'db down' });
-    vi.unstubAllGlobals();
+    const out = await sweepIos({ repo: r, publish: async (s) => ok(s) });
+    expect(out).toEqual({ checked: 2, published: ['b'], failed: ['a'], missing: [], deferred: [] });
+  });
+
+  it('ok with alreadyLive still marks published', async () => {
+    const { r, markPublished } = repo([row('o1', 'a')]);
+    const out = await sweepIos({ repo: r, publish: async (s) => ({ ok: true, siteId: s, alreadyLive: true }) });
+    expect(markPublished).toHaveBeenCalledWith('o1');
+    expect(out.published).toEqual(['a']);
   });
 });

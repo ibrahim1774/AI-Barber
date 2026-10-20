@@ -14,8 +14,7 @@
 // short-circuits on anything already serving, so a quiet sweep is a handful of
 // HEAD-ish requests and no deploys.
 import { publishSite } from '../lib/publishSite.js';
-import { sweepIos } from '../lib/ios/sweep.js';
-import { supabasePurchases } from '../lib/ios/purchases.js';
+import { authorized } from '../lib/cronAuth.js';
 
 export const config = { maxDuration: 300 };
 
@@ -24,31 +23,6 @@ export const config = { maxDuration: 300 };
 const LOOKBACK_HOURS = 48;
 // Ceiling on deploys per run so a bad day can't turn into a deploy storm.
 const MAX_PUBLISHES_PER_RUN = 10;
-
-function authorized(req: any): boolean {
-  const secret = process.env.CRON_SECRET;
-
-  // Vercel only attaches `Authorization: Bearer $CRON_SECRET` to cron
-  // invocations when CRON_SECRET is set on the project. It does NOT send an
-  // x-vercel-cron header — the first version of this gate checked for that and
-  // the very first scheduled run came back 401, so the safety net was dead on
-  // arrival while every other test passed.
-  if (secret) {
-    const auth = String(req.headers.authorization || '');
-    if (auth === `Bearer ${secret}`) return true;
-  }
-
-  // Fallback so the sweep works before CRON_SECRET is configured. Vercel's
-  // scheduler identifies itself as vercel-cron/1.0.
-  //
-  // Spoofable, and that's acceptable here: this endpoint only publishes sites
-  // that are ALREADY PAID FOR and not currently serving. A stranger calling it
-  // repeatedly gets no-ops, because publishSite short-circuits on anything
-  // live. There is no state an outsider can change and nothing to enumerate —
-  // the response names only sites that were already owed a deploy.
-  const ua = String(req.headers['user-agent'] || '');
-  return ua.startsWith('vercel-cron/');
-}
 
 export default async function handler(req: any, res: any) {
   if (!authorized(req)) return res.status(401).json({ error: 'Not authorized' });
@@ -114,23 +88,12 @@ export default async function handler(req: any, res: any) {
       if (!startingAfter) break;
     }
 
-    // iOS purchases are an independent branch: if it throws, the Stripe result
-    // above is still returned.
-    let ios: unknown;
-    try {
-      ios = await sweepIos({ repo: supabasePurchases(), publish: (slug) => publishSite(slug) });
-    } catch (err: any) {
-      console.error('[Sweeper] iOS branch threw:', err?.message || err);
-      ios = { error: err?.message || 'iOS sweep failed' };
-    }
-
     return res.status(200).json({
       ok: true,
       lookbackHours: LOOKBACK_HOURS,
       paidSitesChecked: checked.length,
       repaired,
       skipped: failed,
-      ios,
     });
   } catch (err: any) {
     console.error('[Sweeper] threw:', err?.message || err);
