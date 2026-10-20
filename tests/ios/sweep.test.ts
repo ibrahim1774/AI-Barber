@@ -48,7 +48,7 @@ describe('sweepIos', () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {});
     const publish = vi.fn(async (s: string): Promise<PublishOutcome> => ({ ok: false, siteId: s, reason: 'no-backup' }));
     const out = await sweepIos({ repo: r, publish });
-    expect(out).toEqual({ checked: 1, published: [], failed: [], missing: ['a'] });
+    expect(out).toEqual({ checked: 1, published: [], failed: [], missing: ['a'], deferred: [] });
     expect(markPublished).not.toHaveBeenCalled();
     expect(err.mock.calls.flat().join(' ')).toMatch(/a.*o1|o1.*a/);
     err.mockRestore();
