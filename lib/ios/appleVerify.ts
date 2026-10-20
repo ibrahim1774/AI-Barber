@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { AppStoreServerAPIClient, APIException, SignedDataVerifier, Environment } from '@apple/app-store-server-library';
+import { AppStoreServerAPIClient, APIException, SignedDataVerifier, VerificationException, VerificationStatus, Environment } from '@apple/app-store-server-library';
 
 export type IosEnv = 'Production' | 'Sandbox';
 
@@ -58,7 +58,11 @@ export function makeVerifier(deps: { lookup: AppleLookup; decode: AppleDecode; b
       let d: Awaited<ReturnType<AppleDecode>>;
       try {
         d = await deps.decode(env, res.signedTransactionInfo);
-      } catch {
+      } catch (e) {
+        if (e instanceof VerifyFailure) {
+          if (e.code === 'not-found') continue; // not valid in this environment
+          throw e;
+        }
         throw new VerifyFailure('apple-unavailable');
       }
       if (d.bundleId !== deps.bundleId) throw new VerifyFailure('bad-bundle');
@@ -88,7 +92,8 @@ export function defaultVerifier() {
   const issuerId = process.env.APPLE_IAP_ISSUER_ID;
   const privateKey = (process.env.APPLE_IAP_PRIVATE_KEY || '').replace(/\\n/g, '\n');
   const bundleId = process.env.APPLE_BUNDLE_ID;
-  const appAppleId = process.env.APPLE_APP_ID ? Number(process.env.APPLE_APP_ID) : undefined;
+  const appAppleIdRaw = Number(process.env.APPLE_APP_ID);
+  const appAppleId = Number.isFinite(appAppleIdRaw) && appAppleIdRaw > 0 ? appAppleIdRaw : undefined;
   if (!keyId || !issuerId || !privateKey || !bundleId) throw new VerifyFailure('apple-unavailable');
 
   const apiEnv = { Production: Environment.PRODUCTION, Sandbox: Environment.SANDBOX } as const;
@@ -111,7 +116,16 @@ export function defaultVerifier() {
   const decode: AppleDecode = async (env, signed) => {
     verifiers[env] ??= new SignedDataVerifier(
       loadRootCerts(), true, apiEnv[env], bundleId, env === 'Production' ? appAppleId : undefined);
-    const p = await verifiers[env].verifyAndDecodeTransaction(signed);
+    let p;
+    try {
+      p = await verifiers[env].verifyAndDecodeTransaction(signed);
+    } catch (e) {
+      if (e instanceof VerificationException) {
+        if (e.status === VerificationStatus.INVALID_APP_IDENTIFIER) throw new VerifyFailure('bad-bundle');
+        if (e.status === VerificationStatus.INVALID_ENVIRONMENT) throw new VerifyFailure('not-found');
+      }
+      throw e; // other failures: makeVerifier maps to apple-unavailable
+    }
     return {
       bundleId: p.bundleId, productId: p.productId,
       originalTransactionId: p.originalTransactionId, transactionId: p.transactionId,

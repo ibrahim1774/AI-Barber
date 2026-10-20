@@ -4,16 +4,16 @@ import {
   type AppleLookup, type AppleDecode, type VerifiedTx,
 } from '../../lib/ios/appleVerify.js';
 
-afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.unstubAllEnvs(); vi.clearAllMocks(); });
 
 const BUNDLE = 'com.ibrahim1774.aibarber';
 const PRODUCT = IOS_PRODUCT_IDS[0];
-const payload = (over: Record<string, unknown> = {}) => ({
+const payload = (over: Record<string, unknown> = {}): Awaited<ReturnType<AppleDecode>> => ({
   bundleId: BUNDLE, productId: PRODUCT, originalTransactionId: 'o1', transactionId: 't1',
   expiresDate: 2_000_000_000_000, ...over,
 });
 
-function setup(statuses: Record<string, number>, decoded: any = payload()) {
+function setup(statuses: Record<string, number>, decoded: Awaited<ReturnType<AppleDecode>> = payload()) {
   const lookup = vi.fn<AppleLookup>(async (env) => {
     const status = statuses[env];
     return status === 200 ? { status, signedTransactionInfo: `signed-${env}` } : { status };
@@ -70,6 +70,42 @@ describe('makeVerifier', () => {
     const tx = await setup({ Production: 200 }, payload({ expiresDate: undefined, revocationDate: 5 })).verify('t1');
     expect(tx.revoked).toBe(true);
     expect(tx.expiresAt).toBeNull();
+  });
+});
+
+describe('makeVerifier decode failures', () => {
+  const withDecode = (decode: AppleDecode, statuses: Record<string, number>) =>
+    makeVerifier({
+      lookup: async (env) => (statuses[env] === 200 ? { status: 200, signedTransactionInfo: 's' } : { status: statuses[env] }),
+      decode, bundleId: BUNDLE,
+    });
+  it('propagates a VerifyFailure thrown by decode', async () => {
+    const v = withDecode(async () => { throw new VerifyFailure('bad-bundle'); }, { Production: 200 });
+    expect(await code(v('t1'))).toBe('bad-bundle');
+  });
+  it('decode not-found falls through to sandbox', async () => {
+    const decode = vi.fn<AppleDecode>(async (env) => {
+      if (env === 'Production') throw new VerifyFailure('not-found');
+      return payload();
+    });
+    const tx = await withDecode(decode, { Production: 200, Sandbox: 200 })('t1');
+    expect(tx.environment).toBe('Sandbox');
+  });
+  it('decode not-found in both ends in not-found', async () => {
+    const v = withDecode(async () => { throw new VerifyFailure('not-found'); }, { Production: 200, Sandbox: 200 });
+    expect(await code(v('t1'))).toBe('not-found');
+  });
+  it('other decode errors are apple-unavailable', async () => {
+    const v = withDecode(async () => { throw new Error('boom'); }, { Production: 200 });
+    expect(await code(v('t1'))).toBe('apple-unavailable');
+  });
+});
+
+describe('defaultVerifier', () => {
+  it('throws apple-unavailable when env is missing', async () => {
+    vi.stubEnv('APPLE_IAP_KEY_ID', '');
+    const { defaultVerifier } = await import('../../lib/ios/appleVerify.js');
+    try { defaultVerifier(); expect.unreachable(); } catch (e) { expect((e as VerifyFailure).code).toBe('apple-unavailable'); }
   });
 });
 
