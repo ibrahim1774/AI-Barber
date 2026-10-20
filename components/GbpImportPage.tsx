@@ -1053,6 +1053,10 @@ const GbpImportPage: React.FC<Props> = ({ onImported, onUseManualForm, onSignIn 
           <span>Live in about a minute</span>
           <span aria-hidden style={{ color: 'rgba(237,239,244,0.18)' }}>·</span>
           <span>Edit anything after</span>
+          <span aria-hidden style={{ color: 'rgba(237,239,244,0.18)' }}>·</span>
+          <a href="/privacy" className="underline-offset-2 hover:underline">Privacy</a>
+          <span aria-hidden style={{ color: 'rgba(237,239,244,0.18)' }}>·</span>
+          <a href="/terms" className="underline-offset-2 hover:underline">Terms</a>
         </div>
       </footer>
     </div>
