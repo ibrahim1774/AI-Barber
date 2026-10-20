@@ -48,7 +48,7 @@ export interface PublishOutcome {
   error?: string;
 }
 
-const slugify = (raw: string): string =>
+export const slugify = (raw: string): string =>
   raw
     .toLowerCase()
     .replace(/[''`]/g, '')
@@ -77,14 +77,19 @@ export async function readPendingSite(siteId: string): Promise<PendingSite | nul
   }
 }
 
-/** Stamp the live URL onto the backup so recovery paths can find it. */
-async function stampDeployedUrl(siteId: string, pending: PendingSite, deployedUrl: string) {
+/** Write the pending-site backup (same format api/save-pending-site writes). */
+export async function writePendingSite(siteId: string, pending: PendingSite): Promise<void> {
   const safe = slugify(siteId);
-  const payload = JSON.stringify({ siteId: safe, savedAt: Date.now(), data: { ...pending, deployedUrl } });
+  const payload = JSON.stringify({ siteId: safe, savedAt: Date.now(), data: pending });
   await bucket().file(`pending-sites/${safe}.json`).save(payload, {
     contentType: 'application/json',
     metadata: { cacheControl: 'private, max-age=0, no-store' },
   });
+}
+
+/** Stamp the live URL onto the backup so recovery paths can find it. */
+async function stampDeployedUrl(siteId: string, pending: PendingSite, deployedUrl: string) {
+  await writePendingSite(siteId, { ...pending, deployedUrl });
 }
 
 // Every page these renderers produce carries this meta tag. Nothing else does,
@@ -141,8 +146,9 @@ function renderSite(siteData: WebsiteData): string {
 /**
  * Build and deploy the site behind `siteId`. Safe to call repeatedly: if the
  * site is already serving, this returns that URL without touching Vercel.
+ * `opts.force` skips that check and redeploys regardless.
  */
-export async function publishSite(siteId: string): Promise<PublishOutcome> {
+export async function publishSite(siteId: string, opts: { force?: boolean } = {}): Promise<PublishOutcome> {
   const safe = slugify(siteId);
   if (!safe) return { ok: false, reason: 'bad-backup', siteId, error: 'Invalid siteId' };
 
@@ -158,7 +164,7 @@ export async function publishSite(siteId: string): Promise<PublishOutcome> {
   // Idempotency gate. Both the webhook and the sweeper can land on the same
   // site, and Stripe retries webhooks — none of that should mean two deploys.
   const candidate = pending.deployedUrl || `https://${safe}.vercel.app`;
-  if (await alreadyLive(candidate)) {
+  if (!opts.force && (await alreadyLive(candidate))) {
     console.log(`[Publish] ${safe} already live at ${candidate} — nothing to do`);
     if (!pending.deployedUrl) {
       // Live but never stamped (the browser path died right after deploying).

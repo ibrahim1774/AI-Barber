@@ -13,6 +13,25 @@
     {
       "path": "/api/publish-sweeper",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/ios/sweep",
+      "schedule": "*/10 * * * *"
     }
-  ]
+  ],
+  "functions": {
+    "api/ios/publish.ts": {
+      "maxDuration": 300,
+      "includeFiles": "lib/ios/certs/**"
+    },
+    "api/ios/site.ts": {
+      "includeFiles": "lib/ios/certs/**"
+    },
+    "api/ios/apple-notification.ts": {
+      "includeFiles": "lib/ios/certs/**"
+    },
+    "api/publish-sweeper.ts": {
+      "maxDuration": 300
+    }
+  }
 }
