@@ -3,6 +3,7 @@ module.exports = {
   testMatch: ['**/__tests__/**/*.test.ts'],
   moduleNameMapper: {
     '^expo-secure-store$': '<rootDir>/test/mocks/secure-store.ts',
+    '^expo-sqlite/kv-store$': '<rootDir>/test/mocks/kv.ts',
     '^expo-sqlite$': '<rootDir>/test/mocks/sqlite.ts',
     '^@/lib/analytics$': '<rootDir>/test/mocks/analytics.ts',
     '^expo-crypto$': '<rootDir>/test/mocks/crypto.ts',

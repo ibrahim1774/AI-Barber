@@ -1,0 +1,45 @@
+import Storage from 'expo-sqlite/kv-store';
+import type { ShopInputs, WebsiteData } from '@/web/types';
+
+export interface SiteRecord {
+  draftId: string;
+  inputs: ShopInputs;
+  data: WebsiteData;
+  updatedAt: number;
+  slug: string | null;
+  deployedUrl: string | null;
+  transactionId: string | null;
+}
+
+export interface PendingPublish {
+  transactionId: string;
+  data: WebsiteData;
+  createdAt: number;
+}
+
+const SITE_KEY = 'site.v1';
+const PENDING_KEY = 'pendingPublish.v1';
+
+async function readJson<T>(key: string): Promise<T | null> {
+  try {
+    const raw = await Storage.getItem(key);
+    if (!raw) return null;
+    const v = JSON.parse(raw);
+    return v && typeof v === 'object' ? (v as T) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** One site per install (one site per subscription). */
+export const loadSite = () => readJson<SiteRecord>(SITE_KEY);
+export const saveSite = (r: SiteRecord) => Storage.setItem(SITE_KEY, JSON.stringify(r));
+export async function clearSite(): Promise<void> {
+  await Storage.removeItem(SITE_KEY);
+}
+
+export const loadPendingPublish = () => readJson<PendingPublish>(PENDING_KEY);
+export async function savePendingPublish(p: PendingPublish | null): Promise<void> {
+  if (p === null) await Storage.removeItem(PENDING_KEY);
+  else await Storage.setItem(PENDING_KEY, JSON.stringify(p));
+}
