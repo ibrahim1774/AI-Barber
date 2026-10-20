@@ -4,6 +4,7 @@ import { loadSite, saveSite, type SiteRecord } from '@/lib/siteStore';
 import { track } from '@/lib/analytics';
 import { api } from '@/lib/api';
 import { toShopSite } from '@/lib/importer';
+import { clearOverlayFlags } from '@/lib/editor';
 
 type ShopSite = { inputs: ShopInputs; site: WebsiteData };
 
@@ -12,6 +13,7 @@ type ShopSite = { inputs: ShopInputs; site: WebsiteData };
  * fire the lead-equivalent event. One subscription is one site, so an existing
  * record keeps its draftId, slug, deployedUrl and transactionId — the new
  * content republishes to the same site. A first site gets a new draftId.
+ * The editor's once-per-draft overlay flags are reset for the new content.
  */
 export async function startDraft(result: ShopSite): Promise<SiteRecord> {
   const prev = await loadSite();
@@ -25,6 +27,8 @@ export async function startDraft(result: ShopSite): Promise<SiteRecord> {
     transactionId: prev?.transactionId ?? null,
   };
   await saveSite(record);
+  // New content: the editor's prompts and launch guide show again for it.
+  await clearOverlayFlags(record.draftId);
   track('site_generated', { importedFrom: result.inputs.importedFrom ?? 'manual' });
   return record;
 }

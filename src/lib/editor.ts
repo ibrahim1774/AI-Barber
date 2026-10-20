@@ -135,6 +135,14 @@ export async function markSeen(kind: Overlay, draftId: string): Promise<void> {
 }
 
 /**
+ * A new generation shows the prompts and guide again. startDraft keeps the
+ * draftId across re-imports (one site per install), so it resets the flags.
+ */
+export async function clearOverlayFlags(draftId: string): Promise<void> {
+  await Promise.all([Storage.removeItem(flagKey('prompts', draftId)), Storage.removeItem(flagKey('guide', draftId))]);
+}
+
+/**
  * Which overlay the editor should show now, if any. Neither shows over a
  * published site (as on the web). The booking-link / area-phone prompts are
  * the web's name-only funnel: they regenerate the site, so an imported site

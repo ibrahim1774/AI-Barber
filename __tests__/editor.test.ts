@@ -3,10 +3,12 @@ import { DEFAULT_POLICY, DEFAULT_PULLQUOTE } from '@/web/lib/render/prime';
 import type { WebsiteData } from '@/web/types';
 import { api, ApiError } from '@/lib/api';
 import { IMAGE_PATHS, editableTextPaths, setPath } from '@/lib/editable';
-import type { SiteRecord } from '@/lib/siteStore';
+import { clearSite, saveSite, type SiteRecord } from '@/lib/siteStore';
+import { startDraft } from '@/lib/flow';
 import {
   applyBookingLink,
   applyHomePrompts,
+  clearOverlayFlags,
   fieldLabel,
   imageLabel,
   markSeen,
@@ -176,5 +178,26 @@ describe('nextOverlay (once per draft)', () => {
   test('a published site shows neither', async () => {
     const r = record(await site(), { slug: 'fresh-cuts', deployedUrl: 'https://fresh-cuts.aibarber.org' });
     expect(await nextOverlay(r)).toBeNull();
+  });
+});
+
+describe('a new generation resets the flags', () => {
+  test('clearOverlayFlags shows both overlays again', async () => {
+    const r = record(await site());
+    await markSeen('prompts', r.draftId);
+    await markSeen('guide', r.draftId);
+    await clearOverlayFlags(r.draftId);
+    expect(await nextOverlay(r)).toBe('prompts');
+  });
+
+  test('startDraft over an existing site (same draftId) shows the prompts again', async () => {
+    await clearSite();
+    const first = record(await site());
+    await saveSite(first);
+    await markSeen('prompts', first.draftId);
+    await markSeen('guide', first.draftId);
+    const again = await startDraft({ inputs: { shopName: 'Second Cut', area: '', phone: '' }, site: await site({ shopName: 'Second Cut' }) });
+    expect(again.draftId).toBe(first.draftId);
+    expect(await nextOverlay(again)).toBe('prompts');
   });
 });
