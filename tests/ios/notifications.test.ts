@@ -9,7 +9,7 @@ import { handleAppleNotification as realHandle } from '../../lib/ios/notificatio
 import handler from '../../api/ios/apple-notification.js';
 
 // The mock above wraps the module; get the real function for unit tests.
-const { handleAppleNotification } = await vi.importActual<typeof import('../../lib/ios/notifications.js')>('../../lib/ios/notifications.js');
+const { handleAppleNotification, liveNotificationDeps } = await vi.importActual<typeof import('../../lib/ios/notifications.js')>('../../lib/ios/notifications.js');
 
 const BUNDLE = 'com.ibrahim1774.aibarber';
 const NOW = 1_800_000_000_000;
@@ -99,6 +99,63 @@ describe('handleAppleNotification', () => {
     const r = await handleAppleNotification('jws', d);
     expect(r).toEqual({ status: 200, body: { ignored: 'no-transaction' } });
     expect(d.repo.applyNotification).not.toHaveBeenCalled();
+  });
+
+  it('bad signature is logged with console.error (still 400)', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const d = deps({ decodeNotification: vi.fn(async () => { throw new Error('bad sig'); }) });
+    expect((await handleAppleNotification('jws', d)).status).toBe(400);
+    expect(err).toHaveBeenCalled();
+    err.mockRestore();
+  });
+
+  it('bad transaction is logged with console.error (still 400)', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const d = deps({ decodeTransaction: vi.fn(async () => { throw new Error('bad tx'); }) });
+    expect(await handleAppleNotification('jws', d)).toEqual({ status: 400, body: { error: 'bad-transaction' } });
+    expect(err).toHaveBeenCalled();
+    expect(d.repo.applyNotification).not.toHaveBeenCalled();
+    err.mockRestore();
+  });
+
+  it('no configured bundle id → console.error + 500 (Apple retries), nothing decoded', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const d = deps({ bundleId: '' });
+    const r = await handleAppleNotification('jws', d);
+    expect(r.status).toBe(500);
+    expect(err).toHaveBeenCalled();
+    expect(d.decodeNotification).not.toHaveBeenCalled();
+    expect(d.repo.applyNotification).not.toHaveBeenCalled();
+    err.mockRestore();
+  });
+
+  it('liveNotificationDeps with APPLE_BUNDLE_ID unset → 500, not ignored', async () => {
+    vi.stubEnv('APPLE_BUNDLE_ID', '');
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const r = await handleAppleNotification('jws', liveNotificationDeps());
+    expect(r.status).toBe(500);
+    expect(err).toHaveBeenCalled();
+    err.mockRestore();
+    vi.unstubAllEnvs();
+  });
+
+  it('REFUND_REVERSED clears revoked_at', async () => {
+    const d = deps({
+      decodeNotification: vi.fn(async () => ({ notificationType: 'REFUND_REVERSED', data: { environment: 'Production', bundleId: BUNDLE, signedTransactionInfo: 'tx' } })),
+      decodeTransaction: vi.fn(async () => ({
+        bundleId: BUNDLE, productId: 'p', originalTransactionId: 'o', transactionId: 't', expiresDate: NOW + 1000, revocationDate: 555,
+      })),
+    });
+    expect((await handleAppleNotification('jws', d)).status).toBe(200);
+    expect(d.repo.applyNotification.mock.calls[0][0]).toMatchObject({
+      otid: 'o', revokedAt: null, clearRevoked: true, type: 'REFUND_REVERSED', expiresAt: NOW + 1000,
+    });
+  });
+
+  it('other notifications do not clear revoked_at', async () => {
+    const d = deps();
+    await handleAppleNotification('jws', d);
+    expect(d.repo.applyNotification.mock.calls[0][0].clearRevoked).toBeUndefined();
   });
 
   it('repo throws → 500', async () => {

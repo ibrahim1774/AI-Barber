@@ -99,6 +99,25 @@ describe('supabasePurchases', () => {
     expect(payload.revoked_at).toBe(new Date(7000).toISOString());
   });
 
+  it('applyNotification with clearRevoked sets revoked_at to null', async () => {
+    const { client, calls } = fakeClient();
+    await supabasePurchases(client).applyNotification({
+      otid: 'o1', productId: 'p', environment: 'Production', expiresAt: 9000, revokedAt: null, clearRevoked: true, type: 'REFUND_REVERSED',
+    });
+    const payload = find(calls, 'upsert')!.args[0] as Record<string, unknown>;
+    expect(Object.keys(payload)).toContain('revoked_at');
+    expect(payload.revoked_at).toBeNull();
+    expect(payload.last_notification).toBe('REFUND_REVERSED');
+  });
+
+  it('applyNotification: clearRevoked wins over a revokedAt', async () => {
+    const { client, calls } = fakeClient();
+    await supabasePurchases(client).applyNotification({
+      otid: 'o1', productId: 'p', environment: 'Production', expiresAt: null, revokedAt: 7000, clearRevoked: true, type: 'REFUND_REVERSED',
+    });
+    expect((find(calls, 'upsert')!.args[0] as Record<string, unknown>).revoked_at).toBeNull();
+  });
+
   it('unpublishedBound filters bound, unpublished, unrevoked, oldest first', async () => {
     const { client, calls } = fakeClient({ data: [{ original_transaction_id: 'o1' }], error: null });
     const rows = await supabasePurchases(client).unpublishedBound(5);

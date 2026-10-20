@@ -14,7 +14,11 @@ export interface PurchasesRepo {
   slugTaken(slug: string): Promise<boolean>;
   markPublished(otid: string): Promise<void>;
   setUser(otid: string, userId: string): Promise<void>;
-  applyNotification(n: { otid: string; productId: string; environment: IosEnv; expiresAt: number | null; revokedAt: number | null; type: string }): Promise<void>;
+  applyNotification(n: {
+    otid: string; productId: string; environment: IosEnv; expiresAt: number | null; revokedAt: number | null; type: string;
+    /** REFUND_REVERSED: set revoked_at = null (wins over revokedAt). */
+    clearRevoked?: boolean;
+  }): Promise<void>;
   unpublishedBound(limit: number): Promise<PurchaseRow[]>;
 }
 
@@ -86,7 +90,8 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
         last_notification: n.type,
       };
       if (n.expiresAt != null) payload.expires_at = iso(n.expiresAt);
-      if (n.revokedAt != null) payload.revoked_at = iso(n.revokedAt);
+      if (n.clearRevoked) payload.revoked_at = null;
+      else if (n.revokedAt != null) payload.revoked_at = iso(n.revokedAt);
       const { error } = await db().from(TABLE).upsert(payload, { onConflict: 'original_transaction_id' });
       if (error) fail('applyNotification', error);
     },
