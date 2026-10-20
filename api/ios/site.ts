@@ -9,7 +9,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'method-not-allowed' });
 
   try {
-    let body: any = req.body;
+    let body: any;
+    try {
+      body = req.body; // @vercel/node parses lazily and throws on malformed JSON
+    } catch {
+      return res.status(400).json({ error: 'bad-request' });
+    }
     if (typeof body === 'string') {
       try {
         body = JSON.parse(body);
