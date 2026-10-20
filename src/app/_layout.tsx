@@ -1,21 +1,37 @@
 import { useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
-import { router, Stack, useRootNavigationState } from 'expo-router';
+import { router, Stack, usePathname, useRootNavigationState } from 'expo-router';
 import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
 import { SuperwallProvider } from 'expo-superwall';
+import { PostHogProvider } from 'posthog-react-native';
 import { fontAssets } from '@/constants/theme';
+import { initAttribution, posthog, screen } from '@/lib/analytics';
 import { SubscriptionSync, SUPERWALL_KEY, SUPERWALL_OPTIONS, superwallActive, usePublishDeps } from '@/lib/paywall';
 import { publishBusy, resumePendingPublish } from '@/lib/publish';
 
+function ScreenTracker() {
+  const path = usePathname();
+  useEffect(() => {
+    screen(path);
+  }, [path]);
+  return null;
+}
+
 export default function RootLayout() {
+  // AppsFlyer for everyone at launch, before any screen. It starts once the
+  // tracking prompt (asked on the first screen, index.tsx) is answered.
+  useEffect(() => {
+    initAttribution().catch(() => {});
+  }, []);
   const [loaded, error] = useFonts(fontAssets);
   // Render nothing until Montserrat/Manrope are ready; on a font load error
   // fall back to system fonts rather than a blank app.
   if (!loaded && !error) return null;
-  const app = (
+  const screens = (
     <>
       <StatusBar style="light" />
+      <ScreenTracker />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }}>
         <Stack.Screen name="generating" options={{ gestureEnabled: false, animation: 'fade' }} />
         {/* Home once a site exists; nothing underneath to swipe back to. */}
@@ -38,6 +54,14 @@ export default function RootLayout() {
         <Stack.Screen name="sign-up" />
       </Stack>
     </>
+  );
+  // Same autocapture as Crew Lens: touches, and screens through ScreenTracker.
+  const app = posthog ? (
+    <PostHogProvider client={posthog} autocapture={{ captureScreens: false, captureTouches: true }}>
+      {screens}
+    </PostHogProvider>
+  ) : (
+    screens
   );
 
   if (!superwallActive) {

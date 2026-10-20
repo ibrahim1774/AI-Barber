@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Alert } from 'react-native';
 
 import { restore, syncIfSignedIn, type Restored } from '@/lib/account';
-import { track, trackConversion } from '@/lib/analytics';
+import { appsFlyerUID, track, trackConversion } from '@/lib/analytics';
 import { api } from '@/lib/api';
 import { currentUserId } from '@/lib/auth';
 import { PaywallSettle, type PaywallResult } from '@/lib/paywallSettle';
@@ -25,6 +25,8 @@ export function hasEntitlement(): boolean {
   return entitled;
 }
 
+let integrationAttributesSent = false;
+
 /**
  * Mirrors Superwall's subscription status for hasEntitlement() and tracks the
  * paywall's conversions. Render once under the provider. Superwall is not
@@ -32,7 +34,26 @@ export function hasEntitlement(): boolean {
  * transaction, and a signed-in account only gets a copy (account.ts).
  */
 export function SubscriptionSync() {
-  const { subscriptionStatus } = useUser();
+  const { subscriptionStatus, setIntegrationAttributes } = useUser();
+  const configured = useSuperwall((s) => s.isConfigured);
+
+  // Once per launch, after Superwall configures: tell it the AppsFlyer id so
+  // its purchase events can be joined to the install. (Its own wait for
+  // configuration gives up after 10 s, which a slow first launch exceeds.)
+  // appsFlyerUID waits for AppsFlyer's init. A failure is only logged.
+  useEffect(() => {
+    if (!configured || integrationAttributesSent) return;
+    integrationAttributesSent = true;
+    (async () => {
+      const appsflyerId = await appsFlyerUID();
+      if (!appsflyerId) {
+        console.warn('[paywall] no AppsFlyer id for Superwall integration attributes');
+        return;
+      }
+      await setIntegrationAttributes({ appsflyerId });
+      if (__DEV__) console.log('[paywall] Superwall integration attributes set (appsflyerId)');
+    })().catch((e) => console.warn('[paywall] Superwall integration attributes failed:', e));
+  }, [configured, setIntegrationAttributes]);
 
   useEffect(() => {
     if (subscriptionStatus?.status === 'ACTIVE') {

@@ -19,7 +19,13 @@ export const sw = {
   customerInfo: null as null | (() => Promise<any>),
   /** What useSuperwall().restorePurchases resolves (or throws). */
   restore: async (): Promise<any> => ({ result: 'restored' }),
+  /** Every setIntegrationAttributes call, in order. */
+  integrationAttributes: [] as Record<string, string>[],
+  /** useSuperwall().isConfigured (read at render). */
+  configured: true,
   reset() {
+    sw.integrationAttributes = [];
+    sw.configured = true;
     sw.callbacks = {};
     sw.register = async () => {};
     sw.subscriptions = [];
@@ -40,14 +46,17 @@ export function usePlacement(callbacks: Callbacks = {}) {
 export function useSuperwallEvents() {}
 const getCustomerInfo = async () =>
   sw.customerInfo ? sw.customerInfo() : { userId: '', subscriptions: sw.subscriptions, nonSubscriptions: [], entitlements: [] };
+const setIntegrationAttributes = async (attributes: Record<string, string>) => {
+  sw.integrationAttributes.push(attributes);
+};
 export function useUser() {
-  return { subscriptionStatus: { status: 'UNKNOWN' }, getCustomerInfo };
+  return { subscriptionStatus: { status: 'UNKNOWN' }, getCustomerInfo, setIntegrationAttributes };
 }
 export function SuperwallProvider({ children }: { children: unknown }) {
   return children;
 }
 
 export function useSuperwall(selector?: (s: Record<string, unknown>) => unknown) {
-  const state = { isConfigured: true, restorePurchases: () => sw.restore() };
+  const state = { isConfigured: sw.configured, restorePurchases: () => sw.restore() };
   return selector ? selector(state) : state;
 }

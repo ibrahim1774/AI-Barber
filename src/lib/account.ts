@@ -1,6 +1,6 @@
 import { randomUUID } from 'expo-crypto';
 import type { ShopInputs, WebsiteData } from '@/web/types';
-import { track } from '@/lib/analytics';
+import { resetUser, track } from '@/lib/analytics';
 import { api } from '@/lib/api';
 import { clearOverlayFlags } from '@/lib/overlayFlags';
 import { findTransactionId, publishPayload } from '@/lib/publish';
@@ -148,4 +148,6 @@ export async function deleteAccountAndData(): Promise<void> {
   await supabase.auth.signOut({ scope: 'local' }).catch((e: unknown) => console.warn('[account] sign out failed:', e));
   await deleteLocalData();
   track('account_deleted');
+  // After the event, so it is still recorded against the deleted user.
+  resetUser();
 }

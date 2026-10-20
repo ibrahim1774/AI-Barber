@@ -225,3 +225,32 @@ describe('Restore purchases', () => {
     expect(await restorePurchases()).toMatchObject({ site: { slug: 'fade-factory' } });
   });
 });
+
+describe('Superwall integration attributes', () => {
+  test('SubscriptionSync sends the AppsFlyer id to Superwall once configured, once per launch', async () => {
+    const { SubscriptionSync } = require('@/lib/paywall'); // eslint-disable-line @typescript-eslint/no-require-imports
+    const uid = jest.spyOn(analytics, 'appsFlyerUID').mockResolvedValue('af-uid-1');
+    let r!: { unmount(): void };
+    sw.configured = false;
+    await act(async () => {
+      r = create(React.createElement(SubscriptionSync));
+    });
+    await jest.advanceTimersByTimeAsync(0);
+    expect(sw.integrationAttributes).toEqual([]);
+    expect(uid).not.toHaveBeenCalled();
+
+    sw.configured = true;
+    await act(async () => {
+      r.unmount();
+      r = create(React.createElement(SubscriptionSync));
+    });
+    await act(async () => {
+      r.unmount();
+      r = create(React.createElement(SubscriptionSync));
+    });
+    await jest.advanceTimersByTimeAsync(0);
+    expect(sw.integrationAttributes).toEqual([{ appsflyerId: 'af-uid-1' }]);
+    expect(uid).toHaveBeenCalledTimes(1);
+    r.unmount();
+  });
+});

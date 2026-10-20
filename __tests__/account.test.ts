@@ -8,7 +8,7 @@ import { publishFlow, type PublishDeps } from '@/lib/publish';
 import {
   deleteAccountAndData, deleteLocalData, restore, syncIfSignedIn, syncSiteToSupabase, type RestoreDeps,
 } from '@/lib/account';
-import { currentUserId, friendlyAuthError, resetPassword, signIn, signUp } from '@/lib/auth';
+import { currentUserId, friendlyAuthError, resetPassword, signIn, signOut, signUp } from '@/lib/auth';
 import type { SiteRecord } from '@/lib/siteStore';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { sb, supabase } = require('@/lib/supabase');
@@ -148,6 +148,7 @@ describe('delete', () => {
     await markSeen('guide', DRAFT);
     sb.setSession({ access_token: 'access-123', user: USER });
     const trackSpy = jest.spyOn(analytics, 'track');
+    const resetSpy = jest.spyOn(analytics, 'resetUser');
 
     let siteWhenCalled: SiteRecord | null = null;
     const del = jest.spyOn(api, 'deleteAccount').mockImplementation(async () => {
@@ -163,6 +164,9 @@ describe('delete', () => {
     expect(await store.loadPendingPublish()).toBeNull();
     expect(await hasSeen('guide', DRAFT)).toBe(false);
     expect(trackSpy).toHaveBeenCalledWith('account_deleted');
+    // PostHog forgets the user only after the deletion event is sent under their id.
+    expect(resetSpy).toHaveBeenCalledTimes(1);
+    expect(resetSpy.mock.invocationCallOrder[0]).toBeGreaterThan(trackSpy.mock.invocationCallOrder[0]);
   });
 
   test('a failed delete keeps everything and stays signed in', async () => {
@@ -295,6 +299,7 @@ describe('auth', () => {
     });
     const phoneSpy = jest.spyOn(api, 'syncAuthPhone').mockResolvedValue(undefined);
     const regSpy = jest.spyOn(analytics, 'trackRegistration');
+    const identifySpy = jest.spyOn(analytics, 'identifyUser');
 
     const out = await signUp('barber@example.com', 'secret1', 'Sam Barber', '7185550100');
 
@@ -305,6 +310,7 @@ describe('auth', () => {
     });
     expect(phoneSpy).toHaveBeenCalledWith(USER.id);
     expect(regSpy).toHaveBeenCalledWith('email');
+    expect(identifySpy).toHaveBeenCalledWith(USER.id);
     expect(out).toEqual({ signedIn: true });
     expect(sb.upserts).toHaveLength(1);
     expect(sb.upserts[0].row).toMatchObject({ id: DRAFT, user_id: USER.id });
@@ -314,8 +320,10 @@ describe('auth', () => {
     await store.saveSite(site);
     supabase.auth.signUp.mockResolvedValue({ data: { user: { ...USER, identities: [{}] }, session: null }, error: null });
     jest.spyOn(api, 'syncAuthPhone').mockResolvedValue(undefined);
+    const identifySpy = jest.spyOn(analytics, 'identifyUser');
 
     expect(await signUp('barber@example.com', 'secret1', '', '7185550100')).toEqual({ signedIn: false });
+    expect(identifySpy).not.toHaveBeenCalled();
     expect(sb.upserts).toHaveLength(0);
   });
 
@@ -341,8 +349,10 @@ describe('auth', () => {
       sb.setSession(session);
       return { data: { user: USER, session }, error: null };
     });
+    const identifySpy = jest.spyOn(analytics, 'identifyUser');
     await signIn('barber@example.com', 'secret1');
     expect(supabase.auth.signInWithPassword).toHaveBeenCalledWith({ email: 'barber@example.com', password: 'secret1' });
+    expect(identifySpy).toHaveBeenCalledWith(USER.id);
     expect(sb.upserts).toHaveLength(1);
     expect(currentUserId()).toBe(USER.id);
 
@@ -360,6 +370,14 @@ describe('auth', () => {
     const session = { access_token: 'a', user: USER };
     supabase.auth.signInWithPassword.mockResolvedValueOnce({ data: { user: USER, session }, error: null });
     await expect(signIn('barber@example.com', 'secret1')).resolves.toBeUndefined();
+  });
+
+  test('signOut resets PostHog', async () => {
+    sb.setSession({ access_token: 'a', user: USER });
+    const resetSpy = jest.spyOn(analytics, 'resetUser');
+    await signOut();
+    expect(resetSpy).toHaveBeenCalledTimes(1);
+    expect(currentUserId()).toBeNull();
   });
 
   test('resetPassword sends the web redirect', async () => {

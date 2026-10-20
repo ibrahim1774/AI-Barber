@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { trackRegistration } from '@/lib/analytics';
+import { identifyUser, resetUser, trackRegistration } from '@/lib/analytics';
 import { api } from '@/lib/api';
 import { syncIfSignedIn } from '@/lib/account';
 import { supabase } from '@/lib/supabase';
@@ -116,6 +116,7 @@ export async function signUp(
   trackRegistration('email');
   if (!data.session) return { signedIn: false };
   userId = data.session.user.id;
+  identifyUser(userId);
   await syncIfSignedIn();
   return { signedIn: true };
 }
@@ -124,6 +125,7 @@ export async function signUp(
 export async function signIn(email: string, password: string): Promise<void> {
   const { data } = await call(() => supabase.auth.signInWithPassword({ email: email.trim(), password }));
   userId = data.session?.user?.id ?? userId;
+  if (data.session?.user?.id) identifyUser(data.session.user.id);
   await syncIfSignedIn();
 }
 
@@ -132,6 +134,7 @@ export async function signOut(): Promise<void> {
   // Offline: the refresh token can't be revoked, but this phone still signs out.
   if (error) await supabase.auth.signOut({ scope: 'local' });
   userId = null;
+  resetUser();
 }
 
 /** The web's "Forgot password?": the reset link opens aibarber.org. */
