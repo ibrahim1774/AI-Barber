@@ -69,10 +69,12 @@ beforeEach(async () => {
 describe('restore', () => {
   test('restore loads the bound site', async () => {
     const deps = restoreDeps();
-    const out = await restore(deps);
+    const res = await restore(deps);
+    const out = res?.site;
 
     expect(deps.restorePurchases).toHaveBeenCalled();
     expect(deps.iosSite).toHaveBeenCalledWith('tx-9');
+    expect(res?.active).toBe(true);
     expect(out).toMatchObject({
       slug: 'fade-factory',
       deployedUrl: 'https://fade-factory.aibarber.org',
@@ -105,7 +107,7 @@ describe('restore', () => {
   test('restore over the same site keeps local edits and the draft id', async () => {
     const local = { ...site, data: { ...data, shopName: 'Edited locally' }, transactionId: null };
     await store.saveSite(local);
-    const out = await restore(restoreDeps());
+    const out = (await restore(restoreDeps()))?.site;
 
     expect(out).toMatchObject({ draftId: DRAFT, slug: 'fade-factory', transactionId: 'tx-9' });
     expect(out!.data.shopName).toBe('Edited locally');
@@ -113,9 +115,15 @@ describe('restore', () => {
 
   test('restore replaces a different local draft but keeps its draft id', async () => {
     await store.saveSite({ ...site, slug: null, deployedUrl: null, data: { ...data, shopName: 'Other' } });
-    const out = await restore(restoreDeps());
+    const out = (await restore(restoreDeps()))?.site;
 
     expect(out).toMatchObject({ draftId: DRAFT, slug: 'fade-factory', data: BOUND.siteData });
+  });
+
+  test('an inactive subscription still restores the content and says it is inactive', async () => {
+    const res = await restore(restoreDeps({ iosSite: jest.fn(async () => ({ ...BOUND, active: false })) as any }));
+    expect(res).toMatchObject({ active: false, site: { slug: 'fade-factory', data: BOUND.siteData } });
+    expect(await store.loadSite()).toEqual(res!.site);
   });
 
   test('a site with no saved content is not restored over nothing', async () => {
@@ -201,8 +209,9 @@ describe('public.sites sync', () => {
     expect(opts).toEqual({ onConflict: 'id' });
     expect(Object.keys(row).sort()).toEqual(
       [
+        // Not custom_domain / domain_order_id: the web dashboard attaches domains to these rows.
         'id', 'user_id', 'company_name', 'industry', 'service_area', 'phone', 'brand_colour', 'site_data',
-        'deployed_url', 'deployment_status', 'custom_domain', 'domain_order_id', 'updated_at',
+        'deployed_url', 'deployment_status', 'updated_at',
       ].sort(),
     );
     expect(row).toMatchObject({
@@ -215,8 +224,6 @@ describe('public.sites sync', () => {
       brand_colour: '#f4a100',
       deployed_url: 'https://fade-factory.aibarber.org',
       deployment_status: 'deployed',
-      custom_domain: null,
-      domain_order_id: null,
     });
     expect(Number.isNaN(Date.parse(row.updated_at as string))).toBe(false);
     // Clean data only: no editor markers, no inline data: images.

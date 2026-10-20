@@ -191,10 +191,10 @@ describe('Restore purchases', () => {
     const iosSite = jest.spyOn(api, 'iosSite').mockResolvedValue(BOUND);
     const trackSpy = jest.spyOn(analytics, 'track');
 
-    const site = await restorePurchases();
+    const res = await restorePurchases();
 
     expect(iosSite).toHaveBeenCalledWith('tx-1');
-    expect(site).toMatchObject({ slug: 'fade-factory', transactionId: 'tx-1' });
+    expect(res).toMatchObject({ active: true, site: { slug: 'fade-factory', transactionId: 'tx-1' } });
     expect(await siteStore.loadSite()).toMatchObject({ slug: 'fade-factory' });
     expect(trackSpy.mock.calls.filter((c: unknown[]) => c[0] === 'restore_tapped')).toHaveLength(1);
     expect(Alert.alert).not.toHaveBeenCalled(); // Settings shows the outcome
@@ -222,6 +222,6 @@ describe('Restore purchases', () => {
     };
     sw.subscriptions = [ACTIVE];
     jest.spyOn(api, 'iosSite').mockResolvedValue(BOUND);
-    expect(await restorePurchases()).toMatchObject({ slug: 'fade-factory' });
+    expect(await restorePurchases()).toMatchObject({ site: { slug: 'fade-factory' } });
   });
 });

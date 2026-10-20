@@ -5,14 +5,16 @@ import { router } from 'expo-router';
 import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
+import { useSession } from '@/lib/auth';
 
 /**
  * The importer page shell from GbpImportPage.tsx: #070709 canvas with the gold
- * top glow, "A · AI Barber" header with the Sign in pill, centred content, and
- * the hairline footer. `overlay` renders above everything (import progress).
+ * top glow, "A · AI Barber" header with the Sign in pill (Account once signed
+ * in), centred content, and the hairline footer. `overlay` renders above everything (import progress).
  */
 export function Screen({ children, overlay }: { children: ReactNode; overlay?: ReactNode }) {
   const insets = useSafeAreaInsets();
+  const { session } = useSession();
   return (
     <View style={styles.root}>
       <Glow />
@@ -30,7 +32,11 @@ export function Screen({ children, overlay }: { children: ReactNode; overlay?: R
                 AI<Text style={{ color: colors.accent }}>Barber</Text>
               </Text>
             </View>
-            <Button variant="pill" title="Sign in" onPress={() => router.push('/sign-in')} />
+            {session?.user ? (
+              <Button variant="pill" title="Account" onPress={() => router.push('/settings')} />
+            ) : (
+              <Button variant="pill" title="Sign in" onPress={() => router.push('/sign-in')} />
+            )}
           </View>
           <View style={styles.main}>{children}</View>
           <View style={[styles.footer, { paddingBottom: 20 + insets.bottom }]}>

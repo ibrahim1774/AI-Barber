@@ -26,11 +26,13 @@ export default function Dashboard() {
   useFocusEffect(
     useCallback(() => {
       let alive = true;
-      loadSite().then((s) => {
-        if (!alive) return;
-        if (!s) resetTo('/start');
-        else setSite(s);
-      });
+      loadSite()
+        .then((s) => {
+          if (!alive) return;
+          if (!s) resetTo('/start');
+          else setSite(s);
+        })
+        .catch(() => alive && resetTo('/start'));
       return () => {
         alive = false;
       };

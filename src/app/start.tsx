@@ -4,10 +4,13 @@ import { Screen } from '@/components/Screen';
 import { Button } from '@/components/Button';
 import { Em, Text } from '@/components/Text';
 import { StageChips } from '@/components/Importer';
+import { useRestoreFlow } from '@/lib/restoreFlow';
 
 // GbpImportPage.tsx 'gate' branch: one question, two paths, plus the escape
 // hatch to the classic (name-only) form.
 export default function Start() {
+  // A reinstalled subscriber starts here: their site comes back via Restore, not a new build.
+  const { restore, busy } = useRestoreFlow();
   return (
     <Screen>
       <StageChips />
@@ -30,6 +33,13 @@ export default function Start() {
         onPress={() => router.push('/manual')}
         style={styles.manual}
       />
+      <Button
+        variant="link"
+        title="Already subscribed? Restore purchases"
+        onPress={() => void restore()}
+        loading={busy}
+        style={styles.restore}
+      />
     </Screen>
   );
 }
@@ -40,4 +50,5 @@ const styles = StyleSheet.create({
   buttons: { marginTop: 44, alignSelf: 'stretch', gap: 16 },
   note: { marginTop: 32 },
   manual: { marginTop: 32 },
+  restore: { marginTop: 20 },
 });

@@ -2,14 +2,13 @@ import { usePlacement, useSuperwall, useSuperwallEvents, useUser } from 'expo-su
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Alert } from 'react-native';
 
-import { restore, syncIfSignedIn } from '@/lib/account';
+import { restore, syncIfSignedIn, type Restored } from '@/lib/account';
 import { track, trackConversion } from '@/lib/analytics';
 import { api } from '@/lib/api';
 import { currentUserId } from '@/lib/auth';
 import { PaywallSettle, type PaywallResult } from '@/lib/paywallSettle';
 import { findTransactionId, pickLatestTransactionId, type PublishDeps } from '@/lib/publish';
 import * as siteStore from '@/lib/siteStore';
-import type { SiteRecord } from '@/lib/siteStore';
 
 /** Placements configured in the Superwall dashboard (AI Barber campaign). */
 export type Placement = 'publish';
@@ -28,8 +27,9 @@ export function hasEntitlement(): boolean {
 
 /**
  * Mirrors Superwall's subscription status for hasEntitlement() and tracks the
- * paywall's conversions. Render once under the provider. There is no account
- * to identify: a site is bound to the Apple transaction, not to a user.
+ * paywall's conversions. Render once under the provider. Superwall is not
+ * identified with the Supabase account: the site is bound to the Apple
+ * transaction, and a signed-in account only gets a copy (account.ts).
  */
 export function SubscriptionSync() {
   const { subscriptionStatus } = useUser();
@@ -173,16 +173,16 @@ export const SUPERWALL_OPTIONS = {
 /**
  * Restore Purchases (App Review 3.1.2): syncs StoreKit, then loads the site
  * bound to this Apple ID's subscription (account.restore). Resolves the
- * restored site, or null when there is no subscription — Superwall has then
+ * restored site (with whether the subscription is active), or null when there is no subscription — Superwall has then
  * already shown its restoreFailed alert (SUPERWALL_OPTIONS). Throws the
  * /api/ios/site ApiError, or NO_KEY_MESSAGE without a Superwall key.
  */
-export function useRestorePurchases(): () => Promise<SiteRecord | null> {
+export function useRestorePurchases(): () => Promise<Restored | null> {
   // eslint-disable-next-line react-hooks/rules-of-hooks
   return superwallActive ? useSuperwallRestore() : noKeyRestore;
 }
 
-async function noKeyRestore(): Promise<SiteRecord | null> {
+async function noKeyRestore(): Promise<Restored | null> {
   track('restore_tapped', { paywall: 'off' });
   throw new Error(NO_KEY_MESSAGE);
 }

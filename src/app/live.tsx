@@ -26,14 +26,16 @@ export default function Live() {
   useEffect(() => {
     track('live_opened');
     let alive = true;
-    loadSite().then((s) => {
-      if (!alive) return;
-      if (!s?.deployedUrl) {
-        resetTo(s ? '/dashboard' : '/start');
-        return;
-      }
-      setUrl(s.deployedUrl);
-    });
+    loadSite()
+      .then((s) => {
+        if (!alive) return;
+        if (!s?.deployedUrl) {
+          resetTo(s ? '/dashboard' : '/start');
+          return;
+        }
+        setUrl(s.deployedUrl);
+      })
+      .catch(() => alive && resetTo('/start'));
     return () => {
       alive = false;
       if (copiedTimer.current) clearTimeout(copiedTimer.current);

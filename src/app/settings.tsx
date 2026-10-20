@@ -6,12 +6,12 @@ import * as WebBrowser from 'expo-web-browser';
 import { colors, fonts } from '@/constants/theme';
 import { ChevronRightIcon, ExternalLinkIcon } from '@/components/Icons';
 import { Page } from '@/components/Page';
-import { deleteAccountAndData, deleteLocalData, syncIfSignedIn } from '@/lib/account';
+import { deleteAccountAndData, deleteLocalData } from '@/lib/account';
 import { track } from '@/lib/analytics';
 import { ApiError } from '@/lib/api';
 import { signOut, useSession } from '@/lib/auth';
 import { goBackOrHome, resetTo } from '@/lib/nav';
-import { hasEntitlement, useRestorePurchases } from '@/lib/paywall';
+import { useRestoreFlow } from '@/lib/restoreFlow';
 
 const SUPPORT_EMAIL = 'support@davoxa.com';
 const PRIVACY_URL = 'https://www.aibarber.org/privacy';
@@ -22,40 +22,16 @@ const SUBSCRIPTIONS_URL = 'itms-apps://apps.apple.com/account/subscriptions';
 const SITE_STAYS_LIVE = `Your published website stays online until you email ${SUPPORT_EMAIL} and ask us to take it down.`;
 const SUBSCRIPTION_SEPARATE = 'Deleting doesn’t cancel your subscription — do that in Manage subscription.';
 
-type Busy = 'restore' | 'delete' | 'signout' | null;
+type Busy = 'delete' | 'signout' | null;
 
 /** "Settings" (named on aibarber.org/support): account, Restore purchases, Delete account. */
 export default function Settings() {
   const { session, ready } = useSession();
-  const restorePurchases = useRestorePurchases();
+  const { restore, busy: restoring } = useRestoreFlow();
   const [busy, setBusy] = useState<Busy>(null);
   const signedIn = !!session?.user;
 
   useEffect(() => track('settings_opened'), []);
-
-  const onRestore = async () => {
-    if (busy) return;
-    setBusy('restore');
-    try {
-      const site = await restorePurchases();
-      if (site) {
-        void syncIfSignedIn(site);
-        resetTo('/dashboard');
-        Alert.alert('Restore purchases', 'Your subscription and your website have been restored.');
-      } else if (hasEntitlement()) {
-        // Superwall says subscribed (so it showed no alert), but the transaction isn't readable yet.
-        Alert.alert(
-          'Restore purchases',
-          `Your subscription is active, but we couldn’t load your website yet. Try again in a moment, or email ${SUPPORT_EMAIL}.`,
-        );
-      }
-      // Otherwise null means no subscription: Superwall has already shown its restoreFailed alert.
-    } catch (e) {
-      Alert.alert('Restore purchases', restoreError(e));
-    } finally {
-      setBusy(null);
-    }
-  };
 
   const manageSubscription = () => {
     track('manage_subscription_tapped');
@@ -150,7 +126,7 @@ export default function Settings() {
       </Section>
 
       <Section title="Subscription">
-        <Row label="Restore purchases" onPress={onRestore} busy={busy === 'restore'} />
+        <Row label="Restore purchases" onPress={() => void restore()} busy={restoring} />
         <Row label="Manage subscription" onPress={manageSubscription} external />
       </Section>
 
@@ -167,19 +143,6 @@ export default function Settings() {
       <Text style={styles.version}>AI Barber {version}</Text>
     </Page>
   );
-}
-
-function restoreError(e: unknown): string {
-  if (e instanceof ApiError) {
-    if (e.code === 'no-site') {
-      return hasEntitlement()
-        ? 'Your subscription is active, but no website has been published with it yet. Build your website and tap Publish — it’s included.'
-        : 'Your subscription was found, but no website has been published with it yet. Build your website and tap Publish.';
-    }
-    if (e.status === 0) return e.message; // offline / timed out
-    return `We couldn’t load your website right now. Try again in a moment, or email ${SUPPORT_EMAIL}.`;
-  }
-  return e instanceof Error && e.message ? e.message : 'Something went wrong. Please try again.';
 }
 
 function deleteError(e: unknown): string {

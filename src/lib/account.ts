@@ -10,7 +10,8 @@ import { supabase } from '@/lib/supabase';
 
 /**
  * Upserts the local site into public.sites with the columns the web writes in
- * upsertSiteToSupabase (services/supabaseDataService.ts), so the account sees
+ * upsertSiteToSupabase (services/supabaseDataService.ts), minus the domain
+ * columns, so the account sees
  * it on aibarber.org too. RLS allows it for the row's own user. The app only
  * ever pushes: an iOS site is bound to the Apple transaction, not the account.
  */
@@ -28,8 +29,9 @@ export async function syncSiteToSupabase(site: SiteRecord, userId: string): Prom
       site_data: data,
       deployed_url: site.deployedUrl,
       deployment_status: site.deployedUrl ? 'deployed' : 'draft',
-      custom_domain: null,
-      domain_order_id: null,
+      // custom_domain / domain_order_id are left out on purpose: the web
+      // dashboard attaches a bought domain to this row, and a sync must not
+      // wipe it (an insert leaves them null).
       updated_at: new Date().toISOString(),
     },
     { onConflict: 'id' },
@@ -72,6 +74,12 @@ function inputsFrom(d: WebsiteData): ShopInputs {
   return inputs;
 }
 
+export interface Restored {
+  site: SiteRecord;
+  /** false: the content is back, but the subscription has lapsed (publishing will need a new one). */
+  active: boolean;
+}
+
 /**
  * Restore purchases → this Apple ID's active AI Barber transaction →
  * /api/ios/site → the site bound to it, saved as the one local site.
@@ -82,9 +90,11 @@ function inputsFrom(d: WebsiteData): ShopInputs {
  *
  * Restoring the site already on this phone keeps its local edits. Any other
  * local draft is replaced by the paid site, keeping the draft id (the
- * `sites` row and photo folder key).
+ * `sites` row and photo folder key). A null deployedUrl is kept as null: the
+ * server only lacks it if the last deploy's stamp failed, and the live URL
+ * comes from Vercel's alias list, so it can't safely be rebuilt here.
  */
-export async function restore(deps: RestoreDeps): Promise<SiteRecord | null> {
+export async function restore(deps: RestoreDeps): Promise<Restored | null> {
   await deps.restorePurchases();
   const transactionId = await findTransactionId(deps.latestTransactionId);
   if (!transactionId) return null;
@@ -109,7 +119,7 @@ export async function restore(deps: RestoreDeps): Promise<SiteRecord | null> {
   // A pending publish is left alone: it is paid content for this same
   // subscription, and the launch retry still sends it to the bound site.
   await deps.store.saveSite(record);
-  return record;
+  return { site: record, active: bound.active !== false };
 }
 
 /**

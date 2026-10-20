@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { AccessibilityInfo, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
@@ -26,6 +26,10 @@ export default function SignUp() {
   const phoneInput = useRef<TextInput>(null);
   const emailInput = useRef<TextInput>(null);
   const passwordInput = useRef<TextInput>(null);
+
+  useEffect(() => {
+    if (error) AccessibilityInfo.announceForAccessibility(error);
+  }, [error]);
 
   const submit = async () => {
     if (busyRef.current) return;
@@ -139,12 +143,12 @@ export default function SignUp() {
         />
       </View>
 
-      <Text style={styles.switch}>
-        Already have an account?{' '}
-        <Text style={styles.switchLink} onPress={() => router.replace('/sign-in')} accessibilityRole="link">
-          Sign In
-        </Text>
-      </Text>
+      <View style={styles.switchRow}>
+        <Text style={styles.switch}>Already have an account?</Text>
+        <Pressable onPress={() => router.replace('/sign-in')} accessibilityRole="link" hitSlop={8}>
+          <Text style={[styles.switch, styles.switchLink]}>Sign In</Text>
+        </Pressable>
+      </View>
     </Page>
   );
 }
@@ -157,7 +161,8 @@ const styles = StyleSheet.create({
   noticeText: { flex: 1, fontFamily: fonts.bodyBold, fontSize: 12, lineHeight: 17, color: '#fca5a5' },
   form: { gap: 24 },
   error: { fontFamily: fonts.body, fontSize: 13, lineHeight: 19, color: '#f87171' },
-  switch: { fontFamily: fonts.body, fontSize: 13, color: colors.muted, textAlign: 'center', marginTop: 28 },
+  switchRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 4, marginTop: 28 },
+  switch: { fontFamily: fonts.body, fontSize: 13, color: colors.muted },
   switchLink: { color: colors.accent, fontFamily: fonts.bodySemi },
   title: { fontFamily: fonts.heading, fontSize: 22, color: colors.heading, textAlign: 'center', marginTop: 24 },
   body: { fontFamily: fonts.body, fontSize: 14, lineHeight: 21, color: colors.body, textAlign: 'center', marginTop: 12 },
