@@ -66,6 +66,7 @@ export default function SitePreview({ data, editable, onEditText, onEditImage }:
       onMessage={onMessage}
       javaScriptCanOpenWindowsAutomatically={false}
       setSupportMultipleWindows={false}
+      allowFileAccess={false}
       allowsLinkPreview={false}
       dataDetectorTypes="none"
       allowsBackForwardNavigationGestures={false}

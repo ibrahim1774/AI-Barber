@@ -15,7 +15,9 @@ import {
   markData,
   prepareEditableHtml,
   setPath,
+  sheetOnlyImagePaths,
   stripMarkers,
+  stripTracking,
   tagImageSlots,
 } from '@/lib/editable';
 
@@ -289,5 +291,134 @@ describe('EDITOR_JS', () => {
     expect(EDITOR_JS).toContain('String.fromCharCode(0x2063)'); // defensive marker sweep
     expect(EDITOR_JS).toMatch(/^[\x00-\x7f]*$/); // ASCII-only source
 
+  });
+});
+
+describe('image slots: tappable or sheet-only', () => {
+  const TEMPLATES = ['luxe', 'prime', 'euphoria'] as const;
+  const u = (k: string) => `https://cdn.example.com/${k}.jpg`;
+  // Variants that hit every image branch of the templates: filled, empty,
+  // staff with and without a photo, craft images, 8 gallery slots.
+  const variants = (d: WebsiteData): { name: string; data: WebsiteData }[] => [
+    { name: 'as-is', data: d },
+    {
+      name: 'rich',
+      data: {
+        ...d,
+        gallery: [0, 1, 2, 3, 4, 5, 6, 7].map((i) => u(`g${i}`)),
+        craftImages: [0, 1, 2, 3].map((i) => u(`c${i}`)),
+        staff: [
+          { name: 'Sam', role: 'Barber', photo: u('s0') },
+          { name: 'Ali', role: 'Barber', photo: '' },
+        ],
+      },
+    },
+    {
+      name: 'empty',
+      data: {
+        ...d,
+        hero: { ...d.hero, imageUrl: '' },
+        about: { ...d.about, imageUrl: '' },
+        gallery: ['', '', '', '', '', '', '', ''],
+        craftImages: ['', ''],
+        staff: [{ name: 'Sam', photo: '' }],
+      },
+    },
+  ];
+
+  test('every IMAGE_PATHS slot is a tap target or in sheetOnlyImagePaths, never both', async () => {
+    const problems: string[] = [];
+    let tappableCount = 0;
+    let sheetCount = 0;
+    for (const { name, data: base } of await fixtures()) {
+      for (const template of TEMPLATES) {
+        for (const v of variants({ ...base, template })) {
+          const d = v.data;
+          const html = buildPreviewHtml(d, true);
+          const sheet = sheetOnlyImagePaths(d);
+          for (const path of IMAGE_PATHS(d)) {
+            const tappable = html.includes(`data-edit-image="${path}"`);
+            const sheetOnly = sheet.includes(path);
+            if (tappable) tappableCount++;
+            if (sheetOnly) sheetCount++;
+            if (!tappable && !sheetOnly) problems.push(`${name}/${template}/${v.name}: ${path} neither tappable nor sheet-only`);
+            if (tappable && sheetOnly) problems.push(`${name}/${template}/${v.name}: ${path} tappable but listed sheet-only`);
+          }
+          for (const p of sheet) if (!IMAGE_PATHS(d).includes(p)) problems.push(`${template}: unknown sheet path ${p}`);
+        }
+      }
+    }
+    expect(problems).toEqual([]);
+    expect(tappableCount).toBeGreaterThan(80);
+    expect(sheetCount).toBeGreaterThan(80);
+  });
+
+  test('known non-tappable slots are sheet-only', async () => {
+    const base = (await fixtures())[0].data;
+    const rich = variants(base)[1].data;
+    expect(sheetOnlyImagePaths({ ...rich, template: 'luxe' })).toEqual(
+      expect.arrayContaining(['gallery.0', 'gallery.1', 'craftImages.0', 'staff.1.photo']),
+    );
+    expect(sheetOnlyImagePaths({ ...rich, template: 'luxe' })).not.toContain('staff.0.photo');
+    expect(sheetOnlyImagePaths({ ...rich, template: 'prime' })).toEqual(
+      expect.arrayContaining(['gallery.6', 'gallery.7', 'craftImages.3', 'staff.0.photo']),
+    );
+    const empty = variants(base)[2].data;
+    expect(sheetOnlyImagePaths({ ...empty, template: 'prime' })).toContain('hero.imageUrl');
+    expect(sheetOnlyImagePaths({ ...empty, template: 'luxe' })).not.toContain('hero.imageUrl'); // luxe always renders the hero <img>
+  });
+});
+
+describe('stripTracking (preview only)', () => {
+  test('removes analytics tags from the preview, keeps Tailwind, leaves published output alone', async () => {
+    const base = (await fixtures())[0].data;
+    for (const template of ['luxe', 'prime', 'euphoria'] as const) {
+      const d = { ...base, template };
+      const published = renderSite(forRender(d));
+      expect(published).toContain('clarity.ms');
+      for (const editable of [true, false]) {
+        const html = buildPreviewHtml(d, editable);
+        expect(html).not.toContain('clarity.ms');
+        if (published.includes('cdn.tailwindcss.com')) expect(html).toContain('<script src="https://cdn.tailwindcss.com"></script>');
+        // other inline scripts survive (luxe header scroll handler)
+        if (template === 'luxe') expect(html).toContain("window.addEventListener('scroll'");
+      }
+    }
+    expect(renderSite(forRender({ ...base, template: 'luxe' }))).toContain('cdn.tailwindcss.com');
+  });
+
+  test('strips gtag and fbq snippets, inline or by src', () => {
+    const html = [
+      '<head>',
+      '<script async src="https://www.googletagmanager.com/gtag/js?id=G-1"></script>',
+      "<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());</script>",
+      "<script>!function(f,b,e,v,n,t,s){}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');fbq('init','1');</script>",
+      "<script type=\"text/javascript\">ttq.load('X')</script>",
+      '<script src="https://cdn.tailwindcss.com"></script>',
+      '<script>console.log("keep")</script>',
+      '</head>',
+    ].join('\n');
+    const out = stripTracking(html);
+    for (const gone of ['googletagmanager', 'gtag(', 'fbq(', 'connect.facebook.net', 'ttq.']) expect(out).not.toContain(gone);
+    expect(out).toContain('<script src="https://cdn.tailwindcss.com"></script>');
+    expect(out).toContain('<script>console.log("keep")</script>');
+  });
+});
+
+describe('marker edge cases', () => {
+  test('a ">" in shopName does not put an edit span inside the meta description attribute', async () => {
+    const luxe = (await fixtures())[0].data;
+    const html = editableDoc({ ...luxe, template: 'luxe', shopName: 'Fresh > Cuts' });
+    const start = html.indexOf('<meta name="description"');
+    const meta = html.slice(start, html.indexOf('\n', start));
+    expect(meta).not.toContain('data-edit');
+    expect(meta).toContain('Brooklyn, NY');
+  });
+
+  test('an upper-cased marked value strips to no stray id letters', async () => {
+    const luxe = (await fixtures())[0].data;
+    const { marked } = markData(luxe);
+    expect(stripMarkers(marked.hero.tagline.toUpperCase())).toBe(luxe.hero.tagline.toUpperCase());
+    expect(stripMarkers(marked.about.description[0].toUpperCase())).toBe(luxe.about.description[0].toUpperCase());
   });
 });

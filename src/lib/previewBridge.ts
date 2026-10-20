@@ -10,9 +10,10 @@ export type PreviewMessage =
 
 /**
  * Validate a raw WebView message. The page runs third-party script (Tailwind
- * CDN, analytics tag, shop-supplied text in luxe is not escaped), so anything
- * that is not exactly one of our messages, for a path this site actually has,
- * is ignored (null).
+ * CDN; shop-supplied text in luxe is not escaped). Analytics tags are removed
+ * from the preview by stripTracking() in buildPreviewHtml, but anything that
+ * is not exactly one of our messages, for a path this site actually has, is
+ * still ignored (null).
  */
 export function parsePreviewMessage(raw: unknown, data: WebsiteData): PreviewMessage | null {
   if (typeof raw !== 'string' || raw.length > 2000) return null;

@@ -27,7 +27,7 @@ export const EDITOR_JS = String.raw`(function () {
 
   // U+2063 marker, built at runtime so this source stays plain ASCII.
   var M = String.fromCharCode(0x2063);
-  var MARK = new RegExp(M + '(?:[a-z]+|/)' + M + '|' + M, 'g');
+  var MARK = new RegExp(M + '(?:[a-zA-Z]+|/)' + M + '|' + M, 'g');
   function clean(s) { return s.indexOf(M) < 0 ? s : s.replace(MARK, ''); }
   function sweep() {
     try {

@@ -84,6 +84,50 @@ export const IMAGE_PATHS = (d: WebsiteData): string[] => [
   ...(d.staff || []).map((_, i) => `staff.${i}.photo`),
 ];
 
+const filled = (u: unknown): boolean => typeof u === 'string' && u !== '';
+
+/**
+ * Whether the template for `d` renders image slot `path` as a tap target
+ * (an <img src="{{slot}}"> that tagImageSlots tags). Mirrors the templates:
+ *  - luxe: hero <img> always; about only when filled; gallery only slots 2..7
+ *    when filled (0/1 seed hero/about); staff only with a photo (otherwise a
+ *    placeholder <div>); craftImages never (the Craft section was removed).
+ *  - prime: hero/about only when filled; gallery slots 0..5 when filled
+ *    (.slice(0, 6)); no staff, no craft.
+ *  - euphoria: hero/about only when filled; every filled gallery slot; no
+ *    staff, no craft.
+ */
+function imageSlotTappable(d: WebsiteData, path: string): boolean {
+  const template = d.template || 'luxe';
+  const [slot, idx] = path.split('.');
+  const i = Number(idx);
+  switch (slot) {
+    case 'hero':
+      return template === 'luxe' || filled(d.hero?.imageUrl);
+    case 'about':
+      return filled(d.about?.imageUrl);
+    case 'gallery':
+      if (!filled(d.gallery?.[i])) return false;
+      if (template === 'luxe') return i >= 2 && i <= 7;
+      if (template === 'prime') return i < 6;
+      return true;
+    case 'staff':
+      return template === 'luxe' && filled(d.staff?.[i]?.photo);
+    default:
+      return false; // craftImages: no template renders {{craftN}}
+  }
+}
+
+/**
+ * Image slots in IMAGE_PATHS(d) that the preview of `d` has no tap target for
+ * (template- and data-dependent, like SHEET_ONLY_PATHS for text). Task 7's
+ * "All fields" sheet uses this list so every slot stays editable. Verified
+ * against the real render by __tests__/editable.test.ts.
+ */
+export function sheetOnlyImagePaths(d: WebsiteData): string[] {
+  return IMAGE_PATHS(d).filter((p) => !imageSlotTappable(d, p));
+}
+
 // ---------------------------------------------------------------------------
 // Paths
 // ---------------------------------------------------------------------------
@@ -155,8 +199,8 @@ export function markData(d: WebsiteData): { marked: WebsiteData; ids: Record<str
   return { marked, ids };
 }
 
-const RAW_MARKER = /\u2063(?:[a-z]+|\/)\u2063/g;
-const ENC_MARKER = /%E2%81%A3(?:[a-z]+|%2F)%E2%81%A3/gi;
+const RAW_MARKER = /\u2063(?:[a-zA-Z]+|\/)\u2063/g; // case-insensitive: a template may upper-case a value
+const ENC_MARKER = /%E2%81%A3(?:[a-zA-Z]+|%2F)%E2%81%A3/gi;
 
 export function stripMarkers(s: string): string {
   return s.replace(RAW_MARKER, '').replace(/\u2063/g, '');
@@ -166,8 +210,11 @@ function stripAllMarkers(s: string): string {
   return stripMarkers(s.replace(ENC_MARKER, '').replace(new RegExp(ENC, 'gi'), ''));
 }
 
-// Non-text regions: comments, raw-text elements, and tags (attributes).
-const NON_TEXT = /<!--[\s\S]*?-->|<(script|style|title|textarea)\b[^>]*>[\s\S]*?<\/\1\s*>|<[^>]*>/gi;
+// Non-text regions: comments, raw-text elements, and tags (attributes). A tag
+// may contain '>' inside a quoted attribute (luxe doesn't escape shopName in
+// <meta content>); the plain <[^>]*> form is the fallback for unbalanced quotes.
+const NON_TEXT =
+  /<!--[\s\S]*?-->|<(script|style|title|textarea)\b[^>]*>[\s\S]*?<\/\1\s*>|<(?:[^>"']|"[^"]*"|'[^']*')*>|<[^>]*>/gi;
 const TEXT_RUN = /\u2063([a-z]+)\u2063([^\u2063<]*)\u2063\/\u2063/g;
 
 /**
@@ -214,9 +261,22 @@ export function tagImageSlots(html: string): string {
   });
 }
 
+const TRACKING = /clarity\.ms|googletagmanager|google-analytics|gtag\(|connect\.facebook\.net|fbq\(|analytics\.tiktok\.com|ttq\./;
+
+/**
+ * PREVIEW ONLY: drop third-party analytics <script> blocks (inline or src) so
+ * in-app previews don't record sessions on the live site's analytics project
+ * or send unpublished draft text to a third party. Every other script (e.g.
+ * cdn.tailwindcss.com, the luxe header scroll handler) is kept. Never applied
+ * to published output: renderSite/withImages are unchanged.
+ */
+export function stripTracking(html: string): string {
+  return html.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, (block) => (TRACKING.test(block) ? '' : block));
+}
+
 /** The exact document SitePreview loads. */
 export function buildPreviewHtml(data: WebsiteData, editable: boolean): string {
-  if (!editable) return withImages(renderSite(forRender(data)), data);
+  if (!editable) return withImages(stripTracking(renderSite(forRender(data))), data);
   const { marked, ids } = markData(data);
-  return withImages(tagImageSlots(prepareEditableHtml(renderSite(forRender(marked)), ids)), data);
+  return withImages(tagImageSlots(prepareEditableHtml(stripTracking(renderSite(forRender(marked))), ids)), data);
 }
