@@ -1,10 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
-import type { ShopInputs, WebsiteData } from '@/web/types';
 import { colors, fonts } from '@/constants/theme';
-import { startDraft } from '@/lib/flow';
 
 export type Step = { pct: number; label: string };
 
@@ -29,66 +26,6 @@ export const LINK_STEPS: Step[] = [
   { pct: 95, label: 'Assembling your website…' },
 ];
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-/**
- * The web's runScrape staging: the bar eases toward the scrape ceiling (92%)
- * while the request runs, snaps to 100% when the site is ready, then the
- * draft is saved and the app moves on. A slow hint shows after 15 s. A run
- * that resolves after the screen was left (swipe back) is ignored.
- */
-export function useImportRun() {
-  const [busy, setBusy] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [slowHint, setSlowHint] = useState(false);
-  const capRef = useRef(0);
-  const runIdRef = useRef(0);
-
-  useEffect(() => () => { runIdRef.current += 1; }, []);
-
-  useEffect(() => {
-    if (!busy) { setProgress(0); capRef.current = 0; return; }
-    const timer = setInterval(() => {
-      setProgress((p) => {
-        const cap = capRef.current;
-        if (p >= cap) return p;
-        return Math.min(cap, p + Math.max(0.015, (cap - p) * 0.02));
-      });
-    }, 120);
-    return () => clearInterval(timer);
-  }, [busy]);
-
-  const run = async (
-    work: () => Promise<{ inputs: ShopInputs; site: WebsiteData }>,
-    onFail: (message: string) => void,
-  ) => {
-    const runId = ++runIdRef.current;
-    setBusy(true);
-    capRef.current = 92;
-    setSlowHint(false);
-    const slowTimer = setTimeout(() => { if (runId === runIdRef.current) setSlowHint(true); }, 15_000);
-    try {
-      const result = await work();
-      if (runId !== runIdRef.current) return;
-      capRef.current = 100;
-      setProgress(100);
-      await sleep(150);
-      if (runId !== runIdRef.current) return;
-      await startDraft(result);
-      router.replace('/generating');
-    } catch (err: any) {
-      if (runId !== runIdRef.current) return;
-      onFail(err?.message || 'Something went wrong — try again.');
-      setBusy(false);
-    } finally {
-      clearTimeout(slowTimer);
-      if (runId === runIdRef.current) setSlowHint(false);
-    }
-  };
-
-  return { busy, progress, slowHint, run };
-}
-
 /** Full-screen import progress (GbpImportPage's `busy` overlay). */
 export function ImportProgress({ steps, progress, slowHint }: { steps: Step[]; progress: number; slowHint: boolean }) {
   const insets = useSafeAreaInsets();
@@ -98,7 +35,7 @@ export function ImportProgress({ steps, progress, slowHint }: { steps: Step[]; p
   if (progress >= 100) stepIdx = steps.length - 1;
 
   return (
-    <View style={[StyleSheet.absoluteFill, styles.root, { paddingTop: insets.top }]}>
+    <View accessibilityViewIsModal style={[StyleSheet.absoluteFill, styles.root, { paddingTop: insets.top }]}>
       <View style={styles.track}>
         <View style={[styles.fill, { width: `${progress}%` }]} />
       </View>

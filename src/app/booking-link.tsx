@@ -8,7 +8,8 @@ import { Button } from '@/components/Button';
 import { Field } from '@/components/Field';
 import { Em, Text } from '@/components/Text';
 import { Card, ErrorNote, StageChips, SwatchRow, WorksWith } from '@/components/Importer';
-import { ImportProgress, LINK_STEPS, useImportRun } from '@/components/ImportProgress';
+import { ImportProgress, LINK_STEPS } from '@/components/ImportProgress';
+import { useImportRun } from '@/lib/useImportRun';
 import { checkBookingLink } from '@/lib/importer';
 import { importBooking } from '@/lib/flow';
 
@@ -32,6 +33,7 @@ export default function BookingLink() {
   const { busy, progress, slowHint, run } = useImportRun();
 
   const submit = () => {
+    if (busy) return;
     const checked = checkBookingLink(url.trim());
     if (!checked.ok) { setError(checked.message); return; }
     setError(null);

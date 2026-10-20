@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { BRAND_SWATCHES } from '@/web/lib/brandSwatches';
-import { colors, fonts } from '@/constants/theme';
+import { colors, fonts, swatchLabel } from '@/constants/theme';
 
 // Shared pieces of the GbpImportPage.tsx layout.
 
@@ -35,7 +35,7 @@ export function SwatchRow({ value, onChange }: { value: string; onChange(c: stri
             <Pressable
               key={c}
               accessibilityRole="button"
-              accessibilityLabel={`Use color ${c}`}
+              accessibilityLabel={swatchLabel(c)}
               accessibilityState={{ selected: on }}
               hitSlop={6}
               onPress={() => onChange(c)}

@@ -47,6 +47,17 @@ export const colors = {
   grey: '#888888',
 } as const;
 
+// Spoken names for BRAND_SWATCHES (the web labels them by hex only).
+export const swatchNames: Record<string, string> = {
+  '#f4a100': 'Gold',
+  '#ffffff': 'White',
+  '#dc2626': 'Red',
+  '#22c55e': 'Green',
+  '#3b82f6': 'Blue',
+  '#a855f7': 'Purple',
+};
+export const swatchLabel = (hex: string) => `Use color ${swatchNames[hex.toLowerCase()] ?? hex}`;
+
 // Montserrat for headings, Manrope for body text. The web importer's
 // Instrument Serif headlines are set in Montserrat (app-wide font rule).
 export const fonts = {

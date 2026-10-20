@@ -1,10 +1,12 @@
-import { useRef, useState } from 'react';
-import { ImageBackground, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import {
+  ImageBackground, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { BRAND_SWATCHES, DEFAULT_SWATCH } from '@/web/lib/brandSwatches';
-import { colors, fonts } from '@/constants/theme';
+import { colors, fonts, swatchLabel } from '@/constants/theme';
 import { Button } from '@/components/Button';
 import { Field } from '@/components/Field';
 import { ScissorsIcon } from '@/components/Icons';
@@ -23,16 +25,27 @@ export default function Manual() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const input = useRef<TextInput>(null);
+  // The keyboard's Go key bypasses the disabled button, so guard here too.
+  const busyRef = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => () => { mounted.current = false; }, []);
 
   const submit = async () => {
+    if (busyRef.current) return;
     if (!shopName.trim()) { input.current?.focus(); return; }
+    busyRef.current = true;
     setBusy(true);
     setError(null);
     try {
-      await startDraft(await manualSite(shopName, colorTheme));
+      const result = await manualSite(shopName, colorTheme);
+      if (!mounted.current) return;
+      await startDraft(result);
+      if (!mounted.current) return;
       router.replace('/generating');
     } catch (e: any) {
+      if (!mounted.current) return;
       setError(e?.message || 'An unexpected error occurred. Please try again.');
+      busyRef.current = false;
       setBusy(false);
     }
   };
@@ -40,66 +53,73 @@ export default function Manual() {
   return (
     <ImageBackground source={{ uri: BG }} resizeMode="cover" style={styles.root}>
       <Vignette />
-      <View style={[styles.top, { paddingTop: insets.top + 16 }]}>
-        <View style={styles.logo}>
-          <ScissorsIcon size={24} color={colors.accent} />
-          <Text style={styles.logoText}>
-            AI<Text style={{ color: colors.accent }}>Barber</Text>
-          </Text>
-        </View>
-        <Pressable accessibilityRole="button" onPress={() => router.push('/sign-in')} style={styles.signIn}>
-          <Text style={styles.signInText}>Sign In</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.center}>
-        <Text style={styles.h1}>
-          Generate Custom Barbershop Website{'\n'}
-          <Text style={{ color: colors.accent }}>in Seconds</Text>
-        </Text>
-
-        <View style={styles.form}>
-          <Field
-            ref={input}
-            tone="dark"
-            label="Barbershop Name"
-            placeholder="The Gentlemen's Lounge"
-            value={shopName}
-            onChangeText={setShopName}
-            returnKeyType="go"
-            onSubmitEditing={() => void submit()}
-          />
-
-          <View style={styles.colours}>
-            <Text style={styles.coloursLabel}>
-              Choose Your Colors <Text style={styles.coloursHint}>(pick a theme)</Text>
-            </Text>
-            <View style={styles.swatches}>
-              {BRAND_SWATCHES.map((c) => {
-                const on = colorTheme.toLowerCase() === c.toLowerCase();
-                return (
-                  <Pressable
-                    key={c}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Use color ${c}`}
-                    accessibilityState={{ selected: on }}
-                    onPress={() => setColorTheme(c)}
-                    style={[styles.ring, on && styles.ringOn]}
-                  >
-                    <View style={[styles.swatch, { backgroundColor: c }, !on && styles.swatchEdge]} />
-                  </Pressable>
-                );
-              })}
+      <KeyboardAvoidingView behavior="padding" style={styles.flex}>
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom }]}
+        >
+          <View style={[styles.top, { paddingTop: insets.top + 16 }]}>
+            <View style={styles.logo}>
+              <ScissorsIcon size={24} color={colors.accent} />
+              <Text style={styles.logoText}>
+                AI<Text style={{ color: colors.accent }}>Barber</Text>
+              </Text>
             </View>
+            <Pressable accessibilityRole="button" onPress={() => router.push('/sign-in')} style={styles.signIn}>
+              <Text style={styles.signInText}>Sign In</Text>
+            </Pressable>
           </View>
 
-          <Button variant="solid" title="Generate My Barbershop Website" loading={busy} onPress={() => void submit()} />
-          {!!error && <Text style={styles.error}>{error}</Text>}
-          <Pressable hitSlop={8} onPress={() => router.back()} style={styles.back}>
-            <Text style={styles.backText}>← Back</Text>
-          </Pressable>
-        </View>
-      </View>
+          <View style={styles.center}>
+            <Text style={styles.h1}>
+              Generate Custom Barbershop Website{'\n'}
+              <Text style={{ color: colors.accent }}>in Seconds</Text>
+            </Text>
+
+            <View style={styles.form}>
+              <Field
+                ref={input}
+                tone="dark"
+                label="Barbershop Name"
+                placeholder="The Gentlemen's Lounge"
+                value={shopName}
+                onChangeText={setShopName}
+                returnKeyType="go"
+                onSubmitEditing={() => void submit()}
+              />
+
+              <View style={styles.colours}>
+                <Text style={styles.coloursLabel}>
+                  Choose Your Colors <Text style={styles.coloursHint}>(pick a theme)</Text>
+                </Text>
+                <View style={styles.swatches}>
+                  {BRAND_SWATCHES.map((c) => {
+                    const on = colorTheme.toLowerCase() === c.toLowerCase();
+                    return (
+                      <Pressable
+                        key={c}
+                        accessibilityRole="button"
+                        accessibilityLabel={swatchLabel(c)}
+                        accessibilityState={{ selected: on }}
+                        onPress={() => setColorTheme(c)}
+                        style={[styles.ring, on && styles.ringOn]}
+                      >
+                        <View style={[styles.swatch, { backgroundColor: c }, !on && styles.swatchEdge]} />
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <Button variant="solid" title="Generate My Barbershop Website" loading={busy} onPress={() => void submit()} />
+              {!!error && <Text style={styles.error}>{error}</Text>}
+              <Pressable accessibilityRole="button" hitSlop={8} onPress={() => router.back()} style={styles.back}>
+                <Text style={styles.backText}>← Back</Text>
+              </Pressable>
+            </View>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </ImageBackground>
   );
 }
@@ -122,6 +142,8 @@ function Vignette() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
+  flex: { flex: 1 },
+  scroll: { flexGrow: 1 },
   top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24 },
   logo: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   logoText: { fontFamily: fonts.headingBlack, fontSize: 12, letterSpacing: 2, textTransform: 'uppercase', color: '#fff' },
@@ -130,7 +152,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16, paddingVertical: 6,
   },
   signInText: { fontFamily: fonts.headingBlack, fontSize: 14, letterSpacing: 2, textTransform: 'uppercase', color: '#fff' },
-  center: { flex: 1, justifyContent: 'center', paddingHorizontal: 20, paddingBottom: 48 },
+  center: { flex: 1, justifyContent: 'center', paddingHorizontal: 20, paddingTop: 32, paddingBottom: 48 },
   // text-2xl font-montserrat font-black uppercase tracking-[1px] leading-[1.15]
   h1: {
     fontFamily: fonts.headingBlack, fontSize: 24, lineHeight: 28, letterSpacing: 1, textTransform: 'uppercase',

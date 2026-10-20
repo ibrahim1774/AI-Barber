@@ -9,7 +9,8 @@ import { Field } from '@/components/Field';
 import { ArrowRight } from '@/components/Icons';
 import { Em, Text } from '@/components/Text';
 import { Card, ErrorNote, StageChips, SwatchRow, WorksWith } from '@/components/Importer';
-import { ImportProgress, LISTING_STEPS, useImportRun } from '@/components/ImportProgress';
+import { ImportProgress, LISTING_STEPS } from '@/components/ImportProgress';
+import { useImportRun } from '@/lib/useImportRun';
 import { api, type Candidate } from '@/lib/api';
 import { importListing } from '@/lib/flow';
 
@@ -43,26 +44,40 @@ export default function FindListing() {
   const [searchedNear, setSearchedNear] = useState<string | null>(null);
   const [findBusy, setFindBusy] = useState(false);
   const sugTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Bumped on every keystroke, pick and Find: an autocomplete answer for an
+  // older query is dropped instead of re-opening the list.
+  const reqIdRef = useRef(0);
+  const findBusyRef = useRef(false);
   const { busy, progress, slowHint, run } = useImportRun();
 
-  useEffect(() => () => { if (sugTimer.current) clearTimeout(sugTimer.current); }, []);
+  const cancelSuggestions = () => {
+    reqIdRef.current += 1;
+    if (sugTimer.current) clearTimeout(sugTimer.current);
+    sugTimer.current = null;
+    setSuggestions(null);
+  };
+
+  useEffect(() => () => { reqIdRef.current += 1; if (sugTimer.current) clearTimeout(sugTimer.current); }, []);
 
   // Suggestions appear as the barber types — debounced 350 ms, min 3 chars.
   const handleNameChange = (v: string) => {
     setBizName(v);
     setCandidates(null);
+    reqIdRef.current += 1;
     if (sugTimer.current) clearTimeout(sugTimer.current);
     const q = v.trim();
     if (q.length < 3) { setSuggestions(null); return; }
+    const reqId = reqIdRef.current;
     sugTimer.current = setTimeout(async () => {
       try {
         const d = await api.placesAutocomplete(q);
+        if (reqId !== reqIdRef.current) return;
         setSuggestHint(typeof d.error === 'string' && d.error ? d.error : null);
         const sugs = toSuggestions(Array.isArray(d.suggestions) ? d.suggestions : []);
         setSuggestions(sugs.length ? sugs : null);
       } catch {
         // Suggestions simply never appear; Find my business still works.
-        setSuggestions(null);
+        if (reqId === reqIdRef.current) setSuggestions(null);
       }
     }, 350);
   };
@@ -72,7 +87,8 @@ export default function FindListing() {
 
   // Import by exact NAME + ADDRESS (newer 'Eg…' place ids don't resolve).
   const handleSuggestionPick = (sg: Suggestion) => {
-    setSuggestions(null);
+    if (busy) return;
+    cancelSuggestions();
     const q = [sg.main, sg.secondary].filter(Boolean).join(', ');
     setBizName(q);
     runImport({ query: q });
@@ -82,9 +98,9 @@ export default function FindListing() {
   // top match. No device location is sent; the server falls back to IP city.
   const handleFind = async () => {
     const q = bizName.trim();
-    if (!q) return;
-    if (sugTimer.current) clearTimeout(sugTimer.current);
-    setSuggestions(null);
+    if (!q || findBusyRef.current || busy) return;
+    findBusyRef.current = true;
+    cancelSuggestions();
     setFindBusy(true);
     setError(null);
     setCandidates(null);
@@ -101,11 +117,13 @@ export default function FindListing() {
     } catch (e: any) {
       setError(e?.message || 'Search failed — try again.');
     } finally {
+      findBusyRef.current = false;
       setFindBusy(false);
     }
   };
 
   const handlePick = (placeId: string) => {
+    if (busy) return;
     setCandidates(null);
     runImport({ placeId });
   };
@@ -181,7 +199,7 @@ export default function FindListing() {
                 />
               ))}
             </View>
-            <Pressable hitSlop={8} onPress={() => { setCandidates(null); setError(null); }}>
+            <Pressable accessibilityRole="button" hitSlop={8} onPress={() => { setCandidates(null); setError(null); }}>
               <RNText style={styles.none}>None of these? Add your city and search again</RNText>
             </Pressable>
           </View>
@@ -189,7 +207,14 @@ export default function FindListing() {
 
         <View style={styles.actions}>
           <SwatchRow value={brandColor} onChange={setBrandColor} />
-          <Button size="sm" title="Build my website" arrow loading={busy} onPress={() => void handleFind()} />
+          <Button
+            size="sm"
+            title="Build my website"
+            arrow
+            loading={busy}
+            disabled={findBusy}
+            onPress={() => void handleFind()}
+          />
         </View>
         <ErrorNote message={error} />
       </Card>

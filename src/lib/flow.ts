@@ -1,6 +1,6 @@
 import { randomUUID } from 'expo-crypto';
 import type { ShopInputs, WebsiteData } from '@/web/types';
-import { saveSite, type SiteRecord } from '@/lib/siteStore';
+import { loadSite, saveSite, type SiteRecord } from '@/lib/siteStore';
 import { track } from '@/lib/analytics';
 import { api } from '@/lib/api';
 import { toShopSite } from '@/lib/importer';
@@ -8,19 +8,21 @@ import { toShopSite } from '@/lib/importer';
 type ShopSite = { inputs: ShopInputs; site: WebsiteData };
 
 /**
- * A site was generated (import or manual): store it as the one local draft
- * and fire the lead-equivalent event. Mirrors the web's handleGenerate, which
- * saves a fresh 'draft' SiteInstance with a new id before opening the editor.
+ * A site was generated (import or manual): store it as the one local site and
+ * fire the lead-equivalent event. One subscription is one site, so an existing
+ * record keeps its draftId, slug, deployedUrl and transactionId — the new
+ * content republishes to the same site. A first site gets a new draftId.
  */
 export async function startDraft(result: ShopSite): Promise<SiteRecord> {
+  const prev = await loadSite();
   const record: SiteRecord = {
-    draftId: randomUUID(),
+    draftId: prev?.draftId ?? randomUUID(),
     inputs: result.inputs,
     data: result.site,
     updatedAt: Date.now(),
-    slug: null,
-    deployedUrl: null,
-    transactionId: null,
+    slug: prev?.slug ?? null,
+    deployedUrl: prev?.deployedUrl ?? null,
+    transactionId: prev?.transactionId ?? null,
   };
   await saveSite(record);
   track('site_generated', { importedFrom: result.inputs.importedFrom ?? 'manual' });
