@@ -1,1 +1,6 @@
 .superpowers/
+node_modules
+.env.local
+*.p8
+ios/
+.expo/
