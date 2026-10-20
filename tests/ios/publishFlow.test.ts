@@ -223,6 +223,16 @@ describe('runIosPublish', () => {
     expect(repo.upsertVerified).not.toHaveBeenCalled();
   });
 
+  it('billing-grace subscription (status 4, expiry passed) can still publish', async () => {
+    const { deps } = fakes({ verified: tx({ status: 4, expiresAt: NOW - 1000 }) });
+    expect((await runIosPublish(input(), deps)).status).toBe(200);
+  });
+
+  it('billing-retry subscription (status 3) gets 402', async () => {
+    const { deps } = fakes({ verified: tx({ status: 3, expiresAt: NOW - 1000 }) });
+    expect(await runIosPublish(input(), deps)).toEqual({ status: 402, body: { error: 'subscription-inactive' } });
+  });
+
   it('revoked subscription cannot publish', async () => {
     const { deps } = fakes({ verified: tx({ revoked: true }) });
     const r = await runIosPublish(input(), deps);

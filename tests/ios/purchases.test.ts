@@ -3,11 +3,15 @@ import { supabasePurchases } from '../../lib/ios/purchases.js';
 
 type Call = { method: string; args: unknown[] };
 
-// Minimal fake: every chain method records itself and returns the chain; awaiting it yields `result`.
-function fakeClient(result: { data: unknown; error: unknown } = { data: null, error: null }) {
+type Result = { data: unknown; error: unknown };
+
+// Minimal fake: every chain method records itself and returns the chain; awaiting it yields
+// the next `queued` result, then `result` for every later await.
+function fakeClient(result: Result = { data: null, error: null }, ...queued: Result[]) {
   const calls: Call[] = [];
   const chain: any = {
-    then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) => Promise.resolve(result).then(res, rej),
+    then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) =>
+      Promise.resolve(queued.length ? queued.shift() : result).then(res, rej),
   };
   for (const m of ['select', 'insert', 'update', 'upsert', 'eq', 'is', 'not', 'order', 'limit', 'maybeSingle', 'single']) {
     chain[m] = (...args: unknown[]) => { calls.push({ method: m, args }); return chain; };
@@ -62,6 +66,54 @@ describe('supabasePurchases', () => {
     const payload = find(calls, 'upsert')!.args[0] as Record<string, unknown>;
     expect(payload.expires_at).toBeNull();
     expect(typeof payload.revoked_at).toBe('string');
+  });
+
+  describe('upsertVerified never moves expires_at backwards', () => {
+    const tx = (expiresAt: number | null) => ({
+      originalTransactionId: 'o1', transactionId: 't1', productId: 'p', environment: 'Production' as const, expiresAt, revoked: false,
+    });
+    const STORED = 2_000_000_000_000;
+
+    it('reads the stored row for this purchase first', async () => {
+      const { client, calls } = fakeClient({ data: {}, error: null }, { data: null, error: null });
+      await supabasePurchases(client).upsertVerified(tx(STORED));
+      expect(calls[1]).toEqual({ method: 'select', args: ['expires_at'] });
+      expect(find(calls, 'eq')!.args).toEqual(['original_transaction_id', 'o1']);
+      expect(calls.findIndex((c) => c.method === 'select')).toBeLessThan(calls.findIndex((c) => c.method === 'upsert'));
+    });
+
+    it('older incoming expiry is not written', async () => {
+      const stored = { data: { expires_at: new Date(STORED).toISOString() }, error: null };
+      const { client, calls } = fakeClient({ data: {}, error: null }, stored);
+      await supabasePurchases(client).upsertVerified(tx(STORED - 86_400_000));
+      expect(Object.keys(find(calls, 'upsert')!.args[0] as object)).not.toContain('expires_at');
+    });
+
+    it('newer incoming expiry is written', async () => {
+      const stored = { data: { expires_at: new Date(STORED).toISOString() }, error: null };
+      const { client, calls } = fakeClient({ data: {}, error: null }, stored);
+      await supabasePurchases(client).upsertVerified(tx(STORED + 86_400_000));
+      expect((find(calls, 'upsert')!.args[0] as Record<string, unknown>).expires_at).toBe(new Date(STORED + 86_400_000).toISOString());
+    });
+
+    it('null incoming expiry does not wipe a stored one', async () => {
+      const stored = { data: { expires_at: new Date(STORED).toISOString() }, error: null };
+      const { client, calls } = fakeClient({ data: {}, error: null }, stored);
+      await supabasePurchases(client).upsertVerified(tx(null));
+      expect(Object.keys(find(calls, 'upsert')!.args[0] as object)).not.toContain('expires_at');
+    });
+
+    it('no stored row: expiry written', async () => {
+      const { client, calls } = fakeClient({ data: {}, error: null }, { data: null, error: null });
+      await supabasePurchases(client).upsertVerified(tx(STORED));
+      expect((find(calls, 'upsert')!.args[0] as Record<string, unknown>).expires_at).toBe(new Date(STORED).toISOString());
+    });
+
+    it('read error throws, nothing written', async () => {
+      const { client, calls } = fakeClient({ data: {}, error: null }, { data: null, error: { message: 'db down' } });
+      await expect(supabasePurchases(client).upsertVerified(tx(STORED))).rejects.toThrow(/upsertVerified/);
+      expect(find(calls, 'upsert')).toBeUndefined();
+    });
   });
 
   it('slugTaken reflects whether a row exists', async () => {

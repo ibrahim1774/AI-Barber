@@ -43,13 +43,25 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
     async upsertVerified(tx) {
       // Never sends site_slug / user_id / published_at. revoked_at is only set when revoked
       // (an existing revoked_at is never cleared here).
+      //
+      // expires_at never moves backwards (nor is wiped by a null): read the stored
+      // value, write ours only if it is newer. Read-then-write, not atomic: only this
+      // server writes the row, and the race (a concurrent verify or notification
+      // landing between read and write) can at worst leave a value Apple reported
+      // moments earlier; the next verify or notification corrects it. Benign.
+      const { data: cur, error: readErr } = await db().from(TABLE).select('expires_at')
+        .eq('original_transaction_id', tx.originalTransactionId).maybeSingle();
+      if (readErr) fail('upsertVerified', readErr);
+      const stored = cur?.expires_at ? Date.parse(cur.expires_at as string) : NaN;
+      const keepStored = Number.isFinite(stored) && (tx.expiresAt == null || tx.expiresAt < stored);
+
       const payload: Record<string, unknown> = {
         original_transaction_id: tx.originalTransactionId,
         product_id: tx.productId,
         environment: tx.environment,
-        expires_at: iso(tx.expiresAt),
         verified_at: new Date().toISOString(),
       };
+      if (!keepStored) payload.expires_at = iso(tx.expiresAt);
       if (tx.revoked) payload.revoked_at = new Date().toISOString();
       const { data, error } = await db().from(TABLE).upsert(payload, { onConflict: 'original_transaction_id' }).select().single();
       if (error) fail('upsertVerified', error);

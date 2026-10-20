@@ -9,8 +9,11 @@ export interface VerifiedTx {
   transactionId: string;
   productId: string;
   environment: IosEnv;
+  /** From the purchase's LATEST transaction (Get All Subscription Statuses), not the id the app sent. */
   expiresAt: number | null;
   revoked: boolean;
+  /** Apple subscription status: 1 Active, 2 Expired, 3 Billing retry, 4 Billing grace period, 5 Revoked. */
+  status?: number;
 }
 
 export type VerifyError = 'not-found' | 'bad-bundle' | 'bad-product' | 'apple-unavailable';
@@ -27,8 +30,13 @@ export const IOS_PRODUCT_IDS: readonly string[] = [
   'com.ibrahim1774.aibarber.hosting.yearly',
 ];
 
+const ACTIVE_STATUSES = new Set([1, 4]); // Active, Billing grace period
+
 export function isActive(tx: VerifiedTx, now: number = Date.now()): boolean {
-  return !tx.revoked && (tx.expiresAt === null || tx.expiresAt > now);
+  if (tx.revoked) return false;
+  // Apple's status is authoritative when we have it (grace period is active past expiresDate).
+  if (tx.status != null) return ACTIVE_STATUSES.has(tx.status);
+  return tx.expiresAt === null || tx.expiresAt > now;
 }
 
 export interface AppleLookup {
@@ -41,9 +49,21 @@ export interface AppleDecode {
   }>;
 }
 
+/** One lastTransactions entry from Get All Subscription Statuses (flattened across subscription groups). */
+export interface AppleStatusItem {
+  status?: number;
+  originalTransactionId?: string;
+  signedTransactionInfo?: string;
+}
+export interface AppleStatuses {
+  (env: IosEnv, transactionId: string): Promise<{ status: number; items?: AppleStatusItem[] }>;
+}
+
 const ENVS: IosEnv[] = ['Production', 'Sandbox'];
 
-export function makeVerifier(deps: { lookup: AppleLookup; decode: AppleDecode; bundleId: string }) {
+const unavailable = () => new VerifyFailure('apple-unavailable');
+
+export function makeVerifier(deps: { lookup: AppleLookup; decode: AppleDecode; statuses: AppleStatuses; bundleId: string }) {
   return async function verify(transactionId: string): Promise<VerifiedTx> {
     for (const env of ENVS) {
       let res: { status: number; signedTransactionInfo?: string };
@@ -67,13 +87,36 @@ export function makeVerifier(deps: { lookup: AppleLookup; decode: AppleDecode; b
       }
       if (d.bundleId !== deps.bundleId) throw new VerifyFailure('bad-bundle');
       if (!IOS_PRODUCT_IDS.includes(d.productId)) throw new VerifyFailure('bad-product');
+
+      // The transaction above proves ownership/bundle/product. Whether the
+      // subscription is live comes from its LATEST state: the id the app sent
+      // may be the first period's, long expired, after many renewals. Same
+      // environment that answered; any failure is apple-unavailable (503).
+      let st: Awaited<ReturnType<AppleStatuses>>;
+      try {
+        st = await deps.statuses(env, d.originalTransactionId);
+      } catch {
+        throw unavailable();
+      }
+      if (st.status !== 200) throw unavailable();
+      const item = (st.items || []).find((i) => i.originalTransactionId === d.originalTransactionId);
+      if (!item || typeof item.status !== 'number' || !item.signedTransactionInfo) throw unavailable();
+      let latest: Awaited<ReturnType<AppleDecode>>;
+      try {
+        latest = await deps.decode(env, item.signedTransactionInfo);
+      } catch {
+        throw unavailable(); // Apple-fetched payload: decode failure = misconfiguration, not a forgery
+      }
+      if (latest.originalTransactionId !== d.originalTransactionId) throw unavailable();
+
       return {
         originalTransactionId: d.originalTransactionId,
         transactionId: d.transactionId,
         productId: d.productId,
         environment: env,
-        expiresAt: d.expiresDate ?? null,
-        revoked: d.revocationDate != null,
+        expiresAt: latest.expiresDate ?? null,
+        revoked: latest.revocationDate != null || item.status === 5,
+        status: item.status,
       };
     }
     throw new VerifyFailure('not-found');
@@ -112,13 +155,32 @@ export function defaultVerifier() {
   const apiEnv = { Production: Environment.PRODUCTION, Sandbox: Environment.SANDBOX } as const;
   const clients: Partial<Record<IosEnv, AppStoreServerAPIClient>> = {};
 
+  const client = (env: IosEnv) =>
+    (clients[env] ??= new AppStoreServerAPIClient(privateKey, keyId, issuerId, bundleId, apiEnv[env]));
+
   const lookup: AppleLookup = async (env, transactionId) => {
     // Pre-launch: no app id yet, so production can't be verified; go straight to sandbox.
     if (env === 'Production' && appAppleId === undefined) return { status: 404 };
-    clients[env] ??= new AppStoreServerAPIClient(privateKey, keyId, issuerId, bundleId, apiEnv[env]);
     try {
-      const r = await clients[env].getTransactionInfo(transactionId);
+      const r = await client(env).getTransactionInfo(transactionId);
       return { status: 200, signedTransactionInfo: r.signedTransactionInfo };
+    } catch (e) {
+      if (e instanceof APIException) return { status: e.httpStatusCode };
+      throw e;
+    }
+  };
+
+  const statuses: AppleStatuses = async (env, transactionId) => {
+    try {
+      const r = await client(env).getAllSubscriptionStatuses(transactionId);
+      return {
+        status: 200,
+        items: (r.data || []).flatMap((g) => (g.lastTransactions || []).map((t) => ({
+          status: t.status == null ? undefined : Number(t.status),
+          originalTransactionId: t.originalTransactionId,
+          signedTransactionInfo: t.signedTransactionInfo,
+        }))),
+      };
     } catch (e) {
       if (e instanceof APIException) return { status: e.httpStatusCode };
       throw e;
@@ -143,5 +205,5 @@ export function defaultVerifier() {
     };
   };
 
-  return makeVerifier({ lookup, decode, bundleId });
+  return makeVerifier({ lookup, decode, statuses, bundleId });
 }
