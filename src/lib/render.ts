@@ -41,10 +41,22 @@ export function forRender(sd: WebsiteData): WebsiteData {
 }
 
 /**
+ * An image URL as it may appear inside a double-quoted HTML attribute: only
+ * http(s) URLs are allowed (anything else, e.g. javascript: or data:, becomes
+ * ''), and the HTML-significant characters are entity-encoded so a URL can
+ * never close the attribute or open a tag.
+ */
+export function safeImageUrl(url: string): string {
+  if (!/^https?:\/\//i.test(url)) return '';
+  return url.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/**
  * Fill {{hero}}, {{about}}, {{gallery{i}}}, {{craft{i}}}, {{staff{i}}} in rendered HTML
- * from the data's own URLs (preview). Mirrors the replacement in deployRenderedSite.
+ * from the data's own URLs (preview). Mirrors the replacement in deployRenderedSite,
+ * plus safeImageUrl() on every substituted value.
  */
 export function withImages(html: string, data: WebsiteData): string {
   const m = imageUrlMap(data);
-  return html.replace(/\{\{([a-zA-Z0-9]+)\}\}/g, (whole, key: string) => (m[key] !== undefined ? m[key] : whole));
+  return html.replace(/\{\{([a-zA-Z0-9]+)\}\}/g, (whole, key: string) => (m[key] !== undefined ? safeImageUrl(m[key]) : whole));
 }
