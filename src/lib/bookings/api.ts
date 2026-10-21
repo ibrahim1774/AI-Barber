@@ -4,8 +4,8 @@ import type { Appointment, TimeOff } from '@/lib/bookings/calendar';
 
 /**
  * Typed client for the owner side of bookings: the /api/shop/* endpoints
- * (side effects: refunds, emails, pushes, slot rules) and direct Supabase
- * reads/updates of ab_appointments under RLS (mark paid / done / no-show).
+ * (side effects: refunds, emails, pushes, slot rules, mark paid / done / no-show)
+ * and direct Supabase reads of ab_appointments under RLS.
  */
 
 const base = () => process.env.EXPO_PUBLIC_API_BASE ?? 'https://www.aibarber.org';
@@ -26,6 +26,8 @@ const FRIENDLY: Record<string, string> = {
   'slot-taken': 'That time is already taken.',
   'bookings-paused': 'Bookings are paused because the subscription has ended.',
   unauthorized: 'Please sign in again.',
+  'card-payment': 'Card payments are recorded by Stripe automatically.',
+  'not-markable': 'This booking changed. Pull down to refresh.',
 };
 
 /** Alternatives from a 409 slot-taken error, else []. */
@@ -190,21 +192,14 @@ export async function listTimeOff(memberIds: string[], fromIso: string, toIso: s
   }));
 }
 
-async function updateAppointment(id: string, patch: Record<string, unknown>): Promise<void> {
-  const { data, error } = await (supabase.from('ab_appointments') as any).update(patch).eq('id', id).select('id');
-  if (error) throw error;
-  // RLS hides a row that isn't ours: zero rows updated is a failure, not a success.
-  if (!Array.isArray(data) || data.length === 0) throw new Error('not-updated');
+function markAppointment(id: string, action: 'paid' | 'done' | 'no_show'): Promise<{ appointment: unknown }> {
+  return ownerPost(`/api/shop/appointments/${encodeURIComponent(id)}/mark`, { action });
 }
 
-/** Cash, Cash App, Zelle…: the barber confirms the money arrived. */
-export function markPaid(a: Pick<Appointment, 'id' | 'priceCents' | 'amountPaidCents' | 'paymentMethod'>): Promise<void> {
-  return updateAppointment(a.id, {
-    payment_status: 'paid',
-    amount_paid_cents: Math.max(a.priceCents ?? 0, a.amountPaidCents),
-    payment_method: a.paymentMethod ?? 'shop',
-  });
+/** Cash, Cash App, Zelle…: the barber confirms the money arrived. Card payments are Stripe's to record. */
+export async function markPaid(a: Pick<Appointment, 'id'>): Promise<void> {
+  await markAppointment(a.id, 'paid');
 }
 
-export const markDone = (id: string) => updateAppointment(id, { status: 'done' });
-export const markNoShow = (id: string) => updateAppointment(id, { status: 'no_show' });
+export const markDone = async (id: string): Promise<void> => { await markAppointment(id, 'done'); };
+export const markNoShow = async (id: string): Promise<void> => { await markAppointment(id, 'no_show'); };

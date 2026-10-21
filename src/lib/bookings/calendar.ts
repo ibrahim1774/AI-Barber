@@ -227,13 +227,14 @@ export function statusChip(a: Pick<Appointment, 'status' | 'paymentStatus'>): Ch
 }
 
 /** What the detail sheet offers for an appointment. */
-export function availableActions(a: Pick<Appointment, 'status' | 'paymentStatus' | 'customerPhone'>) {
+export function availableActions(a: Pick<Appointment, 'status' | 'paymentStatus' | 'paymentMethod' | 'customerPhone'>) {
   const live = a.status === 'booked';
-  const settled = a.paymentStatus === 'paid';
+  // Same rule as the server's mark endpoint: card money is Stripe's to record.
+  const owed = a.paymentMethod !== 'card' && ['none', 'awaiting', 'deposit'].includes(a.paymentStatus);
   return {
     call: !!digits(a.customerPhone),
     text: !!digits(a.customerPhone),
-    markPaid: a.status !== 'cancelled' && a.status !== 'no_show' && !settled,
+    markPaid: a.status !== 'cancelled' && a.status !== 'no_show' && owed,
     markDone: live,
     noShow: live,
     reschedule: live,

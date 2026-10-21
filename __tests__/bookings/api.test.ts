@@ -134,24 +134,26 @@ describe('supabase reads and updates', () => {
     ]));
   });
 
-  it('marks done, no-show and paid through ab_appointments', async () => {
-    mockResult = { data: [{ id: 'a1' }], error: null };
+  it('marks done, no-show and paid through the mark endpoint', async () => {
+    reply(200, { appointment: { id: 'a1' } });
+    reply(200, { appointment: { id: 'a1' } });
+    reply(200, { appointment: { id: 'a1' } });
     await markDone('a1');
     await markNoShow('a1');
-    await markPaid({ id: 'a1', priceCents: 3000, amountPaidCents: 1000, paymentMethod: null });
-    const updates = mockCalls.filter((c) => c.op === 'update');
-    expect(updates.map((u) => u.args[0])).toEqual([
-      { status: 'done' },
-      { status: 'no_show' },
-      { payment_status: 'paid', amount_paid_cents: 3000, payment_method: 'shop' },
+    await markPaid({ id: 'a1' });
+    const calls = fetchMock.mock.calls.map(([url, init]) => [url, JSON.parse(init.body)]);
+    expect(calls).toEqual([
+      ['https://www.aibarber.org/api/shop/appointments/a1/mark', { action: 'done' }],
+      ['https://www.aibarber.org/api/shop/appointments/a1/mark', { action: 'no_show' }],
+      ['https://www.aibarber.org/api/shop/appointments/a1/mark', { action: 'paid' }],
     ]);
-    expect(mockCalls.filter((c) => c.op === 'eq' && c.args[0] === 'id')).toHaveLength(3);
+    expect(mockCalls.filter((c) => c.op === 'update')).toHaveLength(0);
   });
 
-  it('fails when RLS hides the row (zero rows updated) or on a database error', async () => {
-    mockResult = { data: [], error: null };
-    await expect(markDone('a1')).rejects.toThrow('not-updated');
-    mockResult = { data: null, error: { message: 'boom' } };
-    await expect(markDone('a1')).rejects.toEqual({ message: 'boom' });
+  it('turns a refused card mark into a friendly error', async () => {
+    reply(409, { error: 'card-payment' });
+    const err = await markPaid({ id: 'a1' }).catch((e) => e);
+    expect(err).toBeInstanceOf(BookingApiError);
+    expect(friendlyBookingError(err)).toBe('Card payments are recorded by Stripe automatically.');
   });
 });

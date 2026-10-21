@@ -104,6 +104,9 @@ describe('status chips and actions', () => {
     expect(done).toMatchObject({ markPaid: false, noShow: false, cancel: false, rebind: true });
     expect(availableActions(appt({ customerPhone: null })).call).toBe(false);
     expect(availableActions(appt({ status: 'no_show' })).markPaid).toBe(false);
+    expect(availableActions(appt({ paymentMethod: 'card', paymentStatus: 'awaiting' })).markPaid).toBe(false);
+    expect(availableActions(appt({ paymentMethod: 'cashapp', paymentStatus: 'deposit' })).markPaid).toBe(true);
+    expect(availableActions(appt({ paymentStatus: 'refunded' })).markPaid).toBe(false);
   });
 });
 
