@@ -146,3 +146,12 @@ Push copy:
 - **Duplicate bookings:** the API checks the same normalized phone at the same start across all barbers of the shop, and returns `409 duplicate`. There is no database guard for this.
 - **Buffer:** the slot engine applies `buffer_min` around existing appointments. The database only blocks true overlap, which is fine because the default buffer is 0.
 - **Merge order:** merge `ios-lapse` (004) before `bookings-*` (005/006).
+
+## Contract amendments (controller, after W's build)
+
+- `GET /api/book/manage` `appointment` also includes `serviceId` (`string | null`) and `memberId` (`string`).
+- **Card checkout return URLs (S2 sets them; W renders them):**
+  - `success_url = https://www.aibarber.org/book/manage/{manage_token}?checkout=success`
+  - `cancel_url = https://www.aibarber.org/book/manage/{manage_token}?checkout=cancelled`
+  - **Manage page with `checkout=success`:** shows "Payment received" (the webhook may lag; if `paymentStatus` is still `awaiting`, show "Confirming your payment…" and re-fetch every 3 s, up to 30 s).
+  - **Manage page with `checkout=cancelled`:** shows "Payment wasn't completed. This time is held for 30 minutes, then released." with a **Cancel booking** button (frees the slot now).
