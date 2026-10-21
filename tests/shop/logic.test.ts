@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatAddress, newClientKey, parseShopRoute } from '../../src/shop/logic';
+import { formatAddress, newClientKey, parseShopRoute, shipsWithinLabel } from '../../src/shop/logic';
 
 describe('parseShopRoute', () => {
   it('/shop/{slug} is the shop', () => {
@@ -38,5 +38,15 @@ describe('formatAddress', () => {
   });
   it('accepts postalCode too', () => {
     expect(formatAddress({ line1: '1 Main St', city: 'Austin', state: 'TX', postalCode: '78701' })).toEqual(['1 Main St', 'Austin, TX 78701']);
+  });
+});
+
+describe('shipsWithinLabel', () => {
+  it('mirrors the Checkout wording: 0 or 1 is "1 day", 2+ is N days, unset is no line', () => {
+    expect(shipsWithinLabel(0)).toBe('Ships within 1 day');
+    expect(shipsWithinLabel(1)).toBe('Ships within 1 day');
+    expect(shipsWithinLabel(3)).toBe('Ships within 3 days');
+    expect(shipsWithinLabel(null)).toBeNull();
+    expect(shipsWithinLabel(undefined)).toBeNull();
   });
 });

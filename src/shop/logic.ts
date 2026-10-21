@@ -7,6 +7,13 @@ import type {
 
 export { formatMoney, manualLink, manualMethods, METHOD_LABEL, safeAccent, onAccent, telUrl, directionsUrl } from '../book/logic';
 
+/** Mirrors lib/store/payments.ts: 0 or 1 → "Ships within 1 day", 2+ → "Ships within N days", unset → no line (null). */
+export function shipsWithinLabel(n: number | null | undefined): string | null {
+  if (n == null || !Number.isFinite(n)) return null;
+  const days = Math.max(1, Math.floor(n));
+  return days === 1 ? 'Ships within 1 day' : `Ships within ${days} days`;
+}
+
 /* ---------- routing ---------- */
 
 export type ShopRoute =
