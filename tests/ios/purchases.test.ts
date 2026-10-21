@@ -134,6 +134,39 @@ describe('supabasePurchases', () => {
     expect(payload.expires_at).toBe(new Date(5000).toISOString());
   });
 
+  describe('applyNotification never moves expires_at backwards', () => {
+    const STORED = 1_800_000_000_000;
+    const apply = (client: any, expiresAt: number) => supabasePurchases(client).applyNotification({
+      otid: 'o1', productId: 'p', environment: 'Production', expiresAt, revokedAt: null, type: 'DID_RENEW',
+    });
+
+    it('an older (late, retried) notification keeps the stored expiry but still records the rest', async () => {
+      const { client, calls } = fakeClient({ data: null, error: null }, { data: { expires_at: new Date(STORED).toISOString() }, error: null });
+      await apply(client, STORED - 86_400_000);
+      const payload = find(calls, 'upsert')!.args[0] as Record<string, unknown>;
+      expect(Object.keys(payload)).not.toContain('expires_at');
+      expect(payload.last_notification).toBe('DID_RENEW');
+    });
+
+    it('a newer expiry is written', async () => {
+      const { client, calls } = fakeClient({ data: null, error: null }, { data: { expires_at: new Date(STORED).toISOString() }, error: null });
+      await apply(client, STORED + 86_400_000);
+      expect((find(calls, 'upsert')!.args[0] as Record<string, unknown>).expires_at).toBe(new Date(STORED + 86_400_000).toISOString());
+    });
+
+    it('no stored expiry takes the new value', async () => {
+      const { client, calls } = fakeClient({ data: null, error: null }, { data: { expires_at: null }, error: null });
+      await apply(client, STORED);
+      expect((find(calls, 'upsert')!.args[0] as Record<string, unknown>).expires_at).toBe(new Date(STORED).toISOString());
+    });
+
+    it('a read error throws (Apple retries) and nothing is written', async () => {
+      const { client, calls } = fakeClient({ data: null, error: null }, { data: null, error: { message: 'boom' } });
+      await expect(apply(client, STORED)).rejects.toThrow(/applyNotification/);
+      expect(find(calls, 'upsert')).toBeUndefined();
+    });
+  });
+
   it('applyNotification omits expires_at when expiresAt is null', async () => {
     const { client, calls } = fakeClient();
     await supabasePurchases(client).applyNotification({
@@ -196,7 +229,9 @@ describe('supabasePurchases', () => {
         { original_transaction_id: 'revoked', expires_at: iso(NOW + DAY), revoked_at: iso(NOW - DAY) },
         { original_transaction_id: 'in-grace', expires_at: iso(NOW - 1000), revoked_at: null },
         { original_transaction_id: 'no-expiry', expires_at: null, revoked_at: null },
-      ];
+        { original_transaction_id: 'unpublished', site_slug: 's5', published_at: null, taken_down_at: null, expires_at: iso(NOW - 2 * DAY), revoked_at: null },
+        { original_transaction_id: 'already-down', site_slug: 's6', published_at: iso(NOW - 9 * DAY), taken_down_at: iso(NOW - DAY), expires_at: iso(NOW - 2 * DAY), revoked_at: null },
+      ].map((r, i) => ({ site_slug: `s${i}`, published_at: iso(NOW - 9 * DAY), taken_down_at: null, ...r }));
       const { client, calls } = fakeClient({ data: rows, error: null });
       const out = await supabasePurchases(client).takedownCandidates(7, NOW);
       expect(out.map((r) => r.original_transaction_id)).toEqual(['expired', 'revoked']);
@@ -208,8 +243,8 @@ describe('supabasePurchases', () => {
 
     it('restoreCandidates: taken down, unrevoked, unexpired; re-checked in JS', async () => {
       const rows = [
-        { original_transaction_id: 'back', expires_at: iso(NOW + DAY), revoked_at: null, taken_down_at: iso(NOW - DAY) },
-        { original_transaction_id: 'stale', expires_at: iso(NOW - 1), revoked_at: null, taken_down_at: iso(NOW - DAY) },
+        { original_transaction_id: 'back', site_slug: 'b', expires_at: iso(NOW + DAY), revoked_at: null, taken_down_at: iso(NOW - DAY) },
+        { original_transaction_id: 'stale', site_slug: 's', expires_at: iso(NOW - 1), revoked_at: null, taken_down_at: iso(NOW - DAY) },
       ];
       const { client, calls } = fakeClient({ data: rows, error: null });
       const out = await supabasePurchases(client).restoreCandidates(3, NOW);

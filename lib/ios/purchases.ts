@@ -112,7 +112,17 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
         environment: n.environment,
         last_notification: n.type,
       };
-      if (n.expiresAt != null) payload.expires_at = iso(n.expiresAt);
+      if (n.expiresAt != null) {
+        // Same never-backwards rule as upsertVerified: Apple retries failed
+        // notifications for days, so an older one can land after a newer
+        // renewal. expires_at drives lapse takedowns (lapse.ts), so a stale
+        // value must never overwrite a later one. Same benign read-then-write race.
+        const { data: cur, error: readErr } = await db().from(TABLE).select('expires_at')
+          .eq('original_transaction_id', n.otid).maybeSingle();
+        if (readErr) fail('applyNotification', readErr);
+        const stored = cur?.expires_at ? Date.parse(cur.expires_at as string) : NaN;
+        if (!(Number.isFinite(stored) && n.expiresAt < stored)) payload.expires_at = iso(n.expiresAt);
+      }
       if (n.clearRevoked) payload.revoked_at = null;
       else if (n.revokedAt != null) payload.revoked_at = iso(n.revokedAt);
       const { error } = await db().from(TABLE).upsert(payload, { onConflict: 'original_transaction_id' });
@@ -135,7 +145,8 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
         .or(`revoked_at.not.is.null,expires_at.lte."${cutoff}"`)
         .order('expires_at', { ascending: true }).limit(limit);
       if (error) fail('takedownCandidates', error);
-      return ((data as PurchaseRow[]) ?? []).filter((r) => isLapsed(r, now));
+      return ((data as PurchaseRow[]) ?? []).filter((r) =>
+        r.site_slug != null && r.published_at != null && r.taken_down_at == null && isLapsed(r, now));
     },
 
     async restoreCandidates(limit, now) {
@@ -143,7 +154,8 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
         .not('taken_down_at', 'is', null).is('revoked_at', null).gt('expires_at', new Date(now).toISOString())
         .order('taken_down_at', { ascending: true }).limit(limit);
       if (error) fail('restoreCandidates', error);
-      return ((data as PurchaseRow[]) ?? []).filter((r) => isActiveRow(r, now));
+      return ((data as PurchaseRow[]) ?? []).filter((r) =>
+        r.site_slug != null && r.taken_down_at != null && isActiveRow(r, now));
     },
 
     async markTakenDown(otid, at) {
