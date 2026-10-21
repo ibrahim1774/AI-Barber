@@ -25,7 +25,7 @@ jest.mock('@/components/store/products/ProductsPane', () => ({
   },
 }));
 const mockOrdersPane = jest.fn((_p: Record<string, unknown>) => null);
-jest.mock('@/components/store/OrdersPane.stub', () => ({ OrdersPane: (p: Record<string, unknown>) => mockOrdersPane(p) }));
+jest.mock('@/components/store/OrdersPane', () => ({ OrdersPane: (p: Record<string, unknown>) => mockOrdersPane(p) }));
 
 let mockShop: any = null;
 jest.mock('@/lib/shop', () => ({ loadMyShop: async () => mockShop }));
@@ -95,9 +95,9 @@ describe('Store tab', () => {
   });
 
   it('?tab=orders shows OrdersPane with focusOrderId', async () => {
-    mockParams = { tab: 'orders', orderId: 'o7' };
+    mockParams = { tab: 'orders', orderId: 'o7', n: '42' };
     await render();
-    expect(mockOrdersPane).toHaveBeenCalledWith(expect.objectContaining({ shopId: 's1', shopName: 'Fade Lab', locked: false, focusOrderId: 'o7' }));
+    expect(mockOrdersPane).toHaveBeenCalledWith(expect.objectContaining({ shopId: 's1', shopName: 'Fade Lab', locked: false, focusOrderId: 'o7', focusNonce: '42' }));
   });
 
   it('switching to Orders shows the pane', async () => {

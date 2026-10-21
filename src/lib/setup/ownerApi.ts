@@ -50,6 +50,7 @@ async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown): Pr
 
 function friendly(status: number, code: string): string {
   if (status === 401) return 'Your sign-in has expired. Sign in again.';
+  if (code === 'store-paused') return 'Your AI Barber plan needs to be active to sell online.';
   if (status === 423 || code === 'bookings-paused') return 'Your AI Barber plan needs to be active to take bookings.';
   if (code === 'stripe-account-unavailable') return "We couldn't reach your Stripe account. Email support@davoxa.com and we'll sort it out.";
   if (status === 400) return "Some of your details couldn't be saved. Check your services and try again.";

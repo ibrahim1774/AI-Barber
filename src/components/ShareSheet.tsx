@@ -7,6 +7,7 @@ import { QrScreen } from '@/components/QrScreen';
 import { Sheet } from '@/components/EditSheet';
 import { track } from '@/lib/analytics';
 import { bookingUrl, loadMyShop } from '@/lib/shop';
+import { loadStoreSettings, shopUrl } from '@/lib/store/data';
 import { displayHost, shareLabel, shareMessage, type ShareLink } from '@/lib/share';
 
 type Props = {
@@ -21,18 +22,27 @@ type Props = {
 export function ShareSheet({ visible, shopName, links: given, source, onClose }: Props) {
   // With bookings on, the Booking link row comes first (and the QR code points at it).
   const [bookingLink, setBookingLink] = useState<string | null>(null);
+  // With the store open, a Shop link row goes last (the QR code keeps pointing at the first link).
+  const [storeLink, setStoreLink] = useState<string | null>(null);
   useEffect(() => {
     if (!visible) return;
     let alive = true;
     loadMyShop()
-      .then((shop) => alive && setBookingLink(shop?.bookingsEnabled ? bookingUrl(shop) : null))
+      .then(async (shop) => {
+        if (!alive) return;
+        setBookingLink(shop?.bookingsEnabled ? bookingUrl(shop) : null);
+        const open = shop ? (await loadStoreSettings(shop.id)).storeEnabled : false;
+        if (alive) setStoreLink(shop && open ? shopUrl(shop) : null);
+      })
       .catch(() => {});
     return () => {
       alive = false;
     };
   }, [visible]);
-  const links: ShareLink[] =
+  const withBooking: ShareLink[] =
     bookingLink && !given.some((l) => l.kind === 'booking') ? [{ kind: 'booking', url: bookingLink }, ...given] : given;
+  const links: ShareLink[] =
+    storeLink && !withBooking.some((l) => l.kind === 'shop') ? [...withBooking, { kind: 'shop', url: storeLink }] : withBooking;
   // iOS can't present one Modal while another is still sliding away: the sheet
   // hides first and the QR opens from its onDismiss, and the reverse on Done.
   const [qrOpen, setQrOpen] = useState(false);

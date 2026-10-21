@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
 import { ShareSheet } from '@/components/ShareSheet';
-import { OrdersPane } from '@/components/store/OrdersPane.stub';
+import { OrdersPane } from '@/components/store/OrdersPane';
 import { Segmented } from '@/components/store/Segmented';
 import { StoreHeader } from '@/components/store/StoreHeader';
 import { ProductsPane } from '@/components/store/products/ProductsPane';
@@ -25,7 +25,7 @@ type Tab = 'products' | 'orders';
  */
 export default function Store() {
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ tab?: string; orderId?: string }>();
+  const params = useLocalSearchParams<{ tab?: string; orderId?: string; n?: string }>();
   const status = useSubscriptionStatus();
   const access = useStoreAccess();
   const [site, setSite] = useState<SiteRecord | null>(null);
@@ -39,7 +39,7 @@ export default function Store() {
   // A push tap while the tab is mounted changes the params.
   useEffect(() => {
     if (params.tab === 'orders') setTab('orders');
-  }, [params.tab, params.orderId]);
+  }, [params.tab, params.orderId, params.n]);
 
   const refreshCount = useCallback(async (shopId: string) => {
     try {
@@ -154,6 +154,7 @@ export default function Store() {
             shopName={shop.name}
             locked={locked}
             focusOrderId={params.orderId}
+            focusNonce={params.n}
             onChanged={() => void refreshCount(shop.id)}
           />
         )}
