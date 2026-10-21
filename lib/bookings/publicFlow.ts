@@ -5,6 +5,7 @@ import { DateTime } from 'luxon';
 import {
   alternatives,
   bookableService,
+  bookingsFollowUpOpen,
   bookingsOpen,
   cancelAppointment,
   candidateMembers,
@@ -476,7 +477,8 @@ export async function postSent(body: unknown, deps: FlowDeps): Promise<FlowResul
   const c = await byToken(deps, body.token);
   if (isResult(c)) return c;
   const { appt, shop } = c;
-  if (!(await bookingsOpen(deps.repo, shop))) return paused();
+  // An existing booking: allowed after a downgrade, refused only on a full lapse (Phase 4).
+  if (!(await bookingsFollowUpOpen(deps.repo, shop))) return paused();
   if (!manualHandles(shop)[method]) return invalid('method');
   // Only an online booking on the manual rail chosen at booking time, still unpaid. Never
   // in-shop, card or walk-in bookings, and payment_method is never rewritten here.

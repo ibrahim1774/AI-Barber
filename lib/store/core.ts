@@ -43,10 +43,23 @@ export const MAX_PHOTOS = 5;
 // Store gate (Phase 3: store_enabled + a live iOS purchase; Phase 4: on the Store tier)
 // ---------------------------------------------------------------------------
 export async function storeOpen(repo: Pick<StoreRepo, 'purchase'>, shop: ShopStoreRow): Promise<boolean> {
+  // Live, and the plan includes the store. Owner order actions are never gated.
+  return storeGate(repo, shop, 'store');
+}
+
+/**
+ * A customer's follow-up on an EXISTING order ("I've sent it"): the Phase 3 rule only. It
+ * survives a downgrade, so a customer who already paid is never stuck; only a full lapse
+ * (revoked, taken down, or an unswept purchase past expiry) refuses it.
+ */
+export async function storeFollowUpOpen(repo: Pick<StoreRepo, 'purchase'>, shop: ShopStoreRow): Promise<boolean> {
+  return storeGate(repo, shop, 'hosting');
+}
+
+async function storeGate(repo: Pick<StoreRepo, 'purchase'>, shop: ShopStoreRow, ent: 'store' | 'hosting'): Promise<boolean> {
   if (!shop.store_enabled) return false;
   if (!shop.ios_otid) return false;
-  // Not revoked, not taken down, and the plan includes the store. Owner order actions are never gated.
-  return entitlementActive(await repo.purchase(shop.ios_otid), 'store');
+  return entitlementActive(await repo.purchase(shop.ios_otid), ent);
 }
 
 /** One predicate for the page (GET /shop) and the server (POST /orders). */

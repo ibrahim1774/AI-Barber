@@ -32,6 +32,7 @@ import {
   safeNotify,
   shippingEnabled,
   statusUrl,
+  storeFollowUpOpen,
   storeOpen,
   type StoreDeps,
 } from './core.js';
@@ -322,7 +323,8 @@ export async function postOrderSent(body: unknown, deps: StoreDeps): Promise<Flo
   const c = await byToken(deps, body.token);
   if (!c) return notFound();
   const { order, shop } = c;
-  if (!(await storeOpen(deps.repo, shop))) return storePaused();
+  // An existing order: allowed after a downgrade, refused only on a full lapse (Phase 4).
+  if (!(await storeFollowUpOpen(deps.repo, shop))) return storePaused();
   // Only the manual rail fixed at order time, still unpaid and not cancelled. payment_method is
   // never rewritten here.
   if (!awaitingManual(order, method)) return err(409, 'not-awaiting-payment');

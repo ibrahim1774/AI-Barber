@@ -159,14 +159,27 @@ export const inShopAllowed = (shop: ShopRow) =>
  * paused (logged) instead of letting the slot engine throw a 500.
  */
 export async function bookingsOpen(repo: BookingRepo, shop: ShopRow): Promise<boolean> {
+  return bookingsGate(repo, shop, 'bookings');
+}
+
+/**
+ * A customer's follow-up on an EXISTING booking ("I've sent it"): the Phase 2 rule only. It
+ * survives a downgrade to the Website plan, so a customer who already paid is never stuck;
+ * only a full lapse (revoked, taken down, or an unswept purchase past expiry) refuses it.
+ */
+export async function bookingsFollowUpOpen(repo: BookingRepo, shop: ShopRow): Promise<boolean> {
+  return bookingsGate(repo, shop, 'hosting');
+}
+
+async function bookingsGate(repo: BookingRepo, shop: ShopRow, ent: 'bookings' | 'hosting'): Promise<boolean> {
   if (!shop.bookings_enabled) return false;
   if (!validZone(shop.timezone)) {
     console.error(`[bookings] shop ${shop.id} has an invalid timezone '${shop.timezone}'; treating as paused`);
     return false;
   }
   if (!shop.ios_otid) return false;
-  // Phase 4: and the plan includes bookings (Bookings or Store tier).
-  return entitlementActive(await repo.purchase(shop.ios_otid), 'bookings');
+  // Phase 4: and the plan includes `ent` (bookings: the Bookings or Store tier).
+  return entitlementActive(await repo.purchase(shop.ios_otid), ent);
 }
 
 /**

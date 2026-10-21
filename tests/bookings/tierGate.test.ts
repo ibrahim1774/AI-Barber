@@ -11,7 +11,7 @@ import {
 } from '../../lib/bookings/ownerFlow.js';
 import { makePurchaseVerifier } from '../../lib/bookings/live.js';
 import { makeVerifier, type VerifiedTx } from '../../lib/ios/appleVerify.js';
-import { createAppointment, getShop } from '../../lib/bookings/publicFlow.js';
+import { createAppointment, getShop, postSent } from '../../lib/bookings/publicFlow.js';
 import { bookingsOpen, ownerBookingsAllowed } from '../../lib/bookings/core.js';
 import { OTID, world } from './fakeRepo.js';
 
@@ -214,5 +214,36 @@ describe('a linked purchase the sweep never takes down', () => {
     const w = onProduct('store.monthly');
     Object.assign(w.state.purchases[OTID], { expires_at: LAPSED, site_slug: 'fresh-cuts', published_at: '2025-12-01T00:00:00Z', environment: 'Production' });
     expect((await book(w)).status).toBe(201);
+  });
+});
+
+// M5 (controller ruling): a customer's "I've sent it" on an EXISTING booking still works after a
+// downgrade, so customers never get stuck; only a full lapse refuses it.
+describe('POST /api/book/sent after a downgrade', () => {
+  async function manualBooking() {
+    const w = world({ shop: { manual_handles: { cashapp: '$fresh' } } });
+    const r = await createAppointment({
+      slug: 'fresh-cuts', serviceId: w.ids.cut, memberId: w.ids.mike, start: T10,
+      customer: { name: 'Sam', phone: '5551234567', email: 'sam@example.com' }, pay: 'manual', method: 'cashapp',
+    }, w.deps);
+    expect(r.status).toBe(201);
+    return { w, appt: w.state.appointments.at(-1)! };
+  }
+
+  it.each(['hosting.monthly', 'hosting.yearly'])('on %s → 200, recorded', async (product) => {
+    const { w, appt } = await manualBooking();
+    w.state.purchases[OTID].product_id = P + product;
+    expect(await postSent({ token: appt.manage_token, method: 'cashapp' }, w.deps)).toEqual({ status: 200, body: {} });
+    expect(w.state.appointments[0].customer_says_paid_at).not.toBeNull();
+  });
+
+  it.each([
+    ['taken down', { taken_down_at: '2026-10-01T00:00:00Z' }],
+    ['revoked', { revoked_at: '2026-10-01T00:00:00Z' }],
+    ['an unswept purchase past expiry', { site_slug: null, expires_at: '2026-01-01T00:00:00Z' }],
+  ])('a full lapse (%s) → 423', async (_n, over) => {
+    const { w, appt } = await manualBooking();
+    Object.assign(w.state.purchases[OTID], over);
+    expect(await postSent({ token: appt.manage_token, method: 'cashapp' }, w.deps)).toEqual(PAUSED);
   });
 });

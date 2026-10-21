@@ -2,7 +2,7 @@
 // visible, fulfillable and refundable after a downgrade (spec §11).
 import { describe, it, expect } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { createOrder, getOrder, getStoreShop } from '../../lib/store/publicFlow.js';
+import { createOrder, getOrder, getStoreShop, postOrderSent } from '../../lib/store/publicFlow.js';
 import { markOwnerOrder, refundOwnerOrder } from '../../lib/store/ownerFlow.js';
 import { storeOpen } from '../../lib/store/core.js';
 import { storeWorld, type StoreWorld } from './fakeRepo.js';
@@ -104,5 +104,26 @@ describe('I2: a linked purchase the sweep never takes down', () => {
     const w = storeWorld();
     Object.assign(w.state.purchases[w.shop().ios_otid!], { expires_at: LAPSED, site_slug: 'fresh-cuts', published_at: '2025-12-01T00:00:00Z', environment: 'Production' });
     expect((await order(w)).status).toBe(201);
+  });
+});
+
+// M5 (controller ruling): "I've sent it" on an EXISTING order works after a downgrade; only a
+// full lapse refuses it.
+describe('POST /api/store/sent after a downgrade', () => {
+  it.each(['hosting.monthly', 'bookings.yearly'])('on %s → 200, recorded', async (product) => {
+    const { w, o } = await placedThen(product);
+    expect(o.payment_method).toBeTruthy();
+    expect(await postOrderSent({ token: o.manage_token, method: o.payment_method }, w.deps)).toEqual({ status: 200, body: {} });
+    expect(w.order(o.id).customer_says_paid_at).not.toBeNull();
+  });
+
+  it.each([
+    ['taken down', { taken_down_at: '2026-10-01T00:00:00Z' }],
+    ['revoked', { revoked_at: '2026-10-01T00:00:00Z' }],
+    ['an unswept purchase past expiry', { site_slug: null, expires_at: '2026-01-01T00:00:00Z' }],
+  ])('a full lapse (%s) → 423 store-paused', async (_n, over) => {
+    const { w, o } = await placedThen('store.monthly');
+    Object.assign(w.state.purchases[w.shop().ios_otid!], over);
+    expect(await postOrderSent({ token: o.manage_token, method: o.payment_method }, w.deps)).toEqual({ status: 423, body: { error: 'store-paused' } });
   });
 });
