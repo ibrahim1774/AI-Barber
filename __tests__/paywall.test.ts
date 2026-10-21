@@ -14,6 +14,7 @@ const {
 const { api } = require('@/lib/api');
 const analytics = require('@/lib/analytics');
 const siteStore = require('@/lib/siteStore');
+const revenuecat = require('@/lib/revenuecat');
 // No @types/react-test-renderer in the project: the two calls used here.
 const { act, create } = require('react-test-renderer') as {
   act(fn: () => void): void;
@@ -175,6 +176,40 @@ test('an error with no active subscription is declined', async () => {
   sw.callbacks.onError?.('no network');
   await jest.advanceTimersByTimeAsync(5000);
   expect(run.current()).toBe('declined');
+});
+
+describe('RevenueCat sync (observer)', () => {
+  test('a purchase on the paywall syncs RevenueCat once, in the background', async () => {
+    const sync = jest.spyOn(revenuecat, 'syncRevenueCatPurchases');
+    sw.register = hold;
+    const run = open();
+    sw.callbacks.onDismiss?.({ closeReason: 'systemLogic' }, { type: 'purchased', productId: PRODUCT_IDS[0] });
+    await jest.advanceTimersByTimeAsync(0);
+    expect(run.current()).toBe('purchased');
+    expect(sync).toHaveBeenCalledTimes(1);
+  });
+
+  test('a declined paywall does not sync', async () => {
+    const sync = jest.spyOn(revenuecat, 'syncRevenueCatPurchases');
+    sw.register = hold;
+    const run = open();
+    sw.callbacks.onDismiss?.({ closeReason: 'manualClose' }, { type: 'declined' });
+    await jest.advanceTimersByTimeAsync(5000);
+    expect(run.current()).toBe('declined');
+    expect(sync).not.toHaveBeenCalled();
+  });
+
+  test('a restore that succeeds syncs; a failed one does not', async () => {
+    const sync = jest.spyOn(revenuecat, 'syncRevenueCatPurchases');
+    sw.subscriptions = [ACTIVE];
+    jest.spyOn(api, 'iosSite').mockResolvedValue({ siteId: 's', deployedUrl: 'https://s.aibarber.org', siteData: { shopName: 'S' }, active: true });
+    await restorePurchases();
+    expect(sync).toHaveBeenCalledTimes(1);
+
+    sw.restore = async () => ({ result: 'failed', errorMessage: 'offline' });
+    await restorePurchases();
+    expect(sync).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('Restore purchases', () => {

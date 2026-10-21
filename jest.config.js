@@ -15,6 +15,7 @@ module.exports = {
     '^expo-crypto$': '<rootDir>/test/mocks/crypto.ts',
     '^expo-superwall$': '<rootDir>/test/mocks/superwall.ts',
     '^expo-notifications$': '<rootDir>/test/mocks/notifications.ts',
+    '^react-native-purchases$': '<rootDir>/test/mocks/purchases.ts',
     '^@/assets/(.*)$': '<rootDir>/assets/$1',
     '^@/(.*)$': '<rootDir>/src/$1',
   },

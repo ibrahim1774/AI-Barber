@@ -8,6 +8,7 @@ import { api } from '@/lib/api';
 import { currentUserId } from '@/lib/auth';
 import { PaywallSettle, type PaywallResult } from '@/lib/paywallSettle';
 import { findTransactionId, pickLatestTransactionId, type PublishDeps } from '@/lib/publish';
+import { syncRevenueCatPurchases } from '@/lib/revenuecat';
 import * as siteStore from '@/lib/siteStore';
 import {
   checkSubscriptionStatus, lastStatusCheckAt, registerStatusRunner, setSubscriptionStatus, shouldCheck,
@@ -235,6 +236,8 @@ function useSuperwallPaywall() {
           (patient ? await findTransactionId(latestTransactionId) : await latestTransactionId()) != null;
         const s = new PaywallSettle(verify, (result, { presented }) => {
           if (session.current === s) session.current = null;
+          // Bought or restored on the paywall: RevenueCat (observer) syncs in the background.
+          if (result !== 'declined') syncRevenueCatPurchases();
           // No paywall ever showed (skip, holdout, error, timeout): say why nothing happened.
           if (result === 'declined' && !presented) Alert.alert('Publish', PAYWALL_ERROR);
           resolve(result);
@@ -335,6 +338,7 @@ function useSuperwallRestore() {
           try {
             const result = await restorePurchases();
             track('restore_tapped', { result: result?.result ?? 'unknown' });
+            if (result?.result === 'restored') syncRevenueCatPurchases();
           } catch {
             track('restore_tapped', { result: 'error' });
           }

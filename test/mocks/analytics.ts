@@ -4,6 +4,7 @@ export const POSTHOG_AUTOCAPTURE = { captureScreens: false, captureTouches: true
 export async function initAttribution() {}
 export async function requestTrackingThenStart() {}
 export function requestTrackingWhenActive() {}
+export function onTrackingSettled(_fn: () => void) {}
 export function track(_event: string, _props?: Record<string, unknown>) {}
 export function trackConversion(_kind?: string, _productId?: string, _price?: number, _currency?: string) {}
 export function trackRegistration(_m?: string) {}

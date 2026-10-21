@@ -154,7 +154,41 @@ export async function requestTrackingThenStart(): Promise<void> {
     // Permission API unavailable: attribution still runs without the IDFA.
   }
   consentSettled = true;
+  settleTracking();
   await startAttribution();
+}
+
+let trackingSettled = false;
+const trackingSettledListeners: (() => void)[] = [];
+
+/** The tracking prompt has been answered (or was already): tell each listener once. A listener's error stays with it. */
+function settleTracking() {
+  if (trackingSettled) return;
+  trackingSettled = true;
+  for (const fn of trackingSettledListeners.splice(0)) {
+    try {
+      fn();
+    } catch {
+      // A listener never affects attribution.
+    }
+  }
+}
+
+/**
+ * Runs `fn` once this launch's tracking prompt has been answered, so an IDFA
+ * granted there can be read (RevenueCat's device identifiers). At once if it
+ * already was. Never prompts.
+ */
+export function onTrackingSettled(fn: () => void): void {
+  if (!trackingSettled) {
+    trackingSettledListeners.push(fn);
+    return;
+  }
+  try {
+    fn();
+  } catch {
+    // As in settleTracking.
+  }
 }
 
 let trackingAsked = false;
