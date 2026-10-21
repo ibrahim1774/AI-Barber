@@ -38,10 +38,11 @@ jest.mock('@/lib/subscriptionStatus', () => ({
 }));
 let mockSettings: any = { storeEnabled: true };
 let mockCount = 0;
+let mockAnyOrders = false;
 jest.mock('@/lib/store/data', () => ({
   loadStoreSettings: async () => mockSettings,
   countNewOrders: async () => mockCount,
-  listOrders: async () => [],
+  hasAnyOrders: async () => mockAnyOrders,
 }));
 let mockAccess = 'active';
 jest.mock('@/lib/store/gate', () => ({
@@ -72,6 +73,7 @@ beforeEach(() => {
   mockStatus = 'active';
   mockSettings = { storeEnabled: true };
   mockCount = 0;
+  mockAnyOrders = false;
   mockAccess = 'active';
 });
 
@@ -139,5 +141,25 @@ describe('Store tab', () => {
     const r = await render();
     expect(texts(r)).toContain('Sell from your website');
     expect(texts(r)).not.toContain('products');
+  });
+
+  it('a closed shop with an order still shows Orders (and a push opens that order), with a closed banner', async () => {
+    mockSettings = { storeEnabled: false };
+    mockAnyOrders = true;
+    mockParams = { tab: 'orders', orderId: 'o7', n: '1' };
+    const r = await render();
+    expect(texts(r)).not.toContain('Open your shop');
+    expect(texts(r)).toContain('Your shop is closed to customers. Open it in Store setup.');
+    expect(mockOrdersPane).toHaveBeenCalledWith(expect.objectContaining({ shopId: 's1', locked: false, focusOrderId: 'o7' }));
+  });
+
+  it('an inactive store tier with an order keeps Orders usable and shows See plans', async () => {
+    mockAccess = 'inactive';
+    mockAnyOrders = true;
+    mockParams = { tab: 'orders', orderId: 'o7', n: '1' };
+    const r = await render();
+    expect(texts(r)).not.toContain('Sell from your website');
+    expect(texts(r)).toContain('See plans');
+    expect(mockOrdersPane).toHaveBeenCalledWith(expect.objectContaining({ locked: false, focusOrderId: 'o7' }));
   });
 });

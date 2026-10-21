@@ -1,4 +1,4 @@
-import { availableActions, itemsSummary, parseRefundAmount, paymentLabel, statusLabel } from '@/lib/store/orderActions';
+import { refundingAutomatically, availableActions, itemsSummary, parseRefundAmount, paymentLabel, statusLabel } from '@/lib/store/orderActions';
 import { order } from './fixtures';
 
 const paidCard = { paymentMethod: 'card', paymentStatus: 'paid', amountPaidCents: 3300 } as const;
@@ -72,5 +72,17 @@ describe('labels', () => {
     expect(parseRefundAmount('0')).toBeNull();
     expect(parseRefundAmount('abc')).toBeNull();
     expect(parseRefundAmount('')).toBeNull();
+  });
+});
+
+describe('cancelled card orders (the webhook owns the refund)', () => {
+  const cancelled = { ...paidCard, status: 'cancelled' } as const;
+  it('offers no Refund, even with money still held', () => {
+    expect(availableActions(order({ ...cancelled }))).not.toContain('refund');
+  });
+  it('says the refund is automatic only while refunded < paid', () => {
+    expect(refundingAutomatically(order({ ...cancelled }))).toBe(true);
+    expect(refundingAutomatically(order({ ...cancelled, amountRefundedCents: 3300 }))).toBe(false);
+    expect(refundingAutomatically(order({ ...paidCard, status: 'paid' }))).toBe(false);
   });
 });

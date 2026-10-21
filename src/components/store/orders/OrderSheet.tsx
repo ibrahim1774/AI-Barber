@@ -12,7 +12,7 @@ import { smsUrl, telUrl, formatMoney } from '@/lib/bookings/calendar';
 import { friendlyOrderError, markOrder, refundOrder, OrderApiError, type MarkAction } from '@/lib/store/api';
 import type { Order } from '@/lib/store/data';
 import {
-  addressLines, availableActions, orderNumber, paymentLabel, refundableCents, saidPaidNote, statusLabel,
+  addressLines, availableActions, orderNumber, paymentLabel, refundableCents, refundingAutomatically, saidPaidNote, statusLabel,
 } from '@/lib/store/orderActions';
 
 type Props = {
@@ -84,10 +84,13 @@ export function OrderSheet({ order, onClose, onChanged }: Props) {
     if (!o) return;
     const who = o.customer.name.trim() || 'The customer';
     // Manual and in-shop money never passed through AI Barber, so the barber has to send it back.
-    const paidOutside = o.paymentMethod !== 'card' && o.paymentStatus === 'paid';
-    const body = paidOutside
-      ? `${who} gets an email that it was cancelled. Refund them yourself, the same way they paid.`
-      : `${who} gets an email that it was cancelled.`;
+    const outside = o.paymentMethod !== 'card';
+    const body =
+      outside && o.paymentStatus === 'paid'
+        ? `${who} gets an email that it was cancelled. Refund them yourself, the same way they paid.`
+        : outside && o.customerSaysPaidAt
+          ? `${who} says they paid. Refund them yourself if they did.`
+          : `${who} gets an email that it was cancelled.`;
     Alert.alert('Cancel this order?', body, [
       { text: 'Keep it', style: 'cancel' },
       { text: 'Cancel order', style: 'destructive', onPress: () => void mark('cancel') },
@@ -148,6 +151,7 @@ export function OrderSheet({ order, onClose, onChanged }: Props) {
             <Line k="Payment" v={paymentLabel(o)} />
             <Line k="Status" v={statusLabel(o.status)} />
             {!!said && <Note tone="warn">{said}</Note>}
+            {refundingAutomatically(o) && <Note tone="warn">Refunding automatically</Note>}
             {!!o.note && <Line k="Note" v={o.note} />}
             {!!o.trackingNumber && <Line k="Tracking" v={o.trackingNumber} />}
             {!!o.trackingUrl && <TextAction title="Open tracking link" onPress={() => open(o.trackingUrl!)} />}

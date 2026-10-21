@@ -207,6 +207,16 @@ export async function listOrders(shopId: string, opts: { limit?: number; before?
   return rows.map((r) => toOrder(r, items.filter((i) => i.order_id === r.id)));
 }
 
+/**
+ * Whether the shop has any order row at all (one limit-1 read, deliberately without the visible
+ * filter), so closing the shop or losing the plan never hides orders the barber must still handle.
+ */
+export async function hasAnyOrders(shopId: string): Promise<boolean> {
+  const { data, error } = await supabase.from('ab_orders').select('id').eq('shop_id', shopId).limit(1);
+  if (error) fail(error);
+  return (data ?? []).length > 0;
+}
+
 export async function getOrder(id: string): Promise<Order | null> {
   const { data, error } = await supabase.from('ab_orders').select('*').eq('id', id).or(VISIBLE_ORDERS_FILTER).maybeSingle();
   if (error) fail(error);

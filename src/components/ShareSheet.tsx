@@ -35,7 +35,8 @@ export function ShareSheet({ visible, shopName, links: given, source, onClose }:
         if (!alive) return;
         setBookingLink(shop?.bookingsEnabled ? bookingUrl(shop) : null);
         const open = shop ? (await loadStoreSettings(shop.id)).storeEnabled : false;
-        if (alive) setStoreLink(shop && open ? shopUrl(shop) : null);
+        // The shop page also needs a linked purchase; without one it still says it is closed.
+        if (alive) setStoreLink(shop && open && shop.purchaseLinked ? shopUrl(shop) : null);
       })
       .catch(() => {});
     return () => {

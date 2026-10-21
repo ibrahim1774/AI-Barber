@@ -4,9 +4,10 @@ import { shareLabel, shareMessage } from '@/lib/share';
 const { act, create } = require('react-test-renderer');
 
 let mockStoreEnabled = false;
+let mockLinked = true;
 jest.mock('@/lib/shop', () => ({
   bookingUrl: (s: { slug: string }) => `https://www.aibarber.org/book/${s.slug}`,
-  loadMyShop: async () => ({ id: 's1', slug: 'fade-lab', bookingsEnabled: false }),
+  loadMyShop: async () => ({ id: 's1', slug: 'fade-lab', bookingsEnabled: false, purchaseLinked: mockLinked }),
 }));
 jest.mock('@/lib/store/data', () => ({
   loadStoreSettings: async () => ({ storeEnabled: mockStoreEnabled }),
@@ -60,5 +61,15 @@ describe('ShareSheet', () => {
     const l = await labels();
     expect(l).toContain('Share Shop link');
     expect(l).toContain('Share Website link');
+  });
+
+  it('omits the Shop row while the purchase is not linked', async () => {
+    mockStoreEnabled = true;
+    mockLinked = false;
+    try {
+      expect(await labels()).not.toContain('Share Shop link');
+    } finally {
+      mockLinked = true;
+    }
   });
 });

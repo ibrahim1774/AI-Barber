@@ -28,6 +28,7 @@ jest.mock('@/lib/store/data', () => ({
   loadStoreSettings: async () => ({ storeEnabled: true }),
   countNewOrders: async () => 0,
   listOrders: async () => mockOrders,
+  hasAnyOrders: async () => mockOrders.length > 0,
   getOrder: async () => null,
 }));
 const mockPaywall = jest.fn(async (_p: string) => 'declined');

@@ -8,11 +8,11 @@ export const PAUSED_COPY = {
 } as const;
 
 /** Shown above a read-only Bookings or Store tab whose page the plan no longer covers. */
-export function PausedBanner({ kind, onUpgrade }: { kind: 'bookings' | 'store'; onUpgrade(): void }) {
+export function PausedBanner({ kind, onUpgrade, action = 'Upgrade' }: { kind: 'bookings' | 'store'; onUpgrade(): void; action?: string }) {
   return (
     <View style={styles.banner} accessibilityRole="alert">
       <Text style={styles.text}>{PAUSED_COPY[kind]}</Text>
-      <Button title="Upgrade" onPress={onUpgrade} variant="ghost" style={styles.btn} />
+      <Button title={action} onPress={onUpgrade} variant="ghost" style={styles.btn} />
     </View>
   );
 }

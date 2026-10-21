@@ -23,7 +23,8 @@ export function availableActions(o: Order): OrderAction[] {
   if (inStatus(o, 'new', 'paid', 'ready', 'shipped')) out.push('done');
   // Card money must be refunded first; manual and in-shop money never passed through us, so those can always be cancelled.
   if (inStatus(o, 'new', 'paid') && (!card || held === 0)) out.push('cancel');
-  if (card && refundableCents(o) > 0 && !o.refundPending && !o.refundStuck) out.push('refund');
+  // A cancelled card order's refund belongs to the webhook; offering it here would race that refund.
+  if (card && o.status !== 'cancelled' && refundableCents(o) > 0 && !o.refundPending && !o.refundStuck) out.push('refund');
   return out;
 }
 
@@ -91,3 +92,7 @@ export function saidPaidNote(o: Order): string | null {
   const via = methodName(o.paymentMethod);
   return via ? `${who} says they paid by ${via}. Check your account, then mark it paid.` : `${who} says they paid.`;
 }
+
+/** A cancelled card order that was paid and not yet fully refunded: the refund is automatic. */
+export const refundingAutomatically = (o: Order): boolean =>
+  o.status === 'cancelled' && o.paymentMethod === 'card' && o.amountRefundedCents < o.amountPaidCents;

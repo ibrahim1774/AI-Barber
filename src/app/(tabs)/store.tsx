@@ -15,7 +15,7 @@ import { loadMyShop, type Shop } from '@/lib/shop';
 import { loadSite, type SiteRecord } from '@/lib/siteStore';
 import { isLocked, useSubscriptionStatus } from '@/lib/subscriptionStatus';
 import { useOpenStoreUpgrade, useStoreAccess } from '@/lib/store/gate';
-import { countNewOrders, listOrders, loadStoreSettings } from '@/lib/store/data';
+import { countNewOrders, hasAnyOrders, loadStoreSettings } from '@/lib/store/data';
 
 type Phase = 'loading' | 'error' | 'no-store' | 'ready';
 type Tab = 'products' | 'orders';
@@ -32,8 +32,9 @@ export default function Store() {
   const status = useSubscriptionStatus();
   const access = useStoreAccess();
   const upgrade = useOpenStoreUpgrade();
-  // Without the Store plan: whether any orders exist (they stay visible and actionable).
-  const [hasOrders, setHasOrders] = useState<boolean | null>(null);
+  // Closing the shop or losing the plan never hides orders: they stay visible and actionable.
+  const [anyOrders, setAnyOrders] = useState(false);
+  const [storeOpen, setStoreOpen] = useState(true);
   const [site, setSite] = useState<SiteRecord | null>(null);
   const [phase, setPhase] = useState<Phase>('loading');
   const [shop, setShop] = useState<Shop | null>(null);
@@ -67,9 +68,14 @@ export default function Store() {
         return;
       }
       const settings = await loadStoreSettings(s.id);
+      // One unfiltered limit-1 read; if it fails, show the orders view rather than hide orders.
+      const orders = await hasAnyOrders(s.id).catch(() => true);
       if (mine !== seq.current) return;
       setShop(s);
-      if (!settings.storeEnabled) {
+      setStoreOpen(settings.storeEnabled);
+      setAnyOrders(orders);
+      // The setup card only for a store that was never opened and has no orders.
+      if (!settings.storeEnabled && !orders) {
         setPhase('no-store');
         return;
       }
@@ -93,17 +99,6 @@ export default function Store() {
   );
 
   const noPlan = access.status === 'inactive';
-  useEffect(() => {
-    if (!noPlan || !shop) return;
-    let alive = true;
-    listOrders(shop.id, { limit: 1 })
-      .then((o) => alive && setHasOrders(o.length > 0))
-      .catch(() => alive && setHasOrders(false));
-    return () => {
-      alive = false;
-    };
-  }, [noPlan, shop]);
-
   const lapsed = isLocked(site, status);
   // Products are view-only without the Store plan or after a lapse. Orders never are.
   const locked = lapsed || noPlan;
@@ -154,29 +149,24 @@ export default function Store() {
     );
   }
 
-  // The Store plan lapsed (Website or Bookings plan) and there are no orders to keep serving.
-  if (noPlan && hasOrders === false) {
+  // No Store plan and no orders to keep serving.
+  if (noPlan && !anyOrders) {
     return (
       <View style={[...shell, styles.center]}>
         <UpgradeCard kind="store" onUpgrade={upgrade.open} busy={upgrade.busy} />
       </View>
     );
   }
-  if (noPlan && hasOrders === null) {
-    return (
-      <View style={[...shell, styles.center]}>
-        <ActivityIndicator color={colors.accent} />
-      </View>
-    );
-  }
-
   return (
     <View style={shell}>
       <StoreHeader title={shop.name} locked={locked} onShare={() => setSharing(true)} onSetup={() => router.push('/store-setup' as never)} />
       {lapsed && (
         <Text style={styles.locked}>Your subscription has ended. Your store is read-only until you resubscribe.</Text>
       )}
-      {noPlan && !lapsed && <PausedBanner kind="store" onUpgrade={upgrade.open} />}
+      {noPlan && !lapsed && <PausedBanner kind="store" onUpgrade={upgrade.open} action="See plans" />}
+      {!storeOpen && (
+        <Text style={styles.locked}>Your shop is closed to customers. Open it in Store setup.</Text>
+      )}
       <Segmented<Tab>
         options={[
           { key: 'products', label: 'Products' },

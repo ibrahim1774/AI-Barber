@@ -117,6 +117,19 @@ describe('OrderSheet', () => {
     expect(mockMark).toHaveBeenCalledWith('o1', 'cancel', undefined);
   });
 
+  it('cancel on an order the customer says they paid warns to refund them', async () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const { tree } = await mount(order({ paymentMethod: 'cashapp', paymentStatus: 'awaiting', customerSaysPaidAt: '2026-10-21T16:00:00Z' }));
+    await press(tree, 'Cancel order');
+    expect(alert.mock.calls[0][1]).toBe('Sam Lee says they paid. Refund them yourself if they did.');
+  });
+
+  it('a cancelled, unrefunded card order shows the automatic-refund note and no Refund button', async () => {
+    const { tree } = await mount(order({ paymentMethod: 'card', paymentStatus: 'paid', amountPaidCents: 3300, status: 'cancelled' }));
+    expect(allText(tree)).toContain('Refunding automatically');
+    expect(hasButton(tree, 'Refund')).toBe(false);
+  });
+
   it('shows who says they paid, and the address', async () => {
     const { tree } = await mount(order({ paymentMethod: 'cashapp', paymentStatus: 'awaiting', customerSaysPaidAt: '2026-10-21T16:00:00Z' }));
     expect(allText(tree).join(' ')).toContain('Sam says they paid by Cash App');
