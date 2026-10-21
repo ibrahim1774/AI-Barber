@@ -42,6 +42,8 @@ export default function Editor() {
   const [edit, setEdit] = useState<{ path: string; fromList: boolean }>({ path: 'shopName', fromList: false });
   const [uploading, setUploading] = useState(false);
   const uploadingRef = useRef(false);
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
   const [switching, setSwitching] = useState(false);
   const switchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const afterDismiss = useRef<(() => void) | null>(null);
@@ -123,8 +125,9 @@ export default function Editor() {
     }, [openRecord, runPublishRequest]),
   );
 
-  // No leaving for Settings until the overlay is resolved and finished.
-  const tabBarHidden = site == null || overlay != null;
+  // No leaving for Settings until the overlay is resolved and finished, or
+  // while a photo uploads (Delete or Restore there would race the save).
+  const tabBarHidden = site == null || overlay != null || uploading;
   useLayoutEffect(() => {
     navigation.setOptions({ tabBarStyle: tabBarStyle(tabBarHidden) });
   }, [navigation, tabBarHidden]);
@@ -171,7 +174,8 @@ export default function Editor() {
           setUploading(true);
           AccessibilityInfo.announceForAccessibility('Uploading photo');
         });
-        if (url) {
+        // Skip if the screen went away (delete) or another draft (restore) took over.
+        if (url && mountedRef.current && siteRef.current?.draftId === cur.draftId) {
           commit((d) => setPath(d, path, url));
           AccessibilityInfo.announceForAccessibility('Photo updated');
         }

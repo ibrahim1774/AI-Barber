@@ -60,9 +60,11 @@ export default function Settings() {
   );
 
   const standalone = site === null;
+  // Hidden until the site is known, so Edit can't be tapped with no site.
+  const tabBarHidden = site == null;
   useLayoutEffect(() => {
-    navigation.setOptions({ tabBarStyle: tabBarStyle(standalone) });
-  }, [navigation, standalone]);
+    navigation.setOptions({ tabBarStyle: tabBarStyle(tabBarHidden) });
+  }, [navigation, tabBarHidden]);
 
   const manageSubscription = () => {
     track('manage_subscription_tapped');
