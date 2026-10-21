@@ -21,6 +21,12 @@ const { expireStaleCardHolds, retryPendingRefunds } = vi.hoisted(() => ({
 }));
 vi.mock('../../lib/bookings/core.js', () => ({ expireStaleCardHolds, retryPendingRefunds }));
 vi.mock('../../lib/bookings/live.js', () => ({ liveDeps: () => ({}) }));
+const { expireStaleOrderHolds, retryPendingOrderRefunds } = vi.hoisted(() => ({
+  expireStaleOrderHolds: vi.fn(async () => ({ expired: 0 })),
+  retryPendingOrderRefunds: vi.fn(async () => ({ retried: 0, refunded: 0, failed: 0, stuck: 0 })),
+}));
+vi.mock('../../lib/store/core.js', () => ({ expireStaleOrderHolds, retryPendingOrderRefunds }));
+vi.mock('../../lib/store/live.js', () => ({ liveStoreDeps: () => ({ store: true }) }));
 import { handleWebhook } from '../../api/stripe/connect-webhook.js';
 import reminders from '../../api/book/reminders.js';
 import dailySummary from '../../api/book/daily-summary.js';
@@ -106,19 +112,26 @@ describe('crons', () => {
     runReminders.mockResolvedValue({ due: 2, sent: 2, failed: 0 });
     expireStaleCardHolds.mockResolvedValue({ expired: 1 });
     retryPendingRefunds.mockResolvedValue({ retried: 1, refunded: 1, failed: 0, stuck: 0 });
+    expireStaleOrderHolds.mockResolvedValue({ expired: 3 });
+    retryPendingOrderRefunds.mockResolvedValue({ retried: 2, refunded: 1, failed: 1, stuck: 0 });
     const res2 = mkRes();
     await reminders(cron, res2);
     expect(res2.json).toHaveBeenCalledWith({
       ok: true, due: 2, sent: 2, failed: 0,
       holds: { expired: 1 }, refunds: { retried: 1, refunded: 1, failed: 0, stuck: 0 },
+      orderHolds: { expired: 3 }, orderRefunds: { retried: 2, refunded: 1, failed: 1, stuck: 0 },
     });
     expect(expireStaleCardHolds).toHaveBeenCalledWith({}, 50);
+    expect(expireStaleOrderHolds).toHaveBeenCalledWith({ store: true }, 50);
+    expect(retryPendingOrderRefunds).toHaveBeenCalledWith({ store: true });
     // The sweeps run first, then the reminders.
     const holdsAt = expireStaleCardHolds.mock.invocationCallOrder.at(-1)!;
     const refundsAt = retryPendingRefunds.mock.invocationCallOrder.at(-1)!;
     const remindersAt = runReminders.mock.invocationCallOrder.at(-1)!;
     expect(holdsAt).toBeLessThan(refundsAt);
-    expect(refundsAt).toBeLessThan(remindersAt);
+    expect(refundsAt).toBeLessThan(expireStaleOrderHolds.mock.invocationCallOrder.at(-1)!);
+    expect(expireStaleOrderHolds.mock.invocationCallOrder.at(-1)!).toBeLessThan(retryPendingOrderRefunds.mock.invocationCallOrder.at(-1)!);
+    expect(retryPendingOrderRefunds.mock.invocationCallOrder.at(-1)!).toBeLessThan(remindersAt);
   });
 
   it('reminders: a failing runReminders still ran both sweeps first (500)', async () => {
