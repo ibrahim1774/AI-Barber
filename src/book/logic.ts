@@ -312,6 +312,8 @@ export function bookingErrorMessage(e: ErrLike): string {
   if (e.status === 400 && e.field === 'method') return 'Please choose how you want to send payment.';
   if (e.status === 400) return `Please check your ${e.field || 'details'}.`;
   if (e.status === 404) return 'This shop is no longer available.';
+  if (e.status === 423 || e.code === 'bookings-paused') return "This shop isn't taking online bookings right now.";
+  if (e.status === 502 && e.code === 'payment-unavailable') return "Card payments aren't available right now. Please choose another way to pay.";
   return 'Something went wrong. Please try again.';
 }
 

@@ -160,6 +160,9 @@ describe('friendly API errors', () => {
     expect(bookingErrorMessage({ status: 429, code: 'rate-limited', serverMessage: 'Slow down, please.' })).toBe('Slow down, please.');
     expect(bookingErrorMessage({ status: 429, code: 'rate-limited' })).toBe('Too many bookings right now. Please try again in a few minutes.');
     expect(bookingErrorMessage({ status: 429, code: 'rate-limited', serverMessage: '  ' })).toBe('Too many bookings right now. Please try again in a few minutes.');
+    expect(bookingErrorMessage({ status: 423, code: 'bookings-paused' })).toBe("This shop isn't taking online bookings right now.");
+    expect(bookingErrorMessage({ status: 502, code: 'payment-unavailable' })).toBe("Card payments aren't available right now. Please choose another way to pay.");
+    expect(bookingErrorMessage({ status: 502, code: 'bad-gateway' })).toBe('Something went wrong. Please try again.');
   });
   it('400 on method asks to choose a payment method, with no raw code', () => {
     const m = bookingErrorMessage({ status: 400, code: 'invalid', field: 'method' });
