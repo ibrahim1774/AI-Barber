@@ -8,7 +8,7 @@ import { authenticate, liveGetUser, type GetUser } from '../bookings/auth.js';
 import { isObj, type FlowResult } from '../bookings/core.js';
 import { serviceClient, supabaseBookingRepo, type ShopRow } from '../bookings/repo.js';
 import { publicLimiter, type RateLimiter } from '../bookings/rateLimit.js';
-import { VerifyFailure, lazyDefaultVerifier, type VerifiedTx } from './appleVerify.js';
+import { VerifyFailure, isActive, lazyDefaultVerifier, type VerifiedTx } from './appleVerify.js';
 import { entitlementActive, purchaseLive } from './lapse.js';
 import { supabasePurchases, type PurchaseRow } from './purchases.js';
 import { tierOf, type Tier } from './tiers.js';
@@ -97,10 +97,11 @@ export async function getPlan(auth: Auth, deps: PlanDeps): Promise<FlowResult> {
 
 /**
  * POST /api/shop/plan { transactionId }: verify with Apple (the latest product), record it,
- * link the shop to this purchase under setup's rules (409 purchase-in-use when another user
- * owns it or another shop holds it), then return the GET body. A shop linked to a different
- * purchase is relinked: the purchase the owner just paid for is the one that gates. Limited
- * per user (the write limit), failing open.
+ * and, when Apple says it is active, link the shop to this purchase under setup's rules
+ * (409 purchase-in-use when another user owns it or another shop holds it), then return the
+ * GET body. A shop linked to a different purchase is relinked: the purchase the owner just
+ * paid for is the one that gates. An inactive purchase changes no link. Limited per user
+ * (the write limit), failing open.
  */
 export async function refreshPlan(auth: Auth, body: unknown, deps: PlanDeps): Promise<FlowResult> {
   const o = await owner(auth, deps);
@@ -136,6 +137,13 @@ export async function refreshPlan(auth: Auth, body: unknown, deps: PlanDeps): Pr
   const row = await deps.upsertVerified(tx, { checkedAt });
 
   if (row.user_id && row.user_id !== user.id) return err(409, 'purchase-in-use');
+  // Only a live purchase (Apple: active or billing grace) may take over the shop's link. An
+  // expired, revoked or retrying one (an old Apple ID, a stale transaction) leaves the shop
+  // exactly as it was, and the current plan comes back.
+  if (!isActive(tx, now())) {
+    const current = shop.ios_otid ? (shop.ios_otid === otid ? row : await deps.purchase(shop.ios_otid)) : null;
+    return { status: 200, body: planView(shop, current, now()) };
+  }
   if (!row.user_id) {
     try {
       await deps.setUser(otid, user.id);

@@ -191,6 +191,36 @@ describe('POST /api/shop/plan', () => {
     expect(owned.deps.setShopOtid).not.toHaveBeenCalled();
   });
 
+  describe('N2: link or relink only to an active purchase', () => {
+    it.each([
+      ['expired', { expiresAt: NOW - 86_400_000, status: 2 }],
+      ['revoked', { revoked: true, status: 5 }],
+      ['billing retry', { status: 3 }],
+    ])('%s: the shop keeps its link and the current plan comes back unchanged', async (_n, over) => {
+      const { deps, shop } = fakes({ otid: '2000000999', rows: { '2000000999': purchaseRow({ original_transaction_id: '2000000999', product_id: `${P}bookings.yearly` }) }, verified: vtx(over) });
+      const r = await refreshPlan(AUTH, { transactionId: '2000000555' }, deps);
+      expect(r.status).toBe(200);
+      expect(deps.setShopOtid).not.toHaveBeenCalled();
+      expect(deps.setUser).not.toHaveBeenCalled();
+      expect(shop.ios_otid).toBe('2000000999');
+      expect(r.body).toMatchObject({ linked: true, tier: 'bookings', active: true });
+      expect(deps.upsertVerified).toHaveBeenCalled(); // Apple's answer is still recorded
+    });
+
+    it('an unlinked shop stays unlinked on an inactive purchase', async () => {
+      const { deps, shop } = fakes({ otid: null, rows: {}, verified: vtx({ status: 2, expiresAt: NOW - 1000 }) });
+      const r = await refreshPlan(AUTH, { transactionId: '2000000555' }, deps);
+      expect(r).toEqual({ status: 200, body: planView({ ios_otid: null }, null, NOW) });
+      expect(shop.ios_otid).toBeNull();
+    });
+
+    it('billing grace (status 4) counts as active: relinked', async () => {
+      const { deps, shop } = fakes({ otid: '2000000999', rows: {}, verified: vtx({ status: 4, expiresAt: NOW - 1000 }) });
+      expect((await refreshPlan(AUTH, { transactionId: '2000000555' }, deps)).status).toBe(200);
+      expect(shop.ios_otid).toBe(OTID);
+    });
+  });
+
   describe('M2: per-user write limit', () => {
     it('over the limit → 429 rate-limited with Retry-After, before Apple is asked; keyed by user', async () => {
       const { deps } = fakes();
