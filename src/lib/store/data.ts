@@ -24,7 +24,7 @@ export type Order = {
   items: OrderItem[]; subtotalCents: number; shippingCents: number; totalCents: number;
   paymentStatus: 'none' | 'awaiting' | 'deposit' | 'paid' | 'refunded' | 'partially_refunded';
   paymentMethod: 'shop' | 'cashapp' | 'venmo' | 'zelle' | 'paypal' | 'card' | null;
-  amountPaidCents: number; amountRefundedCents: number; refundPending: boolean;
+  amountPaidCents: number; amountRefundedCents: number; refundPending: boolean; refundStuck: boolean;
   trackingNumber: string | null; trackingUrl: string | null; customerSaysPaidAt: string | null;
 };
 
@@ -151,7 +151,7 @@ export async function reorderProducts(ids: string[]): Promise<void> {
  * columns any other way, so each term is spelled out with its NULL case.
  */
 export const VISIBLE_ORDERS_FILTER =
-  'payment_method.is.null,payment_method.neq.card,payment_status.neq.awaiting,amount_paid_cents.gt.0';
+  'payment_method.is.null,payment_method.neq.card,amount_paid_cents.gt.0';
 
 export function toOrder(r: Record<string, any>, items: Record<string, any>[]): Order {
   const addr = r.shipping_address && typeof r.shipping_address === 'object' && Object.keys(r.shipping_address).length > 0
@@ -180,6 +180,7 @@ export function toOrder(r: Record<string, any>, items: Record<string, any>[]): O
     amountPaidCents: r.amount_paid_cents ?? 0,
     amountRefundedCents: r.amount_refunded_cents ?? 0,
     refundPending: !!r.refund_pending,
+    refundStuck: r.refund_stuck_at != null && (r.refund_due_cents ?? 0) > (r.amount_refunded_cents ?? 0),
     trackingNumber: r.tracking_number ?? null,
     trackingUrl: r.tracking_url ?? null,
     customerSaysPaidAt: r.customer_says_paid_at ?? null,

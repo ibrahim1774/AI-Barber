@@ -82,7 +82,13 @@ export function OrderSheet({ order, onClose, onChanged }: Props) {
 
   const confirmCancel = () => {
     if (!o) return;
-    Alert.alert('Cancel this order?', `${o.customer.name.trim() || 'The customer'} gets an email that it was cancelled.`, [
+    const who = o.customer.name.trim() || 'The customer';
+    // Manual and in-shop money never passed through AI Barber, so the barber has to send it back.
+    const paidOutside = o.paymentMethod !== 'card' && o.paymentStatus === 'paid';
+    const body = paidOutside
+      ? `${who} gets an email that it was cancelled. Refund them yourself, the same way they paid.`
+      : `${who} gets an email that it was cancelled.`;
+    Alert.alert('Cancel this order?', body, [
       { text: 'Keep it', style: 'cancel' },
       { text: 'Cancel order', style: 'destructive', onPress: () => void mark('cancel') },
     ]);
@@ -118,7 +124,11 @@ export function OrderSheet({ order, onClose, onChanged }: Props) {
             </View>
             <Text style={st.when}>{when(o.createdAt)} · {o.fulfilment === 'pickup' ? 'Pickup' : 'Shipping'}</Text>
             {!!notice && <Note>{notice}</Note>}
-            {o.refundPending && <Note tone="warn">A refund is processing. We'll keep trying.</Note>}
+            {o.refundStuck ? (
+              <Note tone="warn">This refund is stuck. Email support@davoxa.com and we'll sort it out.</Note>
+            ) : o.refundPending ? (
+              <Note tone="warn">A refund is processing. We'll keep trying.</Note>
+            ) : null}
 
             <View style={st.pair}>
               {!!phone && <Button title="Call" variant="pill" onPress={() => open(telUrl(phone))} style={st.third} />}

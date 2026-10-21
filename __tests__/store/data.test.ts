@@ -116,10 +116,9 @@ describe('store data layer', () => {
     const or = ops(0).find((o) => o[0] === 'or')![1] as string;
     expect(or).toBe(VISIBLE_ORDERS_FILTER);
     expect(VISIBLE_ORDERS_FILTER).toBe(
-      'payment_method.is.null,payment_method.neq.card,payment_status.neq.awaiting,amount_paid_cents.gt.0',
+      'payment_method.is.null,payment_method.neq.card,amount_paid_cents.gt.0',
     );
     expect(or).toContain('payment_method.neq.card');
-    expect(or).toContain('payment_status.neq.awaiting');
     expect(or).toContain('amount_paid_cents.gt.0');
     expect(mockCalls[1].table).toBe('ab_order_items');
     expect(list[0]).toMatchObject({ id: 'o1', number: 1001, items: [{ productId: 'p1', name: 'Oil', unitPriceCents: 900, quantity: 2 }] });
@@ -129,7 +128,7 @@ describe('store data layer', () => {
     mockResults = [{ data: null, error: null, count: 3 }];
     expect(await countNewOrders('s1')).toBe(3);
     expect(has(0, 'eq', 'status', 'new')).toBe(true);
-    expect((ops(0).find((o) => o[0] === 'or')![1] as string)).toContain('payment_status.neq.awaiting');
+    expect((ops(0).find((o) => o[0] === 'or')![1] as string)).toBe(VISIBLE_ORDERS_FILTER);
   });
 
   it('never surfaces the raw database error', async () => {
@@ -149,7 +148,7 @@ describe('store data layer', () => {
     );
     expect(o).toMatchObject({
       number: 1002, shippingAddress: null, customer: { name: 'Sam', phone: '5', email: 's@x.y' }, totalCents: 2300,
-      paymentMethod: 'card', refundPending: true, items: [{ productId: null, name: 'Oil', unitPriceCents: 900, quantity: 2 }],
+      paymentMethod: 'card', refundPending: true, refundStuck: false, items: [{ productId: null, name: 'Oil', unitPriceCents: 900, quantity: 2 }],
     });
     expect(toOrder({ id: 'o', shipping_address: { city: 'X' } }, []).shippingAddress).toEqual({ city: 'X' });
   });

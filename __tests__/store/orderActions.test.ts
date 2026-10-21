@@ -23,6 +23,14 @@ describe('availableActions', () => {
   it('a pending refund hides refund', () => {
     expect(availableActions(order({ ...paidCard, status: 'paid', refundPending: true }))).not.toContain('refund');
   });
+  it('a stuck refund hides refund', () => {
+    expect(availableActions(order({ ...paidCard, status: 'paid', refundStuck: true }))).not.toContain('refund');
+  });
+  it('a manual order marked paid can still be cancelled; a paid card order cannot', () => {
+    expect(availableActions(order({ status: 'paid', paymentStatus: 'paid', paymentMethod: 'venmo', amountPaidCents: 2500 }))).toContain('cancel');
+    expect(availableActions(order({ status: 'paid', paymentStatus: 'paid', paymentMethod: 'shop', amountPaidCents: 2500 }))).toContain('cancel');
+    expect(availableActions(order({ ...paidCard, status: 'paid' }))).not.toContain('cancel');
+  });
   it('partly refunded card still refunds the rest', () => {
     expect(availableActions(order({ ...paidCard, paymentStatus: 'partially_refunded', amountRefundedCents: 500, status: 'paid' }))).toContain('refund');
   });
@@ -31,8 +39,8 @@ describe('availableActions', () => {
     expect(availableActions(order({ status: 'done', paymentStatus: 'paid', amountPaidCents: 3300 }))).toEqual([]);
     expect(availableActions(order({ ...paidCard, status: 'done' }))).toEqual(['refund']);
   });
-  it('a paid manual order holds money, so it cannot be cancelled', () => {
-    expect(availableActions(order({ paymentStatus: 'paid', amountPaidCents: 3300, status: 'paid' }))).toEqual(['ready', 'done']);
+  it('a paid in-shop order can still be cancelled (the barber refunds it themselves)', () => {
+    expect(availableActions(order({ paymentStatus: 'paid', amountPaidCents: 3300, status: 'paid' }))).toEqual(['ready', 'done', 'cancel']);
   });
   it('shipping orders are never ready, pickup orders never shipped', () => {
     expect(availableActions(order({ fulfilment: 'shipping' }))).not.toContain('ready');

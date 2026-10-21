@@ -21,8 +21,9 @@ export function availableActions(o: Order): OrderAction[] {
   if (o.fulfilment === 'pickup' && inStatus(o, 'new', 'paid')) out.push('ready');
   if (o.fulfilment === 'shipping' && inStatus(o, 'new', 'paid')) out.push('shipped');
   if (inStatus(o, 'new', 'paid', 'ready', 'shipped')) out.push('done');
-  if (inStatus(o, 'new', 'paid') && held === 0) out.push('cancel');
-  if (card && refundableCents(o) > 0 && !o.refundPending) out.push('refund');
+  // Card money must be refunded first; manual and in-shop money never passed through us, so those can always be cancelled.
+  if (inStatus(o, 'new', 'paid') && (!card || held === 0)) out.push('cancel');
+  if (card && refundableCents(o) > 0 && !o.refundPending && !o.refundStuck) out.push('refund');
   return out;
 }
 
