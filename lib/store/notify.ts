@@ -4,6 +4,7 @@ import { pushToUsers, type PushMessage } from '../bookings/push.js';
 import { emailLayout, dollars, pushTokenStore, type ManualMethod } from '../bookings/notify.js';
 import { serviceDb, SITE_ORIGIN } from '../bookings/payments.js';
 import { orderManageUrl, orderNoLabel, shipsWithinLabel } from './payments.js';
+import type { StoreNotifyEvent } from './types.js';
 
 /**
  * Store notifications: owner pushes (Expo) and customer emails (SMTP), in the Phase 2 layout.
@@ -19,12 +20,9 @@ import { orderManageUrl, orderNoLabel, shipsWithinLabel } from './payments.js';
  * member with a user_id.
  */
 
-export type StoreNotifyEvent =
-  | { kind: 'order_created'; orderId: string }   // card + awaiting: no-op (webhook sends it on payment)
-  | { kind: 'order_ready'; orderId: string }
-  | { kind: 'order_shipped'; orderId: string }
-  | { kind: 'order_cancelled'; orderId: string; refundedCents?: number }
-  | { kind: 'order_says_paid'; orderId: string; method: 'cashapp' | 'venmo' | 'zelle' | 'paypal' };
+// The contract's event union has one declaration, in lib/store/types.ts (S3a's flows emit it).
+// order_created for card + awaiting is a no-op here: the webhook sends it on payment.
+export type { StoreNotifyEvent };
 
 export interface NotifyOrder {
   id: string;
