@@ -22,7 +22,7 @@ vi.mock('../../lib/bookings/repo.js', async (orig) => ({
 }));
 
 import shopHandler from '../../api/store/shop.js';
-import ordersHandler from '../../api/store/orders.js';
+import ordersHandler, { config as ordersConfig } from '../../api/store/orders.js';
 import orderHandler from '../../api/store/order.js';
 import sentHandler from '../../api/store/sent.js';
 import markHandler from '../../api/shop/orders/[id]/mark.js';
@@ -61,6 +61,9 @@ async function placeManual() {
   expect(r.statusCode).toBe(201);
   return w.state.orders.at(-1)!;
 }
+
+
+it('POST /api/store/orders may run 30 s (Checkout create plus an expire on a store miss)', () => expect(ordersConfig).toEqual({ maxDuration: 30 }));
 
 describe('public store handlers', () => {
   it('store/shop: GET by slug, 405 for POST, CORS OPTIONS', async () => {
