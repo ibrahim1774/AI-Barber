@@ -1,4 +1,5 @@
-// Shared cron auth gate (moved verbatim from api/publish-sweeper.ts).
+// Shared cron auth gate (originally from api/publish-sweeper.ts). Used by every cron in
+// vercel.json: /api/publish-sweeper, /api/ios/sweep, /api/book/reminders, /api/book/daily-summary.
 export function authorized(req: any): boolean {
   const secret = process.env.CRON_SECRET;
 
@@ -9,17 +10,14 @@ export function authorized(req: any): boolean {
   // arrival while every other test passed.
   if (secret) {
     const auth = String(req.headers.authorization || '');
-    if (auth === `Bearer ${secret}`) return true;
+    return auth === `Bearer ${secret}`;
   }
 
-  // Fallback so the sweep works before CRON_SECRET is configured. Vercel's
-  // scheduler identifies itself as vercel-cron/1.0.
-  //
-  // Spoofable, and that's acceptable here: this endpoint only publishes sites
-  // that are ALREADY PAID FOR and not currently serving. A stranger calling it
-  // repeatedly gets no-ops, because publishSite short-circuits on anything
-  // live. There is no state an outsider can change and nothing to enumerate —
-  // the response names only sites that were already owed a deploy.
+  // Fallback ONLY while CRON_SECRET is unset, so the crons work before it is
+  // configured. Vercel's scheduler identifies itself as vercel-cron/1.0. The user
+  // agent is spoofable, so once a secret exists it is never enough on its own:
+  // the reminders cron can trigger Stripe refund retries and session expiries,
+  // and with a secret set only the Bearer header (which Vercel sends) may run it.
   const ua = String(req.headers['user-agent'] || '');
   return ua.startsWith('vercel-cron/');
 }

@@ -7,8 +7,10 @@ import { runReminders, liveReminderDeps } from '../../lib/bookings/notify.js';
 import { expireStaleCardHolds, retryPendingRefunds } from '../../lib/bookings/core.js';
 import { liveDeps } from '../../lib/bookings/live.js';
 
-// Housekeeping after the reminders, in small batches: whatever doesn't fit runs next time.
-// Both sweeps are compare-and-set, so a run killed mid-way leaves nothing half-done.
+// Housekeeping runs FIRST, in small batches, each sweep in its own try block: they are small,
+// so they never starve behind the reminders' time budget, and a failing runReminders can't skip
+// them. Whatever doesn't fit runs next time. Both sweeps are compare-and-set, so a run killed
+// mid-way leaves nothing half-done.
 const SWEEP_LIMIT = 50;
 
 async function sweep(name: string, run: () => Promise<unknown>) {
@@ -24,10 +26,10 @@ export const config = { maxDuration: 300 };
 
 export default async function handler(req: any, res: any) {
   if (!authorized(req)) return res.status(401).json({ error: 'Not authorized' });
+  const holds = await sweep('card-hold sweep', () => expireStaleCardHolds(liveDeps(), SWEEP_LIMIT));
+  const refunds = await sweep('refund retry', () => retryPendingRefunds(liveDeps()));
   try {
     const summary = await runReminders(liveReminderDeps());
-    const holds = await sweep('card-hold sweep', () => expireStaleCardHolds(liveDeps(), SWEEP_LIMIT));
-    const refunds = await sweep('refund retry', () => retryPendingRefunds(liveDeps()));
     return res.status(200).json({ ok: true, ...summary, holds, refunds });
   } catch (e: any) {
     console.error('[book/reminders] failed:', e?.message || e);

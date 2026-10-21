@@ -42,7 +42,7 @@ const sign = (body: string, secret: string, t = Math.floor(Date.now() / 1000)) =
   `t=${t},v1=${crypto.createHmac('sha256', secret).update(`${t}.${body}`).digest('hex')}`;
 
 const saved = { ...process.env };
-beforeEach(() => { vi.spyOn(console, 'error').mockImplementation(() => {}); process.env.STRIPE_CONNECT_WEBHOOK_SECRET = 'whsec_connect'; });
+beforeEach(() => { vi.spyOn(console, 'error').mockImplementation(() => {}); process.env.STRIPE_CONNECT_WEBHOOK_SECRET = 'whsec_connect'; delete process.env.CRON_SECRET; });
 afterEach(() => { process.env = { ...saved }; vi.restoreAllMocks(); });
 
 describe('api/stripe/connect-webhook', () => {
@@ -113,6 +113,36 @@ describe('crons', () => {
       holds: { expired: 1 }, refunds: { retried: 1, refunded: 1, failed: 0, stuck: 0 },
     });
     expect(expireStaleCardHolds).toHaveBeenCalledWith({}, 50);
+    // The sweeps run first, then the reminders.
+    const holdsAt = expireStaleCardHolds.mock.invocationCallOrder.at(-1)!;
+    const refundsAt = retryPendingRefunds.mock.invocationCallOrder.at(-1)!;
+    const remindersAt = runReminders.mock.invocationCallOrder.at(-1)!;
+    expect(holdsAt).toBeLessThan(refundsAt);
+    expect(refundsAt).toBeLessThan(remindersAt);
+  });
+
+  it('reminders: a failing runReminders still ran both sweeps first (500)', async () => {
+    expireStaleCardHolds.mockClear(); retryPendingRefunds.mockClear();
+    expireStaleCardHolds.mockResolvedValue({ expired: 0 });
+    retryPendingRefunds.mockResolvedValue({ retried: 0, refunded: 0, failed: 0, stuck: 0 });
+    runReminders.mockRejectedValue(new Error('smtp down'));
+    const res = mkRes();
+    await reminders(cron, res);
+    expect(expireStaleCardHolds).toHaveBeenCalledTimes(1);
+    expect(retryPendingRefunds).toHaveBeenCalledTimes(1);
+    expect(res.status).toHaveBeenCalledWith(500);
+  });
+
+  it('reminders: with CRON_SECRET set the user agent alone is refused; the Bearer secret works', async () => {
+    process.env.CRON_SECRET = 'cron-s';
+    runReminders.mockResolvedValue({ due: 0, sent: 0, failed: 0 });
+    const res = mkRes();
+    await reminders(cron, res);
+    expect(res.status).toHaveBeenCalledWith(401);
+    const res2 = mkRes();
+    await reminders({ headers: { authorization: 'Bearer cron-s' } }, res2);
+    expect(res2.status).toHaveBeenCalledWith(200);
+    delete process.env.CRON_SECRET;
   });
 
   it('reminders: a failing sweep is logged and never blocks the reminders', async () => {

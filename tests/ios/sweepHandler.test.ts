@@ -36,6 +36,7 @@ const appleSays = (status: number) => async (otid: string) => ({
 
 describe('api/ios/sweep', () => {
   beforeEach(() => {
+    delete process.env.CRON_SECRET; // the vercel-cron user agent is only accepted without a secret
     for (const f of [unpublishedBound, restoreCandidates, takedownCandidates, markTakenDown, clearTakenDown, publishSite, writePendingSite, deployRenderedSite]) f.mockClear();
     unpublishedBound.mockReset();
     restoreCandidates.mockReset().mockResolvedValue([]);
