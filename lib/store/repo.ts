@@ -51,6 +51,8 @@ export interface OrderGuard {
   notStuck?: boolean;
   /** customer_says_paid_at is null ("I've sent it" is recorded once). */
   saysPaidNull?: boolean;
+  /** stripe_checkout_session_id is null (no Checkout stored on the hold yet). */
+  sessionNull?: boolean;
 }
 
 export type OrderWrite = { ok: true; row: OrderRow } | { ok: false; reason: 'stale' };
@@ -167,6 +169,7 @@ export function supabaseStoreRepo(client?: SupabaseClient): StoreRepo {
       if (g.refundPending != null) q = q.eq('refund_pending', g.refundPending);
       if (g.notStuck) q = q.is('refund_stuck_at', null);
       if (g.saysPaidNull) q = q.is('customer_says_paid_at', null);
+      if (g.sessionNull) q = q.is('stripe_checkout_session_id', null);
       const { data, error } = await q.select(ORDER_COLS);
       if (error) fail('updateOrder', error);
       const rows = (data as OrderRow[]) ?? [];

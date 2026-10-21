@@ -38,7 +38,8 @@ export function matchesGuard(cur: OrderRow, g: OrderGuard): boolean {
     && (g.refundDue == null || c.refund_due_cents === g.refundDue)
     && (g.refundPending == null || c.refund_pending === g.refundPending)
     && (!g.notStuck || c.refund_stuck_at == null)
-    && (!g.saysPaidNull || c.customer_says_paid_at == null);
+    && (!g.saysPaidNull || c.customer_says_paid_at == null)
+    && (!g.sessionNull || c.stripe_checkout_session_id == null);
 }
 
 export function fakeStoreRepo(state: StoreState, nowFn: () => number = Date.now): StoreRepo {

@@ -22,7 +22,7 @@ describe('supabaseStoreRepo', () => {
     const { client, calls } = fakeClient({ data: [{ id: 'o1' }], error: null });
     const guard: Required<OrderGuard> = {
       status: 'new', statusIn: ['new', 'paid'], paymentMethod: 'card', notCard: true, paymentStatusIn: ['awaiting'],
-      paidCents: 0, refundedEq: 100, refundedLte: 500, refundDue: 700, refundPending: true, notStuck: true, saysPaidNull: true,
+      paidCents: 0, refundedEq: 100, refundedLte: 500, refundDue: 700, refundPending: true, notStuck: true, saysPaidNull: true, sessionNull: true,
     };
     const r = await supabaseStoreRepo(client).updateOrder('o1', { status: 'cancelled' }, guard);
     expect(r).toEqual({ ok: true, row: { id: 'o1' } });
@@ -42,11 +42,12 @@ describe('supabaseStoreRepo', () => {
       ['eq', ['refund_pending', true]],
       ['is', ['refund_stuck_at', null]],
       ['is', ['customer_says_paid_at', null]],
+      ['is', ['stripe_checkout_session_id', null]],
       ['select', ['*']],
     ];
     expect(calls).toEqual(expected);
     // one filter per guard key
-    expect(Object.keys(guard)).toHaveLength(12);
+    expect(Object.keys(guard)).toHaveLength(13);
   });
 
   it('a zero guard value still filters (paidCents 0, refundedEq 0, refundDue 0)', async () => {

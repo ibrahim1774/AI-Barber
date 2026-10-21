@@ -134,8 +134,9 @@ async function repeatResponse(deps: StoreDeps, shop: ShopStoreRow, order: OrderR
 
     // An older live hold with no session: the first request died between create and store.
     // Cancel it; the page makes a new clientKey. A payment on an orphaned session is refunded
-    // by the webhook's paid-after-cancel path.
-    const upd = await deps.repo.updateOrder(o.id, expiredHoldPatch(deps.now()), LIVE_HOLD);
+    // by the webhook's paid-after-cancel path. Only while no session is stored: if the first
+    // request stores its session meanwhile, the cancel misses and the re-read returns its URL.
+    const upd = await deps.repo.updateOrder(o.id, expiredHoldPatch(deps.now()), { ...LIVE_HOLD, sessionNull: true });
     if (upd.ok) return checkoutExpired();
     const cur = await deps.repo.orderById(o.id);
     if (!cur) return checkoutExpired();

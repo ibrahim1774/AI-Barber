@@ -350,6 +350,29 @@ describe('createOrder: repeated clientKey', () => {
     expect(w.deps.sleep).not.toHaveBeenCalled();
   });
 
+  it('an older no-session hold whose session is stored just before the cancel: the cancel misses, the resubmit gets that URL', async () => {
+    const w = storeWorld();
+    const b = body(w, { pay: 'card' });
+    await createOrder(b, w.deps);
+    const o = w.state.orders[0];
+    Object.assign(o, { stripe_checkout_session_id: null, checkout_url: null }); // the first request is slow to store
+    w.setNow('2026-11-02T12:00:31Z'); // older than the in-flight budget (30 s)
+    const realUpdate = w.deps.repo.updateOrder;
+    w.deps.repo.updateOrder = vi.fn(async (id, patch, guard) => {
+      if ((patch as any).status === 'cancelled') {
+        // The first request's guarded store lands between the resubmit's read and its cancel.
+        Object.assign(o, { stripe_checkout_session_id: 'cs_slow', checkout_url: 'https://checkout.stripe.test/slow' });
+      }
+      return realUpdate(id, patch, guard);
+    });
+    const r = await createOrder(b, w.deps);
+    expect(r.status).toBe(201);
+    expect((r.body as any).checkoutUrl).toBe('https://checkout.stripe.test/slow');
+    expect(w.state.orders[0]).toMatchObject({ status: 'new', payment_status: 'awaiting', stripe_checkout_session_id: 'cs_slow' });
+    expect(w.state.orders.filter((x) => x.status === 'cancelled' && x.checkout_url)).toEqual([]);
+    expect(w.payments.createOrderCheckout).toHaveBeenCalledTimes(1);
+  });
+
   describe('in-flight double submit (the first request is still in Stripe)', () => {
     function deferredCheckout(w: StoreWorld) {
       let release!: () => void;
