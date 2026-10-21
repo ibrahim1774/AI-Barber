@@ -3,6 +3,7 @@ import {
   stripeRequest, expireCheckoutSession, StripeApiError, CHECKOUT_HOLD_SEC, MIN_CHARGE_CENTS, SITE_ORIGIN,
   type PayShop, type StripeOpts,
 } from '../bookings/payments.js';
+import { STORE_APP } from './constants.js';
 
 /**
  * Stripe for store orders: Checkout and refunds on the shop's connected account (Standard,
@@ -10,7 +11,7 @@ import {
  * platformFeeCents(total incl. shipping, shop.platform_fee_bps).
  */
 
-export const STORE_APP = 'aibarber-store';
+export { STORE_APP };
 
 /** The shipping promise, shared by the Checkout shipping option and the confirmation email.
  *  0 or 1 → "Ships within 1 day", 2+ → "Ships within N days", unset → "Shipping". */

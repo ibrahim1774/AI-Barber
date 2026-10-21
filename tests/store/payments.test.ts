@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
-  createOrderCheckout, refundOrder, orderShippingFromSession, orderManageUrl, shipsWithinLabel,
+  createOrderCheckout, refundOrder, orderShippingFromSession, orderManageUrl, shipsWithinLabel, STORE_APP,
   type PayOrder, type PayOrderItem,
 } from '../../lib/store/payments.js';
 import { CHECKOUT_HOLD_SEC, refundKey, StripeApiError } from '../../lib/bookings/payments.js';
@@ -38,6 +38,8 @@ beforeEach(() => {
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
 afterEach(() => { process.env = { ...saved }; vi.restoreAllMocks(); });
+
+it('STORE_APP (the webhook routing tag, shared by lib/bookings/payments.ts) is the wire value live sessions carry', () => expect(STORE_APP).toBe('aibarber-store'));
 
 describe('createOrderCheckout', () => {
   it('pickup order: line items, cover image only when https, no shipping, fee, metadata on session + PI, account, key, URLs', async () => {

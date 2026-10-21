@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { waitUntil } from '@vercel/functions';
 import { platformFeeCents } from './money.js';
+import { STORE_APP } from '../store/constants.js';
 import type { NotifyEvent } from './notify.js';
 import type { OrderWebhookDeps } from '../store/webhook.js';
 import type { StoreNotifyEvent } from '../store/notify.js';
@@ -673,7 +674,7 @@ async function dispatch(event: StripeEvent, deps: WebhookDeps, orderDeps?: Order
   const obj = event.data?.object ?? {};
   // Store orders are routed by the session's metadata BEFORE any appointment lookup. The check is
   // inline (same as lib/store isStoreSession), so appointment events never wait on the store module.
-  if (event.type.startsWith('checkout.session.') && obj?.metadata?.app === 'aibarber-store') {
+  if (event.type.startsWith('checkout.session.') && obj?.metadata?.app === STORE_APP) {
     // Never record a store event we can't process: throw so Stripe retries.
     if (!orderDeps) throw new Error('store session but no order deps');
     return (await storeWebhook()).handleStoreSessionEvent(event, obj, orderDeps);
