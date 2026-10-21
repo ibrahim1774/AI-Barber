@@ -15,8 +15,10 @@ function livePurchases(): PurchaseVerifier {
         import('../ios/appleVerify.js'),
         import('../ios/purchases.js'),
       ]);
+      // Captured before asking Apple, so a revocation newer than this answer is never cleared.
+      const checkedAt = Date.now();
       const tx = await defaultVerifier()(transactionId);
-      await supabasePurchases().upsertVerified(tx);
+      await supabasePurchases().upsertVerified(tx, { checkedAt });
       return { originalTransactionId: tx.originalTransactionId };
     },
     async setUser(otid, userId) {
