@@ -9,7 +9,8 @@
 // - otherwise siteId exactly as before (still gated if it is iOS-bound itself).
 // Web (Stripe) customers have no ios_purchases row, so nothing changes for
 // them, and a failed lookup always falls back to today's behaviour. Only a
-// FOUND iOS row can block, and only when it is taken down or revoked: expiry
+// FOUND iOS row can block, and only when it is taken down (its offline page is
+// live; not a Sandbox row the sweep only gate-closed) or revoked: expiry
 // is Apple's call (billing grace), which the sweep makes, not this endpoint.
 // When an iOS deploy goes ahead and the browser sent siteData, the pending
 // file is refreshed in the iOS shape, so a later restore (sweep) or site
@@ -31,6 +32,12 @@ export interface WebDeployDeps {
   deploy(input: DeployRenderedSiteInput): Promise<DeployRenderedSiteResult>;
   writePending(slug: string, p: PendingSite): Promise<void>;
   now(): number;
+  /**
+   * The sweep deploys offline pages for Sandbox purchases too (env IOS_TAKEDOWN_SANDBOX=1).
+   * Without it, a Sandbox row's taken_down_at only closes the Bookings/Store gates and its
+   * site stays up, so it must not block a web deploy. Default false.
+   */
+  takedownSandbox?: boolean;
 }
 
 // Flat, not a discriminated union: this repo compiles with strictNullChecks off,
@@ -105,7 +112,10 @@ export async function gatedWebDeploy(
     slug = shopSlug;
   }
 
-  if (row && (row.taken_down_at != null || row.revoked_at != null)) {
+  // A Sandbox row the sweep only gate-closed (no offline page) still has its site up: edits go
+  // ahead, and taken_down_at stays as it is (the gates stay closed until Apple says active).
+  const siteOffline = row?.taken_down_at != null && !(row.environment === 'Sandbox' && deps.takedownSandbox !== true);
+  if (row && (siteOffline || row.revoked_at != null)) {
     console.warn(`[Deploy Site] ${slug}: iOS site taken down or revoked (${row.original_transaction_id}); refusing deploy`);
     return { blocked: true };
   }
@@ -147,5 +157,6 @@ export function liveWebDeployDeps(): WebDeployDeps {
     deploy: deployRenderedSite,
     writePending: writePendingSite,
     now: () => Date.now(),
+    takedownSandbox: process.env.IOS_TAKEDOWN_SANDBOX === '1',
   };
 }
