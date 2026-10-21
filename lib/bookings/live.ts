@@ -18,6 +18,10 @@ function livePurchases(): PurchaseVerifier {
       await supabasePurchases().upsertVerified(tx);
       return { originalTransactionId: tx.originalTransactionId };
     },
+    async setUser(otid, userId) {
+      const { supabasePurchases } = await import('../ios/purchases.js');
+      await supabasePurchases().setUser(otid, userId);
+    },
   };
 }
 

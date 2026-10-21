@@ -23,6 +23,13 @@ export interface FlowDeps {
   now(): number;
   /** Origin of the booking pages, e.g. 'https://www.aibarber.org'. */
   baseUrl: string;
+  /** Cross-instance limits checked inside flows (absent = none, e.g. in most tests). */
+  limits?: FlowLimits;
+}
+
+export interface FlowLimits {
+  /** Count one online booking for the shop; false when over its hourly cap. Never throws. */
+  shopBooking(shopId: string): Promise<boolean>;
 }
 
 export interface FlowResult {
@@ -30,6 +37,7 @@ export interface FlowResult {
   body: unknown;
   /** For non-JSON responses (the .ics feed). */
   contentType?: string;
+  headers?: Record<string, string>;
 }
 
 export const ok = (body: unknown, status = 200): FlowResult => ({ status, body });
@@ -51,7 +59,8 @@ export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 export const TOKEN_RE = /^[A-Za-z0-9_-]{32,128}$/;
 const SLUG_LOOKUP_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
 // An explicit offset is required: a bare local time would be read in the server's zone.
-const ISO_INSTANT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?(Z|[+-]\d{2}:\d{2})$/;
+// Hours 00-23, minutes/seconds 00-59 (no T24:00 rolling into the next day).
+const ISO_INSTANT_RE = /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d)(?::([0-5]\d)(?:\.(\d{1,9}))?)?(Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export const isObj = (v: unknown): v is Record<string, any> => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -59,20 +68,44 @@ export const isUuid = (v: unknown): v is string => typeof v === 'string' && UUID
 export const isToken = (v: unknown): v is string => typeof v === 'string' && TOKEN_RE.test(v);
 export const isSlugParam = (v: unknown): v is string => typeof v === 'string' && v.length <= 63 && SLUG_LOOKUP_RE.test(v);
 
-/** Epoch ms of an ISO instant with an explicit offset, else null. */
-export function parseInstant(v: unknown): number | null {
-  if (typeof v !== 'string' || !ISO_INSTANT_RE.test(v)) return null;
-  const ms = Date.parse(v);
+/**
+ * Epoch ms of an ISO instant with an explicit offset, else null. Strict: a date that does
+ * not exist (Feb 30, Nov 31) is rejected rather than rolled over. `wholeMinute` (owner start
+ * fields) also rejects seconds or milliseconds off the minute.
+ */
+export function parseInstant(v: unknown, opts: { wholeMinute?: boolean } = {}): number | null {
+  if (typeof v !== 'string') return null;
+  const m = ISO_INSTANT_RE.exec(v);
+  if (!m) return null;
+  const dt = DateTime.fromISO(v, { setZone: true });
+  if (!dt.isValid) return null;
+  // Every field must read back unchanged in the input's own offset (no silent rollover).
+  if (dt.year !== +m[1] || dt.month !== +m[2] || dt.day !== +m[3] || dt.hour !== +m[4] || dt.minute !== +m[5]) return null;
+  if (opts.wholeMinute && (dt.second !== 0 || dt.millisecond !== 0 || (m[7] && /[1-9]/.test(m[7])))) return null;
+  const ms = dt.toMillis();
   return Number.isFinite(ms) ? ms : null;
 }
 
 export const iso = (ms: number) => new Date(ms).toISOString();
 
-/** Trimmed text of 1..max chars (or 0..max when optional), else undefined. Null/absent optional -> null. */
+// Line breaks and tabs become spaces; every other C0/C1 control character is dropped, so
+// nothing control-y reaches S2's email, push or ICS text.
+const LINE_BREAKS_RE = /[\t\n\v\f\r\u0085\u2028\u2029]+/g;
+const CONTROL_RE = /[\u0000-\u001F\u007F-\u009F]/g;
+
+export function stripControls(v: string): string {
+  return v.replace(LINE_BREAKS_RE, ' ').replace(CONTROL_RE, '');
+}
+
+/**
+ * Trimmed text of 1..max chars (or 0..max when optional), else undefined. Null/absent
+ * optional -> null. Control characters are removed first (line breaks collapse to a space),
+ * so a value made only of control characters counts as empty.
+ */
 export function text(v: unknown, max: number, optional = false): string | null | undefined {
   if (v == null || v === '') return optional ? null : undefined;
   if (typeof v !== 'string') return undefined;
-  const t = v.trim();
+  const t = stripControls(v).trim();
   if (!t) return optional ? null : undefined;
   return t.length <= max ? t : undefined;
 }
@@ -349,12 +382,17 @@ export const isUnpaidCardHold = (a: AppointmentRow) =>
 
 const refundable = (a: AppointmentRow) => Math.max(0, (a.amount_paid_cents ?? 0) - (a.amount_refunded_cents ?? 0));
 
-/** What a cancel by `by` at `nowMs` would refund automatically (card payments only, spec §10). */
+/**
+ * What a cancel by `by` at `nowMs` would refund automatically (card payments only, spec §10).
+ * A booking the shop has moved (shop_rescheduled_at set) refunds as if the shop cancelled,
+ * even when the customer cancels it; the row still records cancelled_by 'customer'.
+ */
 export function refundIfCancelled(shop: ShopRow, appt: AppointmentRow, by: 'customer' | 'shop', nowMs: number): number {
   if (appt.payment_method !== 'card') return 0; // manual rails / in shop: no automatic money movement
   const amount = refundable(appt);
   if (amount <= 0) return 0;
-  return refundOnCancel({ by, cutoffMin: shop.cancel_cutoff_min, startAt: appt.start_at, now: iso(nowMs), amountPaidCents: amount });
+  const refundAs = appt.shop_rescheduled_at ? 'shop' : by;
+  return refundOnCancel({ by: refundAs, cutoffMin: shop.cancel_cutoff_min, startAt: appt.start_at, now: iso(nowMs), amountPaidCents: amount });
 }
 
 export async function safeNotify(deps: FlowDeps, event: Parameters<Notify>[0]): Promise<void> {
@@ -424,13 +462,17 @@ export async function cancelAppointment(
       await safeLog(deps, shop.id, 'refund_failed', { appointmentId: row.id, amountCents: toRefund, by, error: String(e?.message || e) });
     }
     if (refunded > 0) {
+      // An absolute total (what was already refunded + this refund), never an increment, and
+      // only while the stored total is not higher: S2's charge.refunded webhook writes Stripe's
+      // cumulative total under the same guard, so whichever lands last can't double count.
       const total = row.amount_refunded_cents + refunded;
       try {
         const upd = await deps.repo.updateAppointment(row.id, {
           amount_refunded_cents: total,
           payment_status: total >= row.amount_paid_cents ? 'refunded' : 'partially_refunded',
-        });
+        }, { refundedLte: total });
         if (upd.ok) row = upd.row;
+        else row = (await deps.repo.appointmentById(row.id)) ?? row;
       } catch (e: any) {
         console.error(`[bookings] refund bookkeeping failed for appointment ${row.id}:`, e?.message || e);
       }
@@ -438,6 +480,56 @@ export async function cancelAppointment(
   }
   await safeNotify(deps, { kind: 'booking_cancelled', appointmentId: row.id, by, refundedCents: refunded });
   return { appt: row, refundedCents: refunded, alreadyFinal: false };
+}
+
+// ---------------------------------------------------------------------------
+// Orphaned card holds
+// ---------------------------------------------------------------------------
+/** A card hold older than this with nothing paid is expired (Checkout itself lasts 30 min). */
+export const CARD_HOLD_EXPIRY_MIN = 35;
+
+export interface SweepDeps {
+  repo: BookingRepo;
+  payments: Pick<Payments, 'expireCheckoutSession'>;
+  now(): number;
+}
+
+/**
+ * Expire orphaned card holds: booked + card + awaiting + nothing paid, created more than
+ * 35 minutes ago (e.g. the function died between the insert and Checkout, so no
+ * checkout.session.expired webhook will ever come). Same fields as S2's expireHold
+ * (cancelled_by 'customer', payment_status 'none'), under a compare-and-set so a payment
+ * that lands mid-sweep is never overwritten. Never refunds and never notifies (the customer
+ * was never confirmed). Exported for S2's reminders cron to call at merge.
+ */
+export async function expireStaleCardHolds(deps: SweepDeps, limit = 200): Promise<{ expired: number }> {
+  const nowMs = deps.now();
+  const holds = await deps.repo.staleCardHolds(iso(nowMs - CARD_HOLD_EXPIRY_MIN * MIN), limit);
+  let expired = 0;
+  for (const h of holds) {
+    try {
+      const upd = await deps.repo.updateAppointment(
+        h.id,
+        { status: 'cancelled', cancelled_by: 'customer', cancelled_at: iso(nowMs), payment_status: 'none' },
+        { status: 'booked', method: 'card', paymentStatusIn: ['awaiting'], paidCents: 0 },
+      );
+      if (upd.ok === false) continue;
+      expired++;
+      if (upd.row.stripe_checkout_session_id) {
+        const shop = await deps.repo.shopById(upd.row.shop_id);
+        if (shop) {
+          try {
+            await deps.payments.expireCheckoutSession(shop, upd.row.stripe_checkout_session_id);
+          } catch (e: any) {
+            console.error(`[bookings] expiring checkout for ${upd.row.id} failed:`, e?.message || e);
+          }
+        }
+      }
+    } catch (e: any) {
+      console.error(`[bookings] expiring card hold ${h.id} failed:`, e?.message || e);
+    }
+  }
+  return { expired };
 }
 
 export { MIN, DAY };

@@ -4,6 +4,7 @@
 import { randomUUID } from 'node:crypto';
 import { vi } from 'vitest';
 import type {
+  AppointmentGuard,
   AppointmentRow,
   AvailabilityDbRow,
   BookingRepo,
@@ -37,7 +38,7 @@ const overlaps = (a: AppointmentRow, b: { member_id: string; start_at: string; e
 
 const tok = () => randomUUID().replace(/-/g, '') + randomUUID().replace(/-/g, '');
 
-export function fakeRepo(state: State): BookingRepo {
+export function fakeRepo(state: State, nowFn: () => number = Date.now): BookingRepo {
   const live = (a: AppointmentRow) => a.status !== 'cancelled';
   const conflicts = (row: AppointmentRow) =>
     live(row) && state.appointments.some((o) => o.id !== row.id && live(o) && overlaps(o, row));
@@ -69,7 +70,8 @@ export function fakeRepo(state: State): BookingRepo {
       const full: AppointmentRow = {
         id: randomUUID(), status: 'booked', cancelled_by: null, cancelled_at: null, reminder_sent_at: null,
         amount_paid_cents: 0, amount_refunded_cents: 0, stripe_payment_intent_id: null, stripe_checkout_session_id: null,
-        manage_token: tok(), customer_says_paid_at: null, ...row,
+        manage_token: tok(), customer_says_paid_at: null, shop_rescheduled_at: null,
+        created_at: new Date(nowFn()).toISOString(), ...row,
       };
       const m = state.members.find((x) => x.id === full.member_id);
       if (!m || m.shop_id !== full.shop_id) throw new Error('fk: member not in shop');
@@ -78,17 +80,32 @@ export function fakeRepo(state: State): BookingRepo {
       state.appointments.push(full);
       return { ok: true, row: clone(full) };
     },
-    async deleteAppointment(id) {
-      state.appointments = state.appointments.filter((a) => a.id !== id);
-    },
-    async updateAppointment(id, patch, expectStatus) {
+    async deleteUnpaidAppointment(id) {
       const cur = state.appointments.find((a) => a.id === id);
-      if (!cur || (expectStatus && cur.status !== expectStatus)) return { ok: false, reason: 'stale' };
+      if (!cur || cur.stripe_checkout_session_id || cur.stripe_payment_intent_id || cur.amount_paid_cents !== 0) return false;
+      state.appointments = state.appointments.filter((a) => a.id !== id);
+      return true;
+    },
+    async updateAppointment(id, patch, expect) {
+      const g: AppointmentGuard = typeof expect === 'string' ? { status: expect } : expect ?? {};
+      const cur = state.appointments.find((a) => a.id === id);
+      const matches = !!cur
+        && (!g.status || cur.status === g.status)
+        && (!g.startAt || Date.parse(cur.start_at) === Date.parse(g.startAt))
+        && (!g.paymentStatusIn || g.paymentStatusIn.includes(cur.payment_status))
+        && (!g.notCard || cur.payment_method !== 'card')
+        && (!g.method || cur.payment_method === g.method)
+        && (g.paidCents == null || cur.amount_paid_cents === g.paidCents)
+        && (g.refundedLte == null || cur.amount_refunded_cents <= g.refundedLte);
+      if (!cur || !matches) return { ok: false, reason: 'stale' };
       const next = { ...cur, ...patch } as AppointmentRow;
       if (conflicts(next)) return { ok: false, reason: 'overlap' };
       Object.assign(cur, patch);
       return { ok: true, row: clone(cur) };
     },
+    staleCardHolds: async (before, limit) =>
+      clone(state.appointments.filter((a) => a.status === 'booked' && a.payment_method === 'card' && a.payment_status === 'awaiting'
+        && a.amount_paid_cents === 0 && Date.parse(a.created_at!) < Date.parse(before)).slice(0, limit)),
     appointmentByToken: async (t) => clone(state.appointments.find((a) => a.manage_token === t) ?? null),
     appointmentById: async (id) => clone(state.appointments.find((a) => a.id === id) ?? null),
     memberByIcsToken: async (t) => clone(state.members.find((m) => m.ics_token === t) ?? null),
@@ -214,13 +231,16 @@ export function world(over: { shop?: Partial<ShopRow> } = {}) {
     'owner-jwt': { id: OWNER_USER, email: 'mike@example.com', fullName: 'Mike Fade' },
   };
   const deps: OwnerDeps & FlowDeps = {
-    repo: fakeRepo(state),
+    repo: fakeRepo(state, () => nowMs),
     payments,
     notify: vi.fn(async (e: NotifyEvent) => { notified.push(e); }),
     now: () => nowMs,
     baseUrl: 'https://www.aibarber.org',
     getUser: async (jwt) => users[jwt] ?? null,
-    purchases: { verify: vi.fn(async () => ({ originalTransactionId: OTID })) },
+    purchases: {
+      verify: vi.fn(async () => ({ originalTransactionId: OTID })),
+      setUser: vi.fn(async (otid: string, userId: string) => { if (state.purchases[otid]) state.purchases[otid].user_id = userId; }),
+    },
     rand: (() => { let i = 0; return () => `x${String(i++).padStart(3, '0')}`; })(),
   };
   return {

@@ -4,7 +4,7 @@ import { clientIp, makeRateLimiter, memoryStore, READ_LIMIT, WRITE_LIMIT } from 
 import { authenticate, bearerToken } from '../../lib/bookings/auth.js';
 import { appointmentsToIcs } from '../../lib/bookings/ics.stub.js';
 import { appointmentIdParam, endpoint } from '../../lib/bookings/http.js';
-import { normalizePhone, parseInstant } from '../../lib/bookings/core.js';
+import { normalizePhone, parseInstant, stripControls, text } from '../../lib/bookings/core.js';
 
 describe('slug', () => {
   it('slugifies and validates', () => {
@@ -62,6 +62,30 @@ describe('auth', () => {
   it('a throwing getUser is a 401', async () => {
     const r = await authenticate('Bearer x', async () => { throw new Error('boom'); });
     expect(r).toEqual({ ok: false, status: 401, body: { error: 'unauthorized' } });
+  });
+});
+
+describe('strict instants and control characters', () => {
+  it('rejects dates and times that would roll over; wholeMinute rejects seconds', () => {
+    expect(parseInstant('2027-02-30T15:00Z')).toBeNull();
+    expect(parseInstant('2026-11-31T10:00:00Z')).toBeNull();
+    expect(parseInstant('2026-11-03T24:00Z')).toBeNull();
+    expect(parseInstant('2026-11-03T23:59:60Z')).toBeNull();
+    expect(parseInstant('2026-11-03T10:00+24:00')).toBeNull();
+    expect(parseInstant('2028-02-29T10:00:00Z')).toBe(Date.parse('2028-02-29T10:00:00Z'));
+    expect(parseInstant('2026-11-03T10:00:00-05:00')).toBe(Date.parse('2026-11-03T15:00:00Z'));
+    expect(parseInstant('2026-11-03T15:00:59.999Z')).toBe(Date.parse('2026-11-03T15:00:59.999Z'));
+    expect(parseInstant('2026-11-03T15:00:59.999Z', { wholeMinute: true })).toBeNull();
+    expect(parseInstant('2026-11-03T15:00:00.000Z', { wholeMinute: true })).toBe(Date.parse('2026-11-03T15:00:00Z'));
+    expect(parseInstant('2026-11-03T15:00Z', { wholeMinute: true })).toBe(Date.parse('2026-11-03T15:00:00Z'));
+  });
+
+  it('strips control characters; line breaks collapse to a space', () => {
+    expect(stripControls('a\u0000b\u007fc\u009fd')).toBe('abcd');
+    expect(stripControls('one\r\ntwo\n\nthree\u2028four\tfive')).toBe('one two three four five');
+    expect(text('\u0000\u0001', 10)).toBeUndefined();
+    expect(text('\n', 10, true)).toBeNull();
+    expect(text(' Sam\u0007 ', 10)).toBe('Sam');
   });
 });
 

@@ -46,7 +46,15 @@ import {
   type FlowResult,
 } from './core.js';
 import { appointmentsToIcs } from './deps.js';
-import { MANUAL_METHODS, type AppointmentRow, type ManualMethod, type MemberRow, type NewAppointment, type ShopRow } from './repo.js';
+import {
+  MANUAL_METHODS,
+  type AppointmentRow,
+  type ManualMethod,
+  type MemberRow,
+  type NewAppointment,
+  type PaymentStatus,
+  type ShopRow,
+} from './repo.js';
 
 type Params = Record<string, unknown>;
 
@@ -175,7 +183,7 @@ type Pay = 'shop' | 'manual' | 'card';
 
 export async function createAppointment(body: unknown, deps: FlowDeps): Promise<FlowResult> {
   if (!isObj(body)) return invalid('body');
-  const { slug, serviceId, memberId, start, customer, note, pay } = body;
+  const { slug, serviceId, memberId, start, customer, note, pay, method } = body;
   if (!isSlugParam(slug)) return invalid('slug');
   if (!(memberId === 'any' || typeof memberId === 'string')) return invalid('memberId');
   const startMs = parseInstant(start);
@@ -191,6 +199,7 @@ export async function createAppointment(body: unknown, deps: FlowDeps): Promise<
   const noteText = text(note, 500, true);
   if (noteText === undefined) return invalid('note');
   if (pay !== 'shop' && pay !== 'manual' && pay !== 'card') return invalid('pay');
+  if (method != null && (pay !== 'manual' || !MANUAL_METHODS.includes(method as ManualMethod))) return invalid('method');
 
   const r = await resolve(deps, slug, serviceId, memberId);
   if (r.ok === false) return r.result;
@@ -201,6 +210,15 @@ export async function createAppointment(body: unknown, deps: FlowDeps): Promise<
   if (pay === 'shop' && !shop.pay_in_shop) return invalid('pay');
   if (pay === 'manual' && Object.keys(manualHandles(shop)).length === 0) return invalid('pay');
   if (pay === 'card' && !cardEnabled(shop)) return invalid('pay');
+  // The manual rail is fixed at booking time (POST /sent must name the same one): the one
+  // asked for, else the shop's only handle. With several handles and none named it stays
+  // null, and "I've sent it" is refused for that booking.
+  let manualMethod: ManualMethod | null = null;
+  if (pay === 'manual') {
+    const offered = Object.keys(manualHandles(shop)) as ManualMethod[];
+    if (method != null && !offered.includes(method as ManualMethod)) return invalid('method');
+    manualMethod = (method as ManualMethod | undefined) ?? (offered.length === 1 ? offered[0] : null);
+  }
 
   // Duplicate: the same customer (normalized phone) at the same start anywhere in the shop.
   const sameStart = await deps.repo.appointmentsStartingAt(shop.id, iso(startMs));
@@ -212,6 +230,10 @@ export async function createAppointment(body: unknown, deps: FlowDeps): Promise<
   // slot engine in the shop's timezone; the DB exclusion constraint is the final guard.
   const rules = publicRules(shop);
   const free = await membersFreeAt(deps.repo, shop, r.members, service.duration_min, startMs, nowMs, rules);
+
+  // Per-shop cap across all IPs (so rotating IPs can't flood one calendar), counted only for
+  // requests that are about to insert.
+  if (free.length > 0 && deps.limits && !(await deps.limits.shopBooking(shop.id))) return shopRateLimited();
 
   for (const m of free) {
     const price = priceFor(cat, service, m.id);
@@ -235,7 +257,7 @@ export async function createAppointment(body: unknown, deps: FlowDeps): Promise<
       customer_email: email,
       note: noteText,
       payment_status: pay === 'shop' ? 'none' : 'awaiting',
-      payment_method: pay === 'shop' ? 'shop' : pay === 'card' ? 'card' : null,
+      payment_method: pay === 'shop' ? 'shop' : pay === 'card' ? 'card' : manualMethod,
       source: 'online',
     };
     const ins = await deps.repo.insertAppointment(row);
@@ -248,7 +270,7 @@ export async function createAppointment(body: unknown, deps: FlowDeps): Promise<
     const twins = (await deps.repo.appointmentsStartingAt(shop.id, iso(startMs)))
       .filter((a) => a.id !== appt.id && a.status !== 'cancelled' && normalizePhone(a.customer_phone) === phoneKey);
     if (twins.some((a) => a.id < appt.id)) {
-      await deps.repo.deleteAppointment(appt.id);
+      await dropHold(deps, appt);
       return err(409, 'duplicate');
     }
 
@@ -267,7 +289,7 @@ export async function createAppointment(body: unknown, deps: FlowDeps): Promise<
         // No checkout = no hold: drop the row so the slot is free again.
         console.error(`[bookings] createCardCheckout failed for ${appt.id}:`, e?.message || e);
         try {
-          await deps.repo.deleteAppointment(appt.id);
+          await dropHold(deps, appt);
         } catch (e2: any) {
           console.error(`[bookings] dropping failed card hold ${appt.id} failed:`, e2?.message || e2);
         }
@@ -297,6 +319,25 @@ export async function createAppointment(body: unknown, deps: FlowDeps): Promise<
 
   const alts = await alternatives(deps.repo, shop, r.members, service.duration_min, startMs, deps.now(), rules);
   return err(409, 'slot-taken', { alternatives: alts });
+}
+
+const shopRateLimited = (): FlowResult => ({
+  ...err(429, 'rate-limited', { message: 'This shop is getting a lot of bookings right now. Please try again in a few minutes.' }),
+  headers: { 'Retry-After': '300' },
+});
+
+/**
+ * Free the slot of a hold that never became a booking. Hard-deletes only a row that never
+ * touched Stripe (no session, no payment intent, nothing paid); anything else is cancelled
+ * instead, so a paid booking is never deleted.
+ */
+async function dropHold(deps: FlowDeps, appt: AppointmentRow): Promise<void> {
+  if (await deps.repo.deleteUnpaidAppointment(appt.id)) return;
+  await deps.repo.updateAppointment(
+    appt.id,
+    { status: 'cancelled', cancelled_by: 'customer', cancelled_at: iso(deps.now()) },
+    'booked',
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -388,20 +429,35 @@ export async function postManage(body: unknown, deps: FlowDeps): Promise<FlowRes
   }
   if (!candidates) return invalid('memberId');
 
+  // The same customer (phone) may not move onto a start where they already have a booking.
+  const phoneKey = normalizePhone(appt.customer_phone);
+  if (phoneKey) {
+    const sameStart = await deps.repo.appointmentsStartingAt(shop.id, iso(startMs));
+    if (sameStart.some((a) => a.id !== appt.id && a.status !== 'cancelled' && normalizePhone(a.customer_phone) === phoneKey)) {
+      return err(409, 'duplicate');
+    }
+  }
+
   const duration = appt.duration_min;
   const rules = publicRules(shop);
   const free = await membersFreeAt(deps.repo, shop, candidates, duration, startMs, nowMs, rules, appt.id);
   for (const m of free) {
+    // Compare-and-set on the start the customer saw: a concurrent owner reschedule wins and
+    // this one gets 409 instead of silently overwriting it.
     const upd = await deps.repo.updateAppointment(
       appt.id,
       { start_at: iso(startMs), end_at: iso(startMs + duration * MIN), member_id: m.id, reminder_sent_at: null },
-      'booked',
+      { status: 'booked', startAt: appt.start_at },
     );
     if (upd.ok === true) {
       await safeNotify(deps, { kind: 'booking_rescheduled', appointmentId: upd.row.id, by: 'customer' });
       return ok({ appointment: manageView(upd.row, m.display_name, shop) });
     }
-    if (upd.ok === false && upd.reason === 'stale') return err(403, 'too-late');
+    if (upd.ok === false && upd.reason === 'stale') {
+      const cur = await deps.repo.appointmentById(appt.id);
+      if (cur && cur.status === 'booked') return err(409, 'appointment-changed');
+      return err(403, 'too-late');
+    }
   }
   const alts = await alternatives(deps.repo, shop, candidates, duration, startMs, deps.now(), rules, appt.id);
   return err(409, 'slot-taken', { alternatives: alts });
@@ -410,6 +466,8 @@ export async function postManage(body: unknown, deps: FlowDeps): Promise<FlowRes
 // ---------------------------------------------------------------------------
 // POST /api/book/sent  { token, method }
 // ---------------------------------------------------------------------------
+const SENT_PAYMENT_STATUSES: PaymentStatus[] = ['none', 'awaiting'];
+
 export async function postSent(body: unknown, deps: FlowDeps): Promise<FlowResult> {
   if (!isObj(body)) return invalid('body');
   const method = body.method as ManualMethod;
@@ -419,13 +477,22 @@ export async function postSent(body: unknown, deps: FlowDeps): Promise<FlowResul
   const { appt, shop } = c;
   if (!(await bookingsOpen(deps.repo, shop))) return paused();
   if (!manualHandles(shop)[method]) return invalid('method');
-  if (appt.status !== 'booked' || appt.payment_method === 'card') return err(409, 'not-awaiting-payment');
+  // Only an online booking on the manual rail chosen at booking time, still unpaid. Never
+  // in-shop, card or walk-in bookings, and payment_method is never rewritten here.
+  if (
+    appt.status !== 'booked'
+    || appt.source !== 'online'
+    || appt.payment_method !== method
+    || !SENT_PAYMENT_STATUSES.includes(appt.payment_status)
+  ) {
+    return err(409, 'not-awaiting-payment');
+  }
   if (appt.customer_says_paid_at) return ok({}); // already told the barber; don't push again
 
   const upd = await deps.repo.updateAppointment(
     appt.id,
-    { customer_says_paid_at: iso(deps.now()), payment_method: method },
-    'booked',
+    { customer_says_paid_at: iso(deps.now()) },
+    { status: 'booked', method, paymentStatusIn: SENT_PAYMENT_STATUSES },
   );
   if (upd.ok === false) return err(409, 'not-awaiting-payment');
   await safeNotify(deps, { kind: 'customer_says_paid', appointmentId: upd.row.id, method, amountCents: upd.row.price_cents ?? undefined });

@@ -258,10 +258,28 @@ describe('POST /api/book/appointments', () => {
     expect((await book(w, { pay: 'card' })).body).toEqual({ error: 'invalid', field: 'pay' });
   });
 
-  it('manual pay is booked as awaiting confirmation', async () => {
+  it('manual pay is booked as awaiting confirmation, on the only rail the shop takes', async () => {
     const w = world({ shop: { manual_handles: { cashapp: '$fresh' } } });
     expect((await book(w, { pay: 'manual' })).status).toBe(201);
-    expect(w.state.appointments[0]).toMatchObject({ payment_status: 'awaiting', payment_method: null });
+    expect(w.state.appointments[0]).toMatchObject({ payment_status: 'awaiting', payment_method: 'cashapp' });
+  });
+
+  it('manual pay stores the rail named at booking; none named with several rails stays null', async () => {
+    const w = world({ shop: { manual_handles: { cashapp: '$fresh', venmo: '@fresh' } } });
+    expect((await book(w, { pay: 'manual', method: 'venmo' })).status).toBe(201);
+    expect(w.state.appointments[0].payment_method).toBe('venmo');
+    expect((await book(w, { pay: 'manual', customer: { ...customer, phone: '5550001111' } })).status).toBe(201);
+    expect(w.state.appointments[1].payment_method).toBeNull();
+  });
+
+  it.each([
+    [{ pay: 'manual', method: 'zelle' }, 'not a rail the shop takes'],
+    [{ pay: 'manual', method: 'gold' }, 'not a manual rail'],
+    [{ pay: 'shop', method: 'cashapp' }, 'a method without manual pay'],
+  ])('400 invalid method for %j (%s)', async (over) => {
+    const w = world({ shop: { manual_handles: { cashapp: '$fresh' } } });
+    expect(await book(w, over)).toEqual({ status: 400, body: { error: 'invalid', field: 'method' } });
+    expect(w.state.appointments).toHaveLength(0);
   });
 
   describe('card', () => {
@@ -297,6 +315,29 @@ describe('POST /api/book/appointments', () => {
       expect(await book(w, { pay: 'card' })).toEqual({ status: 502, body: { error: 'payment-unavailable' } });
       expect(w.state.appointments).toHaveLength(0);
       expect(w.notified).toHaveLength(0);
+    });
+
+    it('never hard-deletes a hold that already has a checkout session: it is cancelled instead', async () => {
+      const w = world({ shop: cardShop });
+      w.payments.createCardCheckout.mockImplementationOnce(async (_s, a) => {
+        // the session id landed on the row, then the call failed (e.g. a timeout after Stripe answered)
+        w.state.appointments.find((x) => x.id === a.id)!.stripe_checkout_session_id = 'cs_landed';
+        throw new Error('timeout');
+      });
+      expect(await book(w, { pay: 'card' })).toEqual({ status: 502, body: { error: 'payment-unavailable' } });
+      expect(w.state.appointments).toHaveLength(1);
+      expect(w.state.appointments[0]).toMatchObject({ status: 'cancelled', cancelled_by: 'customer', stripe_checkout_session_id: 'cs_landed' });
+      // the slot is free again
+      expect((await book(w, { memberId: w.ids.mike, customer: { ...customer, phone: '5550002222' } })).status).toBe(201);
+    });
+
+    it('stores the checkout session id on the appointment before responding', async () => {
+      const w = world({ shop: cardShop });
+      let storedAtResponse: string | null = null;
+      const r = await book(w, { pay: 'card' });
+      storedAtResponse = w.state.appointments[0].stripe_checkout_session_id;
+      expect(r.status).toBe(201);
+      expect(storedAtResponse).toBe(`cs_${w.state.appointments[0].id}`);
     });
   });
 });
@@ -417,6 +458,51 @@ describe('manage by token', () => {
     expect((await postManage({ token: a.manage_token, action: 'reschedule', start: '2026-11-04T16:00:00Z' }, w.deps)).body).toEqual({ error: 'too-late' });
   });
 
+  it('customer cancel after a shop reschedule refunds in full even inside the cutoff (cancelled_by stays customer)', async () => {
+    const w = world({ shop: { stripe_account_id: 'acct_1', stripe_charges_enabled: true } });
+    const a = await booked(w, { pay: 'card' });
+    Object.assign(w.state.appointments[0], { payment_status: 'deposit', amount_paid_cents: 1000 });
+    w.setNow('2026-11-03T14:00:00Z'); // 1 h before, inside the 2 h cutoff
+    expect(((await getManage({ token: a.manage_token }, w.deps)).body as any).refundCentsIfCancelled).toBe(0);
+    w.state.appointments[0].shop_rescheduled_at = '2026-11-02T18:00:00.000Z';
+    expect(((await getManage({ token: a.manage_token }, w.deps)).body as any).refundCentsIfCancelled).toBe(1000);
+    expect((await postManage({ token: a.manage_token, action: 'cancel' }, w.deps)).status).toBe(200);
+    expect(w.payments.refundAppointment.mock.calls[0][2]).toBe(1000);
+    expect(w.state.appointments[0]).toMatchObject({ status: 'cancelled', cancelled_by: 'customer', amount_refunded_cents: 1000, payment_status: 'refunded' });
+  });
+
+  it('customer reschedule clears reminder_sent_at', async () => {
+    const w = world();
+    const a = await booked(w);
+    w.state.appointments[0].reminder_sent_at = '2026-11-02T10:00:00.000Z';
+    expect((await postManage({ token: a.manage_token, action: 'reschedule', start: '2026-11-04T15:00:00Z' }, w.deps)).status).toBe(200);
+    expect(w.state.appointments[0].reminder_sent_at).toBeNull();
+  });
+
+  it('customer reschedule re-runs the duplicate check (same phone, same start, other barber)', async () => {
+    const w = world();
+    await booked(w, { memberId: w.ids.mike });
+    const second = await booked(w, { memberId: w.ids.jay, start: '2026-11-03T16:00:00Z' });
+    const r = await postManage({ token: second.manage_token, action: 'reschedule', start: T10, memberId: 'any' }, w.deps);
+    expect(r).toEqual({ status: 409, body: { error: 'duplicate' } });
+    expect(w.state.appointments[1].start_at).toBe('2026-11-03T16:00:00.000Z');
+  });
+
+  it('customer reschedule is compare-and-set on the old start: a concurrent owner move wins (409)', async () => {
+    const w = world();
+    const a = await booked(w, { memberId: w.ids.mike });
+    const orig = w.deps.repo.updateAppointment;
+    w.deps.repo.updateAppointment = async (id, patch, expect) => {
+      // the owner moves it to 11:00 between our read and our write
+      Object.assign(w.state.appointments[0], { start_at: '2026-11-03T16:00:00.000Z', end_at: '2026-11-03T16:30:00.000Z' });
+      return orig(id, patch, expect);
+    };
+    const r = await postManage({ token: a.manage_token, action: 'reschedule', start: '2026-11-04T15:00:00Z' }, w.deps);
+    expect(r).toEqual({ status: 409, body: { error: 'appointment-changed' } });
+    expect(w.state.appointments[0].start_at).toBe('2026-11-03T16:00:00.000Z');
+    expect(w.notified.filter((e) => e.kind === 'booking_rescheduled')).toHaveLength(0);
+  });
+
   it('reschedule can switch to another barber or "any"', async () => {
     const w = world();
     const a = await booked(w, { memberId: w.ids.mike });
@@ -426,17 +512,64 @@ describe('manage by token', () => {
 });
 
 describe('POST /api/book/sent', () => {
-  it('stamps customer_says_paid_at and pushes once', async () => {
-    const w = world({ shop: { manual_handles: { cashapp: '$fresh' } } });
-    await book(w, { pay: 'manual' });
+  const handles = { manual_handles: { cashapp: '$fresh', venmo: '@fresh' } };
+
+  it('stamps customer_says_paid_at and pushes once (happy path)', async () => {
+    const w = world({ shop: handles });
+    await book(w, { pay: 'manual', method: 'cashapp' });
     const a = w.state.appointments[0];
     expect(await postSent({ token: a.manage_token, method: 'cashapp' }, w.deps)).toEqual({ status: 200, body: {} });
     expect(w.state.appointments[0].customer_says_paid_at).toBe('2026-11-02T12:00:00.000Z');
-    expect(w.state.appointments[0].payment_method).toBe('cashapp');
+    expect(w.state.appointments[0]).toMatchObject({ payment_method: 'cashapp', payment_status: 'awaiting' });
     await postSent({ token: a.manage_token, method: 'cashapp' }, w.deps);
     expect(w.notified.filter((e) => e.kind === 'customer_says_paid')).toEqual([
       { kind: 'customer_says_paid', appointmentId: a.id, method: 'cashapp', amountCents: 3000 },
     ]);
+  });
+
+  async function expectRejected(w: ReturnType<typeof world>, token: string, method: string) {
+    const before = JSON.stringify(w.state.appointments);
+    expect(await postSent({ token, method }, w.deps)).toEqual({ status: 409, body: { error: 'not-awaiting-payment' } });
+    expect(JSON.stringify(w.state.appointments)).toBe(before); // nothing changed
+    expect(w.notified.filter((e) => e.kind === 'customer_says_paid')).toHaveLength(0); // no push
+  }
+
+  it("409 for a pay:'shop' booking, without rewriting its method", async () => {
+    const w = world({ shop: handles });
+    await book(w, { pay: 'shop' });
+    await expectRejected(w, w.state.appointments[0].manage_token, 'cashapp');
+    expect(w.state.appointments[0].payment_method).toBe('shop');
+  });
+
+  it('409 for a walk-in, even one carrying an email and a manual method', async () => {
+    const w = world({ shop: handles });
+    const { createOwnerAppointment } = await import('../../lib/bookings/ownerFlow.js');
+    const r = await createOwnerAppointment('Bearer owner-jwt', {
+      memberId: w.ids.mike, serviceId: w.ids.cut, start: T10, customer: { name: 'Walk In', email: 'w@example.com' },
+    }, w.deps);
+    expect(r.status).toBe(201);
+    const walkIn = w.state.appointments[0];
+    await expectRejected(w, walkIn.manage_token, 'cashapp');
+    Object.assign(walkIn, { payment_method: 'cashapp', payment_status: 'awaiting' });
+    await expectRejected(w, walkIn.manage_token, 'cashapp');
+  });
+
+  it('409 for a method other than the one chosen at booking', async () => {
+    const w = world({ shop: handles });
+    await book(w, { pay: 'manual', method: 'cashapp' });
+    await expectRejected(w, w.state.appointments[0].manage_token, 'venmo');
+    expect(w.state.appointments[0].payment_method).toBe('cashapp');
+  });
+
+  it('409 for a manual booking with no rail recorded, a card booking, or one already paid', async () => {
+    const w = world({ shop: { ...handles, stripe_account_id: 'acct_1', stripe_charges_enabled: true } });
+    await book(w, { pay: 'manual' }); // several rails, none named -> null
+    await expectRejected(w, w.state.appointments[0].manage_token, 'cashapp');
+    await book(w, { pay: 'card', customer: { ...customer, phone: '5550001111' } });
+    await expectRejected(w, w.state.appointments[1].manage_token, 'cashapp');
+    await book(w, { pay: 'manual', method: 'venmo', start: '2026-11-03T16:00:00.000Z', customer: { ...customer, phone: '5550002222' } });
+    w.state.appointments[2].payment_status = 'paid';
+    await expectRejected(w, w.state.appointments[2].manage_token, 'venmo');
   });
 
   it('rejects a method the shop does not take', async () => {
@@ -444,6 +577,69 @@ describe('POST /api/book/sent', () => {
     await book(w, { pay: 'manual' });
     expect((await postSent({ token: w.state.appointments[0].manage_token, method: 'zelle' }, w.deps)).body).toEqual({ error: 'invalid', field: 'method' });
     expect((await postSent({ token: w.state.appointments[0].manage_token, method: 'gold' }, w.deps)).body).toEqual({ error: 'invalid', field: 'method' });
+  });
+});
+
+describe('strict input', () => {
+  it.each([
+    '2026-11-31T15:00:00Z', // Nov 31 would roll over to Dec 1
+    '2026-02-30T15:00:00Z',
+    '2026-11-03T24:00:00Z', // T24 would roll over to the next day
+    '2026-11-03T15:60:00Z',
+  ])('rejects the rolled-over instant %s', async (start) => {
+    const w = world();
+    expect(await book(w, { start })).toEqual({ status: 400, body: { error: 'invalid', field: 'start' } });
+  });
+
+  it('strips control characters from the name and note; newlines in the note become spaces', async () => {
+    const w = world();
+    const r = await book(w, { customer: { ...customer, name: 'Sam\u0000 Lee\u0007\n' }, note: 'Fade\r\nlow on the sides\u001b[31m\ttoo' });
+    expect(r.status).toBe(201);
+    expect(w.state.appointments[0]).toMatchObject({ customer_name: 'Sam Lee', note: 'Fade low on the sides[31m too' });
+  });
+
+  it('a name made only of control characters is invalid', async () => {
+    const w = world();
+    expect(await book(w, { customer: { ...customer, name: '\u0001\u0002\n' } })).toEqual({ status: 400, body: { error: 'invalid', field: 'customer.name' } });
+  });
+});
+
+describe('timezones at the API level', () => {
+  it('a Honolulu shop open until 22:00 lists and books slots past UTC midnight under the local date', async () => {
+    const w = world({ shop: { timezone: 'Pacific/Honolulu', min_notice_min: 0 } });
+    for (const a of w.state.availability) a.end_min = 22 * 60;
+    const date = '2026-11-03'; // Tue
+    const slots = ((await getSlots({ slug: 'fresh-cuts', serviceId: w.ids.cut, memberId: 'any', date }, w.deps)).body as any).slots;
+    expect(slots[0].start).toBe('2026-11-03T19:00:00.000Z'); // 9:00 HST
+    expect(slots.at(-1).start).toBe('2026-11-04T07:30:00.000Z'); // 21:30 HST, the next UTC day
+    const days = ((await getDays({ slug: 'fresh-cuts', serviceId: w.ids.cut, memberId: 'any', month: '2026-11' }, w.deps)).body as any).days;
+    expect(days[date]).toBe(true);
+    expect(days['2026-11-02']).toBeUndefined(); // Monday closed
+    expect(days['2026-11-08']).toBeUndefined(); // Sunday closed
+    const r = await book(w, { start: '2026-11-04T07:30:00.000Z' });
+    expect(r.status).toBe(201);
+    expect((r.body as any).appointment).toMatchObject({ start: '2026-11-04T07:30:00.000Z', end: '2026-11-04T08:00:00.000Z' });
+    // and the next local day's slots do not include it
+    const wed = ((await getSlots({ slug: 'fresh-cuts', serviceId: w.ids.cut, memberId: w.ids.mike, date: '2026-11-04' }, w.deps)).body as any).slots;
+    expect(wed[0].start).toBe('2026-11-04T19:00:00.000Z');
+  });
+
+  it('New York across the 2026-11-01 DST end: 9:00 local is 13:00Z before and 14:00Z after', async () => {
+    const w = world();
+    w.setNow('2026-10-29T12:00:00Z');
+    const sat = ((await getSlots({ slug: 'fresh-cuts', serviceId: w.ids.cut, memberId: 'any', date: '2026-10-31' }, w.deps)).body as any).slots;
+    const tue = ((await getSlots({ slug: 'fresh-cuts', serviceId: w.ids.cut, memberId: 'any', date: '2026-11-03' }, w.deps)).body as any).slots;
+    expect(sat[0].start).toBe('2026-10-31T13:00:00.000Z');
+    expect(sat.at(-1).start).toBe('2026-10-31T21:30:00.000Z'); // 17:30 EDT
+    expect(tue[0].start).toBe('2026-11-03T14:00:00.000Z');
+    expect(tue.at(-1).start).toBe('2026-11-03T22:30:00.000Z'); // 17:30 EST
+    const days = ((await getDays({ slug: 'fresh-cuts', serviceId: w.ids.cut, memberId: 'any', month: '2026-11' }, w.deps)).body as any).days;
+    expect(days['2026-11-01']).toBeUndefined(); // the DST Sunday is closed
+    expect(days['2026-11-03']).toBe(true);
+    expect((await book(w, { start: '2026-10-31T13:00:00.000Z' })).status).toBe(201);
+    expect((await book(w, { start: '2026-11-03T14:00:00.000Z' })).status).toBe(201);
+    // 9:00 EST-equivalent on the EDT Saturday (14:00Z = 10:00 EDT) is a normal slot, 13:00Z on Tuesday (8:00 EST) is closed
+    expect((await book(w, { start: '2026-11-03T13:00:00.000Z', customer: { ...customer, phone: '5550001111' } })).status).toBe(409);
   });
 });
 

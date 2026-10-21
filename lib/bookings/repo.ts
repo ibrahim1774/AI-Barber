@@ -129,6 +129,8 @@ export interface AppointmentRow {
   manage_token: string;
   source: 'online' | 'walk_in';
   customer_says_paid_at: string | null;
+  /** Set when the shop moved the booking (006): a later customer cancel refunds as a shop cancel. */
+  shop_rescheduled_at: string | null;
   created_at?: string;
 }
 
@@ -141,8 +143,27 @@ export type NewAppointment = Pick<
 export type AppointmentPatch = Partial<Pick<
   AppointmentRow,
   | 'member_id' | 'start_at' | 'end_at' | 'status' | 'cancelled_by' | 'cancelled_at' | 'reminder_sent_at'
-  | 'payment_status' | 'payment_method' | 'amount_refunded_cents' | 'stripe_checkout_session_id' | 'customer_says_paid_at'
+  | 'payment_status' | 'payment_method' | 'amount_paid_cents' | 'amount_refunded_cents' | 'stripe_checkout_session_id'
+  | 'customer_says_paid_at' | 'shop_rescheduled_at'
 >>;
+
+/**
+ * Conditions an update applies under (compare-and-set). When the row no longer matches,
+ * nothing is written and the result is 'stale'.
+ */
+export interface AppointmentGuard {
+  status?: AppointmentStatus;
+  /** The start_at the caller read (a concurrent reschedule makes the update stale). */
+  startAt?: string;
+  paymentStatusIn?: PaymentStatus[];
+  /** payment_method is null or anything but 'card'. */
+  notCard?: boolean;
+  method?: PaymentMethod;
+  /** amount_paid_cents equals this (0 = nothing paid yet). */
+  paidCents?: number;
+  /** Monotonic refund total: only while amount_refunded_cents <= this value. */
+  refundedLte?: number;
+}
 
 export type WriteResult<T> = { ok: true; row: T } | { ok: false; reason: 'overlap' | 'stale' };
 
@@ -189,13 +210,20 @@ export interface BookingRepo {
 
   /** 'overlap' = the exclusion constraint (23P01) refused it. */
   insertAppointment(row: NewAppointment): Promise<WriteResult<AppointmentRow>>;
-  /** Hard delete (only used to drop a card hold whose checkout could not be created). */
-  deleteAppointment(id: string): Promise<void>;
   /**
-   * Update, optionally only while status = expectStatus ('stale' when it no longer is, so
-   * a double-tapped cancel can never refund twice). 'overlap' = 23P01.
+   * Hard delete of a row that never touched Stripe money: only while it has no checkout
+   * session, no payment intent and nothing paid. False when the row was kept (the caller
+   * cancels it instead). Paid bookings are never deleted.
    */
-  updateAppointment(id: string, patch: AppointmentPatch, expectStatus?: AppointmentStatus): Promise<WriteResult<AppointmentRow>>;
+  deleteUnpaidAppointment(id: string): Promise<boolean>;
+  /**
+   * Update, optionally only while the row matches `expect` (a bare status, or a guard):
+   * 'stale' when it no longer does, so a double-tapped cancel can never refund twice and a
+   * concurrent change is never overwritten. 'overlap' = 23P01.
+   */
+  updateAppointment(id: string, patch: AppointmentPatch, expect?: AppointmentStatus | AppointmentGuard): Promise<WriteResult<AppointmentRow>>;
+  /** Unpaid card holds (booked, card, awaiting, nothing paid) created before `createdBeforeIso`. */
+  staleCardHolds(createdBeforeIso: string, limit: number): Promise<AppointmentRow[]>;
   appointmentByToken(token: string): Promise<AppointmentRow | null>;
   appointmentById(id: string): Promise<AppointmentRow | null>;
 
@@ -306,19 +334,33 @@ export function supabaseBookingRepo(client?: SupabaseClient): BookingRepo {
       if (error) fail('insertAppointment', error);
       return { ok: true, row: data as AppointmentRow };
     },
-    async deleteAppointment(id) {
-      const { error } = await db().from('ab_appointments').delete().eq('id', id);
-      if (error) fail('deleteAppointment', error);
+    async deleteUnpaidAppointment(id) {
+      const { data, error } = await db().from('ab_appointments').delete().eq('id', id)
+        .is('stripe_checkout_session_id', null).is('stripe_payment_intent_id', null).eq('amount_paid_cents', 0)
+        .select('id');
+      if (error) fail('deleteUnpaidAppointment', error);
+      return Array.isArray(data) && data.length > 0;
     },
-    async updateAppointment(id, patch, expectStatus) {
+    async updateAppointment(id, patch, expect) {
+      const g: AppointmentGuard = typeof expect === 'string' ? { status: expect } : expect ?? {};
       let q = db().from('ab_appointments').update(patch).eq('id', id);
-      if (expectStatus) q = q.eq('status', expectStatus);
+      if (g.status) q = q.eq('status', g.status);
+      if (g.startAt) q = q.eq('start_at', g.startAt);
+      if (g.paymentStatusIn) q = q.in('payment_status', g.paymentStatusIn);
+      if (g.notCard) q = q.or('payment_method.is.null,payment_method.neq.card');
+      if (g.method) q = q.eq('payment_method', g.method);
+      if (g.paidCents != null) q = q.eq('amount_paid_cents', g.paidCents);
+      if (g.refundedLte != null) q = q.lte('amount_refunded_cents', g.refundedLte);
       const { data, error } = await q.select(APPT_COLS);
       if (isOverlap(error)) return { ok: false, reason: 'overlap' };
       if (error) fail('updateAppointment', error);
       const rows = (data as AppointmentRow[]) ?? [];
       return rows.length ? { ok: true, row: rows[0] } : { ok: false, reason: 'stale' };
     },
+    staleCardHolds: (createdBeforeIso, limit) =>
+      many('staleCardHolds', db().from('ab_appointments').select(APPT_COLS)
+        .eq('status', 'booked').eq('payment_method', 'card').eq('payment_status', 'awaiting').eq('amount_paid_cents', 0)
+        .lt('created_at', createdBeforeIso).order('created_at').limit(limit)),
     appointmentByToken: (token) =>
       one('appointmentByToken', db().from('ab_appointments').select(APPT_COLS).eq('manage_token', token).maybeSingle()),
     appointmentById: (id) =>

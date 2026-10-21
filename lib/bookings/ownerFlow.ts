@@ -1,5 +1,5 @@
 // Owner API flows (Authorization: Bearer <Supabase access token>):
-// /api/shop/{setup,appointments,appointments/:id/cancel,appointments/:id/reschedule,time-off,push-token}.
+// /api/shop/{setup,appointments,appointments/:id/{cancel,reschedule,mark},time-off,push-token}.
 // The caller is verified server-side and the shop is always the one they own; every id in
 // a request body is checked to belong to that shop before it is used.
 import { authenticate, requireOwner, type AuthUser, type GetUser } from './auth.js';
@@ -26,7 +26,7 @@ import {
   type FlowResult,
 } from './core.js';
 import { chooseShopSlug, vercelLabel } from './slug.js';
-import type { MemberRow, NewAppointment, NewService, ShopRow } from './repo.js';
+import type { AppointmentRow, MemberRow, NewAppointment, NewService, PaymentStatus, ShopRow } from './repo.js';
 
 export interface VerifiedPurchase {
   originalTransactionId: string;
@@ -35,6 +35,8 @@ export interface VerifiedPurchase {
 /** lib/ios verifier + ios_purchases upsert; throws VerifyFailure-like errors with a `code`. */
 export interface PurchaseVerifier {
   verify(transactionId: string): Promise<VerifiedPurchase>;
+  /** Attach an account-less purchase (ios_purchases.user_id null) to the caller (spec §4). */
+  setUser(otid: string, userId: string): Promise<void>;
 }
 
 export interface OwnerDeps extends FlowDeps {
@@ -144,6 +146,7 @@ export async function setupShop(authorization: string | string[] | undefined, bo
     }
     const p = await repo.purchase(otid);
     if (p?.user_id && p.user_id !== user.id) return err(409, 'purchase-in-use');
+    if (p && !p.user_id) await deps.purchases.setUser(otid, user.id);
   }
 
   // The site row (if any) must be the caller's own.
@@ -169,7 +172,8 @@ export async function setupShop(authorization: string | string[] | undefined, bo
         address: input.address,
         phone: input.phone,
         accent: input.accent,
-        bookings_enabled: true,
+        // Off until the app's setup wizard finishes (it flips bookings_enabled, 005 grants it).
+        bookings_enabled: false,
       });
       if (ins.ok === true) shop = ins.row;
       else if (ins.ok === false && ins.reason === 'owner-exists') shop = await repo.shopByOwner(user.id); // concurrent setup won
@@ -224,7 +228,7 @@ export async function createOwnerAppointment(authorization: string | string[] | 
   if (o.ok === false) return { status: o.status, body: o.body };
   const { shop } = o;
   if (!isObj(body)) return invalid('body');
-  const startMs = parseInstant(body.start);
+  const startMs = parseInstant(body.start, { wholeMinute: true });
   if (startMs == null) return invalid('start');
   if (!isObj(body.customer)) return invalid('customer');
   const name = text(body.customer.name, 100);
@@ -308,7 +312,7 @@ export async function rescheduleOwnerAppointment(
   if (o.ok === false) return { status: o.status, body: o.body };
   const { shop } = o;
   if (!isObj(body)) return invalid('body');
-  const startMs = parseInstant(body.start);
+  const startMs = parseInstant(body.start, { wholeMinute: true });
   if (startMs == null) return invalid('start');
   const appt = await ownedAppointment(deps, shop, id);
   if (!appt) return notFound();
@@ -319,9 +323,17 @@ export async function rescheduleOwnerAppointment(
   if (!member) return invalid('memberId');
 
   // Owner reschedules, like owner bookings, skip notice/lead days; the DB guard still applies.
+  // shop_rescheduled_at: if the customer then cancels, they get a full refund (core.refundIfCancelled).
+  // reminder_sent_at: null so S2's reminders cron reminds about the new time.
   const upd = await deps.repo.updateAppointment(
     appt.id,
-    { start_at: iso(startMs), end_at: iso(startMs + appt.duration_min * MIN), member_id: member.id, reminder_sent_at: null },
+    {
+      start_at: iso(startMs),
+      end_at: iso(startMs + appt.duration_min * MIN),
+      member_id: member.id,
+      reminder_sent_at: null,
+      shop_rescheduled_at: iso(deps.now()),
+    },
     'booked',
   );
   if (upd.ok === false) {
@@ -333,6 +345,58 @@ export async function rescheduleOwnerAppointment(
 }
 
 // ---------------------------------------------------------------------------
+// POST /api/shop/appointments/:id/mark  { action: 'paid' | 'done' | 'no_show' }
+// ---------------------------------------------------------------------------
+// Owners can't UPDATE ab_appointments directly (006 revokes it), so money columns only move
+// here, in the cancel path, or from Stripe's webhook. Card money is Stripe's alone.
+const MARK_PAID_FROM: PaymentStatus[] = ['none', 'awaiting', 'deposit'];
+
+export async function markOwnerAppointment(
+  authorization: string | string[] | undefined,
+  id: unknown,
+  body: Body,
+  deps: OwnerDeps,
+): Promise<FlowResult> {
+  const o = await requireOwner(authorization, deps.getUser, deps.repo);
+  if (o.ok === false) return { status: o.status, body: o.body };
+  const { shop } = o;
+  if (!isObj(body)) return invalid('body');
+  const action = body.action;
+  if (action !== 'paid' && action !== 'done' && action !== 'no_show') return invalid('action');
+  const appt = await ownedAppointment(deps, shop, id);
+  if (!appt) return notFound();
+  const view = async (row: AppointmentRow) => ok({ appointment: ownerView(row, await memberName(deps.repo, shop.id, row.member_id)) });
+
+  if (action === 'done' || action === 'no_show') {
+    if (appt.status === action) return view(appt); // a repeated tap changes nothing
+    if (appt.status !== 'booked') return err(409, 'not-markable');
+    const upd = await deps.repo.updateAppointment(appt.id, { status: action }, 'booked');
+    if (upd.ok === true) return view(upd.row);
+    const cur = await deps.repo.appointmentById(appt.id);
+    return cur?.status === action ? view(cur) : err(409, 'not-markable');
+  }
+
+  // paid
+  if (appt.payment_method === 'card') return err(409, 'card-payment');
+  if (appt.payment_status === 'paid') return view(appt); // a repeated tap changes nothing
+  if (!MARK_PAID_FROM.includes(appt.payment_status)) return err(409, 'not-markable');
+  const upd = await deps.repo.updateAppointment(
+    appt.id,
+    {
+      payment_status: 'paid',
+      amount_paid_cents: Math.max(appt.price_cents ?? 0, appt.amount_paid_cents),
+      payment_method: appt.payment_method ?? 'shop',
+    },
+    // Compare-and-set on what was read, so a concurrent webhook or mark is never overwritten.
+    { notCard: true, paymentStatusIn: MARK_PAID_FROM, paidCents: appt.amount_paid_cents },
+  );
+  if (upd.ok === true) return view(upd.row);
+  const cur = await deps.repo.appointmentById(appt.id);
+  if (cur?.payment_method === 'card') return err(409, 'card-payment');
+  return cur?.payment_status === 'paid' ? view(cur) : err(409, 'not-markable');
+}
+
+// ---------------------------------------------------------------------------
 // POST /api/shop/time-off  { memberId, start, end, reason?, cancelConflicts }
 // ---------------------------------------------------------------------------
 export async function createTimeOff(authorization: string | string[] | undefined, body: Body, deps: OwnerDeps): Promise<FlowResult> {
@@ -340,9 +404,9 @@ export async function createTimeOff(authorization: string | string[] | undefined
   if (o.ok === false) return { status: o.status, body: o.body };
   const { shop } = o;
   if (!isObj(body)) return invalid('body');
-  const startMs = parseInstant(body.start);
+  const startMs = parseInstant(body.start, { wholeMinute: true });
   if (startMs == null) return invalid('start');
-  const endMs = parseInstant(body.end);
+  const endMs = parseInstant(body.end, { wholeMinute: true });
   if (endMs == null || endMs <= startMs || endMs - startMs > 366 * DAY) return invalid('end');
   const reason = text(body.reason, 200, true);
   if (reason === undefined) return invalid('reason');

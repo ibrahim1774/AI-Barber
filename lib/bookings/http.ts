@@ -37,6 +37,7 @@ export function query(req: VercelRequest, name: string): string | undefined {
 }
 
 export function send(res: VercelResponse, r: FlowResult) {
+  for (const [k, v] of Object.entries(r.headers ?? {})) res.setHeader(k, v);
   if (r.contentType) {
     res.setHeader('Content-Type', r.contentType);
     res.setHeader('Cache-Control', 'private, max-age=300');
@@ -77,7 +78,7 @@ export function endpoint(
   };
 }
 
-/** The :id of /api/shop/appointments/:id/(cancel|reschedule): Vercel's [id] param, else parsed from the URL. */
+/** The :id of /api/shop/appointments/:id/(cancel|reschedule|mark): Vercel's [id] param, else parsed from the URL. */
 export function appointmentIdParam(req: VercelRequest): string | undefined {
   const q = query(req, 'id');
   if (q) return q;

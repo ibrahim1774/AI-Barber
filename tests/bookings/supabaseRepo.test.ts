@@ -36,6 +36,44 @@ describe('supabaseBookingRepo', () => {
     expect(calls).toContainEqual(['eq', ['status', 'booked']]);
   });
 
+  it('guards become filters: start_at, payment status, not-card, method, paid and refunded totals', async () => {
+    const { client, calls } = fakeClient({ data: [{ id: 'id' }], error: null });
+    await supabaseBookingRepo(client).updateAppointment('id', { payment_status: 'paid' }, {
+      status: 'booked', startAt: 's', paymentStatusIn: ['none', 'awaiting'], notCard: true, method: 'venmo', paidCents: 0, refundedLte: 500,
+    });
+    expect(calls).toEqual(expect.arrayContaining([
+      ['eq', ['status', 'booked']],
+      ['eq', ['start_at', 's']],
+      ['in', ['payment_status', ['none', 'awaiting']]],
+      ['or', ['payment_method.is.null,payment_method.neq.card']],
+      ['eq', ['payment_method', 'venmo']],
+      ['eq', ['amount_paid_cents', 0]],
+      ['lte', ['amount_refunded_cents', 500]],
+    ]));
+  });
+
+  it('only deletes a row that never touched Stripe money', async () => {
+    let r = fakeClient({ data: [], error: null });
+    expect(await supabaseBookingRepo(r.client).deleteUnpaidAppointment('id')).toBe(false);
+    expect(r.calls).toEqual(expect.arrayContaining([
+      ['delete', []],
+      ['is', ['stripe_checkout_session_id', null]],
+      ['is', ['stripe_payment_intent_id', null]],
+      ['eq', ['amount_paid_cents', 0]],
+    ]));
+    r = fakeClient({ data: [{ id: 'id' }], error: null });
+    expect(await supabaseBookingRepo(r.client).deleteUnpaidAppointment('id')).toBe(true);
+  });
+
+  it('stale card holds: booked + card + awaiting + unpaid, created before the cutoff', async () => {
+    const { client, calls } = fakeClient({ data: [], error: null });
+    await supabaseBookingRepo(client).staleCardHolds('2026-11-02T12:00:00.000Z', 50);
+    expect(calls).toEqual(expect.arrayContaining([
+      ['eq', ['status', 'booked']], ['eq', ['payment_method', 'card']], ['eq', ['payment_status', 'awaiting']],
+      ['eq', ['amount_paid_cents', 0]], ['lt', ['created_at', '2026-11-02T12:00:00.000Z']], ['limit', [50]],
+    ]));
+  });
+
   it('maps shop unique violations', async () => {
     let r = fakeClient({ data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint "ab_shops_one_per_owner"' } });
     expect(await supabaseBookingRepo(r.client).insertShop({} as any)).toEqual({ ok: false, reason: 'owner-exists' });

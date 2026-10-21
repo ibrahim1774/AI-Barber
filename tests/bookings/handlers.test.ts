@@ -9,14 +9,16 @@ vi.mock('../../lib/bookings/publicFlow.js', () => ({
 }));
 vi.mock('../../lib/bookings/ownerFlow.js', () => ({
   cancelOwnerAppointment: vi.fn(async () => ({ status: 200, body: {} })),
+  markOwnerAppointment: vi.fn(async () => ({ status: 200, body: { appointment: {} } })),
 }));
 
 import shopHandler from '../../api/book/shop.js';
 import manageHandler from '../../api/book/manage.js';
 import appointmentsHandler from '../../api/book/appointments.js';
 import cancelHandler from '../../api/shop/appointments/[id]/cancel.js';
+import markHandler from '../../api/shop/appointments/[id]/mark.js';
 import { createAppointment, getManage, getShop, postManage } from '../../lib/bookings/publicFlow.js';
-import { cancelOwnerAppointment } from '../../lib/bookings/ownerFlow.js';
+import { cancelOwnerAppointment, markOwnerAppointment } from '../../lib/bookings/ownerFlow.js';
 
 function res() {
   const r: any = { statusCode: 0, body: undefined, headers: {} as Record<string, string> };
@@ -75,6 +77,21 @@ describe('api handlers', () => {
     const r = res();
     await cancelHandler({ method: 'POST', query: { id: 'abc' }, headers: { authorization: 'Bearer j' } } as any, r);
     expect(cancelOwnerAppointment).toHaveBeenCalledWith('Bearer j', 'abc', { marker: 'deps' });
+  });
+});
+
+describe('mark handler', () => {
+  it('shop/appointments/[id]/mark passes the bearer, id (from [id] or the URL) and body', async () => {
+    let r = res();
+    await markHandler({ method: 'POST', query: { id: 'abc' }, body: { action: 'paid' }, headers: { authorization: 'Bearer j' } } as any, r);
+    expect(markOwnerAppointment).toHaveBeenCalledWith('Bearer j', 'abc', { action: 'paid' }, { marker: 'deps' });
+    expect(r.statusCode).toBe(200);
+    r = res();
+    await markHandler({ method: 'POST', query: {}, url: '/api/shop/appointments/xyz/mark', body: { action: 'done' }, headers: {} } as any, r);
+    expect(markOwnerAppointment).toHaveBeenLastCalledWith(undefined, 'xyz', { action: 'done' }, { marker: 'deps' });
+    r = res();
+    await markHandler({ method: 'GET', headers: {} } as any, r);
+    expect(r.statusCode).toBe(405);
   });
 });
 
