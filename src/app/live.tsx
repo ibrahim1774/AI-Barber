@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
+import { ShareSheet } from '@/components/ShareSheet';
 import { CheckCircleIcon, CheckIcon, CloseIcon, CopyIcon } from '@/components/Icons';
 import { track } from '@/lib/analytics';
 import { useSession } from '@/lib/auth';
@@ -19,7 +20,9 @@ export default function Live() {
   const [url, setUrl] = useState<string | null>(null);
   const { session, ready } = useSession();
   const [saveDismissed, setSaveDismissed] = useState(false);
-  const { open, copy, share, copied } = useLinkActions(url, 'live');
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shopName, setShopName] = useState('');
+  const { open, copy, copied } = useLinkActions(url, 'live');
 
   useEffect(() => {
     track('live_opened');
@@ -31,6 +34,7 @@ export default function Live() {
           resetTo(homeRoute(s));
           return;
         }
+        setShopName(s.data.shopName || s.inputs.shopName || '');
         setUrl(s.deployedUrl);
       })
       .catch(() => alive && resetTo('/start'));
@@ -75,7 +79,7 @@ export default function Live() {
         <Button variant="solid" title="View your site" onPress={open} style={styles.wide} />
         <View style={styles.row}>
           <Button variant="ghost" title={copied ? 'Copied' : 'Copy link'} onPress={copy} style={styles.half} />
-          <Button variant="ghost" title="Share" onPress={share} style={styles.half} />
+          <Button variant="ghost" title="Share" onPress={() => setShareOpen(true)} style={styles.half} />
         </View>
         <Button variant="link" title="Done" onPress={done} style={styles.link} />
 
@@ -107,6 +111,13 @@ export default function Live() {
           </View>
         )}
       </ScrollView>
+      <ShareSheet
+        visible={shareOpen}
+        shopName={shopName}
+        links={[{ kind: 'website', url }]}
+        source="live"
+        onClose={() => setShareOpen(false)}
+      />
     </View>
   );
 }
