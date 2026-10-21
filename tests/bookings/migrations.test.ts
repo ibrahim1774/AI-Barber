@@ -27,7 +27,7 @@ describe('008_bookings_hardening.sql', () => {
 });
 
 describe('005_bookings_foundation.sql', () => {
-  it('says 006–008 must be re-run after it', () => {
-    expect(sql('005_bookings_foundation.sql')).toMatch(/re-run 006, 007 and 008 after it/);
+  it('says 006–009 must be re-run after it', () => {
+    expect(sql('005_bookings_foundation.sql')).toMatch(/re-run 006, 007, 008 and 009 after it/);
   });
 });
