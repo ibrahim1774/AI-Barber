@@ -369,7 +369,7 @@ describe('publish decides the Book / Shop links from the choice', () => {
     const ents = require('@/lib/entitlements').getEntitlements();
     const deps = makeDeps({
       hasEntitlement: jest.fn(async () => true),
-      linkContext: async () => ({ ents, shop: { slug: 'fade-brooklyn', purchaseLinked: true }, storeEnabled: true, ...extra }),
+      linkContext: async () => ({ ents, shop: { slug: 'fade-brooklyn', purchaseLinked: true, bookingsEnabled: true }, storeEnabled: true, ...extra }),
     });
     await publishFlow(withPrefs, deps);
     return (deps.iosPublish as jest.Mock).mock.calls[0][0].siteData;

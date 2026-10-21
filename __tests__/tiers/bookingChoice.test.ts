@@ -9,7 +9,7 @@ const rec = (data: Record<string, unknown> = {}, inputs: Record<string, unknown>
   updatedAt: 1, slug: null, deployedUrl: null, transactionId: null,
 });
 const ents = (o: Record<string, boolean> = {}) => ({ known: true, hosting: true, bookings: false, store: false, ...o });
-const shop = { slug: 'fade-lab', purchaseLinked: true };
+const shop = { slug: 'fade-lab', purchaseLinked: true, bookingsEnabled: true };
 const ctx = (o: Partial<LinkContext> & { e?: Record<string, boolean> } = {}): LinkContext => ({
   ents: ents(o.e), shop: 'shop' in o ? (o.shop as any) : shop, storeEnabled: o.storeEnabled ?? true,
 });
@@ -74,6 +74,11 @@ describe('resolveLinks (publish decides the links)', () => {
   it('no shop falls back to own; no own link means no button', () => {
     expect(resolveLinks(rec().data, inp, ctx({ e: { bookings: true }, shop: null })).bookingUrl).toBe(OWN);
     expect(resolveLinks(rec({ bookingUrl: AI }).data, { bookingChoice: 'aibarber' }, ctx()).bookingUrl).toBeUndefined();
+  });
+  it('bookings switched off falls back to the own link, or no button', () => {
+    const off = ctx({ e: { bookings: true }, shop: { ...shop, bookingsEnabled: false } });
+    expect(resolveLinks(rec({ bookingUrl: AI }).data, inp, off).bookingUrl).toBe(OWN);
+    expect(resolveLinks(rec({ bookingUrl: AI }).data, { bookingChoice: 'aibarber' }, off).bookingUrl).toBeUndefined();
   });
   it('choice own keeps the own link even with bookings', () => {
     expect(resolveLinks(rec().data, { ...inp, bookingChoice: 'own' }, ctx({ e: { bookings: true } })).bookingUrl).toBe(OWN);
