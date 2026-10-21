@@ -103,6 +103,9 @@ export function aibThemeVars(theme: AibTheme): string {
   return `--aib-bg:rgb(${theme.bgRgb});--aib-bg-rgb:${theme.bgRgb};--aib-text:rgb(${theme.textRgb});--aib-text-rgb:${theme.textRgb};--aib-accent:${theme.accent};--aib-accent-hover:${theme.accentHover};`;
 }
 // Exported so App.tsx can reuse it for post-payment deploy
+const escapeAttr = (s: string): string =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
 export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
   const formattedPhone = siteData.phone.replace(/\s+/g, '');
   // Picked theme — applied via .aib-themed CSS vars on <body> so the deployed
@@ -319,7 +322,8 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
       <nav class="hidden lg:flex items-center gap-10">
         <a href="#home" class="text-[12px] font-montserrat font-bold tracking-[2px] hover:text-[#f4a100] transition-colors">HOME</a>
         <a href="#services" class="text-[12px] font-montserrat font-bold tracking-[2px] hover:text-[#f4a100] transition-colors">SERVICES</a>
-        <a href="#contact" class="text-[12px] font-montserrat font-bold tracking-[2px] hover:text-[#f4a100] transition-colors">CONTACT</a>
+        <a href="#contact" class="text-[12px] font-montserrat font-bold tracking-[2px] hover:text-[#f4a100] transition-colors">CONTACT</a>${siteData.shopUrl ? `
+        <a href="${escapeAttr(siteData.shopUrl)}" class="text-[12px] font-montserrat font-bold tracking-[2px] hover:text-[#f4a100] transition-colors">SHOP</a>` : ''}
       </nav>
     </div>
   </header>
@@ -404,7 +408,8 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
           <h4 class="text-[#f4a100] font-bold text-[10px] md:text-xs tracking-[2px] mb-1 md:mb-2 font-montserrat">${lbl('contactPhoneLabel', 'PHONE')}</h4>
           <p class="text-[#cccccc] text-xs md:text-sm leading-relaxed">${siteData.phone}</p>
         </div>
-        ${siteData.bookingUrl ? `<div class="pt-4"><a href="${siteData.bookingUrl}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-3 bg-[#f4a100] text-[#1a1a1a] px-8 py-4 md:px-12 md:py-5 font-montserrat font-black tracking-[2px] uppercase hover:bg-white transition-all duration-300 shadow-lg text-xs md:text-sm">Book Appointment</a></div>` : ''}
+        ${siteData.bookingUrl ? `<div class="pt-4"><a href="${siteData.bookingUrl}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-3 bg-[#f4a100] text-[#1a1a1a] px-8 py-4 md:px-12 md:py-5 font-montserrat font-black tracking-[2px] uppercase hover:bg-white transition-all duration-300 shadow-lg text-xs md:text-sm">Book Appointment</a></div>` : ''}${siteData.shopUrl ? `
+        <div class="pt-4"><a href="${escapeAttr(siteData.shopUrl)}" class="inline-flex items-center gap-3 border-2 border-[#f4a100] text-[#f4a100] px-8 py-4 md:px-12 md:py-5 font-montserrat font-black tracking-[2px] uppercase hover:bg-[#f4a100] hover:text-[#1a1a1a] transition-all duration-300 text-xs md:text-sm">Shop online</a></div>` : ''}
       </div>
     </div>
   </section>

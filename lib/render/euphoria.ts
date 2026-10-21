@@ -271,7 +271,8 @@ ${EUPHORIA_SCOPED_CSS}
   <!-- Nav -->
   <nav style="position:sticky;top:0;z-index:50;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--eu-line-soft);">
     <div class="eu-container" style="display:flex;align-items:center;justify-content:space-between;padding:18px 24px;">
-      <a href="#top" style="text-decoration:none;color:var(--eu-ink);font-family:'Newsreader',serif;font-size:20px;letter-spacing:0.04em;">${safeName}</a>
+      <a href="#top" style="text-decoration:none;color:var(--eu-ink);font-family:'Newsreader',serif;font-size:20px;letter-spacing:0.04em;">${safeName}</a>${siteData.shopUrl ? `
+      <a href="${escapeHtml(siteData.shopUrl)}" style="text-decoration:none;color:var(--eu-ink-soft);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;">Shop</a>` : ''}
       <a href="tel:${formattedPhone}" class="eu-cta" style="padding:10px 18px;font-size:10px;">Book now</a>
     </div>
   </nav>
@@ -342,7 +343,8 @@ ${EUPHORIA_SCOPED_CSS}
           <div><div style="color:var(--eu-ink-muted);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;margin-bottom:6px;">Location</div>${escapeHtml(siteData.contact.address)}</div>
           <div><div style="color:var(--eu-ink-muted);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;margin-bottom:6px;">Phone</div><a href="tel:${formattedPhone}" style="color:var(--eu-ink);text-decoration:none;">${escapeHtml(siteData.phone)}</a></div>
           ${siteData.contact.email ? `<div><div style="color:var(--eu-ink-muted);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;margin-bottom:6px;">Email</div><a href="mailto:${escapeHtml(siteData.contact.email)}" style="color:var(--eu-ink);text-decoration:none;">${escapeHtml(siteData.contact.email)}</a></div>` : ''}
-          ${siteData.bookingUrl ? `<div style="margin-top:16px;"><a href="${escapeHtml(siteData.bookingUrl)}" target="_blank" rel="noopener noreferrer" class="eu-cta eu-cta-solid">Book Appointment</a></div>` : ''}
+          ${siteData.bookingUrl ? `<div style="margin-top:16px;"><a href="${escapeHtml(siteData.bookingUrl)}" target="_blank" rel="noopener noreferrer" class="eu-cta eu-cta-solid">Book Appointment</a></div>` : ''}${siteData.shopUrl ? `
+          <div style="margin-top:16px;"><a href="${escapeHtml(siteData.shopUrl)}" class="eu-cta">Shop online</a></div>` : ''}
         </div>
       </div>
       <div>

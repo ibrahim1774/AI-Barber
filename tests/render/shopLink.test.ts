@@ -43,7 +43,7 @@ describe.each(Object.keys(renderers))('%s shop link', (name) => {
     expect(html).not.toBe(render(fixture()));
     const hrefs = html.split(`href="${SHOP}"`).length - 1;
     expect(hrefs).toBe(2);
-    expect(html).toMatch(/>\s*Shop\s*</);
+    expect(html).toMatch(/>\s*Shop\s*</i);
     expect(html).toContain('Shop online');
   });
 
