@@ -135,3 +135,13 @@ Push copy:
 
 - **One Opus review each for S1 and S2.** These are money and booking-critical: double-booking, refunds, webhook idempotency, RLS, auth, rate limits.
 - **W, A1 and A2:** batched into one Opus whole-phase review after integration.
+
+## Notes from the foundation build (binding for S1/S2)
+
+- **Column grants on `ab_shops`.** The foundation grants owners `insert`/`update` column by column, so they can't change `platform_fee_bps` or the Stripe fields.
+  - Every new column in migration 006 that the app writes directly (`address`, `phone`, `accent`, `daily_summary`) must also be granted to `authenticated` in 006. If it isn't, the write fails with error 42501.
+  - Server-only columns (`ios_otid`) are not granted.
+- **Push tokens:** `/api/shop/push-token` upserts through the service role. The table's RLS is per user and tokens are unique, so a phone that switches accounts must be able to take its token over.
+- **Duplicate bookings:** the API checks the same normalized phone at the same start across all barbers of the shop, and returns `409 duplicate`. There is no database guard for this.
+- **Buffer:** the slot engine applies `buffer_min` around existing appointments. The database only blocks true overlap, which is fine because the default buffer is 0.
+- **Merge order:** merge `ios-lapse` (004) before `bookings-*` (005/006).
