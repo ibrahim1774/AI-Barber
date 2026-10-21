@@ -409,6 +409,34 @@ describe('POST /api/shop/setup', () => {
     expect(w.state.shops).toHaveLength(1);
   });
 
+  describe('per-user write limit on the Apple verify (fix round 2)', () => {
+    it('over the limit → 429 rate-limited with Retry-After, before Apple is asked or a shop is made; keyed by user', async () => {
+      const w = fresh();
+      w.deps.writeLimiter = { allow: vi.fn(async () => false) };
+      const r = await setup(w, { ...body, transactionId: '2000000555' });
+      expect(r).toEqual({ status: 429, body: { error: 'rate-limited' }, headers: { 'Retry-After': '60' } });
+      expect(w.deps.writeLimiter.allow).toHaveBeenCalledWith(`user:${NEW_USER}`, 'write');
+      expect(w.deps.purchases!.verify).not.toHaveBeenCalled();
+      expect(w.state.shops).toHaveLength(1);
+    });
+
+    it('a setup without a transaction is not limited (no Apple call)', async () => {
+      const w = fresh();
+      w.deps.writeLimiter = { allow: vi.fn(async () => false) };
+      expect((await setup(w)).status).toBe(200);
+      expect(w.deps.writeLimiter.allow).not.toHaveBeenCalled();
+    });
+
+    it('a limiter failure fails open', async () => {
+      const w = fresh();
+      (w.deps.purchases!.verify as any).mockResolvedValueOnce({ originalTransactionId: '2000000888' });
+      w.deps.writeLimiter = { allow: vi.fn(async () => { throw new Error('store down'); }) };
+      const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+      expect((await setup(w, { ...body, transactionId: '2000000555' })).status).toBe(200);
+      err.mockRestore();
+    });
+  });
+
   it('verifies and links the purchase; refuses one owned by someone else', async () => {
     const w = fresh();
     const NEW_OTID = '2000000999';

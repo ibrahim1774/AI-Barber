@@ -49,7 +49,7 @@ export interface GateFields {
  * Does the iOS sweep watch this purchase (ask Apple and stamp taken_down_at when it lapses)?
  * Bound, published rows, Production and Sandbox alike (sweep.ts).
  */
-export function sweepWatches(row: Pick<GateFields, 'site_slug' | 'published_at'>): boolean {
+export function sweepWatches(row: Partial<GateFields>): boolean {
   return row.site_slug != null && row.published_at != null;
 }
 

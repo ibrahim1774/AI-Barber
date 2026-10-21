@@ -2,7 +2,7 @@
 import { liveGetUser } from './auth.js';
 import { liveNotify, livePayments } from './deps.js';
 import type { OwnerDeps, PurchaseVerifier } from './ownerFlow.js';
-import { shopBookingLimiter } from './rateLimit.js';
+import { publicLimiter, shopBookingLimiter } from './rateLimit.js';
 import { serviceClient, supabaseBookingRepo } from './repo.js';
 import type { VerifiedTx } from '../ios/appleVerify.js';
 import type { PurchasesRepo } from '../ios/purchases.js';
@@ -59,5 +59,6 @@ export function liveDeps(): OwnerDeps {
     limits: shopBookingLimiter(),
     getUser: liveGetUser(client),
     purchases: livePurchases(),
+    writeLimiter: publicLimiter,
   };
 }
