@@ -101,11 +101,11 @@ const customerLabel = (a: NotifyAppointment) => a.customer_name?.trim() || 'Walk
 const bookingData = (a: NotifyAppointment) => ({ kind: 'booking', appointmentId: a.id, start: new Date(a.start_at).toISOString() });
 const fromName = (shop: NotifyShop) => `${shop.name} via AI Barber`;
 
-function accent(shop: NotifyShop): string {
+function accent(shop: Pick<NotifyShop, 'accent'>): string {
   return shop.accent && /^#[0-9a-fA-F]{6}$/.test(shop.accent) ? shop.accent : '#111111';
 }
 
-function layout(shop: NotifyShop, heading: string, rows: [string, string][], paragraphs: string[], button?: { label: string; href: string }): string {
+export function emailLayout(shop: Pick<NotifyShop, 'name' | 'accent'>, heading: string, rows: [string, string][], paragraphs: string[], button?: { label: string; href: string }): string {
   const c = accent(shop);
   const rowHtml = rows
     .map(([k, v]) => `<tr><td style="padding:4px 12px 4px 0;color:#666">${escapeHtml(k)}</td><td style="padding:4px 0;color:#111"><strong>${escapeHtml(v)}</strong></td></tr>`)
@@ -169,7 +169,7 @@ export function confirmationEmail(ctx: NotifyContext, now: number): EmailMessage
     fromName: fromName(shop),
     replyTo: ctx.ownerEmail,
     subject: `You're booked at ${shop.name}: ${longWhen(appt.start_at, shop.timezone)}`,
-    html: layout(shop, "You're booked", detailRows(ctx), [
+    html: emailLayout(shop, "You're booked", detailRows(ctx), [
       'The calendar file attached adds this to your calendar.',
       'Need to change or cancel? Use the link below.',
     ], { label: 'Manage booking', href: link }),
@@ -192,7 +192,7 @@ export function cancellationEmail(ctx: NotifyContext, by: 'customer' | 'shop', r
     fromName: fromName(shop),
     replyTo: ctx.ownerEmail,
     subject: `Cancelled: ${appt.service_name} at ${shop.name}, ${longWhen(appt.start_at, shop.timezone)}`,
-    html: layout(shop, 'Booking cancelled', detailRows(ctx), paras, rebook),
+    html: emailLayout(shop, 'Booking cancelled', detailRows(ctx), paras, rebook),
     text: `${paras.join('\n')}\n${appt.service_name}, ${longWhen(appt.start_at, shop.timezone)}.${rebook ? `\nBook again: ${rebook.href}` : ''}`,
     // STATUS:CANCELLED with the same UID removes it from the customer's calendar
     attachments: [icsAttachment(ctx, now, true)],
@@ -207,7 +207,7 @@ export function rescheduleEmail(ctx: NotifyContext, now: number): EmailMessage {
     fromName: fromName(shop),
     replyTo: ctx.ownerEmail,
     subject: `New time at ${shop.name}: ${longWhen(appt.start_at, shop.timezone)}`,
-    html: layout(shop, 'Your booking has moved', detailRows(ctx), [
+    html: emailLayout(shop, 'Your booking has moved', detailRows(ctx), [
       'Open the attached calendar file to update your calendar.',
     ], { label: 'Manage booking', href: link }),
     text: `Your booking at ${shop.name} is now ${longWhen(appt.start_at, shop.timezone)} (${appt.service_name}).\nManage or cancel: ${link}`,
@@ -224,7 +224,7 @@ export function reminderEmail(ctx: NotifyContext): EmailMessage {
     fromName: fromName(shop),
     replyTo: ctx.ownerEmail,
     subject: `Reminder: ${appt.service_name} at ${shop.name} on ${when}`,
-    html: layout(shop, 'See you soon', detailRows(ctx), [
+    html: emailLayout(shop, 'See you soon', detailRows(ctx), [
       "Can't make it? Please cancel or reschedule so someone else can have the time.",
     ], { label: 'Manage booking', href: link }),
     text: `Reminder: ${appt.service_name} at ${shop.name}, ${longWhen(appt.start_at, shop.timezone)}.\nManage or cancel: ${link}`,
