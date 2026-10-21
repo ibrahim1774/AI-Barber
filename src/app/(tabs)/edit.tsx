@@ -26,13 +26,18 @@ import { AllFieldsSheet, PhotosSheet } from '@/components/AllFieldsSheet';
 import { ColourSheet } from '@/components/ColourSheet';
 import { SectionsSheet } from '@/components/sections/SectionsSheet';
 import { ServicesSheet } from '@/components/sections/ServicesSheet';
+import { HoursSheet } from '@/components/sections/HoursSheet';
+import { TeamSheet } from '@/components/sections/TeamSheet';
+import { GallerySheet } from '@/components/sections/GallerySheet';
+import { AboutSheet } from '@/components/sections/AboutSheet';
+import { ContactSheet } from '@/components/sections/ContactSheet';
 import type { SectionKey } from '@/lib/sections/list';
 import { HomePrompts } from '@/components/HomePrompts';
 import { LaunchGuide } from '@/components/LaunchGuide';
 import { PublishBar } from '@/components/PublishBar';
 import { LapsedCard } from '@/components/LapsedCard';
 
-type SheetKind = 'fields' | 'photos' | 'colour' | 'edit' | 'sections' | 'services';
+type SheetKind = 'fields' | 'photos' | 'colour' | 'edit' | 'sections' | SectionKey;
 
 /**
  * The Edit tab: the site preview with tap-to-edit, the design switcher, and
@@ -251,19 +256,11 @@ export default function Editor() {
     else setSheet(null);
   }, [closeThen, edit.fromList]);
 
-  // The Sections list: each card closes the list, then opens its editor.
-  // TODO(controller, after merging implementer B): add cases for 'team',
-  // 'hours', 'gallery', 'about' and 'contact' here (SheetKind entries plus
-  // their sheets below). Until then those cards do nothing.
+  // The Sections list: each card closes the list, then opens its editor
+  // (every SectionKey is also a SheetKind).
   const openSection = useCallback((key: SectionKey) => {
     track('section_opened', { section: key });
-    switch (key) {
-      case 'services':
-        closeThen(() => setSheet('services'));
-        break;
-      default:
-        break; // TODO(implementer B's sheets): Team, Hours, Gallery, About, Contact
-    }
+    closeThen(() => setSheet(key));
   }, [closeThen]);
   const openSections = useCallback(() => {
     track('sections_opened');
@@ -417,6 +414,43 @@ export default function Editor() {
           onClose={() => closeThen(() => setSheet('sections'))}
           onDismiss={onSheetDismiss}
           photoFolder={`ios-drafts/${site.draftId}`}
+        />
+        <HoursSheet
+          visible={sheet === 'hours'}
+          data={data}
+          onChange={(next) => commit(() => next)}
+          onClose={() => closeThen(() => setSheet('sections'))}
+          onDismiss={onSheetDismiss}
+        />
+        <TeamSheet
+          visible={sheet === 'team'}
+          data={data}
+          onChange={(next) => commit(() => next)}
+          onClose={() => closeThen(() => setSheet('sections'))}
+          onDismiss={onSheetDismiss}
+          photoFolder={`ios-drafts/${site.draftId}`}
+        />
+        <GallerySheet
+          visible={sheet === 'gallery'}
+          data={data}
+          onChange={(next) => commit(() => next)}
+          onClose={() => closeThen(() => setSheet('sections'))}
+          onDismiss={onSheetDismiss}
+          photoFolder={`ios-drafts/${site.draftId}`}
+        />
+        <AboutSheet
+          visible={sheet === 'about'}
+          data={data}
+          onChange={(next) => commit(() => next)}
+          onClose={() => closeThen(() => setSheet('sections'))}
+          onDismiss={onSheetDismiss}
+        />
+        <ContactSheet
+          visible={sheet === 'contact'}
+          data={data}
+          onChange={(next) => commit(() => next)}
+          onClose={() => closeThen(() => setSheet('sections'))}
+          onDismiss={onSheetDismiss}
         />
         <EditSheet
           visible={sheet === 'edit'}

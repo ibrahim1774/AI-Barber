@@ -13,13 +13,15 @@ interface Props {
   onChange(next: WebsiteData): void;
   onClose(): void;
   onDismiss?(): void;
+  /** Upload folder; the Edit tab passes `ios-drafts/${draftId}`, like its other photo uploads. */
+  photoFolder?: string;
 }
 
-export function GallerySheet({ visible, data, onChange, onClose, onDismiss }: Props) {
+export function GallerySheet({ visible, data, onChange, onClose, onDismiss, photoFolder = 'gallery' }: Props) {
   const dataRef = useRef(data);
   dataRef.current = data;
 
-  const pick = usePhotoPick('gallery', (url, slot) => {
+  const pick = usePhotoPick(photoFolder, (url, slot) => {
     onChange(setGalleryPhoto(dataRef.current, slot, url));
     track('section_saved', { section: 'gallery' });
   });

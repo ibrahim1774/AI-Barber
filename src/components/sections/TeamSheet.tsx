@@ -13,12 +13,14 @@ interface Props {
   onChange(next: WebsiteData): void;
   onClose(): void;
   onDismiss?(): void;
+  /** Upload folder; the Edit tab passes `ios-drafts/${draftId}`, like its other photo uploads. */
+  photoFolder?: string;
 }
 
 /** null = the list; 'new' = adding; a number = editing that person. */
 type Form = null | 'new' | number;
 
-export function TeamSheet({ visible, data, onChange, onClose, onDismiss }: Props) {
+export function TeamSheet({ visible, data, onChange, onClose, onDismiss, photoFolder = 'team' }: Props) {
   const [form, setForm] = useState<Form>(null);
   const [name, setName] = useState('');
   const [role, setRole] = useState('');
@@ -32,7 +34,7 @@ export function TeamSheet({ visible, data, onChange, onClose, onDismiss }: Props
     if (visible) setForm(null);
   }, [visible]);
 
-  const pick = usePhotoPick('team', (url) => setPhoto(url));
+  const pick = usePhotoPick(photoFolder, (url) => setPhoto(url));
 
   const open = (f: Form) => {
     const m = typeof f === 'number' ? staff[f] : undefined;
