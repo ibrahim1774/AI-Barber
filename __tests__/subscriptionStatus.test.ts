@@ -134,7 +134,15 @@ describe('checkSubscriptionStatus', () => {
   });
 
   test('a site loaded from the account (no transaction bound here) is not locked for lacking one', async () => {
+    // This Apple ID never subscribed: it may have been paid on another one.
     await expect(checkSubscriptionStatus(input({ site: adopted }))).resolves.toBe('unknown');
+    const otherApp = input({ site: adopted, customerInfo: async () => ({ subscriptions: [sub({ productId: 'com.other.app' })] }) });
+    await expect(checkSubscriptionStatus(otherApp)).resolves.toBe('unknown');
+    // This Apple ID did subscribe, and it has ended (a payer who reinstalled and signed in).
+    for (const ended of [sub({ isActive: false }), sub({ isRevoked: true })]) {
+      const i = input({ site: adopted, customerInfo: async () => ({ subscriptions: [ended] }) });
+      await expect(checkSubscriptionStatus(i)).resolves.toBe('lapsed');
+    }
     // With a transaction on this Apple ID, the server still decides.
     const withTx = input({
       site: adopted,

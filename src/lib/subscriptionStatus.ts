@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import type { api } from '@/lib/api';
-import { pickLatestTransactionId } from '@/lib/publish';
+import { PRODUCT_IDS, pickLatestTransactionId } from '@/lib/publish';
 import type { SiteRecord } from '@/lib/siteStore';
 import { LOOKUP_TIMEOUT_MS, withTimeout } from '@/lib/timeout';
 
@@ -50,9 +50,13 @@ export async function checkSubscriptionStatus(input: StatusInput): Promise<Subsc
   if (input.superwallStatus == null || input.superwallStatus === 'UNKNOWN') return 'unknown';
 
   let transactionId: string | null;
+  let everSubscribed: boolean;
   try {
     const info = await withTimeout(input.customerInfo(), input.timeoutMs ?? LOOKUP_TIMEOUT_MS);
-    transactionId = pickLatestTransactionId(info?.subscriptions ?? []);
+    const subs = info?.subscriptions ?? [];
+    transactionId = pickLatestTransactionId(subs);
+    // Any AI Barber subscription on this Apple ID, expired or revoked included.
+    everSubscribed = subs.some((s) => (PRODUCT_IDS as readonly string[]).includes(s.productId));
   } catch {
     return 'unknown';
   }
@@ -60,9 +64,10 @@ export async function checkSubscriptionStatus(input: StatusInput): Promise<Subsc
   if (!transactionId) {
     // Superwall says subscribed, but the transaction isn't readable yet.
     if (input.superwallStatus === 'ACTIVE') return 'unknown';
-    // A site this Apple ID never paid for (loaded from the account, maybe paid
-    // on another Apple ID): no transaction here proves nothing.
-    if (site.transactionId == null) return 'unknown';
+    // A site not bound on this phone (loaded from the account) lapses only if
+    // this Apple ID did subscribe once; otherwise it may have been paid on
+    // another Apple ID, and "ended" (and a second purchase) would be wrong.
+    if (site.transactionId == null && !everSubscribed) return 'unknown';
     return 'lapsed';
   }
 
