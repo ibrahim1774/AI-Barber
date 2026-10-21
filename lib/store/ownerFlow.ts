@@ -115,14 +115,19 @@ export async function markOwnerOrder(auth: Auth, id: unknown, body: unknown, dep
     case 'cancel': {
       if (o.status === 'cancelled') return reply(o);
       if (!FULFIL_FROM.includes(o.status)) return err(409, 'not-markable');
-      // Nothing may be held: a paid card order is refunded first (which cancels it at zero).
-      if (o.amount_paid_cents - o.amount_refunded_cents !== 0) return err(409, 'has-payment');
+      // Card: nothing may be held; a paid card order is refunded first (which cancels it at zero).
+      // Manual rails and in-shop (controller ruling 2026-10-21): the owner may cancel even after
+      // marking it paid. No money moves here (the barber refunds the customer themselves), so an
+      // unpaid order goes to payment 'none' and a paid one keeps its payment record.
+      const isCard = o.payment_method === 'card';
+      if (isCard && o.amount_paid_cents - o.amount_refunded_cents !== 0) return err(409, 'has-payment');
+      const unpaid = UNPAID.includes(o.payment_status);
       return apply(
         {
           status: 'cancelled', cancelled_by: 'shop', cancelled_at: nowIso,
-          ...(o.payment_method !== 'card' ? { payment_status: 'none' as const } : {}),
+          ...(!isCard && unpaid ? { payment_status: 'none' as const } : {}),
         },
-        { status: o.status, paidCents: o.amount_paid_cents, refundedEq: o.amount_refunded_cents },
+        { status: o.status, paidCents: o.amount_paid_cents, refundedEq: o.amount_refunded_cents, paymentStatusIn: [o.payment_status] },
         (r) => r.status === 'cancelled',
         { kind: 'order_cancelled', orderId: o.id },
       );

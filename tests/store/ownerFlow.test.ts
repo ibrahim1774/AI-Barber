@@ -224,13 +224,53 @@ describe('mark: cancel', () => {
     expect(w.notified).toHaveLength(1);
   });
 
-  it('a card-paid order returns 409 has-payment; a marked-paid manual order too', async () => {
+  it('a card-paid order returns 409 has-payment, unchanged', async () => {
     const w = storeWorld();
     const c = await paidCard(w);
+    const before = { ...w.order(c.id) };
     expect(await mark(w, c.id, { action: 'cancel' })).toEqual({ status: 409, body: { error: 'has-payment' } });
+    expect(w.order(c.id)).toEqual(before);
+    expect(w.notified).toEqual([]);
+  });
+
+  it('a marked-paid manual order can be cancelled: 200, no money moves, one email without a refund amount', async () => {
+    const w = storeWorld();
     const m = await place(w);
     await mark(w, m.id, { action: 'paid' });
-    expect(await mark(w, m.id, { action: 'cancel' })).toEqual({ status: 409, body: { error: 'has-payment' } });
+    const upd = vi.spyOn(w.deps.repo, 'updateOrder');
+    const r = await mark(w, m.id, { action: 'cancel' });
+    expect(r.status).toBe(200);
+    expect(w.order(m.id)).toMatchObject({
+      status: 'cancelled', cancelled_by: 'shop', cancelled_at: '2026-11-02T12:00:00.000Z',
+      payment_status: 'paid', amount_paid_cents: 3000, amount_refunded_cents: 0,
+    });
+    expect(upd.mock.calls[0][2]).toEqual({ status: 'paid', paidCents: 3000, refundedEq: 0, paymentStatusIn: ['paid'] });
+    expect(w.payments.refundOrder).not.toHaveBeenCalled();
+    expect(w.notified).toEqual([{ kind: 'order_cancelled', orderId: m.id }]);
+    expect((await mark(w, m.id, { action: 'cancel' })).status).toBe(200); // repeat: no second email
+    expect(w.notified).toHaveLength(1);
+  });
+
+  it('an in-shop order marked paid can be cancelled too', async () => {
+    const w = storeWorld();
+    const o = await place(w, { pay: 'shop' });
+    await mark(w, o.id, { action: 'paid' });
+    expect((await mark(w, o.id, { action: 'cancel' })).status).toBe(200);
+    expect(w.order(o.id)).toMatchObject({ status: 'cancelled', payment_status: 'paid' });
+  });
+
+  it('a manual cancel whose payment status changed after the read misses the compare-and-set (409)', async () => {
+    const w = storeWorld();
+    const o = await place(w);
+    const orig = w.deps.repo.orderById;
+    let first = true;
+    w.deps.repo.orderById = async (id) => {
+      const r = await orig(id);
+      if (first) { first = false; Object.assign(w.order(o.id), { payment_status: 'paid', amount_paid_cents: 3000, status: 'paid' }); }
+      return r;
+    };
+    expect(await mark(w, o.id, { action: 'cancel' })).toEqual({ status: 409, body: { error: 'not-markable' } });
+    expect(w.order(o.id).status).toBe('paid');
   });
 
   it('a fully refunded card order (refunded outside the app) can be cancelled; payment status stays refunded', async () => {
