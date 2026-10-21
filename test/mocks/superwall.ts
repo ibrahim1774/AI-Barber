@@ -23,12 +23,15 @@ export const sw = {
   integrationAttributes: [] as Record<string, string>[],
   /** useSuperwall().isConfigured (read at render). */
   configured: true,
+  /** useSuperwall().configurationError (read at render). */
+  configError: null as string | null,
   /** The callbacks the last useSuperwallEvents() call registered (SubscriptionSync's). */
   events: {} as Record<string, ((...args: any[]) => void) | undefined>,
   reset() {
     sw.events = {};
     sw.integrationAttributes = [];
     sw.configured = true;
+    sw.configError = null;
     sw.callbacks = {};
     sw.register = async () => {};
     sw.subscriptions = [];
@@ -62,6 +65,6 @@ export function SuperwallProvider({ children }: { children: unknown }) {
 }
 
 export function useSuperwall(selector?: (s: Record<string, unknown>) => unknown) {
-  const state = { isConfigured: sw.configured, restorePurchases: () => sw.restore() };
+  const state = { isConfigured: sw.configured, configurationError: sw.configError, restorePurchases: () => sw.restore() };
   return selector ? selector(state) : state;
 }

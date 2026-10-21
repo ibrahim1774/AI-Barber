@@ -1,5 +1,5 @@
 import { usePlacement, useSuperwall, useSuperwallEvents, useUser } from 'expo-superwall';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 
 import { restore, syncIfSignedIn, type Restored } from '@/lib/account';
@@ -78,6 +78,33 @@ export function SubscriptionSync() {
   });
 
   return null;
+}
+
+/** As long as Superwall's own awaitConfigured waits. */
+const SETTLE_TIMEOUT_MS = 10_000;
+
+/**
+ * True once Superwall has configured, failed to, or had 10 s to try (offline).
+ * The tracking prompt waits for it: SuperwallKit's debug build traps if the app
+ * resigns active (as a system prompt makes it) before configure finishes. The
+ * timeout keeps an offline first launch from never asking, which would leave
+ * AppsFlyer unstarted. Without a key there is no Superwall to wait for.
+ */
+export function useSuperwallSettled(): boolean {
+  // superwallActive is fixed for the life of the process, so the hook choice never changes between renders.
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  return superwallActive ? useSuperwallSettledWithKey() : true;
+}
+
+function useSuperwallSettledWithKey(): boolean {
+  const configured = useSuperwall((s) => s.isConfigured);
+  const failed = useSuperwall((s) => s.configurationError != null);
+  const [timedOut, setTimedOut] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setTimedOut(true), SETTLE_TIMEOUT_MS);
+    return () => clearTimeout(t);
+  }, []);
+  return configured || failed || timedOut;
 }
 
 const PAYWALL_ERROR = "We couldn't open the subscription screen. Check your connection and try again.";

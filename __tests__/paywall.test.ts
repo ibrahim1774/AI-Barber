@@ -8,7 +8,9 @@ import { PRODUCT_IDS } from '@/lib/publish';
 process.env.EXPO_PUBLIC_SUPERWALL_API_KEY = 'pk_test';
 /* eslint-disable @typescript-eslint/no-require-imports */
 const { sw } = require('expo-superwall');
-const { usePaywall, useRestorePurchases, superwallActive, resetIntegrationAttributesForTests } = require('@/lib/paywall');
+const {
+  usePaywall, useRestorePurchases, useSuperwallSettled, superwallActive, resetIntegrationAttributesForTests,
+} = require('@/lib/paywall');
 const { api } = require('@/lib/api');
 const analytics = require('@/lib/analytics');
 const siteStore = require('@/lib/siteStore');
@@ -224,6 +226,60 @@ describe('Restore purchases', () => {
     sw.subscriptions = [ACTIVE];
     jest.spyOn(api, 'iosSite').mockResolvedValue(BOUND);
     expect(await restorePurchases()).toMatchObject({ site: { slug: 'fade-factory' } });
+  });
+});
+
+describe('useSuperwallSettled (the tracking prompt waits for it)', () => {
+  let settled: boolean[];
+  function Probe() {
+    settled.push(useSuperwallSettled());
+    return null;
+  }
+  const latest = () => settled[settled.length - 1];
+  type R = { unmount(): void; update(el: React.ReactElement): void };
+  let r: R;
+  beforeEach(() => {
+    settled = [];
+  });
+  afterEach(() => act(() => r.unmount()));
+
+  test('false while Superwall configures, true once it has', () => {
+    sw.configured = false;
+    act(() => {
+      r = create(React.createElement(Probe)) as unknown as R;
+    });
+    expect(latest()).toBe(false);
+    act(() => {
+      jest.advanceTimersByTime(5_000);
+    });
+    expect(latest()).toBe(false);
+    sw.configured = true;
+    act(() => r.update(React.createElement(Probe)));
+    expect(latest()).toBe(true);
+  });
+
+  test('a configuration error settles it', () => {
+    sw.configured = false;
+    sw.configError = 'offline';
+    act(() => {
+      r = create(React.createElement(Probe)) as unknown as R;
+    });
+    expect(latest()).toBe(true);
+  });
+
+  test('never configured: settles after 10 s, so the prompt (and AppsFlyer) still happen offline', () => {
+    sw.configured = false;
+    act(() => {
+      r = create(React.createElement(Probe)) as unknown as R;
+    });
+    act(() => {
+      jest.advanceTimersByTime(9_999);
+    });
+    expect(latest()).toBe(false);
+    act(() => {
+      jest.advanceTimersByTime(1);
+    });
+    expect(latest()).toBe(true);
   });
 });
 

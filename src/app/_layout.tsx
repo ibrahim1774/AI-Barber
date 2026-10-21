@@ -7,7 +7,9 @@ import { SuperwallProvider } from 'expo-superwall';
 import { PostHogProvider } from 'posthog-react-native';
 import { fontAssets } from '@/constants/theme';
 import { initAttribution, POSTHOG_AUTOCAPTURE, posthog, requestTrackingWhenActive, screen } from '@/lib/analytics';
-import { SubscriptionSync, SUPERWALL_KEY, SUPERWALL_OPTIONS, superwallActive, usePublishDeps } from '@/lib/paywall';
+import {
+  SubscriptionSync, SUPERWALL_KEY, SUPERWALL_OPTIONS, superwallActive, usePublishDeps, useSuperwallSettled,
+} from '@/lib/paywall';
 import { publishBusy, resumePendingPublish } from '@/lib/publish';
 
 function ScreenTracker() {
@@ -20,11 +22,15 @@ function ScreenTracker() {
 
 /**
  * The tracking prompt, on whatever screen comes first after the splash (the
- * importer, the Dashboard, or a deep link's target). Once per launch, as soon
- * as the app is active; AppsFlyer starts when it is answered.
+ * importer, the Dashboard, or a deep link's target). Once per launch, after
+ * Superwall has settled and as soon as the app is active; AppsFlyer starts
+ * when it is answered.
  */
 function TrackingPrompt() {
-  useEffect(() => requestTrackingWhenActive(), []);
+  const settled = useSuperwallSettled();
+  useEffect(() => {
+    if (settled) requestTrackingWhenActive();
+  }, [settled]);
   return null;
 }
 

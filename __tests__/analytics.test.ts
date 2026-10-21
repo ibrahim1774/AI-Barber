@@ -343,6 +343,8 @@ test('the root layout uses the safe autocapture and asks for tracking itself, no
   const layout = read('src/app/_layout.tsx');
   expect(layout).toMatch(/<PostHogProvider client=\{posthog\} autocapture=\{POSTHOG_AUTOCAPTURE\}>/);
   expect(layout).toMatch(/<TrackingPrompt \/>/);
-  expect(layout).toMatch(/requestTrackingWhenActive\(\)/);
+  // Asked only once Superwall has settled (its debug build traps if the app resigns active before configure).
+  expect(layout).toMatch(/const settled = useSuperwallSettled\(\);/);
+  expect(layout).toMatch(/if \(settled\) requestTrackingWhenActive\(\);\s*\}, \[settled\]\);/);
   expect(read('src/app/index.tsx')).not.toMatch(/requestTracking/);
 });
