@@ -2,12 +2,13 @@ import { Tabs } from 'expo-router';
 import { colors, fonts } from '@/constants/theme';
 import { GearIcon, PencilIcon } from '@/components/Icons';
 import { CalendarIcon } from '@/components/bookings/icons';
+import { BagIcon } from '@/components/store/icons';
 import { useBookingsPush } from '@/lib/bookings/push';
 import { TAB_BAR_HIDDEN, TAB_BAR_STYLE } from '@/lib/tabBar';
 
 /**
  * Home once a site exists: Edit (the editor), Bookings (the day's
- * appointments) and Settings (the live link, account, subscription). Each screen hides the bar itself while it must not
+ * appointments), Store (products and orders) and Settings (the live link, account, subscription). Each screen hides the bar itself while it must not
  * be left (the editor's prompts / guide) via tabBarStyle.
  */
 export default function TabsLayout() {
@@ -38,6 +39,13 @@ export default function TabsLayout() {
         options={{
           title: 'Bookings',
           tabBarIcon: ({ color, size }) => <CalendarIcon size={size - 2} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="store"
+        options={{
+          title: 'Store',
+          tabBarIcon: ({ color, size }) => <BagIcon size={size - 2} color={color} />,
         }}
       />
       <Tabs.Screen

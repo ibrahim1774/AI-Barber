@@ -3,6 +3,8 @@
 import React from 'react';
 // No @types for react-test-renderer here; require keeps it untyped.
 const { act, create } = require('react-test-renderer');
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { homeRoute } from '@/lib/nav';
 import { requestPublish, takePublishRequest } from '@/lib/publishRequest';
 import { websiteView } from '@/lib/website';
@@ -98,4 +100,11 @@ test('a publish request from Settings is taken once', () => {
   requestPublish();
   expect(takePublishRequest()).toBe(true);
   expect(takePublishRequest()).toBe(false);
+});
+
+test('the tab bar is Edit, Bookings, Store, Settings, in that order', () => {
+  const layout = readFileSync(join(__dirname, '../src/app/(tabs)/_layout.tsx'), 'utf8');
+  const names = [...layout.matchAll(/<Tabs\.Screen\s+name="(\w+)"/g)].map((m) => m[1]);
+  expect(names).toEqual(['edit', 'bookings', 'store', 'settings']);
+  expect(layout).toMatch(/title: 'Store'/);
 });

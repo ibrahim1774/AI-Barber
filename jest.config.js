@@ -3,7 +3,7 @@ process.env.TZ = 'America/New_York';
 
 module.exports = {
   preset: 'jest-expo',
-  testMatch: ['**/__tests__/**/*.test.ts'],
+  testMatch: ['**/__tests__/**/*.test.{ts,tsx}'],
   moduleNameMapper: {
     '^expo-secure-store$': '<rootDir>/test/mocks/secure-store.ts',
     '^expo-sqlite/kv-store$': '<rootDir>/test/mocks/kv.ts',

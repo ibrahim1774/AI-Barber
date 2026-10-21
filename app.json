@@ -39,7 +39,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "AI Barber uses your photos so you can put your own shop and haircuts on your website."
+          "photosPermission": "AI Barber uses your photos so you can put your own shop and haircuts on your website.",
+          "cameraPermission": "AI Barber uses your camera so you can photograph products for your shop."
         }
       ],
       [
