@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { isIndefiniteDeployError, sweepIos, type IosSweepSummary } from '../../lib/ios/sweep.js';
 import type { PurchaseRow, PurchasesRepo } from '../../lib/ios/purchases.js';
 import type { PublishOutcome } from '../../lib/publishSite.js';
-import { VerifyFailure, type VerifiedTx } from '../../lib/ios/appleVerify.js';
+import { VerifyFailure, makeVerifier, type VerifiedTx } from '../../lib/ios/appleVerify.js';
 
 const row = (otid: string, slug: string): PurchaseRow => ({
   original_transaction_id: otid, product_id: 'p', environment: 'Production', site_slug: slug,
@@ -175,6 +175,30 @@ describe('sweepIos lapse takedown / restore (Apple decides)', () => {
     expect(markTakenDown).not.toHaveBeenCalled();
     expect(upsertVerified).toHaveBeenCalledWith(expect.objectContaining({ originalTransactionId: 'o4', status: 4 }), { checkedAt: NOW });
     expect(out).toEqual(summary({ stillActive: ['g'] }));
+  });
+
+  it('a downgrade at renewal whose DID_RENEW was missed: Apple active on the LOWER product → recorded, not taken down', async () => {
+    const P = 'com.ibrahim1774.aibarber.';
+    const { r, markTakenDown, upsertVerified } = repo([], [], [{ ...lapsed('o5', 'h'), product_id: `${P}store.monthly` }]);
+    const renewedAt = NOW - DAY;
+    // The real verifier: the original transaction was Store, the latest (after the renewal) is Website.
+    const verify = makeVerifier({
+      bundleId: 'b',
+      lookup: async (env) => (env === 'Production' ? { status: 200, signedTransactionInfo: 'orig' } : { status: 404 }),
+      decode: async (_env, signed) => signed === 'orig'
+        ? { bundleId: 'b', productId: `${P}store.monthly`, originalTransactionId: 'o5', transactionId: 't0', purchaseDate: NOW - 40 * DAY, expiresDate: NOW - 10 * DAY }
+        : { bundleId: 'b', productId: `${P}hosting.monthly`, originalTransactionId: 'o5', transactionId: 't2', purchaseDate: renewedAt, expiresDate: NOW + 29 * DAY },
+      statuses: async () => ({ status: 200, items: [{ status: 1, originalTransactionId: 'o5', signedTransactionInfo: 'latest' }] }),
+    });
+    const deployOffline = vi.fn(async (_s: string) => {});
+    const out = await sweepIos({ repo: r, publish: vi.fn(), deployOffline, verify }, 50, { now: () => NOW });
+    expect(upsertVerified).toHaveBeenCalledWith(
+      expect.objectContaining({ originalTransactionId: 'o5', productId: `${P}hosting.monthly`, productPurchasedAt: renewedAt, status: 1 }),
+      { checkedAt: NOW },
+    );
+    expect(markTakenDown).not.toHaveBeenCalled();
+    expect(deployOffline).not.toHaveBeenCalled();
+    expect(out).toEqual(summary({ stillActive: ['h'] }));
   });
 
   it('Apple says active (renewal notification missed) → not taken down', async () => {

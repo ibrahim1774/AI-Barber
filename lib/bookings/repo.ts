@@ -181,6 +181,8 @@ export type WriteResult<T> = { ok: true; row: T } | { ok: false; reason: 'overla
 
 export interface PurchaseGateRow {
   user_id: string | null;
+  /** The current product (tier, lib/ios/tiers.ts): the booking page needs `bookings`, the shop `store`. */
+  product_id: string | null;
   revoked_at: string | null;
   taken_down_at: string | null;
 }
@@ -308,7 +310,7 @@ export function supabaseBookingRepo(client?: SupabaseClient): BookingRepo {
     shopByOwner: (userId) => one('shopByOwner', db().from('ab_shops').select(SHOP_COLS).eq('owner_id', userId).maybeSingle()),
     shopById: (id) => one('shopById', db().from('ab_shops').select(SHOP_COLS).eq('id', id).maybeSingle()),
     purchase: (otid) =>
-      one('purchase', db().from('ios_purchases').select('user_id, revoked_at, taken_down_at')
+      one('purchase', db().from('ios_purchases').select('user_id, product_id, revoked_at, taken_down_at')
         .eq('original_transaction_id', otid).maybeSingle()),
 
     services: (shopId) =>

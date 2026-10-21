@@ -14,4 +14,9 @@ describe('vercel.json', () => {
     expect(cfg.functions['api/ios/sweep.ts'].maxDuration).toBe(300);
     expect(cfg.functions['api/ios/sweep.ts'].includeFiles).toBe('lib/ios/certs/**');
   });
+
+  it('shop/plan can verify with Apple (root certs bundled), like shop/setup', () => {
+    expect(cfg.functions['api/shop/plan.ts'].includeFiles).toBe('lib/ios/certs/**');
+    expect(cfg.functions['api/shop/setup.ts'].includeFiles).toBe('lib/ios/certs/**');
+  });
 });

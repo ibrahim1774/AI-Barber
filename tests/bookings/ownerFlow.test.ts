@@ -426,7 +426,7 @@ describe('POST /api/shop/setup', () => {
   it('attaches an account-less purchase to the caller (ios_purchases.user_id was null)', async () => {
     const w = fresh();
     const NEW_OTID = '2000000777';
-    w.state.purchases[NEW_OTID] = { user_id: null, revoked_at: null, taken_down_at: null };
+    w.state.purchases[NEW_OTID] = { user_id: null, product_id: 'com.ibrahim1774.aibarber.store.monthly', revoked_at: null, taken_down_at: null };
     (w.deps.purchases!.verify as any).mockResolvedValueOnce({ originalTransactionId: NEW_OTID });
     expect((await setup(w, { ...body, transactionId: '2000000555' })).status).toBe(200);
     expect(w.deps.purchases!.setUser).toHaveBeenCalledWith(NEW_OTID, NEW_USER);
@@ -436,7 +436,7 @@ describe('POST /api/shop/setup', () => {
   it('still creates the shop when linking the purchase to the account fails', async () => {
     const w = fresh();
     const NEW_OTID = '2000000778';
-    w.state.purchases[NEW_OTID] = { user_id: null, revoked_at: null, taken_down_at: null };
+    w.state.purchases[NEW_OTID] = { user_id: null, product_id: 'com.ibrahim1774.aibarber.store.monthly', revoked_at: null, taken_down_at: null };
     (w.deps.purchases!.verify as any).mockResolvedValueOnce({ originalTransactionId: NEW_OTID });
     (w.deps.purchases!.setUser as any).mockRejectedValueOnce(new Error('db down'));
     const err = vi.spyOn(console, 'error').mockImplementation(() => {});

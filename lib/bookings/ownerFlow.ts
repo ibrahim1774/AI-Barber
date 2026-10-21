@@ -14,9 +14,11 @@ import {
   memberName,
   notFound,
   ok,
+  ownerBookingsAllowed,
   ownerRules,
   ownerView,
   parseInstant,
+  paused,
   safeNotify,
   text,
   validZone,
@@ -235,6 +237,8 @@ export async function createOwnerAppointment(authorization: string | string[] | 
   const o = await requireOwner(authorization, deps.getUser, deps.repo);
   if (o.ok === false) return { status: o.status, body: o.body };
   const { shop } = o;
+  // Phase 4: creating or moving bookings needs a live plan with bookings (cancel and mark never do).
+  if (!(await ownerBookingsAllowed(deps.repo, shop))) return paused();
   if (!isObj(body)) return invalid('body');
   const startMs = parseInstant(body.start, { wholeMinute: true });
   if (startMs == null) return invalid('start');
@@ -319,6 +323,8 @@ export async function rescheduleOwnerAppointment(
   const o = await requireOwner(authorization, deps.getUser, deps.repo);
   if (o.ok === false) return { status: o.status, body: o.body };
   const { shop } = o;
+  // Phase 4: creating or moving bookings needs a live plan with bookings (cancel and mark never do).
+  if (!(await ownerBookingsAllowed(deps.repo, shop))) return paused();
   if (!isObj(body)) return invalid('body');
   const startMs = parseInstant(body.start, { wholeMinute: true });
   if (startMs == null) return invalid('start');
@@ -411,6 +417,8 @@ export async function createTimeOff(authorization: string | string[] | undefined
   const o = await requireOwner(authorization, deps.getUser, deps.repo);
   if (o.ok === false) return { status: o.status, body: o.body };
   const { shop } = o;
+  // Phase 4: creating or moving bookings needs a live plan with bookings (cancel and mark never do).
+  if (!(await ownerBookingsAllowed(deps.repo, shop))) return paused();
   if (!isObj(body)) return invalid('body');
   const startMs = parseInstant(body.start, { wholeMinute: true });
   if (startMs == null) return invalid('start');

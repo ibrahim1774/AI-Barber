@@ -77,7 +77,7 @@ describe('supabasePurchases', () => {
     it('reads the stored row for this purchase first', async () => {
       const { client, calls } = fakeClient({ data: {}, error: null }, { data: null, error: null });
       await supabasePurchases(client).upsertVerified(tx(STORED));
-      expect(calls[1]).toEqual({ method: 'select', args: ['expires_at'] });
+      expect(calls[1]).toEqual({ method: 'select', args: ['expires_at, product_id, product_purchased_at'] });
       expect(find(calls, 'eq')!.args).toEqual(['original_transaction_id', 'o1']);
       expect(calls.findIndex((c) => c.method === 'select')).toBeLessThan(calls.findIndex((c) => c.method === 'upsert'));
     });
@@ -113,6 +113,110 @@ describe('supabasePurchases', () => {
       const { client, calls } = fakeClient({ data: {}, error: null }, { data: null, error: { message: 'db down' } });
       await expect(supabasePurchases(client).upsertVerified(tx(STORED))).rejects.toThrow(/upsertVerified/);
       expect(find(calls, 'upsert')).toBeUndefined();
+    });
+  });
+
+  describe('product_id never moves backwards (Phase 4 tiers)', () => {
+    const P = 'com.ibrahim1774.aibarber.';
+    const T0 = 1_800_000_000_000;
+    const DAY = 86_400_000;
+    const stored = (product: string, purchasedAt: number | null) => ({
+      data: { expires_at: null, product_id: product, product_purchased_at: purchasedAt == null ? null : new Date(purchasedAt).toISOString() },
+      error: null,
+    });
+    const vtx = (productId: string, productPurchasedAt: number | null | undefined) => ({
+      originalTransactionId: 'o1', transactionId: 't1', productId, environment: 'Production' as const,
+      expiresAt: T0 + 30 * DAY, revoked: false, productPurchasedAt,
+    });
+    const upserted = (calls: Call[]) => find(calls, 'upsert')!.args[0] as Record<string, unknown>;
+
+    it('reads the stored product and its purchase date with the expiry', async () => {
+      const { client, calls } = fakeClient({ data: {}, error: null }, { data: null, error: null });
+      await supabasePurchases(client).upsertVerified(vtx(`${P}store.monthly`, T0));
+      expect(calls[1]).toEqual({ method: 'select', args: ['expires_at, product_id, product_purchased_at'] });
+    });
+
+    it('a first insert always writes the product (and its purchase date)', async () => {
+      const { client, calls } = fakeClient({ data: {}, error: null }, { data: null, error: null });
+      await supabasePurchases(client).upsertVerified(vtx(`${P}bookings.monthly`, T0));
+      expect(upserted(calls)).toMatchObject({ product_id: `${P}bookings.monthly`, product_purchased_at: new Date(T0).toISOString() });
+    });
+
+    it('a first insert without a purchase date still writes the product', async () => {
+      const { client, calls } = fakeClient({ data: {}, error: null }, { data: null, error: null });
+      await supabasePurchases(client).upsertVerified(vtx(`${P}hosting.monthly`, null));
+      expect(upserted(calls).product_id).toBe(`${P}hosting.monthly`);
+      expect(Object.keys(upserted(calls))).not.toContain('product_purchased_at');
+    });
+
+    it('an older productPurchasedAt keeps the stored product (sent back unchanged: product_id is NOT NULL)', async () => {
+      const { client, calls } = fakeClient({ data: {}, error: null }, stored(`${P}store.monthly`, T0));
+      await supabasePurchases(client).upsertVerified(vtx(`${P}hosting.monthly`, T0 - DAY));
+      expect(upserted(calls).product_id).toBe(`${P}store.monthly`);
+      expect(Object.keys(upserted(calls))).not.toContain('product_purchased_at');
+    });
+
+    it('a newer one overwrites both columns', async () => {
+      const { client, calls } = fakeClient({ data: {}, error: null }, stored(`${P}hosting.monthly`, T0));
+      await supabasePurchases(client).upsertVerified(vtx(`${P}store.yearly`, T0 + DAY));
+      expect(upserted(calls)).toMatchObject({ product_id: `${P}store.yearly`, product_purchased_at: new Date(T0 + DAY).toISOString() });
+    });
+
+    it('the same purchase date (a re-verify of the same transaction) writes', async () => {
+      const { client, calls } = fakeClient({ data: {}, error: null }, stored(`${P}hosting.monthly`, T0));
+      await supabasePurchases(client).upsertVerified(vtx(`${P}bookings.monthly`, T0));
+      expect(upserted(calls).product_id).toBe(`${P}bookings.monthly`);
+    });
+
+    it('a pre-010 row (stored purchase date null) takes the incoming product', async () => {
+      const { client, calls } = fakeClient({ data: {}, error: null }, stored(`${P}hosting.monthly`, null));
+      await supabasePurchases(client).upsertVerified(vtx(`${P}store.monthly`, T0));
+      expect(upserted(calls)).toMatchObject({ product_id: `${P}store.monthly`, product_purchased_at: new Date(T0).toISOString() });
+    });
+
+    it('an incoming tx without a purchase date never replaces a stored product', async () => {
+      const { client, calls } = fakeClient({ data: {}, error: null }, stored(`${P}store.monthly`, null));
+      await supabasePurchases(client).upsertVerified(vtx(`${P}hosting.monthly`, undefined));
+      expect(upserted(calls).product_id).toBe(`${P}store.monthly`);
+    });
+
+    const notify = (client: any, over: Record<string, unknown>) => supabasePurchases(client).applyNotification({
+      otid: 'o1', productId: `${P}hosting.monthly`, environment: 'Production', expiresAt: null, revokedAt: null, type: 'DID_RENEW', ...over,
+    } as any);
+
+    it('applyNotification reads the stored product even without an expiry', async () => {
+      const { client, calls } = fakeClient({ data: null, error: null }, { data: null, error: null });
+      await notify(client, { purchasedAt: T0 });
+      expect(find(calls, 'select')!.args).toEqual(['expires_at, product_id, product_purchased_at']);
+    });
+
+    it('a DID_RENEW for a lower tier with a newer purchase date downgrades the product', async () => {
+      const { client, calls } = fakeClient({ data: null, error: null }, stored(`${P}store.monthly`, T0));
+      await notify(client, { productId: `${P}hosting.monthly`, purchasedAt: T0 + 30 * DAY });
+      expect(upserted(calls)).toMatchObject({ product_id: `${P}hosting.monthly`, product_purchased_at: new Date(T0 + 30 * DAY).toISOString() });
+    });
+
+    it('an older (late, retried) notification keeps the stored product', async () => {
+      const { client, calls } = fakeClient({ data: null, error: null }, stored(`${P}store.monthly`, T0));
+      await notify(client, { productId: `${P}hosting.monthly`, purchasedAt: T0 - DAY });
+      expect(upserted(calls).product_id).toBe(`${P}store.monthly`);
+      expect(Object.keys(upserted(calls))).not.toContain('product_purchased_at');
+    });
+
+    it('isUpgraded with a revokedAt: no revoked_at and no product write', async () => {
+      const { client, calls } = fakeClient({ data: null, error: null }, stored(`${P}store.monthly`, T0));
+      await notify(client, { productId: `${P}hosting.monthly`, purchasedAt: T0 + DAY, isUpgraded: true, revokedAt: T0 + DAY, type: 'REFUND' });
+      const payload = upserted(calls);
+      expect(Object.keys(payload)).not.toContain('revoked_at');
+      expect(payload.product_id).toBe(`${P}store.monthly`);
+      expect(Object.keys(payload)).not.toContain('product_purchased_at');
+    });
+
+    it('isUpgraded on a purchase we have no row for inserts its product with no purchase date (any later write wins)', async () => {
+      const { client, calls } = fakeClient({ data: null, error: null }, { data: null, error: null });
+      await notify(client, { productId: `${P}hosting.monthly`, purchasedAt: T0, isUpgraded: true });
+      expect(upserted(calls).product_id).toBe(`${P}hosting.monthly`);
+      expect(Object.keys(upserted(calls))).not.toContain('product_purchased_at');
     });
   });
 

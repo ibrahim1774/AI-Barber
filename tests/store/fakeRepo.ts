@@ -165,8 +165,8 @@ export function storeWorld(over: { shop?: Partial<ShopStoreRow> } = {}) {
     orders: [],
     items: [],
     purchases: {
-      [OTID]: { user_id: OWNER_USER, revoked_at: null, taken_down_at: null },
-      '2000000999': { user_id: OTHER_USER, revoked_at: null, taken_down_at: null },
+      [OTID]: { user_id: OWNER_USER, product_id: 'com.ibrahim1774.aibarber.store.monthly', revoked_at: null, taken_down_at: null },
+      '2000000999': { user_id: OTHER_USER, product_id: 'com.ibrahim1774.aibarber.store.monthly', revoked_at: null, taken_down_at: null },
     },
     events: [],
     seq: {},

@@ -1,0 +1,156 @@
+// /api/shop/plan (Phase 4 tiers): the owner's current plan, as the server's gates see it.
+// GET reads it; POST (right after an upgrade purchase) asks Apple for the purchase's latest
+// product first, records it and links the purchase to the shop if it has none.
+//
+// Owner only: Authorization: Bearer <Supabase access token>. Pure flow over injected deps;
+// livePlanDeps() wires Supabase and Apple for api/shop/plan.ts.
+import { authenticate, liveGetUser, type GetUser } from '../bookings/auth.js';
+import { isObj, type FlowResult } from '../bookings/core.js';
+import { serviceClient, supabaseBookingRepo, type ShopRow } from '../bookings/repo.js';
+import { VerifyFailure, lazyDefaultVerifier, type VerifiedTx } from './appleVerify.js';
+import { entitlementActive } from './lapse.js';
+import { supabasePurchases, type PurchaseRow } from './purchases.js';
+import { tierOf, type Tier } from './tiers.js';
+
+export interface PlanView {
+  /** The shop has a purchase linked (ab_shops.ios_otid). */
+  linked: boolean;
+  tier: Tier | null;
+  /** All false unless active. */
+  entitlements: { hosting: boolean; bookings: boolean; store: boolean };
+  /** Not revoked and not taken down (a lapse reaches here through the sweep's takedown). */
+  active: boolean;
+  expiresAt: string | null;
+  takenDownAt: string | null;
+  revoked: boolean;
+}
+
+export interface PlanDeps {
+  getUser: GetUser;
+  shopByOwner(userId: string): Promise<Pick<ShopRow, 'id' | 'ios_otid'> | null>;
+  /** The full ios_purchases row (expires_at included). */
+  purchase(otid: string): Promise<PurchaseRow | null>;
+  verify(transactionId: string): Promise<VerifiedTx>;
+  upsertVerified(tx: VerifiedTx, opts?: { checkedAt?: number }): Promise<PurchaseRow>;
+  setShopOtid(shopId: string, otid: string): Promise<'ok' | 'taken'>;
+  setUser(otid: string, userId: string): Promise<void>;
+  now?(): number;
+}
+
+type Auth = string | string[] | undefined;
+
+const isoOrNull = (v: string | null | undefined): string | null => {
+  if (!v) return null;
+  const ms = Date.parse(v);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+};
+
+/**
+ * The GET body. `_now` is unused on purpose: `active` follows the server's gates (revoked_at and
+ * the Apple-confirmed takedown), not the clock, so the app never shows a plan the gates refuse.
+ */
+export function planView(shop: Pick<ShopRow, 'ios_otid'>, row: PurchaseRow | null, _now: number): PlanView {
+  const linked = !!shop.ios_otid;
+  if (!linked || !row) {
+    return {
+      linked, tier: null, entitlements: { hosting: false, bookings: false, store: false },
+      active: false, expiresAt: null, takenDownAt: null, revoked: false,
+    };
+  }
+  return {
+    linked,
+    tier: tierOf(row.product_id),
+    entitlements: {
+      hosting: entitlementActive(row, 'hosting'),
+      bookings: entitlementActive(row, 'bookings'),
+      store: entitlementActive(row, 'store'),
+    },
+    active: !row.revoked_at && !row.taken_down_at,
+    expiresAt: isoOrNull(row.expires_at),
+    takenDownAt: isoOrNull(row.taken_down_at),
+    revoked: !!row.revoked_at,
+  };
+}
+
+const err = (status: number, error: string, extra: Record<string, unknown> = {}): FlowResult => ({ status, body: { error, ...extra } });
+const invalidTx = () => err(400, 'invalid', { field: 'transactionId' });
+
+async function owner(auth: Auth, deps: PlanDeps) {
+  const a = await authenticate(auth, deps.getUser);
+  if (a.ok === false) return { result: { status: a.status, body: a.body } as FlowResult };
+  const shop = await deps.shopByOwner(a.user.id);
+  if (!shop) return { result: err(404, 'no-shop') };
+  return { user: a.user, shop };
+}
+
+/** GET /api/shop/plan */
+export async function getPlan(auth: Auth, deps: PlanDeps): Promise<FlowResult> {
+  const o = await owner(auth, deps);
+  if (o.result) return o.result;
+  const row = o.shop.ios_otid ? await deps.purchase(o.shop.ios_otid) : null;
+  return { status: 200, body: planView(o.shop, row, (deps.now ?? Date.now)()) };
+}
+
+/**
+ * POST /api/shop/plan { transactionId }: verify with Apple (the latest product), record it,
+ * link the purchase if the shop has none (the same 409 purchase-in-use rules as setup),
+ * then return the GET body. A shop already linked to a different purchase keeps that link.
+ */
+export async function refreshPlan(auth: Auth, body: unknown, deps: PlanDeps): Promise<FlowResult> {
+  const o = await owner(auth, deps);
+  if (o.result) return o.result;
+  const { user } = o;
+  let shop = o.shop;
+  const raw = isObj(body) ? body.transactionId : undefined;
+  const transactionId = typeof raw === 'string' ? raw.trim() : '';
+  if (!/^\d{1,32}$/.test(transactionId)) return invalidTx();
+
+  const now = deps.now ?? Date.now;
+  // Captured before asking Apple, so a revocation newer than this answer is never cleared.
+  const checkedAt = now();
+  let tx: VerifiedTx;
+  try {
+    tx = await deps.verify(transactionId);
+  } catch (e: any) {
+    if (e instanceof VerifyFailure && e.code !== 'apple-unavailable') return invalidTx();
+    console.error('[shop/plan] purchase verify failed:', e?.message || e);
+    return err(503, 'temporarily-unavailable');
+  }
+  const otid = tx.originalTransactionId;
+  const row = await deps.upsertVerified(tx, { checkedAt });
+
+  if (row.user_id && row.user_id !== user.id) return err(409, 'purchase-in-use');
+  if (!row.user_id) {
+    try {
+      await deps.setUser(otid, user.id);
+    } catch (e: any) {
+      // Best effort: the ios_otid unique index already stops a second shop on this purchase.
+      console.error('[shop/plan] linking purchase to account failed:', e?.message || e);
+    }
+  }
+  if (!shop.ios_otid) {
+    if ((await deps.setShopOtid(shop.id, otid)) === 'taken') return err(409, 'purchase-in-use');
+    shop = { ...shop, ios_otid: otid };
+  }
+
+  const shown = shop.ios_otid === otid ? row : await deps.purchase(shop.ios_otid as string);
+  return { status: 200, body: planView(shop, shown, now()) };
+}
+
+/** Real dependencies for api/shop/plan.ts (service-role Supabase, Apple). */
+export function livePlanDeps(): PlanDeps {
+  const client = serviceClient();
+  const shops = supabaseBookingRepo(client);
+  const purchases = supabasePurchases(client);
+  return {
+    getUser: liveGetUser(client),
+    shopByOwner: (uid) => shops.shopByOwner(uid),
+    purchase: (otid) => purchases.get(otid),
+    // Lazy: missing Apple env vars surface as a mapped 503, not a crash at wiring time.
+    verify: lazyDefaultVerifier(),
+    upsertVerified: (tx, opts) => purchases.upsertVerified(tx, opts),
+    setShopOtid: (id, otid) => shops.setShopOtid(id, otid),
+    setUser: (otid, uid) => purchases.setUser(otid, uid),
+    now: Date.now,
+  };
+}

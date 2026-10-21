@@ -3,6 +3,7 @@
 import type { GetUser } from '../bookings/auth.js';
 import { isObj, isUuid, iso, text, type FlowResult } from '../bookings/core.js';
 import { MANUAL_METHODS } from '../bookings/repo.js';
+import { entitlementActive } from '../ios/lapse.js';
 import { orderRefundKey, type CheckoutCloseResult, type NotifyOrder, type StorePayments } from './deps.js';
 import type { OrderGuard, StoreRepo } from './repo.js';
 import type { Fulfilment, OrderItemRow, OrderRow, ProductRow, ShippingAddress, ShopStoreRow, StoreNotifyEvent } from './types.js';
@@ -39,13 +40,13 @@ export const MAX_LINE_QTY = 10;
 export const MAX_PHOTOS = 5;
 
 // ---------------------------------------------------------------------------
-// Store gate (Phase 3: store_enabled + a live iOS purchase; Phase 4 narrows it to the Store tier)
+// Store gate (Phase 3: store_enabled + a live iOS purchase; Phase 4: on the Store tier)
 // ---------------------------------------------------------------------------
 export async function storeOpen(repo: Pick<StoreRepo, 'purchase'>, shop: ShopStoreRow): Promise<boolean> {
   if (!shop.store_enabled) return false;
   if (!shop.ios_otid) return false;
-  const p = await repo.purchase(shop.ios_otid);
-  return !!p && !p.revoked_at && !p.taken_down_at;
+  // Not revoked, not taken down, and the plan includes the store. Owner order actions are never gated.
+  return entitlementActive(await repo.purchase(shop.ios_otid), 'store');
 }
 
 /** One predicate for the page (GET /shop) and the server (POST /orders). */

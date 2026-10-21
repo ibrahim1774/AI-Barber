@@ -81,6 +81,9 @@
     "api/shop/setup.ts": {
       "includeFiles": "lib/ios/certs/**"
     },
+    "api/shop/plan.ts": {
+      "includeFiles": "lib/ios/certs/**"
+    },
     "api/ios/sweep.ts": {
       "maxDuration": 300,
       "includeFiles": "lib/ios/certs/**"

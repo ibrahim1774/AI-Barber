@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { GRACE_MS, isActiveRow, isLapsed } from '../../lib/ios/lapse.js';
+import { GRACE_MS, entitlementActive, isActiveRow, isLapsed } from '../../lib/ios/lapse.js';
 import { offlineHtml } from '../../lib/ios/offlinePage.js';
 
 const NOW = 1_800_000_000_000;
@@ -54,4 +54,25 @@ describe('offlineHtml', () => {
     // The only absolute URL is the footer link.
     expect(html.match(/https?:\/\//g)).toEqual(['https://']);
   });
+});
+
+describe('entitlementActive (Phase 4 tiers)', () => {
+  const P = 'com.ibrahim1774.aibarber.';
+  const row = (product_id: string | null, over: { revoked_at?: string | null; taken_down_at?: string | null } = {}) =>
+    ({ product_id, revoked_at: null, taken_down_at: null, ...over });
+
+  it('true for an entitlement the product has', () => {
+    expect(entitlementActive(row(`${P}store.yearly`), 'store')).toBe(true);
+    expect(entitlementActive(row(`${P}store.yearly`), 'bookings')).toBe(true);
+    expect(entitlementActive(row(`${P}bookings.monthly`), 'bookings')).toBe(true);
+    expect(entitlementActive(row(`${P}hosting.monthly`), 'hosting')).toBe(true);
+  });
+  it('false for an entitlement the product lacks', () => {
+    expect(entitlementActive(row(`${P}hosting.monthly`), 'bookings')).toBe(false);
+    expect(entitlementActive(row(`${P}bookings.yearly`), 'store')).toBe(false);
+    expect(entitlementActive(row(null), 'hosting')).toBe(false);
+  });
+  it('false when revoked', () => expect(entitlementActive(row(`${P}store.monthly`, { revoked_at: iso(NOW) }), 'store')).toBe(false));
+  it('false when taken down', () => expect(entitlementActive(row(`${P}store.monthly`, { taken_down_at: iso(NOW) }), 'bookings')).toBe(false));
+  it('false with no row', () => expect(entitlementActive(null, 'hosting')).toBe(false));
 });

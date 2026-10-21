@@ -7,6 +7,7 @@
 // Rows only ever move forward: expires_at never moves backwards (see
 // purchases.ts), so a renewal or resubscribe makes a row active again by itself.
 import type { PurchaseRow } from './purchases.js';
+import { grants, type Entitlement } from './tiers.js';
 
 /**
  * How long after the stored expiry a row becomes a takedown candidate. Short on
@@ -31,4 +32,16 @@ export function isActiveRow(row: LapseFields, now: number): boolean {
   if (row.revoked_at != null) return false;
   const exp = expiryMs(row);
   return Number.isFinite(exp) && exp > now;
+}
+
+/**
+ * Tier gate (Phase 4): the purchase's current product grants `ent`, and the purchase is
+ * neither revoked nor taken down. A lapse of the whole subscription reaches the gates
+ * through taken_down_at (the sweep, Apple-confirmed); a downgrade through product_id.
+ */
+export function entitlementActive(
+  row: { product_id: string | null; revoked_at: string | null; taken_down_at: string | null } | null | undefined,
+  ent: Entitlement,
+): boolean {
+  return !!row && !row.revoked_at && !row.taken_down_at && grants(row.product_id, ent);
 }
