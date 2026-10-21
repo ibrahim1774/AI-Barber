@@ -9,12 +9,13 @@ import { GetPaid } from '@/components/setup/GetPaid';
 import { MemberHours } from '@/components/setup/HoursGrid';
 import { ServicesEditorView } from '@/components/setup/ServicesEditor';
 import { useServicesEditor } from '@/components/setup/useServicesEditor';
-import { Card, Note, Chip, Chips, TextAction, ToggleRow } from '@/components/setup/ui';
+import { Card, Note, Chip, Chips, TextAction } from '@/components/setup/ui';
 import { pickAndUploadPhoto } from '@/lib/photos';
 import { shareMessage } from '@/lib/share';
-import { DOUBLE_BOOKING_WARNING, existingBookingLink, switchBookButton, switchInputs } from '@/lib/setup/bookingSwitch';
+import { BookButtonPicker } from '@/components/setup/BookButtonPicker';
+import { bookingPrefs, withChoice } from '@/lib/bookingChoice';
 import { withMirroredServices } from '@/lib/setup/servicesMap';
-import { updateSiteData } from '@/lib/setup/siteSync';
+import { updateSiteData, updateSiteRecord } from '@/lib/setup/siteSync';
 import {
   STEPS, STEP_TITLES, back, currentStep, initialWizard, next, progressLabel, setSwitch, skip, type WizardState,
 } from '@/lib/setup/wizard';
@@ -34,8 +35,8 @@ type Props = {
 
 /** First-run setup: services, hours, who takes bookings, how you get paid, share. Every step skippable. */
 export function Wizard({ shop, site, onShopChanged, onFinish }: Props) {
-  const existing = existingBookingLink(site.data);
-  const [state, setState] = useState<WizardState>(() => initialWizard(existing != null));
+  const { own } = bookingPrefs(site);
+  const [state, setState] = useState<WizardState>(() => initialWizard(own != null));
   const [owner, setOwner] = useState<Member | null>(null);
   const [addBarbers, setAddBarbers] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -58,9 +59,7 @@ export function Wizard({ shop, site, onShopChanged, onFinish }: Props) {
     setFinishing(true);
     try {
       await updateShopSettings(shop.id, { bookingsEnabled: true });
-      if (state.switchBookButton) {
-        await updateSiteData((d) => switchBookButton(d, shop), (i) => switchInputs(i, shop));
-      }
+      await updateSiteRecord((r) => withChoice(r, state.switchBookButton || !bookingPrefs(r).own ? 'aibarber' : 'own', shop));
       await markWizardDone(shop.id);
       void registerPushForShop();
       track('bookings_setup_done', { skipped: state.skipped.length, switched_book_button: state.switchBookButton });
@@ -94,15 +93,11 @@ export function Wizard({ shop, site, onShopChanged, onFinish }: Props) {
           <View style={{ height: 8 }} />
           <ServicesEditorView ed={services} />
           <View style={{ height: 16 }} />
-          <Card>
-            <ToggleRow
-              label="Switch your Book button to AI Barber bookings"
-              detail="Your website's Book buttons will open your AI Barber booking page after your next publish."
-              value={state.switchBookButton}
-              onValueChange={(v) => setState((s) => setSwitch(s, v))}
-            />
-            {existing != null && <Note tone="warn">{DOUBLE_BOOKING_WARNING}</Note>}
-          </Card>
+          <BookButtonPicker
+            own={own}
+            choice={state.switchBookButton ? 'aibarber' : 'own'}
+            onChange={(c) => setState((x) => setSwitch(x, c === 'aibarber'))}
+          />
         </>
       )}
 

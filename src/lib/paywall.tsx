@@ -8,6 +8,7 @@ import { appsFlyerUID, track, trackConversion } from '@/lib/analytics';
 import { api } from '@/lib/api';
 import { currentUserId } from '@/lib/auth';
 import { PaywallSettle, type PaywallResult } from '@/lib/paywallSettle';
+import { loadLinkContext } from '@/lib/linkContext';
 import { PLAN_ENTITLEMENT, getEntitlements, setEntitlementsFromStatus } from '@/lib/entitlements';
 import { refreshPlan, setSharedPlan } from '@/lib/plan';
 import { findTransactionId, pickLatestTransactionId, type PublishDeps } from '@/lib/publish';
@@ -322,6 +323,7 @@ export function usePublishDeps(): PublishDeps {
       showPaywall: () => paywall('publish'),
       latestTransactionId,
       iosPublish: api.iosPublish,
+      linkContext: loadLinkContext,
       store: siteStore,
       // The site is bound to the Apple transaction; a signed-in user is linked to it too.
       userId: currentUserId,

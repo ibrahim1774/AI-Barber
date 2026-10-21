@@ -8,6 +8,9 @@ import { onSiteAdopted } from '@/lib/account';
 import { track } from '@/lib/analytics';
 import { useEntitlements } from '@/lib/entitlements';
 import { hasEntitlement } from '@/lib/paywall';
+import { resolveLinks } from '@/lib/bookingChoice';
+import { syncOwnLink } from '@/lib/bookingChoice';
+import { useLinkContext } from '@/lib/linkContext';
 import { stripLapsedLinks } from '@/lib/tierLinks';
 import { getPath, previewBackground, setPath } from '@/lib/editable';
 import { applyBookingLink, applyHomePrompts, fieldLabel, setColour, switchDesign } from '@/lib/editor';
@@ -56,7 +59,12 @@ export default function Editor() {
   const ents = useEntitlements();
   // The preview drops Book / Shop links the plan no longer covers (as the publish will). Never saved over the barber's data.
   const siteData = site?.data;
-  const previewData = useMemo(() => (siteData ? stripLapsedLinks(siteData, ents) : null), [siteData, ents]);
+  const linkCtx = useLinkContext();
+  const siteInputs = site?.inputs;
+  const previewData = useMemo(
+    () => (siteData ? (linkCtx ? resolveLinks(siteData, siteInputs, linkCtx) : stripLapsedLinks(siteData, ents)) : null),
+    [siteData, siteInputs, ents, linkCtx],
+  );
   const subscription = useSubscriptionStatus();
   const locked = isLocked(site, subscription);
   // For the callbacks below: a locked tab runs a publish request whatever the overlay.
@@ -162,7 +170,12 @@ export default function Editor() {
           const next = {
             ...siteRef.current!,
             data: { ...siteRef.current!.data, bookingUrl: s.data.bookingUrl, services: s.data.services },
-            inputs: { ...siteRef.current!.inputs, bookingUrl: s.inputs.bookingUrl },
+            inputs: {
+              ...siteRef.current!.inputs,
+              bookingUrl: s.inputs.bookingUrl,
+              ownBookingUrl: s.inputs.ownBookingUrl,
+              bookingChoice: s.inputs.bookingChoice,
+            },
             updatedAt: s.updatedAt,
           };
           siteRef.current = next;
@@ -212,7 +225,8 @@ export default function Editor() {
   const commitRecord = useCallback((change: (r: SiteRecord) => SiteRecord) => {
     const cur = siteRef.current;
     if (!cur) return;
-    const next = { ...change(cur), updatedAt: Date.now() };
+    // A changed Book link is the barber's own link (Contact edit, or a rebuilt-from-link site).
+    const next = { ...syncOwnLink(cur, change(cur)), updatedAt: Date.now() };
     siteRef.current = next;
     setSite(next);
     saveSite(next).catch((e) => {

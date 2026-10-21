@@ -3,6 +3,7 @@ import { track } from '@/lib/analytics';
 import { ApiError, type api } from '@/lib/api';
 import { stripMarkers } from '@/lib/editable';
 import { getEntitlements } from '@/lib/entitlements';
+import { resolveLinks, type LinkContext } from '@/lib/bookingChoice';
 import { stripLapsedLinks } from '@/lib/tierLinks';
 import { cancelRemindersInBackground } from '@/lib/reminders';
 import type { SiteRecord } from '@/lib/siteStore';
@@ -41,6 +42,8 @@ export interface PublishDeps {
   /** getCustomerInfo().subscriptions → pickLatestTransactionId */
   latestTransactionId(): Promise<string | null>;
   iosPublish: typeof api.iosPublish;
+  /** The shop facts that decide the Book / Shop links on every publish. Without it, links the plan lacks are only stripped. */
+  linkContext?(): Promise<LinkContext>;
   store: typeof import('./siteStore');
   /** The signed-in Supabase user, so the server can link the purchase to the account. */
   userId(): string | null;
@@ -142,8 +145,13 @@ async function send(
   retryMessage: string,
 ): Promise<PublishOutcome> {
   let res: Awaited<ReturnType<PublishDeps['iosPublish']>>;
+  const ctx = deps.linkContext ? await deps.linkContext().catch(() => null) : null;
+  const rec = ctx ? await deps.store.loadSite().catch(() => null) : null;
+  const siteData = ctx
+    ? stripLapsedLinks(resolveLinks(pending.data, rec?.inputs, ctx), ctx.ents)
+    : stripLapsedLinks(pending.data, getEntitlements());
   try {
-    res = await deps.iosPublish({ transactionId: pending.transactionId, siteData: stripLapsedLinks(pending.data, getEntitlements()), userId: deps.userId() });
+    res = await deps.iosPublish({ transactionId: pending.transactionId, siteData, userId: deps.userId() });
   } catch (e) {
     if (e instanceof ApiError && e.status === 402) {
       await deps.store.savePendingPublish(null);

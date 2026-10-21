@@ -351,3 +351,39 @@ test('send strips Book / Shop links the plan lacks, from the entitlements mirror
     resetEntitlementsForTests();
   }
 });
+
+describe('publish decides the Book / Shop links from the choice', () => {
+  const { setEntitlementsFromStatus, resetEntitlementsForTests } = require('@/lib/entitlements');
+  const OWN = 'https://booksy.com/en-us/1_fade';
+  const AI = 'https://www.aibarber.org/book/fade-brooklyn';
+  const withPrefs = {
+    ...site,
+    inputs: { ...site.inputs, ownBookingUrl: OWN, bookingChoice: 'aibarber' },
+    data: { ...site.data, bookingUrl: AI },
+  } as unknown as SiteRecord;
+  afterEach(resetEntitlementsForTests);
+
+  const run = async (ids: string[], extra: object = {}) => {
+    setEntitlementsFromStatus({ status: 'ACTIVE', entitlements: ids.map((id) => ({ id })) });
+    await store.saveSite(withPrefs);
+    const ents = require('@/lib/entitlements').getEntitlements();
+    const deps = makeDeps({
+      hasEntitlement: jest.fn(async () => true),
+      linkContext: async () => ({ ents, shop: { slug: 'fade-brooklyn', purchaseLinked: true }, storeEnabled: true, ...extra }),
+    });
+    await publishFlow(withPrefs, deps);
+    return (deps.iosPublish as jest.Mock).mock.calls[0][0].siteData;
+  };
+
+  test('Bookings plan sends the AI Barber link', async () => {
+    expect((await run(['hosting', 'bookings'])).bookingUrl).toBe(AI);
+  });
+  test('after a downgrade to Website it falls back to the own link', async () => {
+    const sent = await run(['hosting']);
+    expect(sent.bookingUrl).toBe(OWN);
+    expect(sent.shopUrl).toBeUndefined();
+  });
+  test('Store plan adds the shop link', async () => {
+    expect((await run(['hosting', 'bookings', 'store'])).shopUrl).toBe('https://www.aibarber.org/shop/fade-brooklyn');
+  });
+});

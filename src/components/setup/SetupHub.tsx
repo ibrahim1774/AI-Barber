@@ -2,10 +2,10 @@ import { useEffect, useState } from 'react';
 import { Alert, Text } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { Card, Note, Row, TextAction, ToggleRow } from '@/components/setup/ui';
-import { DOUBLE_BOOKING_WARNING, existingBookingLink, switchBookButton, switchInputs } from '@/lib/setup/bookingSwitch';
-import { updateSiteData } from '@/lib/setup/siteSync';
+import { BookButtonPicker } from '@/components/setup/BookButtonPicker';
+import { bookingPrefs, withChoice, type BookingChoice } from '@/lib/bookingChoice';
+import { updateSiteRecord } from '@/lib/setup/siteSync';
 import { bookingUrl, icsUrl, listMembers, updateShopSettings, type Member, type Shop } from '@/lib/shop';
-import { isAiBarberBookingUrl } from '@/lib/shop';
 import type { SiteRecord } from '@/lib/siteStore';
 
 export const PLAN_PENDING = 'Your booking page opens once your AI Barber plan is active.';
@@ -26,8 +26,7 @@ export function SetupHub({
   const [busy, setBusy] = useState(false);
   useEffect(() => { listMembers(shop.id).then(setMembers).catch(() => {}); }, [shop.id]);
 
-  const existing = existingBookingLink(site.data);
-  const switched = isAiBarberBookingUrl(site.data.bookingUrl);
+  const { own, choice } = bookingPrefs(site);
 
   const setEnabled = async (on: boolean) => {
     setBusy(true);
@@ -41,26 +40,9 @@ export function SetupHub({
     }
   };
 
-  const apply = async () => {
-    const saved = await updateSiteData((d) => switchBookButton(d, shop), (i) => switchInputs(i, shop));
-    if (saved) {
-      onSiteChanged(saved);
-      Alert.alert('Book button switched', 'Publish your site to put the change live.');
-    }
-  };
-  const setBookButton = (on: boolean) => {
-    if (!on) {
-      Alert.alert('Switch back', 'To go back to your old booking link, change it under Contact in the Edit tab.');
-      return;
-    }
-    if (existing) {
-      Alert.alert('Switch your Book button?', DOUBLE_BOOKING_WARNING, [
-        { text: 'Keep my link', style: 'cancel' },
-        { text: 'Switch', onPress: () => void apply() },
-      ]);
-    } else {
-      void apply();
-    }
+  const setChoice = async (c: BookingChoice) => {
+    const saved = await updateSiteRecord((r) => withChoice(r, c, shop)).catch(() => null);
+    if (saved) onSiteChanged(saved);
   };
 
   const copyCalendar = async (m: Member) => {
@@ -86,14 +68,8 @@ export function SetupHub({
           onValueChange={(v) => void setEnabled(v)}
           disabled={busy}
         />
-        <ToggleRow
-          label="Book button uses AI Barber"
-          detail={switched ? 'Your website points to your booking page.' : existing ? 'Your website still uses another booking link.' : 'Your website has no booking link yet.'}
-          value={switched}
-          onValueChange={setBookButton}
-        />
-        {existing != null && !switched && <Note tone="warn">{DOUBLE_BOOKING_WARNING}</Note>}
       </Card>
+      <BookButtonPicker own={own} choice={choice} onChange={(c) => void setChoice(c)} />
       <Card>
         <Row label="Services" detail="Prices, lengths, deposits" onPress={() => onOpen('services')} />
         <Row label="Barbers" detail={members.length > 1 ? `${members.length} people` : 'Just you'} onPress={() => onOpen('barbers')} />

@@ -1,9 +1,10 @@
 import Storage from 'expo-sqlite/kv-store';
 import type { ShopInputs, WebsiteData } from '@/web/types';
+import type { BookingPrefs } from '@/lib/bookingChoice';
 
 export interface SiteRecord {
   draftId: string;
-  inputs: ShopInputs;
+  inputs: ShopInputs & BookingPrefs;
   data: WebsiteData;
   updatedAt: number;
   slug: string | null;
