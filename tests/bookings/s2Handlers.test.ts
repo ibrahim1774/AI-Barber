@@ -25,7 +25,11 @@ const { expireStaleOrderHolds, retryPendingOrderRefunds } = vi.hoisted(() => ({
   expireStaleOrderHolds: vi.fn(async () => ({ expired: 0 })),
   retryPendingOrderRefunds: vi.fn(async () => ({ retried: 0, refunded: 0, failed: 0, stuck: 0 })),
 }));
-vi.mock('../../lib/store/core.js', () => ({ expireStaleOrderHolds, retryPendingOrderRefunds }));
+vi.mock('../../lib/store/core.js', async (orig) => ({
+  ...(await orig<typeof import('../../lib/store/core.js')>()),
+  expireStaleOrderHolds,
+  retryPendingOrderRefunds,
+}));
 vi.mock('../../lib/store/live.js', () => ({ liveStoreDeps: () => ({ store: true }) }));
 import { handleWebhook } from '../../api/stripe/connect-webhook.js';
 import reminders from '../../api/book/reminders.js';
