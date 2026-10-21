@@ -24,6 +24,8 @@ export class PaywallSettle {
     /** `presented`: the user saw a paywall, so a decline needs no explanation. */
     private readonly onSettle: (result: PaywallResult, info: { cause: SettleCause; presented: boolean }) => void,
     private readonly timeoutMs = LOOKUP_TIMEOUT_MS,
+    /** A purchased / restored dismiss is not trusted: it settles only after `verify` (patient) says so. */
+    private readonly verifyDismiss = false,
   ) {}
 
   present(): void {
@@ -37,7 +39,10 @@ export class PaywallSettle {
   dismiss(type: PaywallResult, closeReason?: string): void {
     if (closeReason === 'forNextPaywall') return; // another paywall follows
     this.shown = true; // a dismiss means a paywall was on screen
-    if (type === 'purchased' || type === 'restored') this.settle(type, 'dismiss');
+    if (type === 'purchased' || type === 'restored') {
+      if (this.verifyDismiss) this.check('dismiss', true);
+      else this.settle(type, 'dismiss');
+    }
     else this.check('dismiss', false);
   }
 

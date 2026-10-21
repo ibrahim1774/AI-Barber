@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { useEntitlements, type EntitlementId } from '@/lib/entitlements';
 import { usePaywall, useSuperwallSettled } from '@/lib/paywall';
-import { getPlan, hostingReadOnlyOpen, type Plan } from '@/lib/plan';
+import { getPlan, getSharedPlan, hostingReadOnlyOpen, setSharedPlan, subscribePlan } from '@/lib/plan';
 
 export type TierAccess = {
   /** loading: not yet decidable. error: Superwall never answered and the server didn't either. */
@@ -23,7 +23,7 @@ export type TierAccess = {
 export function useTierAccess(need: EntitlementId): TierAccess {
   const ents = useEntitlements();
   const settled = useSuperwallSettled();
-  const [plan, setPlan] = useState<Plan | null>(null);
+  const plan = useSyncExternalStore(subscribePlan, getSharedPlan, getSharedPlan);
   const [failed, setFailed] = useState(false);
   const [tries, setTries] = useState(0);
 
@@ -33,7 +33,7 @@ export function useTierAccess(need: EntitlementId): TierAccess {
     let alive = true;
     setFailed(false);
     getPlan()
-      .then((p) => alive && setPlan(p))
+      .then((p) => alive && setSharedPlan(p))
       .catch(() => alive && setFailed(true));
     return () => {
       alive = false;
@@ -41,12 +41,14 @@ export function useTierAccess(need: EntitlementId): TierAccess {
   }, [needPlan, tries]);
 
   const retry = useCallback(() => {
-    setPlan(null);
+    setSharedPlan(null);
     setFailed(false);
     setTries((n) => n + 1);
   }, []);
 
   if (ents.known) {
+    // Hosting inactive: wait for the plan's date so a 30+ day lapse never flashes the read-only view.
+    if (!ents.hosting && plan == null && !failed) return { status: 'loading', entitled: false, expired: false, hosting: false, retry };
     const expired = !ents.hosting && plan != null && !hostingReadOnlyOpen(plan);
     return { status: 'ready', entitled: ents[need], expired, hosting: ents.hosting, retry };
   }

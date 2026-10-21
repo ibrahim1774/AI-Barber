@@ -47,3 +47,19 @@ export function hostingReadOnlyOpen(plan: Pick<Plan, 'entitlements' | 'expiresAt
   if (Number.isNaN(ended)) return true;
   return now - ended < READ_ONLY_DAYS * 24 * 60 * 60 * 1000;
 }
+
+// The last plan the server reported, shared so a refresh after an upgrade reaches the tabs without Retry.
+let shared: Plan | null = null;
+const planListeners = new Set<() => void>();
+export const getSharedPlan = (): Plan | null => shared;
+export function setSharedPlan(p: Plan | null): void {
+  if (shared === p) return;
+  shared = p;
+  planListeners.forEach((l) => l());
+}
+export function subscribePlan(l: () => void): () => void {
+  planListeners.add(l);
+  return () => {
+    planListeners.delete(l);
+  };
+}

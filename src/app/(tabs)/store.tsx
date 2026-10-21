@@ -187,7 +187,7 @@ export default function Store() {
       />
       <View style={styles.flex}>
         {tab === 'products' ? (
-          <ProductsPane shopId={shop.id} locked={locked} />
+          <ProductsPane shopId={shop.id} locked={locked} lockReason={lapsed ? 'lapsed' : 'plan'} onUpgrade={upgrade.open} />
         ) : (
           <OrdersPane
             shopId={shop.id}

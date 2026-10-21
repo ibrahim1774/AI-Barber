@@ -39,6 +39,8 @@ export default function StoreSetup() {
   // Without the plan there is nothing to set up (and no shop is created); wait until that is known.
   const blocked = tier.status === 'ready' && !tier.entitled;
   const waiting = tier.status === 'loading';
+  // Offline with nothing known: no shop is created; offer a retry.
+  const unsure = tier.status === 'error';
 
   const load = useCallback(async () => {
     try {
@@ -76,8 +78,8 @@ export default function StoreSetup() {
     }
     setPostAuthReturn(null);
     setPhase({ kind: 'loading' });
-    if (!blocked && !waiting) void load();
-  }, [ready, signedIn, load, blocked, waiting]);
+    if (!waiting && !unsure) void load();
+  }, [ready, signedIn, load, blocked, waiting, unsure]);
 
   // Leaving the gate without signing in must not send a later sign-in back here.
   useEffect(() => () => setPostAuthReturn(null), []);
@@ -90,8 +92,14 @@ export default function StoreSetup() {
   return (
     <Page title="Store setup" onBack={goBackOrHome}>
       {blocked && <UpgradeCard kind="store" onUpgrade={() => void upgrade.run()} busy={upgrade.busy} />}
-      {!blocked && phase.kind === 'loading' && <ActivityIndicator color={colors.accent} style={{ marginTop: 48 }} />}
-      {!blocked && phase.kind === 'gate' && (
+      {unsure && (
+        <View style={st.center}>
+          <Text style={st.p}>We couldn't check your plan. Check your connection and try again.</Text>
+          <Button title="Try again" onPress={tier.retry} />
+        </View>
+      )}
+      {!blocked && !unsure && phase.kind === 'loading' && <ActivityIndicator color={colors.accent} style={{ marginTop: 48 }} />}
+      {!blocked && !unsure && phase.kind === 'gate' && (
         <View style={st.center}>
           <Text style={st.h}>Create a free account to sell online</Text>
           <Text style={st.p}>
@@ -102,20 +110,20 @@ export default function StoreSetup() {
           <Button variant="ghost" title="I already have an account" onPress={() => goGate('/sign-in')} />
         </View>
       )}
-      {!blocked && phase.kind === 'nosite' && (
+      {!blocked && !unsure && phase.kind === 'nosite' && (
         <View style={st.center}>
           <Text style={st.h}>Build your website first</Text>
           <Text style={st.p}>Your shop uses your shop's name and look.</Text>
           <Button title="Build my website" onPress={() => router.replace('/start')} />
         </View>
       )}
-      {!blocked && phase.kind === 'error' && (
+      {!blocked && !unsure && phase.kind === 'error' && (
         <View style={st.center}>
           <Text style={st.p}>{phase.message}</Text>
           <Button title="Try again" onPress={() => { setPhase({ kind: 'loading' }); void load(); }} />
         </View>
       )}
-      {!blocked && phase.kind === 'ready' && <StoreSettingsForm shop={phase.shop} />}
+      {!blocked && !unsure && phase.kind === 'ready' && <StoreSettingsForm shop={phase.shop} />}
     </Page>
   );
 }

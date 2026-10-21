@@ -35,6 +35,7 @@ jest.mock('@/lib/paywall', () => ({ usePaywall: () => mockPaywall, useSuperwallS
 jest.mock('@/lib/setup/ownerApi', () => ({ call: jest.fn(async () => { throw new Error('offline'); }) }));
 
 import Store from '@/app/(tabs)/store';
+import { setSharedPlan } from '@/lib/plan';
 import { resetEntitlementsForTests, setEntitlementsFromStatus } from '@/lib/entitlements';
 import { order } from '../store/fixtures';
 
@@ -43,6 +44,7 @@ const hasText = (tree: any, re: RegExp) => allText(tree).some((t) => re.test(t))
 
 beforeEach(() => {
   resetEntitlementsForTests();
+  setSharedPlan(null);
   mockOrders = [];
   mockPaywall.mockClear();
 });
@@ -67,13 +69,8 @@ describe('Store tab gating', () => {
     await act(async () => {
       tree.root.findAll((n: any) => n.props.accessibilityRole === 'tab' && /^Orders/.test(n.props.accessibilityLabel))[0].props.onPress();
     });
-    const rows = tree.root.findAll((n: any) => typeof n.props.onPress === 'function' && n.props.accessibilityRole === 'button');
-    expect(rows.length).toBeGreaterThan(0);
-    await act(async () => {
-      for (const r of rows) {
-        try { r.props.onPress(); } catch { /* not the order row */ }
-      }
-    });
+    const row = tree.root.findAll((n: any) => /^Order /.test(n.props.accessibilityLabel ?? '') && typeof n.props.onPress === 'function')[0];
+    await act(async () => row.props.onPress());
     expect(hasButton(tree, 'Mark ready')).toBe(true);
   });
 

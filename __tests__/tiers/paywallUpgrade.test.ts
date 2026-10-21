@@ -4,7 +4,8 @@ import { Alert } from 'react-native';
 
 process.env.EXPO_PUBLIC_SUPERWALL_API_KEY = 'pk_test';
 const mockRefreshPlan = jest.fn(async (_id: string) => ({}));
-jest.mock('@/lib/plan', () => ({ refreshPlan: (id: string) => mockRefreshPlan(id) }));
+const mockSetShared = jest.fn();
+jest.mock('@/lib/plan', () => ({ refreshPlan: (id: string) => mockRefreshPlan(id), setSharedPlan: (p: unknown) => mockSetShared(p) }));
 const mockRelink = jest.fn(async (_o: unknown) => false);
 jest.mock('@/lib/setup/relink', () => ({ relinkShopPurchase: (o: unknown) => mockRelink(o) }));
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -43,6 +44,7 @@ beforeEach(() => {
   sw.reset();
   resetEntitlementsForTests();
   mockRefreshPlan.mockClear();
+  mockSetShared.mockClear();
   mockRelink.mockClear();
   jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   act(() => {
@@ -102,6 +104,35 @@ describe('bookings_upgrade', () => {
     await jest.advanceTimersByTimeAsync(100);
     expect(run.current()).toBe('declined');
     expect((Alert.alert as jest.Mock).mock.calls[0][0]).toBe('Upgrade');
+  });
+});
+
+describe('a purchased or restored dismiss is verified against the target entitlement', () => {
+  it('restored without the entitlement is declined', async () => {
+    ents('hosting');
+    sw.register = () => new Promise<void>(() => {});
+    const run = open('bookings_upgrade');
+    sw.callbacks.onDismiss?.({ closeReason: 'systemLogic' }, { type: 'restored', productId: PRODUCT_IDS[0] });
+    await jest.advanceTimersByTimeAsync(12_000);
+    expect(run.current()).toBe('declined');
+    expect(mockRefreshPlan).not.toHaveBeenCalled();
+  });
+
+  it('purchased with the entitlement turning on is paid, and the refreshed plan is published', async () => {
+    ents('hosting');
+    sw.subscriptions = [SUB(PRODUCT_IDS[2])];
+    mockRefreshPlan.mockResolvedValueOnce({ tier: 'bookings' });
+    sw.register = () => new Promise<void>(() => {});
+    const run = open('bookings_upgrade');
+    sw.callbacks.onDismiss?.({ closeReason: 'systemLogic' }, { type: 'purchased', productId: PRODUCT_IDS[2] });
+    await jest.advanceTimersByTimeAsync(1_000);
+    expect(run.current()).toBeNull();
+    ents('hosting', 'bookings');
+    await jest.advanceTimersByTimeAsync(600);
+    expect(run.current()).toBe('purchased');
+    await jest.advanceTimersByTimeAsync(0);
+    expect(mockRefreshPlan).toHaveBeenCalledWith('tx-1');
+    expect(mockSetShared).toHaveBeenCalledWith({ tier: 'bookings' });
   });
 });
 

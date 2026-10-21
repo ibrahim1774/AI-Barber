@@ -20,8 +20,8 @@ type Props = {
   barberName?: string;
   /** The shop's booking link, for the "Text rebook link" message. */
   bookingLink: string;
-  /** Lapsed subscription: details only, no changes. */
-  readOnly: boolean;
+  /** The plan doesn't cover bookings (or the subscription lapsed): Reschedule is off. Done, Cancel and the rest stay (the server never gates them). */
+  rescheduleLocked: boolean;
   onClose(): void;
   /** Reload the day after a change. */
   onChanged(): Promise<void> | void;
@@ -32,7 +32,7 @@ const PAY_LABEL: Record<string, string> = {
   refunded: 'Refunded', partially_refunded: 'Partly refunded',
 };
 
-export function AppointmentSheet({ appt, tz, today, barberName, bookingLink, readOnly, onClose, onChanged }: Props) {
+export function AppointmentSheet({ appt, tz, today, barberName, bookingLink, rescheduleLocked, onClose, onChanged }: Props) {
   const last = useRef<Appointment | null>(null);
   if (appt) last.current = appt;
   const a = appt ?? last.current;
@@ -99,7 +99,6 @@ export function AppointmentSheet({ appt, tz, today, barberName, bookingLink, rea
 
   if (!a) return <Sheet visible={false} title="" onClose={onClose}>{null}</Sheet>;
   const can = availableActions(a);
-  const actions = !readOnly;
   const who = a.customerName?.trim() || 'Walk-in';
 
   return (
@@ -144,7 +143,7 @@ export function AppointmentSheet({ appt, tz, today, barberName, bookingLink, rea
             {a.customerEmail ? <Detail k="Email" v={a.customerEmail} /> : null}
             {a.note ? <Detail k="Note" v={a.note} /> : null}
 
-            {actions && (
+            {(
               <View style={styles.actions}>
                 {can.markDone && <Button title="Done" loading={busy} onPress={() => void run(() => markDone(a.id))} />}
                 {can.rebind && (
@@ -159,11 +158,13 @@ export function AppointmentSheet({ appt, tz, today, barberName, bookingLink, rea
                   <Button title="Mark paid" variant="ghost" disabled={busy} onPress={() => void run(() => markPaid(a))} style={styles.gap} />
                 )}
                 {can.noShow && <Button title="No-show" variant="ghost" disabled={busy} onPress={confirmNoShow} style={styles.gap} />}
-                {can.reschedule && <Button title="Reschedule" variant="ghost" disabled={busy} onPress={startReschedule} style={styles.gap} />}
+                {can.reschedule && !rescheduleLocked && <Button title="Reschedule" variant="ghost" disabled={busy} onPress={startReschedule} style={styles.gap} />}
                 {can.cancel && <Button title="Cancel booking" variant="link" disabled={busy} onPress={confirmCancel} style={styles.gap} />}
               </View>
             )}
-            {!actions && <Text style={styles.note}>Resubscribe to change bookings.</Text>}
+            {rescheduleLocked && can.reschedule && (
+              <Text style={styles.note}>Upgrade to Bookings to reschedule or add bookings.</Text>
+            )}
           </View>
         )}
       </ScrollView>

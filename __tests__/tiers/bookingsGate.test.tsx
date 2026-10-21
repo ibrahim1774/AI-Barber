@@ -40,6 +40,7 @@ const mockCall = jest.fn();
 jest.mock('@/lib/setup/ownerApi', () => ({ call: (...a: unknown[]) => mockCall(...a) }));
 
 import Bookings from '@/app/(tabs)/bookings';
+import { setSharedPlan } from '@/lib/plan';
 import { resetEntitlementsForTests, setEntitlementsFromStatus } from '@/lib/entitlements';
 
 const ents = (...ids: string[]) => act(() => setEntitlementsFromStatus({ status: 'ACTIVE', entitlements: ids.map((id) => ({ id })) }));
@@ -51,6 +52,7 @@ const planOf = (hosting: boolean, bookings: boolean, expiresAt: string | null = 
 
 beforeEach(() => {
   resetEntitlementsForTests();
+  setSharedPlan(null);
   mockSettled = true;
   mockPaywall.mockClear();
   mockCall.mockReset().mockRejectedValue(new Error('offline'));

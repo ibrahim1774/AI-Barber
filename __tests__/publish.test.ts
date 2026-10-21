@@ -333,3 +333,21 @@ test('a bad-request on resume clears the record and throws', async () => {
   await expect(resumePendingPublish(makeDeps({ iosPublish: fail(400, 'bad-request') }))).rejects.toMatchObject({ code: 'bad-request' });
   expect(await store.loadPendingPublish()).toBeNull();
 });
+
+test('send strips Book / Shop links the plan lacks, from the entitlements mirror', async () => {
+  const { setEntitlementsFromStatus, resetEntitlementsForTests } = require('@/lib/entitlements');
+  setEntitlementsFromStatus({ status: 'ACTIVE', entitlements: [{ id: 'hosting' }] });
+  try {
+    const withLinks = {
+      ...site,
+      data: { ...site.data, bookingUrl: 'https://www.aibarber.org/book/fade', shopUrl: 'https://www.aibarber.org/shop/fade' },
+    } as unknown as SiteRecord;
+    const deps = makeDeps({ hasEntitlement: jest.fn(async () => true) });
+    await publishFlow(withLinks, deps);
+    const sent = (deps.iosPublish as jest.Mock).mock.calls[0][0].siteData;
+    expect(sent.bookingUrl).toBeUndefined();
+    expect(sent.shopUrl).toBeUndefined();
+  } finally {
+    resetEntitlementsForTests();
+  }
+});

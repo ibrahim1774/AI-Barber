@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActionSheetIOS } from 'react-native';
+import { ActionSheetIOS, Linking } from 'react-native';
 import { allText, pressRow, render, act } from '../store/render';
 
 jest.mock('expo-router', () => {
@@ -58,6 +58,9 @@ describe('Settings Plan row', () => {
     expect(config.cancelButtonIndex).toBe(2);
     onPick(0);
     expect(mockPaywall).toHaveBeenCalledWith('store_upgrade');
+    const open = jest.spyOn(Linking, 'openURL').mockResolvedValue(true as never);
+    onPick(1);
+    expect(open).toHaveBeenCalledWith('itms-apps://apps.apple.com/account/subscriptions');
   });
 
   it('a Website plan can upgrade to either; a Store plan only manages', async () => {
@@ -71,4 +74,11 @@ describe('Settings Plan row', () => {
     await pressRow(tree, 'Plan');
     expect(sheet.mock.calls[1][0].options).toEqual(['Manage subscription', 'Cancel']);
   });
+});
+
+it('the Plan row shows … and does nothing until entitlements are known', async () => {
+  const tree = await render(<Settings />);
+  expect(allText(tree)).toContain('…');
+  await expect(pressRow(tree, 'Plan')).rejects.toThrow();
+  expect(sheet).not.toHaveBeenCalled();
 });

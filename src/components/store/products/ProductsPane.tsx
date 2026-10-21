@@ -18,7 +18,16 @@ const PAD = 16;
  * "Sold out" veil. Tap edits; long-press enters Arrange (up/down arrows, Done).
  * Read-only when `locked` (the hosting lapse).
  */
-export function ProductsPane({ shopId, locked }: { shopId: string; locked: boolean }) {
+export function ProductsPane({
+  shopId, locked, lockReason = 'lapsed', onUpgrade,
+}: {
+  shopId: string;
+  locked: boolean;
+  /** 'lapsed': the subscription ended. 'plan': the plan doesn't include the Store (upgrade invited). */
+  lockReason?: 'lapsed' | 'plan';
+  onUpgrade?(): void;
+}) {
+  const planLock = locked && lockReason === 'plan';
   const { width } = useWindowDimensions();
   const cardW = Math.floor((width - PAD * 2 - GAP) / 2);
   const { products, loading, failed, refresh, add, update, remove, reorder } = useProducts(shopId);
@@ -109,11 +118,16 @@ export function ProductsPane({ shopId, locked }: { shopId: string; locked: boole
     return (
       <View style={styles.empty}>
         <Text style={styles.emptyTitle} accessibilityRole="header">
-          {locked ? 'No products yet' : 'Add your first product'}
+          {planLock ? 'Open your store with the Store plan' : locked ? 'No products yet' : 'Add your first product'}
         </Text>
         <Text style={styles.emptyBody}>
-          {locked ? 'Your subscription has ended. Products are read-only until you resubscribe.' : 'Pomade, beard oil, merch. Customers buy it right from your shop page.'}
+          {planLock
+            ? 'Upgrade to Store to add products and reopen your shop page.'
+            : locked
+              ? 'Your subscription has ended. Products are read-only until you resubscribe.'
+              : 'Pomade, beard oil, merch. Customers buy it right from your shop page.'}
         </Text>
+        {planLock && onUpgrade && <Button title="Upgrade to Store" onPress={onUpgrade} />}
         {!locked && (
           <Pressable
             onPress={() => setForm({ product: null })}

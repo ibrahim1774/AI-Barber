@@ -212,7 +212,7 @@ export default function Bookings() {
         today={today}
         barberName={open && several ? names.get(open.memberId) : undefined}
         bookingLink={link}
-        readOnly={locked}
+        rescheduleLocked={locked}
         onClose={() => setOpenId(null)}
         onChanged={refresh}
       />

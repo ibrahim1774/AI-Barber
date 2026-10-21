@@ -10,6 +10,7 @@ import { track } from '@/lib/analytics';
 import { useSession } from '@/lib/auth';
 import { useEntitlements } from '@/lib/entitlements';
 import { homeRoute, resetTo } from '@/lib/nav';
+import { loadMyShop } from '@/lib/shop';
 import { loadSite } from '@/lib/siteStore';
 import { useLinkActions } from '@/lib/useLinkActions';
 
@@ -26,6 +27,10 @@ export default function Live() {
   const { open, copy, copied } = useLinkActions(url, 'live');
   // A Bookings or Store plan bought on the publish paywall: the next step is its booking page.
   const ents = useEntitlements();
+  const [bookingsOn, setBookingsOn] = useState(false);
+  useEffect(() => {
+    loadMyShop().then((s) => setBookingsOn(!!s?.bookingsEnabled)).catch(() => {});
+  }, []);
 
   useEffect(() => {
     track('live_opened');
@@ -84,7 +89,7 @@ export default function Live() {
           <Button variant="ghost" title={copied ? 'Copied' : 'Copy link'} onPress={copy} style={styles.half} />
           <Button variant="ghost" title="Share" onPress={() => setShareOpen(true)} style={styles.half} />
         </View>
-        {ents.bookings && (
+        {ents.bookings && !bookingsOn && (
           <Button
             variant="ghost"
             title="Set up bookings"

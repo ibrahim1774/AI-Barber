@@ -76,7 +76,7 @@ export default function Settings() {
 
   const ents = useEntitlements();
   const paywall = usePaywall();
-  const planDetail = ents.known ? planLabel(tierFromEntitlements(ents)) : '';
+  const planDetail = ents.known ? planLabel(tierFromEntitlements(ents)) : '…';
 
   // Upgrades open their paywall; downgrades and cancelling happen in Apple's Manage subscription.
   const openPlan = () => {
@@ -186,7 +186,7 @@ export default function Settings() {
       </Section>
 
       <Section title="Subscription">
-        <Row label="Plan" detail={planDetail} onPress={openPlan} chevron />
+        <Row label="Plan" detail={planDetail} onPress={ents.known ? openPlan : undefined} chevron={ents.known} />
         <Row label="Restore purchases" onPress={() => void restore()} busy={restoring} />
         <Row label="Manage subscription" onPress={manageSubscription} external />
       </Section>

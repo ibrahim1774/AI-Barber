@@ -9,7 +9,7 @@ import { api } from '@/lib/api';
 import { currentUserId } from '@/lib/auth';
 import { PaywallSettle, type PaywallResult } from '@/lib/paywallSettle';
 import { PLAN_ENTITLEMENT, getEntitlements, setEntitlementsFromStatus } from '@/lib/entitlements';
-import { refreshPlan } from '@/lib/plan';
+import { refreshPlan, setSharedPlan } from '@/lib/plan';
 import { findTransactionId, pickLatestTransactionId, type PublishDeps } from '@/lib/publish';
 import { syncRevenueCatPurchases } from '@/lib/revenuecat';
 import * as siteStore from '@/lib/siteStore';
@@ -274,6 +274,8 @@ function useSuperwallPaywall() {
             resolve(result);
           },
           isUpgrade(placement) ? UPGRADE_PATIENCE_MS + 1000 : undefined,
+          // An upgrade is paid only when its entitlement is active, whatever the dismiss says (a Restore on it proves nothing).
+          isUpgrade(placement),
         );
         session.current = s;
         track('placement_registered', { placement });
@@ -291,7 +293,7 @@ function afterUpgrade(latestTransactionId: () => Promise<string | null>): void {
   void relinkShopPurchase({ latestTransactionId });
   (async () => {
     const id = await latestTransactionId();
-    if (id) await refreshPlan(id);
+    if (id) setSharedPlan(await refreshPlan(id));
   })().catch((e) => console.warn('[paywall] plan refresh failed:', e));
 }
 
