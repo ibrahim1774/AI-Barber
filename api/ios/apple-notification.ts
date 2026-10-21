@@ -23,11 +23,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     const signedPayload = body && typeof body.signedPayload === 'string' ? body.signedPayload.trim() : '';
     if (!signedPayload) return res.status(400).json({ error: 'bad-request' });
+    // Superwall's revenue tracking gets the same notification, unmodified; it
+    // never blocks or changes our own handling.
+    const forwarded = forwardToSuperwall(body);
     const r = await handleAppleNotification(signedPayload, liveNotificationDeps());
+    await forwarded;
     return res.status(r.status).json(r.body);
   } catch (e: any) {
     console.error('[ios/apple-notification] handler error:', e?.message || e);
     return res.status(500).json({ error: 'temporarily-unavailable' });
+  }
+}
+
+async function forwardToSuperwall(body: unknown): Promise<void> {
+  const url = process.env.SUPERWALL_ASN_FORWARD_URL;
+  if (!url) return;
+  try {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!r.ok) console.error('[ios/apple-notification] Superwall forward failed:', r.status);
+  } catch (e: any) {
+    console.error('[ios/apple-notification] Superwall forward failed:', e?.name || e?.message || e);
   }
 }
 
