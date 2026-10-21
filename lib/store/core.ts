@@ -348,6 +348,10 @@ export const ORDER_REFUND_RETRY_AFTER_MIN = 2;
 export const ORDER_REFUND_GIVE_UP_HOURS = 23;
 export const ORDER_REFUND_RETRY_BATCH = 25;
 
+/** A wall-clock cut-off for a cron sweep: stop picking up new rows once `deadline` (epoch ms) has passed. */
+export interface SweepBudget { deadline?: number; clock?: () => number }
+const pastDeadline = (b: SweepBudget) => b.deadline != null && (b.clock ?? Date.now)() >= b.deadline;
+
 /**
  * Retry owner refunds still owed: refund_pending rows with a payment intent, last touched more
  * than 2 minutes ago, oldest first, at most 25 per run. Each retry refunds due − refunded under
@@ -358,10 +362,12 @@ export const ORDER_REFUND_RETRY_BATCH = 25;
 export async function retryPendingOrderRefunds(
   deps: RefundDeps,
   nowMs: number = deps.now(),
+  budget: SweepBudget = {},
 ): Promise<{ retried: number; refunded: number; failed: number; stuck: number }> {
   const out = { retried: 0, refunded: 0, failed: 0, stuck: 0 };
   const rows = await deps.repo.pendingOrderRefunds(iso(nowMs - ORDER_REFUND_RETRY_AFTER_MIN * MIN), ORDER_REFUND_RETRY_BATCH);
   for (const row of rows) {
+    if (pastDeadline(budget)) break; // out of time: the rest wait for the next run
     try {
       const owed = row.refund_due_cents - row.amount_refunded_cents;
       if (owed <= 0 || row.refund_stuck_at || !row.stripe_payment_intent_id) continue;
@@ -416,11 +422,13 @@ export const ORDER_HOLD_PAID_ALERT_MIN = 60;
 export async function expireStaleOrderHolds(
   deps: { repo: StoreRepo; payments: Pick<StorePayments, 'closeCheckoutSession'>; now(): number },
   limit = 50,
+  budget: SweepBudget = {},
 ): Promise<{ expired: number; paid: number; unresolved: number }> {
   const nowMs = deps.now();
   const holds = await deps.repo.staleOrderHolds(iso(nowMs - ORDER_HOLD_EXPIRY_MIN * MIN), limit);
   const out = { expired: 0, paid: 0, unresolved: 0 };
   for (const h of holds) {
+    if (pastDeadline(budget)) break; // out of time: the rest wait for the next run
     try {
       if (h.stripe_checkout_session_id) {
         let closed: CheckoutCloseResult = 'unknown';

@@ -15,6 +15,26 @@ async function place(w: StoreWorld, over: Record<string, unknown> = {}) {
   return w.state.orders.at(-1)!;
 }
 
+describe('sweep deadline', () => {
+  it('expireStaleOrderHolds and retryPendingOrderRefunds stop picking new rows once the deadline has passed', async () => {
+    const w = storeWorld();
+    const a = await place(w);
+    const b = await place(w);
+    w.setNow('2026-11-02T12:36:00Z');
+    let t = 0;
+    const clock = () => t++; // each row check advances the clock one tick
+    // deadline 1: the first row is processed (clock 0 < 1), the second is not (clock 1 >= 1).
+    const r = await expireStaleOrderHolds(w.deps, 50, { deadline: 1, clock });
+    expect(r.expired).toBe(1);
+    expect([a.id, b.id].filter((id) => w.order(id).status === 'cancelled')).toHaveLength(1);
+    // a deadline already in the past does nothing at all
+    const none = await expireStaleOrderHolds(w.deps, 50, { deadline: 0, clock: () => 5 });
+    expect(none).toEqual({ expired: 0, paid: 0, unresolved: 0 });
+    const refunds = await retryPendingOrderRefunds(w.deps, undefined, { deadline: 0, clock: () => 5 });
+    expect(refunds).toEqual({ retried: 0, refunded: 0, failed: 0, stuck: 0 });
+  });
+});
+
 const quiet = () => vi.spyOn(console, 'error').mockImplementation(() => {});
 
 describe('expireStaleOrderHolds', () => {

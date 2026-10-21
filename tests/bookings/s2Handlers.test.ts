@@ -8,7 +8,7 @@ const { runReminders, runDailySummary, stripeOnboard, stripeStatus } = vi.hoiste
   runReminders: vi.fn(), runDailySummary: vi.fn(), stripeOnboard: vi.fn(), stripeStatus: vi.fn(),
 }));
 vi.mock('../../lib/bookings/notify.js', () => ({
-  runReminders, runDailySummary, liveReminderDeps: () => ({}), liveDailySummaryDeps: () => ({}),
+  runReminders, runDailySummary, REMINDER_BUDGET_MS: 250_000, liveReminderDeps: () => ({}), liveDailySummaryDeps: () => ({}),
 }));
 vi.mock('../../lib/bookings/payments.js', async (orig) => ({
   ...(await orig<typeof import('../../lib/bookings/payments.js')>()),
@@ -126,8 +126,8 @@ describe('crons', () => {
       orderHolds: { expired: 3 }, orderRefunds: { retried: 2, refunded: 1, failed: 1, stuck: 0 },
     });
     expect(expireStaleCardHolds).toHaveBeenCalledWith({}, 50);
-    expect(expireStaleOrderHolds).toHaveBeenCalledWith({ store: true }, 50);
-    expect(retryPendingOrderRefunds).toHaveBeenCalledWith({ store: true });
+    expect(expireStaleOrderHolds).toHaveBeenCalledWith({ store: true }, 50, { deadline: expect.any(Number) });
+    expect(retryPendingOrderRefunds).toHaveBeenCalledWith({ store: true }, undefined, { deadline: expect.any(Number) });
     // The sweeps run first, then the reminders.
     const holdsAt = expireStaleCardHolds.mock.invocationCallOrder.at(-1)!;
     const refundsAt = retryPendingRefunds.mock.invocationCallOrder.at(-1)!;
@@ -136,6 +136,23 @@ describe('crons', () => {
     expect(refundsAt).toBeLessThan(expireStaleOrderHolds.mock.invocationCallOrder.at(-1)!);
     expect(expireStaleOrderHolds.mock.invocationCallOrder.at(-1)!).toBeLessThan(retryPendingOrderRefunds.mock.invocationCallOrder.at(-1)!);
     expect(retryPendingOrderRefunds.mock.invocationCallOrder.at(-1)!).toBeLessThan(remindersAt);
+  });
+
+  it('reminders: one shared deadline; runReminders gets the budget left after the sweeps', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(1_000_000);
+      runReminders.mockClear(); expireStaleOrderHolds.mockClear(); retryPendingOrderRefunds.mockClear();
+      runReminders.mockResolvedValue({ due: 0, sent: 0, failed: 0 });
+      expireStaleCardHolds.mockResolvedValue({ expired: 0 });
+      retryPendingRefunds.mockResolvedValue({ retried: 0, refunded: 0, failed: 0, stuck: 0 });
+      retryPendingOrderRefunds.mockImplementationOnce(async () => { vi.setSystemTime(1_000_000 + 45_000); return { retried: 0, refunded: 0, failed: 0, stuck: 0 }; });
+      await reminders(cron, mkRes());
+      const dl = (expireStaleOrderHolds.mock.calls.at(-1) as any)[2].deadline;
+      expect(dl).toBe(1_000_000 + 60_000);
+      expect((retryPendingOrderRefunds.mock.calls.at(-1) as any)[2].deadline).toBe(dl);
+      expect(runReminders.mock.calls.at(-1)![1]).toEqual({ budgetMs: 250_000 - 45_000 });
+    } finally { vi.useRealTimers(); }
   });
 
   it('reminders: a failing runReminders still ran both sweeps first (500)', async () => {
