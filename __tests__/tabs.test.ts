@@ -66,6 +66,7 @@ test('settings tab shows the live URL when published and "Not published yet" oth
     url: 'https://fade-lab.vercel.app',
     host: 'fade-lab.vercel.app',
     live: true,
+    offline: false,
     status: 'Live',
   });
   expect(websiteView(site())).toEqual({
@@ -73,8 +74,16 @@ test('settings tab shows the live URL when published and "Not published yet" oth
     url: null,
     host: null,
     live: false,
+    offline: false,
     status: 'Not published yet',
   });
+});
+
+test('a lapsed published site shows "Offline" instead of the live actions', () => {
+  const view = websiteView(site({ slug: 'fade-lab', deployedUrl: 'https://fade-lab.vercel.app' }), true);
+  expect(view).toMatchObject({ live: false, offline: true, status: 'Offline', host: 'fade-lab.vercel.app' });
+  // A never-published draft is never offline.
+  expect(websiteView(site(), true)).toMatchObject({ live: false, offline: false, status: 'Not published yet' });
 });
 
 test('the website name falls back to the inputs, then a generic name', () => {

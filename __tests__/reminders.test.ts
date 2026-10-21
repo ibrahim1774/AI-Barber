@@ -96,6 +96,15 @@ test('no reminders once the site is published', async () => {
   expect(nt.scheduled).toHaveLength(0);
 });
 
+test('no reminders for a live site loaded from the account (URL, no slug), lapsed or not', async () => {
+  const adopted = { ...draft, deployedUrl: 'https://fade-factory.aibarber.org' } as SiteRecord;
+  expect(buildReminderSchedule(NOW, adopted)).toEqual([]);
+  nt.status = 'granted';
+  await store.saveSite(adopted);
+  await refreshReminders();
+  expect(nt.scheduled).toHaveLength(0);
+});
+
 test('start copy when there is no site, finish copy with the shop name when there is', () => {
   const start = buildReminderSchedule(NOW, null);
   expect(start).toHaveLength(60);

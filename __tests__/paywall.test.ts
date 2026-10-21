@@ -325,3 +325,70 @@ describe('Superwall integration attributes', () => {
     r.unmount();
   });
 });
+
+describe('SubscriptionStatusSync', () => {
+  /* eslint-disable @typescript-eslint/no-require-imports */
+  const status = require('@/lib/subscriptionStatus');
+  const { SubscriptionStatusSync } = require('@/lib/paywall');
+  /* eslint-enable @typescript-eslint/no-require-imports */
+  const published = {
+    draftId: 'd1', inputs: { shopName: 'Fade' }, data: { shopName: 'Fade' }, updatedAt: 1,
+    slug: 'fade-factory', deployedUrl: 'https://fade-factory.aibarber.org', transactionId: 'tx-1',
+  };
+  const BOUND = { siteId: 'fade-factory', deployedUrl: published.deployedUrl, siteData: null, active: true };
+
+  beforeEach(async () => {
+    status.resetSubscriptionStatusForTests();
+    await siteStore.clearSite();
+    await siteStore.savePendingPublish(null);
+  });
+
+  const flush = () => act(async () => {
+    await jest.advanceTimersByTimeAsync(0);
+  });
+
+  test('locks a published site with no subscription once Superwall settles; a forced recheck unlocks it', async () => {
+    await siteStore.saveSite(published);
+    sw.status = 'INACTIVE';
+    let r!: { unmount(): void };
+    await act(async () => {
+      r = create(React.createElement(SubscriptionStatusSync));
+    });
+    await flush();
+    expect(status.getSubscriptionStatus()).toBe('lapsed');
+
+    // Resubscribed: a transaction appears. A plain check is throttled; a forced one runs.
+    sw.subscriptions = [ACTIVE];
+    const iosSite = jest.spyOn(api, 'iosSite').mockResolvedValue(BOUND);
+    status.recheckSubscriptionStatus(false);
+    await flush();
+    expect(iosSite).not.toHaveBeenCalled();
+    status.recheckSubscriptionStatus(true);
+    await flush();
+    expect(iosSite).toHaveBeenCalledWith('tx-1');
+    expect(status.getSubscriptionStatus()).toBe('active');
+    r.unmount();
+  });
+
+  test('not before Superwall has settled, and never locks a draft', async () => {
+    await siteStore.saveSite(published);
+    sw.status = 'INACTIVE';
+    sw.configured = false;
+    let r!: { unmount(): void };
+    await act(async () => {
+      r = create(React.createElement(SubscriptionStatusSync));
+    });
+    await flush();
+    expect(status.getSubscriptionStatus()).toBe('unknown');
+    r.unmount();
+
+    sw.configured = true;
+    await siteStore.saveSite({ ...published, slug: null, deployedUrl: null, transactionId: null });
+    await act(async () => {
+      r = create(React.createElement(SubscriptionStatusSync));
+    });
+    await flush();
+    expect(status.getSubscriptionStatus()).toBe('unknown');
+    r.unmount();
+  });
+});

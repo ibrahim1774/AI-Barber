@@ -4,6 +4,7 @@ import { syncIfSignedIn, type Restored } from '@/lib/account';
 import { ApiError } from '@/lib/api';
 import { resetTo } from '@/lib/nav';
 import { hasEntitlement, useRestorePurchases } from '@/lib/paywall';
+import { recheckSubscriptionStatus } from '@/lib/subscriptionStatus';
 
 const SUPPORT_EMAIL = 'support@davoxa.com';
 const TITLE = 'Restore purchases';
@@ -47,8 +48,9 @@ export function restoreMessage(
 }
 
 /**
- * Restore purchases as Settings and /start run it: restore, push the site to
- * a signed-in account, go to the Edit tab, then say what happened.
+ * Restore purchases as Settings, /start and the lapsed Edit tab run it:
+ * restore, push the site to a signed-in account, go to the Edit tab, re-check
+ * the subscription, then say what happened.
  */
 export function useRestoreFlow(): { restore: () => Promise<void>; busy: boolean } {
   const restorePurchases = useRestorePurchases();
@@ -73,6 +75,8 @@ export function useRestoreFlow(): { restore: () => Promise<void>; busy: boolean 
       busyRef.current = false;
       setBusy(false);
     }
+    // Whatever happened, the subscription may have changed (locks / unlocks the editor).
+    recheckSubscriptionStatus(true);
     const msg = restoreMessage(outcome, hasEntitlement());
     if (msg) Alert.alert(msg.title, msg.message);
   }, [restorePurchases]);

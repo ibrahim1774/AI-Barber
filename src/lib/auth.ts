@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { identifyUser, resetUser, track, trackRegistration } from '@/lib/analytics';
 import { api } from '@/lib/api';
-import { syncIfSignedIn } from '@/lib/account';
+import { pullSiteFromAccount, syncIfSignedIn } from '@/lib/account';
 import { isCodeComplete, isValidEmail, sanitizeCode } from '@/lib/recovery';
 import { supabase } from '@/lib/supabase';
 
@@ -130,12 +130,17 @@ export async function signIn(email: string, password: string): Promise<void> {
 
 /**
  * What every sign-in does once a session exists (password sign-in, a
- * completed password reset): PostHog identify with the user id, then push
- * the local site to the account.
+ * completed password reset): PostHog identify with the user id, load the
+ * account's copy of the site if it is newer (or there is no local one), then
+ * push the local site to the account. Pull first, so an older local copy
+ * never overwrites a newer web edit.
  */
 async function afterSession(id: string | null | undefined): Promise<void> {
   userId = id ?? userId;
-  if (id) identifyUser(id);
+  if (id) {
+    identifyUser(id);
+    await pullSiteFromAccount(id);
+  }
   await syncIfSignedIn();
 }
 

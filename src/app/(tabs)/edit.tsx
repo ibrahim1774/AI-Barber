@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect, useNavigation } from 'expo-router';
 import type { WebsiteData } from '@/web/types';
 import { colors, fonts } from '@/constants/theme';
+import { onSiteAdopted } from '@/lib/account';
 import { track } from '@/lib/analytics';
 import { hasEntitlement } from '@/lib/paywall';
 import { getPath, previewBackground, setPath } from '@/lib/editable';
@@ -12,7 +13,11 @@ import { advanceOverlay, hasSeen, markSeen, nextOverlay, type Overlay } from '@/
 import { pickAndUploadPhoto } from '@/lib/photos';
 import { takePublishRequest } from '@/lib/publishRequest';
 import { refreshReminders } from '@/lib/reminders';
+import { useRestoreFlow } from '@/lib/restoreFlow';
 import { loadSite, saveSite, type SiteRecord } from '@/lib/siteStore';
+import {
+  getSubscriptionStatus, isLocked, recheckSubscriptionStatus, useSubscriptionStatus,
+} from '@/lib/subscriptionStatus';
 import { tabBarStyle } from '@/lib/tabBar';
 import SitePreview from '@/components/SitePreview';
 import { DesignSwitcher } from '@/components/DesignSwitcher';
@@ -22,14 +27,25 @@ import { ColourSheet } from '@/components/ColourSheet';
 import { HomePrompts } from '@/components/HomePrompts';
 import { LaunchGuide } from '@/components/LaunchGuide';
 import { PublishBar } from '@/components/PublishBar';
+import { LapsedCard } from '@/components/LapsedCard';
 
 type SheetKind = 'fields' | 'photos' | 'colour' | 'edit';
 
-/** The Edit tab: the site preview with tap-to-edit, the design switcher, and the tool bar with Publish. */
+/**
+ * The Edit tab: the site preview with tap-to-edit, the design switcher, and
+ * the tool bar with Publish. A published site whose subscription has lapsed
+ * gets the LapsedCard instead (Resubscribe, Restore purchases).
+ */
 export default function Editor() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const [site, setSite] = useState<SiteRecord | null>(null);
+  const subscription = useSubscriptionStatus();
+  const locked = isLocked(site, subscription);
+  // For the callbacks below: a locked tab runs a publish request whatever the overlay.
+  const lockedRef = useRef(false);
+  lockedRef.current = locked;
+  const { restore, busy: restoring } = useRestoreFlow();
   // The latest record, so slow work (a photo upload, a scrape) applies its
   // change on top of whatever was edited meanwhile, never on a stale copy.
   const siteRef = useRef<SiteRecord | null>(null);
@@ -62,7 +78,7 @@ export default function Editor() {
   // Settings' "Publish" (unpublished site): run it here, once the editor is
   // ready, through the same handlePublish. Left for a later check otherwise.
   const runPublishRequest = useCallback(() => {
-    if (!siteRef.current || overlayRef.current || uploadingRef.current) return;
+    if (!siteRef.current || uploadingRef.current || (overlayRef.current && !lockedRef.current)) return;
     if (takePublishRequest()) handlePublish();
   }, [handlePublish]);
 
@@ -102,6 +118,8 @@ export default function Editor() {
   useFocusEffect(
     useCallback(() => {
       publishing.current = false;
+      // Back on a locked tab (from the paywall, Settings, the background): look again now.
+      if (getSubscriptionStatus() === 'lapsed') recheckSubscriptionStatus(true);
       let alive = true;
       loadSite().then((s) => {
         const cur = siteRef.current;
@@ -125,9 +143,32 @@ export default function Editor() {
     }, [openRecord, runPublishRequest]),
   );
 
+  // A newer copy loaded from the account (launch, sign-in): show it.
+  useEffect(() => {
+    let alive = true;
+    const unsubscribe = onSiteAdopted((s) => void openRecord(s, () => alive));
+    return () => {
+      alive = false;
+      unsubscribe();
+    };
+  }, [openRecord]);
+
+  useEffect(() => {
+    if (!locked) return;
+    track('subscription_lapsed_shown', { screen: 'edit' });
+    // No sheet reappears over the editor once it unlocks.
+    setSheet(null);
+  }, [locked]);
+
+  const resubscribe = useCallback(() => {
+    track('resubscribe_tapped', { screen: 'edit' });
+    handlePublish();
+  }, [handlePublish]);
+
   // No leaving for Settings until the overlay is resolved and finished, or
   // while a photo uploads (Delete or Restore there would race the save).
-  const tabBarHidden = site == null || overlay != null || uploading;
+  // Locked, Settings stays reachable (account, restore, delete).
+  const tabBarHidden = site == null || (!locked && (overlay != null || uploading));
   useLayoutEffect(() => {
     navigation.setOptions({ tabBarStyle: tabBarStyle(tabBarHidden) });
   }, [navigation, tabBarHidden]);
@@ -280,6 +321,14 @@ export default function Editor() {
 
   if (!site) return <View style={styles.root} />;
 
+  if (locked) {
+    return (
+      <View style={[styles.root, { paddingTop: insets.top }]}>
+        <LapsedCard onResubscribe={resubscribe} onRestore={() => void restore()} restoring={restoring} />
+      </View>
+    );
+  }
+
   const data = site.data;
   const editValue = getPath(data, edit.path);
 
@@ -291,7 +340,7 @@ export default function Editor() {
         <View style={[styles.preview, { backgroundColor: previewBackground(data) }]}>
           <SitePreview data={data} editable onEditText={onPreviewText} onEditImage={onPreviewImage} />
           {/* Hidden over a published site and while the prompts / guide are up. */}
-          {site.slug == null && overlay == null && (
+          {site.slug == null && !site.deployedUrl && overlay == null && (
             <DesignSwitcher current={data.template} onSelect={handleDesign} busy={switching} />
           )}
           {uploading && (

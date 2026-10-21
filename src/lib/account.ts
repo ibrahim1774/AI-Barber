@@ -9,12 +9,16 @@ import * as siteStore from '@/lib/siteStore';
 import type { SiteRecord } from '@/lib/siteStore';
 import { supabase } from '@/lib/supabase';
 
+/** `site_data.source` on rows the app writes. */
+export const IOS_SOURCE = 'ios';
+
 /**
  * Upserts the local site into public.sites with the columns the web writes in
  * upsertSiteToSupabase (services/supabaseDataService.ts), minus the domain
  * columns, so the account sees
- * it on aibarber.org too. RLS allows it for the row's own user. The app only
- * ever pushes: an iOS site is bound to the Apple transaction, not the account.
+ * it on aibarber.org too. RLS allows it for the row's own user. The site is
+ * bound to the Apple transaction; the account row is a copy, read back by
+ * pullSiteFromAccount when it was edited on the web or on another phone.
  */
 export async function syncSiteToSupabase(site: SiteRecord, userId: string): Promise<void> {
   const data = publishPayload(site.data); // no editor markers, no inline data: images
@@ -27,13 +31,17 @@ export async function syncSiteToSupabase(site: SiteRecord, userId: string): Prom
       service_area: data.area,
       phone: data.phone,
       brand_colour: '#f4a100',
-      site_data: data,
+      // `source` marks an app-made row, so a fresh install can find it again
+      // (pullSiteFromAccount). It is stripped again when a row is adopted.
+      site_data: { ...data, source: IOS_SOURCE },
       deployed_url: site.deployedUrl,
       deployment_status: site.deployedUrl ? 'deployed' : 'draft',
       // custom_domain / domain_order_id are left out on purpose: the web
       // dashboard attaches a bought domain to this row, and a sync must not
       // wipe it (an insert leaves them null).
-      updated_at: new Date().toISOString(),
+      // The time of the last local edit, not of this push: then the row only
+      // looks newer than this phone's copy after an edit made elsewhere.
+      updated_at: new Date(Number.isFinite(site.updatedAt) ? site.updatedAt : Date.now()).toISOString(),
     },
     { onConflict: 'id' },
   );
@@ -56,6 +64,132 @@ export async function syncIfSignedIn(site?: SiteRecord | null): Promise<void> {
   } catch (e) {
     console.warn('[account] site sync failed:', e);
   }
+}
+
+type SiteRow = { id: string; site_data: unknown; deployed_url: string | null; updated_at: string | null };
+const ROW_COLUMNS = 'id, site_data, deployed_url, updated_at';
+
+export type PullResult = 'adopted' | 'unchanged' | null;
+
+const adoptedListeners = new Set<(site: SiteRecord) => void>();
+
+/** Called with the new local record whenever pullSiteFromAccount adopts one. Returns the unsubscribe. */
+export function onSiteAdopted(cb: (site: SiteRecord) => void): () => void {
+  adoptedListeners.add(cb);
+  return () => {
+    adoptedListeners.delete(cb);
+  };
+}
+
+function isSiteData(v: unknown): v is WebsiteData & { source?: unknown } {
+  return !!v && typeof v === 'object' && !Array.isArray(v);
+}
+
+/** The row's site data without the app's own `source` marker (never sent to /api/ios/publish). */
+function siteDataFrom(raw: WebsiteData & { source?: unknown }): WebsiteData {
+  const { source: _source, ...rest } = raw;
+  return rest as WebsiteData;
+}
+
+/**
+ * Loads the account's copy of the site when it is newer than this phone's:
+ * edited on aibarber.org, or on another phone.
+ *
+ * - With a local site: its own row (`id = draftId`). Adopted (site data,
+ *   deployed URL) only if the row's `updated_at` is later than the local
+ *   `updatedAt`; the draft id, slug and transaction stay.
+ * - Without one: this user's newest app-made row (`site_data.source = 'ios'`)
+ *   becomes the local site.
+ *
+ * A local edit made while the row was loading wins (the save is skipped).
+ * Never throws: null after an error, with nothing changed.
+ */
+export async function pullSiteFromAccount(userId: string): Promise<PullResult> {
+  try {
+    const local = await siteStore.loadSite();
+    const sites = supabase.from('sites');
+    const { data: row, error } = local
+      ? await sites.select(ROW_COLUMNS).eq('id', local.draftId).eq('user_id', userId).maybeSingle()
+      : await sites
+          .select(ROW_COLUMNS)
+          .eq('user_id', userId)
+          .eq('site_data->>source', IOS_SOURCE)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+    if (error) throw error;
+    const r = row as SiteRow | null;
+    if (!r || !isSiteData(r.site_data)) return 'unchanged';
+    const rowAt = Date.parse(r.updated_at ?? '');
+    const data = siteDataFrom(r.site_data);
+
+    let next: SiteRecord;
+    if (local) {
+      if (Number.isNaN(rowAt) || !(rowAt > local.updatedAt)) return 'unchanged';
+      next = {
+        ...local,
+        data,
+        inputs: { ...local.inputs, ...inputsFrom(data) },
+        deployedUrl: r.deployed_url ?? local.deployedUrl,
+        updatedAt: rowAt,
+      };
+    } else {
+      next = {
+        draftId: r.id,
+        inputs: inputsFrom(data),
+        data,
+        updatedAt: Number.isNaN(rowAt) ? Date.now() : rowAt,
+        slug: null,
+        deployedUrl: r.deployed_url ?? null,
+        transactionId: null,
+      };
+    }
+
+    // Compare and swap: an edit (or another load) since the read wins.
+    const now = await siteStore.loadSite();
+    const untouched = local ? now != null && now.draftId === local.draftId && now.updatedAt === local.updatedAt : now == null;
+    if (!untouched) return 'unchanged';
+    await siteStore.saveSite(next);
+    adoptedListeners.forEach((l) => {
+      try {
+        l(next);
+      } catch (e) {
+        console.warn('[account] adopted listener failed:', e);
+      }
+    });
+    return 'adopted';
+  } catch (e) {
+    console.warn('[account] loading the site from the account failed:', e);
+    return null;
+  }
+}
+
+let launchPull: Promise<PullResult> | null = null;
+
+/**
+ * Once per launch, when a session already exists: pullSiteFromAccount for it.
+ * The index awaits it (capped) when there is no local site; _layout starts it
+ * in the background otherwise. Never throws.
+ */
+export function pullSiteOnLaunch(): Promise<PullResult> {
+  if (!launchPull) {
+    launchPull = (async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const userId = data.session?.user?.id;
+        return userId ? await pullSiteFromAccount(userId) : null;
+      } catch (e) {
+        console.warn('[account] launch pull failed:', e);
+        return null;
+      }
+    })();
+  }
+  return launchPull;
+}
+
+/** Test only: let the next pullSiteOnLaunch run again. */
+export function resetLaunchPullForTests(): void {
+  launchPull = null;
 }
 
 export interface RestoreDeps {

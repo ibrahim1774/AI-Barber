@@ -21,6 +21,8 @@ export const sw = {
   restore: async (): Promise<any> => ({ result: 'restored' }),
   /** Every setIntegrationAttributes call, in order. */
   integrationAttributes: [] as Record<string, string>[],
+  /** useUser().subscriptionStatus.status (read at render). */
+  status: 'UNKNOWN' as 'UNKNOWN' | 'ACTIVE' | 'INACTIVE',
   /** useSuperwall().isConfigured (read at render). */
   configured: true,
   /** useSuperwall().configurationError (read at render). */
@@ -31,6 +33,7 @@ export const sw = {
     sw.events = {};
     sw.integrationAttributes = [];
     sw.configured = true;
+    sw.status = 'UNKNOWN';
     sw.configError = null;
     sw.callbacks = {};
     sw.register = async () => {};
@@ -58,7 +61,7 @@ const setIntegrationAttributes = async (attributes: Record<string, string>) => {
   sw.integrationAttributes.push(attributes);
 };
 export function useUser() {
-  return { subscriptionStatus: { status: 'UNKNOWN' }, getCustomerInfo, setIntegrationAttributes };
+  return { subscriptionStatus: { status: sw.status, entitlements: [] }, getCustomerInfo, setIntegrationAttributes };
 }
 export function SuperwallProvider({ children }: { children: unknown }) {
   return children;

@@ -6,7 +6,8 @@ import * as store from '@/lib/siteStore';
 import { hasSeen, markSeen } from '@/lib/overlayFlags';
 import { publishFlow, type PublishDeps } from '@/lib/publish';
 import {
-  deleteAccountAndData, deleteLocalData, restore, syncIfSignedIn, syncSiteToSupabase, type RestoreDeps,
+  deleteAccountAndData, deleteLocalData, onSiteAdopted, pullSiteFromAccount, pullSiteOnLaunch, resetLaunchPullForTests,
+  restore, syncIfSignedIn, syncSiteToSupabase, type RestoreDeps,
 } from '@/lib/account';
 import { currentUserId, friendlyAuthError, signIn, signOut, signUp } from '@/lib/auth';
 import type { SiteRecord } from '@/lib/siteStore';
@@ -245,11 +246,15 @@ describe('public.sites sync', () => {
       deployed_url: 'https://fade-factory.aibarber.org',
       deployment_status: 'deployed',
     });
-    expect(Number.isNaN(Date.parse(row.updated_at as string))).toBe(false);
-    // Clean data only: no editor markers, no inline data: images.
+    // The last local edit's time, not the push's: the app's own copy never looks newer on the next pull.
+    expect(row.updated_at).toBe(new Date(site.updatedAt).toISOString());
+    // Clean data only: no editor markers, no inline data: images; marked as app-made.
     const sd = row.site_data as typeof data;
     expect(sd.hero.heading).toBe('Sharp');
     expect(sd.about.imageUrl).toBe('');
+    expect(sd.source).toBe('ios');
+    // The local record itself never gets the marker.
+    expect((site.data as any).source).toBeUndefined();
   });
 
   test('an unpublished site is a draft', async () => {
@@ -302,6 +307,166 @@ describe('public.sites sync', () => {
     expect(out).toEqual({ kind: 'live', url: LIVE.deployedUrl, republished: false });
     expect(onLive).toHaveBeenCalledWith(expect.objectContaining({ slug: 'fade-factory', deployedUrl: LIVE.deployedUrl }));
     expect(deps.iosPublish).toHaveBeenCalledWith(expect.objectContaining({ userId: USER.id }));
+  });
+});
+
+describe('pullSiteFromAccount', () => {
+  const T0 = Date.parse('2026-10-20T12:00:00.000Z');
+  const local = { ...site, updatedAt: T0 } as SiteRecord;
+  const webData = { ...BOUND.siteData, shopName: 'Fade Factory Web', area: 'Queens, NY', source: 'ios' };
+  const row = (over: Record<string, unknown> = {}) => ({
+    id: DRAFT,
+    user_id: USER.id,
+    site_data: webData,
+    deployed_url: 'https://fade-factory.aibarber.org',
+    updated_at: new Date(T0 + 60_000).toISOString(),
+    ...over,
+  });
+
+  test('adopts a newer account copy of the local site, keeping its ids', async () => {
+    await store.saveSite(local);
+    sb.rows = [row({ deployed_url: 'https://fade-factory-new.vercel.app' })];
+    const seen: SiteRecord[] = [];
+    const off = onSiteAdopted((s) => seen.push(s));
+
+    await expect(pullSiteFromAccount(USER.id)).resolves.toBe('adopted');
+    off();
+
+    expect(sb.selects[0].filters).toEqual([
+      ['id', DRAFT],
+      ['user_id', USER.id],
+    ]);
+    const saved = (await store.loadSite())!;
+    expect(saved).toMatchObject({
+      draftId: DRAFT,
+      slug: 'fade-factory',
+      transactionId: 'tx-1',
+      deployedUrl: 'https://fade-factory-new.vercel.app',
+      updatedAt: T0 + 60_000,
+    });
+    expect(saved.data.shopName).toBe('Fade Factory Web');
+    expect(saved.inputs).toMatchObject({ shopName: 'Fade Factory Web', area: 'Queens, NY' });
+    // The app's marker stays in the account, never in the local data (or a publish).
+    expect((saved.data as any).source).toBeUndefined();
+    expect(seen).toEqual([saved]);
+  });
+
+  test('keeps the local deployed URL when the row has none', async () => {
+    await store.saveSite(local);
+    sb.rows = [row({ deployed_url: null })];
+    await expect(pullSiteFromAccount(USER.id)).resolves.toBe('adopted');
+    expect((await store.loadSite())!.deployedUrl).toBe(site.deployedUrl);
+  });
+
+  test.each([
+    ['older', -60_000],
+    ['equal', 0],
+  ])('ignores an %s account copy', async (_label, delta) => {
+    await store.saveSite(local);
+    sb.rows = [row({ updated_at: new Date(T0 + (delta as number)).toISOString() })];
+    await expect(pullSiteFromAccount(USER.id)).resolves.toBe('unchanged');
+    expect(await store.loadSite()).toEqual(local);
+  });
+
+  test('no row for the local site: unchanged', async () => {
+    await store.saveSite(local);
+    sb.rows = [row({ id: 'someone-else' })];
+    await expect(pullSiteFromAccount(USER.id)).resolves.toBe('unchanged');
+    expect(await store.loadSite()).toEqual(local);
+  });
+
+  test("after the app's own push, the same copy is not adopted back", async () => {
+    await store.saveSite(local);
+    await syncSiteToSupabase(local, USER.id);
+    sb.rows = [{ ...sb.upserts[0].row }];
+    await expect(pullSiteFromAccount(USER.id)).resolves.toBe('unchanged');
+  });
+
+  test('without a local site, the newest app-made row becomes the local site', async () => {
+    sb.rows = [
+      row({ id: 'old-ios', updated_at: '2026-10-01T00:00:00.000Z' }),
+      row({ id: 'new-ios', updated_at: '2026-10-19T00:00:00.000Z' }),
+      // Newer, but made on the web: never adopted as an app site.
+      row({ id: 'web-only', updated_at: '2026-10-20T00:00:00.000Z', site_data: { ...BOUND.siteData } }),
+      row({ id: 'other-user', user_id: 'u2', updated_at: '2026-10-21T00:00:00.000Z' }),
+    ];
+    await expect(pullSiteFromAccount(USER.id)).resolves.toBe('adopted');
+
+    expect(sb.selects[0].filters).toEqual([
+      ['user_id', USER.id],
+      ['site_data->>source', 'ios'],
+    ]);
+    expect(sb.selects[0].order).toEqual(['updated_at', false]);
+    expect(sb.selects[0].limit).toBe(1);
+    const saved = (await store.loadSite())!;
+    expect(saved).toEqual({
+      draftId: 'new-ios',
+      inputs: {
+        shopName: 'Fade Factory Web',
+        area: 'Queens, NY',
+        phone: '(718) 555-0100',
+        template: 'luxe',
+        colorTheme: 'gold',
+        bookingUrl: 'https://booksy.com/fade',
+      },
+      data: { ...BOUND.siteData, shopName: 'Fade Factory Web', area: 'Queens, NY' },
+      updatedAt: Date.parse('2026-10-19T00:00:00.000Z'),
+      slug: null,
+      deployedUrl: 'https://fade-factory.aibarber.org',
+      transactionId: null,
+    });
+  });
+
+  test('without a local site or an app-made row: unchanged, nothing saved', async () => {
+    sb.rows = [row({ id: 'web-only', site_data: { ...BOUND.siteData } })];
+    await expect(pullSiteFromAccount(USER.id)).resolves.toBe('unchanged');
+    expect(await store.loadSite()).toBeNull();
+  });
+
+  test('a local edit made while the row loads wins', async () => {
+    await store.saveSite(local);
+    sb.rows = [row()];
+    const realLoad = store.loadSite;
+    let calls = 0;
+    jest.spyOn(store, 'loadSite').mockImplementation(async () => {
+      calls++;
+      // The second read (just before saving) sees an edit.
+      return calls === 1 ? realLoad() : { ...local, updatedAt: T0 + 5 };
+    });
+    await expect(pullSiteFromAccount(USER.id)).resolves.toBe('unchanged');
+    jest.restoreAllMocks();
+    expect(await store.loadSite()).toEqual(local);
+  });
+
+  test.each([
+    ['returned', false],
+    ['thrown', true],
+  ])('an error (%s) returns null and changes nothing', async (_label, throws) => {
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    await store.saveSite(local);
+    sb.rows = [row()];
+    sb.selectError = { message: 'offline' };
+    sb.selectThrows = throws as boolean;
+    await expect(pullSiteFromAccount(USER.id)).resolves.toBeNull();
+    expect(await store.loadSite()).toEqual(local);
+
+    await store.clearSite();
+    await expect(pullSiteFromAccount(USER.id)).resolves.toBeNull();
+    expect(await store.loadSite()).toBeNull();
+  });
+
+  test('pullSiteOnLaunch runs once, only with a session', async () => {
+    resetLaunchPullForTests();
+    await expect(pullSiteOnLaunch()).resolves.toBeNull();
+    expect(sb.selects).toHaveLength(0);
+
+    resetLaunchPullForTests();
+    sb.setSession({ access_token: 'a', user: USER });
+    sb.rows = [row({ id: 'new-ios' })];
+    await expect(pullSiteOnLaunch()).resolves.toBe('adopted');
+    await expect(pullSiteOnLaunch()).resolves.toBe('adopted');
+    expect(sb.selects).toHaveLength(1);
+    resetLaunchPullForTests();
   });
 });
 
@@ -371,12 +536,50 @@ describe('auth', () => {
     expect(identifySpy).toHaveBeenCalledWith(USER.id);
     expect(sb.upserts).toHaveLength(1);
     expect(currentUserId()).toBe(USER.id);
+    // The account's copy is checked before the local one is pushed.
+    expect(sb.selects).toHaveLength(1);
 
     supabase.auth.signInWithPassword.mockResolvedValueOnce({
       data: { user: null, session: null },
       error: { code: 'invalid_credentials', status: 400, message: 'Invalid login credentials' },
     });
     await expect(signIn('barber@example.com', 'nope')).rejects.toThrow(/don.t match/);
+  });
+
+  test('signIn adopts a newer web edit before pushing, so the push carries it', async () => {
+    await store.saveSite({ ...site, updatedAt: 1000 } as SiteRecord);
+    sb.rows = [
+      {
+        id: DRAFT,
+        user_id: USER.id,
+        site_data: { ...BOUND.siteData, shopName: 'Edited On Web', source: 'ios' },
+        deployed_url: site.deployedUrl,
+        updated_at: new Date(5000).toISOString(),
+      },
+    ];
+    const session = { access_token: 'a', user: USER };
+    supabase.auth.signInWithPassword.mockImplementationOnce(async () => {
+      sb.setSession(session);
+      return { data: { user: USER, session }, error: null };
+    });
+    await signIn('barber@example.com', 'secret1');
+    expect((await store.loadSite())!.data.shopName).toBe('Edited On Web');
+    expect(sb.upserts).toHaveLength(1);
+    expect(sb.upserts[0].row).toMatchObject({ company_name: 'Edited On Web', updated_at: new Date(5000).toISOString() });
+  });
+
+  test('a pull failure after sign-in does not fail the sign-in', async () => {
+    await store.saveSite(site);
+    sb.selectError = { message: 'offline' };
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const session = { access_token: 'a', user: USER };
+    supabase.auth.signInWithPassword.mockImplementationOnce(async () => {
+      sb.setSession(session);
+      return { data: { user: USER, session }, error: null };
+    });
+    await expect(signIn('barber@example.com', 'secret1')).resolves.toBeUndefined();
+    expect(await store.loadSite()).toEqual(site);
+    expect(sb.upserts).toHaveLength(1);
   });
 
   test('a sync failure after sign-in does not fail the sign-in', async () => {

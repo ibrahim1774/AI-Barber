@@ -1,6 +1,6 @@
 import { usePlacement, useSuperwall, useSuperwallEvents, useUser } from 'expo-superwall';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert } from 'react-native';
+import { Alert, AppState } from 'react-native';
 
 import { restore, syncIfSignedIn, type Restored } from '@/lib/account';
 import { appsFlyerUID, track, trackConversion } from '@/lib/analytics';
@@ -9,6 +9,9 @@ import { currentUserId } from '@/lib/auth';
 import { PaywallSettle, type PaywallResult } from '@/lib/paywallSettle';
 import { findTransactionId, pickLatestTransactionId, type PublishDeps } from '@/lib/publish';
 import * as siteStore from '@/lib/siteStore';
+import {
+  checkSubscriptionStatus, lastStatusCheckAt, registerStatusRunner, setSubscriptionStatus, shouldCheck,
+} from '@/lib/subscriptionStatus';
 
 /** Placements configured in the Superwall dashboard (AI Barber campaign). */
 export type Placement = 'publish';
@@ -82,6 +85,81 @@ export function SubscriptionSync() {
 
 /** As long as Superwall's own awaitConfigured waits. */
 const SETTLE_TIMEOUT_MS = 10_000;
+
+/**
+ * Keeps subscriptionStatus.ts current for a published site: once Superwall
+ * has settled, on each return from the background (both at most every 5
+ * minutes), and whenever Superwall's own status changes (a purchase, a
+ * restore, an expiry), plus whenever recheckSubscriptionStatus() asks.
+ * Render once under the provider. Never prompts.
+ */
+export function SubscriptionStatusSync() {
+  const { subscriptionStatus, getCustomerInfo } = useUser();
+  const settled = useSuperwallSettled();
+  const latest = useRef({ subscriptionStatus, getCustomerInfo });
+  latest.current = { subscriptionStatus, getCustomerInfo };
+  const inFlight = useRef(false);
+  const again = useRef(false);
+
+  const run = useCallback((force: boolean) => {
+    if (inFlight.current) {
+      if (force) again.current = true;
+      return;
+    }
+    if (!shouldCheck(Date.now(), lastStatusCheckAt(), force)) return;
+    inFlight.current = true;
+    (async () => {
+      const [site, pending] = await Promise.all([
+        siteStore.loadSite().catch(() => null),
+        siteStore.loadPendingPublish().catch(() => null),
+      ]);
+      const sw = latest.current;
+      const result = await checkSubscriptionStatus({
+        site,
+        pendingPublish: pending != null,
+        superwallStatus: sw.subscriptionStatus?.status ?? 'UNKNOWN',
+        customerInfo: () => sw.getCustomerInfo(),
+        iosSite: api.iosSite,
+      });
+      setSubscriptionStatus(result);
+    })()
+      .catch((e) => console.warn('[subscription] status check failed:', e))
+      .finally(() => {
+        inFlight.current = false;
+        if (again.current) {
+          again.current = false;
+          run(true);
+        }
+      });
+  }, []);
+
+  useEffect(() => {
+    if (!settled) return;
+    registerStatusRunner(run);
+    run(false);
+    let last = AppState.currentState;
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active' && last === 'background') run(false);
+      last = state;
+    });
+    return () => {
+      sub.remove();
+      registerStatusRunner(null);
+    };
+  }, [settled, run]);
+
+  // Superwall's status moving (purchase, restore, expiry) is worth a fresh look.
+  const swStatus = subscriptionStatus?.status;
+  const seen = useRef(swStatus);
+  useEffect(() => {
+    const changed = seen.current !== swStatus;
+    seen.current = swStatus;
+    // Before settling the first check covers it.
+    if (settled && changed) run(true);
+  }, [settled, swStatus, run]);
+
+  return null;
+}
 
 /**
  * True once Superwall has configured, failed to, or had 10 s to try (offline).
@@ -197,8 +275,12 @@ export function usePublishDeps(): PublishDeps {
       store: siteStore,
       // The site is bound to the Apple transaction; a signed-in user is linked to it too.
       userId: currentUserId,
-      // Keeps the account's `sites` row (deployed_url, status) current.
-      onLive: (site) => syncIfSignedIn(site),
+      // Live proves the subscription is active (the editor unlocks), and
+      // keeps the account's `sites` row (deployed_url, status) current.
+      onLive: (site) => {
+        setSubscriptionStatus('active');
+        return syncIfSignedIn(site);
+      },
     }),
     [paywall, latestTransactionId],
   );

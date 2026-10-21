@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, useFocusEffect, useNavigation } from 'expo-router';
 import * as Application from 'expo-application';
@@ -7,7 +7,7 @@ import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
 import { ChevronRightIcon, ExternalLinkIcon } from '@/components/Icons';
 import { Page } from '@/components/Page';
-import { deleteAccountAndData, deleteLocalData } from '@/lib/account';
+import { deleteAccountAndData, deleteLocalData, onSiteAdopted } from '@/lib/account';
 import { track } from '@/lib/analytics';
 import { ApiError } from '@/lib/api';
 import { signOut, useSession } from '@/lib/auth';
@@ -15,6 +15,7 @@ import { goBackOrHome, resetTo } from '@/lib/nav';
 import { requestPublish } from '@/lib/publishRequest';
 import { useRestoreFlow } from '@/lib/restoreFlow';
 import { loadSite, type SiteRecord } from '@/lib/siteStore';
+import { isLocked, useSubscriptionStatus } from '@/lib/subscriptionStatus';
 import { tabBarStyle } from '@/lib/tabBar';
 import { useLinkActions } from '@/lib/useLinkActions';
 import { websiteView } from '@/lib/website';
@@ -58,6 +59,9 @@ export default function Settings() {
       };
     }, []),
   );
+
+  // A site loaded from the account while this tab is up.
+  useEffect(() => onSiteAdopted((s) => setSite(s)), []);
 
   const standalone = site === null;
   // Hidden until the site is known, so Edit can't be tapped with no site.
@@ -180,14 +184,30 @@ export default function Settings() {
   );
 }
 
-/** Shop name, the live link with /live's Open / Copy / Share, or "Not published yet" with Publish. */
+/**
+ * Shop name, the live link with /live's Open / Copy / Share, "Offline" with
+ * Resubscribe once the subscription has lapsed, or "Not published yet" with
+ * Publish.
+ */
 function YourWebsite({ site }: { site: SiteRecord }) {
-  const view = websiteView(site);
+  const lapsed = isLocked(site, useSubscriptionStatus());
+  const view = websiteView(site, lapsed);
   const { open, copy, share, copied } = useLinkActions(view.url, 'settings');
+
+  useEffect(() => {
+    if (lapsed) track('subscription_lapsed_shown', { screen: 'settings' });
+  }, [lapsed]);
 
   // The one publish path: the Edit tab's handlePublish (paywall, then /publishing).
   const publish = () => {
     track('settings_publish_tapped');
+    requestPublish();
+    router.navigate('/edit');
+  };
+
+  // Same path: the paywall, then the republish brings the site back on its link.
+  const resubscribe = () => {
+    track('resubscribe_tapped', { screen: 'settings' });
     requestPublish();
     router.navigate('/edit');
   };
@@ -199,10 +219,20 @@ function YourWebsite({ site }: { site: SiteRecord }) {
           {view.name}
         </Text>
         <View style={styles.statusRow}>
-          <View style={[styles.dot, { backgroundColor: view.live ? GREEN : colors.faint }]} />
-          <Text style={[styles.status, view.live && { color: GREEN }]}>{view.status}</Text>
+          <View style={[styles.dot, { backgroundColor: view.live ? GREEN : view.offline ? colors.danger : colors.faint }]} />
+          <Text style={[styles.status, view.live && { color: GREEN }, view.offline && { color: colors.danger }]}>
+            {view.status}
+          </Text>
         </View>
-        {view.live ? (
+        {view.offline ? (
+          <>
+            {/* The same link comes back on resubscribe; not tappable while it shows the offline page. */}
+            <Text style={styles.offlineUrl} numberOfLines={1}>
+              {view.host}
+            </Text>
+            <Button variant="solid" title="Resubscribe" onPress={resubscribe} style={styles.publish} />
+          </>
+        ) : view.live ? (
           <>
             <Pressable onPress={open} accessibilityRole="link" accessibilityLabel={`Open ${view.host}`} hitSlop={6}>
               <Text style={styles.url} numberOfLines={1}>
@@ -307,6 +337,7 @@ const styles = StyleSheet.create({
   dot: { width: 8, height: 8, borderRadius: 4 },
   status: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.muted },
   url: { fontFamily: fonts.mono, fontSize: 13, color: colors.accent, marginTop: 12, textDecorationLine: 'underline' },
+  offlineUrl: { fontFamily: fonts.mono, fontSize: 13, color: colors.faint, marginTop: 12 },
   actions: { flexDirection: 'row', gap: 8, marginTop: 16 },
   action: { flex: 1, paddingHorizontal: 8 },
   publish: { alignSelf: 'stretch', marginTop: 16 },

@@ -96,7 +96,9 @@ const dayNumber = (d: Date) => Math.round(Date.UTC(d.getFullYear(), d.getMonth()
  * (a closer one is skipped), with rotating copy. Nothing once published.
  */
 export function buildReminderSchedule(now: Date, site: SiteRecord | null): Reminder[] {
-  if (site && site.slug != null) return [];
+  // Published (a slug), or live per the account (a site loaded from it has a
+  // URL but no slug): never "publish" reminders, also once it has lapsed.
+  if (site && (site.slug != null || site.deployedUrl)) return [];
   const kind: ReminderKind = site ? 'finish' : 'start';
   const lines: readonly string[] = site ? FINISH_LINES : START_LINES;
   const name = site ? shopName(site) : null;

@@ -6,15 +6,17 @@ import { StatusBar } from 'expo-status-bar';
 import { SuperwallProvider } from 'expo-superwall';
 import { PostHogProvider } from 'posthog-react-native';
 import { fontAssets } from '@/constants/theme';
+import { onSiteAdopted, pullSiteOnLaunch } from '@/lib/account';
 import { initAttribution, POSTHOG_AUTOCAPTURE, posthog, screen } from '@/lib/analytics';
 import { LaunchPrompts } from '@/lib/launchPrompts';
 import {
-  SubscriptionSync, SUPERWALL_KEY, SUPERWALL_OPTIONS, superwallActive, usePublishDeps,
+  SubscriptionStatusSync, SubscriptionSync, SUPERWALL_KEY, SUPERWALL_OPTIONS, superwallActive, usePublishDeps,
 } from '@/lib/paywall';
 import { resetTo } from '@/lib/nav';
 import { publishBusy, resumePendingPublish } from '@/lib/publish';
 import { onReminderTap, refreshReminders, routeForReminderTap, takeLaunchReminderTap } from '@/lib/reminders';
 import { loadSite } from '@/lib/siteStore';
+import { recheckSubscriptionStatus } from '@/lib/subscriptionStatus';
 
 function ScreenTracker() {
   const path = usePathname();
@@ -73,6 +75,30 @@ function Reminders() {
   return null;
 }
 
+/**
+ * The account's copy of the site: loaded once at launch when a session
+ * already exists (the index waits for it only without a local site). Any
+ * adoption (launch or sign-in) re-checks the subscription; one that lands
+ * while the importer's landing screen shows moves to the Edit tab. The
+ * screens showing the site reload it themselves (onSiteAdopted).
+ */
+function AccountPull() {
+  const path = usePathname();
+  const pathRef = useRef(path);
+  pathRef.current = path;
+
+  useEffect(() => {
+    const unsubscribe = onSiteAdopted(() => {
+      recheckSubscriptionStatus(true);
+      if (pathRef.current === '/start') resetTo('/edit');
+    });
+    void pullSiteOnLaunch();
+    return unsubscribe;
+  }, []);
+
+  return null;
+}
+
 export default function RootLayout() {
   // AppsFlyer for everyone at launch, before any screen. It starts once the
   // tracking prompt (LaunchPrompts, after the font gate) is answered.
@@ -90,6 +116,7 @@ export default function RootLayout() {
       {/* Notifications, then ATT: once, on the first screen after the splash. */}
       <LaunchPrompts />
       <Reminders />
+      <AccountPull />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }}>
         <Stack.Screen name="generating" options={{ gestureEnabled: false, animation: 'fade' }} />
         {/* Home once a site exists (Edit, Settings); no swipe back into the importer. */}
@@ -133,6 +160,7 @@ export default function RootLayout() {
       options={SUPERWALL_OPTIONS}
       onConfigurationError={(e) => console.warn('Superwall configuration failed', e)}>
       <SubscriptionSync />
+      <SubscriptionStatusSync />
       <ResumePublish />
       {app}
     </SuperwallProvider>

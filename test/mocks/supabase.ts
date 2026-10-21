@@ -10,6 +10,13 @@ export const sb = {
   session: null as Session,
   upserts: [] as { table: string; row: Record<string, unknown>; opts: unknown }[],
   upsertError: null as null | { message: string; code?: string },
+  /** Rows a select can return (any table). */
+  rows: [] as Record<string, any>[],
+  /** Every select, with its filters (`eq`), order and limit, in call order. */
+  selects: [] as { table: string; columns: string; filters: [string, unknown][]; order?: [string, boolean]; limit?: number }[],
+  /** Makes selects resolve with this error (or throw it, when `selectThrows`). */
+  selectError: null as null | { message: string; code?: string },
+  selectThrows: false,
   listeners: new Set<Listener>(),
   setSession(s: Session) {
     sb.session = s;
@@ -19,6 +26,10 @@ export const sb = {
     sb.session = null;
     sb.upserts = [];
     sb.upsertError = null;
+    sb.rows = [];
+    sb.selects = [];
+    sb.selectError = null;
+    sb.selectThrows = false;
     supabase.auth.signUp.mockReset().mockImplementation(async () => ({ data: { user: null, session: null }, error: null }));
     supabase.auth.signInWithPassword
       .mockReset()
@@ -68,6 +79,44 @@ export const supabase = {
       if (sb.upsertError) return { data: null, error: sb.upsertError };
       sb.upserts.push({ table, row, opts });
       return { data: null, error: null };
+    },
+    select: (columns: string) => {
+      const q: (typeof sb.selects)[number] = { table, columns, filters: [] };
+      sb.selects.push(q);
+      // `site_data->>source` reads a key inside the JSON column, like PostgREST.
+      const value = (row: Record<string, any>, col: string) => {
+        const m = /^(\w+)->>(\w+)$/.exec(col);
+        return m ? row[m[1]]?.[m[2]] : row[col];
+      };
+      const chain = {
+        eq(col: string, v: unknown) {
+          q.filters.push([col, v]);
+          return chain;
+        },
+        order(col: string, o: { ascending?: boolean } = {}) {
+          q.order = [col, o.ascending !== false];
+          return chain;
+        },
+        limit(n: number) {
+          q.limit = n;
+          return chain;
+        },
+        async maybeSingle() {
+          if (sb.selectError) {
+            if (sb.selectThrows) throw sb.selectError;
+            return { data: null, error: sb.selectError };
+          }
+          let rows = sb.rows.filter((r) => q.filters.every(([c, v]) => value(r, c) === v));
+          if (q.order) {
+            const [c, asc] = q.order;
+            rows = [...rows].sort((a, b) => (a[c] < b[c] ? -1 : a[c] > b[c] ? 1 : 0) * (asc ? 1 : -1));
+          }
+          if (q.limit != null) rows = rows.slice(0, q.limit);
+          if (rows.length > 1) return { data: null, error: { message: 'multiple rows', code: 'PGRST116' } };
+          return { data: rows[0] ?? null, error: null };
+        },
+      };
+      return chain;
     },
   }),
 };

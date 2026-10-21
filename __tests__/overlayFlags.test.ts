@@ -31,6 +31,13 @@ describe('nextOverlay (once per draft)', () => {
     expect(await nextOverlay(r)).toBeNull();
   });
 
+  test('a live site never gets the onboarding, with or without a slug', async () => {
+    const d = await site();
+    expect(await nextOverlay(record(d, { slug: 'fade', deployedUrl: 'https://fade.vercel.app' }))).toBeNull();
+    // Loaded from the account: a URL but no slug.
+    expect(await nextOverlay(record(d, { deployedUrl: 'https://fade.vercel.app' }))).toBeNull();
+  });
+
   test('flags are per draft', async () => {
     const d = await site();
     const a = record(d);

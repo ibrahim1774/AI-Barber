@@ -36,7 +36,8 @@ export async function clearOverlayFlags(draftId: string): Promise<void> {
  * (booking link or Google listing) goes straight to the guide.
  */
 export async function nextOverlay(site: SiteRecord): Promise<Overlay | null> {
-  if (site.slug != null) return null;
+  // A published site (or one live per the account, loaded without a slug) needs no onboarding.
+  if (site.slug != null || site.deployedUrl) return null;
   if (!site.inputs.importedFrom && !(await hasSeen('prompts', site.draftId))) return 'prompts';
   if (!(await hasSeen('guide', site.draftId))) return 'guide';
   return null;
