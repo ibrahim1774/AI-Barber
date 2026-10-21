@@ -1,0 +1,429 @@
+// Shared pieces of the store API flows: the store gate, cart parsing and pricing, address
+// validation, response views, and the money paths shared by the owner refund and the sweeps.
+import type { GetUser } from '../bookings/auth.js';
+import { isObj, isUuid, iso, text, type FlowResult } from '../bookings/core.js';
+import { MANUAL_METHODS } from '../bookings/repo.js';
+import { orderRefundKey, type NotifyOrder, type StorePayments } from './deps.js';
+import type { OrderGuard, StoreRepo } from './repo.js';
+import type { Fulfilment, OrderItemRow, OrderRow, ProductRow, ShippingAddress, ShopStoreRow, StoreNotifyEvent } from './types.js';
+
+export interface StoreLimits {
+  /** Count one order create for the shop; false when over its hourly cap. Never throws. */
+  shopOrder(shopId: string): Promise<boolean>;
+}
+
+export interface StoreDeps {
+  repo: StoreRepo;
+  payments: StorePayments;
+  notify: NotifyOrder;
+  now(): number;
+  /** Origin of the shop pages, e.g. 'https://www.aibarber.org'. */
+  baseUrl: string;
+  /** Cross-instance limits checked inside flows (absent = none). */
+  limits?: StoreLimits;
+}
+
+export interface StoreOwnerDeps extends StoreDeps {
+  getUser: GetUser;
+}
+
+export type { FlowResult };
+
+const MIN = 60_000;
+/** Stripe's card minimum; also the lowest product price (009 ab_products_price_min). */
+export const MIN_PRICE_CENTS = 50;
+export const MAX_CART_LINES = 20;
+export const MAX_LINE_QTY = 10;
+export const MAX_PHOTOS = 5;
+
+// ---------------------------------------------------------------------------
+// Store gate (Phase 3: store_enabled + a live iOS purchase; Phase 4 narrows it to the Store tier)
+// ---------------------------------------------------------------------------
+export async function storeOpen(repo: Pick<StoreRepo, 'purchase'>, shop: ShopStoreRow): Promise<boolean> {
+  if (!shop.store_enabled) return false;
+  if (!shop.ios_otid) return false;
+  const p = await repo.purchase(shop.ios_otid);
+  return !!p && !p.revoked_at && !p.taken_down_at;
+}
+
+/** One predicate for the page (GET /shop) and the server (POST /orders). */
+export const shippingEnabled = (shop: ShopStoreRow) => !!shop.store_shipping && shop.shipping_flat_cents != null;
+export const pickupEnabled = (shop: ShopStoreRow) => !!shop.store_pickup;
+
+// ---------------------------------------------------------------------------
+// Cart
+// ---------------------------------------------------------------------------
+export interface CartLine {
+  productId: string;
+  quantity: number;
+}
+
+/** 1–20 lines of { productId: uuid, quantity: 1–10 }, merged by productId (merged qty ≤ 10). Null = invalid. */
+export function parseCart(items: unknown): CartLine[] | null {
+  if (!Array.isArray(items) || items.length < 1 || items.length > MAX_CART_LINES) return null;
+  const merged = new Map<string, number>();
+  for (const it of items) {
+    if (!isObj(it) || !isUuid(it.productId)) return null;
+    const q = it.quantity;
+    if (typeof q !== 'number' || !Number.isInteger(q) || q < 1 || q > MAX_LINE_QTY) return null;
+    const id = it.productId.toLowerCase();
+    merged.set(id, (merged.get(id) ?? 0) + q);
+  }
+  const out: CartLine[] = [];
+  for (const [productId, quantity] of merged) {
+    if (quantity > MAX_LINE_QTY) return null;
+    out.push({ productId, quantity });
+  }
+  return out;
+}
+
+/** An order line as stored (ab_order_items snapshot) plus the cover photo for Checkout. */
+export interface PricedLine {
+  product_id: string;
+  name: string;
+  unit_price_cents: number;
+  quantity: number;
+  photo_url: string | null;
+}
+
+export type PricedCart =
+  | { lines: PricedLine[]; subtotal: number; shipping: number; total: number }
+  | { soldOut: string[] }
+  | { invalid: 'items' };
+
+const httpsPhotos = (p: ProductRow) =>
+  (Array.isArray(p.photos) ? p.photos : []).filter((u) => typeof u === 'string' && /^https:\/\//i.test(u)).slice(0, MAX_PHOTOS);
+
+/**
+ * Server-side totals. Every line must be an active product of this shop priced at least 50¢
+ * (else `invalid`); then any sold-out line gives `soldOut`. Name and price are snapshotted from
+ * the rows read in this request.
+ */
+export function priceCart(shop: ShopStoreRow, products: ProductRow[], lines: CartLine[], fulfilment: Fulfilment): PricedCart {
+  const byId = new Map(products.filter((p) => p.shop_id === shop.id).map((p) => [p.id.toLowerCase(), p]));
+  const found: ProductRow[] = [];
+  for (const l of lines) {
+    const p = byId.get(l.productId.toLowerCase());
+    if (!p || !p.active || !Number.isInteger(p.price_cents) || p.price_cents < MIN_PRICE_CENTS) return { invalid: 'items' };
+    found.push(p);
+  }
+  const soldOut = found.filter((p) => p.sold_out).map((p) => p.id);
+  if (soldOut.length) return { soldOut };
+  const priced = lines.map((l, i) => ({
+    product_id: found[i].id,
+    name: found[i].name,
+    unit_price_cents: found[i].price_cents,
+    quantity: l.quantity,
+    photo_url: httpsPhotos(found[i])[0] ?? null,
+  }));
+  const subtotal = priced.reduce((s, l) => s + l.unit_price_cents * l.quantity, 0);
+  const shipping = fulfilment === 'shipping' ? shop.shipping_flat_cents ?? 0 : 0;
+  return { lines: priced, subtotal, shipping, total: subtotal + shipping };
+}
+
+// ---------------------------------------------------------------------------
+// Address (US only)
+// ---------------------------------------------------------------------------
+const STATE_RE = /^[A-Za-z]{2}$/;
+const ZIP_RE = /^\d{5}(-\d{4})?$/;
+
+/** { name, line1, line2?, city, state, postalCode } → the stored shape, or null when invalid. */
+export function parseUsAddress(v: unknown): ShippingAddress | null {
+  if (!isObj(v)) return null;
+  const name = text(v.name, 100);
+  const line1 = text(v.line1, 100);
+  const line2 = text(v.line2, 100, true);
+  const city = text(v.city, 100);
+  const state = typeof v.state === 'string' ? v.state.trim() : '';
+  const postal = typeof v.postalCode === 'string' ? v.postalCode.trim() : '';
+  if (!name || !line1 || line2 === undefined || !city) return null;
+  if (!STATE_RE.test(state) || !ZIP_RE.test(postal)) return null;
+  return { name, line1, line2, city, state: state.toUpperCase(), postal_code: postal, country: 'US' };
+}
+
+// ---------------------------------------------------------------------------
+// Views
+// ---------------------------------------------------------------------------
+export const statusUrl = (baseUrl: string, token: string) =>
+  `${baseUrl.replace(/\/+$/, '')}/shop/manage/${encodeURIComponent(token)}`;
+
+export function publicProductView(p: ProductRow) {
+  return {
+    id: p.id,
+    name: p.name,
+    priceCents: p.price_cents,
+    description: p.description ?? null,
+    photos: httpsPhotos(p),
+    soldOut: !!p.sold_out,
+  };
+}
+
+const addressOrNull = (a: unknown) => (isObj(a) && Object.keys(a).length > 0 ? a : null);
+const isManual = (m: unknown) => typeof m === 'string' && (MANUAL_METHODS as readonly string[]).includes(m);
+const refundPending = (o: OrderRow) => o.refund_due_cents > o.amount_refunded_cents && o.refund_stuck_at == null;
+
+/** canSayPaid: a manual-rail order, unpaid, not cancelled, a method set, not said yet. */
+export const canSayPaid = (o: OrderRow) =>
+  isManual(o.payment_method)
+  && (o.payment_status === 'none' || o.payment_status === 'awaiting')
+  && o.status !== 'cancelled'
+  && !o.customer_says_paid_at;
+
+export function publicOrderView(o: OrderRow, items: OrderItemRow[], shop: ShopStoreRow, manual: Record<string, string>) {
+  return {
+    order: {
+      id: o.id,
+      number: o.order_no,
+      status: o.status,
+      fulfilment: o.fulfilment,
+      createdAt: iso(Date.parse(o.created_at)),
+      items: items.map((i) => ({ name: i.name, unitPriceCents: i.unit_price_cents, quantity: i.quantity })),
+      subtotalCents: o.subtotal_cents,
+      shippingCents: o.shipping_cents,
+      totalCents: o.total_cents,
+      paymentStatus: o.payment_status,
+      paymentMethod: o.payment_method,
+      amountPaidCents: o.amount_paid_cents,
+      amountRefundedCents: o.amount_refunded_cents,
+      trackingNumber: o.tracking_number ?? null,
+      trackingUrl: o.tracking_url ?? null,
+      shippingAddress: addressOrNull(o.shipping_address),
+      customerSaysPaid: !!o.customer_says_paid_at,
+    },
+    shop: {
+      name: shop.name,
+      slug: shop.slug,
+      address: shop.address ?? null,
+      phone: shop.phone ?? null,
+      accent: shop.accent ?? null,
+      pickupNote: shop.store_pickup_note ?? null,
+      shipsWithinDays: shop.ships_within_days ?? null,
+      manual,
+    },
+    canSayPaid: canSayPaid(o),
+  };
+}
+
+const isoOrNull = (v: string | null | undefined) => (v ? iso(Date.parse(v)) : null);
+
+export function ownerOrderView(o: OrderRow, items: OrderItemRow[]) {
+  return {
+    id: o.id,
+    number: o.order_no,
+    status: o.status,
+    fulfilment: o.fulfilment,
+    createdAt: iso(Date.parse(o.created_at)),
+    customer: { name: o.customer_name, phone: o.customer_phone, email: o.customer_email },
+    note: o.note ?? null,
+    shippingAddress: addressOrNull(o.shipping_address),
+    items: items.map((i) => ({ productId: i.product_id ?? null, name: i.name, unitPriceCents: i.unit_price_cents, quantity: i.quantity })),
+    subtotalCents: o.subtotal_cents,
+    shippingCents: o.shipping_cents,
+    totalCents: o.total_cents,
+    paymentStatus: o.payment_status,
+    paymentMethod: o.payment_method,
+    amountPaidCents: o.amount_paid_cents,
+    amountRefundedCents: o.amount_refunded_cents,
+    refundPending: refundPending(o),
+    trackingNumber: o.tracking_number ?? null,
+    trackingUrl: o.tracking_url ?? null,
+    customerSaysPaidAt: isoOrNull(o.customer_says_paid_at),
+    readyAt: isoOrNull(o.ready_at),
+    shippedAt: isoOrNull(o.shipped_at),
+    doneAt: isoOrNull(o.done_at),
+    cancelledAt: isoOrNull(o.cancelled_at),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Card holds
+// ---------------------------------------------------------------------------
+/** A card order whose Checkout has not been paid (a ~30-minute hold, invisible to the owner). */
+export const isUnpaidCardHold = (o: OrderRow) =>
+  o.payment_method === 'card' && o.payment_status === 'awaiting' && o.amount_paid_cents === 0;
+
+/** The guard of a live, unpaid card hold (expireOrderHold in the contract). */
+export const LIVE_HOLD: OrderGuard = { status: 'new', paymentMethod: 'card', paymentStatusIn: ['awaiting'], paidCents: 0 };
+
+export const expiredHoldPatch = (nowMs: number) => ({
+  status: 'cancelled' as const, cancelled_by: 'customer' as const, cancelled_at: iso(nowMs), payment_status: 'none' as const,
+});
+
+export async function safeNotify(deps: { notify?: NotifyOrder }, event: StoreNotifyEvent): Promise<void> {
+  if (!deps.notify) return;
+  try {
+    await deps.notify(event);
+  } catch (e: any) {
+    console.error('[store] notify failed:', e?.message || e);
+  }
+}
+
+export async function safeLog(deps: { repo: Pick<StoreRepo, 'logEvent'> }, shopId: string, kind: string, payload: Record<string, unknown>) {
+  try {
+    await deps.repo.logEvent(shopId, kind, payload);
+  } catch (e: any) {
+    console.error('[store] logEvent failed:', e?.message || e);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Owed refunds (owner refund + retry sweep)
+// ---------------------------------------------------------------------------
+export interface RefundDeps {
+  repo: StoreRepo;
+  payments: Pick<StorePayments, 'refundOrder'>;
+  now(): number;
+  notify?: NotifyOrder;
+}
+
+/**
+ * Refund `amount` of an order whose refund_due_cents is already claimed, under the one key for
+ * that target total (refundKey.order(id, refund_due_cents)), so a retry after a lost response
+ * returns the same Stripe refund. On success writes amount_refunded_cents as an absolute total
+ * under the monotonic lte guard (never an increment); a refund to zero on a 'new' or 'paid'
+ * order also cancels it (its own compare-and-set) and, only when that lands, sends
+ * order_cancelled. On failure the row stays owed; 'order_refund_failed' goes to ab_events only
+ * when `logFailure` (the first attempt).
+ */
+export async function refundOrderOwed(
+  deps: RefundDeps,
+  shop: ShopStoreRow,
+  row: OrderRow,
+  amount: number,
+  logFailure: boolean,
+): Promise<{ refunded: number; row: OrderRow; failed: boolean }> {
+  let refunded = 0;
+  const key = orderRefundKey(row.id, row.refund_due_cents);
+  try {
+    const r = await deps.payments.refundOrder(shop, row, amount, { idempotencyKey: key });
+    refunded = Math.max(0, Math.min(amount, Math.floor(Number(r?.refundedCents) || 0)));
+  } catch (e: any) {
+    console.error(`[store] refund failed for order ${row.id} (left owed for retry):`, e?.message || e);
+    if (logFailure) {
+      await safeLog(deps, shop.id, 'order_refund_failed', {
+        orderId: row.id, amountCents: amount, dueCents: row.refund_due_cents, error: String(e?.message || e),
+      });
+    }
+    return { refunded: 0, row, failed: true };
+  }
+  if (refunded <= 0) return { refunded: 0, row, failed: false };
+
+  const total = row.amount_refunded_cents + refunded;
+  const full = total >= row.amount_paid_cents;
+  try {
+    // The charge.refunded webhook writes Stripe's cumulative total under the same guard, so
+    // whichever lands last can't double count or lower it.
+    const upd = await deps.repo.updateOrder(row.id, {
+      amount_refunded_cents: total,
+      payment_status: full ? 'refunded' : 'partially_refunded',
+    }, { refundedLte: total });
+    row = upd.ok ? upd.row : (await deps.repo.orderById(row.id)) ?? row;
+  } catch (e: any) {
+    console.error(`[store] refund bookkeeping failed for order ${row.id}:`, e?.message || e);
+  }
+  if (full && (row.status === 'new' || row.status === 'paid')) {
+    try {
+      const c = await deps.repo.updateOrder(
+        row.id,
+        { status: 'cancelled', cancelled_by: 'shop', cancelled_at: iso(deps.now()) },
+        { status: row.status },
+      );
+      if (c.ok) {
+        row = c.row;
+        await safeNotify(deps, { kind: 'order_cancelled', orderId: row.id, refundedCents: row.amount_refunded_cents });
+      }
+    } catch (e: any) {
+      console.error(`[store] cancelling refunded order ${row.id} failed:`, e?.message || e);
+    }
+  }
+  return { refunded, row, failed: false };
+}
+
+export const ORDER_REFUND_RETRY_AFTER_MIN = 2;
+/** Inside Stripe's 24 h idempotency window, so a retry can never become a second refund. */
+export const ORDER_REFUND_GIVE_UP_HOURS = 23;
+export const ORDER_REFUND_RETRY_BATCH = 25;
+
+/**
+ * Retry owner refunds still owed: refund_pending rows with a payment intent, last touched more
+ * than 2 minutes ago, oldest first, at most 25 per run. Each retry refunds due − refunded under
+ * the same key as the first attempt (refundKey.order(id, due)). 23 h after refund_requested_at
+ * the row gets refund_stuck_at and one 'order_refund_stuck' event; refund_due_cents is never
+ * lowered. A failure touches the row so the others go first next time.
+ */
+export async function retryPendingOrderRefunds(
+  deps: RefundDeps,
+  nowMs: number = deps.now(),
+): Promise<{ retried: number; refunded: number; failed: number; stuck: number }> {
+  const out = { retried: 0, refunded: 0, failed: 0, stuck: 0 };
+  const rows = await deps.repo.pendingOrderRefunds(iso(nowMs - ORDER_REFUND_RETRY_AFTER_MIN * MIN), ORDER_REFUND_RETRY_BATCH);
+  for (const row of rows) {
+    try {
+      const owed = row.refund_due_cents - row.amount_refunded_cents;
+      if (owed <= 0 || row.refund_stuck_at || !row.stripe_payment_intent_id) continue;
+      const since = Date.parse(row.refund_requested_at ?? row.updated_at ?? '');
+      if (Number.isFinite(since) && nowMs - since >= ORDER_REFUND_GIVE_UP_HOURS * 60 * MIN) {
+        const marked = await deps.repo.updateOrder(row.id, { refund_stuck_at: iso(nowMs) }, { refundPending: true, refundDue: row.refund_due_cents });
+        if (marked.ok === false) continue; // another run marked it (or it was paid out meanwhile)
+        await safeLog(deps, row.shop_id, 'order_refund_stuck', {
+          orderId: row.id, dueCents: row.refund_due_cents, refundedCents: row.amount_refunded_cents, owedCents: owed,
+          paymentIntent: row.stripe_payment_intent_id, requestedAt: row.refund_requested_at,
+        });
+        console.error(`[store] refund for order ${row.id} still owed ${ORDER_REFUND_GIVE_UP_HOURS} h after the request; giving up (order_refund_stuck)`);
+        out.stuck++;
+        continue;
+      }
+      const shop = await deps.repo.shopById(row.shop_id);
+      if (!shop) continue;
+      out.retried++;
+      const r = await refundOrderOwed(deps, shop, row, owed, false);
+      if (r.failed) {
+        out.failed++;
+        // Touch the row (updated_at) so the next run tries the others first.
+        await deps.repo.updateOrder(row.id, { refund_due_cents: row.refund_due_cents }, { refundDue: row.refund_due_cents });
+      } else if (r.refunded > 0) out.refunded++;
+    } catch (e: any) {
+      console.error(`[store] retrying refund for order ${row.id} failed:`, e?.message || e);
+    }
+  }
+  return out;
+}
+
+/** A card hold older than this with nothing paid is expired (Checkout itself lasts ~32 min). */
+export const ORDER_HOLD_EXPIRY_MIN = 35;
+
+/**
+ * Expire orphaned card holds (new + card + awaiting + nothing paid, created more than 35 min
+ * ago), with the same compare-and-set as the webhook's expireOrderHold, so a payment that lands
+ * mid-sweep is never overwritten; then close the Checkout. Never refunds, never notifies.
+ */
+export async function expireStaleOrderHolds(
+  deps: { repo: StoreRepo; payments: Pick<StorePayments, 'expireCheckoutSession'>; now(): number },
+  limit = 50,
+): Promise<{ expired: number }> {
+  const nowMs = deps.now();
+  const holds = await deps.repo.staleOrderHolds(iso(nowMs - ORDER_HOLD_EXPIRY_MIN * MIN), limit);
+  let expired = 0;
+  for (const h of holds) {
+    try {
+      const upd = await deps.repo.updateOrder(h.id, expiredHoldPatch(nowMs), LIVE_HOLD);
+      if (upd.ok === false) continue;
+      expired++;
+      if (upd.row.stripe_checkout_session_id) {
+        const shop = await deps.repo.shopById(upd.row.shop_id);
+        if (shop) {
+          try {
+            await deps.payments.expireCheckoutSession(shop, upd.row.stripe_checkout_session_id);
+          } catch (e: any) {
+            console.error(`[store] expiring checkout for order ${upd.row.id} failed:`, e?.message || e);
+          }
+        }
+      }
+    } catch (e: any) {
+      console.error(`[store] expiring order hold ${h.id} failed:`, e?.message || e);
+    }
+  }
+  return { expired };
+}
+
+export { MIN };
