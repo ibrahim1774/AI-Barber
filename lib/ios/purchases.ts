@@ -65,40 +65,59 @@ function fail(op: string, error: { message?: string } | null): never {
 }
 
 /** What the never-backwards rules read before writing. */
-const STORED_COLS = 'expires_at, product_id, product_purchased_at';
-type Stored = { expires_at?: string | null; product_id?: string | null; product_purchased_at?: string | null } | null;
-
-/**
- * product_id never moves backwards (Phase 4 tiers), like expires_at: a transaction's
- * product is written when there is no stored product yet, or when it was purchased at or
- * after the stored product_purchased_at (a null stored date, i.e. a row from before 010,
- * always loses). The transaction an upgrade replaced (isUpgraded) never wins.
- *
- * product_id is NOT NULL (003) and every write here is an upsert (INSERT … ON CONFLICT),
- * whose proposed row must satisfy NOT NULL, so a kept product is sent back unchanged
- * rather than left out. Same benign read-then-write race as expires_at: the next verify
- * or notification corrects it.
- */
-function productFields(cur: Stored, productId: string, purchasedAt: number | null | undefined, isUpgraded = false): Record<string, unknown> {
-  const storedProduct = typeof cur?.product_id === 'string' && cur.product_id ? cur.product_id : null;
-  if (!storedProduct) {
-    // No row yet: the product is required. An upgraded-away one is stored without a date so any real one wins.
-    const f: Record<string, unknown> = { product_id: productId };
-    if (!isUpgraded && purchasedAt != null) f.product_purchased_at = iso(purchasedAt);
-    return f;
-  }
-  if (!isUpgraded && purchasedAt != null) {
-    const storedAt = cur?.product_purchased_at ? Date.parse(cur.product_purchased_at) : NaN;
-    if (!Number.isFinite(storedAt) || purchasedAt >= storedAt) {
-      return { product_id: productId, product_purchased_at: iso(purchasedAt) };
-    }
-  }
-  return { product_id: storedProduct };
-}
+const STORED_COLS = 'expires_at, product_id';
+type Stored = { expires_at?: string | null; product_id?: string | null } | null;
 
 export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
   let sb = client;
   const db = () => (sb ??= createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } }));
+
+  /**
+   * Write `fields` to the purchase row, creating it first if `exists` is false, and record
+   * the transaction's product under the never-backwards rule (Phase 4 tiers):
+   *
+   * - The row is created with ON CONFLICT DO NOTHING (product_id is NOT NULL, so the seed
+   *   carries the product); an existing row is never overwritten by the seed.
+   * - `fields` never carry product_id: they go in a plain UPDATE.
+   * - The product is replaced by a conditional UPDATE, evaluated by Postgres under the row
+   *   lock: only when the stored product_purchased_at is null (a row from before 010, or
+   *   seeded undated) or not after this transaction's purchase date. So a slow writer
+   *   holding an older transaction can never undo an upgrade or re-raise a finished
+   *   downgrade, whatever lands between its read and its write.
+   * - Undated transactions and the transaction an upgrade replaced (isUpgraded) never
+   *   replace a stored product.
+   */
+  async function writeRow(
+    op: string,
+    otid: string,
+    exists: boolean,
+    fields: Record<string, unknown>,
+    product: { productId: string; purchasedAt?: number | null; isUpgraded?: boolean },
+  ): Promise<PurchaseRow> {
+    const dated = !product.isUpgraded && product.purchasedAt != null;
+    if (!exists) {
+      const seed: Record<string, unknown> = {
+        original_transaction_id: otid, product_id: product.productId, environment: fields.environment,
+      };
+      if (dated) seed.product_purchased_at = iso(product.purchasedAt as number);
+      const { error } = await db().from(TABLE).upsert(seed, { onConflict: 'original_transaction_id', ignoreDuplicates: true });
+      if (error) fail(op, error);
+    }
+    const { data, error } = await db().from(TABLE).update(fields).eq('original_transaction_id', otid).select().single();
+    if (error) fail(op, error);
+    let row = data as PurchaseRow;
+    if (dated) {
+      const at = iso(product.purchasedAt as number) as string;
+      const { data: moved, error: moveErr } = await db().from(TABLE)
+        .update({ product_id: product.productId, product_purchased_at: at })
+        .eq('original_transaction_id', otid)
+        .or(`product_purchased_at.is.null,product_purchased_at.lte."${at}"`)
+        .select();
+      if (moveErr) fail(op, moveErr);
+      if (Array.isArray(moved) && moved.length > 0) row = moved[0] as PurchaseRow;
+    }
+    return row;
+  }
 
   return {
     async get(otid) {
@@ -116,6 +135,7 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
       // server writes the row, and the race (a concurrent verify or notification
       // landing between read and write) can at worst leave a value Apple reported
       // moments earlier; the next verify or notification corrects it. Benign.
+      // product_id is different: see writeRow (a conditional write, never read-then-write).
       const { data: cur, error: readErr } = await db().from(TABLE).select(STORED_COLS)
         .eq('original_transaction_id', tx.originalTransactionId).maybeSingle();
       if (readErr) fail('upsertVerified', readErr);
@@ -123,16 +143,13 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
       const keepStored = Number.isFinite(stored) && (tx.expiresAt == null || tx.expiresAt < stored);
 
       const payload: Record<string, unknown> = {
-        original_transaction_id: tx.originalTransactionId,
-        ...productFields(cur as Stored, tx.productId, tx.productPurchasedAt),
         environment: tx.environment,
         verified_at: new Date().toISOString(),
       };
       if (!keepStored) payload.expires_at = iso(tx.expiresAt);
       if (tx.revoked) payload.revoked_at = new Date().toISOString();
-      const { data, error } = await db().from(TABLE).upsert(payload, { onConflict: 'original_transaction_id' }).select().single();
-      if (error) fail('upsertVerified', error);
-      const row = data as PurchaseRow;
+      const row = await writeRow('upsertVerified', tx.originalTransactionId, !!cur, payload,
+        { productId: tx.productId, purchasedAt: tx.productPurchasedAt });
 
       // Resubscribed after a refund: Apple's live status says active and not
       // revoked. Clear a revocation recorded BEFORE we asked Apple; the
@@ -177,14 +194,13 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
       // Same never-backwards rules as upsertVerified: Apple retries failed
       // notifications for days, so an older one can land after a newer
       // renewal. expires_at drives lapse takedowns (lapse.ts) and product_id the
-      // tier gates, so a stale value must never overwrite a later one. Same benign
-      // read-then-write race.
+      // tier gates, so a stale value must never overwrite a later one. expires_at
+      // keeps the benign read-then-write race (the sweep asks Apple before acting on
+      // it); product_id is a conditional write in SQL (writeRow).
       const { data: cur, error: readErr } = await db().from(TABLE).select(STORED_COLS)
         .eq('original_transaction_id', n.otid).maybeSingle();
       if (readErr) fail('applyNotification', readErr);
       const payload: Record<string, unknown> = {
-        original_transaction_id: n.otid,
-        ...productFields(cur as Stored, n.productId, n.purchasedAt, n.isUpgraded === true),
         environment: n.environment,
         last_notification: n.type,
       };
@@ -195,8 +211,8 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
       // The transaction an upgrade replaced carries a revocationDate; the purchase is not revoked.
       if (n.clearRevoked) payload.revoked_at = null;
       else if (n.revokedAt != null && !n.isUpgraded) payload.revoked_at = iso(n.revokedAt);
-      const { error } = await db().from(TABLE).upsert(payload, { onConflict: 'original_transaction_id' });
-      if (error) fail('applyNotification', error);
+      await writeRow('applyNotification', n.otid, !!cur, payload,
+        { productId: n.productId, purchasedAt: n.purchasedAt, isUpgraded: n.isUpgraded === true });
       // A newer unrevoked purchase supersedes an older revocation; a late,
       // older transaction never clears one (condition evaluated in SQL).
       if (!n.clearRevoked && n.clearRevokedBefore != null) {

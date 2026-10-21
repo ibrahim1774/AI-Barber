@@ -8,6 +8,7 @@ vi.mock('../../lib/ios/notifications.js', async (orig) => {
 import { handleAppleNotification as realHandle } from '../../lib/ios/notifications.js';
 import handler from '../../api/ios/apple-notification.js';
 import { supabasePurchases } from '../../lib/ios/purchases.js';
+import { fakePurchasesDb } from './fakePurchasesDb.js';
 
 // The mock above wraps the module; get the real function for unit tests.
 const { handleAppleNotification, liveNotificationDeps } = await vi.importActual<typeof import('../../lib/ios/notifications.js')>('../../lib/ios/notifications.js');
@@ -199,15 +200,10 @@ describe('handleAppleNotification', () => {
     const P = 'com.ibrahim1774.aibarber.';
     const T0 = NOW - 10 * 86_400_000;
 
-    /** The real supabasePurchases over a fake client holding one stored row; captures the upsert payload. */
-    function realRepo(storedRow: Record<string, unknown> | null) {
-      const writes: Record<string, unknown>[] = [];
-      const chain: any = {
-        then: (res: (v: unknown) => unknown) => Promise.resolve({ data: storedRow, error: null }).then(res),
-      };
-      for (const m of ['select', 'eq', 'lt', 'maybeSingle', 'update']) chain[m] = () => chain;
-      chain.upsert = (payload: Record<string, unknown>) => { writes.push(payload); return chain; };
-      return { repo: supabasePurchases({ from: () => chain } as any), writes };
+    /** The real supabasePurchases over a stateful fake ios_purchases holding one row. */
+    function realRepo(storedRow: Record<string, unknown>) {
+      const db = fakePurchasesDb([{ original_transaction_id: 'o', environment: 'Production', revoked_at: null, ...storedRow }]);
+      return { repo: supabasePurchases(db.client), row: () => db.row('o')! };
     }
     const stored = (product: string, at: number) =>
       ({ expires_at: new Date(at + 30 * 86_400_000).toISOString(), product_id: product, product_purchased_at: new Date(at).toISOString() });
@@ -224,42 +220,42 @@ describe('handleAppleNotification', () => {
     });
 
     it('DID_CHANGE_RENEWAL_PREF / UPGRADE carrying the new store.monthly transaction → the product becomes store', async () => {
-      const { repo, writes } = realRepo(stored(`${P}hosting.monthly`, T0));
+      const { repo, row } = realRepo(stored(`${P}hosting.monthly`, T0));
       const d = notif('DID_CHANGE_RENEWAL_PREF', 'UPGRADE', { productId: `${P}store.monthly`, purchaseDate: NOW - 1000, expiresDate: NOW + 30 * 86_400_000 }, repo);
       expect((await handleAppleNotification('jws', d)).status).toBe(200);
-      expect(writes[0]).toMatchObject({ product_id: `${P}store.monthly`, product_purchased_at: new Date(NOW - 1000).toISOString() });
+      expect(row()).toMatchObject({ product_id: `${P}store.monthly`, product_purchased_at: new Date(NOW - 1000).toISOString() });
     });
 
     it('DID_CHANGE_RENEWAL_PREF / DOWNGRADE (its transaction is still the current, higher product) → unchanged', async () => {
-      const { repo, writes } = realRepo(stored(`${P}store.monthly`, T0));
+      const { repo, row } = realRepo(stored(`${P}store.monthly`, T0));
       const d = notif('DID_CHANGE_RENEWAL_PREF', 'DOWNGRADE', { productId: `${P}store.monthly`, purchaseDate: T0, expiresDate: T0 + 30 * 86_400_000 }, repo);
       expect((await handleAppleNotification('jws', d)).status).toBe(200);
-      expect(writes[0].product_id).toBe(`${P}store.monthly`);
+      expect(row().product_id).toBe(`${P}store.monthly`);
     });
 
     it('DID_RENEW onto the lower product at the next renewal → downgraded', async () => {
-      const { repo, writes } = realRepo(stored(`${P}store.monthly`, T0));
+      const { repo, row } = realRepo(stored(`${P}store.monthly`, T0));
       const d = notif('DID_RENEW', undefined, { productId: `${P}hosting.monthly`, purchaseDate: T0 + 30 * 86_400_000, expiresDate: T0 + 60 * 86_400_000 }, repo);
       await handleAppleNotification('jws', d);
-      expect(writes[0].product_id).toBe(`${P}hosting.monthly`);
+      expect(row().product_id).toBe(`${P}hosting.monthly`);
     });
 
     it('an upgraded-away transaction with a revocationDate → not revoked, product not written', async () => {
-      const { repo, writes } = realRepo(stored(`${P}store.monthly`, NOW - 1000));
+      const { repo, row } = realRepo(stored(`${P}store.monthly`, NOW - 1000));
       const d = notif('REFUND', undefined, {
         productId: `${P}hosting.monthly`, purchaseDate: NOW - 500, revocationDate: NOW - 1000, isUpgraded: true,
       }, repo);
       expect((await handleAppleNotification('jws', d)).status).toBe(200);
-      expect(Object.keys(writes[0])).not.toContain('revoked_at');
-      expect(writes[0].product_id).toBe(`${P}store.monthly`);
-      expect(Object.keys(writes[0])).not.toContain('product_purchased_at');
+      expect(row().revoked_at).toBeNull();
+      expect(row().product_id).toBe(`${P}store.monthly`);
+      expect(row().product_purchased_at).toBe(new Date(NOW - 1000).toISOString());
     });
 
     it('a real revocation (not upgraded) still revokes', async () => {
-      const { repo, writes } = realRepo(stored(`${P}store.monthly`, T0));
+      const { repo, row } = realRepo(stored(`${P}store.monthly`, T0));
       const d = notif('REFUND', undefined, { productId: `${P}store.monthly`, purchaseDate: T0, revocationDate: NOW - 5 }, repo);
       await handleAppleNotification('jws', d);
-      expect(writes[0].revoked_at).toBe(new Date(NOW - 5).toISOString());
+      expect(row().revoked_at).toBe(new Date(NOW - 5).toISOString());
     });
   });
 
