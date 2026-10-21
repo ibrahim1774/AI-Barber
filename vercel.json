@@ -29,6 +29,10 @@
       "destination": "/support.html"
     },
     {
+      "source": "/book/(.*)",
+      "destination": "/book.html"
+    },
+    {
       "source": "/((?!api/.*).*)",
       "destination": "/index.html"
     }
