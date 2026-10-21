@@ -46,22 +46,20 @@ export interface GateFields {
 }
 
 /**
- * Will the iOS sweep take this purchase down when it lapses? Only bound, published rows are
- * takedown candidates, and Sandbox ones only with IOS_TAKEDOWN_SANDBOX=1 (sweep.ts).
+ * Does the iOS sweep watch this purchase (ask Apple and stamp taken_down_at when it lapses)?
+ * Bound, published rows, Production and Sandbox alike (sweep.ts).
  */
-export function sweepWatches(
-  row: Pick<GateFields, 'site_slug' | 'published_at' | 'environment'>,
-  takedownSandbox: boolean = process.env.IOS_TAKEDOWN_SANDBOX === '1',
-): boolean {
-  return row.site_slug != null && row.published_at != null && (row.environment !== 'Sandbox' || takedownSandbox);
+export function sweepWatches(row: Pick<GateFields, 'site_slug' | 'published_at'>): boolean {
+  return row.site_slug != null && row.published_at != null;
 }
 
 /**
- * Is the linked purchase live for the gates? Not revoked and not taken down. A whole-
- * subscription lapse normally reaches here through taken_down_at (the sweep, Apple-confirmed,
- * billing grace kept up). A purchase the sweep never takes down (unbound, unpublished, or
- * Sandbox) closes on the lapse prefilter instead (expired at least GRACE_MS ago), so linking
- * a purchase that is not the site's can't keep Bookings or the Store open after it ends.
+ * Is the linked purchase live for the gates? Not revoked and not taken down. For a purchase
+ * the sweep watches, a whole-subscription lapse reaches here only through taken_down_at (the
+ * sweep, Apple-confirmed), so billing grace and a renewing Sandbox purchase stay open. A
+ * purchase the sweep never watches (unbound or unpublished) closes on the lapse prefilter
+ * instead (expired at least GRACE_MS ago), so linking a purchase that is not the site's can't
+ * keep Bookings or the Store open after it ends.
  */
 export function purchaseLive(row: GateFields | null | undefined, now: number = Date.now()): boolean {
   if (!row || row.revoked_at || row.taken_down_at) return false;

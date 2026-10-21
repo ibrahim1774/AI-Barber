@@ -29,7 +29,7 @@ const mkRes = () => { const res: any = { status: vi.fn().mockReturnThis(), json:
 const cron = { headers: { 'user-agent': 'vercel-cron/1.0' } };
 const empty = {
   skippedLapsed: [], restored: [], restoreFailed: [], notRestored: [], takenDown: [], takedownFailed: [], takedownUncertain: [],
-  stillActive: [], appleUnavailable: [], appleUnresolvable: [], appleUnavailableCount: 0, appleUnresolvableCount: 0,
+  stillActive: [], sandboxGatesClosed: [], appleUnavailable: [], appleUnresolvable: [], appleUnavailableCount: 0, appleUnresolvableCount: 0,
 };
 const appleSays = (status: number) => async (otid: string) => ({
   originalTransactionId: otid, transactionId: 't', productId: 'p', environment: 'Production', expiresAt: 0, revoked: status === 5, status,
@@ -109,16 +109,21 @@ describe('api/ios/sweep', () => {
     expect(res.json).toHaveBeenCalledWith({ error: 'db down' });
   });
 
-  it('Sandbox rows are excluded from takedown unless IOS_TAKEDOWN_SANDBOX=1', async () => {
+  it('Sandbox rows are always watched; only IOS_TAKEDOWN_SANDBOX=1 deploys their offline page', async () => {
     unpublishedBound.mockResolvedValue([]);
     const prev = process.env.IOS_TAKEDOWN_SANDBOX;
     try {
       delete process.env.IOS_TAKEDOWN_SANDBOX;
+      takedownCandidates.mockResolvedValue([{ original_transaction_id: 's9', site_slug: 'sb', environment: 'Sandbox', expires_at: '2020-01-01T00:00:00Z', published_at: '2019-01-01T00:00:00Z' }]);
+      appleVerify.mockImplementation(appleSays(2));
       await handler(cron, mkRes());
-      expect(takedownCandidates).toHaveBeenLastCalledWith(50, expect.any(Number), { includeSandbox: false });
+      expect(takedownCandidates).toHaveBeenLastCalledWith(50, expect.any(Number), { includeSandbox: true });
+      expect(markTakenDown).toHaveBeenCalledWith('s9', expect.any(Number));
+      expect(deployRenderedSite).not.toHaveBeenCalled();
       process.env.IOS_TAKEDOWN_SANDBOX = '1';
       await handler(cron, mkRes());
       expect(takedownCandidates).toHaveBeenLastCalledWith(50, expect.any(Number), { includeSandbox: true });
+      expect(deployRenderedSite).toHaveBeenCalledWith(expect.objectContaining({ siteId: 'sb' }));
     } finally {
       if (prev === undefined) delete process.env.IOS_TAKEDOWN_SANDBOX; else process.env.IOS_TAKEDOWN_SANDBOX = prev;
     }

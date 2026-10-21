@@ -92,7 +92,7 @@ describe('I2: a linked purchase the sweep never takes down', () => {
   const LAPSED = '2026-01-01T00:00:00Z';
   it.each([
     ['unbound', { site_slug: null }],
-    ['Sandbox', { environment: 'Sandbox', site_slug: 'fresh-cuts', published_at: '2025-12-01T00:00:00Z' }],
+    ['bound but never published', { site_slug: 'fresh-cuts', published_at: null }],
   ])('%s and expired → shop closed', async (_n, over) => {
     const w = storeWorld();
     Object.assign(w.state.purchases[w.shop().ios_otid!], { expires_at: LAPSED, ...over });

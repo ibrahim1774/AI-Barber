@@ -27,7 +27,7 @@ const neverVerify = async (_otid: string): Promise<VerifiedTx> => { throw new Er
 const summary = (over: Partial<IosSweepSummary> = {}): IosSweepSummary => ({
   checked: 0, published: [], failed: [], missing: [], deferred: [],
   skippedLapsed: [], restored: [], restoreFailed: [], notRestored: [],
-  takenDown: [], takedownFailed: [], takedownUncertain: [], stillActive: [],
+  takenDown: [], takedownFailed: [], takedownUncertain: [], stillActive: [], sandboxGatesClosed: [],
   appleUnavailable: [], appleUnresolvable: [],
   ...over,
   appleUnavailableCount: (over.appleUnavailable ?? []).length,
@@ -157,7 +157,7 @@ describe('sweepIos lapse takedown / restore (Apple decides)', () => {
     const deployOffline = vi.fn(async (_s: string) => {});
     const verify = apple({ o2: 2, o3: 3, o5: 5 });
     const out = await sweepIos({ repo: r, publish, deployOffline, verify }, 50, { now: () => NOW });
-    expect(takedownCandidates).toHaveBeenCalledWith(50, NOW, { includeSandbox: false });
+    expect(takedownCandidates).toHaveBeenCalledWith(50, NOW, { includeSandbox: true });
     expect(verify.mock.calls).toEqual([['o2'], ['o3'], ['o5']]);
     expect(deployOffline.mock.calls).toEqual([['a'], ['b'], ['c']]);
     expect(markTakenDown.mock.calls).toEqual([['o2', NOW], ['o3', NOW], ['o5', NOW]]);
@@ -488,13 +488,48 @@ describe('sweepIos lapse takedown / restore (Apple decides)', () => {
     expect(second.takenDown).toEqual(['real']);
   });
 
-  it('Sandbox: takedown candidates exclude Sandbox by default; included with takedownSandbox', async () => {
-    const a = repo([], [], []);
-    await sweepIos({ repo: a.r, publish: vi.fn(), deployOffline: noOffline, verify: neverVerify }, 50, { now: () => NOW });
-    expect(a.takedownCandidates).toHaveBeenCalledWith(50, NOW, { includeSandbox: false });
-    const b = repo([], [], []);
-    await sweepIos({ repo: b.r, publish: vi.fn(), deployOffline: noOffline, verify: neverVerify, takedownSandbox: true }, 50, { now: () => NOW });
-    expect(b.takedownCandidates).toHaveBeenCalledWith(50, NOW, { includeSandbox: true });
+  it('Sandbox: takedown candidates always include Sandbox (the sweep watches them, fix round 2)', async () => {
+    for (const takedownSandbox of [undefined, true]) {
+      const a = repo([], [], []);
+      await sweepIos({ repo: a.r, publish: vi.fn(), deployOffline: noOffline, verify: neverVerify, takedownSandbox }, 50, { now: () => NOW });
+      expect(a.takedownCandidates).toHaveBeenCalledWith(50, NOW, { includeSandbox: true });
+    }
+  });
+
+  it('a renewing Sandbox purchase is refreshed from Apple (fresh expiry) and left alone', async () => {
+    const sbx = { ...lapsed('s2', 'ios-test-cuts'), environment: 'Sandbox' as const };
+    const { r, markTakenDown, upsertVerified } = repo([], [], [sbx]);
+    const deployOffline = vi.fn(async (_s: string) => {});
+    const out = await sweepIos({ repo: r, publish: vi.fn(), deployOffline, verify: apple({ s2: 1 }) }, 50, { now: () => NOW });
+    expect(upsertVerified).toHaveBeenCalledWith(expect.objectContaining({ originalTransactionId: 's2', expiresAt: NOW + 30 * DAY, environment: 'Production' }), { checkedAt: NOW });
+    expect(markTakenDown).not.toHaveBeenCalled();
+    expect(deployOffline).not.toHaveBeenCalled();
+    expect(out).toEqual(summary({ stillActive: ['ios-test-cuts'] }));
+  });
+
+  it('a truly expired Sandbox purchase: gates closed (flag stamped) but the website is left up, unless takedownSandbox', async () => {
+    quiet();
+    const sbx = () => ({ ...lapsed('s3', 'ios-test-cuts'), environment: 'Sandbox' as const });
+    const a = repo([], [], [sbx()]);
+    const offA = vi.fn(async (_s: string) => {});
+    const outA = await sweepIos({ repo: a.r, publish: vi.fn(), deployOffline: offA, verify: apple({ s3: 2 }) }, 50, { now: () => NOW });
+    expect(a.markTakenDown.mock.calls).toEqual([['s3', NOW]]);
+    expect(offA).not.toHaveBeenCalled();
+    expect(outA).toEqual(summary({ sandboxGatesClosed: ['ios-test-cuts'] }));
+
+    const b = repo([], [], [sbx()]);
+    const offB = vi.fn(async (_s: string) => {});
+    const outB = await sweepIos({ repo: b.r, publish: vi.fn(), deployOffline: offB, verify: apple({ s3: 2 }), takedownSandbox: true }, 50, { now: () => NOW });
+    expect(offB.mock.calls).toEqual([['ios-test-cuts']]);
+    expect(outB).toEqual(summary({ takenDown: ['ios-test-cuts'] }));
+  });
+
+  it('a Sandbox gate-close whose stamp fails is reported as a failed takedown', async () => {
+    quiet();
+    const { r, markTakenDown } = repo([], [], [{ ...lapsed('s4', 'x'), environment: 'Sandbox' as const }]);
+    markTakenDown.mockRejectedValueOnce(new Error('db'));
+    const out = await sweepIos({ repo: r, publish: vi.fn(), deployOffline: noOffline, verify: apple({ s4: 2 }) }, 50, { now: () => NOW });
+    expect(out).toEqual(summary({ takedownFailed: ['x'] }));
   });
 
   it('Sandbox rows are still restored when Apple says active', async () => {

@@ -201,7 +201,7 @@ describe('a linked purchase the sweep never takes down', () => {
   const LAPSED = '2026-01-01T00:00:00Z'; // long past, whatever the clock
   it.each([
     ['unbound (a second Apple ID linked through setup)', { site_slug: null }],
-    ['Sandbox', { environment: 'Sandbox', site_slug: 'fresh-cuts', published_at: '2025-12-01T00:00:00Z' }],
+    ['bound but never published', { site_slug: 'fresh-cuts', published_at: null }],
   ])('%s and expired → booking page paused, owner writes 423', async (_n, over) => {
     const w = onProduct('store.monthly');
     Object.assign(w.state.purchases[OTID], { expires_at: LAPSED, ...over });
@@ -245,5 +245,22 @@ describe('POST /api/book/sent after a downgrade', () => {
     const { w, appt } = await manualBooking();
     Object.assign(w.state.purchases[OTID], over);
     expect(await postSent({ token: appt.manage_token, method: 'cashapp' }, w.deps)).toEqual(PAUSED);
+  });
+});
+
+// Fix round 2: the sweep watches Sandbox purchases (App Review, TestFlight) and asks Apple, so
+// the gate trusts it: a renewing (or billing-grace) Sandbox purchase never shows "paused".
+describe('a Sandbox purchase the sweep watches', () => {
+  const bound = { environment: 'Sandbox', site_slug: 'fresh-cuts', published_at: '2025-12-01T00:00:00Z', expires_at: '2026-01-01T00:00:00Z' };
+  it('past its stored expiry but not closed by the sweep → open', async () => {
+    const w = onProduct('store.monthly');
+    Object.assign(w.state.purchases[OTID], bound);
+    expect((await getShop({ slug: 'fresh-cuts' }, w.deps)).body).toMatchObject({ paused: false });
+    expect((await book(w)).status).toBe(201);
+  });
+  it('closed by the sweep (Apple says expired) → paused', async () => {
+    const w = onProduct('store.monthly');
+    Object.assign(w.state.purchases[OTID], bound, { taken_down_at: '2026-01-01T02:00:00Z' });
+    expect(await book(w)).toEqual(PAUSED);
   });
 });

@@ -85,12 +85,16 @@ describe('I2: purchases the sweep never takes down close the gates once lapsed',
   };
   const expired = iso(NOW - 2 * GRACE_MS);
 
-  it('sweepWatches: bound, published and Production (Sandbox only with IOS_TAKEDOWN_SANDBOX)', () => {
+  it('sweepWatches: bound and published, Production or Sandbox (fix round 2: the sweep watches Sandbox)', () => {
     expect(sweepWatches(swept)).toBe(true);
+    expect(sweepWatches({ ...swept, environment: 'Sandbox' })).toBe(true);
     expect(sweepWatches({ ...swept, site_slug: null })).toBe(false);
     expect(sweepWatches({ ...swept, published_at: null })).toBe(false);
-    expect(sweepWatches({ ...swept, environment: 'Sandbox' })).toBe(false);
-    expect(sweepWatches({ ...swept, environment: 'Sandbox' }, true)).toBe(true);
+  });
+
+  it('a watched Sandbox row past expiry stays open: the gate trusts the sweep (renewing, or billing grace)', () => {
+    expect(entitlementActive({ ...swept, environment: 'Sandbox', expires_at: expired }, 'store', NOW)).toBe(true);
+    expect(entitlementActive({ ...swept, environment: 'Sandbox', expires_at: expired, taken_down_at: iso(NOW) }, 'store', NOW)).toBe(false);
   });
 
   it('a swept row past expiry stays open (the sweep asks Apple; billing grace keeps it up)', () => {
@@ -100,7 +104,7 @@ describe('I2: purchases the sweep never takes down close the gates once lapsed',
   it.each([
     ['unbound', { site_slug: null }],
     ['bound but never published', { published_at: null }],
-    ['Sandbox', { environment: 'Sandbox' }],
+    ['unbound Sandbox', { environment: 'Sandbox', site_slug: null }],
   ])('%s and lapsed → closed', (_n, over) => {
     const row = { ...swept, ...over, expires_at: expired };
     expect(purchaseLive(row, NOW)).toBe(false);
