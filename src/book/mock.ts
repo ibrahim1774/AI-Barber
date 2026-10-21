@@ -21,6 +21,7 @@ const members = [
 
 // ?mock=1&checkout=success flips to paid after ~2 polls; plain manage shows paid.
 let mockPolls = 0;
+let bookedMethod: string | null = null;
 export const mockFetch = async (input: string, init?: RequestInit): Promise<Response> => {
   await new Promise((r) => setTimeout(r, 150));
   const url = new URL(input, 'http://x');
@@ -41,6 +42,11 @@ export const mockFetch = async (input: string, init?: RequestInit): Promise<Resp
   }
   if (p === '/api/book/appointments') {
     const b = JSON.parse(String(init?.body));
+    // Dev triggers: a customer name containing "ratelimit" gets the 429.
+    if (/ratelimit/i.test(b.customer?.name || '')) return json(429, { error: 'rate-limited', message: 'This shop is getting a lot of bookings right now. Please try again in a few minutes.' });
+    const handles = Object.keys(shop.pay.manual);
+    if (b.method != null && (b.pay !== 'manual' || !handles.includes(b.method))) return json(400, { error: 'invalid', field: 'method' });
+    bookedMethod = b.pay === 'manual' ? (b.method ?? (handles.length === 1 ? handles[0] : null)) : null;
     const svc = services.find((s) => s.id === b.serviceId)!;
     const end = DateTime.fromISO(b.start).plus({ minutes: svc.durationMin }).toUTC().toISO();
     return json(201, {
@@ -56,7 +62,22 @@ export const mockFetch = async (input: string, init?: RequestInit): Promise<Resp
       canCancel: true, canReschedule: true, refundCentsIfCancelled: 3000,
     });
   }
-  if (p === '/api/book/manage') return json(200, { appointment: {} });
-  if (p === '/api/book/sent') return json(200, {});
+  if (p === '/api/book/manage') {
+    // Dev triggers for reschedule: a 4 PM start is a duplicate, a 5 PM start means the booking changed.
+    const b = JSON.parse(String(init?.body));
+    if (b.action === 'reschedule') {
+      const h = DateTime.fromISO(b.start).setZone(TZ).hour;
+      if (h === 16) return json(409, { error: 'duplicate' });
+      if (h === 17) return json(409, { error: 'appointment-changed' });
+    }
+    return json(200, { appointment: {} });
+  }
+  if (p === '/api/book/sent') {
+    const b = JSON.parse(String(init?.body));
+    if (!Object.keys(shop.pay.manual).includes(b.method)) return json(400, { error: 'invalid', field: 'method' });
+    // The mock manage booking was never booked on a manual rail unless one was just created.
+    if (bookedMethod !== b.method) return json(409, { error: 'not-awaiting-payment' });
+    return json(200, {});
+  }
   return json(404, { error: 'not-found' });
 };
