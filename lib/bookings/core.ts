@@ -176,10 +176,16 @@ export async function loadCatalog(repo: BookingRepo, shop: ShopRow): Promise<Cat
   return { services: shopServices, members: activeMembers, links };
 }
 
-/** No ab_service_members rows for a service = every active member offers it. */
+/**
+ * Per member (matches the app's "Services they do" chips): a member with no ab_service_members
+ * rows for an active service offers every service; otherwise only the services they have rows
+ * for. Rows pointing at inactive (soft-deleted) services are ignored, so a barber restricted to
+ * a service that is later removed falls back to "all" instead of vanishing from the page.
+ */
 export function offers(cat: Catalog, serviceId: string, memberId: string): boolean {
-  const rows = cat.links.filter((l) => l.service_id === serviceId);
-  return rows.length === 0 || rows.some((l) => l.member_id === memberId);
+  const live = new Set(cat.services.filter((s) => s.active).map((s) => s.id));
+  const mine = cat.links.filter((l) => l.member_id === memberId && live.has(l.service_id));
+  return mine.length === 0 || mine.some((l) => l.service_id === serviceId);
 }
 
 /** A service of this shop that customers may book (active + bookable), else null. */

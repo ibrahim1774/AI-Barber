@@ -36,14 +36,35 @@ describe('GET /api/book/shop', () => {
     expect(b.members.map((m: any) => [m.name, m.serviceIds])).toEqual([['Mike', null], ['Jay', null]]);
   });
 
-  it('per-barber service lists when ab_service_members restricts a service', async () => {
+  it('per-barber service lists: rows restrict that barber only (per member)', async () => {
     const w = world();
     const beard = crypto.randomUUID();
     w.state.services.push(makeService({ id: beard, shop_id: w.ids.shopId, name: 'Beard', sort: 1 }));
     w.state.links.push({ service_id: beard, member_id: w.ids.jay, price_override_cents: null });
     const b = (await getShop({ slug: 'fresh-cuts' }, w.deps)).body as any;
-    expect(b.members.find((m: any) => m.name === 'Mike').serviceIds).toEqual([w.ids.cut]);
-    expect(b.members.find((m: any) => m.name === 'Jay').serviceIds).toBeNull();
+    expect(b.members.find((m: any) => m.name === 'Mike').serviceIds).toBeNull();
+    expect(b.members.find((m: any) => m.name === 'Jay').serviceIds).toEqual([beard]);
+  });
+
+  it('a barber restricted to Kids: serviceIds is right for both barbers', async () => {
+    const w = world();
+    const kids = crypto.randomUUID();
+    w.state.services.push(makeService({ id: kids, shop_id: w.ids.shopId, name: 'Kids cut', sort: 1 }));
+    w.state.links.push({ service_id: kids, member_id: w.ids.mike, price_override_cents: null });
+    const b = (await getShop({ slug: 'fresh-cuts' }, w.deps)).body as any;
+    expect(b.members.map((m: any) => [m.name, m.serviceIds])).toEqual([['Mike', [kids]], ['Jay', null]]);
+  });
+
+  it('a restriction to a deactivated service falls back to every service', async () => {
+    const w = world();
+    const old = crypto.randomUUID();
+    w.state.services.push(makeService({ id: old, shop_id: w.ids.shopId, name: 'Old', sort: 1, active: false }));
+    w.state.links.push({ service_id: old, member_id: w.ids.mike, price_override_cents: null });
+    const b = (await getShop({ slug: 'fresh-cuts' }, w.deps)).body as any;
+    expect(b.members.map((m: any) => [m.name, m.serviceIds])).toEqual([['Mike', null], ['Jay', null]]);
+    const r = await book(w, { memberId: w.ids.mike });
+    expect(r.status).toBe(201);
+    expect((r.body as any).appointment.memberName).toBe('Mike');
   });
 
   it('inactive members are hidden', async () => {
@@ -263,10 +284,27 @@ describe('POST /api/book/appointments', () => {
 
   it('rejects a barber who does not offer the service', async () => {
     const w = world();
+    const beard = crypto.randomUUID();
+    w.state.services.push(makeService({ id: beard, shop_id: w.ids.shopId, name: 'Beard', sort: 1 }));
+    // Mike does Beard only; Jay does everything (his Haircut row is just a price override).
+    w.state.links.push({ service_id: beard, member_id: w.ids.mike, price_override_cents: null });
     w.state.links.push({ service_id: w.ids.cut, member_id: w.ids.jay, price_override_cents: 4000 });
     expect((await book(w, { memberId: w.ids.mike })).body).toEqual({ error: 'invalid', field: 'memberId' });
     const r = await book(w);
     expect((r.body as any).appointment).toMatchObject({ memberName: 'Jay', priceCents: 4000 });
+  });
+
+  it('a barber restricted to Kids is not offered for Haircut; others still are for Kids', async () => {
+    const w = world();
+    const kids = crypto.randomUUID();
+    w.state.services.push(makeService({ id: kids, shop_id: w.ids.shopId, name: 'Kids cut', sort: 1 }));
+    w.state.links.push({ service_id: kids, member_id: w.ids.mike, price_override_cents: null });
+    // Haircut: Mike is out, Jay is in.
+    expect((await book(w, { memberId: w.ids.mike })).body).toEqual({ error: 'invalid', field: 'memberId' });
+    // Kids: Jay (no rows) is still offered alongside Mike.
+    const r = await book(w, { serviceId: kids, memberId: w.ids.jay });
+    expect(r.status).toBe(201);
+    expect((r.body as any).appointment.memberName).toBe('Jay');
   });
 
   it('pay methods must be offered by the shop', async () => {

@@ -124,7 +124,8 @@ create table if not exists public.ab_services (
 );
 create index if not exists ab_services_shop_idx on public.ab_services (shop_id, sort);
 
--- No rows for a service = every active member offers it.
+-- Per member: a member with no rows (for active services) offers every service; otherwise
+-- they offer only the services they have rows for (lib/bookings/core.ts offers()).
 create table if not exists public.ab_service_members (
   service_id uuid not null references public.ab_services (id) on delete cascade,
   member_id uuid not null references public.ab_members (id) on delete cascade,
