@@ -158,6 +158,42 @@ describe('handleAppleNotification', () => {
     expect(d.repo.applyNotification.mock.calls[0][0].clearRevoked).toBeUndefined();
   });
 
+  describe('resubscribe after a refund clears a stale revocation', () => {
+    const notif = (type: string, tx: Record<string, unknown>) => deps({
+      decodeNotification: vi.fn(async () => ({ notificationType: type, data: { environment: 'Production', bundleId: BUNDLE, signedTransactionInfo: 'tx' } })),
+      decodeTransaction: vi.fn(async () => ({ bundleId: BUNDLE, productId: 'p', originalTransactionId: 'o', transactionId: 't', ...tx })),
+    });
+
+    it('SUBSCRIBED / DID_RENEW with an unrevoked tx pass its purchaseDate as clearRevokedBefore', async () => {
+      for (const type of ['SUBSCRIBED', 'DID_RENEW']) {
+        const d = notif(type, { purchaseDate: NOW - 10, expiresDate: NOW + 1000 });
+        await handleAppleNotification('jws', d);
+        expect(d.repo.applyNotification.mock.calls[0][0]).toMatchObject({ type, clearRevokedBefore: NOW - 10, revokedAt: null });
+        expect(d.repo.applyNotification.mock.calls[0][0].clearRevoked).toBeUndefined();
+      }
+    });
+
+    it('never for a revoked tx, a refund, other types, or without a purchaseDate', async () => {
+      for (const [type, tx] of [
+        ['DID_RENEW', { purchaseDate: NOW, revocationDate: NOW + 1 }],
+        ['REFUND', { purchaseDate: NOW }],
+        ['DID_CHANGE_RENEWAL_STATUS', { purchaseDate: NOW }],
+        ['SUBSCRIBED', {}],
+      ] as const) {
+        const d = notif(type, tx);
+        await handleAppleNotification('jws', d);
+        expect(d.repo.applyNotification.mock.calls[0][0].clearRevokedBefore).toBeUndefined();
+      }
+    });
+
+    it('REFUND_REVERSED keeps using clearRevoked', async () => {
+      const d = notif('REFUND_REVERSED', { purchaseDate: NOW, revocationDate: 555 });
+      await handleAppleNotification('jws', d);
+      expect(d.repo.applyNotification.mock.calls[0][0]).toMatchObject({ clearRevoked: true, revokedAt: null });
+      expect(d.repo.applyNotification.mock.calls[0][0].clearRevokedBefore).toBeUndefined();
+    });
+  });
+
   it('repo throws → 500', async () => {
     const d = deps();
     d.repo.applyNotification.mockRejectedValue(new Error('db down'));

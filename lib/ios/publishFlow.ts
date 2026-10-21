@@ -14,9 +14,12 @@ import {
   type PendingSite,
   type PublishOutcome,
 } from '../publishSite.js';
-import { VerifyFailure, defaultVerifier, isActive, type VerifiedTx } from './appleVerify.js';
+import { VerifyFailure, isActive, lazyDefaultVerifier, type VerifiedTx } from './appleVerify.js';
 import { supabasePurchases, type PurchasesRepo } from './purchases.js';
 import { chooseSlug, makeIsTaken, urlServes, vercelProjectExists } from './slug.js';
+import { buildImageUrlMap, toPendingSiteData } from './pendingData.js';
+
+export { buildImageUrlMap, toPendingSiteData };
 
 export interface IosPublishInput {
   transactionId: string;
@@ -44,35 +47,7 @@ export interface PublishDeps {
 
 const MAX_BODY_BYTES = 3 * 1024 * 1024;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const isHttp = (v: unknown): v is string => typeof v === 'string' && /^https?:\/\//i.test(v);
 const isObj = (v: unknown): v is Record<string, any> => !!v && typeof v === 'object' && !Array.isArray(v);
-
-/** Image slots that already hold an http(s) URL, keyed the way the renderer/deployer expects. */
-export function buildImageUrlMap(sd: WebsiteData): Record<string, string> {
-  const map: Record<string, string> = {};
-  if (isHttp(sd.hero?.imageUrl)) map.hero = sd.hero.imageUrl;
-  if (isHttp(sd.about?.imageUrl)) map.about = sd.about.imageUrl;
-  (sd.gallery || []).forEach((u, i) => { if (isHttp(u)) map[`gallery${i}`] = u; });
-  (sd.craftImages || []).forEach((u, i) => { if (isHttp(u)) map[`craft${i}`] = u; });
-  (sd.staff || []).forEach((s, i) => { if (isHttp(s?.photo)) map[`staff${i}`] = s.photo; });
-  return map;
-}
-
-/** Same transform as GeneratedWebsite.tsx preparePendingSite: 'uploaded' markers, service images cleared. */
-export function toPendingSiteData(sd: WebsiteData, map: Record<string, string>): WebsiteData {
-  return {
-    ...sd,
-    hero: { ...sd.hero, imageUrl: map['hero'] ? 'uploaded' : '' },
-    about: { ...sd.about, imageUrl: map['about'] ? 'uploaded' : '' },
-    gallery: (sd.gallery || []).map((_, i) => (map[`gallery${i}`] ? 'uploaded' : '')),
-    craftImages: (sd.craftImages || []).map((_, i) => (map[`craft${i}`] ? 'uploaded' : '')),
-    services: (sd.services || []).map((s) => ({ ...s, imageUrl: '' })),
-    staff: (sd.staff || []).map((s, i) => ({
-      ...s,
-      photo: map[`staff${i}`] ? 'uploaded' : (s?.photo?.startsWith?.('http') ? s.photo : ''),
-    })),
-  };
-}
 
 /** Inverse of toPendingSiteData for the image slots: 'uploaded' markers back to real URLs. */
 function restoreImageUrls(sd: WebsiteData, map: Record<string, string>): WebsiteData {
@@ -140,6 +115,8 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps): 
   }
 
   let tx: VerifiedTx;
+  // When Apple was asked: a revocation stored before this is superseded by an active answer.
+  const checkedAt = deps.now();
   try {
     tx = await deps.verify(input.transactionId.trim());
   } catch (e) {
@@ -153,7 +130,7 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps): 
   // transactionId the app sent (renewals have new transactionIds).
   const otid = tx.originalTransactionId;
   try {
-    const row = await deps.repo.upsertVerified(tx);
+    const row = await deps.repo.upsertVerified(tx, { checkedAt });
 
     // Unauthenticated, best-effort account link: never blocks a paid publish.
     if (typeof input.userId === 'string' && UUID_RE.test(input.userId)) {
@@ -212,6 +189,16 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps): 
     await deps.repo.markPublished(otid).catch((e) =>
       console.error(`[ios/publish] ${slug}: live but markPublished failed:`, e?.message || e));
 
+    // A bound slug was just force-redeployed with real content, so it no longer
+    // shows the offline page (the resubscribe path). Cleared on every bound
+    // republish, not only when the row we read had the flag: a sweep takedown
+    // can land between that read and this deploy. Best effort: if it fails, the
+    // sweep's restore pass redeploys the same content and clears it.
+    if (force) {
+      await deps.repo.clearTakenDown(otid).catch((e) =>
+        console.error(`[ios/publish] ${slug}: live but clearTakenDown failed:`, e?.message || e));
+    }
+
     return { status: 200, body: { siteId: slug, deployedUrl: outcome.deployedUrl, republished } };
   } catch (e) {
     console.error(`[ios/publish] ${otid}: unexpected error:`, (e as Error)?.message || e);
@@ -255,18 +242,10 @@ export async function runIosSiteLookup(
 /** Real dependencies for the api/ios/* handlers. */
 export function liveDeps(): PublishDeps {
   const repo = supabasePurchases();
-  // Lazy: defaultVerifier() throws when Apple env vars are missing, and that
-  // must surface as a mapped 503, not an uncaught 500.
-  let verifier: ((id: string) => Promise<VerifiedTx>) | undefined;
   return {
-    verify: (id) => {
-      try {
-        verifier ??= defaultVerifier();
-      } catch (e) {
-        return Promise.reject(e);
-      }
-      return verifier(id);
-    },
+    // Lazy: defaultVerifier() throws when Apple env vars are missing, and that
+    // must surface as a mapped 503, not an uncaught 500.
+    verify: lazyDefaultVerifier(),
     repo,
     // Pending file, repo and Vercel project lookup are authoritative: their errors
     // propagate (→ 503). urlServes fails open (false) on network errors by design.
