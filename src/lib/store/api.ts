@@ -21,7 +21,7 @@ const FRIENDLY: Record<string, string> = {
   'has-payment': 'This order has been paid. Refund it first, then cancel.',
   'refund-pending': 'A refund is already on its way. Wait for it to finish.',
   'nothing-to-refund': 'There is nothing left to refund on this order.',
-  'not-markable': 'This order changed. Close it and open it again to see the latest.',
+  'not-markable': "This order just changed. We've updated it; please check and try again.",
   'not-card': 'Only card payments can be refunded here. Send other refunds yourself.',
   'store-paused': 'Your AI Barber plan needs to be active to sell online.',
   'not-found': 'That order is no longer available.',

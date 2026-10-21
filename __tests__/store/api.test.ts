@@ -62,7 +62,7 @@ describe('errors', () => {
     ['has-payment', /Refund it first/],
     ['refund-pending', /already on its way/],
     ['nothing-to-refund', /nothing left/i],
-    ['not-markable', /changed/],
+    ['not-markable', /just changed/],
     ['not-card', /card/i],
     ['store-paused', /plan needs to be active/],
   ])('maps %s', async (code, re) => {

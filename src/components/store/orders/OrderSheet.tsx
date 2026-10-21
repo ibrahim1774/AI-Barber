@@ -17,8 +17,8 @@ import {
 
 type Props = {
   order: Order | null;
-  /** Lapsed plan: details and contact only, no changes. */
-  locked: boolean;
+  /** Kept for the Store tab's API; a lapsed plan never hides order actions. */
+  locked?: boolean;
   onClose(): void;
   /** Reload the list (and this order) after a change. */
   onChanged(): Promise<void> | void;
@@ -29,7 +29,7 @@ type Mode = 'detail' | 'ship' | 'refund';
 const when = (iso: string) =>
   new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
-export function OrderSheet({ order, locked, onClose, onChanged }: Props) {
+export function OrderSheet({ order, onClose, onChanged }: Props) {
   const last = useRef<Order | null>(null);
   if (order) last.current = order;
   const o = order ?? last.current;
@@ -95,7 +95,7 @@ export function OrderSheet({ order, locked, onClose, onChanged }: Props) {
   };
 
   if (!o) return <Sheet visible={false} title="" onClose={onClose}>{null}</Sheet>;
-  const can = locked ? [] : availableActions(o);
+  const can = availableActions(o); // never hidden by a lapsed plan: owners must always be able to fulfil and refund
   const has = (a: (typeof can)[number]) => can.includes(a);
   const phone = o.customer.phone.trim();
   const email = o.customer.email.trim();
@@ -150,9 +150,7 @@ export function OrderSheet({ order, locked, onClose, onChanged }: Props) {
               </View>
             )}
 
-            {locked ? (
-              <Text style={st.footnote}>Renew your plan to update orders.</Text>
-            ) : (
+            {(
               <View style={st.actions}>
                 {has('paid') && <Button title="Mark paid" variant="ghost" loading={busy} onPress={() => void mark('paid')} style={st.gap} />}
                 {has('ready') && <Button title="Mark ready" loading={busy} onPress={() => void mark('ready')} style={st.gap} />}
@@ -197,5 +195,4 @@ const st = StyleSheet.create({
   addr: { fontFamily: fonts.body, fontSize: 14, lineHeight: 20, color: colors.text },
   actions: { marginTop: 20, marginBottom: 8 },
   gap: { marginTop: 10 },
-  footnote: { fontFamily: fonts.body, fontSize: 13, color: colors.muted, marginTop: 14, textAlign: 'center' },
 });

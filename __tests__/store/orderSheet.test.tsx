@@ -91,10 +91,10 @@ describe('OrderSheet', () => {
     expect(mockRefund).not.toHaveBeenCalled();
   });
 
-  it('locked shows no action buttons', async () => {
+  it('locked still shows the order actions', async () => {
     const { tree } = await mount(order(), true);
-    for (const t of ['Mark paid', 'Mark ready', 'Mark done', 'Cancel order', 'Refund', 'Mark shipped']) expect(hasButton(tree, t)).toBe(false);
-    expect(hasButton(tree, 'Call')).toBe(true);
+    for (const t of ['Mark paid', 'Mark ready', 'Mark done', 'Cancel order']) expect(hasButton(tree, t)).toBe(true);
+    expect(allText(tree).join(' ')).not.toContain('Renew your plan');
   });
 
   it('Call, Text and Email use the customer details', async () => {

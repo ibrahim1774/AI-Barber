@@ -138,4 +138,14 @@ describe('store setup', () => {
     await pressRow(tree, 'Get paid');
     expect(mockPush).toHaveBeenCalledWith('/get-paid');
   });
+
+  it('if the website link sync fails after opening, the shop is still open and says how to fix it', async () => {
+    mockUpdateSite.mockRejectedValueOnce(new Error('disk'));
+    const tree = await render(<StoreSetup />);
+    await press(tree, 'Open my shop');
+    expect(mockUpdateSettings).toHaveBeenCalledWith('s1', { storeEnabled: true });
+    expect(Alert.alert).toHaveBeenCalledWith('Your shop is open', expect.stringContaining('Publish your site again'));
+    expect(Alert.alert).not.toHaveBeenCalledWith("Couldn't save", expect.anything());
+    expect(hasButton(tree, 'Close my shop')).toBe(true);
+  });
 });

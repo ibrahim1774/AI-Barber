@@ -84,7 +84,8 @@ export function isOrderPush(data: unknown): data is { kind: 'order'; orderId: st
 }
 
 /** Where an order push opens: the Store tab on Orders, with that order's sheet. */
-export const orderPushHref = (orderId: string) => `/(tabs)/store?tab=orders&orderId=${encodeURIComponent(orderId)}`;
+export const orderPushHref = (orderId: string, nonce: number = Date.now()) =>
+  `/(tabs)/store?tab=orders&orderId=${encodeURIComponent(orderId)}&n=${nonce}`;
 
 /** Routes a tapped push by its `kind`. 'order' opens the Store tab; booking pushes (and a missing kind) open Bookings. */
 export function openPush(data: unknown): boolean {

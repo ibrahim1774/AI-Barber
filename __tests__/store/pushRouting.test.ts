@@ -7,9 +7,19 @@ beforeEach(() => mockNavigate.mockReset());
 
 describe('order pushes', () => {
   it('{ kind: order, orderId } opens the Store tab on Orders with the order', () => {
+    jest.spyOn(Date, 'now').mockReturnValue(111);
     expect(openPush({ kind: 'order', orderId: 'abc-123' })).toBe(true);
-    expect(mockNavigate).toHaveBeenCalledWith('/(tabs)/store?tab=orders&orderId=abc-123');
-    expect(orderPushHref('abc-123')).toBe('/(tabs)/store?tab=orders&orderId=abc-123');
+    expect(mockNavigate).toHaveBeenCalledWith('/(tabs)/store?tab=orders&orderId=abc-123&n=111');
+    expect(orderPushHref('abc-123', 5)).toBe('/(tabs)/store?tab=orders&orderId=abc-123&n=5');
+    jest.restoreAllMocks();
+  });
+  it('a second push for the same order gets a different nonce', () => {
+    const now = jest.spyOn(Date, 'now');
+    now.mockReturnValueOnce(1).mockReturnValueOnce(2);
+    openPush({ kind: 'order', orderId: 'a' });
+    openPush({ kind: 'order', orderId: 'a' });
+    expect(mockNavigate.mock.calls[0][0]).not.toBe(mockNavigate.mock.calls[1][0]);
+    jest.restoreAllMocks();
   });
   it('an order push without an id is ignored', () => {
     expect(isOrderPush({ kind: 'order' })).toBe(false);

@@ -16,20 +16,24 @@ type Props = {
   locked: boolean;
   /** Open this order's sheet (from a push tap). */
   focusOrderId?: string;
+  /** Changes with every order push (the tab passes params.n), so tapping a second push for the same order reopens it. */
+  focusNonce?: string | number;
   /** Called after any change, so the tab's badge can refresh. */
   onChanged(): void;
 };
 
 /** The Store tab's Orders list: newest first, tap for the order sheet. */
-export function OrdersPane({ shopId, locked, focusOrderId, onChanged }: Props) {
+export function OrdersPane({ shopId, locked, focusOrderId, focusNonce, onChanged }: Props) {
   const { orders, error, more, loadingMore, refresh, loadMore } = useOrders(shopId);
   const [selected, setSelected] = useState<Order | null>(null);
   const opened = useRef<string | null>(null);
 
   // A push tap: open that order once, wherever it is in the list.
   useEffect(() => {
-    if (!focusOrderId || opened.current === focusOrderId) return;
-    opened.current = focusOrderId;
+    if (!focusOrderId) return;
+    const key = `${focusOrderId}:${focusNonce ?? ''}`;
+    if (opened.current === key) return;
+    opened.current = key;
     let alive = true;
     getOrder(focusOrderId)
       .then((o) => alive && o && setSelected(o))
@@ -37,7 +41,7 @@ export function OrdersPane({ shopId, locked, focusOrderId, onChanged }: Props) {
     return () => {
       alive = false;
     };
-  }, [focusOrderId]);
+  }, [focusOrderId, focusNonce]);
 
   const changed = useCallback(async () => {
     const id = selected?.id;
@@ -65,8 +69,9 @@ export function OrdersPane({ shopId, locked, focusOrderId, onChanged }: Props) {
       {(orders ?? []).map((o) => (
         <OrderRow key={o.id} order={o} onPress={() => setSelected(o)} />
       ))}
+      {!!error && !!orders && <Text style={st.err}>{error}</Text>}
       {more && <Button title="Load more" variant="ghost" loading={loadingMore} onPress={() => void loadMore()} style={{ marginTop: 6 }} />}
-      <OrderSheet order={selected} locked={locked} onClose={() => setSelected(null)} onChanged={changed} />
+      <OrderSheet order={selected} locked={locked} onClose={() => { setSelected(null); opened.current = null; }} onChanged={changed} />
     </View>
   );
 }
@@ -95,6 +100,7 @@ function OrderRow({ order: o, onPress }: { order: Order; onPress(): void }) {
 
 const st = StyleSheet.create({
   center: { gap: 16 },
+  err: { fontFamily: fonts.body, fontSize: 13, color: '#f87171', marginVertical: 6 },
   empty: { fontFamily: fonts.body, fontSize: 15, lineHeight: 22, color: colors.body, marginTop: 8 },
   row: {
     gap: 6, paddingVertical: 14, paddingHorizontal: 14, backgroundColor: colors.sheet, borderRadius: 14,

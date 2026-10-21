@@ -96,14 +96,22 @@ export function StoreSettingsForm({ shop, onChanged }: { shop: Shop; onChanged?(
       await updateStoreSettings(shop.id, { storeEnabled: open });
       setSaved({ ...current, storeEnabled: open });
       const url = shopUrl(shop);
-      await updateSiteData((d) => {
-        const next: WithShopUrl = { ...d };
-        if (open) next.shopUrl = url;
-        else delete next.shopUrl;
-        return next;
-      });
-      if (open) Alert.alert('Your shop is open', 'Publish to add a Shop link to your website.');
       onChanged?.();
+      try {
+        await updateSiteData((d) => {
+          const next: WithShopUrl = { ...d };
+          if (open) next.shopUrl = url;
+          else delete next.shopUrl;
+          return next;
+        });
+      } catch {
+        Alert.alert(
+          open ? 'Your shop is open' : 'Your shop is closed',
+          "We couldn't update your website link. Publish your site again to " + (open ? 'add it.' : 'remove it.'),
+        );
+        return;
+      }
+      if (open) Alert.alert('Your shop is open', 'Publish to add a Shop link to your website.');
     });
 
   return (

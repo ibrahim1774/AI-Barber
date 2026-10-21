@@ -1,5 +1,5 @@
 import React from 'react';
-import { allText, hasButton, render } from './render';
+import { act, allText, hasButton, press, render } from './render';
 import { order } from './fixtures';
 
 jest.mock('@/constants/theme', () => require('./themeMock'));
@@ -45,5 +45,27 @@ describe('OrdersPane', () => {
     const tree = await render(<OrdersPane shopId="s1" shopName="x" locked={false} focusOrderId="o9" onChanged={() => {}} />);
     expect(mockGet).toHaveBeenCalledWith('o9');
     expect(hasButton(tree, 'Mark ready')).toBe(true);
+  });
+
+  it('reopens the same order when a second push arrives (new nonce)', async () => {
+    mockGet.mockResolvedValue(order({ id: 'o9', number: 1009 }));
+    const tree = await render(<OrdersPane shopId="s1" shopName="x" locked={false} focusOrderId="o9" focusNonce="1" onChanged={() => {}} />);
+    expect(mockGet).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      tree.update(<OrdersPane shopId="s1" shopName="x" locked={false} focusOrderId="o9" focusNonce="1" onChanged={() => {}} />);
+    });
+    expect(mockGet).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      tree.update(<OrdersPane shopId="s1" shopName="x" locked={false} focusOrderId="o9" focusNonce="2" onChanged={() => {}} />);
+    });
+    expect(mockGet).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows an error when Load more fails', async () => {
+    const full = Array.from({ length: 30 }, (_, i) => order({ id: `x${i}`, number: 2000 + i }));
+    mockList.mockResolvedValueOnce(full).mockRejectedValueOnce(new Error('Network down'));
+    const tree = await render(<OrdersPane shopId="s1" shopName="x" locked={false} onChanged={() => {}} />);
+    await press(tree, 'Load more');
+    expect(allText(tree).join(' ')).toContain('Network down');
   });
 });
