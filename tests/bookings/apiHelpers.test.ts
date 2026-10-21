@@ -4,7 +4,7 @@ import {
   clientIp, makeRateLimiter, memoryStore, READ_LIMIT, SHOP_BOOKING_LIMIT, shopBookingLimiter, supabaseRateStore, withFallback, WRITE_LIMIT,
 } from '../../lib/bookings/rateLimit.js';
 import { authenticate, bearerToken } from '../../lib/bookings/auth.js';
-import { appointmentsToIcs } from '../../lib/bookings/ics.stub.js';
+import { appointmentsToIcs } from '../../lib/bookings/ics.js';
 import { appointmentIdParam, endpoint } from '../../lib/bookings/http.js';
 import { normalizePhone, parseInstant, stripControls, text } from '../../lib/bookings/core.js';
 

@@ -1,13 +1,8 @@
-// Single injection point for what the booking API needs from S2 (payments, notifications,
-// calendar text). Flows take payments/notify through their deps object, so tests inject
-// fakes and nothing else imports the stubs.
-//
-// MERGE NOTE: when S2's branch lands, change the three imports below to './payments.js',
-// './notify.js' and './ics.js' and delete the *.stub.ts files. The stubs export the same
-// names and shapes as S2's files.
-import { createCardCheckout, expireCheckoutSession, refundAppointment, refundKey } from './payments.stub.js';
-import { notify, type NotifyEvent } from './notify.stub.js';
-import { appointmentsToIcs, type FeedAppointment } from './ics.stub.js';
+// Single injection point for what the booking API needs from payments, notifications and
+// calendar text. Flows take payments/notify through their deps object, so tests inject fakes.
+import { createCardCheckout, expireCheckoutSession, refundAppointment, refundKey } from './payments.js';
+import { notify, type NotifyEvent } from './notify.js';
+import { appointmentsToIcs, type FeedAppointment } from './ics.js';
 import type { AppointmentRow, ShopRow } from './repo.js';
 
 export type { NotifyEvent, FeedAppointment };
@@ -24,4 +19,4 @@ export interface Payments {
 export type Notify = (event: NotifyEvent) => Promise<void>;
 
 export const livePayments: Payments = { createCardCheckout, refundAppointment, expireCheckoutSession };
-export const liveNotify: Notify = notify;
+export const liveNotify: Notify = (event) => notify(event);

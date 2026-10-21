@@ -15,6 +15,12 @@ vi.mock('../../lib/bookings/payments.js', async (orig) => ({
   stripeOnboard, stripeStatus, liveOwnerStripeDeps: () => ({}),
 }));
 
+const { expireStaleCardHolds, retryPendingRefunds } = vi.hoisted(() => ({
+  expireStaleCardHolds: vi.fn(),
+  retryPendingRefunds: vi.fn(),
+}));
+vi.mock('../../lib/bookings/core.js', () => ({ expireStaleCardHolds, retryPendingRefunds }));
+vi.mock('../../lib/bookings/live.js', () => ({ liveDeps: () => ({}) }));
 import { handleWebhook } from '../../api/stripe/connect-webhook.js';
 import reminders from '../../api/book/reminders.js';
 import dailySummary from '../../api/book/daily-summary.js';
@@ -98,9 +104,27 @@ describe('crons', () => {
     await reminders({ headers: {} }, res);
     expect(res.status).toHaveBeenCalledWith(401);
     runReminders.mockResolvedValue({ due: 2, sent: 2, failed: 0 });
+    expireStaleCardHolds.mockResolvedValue({ expired: 1 });
+    retryPendingRefunds.mockResolvedValue({ retried: 1, refunded: 1, failed: 0, stuck: 0 });
     const res2 = mkRes();
     await reminders(cron, res2);
-    expect(res2.json).toHaveBeenCalledWith({ ok: true, due: 2, sent: 2, failed: 0 });
+    expect(res2.json).toHaveBeenCalledWith({
+      ok: true, due: 2, sent: 2, failed: 0,
+      holds: { expired: 1 }, refunds: { retried: 1, refunded: 1, failed: 0, stuck: 0 },
+    });
+    expect(expireStaleCardHolds).toHaveBeenCalledWith({}, 50);
+  });
+
+  it('reminders: a failing sweep is logged and never blocks the reminders', async () => {
+    runReminders.mockResolvedValue({ due: 1, sent: 1, failed: 0 });
+    expireStaleCardHolds.mockRejectedValue(new Error('db down'));
+    retryPendingRefunds.mockResolvedValue({ retried: 0, refunded: 0, failed: 0, stuck: 0 });
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = mkRes();
+    await reminders(cron, res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ sent: 1, holds: { error: true } }));
+    err.mockRestore();
   });
 
   it('daily-summary: 401 unauthorized, 200 summary, 500 on failure', async () => {
