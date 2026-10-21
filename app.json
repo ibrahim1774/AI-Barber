@@ -65,7 +65,12 @@
         }
       ],
       "react-native-appsflyer",
-      "expo-notifications"
+      [
+        "expo-notifications",
+        {
+          "mode": "production"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
