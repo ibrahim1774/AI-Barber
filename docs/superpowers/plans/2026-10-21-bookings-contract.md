@@ -30,8 +30,9 @@
 
 `supabase/migrations/006_bookings_api.sql`:
 - `ab_shops`: add `ios_otid text`, `address text`, `phone text`, `accent text`.
-- `ab_appointments`: add `reminder_sent_at timestamptz`, `customer_says_paid_at timestamptz`.
-- A `default` for `manage_token`: `encode(gen_random_bytes(24), 'hex')`.
+- `ab_appointments`: add `customer_says_paid_at timestamptz`. (`reminder_sent_at` and the `manage_token` default already exist in 005; do not re-add them.)
+- `ab_shops.daily_summary bool not null default false`.
+- **Grants (binding):** column-level `grant update (address, phone, accent, daily_summary) on ab_shops to authenticated`. Never a table-level grant. Never grant `ios_otid`, `slug`, `owner_id`, `platform_fee_bps` or the Stripe columns. Shops are inserted only by `/api/shop/setup` through the service role (005 revokes `insert` from `authenticated`).
 
 ## Public API (no auth; rate-limited per IP: 60 req/min reads, 10 req/min writes)
 
