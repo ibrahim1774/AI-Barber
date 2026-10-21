@@ -173,13 +173,48 @@ describe('POST /api/shop/plan', () => {
     expect(await refreshPlan(AUTH, { transactionId: '2000000555' }, deps)).toEqual({ status: 409, body: { error: 'purchase-in-use' } });
   });
 
-  it('a shop linked to a different purchase keeps its link and shows that purchase', async () => {
+  it('M1: a shop linked to a different purchase is relinked to the one just paid for', async () => {
     const { deps, shop } = fakes({ otid: '2000000999', rows: { '2000000999': purchaseRow({ original_transaction_id: '2000000999', product_id: `${P}hosting.monthly` }) } });
     const r = await refreshPlan(AUTH, { transactionId: '2000000555' }, deps);
     expect(r.status).toBe(200);
-    expect(deps.setShopOtid).not.toHaveBeenCalled();
-    expect(shop.ios_otid).toBe('2000000999');
-    expect(r.body).toMatchObject({ linked: true, tier: 'website' });
+    expect(deps.setShopOtid).toHaveBeenCalledWith(SHOP, OTID);
+    expect(shop.ios_otid).toBe(OTID);
+    expect(r.body).toMatchObject({ linked: true, tier: 'store' });
+  });
+
+  it('M1: relinking follows setup\'s 409 rules (another shop holds it, or another user owns it)', async () => {
+    const taken = fakes({ otid: '2000000999', rows: {}, taken: true });
+    expect(await refreshPlan(AUTH, { transactionId: '2000000555' }, taken.deps)).toEqual({ status: 409, body: { error: 'purchase-in-use' } });
+    expect(taken.shop.ios_otid).toBe('2000000999');
+    const owned = fakes({ otid: '2000000999', rows: { [OTID]: purchaseRow({ user_id: OTHER }) } });
+    expect(await refreshPlan(AUTH, { transactionId: '2000000555' }, owned.deps)).toEqual({ status: 409, body: { error: 'purchase-in-use' } });
+    expect(owned.deps.setShopOtid).not.toHaveBeenCalled();
+  });
+
+  describe('M2: per-user write limit', () => {
+    it('over the limit → 429 rate-limited with Retry-After, before Apple is asked; keyed by user', async () => {
+      const { deps } = fakes();
+      deps.limiter = { allow: vi.fn(async () => false) };
+      const r = await refreshPlan(AUTH, { transactionId: '2000000555' }, deps);
+      expect(r).toEqual({ status: 429, body: { error: 'rate-limited' }, headers: { 'Retry-After': '60' } });
+      expect(deps.limiter.allow).toHaveBeenCalledWith(`user:${USER}`, 'write');
+      expect(deps.verify).not.toHaveBeenCalled();
+    });
+
+    it('a limiter failure fails open', async () => {
+      const { deps } = fakes();
+      deps.limiter = { allow: vi.fn(async () => { throw new Error('store down'); }) };
+      const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+      expect((await refreshPlan(AUTH, { transactionId: '2000000555' }, deps)).status).toBe(200);
+      err.mockRestore();
+    });
+
+    it('GET is not limited', async () => {
+      const { deps } = fakes();
+      deps.limiter = { allow: vi.fn(async () => false) };
+      expect((await getPlan(AUTH, deps)).status).toBe(200);
+      expect(deps.limiter.allow).not.toHaveBeenCalled();
+    });
   });
 
   it.each(['bad-product', 'not-found', 'bad-bundle'] as const)('%s → 400 invalid', async (code) => {

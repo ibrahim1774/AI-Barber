@@ -7,6 +7,7 @@
 import { authenticate, liveGetUser, type GetUser } from '../bookings/auth.js';
 import { isObj, type FlowResult } from '../bookings/core.js';
 import { serviceClient, supabaseBookingRepo, type ShopRow } from '../bookings/repo.js';
+import { publicLimiter, type RateLimiter } from '../bookings/rateLimit.js';
 import { VerifyFailure, lazyDefaultVerifier, type VerifiedTx } from './appleVerify.js';
 import { entitlementActive, purchaseLive } from './lapse.js';
 import { supabasePurchases, type PurchaseRow } from './purchases.js';
@@ -35,6 +36,8 @@ export interface PlanDeps {
   setShopOtid(shopId: string, otid: string): Promise<'ok' | 'taken'>;
   setUser(otid: string, userId: string): Promise<void>;
   now?(): number;
+  /** Per-user write limit on POST (each call costs App Store Server API requests). Absent = none. */
+  limiter?: Pick<RateLimiter, 'allow'>;
 }
 
 type Auth = string | string[] | undefined;
@@ -94,8 +97,10 @@ export async function getPlan(auth: Auth, deps: PlanDeps): Promise<FlowResult> {
 
 /**
  * POST /api/shop/plan { transactionId }: verify with Apple (the latest product), record it,
- * link the purchase if the shop has none (the same 409 purchase-in-use rules as setup),
- * then return the GET body. A shop already linked to a different purchase keeps that link.
+ * link the shop to this purchase under setup's rules (409 purchase-in-use when another user
+ * owns it or another shop holds it), then return the GET body. A shop linked to a different
+ * purchase is relinked: the purchase the owner just paid for is the one that gates. Limited
+ * per user (the write limit), failing open.
  */
 export async function refreshPlan(auth: Auth, body: unknown, deps: PlanDeps): Promise<FlowResult> {
   const o = await owner(auth, deps);
@@ -105,6 +110,16 @@ export async function refreshPlan(auth: Auth, body: unknown, deps: PlanDeps): Pr
   const raw = isObj(body) ? body.transactionId : undefined;
   const transactionId = typeof raw === 'string' ? raw.trim() : '';
   if (!/^\d{1,32}$/.test(transactionId)) return invalidTx();
+
+  if (deps.limiter) {
+    let allowed = true;
+    try {
+      allowed = await deps.limiter.allow(`user:${user.id}`, 'write');
+    } catch (e: any) {
+      console.error('[shop/plan] rate limiter failed, allowing:', e?.message || e); // fail open
+    }
+    if (!allowed) return { status: 429, body: { error: 'rate-limited' }, headers: { 'Retry-After': '60' } };
+  }
 
   const now = deps.now ?? Date.now;
   // Captured before asking Apple, so a revocation newer than this answer is never cleared.
@@ -129,13 +144,11 @@ export async function refreshPlan(auth: Auth, body: unknown, deps: PlanDeps): Pr
       console.error('[shop/plan] linking purchase to account failed:', e?.message || e);
     }
   }
-  if (!shop.ios_otid) {
+  if (shop.ios_otid !== otid) {
     if ((await deps.setShopOtid(shop.id, otid)) === 'taken') return err(409, 'purchase-in-use');
     shop = { ...shop, ios_otid: otid };
   }
-
-  const shown = shop.ios_otid === otid ? row : await deps.purchase(shop.ios_otid as string);
-  return { status: 200, body: planView(shop, shown, now()) };
+  return { status: 200, body: planView(shop, row, now()) };
 }
 
 /** Real dependencies for api/shop/plan.ts (service-role Supabase, Apple). */
@@ -153,5 +166,6 @@ export function livePlanDeps(): PlanDeps {
     setShopOtid: (id, otid) => shops.setShopOtid(id, otid),
     setUser: (otid, uid) => purchases.setUser(otid, uid),
     now: Date.now,
+    limiter: publicLimiter,
   };
 }
