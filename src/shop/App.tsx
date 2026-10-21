@@ -3,7 +3,7 @@ import { ApiError, type ShopApi } from './api';
 import { addItem, cartTotals, loadCart, MAX_QTY, reconcile, removeItem, saveCart, setQty } from './cart';
 import {
   CHANGED_MESSAGE, checkoutBody, directionsUrl, EMPTY_ADDRESS, EXPIRED_MESSAGE, formatAddress, formatMoney, manualLink, METHOD_LABEL,
-  newClientKey, onAccent, parseShopRoute, paymentLine, payRows, placeOrder, safeAccent, sentErrorMessage, invalidMessage, STATUS_LABEL, telUrl,
+  newClientKey, onAccent, parseShopRoute, paymentLine, payRows, placeOrder, safeAccent, sentErrorMessage, shipsWithinLabel, invalidMessage, STATUS_LABEL, telUrl,
   tokenFromStatusUrl, validateCheckout, type AddressForm, type CheckoutState,
 } from './logic';
 import { CHECKOUT_POLL_MS, parseCheckout, shouldKeepPolling, type CheckoutReturn } from '../book/logic';
@@ -307,7 +307,7 @@ function Checkout({ api, shop, products, cart, onBack, onRefresh, onSoldOut, onR
               <div><strong>{f === 'pickup' ? 'Pickup' : 'Shipping'}</strong></div>
               {f === 'pickup'
                 ? <div className="m">{[shop.address, shop.pickup.note].filter(Boolean).join(' · ') || 'Pick up at the shop'}</div>
-                : <div className="m">{formatMoney(shop.shipping.flatCents) || '$0'} flat rate{shop.shipping.shipsWithinDays ? ` · Ships within ${shop.shipping.shipsWithinDays} days` : ''}</div>}
+                : <div className="m">{formatMoney(shop.shipping.flatCents) || '$0'} flat rate{shop.shipping.shipsWithinDays != null ? ` · ${shipsWithinLabel(shop.shipping.shipsWithinDays)}` : ''}</div>}
             </div>
           </button>
         ))}
@@ -444,7 +444,7 @@ function StatusView({ api, token, checkout, fresh }: { api: ShopApi; token: stri
           <strong>Shipping</strong>
           {formatAddress(o.shippingAddress).map((l, i) => <div key={i}>{l}</div>)}
           {!o.shippingAddress && <div className="sub">The address you entered at checkout.</div>}
-          {o.status !== 'shipped' && o.status !== 'done' && shop.shipsWithinDays ? <div className="sub">Ships within {shop.shipsWithinDays} days.</div> : null}
+          {o.status !== 'shipped' && o.status !== 'done' && shop.shipsWithinDays != null ? <div className="sub">{shipsWithinLabel(shop.shipsWithinDays)}.</div> : null}
           {o.trackingNumber && <div>Tracking: {o.trackingUrl ? <a href={/^https?:\/\//i.test(o.trackingUrl) ? o.trackingUrl : undefined} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>{o.trackingNumber}</a> : o.trackingNumber}</div>}
         </div>
       )}

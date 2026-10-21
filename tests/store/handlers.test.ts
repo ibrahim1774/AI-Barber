@@ -25,8 +25,8 @@ import shopHandler from '../../api/store/shop.js';
 import ordersHandler, { config as ordersConfig } from '../../api/store/orders.js';
 import orderHandler from '../../api/store/order.js';
 import sentHandler from '../../api/store/sent.js';
-import markHandler from '../../api/shop/orders/[id]/mark.js';
-import refundHandler from '../../api/shop/orders/[id]/refund.js';
+import markHandler, { config as markConfig } from '../../api/shop/orders/[id]/mark.js';
+import refundHandler, { config as refundConfig } from '../../api/shop/orders/[id]/refund.js';
 import { orderIdParam } from '../../lib/store/http.js';
 import { shopOrderLimiter } from '../../lib/store/live.js';
 import { storeWorld } from './fakeRepo.js';
@@ -62,6 +62,11 @@ async function placeManual() {
   return w.state.orders.at(-1)!;
 }
 
+
+it('owner refund and mark may run 30 s (Stripe refund / email, past the plan default)', () => {
+  expect(refundConfig).toEqual({ maxDuration: 30 });
+  expect(markConfig).toEqual({ maxDuration: 30 });
+});
 
 it('POST /api/store/orders may run 30 s (Checkout create plus an expire on a store miss)', () => expect(ordersConfig).toEqual({ maxDuration: 30 }));
 
