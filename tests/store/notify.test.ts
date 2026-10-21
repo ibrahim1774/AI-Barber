@@ -3,6 +3,7 @@ import {
   notifyOrder, orderConfirmationEmail, orderReadyEmail, orderShippedEmail, orderCancelledEmail, liveOrderNotifyDeps,
   type OrderNotifyContext, type OrderNotifyDeps,
 } from '../../lib/store/notify.js';
+import type { EmailMessage, EmailResult } from '../../lib/bookings/email.js';
 
 const ctx = (over: Partial<OrderNotifyContext['order']> = {}, shopOver: Partial<OrderNotifyContext['shop']> = {}, itemsOver?: OrderNotifyContext['items']): OrderNotifyContext => ({
   order: {
@@ -30,9 +31,9 @@ const ctx = (over: Partial<OrderNotifyContext['order']> = {}, shopOver: Partial<
 
 function mkDeps(c: OrderNotifyContext | null = ctx()) {
   const d = {
-    loadContext: vi.fn(async () => c),
-    sendEmail: vi.fn(async () => 'sent' as const),
-    push: vi.fn(async () => ({})),
+    loadContext: vi.fn(async (_id: string) => c),
+    sendEmail: vi.fn(async (_m: EmailMessage): Promise<EmailResult> => 'sent'),
+    push: vi.fn(async (_u: string[], _m: any) => ({})),
     now: () => Date.UTC(2026, 9, 21, 12),
   };
   return d as OrderNotifyDeps & typeof d;
@@ -209,7 +210,7 @@ describe('notifyOrder: errors and escaping', () => {
 
   it('SMTP skipped does not throw', async () => {
     const d = mkDeps();
-    d.sendEmail.mockResolvedValue('skipped' as any);
+    d.sendEmail.mockResolvedValue('skipped');
     await expect(notifyOrder({ kind: 'order_created', orderId: 'ord-1' }, d)).resolves.toBeUndefined();
   });
 
