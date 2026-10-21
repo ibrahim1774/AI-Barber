@@ -1,3 +1,4 @@
+import { requireOptionalNativeModule } from 'expo';
 import Storage from 'expo-sqlite/kv-store';
 import type * as NotificationsModule from 'expo-notifications';
 import { track } from '@/lib/analytics';
@@ -47,12 +48,21 @@ const STOPPED_KEY = 'reminders.stopped.v1';
 type Notifications = typeof NotificationsModule;
 type NotificationResponse = NotificationsModule.NotificationResponse;
 let mod: Notifications | null | undefined;
-/** expo-notifications, or null when the build lacks its native module (warned once). */
+/**
+ * expo-notifications, or null when the build lacks its native module (warned
+ * once). The native check comes first: a require whose module throws at load
+ * is reported by Metro's guard as an uncaught error (red box) instead of
+ * reaching the catch below.
+ */
 function notifications(): Notifications | null {
   if (mod !== undefined) return mod;
+  mod = null;
   try {
+    if (!requireOptionalNativeModule('ExpoPushTokenManager') || !requireOptionalNativeModule('ExpoNotificationScheduler')) {
+      throw new Error('native module missing');
+    }
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    mod = require('expo-notifications') as Notifications;
+    mod = (require('expo-notifications') as Notifications | undefined) ?? null;
   } catch (e) {
     mod = null;
     console.warn('[reminders] expo-notifications is not in this build; publish reminders are off.', e);

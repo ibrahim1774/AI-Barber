@@ -312,3 +312,22 @@ test('without the native module everything is a quiet no-op', async () => {
   // Not marked as asked: the next build with the module still asks.
   expect(await Storage.getItem('reminders.asked.v1')).toBeNull();
 });
+
+test('a build without the native module never even loads expo-notifications', async () => {
+  const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  const load = jest.fn();
+  await jest.isolateModulesAsync(async () => {
+    jest.doMock('expo', () => ({ requireOptionalNativeModule: () => null }));
+    jest.doMock('expo-notifications', () => {
+      load();
+      return {};
+    });
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const r = require('@/lib/reminders');
+    expect(await r.askReminderPermissionOnce()).toBe(false);
+    await r.refreshReminders();
+    expect(r.takeLaunchReminderTap()).toBeNull();
+  });
+  expect(load).not.toHaveBeenCalled();
+  expect(warn).toHaveBeenCalledTimes(1);
+});
