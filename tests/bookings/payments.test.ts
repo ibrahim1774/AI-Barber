@@ -178,6 +178,15 @@ describe('onboard / status', () => {
     expect(g.calls[0].params.get('account')).toBe('acct_old');
   });
 
+  it('retries account creation once without a phone Stripe rejected', async () => {
+    const { f, calls } = fakeFetch({ status: 400, body: { error: { message: 'Invalid phone', param: 'business_profile[support_phone]' } } }, { body: { id: 'acct_np' } }, { body: { url: 'L' } });
+    expect(await stripeOnboard('Bearer good', mkDeps({}, f))).toEqual({ status: 200, body: { url: 'L' } });
+    expect(calls[0].params.get('business_profile[support_phone]')).toBe('+15551234567');
+    expect(calls[1].params.has('business_profile[support_phone]')).toBe(false);
+    expect(calls[1].init.headers['Idempotency-Key']).toBe('ab-account-shop-1-nophone');
+    expect(calls[2].params.get('account')).toBe('acct_np');
+  });
+
   it('502 on Stripe errors', async () => {
     const { f } = fakeFetch({ status: 400, body: { error: { message: 'bad' } } });
     expect(await stripeOnboard('Bearer good', mkDeps({}, f))).toEqual({ status: 502, body: { error: 'stripe-error' } });
@@ -235,6 +244,7 @@ describe('handleConnectEvent', () => {
       releaseEvent: vi.fn(async (id: string) => { seen.delete(id); }),
       appointmentBySession: vi.fn(async (sid: string) => (a && a.stripe_checkout_session_id === sid ? a : null)),
       appointmentByPaymentIntent: vi.fn(async (pi: string) => (a && a.stripe_payment_intent_id === pi ? a : null)),
+      appointmentById: vi.fn(async (id: string) => (a && a.id === id ? a : null)),
       shop: vi.fn(async () => shop),
       markPaid: vi.fn(async () => true),
       expireHold: vi.fn(async () => true),
@@ -289,6 +299,42 @@ describe('handleConnectEvent', () => {
     expect(deps.refund).toHaveBeenCalledWith(shop, expect.objectContaining({ stripe_payment_intent_id: 'pi_1', amount_paid_cents: 3000 }), 3000);
     expect(deps.setRefunded).toHaveBeenCalledWith('appt-1', 3000, 'refunded');
     expect(deps.notify).not.toHaveBeenCalled();
+  });
+
+  it('a failed refund for paid-after-cancel is completed on the Stripe retry', async () => {
+    let row: WebhookAppointment = { ...base, status: 'cancelled', payment_status: 'none' };
+    const refund = vi.fn().mockRejectedValueOnce(new Error('stripe 500')).mockImplementation(async (_s, _a, amt: number) => ({ refundedCents: amt }));
+    const deps = mkDeps(row, {
+      refund,
+      markPaid: vi.fn(async (_id, f) => {
+        if (row.stripe_payment_intent_id) return false;
+        row = { ...row, stripe_payment_intent_id: f.paymentIntentId, amount_paid_cents: f.amountPaidCents, payment_status: f.paymentStatus };
+        return true;
+      }),
+      appointmentBySession: vi.fn(async () => row),
+    });
+    await expect(handleConnectEvent(completed(), deps)).rejects.toThrow('stripe 500');
+    expect(await handleConnectEvent(completed(), deps)).toBe('refunded:cancelled-before-payment');
+    expect(refund).toHaveBeenCalledTimes(2);
+    expect(refund.mock.calls[1][2]).toBe(3000);
+    expect(deps.setRefunded).toHaveBeenCalledWith('appt-1', 3000, 'refunded');
+    // once refunded, further deliveries are plain no-ops
+    row = { ...row, amount_refunded_cents: 3000 };
+    expect(await handleConnectEvent({ ...completed(), id: 'evt_9' }, deps)).toBe('noop:already-recorded');
+  });
+
+  it('falls back to client_reference_id when the session id was never stored (not for another session)', async () => {
+    const appointmentId = '11111111-2222-4333-8444-555555555555';
+    const row = { ...base, id: appointmentId, stripe_checkout_session_id: null };
+    const deps = mkDeps(row);
+    const ev = { id: 'evt_x2', type: 'checkout.session.expired', account: 'acct_123', data: { object: { id: 'cs_9', client_reference_id: appointmentId } } };
+    expect(await handleConnectEvent(ev, deps)).toBe('cancelled:expired');
+    const deps2 = mkDeps({ ...row, stripe_checkout_session_id: 'cs_other' });
+    expect(await handleConnectEvent(ev, deps2)).toBe('ignored:no-appointment');
+    const deps3 = mkDeps(row);
+    expect(await handleConnectEvent({ ...ev, data: { object: { id: 'cs_9', client_reference_id: 'not-a-uuid' } } }, deps3)).toBe('ignored:no-appointment');
+    expect(deps3.appointmentById).not.toHaveBeenCalled();
+    expect(await handleConnectEvent({ ...ev, id: 'evt_x3', account: 'acct_evil' }, mkDeps(row))).toBe('ignored:no-appointment');
   });
 
   it('expired → frees the held slot', async () => {

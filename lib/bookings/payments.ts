@@ -226,15 +226,24 @@ export async function createStandardAccount(
   ownerEmail: string | null,
   opts: StripeOpts = {},
 ): Promise<string> {
-  const acct = await stripeRequest('POST', '/accounts', {
+  const create = (withPhone: boolean) => stripeRequest('POST', '/accounts', {
     type: 'standard',
     email: ownerEmail || undefined,
     'business_profile[name]': shop.name || undefined,
     'business_profile[url]': shop.slug ? bookingPageUrl(shop.slug) : undefined,
-    'business_profile[support_phone]': shop.phone || undefined,
+    'business_profile[support_phone]': withPhone ? shop.phone || undefined : undefined,
     'metadata[shop_id]': shop.id,
     'metadata[app]': 'aibarber-bookings',
-  }, { idempotencyKey: `ab-account-${shop.id}`, fetch: opts.fetch });
+  }, { idempotencyKey: `ab-account-${shop.id}${withPhone ? '' : '-nophone'}`, fetch: opts.fetch });
+  let acct: any;
+  try {
+    acct = await create(Boolean(shop.phone));
+  } catch (e) {
+    // The phone is free text typed by the owner; if Stripe rejects the request, try once without it
+    // (the owner enters the phone in Stripe's own onboarding anyway).
+    if (!(shop.phone && e instanceof StripeApiError && e.status === 400)) throw e;
+    acct = await create(false);
+  }
   if (!acct?.id) throw new StripeApiError('account create returned no id', 502);
   return acct.id as string;
 }
@@ -423,6 +432,7 @@ export interface WebhookDeps {
   releaseEvent(eventId: string): Promise<void>;
   appointmentBySession(sessionId: string): Promise<WebhookAppointment | null>;
   appointmentByPaymentIntent(pi: string): Promise<WebhookAppointment | null>;
+  appointmentById(id: string): Promise<WebhookAppointment | null>;
   shop(id: string): Promise<(PayShop & { stripe_account_id: string | null }) | null>;
   /** Records the payment once: conditional on no payment intent stored yet; true when this call made the change. */
   markPaid(apptId: string, f: { paymentStatus: 'paid' | 'deposit'; amountPaidCents: number; paymentIntentId: string | null }): Promise<boolean>;
@@ -455,10 +465,20 @@ export async function handleConnectEvent(event: StripeEvent, deps: WebhookDeps):
   }
 }
 
-async function apptForEvent(sessionOrPi: { kind: 'session' | 'pi'; id: string }, account: string | null | undefined, deps: WebhookDeps) {
-  const appt = sessionOrPi.kind === 'session'
-    ? await deps.appointmentBySession(sessionOrPi.id)
-    : await deps.appointmentByPaymentIntent(sessionOrPi.id);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function apptForEvent(
+  ref: { kind: 'session'; id: string; clientReferenceId?: string | null } | { kind: 'pi'; id: string },
+  account: string | null | undefined,
+  deps: WebhookDeps,
+) {
+  let appt = ref.kind === 'session' ? await deps.appointmentBySession(ref.id) : await deps.appointmentByPaymentIntent(ref.id);
+  if (!appt && ref.kind === 'session' && ref.clientReferenceId && UUID_RE.test(ref.clientReferenceId)) {
+    // Fallback if the API's write of stripe_checkout_session_id never landed: the session's
+    // client_reference_id is the appointment id. Only for a row not tied to another session.
+    const byId = await deps.appointmentById(ref.clientReferenceId);
+    if (byId && (byId.stripe_checkout_session_id == null || byId.stripe_checkout_session_id === ref.id)) appt = byId;
+  }
   if (!appt) return null;
   const shop = await deps.shop(appt.shop_id);
   // The event must come from the connected account that owns this appointment's shop.
@@ -466,34 +486,45 @@ async function apptForEvent(sessionOrPi: { kind: 'session' | 'pi'; id: string },
   return { appt, shop };
 }
 
+async function refundCancelled(shop: PayShop, appt: WebhookAppointment, pi: string | null, paidCents: number, deps: WebhookDeps): Promise<string> {
+  const { refundedCents } = await deps.refund(shop, { ...appt, stripe_payment_intent_id: pi, amount_paid_cents: paidCents }, paidCents);
+  const total = Math.floor(appt.amount_refunded_cents ?? 0) + refundedCents;
+  if (refundedCents > 0) await deps.setRefunded(appt.id, total, total >= paidCents ? 'refunded' : 'partially_refunded');
+  return 'refunded:cancelled-before-payment';
+}
+
 async function dispatch(event: StripeEvent, deps: WebhookDeps): Promise<string> {
   const obj = event.data?.object ?? {};
   switch (event.type) {
     case 'checkout.session.completed': {
       if (obj.payment_status !== 'paid') return 'ignored:unpaid';
-      const found = await apptForEvent({ kind: 'session', id: obj.id }, event.account, deps);
+      const found = await apptForEvent({ kind: 'session', id: obj.id, clientReferenceId: obj.client_reference_id }, event.account, deps);
       if (!found) return 'ignored:no-appointment';
       const { appt, shop } = found;
       const amount = Math.max(0, Math.floor(Number(obj.amount_total) || 0));
       const pi = typeof obj.payment_intent === 'string' ? obj.payment_intent : obj.payment_intent?.id ?? null;
       const paymentStatus = appt.price_cents == null || amount < appt.price_cents ? 'deposit' : 'paid';
       const changed = await deps.markPaid(appt.id, { paymentStatus, amountPaidCents: amount, paymentIntentId: pi });
-      if (!changed) return 'noop:already-recorded';
+      if (!changed) {
+        // Already recorded. If this was a paid-after-cancel whose refund failed last time (we
+        // returned 500 and Stripe retried), finish the refund; the Idempotency-Key makes it safe.
+        const paid = Math.floor(appt.amount_paid_cents ?? 0);
+        if (appt.status === 'cancelled' && pi && appt.stripe_payment_intent_id === pi && Math.floor(appt.amount_refunded_cents ?? 0) < paid) {
+          return refundCancelled(shop, appt, pi, paid, deps);
+        }
+        return 'noop:already-recorded';
+      }
       if (appt.status === 'cancelled') {
         // Paid after the booking was cancelled (e.g. the customer cancelled the held slot on the
         // manage page, then finished paying in another tab): give the money straight back.
-        const { refundedCents } = await deps.refund(shop, { ...appt, stripe_payment_intent_id: pi, amount_paid_cents: amount, amount_refunded_cents: 0 }, amount);
-        if (refundedCents > 0) {
-          await deps.setRefunded(appt.id, refundedCents, refundedCents >= amount ? 'refunded' : 'partially_refunded');
-        }
-        return 'refunded:cancelled-before-payment';
+        return refundCancelled(shop, { ...appt, amount_refunded_cents: 0 }, pi, amount, deps);
       }
       // Card bookings get their confirmation (push + email) once payment lands.
       await deps.notify({ kind: 'booking_created', appointmentId: appt.id });
       return `paid:${paymentStatus}`;
     }
     case 'checkout.session.expired': {
-      const found = await apptForEvent({ kind: 'session', id: obj.id }, event.account, deps);
+      const found = await apptForEvent({ kind: 'session', id: obj.id, clientReferenceId: obj.client_reference_id }, event.account, deps);
       if (!found) return 'ignored:no-appointment';
       const changed = await deps.expireHold(found.appt.id, new Date(deps.now()).toISOString());
       return changed ? 'cancelled:expired' : 'noop:not-held';
@@ -542,6 +573,11 @@ export function liveWebhookDeps(db: SupabaseClient = serviceDb()): WebhookDeps {
     async appointmentBySession(sessionId) {
       const { data, error } = await db.from('ab_appointments').select(APPT_COLS).eq('stripe_checkout_session_id', sessionId).maybeSingle();
       if (error) dbFail('appointmentBySession', error);
+      return (data as unknown as WebhookAppointment) ?? null;
+    },
+    async appointmentById(id) {
+      const { data, error } = await db.from('ab_appointments').select(APPT_COLS).eq('id', id).maybeSingle();
+      if (error) dbFail('appointmentById', error);
       return (data as unknown as WebhookAppointment) ?? null;
     },
     async appointmentByPaymentIntent(pi) {
