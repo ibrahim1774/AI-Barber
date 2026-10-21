@@ -606,6 +606,39 @@ describe('POST /api/book/sent', () => {
     ]);
   });
 
+  it('the push amount is the deposit when the service has one, else the price (matches the page)', async () => {
+    const amountFor = async (svc: Record<string, unknown>, override?: number) => {
+      const w = world({ shop: handles });
+      Object.assign(w.state.services[0], svc);
+      if (override != null) w.state.links.push({ service_id: w.ids.cut, member_id: w.ids.mike, price_override_cents: override });
+      const r = await book(w, { pay: 'manual', method: 'cashapp', memberId: w.ids.mike });
+      const a = w.state.appointments[0];
+      expect(await postSent({ token: a.manage_token, method: 'cashapp' }, w.deps)).toEqual({ status: 200, body: {} });
+      const pushed = w.notified.find((e) => e.kind === 'customer_says_paid') as any;
+      // Same number the page shows: manualAmountCents(priceCents, depositCents) of the create response.
+      const appt = (r.body as any).appointment;
+      expect(pushed.amountCents).toBe(appt.depositCents > 0 ? appt.depositCents : appt.priceCents ?? undefined);
+      return pushed.amountCents;
+    };
+    expect(await amountFor({ deposit_type: 'fixed', deposit_value: 1000 })).toBe(1000);
+    expect(await amountFor({ deposit_type: 'percent', deposit_value: 50 })).toBe(1500);
+    expect(await amountFor({ deposit_type: 'percent', deposit_value: 50 }, 4000)).toBe(2000); // member price
+    expect(await amountFor({ deposit_type: 'none', deposit_value: null })).toBe(3000);
+    // "Ask" price: a fixed deposit is still asked for; with no deposit there is no amount.
+    expect(await amountFor({ price_cents: null, deposit_type: 'fixed', deposit_value: 800 })).toBe(800);
+    expect(await amountFor({ price_cents: null, deposit_type: 'none', deposit_value: null })).toBeUndefined();
+  });
+
+  it('the push amount falls back to the price when the service was removed', async () => {
+    const w = world({ shop: handles });
+    Object.assign(w.state.services[0], { deposit_type: 'fixed', deposit_value: 1000 });
+    await book(w, { pay: 'manual', method: 'cashapp' });
+    w.state.services = [];
+    const a = w.state.appointments[0];
+    await postSent({ token: a.manage_token, method: 'cashapp' }, w.deps);
+    expect((w.notified.find((e) => e.kind === 'customer_says_paid') as any).amountCents).toBe(3000);
+  });
+
   async function expectRejected(w: ReturnType<typeof world>, token: string, method: string) {
     const before = JSON.stringify(w.state.appointments);
     expect(await postSent({ token, method }, w.deps)).toEqual({ status: 409, body: { error: 'not-awaiting-payment' } });

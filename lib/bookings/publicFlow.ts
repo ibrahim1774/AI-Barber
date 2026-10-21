@@ -496,7 +496,15 @@ export async function postSent(body: unknown, deps: FlowDeps): Promise<FlowResul
     { status: 'booked', method, paymentStatusIn: SENT_PAYMENT_STATUSES },
   );
   if (upd.ok === false) return err(409, 'not-awaiting-payment');
-  await safeNotify(deps, { kind: 'customer_says_paid', appointmentId: upd.row.id, method, amountCents: upd.row.price_cents ?? undefined });
+  // The amount the page asked the customer to send (W's manualAmountCents): the deposit when
+  // the service has one above 0, else the (member) price. Computed like createAppointment's
+  // depositCents; a removed service falls back to the price.
+  const service = upd.row.service_id
+    ? (await deps.repo.services(shop.id)).find((s) => s.id === upd.row.service_id) ?? null
+    : null;
+  const deposit = service ? serviceDeposit(service, upd.row.price_cents) : 0;
+  const amountCents = deposit > 0 ? deposit : upd.row.price_cents ?? undefined;
+  await safeNotify(deps, { kind: 'customer_says_paid', appointmentId: upd.row.id, method, amountCents });
   return ok({});
 }
 
