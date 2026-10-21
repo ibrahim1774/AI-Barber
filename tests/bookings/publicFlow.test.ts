@@ -308,10 +308,32 @@ describe('POST /api/book/appointments', () => {
   });
 
   it('pay methods must be offered by the shop', async () => {
-    const w = world({ shop: { pay_in_shop: false } });
+    // In-shop off and a manual handle live: shop and card are refused.
+    const w = world({ shop: { pay_in_shop: false, manual_handles: { cashapp: '$fresh' } } });
     expect((await book(w)).body).toEqual({ error: 'invalid', field: 'pay' });
-    expect((await book(w, { pay: 'manual' })).body).toEqual({ error: 'invalid', field: 'pay' });
     expect((await book(w, { pay: 'card' })).body).toEqual({ error: 'invalid', field: 'pay' });
+    // No manual handles and no card: manual is refused.
+    const w2 = world({ shop: { pay_in_shop: false } });
+    expect((await book(w2, { pay: 'manual' })).body).toEqual({ error: 'invalid', field: 'pay' });
+    expect((await book(w2, { pay: 'card' })).body).toEqual({ error: 'invalid', field: 'pay' });
+  });
+
+  it('in shop is allowed (and reported) when the shop has no other live way to pay', async () => {
+    // e.g. a card-only shop whose Stripe charges were switched off; blank handles do not count.
+    const w = world({ shop: { pay_in_shop: false, stripe_account_id: 'acct_1', stripe_charges_enabled: false, manual_handles: { venmo: '  ' } as any } });
+    expect(((await getShop({ slug: 'fresh-cuts' }, w.deps)).body as any).shop.pay).toEqual({ inShop: true, card: false, manual: {} });
+    const r = await book(w);
+    expect(r.status).toBe(201);
+    expect(w.state.appointments[0]).toMatchObject({ payment_method: 'shop', payment_status: 'none' });
+  });
+
+  it('in shop stays off when card or manual is live', async () => {
+    const card = world({ shop: { pay_in_shop: false, stripe_account_id: 'acct_1', stripe_charges_enabled: true } });
+    expect(((await getShop({ slug: 'fresh-cuts' }, card.deps)).body as any).shop.pay.inShop).toBe(false);
+    expect((await book(card)).body).toEqual({ error: 'invalid', field: 'pay' });
+    const manual = world({ shop: { pay_in_shop: false, manual_handles: { zelle: 'fresh@example.com' } } });
+    expect(((await getShop({ slug: 'fresh-cuts' }, manual.deps)).body as any).shop.pay.inShop).toBe(false);
+    expect((await book(manual)).body).toEqual({ error: 'invalid', field: 'pay' });
   });
 
   it('manual pay is booked as awaiting confirmation, on the only rail the shop takes', async () => {

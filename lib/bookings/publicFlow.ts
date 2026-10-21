@@ -27,6 +27,7 @@ import {
   membersFreeAt,
   normalizePhone,
   notFound,
+  inShopAllowed,
   offers,
   ok,
   parseInstant,
@@ -86,7 +87,7 @@ export async function getShop(params: Params, deps: FlowDeps): Promise<FlowResul
       phone: shop.phone ?? null,
       accent: shop.accent ?? null,
       cancelCutoffMin: shop.cancel_cutoff_min,
-      pay: { inShop: !!shop.pay_in_shop, card: cardEnabled(shop), manual: manualHandles(shop) },
+      pay: { inShop: inShopAllowed(shop), card: cardEnabled(shop), manual: manualHandles(shop) },
     },
     services: services.map((s) => ({
       id: s.id,
@@ -207,7 +208,7 @@ export async function createAppointment(body: unknown, deps: FlowDeps): Promise<
   const nowMs = deps.now();
 
   // Payment method must be one the shop offers.
-  if (pay === 'shop' && !shop.pay_in_shop) return invalid('pay');
+  if (pay === 'shop' && !inShopAllowed(shop)) return invalid('pay');
   if (pay === 'manual' && Object.keys(manualHandles(shop)).length === 0) return invalid('pay');
   if (pay === 'card' && !cardEnabled(shop)) return invalid('pay');
   // The manual rail is fixed at booking time (POST /sent must name the same one): the one

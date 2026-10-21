@@ -173,13 +173,32 @@ export function eligibleMembers(members: Member[], serviceId: string | null): Me
   return members.filter((m) => m.serviceIds == null || m.serviceIds.includes(serviceId));
 }
 
-export function payOptions(pay: Shop['pay']): PayKind[] {
+/** Shown on the details step when payOptions() leaves nothing for the chosen service. */
+export const NO_WAY_TO_PAY = "This service can't be booked online right now. Please call the shop.";
+
+/** Stripe's minimum card charge; the server refuses a card booking below it. */
+export const CARD_MIN_CENTS = 50;
+
+/** What a card booking for this service would charge: the deposit if there is one, else the price. */
+export function cardChargeCents(service: Pick<Service, 'priceCents' | 'depositCents'>): number {
+  return service.depositCents || service.priceCents || 0;
+}
+
+/**
+ * Ways to pay for this shop (and, once picked, this service). A shop with nothing configured
+ * still takes bookings, paid in shop (the server agrees: /api/book/shop reports inShop then).
+ * Card is dropped for a service whose charge is under Stripe's 50¢ minimum (e.g. an "ask"
+ * price with no deposit). That can leave nothing, for a card-only shop: the caller then asks
+ * the customer to call the shop rather than offering a choice the server would refuse.
+ */
+export function payOptions(pay: Shop['pay'], service?: Pick<Service, 'priceCents' | 'depositCents'> | null): PayKind[] {
   const out: PayKind[] = [];
   if (pay.inShop) out.push('shop');
   if (pay.card) out.push('card');
   if (manualMethods(pay.manual).length) out.push('manual');
-  // A shop with nothing configured still takes bookings, paid in shop.
-  return out.length ? out : ['shop'];
+  const base: PayKind[] = out.length ? out : ['shop'];
+  if (service && cardChargeCents(service) < CARD_MIN_CENTS) return base.filter((o) => o !== 'card');
+  return base;
 }
 type PayKind = 'shop' | 'card' | 'manual';
 

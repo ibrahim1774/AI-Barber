@@ -140,6 +140,15 @@ export function manualHandles(shop: ShopRow): ManualHandles {
 
 export const cardEnabled = (shop: ShopRow) => !!shop.stripe_charges_enabled && !!shop.stripe_account_id;
 
+/**
+ * In-shop pay is allowed when the shop turned it on, or when it has no other way to pay that
+ * is live (no Stripe charges, no manual handles), e.g. a card-only shop whose Stripe charges
+ * were switched off. Used by both /api/book/shop (pay.inShop) and the booking create, so the
+ * booking page and the server always agree.
+ */
+export const inShopAllowed = (shop: ShopRow) =>
+  !!shop.pay_in_shop || (!cardEnabled(shop) && Object.keys(manualHandles(shop)).length === 0);
+
 // ---------------------------------------------------------------------------
 // Bookings gate
 // ---------------------------------------------------------------------------

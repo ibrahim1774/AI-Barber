@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ApiError, type Api } from './api';
 import { DayPicker, TimePicker } from './pickers';
 import {
-  bookingErrorMessage, buildIcs, directionsUrl, rescheduleErrorMessage, sentErrorMessage, eligibleMembers, formatMoney, formatWhen, manualAmountCents, manualLink, manualMethods,
+  bookingErrorMessage, buildIcs, NO_WAY_TO_PAY, directionsUrl, rescheduleErrorMessage, sentErrorMessage, eligibleMembers, formatMoney, formatWhen, manualAmountCents, manualLink, manualMethods,
   METHOD_LABEL, nextStep, onAccent, parseRoute, payOptions, prevStep, progress, safeAccent, serviceLabel, telUrl,
   tokenFromManageUrl, type Step, formatDay, parseCheckout, shouldKeepPolling, resolveIds, CHECKOUT_POLL_MS, type CheckoutReturn,
 } from './logic';
@@ -68,7 +68,7 @@ function Flow({ api, d }: { api: Api; d: Loaded }) {
   const [done, setDone] = useState<{ appt: BookedAppointment; method: ManualMethod | null } | null>(null);
 
   const elig = eligibleMembers(members, service?.id ?? null);
-  const options = payOptions(shop.pay);
+  const options = payOptions(shop.pay, service);
   // One payment row per manual method, so a shop with several handles always reaches the payment step.
   const mm = manualMethods(shop.pay.manual);
   const rowCount = options.filter((o) => o !== 'manual').length + mm.length;
@@ -117,9 +117,11 @@ function Flow({ api, d }: { api: Api; d: Loaded }) {
       <div className="bar" role="progressbar" aria-valuemin={1} aria-valuemax={pr.total} aria-valuenow={pr.index}><i style={{ width: `${(pr.index / pr.total) * 100}%` }} /></div>
     </div>
   );
-  const altsBlock = problem && (
+  // A card-only shop can't take this service online (its charge is under the card minimum).
+  const shown = problem ?? (step === 'details' && options.length === 0 ? NO_WAY_TO_PAY : null);
+  const altsBlock = shown && (
     <div className="note warn" role="alert">
-      <p style={{ margin: 0 }}>{problem}</p>
+      <p style={{ margin: 0 }}>{shown}</p>
       {alts.length > 0 && <>
         <p className="sub">Next free times:</p>
         <div className="times">
@@ -167,9 +169,9 @@ function Flow({ api, d }: { api: Api; d: Loaded }) {
       {step === 'details' && service && slot && <>
         <h2>Your details</h2>
         <Summary service={service} slot={slot} tz={tz} members={members} memberId={memberId} />
-        <DetailsForm cust={cust} setCust={setCust} busy={busy}
+        {options.length > 0 && <DetailsForm cust={cust} setCust={setCust} busy={busy}
           submitLabel={ctx.payOptionCount > 1 ? 'Continue' : options[0] === 'card' ? 'Continue to payment' : 'Book'}
-          onSubmit={() => { ctx.payOptionCount > 1 ? go('payment') : submit(options[0], options[0] === 'manual' ? mm[0] : undefined); }} />
+          onSubmit={() => { ctx.payOptionCount > 1 ? go('payment') : submit(options[0], options[0] === 'manual' ? mm[0] : undefined); }} />}
         {altsBlock}
       </>}
       {step === 'payment' && service && slot && <>

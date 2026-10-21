@@ -90,6 +90,21 @@ describe('step state machine', () => {
     expect(payOptions({ inShop: false, card: false, manual: {} })).toEqual(['shop']);
     expect(payOptions({ inShop: true, card: true, manual: { venmo: 'x' } })).toEqual(['shop', 'card', 'manual']);
   });
+  it('payOptions hides card for a service whose charge is under 50 cents', () => {
+    const all = { inShop: true, card: true, manual: { venmo: 'x' } };
+    expect(payOptions(all, { priceCents: null, depositCents: 0 })).toEqual(['shop', 'manual']);
+    expect(payOptions(all, { priceCents: 49, depositCents: 0 })).toEqual(['shop', 'manual']);
+    expect(payOptions(all, { priceCents: 50, depositCents: 0 })).toEqual(['shop', 'card', 'manual']);
+    // The deposit is what's charged when there is one.
+    expect(payOptions(all, { priceCents: 3000, depositCents: 40 })).toEqual(['shop', 'manual']);
+    expect(payOptions(all, { priceCents: null, depositCents: 500 })).toEqual(['shop', 'card', 'manual']);
+    // No service picked yet: card stays.
+    expect(payOptions(all, null)).toEqual(['shop', 'card', 'manual']);
+    // Card-only shop + ask-priced service: nothing to offer (the page asks them to call).
+    expect(payOptions({ inShop: false, card: true, manual: {} }, { priceCents: null, depositCents: 0 })).toEqual([]);
+    // Nothing configured still falls back to in shop.
+    expect(payOptions({ inShop: false, card: false, manual: {} }, { priceCents: null, depositCents: 0 })).toEqual(['shop']);
+  });
 });
 
 describe('misc', () => {
