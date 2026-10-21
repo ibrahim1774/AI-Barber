@@ -9,8 +9,9 @@ import { postPushToken } from '@/lib/bookings/api';
 import { loadMyShop } from '@/lib/bookings/shop';
 
 /**
- * Booking pushes: registers this phone's Expo push token with the server and
- * opens the Bookings tab on the right day when a booking push is tapped.
+ * Booking and order pushes: registers this phone's Expo push token with the server and
+ * opens the Bookings tab on the right day when a booking push is tapped, or the
+ * Store tab on the order when an order push is tapped.
  * It NEVER asks for notification permission (the app asks once at launch,
  * reminders.ts); without permission it registers nothing.
  */
@@ -76,6 +77,28 @@ export function isBookingPush(data: unknown): data is { start?: string; date?: s
   return d.kind === 'booking' || typeof d.start === 'string' || typeof d.date === 'string';
 }
 
+/** A new-order push carries `{ kind: 'order', orderId }`. */
+export function isOrderPush(data: unknown): data is { kind: 'order'; orderId: string } {
+  const d = (data ?? {}) as Record<string, unknown>;
+  return d.kind === 'order' && typeof d.orderId === 'string' && d.orderId.length > 0;
+}
+
+/** Where an order push opens: the Store tab on Orders, with that order's sheet. */
+export const orderPushHref = (orderId: string) => `/(tabs)/store?tab=orders&orderId=${encodeURIComponent(orderId)}`;
+
+/** Routes a tapped push by its `kind`. 'order' opens the Store tab; booking pushes (and a missing kind) open Bookings. */
+export function openPush(data: unknown): boolean {
+  if (isOrderPush(data)) {
+    router.navigate(orderPushHref(data.orderId) as never);
+    return true;
+  }
+  if (isBookingPush(data)) {
+    openBookings(data);
+    return true;
+  }
+  return false;
+}
+
 function openBookings(data: { start?: string; date?: string }): void {
   const params: Record<string, string> = {};
   if (data.date) params.date = data.date;
@@ -85,8 +108,8 @@ function openBookings(data: { start?: string; date?: string }): void {
 
 /**
  * Mounted once in the tabs layout (a site exists): registers the token for a
- * signed-in owner with a shop, and routes booking-push taps (also the one that
- * launched the app) to the Bookings tab.
+ * signed-in owner with a shop, and routes booking-push and order-push taps (also the
+ * one that launched the app).
  */
 export function useBookingsPush(): void {
   const { session } = useSession();
@@ -110,12 +133,12 @@ export function useBookingsPush(): void {
     if (!N) return;
     const handle = (r: NotificationsModule.NotificationResponse | null | undefined) => {
       const data = r?.notification?.request?.content?.data;
-      if (!r || r.actionIdentifier !== N.DEFAULT_ACTION_IDENTIFIER || !isBookingPush(data)) return;
+      if (!r || r.actionIdentifier !== N.DEFAULT_ACTION_IDENTIFIER || !(isOrderPush(data) || isBookingPush(data))) return;
       // The launch response is re-read each time the layout mounts: open each tap once.
       const id = `${r.notification.request.identifier}:${r.notification.date}`;
       if (handledTaps.has(id)) return;
       handledTaps.add(id);
-      openBookings(data);
+      openPush(data);
     };
     try {
       handle(N.getLastNotificationResponse());
