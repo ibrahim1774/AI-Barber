@@ -109,6 +109,7 @@ describe('009_store.sql', () => {
     expect(f).toContain('alter table public.ab_shops add column if not exists order_seq int not null default 1000;');
     expect(f).toContain('create unique index if not exists ab_orders_client_key on public.ab_orders (shop_id, client_key) where client_key is not null;');
     expect(f).toContain('create unique index if not exists ab_orders_shop_no_key on public.ab_orders (shop_id, order_no);');
+    expect(f).toContain("create index if not exists ab_orders_card_holds_idx on public.ab_orders (updated_at) where status = 'new' and payment_method = 'card' and payment_status = 'awaiting';");
   });
 
   it('the create RPC looks first and only swallows the client_key race', () => {

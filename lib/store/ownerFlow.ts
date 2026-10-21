@@ -150,6 +150,9 @@ export async function refundOwnerOrder(auth: Auth, id: unknown, body: unknown, d
   const o = await ownedOrder(deps, shop, id);
   if (!o) return notFound();
   if (o.payment_method !== 'card') return err(409, 'not-card');
+  // Paid after it was cancelled (a late Checkout payment on an expired hold): the webhook's
+  // paid-after-cancel path refunds it in full; an owner refund would only race it.
+  if (o.status === 'cancelled' && !o.paid_at && o.amount_paid_cents > 0) return err(409, 'not-markable');
 
   // 1. Pre-check in TypeScript on the row just read (PostgREST can't compare two columns).
   const readDue = o.refund_due_cents;

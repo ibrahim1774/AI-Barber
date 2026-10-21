@@ -85,7 +85,9 @@ alter table public.ab_orders add column if not exists checkout_url text;
 create unique index if not exists ab_orders_shop_no_key on public.ab_orders (shop_id, order_no);
 create unique index if not exists ab_orders_client_key on public.ab_orders (shop_id, client_key) where client_key is not null;
 create index if not exists ab_orders_refund_pending_idx on public.ab_orders (updated_at) where refund_pending;
-create index if not exists ab_orders_card_holds_idx on public.ab_orders (created_at)
+-- The hold sweep reads stale card holds least recently touched first (it touches the ones it
+-- can't resolve, so they rotate behind newer holds).
+create index if not exists ab_orders_card_holds_idx on public.ab_orders (updated_at)
   where status = 'new' and payment_method = 'card' and payment_status = 'awaiting';
 
 do $$ begin
@@ -107,6 +109,8 @@ exception when duplicate_object then null; end $$;
 
 -- ---------------------------------------------------------------------------
 -- Order number: #1001, #1002 ... per shop. The ab_shops row lock makes the bump atomic per shop.
+-- Note: the order_seq bump fires ab_shops_updated_at, so every new order also moves
+-- ab_shops.updated_at. Don't read ab_shops.updated_at as "the shop's settings changed".
 -- ---------------------------------------------------------------------------
 create or replace function public.ab_assign_order_no()
 returns trigger

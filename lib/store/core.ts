@@ -3,7 +3,7 @@
 import type { GetUser } from '../bookings/auth.js';
 import { isObj, isUuid, iso, text, type FlowResult } from '../bookings/core.js';
 import { MANUAL_METHODS } from '../bookings/repo.js';
-import { orderRefundKey, type NotifyOrder, type StorePayments } from './deps.js';
+import { orderRefundKey, type CheckoutCloseResult, type NotifyOrder, type StorePayments } from './deps.js';
 import type { OrderGuard, StoreRepo } from './repo.js';
 import type { Fulfilment, OrderItemRow, OrderRow, ProductRow, ShippingAddress, ShopStoreRow, StoreNotifyEvent } from './types.js';
 
@@ -21,6 +21,8 @@ export interface StoreDeps {
   baseUrl: string;
   /** Cross-instance limits checked inside flows (absent = none). */
   limits?: StoreLimits;
+  /** Wait (a resubmit polling an in-flight Checkout); default setTimeout. Tests inject it. */
+  sleep?(ms: number): Promise<void>;
 }
 
 export interface StoreOwnerDeps extends StoreDeps {
@@ -225,6 +227,8 @@ export function ownerOrderView(o: OrderRow, items: OrderItemRow[]) {
     amountPaidCents: o.amount_paid_cents,
     amountRefundedCents: o.amount_refunded_cents,
     refundPending: refundPending(o),
+    /** The retry sweep gave up on an owed refund (23 h): the app says to email support. */
+    refundStuck: o.refund_stuck_at != null && o.refund_due_cents > o.amount_refunded_cents,
     trackingNumber: o.tracking_number ?? null,
     trackingUrl: o.tracking_url ?? null,
     customerSaysPaidAt: isoOrNull(o.customer_says_paid_at),
@@ -391,6 +395,8 @@ export async function retryPendingOrderRefunds(
 
 /** A card hold older than this with nothing paid is expired (Checkout itself lasts ~32 min). */
 export const ORDER_HOLD_EXPIRY_MIN = 35;
+/** A hold whose session is 'complete' this long after creation means a payment the webhook never recorded. */
+export const ORDER_HOLD_PAID_ALERT_MIN = 60;
 
 /**
  * Expire orphaned card holds (new + card + awaiting + nothing paid, created more than 35 min
@@ -401,6 +407,11 @@ export const ORDER_HOLD_EXPIRY_MIN = 35;
  * request died before Checkout) is cancelled directly. The cancel is the same compare-and-set as
  * the webhook's expireOrderHold, so a payment that lands meanwhile is never overwritten. Never
  * refunds, never notifies.
+ *
+ * Unresolved holds are touched (a LIVE_HOLD-guarded no-op that bumps updated_at) and the sweep
+ * reads holds by updated_at, so they rotate to the back instead of starving newer ones. A hold
+ * still 'complete' an hour after it was created is a payment the webhook never recorded: it is
+ * logged once (ab_events 'order_hold_paid_unrecorded', on the first run past the hour).
  */
 export async function expireStaleOrderHolds(
   deps: { repo: StoreRepo; payments: Pick<StorePayments, 'closeCheckoutSession'>; now(): number },
@@ -412,12 +423,28 @@ export async function expireStaleOrderHolds(
   for (const h of holds) {
     try {
       if (h.stripe_checkout_session_id) {
-        const shop = await deps.repo.shopById(h.shop_id);
-        const closed = shop ? await deps.payments.closeCheckoutSession(shop, h.stripe_checkout_session_id) : 'unknown';
-        if (closed === 'complete') { out.paid++; continue; }
+        let closed: CheckoutCloseResult = 'unknown';
+        try {
+          const shop = await deps.repo.shopById(h.shop_id);
+          if (shop) closed = await deps.payments.closeCheckoutSession(shop, h.stripe_checkout_session_id);
+        } catch (e: any) {
+          console.error(`[store] closing checkout for order hold ${h.id} failed:`, e?.message || e);
+        }
         if (closed !== 'expired') {
-          console.error(`[store] order hold ${h.id}: checkout session state unknown; left for the next sweep`);
-          out.unresolved++;
+          if (closed === 'complete') {
+            out.paid++;
+            const created = Date.parse(h.created_at);
+            const alertAt = created + ORDER_HOLD_PAID_ALERT_MIN * MIN;
+            if (nowMs >= alertAt && Date.parse(h.updated_at) < alertAt) {
+              console.error(`[store] order ${h.id}: Checkout ${h.stripe_checkout_session_id} is complete but the payment was never recorded`);
+              await safeLog(deps, h.shop_id, 'order_hold_paid_unrecorded', { orderId: h.id, sessionId: h.stripe_checkout_session_id });
+            }
+          } else {
+            console.error(`[store] order hold ${h.id}: checkout session state unknown; left for the next sweep`);
+            out.unresolved++;
+          }
+          // Rotate it behind newer holds (a miss means the webhook resolved it meanwhile).
+          await deps.repo.updateOrder(h.id, { checkout_url: h.checkout_url }, LIVE_HOLD);
           continue;
         }
       }

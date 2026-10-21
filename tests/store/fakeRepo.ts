@@ -99,7 +99,7 @@ export function fakeStoreRepo(state: StoreState, nowFn: () => number = Date.now)
     staleOrderHolds: async (before, limit) =>
       clone(state.orders.filter((o) => o.status === 'new' && o.payment_method === 'card' && o.payment_status === 'awaiting'
         && o.amount_paid_cents === 0 && Date.parse(o.created_at) < Date.parse(before))
-        .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at)).slice(0, limit)),
+        .sort((a, b) => Date.parse(a.updated_at) - Date.parse(b.updated_at)).slice(0, limit)),
     pendingOrderRefunds: async (before, limit) =>
       clone(state.orders.map(gen).filter((o) => o.refund_pending && o.stripe_payment_intent_id != null
         && Date.parse(o.updated_at) < Date.parse(before))
@@ -192,6 +192,7 @@ export function storeWorld(over: { shop?: Partial<ShopStoreRow> } = {}) {
     baseUrl: 'https://www.aibarber.org',
     limits,
     getUser: async (jwt) => users[jwt] ?? null,
+    sleep: vi.fn(async (_ms: number) => {}),
   };
   return {
     state, deps, payments, notified, limits, ids,

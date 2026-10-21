@@ -83,7 +83,10 @@ export interface StoreRepo {
   /** In the cart's line order. */
   orderItems(orderId: string): Promise<OrderItemRow[]>;
   updateOrder(id: string, patch: OrderPatch, guard?: OrderGuard): Promise<OrderWrite>;
-  /** Unpaid card holds (new, card, awaiting, nothing paid) created before `createdBeforeIso`, oldest first. */
+  /**
+   * Unpaid card holds (new, card, awaiting, nothing paid) created before `createdBeforeIso`, least
+   * recently touched first (the sweep touches the ones it can't resolve, so they rotate).
+   */
   staleOrderHolds(createdBeforeIso: string, limit: number): Promise<OrderRow[]>;
   /** Orders with refund_pending and a payment intent, last updated before `updatedBeforeIso`, oldest first. */
   pendingOrderRefunds(updatedBeforeIso: string, limit: number): Promise<OrderRow[]>;
@@ -172,7 +175,7 @@ export function supabaseStoreRepo(client?: SupabaseClient): StoreRepo {
     staleOrderHolds: (createdBeforeIso, limit) =>
       many('staleOrderHolds', db().from('ab_orders').select(ORDER_COLS)
         .eq('status', 'new').eq('payment_method', 'card').eq('payment_status', 'awaiting').eq('amount_paid_cents', 0)
-        .lt('created_at', createdBeforeIso).order('created_at').limit(limit)),
+        .lt('created_at', createdBeforeIso).order('updated_at').limit(limit)),
     pendingOrderRefunds: (updatedBeforeIso, limit) =>
       many('pendingOrderRefunds', db().from('ab_orders').select(ORDER_COLS)
         .eq('refund_pending', true).not('stripe_payment_intent_id', 'is', null)

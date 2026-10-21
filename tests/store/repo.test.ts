@@ -76,7 +76,7 @@ describe('supabaseStoreRepo', () => {
     await supabaseStoreRepo(f.client).staleOrderHolds('2026-01-01T00:00:00Z', 50);
     expect(f.calls).toEqual(expect.arrayContaining([
       ['eq', ['status', 'new']], ['eq', ['payment_method', 'card']], ['eq', ['payment_status', 'awaiting']],
-      ['eq', ['amount_paid_cents', 0]], ['lt', ['created_at', '2026-01-01T00:00:00Z']], ['limit', [50]],
+      ['eq', ['amount_paid_cents', 0]], ['lt', ['created_at', '2026-01-01T00:00:00Z']], ['order', ['updated_at']], ['limit', [50]],
     ]));
     f = fakeClient({ data: [], error: null });
     await supabaseStoreRepo(f.client).pendingOrderRefunds('2026-01-01T00:00:00Z', 25);

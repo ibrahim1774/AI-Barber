@@ -76,10 +76,45 @@ describe('expireStaleOrderHolds', () => {
     w.setNow('2026-11-02T13:00:00Z');
     w.payments.closeCheckoutSession.mockRejectedValueOnce(new Error('boom'));
     const e = quiet();
-    expect(await expireStaleOrderHolds(w.deps, 50)).toEqual({ expired: 1, paid: 0, unresolved: 0 });
+    expect(await expireStaleOrderHolds(w.deps, 50)).toEqual({ expired: 1, paid: 0, unresolved: 1 });
     e.mockRestore();
     expect(w.order(a.id).status).toBe('new');
     expect(w.order(b.id).status).toBe('cancelled');
+  });
+
+  it('unresolved holds rotate: 50 unknown holds no longer starve a fresh stale hold', async () => {
+    const w = storeWorld();
+    const stuck = [];
+    for (let i = 0; i < 50; i++) stuck.push(await place(w)); // created 12:00, each with a session
+    w.setNow('2026-11-02T12:01:00Z');
+    const fresh = await place(w);
+    Object.assign(w.order(fresh.id), { stripe_checkout_session_id: null, checkout_url: null }); // died before Checkout
+    w.payments.closeCheckoutSession.mockResolvedValue('unknown');
+    const e = quiet();
+    w.setNow('2026-11-02T12:40:00Z');
+    expect(await expireStaleOrderHolds(w.deps, 50)).toEqual({ expired: 0, paid: 0, unresolved: 50 });
+    expect(w.order(fresh.id).status).toBe('new'); // not reached yet
+    expect(stuck.every((o) => w.order(o.id).updated_at === '2026-11-02T12:40:00.000Z' && w.order(o.id).status === 'new')).toBe(true);
+    w.setNow('2026-11-02T12:55:00Z');
+    expect((await expireStaleOrderHolds(w.deps, 50)).expired).toBe(1); // the fresh one sorts first now
+    e.mockRestore();
+    expect(w.order(fresh.id)).toMatchObject({ status: 'cancelled', cancelled_by: 'customer' });
+  });
+
+  it('a hold still complete an hour after creation is logged once as order_hold_paid_unrecorded, and left alone', async () => {
+    const w = storeWorld();
+    const o = await place(w);
+    w.payments.closeCheckoutSession.mockResolvedValue('complete');
+    const e = quiet();
+    for (const t of ['12:40', '12:55', '13:10', '13:25', '13:40']) {
+      w.setNow(`2026-11-02T${t}:00Z`);
+      expect(await expireStaleOrderHolds(w.deps, 50)).toEqual({ expired: 0, paid: 1, unresolved: 0 });
+    }
+    e.mockRestore();
+    expect(w.state.events).toEqual([
+      { shop_id: w.ids.shopId, kind: 'order_hold_paid_unrecorded', payload: { orderId: o.id, sessionId: `cs_${o.id}` } },
+    ]);
+    expect(w.order(o.id)).toMatchObject({ status: 'new', payment_status: 'awaiting', updated_at: '2026-11-02T13:40:00.000Z' });
   });
 
   it('expire succeeds but a payment lands before the cancel: the compare-and-set misses, the paid row is kept', async () => {
@@ -129,7 +164,11 @@ describe('retryPendingOrderRefunds', () => {
     expect(await retryPendingOrderRefunds(w.deps, Date.parse('2026-11-02T12:10:00Z'))).toEqual({ retried: 0, refunded: 0, failed: 0, stuck: 0 });
   });
 
-  it('owed after a partial Stripe catch-up: refunds only the rest', async () => {
+  // The first attempt never reached Stripe (its key is unused), and meanwhile a dashboard refund
+  // moved amount_refunded_cents. The retry sends due − refunded under the original key. Had the
+  // first call reached Stripe, Stripe would refuse the reused key with a different amount
+  // (idempotency_error): the row would then fail each run and go stuck at 23 h (no over-refund).
+  it('first call never reached Stripe, then a partial refund elsewhere: the retry refunds only the rest', async () => {
     const w = storeWorld();
     const o = await owed(w);
     w.order(o.id).amount_refunded_cents = 1000; // charge.refunded reported part of it

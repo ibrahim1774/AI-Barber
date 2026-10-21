@@ -92,7 +92,7 @@ describe('mark: paid', () => {
         customer: { name: 'Sam Lee', phone: '5551234567', email: 'sam@example.com' }, note: 'Hi', shippingAddress: null,
         items: [{ productId: w.ids.oil, name: 'Beard oil', unitPriceCents: 1500, quantity: 2 }],
         subtotalCents: 3000, shippingCents: 0, totalCents: 3000,
-        paymentStatus: 'paid', paymentMethod: 'cashapp', amountPaidCents: 3000, amountRefundedCents: 0, refundPending: false,
+        paymentStatus: 'paid', paymentMethod: 'cashapp', amountPaidCents: 3000, amountRefundedCents: 0, refundPending: false, refundStuck: false,
         trackingNumber: null, trackingUrl: null, customerSaysPaidAt: null, readyAt: null, shippedAt: null, doneAt: null, cancelledAt: null,
       },
     });
@@ -447,6 +447,28 @@ describe('refund', () => {
     expect(w.state.events).toEqual([{ shop_id: w.ids.shopId, kind: 'order_refund_failed', payload: expect.objectContaining({ orderId: o.id, amountCents: 1200 }) }]);
     // and a second owner refund is refused while it is owed
     expect(await refund(w, o.id, {})).toEqual({ status: 409, body: { error: 'refund-pending' } });
+  });
+
+  it('a stuck refund: 409 refund-pending (no new claim), and the order shows refundStuck', async () => {
+    const w = storeWorld();
+    const o = await paidCard(w);
+    Object.assign(w.order(o.id), { refund_due_cents: 3000, refund_stuck_at: '2026-11-03T11:00:00.000Z' });
+    const upd = vi.spyOn(w.deps.repo, 'updateOrder');
+    expect(await refund(w, o.id, {})).toEqual({ status: 409, body: { error: 'refund-pending' } });
+    expect(upd).not.toHaveBeenCalled();
+    const r = await mark(w, o.id, { action: 'ready' });
+    expect((r.body as any).order).toMatchObject({ refundStuck: true, refundPending: false });
+  });
+
+  it('a paid-after-cancel order (cancelled, no paid_at, money in): 409 not-markable, the webhook owns that refund', async () => {
+    const w = storeWorld();
+    const o = await place(w, { pay: 'card' });
+    Object.assign(w.order(o.id), {
+      status: 'cancelled', cancelled_by: 'customer', payment_status: 'paid', amount_paid_cents: 3000, stripe_payment_intent_id: 'pi_late', paid_at: null,
+    });
+    expect(await refund(w, o.id, {})).toEqual({ status: 409, body: { error: 'not-markable' } });
+    expect(w.payments.refundOrder).not.toHaveBeenCalled();
+    expect(w.order(o.id).refund_due_cents).toBe(0);
   });
 
   it('a shipping card order refunds the shipping too (total includes it)', async () => {
