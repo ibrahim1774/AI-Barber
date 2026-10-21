@@ -242,6 +242,16 @@ export async function createAppointment(body: unknown, deps: FlowDeps): Promise<
     if (ins.ok === false) continue; // 23P01: someone took this barber at this time; try the next free one
     let appt = ins.row;
 
+    // A double-submitted form can race past the duplicate check above and land on two
+    // barbers ("any"). After inserting, the copy with the smallest id wins; the others
+    // remove themselves. Every racer sees the same winner.
+    const twins = (await deps.repo.appointmentsStartingAt(shop.id, iso(startMs)))
+      .filter((a) => a.id !== appt.id && a.status !== 'cancelled' && normalizePhone(a.customer_phone) === phoneKey);
+    if (twins.some((a) => a.id < appt.id)) {
+      await deps.repo.deleteAppointment(appt.id);
+      return err(409, 'duplicate');
+    }
+
     let checkoutUrl: string | undefined;
     if (pay === 'card') {
       try {

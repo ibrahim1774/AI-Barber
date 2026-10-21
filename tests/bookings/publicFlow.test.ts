@@ -138,6 +138,25 @@ describe('POST /api/book/appointments', () => {
     expect(w.state.appointments).toHaveLength(1);
   });
 
+  it.each([
+    ['00000000-0000-4000-8000-000000000000', 409],
+    ['ffffffff-ffff-4fff-8fff-ffffffffffff', 201],
+  ])('a twin that raced past the duplicate check: smallest id wins (twin %s -> %i)', async (twinId, expected) => {
+    const w = world();
+    const orig = w.deps.repo.insertAppointment;
+    w.deps.repo.insertAppointment = async (row) => {
+      // the other submission lands on Jay between our duplicate check and our insert
+      await orig({ ...row, member_id: w.ids.jay });
+      w.state.appointments.at(-1)!.id = twinId;
+      return orig(row);
+    };
+    const r = await book(w);
+    expect(r.status).toBe(expected);
+    if (expected === 409) expect(r.body).toEqual({ error: 'duplicate' });
+    expect(w.state.appointments.map((a) => a.id)).toContain(twinId);
+    expect(w.state.appointments).toHaveLength(expected === 409 ? 1 : 2);
+  });
+
   it('409 slot-taken with the next 3 free starts when every barber is taken', async () => {
     const w = world();
     expect((await book(w)).status).toBe(201);
