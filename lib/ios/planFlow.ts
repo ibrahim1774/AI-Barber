@@ -8,7 +8,7 @@ import { authenticate, liveGetUser, type GetUser } from '../bookings/auth.js';
 import { isObj, type FlowResult } from '../bookings/core.js';
 import { serviceClient, supabaseBookingRepo, type ShopRow } from '../bookings/repo.js';
 import { VerifyFailure, lazyDefaultVerifier, type VerifiedTx } from './appleVerify.js';
-import { entitlementActive } from './lapse.js';
+import { entitlementActive, purchaseLive } from './lapse.js';
 import { supabasePurchases, type PurchaseRow } from './purchases.js';
 import { tierOf, type Tier } from './tiers.js';
 
@@ -18,7 +18,7 @@ export interface PlanView {
   tier: Tier | null;
   /** All false unless active. */
   entitlements: { hosting: boolean; bookings: boolean; store: boolean };
-  /** Not revoked and not taken down (a lapse reaches here through the sweep's takedown). */
+  /** Not revoked, not taken down, and not a lapsed purchase the sweep never takes down (purchaseLive). */
   active: boolean;
   expiresAt: string | null;
   takenDownAt: string | null;
@@ -46,10 +46,11 @@ const isoOrNull = (v: string | null | undefined): string | null => {
 };
 
 /**
- * The GET body. `_now` is unused on purpose: `active` follows the server's gates (revoked_at and
- * the Apple-confirmed takedown), not the clock, so the app never shows a plan the gates refuse.
+ * The GET body. `active` and `entitlements` are exactly what the server's gates use
+ * (lib/ios/lapse.ts purchaseLive / entitlementActive at `now`), so the app never shows a plan
+ * the gates refuse.
  */
-export function planView(shop: Pick<ShopRow, 'ios_otid'>, row: PurchaseRow | null, _now: number): PlanView {
+export function planView(shop: Pick<ShopRow, 'ios_otid'>, row: PurchaseRow | null, now: number): PlanView {
   const linked = !!shop.ios_otid;
   if (!linked || !row) {
     return {
@@ -61,11 +62,11 @@ export function planView(shop: Pick<ShopRow, 'ios_otid'>, row: PurchaseRow | nul
     linked,
     tier: tierOf(row.product_id),
     entitlements: {
-      hosting: entitlementActive(row, 'hosting'),
-      bookings: entitlementActive(row, 'bookings'),
-      store: entitlementActive(row, 'store'),
+      hosting: entitlementActive(row, 'hosting', now),
+      bookings: entitlementActive(row, 'bookings', now),
+      store: entitlementActive(row, 'store', now),
     },
-    active: !row.revoked_at && !row.taken_down_at,
+    active: purchaseLive(row, now),
     expiresAt: isoOrNull(row.expires_at),
     takenDownAt: isoOrNull(row.taken_down_at),
     revoked: !!row.revoked_at,

@@ -34,14 +34,45 @@ export function isActiveRow(row: LapseFields, now: number): boolean {
   return Number.isFinite(exp) && exp > now;
 }
 
+/** The ios_purchases columns the gates read. */
+export interface GateFields {
+  product_id: string | null;
+  revoked_at: string | null;
+  taken_down_at: string | null;
+  expires_at?: string | null;
+  site_slug?: string | null;
+  published_at?: string | null;
+  environment?: string | null;
+}
+
 /**
- * Tier gate (Phase 4): the purchase's current product grants `ent`, and the purchase is
- * neither revoked nor taken down. A lapse of the whole subscription reaches the gates
- * through taken_down_at (the sweep, Apple-confirmed); a downgrade through product_id.
+ * Will the iOS sweep take this purchase down when it lapses? Only bound, published rows are
+ * takedown candidates, and Sandbox ones only with IOS_TAKEDOWN_SANDBOX=1 (sweep.ts).
  */
-export function entitlementActive(
-  row: { product_id: string | null; revoked_at: string | null; taken_down_at: string | null } | null | undefined,
-  ent: Entitlement,
+export function sweepWatches(
+  row: Pick<GateFields, 'site_slug' | 'published_at' | 'environment'>,
+  takedownSandbox: boolean = process.env.IOS_TAKEDOWN_SANDBOX === '1',
 ): boolean {
-  return !!row && !row.revoked_at && !row.taken_down_at && grants(row.product_id, ent);
+  return row.site_slug != null && row.published_at != null && (row.environment !== 'Sandbox' || takedownSandbox);
+}
+
+/**
+ * Is the linked purchase live for the gates? Not revoked and not taken down. A whole-
+ * subscription lapse normally reaches here through taken_down_at (the sweep, Apple-confirmed,
+ * billing grace kept up). A purchase the sweep never takes down (unbound, unpublished, or
+ * Sandbox) closes on the lapse prefilter instead (expired at least GRACE_MS ago), so linking
+ * a purchase that is not the site's can't keep Bookings or the Store open after it ends.
+ */
+export function purchaseLive(row: GateFields | null | undefined, now: number = Date.now()): boolean {
+  if (!row || row.revoked_at || row.taken_down_at) return false;
+  if (!sweepWatches(row) && isLapsed({ expires_at: row.expires_at ?? null, revoked_at: row.revoked_at }, now)) return false;
+  return true;
+}
+
+/**
+ * Tier gate (Phase 4): the purchase is live (purchaseLive) and its current product grants
+ * `ent`. A downgrade reaches the gates through product_id.
+ */
+export function entitlementActive(row: GateFields | null | undefined, ent: Entitlement, now: number = Date.now()): boolean {
+  return purchaseLive(row, now) && grants(row!.product_id, ent);
 }

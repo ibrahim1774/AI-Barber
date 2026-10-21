@@ -15,7 +15,7 @@ const EXPIRES = '2027-01-01T00:00:00.000Z';
 const purchaseRow = (over: Partial<PurchaseRow> = {}): PurchaseRow => ({
   original_transaction_id: OTID, product_id: `${P}bookings.monthly`, environment: 'Production',
   site_slug: 'fresh-cuts', user_id: USER, expires_at: EXPIRES, revoked_at: null, last_notification: null,
-  published_at: null, taken_down_at: null, lapse_checked_at: null, product_purchased_at: null, ...over,
+  published_at: '2026-10-01T00:00:00.000Z', taken_down_at: null, lapse_checked_at: null, product_purchased_at: null, ...over,
 });
 
 const vtx = (over: Partial<VerifiedTx> = {}): VerifiedTx => ({
@@ -84,6 +84,11 @@ describe('planView', () => {
   it('a revoked purchase → revoked true, active false, nothing granted', () => {
     const v = planView({ ios_otid: OTID }, purchaseRow({ revoked_at: '2026-10-01T00:00:00Z' }), NOW);
     expect(v).toMatchObject({ active: false, revoked: true, entitlements: NONE });
+  });
+
+  it('I2: an unbound purchase past its expiry → inactive, nothing granted', () => {
+    const v = planView({ ios_otid: OTID }, purchaseRow({ site_slug: null, expires_at: '2026-01-01T00:00:00Z' }), NOW);
+    expect(v).toMatchObject({ tier: 'bookings', active: false, entitlements: NONE, revoked: false });
   });
 
   it('linked but the purchase row is missing → tier null, inactive', () => {

@@ -131,7 +131,7 @@ export function supabaseStoreRepo(client?: SupabaseClient): StoreRepo {
     shopById: (id) => one('shopById', db().from('ab_shops').select(SHOP_COLS).eq('id', id).maybeSingle()),
     shopByOwner: (userId) => one('shopByOwner', db().from('ab_shops').select(SHOP_COLS).eq('owner_id', userId).maybeSingle()),
     purchase: (otid) =>
-      one('purchase', db().from('ios_purchases').select('user_id, product_id, revoked_at, taken_down_at')
+      one('purchase', db().from('ios_purchases').select('user_id, product_id, revoked_at, taken_down_at, expires_at, site_slug, published_at, environment')
         .eq('original_transaction_id', otid).maybeSingle()),
 
     products: (shopId) =>

@@ -185,6 +185,11 @@ export interface PurchaseGateRow {
   product_id: string | null;
   revoked_at: string | null;
   taken_down_at: string | null;
+  /** With site_slug, published_at and environment: a purchase the iOS sweep never takes down closes the gates on expiry (lib/ios/lapse.ts purchaseLive). */
+  expires_at?: string | null;
+  site_slug?: string | null;
+  published_at?: string | null;
+  environment?: string | null;
 }
 
 export type NewShop = Pick<ShopRow, 'owner_id' | 'site_id' | 'slug' | 'name' | 'timezone' | 'address' | 'phone' | 'accent' | 'bookings_enabled'>;
@@ -310,7 +315,7 @@ export function supabaseBookingRepo(client?: SupabaseClient): BookingRepo {
     shopByOwner: (userId) => one('shopByOwner', db().from('ab_shops').select(SHOP_COLS).eq('owner_id', userId).maybeSingle()),
     shopById: (id) => one('shopById', db().from('ab_shops').select(SHOP_COLS).eq('id', id).maybeSingle()),
     purchase: (otid) =>
-      one('purchase', db().from('ios_purchases').select('user_id, product_id, revoked_at, taken_down_at')
+      one('purchase', db().from('ios_purchases').select('user_id, product_id, revoked_at, taken_down_at, expires_at, site_slug, published_at, environment')
         .eq('original_transaction_id', otid).maybeSingle()),
 
     services: (shopId) =>

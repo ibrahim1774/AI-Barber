@@ -87,3 +87,22 @@ describe('orders placed before a downgrade', () => {
     expect((r.body as any).order.id).toBe(o.id);
   });
 });
+
+describe('I2: a linked purchase the sweep never takes down', () => {
+  const LAPSED = '2026-01-01T00:00:00Z';
+  it.each([
+    ['unbound', { site_slug: null }],
+    ['Sandbox', { environment: 'Sandbox', site_slug: 'fresh-cuts', published_at: '2025-12-01T00:00:00Z' }],
+  ])('%s and expired → shop closed', async (_n, over) => {
+    const w = storeWorld();
+    Object.assign(w.state.purchases[w.shop().ios_otid!], { expires_at: LAPSED, ...over });
+    expect(await getStoreShop({ slug: 'fresh-cuts' }, w.deps)).toEqual(PAUSED_PAGE);
+    expect(await order(w)).toEqual({ status: 423, body: { error: 'store-paused' } });
+  });
+
+  it('bound, published Production past expiry stays open (the sweep decides)', async () => {
+    const w = storeWorld();
+    Object.assign(w.state.purchases[w.shop().ios_otid!], { expires_at: LAPSED, site_slug: 'fresh-cuts', published_at: '2025-12-01T00:00:00Z', environment: 'Production' });
+    expect((await order(w)).status).toBe(201);
+  });
+});

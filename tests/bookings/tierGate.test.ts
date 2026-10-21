@@ -194,3 +194,25 @@ describe('POST /api/shop/setup with any of the six products', () => {
     expect(upserts).toHaveLength(0);
   });
 });
+
+// I2: the sweep only takes down bound, published Production purchases. A shop linked to any
+// other purchase must close its booking page itself once that purchase has lapsed.
+describe('a linked purchase the sweep never takes down', () => {
+  const LAPSED = '2026-01-01T00:00:00Z'; // long past, whatever the clock
+  it.each([
+    ['unbound (a second Apple ID linked through setup)', { site_slug: null }],
+    ['Sandbox', { environment: 'Sandbox', site_slug: 'fresh-cuts', published_at: '2025-12-01T00:00:00Z' }],
+  ])('%s and expired → booking page paused, owner writes 423', async (_n, over) => {
+    const w = onProduct('store.monthly');
+    Object.assign(w.state.purchases[OTID], { expires_at: LAPSED, ...over });
+    expect(await getShop({ slug: 'fresh-cuts' }, w.deps)).toEqual({ status: 200, body: { paused: true, shop: { name: 'Fresh Cuts' } } });
+    expect(await book(w)).toEqual(PAUSED);
+    expect(await createOwnerAppointment(AUTH, { memberId: w.ids.mike, serviceId: w.ids.cut, start: T10, customer: { name: 'X' } }, w.deps)).toEqual(PAUSED);
+  });
+
+  it('a bound, published Production purchase past expiry stays open (the sweep decides, with Apple)', async () => {
+    const w = onProduct('store.monthly');
+    Object.assign(w.state.purchases[OTID], { expires_at: LAPSED, site_slug: 'fresh-cuts', published_at: '2025-12-01T00:00:00Z', environment: 'Production' });
+    expect((await book(w)).status).toBe(201);
+  });
+});

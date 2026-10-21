@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { GRACE_MS, entitlementActive, isActiveRow, isLapsed } from '../../lib/ios/lapse.js';
+import { GRACE_MS, entitlementActive, isActiveRow, isLapsed, purchaseLive, sweepWatches } from '../../lib/ios/lapse.js';
 import { offlineHtml } from '../../lib/ios/offlinePage.js';
 
 const NOW = 1_800_000_000_000;
@@ -75,4 +75,42 @@ describe('entitlementActive (Phase 4 tiers)', () => {
   it('false when revoked', () => expect(entitlementActive(row(`${P}store.monthly`, { revoked_at: iso(NOW) }), 'store')).toBe(false));
   it('false when taken down', () => expect(entitlementActive(row(`${P}store.monthly`, { taken_down_at: iso(NOW) }), 'bookings')).toBe(false));
   it('false with no row', () => expect(entitlementActive(null, 'hosting')).toBe(false));
+});
+
+describe('I2: purchases the sweep never takes down close the gates once lapsed', () => {
+  const P = 'com.ibrahim1774.aibarber.';
+  const swept = {
+    product_id: `${P}store.monthly`, revoked_at: null, taken_down_at: null,
+    site_slug: 'fresh-cuts', published_at: iso(NOW - 40 * GRACE_MS), environment: 'Production',
+  };
+  const expired = iso(NOW - 2 * GRACE_MS);
+
+  it('sweepWatches: bound, published and Production (Sandbox only with IOS_TAKEDOWN_SANDBOX)', () => {
+    expect(sweepWatches(swept)).toBe(true);
+    expect(sweepWatches({ ...swept, site_slug: null })).toBe(false);
+    expect(sweepWatches({ ...swept, published_at: null })).toBe(false);
+    expect(sweepWatches({ ...swept, environment: 'Sandbox' })).toBe(false);
+    expect(sweepWatches({ ...swept, environment: 'Sandbox' }, true)).toBe(true);
+  });
+
+  it('a swept row past expiry stays open (the sweep asks Apple; billing grace keeps it up)', () => {
+    expect(entitlementActive({ ...swept, expires_at: expired }, 'store', NOW)).toBe(true);
+  });
+
+  it.each([
+    ['unbound', { site_slug: null }],
+    ['bound but never published', { published_at: null }],
+    ['Sandbox', { environment: 'Sandbox' }],
+  ])('%s and lapsed → closed', (_n, over) => {
+    const row = { ...swept, ...over, expires_at: expired };
+    expect(purchaseLive(row, NOW)).toBe(false);
+    expect(entitlementActive(row, 'store', NOW)).toBe(false);
+    expect(entitlementActive(row, 'hosting', NOW)).toBe(false);
+  });
+
+  it('unswept but not yet lapsed (inside the grace hour, or no expiry known) → open', () => {
+    expect(entitlementActive({ ...swept, site_slug: null, expires_at: iso(NOW - 1000) }, 'store', NOW)).toBe(true);
+    expect(entitlementActive({ ...swept, site_slug: null, expires_at: iso(NOW + GRACE_MS) }, 'store', NOW)).toBe(true);
+    expect(entitlementActive({ ...swept, site_slug: null, expires_at: null }, 'store', NOW)).toBe(true);
+  });
 });
