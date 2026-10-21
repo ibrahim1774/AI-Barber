@@ -7,7 +7,7 @@ import {
 const base = (services: any[] = []): WebsiteData => ({
   shopName: 'S', area: '', phone: '', hero: { heading: '', tagline: '', imageUrl: '' },
   about: { heading: '', description: [], imageUrl: '' }, services, gallery: [],
-} as WebsiteData);
+} as unknown as WebsiteData);
 const draft = (o: Partial<Parameters<typeof updateService>[2]> = {}) =>
   ({ title: 'Fade', price: '', duration: 30, description: '', imageUrl: '', ...o });
 

@@ -4,7 +4,7 @@ import { sectionCards } from '@/lib/sections/list';
 const d = (o: Partial<WebsiteData> = {}): WebsiteData => ({
   shopName: 'Fresh Cuts', area: '', phone: '555-1234', hero: { heading: '', tagline: '', imageUrl: '' },
   about: { heading: '', description: [], imageUrl: '' }, services: [], gallery: [], ...o,
-} as WebsiteData);
+} as unknown as WebsiteData);
 const sum = (x: WebsiteData) => Object.fromEntries(sectionCards(x).map((c) => [c.key, c.summary]));
 
 describe('sectionCards', () => {
