@@ -35,6 +35,7 @@ export default defineConfig(({ mode }) => {
           input: {
             main: path.resolve(__dirname, 'index.html'),
             book: path.resolve(__dirname, 'book.html'),
+            shop: path.resolve(__dirname, 'shop.html'),
           },
           output: {
             manualChunks: {

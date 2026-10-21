@@ -53,3 +53,20 @@ describe.each(Object.keys(renderers))('%s shop link', (name) => {
     expect(html).toContain('&quot;&gt;&lt;script&gt;');
   });
 });
+
+describe.each(Object.keys(renderers))('%s link schemes', (name) => {
+  const render = renderers[name];
+  it('drops non-http(s) shopUrl and bookingUrl', () => {
+    for (const bad of ['javascript:alert(1)', 'data:text/html,<script>alert(1)</script>', ' JaVaScRiPt:alert(1)']) {
+      const html = render(fixture({ shopUrl: bad, bookingUrl: bad }));
+      expect(html).not.toMatch(/javascript:alert/i);
+      expect(html).not.toContain('data:text/html');
+      expect(html).not.toContain('Shop online');
+    }
+  });
+  it('renders https booking and shop links', () => {
+    const html = render(fixture({ shopUrl: SHOP, bookingUrl: 'https://book.test/x' }));
+    expect(html).toContain(`href="${SHOP}"`);
+    expect(html).toContain('href="https://book.test/x"');
+  });
+});

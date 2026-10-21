@@ -8,6 +8,7 @@
 //
 // Pure: WebsiteData in, HTML string out. Keep it that way.
 import type { WebsiteData } from '../../types';
+import { safeHref } from './safeHref.js';
 
 // Seed copy used when a prime site has no policy / pull-quote of its own
 // (e.g. an existing booksy luxe site switched over to Design 2). Both the
@@ -184,9 +185,11 @@ export function resolvePrimeTheme(slug?: string): { brand: string; bright: strin
 // only when data is present, matching the live editor.
 // ===========================================================================
 export function generatePrimeHTMLWithPlaceholders(siteData: WebsiteData): string {
+  const bookingUrl = safeHref(siteData.bookingUrl);
+  const shopUrl = safeHref(siteData.shopUrl);
   const formattedPhone = (siteData.phone || '').replace(/\s+/g, '');
   const phoneE164 = '+1' + (siteData.phone || '').replace(/\D/g, '');
-  const bookHref = siteData.bookingUrl || `tel:${phoneE164}`;
+  const bookHref = bookingUrl || `tel:${phoneE164}`;
   const safeName = escapeHtml(siteData.shopName);
   const safeArea = escapeHtml(siteData.area);
   const safeAreaShort = escapeHtml(cityStateOnly(siteData.area));
@@ -350,9 +353,9 @@ ${PRIME_SCOPED_CSS}
   <!-- Nav -->
   <nav style="position:sticky;top:0;z-index:50;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--p-line-soft);">
     <div class="p-container" style="display:flex;align-items:center;justify-content:space-between;padding:16px 6vw;">
-      <a href="#top" class="p-serif" style="text-decoration:none;color:var(--p-ink);font-size:20px;letter-spacing:0.04em;">${safeName}</a>${siteData.shopUrl ? `
-      <a href="${escapeHtml(siteData.shopUrl)}" class="p-eyebrow" style="text-decoration:none;">Shop</a>` : ''}
-      <a href="${escapeHtml(bookHref)}"${siteData.bookingUrl ? ' target="_blank" rel="noopener noreferrer"' : ''} class="p-cta p-cta-solid" style="padding:10px 18px;font-size:10px;">Book Now</a>
+      <a href="#top" class="p-serif" style="text-decoration:none;color:var(--p-ink);font-size:20px;letter-spacing:0.04em;">${safeName}</a>${shopUrl ? `
+      <a href="${escapeHtml(shopUrl)}" class="p-eyebrow" style="text-decoration:none;">Shop</a>` : ''}
+      <a href="${escapeHtml(bookHref)}"${bookingUrl ? ' target="_blank" rel="noopener noreferrer"' : ''} class="p-cta p-cta-solid" style="padding:10px 18px;font-size:10px;">Book Now</a>
     </div>
   </nav>
 
@@ -365,7 +368,7 @@ ${PRIME_SCOPED_CSS}
       <h1 class="p-display p-italic" style="font-size:clamp(2.2rem,5.5vw,4.6rem);margin:0 0 14px;color:var(--p-brand);">${escapeHtml(siteData.hero.heading)}</h1>
       <p class="p-serif p-italic" style="font-size:clamp(1rem,2.2vw,1.4rem);color:var(--p-ink-soft);max-width:640px;margin:0 auto 22px;">${escapeHtml(siteData.hero.tagline)}</p>
       <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;">
-        <a href="${escapeHtml(bookHref)}"${siteData.bookingUrl ? ' target="_blank" rel="noopener noreferrer"' : ''} class="p-cta p-cta-solid">Book an Appointment</a>
+        <a href="${escapeHtml(bookHref)}"${bookingUrl ? ' target="_blank" rel="noopener noreferrer"' : ''} class="p-cta p-cta-solid">Book an Appointment</a>
         <a href="#services" class="p-cta">View Services</a>
       </div>
       ${agg ? `<div style="margin-top:28px;color:var(--p-ink-soft);font-size:13px;"><span style="color:var(--p-brand);">${'★'.repeat(Math.round(agg.rating))}</span> ${agg.rating.toFixed(1)} · ${agg.count.toLocaleString()} reviews</div>` : ''}
@@ -398,7 +401,7 @@ ${PRIME_SCOPED_CSS}
     <div class="p-eyebrow" style="color:var(--p-brand-deep);margin-bottom:14px;">Take a Chair</div>
     <h2 class="p-display" style="font-size:clamp(2rem,5vw,3rem);margin:0 0 16px;color:#1a1a1a;">Ready for <span class="p-italic">your next cut?</span></h2>
     <p class="p-serif p-italic" style="color:#555;margin:0 0 28px;">Appointments recommended — walk-ins welcomed when chairs allow.</p>
-    <a href="${escapeHtml(bookHref)}"${siteData.bookingUrl ? ' target="_blank" rel="noopener noreferrer"' : ''} class="p-cta" style="background:#1a1a1a;color:var(--p-brand);border-color:#1a1a1a;">Book an Appointment</a>
+    <a href="${escapeHtml(bookHref)}"${bookingUrl ? ' target="_blank" rel="noopener noreferrer"' : ''} class="p-cta" style="background:#1a1a1a;color:var(--p-brand);border-color:#1a1a1a;">Book an Appointment</a>
   </section>
 
   <!-- Visit -->
@@ -410,8 +413,8 @@ ${PRIME_SCOPED_CSS}
         <div style="display:grid;gap:22px;color:var(--p-ink-soft);font-size:16px;line-height:1.6;">
           ${siteData.contact.address ? `<div><div class="p-eyebrow" style="margin-bottom:6px;">The Address</div><div class="p-serif p-italic" style="color:var(--p-ink);font-size:1.2rem;">${escapeHtml(siteData.contact.address)}</div></div>` : ''}
           <div><div class="p-eyebrow" style="margin-bottom:6px;">By Phone</div><a href="tel:${formattedPhone}" class="p-serif p-italic" style="color:var(--p-ink);font-size:1.2rem;text-decoration:none;">${escapeHtml(siteData.phone)}</a></div>
-          ${siteData.bookingUrl ? `<div><div class="p-eyebrow" style="margin-bottom:6px;">Online Booking</div><a href="${escapeHtml(siteData.bookingUrl)}" target="_blank" rel="noopener noreferrer" class="p-serif p-italic" style="color:var(--p-ink);font-size:1.1rem;">Book online → confirmed instantly</a></div>` : ''}${siteData.shopUrl ? `
-          <div><div class="p-eyebrow" style="margin-bottom:6px;">The Shop</div><a href="${escapeHtml(siteData.shopUrl)}" class="p-serif p-italic" style="color:var(--p-ink);font-size:1.1rem;">Shop online → pickup or shipping</a></div>` : ''}
+          ${bookingUrl ? `<div><div class="p-eyebrow" style="margin-bottom:6px;">Online Booking</div><a href="${escapeHtml(bookingUrl)}" target="_blank" rel="noopener noreferrer" class="p-serif p-italic" style="color:var(--p-ink);font-size:1.1rem;">Book online → confirmed instantly</a></div>` : ''}${shopUrl ? `
+          <div><div class="p-eyebrow" style="margin-bottom:6px;">The Shop</div><a href="${escapeHtml(shopUrl)}" class="p-serif p-italic" style="color:var(--p-ink);font-size:1.1rem;">Shop online → pickup or shipping</a></div>` : ''}
         </div>
       </div>
       ${hoursMarkup}
