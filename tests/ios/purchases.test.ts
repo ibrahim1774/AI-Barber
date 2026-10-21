@@ -13,7 +13,7 @@ function fakeClient(result: Result = { data: null, error: null }, ...queued: Res
     then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) =>
       Promise.resolve(queued.length ? queued.shift() : result).then(res, rej),
   };
-  for (const m of ['select', 'insert', 'update', 'upsert', 'eq', 'is', 'not', 'order', 'limit', 'maybeSingle', 'single']) {
+  for (const m of ['select', 'insert', 'update', 'upsert', 'eq', 'is', 'not', 'or', 'gt', 'lt', 'order', 'limit', 'maybeSingle', 'single']) {
     chain[m] = (...args: unknown[]) => { calls.push({ method: m, args }); return chain; };
   }
   const client: any = { from: (t: string) => { calls.push({ method: 'from', args: [t] }); return chain; } };
@@ -134,6 +134,39 @@ describe('supabasePurchases', () => {
     expect(payload.expires_at).toBe(new Date(5000).toISOString());
   });
 
+  describe('applyNotification never moves expires_at backwards', () => {
+    const STORED = 1_800_000_000_000;
+    const apply = (client: any, expiresAt: number) => supabasePurchases(client).applyNotification({
+      otid: 'o1', productId: 'p', environment: 'Production', expiresAt, revokedAt: null, type: 'DID_RENEW',
+    });
+
+    it('an older (late, retried) notification keeps the stored expiry but still records the rest', async () => {
+      const { client, calls } = fakeClient({ data: null, error: null }, { data: { expires_at: new Date(STORED).toISOString() }, error: null });
+      await apply(client, STORED - 86_400_000);
+      const payload = find(calls, 'upsert')!.args[0] as Record<string, unknown>;
+      expect(Object.keys(payload)).not.toContain('expires_at');
+      expect(payload.last_notification).toBe('DID_RENEW');
+    });
+
+    it('a newer expiry is written', async () => {
+      const { client, calls } = fakeClient({ data: null, error: null }, { data: { expires_at: new Date(STORED).toISOString() }, error: null });
+      await apply(client, STORED + 86_400_000);
+      expect((find(calls, 'upsert')!.args[0] as Record<string, unknown>).expires_at).toBe(new Date(STORED + 86_400_000).toISOString());
+    });
+
+    it('no stored expiry takes the new value', async () => {
+      const { client, calls } = fakeClient({ data: null, error: null }, { data: { expires_at: null }, error: null });
+      await apply(client, STORED);
+      expect((find(calls, 'upsert')!.args[0] as Record<string, unknown>).expires_at).toBe(new Date(STORED).toISOString());
+    });
+
+    it('a read error throws (Apple retries) and nothing is written', async () => {
+      const { client, calls } = fakeClient({ data: null, error: null }, { data: null, error: { message: 'boom' } });
+      await expect(apply(client, STORED)).rejects.toThrow(/applyNotification/);
+      expect(find(calls, 'upsert')).toBeUndefined();
+    });
+  });
+
   it('applyNotification omits expires_at when expiresAt is null', async () => {
     const { client, calls } = fakeClient();
     await supabasePurchases(client).applyNotification({
@@ -183,5 +216,139 @@ describe('supabasePurchases', () => {
   it('get returns null when missing', async () => {
     const { client } = fakeClient({ data: null, error: null });
     expect(await supabasePurchases(client).get('nope')).toBeNull();
+  });
+
+  describe('stale revocations clear only on a newer, active, unrevoked answer', () => {
+    const T = 1_800_000_000_000;
+    const vtx = (over: Record<string, unknown> = {}) => ({
+      originalTransactionId: 'o1', transactionId: 't9', productId: 'p', environment: 'Production' as const,
+      expiresAt: T + 86_400_000, revoked: false, status: 1, ...over,
+    });
+    const revokedRow = { original_transaction_id: 'o1', revoked_at: new Date(T - 86_400_000).toISOString() };
+
+    it('upsertVerified with checkedAt + Apple active clears a revocation older than the check (conditional in SQL)', async () => {
+      // awaits: read expires_at, upsert, conditional clear
+      const { client, calls } = fakeClient({ data: [{ original_transaction_id: 'o1' }], error: null },
+        { data: null, error: null }, { data: revokedRow, error: null });
+      const row = await supabasePurchases(client).upsertVerified(vtx(), { checkedAt: T });
+      expect(row.revoked_at).toBeNull();
+      expect(find(calls, 'update')!.args).toEqual([{ revoked_at: null }]);
+      expect(find(calls, 'lt')!.args).toEqual(['revoked_at', new Date(T).toISOString()]);
+    });
+
+    it('a revocation recorded after the check survives (SQL condition matches nothing)', async () => {
+      const { client } = fakeClient({ data: [], error: null }, { data: null, error: null }, { data: revokedRow, error: null });
+      const row = await supabasePurchases(client).upsertVerified(vtx(), { checkedAt: T });
+      expect(row.revoked_at).toBe(revokedRow.revoked_at);
+    });
+
+    it('never clears without checkedAt, for a revoked tx, or when Apple says inactive (billing retry)', async () => {
+      for (const [tx, opts] of [[vtx(), undefined], [vtx({ revoked: true, status: 5 }), { checkedAt: T }], [vtx({ status: 3 }), { checkedAt: T }]] as const) {
+        const { client, calls } = fakeClient({ data: revokedRow, error: null });
+        await supabasePurchases(client).upsertVerified(tx as any, opts as any);
+        expect(calls.filter((c) => c.method === 'update')).toEqual([]);
+      }
+    });
+
+    it('applyNotification with clearRevokedBefore clears only revocations older than the purchase', async () => {
+      const { client, calls } = fakeClient();
+      await supabasePurchases(client).applyNotification({
+        otid: 'o1', productId: 'p', environment: 'Production', expiresAt: null, revokedAt: null, type: 'SUBSCRIBED', clearRevokedBefore: T,
+      });
+      expect(find(calls, 'update')!.args).toEqual([{ revoked_at: null }]);
+      expect(find(calls, 'lt')!.args).toEqual(['revoked_at', new Date(T).toISOString()]);
+      expect(Object.keys(find(calls, 'upsert')!.args[0] as object)).not.toContain('revoked_at');
+    });
+
+    it('applyNotification without clearRevokedBefore issues no clear', async () => {
+      const { client, calls } = fakeClient();
+      await supabasePurchases(client).applyNotification({
+        otid: 'o1', productId: 'p', environment: 'Production', expiresAt: null, revokedAt: null, type: 'DID_RENEW',
+      });
+      expect(find(calls, 'update')).toBeUndefined();
+    });
+  });
+
+  describe('lapse takedown queries', () => {
+    const NOW = 1_800_000_000_000;
+    const DAY = 86_400_000;
+    const iso = (ms: number) => new Date(ms).toISOString();
+
+    it('takedownCandidates: bound, published, not taken down, revoked or expired past the grace; re-checked in JS', async () => {
+      const rows = [
+        { original_transaction_id: 'expired', expires_at: iso(NOW - 2 * DAY), revoked_at: null },
+        { original_transaction_id: 'revoked', expires_at: iso(NOW + DAY), revoked_at: iso(NOW - DAY) },
+        { original_transaction_id: 'in-grace', expires_at: iso(NOW - 1000), revoked_at: null },
+        { original_transaction_id: 'no-expiry', expires_at: null, revoked_at: null },
+        { original_transaction_id: 'unpublished', site_slug: 's5', published_at: null, taken_down_at: null, expires_at: iso(NOW - 2 * DAY), revoked_at: null },
+        { original_transaction_id: 'already-down', site_slug: 's6', published_at: iso(NOW - 9 * DAY), taken_down_at: iso(NOW - DAY), expires_at: iso(NOW - 2 * DAY), revoked_at: null },
+      ].map((r, i) => ({ site_slug: `s${i}`, published_at: iso(NOW - 9 * DAY), taken_down_at: null, ...r }));
+      const { client, calls } = fakeClient({ data: rows, error: null });
+      const out = await supabasePurchases(client).takedownCandidates(7, NOW);
+      expect(out.map((r) => r.original_transaction_id)).toEqual(['expired', 'revoked']);
+      expect(calls.filter((c) => c.method === 'not').map((c) => c.args)).toEqual([['site_slug', 'is', null], ['published_at', 'is', null]]);
+      expect(calls.filter((c) => c.method === 'is').map((c) => c.args)).toEqual([['taken_down_at', null]]);
+      expect(find(calls, 'or')!.args).toEqual([`revoked_at.not.is.null,expires_at.lte."${iso(NOW - 3_600_000)}"`]);
+      expect(find(calls, 'limit')!.args).toEqual([7]);
+    });
+
+    it('restoreCandidates: taken down and (revoked or unexpired), oldest-checked first; re-checked in JS', async () => {
+      const rows = [
+        { original_transaction_id: 'back', site_slug: 'b', expires_at: iso(NOW + DAY), revoked_at: null, taken_down_at: iso(NOW - DAY) },
+        { original_transaction_id: 'stale', site_slug: 's', expires_at: iso(NOW - 1), revoked_at: null, taken_down_at: iso(NOW - DAY) },
+        { original_transaction_id: 'refunded', site_slug: 'r', expires_at: iso(NOW - DAY), revoked_at: iso(NOW - DAY), taken_down_at: iso(NOW - DAY) },
+      ];
+      const { client, calls } = fakeClient({ data: rows, error: null });
+      const out = await supabasePurchases(client).restoreCandidates(3, NOW);
+      expect(out.map((r) => r.original_transaction_id)).toEqual(['back', 'refunded']);
+      expect(find(calls, 'not')!.args).toEqual(['taken_down_at', 'is', null]);
+      expect(find(calls, 'or')!.args).toEqual([`revoked_at.not.is.null,expires_at.gt."${iso(NOW)}"`]);
+      expect(calls.filter((c) => c.method === 'order').map((c) => c.args)).toEqual([
+        ['lapse_checked_at', { ascending: true, nullsFirst: true }], ['expires_at', { ascending: true }],
+      ]);
+      expect(find(calls, 'limit')!.args).toEqual([3]);
+    });
+
+    it('takedownCandidates: oldest-checked first; Sandbox excluded unless includeSandbox', async () => {
+      const rows = [
+        { original_transaction_id: 'prod', environment: 'Production', site_slug: 'p', published_at: iso(NOW - 9 * DAY), taken_down_at: null, expires_at: iso(NOW - 2 * DAY), revoked_at: null },
+        { original_transaction_id: 'sbx', environment: 'Sandbox', site_slug: 's', published_at: iso(NOW - 9 * DAY), taken_down_at: null, expires_at: iso(NOW - 2 * DAY), revoked_at: null },
+      ];
+      const a = fakeClient({ data: rows, error: null });
+      expect((await supabasePurchases(a.client).takedownCandidates(5, NOW, { includeSandbox: false })).map((r) => r.original_transaction_id)).toEqual(['prod']);
+      expect(find(a.calls, 'eq')!.args).toEqual(['environment', 'Production']);
+      expect(a.calls.filter((c) => c.method === 'order').map((c) => c.args)).toEqual([
+        ['lapse_checked_at', { ascending: true, nullsFirst: true }], ['expires_at', { ascending: true }],
+      ]);
+      const b = fakeClient({ data: rows, error: null });
+      expect((await supabasePurchases(b.client).takedownCandidates(5, NOW, { includeSandbox: true })).map((r) => r.original_transaction_id)).toEqual(['prod', 'sbx']);
+      expect(find(b.calls, 'eq')).toBeUndefined();
+    });
+
+    it('markLapseChecked only touches lapse_checked_at', async () => {
+      const a = fakeClient();
+      await supabasePurchases(a.client).markLapseChecked('o1', NOW);
+      expect(find(a.calls, 'update')!.args).toEqual([{ lapse_checked_at: iso(NOW) }]);
+      expect(find(a.calls, 'eq')!.args).toEqual(['original_transaction_id', 'o1']);
+    });
+
+    it('markTakenDown / clearTakenDown only touch taken_down_at', async () => {
+      const a = fakeClient();
+      await supabasePurchases(a.client).markTakenDown('o1', NOW);
+      expect(find(a.calls, 'update')!.args).toEqual([{ taken_down_at: iso(NOW) }]);
+      expect(find(a.calls, 'eq')!.args).toEqual(['original_transaction_id', 'o1']);
+      const b = fakeClient();
+      await supabasePurchases(b.client).clearTakenDown('o1');
+      expect(find(b.calls, 'update')!.args).toEqual([{ taken_down_at: null }]);
+      expect(find(b.calls, 'eq')!.args).toEqual(['original_transaction_id', 'o1']);
+    });
+
+    it('findBySlug looks up by site_slug and throws on error', async () => {
+      const a = fakeClient({ data: { original_transaction_id: 'o1', site_slug: 's' }, error: null });
+      expect((await supabasePurchases(a.client).findBySlug('s'))!.original_transaction_id).toBe('o1');
+      expect(find(a.calls, 'eq')!.args).toEqual(['site_slug', 's']);
+      const b = fakeClient({ data: null, error: { message: 'boom' } });
+      await expect(supabasePurchases(b.client).findBySlug('s')).rejects.toThrow(/findBySlug/);
+    });
   });
 });

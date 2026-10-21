@@ -26,10 +26,16 @@ export default defineConfig(({ mode }) => {
         }
       },
       build: {
+        // Booking page is its own entry so aibarber.org's pixels never load on it.
+        // (rollupOptions.input below)
         // Split heavy deps into vendor chunks so the browser downloads
         // them in parallel + caches them across deploys. Lucide-react
         // intentionally NOT chunked so tree-shaking strips unused icons.
         rollupOptions: {
+          input: {
+            main: path.resolve(__dirname, 'index.html'),
+            book: path.resolve(__dirname, 'book.html'),
+          },
           output: {
             manualChunks: {
               'vendor-react': ['react', 'react-dom'],

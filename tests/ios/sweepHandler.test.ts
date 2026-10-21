@@ -1,18 +1,48 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const unpublishedBound = vi.fn();
-vi.mock('../../lib/publishSite.js', () => ({ publishSite: vi.fn(async (s: string) => ({ ok: true, siteId: s })) }));
+const { unpublishedBound, restoreCandidates, takedownCandidates, markTakenDown, clearTakenDown, publishSite, writePendingSite, deployRenderedSite, appleVerify } = vi.hoisted(() => ({
+  unpublishedBound: vi.fn(),
+  restoreCandidates: vi.fn(),
+  takedownCandidates: vi.fn(),
+  markTakenDown: vi.fn(async (_o: string, _at: number) => {}),
+  clearTakenDown: vi.fn(async (_o: string) => {}),
+  publishSite: vi.fn(async (s: string, _o?: unknown) => ({ ok: true, siteId: s })),
+  writePendingSite: vi.fn(async () => {}),
+  deployRenderedSite: vi.fn(async (_i: { siteId: string; html: string }) => ({ deploymentUrl: 'https://x.vercel.app', uploadedImages: {} })),
+  appleVerify: vi.fn(),
+}));
+vi.mock('../../lib/publishSite.js', () => ({ publishSite, writePendingSite }));
+vi.mock('../../lib/deploySite.js', () => ({ deployRenderedSite }));
+vi.mock('../../lib/ios/appleVerify.js', async (orig) => ({ ...(await orig<object>()), lazyDefaultVerifier: () => appleVerify }));
 vi.mock('../../lib/ios/purchases.js', () => ({
-  supabasePurchases: () => ({ unpublishedBound, markPublished: vi.fn(async () => {}) }),
+  supabasePurchases: () => ({
+    unpublishedBound, markPublished: vi.fn(async () => {}),
+    restoreCandidates, takedownCandidates, markTakenDown, clearTakenDown, upsertVerified: vi.fn(async () => ({})),
+    markLapseChecked: vi.fn(async () => {}),
+  }),
 }));
 
 import handler from '../../api/ios/sweep.js';
 
 const mkRes = () => { const res: any = { status: vi.fn().mockReturnThis(), json: vi.fn() }; return res; };
 const cron = { headers: { 'user-agent': 'vercel-cron/1.0' } };
+const empty = {
+  skippedLapsed: [], restored: [], restoreFailed: [], notRestored: [], takenDown: [], takedownFailed: [], takedownUncertain: [],
+  stillActive: [], appleUnavailable: [], appleUnresolvable: [], appleUnavailableCount: 0, appleUnresolvableCount: 0,
+};
+const appleSays = (status: number) => async (otid: string) => ({
+  originalTransactionId: otid, transactionId: 't', productId: 'p', environment: 'Production', expiresAt: 0, revoked: status === 5, status,
+});
 
 describe('api/ios/sweep', () => {
-  beforeEach(() => { unpublishedBound.mockReset(); });
+  beforeEach(() => {
+    delete process.env.CRON_SECRET; // the vercel-cron user agent is only accepted without a secret
+    for (const f of [unpublishedBound, restoreCandidates, takedownCandidates, markTakenDown, clearTakenDown, publishSite, writePendingSite, deployRenderedSite]) f.mockClear();
+    unpublishedBound.mockReset();
+    restoreCandidates.mockReset().mockResolvedValue([]);
+    takedownCandidates.mockReset().mockResolvedValue([]);
+    appleVerify.mockReset();
+  });
   afterEach(() => vi.restoreAllMocks());
 
   it('401 when not authorized (same as the Stripe sweeper)', async () => {
@@ -27,7 +57,35 @@ describe('api/ios/sweep', () => {
     const res = mkRes();
     await handler(cron, res);
     expect(res.status).toHaveBeenCalledWith(200);
-    expect(res.json).toHaveBeenCalledWith({ ok: true, checked: 1, published: ['a'], failed: [], missing: [], deferred: [] });
+    expect(res.json).toHaveBeenCalledWith({ ok: true, checked: 1, published: ['a'], failed: [], missing: [], deferred: [], ...empty });
+  });
+
+  it('takedown deploys the offline page to the slug and never publishes or writes the pending file', async () => {
+    unpublishedBound.mockResolvedValue([]);
+    takedownCandidates.mockResolvedValue([{ original_transaction_id: 'o9', site_slug: 'fade-studio-x7k2', revoked_at: '2026-10-01T00:00:00Z' }]);
+    appleVerify.mockImplementation(appleSays(2));
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const res = mkRes();
+    await handler(cron, res);
+    expect(deployRenderedSite).toHaveBeenCalledTimes(1);
+    const arg = deployRenderedSite.mock.calls[0][0];
+    expect(arg.siteId).toBe('fade-studio-x7k2');
+    expect(arg.html).toContain('This website is no longer available');
+    expect(publishSite).not.toHaveBeenCalled();
+    expect(writePendingSite).not.toHaveBeenCalled();
+    expect(markTakenDown).toHaveBeenCalledWith('o9', expect.any(Number));
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true, takenDown: ['fade-studio-x7k2'] }));
+  });
+
+  it('restore force-publishes the slug', async () => {
+    unpublishedBound.mockResolvedValue([]);
+    restoreCandidates.mockResolvedValue([{ original_transaction_id: 'o9', site_slug: 'a' }]);
+    appleVerify.mockImplementation(appleSays(1));
+    const res = mkRes();
+    await handler(cron, res);
+    expect(appleVerify).toHaveBeenCalledWith('o9');
+    expect(publishSite).toHaveBeenCalledWith('a', { force: true });
+    expect(clearTakenDown).toHaveBeenCalledWith('o9');
   });
 
   it('500 with { error } when unpublishedBound throws', async () => {
@@ -37,5 +95,30 @@ describe('api/ios/sweep', () => {
     await handler(cron, res);
     expect(res.status).toHaveBeenCalledWith(500);
     expect(res.json).toHaveBeenCalledWith({ error: 'db down' });
+  });
+
+  it('Sandbox rows are excluded from takedown unless IOS_TAKEDOWN_SANDBOX=1', async () => {
+    unpublishedBound.mockResolvedValue([]);
+    const prev = process.env.IOS_TAKEDOWN_SANDBOX;
+    try {
+      delete process.env.IOS_TAKEDOWN_SANDBOX;
+      await handler(cron, mkRes());
+      expect(takedownCandidates).toHaveBeenLastCalledWith(50, expect.any(Number), { includeSandbox: false });
+      process.env.IOS_TAKEDOWN_SANDBOX = '1';
+      await handler(cron, mkRes());
+      expect(takedownCandidates).toHaveBeenLastCalledWith(50, expect.any(Number), { includeSandbox: true });
+    } finally {
+      if (prev === undefined) delete process.env.IOS_TAKEDOWN_SANDBOX; else process.env.IOS_TAKEDOWN_SANDBOX = prev;
+    }
+  });
+
+  it('restore response carries the summary', async () => {
+    unpublishedBound.mockResolvedValue([]);
+    restoreCandidates.mockResolvedValue([{ original_transaction_id: 'o9', site_slug: 'a' }]);
+    appleVerify.mockImplementation(appleSays(1));
+    const res = mkRes();
+    await handler(cron, res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true, restored: ['a'] }));
   });
 });

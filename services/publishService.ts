@@ -1,6 +1,7 @@
 import { SiteInstance, WebsiteData } from '../types';
 import { generateHTMLForTemplate } from './templateRenderer';
 import { dualWriteSave } from './saveService';
+import { SUBSCRIPTION_ENDED_MESSAGE, withUploadedImageUrls } from './publishTarget';
 
 export async function publishSite(
   site: SiteInstance,
@@ -98,8 +99,22 @@ export async function publishSite(
   const deployResponse = await fetch('/api/deploy-site', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ siteId: siteSlug, html, imageUrls: imageUrlMap }),
+    body: JSON.stringify({
+      siteId: siteSlug,
+      html,
+      imageUrls: imageUrlMap,
+      // Both only matter server-side for iOS-bound sites: deployedUrl lets the
+      // server find a suffixed iOS slug to deploy to (web sites are unaffected),
+      // siteData keeps the iOS site's stored copy current.
+      deployedUrl: site.deployedUrl || null,
+      siteData: withUploadedImageUrls(site.data, imageUrlMap),
+    }),
   });
+
+  // An iOS-bound site whose App Store subscription has lapsed.
+  if (deployResponse.status === 402) {
+    throw new Error(SUBSCRIPTION_ENDED_MESSAGE);
+  }
 
   const contentType = deployResponse.headers.get('content-type');
   let deployData;

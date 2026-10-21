@@ -23,9 +23,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     const signedPayload = body && typeof body.signedPayload === 'string' ? body.signedPayload.trim() : '';
     if (!signedPayload) return res.status(400).json({ error: 'bad-request' });
-    // Superwall's revenue tracking gets the same notification, unmodified; it
-    // never blocks or changes our own handling.
-    const forwarded = forwardToSuperwall(body);
+    // Superwall's and RevenueCat's revenue tracking get the same notification,
+    // unmodified; forwarding never blocks or changes our own handling.
+    const forwarded = Promise.all([
+      forward('Superwall', process.env.SUPERWALL_ASN_FORWARD_URL, body),
+      forward('RevenueCat', process.env.REVENUECAT_ASN_FORWARD_URL, body),
+    ]);
     const r = await handleAppleNotification(signedPayload, liveNotificationDeps());
     await forwarded;
     return res.status(r.status).json(r.body);
@@ -35,8 +38,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 }
 
-async function forwardToSuperwall(body: unknown): Promise<void> {
-  const url = process.env.SUPERWALL_ASN_FORWARD_URL;
+async function forward(name: string, url: string | undefined, body: unknown): Promise<void> {
   if (!url) return;
   try {
     const r = await fetch(url, {
@@ -45,9 +47,9 @@ async function forwardToSuperwall(body: unknown): Promise<void> {
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(5000),
     });
-    if (!r.ok) console.error('[ios/apple-notification] Superwall forward failed:', r.status);
+    if (!r.ok) console.error(`[ios/apple-notification] ${name} forward failed:`, r.status);
   } catch (e: any) {
-    console.error('[ios/apple-notification] Superwall forward failed:', e?.name || e?.message || e);
+    console.error(`[ios/apple-notification] ${name} forward failed:`, e?.name || e?.message || e);
   }
 }
 
