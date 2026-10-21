@@ -76,6 +76,10 @@ export async function cancelAllScheduledNotificationsAsync() {
   nt.scheduled = [];
 }
 
+export async function cancelScheduledNotificationAsync(identifier: string) {
+  nt.scheduled = nt.scheduled.filter((r) => r.identifier !== identifier);
+}
+
 export async function getAllScheduledNotificationsAsync() {
   return [...nt.scheduled];
 }
@@ -94,13 +98,5 @@ export function getLastNotificationResponse() {
 }
 
 export function clearLastNotificationResponse() {
-  nt.lastResponse = null;
-}
-
-export async function getLastNotificationResponseAsync() {
-  return nt.lastResponse;
-}
-
-export async function clearLastNotificationResponseAsync() {
   nt.lastResponse = null;
 }

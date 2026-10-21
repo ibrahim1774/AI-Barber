@@ -1,10 +1,11 @@
 // Publish reminders: local notifications twice a day until the site is published.
+// jest.config.js pins TZ to America/New_York, so the 30-day window really crosses a DST change.
 import Storage from 'expo-sqlite/kv-store';
 import * as analytics from '@/lib/analytics';
 import * as store from '@/lib/siteStore';
 import { publishFlow, type PublishDeps } from '@/lib/publish';
-import { api } from '@/lib/api';
-import { deleteAccountAndData, deleteLocalData } from '@/lib/account';
+import { api, ApiError } from '@/lib/api';
+import { deleteAccountAndData, deleteLocalData, restore, type RestoreDeps } from '@/lib/account';
 import {
   askReminderPermissionOnce, buildReminderSchedule, cancelAllReminders, FINISH_LINES, onReminderTap, refreshReminders,
   routeForReminderTap, START_LINES, takeLaunchReminderTap,
@@ -77,6 +78,8 @@ test('schedule has two reminders a day for 30 days at 10:00 and 18:00 local', ()
     expect(r.title).toBe('AI Barber');
     expect(r.at.getTime()).toBeGreaterThan(NOW.getTime());
   });
+  // The window crosses the end of US daylight time (Nov 1).
+  expect(plan[0].at.getTimezoneOffset()).not.toBe(plan[59].at.getTimezoneOffset());
   // The last one is on day 30 (Nov 18 evening); under iOS's 64 pending limit.
   expect(plan[59].at.getDate()).toBe(18);
   expect(plan[59].at.getMonth()).toBe(10);
@@ -176,7 +179,20 @@ test('a granted permission schedules at once, and later asks only refresh', asyn
   expect(nt.requests).toBe(1);
   expect(nt.scheduled).toHaveLength(60);
   expect(nt.scheduled[0].content.data).toEqual({ reminder: 'start' });
-  expect(nt.scheduled[0].trigger).toEqual({ type: 'date', date: expect.any(Date) });
+  // A one-off calendar trigger at the local wall-clock time (iOS months are 1-based).
+  const first = buildReminderSchedule(new Date(), null)[0].at;
+  expect(nt.scheduled[0].identifier).toBe('reminder-0');
+  expect(nt.scheduled[59].identifier).toBe('reminder-59');
+  expect(nt.scheduled[0].trigger).toEqual({
+    type: 'calendar',
+    year: first.getFullYear(),
+    month: first.getMonth() + 1,
+    day: first.getDate(),
+    hour: first.getHours(),
+    minute: 0,
+    second: 0,
+    repeats: false,
+  });
   expect(spy).toHaveBeenCalledWith('reminders_scheduled', { count: 60, kind: 'start' });
   // Site generated: closing the LaunchGuide doesn't ask again but switches to finish copy.
   await store.saveSite(draft);
@@ -212,7 +228,7 @@ test('a failing cancel never affects the publish', async () => {
   await store.saveSite(draft);
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const notifications = require('expo-notifications');
-  const spy = jest.spyOn(notifications, 'cancelAllScheduledNotificationsAsync').mockRejectedValue(new Error('boom'));
+  const spy = jest.spyOn(notifications, 'getAllScheduledNotificationsAsync').mockRejectedValue(new Error('boom'));
   const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
   const out = await publishFlow(draft, publishDeps());
   expect(out.kind).toBe('live');
@@ -326,17 +342,6 @@ test('a cold start from a reminder is picked up once', async () => {
   expect(spy).toHaveBeenCalledWith('reminder_opened', { kind: 'start' });
 });
 
-test('a cold start falls back to the async launch response when the sync one is unavailable', async () => {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const notifications = require('expo-notifications');
-  jest.spyOn(notifications, 'getLastNotificationResponse').mockImplementation(() => {
-    throw new Error('UnavailabilityError');
-  });
-  nt.lastResponse = coldResponse('cold-2');
-  expect(await takeLaunchReminderTap()).toBe('start');
-  expect(nt.lastResponse).toBeNull();
-});
-
 test('without the native module everything is a quiet no-op', async () => {
   const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
   await jest.isolateModulesAsync(async () => {
@@ -373,4 +378,69 @@ test('a build without the native module never even loads expo-notifications', as
   });
   expect(load).not.toHaveBeenCalled();
   expect(warn).toHaveBeenCalledTimes(1);
+});
+
+test('cancelling leaves notifications that are not reminders alone', async () => {
+  nt.status = 'granted';
+  await store.saveSite(draft);
+  nt.scheduled.push({ identifier: 'other-1', content: { title: 'x' }, trigger: null });
+  await refreshReminders();
+  expect(nt.scheduled).toHaveLength(61);
+  await cancelAllReminders();
+  expect(nt.scheduled.map((r: any) => r.identifier)).toEqual(['other-1']);
+});
+
+test('shop names with $ patterns or emoji are kept as typed', () => {
+  const dollars = { ...draft, data: { ...draft.data, shopName: "$& $$ $` Cuts" } } as SiteRecord;
+  expect(buildReminderSchedule(NOW, dollars).map((r) => r.body)).toContain(
+    "$& $$ $` Cuts is almost live ✂️ — publish your website in under a minute.",
+  );
+  // 28 letters then an emoji (a surrogate pair) across the cut: never half an emoji.
+  const emoji = { ...draft, data: { ...draft.data, shopName: `${'A'.repeat(28)}💈💈 Shop` } } as SiteRecord;
+  const body = buildReminderSchedule(NOW, emoji).map((r) => r.body).find((b) => b.endsWith('under a minute.'))!;
+  expect(body.startsWith(`${'A'.repeat(28)}💈… is almost live`)).toBe(true);
+  expect(body).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
+});
+
+test('a restore cancels reminders for good', async () => {
+  nt.status = 'granted';
+  await store.saveSite(draft);
+  await refreshReminders();
+  expect(nt.scheduled).toHaveLength(60);
+  const deps: RestoreDeps = {
+    restorePurchases: jest.fn(async () => undefined),
+    latestTransactionId: jest.fn(async () => 'tx-9'),
+    iosSite: jest.fn(async () => ({
+      siteId: 'fade-factory',
+      deployedUrl: 'https://fade-factory.aibarber.org',
+      siteData: draft.data,
+      active: true,
+    })) as unknown as RestoreDeps['iosSite'],
+    store,
+  };
+  const res = await restore(deps);
+  expect(res?.site.slug).toBe('fade-factory');
+  await flush();
+  expect(nt.scheduled).toHaveLength(0);
+  await refreshReminders();
+  expect(nt.scheduled).toHaveLength(0);
+});
+
+test('a purchase pauses reminders at once, even while the publish is still pending', async () => {
+  nt.status = 'granted';
+  await store.saveSite(draft);
+  await refreshReminders();
+  expect(nt.scheduled).toHaveLength(60);
+  const out = await publishFlow(
+    draft,
+    publishDeps({
+      hasEntitlement: jest.fn(async () => false),
+      iosPublish: jest.fn(async () => {
+        throw new ApiError(503, 'temporarily-unavailable', 'later');
+      }),
+    }),
+  );
+  expect(out.kind).toBe('pending');
+  await flush();
+  expect(nt.scheduled).toHaveLength(0);
 });

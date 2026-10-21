@@ -2,7 +2,7 @@ import type { WebsiteData } from '@/web/types';
 import { track } from '@/lib/analytics';
 import { ApiError, type api } from '@/lib/api';
 import { stripMarkers } from '@/lib/editable';
-import { cancelAllReminders } from '@/lib/reminders';
+import { cancelRemindersInBackground } from '@/lib/reminders';
 import type { SiteRecord } from '@/lib/siteStore';
 import { LOOKUP_TIMEOUT_MS, withTimeout } from '@/lib/timeout';
 
@@ -157,19 +157,10 @@ async function send(
   }
   await deps.store.savePendingPublish(null);
   track('site_published', { republished: res.republished });
-  stopReminders();
+  // Live: no more publish reminders, for good. Never affects the outcome.
+  cancelRemindersInBackground();
   if (saved) notifyLive(deps, saved);
   return { kind: 'live', url: res.deployedUrl, republished: res.republished };
-}
-
-/** Live: no more publish reminders. Isolated, so it can never affect the outcome. */
-function stopReminders(): void {
-  const warn = (e: unknown) => console.warn('[publish] cancelling reminders failed:', e);
-  try {
-    cancelAllReminders().catch(warn);
-  } catch (e) {
-    warn(e);
-  }
 }
 
 function notifyLive(deps: PublishDeps, site: SiteRecord): void {
@@ -213,6 +204,9 @@ export async function publishFlow(site: SiteRecord, deps: PublishDeps): Promise<
       paid = true;
       // Remember the purchase before anything else can fail; the id is looked up next.
       await deps.store.savePendingPublish({ transactionId: null, data, createdAt: Date.now() });
+      // Paid: no "publish your site" reminders while it goes live (not for
+      // good: a purchase that can't be confirmed brings them back).
+      cancelRemindersInBackground({ forGood: false });
     }
     const transactionId = await findTransactionId(deps.latestTransactionId);
     if (!transactionId) return { kind: 'pending', message: UNCONFIRMED_MESSAGE } as const;

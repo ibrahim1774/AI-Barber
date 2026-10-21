@@ -4,7 +4,7 @@ import { resetUser, track } from '@/lib/analytics';
 import { api } from '@/lib/api';
 import { clearOverlayFlags } from '@/lib/overlayFlags';
 import { findTransactionId, publishPayload } from '@/lib/publish';
-import { cancelAllReminders } from '@/lib/reminders';
+import { cancelAllReminders, cancelRemindersInBackground } from '@/lib/reminders';
 import * as siteStore from '@/lib/siteStore';
 import type { SiteRecord } from '@/lib/siteStore';
 import { supabase } from '@/lib/supabase';
@@ -120,6 +120,9 @@ export async function restore(deps: RestoreDeps): Promise<Restored | null> {
   // A pending publish is left alone: it is paid content for this same
   // subscription, and the launch retry still sends it to the bound site.
   await deps.store.saveSite(record);
+  // A restored site is paid and published: no more reminders (start, Settings
+  // and sign-in all restore through here). Never affects the restore.
+  cancelRemindersInBackground();
   return { site: record, active: bound.active !== false };
 }
 

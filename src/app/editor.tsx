@@ -5,13 +5,13 @@ import { router, useFocusEffect } from 'expo-router';
 import type { WebsiteData } from '@/web/types';
 import { colors, fonts } from '@/constants/theme';
 import { track } from '@/lib/analytics';
-import { hasEntitlement } from '@/lib/paywall';
+import { hasEntitlement, useSuperwallSettled } from '@/lib/paywall';
 import { getPath, setPath } from '@/lib/editable';
 import { applyBookingLink, applyHomePrompts, fieldLabel, setColour, switchDesign } from '@/lib/editor';
 import { advanceOverlay, hasSeen, markSeen, nextOverlay, type Overlay } from '@/lib/overlayFlags';
 import { resetTo } from '@/lib/nav';
 import { pickAndUploadPhoto } from '@/lib/photos';
-import { askReminderPermissionOnce } from '@/lib/reminders';
+import { askReminderPermissionOnce, refreshReminders } from '@/lib/reminders';
 import { loadSite, saveSite, type SiteRecord } from '@/lib/siteStore';
 import SitePreview from '@/components/SitePreview';
 import { DesignSwitcher } from '@/components/DesignSwitcher';
@@ -224,10 +224,16 @@ export default function Editor() {
     setOverlay(advanceOverlay(kind, guideSeen));
   }, []);
   const onPromptsComplete = useCallback(() => void finishOverlay('prompts'), [finishOverlay]);
-  // The guide closing is the moment to ask for publish reminders (once ever; later closes only refresh them).
+  // The guide closing is the moment to ask for publish reminders (once ever;
+  // later closes only refresh them). Not before Superwall has settled: its
+  // debug build traps on a system prompt during configure.
+  const settled = useSuperwallSettled();
   const onGuideClose = useCallback(() => {
-    void finishOverlay('guide').then(() => askReminderPermissionOnce());
-  }, [finishOverlay]);
+    void finishOverlay('guide').then(async () => {
+      if (settled) await askReminderPermissionOnce();
+      else await refreshReminders();
+    });
+  }, [finishOverlay, settled]);
 
   // /publishing shows the paywall over the editor, then publishes.
   const handlePublish = useCallback(() => {

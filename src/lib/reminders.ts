@@ -73,13 +73,17 @@ function notifications(): Notifications | null {
 function shopName(site: SiteRecord): string | null {
   for (const raw of [site.data?.shopName, site.inputs?.shopName]) {
     const name = typeof raw === 'string' ? stripMarkers(raw).replace(/\s+/g, ' ').trim() : '';
-    if (name) return name.length > MAX_SHOP_CHARS ? `${name.slice(0, MAX_SHOP_CHARS - 1).trimEnd()}…` : name;
+    if (!name) continue;
+    // By code point, so an emoji's surrogate pair is never split.
+    const chars = Array.from(name);
+    return chars.length > MAX_SHOP_CHARS ? `${chars.slice(0, MAX_SHOP_CHARS - 1).join('').trimEnd()}…` : name;
   }
   return null;
 }
 
 function fill(line: string, name: string | null): string {
-  if (name) return line.replaceAll('{Shop}', name);
+  // A replacer function, so `$&` or `$$` in a shop name stay literal.
+  if (name) return line.replaceAll('{Shop}', () => name);
   // "Your shop" opens a sentence; mid-sentence it reads "your shop".
   return line.replace(/^\{Shop\}/, 'Your shop').replaceAll('{Shop}', 'your shop');
 }
@@ -109,6 +113,17 @@ export function buildReminderSchedule(now: Date, site: SiteRecord | null): Remin
   return out;
 }
 
+/** Our notifications' identifiers: `reminder-0` … `reminder-59`. Only these are ever cancelled. */
+const ID_PREFIX = 'reminder-';
+
+/** Cancels the pending reminders, leaving any other scheduled notification alone. */
+async function cancelPending(N: Notifications): Promise<void> {
+  const scheduled = await N.getAllScheduledNotificationsAsync();
+  for (const n of scheduled) {
+    if (n.identifier.startsWith(ID_PREFIX)) await N.cancelScheduledNotificationAsync(n.identifier);
+  }
+}
+
 // Refreshes and cancels run one at a time, in call order: a cancel that
 // arrives mid-refresh (a publish finishing) runs after it and wins.
 let queue: Promise<unknown> = Promise.resolve();
@@ -124,6 +139,25 @@ function serial(fn: () => Promise<void>): Promise<void> {
  * for an unpublished user who hasn't paid; otherwise clears what is pending.
  * Never throws.
  */
+/**
+ * A one-off calendar trigger (UNCalendarNotificationTrigger) at the slot's
+ * local wall-clock time, so 10:00 stays 10:00 after time-zone travel or a
+ * clock change. The calendar trigger hands the fields to iOS DateComponents
+ * as they are (unlike the yearly trigger, which adds 1), so month is 1-based.
+ */
+function calendarTrigger(N: Notifications, at: Date): NotificationsModule.CalendarTriggerInput {
+  return {
+    type: N.SchedulableTriggerInputTypes.CALENDAR,
+    year: at.getFullYear(),
+    month: at.getMonth() + 1,
+    day: at.getDate(),
+    hour: at.getHours(),
+    minute: 0,
+    second: 0,
+    repeats: false,
+  };
+}
+
 export function refreshReminders(): Promise<void> {
   return serial(async () => {
     const N = notifications();
@@ -132,12 +166,13 @@ export function refreshReminders(): Promise<void> {
     // Paid and publishing (pendingPublish): not "unpaid", but not stopped for good either.
     const plan = stopped || pending ? [] : buildReminderSchedule(new Date(), site);
     const granted = plan.length > 0 && (await N.getPermissionsAsync()).granted;
-    await N.cancelAllScheduledNotificationsAsync();
+    await cancelPending(N);
     if (!granted) return;
-    for (const r of plan) {
+    for (const [i, r] of plan.entries()) {
       await N.scheduleNotificationAsync({
+        identifier: `${ID_PREFIX}${i}`,
         content: { title: r.title, body: r.body, data: { reminder: r.kind } },
-        trigger: { type: N.SchedulableTriggerInputTypes.DATE, date: r.at },
+        trigger: calendarTrigger(N, r.at),
       });
     }
     track('reminders_scheduled', { count: plan.length, kind: plan[0].kind });
@@ -155,8 +190,22 @@ export function cancelAllReminders({ forGood = true }: { forGood?: boolean } = {
     if (forGood) {
       await Storage.setItem(STOPPED_KEY, '1').catch((e) => console.warn('[reminders] could not save the stop flag:', e));
     }
-    await notifications()?.cancelAllScheduledNotificationsAsync();
+    const N = notifications();
+    if (N) await cancelPending(N);
   });
+}
+
+/**
+ * cancelAllReminders for flows whose outcome must never depend on it
+ * (publish, restore, purchase): not awaited, and a failure is only logged.
+ */
+export function cancelRemindersInBackground(opts?: { forGood?: boolean }): void {
+  const warn = (e: unknown) => console.warn('[reminders] cancelling reminders failed:', e);
+  try {
+    cancelAllReminders(opts).catch(warn);
+  } catch (e) {
+    warn(e);
+  }
 }
 
 /**
@@ -222,24 +271,13 @@ export function onReminderTap(cb: (kind: ReminderKind) => void): () => void {
 }
 
 /** The reminder that cold-started the app, once; null otherwise. */
-export async function takeLaunchReminderTap(): Promise<ReminderKind | null> {
+export function takeLaunchReminderTap(): ReminderKind | null {
   const N = notifications();
   if (!N) return null;
   try {
-    let response: NotificationResponse | null;
-    let sync = true;
-    try {
-      response = N.getLastNotificationResponse();
-    } catch {
-      // The sync method needs native support; the (deprecated) async one is the fallback.
-      sync = false;
-      response = await N.getLastNotificationResponseAsync();
-    }
+    const response = N.getLastNotificationResponse();
     const kind = handleResponse(response);
-    if (kind) {
-      if (sync) N.clearLastNotificationResponse();
-      else await N.clearLastNotificationResponseAsync();
-    }
+    if (kind) N.clearLastNotificationResponse();
     return kind;
   } catch {
     return null;

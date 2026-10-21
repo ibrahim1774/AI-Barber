@@ -1,3 +1,6 @@
+// One time zone for every run, so date tests (the reminders' DST crossing) mean the same on any machine.
+process.env.TZ = 'America/New_York';
+
 module.exports = {
   preset: 'jest-expo',
   testMatch: ['**/__tests__/**/*.test.ts'],

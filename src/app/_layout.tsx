@@ -38,8 +38,8 @@ function TrackingPrompt() {
 }
 
 /**
- * Publish reminders. Refreshes the schedule at launch and on each real return
- * to the foreground (reminders.ts checks permission and publish state; it
+ * Publish reminders. Refreshes the schedule at launch, on each real return
+ * to the foreground and on going to the background (reminders.ts checks permission and publish state; it
  * never prompts). A tapped reminder, warm or cold start, opens the editor
  * (or /start without a site) once the launch redirect is done.
  */
@@ -53,13 +53,12 @@ function Reminders() {
     // Back from the background only, as in ResumePublish.
     let last = AppState.currentState;
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active' && last === 'background') void refreshReminders();
+      // Also on the way out, so a state change (a purchase) is reflected even if the app isn't reopened.
+      if ((state === 'active' && last === 'background') || state === 'background') void refreshReminders();
       last = state;
     });
     const unsubscribe = onReminderTap(() => setTapped((n) => n + 1));
-    void takeLaunchReminderTap().then((kind) => {
-      if (kind) setTapped((n) => n + 1);
-    });
+    if (takeLaunchReminderTap()) setTapped((n) => n + 1);
     return () => {
       sub.remove();
       unsubscribe();
