@@ -10,6 +10,6 @@ async function boot() {
     const { mockFetch } = await import('./mock');
     api = createApi(mockFetch);
   }
-  createRoot(document.getElementById('root')!).render(<App api={api} pathname={location.pathname} />);
+  createRoot(document.getElementById('root')!).render(<App api={api} pathname={location.pathname} search={location.search} />);
 }
 boot();

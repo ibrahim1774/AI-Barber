@@ -48,6 +48,8 @@ export type CreateResponse = { appointment: BookedAppointment; checkoutUrl?: str
 
 export type ManageAppointment = {
   id: string;
+  serviceId?: string | null;
+  memberId?: string;
   start: string;
   end: string;
   status: string;

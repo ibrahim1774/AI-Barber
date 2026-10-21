@@ -251,3 +251,30 @@ export function telUrl(phone: string): string {
 export function serviceLabel(s: Service): string {
   return [formatMoney(s.priceCents), `${s.durationMin} min`].filter(Boolean).join(' · ');
 }
+
+/* ---------- card checkout return (?checkout=) ---------- */
+
+export type CheckoutReturn = 'success' | 'cancelled' | null;
+export function parseCheckout(search: string): CheckoutReturn {
+  const v = new URLSearchParams(search).get('checkout');
+  return v === 'success' || v === 'cancelled' ? v : null;
+}
+export const CHECKOUT_POLL_MS = 3000;
+export const CHECKOUT_POLL_MAX_MS = 30000;
+/** After checkout=success: confirmed once the webhook has moved paymentStatus off 'awaiting'. */
+export function paymentConfirmed(paymentStatus: string): boolean {
+  return paymentStatus !== 'awaiting';
+}
+export function shouldKeepPolling(paymentStatus: string, elapsedMs: number): boolean {
+  return !paymentConfirmed(paymentStatus) && elapsedMs < CHECKOUT_POLL_MAX_MS;
+}
+/** Ids for reschedule: prefer the API's, fall back to name matching when absent. */
+export function resolveIds(
+  a: { serviceId?: string | null; memberId?: string; serviceName: string; memberName: string },
+  shop: { services: Service[]; members: Member[] },
+): { serviceId: string; memberId: string } | null {
+  const serviceId = a.serviceId || shop.services.find((s) => s.name === a.serviceName)?.id;
+  if (!serviceId) return null;
+  const memberId = a.memberId || shop.members.find((m) => m.name === a.memberName)?.id || 'any';
+  return { serviceId, memberId };
+}

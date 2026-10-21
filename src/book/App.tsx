@@ -4,14 +4,14 @@ import { DayPicker, TimePicker } from './pickers';
 import {
   buildIcs, directionsUrl, eligibleMembers, formatMoney, formatWhen, manualAmountCents, manualLink, manualMethods,
   METHOD_LABEL, nextStep, onAccent, parseRoute, payOptions, prevStep, progress, safeAccent, serviceLabel, telUrl,
-  tokenFromManageUrl, type Step, formatDay,
+  tokenFromManageUrl, type Step, formatDay, parseCheckout, shouldKeepPolling, resolveIds, CHECKOUT_POLL_MS, type CheckoutReturn,
 } from './logic';
 import type { BookedAppointment, ManageResponse, ManualMethod, Member, PayChoice, Service, Shop, ShopResponse, Slot } from './types';
 
-export function App({ api, pathname }: { api: Api; pathname: string }) {
+export function App({ api, pathname, search = '' }: { api: Api; pathname: string; search?: string }) {
   const route = useMemo(() => parseRoute(pathname), [pathname]);
   if (route.kind === 'book') return <BookPage api={api} slug={route.slug} />;
-  if (route.kind === 'manage') return <ManagePage api={api} token={route.token} />;
+  if (route.kind === 'manage') return <ManagePage api={api} token={route.token} checkout={parseCheckout(search)} />;
   return <Shell><Message title="Page not found" body="Check the link and try again." /></Shell>;
 }
 
@@ -287,13 +287,26 @@ function ManualPay({ api, shop, token, cents, note }: { api: Api; shop: Shop; to
 
 /* ===================== manage ===================== */
 
-function ManagePage({ api, token }: { api: Api; token: string }) {
+function ManagePage({ api, token, checkout }: { api: Api; token: string; checkout: CheckoutReturn }) {
   const [data, setData] = useState<ManageResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<'view' | 'cancel' | 'reschedule' | 'cancelled'>('view');
   const [refund, setRefund] = useState(0);
   const load = () => api.manage(token).then((d) => { setData(d); applyAccent(null); }).catch((e) => setError(e instanceof ApiError && e.status === 404 ? 'not-found' : 'failed'));
   useEffect(() => { load(); }, [token]);
+  // After Stripe success the webhook may lag: re-fetch every 3 s, up to 30 s.
+  const [gaveUp, setGaveUp] = useState(false);
+  const status = data?.appointment.paymentStatus;
+  useEffect(() => {
+    if (checkout !== 'success' || !data) return;
+    if (!shouldKeepPolling(status!, 0)) return;
+    const t0 = Date.now();
+    const id = setInterval(() => {
+      if (Date.now() - t0 >= 30000) { clearInterval(id); setGaveUp(true); return; }
+      api.manage(token).then(setData).catch(() => {});
+    }, CHECKOUT_POLL_MS);
+    return () => clearInterval(id);
+  }, [checkout, !!data, status]);
 
   if (error === 'not-found') return <Shell><Message title="Booking not found" body="This manage link isn't valid." /></Shell>;
   if (error) return <Shell><Message title="Something went wrong" body="Please refresh and try again." /></Shell>;
@@ -304,6 +317,13 @@ function ManagePage({ api, token }: { api: Api; token: string }) {
   return (
     <Shell>
       <h1>{a.shop.name}</h1>
+      {checkout === 'success' && mode === 'view' && (status === 'awaiting' && !gaveUp
+        ? <div className="note" role="status"><strong>Confirming your payment…</strong></div>
+        : status === 'awaiting'
+          ? <div className="note" role="status"><strong>Payment received.</strong> It may take a moment to show up here.</div>
+          : <div className="note" role="status"><strong>Payment received.</strong> Thank you!</div>)}
+      {checkout === 'cancelled' && mode === 'view' && status === 'awaiting' && live &&
+        <div className="note warn" role="status">Payment wasn't completed. This time is held for 30 minutes, then released.</div>}
       {mode === 'cancelled' && <div className="note" role="status"><strong>Booking cancelled.</strong>{refund > 0 && <> {formatMoney(refund)} will be refunded to your card.</>}</div>}
       {mode === 'view' || mode === 'cancelled' ? <>
         <div className="summary">
@@ -361,16 +381,15 @@ function Reschedule({ api, token, data, onBack, onDone }: { api: Api; token: str
   const [busy, setBusy] = useState(false);
   const [shopData, setShopData] = useState<Loaded | null>(null);
 
-  // The manage API doesn't return ids, so resolve them by name from the public shop listing.
+  // Ids come from the manage API; name matching against the shop listing is only a fallback.
   useEffect(() => {
     api.shop(a.shop.slug).then((resp) => {
       if (resp.paused) return setInfo('unavailable');
       const s = resp as Loaded;
-      const svc = s.services.find((x) => x.name === a.serviceName);
-      const mem = s.members.find((x) => x.name === a.memberName);
-      if (!svc) return setInfo('unavailable');
+      const ids = resolveIds(a, s);
+      if (!ids) return setInfo('unavailable');
       setShopData(s);
-      setInfo({ serviceId: svc.id, memberId: mem?.id ?? 'any' });
+      setInfo(ids);
     }).catch(() => setInfo('unavailable'));
   }, []);
 

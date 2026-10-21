@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DateTime } from 'luxon';
 import {
   buildIcs, cashAppLink, formatTime, formatWhen, manualAmountCents, manualLink, monthGrid, nextStep, onAccent,
-  parseRoute, paypalLink, payOptions, prevStep, progress, safeAccent, shiftMonth, todayKey, tokenFromManageUrl, venmoLink, dateKey, eligibleMembers,
+  parseRoute, parseCheckout, shouldKeepPolling, resolveIds, paypalLink, payOptions, prevStep, progress, safeAccent, shiftMonth, todayKey, tokenFromManageUrl, venmoLink, dateKey, eligibleMembers,
 } from '../../src/book/logic';
 
 describe('shop-timezone formatting', () => {
@@ -111,5 +111,27 @@ describe('misc', () => {
     expect(ics).toContain('DTSTART:20260710T180000Z');
     expect(ics).toContain('SUMMARY:Cut\\, fade');
     expect(ics).toContain('\r\nEND:VCALENDAR');
+  });
+});
+
+describe('checkout return and reschedule ids', () => {
+  it('parses ?checkout=', () => {
+    expect(parseCheckout('?checkout=success')).toBe('success');
+    expect(parseCheckout('?checkout=cancelled')).toBe('cancelled');
+    expect(parseCheckout('?checkout=x')).toBeNull();
+    expect(parseCheckout('')).toBeNull();
+  });
+  it('polls while awaiting, up to 30 s', () => {
+    expect(shouldKeepPolling('awaiting', 0)).toBe(true);
+    expect(shouldKeepPolling('awaiting', 29999)).toBe(true);
+    expect(shouldKeepPolling('awaiting', 30000)).toBe(false);
+    expect(shouldKeepPolling('paid', 0)).toBe(false);
+    expect(shouldKeepPolling('deposit', 0)).toBe(false);
+  });
+  const shop = { services: [{ id: 's9', name: 'Cut' }], members: [{ id: 'm9', name: 'Dre' }] } as any;
+  it('uses API ids, falls back to names', () => {
+    expect(resolveIds({ serviceId: 's1', memberId: 'm1', serviceName: 'Cut', memberName: 'Dre' }, shop)).toEqual({ serviceId: 's1', memberId: 'm1' });
+    expect(resolveIds({ serviceId: null, serviceName: 'Cut', memberName: 'Dre' }, shop)).toEqual({ serviceId: 's9', memberId: 'm9' });
+    expect(resolveIds({ serviceId: null, serviceName: 'Nope', memberName: 'Dre' }, shop)).toBeNull();
   });
 });

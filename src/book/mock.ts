@@ -19,6 +19,8 @@ const members = [
   { id: 'm2', name: 'Dre', photoUrl: null, bio: null, serviceIds: null },
 ];
 
+// ?mock=1&checkout=success flips to paid after ~2 polls; plain manage shows paid.
+let mockPolls = 0;
 export const mockFetch = async (input: string, init?: RequestInit): Promise<Response> => {
   await new Promise((r) => setTimeout(r, 150));
   const url = new URL(input, 'http://x');
@@ -46,10 +48,11 @@ export const mockFetch = async (input: string, init?: RequestInit): Promise<Resp
       ...(b.pay === 'card' ? { checkoutUrl: 'https://checkout.stripe.com/mock' } : {}),
     });
   }
+  const mockPaid = new URLSearchParams(location.search).get('checkout') === 'success' && mockPolls++ < 2 ? 0 : 3000;
   if (p === '/api/book/manage' && (init?.method || 'GET') === 'GET') {
     const start = DateTime.now().setZone(TZ).plus({ days: 3 }).set({ hour: 14, minute: 0, second: 0, millisecond: 0 });
     return json(200, {
-      appointment: { id: 'a1', start: start.toUTC().toISO(), end: start.plus({ minutes: 30 }).toUTC().toISO(), status: 'booked', serviceName: 'Haircut', memberName: 'Marcus', priceCents: 3000, amountPaidCents: 3000, paymentStatus: 'paid', shop: { name: shop.name, slug: 'demo', address: shop.address, phone: shop.phone, timezone: TZ } },
+      appointment: { id: 'a1', serviceId: 's1', memberId: 'm1', start: start.toUTC().toISO(), end: start.plus({ minutes: 30 }).toUTC().toISO(), status: 'booked', serviceName: 'Haircut', memberName: 'Marcus', priceCents: 3000, amountPaidCents: mockPaid, paymentStatus: mockPaid ? 'paid' : 'awaiting', shop: { name: shop.name, slug: 'demo', address: shop.address, phone: shop.phone, timezone: TZ } },
       canCancel: true, canReschedule: true, refundCentsIfCancelled: 3000,
     });
   }
