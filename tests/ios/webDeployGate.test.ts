@@ -174,6 +174,29 @@ describe('gatedWebDeploy', () => {
   });
 });
 
+describe('gatedWebDeploy tiers (M3): the pending copy gets the same link strip as the app publish', () => {
+  const P = 'com.ibrahim1774.aibarber.';
+  const linked = () => ({ ...siteData(), bookingUrl: 'https://www.aibarber.org/book/fade', shopUrl: 'https://www.aibarber.org/shop/fade' });
+
+  it.each([
+    ['hosting.monthly', false, false],
+    ['bookings.yearly', true, false],
+    ['store.monthly', true, true],
+  ])('%s', async (suffix, keepsBook, keepsShop) => {
+    const d = deps(iosRow({ product_id: P + suffix }));
+    await gatedWebDeploy(body({ siteData: linked() }), d);
+    const sd = d.writePending.mock.calls[0][1].siteData as any;
+    expect('bookingUrl' in sd).toBe(keepsBook);
+    expect('shopUrl' in sd).toBe(keepsShop);
+  });
+
+  it('a Booksy link is kept on Website', async () => {
+    const d = deps(iosRow({ product_id: `${P}hosting.monthly` }));
+    await gatedWebDeploy(body({ siteData: { ...siteData(), bookingUrl: 'https://booksy.com/x' } }), d);
+    expect((d.writePending.mock.calls[0][1].siteData as any).bookingUrl).toBe('https://booksy.com/x');
+  });
+});
+
 describe('gatedWebDeploy target slug from deployedUrl', () => {
   afterEach(() => vi.restoreAllMocks());
   const bySlug = (rows: Record<string, PurchaseRow>) => {

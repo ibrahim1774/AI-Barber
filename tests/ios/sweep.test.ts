@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { isIndefiniteDeployError, sweepIos, type IosSweepSummary } from '../../lib/ios/sweep.js';
+import { isIndefiniteDeployError, makeStripPending, sweepIos, type IosSweepSummary } from '../../lib/ios/sweep.js';
 import type { PurchaseRow, PurchasesRepo } from '../../lib/ios/purchases.js';
 import type { PublishOutcome } from '../../lib/publishSite.js';
 import { VerifyFailure, makeVerifier, type VerifiedTx } from '../../lib/ios/appleVerify.js';
@@ -279,6 +279,32 @@ describe('sweepIos lapse takedown / restore (Apple decides)', () => {
     expect(out).toEqual(summary({ restored: ['a'] }));
   });
 
+  it('M4: a restore first strips the pending copy for the tier Apple reports NOW (never adds links)', async () => {
+    const { r } = repo([], [active('o1', 'a')]);
+    const order: string[] = [];
+    const publish = vi.fn(async (s: string, _o?: { force: boolean }) => { order.push('publish'); return ok(s); });
+    const stripPending = vi.fn(async (_s: string, _p: string) => { order.push('strip'); });
+    const out = await sweepIos({ repo: r, publish, deployOffline: noOffline, verify: apple({ o1: 1 }), stripPending }, 50, { now: () => NOW });
+    expect(stripPending.mock.calls).toEqual([['a', 'p']]); // Apple's (latest) product, not the stored row's
+    expect(order).toEqual(['strip', 'publish']);
+    expect(out.restored).toEqual(['a']);
+  });
+
+  it('M4: a failing strip never blocks the restore (the gates stay authoritative)', async () => {
+    quiet();
+    const { r } = repo([], [active('o1', 'a')]);
+    const stripPending = vi.fn(async () => { throw new Error('gcs down'); });
+    const out = await sweepIos({ repo: r, publish: vi.fn(async (s: string) => ok(s)), deployOffline: noOffline, verify: apple({ o1: 1 }), stripPending }, 50, { now: () => NOW });
+    expect(out.restored).toEqual(['a']);
+  });
+
+  it('M4: nothing is stripped when Apple says not active (no restore)', async () => {
+    const { r } = repo([], [active('o1', 'a')]);
+    const stripPending = vi.fn(async () => {});
+    await sweepIos({ repo: r, publish: vi.fn(), deployOffline: noOffline, verify: apple({ o1: 2 }), stripPending }, 50, { now: () => NOW });
+    expect(stripPending).not.toHaveBeenCalled();
+  });
+
   it('billing grace (4) also counts as active for a restore', async () => {
     const { r, clearTakenDown } = repo([], [active('o4', 'a')]);
     const out = await sweepIos({ repo: r, publish: async (s) => ok(s), deployOffline: noOffline, verify: apple({ o4: 4 }) }, 50, { now: () => NOW });
@@ -494,5 +520,28 @@ describe('sweepIos lapse takedown / restore (Apple decides)', () => {
     expect(isIndefiniteDeployError(Object.assign(new Error('500'), { isAxiosError: true, response: { status: 500 } }))).toBe(false);
     expect(isIndefiniteDeployError(new Error('Vercel deployment error'))).toBe(false);
     expect(isIndefiniteDeployError(null)).toBe(false);
+  });
+});
+
+describe('makeStripPending (M4)', () => {
+  const P = 'com.ibrahim1774.aibarber.';
+  const pendingWith = (over: Record<string, unknown>) => ({ siteId: 'a', siteData: { shopName: 'A', ...over } as any, imageUrlMap: {} });
+
+  it('rewrites the pending file without the links the current product lacks', async () => {
+    const stored = pendingWith({ bookingUrl: 'https://www.aibarber.org/book/a', shopUrl: 'https://www.aibarber.org/shop/a' });
+    const writePending = vi.fn(async () => {});
+    await makeStripPending({ readPending: async () => stored, writePending })('a', `${P}bookings.monthly`);
+    expect(writePending).toHaveBeenCalledTimes(1);
+    const written = (writePending.mock.calls[0] as any[])[1];
+    expect(written.siteData.bookingUrl).toBe('https://www.aibarber.org/book/a');
+    expect('shopUrl' in written.siteData).toBe(false);
+    expect(written.imageUrlMap).toEqual({});
+  });
+
+  it('writes nothing when nothing changes, or there is no pending file', async () => {
+    const writePending = vi.fn(async () => {});
+    await makeStripPending({ readPending: async () => pendingWith({ bookingUrl: 'https://www.aibarber.org/book/a' }), writePending })('a', `${P}store.yearly`);
+    await makeStripPending({ readPending: async () => null, writePending })('a', `${P}hosting.monthly`);
+    expect(writePending).not.toHaveBeenCalled();
   });
 });

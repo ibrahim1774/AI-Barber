@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const { unpublishedBound, restoreCandidates, takedownCandidates, markTakenDown, clearTakenDown, publishSite, writePendingSite, deployRenderedSite, appleVerify } = vi.hoisted(() => ({
+const { unpublishedBound, restoreCandidates, takedownCandidates, markTakenDown, clearTakenDown, publishSite, writePendingSite, readPendingSite, deployRenderedSite, appleVerify } = vi.hoisted(() => ({
   unpublishedBound: vi.fn(),
   restoreCandidates: vi.fn(),
   takedownCandidates: vi.fn(),
@@ -8,10 +8,11 @@ const { unpublishedBound, restoreCandidates, takedownCandidates, markTakenDown, 
   clearTakenDown: vi.fn(async (_o: string) => {}),
   publishSite: vi.fn(async (s: string, _o?: unknown) => ({ ok: true, siteId: s })),
   writePendingSite: vi.fn(async () => {}),
+  readPendingSite: vi.fn(async (_s: string): Promise<any> => null),
   deployRenderedSite: vi.fn(async (_i: { siteId: string; html: string }) => ({ deploymentUrl: 'https://x.vercel.app', uploadedImages: {} })),
   appleVerify: vi.fn(),
 }));
-vi.mock('../../lib/publishSite.js', () => ({ publishSite, writePendingSite }));
+vi.mock('../../lib/publishSite.js', () => ({ publishSite, writePendingSite, readPendingSite }));
 vi.mock('../../lib/deploySite.js', () => ({ deployRenderedSite }));
 vi.mock('../../lib/ios/appleVerify.js', async (orig) => ({ ...(await orig<object>()), lazyDefaultVerifier: () => appleVerify }));
 vi.mock('../../lib/ios/purchases.js', () => ({
@@ -86,6 +87,17 @@ describe('api/ios/sweep', () => {
     expect(appleVerify).toHaveBeenCalledWith('o9');
     expect(publishSite).toHaveBeenCalledWith('a', { force: true });
     expect(clearTakenDown).toHaveBeenCalledWith('o9');
+  });
+
+  it('M4: restore strips the pending file for the current plan before publishing (wired to the pending store)', async () => {
+    unpublishedBound.mockResolvedValue([]);
+    restoreCandidates.mockResolvedValue([{ original_transaction_id: 'o9', site_slug: 'a' }]);
+    appleVerify.mockImplementation(async (otid: string) => ({ ...(await appleSays(1)(otid)), productId: 'com.ibrahim1774.aibarber.hosting.monthly' }));
+    readPendingSite.mockResolvedValueOnce({ siteId: 'a', siteData: { shopName: 'A', shopUrl: 'https://www.aibarber.org/shop/a' } });
+    await handler(cron, mkRes());
+    expect(readPendingSite).toHaveBeenCalledWith('a');
+    expect(writePendingSite).toHaveBeenCalledWith('a', { siteId: 'a', siteData: { shopName: 'A' } });
+    expect((writePendingSite.mock.invocationCallOrder as number[])[0]).toBeLessThan((publishSite.mock.invocationCallOrder as number[])[0]);
   });
 
   it('500 with { error } when unpublishedBound throws', async () => {

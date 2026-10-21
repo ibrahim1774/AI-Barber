@@ -21,11 +21,12 @@
 // and candidates come oldest-checked first, so rows Apple can't resolve or
 // that sit in billing grace rotate to the back instead of starving the rest.
 import type { PurchasesRepo, PurchaseRow } from './purchases.js';
-import type { PublishOutcome } from '../publishSite.js';
+import type { PendingSite, PublishOutcome } from '../publishSite.js';
 import type { VerifiedTx } from './appleVerify.js';
 import { isActive } from './txStatus.js';
 import { isLapsed } from './lapse.js';
 import { withTimeout } from './timeout.js';
+import { stripLapsedLinks } from './tiers.js';
 
 export interface IosSweepSummary {
   checked: number;
@@ -71,6 +72,26 @@ export interface IosSweepDeps {
   verify(originalTransactionId: string): Promise<VerifiedTx>;
   /** Take down Sandbox purchases too (env IOS_TAKEDOWN_SANDBOX=1). Default false. */
   takedownSandbox?: boolean;
+  /**
+   * Before a restore: drop the Book/Shop links the purchase's CURRENT product (Apple's latest)
+   * doesn't cover from the slug's pending file (makeStripPending). Never adds links: they come
+   * back with the app's next publish. Best effort; absent = skipped.
+   */
+  stripPending?(slug: string, productId: string): Promise<void>;
+}
+
+/** stripPending over the pending-file store: rewrites it only when a link is removed. */
+export function makeStripPending(deps: {
+  readPending(slug: string): Promise<PendingSite | null>;
+  writePending(slug: string, p: PendingSite): Promise<void>;
+}): (slug: string, productId: string) => Promise<void> {
+  return async (slug, productId) => {
+    const pending = await deps.readPending(slug);
+    if (!pending?.siteData) return;
+    const siteData = stripLapsedLinks(pending.siteData, productId);
+    if (Object.keys(siteData).length === Object.keys(pending.siteData).length) return;
+    await deps.writePending(slug, { ...pending, siteData });
+  };
 }
 
 /** Errors meaning Apple will never resolve this purchase as-is. */
@@ -109,7 +130,7 @@ export async function sweepIos(
    * Apple's verdict for this row: true active, false inactive, null couldn't ask
    * (the row is skipped). `stamp` records lapse_checked_at whatever the outcome.
    */
-  async function appleSaysActive(row: PurchaseRow, slug: string, stamp: boolean): Promise<boolean | null> {
+  async function appleSaysActive(row: PurchaseRow, slug: string, stamp: boolean): Promise<{ active: boolean; tx: VerifiedTx } | null> {
     const otid = row.original_transaction_id;
     const checkedAt = now();
     let tx: VerifiedTx | null = null;
@@ -133,7 +154,7 @@ export async function sweepIos(
     // older than this check is cleared if Apple says active). Best effort.
     await deps.repo.upsertVerified(tx, { checkedAt }).catch((e: any) =>
       console.warn(`[Sweeper:iOS] ${slug} (${otid}): refreshing the row from Apple failed (ignored):`, e?.message || e));
-    return isActive(tx, now());
+    return { active: isActive(tx, now()), tx };
   }
 
   // Pass 1. Sequential on purpose: deploys are heavy.
@@ -146,9 +167,9 @@ export async function sweepIos(
     }
     const otid = row.original_transaction_id;
     if (isLapsed(row, now())) {
-      const active = await appleSaysActive(row, slug, false);
-      if (active === null) continue;
-      if (!active) {
+      const answer = await appleSaysActive(row, slug, false);
+      if (answer === null) continue;
+      if (!answer.active) {
         out.skippedLapsed.push(slug);
         continue;
       }
@@ -181,11 +202,17 @@ export async function sweepIos(
       continue;
     }
     const otid = row.original_transaction_id;
-    const active = await appleSaysActive(row, slug, true);
-    if (active === null) continue;
-    if (!active) {
+    const answer = await appleSaysActive(row, slug, true);
+    if (answer === null) continue;
+    if (!answer.active) {
       out.notRestored.push(slug);
       continue;
+    }
+    if (deps.stripPending) {
+      // The pending copy may carry links from an older, higher tier (a downgrade, then a
+      // lapse and a resubscribe). Strip by what Apple says now; the gates stay authoritative.
+      await deps.stripPending(slug, answer.tx.productId).catch((e: any) =>
+        console.error(`[Sweeper:iOS] ${slug} (${otid}): stripping links before the restore failed (restoring anyway):`, e?.message || e));
     }
     try {
       const outcome = await deps.publish(slug, { force: true });
@@ -213,9 +240,9 @@ export async function sweepIos(
       continue;
     }
     const otid = row.original_transaction_id;
-    const active = await appleSaysActive(row, slug, true);
-    if (active === null) continue;
-    if (active) {
+    const answer = await appleSaysActive(row, slug, true);
+    if (answer === null) continue;
+    if (answer.active) {
       out.stillActive.push(slug);
       continue;
     }

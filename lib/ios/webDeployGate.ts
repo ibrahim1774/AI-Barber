@@ -18,6 +18,7 @@ import type { WebsiteData } from '../../types.js';
 import { deployRenderedSite, type DeployRenderedSiteInput, type DeployRenderedSiteResult } from '../deploySite.js';
 import { slugify, writePendingSite, type PendingSite } from '../publishSite.js';
 import { buildImageUrlMap, toPendingSiteData } from './pendingData.js';
+import { stripLapsedLinks } from './tiers.js';
 import { supabasePurchases, type PurchaseRow } from './purchases.js';
 import { withTimeout } from './timeout.js';
 
@@ -123,7 +124,10 @@ export async function gatedWebDeploy(
       await deps.writePending(slug, {
         siteId: slug,
         existingSiteId: null,
-        siteData: toPendingSiteData(siteData, imageUrlMap),
+        // Same Book/Shop link strip as the app publish (Phase 4 tiers), by the stored product.
+        // The browser HTML just deployed is left as sent; the gates stay authoritative, and
+        // every later restore or republish renders from this stripped copy.
+        siteData: stripLapsedLinks(toPendingSiteData(siteData, imageUrlMap), row.product_id),
         imageUrlMap,
         timestamp: deps.now(),
         deployedUrl: result.deploymentUrl,
