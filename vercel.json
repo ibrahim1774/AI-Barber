@@ -29,6 +29,14 @@
       "destination": "/support.html"
     },
     {
+      "source": "/stripe-return",
+      "destination": "/stripe-return.html"
+    },
+    {
+      "source": "/stripe-return/",
+      "destination": "/stripe-return.html"
+    },
+    {
       "source": "/((?!api/.*).*)",
       "destination": "/index.html"
     }
@@ -41,6 +49,14 @@
     {
       "path": "/api/ios/sweep",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/book/reminders",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/book/daily-summary",
+      "schedule": "0 * * * *"
     }
   ],
   "functions": {
