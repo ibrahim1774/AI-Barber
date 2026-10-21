@@ -342,10 +342,87 @@ describe('createOrder: repeated clientKey', () => {
     const b = body(w, { pay: 'card' });
     await createOrder(b, w.deps);
     Object.assign(w.state.orders[0], { stripe_checkout_session_id: null, checkout_url: null }); // died between create and store
+    w.setNow('2026-11-02T12:00:31Z'); // older than the in-flight budget (30 s)
     const r = await createOrder(b, w.deps);
     expect(r).toEqual({ status: 409, body: { error: 'checkout-expired' } });
     expect(w.state.orders[0]).toMatchObject({ status: 'cancelled', cancelled_by: 'customer', payment_status: 'none' });
     expect(w.payments.createOrderCheckout).toHaveBeenCalledTimes(1);
+    expect(w.deps.sleep).not.toHaveBeenCalled();
+  });
+
+  describe('in-flight double submit (the first request is still in Stripe)', () => {
+    function deferredCheckout(w: StoreWorld) {
+      let release!: () => void;
+      const gate = new Promise<void>((r) => { release = r; });
+      w.payments.createOrderCheckout.mockImplementationOnce(async (_s: any, o: { id: string }) => {
+        await gate;
+        return { url: `https://checkout.stripe.test/${o.id}`, sessionId: `cs_${o.id}` };
+      });
+      return { release };
+    }
+    const until = async (cond: () => boolean) => { for (let i = 0; i < 50 && !cond(); i++) await new Promise((r) => setImmediate(r)); };
+    const invariant = (w: StoreWorld) => {
+      // no order is both cancelled and holding a checkout URL
+      expect(w.state.orders.filter((o) => o.status === 'cancelled' && o.checkout_url)).toEqual([]);
+    };
+
+    it('the resubmit waits for the session and returns the same URL; nothing is cancelled', async () => {
+      const w = storeWorld();
+      const b = body(w, { pay: 'card' });
+      const { release } = deferredCheckout(w);
+      const pA = createOrder(b, w.deps);
+      await until(() => w.payments.createOrderCheckout.mock.calls.length === 1);
+      let aDone: Promise<unknown> | null = null;
+      (w.deps.sleep as any).mockImplementation(async () => { if (!aDone) { release(); aDone = pA; } await aDone; });
+      const rB = await createOrder(b, w.deps);
+      const rA = await pA;
+      const o = w.state.orders[0];
+      expect(rA.status).toBe(201);
+      expect(rB).toEqual(rA);
+      expect((rA.body as any).checkoutUrl).toBe(`https://checkout.stripe.test/${o.id}`);
+      expect(o).toMatchObject({ status: 'new', payment_status: 'awaiting', checkout_url: `https://checkout.stripe.test/${o.id}` });
+      expect(w.state.orders).toHaveLength(1);
+      expect(w.payments.createOrderCheckout).toHaveBeenCalledTimes(1);
+      expect(w.notified).toHaveLength(1);
+      invariant(w);
+    });
+
+    it('if the session does not appear in time: 409 without cancelling; exactly one response carries a URL, for a live hold', async () => {
+      const w = storeWorld();
+      const b = body(w, { pay: 'card' });
+      const { release } = deferredCheckout(w);
+      const pA = createOrder(b, w.deps);
+      await until(() => w.payments.createOrderCheckout.mock.calls.length === 1);
+      const rB = await createOrder(b, w.deps); // A still in Stripe through all 4 polls
+      expect(rB).toEqual({ status: 409, body: { error: 'checkout-expired' } });
+      expect(w.deps.sleep).toHaveBeenCalledTimes(4);
+      expect(w.state.orders[0]).toMatchObject({ status: 'new', payment_status: 'awaiting' });
+      release();
+      const rA = await pA;
+      const withUrl = [rA, rB].filter((r) => (r.body as any).checkoutUrl);
+      expect(withUrl).toHaveLength(1);
+      const o = w.state.orders[0];
+      expect((withUrl[0].body as any).checkoutUrl).toBe(o.checkout_url);
+      expect(o).toMatchObject({ status: 'new', payment_status: 'awaiting', amount_paid_cents: 0 });
+      invariant(w);
+    });
+
+    it('a hold cancelled while its first request is in Stripe never gets a URL: the new session is expired and 409', async () => {
+      const w = storeWorld();
+      const b = body(w, { pay: 'card' });
+      const { release } = deferredCheckout(w);
+      const pA = createOrder(b, w.deps);
+      await until(() => w.payments.createOrderCheckout.mock.calls.length === 1);
+      const id = w.state.orders[0].id;
+      Object.assign(w.order(id), { status: 'cancelled', cancelled_by: 'customer', payment_status: 'none' }); // e.g. judged dead
+      release();
+      const rA = await pA;
+      expect(rA).toEqual({ status: 409, body: { error: 'checkout-expired' } });
+      expect(w.order(id)).toMatchObject({ status: 'cancelled', checkout_url: null, stripe_checkout_session_id: null });
+      expect(w.payments.expireCheckoutSession).toHaveBeenCalledWith(expect.objectContaining({ id: w.ids.shopId }), `cs_${id}`);
+      expect(w.notified).toEqual([]);
+      invariant(w);
+    });
   });
 
   it('card paid: 201 with no checkoutUrl', async () => {
@@ -391,7 +468,10 @@ describe('createOrder: repeated clientKey', () => {
 
     it('live hold without a session: cancelled + 409', async () => {
       const w = storeWorld();
-      const r = await race(w, body(w, { pay: 'card' }), () => Object.assign(w.state.orders[0], { stripe_checkout_session_id: null, checkout_url: null }));
+      const r = await race(w, body(w, { pay: 'card' }), () => {
+        Object.assign(w.state.orders[0], { stripe_checkout_session_id: null, checkout_url: null });
+        w.setNow('2026-11-02T12:01:00Z');
+      });
       expect(r).toEqual({ status: 409, body: { error: 'checkout-expired' } });
       expect(w.state.orders[0].status).toBe('cancelled');
     });

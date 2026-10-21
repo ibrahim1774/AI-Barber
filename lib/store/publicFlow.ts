@@ -97,30 +97,46 @@ const shopRateLimited = (): FlowResult => ({
 });
 
 /**
+ * A card hold with no session stored that is younger than this may still be inside its first
+ * request's Stripe call (STRIPE_TIMEOUT_MS is 10 s, plus margin): it is never judged "died".
+ */
+export const CHECKOUT_INFLIGHT_MS = 30_000;
+const INFLIGHT_POLLS = 4;
+const INFLIGHT_POLL_MS = 750;
+
+const sleep = (deps: StoreDeps, ms: number) => (deps.sleep ? deps.sleep(ms) : new Promise<void>((r) => setTimeout(r, ms)));
+
+/**
  * The answer for a repeated clientKey (contract "Duplicate submits"): never a second Checkout
  * Session and never a second notify.
  */
 async function repeatResponse(deps: StoreDeps, shop: ShopStoreRow, order: OrderRow): Promise<FlowResult> {
   let o = order;
-  for (let attempt = 0; attempt < 2; attempt++) {
+  let polls = 0;
+  for (let step = 0; step < INFLIGHT_POLLS + 3; step++) {
     if (o.payment_method !== 'card') return created(deps, o);
     if (o.status === 'cancelled') return checkoutExpired();
     if (!(o.status === 'new' && isUnpaidCardHold(o))) return created(deps, o); // paid (or later)
     if (o.checkout_url) return created(deps, o, o.checkout_url);
-    // A live hold with no session stored: the first request died between create and store.
+
+    if (deps.now() - Date.parse(o.created_at) < CHECKOUT_INFLIGHT_MS) {
+      // In flight (a double tap, or a fetch retry while the first request is still in Stripe):
+      // wait briefly for its session. If none appears, answer 409 WITHOUT cancelling: the first
+      // request may still store its session; the sweep or the webhook expires the hold otherwise.
+      if (polls >= INFLIGHT_POLLS) return checkoutExpired();
+      polls++;
+      await sleep(deps, INFLIGHT_POLL_MS);
+      const cur = await deps.repo.orderById(o.id);
+      if (!cur) return checkoutExpired();
+      o = cur;
+      continue;
+    }
+
+    // An older live hold with no session: the first request died between create and store.
     // Cancel it; the page makes a new clientKey. A payment on an orphaned session is refunded
     // by the webhook's paid-after-cancel path.
     const upd = await deps.repo.updateOrder(o.id, expiredHoldPatch(deps.now()), LIVE_HOLD);
-    if (upd.ok) {
-      if (upd.row.stripe_checkout_session_id) {
-        try {
-          await deps.payments.expireCheckoutSession(shop, upd.row.stripe_checkout_session_id);
-        } catch (e: any) {
-          console.error(`[store] expiring checkout for order ${o.id} failed:`, e?.message || e);
-        }
-      }
-      return checkoutExpired();
-    }
+    if (upd.ok) return checkoutExpired();
     const cur = await deps.repo.orderById(o.id);
     if (!cur) return checkoutExpired();
     o = cur; // a payment (or the session) landed meanwhile: decide again on the fresh row
@@ -234,12 +250,25 @@ export async function createOrder(body: unknown, deps: StoreDeps): Promise<FlowR
         priced.lines.map(({ name: n, unit_price_cents, quantity, photo_url }) => ({ name: n, unit_price_cents, quantity, photo_url })),
       );
       checkoutUrl = co.url;
+      let stored: Awaited<ReturnType<typeof deps.repo.updateOrder>> | null = null;
       try {
-        // One update, so a retried submit always finds the session and its URL together.
-        const upd = await deps.repo.updateOrder(order.id, { stripe_checkout_session_id: co.sessionId, checkout_url: co.url });
-        if (upd.ok) order = upd.row;
+        // One update, so a retried submit always finds the session and its URL together; only
+        // onto a hold that is still live (a resubmit or the sweep may have cancelled it meanwhile).
+        stored = await deps.repo.updateOrder(order.id, { stripe_checkout_session_id: co.sessionId, checkout_url: co.url }, LIVE_HOLD);
       } catch (e: any) {
         console.error(`[store] storing checkout session for order ${order.id} failed:`, e?.message || e);
+      }
+      if (stored?.ok === true) order = stored.row;
+      else if (stored?.ok === false) {
+        // The hold is no longer live: never hand out a working URL for it. Close the session
+        // and answer from the row as it is now (409 checkout-expired for a cancelled hold).
+        try {
+          await deps.payments.expireCheckoutSession(shop, co.sessionId);
+        } catch (e: any) {
+          console.error(`[store] expiring checkout for order ${order.id} failed:`, e?.message || e);
+        }
+        const cur = await deps.repo.orderById(order.id);
+        return cur ? repeatResponse(deps, shop, cur) : checkoutExpired();
       }
     } catch (e: any) {
       // No Checkout = no hold. Cancel it (never delete: the order number must not be reused).
