@@ -347,19 +347,23 @@ describe('SubscriptionStatusSync', () => {
     await jest.advanceTimersByTimeAsync(0);
   });
 
-  test('locks a published site with no subscription once Superwall settles; a forced recheck unlocks it', async () => {
+  test('locks a published site whose subscription ended over an hour ago once Superwall settles; a forced recheck unlocks it', async () => {
     await siteStore.saveSite(published);
     sw.status = 'INACTIVE';
+    const ended = { ...ACTIVE, transactionId: 'tx-old', isActive: false, expirationDate: new Date(Date.now() - 2 * 3_600_000).toISOString() };
+    sw.subscriptions = [ended];
+    const iosSite = jest.spyOn(api, 'iosSite').mockResolvedValue({ ...BOUND, active: false });
     let r!: { unmount(): void };
     await act(async () => {
       r = create(React.createElement(SubscriptionStatusSync));
     });
     await flush();
+    expect(iosSite).toHaveBeenCalledWith('tx-old');
     expect(status.getSubscriptionStatus()).toBe('lapsed');
 
     // Resubscribed: a transaction appears. A plain check is throttled; a forced one runs.
-    sw.subscriptions = [ACTIVE];
-    const iosSite = jest.spyOn(api, 'iosSite').mockResolvedValue(BOUND);
+    sw.subscriptions = [ended, ACTIVE];
+    iosSite.mockClear().mockResolvedValue(BOUND);
     status.recheckSubscriptionStatus(false);
     await flush();
     expect(iosSite).not.toHaveBeenCalled();
@@ -370,18 +374,41 @@ describe('SubscriptionStatusSync', () => {
     r.unmount();
   });
 
-  test('not before Superwall has settled, and never locks a draft', async () => {
+  test('a check that resolves after a live publish never overwrites its active', async () => {
     await siteStore.saveSite(published);
     sw.status = 'INACTIVE';
-    sw.configured = false;
+    sw.subscriptions = [{ ...ACTIVE, isActive: false, expirationDate: new Date(Date.now() - 2 * 3_600_000).toISOString() }];
+    let answer!: (v: unknown) => void;
+    jest.spyOn(api, 'iosSite').mockImplementation(() => new Promise((res) => (answer = res)) as any);
     let r!: { unmount(): void };
     await act(async () => {
       r = create(React.createElement(SubscriptionStatusSync));
     });
     await flush();
+    status.setSubscriptionStatus('active'); // onLive, while the check waits on the server
+    answer({ ...BOUND, active: false });
+    await flush();
+    expect(status.getSubscriptionStatus()).toBe('active');
+    r.unmount();
+  });
+
+  test('not before Superwall has settled, and a draft clears an earlier lapse', async () => {
+    await siteStore.saveSite(published);
+    sw.status = 'INACTIVE';
+    sw.configured = false;
+    const customerInfo = jest.fn(async () => ({ subscriptions: [] }));
+    sw.customerInfo = customerInfo;
+    let r!: { unmount(): void };
+    await act(async () => {
+      r = create(React.createElement(SubscriptionStatusSync));
+    });
+    await flush();
+    expect(customerInfo).not.toHaveBeenCalled();
     expect(status.getSubscriptionStatus()).toBe('unknown');
     r.unmount();
 
+    // A stale 'lapsed' from long ago (throttle expired), then the site is a draft.
+    status.setSubscriptionStatus('lapsed', Date.now() - status.RECHECK_MS);
     sw.configured = true;
     await siteStore.saveSite({ ...published, slug: null, deployedUrl: null, transactionId: null });
     await act(async () => {

@@ -4,9 +4,9 @@ import { ApiError } from '@/lib/api';
 import { PRODUCT_IDS } from '@/lib/publish';
 import type { SiteRecord } from '@/lib/siteStore';
 import {
-  checkSubscriptionStatus, getSubscriptionStatus, isLocked, lastStatusCheckAt, RECHECK_MS, recheckSubscriptionStatus,
-  resetSubscriptionStatusForTests, setSubscriptionStatus, shouldCheck, subscribeSubscriptionStatus,
-  type StatusInput,
+  checkSubscriptionStatus, getSubscriptionStatus, isLocked, LAPSE_AFTER_MS, lastStatusCheckAt, RECHECK_MS,
+  recheckSubscriptionStatus, resetSubscriptionStatusForTests, setSubscriptionStatus, shouldCheck, statusGeneration,
+  subscribeSubscriptionStatus, type StatusInput,
 } from '@/lib/subscriptionStatus';
 
 const published = {
@@ -26,6 +26,10 @@ const sub = (over: Record<string, unknown> = {}) => ({
   transactionId: 'tx-9', productId: PRODUCT_IDS[0], purchaseDate: '2026-10-01T00:00:00Z', isActive: true, isRevoked: false,
   ...over,
 });
+const NOW = Date.parse('2026-10-21T12:00:00Z');
+/** This Apple ID's AI Barber subscription, ended 2 h before NOW. */
+const ended = (over: Record<string, unknown> = {}) =>
+  sub({ transactionId: 'tx-old', isActive: false, expirationDate: new Date(NOW - 2 * 3_600_000).toISOString(), ...over });
 const bound = (over: Record<string, unknown> = {}) => ({
   siteId: 'fade-factory', deployedUrl: published.deployedUrl, siteData: null, active: true, ...over,
 });
@@ -55,19 +59,53 @@ describe('checkSubscriptionStatus', () => {
     expect(isLocked(published, 'active')).toBe(false);
   });
 
-  test('no active transaction on this Apple ID, Superwall loaded and inactive: lapsed', async () => {
+  test('no AI Barber subscription at all on this Apple ID proves nothing', async () => {
     const i = input();
-    await expect(checkSubscriptionStatus(i)).resolves.toBe('lapsed');
+    await expect(checkSubscriptionStatus(i)).resolves.toBe('unknown');
+    const other = input({ customerInfo: async () => ({ subscriptions: [sub({ productId: 'com.other.app.monthly', isActive: false })] }) });
+    await expect(checkSubscriptionStatus(other)).resolves.toBe('unknown');
     expect(i.iosSite).not.toHaveBeenCalled();
   });
 
-  test('expired, revoked and other products count as no transaction', async () => {
+  test('an ended subscription locks only once it ended at least an hour ago (the takedown), confirmed by the server', async () => {
+    const at = (msAgo: number) =>
+      input({
+        now: NOW,
+        customerInfo: async () => ({ subscriptions: [ended({ expirationDate: new Date(NOW - msAgo).toISOString() })] }),
+        iosSite: jest.fn(async () => bound({ active: false })) as unknown as StatusInput['iosSite'],
+      });
+    const early = at(LAPSE_AFTER_MS - 1);
+    await expect(checkSubscriptionStatus(early)).resolves.toBe('unknown');
+    expect(early.iosSite).not.toHaveBeenCalled();
+
+    const due = at(LAPSE_AFTER_MS);
+    await expect(checkSubscriptionStatus(due)).resolves.toBe('lapsed');
+    expect(due.iosSite).toHaveBeenCalledWith('tx-old');
+  });
+
+  test('a revoked (refunded) subscription locks at once; no expiry date is not enough', async () => {
+    const revoked = input({
+      now: NOW,
+      customerInfo: async () => ({ subscriptions: [ended({ isRevoked: true, expirationDate: new Date(NOW + 86_400_000).toISOString() })] }),
+      iosSite: (async () => bound({ active: false })) as unknown as StatusInput['iosSite'],
+    });
+    await expect(checkSubscriptionStatus(revoked)).resolves.toBe('lapsed');
+    const noExpiry = input({ now: NOW, customerInfo: async () => ({ subscriptions: [ended({ expirationDate: null })] }) });
+    await expect(checkSubscriptionStatus(noExpiry)).resolves.toBe('unknown');
+  });
+
+  test('the newest AI Barber subscription decides', async () => {
     const subscriptions = [
-      sub({ isActive: false }),
-      sub({ isRevoked: true }),
-      sub({ productId: 'com.other.app.monthly' }),
+      ended({ transactionId: 'tx-ancient', purchaseDate: '2025-01-01T00:00:00Z', expirationDate: '2025-02-01T00:00:00Z' }),
+      // Newest, ended only 10 minutes ago: not yet.
+      ended({ purchaseDate: '2026-09-21T12:00:00Z', expirationDate: new Date(NOW - 600_000).toISOString() }),
     ];
-    await expect(checkSubscriptionStatus(input({ customerInfo: async () => ({ subscriptions }) }))).resolves.toBe('lapsed');
+    await expect(checkSubscriptionStatus(input({ now: NOW, customerInfo: async () => ({ subscriptions }) }))).resolves.toBe('unknown');
+  });
+
+  test('the server still saying active for an ended transaction is active', async () => {
+    const i = input({ now: NOW, customerInfo: async () => ({ subscriptions: [ended()] }) });
+    await expect(checkSubscriptionStatus(i)).resolves.toBe('active');
   });
 
   test('an active transaction asks the server: active or lapsed', async () => {
@@ -133,23 +171,34 @@ describe('checkSubscriptionStatus', () => {
     expect(i.customerInfo).not.toHaveBeenCalled();
   });
 
-  test('a site loaded from the account (no transaction bound here) is not locked for lacking one', async () => {
-    // This Apple ID never subscribed: it may have been paid on another one.
-    await expect(checkSubscriptionStatus(input({ site: adopted }))).resolves.toBe('unknown');
-    const otherApp = input({ site: adopted, customerInfo: async () => ({ subscriptions: [sub({ productId: 'com.other.app' })] }) });
-    await expect(checkSubscriptionStatus(otherApp)).resolves.toBe('unknown');
-    // This Apple ID did subscribe, and it has ended (a payer who reinstalled and signed in).
-    for (const ended of [sub({ isActive: false }), sub({ isRevoked: true })]) {
-      const i = input({ site: adopted, customerInfo: async () => ({ subscriptions: [ended] }) });
-      await expect(checkSubscriptionStatus(i)).resolves.toBe('lapsed');
-    }
-    // With a transaction on this Apple ID, the server still decides.
-    const withTx = input({
+  test('a site loaded from the account locks only for a subscription bound to its own link', async () => {
+    const endedSubs = async () => ({ subscriptions: [ended()] });
+    // Another shop's ended subscription on this Apple ID: says nothing about this site.
+    const otherShop = input({
+      site: adopted, now: NOW, customerInfo: endedSubs,
+      iosSite: (async () => bound({ siteId: 'other-shop', deployedUrl: 'https://other-shop.vercel.app', active: false })) as any,
+    });
+    await expect(checkSubscriptionStatus(otherShop)).resolves.toBe('unknown');
+    // Its own subscription, ended: lapsed (a payer who reinstalled and signed in).
+    const own = input({ site: adopted, now: NOW, customerInfo: endedSubs, iosSite: (async () => bound({ active: false })) as any });
+    await expect(checkSubscriptionStatus(own)).resolves.toBe('lapsed');
+    // The server has no URL: the slug must be the link's first label.
+    const bySlug = input({
+      site: adopted, now: NOW, customerInfo: endedSubs,
+      iosSite: (async () => bound({ siteId: 'fade-factory', deployedUrl: null, active: false })) as any,
+    });
+    await expect(checkSubscriptionStatus(bySlug)).resolves.toBe('lapsed');
+  });
+
+  test("an active subscription for another site never locks a site loaded from the account", async () => {
+    const refundedOther = input({
       site: adopted,
       customerInfo: async () => ({ subscriptions: [sub()] }),
-      iosSite: (async () => bound({ active: false })) as unknown as StatusInput['iosSite'],
+      iosSite: (async () => bound({ siteId: 'other-shop', deployedUrl: 'https://other-shop.vercel.app', active: false })) as any,
     });
-    await expect(checkSubscriptionStatus(withTx)).resolves.toBe('lapsed');
+    await expect(checkSubscriptionStatus(refundedOther)).resolves.toBe('unknown');
+    const ownActive = input({ site: adopted, customerInfo: async () => ({ subscriptions: [sub()] }) });
+    await expect(checkSubscriptionStatus(ownActive)).resolves.toBe('active');
   });
 });
 
@@ -178,6 +227,17 @@ describe('throttle and store', () => {
     setSubscriptionStatus('active', 300);
     expect(heard).toHaveBeenCalledTimes(2);
     off();
+  });
+
+  test('a check that started before a direct set (a live publish) is dropped', () => {
+    const gen = statusGeneration();
+    setSubscriptionStatus('active', 100); // onLive
+    setSubscriptionStatus('lapsed', 200, gen); // the stale check's result
+    expect(getSubscriptionStatus()).toBe('active');
+    expect(lastStatusCheckAt()).toBe(100);
+    // A check started after it applies.
+    setSubscriptionStatus('lapsed', 300, statusGeneration());
+    expect(getSubscriptionStatus()).toBe('lapsed');
   });
 
   test('a recheck without a mounted runner is a no-op', () => {

@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import { pullSiteFromAccount, syncIfSignedIn } from '@/lib/account';
 import { isCodeComplete, isValidEmail, sanitizeCode } from '@/lib/recovery';
 import { supabase } from '@/lib/supabase';
+import { LOOKUP_TIMEOUT_MS, withTimeout } from '@/lib/timeout';
 
 // Copy from the web's AuthModal where it has one; the rest is ours.
 export const PASSWORD_TOO_SHORT = 'Password must be at least 6 characters';
@@ -139,7 +140,8 @@ async function afterSession(id: string | null | undefined): Promise<void> {
   userId = id ?? userId;
   if (id) {
     identifyUser(id);
-    await pullSiteFromAccount(id);
+    // Capped: a stalled network must not hold a sign-in that already succeeded.
+    await withTimeout(pullSiteFromAccount(id), LOOKUP_TIMEOUT_MS).catch(() => null);
   }
   await syncIfSignedIn();
 }

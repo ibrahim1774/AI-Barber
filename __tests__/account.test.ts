@@ -121,6 +121,36 @@ describe('restore', () => {
     expect(out).toMatchObject({ draftId: DRAFT, slug: 'fade-factory', data: BOUND.siteData });
   });
 
+  test('restore replaces a different live site under a new id, so its account row is never overwritten', async () => {
+    await store.saveSite({ ...site, slug: null, deployedUrl: 'https://other-shop.vercel.app', transactionId: null });
+    const out = (await restore(restoreDeps()))?.site;
+    expect(out).toMatchObject({ slug: 'fade-factory', data: BOUND.siteData });
+    expect(out!.draftId).not.toBe(DRAFT);
+  });
+
+  test('reinstall, the account copy is adopted, then Restore purchases keeps the adopted (newer) data', async () => {
+    const T = Date.parse('2026-10-20T12:00:00.000Z');
+    sb.setSession({ access_token: 'a', user: USER });
+    sb.rows = [
+      {
+        id: DRAFT,
+        user_id: USER.id,
+        site_data: { ...BOUND.siteData, shopName: 'Edited On Web', source: 'ios' },
+        deployed_url: 'https://fade-factory.aibarber.org/',
+        updated_at: new Date(T).toISOString(),
+      },
+    ];
+    await expect(pullSiteFromAccount(USER.id)).resolves.toBe('adopted');
+    expect((await store.loadSite())!.slug).toBeNull();
+
+    const res = await restore(restoreDeps());
+    expect(res!.site).toMatchObject({ draftId: DRAFT, slug: 'fade-factory', transactionId: 'tx-9' });
+    expect(res!.site.data.shopName).toBe('Edited On Web');
+    // The push after a restore carries the web edits, not the last published copy.
+    await syncIfSignedIn(res!.site);
+    expect(sb.upserts[0].row).toMatchObject({ id: DRAFT, company_name: 'Edited On Web' });
+  });
+
   test('an inactive subscription still restores the content and says it is inactive', async () => {
     const res = await restore(restoreDeps({ iosSite: jest.fn(async () => ({ ...BOUND, active: false })) as any }));
     expect(res).toMatchObject({ active: false, site: { slug: 'fade-factory', data: BOUND.siteData } });
@@ -438,6 +468,38 @@ describe('pullSiteFromAccount', () => {
     expect(await store.loadSite()).toEqual(local);
   });
 
+  test('a publish landing while the row loads is kept (the site is never unbound)', async () => {
+    const draftLocal = { ...local, slug: null, deployedUrl: null, transactionId: null } as SiteRecord;
+    await store.saveSite(draftLocal);
+    sb.rows = [row({ deployed_url: null })];
+    const realLoad = store.loadSite;
+    let calls = 0;
+    jest.spyOn(store, 'loadSite').mockImplementation(async () => {
+      calls++;
+      if (calls === 1) return realLoad();
+      // send() saved the publish meanwhile: bound, same updatedAt.
+      return { ...draftLocal, slug: 'fade-factory', deployedUrl: 'https://fade-factory.aibarber.org', transactionId: 'tx-7' };
+    });
+    await expect(pullSiteFromAccount(USER.id)).resolves.toBe('adopted');
+    jest.restoreAllMocks();
+    expect(await store.loadSite()).toMatchObject({
+      slug: 'fade-factory',
+      deployedUrl: 'https://fade-factory.aibarber.org',
+      transactionId: 'tx-7',
+      data: expect.objectContaining({ shopName: 'Fade Factory Web' }),
+    });
+  });
+
+  test('a row with no updated_at is never picked over the newest one', async () => {
+    sb.rows = [
+      row({ id: 'no-time', updated_at: null }),
+      row({ id: 'new-ios', updated_at: '2026-10-19T00:00:00.000Z' }),
+    ];
+    await expect(pullSiteFromAccount(USER.id)).resolves.toBe('adopted');
+    expect(sb.selects[0].nullsFirst).toBe(false);
+    expect((await store.loadSite())!.draftId).toBe('new-ios');
+  });
+
   test.each([
     ['returned', false],
     ['thrown', true],
@@ -566,6 +628,28 @@ describe('auth', () => {
     expect((await store.loadSite())!.data.shopName).toBe('Edited On Web');
     expect(sb.upserts).toHaveLength(1);
     expect(sb.upserts[0].row).toMatchObject({ company_name: 'Edited On Web', updated_at: new Date(5000).toISOString() });
+  });
+
+  test('a stalled pull after sign-in is given up after the lookup timeout', async () => {
+    jest.useFakeTimers();
+    await store.saveSite(site);
+    const session = { access_token: 'a', user: USER };
+    supabase.auth.signInWithPassword.mockImplementationOnce(async () => {
+      sb.setSession(session);
+      return { data: { user: USER, session }, error: null };
+    });
+    const from = jest.spyOn(supabase, 'from').mockImplementation((() => ({
+      select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: () => new Promise(() => {}) }) }) }),
+      upsert: async () => ({ data: null, error: null }),
+    })) as any);
+    let done = false;
+    const p = signIn('barber@example.com', 'secret1').then(() => (done = true));
+    await jest.advanceTimersByTimeAsync(5_000);
+    expect(done).toBe(false);
+    await jest.advanceTimersByTimeAsync(1_500);
+    await p;
+    expect(done).toBe(true);
+    from.mockRestore();
   });
 
   test('a pull failure after sign-in does not fail the sign-in', async () => {

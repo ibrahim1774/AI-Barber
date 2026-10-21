@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import type { api } from '@/lib/api';
 import { PRODUCT_IDS, pickLatestTransactionId } from '@/lib/publish';
 import type { SiteRecord } from '@/lib/siteStore';
+import { boundMatches } from '@/lib/website';
 import { LOOKUP_TIMEOUT_MS, withTimeout } from '@/lib/timeout';
 
 /**
@@ -9,8 +10,9 @@ import { LOOKUP_TIMEOUT_MS, withTimeout } from '@/lib/timeout';
  * (2026-10-21): once it ends, the site goes offline (server side) and the
  * app stops editing until the barber resubscribes.
  *
- * - 'active': a transaction on this Apple ID and /api/ios/site says active.
- * - 'lapsed': confirmed ended. Only this locks the editor.
+ * - 'active': /api/ios/site says this site's subscription is active.
+ * - 'lapsed': confirmed ended (by the server, for this site), at least an
+ *   hour ago. Only this locks the editor.
  * - 'unknown': anything uncertain (offline, an SDK or server error, a paid
  *   publish still pending, a site not bound to this Apple ID). Never locks.
  */
@@ -19,16 +21,36 @@ export type SubscriptionStatus = 'active' | 'lapsed' | 'unknown';
 /** Superwall's own subscription status; null without a Superwall key. */
 export type SuperwallStatus = 'ACTIVE' | 'INACTIVE' | 'UNKNOWN' | null;
 
+/** One entry of Superwall's CustomerInfo.subscriptions (the fields used here). */
+export interface SubscriptionEntry {
+  transactionId: string;
+  productId: string;
+  purchaseDate: string;
+  isActive: boolean;
+  isRevoked?: boolean;
+  /** ISO-8601; null for a non-renewing product. */
+  expirationDate?: string | null;
+}
+
 export interface StatusInput {
   site: SiteRecord | null;
   /** A paid publish is waiting to be sent (Apple / Superwall lag). */
   pendingPublish: boolean;
   superwallStatus: SuperwallStatus;
   /** Superwall getCustomerInfo(). Never rejects natively; it can hang until configured. */
-  customerInfo(): Promise<{ subscriptions?: Parameters<typeof pickLatestTransactionId>[0] }>;
+  customerInfo(): Promise<{ subscriptions?: SubscriptionEntry[] }>;
   iosSite: typeof api.iosSite;
   timeoutMs?: number;
+  now?: number;
 }
+
+/**
+ * The server takes a site down about an hour after its subscription ends
+ * (Apple's status decides: billing grace still counts as active, billing
+ * retry as ended). Until then the app says nothing, so "Your website is
+ * offline" is never shown for a site that is still up.
+ */
+export const LAPSE_AFTER_MS = 60 * 60 * 1000;
 
 /** Only a site that was live can lapse; a never-published draft is never locked. */
 export function isPublished(site: SiteRecord | null | undefined): boolean {
@@ -40,7 +62,36 @@ export function isLocked(site: SiteRecord | null | undefined, status: Subscripti
   return isPublished(site) && status === 'lapsed';
 }
 
-/** The decision itself. Never throws: every failure is 'unknown'. */
+const isOurs = (s: SubscriptionEntry) => (PRODUCT_IDS as readonly string[]).includes(s.productId);
+const time = (iso: string | null | undefined) => {
+  const t = Date.parse(iso ?? '');
+  return Number.isNaN(t) ? null : t;
+};
+
+/** This Apple ID's newest AI Barber subscription, active or not. */
+function newestOurs(subs: SubscriptionEntry[]): SubscriptionEntry | null {
+  let best: SubscriptionEntry | null = null;
+  let bestAt = -Infinity;
+  for (const s of subs) {
+    if (!isOurs(s)) continue;
+    const at = time(s.purchaseDate) ?? time(s.expirationDate) ?? 0;
+    if (!best || at > bestAt) {
+      best = s;
+      bestAt = at;
+    }
+  }
+  return best;
+}
+
+/**
+ * The decision itself. Never throws: every failure is 'unknown'.
+ *
+ * The transaction to ask about is the newest active AI Barber one, or, with
+ * none active, the newest ended one, but only once it is revoked or expired
+ * at least LAPSE_AFTER_MS ago. /api/ios/site then says which site that
+ * subscription is bound to: anything but this site is 'unknown', so another
+ * shop's subscription (or one on another Apple ID) never locks this one.
+ */
 export async function checkSubscriptionStatus(input: StatusInput): Promise<SubscriptionStatus> {
   const { site } = input;
   if (!site || !isPublished(site)) return 'unknown';
@@ -49,32 +100,33 @@ export async function checkSubscriptionStatus(input: StatusInput): Promise<Subsc
   // No key, or Superwall hasn't worked out the status yet: customer info isn't trustworthy.
   if (input.superwallStatus == null || input.superwallStatus === 'UNKNOWN') return 'unknown';
 
-  let transactionId: string | null;
-  let everSubscribed: boolean;
+  let subs: SubscriptionEntry[];
   try {
     const info = await withTimeout(input.customerInfo(), input.timeoutMs ?? LOOKUP_TIMEOUT_MS);
-    const subs = info?.subscriptions ?? [];
-    transactionId = pickLatestTransactionId(subs);
-    // Any AI Barber subscription on this Apple ID, expired or revoked included.
-    everSubscribed = subs.some((s) => (PRODUCT_IDS as readonly string[]).includes(s.productId));
+    subs = info?.subscriptions ?? [];
   } catch {
     return 'unknown';
   }
 
+  let transactionId = pickLatestTransactionId(subs);
   if (!transactionId) {
     // Superwall says subscribed, but the transaction isn't readable yet.
     if (input.superwallStatus === 'ACTIVE') return 'unknown';
-    // A site not bound on this phone (loaded from the account) lapses only if
-    // this Apple ID did subscribe once; otherwise it may have been paid on
-    // another Apple ID, and "ended" (and a second purchase) would be wrong.
-    if (site.transactionId == null && !everSubscribed) return 'unknown';
-    return 'lapsed';
+    // Never subscribed on this Apple ID: maybe paid on another one. Proves nothing.
+    const ended = newestOurs(subs);
+    if (!ended) return 'unknown';
+    if (!ended.isRevoked) {
+      const expired = time(ended.expirationDate);
+      // Not ended long enough for the takedown (or no expiry at all): not yet.
+      if (expired == null || (input.now ?? Date.now()) - expired < LAPSE_AFTER_MS) return 'unknown';
+    }
+    transactionId = ended.transactionId;
   }
 
   try {
     const bound = await input.iosSite(transactionId);
     // The subscription found is bound to a different site: says nothing about this one.
-    if (site.slug != null && bound.siteId !== site.slug) return 'unknown';
+    if (!boundMatches(site, bound)) return 'unknown';
     return bound.active === false ? 'lapsed' : 'active';
   } catch {
     return 'unknown';
@@ -94,16 +146,27 @@ let status: SubscriptionStatus = 'unknown';
 let lastDefinitiveAt: number | null = null;
 const listeners = new Set<() => void>();
 let runner: ((force: boolean) => void) | null = null;
+/** Bumped by every direct set, so a check started before it can't overwrite it. */
+let generation = 0;
 
 export function getSubscriptionStatus(): SubscriptionStatus {
   return status;
 }
 
+/** Taken when a check starts; pass it back to setSubscriptionStatus with the result. */
+export function statusGeneration(): number {
+  return generation;
+}
+
 /**
- * Records a result. Only a definitive one ('active' / 'lapsed') starts the
+ * Records a status. Only a definitive one ('active' / 'lapsed') starts the
  * throttle, so an offline or not-yet-configured check is retried next time.
+ * A check's result (with the `gen` it started with) is dropped if the status
+ * was set directly since (a live publish's 'active'); a direct set has no `gen`.
  */
-export function setSubscriptionStatus(next: SubscriptionStatus, now = Date.now()): void {
+export function setSubscriptionStatus(next: SubscriptionStatus, now = Date.now(), gen?: number): void {
+  if (gen === undefined) generation++;
+  else if (gen !== generation) return;
   if (next !== 'unknown') lastDefinitiveAt = now;
   if (next === status) return;
   status = next;
@@ -139,6 +202,7 @@ export function recheckSubscriptionStatus(force = true): void {
 export function resetSubscriptionStatusForTests(): void {
   status = 'unknown';
   lastDefinitiveAt = null;
+  generation = 0;
   listeners.clear();
   runner = null;
 }

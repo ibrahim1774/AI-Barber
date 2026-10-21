@@ -13,7 +13,14 @@ export const sb = {
   /** Rows a select can return (any table). */
   rows: [] as Record<string, any>[],
   /** Every select, with its filters (`eq`), order and limit, in call order. */
-  selects: [] as { table: string; columns: string; filters: [string, unknown][]; order?: [string, boolean]; limit?: number }[],
+  selects: [] as {
+    table: string;
+    columns: string;
+    filters: [string, unknown][];
+    order?: [string, boolean];
+    nullsFirst?: boolean;
+    limit?: number;
+  }[],
   /** Makes selects resolve with this error (or throw it, when `selectThrows`). */
   selectError: null as null | { message: string; code?: string },
   selectThrows: false,
@@ -93,8 +100,10 @@ export const supabase = {
           q.filters.push([col, v]);
           return chain;
         },
-        order(col: string, o: { ascending?: boolean } = {}) {
+        order(col: string, o: { ascending?: boolean; nullsFirst?: boolean } = {}) {
           q.order = [col, o.ascending !== false];
+          // PostgREST's default: NULLs first when descending.
+          q.nullsFirst = o.nullsFirst ?? o.ascending === false;
           return chain;
         },
         limit(n: number) {
@@ -109,7 +118,11 @@ export const supabase = {
           let rows = sb.rows.filter((r) => q.filters.every(([c, v]) => value(r, c) === v));
           if (q.order) {
             const [c, asc] = q.order;
-            rows = [...rows].sort((a, b) => (a[c] < b[c] ? -1 : a[c] > b[c] ? 1 : 0) * (asc ? 1 : -1));
+            const nulls = q.nullsFirst ? -1 : 1;
+            rows = [...rows].sort((a, b) => {
+              if (a[c] == null || b[c] == null) return a[c] == null ? (b[c] == null ? 0 : nulls) : -nulls;
+              return (a[c] < b[c] ? -1 : a[c] > b[c] ? 1 : 0) * (asc ? 1 : -1);
+            });
           }
           if (q.limit != null) rows = rows.slice(0, q.limit);
           if (rows.length > 1) return { data: null, error: { message: 'multiple rows', code: 'PGRST116' } };

@@ -11,6 +11,7 @@ import { findTransactionId, pickLatestTransactionId, type PublishDeps } from '@/
 import * as siteStore from '@/lib/siteStore';
 import {
   checkSubscriptionStatus, lastStatusCheckAt, registerStatusRunner, setSubscriptionStatus, shouldCheck,
+  statusGeneration,
 } from '@/lib/subscriptionStatus';
 
 /** Placements configured in the Superwall dashboard (AI Barber campaign). */
@@ -108,6 +109,8 @@ export function SubscriptionStatusSync() {
     }
     if (!shouldCheck(Date.now(), lastStatusCheckAt(), force)) return;
     inFlight.current = true;
+    // A status set meanwhile (a live publish's 'active') outranks this check's result.
+    const gen = statusGeneration();
     (async () => {
       const [site, pending] = await Promise.all([
         siteStore.loadSite().catch(() => null),
@@ -121,7 +124,7 @@ export function SubscriptionStatusSync() {
         customerInfo: () => sw.getCustomerInfo(),
         iosSite: api.iosSite,
       });
-      setSubscriptionStatus(result);
+      setSubscriptionStatus(result, Date.now(), gen);
     })()
       .catch((e) => console.warn('[subscription] status check failed:', e))
       .finally(() => {

@@ -8,6 +8,7 @@ import { cancelAllReminders, cancelRemindersInBackground } from '@/lib/reminders
 import * as siteStore from '@/lib/siteStore';
 import type { SiteRecord } from '@/lib/siteStore';
 import { supabase } from '@/lib/supabase';
+import { boundMatches } from '@/lib/website';
 
 /** `site_data.source` on rows the app writes. */
 export const IOS_SOURCE = 'ios';
@@ -114,7 +115,7 @@ export async function pullSiteFromAccount(userId: string): Promise<PullResult> {
           .select(ROW_COLUMNS)
           .eq('user_id', userId)
           .eq('site_data->>source', IOS_SOURCE)
-          .order('updated_at', { ascending: false })
+          .order('updated_at', { ascending: false, nullsFirst: false })
           .limit(1)
           .maybeSingle();
     if (error) throw error;
@@ -123,32 +124,35 @@ export async function pullSiteFromAccount(userId: string): Promise<PullResult> {
     const rowAt = Date.parse(r.updated_at ?? '');
     const data = siteDataFrom(r.site_data);
 
-    let next: SiteRecord;
-    if (local) {
-      if (Number.isNaN(rowAt) || !(rowAt > local.updatedAt)) return 'unchanged';
-      next = {
-        ...local,
-        data,
-        inputs: { ...local.inputs, ...inputsFrom(data) },
-        deployedUrl: r.deployed_url ?? local.deployedUrl,
-        updatedAt: rowAt,
-      };
-    } else {
-      next = {
-        draftId: r.id,
-        inputs: inputsFrom(data),
-        data,
-        updatedAt: Number.isNaN(rowAt) ? Date.now() : rowAt,
-        slug: null,
-        deployedUrl: r.deployed_url ?? null,
-        transactionId: null,
-      };
-    }
+    if (local && (Number.isNaN(rowAt) || !(rowAt > local.updatedAt))) return 'unchanged';
 
     // Compare and swap: an edit (or another load) since the read wins.
-    const now = await siteStore.loadSite();
-    const untouched = local ? now != null && now.draftId === local.draftId && now.updatedAt === local.updatedAt : now == null;
-    if (!untouched) return 'unchanged';
+    const cur = await siteStore.loadSite();
+    if (local) {
+      if (!cur || cur.draftId !== local.draftId || cur.updatedAt !== local.updatedAt) return 'unchanged';
+    } else if (cur) {
+      return 'unchanged';
+    }
+
+    // Built on the record as it is now: a publish that landed during the fetch
+    // (slug, transaction, URL; it keeps updatedAt) is never undone.
+    const next: SiteRecord = cur
+      ? {
+          ...cur,
+          data,
+          inputs: { ...cur.inputs, ...inputsFrom(data) },
+          deployedUrl: r.deployed_url ?? cur.deployedUrl,
+          updatedAt: rowAt,
+        }
+      : {
+          draftId: r.id,
+          inputs: inputsFrom(data),
+          data,
+          updatedAt: Number.isNaN(rowAt) ? Date.now() : rowAt,
+          slug: null,
+          deployedUrl: r.deployed_url ?? null,
+          transactionId: null,
+        };
     await siteStore.saveSite(next);
     adoptedListeners.forEach((l) => {
       try {
@@ -223,9 +227,11 @@ export interface Restored {
  * - Throws the ApiError from /api/ios/site otherwise: 404 `no-site` means
  *   subscribed but nothing published yet; network / 5xx mean try again.
  *
- * Restoring the site already on this phone keeps its local edits. Any other
- * local draft is replaced by the paid site, keeping the draft id (the
- * `sites` row and photo folder key). A null deployedUrl is kept as null: the
+ * Restoring the site already on this phone (the same slug, or for a site
+ * loaded from the account the same live link) keeps its local edits. Any
+ * other local draft is replaced by the paid site, keeping the draft id (the
+ * `sites` row and photo folder key); a different live site gets a new id, so
+ * its account row is never overwritten with this one. A null deployedUrl is kept as null: the
  * server only lacks it if the last deploy's stamp failed, and the live URL
  * comes from Vercel's alias list, so it can't safely be rebuilt here.
  */
@@ -236,14 +242,23 @@ export async function restore(deps: RestoreDeps): Promise<Restored | null> {
 
   const bound = await deps.iosSite(transactionId);
   const local = await deps.store.loadSite();
-  const sameSite = local != null && local.slug === bound.siteId;
+  // The same slug, or (a site loaded from the account, no slug yet) the same
+  // live link: either way the local copy is this site, maybe newer than the
+  // last publish (web edits), so it is kept rather than replaced.
+  const sameSite = local != null && boundMatches(local, bound);
   if (!sameSite && !bound.siteData) return null;
 
   const record: SiteRecord =
     sameSite && local
-      ? { ...local, deployedUrl: bound.deployedUrl ?? local.deployedUrl, transactionId, updatedAt: Date.now() }
+      ? {
+          ...local,
+          slug: bound.siteId,
+          deployedUrl: bound.deployedUrl ?? local.deployedUrl,
+          transactionId,
+          updatedAt: Date.now(),
+        }
       : {
-          draftId: local?.draftId ?? randomUUID(),
+          draftId: local && !local.deployedUrl ? local.draftId : randomUUID(),
           inputs: inputsFrom(bound.siteData!),
           data: bound.siteData!,
           updatedAt: Date.now(),
