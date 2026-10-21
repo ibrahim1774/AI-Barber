@@ -23,6 +23,8 @@ export default async function handler(req: any, res: any) {
       deployOffline: async (slug) => {
         await deployRenderedSite({ siteId: slug, html: offlineHtml() });
       },
+      // App Review's sandbox site must never vanish; flipped on for our own device tests.
+      takedownSandbox: process.env.IOS_TAKEDOWN_SANDBOX === '1',
       // Apple is asked before every takedown and restore (lib/ios/sweep.ts).
       verify: lazyDefaultVerifier(),
     });

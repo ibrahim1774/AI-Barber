@@ -4,21 +4,28 @@
 //    published (the app's publish call died after binding, or the deploy
 //    failed). Revoked rows are excluded by unpublishedBound. A row that looks
 //    lapsed (lapse.ts prefilter) is only published if Apple says it is active.
-// 2. Restore: a taken-down site whose row looks active again is force-redeployed
+// 2. Restore: a taken-down site whose row looks active again (or is revoked,
+//    in case the customer resubscribed after a refund) is force-redeployed
 //    from its pending file, on the same slug, if Apple confirms it is active.
 // 3. Takedown: a published site whose row looks lapsed is replaced with the
 //    offline page, if Apple confirms it is inactive (expired, billing retry,
 //    revoked). Billing grace counts as active. Only the live deployment
 //    changes: the pending file, the sites table and published_at are untouched,
-//    so the content survives.
+//    so the content survives. Sandbox rows are exempt unless takedownSandbox
+//    (env IOS_TAKEDOWN_SANDBOX=1), so App Review's sandbox site never vanishes.
 //
 // Apple is the authority for every takedown and restore; the row rules only
-// pick which rows to ask about. If Apple can't be asked, that row is left alone
-// this sweep (appleUnavailable) and asked again next time. Never act on a guess.
+// pick which rows to ask about. If Apple can't be asked (error or timeout),
+// that row is left alone this sweep and asked again later. Never act on a
+// guess. Every candidate Apple is asked about gets lapse_checked_at stamped,
+// and candidates come oldest-checked first, so rows Apple can't resolve or
+// that sit in billing grace rotate to the back instead of starving the rest.
 import type { PurchasesRepo, PurchaseRow } from './purchases.js';
 import type { PublishOutcome } from '../publishSite.js';
-import { isActive, type VerifiedTx } from './appleVerify.js';
+import type { VerifiedTx } from './appleVerify.js';
+import { isActive } from './txStatus.js';
 import { isLapsed } from './lapse.js';
+import { withTimeout } from './timeout.js';
 
 export interface IosSweepSummary {
   checked: number;
@@ -38,55 +45,93 @@ export interface IosSweepSummary {
   notRestored: string[];
   /** Sites replaced with the offline page. */
   takenDown: string[];
-  /** Takedowns that failed; retried next sweep. */
+  /** Takedowns that definitely failed (flag cleared again); retried next sweep. */
   takedownFailed: string[];
+  /** Takedowns whose deploy outcome is unknown (e.g. timed out after Vercel accepted it); flag kept. */
+  takedownUncertain: string[];
   /** Takedown candidates Apple says are still active (e.g. billing grace); left up. */
   stillActive: string[];
-  /** Rows left alone because Apple could not be asked; retried next sweep. */
+  /** Rows left alone because Apple was unreachable or slow; retried next sweep. */
   appleUnavailable: string[];
+  /** Rows Apple can't resolve (not-found, bad-product, bad-bundle); left alone, rotated to the back. */
+  appleUnresolvable: string[];
+  appleUnavailableCount: number;
+  appleUnresolvableCount: number;
 }
 
 export interface IosSweepDeps {
   repo: PurchasesRepo;
   publish(slug: string, opts?: { force: boolean }): Promise<PublishOutcome>;
-  /** Deploy the offline placeholder page to this slug's project. */
+  /**
+   * Deploy the offline placeholder page to this slug's project. Throw an error
+   * with `indefinite: true` when it is unknown whether the deploy happened.
+   */
   deployOffline(slug: string): Promise<void>;
   /** Apple's live state for a purchase (appleVerify makeVerifier), keyed by originalTransactionId. */
   verify(originalTransactionId: string): Promise<VerifiedTx>;
+  /** Take down Sandbox purchases too (env IOS_TAKEDOWN_SANDBOX=1). Default false. */
+  takedownSandbox?: boolean;
+}
+
+/** Errors meaning Apple will never resolve this purchase as-is. */
+const PERMANENT_VERIFY_CODES = new Set(['not-found', 'bad-product', 'bad-bundle']);
+
+/** An offline deploy that may have happened anyway: no HTTP response (timeout/network) from Vercel. */
+export function isIndefiniteDeployError(e: any): boolean {
+  return !!e && (e.indefinite === true || (e.isAxiosError === true && !e.response));
 }
 
 export async function sweepIos(
   deps: IosSweepDeps,
   limit = 50,
-  opts: { deadlineMs?: number; now?: () => number } = {},
+  opts: { deadlineMs?: number; lateDeadlineMs?: number; appleTimeoutMs?: number; now?: () => number } = {},
 ): Promise<IosSweepSummary> {
   const now = opts.now ?? Date.now;
   // One publishSite can take ~150 s and the function is capped at 300 s, so stop
-  // starting new rows after 140 s. One budget across all three passes.
+  // starting new rows after 140 s. One budget across all three passes; restore
+  // and takedown rows also make Apple calls first, so they stop starting at 120 s.
   const deadlineMs = opts.deadlineMs ?? 140_000;
+  const lateDeadlineMs = opts.lateDeadlineMs ?? Math.min(120_000, deadlineMs);
+  const appleTimeoutMs = opts.appleTimeoutMs ?? 5_000;
   const start = now();
   const outOfTime = () => now() - start >= deadlineMs;
+  const outOfLateTime = () => now() - start >= lateDeadlineMs;
 
   const rows = await deps.repo.unpublishedBound(limit);
   const out: IosSweepSummary = {
     checked: rows.length, published: [], failed: [], missing: [], deferred: [],
     skippedLapsed: [], restored: [], restoreFailed: [], notRestored: [],
-    takenDown: [], takedownFailed: [], stillActive: [], appleUnavailable: [],
+    takenDown: [], takedownFailed: [], takedownUncertain: [], stillActive: [],
+    appleUnavailable: [], appleUnresolvable: [], appleUnavailableCount: 0, appleUnresolvableCount: 0,
   };
 
-  /** Apple's verdict for this row: true active, false inactive, null couldn't ask (row is skipped). */
-  async function appleSaysActive(row: PurchaseRow, slug: string): Promise<boolean | null> {
+  /**
+   * Apple's verdict for this row: true active, false inactive, null couldn't ask
+   * (the row is skipped). `stamp` records lapse_checked_at whatever the outcome.
+   */
+  async function appleSaysActive(row: PurchaseRow, slug: string, stamp: boolean): Promise<boolean | null> {
     const otid = row.original_transaction_id;
-    let tx: VerifiedTx;
+    const checkedAt = now();
+    let tx: VerifiedTx | null = null;
     try {
-      tx = await deps.verify(otid);
+      tx = await withTimeout(deps.verify(otid), appleTimeoutMs, 'Apple verify');
     } catch (err: any) {
-      console.error(`[Sweeper:iOS] Apple lookup failed for ${slug} (${otid}); no action this sweep:`, err?.code || err?.message || err);
-      out.appleUnavailable.push(slug);
-      return null;
+      if (PERMANENT_VERIFY_CODES.has(err?.code)) {
+        console.error(`[Sweeper:iOS] Apple can't resolve ${slug} (${otid}): ${err.code}; no action, rotated to the back`);
+        out.appleUnresolvable.push(slug);
+      } else {
+        console.error(`[Sweeper:iOS] Apple lookup failed for ${slug} (${otid}); no action this sweep:`, err?.code || err?.message || err);
+        out.appleUnavailable.push(slug);
+      }
     }
-    // Record what Apple said (expires_at never moves backwards). Best effort.
-    await deps.repo.upsertVerified(tx).catch((e: any) =>
+    if (stamp) {
+      await deps.repo.markLapseChecked(otid, checkedAt).catch((e: any) =>
+        console.warn(`[Sweeper:iOS] ${slug} (${otid}): stamping lapse_checked_at failed (ignored):`, e?.message || e));
+    }
+    if (!tx) return null;
+    // Record what Apple said (expires_at never moves backwards; a revocation
+    // older than this check is cleared if Apple says active). Best effort.
+    await deps.repo.upsertVerified(tx, { checkedAt }).catch((e: any) =>
       console.warn(`[Sweeper:iOS] ${slug} (${otid}): refreshing the row from Apple failed (ignored):`, e?.message || e));
     return isActive(tx, now());
   }
@@ -101,7 +146,7 @@ export async function sweepIos(
     }
     const otid = row.original_transaction_id;
     if (isLapsed(row, now())) {
-      const active = await appleSaysActive(row, slug);
+      const active = await appleSaysActive(row, slug, false);
       if (active === null) continue;
       if (!active) {
         out.skippedLapsed.push(slug);
@@ -128,15 +173,15 @@ export async function sweepIos(
 
   // Pass 2: restores. Fetched now, not up front, so a renewal that landed during pass 1 counts.
   // Once the budget is spent the remaining passes are not even queried; next sweep picks them up.
-  const restores = outOfTime() ? [] : await deps.repo.restoreCandidates(limit, now());
+  const restores = outOfLateTime() ? [] : await deps.repo.restoreCandidates(limit, now());
   for (const row of restores) {
     const slug = row.site_slug as string;
-    if (outOfTime()) {
+    if (outOfLateTime()) {
       out.deferred.push(slug);
       continue;
     }
     const otid = row.original_transaction_id;
-    const active = await appleSaysActive(row, slug);
+    const active = await appleSaysActive(row, slug, true);
     if (active === null) continue;
     if (!active) {
       out.notRestored.push(slug);
@@ -158,30 +203,49 @@ export async function sweepIos(
   }
 
   // Pass 3: takedowns.
-  const takedowns = outOfTime() ? [] : await deps.repo.takedownCandidates(limit, now());
+  const takedowns = outOfLateTime()
+    ? []
+    : await deps.repo.takedownCandidates(limit, now(), { includeSandbox: deps.takedownSandbox === true });
   for (const row of takedowns) {
     const slug = row.site_slug as string;
-    if (outOfTime()) {
+    if (outOfLateTime()) {
       out.deferred.push(slug);
       continue;
     }
     const otid = row.original_transaction_id;
-    const active = await appleSaysActive(row, slug);
+    const active = await appleSaysActive(row, slug, true);
     if (active === null) continue;
     if (active) {
       out.stillActive.push(slug);
       continue;
     }
+    // Stamp first: if we die mid-deploy, or the deploy lands but its outcome is
+    // unknown, the flag is set and a later resubscribe is restored.
+    try {
+      await deps.repo.markTakenDown(otid, now());
+    } catch (err: any) {
+      console.error(`[Sweeper:iOS] takedown not started for ${slug} (${otid}): stamping failed:`, err?.message || err);
+      out.takedownFailed.push(slug);
+      continue;
+    }
     try {
       await deps.deployOffline(slug);
-      await deps.repo.markTakenDown(otid, now());
       console.log(`[Sweeper:iOS] TAKEN DOWN ${slug} (${otid}): subscription inactive per Apple`);
       out.takenDown.push(slug);
     } catch (err: any) {
-      console.error(`[Sweeper:iOS] takedown failed for ${slug} (${otid}):`, err?.message || err);
+      if (isIndefiniteDeployError(err)) {
+        console.error(`[Sweeper:iOS] takedown of ${slug} (${otid}) has an UNKNOWN outcome; flag kept:`, err?.message || err);
+        out.takedownUncertain.push(slug);
+        continue;
+      }
+      console.error(`[Sweeper:iOS] takedown failed for ${slug} (${otid}); clearing the flag to retry:`, err?.message || err);
       out.takedownFailed.push(slug);
+      await deps.repo.clearTakenDown(otid).catch((e: any) =>
+        console.error(`[Sweeper:iOS] ALERT ${slug} (${otid}): offline deploy failed AND clearing taken_down_at failed; site is live but flagged:`, e?.message || e));
     }
   }
 
+  out.appleUnavailableCount = out.appleUnavailable.length;
+  out.appleUnresolvableCount = out.appleUnresolvable.length;
   return out;
 }

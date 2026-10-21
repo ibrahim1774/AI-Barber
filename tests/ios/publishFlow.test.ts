@@ -47,7 +47,7 @@ function row(over: Partial<PurchaseRow> = {}): PurchaseRow {
   return {
     original_transaction_id: OTID, product_id: 'com.ibrahim1774.aibarber.hosting.monthly', environment: 'Production',
     site_slug: null, user_id: null, expires_at: null, revoked_at: null, last_notification: null, published_at: null,
-    taken_down_at: null,
+    taken_down_at: null, lapse_checked_at: null,
     ...over,
   };
 }
@@ -94,6 +94,7 @@ function fakes(o: FakeOpts = {}) {
     restoreCandidates: vi.fn(async () => []),
     markTakenDown: vi.fn(async (otid: string, at: number) => { rows.get(otid)!.taken_down_at = new Date(at).toISOString(); }),
     clearTakenDown: vi.fn(async (otid: string) => { rows.get(otid)!.taken_down_at = null; }),
+    markLapseChecked: vi.fn(async () => {}),
     findBySlug: vi.fn(async (slug: string) => [...rows.values()].find((r) => r.site_slug === slug) ?? null),
   };
 
@@ -446,6 +447,12 @@ describe('runIosPublish lapse takedown flag', () => {
     expect(r.status).toBe(200);
     expect(err.mock.calls.flat().join(' ')).toMatch(/clearTakenDown/);
     err.mockRestore();
+  });
+
+  it('passes when Apple was asked (checkedAt) so a stale revocation can clear on an active answer', async () => {
+    const { deps, repo } = fakes({ existing: takenDown() });
+    await runIosPublish(input(), deps);
+    expect(repo.upsertVerified).toHaveBeenCalledWith(expect.objectContaining({ originalTransactionId: OTID }), { checkedAt: NOW });
   });
 
   it('a first publish (new slug) does not touch the flag', async () => {

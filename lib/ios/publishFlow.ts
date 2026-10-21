@@ -115,6 +115,8 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps): 
   }
 
   let tx: VerifiedTx;
+  // When Apple was asked: a revocation stored before this is superseded by an active answer.
+  const checkedAt = deps.now();
   try {
     tx = await deps.verify(input.transactionId.trim());
   } catch (e) {
@@ -128,7 +130,7 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps): 
   // transactionId the app sent (renewals have new transactionIds).
   const otid = tx.originalTransactionId;
   try {
-    const row = await deps.repo.upsertVerified(tx);
+    const row = await deps.repo.upsertVerified(tx, { checkedAt });
 
     // Unauthenticated, best-effort account link: never blocks a paid publish.
     if (typeof input.userId === 'string' && UUID_RE.test(input.userId)) {

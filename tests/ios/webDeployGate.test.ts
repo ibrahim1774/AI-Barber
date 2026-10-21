@@ -12,7 +12,7 @@ function iosRow(over: Partial<PurchaseRow> = {}): PurchaseRow {
   return {
     original_transaction_id: 'o1', product_id: 'p', environment: 'Production', site_slug: 'fade-studio-x7k2',
     user_id: null, expires_at: iso(NOW + 10 * DAY), revoked_at: null, last_notification: null,
-    published_at: iso(NOW - 10 * DAY), taken_down_at: null, ...over,
+    published_at: iso(NOW - 10 * DAY), taken_down_at: null, lapse_checked_at: null, ...over,
   };
 }
 
@@ -137,6 +137,34 @@ describe('gatedWebDeploy', () => {
     expect(d.deploy).toHaveBeenCalledTimes(1);
     expect(d.writePending).not.toHaveBeenCalled();
     expect(err.mock.calls.flat().join(' ')).toMatch(/supabase down/);
+  });
+
+  it('a lookup that never answers times out and deploys as today (fail open)', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const d = { ...deps(null), lookupTimeoutMs: 20 };
+    d.findBySlug.mockImplementation(() => new Promise<PurchaseRow | null>(() => {}));
+    const out = await gatedWebDeploy({ siteId: 'fade-studio', html: 'h', deployedUrl: 'https://fade-studio-x7k2.vercel.app', siteData: siteData() }, d);
+    expect(out.blocked).toBe(false);
+    expect(d.deploy).toHaveBeenCalledWith(expect.objectContaining({ siteId: 'fade-studio' }));
+    expect(d.writePending).not.toHaveBeenCalled();
+    expect(err.mock.calls.flat().join(' ')).toMatch(/timed out/);
+  });
+
+  it('default lookup cap is 3 s', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const d = deps(null);
+      d.findBySlug.mockImplementation(() => new Promise<PurchaseRow | null>(() => {}));
+      const p = gatedWebDeploy(body(), d);
+      await vi.advanceTimersByTimeAsync(2_999);
+      expect(d.deploy).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(2);
+      await p;
+      expect(d.deploy).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('a deploy error propagates (handler keeps its existing 500)', async () => {

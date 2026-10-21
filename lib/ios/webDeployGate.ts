@@ -19,9 +19,14 @@ import { deployRenderedSite, type DeployRenderedSiteInput, type DeployRenderedSi
 import { slugify, writePendingSite, type PendingSite } from '../publishSite.js';
 import { buildImageUrlMap, toPendingSiteData } from './pendingData.js';
 import { supabasePurchases, type PurchaseRow } from './purchases.js';
+import { withTimeout } from './timeout.js';
+
+const LOOKUP_TIMEOUT_MS = 3000;
 
 export interface WebDeployDeps {
   findBySlug(slug: string): Promise<PurchaseRow | null>;
+  /** Cap on the whole lookup phase; a slow lookup fails open like an error. Default 3000. */
+  lookupTimeoutMs?: number;
   deploy(input: DeployRenderedSiteInput): Promise<DeployRenderedSiteResult>;
   writePending(slug: string, p: PendingSite): Promise<void>;
   now(): number;
@@ -74,19 +79,25 @@ export async function gatedWebDeploy(
   let target = input.siteId;
   let slug = shopSlug;
   let row: PurchaseRow | null = null;
-  try {
+  const lookup = async (): Promise<{ row: PurchaseRow | null; slug: string } | null> => {
     const label = vercelAppLabel(deployedUrl);
     if (label && label !== shopSlug) {
       const byLabel = await deps.findBySlug(label);
-      if (byLabel) {
-        row = byLabel;
-        target = label;
-        slug = label;
-      }
+      if (byLabel) return { row: byLabel, slug: label };
     }
-    if (!row && shopSlug) row = await deps.findBySlug(shopSlug);
+    return shopSlug ? { row: await deps.findBySlug(shopSlug), slug: shopSlug } : null;
+  };
+  try {
+    // Bounded: before this gate, deploy-site never touched Supabase, so a
+    // degraded (slow, not failing) Supabase must not hold up web publishes.
+    const found = await withTimeout(lookup(), deps.lookupTimeoutMs ?? LOOKUP_TIMEOUT_MS, 'ios_purchases lookup');
+    if (found?.row) {
+      row = found.row;
+      slug = found.slug;
+      target = found.slug === shopSlug ? input.siteId : found.slug;
+    }
   } catch (e: any) {
-    // Never block or redirect web customers on our own lookup failure.
+    // Never block or redirect web customers on our own lookup failure or timeout.
     console.error(`[Deploy Site] ios_purchases lookup failed for ${shopSlug} (continuing as web):`, e?.message || e);
     row = null;
     target = input.siteId;

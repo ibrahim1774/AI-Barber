@@ -13,7 +13,7 @@ function fakeClient(result: Result = { data: null, error: null }, ...queued: Res
     then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) =>
       Promise.resolve(queued.length ? queued.shift() : result).then(res, rej),
   };
-  for (const m of ['select', 'insert', 'update', 'upsert', 'eq', 'is', 'not', 'or', 'gt', 'order', 'limit', 'maybeSingle', 'single']) {
+  for (const m of ['select', 'insert', 'update', 'upsert', 'eq', 'is', 'not', 'or', 'gt', 'lt', 'order', 'limit', 'maybeSingle', 'single']) {
     chain[m] = (...args: unknown[]) => { calls.push({ method: m, args }); return chain; };
   }
   const client: any = { from: (t: string) => { calls.push({ method: 'from', args: [t] }); return chain; } };
@@ -218,6 +218,57 @@ describe('supabasePurchases', () => {
     expect(await supabasePurchases(client).get('nope')).toBeNull();
   });
 
+  describe('stale revocations clear only on a newer, active, unrevoked answer', () => {
+    const T = 1_800_000_000_000;
+    const vtx = (over: Record<string, unknown> = {}) => ({
+      originalTransactionId: 'o1', transactionId: 't9', productId: 'p', environment: 'Production' as const,
+      expiresAt: T + 86_400_000, revoked: false, status: 1, ...over,
+    });
+    const revokedRow = { original_transaction_id: 'o1', revoked_at: new Date(T - 86_400_000).toISOString() };
+
+    it('upsertVerified with checkedAt + Apple active clears a revocation older than the check (conditional in SQL)', async () => {
+      // awaits: read expires_at, upsert, conditional clear
+      const { client, calls } = fakeClient({ data: [{ original_transaction_id: 'o1' }], error: null },
+        { data: null, error: null }, { data: revokedRow, error: null });
+      const row = await supabasePurchases(client).upsertVerified(vtx(), { checkedAt: T });
+      expect(row.revoked_at).toBeNull();
+      expect(find(calls, 'update')!.args).toEqual([{ revoked_at: null }]);
+      expect(find(calls, 'lt')!.args).toEqual(['revoked_at', new Date(T).toISOString()]);
+    });
+
+    it('a revocation recorded after the check survives (SQL condition matches nothing)', async () => {
+      const { client } = fakeClient({ data: [], error: null }, { data: null, error: null }, { data: revokedRow, error: null });
+      const row = await supabasePurchases(client).upsertVerified(vtx(), { checkedAt: T });
+      expect(row.revoked_at).toBe(revokedRow.revoked_at);
+    });
+
+    it('never clears without checkedAt, for a revoked tx, or when Apple says inactive (billing retry)', async () => {
+      for (const [tx, opts] of [[vtx(), undefined], [vtx({ revoked: true, status: 5 }), { checkedAt: T }], [vtx({ status: 3 }), { checkedAt: T }]] as const) {
+        const { client, calls } = fakeClient({ data: revokedRow, error: null });
+        await supabasePurchases(client).upsertVerified(tx as any, opts as any);
+        expect(calls.filter((c) => c.method === 'update')).toEqual([]);
+      }
+    });
+
+    it('applyNotification with clearRevokedBefore clears only revocations older than the purchase', async () => {
+      const { client, calls } = fakeClient();
+      await supabasePurchases(client).applyNotification({
+        otid: 'o1', productId: 'p', environment: 'Production', expiresAt: null, revokedAt: null, type: 'SUBSCRIBED', clearRevokedBefore: T,
+      });
+      expect(find(calls, 'update')!.args).toEqual([{ revoked_at: null }]);
+      expect(find(calls, 'lt')!.args).toEqual(['revoked_at', new Date(T).toISOString()]);
+      expect(Object.keys(find(calls, 'upsert')!.args[0] as object)).not.toContain('revoked_at');
+    });
+
+    it('applyNotification without clearRevokedBefore issues no clear', async () => {
+      const { client, calls } = fakeClient();
+      await supabasePurchases(client).applyNotification({
+        otid: 'o1', productId: 'p', environment: 'Production', expiresAt: null, revokedAt: null, type: 'DID_RENEW',
+      });
+      expect(find(calls, 'update')).toBeUndefined();
+    });
+  });
+
   describe('lapse takedown queries', () => {
     const NOW = 1_800_000_000_000;
     const DAY = 86_400_000;
@@ -241,18 +292,44 @@ describe('supabasePurchases', () => {
       expect(find(calls, 'limit')!.args).toEqual([7]);
     });
 
-    it('restoreCandidates: taken down, unrevoked, unexpired; re-checked in JS', async () => {
+    it('restoreCandidates: taken down and (revoked or unexpired), oldest-checked first; re-checked in JS', async () => {
       const rows = [
         { original_transaction_id: 'back', site_slug: 'b', expires_at: iso(NOW + DAY), revoked_at: null, taken_down_at: iso(NOW - DAY) },
         { original_transaction_id: 'stale', site_slug: 's', expires_at: iso(NOW - 1), revoked_at: null, taken_down_at: iso(NOW - DAY) },
+        { original_transaction_id: 'refunded', site_slug: 'r', expires_at: iso(NOW - DAY), revoked_at: iso(NOW - DAY), taken_down_at: iso(NOW - DAY) },
       ];
       const { client, calls } = fakeClient({ data: rows, error: null });
       const out = await supabasePurchases(client).restoreCandidates(3, NOW);
-      expect(out.map((r) => r.original_transaction_id)).toEqual(['back']);
+      expect(out.map((r) => r.original_transaction_id)).toEqual(['back', 'refunded']);
       expect(find(calls, 'not')!.args).toEqual(['taken_down_at', 'is', null]);
-      expect(find(calls, 'is')!.args).toEqual(['revoked_at', null]);
-      expect(find(calls, 'gt')!.args).toEqual(['expires_at', iso(NOW)]);
+      expect(find(calls, 'or')!.args).toEqual([`revoked_at.not.is.null,expires_at.gt."${iso(NOW)}"`]);
+      expect(calls.filter((c) => c.method === 'order').map((c) => c.args)).toEqual([
+        ['lapse_checked_at', { ascending: true, nullsFirst: true }], ['expires_at', { ascending: true }],
+      ]);
       expect(find(calls, 'limit')!.args).toEqual([3]);
+    });
+
+    it('takedownCandidates: oldest-checked first; Sandbox excluded unless includeSandbox', async () => {
+      const rows = [
+        { original_transaction_id: 'prod', environment: 'Production', site_slug: 'p', published_at: iso(NOW - 9 * DAY), taken_down_at: null, expires_at: iso(NOW - 2 * DAY), revoked_at: null },
+        { original_transaction_id: 'sbx', environment: 'Sandbox', site_slug: 's', published_at: iso(NOW - 9 * DAY), taken_down_at: null, expires_at: iso(NOW - 2 * DAY), revoked_at: null },
+      ];
+      const a = fakeClient({ data: rows, error: null });
+      expect((await supabasePurchases(a.client).takedownCandidates(5, NOW, { includeSandbox: false })).map((r) => r.original_transaction_id)).toEqual(['prod']);
+      expect(find(a.calls, 'eq')!.args).toEqual(['environment', 'Production']);
+      expect(a.calls.filter((c) => c.method === 'order').map((c) => c.args)).toEqual([
+        ['lapse_checked_at', { ascending: true, nullsFirst: true }], ['expires_at', { ascending: true }],
+      ]);
+      const b = fakeClient({ data: rows, error: null });
+      expect((await supabasePurchases(b.client).takedownCandidates(5, NOW, { includeSandbox: true })).map((r) => r.original_transaction_id)).toEqual(['prod', 'sbx']);
+      expect(find(b.calls, 'eq')).toBeUndefined();
+    });
+
+    it('markLapseChecked only touches lapse_checked_at', async () => {
+      const a = fakeClient();
+      await supabasePurchases(a.client).markLapseChecked('o1', NOW);
+      expect(find(a.calls, 'update')!.args).toEqual([{ lapse_checked_at: iso(NOW) }]);
+      expect(find(a.calls, 'eq')!.args).toEqual(['original_transaction_id', 'o1']);
     });
 
     it('markTakenDown / clearTakenDown only touch taken_down_at', async () => {

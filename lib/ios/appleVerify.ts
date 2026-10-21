@@ -30,14 +30,9 @@ export const IOS_PRODUCT_IDS: readonly string[] = [
   'com.ibrahim1774.aibarber.hosting.yearly',
 ];
 
-const ACTIVE_STATUSES = new Set([1, 4]); // Active, Billing grace period
-
-export function isActive(tx: VerifiedTx, now: number = Date.now()): boolean {
-  if (tx.revoked) return false;
-  // Apple's status is authoritative when we have it (grace period is active past expiresDate).
-  if (tx.status != null) return ACTIVE_STATUSES.has(tx.status);
-  return tx.expiresAt === null || tx.expiresAt > now;
-}
+// Lives in txStatus.ts (no Apple SDK import) so purchases.ts can use it
+// without pulling the App Store library into every function that reads rows.
+export { isActive } from './txStatus.js';
 
 export interface AppleLookup {
   (env: IosEnv, transactionId: string): Promise<{ status: number; signedTransactionInfo?: string }>;
@@ -45,7 +40,7 @@ export interface AppleLookup {
 export interface AppleDecode {
   (env: IosEnv, signed: string): Promise<{
     bundleId: string; productId: string; originalTransactionId: string; transactionId: string;
-    expiresDate?: number; revocationDate?: number;
+    expiresDate?: number; revocationDate?: number; purchaseDate?: number;
   }>;
 }
 

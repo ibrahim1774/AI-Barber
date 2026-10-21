@@ -18,6 +18,7 @@ vi.mock('../../lib/ios/purchases.js', () => ({
   supabasePurchases: () => ({
     unpublishedBound, markPublished: vi.fn(async () => {}),
     restoreCandidates, takedownCandidates, markTakenDown, clearTakenDown, upsertVerified: vi.fn(async () => ({})),
+    markLapseChecked: vi.fn(async () => {}),
   }),
 }));
 
@@ -25,7 +26,10 @@ import handler from '../../api/ios/sweep.js';
 
 const mkRes = () => { const res: any = { status: vi.fn().mockReturnThis(), json: vi.fn() }; return res; };
 const cron = { headers: { 'user-agent': 'vercel-cron/1.0' } };
-const empty = { skippedLapsed: [], restored: [], restoreFailed: [], notRestored: [], takenDown: [], takedownFailed: [], stillActive: [], appleUnavailable: [] };
+const empty = {
+  skippedLapsed: [], restored: [], restoreFailed: [], notRestored: [], takenDown: [], takedownFailed: [], takedownUncertain: [],
+  stillActive: [], appleUnavailable: [], appleUnresolvable: [], appleUnavailableCount: 0, appleUnresolvableCount: 0,
+};
 const appleSays = (status: number) => async (otid: string) => ({
   originalTransactionId: otid, transactionId: 't', productId: 'p', environment: 'Production', expiresAt: 0, revoked: status === 5, status,
 });
@@ -90,5 +94,30 @@ describe('api/ios/sweep', () => {
     await handler(cron, res);
     expect(res.status).toHaveBeenCalledWith(500);
     expect(res.json).toHaveBeenCalledWith({ error: 'db down' });
+  });
+
+  it('Sandbox rows are excluded from takedown unless IOS_TAKEDOWN_SANDBOX=1', async () => {
+    unpublishedBound.mockResolvedValue([]);
+    const prev = process.env.IOS_TAKEDOWN_SANDBOX;
+    try {
+      delete process.env.IOS_TAKEDOWN_SANDBOX;
+      await handler(cron, mkRes());
+      expect(takedownCandidates).toHaveBeenLastCalledWith(50, expect.any(Number), { includeSandbox: false });
+      process.env.IOS_TAKEDOWN_SANDBOX = '1';
+      await handler(cron, mkRes());
+      expect(takedownCandidates).toHaveBeenLastCalledWith(50, expect.any(Number), { includeSandbox: true });
+    } finally {
+      if (prev === undefined) delete process.env.IOS_TAKEDOWN_SANDBOX; else process.env.IOS_TAKEDOWN_SANDBOX = prev;
+    }
+  });
+
+  it('restore response carries the summary', async () => {
+    unpublishedBound.mockResolvedValue([]);
+    restoreCandidates.mockResolvedValue([{ original_transaction_id: 'o9', site_slug: 'a' }]);
+    appleVerify.mockImplementation(appleSays(1));
+    const res = mkRes();
+    await handler(cron, res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true, restored: ['a'] }));
   });
 });

@@ -21,6 +21,10 @@ export interface NotificationResult {
 }
 
 const REVOKING_TYPES = new Set(['REFUND', 'REVOKE']);
+// A new purchase/renewal in the same subscription: with an unrevoked
+// transaction bought after a stored revocation, the purchase is live again
+// (resubscribe after a refund keeps the originalTransactionId).
+const PURCHASE_TYPES = new Set(['SUBSCRIBED', 'DID_RENEW']);
 
 /** Records subscription state only; never publishes or unpublishes. */
 export async function handleAppleNotification(signedPayload: string, deps: NotificationDeps): Promise<NotificationResult> {
@@ -69,6 +73,9 @@ export async function handleAppleNotification(signedPayload: string, deps: Notif
       revokedAt,
       type: n.notificationType,
       ...(reinstated ? { clearRevoked: true } : {}),
+      ...(!reinstated && PURCHASE_TYPES.has(n.notificationType) && tx.revocationDate == null && tx.purchaseDate != null
+        ? { clearRevokedBefore: tx.purchaseDate }
+        : {}),
     });
   } catch (e: any) {
     console.error('[ios/apple-notification] repo error:', e?.message || e);
@@ -87,7 +94,7 @@ export function liveNotificationDeps(): NotificationDeps {
       return {
         bundleId: p.bundleId, productId: p.productId,
         originalTransactionId: p.originalTransactionId, transactionId: p.transactionId,
-        expiresDate: p.expiresDate, revocationDate: p.revocationDate,
+        expiresDate: p.expiresDate, revocationDate: p.revocationDate, purchaseDate: p.purchaseDate,
       };
     },
     async decodeNotification(p) {
