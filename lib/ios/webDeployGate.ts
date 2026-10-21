@@ -1,18 +1,22 @@
 // /api/deploy-site gate for slugs that belong to an iOS purchase.
 //
-// The browser publish path (services/publishService.ts) deploys straight to a
-// slug. For web (Stripe) customers nothing changes: there is no ios_purchases
-// row for their slug, and a failed lookup never blocks. Only a FOUND iOS row
-// can block:
-// - lapsed (lapse.ts) or taken down → 402, nothing deployed, so a web edit can't
-//   bring a lapsed site back online;
-// - otherwise the deploy goes ahead and, when the browser sent siteData, the
-//   pending file is refreshed in the iOS shape, so a later restore (sweep) or
-//   site lookup (app) brings back these web edits, not the older app copy.
+// The browser publish path (services/publishService.ts) sends today's
+// shop-name slug as siteId, plus the site's current deployedUrl and siteData.
+// The server picks the target:
+// - deployedUrl is a *.vercel.app URL whose first label is an iOS-bound slug →
+//   deploy to THAT slug (a renamed shop, or a suffixed slug like
+//   fade-studio-x7k2, keeps its own link);
+// - otherwise siteId exactly as before (still gated if it is iOS-bound itself).
+// Web (Stripe) customers have no ios_purchases row, so nothing changes for
+// them, and a failed lookup always falls back to today's behaviour. Only a
+// FOUND iOS row can block, and only when it is taken down or revoked: expiry
+// is Apple's call (billing grace), which the sweep makes, not this endpoint.
+// When an iOS deploy goes ahead and the browser sent siteData, the pending
+// file is refreshed in the iOS shape, so a later restore (sweep) or site
+// lookup (app) brings back these web edits, not the older app copy.
 import type { WebsiteData } from '../../types.js';
 import { deployRenderedSite, type DeployRenderedSiteInput, type DeployRenderedSiteResult } from '../deploySite.js';
 import { slugify, writePendingSite, type PendingSite } from '../publishSite.js';
-import { isLapsed } from './lapse.js';
 import { buildImageUrlMap, toPendingSiteData } from './pendingData.js';
 import { supabasePurchases, type PurchaseRow } from './purchases.js';
 
@@ -44,29 +48,60 @@ function renderable(sd: unknown): sd is WebsiteData {
   return true;
 }
 
+const VERCEL_APP = '.vercel.app';
+
+/** First host label of a *.vercel.app URL, or null. */
+export function vercelAppLabel(deployedUrl: unknown): string | null {
+  if (typeof deployedUrl !== 'string' || !deployedUrl) return null;
+  try {
+    const host = new URL(deployedUrl).hostname.toLowerCase();
+    if (!host.endsWith(VERCEL_APP)) return null;
+    const label = host.split('.')[0];
+    return label && /^[a-z0-9-]+$/.test(label) ? slugify(label) || null : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function gatedWebDeploy(
-  input: DeployRenderedSiteInput & { siteData?: unknown },
+  input: DeployRenderedSiteInput & { siteData?: unknown; deployedUrl?: unknown },
   deps: WebDeployDeps,
 ): Promise<GatedDeployResult> {
-  const { siteData, ...deployInput } = input;
-  const slug = slugify(String(input.siteId ?? ''));
+  const { siteData, deployedUrl, ...deployInput } = input;
+  const shopSlug = slugify(String(input.siteId ?? ''));
 
+  // Defaults are today's behaviour: deploy body.siteId, no gate.
+  let target = input.siteId;
+  let slug = shopSlug;
   let row: PurchaseRow | null = null;
-  if (slug) {
-    try {
-      row = await deps.findBySlug(slug);
-    } catch (e: any) {
-      // Never block web customers on our own lookup failure.
-      console.error(`[Deploy Site] ios_purchases lookup failed for ${slug} (continuing as web):`, e?.message || e);
+  try {
+    const label = vercelAppLabel(deployedUrl);
+    if (label && label !== shopSlug) {
+      const byLabel = await deps.findBySlug(label);
+      if (byLabel) {
+        row = byLabel;
+        target = label;
+        slug = label;
+      }
     }
+    if (!row && shopSlug) row = await deps.findBySlug(shopSlug);
+  } catch (e: any) {
+    // Never block or redirect web customers on our own lookup failure.
+    console.error(`[Deploy Site] ios_purchases lookup failed for ${shopSlug} (continuing as web):`, e?.message || e);
+    row = null;
+    target = input.siteId;
+    slug = shopSlug;
   }
 
-  if (row && (row.taken_down_at != null || isLapsed(row, deps.now()))) {
-    console.warn(`[Deploy Site] ${slug}: iOS subscription inactive (${row.original_transaction_id}); refusing deploy`);
+  if (row && (row.taken_down_at != null || row.revoked_at != null)) {
+    console.warn(`[Deploy Site] ${slug}: iOS site taken down or revoked (${row.original_transaction_id}); refusing deploy`);
     return { blocked: true };
   }
 
-  const result = await deps.deploy(deployInput);
+  if (row && target !== input.siteId) {
+    console.log(`[Deploy Site] ${input.siteId}: deploying to its iOS-bound project ${slug}`);
+  }
+  const result = await deps.deploy({ ...deployInput, siteId: target });
 
   if (row && siteData !== undefined) {
     // Best effort: the site is already live, and failing the request now would

@@ -10,9 +10,9 @@ const r = (expires: number | null, revoked: number | null = null) => ({
 });
 
 describe('isLapsed', () => {
-  it('grace is 24 hours', () => expect(GRACE_MS).toBe(86_400_000));
-  it('exactly 24 h past expiry is lapsed', () => expect(isLapsed(r(NOW - GRACE_MS), NOW)).toBe(true));
-  it('1 ms short of 24 h past expiry is not lapsed yet', () => expect(isLapsed(r(NOW - GRACE_MS + 1), NOW)).toBe(false));
+  it('prefilter grace is 1 hour', () => expect(GRACE_MS).toBe(3_600_000));
+  it('exactly 1 h past expiry is lapsed', () => expect(isLapsed(r(NOW - GRACE_MS), NOW)).toBe(true));
+  it('1 ms short of 1 h past expiry is not lapsed yet', () => expect(isLapsed(r(NOW - GRACE_MS + 1), NOW)).toBe(false));
   it('just expired (failed card, late renewal) is not lapsed yet', () => expect(isLapsed(r(NOW - 1000), NOW)).toBe(false));
   it('long expired is lapsed', () => expect(isLapsed(r(NOW - 30 * GRACE_MS), NOW)).toBe(true));
   it('revoked is lapsed even with a future expiry', () => expect(isLapsed(r(NOW + GRACE_MS, NOW - 1), NOW)).toBe(true));
@@ -27,7 +27,7 @@ describe('isActiveRow', () => {
   it('past expiry is not active', () => expect(isActiveRow(r(NOW - 1), NOW)).toBe(false));
   it('revoked is not active', () => expect(isActiveRow(r(NOW + GRACE_MS, NOW - 1), NOW)).toBe(false));
   it('null expiry is not active', () => expect(isActiveRow(r(null), NOW)).toBe(false));
-  it('a row between expiry and the 24 h grace is neither active nor lapsed', () => {
+  it('a row between expiry and the 1 h grace is neither active nor lapsed', () => {
     const row = r(NOW - 1000);
     expect(isActiveRow(row, NOW)).toBe(false);
     expect(isLapsed(row, NOW)).toBe(false);

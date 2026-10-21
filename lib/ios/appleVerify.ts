@@ -143,6 +143,23 @@ export function signedDataVerifierFor(env: IosEnv): SignedDataVerifier {
     loadRootCerts(), true, apiEnvFor[env], bundleId, env === 'Production' ? appAppleId : undefined));
 }
 
+/**
+ * defaultVerifier(), built on first use: it throws when the Apple env vars are
+ * missing, and that must surface as a rejected verify (mapped by the caller),
+ * not a crash at wiring time.
+ */
+export function lazyDefaultVerifier(): (transactionId: string) => Promise<VerifiedTx> {
+  let verifier: ((id: string) => Promise<VerifiedTx>) | undefined;
+  return (id) => {
+    try {
+      verifier ??= defaultVerifier();
+    } catch (e) {
+      return Promise.reject(e);
+    }
+    return verifier(id);
+  };
+}
+
 export function defaultVerifier() {
   const keyId = process.env.APPLE_IAP_KEY_ID;
   const issuerId = process.env.APPLE_IAP_ISSUER_ID;

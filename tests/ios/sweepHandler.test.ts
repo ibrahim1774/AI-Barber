@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const { unpublishedBound, restoreCandidates, takedownCandidates, markTakenDown, clearTakenDown, publishSite, writePendingSite, deployRenderedSite } = vi.hoisted(() => ({
+const { unpublishedBound, restoreCandidates, takedownCandidates, markTakenDown, clearTakenDown, publishSite, writePendingSite, deployRenderedSite, appleVerify } = vi.hoisted(() => ({
   unpublishedBound: vi.fn(),
   restoreCandidates: vi.fn(),
   takedownCandidates: vi.fn(),
@@ -9,13 +9,15 @@ const { unpublishedBound, restoreCandidates, takedownCandidates, markTakenDown, 
   publishSite: vi.fn(async (s: string, _o?: unknown) => ({ ok: true, siteId: s })),
   writePendingSite: vi.fn(async () => {}),
   deployRenderedSite: vi.fn(async (_i: { siteId: string; html: string }) => ({ deploymentUrl: 'https://x.vercel.app', uploadedImages: {} })),
+  appleVerify: vi.fn(),
 }));
 vi.mock('../../lib/publishSite.js', () => ({ publishSite, writePendingSite }));
 vi.mock('../../lib/deploySite.js', () => ({ deployRenderedSite }));
+vi.mock('../../lib/ios/appleVerify.js', async (orig) => ({ ...(await orig<object>()), lazyDefaultVerifier: () => appleVerify }));
 vi.mock('../../lib/ios/purchases.js', () => ({
   supabasePurchases: () => ({
     unpublishedBound, markPublished: vi.fn(async () => {}),
-    restoreCandidates, takedownCandidates, markTakenDown, clearTakenDown,
+    restoreCandidates, takedownCandidates, markTakenDown, clearTakenDown, upsertVerified: vi.fn(async () => ({})),
   }),
 }));
 
@@ -23,7 +25,10 @@ import handler from '../../api/ios/sweep.js';
 
 const mkRes = () => { const res: any = { status: vi.fn().mockReturnThis(), json: vi.fn() }; return res; };
 const cron = { headers: { 'user-agent': 'vercel-cron/1.0' } };
-const empty = { skippedLapsed: [], restored: [], restoreFailed: [], takenDown: [], takedownFailed: [] };
+const empty = { skippedLapsed: [], restored: [], restoreFailed: [], notRestored: [], takenDown: [], takedownFailed: [], stillActive: [], appleUnavailable: [] };
+const appleSays = (status: number) => async (otid: string) => ({
+  originalTransactionId: otid, transactionId: 't', productId: 'p', environment: 'Production', expiresAt: 0, revoked: status === 5, status,
+});
 
 describe('api/ios/sweep', () => {
   beforeEach(() => {
@@ -31,6 +36,7 @@ describe('api/ios/sweep', () => {
     unpublishedBound.mockReset();
     restoreCandidates.mockReset().mockResolvedValue([]);
     takedownCandidates.mockReset().mockResolvedValue([]);
+    appleVerify.mockReset();
   });
   afterEach(() => vi.restoreAllMocks());
 
@@ -52,6 +58,7 @@ describe('api/ios/sweep', () => {
   it('takedown deploys the offline page to the slug and never publishes or writes the pending file', async () => {
     unpublishedBound.mockResolvedValue([]);
     takedownCandidates.mockResolvedValue([{ original_transaction_id: 'o9', site_slug: 'fade-studio-x7k2', revoked_at: '2026-10-01T00:00:00Z' }]);
+    appleVerify.mockImplementation(appleSays(2));
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const res = mkRes();
     await handler(cron, res);
@@ -68,8 +75,10 @@ describe('api/ios/sweep', () => {
   it('restore force-publishes the slug', async () => {
     unpublishedBound.mockResolvedValue([]);
     restoreCandidates.mockResolvedValue([{ original_transaction_id: 'o9', site_slug: 'a' }]);
+    appleVerify.mockImplementation(appleSays(1));
     const res = mkRes();
     await handler(cron, res);
+    expect(appleVerify).toHaveBeenCalledWith('o9');
     expect(publishSite).toHaveBeenCalledWith('a', { force: true });
     expect(clearTakenDown).toHaveBeenCalledWith('o9');
   });

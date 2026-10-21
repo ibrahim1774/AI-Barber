@@ -14,7 +14,7 @@ import {
   type PendingSite,
   type PublishOutcome,
 } from '../publishSite.js';
-import { VerifyFailure, defaultVerifier, isActive, type VerifiedTx } from './appleVerify.js';
+import { VerifyFailure, isActive, lazyDefaultVerifier, type VerifiedTx } from './appleVerify.js';
 import { supabasePurchases, type PurchasesRepo } from './purchases.js';
 import { chooseSlug, makeIsTaken, urlServes, vercelProjectExists } from './slug.js';
 import { buildImageUrlMap, toPendingSiteData } from './pendingData.js';
@@ -240,18 +240,10 @@ export async function runIosSiteLookup(
 /** Real dependencies for the api/ios/* handlers. */
 export function liveDeps(): PublishDeps {
   const repo = supabasePurchases();
-  // Lazy: defaultVerifier() throws when Apple env vars are missing, and that
-  // must surface as a mapped 503, not an uncaught 500.
-  let verifier: ((id: string) => Promise<VerifiedTx>) | undefined;
   return {
-    verify: (id) => {
-      try {
-        verifier ??= defaultVerifier();
-      } catch (e) {
-        return Promise.reject(e);
-      }
-      return verifier(id);
-    },
+    // Lazy: defaultVerifier() throws when Apple env vars are missing, and that
+    // must surface as a mapped 503, not an uncaught 500.
+    verify: lazyDefaultVerifier(),
     repo,
     // Pending file, repo and Vercel project lookup are authoritative: their errors
     // propagate (→ 503). urlServes fails open (false) on network errors by design.

@@ -32,14 +32,36 @@ describe('api/deploy-site iOS gate', () => {
     expect(writePendingSite).not.toHaveBeenCalled();
   });
 
-  it('lapsed iOS slug → 402 subscription-inactive, no deploy', async () => {
-    findBySlug.mockResolvedValue({ original_transaction_id: 'o1', site_slug: 'fresh-cuts', expires_at: '2020-01-01T00:00:00Z', revoked_at: null, taken_down_at: null });
+  it('revoked or taken-down iOS slug → 402 subscription-inactive, no deploy', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const res = mkRes();
-    await handler(post({ siteId: 'fresh-cuts', html: '<h1/>', siteData: sd }), res);
-    expect(res.status).toHaveBeenCalledWith(402);
-    expect(res.json).toHaveBeenCalledWith({ ok: false, error: 'subscription-inactive' });
+    for (const extra of [{ revoked_at: '2026-10-01T00:00:00Z', taken_down_at: null }, { revoked_at: null, taken_down_at: '2026-10-01T00:00:00Z' }]) {
+      findBySlug.mockResolvedValue({ original_transaction_id: 'o1', site_slug: 'fresh-cuts', expires_at: '2020-01-01T00:00:00Z', ...extra });
+      const res = mkRes();
+      await handler(post({ siteId: 'fresh-cuts', html: '<h1/>', siteData: sd }), res);
+      expect(res.status).toHaveBeenCalledWith(402);
+      expect(res.json).toHaveBeenCalledWith({ ok: false, error: 'subscription-inactive' });
+    }
     expect(deployRenderedSite).not.toHaveBeenCalled();
+  });
+
+  it('iOS site published from the web with its suffixed deployedUrl deploys to the bound slug', async () => {
+    findBySlug.mockImplementation(async (s: string) => (s === 'fresh-cuts-x7k2'
+      ? { original_transaction_id: 'o1', site_slug: 'fresh-cuts-x7k2', expires_at: '2999-01-01T00:00:00Z', revoked_at: null, taken_down_at: null }
+      : null));
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const res = mkRes();
+    await handler(post({ siteId: 'fresh-cuts', html: '<h1/>', deployedUrl: 'https://fresh-cuts-x7k2.vercel.app', siteData: sd }), res);
+    expect(deployRenderedSite).toHaveBeenCalledWith(expect.objectContaining({ siteId: 'fresh-cuts-x7k2' }));
+    expect(writePendingSite).toHaveBeenCalledWith('fresh-cuts-x7k2', expect.anything());
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('web site whose vercel.app label differs from the project → shop-name slug, as today', async () => {
+    findBySlug.mockResolvedValue(null);
+    const res = mkRes();
+    await handler(post({ siteId: 'ada', html: '<h1/>', deployedUrl: 'https://ada-pearl-phi.vercel.app', siteData: sd }), res);
+    expect(deployRenderedSite).toHaveBeenCalledWith(expect.objectContaining({ siteId: 'ada' }));
+    expect(writePendingSite).not.toHaveBeenCalled();
   });
 
   it('active iOS slug with siteData → deploys and writes pending-sites/<slug>.json', async () => {

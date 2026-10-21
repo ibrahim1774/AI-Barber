@@ -237,7 +237,7 @@ describe('supabasePurchases', () => {
       expect(out.map((r) => r.original_transaction_id)).toEqual(['expired', 'revoked']);
       expect(calls.filter((c) => c.method === 'not').map((c) => c.args)).toEqual([['site_slug', 'is', null], ['published_at', 'is', null]]);
       expect(calls.filter((c) => c.method === 'is').map((c) => c.args)).toEqual([['taken_down_at', null]]);
-      expect(find(calls, 'or')!.args).toEqual([`revoked_at.not.is.null,expires_at.lte."${iso(NOW - DAY)}"`]);
+      expect(find(calls, 'or')!.args).toEqual([`revoked_at.not.is.null,expires_at.lte."${iso(NOW - 3_600_000)}"`]);
       expect(find(calls, 'limit')!.args).toEqual([7]);
     });
 

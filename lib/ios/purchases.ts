@@ -23,9 +23,9 @@ export interface PurchasesRepo {
     clearRevoked?: boolean;
   }): Promise<void>;
   unpublishedBound(limit: number): Promise<PurchaseRow[]>;
-  /** Published, bound, not yet taken down, and lapsed (lapse.ts). */
+  /** Takedown prefilter: published, bound, not yet taken down, and lapsed per lapse.ts. Apple decides. */
   takedownCandidates(limit: number, now: number): Promise<PurchaseRow[]>;
-  /** Taken down and active again (lapse.ts). */
+  /** Restore prefilter: taken down and active again per lapse.ts. Apple decides. */
   restoreCandidates(limit: number, now: number): Promise<PurchaseRow[]>;
   markTakenDown(otid: string, at: number): Promise<void>;
   clearTakenDown(otid: string): Promise<void>;
@@ -138,7 +138,7 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
     },
 
     async takedownCandidates(limit, now) {
-      // Coarse filter in SQL, exact rule (isLapsed) re-checked here.
+      // Prefilter only (lapse.ts): coarse in SQL, re-checked here. The sweep asks Apple before acting.
       const cutoff = new Date(now - GRACE_MS).toISOString();
       const { data, error } = await db().from(TABLE).select('*')
         .not('site_slug', 'is', null).not('published_at', 'is', null).is('taken_down_at', null)

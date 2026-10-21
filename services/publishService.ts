@@ -1,7 +1,7 @@
 import { SiteInstance, WebsiteData } from '../types';
 import { generateHTMLForTemplate } from './templateRenderer';
 import { dualWriteSave } from './saveService';
-import { deriveSiteSlug, SUBSCRIPTION_ENDED_MESSAGE, withUploadedImageUrls } from './publishTarget';
+import { SUBSCRIPTION_ENDED_MESSAGE, withUploadedImageUrls } from './publishTarget';
 
 export async function publishSite(
   site: SiteInstance,
@@ -15,9 +15,12 @@ export async function publishSite(
     console.error('[publishSite] Pre-deploy save failed (non-blocking):', err)
   );
 
-  // Republish to the existing *.vercel.app project when there is one, so a
-  // renamed shop (or a suffixed iOS slug) keeps its own link.
-  const siteSlug = deriveSiteSlug(site.deployedUrl, site.data.shopName);
+  const siteSlug = site.data.shopName
+    .toLowerCase()
+    .replace(/[''`]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .substring(0, 50);
 
   // Step 2: Collect base64 images, then upload in parallel
   const imageUrlMap: Record<string, string> = {};
@@ -100,7 +103,10 @@ export async function publishSite(
       siteId: siteSlug,
       html,
       imageUrls: imageUrlMap,
-      // Only used server-side for iOS-bound slugs, to keep their stored copy current.
+      // Both only matter server-side for iOS-bound sites: deployedUrl lets the
+      // server find a suffixed iOS slug to deploy to (web sites are unaffected),
+      // siteData keeps the iOS site's stored copy current.
+      deployedUrl: site.deployedUrl || null,
       siteData: withUploadedImageUrls(site.data, imageUrlMap),
     }),
   });

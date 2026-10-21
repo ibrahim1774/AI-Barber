@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { gatedWebDeploy, type WebDeployDeps } from '../../lib/ios/webDeployGate.js';
+import { gatedWebDeploy, vercelAppLabel, type WebDeployDeps } from '../../lib/ios/webDeployGate.js';
 import type { PurchaseRow } from '../../lib/ios/purchases.js';
 import type { PendingSite } from '../../lib/publishSite.js';
 import type { WebsiteData } from '../../types.js';
@@ -29,7 +29,7 @@ const siteData = (): WebsiteData => ({
 
 function deps(found: PurchaseRow | null | Error) {
   const d = {
-    findBySlug: vi.fn(async () => { if (found instanceof Error) throw found; return found; }),
+    findBySlug: vi.fn(async (_slug: string) => { if (found instanceof Error) throw found; return found; }),
     deploy: vi.fn(async (i) => ({ deploymentUrl: `https://${i.siteId}.vercel.app`, uploadedImages: {} })),
     writePending: vi.fn(async (_slug: string, _p: PendingSite) => {}),
     now: () => NOW,
@@ -55,14 +55,20 @@ describe('gatedWebDeploy', () => {
     expect(d.writePending).not.toHaveBeenCalled();
   });
 
-  it('lapsed iOS row → blocked, nothing deployed or written', async () => {
+  it('revoked iOS row → blocked, nothing deployed or written', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
-    for (const row of [iosRow({ expires_at: iso(NOW - 2 * DAY) }), iosRow({ revoked_at: iso(NOW - 1) })]) {
-      const d = deps(row);
-      expect(await gatedWebDeploy(body({ siteData: siteData() }), d)).toEqual({ blocked: true });
-      expect(d.deploy).not.toHaveBeenCalled();
-      expect(d.writePending).not.toHaveBeenCalled();
-    }
+    const d = deps(iosRow({ revoked_at: iso(NOW - 1) }));
+    expect(await gatedWebDeploy(body({ siteData: siteData() }), d)).toEqual({ blocked: true });
+    expect(d.deploy).not.toHaveBeenCalled();
+    expect(d.writePending).not.toHaveBeenCalled();
+  });
+
+  it('an expired (not taken down, not revoked) iOS row still deploys: expiry is Apple\'s call (billing grace)', async () => {
+    const d = deps(iosRow({ expires_at: iso(NOW - 5 * DAY) }));
+    const out = await gatedWebDeploy(body({ siteData: siteData() }), d);
+    expect(out.blocked).toBe(false);
+    expect(d.deploy).toHaveBeenCalledTimes(1);
+    expect(d.writePending).toHaveBeenCalledTimes(1);
   });
 
   it('taken-down iOS row → blocked even if the subscription is active again (restore owns that)', async () => {
@@ -137,5 +143,89 @@ describe('gatedWebDeploy', () => {
     const d = deps(null);
     d.deploy.mockRejectedValueOnce(new Error('vercel'));
     await expect(gatedWebDeploy(body(), d)).rejects.toThrow('vercel');
+  });
+});
+
+describe('gatedWebDeploy target slug from deployedUrl', () => {
+  afterEach(() => vi.restoreAllMocks());
+  const bySlug = (rows: Record<string, PurchaseRow>) => {
+    const d = deps(null);
+    d.findBySlug.mockImplementation(async (s: string) => rows[s] ?? null);
+    return d;
+  };
+
+  it('web site whose vercel.app label differs from its project still deploys to the shop-name slug', async () => {
+    const d = bySlug({});
+    const out = await gatedWebDeploy({ siteId: 'ada', html: 'h', deployedUrl: 'https://ada-pearl-phi.vercel.app' }, d);
+    expect(out.blocked).toBe(false);
+    expect(d.findBySlug.mock.calls).toEqual([['ada-pearl-phi'], ['ada']]);
+    expect(d.deploy).toHaveBeenCalledWith(expect.objectContaining({ siteId: 'ada' }));
+    expect(d.writePending).not.toHaveBeenCalled();
+  });
+
+  it('iOS site with a suffixed slug deploys to that slug, not the shop-name slug, and refreshes its pending file', async () => {
+    const d = bySlug({ 'fade-studio-x7k2': iosRow() });
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const out = await gatedWebDeploy(
+      { siteId: 'fade-studio', html: 'h', deployedUrl: 'https://fade-studio-x7k2.vercel.app/', siteData: siteData() }, d);
+    expect(out.blocked).toBe(false);
+    expect(d.findBySlug.mock.calls).toEqual([['fade-studio-x7k2']]);
+    expect(d.deploy).toHaveBeenCalledWith(expect.objectContaining({ siteId: 'fade-studio-x7k2' }));
+    expect(d.writePending.mock.calls[0][0]).toBe('fade-studio-x7k2');
+  });
+
+  it('a renamed iOS shop keeps deploying to its bound slug', async () => {
+    const d = bySlug({ 'fade-studio-x7k2': iosRow() });
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    await gatedWebDeploy({ siteId: 'brand-new-name', html: 'h', deployedUrl: 'https://fade-studio-x7k2.vercel.app' }, d);
+    expect(d.deploy).toHaveBeenCalledWith(expect.objectContaining({ siteId: 'fade-studio-x7k2' }));
+  });
+
+  it('a taken-down iOS site found via deployedUrl is blocked', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const d = bySlug({ 'fade-studio-x7k2': iosRow({ taken_down_at: iso(NOW - DAY) }) });
+    expect(await gatedWebDeploy({ siteId: 'fade-studio', html: 'h', deployedUrl: 'https://fade-studio-x7k2.vercel.app' }, d))
+      .toEqual({ blocked: true });
+    expect(d.deploy).not.toHaveBeenCalled();
+  });
+
+  it('shop-name slug that is itself iOS-bound is still gated (custom-domain deployedUrl)', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const d = bySlug({ 'fresh-cuts': iosRow({ site_slug: 'fresh-cuts', revoked_at: iso(NOW) }) });
+    expect(await gatedWebDeploy({ siteId: 'fresh-cuts', html: 'h', deployedUrl: 'https://www.freshcuts.com' }, d))
+      .toEqual({ blocked: true });
+    expect(d.findBySlug.mock.calls).toEqual([['fresh-cuts']]);
+  });
+
+  it('a lookup error on the label falls back to today: deploy body.siteId, ungated', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const d = deps(new Error('db down'));
+    const out = await gatedWebDeploy({ siteId: 'fade-studio', html: 'h', deployedUrl: 'https://fade-studio-x7k2.vercel.app', siteData: siteData() }, d);
+    expect(out.blocked).toBe(false);
+    expect(d.deploy).toHaveBeenCalledWith(expect.objectContaining({ siteId: 'fade-studio' }));
+    expect(d.writePending).not.toHaveBeenCalled();
+    expect(err).toHaveBeenCalled();
+  });
+
+  it('deployedUrl is never passed to the deployer', async () => {
+    const d = bySlug({});
+    await gatedWebDeploy({ siteId: 'x', html: 'h', deployedUrl: 'https://x.vercel.app' }, d);
+    expect(Object.keys(d.deploy.mock.calls[0][0])).not.toContain('deployedUrl');
+  });
+});
+
+describe('vercelAppLabel', () => {
+  it('first label of a *.vercel.app host', () => {
+    expect(vercelAppLabel('https://fade-studio-x7k2.vercel.app')).toBe('fade-studio-x7k2');
+    expect(vercelAppLabel('https://Mixed-Case.VERCEL.app/path')).toBe('mixed-case');
+    expect(vercelAppLabel('https://a.b.vercel.app')).toBe('a');
+  });
+  it('null for custom domains, look-alikes, null and garbage', () => {
+    expect(vercelAppLabel('https://www.freshcuts.com')).toBeNull();
+    expect(vercelAppLabel('https://evil.vercel.app.example.com')).toBeNull();
+    expect(vercelAppLabel(null)).toBeNull();
+    expect(vercelAppLabel('')).toBeNull();
+    expect(vercelAppLabel('not a url')).toBeNull();
+    expect(vercelAppLabel(42)).toBeNull();
   });
 });

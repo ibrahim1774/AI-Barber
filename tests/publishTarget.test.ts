@@ -1,24 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { deriveSiteSlug, withUploadedImageUrls, SUBSCRIPTION_ENDED_MESSAGE } from '../services/publishTarget';
+import { withUploadedImageUrls, SUBSCRIPTION_ENDED_MESSAGE } from '../services/publishTarget';
 import type { WebsiteData } from '../types';
-
-describe('deriveSiteSlug', () => {
-  it('a *.vercel.app deployedUrl keeps its own project (iOS suffix, renamed shop)', () => {
-    expect(deriveSiteSlug('https://fade-studio-x7k2.vercel.app', 'Fade Studio')).toBe('fade-studio-x7k2');
-    expect(deriveSiteSlug('https://old-name.vercel.app/', 'Brand New Name')).toBe('old-name');
-    expect(deriveSiteSlug('https://Mixed-Case.VERCEL.app', 'x')).toBe('mixed-case');
-  });
-  it('a custom-domain deployedUrl falls back to the shop-name slug', () => {
-    expect(deriveSiteSlug('https://www.freshcuts.com', "Joe's Fresh Cuts!")).toBe('joes-fresh-cuts');
-    expect(deriveSiteSlug('https://evil.vercel.app.example.com', 'Fresh Cuts')).toBe('fresh-cuts');
-  });
-  it('null / empty / garbage deployedUrl falls back to the shop-name slug', () => {
-    expect(deriveSiteSlug(null, 'Fresh Cuts')).toBe('fresh-cuts');
-    expect(deriveSiteSlug(undefined, 'Fresh Cuts')).toBe('fresh-cuts');
-    expect(deriveSiteSlug('', 'Fresh Cuts')).toBe('fresh-cuts');
-    expect(deriveSiteSlug('not a url', 'Fresh Cuts')).toBe('fresh-cuts');
-  });
-});
 
 describe('withUploadedImageUrls', () => {
   it('substitutes uploaded URLs (hero, about, gallery, staff) and strips leftover data: URLs', () => {

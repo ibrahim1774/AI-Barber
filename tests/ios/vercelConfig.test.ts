@@ -9,4 +9,9 @@ describe('vercel.json', () => {
     expect(cfg.functions['api/ios/publish.ts'].maxDuration).toBe(300);
     expect(cfg.functions['api/ios/publish.ts'].includeFiles).toBe('lib/ios/certs/**');
   });
+
+  it('iOS sweep can verify with Apple (root certs bundled) and keeps its 300 s budget', () => {
+    expect(cfg.functions['api/ios/sweep.ts'].maxDuration).toBe(300);
+    expect(cfg.functions['api/ios/sweep.ts'].includeFiles).toBe('lib/ios/certs/**');
+  });
 });
