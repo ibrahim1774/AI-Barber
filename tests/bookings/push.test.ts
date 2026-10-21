@@ -21,6 +21,7 @@ describe('push', () => {
     expect(f.mock.calls.map((c) => JSON.parse(c[1].body).length)).toEqual([100, 100, 5]);
     expect(f.mock.calls[0][0]).toBe(EXPO_PUSH_URL);
     expect(f.mock.calls[0][1].headers['Content-Type']).toBe('application/json');
+    expect(f.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
     expect(JSON.parse(f.mock.calls[0][1].body)[0]).toMatchObject({ to: tok(0), body: 'hi', sound: 'default', data: { kind: 'booking' } });
     expect(r.sent).toBe(203);
     expect(r.invalidTokens).toEqual([tok(3), tok(150)]);

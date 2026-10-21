@@ -51,6 +51,13 @@ function liveTransport(env: SmtpEnv): MailTransport {
     port: env.port,
     secure: env.port === 465, // 465 = implicit TLS; 587 upgrades with STARTTLS
     auth: { user: env.user, pass: env.pass },
+    // Fail fast instead of nodemailer's 2-minute connect / 10-minute idle defaults.
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 20_000,
+    // Reuse one connection across a cron batch.
+    pool: true,
+    maxConnections: 1,
   }) as unknown as MailTransport;
   cached = { key, transport };
   return transport;

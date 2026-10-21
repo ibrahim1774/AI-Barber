@@ -50,6 +50,7 @@ export interface NotifyAppointment {
   amount_refunded_cents: number;
   manage_token: string;
   source: 'online' | 'walk_in';
+  updated_at?: string | null;
 }
 
 export interface NotifyShop {
@@ -150,6 +151,7 @@ function icsAttachment(ctx: NotifyContext, now: number, cancelled = false) {
       address: ctx.shop.address ?? null,
       manageUrl: manageUrl(ctx.appt.manage_token),
       cancelled,
+      updatedAt: ctx.appt.updated_at ?? new Date(now).toISOString(),
       now: new Date(now),
     }),
   };
@@ -176,7 +178,7 @@ export function confirmationEmail(ctx: NotifyContext, now: number): EmailMessage
   };
 }
 
-export function cancellationEmail(ctx: NotifyContext, by: 'customer' | 'shop', refundedCents: number): EmailMessage {
+export function cancellationEmail(ctx: NotifyContext, by: 'customer' | 'shop', refundedCents: number, now: number = Date.now()): EmailMessage {
   const { appt, shop } = ctx;
   const paras = [
     by === 'shop'
@@ -192,6 +194,8 @@ export function cancellationEmail(ctx: NotifyContext, by: 'customer' | 'shop', r
     subject: `Cancelled: ${appt.service_name} at ${shop.name}, ${longWhen(appt.start_at, shop.timezone)}`,
     html: layout(shop, 'Booking cancelled', detailRows(ctx), paras, rebook),
     text: `${paras.join('\n')}\n${appt.service_name}, ${longWhen(appt.start_at, shop.timezone)}.${rebook ? `\nBook again: ${rebook.href}` : ''}`,
+    // STATUS:CANCELLED with the same UID removes it from the customer's calendar
+    attachments: [icsAttachment(ctx, now, true)],
   };
 }
 
@@ -214,13 +218,13 @@ export function rescheduleEmail(ctx: NotifyContext, now: number): EmailMessage {
 export function reminderEmail(ctx: NotifyContext): EmailMessage {
   const { appt, shop } = ctx;
   const link = manageUrl(appt.manage_token);
-  const time = zoned(appt.start_at, shop.timezone).toFormat('h:mm a');
+  const when = zoned(appt.start_at, shop.timezone).toFormat("cccc 'at' h:mm a");
   return {
     to: appt.customer_email!,
     fromName: fromName(shop),
     replyTo: ctx.ownerEmail,
-    subject: `Reminder: ${appt.service_name} at ${shop.name} tomorrow at ${time}`,
-    html: layout(shop, 'See you tomorrow', detailRows(ctx), [
+    subject: `Reminder: ${appt.service_name} at ${shop.name} on ${when}`,
+    html: layout(shop, 'See you soon', detailRows(ctx), [
       "Can't make it? Please cancel or reschedule so someone else can have the time.",
     ], { label: 'Manage booking', href: link }),
     text: `Reminder: ${appt.service_name} at ${shop.name}, ${longWhen(appt.start_at, shop.timezone)}.\nManage or cancel: ${link}`,
@@ -271,7 +275,7 @@ export async function notify(event: NotifyEvent, deps?: NotifyDeps): Promise<voi
           }));
         }
         const refunded = event.refundedCents ?? appt.amount_refunded_cents ?? 0;
-        jobs.push(emailCustomer(ctx, d, () => cancellationEmail(ctx, event.by, refunded)));
+        jobs.push(emailCustomer(ctx, d, () => cancellationEmail(ctx, event.by, refunded, now)));
         break;
       }
       case 'booking_rescheduled': {
@@ -446,7 +450,7 @@ export function liveReminderDeps(db: SupabaseClient = serviceDb()): ReminderDeps
     async dueReminders(fromIso, toIso) {
       const { data, error } = await db.from('ab_appointments').select('id, payment_method, payment_status')
         .eq('status', 'booked').is('reminder_sent_at', null).not('customer_email', 'is', null)
-        .gte('start_at', fromIso).lt('start_at', toIso).limit(500);
+        .gte('start_at', fromIso).lt('start_at', toIso).order('start_at').limit(200);
       if (error) dbFail('dueReminders', error);
       return (data ?? [])
         .filter((r: any) => !(r.payment_method === 'card' && r.payment_status === 'awaiting'))

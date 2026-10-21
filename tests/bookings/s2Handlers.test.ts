@@ -43,7 +43,7 @@ describe('api/stripe/connect-webhook', () => {
   const body = JSON.stringify({ id: 'evt_1', type: 'account.updated', account: 'acct_1', data: { object: { id: 'acct_1', charges_enabled: true } } });
   const deps = () => {
     const d = {
-      claimEvent: vi.fn(async () => true), releaseEvent: vi.fn(async () => {}),
+      eventProcessed: vi.fn(async () => false), recordEvent: vi.fn(async () => {}),
       setChargesEnabledForAccount: vi.fn(async () => {}),
     } as unknown as WebhookDeps;
     return d;
@@ -63,7 +63,7 @@ describe('api/stripe/connect-webhook', () => {
     const res = mkRes();
     await handleWebhook(rawReq(body, { 'stripe-signature': sign(body, 'whsec_primehub') }), res, () => d);
     expect(res.status).toHaveBeenCalledWith(400);
-    expect(d.claimEvent).not.toHaveBeenCalled();
+    expect(d.eventProcessed).not.toHaveBeenCalled();
   });
 
   it('400 on a stale timestamp', async () => {
@@ -88,7 +88,7 @@ describe('api/stripe/connect-webhook', () => {
     const res = mkRes();
     await handleWebhook(rawReq(body, { 'stripe-signature': sign(body, 'whsec_connect') }), res, () => d);
     expect(res.status).toHaveBeenCalledWith(500);
-    expect(d.releaseEvent).toHaveBeenCalledWith('evt_1');
+    expect(d.recordEvent).not.toHaveBeenCalled();
   });
 });
 

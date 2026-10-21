@@ -9,6 +9,17 @@ describe('ics', () => {
     expect(escapeText('a\\b;c,d\ne\r\nf')).toBe('a\\\\b\\;c\\,d\\ne\\nf');
   });
 
+  it('drops control characters TEXT forbids', () => {
+    expect(escapeText('a\u0000b\u0007c\u001Fd\te')).toBe('abcd\te');
+  });
+
+  it('writes SEQUENCE from updatedAt (monotonic) and omits it otherwise', () => {
+    const one = (updatedAt?: string) => appointmentsToIcs([{ id: 'a', start: '2026-10-24T18:00:00Z', end: '2026-10-24T18:30:00Z', serviceName: 'Fade', status: 'booked', updatedAt }], { calendarName: 'x' });
+    const seq = (s: string) => Number(/SEQUENCE:(\d+)/.exec(s)?.[1]);
+    expect(one()).not.toContain('SEQUENCE');
+    expect(seq(one('2026-10-21T10:00:01Z'))).toBeGreaterThan(seq(one('2026-10-21T10:00:00Z')));
+  });
+
   it('formats UTC date-times', () => {
     expect(formatUtc('2026-10-24T14:00:00-04:00')).toBe('20261024T180000Z');
     expect(formatUtc(new Date(Date.UTC(2026, 0, 2, 3, 4, 5, 678)))).toBe('20260102T030405Z');

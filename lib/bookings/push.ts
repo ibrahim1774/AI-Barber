@@ -12,6 +12,7 @@
 
 export const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 export const EXPO_BATCH = 100;
+export const EXPO_TIMEOUT_MS = 10_000;
 
 export interface PushMessage {
   to: string;
@@ -26,7 +27,7 @@ export interface PushResult {
   invalidTokens: string[];
 }
 
-type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body: string }) => Promise<{
+type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal }) => Promise<{
   ok: boolean;
   status: number;
   json(): Promise<any>;
@@ -57,6 +58,7 @@ export async function sendPush(messages: PushMessage[], fetchImpl: FetchLike = f
           method: 'POST',
           headers,
           body: JSON.stringify(batch.map((m) => ({ sound: 'default', ...m }))),
+          signal: AbortSignal.timeout(EXPO_TIMEOUT_MS),
         });
         const json = await res.json().catch(() => null);
         if (!res.ok || !Array.isArray(json?.data)) {

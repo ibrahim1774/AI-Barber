@@ -89,6 +89,9 @@ describe('notify', () => {
     const m = d.sendEmail.mock.calls[0][0];
     expect(m.html).toContain('A refund of $30');
     expect(m.subject).toMatch(/^Cancelled: Fade at Fade Factory/);
+    // cancelled .ics with the same UID removes it from the customer's calendar
+    expect(m.attachments[0].content).toContain('UID:appt-1@aibarber.org');
+    expect(m.attachments[0].content).toContain('STATUS:CANCELLED');
   });
 
   it('booking_cancelled by shop: email (with rebook link), no push to the shop', async () => {
@@ -109,6 +112,7 @@ describe('notify', () => {
       data: { kind: 'booking', appointmentId: 'appt-1', start: '2026-10-24T15:00:00.000Z' },
     });
     expect(d.sendEmail.mock.calls[0][0].attachments[0].content).toContain('DTSTART:20261024T150000Z');
+    expect(d.sendEmail.mock.calls[0][0].attachments[0].content).toMatch(/\r\nSEQUENCE:\d+\r\n/);
     const d2 = mkDeps();
     await notify({ kind: 'booking_rescheduled', appointmentId: 'appt-1', by: 'shop' }, d2);
     expect(d2.push).not.toHaveBeenCalled();
@@ -128,7 +132,7 @@ describe('notify', () => {
     const d = mkDeps();
     await notify({ kind: 'reminder', appointmentId: 'appt-1' }, d);
     expect(d.push).not.toHaveBeenCalled();
-    expect(d.sendEmail.mock.calls[0][0].subject).toBe('Reminder: Fade at Fade Factory tomorrow at 2:00 PM');
+    expect(d.sendEmail.mock.calls[0][0].subject).toBe('Reminder: Fade at Fade Factory on Friday at 2:00 PM');
   });
 
   it('never throws: missing appointment, failing loaders, failing push/email', async () => {

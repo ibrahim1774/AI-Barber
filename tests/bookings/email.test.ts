@@ -25,7 +25,10 @@ describe('sendEmail', () => {
   it('sends with the shop display name, SMTP_FROM address and reply-to; port 465 is secure', async () => {
     sendMail.mockResolvedValue({});
     expect(await sendEmail({ ...msg, attachments: [{ filename: 'booking.ics', content: 'X', contentType: 'text/calendar' }] })).toBe('sent');
-    expect(createTransport).toHaveBeenCalledWith(expect.objectContaining({ host: 'smtp.gmail.com', port: 465, secure: true, auth: { user: 'support@davoxa.com', pass: 'pw' } }));
+    expect(createTransport).toHaveBeenCalledWith(expect.objectContaining({
+      host: 'smtp.gmail.com', port: 465, secure: true, auth: { user: 'support@davoxa.com', pass: 'pw' },
+      connectionTimeout: 10_000, greetingTimeout: 10_000, socketTimeout: 20_000,
+    }));
     const opts = sendMail.mock.calls[0][0];
     expect(opts.from).toEqual({ name: 'Fade Factory via AI Barber', address: 'support@davoxa.com' });
     expect(opts.replyTo).toBe('owner@example.com');
@@ -42,6 +45,12 @@ describe('sendEmail', () => {
     expect(await sendEmail({ ...msg, to: 'not-an-email' }, t)).toBe('skipped');
     expect(await sendEmail({ ...msg, replyTo: 'bad\r\nBcc: x@y.z' }, t)).toBe('sent');
     expect(t.sendMail.mock.calls[0][0].replyTo).toBeUndefined();
+  });
+
+  it('strips CR/LF from the subject (no header injection)', async () => {
+    const t = { sendMail: vi.fn().mockResolvedValue({}) };
+    await sendEmail({ ...msg, subject: 'Hi\r\nBcc: x@y.z' }, t);
+    expect(t.sendMail.mock.calls[0][0].subject).toBe('Hi Bcc: x@y.z');
   });
 
   it('escapes HTML and cleans header names', () => {

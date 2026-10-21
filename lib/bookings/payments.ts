@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { waitUntil } from '@vercel/functions';
 import { platformFeeCents } from './money.js';
 import type { NotifyEvent } from './notify.js';
 
@@ -16,9 +17,12 @@ import type { NotifyEvent } from './notify.js';
 
 export const SITE_ORIGIN = 'https://www.aibarber.org';
 const STRIPE_API = 'https://api.stripe.com/v1';
-/** Card holds last 30 minutes. Stripe rejects expires_at < 30 min from when IT receives the
- *  request, so ask for 31 to absorb network/clock skew. */
-export const CHECKOUT_HOLD_SEC = 31 * 60;
+/** Card holds last about 30 minutes. Stripe rejects expires_at < 30 min from when IT receives
+ *  the request; expires_at is anchored to the start of the current minute + 32 min (so 31–32 min
+ *  from now), which also keeps it stable for the per-minute Idempotency-Key. */
+export const CHECKOUT_HOLD_SEC = 32 * 60;
+/** Per-request timeout for Stripe calls. */
+export const STRIPE_TIMEOUT_MS = 10_000;
 export const MIN_CHARGE_CENTS = 50;
 
 export const manageUrl = (token: string) => `${SITE_ORIGIN}/book/manage/${encodeURIComponent(token)}`;
@@ -52,7 +56,7 @@ export interface PayAppointment {
   amount_refunded_cents?: number | null;
 }
 
-export type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body?: string }) => Promise<{
+export type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{
   ok: boolean;
   status: number;
   json(): Promise<any>;
@@ -90,7 +94,9 @@ export async function stripeRequest(
   if (opts.idempotencyKey && method === 'POST') headers['Idempotency-Key'] = opts.idempotencyKey;
 
   let url = `${STRIPE_API}${path}`;
-  const init: { method: string; headers: Record<string, string>; body?: string } = { method, headers };
+  const init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal } = {
+    method, headers, signal: AbortSignal.timeout(STRIPE_TIMEOUT_MS),
+  };
   if (method === 'GET') {
     const qs = body.toString();
     if (qs) url += `?${qs}`;
@@ -114,8 +120,10 @@ export async function stripeRequest(
 
 /**
  * Hosted Checkout for a card booking, on the shop's connected account. Throws when the shop
- * has no connected account or the amount is below Stripe's minimum. Safe to retry: the
- * Idempotency-Key is per appointment + amount.
+ * has no connected account or the amount is below Stripe's minimum. Card only (Apple Pay and
+ * Google Pay ride on 'card'): delayed methods such as ACH would leave the hold unresolved.
+ * The Idempotency-Key is per appointment + amount + minute, so a network retry within the same
+ * minute returns the same session and a later call makes a new one.
  */
 export async function createCardCheckout(
   shop: PayShop,
@@ -131,13 +139,15 @@ export async function createCardCheckout(
   const isDeposit = appt.price_cents == null || amount < appt.price_cents;
   const fee = platformFeeCents(amount, shop.platform_fee_bps);
   const now = (opts.now ?? Date.now)();
+  const minuteSec = Math.floor(now / 60_000) * 60;
   const meta = { appointment_id: appt.id, shop_id: shop.id, app: 'aibarber-bookings' };
 
   const params: Record<string, string | number | undefined> = {
     mode: 'payment',
     success_url: `${manageUrl(appt.manage_token)}?checkout=success`,
     cancel_url: `${manageUrl(appt.manage_token)}?checkout=cancelled`,
-    expires_at: Math.floor(now / 1000) + CHECKOUT_HOLD_SEC,
+    expires_at: minuteSec + CHECKOUT_HOLD_SEC,
+    'payment_method_types[0]': 'card',
     client_reference_id: appt.id,
     customer_email: appt.customer_email || undefined,
     'line_items[0][quantity]': 1,
@@ -154,7 +164,7 @@ export async function createCardCheckout(
 
   const session = await stripeRequest('POST', '/checkout/sessions', params, {
     account: shop.stripe_account_id,
-    idempotencyKey: `ab-checkout-${appt.id}-${amount}`,
+    idempotencyKey: `ab-checkout-${appt.id}-${amount}-${minuteSec}`,
     fetch: opts.fetch,
   });
   if (!session?.url || !session?.id) throw new StripeApiError('Checkout Session has no url', 502);
@@ -186,8 +196,9 @@ export async function refundAppointment(
     'metadata[app]': 'aibarber-bookings',
   }, {
     account: shop.stripe_account_id,
-    // already-refunded is part of the key, so a second partial refund of the same size is a new refund
-    idempotencyKey: `ab-refund-${appt.id}-${already}-${amount}`,
+    // The payment intent and already-refunded are part of the key: a second partial refund of the
+    // same size is a new refund, and a refund of a different payment never replays an old one.
+    idempotencyKey: `ab-refund-${appt.id}-${appt.stripe_payment_intent_id}-${already}-${amount}`,
     fetch: opts.fetch,
   });
   if (refund?.status === 'failed' || refund?.status === 'canceled') {
@@ -226,6 +237,10 @@ export async function createStandardAccount(
   ownerEmail: string | null,
   opts: StripeOpts = {},
 ): Promise<string> {
+  // The key covers the prefilled values, so editing the shop's name/phone between taps never hits
+  // Stripe's "same key, different parameters" error.
+  const paramsHash = (withPhone: boolean) => crypto.createHash('sha256')
+    .update(JSON.stringify([ownerEmail, shop.name, shop.slug, withPhone ? shop.phone : null])).digest('hex').slice(0, 16);
   const create = (withPhone: boolean) => stripeRequest('POST', '/accounts', {
     type: 'standard',
     email: ownerEmail || undefined,
@@ -234,7 +249,7 @@ export async function createStandardAccount(
     'business_profile[support_phone]': withPhone ? shop.phone || undefined : undefined,
     'metadata[shop_id]': shop.id,
     'metadata[app]': 'aibarber-bookings',
-  }, { idempotencyKey: `ab-account-${shop.id}${withPhone ? '' : '-nophone'}`, fetch: opts.fetch });
+  }, { idempotencyKey: `ab-account-${shop.id}-${paramsHash(withPhone)}`, fetch: opts.fetch });
   let acct: any;
   try {
     acct = await create(Boolean(shop.phone));
@@ -289,6 +304,9 @@ export interface OwnerStripeDeps {
   /** Store the id only if none is stored yet; returns the id that ends up stored. */
   saveAccountId(shopId: string, accountId: string): Promise<string>;
   setChargesEnabled(shopId: string, enabled: boolean): Promise<void>;
+  /** Forget a connected account we no longer have access to (stripe_account_id = null, charges off),
+   *  only if it is still the stored one. */
+  clearAccount(shopId: string, accountId: string): Promise<void>;
   stripe?: StripeOpts;
 }
 
@@ -318,10 +336,18 @@ export async function stripeOnboard(authorization: string | string[] | undefined
   const { user, shop } = r;
   try {
     let accountId = shop.stripe_account_id;
-    if (!accountId) {
-      const created = await createStandardAccount(shop, user.email, deps.stripe);
-      accountId = await deps.saveAccountId(shop.id, created);
+    if (accountId) {
+      try {
+        return { status: 200, body: { url: await createAccountLink(shop.id, accountId, deps.stripe) } };
+      } catch (e) {
+        // Access revoked (owner disconnected AI Barber in Stripe): start over with a new account.
+        if (!(e instanceof StripeApiError && (e.status === 403 || e.status === 404))) throw e;
+        await deps.clearAccount(shop.id, accountId);
+        accountId = null;
+      }
     }
+    const created = await createStandardAccount(shop, user.email, deps.stripe);
+    accountId = await deps.saveAccountId(shop.id, created);
     const url = await createAccountLink(shop.id, accountId, deps.stripe);
     return { status: 200, body: { url } };
   } catch (e: any) {
@@ -337,7 +363,8 @@ export async function stripeStatus(authorization: string | string[] | undefined,
   if (!shop.stripe_account_id) return { status: 200, body: { connected: false, chargesEnabled: false, detailsSubmitted: false } };
   try {
     const s = await fetchAccountStatus(shop.stripe_account_id, deps.stripe);
-    if (s.chargesEnabled !== shop.stripe_charges_enabled) await deps.setChargesEnabled(shop.id, s.chargesEnabled);
+    if (!s.connected) await deps.clearAccount(shop.id, shop.stripe_account_id);
+    else if (s.chargesEnabled !== shop.stripe_charges_enabled) await deps.setChargesEnabled(shop.id, s.chargesEnabled);
     return { status: 200, body: s };
   } catch (e: any) {
     console.error('[shop/stripe/status] failed:', e?.message || e);
@@ -381,6 +408,11 @@ export function liveOwnerStripeDeps(db: SupabaseClient = serviceDb()): OwnerStri
     async setChargesEnabled(shopId, enabled) {
       const { error } = await db.from('ab_shops').update({ stripe_charges_enabled: enabled }).eq('id', shopId);
       if (error) dbFail('setChargesEnabled', error);
+    },
+    async clearAccount(shopId, accountId) {
+      const { error } = await db.from('ab_shops').update({ stripe_account_id: null, stripe_charges_enabled: false })
+        .eq('id', shopId).eq('stripe_account_id', accountId);
+      if (error) dbFail('clearAccount', error);
     },
   };
 }
@@ -427,9 +459,10 @@ export interface WebhookAppointment extends PayAppointment {
 }
 
 export interface WebhookDeps {
-  /** Insert into ab_events (dedupe_key 'stripe:<id>'); false when it was already there. */
-  claimEvent(eventId: string, type: string, account: string | null): Promise<boolean>;
-  releaseEvent(eventId: string): Promise<void>;
+  /** True when this event id is already recorded in ab_events (dedupe_key 'stripe:<id>'). */
+  eventProcessed(eventId: string): Promise<boolean>;
+  /** Record the event as processed. Called only after its work succeeded; a duplicate insert is fine. */
+  recordEvent(eventId: string, type: string, account: string | null): Promise<void>;
   appointmentBySession(sessionId: string): Promise<WebhookAppointment | null>;
   appointmentByPaymentIntent(pi: string): Promise<WebhookAppointment | null>;
   appointmentById(id: string): Promise<WebhookAppointment | null>;
@@ -438,9 +471,13 @@ export interface WebhookDeps {
   markPaid(apptId: string, f: { paymentStatus: 'paid' | 'deposit'; amountPaidCents: number; paymentIntentId: string | null }): Promise<boolean>;
   /** Conditional on status = 'booked' and payment_status = 'awaiting'. */
   expireHold(apptId: string, nowIso: string): Promise<boolean>;
+  /** Monotonic: never lowers amount_refunded_cents (events can arrive out of order). */
   setRefunded(apptId: string, amountRefundedCents: number, paymentStatus: 'refunded' | 'partially_refunded'): Promise<void>;
   setChargesEnabledForAccount(accountId: string, enabled: boolean): Promise<void>;
+  /** The account revoked our access: stripe_account_id = null, charges off, so the owner can reconnect. */
+  disconnectAccount(accountId: string): Promise<void>;
   refund(shop: PayShop, appt: PayAppointment, amountCents: number): Promise<{ refundedCents: number }>;
+  /** Fire-and-forget (live: waitUntil). Must not block or fail the webhook response. */
   notify(event: NotifyEvent): Promise<void>;
   now(): number;
 }
@@ -452,17 +489,27 @@ export interface StripeEvent {
   data: { object: any };
 }
 
-/** Process one verified event. Idempotent by event id; throws so the caller can return 500 (Stripe retries). */
+interface Outcome { outcome: string; notify?: NotifyEvent[] }
+
+/**
+ * Process one verified event. The event id is recorded only AFTER its work succeeds, and every
+ * branch is idempotent on the appointment/shop state, so a redelivery after a crash, timeout or
+ * error finishes whatever was left undone. Throws so the caller returns 500 and Stripe retries.
+ * Notifications are sent after the work and the record, and never block or fail the response.
+ */
 export async function handleConnectEvent(event: StripeEvent, deps: WebhookDeps): Promise<string> {
   if (!event?.id || !event?.type) return 'ignored:malformed';
-  const claimed = await deps.claimEvent(event.id, event.type, event.account ?? null);
-  if (!claimed) return 'duplicate';
-  try {
-    return await dispatch(event, deps);
-  } catch (e) {
-    await deps.releaseEvent(event.id).catch(() => {});
-    throw e;
+  if (await deps.eventProcessed(event.id)) return 'duplicate';
+  const r = await dispatch(event, deps);
+  await deps.recordEvent(event.id, event.type, event.account ?? null);
+  for (const n of r.notify ?? []) {
+    try {
+      void deps.notify(n).catch((e: any) => console.error('[stripe/connect-webhook] notify failed:', e?.message || e));
+    } catch (e: any) {
+      console.error('[stripe/connect-webhook] notify failed:', e?.message || e);
+    }
   }
+  return r.outcome;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -486,89 +533,101 @@ async function apptForEvent(
   return { appt, shop };
 }
 
-async function refundCancelled(shop: PayShop, appt: WebhookAppointment, pi: string | null, paidCents: number, deps: WebhookDeps): Promise<string> {
-  const { refundedCents } = await deps.refund(shop, { ...appt, stripe_payment_intent_id: pi, amount_paid_cents: paidCents }, paidCents);
-  const total = Math.floor(appt.amount_refunded_cents ?? 0) + refundedCents;
-  if (refundedCents > 0) await deps.setRefunded(appt.id, total, total >= paidCents ? 'refunded' : 'partially_refunded');
-  return 'refunded:cancelled-before-payment';
+const piOf = (v: any): string | null => (typeof v === 'string' ? v : v?.id ?? null);
+
+async function sessionPaid(event: StripeEvent, obj: any, deps: WebhookDeps): Promise<Outcome> {
+  if (obj.payment_status !== 'paid') return { outcome: 'ignored:unpaid' };
+  const amount = Math.max(0, Math.floor(Number(obj.amount_total) || 0));
+  const pi = piOf(obj.payment_intent);
+  const found = await apptForEvent({ kind: 'session', id: obj.id, clientReferenceId: obj.client_reference_id }, event.account, deps);
+  if (!found) {
+    // Real money with nothing to attach it to (row deleted, session id never stored, account mismatch).
+    console.error('[stripe/connect-webhook] paid session without a matching appointment:',
+      JSON.stringify({ session: obj.id, paymentIntent: pi, account: event.account, amountTotal: amount, clientReferenceId: obj.client_reference_id }));
+    return { outcome: 'ignored:no-appointment' };
+  }
+  const { appt, shop } = found;
+  const paymentStatus = appt.price_cents == null || amount < appt.price_cents ? 'deposit' : 'paid';
+  const changed = await deps.markPaid(appt.id, { paymentStatus, amountPaidCents: amount, paymentIntentId: pi });
+
+  if (!changed && appt.stripe_payment_intent_id && pi && appt.stripe_payment_intent_id !== pi) {
+    // A second, different payment for an appointment that is already paid: give it back.
+    console.error('[stripe/connect-webhook] second payment for one appointment, refunding it:',
+      JSON.stringify({ appointment: appt.id, stored: appt.stripe_payment_intent_id, extra: pi, amount }));
+    await deps.refund(shop, { ...appt, stripe_payment_intent_id: pi, amount_paid_cents: amount, amount_refunded_cents: 0 }, amount);
+    return { outcome: 'refunded:duplicate-payment' };
+  }
+
+  // From here the row holds this payment (just now, or by an earlier, partially failed delivery).
+  const paid = changed ? amount : Math.floor(appt.amount_paid_cents ?? 0);
+  const refunded = Math.floor(appt.amount_refunded_cents ?? 0);
+  if (appt.status === 'cancelled') {
+    // Paid after the booking was cancelled (e.g. the customer cancelled the held slot on the
+    // manage page, then finished paying in another tab): give the money straight back.
+    if (refunded >= paid) return { outcome: 'noop:already-refunded' };
+    const r = await deps.refund(shop, { ...appt, stripe_payment_intent_id: pi, amount_paid_cents: paid, amount_refunded_cents: refunded }, paid - refunded);
+    const total = refunded + r.refundedCents;
+    if (r.refundedCents > 0) await deps.setRefunded(appt.id, total, total >= paid ? 'refunded' : 'partially_refunded');
+    return { outcome: 'refunded:cancelled-before-payment' };
+  }
+  // Card bookings get their confirmation (push + email) once payment lands. On a redelivery the
+  // event was not recorded last time, so the confirmation was not sent either.
+  return { outcome: changed ? `paid:${paymentStatus}` : 'noop:already-recorded', notify: [{ kind: 'booking_created', appointmentId: appt.id }] };
 }
 
-async function dispatch(event: StripeEvent, deps: WebhookDeps): Promise<string> {
+async function dispatch(event: StripeEvent, deps: WebhookDeps): Promise<Outcome> {
   const obj = event.data?.object ?? {};
   switch (event.type) {
-    case 'checkout.session.completed': {
-      if (obj.payment_status !== 'paid') return 'ignored:unpaid';
+    case 'checkout.session.completed':
+    // Card-only Checkout never produces async payments; handled defensively all the same.
+    case 'checkout.session.async_payment_succeeded':
+      return sessionPaid(event, obj, deps);
+    case 'checkout.session.expired':
+    case 'checkout.session.async_payment_failed': {
       const found = await apptForEvent({ kind: 'session', id: obj.id, clientReferenceId: obj.client_reference_id }, event.account, deps);
-      if (!found) return 'ignored:no-appointment';
-      const { appt, shop } = found;
-      const amount = Math.max(0, Math.floor(Number(obj.amount_total) || 0));
-      const pi = typeof obj.payment_intent === 'string' ? obj.payment_intent : obj.payment_intent?.id ?? null;
-      const paymentStatus = appt.price_cents == null || amount < appt.price_cents ? 'deposit' : 'paid';
-      const changed = await deps.markPaid(appt.id, { paymentStatus, amountPaidCents: amount, paymentIntentId: pi });
-      if (!changed) {
-        // Already recorded. If this was a paid-after-cancel whose refund failed last time (we
-        // returned 500 and Stripe retried), finish the refund; the Idempotency-Key makes it safe.
-        const paid = Math.floor(appt.amount_paid_cents ?? 0);
-        if (appt.status === 'cancelled' && pi && appt.stripe_payment_intent_id === pi && Math.floor(appt.amount_refunded_cents ?? 0) < paid) {
-          return refundCancelled(shop, appt, pi, paid, deps);
-        }
-        return 'noop:already-recorded';
-      }
-      if (appt.status === 'cancelled') {
-        // Paid after the booking was cancelled (e.g. the customer cancelled the held slot on the
-        // manage page, then finished paying in another tab): give the money straight back.
-        return refundCancelled(shop, { ...appt, amount_refunded_cents: 0 }, pi, amount, deps);
-      }
-      // Card bookings get their confirmation (push + email) once payment lands.
-      await deps.notify({ kind: 'booking_created', appointmentId: appt.id });
-      return `paid:${paymentStatus}`;
-    }
-    case 'checkout.session.expired': {
-      const found = await apptForEvent({ kind: 'session', id: obj.id, clientReferenceId: obj.client_reference_id }, event.account, deps);
-      if (!found) return 'ignored:no-appointment';
+      if (!found) return { outcome: 'ignored:no-appointment' };
       const changed = await deps.expireHold(found.appt.id, new Date(deps.now()).toISOString());
-      return changed ? 'cancelled:expired' : 'noop:not-held';
+      return { outcome: changed ? 'cancelled:expired' : 'noop:not-held' };
     }
     case 'charge.refunded': {
-      const pi = typeof obj.payment_intent === 'string' ? obj.payment_intent : obj.payment_intent?.id;
-      if (!pi) return 'ignored:no-pi';
+      const pi = piOf(obj.payment_intent);
+      if (!pi) return { outcome: 'ignored:no-pi' };
       const found = await apptForEvent({ kind: 'pi', id: pi }, event.account, deps);
-      if (!found) return 'ignored:no-appointment';
+      if (!found) return { outcome: 'ignored:no-appointment' };
       // Stripe's cumulative total, never an increment: idempotent with the API's own write.
       const refunded = Math.max(0, Math.floor(Number(obj.amount_refunded) || 0));
       const paid = Math.max(0, Math.floor(found.appt.amount_paid_cents ?? 0)) || Math.floor(Number(obj.amount_captured) || 0);
       await deps.setRefunded(found.appt.id, refunded, refunded >= paid ? 'refunded' : 'partially_refunded');
-      return 'refund:recorded';
+      return { outcome: 'refund:recorded' };
     }
     case 'account.updated': {
-      if (!obj.id) return 'ignored:no-account';
+      if (!obj.id) return { outcome: 'ignored:no-account' };
       await deps.setChargesEnabledForAccount(obj.id, obj.charges_enabled === true);
-      return `account:${obj.charges_enabled === true ? 'enabled' : 'disabled'}`;
+      return { outcome: `account:${obj.charges_enabled === true ? 'enabled' : 'disabled'}` };
     }
     case 'account.application.deauthorized': {
-      if (!event.account) return 'ignored:no-account';
-      await deps.setChargesEnabledForAccount(event.account, false);
-      return 'account:deauthorized';
+      if (!event.account) return { outcome: 'ignored:no-account' };
+      await deps.disconnectAccount(event.account);
+      return { outcome: 'account:deauthorized' };
     }
     default:
-      return `ignored:${event.type}`;
+      return { outcome: `ignored:${event.type}` };
   }
 }
 
 export function liveWebhookDeps(db: SupabaseClient = serviceDb()): WebhookDeps {
   const APPT_COLS = 'id, shop_id, status, service_name, price_cents, manage_token, customer_email, start_at, payment_status, payment_method, amount_paid_cents, amount_refunded_cents, stripe_payment_intent_id, stripe_checkout_session_id';
   return {
-    async claimEvent(eventId, type, account) {
+    async eventProcessed(eventId) {
+      const { data, error } = await db.from('ab_events').select('id').eq('dedupe_key', `stripe:${eventId}`).maybeSingle();
+      if (error) dbFail('eventProcessed', error);
+      return Boolean(data);
+    },
+    async recordEvent(eventId, type, account) {
       const { error } = await db.from('ab_events').insert({
         kind: `stripe:${type}`.slice(0, 200), dedupe_key: `stripe:${eventId}`, payload: { id: eventId, type, account },
       });
-      if (!error) return true;
-      if ((error as { code?: string }).code === '23505') return false;
-      dbFail('claimEvent', error);
-    },
-    async releaseEvent(eventId) {
-      const { error } = await db.from('ab_events').delete().eq('dedupe_key', `stripe:${eventId}`);
-      if (error) dbFail('releaseEvent', error);
+      if (error && (error as { code?: string }).code !== '23505') dbFail('recordEvent', error);
     },
     async appointmentBySession(sessionId) {
       const { data, error } = await db.from('ab_appointments').select(APPT_COLS).eq('stripe_checkout_session_id', sessionId).maybeSingle();
@@ -610,16 +669,21 @@ export function liveWebhookDeps(db: SupabaseClient = serviceDb()): WebhookDeps {
     async setRefunded(apptId, amountRefundedCents, paymentStatus) {
       const { error } = await db.from('ab_appointments').update({
         amount_refunded_cents: amountRefundedCents, payment_status: paymentStatus,
-      }).eq('id', apptId);
+      }).eq('id', apptId).lte('amount_refunded_cents', amountRefundedCents);
       if (error) dbFail('setRefunded', error);
     },
     async setChargesEnabledForAccount(accountId, enabled) {
       const { error } = await db.from('ab_shops').update({ stripe_charges_enabled: enabled }).eq('stripe_account_id', accountId);
       if (error) dbFail('setChargesEnabledForAccount', error);
     },
+    async disconnectAccount(accountId) {
+      const { error } = await db.from('ab_shops').update({ stripe_account_id: null, stripe_charges_enabled: false })
+        .eq('stripe_account_id', accountId);
+      if (error) dbFail('disconnectAccount', error);
+    },
     refund: (shop, appt, amount) => refundAppointment(shop, appt, amount),
-    // dynamic import: notify.ts imports this module's URL helpers
-    notify: async (e) => (await import('./notify.js')).notify(e),
+    // After the response, kept alive by waitUntil. Dynamic import: notify.ts imports this module.
+    notify: async (e) => { waitUntil(import('./notify.js').then((m) => m.notify(e))); },
     now: () => Date.now(),
   };
 }

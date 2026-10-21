@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import crypto from 'node:crypto';
 import {
+  liveWebhookDeps,
   createCardCheckout, refundAppointment, expireCheckoutSession, stripeOnboard, stripeStatus, verifyStripeSignature,
   handleConnectEvent, CHECKOUT_HOLD_SEC, type WebhookDeps, type WebhookAppointment, type OwnerStripeDeps,
 } from '../../lib/bookings/payments.js';
@@ -40,9 +41,12 @@ describe('createCardCheckout', () => {
     expect(c.init.method).toBe('POST');
     expect(c.init.headers.Authorization).toBe('Bearer sk_test_connect');
     expect(c.init.headers['Stripe-Account']).toBe('acct_123');
-    expect(c.init.headers['Idempotency-Key']).toBe('ab-checkout-appt-1-3000');
+    expect(c.init.headers['Idempotency-Key']).toBe(`ab-checkout-appt-1-3000-${now / 1000}`);
+    expect(c.init.signal).toBeInstanceOf(AbortSignal);
     const p = c.params;
     expect(p.get('mode')).toBe('payment');
+    expect(p.get('payment_method_types[0]')).toBe('card');
+    expect([...p.keys()].filter((k) => k.startsWith('payment_method_types'))).toEqual(['payment_method_types[0]']);
     expect(p.get('payment_intent_data[application_fee_amount]')).toBe('60');
     expect(p.get('line_items[0][price_data][unit_amount]')).toBe('3000');
     expect(p.get('line_items[0][price_data][currency]')).toBe('usd');
@@ -93,7 +97,7 @@ describe('refundAppointment', () => {
     expect(c.params.get('payment_intent')).toBe('pi_1');
     expect(c.params.get('amount')).toBe('3000');
     expect(c.params.get('refund_application_fee')).toBe('true');
-    expect(c.init.headers['Idempotency-Key']).toBe('ab-refund-appt-1-0-3000');
+    expect(c.init.headers['Idempotency-Key']).toBe('ab-refund-appt-1-pi_1-0-3000');
   });
 
   it('clamps to what is still refundable', async () => {
@@ -133,6 +137,7 @@ describe('onboard / status', () => {
     shopForOwner: vi.fn(async () => ({ ...ownerShop })),
     saveAccountId: vi.fn(async (_s: string, id: string) => id),
     setChargesEnabled: vi.fn(async () => {}),
+    clearAccount: vi.fn(async () => {}),
     stripe: { fetch: fetchImpl },
     ...over,
   });
@@ -150,7 +155,7 @@ describe('onboard / status', () => {
     const acct = calls[0];
     expect(acct.url).toBe('https://api.stripe.com/v1/accounts');
     expect(acct.init.headers['Stripe-Account']).toBeUndefined();
-    expect(acct.init.headers['Idempotency-Key']).toBe('ab-account-shop-1');
+    expect(acct.init.headers['Idempotency-Key']).toMatch(/^ab-account-shop-1-[0-9a-f]{16}$/);
     expect(acct.params.get('type')).toBe('standard');
     expect(acct.params.get('email')).toBe('owner@example.com');
     expect(acct.params.get('business_profile[name]')).toBe('Fade Factory');
@@ -183,8 +188,18 @@ describe('onboard / status', () => {
     expect(await stripeOnboard('Bearer good', mkDeps({}, f))).toEqual({ status: 200, body: { url: 'L' } });
     expect(calls[0].params.get('business_profile[support_phone]')).toBe('+15551234567');
     expect(calls[1].params.has('business_profile[support_phone]')).toBe(false);
-    expect(calls[1].init.headers['Idempotency-Key']).toBe('ab-account-shop-1-nophone');
+    expect(calls[1].init.headers['Idempotency-Key']).toMatch(/^ab-account-shop-1-[0-9a-f]{16}$/);
+    expect(calls[1].init.headers['Idempotency-Key']).not.toBe(calls[0].init.headers['Idempotency-Key']);
     expect(calls[2].params.get('account')).toBe('acct_np');
+  });
+
+  it('onboard: a revoked stored account is cleared and replaced by a new one', async () => {
+    const { f, calls } = fakeFetch({ status: 403, body: { error: { message: 'no access' } } }, { body: { id: 'acct_fresh' } }, { body: { url: 'L3' } });
+    const deps = mkDeps({ shopForOwner: vi.fn(async () => ({ ...ownerShop, stripe_account_id: 'acct_gone' })) }, f);
+    expect(await stripeOnboard('Bearer good', deps)).toEqual({ status: 200, body: { url: 'L3' } });
+    expect(deps.clearAccount).toHaveBeenCalledWith('shop-1', 'acct_gone');
+    expect(deps.saveAccountId).toHaveBeenCalledWith('shop-1', 'acct_fresh');
+    expect(calls[2].params.get('account')).toBe('acct_fresh');
   });
 
   it('502 on Stripe errors', async () => {
@@ -206,7 +221,7 @@ describe('onboard / status', () => {
     const { f } = fakeFetch({ status: 403, body: { error: { type: 'invalid_request_error', message: 'no access' } } });
     const deps = mkDeps({ shopForOwner: vi.fn(async () => ({ ...ownerShop, stripe_account_id: 'acct_1', stripe_charges_enabled: true })) }, f);
     expect(await stripeStatus('Bearer good', deps)).toEqual({ status: 200, body: { connected: false, chargesEnabled: false, detailsSubmitted: false } });
-    expect(deps.setChargesEnabled).toHaveBeenCalledWith('shop-1', false);
+    expect(deps.clearAccount).toHaveBeenCalledWith('shop-1', 'acct_1');
   });
 });
 
@@ -240,8 +255,8 @@ describe('handleConnectEvent', () => {
   function mkDeps(a: WebhookAppointment | null = base, over: Partial<WebhookDeps> = {}) {
     const seen = new Set<string>();
     const deps: WebhookDeps = {
-      claimEvent: vi.fn(async (id: string) => (seen.has(id) ? false : (seen.add(id), true))),
-      releaseEvent: vi.fn(async (id: string) => { seen.delete(id); }),
+      eventProcessed: vi.fn(async (id: string) => seen.has(id)),
+      recordEvent: vi.fn(async (id: string) => { seen.add(id); }),
       appointmentBySession: vi.fn(async (sid: string) => (a && a.stripe_checkout_session_id === sid ? a : null)),
       appointmentByPaymentIntent: vi.fn(async (pi: string) => (a && a.stripe_payment_intent_id === pi ? a : null)),
       appointmentById: vi.fn(async (id: string) => (a && a.id === id ? a : null)),
@@ -250,6 +265,7 @@ describe('handleConnectEvent', () => {
       expireHold: vi.fn(async () => true),
       setRefunded: vi.fn(async () => {}),
       setChargesEnabledForAccount: vi.fn(async () => {}),
+      disconnectAccount: vi.fn(async () => {}),
       refund: vi.fn(async (_s, _a, amt: number) => ({ refundedCents: amt })),
       notify: vi.fn(async () => {}),
       now: () => Date.UTC(2026, 9, 21, 12),
@@ -278,10 +294,50 @@ describe('handleConnectEvent', () => {
     expect(await handleConnectEvent(completed(), deps2)).toBe('paid:deposit');
   });
 
-  it('completed but already recorded (different event id) → no second confirmation', async () => {
-    const deps = mkDeps(base, { markPaid: vi.fn(async () => false) });
+  it('crash after markPaid (event never recorded): the redelivery still sends the confirmation, once', async () => {
+    let row: WebhookAppointment = { ...base };
+    const deps = mkDeps(row, {
+      appointmentBySession: vi.fn(async () => row),
+      markPaid: vi.fn(async (_id, f) => {
+        if (row.stripe_payment_intent_id) return false;
+        row = { ...row, stripe_payment_intent_id: f.paymentIntentId, amount_paid_cents: f.amountPaidCents, payment_status: f.paymentStatus };
+        return true;
+      }),
+      recordEvent: vi.fn().mockRejectedValueOnce(new Error('killed')).mockResolvedValue(undefined),
+    });
+    await expect(handleConnectEvent(completed(), deps)).rejects.toThrow('killed');
+    expect(deps.notify).not.toHaveBeenCalled(); // notifications only after the record
     expect(await handleConnectEvent(completed(), deps)).toBe('noop:already-recorded');
+    expect(deps.notify).toHaveBeenCalledTimes(1);
+    expect(deps.notify).toHaveBeenCalledWith({ kind: 'booking_created', appointmentId: 'appt-1' });
+  });
+
+  it('a failing or throwing notify never fails the webhook', async () => {
+    const d1 = mkDeps(base, { notify: vi.fn(async () => { throw new Error('smtp'); }) });
+    expect(await handleConnectEvent(completed(), d1)).toBe('paid:paid');
+    const d2 = mkDeps(base, { notify: vi.fn(() => { throw new Error('sync'); }) as any });
+    expect(await handleConnectEvent(completed(), d2)).toBe('paid:paid');
+  });
+
+  it('a second, different payment for an already-paid appointment is refunded in full', async () => {
+    const deps = mkDeps({ ...base, payment_status: 'paid', stripe_payment_intent_id: 'pi_first', amount_paid_cents: 3000 }, { markPaid: vi.fn(async () => false) });
+    expect(await handleConnectEvent(completed({ payment_intent: 'pi_second', amount_total: 3000 }), deps)).toBe('refunded:duplicate-payment');
+    expect(deps.refund).toHaveBeenCalledWith(shop, expect.objectContaining({ stripe_payment_intent_id: 'pi_second', amount_paid_cents: 3000, amount_refunded_cents: 0 }), 3000);
+    expect(deps.setRefunded).not.toHaveBeenCalled();
     expect(deps.notify).not.toHaveBeenCalled();
+  });
+
+  it('async_payment_succeeded is handled like completed; async_payment_failed like expired', async () => {
+    const deps = mkDeps();
+    expect(await handleConnectEvent({ ...completed(), id: 'as1', type: 'checkout.session.async_payment_succeeded' }, deps)).toBe('paid:paid');
+    const deps2 = mkDeps();
+    expect(await handleConnectEvent({ id: 'as2', type: 'checkout.session.async_payment_failed', account: 'acct_123', data: { object: { id: 'cs_1', payment_status: 'unpaid' } } }, deps2)).toBe('cancelled:expired');
+  });
+
+  it('a paid session with no appointment is logged loudly', async () => {
+    const deps = mkDeps(null);
+    expect(await handleConnectEvent(completed(), deps)).toBe('ignored:no-appointment');
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining('without a matching appointment'), expect.stringContaining('pi_1'));
   });
 
   it('ignores events from another connected account, unpaid sessions and unknown sessions', async () => {
@@ -320,7 +376,37 @@ describe('handleConnectEvent', () => {
     expect(deps.setRefunded).toHaveBeenCalledWith('appt-1', 3000, 'refunded');
     // once refunded, further deliveries are plain no-ops
     row = { ...row, amount_refunded_cents: 3000 };
-    expect(await handleConnectEvent({ ...completed(), id: 'evt_9' }, deps)).toBe('noop:already-recorded');
+    expect(await handleConnectEvent({ ...completed(), id: 'evt_9' }, deps)).toBe('noop:already-refunded');
+    expect(refund).toHaveBeenCalledTimes(2);
+  });
+
+  it('paid-after-cancel: killed after the refund but before it was saved → the redelivery finishes (same refund request)', async () => {
+    let row: WebhookAppointment = { ...base, status: 'cancelled', payment_status: 'none' };
+    const refundCalls: any[] = [];
+    const deps = mkDeps(row, {
+      appointmentBySession: vi.fn(async () => row),
+      markPaid: vi.fn(async (_id, f) => {
+        if (row.stripe_payment_intent_id) return false;
+        row = { ...row, stripe_payment_intent_id: f.paymentIntentId, amount_paid_cents: f.amountPaidCents };
+        return true;
+      }),
+      refund: vi.fn(async (_s, a, amt: number) => { refundCalls.push({ pi: a.stripe_payment_intent_id, already: a.amount_refunded_cents, amt }); return { refundedCents: amt }; }),
+      setRefunded: vi.fn().mockRejectedValueOnce(new Error('killed')).mockImplementation(async (_id, total: number) => { row = { ...row, amount_refunded_cents: total }; }),
+    });
+    await expect(handleConnectEvent(completed(), deps)).rejects.toThrow('killed');
+    expect(deps.recordEvent).not.toHaveBeenCalled();
+    expect(await handleConnectEvent(completed(), deps)).toBe('refunded:cancelled-before-payment');
+    // identical (pi, already-refunded, amount) → same Idempotency-Key → Stripe replays, no second refund
+    expect(refundCalls).toEqual([{ pi: 'pi_1', already: 0, amt: 3000 }, { pi: 'pi_1', already: 0, amt: 3000 }]);
+    expect(row.amount_refunded_cents).toBe(3000);
+    expect(deps.recordEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it('paid-after-cancel: only the remainder is refunded when part was already refunded', async () => {
+    const deps = mkDeps({ ...base, status: 'cancelled', stripe_payment_intent_id: 'pi_1', amount_paid_cents: 3000, amount_refunded_cents: 1000 }, { markPaid: vi.fn(async () => false) });
+    expect(await handleConnectEvent(completed(), deps)).toBe('refunded:cancelled-before-payment');
+    expect((deps.refund as any).mock.calls[0][2]).toBe(2000);
+    expect(deps.setRefunded).toHaveBeenCalledWith('appt-1', 3000, 'refunded');
   });
 
   it('falls back to client_reference_id when the session id was never stored (not for another session)', async () => {
@@ -358,18 +444,57 @@ describe('handleConnectEvent', () => {
     expect(await handleConnectEvent({ id: 'a1', type: 'account.updated', account: 'acct_123', data: { object: { id: 'acct_123', charges_enabled: true } } }, deps)).toBe('account:enabled');
     expect(deps.setChargesEnabledForAccount).toHaveBeenCalledWith('acct_123', true);
     await handleConnectEvent({ id: 'a2', type: 'account.application.deauthorized', account: 'acct_123', data: { object: {} } }, deps);
-    expect(deps.setChargesEnabledForAccount).toHaveBeenLastCalledWith('acct_123', false);
+    expect(deps.disconnectAccount).toHaveBeenCalledWith('acct_123');
   });
 
   it('unknown events are acknowledged', async () => {
     expect(await handleConnectEvent({ id: 'u1', type: 'payout.paid', account: 'acct_123', data: { object: {} } }, mkDeps())).toBe('ignored:payout.paid');
   });
 
-  it('a processing failure releases the claim so the Stripe retry is processed', async () => {
+  it('a processing failure records nothing, so the Stripe retry is processed', async () => {
     const markPaid = vi.fn().mockRejectedValueOnce(new Error('db down')).mockResolvedValue(true);
     const deps = mkDeps(base, { markPaid });
     await expect(handleConnectEvent(completed(), deps)).rejects.toThrow('db down');
-    expect(deps.releaseEvent).toHaveBeenCalledWith('evt_1');
+    expect(deps.recordEvent).not.toHaveBeenCalled();
     expect(await handleConnectEvent(completed(), deps)).toBe('paid:paid');
+    expect(deps.recordEvent).toHaveBeenCalledWith('evt_1', 'checkout.session.completed', 'acct_123');
+  });
+});
+
+describe('liveWebhookDeps (query shape)', () => {
+  // Minimal recorder for the supabase-js query builder.
+  function recorder(result: any = { data: [], error: null }) {
+    const calls: Array<[string, any[]]> = [];
+    const chain: any = new Proxy({}, {
+      get(_t, prop: string) {
+        if (prop === 'then') return (res: any) => res(result);
+        return (...args: any[]) => { calls.push([prop, args]); return chain; };
+      },
+    });
+    return { db: { from: (t: string) => { calls.push(['from', [t]]); return chain; } } as any, calls };
+  }
+
+  it('setRefunded never lowers amount_refunded_cents (out-of-order charge.refunded)', async () => {
+    const { db, calls } = recorder();
+    await liveWebhookDeps(db).setRefunded('appt-1', 1000, 'partially_refunded');
+    expect(calls).toContainEqual(['lte', ['amount_refunded_cents', 1000]]);
+    expect(calls).toContainEqual(['eq', ['id', 'appt-1']]);
+  });
+
+  it('markPaid only when no payment intent is stored; expireHold only for a booked, awaiting hold', async () => {
+    const { db, calls } = recorder();
+    const d = liveWebhookDeps(db);
+    await d.markPaid('a', { paymentStatus: 'paid', amountPaidCents: 1, paymentIntentId: 'pi' });
+    expect(calls).toContainEqual(['is', ['stripe_payment_intent_id', null]]);
+    await d.expireHold('a', 'now');
+    expect(calls).toContainEqual(['eq', ['status', 'booked']]);
+    expect(calls).toContainEqual(['eq', ['payment_status', 'awaiting']]);
+  });
+
+  it('disconnectAccount clears the account id and charges', async () => {
+    const { db, calls } = recorder();
+    await liveWebhookDeps(db).disconnectAccount('acct_1');
+    expect(calls).toContainEqual(['update', [{ stripe_account_id: null, stripe_charges_enabled: false }]]);
+    expect(calls).toContainEqual(['eq', ['stripe_account_id', 'acct_1']]);
   });
 });

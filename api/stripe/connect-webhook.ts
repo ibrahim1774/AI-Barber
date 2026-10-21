@@ -6,7 +6,7 @@
 import { handleConnectEvent, liveWebhookDeps, verifyStripeSignature, type WebhookDeps } from '../../lib/bookings/payments.js';
 
 // bodyParser off: the signature is over the raw bytes.
-export const config = { api: { bodyParser: false } };
+export const config = { api: { bodyParser: false }, maxDuration: 60 };
 
 function readRawBody(req: any): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -42,7 +42,7 @@ export async function handleWebhook(req: any, res: any, deps?: () => WebhookDeps
     const outcome = await handleConnectEvent(event, (deps ?? liveWebhookDeps)());
     return res.status(200).json({ received: true, outcome });
   } catch (e: any) {
-    // 500 so Stripe retries; the event claim was released.
+    // 500 so Stripe retries; the event was not recorded, so the retry finishes the work.
     console.error('[stripe/connect-webhook] handler failed:', event?.type, event?.id, e?.message || e);
     return res.status(500).json({ error: 'handler-failed' });
   }

@@ -18,6 +18,8 @@ export interface IcsEvent {
   status?: 'CONFIRMED' | 'CANCELLED' | 'TENTATIVE';
   /** DTSTAMP; defaults to the calendar's `now`. */
   stamp?: string | Date;
+  /** Revision number; bump it when the event changes so calendar apps replace the old copy. */
+  sequence?: number | null;
 }
 
 export interface IcsCalendarOptions {
@@ -29,9 +31,10 @@ export interface IcsCalendarOptions {
 
 const CRLF = '\r\n';
 
-/** RFC 5545 §3.3.11 TEXT escaping. */
+/** RFC 5545 §3.3.11 TEXT escaping (other control characters, which TEXT forbids, are dropped). */
 export function escapeText(value: string): string {
   return String(value)
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
     .replace(/\\/g, '\\\\')
     .replace(/;/g, '\\;')
     .replace(/,/g, '\\,')
@@ -87,6 +90,7 @@ function eventLines(e: IcsEvent, now: Date): string[] {
   if (e.description) lines.push(prop('DESCRIPTION', escapeText(e.description)));
   // URI values are not TEXT: no escaping, but strip anything that would break the line.
   if (e.url) lines.push(prop('URL', e.url.replace(/[\r\n]/g, '')));
+  if (e.sequence != null && Number.isFinite(e.sequence) && e.sequence >= 0) lines.push(prop('SEQUENCE', String(Math.floor(e.sequence))));
   lines.push(prop('STATUS', e.status ?? 'CONFIRMED'));
   lines.push('END:VEVENT');
   return lines;
@@ -124,6 +128,16 @@ export interface FeedAppointment {
   customerPhone?: string | null;
   note?: string | null;
   status: 'booked' | 'done' | 'no_show' | 'cancelled';
+  /** Last change (ISO); becomes SEQUENCE so subscribed calendars pick up moves and cancellations. */
+  updatedAt?: string | null;
+}
+
+/** SEQUENCE from a last-modified time: whole seconds since 2026-01-01 (monotonic, fits in int32). */
+export function sequenceFrom(updatedAt: string | Date | null | undefined): number | null {
+  if (!updatedAt) return null;
+  const ms = new Date(updatedAt).getTime();
+  if (!Number.isFinite(ms)) return null;
+  return Math.max(0, Math.floor((ms - Date.UTC(2026, 0, 1)) / 1000));
 }
 
 export interface FeedOptions {
@@ -157,6 +171,7 @@ export function appointmentsToIcs(appointments: FeedAppointment[], opts: FeedOpt
       description: desc || null,
       location: opts.location ?? null,
       status: a.status === 'cancelled' ? 'CANCELLED' : 'CONFIRMED',
+      sequence: sequenceFrom(a.updatedAt),
     };
   });
   return buildCalendar(events, { name: opts.calendarName, now: opts.now });
@@ -172,6 +187,8 @@ export interface CustomerIcsInput {
   address?: string | null;
   manageUrl: string;
   cancelled?: boolean;
+  /** Last change (ISO), for SEQUENCE. */
+  updatedAt?: string | null;
   now?: Date;
 }
 
@@ -191,6 +208,7 @@ export function customerAppointmentIcs(i: CustomerIcsInput): string {
       location: i.address ?? null,
       url: i.manageUrl,
       status: i.cancelled ? 'CANCELLED' : 'CONFIRMED',
+      sequence: sequenceFrom(i.updatedAt),
     }],
     { now: i.now },
   );
