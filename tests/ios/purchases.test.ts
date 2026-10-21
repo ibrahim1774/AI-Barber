@@ -13,7 +13,7 @@ function fakeClient(result: Result = { data: null, error: null }, ...queued: Res
     then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) =>
       Promise.resolve(queued.length ? queued.shift() : result).then(res, rej),
   };
-  for (const m of ['select', 'insert', 'update', 'upsert', 'eq', 'is', 'not', 'order', 'limit', 'maybeSingle', 'single']) {
+  for (const m of ['select', 'insert', 'update', 'upsert', 'eq', 'is', 'not', 'or', 'gt', 'order', 'limit', 'maybeSingle', 'single']) {
     chain[m] = (...args: unknown[]) => { calls.push({ method: m, args }); return chain; };
   }
   const client: any = { from: (t: string) => { calls.push({ method: 'from', args: [t] }); return chain; } };
@@ -183,5 +183,60 @@ describe('supabasePurchases', () => {
   it('get returns null when missing', async () => {
     const { client } = fakeClient({ data: null, error: null });
     expect(await supabasePurchases(client).get('nope')).toBeNull();
+  });
+
+  describe('lapse takedown queries', () => {
+    const NOW = 1_800_000_000_000;
+    const DAY = 86_400_000;
+    const iso = (ms: number) => new Date(ms).toISOString();
+
+    it('takedownCandidates: bound, published, not taken down, revoked or expired past the grace; re-checked in JS', async () => {
+      const rows = [
+        { original_transaction_id: 'expired', expires_at: iso(NOW - 2 * DAY), revoked_at: null },
+        { original_transaction_id: 'revoked', expires_at: iso(NOW + DAY), revoked_at: iso(NOW - DAY) },
+        { original_transaction_id: 'in-grace', expires_at: iso(NOW - 1000), revoked_at: null },
+        { original_transaction_id: 'no-expiry', expires_at: null, revoked_at: null },
+      ];
+      const { client, calls } = fakeClient({ data: rows, error: null });
+      const out = await supabasePurchases(client).takedownCandidates(7, NOW);
+      expect(out.map((r) => r.original_transaction_id)).toEqual(['expired', 'revoked']);
+      expect(calls.filter((c) => c.method === 'not').map((c) => c.args)).toEqual([['site_slug', 'is', null], ['published_at', 'is', null]]);
+      expect(calls.filter((c) => c.method === 'is').map((c) => c.args)).toEqual([['taken_down_at', null]]);
+      expect(find(calls, 'or')!.args).toEqual([`revoked_at.not.is.null,expires_at.lte."${iso(NOW - DAY)}"`]);
+      expect(find(calls, 'limit')!.args).toEqual([7]);
+    });
+
+    it('restoreCandidates: taken down, unrevoked, unexpired; re-checked in JS', async () => {
+      const rows = [
+        { original_transaction_id: 'back', expires_at: iso(NOW + DAY), revoked_at: null, taken_down_at: iso(NOW - DAY) },
+        { original_transaction_id: 'stale', expires_at: iso(NOW - 1), revoked_at: null, taken_down_at: iso(NOW - DAY) },
+      ];
+      const { client, calls } = fakeClient({ data: rows, error: null });
+      const out = await supabasePurchases(client).restoreCandidates(3, NOW);
+      expect(out.map((r) => r.original_transaction_id)).toEqual(['back']);
+      expect(find(calls, 'not')!.args).toEqual(['taken_down_at', 'is', null]);
+      expect(find(calls, 'is')!.args).toEqual(['revoked_at', null]);
+      expect(find(calls, 'gt')!.args).toEqual(['expires_at', iso(NOW)]);
+      expect(find(calls, 'limit')!.args).toEqual([3]);
+    });
+
+    it('markTakenDown / clearTakenDown only touch taken_down_at', async () => {
+      const a = fakeClient();
+      await supabasePurchases(a.client).markTakenDown('o1', NOW);
+      expect(find(a.calls, 'update')!.args).toEqual([{ taken_down_at: iso(NOW) }]);
+      expect(find(a.calls, 'eq')!.args).toEqual(['original_transaction_id', 'o1']);
+      const b = fakeClient();
+      await supabasePurchases(b.client).clearTakenDown('o1');
+      expect(find(b.calls, 'update')!.args).toEqual([{ taken_down_at: null }]);
+      expect(find(b.calls, 'eq')!.args).toEqual(['original_transaction_id', 'o1']);
+    });
+
+    it('findBySlug looks up by site_slug and throws on error', async () => {
+      const a = fakeClient({ data: { original_transaction_id: 'o1', site_slug: 's' }, error: null });
+      expect((await supabasePurchases(a.client).findBySlug('s'))!.original_transaction_id).toBe('o1');
+      expect(find(a.calls, 'eq')!.args).toEqual(['site_slug', 's']);
+      const b = fakeClient({ data: null, error: { message: 'boom' } });
+      await expect(supabasePurchases(b.client).findBySlug('s')).rejects.toThrow(/findBySlug/);
+    });
   });
 });

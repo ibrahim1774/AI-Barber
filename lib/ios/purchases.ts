@@ -1,10 +1,13 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { VerifiedTx, IosEnv } from './appleVerify.js';
+import { GRACE_MS, isActiveRow, isLapsed } from './lapse.js';
 
 export interface PurchaseRow {
   original_transaction_id: string; product_id: string; environment: 'Production' | 'Sandbox';
   site_slug: string | null; user_id: string | null; expires_at: string | null; revoked_at: string | null;
   last_notification: string | null; published_at: string | null;
+  /** Set while the live site is replaced by the offline page (subscription lapsed). Content is kept. */
+  taken_down_at: string | null;
 }
 
 export interface PurchasesRepo {
@@ -20,6 +23,14 @@ export interface PurchasesRepo {
     clearRevoked?: boolean;
   }): Promise<void>;
   unpublishedBound(limit: number): Promise<PurchaseRow[]>;
+  /** Published, bound, not yet taken down, and lapsed (lapse.ts). */
+  takedownCandidates(limit: number, now: number): Promise<PurchaseRow[]>;
+  /** Taken down and active again (lapse.ts). */
+  restoreCandidates(limit: number, now: number): Promise<PurchaseRow[]>;
+  markTakenDown(otid: string, at: number): Promise<void>;
+  clearTakenDown(otid: string): Promise<void>;
+  /** The purchase bound to this slug, if any. */
+  findBySlug(slug: string): Promise<PurchaseRow | null>;
 }
 
 const TABLE = 'ios_purchases';
@@ -114,6 +125,41 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
         .order('verified_at', { ascending: true }).limit(limit);
       if (error) fail('unpublishedBound', error);
       return (data as PurchaseRow[]) ?? [];
+    },
+
+    async takedownCandidates(limit, now) {
+      // Coarse filter in SQL, exact rule (isLapsed) re-checked here.
+      const cutoff = new Date(now - GRACE_MS).toISOString();
+      const { data, error } = await db().from(TABLE).select('*')
+        .not('site_slug', 'is', null).not('published_at', 'is', null).is('taken_down_at', null)
+        .or(`revoked_at.not.is.null,expires_at.lte."${cutoff}"`)
+        .order('expires_at', { ascending: true }).limit(limit);
+      if (error) fail('takedownCandidates', error);
+      return ((data as PurchaseRow[]) ?? []).filter((r) => isLapsed(r, now));
+    },
+
+    async restoreCandidates(limit, now) {
+      const { data, error } = await db().from(TABLE).select('*')
+        .not('taken_down_at', 'is', null).is('revoked_at', null).gt('expires_at', new Date(now).toISOString())
+        .order('taken_down_at', { ascending: true }).limit(limit);
+      if (error) fail('restoreCandidates', error);
+      return ((data as PurchaseRow[]) ?? []).filter((r) => isActiveRow(r, now));
+    },
+
+    async markTakenDown(otid, at) {
+      const { error } = await db().from(TABLE).update({ taken_down_at: new Date(at).toISOString() }).eq('original_transaction_id', otid);
+      if (error) fail('markTakenDown', error);
+    },
+
+    async clearTakenDown(otid) {
+      const { error } = await db().from(TABLE).update({ taken_down_at: null }).eq('original_transaction_id', otid);
+      if (error) fail('clearTakenDown', error);
+    },
+
+    async findBySlug(slug) {
+      const { data, error } = await db().from(TABLE).select('*').eq('site_slug', slug).maybeSingle();
+      if (error) fail('findBySlug', error);
+      return (data as PurchaseRow) ?? null;
     },
   };
 }

@@ -47,6 +47,7 @@ function row(over: Partial<PurchaseRow> = {}): PurchaseRow {
   return {
     original_transaction_id: OTID, product_id: 'com.ibrahim1774.aibarber.hosting.monthly', environment: 'Production',
     site_slug: null, user_id: null, expires_at: null, revoked_at: null, last_notification: null, published_at: null,
+    taken_down_at: null,
     ...over,
   };
 }
@@ -89,6 +90,11 @@ function fakes(o: FakeOpts = {}) {
     setUser: vi.fn(async (otid: string, userId: string) => { rows.get(otid)!.user_id = userId; }),
     applyNotification: vi.fn(async () => {}),
     unpublishedBound: vi.fn(async () => []),
+    takedownCandidates: vi.fn(async () => []),
+    restoreCandidates: vi.fn(async () => []),
+    markTakenDown: vi.fn(async (otid: string, at: number) => { rows.get(otid)!.taken_down_at = new Date(at).toISOString(); }),
+    clearTakenDown: vi.fn(async (otid: string) => { rows.get(otid)!.taken_down_at = null; }),
+    findBySlug: vi.fn(async (slug: string) => [...rows.values()].find((r) => r.site_slug === slug) ?? null),
   };
 
   const deps: PublishDeps = {
@@ -405,6 +411,56 @@ describe('runIosPublish', () => {
     const { deps } = fakes({ verified: tx({ environment: 'Sandbox' }) });
     const r: any = await runIosPublish(input(), deps);
     expect(r.body.siteId).toBe('ios-test-fresh-cuts');
+  });
+});
+
+describe('runIosPublish lapse takedown flag', () => {
+  const takenDown = () => row({ site_slug: 'fresh-cuts-ab12', published_at: '2026-09-01T00:00:00Z', taken_down_at: '2026-10-15T00:00:00Z' });
+
+  it('resubscribe: a successful bound-slug republish clears taken_down_at', async () => {
+    const { deps, repo, rows } = fakes({ existing: takenDown() });
+    const r = await runIosPublish(input(), deps);
+    expect(r.status).toBe(200);
+    expect(deps.publish).toHaveBeenCalledWith('fresh-cuts-ab12', { force: true });
+    expect(repo.clearTakenDown).toHaveBeenCalledWith(OTID);
+    expect(rows.get(OTID)!.taken_down_at).toBeNull();
+  });
+
+  it('a failed republish leaves the flag set', async () => {
+    const { deps, repo, rows } = fakes({
+      existing: takenDown(),
+      outcome: (s) => ({ ok: false, siteId: s, reason: 'deploy-failed', error: 'x' }),
+    });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const r = await runIosPublish(input(), deps);
+    expect(r.status).toBe(502);
+    expect(repo.clearTakenDown).not.toHaveBeenCalled();
+    expect(rows.get(OTID)!.taken_down_at).toBe('2026-10-15T00:00:00Z');
+  });
+
+  it('clearTakenDown failing after a live deploy still returns 200 (best effort, logged)', async () => {
+    const { deps, repo } = fakes({ existing: takenDown() });
+    (repo.clearTakenDown as any).mockRejectedValueOnce(new Error('db'));
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const r = await runIosPublish(input(), deps);
+    expect(r.status).toBe(200);
+    expect(err.mock.calls.flat().join(' ')).toMatch(/clearTakenDown/);
+    err.mockRestore();
+  });
+
+  it('a first publish (new slug) does not touch the flag', async () => {
+    const { deps, repo } = fakes();
+    const r = await runIosPublish(input(), deps);
+    expect(r.status).toBe(200);
+    expect(repo.clearTakenDown).not.toHaveBeenCalled();
+  });
+
+  it('an expired subscription cannot republish a taken-down site (402, flag kept)', async () => {
+    const { deps, repo } = fakes({ existing: takenDown(), verified: tx({ expiresAt: NOW - 1 }) });
+    const r = await runIosPublish(input(), deps);
+    expect(r.status).toBe(402);
+    expect(deps.publish).not.toHaveBeenCalled();
+    expect(repo.clearTakenDown).not.toHaveBeenCalled();
   });
 });
 
