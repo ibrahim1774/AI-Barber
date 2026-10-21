@@ -182,11 +182,14 @@ export async function createCardCheckout(
  * - cancel: the one refund an appointment's cancellation makes (an appointment is cancelled once)
  * - pac: paid-after-cancel (payment landed on an already cancelled booking), one per payment
  * - duplicate: a second payment for an appointment that is already paid, one per payment
+ * - order: a store owner's refund up to a target cumulative total (each attempt and its retries)
+ * pac and duplicate are shared with store orders (payment intents are unique across both tables).
  */
 export const refundKey = {
   cancel: (appointmentId: string) => `refund-cancel-${appointmentId}`,
   pac: (paymentIntentId: string) => `refund-pac-${paymentIntentId}`,
   duplicate: (paymentIntentId: string) => `refund-dup-${paymentIntentId}`,
+  order: (orderId: string, targetTotalCents: number) => `refund-order-${orderId}-${targetTotalCents}`,
 };
 
 export interface RefundOpts extends StripeOpts {
