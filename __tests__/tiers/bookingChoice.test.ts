@@ -63,6 +63,20 @@ describe('syncOwnLink (Contact edit updates the own link)', () => {
   });
 });
 
+describe('clearing the AI Barber link', () => {
+  it('keeps the own link and goes back to it', () => {
+    const prev = withChoice(rec({ bookingUrl: OWN }), 'aibarber', shop);
+    const next = syncOwnLink(prev, { ...prev, data: { ...prev.data, bookingUrl: '' } });
+    expect(next.inputs).toMatchObject({ ownBookingUrl: OWN, bookingChoice: 'own' });
+  });
+});
+
+it('migrate derives the own link from inputs.bookingUrl like the read path', () => {
+  const r = rec({}, { bookingUrl: OWN });
+  expect(bookingPrefs(r).own).toBe(OWN);
+  expect(migrateBooking(r).inputs.ownBookingUrl).toBe(OWN);
+});
+
 describe('resolveLinks (publish decides the links)', () => {
   const inp = { ownBookingUrl: OWN, bookingChoice: 'aibarber' as const };
   it('aibarber + bookings + shop -> the AI Barber link', () => {

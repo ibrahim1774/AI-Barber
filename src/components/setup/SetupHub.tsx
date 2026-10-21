@@ -43,6 +43,7 @@ export function SetupHub({
   const setChoice = async (c: BookingChoice) => {
     const saved = await updateSiteRecord((r) => withChoice(r, c, shop)).catch(() => null);
     if (saved) onSiteChanged(saved);
+    else Alert.alert("Couldn't save", 'Try again.');
   };
 
   const copyCalendar = async (m: Member) => {

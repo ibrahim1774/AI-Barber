@@ -59,7 +59,7 @@ export default function Editor() {
   const ents = useEntitlements();
   // The preview drops Book / Shop links the plan no longer covers (as the publish will). Never saved over the barber's data.
   const siteData = site?.data;
-  const linkCtx = useLinkContext();
+  const linkCtx = useLinkContext(site?.updatedAt);
   const siteInputs = site?.inputs;
   const previewData = useMemo(
     () => (siteData ? (linkCtx ? resolveLinks(siteData, siteInputs, linkCtx) : stripLapsedLinks(siteData, ents)) : null),

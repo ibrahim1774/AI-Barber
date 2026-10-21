@@ -43,7 +43,7 @@ export interface PublishDeps {
   latestTransactionId(): Promise<string | null>;
   iosPublish: typeof api.iosPublish;
   /** The shop facts that decide the Book / Shop links on every publish. Without it, links the plan lacks are only stripped. */
-  linkContext?(): Promise<LinkContext>;
+  linkContext?(): Promise<LinkContext | null>;
   store: typeof import('./siteStore');
   /** The signed-in Supabase user, so the server can link the purchase to the account. */
   userId(): string | null;

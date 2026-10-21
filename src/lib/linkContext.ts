@@ -1,32 +1,41 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { useEntitlements, getEntitlements } from '@/lib/entitlements';
 import type { LinkContext } from '@/lib/bookingChoice';
 import { loadMyShop } from '@/lib/shop';
 import { loadStoreSettings } from '@/lib/store/data';
 
-/** The shop facts the publish needs to decide the Book and Shop links. Never throws: no shop on a failure. */
-export async function loadLinkContext(): Promise<LinkContext> {
+/**
+ * The shop facts the publish needs to decide the Book and Shop links. A failed lookup is "unknown"
+ * (null), never "no shop": the caller then only strips what the plan lacks and keeps the site's links.
+ */
+export async function loadLinkContext(): Promise<LinkContext | null> {
   const ents = getEntitlements();
   try {
     const shop = await loadMyShop();
     if (!shop) return { ents, shop: null, storeEnabled: false };
-    const storeEnabled = await loadStoreSettings(shop.id).then((s) => s.storeEnabled).catch(() => false);
+    const storeEnabled = (await loadStoreSettings(shop.id)).storeEnabled;
     return { ents, shop, storeEnabled };
   } catch {
-    return { ents, shop: null, storeEnabled: false };
+    return null;
   }
 }
 
-/** The same context for rendering (the Edit preview), refreshed when the entitlements change. */
-export function useLinkContext(): LinkContext | null {
+/**
+ * The same context for rendering (the Edit preview). Reloaded when the entitlements change, when the
+ * tab regains focus, and when `siteKey` (the site record's version) changes, so it never lags publish.
+ */
+export function useLinkContext(siteKey?: unknown): LinkContext | null {
   const ents = useEntitlements();
   const [ctx, setCtx] = useState<LinkContext | null>(null);
+  const [focusN, setFocusN] = useState(0);
+  useFocusEffect(useCallback(() => setFocusN((n) => n + 1), []));
   useEffect(() => {
     let alive = true;
-    loadLinkContext().then((c) => alive && setCtx({ ...c, ents }));
+    loadLinkContext().then((c) => alive && setCtx(c ? { ...c, ents } : null));
     return () => {
       alive = false;
     };
-  }, [ents]);
+  }, [ents, siteKey, focusN]);
   return ctx;
 }

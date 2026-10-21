@@ -386,4 +386,22 @@ describe('publish decides the Book / Shop links from the choice', () => {
   test('Store plan adds the shop link', async () => {
     expect((await run(['hosting', 'bookings', 'store'])).shopUrl).toBe('https://www.aibarber.org/shop/fade-brooklyn');
   });
+
+  test('a failed shop lookup is unknown: the site keeps its links and only plan-lacking ones are stripped', async () => {
+    setEntitlementsFromStatus({ status: 'ACTIVE', entitlements: [{ id: 'hosting' }, { id: 'bookings' }] });
+    await store.saveSite(withPrefs);
+    const deps = makeDeps({ hasEntitlement: jest.fn(async () => true), linkContext: async () => null });
+    await publishFlow(withPrefs, deps);
+    const sent = (deps.iosPublish as jest.Mock).mock.calls[0][0].siteData;
+    expect(sent.bookingUrl).toBe(AI); // kept: bookings is entitled
+  });
+  test('loadLinkContext returns null (not "no shop") when the lookup throws', async () => {
+    jest.resetModules();
+    jest.doMock('@/lib/shop', () => ({ loadMyShop: async () => { throw new Error('offline'); } }));
+    jest.doMock('@/lib/store/data', () => ({ loadStoreSettings: async () => ({ storeEnabled: true }) }));
+    const { loadLinkContext } = require('@/lib/linkContext');
+    await expect(loadLinkContext()).resolves.toBeNull();
+    jest.dontMock('@/lib/shop');
+    jest.dontMock('@/lib/store/data');
+  });
 });

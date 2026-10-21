@@ -17,9 +17,13 @@ const ownLinkOf = (url?: string | null): string | null => {
   return u && !isAiBarberBookingUrl(u) ? u : null;
 };
 
+/** The barber's own link from a record: the stored one, else a non-AI-Barber Book link in the data or inputs. */
+const deriveOwn = (rec: { inputs: Partial<SiteRecord['inputs']>; data: WebsiteData }): string | null =>
+  rec.inputs.ownBookingUrl?.trim() || ownLinkOf(rec.data.bookingUrl) || ownLinkOf(rec.inputs.bookingUrl);
+
 /** The own link and the effective choice (default: own when an own link exists, else AI Barber). */
 export function bookingPrefs(rec: { inputs: Partial<SiteRecord['inputs']>; data: WebsiteData }): { own: string | null; choice: BookingChoice } {
-  const own = rec.inputs.ownBookingUrl?.trim() || ownLinkOf(rec.data.bookingUrl);
+  const own = deriveOwn(rec);
   // A record from before the choice existed: an AI Barber link means AI Barber, an own link means keep it.
   const choice = rec.inputs.bookingChoice ?? (isAiBarberBookingUrl(rec.data.bookingUrl) ? 'aibarber' : own ? 'own' : 'aibarber');
   return { own: own || null, choice: own ? choice : 'aibarber' };
@@ -31,8 +35,8 @@ export function bookingPrefs(rec: { inputs: Partial<SiteRecord['inputs']>; data:
  */
 export function migrateBooking(rec: SiteRecord): SiteRecord {
   const i = rec.inputs;
-  if (i.ownBookingUrl !== undefined && i.bookingChoice !== undefined) return rec;
-  const own = i.ownBookingUrl?.trim() || ownLinkOf(rec.data.bookingUrl) || ownLinkOf(i.bookingUrl);
+  const own = deriveOwn(rec);
+  if (i.bookingChoice !== undefined && ('ownBookingUrl' in i || !own)) return rec;
   const choice: BookingChoice = i.bookingChoice ?? (isAiBarberBookingUrl(rec.data.bookingUrl) ? 'aibarber' : own ? 'own' : 'aibarber');
   const inputs = { ...i, ...(own ? { ownBookingUrl: own } : {}), bookingChoice: choice };
   if (inputs.ownBookingUrl === i.ownBookingUrl && inputs.bookingChoice === i.bookingChoice) return rec;
@@ -61,6 +65,9 @@ export function syncOwnLink(prev: SiteRecord, next: SiteRecord): SiteRecord {
   const inputs = { ...next.inputs };
   if (after) {
     inputs.ownBookingUrl = after;
+    inputs.bookingChoice = 'own';
+  } else if (isAiBarberBookingUrl(before)) {
+    // They cleared a link they didn't type: the own link is kept, and the site goes back to it.
     inputs.bookingChoice = 'own';
   } else {
     delete inputs.ownBookingUrl;
