@@ -35,7 +35,10 @@ export async function runLaunchPrompts(): Promise<void> {
   } catch (e) {
     console.warn('[launch] notification prompt failed:', e);
   }
-  // Waits for 'active' itself, then starts AppsFlyer whatever the answer.
+  // A beat after the notification alert closes: iOS can drop an ATT request
+  // made just as the app becomes active again. Waits for 'active' itself,
+  // then starts AppsFlyer whatever the answer.
+  await new Promise((r) => setTimeout(r, 600));
   requestTrackingWhenActive();
 }
 

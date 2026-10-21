@@ -26,7 +26,8 @@ const reminders = require('@/lib/reminders');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { LaunchPrompts, resetLaunchPromptsForTests } = require('@/lib/launchPrompts');
 
-const flush = () => act(async () => {});
+// Past the 600 ms beat before the ATT ask.
+const flush = () => act(async () => { await new Promise((r) => setTimeout(r, 650)); });
 
 let appState = 'active';
 let listeners: ((s: string) => void)[] = [];

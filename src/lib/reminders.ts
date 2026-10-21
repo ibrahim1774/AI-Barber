@@ -209,11 +209,11 @@ export function cancelRemindersInBackground(opts?: { forGood?: boolean }): void 
 }
 
 /**
- * Asks for notification permission the first time only (LaunchGuide close,
- * or the first tap out of the start screen); after a decline it never asks
- * again. Always refreshes, so the copy matches whether a site exists yet.
- * Never call at launch: SuperwallKit's debug build traps on a system prompt
- * before it has configured.
+ * Asks for notification permission the first time only (from LaunchPrompts,
+ * on the first screen after launch); after a decline it never asks again.
+ * Always refreshes, so the copy matches whether a site exists yet. Only call
+ * once Superwall has settled: SuperwallKit's debug build traps on a system
+ * prompt before it has configured.
  */
 export async function askReminderPermissionOnce(): Promise<boolean> {
   const N = notifications();

@@ -242,14 +242,15 @@ export async function verifyResetCode(email: string, code: string): Promise<void
     track('password_reset_code_entered', { ok: false });
     throw new Error(res.error ? friendlyCodeError(res.error) : RESET_WRONG_CODE);
   }
-  userId = res.data.session.user?.id ?? userId;
   track('password_reset_code_entered', { ok: true });
+  // A verified code is a full sign-in, even if the new password is never saved.
+  await afterSession(res.data.session.user?.id);
 }
 
 /**
- * Sets the new password on the (recovery) session, then does what a sign-in
- * does (identify, push the local site). The server's own reason is shown
- * when it rejects the password.
+ * Sets the new password on the (recovery) session; verifyResetCode already
+ * did what a sign-in does. The server's own reason is shown when it rejects
+ * the password.
  */
 export async function setNewPassword(password: string): Promise<void> {
   let res: Awaited<ReturnType<typeof supabase.auth.updateUser>>;
@@ -263,7 +264,6 @@ export async function setNewPassword(password: string): Promise<void> {
     throw new Error(isOffline(err) ? OFFLINE : err.message?.trim() || FALLBACK);
   }
   track('password_reset_completed');
-  await afterSession(res.data.user?.id);
 }
 
 /**

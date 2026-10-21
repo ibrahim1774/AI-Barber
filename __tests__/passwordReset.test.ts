@@ -162,6 +162,23 @@ describe('the emailed code', () => {
     expect(supabase.auth.updateUser).not.toHaveBeenCalled();
   });
 
+  it('a verified code is a full sign-in even when the new password is rejected', async () => {
+    const identify = jest.spyOn(analytics, 'identifyUser');
+    supabase.auth.verifyOtp.mockImplementationOnce(async () => {
+      const session = { access_token: 'otp', user: { id: 'user-half' } };
+      sb.setSession(session);
+      return { data: { session, user: session.user }, error: null };
+    });
+    supabase.auth.updateUser.mockResolvedValueOnce({
+      data: { user: null },
+      error: { status: 422, code: 'weak_password', message: 'Password should be at least 8 characters.' },
+    });
+    await expect(resetPasswordWithCode('barber@example.com', '123456', 'short1', 'short1')).rejects.toThrow(
+      'Password should be at least 8 characters.',
+    );
+    expect(identify).toHaveBeenCalledWith('user-half');
+  });
+
   it('a retry after a rejected password skips verifyOtp (a code works once)', async () => {
     supabase.auth.updateUser.mockResolvedValueOnce({
       data: { user: null },
