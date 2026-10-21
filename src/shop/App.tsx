@@ -225,13 +225,13 @@ function Checkout({ api, shop, products, cart, onBack, onRefresh, onSoldOut, onR
   const [cust, setCust] = useState({ name: '', phone: '', email: '' });
   const [note, setNote] = useState('');
   const [address, setAddress] = useState<AddressForm>(EMPTY_ADDRESS);
-  const rows = payRows(shop, fulfilment);
+  const totals = cartTotals(cart, products, fulfilment, shop.shipping.flatCents);
+  const rows = payRows(shop, fulfilment, totals.totalCents);
   const [choice, setChoice] = useState<{ pay: PayChoice; method: ManualMethod | null } | null>(null);
   const keyRef = useRef(newClientKey());
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
-  const totals = cartTotals(cart, products, fulfilment, shop.shipping.flatCents);
   // The picked choice must still be offered for this fulfilment; otherwise default to the first row.
   const current = rows.find((r) => choice && r.pay === choice.pay && (r.pay !== 'manual' || r.method === choice.method)) ?? (rows.length === 1 ? rows[0] : null);
   const state: CheckoutState = {
