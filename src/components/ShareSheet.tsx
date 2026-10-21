@@ -6,6 +6,7 @@ import { ChevronRightIcon } from '@/components/Icons';
 import { QrScreen } from '@/components/QrScreen';
 import { Sheet } from '@/components/EditSheet';
 import { track } from '@/lib/analytics';
+import { useEntitlements } from '@/lib/entitlements';
 import { bookingUrl, loadMyShop } from '@/lib/shop';
 import { loadStoreSettings, shopUrl } from '@/lib/store/data';
 import { displayHost, shareLabel, shareMessage, type ShareLink } from '@/lib/share';
@@ -24,6 +25,8 @@ export function ShareSheet({ visible, shopName, links: given, source, onClose }:
   const [bookingLink, setBookingLink] = useState<string | null>(null);
   // With the store open, a Shop link row goes last (the QR code keeps pointing at the first link).
   const [storeLink, setStoreLink] = useState<string | null>(null);
+  // The Booking row needs the Bookings plan and the Shop row the Store plan (the server closes those pages without them).
+  const ents = useEntitlements();
   useEffect(() => {
     if (!visible) return;
     let alive = true;
@@ -40,9 +43,9 @@ export function ShareSheet({ visible, shopName, links: given, source, onClose }:
     };
   }, [visible]);
   const withBooking: ShareLink[] =
-    bookingLink && !given.some((l) => l.kind === 'booking') ? [{ kind: 'booking', url: bookingLink }, ...given] : given;
+    bookingLink && ents.bookings && !given.some((l) => l.kind === 'booking') ? [{ kind: 'booking', url: bookingLink }, ...given] : given;
   const links: ShareLink[] =
-    storeLink && !withBooking.some((l) => l.kind === 'shop') ? [...withBooking, { kind: 'shop', url: storeLink }] : withBooking;
+    storeLink && ents.store && !withBooking.some((l) => l.kind === 'shop') ? [...withBooking, { kind: 'shop', url: storeLink }] : withBooking;
   // iOS can't present one Modal while another is still sliding away: the sheet
   // hides first and the QR opens from its onDismiss, and the reverse on Done.
   const [qrOpen, setQrOpen] = useState(false);

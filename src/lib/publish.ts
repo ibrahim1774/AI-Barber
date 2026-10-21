@@ -2,14 +2,24 @@ import type { WebsiteData } from '@/web/types';
 import { track } from '@/lib/analytics';
 import { ApiError, type api } from '@/lib/api';
 import { stripMarkers } from '@/lib/editable';
+import { getEntitlements } from '@/lib/entitlements';
+import { stripLapsedLinks } from '@/lib/tierLinks';
 import { cancelRemindersInBackground } from '@/lib/reminders';
 import type { SiteRecord } from '@/lib/siteStore';
 import { LOOKUP_TIMEOUT_MS, withTimeout } from '@/lib/timeout';
 
-/** The two App Store products that entitle one hosted site (Superwall entitlement `hosting`). */
+/**
+ * The App Store products that entitle one hosted site: the Website, Bookings and
+ * Store plans, monthly and yearly. Any of the six counts as paid at publish; the
+ * entitlements say which tabs unlock.
+ */
 export const PRODUCT_IDS = [
   'com.ibrahim1774.aibarber.hosting.monthly',
   'com.ibrahim1774.aibarber.hosting.yearly',
+  'com.ibrahim1774.aibarber.bookings.monthly',
+  'com.ibrahim1774.aibarber.bookings.yearly',
+  'com.ibrahim1774.aibarber.store.monthly',
+  'com.ibrahim1774.aibarber.store.yearly',
 ] as const;
 
 /** Only after a purchase verified in this run, once its pending publish is saved. */
@@ -133,7 +143,7 @@ async function send(
 ): Promise<PublishOutcome> {
   let res: Awaited<ReturnType<PublishDeps['iosPublish']>>;
   try {
-    res = await deps.iosPublish({ transactionId: pending.transactionId, siteData: pending.data, userId: deps.userId() });
+    res = await deps.iosPublish({ transactionId: pending.transactionId, siteData: stripLapsedLinks(pending.data, getEntitlements()), userId: deps.userId() });
   } catch (e) {
     if (e instanceof ApiError && e.status === 402) {
       await deps.store.savePendingPublish(null);

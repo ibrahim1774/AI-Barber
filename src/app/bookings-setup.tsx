@@ -3,6 +3,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
+import { UpgradeCard } from '@/components/UpgradeCard';
 import { Page } from '@/components/Page';
 import { Barbers } from '@/components/setup/Barbers';
 import { BookingRules } from '@/components/setup/BookingRules';
@@ -19,6 +20,7 @@ import { useSession } from '@/lib/auth';
 import { useLatestTransactionId } from '@/lib/paywall';
 import { registerPushForShop, relinkShopPurchase } from '@/lib/setup/relink';
 import { goBackOrHome } from '@/lib/nav';
+import { useTierAccess, useUpgrade } from '@/lib/tierAccess';
 import { pickAndUploadPhoto } from '@/lib/photos';
 import { buildSetupBody, shopSetup } from '@/lib/setup/ownerApi';
 import { setPostAuthReturn } from '@/lib/setup/gate';
@@ -50,6 +52,11 @@ export default function BookingsSetup() {
   const [sub, setSub] = useState<Sub>('hub');
   const signedIn = !!session;
   const latestTransactionId = useLatestTransactionId();
+  const tier = useTierAccess('bookings');
+  const upgrade = useUpgrade('bookings_upgrade');
+  // Without the plan there is nothing to set up (and no shop is created); wait until that is known.
+  const blocked = tier.status === 'ready' && !tier.entitled;
+  const waiting = tier.status === 'loading';
 
   const load = useCallback(async () => {
     try {
@@ -80,15 +87,15 @@ export default function BookingsSetup() {
   }, [latestTransactionId]);
 
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || blocked) return;
     if (!signedIn) {
       setPhase({ kind: 'gate' });
       return;
     }
     setPostAuthReturn(null);
     setPhase({ kind: 'loading' });
-    void load();
-  }, [ready, signedIn, load]);
+    if (!blocked && !waiting) void load();
+  }, [ready, signedIn, load, blocked, waiting]);
 
   // Leaving the gate without signing in must not send a later sign-in back here.
   useEffect(() => () => setPostAuthReturn(null), []);
@@ -111,8 +118,9 @@ export default function BookingsSetup() {
 
   return (
     <Page title={phase.kind === 'ready' && phase.wizard ? 'Set up bookings' : TITLES[sub]} onBack={back}>
-      {phase.kind === 'loading' && <ActivityIndicator color={colors.accent} style={{ marginTop: 48 }} />}
-      {phase.kind === 'gate' && (
+      {blocked && <UpgradeCard kind="bookings" onUpgrade={() => void upgrade.run()} busy={upgrade.busy} />}
+      {!blocked && phase.kind === 'loading' && <ActivityIndicator color={colors.accent} style={{ marginTop: 48 }} />}
+      {!blocked && phase.kind === 'gate' && (
         <View style={st.center}>
           <Text style={st.h}>Create a free account to take bookings</Text>
           <Text style={st.p}>
@@ -123,20 +131,20 @@ export default function BookingsSetup() {
           <Button variant="ghost" title="I already have an account" onPress={() => goGate('/sign-in')} />
         </View>
       )}
-      {phase.kind === 'nosite' && (
+      {!blocked && phase.kind === 'nosite' && (
         <View style={st.center}>
           <Text style={st.h}>Build your website first</Text>
           <Text style={st.p}>Your booking page uses your shop's name, services and look.</Text>
           <Button title="Build my website" onPress={() => router.replace('/start')} />
         </View>
       )}
-      {phase.kind === 'error' && (
+      {!blocked && phase.kind === 'error' && (
         <View style={st.center}>
           <Text style={st.p}>{phase.message}</Text>
           <Button title="Try again" onPress={() => { setPhase({ kind: 'loading' }); void load(); }} />
         </View>
       )}
-      {phase.kind === 'ready' && phase.wizard && (
+      {!blocked && phase.kind === 'ready' && phase.wizard && (
         <Wizard
           shop={phase.shop}
           site={phase.site}

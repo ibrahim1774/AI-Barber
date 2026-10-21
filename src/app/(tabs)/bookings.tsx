@@ -4,6 +4,8 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
+import { PausedBanner } from '@/components/PausedBanner';
+import { UpgradeCard } from '@/components/UpgradeCard';
 import { GearIcon } from '@/components/Icons';
 import { ShareSheet } from '@/components/ShareSheet';
 import { AddBookingSheet } from '@/components/bookings/AddBookingSheet';
@@ -22,6 +24,7 @@ import {
 import { BOOKING_SHARE_KIND, bookingUrl, memberName } from '@/lib/bookings/shop';
 import { loadSite, type SiteRecord } from '@/lib/siteStore';
 import { isLocked, useSubscriptionStatus } from '@/lib/subscriptionStatus';
+import { useTierAccess, useUpgrade } from '@/lib/tierAccess';
 
 /**
  * The Bookings tab (spec 5.2): a date strip, barber chips when there is more
@@ -34,6 +37,8 @@ export default function Bookings() {
   const params = useLocalSearchParams<{ date?: string; start?: string }>();
   const { phase, shop, members, services, appts, timeOff, refresh } = useBookingsData();
   const status = useSubscriptionStatus();
+  const tier = useTierAccess('bookings');
+  const upgrade = useUpgrade('bookings_upgrade');
   const [site, setSite] = useState<SiteRecord | null>(null);
   const [selected, setSelected] = useState<DateKey | null>(null);
   const [barber, setBarber] = useState<string | null>(null);
@@ -55,7 +60,10 @@ export default function Bookings() {
 
   const tz = shop?.timezone ?? 'UTC';
   const today = todayKey(tz);
-  const locked = isLocked(site, status);
+  const lapsed = isLocked(site, status);
+  // The plan not covering bookings (a Website plan) is read-only too; the server pauses the page.
+  const paused = tier.status === 'ready' && !tier.entitled;
+  const locked = lapsed || paused;
   const day = selected ?? today;
 
   // A tapped booking push opens the tab on that day (once the shop's timezone is known).
@@ -82,7 +90,23 @@ export default function Bookings() {
     setPulling(false);
   };
 
-  if (phase === 'loading') {
+  if (tier.status === 'error') {
+    return (
+      <View style={[styles.root, styles.center, { paddingTop: insets.top }]}>
+        <Card
+          title="Couldn't load your plan"
+          body="Check your connection and try again."
+          action="Try again"
+          onAction={() => {
+            tier.retry();
+            void refresh();
+          }}
+        />
+      </View>
+    );
+  }
+
+  if (tier.status === 'loading' || phase === 'loading') {
     return (
       <View style={[styles.root, styles.center, { paddingTop: insets.top }]}>
         <ActivityIndicator color={colors.accent} />
@@ -99,6 +123,15 @@ export default function Bookings() {
           action="Try again"
           onAction={() => void refresh()}
         />
+      </View>
+    );
+  }
+
+  // No bookings plan and nothing to look at (no shop yet, or hosting lapsed over 30 days ago): sell the plan.
+  if (paused && (phase === 'no-shop' || !shop || tier.expired)) {
+    return (
+      <View style={[styles.root, styles.center, { paddingTop: insets.top }]}>
+        <UpgradeCard kind="bookings" onUpgrade={() => void upgrade.run()} busy={upgrade.busy} />
       </View>
     );
   }
@@ -137,9 +170,10 @@ export default function Bookings() {
         </View>
       </View>
 
-      {locked && (
+      {lapsed && (
         <Text style={styles.locked}>Your subscription has ended. Bookings are read-only until you resubscribe.</Text>
       )}
+      {paused && !lapsed && <PausedBanner kind="bookings" onUpgrade={() => void upgrade.run()} />}
 
       <DateStrip days={days} selected={day} today={today} counts={counts} onSelect={setSelected} />
       {several && <View style={styles.chips}><BarberChips members={members.map((m) => ({ id: m.id, name: memberName(m) }))} value={barber} onChange={setBarber} /></View>}

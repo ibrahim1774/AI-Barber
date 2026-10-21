@@ -8,6 +8,7 @@ import { ShareSheet } from '@/components/ShareSheet';
 import { CheckCircleIcon, CheckIcon, CloseIcon, CopyIcon } from '@/components/Icons';
 import { track } from '@/lib/analytics';
 import { useSession } from '@/lib/auth';
+import { useEntitlements } from '@/lib/entitlements';
 import { homeRoute, resetTo } from '@/lib/nav';
 import { loadSite } from '@/lib/siteStore';
 import { useLinkActions } from '@/lib/useLinkActions';
@@ -23,6 +24,8 @@ export default function Live() {
   const [shareOpen, setShareOpen] = useState(false);
   const [shopName, setShopName] = useState('');
   const { open, copy, copied } = useLinkActions(url, 'live');
+  // A Bookings or Store plan bought on the publish paywall: the next step is its booking page.
+  const ents = useEntitlements();
 
   useEffect(() => {
     track('live_opened');
@@ -81,6 +84,17 @@ export default function Live() {
           <Button variant="ghost" title={copied ? 'Copied' : 'Copy link'} onPress={copy} style={styles.half} />
           <Button variant="ghost" title="Share" onPress={() => setShareOpen(true)} style={styles.half} />
         </View>
+        {ents.bookings && (
+          <Button
+            variant="ghost"
+            title="Set up bookings"
+            onPress={() => {
+              track('live_setup_bookings_tapped');
+              router.push('/bookings-setup' as never);
+            }}
+            style={[styles.wide, { marginTop: 12 }]}
+          />
+        )}
         <Button variant="link" title="Done" onPress={done} style={styles.link} />
 
         {ready && !session?.user && !saveDismissed && (

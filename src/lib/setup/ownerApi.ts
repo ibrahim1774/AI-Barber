@@ -13,7 +13,7 @@ export class OwnerApiError extends Error {
 
 const OFFLINE = "Couldn't reach AI Barber. Check your connection and try again.";
 
-async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
+export async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
   const { data: s } = await supabase.auth.getSession();
   const token = s.session?.access_token;
   if (!token) throw new OwnerApiError(401, 'unauthorized', 'Sign in to continue.');

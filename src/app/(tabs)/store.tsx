@@ -4,6 +4,8 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
+import { PausedBanner } from '@/components/PausedBanner';
+import { UpgradeCard } from '@/components/UpgradeCard';
 import { ShareSheet } from '@/components/ShareSheet';
 import { OrdersPane } from '@/components/store/OrdersPane';
 import { Segmented } from '@/components/store/Segmented';
@@ -12,8 +14,8 @@ import { ProductsPane } from '@/components/store/products/ProductsPane';
 import { loadMyShop, type Shop } from '@/lib/shop';
 import { loadSite, type SiteRecord } from '@/lib/siteStore';
 import { isLocked, useSubscriptionStatus } from '@/lib/subscriptionStatus';
-import { openStoreUpgrade, useStoreAccess } from '@/lib/store/gate';
-import { countNewOrders, loadStoreSettings } from '@/lib/store/data';
+import { useOpenStoreUpgrade, useStoreAccess } from '@/lib/store/gate';
+import { countNewOrders, listOrders, loadStoreSettings } from '@/lib/store/data';
 
 type Phase = 'loading' | 'error' | 'no-store' | 'ready';
 type Tab = 'products' | 'orders';
@@ -21,13 +23,17 @@ type Tab = 'products' | 'orders';
 /**
  * The Store tab: Products and Orders for the shop. Opens on Orders when a push
  * routes here with ?tab=orders&orderId=. Read-only once the hosting has lapsed.
- * Tier gating (Phase 4) comes through useStoreAccess.
+ * Tier gating comes through useStoreAccess. Order actions are never locked: orders already placed
+ * stay fulfillable and refundable after a lapse or a downgrade.
  */
 export default function Store() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ tab?: string; orderId?: string; n?: string }>();
   const status = useSubscriptionStatus();
   const access = useStoreAccess();
+  const upgrade = useOpenStoreUpgrade();
+  // Without the Store plan: whether any orders exist (they stay visible and actionable).
+  const [hasOrders, setHasOrders] = useState<boolean | null>(null);
   const [site, setSite] = useState<SiteRecord | null>(null);
   const [phase, setPhase] = useState<Phase>('loading');
   const [shop, setShop] = useState<Shop | null>(null);
@@ -86,10 +92,32 @@ export default function Store() {
     }, [load]),
   );
 
-  const locked = isLocked(site, status);
+  const noPlan = access.status === 'inactive';
+  useEffect(() => {
+    if (!noPlan || !shop) return;
+    let alive = true;
+    listOrders(shop.id, { limit: 1 })
+      .then((o) => alive && setHasOrders(o.length > 0))
+      .catch(() => alive && setHasOrders(false));
+    return () => {
+      alive = false;
+    };
+  }, [noPlan, shop]);
+
+  const lapsed = isLocked(site, status);
+  // Products are view-only without the Store plan or after a lapse. Orders never are.
+  const locked = lapsed || noPlan;
   const shell = [styles.root, { paddingTop: insets.top }];
 
-  if (phase === 'loading') {
+  if (access.status === 'error') {
+    return (
+      <View style={[...shell, styles.center]}>
+        <Card title="Couldn't load your plan" body="Check your connection and try again." action="Try again" onAction={() => { access.retry(); void load(); }} />
+      </View>
+    );
+  }
+
+  if (phase === 'loading' || access.status === 'loading') {
     return (
       <View style={[...shell, styles.center]}>
         <ActivityIndicator color={colors.accent} />
@@ -101,6 +129,14 @@ export default function Store() {
     return (
       <View style={[...shell, styles.center]}>
         <Card title="Couldn't load your store" body="Check your connection and try again." action="Try again" onAction={() => void load()} />
+      </View>
+    );
+  }
+
+  if (noPlan && (phase === 'no-store' || !shop)) {
+    return (
+      <View style={[...shell, styles.center]}>
+        <UpgradeCard kind="store" onUpgrade={upgrade.open} busy={upgrade.busy} />
       </View>
     );
   }
@@ -118,15 +154,18 @@ export default function Store() {
     );
   }
 
-  if (access.status === 'inactive') {
+  // The Store plan lapsed (Website or Bookings plan) and there are no orders to keep serving.
+  if (noPlan && hasOrders === false) {
     return (
       <View style={[...shell, styles.center]}>
-        <Card
-          title="Sell products from your shop"
-          body="Add the Store plan to take orders for your products online."
-          action="See plans"
-          onAction={openStoreUpgrade}
-        />
+        <UpgradeCard kind="store" onUpgrade={upgrade.open} busy={upgrade.busy} />
+      </View>
+    );
+  }
+  if (noPlan && hasOrders === null) {
+    return (
+      <View style={[...shell, styles.center]}>
+        <ActivityIndicator color={colors.accent} />
       </View>
     );
   }
@@ -134,9 +173,10 @@ export default function Store() {
   return (
     <View style={shell}>
       <StoreHeader title={shop.name} locked={locked} onShare={() => setSharing(true)} onSetup={() => router.push('/store-setup' as never)} />
-      {locked && (
+      {lapsed && (
         <Text style={styles.locked}>Your subscription has ended. Your store is read-only until you resubscribe.</Text>
       )}
+      {noPlan && !lapsed && <PausedBanner kind="store" onUpgrade={upgrade.open} />}
       <Segmented<Tab>
         options={[
           { key: 'products', label: 'Products' },
@@ -152,7 +192,7 @@ export default function Store() {
           <OrdersPane
             shopId={shop.id}
             shopName={shop.name}
-            locked={locked}
+            locked={false}
             focusOrderId={params.orderId}
             focusNonce={params.n}
             onChanged={() => void refreshCount(shop.id)}

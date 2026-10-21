@@ -3,12 +3,14 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
+import { UpgradeCard } from '@/components/UpgradeCard';
 import { Page } from '@/components/Page';
 import { StoreSettingsForm } from '@/components/store/setup/StoreSettingsForm';
 import { track } from '@/lib/analytics';
 import { syncIfSignedIn } from '@/lib/account';
 import { useSession } from '@/lib/auth';
 import { goBackOrHome } from '@/lib/nav';
+import { useTierAccess, useUpgrade } from '@/lib/tierAccess';
 import { useLatestTransactionId } from '@/lib/paywall';
 import { setPostAuthReturn } from '@/lib/setup/gate';
 import { buildSetupBody, shopSetup } from '@/lib/setup/ownerApi';
@@ -32,6 +34,11 @@ export default function StoreSetup() {
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' });
   const signedIn = !!session;
   const latestTransactionId = useLatestTransactionId();
+  const tier = useTierAccess('store');
+  const upgrade = useUpgrade('store_upgrade');
+  // Without the plan there is nothing to set up (and no shop is created); wait until that is known.
+  const blocked = tier.status === 'ready' && !tier.entitled;
+  const waiting = tier.status === 'loading';
 
   const load = useCallback(async () => {
     try {
@@ -62,15 +69,15 @@ export default function StoreSetup() {
   }, [latestTransactionId]);
 
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || blocked) return;
     if (!signedIn) {
       setPhase({ kind: 'gate' });
       return;
     }
     setPostAuthReturn(null);
     setPhase({ kind: 'loading' });
-    void load();
-  }, [ready, signedIn, load]);
+    if (!blocked && !waiting) void load();
+  }, [ready, signedIn, load, blocked, waiting]);
 
   // Leaving the gate without signing in must not send a later sign-in back here.
   useEffect(() => () => setPostAuthReturn(null), []);
@@ -82,8 +89,9 @@ export default function StoreSetup() {
 
   return (
     <Page title="Store setup" onBack={goBackOrHome}>
-      {phase.kind === 'loading' && <ActivityIndicator color={colors.accent} style={{ marginTop: 48 }} />}
-      {phase.kind === 'gate' && (
+      {blocked && <UpgradeCard kind="store" onUpgrade={() => void upgrade.run()} busy={upgrade.busy} />}
+      {!blocked && phase.kind === 'loading' && <ActivityIndicator color={colors.accent} style={{ marginTop: 48 }} />}
+      {!blocked && phase.kind === 'gate' && (
         <View style={st.center}>
           <Text style={st.h}>Create a free account to sell online</Text>
           <Text style={st.p}>
@@ -94,20 +102,20 @@ export default function StoreSetup() {
           <Button variant="ghost" title="I already have an account" onPress={() => goGate('/sign-in')} />
         </View>
       )}
-      {phase.kind === 'nosite' && (
+      {!blocked && phase.kind === 'nosite' && (
         <View style={st.center}>
           <Text style={st.h}>Build your website first</Text>
           <Text style={st.p}>Your shop uses your shop's name and look.</Text>
           <Button title="Build my website" onPress={() => router.replace('/start')} />
         </View>
       )}
-      {phase.kind === 'error' && (
+      {!blocked && phase.kind === 'error' && (
         <View style={st.center}>
           <Text style={st.p}>{phase.message}</Text>
           <Button title="Try again" onPress={() => { setPhase({ kind: 'loading' }); void load(); }} />
         </View>
       )}
-      {phase.kind === 'ready' && <StoreSettingsForm shop={phase.shop} />}
+      {!blocked && phase.kind === 'ready' && <StoreSettingsForm shop={phase.shop} />}
     </Page>
   );
 }

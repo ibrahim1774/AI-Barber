@@ -180,8 +180,19 @@ test('latestTransactionId picks the newest active AI Barber subscription', () =>
   expect(PRODUCT_IDS).toEqual([
     'com.ibrahim1774.aibarber.hosting.monthly',
     'com.ibrahim1774.aibarber.hosting.yearly',
+    'com.ibrahim1774.aibarber.bookings.monthly',
+    'com.ibrahim1774.aibarber.bookings.yearly',
+    'com.ibrahim1774.aibarber.store.monthly',
+    'com.ibrahim1774.aibarber.store.yearly',
   ]);
-  const [monthly, yearly] = PRODUCT_IDS;
+  // A Bookings or Store purchase counts as paid at publish: no hosting.* required.
+  expect(
+    pickLatestTransactionId([
+      sub('b', 'com.ibrahim1774.aibarber.bookings.monthly', '2026-10-20T00:00:00Z'),
+      sub('s', 'com.ibrahim1774.aibarber.store.yearly', '2026-10-21T00:00:00Z'),
+    ]),
+  ).toBe('s');
+  const [monthly, yearly] = [PRODUCT_IDS[0], PRODUCT_IDS[1]];
   expect(
     pickLatestTransactionId([
       sub('old', monthly, '2026-09-01T00:00:00Z'),

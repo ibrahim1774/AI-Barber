@@ -13,6 +13,10 @@ let mockSession: object | null = null;
 jest.mock('@/lib/auth', () => ({ useSession: () => ({ session: mockSession, ready: true }) }));
 const mockLatest = async () => null;
 jest.mock('@/lib/paywall', () => ({ useLatestTransactionId: () => mockLatest }));
+jest.mock('@/lib/tierAccess', () => ({
+  useTierAccess: () => ({ status: 'ready', entitled: true, expired: false, hosting: true, retry: () => {} }),
+  useUpgrade: () => ({ run: async () => {}, busy: false }),
+}));
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({ router: { push: (...a: unknown[]) => mockPush(...a), replace: jest.fn() } }));
 jest.mock('@/lib/nav', () => ({ goBackOrHome: jest.fn() }));

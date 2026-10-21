@@ -1,0 +1,134 @@
+// The upgrade placements settle on the target entitlement, not on a transaction.
+import React from 'react';
+import { Alert } from 'react-native';
+
+process.env.EXPO_PUBLIC_SUPERWALL_API_KEY = 'pk_test';
+const mockRefreshPlan = jest.fn(async (_id: string) => ({}));
+jest.mock('@/lib/plan', () => ({ refreshPlan: (id: string) => mockRefreshPlan(id) }));
+const mockRelink = jest.fn(async (_o: unknown) => false);
+jest.mock('@/lib/setup/relink', () => ({ relinkShopPurchase: (o: unknown) => mockRelink(o) }));
+/* eslint-disable @typescript-eslint/no-require-imports */
+const { sw } = require('expo-superwall');
+const { usePaywall } = require('@/lib/paywall');
+const { setEntitlementsFromStatus, resetEntitlementsForTests } = require('@/lib/entitlements');
+const analytics = require('@/lib/analytics');
+const { PRODUCT_IDS } = require('@/lib/publish');
+const { act, create } = require('react-test-renderer') as {
+  act(fn: () => void): void;
+  create(el: React.ReactElement): { unmount(): void };
+};
+/* eslint-enable @typescript-eslint/no-require-imports */
+
+type Result = 'purchased' | 'restored' | 'declined';
+type P = 'publish' | 'bookings_upgrade' | 'store_upgrade';
+let show: (p: P) => Promise<Result>;
+let renderer: { unmount(): void };
+function Harness() {
+  show = usePaywall();
+  return null;
+}
+const SUB = (productId: string) => ({
+  transactionId: 'tx-1', productId, purchaseDate: '2026-10-20T00:00:00Z', isActive: true, isRevoked: false,
+});
+const ents = (...ids: string[]) => setEntitlementsFromStatus({ status: 'ACTIVE', entitlements: ids.map((id) => ({ id })) });
+
+function open(p: P) {
+  let result: Result | null = null;
+  const done = show(p).then((r) => (result = r));
+  return { done, current: () => result };
+}
+
+beforeEach(() => {
+  jest.useFakeTimers();
+  sw.reset();
+  resetEntitlementsForTests();
+  mockRefreshPlan.mockClear();
+  mockRelink.mockClear();
+  jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  act(() => {
+    renderer = create(React.createElement(Harness));
+  });
+});
+afterEach(() => {
+  act(() => renderer.unmount());
+  jest.restoreAllMocks();
+  jest.useRealTimers();
+});
+
+describe('bookings_upgrade', () => {
+  it('stays declined when the entitlement never turns on, even though a transaction exists', async () => {
+    ents('hosting');
+    sw.subscriptions = [SUB(PRODUCT_IDS[0])];
+    const run = open('bookings_upgrade'); // feature runs at once: the patient window starts
+    await jest.advanceTimersByTimeAsync(9_000);
+    expect(run.current()).toBeNull();
+    await jest.advanceTimersByTimeAsync(3_000);
+    expect(run.current()).toBe('declined');
+    expect(mockRefreshPlan).not.toHaveBeenCalled();
+  });
+
+  it('is purchased when the entitlement turns on during the window, then refreshes the plan and relinks', async () => {
+    ents('hosting');
+    sw.subscriptions = [SUB(PRODUCT_IDS[2])];
+    const track = jest.spyOn(analytics, 'track');
+    const run = open('bookings_upgrade');
+    await jest.advanceTimersByTimeAsync(2_000);
+    expect(run.current()).toBeNull();
+    ents('hosting', 'bookings');
+    await jest.advanceTimersByTimeAsync(600);
+    expect(run.current()).toBe('purchased');
+    await jest.advanceTimersByTimeAsync(0);
+    expect(mockRefreshPlan).toHaveBeenCalledWith('tx-1');
+    expect(mockRelink).toHaveBeenCalledTimes(1);
+    expect(track).toHaveBeenCalledWith('upgrade_result', { placement: 'bookings_upgrade', result: 'purchased' });
+  });
+
+  it('a dismiss without the entitlement is declined at once and quietly', async () => {
+    ents('hosting');
+    sw.register = () => new Promise<void>(() => {});
+    const run = open('bookings_upgrade');
+    sw.callbacks.onPresent?.({});
+    sw.callbacks.onDismiss?.({ closeReason: 'manualClose' }, { type: 'declined' });
+    await jest.advanceTimersByTimeAsync(100);
+    expect(run.current()).toBe('declined');
+    expect(Alert.alert).not.toHaveBeenCalled();
+  });
+
+  it('a skip explains itself with an Upgrade alert', async () => {
+    ents('hosting');
+    sw.register = () => new Promise<void>(() => {});
+    const run = open('bookings_upgrade');
+    sw.callbacks.onSkip?.({ type: 'Holdout' });
+    await jest.advanceTimersByTimeAsync(100);
+    expect(run.current()).toBe('declined');
+    expect((Alert.alert as jest.Mock).mock.calls[0][0]).toBe('Upgrade');
+  });
+});
+
+describe('store_upgrade', () => {
+  it('waits for the store entitlement, not bookings', async () => {
+    ents('hosting', 'bookings');
+    const run = open('store_upgrade');
+    await jest.advanceTimersByTimeAsync(12_000);
+    expect(run.current()).toBe('declined');
+    ents('hosting', 'bookings', 'store');
+    const again = open('store_upgrade');
+    await jest.advanceTimersByTimeAsync(0);
+    expect(again.current()).toBe('purchased');
+  });
+});
+
+describe('publish keeps the transaction rule', () => {
+  it('any of the six products counts as paid, with no hosting.* required', async () => {
+    sw.subscriptions = [SUB('com.ibrahim1774.aibarber.store.yearly')];
+    const run = open('publish');
+    await jest.advanceTimersByTimeAsync(0);
+    expect(run.current()).toBe('purchased');
+    expect(mockRefreshPlan).not.toHaveBeenCalled();
+  });
+  it('without a transaction it is declined', async () => {
+    const run = open('publish');
+    await jest.advanceTimersByTimeAsync(10_000);
+    expect(run.current()).toBe('declined');
+  });
+});

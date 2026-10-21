@@ -41,9 +41,13 @@ let mockCount = 0;
 jest.mock('@/lib/store/data', () => ({
   loadStoreSettings: async () => mockSettings,
   countNewOrders: async () => mockCount,
+  listOrders: async () => [],
 }));
 let mockAccess = 'active';
-jest.mock('@/lib/store/gate', () => ({ useStoreAccess: () => ({ status: mockAccess }), openStoreUpgrade: jest.fn() }));
+jest.mock('@/lib/store/gate', () => ({
+  useStoreAccess: () => ({ status: mockAccess, expired: false, retry: () => {} }),
+  useOpenStoreUpgrade: () => ({ open: jest.fn(), busy: false }),
+}));
 
 import Store from '@/app/(tabs)/store';
 
@@ -133,7 +137,7 @@ describe('Store tab', () => {
   it('an inactive store tier shows the upgrade card', async () => {
     mockAccess = 'inactive';
     const r = await render();
-    expect(texts(r)).toContain('Sell products from your shop');
+    expect(texts(r)).toContain('Sell from your website');
     expect(texts(r)).not.toContain('products');
   });
 });

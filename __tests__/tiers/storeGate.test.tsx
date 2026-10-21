@@ -1,0 +1,86 @@
+import React from 'react';
+import { allText, hasButton, press, render, act } from '../store/render';
+
+jest.mock('expo-router', () => {
+  const R = require('react');
+  return {
+    router: { push: jest.fn() },
+    useLocalSearchParams: () => ({}),
+    useFocusEffect: (cb: () => void) => R.useEffect(cb, []),
+  };
+});
+jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
+jest.mock('@/constants/theme', () => require('../store/themeMock'));
+jest.mock('@/components/ShareSheet', () => ({ ShareSheet: () => null }));
+jest.mock('@/components/store/StoreHeader', () => ({ StoreHeader: () => null }));
+jest.mock('@/components/store/products/ProductsPane', () => ({
+  ProductsPane: (p: { locked: boolean }) => {
+    const { Text } = require('react-native');
+    return <Text>{p.locked ? 'products-locked' : 'products'}</Text>;
+  },
+}));
+jest.mock('@/lib/shop', () => ({ loadMyShop: async () => ({ id: 's1', name: 'Fade Lab', slug: 'fade-lab' }) }));
+jest.mock('@/lib/siteStore', () => ({ loadSite: async () => null }));
+jest.mock('@/lib/subscriptionStatus', () => ({ useSubscriptionStatus: () => 'active', isLocked: () => false }));
+let mockOrders: any[] = [];
+jest.mock('@/lib/store/data', () => ({
+  ...jest.requireActual('@/lib/store/data'),
+  loadStoreSettings: async () => ({ storeEnabled: true }),
+  countNewOrders: async () => 0,
+  listOrders: async () => mockOrders,
+  getOrder: async () => null,
+}));
+const mockPaywall = jest.fn(async (_p: string) => 'declined');
+jest.mock('@/lib/paywall', () => ({ usePaywall: () => mockPaywall, useSuperwallSettled: () => true }));
+jest.mock('@/lib/setup/ownerApi', () => ({ call: jest.fn(async () => { throw new Error('offline'); }) }));
+
+import Store from '@/app/(tabs)/store';
+import { resetEntitlementsForTests, setEntitlementsFromStatus } from '@/lib/entitlements';
+import { order } from '../store/fixtures';
+
+const ents = (...ids: string[]) => act(() => setEntitlementsFromStatus({ status: 'ACTIVE', entitlements: ids.map((id) => ({ id })) }));
+const hasText = (tree: any, re: RegExp) => allText(tree).some((t) => re.test(t));
+
+beforeEach(() => {
+  resetEntitlementsForTests();
+  mockOrders = [];
+  mockPaywall.mockClear();
+});
+
+describe('Store tab gating', () => {
+  it('Bookings plan with no orders: the store UpgradeCard, opening store_upgrade', async () => {
+    ents('hosting', 'bookings');
+    const tree = await render(<Store />);
+    expect(hasText(tree, /Sell from your website/)).toBe(true);
+    await press(tree, 'See the Store plan');
+    expect(mockPaywall).toHaveBeenCalledWith('store_upgrade');
+  });
+
+  it('Bookings plan with orders: orders listed with actions available, products read-only, banner shown', async () => {
+    ents('hosting', 'bookings');
+    mockOrders = [order()];
+    const tree = await render(<Store />);
+    expect(hasText(tree, /Your shop page is offline/)).toBe(true);
+    expect(hasText(tree, /^products-locked$/)).toBe(true);
+    expect(hasText(tree, /Sell from your website/)).toBe(false);
+    // Orders tab: the real OrdersPane lists the order, unlocked, and its sheet offers Mark ready.
+    await act(async () => {
+      tree.root.findAll((n: any) => n.props.accessibilityRole === 'tab' && /^Orders/.test(n.props.accessibilityLabel))[0].props.onPress();
+    });
+    const rows = tree.root.findAll((n: any) => typeof n.props.onPress === 'function' && n.props.accessibilityRole === 'button');
+    expect(rows.length).toBeGreaterThan(0);
+    await act(async () => {
+      for (const r of rows) {
+        try { r.props.onPress(); } catch { /* not the order row */ }
+      }
+    });
+    expect(hasButton(tree, 'Mark ready')).toBe(true);
+  });
+
+  it('Store plan: normal', async () => {
+    ents('hosting', 'bookings', 'store');
+    const tree = await render(<Store />);
+    expect(hasText(tree, /^products$/)).toBe(true);
+    expect(hasText(tree, /offline/)).toBe(false);
+  });
+});

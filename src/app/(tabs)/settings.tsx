@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActionSheetIOS, ActivityIndicator, Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, useFocusEffect, useNavigation } from 'expo-router';
 import * as Application from 'expo-application';
 import * as WebBrowser from 'expo-web-browser';
@@ -12,7 +12,10 @@ import { deleteAccountAndData, deleteLocalData, onSiteAdopted } from '@/lib/acco
 import { track } from '@/lib/analytics';
 import { ApiError } from '@/lib/api';
 import { signOut, useSession } from '@/lib/auth';
+import { tierFromEntitlements, useEntitlements } from '@/lib/entitlements';
 import { goBackOrHome, resetTo } from '@/lib/nav';
+import { usePaywall } from '@/lib/paywall';
+import { planLabel } from '@/lib/plan';
 import { requestPublish } from '@/lib/publishRequest';
 import { useRestoreFlow } from '@/lib/restoreFlow';
 import { loadSite, type SiteRecord } from '@/lib/siteStore';
@@ -70,6 +73,23 @@ export default function Settings() {
   useLayoutEffect(() => {
     navigation.setOptions({ tabBarStyle: tabBarStyle(tabBarHidden) });
   }, [navigation, tabBarHidden]);
+
+  const ents = useEntitlements();
+  const paywall = usePaywall();
+  const planDetail = ents.known ? planLabel(tierFromEntitlements(ents)) : '';
+
+  // Upgrades open their paywall; downgrades and cancelling happen in Apple's Manage subscription.
+  const openPlan = () => {
+    track('plan_row_tapped');
+    const choices: { label: string; run(): void }[] = [];
+    if (!ents.bookings) choices.push({ label: 'Upgrade to Bookings', run: () => void paywall('bookings_upgrade') });
+    if (!ents.store) choices.push({ label: 'Upgrade to Store', run: () => void paywall('store_upgrade') });
+    choices.push({ label: 'Manage subscription', run: manageSubscription });
+    ActionSheetIOS.showActionSheetWithOptions(
+      { title: 'Your plan', options: [...choices.map((c) => c.label), 'Cancel'], cancelButtonIndex: choices.length },
+      (i) => choices[i]?.run(),
+    );
+  };
 
   const manageSubscription = () => {
     track('manage_subscription_tapped');
@@ -166,6 +186,7 @@ export default function Settings() {
       </Section>
 
       <Section title="Subscription">
+        <Row label="Plan" detail={planDetail} onPress={openPlan} chevron />
         <Row label="Restore purchases" onPress={() => void restore()} busy={restoring} />
         <Row label="Manage subscription" onPress={manageSubscription} external />
       </Section>

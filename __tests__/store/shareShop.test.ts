@@ -22,6 +22,11 @@ jest.mock('expo-clipboard', () => ({ setStringAsync: jest.fn() }));
 jest.mock('@/components/Icons', () => ({ ChevronRightIcon: () => null }));
 
 import { ShareSheet } from '@/components/ShareSheet';
+import { setEntitlementsFromStatus } from '@/lib/entitlements';
+
+beforeEach(() =>
+  setEntitlementsFromStatus({ status: 'ACTIVE', entitlements: [{ id: 'hosting' }, { id: 'bookings' }, { id: 'store' }] }),
+);
 
 describe('shop share kind', () => {
   it('the message holds the URL once', () => {

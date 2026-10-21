@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo, ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect, useNavigation } from 'expo-router';
@@ -6,7 +6,9 @@ import type { WebsiteData } from '@/web/types';
 import { colors, fonts } from '@/constants/theme';
 import { onSiteAdopted } from '@/lib/account';
 import { track } from '@/lib/analytics';
+import { useEntitlements } from '@/lib/entitlements';
 import { hasEntitlement } from '@/lib/paywall';
+import { stripLapsedLinks } from '@/lib/tierLinks';
 import { getPath, previewBackground, setPath } from '@/lib/editable';
 import { applyBookingLink, applyHomePrompts, fieldLabel, setColour, switchDesign } from '@/lib/editor';
 import { advanceOverlay, hasSeen, markSeen, nextOverlay, type Overlay } from '@/lib/overlayFlags';
@@ -51,6 +53,10 @@ export default function Editor() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const [site, setSite] = useState<SiteRecord | null>(null);
+  const ents = useEntitlements();
+  // The preview drops Book / Shop links the plan no longer covers (as the publish will). Never saved over the barber's data.
+  const siteData = site?.data;
+  const previewData = useMemo(() => (siteData ? stripLapsedLinks(siteData, ents) : null), [siteData, ents]);
   const subscription = useSubscriptionStatus();
   const locked = isLocked(site, subscription);
   // For the callbacks below: a locked tab runs a publish request whatever the overlay.
@@ -401,7 +407,7 @@ export default function Editor() {
       <View style={styles.body}>
         {/* The site's own background, so nothing else shows around the page. */}
         <View style={[styles.preview, { backgroundColor: previewBackground(data) }]}>
-          <SitePreview data={data} editable onEditText={onPreviewText} onEditImage={onPreviewImage} />
+          <SitePreview data={previewData ?? data} editable onEditText={onPreviewText} onEditImage={onPreviewImage} />
           {/* Hidden over a published site and while the prompts / guide are up. */}
           {site.slug == null && !site.deployedUrl && overlay == null && (
             <DesignSwitcher current={data.template} onSelect={handleDesign} busy={switching} />

@@ -8,6 +8,8 @@ import { appsFlyerUID, track, trackConversion } from '@/lib/analytics';
 import { api } from '@/lib/api';
 import { currentUserId } from '@/lib/auth';
 import { PaywallSettle, type PaywallResult } from '@/lib/paywallSettle';
+import { PLAN_ENTITLEMENT, getEntitlements, setEntitlementsFromStatus } from '@/lib/entitlements';
+import { refreshPlan } from '@/lib/plan';
 import { findTransactionId, pickLatestTransactionId, type PublishDeps } from '@/lib/publish';
 import { syncRevenueCatPurchases } from '@/lib/revenuecat';
 import * as siteStore from '@/lib/siteStore';
@@ -17,10 +19,10 @@ import {
 } from '@/lib/subscriptionStatus';
 
 /** Placements configured in the Superwall dashboard (AI Barber campaign). */
-export type Placement = 'publish';
+export type Placement = 'publish' | 'bookings_upgrade' | 'store_upgrade';
 export type { PaywallResult };
 
-const ENTITLEMENT = 'hosting';
+const PLAN_ENTITLEMENTS = ['hosting', 'bookings', 'store'];
 
 export const SUPERWALL_KEY = process.env.EXPO_PUBLIC_SUPERWALL_API_KEY ?? '';
 /** The provider is mounted only when a key exists. */
@@ -67,9 +69,11 @@ export function SubscriptionSync() {
 
   useEffect(() => {
     if (subscriptionStatus?.status === 'ACTIVE') {
-      entitled = subscriptionStatus.entitlements.some((e) => e.id === ENTITLEMENT);
+      // Any plan includes hosting; the others are accepted too in case a mapping lags.
+      entitled = subscriptionStatus.entitlements.some((e) => PLAN_ENTITLEMENTS.includes(e.id));
     }
     if (subscriptionStatus?.status === 'INACTIVE') entitled = false;
+    setEntitlementsFromStatus(subscriptionStatus);
   }, [subscriptionStatus]);
 
   useSuperwallEvents({
@@ -84,6 +88,22 @@ export function SubscriptionSync() {
   });
 
   return null;
+}
+
+/** How long an upgrade placement waits for the target entitlement to turn on after a purchase. */
+const UPGRADE_PATIENCE_MS = 10_000;
+const UPGRADE_POLL_MS = 500;
+
+const isUpgrade = (p: Placement): p is 'bookings_upgrade' | 'store_upgrade' => p !== 'publish';
+
+/** The target entitlement is active now; when patient, keeps re-reading for up to 10 s. */
+async function entitlementActive(target: 'bookings' | 'store', patient: boolean): Promise<boolean> {
+  const end = Date.now() + UPGRADE_PATIENCE_MS;
+  for (;;) {
+    if (getEntitlements()[target]) return true;
+    if (!patient || Date.now() >= end) return false;
+    await new Promise((r) => setTimeout(r, UPGRADE_POLL_MS));
+  }
 }
 
 /** As long as Superwall's own awaitConfigured waits. */
@@ -233,16 +253,28 @@ function useSuperwallPaywall() {
     (placement: Placement) =>
       new Promise<PaywallResult>((resolve) => {
         session.current?.supersede();
-        const verify = async (patient: boolean) =>
-          (patient ? await findTransactionId(latestTransactionId) : await latestTransactionId()) != null;
-        const s = new PaywallSettle(verify, (result, { presented }) => {
-          if (session.current === s) session.current = null;
-          // Bought or restored on the paywall: RevenueCat (observer) syncs in the background.
-          if (result !== 'declined') syncRevenueCatPurchases();
-          // No paywall ever showed (skip, holdout, error, timeout): say why nothing happened.
-          if (result === 'declined' && !presented) Alert.alert('Publish', PAYWALL_ERROR);
-          resolve(result);
-        });
+        // An upgrade is paid when its target entitlement is active (a transaction always exists for a
+        // subscriber); the publish paywall is paid when any of the plan's transactions exists.
+        const verify = isUpgrade(placement)
+          ? (patient: boolean) => entitlementActive(PLAN_ENTITLEMENT[placement], patient)
+          : async (patient: boolean) =>
+              (patient ? await findTransactionId(latestTransactionId) : await latestTransactionId()) != null;
+        const s = new PaywallSettle(
+          verify,
+          (result, { presented }) => {
+            if (session.current === s) session.current = null;
+            // Bought or restored on the paywall: RevenueCat (observer) syncs in the background.
+            if (result !== 'declined') syncRevenueCatPurchases();
+            if (isUpgrade(placement)) {
+              track('upgrade_result', { placement, result });
+              if (result !== 'declined') afterUpgrade(latestTransactionId);
+            }
+            // No paywall ever showed (skip, holdout, error, timeout): say why nothing happened.
+            if (result === 'declined' && !presented) Alert.alert(isUpgrade(placement) ? 'Upgrade' : 'Publish', PAYWALL_ERROR);
+            resolve(result);
+          },
+          isUpgrade(placement) ? UPGRADE_PATIENCE_MS + 1000 : undefined,
+        );
         session.current = s;
         track('placement_registered', { placement });
         registerPlacement({ placement, feature: () => s.feature() }).catch((e) => {
@@ -252,6 +284,15 @@ function useSuperwallPaywall() {
       }),
     [latestTransactionId, registerPlacement],
   );
+}
+
+/** After an upgrade purchase: link the shop to it (quietly), then have the server read the new plan. */
+function afterUpgrade(latestTransactionId: () => Promise<string | null>): void {
+  void relinkShopPurchase({ latestTransactionId });
+  (async () => {
+    const id = await latestTransactionId();
+    if (id) await refreshPlan(id);
+  })().catch((e) => console.warn('[paywall] plan refresh failed:', e));
 }
 
 export function useLatestTransactionId() {
