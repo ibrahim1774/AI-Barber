@@ -135,3 +135,62 @@ describe('checkout return and reschedule ids', () => {
     expect(resolveIds({ serviceId: null, serviceName: 'Nope', memberName: 'Dre' }, shop)).toBeNull();
   });
 });
+
+import { bookingErrorMessage, rescheduleErrorMessage, sentErrorMessage, manualMethods } from '../../src/book/logic';
+import { mockFetch } from '../../src/book/mock';
+import { createApi, ApiError } from '../../src/book/api';
+
+describe('friendly API errors', () => {
+  it('rate-limited uses the server message, else the fallback', () => {
+    expect(bookingErrorMessage({ status: 429, code: 'rate-limited', serverMessage: 'Slow down, please.' })).toBe('Slow down, please.');
+    expect(bookingErrorMessage({ status: 429, code: 'rate-limited' })).toBe('Too many bookings right now. Please try again in a few minutes.');
+    expect(bookingErrorMessage({ status: 429, code: 'rate-limited', serverMessage: '  ' })).toBe('Too many bookings right now. Please try again in a few minutes.');
+  });
+  it('400 on method asks to choose a payment method, with no raw code', () => {
+    const m = bookingErrorMessage({ status: 400, code: 'invalid', field: 'method' });
+    expect(m).toBe('Please choose how you want to send payment.');
+    expect(m).not.toMatch(/invalid|method/);
+  });
+  it('reschedule 409 variants', () => {
+    expect(rescheduleErrorMessage({ status: 409, code: 'duplicate' })).toBe('You already have a booking at that time.');
+    expect(rescheduleErrorMessage({ status: 409, code: 'appointment-changed' })).toBe('This booking was just changed. Reload to see the latest.');
+    expect(rescheduleErrorMessage({ status: 409, code: 'slot-taken' })).toBe('Sorry, that time was just taken.');
+  });
+  it('sent not-awaiting-payment', () => {
+    expect(sentErrorMessage({ status: 409, code: 'not-awaiting-payment' })).toBe("This booking doesn't need a payment sent.");
+    expect(sentErrorMessage({ status: 500, code: 'error' })).toBe("Couldn't record that. Try again.");
+    expect(sentErrorMessage(null)).toBe("Couldn't record that. Try again.");
+  });
+});
+
+describe('mock API with manual method', () => {
+  // The mock reads location.search for the checkout flag.
+  (globalThis as any).location ??= { search: '' };
+  const api = createApi(mockFetch);
+  const base = { slug: 'demo', serviceId: 's1', memberId: 'any', start: '2026-12-01T15:00:00Z', customer: { name: 'Sam', phone: '5550102030', email: 's@x.co' } };
+  it('books with a method and accepts /sent for the same method only', async () => {
+    const r = await api.book({ ...base, pay: 'manual', method: 'venmo' });
+    expect(r.appointment.id).toBe('a1');
+    await expect(api.sent('t', 'venmo')).resolves.toEqual({});
+    await expect(api.sent('t', 'zelle')).rejects.toMatchObject({ status: 409, code: 'not-awaiting-payment' });
+  });
+  it('rejects a method with the wrong pay type or an unknown handle', async () => {
+    await expect(api.book({ ...base, pay: 'shop', method: 'venmo' })).rejects.toMatchObject({ status: 400, field: 'method' });
+    await expect(api.book({ ...base, pay: 'manual', method: 'bitcoin' as any })).rejects.toMatchObject({ status: 400, field: 'method' });
+  });
+  it('returns 429 with a message and surfaces it on ApiError', async () => {
+    const e = await api.book({ ...base, customer: { ...base.customer, name: 'ratelimit' }, pay: 'shop' }).catch((x) => x);
+    expect(e).toBeInstanceOf(ApiError);
+    expect(e.status).toBe(429);
+    expect(bookingErrorMessage(e)).toBe(e.serverMessage);
+  });
+  it('reschedule duplicate / appointment-changed', async () => {
+    const at = (h: number) => DateTime.fromISO('2026-12-01', { zone: 'America/New_York' }).set({ hour: h }).toUTC().toISO()!;
+    await expect(api.reschedule('t', at(16))).rejects.toMatchObject({ status: 409, code: 'duplicate' });
+    await expect(api.reschedule('t', at(17))).rejects.toMatchObject({ status: 409, code: 'appointment-changed' });
+    await expect(api.reschedule('t', at(10))).resolves.toBeTruthy();
+  });
+  it('one payment row per manual method', () => {
+    expect(manualMethods({ venmo: '@a', zelle: '1', cashapp: ' ' })).toEqual(['venmo', 'zelle']);
+  });
+});

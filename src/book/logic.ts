@@ -278,3 +278,37 @@ export function resolveIds(
   const memberId = a.memberId || shop.members.find((m) => m.name === a.memberName)?.id || 'any';
   return { serviceId, memberId };
 }
+
+/* ---------- friendly API error messages ---------- */
+
+export type ErrLike = { status: number; code: string; field?: string; serverMessage?: string };
+
+export const RATE_LIMITED_FALLBACK = 'Too many bookings right now. Please try again in a few minutes.';
+
+/** Plain-words message for a failed booking create, or null when the caller has special handling (paused, slot-taken). */
+export function bookingErrorMessage(e: ErrLike): string {
+  if (e.status === 429 || e.code === 'rate-limited') return e.serverMessage?.trim() || RATE_LIMITED_FALLBACK;
+  if (e.status === 409 && e.code === 'duplicate') return 'You already have a booking at that time. Check your email for the manage link.';
+  if (e.status === 409) return 'Sorry, that time was just taken.';
+  if (e.status === 400 && e.field === 'method') return 'Please choose how you want to send payment.';
+  if (e.status === 400) return `Please check your ${e.field || 'details'}.`;
+  if (e.status === 404) return 'This shop is no longer available.';
+  return 'Something went wrong. Please try again.';
+}
+
+/** Plain-words message for a failed reschedule. */
+export function rescheduleErrorMessage(e: ErrLike): string {
+  if (e.status === 409 && e.code === 'duplicate') return 'You already have a booking at that time.';
+  if (e.status === 409 && e.code === 'appointment-changed') return 'This booking was just changed. Reload to see the latest.';
+  if (e.status === 409) return 'Sorry, that time was just taken.';
+  if (e.status === 403) return "It's too late to reschedule online. Please call the shop.";
+  if (e.status === 423) return 'Bookings are paused for now \u2014 call the shop.';
+  if (e.status === 429) return 'Too many tries. Wait a minute and try again.';
+  return 'Something went wrong. Please try again.';
+}
+
+/** Plain-words message for a failed "I've sent it". */
+export function sentErrorMessage(e: ErrLike | null): string {
+  if (e && e.status === 409 && e.code === 'not-awaiting-payment') return "This booking doesn't need a payment sent.";
+  return "Couldn't record that. Try again.";
+}

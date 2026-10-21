@@ -6,6 +6,7 @@ export class ApiError extends Error {
   }
   get alternatives(): Slot[] { return Array.isArray(this.body?.alternatives) ? this.body.alternatives : []; }
   get field(): string | undefined { return this.body?.field; }
+  get serverMessage(): string | undefined { return typeof this.body?.message === 'string' ? this.body.message : undefined; }
 }
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
@@ -35,7 +36,7 @@ export function createApi(fetchImpl: FetchLike = (i, init) => fetch(i, init)) {
       call<{ slots: Slot[] }>(`/api/book/slots?${q({ slug, serviceId, memberId, date })}`),
     book: (b: {
       slug: string; serviceId: string; memberId: string; start: string;
-      customer: { name: string; phone: string; email: string }; note?: string; pay: PayChoice;
+      customer: { name: string; phone: string; email: string }; note?: string; pay: PayChoice; method?: ManualMethod;
     }) => post('/api/book/appointments', b) as Promise<CreateResponse>,
     manage: (token: string) => call<ManageResponse>(`/api/book/manage?${q({ token })}`),
     cancel: (token: string) => post('/api/book/manage', { token, action: 'cancel' }),

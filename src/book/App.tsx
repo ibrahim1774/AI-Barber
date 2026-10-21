@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ApiError, type Api } from './api';
 import { DayPicker, TimePicker } from './pickers';
 import {
-  buildIcs, directionsUrl, eligibleMembers, formatMoney, formatWhen, manualAmountCents, manualLink, manualMethods,
+  bookingErrorMessage, buildIcs, directionsUrl, rescheduleErrorMessage, sentErrorMessage, eligibleMembers, formatMoney, formatWhen, manualAmountCents, manualLink, manualMethods,
   METHOD_LABEL, nextStep, onAccent, parseRoute, payOptions, prevStep, progress, safeAccent, serviceLabel, telUrl,
   tokenFromManageUrl, type Step, formatDay, parseCheckout, shouldKeepPolling, resolveIds, CHECKOUT_POLL_MS, type CheckoutReturn,
 } from './logic';
@@ -65,26 +65,29 @@ function Flow({ api, d }: { api: Api; d: Loaded }) {
   const [problem, setProblem] = useState<string | null>(null);
   const [alts, setAlts] = useState<Slot[]>([]);
   const [paused, setPaused] = useState(false);
-  const [done, setDone] = useState<{ appt: BookedAppointment; manual: boolean } | null>(null);
+  const [done, setDone] = useState<{ appt: BookedAppointment; method: ManualMethod | null } | null>(null);
 
   const elig = eligibleMembers(members, service?.id ?? null);
   const options = payOptions(shop.pay);
-  const ctx = { barberCount: elig.length, payOptionCount: options.length };
+  // One payment row per manual method, so a shop with several handles always reaches the payment step.
+  const mm = manualMethods(shop.pay.manual);
+  const rowCount = options.filter((o) => o !== 'manual').length + mm.length;
+  const ctx = { barberCount: elig.length, payOptionCount: rowCount };
   const go = (s: Step) => { setProblem(null); setAlts([]); setStep(s); };
   const back = () => go(prevStep(step, ctx));
   const pr = progress(step, ctx);
 
-  async function submit(pay: PayChoice) {
+  async function submit(pay: PayChoice, method?: ManualMethod) {
     if (!service || !slot) return;
     setBusy(true); setProblem(null); setAlts([]);
     try {
       const r = await api.book({
         slug: shop.slug, serviceId: service.id, memberId: memberId === 'any' ? 'any' : memberId,
         start: slot.start, customer: { name: cust.name.trim(), phone: cust.phone.trim(), email: cust.email.trim() },
-        note: cust.note.trim() || undefined, pay,
+        note: cust.note.trim() || undefined, pay, ...(pay === 'manual' && method ? { method } : {}),
       });
       if (pay === 'card' && r.checkoutUrl) { window.location.assign(r.checkoutUrl); return; }
-      setDone({ appt: r.appointment, manual: pay === 'manual' });
+      setDone({ appt: r.appointment, method: pay === 'manual' ? method ?? null : null });
       setStep('confirmed');
     } catch (e) {
       if (!(e instanceof ApiError)) setProblem('Something went wrong. Please try again.');
@@ -92,16 +95,15 @@ function Flow({ api, d }: { api: Api; d: Loaded }) {
       else if (e.status === 409 && e.code === 'slot-taken') {
         setProblem('Sorry, that time was just taken.'); setAlts(e.alternatives);
         if (!e.alternatives.length) setStep('time');
-      } else if (e.status === 409) setProblem('You already have a booking at that time. Check your email for the manage link.');
-      else if (e.status === 400) { setProblem(`Please check your ${e.field || 'details'}.`); setStep('details'); }
-      else if (e.status === 404) setProblem('This shop is no longer available.');
-      else if (e.status === 429) setProblem('Too many tries. Wait a minute and try again.');
-      else setProblem('Something went wrong. Please try again.');
+      } else {
+        setProblem(bookingErrorMessage(e));
+        if (e.status === 400) setStep(e.field === 'method' ? 'payment' : 'details');
+      }
     } finally { setBusy(false); }
   }
 
   if (paused) return <Message title={shop.name} body="Bookings are paused for now — call the shop." />;
-  if (step === 'confirmed' && done) return <Confirmation api={api} shop={shop} appt={done.appt} manual={done.manual} />;
+  if (step === 'confirmed' && done) return <Confirmation api={api} shop={shop} appt={done.appt} method={done.method} />;
 
   const header = (
     <>
@@ -167,7 +169,7 @@ function Flow({ api, d }: { api: Api; d: Loaded }) {
         <Summary service={service} slot={slot} tz={tz} members={members} memberId={memberId} />
         <DetailsForm cust={cust} setCust={setCust} busy={busy}
           submitLabel={ctx.payOptionCount > 1 ? 'Continue' : options[0] === 'card' ? 'Continue to payment' : 'Book'}
-          onSubmit={() => { ctx.payOptionCount > 1 ? go('payment') : submit(options[0]); }} />
+          onSubmit={() => { ctx.payOptionCount > 1 ? go('payment') : submit(options[0], options[0] === 'manual' ? mm[0] : undefined); }} />
         {altsBlock}
       </>}
       {step === 'payment' && service && slot && <>
@@ -175,7 +177,7 @@ function Flow({ api, d }: { api: Api; d: Loaded }) {
         <Summary service={service} slot={slot} tz={tz} members={members} memberId={memberId} />
         {options.includes('shop') && <button className="row" disabled={busy} onClick={() => submit('shop')}><span className="grow"><div className="t">Pay in shop</div><div className="m">Settle up at your appointment</div></span></button>}
         {options.includes('card') && <button className="row" disabled={busy} onClick={() => submit('card')}><span className="grow"><div className="t">Pay online by card</div><div className="m">{service.depositCents > 0 ? `${formatMoney(service.depositCents)} deposit` : 'Card or Apple Pay'}, secure checkout</div></span></button>}
-        {options.includes('manual') && <button className="row" disabled={busy} onClick={() => submit('manual')}><span className="grow"><div className="t">{manualMethods(shop.pay.manual).map((m) => METHOD_LABEL[m]).join(' · ')}</div><div className="m">Book now, then send payment</div></span></button>}
+        {options.includes('manual') && manualMethods(shop.pay.manual).map((m) => <button key={m} className="row" disabled={busy} onClick={() => submit('manual', m)}><span className="grow"><div className="t">{METHOD_LABEL[m]}</div><div className="m">Book now, then send payment</div></span></button>)}
         {busy && <Spinner />}
         {altsBlock}
       </>}
@@ -233,7 +235,7 @@ function downloadIcs(a: { id: string; start: string; end: string; summary: strin
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function Confirmation({ api, shop, appt, manual }: { api: Api; shop: Shop; appt: BookedAppointment; manual: boolean }) {
+function Confirmation({ api, shop, appt, method }: { api: Api; shop: Shop; appt: BookedAppointment; method: ManualMethod | null }) {
   const tz = shop.timezone;
   const token = tokenFromManageUrl(appt.manageUrl);
   const amount = manualAmountCents(appt.priceCents, appt.depositCents);
@@ -247,7 +249,7 @@ function Confirmation({ api, shop, appt, manual }: { api: Api; shop: Shop; appt:
         <div><span>Barber</span><span>{appt.memberName}</span></div>
         {shop.address && <div><span>Where</span><span>{shop.address}</span></div>}
       </div>
-      {manual && <ManualPay api={api} shop={shop} token={token} cents={amount} note={`${appt.serviceName} ${formatDay(appt.start, tz)}`} />}
+      {method && shop.pay.manual[method] && <ManualPay api={api} shop={shop} method={method} token={token} cents={amount} note={`${appt.serviceName} ${formatDay(appt.start, tz)}`} />}
       <button className="btn" onClick={() => downloadIcs({ id: appt.id, start: appt.start, end: appt.end, summary: `${appt.serviceName} at ${shop.name}`, location: shop.address })}>Add to calendar</button>
       {shop.address && <a className="btn ghost" href={directionsUrl(shop.address)} target="_blank" rel="noopener">Get directions</a>}
       <a className="btn ghost" href={appt.manageUrl}>Manage booking</a>
@@ -256,31 +258,28 @@ function Confirmation({ api, shop, appt, manual }: { api: Api; shop: Shop; appt:
   );
 }
 
-function ManualPay({ api, shop, token, cents, note }: { api: Api; shop: Shop; token: string; cents: number | null; note: string }) {
-  const methods = manualMethods(shop.pay.manual);
-  const [sent, setSent] = useState<ManualMethod | null>(null);
+function ManualPay({ api, shop, method, token, cents, note }: { api: Api; shop: Shop; method: ManualMethod; token: string; cents: number | null; note: string }) {
+  const [sent, setSent] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [err, setErr] = useState(false);
-  const [last, setLast] = useState<ManualMethod | null>(null);
-  async function mark(m: ManualMethod) {
-    setErr(false);
-    try { await api.sent(token, m); setSent(m); } catch { setErr(true); }
+  const [err, setErr] = useState<string | null>(null);
+  async function mark() {
+    setErr(null);
+    try { await api.sent(token, method); setSent(true); }
+    catch (e) { setErr(sentErrorMessage(e instanceof ApiError ? e : null)); }
   }
-  if (sent) return <div className="note" role="status">Thanks! {shop.name} will confirm your {METHOD_LABEL[sent]} payment.</div>;
+  if (sent) return <div className="note" role="status">Thanks! {shop.name} will confirm your {METHOD_LABEL[method]} payment.</div>;
+  const handle = shop.pay.manual[method]!;
+  const link = manualLink(method, handle, cents, note);
   return (
     <div className="note" style={{ textAlign: 'left' }}>
       <strong>Send payment{cents ? ` of ${formatMoney(cents)}` : ''}</strong>
-      {methods.map((m) => {
-        const handle = shop.pay.manual[m]!;
-        const link = manualLink(m, handle, cents, note);
-        return link
-          ? <a key={m} className="btn ghost" href={link} target="_blank" rel="noopener" onClick={() => setLast(m)}>Pay with {METHOD_LABEL[m]}</a>
-          : <button key={m} className="btn ghost" onClick={() => { navigator.clipboard?.writeText(handle).catch(() => {}); setCopied(true); setLast(m); }}>
-              {copied ? `Copied ${handle}` : `Zelle: ${handle} (tap to copy)`}
-            </button>;
-      })}
-      <button className="btn" disabled={!last && methods.length > 1} onClick={() => mark(last || methods[0])}>I've sent it{last ? ` (${METHOD_LABEL[last]})` : ''}</button>
-      {err && <p className="err" role="alert">Couldn't record that. Try again.</p>}
+      {link
+        ? <a className="btn ghost" href={link} target="_blank" rel="noopener">Pay with {METHOD_LABEL[method]}</a>
+        : <button className="btn ghost" onClick={() => { navigator.clipboard?.writeText(handle).catch(() => {}); setCopied(true); }}>
+            {copied ? `Copied ${handle}` : `${METHOD_LABEL[method]}: ${handle} (tap to copy)`}
+          </button>}
+      <button className="btn" onClick={mark}>I've sent it</button>
+      {err && <p className="err" role="alert">{err}</p>}
     </div>
   );
 }
@@ -397,10 +396,11 @@ function Reschedule({ api, token, data, onBack, onDone }: { api: Api; token: str
     setBusy(true); setProblem(null); setAlts([]);
     try { await api.reschedule(token, s.start, s.memberId); onDone(); }
     catch (e) {
-      if (e instanceof ApiError && e.status === 409) { setProblem('Sorry, that time was just taken.'); setAlts(e.alternatives); }
-      else if (e instanceof ApiError && e.status === 403) setProblem("It's too late to reschedule online. Please call the shop.");
-      else if (e instanceof ApiError && e.status === 423) setProblem('Bookings are paused for now — call the shop.');
-      else setProblem('Something went wrong. Please try again.');
+      if (!(e instanceof ApiError)) setProblem('Something went wrong. Please try again.');
+      else {
+        setProblem(rescheduleErrorMessage(e));
+        if (e.status === 409 && e.code === 'slot-taken') setAlts(e.alternatives);
+      }
     } finally { setBusy(false); }
   }
 
