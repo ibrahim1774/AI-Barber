@@ -73,7 +73,7 @@ describe('009_store.sql', () => {
 
   it('every add constraint sits inside a duplicate_object block', () => {
     const total = (c.match(/add constraint/gi) ?? []).length;
-    expect(total).toBeGreaterThanOrEqual(11);
+    expect(total).toBeGreaterThanOrEqual(12);
     const outside = f.replace(
       /do \$\$ begin alter table [^;]+ add constraint [^;]+; exception when duplicate_object then null; end \$\$;/gi,
       '',
@@ -84,9 +84,13 @@ describe('009_store.sql', () => {
   it('names every contract check', () => {
     for (const n of [
       'ab_shops_pickup_note_len', 'ab_shops_shipping_flat_max', 'ab_shops_ships_within_max',
-      'ab_products_photos_max', 'ab_products_name_len', 'ab_products_desc_len', 'ab_products_price_max',
+      'ab_products_photos_max', 'ab_products_name_len', 'ab_products_desc_len', 'ab_products_price_max', 'ab_products_price_min',
       'ab_orders_refund_due_nonneg', 'ab_orders_cancelled_by', 'ab_orders_client_key_fmt', 'ab_order_items_qty_max',
     ]) expect(f).toContain(`add constraint ${n} check`);
+  });
+
+  it('products cost at least 50 cents (Stripe card minimum), checked on new writes only', () => {
+    expect(f).toContain('add constraint ab_products_price_min check (price_cents >= 50) not valid;');
   });
 
   it('creates the order-number trigger only inside an if-not-exists pg_trigger block', () => {

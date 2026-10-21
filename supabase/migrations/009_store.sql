@@ -51,6 +51,11 @@ exception when duplicate_object then null; end $$;
 do $$ begin
   alter table public.ab_products add constraint ab_products_price_max check (price_cents <= 1000000);
 exception when duplicate_object then null; end $$;
+-- Stripe's card minimum: every product costs at least $0.50. NOT VALID: existing rows are not
+-- re-checked (there are none in production); every insert and update is.
+do $$ begin
+  alter table public.ab_products add constraint ab_products_price_min check (price_cents >= 50) not valid;
+exception when duplicate_object then null; end $$;
 
 -- ---------------------------------------------------------------------------
 -- ab_orders
