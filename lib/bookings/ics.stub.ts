@@ -48,7 +48,7 @@ export function appointmentsToIcs(appointments: FeedAppointment[], opts: FeedOpt
     const desc = [a.customerPhone ? `Phone: ${a.customerPhone}` : '', a.note ? `Note: ${a.note}` : '']
       .filter(Boolean).join('\n');
     lines.push('BEGIN:VEVENT', `UID:${a.id}@aibarber.org`, `DTSTAMP:${stamp(now)}`, `DTSTART:${stamp(a.start)}`,
-      `DTEND:${stamp(a.end)}`, `SUMMARY:${esc(`${a.customerName || 'Walk-in'} – ${a.serviceName}`)}`);
+      `DTEND:${stamp(a.end)}`, `SUMMARY:${esc(a.customerName?.trim() ? `${a.serviceName} · ${a.customerName.trim()}` : a.serviceName)}`);
     if (desc) lines.push(`DESCRIPTION:${esc(desc)}`);
     if (opts.location) lines.push(`LOCATION:${esc(opts.location)}`);
     lines.push(`STATUS:${a.status === 'cancelled' ? 'CANCELLED' : 'CONFIRMED'}`, 'END:VEVENT');

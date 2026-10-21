@@ -440,7 +440,8 @@ describe('GET /api/book/ics', () => {
     expect(body).toContain('BEGIN:VCALENDAR');
     expect(body.match(/BEGIN:VEVENT/g)).toHaveLength(1);
     expect(body).toContain('DTSTART:20261103T150000Z');
-    expect(body).toContain('SUMMARY:Sam Lee – Haircut');
+    expect(body).toContain('SUMMARY:Haircut · Sam Lee');
+    expect(body).toContain('UID:');
     expect((await getIcs({ t: 'z'.repeat(40) }, w.deps)).status).toBe(404);
   });
 });
