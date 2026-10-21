@@ -136,6 +136,8 @@ export interface AppointmentRow {
    * while it is above amount_refunded_cents the refund is still pending (retryPendingRefunds).
    */
   refund_due_cents: number;
+  /** Set when the retry sweep gave up (006); refund_due_cents is left as it was. */
+  refund_stuck_at: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -150,7 +152,7 @@ export type AppointmentPatch = Partial<Pick<
   AppointmentRow,
   | 'member_id' | 'start_at' | 'end_at' | 'status' | 'cancelled_by' | 'cancelled_at' | 'reminder_sent_at'
   | 'payment_status' | 'payment_method' | 'amount_paid_cents' | 'amount_refunded_cents' | 'stripe_checkout_session_id'
-  | 'customer_says_paid_at' | 'shop_rescheduled_at' | 'refund_due_cents'
+  | 'customer_says_paid_at' | 'shop_rescheduled_at' | 'refund_due_cents' | 'refund_stuck_at'
 >>;
 
 /**
@@ -171,6 +173,8 @@ export interface AppointmentGuard {
   refundedLte?: number;
   /** refund_due_cents equals this. */
   refundDue?: number;
+  /** refund_stuck_at is null. */
+  notStuck?: boolean;
 }
 
 export type WriteResult<T> = { ok: true; row: T } | { ok: false; reason: 'overlap' | 'stale' };
@@ -234,7 +238,7 @@ export interface BookingRepo {
   staleCardHolds(createdBeforeIso: string, limit: number): Promise<AppointmentRow[]>;
   /**
    * Cancelled card bookings whose cancel refund is still owed (refund_due_cents >
-   * amount_refunded_cents, via 006's generated refund_pending) with a payment intent, last
+   * amount_refunded_cents and not stuck, via 006's generated refund_pending) with a payment intent, last
    * updated before `updatedBeforeIso`, oldest first.
    */
   pendingRefunds(updatedBeforeIso: string, limit: number): Promise<AppointmentRow[]>;
@@ -366,6 +370,7 @@ export function supabaseBookingRepo(client?: SupabaseClient): BookingRepo {
       if (g.paidCents != null) q = q.eq('amount_paid_cents', g.paidCents);
       if (g.refundedLte != null) q = q.lte('amount_refunded_cents', g.refundedLte);
       if (g.refundDue != null) q = q.eq('refund_due_cents', g.refundDue);
+      if (g.notStuck) q = q.is('refund_stuck_at', null);
       const { data, error } = await q.select(APPT_COLS);
       if (isOverlap(error)) return { ok: false, reason: 'overlap' };
       if (error) fail('updateAppointment', error);

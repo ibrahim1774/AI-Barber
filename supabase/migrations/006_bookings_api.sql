@@ -36,9 +36,12 @@ alter table public.ab_appointments add column if not exists refund_due_cents int
 do $$ begin
   alter table public.ab_appointments add constraint ab_appointments_refund_due_nonneg check (refund_due_cents >= 0);
 exception when duplicate_object then null; end $$;
+-- Set when retryPendingRefunds gives up (23 h after the cancel, inside Stripe's 24 h
+-- idempotency window). refund_due_cents is never lowered, so the debt stays on the row.
+alter table public.ab_appointments add column if not exists refund_stuck_at timestamptz;
 -- PostgREST can't compare two columns, so the sweep filters on this generated flag.
 alter table public.ab_appointments add column if not exists refund_pending bool
-  generated always as (refund_due_cents > amount_refunded_cents) stored;
+  generated always as (refund_due_cents > amount_refunded_cents and refund_stuck_at is null) stored;
 create index if not exists ab_appointments_refund_pending_idx on public.ab_appointments (updated_at)
   where refund_pending;
 
@@ -49,12 +52,13 @@ create index if not exists ab_appointments_refund_pending_idx on public.ab_appoi
 -- ---------------------------------------------------------------------------
 grant update (address, phone, accent, daily_summary) on public.ab_shops to authenticated;
 
--- Owners no longer UPDATE ab_appointments directly: status and money changes go through the
--- server (POST /api/shop/appointments/:id/{cancel,reschedule,mark}, the Stripe webhook), so
+-- Owners no longer INSERT, UPDATE or DELETE ab_appointments directly: walk-ins, status and
+-- money changes go through the server (POST /api/shop/appointments[/:id/{cancel,reschedule,mark}],
+-- the Stripe webhook), so
 -- amount_paid_cents, amount_refunded_cents, the Stripe ids and payment_status can't be
 -- edited from the app. No column grants are added back. Owners keep SELECT (RLS), and the
 -- service role is unaffected.
-revoke update on public.ab_appointments from authenticated;
+revoke insert, update, delete on public.ab_appointments from authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Rate limits shared by every serverless instance (lib/bookings/rateLimit.ts): per-IP limits

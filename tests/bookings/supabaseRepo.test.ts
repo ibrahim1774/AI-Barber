@@ -40,6 +40,7 @@ describe('supabaseBookingRepo', () => {
     const { client, calls } = fakeClient({ data: [{ id: 'id' }], error: null });
     await supabaseBookingRepo(client).updateAppointment('id', { payment_status: 'paid' }, {
       status: 'booked', startAt: 's', paymentStatusIn: ['none', 'awaiting'], notCard: true, method: 'venmo', paidCents: 0, refundedLte: 500,
+      refundDue: 700, notStuck: true,
     });
     expect(calls).toEqual(expect.arrayContaining([
       ['eq', ['status', 'booked']],
@@ -49,6 +50,8 @@ describe('supabaseBookingRepo', () => {
       ['eq', ['payment_method', 'venmo']],
       ['eq', ['amount_paid_cents', 0]],
       ['lte', ['amount_refunded_cents', 500]],
+      ['eq', ['refund_due_cents', 700]],
+      ['is', ['refund_stuck_at', null]],
     ]));
   });
 

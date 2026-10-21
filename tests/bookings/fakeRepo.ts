@@ -70,7 +70,7 @@ export function fakeRepo(state: State, nowFn: () => number = Date.now): BookingR
       const full: AppointmentRow = {
         id: randomUUID(), status: 'booked', cancelled_by: null, cancelled_at: null, reminder_sent_at: null,
         amount_paid_cents: 0, amount_refunded_cents: 0, stripe_payment_intent_id: null, stripe_checkout_session_id: null,
-        manage_token: tok(), customer_says_paid_at: null, shop_rescheduled_at: null, refund_due_cents: 0,
+        manage_token: tok(), customer_says_paid_at: null, shop_rescheduled_at: null, refund_due_cents: 0, refund_stuck_at: null,
         created_at: new Date(nowFn()).toISOString(), updated_at: new Date(nowFn()).toISOString(), ...row,
       };
       const m = state.members.find((x) => x.id === full.member_id);
@@ -97,7 +97,8 @@ export function fakeRepo(state: State, nowFn: () => number = Date.now): BookingR
         && (!g.method || cur.payment_method === g.method)
         && (g.paidCents == null || cur.amount_paid_cents === g.paidCents)
         && (g.refundedLte == null || cur.amount_refunded_cents <= g.refundedLte)
-        && (g.refundDue == null || cur.refund_due_cents === g.refundDue);
+        && (g.refundDue == null || cur.refund_due_cents === g.refundDue)
+        && (!g.notStuck || cur.refund_stuck_at == null);
       if (!cur || !matches) return { ok: false, reason: 'stale' };
       const next = { ...cur, ...patch } as AppointmentRow;
       if (conflicts(next)) return { ok: false, reason: 'overlap' };
@@ -109,7 +110,7 @@ export function fakeRepo(state: State, nowFn: () => number = Date.now): BookingR
         && a.amount_paid_cents === 0 && Date.parse(a.created_at!) < Date.parse(before)).slice(0, limit)),
     pendingRefunds: async (before, limit) =>
       clone(state.appointments.filter((a) => a.status === 'cancelled' && a.refund_due_cents > a.amount_refunded_cents
-        && a.stripe_payment_intent_id != null && Date.parse(a.updated_at!) < Date.parse(before))
+        && a.refund_stuck_at == null && a.stripe_payment_intent_id != null && Date.parse(a.updated_at!) < Date.parse(before))
         .sort((a, b) => Date.parse(a.updated_at!) - Date.parse(b.updated_at!)).slice(0, limit)),
     appointmentByToken: async (t) => clone(state.appointments.find((a) => a.manage_token === t) ?? null),
     appointmentById: async (id) => clone(state.appointments.find((a) => a.id === id) ?? null),

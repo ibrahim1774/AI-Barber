@@ -148,19 +148,39 @@ describe('cancel refunds: refund_due_cents and retryPendingRefunds', () => {
     expect(w.state.appointments[0]).toMatchObject({ refund_due_cents: 3000, amount_refunded_cents: 3000 });
   });
 
-  it('gives up after 3 days: refund_stuck event, no Stripe call, not picked again', async () => {
+  it('retries for 23 h after the cancel, then marks it stuck: debt kept on the row, one refund_stuck event, not picked again', async () => {
+    const w = world({ shop: cardShop });
+    const stripe = fakeStripe(w);
+    const a = await paidCardBooking(w);
+    stripe.mode.fail = true;
+    await customerCancel(w, a.manage_token); // cancelled_at 2026-11-02T12:00Z
+    expect((await retryPendingRefunds(w.deps, Date.parse('2026-11-03T10:59:00Z'))).retried).toBe(1); // 22 h 59 m: still retried
+    const calls = w.payments.refundAppointment.mock.calls.length;
+    w.setNow('2026-11-03T11:00:00Z'); // 23 h
+    expect(await retryPendingRefunds(w.deps, Date.parse('2026-11-03T11:00:00Z'))).toEqual({ retried: 0, refunded: 0, failed: 0, stuck: 1 });
+    expect(w.payments.refundAppointment.mock.calls.length).toBe(calls);
+    expect(w.state.appointments[0]).toMatchObject({
+      refund_due_cents: 3000, amount_refunded_cents: 0, refund_stuck_at: '2026-11-03T11:00:00.000Z', status: 'cancelled',
+    });
+    const stuck = w.state.events.filter((e) => e.kind === 'refund_stuck');
+    expect(stuck).toHaveLength(1);
+    expect(stuck[0]).toMatchObject({ shop_id: w.ids.shopId, payload: { appointmentId: a.id, dueCents: 3000, refundedCents: 0, owedCents: 3000, paymentIntent: 'pi_1' } });
+    expect(await retryPendingRefunds(w.deps, Date.parse('2026-11-03T12:00:00Z'))).toEqual({ retried: 0, refunded: 0, failed: 0, stuck: 0 });
+    expect(w.state.events.filter((e) => e.kind === 'refund_stuck')).toHaveLength(1);
+  });
+
+  it('refund_failed is logged once (first failure), not on every retry', async () => {
     const w = world({ shop: cardShop });
     const stripe = fakeStripe(w);
     const a = await paidCardBooking(w);
     stripe.mode.fail = true;
     await customerCancel(w, a.manage_token);
-    w.setNow('2026-11-05T12:05:00Z'); // 3 days + 5 min after the cancel
-    const calls = w.payments.refundAppointment.mock.calls.length;
-    expect(await retryPendingRefunds(w.deps, Date.parse('2026-11-05T12:05:00Z'))).toEqual({ retried: 0, refunded: 0, failed: 0, stuck: 1 });
-    expect(w.payments.refundAppointment.mock.calls.length).toBe(calls);
-    const ev = w.state.events.find((e) => e.kind === 'refund_stuck')!;
-    expect(ev).toMatchObject({ shop_id: w.ids.shopId, payload: { appointmentId: a.id, dueCents: 3000, refundedCents: 0, owedCents: 3000, paymentIntent: 'pi_1' } });
-    expect(await retryPendingRefunds(w.deps, Date.parse('2026-11-05T12:30:00Z'))).toMatchObject({ stuck: 0, retried: 0 });
+    for (const t of ['2026-11-02T12:05:00Z', '2026-11-02T12:20:00Z', '2026-11-02T12:35:00Z']) {
+      w.setNow(t);
+      expect((await retryPendingRefunds(w.deps, Date.parse(t))).failed).toBe(1);
+    }
+    expect(w.state.events.map((e) => e.kind)).toEqual(['refund_failed']);
+    expect(w.payments.refundAppointment).toHaveBeenCalledTimes(4);
   });
 
   it('a retry that fails again stays pending; at most 25 rows per run', async () => {
