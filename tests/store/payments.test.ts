@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
-  createOrderCheckout, refundOrder, orderShippingFromSession, orderManageUrl,
+  createOrderCheckout, refundOrder, orderShippingFromSession, orderManageUrl, shipsWithinLabel,
   type PayOrder, type PayOrderItem,
 } from '../../lib/store/payments.js';
 import { CHECKOUT_HOLD_SEC, refundKey, StripeApiError } from '../../lib/bookings/payments.js';
@@ -118,6 +118,27 @@ describe('createOrderCheckout', () => {
     expect([...p.keys()].some((k) => k.includes('delivery_estimate'))).toBe(false);
   });
 
+  it('shipping order with ships_within_days 1: singular "Ships within 1 day"', async () => {
+    const shipOrder = { ...order, fulfilment: 'shipping' as const, shipping_cents: 0, total_cents: 4500 };
+    const { f, calls } = fakeFetch(session(4500));
+    await createOrderCheckout({ ...shop, ships_within_days: 1 }, shipOrder, items, { fetch: f, now: () => NOW });
+    expect(calls[0].params.get('shipping_options[0][shipping_rate_data][display_name]')).toBe('Ships within 1 day');
+    expect(calls[0].params.get('shipping_options[0][shipping_rate_data][delivery_estimate][maximum][value]')).toBe('6');
+  });
+
+  it('exactly 50¢ is accepted, with a 1¢ fee', async () => {
+    const { f, calls } = fakeFetch(session(50));
+    await createOrderCheckout(shop, { ...order, total_cents: 50 }, [{ name: 'Gum', unit_price_cents: 50, quantity: 1 }], { fetch: f, now: () => NOW });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].params.get('payment_intent_data[application_fee_amount]')).toBe('1');
+  });
+
+  it('a null order_no falls back to the first 8 characters of the id in the description', async () => {
+    const { f, calls } = fakeFetch(session(4500));
+    await createOrderCheckout(shop, { ...order, id: 'abcdef12-3456', order_no: null }, items, { fetch: f, now: () => NOW });
+    expect(calls[0].params.get('payment_intent_data[description]')).toBe('Order #abcdef12 at Fade Factory');
+  });
+
   it('amount_total mismatch: expires the session and throws (never a charge for the wrong total)', async () => {
     const { f, calls } = fakeFetch(session(4400), { body: { id: 'cs_o1', status: 'expired' } });
     await expect(createOrderCheckout(shop, order, items, { fetch: f, now: () => NOW })).rejects.toThrow(StripeApiError);
@@ -176,6 +197,16 @@ describe('refundOrder', () => {
 
   it('refundKey.order is per order and target total', () => {
     expect(refundKey.order('ord-1', 2500)).toBe('refund-order-ord-1-2500');
+  });
+});
+
+describe('shipsWithinLabel', () => {
+  it('0 or 1 → "Ships within 1 day"; 2+ → "N days"; null → "Shipping"', () => {
+    expect(shipsWithinLabel(0)).toBe('Ships within 1 day');
+    expect(shipsWithinLabel(1)).toBe('Ships within 1 day');
+    expect(shipsWithinLabel(2)).toBe('Ships within 2 days');
+    expect(shipsWithinLabel(null)).toBe('Shipping');
+    expect(shipsWithinLabel(undefined)).toBe('Shipping');
   });
 });
 

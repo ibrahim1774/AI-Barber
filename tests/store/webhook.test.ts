@@ -99,6 +99,12 @@ function mkOrderDeps(initial: WebhookOrder | null = baseOrder, over: Partial<Ord
     setOrderRefunded: vi.fn(async (_id: string, total: number, ps: string) => {
       if (state.row && state.row.amount_refunded_cents <= total) state.row = { ...state.row, amount_refunded_cents: total, payment_status: ps };
     }),
+    cancelRefundedOrder: vi.fn(async (_id: string, from: string, at: string) => {
+      const r = state.row;
+      if (!r || r.status !== from) return false;
+      state.row = { ...r, status: 'cancelled', cancelled_at: at };
+      return true;
+    }),
     refund: vi.fn(async (_s: any, _o: any, amt: number, _key: string) => ({ refundedCents: amt })),
     notify: vi.fn(async (_e: any) => {}),
     now: () => NOW,
@@ -119,7 +125,7 @@ const refunded = (pi: string, amount_refunded: number, id: string) => ({
 });
 
 const APPT_LOOKUPS = ['appointmentBySession', 'appointmentById', 'appointmentByPaymentIntent', 'markPaid', 'recordPaidAfterCancel', 'expireHold', 'setRefunded'] as const;
-const ORDER_FNS = ['orderBySession', 'orderById', 'orderByPaymentIntent', 'markOrderPaid', 'recordOrderPaidAfterCancel', 'expireOrderHold', 'setOrderRefunded', 'refund', 'notify'] as const;
+const ORDER_FNS = ['orderBySession', 'orderById', 'orderByPaymentIntent', 'markOrderPaid', 'recordOrderPaidAfterCancel', 'expireOrderHold', 'setOrderRefunded', 'cancelRefundedOrder', 'refund', 'notify'] as const;
 
 beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -233,6 +239,32 @@ describe('order paid', () => {
     const o = mkOrderDeps({ ...baseOrder, fulfilment: 'shipping' });
     await handleConnectEvent(completed(), mkApptDeps(), o);
     expect(o.markOrderPaid.mock.calls[0][1]).not.toHaveProperty('shippingAddress');
+  });
+
+  it('amount_total different from the order total: logged with order id, expected and actual, and still recorded', async () => {
+    const o = mkOrderDeps();
+    expect(await handleConnectEvent(completed({ amount_total: 4400, currency: 'usd' }), mkApptDeps(), o)).toBe('order:paid');
+    expect(o.markOrderPaid.mock.calls[0][1]).toMatchObject({ amountPaidCents: 4400 });
+    const line = (console.error as any).mock.calls.map((c: any[]) => c.join(' ')).find((l: string) => l.includes('mismatch'));
+    expect(line).toBeDefined();
+    expect(line).toContain(ORDER_ID);
+    expect(line).toContain('"expectedTotal":4500');
+    expect(line).toContain('"actualTotal":4400');
+  });
+
+  it('currency different from the shop currency: logged, still recorded', async () => {
+    const o = mkOrderDeps();
+    expect(await handleConnectEvent(completed({ currency: 'eur' }), mkApptDeps(), o)).toBe('order:paid');
+    const line = (console.error as any).mock.calls.map((c: any[]) => c.join(' ')).find((l: string) => l.includes('mismatch'));
+    expect(line).toContain(ORDER_ID);
+    expect(line).toContain('"expectedCurrency":"usd"');
+    expect(line).toContain('"actualCurrency":"eur"');
+  });
+
+  it('matching amount and currency: no mismatch log', async () => {
+    const o = mkOrderDeps();
+    await handleConnectEvent(completed({ currency: 'usd' }), mkApptDeps(), o);
+    expect((console.error as any).mock.calls.some((c: any[]) => c.join(' ').includes('mismatch'))).toBe(false);
   });
 
   it('an unpaid completed session is ignored', async () => {
@@ -401,6 +433,14 @@ describe('expired', () => {
     expect(o.state.row?.status).toBe('paid');
   });
 
+  it('any other checkout.session.* subtype on a store session is ignored (never expires the hold)', async () => {
+    const o = mkOrderDeps();
+    expect(await handleConnectEvent(storeEvent('checkout.session.something_new', { payment_status: 'unpaid' }), mkApptDeps(), o)).toBe('order:ignored:event');
+    expect(o.expireOrderHold).not.toHaveBeenCalled();
+    expect(o.markOrderPaid).not.toHaveBeenCalled();
+    expect(o.state.row?.status).toBe('new');
+  });
+
   it('async_payment_failed takes the same path', async () => {
     const o = mkOrderDeps();
     expect(await handleConnectEvent(storeEvent('checkout.session.async_payment_failed', { payment_status: 'unpaid' }), mkApptDeps(), o)).toBe('order:cancelled:expired');
@@ -414,10 +454,76 @@ describe('charge.refunded', () => {
     expect(await handleConnectEvent(refunded('pi_o1', 1000, 'r1'), a, o)).toBe('order:refund:recorded');
     expect(a.appointmentByPaymentIntent).toHaveBeenCalledWith('pi_o1'); // appointment first, then order
     expect(o.setOrderRefunded).toHaveBeenCalledWith(ORDER_ID, 1000, 'partially_refunded');
-    expect(await handleConnectEvent(refunded('pi_o1', 4500, 'r2'), a, o)).toBe('order:refund:recorded');
+    expect(await handleConnectEvent(refunded('pi_o1', 4500, 'r2'), a, o)).toBe('order:refund:recorded:cancelled');
     expect(o.setOrderRefunded).toHaveBeenLastCalledWith(ORDER_ID, 4500, 'refunded');
-    await handleConnectEvent(refunded('pi_o1', 1000, 'r3'), a, o); // late, out of order
-    expect(o.state.row).toMatchObject({ amount_refunded_cents: 4500, payment_status: 'refunded' });
+    expect(await handleConnectEvent(refunded('pi_o1', 1000, 'r3'), a, o)).toBe('order:refund:recorded'); // late, out of order
+    expect(o.state.row).toMatchObject({ amount_refunded_cents: 4500, payment_status: 'refunded', status: 'cancelled' });
+    expect(o.cancelRefundedOrder).toHaveBeenCalledTimes(1);
+  });
+
+  const paidRow = { ...baseOrder, status: 'paid' as const, payment_status: 'paid', stripe_payment_intent_id: 'pi_o1', amount_paid_cents: 4500, paid_at: 'T' };
+
+  it('owner refund timed out but Stripe refunded in full: the webhook finalizes (cancel CAS) and emails once, after the record', async () => {
+    const a = mkApptDeps(null);
+    const o = mkOrderDeps({ ...paidRow }); // S3a claimed refund_due = 4500, the call timed out: amount_refunded still 0
+    expect(await handleConnectEvent(refunded('pi_o1', 4500, 'r_full'), a, o)).toBe('order:refund:recorded:cancelled');
+    expect(o.setOrderRefunded).toHaveBeenCalledWith(ORDER_ID, 4500, 'refunded');
+    expect(o.cancelRefundedOrder).toHaveBeenCalledWith(ORDER_ID, 'paid', NOW_ISO);
+    expect(o.state.row).toMatchObject({ status: 'cancelled', cancelled_at: NOW_ISO, amount_refunded_cents: 4500, payment_status: 'refunded' });
+    expect(o.notify).toHaveBeenCalledTimes(1);
+    expect(o.notify).toHaveBeenCalledWith({ kind: 'order_cancelled', orderId: ORDER_ID, refundedCents: 4500 });
+    expect(o.notify.mock.invocationCallOrder[0]).toBeGreaterThan(a.recordEvent.mock.invocationCallOrder[0]);
+    // redelivery / a second event for the same refund: the row is cancelled → no CAS, no email
+    expect(await handleConnectEvent(refunded('pi_o1', 4500, 'r_full2'), a, o)).toBe('order:refund:recorded');
+    expect(o.cancelRefundedOrder).toHaveBeenCalledTimes(1);
+    expect(o.notify).toHaveBeenCalledTimes(1);
+  });
+
+  it('the same on a new order', async () => {
+    const o = mkOrderDeps({ ...paidRow, status: 'new' });
+    expect(await handleConnectEvent(refunded('pi_o1', 4500, 'r_new'), mkApptDeps(null), o)).toBe('order:refund:recorded:cancelled');
+    expect(o.cancelRefundedOrder).toHaveBeenCalledWith(ORDER_ID, 'new', NOW_ISO);
+    expect(o.notify).toHaveBeenCalledTimes(1);
+  });
+
+  it('the in-request path already cancelled the order: no CAS, no email', async () => {
+    const o = mkOrderDeps({ ...paidRow, status: 'cancelled', amount_refunded_cents: 4500, payment_status: 'refunded', cancelled_at: 'T_C' });
+    expect(await handleConnectEvent(refunded('pi_o1', 4500, 'r_late'), mkApptDeps(null), o)).toBe('order:refund:recorded');
+    expect(o.cancelRefundedOrder).not.toHaveBeenCalled();
+    expect(o.notify).not.toHaveBeenCalled();
+  });
+
+  it('the CAS misses (the in-request path won the race): no email', async () => {
+    const o = mkOrderDeps({ ...paidRow }, { cancelRefundedOrder: vi.fn(async () => false) });
+    expect(await handleConnectEvent(refunded('pi_o1', 4500, 'r_race'), mkApptDeps(null), o)).toBe('order:refund:recorded');
+    expect(o.notify).not.toHaveBeenCalled();
+  });
+
+  it('a partial refund never cancels', async () => {
+    const o = mkOrderDeps({ ...paidRow });
+    expect(await handleConnectEvent(refunded('pi_o1', 4400, 'r_part'), mkApptDeps(null), o)).toBe('order:refund:recorded');
+    expect(o.cancelRefundedOrder).not.toHaveBeenCalled();
+    expect(o.notify).not.toHaveBeenCalled();
+  });
+
+  it('a full refund on a ready or shipped order keeps its status', async () => {
+    for (const status of ['ready', 'shipped', 'done'] as const) {
+      const o = mkOrderDeps({ ...paidRow, status });
+      expect(await handleConnectEvent(refunded('pi_o1', 4500, `r_${status}`), mkApptDeps(null), o)).toBe('order:refund:recorded');
+      expect(o.cancelRefundedOrder).not.toHaveBeenCalled();
+      expect(o.state.row?.status).toBe(status);
+      expect(o.notify).not.toHaveBeenCalled();
+    }
+  });
+
+  it('a cancel CAS failure throws: the event is not recorded and the retry finishes it', async () => {
+    const a = mkApptDeps(null);
+    const o = mkOrderDeps({ ...paidRow });
+    o.cancelRefundedOrder.mockRejectedValueOnce(new Error('db down'));
+    await expect(handleConnectEvent(refunded('pi_o1', 4500, 'r_fail'), a, o)).rejects.toThrow('db down');
+    expect(a.recordEvent).not.toHaveBeenCalled();
+    expect(await handleConnectEvent(refunded('pi_o1', 4500, 'r_fail'), a, o)).toBe('order:refund:recorded:cancelled');
+    expect(o.notify).toHaveBeenCalledTimes(1);
   });
 
   it('an appointment PI goes to the appointment path, unchanged', async () => {
@@ -503,6 +609,17 @@ describe('liveOrderWebhookDeps (query shape)', () => {
     expect(calls).toContainEqual(['eq', ['payment_status', 'awaiting']]);
     expect(calls).toContainEqual(['eq', ['amount_paid_cents', 0]]);
     expect(update(calls)).toEqual({ status: 'cancelled', cancelled_by: 'customer', cancelled_at: NOW_ISO, payment_status: 'none' });
+  });
+
+  it("cancelRefundedOrder: one CAS on id + the status read; cancelled by 'shop' with cancelled_at", async () => {
+    const { db, calls } = recorder({ data: [{ id: 'o' }], error: null });
+    expect(await liveOrderWebhookDeps(db).cancelRefundedOrder('o', 'paid', NOW_ISO)).toBe(true);
+    expect(calls).toContainEqual(['from', ['ab_orders']]);
+    expect(calls).toContainEqual(['eq', ['id', 'o']]);
+    expect(calls).toContainEqual(['eq', ['status', 'paid']]);
+    expect(update(calls)).toEqual({ status: 'cancelled', cancelled_by: 'shop', cancelled_at: NOW_ISO });
+    const miss = recorder({ data: [], error: null });
+    expect(await liveOrderWebhookDeps(miss.db).cancelRefundedOrder('o', 'new', NOW_ISO)).toBe(false);
   });
 
   it('setOrderRefunded: absolute value under the monotonic lte guard', async () => {

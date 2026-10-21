@@ -3,7 +3,7 @@ import { sendEmail as liveSendEmail, type EmailMessage, type EmailResult } from 
 import { pushToUsers, type PushMessage } from '../bookings/push.js';
 import { emailLayout, dollars, pushTokenStore, type ManualMethod } from '../bookings/notify.js';
 import { serviceDb, SITE_ORIGIN } from '../bookings/payments.js';
-import { orderManageUrl } from './payments.js';
+import { orderManageUrl, orderNoLabel, shipsWithinLabel } from './payments.js';
 
 /**
  * Store notifications: owner pushes (Expo) and customer emails (SMTP), in the Phase 2 layout.
@@ -89,7 +89,7 @@ const METHOD_LABEL: Record<ManualMethod, string> = { cashapp: 'Cash App', venmo:
 const MANUAL: ManualMethod[] = ['cashapp', 'venmo', 'zelle', 'paypal'];
 const label = (m: string) => METHOD_LABEL[m as ManualMethod] ?? m;
 
-const orderNo = (o: NotifyOrder) => `#${o.order_no ?? o.id.slice(0, 8)}`;
+const orderNo = orderNoLabel;
 const customerLabel = (o: NotifyOrder) => o.customer_name?.trim() || 'A customer';
 const fromName = (shop: NotifyStoreShop) => `${shop.name} via AI Barber`;
 const orderData = (o: NotifyOrder) => ({ kind: 'order', orderId: o.id });
@@ -165,7 +165,7 @@ export function orderConfirmationEmail(ctx: OrderNotifyContext): EmailMessage {
   } else {
     const addr = addressLine(o.shipping_address);
     if (addr) rows.push(['Ship to', addr]);
-    if (shop.ships_within_days != null) paras.push(`Ships within ${shop.ships_within_days} days`);
+    if (shop.ships_within_days != null) paras.push(shipsWithinLabel(shop.ships_within_days));
   }
   return message(ctx, `Order ${orderNo(o)} at ${shop.name}`, `Order ${orderNo(o)}`, rows, paras,
     { label: 'View order', href: orderManageUrl(o.manage_token) });

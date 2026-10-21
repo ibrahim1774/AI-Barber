@@ -671,14 +671,12 @@ async function refundOnce(deps: WebhookDeps, shop: PayShop, appt: PayAppointment
 
 async function dispatch(event: StripeEvent, deps: WebhookDeps, orderDeps?: OrderWebhookDeps): Promise<Outcome> {
   const obj = event.data?.object ?? {};
-  // Store orders are routed by the session's metadata BEFORE any appointment lookup.
-  if (event.type.startsWith('checkout.session.')) {
-    const store = await storeWebhook();
-    if (store.isStoreSession(obj)) {
-      // Never record a store event we can't process: throw so Stripe retries.
-      if (!orderDeps) throw new Error('store session but no order deps');
-      return store.handleStoreSessionEvent(event, obj, orderDeps);
-    }
+  // Store orders are routed by the session's metadata BEFORE any appointment lookup. The check is
+  // inline (same as lib/store isStoreSession), so appointment events never wait on the store module.
+  if (event.type.startsWith('checkout.session.') && obj?.metadata?.app === 'aibarber-store') {
+    // Never record a store event we can't process: throw so Stripe retries.
+    if (!orderDeps) throw new Error('store session but no order deps');
+    return (await storeWebhook()).handleStoreSessionEvent(event, obj, orderDeps);
   }
   switch (event.type) {
     case 'checkout.session.completed':

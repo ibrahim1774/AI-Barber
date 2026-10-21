@@ -91,6 +91,14 @@ describe('notifyOrder: order_created', () => {
     expect(html).not.toContain('Ring the bell'); // no pickup note on shipping
   });
 
+  it('shipping email uses the shared label: 0 or 1 day is singular, null adds no line', () => {
+    const ship = { fulfilment: 'shipping' as const, payment_method: 'card', payment_status: 'paid', status: 'paid' as const };
+    expect(orderConfirmationEmail(ctx(ship, { ships_within_days: 1 })).html).toContain('Ships within 1 day<');
+    expect(orderConfirmationEmail(ctx(ship, { ships_within_days: 0 })).html).toContain('Ships within 1 day<');
+    expect(orderConfirmationEmail(ctx(ship, { ships_within_days: 2 })).html).toContain('Ships within 2 days');
+    expect(orderConfirmationEmail(ctx(ship, { ships_within_days: null })).html).not.toContain('Ships within');
+  });
+
   it('card + awaiting: nothing at all (the webhook sends it on payment)', async () => {
     const d = mkDeps(ctx({ payment_method: 'card', payment_status: 'awaiting' }));
     await notifyOrder({ kind: 'order_created', orderId: 'ord-1' }, d);

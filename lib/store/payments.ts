@@ -12,6 +12,17 @@ import {
 
 export const STORE_APP = 'aibarber-store';
 
+/** The shipping promise, shared by the Checkout shipping option and the confirmation email.
+ *  0 or 1 → "Ships within 1 day", 2+ → "Ships within N days", unset → "Shipping". */
+export function shipsWithinLabel(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return 'Shipping';
+  const days = Math.max(1, Math.floor(n));
+  return days === 1 ? 'Ships within 1 day' : `Ships within ${days} days`;
+}
+
+/** "#1001", or the id's first 8 characters if the order has no number. */
+export const orderNoLabel = (o: { id: string; order_no: number | null }) => `#${o.order_no ?? o.id.slice(0, 8)}`;
+
 /** The order status page (the Checkout return URLs hang off it). */
 export const orderManageUrl = (token: string) => `${SITE_ORIGIN}/shop/manage/${encodeURIComponent(token)}`;
 
@@ -98,7 +109,7 @@ export async function createOrderCheckout(
     client_reference_id: order.id,
     customer_email: order.customer_email || undefined,
     'payment_intent_data[application_fee_amount]': fee > 0 ? fee : undefined,
-    'payment_intent_data[description]': `Order #${order.order_no ?? ''}${shop.name ? ` at ${shop.name}` : ''}`.slice(0, 250),
+    'payment_intent_data[description]': `Order ${orderNoLabel(order)}${shop.name ? ` at ${shop.name}` : ''}`.slice(0, 250),
   };
   items.forEach((it, i) => {
     const li = `line_items[${i}]`;
@@ -115,7 +126,7 @@ export async function createOrderCheckout(
     params[`${rate}[type]`] = 'fixed_amount';
     params[`${rate}[fixed_amount][amount]`] = Math.max(0, Math.floor(order.shipping_cents || 0));
     params[`${rate}[fixed_amount][currency]`] = currency;
-    params[`${rate}[display_name]`] = days != null ? `Ships within ${days} days` : 'Shipping';
+    params[`${rate}[display_name]`] = shipsWithinLabel(days);
     if (days != null) {
       params[`${rate}[delivery_estimate][maximum][unit]`] = 'business_day';
       params[`${rate}[delivery_estimate][maximum][value]`] = days + 5;

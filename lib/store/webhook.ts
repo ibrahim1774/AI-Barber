@@ -39,6 +39,9 @@ export interface OrderWebhookDeps {
   /** where status = 'new' and payment_method = 'card' and payment_status = 'awaiting' and
    *  amount_paid_cents = 0 → cancelled by the customer, payment_status 'none'. */
   expireOrderHold(orderId: string, nowIso: string): Promise<boolean>;
+  /** A refund to zero on a live order: one compare-and-set where id = :id and status = :fromStatus,
+   *  setting status 'cancelled', cancelled_by 'shop' and cancelled_at. True when this call made the change. */
+  cancelRefundedOrder(orderId: string, fromStatus: 'new' | 'paid', nowIso: string): Promise<boolean>;
   /** Absolute and monotonic: never lowers amount_refunded_cents. */
   setOrderRefunded(orderId: string, amountRefundedCents: number, paymentStatus: 'refunded' | 'partially_refunded'): Promise<void>;
   refund(shop: PayShop, order: PayOrder, amountCents: number, idempotencyKey: string): Promise<{ refundedCents: number }>;
@@ -111,6 +114,15 @@ export async function handleOrderSession(event: StripeEvent, obj: any, deps: Ord
     return { outcome: 'order:ignored:no-payment-intent' };
   }
   const { order: before, shop } = found;
+  const wantCurrency = (shop.currency || 'usd').toLowerCase();
+  const gotCurrency = typeof obj.currency === 'string' ? obj.currency.toLowerCase() : null;
+  if (amount !== before.total_cents || (gotCurrency && gotCurrency !== wantCurrency)) {
+    // The money is real, so it is still recorded; a mismatch is a bug worth seeing.
+    console.error(`${LOG} session amount/currency mismatch, recording the payment anyway:`, JSON.stringify({
+      order: before.id, session: obj.id, expectedTotal: before.total_cents, actualTotal: amount,
+      expectedCurrency: wantCurrency, actualCurrency: gotCurrency,
+    }));
+  }
   const dupRefund = async (row: WebhookOrder, why: string) => {
     console.error(`${LOG} ${why}, refunding it:`, JSON.stringify({ order: row.id, session: obj.id, stored: row.stripe_payment_intent_id, extra: pi, amount }));
     await refundOnce(deps, shop, { ...row, stripe_payment_intent_id: pi, amount_paid_cents: amount, amount_refunded_cents: 0 }, amount, refundKey.duplicate(pi));
@@ -190,12 +202,26 @@ export async function handleOrderRefunded(event: StripeEvent, obj: any, deps: Or
   const refunded = Math.max(0, Math.floor(Number(obj.amount_refunded) || 0));
   const paid = Math.max(0, Math.floor(order.amount_paid_cents ?? 0)) || Math.floor(Number(obj.amount_captured) || 0);
   await deps.setOrderRefunded(order.id, refunded, refunded >= paid ? 'refunded' : 'partially_refunded');
+  // A refund to zero on a live order finalizes it, exactly as the owner refund's in-request success
+  // does (e.g. that call timed out but Stripe refunded, or the barber refunded in their dashboard).
+  // Whichever compare-and-set lands sends the one "Order cancelled" email.
+  if (paid > 0 && refunded >= paid && (order.status === 'new' || order.status === 'paid')) {
+    if (await deps.cancelRefundedOrder(order.id, order.status, new Date(deps.now()).toISOString())) {
+      return {
+        outcome: 'order:refund:recorded:cancelled',
+        orderNotify: [{ kind: 'order_cancelled', orderId: order.id, refundedCents: refunded }],
+      };
+    }
+  }
   return { outcome: 'order:refund:recorded' };
 }
 
 /** A checkout.session.* event tagged app=aibarber-store: the order branch only. */
 export async function handleStoreSessionEvent(event: StripeEvent, obj: any, deps: OrderWebhookDeps): Promise<OrderOutcome> {
   const paidEvent = event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded';
+  const expiredEvent = event.type === 'checkout.session.expired' || event.type === 'checkout.session.async_payment_failed';
+  // Any other session subtype says nothing about payment: never let it expire a live hold.
+  if (!paidEvent && !expiredEvent) return { outcome: 'order:ignored:event' };
   const r = paidEvent ? await handleOrderSession(event, obj, deps) : await handleOrderExpired(event, obj, deps);
   if (r) return r;
   if (paidEvent) {
@@ -262,6 +288,13 @@ export function liveOrderWebhookDeps(db: SupabaseClient = serviceDb()): OrderWeb
       }).eq('id', orderId).eq('status', 'new').eq('payment_method', 'card').eq('payment_status', 'awaiting')
         .eq('amount_paid_cents', 0).select('id');
       if (error) dbFail('expireOrderHold', error);
+      return changed(data);
+    },
+    async cancelRefundedOrder(orderId, fromStatus, nowIso) {
+      const { data, error } = await db.from('ab_orders').update({
+        status: 'cancelled', cancelled_by: 'shop', cancelled_at: nowIso,
+      }).eq('id', orderId).eq('status', fromStatus).select('id');
+      if (error) dbFail('cancelRefundedOrder', error);
       return changed(data);
     },
     async setOrderRefunded(orderId, amountRefundedCents, paymentStatus) {
