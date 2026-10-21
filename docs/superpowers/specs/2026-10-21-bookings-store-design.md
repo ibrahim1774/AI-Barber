@@ -193,7 +193,7 @@ Three tiers, all in the App Store subscription group "AI Barber Hosting" (224972
 |---|---|---|---|
 | **Website** | $19.99 (existing products) | $191.99 | `hosting` |
 | **Bookings** | $24.99 | $239.99 | `hosting` + `bookings` |
-| **Store** | $39.99 | $383.99 | `hosting` + `bookings` + `store` |
+| **Store** | $39.99 | $379.99 | `hosting` + `bookings` + `store` |
 
 - New ASC products: `com.ibrahim1774.aibarber.bookings.monthly/.yearly`, `com.ibrahim1774.aibarber.store.monthly/.yearly`, group levels Website 3 < Bookings 2 < Store 1.
 - Superwall: entitlements `bookings` and `store`; placements `bookings_upgrade` (Bookings tab when `bookings` inactive) and `store_upgrade` (Store tab when `store` inactive). The `publish` paywall keeps showing only the Website plan. No monthly-equivalent of yearly prices anywhere.
