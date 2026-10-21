@@ -45,7 +45,7 @@ import {
   type FlowDeps,
   type FlowResult,
 } from './core.js';
-import { buildIcsFeed } from './icsFeed.js';
+import { appointmentsToIcs } from './deps.js';
 import { MANUAL_METHODS, type AppointmentRow, type ManualMethod, type MemberRow, type NewAppointment, type ShopRow } from './repo.js';
 
 type Params = Record<string, unknown>;
@@ -265,7 +265,8 @@ export async function createAppointment(body: unknown, deps: FlowDeps): Promise<
       }
     }
 
-    await safeNotify(deps, { kind: 'booking_created', shop, appt, memberName: m.display_name });
+    // For an awaiting card hold S2's notify() is a no-op; the webhook confirms on payment.
+    await safeNotify(deps, { kind: 'booking_created', appointmentId: appt.id });
     return ok(
       {
         appointment: {
@@ -380,7 +381,6 @@ export async function postManage(body: unknown, deps: FlowDeps): Promise<FlowRes
   const duration = appt.duration_min;
   const rules = publicRules(shop);
   const free = await membersFreeAt(deps.repo, shop, candidates, duration, startMs, nowMs, rules, appt.id);
-  const previousStart = iso(Date.parse(appt.start_at));
   for (const m of free) {
     const upd = await deps.repo.updateAppointment(
       appt.id,
@@ -388,7 +388,7 @@ export async function postManage(body: unknown, deps: FlowDeps): Promise<FlowRes
       'booked',
     );
     if (upd.ok === true) {
-      await safeNotify(deps, { kind: 'booking_rescheduled', by: 'customer', shop, appt: upd.row, memberName: m.display_name, previousStart });
+      await safeNotify(deps, { kind: 'booking_rescheduled', appointmentId: upd.row.id, by: 'customer' });
       return ok({ appointment: manageView(upd.row, m.display_name, shop) });
     }
     if (upd.ok === false && upd.reason === 'stale') return err(403, 'too-late');
@@ -418,7 +418,7 @@ export async function postSent(body: unknown, deps: FlowDeps): Promise<FlowResul
     'booked',
   );
   if (upd.ok === false) return err(409, 'not-awaiting-payment');
-  await safeNotify(deps, { kind: 'customer_says_paid', shop, appt: upd.row, method, amountCents: upd.row.price_cents ?? 0 });
+  await safeNotify(deps, { kind: 'customer_says_paid', appointmentId: upd.row.id, method, amountCents: upd.row.price_cents ?? undefined });
   return ok({});
 }
 
@@ -436,6 +436,18 @@ export async function getIcs(params: Params, deps: FlowDeps): Promise<FlowResult
   return {
     status: 200,
     contentType: 'text/calendar; charset=utf-8',
-    body: buildIcsFeed({ shop, member, appointments: appts, now: nowMs }),
+    body: appointmentsToIcs(
+      appts.map((a) => ({
+        id: a.id,
+        start: iso(Date.parse(a.start_at)),
+        end: iso(Date.parse(a.end_at)),
+        serviceName: a.service_name,
+        customerName: a.customer_name,
+        customerPhone: a.customer_phone,
+        note: a.note,
+        status: a.status,
+      })),
+      { calendarName: `${member.display_name} · ${shop.name}`, location: shop.address ?? null, now: new Date(nowMs) },
+    ),
   };
 }

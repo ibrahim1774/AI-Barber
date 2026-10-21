@@ -319,7 +319,6 @@ export async function rescheduleOwnerAppointment(
   if (!member) return invalid('memberId');
 
   // Owner reschedules, like owner bookings, skip notice/lead days; the DB guard still applies.
-  const previousStart = iso(Date.parse(appt.start_at));
   const upd = await deps.repo.updateAppointment(
     appt.id,
     { start_at: iso(startMs), end_at: iso(startMs + appt.duration_min * MIN), member_id: member.id, reminder_sent_at: null },
@@ -329,7 +328,7 @@ export async function rescheduleOwnerAppointment(
     if (upd.reason === 'stale') return err(409, 'not-reschedulable');
     return slotTaken(deps, shop, member, appt.duration_min, startMs, appt.id);
   }
-  await safeNotify(deps, { kind: 'booking_rescheduled', by: 'shop', shop, appt: upd.row, memberName: member.display_name, previousStart });
+  await safeNotify(deps, { kind: 'booking_rescheduled', appointmentId: upd.row.id, by: 'shop' });
   return ok({ appointment: ownerView(upd.row, member.display_name) });
 }
 

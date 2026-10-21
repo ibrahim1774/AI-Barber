@@ -404,6 +404,15 @@ export async function cancelAppointment(
     return { appt: cur, refundedCents: 0, alreadyFinal: true };
   }
   let row = claim.row;
+  if (isUnpaidCardHold(row) && row.stripe_checkout_session_id) {
+    // Nothing was paid: close the Checkout so it can't be paid now (S2's webhook still
+    // refunds in full if a payment slips through, because the booking is cancelled).
+    try {
+      await deps.payments.expireCheckoutSession(shop, row.stripe_checkout_session_id);
+    } catch (e: any) {
+      console.error(`[bookings] expiring checkout for ${row.id} failed:`, e?.message || e);
+    }
+  }
   const toRefund = refundIfCancelled(shop, row, by, nowMs);
   let refunded = 0;
   if (toRefund > 0) {
@@ -427,8 +436,7 @@ export async function cancelAppointment(
       }
     }
   }
-  const name = await memberName(deps.repo, shop.id, row.member_id);
-  await safeNotify(deps, { kind: 'booking_cancelled', by, shop, appt: row, memberName: name, refundedCents: refunded });
+  await safeNotify(deps, { kind: 'booking_cancelled', appointmentId: row.id, by, refundedCents: refunded });
   return { appt: row, refundedCents: refunded, alreadyFinal: false };
 }
 
