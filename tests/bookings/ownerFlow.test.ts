@@ -91,6 +91,7 @@ describe('POST /api/shop/appointments/:id/cancel', () => {
     expect(r.status).toBe(200);
     expect((r.body as any).appointment).toMatchObject({ status: 'cancelled', cancelledBy: 'shop', amountRefundedCents: 1000, paymentStatus: 'refunded' });
     expect(w.payments.refundAppointment.mock.calls[0][2]).toBe(1000);
+    expect(w.payments.refundAppointment.mock.calls[0][3]).toEqual({ idempotencyKey: `refund-cancel-${a.id}` });
     expect((await cancelOwnerAppointment(AUTH, a.id, w.deps)).status).toBe(200);
     expect(w.payments.refundAppointment).toHaveBeenCalledTimes(1);
     const ev = w.notified.find((e) => e.kind === 'booking_cancelled') as any;

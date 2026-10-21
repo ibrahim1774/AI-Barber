@@ -34,10 +34,22 @@ export async function createCardCheckout(
   throw new Error('payments not wired: lib/bookings/payments.ts is not merged yet');
 }
 
+/** Reason-scoped Stripe idempotency keys (same names and values as S2's payments.ts). */
+export const refundKey = {
+  cancel: (appointmentId: string) => `refund-cancel-${appointmentId}`,
+  pac: (paymentIntentId: string) => `refund-pac-${paymentIntentId}`,
+  duplicate: (paymentIntentId: string) => `refund-dup-${paymentIntentId}`,
+};
+
+export interface RefundOpts {
+  idempotencyKey?: string;
+}
+
 export async function refundAppointment(
   _shop: PayShop,
   _appt: PayAppointment,
   _amountCents: number,
+  _opts: RefundOpts = {},
 ): Promise<{ refundedCents: number }> {
   throw new Error('payments not wired: lib/bookings/payments.ts is not merged yet');
 }

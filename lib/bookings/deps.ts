@@ -5,17 +5,18 @@
 // MERGE NOTE: when S2's branch lands, change the three imports below to './payments.js',
 // './notify.js' and './ics.js' and delete the *.stub.ts files. The stubs export the same
 // names and shapes as S2's files.
-import { createCardCheckout, expireCheckoutSession, refundAppointment } from './payments.stub.js';
+import { createCardCheckout, expireCheckoutSession, refundAppointment, refundKey } from './payments.stub.js';
 import { notify, type NotifyEvent } from './notify.stub.js';
 import { appointmentsToIcs, type FeedAppointment } from './ics.stub.js';
 import type { AppointmentRow, ShopRow } from './repo.js';
 
 export type { NotifyEvent, FeedAppointment };
-export { appointmentsToIcs };
+export { appointmentsToIcs, refundKey };
 
 export interface Payments {
   createCardCheckout(shop: ShopRow, appt: AppointmentRow, amountCents: number): Promise<{ url: string; sessionId: string }>;
-  refundAppointment(shop: ShopRow, appt: AppointmentRow, amountCents: number): Promise<{ refundedCents: number }>;
+  /** opts.idempotencyKey: a reason-scoped key from refundKey (the cancel path uses refundKey.cancel(id)). */
+  refundAppointment(shop: ShopRow, appt: AppointmentRow, amountCents: number, opts?: { idempotencyKey?: string }): Promise<{ refundedCents: number }>;
   /** Never throws. */
   expireCheckoutSession(shop: ShopRow, sessionId: string): Promise<boolean>;
 }

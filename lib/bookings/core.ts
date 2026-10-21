@@ -4,7 +4,7 @@
 import { DateTime, IANAZone } from 'luxon';
 import { freeSlotsAny, type AnySlot, type MemberSchedule } from './slots.js';
 import { depositCents, refundOnCancel } from './money.js';
-import type { Notify, Payments } from './deps.js';
+import { refundKey, type Notify, type Payments } from './deps.js';
 import {
   MANUAL_METHODS,
   type AppointmentRow,
@@ -455,7 +455,8 @@ export async function cancelAppointment(
   let refunded = 0;
   if (toRefund > 0) {
     try {
-      const r = await deps.payments.refundAppointment(shop, row, toRefund);
+      // One cancel per appointment (the claim above), so one key: a retry can never refund twice.
+      const r = await deps.payments.refundAppointment(shop, row, toRefund, { idempotencyKey: refundKey.cancel(row.id) });
       refunded = Math.max(0, Math.min(toRefund, Math.floor(Number(r?.refundedCents) || 0)));
     } catch (e: any) {
       console.error(`[bookings] refund failed for appointment ${row.id}:`, e?.message || e);

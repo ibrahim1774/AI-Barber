@@ -173,6 +173,24 @@ describe('POST /api/book/appointments', () => {
     });
   });
 
+  it('per-shop cap: 429 with a friendly message and nothing inserted; only bookable requests count', async () => {
+    const w = world();
+    const counted: string[] = [];
+    let allow = true;
+    w.deps.limits = { shopBooking: async (id) => { counted.push(id); return allow; } };
+    expect((await book(w, { customer: { ...customer, name: '' } })).status).toBe(400); // invalid: not counted
+    expect((await book(w, { start: '2026-11-08T15:00:00.000Z' })).status).toBe(409); // closed day: not counted
+    expect(counted).toEqual([]);
+    expect((await book(w)).status).toBe(201);
+    expect(counted).toEqual([w.ids.shopId]);
+    allow = false;
+    const r = await book(w, { customer: { ...customer, phone: '5550001111' } });
+    expect(r.status).toBe(429);
+    expect(r.body).toEqual({ error: 'rate-limited', message: expect.stringMatching(/try again in a few minutes/) });
+    expect(r.headers).toEqual({ 'Retry-After': '300' });
+    expect(w.state.appointments).toHaveLength(1);
+  });
+
   it('a 23P01 race on the first barber falls over to the next free one', async () => {
     const w = world();
     const orig = w.deps.repo.insertAppointment;
@@ -376,6 +394,7 @@ describe('manage by token', () => {
     expect((r.body as any).appointment.status).toBe('cancelled');
     expect(w.payments.refundAppointment).toHaveBeenCalledTimes(1);
     expect(w.payments.refundAppointment.mock.calls[0][2]).toBe(3000);
+    expect(w.payments.refundAppointment.mock.calls[0][3]).toEqual({ idempotencyKey: `refund-cancel-${a.id}` });
     expect(w.state.appointments[0]).toMatchObject({ status: 'cancelled', cancelled_by: 'customer', amount_refunded_cents: 3000, payment_status: 'refunded' });
     // double tap: idempotent, no second refund
     expect((await postManage({ token: a.manage_token, action: 'cancel' }, w.deps)).status).toBe(200);

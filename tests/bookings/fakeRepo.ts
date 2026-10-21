@@ -224,7 +224,7 @@ export function world(over: { shop?: Partial<ShopRow> } = {}) {
   const notified: NotifyEvent[] = [];
   const payments = {
     createCardCheckout: vi.fn(async (_s: ShopRow, a: AppointmentRow, _c: number) => ({ url: `https://checkout.stripe.test/${a.id}`, sessionId: `cs_${a.id}` })),
-    refundAppointment: vi.fn(async (_s: ShopRow, _a: AppointmentRow, c: number) => ({ refundedCents: c })),
+    refundAppointment: vi.fn(async (_s: ShopRow, _a: AppointmentRow, c: number, _o?: { idempotencyKey?: string }) => ({ refundedCents: c })),
     expireCheckoutSession: vi.fn(async (_s: ShopRow, _id: string) => true),
   };
   const users: Record<string, { id: string; email: string | null; fullName: string | null }> = {
