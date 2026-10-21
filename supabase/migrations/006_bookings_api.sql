@@ -43,3 +43,49 @@ grant update (address, phone, accent, daily_summary) on public.ab_shops to authe
 -- edited from the app. No column grants are added back. Owners keep SELECT (RLS), and the
 -- service role is unaffected.
 revoke update on public.ab_appointments from authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Rate limits shared by every serverless instance (lib/bookings/rateLimit.ts): per-IP limits
+-- on the public writes (10/min) and a per-shop cap on online bookings (40/hour). Fixed
+-- windows aligned to the epoch. Only the service role touches this: RLS on with no
+-- policies, no table grants, and execute on the function revoked from everyone else.
+-- ---------------------------------------------------------------------------
+create table if not exists public.ab_rate_hits (
+  key text not null,
+  window_start timestamptz not null,
+  hits int not null default 0,
+  primary key (key, window_start)
+);
+alter table public.ab_rate_hits enable row level security;
+revoke all on public.ab_rate_hits from public, anon, authenticated;
+
+-- Count one hit for p_key in the current p_window_s-second window; true while hits <= p_max.
+-- Atomic under concurrency (insert ... on conflict do update). About 1% of calls also delete
+-- windows older than a day.
+create or replace function public.ab_rate_hit(p_key text, p_window_s int, p_max int)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_window timestamptz;
+  v_hits int;
+begin
+  if p_key is null or p_window_s is null or p_window_s <= 0 or p_max is null then
+    raise exception 'ab_rate_hit: invalid arguments';
+  end if;
+  v_window := to_timestamp(floor(extract(epoch from now()) / p_window_s) * p_window_s);
+  insert into public.ab_rate_hits as h (key, window_start, hits)
+    values (p_key, v_window, 1)
+    on conflict (key, window_start) do update set hits = h.hits + 1
+    returning h.hits into v_hits;
+  if random() < 0.01 then
+    delete from public.ab_rate_hits where window_start < now() - interval '1 day';
+  end if;
+  return v_hits <= p_max;
+end;
+$$;
+
+revoke all on function public.ab_rate_hit(text, int, int) from public, anon, authenticated;
+grant execute on function public.ab_rate_hit(text, int, int) to service_role;

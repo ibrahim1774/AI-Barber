@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { chooseShopSlug, isValidSlug, slugifyName, vercelLabel } from '../../lib/bookings/slug.js';
-import { clientIp, makeRateLimiter, memoryStore, READ_LIMIT, WRITE_LIMIT } from '../../lib/bookings/rateLimit.js';
+import {
+  clientIp, makeRateLimiter, memoryStore, READ_LIMIT, SHOP_BOOKING_LIMIT, shopBookingLimiter, supabaseRateStore, withFallback, WRITE_LIMIT,
+} from '../../lib/bookings/rateLimit.js';
 import { authenticate, bearerToken } from '../../lib/bookings/auth.js';
 import { appointmentsToIcs } from '../../lib/bookings/ics.stub.js';
 import { appointmentIdParam, endpoint } from '../../lib/bookings/http.js';
@@ -32,18 +34,61 @@ describe('slug', () => {
 });
 
 describe('rate limit', () => {
-  it('allows 60 reads and 10 writes per minute per IP', () => {
+  it('allows 60 reads and 10 writes per minute per IP', async () => {
     let now = 0;
     const rl = makeRateLimiter(memoryStore(), () => now);
-    for (let i = 0; i < READ_LIMIT; i++) expect(rl.allow('1.1.1.1', 'read')).toBe(true);
-    expect(rl.allow('1.1.1.1', 'read')).toBe(false);
-    expect(rl.allow('2.2.2.2', 'read')).toBe(true);
-    for (let i = 0; i < WRITE_LIMIT; i++) expect(rl.allow('1.1.1.1', 'write')).toBe(true);
-    expect(rl.allow('1.1.1.1', 'write')).toBe(false);
+    for (let i = 0; i < READ_LIMIT; i++) expect(await rl.allow('1.1.1.1', 'read')).toBe(true);
+    expect(await rl.allow('1.1.1.1', 'read')).toBe(false);
+    expect(await rl.allow('2.2.2.2', 'read')).toBe(true);
+    for (let i = 0; i < WRITE_LIMIT; i++) expect(await rl.allow('1.1.1.1', 'write')).toBe(true);
+    expect(await rl.allow('1.1.1.1', 'write')).toBe(false);
     now = 60_000;
-    expect(rl.allow('1.1.1.1', 'read')).toBe(true);
-    expect(rl.allow('1.1.1.1', 'write')).toBe(true);
+    expect(await rl.allow('1.1.1.1', 'read')).toBe(true);
+    expect(await rl.allow('1.1.1.1', 'write')).toBe(true);
   });
+
+  it('writes go to the write store, reads to the read store', async () => {
+    const reads = { hit: vi.fn(() => true) };
+    const writes = { hit: vi.fn(async () => false) };
+    const rl = makeRateLimiter(reads, () => 5, writes);
+    expect(await rl.allow('1.1.1.1', 'read')).toBe(true);
+    expect(await rl.allow('1.1.1.1', 'write')).toBe(false);
+    expect(reads.hit).toHaveBeenCalledWith('read:1.1.1.1', 60, 60_000, 5);
+    expect(writes.hit).toHaveBeenCalledWith('write:1.1.1.1', 10, 60_000, 5);
+  });
+
+  it('supabaseRateStore calls ab_rate_hit and throws on an RPC error', async () => {
+    const rpc = vi.fn(async () => ({ data: true, error: null }));
+    expect(await supabaseRateStore({ rpc } as any).hit('shop-book:s1', 40, 3_600_000, 0)).toBe(true);
+    expect(rpc).toHaveBeenCalledWith('ab_rate_hit', { p_key: 'shop-book:s1', p_window_s: 3600, p_max: 40 });
+    const bad = { rpc: async () => ({ data: null, error: { message: 'boom' } }) };
+    await expect(supabaseRateStore(bad as any).hit('k', 1, 60_000, 0)).rejects.toThrow('boom');
+    const weird = { rpc: async () => ({ data: null, error: null }) };
+    await expect(supabaseRateStore(weird as any).hit('k', 1, 60_000, 0)).rejects.toThrow('no boolean');
+  });
+
+  it('withFallback fails open to the in-memory store and logs', async () => {
+    const log = vi.fn();
+    const store = withFallback({ hit: async () => { throw new Error('db down'); } }, memoryStore(), log);
+    expect(await store.hit('k', 1, 60_000, 0)).toBe(true);
+    expect(await store.hit('k', 1, 60_000, 0)).toBe(false); // the fallback still limits
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('db down'));
+  });
+
+  it('per shop: 40 online bookings per hour across all IPs, then false; errors fail open', async () => {
+    let now = 0;
+    const lim = shopBookingLimiter(memoryStore(), () => now);
+    for (let i = 0; i < SHOP_BOOKING_LIMIT; i++) expect(await lim.shopBooking('shop-a')).toBe(true);
+    expect(await lim.shopBooking('shop-a')).toBe(false);
+    expect(await lim.shopBooking('shop-b')).toBe(true);
+    now = 3_600_000;
+    expect(await lim.shopBooking('shop-a')).toBe(true);
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const broken = shopBookingLimiter({ hit: async () => { throw new Error('db down'); } }, () => 0);
+    expect(await broken.shopBooking('shop-a')).toBe(true);
+    err.mockRestore();
+  });
+
   it('client IP from x-real-ip, else first x-forwarded-for hop', () => {
     expect(clientIp({ 'x-real-ip': '9.9.9.9', 'x-forwarded-for': '1.1.1.1' })).toBe('9.9.9.9');
     expect(clientIp({ 'x-forwarded-for': '1.1.1.1, 2.2.2.2' })).toBe('1.1.1.1');
@@ -132,7 +177,7 @@ describe('endpoint wrapper', () => {
   it('OPTIONS, 405, 429, flow passthrough, 500', async () => {
     const run = vi.fn(async () => ({ status: 201, body: { ok: 1 } }));
     let allowed = true;
-    const h = endpoint('POST', run, { rate: 'write', limiter: { allow: () => allowed }, tag: 't' });
+    const h = endpoint('POST', run, { rate: 'write', limiter: { allow: async () => allowed }, tag: 't' });
     let r = res();
     await h({ method: 'OPTIONS' } as any, r);
     expect(r.statusCode).toBe(200);
@@ -153,6 +198,17 @@ describe('endpoint wrapper', () => {
     r = res();
     await h({ method: 'POST', headers: {} } as any, r);
     expect(r).toMatchObject({ statusCode: 500, body: { error: 'server-error' } });
+  });
+
+  it('a throwing limiter fails open; flow headers are sent', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const h = endpoint('POST', async () => ({ status: 429, body: { error: 'rate-limited' }, headers: { 'Retry-After': '300' } }),
+      { rate: 'write', limiter: { allow: async () => { throw new Error('x'); } }, tag: 't' });
+    const r = res();
+    await h({ method: 'POST', headers: {} } as any, r);
+    expect(r).toMatchObject({ statusCode: 429, body: { error: 'rate-limited' } });
+    expect(r.headers['Retry-After']).toBe('300');
+    err.mockRestore();
   });
 
   it('sends text/calendar bodies as text', async () => {

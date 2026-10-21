@@ -64,7 +64,13 @@ export function endpoint(
     if (req.method !== method) return res.status(405).json({ error: 'method-not-allowed' });
     if (opts.rate) {
       const limiter = opts.limiter ?? publicLimiter;
-      if (!limiter.allow(clientIp(req.headers as any), opts.rate)) {
+      let allowed = true;
+      try {
+        allowed = await limiter.allow(clientIp(req.headers as any), opts.rate);
+      } catch (e: any) {
+        console.error(`[${opts.tag}] rate limiter failed, allowing:`, e?.message || e); // fail open
+      }
+      if (!allowed) {
         res.setHeader('Retry-After', '60');
         return res.status(429).json({ error: 'rate-limited' });
       }

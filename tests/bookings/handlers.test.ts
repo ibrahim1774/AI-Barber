@@ -1,6 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../../lib/bookings/live.js', () => ({ liveDeps: vi.fn(() => ({ marker: 'deps' })) }));
+
+// The shared (Supabase) rate store, faked: an in-memory ab_rate_hit, or an RPC error.
+const rpcState = vi.hoisted(() => ({ hits: new Map<string, number>(), fail: false, calls: [] as unknown[] }));
+vi.mock('../../lib/bookings/repo.js', async (orig) => ({
+  ...(await orig<typeof import('../../lib/bookings/repo.js')>()),
+  serviceClient: () => ({
+    rpc: async (fn: string, args: { p_key: string; p_window_s: number; p_max: number }) => {
+      rpcState.calls.push([fn, args]);
+      if (rpcState.fail) return { data: null, error: { message: 'connection refused' } };
+      const n = (rpcState.hits.get(args.p_key) ?? 0) + 1;
+      rpcState.hits.set(args.p_key, n);
+      return { data: n <= args.p_max, error: null };
+    },
+  }),
+}));
 vi.mock('../../lib/bookings/publicFlow.js', () => ({
   getShop: vi.fn(async () => ({ status: 200, body: { paused: true, shop: { name: 'X' } } })),
   getManage: vi.fn(async () => ({ status: 200, body: { m: 1 } })),
@@ -62,7 +77,8 @@ describe('api handlers', () => {
     expect(createAppointment).toHaveBeenCalledWith(undefined, { marker: 'deps' });
   });
 
-  it('public writes are limited to 10/min per IP', async () => {
+  it('public writes are limited to 10/min per IP in the shared store (every instance sees the same count)', async () => {
+    rpcState.calls.length = 0;
     const codes: number[] = [];
     for (let i = 0; i < 11; i++) {
       const r = res();
@@ -71,6 +87,34 @@ describe('api handlers', () => {
     }
     expect(codes.slice(0, 10).every((c) => c === 201)).toBe(true);
     expect(codes[10]).toBe(429);
+    expect(rpcState.calls[0]).toEqual(['ab_rate_hit', { p_key: 'write:10.9.9.9', p_window_s: 60, p_max: 10 }]);
+    // another instance (a fresh in-memory map) would still be refused: the count is in the store
+    expect(rpcState.hits.get('write:10.9.9.9')).toBe(11);
+  });
+
+  it('reads stay in memory (no RPC)', async () => {
+    rpcState.calls.length = 0;
+    await shopHandler({ method: 'GET', query: { slug: 'x' }, headers: { 'x-real-ip': '10.7.7.7' } } as any, res());
+    expect(rpcState.calls).toEqual([]);
+  });
+
+  it('when the RPC errors, writes fall back to the in-memory limit (fail open, logged, never 500)', async () => {
+    rpcState.fail = true;
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const codes: number[] = [];
+      for (let i = 0; i < 11; i++) {
+        const r = res();
+        await appointmentsHandler({ method: 'POST', body: '{}', headers: { 'x-real-ip': '10.8.8.8' } } as any, r);
+        codes.push(r.statusCode);
+      }
+      expect(codes.slice(0, 10).every((c) => c === 201)).toBe(true);
+      expect(codes[10]).toBe(429);
+      expect(err).toHaveBeenCalledWith(expect.stringContaining('shared store failed'));
+    } finally {
+      rpcState.fail = false;
+      err.mockRestore();
+    }
   });
 
   it('shop/appointments/[id]/cancel passes the bearer and id', async () => {

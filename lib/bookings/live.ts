@@ -2,6 +2,7 @@
 import { liveGetUser } from './auth.js';
 import { liveNotify, livePayments } from './deps.js';
 import type { OwnerDeps, PurchaseVerifier } from './ownerFlow.js';
+import { shopBookingLimiter } from './rateLimit.js';
 import { serviceClient, supabaseBookingRepo } from './repo.js';
 
 export const BOOKING_BASE_URL = process.env.BOOKING_BASE_URL || 'https://www.aibarber.org';
@@ -33,6 +34,7 @@ export function liveDeps(): OwnerDeps {
     notify: liveNotify,
     now: Date.now,
     baseUrl: BOOKING_BASE_URL,
+    limits: shopBookingLimiter(),
     getUser: liveGetUser(client),
     purchases: livePurchases(),
   };
