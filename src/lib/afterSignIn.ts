@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { Alert } from 'react-native';
 import { goBackOrHome, resetTo } from '@/lib/nav';
 import { useRestoreFlow } from '@/lib/restoreFlow';
+import { takePostAuthReturn } from '@/lib/setup/gate';
 import { loadSite } from '@/lib/siteStore';
 
 /**
@@ -16,6 +17,11 @@ export function useAfterSignIn(
   const { restore } = useRestoreFlow();
   return useCallback(
     async ({ title = 'Signed in', message }: { title?: string; message?: string } = {}) => {
+      // Sent here by the Bookings setup (it needs an account first): go back to it.
+      if (takePostAuthReturn()) {
+        leave();
+        return;
+      }
       const site = await loadSite().catch(() => null);
       if (site) {
         resetTo('/edit');

@@ -1,5 +1,5 @@
 /** What can be shared. A union so the Bookings and Store plans can add 'booking' | 'shop'. */
-export type ShareKind = 'website';
+export type ShareKind = 'booking' | 'website';
 
 export type ShareLink = { kind: ShareKind; url: string };
 
@@ -7,6 +7,8 @@ export type ShareLink = { kind: ShareKind; url: string };
 export function shareMessage(kind: ShareKind, shopName: string, url: string): string {
   const name = shopName.trim();
   switch (kind) {
+    case 'booking':
+      return name ? `Book your next cut at ${name} 💈 ${url}` : `Book your next cut 💈 ${url}`;
     case 'website':
       return name ? `Check out ${name}'s new website: ${url}` : `Check out our new website: ${url}`;
   }
@@ -15,6 +17,8 @@ export function shareMessage(kind: ShareKind, shopName: string, url: string): st
 /** The link's label in the Share sheet. */
 export function shareLabel(kind: ShareKind): string {
   switch (kind) {
+    case 'booking':
+      return 'Booking link';
     case 'website':
       return 'Website link';
   }
