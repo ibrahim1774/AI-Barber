@@ -48,7 +48,7 @@ export function restoreMessage(
 
 /**
  * Restore purchases as Settings and /start run it: restore, push the site to
- * a signed-in account, go to the Dashboard, then say what happened.
+ * a signed-in account, go to the Edit tab, then say what happened.
  */
 export function useRestoreFlow(): { restore: () => Promise<void>; busy: boolean } {
   const restorePurchases = useRestorePurchases();
@@ -64,7 +64,7 @@ export function useRestoreFlow(): { restore: () => Promise<void>; busy: boolean 
       const res = await restorePurchases();
       if (res) {
         void syncIfSignedIn(res.site);
-        resetTo('/dashboard');
+        resetTo('/edit');
       }
       outcome = res;
     } catch (e) {

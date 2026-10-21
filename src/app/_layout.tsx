@@ -25,7 +25,7 @@ function ScreenTracker() {
 
 /**
  * The tracking prompt, on whatever screen comes first after the splash (the
- * importer, the Dashboard, or a deep link's target). Once per launch, after
+ * importer, the Edit tab, or a deep link's target). Once per launch, after
  * Superwall has settled and as soon as the app is active; AppsFlyer starts
  * when it is answered.
  */
@@ -40,7 +40,7 @@ function TrackingPrompt() {
 /**
  * Publish reminders. Refreshes the schedule at launch, on each real return
  * to the foreground and on going to the background (reminders.ts checks permission and publish state; it
- * never prompts). A tapped reminder, warm or cold start, opens the editor
+ * never prompts). A tapped reminder, warm or cold start, opens the Edit tab
  * (or /start without a site) once the launch redirect is done.
  */
 function Reminders() {
@@ -103,11 +103,9 @@ export default function RootLayout() {
       <Reminders />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }}>
         <Stack.Screen name="generating" options={{ gestureEnabled: false, animation: 'fade' }} />
-        {/* Home once a site exists; nothing underneath to swipe back to. */}
-        <Stack.Screen name="dashboard" options={{ gestureEnabled: false, animation: 'fade' }} />
-        {/* Left by its Dashboard button only: no swipe back into the importer. */}
-        <Stack.Screen name="editor" options={{ gestureEnabled: false, animation: 'fade' }} />
-        {/* Over the editor: clear while the paywall is up, then the publish overlay. No leaving mid-publish. */}
+        {/* Home once a site exists (Edit, Settings); no swipe back into the importer. */}
+        <Stack.Screen name="(tabs)" options={{ gestureEnabled: false, animation: 'fade' }} />
+        {/* Over the Edit tab: clear while the paywall is up, then the publish overlay. No leaving mid-publish. */}
         <Stack.Screen
           name="publishing"
           options={{
@@ -118,7 +116,6 @@ export default function RootLayout() {
           }}
         />
         <Stack.Screen name="live" options={{ animation: 'fade', gestureEnabled: false }} />
-        <Stack.Screen name="settings" />
         <Stack.Screen name="sign-in" />
         <Stack.Screen name="sign-up" />
       </Stack>

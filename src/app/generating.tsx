@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
-import { router } from 'expo-router';
+import { resetTo } from '@/lib/nav';
 import { colors, fonts } from '@/constants/theme';
 import { ScissorsIcon, WarningIcon } from '@/components/Icons';
 
@@ -19,7 +19,7 @@ const MESSAGES = [
 
 // The draft is already saved when this screen opens. On the web the loading
 // screen only shows while the site generates; here it holds long enough for
-// the first two staged messages, then snaps to 100% and opens the editor.
+// the first two staged messages, then snaps to 100% and opens the Edit tab.
 const HOLD_MS = 3000;
 
 export default function Generating() {
@@ -33,11 +33,8 @@ export default function Generating() {
     const done = setTimeout(() => {
       clearInterval(timer);
       setProgress(100);
-      // Reset the stack so back / swipe from the editor never returns to the importer.
-      go = setTimeout(() => {
-        if (router.canDismiss()) router.dismissAll();
-        router.replace('/editor');
-      }, 150);
+      // Reset the stack so back / swipe from the tabs never returns to the importer.
+      go = setTimeout(() => resetTo('/edit'), 150);
     }, HOLD_MS);
     return () => {
       clearInterval(timer);

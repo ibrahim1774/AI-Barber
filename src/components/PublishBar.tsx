@@ -3,20 +3,26 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fonts } from '@/constants/theme';
 import { ArrowRight } from '@/components/Icons';
 
-/** The editor's bottom bar (the web's EditorToolbar, minus Save — every change saves). */
+/**
+ * The editor's tool bar (the web's EditorToolbar, minus Save — every change
+ * saves). It sits above the tab bar; "Text" (the web's Edit) so the screen
+ * doesn't show two "Edit" buttons. padBottom: clear the home indicator when
+ * the tab bar is hidden.
+ */
 export function PublishBar({
-  onEdit, onPhotos, onColour, onPublish, disabled,
+  onText, onPhotos, onColour, onPublish, disabled, padBottom = true,
 }: {
-  onEdit(): void;
+  onText(): void;
   onPhotos(): void;
   onColour(): void;
   onPublish(): void;
   disabled?: boolean;
+  padBottom?: boolean;
 }) {
   const insets = useSafeAreaInsets();
   return (
-    <View style={[styles.bar, { paddingBottom: 10 + insets.bottom }]}>
-      <Tool title="Edit" hint="All text fields" onPress={onEdit} disabled={disabled} />
+    <View style={[styles.bar, { paddingBottom: 10 + (padBottom ? insets.bottom : 0) }]}>
+      <Tool title="Text" hint="All text fields" onPress={onText} disabled={disabled} />
       <Tool title="Photos" onPress={onPhotos} disabled={disabled} />
       <Tool title="Colour" onPress={onColour} disabled={disabled} />
       <Pressable

@@ -5,7 +5,7 @@ import { colors, fonts } from '@/constants/theme';
 import { ChevronLeftIcon } from '@/components/Icons';
 
 /**
- * The account screens' shell (Dashboard, Settings, sign in / up): #0d0d0d,
+ * The account screens' shell (Settings, sign in / up): #0d0d0d,
  * a header with an optional back chevron, the title as written (no caps:
  * /support quotes these names), an optional right action, scrolling content.
  */

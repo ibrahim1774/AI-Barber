@@ -288,16 +288,16 @@ export function takeLaunchReminderTap(): ReminderKind | null {
 const IMPORT_FLOW = ['/start', '/booking-link', '/find-listing', '/manual', '/generating'];
 const NEVER_LEAVE = ['/generating', '/publishing', '/live'];
 
-export type TapRoute = { go: '/editor' | '/start' } | { wait: true } | { stay: true };
+export type TapRoute = { go: '/edit' | '/start' } | { wait: true } | { stay: true };
 
 /**
- * Where a reminder tap goes: the editor when a site exists, else the start
+ * Where a reminder tap goes: the Edit tab when a site exists, else the start
  * screen. Waits while the index is still picking the launch screen, and
  * stays put mid-publish or when already where it would go.
  */
 export function routeForReminderTap(site: SiteRecord | null, pathname: string, publishing: boolean): TapRoute {
   if (pathname === '/') return { wait: true };
   if (publishing || NEVER_LEAVE.includes(pathname)) return { stay: true };
-  if (site) return pathname === '/editor' ? { stay: true } : { go: '/editor' };
+  if (site) return pathname === '/edit' ? { stay: true } : { go: '/edit' };
   return IMPORT_FLOW.includes(pathname) ? { stay: true } : { go: '/start' };
 }

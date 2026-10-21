@@ -298,20 +298,22 @@ test('cancelAllReminders stops later refreshes', async () => {
   expect(nt.scheduled).toHaveLength(0);
 });
 
-test('tap routing: editor with a site, start without, never mid-publish or before launch routing', () => {
-  expect(routeForReminderTap(draft, '/dashboard', false)).toEqual({ go: '/editor' });
-  expect(routeForReminderTap(draft, '/settings', false)).toEqual({ go: '/editor' });
+test('tap routing: the Edit tab with a site, start without, never mid-publish or before launch routing', () => {
+  expect(routeForReminderTap(draft, '/settings', false)).toEqual({ go: '/edit' });
+  expect(routeForReminderTap(draft, '/sign-in', false)).toEqual({ go: '/edit' });
+  // Old links (the Dashboard redirect) still land on the Edit tab.
+  expect(routeForReminderTap(draft, '/dashboard', false)).toEqual({ go: '/edit' });
   expect(routeForReminderTap(null, '/settings', false)).toEqual({ go: '/start' });
   expect(routeForReminderTap(null, '/dashboard', false)).toEqual({ go: '/start' });
   // Launch: the index is still choosing a screen.
   expect(routeForReminderTap(draft, '/', false)).toEqual({ wait: true });
   // Already there, mid-import, or mid-publish: stay.
-  expect(routeForReminderTap(draft, '/editor', false)).toEqual({ stay: true });
+  expect(routeForReminderTap(draft, '/edit', false)).toEqual({ stay: true });
   expect(routeForReminderTap(null, '/start', false)).toEqual({ stay: true });
   expect(routeForReminderTap(null, '/booking-link', false)).toEqual({ stay: true });
   expect(routeForReminderTap(null, '/generating', false)).toEqual({ stay: true });
   expect(routeForReminderTap(draft, '/publishing', false)).toEqual({ stay: true });
-  expect(routeForReminderTap(draft, '/dashboard', true)).toEqual({ stay: true });
+  expect(routeForReminderTap(draft, '/settings', true)).toEqual({ stay: true });
 });
 
 test('a tap is tracked once with its kind; other notifications are ignored', async () => {

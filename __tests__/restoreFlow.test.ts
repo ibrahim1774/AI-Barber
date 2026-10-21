@@ -36,3 +36,46 @@ test('errors are worded per case', () => {
     'Subscriptions are not set up in this build.',
   );
 });
+
+// useRestoreFlow itself: where a restore lands (Task 10c: the Edit tab, not the Dashboard).
+const mockResetTo = jest.fn();
+const mockRestore = jest.fn();
+jest.mock('@/lib/nav', () => ({ resetTo: (href: string) => mockResetTo(href) }));
+jest.mock('@/lib/account', () => ({ syncIfSignedIn: jest.fn(async () => {}) }));
+jest.mock('@/lib/paywall', () => ({
+  hasEntitlement: () => false,
+  useRestorePurchases: () => mockRestore,
+}));
+
+async function runRestoreFlow() {
+  const React = require('react');
+  const { act, create } = require('react-test-renderer');
+  const { useRestoreFlow } = require('@/lib/restoreFlow');
+  const { Alert } = require('react-native');
+  jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  let flow: { restore: () => Promise<void> } | null = null;
+  function Probe() {
+    flow = useRestoreFlow();
+    return null;
+  }
+  await act(async () => {
+    create(React.createElement(Probe));
+  });
+  await act(async () => {
+    await flow!.restore();
+  });
+}
+
+test('restore success routes to the Edit tab', async () => {
+  mockResetTo.mockClear();
+  mockRestore.mockResolvedValueOnce({ site, active: true });
+  await runRestoreFlow();
+  expect(mockResetTo).toHaveBeenCalledWith('/edit');
+});
+
+test('a restore that finds nothing stays put', async () => {
+  mockResetTo.mockClear();
+  mockRestore.mockResolvedValueOnce(null);
+  await runRestoreFlow();
+  expect(mockResetTo).not.toHaveBeenCalled();
+});

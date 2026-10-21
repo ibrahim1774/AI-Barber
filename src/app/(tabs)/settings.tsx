@@ -1,9 +1,10 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useLayoutEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect, useNavigation } from 'expo-router';
 import * as Application from 'expo-application';
 import * as WebBrowser from 'expo-web-browser';
 import { colors, fonts } from '@/constants/theme';
+import { Button } from '@/components/Button';
 import { ChevronRightIcon, ExternalLinkIcon } from '@/components/Icons';
 import { Page } from '@/components/Page';
 import { deleteAccountAndData, deleteLocalData } from '@/lib/account';
@@ -11,7 +12,12 @@ import { track } from '@/lib/analytics';
 import { ApiError } from '@/lib/api';
 import { signOut, useSession } from '@/lib/auth';
 import { goBackOrHome, resetTo } from '@/lib/nav';
+import { requestPublish } from '@/lib/publishRequest';
 import { useRestoreFlow } from '@/lib/restoreFlow';
+import { loadSite, type SiteRecord } from '@/lib/siteStore';
+import { tabBarStyle } from '@/lib/tabBar';
+import { useLinkActions } from '@/lib/useLinkActions';
+import { websiteView } from '@/lib/website';
 
 const SUPPORT_EMAIL = 'support@davoxa.com';
 const PRIVACY_URL = 'https://www.aibarber.org/privacy';
@@ -21,17 +27,42 @@ const SUBSCRIPTIONS_URL = 'itms-apps://apps.apple.com/account/subscriptions';
 // As the privacy page says: deleting never takes a published site offline.
 const SITE_STAYS_LIVE = `Your published website stays online until you email ${SUPPORT_EMAIL} and ask us to take it down.`;
 const SUBSCRIPTION_SEPARATE = 'Deleting doesn’t cancel your subscription — do that in Manage subscription.';
+const GREEN = '#22c55e';
 
 type Busy = 'delete' | 'signout' | null;
 
-/** "Settings" (named on aibarber.org/support): account, Restore purchases, Delete account. */
+/**
+ * The Settings tab ("Settings" on aibarber.org/support): Your website (the
+ * live link), account, Restore purchases, Delete account. Without a site
+ * (the importer's Account pill, a deep link) it stands alone: no tab bar,
+ * no "Your website", a back chevron.
+ */
 export default function Settings() {
+  const navigation = useNavigation();
   const { session, ready } = useSession();
   const { restore, busy: restoring } = useRestoreFlow();
   const [busy, setBusy] = useState<Busy>(null);
+  // undefined while loading; fresh on every visit (the editor and a publish change it).
+  const [site, setSite] = useState<SiteRecord | null | undefined>(undefined);
   const signedIn = !!session?.user;
 
-  useEffect(() => track('settings_opened'), []);
+  useFocusEffect(
+    useCallback(() => {
+      track('settings_opened');
+      let alive = true;
+      loadSite()
+        .then((s) => alive && setSite(s))
+        .catch(() => alive && setSite(null));
+      return () => {
+        alive = false;
+      };
+    }, []),
+  );
+
+  const standalone = site === null;
+  useLayoutEffect(() => {
+    navigation.setOptions({ tabBarStyle: tabBarStyle(standalone) });
+  }, [navigation, standalone]);
 
   const manageSubscription = () => {
     track('manage_subscription_tapped');
@@ -108,7 +139,9 @@ export default function Settings() {
   const version = `${Application.nativeApplicationVersion ?? '1.0.0'} (${Application.nativeBuildVersion ?? '1'})`;
 
   return (
-    <Page title="Settings" onBack={goBackOrHome}>
+    <Page title="Settings" onBack={standalone ? goBackOrHome : undefined}>
+      {site && <YourWebsite site={site} />}
+
       <Section title="Account">
         {!ready ? (
           <Row label=" " />
@@ -131,9 +164,9 @@ export default function Settings() {
       </Section>
 
       <Section title="Help">
-        <Row label="Support" detail={SUPPORT_EMAIL} onPress={emailSupport} />
         <Row label="Privacy Policy" onPress={() => void WebBrowser.openBrowserAsync(PRIVACY_URL)} external />
         <Row label="Terms of Service" onPress={() => void WebBrowser.openBrowserAsync(TERMS_URL)} external />
+        <Row label="Support" detail={SUPPORT_EMAIL} onPress={emailSupport} />
       </Section>
 
       <Section>
@@ -142,6 +175,49 @@ export default function Settings() {
 
       <Text style={styles.version}>AI Barber {version}</Text>
     </Page>
+  );
+}
+
+/** Shop name, the live link with /live's Open / Copy / Share, or "Not published yet" with Publish. */
+function YourWebsite({ site }: { site: SiteRecord }) {
+  const view = websiteView(site);
+  const { open, copy, share, copied } = useLinkActions(view.url, 'settings');
+
+  // The one publish path: the Edit tab's handlePublish (paywall, then /publishing).
+  const publish = () => {
+    track('settings_publish_tapped');
+    requestPublish();
+    router.navigate('/edit');
+  };
+
+  return (
+    <Section title="Your website">
+      <View style={styles.site}>
+        <Text style={styles.siteName} numberOfLines={2}>
+          {view.name}
+        </Text>
+        <View style={styles.statusRow}>
+          <View style={[styles.dot, { backgroundColor: view.live ? GREEN : colors.faint }]} />
+          <Text style={[styles.status, view.live && { color: GREEN }]}>{view.status}</Text>
+        </View>
+        {view.live ? (
+          <>
+            <Pressable onPress={open} accessibilityRole="link" accessibilityLabel={`Open ${view.host}`} hitSlop={6}>
+              <Text style={styles.url} numberOfLines={1}>
+                {view.host}
+              </Text>
+            </Pressable>
+            <View style={styles.actions}>
+              <Button variant="ghost" title="Open" onPress={open} style={styles.action} />
+              <Button variant="ghost" title={copied ? 'Copied' : 'Copy'} onPress={copy} style={styles.action} />
+              <Button variant="ghost" title="Share" onPress={share} style={styles.action} />
+            </View>
+          </>
+        ) : (
+          <Button variant="solid" title="Publish" onPress={publish} style={styles.publish} />
+        )}
+      </View>
+    </Section>
   );
 }
 
@@ -223,4 +299,13 @@ const styles = StyleSheet.create({
   rowLabel: { fontFamily: fonts.bodySemi, fontSize: 15, color: colors.text },
   rowDetail: { fontFamily: fonts.body, fontSize: 13, color: colors.muted, marginTop: 2 },
   version: { fontFamily: fonts.body, fontSize: 12, color: colors.faint, textAlign: 'center', marginTop: 4 },
+  site: { padding: 16 },
+  siteName: { fontFamily: fonts.heading, fontSize: 20, lineHeight: 26, color: colors.heading },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
+  dot: { width: 8, height: 8, borderRadius: 4 },
+  status: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.muted },
+  url: { fontFamily: fonts.mono, fontSize: 13, color: colors.accent, marginTop: 12, textDecorationLine: 'underline' },
+  actions: { flexDirection: 'row', gap: 8, marginTop: 16 },
+  action: { flex: 1, paddingHorizontal: 8 },
+  publish: { alignSelf: 'stretch', marginTop: 16 },
 });

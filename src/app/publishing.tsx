@@ -16,7 +16,7 @@ const FAILED_MESSAGE =
   "Something went wrong publishing your site. Please try again — if it keeps happening, email support@davoxa.com.";
 
 /**
- * Opened over the editor by Publish. Clear while the paywall is up; once the
+ * Opened over the Edit tab by Publish. Clear while the paywall is up; once the
  * user is entitled it becomes the web's PublishOverlay. Live goes to /live,
  * a closed paywall straight back to the editor.
  */
@@ -28,7 +28,7 @@ export default function Publishing() {
 
   const back = useCallback(() => {
     if (router.canGoBack()) router.back();
-    else router.replace('/editor');
+    else router.replace('/edit');
   }, []);
 
   const run = useCallback(

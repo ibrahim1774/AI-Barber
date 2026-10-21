@@ -6,7 +6,7 @@ import { Button } from '@/components/Button';
 import { Field } from '@/components/Field';
 import { Page } from '@/components/Page';
 import { resetPassword, signIn } from '@/lib/auth';
-import { goBackOrHome } from '@/lib/nav';
+import { goBackOrHome, resetTo } from '@/lib/nav';
 import { useRestoreFlow } from '@/lib/restoreFlow';
 import { loadSite } from '@/lib/siteStore';
 
@@ -25,11 +25,11 @@ export default function SignIn() {
     if (error) AccessibilityInfo.announceForAccessibility(error);
   }, [error]);
 
-  // Signed in on a phone with no site: offer (never run) Restore purchases.
+  // Signed in with a site: the Edit tab. With no site: offer (never run) Restore purchases.
   const afterSignIn = async () => {
     const site = await loadSite().catch(() => null);
     if (site) {
-      goBackOrHome();
+      resetTo('/edit');
       return;
     }
     Alert.alert('Signed in', 'Already subscribed with this Apple ID? Restore purchases to bring your website back.', [
@@ -38,7 +38,7 @@ export default function SignIn() {
         text: 'Restore purchases',
         onPress: async () => {
           await restore();
-          // Restored → already on the Dashboard; otherwise leave sign-in.
+          // Restored → already on the Edit tab; otherwise leave sign-in.
           if (!(await loadSite().catch(() => null))) goBackOrHome();
         },
       },

@@ -1,16 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import * as Clipboard from 'expo-clipboard';
-import * as WebBrowser from 'expo-web-browser';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
 import { CheckCircleIcon, CheckIcon, CloseIcon, CopyIcon } from '@/components/Icons';
 import { track } from '@/lib/analytics';
 import { useSession } from '@/lib/auth';
-import { resetTo } from '@/lib/nav';
+import { homeRoute, resetTo } from '@/lib/nav';
 import { loadSite } from '@/lib/siteStore';
+import { useLinkActions } from '@/lib/useLinkActions';
 
 const GREEN = '#22c55e';
 
@@ -18,10 +17,9 @@ const GREEN = '#22c55e';
 export default function Live() {
   const insets = useSafeAreaInsets();
   const [url, setUrl] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
   const { session, ready } = useSession();
   const [saveDismissed, setSaveDismissed] = useState(false);
-  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { open, copy, share, copied } = useLinkActions(url, 'live');
 
   useEffect(() => {
     track('live_opened');
@@ -30,7 +28,7 @@ export default function Live() {
       .then((s) => {
         if (!alive) return;
         if (!s?.deployedUrl) {
-          resetTo(s ? '/dashboard' : '/start');
+          resetTo(homeRoute(s));
           return;
         }
         setUrl(s.deployedUrl);
@@ -38,31 +36,15 @@ export default function Live() {
       .catch(() => alive && resetTo('/start'));
     return () => {
       alive = false;
-      if (copiedTimer.current) clearTimeout(copiedTimer.current);
     };
   }, []);
 
   if (!url) return <View style={styles.root} />;
 
-  const open = () => {
-    track('live_open_tapped');
-    void WebBrowser.openBrowserAsync(url);
-  };
-  const copy = async () => {
-    await Clipboard.setStringAsync(url);
-    track('live_copy_tapped');
-    setCopied(true);
-    AccessibilityInfo.announceForAccessibility('Link copied');
-    if (copiedTimer.current) clearTimeout(copiedTimer.current);
-    copiedTimer.current = setTimeout(() => setCopied(false), 2000);
-  };
-  const share = () => {
-    track('live_share_tapped');
-    void Share.share({ url, message: url });
-  };
-  const toDashboard = () => {
-    track('live_dashboard_tapped');
-    resetTo('/dashboard');
+  // Done → the Settings tab, where the live link stays.
+  const done = () => {
+    track('live_done_tapped');
+    resetTo('/settings');
   };
 
   return (
@@ -95,7 +77,7 @@ export default function Live() {
           <Button variant="ghost" title={copied ? 'Copied' : 'Copy link'} onPress={copy} style={styles.half} />
           <Button variant="ghost" title="Share" onPress={share} style={styles.half} />
         </View>
-        <Button variant="link" title="Go to dashboard" onPress={toDashboard} style={styles.link} />
+        <Button variant="link" title="Done" onPress={done} style={styles.link} />
 
         {ready && !session?.user && !saveDismissed && (
           <View style={styles.save}>
