@@ -33,6 +33,21 @@ describe('pickProductPhotos', () => {
     cam.mockResolvedValue({ canceled: false, assets: [{ uri: 'c' }] });
     expect(await pickProductPhotos('camera', 5, 'shop1')).toEqual(['https://cdn/c']);
   });
+  it('keeps the photos that uploaded and reports how many failed', async () => {
+    lib.mockResolvedValue({ canceled: false, assets: [{ uri: 'a' }, { uri: 'b' }, { uri: 'c' }] });
+    upload.mockImplementation(async (uri: string) => {
+      if (uri === 'b') throw new Error('network');
+      return `https://cdn/${uri}`;
+    });
+    const onFailed = jest.fn();
+    expect(await pickProductPhotos('library', 5, 'shop1', undefined, onFailed)).toEqual(['https://cdn/a', 'https://cdn/c']);
+    expect(onFailed).toHaveBeenCalledWith(1, 3);
+  });
+  it('throws when every upload fails', async () => {
+    lib.mockResolvedValue({ canceled: false, assets: [{ uri: 'a' }] });
+    upload.mockRejectedValue(new Error('network'));
+    await expect(pickProductPhotos('library', 5, 'shop1')).rejects.toThrow('network');
+  });
   it('a cancelled pick is []', async () => {
     lib.mockResolvedValue({ canceled: true, assets: null });
     expect(await pickProductPhotos('library', 5, 'shop1')).toEqual([]);

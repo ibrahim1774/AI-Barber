@@ -75,8 +75,12 @@ export function ProductsPane({ shopId, locked }: { shopId: string; locked: boole
   const done = async () => {
     const ids = (order ?? []).map((p) => p.id);
     const changed = ids.some((id, i) => id !== products[i]?.id);
+    if (changed) {
+      // Keep the local order on screen until the write settles; a failure reloads the real one.
+      const ok = await reorder(ids);
+      if (!ok) await refresh();
+    }
     setOrder(null);
-    if (changed) await reorder(ids);
   };
 
   if (loading) return <ActivityIndicator color={colors.accent} style={{ marginTop: 40 }} />;

@@ -35,7 +35,8 @@ export function useProducts(shopId: string) {
     try {
       await fn();
     } catch (e) {
-      Alert.alert("Couldn't save that", e instanceof Error ? e.message : 'Try again.');
+      console.warn('[store] product write failed', e);
+      Alert.alert("Couldn't save your product", 'Check your connection and try again.');
       return false;
     }
     await load();

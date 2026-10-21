@@ -1,6 +1,6 @@
 import {
   addProduct, countNewOrders, listOrders, listProducts, loadStoreSettings, removeProduct, reorderProducts, shopUrl,
-  toOrder, updateProduct, updateStoreSettings,
+  toOrder, updateProduct, updateStoreSettings, VISIBLE_ORDERS_FILTER,
 } from '@/lib/store/data';
 
 type Call = { table: string; ops: [string, ...unknown[]][] };
@@ -114,6 +114,10 @@ describe('store data layer', () => {
     expect(has(0, 'limit', 20)).toBe(true);
     expect(has(0, 'lt', 'created_at', '2026-10-01T00:00:00Z')).toBe(true);
     const or = ops(0).find((o) => o[0] === 'or')![1] as string;
+    expect(or).toBe(VISIBLE_ORDERS_FILTER);
+    expect(VISIBLE_ORDERS_FILTER).toBe(
+      'payment_method.is.null,payment_method.neq.card,payment_status.neq.awaiting,amount_paid_cents.gt.0',
+    );
     expect(or).toContain('payment_method.neq.card');
     expect(or).toContain('payment_status.neq.awaiting');
     expect(or).toContain('amount_paid_cents.gt.0');
@@ -126,6 +130,14 @@ describe('store data layer', () => {
     expect(await countNewOrders('s1')).toBe(3);
     expect(has(0, 'eq', 'status', 'new')).toBe(true);
     expect((ops(0).find((o) => o[0] === 'or')![1] as string)).toContain('payment_status.neq.awaiting');
+  });
+
+  it('never surfaces the raw database error', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    mockResults = [{ data: null, error: { message: 'new row for relation "ab_products" violates check constraint' } }];
+    await expect(removeProduct('p1')).rejects.toThrow("Couldn't save that. Check your connection and try again.");
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
   });
 
   it('toOrder maps order_no, an empty address and the items', () => {

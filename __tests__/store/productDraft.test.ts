@@ -10,6 +10,8 @@ describe('productDraft', () => {
     expect(parsePrice('abc')).toBeNull();
     expect(parsePrice('-1')).toBeNull();
     expect(parsePrice('')).toBeNull();
+    expect(parsePrice('1,2,3')).toBeNull();
+    expect(parsePrice('12,34')).toBeNull();
   });
   it('rejects a price over 1,000,000 cents', () => {
     expect(validateDraft({ ...ok, price: '10000' }).price).toBeUndefined();
@@ -17,6 +19,11 @@ describe('productDraft', () => {
     expect(validateDraft({ ...ok, price: '1,000,001' }).price).toBeTruthy();
     expect(validateDraft({ ...ok, price: 'abc' }).price).toBeTruthy();
     expect(validateDraft({ ...ok, price: '-1' }).price).toBeTruthy();
+  });
+  it('requires at least $0.50', () => {
+    expect(validateDraft({ ...ok, price: '0' }).price).toMatch(/\$0\.50/);
+    expect(validateDraft({ ...ok, price: '0.49' }).price).toBeTruthy();
+    expect(validateDraft({ ...ok, price: '0.50' }).price).toBeUndefined();
   });
   it('requires a name of 1 to 80 characters', () => {
     expect(validateDraft({ ...ok, name: '  ' }).name).toBeTruthy();

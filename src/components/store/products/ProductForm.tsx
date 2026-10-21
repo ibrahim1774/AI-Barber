@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActionSheetIOS, ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
@@ -27,8 +27,11 @@ export function ProductForm({ visible, shopId, product, onClose, onSubmit, onDel
   const [errors, setErrors] = useState<DraftErrors>({});
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
+  // Bumped whenever the form resets or closes, so a late upload can't land in another draft.
+  const token = useRef(0);
 
   useEffect(() => {
+    token.current++;
     if (!visible) return;
     setDraft(product ? productToDraft(product) : emptyDraft());
     setErrors({});
@@ -40,13 +43,22 @@ export function ProductForm({ visible, shopId, product, onClose, onSubmit, onDel
   const patch = (p: Partial<ProductDraft>) => setDraft((d) => ({ ...d, ...p }));
 
   const addPhotos = async (source: 'camera' | 'library') => {
+    const mine = token.current;
+    const stale = () => mine !== token.current;
     try {
-      const urls = await pickProductPhotos(source, MAX_PHOTOS - draft.photos.length, shopId, () => setUploading(true));
+      const urls = await pickProductPhotos(
+        source, MAX_PHOTOS - draft.photos.length, shopId,
+        () => !stale() && setUploading(true),
+        (failed, total) => {
+          if (!stale()) Alert.alert(`${total - failed} of ${total} photos added`, 'The rest didn\'t upload. Check your connection and try again.');
+        },
+      );
+      if (stale()) return;
       if (urls.length) setDraft((d) => ({ ...d, photos: [...d.photos, ...urls].slice(0, MAX_PHOTOS) }));
     } catch (e) {
-      Alert.alert("Couldn't add that photo", e instanceof Error ? e.message : 'Check your connection and try again.');
+      if (!stale()) Alert.alert("Couldn't add that photo", e instanceof Error ? e.message : 'Check your connection and try again.');
     } finally {
-      setUploading(false);
+      if (!stale()) setUploading(false);
     }
   };
 

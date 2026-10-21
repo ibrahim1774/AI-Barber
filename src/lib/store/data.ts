@@ -35,8 +35,10 @@ export function shopUrl(shop: { slug: string }): string {
   return `${SHOP_BASE}/${shop.slug}`;
 }
 
+/** Logs the raw database error; the barber only ever sees the friendly line. */
 function fail(error: { message?: string } | null): never {
-  throw new Error(error?.message || 'Something went wrong. Please try again.');
+  console.warn('[store] request failed', error);
+  throw new Error("Couldn't save that. Check your connection and try again.");
 }
 
 // ---- settings ------------------------------------------------------------

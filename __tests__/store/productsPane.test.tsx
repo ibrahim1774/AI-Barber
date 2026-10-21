@@ -74,7 +74,7 @@ describe('ProductsPane', () => {
     (pickProductPhotos as jest.Mock).mockResolvedValue(['u1', 'u2']);
     jest.spyOn(ActionSheetIOS, 'showActionSheetWithOptions').mockImplementation((_o: any, cb: any) => cb(1)); // Library
     await press(r, 'Add photo');
-    expect(pickProductPhotos).toHaveBeenCalledWith('library', 5, 's1', expect.any(Function));
+    expect(pickProductPhotos).toHaveBeenCalledWith('library', 5, 's1', expect.any(Function), expect.any(Function));
     await act(async () => { r.root.findByProps({ title: 'Save' }).props.onPress(); });
     expect(mockData.addProduct).toHaveBeenCalledWith('s1', {
       name: 'Matte pomade', priceCents: 1250, description: '', photos: ['u1', 'u2'], soldOut: false,
@@ -128,6 +128,47 @@ describe('ProductsPane', () => {
     const buttons = alert.mock.calls[0][2] as { text: string; onPress?: () => void }[];
     await act(async () => { buttons.find((b) => b.text === 'Remove')!.onPress!(); });
     expect(mockData.removeProduct).toHaveBeenCalledWith('b');
+  });
+
+  it('a failed write alerts with friendly copy', async () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    mockData.updateProduct.mockRejectedValue(new Error('violates check constraint "x"'));
+    const r = await render();
+    await press(r, 'Edit Item a');
+    await act(async () => { r.root.findByType(require('react-native').Switch).props.onValueChange(true); });
+    await act(async () => { r.root.findByProps({ title: 'Save' }).props.onPress(); });
+    expect(alert).toHaveBeenCalledWith("Couldn't save your product", 'Check your connection and try again.');
+    expect(JSON.stringify(alert.mock.calls)).not.toMatch(/constraint/);
+  });
+
+  it('Save is disabled while a photo uploads, and a late upload does not land in another draft', async () => {
+    let finish!: (u: string[]) => void;
+    (pickProductPhotos as jest.Mock).mockImplementation(
+      (_s: string, _r: number, _id: string, onPicked: () => void) => new Promise((res) => { onPicked(); finish = res; }),
+    );
+    jest.spyOn(ActionSheetIOS, 'showActionSheetWithOptions').mockImplementation((_o: any, cb: any) => cb(1));
+    const r = await render();
+    await press(r, 'Add product');
+    await press(r, 'Add photo');
+    expect(r.root.findByProps({ title: 'Save' }).props.disabled).toBe(true);
+    await press(r, 'Close'); // dismiss while uploading
+    await press(r, 'Add product'); // a fresh draft
+    await act(async () => { finish(['late']); });
+    expect(r.root.findAll((n: any) => n.props.source?.uri === 'late')).toHaveLength(0);
+    expect(r.root.findByProps({ title: 'Save' }).props.disabled).toBeFalsy();
+  });
+
+  it('Arrange keeps the local order until the write settles, and reloads when it fails', async () => {
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    mockData.reorderProducts.mockRejectedValue(new Error('boom'));
+    const r = await render();
+    await act(async () => { find(r, 'Edit Item a').props.onLongPress(); });
+    await press(r, 'Move Item a down');
+    mockData.listProducts.mockClear();
+    await press(r, 'Done');
+    expect(mockData.listProducts).toHaveBeenCalled();
   });
 
   it('shows a Sold out veil and hides the + and edits when locked', async () => {

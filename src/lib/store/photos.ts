@@ -11,6 +11,7 @@ export async function pickProductPhotos(
   remaining: number,
   shopId: string,
   onPicked?: () => void,
+  onFailed?: (failed: number, total: number) => void,
 ): Promise<string[]> {
   if (remaining <= 0) return [];
   let res: ImagePicker.ImagePickerResult;
@@ -29,7 +30,18 @@ export async function pickProductPhotos(
   if (res.canceled || !res.assets?.length) return [];
   onPicked?.();
   const urls: string[] = [];
-  for (const a of res.assets.slice(0, remaining)) urls.push(await uploadPhoto(a.uri, `ab-products/${shopId}`));
+  const picked = res.assets.slice(0, remaining);
+  let lastError: unknown = null;
+  for (const a of picked) {
+    try {
+      urls.push(await uploadPhoto(a.uri, `ab-products/${shopId}`));
+    } catch (e) {
+      lastError = e;
+    }
+  }
+  // Keep the ones that made it; only a total failure throws.
+  if (urls.length === 0 && lastError) throw lastError;
+  if (urls.length < picked.length) onFailed?.(picked.length - urls.length, picked.length);
   return urls;
 }
 
