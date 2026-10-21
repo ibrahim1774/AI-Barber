@@ -7,6 +7,7 @@ import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
 import { ChevronRightIcon, ExternalLinkIcon } from '@/components/Icons';
 import { Page } from '@/components/Page';
+import { ShareSheet } from '@/components/ShareSheet';
 import { deleteAccountAndData, deleteLocalData, onSiteAdopted } from '@/lib/account';
 import { track } from '@/lib/analytics';
 import { ApiError } from '@/lib/api';
@@ -192,7 +193,11 @@ export default function Settings() {
 function YourWebsite({ site }: { site: SiteRecord }) {
   const lapsed = isLocked(site, useSubscriptionStatus());
   const view = websiteView(site, lapsed);
-  const { open, copy, share, copied } = useLinkActions(view.url, 'settings');
+  const { open, copy, copied } = useLinkActions(view.url, 'settings');
+  const [shareOpen, setShareOpen] = useState(false);
+  const shareSite = () => {
+    if (view.url) setShareOpen(true);
+  };
 
   useEffect(() => {
     if (lapsed) track('subscription_lapsed_shown', { screen: 'settings' });
@@ -213,6 +218,7 @@ function YourWebsite({ site }: { site: SiteRecord }) {
   };
 
   return (
+    <>
     <Section title="Your website">
       <View style={styles.site}>
         <Text style={styles.siteName} numberOfLines={2}>
@@ -242,7 +248,7 @@ function YourWebsite({ site }: { site: SiteRecord }) {
             <View style={styles.actions}>
               <Button variant="ghost" title="Open" onPress={open} style={styles.action} />
               <Button variant="ghost" title={copied ? 'Copied' : 'Copy'} onPress={copy} style={styles.action} />
-              <Button variant="ghost" title="Share" onPress={share} style={styles.action} />
+              <Button variant="ghost" title="Share" onPress={shareSite} style={styles.action} />
             </View>
           </>
         ) : (
@@ -250,6 +256,21 @@ function YourWebsite({ site }: { site: SiteRecord }) {
         )}
       </View>
     </Section>
+    {view.live && view.url && (
+      <>
+        <Section>
+          <Row label="Share your site" detail="Message, QR code, Instagram bio" onPress={shareSite} chevron />
+        </Section>
+        <ShareSheet
+          visible={shareOpen}
+          shopName={view.name}
+          links={[{ kind: 'website', url: view.url }]}
+          source="settings"
+          onClose={() => setShareOpen(false)}
+        />
+      </>
+    )}
+    </>
   );
 }
 

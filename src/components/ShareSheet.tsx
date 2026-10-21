@@ -1,0 +1,129 @@
+import { useEffect, useRef, useState } from 'react';
+import { AccessibilityInfo, Pressable, Share, StyleSheet, Text, View } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
+import { colors, fonts } from '@/constants/theme';
+import { ChevronRightIcon } from '@/components/Icons';
+import { QrScreen } from '@/components/QrScreen';
+import { Sheet } from '@/components/EditSheet';
+import { track } from '@/lib/analytics';
+import { displayHost, shareLabel, shareMessage, type ShareLink } from '@/lib/share';
+
+type Props = {
+  visible: boolean;
+  shopName: string;
+  links: ShareLink[];
+  source: 'live' | 'settings';
+  onClose(): void;
+};
+
+/** One Share sheet for the live site: pre-written message rows, QR code, copy. */
+export function ShareSheet({ visible, shopName, links, source, onClose }: Props) {
+  const [qr, setQr] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const first = links[0];
+
+  useEffect(() => {
+    if (visible) track('share_sheet_opened', { source });
+  }, [visible, source]);
+
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    [],
+  );
+
+  const close = () => {
+    setNote(null);
+    onClose();
+  };
+
+  const flash = (text: string) => {
+    setNote(text);
+    AccessibilityInfo.announceForAccessibility(text);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setNote(null), 2000);
+  };
+
+  const shareLink = (link: ShareLink) => {
+    track('share_link_tapped', { kind: link.kind });
+    void Share.share({ message: shareMessage(link.kind, shopName, link.url) });
+  };
+
+  const copy = async (done: string) => {
+    if (!first) return;
+    await Clipboard.setStringAsync(first.url);
+    track('share_copy_tapped');
+    flash(done);
+  };
+
+  return (
+    <>
+      <Sheet visible={visible && !qr} title="Share your site" onClose={close}>
+        {links.map((link) => (
+          <Pressable
+            key={link.kind}
+            onPress={() => shareLink(link)}
+            accessibilityRole="button"
+            accessibilityLabel={`Share ${shareLabel(link.kind)}`}
+            style={({ pressed }) => [styles.link, pressed && { opacity: 0.7 }]}
+          >
+            <View style={styles.linkText}>
+              <Text style={styles.linkTitle}>{shareLabel(link.kind)}</Text>
+              <Text style={styles.linkHost} numberOfLines={1}>
+                {displayHost(link.url)}
+              </Text>
+            </View>
+            <ChevronRightIcon size={16} color={colors.faint} />
+          </Pressable>
+        ))}
+        {!!first && (
+          <>
+            <Option
+              title="Show QR code"
+              onPress={() => {
+                track('qr_opened');
+                setQr(true);
+              }}
+            />
+            <Option title="Copy link" onPress={() => void copy('Copied')} />
+            <Option
+              title="Copy for your Instagram bio"
+              onPress={() => void copy('Copied. Paste it into your Instagram bio.')}
+            />
+          </>
+        )}
+        <Text style={styles.note} accessibilityLiveRegion="polite">
+          {note ?? ' '}
+        </Text>
+      </Sheet>
+      {!!first && <QrScreen visible={visible && qr} shopName={shopName} url={first.url} onClose={() => setQr(false)} />}
+    </>
+  );
+}
+
+function Option({ title, onPress }: { title: string; onPress(): void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      style={({ pressed }) => [styles.option, pressed && { opacity: 0.7 }]}
+    >
+      <Text style={styles.optionText}>{title}</Text>
+    </Pressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  link: {
+    minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12,
+    borderRadius: 14, borderWidth: 1, borderColor: colors.accent, marginBottom: 12,
+  },
+  linkText: { flex: 1 },
+  linkTitle: { fontFamily: fonts.bodyBold, fontSize: 17, color: colors.text },
+  linkHost: { fontFamily: fonts.mono, fontSize: 12, color: colors.accent, marginTop: 3 },
+  option: { minHeight: 48, justifyContent: 'center', paddingHorizontal: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.hair },
+  optionText: { fontFamily: fonts.bodySemi, fontSize: 15, color: colors.text },
+  note: { fontFamily: fonts.bodySemi, fontSize: 13, color: '#22c55e', textAlign: 'center', marginTop: 12, minHeight: 18 },
+});
