@@ -3,7 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 import { identifyUser, resetUser, track, trackRegistration } from '@/lib/analytics';
 import { api } from '@/lib/api';
 import { syncIfSignedIn } from '@/lib/account';
-import { isValidEmail, RESET_REDIRECT } from '@/lib/recovery';
+import { isCodeComplete, isValidEmail, sanitizeCode } from '@/lib/recovery';
 import { supabase } from '@/lib/supabase';
 
 // Copy from the web's AuthModal where it has one; the rest is ours.
@@ -147,64 +147,79 @@ export async function signOut(): Promise<void> {
   resetUser();
 }
 
-// /forgot-password and /reset-password copy.
+// /forgot-password copy.
 export const RESET_BAD_EMAIL = BAD_EMAIL;
 export const RESET_RATE_LIMITED = 'Too many requests. Please wait a minute and try again.';
 export const RESET_FALLBACK = FALLBACK;
+export const RESET_WRONG_CODE = 'That code is wrong or has expired. Check the email or send a new code.';
+export const RESET_CODE_INCOMPLETE = 'Enter the code from the email.';
 export const PASSWORDS_DIFFER = "The passwords don't match.";
 export const MIN_PASSWORD = 6;
 
-/** A reset-email failure as a sentence: offline, rate limited, bad email, or generic. */
-export function friendlyResetError(e: unknown): string {
-  const err = (e ?? {}) as { code?: string; status?: number; name?: string; message?: string };
-  const code = err.code ?? '';
+type AuthErr = { code?: string; status?: number; name?: string; message?: string };
+
+function isOffline(err: AuthErr): boolean {
   const message = typeof err.message === 'string' ? err.message : '';
-  if (
+  return (
     err.name === 'AuthRetryableFetchError' ||
     err.status === 0 ||
     /network request failed|failed to fetch|fetch failed|network error|timed? ?out/i.test(message)
-  ) {
-    return OFFLINE;
-  }
-  if (err.status === 429 || code.startsWith('over_') || /rate limit|too many/i.test(message)) return RESET_RATE_LIMITED;
+  );
+}
+
+function isRateLimited(err: AuthErr): boolean {
+  return err.status === 429 || (err.code ?? '').startsWith('over_') || /rate limit|too many/i.test(err.message ?? '');
+}
+
+/** A reset-email failure as a sentence: offline, rate limited, bad email, or generic. */
+export function friendlyResetError(e: unknown): string {
+  const err = (e ?? {}) as AuthErr;
+  const code = err.code ?? '';
+  const message = typeof err.message === 'string' ? err.message : '';
+  if (isOffline(err)) return OFFLINE;
+  if (isRateLimited(err)) return RESET_RATE_LIMITED;
   if (code === 'email_address_invalid' || code === 'validation_failed' || /invalid email|unable to validate email/i.test(message)) {
     return RESET_BAD_EMAIL;
   }
   return RESET_FALLBACK;
 }
 
+/** A verifyOtp failure as a sentence: offline, rate limited, wrong/expired code, or generic. */
+export function friendlyCodeError(e: unknown): string {
+  const err = (e ?? {}) as AuthErr;
+  const code = err.code ?? '';
+  if (isOffline(err)) return OFFLINE;
+  if (isRateLimited(err)) return RESET_RATE_LIMITED;
+  if (
+    code === 'otp_expired' ||
+    code === 'otp_disabled' ||
+    err.status === 401 ||
+    err.status === 403 ||
+    /expired|invalid|token/i.test(err.message ?? '')
+  ) {
+    return RESET_WRONG_CODE;
+  }
+  return RESET_FALLBACK;
+}
+
 /**
- * "Forgot password?": Supabase emails a link that opens /reset-password in
- * this app. Succeeds the same way whether or not the account exists. The
- * email is never sent to analytics.
+ * "Forgot password?": Supabase emails a code (the project's Reset password
+ * template includes {{ .Token }}). No redirectTo: the email's link still goes
+ * to aibarber.org for web users; the app never opens a link with tokens.
+ * Succeeds the same way whether or not the account exists. The email is
+ * never sent to analytics.
  */
 export async function requestPasswordReset(email: string): Promise<void> {
   const address = email.trim();
   if (!isValidEmail(address)) throw new Error(RESET_BAD_EMAIL);
   let res: { error: unknown };
   try {
-    res = await supabase.auth.resetPasswordForEmail(address, { redirectTo: RESET_REDIRECT });
+    res = await supabase.auth.resetPasswordForEmail(address);
   } catch (e) {
     throw new Error(friendlyResetError(e));
   }
   if (res.error) throw new Error(friendlyResetError(res.error));
   track('password_reset_requested');
-}
-
-/**
- * Opens the recovery session from the link's tokens. The refresh token is
- * rotated straight away (best effort), so the one that travelled in the
- * link stops working.
- */
-export async function startRecoverySession(accessToken: string, refreshToken: string): Promise<void> {
-  const { data, error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
-  if (error || !data.session) throw new Error('This reset link has expired or was already used.');
-  userId = data.session.user?.id ?? userId;
-  try {
-    await supabase.auth.refreshSession();
-  } catch {
-    // Offline: the session still works; the link's refresh token just isn't rotated yet.
-  }
 }
 
 /** Client-side check before updateUser: null when the pair is acceptable. */
@@ -214,8 +229,25 @@ export function newPasswordProblem(password: string, confirm: string): string | 
   return null;
 }
 
+/** Exchanges the emailed code for a recovery session (signs the user in). */
+export async function verifyResetCode(email: string, code: string): Promise<void> {
+  let res: Awaited<ReturnType<typeof supabase.auth.verifyOtp>>;
+  try {
+    res = await supabase.auth.verifyOtp({ email: email.trim(), token: code, type: 'recovery' });
+  } catch (e) {
+    track('password_reset_code_entered', { ok: false });
+    throw new Error(friendlyCodeError(e));
+  }
+  if (res.error || !res.data.session) {
+    track('password_reset_code_entered', { ok: false });
+    throw new Error(res.error ? friendlyCodeError(res.error) : RESET_WRONG_CODE);
+  }
+  userId = res.data.session.user?.id ?? userId;
+  track('password_reset_code_entered', { ok: true });
+}
+
 /**
- * Sets the new password on the recovery session, then does what a sign-in
+ * Sets the new password on the (recovery) session, then does what a sign-in
  * does (identify, push the local site). The server's own reason is shown
  * when it rejects the password.
  */
@@ -227,10 +259,33 @@ export async function setNewPassword(password: string): Promise<void> {
     throw new Error(friendlyAuthError(e));
   }
   if (res.error) {
-    const err = res.error as { name?: string; status?: number; message?: string };
-    const offline = friendlyAuthError(res.error) === OFFLINE;
-    throw new Error(offline ? OFFLINE : err.message?.trim() || FALLBACK);
+    const err = res.error as AuthErr;
+    throw new Error(isOffline(err) ? OFFLINE : err.message?.trim() || FALLBACK);
   }
   track('password_reset_completed');
   await afterSession(res.data.user?.id);
+}
+
+/**
+ * The code step's "Reset password": checks the code and the new password,
+ * verifyOtp, then updateUser. `alreadyVerified` (a previous attempt verified
+ * the code but the password was rejected) skips verifyOtp, since a code
+ * works only once; `onVerified` tells the screen that happened.
+ */
+export async function resetPasswordWithCode(
+  email: string,
+  rawCode: string,
+  password: string,
+  confirm: string,
+  { alreadyVerified = false, onVerified }: { alreadyVerified?: boolean; onVerified?: () => void } = {},
+): Promise<void> {
+  const code = sanitizeCode(rawCode);
+  if (!alreadyVerified && !isCodeComplete(code)) throw new Error(RESET_CODE_INCOMPLETE);
+  const problem = newPasswordProblem(password, confirm);
+  if (problem) throw new Error(problem);
+  if (!alreadyVerified) {
+    await verifyResetCode(email, code);
+    onVerified?.();
+  }
+  await setNewPassword(password);
 }

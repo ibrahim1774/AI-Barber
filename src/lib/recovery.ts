@@ -1,73 +1,25 @@
 /**
- * Password recovery helpers with no app dependencies (Jest-tested): reading
- * Supabase's recovery link, the Resend cooldown, and scrubbing URLs before
- * they reach analytics. The link carries live tokens in its fragment, so
- * nothing here ever logs a URL.
+ * Password recovery helpers with no app dependencies (Jest-tested): the
+ * emailed code, the Resend cooldown, email checks, and scrubbing URLs before
+ * they reach analytics. Recovery is a code typed into the app, never a link
+ * into it, so no session token ever travels in a URL the app opens.
  */
-
-/** Where Supabase sends the recovery link (must be on the project's Redirect URLs allow-list). */
-export const RESET_REDIRECT = 'aibarber://reset-password';
 
 /** Seconds between two reset emails from /forgot-password. */
 export const RESEND_COOLDOWN_S = 60;
 
-export type RecoveryLink =
-  | { kind: 'session'; accessToken: string; refreshToken: string }
-  | { kind: 'error'; message: string }
-  | { kind: 'none' };
+/** Supabase's email OTP length is configurable from 6 to 10 digits. */
+export const CODE_MIN = 6;
+export const CODE_MAX = 10;
 
-const DEFAULT_ERROR = 'This reset link has expired or was already used.';
-
-function decode(s: string): string {
-  try {
-    return decodeURIComponent(s.replace(/\+/g, ' '));
-  } catch {
-    return s;
-  }
+/** What the code field keeps of what was typed or pasted: digits only, at most 10. */
+export function sanitizeCode(input: string): string {
+  return input.replace(/\D+/g, '').slice(0, CODE_MAX);
 }
 
-function params(part: string): Map<string, string> {
-  const out = new Map<string, string>();
-  for (const pair of part.split('&')) {
-    if (!pair) continue;
-    const eq = pair.indexOf('=');
-    const key = decode(eq < 0 ? pair : pair.slice(0, eq));
-    const value = eq < 0 ? '' : decode(pair.slice(eq + 1));
-    if (key && !out.has(key)) out.set(key, value);
-  }
-  return out;
-}
-
-/**
- * The recovery link Supabase's implicit flow opens:
- *   aibarber://reset-password#access_token=…&refresh_token=…&type=recovery
- *   aibarber://reset-password#error=…&error_code=otp_expired&error_description=…
- * Anything else (no fragment, a malformed URL, a non-recovery session) is
- * 'none'. An error in the query string counts too (some GoTrue errors use it).
- */
-export function parseRecoveryUrl(url: string | null | undefined): RecoveryLink {
-  if (typeof url !== 'string' || !url) return { kind: 'none' };
-  const hash = url.indexOf('#');
-  const fragment = hash < 0 ? '' : url.slice(hash + 1);
-  const beforeHash = hash < 0 ? url : url.slice(0, hash);
-  const q = beforeHash.indexOf('?');
-  const query = q < 0 ? '' : beforeHash.slice(q + 1);
-  const f = params(fragment);
-  const qs = params(query);
-
-  const error = f.get('error') ?? f.get('error_code') ?? qs.get('error') ?? qs.get('error_code');
-  if (error !== undefined) {
-    const description = f.get('error_description') ?? qs.get('error_description');
-    return { kind: 'error', message: description?.trim() || DEFAULT_ERROR };
-  }
-
-  const accessToken = f.get('access_token');
-  const refreshToken = f.get('refresh_token');
-  const type = f.get('type');
-  if (accessToken && refreshToken && (type === undefined || type === 'recovery')) {
-    return { kind: 'session', accessToken, refreshToken };
-  }
-  return { kind: 'none' };
+/** A code with an acceptable length (after sanitizeCode). */
+export function isCodeComplete(code: string): boolean {
+  return /^\d+$/.test(code) && code.length >= CODE_MIN && code.length <= CODE_MAX;
 }
 
 /** Whole seconds left before Resend is allowed again (0 = now). */
@@ -105,4 +57,16 @@ export function scrubEventUrls<E extends AnyEvent | null>(event: E): E {
     props[k] = clean;
   }
   return changed ? ({ ...event, properties: props } as E) : event;
+}
+
+// The email typed on /sign-in, handed to /forgot-password in memory (never in a route URL).
+let prefill = '';
+export function setPrefillEmail(email: string): void {
+  prefill = email.trim();
+}
+/** Returns the handed-over email once, then forgets it. */
+export function takePrefillEmail(): string {
+  const e = prefill;
+  prefill = '';
+  return e;
 }

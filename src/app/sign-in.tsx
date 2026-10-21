@@ -8,8 +8,9 @@ import { Page } from '@/components/Page';
 import { useAfterSignIn } from '@/lib/afterSignIn';
 import { signIn } from '@/lib/auth';
 import { goBackOrHome } from '@/lib/nav';
+import { setPrefillEmail } from '@/lib/recovery';
 
-/** Email + password sign-in; "Forgot password?" opens /forgot-password with the email typed so far. */
+/** Email + password sign-in; "Forgot password?" opens /forgot-password with the email typed so far (in memory). */
 export default function SignIn() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -46,8 +47,8 @@ export default function SignIn() {
 
   const forgot = () => {
     if (busyRef.current) return;
-    const typed = email.trim();
-    router.push(typed ? { pathname: '/forgot-password', params: { email: typed } } : '/forgot-password');
+    setPrefillEmail(email);
+    router.push('/forgot-password');
   };
 
   return (

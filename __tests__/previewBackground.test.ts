@@ -1,7 +1,7 @@
 import { generateContent } from '@/web/services/geminiService';
 import { BRAND_SWATCHES } from '@/web/lib/brandSwatches';
 import type { TemplateId, WebsiteData } from '@/web/types';
-import { buildPreviewHtml, previewBackground, withPreviewBackground } from '@/lib/editable';
+import { buildPreviewHtml, PREVIEW_MAP_CSS, previewBackground, withPreviewBackground } from '@/lib/editable';
 
 const inputs = { shopName: 'Fresh Cuts', area: 'Brooklyn, NY', phone: '555-0100' };
 // Every colour the app offers (the swatches) plus the web's named themes.
@@ -44,7 +44,7 @@ describe('buildPreviewHtml paints the canvas with the site background', () => {
       const bg = previewBackground(d);
       for (const editable of [true, false]) {
         const html = buildPreviewHtml(d, editable);
-        const style = `<style id="aib-preview-bg">html{background-color:${bg};min-height:100%;}</style>`;
+        const style = `<style id="aib-preview-bg">html{background-color:${bg};min-height:100%;}${PREVIEW_MAP_CSS}</style>`;
         // Once, inside <head>, ahead of the template's own scripts and stylesheets.
         expect(html.split(style)).toHaveLength(2);
         const at = html.indexOf(style);
@@ -57,8 +57,25 @@ describe('buildPreviewHtml paints the canvas with the site background', () => {
 
   it('withPreviewBackground: no <head> → prepended; a non-hex colour is refused', () => {
     expect(withPreviewBackground('<p>x</p>', '#010203')).toBe(
-      '<style id="aib-preview-bg">html{background-color:#010203;min-height:100%;}</style><p>x</p>',
+      `<style id="aib-preview-bg">html{background-color:#010203;min-height:100%;}${PREVIEW_MAP_CSS}</style><p>x</p>`,
     );
     expect(withPreviewBackground('<html><head></head></html>', 'red;}body{x')).toBe('<html><head></head></html>');
+  });
+});
+
+describe('the map embed is a dark placeholder in the preview', () => {
+  it('the CSS is safe inside <style> and dark', () => {
+    expect(PREVIEW_MAP_CSS).not.toMatch(/</); // nothing that could close the <style>
+    expect(PREVIEW_MAP_CSS).toContain('background:#1a1a1a url("data:image/svg+xml,');
+    expect(PREVIEW_MAP_CSS).toContain(':has(> iframe[src*="maps.google"])');
+  });
+
+  it.each(['luxe', 'prime', 'euphoria'] as TemplateId[])('%s: its map iframe matches the selector', async (template) => {
+    const html = buildPreviewHtml(await site(template, '#f4a100'), true);
+    const iframes = html.match(/<iframe\b[\s\S]*?>/gi) ?? [];
+    expect(iframes.length).toBeGreaterThan(0);
+    for (const tag of iframes) expect(tag).toMatch(/src="https:\/\/maps\.google\.com\/maps\?/);
+    // No inline background on the iframe that could beat the placeholder.
+    for (const tag of iframes) expect(tag).not.toMatch(/background/i);
   });
 });

@@ -33,6 +33,11 @@ export const sb = {
       sb.setSession(session);
       return { data: { session, user: session.user }, error: null };
     });
+    supabase.auth.verifyOtp.mockReset().mockImplementation(async ({ email }: { email: string }) => {
+      const session = { access_token: 'otp-session', user: { id: 'user-recovery', email } };
+      sb.setSession(session);
+      return { data: { session, user: session.user }, error: null };
+    });
     supabase.auth.refreshSession.mockReset().mockImplementation(async () => ({ data: { session: sb.session }, error: null }));
     supabase.auth.updateUser
       .mockReset()
@@ -54,6 +59,7 @@ export const supabase = {
     signOut: jest.fn(),
     resetPasswordForEmail: jest.fn(),
     setSession: jest.fn(),
+    verifyOtp: jest.fn(),
     refreshSession: jest.fn(),
     updateUser: jest.fn(),
   },

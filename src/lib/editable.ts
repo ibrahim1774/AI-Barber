@@ -302,6 +302,25 @@ export function previewBackground(d: WebsiteData): string {
   return `#${rgb.map(toHex).join('')}`;
 }
 
+// A pin and "Map" in grey, shown on the map's dark box until Google's embed paints over it.
+const MAP_PLACEHOLDER_SVG =
+  "<svg xmlns='http://www.w3.org/2000/svg' width='120' height='64' viewBox='0 0 120 64'>" +
+  "<path d='M60 6c-7.2 0-13 5.6-13 12.6C47 28 60 40 60 40s13-12 13-21.4C73 11.6 67.2 6 60 6zm0 17.4a4.8 4.8 0 1 1 0-9.6 4.8 4.8 0 0 1 0 9.6z' fill='%23555'/>" +
+  "<text x='60' y='58' text-anchor='middle' font-family='-apple-system,Helvetica,Arial,sans-serif' font-size='12' letter-spacing='3' fill='%23777'>MAP</text>" +
+  '</svg>';
+
+/**
+ * PREVIEW ONLY: the Google Maps embed (and its wrapper) is a dark box with a
+ * placeholder until the map loads. Each edit reloads the preview document and
+ * with it the iframe, which otherwise shows white until its tiles arrive
+ * (long on cellular), near the bottom of the page.
+ */
+export const PREVIEW_MAP_CSS =
+  'iframe[src*="google.com/maps"],iframe[src*="maps.google"]{background:#1a1a1a url("data:image/svg+xml,' +
+  MAP_PLACEHOLDER_SVG.replace(/</g, '%3C').replace(/>/g, '%3E').replace(/"/g, "'").replace(/ /g, '%20') +
+  '") center/120px 64px no-repeat !important;color-scheme:dark;}' +
+  ':has(> iframe[src*="google.com/maps"]),:has(> iframe[src*="maps.google"]){background-color:#1a1a1a !important;}';
+
 /**
  * PREVIEW ONLY: the document canvas (<html>) gets the site's background, so
  * the area below the footer, the rubber-band overscroll and the moment
@@ -310,7 +329,7 @@ export function previewBackground(d: WebsiteData): string {
  */
 export function withPreviewBackground(html: string, bg: string): string {
   if (!HEX6.test(bg)) return html;
-  const style = `<style id="aib-preview-bg">html{background-color:${bg};min-height:100%;}</style>`;
+  const style = `<style id="aib-preview-bg">html{background-color:${bg};min-height:100%;}${PREVIEW_MAP_CSS}</style>`;
   // Before the first stylesheet/script in <head>, so it applies on the first paint.
   const at = html.search(/<head\b[^>]*>/i);
   if (at < 0) return style + html;
