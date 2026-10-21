@@ -64,7 +64,8 @@
           }
         }
       ],
-      "react-native-appsflyer"
+      "react-native-appsflyer",
+      "expo-notifications"
     ],
     "experiments": {
       "typedRoutes": true,

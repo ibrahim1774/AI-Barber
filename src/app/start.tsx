@@ -1,9 +1,11 @@
 import { StyleSheet, View } from 'react-native';
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { Button } from '@/components/Button';
 import { Em, Text } from '@/components/Text';
 import { StageChips } from '@/components/Importer';
+import { useSuperwallSettled } from '@/lib/paywall';
+import { askReminderPermissionOnce } from '@/lib/reminders';
 import { useRestoreFlow } from '@/lib/restoreFlow';
 
 // GbpImportPage.tsx 'gate' branch: one question, two paths, plus the escape
@@ -11,6 +13,14 @@ import { useRestoreFlow } from '@/lib/restoreFlow';
 export default function Start() {
   // A reinstalled subscriber starts here: their site comes back via Restore, not a new build.
   const { restore, busy } = useRestoreFlow();
+  // Leaving for an import is the moment to ask for reminders (once ever), for
+  // those who never get as far as a site. Not before Superwall has settled:
+  // its debug build traps on a system prompt during configure.
+  const settled = useSuperwallSettled();
+  const go = (href: Href) => {
+    if (settled) void askReminderPermissionOnce();
+    router.push(href);
+  };
   return (
     <Screen>
       <StageChips />
@@ -21,8 +31,8 @@ export default function Start() {
         Booksy, theCut, Fresha, Square, Vagaro — or none at all. Your barbershop website builds itself either way.
       </Text>
       <View style={styles.buttons}>
-        <Button title="Yes, I have a booking link" arrow onPress={() => router.push('/booking-link')} />
-        <Button variant="ghost" title="No, I don’t have one" onPress={() => router.push('/find-listing')} />
+        <Button title="Yes, I have a booking link" arrow onPress={() => go('/booking-link')} />
+        <Button variant="ghost" title="No, I don’t have one" onPress={() => go('/find-listing')} />
       </View>
       <Text variant="caps" style={styles.note}>
         Photos, services & reviews imported automatically
@@ -30,7 +40,7 @@ export default function Start() {
       <Button
         variant="link"
         title="Rather type it in yourself? Use the classic form →"
-        onPress={() => router.push('/manual')}
+        onPress={() => go('/manual')}
         style={styles.manual}
       />
       <Button

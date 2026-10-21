@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { router, Stack, usePathname, useRootNavigationState } from 'expo-router';
 import { useFonts } from 'expo-font';
@@ -10,7 +10,10 @@ import { initAttribution, POSTHOG_AUTOCAPTURE, posthog, requestTrackingWhenActiv
 import {
   SubscriptionSync, SUPERWALL_KEY, SUPERWALL_OPTIONS, superwallActive, usePublishDeps, useSuperwallSettled,
 } from '@/lib/paywall';
+import { resetTo } from '@/lib/nav';
 import { publishBusy, resumePendingPublish } from '@/lib/publish';
+import { onReminderTap, refreshReminders, routeForReminderTap, takeLaunchReminderTap } from '@/lib/reminders';
+import { loadSite } from '@/lib/siteStore';
 
 function ScreenTracker() {
   const path = usePathname();
@@ -34,6 +37,53 @@ function TrackingPrompt() {
   return null;
 }
 
+/**
+ * Publish reminders. Refreshes the schedule at launch and on each real return
+ * to the foreground (reminders.ts checks permission and publish state; it
+ * never prompts). A tapped reminder, warm or cold start, opens the editor
+ * (or /start without a site) once the launch redirect is done.
+ */
+function Reminders() {
+  const navReady = useRootNavigationState()?.key != null;
+  const path = usePathname();
+  const [tapped, setTapped] = useState(0);
+
+  useEffect(() => {
+    void refreshReminders();
+    // Back from the background only, as in ResumePublish.
+    let last = AppState.currentState;
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active' && last === 'background') void refreshReminders();
+      last = state;
+    });
+    const unsubscribe = onReminderTap(() => setTapped((n) => n + 1));
+    if (takeLaunchReminderTap()) setTapped((n) => n + 1);
+    return () => {
+      sub.remove();
+      unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!tapped || !navReady) return;
+    let stale = false;
+    loadSite()
+      .catch(() => null)
+      .then((site) => {
+        if (stale) return;
+        const route = routeForReminderTap(site, path, publishBusy());
+        if ('wait' in route) return; // the index is still redirecting: try again on the next path
+        setTapped(0);
+        if ('go' in route) resetTo(route.go);
+      });
+    return () => {
+      stale = true;
+    };
+  }, [tapped, navReady, path]);
+
+  return null;
+}
+
 export default function RootLayout() {
   // AppsFlyer for everyone at launch, before any screen. It starts once the
   // tracking prompt (TrackingPrompt, after the font gate) is answered.
@@ -49,6 +99,7 @@ export default function RootLayout() {
       <StatusBar style="light" />
       <ScreenTracker />
       <TrackingPrompt />
+      <Reminders />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }}>
         <Stack.Screen name="generating" options={{ gestureEnabled: false, animation: 'fade' }} />
         {/* Home once a site exists; nothing underneath to swipe back to. */}

@@ -11,6 +11,7 @@ import { applyBookingLink, applyHomePrompts, fieldLabel, setColour, switchDesign
 import { advanceOverlay, hasSeen, markSeen, nextOverlay, type Overlay } from '@/lib/overlayFlags';
 import { resetTo } from '@/lib/nav';
 import { pickAndUploadPhoto } from '@/lib/photos';
+import { askReminderPermissionOnce } from '@/lib/reminders';
 import { loadSite, saveSite, type SiteRecord } from '@/lib/siteStore';
 import SitePreview from '@/components/SitePreview';
 import { DesignSwitcher } from '@/components/DesignSwitcher';
@@ -223,7 +224,10 @@ export default function Editor() {
     setOverlay(advanceOverlay(kind, guideSeen));
   }, []);
   const onPromptsComplete = useCallback(() => void finishOverlay('prompts'), [finishOverlay]);
-  const onGuideClose = useCallback(() => void finishOverlay('guide'), [finishOverlay]);
+  // The guide closing is the moment to ask for publish reminders (once ever; later closes only refresh them).
+  const onGuideClose = useCallback(() => {
+    void finishOverlay('guide').then(() => askReminderPermissionOnce());
+  }, [finishOverlay]);
 
   // /publishing shows the paywall over the editor, then publishes.
   const handlePublish = useCallback(() => {

@@ -4,6 +4,7 @@ import { resetUser, track } from '@/lib/analytics';
 import { api } from '@/lib/api';
 import { clearOverlayFlags } from '@/lib/overlayFlags';
 import { findTransactionId, publishPayload } from '@/lib/publish';
+import { cancelAllReminders } from '@/lib/reminders';
 import * as siteStore from '@/lib/siteStore';
 import type { SiteRecord } from '@/lib/siteStore';
 import { supabase } from '@/lib/supabase';
@@ -128,7 +129,8 @@ export async function restore(deps: RestoreDeps): Promise<Restored | null> {
  */
 export async function deleteLocalData(): Promise<void> {
   const site = await siteStore.loadSite();
-  // Task 10b: cancel scheduled publish reminders here (cancelAllReminders()).
+  // No reminders after a delete (both delete paths come through here).
+  await cancelAllReminders();
   if (site) await clearOverlayFlags(site.draftId);
   await siteStore.savePendingPublish(null);
   await siteStore.clearSite();

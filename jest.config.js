@@ -11,6 +11,7 @@ module.exports = {
     '^expo-image-picker$': '<rootDir>/test/mocks/image-picker.ts',
     '^expo-crypto$': '<rootDir>/test/mocks/crypto.ts',
     '^expo-superwall$': '<rootDir>/test/mocks/superwall.ts',
+    '^expo-notifications$': '<rootDir>/test/mocks/notifications.ts',
     '^@/assets/(.*)$': '<rootDir>/assets/$1',
     '^@/(.*)$': '<rootDir>/src/$1',
   },
