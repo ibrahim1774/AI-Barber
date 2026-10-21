@@ -1,4 +1,6 @@
 // POST: create the shop's Standard connected account if needed, then an onboarding Account Link. 200 { url }.
+// 409 { error: 'stripe-account-unavailable', message } when the stored account can't be reached (403/404):
+// logged + audited, never cleared here. 502 { error: 'stripe-error' } for other Stripe failures.
 // Owner only: Authorization: Bearer <Supabase access token>.
 import { stripeOnboard, liveOwnerStripeDeps } from '../../../lib/bookings/payments.js';
 
