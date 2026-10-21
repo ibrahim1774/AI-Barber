@@ -125,6 +125,19 @@ describe('attribution attributes', () => {
     expect(Purchases.setAppsflyerID).toHaveBeenCalledWith('af-uid-1');
   });
 
+  test('an AppsFlyer id known before configure (Superwall settling late) is still set, once', async () => {
+    const { rc, analytics, Purchases } = load();
+    await analytics.initAttribution();
+    await expect(analytics.appsFlyerUID()).resolves.toBe('af-uid-1');
+    expect(Purchases.setAppsflyerID).not.toHaveBeenCalled();
+
+    rc.startRevenueCat();
+    await flush();
+    expect(Purchases.setAppsflyerID).toHaveBeenCalledTimes(1);
+    expect(Purchases.setAppsflyerID).toHaveBeenCalledWith('af-uid-1');
+    expect(Purchases.configure.mock.invocationCallOrder[0]).toBeLessThan(Purchases.setAppsflyerID.mock.invocationCallOrder[0]);
+  });
+
   test('no AppsFlyer id (AppsFlyer off): setAppsflyerID is not called', async () => {
     process.env.EXPO_PUBLIC_APPSFLYER_DEV_KEY = '';
     const { rc, analytics, Purchases } = load();
@@ -177,16 +190,37 @@ describe('attribution attributes', () => {
 });
 
 describe('sync after a purchase or restore', () => {
-  test('syncPurchases once per call, only when configured, without waiting for it', () => {
+  test('syncPurchases once per call when configured, without waiting for it', () => {
     const { rc, Purchases } = load();
-    rc.syncRevenueCatPurchases();
-    expect(Purchases.syncPurchases).not.toHaveBeenCalled();
-
     rc.startRevenueCat();
     Purchases.syncPurchases.mockImplementationOnce(() => new Promise<void>(() => {}));
     const out = rc.syncRevenueCatPurchases();
     expect(out).toBeUndefined();
     expect(Purchases.syncPurchases).toHaveBeenCalledTimes(1);
+    rc.syncRevenueCatPurchases();
+    expect(Purchases.syncPurchases).toHaveBeenCalledTimes(2);
+  });
+
+  test('a sync asked for before configure waits for it, then happens once', () => {
+    const { rc, Purchases } = load();
+    rc.syncRevenueCatPurchases();
+    rc.syncRevenueCatPurchases();
+    expect(Purchases.syncPurchases).not.toHaveBeenCalled();
+
+    rc.startRevenueCat();
+    expect(Purchases.syncPurchases).toHaveBeenCalledTimes(1);
+    // Configure comes first.
+    expect(Purchases.configure.mock.invocationCallOrder[0]).toBeLessThan(Purchases.syncPurchases.mock.invocationCallOrder[0]);
+    rc.startRevenueCat();
+    expect(Purchases.syncPurchases).toHaveBeenCalledTimes(1);
+  });
+
+  test('without a key a queued sync never reaches RevenueCat', () => {
+    delete process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY;
+    const { rc, Purchases } = load();
+    rc.syncRevenueCatPurchases();
+    rc.startRevenueCat();
+    expect(Purchases.syncPurchases).not.toHaveBeenCalled();
   });
 });
 
@@ -201,6 +235,7 @@ describe('failures are swallowed', () => {
     expect(Purchases.collectDeviceIdentifiers).not.toHaveBeenCalled();
     expect(() => rc.syncRevenueCatPurchases()).not.toThrow();
     expect(Purchases.syncPurchases).not.toHaveBeenCalled();
+    expect(Purchases.collectDeviceIdentifiers).not.toHaveBeenCalled();
     await analytics.initAttribution();
     await flush();
     expect(Purchases.setAppsflyerID).not.toHaveBeenCalled();

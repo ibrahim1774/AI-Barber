@@ -13,7 +13,7 @@ import {
   SubscriptionStatusSync, SubscriptionSync, SUPERWALL_KEY, SUPERWALL_OPTIONS, superwallActive, usePublishDeps,
 } from '@/lib/paywall';
 import { resetTo } from '@/lib/nav';
-import { startRevenueCat } from '@/lib/revenuecat';
+import { RevenueCatStart } from '@/lib/revenueCatStart';
 import { publishBusy, resumePendingPublish } from '@/lib/publish';
 import { onReminderTap, refreshReminders, routeForReminderTap, takeLaunchReminderTap } from '@/lib/reminders';
 import { loadSite } from '@/lib/siteStore';
@@ -103,10 +103,8 @@ function AccountPull() {
 export default function RootLayout() {
   // AppsFlyer for everyone at launch, before any screen. It starts once the
   // tracking prompt (LaunchPrompts, after the font gate) is answered.
-  // RevenueCat beside it, as an observer of Superwall's purchases (no prompts).
   useEffect(() => {
     initAttribution().catch(() => {});
-    startRevenueCat();
   }, []);
   const [loaded, error] = useFonts(fontAssets);
   // Render nothing until Montserrat/Manrope are ready; on a font load error
@@ -118,6 +116,8 @@ export default function RootLayout() {
       <ScreenTracker />
       {/* Notifications, then ATT: once, on the first screen after the splash. */}
       <LaunchPrompts />
+      {/* RevenueCat (observer of Superwall's purchases), once Superwall has settled. */}
+      <RevenueCatStart />
       <Reminders />
       <AccountPull />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }}>

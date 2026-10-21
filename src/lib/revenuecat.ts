@@ -15,9 +15,15 @@ import { appsFlyerUID, onTrackingSettled } from '@/lib/analytics';
  * - Attributes: the AppsFlyer id and the device identifiers only.
  * - Never throws and never prompts. Without a key (local dev, Jest) or off
  *   iOS, every call is a no-op.
+ * - Configured only once Superwall has settled (RevenueCatStart): RevenueCat
+ *   shows App Store messages (billing recovery) itself, and no system sheet
+ *   may appear during Superwall's configure (its debug build traps).
+ *   Anything asked for before then happens once configured.
  */
 
 let configured = false;
+/** A sync asked for before configure: done right after it. */
+let syncPending = false;
 
 function warn(what: string, e: unknown) {
   console.warn(`[revenuecat] ${what} failed:`, e);
@@ -40,7 +46,7 @@ async function sendAppsFlyerId() {
 }
 
 /**
- * Configures RevenueCat once, at launch. Returns whether it is configured.
+ * Configures RevenueCat once, after Superwall has settled (RevenueCatStart). Returns whether it is configured.
  * Then sends the device identifiers (again once the tracking prompt is
  * answered) and the AppsFlyer id, in the background.
  */
@@ -69,16 +75,24 @@ export function startRevenueCat(): boolean {
     warn('tracking listener', e);
   }
   sendAppsFlyerId().catch((e) => warn('setAppsflyerID', e));
+  if (syncPending) {
+    syncPending = false;
+    syncRevenueCatPurchases();
+  }
   return true;
 }
 
 /**
  * After a Superwall purchase or restore: send StoreKit's purchases to
  * RevenueCat now (it also sees StoreKit 2 transactions by itself). Fire and
- * forget; never awaited on the user's path. No OS sign-in prompt.
+ * forget; never awaited on the user's path. No OS sign-in prompt. Before
+ * configure it waits for it (and without a key it never happens).
  */
 export function syncRevenueCatPurchases(): void {
-  if (!configured) return;
+  if (!configured) {
+    syncPending = true;
+    return;
+  }
   try {
     Purchases.syncPurchases().catch((e) => warn('syncPurchases', e));
   } catch (e) {
@@ -89,4 +103,5 @@ export function syncRevenueCatPurchases(): void {
 /** Test only: forget the configuration. */
 export function resetRevenueCatForTests(): void {
   configured = false;
+  syncPending = false;
 }
