@@ -144,10 +144,14 @@ export async function deleteAccountAndData(): Promise<void> {
   const token = data.session?.access_token;
   if (!token) throw new Error('Sign in to delete your account.');
   await api.deleteAccount(token);
-  // The user no longer exists on the server: only drop the local session.
-  await supabase.auth.signOut({ scope: 'local' }).catch((e: unknown) => console.warn('[account] sign out failed:', e));
-  await deleteLocalData();
-  track('account_deleted');
-  // After the event, so it is still recorded against the deleted user.
-  resetUser();
+  try {
+    // The user no longer exists on the server: only drop the local session.
+    await supabase.auth.signOut({ scope: 'local' }).catch((e: unknown) => console.warn('[account] sign out failed:', e));
+    await deleteLocalData();
+  } finally {
+    // The account is gone whatever happens locally. The event first, so it is
+    // still recorded against the deleted user; then PostHog forgets them.
+    track('account_deleted');
+    resetUser();
+  }
 }

@@ -26,6 +26,10 @@ export function hasEntitlement(): boolean {
 }
 
 let integrationAttributesSent = false;
+/** Test only: forget that this "launch" already sent the integration attributes. */
+export function resetIntegrationAttributesForTests(): void {
+  integrationAttributesSent = false;
+}
 
 /**
  * Mirrors Superwall's subscription status for hasEntitlement() and tracks the

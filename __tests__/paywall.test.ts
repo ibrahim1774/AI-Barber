@@ -8,7 +8,7 @@ import { PRODUCT_IDS } from '@/lib/publish';
 process.env.EXPO_PUBLIC_SUPERWALL_API_KEY = 'pk_test';
 /* eslint-disable @typescript-eslint/no-require-imports */
 const { sw } = require('expo-superwall');
-const { usePaywall, useRestorePurchases, superwallActive } = require('@/lib/paywall');
+const { usePaywall, useRestorePurchases, superwallActive, resetIntegrationAttributesForTests } = require('@/lib/paywall');
 const { api } = require('@/lib/api');
 const analytics = require('@/lib/analytics');
 const siteStore = require('@/lib/siteStore');
@@ -46,6 +46,7 @@ function open() {
 beforeEach(() => {
   jest.useFakeTimers();
   sw.reset();
+  resetIntegrationAttributesForTests();
   jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   act(() => {
     renderer = create(React.createElement(Harness));
@@ -227,6 +228,20 @@ describe('Restore purchases', () => {
 });
 
 describe('Superwall integration attributes', () => {
+  test('no AppsFlyer id: nothing is sent to Superwall, only logged', async () => {
+    const { SubscriptionSync } = require('@/lib/paywall'); // eslint-disable-line @typescript-eslint/no-require-imports
+    jest.spyOn(analytics, 'appsFlyerUID').mockResolvedValue(null);
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    let r!: { unmount(): void };
+    await act(async () => {
+      r = create(React.createElement(SubscriptionSync));
+    });
+    await jest.advanceTimersByTimeAsync(0);
+    expect(sw.integrationAttributes).toEqual([]);
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/no AppsFlyer id/));
+    r.unmount();
+  });
+
   test('SubscriptionSync sends the AppsFlyer id to Superwall once configured, once per launch', async () => {
     const { SubscriptionSync } = require('@/lib/paywall'); // eslint-disable-line @typescript-eslint/no-require-imports
     const uid = jest.spyOn(analytics, 'appsFlyerUID').mockResolvedValue('af-uid-1');

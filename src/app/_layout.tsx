@@ -6,7 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SuperwallProvider } from 'expo-superwall';
 import { PostHogProvider } from 'posthog-react-native';
 import { fontAssets } from '@/constants/theme';
-import { initAttribution, posthog, screen } from '@/lib/analytics';
+import { initAttribution, POSTHOG_AUTOCAPTURE, posthog, requestTrackingWhenActive, screen } from '@/lib/analytics';
 import { SubscriptionSync, SUPERWALL_KEY, SUPERWALL_OPTIONS, superwallActive, usePublishDeps } from '@/lib/paywall';
 import { publishBusy, resumePendingPublish } from '@/lib/publish';
 
@@ -18,9 +18,19 @@ function ScreenTracker() {
   return null;
 }
 
+/**
+ * The tracking prompt, on whatever screen comes first after the splash (the
+ * importer, the Dashboard, or a deep link's target). Once per launch, as soon
+ * as the app is active; AppsFlyer starts when it is answered.
+ */
+function TrackingPrompt() {
+  useEffect(() => requestTrackingWhenActive(), []);
+  return null;
+}
+
 export default function RootLayout() {
   // AppsFlyer for everyone at launch, before any screen. It starts once the
-  // tracking prompt (asked on the first screen, index.tsx) is answered.
+  // tracking prompt (TrackingPrompt, after the font gate) is answered.
   useEffect(() => {
     initAttribution().catch(() => {});
   }, []);
@@ -32,6 +42,7 @@ export default function RootLayout() {
     <>
       <StatusBar style="light" />
       <ScreenTracker />
+      <TrackingPrompt />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }}>
         <Stack.Screen name="generating" options={{ gestureEnabled: false, animation: 'fade' }} />
         {/* Home once a site exists; nothing underneath to swipe back to. */}
@@ -55,9 +66,9 @@ export default function RootLayout() {
       </Stack>
     </>
   );
-  // Same autocapture as Crew Lens: touches, and screens through ScreenTracker.
+  // Touches as in Crew Lens, but never on-screen text (see POSTHOG_AUTOCAPTURE).
   const app = posthog ? (
-    <PostHogProvider client={posthog} autocapture={{ captureScreens: false, captureTouches: true }}>
+    <PostHogProvider client={posthog} autocapture={POSTHOG_AUTOCAPTURE}>
       {screens}
     </PostHogProvider>
   ) : (

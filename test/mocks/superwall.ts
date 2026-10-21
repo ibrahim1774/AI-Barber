@@ -23,7 +23,10 @@ export const sw = {
   integrationAttributes: [] as Record<string, string>[],
   /** useSuperwall().isConfigured (read at render). */
   configured: true,
+  /** The callbacks the last useSuperwallEvents() call registered (SubscriptionSync's). */
+  events: {} as Record<string, ((...args: any[]) => void) | undefined>,
   reset() {
+    sw.events = {};
     sw.integrationAttributes = [];
     sw.configured = true;
     sw.callbacks = {};
@@ -43,7 +46,9 @@ export function usePlacement(callbacks: Callbacks = {}) {
     },
   };
 }
-export function useSuperwallEvents() {}
+export function useSuperwallEvents(callbacks: Record<string, ((...args: any[]) => void) | undefined> = {}) {
+  sw.events = callbacks;
+}
 const getCustomerInfo = async () =>
   sw.customerInfo ? sw.customerInfo() : { userId: '', subscriptions: sw.subscriptions, nonSubscriptions: [], entitlements: [] };
 const setIntegrationAttributes = async (attributes: Record<string, string>) => {

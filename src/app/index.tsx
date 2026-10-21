@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { Redirect } from 'expo-router';
 import { colors } from '@/constants/theme';
-import { requestTrackingWhenActive } from '@/lib/analytics';
 import { loadSite } from '@/lib/siteStore';
 
 /**
@@ -12,9 +11,6 @@ import { loadSite } from '@/lib/siteStore';
  */
 export default function Index() {
   const [target, setTarget] = useState<'/dashboard' | '/start' | null>(null);
-  // First screen after the splash: the tracking prompt (once; later launches
-  // skip it), as soon as the app is active.
-  useEffect(() => requestTrackingWhenActive(), []);
   useEffect(() => {
     loadSite()
       .then((s) => setTarget(s ? '/dashboard' : '/start'))

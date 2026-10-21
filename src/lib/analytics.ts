@@ -29,7 +29,20 @@ export const posthog = posthogKeyValid
     })
   : null;
 
+/**
+ * PostHogProvider's autocapture. Touches only, and only these props: never
+ * `children` (on-screen text such as the account email or the shop's phone)
+ * and never `style`. Screens come from ScreenTracker instead.
+ */
+export const POSTHOG_AUTOCAPTURE = {
+  captureScreens: false,
+  captureTouches: true,
+  propsToCapture: ['testID', 'accessibilityLabel', 'ph-label'],
+};
+
 let appsFlyerStarted = false;
+let startInFlight = false;
+let startRetryScheduled = false;
 let sessionReady = false;
 let consentSettled = false;
 let initStarted = false;
@@ -91,16 +104,32 @@ function sendAf(e: AfEvent) {
 }
 
 async function startAttribution() {
-  if (appsFlyerStarted || !APPSFLYER_KEY || !sessionReady || !consentSettled) return;
-  appsFlyerStarted = true;
+  if (appsFlyerStarted || startInFlight || !APPSFLYER_KEY || !sessionReady || !consentSettled) return;
+  startInFlight = true;
   try {
     await AppsFlyer.start();
-    if (__DEV__) console.log('[analytics] AppsFlyer started');
+    // Started only once start() resolves; until then sendAf keeps queueing.
+    // Same tick: the queue goes out before anything raised after this point.
+    appsFlyerStarted = true;
     for (const e of pending.splice(0)) AppsFlyer.logEvent(e).catch(() => {});
+    if (__DEV__) console.log('[analytics] AppsFlyer started');
   } catch (e) {
-    appsFlyerStarted = false;
     console.warn('AppsFlyer start failed', e);
+    retryStartOnNextForeground();
+  } finally {
+    startInFlight = false;
   }
+}
+
+/** One retry per launch, when the app next comes to the foreground; the queue waits meanwhile. */
+function retryStartOnNextForeground() {
+  if (startRetryScheduled) return;
+  startRetryScheduled = true;
+  const sub = AppState.addEventListener('change', (state) => {
+    if (state !== 'active') return;
+    sub.remove();
+    void startAttribution();
+  });
 }
 
 /** Test hook: how many AppsFlyer events are waiting for the SDK to start. */
@@ -165,7 +194,10 @@ function attributionEventFor(event: string, props?: Record<string, unknown>): Af
     const from = props?.importedFrom;
     return from === 'booking' || from === 'gbp' ? { eventName: 'af_lead', eventValues: { imported_from: from } } : null;
   }
-  if (event === 'publish_tapped') return { eventName: 'af_initiated_checkout', eventValues: {} };
+  // A subscriber republishing is not a checkout: keep Meta's InitiateCheckout to new buyers.
+  if (event === 'publish_tapped') {
+    return props?.entitled === true ? null : { eventName: 'af_initiated_checkout', eventValues: {} };
+  }
   return null;
 }
 

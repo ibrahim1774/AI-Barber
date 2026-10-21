@@ -18,9 +18,13 @@ const mockAf = {
 jest.mock('react-native-appsflyer', () => ({ __esModule: true, default: mockAf, AppsFlyer: mockAf }));
 
 const mockPh = { capture: jest.fn(), identify: jest.fn(), reset: jest.fn(), screen: jest.fn() };
+/** Every `new PostHog(key, options)`, shared across isolated module registries. */
+const mockPhCtor = jest.fn((..._args: unknown[]) => mockPh);
 jest.mock('posthog-react-native', () => ({
   __esModule: true,
-  default: jest.fn().mockImplementation(() => mockPh),
+  default: function PostHog(...args: unknown[]) {
+    return mockPhCtor(...args);
+  },
 }));
 
 const mockAtt = { status: 'undetermined' as string, request: jest.fn(async () => ({ status: 'granted' })) };
@@ -54,6 +58,8 @@ async function started(): Promise<Analytics> {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // clearAllMocks keeps queued *Once implementations; a test that leaves one must not leak it.
+  mockAf.start.mockReset().mockImplementation(async () => {});
   mockAf.sessionReady = null;
   mockAtt.status = 'undetermined';
   process.env.EXPO_PUBLIC_APPSFLYER_DEV_KEY = 'devkey';
@@ -100,14 +106,109 @@ test('init: dev key and app id, debug logging only in dev, once per launch', asy
   await a.initAttribution();
   expect(mockAf.init).toHaveBeenCalledTimes(1);
   expect(mockAf.init).toHaveBeenCalledWith({ devKey: 'devkey', appId: '6825001790' });
-  expect(mockAf.enableDebug).toHaveBeenCalledWith({ enabled: __DEV__ });
+  // Jest runs as a dev build.
+  expect(mockAf.enableDebug).toHaveBeenCalledWith({ enabled: true });
+});
+
+test('a production build never enables AppsFlyer debug or per-event PostHog flushes', async () => {
+  const g = global as unknown as { __DEV__: boolean };
+  const dev = g.__DEV__;
+  g.__DEV__ = false;
+  try {
+    const a = load();
+    await a.initAttribution();
+    expect(mockAf.init).toHaveBeenCalledTimes(1);
+    expect(mockAf.enableDebug).not.toHaveBeenCalled();
+    expect(mockPhCtor).toHaveBeenCalledTimes(1);
+    expect(mockPhCtor.mock.calls[0][1]).not.toHaveProperty('flushAt');
+  } finally {
+    g.__DEV__ = dev;
+  }
+});
+
+test('touch autocapture never records on-screen text (children) or styles', () => {
+  const a = load();
+  expect(a.POSTHOG_AUTOCAPTURE).toEqual({
+    captureScreens: false,
+    captureTouches: true,
+    propsToCapture: ['testID', 'accessibilityLabel', 'ph-label'],
+  });
+  expect(a.POSTHOG_AUTOCAPTURE.propsToCapture).not.toContain('children');
 });
 
 test('publish_tapped sends af_initiated_checkout', async () => {
   const a = await started();
-  a.track('publish_tapped');
-  expect(mockPh.capture).toHaveBeenCalledWith('publish_tapped', undefined);
+  a.track('publish_tapped', { entitled: false });
+  expect(mockPh.capture).toHaveBeenCalledWith('publish_tapped', { entitled: false });
   expect(afEvents()).toEqual([{ eventName: 'af_initiated_checkout', eventValues: {} }]);
+});
+
+test('a subscriber republishing sends no af_initiated_checkout (PostHog still gets the tap)', async () => {
+  const a = await started();
+  a.track('publish_tapped', { entitled: true });
+  expect(mockAf.logEvent).not.toHaveBeenCalled();
+  expect(a.pendingAttributionEvents()).toBe(0);
+  expect(mockPh.capture).toHaveBeenCalledWith('publish_tapped', { entitled: true });
+  a.track('publish_tapped', { entitled: false });
+  expect(afEvents()).toEqual([{ eventName: 'af_initiated_checkout', eventValues: {} }]);
+});
+
+test('the queue keeps at most 50 events and flushes them all on start', async () => {
+  const a = load();
+  await a.initAttribution();
+  for (let i = 0; i < 60; i++) a.track('publish_tapped');
+  expect(a.pendingAttributionEvents()).toBe(50);
+  mockAf.sessionReady?.();
+  await a.requestTrackingThenStart();
+  await flush();
+  expect(mockAf.logEvent).toHaveBeenCalledTimes(50);
+  expect(a.pendingAttributionEvents()).toBe(0);
+});
+
+test('events raised while start is in flight are queued and sent after the earlier ones', async () => {
+  let finishStart!: () => void;
+  mockAf.start.mockImplementationOnce(() => new Promise<void>((r) => (finishStart = r)));
+  const a = load();
+  await a.initAttribution();
+  a.trackRegistration('email');
+  mockAf.sessionReady?.();
+  const starting = a.requestTrackingThenStart();
+  await flush();
+  expect(mockAf.start).toHaveBeenCalledTimes(1);
+  a.track('publish_tapped'); // start not resolved yet
+  expect(mockAf.logEvent).not.toHaveBeenCalled();
+  expect(a.pendingAttributionEvents()).toBe(2);
+  finishStart();
+  await starting;
+  expect(afEvents().map((e: any) => e.eventName)).toEqual(['af_complete_registration', 'af_initiated_checkout']);
+  a.track('publish_tapped');
+  expect(mockAf.logEvent).toHaveBeenCalledTimes(3);
+});
+
+test('a failed start is retried once, on the next foreground', async () => {
+  const { AppState } = require('react-native'); // eslint-disable-line @typescript-eslint/no-require-imports
+  const remove = jest.fn();
+  const listen = (AppState.addEventListener as jest.Mock).mockImplementation(() => ({ remove }));
+  const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  mockAf.start.mockRejectedValueOnce(new Error('offline')).mockRejectedValueOnce(new Error('offline'));
+  const a = load();
+  await a.initAttribution();
+  a.track('publish_tapped');
+  mockAf.sessionReady?.();
+  await a.requestTrackingThenStart();
+  await flush();
+  expect(mockAf.start).toHaveBeenCalledTimes(1);
+  expect(a.pendingAttributionEvents()).toBe(1);
+  expect(listen).toHaveBeenCalledTimes(1);
+
+  const onChange = listen.mock.calls[0][1] as (s: string) => void;
+  onChange('active');
+  await flush();
+  expect(mockAf.start).toHaveBeenCalledTimes(2); // the one retry (fails again)
+  expect(remove).toHaveBeenCalledTimes(1);
+  expect(listen).toHaveBeenCalledTimes(1); // no second retry is scheduled
+  expect(a.pendingAttributionEvents()).toBe(1); // still waiting, nothing lost
+  warn.mockRestore();
 });
 
 test('subscription start sends af_subscribe with revenue', async () => {
@@ -196,6 +297,21 @@ test('without a phc_ key PostHog is off and nothing throws', () => {
   warn.mockRestore();
 });
 
+test('the tracking prompt is asked at once when the app is already active', async () => {
+  const { AppState } = require('react-native'); // eslint-disable-line @typescript-eslint/no-require-imports
+  const before = AppState.currentState;
+  AppState.currentState = 'active';
+  try {
+    const a = load();
+    a.requestTrackingWhenActive();
+    await flush();
+    expect(mockAtt.request).toHaveBeenCalledTimes(1);
+    expect(AppState.addEventListener).not.toHaveBeenCalled();
+  } finally {
+    AppState.currentState = before;
+  }
+});
+
 test('the tracking prompt waits for the app to be active, even after the first screen is gone', async () => {
   // jest-expo's AppState is a shared mock whose currentState is never 'active'.
   const { AppState } = require('react-native'); // eslint-disable-line @typescript-eslint/no-require-imports
@@ -216,4 +332,17 @@ test('the tracking prompt waits for the app to be active, even after the first s
   await flush();
   expect(mockAtt.request).toHaveBeenCalledTimes(1);
   expect(remove).toHaveBeenCalledTimes(1);
+});
+
+test('the root layout uses the safe autocapture and asks for tracking itself, not index', () => {
+  /* eslint-disable @typescript-eslint/no-require-imports */
+  const fs = require('fs');
+  const path = require('path');
+  /* eslint-enable @typescript-eslint/no-require-imports */
+  const read = (f: string) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8') as string;
+  const layout = read('src/app/_layout.tsx');
+  expect(layout).toMatch(/<PostHogProvider client=\{posthog\} autocapture=\{POSTHOG_AUTOCAPTURE\}>/);
+  expect(layout).toMatch(/<TrackingPrompt \/>/);
+  expect(layout).toMatch(/requestTrackingWhenActive\(\)/);
+  expect(read('src/app/index.tsx')).not.toMatch(/requestTracking/);
 });

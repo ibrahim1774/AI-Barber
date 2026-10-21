@@ -169,13 +169,29 @@ describe('delete', () => {
     expect(resetSpy.mock.invocationCallOrder[0]).toBeGreaterThan(trackSpy.mock.invocationCallOrder[0]);
   });
 
+  test('once the server has deleted the account, a local clean-up failure still tracks and resets', async () => {
+    await store.saveSite(site);
+    sb.setSession({ access_token: 'access-123', user: USER });
+    jest.spyOn(api, 'deleteAccount').mockResolvedValue(undefined);
+    jest.spyOn(store, 'clearSite').mockRejectedValue(new Error('disk full'));
+    const trackSpy = jest.spyOn(analytics, 'track');
+    const resetSpy = jest.spyOn(analytics, 'resetUser');
+
+    await expect(deleteAccountAndData()).rejects.toThrow('disk full');
+    expect(trackSpy).toHaveBeenCalledWith('account_deleted');
+    expect(resetSpy).toHaveBeenCalledTimes(1);
+    expect(resetSpy.mock.invocationCallOrder[0]).toBeGreaterThan(trackSpy.mock.invocationCallOrder[0]);
+  });
+
   test('a failed delete keeps everything and stays signed in', async () => {
     await store.saveSite(site);
     sb.setSession({ access_token: 'access-123', user: USER });
     jest.spyOn(api, 'deleteAccount').mockRejectedValue(new ApiError(500, 'delete-failed', 'Could not delete your account'));
 
+    const resetSpy = jest.spyOn(analytics, 'resetUser');
     await expect(deleteAccountAndData()).rejects.toMatchObject({ code: 'delete-failed' });
     expect(supabase.auth.signOut).not.toHaveBeenCalled();
+    expect(resetSpy).not.toHaveBeenCalled();
     expect(await store.loadSite()).toEqual(site);
   });
 

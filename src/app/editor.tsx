@@ -5,6 +5,7 @@ import { router, useFocusEffect } from 'expo-router';
 import type { WebsiteData } from '@/web/types';
 import { colors, fonts } from '@/constants/theme';
 import { track } from '@/lib/analytics';
+import { hasEntitlement } from '@/lib/paywall';
 import { getPath, setPath } from '@/lib/editable';
 import { applyBookingLink, applyHomePrompts, fieldLabel, setColour, switchDesign } from '@/lib/editor';
 import { advanceOverlay, hasSeen, markSeen, nextOverlay, type Overlay } from '@/lib/overlayFlags';
@@ -228,7 +229,8 @@ export default function Editor() {
   const handlePublish = useCallback(() => {
     if (publishing.current) return; // double tap
     publishing.current = true;
-    track('publish_tapped');
+    // entitled: a subscriber's republish is not sent to AppsFlyer as a checkout.
+    track('publish_tapped', { entitled: hasEntitlement() });
     router.push('/publishing');
   }, []);
 
