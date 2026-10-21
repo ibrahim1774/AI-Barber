@@ -146,7 +146,14 @@ export async function setupShop(authorization: string | string[] | undefined, bo
     }
     const p = await repo.purchase(otid);
     if (p?.user_id && p.user_id !== user.id) return err(409, 'purchase-in-use');
-    if (p && !p.user_id) await deps.purchases.setUser(otid, user.id);
+    if (p && !p.user_id) {
+      // Best effort: the ios_otid unique index already stops a second shop on this purchase.
+      try {
+        await deps.purchases.setUser(otid, user.id);
+      } catch (e: any) {
+        console.error('[shop/setup] linking purchase to account failed:', e?.message || e);
+      }
+    }
   }
 
   // The site row (if any) must be the caller's own.
