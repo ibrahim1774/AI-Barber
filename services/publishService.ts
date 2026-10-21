@@ -1,6 +1,7 @@
 import { SiteInstance, WebsiteData } from '../types';
 import { generateHTMLForTemplate } from './templateRenderer';
 import { dualWriteSave } from './saveService';
+import { deriveSiteSlug, SUBSCRIPTION_ENDED_MESSAGE, withUploadedImageUrls } from './publishTarget';
 
 export async function publishSite(
   site: SiteInstance,
@@ -14,12 +15,9 @@ export async function publishSite(
     console.error('[publishSite] Pre-deploy save failed (non-blocking):', err)
   );
 
-  const siteSlug = site.data.shopName
-    .toLowerCase()
-    .replace(/[''`]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .substring(0, 50);
+  // Republish to the existing *.vercel.app project when there is one, so a
+  // renamed shop (or a suffixed iOS slug) keeps its own link.
+  const siteSlug = deriveSiteSlug(site.deployedUrl, site.data.shopName);
 
   // Step 2: Collect base64 images, then upload in parallel
   const imageUrlMap: Record<string, string> = {};
@@ -98,8 +96,19 @@ export async function publishSite(
   const deployResponse = await fetch('/api/deploy-site', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ siteId: siteSlug, html, imageUrls: imageUrlMap }),
+    body: JSON.stringify({
+      siteId: siteSlug,
+      html,
+      imageUrls: imageUrlMap,
+      // Only used server-side for iOS-bound slugs, to keep their stored copy current.
+      siteData: withUploadedImageUrls(site.data, imageUrlMap),
+    }),
   });
+
+  // An iOS-bound site whose App Store subscription has lapsed.
+  if (deployResponse.status === 402) {
+    throw new Error(SUBSCRIPTION_ENDED_MESSAGE);
+  }
 
   const contentType = deployResponse.headers.get('content-type');
   let deployData;
