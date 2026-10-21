@@ -394,36 +394,40 @@ export const ORDER_HOLD_EXPIRY_MIN = 35;
 
 /**
  * Expire orphaned card holds (new + card + awaiting + nothing paid, created more than 35 min
- * ago), with the same compare-and-set as the webhook's expireOrderHold, so a payment that lands
- * mid-sweep is never overwritten; then close the Checkout. Never refunds, never notifies.
+ * ago). Stripe is asked FIRST: the hold is cancelled only when its Checkout Session is expired
+ * (expired now by this call, or already). A 'complete' session means the customer paid on time
+ * and the completed webhook is still on its way, so the order is left for the webhook to mark
+ * paid; an unanswered call leaves it for the next sweep. A hold with no session stored (the
+ * request died before Checkout) is cancelled directly. The cancel is the same compare-and-set as
+ * the webhook's expireOrderHold, so a payment that lands meanwhile is never overwritten. Never
+ * refunds, never notifies.
  */
 export async function expireStaleOrderHolds(
-  deps: { repo: StoreRepo; payments: Pick<StorePayments, 'expireCheckoutSession'>; now(): number },
+  deps: { repo: StoreRepo; payments: Pick<StorePayments, 'closeCheckoutSession'>; now(): number },
   limit = 50,
-): Promise<{ expired: number }> {
+): Promise<{ expired: number; paid: number; unresolved: number }> {
   const nowMs = deps.now();
   const holds = await deps.repo.staleOrderHolds(iso(nowMs - ORDER_HOLD_EXPIRY_MIN * MIN), limit);
-  let expired = 0;
+  const out = { expired: 0, paid: 0, unresolved: 0 };
   for (const h of holds) {
     try {
-      const upd = await deps.repo.updateOrder(h.id, expiredHoldPatch(nowMs), LIVE_HOLD);
-      if (upd.ok === false) continue;
-      expired++;
-      if (upd.row.stripe_checkout_session_id) {
-        const shop = await deps.repo.shopById(upd.row.shop_id);
-        if (shop) {
-          try {
-            await deps.payments.expireCheckoutSession(shop, upd.row.stripe_checkout_session_id);
-          } catch (e: any) {
-            console.error(`[store] expiring checkout for order ${upd.row.id} failed:`, e?.message || e);
-          }
+      if (h.stripe_checkout_session_id) {
+        const shop = await deps.repo.shopById(h.shop_id);
+        const closed = shop ? await deps.payments.closeCheckoutSession(shop, h.stripe_checkout_session_id) : 'unknown';
+        if (closed === 'complete') { out.paid++; continue; }
+        if (closed !== 'expired') {
+          console.error(`[store] order hold ${h.id}: checkout session state unknown; left for the next sweep`);
+          out.unresolved++;
+          continue;
         }
       }
+      const upd = await deps.repo.updateOrder(h.id, expiredHoldPatch(deps.now()), LIVE_HOLD);
+      if (upd.ok) out.expired++;
     } catch (e: any) {
       console.error(`[store] expiring order hold ${h.id} failed:`, e?.message || e);
     }
   }
-  return { expired };
+  return out;
 }
 
 export { MIN };

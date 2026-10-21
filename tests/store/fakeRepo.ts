@@ -176,6 +176,7 @@ export function storeWorld(over: { shop?: Partial<ShopStoreRow> } = {}) {
     createOrderCheckout: vi.fn(async (_s: any, o: { id: string }, _i: any[]) => ({ url: `https://checkout.stripe.test/${o.id}`, sessionId: `cs_${o.id}` })),
     refundOrder: vi.fn(async (_s: any, _o: any, c: number, _opts: { idempotencyKey: string }) => ({ refundedCents: c })),
     expireCheckoutSession: vi.fn(async (_s: any, _id: string) => true),
+    closeCheckoutSession: vi.fn(async (_s: any, _id: string): Promise<'expired' | 'complete' | 'unknown'> => 'expired'),
   };
   const limits = { shopOrder: vi.fn(async (_shopId: string) => true) };
   const users: Record<string, { id: string; email: string | null; fullName: string | null }> = {

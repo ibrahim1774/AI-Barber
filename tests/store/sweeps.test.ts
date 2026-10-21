@@ -18,7 +18,7 @@ async function place(w: StoreWorld, over: Record<string, unknown> = {}) {
 const quiet = () => vi.spyOn(console, 'error').mockImplementation(() => {});
 
 describe('expireStaleOrderHolds', () => {
-  it('expires only card + awaiting + 0-paid orders older than 35 min, closes Checkout, sends nothing', async () => {
+  it('asks Stripe first; cancels stale card holds whose session expired, or that never had one; sends nothing', async () => {
     const w = storeWorld();
     const old = await place(w);
     const orphan = await place(w);
@@ -31,40 +31,74 @@ describe('expireStaleOrderHolds', () => {
     w.notified.length = 0;
 
     w.setNow('2026-11-02T12:36:00Z'); // the first four are 36 min old, the last 2 min
-    expect(await expireStaleOrderHolds(w.deps, 50)).toEqual({ expired: 2 });
+    expect(await expireStaleOrderHolds(w.deps, 50)).toEqual({ expired: 2, paid: 0, unresolved: 0 });
     for (const id of [old.id, orphan.id]) {
       expect(w.order(id)).toMatchObject({ status: 'cancelled', cancelled_by: 'customer', cancelled_at: '2026-11-02T12:36:00.000Z', payment_status: 'none' });
     }
     expect(w.order(young.id).status).toBe('new');
     expect(w.order(manual.id)).toMatchObject({ status: 'new', payment_status: 'awaiting' });
     expect(w.order(paid.id).status).toBe('paid');
-    expect(w.payments.expireCheckoutSession).toHaveBeenCalledTimes(1);
-    expect(w.payments.expireCheckoutSession).toHaveBeenCalledWith(expect.objectContaining({ id: w.ids.shopId }), `cs_${old.id}`);
+    expect(w.payments.closeCheckoutSession).toHaveBeenCalledTimes(1);
+    expect(w.payments.closeCheckoutSession).toHaveBeenCalledWith(expect.objectContaining({ id: w.ids.shopId }), `cs_${old.id}`);
     expect(w.payments.refundOrder).not.toHaveBeenCalled();
     expect(w.notified).toEqual([]);
-    expect(await expireStaleOrderHolds(w.deps, 50)).toEqual({ expired: 0 }); // idempotent
+    expect(await expireStaleOrderHolds(w.deps, 50)).toEqual({ expired: 0, paid: 0, unresolved: 0 }); // idempotent
   });
 
-  it('leaves a just-paid row alone (the compare-and-set misses)', async () => {
+  it('session complete (paid on time, webhook delayed): the order is left untouched for the webhook', async () => {
     const w = storeWorld();
     const o = await place(w);
     w.setNow('2026-11-02T13:00:00Z');
-    const orig = w.deps.repo.staleOrderHolds;
-    w.deps.repo.staleOrderHolds = async (b, l) => {
-      const rows = await orig(b, l);
+    w.payments.closeCheckoutSession.mockResolvedValueOnce('complete');
+    expect(await expireStaleOrderHolds(w.deps, 50)).toEqual({ expired: 0, paid: 1, unresolved: 0 });
+    expect(w.order(o.id)).toMatchObject({ status: 'new', payment_status: 'awaiting', cancelled_by: null, cancelled_at: null });
+  });
+
+  it('the Stripe call errors: the order is untouched, and the next sweep retries and cancels it', async () => {
+    const w = storeWorld();
+    const o = await place(w);
+    w.setNow('2026-11-02T13:00:00Z');
+    w.payments.closeCheckoutSession.mockResolvedValueOnce('unknown');
+    const e = quiet();
+    expect(await expireStaleOrderHolds(w.deps, 50)).toEqual({ expired: 0, paid: 0, unresolved: 1 });
+    e.mockRestore();
+    expect(w.order(o.id)).toMatchObject({ status: 'new', payment_status: 'awaiting' });
+    w.setNow('2026-11-02T13:15:00Z');
+    expect(await expireStaleOrderHolds(w.deps, 50)).toEqual({ expired: 1, paid: 0, unresolved: 0 });
+    expect(w.order(o.id)).toMatchObject({ status: 'cancelled', cancelled_by: 'customer', cancelled_at: '2026-11-02T13:15:00.000Z' });
+    expect(w.payments.closeCheckoutSession).toHaveBeenCalledTimes(2);
+  });
+
+  it('a closeCheckoutSession that throws anyway is contained: untouched, the next row still runs', async () => {
+    const w = storeWorld();
+    const a = await place(w);
+    const b = await place(w);
+    w.setNow('2026-11-02T13:00:00Z');
+    w.payments.closeCheckoutSession.mockRejectedValueOnce(new Error('boom'));
+    const e = quiet();
+    expect(await expireStaleOrderHolds(w.deps, 50)).toEqual({ expired: 1, paid: 0, unresolved: 0 });
+    e.mockRestore();
+    expect(w.order(a.id).status).toBe('new');
+    expect(w.order(b.id).status).toBe('cancelled');
+  });
+
+  it('expire succeeds but a payment lands before the cancel: the compare-and-set misses, the paid row is kept', async () => {
+    const w = storeWorld();
+    const o = await place(w);
+    w.setNow('2026-11-02T13:00:00Z');
+    w.payments.closeCheckoutSession.mockImplementationOnce(async () => {
       Object.assign(w.order(o.id), { status: 'paid', payment_status: 'paid', amount_paid_cents: 3000 }); // webhook lands
-      return rows;
-    };
-    expect(await expireStaleOrderHolds(w.deps, 50)).toEqual({ expired: 0 });
+      return 'expired';
+    });
+    expect(await expireStaleOrderHolds(w.deps, 50)).toEqual({ expired: 0, paid: 0, unresolved: 0 });
     expect(w.order(o.id)).toMatchObject({ status: 'paid', cancelled_by: null });
-    expect(w.payments.expireCheckoutSession).not.toHaveBeenCalled();
   });
 
   it('respects the limit', async () => {
     const w = storeWorld();
     await place(w); await place(w); await place(w);
     w.setNow('2026-11-02T13:00:00Z');
-    expect(await expireStaleOrderHolds(w.deps, 2)).toEqual({ expired: 2 });
+    expect((await expireStaleOrderHolds(w.deps, 2)).expired).toBe(2);
   });
 });
 
