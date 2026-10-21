@@ -24,12 +24,15 @@ import { DesignSwitcher } from '@/components/DesignSwitcher';
 import { EditSheet } from '@/components/EditSheet';
 import { AllFieldsSheet, PhotosSheet } from '@/components/AllFieldsSheet';
 import { ColourSheet } from '@/components/ColourSheet';
+import { SectionsSheet } from '@/components/sections/SectionsSheet';
+import { ServicesSheet } from '@/components/sections/ServicesSheet';
+import type { SectionKey } from '@/lib/sections/list';
 import { HomePrompts } from '@/components/HomePrompts';
 import { LaunchGuide } from '@/components/LaunchGuide';
 import { PublishBar } from '@/components/PublishBar';
 import { LapsedCard } from '@/components/LapsedCard';
 
-type SheetKind = 'fields' | 'photos' | 'colour' | 'edit';
+type SheetKind = 'fields' | 'photos' | 'colour' | 'edit' | 'sections' | 'services';
 
 /**
  * The Edit tab: the site preview with tap-to-edit, the design switcher, and
@@ -248,6 +251,25 @@ export default function Editor() {
     else setSheet(null);
   }, [closeThen, edit.fromList]);
 
+  // The Sections list: each card closes the list, then opens its editor.
+  // TODO(controller, after merging implementer B): add cases for 'team',
+  // 'hours', 'gallery', 'about' and 'contact' here (SheetKind entries plus
+  // their sheets below). Until then those cards do nothing.
+  const openSection = useCallback((key: SectionKey) => {
+    track('section_opened', { section: key });
+    switch (key) {
+      case 'services':
+        closeThen(() => setSheet('services'));
+        break;
+      default:
+        break; // TODO(implementer B's sheets): Team, Hours, Gallery, About, Contact
+    }
+  }, [closeThen]);
+  const openSections = useCallback(() => {
+    track('sections_opened');
+    setSheet('sections');
+  }, []);
+
   const handleDesign = useCallback(
     (t: 'luxe' | 'prime') => {
       setSwitching(true);
@@ -352,6 +374,7 @@ export default function Editor() {
         </View>
 
         <PublishBar
+          onSections={openSections}
           onText={() => setSheet('fields')}
           onPhotos={() => setSheet('photos')}
           onColour={() => setSheet('colour')}
@@ -379,6 +402,21 @@ export default function Editor() {
           current={data.colorTheme}
           onPick={(hex) => commit((d) => setColour(d, hex))}
           onClose={() => setSheet(null)}
+        />
+        <SectionsSheet
+          visible={sheet === 'sections'}
+          data={data}
+          onOpen={openSection}
+          onClose={() => setSheet(null)}
+          onDismiss={onSheetDismiss}
+        />
+        <ServicesSheet
+          visible={sheet === 'services'}
+          data={data}
+          onChange={(next) => commit(() => next)}
+          onClose={() => closeThen(() => setSheet('sections'))}
+          onDismiss={onSheetDismiss}
+          photoFolder={`ios-drafts/${site.draftId}`}
         />
         <EditSheet
           visible={sheet === 'edit'}
