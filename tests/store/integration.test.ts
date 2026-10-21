@@ -10,10 +10,12 @@ import { STORE_APP } from '../../lib/store/constants.js';
 import { createOrder } from '../../lib/store/publicFlow.js';
 import { refundOwnerOrder } from '../../lib/store/ownerFlow.js';
 import { retryPendingOrderRefunds } from '../../lib/store/core.js';
+import { liveStorePayments } from '../../lib/store/deps.js';
 import type { OrderRow, StoreNotifyEvent } from '../../lib/store/types.js';
 import { storeWorld, type StoreWorld } from './fakeRepo.js';
 
 const AUTH = 'Bearer owner-jwt';
+const ADDRESS = { name: 'Sam Lee', line1: '1 Main St', city: 'Austin', state: 'TX', postalCode: '78701' };
 const CUSTOMER = { name: 'Sam Lee', phone: '5551234567', email: 'sam@example.com' };
 
 afterEach(() => {
@@ -176,5 +178,39 @@ describe('integration: a refund to zero whose Stripe call timed out', () => {
     expect(await handleConnectEvent(chargeRefunded('evt_refund_late', pi, 3000), webhook, orderDeps)).toBe('order:refund:recorded');
     expect(await handleConnectEvent(chargeRefunded('evt_refund_late', pi, 3000), webhook, orderDeps)).toBe('duplicate');
     expect(cancelled()).toHaveLength(1);
+  });
+});
+
+describe('integration: the full shop row reaches createOrderCheckout', () => {
+  const placeShipping = (w: StoreWorld) => createOrder({
+    slug: 'fresh-cuts', clientKey: randomUUID(), items: [{ productId: w.ids.oil, quantity: 2 }],
+    customer: CUSTOMER, fulfilment: 'shipping', address: ADDRESS, pay: 'card', expectedTotalCents: 3500,
+  }, w.deps);
+
+  it('createOrder passes the shop row with ships_within_days', async () => {
+    const w = storeWorld({ shop: { ships_within_days: 3 } });
+    expect((await placeShipping(w)).status).toBe(201);
+    const [shop, order] = w.payments.createOrderCheckout.mock.calls[0];
+    expect(shop).toMatchObject({ id: w.shop().id, stripe_account_id: 'acct_1', ships_within_days: 3, platform_fee_bps: 200 });
+    expect(order).toMatchObject({ fulfilment: 'shipping', shipping_cents: 500, total_cents: 3500 });
+  });
+
+  it("through the live payments, Stripe gets the shipping label and estimate from the row", async () => {
+    vi.stubEnv('STRIPE_CONNECT_SECRET_KEY', 'sk_test_x');
+    const bodies: URLSearchParams[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: { body?: string }) => {
+      bodies.push(new URLSearchParams(init.body));
+      return new Response(JSON.stringify({ id: 'cs_live', url: 'https://checkout.stripe.test/cs_live', amount_total: 3500 }), { status: 200 });
+    }));
+    const w = storeWorld({ shop: { ships_within_days: 3 } });
+    w.deps.payments = liveStorePayments;
+    expect((await placeShipping(w)).status).toBe(201);
+    expect(bodies).toHaveLength(1);
+    const b = bodies[0];
+    expect(b.get('shipping_options[0][shipping_rate_data][display_name]')).toBe('Ships within 3 days');
+    expect(b.get('shipping_options[0][shipping_rate_data][delivery_estimate][maximum][value]')).toBe('8');
+    expect(b.get('shipping_options[0][shipping_rate_data][fixed_amount][amount]')).toBe('500');
+    expect(b.get('metadata[app]')).toBe(STORE_APP);
+    expect(w.state.orders.at(-1)).toMatchObject({ stripe_checkout_session_id: 'cs_live' });
   });
 });
