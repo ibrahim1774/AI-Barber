@@ -369,7 +369,24 @@ describe('POST /api/shop/setup', () => {
     const shopId = w.state.shops[1].id;
     w.state.members = w.state.members.filter((m) => m.shop_id !== shopId);
     await setup(w);
-    expect(w.state.members.filter((m) => m.shop_id === shopId && m.role === 'owner')).toHaveLength(1);
+    const owners = w.state.members.filter((m) => m.shop_id === shopId && m.role === 'owner');
+    expect(owners).toHaveLength(1);
+    // A freshly created owner member gets the default hours.
+    expect(w.state.availability.filter((a) => a.member_id === owners[0].id)).toHaveLength(5);
+  });
+
+  it('a re-link re-POST (services: []) never gives an owner who closed every day default hours back', async () => {
+    const w = fresh();
+    const a = await setup(w);
+    const shopId = (a.body as any).shop.id;
+    const owner = w.state.members.find((m) => m.shop_id === shopId && m.role === 'owner')!;
+    w.state.availability = w.state.availability.filter((x) => x.member_id !== owner.id); // closed every day
+    (w.deps.purchases!.verify as any).mockResolvedValueOnce({ originalTransactionId: '2000000777' });
+    const r = await setup(w, { ...body, services: [], transactionId: '2000000555' });
+    expect(r.status).toBe(200);
+    expect((r.body as any).shop.purchaseLinked).toBe(true);
+    expect(w.state.availability.filter((x) => x.member_id === owner.id)).toHaveLength(0);
+    expect(w.state.services.filter((s) => s.shop_id === shopId)).toHaveLength(2);
   });
 
   it("uses the site's Vercel label as the slug, suffixing when taken or reserved", async () => {

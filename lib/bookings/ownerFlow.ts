@@ -205,25 +205,26 @@ export async function setupShop(authorization: string | string[] | undefined, bo
 
 async function ensureOwnerMember(deps: OwnerDeps, shop: ShopRow, user: AuthUser): Promise<MemberRow> {
   const { repo } = deps;
-  let owner = (await repo.members(shop.id)).find((m) => m.role === 'owner') ?? null;
-  if (!owner) {
-    try {
-      owner = await repo.insertMember({
-        shop_id: shop.id,
-        user_id: user.id,
-        role: 'owner',
-        display_name: user.fullName?.trim().slice(0, 100) || 'Owner',
-        sort: 0,
-      });
-    } catch (e) {
-      owner = (await repo.members(shop.id)).find((m) => m.role === 'owner') ?? null; // concurrent insert won
-      if (!owner) throw e;
-    }
+  const existing = (await repo.members(shop.id)).find((m) => m.role === 'owner') ?? null;
+  if (existing) return existing;
+  // Default hours only for an owner member created in THIS call. An existing owner with no
+  // availability rows closed every day on purpose; a later setup re-POST (purchase re-link,
+  // services: []) must not hand them default hours back.
+  let owner: MemberRow;
+  try {
+    owner = await repo.insertMember({
+      shop_id: shop.id,
+      user_id: user.id,
+      role: 'owner',
+      display_name: user.fullName?.trim().slice(0, 100) || 'Owner',
+      sort: 0,
+    });
+  } catch (e) {
+    const won = (await repo.members(shop.id)).find((m) => m.role === 'owner') ?? null; // concurrent insert won
+    if (!won) throw e;
+    return won; // the call that created it seeds the hours
   }
-  const avail = await repo.availability([owner.id]);
-  if (avail.length === 0) {
-    await repo.insertAvailability(DEFAULT_AVAILABILITY.map((d) => ({ member_id: owner!.id, ...d })));
-  }
+  await repo.insertAvailability(DEFAULT_AVAILABILITY.map((d) => ({ member_id: owner.id, ...d })));
   return owner;
 }
 
