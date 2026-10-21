@@ -8,7 +8,7 @@ import { publishFlow, type PublishDeps } from '@/lib/publish';
 import {
   deleteAccountAndData, deleteLocalData, restore, syncIfSignedIn, syncSiteToSupabase, type RestoreDeps,
 } from '@/lib/account';
-import { currentUserId, friendlyAuthError, resetPassword, signIn, signOut, signUp } from '@/lib/auth';
+import { currentUserId, friendlyAuthError, signIn, signOut, signUp } from '@/lib/auth';
 import type { SiteRecord } from '@/lib/siteStore';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { sb, supabase } = require('@/lib/supabase');
@@ -394,13 +394,6 @@ describe('auth', () => {
     await signOut();
     expect(resetSpy).toHaveBeenCalledTimes(1);
     expect(currentUserId()).toBeNull();
-  });
-
-  test('resetPassword sends the web redirect', async () => {
-    await resetPassword(' barber@example.com ');
-    expect(supabase.auth.resetPasswordForEmail).toHaveBeenCalledWith('barber@example.com', {
-      redirectTo: 'https://www.aibarber.org',
-    });
   });
 
   test('friendlyAuthError maps codes and network failures', () => {

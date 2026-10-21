@@ -4,8 +4,7 @@ import { Screen } from '@/components/Screen';
 import { Button } from '@/components/Button';
 import { Em, Text } from '@/components/Text';
 import { StageChips } from '@/components/Importer';
-import { useSuperwallSettled } from '@/lib/paywall';
-import { askReminderPermissionOnce } from '@/lib/reminders';
+import { refreshReminders } from '@/lib/reminders';
 import { useRestoreFlow } from '@/lib/restoreFlow';
 
 // GbpImportPage.tsx 'gate' branch: one question, two paths, plus the escape
@@ -13,12 +12,10 @@ import { useRestoreFlow } from '@/lib/restoreFlow';
 export default function Start() {
   // A reinstalled subscriber starts here: their site comes back via Restore, not a new build.
   const { restore, busy } = useRestoreFlow();
-  // Leaving for an import is the moment to ask for reminders (once ever), for
-  // those who never get as far as a site. Not before Superwall has settled:
-  // its debug build traps on a system prompt during configure.
-  const settled = useSuperwallSettled();
+  // The permission itself is asked at launch (LaunchPrompts in _layout); this
+  // only keeps the schedule current.
   const go = (href: Href) => {
-    if (settled) void askReminderPermissionOnce();
+    void refreshReminders();
     router.push(href);
   };
   return (

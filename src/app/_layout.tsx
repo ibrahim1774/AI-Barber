@@ -6,9 +6,10 @@ import { StatusBar } from 'expo-status-bar';
 import { SuperwallProvider } from 'expo-superwall';
 import { PostHogProvider } from 'posthog-react-native';
 import { fontAssets } from '@/constants/theme';
-import { initAttribution, POSTHOG_AUTOCAPTURE, posthog, requestTrackingWhenActive, screen } from '@/lib/analytics';
+import { initAttribution, POSTHOG_AUTOCAPTURE, posthog, screen } from '@/lib/analytics';
+import { LaunchPrompts } from '@/lib/launchPrompts';
 import {
-  SubscriptionSync, SUPERWALL_KEY, SUPERWALL_OPTIONS, superwallActive, usePublishDeps, useSuperwallSettled,
+  SubscriptionSync, SUPERWALL_KEY, SUPERWALL_OPTIONS, superwallActive, usePublishDeps,
 } from '@/lib/paywall';
 import { resetTo } from '@/lib/nav';
 import { publishBusy, resumePendingPublish } from '@/lib/publish';
@@ -18,22 +19,9 @@ import { loadSite } from '@/lib/siteStore';
 function ScreenTracker() {
   const path = usePathname();
   useEffect(() => {
-    screen(path);
+    // The pathname only: never a query or fragment (a reset link's tokens live there).
+    screen(path.replace(/[?#][\s\S]*$/, ''));
   }, [path]);
-  return null;
-}
-
-/**
- * The tracking prompt, on whatever screen comes first after the splash (the
- * importer, the Edit tab, or a deep link's target). Once per launch, after
- * Superwall has settled and as soon as the app is active; AppsFlyer starts
- * when it is answered.
- */
-function TrackingPrompt() {
-  const settled = useSuperwallSettled();
-  useEffect(() => {
-    if (settled) requestTrackingWhenActive();
-  }, [settled]);
   return null;
 }
 
@@ -87,7 +75,7 @@ function Reminders() {
 
 export default function RootLayout() {
   // AppsFlyer for everyone at launch, before any screen. It starts once the
-  // tracking prompt (TrackingPrompt, after the font gate) is answered.
+  // tracking prompt (LaunchPrompts, after the font gate) is answered.
   useEffect(() => {
     initAttribution().catch(() => {});
   }, []);
@@ -99,7 +87,8 @@ export default function RootLayout() {
     <>
       <StatusBar style="light" />
       <ScreenTracker />
-      <TrackingPrompt />
+      {/* Notifications, then ATT: once, on the first screen after the splash. */}
+      <LaunchPrompts />
       <Reminders />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }}>
         <Stack.Screen name="generating" options={{ gestureEnabled: false, animation: 'fade' }} />

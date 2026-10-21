@@ -1,4 +1,7 @@
 import type { TemplateId, WebsiteData } from '@/web/types';
+import { resolveAibTheme } from '@/web/lib/render/luxe';
+import { resolvePrimeTheme } from '@/web/lib/render/prime';
+import { resolveEuphoriaTheme } from '@/web/lib/render/euphoria';
 import { forRender, renderSite, withImages } from '@/lib/render';
 export { EDITOR_JS } from '@/lib/editorScript';
 
@@ -274,9 +277,54 @@ export function stripTracking(html: string): string {
   return html.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, (block) => (TRACKING.test(block) ? '' : block));
 }
 
+const HEX6 = /^#[0-9a-f]{6}$/i;
+const toHex = (n: number) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0');
+
+/**
+ * The site's own page background (#rrggbb), from the same theme tables the
+ * templates use: luxe's --aib-bg, prime's --p-bg, euphoria's --eu-bg. The
+ * preview paints it behind and around the page (the WebView, the overscroll
+ * bounce, a reload) so no other colour ever shows there.
+ */
+export function previewBackground(d: WebsiteData): string {
+  const t = d.template || 'luxe';
+  if (t === 'prime') {
+    const bg = resolvePrimeTheme(d.colorTheme)?.bg ?? '#0a0a0a';
+    return HEX6.test(bg) ? bg.toLowerCase() : '#0a0a0a';
+  }
+  if (t === 'euphoria') {
+    const bg = resolveEuphoriaTheme(d.colorTheme)?.bg ?? '#000000';
+    if (bg === '#000') return '#000000';
+    return HEX6.test(bg) ? bg.toLowerCase() : '#000000';
+  }
+  const rgb = resolveAibTheme(d).bgRgb.trim().split(/\s+/).map(Number);
+  if (rgb.length !== 3 || rgb.some((n) => !Number.isFinite(n))) return '#0d0d0d';
+  return `#${rgb.map(toHex).join('')}`;
+}
+
+/**
+ * PREVIEW ONLY: the document canvas (<html>) gets the site's background, so
+ * the area below the footer, the rubber-band overscroll and the moment
+ * before the template's own CSS (Tailwind CDN, theme vars) applies are the
+ * site's dark colour, never the WebView's default. <body> is left alone.
+ */
+export function withPreviewBackground(html: string, bg: string): string {
+  if (!HEX6.test(bg)) return html;
+  const style = `<style id="aib-preview-bg">html{background-color:${bg};min-height:100%;}</style>`;
+  // Before the first stylesheet/script in <head>, so it applies on the first paint.
+  const at = html.search(/<head\b[^>]*>/i);
+  if (at < 0) return style + html;
+  const end = html.indexOf('>', at) + 1;
+  return html.slice(0, end) + style + html.slice(end);
+}
+
 /** The exact document SitePreview loads. */
 export function buildPreviewHtml(data: WebsiteData, editable: boolean): string {
-  if (!editable) return withImages(stripTracking(renderSite(forRender(data))), data);
+  const bg = previewBackground(data);
+  if (!editable) return withPreviewBackground(withImages(stripTracking(renderSite(forRender(data))), data), bg);
   const { marked, ids } = markData(data);
-  return withImages(tagImageSlots(prepareEditableHtml(stripTracking(renderSite(forRender(marked))), ids)), data);
+  return withPreviewBackground(
+    withImages(tagImageSlots(prepareEditableHtml(stripTracking(renderSite(forRender(marked))), ids)), data),
+    bg,
+  );
 }

@@ -3,7 +3,7 @@ import { StyleSheet } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import type { ShouldStartLoadRequest } from 'react-native-webview/lib/WebViewTypes';
 import type { WebsiteData } from '@/web/types';
-import { EDITOR_JS, buildPreviewHtml } from '@/lib/editable';
+import { EDITOR_JS, buildPreviewHtml, previewBackground } from '@/lib/editable';
 import { parsePreviewMessage, shouldAllowPreviewRequest } from '@/lib/previewBridge';
 
 export interface SitePreviewProps {
@@ -28,6 +28,11 @@ export default function SitePreview({ data, editable, onEditText, onEditImage }:
   // re-rendering on every parent render would reload the page.
   const html = useMemo(() => buildPreviewHtml(data, editable), [data, editable]);
   const source = useMemo(() => ({ html }), [html]);
+  // The site's own background behind the page. On iOS (Fabric) the WKWebView
+  // is transparent, so this view is what the overscroll bounce, a reload and
+  // any inset below the footer show: never a fixed or light colour.
+  const bg = previewBackground(data);
+  const style = useMemo(() => [styles.web, { backgroundColor: bg }], [bg]);
 
   const onMessage = useCallback(
     (e: WebViewMessageEvent) => {
@@ -56,8 +61,13 @@ export default function SitePreview({ data, editable, onEditText, onEditImage }:
   return (
     <WebView
       ref={webRef}
-      style={styles.web}
+      style={style}
       source={source}
+      // No automatic insets (safe area, keyboard): the preview sits between the
+      // status-bar padding and PublishBar, so any inset would only be a gap.
+      contentInsetAdjustmentBehavior="never"
+      automaticallyAdjustContentInsets={false}
+      automaticallyAdjustsScrollIndicatorInsets={false}
       // '*' so every request reaches onShouldStartLoadWithRequest; a narrower
       // whitelist makes react-native-webview Linking.openURL() the rest (dialer/Safari).
       originWhitelist={['*']}

@@ -5,13 +5,13 @@ import { router, useFocusEffect, useNavigation } from 'expo-router';
 import type { WebsiteData } from '@/web/types';
 import { colors, fonts } from '@/constants/theme';
 import { track } from '@/lib/analytics';
-import { hasEntitlement, useSuperwallSettled } from '@/lib/paywall';
-import { getPath, setPath } from '@/lib/editable';
+import { hasEntitlement } from '@/lib/paywall';
+import { getPath, previewBackground, setPath } from '@/lib/editable';
 import { applyBookingLink, applyHomePrompts, fieldLabel, setColour, switchDesign } from '@/lib/editor';
 import { advanceOverlay, hasSeen, markSeen, nextOverlay, type Overlay } from '@/lib/overlayFlags';
 import { pickAndUploadPhoto } from '@/lib/photos';
 import { takePublishRequest } from '@/lib/publishRequest';
-import { askReminderPermissionOnce, refreshReminders } from '@/lib/reminders';
+import { refreshReminders } from '@/lib/reminders';
 import { loadSite, saveSite, type SiteRecord } from '@/lib/siteStore';
 import { tabBarStyle } from '@/lib/tabBar';
 import SitePreview from '@/components/SitePreview';
@@ -272,16 +272,11 @@ export default function Editor() {
     setOverlay(advanceOverlay(kind, guideSeen));
   }, []);
   const onPromptsComplete = useCallback(() => void finishOverlay('prompts'), [finishOverlay]);
-  // The guide closing is the moment to ask for publish reminders (once ever;
-  // later closes only refresh them). Not before Superwall has settled: its
-  // debug build traps on a system prompt during configure.
-  const settled = useSuperwallSettled();
+  // The guide closing refreshes the reminders (a draft now exists: 'finish'
+  // copy). The permission itself is asked at launch (LaunchPrompts in _layout).
   const onGuideClose = useCallback(() => {
-    void finishOverlay('guide').then(async () => {
-      if (settled) await askReminderPermissionOnce();
-      else await refreshReminders();
-    });
-  }, [finishOverlay, settled]);
+    void finishOverlay('guide').then(() => refreshReminders());
+  }, [finishOverlay]);
 
   if (!site) return <View style={styles.root} />;
 
@@ -292,7 +287,8 @@ export default function Editor() {
     <View style={[styles.root, { paddingTop: insets.top }]}>
       {/* The prompts / guide cover this body; the tab bar is hidden meanwhile. */}
       <View style={styles.body}>
-        <View style={styles.preview}>
+        {/* The site's own background, so nothing else shows around the page. */}
+        <View style={[styles.preview, { backgroundColor: previewBackground(data) }]}>
           <SitePreview data={data} editable onEditText={onPreviewText} onEditImage={onPreviewImage} />
           {/* Hidden over a published site and while the prompts / guide are up. */}
           {site.slug == null && overlay == null && (

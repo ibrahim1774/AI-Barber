@@ -28,6 +28,15 @@ export const sb = {
       return { error: null };
     });
     supabase.auth.resetPasswordForEmail.mockReset().mockImplementation(async () => ({ data: {}, error: null }));
+    supabase.auth.setSession.mockReset().mockImplementation(async ({ access_token }: { access_token: string }) => {
+      const session = { access_token, user: { id: 'user-recovery' } };
+      sb.setSession(session);
+      return { data: { session, user: session.user }, error: null };
+    });
+    supabase.auth.refreshSession.mockReset().mockImplementation(async () => ({ data: { session: sb.session }, error: null }));
+    supabase.auth.updateUser
+      .mockReset()
+      .mockImplementation(async () => ({ data: { user: sb.session?.user ?? null }, error: null }));
   },
 };
 
@@ -44,6 +53,9 @@ export const supabase = {
     signInWithPassword: jest.fn(),
     signOut: jest.fn(),
     resetPasswordForEmail: jest.fn(),
+    setSession: jest.fn(),
+    refreshSession: jest.fn(),
+    updateUser: jest.fn(),
   },
   from: (table: string) => ({
     upsert: async (row: Record<string, unknown>, opts: unknown) => {

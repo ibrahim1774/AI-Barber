@@ -2,6 +2,7 @@ import { getTrackingPermissionsAsync, requestTrackingPermissionsAsync } from 'ex
 import PostHog from 'posthog-react-native';
 import { AppState } from 'react-native';
 import AppsFlyer from 'react-native-appsflyer';
+import { scrubEventUrls } from '@/lib/recovery';
 
 /**
  * One place for analytics (copied from Crew Lens). Every event goes to
@@ -24,6 +25,8 @@ export const posthog = posthogKeyValid
   ? new PostHog(POSTHOG_KEY, {
       host: POSTHOG_HOST,
       captureAppLifecycleEvents: true,
+      // "Application Opened" carries the launch URL; a password-reset link holds session tokens in it.
+      before_send: scrubEventUrls,
       // Dev builds send each event at once so it can be checked in PostHog straight away.
       ...(__DEV__ ? { flushAt: 1 } : {}),
     })

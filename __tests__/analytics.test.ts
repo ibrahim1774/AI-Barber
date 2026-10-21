@@ -342,9 +342,12 @@ test('the root layout uses the safe autocapture and asks for tracking itself, no
   const read = (f: string) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8') as string;
   const layout = read('src/app/_layout.tsx');
   expect(layout).toMatch(/<PostHogProvider client=\{posthog\} autocapture=\{POSTHOG_AUTOCAPTURE\}>/);
-  expect(layout).toMatch(/<TrackingPrompt \/>/);
-  // Asked only once Superwall has settled (its debug build traps if the app resigns active before configure).
-  expect(layout).toMatch(/const settled = useSuperwallSettled\(\);/);
-  expect(layout).toMatch(/if \(settled\) requestTrackingWhenActive\(\);\s*\}, \[settled\]\);/);
+  // LaunchPrompts (src/lib/launchPrompts.tsx, tested in launchPrompts.test.ts) asks for
+  // notifications, then tracking, once Superwall has settled.
+  expect(layout).toMatch(/<LaunchPrompts \/>/);
+  expect(layout).not.toMatch(/requestTracking/);
+  const prompts = read('src/lib/launchPrompts.tsx');
+  expect(prompts).toMatch(/const settled = useSuperwallSettled\(\);/);
+  expect(prompts).toMatch(/if \(settled\) void runLaunchPrompts\(\);\s*\}, \[settled\]\);/);
   expect(read('src/app/index.tsx')).not.toMatch(/requestTracking/);
 });
