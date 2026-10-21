@@ -50,6 +50,6 @@ export function refundOnCancel({ by, cutoffMin, startAt, now, amountPaidCents }:
   const start = new Date(startAt).getTime();
   const at = new Date(now).getTime();
   if (!Number.isFinite(start) || !Number.isFinite(at)) throw new Error('refundOnCancel: invalid startAt/now');
-  const cutoff = start - Math.max(0, cutoffMin) * 60_000;
+  const cutoff = start - (Number.isFinite(cutoffMin) ? Math.max(0, cutoffMin) : 0) * 60_000;
   return at <= cutoff ? paid : 0;
 }

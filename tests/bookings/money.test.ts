@@ -71,6 +71,11 @@ describe('refundOnCancel', () => {
     expect(at('2026-10-26T18:00:00Z', 'shop')).toBe(paid);
   });
 
+  it('a missing/NaN cutoff counts as 0 (refund until start), not "never"', () => {
+    expect(refundOnCancel({ by: 'customer', cutoffMin: NaN, startAt, now: '2026-10-24T12:00:00Z', amountPaidCents: paid })).toBe(paid);
+    expect(refundOnCancel({ by: 'customer', cutoffMin: NaN, startAt, now: '2026-10-26T15:00:01Z', amountPaidCents: paid })).toBe(0);
+  });
+
   it('nothing paid -> nothing refunded; accepts Date inputs', () => {
     expect(refundOnCancel({ by: 'shop', cutoffMin: 120, startAt: new Date(startAt), now: new Date(), amountPaidCents: 0 })).toBe(0);
   });

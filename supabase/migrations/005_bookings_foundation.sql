@@ -39,7 +39,8 @@ create table if not exists public.ab_shops (
   owner_id uuid not null references auth.users (id) on delete cascade,
   site_id text,                                   -- the app's sites.id / draftId
   slug text unique                                -- booking URL slug (may differ from the Vercel slug)
-    check (slug ~ '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$' and length(slug) <= 63),
+    check (slug ~ '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$' and length(slug) <= 63
+           and slug not in ('manage', 'api', 'stripe-return', 'book', 'shop')),
   name text not null,
   timezone text not null,                         -- IANA, validated by the API
   currency text not null default 'usd' check (currency ~ '^[a-z]{3}$'),
@@ -71,7 +72,7 @@ create table if not exists public.ab_shops (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-create index if not exists ab_shops_owner_idx on public.ab_shops (owner_id);
+create unique index if not exists ab_shops_one_per_owner on public.ab_shops (owner_id);
 create index if not exists ab_shops_site_idx on public.ab_shops (site_id);
 
 -- ---------------------------------------------------------------------------
@@ -88,7 +89,9 @@ create table if not exists public.ab_members (
   bio text,
   sort int not null default 0,
   active bool not null default true,
-  ics_token text unique,                          -- calendar feed token
+  ics_token text unique                           -- calendar feed token
+    default replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '')
+    check (length(ics_token) >= 32 and ics_token ~ '^[A-Za-z0-9_-]+$'),
   created_at timestamptz not null default now(),
   unique (id, shop_id)                            -- target of the appointments composite FK
 );
@@ -194,6 +197,7 @@ create table if not exists public.ab_appointments (
     check (payment_status in ('none', 'awaiting', 'deposit', 'paid', 'refunded', 'partially_refunded')),
   payment_method text check (payment_method in ('shop', 'cashapp', 'venmo', 'zelle', 'paypal', 'card')),
   amount_paid_cents int not null default 0 check (amount_paid_cents >= 0),
+  amount_refunded_cents int not null default 0 check (amount_refunded_cents >= 0),
   stripe_payment_intent_id text,
   stripe_checkout_session_id text,
 
@@ -270,6 +274,7 @@ create table if not exists public.ab_orders (
     check (payment_status in ('none', 'awaiting', 'deposit', 'paid', 'refunded', 'partially_refunded')),
   payment_method text check (payment_method in ('shop', 'cashapp', 'venmo', 'zelle', 'paypal', 'card')),
   amount_paid_cents int not null default 0 check (amount_paid_cents >= 0),
+  amount_refunded_cents int not null default 0 check (amount_refunded_cents >= 0),
   stripe_payment_intent_id text,
   stripe_checkout_session_id text,
 
@@ -395,21 +400,19 @@ grant execute on function public.ab_is_owner(uuid), public.ab_member_of(uuid), p
 revoke all on function public.ab_set_updated_at() from public, anon, authenticated;
 
 -- ---------------------------------------------------------------------------
--- Privileges: anon gets nothing (belt and braces on top of RLS). Owners may not edit
--- the Stripe link or the platform fee on their shop: those are set by the server only.
+-- Privileges: anon gets nothing (belt and braces on top of RLS).
+-- ab_shops: shops are created only by the server (POST /api/shop/setup, service role), and
+-- owner_id, slug, the Stripe link and the platform fee are server-set only. Owners may
+-- update exactly the columns granted below. Column grants are explicit: a column added to
+-- ab_shops later is NOT owner-writable until its migration grants it (never grant at
+-- table level, which would re-open the fee and Stripe columns).
 -- ---------------------------------------------------------------------------
 revoke all on public.ab_shops, public.ab_members, public.ab_services, public.ab_service_members,
   public.ab_availability, public.ab_time_off, public.ab_appointments, public.ab_products,
   public.ab_orders, public.ab_order_items, public.ab_push_tokens, public.ab_events from anon;
 
 revoke insert, update on public.ab_shops from authenticated;
-grant insert (owner_id, site_id, slug, name, timezone, currency,
-              lead_days, min_notice_min, buffer_min, cancel_cutoff_min, slot_step_min,
-              pay_in_shop, manual_handles,
-              store_pickup, store_pickup_note, store_shipping, shipping_flat_cents, ships_within_days,
-              bookings_enabled)
-  on public.ab_shops to authenticated;
-grant update (site_id, slug, name, timezone, currency,
+grant update (site_id, name, timezone, currency,
               lead_days, min_notice_min, buffer_min, cancel_cutoff_min, slot_step_min,
               pay_in_shop, manual_handles,
               store_pickup, store_pickup_note, store_shipping, shipping_flat_cents, ships_within_days,
