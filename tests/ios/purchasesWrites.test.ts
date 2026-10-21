@@ -37,7 +37,7 @@ describe('upsertVerified', () => {
   it('an existing row is only UPDATEd (no upsert, no product sent back)', async () => {
     const db = fakePurchasesDb([stored({ product_id: `${P}store.monthly`, product_purchased_at: iso(T0 + DAY) })]);
     await supabasePurchases(db.client).upsertVerified(vtx({ productPurchasedAt: T0 }));
-    expect(db.log.map((w) => w.op)).toEqual(['update', 'update']);
+    expect(db.log.map((w) => w.op)).toEqual(['update', 'update', 'update']); // fields, guarded expiry, guarded product
     expect(Object.keys(db.log[0].payload!)).not.toContain('product_id');
     expect(db.row('o1')!.product_id).toBe(`${P}store.monthly`);
   });
@@ -57,11 +57,11 @@ describe('upsertVerified', () => {
     expect(db.row('o1')!.product_id).toBe(`${P}store.monthly`);
   });
 
-  it('sets revoked_at when revoked; a null expiry is written for a new row', async () => {
+  it('sets revoked_at when revoked; a null expiry leaves a new row\'s expiry null', async () => {
     const db = fakePurchasesDb();
     await supabasePurchases(db.client).upsertVerified(vtx({ revoked: true, expiresAt: null }));
     expect(typeof db.row('o1')!.revoked_at).toBe('string');
-    expect(db.row('o1')!.expires_at).toBeNull();
+    expect(db.row('o1')!.expires_at ?? null).toBeNull(); // never written: the column default (NULL)
   });
 
   describe('expires_at never moves backwards', () => {
@@ -81,6 +81,23 @@ describe('upsertVerified', () => {
       await supabasePurchases(db.client).upsertVerified(vtx({ expiresAt: null }));
       expect(db.row('o1')!.expires_at).toBe(iso(STORED));
     });
+    it('N1 race: a stale verify landing after a DID_RENEW never puts the older expiry back', async () => {
+      // The stale verify read E0 = STORED; DID_RENEW writes E1 right after that read.
+      const db = fakePurchasesDb([stored()], {
+        onRead: (rows) => Object.assign(rows.get('o1')!, { expires_at: iso(STORED + 30 * DAY) }),
+      });
+      await supabasePurchases(db.client).upsertVerified(vtx({ expiresAt: STORED }));
+      expect(db.row('o1')!.expires_at).toBe(iso(STORED + 30 * DAY));
+    });
+
+    it('N1: the expiry write is guarded in SQL (is null or older than the new value)', async () => {
+      const db = fakePurchasesDb([stored()]);
+      await supabasePurchases(db.client).upsertVerified(vtx({ expiresAt: STORED + DAY }));
+      const w = db.log.find((l) => l.payload && 'expires_at' in l.payload)!;
+      expect(w.payload).toEqual({ expires_at: iso(STORED + DAY) });
+      expect(w.filters).toContain(`or(expires_at.is.null,expires_at.lt."${iso(STORED + DAY)}")`);
+    });
+
     it('read error throws, nothing written', async () => {
       const db = fakePurchasesDb([stored()], { readError: 'db down' });
       await expect(supabasePurchases(db.client).upsertVerified(vtx())).rejects.toThrow(/upsertVerified/);
@@ -190,6 +207,14 @@ describe('applyNotification', () => {
       await supabasePurchases(db.client).applyNotification(note({ expiresAt: STORED }));
       expect(db.row('o1')!.expires_at).toBe(iso(STORED));
     });
+    it('N1 race: an older retried notification landing after a newer verify never puts the older expiry back', async () => {
+      const db = fakePurchasesDb([stored()], {
+        onRead: (rows) => Object.assign(rows.get('o1')!, { expires_at: iso(STORED + 30 * DAY) }),
+      });
+      await supabasePurchases(db.client).applyNotification(note({ expiresAt: STORED + DAY }));
+      expect(db.row('o1')!.expires_at).toBe(iso(STORED + 30 * DAY));
+    });
+
     it('a read error throws (Apple retries) and nothing is written', async () => {
       const db = fakePurchasesDb([stored()], { readError: 'boom' });
       await expect(supabasePurchases(db.client).applyNotification(note({ expiresAt: STORED }))).rejects.toThrow(/applyNotification/);

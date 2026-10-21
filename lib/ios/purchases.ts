@@ -65,8 +65,7 @@ function fail(op: string, error: { message?: string } | null): never {
 }
 
 /** What the never-backwards rules read before writing. */
-const STORED_COLS = 'expires_at, product_id';
-type Stored = { expires_at?: string | null; product_id?: string | null } | null;
+const STORED_COLS = 'original_transaction_id';
 
 export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
   let sb = client;
@@ -93,6 +92,7 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
     exists: boolean,
     fields: Record<string, unknown>,
     product: { productId: string; purchasedAt?: number | null; isUpgraded?: boolean },
+    expiresAt: number | null,
   ): Promise<PurchaseRow> {
     const dated = !product.isUpgraded && product.purchasedAt != null;
     if (!exists) {
@@ -106,6 +106,18 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
     const { data, error } = await db().from(TABLE).update(fields).eq('original_transaction_id', otid).select().single();
     if (error) fail(op, error);
     let row = data as PurchaseRow;
+    if (expiresAt != null) {
+      // expires_at never moves backwards either: guarded the same way, so a stale verify or a
+      // retried older notification can't put an older expiry back over a renewal.
+      const at = iso(expiresAt) as string;
+      const { data: moved, error: expErr } = await db().from(TABLE)
+        .update({ expires_at: at })
+        .eq('original_transaction_id', otid)
+        .or(`expires_at.is.null,expires_at.lt."${at}"`)
+        .select();
+      if (expErr) fail(op, expErr);
+      if (Array.isArray(moved) && moved.length > 0) row = moved[0] as PurchaseRow;
+    }
     if (dated) {
       const at = iso(product.purchasedAt as number) as string;
       const { data: moved, error: moveErr } = await db().from(TABLE)
@@ -128,28 +140,20 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
 
     async upsertVerified(tx, opts) {
       // Never sends site_slug / user_id / published_at. revoked_at is only set when revoked
-      // (an existing revoked_at is never cleared here).
-      //
-      // expires_at never moves backwards (nor is wiped by a null): read the stored
-      // value, write ours only if it is newer. Read-then-write, not atomic: only this
-      // server writes the row, and the race (a concurrent verify or notification
-      // landing between read and write) can at worst leave a value Apple reported
-      // moments earlier; the next verify or notification corrects it. Benign.
-      // product_id is different: see writeRow (a conditional write, never read-then-write).
+      // (an existing revoked_at is never cleared here). expires_at and product_id never move
+      // backwards (nor is expires_at wiped by a null): both are conditional writes in SQL
+      // (writeRow), never read-then-write. The read only tells whether the row exists.
       const { data: cur, error: readErr } = await db().from(TABLE).select(STORED_COLS)
         .eq('original_transaction_id', tx.originalTransactionId).maybeSingle();
       if (readErr) fail('upsertVerified', readErr);
-      const stored = cur?.expires_at ? Date.parse(cur.expires_at as string) : NaN;
-      const keepStored = Number.isFinite(stored) && (tx.expiresAt == null || tx.expiresAt < stored);
 
       const payload: Record<string, unknown> = {
         environment: tx.environment,
         verified_at: new Date().toISOString(),
       };
-      if (!keepStored) payload.expires_at = iso(tx.expiresAt);
       if (tx.revoked) payload.revoked_at = new Date().toISOString();
       const row = await writeRow('upsertVerified', tx.originalTransactionId, !!cur, payload,
-        { productId: tx.productId, purchasedAt: tx.productPurchasedAt });
+        { productId: tx.productId, purchasedAt: tx.productPurchasedAt }, tx.expiresAt);
 
       // Resubscribed after a refund: Apple's live status says active and not
       // revoked. Clear a revocation recorded BEFORE we asked Apple; the
@@ -193,10 +197,10 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
     async applyNotification(n) {
       // Same never-backwards rules as upsertVerified: Apple retries failed
       // notifications for days, so an older one can land after a newer
-      // renewal. expires_at drives lapse takedowns (lapse.ts) and product_id the
-      // tier gates, so a stale value must never overwrite a later one. expires_at
-      // keeps the benign read-then-write race (the sweep asks Apple before acting on
-      // it); product_id is a conditional write in SQL (writeRow).
+      // renewal. expires_at drives lapse takedowns and the gates of unwatched
+      // purchases (lapse.ts), product_id the tier gates, so a stale value must never
+      // overwrite a later one: both are conditional writes in SQL (writeRow). The read
+      // only tells whether the row exists.
       const { data: cur, error: readErr } = await db().from(TABLE).select(STORED_COLS)
         .eq('original_transaction_id', n.otid).maybeSingle();
       if (readErr) fail('applyNotification', readErr);
@@ -204,15 +208,11 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
         environment: n.environment,
         last_notification: n.type,
       };
-      if (n.expiresAt != null) {
-        const stored = cur?.expires_at ? Date.parse(cur.expires_at as string) : NaN;
-        if (!(Number.isFinite(stored) && n.expiresAt < stored)) payload.expires_at = iso(n.expiresAt);
-      }
       // The transaction an upgrade replaced carries a revocationDate; the purchase is not revoked.
       if (n.clearRevoked) payload.revoked_at = null;
       else if (n.revokedAt != null && !n.isUpgraded) payload.revoked_at = iso(n.revokedAt);
       await writeRow('applyNotification', n.otid, !!cur, payload,
-        { productId: n.productId, purchasedAt: n.purchasedAt, isUpgraded: n.isUpgraded === true });
+        { productId: n.productId, purchasedAt: n.purchasedAt, isUpgraded: n.isUpgraded === true }, n.expiresAt);
       // A newer unrevoked purchase supersedes an older revocation; a late,
       // older transaction never clears one (condition evaluated in SQL).
       if (!n.clearRevoked && n.clearRevokedBefore != null) {
