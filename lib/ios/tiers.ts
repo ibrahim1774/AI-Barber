@@ -33,11 +33,27 @@ export function grants(productId: string | null | undefined, ent: Entitlement): 
   return entitlementsOf(productId).has(ent);
 }
 
-const AI_BARBER_BOOKING = /^https?:\/\/(www\.)?aibarber\.org\/book\//i;
+// Scheme optional; `/book` followed by `/`, `?`, `#` or the end (never `/bookings`).
+const AI_BARBER_BOOKING = /^(https?:\/\/)?(www\.)?aibarber\.org\/book(?=[/?#]|$)/i;
+
+/** Host + path of the configured BOOKING_BASE_URL (a preview or staging origin), lower case. */
+function configuredBase(): string | null {
+  const raw = typeof process !== 'undefined' ? process.env.BOOKING_BASE_URL : undefined;
+  if (!raw || !raw.trim()) return null;
+  return raw.trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '').toLowerCase() || null;
+}
 
 /** An AI Barber booking page link (a Booksy or Square link is not one). */
 export function isAiBarberBookingLink(url: unknown): boolean {
-  return typeof url === 'string' && AI_BARBER_BOOKING.test(url.trim());
+  if (typeof url !== 'string') return false;
+  const u = url.trim();
+  if (AI_BARBER_BOOKING.test(u)) return true;
+  const base = configuredBase();
+  if (!base) return false;
+  const rest = u.replace(/^https?:\/\//i, '').toLowerCase();
+  if (!rest.startsWith(`${base}/book`)) return false;
+  const next = rest.charAt(base.length + 5);
+  return next === '' || next === '/' || next === '?' || next === '#';
 }
 
 /**

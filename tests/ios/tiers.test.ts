@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   IOS_PRODUCT_IDS, tierOf, entitlementsOf, grants, isAiBarberBookingLink, stripLapsedLinks,
 } from '../../lib/ios/tiers.js';
@@ -57,6 +57,28 @@ describe('isAiBarberBookingLink', () => {
     ['https://aibarber.org.evil.com/book/x', false],
     ['', false],
   ])('%s → %s', (url, want) => expect(isAiBarberBookingLink(url)).toBe(want));
+
+  it.each([
+    ['aibarber.org/book/x', true],
+    ['www.aibarber.org/book/x', true],
+    ['https://www.aibarber.org/book', true],
+    ['https://www.aibarber.org/book?ref=ig', true],
+    ['https://www.aibarber.org/bookings', false],
+    ['https://www.aibarber.org/booksy/x', false],
+  ])('M6: %s → %s', (url, want) => expect(isAiBarberBookingLink(url)).toBe(want));
+
+  it('M6: the configured BOOKING_BASE_URL (a preview or staging origin) counts too', () => {
+    vi.stubEnv('BOOKING_BASE_URL', 'https://staging.example.dev/');
+    try {
+      expect(isAiBarberBookingLink('https://staging.example.dev/book/fresh')).toBe(true);
+      expect(isAiBarberBookingLink('staging.example.dev/book')).toBe(true);
+      expect(isAiBarberBookingLink('https://staging.example.dev/shop/fresh')).toBe(false);
+      expect(isAiBarberBookingLink('https://staging.example.dev.evil.com/book/x')).toBe(false);
+      expect(isAiBarberBookingLink('https://www.aibarber.org/book/x')).toBe(true);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
 
   it('non-strings are not links', () => {
     expect(isAiBarberBookingLink(undefined)).toBe(false);
