@@ -1,8 +1,9 @@
 // Stripe Connect webhook for bookings (AI Barber's Connect platform account).
 // Separate endpoint and secret from the Primehub webhook (api/stripe-webhook.ts):
-// env STRIPE_CONNECT_WEBHOOK_SECRET. Handles checkout.session.completed / .expired,
-// charge.refunded, account.updated (+ account.application.deauthorized).
-// Idempotent by event id (ab_events.dedupe_key = 'stripe:<id>').
+// env STRIPE_CONNECT_WEBHOOK_SECRET. Handles checkout.session.completed / .expired /
+// .async_payment_succeeded / .async_payment_failed, charge.refunded, account.updated and
+// account.application.deauthorized. The event id is recorded (ab_events.dedupe_key =
+// 'stripe:<id>') only after its work succeeds; every branch is idempotent on row state.
 import { handleConnectEvent, liveWebhookDeps, verifyStripeSignature, type WebhookDeps } from '../../lib/bookings/payments.js';
 
 // bodyParser off: the signature is over the raw bytes.

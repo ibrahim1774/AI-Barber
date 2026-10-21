@@ -317,40 +317,83 @@ export async function notify(event: NotifyEvent, deps?: NotifyDeps): Promise<voi
 // Cron: reminders (every 15 min) and the 8 AM daily summary (hourly)
 // ---------------------------------------------------------------------------
 
+/** Both crons run with maxDuration 300 s. Stop STARTING new work early enough that the slowest
+ *  single item (an SMTP send: 10 s connect + 10 s greeting + 20 s socket) still ends ~10 s before
+ *  the platform kills the function. */
+export const CRON_MAX_DURATION_MS = 300_000;
+export const CRON_MARGIN_MS = 10_000;
+export const REMINDER_BUDGET_MS = CRON_MAX_DURATION_MS - CRON_MARGIN_MS - 40_000; // 250 s
+export const SUMMARY_BUDGET_MS = CRON_MAX_DURATION_MS - CRON_MARGIN_MS - 20_000; // 270 s
+/** A claim older than this whose reminder was never stamped as sent (run killed mid-send) is
+ *  taken over by the next run. */
+export const REMINDER_CLAIM_STALE_MIN = 10;
+
+export interface CronOpts {
+  /** Stop claiming new items after this many ms of wall time. */
+  budgetMs?: number;
+  /** Wall clock for the budget (defaults to Date.now; deps.now() stays the logical "now"). */
+  clock?: () => number;
+}
+
 export interface ReminderDeps extends NotifyDeps {
   /** Ids of booked appointments starting in [from, to) with reminder_sent_at null and an email,
    *  excluding unpaid card holds. */
   dueReminders(fromIso: string, toIso: string): Promise<string[]>;
-  /** Atomically stamp reminder_sent_at where still null; true when this run owns the reminder. */
+  /** Take the reminder for this run (an ab_events claim row). True when this run owns it; a claim
+   *  older than REMINDER_CLAIM_STALE_MIN that never got marked sent is taken over. */
   claimReminder(id: string, nowIso: string): Promise<boolean>;
+  /** Stamp reminder_sent_at (where still null) and drop the claim. */
+  markReminderSent(id: string, nowIso: string): Promise<void>;
+  /** Drop the claim so the next run retries. */
   releaseReminder(id: string): Promise<void>;
 }
 
-export async function runReminders(deps: ReminderDeps): Promise<{ due: number; sent: number; failed: number }> {
+export async function runReminders(
+  deps: ReminderDeps,
+  opts: CronOpts = {},
+): Promise<{ due: number; sent: number; failed: number; deferred: number }> {
+  const clock = opts.clock ?? Date.now;
+  const started = clock();
+  const budget = opts.budgetMs ?? REMINDER_BUDGET_MS;
   const now = deps.now();
+  const nowIso = new Date(now).toISOString();
   const from = new Date(now + 23 * 3600_000).toISOString();
   const to = new Date(now + 25 * 3600_000).toISOString();
   const ids = await deps.dueReminders(from, to);
   let sent = 0;
   let failed = 0;
-  for (const id of ids) {
-    if (!(await deps.claimReminder(id, new Date(now).toISOString()))) continue; // another run has it
+  let deferred = 0;
+  for (let i = 0; i < ids.length; i++) {
+    if (clock() - started > budget) {
+      // Out of time: leave the rest unclaimed for the next run (every 15 min, 2 h window).
+      deferred = ids.length - i;
+      break;
+    }
+    const id = ids[i];
+    if (!(await deps.claimReminder(id, nowIso))) continue; // another run has it
     let result: EmailResult = 'failed';
     try {
       const ctx = await deps.loadContext(id);
       if (ctx && ctx.appt.status === 'booked' && ctx.appt.customer_email) result = await deps.sendEmail(reminderEmail(ctx));
-      else result = 'sent'; // nothing to send any more; keep the stamp
+      else result = 'sent'; // nothing to send any more; stamp it so it isn't picked up again
     } catch (e: any) {
       console.error('[bookings/reminders] failed:', id, e?.message || e);
     }
-    if (result === 'sent') sent += 1;
-    else {
-      failed += 1;
-      // Not sent (SMTP down or not configured): un-stamp so a later run inside the window retries.
-      await deps.releaseReminder(id).catch((e: any) => console.error('[bookings/reminders] release failed:', id, e?.message || e));
+    try {
+      if (result === 'sent') {
+        await deps.markReminderSent(id, nowIso);
+        sent += 1;
+      } else {
+        failed += 1;
+        // Not sent (SMTP down or not configured): drop the claim so a later run inside the window retries.
+        await deps.releaseReminder(id);
+      }
+    } catch (e: any) {
+      // The claim stays; it goes stale after REMINDER_CLAIM_STALE_MIN and the next run takes it over.
+      console.error('[bookings/reminders] stamp/release failed:', id, e?.message || e);
     }
   }
-  return { due: ids.length, sent, failed };
+  return { due: ids.length, sent, failed, deferred };
 }
 
 export interface SummaryShop { id: string; name: string; timezone: string; owner_id: string }
@@ -361,16 +404,28 @@ export interface DailySummaryDeps {
   countBookings(shopId: string, fromIso: string, toIso: string): Promise<number>;
   /** ab_events insert with dedupe_key; false when this shop/date was already sent. */
   claimSummary(shopId: string, date: string): Promise<boolean>;
+  /** Drop the claim (the push could not be attempted) so the next run in the hour retries. */
+  releaseSummary(shopId: string, date: string): Promise<void>;
   push(userIds: string[], msg: Omit<PushMessage, 'to'>): Promise<unknown>;
   now(): number;
 }
 
 export const SUMMARY_HOUR = 8;
 
-export async function runDailySummary(deps: DailySummaryDeps): Promise<{ shops: number; pushed: number }> {
+export async function runDailySummary(deps: DailySummaryDeps, opts: CronOpts = {}): Promise<{ shops: number; pushed: number; deferred: number }> {
+  const clock = opts.clock ?? Date.now;
+  const started = clock();
+  const budget = opts.budgetMs ?? SUMMARY_BUDGET_MS;
   const shops = await deps.summaryShops();
   let pushed = 0;
-  for (const shop of shops) {
+  let deferred = 0;
+  for (let i = 0; i < shops.length; i++) {
+    if (clock() - started > budget) {
+      deferred = shops.length - i; // unclaimed; Vercel may re-run within the hour, or tomorrow
+      break;
+    }
+    const shop = shops[i];
+    let claimed: string | null = null;
     try {
       const local = DateTime.fromMillis(deps.now(), { zone: shop.timezone });
       if (!local.isValid || local.hour !== SUMMARY_HOUR) continue;
@@ -379,17 +434,20 @@ export async function runDailySummary(deps: DailySummaryDeps): Promise<{ shops: 
       const count = await deps.countBookings(shop.id, dayStart.toUTC().toISO()!, dayStart.plus({ days: 1 }).toUTC().toISO()!);
       if (count <= 0) continue; // nothing booked: stay quiet
       if (!(await deps.claimSummary(shop.id, date))) continue;
+      claimed = date;
       await deps.push([shop.owner_id], {
         title: shop.name,
         body: `${count} booking${count === 1 ? '' : 's'} today`,
         data: { kind: 'booking', date },
       });
+      claimed = null;
       pushed += 1;
     } catch (e: any) {
       console.error('[bookings/daily-summary] shop failed:', shop.id, e?.message || e);
+      if (claimed) await deps.releaseSummary(shop.id, claimed).catch(() => {});
     }
   }
-  return { shops: shops.length, pushed };
+  return { shops: shops.length, pushed, deferred };
 }
 
 // ---------------------------------------------------------------------------
@@ -457,13 +515,29 @@ export function liveReminderDeps(db: SupabaseClient = serviceDb()): ReminderDeps
         .map((r: any) => r.id as string);
     },
     async claimReminder(id, nowIso) {
-      const { data, error } = await db.from('ab_appointments').update({ reminder_sent_at: nowIso })
-        .eq('id', id).is('reminder_sent_at', null).select('id');
-      if (error) dbFail('claimReminder', error);
-      return Array.isArray(data) && data.length > 0;
+      const key = `reminder-claim:${id}`;
+      const insert = () => db.from('ab_events').insert({ kind: 'reminder_claim', dedupe_key: key, payload: { appointmentId: id, at: nowIso } });
+      const { error } = await insert();
+      if (!error) return true;
+      if ((error as { code?: string }).code !== '23505') dbFail('claimReminder', error);
+      // Held by someone. Take it over only if that claim is stale (its run died mid-send).
+      const cutoff = new Date(Date.parse(nowIso) - REMINDER_CLAIM_STALE_MIN * 60_000).toISOString();
+      const { data: gone, error: e2 } = await db.from('ab_events').delete().eq('dedupe_key', key).lt('created_at', cutoff).select('id');
+      if (e2) dbFail('claimReminder(stale)', e2);
+      if (!Array.isArray(gone) || gone.length === 0) return false;
+      const { error: e3 } = await insert();
+      if (!e3) return true;
+      if ((e3 as { code?: string }).code === '23505') return false; // another run took it over first
+      dbFail('claimReminder(retake)', e3);
+    },
+    async markReminderSent(id, nowIso) {
+      const { error } = await db.from('ab_appointments').update({ reminder_sent_at: nowIso }).eq('id', id).is('reminder_sent_at', null);
+      if (error) dbFail('markReminderSent', error);
+      const { error: e2 } = await db.from('ab_events').delete().eq('dedupe_key', `reminder-claim:${id}`);
+      if (e2) console.warn('[bookings/reminders] claim cleanup failed:', id, e2.message);
     },
     async releaseReminder(id) {
-      const { error } = await db.from('ab_appointments').update({ reminder_sent_at: null }).eq('id', id);
+      const { error } = await db.from('ab_events').delete().eq('dedupe_key', `reminder-claim:${id}`);
       if (error) dbFail('releaseReminder', error);
     },
   };
@@ -491,6 +565,10 @@ export function liveDailySummaryDeps(db: SupabaseClient = serviceDb()): DailySum
       if (!error) return true;
       if ((error as { code?: string }).code === '23505') return false;
       dbFail('claimSummary', error);
+    },
+    async releaseSummary(shopId, date) {
+      const { error } = await db.from('ab_events').delete().eq('dedupe_key', `daily:${shopId}:${date}`);
+      if (error) dbFail('releaseSummary', error);
     },
     push: (userIds, msg) => pushToUsers(userIds, msg, store),
     now: () => Date.now(),

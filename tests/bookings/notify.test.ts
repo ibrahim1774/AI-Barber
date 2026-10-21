@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
-  notify, runReminders, runDailySummary, shortWhen, dollars,
+  notify, runReminders, runDailySummary, shortWhen, dollars, liveReminderDeps, REMINDER_BUDGET_MS, SUMMARY_BUDGET_MS,
   type NotifyContext, type NotifyDeps, type ReminderDeps, type DailySummaryDeps,
 } from '../../lib/bookings/notify.js';
 
@@ -149,39 +149,101 @@ describe('notify', () => {
 describe('runReminders', () => {
   const NOW = Date.UTC(2026, 9, 22, 18, 0);
   function mkR(over: Partial<ReminderDeps> = {}): ReminderDeps & Record<string, any> {
-    const stamped = new Set<string>();
+    const claims = new Set<string>();
+    const sentIds = new Set<string>();
     return {
       ...mkDeps(),
       now: () => NOW,
-      dueReminders: vi.fn(async () => ['appt-1']),
-      claimReminder: vi.fn(async (id: string) => (stamped.has(id) ? false : (stamped.add(id), true))),
-      releaseReminder: vi.fn(async (id: string) => { stamped.delete(id); }),
+      dueReminders: vi.fn(async () => ['appt-1'].filter((id) => !sentIds.has(id))),
+      claimReminder: vi.fn(async (id: string) => (claims.has(id) ? false : (claims.add(id), true))),
+      markReminderSent: vi.fn(async (id: string) => { sentIds.add(id); claims.delete(id); }),
+      releaseReminder: vi.fn(async (id: string) => { claims.delete(id); }),
       ...over,
     } as any;
   }
 
-  it('queries the 23–25 h window, claims, sends once', async () => {
+  it('queries the 23–25 h window, claims, sends, then stamps', async () => {
     const d = mkR();
-    expect(await runReminders(d)).toEqual({ due: 1, sent: 1, failed: 0 });
+    expect(await runReminders(d)).toEqual({ due: 1, sent: 1, failed: 0, deferred: 0 });
     expect(d.dueReminders).toHaveBeenCalledWith('2026-10-23T17:00:00.000Z', '2026-10-23T19:00:00.000Z');
     expect(d.claimReminder).toHaveBeenCalledWith('appt-1', '2026-10-22T18:00:00.000Z');
     expect(d.sendEmail).toHaveBeenCalledTimes(1);
-    // a second (overlapping) run finds it claimed
-    expect(await runReminders(d)).toEqual({ due: 1, sent: 0, failed: 0 });
-    expect(d.sendEmail).toHaveBeenCalledTimes(1);
+    expect(d.markReminderSent).toHaveBeenCalledWith('appt-1', '2026-10-22T18:00:00.000Z');
+    expect(await runReminders(d)).toEqual({ due: 0, sent: 0, failed: 0, deferred: 0 });
   });
 
-  it('un-stamps when the email was not sent, so a later run retries', async () => {
-    const d = mkR({ sendEmail: vi.fn(async () => 'failed' as const) });
-    expect(await runReminders(d)).toEqual({ due: 1, sent: 0, failed: 1 });
-    expect(d.releaseReminder).toHaveBeenCalledWith('appt-1');
-  });
-
-  it('keeps the stamp (no email) when the appointment is no longer booked', async () => {
-    const d = mkR({ loadContext: vi.fn(async () => ctx({ status: 'cancelled' })) });
-    expect(await runReminders(d)).toEqual({ due: 1, sent: 1, failed: 0 });
+  it('an overlapping run that finds the claim taken sends nothing', async () => {
+    const d = mkR({ claimReminder: vi.fn(async () => false) });
+    expect(await runReminders(d)).toEqual({ due: 1, sent: 0, failed: 0, deferred: 0 });
     expect(d.sendEmail).not.toHaveBeenCalled();
-    expect(d.releaseReminder).not.toHaveBeenCalled();
+  });
+
+  it('releases the claim when the email was not sent, so a later run retries', async () => {
+    const d = mkR({ sendEmail: vi.fn(async () => 'failed' as const) });
+    expect(await runReminders(d)).toEqual({ due: 1, sent: 0, failed: 1, deferred: 0 });
+    expect(d.releaseReminder).toHaveBeenCalledWith('appt-1');
+    expect(d.markReminderSent).not.toHaveBeenCalled();
+  });
+
+  it('stamps (no email) when the appointment is no longer booked', async () => {
+    const d = mkR({ loadContext: vi.fn(async () => ctx({ status: 'cancelled' })) });
+    expect(await runReminders(d)).toEqual({ due: 1, sent: 1, failed: 0, deferred: 0 });
+    expect(d.sendEmail).not.toHaveBeenCalled();
+    expect(d.markReminderSent).toHaveBeenCalledWith('appt-1', expect.any(String));
+  });
+
+  it('stops claiming once the time budget is spent; the rest stay unclaimed for the next run', async () => {
+    let t = 0;
+    const ids = ['a', 'b', 'c', 'd'];
+    const d = mkR({
+      dueReminders: vi.fn(async () => ids),
+      sendEmail: vi.fn(async () => { t += 100_000; return 'sent' as const; }), // each send "takes" 100 s
+    });
+    const r = await runReminders(d, { clock: () => t, budgetMs: REMINDER_BUDGET_MS });
+    expect(r).toEqual({ due: 4, sent: 3, failed: 0, deferred: 1 });
+    expect(d.claimReminder).toHaveBeenCalledTimes(3);
+    expect(d.claimReminder).not.toHaveBeenCalledWith('d', expect.anything());
+    expect(REMINDER_BUDGET_MS).toBeLessThanOrEqual(300_000 - 10_000 - 40_000);
+  });
+
+  it('a claim left by a killed run is not re-sent by this run (the dep decides staleness), and stamp failures never throw', async () => {
+    const d = mkR({ markReminderSent: vi.fn().mockRejectedValue(new Error('db')) });
+    await expect(runReminders(d)).resolves.toEqual({ due: 1, sent: 0, failed: 0, deferred: 0 });
+  });
+});
+
+describe('liveReminderDeps claims (query shape)', () => {
+  function fakeDb(results: any[]) {
+    const calls: Array<[string, any[]]> = [];
+    const chain: any = new Proxy({}, {
+      get(_t, prop: string) {
+        if (prop === 'then') return (res: any) => res(results.shift() ?? { data: null, error: null });
+        return (...args: any[]) => { calls.push([prop, args]); return chain; };
+      },
+    });
+    return { db: { from: (t: string) => { calls.push(['from', [t]]); return chain; }, auth: {} } as any, calls };
+  }
+
+  it('fresh claim: one insert', async () => {
+    const { db, calls } = fakeDb([{ error: null }]);
+    expect(await liveReminderDeps(db).claimReminder('a1', '2026-10-22T18:00:00.000Z')).toBe(true);
+    expect(calls).toContainEqual(['insert', [expect.objectContaining({ dedupe_key: 'reminder-claim:a1' })]]);
+  });
+
+  it('held claim: taken over only when older than 10 minutes', async () => {
+    const stale = fakeDb([{ error: { code: '23505' } }, { data: [{ id: 'x' }], error: null }, { error: null }]);
+    expect(await liveReminderDeps(stale.db).claimReminder('a1', '2026-10-22T18:00:00.000Z')).toBe(true);
+    expect(stale.calls).toContainEqual(['lt', ['created_at', '2026-10-22T17:50:00.000Z']]);
+    const fresh = fakeDb([{ error: { code: '23505' } }, { data: [], error: null }]);
+    expect(await liveReminderDeps(fresh.db).claimReminder('a1', '2026-10-22T18:00:00.000Z')).toBe(false);
+  });
+
+  it('markReminderSent stamps only an unstamped row and drops the claim', async () => {
+    const { db, calls } = fakeDb([{ error: null }, { error: null }]);
+    await liveReminderDeps(db).markReminderSent('a1', 'now');
+    expect(calls).toContainEqual(['update', [{ reminder_sent_at: 'now' }]]);
+    expect(calls).toContainEqual(['is', ['reminder_sent_at', null]]);
+    expect(calls).toContainEqual(['eq', ['dedupe_key', 'reminder-claim:a1']]);
   });
 });
 
@@ -197,6 +259,7 @@ describe('runDailySummary', () => {
       summaryShops: vi.fn(async () => shops),
       countBookings: vi.fn(async (id: string) => counts[id] ?? 0),
       claimSummary: vi.fn(async (id: string, date: string) => (claimed.has(id + date) ? false : (claimed.add(id + date), true))),
+      releaseSummary: vi.fn(async (id: string, date: string) => { claimed.delete(id + date); }),
       push: vi.fn(async () => ({})),
       now: () => nowMs,
     };
@@ -206,7 +269,7 @@ describe('runDailySummary', () => {
   it('pushes only shops where it is 8 AM local, with the local day bounds and date', async () => {
     // 12:00Z = 8:00 New York (EDT), 5:00 LA, 17:30 Delhi
     const d = mkS(Date.UTC(2026, 9, 21, 12, 0));
-    expect(await runDailySummary(d)).toEqual({ shops: 3, pushed: 1 });
+    expect(await runDailySummary(d)).toEqual({ shops: 3, pushed: 1, deferred: 0 });
     expect(d.countBookings).toHaveBeenCalledWith('s-ny', '2026-10-21T04:00:00.000Z', '2026-10-22T04:00:00.000Z');
     expect(d.push).toHaveBeenCalledWith(['o-ny'], { title: 'NY Cuts', body: '3 bookings today', data: { kind: 'booking', date: '2026-10-21' } });
   });
@@ -223,10 +286,26 @@ describe('runDailySummary', () => {
   it('dedupes a second run in the same hour; silent with zero bookings', async () => {
     const d = mkS(Date.UTC(2026, 9, 21, 12, 0));
     await runDailySummary(d);
-    expect(await runDailySummary(d)).toEqual({ shops: 3, pushed: 0 });
+    expect(await runDailySummary(d)).toEqual({ shops: 3, pushed: 0, deferred: 0 });
     const z = mkS(Date.UTC(2026, 9, 21, 12, 0), { 's-ny': 0 });
-    expect(await runDailySummary(z)).toEqual({ shops: 3, pushed: 0 });
+    expect(await runDailySummary(z)).toEqual({ shops: 3, pushed: 0, deferred: 0 });
     expect(z.claimSummary).not.toHaveBeenCalled();
+  });
+
+  it('a push that throws releases the claim so the next run in the hour retries', async () => {
+    const d = mkS(Date.UTC(2026, 9, 21, 12, 0));
+    d.push = vi.fn().mockRejectedValueOnce(new Error('expo')).mockResolvedValue({});
+    expect((await runDailySummary(d)).pushed).toBe(0);
+    expect(d.releaseSummary).toHaveBeenCalledWith('s-ny', '2026-10-21');
+    expect((await runDailySummary(d)).pushed).toBe(1);
+  });
+
+  it('stops starting shops once the time budget is spent', async () => {
+    let t = 0;
+    const d = mkS(Date.UTC(2026, 9, 21, 12, 0));
+    d.summaryShops = vi.fn(async () => { t = SUMMARY_BUDGET_MS + 1; return shops; });
+    expect(await runDailySummary(d, { clock: () => t })).toEqual({ shops: 3, pushed: 0, deferred: 3 });
+    expect(d.countBookings).not.toHaveBeenCalled();
   });
 
   it('DST: the local day on a fall-back day is 25 hours', async () => {

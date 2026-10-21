@@ -193,13 +193,43 @@ describe('onboard / status', () => {
     expect(calls[2].params.get('account')).toBe('acct_np');
   });
 
-  it('onboard: a revoked stored account is cleared and replaced by a new one', async () => {
-    const { f, calls } = fakeFetch({ status: 403, body: { error: { message: 'no access' } } }, { body: { id: 'acct_fresh' } }, { body: { url: 'L3' } });
+  it('onboard: a real 404 with a healthy platform key clears (and logs) the dead id, then makes a new account', async () => {
+    const { f, calls } = fakeFetch(
+      { status: 404, body: { error: { message: 'No such account' } } },  // account link for the stored id
+      { body: { id: 'acct_platform' } },                                  // GET /v1/account with the platform key
+      { body: { id: 'acct_fresh' } },                                     // new Standard account
+      { body: { url: 'L3' } },                                            // its account link
+    );
     const deps = mkDeps({ shopForOwner: vi.fn(async () => ({ ...ownerShop, stripe_account_id: 'acct_gone' })) }, f);
     expect(await stripeOnboard('Bearer good', deps)).toEqual({ status: 200, body: { url: 'L3' } });
+    expect(calls[1].url).toBe('https://api.stripe.com/v1/account');
+    expect(calls[1].init.method).toBe('GET');
+    expect(calls[1].init.headers['Stripe-Account']).toBeUndefined();
     expect(deps.clearAccount).toHaveBeenCalledWith('shop-1', 'acct_gone');
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining('clearing unreachable connected account'), expect.stringContaining('acct_gone'));
     expect(deps.saveAccountId).toHaveBeenCalledWith('shop-1', 'acct_fresh');
-    expect(calls[2].params.get('account')).toBe('acct_fresh');
+    expect(calls[3].params.get('account')).toBe('acct_fresh');
+  });
+
+  it('onboard: a 403 caused by a wrong platform key clears nothing', async () => {
+    const { f, calls } = fakeFetch(
+      { status: 403, body: { error: { type: 'permission_error', message: 'no access' } } },
+      { status: 401, body: { error: { message: 'Invalid API Key' } } }, // platform key check fails
+    );
+    const deps = mkDeps({ shopForOwner: vi.fn(async () => ({ ...ownerShop, stripe_account_id: 'acct_real' })) }, f);
+    expect(await stripeOnboard('Bearer good', deps)).toEqual({ status: 502, body: { error: 'stripe-error' } });
+    expect(deps.clearAccount).not.toHaveBeenCalled();
+    expect(deps.saveAccountId).not.toHaveBeenCalled();
+    expect(calls).toHaveLength(2);
+  });
+
+  it('onboard: other Stripe errors (e.g. 500, 400) never clear', async () => {
+    for (const status of [500, 400, 429]) {
+      const { f } = fakeFetch({ status, body: { error: { message: 'x' } } });
+      const deps = mkDeps({ shopForOwner: vi.fn(async () => ({ ...ownerShop, stripe_account_id: 'acct_real' })) }, f);
+      expect((await stripeOnboard('Bearer good', deps)).status).toBe(502);
+      expect(deps.clearAccount).not.toHaveBeenCalled();
+    }
   });
 
   it('502 on Stripe errors', async () => {
@@ -217,11 +247,16 @@ describe('onboard / status', () => {
     expect(deps.setChargesEnabled).toHaveBeenCalledWith('shop-1', true);
   });
 
-  it('status: revoked access reads as disconnected', async () => {
-    const { f } = fakeFetch({ status: 403, body: { error: { type: 'invalid_request_error', message: 'no access' } } });
-    const deps = mkDeps({ shopForOwner: vi.fn(async () => ({ ...ownerShop, stripe_account_id: 'acct_1', stripe_charges_enabled: true })) }, f);
-    expect(await stripeStatus('Bearer good', deps)).toEqual({ status: 200, body: { connected: false, chargesEnabled: false, detailsSubmitted: false } });
-    expect(deps.clearAccount).toHaveBeenCalledWith('shop-1', 'acct_1');
+  it('status: a 403/404 reports disconnected and never clears or changes anything', async () => {
+    for (const status of [403, 404]) {
+      const { f, calls } = fakeFetch({ status, body: { error: { type: 'invalid_request_error', message: 'no access' } } });
+      const deps = mkDeps({ shopForOwner: vi.fn(async () => ({ ...ownerShop, stripe_account_id: 'acct_1', stripe_charges_enabled: true })) }, f);
+      expect(await stripeStatus('Bearer good', deps)).toEqual({ status: 200, body: { connected: false, chargesEnabled: false, detailsSubmitted: false } });
+      expect(deps.clearAccount).not.toHaveBeenCalled();
+      expect(deps.setChargesEnabled).not.toHaveBeenCalled();
+      expect(deps.saveAccountId).not.toHaveBeenCalled();
+      expect(calls).toHaveLength(1);
+    }
   });
 });
 
@@ -273,8 +308,11 @@ describe('handleConnectEvent', () => {
     };
     return deps;
   }
+  const PAID_AT = Date.UTC(2026, 9, 21, 12, 0, 0);
+  const CANCELLED_BEFORE = '2026-10-21T11:59:00.000Z';
+  const CANCELLED_AFTER = '2026-10-21T12:05:00.000Z';
   const completed = (over: any = {}, account: string | null = 'acct_123') => ({
-    id: 'evt_1', type: 'checkout.session.completed', account,
+    id: 'evt_1', type: 'checkout.session.completed', account, created: PAID_AT / 1000,
     data: { object: { id: 'cs_1', payment_status: 'paid', amount_total: 3000, payment_intent: 'pi_1', ...over } },
   });
 
@@ -298,6 +336,7 @@ describe('handleConnectEvent', () => {
     let row: WebhookAppointment = { ...base };
     const deps = mkDeps(row, {
       appointmentBySession: vi.fn(async () => row),
+      appointmentById: vi.fn(async () => row),
       markPaid: vi.fn(async (_id, f) => {
         if (row.stripe_payment_intent_id) return false;
         row = { ...row, stripe_payment_intent_id: f.paymentIntentId, amount_paid_cents: f.amountPaidCents, payment_status: f.paymentStatus };
@@ -358,7 +397,7 @@ describe('handleConnectEvent', () => {
   });
 
   it('a failed refund for paid-after-cancel is completed on the Stripe retry', async () => {
-    let row: WebhookAppointment = { ...base, status: 'cancelled', payment_status: 'none' };
+    let row: WebhookAppointment = { ...base, status: 'cancelled', payment_status: 'none', cancelled_at: CANCELLED_BEFORE };
     const refund = vi.fn().mockRejectedValueOnce(new Error('stripe 500')).mockImplementation(async (_s, _a, amt: number) => ({ refundedCents: amt }));
     const deps = mkDeps(row, {
       refund,
@@ -368,6 +407,7 @@ describe('handleConnectEvent', () => {
         return true;
       }),
       appointmentBySession: vi.fn(async () => row),
+      appointmentById: vi.fn(async () => row),
     });
     await expect(handleConnectEvent(completed(), deps)).rejects.toThrow('stripe 500');
     expect(await handleConnectEvent(completed(), deps)).toBe('refunded:cancelled-before-payment');
@@ -381,10 +421,11 @@ describe('handleConnectEvent', () => {
   });
 
   it('paid-after-cancel: killed after the refund but before it was saved → the redelivery finishes (same refund request)', async () => {
-    let row: WebhookAppointment = { ...base, status: 'cancelled', payment_status: 'none' };
+    let row: WebhookAppointment = { ...base, status: 'cancelled', payment_status: 'none', cancelled_at: CANCELLED_BEFORE };
     const refundCalls: any[] = [];
     const deps = mkDeps(row, {
       appointmentBySession: vi.fn(async () => row),
+      appointmentById: vi.fn(async () => row),
       markPaid: vi.fn(async (_id, f) => {
         if (row.stripe_payment_intent_id) return false;
         row = { ...row, stripe_payment_intent_id: f.paymentIntentId, amount_paid_cents: f.amountPaidCents };
@@ -402,8 +443,41 @@ describe('handleConnectEvent', () => {
     expect(deps.recordEvent).toHaveBeenCalledTimes(1);
   });
 
+  it('redelivery: "paid, then cancelled (fee kept)" is NOT refunded; "cancelled, then paid" is', async () => {
+    const paidThenCancelled = { ...base, status: 'cancelled' as const, cancelled_at: CANCELLED_AFTER, stripe_payment_intent_id: 'pi_1', amount_paid_cents: 3000, amount_refunded_cents: 0 };
+    const d1 = mkDeps(paidThenCancelled, { markPaid: vi.fn(async () => false) });
+    expect(await handleConnectEvent(completed(), d1)).toBe('noop:paid-then-cancelled');
+    expect(d1.refund).not.toHaveBeenCalled();
+    expect(d1.notify).not.toHaveBeenCalled();
+    expect(d1.recordEvent).toHaveBeenCalled();
+
+    const d2 = mkDeps({ ...paidThenCancelled, cancelled_at: CANCELLED_BEFORE }, { markPaid: vi.fn(async () => false) });
+    expect(await handleConnectEvent(completed(), d2)).toBe('refunded:cancelled-before-payment');
+    expect((d2.refund as any).mock.calls[0][2]).toBe(3000);
+
+    // no timestamps to order them by: keep the money where it is and say so loudly
+    const d3 = mkDeps({ ...paidThenCancelled, cancelled_at: null }, { markPaid: vi.fn(async () => false) });
+    expect(await handleConnectEvent(completed(), d3)).toBe('noop:cancel-order-unknown');
+    expect(d3.refund).not.toHaveBeenCalled();
+  });
+
+  it('markPaid lost a race: decisions use the re-read row, not the stale snapshot', async () => {
+    // snapshot: no payment yet; current row: this payment recorded by the concurrent delivery, booking cancelled before it
+    const snapshot = { ...base, status: 'cancelled' as const, cancelled_at: CANCELLED_BEFORE };
+    const current = { ...snapshot, stripe_payment_intent_id: 'pi_1', amount_paid_cents: 3000, amount_refunded_cents: 0 };
+    const deps = mkDeps(snapshot, { markPaid: vi.fn(async () => false), appointmentById: vi.fn(async () => current) });
+    expect(await handleConnectEvent(completed(), deps)).toBe('refunded:cancelled-before-payment');
+    expect(deps.appointmentById).toHaveBeenCalledWith('appt-1');
+    expect((deps.refund as any).mock.calls[0][2]).toBe(3000);
+
+    // booked: the re-read row carries this payment → (re)send the confirmation
+    const deps2 = mkDeps({ ...base }, { markPaid: vi.fn(async () => false), appointmentById: vi.fn(async () => ({ ...base, stripe_payment_intent_id: 'pi_1', amount_paid_cents: 3000 })) });
+    expect(await handleConnectEvent(completed(), deps2)).toBe('noop:already-recorded');
+    expect(deps2.notify).toHaveBeenCalledTimes(1);
+  });
+
   it('paid-after-cancel: only the remainder is refunded when part was already refunded', async () => {
-    const deps = mkDeps({ ...base, status: 'cancelled', stripe_payment_intent_id: 'pi_1', amount_paid_cents: 3000, amount_refunded_cents: 1000 }, { markPaid: vi.fn(async () => false) });
+    const deps = mkDeps({ ...base, status: 'cancelled', cancelled_at: CANCELLED_BEFORE, stripe_payment_intent_id: 'pi_1', amount_paid_cents: 3000, amount_refunded_cents: 1000 }, { markPaid: vi.fn(async () => false) });
     expect(await handleConnectEvent(completed(), deps)).toBe('refunded:cancelled-before-payment');
     expect((deps.refund as any).mock.calls[0][2]).toBe(2000);
     expect(deps.setRefunded).toHaveBeenCalledWith('appt-1', 3000, 'refunded');

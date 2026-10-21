@@ -274,6 +274,17 @@ export async function createAccountLink(shopId: string, accountId: string, opts:
   return link.url as string;
 }
 
+/** True when the platform key itself works: GET /v1/account (no Stripe-Account header) returns 200. */
+export async function platformKeyHealthy(opts: StripeOpts = {}): Promise<boolean> {
+  try {
+    const a = await stripeRequest('GET', '/account', {}, { fetch: opts.fetch });
+    return Boolean(a?.id);
+  } catch (e: any) {
+    console.error('[bookings/payments] platform key check failed:', e?.status ?? '', e?.message || e);
+    return false;
+  }
+}
+
 export interface AccountStatus { connected: boolean; chargesEnabled: boolean; detailsSubmitted: boolean }
 
 /** Live account status. A 403/404 (access revoked / account gone) reads as not connected. */
@@ -305,7 +316,7 @@ export interface OwnerStripeDeps {
   saveAccountId(shopId: string, accountId: string): Promise<string>;
   setChargesEnabled(shopId: string, enabled: boolean): Promise<void>;
   /** Forget a connected account we no longer have access to (stripe_account_id = null, charges off),
-   *  only if it is still the stored one. */
+   *  only if it is still the stored one. Only /onboard calls it, after platformKeyHealthy(). */
   clearAccount(shopId: string, accountId: string): Promise<void>;
   stripe?: StripeOpts;
 }
@@ -340,8 +351,13 @@ export async function stripeOnboard(authorization: string | string[] | undefined
       try {
         return { status: 200, body: { url: await createAccountLink(shop.id, accountId, deps.stripe) } };
       } catch (e) {
-        // Access revoked (owner disconnected AI Barber in Stripe): start over with a new account.
+        // A 403/404 means "this key can't see that account": revoked access, OR a wrong/mixed-up
+        // platform key. Only treat it as revoked once the platform key itself is proven healthy;
+        // otherwise clearing would wipe every owner's real account id. Anything else never clears.
         if (!(e instanceof StripeApiError && (e.status === 403 || e.status === 404))) throw e;
+        if (!(await platformKeyHealthy(deps.stripe))) throw e;
+        console.error('[shop/stripe/onboard] clearing unreachable connected account:',
+          JSON.stringify({ shopId: shop.id, accountId, status: e.status, code: e.code ?? null }));
         await deps.clearAccount(shop.id, accountId);
         accountId = null;
       }
@@ -363,8 +379,10 @@ export async function stripeStatus(authorization: string | string[] | undefined,
   if (!shop.stripe_account_id) return { status: 200, body: { connected: false, chargesEnabled: false, detailsSubmitted: false } };
   try {
     const s = await fetchAccountStatus(shop.stripe_account_id, deps.stripe);
-    if (!s.connected) await deps.clearAccount(shop.id, shop.stripe_account_id);
-    else if (s.chargesEnabled !== shop.stripe_charges_enabled) await deps.setChargesEnabled(shop.id, s.chargesEnabled);
+    // Read-only on a 403/404: report connected:false but never clear or change anything, since a
+    // wrong platform key also returns 403. Revocation is cleared by the deauthorized webhook, or
+    // by /onboard after it has proven the platform key works.
+    if (s.connected && s.chargesEnabled !== shop.stripe_charges_enabled) await deps.setChargesEnabled(shop.id, s.chargesEnabled);
     return { status: 200, body: s };
   } catch (e: any) {
     console.error('[shop/stripe/status] failed:', e?.message || e);
@@ -456,6 +474,7 @@ export interface WebhookAppointment extends PayAppointment {
   payment_status: string;
   payment_method: string | null;
   stripe_checkout_session_id: string | null;
+  cancelled_at?: string | null;
 }
 
 export interface WebhookDeps {
@@ -486,6 +505,8 @@ export interface StripeEvent {
   id: string;
   type: string;
   account?: string | null;
+  /** Epoch seconds when Stripe created the event (for a completed session: when it was paid). */
+  created?: number;
   data: { object: any };
 }
 
@@ -546,33 +567,60 @@ async function sessionPaid(event: StripeEvent, obj: any, deps: WebhookDeps): Pro
       JSON.stringify({ session: obj.id, paymentIntent: pi, account: event.account, amountTotal: amount, clientReferenceId: obj.client_reference_id }));
     return { outcome: 'ignored:no-appointment' };
   }
-  const { appt, shop } = found;
-  const paymentStatus = appt.price_cents == null || amount < appt.price_cents ? 'deposit' : 'paid';
-  const changed = await deps.markPaid(appt.id, { paymentStatus, amountPaidCents: amount, paymentIntentId: pi });
+  const { appt: before, shop } = found;
+  const paymentStatus = before.price_cents == null || amount < before.price_cents ? 'deposit' : 'paid';
+  const changed = await deps.markPaid(before.id, { paymentStatus, amountPaidCents: amount, paymentIntentId: pi });
 
-  if (!changed && appt.stripe_payment_intent_id && pi && appt.stripe_payment_intent_id !== pi) {
+  if (changed) {
+    // `before` was read while the row held no payment: if it was cancelled then, it was cancelled
+    // BEFORE the payment (e.g. the customer cancelled the held slot on the manage page, then
+    // finished paying in another tab). Give the money straight back.
+    if (before.status === 'cancelled') {
+      return refundRemainder(shop, { ...before, stripe_payment_intent_id: pi, amount_paid_cents: amount, amount_refunded_cents: 0 }, pi, deps);
+    }
+    return { outcome: `paid:${paymentStatus}`, notify: [{ kind: 'booking_created', appointmentId: before.id }] };
+  }
+
+  // Not changed: a redelivery, or a concurrent delivery. Decide on the CURRENT row, not the
+  // snapshot read before markPaid.
+  const appt = (await deps.appointmentById(before.id)) ?? before;
+  if (appt.stripe_payment_intent_id && pi && appt.stripe_payment_intent_id !== pi) {
     // A second, different payment for an appointment that is already paid: give it back.
     console.error('[stripe/connect-webhook] second payment for one appointment, refunding it:',
       JSON.stringify({ appointment: appt.id, stored: appt.stripe_payment_intent_id, extra: pi, amount }));
     await deps.refund(shop, { ...appt, stripe_payment_intent_id: pi, amount_paid_cents: amount, amount_refunded_cents: 0 }, amount);
     return { outcome: 'refunded:duplicate-payment' };
   }
-
-  // From here the row holds this payment (just now, or by an earlier, partially failed delivery).
-  const paid = changed ? amount : Math.floor(appt.amount_paid_cents ?? 0);
-  const refunded = Math.floor(appt.amount_refunded_cents ?? 0);
   if (appt.status === 'cancelled') {
-    // Paid after the booking was cancelled (e.g. the customer cancelled the held slot on the
-    // manage page, then finished paying in another tab): give the money straight back.
-    if (refunded >= paid) return { outcome: 'noop:already-refunded' };
-    const r = await deps.refund(shop, { ...appt, stripe_payment_intent_id: pi, amount_paid_cents: paid, amount_refunded_cents: refunded }, paid - refunded);
-    const total = refunded + r.refundedCents;
-    if (r.refundedCents > 0) await deps.setRefunded(appt.id, total, total >= paid ? 'refunded' : 'partially_refunded');
-    return { outcome: 'refunded:cancelled-before-payment' };
+    // Only "cancelled, then paid" is refunded here. "Paid, then cancelled" went through the
+    // cancel flow, which already applied the refund policy (it may keep a deposit or fee).
+    const cancelledMs = appt.cancelled_at ? Date.parse(appt.cancelled_at) : NaN;
+    const paidMs = Number.isFinite(event.created) ? (event.created as number) * 1000 : NaN;
+    if (!Number.isFinite(cancelledMs) || !Number.isFinite(paidMs)) {
+      console.error('[stripe/connect-webhook] cannot order cancel vs payment; not refunding:',
+        JSON.stringify({ appointment: appt.id, cancelledAt: appt.cancelled_at ?? null, eventCreated: event.created ?? null }));
+      return { outcome: 'noop:cancel-order-unknown' };
+    }
+    if (cancelledMs >= paidMs) return { outcome: 'noop:paid-then-cancelled' };
+    return refundRemainder(shop, appt, pi, deps);
   }
-  // Card bookings get their confirmation (push + email) once payment lands. On a redelivery the
-  // event was not recorded last time, so the confirmation was not sent either.
-  return { outcome: changed ? `paid:${paymentStatus}` : 'noop:already-recorded', notify: [{ kind: 'booking_created', appointmentId: appt.id }] };
+  if (appt.stripe_payment_intent_id === pi) {
+    // Card bookings get their confirmation once payment lands. On a redelivery the event was not
+    // recorded last time, so the confirmation was not sent either.
+    return { outcome: 'noop:already-recorded', notify: [{ kind: 'booking_created', appointmentId: appt.id }] };
+  }
+  return { outcome: 'noop:already-recorded' };
+}
+
+/** Refund whatever of this payment is not refunded yet (idempotent on the row's own totals). */
+async function refundRemainder(shop: PayShop, appt: WebhookAppointment, pi: string | null, deps: WebhookDeps): Promise<Outcome> {
+  const paid = Math.floor(appt.amount_paid_cents ?? 0);
+  const refunded = Math.floor(appt.amount_refunded_cents ?? 0);
+  if (refunded >= paid) return { outcome: 'noop:already-refunded' };
+  const r = await deps.refund(shop, { ...appt, stripe_payment_intent_id: pi, amount_paid_cents: paid, amount_refunded_cents: refunded }, paid - refunded);
+  const total = refunded + r.refundedCents;
+  if (r.refundedCents > 0) await deps.setRefunded(appt.id, total, total >= paid ? 'refunded' : 'partially_refunded');
+  return { outcome: 'refunded:cancelled-before-payment' };
 }
 
 async function dispatch(event: StripeEvent, deps: WebhookDeps): Promise<Outcome> {
@@ -616,7 +664,7 @@ async function dispatch(event: StripeEvent, deps: WebhookDeps): Promise<Outcome>
 }
 
 export function liveWebhookDeps(db: SupabaseClient = serviceDb()): WebhookDeps {
-  const APPT_COLS = 'id, shop_id, status, service_name, price_cents, manage_token, customer_email, start_at, payment_status, payment_method, amount_paid_cents, amount_refunded_cents, stripe_payment_intent_id, stripe_checkout_session_id';
+  const APPT_COLS = 'id, shop_id, status, cancelled_at, service_name, price_cents, manage_token, customer_email, start_at, payment_status, payment_method, amount_paid_cents, amount_refunded_cents, stripe_payment_intent_id, stripe_checkout_session_id';
   return {
     async eventProcessed(eventId) {
       const { data, error } = await db.from('ab_events').select('id').eq('dedupe_key', `stripe:${eventId}`).maybeSingle();
