@@ -60,3 +60,19 @@ describe('servicesToWebsite', () => {
     expect(websiteToSetupServices(web)).toEqual([{ name: 'Haircut', priceCents: 4500, durationMin: 45 }]);
   });
 });
+
+describe('websiteToSetupServices limits (the server 400s on anything over)', () => {
+  it('clamps text, duration and photo, and caps the list', () => {
+    const [a] = websiteToSetupServices([
+      item({ title: 'x'.repeat(120), description: 'd'.repeat(900), duration: '1 min', imageUrl: 'http://insecure/p.jpg' }),
+    ]);
+    expect(a.name).toHaveLength(80);
+    expect(a.description).toHaveLength(500);
+    expect(a.durationMin).toBe(5);
+    expect(a.photoUrl).toBeUndefined();
+    expect(websiteToSetupServices([item({ duration: '20 hours' })])[0].durationMin).toBe(600);
+    expect(websiteToSetupServices([item({ imageUrl: 'https://cdn/p.jpg' })])[0].photoUrl).toBe('https://cdn/p.jpg');
+    const many = Array.from({ length: 70 }, (_, i) => item({ title: `S${i}` }));
+    expect(websiteToSetupServices(many)).toHaveLength(50);
+  });
+});

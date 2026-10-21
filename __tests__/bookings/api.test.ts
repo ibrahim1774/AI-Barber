@@ -98,6 +98,15 @@ describe('owner endpoints', () => {
     expect(friendlyBookingError(err)).toBe('That time is already taken.');
   });
 
+  it('words the not-cancellable, not-reschedulable and invalid errors', async () => {
+    reply(409, { error: 'not-cancellable' });
+    expect(friendlyBookingError(await cancelBooking('a').catch((e) => e))).toBe("This booking can't be cancelled any more.");
+    reply(409, { error: 'not-reschedulable' });
+    expect(friendlyBookingError(await rescheduleBooking('a', 'x').catch((e) => e))).toBe("This booking can't be moved any more.");
+    reply(400, { error: 'invalid' });
+    expect(friendlyBookingError(await cancelBooking('a').catch((e) => e))).toBe("Some details weren't right. Please check and try again.");
+  });
+
   it('maps a dead network and a missing session', async () => {
     fetchMock.mockRejectedValueOnce(new Error('offline'));
     const err = await cancelBooking('a').catch((e) => e);

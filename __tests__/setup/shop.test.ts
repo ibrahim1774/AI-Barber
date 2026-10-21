@@ -15,6 +15,11 @@ describe('shop data layer', () => {
     const s = toShop({ id: '1', slug: 'a', name: 'A', timezone: 'America/Chicago', manual_handles: null, stripe_account_id: 'acct', platform_fee_bps: 200 });
     expect(s).toMatchObject({ id: '1', payInShop: true, manualHandles: {}, stripeConnected: true, stripeChargesEnabled: false, bookingsEnabled: false, leadDays: 30 });
   });
+  it('reads the purchase link from ios_otid', () => {
+    expect(toShop({ id: '1', ios_otid: '123' }).purchaseLinked).toBe(true);
+    expect(toShop({ id: '1', ios_otid: null }).purchaseLinked).toBe(false);
+    expect(toShop({ id: '1' }).purchaseLinked).toBe(false);
+  });
   it('only ever writes granted ab_shops columns', () => {
     const row = shopSettingsRow({
       bookingsEnabled: true, payInShop: false, manualHandles: { cashapp: '$a' }, leadDays: 7, minNoticeMin: 0, bufferMin: 5,

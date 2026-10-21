@@ -45,7 +45,10 @@ jest.mock('@/lib/account', () => ({ syncIfSignedIn: jest.fn(async () => {}) }));
 jest.mock('@/lib/paywall', () => ({
   hasEntitlement: () => false,
   useRestorePurchases: () => mockRestore,
+  useLatestTransactionId: () => async () => null,
 }));
+const mockRelink = jest.fn(async (_o?: unknown) => false);
+jest.mock('@/lib/setup/relink', () => ({ relinkShopPurchase: (o: unknown) => mockRelink(o) }));
 
 async function runRestoreFlow() {
   const React = require('react');

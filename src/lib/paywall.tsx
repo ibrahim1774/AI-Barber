@@ -2,6 +2,7 @@ import { usePlacement, useSuperwall, useSuperwallEvents, useUser } from 'expo-su
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, AppState } from 'react-native';
 
+import { relinkShopPurchase } from '@/lib/setup/relink';
 import { restore, syncIfSignedIn, type Restored } from '@/lib/account';
 import { appsFlyerUID, track, trackConversion } from '@/lib/analytics';
 import { api } from '@/lib/api';
@@ -253,7 +254,7 @@ function useSuperwallPaywall() {
   );
 }
 
-function useLatestTransactionId() {
+export function useLatestTransactionId() {
   // eslint-disable-next-line react-hooks/rules-of-hooks
   return superwallActive ? useSuperwallLatestTransactionId() : noTransactionId;
 }
@@ -285,6 +286,8 @@ export function usePublishDeps(): PublishDeps {
       // keeps the account's `sites` row (deployed_url, status) current.
       onLive: (site) => {
         setSubscriptionStatus('active');
+        // A booking page made before this subscription: tie it to the purchase. Quiet, not awaited.
+        void relinkShopPurchase({ latestTransactionId, transactionId: site.transactionId });
         return syncIfSignedIn(site);
       },
     }),

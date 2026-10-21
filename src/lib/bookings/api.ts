@@ -28,6 +28,9 @@ const FRIENDLY: Record<string, string> = {
   unauthorized: 'Please sign in again.',
   'card-payment': 'Card payments are recorded by Stripe automatically.',
   'not-markable': 'This booking changed. Pull down to refresh.',
+  'not-cancellable': "This booking can't be cancelled any more.",
+  'not-reschedulable': "This booking can't be moved any more.",
+  invalid: "Some details weren't right. Please check and try again.",
 };
 
 /** Alternatives from a 409 slot-taken error, else []. */

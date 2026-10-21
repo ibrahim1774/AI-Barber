@@ -18,6 +18,8 @@ import { updateSiteData } from '@/lib/setup/siteSync';
 import {
   STEPS, STEP_TITLES, back, currentStep, initialWizard, next, progressLabel, setSwitch, skip, type WizardState,
 } from '@/lib/setup/wizard';
+import { PLAN_PENDING } from '@/components/setup/SetupHub';
+import { registerPushForShop } from '@/lib/setup/relink';
 import { markWizardDone } from '@/lib/setup/wizardFlag';
 import { bookingUrl, listMembers, updateShopSettings, type Member, type Service, type Shop } from '@/lib/shop';
 import type { SiteRecord } from '@/lib/siteStore';
@@ -60,6 +62,7 @@ export function Wizard({ shop, site, onShopChanged, onFinish }: Props) {
         await updateSiteData((d) => switchBookButton(d, shop), (i) => switchInputs(i, shop));
       }
       await markWizardDone(shop.id);
+      void registerPushForShop();
       track('bookings_setup_done', { skipped: state.skipped.length, switched_book_button: state.switchBookButton });
       onFinish();
     } catch (e) {
@@ -133,6 +136,7 @@ export function Wizard({ shop, site, onShopChanged, onFinish }: Props) {
         <>
           <Card title="Your booking link">
             <Text selectable style={st.url}>{url}</Text>
+            {!shop.purchaseLinked && <Note tone="warn">{PLAN_PENDING}</Note>}
             <Note>Put it in your Instagram bio, text it to regulars, or show the QR code at the counter.</Note>
             <Button title="Share booking link" size="sm" onPress={() => setShareOpen(true)} />
             <TextAction

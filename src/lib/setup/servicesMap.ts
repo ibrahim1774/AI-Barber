@@ -28,20 +28,30 @@ export type SetupService = {
   photoUrl?: string;
 };
 
+// The server's limits (parseSetup in /api/shop/setup): anything over is a 400.
+const MAX_SERVICES = 50;
+const MAX_NAME = 80;
+const MAX_DESCRIPTION = 500;
+const MIN_DURATION = 5;
+const MAX_DURATION = 600;
+const MAX_PHOTO_URL = 1000;
+
 /** The site's services as the body of POST /api/shop/setup `services`. */
 export function websiteToSetupServices(services: ServiceItem[]): SetupService[] {
   const out: SetupService[] = [];
   for (const s of services) {
-    const name = (s.title ?? '').trim();
+    if (out.length >= MAX_SERVICES) break;
+    const name = (s.title ?? '').trim().slice(0, MAX_NAME).trim();
     if (!name) continue;
     const item: SetupService = {
       name,
       priceCents: parsePriceCents(s.price),
-      durationMin: parseDuration(s.duration) ?? 30,
+      durationMin: Math.min(MAX_DURATION, Math.max(MIN_DURATION, parseDuration(s.duration) ?? 30)),
     };
-    const description = (s.description ?? '').trim();
+    const description = (s.description ?? '').trim().slice(0, MAX_DESCRIPTION).trim();
     if (description) item.description = description;
-    if (s.imageUrl && !s.imageUrl.startsWith('data:')) item.photoUrl = s.imageUrl;
+    const photo = (s.imageUrl ?? '').trim();
+    if (/^https:\/\//i.test(photo) && photo.length <= MAX_PHOTO_URL) item.photoUrl = photo;
     out.push(item);
   }
   return out;

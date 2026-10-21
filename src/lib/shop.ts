@@ -16,6 +16,8 @@ export type Shop = {
   name: string;
   timezone: string;
   bookingsEnabled: boolean;
+  /** The shop is tied to an App Store purchase (ab_shops.ios_otid is set). Until then the public page stays paused. */
+  purchaseLinked: boolean;
   payInShop: boolean;
   manualHandles: ManualHandles;
   stripeChargesEnabled: boolean;
@@ -102,6 +104,7 @@ export function toShop(r: Record<string, any>): Shop {
     name: r.name ?? '',
     timezone: r.timezone ?? 'America/New_York',
     bookingsEnabled: !!r.bookings_enabled,
+    purchaseLinked: !!r.ios_otid,
     payInShop: r.pay_in_shop !== false,
     manualHandles: handles as ManualHandles,
     stripeChargesEnabled: !!r.stripe_charges_enabled,
@@ -275,6 +278,9 @@ export async function countUpcoming(memberId: string): Promise<number> {
 export async function removeMember(id: string): Promise<void> {
   const { error } = await supabase.from('ab_members').update({ active: false }).eq('id', id).eq('role', 'barber');
   if (error) fail(error);
+  // No rows means "does every service", so a removed barber's leftovers must go.
+  const links = await supabase.from('ab_service_members').delete().eq('member_id', id);
+  if (links.error) fail(links.error);
 }
 
 // ---- per-barber availability ------------------------------------------
@@ -356,6 +362,8 @@ export async function updateService(id: string, s: Partial<Service>): Promise<vo
 export async function removeService(id: string): Promise<void> {
   const { error } = await supabase.from('ab_services').update({ active: false }).eq('id', id);
   if (error) fail(error);
+  const links = await supabase.from('ab_service_members').delete().eq('service_id', id);
+  if (links.error) fail(links.error);
 }
 
 export async function reorderServices(ids: string[]): Promise<void> {

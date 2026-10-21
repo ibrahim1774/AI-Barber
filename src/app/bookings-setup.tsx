@@ -16,6 +16,8 @@ import { Note } from '@/components/setup/ui';
 import { track } from '@/lib/analytics';
 import { syncIfSignedIn } from '@/lib/account';
 import { useSession } from '@/lib/auth';
+import { useLatestTransactionId } from '@/lib/paywall';
+import { registerPushForShop, relinkShopPurchase } from '@/lib/setup/relink';
 import { goBackOrHome } from '@/lib/nav';
 import { pickAndUploadPhoto } from '@/lib/photos';
 import { buildSetupBody, shopSetup } from '@/lib/setup/ownerApi';
@@ -47,6 +49,7 @@ export default function BookingsSetup() {
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' });
   const [sub, setSub] = useState<Sub>('hub');
   const signedIn = !!session;
+  const latestTransactionId = useLatestTransactionId();
 
   const load = useCallback(async () => {
     try {
@@ -58,14 +61,23 @@ export default function BookingsSetup() {
         await syncIfSignedIn(site);
         await shopSetup(buildSetupBody(site));
         track('bookings_shop_created');
+        void registerPushForShop();
         shop = await loadMyShop();
       }
       if (!shop) return setPhase({ kind: 'error', message: "We couldn't create your booking page. Try again." });
       setPhase({ kind: 'ready', shop, site, wizard: !(await wizardDone(shop.id)) });
+      // A shop made before the subscription was linked stays paused: link it now, quietly.
+      if (!shop.purchaseLinked) {
+        void relinkShopPurchase({ latestTransactionId }).then(async (linked) => {
+          if (!linked) return;
+          const fresh = await loadMyShop().catch(() => null);
+          if (fresh) setPhase((p) => (p.kind === 'ready' ? { ...p, shop: fresh } : p));
+        });
+      }
     } catch (e) {
       setPhase({ kind: 'error', message: e instanceof Error ? e.message : 'Something went wrong. Try again.' });
     }
-  }, []);
+  }, [latestTransactionId]);
 
   useEffect(() => {
     if (!ready) return;

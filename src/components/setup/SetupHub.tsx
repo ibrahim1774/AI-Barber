@@ -8,6 +8,8 @@ import { bookingUrl, icsUrl, listMembers, updateShopSettings, type Member, type 
 import { isAiBarberBookingUrl } from '@/lib/shop';
 import type { SiteRecord } from '@/lib/siteStore';
 
+export const PLAN_PENDING = 'Your booking page opens once your AI Barber plan is active.';
+
 export type HubTarget = 'services' | 'barbers' | 'hours' | 'rules' | 'pay';
 
 /** The Setup (gear) screen: Services, Barbers, Hours, Booking rules, Get paid, calendar link, Book button. */
@@ -73,7 +75,13 @@ export function SetupHub({
       <Card>
         <ToggleRow
           label="Take bookings"
-          detail={shop.bookingsEnabled ? bookingUrl(shop) : 'Off: your booking page shows as paused.'}
+          detail={
+            !shop.bookingsEnabled
+              ? 'Off: your booking page shows as paused.'
+              : shop.purchaseLinked
+                ? bookingUrl(shop)
+                : PLAN_PENDING
+          }
           value={shop.bookingsEnabled}
           onValueChange={(v) => void setEnabled(v)}
           disabled={busy}

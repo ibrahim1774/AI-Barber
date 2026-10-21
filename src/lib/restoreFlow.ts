@@ -3,7 +3,8 @@ import { Alert } from 'react-native';
 import { syncIfSignedIn, type Restored } from '@/lib/account';
 import { ApiError } from '@/lib/api';
 import { resetTo } from '@/lib/nav';
-import { hasEntitlement, useRestorePurchases } from '@/lib/paywall';
+import { hasEntitlement, useLatestTransactionId, useRestorePurchases } from '@/lib/paywall';
+import { relinkShopPurchase } from '@/lib/setup/relink';
 import { recheckSubscriptionStatus } from '@/lib/subscriptionStatus';
 
 const SUPPORT_EMAIL = 'support@davoxa.com';
@@ -54,6 +55,7 @@ export function restoreMessage(
  */
 export function useRestoreFlow(): { restore: () => Promise<void>; busy: boolean } {
   const restorePurchases = useRestorePurchases();
+  const latestTransactionId = useLatestTransactionId();
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
 
@@ -66,6 +68,7 @@ export function useRestoreFlow(): { restore: () => Promise<void>; busy: boolean 
       const res = await restorePurchases();
       if (res) {
         void syncIfSignedIn(res.site);
+        if (res.active) void relinkShopPurchase({ latestTransactionId, transactionId: res.site.transactionId });
         resetTo('/edit');
       }
       outcome = res;
@@ -79,7 +82,7 @@ export function useRestoreFlow(): { restore: () => Promise<void>; busy: boolean 
     recheckSubscriptionStatus(true);
     const msg = restoreMessage(outcome, hasEntitlement());
     if (msg) Alert.alert(msg.title, msg.message);
-  }, [restorePurchases]);
+  }, [restorePurchases, latestTransactionId]);
 
   return { restore, busy };
 }
