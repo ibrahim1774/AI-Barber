@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../src/shop/api';
 import { cartTotals } from '../../src/shop/cart';
 import {
-  checkoutBody, payRows, placeOrder, validateCheckout, withNewAttempt, type CheckoutState,
+  checkoutBody, invalidMessage, payRows, placeOrder, validateCheckout, withNewAttempt, type CheckoutState,
 } from '../../src/shop/logic';
 import type { Product, ShopInfo } from '../../src/shop/types';
 
@@ -152,5 +152,32 @@ describe('placeOrder', () => {
     expect(await run(new ApiError(502, 'payment-unavailable'))).toMatchObject({ kind: 'payment-unavailable' });
     expect(await run(new ApiError(400, 'invalid', { field: 'customer' }))).toEqual({ kind: 'invalid', field: 'customer' });
     expect(await run(new ApiError(0, 'network'))).toMatchObject({ kind: 'error' });
+  });
+});
+
+describe('invalidMessage', () => {
+  it('maps contract fields to words, never the raw name', () => {
+    expect(invalidMessage('pay')).toBe('Please check your payment choice.');
+    expect(invalidMessage('items')).toBe('Please check your cart.');
+    expect(invalidMessage('customer')).toMatch(/name, phone/);
+    expect(invalidMessage('address')).toMatch(/shipping address/);
+    expect(invalidMessage('weird')).toBe('Please check your details.');
+    expect(invalidMessage(undefined)).toBe('Please check your details.');
+  });
+});
+
+describe('pay coercion', () => {
+  it('under 50 cents hides card', () => {
+    expect(payRows(shop, 'pickup', 49).map((r) => r.pay)).not.toContain('card');
+    expect(payRows(shop, 'pickup', 50).map((r) => r.pay)).toContain('card');
+  });
+  it('several manual handles and no choice sends manual without a method', () => {
+    const b = checkoutBody(base({ pay: 'manual', method: null }));
+    expect(b.pay).toBe('manual');
+    expect('method' in b).toBe(false);
+  });
+  it('a single manual handle is sent without being chosen', () => {
+    const one = { ...shop, pay: { ...shop.pay, manual: { zelle: 'a@b.co' } } };
+    expect(checkoutBody(base({ shop: one, pay: 'manual', method: null })).method).toBe('zelle');
   });
 });

@@ -3,7 +3,7 @@ import { ApiError, type ShopApi } from './api';
 import { addItem, cartTotals, loadCart, MAX_QTY, reconcile, removeItem, saveCart, setQty } from './cart';
 import {
   CHANGED_MESSAGE, checkoutBody, directionsUrl, EMPTY_ADDRESS, EXPIRED_MESSAGE, formatAddress, formatMoney, manualLink, METHOD_LABEL,
-  newClientKey, onAccent, parseShopRoute, paymentLine, payRows, placeOrder, safeAccent, sentErrorMessage, STATUS_LABEL, telUrl,
+  newClientKey, onAccent, parseShopRoute, paymentLine, payRows, placeOrder, safeAccent, sentErrorMessage, invalidMessage, STATUS_LABEL, telUrl,
   tokenFromStatusUrl, validateCheckout, type AddressForm, type CheckoutState,
 } from './logic';
 import { CHECKOUT_POLL_MS, parseCheckout, shouldKeepPolling, type CheckoutReturn } from '../book/logic';
@@ -73,10 +73,17 @@ function ShopPage({ api, slug }: { api: ShopApi; slug: string }) {
   const d = data as Loaded;
   const { shop, products } = d;
 
-  const refreshProducts = (fresh: Product[]) => {
-    setData({ ...d, products: fresh });
-    const r = reconcile(cart, fresh);
-    setCart(r.cart);
+  // After cart-changed: take the server's products, and re-read the shop so a changed shipping rate can't loop.
+  const refreshProducts = async (fallback: Product[]) => {
+    let next: Loaded = { ...d, products: fallback };
+    try {
+      const fresh = await api.shop(slug);
+      if (fresh.paused) { setData(fresh); return; }
+      next = fresh as Loaded;
+      applyAccent(next.shop.accent);
+    } catch { /* keep the products from the 409 */ }
+    setData(next);
+    setCart(reconcile(cart, next.products).cart);
   };
   const closed = () => setData({ paused: true, shop: { name: shop.name } });
 
@@ -217,7 +224,7 @@ function CartSheet({ cart, products, onClose, onQty, onRemove, onCheckout }: {
 
 function Checkout({ api, shop, products, cart, onBack, onRefresh, onSoldOut, onRemove, onPaused, onCreated }: {
   api: ShopApi; shop: ShopInfo; products: Product[]; cart: Cart;
-  onBack: () => void; onRefresh: (p: Product[]) => void; onSoldOut: (ids: string[]) => void; onRemove: (id: string) => void;
+  onBack: () => void; onRefresh: (p: Product[]) => Promise<void> | void; onSoldOut: (ids: string[]) => void; onRemove: (id: string) => void;
   onPaused: () => void; onCreated: (token: string) => void;
 }) {
   const fulfilments: Fulfilment[] = [...(shop.pickup.enabled ? ['pickup' as const] : []), ...(shop.shipping.enabled ? ['shipping' as const] : [])];
@@ -242,12 +249,14 @@ function Checkout({ api, shop, products, cart, onBack, onRefresh, onSoldOut, onR
   const needsAddress = fulfilment === 'shipping' && current?.pay !== 'card';
   const showCardNote = fulfilment === 'shipping' && current?.pay === 'card';
 
+  const submitting = useRef(false);
   async function submit() {
+    if (submitting.current) return;
     const invalid = !current ? 'Please choose how you want to pay.' : validateCheckout(state);
     if (invalid) { setProblem(invalid); return; }
-    setBusy(true); setProblem(null);
-    const r = await placeOrder(api.createOrder, state);
-    setBusy(false);
+    submitting.current = true; setBusy(true); setProblem(null);
+    let r: Awaited<ReturnType<typeof placeOrder>>;
+    try { r = await placeOrder(api.createOrder, state); } finally { submitting.current = false; setBusy(false); }
     switch (r.kind) {
       case 'ok': {
         if (r.state.clientKey !== keyRef.current) keyRef.current = r.state.clientKey;
@@ -255,12 +264,12 @@ function Checkout({ api, shop, products, cart, onBack, onRefresh, onSoldOut, onR
         onCreated(tokenFromStatusUrl(r.res.order.statusUrl));
         return;
       }
-      case 'cart-changed': onRefresh(r.products); setProblem(CHANGED_MESSAGE); return;
+      case 'cart-changed': await onRefresh(r.products); setProblem(CHANGED_MESSAGE); return;
       case 'sold-out': onSoldOut(r.productIds); setProblem('Some items just sold out. Remove them to continue.'); return;
       case 'expired': keyRef.current = newClientKey(); setProblem(EXPIRED_MESSAGE); return;
       case 'paused': onPaused(); return;
       case 'rate-limited': case 'payment-unavailable': case 'error': setProblem(r.message); return;
-      case 'invalid': setProblem(`Please check your ${r.field === 'items' ? 'cart' : r.field || 'details'}.`); return;
+      case 'invalid': setProblem(invalidMessage(r.field)); return;
     }
   }
 
@@ -371,6 +380,11 @@ function StatusView({ api, token, checkout, fresh }: { api: ShopApi; token: stri
     api.order(token).then((d) => { setData(d); applyAccent(d.shop.accent); document.title = `Order #${d.order.number}`; })
       .catch((e) => setError(e instanceof ApiError && e.status === 404 ? 'not-found' : 'failed'));
   }, [token]);
+
+  // Back from a paid card checkout: the order exists, so the saved cart is done with. (Kept on 'cancelled'.)
+  useEffect(() => {
+    if (checkout === 'success' && data) saveCart(data.shop.slug, { lines: [] }, getStorage());
+  }, [checkout, data?.shop.slug]);
 
   // After Stripe success the webhook may lag: re-fetch every 3 s, up to 30 s.
   const payStatus = data?.order.paymentStatus;

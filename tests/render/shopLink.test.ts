@@ -70,3 +70,18 @@ describe.each(Object.keys(renderers))('%s link schemes', (name) => {
     expect(html).toContain('href="https://book.test/x"');
   });
 });
+
+describe.each(Object.keys(renderers))('%s bookingUrl edge cases', (name) => {
+  const render = renderers[name];
+  it('escapes & in a query string', () => {
+    const html = render(fixture({ bookingUrl: 'https://book.test/x?a=1&b=2' }));
+    expect(html).toContain('href="https://book.test/x?a=1&amp;b=2"');
+    expect(html).not.toContain('a=1&b=2');
+  });
+  it('drops a schemeless bookingUrl (prime falls back to tel:)', () => {
+    const html = render(fixture({ bookingUrl: 'booksy.com/x' }));
+    expect(html).not.toContain('booksy.com/x');
+    if (name === 'prime') expect(html).toContain('href="tel:');
+    else expect(html).not.toContain('Book Appointment');
+  });
+});

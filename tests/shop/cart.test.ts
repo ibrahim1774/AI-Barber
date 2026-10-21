@@ -126,3 +126,12 @@ describe('storage', () => {
     expect(loadCart('x', s).lines.map((l) => l.productId)).toEqual(['a']);
   });
 });
+
+describe('clearing after a paid card order', () => {
+  it('saving an empty cart removes the stored key', () => {
+    const data: Record<string, string> = { 'ab-cart:x': '{"lines":[]}' };
+    const s: StorageLike = { getItem: (k) => data[k] ?? null, setItem: (k, v) => { data[k] = v; }, removeItem: (k) => { delete data[k]; } };
+    saveCart('x', { lines: [] }, s);
+    expect(data['ab-cart:x']).toBeUndefined();
+  });
+});

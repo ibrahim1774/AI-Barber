@@ -144,6 +144,16 @@ export function validateCheckout(s: CheckoutState): string | null {
   return null;
 }
 
+const FIELD_WORDS: Record<string, string> = {
+  pay: 'payment choice', method: 'payment method', items: 'cart', customer: 'name, phone and email', address: 'shipping address',
+  fulfilment: 'pickup or shipping choice', note: 'note', slug: 'shop link', clientKey: 'order', expectedTotalCents: 'total',
+};
+/** Plain-words message for a 400 invalid { field }. */
+export function invalidMessage(field: string | undefined): string {
+  const w = field && FIELD_WORDS[field];
+  return w ? `Please check your ${w}.` : 'Please check your details.';
+}
+
 export const RATE_LIMITED_FALLBACK = 'Too many orders right now. Please try again in a few minutes.';
 export const EXPIRED_MESSAGE = 'Checkout timed out. Please try again.';
 export const CHANGED_MESSAGE = 'Prices changed. Check your cart.';
