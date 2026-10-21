@@ -3,7 +3,6 @@ import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Tex
 import type { WebsiteData } from '@/web/types';
 import { colors, fonts } from '@/constants/theme';
 import { track } from '@/lib/analytics';
-import { pickAndUploadPhoto } from '@/lib/photos';
 import {
   DURATIONS, SERVICE_LIBRARY, addService, durationLabel, formatPrice, moveService, newService, parseDuration,
   removeService, updateService, type ServiceDraft,
@@ -15,11 +14,12 @@ import { Sheet, SheetAction } from '@/components/EditSheet';
 type Props = {
   visible: boolean;
   data: WebsiteData;
-  onChange(next: WebsiteData): void;
+  /** Applied to the editor's latest data, so it composes with concurrent changes. */
+  onChange(update: (d: WebsiteData) => WebsiteData): void;
   onClose(): void;
   onDismiss?(): void;
-  /** Upload folder for service photos. */
-  photoFolder?: string;
+  /** Picks and uploads one photo through the editor's upload guard; null if cancelled or dropped. */
+  upload(onPicked?: () => void): Promise<string | null>;
 };
 
 // index null: a service of the barber's own that is added when they save.
@@ -28,7 +28,7 @@ type View_ = { kind: 'list' } | { kind: 'add' } | { kind: 'form'; form: Form };
 
 const PHOTO_FAIL = "Couldn't upload that photo. Check your connection and try again.";
 
-export function ServicesSheet({ visible, data, onChange, onClose, onDismiss, photoFolder = 'services' }: Props) {
+export function ServicesSheet({ visible, data, onChange, onClose, onDismiss, upload }: Props) {
   const { height } = useWindowDimensions();
   const [view, setView] = useState<View_>({ kind: 'list' });
   const [picking, setPicking] = useState(false);
@@ -56,7 +56,7 @@ export function ServicesSheet({ visible, data, onChange, onClose, onDismiss, pho
   const addFromLibrary = (title: string, duration: number, icon: Parameters<typeof newService>[2]) => {
     track('service_added', { source: 'library' });
     const index = services.length;
-    onChange(addService(data, newService(title, duration, icon)));
+    onChange((d) => addService(d, newService(title, duration, icon)));
     // The new row is not in `data` yet: open the form from the values we know.
     setView({ kind: 'form', form: { index, fresh: true, draft: { title, price: '', duration, description: '', imageUrl: '' } } });
   };
@@ -72,10 +72,11 @@ export function ServicesSheet({ visible, data, onChange, onClose, onDismiss, pho
     }
     if (form.index == null) {
       track('service_added', { source: 'custom' });
-      const added = addService(data, newService(form.draft.title, form.draft.duration ?? 30, 'scissors'));
-      onChange(updateService(added, services.length, form.draft));
+      const at = services.length;
+      onChange((d) => updateService(addService(d, newService(form.draft.title, form.draft.duration ?? 30, 'scissors')), at, form.draft));
     } else {
-      onChange(updateService(data, form.index, form.draft));
+      const at = form.index;
+      onChange((d) => updateService(d, at, form.draft));
     }
     setView({ kind: 'list' });
   };
@@ -90,7 +91,7 @@ export function ServicesSheet({ visible, data, onChange, onClose, onDismiss, pho
         text: 'Remove', style: 'destructive',
         onPress: () => {
           track('service_removed');
-          onChange(removeService(data, index));
+          onChange((d) => removeService(d, index));
           setView({ kind: 'list' });
         },
       },
@@ -102,14 +103,15 @@ export function ServicesSheet({ visible, data, onChange, onClose, onDismiss, pho
   const pickPhoto = (form: Form) => {
     afterDismiss.current = async () => {
       try {
-        const url = await pickAndUploadPhoto(photoFolder, () => setUploading(true));
+        const url = await upload(() => setUploading(true));
         if (url) setView({ kind: 'form', form: { ...form, draft: { ...form.draft, imageUrl: url } } });
-      } catch (e) {
-        console.warn('[services] photo upload failed:', e);
-        Alert.alert(PHOTO_FAIL);
-      } finally {
         setUploading(false);
         setPicking(false);
+      } catch (e) {
+        console.warn('[services] photo upload failed:', e);
+        setUploading(false);
+        // Bring the sheet back only once the alert is gone, or iOS drops it.
+        Alert.alert(PHOTO_FAIL, undefined, [{ text: 'OK', onPress: () => setPicking(false) }]);
       }
     };
     setPicking(true);
@@ -145,8 +147,8 @@ export function ServicesSheet({ visible, data, onChange, onClose, onDismiss, pho
                   {[s.price, s.duration].filter(Boolean).join('  ·  ') || 'Tap to add a price'}
                 </Text>
               </Pressable>
-              <Move label={`Move ${s.title} up`} glyph="↑" disabled={i === 0} onPress={() => onChange(moveService(data, i, -1))} />
-              <Move label={`Move ${s.title} down`} glyph="↓" disabled={i === services.length - 1} onPress={() => onChange(moveService(data, i, 1))} />
+              <Move label={`Move ${s.title} up`} glyph="↑" disabled={i === 0} onPress={() => onChange((d) => moveService(d, i, -1))} />
+              <Move label={`Move ${s.title} down`} glyph="↓" disabled={i === services.length - 1} onPress={() => onChange((d) => moveService(d, i, 1))} />
             </View>
           ))}
         </ScrollView>

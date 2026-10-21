@@ -6,16 +6,17 @@ import { Button } from '@/components/Button';
 
 /** Full-screen QR code on a white card: a customer scans it from the barber's phone. */
 export function QrScreen({
-  visible, shopName, url, onClose,
+  visible, shopName, url, onClose, onDismiss,
 }: {
   visible: boolean;
   shopName: string;
   url: string;
   onClose(): void;
+  onDismiss?(): void;
 }) {
   const insets = useSafeAreaInsets();
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose} onDismiss={onDismiss}>
       <View style={[styles.root, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]}>
         <View style={styles.card}>
           <QRCode value={url} size={260} color="#000" backgroundColor="#fff" />

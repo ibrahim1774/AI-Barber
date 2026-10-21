@@ -9,7 +9,8 @@ import { aboutError, aboutFields, setAbout } from '@/lib/sections/aboutContact';
 interface Props {
   visible: boolean;
   data: WebsiteData;
-  onChange(next: WebsiteData): void;
+  /** Applied to the editor's latest data, so it composes with concurrent changes. */
+  onChange(update: (d: WebsiteData) => WebsiteData): void;
   onClose(): void;
   onDismiss?(): void;
 }
@@ -25,7 +26,7 @@ export function AboutSheet({ visible, data, onChange, onClose, onDismiss }: Prop
   const save = () => {
     const err = aboutError(f);
     if (err) { setError(err); return; }
-    onChange(setAbout(data, f));
+    onChange((d) => setAbout(d, f));
     track('section_saved', { section: 'about' });
     onClose();
   };

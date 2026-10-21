@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { WebsiteData } from '@/web/types';
 import { colors, fonts } from '@/constants/theme';
@@ -10,31 +10,30 @@ import { usePhotoPick } from '@/components/sections/usePhotoPick';
 interface Props {
   visible: boolean;
   data: WebsiteData;
-  onChange(next: WebsiteData): void;
+  /** Applied to the editor's latest data, so it composes with concurrent changes. */
+  onChange(update: (d: WebsiteData) => WebsiteData): void;
   onClose(): void;
   onDismiss?(): void;
-  /** Upload folder; the Edit tab passes `ios-drafts/${draftId}`, like its other photo uploads. */
-  photoFolder?: string;
+  /** Picks and uploads one photo through the editor's upload guard; null if cancelled or dropped. */
+  upload(onPicked?: () => void): Promise<string | null>;
 }
 
 /** null = the list; 'new' = adding; a number = editing that person. */
 type Form = null | 'new' | number;
 
-export function TeamSheet({ visible, data, onChange, onClose, onDismiss, photoFolder = 'team' }: Props) {
+export function TeamSheet({ visible, data, onChange, onClose, onDismiss, upload }: Props) {
   const [form, setForm] = useState<Form>(null);
   const [name, setName] = useState('');
   const [role, setRole] = useState('');
   const [photo, setPhoto] = useState('');
   const [error, setError] = useState('');
-  const dataRef = useRef(data);
-  dataRef.current = data;
   const staff = data.staff ?? [];
 
   useEffect(() => {
     if (visible) setForm(null);
   }, [visible]);
 
-  const pick = usePhotoPick(photoFolder, (url) => setPhoto(url));
+  const pick = usePhotoPick(upload, (url) => setPhoto(url));
 
   const open = (f: Form) => {
     const m = typeof f === 'number' ? staff[f] : undefined;
@@ -44,22 +43,23 @@ export function TeamSheet({ visible, data, onChange, onClose, onDismiss, photoFo
     setError('');
     setForm(f);
   };
-  const commit = (next: WebsiteData) => {
-    onChange(next);
+  const commit = (update: (d: WebsiteData) => WebsiteData) => {
+    onChange(update);
     track('section_saved', { section: 'team' });
   };
   const save = () => {
     const input = { name, role, photo };
-    const next = form === 'new' ? addMember(data, input) : updateMember(data, form as number, input);
-    if (next === data) { setError('Add a name.'); return; }
-    commit(next);
+    const index = form as number;
+    const update = (d: WebsiteData) => (form === 'new' ? addMember(d, input) : updateMember(d, index, input));
+    if (update(data) === data) { setError('Add a name.'); return; }
+    commit(update);
     setForm(null);
   };
   const remove = () => {
     const m = staff[form as number];
     Alert.alert(`Remove ${m?.name ?? 'this person'} from your site?`, undefined, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: () => { commit(removeMember(dataRef.current, form as number)); setForm(null); } },
+      { text: 'Remove', style: 'destructive', onPress: () => { commit((d) => removeMember(d, form as number)); setForm(null); } },
     ]);
   };
 
@@ -95,8 +95,8 @@ export function TeamSheet({ visible, data, onChange, onClose, onDismiss, photoFo
 
   return (
     <Sheet visible={shown} title="Team" onClose={onClose} onDismiss={dismiss} right={<SheetAction title="Done" primary onPress={onClose} />}>
-      {data.template === 'prime' ? (
-        <Text style={styles.note}>Your team shows on Design 1. Design 2 doesn't have a team section yet.</Text>
+      {data.template && data.template !== 'luxe' ? (
+        <Text style={styles.note}>Your team shows on Design 1. The design you're on doesn't have a team section yet.</Text>
       ) : null}
       <ScrollView style={styles.scroll}>
         {staff.map((m, i) => (
@@ -108,10 +108,10 @@ export function TeamSheet({ visible, data, onChange, onClose, onDismiss, photoFo
                 {m.role ? <Text style={styles.roleText} numberOfLines={1}>{m.role}</Text> : null}
               </View>
             </Pressable>
-            <Pressable accessibilityRole="button" accessibilityLabel={`Move ${m.name} up`} disabled={i === 0} onPress={() => commit(moveMember(data, i, -1))} hitSlop={8} style={[styles.move, i === 0 && styles.off]}>
+            <Pressable accessibilityRole="button" accessibilityLabel={`Move ${m.name} up`} disabled={i === 0} onPress={() => commit((d) => moveMember(d, i, -1))} hitSlop={8} style={[styles.move, i === 0 && styles.off]}>
               <Text style={styles.moveText}>↑</Text>
             </Pressable>
-            <Pressable accessibilityRole="button" accessibilityLabel={`Move ${m.name} down`} disabled={i === staff.length - 1} onPress={() => commit(moveMember(data, i, 1))} hitSlop={8} style={[styles.move, i === staff.length - 1 && styles.off]}>
+            <Pressable accessibilityRole="button" accessibilityLabel={`Move ${m.name} down`} disabled={i === staff.length - 1} onPress={() => commit((d) => moveMember(d, i, 1))} hitSlop={8} style={[styles.move, i === staff.length - 1 && styles.off]}>
               <Text style={styles.moveText}>↓</Text>
             </Pressable>
           </View>

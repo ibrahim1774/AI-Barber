@@ -239,6 +239,29 @@ export default function Editor() {
     [commit],
   );
 
+  // Section photo uploads (Services, Team, Gallery) go through the same guard
+  // as pickPhoto: Publish and the tab bar wait, and a result for a screen that
+  // went away or another draft is dropped (null).
+  const uploadForSection = useCallback(
+    async (onPicked?: () => void): Promise<string | null> => {
+      const cur = siteRef.current;
+      if (!cur || uploadingRef.current) return null;
+      uploadingRef.current = true;
+      try {
+        const url = await pickAndUploadPhoto(`ios-drafts/${cur.draftId}`, () => {
+          setUploading(true);
+          AccessibilityInfo.announceForAccessibility('Uploading photo');
+          onPicked?.();
+        });
+        return url && mountedRef.current && siteRef.current?.draftId === cur.draftId ? url : null;
+      } finally {
+        uploadingRef.current = false;
+        if (mountedRef.current) setUploading(false);
+      }
+    },
+    [],
+  );
+
   const openEdit = useCallback((path: string, fromList = false) => {
     setEdit({ path, fromList });
     setSheet('edit');
@@ -410,45 +433,45 @@ export default function Editor() {
         <ServicesSheet
           visible={sheet === 'services'}
           data={data}
-          onChange={(next) => commit(() => next)}
+          onChange={commit}
           onClose={() => closeThen(() => setSheet('sections'))}
           onDismiss={onSheetDismiss}
-          photoFolder={`ios-drafts/${site.draftId}`}
+          upload={uploadForSection}
         />
         <HoursSheet
           visible={sheet === 'hours'}
           data={data}
-          onChange={(next) => commit(() => next)}
+          onChange={commit}
           onClose={() => closeThen(() => setSheet('sections'))}
           onDismiss={onSheetDismiss}
         />
         <TeamSheet
           visible={sheet === 'team'}
           data={data}
-          onChange={(next) => commit(() => next)}
+          onChange={commit}
           onClose={() => closeThen(() => setSheet('sections'))}
           onDismiss={onSheetDismiss}
-          photoFolder={`ios-drafts/${site.draftId}`}
+          upload={uploadForSection}
         />
         <GallerySheet
           visible={sheet === 'gallery'}
           data={data}
-          onChange={(next) => commit(() => next)}
+          onChange={commit}
           onClose={() => closeThen(() => setSheet('sections'))}
           onDismiss={onSheetDismiss}
-          photoFolder={`ios-drafts/${site.draftId}`}
+          upload={uploadForSection}
         />
         <AboutSheet
           visible={sheet === 'about'}
           data={data}
-          onChange={(next) => commit(() => next)}
+          onChange={commit}
           onClose={() => closeThen(() => setSheet('sections'))}
           onDismiss={onSheetDismiss}
         />
         <ContactSheet
           visible={sheet === 'contact'}
           data={data}
-          onChange={(next) => commit(() => next)}
+          onChange={commit}
           onClose={() => closeThen(() => setSheet('sections'))}
           onDismiss={onSheetDismiss}
         />

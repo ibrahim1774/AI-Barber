@@ -9,7 +9,8 @@ import { contactError, contactFields, setContact } from '@/lib/sections/aboutCon
 interface Props {
   visible: boolean;
   data: WebsiteData;
-  onChange(next: WebsiteData): void;
+  /** Applied to the editor's latest data, so it composes with concurrent changes. */
+  onChange(update: (d: WebsiteData) => WebsiteData): void;
   onClose(): void;
   onDismiss?(): void;
 }
@@ -25,7 +26,7 @@ export function ContactSheet({ visible, data, onChange, onClose, onDismiss }: Pr
   const save = () => {
     const err = contactError(f);
     if (err) { setError(err); return; }
-    onChange(setContact(data, f));
+    onChange((d) => setContact(d, f));
     track('section_saved', { section: 'contact' });
     onClose();
   };

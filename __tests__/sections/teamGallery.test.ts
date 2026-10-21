@@ -52,4 +52,12 @@ describe('gallery', () => {
     expect(setGalleryPhoto(p, 0, 'u').gallery).toEqual(['u']);
     expect(setGalleryPhoto(p, 7, 'u')).toBe(p);
   });
+  it('euphoria renders every filled slot, so it offers 0..7 and grows with the gallery', () => {
+    // euphoria.ts: galleryTiles = every non-empty gallery entry
+    expect(gallerySlots(site({ template: 'euphoria' }))).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    const many = site({ template: 'euphoria', gallery: ['a', '', '', '', '', '', '', '', '', 'z'] });
+    expect(gallerySlots(many)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(setGalleryPhoto(many, 0, 'u').gallery?.[0]).toBe('u');
+    expect(clearGalleryPhoto(many, 9).gallery?.[9]).toBe('');
+  });
 });

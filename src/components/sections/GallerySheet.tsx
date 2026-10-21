@@ -1,4 +1,3 @@
-import { useRef } from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { WebsiteData } from '@/web/types';
 import { colors, fonts } from '@/constants/theme';
@@ -10,19 +9,17 @@ import { usePhotoPick } from '@/components/sections/usePhotoPick';
 interface Props {
   visible: boolean;
   data: WebsiteData;
-  onChange(next: WebsiteData): void;
+  /** Applied to the editor's latest data, so it composes with concurrent changes. */
+  onChange(update: (d: WebsiteData) => WebsiteData): void;
   onClose(): void;
   onDismiss?(): void;
-  /** Upload folder; the Edit tab passes `ios-drafts/${draftId}`, like its other photo uploads. */
-  photoFolder?: string;
+  /** Picks and uploads one photo through the editor's upload guard; null if cancelled or dropped. */
+  upload(onPicked?: () => void): Promise<string | null>;
 }
 
-export function GallerySheet({ visible, data, onChange, onClose, onDismiss, photoFolder = 'gallery' }: Props) {
-  const dataRef = useRef(data);
-  dataRef.current = data;
-
-  const pick = usePhotoPick(photoFolder, (url, slot) => {
-    onChange(setGalleryPhoto(dataRef.current, slot, url));
+export function GallerySheet({ visible, data, onChange, onClose, onDismiss, upload }: Props) {
+  const pick = usePhotoPick(upload, (url, slot) => {
+    onChange((d) => setGalleryPhoto(d, slot, url));
     track('section_saved', { section: 'gallery' });
   });
 
@@ -35,7 +32,7 @@ export function GallerySheet({ visible, data, onChange, onClose, onDismiss, phot
         text: 'Remove',
         style: 'destructive',
         onPress: () => {
-          onChange(clearGalleryPhoto(dataRef.current, slot));
+          onChange((d) => clearGalleryPhoto(d, slot));
           track('section_saved', { section: 'gallery' });
         },
       },
@@ -52,13 +49,13 @@ export function GallerySheet({ visible, data, onChange, onClose, onDismiss, phot
       right={<SheetAction title="Done" primary onPress={onClose} />}
     >
       <ScrollView style={styles.scroll} contentContainerStyle={styles.grid}>
-        {gallerySlots(data).map((slot) => {
+        {gallerySlots(data).map((slot, n) => {
           const url = data.gallery?.[slot] ?? '';
           return (
             <Pressable
               key={slot}
               accessibilityRole="button"
-              accessibilityLabel={url ? `Photo ${slot}: replace or remove` : 'Add photo'}
+              accessibilityLabel={url ? `Photo ${n + 1}: replace or remove` : 'Add photo'}
               onPress={() => tap(slot, url)}
               style={({ pressed }) => [styles.tile, pressed && { opacity: 0.7 }]}
             >

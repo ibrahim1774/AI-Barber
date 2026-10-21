@@ -9,7 +9,8 @@ import { TIME_OPTIONS, copyDayToOpenDays, editableHours, setDay, timeLabel } fro
 interface Props {
   visible: boolean;
   data: WebsiteData;
-  onChange(next: WebsiteData): void;
+  /** Applied to the editor's latest data, so it composes with concurrent changes. */
+  onChange(update: (d: WebsiteData) => WebsiteData): void;
   onClose(): void;
   onDismiss?(): void;
 }
@@ -25,10 +26,10 @@ export function HoursSheet({ visible, data, onChange, onClose, onDismiss }: Prop
   }, [visible]);
 
   const rows = editableHours(data);
-  const apply = (next: WebsiteData) => {
-    if (next === data) return false;
+  const apply = (update: (d: WebsiteData) => WebsiteData) => {
+    if (update(data) === data) return false;
     changed.current = true;
-    onChange(next);
+    onChange(update);
     return true;
   };
   const done = () => {
@@ -38,7 +39,7 @@ export function HoursSheet({ visible, data, onChange, onClose, onDismiss }: Prop
   };
   const pick = (value: string) => {
     if (!picking) return;
-    const ok = apply(setDay(data, picking.day, { [picking.field]: value }));
+    const ok = apply((d) => setDay(d, picking.day, { [picking.field]: value }));
     setNote(ok ? '' : 'Closing time has to be after opening time.');
     setPicking(null);
   };
@@ -92,7 +93,7 @@ export function HoursSheet({ visible, data, onChange, onClose, onDismiss }: Prop
             )}
             <Switch
               value={!r.closed}
-              onValueChange={(on) => { setNote(''); apply(setDay(data, r.day, { closed: !on })); }}
+              onValueChange={(on) => { setNote(''); apply((d) => setDay(d, r.day, { closed: !on })); }}
               trackColor={{ true: colors.accent, false: 'rgba(255,255,255,0.16)' }}
               accessibilityLabel={`${r.day} open`}
             />
@@ -101,7 +102,7 @@ export function HoursSheet({ visible, data, onChange, onClose, onDismiss }: Prop
         {note ? <Text style={styles.note}>{note}</Text> : null}
         <Pressable
           accessibilityRole="button"
-          onPress={() => { setNote(''); apply(copyDayToOpenDays(data, 'Tuesday')); }}
+          onPress={() => { setNote(''); apply((d) => copyDayToOpenDays(d, 'Tuesday')); }}
           style={styles.copy}
         >
           <Text style={styles.copyText}>Copy Tuesday to all open days</Text>

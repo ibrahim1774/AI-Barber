@@ -33,4 +33,9 @@ describe('sectionCards', () => {
   it('uses indices 0-5 for Design 2', () => {
     expect(sum(d({ template: 'prime', gallery: ['a', 'b', '', '', '', '', 'x', 'y'] })).gallery).toBe('2 of 6 photos');
   });
+  it('counts every photo for euphoria', () => {
+    expect(sum(d({ template: 'euphoria', gallery: [] })).gallery).toBe('0 photos');
+    expect(sum(d({ template: 'euphoria', gallery: ['a'] })).gallery).toBe('1 photo');
+    expect(sum(d({ template: 'euphoria', gallery: ['a', 'b', '', '', '', '', '', '', '', 'z'] })).gallery).toBe('3 photos');
+  });
 });

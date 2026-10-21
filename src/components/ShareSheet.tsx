@@ -18,7 +18,11 @@ type Props = {
 
 /** One Share sheet for the live site: pre-written message rows, QR code, copy. */
 export function ShareSheet({ visible, shopName, links, source, onClose }: Props) {
-  const [qr, setQr] = useState(false);
+  // iOS can't present one Modal while another is still sliding away: the sheet
+  // hides first and the QR opens from its onDismiss, and the reverse on Done.
+  const [qrOpen, setQrOpen] = useState(false);
+  const [sheetHidden, setSheetHidden] = useState(false);
+  const next = useRef<'qr' | 'sheet' | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const first = links[0];
@@ -27,12 +31,40 @@ export function ShareSheet({ visible, shopName, links, source, onClose }: Props)
     if (visible) track('share_sheet_opened', { source });
   }, [visible, source]);
 
+  useEffect(() => {
+    if (!visible) {
+      next.current = null;
+      setQrOpen(false);
+      setSheetHidden(false);
+    }
+  }, [visible]);
+
   useEffect(
     () => () => {
       if (timer.current) clearTimeout(timer.current);
     },
     [],
   );
+
+  const showQr = () => {
+    track('qr_opened');
+    next.current = 'qr';
+    setSheetHidden(true);
+  };
+  const onSheetDismiss = () => {
+    if (next.current !== 'qr') return;
+    next.current = null;
+    setQrOpen(true);
+  };
+  const closeQr = () => {
+    next.current = 'sheet';
+    setQrOpen(false);
+  };
+  const onQrDismiss = () => {
+    if (next.current !== 'sheet') return;
+    next.current = null;
+    setSheetHidden(false);
+  };
 
   const close = () => {
     setNote(null);
@@ -60,7 +92,7 @@ export function ShareSheet({ visible, shopName, links, source, onClose }: Props)
 
   return (
     <>
-      <Sheet visible={visible && !qr} title="Share your site" onClose={close}>
+      <Sheet visible={visible && !sheetHidden} title="Share your site" onClose={close} onDismiss={onSheetDismiss}>
         {links.map((link) => (
           <Pressable
             key={link.kind}
@@ -80,13 +112,7 @@ export function ShareSheet({ visible, shopName, links, source, onClose }: Props)
         ))}
         {!!first && (
           <>
-            <Option
-              title="Show QR code"
-              onPress={() => {
-                track('qr_opened');
-                setQr(true);
-              }}
-            />
+            <Option title="Show QR code" onPress={showQr} />
             <Option title="Copy link" onPress={() => void copy('Copied')} />
             <Option
               title="Copy for your Instagram bio"
@@ -98,7 +124,7 @@ export function ShareSheet({ visible, shopName, links, source, onClose }: Props)
           {note ?? ' '}
         </Text>
       </Sheet>
-      {!!first && <QrScreen visible={visible && qr} shopName={shopName} url={first.url} onClose={() => setQr(false)} />}
+      {!!first && <QrScreen visible={visible && qrOpen} shopName={shopName} url={first.url} onClose={closeQr} onDismiss={onQrDismiss} />}
     </>
   );
 }
