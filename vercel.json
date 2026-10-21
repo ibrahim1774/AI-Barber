@@ -41,6 +41,10 @@
       "destination": "/book.html"
     },
     {
+      "source": "/shop/(.*)",
+      "destination": "/shop.html"
+    },
+    {
       "source": "/((?!api/.*).*)",
       "destination": "/index.html"
     }
