@@ -57,7 +57,9 @@ function Reminders() {
       last = state;
     });
     const unsubscribe = onReminderTap(() => setTapped((n) => n + 1));
-    if (takeLaunchReminderTap()) setTapped((n) => n + 1);
+    void takeLaunchReminderTap().then((kind) => {
+      if (kind) setTapped((n) => n + 1);
+    });
     return () => {
       sub.remove();
       unsubscribe();

@@ -3,7 +3,8 @@ import Storage from 'expo-sqlite/kv-store';
 import * as analytics from '@/lib/analytics';
 import * as store from '@/lib/siteStore';
 import { publishFlow, type PublishDeps } from '@/lib/publish';
-import { deleteLocalData } from '@/lib/account';
+import { api } from '@/lib/api';
+import { deleteAccountAndData, deleteLocalData } from '@/lib/account';
 import {
   askReminderPermissionOnce, buildReminderSchedule, cancelAllReminders, FINISH_LINES, onReminderTap, refreshReminders,
   routeForReminderTap, START_LINES, takeLaunchReminderTap,
@@ -233,9 +234,24 @@ test('paid but not yet live: no "publish your site" reminders', async () => {
   expect(nt.scheduled).toHaveLength(60);
 });
 
-test('delete cancels reminders for good', async () => {
+test('deleting an unpublished draft clears its reminders; start copy can follow', async () => {
   nt.status = 'granted';
   await store.saveSite(draft);
+  await refreshReminders();
+  expect(nt.scheduled).toHaveLength(60);
+  await deleteLocalData();
+  // The shop-name "finish" reminders are gone at once.
+  expect(nt.scheduled).toHaveLength(0);
+  expect(await store.loadSite()).toBeNull();
+  // Unpaid, no site: the next foreground schedules the start copy.
+  await refreshReminders();
+  expect(nt.scheduled).toHaveLength(60);
+  expect(nt.scheduled.every((r: any) => r.content.data.reminder === 'start')).toBe(true);
+});
+
+test("deleting a payer's data cancels reminders for good", async () => {
+  nt.status = 'granted';
+  await store.saveSite({ ...draft, transactionId: 'tx-1' });
   await refreshReminders();
   expect(nt.scheduled).toHaveLength(60);
   await deleteLocalData();
@@ -243,7 +259,20 @@ test('delete cancels reminders for good', async () => {
   // No site now, but no "start" reminders either.
   await refreshReminders();
   expect(nt.scheduled).toHaveLength(0);
-  expect(await store.loadSite()).toBeNull();
+});
+
+test('deleting the account cancels reminders for good', async () => {
+  nt.status = 'granted';
+  await store.saveSite(draft);
+  await refreshReminders();
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { sb } = require('@/lib/supabase');
+  sb.setSession({ access_token: 'access-123', user: { id: 'u1', email: 'b@example.com' } });
+  jest.spyOn(api, 'deleteAccount').mockResolvedValue(undefined);
+  await deleteAccountAndData();
+  expect(nt.scheduled).toHaveLength(0);
+  await refreshReminders();
+  expect(nt.scheduled).toHaveLength(0);
 });
 
 test('cancelAllReminders stops later refreshes', async () => {
@@ -269,29 +298,43 @@ test('tap routing: editor with a site, start without, never mid-publish or befor
   expect(routeForReminderTap(draft, '/dashboard', true)).toEqual({ stay: true });
 });
 
-test('a tap is tracked once with its kind; other notifications are ignored', () => {
+test('a tap is tracked once with its kind; other notifications are ignored', async () => {
   const spy = jest.spyOn(analytics, 'track');
   const taps: string[] = [];
   const unsub = onReminderTap((kind) => taps.push(kind));
   const r = nt.tap({ reminder: 'finish' });
   // The same response again (e.g. also the launch response) is not a second tap.
   for (const l of [...nt.listeners]) l(r);
-  expect(takeLaunchReminderTap()).toBeNull();
+  expect(await takeLaunchReminderTap()).toBeNull();
   nt.tap({ other: true });
   expect(taps).toEqual(['finish']);
   expect(spy.mock.calls.filter((c) => c[0] === 'reminder_opened')).toEqual([['reminder_opened', { kind: 'finish' }]]);
   unsub();
 });
 
-test('a cold start from a reminder is picked up once', () => {
+const coldResponse = (identifier: string) => ({
+  actionIdentifier: 'expo.modules.notifications.actions.DEFAULT',
+  notification: { date: 1, request: { identifier, content: { data: { reminder: 'start' } }, trigger: null } },
+});
+
+test('a cold start from a reminder is picked up once', async () => {
   const spy = jest.spyOn(analytics, 'track');
-  nt.lastResponse = {
-    actionIdentifier: 'expo.modules.notifications.actions.DEFAULT',
-    notification: { date: 1, request: { identifier: 'cold-1', content: { data: { reminder: 'start' } }, trigger: null } },
-  };
-  expect(takeLaunchReminderTap()).toBe('start');
-  expect(takeLaunchReminderTap()).toBeNull();
+  nt.lastResponse = coldResponse('cold-1');
+  expect(await takeLaunchReminderTap()).toBe('start');
+  expect(nt.lastResponse).toBeNull();
+  expect(await takeLaunchReminderTap()).toBeNull();
   expect(spy).toHaveBeenCalledWith('reminder_opened', { kind: 'start' });
+});
+
+test('a cold start falls back to the async launch response when the sync one is unavailable', async () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const notifications = require('expo-notifications');
+  jest.spyOn(notifications, 'getLastNotificationResponse').mockImplementation(() => {
+    throw new Error('UnavailabilityError');
+  });
+  nt.lastResponse = coldResponse('cold-2');
+  expect(await takeLaunchReminderTap()).toBe('start');
+  expect(nt.lastResponse).toBeNull();
 });
 
 test('without the native module everything is a quiet no-op', async () => {
@@ -305,7 +348,7 @@ test('without the native module everything is a quiet no-op', async () => {
     expect(await r.askReminderPermissionOnce()).toBe(false);
     await r.refreshReminders();
     await r.cancelAllReminders();
-    expect(r.takeLaunchReminderTap()).toBeNull();
+    expect(await r.takeLaunchReminderTap()).toBeNull();
     r.onReminderTap(() => {})();
   });
   expect(warn).toHaveBeenCalledTimes(1);
@@ -326,7 +369,7 @@ test('a build without the native module never even loads expo-notifications', as
     const r = require('@/lib/reminders');
     expect(await r.askReminderPermissionOnce()).toBe(false);
     await r.refreshReminders();
-    expect(r.takeLaunchReminderTap()).toBeNull();
+    expect(await r.takeLaunchReminderTap()).toBeNull();
   });
   expect(load).not.toHaveBeenCalled();
   expect(warn).toHaveBeenCalledTimes(1);

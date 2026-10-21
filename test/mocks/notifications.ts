@@ -96,3 +96,11 @@ export function getLastNotificationResponse() {
 export function clearLastNotificationResponse() {
   nt.lastResponse = null;
 }
+
+export async function getLastNotificationResponseAsync() {
+  return nt.lastResponse;
+}
+
+export async function clearLastNotificationResponseAsync() {
+  nt.lastResponse = null;
+}

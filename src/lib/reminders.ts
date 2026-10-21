@@ -145,12 +145,16 @@ export function refreshReminders(): Promise<void> {
 }
 
 /**
- * Publish success and data/account deletion: cancels every pending reminder
- * and schedules none from then on. Never throws.
+ * Cancels every pending reminder. By default for good (publish success, a
+ * payer's data deleted, account deleted): none are scheduled from then on.
+ * `forGood: false` (an unpublished draft deleted) only clears them, so the
+ * next refresh can schedule the start copy. Never throws.
  */
-export function cancelAllReminders(): Promise<void> {
+export function cancelAllReminders({ forGood = true }: { forGood?: boolean } = {}): Promise<void> {
   return serial(async () => {
-    await Storage.setItem(STOPPED_KEY, '1').catch((e) => console.warn('[reminders] could not save the stop flag:', e));
+    if (forGood) {
+      await Storage.setItem(STOPPED_KEY, '1').catch((e) => console.warn('[reminders] could not save the stop flag:', e));
+    }
     await notifications()?.cancelAllScheduledNotificationsAsync();
   });
 }
@@ -218,13 +222,24 @@ export function onReminderTap(cb: (kind: ReminderKind) => void): () => void {
 }
 
 /** The reminder that cold-started the app, once; null otherwise. */
-export function takeLaunchReminderTap(): ReminderKind | null {
+export async function takeLaunchReminderTap(): Promise<ReminderKind | null> {
   const N = notifications();
   if (!N) return null;
   try {
-    const response = N.getLastNotificationResponse();
+    let response: NotificationResponse | null;
+    let sync = true;
+    try {
+      response = N.getLastNotificationResponse();
+    } catch {
+      // The sync method needs native support; the (deprecated) async one is the fallback.
+      sync = false;
+      response = await N.getLastNotificationResponseAsync();
+    }
     const kind = handleResponse(response);
-    if (response && kindOf(response)) N.clearLastNotificationResponse();
+    if (kind) {
+      if (sync) N.clearLastNotificationResponse();
+      else await N.clearLastNotificationResponseAsync();
+    }
     return kind;
   } catch {
     return null;

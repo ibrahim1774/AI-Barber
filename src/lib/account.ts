@@ -129,8 +129,11 @@ export async function restore(deps: RestoreDeps): Promise<Restored | null> {
  */
 export async function deleteLocalData(): Promise<void> {
   const site = await siteStore.loadSite();
-  // No reminders after a delete (both delete paths come through here).
-  await cancelAllReminders();
+  // Both delete paths come through here. A payer (published, or paid and
+  // publishing) gets no more reminders; an unpublished draft's "finish"
+  // reminders (with its shop name) go, and the start copy can follow.
+  const paid = site?.slug != null || site?.transactionId != null || (await siteStore.loadPendingPublish()) != null;
+  await cancelAllReminders({ forGood: paid });
   if (site) await clearOverlayFlags(site.draftId);
   await siteStore.savePendingPublish(null);
   await siteStore.clearSite();
@@ -151,8 +154,9 @@ export async function deleteAccountAndData(): Promise<void> {
     await supabase.auth.signOut({ scope: 'local' }).catch((e: unknown) => console.warn('[account] sign out failed:', e));
     await deleteLocalData();
   } finally {
-    // The account is gone whatever happens locally. The event first, so it is
-    // still recorded against the deleted user; then PostHog forgets them.
+    // The account is gone whatever happens locally: no more reminders.
+    await cancelAllReminders();
+    // The event first, so it is still recorded against the deleted user; then PostHog forgets them.
     track('account_deleted');
     resetUser();
   }
