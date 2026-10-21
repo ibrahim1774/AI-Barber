@@ -131,7 +131,13 @@ export interface AppointmentRow {
   customer_says_paid_at: string | null;
   /** Set when the shop moved the booking (006): a later customer cancel refunds as a shop cancel. */
   shop_rescheduled_at: string | null;
+  /**
+   * Absolute refunded total the cancel path owes (006). Set right after the cancel claim;
+   * while it is above amount_refunded_cents the refund is still pending (retryPendingRefunds).
+   */
+  refund_due_cents: number;
   created_at?: string;
+  updated_at?: string;
 }
 
 export type NewAppointment = Pick<
@@ -144,7 +150,7 @@ export type AppointmentPatch = Partial<Pick<
   AppointmentRow,
   | 'member_id' | 'start_at' | 'end_at' | 'status' | 'cancelled_by' | 'cancelled_at' | 'reminder_sent_at'
   | 'payment_status' | 'payment_method' | 'amount_paid_cents' | 'amount_refunded_cents' | 'stripe_checkout_session_id'
-  | 'customer_says_paid_at' | 'shop_rescheduled_at'
+  | 'customer_says_paid_at' | 'shop_rescheduled_at' | 'refund_due_cents'
 >>;
 
 /**
@@ -163,6 +169,8 @@ export interface AppointmentGuard {
   paidCents?: number;
   /** Monotonic refund total: only while amount_refunded_cents <= this value. */
   refundedLte?: number;
+  /** refund_due_cents equals this. */
+  refundDue?: number;
 }
 
 export type WriteResult<T> = { ok: true; row: T } | { ok: false; reason: 'overlap' | 'stale' };
@@ -224,6 +232,12 @@ export interface BookingRepo {
   updateAppointment(id: string, patch: AppointmentPatch, expect?: AppointmentStatus | AppointmentGuard): Promise<WriteResult<AppointmentRow>>;
   /** Unpaid card holds (booked, card, awaiting, nothing paid) created before `createdBeforeIso`. */
   staleCardHolds(createdBeforeIso: string, limit: number): Promise<AppointmentRow[]>;
+  /**
+   * Cancelled card bookings whose cancel refund is still owed (refund_due_cents >
+   * amount_refunded_cents, via 006's generated refund_pending) with a payment intent, last
+   * updated before `updatedBeforeIso`, oldest first.
+   */
+  pendingRefunds(updatedBeforeIso: string, limit: number): Promise<AppointmentRow[]>;
   appointmentByToken(token: string): Promise<AppointmentRow | null>;
   appointmentById(id: string): Promise<AppointmentRow | null>;
 
@@ -351,6 +365,7 @@ export function supabaseBookingRepo(client?: SupabaseClient): BookingRepo {
       if (g.method) q = q.eq('payment_method', g.method);
       if (g.paidCents != null) q = q.eq('amount_paid_cents', g.paidCents);
       if (g.refundedLte != null) q = q.lte('amount_refunded_cents', g.refundedLte);
+      if (g.refundDue != null) q = q.eq('refund_due_cents', g.refundDue);
       const { data, error } = await q.select(APPT_COLS);
       if (isOverlap(error)) return { ok: false, reason: 'overlap' };
       if (error) fail('updateAppointment', error);
@@ -361,6 +376,10 @@ export function supabaseBookingRepo(client?: SupabaseClient): BookingRepo {
       many('staleCardHolds', db().from('ab_appointments').select(APPT_COLS)
         .eq('status', 'booked').eq('payment_method', 'card').eq('payment_status', 'awaiting').eq('amount_paid_cents', 0)
         .lt('created_at', createdBeforeIso).order('created_at').limit(limit)),
+    pendingRefunds: (updatedBeforeIso, limit) =>
+      many('pendingRefunds', db().from('ab_appointments').select(APPT_COLS)
+        .eq('status', 'cancelled').eq('refund_pending', true).not('stripe_payment_intent_id', 'is', null)
+        .lt('updated_at', updatedBeforeIso).order('updated_at').limit(limit)),
     appointmentByToken: (token) =>
       one('appointmentByToken', db().from('ab_appointments').select(APPT_COLS).eq('manage_token', token).maybeSingle()),
     appointmentById: (id) =>

@@ -74,6 +74,15 @@ describe('supabaseBookingRepo', () => {
     ]));
   });
 
+  it('pending refunds: cancelled, refund_pending, with a payment intent, untouched for a while, oldest first', async () => {
+    const { client, calls } = fakeClient({ data: [], error: null });
+    await supabaseBookingRepo(client).pendingRefunds('2026-11-02T12:00:00.000Z', 25);
+    expect(calls).toEqual(expect.arrayContaining([
+      ['eq', ['status', 'cancelled']], ['eq', ['refund_pending', true]], ['not', ['stripe_payment_intent_id', 'is', null]],
+      ['lt', ['updated_at', '2026-11-02T12:00:00.000Z']], ['order', ['updated_at']], ['limit', [25]],
+    ]));
+  });
+
   it('maps shop unique violations', async () => {
     let r = fakeClient({ data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint "ab_shops_one_per_owner"' } });
     expect(await supabaseBookingRepo(r.client).insertShop({} as any)).toEqual({ ok: false, reason: 'owner-exists' });

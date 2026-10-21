@@ -403,7 +403,7 @@ export async function safeNotify(deps: FlowDeps, event: Parameters<Notify>[0]): 
   }
 }
 
-async function safeLog(deps: FlowDeps, shopId: string, kind: string, payload: Record<string, unknown>) {
+async function safeLog(deps: Pick<FlowDeps, 'repo'>, shopId: string, kind: string, payload: Record<string, unknown>) {
   try {
     await deps.repo.logEvent(shopId, kind, payload);
   } catch (e: any) {
@@ -451,36 +451,122 @@ export async function cancelAppointment(
       console.error(`[bookings] expiring checkout for ${row.id} failed:`, e?.message || e);
     }
   }
+  // What the cancel owes, from the row the claim returned (never an earlier read). Recorded
+  // as an absolute target total in refund_due_cents before Stripe is called, so a refund
+  // that fails or times out is retried by retryPendingRefunds instead of being lost.
   const toRefund = refundIfCancelled(shop, row, by, nowMs);
   let refunded = 0;
   if (toRefund > 0) {
+    const due = row.amount_refunded_cents + toRefund;
     try {
-      // One cancel per appointment (the claim above), so one key: a retry can never refund twice.
-      const r = await deps.payments.refundAppointment(shop, row, toRefund, { idempotencyKey: refundKey.cancel(row.id) });
-      refunded = Math.max(0, Math.min(toRefund, Math.floor(Number(r?.refundedCents) || 0)));
+      const d = await deps.repo.updateAppointment(row.id, { refund_due_cents: due }, { status: 'cancelled' });
+      if (d.ok) row = d.row;
     } catch (e: any) {
-      console.error(`[bookings] refund failed for appointment ${row.id}:`, e?.message || e);
-      await safeLog(deps, shop.id, 'refund_failed', { appointmentId: row.id, amountCents: toRefund, by, error: String(e?.message || e) });
+      console.error(`[bookings] recording refund due for ${row.id} failed:`, e?.message || e);
     }
-    if (refunded > 0) {
-      // An absolute total (what was already refunded + this refund), never an increment, and
-      // only while the stored total is not higher: S2's charge.refunded webhook writes Stripe's
-      // cumulative total under the same guard, so whichever lands last can't double count.
-      const total = row.amount_refunded_cents + refunded;
-      try {
-        const upd = await deps.repo.updateAppointment(row.id, {
-          amount_refunded_cents: total,
-          payment_status: total >= row.amount_paid_cents ? 'refunded' : 'partially_refunded',
-        }, { refundedLte: total });
-        if (upd.ok) row = upd.row;
-        else row = (await deps.repo.appointmentById(row.id)) ?? row;
-      } catch (e: any) {
-        console.error(`[bookings] refund bookkeeping failed for appointment ${row.id}:`, e?.message || e);
-      }
-    }
+    const r = await refundOwed(deps, shop, row, toRefund, { by });
+    refunded = r.refunded;
+    row = r.row;
   }
   await safeNotify(deps, { kind: 'booking_cancelled', appointmentId: row.id, by, refundedCents: refunded });
   return { appt: row, refundedCents: refunded, alreadyFinal: false };
+}
+
+/**
+ * Refund `amount` of a cancelled booking under the one cancel key (refundKey.cancel(id)), so
+ * a retry after a lost response returns the same Stripe refund instead of a second one. On
+ * success writes amount_refunded_cents as an absolute total under the monotonic lte guard
+ * (never an increment). On failure logs 'refund_failed' and leaves the row pending.
+ */
+async function refundOwed(
+  deps: RefundSweepDeps,
+  shop: ShopRow,
+  row: AppointmentRow,
+  amount: number,
+  ctx: Record<string, unknown>,
+): Promise<{ refunded: number; row: AppointmentRow; failed: boolean }> {
+  let refunded = 0;
+  try {
+    const r = await deps.payments.refundAppointment(shop, row, amount, { idempotencyKey: refundKey.cancel(row.id) });
+    refunded = Math.max(0, Math.min(amount, Math.floor(Number(r?.refundedCents) || 0)));
+  } catch (e: any) {
+    console.error(`[bookings] refund failed for appointment ${row.id} (left pending for retry):`, e?.message || e);
+    await safeLog(deps, shop.id, 'refund_failed', { appointmentId: row.id, amountCents: amount, ...ctx, error: String(e?.message || e) });
+    return { refunded: 0, row, failed: true };
+  }
+  if (refunded > 0) {
+    // S2's charge.refunded webhook writes Stripe's cumulative total under the same guard, so
+    // whichever lands last can't double count or lower it.
+    const total = row.amount_refunded_cents + refunded;
+    try {
+      const upd = await deps.repo.updateAppointment(row.id, {
+        amount_refunded_cents: total,
+        payment_status: total >= row.amount_paid_cents ? 'refunded' : 'partially_refunded',
+      }, { refundedLte: total });
+      row = upd.ok ? upd.row : (await deps.repo.appointmentById(row.id)) ?? row;
+    } catch (e: any) {
+      console.error(`[bookings] refund bookkeeping failed for appointment ${row.id}:`, e?.message || e);
+    }
+  }
+  return { refunded, row, failed: false };
+}
+
+// ---------------------------------------------------------------------------
+// Pending cancel refunds
+// ---------------------------------------------------------------------------
+export const REFUND_RETRY_AFTER_MIN = 2;
+export const REFUND_GIVE_UP_DAYS = 3;
+export const REFUND_RETRY_BATCH = 25;
+
+export interface RefundSweepDeps {
+  repo: BookingRepo;
+  payments: Pick<Payments, 'refundAppointment'>;
+}
+
+/**
+ * Retry cancel refunds that are still owed: cancelled rows with refund_due_cents >
+ * amount_refunded_cents and a payment intent, last touched more than 2 minutes ago, at most
+ * 25 per run. Each retry uses the same refundKey.cancel(id) key and amount (due - refunded)
+ * as the first attempt, so if that one actually went through at Stripe the same refund comes
+ * back and nothing is refunded twice. After 3 days since the cancel it stops: writes an
+ * ab_events 'refund_stuck' row (with what is owed) and sets refund_due_cents down to
+ * amount_refunded_cents so it is not picked again. Exported for S2's reminders cron.
+ */
+export async function retryPendingRefunds(
+  deps: RefundSweepDeps,
+  nowMs: number = Date.now(),
+): Promise<{ retried: number; refunded: number; failed: number; stuck: number }> {
+  const out = { retried: 0, refunded: 0, failed: 0, stuck: 0 };
+  const rows = await deps.repo.pendingRefunds(iso(nowMs - REFUND_RETRY_AFTER_MIN * MIN), REFUND_RETRY_BATCH);
+  for (const row of rows) {
+    try {
+      const owed = row.refund_due_cents - row.amount_refunded_cents;
+      if (owed <= 0 || row.status !== 'cancelled') continue;
+      const since = Date.parse(row.cancelled_at ?? row.updated_at ?? '');
+      if (Number.isFinite(since) && nowMs - since > REFUND_GIVE_UP_DAYS * DAY) {
+        await safeLog(deps, row.shop_id, 'refund_stuck', {
+          appointmentId: row.id, dueCents: row.refund_due_cents, refundedCents: row.amount_refunded_cents,
+          owedCents: owed, paymentIntent: row.stripe_payment_intent_id, cancelledAt: row.cancelled_at,
+        });
+        console.error(`[bookings] refund for ${row.id} still owed after ${REFUND_GIVE_UP_DAYS} days; giving up (refund_stuck)`);
+        await deps.repo.updateAppointment(row.id, { refund_due_cents: row.amount_refunded_cents }, { status: 'cancelled', refundDue: row.refund_due_cents });
+        out.stuck++;
+        continue;
+      }
+      const shop = await deps.repo.shopById(row.shop_id);
+      if (!shop) continue;
+      out.retried++;
+      const r = await refundOwed(deps, shop, row, owed, { retry: true });
+      if (r.failed) {
+        out.failed++;
+        // Touch the row so the next run tries the others first (and waits 2 minutes for this one).
+        await deps.repo.updateAppointment(row.id, { refund_due_cents: row.refund_due_cents }, { status: 'cancelled' });
+      } else if (r.refunded > 0) out.refunded++;
+    } catch (e: any) {
+      console.error(`[bookings] retrying refund for ${row.id} failed:`, e?.message || e);
+    }
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------

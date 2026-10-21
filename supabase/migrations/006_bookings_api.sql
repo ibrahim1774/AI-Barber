@@ -29,6 +29,18 @@ alter table public.ab_appointments add column if not exists customer_says_paid_a
 -- cancel of a booking the shop moved refunds as if the shop had cancelled (full refund);
 -- cancelled_by still records 'customer'.
 alter table public.ab_appointments add column if not exists shop_rescheduled_at timestamptz;
+-- The cancel refund S1 owes, as an absolute target total (compare with amount_refunded_cents).
+-- Written right after the atomic cancel claim, before Stripe is called; while it is above
+-- amount_refunded_cents the refund is pending and retryPendingRefunds() retries it.
+alter table public.ab_appointments add column if not exists refund_due_cents int not null default 0;
+do $$ begin
+  alter table public.ab_appointments add constraint ab_appointments_refund_due_nonneg check (refund_due_cents >= 0);
+exception when duplicate_object then null; end $$;
+-- PostgREST can't compare two columns, so the sweep filters on this generated flag.
+alter table public.ab_appointments add column if not exists refund_pending bool
+  generated always as (refund_due_cents > amount_refunded_cents) stored;
+create index if not exists ab_appointments_refund_pending_idx on public.ab_appointments (updated_at)
+  where refund_pending;
 
 -- ---------------------------------------------------------------------------
 -- Privileges. Owner writes to ab_shops are granted column by column (see 005). Exactly the
