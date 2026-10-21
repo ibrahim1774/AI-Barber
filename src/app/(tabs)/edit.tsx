@@ -26,6 +26,9 @@ import { AllFieldsSheet, PhotosSheet } from '@/components/AllFieldsSheet';
 import { ColourSheet } from '@/components/ColourSheet';
 import { SectionsSheet } from '@/components/sections/SectionsSheet';
 import { ServicesSheet } from '@/components/sections/ServicesSheet';
+import { BookingsServicesSheet } from '@/components/setup/BookingsServicesSheet';
+import { loadMyShop, type Shop } from '@/lib/shop';
+import { withMirroredServices } from '@/lib/setup/servicesMap';
 import { HoursSheet } from '@/components/sections/HoursSheet';
 import { TeamSheet } from '@/components/sections/TeamSheet';
 import { GallerySheet } from '@/components/sections/GallerySheet';
@@ -58,6 +61,8 @@ export default function Editor() {
   // change on top of whatever was edited meanwhile, never on a stale copy.
   const siteRef = useRef<SiteRecord | null>(null);
   const [overlay, setOverlay] = useState<Overlay | null>(null);
+  // The bookings shop, when there is one: then ab_services is the services source.
+  const [shop, setShop] = useState<Shop | null>(null);
   // Mirrors `overlay` for the preview callbacks: no edits while one is up.
   const overlayRef = useRef<Overlay | null>(null);
   overlayRef.current = overlay;
@@ -129,6 +134,7 @@ export default function Editor() {
       // Back on a locked tab (from the paywall, Settings, the background): look again now.
       if (getSubscriptionStatus() === 'lapsed') recheckSubscriptionStatus(true);
       let alive = true;
+      loadMyShop().then((sh) => alive && setShop(sh)).catch(() => {});
       loadSite().then((s) => {
         const cur = siteRef.current;
         if (!alive || !s || !cur) return;
@@ -138,6 +144,21 @@ export default function Editor() {
         }
         if (s.slug !== cur.slug || s.deployedUrl !== cur.deployedUrl || s.transactionId !== cur.transactionId) {
           const next = { ...cur, slug: s.slug, deployedUrl: s.deployedUrl, transactionId: s.transactionId };
+          siteRef.current = next;
+          setSite(next);
+        }
+        // The Bookings setup (a screen over this tab) can switch the Book button or
+        // mirror services into the saved site: take those two, nothing else.
+        if (
+          s.updatedAt > cur.updatedAt &&
+          (s.data.bookingUrl !== cur.data.bookingUrl || JSON.stringify(s.data.services) !== JSON.stringify(cur.data.services))
+        ) {
+          const next = {
+            ...siteRef.current!,
+            data: { ...siteRef.current!.data, bookingUrl: s.data.bookingUrl, services: s.data.services },
+            inputs: { ...siteRef.current!.inputs, bookingUrl: s.inputs.bookingUrl },
+            updatedAt: s.updatedAt,
+          };
           siteRef.current = next;
           setSite(next);
         }
@@ -430,14 +451,25 @@ export default function Editor() {
           onClose={() => setSheet(null)}
           onDismiss={onSheetDismiss}
         />
-        <ServicesSheet
-          visible={sheet === 'services'}
-          data={data}
-          onChange={commit}
-          onClose={() => closeThen(() => setSheet('sections'))}
-          onDismiss={onSheetDismiss}
-          upload={uploadForSection}
-        />
+        {shop ? (
+          <BookingsServicesSheet
+            visible={sheet === 'services'}
+            shop={shop}
+            onServices={(list) => commit((d) => withMirroredServices(d, list))}
+            onClose={() => closeThen(() => setSheet('sections'))}
+            onDismiss={onSheetDismiss}
+            upload={uploadForSection}
+          />
+        ) : (
+          <ServicesSheet
+            visible={sheet === 'services'}
+            data={data}
+            onChange={commit}
+            onClose={() => closeThen(() => setSheet('sections'))}
+            onDismiss={onSheetDismiss}
+            upload={uploadForSection}
+          />
+        )}
         <HoursSheet
           visible={sheet === 'hours'}
           data={data}
