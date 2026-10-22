@@ -237,8 +237,9 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
   );
 
   // No-link path: regenerate the whole site from the entered details.
-  const handleFinish = useCallback(async (name: string, area: string, phone: string) => {
-    const inputs: ShopInputs = { shopName: name || SEED_NAME, area, phone, colorTheme, template };
+  const handleFinish = useCallback(async (name: string, area: string, phone: string, services: { title: string; price?: string }[] = []) => {
+    // Services: exactly what the visitor ticked (none → no section).
+    const inputs: ShopInputs = { shopName: name || SEED_NAME, area, phone, colorTheme, template, services };
     const data = await generateContent(inputs).catch((err) => {
       console.error('[generate] finish generateContent failed:', err);
       return null;

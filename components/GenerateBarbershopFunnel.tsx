@@ -7,6 +7,8 @@ import { fireLead } from '../lib/leadEvents';
 import { useAuth } from '../contexts/AuthContext';
 import { BarbershopMidSitePrompts } from './BarbershopMidSitePrompts';
 import { HomeLaunchGuide } from './HomeLaunchGuide';
+import { ServiceChecklist } from './ServiceChecklist';
+import { checklistToServices, type ServicePicks } from '../lib/stockImages';
 
 // /generatebarbershop funnel — rebuilt to mirror PrimeHub's
 // /landscaping flow:
@@ -65,11 +67,18 @@ export const GenerateBarbershopFunnel: React.FC = () => {
 
   const { user } = useAuth();
 
+  // Optional services checklist on the name step (collapsed). A ref so
+  // the link path's name-only fallback uses the same ticks.
+  const [servicePicks, setServicePicks] = useState<ServicePicks>({});
+  const servicePicksRef = useRef<ServicePicks>({});
+  servicePicksRef.current = servicePicks;
+
   // Name path — instant generation. The visitor sees the spinner for
   // however long generateContent takes (~2–5s) then drops straight
   // into the reveal phase with the mid-site overlay on top.
   const runNameGeneration = useCallback(async (name: string) => {
-    const inputs: ShopInputs = { shopName: name, area: '', phone: '' };
+    // Services: exactly what the visitor ticked (none → no section).
+    const inputs: ShopInputs = { shopName: name, area: '', phone: '', services: checklistToServices(servicePicksRef.current) };
     const data = await generateContent(inputs).catch((err) => {
       console.error('[funnel] generateContent failed:', err);
       return null;
@@ -300,6 +309,9 @@ export const GenerateBarbershopFunnel: React.FC = () => {
               fontFamily: 'inherit',
             }}
           />
+          <div className="mb-3">
+            <ServiceChecklist value={servicePicks} onChange={setServicePicks} collapsible />
+          </div>
           <button
             type="submit"
             disabled={!shopName.trim()}

@@ -323,8 +323,31 @@ describe('web manual form — services checklist', () => {
     expect((src.match(/<ServiceChecklist /g) || []).length).toBe(2);
     expect((src.match(/services: checklistToServices\(servicePicks\)/g) || []).length).toBe(2);
     const list = read('components/ServiceChecklist.tsx');
+    expect(list).toContain('Add your services (optional)');
+    expect(list).toContain('<details');
     expect(list).toContain('SERVICE_CHOICES');
     expect(list).toContain('Price (optional)');
+  });
+});
+
+describe('/generate overlay and barbershop funnel — services checklist', () => {
+  it('/generate: the phone step shows the collapsed checklist and hands the ticks to onFinish → generateContent', () => {
+    const prompts = read('components/GenerateCustomizePrompts.tsx');
+    expect(prompts).toContain('<ServiceChecklist value={servicePicks} onChange={setServicePicks} collapsible />');
+    expect(prompts).toContain('onFinish(name.trim(), area.trim(), phone.trim(), checklistToServices(servicePicks))');
+    const page = read('components/GeneratePage.tsx');
+    expect(page).toMatch(/handleFinish = useCallback\(async \(name: string, area: string, phone: string, services[^)]*\)/);
+    expect(page).toMatch(/const inputs: ShopInputs = \{[^}]*services \}/);
+  });
+
+  it('funnel: the name step shows the collapsed checklist and generateContent gets the ticks (link fallback too)', () => {
+    const src = read('components/GenerateBarbershopFunnel.tsx');
+    expect(src).toContain('<ServiceChecklist value={servicePicks} onChange={setServicePicks} collapsible />');
+    expect(src).toContain("services: checklistToServices(servicePicksRef.current)");
+  });
+
+  it('AdminGenerator is left as is', () => {
+    expect(read('components/AdminGenerator.tsx')).not.toContain('ServiceChecklist');
   });
 });
 
