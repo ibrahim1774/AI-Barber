@@ -1,5 +1,5 @@
 import type { WebsiteData } from '@/web/types';
-import { adoptAndSave, SYNC_NOTICE, SYNC_TIMEOUT_MS, UPDATED_ON_PUBLISH_MESSAGE, versionFields, type ServerSite, type SyncResult } from '@/lib/adminSync';
+import { adoptAndSave, isPlainSiteData, SYNC_NOTICE, SYNC_TIMEOUT_MS, UPDATED_ON_PUBLISH_MESSAGE, versionFields, type ServerSite, type SyncResult } from '@/lib/adminSync';
 import { track } from '@/lib/analytics';
 import { ApiError, type api } from '@/lib/api';
 import { stripMarkers } from '@/lib/editable';
@@ -172,7 +172,7 @@ async function send(
     if (e instanceof ApiError && e.status === 409 && e.code === 'site-updated') {
       // Never auto-republish: adopt the admin's copy and let the barber review it.
       const server = e.body?.site as ServerSite | undefined;
-      const adopted = server?.siteData ? await adoptAndSave(deps.store, UPDATED_ON_PUBLISH_MESSAGE, server) : null;
+      const adopted = isPlainSiteData(server?.siteData) ? await adoptAndSave(deps.store, UPDATED_ON_PUBLISH_MESSAGE, server) : null;
       let site = adopted?.site;
       // No usable copy in the 409: fetch it. If that fails too, this is an error, not a "review it" outcome.
       if (!site) {

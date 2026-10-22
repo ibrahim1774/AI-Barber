@@ -1,6 +1,6 @@
 import { randomUUID } from 'expo-crypto';
 import type { ShopInputs, WebsiteData } from '@/web/types';
-import { adoptServerCopy, isNewerAdminEdit, versionFields } from '@/lib/adminSync';
+import { adoptServerCopy, isNewerAdminEdit, isPlainSiteData, versionFields } from '@/lib/adminSync';
 import { resetUser, track } from '@/lib/analytics';
 import { api } from '@/lib/api';
 import { clearOverlayFlags } from '@/lib/overlayFlags';
@@ -228,7 +228,9 @@ export async function restore(deps: RestoreDeps): Promise<Restored | null> {
   const transactionId = await findTransactionId(deps.latestTransactionId);
   if (!transactionId) return null;
 
-  const bound = await deps.iosSite(transactionId);
+  const answer = await deps.iosSite(transactionId);
+  // A garbled copy (not a plain object) counts as no content.
+  const bound = isPlainSiteData(answer.siteData) ? answer : { ...answer, siteData: null };
   const local = await deps.store.loadSite();
   // The same slug, or (a site loaded from the account, no slug yet) the same
   // live link: either way the local copy is this site, maybe newer than the

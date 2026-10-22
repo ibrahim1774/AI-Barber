@@ -29,6 +29,11 @@ export interface ServerSite extends ServerVersionInfo {
 
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
+/** Only a plain object is site data; a string, array or number from a garbled answer is never adopted. */
+export function isPlainSiteData(v: unknown): v is WebsiteData {
+  return !!v && typeof v === 'object' && !Array.isArray(v);
+}
+
 /** The version fields to store from a server response; nothing for an older server. */
 export function versionFields(r: ServerVersionInfo | null | undefined): Partial<SiteRecord> {
   if (!r || !isNum(r.version)) return {};
@@ -40,7 +45,7 @@ export function versionFields(r: ServerVersionInfo | null | undefined): Partial<
 
 /** True when the server holds a newer admin edit than this record has seen. */
 export function isNewerAdminEdit(local: SiteRecord, server: ServerSite): boolean {
-  return isNum(server.version) && server.editedBy === 'admin' && !!server.siteData && server.version > (local.serverVersion ?? 0);
+  return isNum(server.version) && server.editedBy === 'admin' && isPlainSiteData(server.siteData) && server.version > (local.serverVersion ?? 0);
 }
 
 function inputsFromData(cur: SiteRecord['inputs'], d: WebsiteData): SiteRecord['inputs'] {
@@ -103,7 +108,7 @@ export async function adoptAndSave(
   store: SyncDeps['store'], base: string, server: ServerSite,
 ): Promise<{ site: SiteRecord; message: string } | null> {
   const cur = await store.loadSite();
-  if (!cur || !server.siteData) return null;
+  if (!cur || !isPlainSiteData(server.siteData)) return null;
   const lost = unpublishedEdits(cur);
   const message = base + (lost === 'yes' ? LOST_EDITS : lost === 'maybe' ? MAYBE_LOST_EDITS : '');
   const site = { ...adoptServerCopy(cur, server), noticePending: message };

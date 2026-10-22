@@ -130,12 +130,29 @@ describe('malformed server copies', () => {
     expect(await w.site()).toEqual(before);
   });
 
-  // BUG (low): a truthy non-object siteData is adopted as the site.
-  it.failing('BUG: an admin copy whose siteData is a string is not adopted', async () => {
+  // Fixed (bug 10): a truthy non-object siteData was adopted as the site.
+  it('an admin copy whose siteData is a string is not adopted', async () => {
     await live();
     server.fail('/api/ios/site', { kind: 'json', status: 200, body: { siteId: 'fade-lab', deployedUrl: 'https://fade-lab.aibarber.org', version: 9, editedBy: 'admin', siteData: '<html>oops</html>' } });
     await w.m.adminSync.syncQuietly();
     expect(typeof (await w.site())?.data).toBe('object');
+  });
+
+  it('a 409 whose body copy has a string / array siteData falls back to the fetch; restore ignores it', async () => {
+    await live();
+    server.adminEdit((d) => ({ ...d, area: 'Harlem' }));
+    server.fail('/api/ios/site', { kind: 'json', status: 200, body: { siteId: 'fade-lab' } });
+    server.fail('/api/ios/publish', { kind: 'json', status: 409, body: { error: 'site-updated', site: { siteId: 'fade-lab', version: 2, editedBy: 'admin', siteData: ['x'] } } });
+    expect((await publish(w)).kind).toBe('site-updated');
+    expect((await w.site())?.data.area).toBe('Harlem');
+    // A fresh install restoring a garbled copy: no content, nothing saved.
+    w.unmount();
+    jest.resetModules();
+    wipeDisk();
+    w = await boot(server, { user: null });
+    server.fail('/api/ios/site', { kind: 'json', status: 200, body: { siteId: 'fade-lab', deployedUrl: 'https://fade-lab.aibarber.org', active: true, siteData: 'oops' } });
+    expect(await w.restore()).toBeNull();
+    expect(await w.site()).toBeNull();
   });
 
   it('a 409 whose body copy has no siteData falls back to the fetch', async () => {
