@@ -91,6 +91,9 @@ describe('gatedWebDeploy', () => {
       existingSiteId: null,
       timestamp: NOW,
       deployedUrl: 'https://Fade-Studio-X7K2.vercel.app',
+      version: 1,
+      editedBy: 'owner',
+      editedAt: iso(NOW),
       imageUrlMap: {
         hero: 'https://storage.googleapis.com/b/fade/hero.jpg',
         gallery0: 'https://storage.googleapis.com/b/fade/g0.jpg',
@@ -303,5 +306,26 @@ describe('vercelAppLabel', () => {
     expect(vercelAppLabel('')).toBeNull();
     expect(vercelAppLabel('not a url')).toBeNull();
     expect(vercelAppLabel(42)).toBeNull();
+  });
+});
+
+describe('gatedWebDeploy site versions', () => {
+  it('a web edit of an iOS site bumps the stored version (owner) and carries the admin version forward', async () => {
+    const d = {
+      ...deps(iosRow()),
+      readPending: vi.fn(async (_slug: string) => ({ siteId: 'fade-studio-x7k2', siteData: siteData(), version: 4, editedBy: 'admin', adminVersion: 4 } as PendingSite)),
+    };
+    await gatedWebDeploy(body({ siteData: siteData() }), d);
+    expect(d.readPending).toHaveBeenCalledWith('fade-studio-x7k2');
+    expect(d.writePending.mock.calls[0][1]).toMatchObject({ version: 5, editedBy: 'owner', editedAt: iso(NOW), adminVersion: 4 });
+  });
+
+  it('a failed read of the previous copy skips the refresh (never restarts the version); the deploy still succeeds', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const d = { ...deps(iosRow()), readPending: vi.fn(async () => { throw new Error('gcs down'); }) };
+    const out = await gatedWebDeploy(body({ siteData: siteData() }), d);
+    expect(out.blocked).toBe(false);
+    expect(out.result!.deploymentUrl).toMatch(/vercel\.app$/);
+    expect(d.writePending).not.toHaveBeenCalled();
   });
 });

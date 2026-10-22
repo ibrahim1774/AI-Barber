@@ -22,6 +22,8 @@ import { generateHTMLWithPlaceholders } from './render/luxe.js';
 import { generatePrimeHTMLWithPlaceholders } from './render/prime.js';
 import { generateEuphoriaHTMLWithPlaceholders } from './render/euphoria.js';
 
+export type SiteEditor = 'owner' | 'admin';
+
 export interface PendingSite {
   siteId: string;
   siteData: WebsiteData;
@@ -29,6 +31,32 @@ export interface PendingSite {
   existingSiteId?: string | null;
   deployedUrl?: string;
   timestamp?: number;
+  /**
+   * App sites only. Bumped on every content write: an iOS (or web editor) publish by the
+   * owner, or an admin edit (lib/admin/sites.ts). Absent on copies stored before versioning
+   * (read as 0). Never goes backwards: a rollback is a new, higher version.
+   */
+  version?: number;
+  editedBy?: SiteEditor;
+  /** ISO time of the write that produced `version`. */
+  editedAt?: string;
+  /** The version of the last admin edit, carried forward by owner publishes (409 guard). */
+  adminVersion?: number;
+  /** Admin edit note (audit). */
+  note?: string;
+}
+
+/** Stored version of a pending copy; 0 when absent (stored before versioning). */
+export function versionOf(p: Pick<PendingSite, 'version'> | null | undefined): number {
+  const v = p?.version;
+  return typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : 0;
+}
+
+/** Version of the last admin edit in this copy's lineage; 0 when none. */
+export function adminVersionOf(p: Pick<PendingSite, 'version' | 'editedBy' | 'adminVersion'> | null | undefined): number {
+  if (!p) return 0;
+  const carried = typeof p.adminVersion === 'number' && p.adminVersion > 0 ? p.adminVersion : 0;
+  return Math.max(carried, p.editedBy === 'admin' ? versionOf(p) : 0);
 }
 
 export type PublishFailure = 'no-backup' | 'bad-backup' | 'deploy-failed';
@@ -56,7 +84,8 @@ export const slugify = (raw: string): string =>
     .replace(/^-|-$/g, '')
     .substring(0, 50);
 
-function bucket() {
+/** The GCS bucket holding pending-sites/ (and the admin history copies). */
+export function bucket() {
   const credentialsJson = process.env.GCP_SERVICE_ACCOUNT_JSON || process.env.GCS_CREDENTIALS;
   const bucketName = process.env.GCS_BUCKET_NAME;
   if (!credentialsJson || !bucketName) throw new Error('GCS credentials or bucket not configured');
@@ -87,9 +116,26 @@ export async function writePendingSite(siteId: string, pending: PendingSite): Pr
   });
 }
 
-/** Stamp the live URL onto the backup so recovery paths can find it. */
-async function stampDeployedUrl(siteId: string, pending: PendingSite, deployedUrl: string) {
-  await writePendingSite(siteId, { ...pending, deployedUrl });
+/**
+ * Stamp the live URL onto the backup so recovery paths can find it.
+ *
+ * A deploy takes minutes, and the stored copy can be replaced meanwhile (a phone publish,
+ * an admin edit). So the stamp goes onto a FRESH read, and only when that copy is still the
+ * one this deploy started from (same version and timestamp); a newer copy is left alone
+ * (its own publish stamps it). A missing copy is recreated as before (web recovery).
+ */
+export async function stampDeployedUrl(siteId: string, pending: PendingSite, deployedUrl: string) {
+  const fresh = await readPendingSite(siteId);
+  if (!fresh) {
+    await writePendingSite(siteId, { ...pending, deployedUrl });
+    return;
+  }
+  if (fresh.version !== pending.version || fresh.timestamp !== pending.timestamp) {
+    console.log(`[Publish] ${slugify(siteId)}: stored copy changed during the deploy; not stamping the older one`);
+    return;
+  }
+  if (fresh.deployedUrl === deployedUrl) return;
+  await writePendingSite(siteId, { ...fresh, deployedUrl });
 }
 
 // Every page these renderers produce carries this meta tag. Nothing else does,
@@ -144,17 +190,49 @@ function renderSite(siteData: WebsiteData): string {
 }
 
 /**
+ * Render a stored (pending-shape) copy to the HTML that gets deployed. Throws when the
+ * renderer can't handle the data — admin saves call it first as a dry render.
+ */
+export function renderPending(pending: Pick<PendingSite, 'siteData' | 'imageUrlMap'>): string {
+  // The renderer wants 'has-image' markers where an image exists; the real URLs
+  // are substituted into the {{placeholders}} during deploy. Mirrors what the
+  // browser publish path does before calling deploy-site.
+  const imageUrlMap = pending.imageUrlMap || {};
+  const sd = pending.siteData;
+  const forRender: WebsiteData = {
+    ...sd,
+    hero: { ...sd.hero, imageUrl: imageUrlMap['hero'] ? 'has-image' : '' },
+    about: { ...sd.about, imageUrl: imageUrlMap['about'] ? 'has-image' : '' },
+    gallery: (sd.gallery || []).map((_: string, i: number) => (imageUrlMap[`gallery${i}`] ? 'has-image' : '')),
+    craftImages: (sd.craftImages || []).map((_: string, i: number) => (imageUrlMap[`craft${i}`] ? 'has-image' : '')),
+    staff: (sd.staff || []).map((s: any, i: number) => ({ ...s, photo: imageUrlMap[`staff${i}`] ? 'has-image' : '' })),
+  };
+  return renderSite(forRender);
+}
+
+/**
  * Build and deploy the site behind `siteId`. Safe to call repeatedly: if the
  * site is already serving, this returns that URL without touching Vercel.
  * `opts.force` skips that check and redeploys regardless.
  */
-export async function publishSite(siteId: string, opts: { force?: boolean } = {}): Promise<PublishOutcome> {
+export async function publishSite(
+  siteId: string,
+  opts: {
+    force?: boolean;
+    /**
+     * Deploy this copy instead of the stored one (admin republish deploys the stored copy with
+     * the tier link strip applied, without writing the strip back). The stored copy is not changed
+     * beyond the deployedUrl stamp.
+     */
+    pending?: PendingSite;
+  } = {},
+): Promise<PublishOutcome> {
   const safe = slugify(siteId);
   if (!safe) return { ok: false, reason: 'bad-backup', siteId, error: 'Invalid siteId' };
 
   let pending: PendingSite | null;
   try {
-    pending = await readPendingSite(safe);
+    pending = opts.pending ?? (await readPendingSite(safe));
   } catch (e: any) {
     return { ok: false, reason: 'no-backup', siteId: safe, error: e?.message };
   }
@@ -173,22 +251,11 @@ export async function publishSite(siteId: string, opts: { force?: boolean } = {}
     return { ok: true, deployedUrl: candidate, alreadyLive: true, siteId: safe };
   }
 
-  // The renderer wants 'has-image' markers where an image exists; the real URLs
-  // are substituted into the {{placeholders}} during deploy. Mirrors what the
-  // browser publish path does before calling deploy-site.
   const imageUrlMap = pending.imageUrlMap || {};
   const sd = pending.siteData;
-  const forRender: WebsiteData = {
-    ...sd,
-    hero: { ...sd.hero, imageUrl: imageUrlMap['hero'] ? 'has-image' : '' },
-    about: { ...sd.about, imageUrl: imageUrlMap['about'] ? 'has-image' : '' },
-    gallery: (sd.gallery || []).map((_: string, i: number) => (imageUrlMap[`gallery${i}`] ? 'has-image' : '')),
-    craftImages: (sd.craftImages || []).map((_: string, i: number) => (imageUrlMap[`craft${i}`] ? 'has-image' : '')),
-    staff: (sd.staff || []).map((s: any, i: number) => ({ ...s, photo: imageUrlMap[`staff${i}`] ? 'has-image' : '' })),
-  };
 
   try {
-    const html = renderSite(forRender);
+    const html = renderPending(pending);
     console.log(`[Publish] ${safe}: rendered ${html.length} bytes (template=${sd.template || 'luxe'}), deploying...`);
     const { deploymentUrl } = await deployRenderedSite({ siteId: safe, html, imageUrls: imageUrlMap });
     await stampDeployedUrl(safe, pending, deploymentUrl).catch((e) =>

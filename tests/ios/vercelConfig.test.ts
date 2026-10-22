@@ -19,4 +19,8 @@ describe('vercel.json', () => {
     expect(cfg.functions['api/shop/plan.ts'].includeFiles).toBe('lib/ios/certs/**');
     expect(cfg.functions['api/shop/setup.ts'].includeFiles).toBe('lib/ios/certs/**');
   });
+
+  it('admin site edits get 300 s: republish-all batches deploy several sites per call', () => {
+    expect(cfg.functions['api/admin/sites.ts'].maxDuration).toBe(300);
+  });
 });

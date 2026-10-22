@@ -17,7 +17,7 @@
 // lookup (app) brings back these web edits, not the older app copy.
 import type { WebsiteData } from '../../types.js';
 import { deployRenderedSite, type DeployRenderedSiteInput, type DeployRenderedSiteResult } from '../deploySite.js';
-import { slugify, writePendingSite, type PendingSite } from '../publishSite.js';
+import { adminVersionOf, readPendingSite, slugify, versionOf, writePendingSite, type PendingSite } from '../publishSite.js';
 import { buildImageUrlMap, toPendingSiteData } from './pendingData.js';
 import { stripLapsedLinks } from './tiers.js';
 import { supabasePurchases, type PurchaseRow } from './purchases.js';
@@ -31,6 +31,8 @@ export interface WebDeployDeps {
   lookupTimeoutMs?: number;
   deploy(input: DeployRenderedSiteInput): Promise<DeployRenderedSiteResult>;
   writePending(slug: string, p: PendingSite): Promise<void>;
+  /** The stored copy, so its version is carried forward (admin-edit sync). Absent: version restarts. */
+  readPending?(slug: string): Promise<PendingSite | null>;
   now(): number;
   /**
    * The sweep deploys offline pages for Sandbox purchases too (env IOS_TAKEDOWN_SANDBOX=1).
@@ -131,6 +133,19 @@ export async function gatedWebDeploy(
     try {
       if (!renderable(siteData)) throw new Error('siteData has an unexpected shape');
       const imageUrlMap = buildImageUrlMap(siteData);
+      // The previous copy carries the version; if it can't be read, a refresh would restart the
+      // version and could repeat a number the history already holds. Skip the refresh (the
+      // stored copy stays as it was; the next app publish or admin edit brings it up to date).
+      let previous: PendingSite | null = null;
+      if (deps.readPending) {
+        try {
+          previous = await deps.readPending(slug);
+        } catch (e: any) {
+          console.warn(`[Deploy Site] ${slug}: deployed, but reading the previous pending file failed; not refreshing it:`, e?.message || e);
+          return { blocked: false, result };
+        }
+      }
+      const adminVersion = adminVersionOf(previous);
       await deps.writePending(slug, {
         siteId: slug,
         existingSiteId: null,
@@ -141,6 +156,11 @@ export async function gatedWebDeploy(
         imageUrlMap,
         timestamp: deps.now(),
         deployedUrl: result.deploymentUrl,
+        // A web edit is the owner's: same version bump as an app publish (lib/ios/publishFlow.ts).
+        version: versionOf(previous) + 1,
+        editedBy: 'owner',
+        editedAt: new Date(deps.now()).toISOString(),
+        ...(adminVersion ? { adminVersion } : {}),
       });
     } catch (e: any) {
       console.error(`[Deploy Site] ${slug}: deployed, but refreshing the iOS pending file failed:`, e?.message || e);
@@ -156,6 +176,7 @@ export function liveWebDeployDeps(): WebDeployDeps {
     findBySlug: (slug) => (repo ??= supabasePurchases()).findBySlug(slug),
     deploy: deployRenderedSite,
     writePending: writePendingSite,
+    readPending: readPendingSite,
     now: () => Date.now(),
     takedownSandbox: process.env.IOS_TAKEDOWN_SANDBOX === '1',
   };

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { AdminAppSites } from './AdminAppSites';
 
 /*
  * /admin — owner-only ops dashboard.
@@ -12,6 +13,10 @@ import { supabase } from '../lib/supabase';
  * Read-only against Stripe/Supabase. "Remove" only hides rows from this
  * dashboard (persisted in localStorage, restorable) — it never cancels
  * or deletes anything upstream.
+ *
+ * The "App sites" tab (components/AdminAppSites.tsx, /api/admin/sites) is the one
+ * place that writes: it edits, replaces, republishes and rolls back iOS app
+ * customers' sites. See docs/RUNBOOK-app-sites.md.
  */
 
 const ADMIN_EMAIL = 'ibrahim3709@gmail.com';
@@ -227,7 +232,7 @@ export const AdminDashboard: React.FC = () => {
   const defaultFamily: Family =
     typeof window !== 'undefined' && /primehub/i.test(window.location.hostname) ? 'primehub' : 'aibarber';
   const [family, setFamily] = useState<Family>(defaultFamily);
-  const [tab, setTab] = useState<'hosting' | 'custom' | 'accounts'>('hosting');
+  const [tab, setTab] = useState<'hosting' | 'custom' | 'accounts' | 'appsites'>('hosting');
   const [includeYearly, setIncludeYearly] = useState(false);
   const [minPayments, setMinPayments] = useState(0);
   const [search, setSearch] = useState('');
@@ -525,7 +530,8 @@ export const AdminDashboard: React.FC = () => {
               ['hosting', 'Generated sites'],
               ['custom', 'Custom design'],
               ['accounts', `Never paid · ${accountsOnly.length}`],
-            ] as ['hosting' | 'custom' | 'accounts', string][]
+              ['appsites', 'App sites'],
+            ] as ['hosting' | 'custom' | 'accounts' | 'appsites', string][]
           ).map(([key, label]) => (
             <button
               key={key}
@@ -548,7 +554,11 @@ export const AdminDashboard: React.FC = () => {
           ))}
         </div>
 
+        {/* App sites: iOS customers' sites (edit / replace / republish / rollback) */}
+        {tab === 'appsites' && <AdminAppSites />}
+
         {/* toolbar */}
+        {tab !== 'appsites' && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
           <div style={{ display: 'inline-flex', border: `1px solid ${LINE}`, borderRadius: 8, overflow: 'hidden' }}>
             {(
@@ -638,12 +648,13 @@ export const AdminDashboard: React.FC = () => {
             </button>
           )}
         </div>
+        )}
 
-        {loading && <div style={{ ...panel, padding: 24, textAlign: 'center', color: MUTED }}>Loading customers…</div>}
-        {dataError && <div style={{ ...panel, padding: 24, color: '#f85149' }}>{dataError}</div>}
+        {tab !== 'appsites' && loading && <div style={{ ...panel, padding: 24, textAlign: 'center', color: MUTED }}>Loading customers…</div>}
+        {tab !== 'appsites' && dataError && <div style={{ ...panel, padding: 24, color: '#f85149' }}>{dataError}</div>}
 
         {/* subscriptions table */}
-        {!loading && !dataError && tab !== 'accounts' && (
+        {!loading && !dataError && (tab === 'hosting' || tab === 'custom') && (
           <div style={{ ...panel, overflow: 'hidden' }}>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1020 }}>

@@ -15,6 +15,8 @@ import type { WebsiteData } from '../../types.js';
 const NOW = 1_800_000_000_000;
 const OTID = 'o-999'; // deliberately different from the transactionId the app sends
 const USER = '3f2b8c1e-5d4a-4b6f-9e2d-1a2b3c4d5e6f';
+/** What a publish over a copy with no version writes and returns. */
+const OWNER_V1 = { version: 1, editedBy: 'owner', editedAt: new Date(NOW).toISOString() };
 
 function site(over: Partial<WebsiteData> = {}): WebsiteData {
   return {
@@ -121,7 +123,7 @@ describe('runIosPublish', () => {
   it('first publish binds a new slug and publishes without force', async () => {
     const { deps, repo, rows, pending } = fakes();
     const r = await runIosPublish(input(), deps);
-    expect(r).toEqual({ status: 200, body: { siteId: 'fresh-cuts', deployedUrl: 'https://fresh-cuts.vercel.app', republished: false } });
+    expect(r).toEqual({ status: 200, body: { siteId: 'fresh-cuts', deployedUrl: 'https://fresh-cuts.vercel.app', republished: false, ...OWNER_V1 } });
     expect(deps.verify).toHaveBeenCalledWith('t-123');
     expect(repo.bindSlug).toHaveBeenCalledWith(OTID, 'fresh-cuts');
     expect(deps.publish).toHaveBeenCalledWith('fresh-cuts', { force: false });
@@ -151,7 +153,7 @@ describe('runIosPublish', () => {
     expect(deps.writePending).toHaveBeenCalledWith('fresh-cuts-ab12', expect.anything());
     expect(repo.bindSlug).not.toHaveBeenCalled();
     expect(deps.isTaken).not.toHaveBeenCalled();
-    expect(r).toEqual({ status: 200, body: { siteId: 'fresh-cuts-ab12', deployedUrl: 'https://fresh-cuts-ab12.vercel.app', republished: true } });
+    expect(r).toEqual({ status: 200, body: { siteId: 'fresh-cuts-ab12', deployedUrl: 'https://fresh-cuts-ab12.vercel.app', republished: true, ...OWNER_V1 } });
   });
 
   it('republish carries the previous deployedUrl forward in the pending file', async () => {
@@ -170,7 +172,7 @@ describe('runIosPublish', () => {
     const { deps } = fakes({ existing: row({ site_slug: 'fresh-cuts', published_at: null }) });
     const r = await runIosPublish(input(), deps);
     expect(deps.publish).toHaveBeenCalledWith('fresh-cuts', { force: true });
-    expect(r).toEqual({ status: 200, body: { siteId: 'fresh-cuts', deployedUrl: 'https://fresh-cuts.vercel.app', republished: false } });
+    expect(r).toEqual({ status: 200, body: { siteId: 'fresh-cuts', deployedUrl: 'https://fresh-cuts.vercel.app', republished: false, ...OWNER_V1 } });
   });
 
   it('non-array gallery → 400 before verify or any repo call', async () => {
@@ -270,7 +272,7 @@ describe('runIosPublish', () => {
     expect(deps.writePending).toHaveBeenCalledWith('fresh-cuts-zz99', expect.anything());
     expect(deps.writePending).not.toHaveBeenCalledWith('fresh-cuts', expect.anything());
     expect(deps.publish).toHaveBeenCalledWith('fresh-cuts-zz99', { force: false });
-    expect(r).toEqual({ status: 200, body: { siteId: 'fresh-cuts-zz99', deployedUrl: 'https://fresh-cuts-zz99.vercel.app', republished: false } });
+    expect(r).toEqual({ status: 200, body: { siteId: 'fresh-cuts-zz99', deployedUrl: 'https://fresh-cuts-zz99.vercel.app', republished: false, ...OWNER_V1 } });
   });
 
   it('bind lost with no slug on re-read returns 503 slug-bind-failed', async () => {
@@ -477,7 +479,7 @@ describe('runIosPublish tiers (Phase 4)', () => {
       const { deps, repo, rows, pending } = fakes();
       deps.verify = appleSays(P + suffix, NOW - 60_000);
       const r = await runIosPublish(linked(), deps);
-      expect(r).toEqual({ status: 200, body: { siteId: 'fresh-cuts', deployedUrl: 'https://fresh-cuts.vercel.app', republished: false } });
+      expect(r).toEqual({ status: 200, body: { siteId: 'fresh-cuts', deployedUrl: 'https://fresh-cuts.vercel.app', republished: false, ...OWNER_V1 } });
       expect(repo.upsertVerified).toHaveBeenCalledWith(
         expect.objectContaining({ originalTransactionId: OTID, productId: P + suffix, productPurchasedAt: NOW - 60_000 }),
         { checkedAt: NOW },
@@ -649,5 +651,113 @@ describe('runIosSiteLookup', () => {
     const { deps, repo } = fakes({ existing: row({ site_slug: 'fresh-cuts' }) });
     (repo.get as any).mockRejectedValueOnce(new Error('db down'));
     expect(await runIosSiteLookup('t-123', deps)).toEqual({ status: 503, body: { error: 'temporarily-unavailable' } });
+  });
+});
+
+describe('site versions (admin edits never lost to the phone)', () => {
+  const SLUG = 'fresh-cuts-ab12';
+  const bound = () => row({ site_slug: SLUG, published_at: '2026-10-01T00:00:00Z' });
+  const stored = (over: Partial<PendingSite> = {}): PendingSite => {
+    const sd = site({ shopName: 'Server Copy' });
+    const map = buildImageUrlMap(sd);
+    return { siteId: SLUG, siteData: toPendingSiteData(sd, map), imageUrlMap: map, deployedUrl: `https://${SLUG}.vercel.app`, ...over };
+  };
+
+  it('a publish writes version + 1, editedBy owner, editedAt, and returns them', async () => {
+    const { deps, pending } = fakes({ existing: bound(), pending: { [SLUG]: stored({ version: 4, editedBy: 'owner' }) } });
+    const r: any = await runIosPublish(input({ baseVersion: 4 }), deps);
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ version: 5, editedBy: 'owner', editedAt: new Date(NOW).toISOString() });
+    expect(pending.get(SLUG)).toMatchObject({ version: 5, editedBy: 'owner', editedAt: new Date(NOW).toISOString() });
+  });
+
+  it('a first publish (no stored copy) is version 1', async () => {
+    const { deps, pending } = fakes();
+    const r: any = await runIosPublish(input(), deps);
+    expect(r.body).toMatchObject({ version: 1, editedBy: 'owner' });
+    expect(pending.get('fresh-cuts')!.version).toBe(1);
+  });
+
+  it('baseVersion older than a stored admin edit → 409 site-updated with the server copy; nothing written or deployed', async () => {
+    const { deps } = fakes({
+      existing: bound(),
+      pending: { [SLUG]: stored({ version: 5, editedBy: 'admin', editedAt: '2026-10-21T10:00:00.000Z' }) },
+    });
+    const r: any = await runIosPublish(input({ baseVersion: 4 }), deps);
+    expect(r.status).toBe(409);
+    expect(r.body.error).toBe('site-updated');
+    expect(r.body.site).toEqual({
+      siteId: SLUG,
+      deployedUrl: `https://${SLUG}.vercel.app`,
+      siteData: expect.objectContaining({ shopName: 'Server Copy' }),
+      active: true,
+      version: 5,
+      editedBy: 'admin',
+      editedAt: '2026-10-21T10:00:00.000Z',
+    });
+    // Image URLs come back real, like the site lookup.
+    expect(r.body.site.siteData.hero.imageUrl).toBe('https://img.example/hero.jpg');
+    expect(deps.writePending).not.toHaveBeenCalled();
+    expect(deps.publish).not.toHaveBeenCalled();
+  });
+
+  it('baseVersion equal to the admin version publishes over it (the app adopted it)', async () => {
+    const { deps, pending } = fakes({ existing: bound(), pending: { [SLUG]: stored({ version: 5, editedBy: 'admin' }) } });
+    const r: any = await runIosPublish(input({ baseVersion: 5 }), deps);
+    expect(r.status).toBe(200);
+    expect(pending.get(SLUG)).toMatchObject({ version: 6, editedBy: 'owner', adminVersion: 5 });
+  });
+
+  it('a stale phone is still refused after another phone adopted the admin edit (admin version carried)', async () => {
+    const { deps } = fakes({
+      existing: bound(),
+      pending: { [SLUG]: stored({ version: 6, editedBy: 'owner', adminVersion: 5 }) },
+    });
+    const r: any = await runIosPublish(input({ baseVersion: 3 }), deps);
+    expect(r.status).toBe(409);
+    expect(r.body.site.version).toBe(6);
+  });
+
+  it('no baseVersion counts as 0: refused while the stored copy is an admin edit', async () => {
+    const { deps } = fakes({ existing: bound(), pending: { [SLUG]: stored({ version: 2, editedBy: 'admin' }) } });
+    const r: any = await runIosPublish(input(), deps);
+    expect(r.status).toBe(409);
+    expect(r.body).toMatchObject({ error: 'site-updated', site: { version: 2, editedBy: 'admin' } });
+    expect(deps.publish).not.toHaveBeenCalled();
+  });
+
+  it('no baseVersion over an owner copy or an unversioned copy still publishes (old app builds keep working)', async () => {
+    for (const p of [stored({ version: 3, editedBy: 'owner' }), stored()]) {
+      const { deps, pending } = fakes({ existing: bound(), pending: { [SLUG]: p } });
+      const r: any = await runIosPublish(input(), deps);
+      expect(r.status).toBe(200);
+      expect(pending.get(SLUG)!.version).toBe((p.version || 0) + 1);
+    }
+  });
+
+  it('a 409 is only ever returned after Apple verified an active subscription', async () => {
+    const { deps } = fakes({
+      existing: bound(),
+      verified: tx({ expiresAt: NOW - 1 }),
+      pending: { [SLUG]: stored({ version: 5, editedBy: 'admin' }) },
+    });
+    const r: any = await runIosPublish(input({ baseVersion: 1 }), deps);
+    expect(r.status).toBe(402);
+  });
+
+  it('a non-integer or negative baseVersion → 400', async () => {
+    for (const baseVersion of ['3', -1, 1.5]) {
+      const { deps } = fakes({ existing: bound() });
+      expect(await runIosPublish(input({ baseVersion }), deps)).toEqual({ status: 400, body: { error: 'bad-request' } });
+    }
+  });
+
+  it('site lookup returns version, editedBy and editedAt (0 / null for an unversioned copy)', async () => {
+    const a = fakes({ existing: bound(), pending: { [SLUG]: stored({ version: 7, editedBy: 'admin', editedAt: '2026-10-21T10:00:00.000Z' }) } });
+    const r: any = await runIosSiteLookup('t-123', a.deps);
+    expect(r.body).toMatchObject({ siteId: SLUG, version: 7, editedBy: 'admin', editedAt: '2026-10-21T10:00:00.000Z' });
+    const b = fakes({ existing: bound(), pending: { [SLUG]: stored() } });
+    const r2: any = await runIosSiteLookup('t-123', b.deps);
+    expect(r2.body).toMatchObject({ version: 0, editedBy: null, editedAt: null });
   });
 });
