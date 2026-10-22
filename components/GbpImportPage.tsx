@@ -4,7 +4,7 @@ import type { ShopInputs, WebsiteData } from '../types.ts';
 import { buildSiteFromScrape } from '../lib/buildSiteFromScrape.ts';
 import { extractFirstUrl, isSupportedBookingHost } from '../lib/supportedBookingHost.ts';
 import { BRAND_SWATCHES, DEFAULT_SWATCH } from '../lib/brandSwatches.ts';
-import { SERVICE_CHOICES } from '../lib/stockImages.ts';
+import { SERVICE_CHOICES, checklistToServices } from '../lib/stockImages.ts';
 
 // AI-Barber homepage importer. Ported from PrimeHub's
 // components/GbpImportPage.tsx (the /barber "gate" variant).
@@ -703,12 +703,7 @@ const GbpImportPage: React.FC<Props> = ({ onImported, onUseManualForm, onSignIn 
   // (none is fine: the site then has no Services section).
   const buildConfirmed = async () => {
     if (!pending) return;
-    const services = SERVICE_CHOICES
-      .filter((t) => picked[t]?.on)
-      .map((t) => {
-        const price = (picked[t]?.price || '').trim();
-        return price ? { title: t, price } : { title: t };
-      });
+    const services = checklistToServices(picked);
     const payload: ScrapePayload = { ...pending.payload, services };
     const runId = ++runIdRef.current;
     const { inputs, scraped } = toShopSite(payload, '', 'gbp');

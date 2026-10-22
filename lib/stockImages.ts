@@ -73,3 +73,17 @@ export const SERVICE_CHOICES: readonly string[] = [
   'Hair design',
   'Color',
 ];
+
+// Checklist state (title → ticked + optional price) → the `services`
+// input generateContent / buildSiteFromScrape take. Keeps SERVICE_CHOICES
+// order; unticked rows dropped; an empty price is left off.
+export type ServicePicks = Record<string, { on: boolean; price?: string }>;
+
+export function checklistToServices(picks: ServicePicks): { title: string; price?: string }[] {
+  return SERVICE_CHOICES
+    .filter((t) => picks[t]?.on)
+    .map((t) => {
+      const price = (picks[t]?.price || '').trim();
+      return price ? { title: t, price } : { title: t };
+    });
+}

@@ -11,7 +11,7 @@ import { generateEuphoriaHTMLWithPlaceholders } from '../../lib/render/euphoria'
 import { generateContent } from '../../services/geminiService';
 import { buildSiteFromScrape } from '../../lib/buildSiteFromScrape';
 import { BOOKSY_NICHES, DEFAULT_BOOKSY_NICHE } from '../../lib/booksyNiche';
-import { STOCK_IMAGE_URLS, isStockImage, SERVICE_CHOICES } from '../../lib/stockImages';
+import { STOCK_IMAGE_URLS, isStockImage, SERVICE_CHOICES, checklistToServices } from '../../lib/stockImages';
 import { reviewsSourceLabel } from '../../lib/render/honest';
 import type { WebsiteData } from '../../types';
 
@@ -291,6 +291,40 @@ describe('generateContent — typed sites', () => {
       expect(copy).not.toMatch(PUFFERY);
       expect(copy).not.toMatch(/every visit|every appointment|honest work|consistent craft|real conversation|confidence|hand-cut|head by head|considered/i);
     }
+  });
+});
+
+describe('web manual form — services checklist', () => {
+  it('checklistToServices keeps checklist order, drops unticked rows, trims prices', () => {
+    expect(checklistToServices({})).toEqual([]);
+    expect(checklistToServices({
+      'Beard trim': { on: true, price: '' },
+      Haircut: { on: true, price: ' $30 ' },
+      Taper: { on: false, price: '$25' },
+      'Not a choice': { on: true },
+    })).toEqual([{ title: 'Haircut', price: '$30' }, { title: 'Beard trim' }]);
+  });
+
+  it('ticked services reach the typed site; none ticked → no Services section', async () => {
+    const withPicks = await generateContent({
+      shopName: 'Fresh Cuts', area: 'Austin, TX', phone: '1',
+      services: checklistToServices({ 'Skin fade': { on: true, price: '$35' } }),
+    });
+    const html = generateHTMLWithPlaceholders(withPicks);
+    expect(html).toContain('id="services"');
+    expect(html).toContain('Skin fade');
+    expect(html).toContain('$35');
+    const none = await generateContent({ shopName: 'Fresh Cuts', area: 'Austin, TX', phone: '1', services: checklistToServices({}) });
+    expect(generateHTMLWithPlaceholders(none)).not.toContain('id="services"');
+  });
+
+  it('GeneratorForm shows the checklist on its typed forms and passes the picks to onGenerate', () => {
+    const src = read('components/GeneratorForm.tsx');
+    expect((src.match(/<ServiceChecklist /g) || []).length).toBe(2);
+    expect((src.match(/services: checklistToServices\(servicePicks\)/g) || []).length).toBe(2);
+    const list = read('components/ServiceChecklist.tsx');
+    expect(list).toContain('SERVICE_CHOICES');
+    expect(list).toContain('Price (optional)');
   });
 });
 
