@@ -288,7 +288,7 @@ describe('republish-all', () => {
     expect(pendingOf('bravo').siteData.shopUrl).toBe(AI_SHOP);
   });
 
-  it.fails('BUG: a republish snapshot that finishes after a newer phone publish leaves the older content live', async () => {
+  it('I2 (fixed): a republish snapshot that finishes after a newer phone publish is followed by a redeploy of the newer copy', async () => {
     const { transactionId } = await app();
     const hold = deferred();
     vercel.gate = async (d) => { if (d.seq === 2) await hold.promise; };

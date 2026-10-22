@@ -16,7 +16,7 @@ type Hook = (path: string) => void | Promise<void>;
 export const gcs = {
   objects: new Map<string, GcsObject>(),
   generation: 0,
-  log: [] as { op: 'exists' | 'download' | 'save' | 'delete' | 'list'; path: string }[],
+  log: [] as { op: 'exists' | 'download' | 'save' | 'delete' | 'list' | 'metadata'; path: string }[],
   /** Runs before a save lands (await it to hold the save). */
   beforeSave: null as Hook | null,
   /** Runs after a download resolved, before the caller continues. */
@@ -50,7 +50,8 @@ export function putJson(path: string, value: unknown) {
 }
 
 class FakeFile {
-  constructor(readonly name: string) {}
+  /** `bucket.file(name, { generation })` pins reads to that generation (real GCS: 404 once it is replaced, without object versioning). */
+  constructor(readonly name: string, readonly opts: { generation?: number | string } = {}) {}
 
   get metadata() {
     return gcs.objects.get(this.name)?.metadata ?? {};
@@ -61,10 +62,21 @@ class FakeFile {
     return [gcs.objects.has(this.name)];
   }
 
+  /** Real GCS returns the generation as a string. */
+  async getMetadata(): Promise<[Record<string, any>]> {
+    gcs.log.push({ op: 'metadata', path: this.name });
+    const o = gcs.objects.get(this.name);
+    if (!o) throw Object.assign(new Error(`No such object: ${this.name}`), { code: 404 });
+    return [{ ...o.metadata, name: this.name, generation: String(o.generation) }];
+  }
+
   async download(): Promise<[Buffer]> {
     gcs.log.push({ op: 'download', path: this.name });
     const o = gcs.objects.get(this.name);
     if (!o) throw Object.assign(new Error(`No such object: ${this.name}`), { code: 404 });
+    if (this.opts.generation != null && String(this.opts.generation) !== String(o.generation)) {
+      throw Object.assign(new Error(`No such object: ${this.name}#${this.opts.generation}`), { code: 404 });
+    }
     const copy = Buffer.from(o.data);
     if (gcs.afterDownload) await gcs.afterDownload(this.name);
     return [copy];
@@ -79,7 +91,7 @@ class FakeFile {
     }
     const cur = gcs.objects.get(this.name);
     const want = opts?.preconditionOpts?.ifGenerationMatch;
-    if (want != null && (cur?.generation ?? 0) !== want) {
+    if (want != null && String(cur?.generation ?? 0) !== String(want)) {
       throw Object.assign(new Error('Precondition Failed'), { code: 412 });
     }
     gcs.log.push({ op: 'save', path: this.name });
@@ -99,8 +111,8 @@ class FakeFile {
 
 class FakeBucket {
   constructor(readonly name: string) {}
-  file(name: string) {
-    return new FakeFile(name);
+  file(name: string, opts?: { generation?: number | string }) {
+    return new FakeFile(name, opts);
   }
   async getFiles(opts: { prefix?: string } = {}): Promise<[FakeFile[]]> {
     gcs.log.push({ op: 'list', path: opts.prefix ?? '' });

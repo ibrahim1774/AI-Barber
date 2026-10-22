@@ -1,16 +1,30 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const store = new Map<string, string>();
+// Generations, as GCS keeps them: the stored copy is written compare-and-set (e2e I1).
+const gens = new Map<string, number>();
+let gen = 0;
+const notFound = () => Object.assign(new Error('not found'), { code: 404 });
 
 vi.mock('@google-cloud/storage', () => ({
   Storage: class {
     bucket() {
       return {
-        file: (name: string) => ({
+        file: (name: string, opts: { generation?: number } = {}) => ({
           exists: async () => [store.has(name)],
-          download: async () => [Buffer.from(store.get(name) ?? '')],
-          save: async (data: string) => {
+          getMetadata: async () => {
+            if (!store.has(name)) throw notFound();
+            return [{ generation: String(gens.get(name)) }];
+          },
+          download: async () => {
+            if (opts.generation != null && String(opts.generation) !== String(gens.get(name))) throw notFound();
+            return [Buffer.from(store.get(name) ?? '')];
+          },
+          save: async (data: string, o: any = {}) => {
+            const want = o?.preconditionOpts?.ifGenerationMatch;
+            if (want != null && String(gens.get(name) ?? 0) !== String(want)) throw Object.assign(new Error('precondition'), { code: 412 });
             store.set(name, data);
+            gens.set(name, ++gen);
           },
         }),
       };
@@ -47,6 +61,7 @@ const liveFetch = () => vi.fn(async () => new Response('<meta name="published-at
 
 beforeEach(() => {
   store.clear();
+  gens.clear();
   deployRenderedSite.mockClear();
   process.env.GCS_BUCKET_NAME = 'b';
   process.env.GCS_CREDENTIALS = JSON.stringify({ project_id: 'p' });
@@ -116,6 +131,48 @@ describe('publishSite stamping (stored copy can change during a deploy)', () => 
     await publishSite('fresh-cuts', { force: true });
     expect(read()).toMatchObject({ version: 4, timestamp: 20 });
     expect(read().siteData.phone).toBe('NEW');
+  });
+
+  it('I2: a newer copy written during the deploy is deployed too (the last deploy is the stored copy), and stamped', async () => {
+    await writePendingSite('fresh-cuts', { ...pending, version: 3, timestamp: 10 });
+    deployRenderedSite.mockImplementationOnce(async () => {
+      await writePendingSite('fresh-cuts', { ...pending, siteData: { ...pending.siteData, shopName: 'Newer Name' }, version: 4, timestamp: 20 });
+      return { deploymentUrl: 'https://x.vercel.app', uploadedImages: {} };
+    });
+    await publishSite('fresh-cuts', { force: true });
+    expect(deployRenderedSite).toHaveBeenCalledTimes(2);
+    expect(deployRenderedSite.mock.calls[1][0].html).toContain('Newer Name');
+    expect(read()).toMatchObject({ version: 4, deployedUrl: 'https://x.vercel.app' });
+  });
+
+  it('I2: the redeploy loop is bounded when the copy changes on every deploy', async () => {
+    const { MAX_REDEPLOYS } = await import('../lib/publishSite.js');
+    await writePendingSite('fresh-cuts', { ...pending, version: 1, timestamp: 1 });
+    let v = 1;
+    deployRenderedSite.mockImplementation(async () => {
+      v++;
+      await writePendingSite('fresh-cuts', { ...pending, version: v, timestamp: v });
+      return { deploymentUrl: 'https://x.vercel.app', uploadedImages: {} };
+    });
+    const out = await publishSite('fresh-cuts', { force: true });
+    expect(out.ok).toBe(true);
+    expect(deployRenderedSite).toHaveBeenCalledTimes(MAX_REDEPLOYS + 1);
+    deployRenderedSite.mockReset();
+    deployRenderedSite.mockImplementation(async () => ({ deploymentUrl: 'https://x.vercel.app', uploadedImages: {} }));
+  });
+
+  it('I2: with opts.transform, a redeploy of a newer copy gets the same transform', async () => {
+    await writePendingSite('fresh-cuts', { ...pending, version: 3, timestamp: 10 });
+    deployRenderedSite.mockImplementationOnce(async () => {
+      await writePendingSite('fresh-cuts', { ...pending, siteData: { ...pending.siteData, shopName: 'Raw' }, version: 4, timestamp: 20 });
+      return { deploymentUrl: 'https://x.vercel.app', uploadedImages: {} };
+    });
+    await publishSite('fresh-cuts', {
+      force: true,
+      transform: (p) => ({ ...p, siteData: { ...p.siteData, shopName: `${p.siteData.shopName} (transformed)` } }),
+    });
+    expect(deployRenderedSite.mock.calls[1][0].html).toContain('Raw (transformed)');
+    expect(read().siteData.shopName).toBe('Raw');
   });
 
   it('opts.pending deploys that copy and leaves the stored content as it was', async () => {

@@ -64,6 +64,9 @@ export function adminVersionOf(p: Pick<PendingSite, 'version' | 'editedBy' | 'ad
   return Math.max(carried, p.editedBy === 'admin' ? versionOf(p) : 0);
 }
 
+/** Extra deploys of a newer stored copy after the first (I2). */
+export const MAX_REDEPLOYS = 3;
+
 export type PublishFailure = 'no-backup' | 'bad-backup' | 'deploy-failed' | 'awaiting-details';
 
 // Flat rather than a discriminated union: this repo compiles with
@@ -118,15 +121,154 @@ export async function readPendingSite(siteId: string): Promise<PendingSite | nul
   }
 }
 
-/** Write the pending-site backup (same format api/save-pending-site writes). */
-export async function writePendingSite(siteId: string, pending: PendingSite): Promise<void> {
+// ─── compare-and-set on the stored copy (e2e I1) ───
+//
+// Every writer of pending-sites/{slug}.json (iOS publish, admin edits, the sweep's link strip,
+// the deploy stamp, the owner's web edit) used to read, change and write with no precondition,
+// so two writers inside one read→write window silently lost one write and reused its version.
+// Now a writer reads the copy WITH its GCS generation and writes with ifGenerationMatch; a 412
+// means someone else wrote in between, and the writer re-reads and decides again
+// (casPending). Generation 0 means "the object must not exist" (a create).
+
+/** The stored copy and the GCS generation it was read at (0 = no object). */
+export interface VersionedPending {
+  pending: PendingSite | null;
+  /** null when the reader can't tell (an injected fake without generations): the write is unconditional. */
+  generation: number | null;
+}
+
+/** A conditional write lost: the stored copy changed since it was read. */
+export class PendingConflictError extends Error {
+  readonly code = 412;
+  constructor(slug: string) {
+    super(`pending-sites/${slug}.json changed since it was read`);
+  }
+}
+
+export const isPendingConflict = (e: unknown): boolean =>
+  e instanceof PendingConflictError || (e as { code?: unknown })?.code === 412 || (e as { code?: unknown })?.code === '412';
+
+const isNotFound = (e: unknown) => {
+  const code = (e as { code?: unknown })?.code;
+  return code === 404 || code === '404';
+};
+
+/**
+ * The stored copy with its generation. The bytes are read from exactly that generation, so the
+ * pair is consistent; if it was replaced between the two calls (404 on the old generation),
+ * read again.
+ */
+export async function readPendingVersioned(siteId: string): Promise<VersionedPending> {
+  const path = `pending-sites/${slugify(siteId)}.json`;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    let meta: { generation?: unknown };
+    try {
+      [meta] = await bucket().file(path).getMetadata();
+    } catch (e) {
+      if (isNotFound(e)) return { pending: null, generation: 0 };
+      throw e;
+    }
+    const generation = Number(meta?.generation);
+    if (!Number.isFinite(generation) || generation <= 0) throw new Error(`${path}: no generation in the object metadata`);
+    let buf: Buffer;
+    try {
+      [buf] = await bucket().file(path, { generation }).download();
+    } catch (e) {
+      if (isNotFound(e)) continue; // replaced (or deleted) since the metadata read
+      throw e;
+    }
+    try {
+      return { pending: (JSON.parse(buf.toString('utf-8')) || {}).data || null, generation };
+    } catch {
+      return { pending: null, generation };
+    }
+  }
+  throw new Error(`${path} kept changing while it was read`);
+}
+
+/**
+ * Write the pending-site backup (same format api/save-pending-site writes). With
+ * `ifGeneration`, only if the object is still at that generation (0: only if it does not
+ * exist); otherwise PendingConflictError.
+ */
+export async function writePendingSite(siteId: string, pending: PendingSite, opts: { ifGeneration?: number | null } = {}): Promise<void> {
   const safe = slugify(siteId);
   const payload = JSON.stringify({ siteId: safe, savedAt: Date.now(), data: pending });
-  await bucket().file(`pending-sites/${safe}.json`).save(payload, {
-    contentType: 'application/json',
-    metadata: { cacheControl: 'private, max-age=0, no-store' },
-  });
+  try {
+    await bucket().file(`pending-sites/${safe}.json`).save(payload, {
+      contentType: 'application/json',
+      metadata: { cacheControl: 'private, max-age=0, no-store' },
+      ...(opts.ifGeneration != null ? { preconditionOpts: { ifGenerationMatch: opts.ifGeneration } } : {}),
+    });
+  } catch (e) {
+    if (opts.ifGeneration != null && isPendingConflict(e)) throw new PendingConflictError(safe);
+    throw e;
+  }
 }
+
+/** Read / write of the stored copy, as each writer's deps provide it. */
+export interface PendingIO {
+  readPending(slug: string): Promise<PendingSite | null>;
+  writePending(slug: string, p: PendingSite, opts?: { ifGeneration?: number | null }): Promise<void>;
+  /** Absent (older injected fakes): reads carry no generation and writes are unconditional. */
+  readPendingVersioned?(slug: string): Promise<VersionedPending>;
+}
+
+export type CasDecision<T> = { write: PendingSite; result?: T } | { stop: T };
+
+export interface CasOutcome<T> {
+  /** Set when a write landed. */
+  written?: PendingSite;
+  /** The copy the landed write (or the stop) was decided on. */
+  previous: PendingSite | null;
+  /** From the decision (`result` of the write, or the `stop` value). */
+  result?: T;
+  /** Every attempt lost (the copy kept changing). Nothing was written. */
+  exhausted?: boolean;
+}
+
+const sameJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * Compare-and-set on pending-sites/{slug}.json: read (with generation), `decide` on the
+ * current copy, write conditionally; on a lost race re-read and decide again, at most
+ * `attempts` times. `decide` may run more than once and must not assume its earlier answer
+ * landed. A 412 whose fresh copy is exactly what was being written counts as written (a
+ * transport retry of a write that had already landed).
+ */
+export async function casPending<T = void>(
+  slug: string,
+  io: PendingIO,
+  decide: (current: PendingSite | null) => CasDecision<T> | Promise<CasDecision<T>>,
+  attempts = 5,
+): Promise<CasOutcome<T>> {
+  let previous: PendingSite | null = null;
+  for (let i = 0; i < attempts; i++) {
+    const cur: VersionedPending = io.readPendingVersioned
+      ? await io.readPendingVersioned(slug)
+      : { pending: await io.readPending(slug), generation: null };
+    previous = cur.pending;
+    const d = await decide(cur.pending);
+    if ('stop' in d) return { previous, result: d.stop };
+    try {
+      await io.writePending(slug, d.write, cur.generation != null ? { ifGeneration: cur.generation } : {});
+      return { written: d.write, previous, result: d.result };
+    } catch (e) {
+      if (!isPendingConflict(e)) throw e;
+      const fresh = io.readPendingVersioned ? (await io.readPendingVersioned(slug)).pending : await io.readPending(slug);
+      if (sameJson(fresh, d.write)) return { written: d.write, previous, result: d.result };
+      console.warn(`[pending] ${slug}: the stored copy changed while it was being written (attempt ${i + 1}/${attempts}); deciding again`);
+    }
+  }
+  return { previous, exhausted: true };
+}
+
+/** The live GCS store as a PendingIO. */
+export const gcsPendingIO: PendingIO = {
+  readPending: readPendingSite,
+  writePending: writePendingSite,
+  readPendingVersioned,
+};
 
 /**
  * Stamp the live URL onto the backup so recovery paths can find it.
@@ -135,19 +277,20 @@ export async function writePendingSite(siteId: string, pending: PendingSite): Pr
  * an admin edit). So the stamp goes onto a FRESH read, and only when that copy is still the
  * one this deploy started from (same version and timestamp); a newer copy is left alone
  * (its own publish stamps it). A missing copy is recreated as before (web recovery).
+ * Compare-and-set: a write landing between the read and the stamp is never overwritten.
  */
-export async function stampDeployedUrl(siteId: string, pending: PendingSite, deployedUrl: string) {
-  const fresh = await readPendingSite(siteId);
-  if (!fresh) {
-    await writePendingSite(siteId, { ...pending, deployedUrl });
-    return;
-  }
-  if (fresh.version !== pending.version || fresh.timestamp !== pending.timestamp) {
-    console.log(`[Publish] ${slugify(siteId)}: stored copy changed during the deploy; not stamping the older one`);
-    return;
-  }
-  if (fresh.deployedUrl === deployedUrl) return;
-  await writePendingSite(siteId, { ...fresh, deployedUrl });
+export async function stampDeployedUrl(siteId: string, pending: PendingSite, deployedUrl: string, io: PendingIO = gcsPendingIO) {
+  const slug = slugify(siteId);
+  const r = await casPending(slug, io, (fresh) => {
+    if (!fresh) return { write: { ...pending, deployedUrl } };
+    if (fresh.version !== pending.version || fresh.timestamp !== pending.timestamp) {
+      console.log(`[Publish] ${slug}: stored copy changed during the deploy; not stamping the older one`);
+      return { stop: undefined };
+    }
+    if (fresh.deployedUrl === deployedUrl) return { stop: undefined };
+    return { write: { ...fresh, deployedUrl } };
+  });
+  if (r.exhausted) console.warn(`[Publish] ${slug}: the stored copy kept changing; not stamped this time`);
 }
 
 // Every page these renderers produce carries this meta tag. Nothing else does,
@@ -238,6 +381,12 @@ export async function publishSite(
      */
     pending?: PendingSite;
     /**
+     * Applied to a FRESH stored copy when the deploy has to be redone because the copy changed
+     * meanwhile (see below). Admin republish passes its tier link strip, so a redeploy of a
+     * newer copy gets the same treatment as the snapshot. Default: deploy the fresh copy as is.
+     */
+    transform?: (p: PendingSite) => PendingSite;
+    /**
      * The checkout plan, when the caller knows it (webhook, sweeper). A pay-first plan
      * (/custom-15) only publishes a copy whose details were confirmed after payment.
      */
@@ -283,9 +432,6 @@ export async function publishSite(
     return { ok: true, deployedUrl: candidate, alreadyLive: true, siteId: safe };
   }
 
-  const imageUrlMap = pending.imageUrlMap || {};
-  const sd = pending.siteData;
-
   // Site subpages: a site whose slug has a shop serves /book and /shop on its own domain.
   // A deploy that can't tell must not guess: shipping without the rewrites would break the
   // pages, manage links in sent emails and Stripe returns on the barber's domain. So a failed
@@ -300,18 +446,44 @@ export async function publishSite(
   const subpages: SiteSubpages | null = shop ? { mode: 'full', shopSlug: shop.slug } : null;
 
   try {
-    // The links are normalised for this deploy only; the stored copy keeps what the owner saved.
-    const html = renderPending({ ...pending, siteData: withSubpageLinks(sd, !!subpages) });
-    console.log(`[Publish] ${safe}: rendered ${html.length} bytes (template=${sd.template || 'luxe'}), deploying...`);
-    const { deploymentUrl, projectName } = await deployRenderedSite({ siteId: safe, html, imageUrls: imageUrlMap, subpages });
-    await stampDeployedUrl(safe, pending, deploymentUrl).catch((e) =>
+    // A deploy takes minutes, and the stored copy can be replaced meanwhile (a phone publish,
+    // an admin edit, a sweep strip). Whichever deploy FINISHES last is what stays live, so an
+    // older render finishing after a newer one would leave stale content up with nothing to
+    // redeploy it (e2e I2). After each deploy the stored copy is read again; if it is not the
+    // copy just rendered (version or timestamp moved), the fresh copy is deployed too. Bounded:
+    // each round only starts because a newer write landed, and that writer deploys as well.
+    // (Chosen over serialising deploys per slug: no lease table, no lock held across a
+    // minutes-long deploy that a killed function would leave behind.)
+    let current: PendingSite = pending;
+    let deploymentUrl = '';
+    let projectName: string | undefined;
+    for (let round = 0; ; round++) {
+      const csd = current.siteData;
+      // The links are normalised for this deploy only; the stored copy keeps what the owner saved.
+      const html = renderPending({ ...current, siteData: withSubpageLinks(csd, !!subpages) });
+      console.log(`[Publish] ${safe}: rendered ${html.length} bytes (template=${csd.template || 'luxe'})${round ? ` (redeploy ${round}: the stored copy changed)` : ''}, deploying...`);
+      const out = await deployRenderedSite({ siteId: safe, html, imageUrls: current.imageUrlMap || {}, subpages });
+      deploymentUrl = out.deploymentUrl;
+      projectName = out.projectName;
+      if (round >= MAX_REDEPLOYS) break;
+      let fresh: PendingSite | null = null;
+      try {
+        fresh = await readPendingSite(safe);
+      } catch (e: any) {
+        console.warn(`[Publish] ${safe}: deployed, but re-reading the stored copy failed (${e?.message || e}); not checking for a newer copy`);
+      }
+      if (!fresh?.siteData || (fresh.version === current.version && fresh.timestamp === current.timestamp)) break;
+      if (isAwaitingDetails(fresh.siteData, opts.plan)) break;
+      current = opts.transform ? opts.transform(fresh) : fresh;
+    }
+    await stampDeployedUrl(safe, current, deploymentUrl).catch((e) =>
       console.warn(`[Publish] ${safe}: deployed but stamping the backup failed:`, e?.message),
     );
     if (shop) {
       // Customer-facing URLs (Stripe returns, emails) follow the site's domain from now on.
       // Best effort: the site is live; until this lands they keep the previous base.
       await refreshSiteBase(
-        { shopId: shop.id, projectName: projectName || safe, siteData: sd, imageUrlMap },
+        { shopId: shop.id, projectName: projectName || safe, siteData: current.siteData, imageUrlMap: current.imageUrlMap || {} },
         opts.siteBase ?? liveSiteBaseDeps,
       ).catch((e) => console.warn(`[Publish] ${safe}: live, but storing the shop's site URL failed:`, e?.message || e));
     }

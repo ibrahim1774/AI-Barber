@@ -82,7 +82,7 @@ export interface AdminSitesDeps {
    * lib/publishSite.ts publishSite: renders the stored copy (or `pending`, without storing it)
    * and deploys the slug's own project.
    */
-  publish(slug: string, opts: { force: boolean; pending?: PendingSite }): Promise<PublishOutcome>;
+  publish(slug: string, opts: { force: boolean; pending?: PendingSite; transform?: (p: PendingSite) => PendingSite }): Promise<PublishOutcome>;
   /** lib/publishSite.ts renderPending: the HTML a deploy would ship. Throws on unrenderable data. */
   render(p: Pick<PendingSite, 'siteData' | 'imageUrlMap'>): string;
   audit(e: AuditEvent): Promise<void>;
@@ -443,7 +443,12 @@ async function republishRow(row: PurchaseRow, deps: AdminSitesDeps, by?: string,
   // the DEPLOY. The stored copy is not changed (republish never changes content or version).
   const strippedLinks = linksToStrip(cur.siteData, row.product_id);
   const toDeploy: PendingSite = strippedLinks.length ? { ...cur, siteData: stripLapsedLinks(cur.siteData, row.product_id) } : cur;
-  const outcome = await deps.publish(slug, { force: true, pending: toDeploy });
+  // `transform`: if a newer copy lands during the deploy, publishSite redeploys THAT copy (I2),
+  // with the same strip applied by the purchase's product.
+  const outcome = await deps.publish(slug, {
+    force: true, pending: toDeploy,
+    transform: (p) => (p.siteData ? { ...p, siteData: stripLapsedLinks(p.siteData, row.product_id) } : p),
+  });
   const ok = !!outcome.ok;
   await safeAudit(deps, {
     action: 'republish', slug, ok, by, runId,

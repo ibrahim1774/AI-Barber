@@ -109,7 +109,7 @@ describe('admin edit racing a phone publish (no compare-and-set on the stored co
 
 // ---------------------------------------------------------------------------
 describe('two deploys of one slug in flight: the one that FINISHES last is live', () => {
-  it.fails('BUG: an older phone publish finishing after a newer admin edit leaves stale content live', async () => {
+  it('I2 (fixed): an older phone publish finishing after a newer admin edit redeploys the newer copy', async () => {
     const { transactionId } = await published();
     const hold = deferred();
     vercel.gate = async (d) => { if (d.seq === 2) await hold.promise; };
@@ -124,7 +124,7 @@ describe('two deploys of one slug in flight: the one that FINISHES last is live'
     expect(normHtml(vercel.live.get('fade-lab'))).toBe(normHtml(renderPending(stored)));
   });
 
-  it('setup: the live HTML is the phone v2 render while the stored copy is admin v3', async () => {
+  it('setup (was: the live HTML stays the phone v2 render): the late phone deploy is followed by a redeploy of admin v3, and the stamp lands on v3', async () => {
     const { transactionId } = await published();
     const hold = deferred();
     vercel.gate = async (d) => { if (d.seq === 2) await hold.promise; };
@@ -133,8 +133,10 @@ describe('two deploys of one slug in flight: the one that FINISHES last is live'
     await updateSite('fade-lab', { set: { area: 'Admin v3' } }, w.adminDeps());
     hold.resolve();
     await phone;
-    expect(vercel.live.get('fade-lab')).toContain('Phone v2');
-    expect(pendingOf('fade-lab').version).toBe(3);
+    // 1: first publish, 2: phone v2 (held), 3: admin v3, 4: the phone's redeploy of v3.
+    expect(deploysOf('fade-lab').map((d) => d.html.includes('Admin v3'))).toEqual([false, false, true, true]);
+    expect(vercel.live.get('fade-lab')).toContain('Admin v3');
+    expect(pendingOf('fade-lab')).toMatchObject({ version: 3, deployedUrl: 'https://fade-lab.vercel.app' });
   });
 });
 
