@@ -161,6 +161,7 @@ export function liveDomainDeps(): DomainFlowDeps {
     now: Date.now,
     sandboxRealOtids: sandboxRealOtids(),
     probeHttps,
+    notifySupport: (subject, text) => notifySupportEmail(subject, text),
     base: {
       async read(slug) {
         const shop = await findShopForSite(slug);

@@ -949,3 +949,64 @@ describe('fix round 3', () => {
     expect(stored).toBeNull();
   });
 });
+
+describe('re-review 3: G1–G3', () => {
+  it('G1+G3: a paid domain found expired alerts support at once, only once; the row still waits 45 days', async () => {
+    const w = world();
+    const notifySupport = vi.fn(async () => {});
+    w.deps.notifySupport = notifySupport;
+    w.domainSubs['100'].autoRenew = null;
+    await w.claim(CLAIM);
+    w.tick(370 * DAY);
+    w.domainSubs['100'].expiresAt = w.deps.now() + 300 * DAY;
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await w.sweep();
+    expect(notifySupport).toHaveBeenCalledTimes(1);
+    expect(notifySupport.mock.calls[0][0]).toBe('Domain expired while paid: freshcuts.com');
+    expect(notifySupport.mock.calls[0][1]).not.toMatch(/@/);
+    expect(w.repo.rows.get('d-o1')!.state).toBe('live');
+    w.tick(13 * 3600_000);
+    await w.sweep();
+    w.tick(13 * 3600_000);
+    await w.sweep();
+    expect(notifySupport).toHaveBeenCalledTimes(1);
+    expect(Object.keys(w.repo.rows.get('d-o1')!.alerts_sent!)).toHaveLength(1);
+  });
+
+  it('G3: a failed send is retried next time, then recorded', async () => {
+    const w = world();
+    const notifySupport = vi.fn().mockRejectedValueOnce(new Error('smtp')).mockResolvedValue(undefined);
+    w.deps.notifySupport = notifySupport;
+    w.repo.rows.set('d-o1', blankRow({ original_transaction_id: 'd-o1', site_slug: 'fresh-cuts', domain: 'freshcuts.com' }));
+    const { alertOnce } = await import('../../lib/ios/domainFlow.js');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await alertOnce(w.repo.rows.get('d-o1')!, 'k', 's', 't', w.deps)).toBe(false);
+    expect(await alertOnce(w.repo.rows.get('d-o1')!, 'k', 's', 't', w.deps)).toBe(true);
+    expect(await alertOnce(w.repo.rows.get('d-o1')!, 'k', 's', 't', w.deps)).toBe(false);
+    expect(notifySupport).toHaveBeenCalledTimes(2);
+  });
+
+  it('G2: any 4xx from auto-renew OFF on a long-expired name counts as done (the row is not stuck)', async () => {
+    const w = world();
+    w.domainSubs['100'].autoRenew = false;
+    await w.claim(CLAIM);
+    w.domainSubs['100'].status = 2;
+    w.tick(370 * DAY);
+    await w.sweep();
+    w.tick(50 * DAY);
+    const { VercelApiError } = await import('../../lib/ios/vercelDomains.js');
+    (w.reg.api.setAutoRenew as any).mockRejectedValue(new VercelApiError(400, 'domain_expired'));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await w.sweep();
+    expect(w.repo.rows.get('d-o1')).toMatchObject({ state: 'failed', failure_reason: 'registration-expired' });
+  });
+
+  it('G2: a 4xx on a name that is NOT long expired is still retried', async () => {
+    const { forceRenewOff } = await import('../../lib/ios/domainFlow.js');
+    const { VercelApiError } = await import('../../lib/ios/vercelDomains.js');
+    const vercel = { setAutoRenew: vi.fn(async () => { throw new VercelApiError(400, 'weird'); }) } as any;
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await forceRenewOff('x.com', { vercel })).toBe(false);
+    expect(await forceRenewOff('x.com', { vercel }, { longExpired: true })).toBe(true);
+  });
+});

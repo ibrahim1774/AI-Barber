@@ -11,7 +11,7 @@ export function blankRow(over: Partial<DomainRow> & Pick<DomainRow, 'original_tr
     source: 'apple', environment: 'Production', state: 'reserved', simulated: false, failure_reason: null, last_error: null, order_id: null,
     expected_price: null, buy_started_at: null, vercel_bought_at: null, registration_expires_at: null, auto_renew: false,
     auto_renew_synced: true, paid_until: null, revoked_at: null, last_notification: null, payer_checked_at: null,
-    linked_at: null, dns_ready_at: null, detached_at: null, transferred_at: null, transferred_by: null, refunded_at: null, lease_until: null,
+    linked_at: null, dns_ready_at: null, detached_at: null, transferred_at: null, transferred_by: null, refunded_at: null, alerts_sent: null, lease_until: null,
     created_at: t, updated_at: t, ...over,
   };
 }

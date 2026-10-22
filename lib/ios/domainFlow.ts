@@ -103,6 +103,32 @@ export interface DomainFlowDeps {
    * re-derives it from the project's domains (site-subpages refreshSiteBase), without a deploy.
    */
   base?: { read(slug: string): Promise<string | null | undefined>; refresh(slug: string): Promise<unknown>; clear(slug: string): Promise<void> };
+  /** Email support@davoxa.com (domain, site, amounts only). Sent at most once per row and event (alertOnce). */
+  notifySupport?(subject: string, text: string): Promise<void>;
+}
+
+/**
+ * Send a support email for (row, key) at most once: the key is recorded on the row
+ * (alerts_sent) only after a successful send. Best effort, never throws.
+ */
+export async function alertOnce(
+  row: Pick<DomainRow, 'original_transaction_id' | 'alerts_sent'>,
+  key: string, subject: string, text: string,
+  deps: { repo: DomainsRepo; now(): number; notifySupport?(subject: string, text: string): Promise<void> },
+): Promise<boolean> {
+  if (!deps.notifySupport) return false;
+  const fresh = await deps.repo.get(row.original_transaction_id).catch(() => null);
+  const sent = { ...(fresh?.alerts_sent ?? row.alerts_sent ?? {}) };
+  if (sent[key]) return false;
+  try {
+    await deps.notifySupport(subject, text);
+  } catch (e) {
+    console.error(`[domains] support email "${subject}" failed (retried next time):`, errMsg(e));
+    return false;
+  }
+  sent[key] = new Date(deps.now()).toISOString();
+  await deps.repo.update(row.original_transaction_id, null, { alerts_sent: sent }).catch(() => {});
+  return true;
 }
 
 /** A claim holds the row this long (the function's 300 s budget); the sweep skips leased rows. */
@@ -408,7 +434,7 @@ export async function step(row: DomainRow, deps: DomainFlowDeps, ctx: Ctx = {}):
         if (!owned) {
           // Only a CONFIRMED gone registration frees the slot (and auto-renew goes OFF first).
           if (!sim && !(await confirmedGone(row.domain, deps))) return wait(deps, row, 'registration expired at Vercel; waiting (it may still renew)');
-          if (!sim && !(await forceRenewOff(row.domain, deps))) return wait(deps, row, 'auto-renew OFF failed; retried');
+          if (!sim && !(await forceRenewOff(row.domain, deps, { longExpired: true }))) return wait(deps, row, 'auto-renew OFF failed; retried');
           return move(deps, row, ['detached'], { state: 'failed', failure_reason: 'registration-expired', auto_renew: false });
         }
         try {
@@ -504,12 +530,18 @@ export async function confirmedGone(domain: string, deps: Pick<DomainFlowDeps, '
 }
 
 /** Before failing a row that may own a registration: auto-renew OFF at Vercel. True when done. */
-export async function forceRenewOff(domain: string, deps: Pick<DomainFlowDeps, 'vercel'>): Promise<boolean> {
+export async function forceRenewOff(domain: string, deps: Pick<DomainFlowDeps, 'vercel'>, opts: { longExpired?: boolean } = {}): Promise<boolean> {
   try {
     await registrar(deps as DomainFlowDeps).setAutoRenew(domain, false);
     return true;
   } catch (e) {
     if (e instanceof VercelApiError && (e.code === 'domain_not_found' || e.code === 'domain_not_registered' || e.code === 'domain_not_renewable')) return true;
+    // A name expired past the registry grace window: any 4xx means there is nothing left to
+    // renew. Logged and treated as done, so the row can't retry forever.
+    if (opts.longExpired && e instanceof VercelApiError && e.status >= 400 && e.status < 500) {
+      console.warn(`[domains] ${domain}: auto-renew OFF on a long-expired name answered ${e.status} ${e.code}; treated as done`);
+      return true;
+    }
     console.error(`[domains] ${domain}: auto-renew OFF before failing the row failed; retried:`, errMsg(e));
     return false;
   }
@@ -910,12 +942,21 @@ export async function sweepDomains(
    * - detached and the payer ended (N7): nothing left to watch; failed, never re-checked.
    */
   async function settleGone(row: DomainRow, s: PayerStatus): Promise<DomainRow> {
+    let gone: boolean;
     try {
-      if (!(await confirmedGone(row.domain, deps))) return row;
+      gone = await confirmedGone(row.domain, deps);
+      // G1: a PAID, attached domain whose registration reads as expired: alert support now
+      // (it may still renew in the grace window; the row is only failed after 45 days).
+      if (!gone && ATTACHED_STATES.includes(row.state) && s.active && !(await deps.vercel!.owned(row.domain))) {
+        const reg = await deps.vercel!.lookup(row.domain);
+        await alertOnce(row, `expired:${reg?.expiresAt ?? 'absent'}`, `Domain expired while paid: ${row.domain}`,
+          `A paid custom domain's registration reads as expired at Vercel. It may still renew in the registry grace window; if not, the row is failed after 45 days and the barber picks another name.\n\nDomain: ${row.domain}\nSite: ${row.site_slug}\nExpired: ${reg ? new Date(reg.expiresAt).toISOString() : 'not in the account'}`, deps);
+      }
     } catch {
       return row;
     }
-    if (!(await forceRenewOff(row.domain, deps))) return row;
+    if (!gone) return row;
+    if (!(await forceRenewOff(row.domain, deps, { longExpired: true }))) return row;
     if (ATTACHED_STATES.includes(row.state) && s.active) {
       console.error(`[domains] ALERT ${row.domain} (${row.original_transaction_id}): paid, but the registration is gone at Vercel; unlinking, the slot is reusable`);
       try {

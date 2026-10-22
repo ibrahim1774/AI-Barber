@@ -48,6 +48,8 @@ create table public.ios_domains (
   transferred_by text,
   -- website: a paid subscription refused before anything was bought was cancelled and refunded
   refunded_at timestamptz,
+  -- support emails already sent for this row, { event key: time } (each sent once)
+  alerts_sent jsonb,
   -- a claim or the sweep is working on the row until then
   lease_until timestamptz,
   created_at timestamptz not null default now(),

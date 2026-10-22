@@ -21,7 +21,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { DeployAuthResult } from './deployAuth.js';
 import { isComDomain } from './ios/domainNames.js';
 import {
-  advanceSlot, applyPayerEvent, ownDetached, precheckDomain, reserveSlot, statusBody,
+  advanceSlot, alertOnce, applyPayerEvent, ownDetached, precheckDomain, reserveSlot, statusBody,
   type DomainFlowDeps, type PayerStatus,
 } from './ios/domainFlow.js';
 
@@ -281,10 +281,10 @@ async function finishRefund(row: { original_transaction_id: string; domain: stri
     last_error: 'REFUNDED: the paid subscription was refused before anything was bought; cancelled and refunded in full',
   });
   console.error(`[domains/web] REFUNDED ${subId} (${row.domain}): refused before anything was bought`);
-  await deps.notifySupport?.(
+  await alertOnce({ original_transaction_id: row.original_transaction_id, alerts_sent: null }, 'refunded',
     `Domain refund: ${row.domain}`,
     `A paid $39.00 website domain subscription was refused before anything was bought, then cancelled and refunded in full.\n\nDomain: ${row.domain}\nSite: ${(row as any).site_slug ?? '—'}\nSubscription: ${subId}\nAmount refunded: $39.00`,
-  ).catch(() => {});
+    { repo: deps.flow.repo, now: deps.flow.now, notifySupport: deps.notifySupport });
   return true;
 }
 
@@ -309,7 +309,9 @@ async function recordRefusedPaidSlot(
   if (row && row.state !== 'failed') {
     // Not a refusal we can refund (the slot is in use, e.g. transferred): flag it, final answer.
     console.error(`[domains/web] ALERT ${c.key} (${c.domain}): refused (${code}) but the slot is ${row.state}; support must look`);
-    await deps.notifySupport?.(`Domain needs support: ${c.domain}`, `A paid website domain checkout was refused (${code}) while its slot is ${row.state}. No automatic refund.\n\nDomain: ${c.domain}\nSite: ${c.slug}\nSubscription: ${c.key.replace(/^stripe:/, '')}\nAmount: $39.00`).catch(() => {});
+    await alertOnce(row, `needs-support:${code}`, `Domain needs support: ${c.domain}`,
+      `A paid website domain checkout was refused (${code}) while its slot is ${row.state}. No automatic refund.\n\nDomain: ${c.domain}\nSite: ${c.slug}\nSubscription: ${c.key.replace(/^stripe:/, '')}\nAmount: $39.00`,
+      { repo: deps.flow.repo, now: deps.flow.now, notifySupport: deps.notifySupport });
     return { code, refunded: false, refundable: false };
   }
   return { code, refunded: await finishRefund({ original_transaction_id: c.key, domain: c.domain, site_slug: c.slug }, deps), refundable: true };

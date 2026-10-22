@@ -334,6 +334,10 @@ describe('Stripe webhook: the same lifecycle as the app', () => {
     expect(text).toMatch(/Site: fresh-cuts/);
     expect(text).toMatch(/\$39\.00/);
     expect(text).not.toMatch(/@/); // no customer email or other PII
+    // G3: the success page asks again, the webhook retries: still one email.
+    await purchaseDomain({ sessionId: SID }, OWNER_AUTH, w.deps);
+    await w.event('checkout.session.completed', { id: SID, subscription: 'sub_dom1', payment_status: 'paid', metadata: signedMd() });
+    expect(w.deps.notifySupport).toHaveBeenCalledTimes(1);
   });
 
   it('R7: a refusal that cannot be refunded (slot in use) is flagged and answered with a final status', async () => {

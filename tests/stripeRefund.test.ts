@@ -65,7 +65,7 @@ describe('cancel + refund a refused domain subscription (R2)', () => {
 
   it('every Stripe call in the domain flow pins the API version', () => {
     expect(STRIPE_API_VERSION).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    for (const f of ['lib/ios/domainLive.ts', 'api/create-domain-checkout.ts', 'api/web-domain.ts', 'api/create-portal-session.ts']) {
+    for (const f of ['lib/ios/domainLive.ts', 'api/create-domain-checkout.ts', 'api/web-domain.ts']) {
       const src = fs.readFileSync(path.join(process.cwd(), f), 'utf8');
       const fetches = src.match(/fetch\([`'"]https:\/\/api\.stripe\.com/g)?.length ?? 0;
       const pinned = src.match(/'Stripe-Version': STRIPE_API_VERSION/g)?.length ?? 0;

@@ -57,6 +57,8 @@ export interface DomainRow {
   transferred_by: string | null;
   /** Website: a paid subscription refused before anything was bought was cancelled and refunded. */
   refunded_at: string | null;
+  /** Support emails already sent for this row: { eventKey: ISO time } (each sent once). */
+  alerts_sent: Record<string, string> | null;
   lease_until: string | null;
   created_at: string;
   updated_at: string;
