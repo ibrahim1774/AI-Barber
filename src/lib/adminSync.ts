@@ -1,8 +1,10 @@
 import type { WebsiteData } from '@/web/types';
 import { api, type ServerVersionInfo } from '@/lib/api';
-import { boundMatches } from '@/lib/website';
+import { emitSiteAdopted } from '@/lib/siteEvents';
 import * as siteStore from '@/lib/siteStore';
 import type { SiteRecord } from '@/lib/siteStore';
+import { withTimeout } from '@/lib/timeout';
+import { boundMatches } from '@/lib/website';
 
 /** Shown once after the app quietly adopts an admin edit. */
 export const SYNC_NOTICE = 'Your site was updated by AI Barber support.';
@@ -11,6 +13,13 @@ export const UPDATED_ON_PUBLISH_MESSAGE =
   'Your site was just updated by AI Barber support. Review it and publish again.';
 /** Added when the barber had edits that were not published yet. */
 const LOST_EDITS = ' Changes you had not published yet were replaced by their version.';
+/** A published record from before edits were tracked: we cannot tell. */
+const MAYBE_LOST_EDITS = ' Any changes you had not published yet were replaced by their version.';
+
+/** Focus / foreground syncs run at most this often; the publish-time sync is never throttled. */
+export const SYNC_MIN_INTERVAL_MS = 60_000;
+/** A hung network must not hold up a publish or the launch retry. */
+export const SYNC_TIMEOUT_MS = 8_000;
 
 /** The server's copy of a site, as GET /api/ios/site and the 409 body carry it. */
 export interface ServerSite extends ServerVersionInfo {
@@ -59,66 +68,122 @@ export function adoptServerCopy(cur: SiteRecord, server: ServerSite): SiteRecord
   };
 }
 
-/** True when the record has edits made after its last publish / adopted copy. */
-export const hasUnpublishedEdits = (r: SiteRecord) => r.syncedAt != null && r.updatedAt > r.syncedAt;
-
-let notice: string | null = null;
-export function queueNotice(message: string): void {
-  notice = message;
+/** 'yes': edits after the last publish. 'maybe': a published record from before edits were tracked. */
+export function unpublishedEdits(r: SiteRecord): 'yes' | 'maybe' | 'no' {
+  if (r.syncedAt != null) return r.updatedAt > r.syncedAt ? 'yes' : 'no';
+  return r.slug != null ? 'maybe' : 'no';
 }
-/** The notice to show, once. */
-export function takeNotice(): string | null {
-  const n = notice;
-  notice = null;
-  return n;
+
+export interface SyncDeps {
+  iosSite: typeof api.iosSite;
+  store: Pick<typeof siteStore, 'loadSite' | 'saveSite' | 'savePendingPublish'>;
+}
+
+/**
+ * Adopts a server copy into the LATEST stored record (not one loaded before a
+ * network call), clears any pending publish (its data is stale now), keeps the
+ * notice on the record until it is shown, and tells the open screens.
+ */
+export async function adoptAndSave(
+  store: SyncDeps['store'], base: string, server: ServerSite,
+): Promise<{ site: SiteRecord; message: string } | null> {
+  const cur = await store.loadSite();
+  if (!cur || !server.siteData) return null;
+  const lost = unpublishedEdits(cur);
+  const message = base + (lost === 'yes' ? LOST_EDITS : lost === 'maybe' ? MAYBE_LOST_EDITS : '');
+  const site = { ...adoptServerCopy(cur, server), noticePending: message };
+  await store.savePendingPublish(null);
+  await store.saveSite(site);
+  emitSiteAdopted(site);
+  return { site, message };
+}
+
+let shown = false;
+/**
+ * The notice to show, once: read from the record (so it survives a kill before
+ * it was shown) and cleared. null when there is nothing to tell.
+ */
+export async function takeNotice(): Promise<string | null> {
+  if (shown) return null;
+  shown = true;
+  try {
+    const cur = await siteStore.loadSite();
+    if (!cur?.noticePending) return null;
+    const { noticePending, ...rest } = cur;
+    await siteStore.saveSite(rest);
+    return noticePending;
+  } catch {
+    return null;
+  } finally {
+    shown = false;
+  }
 }
 
 export type SyncResult = { kind: 'adopted'; site: SiteRecord; message: string } | { kind: 'none' };
 
-export interface SyncDeps {
-  iosSite: typeof api.iosSite;
-  store: Pick<typeof siteStore, 'loadSite' | 'saveSite'>;
+export interface SyncOptions {
+  /** Skip when a sync ran less than this long ago. */
+  throttleMs?: number;
+  /** Give up on the request after this long. */
+  timeoutMs?: number;
 }
 
-/** Adopts a server copy into the stored record; returns it and the message to tell the barber. */
-export async function adoptAndSave(
-  store: SyncDeps['store'], cur: SiteRecord, server: ServerSite, base: string,
-): Promise<{ site: SiteRecord; message: string }> {
-  const site = adoptServerCopy(cur, server);
-  await store.saveSite(site);
-  return { site, message: hasUnpublishedEdits(cur) ? base + LOST_EDITS : base };
+let inflight: Promise<SyncResult> | null = null;
+let lastRun = 0;
+/** Tests only. */
+export function resetSyncState(): void {
+  inflight = null;
+  lastRun = 0;
+}
+
+async function run(deps: SyncDeps, transactionId: string | null | undefined, timeoutMs?: number): Promise<SyncResult> {
+  const before = await deps.store.loadSite();
+  const tx = transactionId ?? before?.transactionId;
+  if (!before || !tx) return { kind: 'none' };
+  const req = deps.iosSite(tx);
+  const server = await (timeoutMs ? withTimeout(req, timeoutMs) : req);
+  // Edits saved while the request ran: judge and replace the latest record, not the one from before.
+  const cur = await deps.store.loadSite();
+  if (!cur || !boundMatches(cur, { siteId: server.siteId, deployedUrl: server.deployedUrl })) return { kind: 'none' };
+  if (isNewerAdminEdit(cur, server)) {
+    const done = await adoptAndSave(deps.store, SYNC_NOTICE, server);
+    return done ? { kind: 'adopted', ...done } : { kind: 'none' };
+  }
+  // Not an admin edit (or an older server): just learn the version, keep the data.
+  if (isNum(server.version) && server.version > (cur.serverVersion ?? -1)) {
+    await deps.store.saveSite({ ...cur, ...versionFields(server) });
+  }
+  return { kind: 'none' };
 }
 
 /**
  * GET /api/ios/site for the site's transaction: if an admin edit is newer than
  * what this phone has seen, replace the local site data with the server copy
- * (the barber's Book-button prefs are kept) and queue the one-time notice.
- * Every failure is silent and returns 'none': it must never block editing.
+ * (the barber's Book-button prefs are kept), queue the one-time notice and tell
+ * the open screens. One request at a time: concurrent callers share it. Every
+ * failure is silent and returns 'none': it must never block editing.
  */
-export async function syncFromServer(deps: SyncDeps, transactionId?: string | null): Promise<SyncResult> {
-  try {
-    const cur = await deps.store.loadSite();
-    const tx = transactionId ?? cur?.transactionId;
-    if (!cur || !tx) return { kind: 'none' };
-    const server = await deps.iosSite(tx);
-    // Another site's subscription on this phone: not ours to adopt.
-    if (!boundMatches(cur, { siteId: server.siteId, deployedUrl: server.deployedUrl })) return { kind: 'none' };
-    if (isNewerAdminEdit(cur, server)) {
-      const { site, message } = await adoptAndSave(deps.store, cur, server, SYNC_NOTICE);
-      queueNotice(message);
-      return { kind: 'adopted', site, message };
-    }
-    // Not an admin edit (or an older server): just learn the version, keep the data.
-    if (isNum(server.version) && server.version > (cur.serverVersion ?? -1)) {
-      const latest = (await deps.store.loadSite()) ?? cur;
-      await deps.store.saveSite({ ...latest, ...versionFields(server) });
-    }
-    return { kind: 'none' };
-  } catch {
-    return { kind: 'none' };
-  }
+export function syncFromServer(
+  deps: SyncDeps, transactionId?: string | null, opts: SyncOptions = {},
+): Promise<SyncResult> {
+  if (inflight) return inflight;
+  if (opts.throttleMs && Date.now() - lastRun < opts.throttleMs) return Promise.resolve({ kind: 'none' });
+  lastRun = Date.now();
+  const p = run(deps, transactionId, opts.timeoutMs)
+    .catch((): SyncResult => ({ kind: 'none' }))
+    .finally(() => {
+      inflight = null;
+    });
+  inflight = p;
+  return p;
 }
 
-/** The app's own wiring: real API and site store. */
+const real: SyncDeps = { iosSite: (tx) => api.iosSite(tx), store: siteStore };
+
+/** Launch, foreground and Edit focus: at most once a minute, quiet. */
 export const syncQuietly = (transactionId?: string | null) =>
-  syncFromServer({ iosSite: api.iosSite, store: siteStore }, transactionId);
+  syncFromServer(real, transactionId, { throttleMs: SYNC_MIN_INTERVAL_MS, timeoutMs: SYNC_TIMEOUT_MS });
+
+/** Right before a publish: always, with a short timeout. */
+export const syncNow = (transactionId?: string | null) =>
+  syncFromServer(real, transactionId, { timeoutMs: SYNC_TIMEOUT_MS });

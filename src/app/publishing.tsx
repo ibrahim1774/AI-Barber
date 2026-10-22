@@ -68,7 +68,7 @@ export default function Publishing() {
           setPending({ message: out.message });
           setPhase('pending');
         } else if (out.kind === 'site-updated') {
-          takeNotice(); // this screen is the notice
+          void takeNotice(); // this screen is the notice
           setPending({ message: out.message });
           setPhase('updated');
         } else {

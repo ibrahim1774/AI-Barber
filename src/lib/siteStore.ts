@@ -16,6 +16,8 @@ export interface SiteRecord {
   editedAt?: string;
   /** `updatedAt` as of the last publish or adopted server copy; later edits are unpublished. */
   syncedAt?: number;
+  /** An admin edit was adopted and the barber has not been told yet: the message to show, cleared when shown. */
+  noticePending?: string;
 }
 
 export interface PendingPublish {
@@ -23,6 +25,8 @@ export interface PendingPublish {
   transactionId: string | null;
   data: WebsiteData;
   createdAt: number;
+  /** The site version this data was based on; a resumed publish carries it, never a newer one. */
+  baseVersion?: number;
 }
 
 const SITE_KEY = 'site.v1';

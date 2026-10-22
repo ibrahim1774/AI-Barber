@@ -1,9 +1,9 @@
-import { syncQuietly } from '@/lib/adminSync';
 import { usePlacement, useSuperwall, useSuperwallEvents, useUser } from 'expo-superwall';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, AppState } from 'react-native';
 
 import { relinkShopPurchase } from '@/lib/setup/relink';
+import { syncNow } from '@/lib/adminSync';
 import { restore, syncIfSignedIn, type Restored } from '@/lib/account';
 import { appsFlyerUID, track, trackConversion } from '@/lib/analytics';
 import { api } from '@/lib/api';
@@ -324,7 +324,7 @@ export function usePublishDeps(): PublishDeps {
       showPaywall: () => paywall('publish'),
       latestTransactionId,
       iosPublish: api.iosPublish,
-      syncFromServer: syncQuietly,
+      syncFromServer: syncNow,
       linkContext: loadLinkContext,
       store: siteStore,
       // The site is bound to the Apple transaction; a signed-in user is linked to it too.

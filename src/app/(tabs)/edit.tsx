@@ -4,8 +4,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect, useNavigation } from 'expo-router';
 import type { WebsiteData } from '@/web/types';
 import { colors, fonts } from '@/constants/theme';
-import { onSiteAdopted } from '@/lib/account';
 import { syncQuietly, takeNotice } from '@/lib/adminSync';
+import { onSiteAdopted } from '@/lib/siteEvents';
 import { track } from '@/lib/analytics';
 import { useEntitlements } from '@/lib/entitlements';
 import { hasEntitlement } from '@/lib/paywall';
@@ -150,13 +150,10 @@ export default function Editor() {
       if (getSubscriptionStatus() === 'lapsed') recheckSubscriptionStatus(true);
       let alive = true;
       loadMyShop().then((sh) => alive && setShop(sh)).catch(() => {});
-      // An admin edit made from the server is adopted in the background and the
-      // editor reloads on it. Silent on any failure, never blocks editing.
-      void syncQuietly().then((r) => {
-        if (r.kind === 'adopted' && alive) void openRecord(r.site, () => alive);
-        const n = alive ? takeNotice() : null;
-        if (n) Alert.alert('Site updated', n);
-      });
+      // An admin edit made from the server is adopted in the background (the
+      // onSiteAdopted subscriber below reloads the editor). Silent on any
+      // failure, never blocks editing. A notice left from launch is shown here.
+      void syncQuietly().then(() => { if (alive) void showNotice(); });
       loadSite().then((s) => {
         const cur = siteRef.current;
         if (!alive || !s || !cur) return;
@@ -166,7 +163,11 @@ export default function Editor() {
           return;
         }
         if (s.slug !== cur.slug || s.deployedUrl !== cur.deployedUrl || s.transactionId !== cur.transactionId) {
-          const next = { ...cur, slug: s.slug, deployedUrl: s.deployedUrl, transactionId: s.transactionId };
+          // Also the version bookkeeping a publish saved, so the next edit doesn't write the old one back.
+          const next = {
+            ...cur, slug: s.slug, deployedUrl: s.deployedUrl, transactionId: s.transactionId,
+            serverVersion: s.serverVersion, editedBy: s.editedBy, editedAt: s.editedAt, syncedAt: s.syncedAt,
+          };
           siteRef.current = next;
           setSite(next);
         }
@@ -200,15 +201,41 @@ export default function Editor() {
     }, [openRecord, runPublishRequest]),
   );
 
-  // A newer copy loaded from the account (launch, sign-in): show it.
+  // Tells the barber an admin edit was adopted (the message lives on the record until shown).
+  const showNotice = useCallback(async () => {
+    const n = await takeNotice();
+    if (!n || !mountedRef.current) return;
+    if (siteRef.current?.noticePending) siteRef.current = { ...siteRef.current, noticePending: undefined };
+    Alert.alert('Site updated', n);
+  }, []);
+
+  // A newer copy loaded from the account or from an admin edit (launch, sign-in,
+  // focus, foreground, publish): show it. Not under an open sheet or a photo
+  // upload; it is applied when they are done.
+  const deferred = useRef<SiteRecord | null>(null);
+  const aliveRef = useRef(true);
+  const applyAdopted = useCallback((s: SiteRecord) => {
+    void openRecord(s, () => aliveRef.current).then(() => showNotice());
+  }, [openRecord, showNotice]);
   useEffect(() => {
-    let alive = true;
-    const unsubscribe = onSiteAdopted((s) => void openRecord(s, () => alive));
+    aliveRef.current = true;
+    const unsubscribe = onSiteAdopted((s) => {
+      if (sheetOpenRef.current || uploadingRef.current) deferred.current = s;
+      else applyAdopted(s);
+    });
     return () => {
-      alive = false;
+      aliveRef.current = false;
       unsubscribe();
     };
-  }, [openRecord]);
+  }, [applyAdopted]);
+  const sheetOpenRef = useRef(false);
+  sheetOpenRef.current = sheet != null;
+  useEffect(() => {
+    if (sheet != null || uploading || !deferred.current) return;
+    const s = deferred.current;
+    deferred.current = null;
+    applyAdopted(s);
+  }, [sheet, uploading, applyAdopted]);
 
   useEffect(() => {
     if (!locked) return;

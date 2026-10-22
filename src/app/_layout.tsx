@@ -7,6 +7,7 @@ import { SuperwallProvider } from 'expo-superwall';
 import { PostHogProvider } from 'posthog-react-native';
 import { fontAssets } from '@/constants/theme';
 import { onSiteAdopted, pullSiteOnLaunch } from '@/lib/account';
+import { syncQuietly } from '@/lib/adminSync';
 import { initAttribution, POSTHOG_AUTOCAPTURE, posthog, screen } from '@/lib/analytics';
 import { LaunchPrompts } from '@/lib/launchPrompts';
 import {
@@ -14,7 +15,6 @@ import {
 } from '@/lib/paywall';
 import { resetTo } from '@/lib/nav';
 import { RevenueCatStart } from '@/lib/revenueCatStart';
-import { syncQuietly } from '@/lib/adminSync';
 import { publishBusy, resumePendingPublish } from '@/lib/publish';
 import { onReminderTap, refreshReminders, routeForReminderTap, takeLaunchReminderTap } from '@/lib/reminders';
 import { loadSite } from '@/lib/siteStore';
@@ -187,9 +187,10 @@ function ResumePublish() {
   useEffect(() => {
     if (!navReady) return;
     const resume = () => {
-      // Quiet: an admin edit is adopted now, and told to the barber on the Edit tab.
-      void syncQuietly();
-      resumePendingPublish(depsRef.current)
+      // Quiet: an admin edit is adopted first (it also drops a pending publish
+      // built on the old copy), then told to the barber on the Edit tab.
+      syncQuietly()
+        .then(() => resumePendingPublish(depsRef.current))
         .then((out) => {
           // A user publish queued behind this retry navigates for itself.
           if (out?.kind !== 'live' || publishBusy()) return;
