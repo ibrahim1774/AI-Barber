@@ -2,6 +2,7 @@ import type { WebsiteData } from '@/web/types';
 import { api, type ServerVersionInfo } from '@/lib/api';
 import { emitSiteAdopted } from '@/lib/siteEvents';
 import { isAiBarberBookingUrl } from '@/lib/shop';
+import { linksOf } from '@/lib/bookingChoice';
 import * as siteStore from '@/lib/siteStore';
 import type { SiteRecord } from '@/lib/siteStore';
 import { withTimeout } from '@/lib/timeout';
@@ -79,6 +80,8 @@ export function adoptServerCopy(cur: SiteRecord, server: ServerSite): SiteRecord
     ...versionFields(server),
     data,
     inputs,
+    // The server's copy is what the live site shows.
+    liveLinks: linksOf(data),
     deployedUrl: server.deployedUrl ?? cur.deployedUrl,
     updatedAt: now,
     syncedAt: now,

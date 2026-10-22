@@ -167,8 +167,12 @@ export default function Editor() {
           void openRecord(s, () => alive);
           return;
         }
-        if (s.slug !== cur.slug || s.deployedUrl !== cur.deployedUrl || s.transactionId !== cur.transactionId) {
-          const next = { ...cur, slug: s.slug, deployedUrl: s.deployedUrl, transactionId: s.transactionId };
+        if (
+          s.slug !== cur.slug || s.deployedUrl !== cur.deployedUrl || s.transactionId !== cur.transactionId ||
+          JSON.stringify(s.liveLinks) !== JSON.stringify(cur.liveLinks)
+        ) {
+          // The publish result, including what the live site now shows (the setup screens' prompt reads it).
+          const next = { ...cur, slug: s.slug, deployedUrl: s.deployedUrl, transactionId: s.transactionId, liveLinks: s.liveLinks };
           siteRef.current = next;
           setSite(next);
         }

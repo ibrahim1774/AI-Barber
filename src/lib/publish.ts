@@ -3,9 +3,7 @@ import { adoptAndSave, isPlainSiteData, SYNC_NOTICE, SYNC_TIMEOUT_MS, UPDATED_ON
 import { track } from '@/lib/analytics';
 import { ApiError, type api } from '@/lib/api';
 import { stripMarkers } from '@/lib/editable';
-import { getEntitlements } from '@/lib/entitlements';
-import { bookingPrefs, resolveLinks, type LinkContext } from '@/lib/bookingChoice';
-import { stripLapsedLinks } from '@/lib/tierLinks';
+import { linksOf, linksToSend, type LinkContext } from '@/lib/bookingChoice';
 import { cancelRemindersInBackground } from '@/lib/reminders';
 import type { SiteRecord } from '@/lib/siteStore';
 import { LOOKUP_TIMEOUT_MS, withTimeout } from '@/lib/timeout';
@@ -156,10 +154,7 @@ async function send(
   const rec = await deps.store.loadSite().catch(() => null);
   const sentAt = rec?.updatedAt;
   // Whenever the AI Barber link is dropped (plan, shop, unknown context), the barber's own link is used.
-  const own = bookingPrefs({ data: pending.data, inputs: rec?.inputs ?? {} }).own;
-  const siteData = ctx
-    ? stripLapsedLinks(resolveLinks(pending.data, rec?.inputs, ctx), ctx.ents, own)
-    : stripLapsedLinks(pending.data, getEntitlements(), own);
+  const siteData = linksToSend(pending.data, rec?.inputs, ctx);
   try {
     res = await deps.iosPublish({
       transactionId: pending.transactionId,
@@ -221,7 +216,7 @@ async function send(
       deployedUrl: res.deployedUrl,
       transactionId: pending.transactionId,
       // Edits made while the request ran are not published.
-      ...(newerOnDisk ? {} : { syncedAt: sentAt ?? cur.updatedAt, ...learned }),
+      ...(newerOnDisk ? {} : { syncedAt: sentAt ?? cur.updatedAt, ...learned, liveLinks: linksOf(siteData) }),
     };
     await deps.store.saveSite(saved);
   }

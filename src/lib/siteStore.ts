@@ -1,6 +1,6 @@
 import Storage from 'expo-sqlite/kv-store';
 import type { ShopInputs, WebsiteData } from '@/web/types';
-import type { BookingPrefs } from '@/lib/bookingChoice';
+import type { BookingPrefs, LiveLinks } from '@/lib/bookingChoice';
 
 export interface SiteRecord {
   draftId: string;
@@ -18,6 +18,8 @@ export interface SiteRecord {
   syncedAt?: number;
   /** An admin edit was adopted and the barber has not been told yet: the message to show, cleared when shown. */
   noticePending?: string;
+  /** The Book / Shop links the live site shows (last publish, adopted admin copy, or restore). Absent: unknown. */
+  liveLinks?: LiveLinks;
 }
 
 export interface PendingPublish {

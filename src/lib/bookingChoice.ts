@@ -1,5 +1,6 @@
 import type { WebsiteData } from '@/web/types';
-import type { Entitlements } from '@/lib/entitlements';
+import { getEntitlements, type Entitlements } from '@/lib/entitlements';
+import { stripLapsedLinks } from '@/lib/tierLinks';
 import { bookingUrl, isAiBarberBookingUrl, type Shop } from '@/lib/shop';
 import { shopUrl } from '@/lib/store/data';
 import type { SiteRecord } from '@/lib/siteStore';
@@ -129,4 +130,29 @@ export function resolveLinks(
   if (ents.store && shop && shop.purchaseLinked && ctx.storeEnabled) out.shopUrl = shopUrl(shop);
   else delete out.shopUrl;
   return out;
+}
+
+/**
+ * The website data a publish sends, with its Book and Shop links decided: resolveLinks when the shop facts are
+ * known, else only what the plan lacks is dropped; a dropped AI Barber link falls back to the own link. The one
+ * resolution publish and the setup prompt share.
+ */
+export function linksToSend(
+  data: WebsiteData,
+  inputs: Partial<SiteRecord['inputs']> | undefined,
+  ctx: LinkContext | null,
+): WebsiteData & { shopUrl?: string } {
+  const own = bookingPrefs({ data, inputs: inputs ?? {} }).own;
+  return ctx
+    ? stripLapsedLinks(resolveLinks(data, inputs, ctx), ctx.ents, own)
+    : stripLapsedLinks(data, getEntitlements(), own);
+}
+
+/** The Book and Shop links a website shows (what was last published, or what a publish would send). */
+export type LiveLinks = { bookingUrl: string | null; shopUrl: string | null };
+
+export function linksOf(d: unknown): LiveLinks {
+  const o = d && typeof d === 'object' ? (d as { bookingUrl?: unknown; shopUrl?: unknown }) : {};
+  const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+  return { bookingUrl: str(o.bookingUrl), shopUrl: str(o.shopUrl) };
 }

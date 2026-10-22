@@ -5,6 +5,7 @@ import { resetUser, track } from '@/lib/analytics';
 import { api } from '@/lib/api';
 import { clearOverlayFlags } from '@/lib/overlayFlags';
 import { findTransactionId, publishPayload } from '@/lib/publish';
+import { linksOf } from '@/lib/bookingChoice';
 import { cancelAllReminders, cancelRemindersInBackground } from '@/lib/reminders';
 import { emitSiteAdopted, onSiteAdopted } from '@/lib/siteEvents';
 import * as siteStore from '@/lib/siteStore';
@@ -250,6 +251,7 @@ export async function restore(deps: RestoreDeps): Promise<Restored | null> {
           updatedAt: now,
           syncedAt: now,
           ...versionFields(bound),
+          ...(bound.siteData ? { liveLinks: linksOf(bound.siteData) } : {}),
         }
       : {
           draftId: local && !local.deployedUrl ? local.draftId : randomUUID(),
@@ -261,6 +263,7 @@ export async function restore(deps: RestoreDeps): Promise<Restored | null> {
           deployedUrl: bound.deployedUrl,
           transactionId,
           ...versionFields(bound),
+          liveLinks: linksOf(bound.siteData),
         };
   // A pending publish is left alone: it is paid content for this same
   // subscription, and the launch retry still sends it to the bound site.
