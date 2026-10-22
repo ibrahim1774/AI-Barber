@@ -195,6 +195,13 @@ async function send(
     track('publish_pending', { code: e instanceof ApiError ? e.code : 'unknown' });
     return { kind: 'pending', message: retryMessage };
   }
+  // A 200 without a usable answer (a proxy page parsed as JSON, an API change) is not live: keep the
+  // pending publish for the retry instead of saving a record bound to nothing.
+  if (!isLiveAnswer(res)) {
+    track('publish_pending', { code: 'bad-response' });
+    return { kind: 'pending', message: retryMessage };
+  }
+  const republished = res.republished === true;
   // Merge into the latest record: the editor may have saved since this started.
   const cur = await deps.store.loadSite();
   let saved: SiteRecord | null = null;
@@ -211,11 +218,21 @@ async function send(
     await deps.store.saveSite(saved);
   }
   await deps.store.savePendingPublish(null);
-  track('site_published', { republished: res.republished });
+  track('site_published', { republished });
   // Live: no more publish reminders, for good. Never affects the outcome.
   cancelRemindersInBackground();
   if (saved) notifyLive(deps, saved);
-  return { kind: 'live', url: res.deployedUrl, republished: res.republished };
+  return { kind: 'live', url: res.deployedUrl, republished };
+}
+
+/** The publish answer names the live site: a non-empty string siteId and deployedUrl. */
+function isLiveAnswer(res: unknown): boolean {
+  const r = res as { siteId?: unknown; deployedUrl?: unknown } | null;
+  return (
+    !!r && typeof r === 'object' &&
+    typeof r.siteId === 'string' && r.siteId.length > 0 &&
+    typeof r.deployedUrl === 'string' && r.deployedUrl.length > 0
+  );
 }
 
 function notifyLive(deps: PublishDeps, site: SiteRecord): void {

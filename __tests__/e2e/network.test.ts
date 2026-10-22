@@ -99,31 +99,23 @@ describe('first publish (paid this run), the publish request fails', () => {
     expect(await w.pending()).toBeNull();
   });
 
-  // BUG: a JSON 200 without siteId / deployedUrl is treated as live.
-  it.failing('BUG: a garbled 200 ({}) is not "live": the pending publish is kept for the retry', async () => {
+  // Fixed (bug 1): a JSON 200 without siteId / deployedUrl was treated as live.
+  it('a garbled 200 ({}) is not "live": the pending publish is kept, the record untouched, the relaunch finishes it', async () => {
     server.fail('/api/ios/publish', { kind: 'json', status: 200, body: {} });
     const out = await publish(w);
-    expect(out.kind).toBe('pending');
+    expect(out).toEqual({ kind: 'pending', message: w.m.publish.PENDING_MESSAGE });
     expect(await w.pending()).toMatchObject({ transactionId: 'tx-1' });
+    expect(await w.site()).toMatchObject({ slug: null, deployedUrl: null });
+    w = await kill(w);
+    expect(await w.m.publish.resumePendingPublish(w.deps)).toMatchObject({ kind: 'live', url: 'https://fade-lab.aibarber.org' });
   });
 
-  // What the bug does, observed (passes today): live with no URL, a record bound to nothing.
-  it('observed: a garbled 200 reports live with url undefined and clears the pending publish', async () => {
-    server.fail('/api/ios/publish', { kind: 'json', status: 200, body: {} });
-    const out = await publish(w);
-    expect(out).toEqual({ kind: 'live', url: undefined, republished: undefined });
-    expect(await w.pending()).toBeNull();
-    const rec = await w.site();
-    expect(rec?.slug).toBeUndefined();
-    expect(rec?.deployedUrl).toBeUndefined();
-    // Nothing on the phone points at a site any more: sync and the status check can never match it.
-    expect(rec?.transactionId).toBe('tx-1');
-  });
-
-  it.failing('BUG: wrong types in a 200 (siteId number, deployedUrl null) are not stored as the live site', async () => {
+  it('wrong types in a 200 (siteId number, deployedUrl null) are not stored as the live site', async () => {
     server.fail('/api/ios/publish', { kind: 'json', status: 200, body: { siteId: 42, deployedUrl: null, republished: 'yes', version: '7' } });
     const out = await publish(w);
     expect(out.kind).toBe('pending');
+    expect(await w.pending()).toMatchObject({ transactionId: 'tx-1' });
+    expect((await w.site())?.slug).toBeNull();
   });
 });
 
