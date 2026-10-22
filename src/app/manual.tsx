@@ -10,7 +10,9 @@ import { colors, fonts, swatchLabel } from '@/constants/theme';
 import { Button } from '@/components/Button';
 import { Field } from '@/components/Field';
 import { ScissorsIcon } from '@/components/Icons';
+import { ServiceChecklist } from '@/components/ServiceChecklist';
 import { manualSite } from '@/lib/importer';
+import { servicesFromPicks, type ServicePicks } from '@/lib/serviceChecklist';
 import { startDraft } from '@/lib/flow';
 
 const BG = 'https://images.unsplash.com/photo-1503951914875-452162b0f3f1?auto=format&fit=crop&w=1920&q=80';
@@ -22,6 +24,7 @@ export default function Manual() {
   const insets = useSafeAreaInsets();
   const [shopName, setShopName] = useState('');
   const [colorTheme, setColorTheme] = useState(DEFAULT_SWATCH);
+  const [picks, setPicks] = useState<ServicePicks>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const input = useRef<TextInput>(null);
@@ -37,7 +40,7 @@ export default function Manual() {
     setBusy(true);
     setError(null);
     try {
-      const result = await manualSite(shopName, colorTheme);
+      const result = await manualSite(shopName, colorTheme, servicesFromPicks(picks));
       if (!mounted.current) return;
       await startDraft(result);
       if (!mounted.current) return;
@@ -110,6 +113,8 @@ export default function Manual() {
                   })}
                 </View>
               </View>
+
+              <ServiceChecklist tone="dark" picks={picks} onChange={setPicks} />
 
               <Button variant="solid" title="Generate My Barbershop Website" loading={busy} onPress={() => void submit()} />
               {!!error && <Text style={styles.error}>{error}</Text>}

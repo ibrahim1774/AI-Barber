@@ -57,8 +57,19 @@ export function toShopSite(
   return { inputs: { ...built.inputs, importedFrom: source }, site: built.scraped };
 }
 
-export async function manualSite(shopName: string, brandColor: string = DEFAULT_SWATCH): Promise<{ inputs: ShopInputs; site: WebsiteData }> {
-  const inputs = { shopName: shopName.trim(), area: '', phone: '', colorTheme: resolveTheme(brandColor) } as ShopInputs;
+/**
+ * The typed path: the shop name, a colour and the services the barber ticked (optional prices).
+ * generateContent uses exactly those and invents nothing; none ticked → no Services section.
+ */
+export async function manualSite(
+  shopName: string,
+  brandColor: string = DEFAULT_SWATCH,
+  services?: { title: string; price?: string }[],
+): Promise<{ inputs: ShopInputs; site: WebsiteData }> {
+  const inputs = {
+    shopName: shopName.trim(), area: '', phone: '', colorTheme: resolveTheme(brandColor),
+    ...(services?.length ? { services } : {}),
+  } as ShopInputs;
   const site = await generateContent(inputs);
   return { inputs, site };
 }
