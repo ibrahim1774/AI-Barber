@@ -48,11 +48,32 @@ function configuredBase(): string | null {
 // no import so this module stays dependency-free.
 const SITE_BOOKING = /^\/book(?=[?#]|$)/;
 
+/**
+ * Parsed form of an absolute aibarber.org link (e2e M8): the look-alikes the regex misses, an
+ * explicit default port (`aibarber.org:443`) and a trailing-dot host (`www.aibarber.org.`),
+ * still open the same page. Host lower-cased with the trailing dot dropped, default port only,
+ * then the path must be exactly `/{page}` or `/{page}/…`.
+ */
+function isAiBarberPage(u: string, page: 'book' | 'shop'): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(/^https?:\/\//i.test(u) ? u : `https://${u}`);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false;
+  if (parsed.username || parsed.password || parsed.port) return false; // a default port normalises to ''
+  const host = parsed.hostname.toLowerCase().replace(/\.$/, '');
+  if (host !== 'aibarber.org' && host !== 'www.aibarber.org') return false;
+  const path = parsed.pathname.toLowerCase();
+  return path === `/${page}` || path.startsWith(`/${page}/`);
+}
+
 /** An AI Barber booking page link, old (aibarber.org/book/…) or new (/book). A Booksy or Square link is not one. */
 export function isAiBarberBookingLink(url: unknown): boolean {
   if (typeof url !== 'string') return false;
   const u = url.trim();
-  if (AI_BARBER_BOOKING.test(u) || SITE_BOOKING.test(u)) return true;
+  if (AI_BARBER_BOOKING.test(u) || SITE_BOOKING.test(u) || isAiBarberPage(u, 'book')) return true;
   const base = configuredBase();
   if (!base) return false;
   const rest = u.replace(/^https?:\/\//i, '').toLowerCase();
@@ -68,7 +89,7 @@ const SITE_SHOP = /^\/shop(?=[?#]|$)/;
 export function isAiBarberShopLink(url: unknown): boolean {
   if (typeof url !== 'string') return false;
   const u = url.trim();
-  if (AI_BARBER_SHOP.test(u) || SITE_SHOP.test(u)) return true;
+  if (AI_BARBER_SHOP.test(u) || SITE_SHOP.test(u) || isAiBarberPage(u, 'shop')) return true;
   const base = configuredBase();
   if (!base) return false;
   const rest = u.replace(/^https?:\/\//i, '').toLowerCase();

@@ -174,14 +174,21 @@ describe('Book-link matrix (server half)', () => {
     expect(pendingOf('fade-lab').siteData).not.toHaveProperty('bookingUrl');
   });
 
-  it.each([['https://aibarber.org:443/book/fade-lab'], ['https://www.aibarber.org./book/fade-lab']])(
-    'setup: the AI Barber URL written as %s is not recognised and is kept on a Website plan', async (url) => {
+  it.each([['https://aibarber.org:443/book/fade-lab'], ['https://www.aibarber.org./book/fade-lab'], ['WWW.AIBARBER.ORG.:443/book']])(
+    'M8 (fixed; setup was: kept): the AI Barber URL written as %s is recognised and stripped on a Website plan', async (url) => {
+      const { transactionId } = w.apple.buy(PRODUCTS.websiteMonthly);
+      await w.publish(transactionId, siteData({ bookingUrl: url }));
+      expect(pendingOf('fade-lab').siteData).not.toHaveProperty('bookingUrl');
+    });
+
+  it.each([['https://aibarber.org:8443/book/x'], ['https://aibarber.org.evil.com/book/x'], ['https://aibarber.org/bookings'], ['https://booksy.com/aibarber.org/book']])(
+    'M8: a non-AI-Barber look-alike (%s) is a booking link of the barber\'s own and is kept', async (url) => {
       const { transactionId } = w.apple.buy(PRODUCTS.websiteMonthly);
       await w.publish(transactionId, siteData({ bookingUrl: url }));
       expect(pendingOf('fade-lab').siteData.bookingUrl).toBe(url);
     });
 
-  it.fails('BUG (minor): the same AI Barber booking URL with an explicit :443 port or a trailing-dot host survives the Website-plan strip', async () => {
+  it('M8 (fixed): the same AI Barber booking URL with an explicit :443 port or a trailing-dot host no longer survives the Website-plan strip', async () => {
     const { transactionId } = w.apple.buy(PRODUCTS.websiteMonthly);
     await w.publish(transactionId, siteData({ bookingUrl: 'https://aibarber.org:443/book/fade-lab' }));
     expect(pendingOf('fade-lab').siteData).not.toHaveProperty('bookingUrl');
