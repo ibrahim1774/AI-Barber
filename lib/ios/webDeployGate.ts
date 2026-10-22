@@ -101,15 +101,23 @@ export async function gatedWebDeploy(
   if (!row && deps.stampWebPending) {
     // Best effort: the site is already live. Only the paid checkout's deploy may supply the
     // copy's content (the same pendingSite shape the browser stored before checkout).
-    const fresh: PendingSite | undefined = auth.actor === 'checkout' && renderable(siteData)
-      ? {
-          siteId: slug,
-          siteData,
-          imageUrlMap: isObj(deployInput.imageUrls) ? (deployInput.imageUrls as Record<string, string>) : {},
-          existingSiteId: typeof existingSiteId === 'string' && existingSiteId ? existingSiteId.slice(0, 100) : null,
-          timestamp: deps.now(),
-        }
-      : undefined;
+    // Two callers send a checkout proof, in two shapes: the Stripe return sends the stored
+    // pending shape ('uploaded' markers + imageUrls as the map); the editor sends real URLs
+    // inline. Merging both maps, then the preparePendingSite transform, gives the pending
+    // shape from either.
+    let fresh: PendingSite | undefined;
+    if (auth.actor === 'checkout' && renderable(siteData)) {
+      const sent = isObj(deployInput.imageUrls) ? deployInput.imageUrls : {};
+      const imageUrlMap: Record<string, string> = { ...buildImageUrlMap(siteData) };
+      for (const [k, v] of Object.entries(sent)) if (typeof v === 'string' && /^https?:\/\//.test(v)) imageUrlMap[k] = v;
+      fresh = {
+        siteId: slug,
+        siteData: toPendingSiteData(siteData, imageUrlMap),
+        imageUrlMap,
+        existingSiteId: typeof existingSiteId === 'string' && existingSiteId ? existingSiteId.slice(0, 100) : null,
+        timestamp: deps.now(),
+      };
+    }
     try {
       await deps.stampWebPending(slug, result.deploymentUrl, fresh);
     } catch (e: any) {

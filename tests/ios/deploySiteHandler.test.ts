@@ -232,16 +232,23 @@ describe('api/deploy-site authorisation (C1)', () => {
     expect(deployRenderedSite).not.toHaveBeenCalled();
   });
 
-  it('a checkout deploy with no stored copy writes one, stamped, from the paid browser\'s content (review finding 6)', async () => {
+  it('a checkout deploy with no stored copy writes one, stamped, in the pending shape, from either caller (review finding 6)', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(stripeSession()), { status: 200 })));
-    const fresh = { ...sd, shopName: 'Fresh Cuts' };
-    const res = mkRes();
-    await handler(post({ siteId: 'fresh-cuts', html: '<h1/>', imageUrls: { hero: 'https://img/h.jpg' }, checkoutSessionId: SESSION, siteData: fresh, existingSiteId: 'draft-1' }), res);
-    expect(res.status).toHaveBeenCalledWith(200);
-    expect(writePendingSite).toHaveBeenCalledWith('fresh-cuts', expect.objectContaining({
-      siteId: 'fresh-cuts', siteData: fresh, imageUrlMap: { hero: 'https://img/h.jpg' }, existingSiteId: 'draft-1',
-      deployedUrl: 'https://fresh-cuts.vercel.app',
-    }));
+    // The Stripe return: the stored pending shape ('uploaded' markers) + its imageUrlMap.
+    const pendingShape = { shopName: 'Fresh Cuts', hero: { imageUrl: 'uploaded' }, about: { imageUrl: '' }, gallery: ['uploaded', ''], services: [] };
+    // The editor right after paying: real URLs inline.
+    const editorShape = { shopName: 'Fresh Cuts', hero: { imageUrl: 'https://img/h.jpg' }, about: { imageUrl: '' }, gallery: ['https://img/g0.jpg', ''], services: [] };
+    const map = { hero: 'https://img/h.jpg', gallery0: 'https://img/g0.jpg' };
+    for (const [siteData, imageUrls] of [[pendingShape, map], [editorShape, map], [editorShape, {}]] as const) {
+      writePendingSite.mockClear();
+      const res = mkRes();
+      await handler(post({ siteId: 'fresh-cuts', html: '<h1/>', imageUrls, checkoutSessionId: SESSION, siteData, existingSiteId: 'draft-1' }), res);
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(writePendingSite).toHaveBeenCalledWith('fresh-cuts', expect.objectContaining({
+        siteId: 'fresh-cuts', imageUrlMap: map, existingSiteId: 'draft-1', deployedUrl: 'https://fresh-cuts.vercel.app',
+        siteData: expect.objectContaining({ hero: { imageUrl: 'uploaded' }, gallery: ['uploaded', ''] }),
+      }));
+    }
   });
 
   it('a checkout deploy replaces an unstamped stored copy (anyone could have written it) with its own content', async () => {
@@ -250,7 +257,9 @@ describe('api/deploy-site authorisation (C1)', () => {
     const res = mkRes();
     await handler(post({ siteId: 'fresh-cuts', html: '<h1/>', checkoutSessionId: SESSION, siteData: sd }), res);
     expect(res.status).toHaveBeenCalledWith(200);
-    expect(writePendingSite).toHaveBeenCalledWith('fresh-cuts', expect.objectContaining({ siteData: sd, deployedUrl: 'https://fresh-cuts.vercel.app' }));
+    expect(writePendingSite).toHaveBeenCalledWith('fresh-cuts', expect.objectContaining({
+      siteData: expect.objectContaining({ shopName: 'Fade Lab' }), deployedUrl: 'https://fresh-cuts.vercel.app',
+    }));
   });
 
   it('rate limited → 429 before any lookup', async () => {

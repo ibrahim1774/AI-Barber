@@ -76,9 +76,10 @@ describe('gatedWebDeploy', () => {
     const sd = { shopName: 'Fresh Cuts', hero: {}, about: {}, gallery: [], services: [] };
     const d = { ...deps(), stampWebPending: vi.fn(async (_s: string, _u: string, _f?: PendingSite) => {}) };
     await gatedWebDeploy(body({ siteData: sd, existingSiteId: 'draft-1' }), { target: 'fresh-cuts', row: null, actor: 'checkout' }, d);
-    expect(d.stampWebPending).toHaveBeenCalledWith('fresh-cuts', 'https://fresh-cuts.vercel.app', {
-      siteId: 'fresh-cuts', siteData: sd, imageUrlMap: { hero: 'https://h' }, existingSiteId: 'draft-1', timestamp: NOW,
-    });
+    expect(d.stampWebPending).toHaveBeenCalledWith('fresh-cuts', 'https://fresh-cuts.vercel.app', expect.objectContaining({
+      siteId: 'fresh-cuts', imageUrlMap: { hero: 'https://h' }, existingSiteId: 'draft-1', timestamp: NOW,
+      siteData: expect.objectContaining({ shopName: 'Fresh Cuts', hero: { imageUrl: 'uploaded' } }),
+    }));
     d.stampWebPending.mockClear();
     await gatedWebDeploy(body({ siteData: sd }), web('fresh-cuts'), d);
     expect(d.stampWebPending).toHaveBeenCalledWith('fresh-cuts', 'https://fresh-cuts.vercel.app', undefined);
