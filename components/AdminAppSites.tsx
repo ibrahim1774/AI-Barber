@@ -138,9 +138,12 @@ export const AdminAppSites: React.FC = () => {
       setMsg(describe(r));
       search();
     } catch (e: any) {
-      if (e.body?.error === 'conflict') setMsg({ kind: 'err', text: 'Someone saved this site since you opened it. Reloaded — check and save again.' });
+      // Reload first (open() clears the message), then say what happened.
+      const conflict = e.body?.error === 'conflict';
+      if (conflict || e.body?.saved) await open(site.slug);
+      if (conflict) setMsg({ kind: 'err', text: 'Someone saved this site since you opened it. Reloaded — check and save again.' });
+      else if (e.body?.saved) setMsg({ kind: 'err', text: `${e.message}. The new version is saved — press Republish to retry the deploy.` });
       else setMsg({ kind: 'err', text: e.message });
-      if (e.body?.saved) await open(site.slug);
     } finally {
       setBusy('');
     }

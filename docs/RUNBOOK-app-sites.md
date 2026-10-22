@@ -26,8 +26,8 @@ If the site is **taken down** (lapsed) or **revoked** (refunded), the edit is sa
 ## One-time setup for the terminal
 
 ```bash
-cd ~/AI-Barber            # this repo
-vercel link               # once, pick the AI Barber project
+cd ~/AI-Barber            # local clone of github.com/ibrahim1774/AI-Barber (git pull first)
+vercel link               # once, pick the Vercel project prime-barber-ai
 vercel env pull --environment=production .env.local
 node scripts/admin-sites.mjs --help
 ```

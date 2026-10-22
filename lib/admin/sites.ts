@@ -419,7 +419,7 @@ export interface RepublishAllInput {
   limit?: number;
   /** Sites deployed at once. Default 2. */
   concurrency?: number;
-  /** Stop starting new sites after this long. Default 200 s (functions get 300 s). */
+  /** Stop starting new sites after this long. Default 150 s (functions get 300 s; one deploy can take ~120 s). */
   budgetMs?: number;
   by?: string;
 }
@@ -495,7 +495,7 @@ export async function republishAll(input: RepublishAllInput, deps: AdminSitesDep
   }
 
   const limit = Math.max(1, Math.min(50, Math.floor(input.limit ?? 6)));
-  const budget = input.budgetMs ?? 200_000;
+  const budget = input.budgetMs ?? 150_000;
   const batch = eligible.slice(0, limit);
   const results = new Map<string, RepublishResult>();
   let save = Promise.resolve();
