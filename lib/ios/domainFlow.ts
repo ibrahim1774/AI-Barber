@@ -416,13 +416,26 @@ export async function syncAutoRenew(row: DomainRow, deps: DomainFlowDeps): Promi
   try {
     const v = registrar(deps);
     const owned = await v.owned(row.domain);
-    if (!owned) return markSynced(); // not ours / expired: nothing renews
-    if (owned.renew !== row.auto_renew) {
+    const gone = (e: unknown) => e instanceof VercelApiError
+      && (e.code === 'domain_not_found' || e.code === 'domain_not_registered' || e.code === 'domain_not_renewable');
+    if (!row.auto_renew) {
+      // OFF is always sent unless Vercel already shows it off: a registration just past its
+      // expiry reads as "not ours" but may still be renewable in the registry's grace window.
+      if (!owned || owned.renew) {
+        try {
+          await v.setAutoRenew(row.domain, false);
+        } catch (e) {
+          if (!gone(e)) throw e;
+        }
+      }
+      return markSynced(owned ? { registration_expires_at: iso(owned.expiresAt) } : {});
+    }
+    if (!owned) return markSynced(); // not ours / expired: nothing to turn on
+    if (!owned.renew) {
       try {
-        await v.setAutoRenew(row.domain, row.auto_renew);
+        await v.setAutoRenew(row.domain, true);
       } catch (e) {
-        const gone = e instanceof VercelApiError && (e.code === 'domain_not_found' || e.code === 'domain_not_registered');
-        if (!gone) throw e;
+        if (!gone(e)) throw e;
       }
     }
     return markSynced({ registration_expires_at: iso(owned.expiresAt) });

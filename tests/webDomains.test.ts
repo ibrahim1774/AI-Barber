@@ -282,6 +282,41 @@ describe('Stripe webhook: the same lifecycle as the app', () => {
     expect(w.repo.rows.size).toBe(0);
   });
 
+  it('a second paid checkout for a site that already has a domain is persisted as failed (support refunds), never lost', async () => {
+    const w = world();
+    await purchaseDomain({ sessionId: SID }, OWNER_AUTH, w.deps);
+    w.subs.sub_dom2 = { ...structuredClone(w.subs.sub_dom1), id: 'sub_dom2', metadata: signedMd('secondname.com') };
+    const r = await w.event('checkout.session.completed', { id: 'cs_live_second0001', subscription: 'sub_dom2', metadata: signedMd('secondname.com') });
+    expect(r).toMatchObject({ handled: true, status: 200, body: { domain: false, refused: 'site-has-domain' } });
+    expect(w.repo.rows.get('stripe:sub_dom2')).toMatchObject({ state: 'failed', failure_reason: 'site-has-domain', site_slug: 'fresh-cuts' });
+    expect(w.reg.api.buy).toHaveBeenCalledTimes(1);
+  });
+
+  it('the name taken between checkout and payment → failed:taken row, nothing bought', async () => {
+    const w = world();
+    w.reg.takeByStranger('freshcuts.com');
+    const r = await purchaseDomain({ sessionId: SID }, OWNER_AUTH, w.deps);
+    expect(r).toMatchObject({ status: 409, body: { error: 'domain-taken', paidSubscriptionNeedsSupport: true } });
+    expect(w.repo.rows.get('stripe:sub_dom1')).toMatchObject({ state: 'failed', failure_reason: 'taken' });
+    expect(w.reg.api.buy).not.toHaveBeenCalled();
+  });
+
+  it('a missing signing secret → 500 (Stripe retries), never a silent 200', async () => {
+    const w = world();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const r = await handleDomainStripeEvent({ type: 'customer.subscription.updated', data: { object: { id: 'sub_dom1', metadata: signedMd() } } }, () => ({ ...w.deps, secret: '' }));
+    expect(r).toMatchObject({ handled: true, status: 500 });
+  });
+
+  it('an existing domain row keeps getting cancel/renew events even after the secret changed', async () => {
+    const w = world();
+    await purchaseDomain({ sessionId: SID }, OWNER_AUTH, w.deps);
+    w.subs.sub_dom1.cancel_at_period_end = true;
+    const r = await handleDomainStripeEvent({ type: 'customer.subscription.updated', data: { object: { id: 'sub_dom1', metadata: signedMd() } } }, () => ({ ...w.deps, secret: 'rotated' }));
+    expect(r).toMatchObject({ handled: true, status: 200, body: { domain: true } });
+    expect(w.repo.rows.get('stripe:sub_dom1')!.auto_renew).toBe(false);
+  });
+
   it('a Stripe outage → 500 so Stripe retries', async () => {
     const w = world();
     w.deps.getSubscription.mockRejectedValueOnce(new Error('stripe down'));

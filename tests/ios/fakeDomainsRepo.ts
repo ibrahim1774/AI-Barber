@@ -50,6 +50,12 @@ export function fakeDomainsRepo(seed: DomainRow[] = [], clock: () => number = Da
       rows.set(r.original_transaction_id, r);
       return 'ok';
     },
+    async insertFailed(n, reason) {
+      if (rows.has(n.original_transaction_id)) return 'conflict';
+      const t = stamp();
+      rows.set(n.original_transaction_id, blankRow({ ...n, state: 'failed', failure_reason: reason, auto_renew: false, created_at: t, updated_at: t }));
+      return 'ok';
+    },
     async update(otid, from, patch, where) {
       const cur = rows.get(otid);
       if (!cur || (from && !from.includes(cur.state))) return null;

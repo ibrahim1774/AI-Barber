@@ -70,6 +70,13 @@ export interface DomainsRepo {
   /** Insert a reserved row. 'conflict' when the otid, the domain or the site slot is already taken. */
   insertReserved(row: NewDomainRow): Promise<'ok' | 'conflict'>;
   /**
+   * Record a PAID slot that was refused before anything was bought (website: the name was taken
+   * between checkout and payment, or the site already has a domain), so it is visible to the
+   * admin and support. Failed rows are outside both partial unique indexes. 'conflict' when the
+   * otid already has a row.
+   */
+  insertFailed(row: NewDomainRow, reason: string): Promise<'ok' | 'conflict'>;
+  /**
    * UPDATE … WHERE otid AND state IN `from` (any state when null) [AND auto_renew = where.auto_renew].
    * Returns the new row, or null when the row did not match. A 23505 throws DomainConflict.
    */
@@ -135,6 +142,15 @@ export function supabaseDomains(client?: SupabaseClient): DomainsRepo {
       if (error) {
         if ((error as { code?: string }).code === '23505') return 'conflict';
         fail('insertReserved', error);
+      }
+      return 'ok';
+    },
+
+    async insertFailed(row, reason) {
+      const { error } = await db().from(TABLE).insert({ ...row, state: 'failed', failure_reason: reason, auto_renew: false });
+      if (error) {
+        if ((error as { code?: string }).code === '23505') return 'conflict';
+        fail('insertFailed', error);
       }
       return 'ok';
     },

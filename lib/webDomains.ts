@@ -21,7 +21,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { DeployAuthResult } from './deployAuth.js';
 import { isComDomain } from './ios/domainNames.js';
 import {
-  advanceSlot, applyPayerEvent, claimSlot, precheckDomain, reserveSlot, statusBody,
+  advanceSlot, applyPayerEvent, precheckDomain, reserveSlot, statusBody,
   type DomainFlowDeps, type PayerStatus,
 } from './ios/domainFlow.js';
 
@@ -211,11 +211,46 @@ export async function purchaseDomain(body: any, authorization: unknown, deps: We
   if (!payer.active) return { status: 402, body: { error: 'subscription-inactive' } };
   if (!deps.testMode && (!deps.flow.vercel || !deps.flow.contact)) return { status: 503, body: { error: 'domains-unavailable' } };
 
-  const r = await claimSlot({
-    key: `stripe:${v.subscriptionId}`, source: 'stripe', environment: 'Production', simulated: deps.testMode,
+  const c = {
+    key: `stripe:${v.subscriptionId}`, source: 'stripe' as const, environment: 'Production' as const, simulated: deps.testMode,
     slug: v.slug, domain: v.domain, payer,
-  }, deps.flow);
+  };
+  let reserved;
+  try {
+    reserved = await reserveSlot(c, deps.flow);
+  } catch (e: any) {
+    console.error('[PurchaseDomain] reserve failed:', e?.code || e?.message || e);
+    return { status: 503, body: { error: 'Try again shortly' } };
+  }
+  if (reserved.result) {
+    await recordRefusedPaidSlot(c, reserved.result, deps.flow);
+    return { status: reserved.result.status, body: { ...(reserved.result.body as Record<string, unknown>), paidSubscriptionNeedsSupport: true } };
+  }
+  const r = await advanceSlot(c.key, payer, deps.flow);
   return { status: r.status, body: r.body as Record<string, unknown> };
+}
+
+const REFUSAL_REASON: Record<string, string> = {
+  'domain-taken': 'taken', 'domain-not-eligible': 'price', 'site-has-domain': 'site-has-domain',
+};
+
+/**
+ * A paid website subscription refused before anything was bought (the name was taken between
+ * checkout and payment, or a second checkout for a site that already has a domain): persist it
+ * as a FAILED row so the admin tab shows it. Support cancels and refunds the subscription; there
+ * is no web UI to repoint. Returns the refusal code.
+ */
+async function recordRefusedPaidSlot(c: { key: string; slug: string; domain: string; simulated: boolean }, result: { body: unknown }, flow: DomainFlowDeps): Promise<string> {
+  const code = String((result.body as any)?.error || 'refused');
+  const reason = REFUSAL_REASON[code];
+  console.error(`[domains/web] PAID subscription ${c.key} for ${c.domain} on ${c.slug} refused (${code}): support must cancel + refund`);
+  if (reason) {
+    await flow.repo.insertFailed({
+      original_transaction_id: c.key, source: 'stripe', environment: 'Production', site_slug: c.slug, domain: c.domain,
+      simulated: c.simulated, auto_renew: false,
+    }, reason).catch((e) => console.error(`[domains/web] recording the refused slot ${c.key} failed:`, e?.message || e));
+  }
+  return code;
 }
 
 // ─── Stripe webhook ───
@@ -263,26 +298,31 @@ export async function handleDomainStripeEvent(
 
   try {
     const deps = getDeps();
+    // Without the secret no new purchase can be verified: 500 so Stripe retries once it is set.
+    if (!deps.secret) throw new Error('DOMAIN_CHECKOUT_SECRET is not set');
+    const key = `stripe:${subId}`;
     const sub = await deps.getSubscription(subId);
+    const existing = await deps.flow.repo.get(key);
+    if (existing) {
+      // The row is the proof (it was created from a verified purchase): apply the subscription's
+      // CURRENT state, whatever happened to the signing secret since.
+      if (!sub) throw new Error('subscription not found at Stripe');
+      const payer = stripePayerStatus(sub, deps.flow.now());
+      await applyPayerEvent(key, event.type, { ...deps.flow, payer: async () => payer });
+      return { handled: true, status: 200, body: { received: true, domain: true } };
+    }
     const v = verifyDomainSubscription(sub, deps.secret, deps.priceId);
     if (!v) {
       console.error(`[Stripe Webhook] ${event.type} ${subId}: not a valid domain subscription (signature / price); ignored`);
       return { handled: true, status: 200, body: { received: true, ignored: 'not-a-domain-subscription' } };
     }
-    const key = `stripe:${subId}`;
     const payer = stripePayerStatus(sub, deps.flow.now());
-    const existing = await deps.flow.repo.get(key);
-    if (existing) {
-      await applyPayerEvent(key, event.type, { ...deps.flow, payer: async () => payer });
-      return { handled: true, status: 200, body: { received: true, domain: true } };
-    }
     if (!payer.active) return { handled: true, status: 200, body: { received: true, ignored: 'subscription-inactive' } };
     const c = { key, source: 'stripe' as const, environment: 'Production' as const, simulated: deps.testMode, slug: v.slug, domain: v.domain, payer };
     const reserved = await reserveSlot(c, deps.flow);
     if (reserved.result) {
-      // e.g. the name was taken between checkout and payment: nothing is bought; support refunds.
-      console.error(`[Stripe Webhook] domain ${v.domain} for ${v.slug} (${subId}) not reserved:`, JSON.stringify(reserved.result.body));
-      return { handled: true, status: 200, body: { received: true, domain: false, refused: (reserved.result.body as any)?.error } };
+      const refused = await recordRefusedPaidSlot(c, reserved.result, deps.flow);
+      return { handled: true, status: 200, body: { received: true, domain: false, refused } };
     }
     return {
       handled: true, status: 200, body: { received: true, domain: true },

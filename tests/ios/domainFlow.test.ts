@@ -496,6 +496,17 @@ describe('lifecycle: cancel, lapse, resubscribe — always from the payer and Ve
     expect(w.reg.registered.get('freshcuts.com')!.renew).toBe(false);
   });
 
+  it('turning auto-renew OFF is sent even when Vercel reads the registration as expired (registry grace window)', async () => {
+    const w = world();
+    await w.claim(CLAIM);
+    w.domainSubs['100'].autoRenew = false;
+    await w.notify('DID_CHANGE_RENEWAL_STATUS', 'd-o1', 'AUTO_RENEW_DISABLED');
+    (w.reg.api.owned as any).mockResolvedValueOnce(null);
+    await w.sweep();
+    expect(w.reg.api.setAutoRenew).toHaveBeenLastCalledWith('freshcuts.com', false);
+    expect(w.reg.registered.get('freshcuts.com')!.renew).toBe(false);
+  });
+
   it('a missed notification is caught by the periodic payer refresh', async () => {
     const w = world();
     await w.claim(CLAIM);
