@@ -1,6 +1,7 @@
 import type { WebsiteData } from '@/web/types';
 import { api, type ServerVersionInfo } from '@/lib/api';
 import { emitSiteAdopted } from '@/lib/siteEvents';
+import { isAiBarberBookingUrl } from '@/lib/shop';
 import * as siteStore from '@/lib/siteStore';
 import type { SiteRecord } from '@/lib/siteStore';
 import { withTimeout } from '@/lib/timeout';
@@ -59,14 +60,25 @@ function inputsFromData(cur: SiteRecord['inputs'], d: WebsiteData): SiteRecord['
   return next;
 }
 
-/** The local record with the server's copy of the site in place of its data. Admin wins. */
+/**
+ * The local record with the server's copy of the site in place of its data. Admin wins. When support
+ * set a new own Book link (non-empty, not an AI Barber link, different from the stored one), a barber's
+ * earlier "cleared" is lifted so that link is used. Restore and the account pull never come through here
+ * for a non-admin copy, so they never lift it.
+ */
 export function adoptServerCopy(cur: SiteRecord, server: ServerSite): SiteRecord {
   const now = Date.now();
+  const data = server.siteData as WebsiteData;
+  const inputs = inputsFromData(cur.inputs, data);
+  const link = typeof data.bookingUrl === 'string' ? data.bookingUrl.trim() : '';
+  if (inputs.ownBookingCleared && link && !isAiBarberBookingUrl(link) && link !== (cur.data.bookingUrl?.trim() ?? '')) {
+    delete inputs.ownBookingCleared;
+  }
   return {
     ...cur,
     ...versionFields(server),
-    data: server.siteData as WebsiteData,
-    inputs: inputsFromData(cur.inputs, server.siteData as WebsiteData),
+    data,
+    inputs,
     deployedUrl: server.deployedUrl ?? cur.deployedUrl,
     updatedAt: now,
     syncedAt: now,

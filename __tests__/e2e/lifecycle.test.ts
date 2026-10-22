@@ -309,6 +309,57 @@ describe('the own Book link after a restore', () => {
     expect(lastSent().bookingUrl).toBeFalsy();
   });
 
+  const SQUARE = 'https://squareup.com/appointments/book/fade-lab';
+
+  it('support setting a new own link in an admin edit lifts the clear (sync path); the next publish uses it', async () => {
+    await restoredThenCleared();
+    w.m.adminSync.resetSyncState();
+    server.adminEdit((d) => ({ ...d, bookingUrl: SQUARE }));
+    expect(await w.m.adminSync.syncQuietly()).toMatchObject({ kind: 'adopted' });
+    const rec = (await w.site())!;
+    expect(rec.inputs.ownBookingCleared).toBeUndefined();
+    expect(w.m.bookingChoice.bookingPrefs(rec)).toEqual({ own: SQUARE, choice: 'own' });
+    await publish(w);
+    expect(lastSent().bookingUrl).toBe(SQUARE);
+  });
+
+  it('the same through the 409 path (admin edit lands mid-publish)', async () => {
+    await restoredThenCleared();
+    server.before['/api/ios/publish'] = [() => server.adminEdit((d) => ({ ...d, bookingUrl: SQUARE }))];
+    expect(await publish(w)).toMatchObject({ kind: 'site-updated' });
+    expect((await w.site())?.inputs.ownBookingCleared).toBeUndefined();
+    await publish(w);
+    expect(lastSent().bookingUrl).toBe(SQUARE);
+  });
+
+  it('an admin edit that leaves the Book link alone, or sets an AI Barber link, keeps the clear', async () => {
+    await restoredThenCleared();
+    w.m.adminSync.resetSyncState();
+    server.adminEdit((d) => ({ ...d, area: 'Harlem' }));
+    await w.m.adminSync.syncQuietly();
+    expect((await w.site())?.inputs.ownBookingCleared).toBe(true);
+    w.m.adminSync.resetSyncState();
+    server.adminEdit((d) => ({ ...d, bookingUrl: 'https://www.aibarber.org/book/fade-lab' }));
+    await w.m.adminSync.syncQuietly();
+    const rec = (await w.site())!;
+    expect(rec.inputs.ownBookingCleared).toBe(true);
+    expect(w.m.bookingChoice.bookingPrefs(rec).own).toBeNull();
+  });
+
+  it('an account pull carrying the old Booksy link does not lift the clear', async () => {
+    await restoredThenCleared();
+    const rec = (await w.site())!;
+    w.sb.rows.push({
+      id: rec.draftId, user_id: 'u1', deployed_url: rec.deployedUrl,
+      site_data: { ...rec.data, bookingUrl: BOOKSY, source: 'ios' },
+      updated_at: new Date(rec.updatedAt + 60_000).toISOString(),
+    });
+    expect(await w.m.account.pullSiteFromAccount('u1')).toBe('adopted');
+    const pulled = (await w.site())!;
+    expect(pulled.inputs.ownBookingCleared).toBe(true);
+    expect(w.m.bookingChoice.bookingPrefs(pulled).own).toBeNull();
+  });
+
   it('a later Restore of the same site does not bring the cleared link back', async () => {
     await restoredThenCleared();
     await w.restore();
