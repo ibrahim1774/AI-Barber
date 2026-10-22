@@ -953,7 +953,7 @@ describe('fix round 3', () => {
 describe('re-review 3: G1–G3', () => {
   it('G1+G3: a paid domain found expired alerts support at once, only once; the row still waits 45 days', async () => {
     const w = world();
-    const notifySupport = vi.fn(async () => {});
+    const notifySupport = vi.fn(async (_s: string, _t: string) => {});
     w.deps.notifySupport = notifySupport;
     w.domainSubs['100'].autoRenew = null;
     await w.claim(CLAIM);
