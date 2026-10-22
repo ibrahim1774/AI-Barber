@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useEntitlements, type EntitlementId } from '@/lib/entitlements';
 import { usePaywall, useSuperwallSettled } from '@/lib/paywall';
 import { getPlan, getSharedPlan, hostingReadOnlyOpen, setSharedPlan, subscribePlan } from '@/lib/plan';
@@ -66,14 +66,18 @@ export function useTierAccess(need: EntitlementId): TierAccess {
 export function useUpgrade(placement: 'bookings_upgrade' | 'store_upgrade') {
   const paywall = usePaywall();
   const [busy, setBusy] = useState(false);
+  // A ref, not the state: a second press before the re-render must not open a second paywall.
+  const busyRef = useRef(false);
   const run = useCallback(async () => {
-    if (busy) return;
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     try {
       await paywall(placement);
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
-  }, [busy, paywall, placement]);
+  }, [paywall, placement]);
   return { run, busy };
 }

@@ -35,6 +35,8 @@ export function OrderSheet({ order, onClose, onChanged }: Props) {
   const o = order ?? last.current;
   const [mode, setMode] = useState<Mode>('detail');
   const [busy, setBusy] = useState(false);
+  // A second tap while a request runs does nothing (busy only disables the button after the re-render).
+  const inFlight = useRef(false);
   const [notice, setNotice] = useState<string | null>(null);
 
   const id = order?.id;
@@ -51,6 +53,8 @@ export function OrderSheet({ order, onClose, onChanged }: Props) {
   };
 
   const run = async (work: () => Promise<void>) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     try {
       await work();
@@ -59,6 +63,7 @@ export function OrderSheet({ order, onClose, onChanged }: Props) {
       // The order moved under us (409): show what it is now.
       if (e instanceof OrderApiError && e.status === 409) await onChanged();
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   };

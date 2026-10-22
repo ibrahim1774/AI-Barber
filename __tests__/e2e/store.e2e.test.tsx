@@ -187,9 +187,8 @@ describe('order sheet', () => {
     expect(parseRefundAmount('1,250.00')).toBe(125000);
   });
 
-  // BUG: OrderSheet.run has no in-flight guard (busy is state, set after the first press);
-  // two presses before React re-renders send two refund requests.
-  it.failing('BUG: a double tap on Refund sends one refund request', async () => {
+  // Fixed (bug 6): OrderSheet.run had no in-flight guard; two presses before React re-rendered sent two refunds.
+  it('a double tap on Refund sends one refund request', async () => {
     jest.spyOn(Alert, 'alert').mockImplementation(() => {});
     let resolve!: (v: unknown) => void;
     mockRefund.mockImplementation(() => new Promise((r) => (resolve = r)));
@@ -206,8 +205,8 @@ describe('order sheet', () => {
     expect(mockRefund).toHaveBeenCalledTimes(1);
   });
 
-  it.failing('BUG: a double tap on Mark ready sends one request (the second would 409 and alert "This order just changed")', async () => {
-    jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  it('a double tap on Mark ready sends one request (no second 409 "This order just changed" alert)', async () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
     const tree = await mount(order());
     const [btn] = buttons(tree, 'Mark ready');
     await act(async () => {
@@ -215,6 +214,17 @@ describe('order sheet', () => {
       btn.props.onPress();
     });
     expect(mockMark).toHaveBeenCalledTimes(1);
+    expect(alert).not.toHaveBeenCalled();
+  });
+
+  it('after a request finishes (or fails), the next tap goes through', async () => {
+    jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const { OrderApiError } = jest.requireActual('@/lib/store/api');
+    mockMark.mockRejectedValueOnce(new OrderApiError(0, 'network', 'offline'));
+    const tree = await mount(order());
+    await press(tree, 'Mark ready');
+    await press(tree, 'Mark ready');
+    expect(mockMark).toHaveBeenCalledTimes(2);
   });
 
   it('a refund that failed offline says so and keeps the order as it was', async () => {

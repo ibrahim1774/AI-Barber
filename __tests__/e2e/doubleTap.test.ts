@@ -83,9 +83,9 @@ describe('publish', () => {
 });
 
 describe('upgrade buttons', () => {
-  // BUG (low): useUpgrade guards with `busy` state; two presses before React re-renders both open a paywall
-  // (the first is then superseded and reported as a decline).
-  it.failing('BUG: two presses of "See the Bookings plan" in one frame register one placement', async () => {
+  // Fixed (bug 8): useUpgrade guarded with `busy` state; two presses before React re-rendered both opened a
+  // paywall (the first then superseded, reported as a decline with an "Upgrade" error alert).
+  it('two presses of "See the Bookings plan" in one frame register one placement', async () => {
     await liveSite();
     const register = jest.fn(() => new Promise<void>(() => {}));
     w.sw.register = register;
@@ -97,7 +97,7 @@ describe('upgrade buttons', () => {
     expect(register).toHaveBeenCalledTimes(1);
   });
 
-  it('observed: the double press supersedes the first placement, which reports a decline and an "Upgrade" error alert', async () => {
+  it('the double press no longer reports a decline or shows the "Upgrade" error alert', async () => {
     await liveSite();
     const track = jest.spyOn(require('@/lib/analytics'), 'track');
     w.sw.register = jest.fn(() => new Promise<void>(() => {}));
@@ -106,8 +106,8 @@ describe('upgrade buttons', () => {
       void up.get().run();
       void up.get().run();
     });
-    expect(track).toHaveBeenCalledWith('upgrade_result', { placement: 'bookings_upgrade', result: 'declined' });
-    expect((Alert.alert as jest.Mock).mock.calls.some((c) => c[0] === 'Upgrade')).toBe(true);
+    expect(track).not.toHaveBeenCalledWith('upgrade_result', expect.anything());
+    expect((Alert.alert as jest.Mock).mock.calls.some((c) => c[0] === 'Upgrade')).toBe(false);
   });
 
   it('a second press after the re-render is ignored while the paywall is up', async () => {
