@@ -90,6 +90,9 @@
     },
     "api/publish-sweeper.ts": {
       "maxDuration": 300
+    },
+    "api/admin/sites.ts": {
+      "maxDuration": 300
     }
   }
 }

@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { checkAdmin, supabaseEmailOf } from '../lib/admin/auth.js';
 
 /*
  * /admin data feed — one JSON payload joining Stripe subscriptions,
@@ -13,8 +14,6 @@ import { createClient } from '@supabase/supabase-js';
  *   SUPABASE_SERVICE_ROLE_KEY
  *   SUPABASE_URL (falls back to VITE_SUPABASE_URL)
  */
-
-const ADMIN_EMAIL = 'ibrahim3709@gmail.com';
 
 interface SubRow {
   subId: string;
@@ -98,14 +97,9 @@ export default async function handler(req: any, res: any) {
     return res.status(500).json({ ok: false, error: 'Server missing configuration' });
   }
 
-  const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
-  if (!token) return res.status(401).json({ ok: false, error: 'Sign in required' });
-
   const admin = createClient(supabaseUrl, serviceKey);
-  const { data: caller, error: authError } = await admin.auth.getUser(token);
-  if (authError || caller?.user?.email?.toLowerCase() !== ADMIN_EMAIL) {
-    return res.status(403).json({ ok: false, error: 'Not authorized' });
-  }
+  const auth = await checkAdmin(req.headers.authorization, supabaseEmailOf(admin));
+  if (!auth.ok) return res.status(auth.status).json({ ok: false, error: auth.error });
 
   try {
     // Three sources in parallel: Stripe subs, auth users, sites rows.

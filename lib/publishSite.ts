@@ -22,6 +22,8 @@ import { generateHTMLWithPlaceholders } from './render/luxe.js';
 import { generatePrimeHTMLWithPlaceholders } from './render/prime.js';
 import { generateEuphoriaHTMLWithPlaceholders } from './render/euphoria.js';
 
+export type SiteEditor = 'owner' | 'admin';
+
 export interface PendingSite {
   siteId: string;
   siteData: WebsiteData;
@@ -29,6 +31,32 @@ export interface PendingSite {
   existingSiteId?: string | null;
   deployedUrl?: string;
   timestamp?: number;
+  /**
+   * App sites only. Bumped on every content write: an iOS (or web editor) publish by the
+   * owner, or an admin edit (lib/admin/sites.ts). Absent on copies stored before versioning
+   * (read as 0). Never goes backwards: a rollback is a new, higher version.
+   */
+  version?: number;
+  editedBy?: SiteEditor;
+  /** ISO time of the write that produced `version`. */
+  editedAt?: string;
+  /** The version of the last admin edit, carried forward by owner publishes (409 guard). */
+  adminVersion?: number;
+  /** Admin edit note (audit). */
+  note?: string;
+}
+
+/** Stored version of a pending copy; 0 when absent (stored before versioning). */
+export function versionOf(p: Pick<PendingSite, 'version'> | null | undefined): number {
+  const v = p?.version;
+  return typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : 0;
+}
+
+/** Version of the last admin edit in this copy's lineage; 0 when none. */
+export function adminVersionOf(p: Pick<PendingSite, 'version' | 'editedBy' | 'adminVersion'> | null | undefined): number {
+  if (!p) return 0;
+  const carried = typeof p.adminVersion === 'number' && p.adminVersion > 0 ? p.adminVersion : 0;
+  return Math.max(carried, p.editedBy === 'admin' ? versionOf(p) : 0);
 }
 
 export type PublishFailure = 'no-backup' | 'bad-backup' | 'deploy-failed';
@@ -56,7 +84,8 @@ export const slugify = (raw: string): string =>
     .replace(/^-|-$/g, '')
     .substring(0, 50);
 
-function bucket() {
+/** The GCS bucket holding pending-sites/ (and the admin history copies). */
+export function bucket() {
   const credentialsJson = process.env.GCP_SERVICE_ACCOUNT_JSON || process.env.GCS_CREDENTIALS;
   const bucketName = process.env.GCS_BUCKET_NAME;
   if (!credentialsJson || !bucketName) throw new Error('GCS credentials or bucket not configured');
