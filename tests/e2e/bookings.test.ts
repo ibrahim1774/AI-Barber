@@ -97,7 +97,7 @@ describe('double-booking races', () => {
     expect(live(b.state)).toHaveLength(1);
   });
 
-  it.fails('BUG: interleaved double submit where the later copy has the smaller id: the customer holds BOTH barbers', async () => {
+  it('M6 (fixed): interleaved double submit where the later copy has the smaller id: one booking (the later-created copy yields)', async () => {
     const { A, B } = await interleavedTwins('ffffffff-ffff-4fff-bfff-ffffffffffff', '00000000-0000-4000-8000-000000000001');
     expect(A.status).toBe(201);
     expect(B.status).toBe(409);

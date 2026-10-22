@@ -43,6 +43,7 @@ export function fakeRepo(state: State, nowFn: () => number = Date.now): BookingR
   const conflicts = (row: AppointmentRow) =>
     live(row) && state.appointments.some((o) => o.id !== row.id && live(o) && overlaps(o, row));
   const clone = <T>(v: T): T => (v == null ? v : JSON.parse(JSON.stringify(v)));
+  let lastInsertMs = 0;
 
   return {
     shopBySlug: async (slug) => clone(state.shops.find((s) => s.slug === slug) ?? null),
@@ -67,11 +68,13 @@ export function fakeRepo(state: State, nowFn: () => number = Date.now): BookingR
         && Date.parse(a.start_at) >= Date.parse(from) && Date.parse(a.start_at) < Date.parse(to))),
 
     async insertAppointment(row) {
+      // Like Postgres' created_at default: two inserts never share a timestamp, later is later.
+      lastInsertMs = Math.max(nowFn(), lastInsertMs + 1);
       const full: AppointmentRow = {
         id: randomUUID(), status: 'booked', cancelled_by: null, cancelled_at: null, reminder_sent_at: null,
         amount_paid_cents: 0, amount_refunded_cents: 0, stripe_payment_intent_id: null, stripe_checkout_session_id: null,
         manage_token: tok(), customer_says_paid_at: null, shop_rescheduled_at: null, refund_due_cents: 0, refund_stuck_at: null,
-        created_at: new Date(nowFn()).toISOString(), updated_at: new Date(nowFn()).toISOString(), ...row,
+        created_at: new Date(lastInsertMs).toISOString(), updated_at: new Date(lastInsertMs).toISOString(), ...row,
       };
       const m = state.members.find((x) => x.id === full.member_id);
       if (!m || m.shop_id !== full.shop_id) throw new Error('fk: member not in shop');

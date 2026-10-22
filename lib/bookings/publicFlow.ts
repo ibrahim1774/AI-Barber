@@ -271,11 +271,19 @@ export async function createAppointment(body: unknown, deps: FlowDeps): Promise<
     let appt = ins.row;
 
     // A double-submitted form can race past the duplicate check above and land on two
-    // barbers ("any"). After inserting, the copy with the smallest id wins; the others
-    // remove themselves. Every racer sees the same winner.
+    // barbers ("any"). After inserting, the EARLIEST-created copy wins (id breaks a tie) and
+    // the later ones remove themselves (e2e M6). Ordering by id alone failed when the first
+    // copy checked before the second existed and kept its 201, and the second, with a smaller
+    // id, then saw it and stayed too: the customer held both barbers. By creation order, a copy
+    // that checked before its twin existed is always the earlier one, so the twin yields.
     const twins = (await deps.repo.appointmentsStartingAt(shop.id, iso(startMs)))
       .filter((a) => a.id !== appt.id && a.status !== 'cancelled' && normalizePhone(a.customer_phone) === phoneKey);
-    if (twins.some((a) => a.id < appt.id)) {
+    const createdMs = (a: { created_at?: string | null }) => {
+      const t = Date.parse(a.created_at ?? '');
+      return Number.isFinite(t) ? t : Number.POSITIVE_INFINITY;
+    };
+    const earlier = (a: AppointmentRow) => createdMs(a) < createdMs(appt) || (createdMs(a) === createdMs(appt) && a.id < appt.id);
+    if (twins.some(earlier)) {
       await dropHold(deps, appt);
       return err(409, 'duplicate');
     }

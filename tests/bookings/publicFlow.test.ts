@@ -160,9 +160,9 @@ describe('POST /api/book/appointments', () => {
   });
 
   it.each([
-    ['00000000-0000-4000-8000-000000000000', 409],
-    ['ffffffff-ffff-4fff-8fff-ffffffffffff', 201],
-  ])('a twin that raced past the duplicate check: smallest id wins (twin %s -> %i)', async (twinId, expected) => {
+    ['00000000-0000-4000-8000-000000000000'],
+    ['ffffffff-ffff-4fff-8fff-ffffffffffff'],
+  ])('a twin that raced past the duplicate check and was created first wins, whatever its id (twin %s; e2e M6)', async (twinId) => {
     const w = world();
     const orig = w.deps.repo.insertAppointment;
     w.deps.repo.insertAppointment = async (row) => {
@@ -172,8 +172,26 @@ describe('POST /api/book/appointments', () => {
       return orig(row);
     };
     const r = await book(w);
+    expect(r).toEqual(expect.objectContaining({ status: 409, body: { error: 'duplicate' } }));
+    expect(w.state.appointments.map((a) => a.id)).toEqual([twinId]);
+  });
+
+  it.each([
+    ['00000000-0000-4000-8000-000000000000', 409],
+    ['ffffffff-ffff-4fff-8fff-ffffffffffff', 201],
+  ])('twins created at the same instant: the smallest id wins (twin %s -> %i)', async (twinId, expected) => {
+    const w = world();
+    const orig = w.deps.repo.insertAppointment;
+    w.deps.repo.insertAppointment = async (row) => {
+      await orig({ ...row, member_id: w.ids.jay });
+      const twin = w.state.appointments.at(-1)!;
+      twin.id = twinId;
+      const ours = await orig(row);
+      if (ours.ok) twin.created_at = ours.row.created_at; // same instant
+      return ours;
+    };
+    const r = await book(w);
     expect(r.status).toBe(expected);
-    if (expected === 409) expect(r.body).toEqual({ error: 'duplicate' });
     expect(w.state.appointments.map((a) => a.id)).toContain(twinId);
     expect(w.state.appointments).toHaveLength(expected === 409 ? 1 : 2);
   });
