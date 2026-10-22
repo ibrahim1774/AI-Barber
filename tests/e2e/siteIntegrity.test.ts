@@ -141,29 +141,28 @@ describe('two deploys of one slug in flight: the one that FINISHES last is live'
 });
 
 // ---------------------------------------------------------------------------
-describe('publish stores before it renders (admin dry-renders first; the phone path does not)', () => {
+describe('I3: the phone publish dry-renders before it stores (like admin saves)', () => {
   const broken = () => ({ ...siteData(), contact: undefined }) as any;
 
-  it('setup: a phone publish with no contact passes the shape check and replaces the good stored copy', async () => {
+  it('setup (was: a phone publish with no contact replaces the good copy, then 502): refused 400 before Apple is asked; the good copy stays and republishes', async () => {
     const { transactionId } = await published();
-    const good = pendingOf('fade-lab');
+    const good = JSON.stringify(pendingOf('fade-lab'));
+    const lookups = w.apple.state.lookups.length;
     const r = await w.publish(transactionId, broken(), { baseVersion: 1 });
-    expect(r).toMatchObject({ status: 502, body: { error: 'publish-failed', reason: 'deploy-failed' } });
-    expect(pendingOf('fade-lab').version).toBe(2);
-    expect(pendingOf('fade-lab').siteData.contact).toBeUndefined();
-    expect(good.siteData.contact).toBeDefined();
-    // No history is kept for owner writes, and the admin republish now refuses the copy.
-    expect(await republish('fade-lab', w.adminDeps())).toMatchObject({ ok: false, error: 'invalid-copy' });
+    expect(r).toMatchObject({ status: 400, body: { error: 'bad-request' } });
+    expect(w.apple.state.lookups.length).toBe(lookups);
+    expect(JSON.stringify(pendingOf('fade-lab'))).toBe(good);
+    expect(await republish('fade-lab', w.adminDeps())).toMatchObject({ ok: true });
   });
 
-  it.fails('BUG: an unrenderable publish destroys the last good stored copy (400 expected before any write)', async () => {
+  it('I3 (fixed): an unrenderable publish never destroys the last good stored copy (400 before any write)', async () => {
     const { transactionId } = await published();
     const r = await w.publish(transactionId, broken(), { baseVersion: 1 });
     expect(r.status).toBe(400);
     expect(pendingOf('fade-lab').siteData.contact).toBeDefined();
   });
 
-  it.fails('BUG: about.description sent as a string (old app build) breaks the stored copy the same way', async () => {
+  it('I3 (fixed): about.description sent as a string (old app build) is refused the same way', async () => {
     const { transactionId } = await published();
     const r = await w.publish(transactionId, siteData({ about: { heading: 'A', description: 'one paragraph' as any, imageUrl: '' } }), { baseVersion: 1 });
     expect(r.status).toBe(400);

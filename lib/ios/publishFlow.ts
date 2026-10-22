@@ -9,6 +9,7 @@
 import type { WebsiteData } from '../../types.js';
 import {
   publishSite,
+  renderPending,
   readPendingSite,
   readPendingVersioned,
   writePendingSite,
@@ -25,7 +26,7 @@ import { supabasePurchases, type PurchasesRepo } from './purchases.js';
 import { chooseSlug, makeIsTaken, urlServes, vercelProjectExists } from './slug.js';
 import { buildImageUrlMap, toPendingSiteData } from './pendingData.js';
 import { stripLapsedLinks } from './tiers.js';
-import { MAX_BODY_BYTES, hasDataUrl, isObj, restoreImageUrls, validSiteData } from './siteShape.js';
+import { MAX_BODY_BYTES, hasDataUrl, isObj, restoreImageUrls, validSiteData, validationProblem } from './siteShape.js';
 
 export { buildImageUrlMap, toPendingSiteData };
 
@@ -76,6 +77,8 @@ export interface PublishDeps {
   readPending(slug: string): Promise<PendingSite | null>;
   /** The stored copy with its GCS generation (compare-and-set). Absent: unconditional writes (older fakes). */
   readPendingVersioned?(slug: string): Promise<VersionedPending>;
+  /** Dry render before storing (lib/publishSite.ts renderPending). Throws on unrenderable data. */
+  render?(p: Pick<PendingSite, 'siteData' | 'imageUrlMap'>): string;
   now(): number;
 }
 
@@ -138,6 +141,21 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps): 
     imageUrlMap = buildImageUrlMap(sd);
     pendingData = toPendingSiteData(sd, imageUrlMap);
   } catch {
+    return badRequest;
+  }
+  // Same checks and dry render as an admin save (e2e I3): the stored copy is replaced BEFORE
+  // the deploy renders it, so data the templates can't render (no contact, about.description
+  // as a string from an old build, ...) would destroy the last good copy. Refused here, before
+  // Apple is asked and before anything is written.
+  const problem = validationProblem(sd);
+  if (problem) {
+    console.warn(`[ios/publish] refused before any write: ${problem}`);
+    return badRequest;
+  }
+  try {
+    (deps.render ?? renderPending)({ siteData: pendingData, imageUrlMap });
+  } catch (e) {
+    console.warn(`[ios/publish] refused before any write: the template can't render this: ${(e as Error)?.message || e}`);
     return badRequest;
   }
 

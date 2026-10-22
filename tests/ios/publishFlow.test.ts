@@ -25,10 +25,12 @@ function site(over: Partial<WebsiteData> = {}): WebsiteData {
     phone: '555-0100',
     hero: { heading: 'H', tagline: 'T', imageUrl: 'https://img.example/hero.jpg' },
     about: { heading: 'A', description: ['d'], imageUrl: '' },
-    services: [{ name: 'Fade', price: '$30', imageUrl: 'https://img.example/svc.jpg' } as any],
+    services: [{ title: 'Fade', name: 'Fade', price: '$30', imageUrl: 'https://img.example/svc.jpg' } as any],
     gallery: ['https://img.example/g0.jpg', '', 'http://img.example/g2.jpg'],
     craftImages: ['https://img.example/c0.jpg'],
     staff: [{ name: 'Sam', photo: 'https://img.example/s0.jpg' }, { name: 'Lee', photo: '' }],
+    // Renderable (the publish dry-renders before storing, e2e I3).
+    contact: { address: '1 Main St', email: 'a@b.co' },
     ...over,
   } as WebsiteData;
 }

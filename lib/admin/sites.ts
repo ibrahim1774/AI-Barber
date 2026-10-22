@@ -20,7 +20,7 @@ import type { WebsiteData } from '../../types.js';
 import type { PurchaseRow } from '../ios/purchases.js';
 import { casPending, type PendingSite, type PublishOutcome, type SiteEditor, type VersionedPending } from '../publishSite.js';
 import { buildImageUrlMap, toPendingSiteData } from '../ios/pendingData.js';
-import { MAX_BODY_BYTES, hasDataUrl, isObj, jsonBytes, restoreImageUrls, validSiteData } from '../ios/siteShape.js';
+import { isObj, restoreImageUrls, validationProblem } from '../ios/siteShape.js';
 import { stripLapsedLinks, tierOf, type Tier } from '../ios/tiers.js';
 import { PatchError, applyPatch, applySets } from './patch.js';
 
@@ -294,19 +294,6 @@ function nextSiteData(input: UpdateInput, current: WebsiteData | null): WebsiteD
   }
   if (input.patch !== undefined) return applyPatch(current, input.patch);
   return applySets(current, input.set as Record<string, unknown>);
-}
-
-function validationProblem(sd: unknown): string | null {
-  if (!validSiteData(sd)) return 'siteData needs shopName, hero, about, gallery[] and services[] (craftImages/staff must be lists)';
-  // Deeper than the publish shape check: these are what the renderers dereference.
-  if (!isObj(sd.contact)) return 'contact must be an object ({ address, email })';
-  const badService = sd.services.findIndex((x: unknown) => !isObj(x) || typeof x.title !== 'string');
-  if (badService >= 0) return `services.${badService} must be an object with a text title`;
-  const desc = (sd.about as any).description;
-  if (!Array.isArray(desc) || desc.some((d: unknown) => typeof d !== 'string')) return 'about.description must be a list of text paragraphs';
-  if (hasDataUrl(sd)) return 'inline data: images are not allowed; upload the image and use its https URL';
-  if (jsonBytes(sd) > MAX_BODY_BYTES) return 'siteData is larger than 3 MB';
-  return null;
 }
 
 /** Re-decide attempts when another writer lands between an admin read and write (I1). */
