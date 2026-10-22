@@ -64,6 +64,10 @@ function useEuphoriaAssets() {
 
 
 
+
+// Editor-only: placeholder text for empty editable fields (never in the deployed page).
+const EDITOR_PLACEHOLDER_CSS = '[data-placeholder]:empty::before{content:attr(data-placeholder);opacity:.45;font-style:italic;pointer-events:none}[data-placeholder]:empty{display:inline-block;min-width:2ch}';
+
 export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, site, onNavigateDashboard, isPostPayment = false, userId = null, onCheckoutFlowChange, hidePrepaymentBanner, showThemePicker = false, themePickerPlacement = 'below-design' }) => {
   useEuphoriaAssets();
 
@@ -190,10 +194,14 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
     }
   };
 
-  const Editable: React.FC<{ text: string; onSave: (v: string) => void; tag?: React.ElementType; style?: React.CSSProperties; className?: string }> = ({ text, onSave, tag: Tag = 'span', style, className = '' }) => (
+  // `placeholder`: shown via CSS only while the field is empty, so typing
+  // never mixes into placeholder text.
+  const Editable: React.FC<{ text: string; onSave: (v: string) => void; tag?: React.ElementType; style?: React.CSSProperties; className?: string; placeholder?: string }> = ({ text, onSave, tag: Tag = 'span', style, className = '', placeholder }) => (
     React.createElement(Tag as any, {
       contentEditable: true,
       suppressContentEditableWarning: true,
+      'data-placeholder': placeholder,
+      'aria-placeholder': placeholder,
       onBlur: (e: any) => onSave(e.target.innerText),
       className: `eu-editable ${className}`,
       style,
@@ -351,6 +359,8 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
   };
 
   const formattedPhone = siteData.phone.replace(/\s+/g, '');
+  // Editor: no tel: link without digits (matches the deployed page).
+  const callHref = /\d/.test(siteData.phone || '') ? `tel:${formattedPhone}` : undefined;
   // What the deployed page shows: older sites' invented copy removed
   // (withoutLegacyCopy). Edits are made against this view.
   const view = withoutLegacyCopy(siteData);
@@ -358,6 +368,12 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
   const updateService = (i: number, p: Partial<ServiceItem>) =>
     handleTextChange('services', view.services.map((s, k) => (k === i ? { ...s, ...p } : s)) as any);
   const removeService = (i: number) => handleTextChange('services', view.services.filter((_, k) => k !== i) as any);
+  // Remove on mousedown so a pending field's blur commit can't swallow the
+  // first click; onClick still handles keyboard activation.
+  const removeHandlers = (i: number) => ({
+    onMouseDown: (e: React.MouseEvent) => { e.preventDefault(); removeService(i); },
+    onClick: (e: React.MouseEvent) => { if (e.detail === 0) removeService(i); },
+  });
   const addService = (svc: ServiceItem) => handleTextChange('services', [...view.services, svc] as any);
   const mapQuery = encodeURIComponent(`${siteData.shopName} ${siteData.area}`);
 
@@ -401,6 +417,7 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
 
   return (
     <div className={`euphoria-root pt-[32px] md:pt-[40px] ${!isPostPayment ? 'pb-[250px] md:pb-[180px]' : ''}`} style={themeStyle}>
+      <style>{EDITOR_PLACEHOLDER_CSS}</style>
       {/* Floating theme-color picker — post-payment always, and pre-payment
           when the generation flow opts in via showThemePicker. */}
       {(isPostPayment || showThemePicker) && (
@@ -439,7 +456,7 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
           <span className="eu-serif" style={{ fontSize: 20, letterSpacing: '0.04em' }}>
             <Editable text={siteData.shopName} onSave={v => handleTextChange('shopName', v)} />
           </span>
-          <a href={`tel:${formattedPhone}`} className="eu-cta" style={{ padding: '10px 18px', fontSize: 10 }}>Book now</a>
+          <a href={siteData.bookingUrl || callHref} className="eu-cta" style={{ padding: '10px 18px', fontSize: 10 }}>Book now</a>
         </div>
       </nav>
 
@@ -467,8 +484,8 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
             <Editable text={view.hero.tagline} onSave={v => handleTextChange('hero.tagline', v)} />
           </p>
           <div style={{ display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
-            <a href={`tel:${formattedPhone}`} className="eu-cta eu-cta-solid">
-              Call <Editable text={siteData.phone} onSave={v => handleTextChange('phone', v)} />
+            <a href={callHref} className="eu-cta eu-cta-solid">
+              {callHref ? 'Call ' : ''}<Editable text={siteData.phone} placeholder="Add phone" onSave={v => handleTextChange('phone', v)} />
             </a>
             {siteData.bookingUrl && (
               <a
@@ -541,7 +558,7 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
                     <Editable text={s.title} onSave={v => updateService(i, { title: v.trim() || s.title })} />
                     {' '}
                     <span style={{ color: s.price ? 'var(--eu-brand)' : 'var(--eu-ink-muted)', fontStyle: 'italic', whiteSpace: 'nowrap', fontSize: s.price ? undefined : 13 }}>
-                      <Editable text={s.price ? displayPrice(s.price) : 'Add price'} onSave={v => updateService(i, { price: optionalText(v, 'Add price') })} />
+                      <Editable text={s.price ? displayPrice(s.price) : ''} placeholder="Add price" onSave={v => updateService(i, { price: optionalText(v, 'Add price') })} />
                     </span>
                   </h3>
                   {serviceMeta(s) && (
@@ -550,9 +567,9 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
                     </div>
                   )}
                   <p style={{ color: s.description ? 'var(--eu-ink-soft)' : 'var(--eu-ink-muted)', fontSize: 15, lineHeight: 1.6, margin: 0, maxWidth: 640 }}>
-                    <Editable text={s.description || 'Add description'} onSave={v => updateService(i, { description: optionalText(v, 'Add description') })} />
+                    <Editable text={s.description || ''} placeholder="Add description" onSave={v => updateService(i, { description: optionalText(v, 'Add description') })} />
                   </p>
-                  <button type="button" onClick={() => removeService(i)} aria-label={`Remove ${s.title}`} style={{ marginTop: 10, background: 'transparent', border: '1px solid var(--eu-line)', color: 'var(--eu-ink-muted)', padding: '4px 8px', fontSize: 9, letterSpacing: '0.16em', textTransform: 'uppercase', cursor: 'pointer' }}>
+                  <button type="button" {...removeHandlers(i)} aria-label={`Remove ${s.title}`} style={{ marginTop: 10, background: 'transparent', border: '1px solid var(--eu-line)', color: 'var(--eu-ink-muted)', padding: '4px 8px', fontSize: 9, letterSpacing: '0.16em', textTransform: 'uppercase', cursor: 'pointer' }}>
                     Remove
                   </button>
                 </div>
@@ -604,11 +621,11 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
             <div style={{ display: 'grid', gap: 24, color: 'var(--eu-ink-soft)', fontSize: 16, lineHeight: 1.6 }}>
               <div>
                 <div className="eu-eyebrow" style={{ marginBottom: 6 }}>Location</div>
-                <Editable text={siteData.contact.address} onSave={v => handleTextChange('contact.address', v)} />
+                <Editable text={siteData.contact.address} placeholder="Add area" onSave={v => handleTextChange('contact.address', v)} />
               </div>
               <div>
                 <div className="eu-eyebrow" style={{ marginBottom: 6 }}>Phone</div>
-                <Editable text={siteData.phone} onSave={v => handleTextChange('phone', v)} />
+                <Editable text={siteData.phone} placeholder="Add phone" onSave={v => handleTextChange('phone', v)} />
               </div>
               {/* Typed / scraped only; an older site's invented
                   contact@<shop>.com is hidden (honest.ts contactEmail). */}

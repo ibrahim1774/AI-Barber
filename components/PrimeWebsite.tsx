@@ -85,6 +85,10 @@ function usePrimeAssets() {
 // ===========================================================================
 // Editor component
 // ===========================================================================
+
+// Editor-only: placeholder text for empty editable fields (never in the deployed page).
+const EDITOR_PLACEHOLDER_CSS = '[data-placeholder]:empty::before{content:attr(data-placeholder);opacity:.45;font-style:italic;pointer-events:none}[data-placeholder]:empty{display:inline-block;min-width:2ch}';
+
 export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, onNavigateDashboard, isPostPayment = false, userId = null, onCheckoutFlowChange, hidePrepaymentBanner, onUpdate, showThemePicker = false, themePickerPlacement = 'below-design' }) => {
   usePrimeAssets();
 
@@ -218,10 +222,14 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
     }
   };
 
-  const Editable: React.FC<{ text: string; onSave: (v: string) => void; tag?: React.ElementType; style?: React.CSSProperties; className?: string }> = ({ text, onSave, tag: Tag = 'span', style, className = '' }) => (
+  // `placeholder`: shown via CSS only while the field is empty, so typing
+  // never mixes into placeholder text.
+  const Editable: React.FC<{ text: string; onSave: (v: string) => void; tag?: React.ElementType; style?: React.CSSProperties; className?: string; placeholder?: string }> = ({ text, onSave, tag: Tag = 'span', style, className = '', placeholder }) => (
     React.createElement(Tag as any, {
       contentEditable: true,
       suppressContentEditableWarning: true,
+      'data-placeholder': placeholder,
+      'aria-placeholder': placeholder,
       onBlur: (e: any) => onSave(e.target.innerText),
       className: `p-editable ${className}`,
       style,
@@ -368,7 +376,9 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
 
   const formattedPhone = (siteData.phone || '').replace(/\s+/g, '');
   const phoneE164 = '+1' + (siteData.phone || '').replace(/\D/g, '');
-  const bookHref = siteData.bookingUrl || `tel:${phoneE164}`;
+  // Editor: no tel: link without digits (matches the deployed page).
+  const callHref = /\d/.test(siteData.phone || '') ? `tel:${phoneE164}` : undefined;
+  const bookHref = siteData.bookingUrl || callHref;
   const mapQuery = encodeURIComponent(`${siteData.shopName} ${siteData.area}`);
   // Mirrors lib/render/prime.ts: only scraped facts and barber-written text.
   // `view` drops older sites' invented copy; edits are made against it.
@@ -378,6 +388,12 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
   const updateService = (i: number, p: Partial<ServiceItem>) =>
     handleTextChange('services', view.services.map((s, k) => (k === i ? { ...s, ...p } : s)) as any);
   const removeService = (i: number) => handleTextChange('services', view.services.filter((_, k) => k !== i) as any);
+  // Remove on mousedown so a pending field's blur commit can't swallow the
+  // first click; onClick still handles keyboard activation.
+  const removeHandlers = (i: number) => ({
+    onMouseDown: (e: React.MouseEvent) => { e.preventDefault(); removeService(i); },
+    onClick: (e: React.MouseEvent) => { if (e.detail === 0) removeService(i); },
+  });
   const addService = (svc: ServiceItem) => handleTextChange('services', [...view.services, svc] as any);
   const agg = aggregateToShow(siteData);
   const policy = policyToShow(siteData);
@@ -427,6 +443,7 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
 
   return (
     <div className={`prime-root pt-[32px] md:pt-[40px] ${!isPostPayment ? 'pb-[250px] md:pb-[180px]' : ''}`} style={themeStyle}>
+      <style>{EDITOR_PLACEHOLDER_CSS}</style>
       {/* Floating theme-color picker — post-payment always, and pre-payment
           when the generation flow opts in via showThemePicker. */}
       {(isPostPayment || showThemePicker) && (
@@ -597,14 +614,14 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
                       </div>
                     )}
                     <p className="p-serif" style={{ color: s.description ? 'var(--p-ink-soft)' : 'var(--p-ink-muted)', fontSize: '0.9rem', marginTop: 8, maxWidth: 560 }}>
-                      <Editable text={s.description || 'Add description'} onSave={v => updateService(i, { description: optionalText(v, 'Add description') })} />
+                      <Editable text={s.description || ''} placeholder="Add description" onSave={v => updateService(i, { description: optionalText(v, 'Add description') })} />
                     </p>
-                    <button type="button" onClick={() => removeService(i)} aria-label={`Remove ${s.title}`} className="p-eyebrow" style={{ marginTop: 8, background: 'transparent', border: '1px solid var(--p-line)', color: 'var(--p-ink-muted)', padding: '4px 8px', fontSize: 9, cursor: 'pointer' }}>
+                    <button type="button" {...removeHandlers(i)} aria-label={`Remove ${s.title}`} className="p-eyebrow" style={{ marginTop: 8, background: 'transparent', border: '1px solid var(--p-line)', color: 'var(--p-ink-muted)', padding: '4px 8px', fontSize: 9, cursor: 'pointer' }}>
                       Remove
                     </button>
                   </div>
                   <div className="p-serif p-italic" style={{ fontSize: s.price ? '1.6rem' : '0.9rem', color: s.price ? 'var(--p-brand-bright)' : 'var(--p-ink-muted)', whiteSpace: 'nowrap' }}>
-                    <Editable text={s.price ? displayPrice(s.price) : 'Add price'} onSave={v => updateService(i, { price: optionalText(v, 'Add price') })} />
+                    <Editable text={s.price ? displayPrice(s.price) : ''} placeholder="Add price" onSave={v => updateService(i, { price: optionalText(v, 'Add price') })} />
                   </div>
                 </div>
               ))}
@@ -741,11 +758,11 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
             <div style={{ display: 'grid', gap: 22, color: 'var(--p-ink-soft)', fontSize: 16, lineHeight: 1.6 }}>
               <div>
                 <div className="p-eyebrow" style={{ marginBottom: 6 }}>The Address</div>
-                <Editable text={siteData.contact.address} tag="div" className="p-serif p-italic" style={{ color: 'var(--p-ink)', fontSize: '1.2rem' }} onSave={v => handleTextChange('contact.address', v)} />
+                <Editable text={siteData.contact.address} placeholder="Add area" tag="div" className="p-serif p-italic" style={{ color: 'var(--p-ink)', fontSize: '1.2rem' }} onSave={v => handleTextChange('contact.address', v)} />
               </div>
               <div>
                 <div className="p-eyebrow" style={{ marginBottom: 6 }}>By Phone</div>
-                <Editable text={siteData.phone} tag="div" className="p-serif p-italic" style={{ color: 'var(--p-ink)', fontSize: '1.2rem' }} onSave={v => handleTextChange('phone', v)} />
+                <Editable text={siteData.phone} placeholder="Add phone" tag="div" className="p-serif p-italic" style={{ color: 'var(--p-ink)', fontSize: '1.2rem' }} onSave={v => handleTextChange('phone', v)} />
               </div>
               {siteData.bookingUrl && (
                 <div>

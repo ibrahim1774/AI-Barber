@@ -56,6 +56,10 @@ interface GeneratedWebsiteProps {
 
 
 
+
+// Editor-only: placeholder text for empty editable fields (never in the deployed page).
+const EDITOR_PLACEHOLDER_CSS = '[data-placeholder]:empty::before{content:attr(data-placeholder);opacity:.45;font-style:italic;pointer-events:none}[data-placeholder]:empty{display:inline-block;min-width:2ch}';
+
 export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack, site, onNavigateDashboard, isPostPayment = false, userId = null, onCheckoutFlowChange, hidePrepaymentBanner, onUpdate, showThemePicker = false, themePickerPlacement = 'below-design' }) => {
   const [siteData, setSiteData] = useState<WebsiteData>(data);
   // Echo guard for onUpdate — see PrimeWebsite for the rationale. Only active
@@ -156,6 +160,13 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
   const updateService = (i: number, patch: Partial<ServiceItem>) =>
     handleTextChange('services', view.services.map((s, k) => (k === i ? { ...s, ...patch } : s)) as any);
   const removeService = (i: number) => handleTextChange('services', view.services.filter((_, k) => k !== i) as any);
+  // Remove on mousedown (preventDefault keeps focus where it is): with a plain
+  // click, the blur commit of a field being edited re-renders the card and the
+  // first click never lands. onClick still handles keyboard activation.
+  const removeHandlers = (i: number) => ({
+    onMouseDown: (e: React.MouseEvent) => { e.preventDefault(); removeService(i); },
+    onClick: (e: React.MouseEvent) => { if (e.detail === 0) removeService(i); },
+  });
   const addService = (svc: ServiceItem) => handleTextChange('services', [...view.services, svc] as any);
   const setLabel = (key: string, value: string) => {
     setSiteData(prev => ({ ...prev, labels: { ...(prev.labels || {}), [key]: value } }));
@@ -281,10 +292,14 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
   };
 
   // ContentEditable component wrapper for convenience
-  const EditableText = ({ text, onSave, className = "", tagName: Tag = "span" }: { text: string, onSave: (val: string) => void, className?: string, tagName?: any }) => (
+  // `placeholder`: shown (CSS ::before, see EDITOR_PLACEHOLDER_CSS) only while
+  // the field is empty, so typing never mixes into placeholder text.
+  const EditableText = ({ text, onSave, className = "", tagName: Tag = "span", placeholder }: { text: string, onSave: (val: string) => void, className?: string, tagName?: any, placeholder?: string }) => (
     <Tag
       contentEditable
       suppressContentEditableWarning
+      data-placeholder={placeholder}
+      aria-placeholder={placeholder}
       onBlur={(e: any) => onSave(e.target.innerText)}
       className={`outline-none focus:ring-1 focus:ring-[#f4a100]/50 rounded px-1 -mx-1 transition-all ${className}`}
     >
@@ -509,6 +524,8 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
   };
 
   const formattedPhone = siteData.phone.replace(/\s+/g, '');
+  // Editor: a phone with no digits gets no tel: link (matches the deployed page).
+  const callHref = /\d/.test(siteData.phone || '') ? `tel:${formattedPhone}` : undefined;
 
   const handlePublish = () => {
     setShowPublishOverlay(true);
@@ -571,6 +588,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       }}
     >
       <style>{AIB_THEME_CSS}</style>
+      <style>{EDITOR_PLACEHOLDER_CSS}</style>
       {/* Toolbar: EditorToolbar for post-payment, red banner for pre-payment */}
       {isPostPayment ? (
         <>
@@ -651,12 +669,12 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
             </div>
 
             <a
-              href={`tel:${formattedPhone}`}
+              href={callHref}
               className="flex items-center gap-2 md:gap-4 text-[#f4a100] border-l-2 border-white/20 pl-4 md:pl-8 hover:text-white transition-colors hidden sm:flex"
             >
               <PhoneIcon className="w-5 h-5 md:w-7 md:h-7" />
               <span className="text-sm md:text-xl lg:text-2xl font-bold tracking-tight">
-                <EditableText text={siteData.phone} onSave={(val) => handleTextChange('phone', val)} />
+                <EditableText text={siteData.phone} placeholder="Add phone" onSave={(val) => handleTextChange('phone', val)} />
               </span>
             </a>
           </div>
@@ -705,11 +723,11 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 md:gap-4">
             <a
-              href={`tel:${formattedPhone}`}
+              href={callHref}
               className="inline-flex items-center gap-3 border-2 border-[#f4a100] text-[#f4a100] px-6 py-4 md:px-12 md:py-6 font-montserrat font-black tracking-[2px] uppercase hover:bg-[#f4a100] hover:text-[#1a1a1a] transition-all duration-300 group shadow-lg text-xs md:text-base"
             >
               <PhoneIcon className="w-4 h-4 md:w-5 md:h-5 group-hover:scale-110 transition-transform" />
-              <span>Call Now: <EditableText text={siteData.phone} onSave={(val) => handleTextChange('phone', val)} /></span>
+              <span>{callHref ? 'Call Now: ' : ''}<EditableText text={siteData.phone} placeholder="Add phone" onSave={(val) => handleTextChange('phone', val)} /></span>
             </a>
             {siteData.bookingUrl && (
               <a
@@ -861,7 +879,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
               <div key={i} className="group relative border-2 border-[#f4a100] p-6 md:p-10 flex flex-col hover:bg-[#1a1a1a] transition-all duration-500">
                 <button
                   type="button"
-                  onClick={() => removeService(i)}
+                  {...removeHandlers(i)}
                   aria-label={`Remove ${service.title}`}
                   className="absolute top-2 right-2 text-[9px] font-bold uppercase tracking-[0.16em] text-white/50 hover:text-red-400 px-2 py-1 border border-white/15"
                 >
@@ -872,7 +890,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
                     <EditableText text={service.title} onSave={(val) => updateService(i, { title: val.trim() || service.title })} />
                   </h3>
                   <span className={`font-montserrat font-black text-base md:text-lg whitespace-nowrap ${service.price ? 'text-[#f4a100]' : 'text-white/30 text-xs'}`}>
-                    <EditableText text={service.price ? displayPrice(service.price) : 'Add price'} onSave={(val) => updateService(i, { price: optionalText(val, 'Add price') })} />
+                    <EditableText text={service.price ? displayPrice(service.price) : ''} placeholder="Add price" onSave={(val) => updateService(i, { price: optionalText(val, 'Add price') })} />
                   </span>
                 </div>
                 {serviceMeta(service) && (
@@ -884,7 +902,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
                   </p>
                 )}
                 <p className={`text-xs md:text-sm leading-relaxed ${service.description ? 'text-[#999999]' : 'text-white/30'}`}>
-                  <EditableText text={service.description || 'Add description'} onSave={(val) => updateService(i, { description: optionalText(val, 'Add description') })} />
+                  <EditableText text={service.description || ''} placeholder="Add description" onSave={(val) => updateService(i, { description: optionalText(val, 'Add description') })} />
                 </p>
               </div>
             ))}
@@ -1136,16 +1154,16 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
                 <div>
                   <EditableText className="text-[#f4a100] font-bold text-[10px] md:text-xs tracking-[2px] mb-2 font-montserrat uppercase" tagName="h4" text={lbl('contactLocationLabel', 'Location')} onSave={(v) => setLabel('contactLocationLabel', v)} />
                   <p className="text-[#cccccc] text-xs md:text-sm leading-relaxed capitalize">
-                    <EditableText text={siteData.contact.address} onSave={(val) => handleTextChange('contact.address', val)} />
+                    <EditableText text={siteData.contact.address} placeholder="Add area" onSave={(val) => handleTextChange('contact.address', val)} />
                   </p>
                 </div>
               </div>
-              <a href={`tel:${formattedPhone}`} className="flex flex-col items-center gap-4 group">
+              <a href={callHref} className="flex flex-col items-center gap-4 group">
                 <PhoneIcon className="w-8 h-8 text-[#f4a100] group-hover:scale-110 transition-transform" />
                 <div>
                   <EditableText className="text-[#f4a100] font-bold text-[10px] md:text-xs tracking-[2px] mb-2 font-montserrat uppercase" tagName="h4" text={lbl('contactPhoneLabel', 'Phone')} onSave={(v) => setLabel('contactPhoneLabel', v)} />
                   <p className="text-[#cccccc] text-xs md:text-sm leading-relaxed group-hover:text-white transition-colors">
-                    <EditableText text={siteData.phone} onSave={(val) => handleTextChange('phone', val)} />
+                    <EditableText text={siteData.phone} placeholder="Add phone" onSave={(val) => handleTextChange('phone', val)} />
                   </p>
                 </div>
               </a>

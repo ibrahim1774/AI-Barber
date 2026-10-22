@@ -107,6 +107,7 @@ describe.each(Object.keys(renderers))('%s: a phone with no digits gets no tel: l
 
 describe('Luxe editor shows prices through displayPrice', () => {
   it('GeneratedWebsite', () => {
-    expect(read('components/GeneratedWebsite.tsx')).toContain("service.price ? displayPrice(service.price) : 'Add price'");
+    // empty price → real placeholder (click-through fix), not literal text
+    expect(read('components/GeneratedWebsite.tsx')).toContain("service.price ? displayPrice(service.price) : ''} placeholder=\"Add price\"");
   });
 });
