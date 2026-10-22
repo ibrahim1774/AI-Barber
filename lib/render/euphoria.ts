@@ -211,8 +211,10 @@ export function generateEuphoriaHTMLWithPlaceholders(input: WebsiteData): string
   const shopUrl = safeHref(siteData.shopUrl);
   const formattedPhone = escapeHtml((siteData.phone || '').replace(/\s+/g, ''));
   const hasPhone = !!(siteData.phone || '').trim();
+  // tel: links only for a phone with digits ("call us" gets no link).
+  const canCall = /\d/.test(siteData.phone || '');
   // Nav "Book now": the booking link, else a call; neither → hidden.
-  const navBookHref = bookingUrl ? escapeHtml(bookingUrl) : hasPhone ? `tel:${formattedPhone}` : '';
+  const navBookHref = bookingUrl ? escapeHtml(bookingUrl) : canCall ? `tel:${formattedPhone}` : '';
   const safeName = escapeHtml(siteData.shopName);
   const altAttr = escapeHtml(photoAlt(siteData));
   const showServices = hasServices(siteData);
@@ -336,7 +338,7 @@ ${EUPHORIA_SCOPED_CSS}
         ${escapeHtml(siteData.hero.tagline)}
       </p>
       <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;">
-        ${hasPhone ? `<a href="tel:${formattedPhone}" class="eu-cta eu-cta-solid">Call ${escapeHtml(siteData.phone)}</a>` : ''}
+        ${canCall ? `<a href="tel:${formattedPhone}" class="eu-cta eu-cta-solid">Call ${escapeHtml(siteData.phone)}</a>` : ''}
         ${bookingUrl ? `<a href="${escapeHtml(bookingUrl)}" target="_blank" rel="noopener noreferrer" class="eu-cta eu-cta-solid">Book Appointment</a>` : ''}
         ${showServices ? `<a href="#services" class="eu-cta">View services</a>` : ''}
       </div>
@@ -367,7 +369,7 @@ ${EUPHORIA_SCOPED_CSS}
         <h2 class="eu-display" style="font-size:clamp(28px,4vw,44px);margin:0 0 32px;">Come in.</h2>
         <div style="display:grid;gap:24px;color:var(--eu-ink-soft);font-size:16px;line-height:1.6;">
           ${siteData.contact.address ? `<div><div style="color:var(--eu-ink-muted);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;margin-bottom:6px;">Location</div>${escapeHtml(siteData.contact.address)}</div>` : ''}
-          ${hasPhone ? `<div><div style="color:var(--eu-ink-muted);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;margin-bottom:6px;">Phone</div><a href="tel:${formattedPhone}" style="color:var(--eu-ink);text-decoration:none;">${escapeHtml(siteData.phone)}</a></div>` : ''}
+          ${hasPhone ? `<div><div style="color:var(--eu-ink-muted);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;margin-bottom:6px;">Phone</div>${canCall ? `<a href="tel:${formattedPhone}" style="color:var(--eu-ink);text-decoration:none;">${escapeHtml(siteData.phone)}</a>` : escapeHtml(siteData.phone)}</div>` : ''}
           ${email ? `<div><div style="color:var(--eu-ink-muted);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;margin-bottom:6px;">Email</div><a href="mailto:${escapeHtml(email)}" style="color:var(--eu-ink);text-decoration:none;">${escapeHtml(email)}</a></div>` : ''}
           ${bookingUrl ? `<div style="margin-top:16px;"><a href="${escapeHtml(bookingUrl)}" target="_blank" rel="noopener noreferrer" class="eu-cta eu-cta-solid">Book Appointment</a></div>` : ''}${shopUrl ? `
           <div style="margin-top:16px;"><a href="${escapeHtml(shopUrl)}" class="eu-cta">Shop online</a></div>` : ''}

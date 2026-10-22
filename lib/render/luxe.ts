@@ -120,6 +120,8 @@ export function generateHTMLWithPlaceholders(input: WebsiteData): string {
   const shopUrl = safeHref(siteData.shopUrl);
   const formattedPhone = esc((siteData.phone || '').replace(/\s+/g, ''));
   const hasPhone = !!(siteData.phone || '').trim();
+  // tel: links only for a phone with digits ("call us" gets no link).
+  const canCall = /\d/.test(siteData.phone || '');
   // Non-optional on purpose: a site with no contact block is malformed and
   // must fail the render (publishSite's dry render relies on that).
   const address = (siteData.contact.address || '').trim();
@@ -369,7 +371,7 @@ export function generateHTMLWithPlaceholders(input: WebsiteData): string {
             ${nameFirst} <span class="text-[#f4a100]">${nameRest}</span>
           </span>
         </div>
-        ${hasPhone ? `<a href="tel:${formattedPhone}" class="flex items-center gap-2 md:gap-4 text-[#f4a100] border-l-2 border-white/20 pl-4 md:pl-8 hover:text-white transition-colors">
+        ${canCall ? `<a href="tel:${formattedPhone}" class="flex items-center gap-2 md:gap-4 text-[#f4a100] border-l-2 border-white/20 pl-4 md:pl-8 hover:text-white transition-colors">
           <svg class="w-5 h-5 md:w-7 md:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path>
           </svg>
@@ -398,7 +400,7 @@ ${showServices ? `        <a href="#services" class="text-[12px] font-montserrat
         ${esc(siteData.hero.heading)}
       </h1>
       <div class="flex flex-col sm:flex-row items-center justify-center gap-3 md:gap-4">
-        ${hasPhone ? `<a href="tel:${formattedPhone}" class="inline-flex items-center gap-3 border-2 border-[#f4a100] text-[#f4a100] px-6 py-4 md:px-12 md:py-6 font-montserrat font-black tracking-[2px] uppercase hover:bg-[#f4a100] hover:text-[#1a1a1a] transition-all duration-300 group shadow-lg text-xs md:text-base">
+        ${canCall ? `<a href="tel:${formattedPhone}" class="inline-flex items-center gap-3 border-2 border-[#f4a100] text-[#f4a100] px-6 py-4 md:px-12 md:py-6 font-montserrat font-black tracking-[2px] uppercase hover:bg-[#f4a100] hover:text-[#1a1a1a] transition-all duration-300 group shadow-lg text-xs md:text-base">
           <span>Call Now: ${esc(siteData.phone)}</span>
         </a>` : ''}
         ${bookingUrl ? `<a href="${escapeAttr(bookingUrl)}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-3 bg-[#f4a100] text-[#1a1a1a] px-6 py-4 md:px-12 md:py-6 font-montserrat font-black tracking-[2px] uppercase hover:bg-white transition-all duration-300 shadow-lg text-xs md:text-base"><span>Book Appointment</span></a>` : ''}

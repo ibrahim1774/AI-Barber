@@ -219,6 +219,23 @@ async function waitForDeploymentReady(deploymentId: string, vercelToken: string,
 // Upload any raw images, swap {{placeholders}} for real URLs, ship HTML+CSS to
 // Vercel, and wait until the deployment is actually READY before returning —
 // otherwise the caller hands the customer a URL still serving the old build.
+// Swap each {{key}} placeholder (they sit inside src="…" attributes) for
+// its image URL, escaped so a URL can never break out of the attribute,
+// and inserted literally (a replacer function, so "$&" in a URL is not a
+// replacement pattern).
+export function swapImagePlaceholders(html: string, imageUrlMap: Record<string, string>): string {
+  const escapeAttr = (v: string): string =>
+    v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  let out = html;
+  for (const [key, url] of Object.entries(imageUrlMap || {})) {
+    const placeholder = `{{${key}}}`;
+    const regex = new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g');
+    const safe = escapeAttr(String(url ?? ''));
+    out = out.replace(regex, () => safe);
+  }
+  return out;
+}
+
 export async function deployRenderedSite(
   input: DeployRenderedSiteInput,
 ): Promise<DeployRenderedSiteResult> {
@@ -273,12 +290,7 @@ export async function deployRenderedSite(
   }
 
   // Step 2: swap {{key}} placeholders for the resolved URLs.
-  let processedHtml = html;
-  for (const [key, url] of Object.entries(imageUrlMap)) {
-    const placeholder = `{{${key}}}`;
-    const regex = new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g');
-    processedHtml = processedHtml.replace(regex, url);
-  }
+  let processedHtml = swapImagePlaceholders(html, imageUrlMap);
 
   const remainingPlaceholders = processedHtml.match(/\{\{[^}]+\}\}/g);
   if (remainingPlaceholders && remainingPlaceholders.length > 0) {

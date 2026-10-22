@@ -251,23 +251,24 @@ export function nicheCopy(site: Pick<WebsiteData, 'niche'>): {
 // invented email): anything the barber changed is kept.
 
 // The 5-service menus every typed site (luxe / euphoria) and every old
-// Google import (GbpImportPage's default, same text as luxe) received.
-const LEGACY_SERVICE_SETS: string[][] = [
+// Google import (GbpImportPage's default: luxe titles + descriptions, no
+// subtitle) received. [title, description, original subtitle].
+const LEGACY_SERVICE_SETS: [string, string, string][][] = [
   [
-    'Classic Haircut|A clean, considered cut tailored to how you actually wear your hair.',
-    'Beard Trim & Styling|Defined lines, blended length, and a finish that holds between visits.',
-    'Hot Towel Shave|A traditional straight-razor shave with warm towels and a clean, close finish.',
-    'Skin Fade|Precise tapering from skin upward, blended for a clean, modern shape.',
-    'Hair & Scalp Treatment|A thorough cleanse and conditioning treatment to reset the scalp.',
+    ['Classic Haircut', 'A clean, considered cut tailored to how you actually wear your hair.', 'Cut, washed, styled'],
+    ['Beard Trim & Styling', 'Defined lines, blended length, and a finish that holds between visits.', 'Shaped and finished'],
+    ['Hot Towel Shave', 'A traditional straight-razor shave with warm towels and a clean, close finish.', 'Straight razor, classic finish'],
+    ['Skin Fade', 'Precise tapering from skin upward, blended for a clean, modern shape.', 'Sharp, blended, exact'],
+    ['Hair & Scalp Treatment', 'A thorough cleanse and conditioning treatment to reset the scalp.', 'Cleanse and condition'],
   ],
   [
-    'Classic Haircut|A clean, considered cut shaped around how you actually wear your hair.',
-    'Beard Trim & Styling|Defined edges and blended length — a finish that reads on and off the chair.',
-    'Hot Towel Shave|Warm towels and a straight razor, finished close and clean.',
-    'Skin Fade|Precise skin-up tapering blended into a clean, modern shape.',
-    'Hair & Scalp Treatment|A deep cleanse and conditioning treatment to reset the scalp between cuts.',
+    ['Classic Haircut', 'A clean, considered cut shaped around how you actually wear your hair.', 'Cut, washed, finished'],
+    ['Beard Trim & Styling', 'Defined edges and blended length — a finish that reads on and off the chair.', 'Shaped and refined'],
+    ['Hot Towel Shave', 'Warm towels and a straight razor, finished close and clean.', 'Straight razor, traditional'],
+    ['Skin Fade', 'Precise skin-up tapering blended into a clean, modern shape.', 'Tapered, blended, exact'],
+    ['Hair & Scalp Treatment', 'A deep cleanse and conditioning treatment to reset the scalp between cuts.', 'Reset and condition'],
   ],
-].map((set) => [...set].sort());
+];
 
 const LEGACY_BOOK_AHEAD = 'Book ahead — same care every visit.';
 
@@ -348,10 +349,25 @@ const isLegacyAboutParagraph = (p: string): boolean => {
   return LEGACY_FALLBACK_FIRST.some((f) => t.endsWith(` ${f}`));
 };
 
+// The stored menu is the invented default only when every row is
+// untouched: title + description match, no price, no duration, and the
+// subtitle is empty or the original default. Any barber edit (a price, a
+// duration, a changed subtitle) keeps the whole menu.
 const isLegacyServiceSet = (services: WebsiteData['services']): boolean => {
   if (!Array.isArray(services) || services.length !== 5) return false;
-  const pairs = services.map((s) => `${(s?.title || '').trim()}|${(s?.description || '').trim()}`).sort();
-  return LEGACY_SERVICE_SETS.some((set) => set.every((v, i) => v === pairs[i]));
+  return LEGACY_SERVICE_SETS.some((set) => {
+    const remaining = [...set];
+    return services.every((s) => {
+      if ((s?.price || '').trim() || (s?.duration || '').trim()) return false;
+      const title = (s?.title || '').trim();
+      const description = (s?.description || '').trim();
+      const subtitle = (s?.subtitle || '').trim();
+      const k = remaining.findIndex(([t, d, sub]) => t === title && d === description && (subtitle === '' || subtitle === sub));
+      if (k === -1) return false;
+      remaining.splice(k, 1);
+      return true;
+    });
+  });
 };
 
 // The filler descriptions old booking-link imports wrote.

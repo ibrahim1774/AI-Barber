@@ -15,7 +15,7 @@ import { useResetOnReturnFromStripe } from '../hooks/useResetOnReturnFromStripe'
 import PrePaymentBanner from './PrePaymentBanner.tsx';
 import { AIB_THEME_CSS, AibTheme, cityStateOnly, resolveAibTheme, to12h } from '../lib/render/luxe';
 import {
-  aggregateToShow, copyrightYear, nicheCopy, nicheOf, photoAlt, reviewStars, reviewsSourceLabel, serviceMeta,
+  aggregateToShow, copyrightYear, displayPrice, nicheCopy, nicheOf, photoAlt, reviewStars, reviewsSourceLabel, serviceMeta,
   visibleFeatureCards, withoutLegacyCopy,
 } from '../lib/render/honest';
 import { AddServiceRow } from './AddServiceRow';
@@ -868,7 +868,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
                     <EditableText text={service.title} onSave={(val) => updateService(i, { title: val.trim() || service.title })} />
                   </h3>
                   <span className={`font-montserrat font-black text-base md:text-lg whitespace-nowrap ${service.price ? 'text-[#f4a100]' : 'text-white/30 text-xs'}`}>
-                    <EditableText text={service.price || 'Add price'} onSave={(val) => updateService(i, { price: optionalText(val, 'Add price') })} />
+                    <EditableText text={service.price ? displayPrice(service.price) : 'Add price'} onSave={(val) => updateService(i, { price: optionalText(val, 'Add price') })} />
                   </span>
                 </div>
                 {serviceMeta(service) && (
