@@ -23,7 +23,7 @@ import { generatePrimeHTMLWithPlaceholders } from './render/prime.js';
 import { generateEuphoriaHTMLWithPlaceholders } from './render/euphoria.js';
 import { isAwaitingDetails } from './payFirst.js';
 import {
-  findShopForSite, hasAiBarberSiteLinks, liveSiteBaseDeps, refreshSiteBase, withSubpageLinks,
+  findShopForSite, liveSiteBaseDeps, refreshSiteBase, withSubpageLinks,
   type SiteBaseDeps, type SiteShop, type SiteSubpages,
 } from './siteSubpages.js';
 
@@ -287,18 +287,15 @@ export async function publishSite(
   const sd = pending.siteData;
 
   // Site subpages: a site whose slug has a shop serves /book and /shop on its own domain.
-  // A failed lookup must not ship AI Barber buttons without the pages behind them, so it fails
-  // the publish (retried by the caller's sweep) when the site shows one; a site without them
-  // (every web customer) deploys as before.
+  // A deploy that can't tell must not guess: shipping without the rewrites would break the
+  // pages, manage links in sent emails and Stripe returns on the barber's domain. So a failed
+  // lookup fails the publish for any site; the callers' sweeps (and the next publish) retry.
   let shop: SiteShop | null = null;
   try {
     shop = await (opts.findShop ?? findShopForSite)(safe);
   } catch (e: any) {
-    if (hasAiBarberSiteLinks(sd)) {
-      console.error(`[Publish] ${safe}: shop lookup failed (${e?.message || e}); not deploying Book/Shop links without their pages`);
-      return { ok: false, reason: 'deploy-failed', siteId: safe, error: `shop lookup failed: ${e?.message || e}` };
-    }
-    console.warn(`[Publish] ${safe}: shop lookup failed (${e?.message || e}); the site has no AI Barber links, deploying without the pages`);
+    console.error(`[Publish] ${safe}: shop lookup failed (${e?.message || e}); not deploying, will be retried`);
+    return { ok: false, reason: 'deploy-failed', siteId: safe, error: `shop lookup failed: ${e?.message || e}` };
   }
   const subpages: SiteSubpages | null = shop ? { mode: 'full', shopSlug: shop.slug } : null;
 

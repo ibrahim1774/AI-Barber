@@ -96,11 +96,12 @@ describe('publishSite with the site subpages', () => {
     expect(deployRenderedSite).not.toHaveBeenCalled();
   });
 
-  it('a failed shop lookup does not block a site without AI Barber links (web customers)', async () => {
+  it('a failed shop lookup fails the publish for any site (retried), never a deploy that silently drops the rewrites', async () => {
     await writePendingSite('fresh-cuts', pending({ bookingUrl: 'https://booksy.com/x' }));
     const out = await publishSite('fresh-cuts', { force: true, findShop: async () => { throw new Error('db down'); }, siteBase: baseDeps() });
-    expect(out.ok).toBe(true);
-    expect(deployRenderedSite.mock.calls[0][0].subpages).toBeNull();
+    expect(out.ok).toBe(false);
+    expect(out.reason).toBe('deploy-failed');
+    expect(deployRenderedSite).not.toHaveBeenCalled();
   });
 
   it('a failed base update never fails a live publish', async () => {

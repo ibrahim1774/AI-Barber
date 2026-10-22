@@ -74,16 +74,19 @@ describe('api/ios/sweep', () => {
     expect((deployRenderedSite.mock.calls[0][0] as any).subpages).toEqual({ mode: 'manage-only' });
   });
 
-  it('takedown still happens when the shop lookup fails (no rewrites then)', async () => {
+  it('a failed shop lookup fails the takedown (retried next sweep) instead of shipping an offline page without manage links', async () => {
     unpublishedBound.mockResolvedValue([]);
     takedownCandidates.mockResolvedValue([{ original_transaction_id: 'o9', site_slug: 'fade-studio-x7k2', revoked_at: '2026-10-01T00:00:00Z' }]);
     appleVerify.mockImplementation(appleSays(2));
     findShopForSite.mockRejectedValueOnce(new Error('db down'));
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
-    await handler(cron, mkRes());
-    expect(deployRenderedSite).toHaveBeenCalledTimes(1);
-    expect((deployRenderedSite.mock.calls[0][0] as any).subpages).toBeNull();
+    const res = mkRes();
+    await handler(cron, res);
+    expect(deployRenderedSite).not.toHaveBeenCalled();
+    // The sweep's retry path: the flag it set first is cleared, so the next run tries again.
+    expect(clearTakenDown).toHaveBeenCalledWith('o9');
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ takedownFailed: ['fade-studio-x7k2'], takenDown: [] }));
   });
 
   it('takedown deploys the offline page to the slug and never publishes or writes the pending file', async () => {
