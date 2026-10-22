@@ -20,6 +20,13 @@ export interface VerifiedTx {
    * product writes: ios_purchases.product_id never moves backwards (purchases.ts).
    */
   productPurchasedAt?: number | null;
+  /**
+   * Only with makeVerifier({ includeAccount: true }) (the domain endpoints): the
+   * originalTransactionIds of every auto-renewable subscription of the same Apple account in
+   * this app, across all subscription groups (Get All Subscription Statuses). Proves two
+   * purchases were made by the same purchaser.
+   */
+  accountOriginalTransactionIds?: string[];
 }
 
 export type VerifyError = 'not-found' | 'bad-bundle' | 'bad-product' | 'apple-unavailable';
@@ -78,7 +85,19 @@ const ENVS: IosEnv[] = ['Production', 'Sandbox'];
 
 const unavailable = () => new VerifyFailure('apple-unavailable');
 
-export function makeVerifier(deps: { lookup: AppleLookup; decode: AppleDecode; statuses: AppleStatuses; bundleId: string }) {
+export interface VerifierOptions {
+  /**
+   * Products this verifier accepts; anything else is bad-product. Default: the six site
+   * products (IOS_PRODUCT_IDS). Only the domain endpoints pass [DOMAIN_PRODUCT_ID], so the
+   * domain subscription can never satisfy a website / bookings / store gate.
+   */
+  products?: readonly string[];
+  /** Return accountOriginalTransactionIds (see VerifiedTx). Default false. */
+  includeAccount?: boolean;
+}
+
+export function makeVerifier(deps: { lookup: AppleLookup; decode: AppleDecode; statuses: AppleStatuses; bundleId: string } & VerifierOptions) {
+  const products = deps.products ?? IOS_PRODUCT_IDS;
   return async function verify(transactionId: string): Promise<VerifiedTx> {
     for (const env of ENVS) {
       let res: { status: number; signedTransactionInfo?: string };
@@ -101,7 +120,7 @@ export function makeVerifier(deps: { lookup: AppleLookup; decode: AppleDecode; s
         throw new VerifyFailure('apple-unavailable');
       }
       if (d.bundleId !== deps.bundleId) throw new VerifyFailure('bad-bundle');
-      if (!IOS_PRODUCT_IDS.includes(d.productId)) throw new VerifyFailure('bad-product');
+      if (!products.includes(d.productId)) throw new VerifyFailure('bad-product');
 
       // The transaction above proves ownership/bundle/product. Whether the
       // subscription is live comes from its LATEST state: the id the app sent
@@ -125,9 +144,9 @@ export function makeVerifier(deps: { lookup: AppleLookup; decode: AppleDecode; s
       if (latest.originalTransactionId !== d.originalTransactionId) throw unavailable();
       // Upgrades and downgrades stay in the one subscription group (same originalTransactionId),
       // so the latest transaction carries the CURRENT product. It must be one of ours too.
-      if (!IOS_PRODUCT_IDS.includes(latest.productId)) throw new VerifyFailure('bad-product');
+      if (!products.includes(latest.productId)) throw new VerifyFailure('bad-product');
 
-      return {
+      const out: VerifiedTx = {
         originalTransactionId: d.originalTransactionId,
         transactionId: d.transactionId,
         productId: latest.productId,
@@ -137,6 +156,11 @@ export function makeVerifier(deps: { lookup: AppleLookup; decode: AppleDecode; s
         status: item.status,
         productPurchasedAt: latest.purchaseDate ?? null,
       };
+      if (deps.includeAccount) {
+        out.accountOriginalTransactionIds = [...new Set((st.items || [])
+          .map((i) => i.originalTransactionId).filter((o): o is string => typeof o === 'string' && o.length > 0))];
+      }
+      return out;
     }
     throw new VerifyFailure('not-found');
   };
@@ -167,11 +191,11 @@ export function signedDataVerifierFor(env: IosEnv): SignedDataVerifier {
  * missing, and that must surface as a rejected verify (mapped by the caller),
  * not a crash at wiring time.
  */
-export function lazyDefaultVerifier(): (transactionId: string) => Promise<VerifiedTx> {
+export function lazyDefaultVerifier(opts?: VerifierOptions): (transactionId: string) => Promise<VerifiedTx> {
   let verifier: ((id: string) => Promise<VerifiedTx>) | undefined;
   return (id) => {
     try {
-      verifier ??= defaultVerifier();
+      verifier ??= defaultVerifier(opts);
     } catch (e) {
       return Promise.reject(e);
     }
@@ -179,7 +203,8 @@ export function lazyDefaultVerifier(): (transactionId: string) => Promise<Verifi
   };
 }
 
-export function defaultVerifier() {
+/** `opts` default: the six site products only (lib/bookings/live.ts relies on that). */
+export function defaultVerifier(opts: VerifierOptions = {}) {
   const keyId = process.env.APPLE_IAP_KEY_ID;
   const issuerId = process.env.APPLE_IAP_ISSUER_ID;
   const privateKey = (process.env.APPLE_IAP_PRIVATE_KEY || '').replace(/\\n/g, '\n');
@@ -237,5 +262,5 @@ export function defaultVerifier() {
     return toDecodedTransaction(p);
   };
 
-  return makeVerifier({ lookup, decode, statuses, bundleId });
+  return makeVerifier({ lookup, decode, statuses, bundleId, products: opts.products, includeAccount: opts.includeAccount });
 }

@@ -16,6 +16,18 @@ const TIERS: readonly { prefix: string; tier: Tier; entitlements: readonly Entit
 /** Every product the server accepts (all in subscription group 22497224). Anything else is bad-product. */
 export const IOS_PRODUCT_IDS: readonly string[] = TIERS.flatMap((t) => [`${t.prefix}monthly`, `${t.prefix}yearly`]);
 
+/**
+ * The custom-domain subscription (spec 2026-10-22-custom-domains): its own subscription group,
+ * entitlement `domain`. Deliberately NOT in IOS_PRODUCT_IDS and NOT a tier: it is accepted only
+ * by the domain endpoints' verifier (lib/ios/domainFlow.ts), never by the site verifier, and
+ * grants none of hosting / bookings / store.
+ */
+export const DOMAIN_PRODUCT_ID = `${PREFIX}domain.yearly`;
+
+export function isDomainProduct(productId: string | null | undefined): boolean {
+  return productId === DOMAIN_PRODUCT_ID;
+}
+
 function entry(productId: string | null | undefined) {
   if (typeof productId !== 'string') return undefined;
   return TIERS.find((t) => productId.startsWith(t.prefix));
