@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
-  BUY_UNCERTAIN_MS, applyDomainNotification, markTransferred, runDomainClaim, runDomainSearch, runDomainStatus,
+  BUY_GIVE_UP_MS, BUY_UNCERTAIN_MS, applyDomainNotification, markTransferred, runDomainClaim, runDomainSearch, runDomainStatus,
   statusBody, sweepDomains, type DomainFlowDeps,
 } from '../../lib/ios/domainFlow.js';
 import { VerifyFailure, type VerifiedTx } from '../../lib/ios/appleVerify.js';
@@ -26,12 +26,13 @@ function world(opts: { taken?: string[]; prices?: Record<string, any>; contact?:
   const domainSubs: Record<string, AppleSub> = {
     '100': { otid: 'd-o1', environment: 'Production', status: 1, expiresAt: T0 + 365 * DAY, account: ['d-o1', 's-o1'] },
     '101': { otid: 'd-o2', environment: 'Production', status: 1, expiresAt: T0 + 365 * DAY, account: ['d-o2', 's-o9'] },
-    '102': { otid: 'd-o3', environment: 'Sandbox', status: 1, expiresAt: T0 + 365 * DAY, account: ['d-o3', 's-o1'] },
+    '102': { otid: 'd-o3', environment: 'Sandbox', status: 1, expiresAt: T0 + 365 * DAY, account: ['d-o3', 's-sb'] },
   };
-  const sites: Record<string, { otid: string; slug: string | null }> = {
+  const sites: Record<string, { otid: string; slug: string | null; env?: 'Production' | 'Sandbox' }> = {
     '200': { otid: 's-o1', slug: 'fresh-cuts' },
     '201': { otid: 's-o2', slug: 'other-shop' },
     '202': { otid: 's-o3', slug: null },
+    '210': { otid: 's-sb', slug: 'review-shop', env: 'Sandbox' },
   };
   const tx = (s: AppleSub, productId: string): VerifiedTx => ({
     originalTransactionId: s.otid, transactionId: 't', productId, environment: s.environment, expiresAt: s.expiresAt,
@@ -47,7 +48,7 @@ function world(opts: { taken?: string[]; prices?: Record<string, any>; contact?:
     if (domainSubs[id]) throw new VerifyFailure('bad-product');
     const s = sites[id];
     if (!s) throw new VerifyFailure('not-found');
-    return { ...tx({ otid: s.otid, environment: 'Production', status: 1, expiresAt: T0 + DAY, account: [] }, 'com.ibrahim1774.aibarber.hosting.monthly'), accountOriginalTransactionIds: undefined };
+    return { ...tx({ otid: s.otid, environment: s.env ?? 'Production', status: 1, expiresAt: T0 + DAY, account: [] }, 'com.ibrahim1774.aibarber.hosting.monthly'), accountOriginalTransactionIds: undefined };
   });
   const hooks = { onDomainLinked: vi.fn(async () => {}), onDomainUnlinked: vi.fn(async () => {}) };
   const deps: DomainFlowDeps = {
@@ -310,7 +311,7 @@ describe('claim: proof of ownership', () => {
 describe('Sandbox (App Review / TestFlight) never buys a real domain', () => {
   it('simulated: no buy, no attach, no republish; status says sandbox', async () => {
     const w = world();
-    const r = await w.claim({ transactionId: '102', siteTransactionId: '200', domain: 'freshcuts.com' });
+    const r = await w.claim({ transactionId: '102', siteTransactionId: '210', domain: 'freshcuts.com' });
     expect(r).toMatchObject({ status: 200, body: { state: 'live', sandbox: true } });
     expect(w.reg.api.buy).not.toHaveBeenCalled();
     expect(w.reg.api.addProjectDomain).not.toHaveBeenCalled();
@@ -320,18 +321,37 @@ describe('Sandbox (App Review / TestFlight) never buys a real domain', () => {
 
   it('simulated even when the registrar is not configured', async () => {
     const w = world({ contact: null });
-    expect((await w.claim({ transactionId: '102', siteTransactionId: '200', domain: 'freshcuts.com' })).status).toBe(200);
+    expect((await w.claim({ transactionId: '102', siteTransactionId: '210', domain: 'freshcuts.com' })).status).toBe(200);
   });
 
   it('only allowlisted Sandbox otids use the real registrar', async () => {
     const w = world({ sandboxRealOtids: ['d-o3'] });
-    await w.claim({ transactionId: '102', siteTransactionId: '200', domain: 'freshcuts.com' });
+    await w.claim({ transactionId: '102', siteTransactionId: '210', domain: 'freshcuts.com' });
     expect(w.reg.api.buy).toHaveBeenCalledTimes(1);
+  });
+
+  it('a Sandbox claim never holds the name against a paying customer', async () => {
+    const w = world();
+    await w.claim({ transactionId: '102', siteTransactionId: '210', domain: 'freshcuts.com' });
+    expect(w.repo.rows.get('d-o3')!.state).toBe('live');
+    const r = await w.claim(CLAIM);
+    expect(r).toMatchObject({ status: 200, body: { state: 'live', domain: 'freshcuts.com' } });
+    expect(r.body).not.toHaveProperty('sandbox');
+    expect(w.reg.api.buy).toHaveBeenCalledTimes(1);
+  });
+
+  it('a Sandbox domain never binds to a Production site (or the reverse): 403, nothing reserved', async () => {
+    const w = world();
+    w.sites['205'] = { otid: 's-o5', slug: 'prod-shop' };
+    w.domainSubs['102'].account.push('s-o5');
+    // world()'s verifySite answers Production for every site; the Sandbox domain sub must be refused.
+    expect(await w.claim({ transactionId: '102', siteTransactionId: '205', domain: 'x-shop.com' })).toEqual({ status: 403, body: { error: 'environment-mismatch' } });
+    expect(w.repo.rows.size).toBe(0);
   });
 
   it('a simulated lapse detaches without touching Vercel', async () => {
     const w = world();
-    await w.claim({ transactionId: '102', siteTransactionId: '200', domain: 'freshcuts.com' });
+    await w.claim({ transactionId: '102', siteTransactionId: '210', domain: 'freshcuts.com' });
     w.domainSubs['102'].status = 2;
     w.tick(400 * DAY);
     await w.sweep();
@@ -366,14 +386,35 @@ describe('crash / failure resumability (never buys twice, never loses the domain
     expect(w.reg.api.buy).toHaveBeenCalledTimes(2);
   });
 
-  it('uncertain buy and the name is gone after the cooldown (not ours) → failed:taken', async () => {
+  it('uncertain buy, name unavailable and not ours: keeps waiting (maybe our slow order), failed:taken only after a day', async () => {
     const w = world();
     w.reg.queueBuy('network');
     await w.claim(CLAIM);
     w.reg.takeByStranger('freshcuts.com');
-    w.tick(BUY_UNCERTAIN_MS + 1);
+    w.tick(BUY_UNCERTAIN_MS + 60_000);
+    await w.sweep();
+    expect(w.repo.rows.get('d-o1')!.state).toBe('buying');
+    w.tick(BUY_GIVE_UP_MS);
     await w.sweep();
     expect(w.repo.rows.get('d-o1')).toMatchObject({ state: 'failed', failure_reason: 'taken' });
+  });
+
+  it('lost order id and the order still processing past 30 min: never freed, never bought twice', async () => {
+    const w = world();
+    // The order is placed and still processing, but the response is lost.
+    (w.reg.api.buy as any).mockImplementationOnce(async (domain: string) => {
+      w.reg.orders.set('ord_x', { domain, status: 'purchasing', errorCode: null });
+      return { ok: false, code: 'timeout', status: 0, definite: false };
+    });
+    await w.claim(CLAIM);
+    w.tick(BUY_UNCERTAIN_MS + 60_000);
+    await w.sweep();
+    expect(w.repo.rows.get('d-o1')!.state).toBe('buying');
+    expect(await w.claim({ ...CLAIM, domain: 'another.com' })).toMatchObject({ status: 409, body: { error: 'slot-in-use' } });
+    w.reg.completeOrders();
+    await w.sweep();
+    expect(w.repo.rows.get('d-o1')!.state).toBe('live');
+    expect(w.reg.api.buy).toHaveBeenCalledTimes(1);
   });
 
   it('crash after the buy succeeded but before the order id was recorded → owned → bought, no second buy', async () => {

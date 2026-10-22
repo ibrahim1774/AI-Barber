@@ -1,5 +1,5 @@
 // In-memory ios_domains with the 012 constraints: primary key on the otid, the domain unique
-// among non-failed rows, the site slug unique among SITE_HOLDING_STATES rows.
+// among non-failed, non-simulated rows, the site slug unique among SITE_HOLDING_STATES rows.
 import {
   DomainConflict, OWNED_STATES, RESUMABLE_STATES, SITE_HOLDING_STATES,
   type DomainRow, type DomainState, type DomainsRepo,
@@ -24,7 +24,7 @@ export function fakeDomainsRepo(seed: DomainRow[] = [], clock: () => number = Da
   function violates(r: DomainRow): boolean {
     for (const o of rows.values()) {
       if (o.original_transaction_id === r.original_transaction_id) continue;
-      if (r.state !== 'failed' && o.state !== 'failed' && o.domain === r.domain) return true;
+      if (r.state !== 'failed' && o.state !== 'failed' && !r.simulated && !o.simulated && o.domain === r.domain) return true;
       if (SITE_HOLDING_STATES.includes(r.state) && SITE_HOLDING_STATES.includes(o.state) && o.site_slug === r.site_slug) return true;
     }
     return false;

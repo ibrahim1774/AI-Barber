@@ -33,8 +33,8 @@ describe('012_custom_domains.sql', () => {
     expect(states).toEqual([...DOMAIN_STATES]);
   });
 
-  it('domain unique among non-failed rows; one holding row per site (same states as the code)', () => {
-    expect(code).toMatch(/create unique index ios_domains_domain_key on public\.ios_domains \(domain\) where state <> 'failed';/);
+  it('domain unique among non-failed REAL rows (Sandbox rows never squat a name); one holding row per site', () => {
+    expect(code).toMatch(/create unique index ios_domains_domain_key on public\.ios_domains \(domain\) where state <> 'failed' and not simulated;/);
     const site = code.match(/ios_domains_site_key[\s\S]*?where state in \(([^)]*)\)/)!;
     expect(site[1].match(/'([a-z]+)'/g)!.map((x) => x.replace(/'/g, ''))).toEqual([...SITE_HOLDING_STATES]);
   });

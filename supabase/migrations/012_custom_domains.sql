@@ -45,8 +45,9 @@ create table public.ios_domains (
   updated_at timestamptz not null default now()
 );
 
--- A domain belongs to at most one live row (a failed row gave it up).
-create unique index ios_domains_domain_key on public.ios_domains (domain) where state <> 'failed';
+-- A domain belongs to at most one real row (a failed row gave it up; a simulated Sandbox row
+-- never registered it, so it must not block a paying customer from the name).
+create unique index ios_domains_domain_key on public.ios_domains (domain) where state <> 'failed' and not simulated;
 -- One domain per site.
 create unique index ios_domains_site_key on public.ios_domains (site_slug)
   where state in ('reserved', 'buying', 'ordered', 'bought', 'attached', 'live', 'detaching');

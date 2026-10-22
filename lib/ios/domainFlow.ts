@@ -76,6 +76,14 @@ export interface DomainFlowDeps {
 export const LEASE_MS = 290_000;
 /** An uncertain buy (crash / timeout, no order id) is only retried after this long. */
 export const BUY_UNCERTAIN_MS = 30 * 60_000;
+/**
+ * …and only declared lost (failed:taken, slot freed) after this long: a slow order of ours makes
+ * the name look "unavailable and not ours" until it completes, and freeing the slot early would
+ * let the barber buy a second domain while the first one lands.
+ */
+export const BUY_GIVE_UP_MS = 24 * 3600_000;
+/** A claim call only STARTS steps this long (one slow republish still ends inside 300 s). */
+export const CLAIM_STEP_CUTOFF_MS = 140_000;
 const YEAR_MS = 365 * 24 * 3600_000;
 const MAX_STEPS = 12;
 
@@ -227,10 +235,13 @@ export async function step(row: DomainRow, deps: DomainFlowDeps, ctx: Ctx = {}):
         const v = registrar(deps);
         const owned = await v.owned(row.domain);
         if (owned) return toBought(deps, row, owned);
-        if (!(now - ms(row.buy_started_at) >= BUY_UNCERTAIN_MS)) return wait(deps, row, row.last_error);
-        // Long enough for any real order to have registered it: not ours, so no order went through.
+        const age = now - ms(row.buy_started_at);
+        if (!(age >= BUY_UNCERTAIN_MS)) return wait(deps, row, row.last_error);
+        // Still available after the cooldown: no order of ours holds it, so buying again is safe.
         const available = (await v.availability([row.domain])).get(row.domain) === true;
         if (available) return move(deps, row, ['buying'], { state: 'reserved', buy_started_at: null });
+        // Unavailable and not (yet) ours: maybe a slow order of ours. Wait; give up only much later.
+        if (!(age >= BUY_GIVE_UP_MS)) return wait(deps, row, 'buy outcome unknown: name unavailable, not in our account yet');
         return fail(deps, row, 'taken');
       }
 
@@ -431,6 +442,8 @@ export async function runDomainClaim(body: unknown, authorization: string | stri
   const stx = await verifyOrResult(() => deps.verifySite(siteTransactionId), 'site');
   if (isResult(stx)) return stx;
   const siteOtid = stx.originalTransactionId;
+  // A Sandbox (TestFlight / App Review) domain never binds to a Production site, or the reverse.
+  if (stx.environment !== dtx.environment) return { status: 403, body: { error: 'environment-mismatch' } };
   let site: Awaited<ReturnType<DomainFlowDeps['sitePurchase']>>;
   try {
     site = await deps.sitePurchase(siteOtid);
@@ -507,7 +520,7 @@ export async function runDomainClaim(body: unknown, authorization: string | stri
 
     if (!(await deps.repo.acquireLease(otid, deps.now(), LEASE_MS))) return { status: 202, body: statusBody(row) };
     try {
-      row = await advance(row, deps, { appleActive: true }, deps.now() + 240_000);
+      row = await advance(row, deps, { appleActive: true }, deps.now() + CLAIM_STEP_CUTOFF_MS);
     } finally {
       await deps.repo.releaseLease(otid).catch((e) => console.error(`[domains/claim] ${otid}: releasing the lease failed:`, errMsg(e)));
     }
