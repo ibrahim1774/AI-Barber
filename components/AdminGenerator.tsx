@@ -123,7 +123,13 @@ export const AdminGenerator: React.FC = () => {
       // through the shared client and silently fails RLS — harmless
       // (fire-and-forget); the canonical save is below using the
       // ephemeral client that's authenticated as the customer.
-      const { url } = await publishSite(site, newUserId, { skipIndexedDB: true });
+      // /api/deploy-site deploys only for the site's owner: deploy as the new customer
+      // account (the ephemeral client is signed in as them by now).
+      const { data: customerSession } = await adminSignupClient.auth.getSession();
+      const { url } = await publishSite(site, newUserId, {
+        skipIndexedDB: true,
+        accessToken: customerSession.session?.access_token ?? null,
+      });
 
       const deployedSite: SiteInstance = {
         ...site,

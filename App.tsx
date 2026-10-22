@@ -26,6 +26,7 @@ import { upsertSiteToSupabase, fetchUserSites } from './services/supabaseDataSer
 import { getPlanContentMeta, getViewContentMeta } from './lib/pixelMeta';
 import { getAllSites as getAllLocalSites } from './services/indexedDBService.ts';
 import { readMetaCookies, splitName } from './services/metaMatchParams.ts';
+import { rememberCheckoutProof } from './services/publishTarget.ts';
 import { captureAdParamsOnLoad } from './services/adAttribution.ts';
 
 // Heavy components — lazy-loaded so first paint only ships the
@@ -572,6 +573,10 @@ const App: React.FC = () => {
         }
 
         console.log('[Deploy] Payment verified, deploying site...');
+        // The paid session is this browser's proof that it may publish this slug
+        // (/api/deploy-site re-checks it with Stripe). Kept so an editor publish
+        // before an account exists is still allowed.
+        rememberCheckoutProof(siteId, sessionId);
 
         // Step 1.5: Fire Purchase pixel BEFORE deploy. Payment is
         // verified at this point — the customer was charged. If the
@@ -701,7 +706,7 @@ const App: React.FC = () => {
         const deployResponse = await fetch('/api/deploy-site', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ siteId, html, imageUrls: imageUrlMap }),
+          body: JSON.stringify({ siteId, html, imageUrls: imageUrlMap, checkoutSessionId: sessionId }),
         });
 
         const contentType = deployResponse.headers.get('content-type');
