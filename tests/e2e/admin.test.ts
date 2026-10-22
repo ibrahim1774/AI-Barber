@@ -301,14 +301,23 @@ describe('republish-all', () => {
     expect(normHtml(vercel.live.get('fade-lab'))).toBe(normHtml(renderPending(pendingOf('fade-lab'))));
   });
 
-  it('setup: 5 parallel admin edits of one site all answer 200 ok and all claim version 2', async () => {
+  it('setup (was: all claim version 2): 5 parallel admin edits all answer 200 ok with versions 2..6, each in history', async () => {
     await app();
     const rs = await Promise.all(Array.from({ length: 5 }, (_, i) => call({ body: { action: 'update', slug: 'fade-lab', set: { 'services.0.subtitle': `edit ${i}` } } })));
     expect(rs.every((r) => r.statusCode === 200 && r.body.ok === true)).toBe(true);
-    expect(rs.map((r) => r.body.version)).toEqual([2, 2, 2, 2, 2]);
+    expect(rs.map((r) => r.body.version).sort()).toEqual([2, 3, 4, 5, 6]);
+    expect((await w.adminDeps().store.listHistory('fade-lab')).map((h) => h.id).sort()).toEqual(['1', '2', '3', '4', '5']);
   });
 
-  it.fails('BUG: parallel admin edits read the same version and all write v2; four of five edits vanish', async () => {
+  it('I1: a parallel edit with expectedVersion that loses the race is a conflict, not an overwrite', async () => {
+    await app();
+    const rs = await Promise.all(Array.from({ length: 3 }, (_, i) => call({ body: { action: 'update', slug: 'fade-lab', expectedVersion: 1, set: { 'services.0.subtitle': `edit ${i}` } } })));
+    expect(rs.filter((r) => r.statusCode === 200)).toHaveLength(1);
+    expect(rs.filter((r) => r.body.error === 'conflict')).toHaveLength(2);
+    expect(pendingOf('fade-lab').version).toBe(2);
+  });
+
+  it('I1 (fixed): parallel admin edits each land on the newest copy; none vanishes', async () => {
     await app();
     await Promise.all(Array.from({ length: 5 }, (_, i) => call({ body: { action: 'update', slug: 'fade-lab', set: { 'services.0.subtitle': `edit ${i}` } } })));
     expect(pendingOf('fade-lab').version).toBe(6);

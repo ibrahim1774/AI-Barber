@@ -5,7 +5,7 @@
 // Env: SUPABASE_URL (or VITE_SUPABASE_URL), SUPABASE_SERVICE_ROLE_KEY,
 // GCP_SERVICE_ACCOUNT_JSON (or GCS_CREDENTIALS), GCS_BUCKET_NAME, VERCEL_TOKEN.
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { bucket, publishSite, readPendingSite, renderPending, slugify, writePendingSite, type PendingSite } from '../publishSite.js';
+import { bucket, publishSite, readPendingSite, readPendingVersioned, renderPending, slugify, writePendingSite, type PendingSite } from '../publishSite.js';
 import type { PurchaseRow } from '../ios/purchases.js';
 import type { AdminSitesDeps, HistoryEntry, RepublishRun, SiteStore } from './sites.js';
 
@@ -50,6 +50,7 @@ export function gcsSiteStore(): SiteStore {
   return {
     readPending: readPendingSite,
     writePending: writePendingSite,
+    readPendingVersioned,
 
     async writeHistory(slug, version, p) {
       const safe = slugify(slug);

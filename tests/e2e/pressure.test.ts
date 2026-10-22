@@ -118,11 +118,15 @@ describe('parallel publishes', () => {
     }
   });
 
-  it.fails('BUG (same root as the admin race): 10 parallel republishes of one site all claim version 2 — no compare-and-set on the version', async () => {
+  it('I1 (fixed): 10 parallel republishes of one site each get their own version (compare-and-set; no version reuse)', async () => {
     const { transactionId } = w.apple.buy(PRODUCTS.storeMonthly);
     await w.publish(transactionId);
     const rs = await Promise.all(Array.from({ length: 10 }, (_, i) => w.publish(transactionId, siteData({ area: `edit ${i}` }), { baseVersion: 1 })));
+    expect(rs.map((r) => r.status)).toEqual(Array(10).fill(200));
     expect(new Set(rs.map((r) => (r.body as any).version)).size).toBe(10);
+    expect(pendingOf('fade-lab').version).toBe(11);
+    // And the live page is the stored copy (I2).
+    expect(normHtml(vercel.live.get('fade-lab'))).toBe(normHtml(renderPending(pendingOf('fade-lab'))));
   });
 });
 

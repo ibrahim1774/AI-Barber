@@ -18,7 +18,7 @@
 // for api/admin/sites.ts and scripts/admin-sites.mjs.
 import type { WebsiteData } from '../../types.js';
 import type { PurchaseRow } from '../ios/purchases.js';
-import type { PendingSite, PublishOutcome, SiteEditor } from '../publishSite.js';
+import { casPending, type PendingSite, type PublishOutcome, type SiteEditor, type VersionedPending } from '../publishSite.js';
 import { buildImageUrlMap, toPendingSiteData } from '../ios/pendingData.js';
 import { MAX_BODY_BYTES, hasDataUrl, isObj, jsonBytes, restoreImageUrls, validSiteData } from '../ios/siteShape.js';
 import { stripLapsedLinks, tierOf, type Tier } from '../ios/tiers.js';
@@ -45,7 +45,10 @@ export interface RepublishRun {
 
 export interface SiteStore {
   readPending(slug: string): Promise<PendingSite | null>;
-  writePending(slug: string, p: PendingSite): Promise<void>;
+  /** With `ifGeneration`: compare-and-set (a 412 PendingConflictError when the copy changed since that read). */
+  writePending(slug: string, p: PendingSite, opts?: { ifGeneration?: number | null }): Promise<void>;
+  /** The stored copy with its generation. Absent (older fakes): writes are unconditional. */
+  readPendingVersioned?(slug: string): Promise<VersionedPending>;
   /**
    * Keep `p` as history for `version`; returns the id written. Never overwrites: if that version
    * is already kept with the same content it is reused, otherwise it goes to "{version}-{ms}".
@@ -306,6 +309,9 @@ function validationProblem(sd: unknown): string | null {
   return null;
 }
 
+/** Re-decide attempts when another writer lands between an admin read and write (I1). */
+export const ADMIN_CAS_ATTEMPTS = 8;
+
 async function write(
   slug: string,
   input: UpdateInput,
@@ -315,63 +321,80 @@ async function write(
   const row = await deps.findBySlug(slug);
   if (!row?.site_slug) return { ok: false, slug, error: 'not-found' };
   slug = row.site_slug;
-  const cur = await deps.store.readPending(slug);
-  if (!cur?.siteData && input.replace === undefined) return { ok: false, slug, error: 'no-copy', detail: 'no stored copy; use replace' };
-  const fromVersion = versionOf(cur);
-  if (input.expectedVersion != null && input.expectedVersion !== fromVersion) {
-    return { ok: false, slug, error: 'conflict', version: fromVersion, detail: `stored version is ${fromVersion}, not ${input.expectedVersion}` };
-  }
 
-  let next: WebsiteData;
-  try {
-    next = nextSiteData(input, restored(cur));
-  } catch (e) {
-    return { ok: false, slug, error: 'bad-request', detail: errMsg(e) };
-  }
-  const problem = validationProblem(next);
-  if (problem) return { ok: false, slug, error: 'bad-request', detail: problem };
-
-  let imageUrlMap: Record<string, string>;
-  let siteData: WebsiteData;
-  try {
-    imageUrlMap = buildImageUrlMap(next);
-    siteData = stripLapsedLinks(toPendingSiteData(next, imageUrlMap), row.product_id);
-  } catch (e) {
-    return { ok: false, slug, error: 'bad-request', detail: errMsg(e) };
-  }
-  const strippedLinks = (['bookingUrl', 'shopUrl'] as const).filter((k) => k in next && !(k in siteData));
-
-  // Dry render: never store (or hand to the phone) what the templates can't render.
-  try {
-    deps.render({ siteData, imageUrlMap });
-  } catch (e) {
-    return { ok: false, slug, error: 'bad-request', detail: `the template can't render this: ${errMsg(e)}` };
-  }
-
-  // History first: if it can't be kept, nothing is overwritten.
-  if (cur) {
-    try {
-      await deps.store.writeHistory(slug, fromVersion, cur);
-    } catch (e) {
-      return { ok: false, slug, error: 'history-failed', detail: errMsg(e) };
+  // Compare-and-set (e2e I1): the edit is decided on the copy as read, and written only if
+  // nobody wrote in between. When someone did (a phone publish, another admin save), the edit
+  // is decided again on the fresh copy: a patch or set re-applies on top of it, a replace is
+  // re-checked; with expectedVersion, the newer copy is a conflict. Never a silent overwrite,
+  // never a reused version number.
+  let fromVersion = 0;
+  let strippedLinks: string[] = [];
+  const cas = await casPending<UpdateResult | null>(slug, deps.store, async (cur) => {
+    if (!cur?.siteData && input.replace === undefined) return { stop: { ok: false, slug, error: 'no-copy', detail: 'no stored copy; use replace' } };
+    fromVersion = versionOf(cur);
+    if (input.expectedVersion != null && input.expectedVersion !== fromVersion) {
+      return { stop: { ok: false, slug, error: 'conflict', version: fromVersion, detail: `stored version is ${fromVersion}, not ${input.expectedVersion}` } };
     }
-  }
 
-  const version = fromVersion + 1;
-  const pending: PendingSite = {
-    siteId: slug,
-    existingSiteId: null,
-    siteData,
-    imageUrlMap,
-    timestamp: deps.now(),
-    version,
-    editedBy: 'admin',
-    editedAt: new Date(deps.now()).toISOString(),
-    adminVersion: version,
-  };
-  if (cur?.deployedUrl) pending.deployedUrl = cur.deployedUrl;
-  if (input.note) pending.note = String(input.note).slice(0, 500);
-  await deps.store.writePending(slug, pending);
+    let next: WebsiteData;
+    try {
+      next = nextSiteData(input, restored(cur));
+    } catch (e) {
+      return { stop: { ok: false, slug, error: 'bad-request', detail: errMsg(e) } };
+    }
+    const problem = validationProblem(next);
+    if (problem) return { stop: { ok: false, slug, error: 'bad-request', detail: problem } };
+
+    let imageUrlMap: Record<string, string>;
+    let siteData: WebsiteData;
+    try {
+      imageUrlMap = buildImageUrlMap(next);
+      siteData = stripLapsedLinks(toPendingSiteData(next, imageUrlMap), row.product_id);
+    } catch (e) {
+      return { stop: { ok: false, slug, error: 'bad-request', detail: errMsg(e) } };
+    }
+    strippedLinks = (['bookingUrl', 'shopUrl'] as const).filter((k) => k in next && !(k in siteData));
+
+    // Dry render: never store (or hand to the phone) what the templates can't render.
+    try {
+      deps.render({ siteData, imageUrlMap });
+    } catch (e) {
+      return { stop: { ok: false, slug, error: 'bad-request', detail: `the template can't render this: ${errMsg(e)}` } };
+    }
+
+    // History first: if it can't be kept, nothing is overwritten. (On a re-decide this keeps the
+    // copy that landed meanwhile too: every stored version is kept, write-once.)
+    if (cur) {
+      try {
+        await deps.store.writeHistory(slug, fromVersion, cur);
+      } catch (e) {
+        return { stop: { ok: false, slug, error: 'history-failed', detail: errMsg(e) } };
+      }
+    }
+
+    const version = fromVersion + 1;
+    const pending: PendingSite = {
+      siteId: slug,
+      existingSiteId: null,
+      siteData,
+      imageUrlMap,
+      timestamp: deps.now(),
+      version,
+      editedBy: 'admin',
+      editedAt: new Date(deps.now()).toISOString(),
+      adminVersion: version,
+    };
+    if (cur?.deployedUrl) pending.deployedUrl = cur.deployedUrl;
+    if (input.note) pending.note = String(input.note).slice(0, 500);
+    return { write: pending, result: null };
+  }, ADMIN_CAS_ATTEMPTS);
+  if (cas.result) return cas.result;
+  if (!cas.written) {
+    const now = versionOf(await deps.store.readPending(slug).catch(() => null));
+    return { ok: false, slug, error: 'conflict', version: now, detail: 'the stored copy kept changing; reload and try again' };
+  }
+  const pending = cas.written;
+  const version = pending.version!;
 
   const base = { slug, version, fromVersion, saved: true, strippedLinks };
   const audit = (ok: boolean, detail?: string) =>

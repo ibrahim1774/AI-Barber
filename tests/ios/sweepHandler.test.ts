@@ -13,7 +13,8 @@ const { unpublishedBound, restoreCandidates, takedownCandidates, markTakenDown, 
   appleVerify: vi.fn(),
   findShopForSite: vi.fn(async (_s: string): Promise<any> => null),
 }));
-vi.mock('../../lib/publishSite.js', () => ({ publishSite, writePendingSite, readPendingSite }));
+// The real compare-and-set helper over these fakes (no generations: unconditional writes).
+vi.mock('../../lib/publishSite.js', async (orig) => ({ ...(await orig<object>()), publishSite, writePendingSite, readPendingSite, readPendingVersioned: undefined }));
 vi.mock('../../lib/deploySite.js', () => ({ deployRenderedSite }));
 vi.mock('../../lib/siteSubpages.js', async (orig) => ({ ...(await orig<object>()), findShopForSite }));
 vi.mock('../../lib/ios/appleVerify.js', async (orig) => ({ ...(await orig<object>()), lazyDefaultVerifier: () => appleVerify }));

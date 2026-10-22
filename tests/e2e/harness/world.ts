@@ -15,9 +15,8 @@ import { makeIsTaken, urlServes, vercelProjectExists } from '../../../lib/ios/sl
 import { handleAppleNotification } from '../../../lib/ios/notifications.js';
 import { makeStripPending, sweepIos } from '../../../lib/ios/sweep.js';
 import { offlineHtml } from '../../../lib/ios/offlinePage.js';
-import { gatedWebDeploy } from '../../../lib/ios/webDeployGate.js';
 import { getPlan, refreshPlan, type PlanDeps } from '../../../lib/ios/planFlow.js';
-import { publishSite, readPendingSite, renderPending, slugify, writePendingSite } from '../../../lib/publishSite.js';
+import { publishSite, readPendingSite, readPendingVersioned, renderPending, slugify, writePendingSite } from '../../../lib/publishSite.js';
 import { deployRenderedSite } from '../../../lib/deploySite.js';
 import { gcsSiteStore } from '../../../lib/admin/live.js';
 import type { AdminSitesDeps, AuditEvent } from '../../../lib/admin/sites.js';
@@ -96,6 +95,7 @@ export function siteWorld() {
     writePending: writePendingSite,
     publish: (slug, opts) => publishSite(slug, opts),
     readPending: readPendingSite,
+    readPendingVersioned,
     now: clock.now,
   };
 
@@ -160,13 +160,8 @@ export function siteWorld() {
         deployOffline: async (slug) => { await deployRenderedSite({ siteId: slug, html: offlineHtml() }); },
         verify: (otid) => apple.verify(otid),
         takedownSandbox: opts.takedownSandbox,
-        stripPending: makeStripPending({ readPending: readPendingSite, writePending: writePendingSite }),
+        stripPending: makeStripPending({ readPending: readPendingSite, writePending: writePendingSite, readPendingVersioned }),
       }, opts.limit ?? 50, { now: clock.now }),
-    webDeploy: (input: Parameters<typeof gatedWebDeploy>[0]) =>
-      gatedWebDeploy(input, {
-        findBySlug: (s) => repo.findBySlug(s), deploy: deployRenderedSite, writePending: writePendingSite,
-        readPending: readPendingSite, now: clock.now,
-      }),
     adminDeps,
     adminHandler,
     gateRow,

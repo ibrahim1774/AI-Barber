@@ -16,7 +16,11 @@ const { findBySlug, deployRenderedSite, writePendingSite, readPendingSite, getUs
 }));
 vi.mock('../../lib/deploySite.js', () => ({ deployRenderedSite }));
 vi.mock('../../lib/ios/purchases.js', () => ({ supabasePurchases: () => ({ findBySlug }) }));
-vi.mock('../../lib/publishSite.js', async (orig) => ({ ...(await orig<object>()), writePendingSite, readPendingSite }));
+// No generations in this fake: the compare-and-set writes fall back to unconditional ones.
+vi.mock('../../lib/publishSite.js', async (orig) => ({
+  ...(await orig<object>()), writePendingSite, readPendingSite,
+  readPendingVersioned: async (s: string) => ({ pending: await readPendingSite(s), generation: null }),
+}));
 vi.mock('@supabase/supabase-js', () => ({
   createClient: () => ({
     auth: { getUser },

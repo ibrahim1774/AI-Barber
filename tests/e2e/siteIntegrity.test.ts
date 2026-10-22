@@ -10,7 +10,7 @@ import { AI_SHOP, normHtml, resetBoundaries, siteData, siteWorld, httpReq, httpR
 import { PRODUCTS } from './harness/apple.js';
 import { gcs, pendingOf } from './harness/gcs.js';
 import { deferred, deploysOf, vercel } from './harness/vercel.js';
-import { readPendingSite, renderPending, writePendingSite } from '../../lib/publishSite.js';
+import { readPendingSite, readPendingVersioned, renderPending, writePendingSite } from '../../lib/publishSite.js';
 import { updateSite, republish, getSite } from '../../lib/admin/sites.js';
 import { deployRenderedSite } from '../../lib/deploySite.js';
 import { deploySite, type DeploySiteDeps } from '../../api/deploy-site.js';
@@ -72,7 +72,7 @@ describe('admin edit racing a phone publish (no compare-and-set on the stored co
     };
   }
 
-  it('setup: an admin edit lands between the phone read (v1) and the phone write; both write v2', async () => {
+  it('setup (was: both write v2 and the admin edit is lost): the phone\'s write loses the compare-and-set, re-reads admin v2 and answers 409 with it', async () => {
     const { transactionId } = await published();
     let admin: any;
     afterPhoneRead('fade-lab', async () => {
@@ -80,14 +80,14 @@ describe('admin edit racing a phone publish (no compare-and-set on the stored co
     });
     const phone = await w.publish(transactionId, siteData({ area: 'Phone edit' }), { baseVersion: 1 });
     expect(admin).toMatchObject({ ok: true, version: 2 });
-    expect(phone.status).toBe(200);
-    expect((phone.body as any).version).toBe(2);
+    expect(phone).toMatchObject({ status: 409, body: { error: 'site-updated', site: { version: 2, editedBy: 'admin' } } });
+    expect((phone.body as any).site.siteData.phone).toBe('555-ADMIN');
     const stored = pendingOf('fade-lab');
-    expect(stored).toMatchObject({ version: 2, editedBy: 'owner' });
-    expect(stored.siteData.phone).toBe('555-0100');
+    expect(stored).toMatchObject({ version: 2, editedBy: 'admin' });
+    expect(stored.siteData.phone).toBe('555-ADMIN');
   });
 
-  it.fails('BUG: the admin edit is silently lost (not stored, not in history, no 409 to the phone)', async () => {
+  it('I1 (fixed): the admin edit is never silently lost (stored, or the phone gets 409)', async () => {
     const { transactionId } = await published();
     afterPhoneRead('fade-lab', () => updateSite('fade-lab', { set: { phone: '555-ADMIN' } }, w.adminDeps()));
     const phone = await w.publish(transactionId, siteData({ area: 'Phone edit' }), { baseVersion: 1 });
@@ -200,7 +200,7 @@ describe('/api/deploy-site (web editor deploy) reaching an app site', () => {
         now: w.clock.now,
       },
       deploy: {
-        deploy: deployRenderedSite, writePending: writePendingSite, readPending: readPendingSite, now: w.clock.now,
+        deploy: deployRenderedSite, writePending: writePendingSite, readPending: readPendingSite, readPendingVersioned, now: w.clock.now,
       },
       limiter: { allow: async () => true },
     };
@@ -221,6 +221,22 @@ describe('/api/deploy-site (web editor deploy) reaching an app site', () => {
     expect(vercel.live.get('fade-lab')).toBe('<h1>owner edit</h1>');
     expect(pendingOf('fade-lab')).toMatchObject({ version: 3, editedBy: 'owner', adminVersion: 2 });
     expect(pendingOf('fade-lab').siteData.phone).toBe('000');
+  });
+
+  it('I1: an admin edit landing between the owner web edit\'s read and write is not given the same version (compare-and-set)', async () => {
+    await ownedBy(USER_A);
+    let fired = false;
+    gcs.afterDownload = async (path) => {
+      if (fired || path !== 'pending-sites/fade-lab.json') return;
+      fired = true;
+      gcs.afterDownload = null;
+      await updateSite('fade-lab', { set: { phone: '555-ADMIN' } }, w.adminDeps()); // admin v2
+    };
+    const res = await deploy({ siteId: 'fade-lab', html: '<h1>owner edit</h1>', siteData: siteData({ phone: '000' }) }, 'owner-a');
+    expect(res.statusCode).toBe(200);
+    expect(pendingOf('fade-lab')).toMatchObject({ version: 3, editedBy: 'owner', adminVersion: 2 });
+    const history = await w.adminDeps().store.listHistory('fade-lab');
+    expect(history.map((h) => h.id)).toEqual(['1']);
   });
 
   it('C1 (fixed): an app site can not be replaced without the Apple-bound owner (401 / 403)', async () => {
@@ -281,7 +297,7 @@ describe('sweep restore strips links with a read-modify-write of the stored copy
     expect(vercel.live.get('fade-lab')).not.toContain('Website unavailable');
   });
 
-  it.fails('BUG: a phone publish landing between the strip read and write is overwritten by the older copy', async () => {
+  it('I1 (fixed): a phone publish landing between the strip read and write survives (the strip re-applies on the fresh copy)', async () => {
     const p = await takenDownAfterDowngrade();
     let fired = false;
     gcs.afterDownload = async (path) => {
@@ -293,5 +309,7 @@ describe('sweep restore strips links with a read-modify-write of the stored copy
     };
     await w.sweep();
     expect(pendingOf('fade-lab').siteData.area).toBe('Fresh phone edit');
+    expect(pendingOf('fade-lab').version).toBe(2); // never backwards
+    expect('shopUrl' in pendingOf('fade-lab').siteData).toBe(false);
   });
 });

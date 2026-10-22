@@ -193,3 +193,76 @@ describe('renderPending', () => {
     expect(() => renderPending({ ...pending, siteData: { ...pending.siteData, contact: undefined } })).toThrow();
   });
 });
+
+describe('casPending (compare-and-set on the stored copy, e2e I1)', () => {
+  it('re-decides on the fresh copy when another write lands between the read and the write', async () => {
+    const { casPending, readPendingVersioned, readPendingSite } = await import('../lib/publishSite.js');
+    await writePendingSite('fresh-cuts', { ...pending, version: 1 });
+    const io = {
+      readPending: readPendingSite,
+      readPendingVersioned,
+      writePending: async (slug: string, p: any, o?: any) => {
+        if (!raced) {
+          raced = true;
+          await writePendingSite('fresh-cuts', { ...pending, note: 'someone else', version: 2 }); // someone else
+        }
+        await writePendingSite(slug, p, o);
+      },
+    };
+    let raced = false;
+    const seen: number[] = [];
+    const r = await casPending('fresh-cuts', io, (cur) => {
+      seen.push(cur!.version!);
+      return { write: { ...cur!, version: cur!.version! + 1 } };
+    });
+    expect(seen).toEqual([1, 2]);
+    expect(r.written!.version).toBe(3);
+    expect(JSON.parse(store.get('pending-sites/fresh-cuts.json')!).data).toMatchObject({ version: 3, note: 'someone else' });
+  });
+
+  it('a 412 whose fresh copy is exactly the write (a transport retry that had landed) counts as written', async () => {
+    const { casPending, readPendingVersioned, readPendingSite } = await import('../lib/publishSite.js');
+    await writePendingSite('fresh-cuts', { ...pending, version: 1 });
+    const io = {
+      readPending: readPendingSite, readPendingVersioned,
+      writePending: async (slug: string, p: any, o?: any) => {
+        await writePendingSite(slug, p); // landed...
+        await writePendingSite(slug, p, o); // ...and the retry 412s
+      },
+    };
+    let calls = 0;
+    const r = await casPending('fresh-cuts', io, (cur) => { calls++; return { write: { ...cur!, version: 2 } }; });
+    expect(calls).toBe(1);
+    expect(r.written!.version).toBe(2);
+  });
+
+  it('a create (no object yet) is conditional too: generation 0', async () => {
+    const { casPending, readPendingVersioned, readPendingSite } = await import('../lib/publishSite.js');
+    let first = true;
+    const io = {
+      readPending: readPendingSite, readPendingVersioned,
+      writePending: async (slug: string, p: any, o?: any) => {
+        if (first) { first = false; await writePendingSite('fresh-cuts', { ...pending, version: 7 }); }
+        await writePendingSite(slug, p, o);
+      },
+    };
+    const r = await casPending('fresh-cuts', io, (cur) => ({ write: { ...pending, version: (cur?.version ?? 0) + 1 } }));
+    expect(r.written!.version).toBe(8);
+  });
+
+  it('gives up after the attempts (nothing written by it) and never throws the 412', async () => {
+    const { casPending, readPendingVersioned, readPendingSite } = await import('../lib/publishSite.js');
+    await writePendingSite('fresh-cuts', { ...pending, version: 1 });
+    let n = 1;
+    const io = {
+      readPending: readPendingSite, readPendingVersioned,
+      writePending: async (slug: string, p: any, o?: any) => {
+        await writePendingSite('fresh-cuts', { ...pending, version: ++n * 100 });
+        await writePendingSite(slug, p, o);
+      },
+    };
+    const r = await casPending('fresh-cuts', io, (cur) => ({ write: { ...cur!, version: cur!.version! + 1 } }), 3);
+    expect(r.exhausted).toBe(true);
+    expect(r.written).toBeUndefined();
+  });
+});

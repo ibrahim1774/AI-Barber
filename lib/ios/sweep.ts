@@ -24,7 +24,7 @@
 // and candidates come oldest-checked first, so rows Apple can't resolve or
 // that sit in billing grace rotate to the back instead of starving the rest.
 import type { PurchasesRepo, PurchaseRow } from './purchases.js';
-import type { PendingSite, PublishOutcome } from '../publishSite.js';
+import { casPending, type PendingIO, type PendingSite, type PublishOutcome } from '../publishSite.js';
 import type { VerifiedTx } from './appleVerify.js';
 import { isActive } from './txStatus.js';
 import { isLapsed } from './lapse.js';
@@ -85,20 +85,24 @@ export interface IosSweepDeps {
    * doesn't cover from the slug's pending file (makeStripPending). Never adds links: they come
    * back with the app's next publish. Best effort; absent = skipped.
    */
-  stripPending?(slug: string, productId: string): Promise<void>;
+  stripPending?(slug: string, productId: string): Promise<boolean | void>;
 }
 
-/** stripPending over the pending-file store: rewrites it only when a link is removed. */
-export function makeStripPending(deps: {
-  readPending(slug: string): Promise<PendingSite | null>;
-  writePending(slug: string, p: PendingSite): Promise<void>;
-}): (slug: string, productId: string) => Promise<void> {
+/**
+ * stripPending over the pending-file store: rewrites it only when a link is removed, and
+ * returns whether it did. Compare-and-set (e2e I1): a publish landing between the read and the
+ * write is never overwritten by the older copy; the strip is re-applied to the fresh copy.
+ */
+export function makeStripPending(deps: PendingIO): (slug: string, productId: string) => Promise<boolean> {
   return async (slug, productId) => {
-    const pending = await deps.readPending(slug);
-    if (!pending?.siteData) return;
-    const siteData = stripLapsedLinks(pending.siteData, productId);
-    if (Object.keys(siteData).length === Object.keys(pending.siteData).length) return;
-    await deps.writePending(slug, { ...pending, siteData });
+    const r = await casPending<boolean>(slug, deps, (pending) => {
+      if (!pending?.siteData) return { stop: false };
+      const siteData = stripLapsedLinks(pending.siteData, productId);
+      if (Object.keys(siteData).length === Object.keys(pending.siteData).length) return { stop: false };
+      return { write: { ...pending, siteData }, result: true };
+    });
+    if (r.exhausted) throw new Error('the stored copy kept changing; strip not applied');
+    return r.result === true;
   };
 }
 

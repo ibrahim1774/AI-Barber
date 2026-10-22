@@ -251,7 +251,8 @@ export async function casPending<T = void>(
     const d = await decide(cur.pending);
     if ('stop' in d) return { previous, result: d.stop };
     try {
-      await io.writePending(slug, d.write, cur.generation != null ? { ifGeneration: cur.generation } : {});
+      if (cur.generation != null) await io.writePending(slug, d.write, { ifGeneration: cur.generation });
+      else await io.writePending(slug, d.write);
       return { written: d.write, previous, result: d.result };
     } catch (e) {
       if (!isPendingConflict(e)) throw e;

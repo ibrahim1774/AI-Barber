@@ -10,12 +10,15 @@ import type { WebsiteData } from '../../types.js';
 import {
   publishSite,
   readPendingSite,
+  readPendingVersioned,
   writePendingSite,
   adminVersionOf,
+  casPending,
   versionOf,
   type PendingSite,
   type PublishOutcome,
   type SiteEditor,
+  type VersionedPending,
 } from '../publishSite.js';
 import { VerifyFailure, isActive, lazyDefaultVerifier, type VerifiedTx } from './appleVerify.js';
 import { supabasePurchases, type PurchasesRepo } from './purchases.js';
@@ -67,11 +70,20 @@ export interface PublishDeps {
   verify(transactionId: string): Promise<VerifiedTx>;
   repo: PurchasesRepo;
   isTaken(slug: string): Promise<boolean>;
-  writePending(slug: string, p: PendingSite): Promise<void>;
+  /** With `ifGeneration`: compare-and-set (throws a 412 PendingConflictError when the copy changed). */
+  writePending(slug: string, p: PendingSite, opts?: { ifGeneration?: number | null }): Promise<void>;
   publish(slug: string, opts: { force: boolean }): Promise<PublishOutcome>;
   readPending(slug: string): Promise<PendingSite | null>;
+  /** The stored copy with its GCS generation (compare-and-set). Absent: unconditional writes (older fakes). */
+  readPendingVersioned?(slug: string): Promise<VersionedPending>;
   now(): number;
 }
+
+/**
+ * Phone publishes racing each other (a tap storm, a retry) re-decide on the fresh copy; each
+ * attempt is a new version. Bounded: past this the publish answers 409 site-updated.
+ */
+export const PUBLISH_CAS_ATTEMPTS = 12;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -161,28 +173,11 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps): 
     const republished = !!row.published_at;
     let slug: string;
     let force: boolean;
-    let previous: PendingSite | null = null;
+    const wasBound = !!row.site_slug;
     if (row.site_slug) {
       // Bound slug is permanent, whatever the shop is now called.
       slug = row.site_slug;
       force = true;
-      previous = await deps.readPending(slug);
-      // Admin edits (lib/admin/sites.ts) must never be silently overwritten by a phone that
-      // missed the sync: a publish based on a copy older than the last admin edit is refused
-      // with the server copy so the app can adopt it. Only after Apple verified the caller.
-      const lastAdmin = adminVersionOf(previous);
-      if (input.baseVersion == null) {
-        // No baseVersion (an app record from before versioning) counts as 0: refused only while
-        // the stored copy itself is an admin edit. A copy with no version never refuses.
-        console.warn(`[ios/publish] ${slug}: publish without baseVersion; stored v${versionOf(previous)} by ${previous?.editedBy || 'unknown'}`);
-        if (previous?.editedBy === 'admin' && versionOf(previous) > 0) {
-          console.warn(`[ios/publish] ${slug}: no baseVersion over admin v${versionOf(previous)}: site-updated`);
-          return { status: 409, body: { error: 'site-updated', site: siteBody(slug, previous, true) } };
-        }
-      } else if (input.baseVersion < lastAdmin) {
-        console.warn(`[ios/publish] ${slug}: baseVersion ${input.baseVersion} < admin v${lastAdmin}: site-updated`);
-        return { status: 409, body: { error: 'site-updated', site: siteBody(slug, previous, true) } };
-      }
     } else {
       force = false;
       let candidate: string;
@@ -202,22 +197,57 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps): 
       }
     }
 
-    const pending: PendingSite = {
-      siteId: slug,
-      existingSiteId: null,
-      siteData: pendingData,
-      imageUrlMap,
-      timestamp: deps.now(),
-      version: versionOf(previous) + 1,
-      editedBy: 'owner',
-      editedAt: new Date(deps.now()).toISOString(),
-    };
-    // Carried forward so a stale phone is still refused after the owner adopted the admin edit.
-    const carriedAdmin = adminVersionOf(previous);
-    if (carriedAdmin) pending.adminVersion = carriedAdmin;
-    // Keep the last live URL so a failed redeploy doesn't lose it for the site lookup.
-    if (previous?.deployedUrl) pending.deployedUrl = previous.deployedUrl;
-    await deps.writePending(slug, pending);
+    // Compare-and-set on the stored copy (e2e I1): read it with its generation, decide, write
+    // only if nobody wrote in between. A lost race re-reads and decides again on the fresh copy:
+    // an admin edit that landed meanwhile is caught by the same 409 rule as one that landed
+    // before (the phone gets the server copy to adopt; nothing is overwritten), while another
+    // owner publish of this purchase (a tap storm, a retry) is simply the copy this one builds
+    // on, as the next version. Version numbers are never reused.
+    const io = { readPending: deps.readPending, writePending: deps.writePending, readPendingVersioned: deps.readPendingVersioned };
+    type Refusal = { status: 409; body: { error: 'site-updated'; site: IosSiteBody } };
+    const cas = await casPending<Refusal | null>(slug, io, (previous) => {
+      if (wasBound) {
+        // Admin edits (lib/admin/sites.ts) must never be silently overwritten by a phone that
+        // missed the sync: a publish based on a copy older than the last admin edit is refused
+        // with the server copy so the app can adopt it. Only after Apple verified the caller.
+        const lastAdmin = adminVersionOf(previous);
+        if (input.baseVersion == null) {
+          // No baseVersion (an app record from before versioning) counts as 0: refused only while
+          // the stored copy itself is an admin edit. A copy with no version never refuses.
+          console.warn(`[ios/publish] ${slug}: publish without baseVersion; stored v${versionOf(previous)} by ${previous?.editedBy || 'unknown'}`);
+          if (previous?.editedBy === 'admin' && versionOf(previous) > 0) {
+            console.warn(`[ios/publish] ${slug}: no baseVersion over admin v${versionOf(previous)}: site-updated`);
+            return { stop: { status: 409, body: { error: 'site-updated', site: siteBody(slug, previous, true) } } };
+          }
+        } else if (input.baseVersion < lastAdmin) {
+          console.warn(`[ios/publish] ${slug}: baseVersion ${input.baseVersion} < admin v${lastAdmin}: site-updated`);
+          return { stop: { status: 409, body: { error: 'site-updated', site: siteBody(slug, previous, true) } } };
+        }
+      }
+      const next: PendingSite = {
+        siteId: slug,
+        existingSiteId: null,
+        siteData: pendingData,
+        imageUrlMap,
+        timestamp: deps.now(),
+        version: versionOf(previous) + 1,
+        editedBy: 'owner',
+        editedAt: new Date(deps.now()).toISOString(),
+      };
+      // Carried forward so a stale phone is still refused after the owner adopted the admin edit.
+      const carriedAdmin = adminVersionOf(previous);
+      if (carriedAdmin) next.adminVersion = carriedAdmin;
+      // Keep the last live URL so a failed redeploy doesn't lose it for the site lookup.
+      if (previous?.deployedUrl) next.deployedUrl = previous.deployedUrl;
+      return { write: next, result: null };
+    }, PUBLISH_CAS_ATTEMPTS);
+    if (cas.result) return cas.result;
+    if (!cas.written) {
+      // The copy kept changing under this publish: hand the app the latest copy to adopt.
+      console.warn(`[ios/publish] ${slug}: the stored copy kept changing; site-updated`);
+      return { status: 409, body: { error: 'site-updated', site: siteBody(slug, await deps.readPending(slug), true) } };
+    }
+    const pending = cas.written;
 
     const outcome = await deps.publish(slug, { force });
     if (!outcome.ok) {
@@ -291,6 +321,7 @@ export function liveDeps(): PublishDeps {
     writePending: writePendingSite,
     publish: (slug, opts) => publishSite(slug, opts),
     readPending: readPendingSite,
+    readPendingVersioned,
     now: () => Date.now(),
   };
 }
