@@ -37,6 +37,7 @@ import {
   type StoreDeps,
 } from './core.js';
 import type { NewOrder } from './repo.js';
+import { customerOrigin, siteField } from '../customerUrls.js';
 import type { Fulfilment, OrderRow, OrderStatus, ShopStoreRow } from './types.js';
 
 type Params = Record<string, unknown>;
@@ -55,7 +56,9 @@ export async function getStoreShop(params: Params, deps: StoreDeps): Promise<Flo
   if (!isSlugParam(params.slug)) return notFound();
   const shop = await deps.repo.shopBySlug(params.slug);
   if (!shop) return notFound();
-  if (!(await storeOpen(deps.repo, shop))) return ok({ paused: true, shop: { name: shop.name } });
+  // site: the shop's own site and look, for the page's header and styling (absent without one).
+  const site = siteField(shop);
+  if (!(await storeOpen(deps.repo, shop))) return ok({ paused: true, shop: { name: shop.name }, ...site });
   const products = (await deps.repo.products(shop.id)).filter((p) => p.active && p.shop_id === shop.id);
   return ok({
     paused: false,
@@ -70,13 +73,14 @@ export async function getStoreShop(params: Params, deps: StoreDeps): Promise<Flo
       pay: { inShop: inShopAllowed(shop), card: cardEnabled(shop), manual: manualHandles(shop) },
     },
     products: products.map(publicProductView),
+    ...site,
   });
 }
 
 // ---------------------------------------------------------------------------
 // POST /api/store/orders
 // ---------------------------------------------------------------------------
-const created = (deps: StoreDeps, o: OrderRow, checkoutUrl?: string | null): FlowResult =>
+const created = (deps: StoreDeps, shop: ShopStoreRow, o: OrderRow, checkoutUrl?: string | null): FlowResult =>
   ok(
     {
       order: {
@@ -85,7 +89,8 @@ const created = (deps: StoreDeps, o: OrderRow, checkoutUrl?: string | null): Flo
         subtotalCents: o.subtotal_cents,
         shippingCents: o.shipping_cents,
         totalCents: o.total_cents,
-        statusUrl: statusUrl(deps.baseUrl, o.manage_token),
+        // On the shop's own site when it has the pages (lib/customerUrls.ts), else deps.baseUrl.
+        statusUrl: statusUrl(customerOrigin(shop, deps.baseUrl), o.manage_token),
       },
       ...(checkoutUrl ? { checkoutUrl } : {}),
     },
@@ -115,10 +120,10 @@ async function repeatResponse(deps: StoreDeps, shop: ShopStoreRow, order: OrderR
   let o = order;
   let polls = 0;
   for (let step = 0; step < INFLIGHT_POLLS + 3; step++) {
-    if (o.payment_method !== 'card') return created(deps, o);
+    if (o.payment_method !== 'card') return created(deps, shop, o);
     if (o.status === 'cancelled') return checkoutExpired();
-    if (!(o.status === 'new' && isUnpaidCardHold(o))) return created(deps, o); // paid (or later)
-    if (o.checkout_url) return created(deps, o, o.checkout_url);
+    if (!(o.status === 'new' && isUnpaidCardHold(o))) return created(deps, shop, o); // paid (or later)
+    if (o.checkout_url) return created(deps, shop, o, o.checkout_url);
 
     if (deps.now() - Date.parse(o.created_at) < CHECKOUT_INFLIGHT_MS) {
       // In flight (a double tap, or a fetch retry while the first request is still in Stripe):
@@ -286,7 +291,7 @@ export async function createOrder(body: unknown, deps: StoreDeps): Promise<FlowR
 
   // For an awaiting card hold S3b's notifyOrder is a no-op; the webhook confirms on payment.
   await safeNotify(deps, { kind: 'order_created', orderId: order.id });
-  return created(deps, order, checkoutUrl);
+  return created(deps, shop, order, checkoutUrl);
 }
 
 // ---------------------------------------------------------------------------
@@ -304,7 +309,7 @@ export async function getOrder(params: Params, deps: StoreDeps): Promise<FlowRes
   const c = await byToken(deps, params.token);
   if (!c) return notFound();
   const items = await deps.repo.orderItems(c.order.id);
-  return ok(publicOrderView(c.order, items, c.shop, manualHandles(c.shop) as Record<string, string>));
+  return ok({ ...publicOrderView(c.order, items, c.shop, manualHandles(c.shop) as Record<string, string>), ...siteField(c.shop) });
 }
 
 // ---------------------------------------------------------------------------

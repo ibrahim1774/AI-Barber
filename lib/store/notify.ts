@@ -4,6 +4,7 @@ import { pushToUsers, type PushMessage } from '../bookings/push.js';
 import { emailLayout, dollars, pushTokenStore, type ManualMethod } from '../bookings/notify.js';
 import { serviceDb, SITE_ORIGIN } from '../bookings/payments.js';
 import { orderManageUrl, orderNoLabel, shipsWithinLabel } from './payments.js';
+import { shopPageUrl } from '../customerUrls.js';
 import type { StoreNotifyEvent } from './types.js';
 
 /**
@@ -61,6 +62,8 @@ export interface NotifyStoreShop {
   manual_handles?: Record<string, unknown> | null;
   store_pickup_note?: string | null;
   ships_within_days?: number | null;
+  /** The shop's own site origin (011): customer links use it when set. */
+  site_base_url?: string | null;
 }
 
 export interface OrderNotifyContext {
@@ -166,7 +169,7 @@ export function orderConfirmationEmail(ctx: OrderNotifyContext): EmailMessage {
     if (shop.ships_within_days != null) paras.push(shipsWithinLabel(shop.ships_within_days));
   }
   return message(ctx, `Order ${orderNo(o)} at ${shop.name}`, `Order ${orderNo(o)}`, rows, paras,
-    { label: 'View order', href: orderManageUrl(o.manage_token) });
+    { label: 'View order', href: orderManageUrl(o.manage_token, shop) });
 }
 
 export function orderReadyEmail(ctx: OrderNotifyContext): EmailMessage {
@@ -178,7 +181,7 @@ export function orderReadyEmail(ctx: OrderNotifyContext): EmailMessage {
   const due = Math.max(0, o.total_cents - o.amount_paid_cents);
   if (UNPAID.has(o.payment_status) && due > 0) rows.push(['Amount due at pickup', dollars(due)]);
   return message(ctx, `Your order ${orderNo(o)} is ready for pickup`, 'Ready for pickup', rows, paras,
-    { label: 'View order', href: orderManageUrl(o.manage_token) });
+    { label: 'View order', href: orderManageUrl(o.manage_token, shop) });
 }
 
 export function orderShippedEmail(ctx: OrderNotifyContext): EmailMessage {
@@ -189,7 +192,7 @@ export function orderShippedEmail(ctx: OrderNotifyContext): EmailMessage {
   if (addr) rows.push(['Ship to', addr]);
   const button = isHttps(o.tracking_url)
     ? { label: 'Track package', href: o.tracking_url }
-    : { label: 'View order', href: orderManageUrl(o.manage_token) };
+    : { label: 'View order', href: orderManageUrl(o.manage_token, shop) };
   return message(ctx, `Your order ${orderNo(o)} has shipped`, 'Your order has shipped',
     rows, [`Your order ${orderNo(o)} from ${shop.name} is on its way.`], button);
 }
@@ -198,7 +201,8 @@ export function orderCancelledEmail(ctx: OrderNotifyContext, refundedCents: numb
   const { order: o, shop } = ctx;
   const paras = [`Your order ${orderNo(o)} at ${shop.name} was cancelled.`];
   if (refundedCents > 0) paras.push(`A refund of ${dollars(refundedCents)} is on its way to your card. It can take 5–10 business days to show.`);
-  const shopLink = shop.slug ? { label: 'Visit the shop', href: `${SITE_ORIGIN}/shop/${encodeURIComponent(shop.slug)}` } : undefined;
+  const shopHref = shopPageUrl(shop, SITE_ORIGIN);
+  const shopLink = shopHref ? { label: 'Visit the shop', href: shopHref } : undefined;
   return message(ctx, `Order ${orderNo(o)} was cancelled`, 'Order cancelled',
     [...itemRows(ctx), ['Total', dollars(o.total_cents)]], paras, shopLink);
 }

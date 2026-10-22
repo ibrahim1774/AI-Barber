@@ -100,7 +100,7 @@ const SHOP_COLS =
   'id, owner_id, site_id, slug, name, timezone, currency, lead_days, min_notice_min, buffer_min, cancel_cutoff_min, ' +
   'slot_step_min, pay_in_shop, manual_handles, stripe_account_id, stripe_charges_enabled, platform_fee_bps, ' +
   'bookings_enabled, ios_otid, address, phone, accent, daily_summary, ' +
-  'store_enabled, store_pickup, store_pickup_note, store_shipping, shipping_flat_cents, ships_within_days';
+  'store_enabled, store_pickup, store_pickup_note, store_shipping, shipping_flat_cents, ships_within_days, site_base_url, site_look';
 const PRODUCT_COLS = 'id, shop_id, name, price_cents, description, photos, sold_out, active, sort, created_at, updated_at';
 const ITEM_COLS = 'id, order_id, product_id, name, unit_price_cents, quantity, created_at';
 const ORDER_COLS = '*';

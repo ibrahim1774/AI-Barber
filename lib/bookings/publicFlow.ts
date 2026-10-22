@@ -48,6 +48,7 @@ import {
   type FlowResult,
 } from './core.js';
 import { appointmentsToIcs } from './deps.js';
+import { customerOrigin, siteField } from '../customerUrls.js';
 import {
   MANUAL_METHODS,
   type AppointmentRow,
@@ -73,7 +74,9 @@ async function shopForSlug(deps: FlowDeps, slug: unknown): Promise<ShopRow | nul
 export async function getShop(params: Params, deps: FlowDeps): Promise<FlowResult> {
   const shop = await shopForSlug(deps, params.slug);
   if (!shop) return notFound();
-  if (!(await bookingsOpen(deps.repo, shop))) return ok({ paused: true, shop: { name: shop.name } });
+  // site: the shop's own site and look, for the page's header and styling (absent without one).
+  const site = siteField(shop);
+  if (!(await bookingsOpen(deps.repo, shop))) return ok({ paused: true, shop: { name: shop.name }, ...site });
 
   const cat = await loadCatalog(deps.repo, shop);
   const services = cat.services.filter((s) => s.active && s.bookable);
@@ -109,6 +112,7 @@ export async function getShop(params: Params, deps: FlowDeps): Promise<FlowResul
         serviceIds: ids.length === services.length ? null : ids,
       };
     }),
+    ...site,
   });
 }
 
@@ -311,7 +315,8 @@ export async function createAppointment(body: unknown, deps: FlowDeps): Promise<
           memberName: m.display_name,
           priceCents: appt.price_cents,
           depositCents: deposit,
-          manageUrl: manageUrl(deps.baseUrl, appt.manage_token),
+          // On the shop's own site when it has the pages (lib/customerUrls.ts), else deps.baseUrl.
+          manageUrl: manageUrl(customerOrigin(shop, deps.baseUrl), appt.manage_token),
         },
         ...(checkoutUrl ? { checkoutUrl } : {}),
       },
@@ -389,6 +394,7 @@ export async function getManage(params: Params, deps: FlowDeps): Promise<FlowRes
     canCancel: canCancel(appt, nowMs),
     canReschedule: canReschedule(shop, appt, nowMs, open),
     refundCentsIfCancelled: appt.status === 'booked' ? refundIfCancelled(shop, appt, 'customer', nowMs) : 0,
+    ...siteField(shop),
   });
 }
 

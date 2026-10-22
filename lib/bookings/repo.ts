@@ -35,6 +35,9 @@ export interface ShopRow {
   phone: string | null;
   accent: string | null;
   daily_summary: boolean;
+  /** The shop's own site origin and look (011, server-written after a site deploy). */
+  site_base_url?: string | null;
+  site_look?: unknown;
 }
 
 export interface MemberRow {
@@ -272,7 +275,7 @@ export interface BookingRepo {
 const SHOP_COLS =
   'id, owner_id, site_id, slug, name, timezone, currency, lead_days, min_notice_min, buffer_min, cancel_cutoff_min, ' +
   'slot_step_min, pay_in_shop, manual_handles, stripe_account_id, stripe_charges_enabled, platform_fee_bps, ' +
-  'bookings_enabled, ios_otid, address, phone, accent, daily_summary';
+  'bookings_enabled, ios_otid, address, phone, accent, daily_summary, site_base_url, site_look';
 const MEMBER_COLS = 'id, shop_id, user_id, role, display_name, photo_url, bio, sort, active, ics_token';
 const SERVICE_COLS =
   'id, shop_id, name, price_cents, duration_min, description, photo_url, bookable, show_on_site, deposit_type, deposit_value, sort, active';

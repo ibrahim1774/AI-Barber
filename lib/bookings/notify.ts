@@ -62,6 +62,8 @@ export interface NotifyShop {
   address?: string | null;
   phone?: string | null;
   accent?: string | null;
+  /** The shop's own site origin (011): customer links use it when set. */
+  site_base_url?: string | null;
 }
 
 export interface NotifyContext {
@@ -149,7 +151,7 @@ function icsAttachment(ctx: NotifyContext, now: number, cancelled = false) {
       shopName: ctx.shop.name,
       memberName: ctx.memberName,
       address: ctx.shop.address ?? null,
-      manageUrl: manageUrl(ctx.appt.manage_token),
+      manageUrl: manageUrl(ctx.appt.manage_token, ctx.shop),
       cancelled,
       updatedAt: ctx.appt.updated_at ?? new Date(now).toISOString(),
       now: new Date(now),
@@ -163,7 +165,7 @@ function icsAttachment(ctx: NotifyContext, now: number, cancelled = false) {
 
 export function confirmationEmail(ctx: NotifyContext, now: number): EmailMessage {
   const { appt, shop } = ctx;
-  const link = manageUrl(appt.manage_token);
+  const link = manageUrl(appt.manage_token, shop);
   return {
     to: appt.customer_email!,
     fromName: fromName(shop),
@@ -186,7 +188,7 @@ export function cancellationEmail(ctx: NotifyContext, by: 'customer' | 'shop', r
       : 'Your appointment has been cancelled.',
   ];
   if (refundedCents > 0) paras.push(`A refund of ${dollars(refundedCents)} is on its way to your card. It can take 5–10 business days to show.`);
-  const rebook = shop.slug ? { label: 'Book another time', href: bookingPageUrl(shop.slug) } : undefined;
+  const rebook = shop.slug ? { label: 'Book another time', href: bookingPageUrl(shop.slug, shop) } : undefined;
   return {
     to: appt.customer_email!,
     fromName: fromName(shop),
@@ -201,7 +203,7 @@ export function cancellationEmail(ctx: NotifyContext, by: 'customer' | 'shop', r
 
 export function rescheduleEmail(ctx: NotifyContext, now: number): EmailMessage {
   const { appt, shop } = ctx;
-  const link = manageUrl(appt.manage_token);
+  const link = manageUrl(appt.manage_token, shop);
   return {
     to: appt.customer_email!,
     fromName: fromName(shop),
@@ -217,7 +219,7 @@ export function rescheduleEmail(ctx: NotifyContext, now: number): EmailMessage {
 
 export function reminderEmail(ctx: NotifyContext): EmailMessage {
   const { appt, shop } = ctx;
-  const link = manageUrl(appt.manage_token);
+  const link = manageUrl(appt.manage_token, shop);
   const when = zoned(appt.start_at, shop.timezone).toFormat("cccc 'at' h:mm a");
   return {
     to: appt.customer_email!,
