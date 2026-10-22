@@ -33,6 +33,7 @@
 import { runApifyActor, resolveFinalUrl } from './util.js';
 import type { GbpBusiness, GbpScrapeOptions } from './types.js';
 import { ScrapeError } from './types.js';
+import { parseReviewRating } from '../scrapers/util.js';
 
 const APIFY_ACTOR = 'compass~crawler-google-places';
 
@@ -190,11 +191,12 @@ export async function scrapeGoogleBusiness(
       .slice(0, 5)
       .map((r: any) => ({
         author: String(r?.name || 'Customer'),
-        rating: Math.max(1, Math.min(5, Math.round(Number(r?.stars) || 5))),
+        rating: parseReviewRating(r?.stars),
         comment: String(r?.text || ''),
         date: String(r?.publishedAtDate || ''),
       }))
-      // Testimonials section — only ship reviews worth showing off.
-      .filter((r) => r.comment && r.rating >= 4),
+      // Testimonials section keeps 4★+ only (sites label these "Selected
+      // reviews"). An unreadable rating can't be shown to be 4★+, so drop it.
+      .filter((r) => r.comment && (r.rating ?? 0) >= 4),
   };
 }

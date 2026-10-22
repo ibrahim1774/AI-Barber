@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { isPayFirstPlan } from '../lib/payFirst';
 import { WebsiteData, SiteInstance, SaveStatus } from '../types';
 import { isCustomDesignAnyPath } from '../lib/dealMode.ts';
 
@@ -14,6 +15,12 @@ import { useAutoSave } from '../hooks/useAutoSave';
 import { useResetOnReturnFromStripe } from '../hooks/useResetOnReturnFromStripe';
 import PrePaymentBanner from './PrePaymentBanner.tsx';
 import { AIB_THEME_CSS, AibTheme, cityStateOnly, resolveAibTheme, to12h } from '../lib/render/luxe';
+import {
+  aggregateToShow, copyrightYear, displayPrice, nicheCopy, nicheOf, photoAlt, reviewStars, reviewsSourceLabel, serviceMeta,
+  visibleFeatureCards, withoutLegacyCopy,
+} from '../lib/render/honest';
+import { AddServiceRow } from './AddServiceRow';
+import type { ServiceItem } from '../types';
 
 interface GeneratedWebsiteProps {
   data: WebsiteData;
@@ -48,6 +55,10 @@ interface GeneratedWebsiteProps {
 
 
 
+
+
+// Editor-only: placeholder text for empty editable fields (never in the deployed page).
+const EDITOR_PLACEHOLDER_CSS = '[data-placeholder]:empty::before{content:attr(data-placeholder);opacity:.45;font-style:italic;pointer-events:none}[data-placeholder]:empty{display:inline-block;min-width:2ch}';
 
 export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack, site, onNavigateDashboard, isPostPayment = false, userId = null, onCheckoutFlowChange, hidePrepaymentBanner, onUpdate, showThemePicker = false, themePickerPlacement = 'below-design' }) => {
   const [siteData, setSiteData] = useState<WebsiteData>(data);
@@ -140,6 +151,23 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
   // writes it and triggers a save post-payment — mirrors the hours
   // editing pattern below.
   const lbl = (key: string, fallback: string) => (siteData.labels && siteData.labels[key]) || fallback;
+  // What the deployed page shows: older sites' invented copy (default
+  // service menu, "Premium…" tagline, templated about text) removed. Edits
+  // are made against this view, so saving replaces the invented copy.
+  const view = withoutLegacyCopy(siteData);
+  // Service edits (immutable; based on the view so a legacy menu is replaced).
+  const optionalText = (val: string, placeholder: string) => (val.trim() === placeholder ? '' : val.trim());
+  const updateService = (i: number, patch: Partial<ServiceItem>) =>
+    handleTextChange('services', view.services.map((s, k) => (k === i ? { ...s, ...patch } : s)) as any);
+  const removeService = (i: number) => handleTextChange('services', view.services.filter((_, k) => k !== i) as any);
+  // Remove on mousedown (preventDefault keeps focus where it is): with a plain
+  // click, the blur commit of a field being edited re-renders the card and the
+  // first click never lands. onClick still handles keyboard activation.
+  const removeHandlers = (i: number) => ({
+    onMouseDown: (e: React.MouseEvent) => { e.preventDefault(); removeService(i); },
+    onClick: (e: React.MouseEvent) => { if (e.detail === 0) removeService(i); },
+  });
+  const addService = (svc: ServiceItem) => handleTextChange('services', [...view.services, svc] as any);
   const setLabel = (key: string, value: string) => {
     setSiteData(prev => ({ ...prev, labels: { ...(prev.labels || {}), [key]: value } }));
     if (isPostPayment) triggerSave();
@@ -167,16 +195,9 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
     else if (parts[0] === 'contact') newData.contact = { ...newData.contact };
     else if (parts[0] === 'services') newData.services = [...newData.services];
     else if (parts[0] === 'featureCards') {
-      // Initialize from defaults if missing so the path walk can index
-      // featureCards[i] without crashing. Older saved sites predate
-      // this field entirely.
-      newData.featureCards = newData.featureCards
-        ? newData.featureCards.map(c => ({ ...c }))
-        : [
-            { title: 'Experience', sub: 'Professional' },
-            { title: 'Service', sub: 'Trusted' },
-            { title: 'Open Monday to Friday', sub: '9am - 7pm' },
-          ];
+      // Only barber-written cards are ever shown (no invented defaults),
+      // so an edit always targets an existing card.
+      newData.featureCards = (newData.featureCards || []).map(c => ({ ...c }));
     }
 
     let current: any = newData;
@@ -271,10 +292,14 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
   };
 
   // ContentEditable component wrapper for convenience
-  const EditableText = ({ text, onSave, className = "", tagName: Tag = "span" }: { text: string, onSave: (val: string) => void, className?: string, tagName?: any }) => (
+  // `placeholder`: shown (CSS ::before, see EDITOR_PLACEHOLDER_CSS) only while
+  // the field is empty, so typing never mixes into placeholder text.
+  const EditableText = ({ text, onSave, className = "", tagName: Tag = "span", placeholder }: { text: string, onSave: (val: string) => void, className?: string, tagName?: any, placeholder?: string }) => (
     <Tag
       contentEditable
       suppressContentEditableWarning
+      data-placeholder={placeholder}
+      aria-placeholder={placeholder}
       onBlur={(e: any) => onSave(e.target.innerText)}
       className={`outline-none focus:ring-1 focus:ring-[#f4a100]/50 rounded px-1 -mx-1 transition-all ${className}`}
     >
@@ -398,6 +423,9 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         existingSiteId: site?.id ?? null,
         siteData: {
           ...siteData,
+          // /custom-15 pay-first: this copy is the sample. Hold it (nothing
+          // publishes it) until the barber enters their details after payment.
+          ...(isPayFirstPlan(String(plan)) ? { awaitingDetails: true } : {}),
           hero: { ...siteData.hero, imageUrl: imageUrlMap['hero'] ? 'uploaded' : '' },
           about: { ...siteData.about, imageUrl: imageUrlMap['about'] ? 'uploaded' : '' },
           gallery: siteData.gallery.map((_, i) => imageUrlMap[`gallery${i}`] ? 'uploaded' : ''),
@@ -496,6 +524,8 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
   };
 
   const formattedPhone = siteData.phone.replace(/\s+/g, '');
+  // Editor: a phone with no digits gets no tel: link (matches the deployed page).
+  const callHref = /\d/.test(siteData.phone || '') ? `tel:${formattedPhone}` : undefined;
 
   const handlePublish = () => {
     setShowPublishOverlay(true);
@@ -558,6 +588,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       }}
     >
       <style>{AIB_THEME_CSS}</style>
+      <style>{EDITOR_PLACEHOLDER_CSS}</style>
       {/* Toolbar: EditorToolbar for post-payment, red banner for pre-payment */}
       {isPostPayment ? (
         <>
@@ -638,12 +669,12 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
             </div>
 
             <a
-              href={`tel:${formattedPhone}`}
+              href={callHref}
               className="flex items-center gap-2 md:gap-4 text-[#f4a100] border-l-2 border-white/20 pl-4 md:pl-8 hover:text-white transition-colors hidden sm:flex"
             >
               <PhoneIcon className="w-5 h-5 md:w-7 md:h-7" />
               <span className="text-sm md:text-xl lg:text-2xl font-bold tracking-tight">
-                <EditableText text={siteData.phone} onSave={(val) => handleTextChange('phone', val)} />
+                <EditableText text={siteData.phone} placeholder="Add phone" onSave={(val) => handleTextChange('phone', val)} />
               </span>
             </a>
           </div>
@@ -663,7 +694,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       <section id="home" className="relative h-[55vh] flex flex-col justify-center items-center overflow-hidden">
         <div className="absolute inset-0 z-0">
           {siteData.hero.imageUrl && (
-            <img src={siteData.hero.imageUrl} alt="Main Hero" className="w-full h-full object-cover" />
+            <img src={siteData.hero.imageUrl} alt={photoAlt(siteData)} className="w-full h-full object-cover" />
           )}
           <div className="absolute inset-0 bg-black/40 bg-gradient-to-b from-black/30 via-transparent to-[#0d0d0d] pointer-events-none"></div>
         </div>
@@ -683,7 +714,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
 
         <div className="relative z-10 text-center px-4 md:px-6 max-w-5xl pb-28 md:pb-32 pt-20 md:pt-0">
           <p className="text-[#f4a100] font-montserrat font-bold text-[8px] md:text-sm tracking-[3px] md:tracking-[5px] uppercase mb-3 md:mb-6 opacity-90">
-            <EditableText text={siteData.hero.tagline} onSave={(val) => handleTextChange('hero.tagline', val)} />
+            <EditableText text={view.hero.tagline} onSave={(val) => handleTextChange('hero.tagline', val)} />
           </p>
 
           <h1 className="text-3xl md:text-6xl lg:text-7xl font-montserrat font-black text-white leading-tight uppercase tracking-[1px] md:tracking-[4px] mb-8 md:mb-12">
@@ -692,11 +723,11 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 md:gap-4">
             <a
-              href={`tel:${formattedPhone}`}
+              href={callHref}
               className="inline-flex items-center gap-3 border-2 border-[#f4a100] text-[#f4a100] px-6 py-4 md:px-12 md:py-6 font-montserrat font-black tracking-[2px] uppercase hover:bg-[#f4a100] hover:text-[#1a1a1a] transition-all duration-300 group shadow-lg text-xs md:text-base"
             >
               <PhoneIcon className="w-4 h-4 md:w-5 md:h-5 group-hover:scale-110 transition-transform" />
-              <span>Call Now: <EditableText text={siteData.phone} onSave={(val) => handleTextChange('phone', val)} /></span>
+              <span>{callHref ? 'Call Now: ' : ''}<EditableText text={siteData.phone} placeholder="Add phone" onSave={(val) => handleTextChange('phone', val)} /></span>
             </a>
             {siteData.bookingUrl && (
               <a
@@ -712,48 +743,48 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           </div>
         </div>
 
-        {/* Feature Cards — title + sub are both editable. Defaults
-            seeded by geminiService (Experience/Professional,
-            Service/Trusted, Open Monday to Friday/9am-7pm). Older saved
-            sites without featureCards fall back to the same defaults. */}
-        <div className="absolute bottom-6 md:bottom-10 left-0 w-full px-4 md:px-6">
-          <div className="container mx-auto grid grid-cols-3 gap-2 md:gap-6 max-w-5xl">
-            {(() => {
-              const defaults = [
-                { title: 'Experience', sub: 'Professional' },
-                { title: 'Service', sub: 'Trusted' },
-                { title: 'Open Monday to Friday', sub: '9am - 7pm' },
-              ];
-              const icons = [
-                <MapPinIcon className="w-5 h-5 md:w-8 md:h-8 text-[#f4a100]" />,
-                <AwardIcon className="w-5 h-5 md:w-8 md:h-8 text-[#f4a100]" />,
-                <ClockIcon className="w-5 h-5 md:w-8 md:h-8 text-[#f4a100]" />,
-              ];
-              const cards = (siteData.featureCards && siteData.featureCards.length === 3)
-                ? siteData.featureCards
-                : defaults;
-              return cards.map((card, i) => (
-                <div key={i} className="bg-[#1a1a1a]/90 backdrop-blur-sm p-2 md:p-8 flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-1 md:gap-6 border border-[#f4a100]/20 hover:border-[#f4a100]/50 transition-all duration-300">
-                  <div className="shrink-0">{icons[i]}</div>
-                  <div className="text-center sm:text-left">
-                    <h4 className="font-montserrat font-black text-[7px] md:text-xs tracking-[0.5px] md:tracking-[1px] text-white uppercase">
-                      <EditableText
-                        text={card.title}
-                        onSave={(val) => handleTextChange(`featureCards.${i}.title`, val)}
-                      />
-                    </h4>
-                    <p className="text-[#cccccc] text-[6px] md:text-[10px] uppercase tracking-[0.5px] md:tracking-[1px] mt-0.5">
-                      <EditableText
-                        text={card.sub}
-                        onSave={(val) => handleTextChange(`featureCards.${i}.sub`, val)}
-                      />
-                    </p>
-                  </div>
-                </div>
-              ));
-            })()}
-          </div>
-        </div>
+        {/* Feature Cards — only cards the barber wrote. Older sites were
+            seeded with invented ones (hours, "Professional", "Trusted");
+            honest.ts visibleFeatureCards hides those, and with none left
+            the strip is omitted. The deployed page never renders cards. */}
+        {(() => {
+          const shown = visibleFeatureCards(siteData);
+          if (shown.length === 0) return null;
+          const all = siteData.featureCards || [];
+          const icons = [
+            <MapPinIcon className="w-5 h-5 md:w-8 md:h-8 text-[#f4a100]" />,
+            <AwardIcon className="w-5 h-5 md:w-8 md:h-8 text-[#f4a100]" />,
+            <ClockIcon className="w-5 h-5 md:w-8 md:h-8 text-[#f4a100]" />,
+          ];
+          return (
+            <div className="absolute bottom-6 md:bottom-10 left-0 w-full px-4 md:px-6">
+              <div className="container mx-auto grid grid-cols-3 gap-2 md:gap-6 max-w-5xl">
+                {shown.map((card, k) => {
+                  const i = all.indexOf(card);
+                  return (
+                    <div key={i} className="bg-[#1a1a1a]/90 backdrop-blur-sm p-2 md:p-8 flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-1 md:gap-6 border border-[#f4a100]/20 hover:border-[#f4a100]/50 transition-all duration-300">
+                      <div className="shrink-0">{icons[k % icons.length]}</div>
+                      <div className="text-center sm:text-left">
+                        <h4 className="font-montserrat font-black text-[7px] md:text-xs tracking-[0.5px] md:tracking-[1px] text-white uppercase">
+                          <EditableText
+                            text={card.title}
+                            onSave={(val) => handleTextChange(`featureCards.${i}.title`, val)}
+                          />
+                        </h4>
+                        <p className="text-[#cccccc] text-[6px] md:text-[10px] uppercase tracking-[0.5px] md:tracking-[1px] mt-0.5">
+                          <EditableText
+                            text={card.sub}
+                            onSave={(val) => handleTextChange(`featureCards.${i}.sub`, val)}
+                          />
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
       </section>
 
       {/* About Section */}
@@ -765,16 +796,16 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
               <EditableText className="text-[#f4a100] text-[10px] md:text-xs font-bold tracking-[3px] md:tracking-[4px] uppercase font-montserrat" tagName="span" text={lbl('aboutEyebrow', 'About Us')} onSave={(v) => setLabel('aboutEyebrow', v)} />
             </div>
             <h2 className="text-2xl md:text-5xl font-montserrat font-black text-white mb-6 md:mb-8 leading-tight uppercase tracking-[2px]">
-              <EditableText text={siteData.about.heading} onSave={(val) => handleTextChange('about.heading', val)} />
+              <EditableText text={view.about.heading} onSave={(val) => handleTextChange('about.heading', val)} />
             </h2>
             <div className="space-y-4 md:space-y-6 text-[#cccccc] font-light leading-relaxed text-sm md:text-base">
-              {siteData.about.description.map((p, i) => (
+              {view.about.description.map((p, i) => (
                 <div key={i}>
                   <EditableText
                     text={p}
                     tagName="p"
                     onSave={(val) => {
-                      const newDesc = [...siteData.about.description];
+                      const newDesc = [...view.about.description];
                       newDesc[i] = val;
                       handleTextChange('about.description', newDesc as any);
                     }}
@@ -786,7 +817,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           {siteData.about.imageUrl ? (
             <div className="relative mt-6 lg:mt-0 group">
               <div className="absolute -inset-2 md:-inset-4 border border-[#f4a100]/30 -z-10 transform translate-x-2 translate-y-2 md:translate-x-4 md:translate-y-4 transition-transform duration-500"></div>
-              <img src={siteData.about.imageUrl} alt="Barber Shop Atmosphere" className="w-full grayscale hover:grayscale-0 transition-all duration-700 shadow-2xl" />
+              <img src={siteData.about.imageUrl} alt={photoAlt(siteData)} className="w-full grayscale hover:grayscale-0 transition-all duration-700 shadow-2xl" />
               <ImageOverlay onImageUpload={(e) => handleImageChange('about.imageUrl', e)} />
             </div>
           ) : (
@@ -797,7 +828,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         </div>
       </section>
 
-      {/* Gallery Section — owner's portfolio ("Our Work"). 6 slots
+      {/* Gallery Section ("The Look" — neutral: photos may be samples). 6 slots
           [2..7] populated from the scraped booking-link photos (Booksy,
           Fresha, etc.) or left empty for the owner to upload via the
           Replace Photo overlay on each tile. */}
@@ -805,14 +836,14 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         <div className="container mx-auto max-w-5xl">
           <div className="text-center mb-10 md:mb-16">
             <EditableText className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat" tagName="h3" text={lbl('galleryEyebrow', 'Gallery')} onSave={(v) => setLabel('galleryEyebrow', v)} />
-            <EditableText className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]" tagName="h2" text={lbl('galleryHeading', 'Our Work')} onSave={(v) => setLabel('galleryHeading', v)} />
+            <EditableText className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]" tagName="h2" text={lbl('galleryHeading', 'The Look')} onSave={(v) => setLabel('galleryHeading', v)} />
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
             {[2, 3, 4, 5, 6, 7].map((idx) => (
               <div key={idx} className="bg-[#1a1a1a] p-1 border border-white/5 relative group">
                 {siteData.gallery[idx] ? (
                   <>
-                    <img src={siteData.gallery[idx]} alt={`Gallery Image ${idx - 1}`} className="w-full h-48 sm:h-56 md:h-64 object-cover" />
+                    <img src={siteData.gallery[idx]} alt={photoAlt(siteData)} className="w-full h-48 sm:h-56 md:h-64 object-cover" />
                     <ImageOverlay onImageUpload={(e) => handleImageChange(`gallery.${idx}`, e)} />
                   </>
                 ) : (
@@ -828,64 +859,57 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           one row, duration/subtitle below, then description. Price is
           editable separately when present (only set by scraped Booksy
           imports). Empty fields just don't render in deployed HTML. */}
+      {/* Services. Editor: always shown so the barber can add, edit and
+          remove services (title, optional price, optional description).
+          The deployed page hides the section when the list is empty and
+          skips empty price / description rows; the muted "Add price" /
+          "Add description" slots are editor-only. */}
       <section id="our-services" className="py-12 md:py-32 bg-[#0d0d0d] px-6">
         <div className="container mx-auto max-w-7xl">
           <div className="text-center mb-10 md:mb-16">
             <EditableText className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat" tagName="h3" text={lbl('servicesEyebrow', 'Services')} onSave={(v) => setLabel('servicesEyebrow', v)} />
             <EditableText className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]" tagName="h2" text={lbl('servicesHeading', 'What We Offer')} onSave={(v) => setLabel('servicesHeading', v)} />
+            {view.services.length === 0 && (
+              <p className="text-white/50 text-xs mt-4">No services yet. Add the ones you offer — this section stays hidden on your site until you do.</p>
+            )}
           </div>
+          {view.services.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-            {siteData.services.map((service, i) => (
-              <div key={i} className="group border-2 border-[#f4a100] p-6 md:p-10 flex flex-col hover:bg-[#1a1a1a] transition-all duration-500">
-                <div className="flex items-start justify-between gap-3 mb-3 md:mb-4">
+            {view.services.map((service, i) => (
+              <div key={i} className="group relative border-2 border-[#f4a100] p-6 md:p-10 flex flex-col hover:bg-[#1a1a1a] transition-all duration-500">
+                <button
+                  type="button"
+                  {...removeHandlers(i)}
+                  aria-label={`Remove ${service.title}`}
+                  className="absolute top-2 right-2 text-[9px] font-bold uppercase tracking-[0.16em] text-white/50 hover:text-red-400 px-2 py-1 border border-white/15"
+                >
+                  Remove
+                </button>
+                <div className="flex items-start justify-between gap-3 mb-3 md:mb-4 pr-14">
                   <h3 className="font-montserrat font-black text-white text-base md:text-lg tracking-[1px] uppercase leading-tight flex-1">
-                    <EditableText
-                      text={service.title}
-                      onSave={(val) => {
-                        const newServices = [...siteData.services];
-                        newServices[i].title = val;
-                        handleTextChange('services', newServices as any);
-                      }}
-                    />
+                    <EditableText text={service.title} onSave={(val) => updateService(i, { title: val.trim() || service.title })} />
                   </h3>
-                  {(service.price || '') && (
-                    <span className="font-montserrat font-black text-[#f4a100] text-base md:text-lg whitespace-nowrap">
-                      <EditableText
-                        text={service.price || ''}
-                        onSave={(val) => {
-                          const newServices = [...siteData.services];
-                          newServices[i].price = val;
-                          handleTextChange('services', newServices as any);
-                        }}
-                      />
-                    </span>
-                  )}
+                  <span className={`font-montserrat font-black text-base md:text-lg whitespace-nowrap ${service.price ? 'text-[#f4a100]' : 'text-white/30 text-xs'}`}>
+                    <EditableText text={service.price ? displayPrice(service.price) : ''} placeholder="Add price" onSave={(val) => updateService(i, { price: optionalText(val, 'Add price') })} />
+                  </span>
                 </div>
-                {(service.duration || service.subtitle) && (
+                {serviceMeta(service) && (
                   <p className="text-[#f4a100] text-[10px] md:text-[11px] font-bold tracking-[2px] mb-3 uppercase">
                     <EditableText
-                      text={service.duration || service.subtitle}
-                      onSave={(val) => {
-                        const newServices = [...siteData.services];
-                        if (service.duration) newServices[i].duration = val;
-                        else newServices[i].subtitle = val;
-                        handleTextChange('services', newServices as any);
-                      }}
+                      text={serviceMeta(service)}
+                      onSave={(val) => updateService(i, service.duration ? { duration: val } : { subtitle: val })}
                     />
                   </p>
                 )}
-                <p className="text-[#999999] text-xs md:text-sm leading-relaxed">
-                  <EditableText
-                    text={service.description}
-                    onSave={(val) => {
-                      const newServices = [...siteData.services];
-                      newServices[i].description = val;
-                      handleTextChange('services', newServices as any);
-                    }}
-                  />
+                <p className={`text-xs md:text-sm leading-relaxed ${service.description ? 'text-[#999999]' : 'text-white/30'}`}>
+                  <EditableText text={service.description || ''} placeholder="Add description" onSave={(val) => updateService(i, { description: optionalText(val, 'Add description') })} />
                 </p>
               </div>
             ))}
+          </div>
+          )}
+          <div className="mt-6 max-w-md mx-auto">
+            <AddServiceRow onAdd={addService} />
           </div>
         </div>
       </section>
@@ -896,16 +920,16 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       {siteData.reviews && siteData.reviews.length > 0 && (
         <section className="py-16 md:py-28 bg-[#0a0a0a] px-6 border-y border-white/5">
           <div className="container mx-auto max-w-6xl">
-            {siteData.aggregateRating && (
+            {aggregateToShow(siteData) && (
               <div className="text-center mb-10 md:mb-12">
                 <div className="inline-flex items-center gap-3 bg-[#1a1a1a] border border-[#f4a100]/30 px-5 py-3 md:px-7 md:py-4">
                   <span className="text-[#f4a100] text-2xl md:text-3xl">★</span>
                   <span className="text-white text-2xl md:text-3xl font-montserrat font-black">
-                    {siteData.aggregateRating.rating.toFixed(1)}
+                    {aggregateToShow(siteData)!.rating.toFixed(1)}
                   </span>
-                  {siteData.aggregateRating.count > 0 && (
+                  {aggregateToShow(siteData)!.count > 0 && (
                     <span className="text-white/60 text-[10px] md:text-xs uppercase tracking-[2px] font-bold">
-                      from {siteData.aggregateRating.count.toLocaleString()} reviews
+                      from {aggregateToShow(siteData)!.count.toLocaleString()} reviews
                     </span>
                   )}
                 </div>
@@ -914,15 +938,21 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
             <div className="text-center mb-10 md:mb-14">
               <EditableText className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat" tagName="h3" text={lbl('reviewsEyebrow', 'Reviews')} onSave={(v) => setLabel('reviewsEyebrow', v)} />
               <EditableText className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]" tagName="h2" text={lbl('reviewsHeading', 'What Our Clients Say')} onSave={(v) => setLabel('reviewsHeading', v)} />
+              {reviewsSourceLabel(siteData) && (
+                <p className="text-white/50 text-[10px] md:text-xs uppercase tracking-[2px] font-bold mt-4">{reviewsSourceLabel(siteData)}</p>
+              )}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
               {siteData.reviews.slice(0, 12).map((r, i) => (
                 <div key={i} className="border border-white/10 bg-[#111111] p-5 md:p-7 flex flex-col gap-3">
-                  <div className="flex items-center gap-1" aria-label={`${r.rating} out of 5 stars`}>
-                    {Array.from({ length: 5 }, (_, s) => (
-                      <span key={s} className={s < r.rating ? 'text-[#f4a100]' : 'text-white/15'}>★</span>
-                    ))}
-                  </div>
+                  {/* No readable rating → no star row (never a made-up 5). */}
+                  {reviewStars(r) !== null && (
+                    <div className="flex items-center gap-1" aria-label={`${reviewStars(r)} out of 5 stars`}>
+                      {Array.from({ length: 5 }, (_, s) => (
+                        <span key={s} className={s < (reviewStars(r) as number) ? 'text-[#f4a100]' : 'text-white/15'}>★</span>
+                      ))}
+                    </div>
+                  )}
                   <p className="text-white/80 text-sm md:text-base leading-relaxed italic">
                     “{r.comment}”
                   </p>
@@ -946,7 +976,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           <div className="container mx-auto max-w-6xl">
             <div className="text-center mb-10 md:mb-16">
               <EditableText className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat" tagName="h3" text={lbl('teamEyebrow', 'The Team')} onSave={(v) => setLabel('teamEyebrow', v)} />
-              <EditableText className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]" tagName="h2" text={lbl('teamHeading', 'Meet Our Barbers')} onSave={(v) => setLabel('teamHeading', v)} />
+              <EditableText className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]" tagName="h2" text={lbl('teamHeading', nicheCopy(siteData).teamHeading)} onSave={(v) => setLabel('teamHeading', v)} />
             </div>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
               {siteData.staff.map((s, i) => (
@@ -1124,16 +1154,16 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
                 <div>
                   <EditableText className="text-[#f4a100] font-bold text-[10px] md:text-xs tracking-[2px] mb-2 font-montserrat uppercase" tagName="h4" text={lbl('contactLocationLabel', 'Location')} onSave={(v) => setLabel('contactLocationLabel', v)} />
                   <p className="text-[#cccccc] text-xs md:text-sm leading-relaxed capitalize">
-                    <EditableText text={siteData.contact.address} onSave={(val) => handleTextChange('contact.address', val)} />
+                    <EditableText text={siteData.contact.address} placeholder="Add area" onSave={(val) => handleTextChange('contact.address', val)} />
                   </p>
                 </div>
               </div>
-              <a href={`tel:${formattedPhone}`} className="flex flex-col items-center gap-4 group">
+              <a href={callHref} className="flex flex-col items-center gap-4 group">
                 <PhoneIcon className="w-8 h-8 text-[#f4a100] group-hover:scale-110 transition-transform" />
                 <div>
                   <EditableText className="text-[#f4a100] font-bold text-[10px] md:text-xs tracking-[2px] mb-2 font-montserrat uppercase" tagName="h4" text={lbl('contactPhoneLabel', 'Phone')} onSave={(v) => setLabel('contactPhoneLabel', v)} />
                   <p className="text-[#cccccc] text-xs md:text-sm leading-relaxed group-hover:text-white transition-colors">
-                    <EditableText text={siteData.phone} onSave={(val) => handleTextChange('phone', val)} />
+                    <EditableText text={siteData.phone} placeholder="Add phone" onSave={(val) => handleTextChange('phone', val)} />
                   </p>
                 </div>
               </a>
@@ -1215,11 +1245,11 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
             </span>
           </div>
           <p className="text-[#666666] text-[8px] md:text-xs uppercase tracking-[2px] md:tracking-[4px] mb-8 md:mb-12 max-w-lg mx-auto leading-loose px-4">
-            Premium Grooming Excellence in <EditableText text={cityStateOnly(siteData.area)} onSave={(val) => handleTextChange('area', val)} />
+            {nicheOf(siteData).industry}{cityStateOnly(siteData.area) ? ' in ' : ''}<EditableText text={cityStateOnly(siteData.area)} onSave={(val) => handleTextChange('area', val)} />
           </p>
 
           <div className="pt-8 md:pt-10 border-t border-white/5 text-[#444444] text-[8px] uppercase tracking-[2px]">
-            Copyright &copy; 2025 <EditableText text={siteData.shopName} onSave={(val) => handleTextChange('shopName', val)} />. Built by AIBarber.
+            Copyright &copy; {copyrightYear()} <EditableText text={siteData.shopName} onSave={(val) => handleTextChange('shopName', val)} />. Built by AIBarber.
           </div>
         </div>
       </footer>

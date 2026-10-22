@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, Suspense, lazy } from 'react';
+import { DEMO_GALLERY_STOCK } from '../lib/stockImages';
 import { Loader2 } from 'lucide-react';
 import type { WebsiteData, ShopInputs, TemplateId } from '../types';
 import { generateContent } from '../services/geminiService';
@@ -37,19 +38,12 @@ const SEED_NAME = 'Premium Cuts';
 // overlay, nothing to generate), so six empty "Add Your Own Image" slots
 // would read as broken. All six are barbershop shots already used across
 // the app's own UI, URL-checked. slot 0 = the standard gallery seed.
-// The luxe "Our Work" grid renders gallery[2..7] (slot 0 seeds About,
+// The luxe gallery grid renders gallery[2..7] (slot 0 seeds About,
 // slot 1 is outside the grid) — a 6-entry array left the last two tiles
 // as empty "Add Your Own Image" placeholders. 8 entries fills the grid.
-const CD29_GALLERY = [
-  'https://images.unsplash.com/photo-1605497788044-5a32c7078486?auto=format&fit=crop&w=900&q=65',
-  'https://images.unsplash.com/photo-1585747860715-2ba37e788b70?auto=format&fit=crop&w=900&q=65',
-  'https://images.unsplash.com/photo-1621605815971-fbc98d665033?auto=format&fit=crop&w=900&q=65',
-  'https://images.unsplash.com/photo-1599351431202-1e0f0137899a?auto=format&fit=crop&w=900&q=65',
-  'https://images.unsplash.com/photo-1622286342621-4bd786c2447c?auto=format&fit=crop&w=900&q=65',
-  'https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?auto=format&fit=crop&w=900&q=65',
-  'https://images.unsplash.com/photo-1512690459411-b9245aed614b?auto=format&fit=crop&w=900&q=65',
-  'https://images.unsplash.com/photo-1517832606299-7ae9b720a186?auto=format&fit=crop&w=900&q=65',
-];
+// Sample photos, listed in lib/stockImages.ts so templates and editors
+// treat them as stock (never "no stock photos").
+const CD29_GALLERY = DEMO_GALLERY_STOCK;
 
 const EuphoriaWebsite = lazy(() => import('./EuphoriaWebsite').then((m) => ({ default: m.EuphoriaWebsite })));
 const GeneratedWebsite = lazy(() => import('./GeneratedWebsite').then((m) => ({ default: m.GeneratedWebsite })));
@@ -157,7 +151,7 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
           ...data,
           template,
           // Both no-overlay pages show the sample site bare, so both need a
-          // filled Our Work grid — the luxe template renders gallery[2..7],
+          // filled gallery grid — the luxe template renders gallery[2..7],
           // so a short array leaves visible empty tiles.
           ...(variant === 'custom-design-29' || variant === 'custom-15'
             ? { gallery: [...CD29_GALLERY] }
@@ -243,8 +237,9 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ variant = 'generate'
   );
 
   // No-link path: regenerate the whole site from the entered details.
-  const handleFinish = useCallback(async (name: string, area: string, phone: string) => {
-    const inputs: ShopInputs = { shopName: name || SEED_NAME, area, phone, colorTheme, template };
+  const handleFinish = useCallback(async (name: string, area: string, phone: string, services: { title: string; price?: string }[] = []) => {
+    // Services: exactly what the visitor ticked (none → no section).
+    const inputs: ShopInputs = { shopName: name || SEED_NAME, area, phone, colorTheme, template, services };
     const data = await generateContent(inputs).catch((err) => {
       console.error('[generate] finish generateContent failed:', err);
       return null;

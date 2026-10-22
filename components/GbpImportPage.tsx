@@ -4,6 +4,7 @@ import type { ShopInputs, WebsiteData } from '../types.ts';
 import { buildSiteFromScrape } from '../lib/buildSiteFromScrape.ts';
 import { extractFirstUrl, isSupportedBookingHost } from '../lib/supportedBookingHost.ts';
 import { BRAND_SWATCHES, DEFAULT_SWATCH } from '../lib/brandSwatches.ts';
+import { SERVICE_CHOICES, checklistToServices } from '../lib/stockImages.ts';
 
 // AI-Barber homepage importer. Ported from PrimeHub's
 // components/GbpImportPage.tsx (the /barber "gate" variant).
@@ -39,7 +40,10 @@ import { BRAND_SWATCHES, DEFAULT_SWATCH } from '../lib/brandSwatches.ts';
 //      StyleSeat / Vagaro / Goldie / Setmore)
 //   "No, I don't have one"       → /api/places-autocomplete (typeahead)
 //      → /api/find-business (pick your listing) → /api/import-business
-//      (Google Business Profile scrape)
+//      (Google Business Profile scrape) → "Is this you?" (the route's
+//      `match` block; nothing is built until the barber confirms) →
+//      services checklist (tick + optional price; Google has no menu and
+//      we never invent one)
 // Both land in buildSiteFromScrape() and hand App a PREBUILT
 // WebsiteData, so generateContent() never runs over real scraped data.
 
@@ -117,18 +121,6 @@ const TYPE_NAMES = [
   'Crown & Blade Barbers',
 ];
 
-// Google Business listings carry no service menu, so a GBP import would
-// otherwise render an empty "What We Offer" section (the luxe renderer
-// paints that heading unconditionally). Seed the same barber menu
-// geminiService uses for its non-scraped sites; every row is editable.
-const DEFAULT_BARBER_SERVICES = [
-  { title: 'Classic Haircut', description: 'A clean, considered cut tailored to how you actually wear your hair.' },
-  { title: 'Beard Trim & Styling', description: 'Defined lines, blended length, and a finish that holds between visits.' },
-  { title: 'Hot Towel Shave', description: 'A traditional straight-razor shave with warm towels and a clean, close finish.' },
-  { title: 'Skin Fade', description: 'Precise tapering from skin upward, blended for a clean, modern shape.' },
-  { title: 'Hair & Scalp Treatment', description: 'A thorough cleanse and conditioning treatment to reset the scalp.' },
-];
-
 const CSS = `
   @keyframes bkRise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
   @keyframes bkDraw { from { transform: scaleX(0); } to { transform: scaleX(1); } }
@@ -203,7 +195,29 @@ interface ScrapePayload {
   staff?: any[];
   aggregateRating?: any;
   _platform?: string;
+  _categories?: string[];
+  // /api/import-business only: what Google matched, for "Is this you?".
+  match?: GbpMatch;
 }
+
+interface GbpMatch {
+  name: string;
+  address: string;
+  photoUrl: string | null;
+  rating: number | null;
+  ratingCount: number | null;
+  category: string | null;
+}
+
+// Older deploys of the route have no `match`; describe the payload instead.
+const matchOf = (p: ScrapePayload): GbpMatch => p.match || {
+  name: p.shopName || '',
+  address: p.address || p.area || '',
+  photoUrl: p.photos?.[0] || null,
+  rating: typeof p.aggregateRating?.rating === 'number' ? p.aggregateRating.rating : null,
+  ratingCount: typeof p.aggregateRating?.count === 'number' ? p.aggregateRating.count : null,
+  category: p._categories?.[0] || null,
+};
 
 const GbpImportPage: React.FC<Props> = ({ onImported, onUseManualForm, onSignIn }) => {
   // 'gate' asks the yes/no question; 'link' is the booking-link
@@ -253,6 +267,10 @@ const GbpImportPage: React.FC<Props> = ({ onImported, onUseManualForm, onSignIn 
   };
 
   const [busy, setBusy] = useState(false);
+  // Google import found a listing: hold it until the barber confirms it's
+  // theirs ('confirm'), then ask which services they offer ('services').
+  const [pending, setPending] = useState<null | { payload: ScrapePayload; step: 'confirm' | 'services' }>(null);
+  const [picked, setPicked] = useState<Record<string, { on: boolean; price: string }>>({});
   // Shown once an import has run 15s+ — the bar is honest (it eases
   // toward 92% while the server works) but a slow bar reads as "stuck"
   // without a word of reassurance.
@@ -297,7 +315,7 @@ const GbpImportPage: React.FC<Props> = ({ onImported, onUseManualForm, onSignIn 
       runIdRef.current += 1;
       capRef.current = 0;
       setBusy(false); setError(null); setProgress(0); setStepIdx(0);
-      setCandidates(null); setSuggestions(null); setFindBusy(false);
+      setCandidates(null); setSuggestions(null); setFindBusy(false); setPending(null);
       try { sessionStorage.removeItem('pendingFormInputs'); } catch { /* ignore */ }
     };
     window.addEventListener('pageshow', onPageShow);
@@ -550,14 +568,18 @@ const GbpImportPage: React.FC<Props> = ({ onImported, onUseManualForm, onSignIn 
         reviews: payload.reviews?.length,
       });
 
-      // A Google listing has no service menu — seed the barber default
-      // so the services section isn't an empty shell. A booking-link
-      // import always brings its own menu and is left untouched.
-      if (!payload.services?.length) {
-        payload.services = DEFAULT_BARBER_SERVICES.map((s) => ({ ...s }));
+      // Google: build nothing yet. Show what we found ("Is this you?"),
+      // then the services checklist. A booking-link import keeps its own
+      // scraped menu (or none) and builds straight away.
+      if (endpoint === '/api/import-business') {
+        capRef.current = 0;
+        setPicked({});
+        setPending({ payload, step: 'confirm' });
+        setBusy(false);
+        return;
       }
 
-      const { inputs, scraped } = toShopSite(payload, fallbackUrl, endpoint === '/api/import-scrape' ? 'booking' : 'gbp');
+      const { inputs, scraped } = toShopSite(payload, fallbackUrl, 'booking');
       await finishAndGo(runId, inputs, scraped);
     } catch (err: any) {
       if (runId !== runIdRef.current) return;
@@ -667,6 +689,32 @@ const GbpImportPage: React.FC<Props> = ({ onImported, onUseManualForm, onSignIn 
     setCandidates(null);
     void runGbpImport(`https://www.google.com/maps/place/?q=place_id:${placeId}`);
   };
+
+  // "Not my business" → back to the name search; nothing was built.
+  const rejectMatch = () => {
+    setPending(null);
+    setPicked({});
+    setCandidates(null);
+    setSuggestions(null);
+    setError(null);
+  };
+
+  // Build from the confirmed listing with exactly the services ticked
+  // (none is fine: the site then has no Services section).
+  const buildConfirmed = async () => {
+    if (!pending) return;
+    const services = checklistToServices(picked);
+    const payload: ScrapePayload = { ...pending.payload, services };
+    const runId = ++runIdRef.current;
+    const { inputs, scraped } = toShopSite(payload, '', 'gbp');
+    setPending(null);
+    await finishAndGo(runId, inputs, scraped);
+  };
+
+  const togglePick = (title: string) =>
+    setPicked((cur) => ({ ...cur, [title]: { on: !cur[title]?.on, price: cur[title]?.price || '' } }));
+  const setPickPrice = (title: string, price: string) =>
+    setPicked((cur) => ({ ...cur, [title]: { on: true, price } }));
 
   const swatchRow = (
     <div className="flex items-center gap-3.5">
@@ -844,10 +892,101 @@ const GbpImportPage: React.FC<Props> = ({ onImported, onUseManualForm, onSignIn 
               )}
             </h1>
             <p className="bk-rise mx-auto mt-6 max-w-lg text-[15px] leading-relaxed" style={{ animationDelay: '0.34s', color: '#8B919E' }}>
-              Photos, services &amp; reviews imported automatically.
-              Live in about a minute — edit anything after.
+              {linkMode
+                ? 'Photos, services & reviews imported automatically.'
+                : 'Photos & reviews imported from your Google listing. You pick your services.'}
+              {' '}Live in about a minute — edit anything after.
             </p>
 
+            {pending ? (
+              <div className="bk-glosscard bk-mono mt-11 w-full max-w-2xl p-6 text-left md:p-8" style={{ color: '#0B0E14' }}>
+                {pending.step === 'confirm' ? (() => {
+                  const m = matchOf(pending.payload);
+                  return (
+                    <div>
+                      <p className="text-[13px] font-extrabold uppercase tracking-[0.22em]">Is this you?</p>
+                      <div className="mt-5 flex items-center gap-4">
+                        {m.photoUrl ? (
+                          <img src={m.photoUrl} alt={`${m.name} photo`} className="h-20 w-20 flex-shrink-0 rounded-xl object-cover" style={{ background: '#eef0f4' }} />
+                        ) : (
+                          <div className="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-xl text-[11px] font-bold uppercase tracking-[0.12em]" style={{ background: '#eef0f4', color: '#6B7280' }}>No photo</div>
+                        )}
+                        <div className="min-w-0">
+                          <p className="truncate text-[20px] font-bold" style={{ letterSpacing: '-0.01em' }}>{m.name}</p>
+                          {m.address && <p className="mt-0.5 text-[13px]" style={{ color: '#4B5563' }}>{m.address}</p>}
+                          <p className="mt-1 text-[12px]" style={{ color: '#6B7280' }}>
+                            {[
+                              m.rating !== null ? `★ ${m.rating.toFixed(1)}${m.ratingCount ? ` (${m.ratingCount.toLocaleString()} reviews)` : ''}` : '',
+                              m.category || '',
+                            ].filter(Boolean).join(' · ')}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-7 flex flex-wrap items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setPending({ ...pending, step: 'services' })}
+                          className="bk-cta bk-monocta flex items-center gap-2.5 whitespace-nowrap px-8 py-3.5 text-[12px] font-bold uppercase tracking-[0.22em]"
+                          style={{ background: `linear-gradient(180deg, ${AC} 0%, ${BK.accentDeep} 100%)`, color: ACI, borderRadius: 14 }}
+                        >
+                          Yes, that&rsquo;s me
+                          <ArrowRight size={14} className="bk-arrow transition-transform" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={rejectMatch}
+                          className="rounded-[14px] border px-6 py-3.5 text-[12px] font-bold uppercase tracking-[0.2em] transition-colors hover:bg-black/[0.045]"
+                          style={{ borderColor: 'rgba(11,14,20,0.28)', color: '#0B0E14' }}
+                        >
+                          Not my business
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })() : (
+                  <div>
+                    <p className="text-[13px] font-extrabold uppercase tracking-[0.22em]">Which services do you offer?</p>
+                    <p className="mt-2 text-[13px]" style={{ color: '#6B7280' }}>Tick what you do. Prices are optional. Skip this and your site has no services list.</p>
+                    <ul className="mt-5 divide-y rounded-xl border" style={{ borderColor: 'rgba(11,14,20,0.1)', background: '#ffffff' }}>
+                      {SERVICE_CHOICES.map((t) => {
+                        const on = !!picked[t]?.on;
+                        return (
+                          <li key={t} className="flex items-center gap-3 px-4 py-2.5" style={{ borderColor: 'rgba(11,14,20,0.08)' }}>
+                            <label className="flex flex-1 cursor-pointer items-center gap-3 text-[14px] font-semibold">
+                              <input type="checkbox" checked={on} onChange={() => togglePick(t)} className="h-4 w-4" style={{ accentColor: '#0B0E14' }} />
+                              {t}
+                            </label>
+                            {on && (
+                              <input
+                                type="text"
+                                aria-label={`${t} price (optional)`}
+                                placeholder="Price (optional)"
+                                value={picked[t]?.price || ''}
+                                onChange={(e) => setPickPrice(t, e.target.value)}
+                                className="w-36 rounded-lg border px-3 py-1.5 text-[13px]"
+                                style={{ borderColor: 'rgba(11,14,20,0.18)', color: '#0B0E14' }}
+                              />
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    <div className="mt-7 flex flex-wrap items-center justify-between gap-x-8 gap-y-6">
+                      {swatchRow}
+                      <button
+                        type="button"
+                        onClick={() => void buildConfirmed()}
+                        className="bk-cta bk-monocta group flex items-center gap-2.5 whitespace-nowrap px-9 py-3.5 text-[12px] font-bold uppercase tracking-[0.22em] active:scale-[0.985]"
+                        style={{ background: `linear-gradient(180deg, ${AC} 0%, ${BK.accentDeep} 100%)`, color: ACI, borderRadius: 14, boxShadow: `0 14px 32px -12px ${AC}66, 0 1px 0 rgba(255,255,255,0.22) inset` }}
+                      >
+                        Build my website
+                        <ArrowRight size={14} className="bk-arrow transition-transform" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
             <form onSubmit={handleSubmit} className="bk-glosscard bk-mono bk-rise mt-11 w-full max-w-2xl p-6 text-left md:p-8" style={{ animationDelay: '0.38s' }}>
               {linkMode ? (
                 <div className="relative">
@@ -1005,6 +1144,7 @@ const GbpImportPage: React.FC<Props> = ({ onImported, onUseManualForm, onSignIn 
                 </div>
               )}
             </form>
+            )}
 
             <div className="bk-rise mt-10 flex flex-wrap items-center justify-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em]" style={{ color: BK.faint, animationDelay: '0.5s' }}>
               <span className="mr-1" style={{ color: BK.muted }}>Works with</span>
@@ -1024,7 +1164,7 @@ const GbpImportPage: React.FC<Props> = ({ onImported, onUseManualForm, onSignIn 
               type="button"
               onClick={() => {
                 setError(null);
-                if (linkMode) { setGateBranch('name'); setSuggestions(null); setCandidates(null); }
+                if (linkMode) { setGateBranch('name'); setSuggestions(null); setCandidates(null); setPending(null); }
                 else { onUseManualForm(); }
               }}
               className="bk-ghost bk-rise mt-5 self-center text-center text-[11px] font-semibold uppercase tracking-[0.2em] transition-colors hover:text-white"
@@ -1036,7 +1176,7 @@ const GbpImportPage: React.FC<Props> = ({ onImported, onUseManualForm, onSignIn 
             </button>
             <button
               type="button"
-              onClick={() => { setGateBranch('gate'); setError(null); setCandidates(null); setSuggestions(null); }}
+              onClick={() => { setGateBranch('gate'); setError(null); setCandidates(null); setSuggestions(null); setPending(null); }}
               className="bk-ghost bk-rise mt-4 self-center text-center text-[11px] font-semibold uppercase tracking-[0.2em] transition-colors hover:text-white"
               style={{ color: BK.faint, animationDelay: '0.64s' }}
             >

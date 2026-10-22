@@ -62,7 +62,9 @@ export const RecoverPage: React.FC<RecoverPageProps> = ({ onRecovered }) => {
       // load the return URL. App.tsx then verifies the session, builds
       // the site and publishes it, same as a normal checkout.
       if (data.needsDeploy && data.pendingSite && data.sessionId) {
-        setFoundShop(data.shopName || 'Your site');
+        // A /custom-15 buyer who hasn't given their details yet: the stored
+        // name is the sample's placeholder, so don't echo it back.
+        setFoundShop(data.pendingSite?.siteData?.awaitingDetails ? 'Your site' : (data.shopName || 'Your site'));
         setFinishing(true);
         try {
           localStorage.setItem('pendingSite', JSON.stringify(data.pendingSite));

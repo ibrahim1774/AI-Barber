@@ -9,7 +9,7 @@
 // Fragility note: if Setmore stops embedding __NEXT_DATA__, parseNextData
 // would need updating — the field mapping below stays the same.
 
-import { finalize } from './util.js';
+import { finalize, parseReviewRating } from './util.js';
 import type { PlatformAdapter, ScrapedShop } from './types.js';
 import { ScrapeError } from './types.js';
 
@@ -159,14 +159,14 @@ export const setmoreAdapter: PlatformAdapter = {
 
     const meta = company.reviewsMeta || {};
     const aggregateRating =
-      Number(meta.reviewCount) > 0
-        ? { rating: Number(meta.averageRating) || 0, count: Number(meta.reviewCount) }
+      Number(meta.reviewCount) > 0 && Number(meta.averageRating) > 0
+        ? { rating: Number(meta.averageRating), count: Number(meta.reviewCount) }
         : undefined;
 
     const reviews = (Array.isArray(company.reviews) ? company.reviews : [])
       .map((r: any) => ({
         author: decodeEntities(r?.customerName || r?.author || r?.name || 'Client'),
-        rating: Number(r?.rating) || 5,
+        rating: parseReviewRating(r?.rating),
         comment: decodeEntities(r?.comment || r?.review || r?.description || ''),
         date: r?.date || r?.createdOn || undefined,
       }))

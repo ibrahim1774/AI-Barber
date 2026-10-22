@@ -39,7 +39,8 @@ export interface GbpBusiness {
   // redoing the whole import. Absent on the Apify path (Apify hands back
   // final image URLs with no re-resolvable reference).
   photoRefs?: string[];
-  reviews: { author: string; rating: number; comment: string; date?: string }[];
+  // `rating` is absent when the star count could not be read (never defaulted).
+  reviews: { author: string; rating?: number; comment: string; date?: string }[];
 }
 
 export interface GbpScrapeOptions {

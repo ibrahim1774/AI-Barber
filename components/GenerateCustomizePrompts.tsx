@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowRight, Loader2, ChevronLeft } from 'lucide-react';
 import { BrandSwatchGrid } from './BrandSwatchGrid';
+import { ServiceChecklist } from './ServiceChecklist';
+import { checklistToServices, type ServicePicks } from '../lib/stockImages';
 
 // Centered glass overlay for the /generate subpage. A barber site is
 // already generated and rendered behind this card; the overlay asks the
@@ -31,8 +33,9 @@ export interface GenerateCustomizePromptsProps {
   // questions so the visitor can still finish).
   onSubmitBookingLink: (url: string) => Promise<boolean>;
   // Fires when the visitor finishes the No-link path. The parent
-  // regenerates the site from the entered name/area/phone.
-  onFinish: (name: string, area: string, phone: string) => Promise<void> | void;
+  // regenerates the site from the entered name/area/phone and the services
+  // ticked on the last step (none → no Services section).
+  onFinish: (name: string, area: string, phone: string, services: { title: string; price?: string }[]) => Promise<void> | void;
   // Fires after each detail step so a partial visitor still lands in the
   // CRM via the existing leadCaptureService.
   onStepSubmit?: (field: 'name' | 'area' | 'phone', value: string) => void;
@@ -172,6 +175,8 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
     onTemplateChange?.(t);
   };
   const [step, setStep] = useState<Step>('booking');
+  // Optional services checklist on the phone step (collapsed).
+  const [servicePicks, setServicePicks] = useState<ServicePicks>({});
   // On /booksy the visitor came specifically to move their booking link
   // over, so open straight to the link field instead of the Yes/No split.
   const [choice, setChoice] = useState<Choice>(isBooksy ? 'yes' : null);
@@ -278,7 +283,7 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
       if (!v) return;
       onStepSubmit?.('phone', v);
       setFinishing(true);
-      await onFinish(name.trim(), area.trim(), phone.trim());
+      await onFinish(name.trim(), area.trim(), phone.trim(), checklistToServices(servicePicks));
       setFinishing(false);
       setStep('done');
     }
@@ -620,6 +625,9 @@ export const GenerateCustomizePrompts: React.FC<GenerateCustomizePromptsProps> =
               className="w-full px-2.5 py-2.5 bg-transparent text-white placeholder-white/35 text-[13px] outline-none mb-2.5"
               style={inputStyle}
             />
+            <div className="mb-2.5">
+              <ServiceChecklist value={servicePicks} onChange={setServicePicks} collapsible />
+            </div>
             <button
               type="submit"
               disabled={!phone.trim() || finishing}

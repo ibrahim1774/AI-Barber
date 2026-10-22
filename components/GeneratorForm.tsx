@@ -10,6 +10,8 @@ import { deriveShopNameFromUrl } from '../lib/buildSiteFromScrape.ts';
 import { detectBooksyNiche } from '../lib/booksyNiche.ts';
 import { BrandSwatchGrid } from './BrandSwatchGrid';
 import { DEFAULT_SWATCH } from '../lib/brandSwatches';
+import { checklistToServices, type ServicePicks } from '../lib/stockImages';
+import { ServiceChecklist } from './ServiceChecklist';
 
 // Booksy brand teal — used to highlight Booksy-specific copy in
 // booksyMode. A single-field accent, not a sitewide theme (the sitewide
@@ -94,6 +96,11 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
     colorTheme: DEFAULT_SWATCH,
   });
 
+  // Services checklist for hand-typed sites (tick + optional price). Only
+  // used when the site is built from typed fields; a scraped booking page
+  // brings its own menu. None ticked → no Services section.
+  const [servicePicks, setServicePicks] = useState<ServicePicks>({});
+
   // Auto-scrape state — only kicks in when bookingUrl is a supported
   // platform. Mirrors the step ladder UX from /booksy.
   const [scraping, setScraping] = useState(false);
@@ -151,7 +158,7 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
     // gathered by HomeBookingPrompts after the site reveals.
     if (nameOnly) {
       if (!inputs.shopName.trim()) return;
-      onGenerate({ ...inputs, area: '', phone: '', bookingUrl: '' });
+      onGenerate({ ...inputs, area: '', phone: '', bookingUrl: '', services: checklistToServices(servicePicks) });
       return;
     }
     // The single-link modes (/booksy + /booking) collect only the booking
@@ -243,7 +250,8 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
     }
 
     // Manual-only path: no URL, unsupported platform, or scrape failed.
-    onGenerate({ ...inputs, bookingUrl: normalizedUrl });
+    // Services are exactly what the barber ticked (none → no section).
+    onGenerate({ ...inputs, bookingUrl: normalizedUrl, services: checklistToServices(servicePicks) });
   };
 
   return (
@@ -504,6 +512,8 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
                 />
               </div>
 
+              <ServiceChecklist value={servicePicks} onChange={setServicePicks} centered />
+
               <div className="space-y-1.5">
                 <label className="block text-[11px] md:text-[13px] uppercase tracking-[3px] md:tracking-[4px] text-white font-black text-center">
                   Choose Your Colors{' '}
@@ -690,6 +700,8 @@ export const GeneratorForm: React.FC<GeneratorFormProps> = ({ onGenerate, onSign
                       onChange={e => setInputs({...inputs, phone: e.target.value})}
                     />
                   </div>
+
+                  <ServiceChecklist value={servicePicks} onChange={setServicePicks} />
                 </>
               )}
 

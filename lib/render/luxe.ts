@@ -9,6 +9,10 @@
 // Pure: WebsiteData in, HTML string out. Keep it that way.
 import type { WebsiteData } from '../../types';
 import { safeHref } from './safeHref.js';
+import {
+  aggregateToShow, copyrightYear, displayPrice, footerLine, hasServices, nicheCopy, photoAlt, reviewStars,
+  reviewsSourceLabel, serviceMeta, siteDescription, siteTitle, withoutLegacyCopy,
+} from './honest.js';
 
 // 24h → 12h with AM/PM. Idempotent: if the input already contains an
 // AM/PM marker, return it unchanged. Handles "09:00", "9:00", "9", "20:30".
@@ -29,7 +33,7 @@ export const to12h = (raw: string | null | undefined): string => {
   return `${h12}:${mm} ${period}`;
 };
 // Extracts the trailing "City, State [ZIP]" portion of an area string so
-// the hero "Premium Grooming Excellence in ..." line never echoes the
+// the footer "<niche> in ..." line never echoes the
 // full street address even if the user pastes one in. Inputs with two
 // or fewer comma-separated parts pass through unchanged.
 export const cityStateOnly = (raw: string): string => {
@@ -107,20 +111,33 @@ export function aibThemeVars(theme: AibTheme): string {
 const escapeAttr = (s: string): string =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
-export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
+export function generateHTMLWithPlaceholders(input: WebsiteData): string {
+  // Older stored sites: drop the copy we invented for them (honest.ts).
+  const siteData = withoutLegacyCopy(input);
+  // Every barber / scraped value is escaped before it lands in the page.
+  const esc = (v: unknown): string => escapeAttr(String(v ?? ''));
   const bookingUrl = safeHref(siteData.bookingUrl);
   const shopUrl = safeHref(siteData.shopUrl);
-  const formattedPhone = siteData.phone.replace(/\s+/g, '');
+  const formattedPhone = esc((siteData.phone || '').replace(/\s+/g, ''));
+  const hasPhone = !!(siteData.phone || '').trim();
+  // tel: links only for a phone with digits ("call us" gets no link).
+  const canCall = /\d/.test(siteData.phone || '');
+  // Non-optional on purpose: a site with no contact block is malformed and
+  // must fail the render (publishSite's dry render relies on that).
+  const address = (siteData.contact.address || '').trim();
+  const copy = nicheCopy(siteData);
+  const nameFirst = esc(siteData.shopName.split(' ')[0]);
+  const nameRest = esc(siteData.shopName.split(' ').slice(1).join(' '));
   // Picked theme — applied via .aib-themed CSS vars on <body> so the deployed
   // site matches the editor preview. Defaults to gold/black when unset.
   const luxeTheme = resolveAibTheme(siteData);
 
   // Owner-editable label override lookup. Falls back to the hardcoded
   // default when the key is absent, so older saved sites render unchanged.
-  const lbl = (key: string, fallback: string) => (siteData.labels && siteData.labels[key]) || fallback;
+  const lbl = (key: string, fallback: string) => esc((siteData.labels && siteData.labels[key]) || fallback);
 
   // Gallery — slot 0 doubles as the about-section seed and slot 1 as
-  // the hero/about fallback, so the "Our Work" portfolio renders
+  // the hero/about fallback, so the gallery renders
   // slots [2..7] (6 photos max). Renders only the filled slots so
   // partial galleries don't leave empty tiles.
   const GALLERY_PORTFOLIO_INDICES = [2, 3, 4, 5, 6, 7];
@@ -128,15 +145,18 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
     .map((idx) => ({ url: siteData.gallery[idx], index: idx }))
     .filter((item) => item.url);
 
+  // Neutral alt text: the photo may be a sample, never "our work".
+  const altAttr = escapeAttr(photoAlt(siteData));
+
   const gallerySection = galleryImages.length > 0
     ? `<section class="py-16 md:py-32 bg-[#0d0d0d] px-6 border-y border-white/5">
     <div class="container mx-auto max-w-5xl">
       <div class="text-center mb-10 md:mb-16">
         <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">${lbl('galleryEyebrow', 'Gallery')}</h3>
-        <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">${lbl('galleryHeading', 'Our Work')}</h2>
+        <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">${lbl('galleryHeading', 'The Look')}</h2>
       </div>
       <div class="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
-        ${galleryImages.map((g) => `<div class="bg-[#1a1a1a] p-1 border border-white/5 group relative overflow-hidden"><img src="{{gallery${g.index}}}" alt="Gallery Image ${g.index - 1}" class="w-full h-48 sm:h-56 md:h-64 object-cover transition-transform duration-700 group-hover:scale-105"></div>`).join('')}
+        ${galleryImages.map((g) => `<div class="bg-[#1a1a1a] p-1 border border-white/5 group relative overflow-hidden"><img src="{{gallery${g.index}}}" alt="${altAttr}" class="w-full h-48 sm:h-56 md:h-64 object-cover transition-transform duration-700 group-hover:scale-105"></div>`).join('')}
       </div>
     </div>
   </section>`
@@ -149,7 +169,7 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
     ? `<section class="py-12 md:py-20 bg-[#0d0d0d] px-6 border-y border-white/5">
     <div class="container mx-auto max-w-3xl text-center">
       <svg class="w-8 h-8 mx-auto mb-6 text-[#f4a100]/40" viewBox="0 0 24 24" fill="currentColor"><path d="M6 17h3l2-4V7H5v6h3l-2 4zm8 0h3l2-4V7h-6v6h3l-2 4z"/></svg>
-      <p class="text-white/85 text-base md:text-xl leading-relaxed" style="font-family:'Instrument Serif',Georgia,serif;font-style:italic;">${siteData.bio.replace(/</g, '&lt;')}</p>
+      <p class="text-white/85 text-base md:text-xl leading-relaxed" style="font-family:'Instrument Serif',Georgia,serif;font-style:italic;">${esc(siteData.bio)}</p>
     </div>
   </section>`
     : '';
@@ -161,16 +181,16 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
     <div class="container mx-auto max-w-6xl">
       <div class="text-center mb-10 md:mb-16">
         <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">${lbl('teamEyebrow', 'The Team')}</h3>
-        <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">${lbl('teamHeading', 'Meet Our Barbers')}</h2>
+        <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">${lbl('teamHeading', copy.teamHeading)}</h2>
       </div>
       <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
         ${siteData.staff.map((s, i) => `
           <div class="flex flex-col items-center text-center group">
             <div class="relative w-full aspect-square mb-3 overflow-hidden bg-[#1a1a1a] border border-white/5">
-              ${s.photo ? `<img src="{{staff${i}}}" alt="${(s.name || 'Staff').replace(/"/g, '&quot;')}" class="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-700">` : `<div class="w-full h-full flex items-center justify-center text-[#f4a100]/30"><svg class="w-12 h-12" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 22v-2c0-3.31 3.58-6 8-6s8 2.69 8 6v2H4z"/></svg></div>`}
+              ${s.photo ? `<img src="{{staff${i}}}" alt="${esc(s.name || 'Staff')}" class="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-700">` : `<div class="w-full h-full flex items-center justify-center text-[#f4a100]/30"><svg class="w-12 h-12" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 22v-2c0-3.31 3.58-6 8-6s8 2.69 8 6v2H4z"/></svg></div>`}
             </div>
-            <h4 class="font-montserrat font-black text-white text-sm md:text-base tracking-[1px] uppercase">${(s.name || '').replace(/</g, '&lt;')}</h4>
-            ${s.role ? `<p class="text-[#f4a100] text-[10px] md:text-[11px] font-bold tracking-[2px] uppercase mt-1">${s.role.replace(/</g, '&lt;')}</p>` : ''}
+            <h4 class="font-montserrat font-black text-white text-sm md:text-base tracking-[1px] uppercase">${esc(s.name)}</h4>
+            ${s.role ? `<p class="text-[#f4a100] text-[10px] md:text-[11px] font-bold tracking-[2px] uppercase mt-1">${esc(s.role)}</p>` : ''}
           </div>
         `).join('')}
       </div>
@@ -189,8 +209,8 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
       <div class="bg-[#1a1a1a] border border-white/5 divide-y divide-white/5">
         ${siteData.hours.map((h) => `
           <div class="flex items-center justify-between px-5 md:px-8 py-3.5 md:py-4">
-            <span class="text-white text-sm md:text-base font-bold uppercase tracking-[2px]">${h.day}</span>
-            <span class="text-[#f4a100] text-sm md:text-base font-bold tracking-[1px]">${h.closed ? 'Closed' : `${to12h(h.open)} – ${to12h(h.close)}`}</span>
+            <span class="text-white text-sm md:text-base font-bold uppercase tracking-[2px]">${esc(h.day)}</span>
+            <span class="text-[#f4a100] text-sm md:text-base font-bold tracking-[1px]">${h.closed ? 'Closed' : `${esc(to12h(h.open))} – ${esc(to12h(h.close))}`}</span>
           </div>
         `).join('')}
       </div>
@@ -201,12 +221,13 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
   // ── Aggregate-rating header — small block above the existing
   //    reviews grid when set. Renderer (and template) read .reviews
   //    separately so the header alone doesn't try to render reviews.
-  const ratingHeader = siteData.aggregateRating
+  const agg = aggregateToShow(siteData);
+  const ratingHeader = agg
     ? `<div class="text-center mb-10 md:mb-12">
         <div class="inline-flex items-center gap-3 bg-[#1a1a1a] border border-[#f4a100]/30 px-5 py-3 md:px-7 md:py-4">
           <span class="text-[#f4a100] text-2xl md:text-3xl">★</span>
-          <span class="text-white text-2xl md:text-3xl font-montserrat font-black">${siteData.aggregateRating.rating.toFixed(1)}</span>
-          ${siteData.aggregateRating.count > 0 ? `<span class="text-white/60 text-[10px] md:text-xs uppercase tracking-[2px] font-bold">from ${siteData.aggregateRating.count.toLocaleString()} reviews</span>` : ''}
+          <span class="text-white text-2xl md:text-3xl font-montserrat font-black">${agg.rating.toFixed(1)}</span>
+          ${agg.count > 0 ? `<span class="text-white/60 text-[10px] md:text-xs uppercase tracking-[2px] font-bold">from ${agg.count.toLocaleString()} reviews</span>` : ''}
         </div>
       </div>`
     : '';
@@ -220,18 +241,53 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
       <div class="text-center mb-10 md:mb-14">
         <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">${lbl('reviewsEyebrow', 'Reviews')}</h3>
         <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">${lbl('reviewsHeading', 'What Our Clients Say')}</h2>
+        ${reviewsSourceLabel(siteData) ? `<p data-reviews-source class="text-white/50 text-[10px] md:text-xs uppercase tracking-[2px] font-bold mt-4">${esc(reviewsSourceLabel(siteData))}</p>` : ''}
       </div>
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-        ${siteData.reviews.slice(0, 12).map((r) => `
+        ${siteData.reviews.slice(0, 12).map((r) => {
+          // No readable rating → no star row (never a made-up 5).
+          const stars = reviewStars(r);
+          return `
           <div class="border border-white/10 bg-[#111111] p-5 md:p-7 flex flex-col gap-3">
-            <div class="flex items-center gap-1">${Array.from({ length: 5 }, (_, s) => `<span class="${s < r.rating ? 'text-[#f4a100]' : 'text-white/15'}">★</span>`).join('')}</div>
-            <p class="text-white/80 text-sm md:text-base leading-relaxed italic">"${(r.comment || '').replace(/</g, '&lt;').replace(/"/g, '&quot;')}"</p>
+            ${stars !== null ? `<div class="flex items-center gap-1">${Array.from({ length: 5 }, (_, s) => `<span class="${s < stars ? 'text-[#f4a100]' : 'text-white/15'}">★</span>`).join('')}</div>` : ''}
+            <p class="text-white/80 text-sm md:text-base leading-relaxed italic">"${esc(r.comment)}"</p>
             <div class="flex items-center justify-between text-[10px] uppercase tracking-[2px] text-white/50 mt-auto pt-2 border-t border-white/5">
-              <span class="font-bold text-white/80">${(r.author || 'Customer').replace(/</g, '&lt;')}</span>
-              ${r.date ? `<span>${String(r.date).replace(/</g, '&lt;')}</span>` : ''}
+              <span class="font-bold text-white/80">${esc(r.author || 'Customer')}</span>
+              ${r.date ? `<span>${esc(r.date)}</span>` : ''}
             </div>
           </div>
-        `).join('')}
+        `;
+        }).join('')}
+      </div>
+    </div>
+  </section>`
+    : '';
+
+  // Services — only what the barber ticked or their booking page lists.
+  // None → no section (and no nav link to it).
+  const showServices = hasServices(siteData);
+  const servicesSection = showServices
+    ? `<section id="services" class="py-12 md:py-32 bg-[#0d0d0d] px-6">
+    <div class="container mx-auto max-w-7xl">
+      <div class="text-center mb-10 md:mb-16">
+        <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">${lbl('servicesEyebrow', 'Services')}</h3>
+        <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">${lbl('servicesHeading', 'What We Offer')}</h2>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+        ${siteData.services.filter((service) => (service?.title || '').trim()).map((service) => {
+          const price = displayPrice(service.price);
+          const meta = serviceMeta(service);
+          return `
+          <div class="group border-2 border-[#f4a100] p-6 md:p-10 flex flex-col hover:bg-[#1a1a1a] transition-all duration-500">
+            <div class="flex items-start justify-between gap-3 mb-3 md:mb-4">
+              <h3 class="font-montserrat font-black text-white text-base md:text-lg tracking-[1px] uppercase leading-tight flex-1">${esc(service.title)}</h3>
+              ${price ? `<span class="font-montserrat font-black text-[#f4a100] text-base md:text-lg whitespace-nowrap">${esc(price)}</span>` : ''}
+            </div>
+            ${meta ? `<p class="text-[#f4a100] text-[10px] md:text-[11px] font-bold tracking-[2px] mb-3 uppercase">${esc(meta)}</p>` : ''}
+            ${service.description ? `<p class="text-[#999999] text-xs md:text-sm leading-relaxed">${esc(service.description)}</p>` : ''}
+          </div>
+        `;
+        }).join('')}
       </div>
     </div>
   </section>`
@@ -246,7 +302,7 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
 
   const aboutImageSection = siteData.about.imageUrl
     ? `<div class="relative group mt-6 lg:mt-0">
-        <img src="{{about}}" alt="Barber Shop Atmosphere" class="w-full grayscale hover:grayscale-0 transition-all duration-700 shadow-2xl">
+        <img src="{{about}}" alt="${altAttr}" class="w-full grayscale hover:grayscale-0 transition-all duration-700 shadow-2xl">
       </div>`
     : '';
 
@@ -265,8 +321,8 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <title>${siteData.shopName} - Premium Barbershop in ${siteData.area}</title>
-  <meta name="description" content="Premium grooming services at ${siteData.shopName} in ${siteData.area}. Expert barbers, luxury experience.">
+  <title>${escapeAttr(siteTitle(siteData))}</title>
+  <meta name="description" content="${escapeAttr(siteDescription(siteData))}">
   <script type="text/javascript">
     (function(c,l,a,r,i,t,y){
       c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -312,20 +368,20 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
             <path d="M6 6l12 12M6 18L18 6"></path>
           </svg>
           <span class="font-montserrat font-black text-lg md:text-3xl lg:text-4xl tracking-[1px] md:tracking-[2px] uppercase whitespace-nowrap">
-            ${siteData.shopName.split(' ')[0]} <span class="text-[#f4a100]">${siteData.shopName.split(' ').slice(1).join(' ')}</span>
+            ${nameFirst} <span class="text-[#f4a100]">${nameRest}</span>
           </span>
         </div>
-        <a href="tel:${formattedPhone}" class="flex items-center gap-2 md:gap-4 text-[#f4a100] border-l-2 border-white/20 pl-4 md:pl-8 hover:text-white transition-colors">
+        ${canCall ? `<a href="tel:${formattedPhone}" class="flex items-center gap-2 md:gap-4 text-[#f4a100] border-l-2 border-white/20 pl-4 md:pl-8 hover:text-white transition-colors">
           <svg class="w-5 h-5 md:w-7 md:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path>
           </svg>
-          <span class="text-sm md:text-xl lg:text-2xl font-bold tracking-tight">${siteData.phone}</span>
-        </a>
+          <span class="text-sm md:text-xl lg:text-2xl font-bold tracking-tight">${esc(siteData.phone)}</span>
+        </a>` : ''}
       </div>
       <nav class="hidden lg:flex items-center gap-10">
         <a href="#home" class="text-[12px] font-montserrat font-bold tracking-[2px] hover:text-[#f4a100] transition-colors">HOME</a>
-        <a href="#services" class="text-[12px] font-montserrat font-bold tracking-[2px] hover:text-[#f4a100] transition-colors">SERVICES</a>
-        <a href="#contact" class="text-[12px] font-montserrat font-bold tracking-[2px] hover:text-[#f4a100] transition-colors">CONTACT</a>${shopUrl ? `
+${showServices ? `        <a href="#services" class="text-[12px] font-montserrat font-bold tracking-[2px] hover:text-[#f4a100] transition-colors">SERVICES</a>
+` : ''}        <a href="#contact" class="text-[12px] font-montserrat font-bold tracking-[2px] hover:text-[#f4a100] transition-colors">CONTACT</a>${shopUrl ? `
         <a href="${escapeAttr(shopUrl)}" class="text-[12px] font-montserrat font-bold tracking-[2px] hover:text-[#f4a100] transition-colors">SHOP</a>` : ''}
       </nav>
     </div>
@@ -333,20 +389,20 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
 
   <section id="home" class="relative h-[55vh] flex flex-col justify-center items-center overflow-hidden">
     <div class="absolute inset-0 z-0">
-      <img src="{{hero}}" alt="Main Hero" class="w-full h-full object-cover">
+      <img src="{{hero}}" alt="${altAttr}" class="w-full h-full object-cover">
       <div class="absolute inset-0 bg-black/40 bg-gradient-to-b from-black/30 via-transparent to-[#0d0d0d]"></div>
     </div>
     <div class="relative z-10 text-center px-4 md:px-6 max-w-5xl pb-28 md:pb-32 pt-20 md:pt-0">
       <p class="text-[#f4a100] font-montserrat font-bold text-[8px] md:text-sm tracking-[3px] md:tracking-[5px] uppercase mb-3 md:mb-6 opacity-90">
-        ${siteData.hero.tagline}
+        ${esc(siteData.hero.tagline)}
       </p>
       <h1 class="text-3xl md:text-6xl lg:text-7xl font-montserrat font-black text-white leading-tight uppercase tracking-[1px] md:tracking-[4px] mb-8 md:mb-12">
-        ${siteData.hero.heading}
+        ${esc(siteData.hero.heading)}
       </h1>
       <div class="flex flex-col sm:flex-row items-center justify-center gap-3 md:gap-4">
-        <a href="tel:${formattedPhone}" class="inline-flex items-center gap-3 border-2 border-[#f4a100] text-[#f4a100] px-6 py-4 md:px-12 md:py-6 font-montserrat font-black tracking-[2px] uppercase hover:bg-[#f4a100] hover:text-[#1a1a1a] transition-all duration-300 group shadow-lg text-xs md:text-base">
-          <span>Call Now: ${siteData.phone}</span>
-        </a>
+        ${canCall ? `<a href="tel:${formattedPhone}" class="inline-flex items-center gap-3 border-2 border-[#f4a100] text-[#f4a100] px-6 py-4 md:px-12 md:py-6 font-montserrat font-black tracking-[2px] uppercase hover:bg-[#f4a100] hover:text-[#1a1a1a] transition-all duration-300 group shadow-lg text-xs md:text-base">
+          <span>Call Now: ${esc(siteData.phone)}</span>
+        </a>` : ''}
         ${bookingUrl ? `<a href="${escapeAttr(bookingUrl)}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-3 bg-[#f4a100] text-[#1a1a1a] px-6 py-4 md:px-12 md:py-6 font-montserrat font-black tracking-[2px] uppercase hover:bg-white transition-all duration-300 shadow-lg text-xs md:text-base"><span>Book Appointment</span></a>` : ''}
       </div>
     </div>
@@ -358,10 +414,10 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
     <div class="container mx-auto grid ${siteData.about.imageUrl ? 'lg:grid-cols-2' : ''} gap-10 md:gap-20 items-center">
       <div class="relative">
         <h2 class="text-2xl md:text-5xl font-montserrat font-black text-white mb-6 md:mb-8 leading-tight uppercase tracking-[2px]">
-          ${siteData.about.heading}
+          ${esc(siteData.about.heading)}
         </h2>
         <div class="space-y-4 md:space-y-6 text-[#cccccc] font-light leading-relaxed text-sm md:text-base">
-          ${siteData.about.description.map(p => `<p>${p}</p>`).join('')}
+          ${siteData.about.description.map(p => `<p>${esc(p)}</p>`).join('')}
         </div>
       </div>
       ${aboutImageSection}
@@ -370,26 +426,7 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
 
   ${gallerySection}
 
-  <section id="services" class="py-12 md:py-32 bg-[#0d0d0d] px-6">
-    <div class="container mx-auto max-w-7xl">
-      <div class="text-center mb-10 md:mb-16">
-        <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">${lbl('servicesEyebrow', 'Services')}</h3>
-        <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">${lbl('servicesHeading', 'What We Offer')}</h2>
-      </div>
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-        ${siteData.services.map(service => `
-          <div class="group border-2 border-[#f4a100] p-6 md:p-10 flex flex-col hover:bg-[#1a1a1a] transition-all duration-500">
-            <div class="flex items-start justify-between gap-3 mb-3 md:mb-4">
-              <h3 class="font-montserrat font-black text-white text-base md:text-lg tracking-[1px] uppercase leading-tight flex-1">${service.title}</h3>
-              ${service.price ? `<span class="font-montserrat font-black text-[#f4a100] text-base md:text-lg whitespace-nowrap">${service.price}</span>` : ''}
-            </div>
-            ${(service.duration || service.subtitle) ? `<p class="text-[#f4a100] text-[10px] md:text-[11px] font-bold tracking-[2px] mb-3 uppercase">${service.duration || service.subtitle}</p>` : ''}
-            <p class="text-[#999999] text-xs md:text-sm leading-relaxed">${service.description}</p>
-          </div>
-        `).join('')}
-      </div>
-    </div>
-  </section>
+  ${servicesSection}
 
   ${reviewsSection}
 
@@ -403,14 +440,14 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
     <div class="container mx-auto max-w-6xl bg-[#1a1a1a] p-8 md:p-20">
       <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white mb-8 md:mb-12 uppercase tracking-[2px]">${lbl('contactHeading', 'Contact Us')}</h2>
       <div class="space-y-6 md:space-y-10">
-        <div>
+        ${address ? `<div>
           <h4 class="text-[#f4a100] font-bold text-[10px] md:text-xs tracking-[2px] mb-1 md:mb-2 font-montserrat">${lbl('contactLocationLabel', 'LOCATION')}</h4>
-          <p class="text-[#cccccc] text-xs md:text-sm leading-relaxed">${siteData.contact.address.charAt(0).toUpperCase() + siteData.contact.address.slice(1)}</p>
-        </div>
-        <div>
+          <p class="text-[#cccccc] text-xs md:text-sm leading-relaxed">${esc(address.charAt(0).toUpperCase() + address.slice(1))}</p>
+        </div>` : ''}
+        ${hasPhone ? `<div>
           <h4 class="text-[#f4a100] font-bold text-[10px] md:text-xs tracking-[2px] mb-1 md:mb-2 font-montserrat">${lbl('contactPhoneLabel', 'PHONE')}</h4>
-          <p class="text-[#cccccc] text-xs md:text-sm leading-relaxed">${siteData.phone}</p>
-        </div>
+          <p class="text-[#cccccc] text-xs md:text-sm leading-relaxed">${esc(siteData.phone)}</p>
+        </div>` : ''}
         ${bookingUrl ? `<div class="pt-4"><a href="${escapeAttr(bookingUrl)}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-3 bg-[#f4a100] text-[#1a1a1a] px-8 py-4 md:px-12 md:py-5 font-montserrat font-black tracking-[2px] uppercase hover:bg-white transition-all duration-300 shadow-lg text-xs md:text-sm">Book Appointment</a></div>` : ''}${shopUrl ? `
         <div class="pt-4"><a href="${escapeAttr(shopUrl)}" class="inline-flex items-center gap-3 border-2 border-[#f4a100] text-[#f4a100] px-8 py-4 md:px-12 md:py-5 font-montserrat font-black tracking-[2px] uppercase hover:bg-[#f4a100] hover:text-[#1a1a1a] transition-all duration-300 text-xs md:text-sm">Shop online</a></div>` : ''}
       </div>
@@ -423,8 +460,8 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
       <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px] mb-8 md:mb-12">${lbl('mapHeading', 'Stop By')}</h2>
       <div class="bg-[#1a1a1a] p-1 border border-white/5">
         <iframe
-          title="${siteData.shopName.replace(/"/g, '&quot;')} on Google Maps"
-          src="https://maps.google.com/maps?q=${encodeURIComponent(`${siteData.shopName} ${siteData.contact.address}`)}&output=embed"
+          title="${esc(siteData.shopName)} on Google Maps"
+          src="https://maps.google.com/maps?q=${encodeURIComponent(`${siteData.shopName} ${address}`)}&output=embed"
           width="100%" height="360"
           loading="lazy"
           referrerpolicy="no-referrer-when-downgrade"
@@ -436,13 +473,13 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
   <footer class="py-12 md:py-20 bg-[#0a0a0a] border-t border-white/5 text-center">
     <div class="container mx-auto px-6">
       <span class="font-montserrat font-black text-sm md:text-2xl tracking-[2px] md:tracking-[4px] uppercase">
-        ${siteData.shopName.split(' ')[0]} <span class="text-[#f4a100]">${siteData.shopName.split(' ').slice(1).join(' ')}</span>
+        ${nameFirst} <span class="text-[#f4a100]">${nameRest}</span>
       </span>
       <p class="text-[#666666] text-[8px] md:text-xs uppercase tracking-[2px] md:tracking-[4px] mt-8 mb-12">
-        Premium Grooming Excellence in ${cityStateOnly(siteData.area)}
+        ${esc(footerLine(siteData))}
       </p>
       <div class="pt-8 border-t border-white/5 text-[#444444] text-[8px] uppercase tracking-[2px]">
-        Copyright &copy; 2025 ${siteData.shopName}. Built by AIBarber.
+        Copyright &copy; ${copyrightYear()} ${esc(siteData.shopName)}. Built by AIBarber.
       </div>
     </div>
   </footer>
