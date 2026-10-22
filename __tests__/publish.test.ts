@@ -399,7 +399,9 @@ describe('publish decides the Book / Shop links from the choice', () => {
     jest.resetModules();
     jest.doMock('@/lib/shop', () => ({ loadMyShop: async () => { throw new Error('offline'); } }));
     jest.doMock('@/lib/store/data', () => ({ loadStoreSettings: async () => ({ storeEnabled: true }) }));
+    const { sb } = require('../test/mocks/supabase');
     const { loadLinkContext } = require('@/lib/linkContext');
+    sb.setSession({ access_token: 't', user: { id: 'u' } });
     await expect(loadLinkContext()).resolves.toBeNull();
     jest.dontMock('@/lib/shop');
     jest.dontMock('@/lib/store/data');

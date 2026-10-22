@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
+import { currentUserId } from '@/lib/auth';
 import { useEntitlements, getEntitlements } from '@/lib/entitlements';
 import type { LinkContext } from '@/lib/bookingChoice';
 import { loadMyShop } from '@/lib/shop';
@@ -11,6 +12,8 @@ import { loadStoreSettings } from '@/lib/store/data';
  */
 export async function loadLinkContext(): Promise<LinkContext | null> {
   const ents = getEntitlements();
+  // Signed out there is no shop to look up: unknown, not "no shop" (publishing works without an account).
+  if (!currentUserId()) return null;
   try {
     const shop = await loadMyShop();
     if (!shop) return { ents, shop: null, storeEnabled: false };

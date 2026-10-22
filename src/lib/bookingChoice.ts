@@ -103,7 +103,7 @@ export function resolveLinks(
   if (!ents.known || !ents.hosting) return data;
   const { own, choice } = bookingPrefs({ data, inputs: inputs ?? {} });
   const out: WebsiteData & { shopUrl?: string } = { ...data };
-  const book = choice === 'aibarber' && ents.bookings && shop && shop.bookingsEnabled ? bookingUrl(shop) : own;
+  const book = choice === 'aibarber' && ents.bookings && shop && shop.bookingsEnabled && shop.purchaseLinked ? bookingUrl(shop) : own;
   if (book) out.bookingUrl = book;
   else delete out.bookingUrl;
   if (ents.store && shop && shop.purchaseLinked && ctx.storeEnabled) out.shopUrl = shopUrl(shop);

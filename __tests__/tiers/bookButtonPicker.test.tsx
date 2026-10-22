@@ -10,7 +10,7 @@ const radio = (tree: any, label: string) =>
 
 it('without an own link: one line, no choice', async () => {
   const tree = await render(<BookButtonPicker own={null} choice="aibarber" onChange={jest.fn()} />);
-  expect(allText(tree)).toContain('Your Book button uses AI Barber booking.');
+  expect(allText(tree)).toContain('Your Book button will use AI Barber booking after you publish.');
   expect(radio(tree, 'Keep my link')).toBeUndefined();
 });
 

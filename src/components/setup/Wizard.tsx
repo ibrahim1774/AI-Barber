@@ -25,6 +25,9 @@ import { markWizardDone } from '@/lib/setup/wizardFlag';
 import { bookingUrl, listMembers, updateShopSettings, type Member, type Service, type Shop } from '@/lib/shop';
 import type { SiteRecord } from '@/lib/siteStore';
 
+export const WIZARD_PUBLISH_TITLE = 'Bookings are on';
+export const WIZARD_PUBLISH_BODY = 'Publish to add the Book button to your website.';
+
 type Props = {
   shop: Shop;
   site: SiteRecord;
@@ -59,10 +62,11 @@ export function Wizard({ shop, site, onShopChanged, onFinish }: Props) {
     setFinishing(true);
     try {
       await updateShopSettings(shop.id, { bookingsEnabled: true });
-      await updateSiteRecord((r) => withChoice(r, state.switchBookButton || !bookingPrefs(r).own ? 'aibarber' : 'own', shop));
+      const saved = await updateSiteRecord((r) => withChoice(r, state.switchBookButton || !bookingPrefs(r).own ? 'aibarber' : 'own', shop));
       await markWizardDone(shop.id);
       void registerPushForShop();
       track('bookings_setup_done', { skipped: state.skipped.length, switched_book_button: state.switchBookButton });
+      if (saved && bookingPrefs(saved).choice === 'aibarber') Alert.alert(WIZARD_PUBLISH_TITLE, WIZARD_PUBLISH_BODY);
       onFinish();
     } catch (e) {
       Alert.alert("Couldn't finish setup", e instanceof Error ? e.message : 'Try again.');

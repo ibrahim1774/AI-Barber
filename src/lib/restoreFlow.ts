@@ -4,6 +4,7 @@ import { syncIfSignedIn, type Restored } from '@/lib/account';
 import { ApiError } from '@/lib/api';
 import { resetTo } from '@/lib/nav';
 import { hasEntitlement, useLatestTransactionId, useRestorePurchases } from '@/lib/paywall';
+import { refreshPlanQuietly } from '@/lib/plan';
 import { relinkShopPurchase } from '@/lib/setup/relink';
 import { recheckSubscriptionStatus } from '@/lib/subscriptionStatus';
 
@@ -68,7 +69,10 @@ export function useRestoreFlow(): { restore: () => Promise<void>; busy: boolean 
       const res = await restorePurchases();
       if (res) {
         void syncIfSignedIn(res.site);
-        if (res.active) void relinkShopPurchase({ latestTransactionId, transactionId: res.site.transactionId });
+        if (res.active) {
+          void relinkShopPurchase({ latestTransactionId, transactionId: res.site.transactionId });
+          void refreshPlanQuietly(res.site.transactionId);
+        }
         resetTo('/edit');
       }
       outcome = res;

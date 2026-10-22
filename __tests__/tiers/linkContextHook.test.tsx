@@ -19,7 +19,11 @@ function Probe({ k }: { k: number }) {
   latest = useLinkContext(k);
   return null;
 }
+import { sb } from '../../test/mocks/supabase';
+import { loadLinkContext } from '@/lib/linkContext';
+
 beforeEach(() => {
+  sb.setSession({ access_token: 't', user: { id: 'u' } });
   resetEntitlementsForTests();
   setEntitlementsFromStatus({ status: 'ACTIVE', entitlements: [{ id: 'hosting' }, { id: 'bookings' }] });
   mockShop.mockReset();
@@ -44,4 +48,11 @@ it('a failed lookup leaves no context (the preview then only strips what the pla
   mockShop.mockRejectedValue(new Error('offline'));
   await render(<Probe k={1} />);
   expect(latest).toBeNull();
+});
+
+it('signed out is unknown (null), not "no shop", so a signed-out publish keeps the site links', async () => {
+  mockShop.mockResolvedValue({ id: 's', slug: 'fade', purchaseLinked: true, bookingsEnabled: true });
+  sb.setSession(null);
+  await expect(loadLinkContext()).resolves.toBeNull();
+  expect(mockShop).not.toHaveBeenCalled();
 });

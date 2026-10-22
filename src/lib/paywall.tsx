@@ -10,7 +10,7 @@ import { currentUserId } from '@/lib/auth';
 import { PaywallSettle, type PaywallResult } from '@/lib/paywallSettle';
 import { loadLinkContext } from '@/lib/linkContext';
 import { PLAN_ENTITLEMENT, getEntitlements, setEntitlementsFromStatus } from '@/lib/entitlements';
-import { refreshPlan, setSharedPlan } from '@/lib/plan';
+import { refreshPlan, refreshPlanQuietly, setSharedPlan } from '@/lib/plan';
 import { findTransactionId, pickLatestTransactionId, type PublishDeps } from '@/lib/publish';
 import { syncRevenueCatPurchases } from '@/lib/revenuecat';
 import * as siteStore from '@/lib/siteStore';
@@ -333,6 +333,8 @@ export function usePublishDeps(): PublishDeps {
         setSubscriptionStatus('active');
         // A booking page made before this subscription: tie it to the purchase. Quiet, not awaited.
         void relinkShopPurchase({ latestTransactionId, transactionId: site.transactionId });
+        // A shop already linked to an older, lapsed purchase: the server relinks it to this active one.
+        void refreshPlanQuietly(site.transactionId);
         return syncIfSignedIn(site);
       },
     }),
