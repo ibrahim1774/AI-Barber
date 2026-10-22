@@ -1,8 +1,7 @@
 import type { WebsiteData } from '@/web/types';
 import type { Entitlements } from '@/lib/entitlements';
 
-/** An AI Barber booking link; a Booksy or Square link is the barber's own and is never touched. */
-const AIBARBER_BOOK = /^(https?:\/\/)?(www\.)?aibarber\.org\/book(?=[/?#]|$)/i;
+import { isAiBarberBookingUrl } from '@/lib/shop';
 
 /**
  * Drops the website's Book and Shop links the plan no longer covers (the same
@@ -14,7 +13,8 @@ const AIBARBER_BOOK = /^(https?:\/\/)?(www\.)?aibarber\.org\/book(?=[/?#]|$)/i;
 export function stripLapsedLinks<T extends WebsiteData>(data: T, ents: Entitlements, ownFallback?: string | null): T {
   if (!ents.known || !ents.hosting) return data;
   const d = data as WebsiteData & { shopUrl?: string };
-  const dropBooking = !ents.bookings && typeof d.bookingUrl === 'string' && AIBARBER_BOOK.test(d.bookingUrl.trim());
+  // An AI Barber booking link (the site's /book or the old aibarber.org form); a Booksy or Square link is never touched.
+  const dropBooking = !ents.bookings && typeof d.bookingUrl === 'string' && isAiBarberBookingUrl(d.bookingUrl);
   const dropShop = !ents.store && d.shopUrl != null;
   if (!dropBooking && !dropShop) return data;
   const out = { ...data } as Record<string, unknown>;

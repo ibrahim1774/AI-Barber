@@ -16,6 +16,9 @@ import { stripLapsedLinks } from '@/lib/tierLinks';
 import { getPath, previewBackground, setPath } from '@/lib/editable';
 import { applyBookingLink, applyHomePrompts, editorRecord, fieldLabel, setColour, stockPhotoPaths, switchDesign } from '@/lib/editor';
 import { StockPhotoNudge } from '@/components/StockPhotoNudge';
+import type { PreviewProduct } from '@/lib/editable';
+import { listProducts } from '@/lib/store/data';
+import { isSiteShopLink } from '@/web/lib/render/subpages';
 import { advanceOverlay, hasSeen, markSeen, nextOverlay, type Overlay } from '@/lib/overlayFlags';
 import { pickAndUploadPhoto } from '@/lib/photos';
 import { takePublishRequest } from '@/lib/publishRequest';
@@ -84,6 +87,23 @@ export default function Editor() {
   const [overlay, setOverlay] = useState<Overlay | null>(null);
   // The bookings shop, when there is one: then ab_services is the services source.
   const [shop, setShop] = useState<Shop | null>(null);
+  // The barber's products for the homepage Shop section in the preview (only while it has one).
+  const [shopProducts, setShopProducts] = useState<PreviewProduct[] | null>(null);
+  const showsShop = isSiteShopLink((previewData as { shopUrl?: string } | null)?.shopUrl);
+  const shopId = shop?.id;
+  useEffect(() => {
+    if (!showsShop || !shopId) {
+      setShopProducts(null);
+      return;
+    }
+    let alive = true;
+    listProducts(shopId)
+      .then((ps) => alive && setShopProducts(ps.filter((p) => !p.soldOut).map((p) => ({ name: p.name, priceCents: p.priceCents, photo: p.photos[0] ?? null }))))
+      .catch(() => alive && setShopProducts([]));
+    return () => {
+      alive = false;
+    };
+  }, [showsShop, shopId]);
   // Mirrors `overlay` for the preview callbacks: no edits while one is up.
   const overlayRef = useRef<Overlay | null>(null);
   overlayRef.current = overlay;
@@ -475,7 +495,7 @@ export default function Editor() {
       <View style={styles.body}>
         {/* The site's own background, so nothing else shows around the page. */}
         <View style={[styles.preview, { backgroundColor: previewBackground(data) }]}>
-          <SitePreview data={previewData ?? data} editable onEditText={onPreviewText} onEditImage={onPreviewImage} />
+          <SitePreview data={previewData ?? data} editable shopProducts={shopProducts} onEditText={onPreviewText} onEditImage={onPreviewImage} />
           {/* Hidden over a published site and while the prompts / guide are up. */}
           {site.slug == null && !site.deployedUrl && overlay == null && (
             <DesignSwitcher current={data.template} onSelect={handleDesign} busy={switching} />

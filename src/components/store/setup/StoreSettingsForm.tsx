@@ -8,10 +8,12 @@ import { colors } from '@/constants/theme';
 import { updateSiteData } from '@/lib/setup/siteSync';
 import type { Shop } from '@/lib/shop';
 import {
-  loadStoreSettings, shopUrl, updateStoreSettings, type StoreSettings,
+  loadStoreSettings, updateStoreSettings, type StoreSettings,
 } from '@/lib/store/data';
 import { canOpenShop, formFromSettings, validateSettings, type SettingsForm } from '@/lib/store/settings';
 import { useUpdateSitePrompt } from '@/lib/setupPrompt';
+import { customerShopUrl, useSiteForLinks } from '@/lib/customerLinks';
+import { SITE_SHOP_PATH } from '@/web/lib/render/subpages';
 import type { WebsiteData } from '@/web/types';
 
 /** `shopUrl` joins WebsiteData when the controller runs sync-web.sh; until then this carries it. */
@@ -28,6 +30,9 @@ export function StoreSettingsForm({ shop, onChanged }: { shop: Shop; onChanged?(
   const [busy, setBusy] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const sitePrompt = useUpdateSitePrompt('store');
+  const linkSite = useSiteForLinks();
+  // What customers open: the barber's own site + /shop once it has the page, else the aibarber.org page.
+  const customerUrl = customerShopUrl(shop, linkSite);
 
   useEffect(() => {
     let alive = true;
@@ -97,7 +102,8 @@ export function StoreSettingsForm({ shop, onChanged }: { shop: Shop; onChanged?(
       }
       await updateStoreSettings(shop.id, { storeEnabled: open });
       setSaved({ ...current, storeEnabled: open });
-      const url = shopUrl(shop);
+      // The site's Shop button is its own /shop page.
+      const url = SITE_SHOP_PATH;
       onChanged?.();
       try {
         await updateSiteData((d) => {
@@ -161,7 +167,7 @@ export function StoreSettingsForm({ shop, onChanged }: { shop: Shop; onChanged?(
       <Card title={saved.storeEnabled ? 'Your shop is open' : 'Open your shop'}>
         <Note>
           {saved.storeEnabled
-            ? shop.purchaseLinked ? shopUrl(shop) : PLAN_PENDING
+            ? shop.purchaseLinked ? customerUrl : PLAN_PENDING
             : 'Customers can browse and order once it is open. You can add products any time.'}
         </Note>
         <Button
@@ -176,7 +182,7 @@ export function StoreSettingsForm({ shop, onChanged }: { shop: Shop; onChanged?(
       <ShareSheet
         visible={shareOpen}
         shopName={shop.name}
-        links={[{ kind: 'shop', url: shopUrl(shop) }]}
+        links={[{ kind: 'shop', url: customerUrl }]}
         source="settings"
         onClose={() => setShareOpen(false)}
       />

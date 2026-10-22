@@ -1,5 +1,6 @@
 import type { WebsiteData, ShopInputs } from '@/web/types';
-import { bookingUrl, isAiBarberBookingUrl, type Shop } from '@/lib/shop';
+import { isAiBarberBookingUrl, type Shop } from '@/lib/shop';
+import { SITE_BOOK_PATH } from '@/web/lib/render/subpages';
 
 /** The barber's current Book-button link when it is someone else's calendar (Booksy, Square...). */
 export function existingBookingLink(d: Pick<WebsiteData, 'bookingUrl'>): string | null {
@@ -8,12 +9,12 @@ export function existingBookingLink(d: Pick<WebsiteData, 'bookingUrl'>): string 
 }
 
 /** Points the Book buttons at the AI Barber booking page. Only call after the barber confirms. */
-export function switchBookButton<T extends Pick<WebsiteData, 'bookingUrl'>>(d: T, shop: Pick<Shop, 'slug'>): T {
-  return { ...d, bookingUrl: bookingUrl(shop) };
+export function switchBookButton<T extends Pick<WebsiteData, 'bookingUrl'>>(d: T, _shop?: Pick<Shop, 'slug'>): T {
+  return { ...d, bookingUrl: SITE_BOOK_PATH };
 }
 
-export function switchInputs(i: ShopInputs, shop: Pick<Shop, 'slug'>): ShopInputs {
-  return { ...i, bookingUrl: bookingUrl(shop) };
+export function switchInputs(i: ShopInputs, _shop?: Pick<Shop, 'slug'>): ShopInputs {
+  return { ...i, bookingUrl: SITE_BOOK_PATH };
 }
 
 export const DOUBLE_BOOKING_WARNING =

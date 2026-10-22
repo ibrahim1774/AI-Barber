@@ -13,8 +13,9 @@ import { Alert } from 'react-native';
 import { BOOKSY, FakeServer, P, boot, draft, installFetch, kill, tierFor, type World } from './harness';
 import { wipeDisk } from './mocks';
 
-const AI_BOOK = 'https://www.aibarber.org/book/fade-lab';
-const SHOP = 'https://www.aibarber.org/shop/fade-lab';
+// The site's own booking and shop pages (relative: served from the barber's domain).
+const AI_BOOK = '/book';
+const SHOP = '/shop';
 
 let server: FakeServer;
 let w: World;

@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { isSiteBookLink, isSiteShopLink } from '@/web/lib/render/subpages';
 
 /**
  * Supabase data layer for the ab_* tables (migration 005/006). The app talks to
@@ -33,6 +34,11 @@ export type Shop = {
   phone: string;
   accent: string;
   dailySummary: boolean;
+  /**
+   * The barber site's public address (custom domain or {slug}.vercel.app), set by the server after a
+   * deploy that included the /book and /shop pages (ab_shops.site_base_url). Null until then.
+   */
+  siteBaseUrl?: string | null;
 };
 
 export type Member = {
@@ -80,9 +86,19 @@ export function bookingUrl(shop: Pick<Shop, 'slug'>): string {
   return `${BOOKING_BASE}/${shop.slug}`;
 }
 
-/** True when `url` is an AI Barber booking page link (any shop). */
+/**
+ * True when `url` is an AI Barber booking link: the site's own `/book` page, or the old
+ * aibarber.org/book/{slug} form (any shop). A barber's Booksy / Square link is never one.
+ */
 export function isAiBarberBookingUrl(url?: string | null): boolean {
-  return !!url && /^(https?:\/\/)?(www\.)?aibarber\.org\/book(?=[/?#]|$)/i.test(url.trim());
+  if (!url) return false;
+  return isSiteBookLink(url) || /^(https?:\/\/)?(www\.)?aibarber\.org\/book(?=[/?#]|$)/i.test(url.trim());
+}
+
+/** The same for the shop: the site's own `/shop` page, or the old aibarber.org/shop/{slug} form. */
+export function isAiBarberShopUrl(url?: string | null): boolean {
+  if (!url) return false;
+  return isSiteShopLink(url) || /^(https?:\/\/)?(www\.)?aibarber\.org\/shop(?=[/?#]|$)/i.test(url.trim());
 }
 
 /** The calendar feed for one barber (S1 `GET /api/book/ics?t=`). */
@@ -95,6 +111,13 @@ function fail(error: { message?: string } | null): never {
 }
 
 // ---- mappers (exported for tests) -------------------------------------
+
+/** A stored https origin without a trailing slash, or null. */
+function siteBase(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const u = v.trim().replace(/\/+$/, '');
+  return /^https:\/\/[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/i.test(u) ? u : null;
+}
 
 export function toShop(r: Record<string, any>): Shop {
   const handles = r.manual_handles && typeof r.manual_handles === 'object' ? r.manual_handles : {};
@@ -119,6 +142,7 @@ export function toShop(r: Record<string, any>): Shop {
     phone: r.phone ?? '',
     accent: r.accent ?? '',
     dailySummary: !!r.daily_summary,
+    siteBaseUrl: siteBase(r.site_base_url),
   };
 }
 

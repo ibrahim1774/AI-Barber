@@ -3,12 +3,14 @@ import { StyleSheet } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import type { ShouldStartLoadRequest } from 'react-native-webview/lib/WebViewTypes';
 import type { WebsiteData } from '@/web/types';
-import { EDITOR_JS, buildPreviewHtml, previewBackground } from '@/lib/editable';
+import { EDITOR_JS, buildPreviewHtml, previewBackground, type PreviewProduct } from '@/lib/editable';
 import { parsePreviewMessage, shouldAllowPreviewRequest } from '@/lib/previewBridge';
 
 export interface SitePreviewProps {
   data: WebsiteData;
   editable: boolean;
+  /** The barber's products for the homepage Shop section (the preview can't fetch the live store). */
+  shopProducts?: PreviewProduct[] | null;
   onEditText(path: string): void;
   onEditImage(path: string): void;
 }
@@ -20,13 +22,13 @@ export interface SitePreviewProps {
  * Each data change reloads the document; the last reported scrollY is
  * restored once the new document posts 'ready'.
  */
-export default function SitePreview({ data, editable, onEditText, onEditImage }: SitePreviewProps) {
+export default function SitePreview({ data, editable, shopProducts, onEditText, onEditImage }: SitePreviewProps) {
   const webRef = useRef<WebView>(null);
   const scrollY = useRef(0);
 
   // Memoised on data/editable: the templates stamp Date.now() into the HTML, so
   // re-rendering on every parent render would reload the page.
-  const html = useMemo(() => buildPreviewHtml(data, editable), [data, editable]);
+  const html = useMemo(() => buildPreviewHtml(data, editable, shopProducts), [data, editable, shopProducts]);
   const source = useMemo(() => ({ html }), [html]);
   // The site's own background behind the page. On iOS (Fabric) the WKWebView
   // is transparent, so this view is what the overscroll bounce, a reload and

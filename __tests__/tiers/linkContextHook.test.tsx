@@ -36,7 +36,7 @@ it('reloads when the site record changes, and the preview equals what publish wo
   expect(mounted).toBeGreaterThan(0);
   const data: any = { shopName: 'F', phone: '1' };
   const inputs = { ownBookingUrl: 'https://booksy.com/x', bookingChoice: 'aibarber' as const };
-  expect(resolveLinks(data, inputs, latest).bookingUrl).toBe('https://www.aibarber.org/book/fade');
+  expect(resolveLinks(data, inputs, latest).bookingUrl).toBe('/book');
   // Bookings switched off in setup: the site record changes, the preview follows (publish reloads too).
   mockShop.mockResolvedValue({ id: 's', slug: 'fade', purchaseLinked: true, bookingsEnabled: false });
   await act(async () => tree.update(<Probe k={2} />));

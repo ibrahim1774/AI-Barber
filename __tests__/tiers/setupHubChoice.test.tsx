@@ -29,5 +29,5 @@ it('shows Your Book button with the own link, and choosing AI Barber saves the c
   await act(async () => o.props.onPress());
   const saved = onSiteChanged.mock.calls[0][0];
   expect(saved.inputs).toMatchObject({ bookingChoice: 'aibarber', ownBookingUrl: 'https://booksy.com/fade-lab' });
-  expect(saved.data.bookingUrl).toBe('https://www.aibarber.org/book/fade-lab');
+  expect(saved.data.bookingUrl).toBe('/book'); // the site's own booking page
 });

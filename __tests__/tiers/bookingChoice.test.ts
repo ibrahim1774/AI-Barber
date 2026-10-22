@@ -2,7 +2,8 @@ import {
   bookingPrefs, migrateBooking, resolveLinks, shortLink, syncOwnLink, withChoice, type LinkContext,
 } from '@/lib/bookingChoice';
 
-const AI = 'https://www.aibarber.org/book/fade-lab';
+// The site's own booking page; old records with the aibarber.org form are covered in e2e/subpages.
+const AI = '/book';
 const OWN = 'https://booksy.com/en-us/1_fade-lab';
 const rec = (data: Record<string, unknown> = {}, inputs: Record<string, unknown> = {}): any => ({
   draftId: 'd', inputs: { shopName: 'Fade', area: '', phone: '', ...inputs }, data: { shopName: 'Fade', phone: '1', ...data },
@@ -103,7 +104,7 @@ describe('resolveLinks (publish decides the links)', () => {
   });
   it('shopUrl is added only with store + open + linked shop, else removed', () => {
     const full = ctx({ e: { bookings: true, store: true } });
-    expect(resolveLinks(rec().data, inp, full).shopUrl).toBe('https://www.aibarber.org/shop/fade-lab');
+    expect(resolveLinks(rec().data, inp, full).shopUrl).toBe('/shop');
     expect(resolveLinks(rec().data, inp, { ...full, storeEnabled: false }).shopUrl).toBeUndefined();
     expect(resolveLinks(rec().data, inp, { ...full, shop: { slug: 'fade-lab', purchaseLinked: false } }).shopUrl).toBeUndefined();
     expect(resolveLinks({ ...rec().data, shopUrl: 'x' } as any, inp, ctx({ e: { bookings: true } })).shopUrl).toBeUndefined();

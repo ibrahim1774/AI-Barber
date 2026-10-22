@@ -3,6 +3,7 @@ import { resolveAibTheme } from '@/web/lib/render/luxe';
 import { resolvePrimeTheme } from '@/web/lib/render/prime';
 import { resolveEuphoriaTheme } from '@/web/lib/render/euphoria';
 import { serviceMeta, withoutLegacyCopy } from '@/web/lib/render/honest';
+import { SHOP_PREVIEW_SCRIPT, SITE_SHOP_PATH, isSiteSubpageLink } from '@/web/lib/render/subpages';
 import { forRender, renderSite, withImages } from '@/lib/render';
 export { EDITOR_JS } from '@/lib/editorScript';
 
@@ -196,6 +197,8 @@ export function markData(d: WebsiteData): { marked: WebsiteData; ids: Record<str
     const value = getPath(d, path);
     // Never mark empty values: templates branch on truthiness (bookingUrl ?, s.description ?).
     if (typeof value !== 'string' || value === '') continue;
+    // The site's own /book page link must reach the renderer as is: it decides the "Book online" strip.
+    if (path === 'bookingUrl' && isSiteSubpageLink(value)) continue;
     const id = letterId(n++);
     ids[id] = path;
     marked = setPath(marked, path, `${M}${id}${M}${value}${M}/${M}`);
@@ -359,14 +362,51 @@ export function asPublished(d: WebsiteData): WebsiteData {
   return changed ? { ...clean, services: next } : clean;
 }
 
-export function buildPreviewHtml(raw: WebsiteData, editable: boolean): string {
+/** A product for the editor's Shop preview (the barber's own list; the preview can't fetch the live one). */
+export type PreviewProduct = { name: string; priceCents: number; photo?: string | null };
+
+const escHtml = (v: string) =>
+  v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+const money = (c: number) => {
+  const d = c / 100;
+  return `$${d % 1 === 0 ? String(d) : d.toFixed(2)}`;
+};
+export const SHOP_PREVIEW_PLACEHOLDER = 'Your products show here';
+export const SHOP_PREVIEW_EDITOR_NOTE = 'Preview only — the live site shows your current products.';
+
+/**
+ * The homepage Shop section as the published page shows it once its script has loaded products: the
+ * published page fills it in the browser from the live store, which the editor's WebView can't reach.
+ * Here it is filled from the app's own product list (up to 4, not sold out, same cards), or with one
+ * placeholder card, and a small editor-only note. The fetch script is dropped. Unchanged when the page
+ * has no Shop section.
+ */
+export function withShopPreview(html: string, products: PreviewProduct[] | null | undefined): string {
+  if (!html.includes('id="shop-preview"')) return html;
+  const shown = (products ?? []).filter((p) => p && p.name && Number.isFinite(p.priceCents)).slice(0, 4);
+  const card = (p: PreviewProduct) => {
+    const photo = p.photo && /^https:\/\//i.test(p.photo) ? `<img class="ab-sp-img" src="${escHtml(p.photo)}" alt="" loading="lazy">` : '';
+    return `<a class="ab-sp-card" href="${SITE_SHOP_PATH}">${photo}<span class="ab-sp-name">${escHtml(p.name)}</span><span class="ab-sp-price">${money(p.priceCents)}</span></a>`;
+  };
+  const cards = shown.length
+    ? shown.map(card).join('')
+    : `<a class="ab-sp-card" href="${SITE_SHOP_PATH}"><span class="ab-sp-name">${SHOP_PREVIEW_PLACEHOLDER}</span></a>`;
+  const note = `<p data-ab-editor-only style="margin:12px 0 0;font:12px/1.4 -apple-system,Helvetica,Arial,sans-serif;opacity:.6">${SHOP_PREVIEW_EDITOR_NOTE}</p>`;
+  return html
+    .split(`<script>${SHOP_PREVIEW_SCRIPT}</script>`).join('')
+    .replace(/(<section id="shop-preview"[^>]*?) hidden>/, '$1>')
+    // A function, not a string: prices like "$12" must not be read as $1 / $12 group references.
+    .replace(/(<div id="shop-preview-grid"[^>]*>)(<\/div>)/, (_m, open: string, close: string) => `${open}${cards}${close}${note}`);
+}
+
+export function buildPreviewHtml(raw: WebsiteData, editable: boolean, shopProducts?: PreviewProduct[] | null): string {
   // Markers go in only after the data is what the published page would render.
   const data = asPublished(raw);
   const bg = previewBackground(data);
-  if (!editable) return withPreviewBackground(withImages(stripTracking(renderSite(forRender(data))), data), bg);
+  if (!editable) return withPreviewBackground(withShopPreview(withImages(stripTracking(renderSite(forRender(data))), data), shopProducts), bg);
   const { marked, ids } = markData(data);
   return withPreviewBackground(
-    withImages(tagImageSlots(prepareEditableHtml(stripTracking(renderSite(forRender(marked))), ids)), data),
+    withShopPreview(withImages(tagImageSlots(prepareEditableHtml(stripTracking(renderSite(forRender(marked))), ids)), data), shopProducts),
     bg,
   );
 }

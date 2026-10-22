@@ -1,8 +1,8 @@
 import type { WebsiteData } from '@/web/types';
 import { getEntitlements, type Entitlements } from '@/lib/entitlements';
 import { stripLapsedLinks } from '@/lib/tierLinks';
-import { bookingUrl, isAiBarberBookingUrl, type Shop } from '@/lib/shop';
-import { shopUrl } from '@/lib/store/data';
+import { isAiBarberBookingUrl, isAiBarberShopUrl, type Shop } from '@/lib/shop';
+import { SITE_BOOK_PATH, SITE_SHOP_PATH } from '@/web/lib/render/subpages';
 import type { SiteRecord } from '@/lib/siteStore';
 
 /**
@@ -60,10 +60,11 @@ export function migrateBooking(rec: SiteRecord): SiteRecord {
 }
 
 /** The record with the choice applied: the prefs, and the Book link the editor and preview show. */
-export function withChoice(rec: SiteRecord, choice: BookingChoice, shop: Pick<Shop, 'slug'>): SiteRecord {
+export function withChoice(rec: SiteRecord, choice: BookingChoice, _shop?: Pick<Shop, 'slug'>): SiteRecord {
   const { own } = bookingPrefs(rec);
   const data = { ...rec.data };
-  const url = choice === 'aibarber' ? bookingUrl(shop) : own;
+  // AI Barber booking is the site's own /book page (served from the barber's domain).
+  const url = choice === 'aibarber' ? SITE_BOOK_PATH : own;
   if (url) data.bookingUrl = url;
   else delete data.bookingUrl;
   const inputs = { ...rec.inputs, bookingChoice: choice, ...(own ? { ownBookingUrl: own } : {}) };
@@ -124,10 +125,11 @@ export function resolveLinks(
   if (!ents.known || !ents.hosting) return data;
   const { own, choice } = bookingPrefs({ data, inputs: inputs ?? {} });
   const out: WebsiteData & { shopUrl?: string } = { ...data };
-  const book = choice === 'aibarber' && ents.bookings && shop && shop.bookingsEnabled && shop.purchaseLinked ? bookingUrl(shop) : own;
+  // The site's own /book and /shop pages (the server serves them from the barber's domain and renders the homepage strips).
+  const book = choice === 'aibarber' && ents.bookings && shop && shop.bookingsEnabled && shop.purchaseLinked ? SITE_BOOK_PATH : own;
   if (book) out.bookingUrl = book;
   else delete out.bookingUrl;
-  if (ents.store && shop && shop.purchaseLinked && ctx.storeEnabled) out.shopUrl = shopUrl(shop);
+  if (ents.store && shop && shop.purchaseLinked && ctx.storeEnabled) out.shopUrl = SITE_SHOP_PATH;
   else delete out.shopUrl;
   return out;
 }
@@ -155,4 +157,16 @@ export function linksOf(d: unknown): LiveLinks {
   const o = d && typeof d === 'object' ? (d as { bookingUrl?: unknown; shopUrl?: unknown }) : {};
   const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
   return { bookingUrl: str(o.bookingUrl), shopUrl: str(o.shopUrl) };
+}
+
+/**
+ * The same button whatever form it is stored in: the old aibarber.org/book/{slug} and /shop/{slug}
+ * links and the site's own /book and /shop are one AI Barber button each (the server renders both
+ * as the site page). A barber's own link stays as it is.
+ */
+export function canonicalLinks(l: LiveLinks): LiveLinks {
+  return {
+    bookingUrl: isAiBarberBookingUrl(l.bookingUrl) ? SITE_BOOK_PATH : l.bookingUrl,
+    shopUrl: l.shopUrl == null ? null : isAiBarberShopUrl(l.shopUrl) ? SITE_SHOP_PATH : l.shopUrl,
+  };
 }

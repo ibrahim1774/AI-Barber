@@ -9,6 +9,10 @@ describe('shop data layer', () => {
   it('builds the booking URL as a path', () => {
     expect(bookingUrl({ slug: 'fade-lab' })).toBe('https://www.aibarber.org/book/fade-lab');
     expect(isAiBarberBookingUrl('https://www.aibarber.org/book/fade-lab')).toBe(true);
+    // The site's own page is an AI Barber booking link too; /books or /book/x is not.
+    expect(isAiBarberBookingUrl('/book')).toBe(true);
+    expect(isAiBarberBookingUrl('/book?x=1')).toBe(true);
+    expect(isAiBarberBookingUrl('/books')).toBe(false);
     expect(isAiBarberBookingUrl('https://booksy.com/x')).toBe(false);
   });
   it('maps a row defensively', () => {
@@ -62,7 +66,7 @@ describe('setup body and Book button', () => {
     expect(existingBookingLink(site.data)).toBe('https://booksy.com/x');
     expect(existingBookingLink({ bookingUrl: 'https://www.aibarber.org/book/a' })).toBeNull();
     expect(site.data.bookingUrl).toBe('https://booksy.com/x');
-    expect(switchBookButton(site.data, { slug: 'fade' }).bookingUrl).toBe('https://www.aibarber.org/book/fade');
+    expect(switchBookButton(site.data, { slug: 'fade' }).bookingUrl).toBe('/book');
   });
 });
 

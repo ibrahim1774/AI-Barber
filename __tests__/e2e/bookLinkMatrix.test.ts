@@ -20,8 +20,9 @@ import { stripLapsedLinks } from '@/lib/tierLinks';
 import type { SiteRecord } from '@/lib/siteStore';
 
 const OWN = 'https://booksy.com/en-us/123_fade-lab';
-const AI = 'https://www.aibarber.org/book/fade-lab';
-const SHOP = 'https://www.aibarber.org/shop/fade-lab';
+// The site's own pages (relative): what publish sends now.
+const AI = '/book';
+const SHOP = '/shop';
 
 type Ents = 'unknown' | 'lapsed' | 'website' | 'bookings' | 'store';
 type Ctx = 'unknown' | 'no-shop' | 'shop';

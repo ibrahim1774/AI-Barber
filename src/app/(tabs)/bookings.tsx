@@ -21,7 +21,8 @@ import { DAYS_AHEAD, DAYS_BACK, useBookingsData } from '@/components/bookings/us
 import {
   appointmentsForDay, countsByDay, dateFromPushData, dayHeading, stripDays, timeOffForDay, todayKey, type DateKey,
 } from '@/lib/bookings/calendar';
-import { BOOKING_SHARE_KIND, bookingUrl, memberName } from '@/lib/bookings/shop';
+import { BOOKING_SHARE_KIND, memberName } from '@/lib/bookings/shop';
+import { customerBookingUrl, useSiteForLinks } from '@/lib/customerLinks';
 import { loadSite, type SiteRecord } from '@/lib/siteStore';
 import { isLocked, useSubscriptionStatus } from '@/lib/subscriptionStatus';
 import { useTierAccess, useUpgrade } from '@/lib/tierAccess';
@@ -82,7 +83,8 @@ export default function Bookings() {
   const names = useMemo(() => new Map(members.map((m) => [m.id, memberName(m)])), [members]);
   const several = members.length > 1;
   const open = openId ? appts.find((a) => a.id === openId) ?? null : null;
-  const link = shop ? bookingUrl(shop) : '';
+  const linkSite = useSiteForLinks();
+  const link = shop ? customerBookingUrl(shop, linkSite) : '';
 
   const pull = async () => {
     setPulling(true);

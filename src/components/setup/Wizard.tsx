@@ -15,6 +15,7 @@ import { shareMessage } from '@/lib/share';
 import { BookButtonPicker } from '@/components/setup/BookButtonPicker';
 import { bookingPrefs, withChoice } from '@/lib/bookingChoice';
 import { useUpdateSitePrompt } from '@/lib/setupPrompt';
+import { customerBookingUrl } from '@/lib/customerLinks';
 import { withMirroredServices } from '@/lib/setup/servicesMap';
 import { updateSiteData, updateSiteRecord } from '@/lib/setup/siteSync';
 import {
@@ -23,7 +24,7 @@ import {
 import { PLAN_PENDING } from '@/components/setup/SetupHub';
 import { registerPushForShop } from '@/lib/setup/relink';
 import { markWizardDone } from '@/lib/setup/wizardFlag';
-import { bookingUrl, listMembers, updateShopSettings, type Member, type Service, type Shop } from '@/lib/shop';
+import { listMembers, updateShopSettings, type Member, type Service, type Shop } from '@/lib/shop';
 import type { SiteRecord } from '@/lib/siteStore';
 
 export const WIZARD_PUBLISH_TITLE = 'Bookings are on';
@@ -89,7 +90,7 @@ export function Wizard({ shop, site, onShopChanged, onFinish }: Props) {
     setState(n);
   };
 
-  const url = bookingUrl(shop);
+  const url = customerBookingUrl(shop, site);
   return (
     <View>
       <Text style={st.progress}>{progressLabel(state)}</Text>

@@ -355,7 +355,8 @@ test('send strips Book / Shop links the plan lacks, from the entitlements mirror
 describe('publish decides the Book / Shop links from the choice', () => {
   const { setEntitlementsFromStatus, resetEntitlementsForTests } = require('@/lib/entitlements');
   const OWN = 'https://booksy.com/en-us/1_fade';
-  const AI = 'https://www.aibarber.org/book/fade-brooklyn';
+  // The site's own pages (served from the barber's domain).
+  const AI = '/book';
   const withPrefs = {
     ...site,
     inputs: { ...site.inputs, ownBookingUrl: OWN, bookingChoice: 'aibarber' },
@@ -384,7 +385,7 @@ describe('publish decides the Book / Shop links from the choice', () => {
     expect(sent.shopUrl).toBeUndefined();
   });
   test('Store plan adds the shop link', async () => {
-    expect((await run(['hosting', 'bookings', 'store'])).shopUrl).toBe('https://www.aibarber.org/shop/fade-brooklyn');
+    expect((await run(['hosting', 'bookings', 'store'])).shopUrl).toBe('/shop');
   });
 
   test('a failed shop lookup is unknown: the site keeps its links and only plan-lacking ones are stripped', async () => {

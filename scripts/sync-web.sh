@@ -17,6 +17,7 @@ FILES=(
   lib/supportedBookingHost.ts
   lib/stockImages.ts
   lib/render/honest.ts
+  lib/render/subpages.ts
 )
 git -C "$SRC" fetch origin
 SHA="$(git -C "$SRC" rev-parse origin/main)"

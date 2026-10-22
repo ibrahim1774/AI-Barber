@@ -6,7 +6,8 @@ import { BookButtonPicker } from '@/components/setup/BookButtonPicker';
 import { bookingPrefs, withChoice, type BookingChoice } from '@/lib/bookingChoice';
 import { updateSiteRecord } from '@/lib/setup/siteSync';
 import { useUpdateSitePrompt } from '@/lib/setupPrompt';
-import { bookingUrl, icsUrl, listMembers, updateShopSettings, type Member, type Shop } from '@/lib/shop';
+import { customerBookingUrl, useSiteForLinks } from '@/lib/customerLinks';
+import { icsUrl, listMembers, updateShopSettings, type Member, type Shop } from '@/lib/shop';
 import type { SiteRecord } from '@/lib/siteStore';
 
 export const PLAN_PENDING = 'Your booking page opens once your AI Barber plan is active.';
@@ -26,6 +27,7 @@ export function SetupHub({
   const [members, setMembers] = useState<Member[]>([]);
   const [busy, setBusy] = useState(false);
   const sitePrompt = useUpdateSitePrompt('bookings');
+  const linkSite = useSiteForLinks();
   useEffect(() => { listMembers(shop.id).then(setMembers).catch(() => {}); }, [shop.id]);
 
   const { own, choice } = bookingPrefs(site);
@@ -68,7 +70,7 @@ export function SetupHub({
             !shop.bookingsEnabled
               ? 'Off: your booking page shows as paused.'
               : shop.purchaseLinked
-                ? bookingUrl(shop)
+                ? customerBookingUrl(shop, linkSite)
                 : PLAN_PENDING
           }
           value={shop.bookingsEnabled}

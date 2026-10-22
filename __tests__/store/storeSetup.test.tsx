@@ -101,7 +101,7 @@ describe('store setup', () => {
     await press(tree, 'Open my shop');
     expect(mockUpdateSettings).toHaveBeenCalledWith('s1', { storeEnabled: true });
     const change = mockUpdateSite.mock.calls[0][0];
-    expect(change({ shopName: 'Fade Lab' }, {})).toEqual({ shopName: 'Fade Lab', shopUrl: 'https://www.aibarber.org/shop/fade-lab' });
+    expect(change({ shopName: 'Fade Lab' }, {})).toEqual({ shopName: 'Fade Lab', shopUrl: '/shop' });
     expect(hasButton(tree, 'Close my shop')).toBe(true);
     expect(Alert.alert).toHaveBeenCalledWith('Your shop is open', 'Publish to add a Shop link to your website.');
   });
