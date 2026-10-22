@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { checkAdmin, supabaseEmailOf, type EmailOfToken } from '../../lib/admin/auth.js';
 import { adminSupabase, liveAdminDeps } from '../../lib/admin/live.js';
 import {
-  findSites, getSite, republish, republishAll, rollback, updateSite, type AdminSitesDeps,
+  domainTransferred, findSites, getSite, republish, republishAll, rollback, updateSite, type AdminSitesDeps,
 } from '../../lib/admin/sites.js';
 import { memoryStore, supabaseRateStore, withFallback, type RateLimitStore } from '../../lib/bookings/rateLimit.js';
 
@@ -20,6 +20,8 @@ import { memoryStore, supabaseRateStore, withFallback, type RateLimitStore } fro
  *   republish    { slug }
  *   republish-all{ dryRun = true, runId?, limit? }   call again with the same runId until done
  *   rollback     { slug, version: "4" | "4-1729…" (history id), expectedVersion? }
+ *   domain-transferred { slug }   the custom domain was transferred by hand in Vercel; the
+ *                                 domain lifecycle (lib/ios/domainFlow.ts) stops touching it
  */
 
 const READ_LIMIT = 120;
@@ -105,6 +107,10 @@ export function makeAdminSitesHandler(d: AdminSitesHandlerDeps) {
         case 'rollback':
           if (!slug) return needSlug();
           r = await rollback(slug, String(body.version ?? ''), core, { by, expectedVersion });
+          break;
+        case 'domain-transferred':
+          if (!slug) return needSlug();
+          r = await domainTransferred(slug, core, by);
           break;
         case 'republish-all': {
           const dryRun = body.dryRun !== false;

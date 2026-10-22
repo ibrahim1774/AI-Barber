@@ -5,6 +5,8 @@
 // Env: SUPABASE_URL (or VITE_SUPABASE_URL), SUPABASE_SERVICE_ROLE_KEY,
 // GCP_SERVICE_ACCOUNT_JSON (or GCS_CREDENTIALS), GCS_BUCKET_NAME, VERCEL_TOKEN.
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { supabaseDomains } from '../ios/domainsRepo.js';
+import { markTransferred } from '../ios/domainFlow.js';
 import { bucket, publishSite, readPendingSite, renderPending, slugify, writePendingSite, type PendingSite } from '../publishSite.js';
 import type { PurchaseRow } from '../ios/purchases.js';
 import type { AdminSitesDeps, HistoryEntry, RepublishRun, SiteStore } from './sites.js';
@@ -160,6 +162,8 @@ export function liveAdminDeps(): AdminSitesDeps {
 
     now: () => Date.now(),
     takedownSandbox: process.env.IOS_TAKEDOWN_SANDBOX === '1',
+    domains: () => supabaseDomains(db()).all(),
+    markDomainTransferred: (slug, by) => markTransferred(slugify(slug), by, { repo: supabaseDomains(db()), now: Date.now }),
   };
 }
 

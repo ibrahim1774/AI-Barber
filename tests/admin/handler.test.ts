@@ -7,12 +7,13 @@ vi.mock('../../lib/admin/sites.js', () => ({
   republish: vi.fn(async (slug: string) => ({ ok: true, slug })),
   rollback: vi.fn(async (slug: string) => ({ ok: false, slug, error: 'no-history' })),
   republishAll: vi.fn(async (i: any) => ({ dryRun: i.dryRun, results: [], skipped: [], remaining: 0, done: true })),
+  domainTransferred: vi.fn(async (slug: string) => (slug === 'fade-lab' ? { ok: true, slug, domain: 'fadelab.com' } : { ok: false, slug, error: 'not-found' })),
 }));
 vi.mock('../../lib/admin/live.js', () => ({ adminSupabase: vi.fn(), liveAdminDeps: vi.fn(() => ({})) }));
 
 import { makeAdminSitesHandler } from '../../api/admin/sites.js';
 import { checkAdmin, ADMIN_EMAIL } from '../../lib/admin/auth.js';
-import { findSites, getSite, updateSite, republish, republishAll, rollback } from '../../lib/admin/sites.js';
+import { findSites, getSite, updateSite, republish, republishAll, rollback, domainTransferred } from '../../lib/admin/sites.js';
 import { memoryStore } from '../../lib/bookings/rateLimit.js';
 
 function res() {
@@ -123,5 +124,18 @@ describe('api/admin/sites', () => {
     (findSites as any).mockRejectedValueOnce(new Error('db down'));
     const r = await call(handler(), { method: 'GET', query: {} });
     expect(r).toMatchObject({ statusCode: 500, body: { ok: false, error: 'exception' } });
+  });
+});
+
+describe('api/admin/sites domain-transferred', () => {
+  it('admin only; slug required; 404 when the site has no domain', async () => {
+    const h = handler();
+    expect((await call(h, { method: 'POST', headers: { authorization: 'Bearer other' }, body: { action: 'domain-transferred', slug: 'fade-lab' } })).statusCode).toBe(403);
+    expect(domainTransferred).not.toHaveBeenCalled();
+    expect((await call(h, { method: 'POST', body: { action: 'domain-transferred' } })).statusCode).toBe(400);
+    const ok = await call(h, { method: 'POST', body: { action: 'domain-transferred', slug: 'fade-lab' } });
+    expect(ok).toMatchObject({ statusCode: 200, body: { ok: true, domain: 'fadelab.com' } });
+    expect(domainTransferred).toHaveBeenCalledWith('fade-lab', expect.anything(), ADMIN_EMAIL);
+    expect((await call(h, { method: 'POST', body: { action: 'domain-transferred', slug: 'nope' } })).statusCode).toBe(404);
   });
 });

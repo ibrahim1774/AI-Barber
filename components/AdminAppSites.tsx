@@ -49,7 +49,11 @@ const STATUS_COLOR: Record<string, string> = { live: OK, revoked: BAD, 'taken-do
 interface SiteRow {
   slug: string; shopName: string | null; email: string | null; transactionId: string; tier: string | null;
   status: string; deployedUrl: string | null; template: string; version: number; editedBy: string | null; editedAt: string | null;
+  customDomain?: { domain: string; state: string; internalState: string; sandbox: boolean; lastError: string | null } | null;
 }
+
+/** Domain states that mean the name is registered on our Vercel account (it can be transferred). */
+const DOMAIN_OWNED = ['bought', 'attached', 'live', 'detaching', 'detached'];
 interface SiteDetail extends SiteRow {
   siteData: any; note: string | null; productId: string; environment: string;
   history: { id: string; version: number; editedBy: string | null; editedAt: string | null }[];
@@ -183,6 +187,12 @@ export const AdminAppSites: React.FC = () => {
 
   const doRepublish = () =>
     act('republish', { action: 'republish' }, (r) => ({ kind: 'ok', text: `Republished: ${r.deployedUrl || ''}` }));
+
+  const doDomainTransferred = () => {
+    const d = site?.customDomain;
+    if (!site || !d || !window.confirm(`Mark ${d.domain} as transferred to ${site.shopName || site.slug}? Only after the transfer is done in Vercel. The app will stop managing it (no renew, detach or re-attach).`)) return;
+    act('domain-transferred', { action: 'domain-transferred' }, () => ({ kind: 'ok', text: `${d.domain} marked transferred.` }));
+  };
 
   const doRollback = (id: string) => {
     if (!site || !window.confirm(`Bring back v${id} of ${site.shopName || site.slug}? (Saved as a new version; nothing is lost.)`)) return;
@@ -326,6 +336,9 @@ export const AdminAppSites: React.FC = () => {
                     <td style={td}>
                       <div style={{ fontWeight: 600 }}>{r.shopName || '—'}</div>
                       <div style={{ fontSize: 12, color: FAINT }}>{r.slug} · {r.template || '—'} · {r.tier || '?'}</div>
+                      {r.customDomain && (
+                        <div style={{ fontSize: 12, color: MUTED }}>{r.customDomain.domain} · {r.customDomain.state}{r.customDomain.sandbox ? ' · sandbox' : ''}</div>
+                      )}
                     </td>
                     <td style={{ ...td, color: MUTED, fontSize: 12.5 }}>{r.email || '—'}</td>
                     <td style={{ ...td, whiteSpace: 'nowrap' }}>
@@ -371,6 +384,21 @@ export const AdminAppSites: React.FC = () => {
                 <button style={ghostBtn} onClick={() => { setSite(null); setMsg(null); }}>Close</button>
               </div>
             </div>
+
+            {site.customDomain && (
+              <div style={{ fontSize: 12.5, color: MUTED, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <span>
+                  Custom domain: <span style={{ color: 'inherit', fontWeight: 600 }}>{site.customDomain.domain}</span> · {site.customDomain.state}
+                  {site.customDomain.sandbox ? ' · sandbox (simulated)' : ''}
+                  {site.customDomain.lastError ? <span style={{ color: WARN }}> · {site.customDomain.lastError}</span> : null}
+                </span>
+                {DOMAIN_OWNED.includes(site.customDomain.internalState) && !site.customDomain.sandbox && (
+                  <button style={ghostBtn} onClick={doDomainTransferred} disabled={!!busy}>
+                    {busy === 'domain-transferred' ? 'Saving…' : 'Mark domain transferred'}
+                  </button>
+                )}
+              </div>
+            )}
 
             {site.status !== 'live' && (
               <div style={{ fontSize: 12.5, color: WARN }}>
