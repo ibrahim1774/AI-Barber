@@ -26,16 +26,14 @@ export default defineConfig(({ mode }) => {
         }
       },
       build: {
-        // Booking page is its own entry so aibarber.org's pixels never load on it.
-        // (rollupOptions.input below)
+        // The booking and shop pages (book.html, shop.html) are a separate build under /_ab/
+        // (vite.subpages.config.ts) so they also work on barber domains; npm run build runs both.
         // Split heavy deps into vendor chunks so the browser downloads
         // them in parallel + caches them across deploys. Lucide-react
         // intentionally NOT chunked so tree-shaking strips unused icons.
         rollupOptions: {
           input: {
             main: path.resolve(__dirname, 'index.html'),
-            book: path.resolve(__dirname, 'book.html'),
-            shop: path.resolve(__dirname, 'shop.html'),
           },
           output: {
             manualChunks: {

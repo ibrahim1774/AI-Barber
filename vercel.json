@@ -38,11 +38,11 @@
     },
     {
       "source": "/book/(.*)",
-      "destination": "/book.html"
+      "destination": "/_ab/book.html"
     },
     {
       "source": "/shop/(.*)",
-      "destination": "/shop.html"
+      "destination": "/_ab/shop.html"
     },
     {
       "source": "/((?!api/.*).*)",

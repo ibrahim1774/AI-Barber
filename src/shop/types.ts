@@ -24,9 +24,12 @@ export type Product = {
   soldOut: boolean;
 };
 
+import type { SiteInfo } from '../site/site';
+
+/** site: the shop's own site and look, when its site has the /book and /shop pages. */
 export type ShopResponse =
-  | { paused: false; shop: ShopInfo; products: Product[] }
-  | { paused: true; shop: { name: string } };
+  | { paused: false; shop: ShopInfo; products: Product[]; site?: SiteInfo }
+  | { paused: true; shop: { name: string }; site?: SiteInfo };
 
 export type Address = { name: string; line1: string; line2?: string; city: string; state: string; postalCode: string };
 
@@ -81,6 +84,7 @@ export type OrderResponse = {
     manual: ManualHandles;
   };
   canSayPaid: boolean;
+  site?: SiteInfo;
 };
 
 /** A cart line. Name, price and photo are display copies; reconcile() refreshes them from the server. */

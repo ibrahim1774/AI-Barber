@@ -3,23 +3,27 @@ import { ApiError, type Api } from './api';
 import { DayPicker, TimePicker } from './pickers';
 import {
   bookingErrorMessage, buildIcs, NO_WAY_TO_PAY, directionsUrl, rescheduleErrorMessage, sentErrorMessage, eligibleMembers, formatMoney, formatWhen, manualAmountCents, manualLink, manualMethods,
-  METHOD_LABEL, nextStep, onAccent, parseRoute, payOptions, prevStep, progress, safeAccent, serviceLabel, telUrl,
+  METHOD_LABEL, nextStep, parseRoute, payOptions, prevStep, progress, serviceLabel, telUrl,
   tokenFromManageUrl, type Step, formatDay, parseCheckout, shouldKeepPolling, resolveIds, CHECKOUT_POLL_MS, type CheckoutReturn,
 } from './logic';
-import type { BookedAppointment, ManageResponse, ManualMethod, Member, PayChoice, Service, Shop, ShopResponse, Slot } from './types';
+import type { BookedAppointment, ManageResponse, ManualMethod, Member, PayChoice, Service, Shop, ShopResponse, SiteInfo, Slot } from './types';
+import { applySite, homeHref, loadSiteSlug } from '../site/site';
 
-export function App({ api, pathname, search = '' }: { api: Api; pathname: string; search?: string }) {
+export function App({ api, pathname, search = '', loadSlug = () => loadSiteSlug() }: {
+  api: Api; pathname: string; search?: string;
+  /** The shop slug on the barber's own site (/book), from its /ab-site.json. */
+  loadSlug?: () => Promise<string | null>;
+}) {
   const route = useMemo(() => parseRoute(pathname), [pathname]);
-  if (route.kind === 'book') return <BookPage api={api} slug={route.slug} />;
+  if (route.kind === 'book') return <BookPage api={api} slug={route.slug} loadSlug={loadSlug} />;
   if (route.kind === 'manage') return <ManagePage api={api} token={route.token} checkout={parseCheckout(search)} />;
   return <Shell><Message title="Page not found" body="Check the link and try again." /></Shell>;
 }
 
-function applyAccent(accent: string | null | undefined) {
-  const a = safeAccent(accent);
-  const r = document.documentElement.style;
-  r.setProperty('--accent', a);
-  r.setProperty('--on-accent', onAccent(a));
+/** The shop's name, linking to its site's homepage when it has one. */
+function ShopName({ name, site }: { name: string; site?: SiteInfo }) {
+  const home = homeHref(site);
+  return home ? <a className="home" href={home}>{name}</a> : <>{name}</>;
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
@@ -38,12 +42,19 @@ function Spinner() { return <p className="spin" role="status">Loading…</p>; }
 
 type Loaded = Extract<ShopResponse, { paused: false }>;
 
-function BookPage({ api, slug }: { api: Api; slug: string }) {
+function BookPage({ api, slug, loadSlug }: { api: Api; slug: string | null; loadSlug: () => Promise<string | null> }) {
   const [data, setData] = useState<ShopResponse | null>(null);
   const [error, setError] = useState<'not-found' | 'failed' | null>(null);
   useEffect(() => {
-    api.shop(slug).then((d) => { setData(d); if (!d.paused) { const ok = d as Loaded; applyAccent(ok.shop.accent); document.title = `Book at ${ok.shop.name}`; } })
-      .catch((e) => setError(e instanceof ApiError && e.status === 404 ? 'not-found' : 'failed'));
+    // On the barber's own site (/book) the slug comes from the site's config.
+    (slug ? Promise.resolve(slug) : loadSlug()).then((s) => {
+      if (!s) { setError('not-found'); return; }
+      return api.shop(s).then((d) => {
+        setData(d);
+        applySite(d.site, d.paused ? null : (d as Loaded).shop.accent, 'book');
+        if (!d.paused) document.title = `Book at ${(d as Loaded).shop.name}`;
+      });
+    }).catch((e) => setError(e instanceof ApiError && e.status === 404 ? 'not-found' : 'failed'));
   }, [slug]);
   if (error === 'not-found') return <Shell><Message title="Shop not found" body="This booking link isn't active." /></Shell>;
   if (error) return <Shell><Message title="Something went wrong" body="Please refresh and try again." /></Shell>;
@@ -107,7 +118,7 @@ function Flow({ api, d }: { api: Api; d: Loaded }) {
 
   const header = (
     <>
-      <h1>{shop.name}</h1>
+      <h1><ShopName name={shop.name} site={d.site} /></h1>
       {shop.address && <p className="sub">{shop.address}</p>}
     </>
   );
@@ -293,7 +304,7 @@ function ManagePage({ api, token, checkout }: { api: Api; token: string; checkou
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<'view' | 'cancel' | 'reschedule' | 'cancelled'>('view');
   const [refund, setRefund] = useState(0);
-  const load = () => api.manage(token).then((d) => { setData(d); applyAccent(null); }).catch((e) => setError(e instanceof ApiError && e.status === 404 ? 'not-found' : 'failed'));
+  const load = () => api.manage(token).then((d) => { setData(d); applySite(d.site, null, null); }).catch((e) => setError(e instanceof ApiError && e.status === 404 ? 'not-found' : 'failed'));
   useEffect(() => { load(); }, [token]);
   // After Stripe success the webhook may lag: re-fetch every 3 s, up to 30 s.
   const [gaveUp, setGaveUp] = useState(false);
@@ -317,7 +328,7 @@ function ManagePage({ api, token, checkout }: { api: Api; token: string; checkou
 
   return (
     <Shell>
-      <h1>{a.shop.name}</h1>
+      <h1><ShopName name={a.shop.name} site={data.site} /></h1>
       {checkout === 'success' && mode === 'view' && (status === 'awaiting' && !gaveUp
         ? <div className="note" role="status"><strong>Confirming your payment…</strong></div>
         : status === 'awaiting'
