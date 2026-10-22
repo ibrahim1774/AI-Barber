@@ -1,10 +1,20 @@
+import { checkoutSlugAllowed, type CheckoutGuardDeps } from '../lib/checkoutGuard.js';
+import { liveDeployAuthDeps } from '../lib/deployAuth.js';
+
+let guardDeps: CheckoutGuardDeps | undefined;
+const liveGuardDeps = (): CheckoutGuardDeps => {
+  if (guardDeps) return guardDeps;
+  const a = liveDeployAuthDeps();
+  return (guardDeps = { storedStamp: a.storedStamp, projectExists: a.projectExists, userOf: a.userOf, get siteOwners() { return a.siteOwners; }, now: a.now });
+};
+
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST');
   res.setHeader(
     'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
+    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization'
   );
 
   if (req.method === 'OPTIONS') {
@@ -20,6 +30,10 @@ export default async function handler(req: any, res: any) {
     if (!siteId) {
       return res.status(400).json({ error: 'Missing required field: siteId' });
     }
+    // A checkout is deploy proof for its slug (lib/deployAuth.ts): an already-published slug is
+    // its owner's (signed in) or the admin's only (lib/checkoutGuard.ts).
+    const guard = await checkoutSlugAllowed(siteId, req.headers?.authorization, liveGuardDeps());
+    if (guard.ok === false) return res.status(guard.status).json({ error: guard.error });
 
     // Path the checkout was opened from, sent by the client. Sanitized
     // rather than trusted: it only ever lands in our own metadata, but a

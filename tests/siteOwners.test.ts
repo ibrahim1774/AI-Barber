@@ -4,6 +4,7 @@ import path from 'node:path';
 import { canClaim, recordCheckoutOwner, recordCheckoutOwnerIfFirst, supabaseSiteOwners, webOwnerDecision, type SiteOwnerRow, type SiteOwnerStore } from '../lib/siteOwners.js';
 import { authorizeDeploy, type CheckoutProof, type DeployAuthDeps } from '../lib/deployAuth.js';
 import { deploySite, type DeploySiteDeps } from '../api/deploy-site.js';
+import { checkoutSlugAllowed, type CheckoutGuardDeps } from '../lib/checkoutGuard.js';
 
 const NOW = 1_800_000_000_000;
 const A = '3f2b8c1e-5d4a-4b6f-9e2d-1a2b3c4d5e6f';
@@ -134,11 +135,46 @@ describe('authorizeDeploy with the owner list (lib/deployAuth.ts web rule)', () 
     expect(await authorizeDeploy({ siteId: 'fresh-cuts', authorization: 'Bearer a-jwt' }, deps(down))).toEqual({ ok: false, status: 503, error: 'temporarily-unavailable' });
   });
 
-  it('a fresh paid checkout for the slug still authorises an owned site (the /recover replay)', async () => {
-    const proof: CheckoutProof = { paid: true, status: 'complete', mode: 'subscription', siteId: 'fresh-cuts', app: 'aibarber', created: Math.floor(NOW / 1000) - 60, email: 'barber@example.com' };
-    const store = memStore([owned('fresh-cuts', B)]);
-    expect(await authorizeDeploy({ siteId: 'fresh-cuts', checkoutSessionId: SESSION }, deps(store, { checkoutSession: async () => proof })))
-      .toMatchObject({ ok: true, actor: 'checkout', checkout: { sessionId: SESSION, email: 'barber@example.com' } });
+  it('a checkout is never proof against the owner list: a foreign session on an owned site is 403 (or the signed-in rules); the owner row\'s own session still replays', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const proof: CheckoutProof = { paid: true, status: 'complete', mode: 'subscription', siteId: 'fresh-cuts', app: 'aibarber', created: Math.floor(NOW / 1000) - 60, email: 'x@example.com' };
+    const OTHER_SESSION = 'cs_live_zzzzzzzzzzzzzzzzzzzz';
+    const store = memStore([{ ...owned('fresh-cuts', A), checkout_session_id: SESSION }]);
+    const d = deps(store, { checkoutSession: async () => proof });
+    expect(await authorizeDeploy({ siteId: 'fresh-cuts', checkoutSessionId: OTHER_SESSION }, d)).toEqual({ ok: false, status: 403, error: 'checkout-not-valid' });
+    expect(await authorizeDeploy({ siteId: 'fresh-cuts', checkoutSessionId: OTHER_SESSION, authorization: 'Bearer b-jwt' }, d)).toEqual({ ok: false, status: 403, error: 'not-authorized' });
+    expect(await authorizeDeploy({ siteId: 'fresh-cuts', checkoutSessionId: OTHER_SESSION, authorization: 'Bearer a-jwt' }, d)).toMatchObject({ ok: true, actor: 'web-user', userId: A });
+    expect(await authorizeDeploy({ siteId: 'fresh-cuts', checkoutSessionId: SESSION }, d))
+      .toMatchObject({ ok: true, actor: 'checkout', checkout: { sessionId: SESSION, email: 'x@example.com' } });
+    // An unclaimed row and an admin row (no session) block a foreign session too; an outage is 503.
+    expect((await authorizeDeploy({ siteId: 'fresh-cuts', checkoutSessionId: OTHER_SESSION }, deps(memStore([pending('fresh-cuts', 'a@b.co')]), { checkoutSession: async () => proof }))).status).toBe(403);
+    expect((await authorizeDeploy({ siteId: 'fresh-cuts', checkoutSessionId: SESSION }, deps(memStore([{ ...owned('fresh-cuts', A), source: 'admin' }]), { checkoutSession: async () => proof }))).status).toBe(403);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const down = memStore();
+    down.get = async () => { throw new Error('db down'); };
+    expect(await authorizeDeploy({ siteId: 'fresh-cuts', checkoutSessionId: SESSION }, deps(down, { checkoutSession: async () => proof }))).toEqual({ ok: false, status: 503, error: 'temporarily-unavailable' });
+  });
+});
+
+describe('checkout creation refuses an already-published slug except for its owner (lib/checkoutGuard.ts)', () => {
+  const guardDeps = (live: { stamp?: string | null; project?: boolean }, store = memStore([owned('fresh-cuts', A)])): CheckoutGuardDeps => ({
+    storedStamp: async () => live.stamp ?? null, projectExists: async () => live.project ?? false,
+    userOf: async (t) => (t === 'a-jwt' ? userA : t === 'b-jwt' ? { id: B, email: 'b@example.com', emailConfirmed: true } : t === 'admin-jwt' ? { id: 'adm', email: 'ibrahim3709@gmail.com' } : null),
+    siteOwners: store, now: () => NOW,
+  });
+  it('a new slug is open to anyone; a published one only to its owner or the admin; lookups fail closed', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await checkoutSlugAllowed('Fresh Cuts', undefined, guardDeps({}))).toEqual({ ok: true, slug: 'fresh-cuts' });
+    for (const live of [{ stamp: 'https://fresh-cuts.vercel.app' }, { project: true }]) {
+      expect(await checkoutSlugAllowed('fresh-cuts', undefined, guardDeps(live))).toEqual({ ok: false, status: 409, error: 'site-published' });
+      expect(await checkoutSlugAllowed('fresh-cuts', 'Bearer b-jwt', guardDeps(live))).toMatchObject({ ok: false, status: 409 });
+      expect(await checkoutSlugAllowed('fresh-cuts', 'Bearer a-jwt', guardDeps(live))).toMatchObject({ ok: true });
+      expect(await checkoutSlugAllowed('fresh-cuts', 'Bearer admin-jwt', guardDeps(live))).toMatchObject({ ok: true });
+    }
+    expect(await checkoutSlugAllowed('fresh-cuts', undefined, { ...guardDeps({}), projectExists: async () => { throw new Error('vercel down'); } }))
+      .toEqual({ ok: false, status: 503, error: 'temporarily-unavailable' });
+    expect(await checkoutSlugAllowed('!!!', undefined, guardDeps({}))).toMatchObject({ ok: false, status: 400 });
   });
 });
 

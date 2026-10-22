@@ -230,12 +230,29 @@ export async function authorizeDeploy(input: DeployAuthInput, deps: DeployAuthDe
       } catch (e: any) {
         console.warn(`[Deploy Site] ${shopSlug}: first-publish check failed; no owner will be recorded:`, e?.message || e);
       }
-      return {
-        ok: true, target: shopSlug, row: null, actor: 'checkout', userId: user?.id ?? null, user,
-        checkout: { sessionId, email: proof.email ?? null, firstPublish },
-      };
+      // Review fix round 1 (finding 2): a checkout is never proof against the owner list. With an
+      // owner row (claimed or not), only the session that created it still counts (the buyer's own
+      // /recover replay); any other session falls through to the signed-in rules below.
+      let ownerBlocks = false;
+      if (deps.siteOwners) {
+        try {
+          const row = await withTimeout(deps.siteOwners.get(shopSlug), ms, 'site owner lookup');
+          ownerBlocks = !!row && row.checkout_session_id !== sessionId;
+        } catch (e: any) {
+          console.error(`[Deploy Site] ${shopSlug}: owner lookup failed (refusing):`, e?.message || e);
+          return unavailable;
+        }
+      }
+      if (!ownerBlocks) {
+        return {
+          ok: true, target: shopSlug, row: null, actor: 'checkout', userId: user?.id ?? null, user,
+          checkout: { sessionId, email: proof.email ?? null, firstPublish },
+        };
+      }
+      console.warn(`[Deploy Site] ${shopSlug}: owned site; checkout ${sessionId} is not its owner's; not accepted as proof`);
+    } else {
+      console.warn(`[Deploy Site] ${shopSlug}: checkout session does not authorise this slug`);
     }
-    console.warn(`[Deploy Site] ${shopSlug}: checkout session does not authorise this slug`);
   }
 
   if (user) return authorizeWebUser(shopSlug, label, user, deps, ms);
