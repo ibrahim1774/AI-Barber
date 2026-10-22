@@ -398,3 +398,46 @@ export async function handleDomainStripeEvent(
 export async function webDomainStatus(subId: string, deps: Pick<DomainFlowDeps, 'repo'>) {
   return statusBody(await deps.repo.get(`stripe:${subId}`));
 }
+
+// ─── the website's domain panel (api/web-domain) ───
+
+export interface PanelDeps {
+  authorize: AuthorizeOwner;
+  flow: Pick<DomainFlowDeps, 'repo'>;
+  getSubscription(id: string): Promise<any | null>;
+  /** POST /v1/billing_portal/sessions → { url }. */
+  createPortalSession(customer: string, returnUrl: string): Promise<{ ok: boolean; data: any }>;
+}
+
+/** The site's website-bought domain row: the one holding the site, else the most recent. */
+async function webRowFor(slug: string, deps: Pick<PanelDeps, 'flow'>) {
+  const rows = (await deps.flow.repo.all()).filter((r) => r.site_slug === slug && r.source === 'stripe');
+  const holding = rows.find((r) => !['failed', 'detached', 'transferred'].includes(r.state));
+  return holding ?? rows.sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0] ?? null;
+}
+
+/** { siteId } + the owner's bearer → the domain status for the dashboard (or state 'none'). */
+export async function webDomainPanelStatus(body: any, authorization: unknown, deps: PanelDeps): Promise<WebResult> {
+  const auth = await deps.authorize(body?.siteId, authorization);
+  if (!auth.ok || !auth.target) return denied(auth);
+  const row = await webRowFor(auth.target, deps);
+  return { status: 200, body: { ...statusBody(row), ...(row?.refunded_at ? { refunded: true } : {}) } };
+}
+
+/**
+ * { siteId } + the owner's bearer → a Stripe customer-portal URL for the domain subscription
+ * (cancel there: the domain keeps working until the paid year ends). Owner only; only the
+ * customer of THIS site's domain subscription.
+ */
+export async function webDomainPortal(body: any, authorization: unknown, returnUrl: string, deps: PanelDeps): Promise<WebResult> {
+  const auth = await deps.authorize(body?.siteId, authorization);
+  if (!auth.ok || !auth.target) return denied(auth);
+  const row = await webRowFor(auth.target, deps);
+  if (!row || row.refunded_at) return { status: 404, body: { error: 'no-domain-subscription' } };
+  const sub = await deps.getSubscription(row.original_transaction_id.replace(/^stripe:/, ''));
+  const customer = typeof sub?.customer === 'string' ? sub.customer : sub?.customer?.id;
+  if (!customer) return { status: 404, body: { error: 'no-domain-subscription' } };
+  const r = await deps.createPortalSession(customer, returnUrl);
+  if (!r.ok || !r.data?.url) return { status: 502, body: { error: 'portal-unavailable' } };
+  return { status: 200, body: { url: r.data.url } };
+}
