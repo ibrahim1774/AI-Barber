@@ -63,6 +63,10 @@ export interface IosSweepSummary {
   appleUnresolvable: string[];
   appleUnavailableCount: number;
   appleUnresolvableCount: number;
+  /** M1: sites redeployed without the Book/Shop links a downgrade no longer covers (stored copy stripped). */
+  linksStripped: string[];
+  /** M1: strip or redeploy failed; the row stays due and is retried next sweep. */
+  linksFailed: string[];
 }
 
 export interface IosSweepDeps {
@@ -136,6 +140,7 @@ export async function sweepIos(
     skippedLapsed: [], restored: [], restoreFailed: [], notRestored: [],
     takenDown: [], takedownFailed: [], takedownUncertain: [], stillActive: [], sandboxGatesClosed: [],
     appleUnavailable: [], appleUnresolvable: [], appleUnavailableCount: 0, appleUnresolvableCount: 0,
+    linksStripped: [], linksFailed: [],
   };
 
   /**
@@ -290,6 +295,45 @@ export async function sweepIos(
       out.takedownFailed.push(slug);
       await deps.repo.clearTakenDown(otid).catch((e: any) =>
         console.error(`[Sweeper:iOS] ALERT ${slug} (${otid}): offline deploy failed AND clearing taken_down_at failed; site is live but flagged:`, e?.message || e));
+    }
+  }
+
+  // Pass 4 (e2e M1): a downgrade at renewal queued this site (links_due_at). Strip the Book/Shop
+  // links the current product doesn't cover from the stored copy (compare-and-set) and redeploy,
+  // so the live buttons stop pointing at paused pages. The product came from a signed App Store
+  // notification; no Apple call here. Always redeployed while due (downgrades are rare): a strip
+  // that landed in a run whose redeploy failed finds nothing left to strip on the retry, but the
+  // live site still needs the deploy. The stamp is cleared only after a good deploy.
+  if (deps.repo.linksDue && deps.repo.clearLinksDue && deps.stripPending && !outOfLateTime()) {
+    let due: PurchaseRow[] = [];
+    try {
+      due = await deps.repo.linksDue(limit);
+    } catch (err: any) {
+      // e.g. migration 014 not applied yet: skip the pass, nothing else depends on it.
+      console.error('[Sweeper:iOS] link-strip candidates failed (pass skipped):', err?.message || err);
+    }
+    for (const row of due) {
+      const slug = row.site_slug as string;
+      if (outOfTime()) {
+        out.deferred.push(slug);
+        continue;
+      }
+      const otid = row.original_transaction_id;
+      try {
+        await deps.stripPending(slug, row.product_id);
+        const outcome = await deps.publish(slug, { force: true });
+        if (!outcome.ok) {
+          console.error(`[Sweeper:iOS] LINK STRIP ${slug} (${otid}): redeploy failed (${outcome.reason}); retried next sweep`);
+          out.linksFailed.push(slug);
+          continue;
+        }
+        console.log(`[Sweeper:iOS] ${slug} (${otid}): redeployed without the Book/Shop links the plan no longer covers`);
+        out.linksStripped.push(slug);
+        await deps.repo.clearLinksDue(otid, row.links_due_at as string);
+      } catch (err: any) {
+        console.error(`[Sweeper:iOS] link strip for ${slug} (${otid}) failed; retried next sweep:`, err?.message || err);
+        out.linksFailed.push(slug);
+      }
     }
   }
 

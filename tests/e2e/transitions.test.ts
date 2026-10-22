@@ -146,8 +146,40 @@ describe('downgrade Store → Website at renewal', () => {
     expect(live()).not.toContain('/shop/fade-lab');
   });
 
-  it.fails('BUG (minor): until the app republishes, the live site keeps the Shop button pointing at a paused store', async () => {
-    await storeShopWithOrders();
+  it('M1 (fixed; the repro now runs the sweep): the next sweep strips the Book/Shop links from the stored copy and redeploys, without the app', async () => {
+    const { otid } = await storeShopWithOrders();
+    expect(live()).toContain('/shop/fade-lab'); // until the sweep runs
+    expect(w.row(otid)!.links_due_at).not.toBeNull();
+    const s = await w.sweep();
+    expect(s.linksStripped).toEqual(['fade-lab']);
+    expect(live()).not.toContain('/shop/fade-lab');
+    expect(live()).not.toContain('/book/fade-lab');
+    expect(pendingOf('fade-lab').siteData).not.toHaveProperty('shopUrl');
+    expect(pendingOf('fade-lab').siteData).not.toHaveProperty('bookingUrl');
+    expect(pendingOf('fade-lab').version).toBe(1); // a strip is not a content version
+    expect(w.row(otid)!.links_due_at).toBeNull();
+    expect((await w.sweep()).linksStripped).toEqual([]); // once
+  });
+
+  it('M1: a renewal on the same plan or an upgrade queues nothing', async () => {
+    const { otid, transactionId } = w.apple.buy(PRODUCTS.bookingsMonthly);
+    await w.publish(transactionId, full);
+    w.clock.advance(30 * DAY);
+    w.apple.renew(otid, { productId: PRODUCTS.bookingsMonthly });
+    await w.notify(w.apple.notification('DID_RENEW', otid));
+    expect(w.row(otid)!.links_due_at ?? null).toBeNull();
+    w.apple.upgrade(otid, PRODUCTS.storeMonthly);
+    await w.notify(w.apple.notification('DID_CHANGE_RENEWAL_PREF', otid));
+    expect(w.row(otid)!.links_due_at ?? null).toBeNull();
+  });
+
+  it('M1: a failed redeploy keeps the row queued and the next sweep redeploys', async () => {
+    const { otid } = await storeShopWithOrders();
+    vercel.fail = () => new Error('vercel 500');
+    expect((await w.sweep()).linksFailed).toEqual(['fade-lab']);
+    expect(w.row(otid)!.links_due_at).not.toBeNull();
+    vercel.fail = null;
+    expect((await w.sweep()).linksStripped).toEqual(['fade-lab']);
     expect(live()).not.toContain('/shop/fade-lab');
   });
 
