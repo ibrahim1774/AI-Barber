@@ -2,6 +2,9 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { clientIp, iosLimiter } from '../../lib/bookings/rateLimit.js';
 import { liveDeps, runIosPublish } from '../../lib/ios/publishFlow.js';
 
+// A publish can deploy twice (the I2 redeploy of a newer copy); vercel.json also sets 300 s.
+export const config = { maxDuration: 300 };
+
 // POST { transactionId, siteData, baseVersion? } from the iOS app, with an optional
 // Authorization: Bearer <Supabase access token>: a verified token links an unlinked purchase to
 // that account (the body's userId is ignored; e2e I6).

@@ -5,8 +5,8 @@
 // Env: SUPABASE_URL (or VITE_SUPABASE_URL), SUPABASE_SERVICE_ROLE_KEY,
 // GCP_SERVICE_ACCOUNT_JSON (or GCS_CREDENTIALS), GCS_BUCKET_NAME, VERCEL_TOKEN.
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { isPreconditionFailed } from '../publishSite.js';
-import { bucket, publishSite, readPendingSite, readPendingVersioned, renderPending, slugify, writePendingSite, type PendingSite } from '../publishSite.js';
+import {
+  REQUEST_MAX_REDEPLOYS, bucket, isPreconditionFailed, publishSite, readPendingSite, readPendingVersioned, renderPending, slugify, writePendingSite, type PendingSite } from '../publishSite.js';
 import type { PurchaseRow } from '../ios/purchases.js';
 import type { AdminSitesDeps, HistoryEntry, RepublishRun, SiteStore } from './sites.js';
 import { liveWebOwnerAdminDeps } from '../siteOwners.js';
@@ -154,7 +154,8 @@ export function liveAdminDeps(): AdminSitesDeps {
     },
 
     store,
-    publish: (slug, opts) => publishSite(slug, opts),
+    // Requests and CLI: at most one redeploy of a newer copy (review fix round 1, finding 9).
+    publish: (slug, opts) => publishSite(slug, { ...opts, maxRedeploys: REQUEST_MAX_REDEPLOYS }),
     render: (p) => renderPending(p),
 
     async audit(e) {

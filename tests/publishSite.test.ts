@@ -161,6 +161,21 @@ describe('publishSite stamping (stored copy can change during a deploy)', () => 
     deployRenderedSite.mockImplementation(async () => ({ deploymentUrl: 'https://x.vercel.app', uploadedImages: {} }));
   });
 
+  it('review fix 9: maxRedeploys caps the loop (request paths pass 1)', async () => {
+    const { REQUEST_MAX_REDEPLOYS } = await import('../lib/publishSite.js');
+    await writePendingSite('fresh-cuts', { ...pending, version: 1, timestamp: 1 });
+    let v = 1;
+    deployRenderedSite.mockImplementation(async () => {
+      v++;
+      await writePendingSite('fresh-cuts', { ...pending, version: v, timestamp: v });
+      return { deploymentUrl: 'https://x.vercel.app', uploadedImages: {} };
+    });
+    expect((await publishSite('fresh-cuts', { force: true, maxRedeploys: REQUEST_MAX_REDEPLOYS })).ok).toBe(true);
+    expect(deployRenderedSite).toHaveBeenCalledTimes(2);
+    deployRenderedSite.mockReset();
+    deployRenderedSite.mockImplementation(async () => ({ deploymentUrl: 'https://x.vercel.app', uploadedImages: {} }));
+  });
+
   it('I2: with opts.transform, a redeploy of a newer copy gets the same transform', async () => {
     await writePendingSite('fresh-cuts', { ...pending, version: 3, timestamp: 10 });
     deployRenderedSite.mockImplementationOnce(async () => {

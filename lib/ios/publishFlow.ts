@@ -9,6 +9,7 @@
 import type { WebsiteData } from '../../types.js';
 import {
   publishSite,
+  REQUEST_MAX_REDEPLOYS,
   renderPending,
   readPendingSite,
   readPendingVersioned,
@@ -378,7 +379,8 @@ export function liveDeps(): PublishDeps {
       urlServes,
     }),
     writePending: writePendingSite,
-    publish: (slug, opts) => publishSite(slug, opts),
+    // A request: at most one redeploy of a newer copy (review fix round 1, finding 9).
+    publish: (slug, opts) => publishSite(slug, { ...opts, maxRedeploys: REQUEST_MAX_REDEPLOYS }),
     readPending: readPendingSite,
     readPendingVersioned,
     userOf: liveUserOf,

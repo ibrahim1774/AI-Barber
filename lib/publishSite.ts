@@ -66,6 +66,8 @@ export function adminVersionOf(p: Pick<PendingSite, 'version' | 'editedBy' | 'ad
 
 /** Extra deploys of a newer stored copy after the first (I2). */
 export const MAX_REDEPLOYS = 3;
+/** The same, on request paths (review fix round 1, finding 9). */
+export const REQUEST_MAX_REDEPLOYS = 1;
 
 export type PublishFailure = 'no-backup' | 'bad-backup' | 'deploy-failed' | 'awaiting-details';
 
@@ -399,6 +401,12 @@ export async function publishSite(
      */
     transform?: (p: PendingSite) => PendingSite;
     /**
+     * Extra deploys of a newer stored copy after the first (I2). Default MAX_REDEPLOYS (sweeps,
+     * webhook); the request paths (/api/ios/publish, /api/admin/sites) pass REQUEST_MAX_REDEPLOYS
+     * so a request never runs more than two deploys (every writer deploys its own copy anyway).
+     */
+    maxRedeploys?: number;
+    /**
      * The checkout plan, when the caller knows it (webhook, sweeper). A pay-first plan
      * (/custom-15) only publishes a copy whose details were confirmed after payment.
      */
@@ -477,7 +485,7 @@ export async function publishSite(
       const out = await deployRenderedSite({ siteId: safe, html, imageUrls: current.imageUrlMap || {}, subpages });
       deploymentUrl = out.deploymentUrl;
       projectName = out.projectName;
-      if (round >= MAX_REDEPLOYS) break;
+      if (round >= (opts.maxRedeploys ?? MAX_REDEPLOYS)) break;
       let fresh: PendingSite | null = null;
       try {
         fresh = await readPendingSite(safe);

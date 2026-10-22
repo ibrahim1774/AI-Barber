@@ -27,6 +27,9 @@ import { memoryStore, supabaseRateStore, withFallback, type RateLimitStore } fro
  *                                       sign-in with a confirmed email. Refuses app (iOS) slugs.
  */
 
+// Edits and republish deploy (and may redeploy a newer copy once); vercel.json also sets 300 s.
+export const config = { maxDuration: 300 };
+
 const READ_LIMIT = 120;
 const WRITE_LIMIT = 30;
 const WINDOW_MS = 60_000;
