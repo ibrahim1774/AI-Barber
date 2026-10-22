@@ -114,6 +114,15 @@ describe('POST /api/ios/domain/search', () => {
     expect(key).not.toContain('100');
   });
 
+  it('per-IP limit in its own bucket, checked before any lookup', async () => {
+    const w = world();
+    const allow = vi.fn(async (key: string) => !key.startsWith('domain-search-ip:'));
+    const r = await runDomainSearch({ q: 'freshcuts' }, { ...w.deps, limiter: { allow } }, '9.9.9.9');
+    expect(r.status).toBe(429);
+    expect(allow).toHaveBeenCalledWith('domain-search-ip:9.9.9.9', 'write');
+    expect(w.reg.api.availability).not.toHaveBeenCalled();
+  });
+
   it.each([[{}], [{ q: '' }], [{ q: 'ab' }], [{ q: 42 }], [null], [{ q: 'ok-name', transactionId: 5 }]])('bad input %j → 400', async (body) => {
     expect((await runDomainSearch(body, world().deps)).status).toBe(400);
   });
@@ -218,6 +227,18 @@ describe('POST /api/ios/domain/claim', () => {
     expect(w.repo.rows.get('d-o1')).toMatchObject({ state: 'reserved', last_error: 'buy: invalid_additional_contact_info' });
     await w.sweep();
     expect(w.repo.rows.get('d-o1')!.state).toBe('live');
+  });
+});
+
+describe('claim: rate limits', () => {
+  it('per IP and per transaction (hashed), before Apple is asked', async () => {
+    const w = world();
+    const keys: string[] = [];
+    const deny = (prefix: string) => ({ allow: vi.fn(async (k: string) => { keys.push(k); return !k.startsWith(prefix); }) });
+    expect((await runDomainClaim(CLAIM, undefined, { ...w.deps, limiter: deny('domain-claim-ip:') }, '9.9.9.9')).status).toBe(429);
+    expect((await runDomainClaim(CLAIM, undefined, { ...w.deps, limiter: deny('domain-claim-tx:') }, '9.9.9.9')).status).toBe(429);
+    expect(w.verifyDomain).not.toHaveBeenCalled();
+    expect(keys.some((k) => k.includes('100'))).toBe(false);
   });
 });
 

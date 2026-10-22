@@ -28,27 +28,22 @@ const req = (method: string, over: any = {}) => ({ method, headers: { 'x-real-ip
 describe('api/ios/domain/*', () => {
   beforeEach(() => { allow.mockClear(); allow.mockResolvedValue(true); });
 
-  it('search: POST only, per-IP write limit before any lookup', async () => {
+  it('search: POST only; passes the client IP for the per-IP limit', async () => {
     let res = mkRes();
     await search(req('GET') as any, res);
     expect(res.status).toHaveBeenCalledWith(405);
-    allow.mockResolvedValueOnce(false);
-    res = mkRes();
-    await search(req('POST', { body: { q: 'fresh' } }) as any, res);
-    expect(res.status).toHaveBeenCalledWith(429);
-    expect(runDomainSearch).not.toHaveBeenCalled();
-    expect(allow).toHaveBeenCalledWith('1.2.3.4', 'write');
     res = mkRes();
     await search(req('POST', { body: { q: 'fresh' } }) as any, res);
     expect(res.status).toHaveBeenCalledWith(200);
+    expect(runDomainSearch).toHaveBeenCalledWith({ q: 'fresh' }, expect.anything(), '1.2.3.4');
+    expect(allow).not.toHaveBeenCalledWith('1.2.3.4', 'write'); // never the bookings' shared write bucket
   });
 
-  it('claim passes the body and the Authorization header through', async () => {
+  it('claim passes the body, the Authorization header and the IP through', async () => {
     const res = mkRes();
     await claim(req('POST', { body: { transactionId: '1' }, headers: { authorization: 'Bearer x', 'x-real-ip': '1.2.3.4' } }) as any, res);
-    expect(runDomainClaim).toHaveBeenCalledWith({ transactionId: '1' }, 'Bearer x', { marker: 'live' });
+    expect(runDomainClaim).toHaveBeenCalledWith({ transactionId: '1' }, 'Bearer x', { marker: 'live' }, '1.2.3.4');
     expect(res.status).toHaveBeenCalledWith(202);
-    expect(allow).toHaveBeenCalledWith('1.2.3.4', 'write');
   });
 
   it('status: GET ?transactionId= and POST body, read limit', async () => {

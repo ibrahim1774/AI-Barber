@@ -346,7 +346,9 @@ export interface SearchResult { domain: string; available: boolean; eligible: bo
  * exists. The exact .com first, then close suggestions. eligible = available and Vercel's
  * first-year AND renewal price ≤ $15 (never premium). Per-IP limits run in the handler.
  */
-export async function runDomainSearch(body: unknown, deps: Pick<DomainFlowDeps, 'vercel' | 'limiter'>): Promise<FlowResult> {
+export async function runDomainSearch(body: unknown, deps: Pick<DomainFlowDeps, 'vercel' | 'limiter'>, ip?: string): Promise<FlowResult> {
+  // Own buckets (not the bookings' shared write:<ip> one): 10/min per IP, shared across instances.
+  if (ip && !(await allowed(deps as DomainFlowDeps, `domain-search-ip:${ip}`, 'write'))) return rateLimited;
   if (!isObj(body)) return bad('q');
   const label = normalizeLabel(body.q);
   if (!label) return bad('q');
@@ -403,7 +405,8 @@ function resultFor(row: DomainRow): FlowResult {
  * status body (200 live, 202 in progress, 409 failed / refused). Idempotent: calling again with
  * the same domain resumes wherever the last attempt stopped.
  */
-export async function runDomainClaim(body: unknown, authorization: string | string[] | undefined, deps: DomainFlowDeps): Promise<FlowResult> {
+export async function runDomainClaim(body: unknown, authorization: string | string[] | undefined, deps: DomainFlowDeps, ip?: string): Promise<FlowResult> {
+  if (ip && !(await allowed(deps, `domain-claim-ip:${ip}`, 'write'))) return rateLimited;
   if (!isObj(body)) return bad('body');
   const transactionId = typeof body.transactionId === 'string' ? body.transactionId.trim() : '';
   const siteTransactionId = typeof body.siteTransactionId === 'string' ? body.siteTransactionId.trim() : '';
