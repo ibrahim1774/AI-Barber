@@ -9,6 +9,7 @@
 // Pure: WebsiteData in, HTML string out. Keep it that way.
 import type { WebsiteData } from '../../types';
 import { safeHref } from './safeHref.js';
+import { contactEmail, copyrightYear, hasServices, photoAlt, siteDescription, siteTitle } from './honest.js';
 
 // Shared Euphoria CSS — scoped inside `.euphoria-root` so it can't leak into the Luxe flow.
 // Mirrors euphoria-build/styles.css custom properties + typography + section rhythm.
@@ -164,7 +165,7 @@ export const EUPHORIA_SCOPED_CSS = `
 export const EUPHORIA_FONT_LINK_ID = 'euphoria-fonts';
 export const EUPHORIA_STYLE_ID = 'euphoria-scoped-styles';
 export function escapeHtml(s: string): string {
-  return s
+  return (s ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -205,7 +206,10 @@ export function generateEuphoriaHTMLWithPlaceholders(siteData: WebsiteData): str
   const shopUrl = safeHref(siteData.shopUrl);
   const formattedPhone = siteData.phone.replace(/\s+/g, '');
   const safeName = escapeHtml(siteData.shopName);
-  const safeArea = escapeHtml(siteData.area);
+  const altAttr = escapeHtml(photoAlt(siteData));
+  const showServices = hasServices(siteData);
+  // Typed or scraped only; an older site's invented contact@<shop>.com is hidden.
+  const email = contactEmail(siteData);
   const safeAreaShort = escapeHtml(cityStateOnly(siteData.area));
   const mapQuery = encodeURIComponent(`${siteData.shopName} ${siteData.area}`);
   const rootStyle = euphoriaRootStyle((siteData as any).colorTheme);
@@ -219,13 +223,13 @@ export function generateEuphoriaHTMLWithPlaceholders(siteData: WebsiteData): str
   <div class="eu-container">
     <div style="margin-bottom:48px;">
       <div class="eu-eyebrow">Gallery</div>
-      <h2 class="eu-display" style="font-size:42px;margin-top:12px;">Our work, on the chair.</h2>
+      <h2 class="eu-display" style="font-size:42px;margin-top:12px;">The look.</h2>
     </div>
     <div class="eu-gallery-mosaic">
       ${galleryTiles.map((t, idx) => {
         const span = idx % 5 < 2 ? 'grid-column: span 3; aspect-ratio: 4/3;'
                                  : 'grid-column: span 2; aspect-ratio: 1/1;';
-        return `<div class="eu-img-tile" style="${span}"><img src="{{gallery${t.i}}}" alt="Gallery image ${idx + 1}"></div>`;
+        return `<div class="eu-img-tile" style="${span}"><img src="{{gallery${t.i}}}" alt="${altAttr}"></div>`;
       }).join('')}
     </div>
   </div>
@@ -233,7 +237,37 @@ export function generateEuphoriaHTMLWithPlaceholders(siteData: WebsiteData): str
     : '';
 
   const aboutImageMarkup = siteData.about.imageUrl
-    ? `<div class="eu-img-tile" style="aspect-ratio: 4/5;"><img src="{{about}}" alt="${safeName}"></div>`
+    ? `<div class="eu-img-tile" style="aspect-ratio: 4/5;"><img src="{{about}}" alt="${altAttr}"></div>`
+    : '';
+
+  // Services — only what the barber ticked or their booking page lists.
+  // None → no section (and no link to it).
+  const services = (siteData.services || []).filter((s) => (s?.title || '').trim());
+  const servicesMarkup = showServices
+    ? `<!-- Services -->
+  <section id="services" class="eu-section" style="background:var(--eu-bg-2);">
+    <div class="eu-container">
+      <div style="margin-bottom:48px;text-align:center;">
+        <div class="eu-eyebrow">Services</div>
+        <h2 class="eu-display" style="font-size:clamp(32px,5vw,56px);margin-top:16px;">What we offer.</h2>
+      </div>
+      <div class="eu-services-list">
+        ${services.map((s, i) => {
+          const meta = s.duration || s.subtitle || '';
+          return `
+          <div class="eu-service-row">
+            <div class="eu-service-num">${String(i + 1).padStart(2, '0')}</div>
+            <div>
+              <h3 style="font-size:24px;margin:0 0 8px;font-weight:500;">${escapeHtml(s.title)}${s.price ? ` <span style="color:var(--eu-brand);font-style:italic;white-space:nowrap;">${escapeHtml(s.price)}</span>` : ''}</h3>
+              ${meta ? `<div class="eu-eyebrow" style="margin-bottom:12px;font-size:10px;">${escapeHtml(meta)}</div>` : ''}
+              ${s.description ? `<p style="color:var(--eu-ink-soft);font-size:15px;line-height:1.6;margin:0;max-width:640px;">${escapeHtml(s.description)}</p>` : ''}
+            </div>
+          </div>
+        `;
+        }).join('')}
+      </div>
+    </div>
+  </section>`
     : '';
 
   // Cache-bust marker so each publish forces a fresh fetch.
@@ -248,8 +282,8 @@ export function generateEuphoriaHTMLWithPlaceholders(siteData: WebsiteData): str
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <title>${safeName} — Barbershop in ${safeArea}</title>
-  <meta name="description" content="${safeName}. A refined barbershop in ${safeArea}. Quiet luxury. Precise cuts. Book online.">
+  <title>${escapeHtml(siteTitle(siteData))}</title>
+  <meta name="description" content="${escapeHtml(siteDescription(siteData))}">
   <script type="text/javascript">
     (function(c,l,a,r,i,t,y){
       c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -295,7 +329,7 @@ ${EUPHORIA_SCOPED_CSS}
       <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;">
         <a href="tel:${formattedPhone}" class="eu-cta eu-cta-solid">Call ${escapeHtml(siteData.phone)}</a>
         ${bookingUrl ? `<a href="${escapeHtml(bookingUrl)}" target="_blank" rel="noopener noreferrer" class="eu-cta eu-cta-solid">Book Appointment</a>` : ''}
-        <a href="#services" class="eu-cta">View services</a>
+        ${showServices ? `<a href="#services" class="eu-cta">View services</a>` : ''}
       </div>
     </div>
   </section>
@@ -312,27 +346,7 @@ ${EUPHORIA_SCOPED_CSS}
     </div>
   </section>
 
-  <!-- Services -->
-  <section id="services" class="eu-section" style="background:var(--eu-bg-2);">
-    <div class="eu-container">
-      <div style="margin-bottom:48px;text-align:center;">
-        <div class="eu-eyebrow">Services</div>
-        <h2 class="eu-display" style="font-size:clamp(32px,5vw,56px);margin-top:16px;">Considered grooming.</h2>
-      </div>
-      <div class="eu-services-list">
-        ${siteData.services.map((s, i) => `
-          <div class="eu-service-row">
-            <div class="eu-service-num">0${i + 1}</div>
-            <div>
-              <h3 style="font-size:24px;margin:0 0 8px;font-weight:500;">${escapeHtml(s.title)}</h3>
-              <div class="eu-eyebrow" style="margin-bottom:12px;font-size:10px;">${escapeHtml(s.subtitle)}</div>
-              <p style="color:var(--eu-ink-soft);font-size:15px;line-height:1.6;margin:0;max-width:640px;">${escapeHtml(s.description)}</p>
-            </div>
-          </div>
-        `).join('')}
-      </div>
-    </div>
-  </section>
+  ${servicesMarkup}
 
   ${galleryMarkup}
 
@@ -343,9 +357,9 @@ ${EUPHORIA_SCOPED_CSS}
         <div class="eu-eyebrow" style="margin-bottom:16px;">Visit</div>
         <h2 class="eu-display" style="font-size:clamp(28px,4vw,44px);margin:0 0 32px;">Come in.</h2>
         <div style="display:grid;gap:24px;color:var(--eu-ink-soft);font-size:16px;line-height:1.6;">
-          <div><div style="color:var(--eu-ink-muted);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;margin-bottom:6px;">Location</div>${escapeHtml(siteData.contact.address)}</div>
+          ${siteData.contact.address ? `<div><div style="color:var(--eu-ink-muted);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;margin-bottom:6px;">Location</div>${escapeHtml(siteData.contact.address)}</div>` : ''}
           <div><div style="color:var(--eu-ink-muted);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;margin-bottom:6px;">Phone</div><a href="tel:${formattedPhone}" style="color:var(--eu-ink);text-decoration:none;">${escapeHtml(siteData.phone)}</a></div>
-          ${siteData.contact.email ? `<div><div style="color:var(--eu-ink-muted);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;margin-bottom:6px;">Email</div><a href="mailto:${escapeHtml(siteData.contact.email)}" style="color:var(--eu-ink);text-decoration:none;">${escapeHtml(siteData.contact.email)}</a></div>` : ''}
+          ${email ? `<div><div style="color:var(--eu-ink-muted);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;margin-bottom:6px;">Email</div><a href="mailto:${escapeHtml(email)}" style="color:var(--eu-ink);text-decoration:none;">${escapeHtml(email)}</a></div>` : ''}
           ${bookingUrl ? `<div style="margin-top:16px;"><a href="${escapeHtml(bookingUrl)}" target="_blank" rel="noopener noreferrer" class="eu-cta eu-cta-solid">Book Appointment</a></div>` : ''}${shopUrl ? `
           <div style="margin-top:16px;"><a href="${escapeHtml(shopUrl)}" class="eu-cta">Shop online</a></div>` : ''}
         </div>
@@ -364,7 +378,7 @@ ${EUPHORIA_SCOPED_CSS}
   <footer style="padding:48px 24px;border-top:1px solid var(--eu-line-soft);text-align:center;">
     <div class="eu-container">
       <div class="eu-serif" style="font-size:18px;color:var(--eu-ink);margin-bottom:8px;">${safeName}</div>
-      <div class="eu-eyebrow">© 2025 · Built by AIBarber</div>
+      <div class="eu-eyebrow">© ${copyrightYear()} · Built by AIBarber</div>
     </div>
   </footer>
 

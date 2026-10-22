@@ -67,7 +67,8 @@ async function pageFunction(context) {
       const m = ratingEl ? (ratingEl.getAttribute('aria-label') || ratingEl.textContent || '').match(/([0-9.]+)/) : null;
       return {
         author: t(n.querySelector('[class*="author" i], h4, h5')) || 'Customer',
-        rating: m ? Math.min(5, Math.round(parseFloat(m[1]))) : 5,
+        // No readable star count → no rating (never a made-up 5).
+        rating: (m && Math.min(5, Math.round(parseFloat(m[1])))) || undefined,
         comment: t(n.querySelector('[class*="comment" i], p')),
         date: t(n.querySelector('[class*="date" i], time')),
       };

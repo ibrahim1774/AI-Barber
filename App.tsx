@@ -958,6 +958,8 @@ const App: React.FC = () => {
         template: current.template,
         colorTheme: current.colorTheme,
         bookingUrl: current.bookingUrl,
+        // Keep whatever services the barber already has; never invent any.
+        services: (current.services || []).map((sv) => ({ title: sv.title, price: sv.price })),
       });
       applyGeneratedData(data);
     } catch {

@@ -9,6 +9,7 @@ import { useResetOnReturnFromStripe } from '../hooks/useResetOnReturnFromStripe'
 import PrePaymentBanner from './PrePaymentBanner.tsx';
 import { isCustomDesignAnyPath } from '../lib/dealMode.ts';
 import { EUPHORIA_FONT_LINK_ID, EUPHORIA_SCOPED_CSS, EUPHORIA_STYLE_ID, cityStateOnly, resolveEuphoriaTheme } from '../lib/render/euphoria';
+import { contactEmail, copyrightYear, hasServices, photoAlt } from '../lib/render/honest';
 
 interface EuphoriaWebsiteProps {
   data: WebsiteData;
@@ -466,7 +467,7 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
                 Book Appointment
               </a>
             )}
-            <a href="#services" className="eu-cta">View services</a>
+            {hasServices(siteData) && <a href="#services" className="eu-cta">View services</a>}
           </div>
         </div>
       </section>
@@ -494,7 +495,7 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
           </div>
           {siteData.about.imageUrl ? (
             <div className="eu-img-tile" style={{ aspectRatio: '4 / 5' }}>
-              <img src={siteData.about.imageUrl} alt={siteData.shopName} />
+              <img src={siteData.about.imageUrl} alt={photoAlt(siteData)} />
               <ImageOverlay onUpload={e => handleImageChange('about.imageUrl', e)} />
             </div>
           ) : (
@@ -503,17 +504,19 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
         </div>
       </section>
 
-      {/* Services */}
+      {/* Services — hidden when none, like the deployed page. Price shows
+          beside the title; empty subtitle / description rows are skipped. */}
+      {hasServices(siteData) && (
       <section id="services" className="eu-section" style={{ background: 'var(--eu-bg-2)' }}>
         <div className="eu-container">
           <div style={{ marginBottom: 48, textAlign: 'center' }}>
             <div className="eu-eyebrow">Services</div>
-            <h2 className="eu-display" style={{ fontSize: 'clamp(32px,5vw,56px)', marginTop: 16 }}>Considered grooming.</h2>
+            <h2 className="eu-display" style={{ fontSize: 'clamp(32px,5vw,56px)', marginTop: 16 }}>What we offer.</h2>
           </div>
           <div className="eu-services-list">
             {siteData.services.map((s, i) => (
               <div key={i} className="eu-service-row">
-                <div className="eu-service-num">0{i + 1}</div>
+                <div className="eu-service-num">{String(i + 1).padStart(2, '0')}</div>
                 <div>
                   <h3 style={{ fontSize: 24, margin: '0 0 8px', fontWeight: 500 }}>
                     <Editable text={s.title} onSave={v => {
@@ -521,34 +524,51 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
                       next[i] = { ...next[i], title: v };
                       handleTextChange('services', next as any);
                     }} />
+                    {s.price && (
+                      <>
+                        {' '}
+                        <span style={{ color: 'var(--eu-brand)', fontStyle: 'italic', whiteSpace: 'nowrap' }}>
+                          <Editable text={s.price} onSave={v => {
+                            const next = [...siteData.services];
+                            next[i] = { ...next[i], price: v };
+                            handleTextChange('services', next as any);
+                          }} />
+                        </span>
+                      </>
+                    )}
                   </h3>
-                  <div className="eu-eyebrow" style={{ marginBottom: 12, fontSize: 10 }}>
-                    <Editable text={s.subtitle} onSave={v => {
-                      const next = [...siteData.services];
-                      next[i] = { ...next[i], subtitle: v };
-                      handleTextChange('services', next as any);
-                    }} />
-                  </div>
-                  <p style={{ color: 'var(--eu-ink-soft)', fontSize: 15, lineHeight: 1.6, margin: 0, maxWidth: 640 }}>
-                    <Editable text={s.description} onSave={v => {
-                      const next = [...siteData.services];
-                      next[i] = { ...next[i], description: v };
-                      handleTextChange('services', next as any);
-                    }} />
-                  </p>
+                  {(s.duration || s.subtitle) && (
+                    <div className="eu-eyebrow" style={{ marginBottom: 12, fontSize: 10 }}>
+                      <Editable text={s.duration || s.subtitle} onSave={v => {
+                        const next = [...siteData.services];
+                        next[i] = next[i].duration ? { ...next[i], duration: v } : { ...next[i], subtitle: v };
+                        handleTextChange('services', next as any);
+                      }} />
+                    </div>
+                  )}
+                  {s.description && (
+                    <p style={{ color: 'var(--eu-ink-soft)', fontSize: 15, lineHeight: 1.6, margin: 0, maxWidth: 640 }}>
+                      <Editable text={s.description} onSave={v => {
+                        const next = [...siteData.services];
+                        next[i] = { ...next[i], description: v };
+                        handleTextChange('services', next as any);
+                      }} />
+                    </p>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         </div>
       </section>
+      )}
 
       {/* Gallery */}
       <section className="eu-section" style={{ paddingTop: 64, paddingBottom: 96 }}>
         <div className="eu-container">
           <div style={{ marginBottom: 48 }}>
             <div className="eu-eyebrow">Gallery</div>
-            <h2 className="eu-display" style={{ fontSize: 'clamp(28px,4vw,42px)', marginTop: 12 }}>Our work, on the chair.</h2>
+            <h2 className="eu-display" style={{ fontSize: 'clamp(28px,4vw,42px)', marginTop: 12 }}>The look.</h2>
           </div>
           <div className="eu-gallery-mosaic">
             {editorGalleryIndices.map((idx) => {
@@ -559,7 +579,7 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
                 <div key={idx} className="eu-img-tile" style={{ gridColumn: span, aspectRatio: ratio }}>
                   {url ? (
                     <>
-                      <img src={url} alt={`Gallery ${idx + 1}`} />
+                      <img src={url} alt={photoAlt(siteData)} />
                       <ImageOverlay onUpload={e => handleImageChange(`gallery.${idx}`, e)} />
                     </>
                   ) : (
@@ -587,10 +607,12 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
                 <div className="eu-eyebrow" style={{ marginBottom: 6 }}>Phone</div>
                 <Editable text={siteData.phone} onSave={v => handleTextChange('phone', v)} />
               </div>
-              {siteData.contact.email && (
+              {/* Typed / scraped only; an older site's invented
+                  contact@<shop>.com is hidden (honest.ts contactEmail). */}
+              {contactEmail(siteData) && (
                 <div>
                   <div className="eu-eyebrow" style={{ marginBottom: 6 }}>Email</div>
-                  <Editable text={siteData.contact.email} onSave={v => handleTextChange('contact.email', v)} />
+                  <Editable text={contactEmail(siteData)} onSave={v => handleTextChange('contact.email', v)} />
                 </div>
               )}
               {siteData.bookingUrl && (
@@ -623,7 +645,7 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
       <footer style={{ padding: '48px 24px', borderTop: '1px solid var(--eu-line-soft)', textAlign: 'center' }}>
         <div className="eu-container">
           <div className="eu-serif" style={{ fontSize: 18, marginBottom: 8 }}>{siteData.shopName}</div>
-          <div className="eu-eyebrow">© 2025 · Built by AIBarber</div>
+          <div className="eu-eyebrow">© {copyrightYear()} · Built by AIBarber</div>
         </div>
       </footer>
 

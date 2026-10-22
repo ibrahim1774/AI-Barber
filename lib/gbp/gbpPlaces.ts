@@ -34,6 +34,7 @@
 import { extractSearchQuery } from './gbp.js';
 import { resolveFinalUrl } from './util.js';
 import type { GbpBusiness } from './types.js';
+import { parseReviewRating } from '../scrapers/util.js';
 
 const PLACES_BASE = 'https://places.googleapis.com/v1';
 
@@ -390,12 +391,13 @@ export async function scrapeViaPlaces(rawUrl: string, key: string): Promise<GbpB
     reviews: ((place.reviews || []) as any[])
       .map((r) => ({
         author: String(r?.authorAttribution?.displayName || 'Customer'),
-        rating: Math.max(1, Math.min(5, Math.round(Number(r?.rating) || 5))),
+        rating: parseReviewRating(r?.rating),
         comment: String(r?.text?.text || ''),
         date: String(r?.publishTime || ''),
       }))
-      // Testimonials section — only ship reviews worth showing off.
-      .filter((r) => r.comment && r.rating >= 4)
+      // Testimonials section keeps 4★+ only (sites label these "Selected
+      // reviews"). An unreadable rating can't be shown to be 4★+, so drop it.
+      .filter((r) => r.comment && (r.rating ?? 0) >= 4)
       .slice(0, 5),
   };
 }

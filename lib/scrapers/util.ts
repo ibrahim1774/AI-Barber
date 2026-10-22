@@ -1,6 +1,16 @@
 // Shared helpers used by every platform adapter.
 import type { ScrapedShop } from './types.js';
 
+// A review's star rating as a whole number 1-5, or undefined when the
+// source didn't give a readable one. Never defaulted: a review with no
+// rating shows no stars, and the Google ≥4★ filter drops it.
+export function parseReviewRating(raw: unknown): number | undefined {
+  if (raw === null || raw === undefined || raw === '') return undefined;
+  const n = typeof raw === 'number' ? raw : parseFloat(String(raw));
+  if (!Number.isFinite(n) || n < 1) return undefined;
+  return Math.min(5, Math.round(n));
+}
+
 const BROWSER_UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15';
 
@@ -181,7 +191,7 @@ export function ldToScrapedShop(ld: any): Partial<ScrapedShop> {
   result.reviews = ldReviews
     .map((r: any) => ({
       author: r?.author?.name || r?.author || 'Customer',
-      rating: Math.max(1, Math.min(5, Math.round(Number(r?.reviewRating?.ratingValue) || 5))),
+      rating: parseReviewRating(r?.reviewRating?.ratingValue),
       comment: r?.reviewBody || '',
       date: r?.datePublished || '',
     }))

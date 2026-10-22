@@ -14,6 +14,9 @@ import { useAutoSave } from '../hooks/useAutoSave';
 import { useResetOnReturnFromStripe } from '../hooks/useResetOnReturnFromStripe';
 import PrePaymentBanner from './PrePaymentBanner.tsx';
 import { AIB_THEME_CSS, AibTheme, cityStateOnly, resolveAibTheme, to12h } from '../lib/render/luxe';
+import {
+  aggregateToShow, copyrightYear, hasServices, nicheOf, photoAlt, reviewStars, reviewsSourceLabel, visibleFeatureCards,
+} from '../lib/render/honest';
 
 interface GeneratedWebsiteProps {
   data: WebsiteData;
@@ -167,16 +170,9 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
     else if (parts[0] === 'contact') newData.contact = { ...newData.contact };
     else if (parts[0] === 'services') newData.services = [...newData.services];
     else if (parts[0] === 'featureCards') {
-      // Initialize from defaults if missing so the path walk can index
-      // featureCards[i] without crashing. Older saved sites predate
-      // this field entirely.
-      newData.featureCards = newData.featureCards
-        ? newData.featureCards.map(c => ({ ...c }))
-        : [
-            { title: 'Experience', sub: 'Professional' },
-            { title: 'Service', sub: 'Trusted' },
-            { title: 'Open Monday to Friday', sub: '9am - 7pm' },
-          ];
+      // Only barber-written cards are ever shown (no invented defaults),
+      // so an edit always targets an existing card.
+      newData.featureCards = (newData.featureCards || []).map(c => ({ ...c }));
     }
 
     let current: any = newData;
@@ -663,7 +659,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       <section id="home" className="relative h-[55vh] flex flex-col justify-center items-center overflow-hidden">
         <div className="absolute inset-0 z-0">
           {siteData.hero.imageUrl && (
-            <img src={siteData.hero.imageUrl} alt="Main Hero" className="w-full h-full object-cover" />
+            <img src={siteData.hero.imageUrl} alt={photoAlt(siteData)} className="w-full h-full object-cover" />
           )}
           <div className="absolute inset-0 bg-black/40 bg-gradient-to-b from-black/30 via-transparent to-[#0d0d0d] pointer-events-none"></div>
         </div>
@@ -712,48 +708,48 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           </div>
         </div>
 
-        {/* Feature Cards — title + sub are both editable. Defaults
-            seeded by geminiService (Experience/Professional,
-            Service/Trusted, Open Monday to Friday/9am-7pm). Older saved
-            sites without featureCards fall back to the same defaults. */}
-        <div className="absolute bottom-6 md:bottom-10 left-0 w-full px-4 md:px-6">
-          <div className="container mx-auto grid grid-cols-3 gap-2 md:gap-6 max-w-5xl">
-            {(() => {
-              const defaults = [
-                { title: 'Experience', sub: 'Professional' },
-                { title: 'Service', sub: 'Trusted' },
-                { title: 'Open Monday to Friday', sub: '9am - 7pm' },
-              ];
-              const icons = [
-                <MapPinIcon className="w-5 h-5 md:w-8 md:h-8 text-[#f4a100]" />,
-                <AwardIcon className="w-5 h-5 md:w-8 md:h-8 text-[#f4a100]" />,
-                <ClockIcon className="w-5 h-5 md:w-8 md:h-8 text-[#f4a100]" />,
-              ];
-              const cards = (siteData.featureCards && siteData.featureCards.length === 3)
-                ? siteData.featureCards
-                : defaults;
-              return cards.map((card, i) => (
-                <div key={i} className="bg-[#1a1a1a]/90 backdrop-blur-sm p-2 md:p-8 flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-1 md:gap-6 border border-[#f4a100]/20 hover:border-[#f4a100]/50 transition-all duration-300">
-                  <div className="shrink-0">{icons[i]}</div>
-                  <div className="text-center sm:text-left">
-                    <h4 className="font-montserrat font-black text-[7px] md:text-xs tracking-[0.5px] md:tracking-[1px] text-white uppercase">
-                      <EditableText
-                        text={card.title}
-                        onSave={(val) => handleTextChange(`featureCards.${i}.title`, val)}
-                      />
-                    </h4>
-                    <p className="text-[#cccccc] text-[6px] md:text-[10px] uppercase tracking-[0.5px] md:tracking-[1px] mt-0.5">
-                      <EditableText
-                        text={card.sub}
-                        onSave={(val) => handleTextChange(`featureCards.${i}.sub`, val)}
-                      />
-                    </p>
-                  </div>
-                </div>
-              ));
-            })()}
-          </div>
-        </div>
+        {/* Feature Cards — only cards the barber wrote. Older sites were
+            seeded with invented ones (hours, "Professional", "Trusted");
+            honest.ts visibleFeatureCards hides those, and with none left
+            the strip is omitted. The deployed page never renders cards. */}
+        {(() => {
+          const shown = visibleFeatureCards(siteData);
+          if (shown.length === 0) return null;
+          const all = siteData.featureCards || [];
+          const icons = [
+            <MapPinIcon className="w-5 h-5 md:w-8 md:h-8 text-[#f4a100]" />,
+            <AwardIcon className="w-5 h-5 md:w-8 md:h-8 text-[#f4a100]" />,
+            <ClockIcon className="w-5 h-5 md:w-8 md:h-8 text-[#f4a100]" />,
+          ];
+          return (
+            <div className="absolute bottom-6 md:bottom-10 left-0 w-full px-4 md:px-6">
+              <div className="container mx-auto grid grid-cols-3 gap-2 md:gap-6 max-w-5xl">
+                {shown.map((card, k) => {
+                  const i = all.indexOf(card);
+                  return (
+                    <div key={i} className="bg-[#1a1a1a]/90 backdrop-blur-sm p-2 md:p-8 flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-1 md:gap-6 border border-[#f4a100]/20 hover:border-[#f4a100]/50 transition-all duration-300">
+                      <div className="shrink-0">{icons[k % icons.length]}</div>
+                      <div className="text-center sm:text-left">
+                        <h4 className="font-montserrat font-black text-[7px] md:text-xs tracking-[0.5px] md:tracking-[1px] text-white uppercase">
+                          <EditableText
+                            text={card.title}
+                            onSave={(val) => handleTextChange(`featureCards.${i}.title`, val)}
+                          />
+                        </h4>
+                        <p className="text-[#cccccc] text-[6px] md:text-[10px] uppercase tracking-[0.5px] md:tracking-[1px] mt-0.5">
+                          <EditableText
+                            text={card.sub}
+                            onSave={(val) => handleTextChange(`featureCards.${i}.sub`, val)}
+                          />
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
       </section>
 
       {/* About Section */}
@@ -786,7 +782,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           {siteData.about.imageUrl ? (
             <div className="relative mt-6 lg:mt-0 group">
               <div className="absolute -inset-2 md:-inset-4 border border-[#f4a100]/30 -z-10 transform translate-x-2 translate-y-2 md:translate-x-4 md:translate-y-4 transition-transform duration-500"></div>
-              <img src={siteData.about.imageUrl} alt="Barber Shop Atmosphere" className="w-full grayscale hover:grayscale-0 transition-all duration-700 shadow-2xl" />
+              <img src={siteData.about.imageUrl} alt={photoAlt(siteData)} className="w-full grayscale hover:grayscale-0 transition-all duration-700 shadow-2xl" />
               <ImageOverlay onImageUpload={(e) => handleImageChange('about.imageUrl', e)} />
             </div>
           ) : (
@@ -797,7 +793,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         </div>
       </section>
 
-      {/* Gallery Section — owner's portfolio ("Our Work"). 6 slots
+      {/* Gallery Section ("The Look" — neutral: photos may be samples). 6 slots
           [2..7] populated from the scraped booking-link photos (Booksy,
           Fresha, etc.) or left empty for the owner to upload via the
           Replace Photo overlay on each tile. */}
@@ -805,14 +801,14 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
         <div className="container mx-auto max-w-5xl">
           <div className="text-center mb-10 md:mb-16">
             <EditableText className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat" tagName="h3" text={lbl('galleryEyebrow', 'Gallery')} onSave={(v) => setLabel('galleryEyebrow', v)} />
-            <EditableText className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]" tagName="h2" text={lbl('galleryHeading', 'Our Work')} onSave={(v) => setLabel('galleryHeading', v)} />
+            <EditableText className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]" tagName="h2" text={lbl('galleryHeading', 'The Look')} onSave={(v) => setLabel('galleryHeading', v)} />
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
             {[2, 3, 4, 5, 6, 7].map((idx) => (
               <div key={idx} className="bg-[#1a1a1a] p-1 border border-white/5 relative group">
                 {siteData.gallery[idx] ? (
                   <>
-                    <img src={siteData.gallery[idx]} alt={`Gallery Image ${idx - 1}`} className="w-full h-48 sm:h-56 md:h-64 object-cover" />
+                    <img src={siteData.gallery[idx]} alt={photoAlt(siteData)} className="w-full h-48 sm:h-56 md:h-64 object-cover" />
                     <ImageOverlay onImageUpload={(e) => handleImageChange(`gallery.${idx}`, e)} />
                   </>
                 ) : (
@@ -828,6 +824,9 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           one row, duration/subtitle below, then description. Price is
           editable separately when present (only set by scraped Booksy
           imports). Empty fields just don't render in deployed HTML. */}
+      {/* Hidden when the barber has no services (none ticked / none on
+          the booking page), matching the deployed page. */}
+      {hasServices(siteData) && (
       <section id="our-services" className="py-12 md:py-32 bg-[#0d0d0d] px-6">
         <div className="container mx-auto max-w-7xl">
           <div className="text-center mb-10 md:mb-16">
@@ -874,6 +873,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
                     />
                   </p>
                 )}
+                {service.description && (
                 <p className="text-[#999999] text-xs md:text-sm leading-relaxed">
                   <EditableText
                     text={service.description}
@@ -884,11 +884,13 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
                     }}
                   />
                 </p>
+                )}
               </div>
             ))}
           </div>
         </div>
       </section>
+      )}
 
       {/* Reviews Section — shows aggregate rating header when set
           (Booksy JSON-LD ships it), then up to 12 review cards. Older
@@ -896,16 +898,16 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
       {siteData.reviews && siteData.reviews.length > 0 && (
         <section className="py-16 md:py-28 bg-[#0a0a0a] px-6 border-y border-white/5">
           <div className="container mx-auto max-w-6xl">
-            {siteData.aggregateRating && (
+            {aggregateToShow(siteData) && (
               <div className="text-center mb-10 md:mb-12">
                 <div className="inline-flex items-center gap-3 bg-[#1a1a1a] border border-[#f4a100]/30 px-5 py-3 md:px-7 md:py-4">
                   <span className="text-[#f4a100] text-2xl md:text-3xl">★</span>
                   <span className="text-white text-2xl md:text-3xl font-montserrat font-black">
-                    {siteData.aggregateRating.rating.toFixed(1)}
+                    {aggregateToShow(siteData)!.rating.toFixed(1)}
                   </span>
-                  {siteData.aggregateRating.count > 0 && (
+                  {aggregateToShow(siteData)!.count > 0 && (
                     <span className="text-white/60 text-[10px] md:text-xs uppercase tracking-[2px] font-bold">
-                      from {siteData.aggregateRating.count.toLocaleString()} reviews
+                      from {aggregateToShow(siteData)!.count.toLocaleString()} reviews
                     </span>
                   )}
                 </div>
@@ -914,15 +916,19 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
             <div className="text-center mb-10 md:mb-14">
               <EditableText className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat" tagName="h3" text={lbl('reviewsEyebrow', 'Reviews')} onSave={(v) => setLabel('reviewsEyebrow', v)} />
               <EditableText className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]" tagName="h2" text={lbl('reviewsHeading', 'What Our Clients Say')} onSave={(v) => setLabel('reviewsHeading', v)} />
+              <p className="text-white/50 text-[10px] md:text-xs uppercase tracking-[2px] font-bold mt-4">{reviewsSourceLabel(siteData)}</p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
               {siteData.reviews.slice(0, 12).map((r, i) => (
                 <div key={i} className="border border-white/10 bg-[#111111] p-5 md:p-7 flex flex-col gap-3">
-                  <div className="flex items-center gap-1" aria-label={`${r.rating} out of 5 stars`}>
-                    {Array.from({ length: 5 }, (_, s) => (
-                      <span key={s} className={s < r.rating ? 'text-[#f4a100]' : 'text-white/15'}>★</span>
-                    ))}
-                  </div>
+                  {/* No readable rating → no star row (never a made-up 5). */}
+                  {reviewStars(r) !== null && (
+                    <div className="flex items-center gap-1" aria-label={`${reviewStars(r)} out of 5 stars`}>
+                      {Array.from({ length: 5 }, (_, s) => (
+                        <span key={s} className={s < (reviewStars(r) as number) ? 'text-[#f4a100]' : 'text-white/15'}>★</span>
+                      ))}
+                    </div>
+                  )}
                   <p className="text-white/80 text-sm md:text-base leading-relaxed italic">
                     “{r.comment}”
                   </p>
@@ -1215,11 +1221,11 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
             </span>
           </div>
           <p className="text-[#666666] text-[8px] md:text-xs uppercase tracking-[2px] md:tracking-[4px] mb-8 md:mb-12 max-w-lg mx-auto leading-loose px-4">
-            Premium Grooming Excellence in <EditableText text={cityStateOnly(siteData.area)} onSave={(val) => handleTextChange('area', val)} />
+            {nicheOf(siteData).industry}{cityStateOnly(siteData.area) ? ' in ' : ''}<EditableText text={cityStateOnly(siteData.area)} onSave={(val) => handleTextChange('area', val)} />
           </p>
 
           <div className="pt-8 md:pt-10 border-t border-white/5 text-[#444444] text-[8px] uppercase tracking-[2px]">
-            Copyright &copy; 2025 <EditableText text={siteData.shopName} onSave={(val) => handleTextChange('shopName', val)} />. Built by AIBarber.
+            Copyright &copy; {copyrightYear()} <EditableText text={siteData.shopName} onSave={(val) => handleTextChange('shopName', val)} />. Built by AIBarber.
           </div>
         </div>
       </footer>

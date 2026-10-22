@@ -91,6 +91,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // paths so the client contract can't drift between them.
   const toResponse = (data: GbpBusiness, via: 'places' | 'apify') => {
     const elapsed = Date.now() - startedAt;
+    const hasRating = typeof data.aggregateRating?.rating === 'number' && data.aggregateRating.rating > 0;
     console.log(
       `[import-business] ${via} ${elapsed}ms — ${data.companyName}; photos=${data.photos.length}; reviews=${data.reviews.length}`,
     );
@@ -105,15 +106,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // booking-link branch stays the only source of one.
       bookingUrl: data.bookingUrl,
       photos: data.photos,
-      // Google exposes no service menu — on EITHER path — so the client
-      // seeds a barber default and the services section isn't an empty
-      // shell. Unchanged by the Places fast path.
+      // Google exposes no service menu — on EITHER path. The client asks
+      // the barber to tick their services; nothing is seeded.
       services: [],
       reviews: data.reviews,
       hours: splitHours(data.hours),
       staff: [],
       aggregateRating: data.aggregateRating,
-      // Metadata (underscore-prefixed, ignored by buildSiteFromScrape)
+      // Metadata (underscore-prefixed). buildSiteFromScrape reads
+      // _platform (review source label) and _categories (business type).
       _platform: 'gbp',
       _via: via,
       _website: data.website,
@@ -122,6 +123,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // photos can be re-resolved/re-hosted later without re-importing.
       _photoRefs: data.photoRefs || [],
       _elapsedMs: elapsed,
+      // "Is this you?" — what Google matched, so the client can show it
+      // and build only after the barber confirms it's their business.
+      match: {
+        name: data.companyName,
+        address: data.address || data.location || '',
+        photoUrl: data.photos[0] || null,
+        rating: hasRating ? data.aggregateRating!.rating : null,
+        ratingCount: hasRating && Number.isFinite(data.aggregateRating!.count) ? data.aggregateRating!.count : null,
+        category: data.categories[0] || null,
+      },
     };
   };
 

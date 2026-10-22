@@ -10,8 +10,8 @@ exports[`euphoria shop link > is unchanged from main when shopUrl is absent 1`] 
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <title>Fresh Cuts Barbershop — Barbershop in Austin, TX</title>
-  <meta name="description" content="Fresh Cuts Barbershop. A refined barbershop in Austin, TX. Quiet luxury. Precise cuts. Book online.">
+  <title>Fresh Cuts Barbershop in Austin, TX</title>
+  <meta name="description" content="Fresh Cuts Barbershop — Barbershop in Austin, TX.">
   <script type="text/javascript">
     (function(c,l,a,r,i,t,y){
       c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -217,7 +217,7 @@ exports[`euphoria shop link > is unchanged from main when shopUrl is absent 1`] 
         <h2 class="eu-display" style="font-size:clamp(32px,5vw,56px);margin:0 0 32px;">About</h2>
         <p class="eu-serif" style="font-size:18px;line-height:1.6;color:var(--eu-ink-soft);margin:0 0 20px;">Family owned.</p>
       </div>
-      <div class="eu-img-tile" style="aspect-ratio: 4/5;"><img src="{{about}}" alt="Fresh Cuts Barbershop"></div>
+      <div class="eu-img-tile" style="aspect-ratio: 4/5;"><img src="{{about}}" alt="Fresh Cuts Barbershop photo"></div>
     </div>
   </section>
 
@@ -226,7 +226,7 @@ exports[`euphoria shop link > is unchanged from main when shopUrl is absent 1`] 
     <div class="eu-container">
       <div style="margin-bottom:48px;text-align:center;">
         <div class="eu-eyebrow">Services</div>
-        <h2 class="eu-display" style="font-size:clamp(32px,5vw,56px);margin-top:16px;">Considered grooming.</h2>
+        <h2 class="eu-display" style="font-size:clamp(32px,5vw,56px);margin-top:16px;">What we offer.</h2>
       </div>
       <div class="eu-services-list">
         
@@ -272,7 +272,7 @@ exports[`euphoria shop link > is unchanged from main when shopUrl is absent 1`] 
   <footer style="padding:48px 24px;border-top:1px solid var(--eu-line-soft);text-align:center;">
     <div class="eu-container">
       <div class="eu-serif" style="font-size:18px;color:var(--eu-ink);margin-bottom:8px;">Fresh Cuts Barbershop</div>
-      <div class="eu-eyebrow">© 2025 · Built by AIBarber</div>
+      <div class="eu-eyebrow">© 2026 · Built by AIBarber</div>
     </div>
   </footer>
 
@@ -291,8 +291,8 @@ exports[`luxe shop link > is unchanged from main when shopUrl is absent 1`] = `
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <title>Fresh Cuts Barbershop - Premium Barbershop in Austin, TX</title>
-  <meta name="description" content="Premium grooming services at Fresh Cuts Barbershop in Austin, TX. Expert barbers, luxury experience.">
+  <title>Fresh Cuts Barbershop in Austin, TX</title>
+  <meta name="description" content="Fresh Cuts Barbershop — Barbershop in Austin, TX.">
   <script type="text/javascript">
     (function(c,l,a,r,i,t,y){
       c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -389,7 +389,7 @@ exports[`luxe shop link > is unchanged from main when shopUrl is absent 1`] = `
 
   <section id="home" class="relative h-[55vh] flex flex-col justify-center items-center overflow-hidden">
     <div class="absolute inset-0 z-0">
-      <img src="{{hero}}" alt="Main Hero" class="w-full h-full object-cover">
+      <img src="{{hero}}" alt="Fresh Cuts Barbershop photo" class="w-full h-full object-cover">
       <div class="absolute inset-0 bg-black/40 bg-gradient-to-b from-black/30 via-transparent to-[#0d0d0d]"></div>
     </div>
     <div class="relative z-10 text-center px-4 md:px-6 max-w-5xl pb-28 md:pb-32 pt-20 md:pt-0">
@@ -421,7 +421,7 @@ exports[`luxe shop link > is unchanged from main when shopUrl is absent 1`] = `
         </div>
       </div>
       <div class="relative group mt-6 lg:mt-0">
-        <img src="{{about}}" alt="Barber Shop Atmosphere" class="w-full grayscale hover:grayscale-0 transition-all duration-700 shadow-2xl">
+        <img src="{{about}}" alt="Fresh Cuts Barbershop photo" class="w-full grayscale hover:grayscale-0 transition-all duration-700 shadow-2xl">
       </div>
     </div>
   </section>
@@ -496,10 +496,10 @@ exports[`luxe shop link > is unchanged from main when shopUrl is absent 1`] = `
         Fresh <span class="text-[#f4a100]">Cuts Barbershop</span>
       </span>
       <p class="text-[#666666] text-[8px] md:text-xs uppercase tracking-[2px] md:tracking-[4px] mt-8 mb-12">
-        Premium Grooming Excellence in Austin, TX
+        Barbershop in Austin, TX
       </p>
       <div class="pt-8 border-t border-white/5 text-[#444444] text-[8px] uppercase tracking-[2px]">
-        Copyright &copy; 2025 Fresh Cuts Barbershop. Built by AIBarber.
+        Copyright &copy; 2026 Fresh Cuts Barbershop. Built by AIBarber.
       </div>
     </div>
   </footer>
@@ -530,8 +530,8 @@ exports[`prime shop link > is unchanged from main when shopUrl is absent 1`] = `
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <title>Fresh Cuts Barbershop — Barbershop in Austin, TX</title>
-  <meta name="description" content="Fresh Cuts Barbershop. A premium barbershop in Austin, TX. Precision cuts, classic grooming. Book online.">
+  <title>Fresh Cuts Barbershop in Austin, TX</title>
+  <meta name="description" content="Fresh Cuts Barbershop — Barbershop in Austin, TX.">
   <script type="text/javascript">
     (function(c,l,a,r,i,t,y){
       c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -685,7 +685,7 @@ exports[`prime shop link > is unchanged from main when shopUrl is absent 1`] = `
         <p class="p-serif p-dropcap" style="font-size:1.06rem;line-height:1.75;color:var(--p-ink-soft);margin:0 0 18px;">Family owned.</p>
         
       </div>
-      <div class="p-img-tile" style="aspect-ratio:4/5;"><img src="{{about}}" alt="Fresh Cuts Barbershop"></div>
+      <div class="p-img-tile" style="aspect-ratio:4/5;"><img src="{{about}}" alt="Fresh Cuts Barbershop photo"></div>
     </div>
   </section>
 
@@ -693,8 +693,7 @@ exports[`prime shop link > is unchanged from main when shopUrl is absent 1`] = `
   <div class="p-container">
     <div style="text-align:center;margin-bottom:36px;">
       <div class="p-eyebrow">Services &amp; Prices</div>
-      <h2 class="p-display" style="font-size:clamp(28px,5vw,46px);margin-top:14px;">A complete <span class="p-italic" style="color:var(--p-brand);">repertoire.</span></h2>
-      <p class="p-serif p-italic" style="color:var(--p-ink-soft);margin-top:10px;">From the cut to the finish — every detail done in chair.</p>
+      <h2 class="p-display" style="font-size:clamp(28px,5vw,46px);margin-top:14px;">What we <span class="p-italic" style="color:var(--p-brand);">offer.</span></h2>
     </div>
     <div class="p-svc" style="max-width:880px;margin:0 auto;">
       <div class="p-svc-row">
@@ -706,12 +705,10 @@ exports[`prime shop link > is unchanged from main when shopUrl is absent 1`] = `
           
         </div>
     </div>
-    <div style="max-width:880px;margin:28px auto 0;display:grid;grid-template-columns:auto 1fr;gap:28px;padding:24px 28px;border:1px solid var(--p-brand-deep);background:rgba(212,166,74,0.05);" class="p-grid-2">
-      <div class="p-eyebrow" style="white-space:nowrap;">Please Note</div>
-      <div><h3 style="font-size:1.2rem;margin:0 0 8px;">Before you arrive</h3><p class="p-serif" style="color:var(--p-ink-soft);font-size:0.95rem;margin:0;">We work appointment-only — your booked time is held for you. Cancellations within 4 hours of the appointment, and no-shows, are billed in full. Please come freshly washed; products and a hot-towel finish are included in every cut.</p></div>
-    </div>
   </div>
 </section>
+
+  
 
   
 
@@ -727,7 +724,7 @@ exports[`prime shop link > is unchanged from main when shopUrl is absent 1`] = `
   <section style="background:var(--p-cream);color:#1a1a1a;text-align:center;padding:64px 6vw;">
     <div class="p-eyebrow" style="color:var(--p-brand-deep);margin-bottom:14px;">Take a Chair</div>
     <h2 class="p-display" style="font-size:clamp(2rem,5vw,3rem);margin:0 0 16px;color:#1a1a1a;">Ready for <span class="p-italic">your next cut?</span></h2>
-    <p class="p-serif p-italic" style="color:#555;margin:0 0 28px;">Appointments recommended — walk-ins welcomed when chairs allow.</p>
+    
     <a href="tel:+15125550100" class="p-cta" style="background:#1a1a1a;color:var(--p-brand);border-color:#1a1a1a;">Book an Appointment</a>
   </section>
 
@@ -751,7 +748,7 @@ exports[`prime shop link > is unchanged from main when shopUrl is absent 1`] = `
   <footer style="padding:48px 6vw;border-top:1px solid var(--p-line-soft);text-align:center;">
     <div class="p-container">
       <div class="p-serif p-italic" style="font-size:18px;color:var(--p-brand);margin-bottom:8px;">Fresh Cuts Barbershop</div>
-      <div class="p-eyebrow" style="color:var(--p-ink-muted);">© 2025 · Built by AIBarber</div>
+      <div class="p-eyebrow" style="color:var(--p-ink-muted);">© 2026 · Built by AIBarber</div>
     </div>
   </footer>
 

@@ -9,6 +9,10 @@
 // Pure: WebsiteData in, HTML string out. Keep it that way.
 import type { WebsiteData } from '../../types';
 import { safeHref } from './safeHref.js';
+import {
+  aggregateToShow, copyrightYear, footerLine, hasServices, photoAlt, reviewStars, reviewsSourceLabel,
+  siteDescription, siteTitle,
+} from './honest.js';
 
 // 24h → 12h with AM/PM. Idempotent: if the input already contains an
 // AM/PM marker, return it unchanged. Handles "09:00", "9:00", "9", "20:30".
@@ -29,7 +33,7 @@ export const to12h = (raw: string | null | undefined): string => {
   return `${h12}:${mm} ${period}`;
 };
 // Extracts the trailing "City, State [ZIP]" portion of an area string so
-// the hero "Premium Grooming Excellence in ..." line never echoes the
+// the footer "<niche> in ..." line never echoes the
 // full street address even if the user pastes one in. Inputs with two
 // or fewer comma-separated parts pass through unchanged.
 export const cityStateOnly = (raw: string): string => {
@@ -120,7 +124,7 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
   const lbl = (key: string, fallback: string) => (siteData.labels && siteData.labels[key]) || fallback;
 
   // Gallery — slot 0 doubles as the about-section seed and slot 1 as
-  // the hero/about fallback, so the "Our Work" portfolio renders
+  // the hero/about fallback, so the gallery renders
   // slots [2..7] (6 photos max). Renders only the filled slots so
   // partial galleries don't leave empty tiles.
   const GALLERY_PORTFOLIO_INDICES = [2, 3, 4, 5, 6, 7];
@@ -128,15 +132,18 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
     .map((idx) => ({ url: siteData.gallery[idx], index: idx }))
     .filter((item) => item.url);
 
+  // Neutral alt text: the photo may be a sample, never "our work".
+  const altAttr = escapeAttr(photoAlt(siteData));
+
   const gallerySection = galleryImages.length > 0
     ? `<section class="py-16 md:py-32 bg-[#0d0d0d] px-6 border-y border-white/5">
     <div class="container mx-auto max-w-5xl">
       <div class="text-center mb-10 md:mb-16">
         <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">${lbl('galleryEyebrow', 'Gallery')}</h3>
-        <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">${lbl('galleryHeading', 'Our Work')}</h2>
+        <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">${lbl('galleryHeading', 'The Look')}</h2>
       </div>
       <div class="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
-        ${galleryImages.map((g) => `<div class="bg-[#1a1a1a] p-1 border border-white/5 group relative overflow-hidden"><img src="{{gallery${g.index}}}" alt="Gallery Image ${g.index - 1}" class="w-full h-48 sm:h-56 md:h-64 object-cover transition-transform duration-700 group-hover:scale-105"></div>`).join('')}
+        ${galleryImages.map((g) => `<div class="bg-[#1a1a1a] p-1 border border-white/5 group relative overflow-hidden"><img src="{{gallery${g.index}}}" alt="${altAttr}" class="w-full h-48 sm:h-56 md:h-64 object-cover transition-transform duration-700 group-hover:scale-105"></div>`).join('')}
       </div>
     </div>
   </section>`
@@ -201,12 +208,13 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
   // ── Aggregate-rating header — small block above the existing
   //    reviews grid when set. Renderer (and template) read .reviews
   //    separately so the header alone doesn't try to render reviews.
-  const ratingHeader = siteData.aggregateRating
+  const agg = aggregateToShow(siteData);
+  const ratingHeader = agg
     ? `<div class="text-center mb-10 md:mb-12">
         <div class="inline-flex items-center gap-3 bg-[#1a1a1a] border border-[#f4a100]/30 px-5 py-3 md:px-7 md:py-4">
           <span class="text-[#f4a100] text-2xl md:text-3xl">★</span>
-          <span class="text-white text-2xl md:text-3xl font-montserrat font-black">${siteData.aggregateRating.rating.toFixed(1)}</span>
-          ${siteData.aggregateRating.count > 0 ? `<span class="text-white/60 text-[10px] md:text-xs uppercase tracking-[2px] font-bold">from ${siteData.aggregateRating.count.toLocaleString()} reviews</span>` : ''}
+          <span class="text-white text-2xl md:text-3xl font-montserrat font-black">${agg.rating.toFixed(1)}</span>
+          ${agg.count > 0 ? `<span class="text-white/60 text-[10px] md:text-xs uppercase tracking-[2px] font-bold">from ${agg.count.toLocaleString()} reviews</span>` : ''}
         </div>
       </div>`
     : '';
@@ -220,16 +228,47 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
       <div class="text-center mb-10 md:mb-14">
         <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">${lbl('reviewsEyebrow', 'Reviews')}</h3>
         <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">${lbl('reviewsHeading', 'What Our Clients Say')}</h2>
+        <p class="text-white/50 text-[10px] md:text-xs uppercase tracking-[2px] font-bold mt-4">${reviewsSourceLabel(siteData)}</p>
       </div>
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-        ${siteData.reviews.slice(0, 12).map((r) => `
+        ${siteData.reviews.slice(0, 12).map((r) => {
+          // No readable rating → no star row (never a made-up 5).
+          const stars = reviewStars(r);
+          return `
           <div class="border border-white/10 bg-[#111111] p-5 md:p-7 flex flex-col gap-3">
-            <div class="flex items-center gap-1">${Array.from({ length: 5 }, (_, s) => `<span class="${s < r.rating ? 'text-[#f4a100]' : 'text-white/15'}">★</span>`).join('')}</div>
+            ${stars !== null ? `<div class="flex items-center gap-1">${Array.from({ length: 5 }, (_, s) => `<span class="${s < stars ? 'text-[#f4a100]' : 'text-white/15'}">★</span>`).join('')}</div>` : ''}
             <p class="text-white/80 text-sm md:text-base leading-relaxed italic">"${(r.comment || '').replace(/</g, '&lt;').replace(/"/g, '&quot;')}"</p>
             <div class="flex items-center justify-between text-[10px] uppercase tracking-[2px] text-white/50 mt-auto pt-2 border-t border-white/5">
               <span class="font-bold text-white/80">${(r.author || 'Customer').replace(/</g, '&lt;')}</span>
               ${r.date ? `<span>${String(r.date).replace(/</g, '&lt;')}</span>` : ''}
             </div>
+          </div>
+        `;
+        }).join('')}
+      </div>
+    </div>
+  </section>`
+    : '';
+
+  // Services — only what the barber ticked or their booking page lists.
+  // None → no section (and no nav link to it).
+  const showServices = hasServices(siteData);
+  const servicesSection = showServices
+    ? `<section id="services" class="py-12 md:py-32 bg-[#0d0d0d] px-6">
+    <div class="container mx-auto max-w-7xl">
+      <div class="text-center mb-10 md:mb-16">
+        <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">${lbl('servicesEyebrow', 'Services')}</h3>
+        <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">${lbl('servicesHeading', 'What We Offer')}</h2>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+        ${siteData.services.map(service => `
+          <div class="group border-2 border-[#f4a100] p-6 md:p-10 flex flex-col hover:bg-[#1a1a1a] transition-all duration-500">
+            <div class="flex items-start justify-between gap-3 mb-3 md:mb-4">
+              <h3 class="font-montserrat font-black text-white text-base md:text-lg tracking-[1px] uppercase leading-tight flex-1">${service.title}</h3>
+              ${service.price ? `<span class="font-montserrat font-black text-[#f4a100] text-base md:text-lg whitespace-nowrap">${service.price}</span>` : ''}
+            </div>
+            ${(service.duration || service.subtitle) ? `<p class="text-[#f4a100] text-[10px] md:text-[11px] font-bold tracking-[2px] mb-3 uppercase">${service.duration || service.subtitle}</p>` : ''}
+            ${service.description ? `<p class="text-[#999999] text-xs md:text-sm leading-relaxed">${service.description}</p>` : ''}
           </div>
         `).join('')}
       </div>
@@ -246,7 +285,7 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
 
   const aboutImageSection = siteData.about.imageUrl
     ? `<div class="relative group mt-6 lg:mt-0">
-        <img src="{{about}}" alt="Barber Shop Atmosphere" class="w-full grayscale hover:grayscale-0 transition-all duration-700 shadow-2xl">
+        <img src="{{about}}" alt="${altAttr}" class="w-full grayscale hover:grayscale-0 transition-all duration-700 shadow-2xl">
       </div>`
     : '';
 
@@ -265,8 +304,8 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <title>${siteData.shopName} - Premium Barbershop in ${siteData.area}</title>
-  <meta name="description" content="Premium grooming services at ${siteData.shopName} in ${siteData.area}. Expert barbers, luxury experience.">
+  <title>${escapeAttr(siteTitle(siteData))}</title>
+  <meta name="description" content="${escapeAttr(siteDescription(siteData))}">
   <script type="text/javascript">
     (function(c,l,a,r,i,t,y){
       c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -324,8 +363,8 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
       </div>
       <nav class="hidden lg:flex items-center gap-10">
         <a href="#home" class="text-[12px] font-montserrat font-bold tracking-[2px] hover:text-[#f4a100] transition-colors">HOME</a>
-        <a href="#services" class="text-[12px] font-montserrat font-bold tracking-[2px] hover:text-[#f4a100] transition-colors">SERVICES</a>
-        <a href="#contact" class="text-[12px] font-montserrat font-bold tracking-[2px] hover:text-[#f4a100] transition-colors">CONTACT</a>${shopUrl ? `
+${showServices ? `        <a href="#services" class="text-[12px] font-montserrat font-bold tracking-[2px] hover:text-[#f4a100] transition-colors">SERVICES</a>
+` : ''}        <a href="#contact" class="text-[12px] font-montserrat font-bold tracking-[2px] hover:text-[#f4a100] transition-colors">CONTACT</a>${shopUrl ? `
         <a href="${escapeAttr(shopUrl)}" class="text-[12px] font-montserrat font-bold tracking-[2px] hover:text-[#f4a100] transition-colors">SHOP</a>` : ''}
       </nav>
     </div>
@@ -333,7 +372,7 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
 
   <section id="home" class="relative h-[55vh] flex flex-col justify-center items-center overflow-hidden">
     <div class="absolute inset-0 z-0">
-      <img src="{{hero}}" alt="Main Hero" class="w-full h-full object-cover">
+      <img src="{{hero}}" alt="${altAttr}" class="w-full h-full object-cover">
       <div class="absolute inset-0 bg-black/40 bg-gradient-to-b from-black/30 via-transparent to-[#0d0d0d]"></div>
     </div>
     <div class="relative z-10 text-center px-4 md:px-6 max-w-5xl pb-28 md:pb-32 pt-20 md:pt-0">
@@ -370,26 +409,7 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
 
   ${gallerySection}
 
-  <section id="services" class="py-12 md:py-32 bg-[#0d0d0d] px-6">
-    <div class="container mx-auto max-w-7xl">
-      <div class="text-center mb-10 md:mb-16">
-        <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">${lbl('servicesEyebrow', 'Services')}</h3>
-        <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">${lbl('servicesHeading', 'What We Offer')}</h2>
-      </div>
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-        ${siteData.services.map(service => `
-          <div class="group border-2 border-[#f4a100] p-6 md:p-10 flex flex-col hover:bg-[#1a1a1a] transition-all duration-500">
-            <div class="flex items-start justify-between gap-3 mb-3 md:mb-4">
-              <h3 class="font-montserrat font-black text-white text-base md:text-lg tracking-[1px] uppercase leading-tight flex-1">${service.title}</h3>
-              ${service.price ? `<span class="font-montserrat font-black text-[#f4a100] text-base md:text-lg whitespace-nowrap">${service.price}</span>` : ''}
-            </div>
-            ${(service.duration || service.subtitle) ? `<p class="text-[#f4a100] text-[10px] md:text-[11px] font-bold tracking-[2px] mb-3 uppercase">${service.duration || service.subtitle}</p>` : ''}
-            <p class="text-[#999999] text-xs md:text-sm leading-relaxed">${service.description}</p>
-          </div>
-        `).join('')}
-      </div>
-    </div>
-  </section>
+  ${servicesSection}
 
   ${reviewsSection}
 
@@ -439,10 +459,10 @@ export function generateHTMLWithPlaceholders(siteData: WebsiteData): string {
         ${siteData.shopName.split(' ')[0]} <span class="text-[#f4a100]">${siteData.shopName.split(' ').slice(1).join(' ')}</span>
       </span>
       <p class="text-[#666666] text-[8px] md:text-xs uppercase tracking-[2px] md:tracking-[4px] mt-8 mb-12">
-        Premium Grooming Excellence in ${cityStateOnly(siteData.area)}
+        ${footerLine(siteData)}
       </p>
       <div class="pt-8 border-t border-white/5 text-[#444444] text-[8px] uppercase tracking-[2px]">
-        Copyright &copy; 2025 ${siteData.shopName}. Built by AIBarber.
+        Copyright &copy; ${copyrightYear()} ${siteData.shopName}. Built by AIBarber.
       </div>
     </div>
   </footer>

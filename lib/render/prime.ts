@@ -9,14 +9,19 @@
 // Pure: WebsiteData in, HTML string out. Keep it that way.
 import type { WebsiteData } from '../../types';
 import { safeHref } from './safeHref.js';
+import {
+  aggregateToShow, copyrightYear, galleryIsAllOwnPhotos, hasServices, photoAlt, policyToShow, reviewStars,
+  reviewsSourceLabel, siteDescription, siteTitle,
+} from './honest.js';
 
-// Seed copy used when a prime site has no policy / pull-quote of its own
-// (e.g. an existing booksy luxe site switched over to Design 2). Both the
-// editor and the deploy builder fall back to these so the design always
-// looks complete; edits write back onto WebsiteData.policy / .pullQuote.
+// Policy: there is NO default. A shop's policy is a fact only the barber
+// can state, so the "Please note" block renders only from barber-written
+// text (honest.ts policyToShow). DEFAULT_POLICY stays exported, empty, for
+// callers that seed `policy` — an empty body never renders.
+// Pull-quote: a generic line true of any barbershop; editable.
 export const DEFAULT_POLICY: { title: string; body: string } = {
-  title: 'Before you arrive',
-  body: 'We work appointment-only — your booked time is held for you. Cancellations within 4 hours of the appointment, and no-shows, are billed in full. Please come freshly washed; products and a hot-towel finish are included in every cut.',
+  title: '',
+  body: '',
 };
 export const DEFAULT_PULLQUOTE: { text: string; accent?: string } = {
   text: "A great cut isn't a transaction — it's a craft.",
@@ -191,7 +196,6 @@ export function generatePrimeHTMLWithPlaceholders(siteData: WebsiteData): string
   const phoneE164 = '+1' + (siteData.phone || '').replace(/\D/g, '');
   const bookHref = bookingUrl || `tel:${phoneE164}`;
   const safeName = escapeHtml(siteData.shopName);
-  const safeArea = escapeHtml(siteData.area);
   const safeAreaShort = escapeHtml(cityStateOnly(siteData.area));
   const mapQuery = encodeURIComponent(`${siteData.shopName} ${siteData.area}`);
   const theme = resolvePrimeTheme(siteData.colorTheme);
@@ -199,7 +203,10 @@ export function generatePrimeHTMLWithPlaceholders(siteData: WebsiteData): string
     ? `--p-brand:${theme.brand};--p-brand-bright:${theme.bright};--p-brand-deep:${theme.deep};--p-bg:${theme.bg};--p-bg-2:${theme.bg2};--p-bg-3:${theme.bg3};background:${theme.bg};`
     : '';
 
-  const agg = siteData.aggregateRating;
+  // Only a scraped aggregate; unreadable → none.
+  const agg = aggregateToShow(siteData);
+  const altAttr = escapeHtml(photoAlt(siteData));
+  const showServices = hasServices(siteData);
   const ratingChip = agg
     ? `<span style="color:var(--p-brand);">★ ${agg.rating.toFixed(1)}${agg.count > 0 ? ` · ${agg.count.toLocaleString()} reviews` : ''}</span>`
     : '';
@@ -213,18 +220,17 @@ export function generatePrimeHTMLWithPlaceholders(siteData: WebsiteData): string
     : '';
 
   const aboutImageMarkup = siteData.about.imageUrl
-    ? `<div class="p-img-tile" style="aspect-ratio:4/5;"><img src="{{about}}" alt="${safeName}"></div>`
+    ? `<div class="p-img-tile" style="aspect-ratio:4/5;"><img src="{{about}}" alt="${altAttr}"></div>`
     : '';
 
   // Services + prices table.
-  const services = siteData.services || [];
-  const servicesSection = services.length > 0
+  const services = (siteData.services || []).filter((s) => (s?.title || '').trim());
+  const servicesSection = showServices
     ? `<section id="services" class="p-section">
   <div class="p-container">
     <div style="text-align:center;margin-bottom:36px;">
       <div class="p-eyebrow">Services &amp; Prices</div>
-      <h2 class="p-display" style="font-size:clamp(28px,5vw,46px);margin-top:14px;">A complete <span class="p-italic" style="color:var(--p-brand);">repertoire.</span></h2>
-      <p class="p-serif p-italic" style="color:var(--p-ink-soft);margin-top:10px;">From the cut to the finish — every detail done in chair.</p>
+      <h2 class="p-display" style="font-size:clamp(28px,5vw,46px);margin-top:14px;">What we <span class="p-italic" style="color:var(--p-brand);">offer.</span></h2>
     </div>
     <div class="p-svc" style="max-width:880px;margin:0 auto;">
       ${services.map((s) => {
@@ -240,10 +246,19 @@ export function generatePrimeHTMLWithPlaceholders(siteData: WebsiteData): string
         </div>`;
       }).join('')}
     </div>
-    ${(() => { const policy = siteData.policy || DEFAULT_POLICY; return `<div style="max-width:880px;margin:28px auto 0;display:grid;grid-template-columns:auto 1fr;gap:28px;padding:24px 28px;border:1px solid var(--p-brand-deep);background:rgba(212,166,74,0.05);" class="p-grid-2">
+  </div>
+</section>`
+    : '';
+
+  // Policy — barber-written only, and independent of the services list.
+  const policy = policyToShow(siteData);
+  const policySection = policy
+    ? `<section class="p-section" style="padding-top:${showServices ? '0' : '48px'};">
+  <div class="p-container">
+    <div style="max-width:880px;margin:0 auto;display:grid;grid-template-columns:auto 1fr;gap:28px;padding:24px 28px;border:1px solid var(--p-brand-deep);background:rgba(212,166,74,0.05);" class="p-grid-2">
       <div class="p-eyebrow" style="white-space:nowrap;">Please Note</div>
-      <div><h3 style="font-size:1.2rem;margin:0 0 8px;">${escapeHtml(policy.title)}</h3><p class="p-serif" style="color:var(--p-ink-soft);font-size:0.95rem;margin:0;">${escapeHtml(policy.body)}</p></div>
-    </div>`; })()}
+      <div>${policy.title ? `<h3 style="font-size:1.2rem;margin:0 0 8px;">${escapeHtml(policy.title)}</h3>` : ''}<p class="p-serif" style="color:var(--p-ink-soft);font-size:0.95rem;margin:0;">${escapeHtml(policy.body)}</p></div>
+    </div>
   </div>
 </section>`
     : '';
@@ -254,13 +269,13 @@ export function generatePrimeHTMLWithPlaceholders(siteData: WebsiteData): string
     ? `<section class="p-section" style="padding-top:48px;">
   <div class="p-container">
     <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px;margin-bottom:32px;">
-      <div><div class="p-eyebrow">The Work</div><h2 class="p-display" style="font-size:clamp(28px,4.5vw,44px);margin-top:12px;">Hand-cut, <span class="p-italic" style="color:var(--p-brand);">head by head.</span></h2></div>
-      <p class="p-serif p-italic" style="color:var(--p-ink-soft);">Real cuts from inside the shop — no stock photos.</p>
+      <div><div class="p-eyebrow">Gallery</div><h2 class="p-display" style="font-size:clamp(28px,4.5vw,44px);margin-top:12px;"><span class="p-italic" style="color:var(--p-brand);">The look.</span></h2></div>
+      ${galleryIsAllOwnPhotos(galleryTiles.map((t) => t.url)) ? `<p class="p-serif p-italic" style="color:var(--p-ink-soft);">Real cuts from inside the shop — no stock photos.</p>` : ''}
     </div>
     <div class="p-gallery">
       ${galleryTiles.map((t) => {
         const spec = GALLERY_SPEC[t.i] || GALLERY_SPEC[0];
-        return `<div class="p-img-tile" style="grid-column:${spec.col};aspect-ratio:${spec.ratio};"><img src="{{gallery${t.i}}}" alt="Gallery ${t.i + 1}"></div>`;
+        return `<div class="p-img-tile" style="grid-column:${spec.col};aspect-ratio:${spec.ratio};"><img src="{{gallery${t.i}}}" alt="${altAttr}"></div>`;
       }).join('')}
     </div>
   </div>
@@ -275,9 +290,10 @@ export function generatePrimeHTMLWithPlaceholders(siteData: WebsiteData): string
     <div style="text-align:center;margin-bottom:32px;">
       <div class="p-eyebrow">Client Reviews</div>
       <h2 class="p-display" style="font-size:clamp(28px,5vw,46px);margin-top:14px;">What clients <span class="p-italic" style="color:var(--p-brand);">are saying.</span></h2>
+      <p class="p-serif p-italic" style="color:var(--p-ink-soft);margin:10px 0 0;">${escapeHtml(reviewsSourceLabel(siteData))}</p>
     </div>
     ${agg ? `<div style="max-width:820px;margin:0 auto 32px;display:grid;grid-template-columns:1fr auto;gap:24px;align-items:center;padding:22px 28px;border:1px solid var(--p-brand);background:linear-gradient(135deg,rgba(212,166,74,0.18),rgba(212,166,74,0.05));" class="p-grid-2">
-      <div><h3 style="font-size:1.15rem;margin:0;">${agg.rating.toFixed(1)} stars across ${agg.count.toLocaleString()} verified reviews</h3><p class="p-serif p-italic" style="color:var(--p-ink-soft);margin:6px 0 0;">Pulled directly from the booking page.</p></div>
+      <div><h3 style="font-size:1.15rem;margin:0;">${agg.rating.toFixed(1)} stars${agg.count > 0 ? ` across ${agg.count.toLocaleString()} reviews` : ''}</h3></div>
       <div style="text-align:right;"><div class="p-serif p-italic" style="font-size:2.4rem;color:var(--p-brand);">${agg.rating.toFixed(1)}</div><div style="color:var(--p-brand);">${'★'.repeat(Math.round(agg.rating))}</div></div>
     </div>` : ''}
     <div class="p-review-grid">
@@ -286,7 +302,7 @@ export function generatePrimeHTMLWithPlaceholders(siteData: WebsiteData): string
           <div class="p-avatar">${escapeHtml((r.author || '★').charAt(0).toUpperCase())}</div>
           <div><div class="p-serif" style="font-weight:600;font-size:1.05rem;">${escapeHtml(r.author || 'Client')}</div>${r.date ? `<div class="p-eyebrow" style="font-size:9.5px;margin-top:2px;color:var(--p-ink-muted);">${escapeHtml(r.date)}</div>` : ''}</div>
         </div>
-        <div style="color:var(--p-brand);margin-bottom:8px;">${'★'.repeat(Math.max(1, Math.min(5, r.rating || 5)))}</div>
+        ${(() => { const n = reviewStars(r); return n !== null ? `<div style="color:var(--p-brand);margin-bottom:8px;">${'★'.repeat(n)}</div>` : ''; })()}
         <p class="p-serif p-italic" style="color:var(--p-ink-soft);font-size:0.95rem;margin:0;">${escapeHtml(r.comment || '')}</p>
       </div>`).join('')}
     </div>
@@ -313,6 +329,9 @@ export function generatePrimeHTMLWithPlaceholders(siteData: WebsiteData): string
       </div>`
     : `<div><iframe src="https://maps.google.com/maps?q=${mapQuery}&output=embed" width="100%" height="320" style="border:0;display:block;" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="${safeName} on Google Maps"></iframe></div>`;
 
+  // Booking-strip note (e.g. a walk-in line): barber-written only.
+  const bookingNote = ((siteData.labels && siteData.labels.bookingNote) || '').trim();
+
   const publishedAt = String(Date.now());
 
   return `<!DOCTYPE html>
@@ -324,8 +343,8 @@ export function generatePrimeHTMLWithPlaceholders(siteData: WebsiteData): string
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <title>${safeName} — Barbershop in ${safeArea}</title>
-  <meta name="description" content="${safeName}. A premium barbershop in ${safeArea}. Precision cuts, classic grooming. Book online.">
+  <title>${escapeHtml(siteTitle(siteData))}</title>
+  <meta name="description" content="${escapeHtml(siteDescription(siteData))}">
   <script type="text/javascript">
     (function(c,l,a,r,i,t,y){
       c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -369,9 +388,9 @@ ${PRIME_SCOPED_CSS}
       <p class="p-serif p-italic" style="font-size:clamp(1rem,2.2vw,1.4rem);color:var(--p-ink-soft);max-width:640px;margin:0 auto 22px;">${escapeHtml(siteData.hero.tagline)}</p>
       <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;">
         <a href="${escapeHtml(bookHref)}"${bookingUrl ? ' target="_blank" rel="noopener noreferrer"' : ''} class="p-cta p-cta-solid">Book an Appointment</a>
-        <a href="#services" class="p-cta">View Services</a>
+        ${showServices ? `<a href="#services" class="p-cta">View Services</a>` : ''}
       </div>
-      ${agg ? `<div style="margin-top:28px;color:var(--p-ink-soft);font-size:13px;"><span style="color:var(--p-brand);">${'★'.repeat(Math.round(agg.rating))}</span> ${agg.rating.toFixed(1)} · ${agg.count.toLocaleString()} reviews</div>` : ''}
+      ${agg ? `<div style="margin-top:28px;color:var(--p-ink-soft);font-size:13px;"><span style="color:var(--p-brand);">${'★'.repeat(Math.round(agg.rating))}</span> ${agg.rating.toFixed(1)}${agg.count > 0 ? ` · ${agg.count.toLocaleString()} reviews` : ''}</div>` : ''}
     </div>
   </section>
 
@@ -390,6 +409,8 @@ ${PRIME_SCOPED_CSS}
 
   ${servicesSection}
 
+  ${policySection}
+
   ${gallerySection}
 
   ${reviewsSection}
@@ -400,7 +421,7 @@ ${PRIME_SCOPED_CSS}
   <section style="background:var(--p-cream);color:#1a1a1a;text-align:center;padding:64px 6vw;">
     <div class="p-eyebrow" style="color:var(--p-brand-deep);margin-bottom:14px;">Take a Chair</div>
     <h2 class="p-display" style="font-size:clamp(2rem,5vw,3rem);margin:0 0 16px;color:#1a1a1a;">Ready for <span class="p-italic">your next cut?</span></h2>
-    <p class="p-serif p-italic" style="color:#555;margin:0 0 28px;">Appointments recommended — walk-ins welcomed when chairs allow.</p>
+    ${bookingNote ? `<p class="p-serif p-italic" style="color:#555;margin:0 0 28px;">${escapeHtml(bookingNote)}</p>` : ''}
     <a href="${escapeHtml(bookHref)}"${bookingUrl ? ' target="_blank" rel="noopener noreferrer"' : ''} class="p-cta" style="background:#1a1a1a;color:var(--p-brand);border-color:#1a1a1a;">Book an Appointment</a>
   </section>
 
@@ -413,7 +434,7 @@ ${PRIME_SCOPED_CSS}
         <div style="display:grid;gap:22px;color:var(--p-ink-soft);font-size:16px;line-height:1.6;">
           ${siteData.contact.address ? `<div><div class="p-eyebrow" style="margin-bottom:6px;">The Address</div><div class="p-serif p-italic" style="color:var(--p-ink);font-size:1.2rem;">${escapeHtml(siteData.contact.address)}</div></div>` : ''}
           <div><div class="p-eyebrow" style="margin-bottom:6px;">By Phone</div><a href="tel:${formattedPhone}" class="p-serif p-italic" style="color:var(--p-ink);font-size:1.2rem;text-decoration:none;">${escapeHtml(siteData.phone)}</a></div>
-          ${bookingUrl ? `<div><div class="p-eyebrow" style="margin-bottom:6px;">Online Booking</div><a href="${escapeHtml(bookingUrl)}" target="_blank" rel="noopener noreferrer" class="p-serif p-italic" style="color:var(--p-ink);font-size:1.1rem;">Book online → confirmed instantly</a></div>` : ''}${shopUrl ? `
+          ${bookingUrl ? `<div><div class="p-eyebrow" style="margin-bottom:6px;">Online Booking</div><a href="${escapeHtml(bookingUrl)}" target="_blank" rel="noopener noreferrer" class="p-serif p-italic" style="color:var(--p-ink);font-size:1.1rem;">Book online →</a></div>` : ''}${shopUrl ? `
           <div><div class="p-eyebrow" style="margin-bottom:6px;">The Shop</div><a href="${escapeHtml(shopUrl)}" class="p-serif p-italic" style="color:var(--p-ink);font-size:1.1rem;">Shop online → pickup or shipping</a></div>` : ''}
         </div>
       </div>
@@ -425,7 +446,7 @@ ${PRIME_SCOPED_CSS}
   <footer style="padding:48px 6vw;border-top:1px solid var(--p-line-soft);text-align:center;">
     <div class="p-container">
       <div class="p-serif p-italic" style="font-size:18px;color:var(--p-brand);margin-bottom:8px;">${safeName}</div>
-      <div class="p-eyebrow" style="color:var(--p-ink-muted);">© 2025 · Built by AIBarber</div>
+      <div class="p-eyebrow" style="color:var(--p-ink-muted);">© ${copyrightYear()} · Built by AIBarber</div>
     </div>
   </footer>
 

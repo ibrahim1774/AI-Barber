@@ -26,7 +26,8 @@ export interface ScrapedShop {
     category?: string;
   }[];
   photos: string[];
-  reviews: { author: string; rating: number; comment: string; date?: string }[];
+  // `rating` is absent when the star count could not be read (never defaulted).
+  reviews: { author: string; rating?: number; comment: string; date?: string }[];
 }
 
 export interface ScrapeOptions {

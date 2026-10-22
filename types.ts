@@ -14,6 +14,10 @@ export interface ShopInputs {
   // Business Profile import succeeds. Marks the inputs as a completed
   // generation for lead firing (lib/leadEvents.ts isLeadComplete).
   importedFrom?: 'booking' | 'gbp';
+  // Services the barber ticked on the checklist (lib/stockImages.ts
+  // SERVICE_CHOICES), each with an optional price. generateContent uses
+  // exactly these and never invents a menu; none → no Services section.
+  services?: { title: string; price?: string }[];
 }
 
 export interface ServiceItem {
@@ -68,11 +72,24 @@ export interface WebsiteData {
   // Optional real customer reviews (from Booksy scrape). When present
   // the LUXE renderer shows a Reviews section. Older saved sites lack
   // this field — renderer skips the section when omitted/empty.
-  reviews?: { author: string; rating: number; comment: string; date?: string }[];
-  // Optional small hero feature cards — "EXPERIENCE / Elite",
-  // "RECOGNIZED / Masters", "OPEN DAILY / 9-6" style. Editable in
-  // the preview. Falls back to defaults when omitted (older saved
-  // sites predate this field).
+  // `rating` is absent when the source's star count couldn't be read —
+  // never defaulted (a review with no rating shows no stars).
+  reviews?: { author: string; rating?: number; comment: string; date?: string }[];
+  // Where the reviews came from, as a platform name ("Google", "Booksy",
+  // "theCut" …), so templates can say "Reviews from Google". Absent on
+  // older sites (templates then infer it from the booking link, or say
+  // just "Reviews").
+  reviewsSource?: string;
+  // True when the reviews were filtered (Google imports keep only 4★+),
+  // so templates say "Selected reviews".
+  reviewsSelected?: boolean;
+  // Business type key from lib/booksyNiche.ts ('barber', 'nails' …) so
+  // meta tags and footers name the right kind of business. Absent →
+  // barbershop.
+  niche?: string;
+  // Legacy hero feature cards. No longer seeded: older sites carry an
+  // invented "Experience / Service / Open Monday to Friday" set, which
+  // the editor hides; only cards the barber wrote still show.
   featureCards?: { title: string; sub: string }[];
   // Optional shop bio — typically pulled from Booksy `description`.
   // Renderer shows it as a quote-styled paragraph in the About section
@@ -93,9 +110,9 @@ export interface WebsiteData {
   // "Meet the Team" section when at least one staff entry exists.
   // Photo is editable in the preview (replace-image overlay).
   staff?: { name: string; role?: string; photo?: string }[];
-  // Optional "Before you arrive" policy box — used by the Prime (Design 2)
-  // barbershop template. Seeded with a default when a prime site is
-  // generated; editable in the preview. Other templates ignore it.
+  // Optional "Please note" policy box — used by the Prime (Design 2)
+  // template. Barber-written only: there is no default, and the block
+  // renders only when `body` has text. Other templates ignore it.
   policy?: { title: string; body: string };
   // Optional full-width pull-quote — used by the Prime (Design 2) template.
   // Seeded with a default; editable. Other templates ignore it.

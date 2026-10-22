@@ -8,7 +8,11 @@ import { useAutoSave } from '../hooks/useAutoSave';
 import { useResetOnReturnFromStripe } from '../hooks/useResetOnReturnFromStripe';
 import PrePaymentBanner from './PrePaymentBanner.tsx';
 import { isCustomDesignAnyPath } from '../lib/dealMode.ts';
-import { DEFAULT_POLICY, DEFAULT_PULLQUOTE, GALLERY_SPEC, PRIME_FONT_LINK_ID, PRIME_SCOPED_CSS, PRIME_STYLE_ID, cityStateOnly, resolvePrimeTheme, to12h } from '../lib/render/prime';
+import { DEFAULT_PULLQUOTE, GALLERY_SPEC, PRIME_FONT_LINK_ID, PRIME_SCOPED_CSS, PRIME_STYLE_ID, cityStateOnly, resolvePrimeTheme, to12h } from '../lib/render/prime';
+import {
+  aggregateToShow, copyrightYear, hasServices, photoAlt, policyToShow, reviewStars, reviewsSourceLabel,
+} from '../lib/render/honest';
+import { isStockImage } from '../lib/stockImages';
 
 // ---------------------------------------------------------------------------
 // PrimeWebsite — "Design 2" on /booksy. A faithful port of PrimeHub's live
@@ -359,8 +363,15 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
   const phoneE164 = '+1' + (siteData.phone || '').replace(/\D/g, '');
   const bookHref = siteData.bookingUrl || `tel:${phoneE164}`;
   const mapQuery = encodeURIComponent(`${siteData.shopName} ${siteData.area}`);
-  const agg = siteData.aggregateRating;
-  const policy = siteData.policy || DEFAULT_POLICY;
+  // Mirrors lib/render/prime.ts: only scraped facts and barber-written text.
+  const agg = aggregateToShow(siteData);
+  const policy = policyToShow(siteData);
+  const showServices = hasServices(siteData);
+  const bookingNote = ((siteData.labels && siteData.labels.bookingNote) || '').trim();
+  // "No stock photos" only when the gallery has photos and none is a sample
+  // (isStockImage, lib/stockImages.ts) — same rule as the deployed page.
+  const galleryShots = (siteData.gallery || []).slice(0, GALLERY_SPEC.length).filter(Boolean);
+  const galleryAllOwn = galleryShots.length > 0 && !galleryShots.some(isStockImage);
   const pullQuote = siteData.pullQuote || DEFAULT_PULLQUOTE;
   const reviews = siteData.reviews || [];
   const hours = siteData.hours || [];
@@ -485,11 +496,11 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
           </p>
           <div style={{ display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
             <a href={bookHref} onClick={handleBookClick} {...(siteData.bookingUrl ? { target: '_blank', rel: 'noopener noreferrer' } : {})} className="p-cta p-cta-solid">Book an Appointment</a>
-            <a href="#services" className="p-cta">View Services</a>
+            {showServices && <a href="#services" className="p-cta">View Services</a>}
           </div>
           {agg && (
             <div style={{ marginTop: 28, color: 'var(--p-ink-soft)', fontSize: 13 }}>
-              <span style={{ color: 'var(--p-brand)' }}>{'★'.repeat(Math.round(agg.rating))}</span> {agg.rating.toFixed(1)} · {agg.count.toLocaleString()} reviews
+              <span style={{ color: 'var(--p-brand)' }}>{'★'.repeat(Math.round(agg.rating))}</span> {agg.rating.toFixed(1)}{agg.count > 0 ? ` · ${agg.count.toLocaleString()} reviews` : ''}
             </div>
           )}
         </div>
@@ -530,7 +541,7 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
           </div>
           {siteData.about.imageUrl ? (
             <div className="p-img-tile" style={{ aspectRatio: '4 / 5' }}>
-              <img src={siteData.about.imageUrl} alt={siteData.shopName} />
+              <img src={siteData.about.imageUrl} alt={photoAlt(siteData)} />
               <ImageOverlay onUpload={e => handleImageChange('about.imageUrl', e)} />
             </div>
           ) : (
@@ -539,14 +550,13 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
         </div>
       </section>
 
-      {/* Services + Policy */}
-      {siteData.services.length > 0 && (
+      {/* Services (hidden when none, like the deployed page) */}
+      {showServices && (
         <section id="services" className="p-section">
           <div className="p-container">
             <div style={{ textAlign: 'center', marginBottom: 36 }}>
               <div className="p-eyebrow">Services &amp; Prices</div>
-              <h2 className="p-display" style={{ fontSize: 'clamp(28px,5vw,46px)', marginTop: 14 }}>A complete <span className="p-italic" style={{ color: 'var(--p-brand)' }}>repertoire.</span></h2>
-              <p className="p-serif p-italic" style={{ color: 'var(--p-ink-soft)', marginTop: 10 }}>From the cut to the finish — every detail done in chair.</p>
+              <h2 className="p-display" style={{ fontSize: 'clamp(28px,5vw,46px)', marginTop: 14 }}>What we <span className="p-italic" style={{ color: 'var(--p-brand)' }}>offer.</span></h2>
             </div>
             <div className="p-svc" style={{ maxWidth: 880, margin: '0 auto' }}>
               {siteData.services.map((s, i) => (
@@ -574,14 +584,24 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
                 </div>
               ))}
             </div>
-            <div className="p-grid-2" style={{ maxWidth: 880, margin: '28px auto 0', display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 28, padding: '24px 28px', border: '1px solid var(--p-brand-deep)', background: 'rgba(212,166,74,0.05)' }}>
+          </div>
+        </section>
+      )}
+
+      {/* Policy — barber-written only (no default), independent of services */}
+      {policy && (
+        <section className="p-section" style={{ paddingTop: showServices ? 0 : 48 }}>
+          <div className="p-container">
+            <div className="p-grid-2" style={{ maxWidth: 880, margin: '0 auto', display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 28, padding: '24px 28px', border: '1px solid var(--p-brand-deep)', background: 'rgba(212,166,74,0.05)' }}>
               <div className="p-eyebrow" style={{ whiteSpace: 'nowrap' }}>Please Note</div>
               <div>
-                <h3 style={{ fontSize: '1.2rem', margin: '0 0 8px' }}>
-                  <Editable text={policy.title} onSave={v => patch(prev => ({ ...prev, policy: { ...(prev.policy || DEFAULT_POLICY), title: v } }))} />
-                </h3>
+                {policy.title && (
+                  <h3 style={{ fontSize: '1.2rem', margin: '0 0 8px' }}>
+                    <Editable text={policy.title} onSave={v => patch(prev => ({ ...prev, policy: { title: v, body: prev.policy?.body || '' } }))} />
+                  </h3>
+                )}
                 <p className="p-serif" style={{ color: 'var(--p-ink-soft)', fontSize: '0.95rem', margin: 0 }}>
-                  <Editable text={policy.body} onSave={v => patch(prev => ({ ...prev, policy: { ...(prev.policy || DEFAULT_POLICY), body: v } }))} />
+                  <Editable text={policy.body} onSave={v => patch(prev => ({ ...prev, policy: { title: prev.policy?.title || '', body: v } }))} />
                 </p>
               </div>
             </div>
@@ -594,10 +614,10 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
         <div className="p-container">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12, marginBottom: 32 }}>
             <div>
-              <div className="p-eyebrow">The Work</div>
-              <h2 className="p-display" style={{ fontSize: 'clamp(28px,4.5vw,44px)', marginTop: 12 }}>Hand-cut, <span className="p-italic" style={{ color: 'var(--p-brand)' }}>head by head.</span></h2>
+              <div className="p-eyebrow">Gallery</div>
+              <h2 className="p-display" style={{ fontSize: 'clamp(28px,4.5vw,44px)', marginTop: 12 }}><span className="p-italic" style={{ color: 'var(--p-brand)' }}>The look.</span></h2>
             </div>
-            <p className="p-serif p-italic" style={{ color: 'var(--p-ink-soft)' }}>Real cuts from inside the shop — no stock photos.</p>
+            {galleryAllOwn && <p className="p-serif p-italic" style={{ color: 'var(--p-ink-soft)' }}>Real cuts from inside the shop — no stock photos.</p>}
           </div>
           <div className="p-gallery">
             {editorGalleryIndices.map((idx) => {
@@ -607,7 +627,7 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
                 <div key={idx} className="p-img-tile" style={{ gridColumn: spec.col, aspectRatio: spec.ratio }}>
                   {url ? (
                     <>
-                      <img src={url} alt={`Gallery ${idx + 1}`} />
+                      <img src={url} alt={photoAlt(siteData)} />
                       <ImageOverlay onUpload={e => handleImageChange(`gallery.${idx}`, e)} />
                     </>
                   ) : (
@@ -627,12 +647,12 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
             <div style={{ textAlign: 'center', marginBottom: 32 }}>
               <div className="p-eyebrow">Client Reviews</div>
               <h2 className="p-display" style={{ fontSize: 'clamp(28px,5vw,46px)', marginTop: 14 }}>What clients <span className="p-italic" style={{ color: 'var(--p-brand)' }}>are saying.</span></h2>
+              <p className="p-serif p-italic" style={{ color: 'var(--p-ink-soft)', margin: '10px 0 0' }}>{reviewsSourceLabel(siteData)}</p>
             </div>
             {agg && (
               <div className="p-grid-2" style={{ maxWidth: 820, margin: '0 auto 32px', display: 'grid', gridTemplateColumns: '1fr auto', gap: 24, alignItems: 'center', padding: '22px 28px', border: '1px solid var(--p-brand)', background: 'linear-gradient(135deg, rgba(212,166,74,0.18), rgba(212,166,74,0.05))' }}>
                 <div>
-                  <h3 style={{ fontSize: '1.15rem', margin: 0 }}>{agg.rating.toFixed(1)} stars across {agg.count.toLocaleString()} verified reviews</h3>
-                  <p className="p-serif p-italic" style={{ color: 'var(--p-ink-soft)', margin: '6px 0 0' }}>Pulled directly from the booking page.</p>
+                  <h3 style={{ fontSize: '1.15rem', margin: 0 }}>{agg.rating.toFixed(1)} stars{agg.count > 0 ? ` across ${agg.count.toLocaleString()} reviews` : ''}</h3>
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <div className="p-serif p-italic" style={{ fontSize: '2.4rem', color: 'var(--p-brand)' }}>{agg.rating.toFixed(1)}</div>
@@ -650,7 +670,8 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
                       {r.date && <div className="p-eyebrow" style={{ fontSize: 9.5, marginTop: 2, color: 'var(--p-ink-muted)' }}>{r.date}</div>}
                     </div>
                   </div>
-                  <div style={{ color: 'var(--p-brand)', marginBottom: 8 }}>{'★'.repeat(Math.max(1, Math.min(5, r.rating || 5)))}</div>
+                  {/* No readable rating → no stars (never a made-up 5). */}
+                  {reviewStars(r) !== null && <div style={{ color: 'var(--p-brand)', marginBottom: 8 }}>{'★'.repeat(reviewStars(r) as number)}</div>}
                   <p className="p-serif p-italic" style={{ color: 'var(--p-ink-soft)', fontSize: '0.95rem', margin: 0 }}>{r.comment}</p>
                 </div>
               ))}
@@ -672,7 +693,12 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
       <section style={{ background: 'var(--p-cream)', color: '#1a1a1a', textAlign: 'center', padding: '64px 6vw' }}>
         <div className="p-eyebrow" style={{ color: 'var(--p-brand-deep)', marginBottom: 14 }}>Take a Chair</div>
         <h2 className="p-display" style={{ fontSize: 'clamp(2rem,5vw,3rem)', margin: '0 0 16px', color: '#1a1a1a' }}>Ready for <span className="p-italic">your next cut?</span></h2>
-        <p className="p-serif p-italic" style={{ color: '#555', margin: '0 0 28px' }}>Appointments recommended — walk-ins welcomed when chairs allow.</p>
+        {/* Booking note (e.g. walk-ins): barber-written only, no default. */}
+        {bookingNote && (
+          <p className="p-serif p-italic" style={{ color: '#555', margin: '0 0 28px' }}>
+            <Editable text={bookingNote} onSave={v => patch(prev => ({ ...prev, labels: { ...(prev.labels || {}), bookingNote: v } }))} />
+          </p>
+        )}
         <a href={bookHref} onClick={handleBookClick} {...(siteData.bookingUrl ? { target: '_blank', rel: 'noopener noreferrer' } : {})} className="p-cta" style={{ background: '#1a1a1a', color: 'var(--p-brand)', borderColor: '#1a1a1a' }}>Book an Appointment</a>
       </section>
 
@@ -694,7 +720,7 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
               {siteData.bookingUrl && (
                 <div>
                   <div className="p-eyebrow" style={{ marginBottom: 6 }}>Online Booking</div>
-                  <a href={siteData.bookingUrl} target="_blank" rel="noopener noreferrer" onClick={handleBookClick} className="p-serif p-italic" style={{ color: 'var(--p-ink)', fontSize: '1.1rem' }}>Book online → confirmed instantly</a>
+                  <a href={siteData.bookingUrl} target="_blank" rel="noopener noreferrer" onClick={handleBookClick} className="p-serif p-italic" style={{ color: 'var(--p-ink)', fontSize: '1.1rem' }}>Book online →</a>
                 </div>
               )}
               {/* Editor-only: booking URL input (never appears in deployed HTML) */}
@@ -758,7 +784,7 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
       <footer style={{ padding: '48px 6vw', borderTop: '1px solid var(--p-line-soft)', textAlign: 'center' }}>
         <div className="p-container">
           <div className="p-serif p-italic" style={{ fontSize: 18, color: 'var(--p-brand)', marginBottom: 8 }}>{siteData.shopName}</div>
-          <div className="p-eyebrow" style={{ color: 'var(--p-ink-muted)' }}>© 2025 · Built by AIBarber</div>
+          <div className="p-eyebrow" style={{ color: 'var(--p-ink-muted)' }}>© {copyrightYear()} · Built by AIBarber</div>
         </div>
       </footer>
 

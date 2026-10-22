@@ -1,7 +1,17 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 
+// DEAD CODE (2026-10-22): generation moved to services/geminiService.ts
+// (template-driven, no API call). This endpoint wrote invented copy
+// ("Elite Grooming Standards", a 5-service menu, a contact@<shop>.com
+// email), so it is switched off rather than left reachable. The code
+// below is kept for reference only; nothing in the app calls it.
+const DISABLED = true;
+
 export default async function handler(req: any, res: any) {
+  if (DISABLED) {
+    return res.status(410).json({ message: 'Gone' });
+  }
   if (req.method !== 'POST') {
     return res.status(405).json({ message: 'Method not allowed' });
   }
