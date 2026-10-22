@@ -2,7 +2,7 @@ import type { WebsiteData } from '@/web/types';
 import type { Entitlements } from '@/lib/entitlements';
 
 /** An AI Barber booking link; a Booksy or Square link is the barber's own and is never touched. */
-const AIBARBER_BOOK = /^https?:\/\/(www\.)?aibarber\.org\/book\//i;
+const AIBARBER_BOOK = /^(https?:\/\/)?(www\.)?aibarber\.org\/book(?=[/?#]|$)/i;
 
 /**
  * Drops the website's Book and Shop links the plan no longer covers (the same

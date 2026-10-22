@@ -19,6 +19,19 @@ export const getPlan = (): Promise<Plan> => call<Plan>('GET', '/api/shop/plan');
 export const refreshPlan = (transactionId: string | null): Promise<Plan> =>
   call<Plan>('POST', '/api/shop/plan', { transactionId });
 
+/**
+ * Asks the server to re-read the plan for this transaction, which also relinks a shop stuck on an older,
+ * lapsed purchase (the server only relinks to an active one). Quiet: never throws, never awaited by callers.
+ */
+export async function refreshPlanQuietly(transactionId: string | null | undefined): Promise<void> {
+  if (!transactionId) return;
+  try {
+    setSharedPlan(await refreshPlan(transactionId));
+  } catch {
+    // the next load tries again
+  }
+}
+
 export function planLabel(tier: Tier | null | undefined): string {
   switch (tier) {
     case 'website':

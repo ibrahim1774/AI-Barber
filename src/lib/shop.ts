@@ -82,7 +82,7 @@ export function bookingUrl(shop: Pick<Shop, 'slug'>): string {
 
 /** True when `url` is an AI Barber booking page link (any shop). */
 export function isAiBarberBookingUrl(url?: string | null): boolean {
-  return !!url && /^https?:\/\/(www\.)?aibarber\.org\/book\//i.test(url.trim());
+  return !!url && /^(https?:\/\/)?(www\.)?aibarber\.org\/book(?=[/?#]|$)/i.test(url.trim());
 }
 
 /** The calendar feed for one barber (S1 `GET /api/book/ics?t=`). */

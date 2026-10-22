@@ -50,6 +50,9 @@ jest.mock('@/lib/paywall', () => ({
 const mockRelink = jest.fn(async (_o?: unknown) => false);
 jest.mock('@/lib/setup/relink', () => ({ relinkShopPurchase: (o: unknown) => mockRelink(o) }));
 
+const mockRefresh = jest.fn(async (_id?: unknown) => {});
+jest.mock('@/lib/plan', () => ({ refreshPlanQuietly: (id: unknown) => mockRefresh(id) }));
+
 async function runRestoreFlow() {
   const React = require('react');
   const { act, create } = require('react-test-renderer');
@@ -81,4 +84,11 @@ test('a restore that finds nothing stays put', async () => {
   mockRestore.mockResolvedValueOnce(null);
   await runRestoreFlow();
   expect(mockResetTo).not.toHaveBeenCalled();
+});
+
+test('an active restore asks the server to re-read the plan for the restored transaction', async () => {
+  mockRefresh.mockClear();
+  mockRestore.mockResolvedValueOnce({ site: { ...site, transactionId: 'tx-9' }, active: true });
+  await runRestoreFlow();
+  expect(mockRefresh).toHaveBeenCalledWith('tx-9');
 });
