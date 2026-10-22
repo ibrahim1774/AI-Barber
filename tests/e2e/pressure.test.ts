@@ -366,14 +366,25 @@ describe('rate limits', () => {
     expect(rs[30]).toMatchObject({ statusCode: 429, body: { error: 'rate-limited' } });
   });
 
-  it.fails('GAP: the unauthenticated iOS endpoints have no rate limit; 100 bogus lookups cost 200+ App Store Server API calls (expected some 429s)', async () => {
+  it('M9 (fixed): the unauthenticated iOS lookups are rate limited per IP (60/min), before Apple is asked', async () => {
     const rs = [];
     for (let i = 0; i < 100; i++) rs.push(await hit(iosSite, { body: { transactionId: String(900000 + i) }, headers: { 'x-real-ip': '203.0.113.50' } }));
-    expect(rs.some((r) => r.statusCode === 429)).toBe(true);
+    expect(rs.slice(0, 60).every((r) => r.statusCode === 404)).toBe(true);
+    expect(rs.slice(60).every((r) => r.statusCode === 429 && r.headers['retry-after'] === '60')).toBe(true);
+    expect(w.apple.state.calls).toBe(120); // was 200: the 40 refused never reached Apple
+    // Another address is unaffected.
+    expect((await hit(iosSite, { body: { transactionId: '1' }, headers: { 'x-real-ip': '203.0.113.51' } })).statusCode).toBe(404);
+  });
+
+  it('M9 (fixed): publishes are limited per IP too (20/min), before Apple is asked', async () => {
+    const rs = [];
+    for (let i = 0; i < 25; i++) rs.push(await hit(iosPublish, { body: { transactionId: String(800000 + i), siteData: siteData() }, headers: { 'x-real-ip': '203.0.113.60' } }));
+    expect(rs.slice(0, 20).every((r) => r.statusCode === 404)).toBe(true);
+    expect(rs.slice(20).every((r) => r.statusCode === 429)).toBe(true);
   });
 
   it('setup: each bogus lookup asks Apple in both environments', async () => {
-    for (let i = 0; i < 10; i++) await hit(iosSite, { body: { transactionId: String(900000 + i) }, headers: { 'x-real-ip': '203.0.113.50' } });
+    for (let i = 0; i < 10; i++) await hit(iosSite, { body: { transactionId: String(900000 + i) }, headers: { 'x-real-ip': '203.0.113.52' } });
     expect(w.apple.state.calls).toBe(20);
   });
 });

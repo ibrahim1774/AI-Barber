@@ -95,10 +95,11 @@ export function makeRateLimiter(
   readStore: RateLimitStore = memoryStore(),
   now: () => number = Date.now,
   writeStore: RateLimitStore = readStore,
+  limits: { read: number; write: number } = { read: READ_LIMIT, write: WRITE_LIMIT },
 ): RateLimiter {
   return {
     async allow(ip, kind) {
-      const limit = kind === 'read' ? READ_LIMIT : WRITE_LIMIT;
+      const limit = kind === 'read' ? limits.read : limits.write;
       const store = kind === 'read' ? readStore : writeStore;
       return store.hit(`${kind}:${ip}`, limit, WINDOW_MS, now());
     },
@@ -110,6 +111,18 @@ const sharedStore: RateLimitStore = withFallback(supabaseRateStore(() => service
 
 /** The limiter every /api/book/* handler uses: reads in memory, writes shared. */
 export const publicLimiter = makeRateLimiter(memoryStore(), Date.now, sharedStore);
+
+/**
+ * The iOS endpoints (/api/ios/site lookups = read, /api/ios/publish = write), per IP, shared
+ * across instances (e2e M9). Each call costs up to two App Store Server API requests, so a flood
+ * would exhaust Apple's quota and real publishes would get 503. Looser than the booking limits:
+ * phones on one carrier NAT share an address. Keys are prefixed so they never share a bucket
+ * with the booking pages.
+ */
+export const IOS_READ_LIMIT = 60;
+export const IOS_WRITE_LIMIT = 20;
+const iosBase = makeRateLimiter(sharedStore, Date.now, sharedStore, { read: IOS_READ_LIMIT, write: IOS_WRITE_LIMIT });
+export const iosLimiter: RateLimiter = { allow: (ip, kind) => iosBase.allow(`ios:${ip}`, kind) };
 
 /** Per-shop online-booking cap (core FlowLimits.shopBooking). Fails open, never throws. */
 export function shopBookingLimiter(store: RateLimitStore = sharedStore, now: () => number = Date.now) {
