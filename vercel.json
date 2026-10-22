@@ -93,6 +93,13 @@
     },
     "api/admin/sites.ts": {
       "maxDuration": 300
+    },
+    "api/ios/domain/claim.ts": {
+      "maxDuration": 300,
+      "includeFiles": "lib/ios/certs/**"
+    },
+    "api/ios/domain/status.ts": {
+      "includeFiles": "lib/ios/certs/**"
     }
   }
 }

@@ -20,6 +20,16 @@ describe('vercel.json', () => {
     expect(cfg.functions['api/shop/setup.ts'].includeFiles).toBe('lib/ios/certs/**');
   });
 
+  it('custom domains: claim verifies with Apple and may republish (300 s); status verifies with Apple', () => {
+    expect(cfg.functions['api/ios/domain/claim.ts'].maxDuration).toBe(300);
+    expect(cfg.functions['api/ios/domain/claim.ts'].includeFiles).toBe('lib/ios/certs/**');
+    expect(cfg.functions['api/ios/domain/status.ts'].includeFiles).toBe('lib/ios/certs/**');
+  });
+
+  it('apple-notification bundles the certs (it now also routes the domain product)', () => {
+    expect(cfg.functions['api/ios/apple-notification.ts'].includeFiles).toBe('lib/ios/certs/**');
+  });
+
   it('admin site edits get 300 s: republish-all batches deploy several sites per call', () => {
     expect(cfg.functions['api/admin/sites.ts'].maxDuration).toBe(300);
   });

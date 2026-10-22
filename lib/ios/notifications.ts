@@ -1,6 +1,7 @@
 import { signedDataVerifierFor, toDecodedTransaction, type AppleDecode, type IosEnv } from './appleVerify.js';
 import { supabasePurchases, type PurchasesRepo } from './purchases.js';
 import { isDomainProduct } from './tiers.js';
+import { liveDomainNotificationSink } from './domainLive.js';
 
 /** One App Store notification about the custom-domain subscription (lib/ios/domainFlow.ts). */
 export interface DomainNotification {
@@ -142,6 +143,7 @@ export function liveNotificationDeps(): NotificationDeps {
   return {
     bundleId,
     repo: supabasePurchases(),
+    domain: liveDomainNotificationSink(),
     decodeTransaction: async (env, signed) =>
       toDecodedTransaction(await signedDataVerifierFor(env).verifyAndDecodeTransaction(signed)),
     async decodeNotification(p) {
