@@ -175,16 +175,23 @@ describe('order sheet', () => {
     expect(hasButton(tree, 'Refund')).toBe(false);
   });
 
-  // BUG (low): parseDollars drops every comma, so "12,50" (a decimal comma) is $1,250.00 and "1,0,0" is $100.
-  // productDraft.parsePrice rejects both. Capped by the refundable amount, so it bites only on big orders.
-  it.failing('BUG: a refund typed with a decimal comma ("12,50") is rejected, not read as $1,250', () => {
-    expect(parseRefundAmount('12,50')).toBeNull();
+  // Fixed (bug 11): parseDollars dropped every comma, so "12,50" was $1,250.00 and "1,0,0" was $100.
+  it('a refund typed with a decimal comma ("12,50") is $12.50, not $1,250', () => {
+    expect(parseRefundAmount('12,50')).toBe(1250);
+    expect(parseRefundAmount('$12,50')).toBe(1250);
+    expect(parseRefundAmount('0,99')).toBe(99);
   });
 
-  it('observed: "12,50" parses to 125000 cents; "1,0,0" to 10000', () => {
-    expect(parseRefundAmount('12,50')).toBe(125000);
-    expect(parseRefundAmount('1,0,0')).toBe(10000);
+  it('other commas are thousands separators grouping exactly three digits', () => {
+    expect(parseRefundAmount('1,250')).toBe(125000);
     expect(parseRefundAmount('1,250.00')).toBe(125000);
+    expect(parseRefundAmount('12,500,000')).toBe(1250000000);
+    expect(parseRefundAmount('1,0,0')).toBeNull();
+    expect(parseRefundAmount('12,5')).toBeNull();
+    expect(parseRefundAmount('1,25.00')).toBeNull();
+    expect(parseRefundAmount('7.50')).toBe(750);
+    expect(parseRefundAmount('.5')).toBe(50);
+    expect(parseRefundAmount('0')).toBeNull();
   });
 
   // Fixed (bug 6): OrderSheet.run had no in-flight guard; two presses before React re-rendered sent two refunds.

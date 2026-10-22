@@ -1,7 +1,7 @@
 /**
  * Offline / slow / malformed at every network step of publish, resume, the
  * plan and the tier gate, through the real api.ts and ownerApi.ts parsing.
- * BUG-marked tests are `it.failing`: they pass while the bug is there.
+ * "Fixed (bug N)" tests guard the fixes from the 2026-10-22 fix round.
  */
 jest.mock('expo-superwall', () => require('./mocks').superwallMock());
 jest.mock('expo-sqlite/kv-store', () => require('./mocks').diskMock());

@@ -96,12 +96,15 @@ describe('text that is long, emoji or right-to-left', () => {
     expect(out.about.description[0]).toBe('');
   });
 
-  // BUG (low): shortLink cuts at 33 UTF-16 units, which can split an emoji into a lone surrogate.
-  it.failing('BUG: shortLink never splits an emoji (no lone surrogate in the Book-button picker)', () => {
+  // Fixed (bug 13): shortLink cut at 33 UTF-16 units, which could split an emoji into a lone surrogate.
+  it('shortLink never splits an emoji (no lone surrogate in the Book-button picker)', () => {
     const { shortLink } = require('@/lib/bookingChoice');
     const url = `https://booksy.com/${'a'.repeat(21)}💈💈`; // the cut lands inside the first 💈
     const s: string = shortLink(url);
     expect(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(s)).toBe(false);
+    const long: string = shortLink(`https://booksy.com/${'a'.repeat(21)}${'💈'.repeat(5)}`);
+    expect(long).toBe(`booksy.com/${'a'.repeat(21)}💈…`);
+    expect(shortLink('https://www.booksy.com/fade-lab/?x=1')).toBe('booksy.com/fade-lab');
   });
 });
 
@@ -180,10 +183,10 @@ describe('prices and currency formatting', () => {
     expect(centsToPrice(cents)).toBe(text);
   });
 
-  // BUG (cosmetic): formatMoney has no thousands separator; centsToPrice does. Shown in the refund
-  // sheet ("Up to $1250"), order totals and booking prices next to "$1,250" elsewhere.
-  it.failing('BUG: formatMoney(125000) is "$1,250" like centsToPrice', () => {
-    expect(formatMoney(125000)).toBe(centsToPrice(125000));
+  // Fixed (bug 12): formatMoney had no thousands separator; centsToPrice does.
+  it('formatMoney groups thousands like centsToPrice', () => {
+    for (const c of [125000, 100000, 123456789, 99999, 100050]) expect(formatMoney(c)).toBe(centsToPrice(c));
+    expect(formatMoney(125050)).toBe('$1,250.50');
   });
 
   it('typed prices round-trip: "$1,200.5" / "1200.50" / "From $25+"', () => {

@@ -159,10 +159,14 @@ export function dayHeading(key: DateKey, today: DateKey): string {
   return formatDay(key);
 }
 
+/** 3000 -> "$30", 3050 -> "$30.50", 125000 -> "$1,250" (the same grouping as the other price formatters). */
 export function formatMoney(cents: number | null | undefined): string {
   if (cents == null) return 'Ask';
-  const dollars = cents / 100;
-  return Number.isInteger(dollars) ? `$${dollars}` : `$${dollars.toFixed(2)}`;
+  const sign = cents < 0 ? '-' : '';
+  const abs = Math.round(Math.abs(cents));
+  const whole = String(Math.floor(abs / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const rest = abs % 100;
+  return `${sign}$${whole}${rest ? `.${String(rest).padStart(2, '0')}` : ''}`;
 }
 
 // ---- grouping -------------------------------------------------------------

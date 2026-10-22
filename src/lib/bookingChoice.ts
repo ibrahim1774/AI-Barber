@@ -96,7 +96,9 @@ export function syncOwnLink(prev: SiteRecord, next: SiteRecord): SiteRecord {
 /** "booksy.com/fade-lab": no scheme, www, query or trailing slash, kept short. */
 export function shortLink(url: string): string {
   const s = url.trim().replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/[?#].*$/, '').replace(/\/+$/, '');
-  return s.length > 34 ? `${s.slice(0, 33)}…` : s;
+  // By code points, so an emoji is never cut in half.
+  const chars = Array.from(s);
+  return chars.length > 34 ? `${chars.slice(0, 33).join('')}…` : s;
 }
 
 export type LinkContext = {
