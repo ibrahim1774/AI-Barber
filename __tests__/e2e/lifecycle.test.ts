@@ -279,3 +279,38 @@ describe('app killed between steps', () => {
     expect(w.m.entitlements.getEntitlements()).toMatchObject({ known: true, bookings: true });
   });
 });
+
+describe('the own Book link after a restore', () => {
+  // BUG (flow-level proof of the bookLinkMatrix unit case): restore fills inputs.bookingUrl from the
+  // server copy; clearing the Book link deletes only ownBookingUrl, so publish puts Booksy back.
+  async function restoredThenCleared() {
+    // Published once from another phone, with the Booksy link.
+    w = await boot(server, { user: 'u1' });
+    await w.m.siteStore.saveSite(draft());
+    w.willBuy(P.websiteMonthly);
+    await publish(w);
+    w.unmount();
+    jest.resetModules();
+    wipeDisk();
+    // This phone: fresh install, signed in, Restore Purchases.
+    w = await boot(server, { user: 'u1' });
+    await w.superwallSync();
+    const restored = await w.restore();
+    expect(restored.site.inputs.bookingUrl).toBe(BOOKSY);
+    // The barber clears the Book link in the editor (commitRecord runs syncOwnLink, then saves).
+    const prev = (await w.site())!;
+    const next = w.m.bookingChoice.syncOwnLink(prev, { ...prev, data: { ...prev.data, bookingUrl: '' } });
+    await w.m.siteStore.saveSite({ ...next, updatedAt: Date.now() });
+    expect(await publish(w)).toMatchObject({ kind: 'live' });
+  }
+
+  it.failing('BUG: a Book link cleared after a restore stays cleared on the live site', async () => {
+    await restoredThenCleared();
+    expect(lastSent().bookingUrl).toBeFalsy();
+  });
+
+  it('observed: the cleared Booksy link is published again', async () => {
+    await restoredThenCleared();
+    expect(lastSent().bookingUrl).toBe(BOOKSY);
+  });
+});

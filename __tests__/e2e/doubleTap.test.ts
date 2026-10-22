@@ -97,6 +97,19 @@ describe('upgrade buttons', () => {
     expect(register).toHaveBeenCalledTimes(1);
   });
 
+  it('observed: the double press supersedes the first placement, which reports a decline and an "Upgrade" error alert', async () => {
+    await liveSite();
+    const track = jest.spyOn(require('@/lib/analytics'), 'track');
+    w.sw.register = jest.fn(() => new Promise<void>(() => {}));
+    const up = await w.probe(() => w.m.tierAccess.useUpgrade('bookings_upgrade'));
+    await w.act(async () => {
+      void up.get().run();
+      void up.get().run();
+    });
+    expect(track).toHaveBeenCalledWith('upgrade_result', { placement: 'bookings_upgrade', result: 'declined' });
+    expect((Alert.alert as jest.Mock).mock.calls.some((c) => c[0] === 'Upgrade')).toBe(true);
+  });
+
   it('a second press after the re-render is ignored while the paywall is up', async () => {
     await liveSite();
     const register = jest.fn(() => new Promise<void>(() => {}));
