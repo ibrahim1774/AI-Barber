@@ -263,28 +263,21 @@ describe('the plan (GET /api/shop/plan) and the tier gate', () => {
     expect(b.get().status).toBe('error');
   });
 
-  // BUG: ownerApi.call returns null for a 200 whose body isn't JSON (a captive-portal / proxy page);
-  // useTierAccess stores null as "no plan yet" and stays 'loading' with nothing to retry.
-  it.failing('BUG: a 200 HTML page for the plan shows the error card, not an endless spinner', async () => {
+  // Fixed (bug 4): a 200 whose body isn't JSON was stored as "no plan yet" and the tab stayed 'loading'.
+  it('a 200 HTML page for the plan shows the error card (not an endless spinner); Retry recovers', async () => {
     await superwallUnknown();
     server.fail('/api/shop/plan', { kind: 'html', status: 200 });
     const b = await w.probe(() => w.m.tierAccess.useTierAccess('bookings'));
     await b.flush();
     await b.flush();
     expect(b.get().status).toBe('error');
+    await w.act(async () => b.get().retry());
+    await b.flush();
+    expect(b.get()).toMatchObject({ status: 'ready', entitled: true });
   });
 
-  it('observed: a 200 HTML plan leaves the tab loading forever', async () => {
-    await superwallUnknown();
-    server.fail('/api/shop/plan', { kind: 'html', status: 200 });
-    const b = await w.probe(() => w.m.tierAccess.useTierAccess('bookings'));
-    for (let i = 0; i < 5; i++) await b.flush();
-    expect(b.get().status).toBe('loading');
-    expect(server.count('/api/shop/plan')).toBe(1); // no retry is ever scheduled
-  });
-
-  // BUG: a 200 JSON plan without `entitlements` crashes the Bookings / Store tab render.
-  it.failing('BUG: a plan of {} (Superwall unknown) does not crash the tab', async () => {
+  // Fixed (bug 2): a 200 JSON plan without `entitlements` crashed the Bookings / Store tab render.
+  it('a plan of {} (Superwall unknown) does not crash the tab: error, retryable', async () => {
     await superwallUnknown();
     server.fail('/api/shop/plan', { kind: 'json', status: 200, body: {} });
     const b = await w.probe(() => w.m.tierAccess.useTierAccess('bookings'));
@@ -293,7 +286,16 @@ describe('the plan (GET /api/shop/plan) and the tier gate', () => {
     expect(b.get().status).toBe('error');
   });
 
-  it.failing('BUG: a plan of {} after a lapse (Superwall INACTIVE) does not crash the tab', async () => {
+  it('a plan with wrong types is normalised (only true is true)', async () => {
+    await superwallUnknown();
+    server.fail('/api/shop/plan', { kind: 'json', status: 200, body: { tier: 'gold', entitlements: { hosting: 'yes', bookings: 1, store: true }, expiresAt: 5 } });
+    const s = await w.probe(() => w.m.tierAccess.useTierAccess('store'));
+    await s.flush();
+    expect(s.get()).toMatchObject({ status: 'ready', entitled: true, hosting: false });
+    expect(w.m.plan.getSharedPlan()).toMatchObject({ tier: null, expiresAt: null, entitlements: { hosting: false, bookings: false, store: true } });
+  });
+
+  it('a plan of {} after a lapse (Superwall INACTIVE) does not crash the tab', async () => {
     server.buy(P.bookingsMonthly);
     server.lapse();
     w = await boot(server, { user: 'u1' });

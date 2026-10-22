@@ -1,4 +1,4 @@
-import { call } from '@/lib/setup/ownerApi';
+import { call, OwnerApiError } from '@/lib/setup/ownerApi';
 
 export type Tier = 'website' | 'bookings' | 'store';
 
@@ -13,11 +13,39 @@ export type Plan = {
   revoked: boolean;
 };
 
-export const getPlan = (): Promise<Plan> => call<Plan>('GET', '/api/shop/plan');
+const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+
+/**
+ * The server's answer as a Plan, or null when it isn't one (no body, a page that isn't JSON, no
+ * `entitlements` object). Fields are coerced: only `true` counts as true, odd values become null.
+ */
+export function normalizePlan(raw: unknown): Plan | null {
+  if (!isObject(raw) || !isObject(raw.entitlements)) return null;
+  const e = raw.entitlements;
+  const str = (v: unknown) => (typeof v === 'string' ? v : null);
+  return {
+    linked: raw.linked === true,
+    tier: raw.tier === 'website' || raw.tier === 'bookings' || raw.tier === 'store' ? raw.tier : null,
+    entitlements: { hosting: e.hosting === true, bookings: e.bookings === true, store: e.store === true },
+    active: raw.active === true,
+    expiresAt: str(raw.expiresAt),
+    takenDownAt: str(raw.takenDownAt),
+    revoked: raw.revoked === true,
+  };
+}
+
+/** A malformed answer is an error (retryable, "unknown"), never a plan the tabs could crash on. */
+async function planCall(answer: Promise<unknown>): Promise<Plan> {
+  const plan = normalizePlan(await answer);
+  if (!plan) throw new OwnerApiError(200, 'bad-response', "Couldn't read your plan. Try again.");
+  return plan;
+}
+
+export const getPlan = (): Promise<Plan> => planCall(call<unknown>('GET', '/api/shop/plan'));
 
 /** Right after an upgrade purchase: the server verifies it with Apple and returns the plan. */
 export const refreshPlan = (transactionId: string | null): Promise<Plan> =>
-  call<Plan>('POST', '/api/shop/plan', { transactionId });
+  planCall(call<unknown>('POST', '/api/shop/plan', { transactionId }));
 
 /**
  * Asks the server to re-read the plan for this transaction, which also relinks a shop stuck on an older,
