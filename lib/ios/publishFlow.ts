@@ -231,21 +231,29 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
       force = true;
     } else {
       force = false;
-      let candidate: string;
-      try {
-        candidate = await chooseSlug(sd.shopName, tx.environment, deps.isTaken);
-      } catch (e) {
-        if ((e as Error)?.message === 'slug-exhausted') return { status: 503, body: { error: 'slug-exhausted' } };
-        throw e;
-      }
-      if (await deps.repo.bindSlug(otid, candidate)) {
-        slug = candidate;
-      } else {
-        // A concurrent request for this purchase bound first: publish onto its slug.
+      // Two attempts (e2e M10): when another purchase binds the same name at the same moment,
+      // the loser (still unbound) picks again inside this request (the taken name now shows as
+      // taken, so it gets a suffix) instead of answering 503 for the app to retry.
+      let bound: string | null = null;
+      for (let attempt = 0; attempt < 2 && !bound; attempt++) {
+        let candidate: string;
+        try {
+          candidate = await chooseSlug(sd.shopName, tx.environment, deps.isTaken);
+        } catch (e) {
+          if ((e as Error)?.message === 'slug-exhausted') return { status: 503, body: { error: 'slug-exhausted' } };
+          throw e;
+        }
+        if (await deps.repo.bindSlug(otid, candidate)) {
+          bound = candidate;
+          break;
+        }
+        // A concurrent request for THIS purchase bound first: publish onto its slug.
         const again = await deps.repo.get(otid);
-        if (!again?.site_slug) return { status: 503, body: { error: 'slug-bind-failed' } };
-        slug = again.site_slug;
+        if (again?.site_slug) bound = again.site_slug;
+        else console.warn(`[ios/publish] ${otid}: ${candidate} was bound by another purchase meanwhile${attempt === 0 ? '; choosing again' : ''}`);
       }
+      if (!bound) return { status: 503, body: { error: 'slug-bind-failed' } };
+      slug = bound;
     }
 
     // Compare-and-set on the stored copy (e2e I1): read it with its generation, decide, write

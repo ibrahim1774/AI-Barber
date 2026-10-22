@@ -93,19 +93,17 @@ describe('parallel publishes', () => {
     expect([...vercel.live.keys()]).toEqual(['fade-lab']);
   });
 
-  it('5 DIFFERENT purchases publishing the same shop name at once: never two purchases on one slug, nobody overwrites another\'s copy', async () => {
+  it('M10 (fixed): 5 DIFFERENT purchases publishing the same shop name at once all get 200 on their own slug (one internal re-pick), nobody overwrites another\'s copy', async () => {
     const buys = Array.from({ length: 5 }, () => w.apple.buy(PRODUCTS.websiteMonthly));
     const rs = await Promise.all(buys.map((b, i) => w.publish(b.transactionId, siteData({ area: `owner-${i}` }))));
-    const bound = buys.map((b) => w.row(b.otid)!.site_slug).filter(Boolean);
-    expect(new Set(bound).size).toBe(bound.length);
+    // Was: 1 x 200 and 4 x 503 slug-bind-failed (the app retried).
+    expect(rs.map((r) => r.status)).toEqual(Array(5).fill(200));
+    const bound = buys.map((b) => w.row(b.otid)!.site_slug);
+    expect(new Set(bound).size).toBe(5);
     rs.forEach((r, i) => {
-      if (r.status === 200) expect(pendingOf((r.body as any).siteId).siteData.area).toBe(`owner-${i}`);
-      else expect(r).toMatchObject({ status: 503 }); // a retry picks a suffixed slug
+      expect((r.body as any).siteId).toBe(bound[i]);
+      expect(pendingOf((r.body as any).siteId).siteData.area).toBe(`owner-${i}`);
     });
-    // The losers' retries all succeed with their own slugs.
-    const retried = await Promise.all(buys.map((b, i) => (rs[i].status === 200 ? rs[i] : w.publish(b.transactionId, siteData({ area: `owner-${i}` })))));
-    expect(retried.every((r) => r.status === 200)).toBe(true);
-    expect(new Set(retried.map((r) => (r.body as any).siteId)).size).toBe(5);
   });
 
   it('20 purchases with 20 different shops in parallel: 20 slugs, 20 deploys, each live page is its own copy', async () => {
