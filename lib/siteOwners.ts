@@ -145,6 +145,32 @@ export async function recordCheckoutOwnerIfFirst(
   return recordCheckoutOwner(s, input, store);
 }
 
+/**
+ * The webhook / sweeper did a site's first publish (the buyer's tab died): record the owner as the
+ * browser path would have, a pending claim by the checkout's email on the slug actually published
+ * (for /custom-15 pay-first, the details step's slug the placeholder moved to). Only for a
+ * site-checkout session (aibarber, subscription). Never replaces an owner. Best effort: logged.
+ */
+export async function recordServerFirstPublishOwner(
+  outcome: { ok: boolean; siteId: string; alreadyLive?: boolean; firstPublish?: boolean },
+  session: { id?: unknown; mode?: unknown; metadata?: { app?: unknown } | null; customer_details?: { email?: unknown } | null; customer_email?: unknown },
+  store: SiteOwnerStore,
+): Promise<SiteOwnerRow | null> {
+  if (!outcome.ok || outcome.alreadyLive || !outcome.firstPublish) return null;
+  if (session.mode !== 'subscription' || (session.metadata?.app != null && session.metadata.app !== 'aibarber')) return null;
+  try {
+    const row = await recordCheckoutOwner(outcome.siteId, {
+      checkoutEmail: session.customer_details?.email || session.customer_email || null,
+      sessionId: typeof session.id === 'string' ? session.id : null,
+    }, store);
+    if (row) console.log(`[SiteOwners] ${row.slug}: first published by the server; owner pending a confirmed sign-in by the checkout email`);
+    return row;
+  } catch (e: any) {
+    console.warn(`[SiteOwners] ${outcome.siteId}: recording the owner after a server publish failed (ignored):`, e?.message || e);
+    return null;
+  }
+}
+
 // ─── live store (service role) ───
 
 let sb: SupabaseClient | undefined;

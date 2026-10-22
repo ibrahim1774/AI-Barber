@@ -88,6 +88,12 @@ export interface PublishOutcome {
   deployedUrl?: string;
   /** Set when ok — true means it was already serving and nothing was deployed. */
   alreadyLive?: boolean;
+  /**
+   * Set when ok: this call made the site's FIRST publish (a non-forced deploy of a copy with no
+   * server stamp). The webhook and the sweeper record the owner then (the browser path would
+   * have). `siteId` is the slug actually published (a pay-first move's target).
+   */
+  firstPublish?: boolean;
   /** Set when !ok. */
   reason?: PublishFailure;
   error?: string;
@@ -531,7 +537,7 @@ export async function publishSite(
       ).catch((e) => console.warn(`[Publish] ${safe}: live, but storing the shop's site URL failed:`, e?.message || e));
     }
     console.log(`[Publish] ${safe}: LIVE at ${deploymentUrl}`);
-    return { ok: true, deployedUrl: deploymentUrl, alreadyLive: false, siteId: safe };
+    return { ok: true, deployedUrl: deploymentUrl, alreadyLive: false, siteId: safe, firstPublish: !opts.force && !pending.deployedUrl };
   } catch (e: any) {
     console.error(`[Publish] ${safe}: deploy failed:`, e?.message || e);
     return { ok: false, reason: 'deploy-failed', siteId: safe, error: e?.message || String(e) };

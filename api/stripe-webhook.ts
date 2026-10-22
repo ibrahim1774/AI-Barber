@@ -5,7 +5,7 @@ import { getPlanContentMeta } from '../lib/pixelMeta.js';
 import { pushOrderToTripleWhale } from './_twOrder.js';
 import { waitUntil } from '@vercel/functions';
 import { publishSite, readPendingSite } from '../lib/publishSite.js';
-import { recordCheckoutOwnerIfFirst, supabaseSiteOwners } from '../lib/siteOwners.js';
+import { recordCheckoutOwnerIfFirst, recordServerFirstPublishOwner, supabaseSiteOwners } from '../lib/siteOwners.js';
 import { vercelProjectExists } from '../lib/ios/slug.js';
 
 // Stripe webhook -> Meta CAPI Purchase. The browser pixel + client CAPI
@@ -245,6 +245,9 @@ export default async function handler(req: any, res: any) {
                 `[Stripe Webhook] Publish ${outcome.alreadyLive ? 'already-live' : 'deployed'}: ${outcome.deployedUrl}`,
               );
             }
+            // The server made the first publish (the tab died): record the owner as the browser
+            // path would have, on the slug actually published (a pay-first move's target).
+            return recordServerFirstPublishOwner(outcome, session, supabaseSiteOwners());
           })
           .catch((e: any) => {
             console.error('[Stripe Webhook] Publish threw:', e?.message || e);
