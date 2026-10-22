@@ -26,3 +26,21 @@ describe('paymentRefundedCents', () => {
     expect(await paymentRefundedCents({ stripe_account_id: null } as any, 'pi_1')).toBe(0);
   });
 });
+
+describe('stripeRefundedTotal (fix 13 follow-up)', () => {
+  it('sums succeeded / pending refunds on the payment intent across pages; failed and canceled ones do not count', async () => {
+    const { stripeRefundedTotal } = await import('../lib/bookings/payments.js');
+    const pages = [
+      { data: [{ id: 're_1', amount: 1000, status: 'succeeded' }, { id: 're_2', amount: 500, status: 'failed' }], has_more: true },
+      { data: [{ id: 're_3', amount: 300, status: 'pending' }, { id: 're_4', amount: 200, status: 'canceled' }], has_more: false },
+    ];
+    const urls: string[] = [];
+    const f = vi.fn(async (url: string) => { urls.push(url); return { ok: true, status: 200, json: async () => pages[urls.length - 1] }; });
+    expect(await stripeRefundedTotal(shop, 'pi_1', { fetch: f as any })).toBe(1300);
+    expect(urls).toEqual([
+      'https://api.stripe.com/v1/refunds?payment_intent=pi_1&limit=100',
+      'https://api.stripe.com/v1/refunds?payment_intent=pi_1&limit=100&starting_after=re_2',
+    ]);
+    await expect(stripeRefundedTotal(shop, 'pi_1', { fetch: reply(400, { error: {} }) as any })).rejects.toThrow();
+  });
+});

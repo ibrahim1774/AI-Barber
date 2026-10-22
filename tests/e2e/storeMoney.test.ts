@@ -30,7 +30,7 @@ function cardOrder(over: Record<string, unknown> = {}) {
   }, m.deps);
 }
 const sessionReqs = () => stripe.requests.filter((r) => r.method === 'POST' && r.path === '/checkout/sessions');
-const refundReqs = () => stripe.requests.filter((r) => r.path === '/refunds');
+const refundReqs = () => stripe.requests.filter((r) => r.path === '/refunds' && r.method === 'POST');
 async function paidOrder(over: Record<string, unknown> = {}) {
   const r = await cardOrder(over);
   expect(r.status).toBe(201);
@@ -573,5 +573,46 @@ describe('review fix 13: a Stripe 5xx on an owner refund', () => {
     expect(keys).toEqual([`refund-order-${id}-3500-3500-0`, `refund-order-${id}-3500-3500-0-a1`]);
     expect(stripe.charges.get(pi)!.refunded).toBe(3500);
     expect(m.order(id)).toMatchObject({ amount_refunded_cents: 3500, status: 'cancelled' });
+  });
+
+  it('a 500 that ACTUALLY refunded: before the new-suffix retry, Stripe\'s refunds list shows it done, so nothing is refunded twice', async () => {
+    const { id } = await paidOrder();
+    const pi = m.order(id).stripe_payment_intent_id!;
+    stripe.failNext.push({ match: (q) => q.path === '/refunds' && q.method === 'POST', status: 500, afterProcess: true });
+    await refundOwnerOrder(AUTH, id, {}, m.deps);
+    expect(stripe.charges.get(pi)!.refunded).toBe(3500); // Stripe refunded despite the 500
+    expect(m.order(id).amount_refunded_cents).toBe(0);
+    m.setNow(new Date(Date.parse('2026-11-02T12:00:00Z') + 600_000).toISOString());
+    await retryPendingOrderRefunds(m.deps);
+    expect(stripe.requests.filter((q) => q.path === '/refunds' && q.method === 'POST')).toHaveLength(1); // no second refund call
+    expect(stripe.requests.some((q) => q.path === '/refunds' && q.method === 'GET' && q.params.payment_intent === pi)).toBe(true);
+    expect(stripe.charges.get(pi)!.refunded).toBe(3500);
+    expect(m.order(id)).toMatchObject({ amount_refunded_cents: 3500, status: 'cancelled', payment_status: 'refunded' });
+  });
+
+  it('a 500 that refunded PART: only the rest is sent, under a key for that remaining amount', async () => {
+    const { id } = await paidOrder();
+    const pi = m.order(id).stripe_payment_intent_id!;
+    stripe.failNext.push({ match: (q) => q.path === '/refunds' && q.method === 'POST', status: 500 });
+    await refundOwnerOrder(AUTH, id, {}, m.deps);
+    dashboardRefund(pi, 1000); // a refund Stripe made that our books don't show yet
+    m.setNow(new Date(Date.parse('2026-11-02T12:00:00Z') + 600_000).toISOString());
+    await retryPendingOrderRefunds(m.deps);
+    const posts = stripe.requests.filter((q) => q.path === '/refunds' && q.method === 'POST');
+    expect(posts.map((q) => [q.idempotencyKey, q.params.amount])).toEqual([[`refund-order-${id}-3500-3500-0`, '3500'], [`refund-order-${id}-3500-2500-1000`, '2500']]);
+    expect(stripe.charges.get(pi)!.refunded).toBe(3500);
+    expect(m.order(id)).toMatchObject({ amount_refunded_cents: 3500, status: 'cancelled' });
+  });
+
+  it('when the refunds list can\'t be read, the new-suffix retry is skipped this run (the row stays owed)', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { id } = await paidOrder();
+    stripe.failNext.push({ match: (q) => q.path === '/refunds' && q.method === 'POST', status: 500 });
+    await refundOwnerOrder(AUTH, id, {}, m.deps);
+    stripe.failNext.push({ match: (q) => q.path === '/refunds' && q.method === 'GET', status: 503 });
+    m.setNow(new Date(Date.parse('2026-11-02T12:00:00Z') + 600_000).toISOString());
+    expect(await retryPendingOrderRefunds(m.deps)).toMatchObject({ failed: 1, refunded: 0 });
+    expect(stripe.requests.filter((q) => q.path === '/refunds' && q.method === 'POST')).toHaveLength(1);
+    expect(m.order(id)).toMatchObject({ amount_refunded_cents: 0, refund_due_cents: 3500 });
   });
 });

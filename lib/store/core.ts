@@ -5,7 +5,7 @@ import { isObj, isUuid, iso, text, type FlowResult } from '../bookings/core.js';
 import { MANUAL_METHODS } from '../bookings/repo.js';
 import { entitlementActive } from '../ios/lapse.js';
 import { orderRefundKey, type CheckoutCloseResult, type NotifyOrder, type StorePayments } from './deps.js';
-import { REFUND_5XX_EVENT, isStripe5xx, withRefundAttempt } from '../bookings/payments.js';
+import { REFUND_5XX_EVENT, alreadyRefundedBeforeRetry, isStripe5xx, withRefundAttempt } from '../bookings/payments.js';
 import type { OrderGuard, StoreRepo } from './repo.js';
 import type { Fulfilment, OrderItemRow, OrderRow, ProductRow, ShippingAddress, ShopStoreRow, StoreNotifyEvent } from './types.js';
 
@@ -293,7 +293,7 @@ export async function safeLog(deps: { repo: Pick<StoreRepo, 'logEvent'> }, shopI
 // ---------------------------------------------------------------------------
 export interface RefundDeps {
   repo: StoreRepo;
-  payments: Pick<StorePayments, 'refundOrder'>;
+  payments: Pick<StorePayments, 'refundOrder' | 'refundedOnStripe'>;
   now(): number;
   notify?: NotifyOrder;
 }
@@ -315,16 +315,33 @@ export async function refundOrderOwed(
   logFailure: boolean,
 ): Promise<{ refunded: number; row: OrderRow; failed: boolean }> {
   let refunded = 0;
+  let failed = false;
   // Order + target + amount + the refunded total it was computed from (stored state only): the
   // same attempt (a double tap, a lost response, the retry sweep) always sends the same key.
-  const baseKey = orderRefundKey(row.id, row.refund_due_cents, amount, row.amount_refunded_cents);
+  let baseKey = orderRefundKey(row.id, row.refund_due_cents, amount, row.amount_refunded_cents);
   // Review fix 13: after a definite Stripe 5xx on this attempt, a new suffix (Stripe replays a
   // saved 500 for the same key for 24 h).
-  const attempt = deps.repo.refundAttempts ? await deps.repo.refundAttempts(baseKey).catch(() => 0) : 0;
-  const key = withRefundAttempt(baseKey, attempt);
+  let attempt = deps.repo.refundAttempts ? await deps.repo.refundAttempts(baseKey).catch(() => 0) : 0;
+  let send = amount;
   try {
-    const r = await deps.payments.refundOrder(shop, row, amount, { idempotencyKey: key });
-    refunded = Math.max(0, Math.min(amount, Math.floor(Number(r?.refundedCents) || 0)));
+    if (attempt > 0) {
+      // A new key could refund twice if the 5xx attempt actually refunded: count what Stripe
+      // already refunded first, and send (under a key for it) only the rest.
+      const pi = row.stripe_payment_intent_id;
+      const done = await alreadyRefundedBeforeRetry(
+        deps.payments.refundedOnStripe && pi ? () => deps.payments.refundedOnStripe!(shop, pi) : undefined, row.amount_refunded_cents, amount);
+      if (done > 0) {
+        console.warn(`[store] order ${row.id}: ${done} already refunded at Stripe (the failed attempt landed); not refunding it again`);
+        refunded = done;
+        send = amount - done;
+        baseKey = orderRefundKey(row.id, row.refund_due_cents, send, row.amount_refunded_cents + done);
+        attempt = deps.repo.refundAttempts ? await deps.repo.refundAttempts(baseKey).catch(() => 0) : 0;
+      }
+    }
+    if (send > 0) {
+      const r = await deps.payments.refundOrder(shop, { ...row, amount_refunded_cents: row.amount_refunded_cents + refunded }, send, { idempotencyKey: withRefundAttempt(baseKey, attempt) });
+      refunded += Math.max(0, Math.min(send, Math.floor(Number(r?.refundedCents) || 0)));
+    }
   } catch (e: any) {
     console.error(`[store] refund failed for order ${row.id} (left owed for retry):`, e?.message || e);
     if (isStripe5xx(e)) await safeLog(deps, shop.id, REFUND_5XX_EVENT, { key: baseKey, attempt, orderId: row.id });
@@ -333,7 +350,9 @@ export async function refundOrderOwed(
         orderId: row.id, amountCents: amount, dueCents: row.refund_due_cents, error: String(e?.message || e),
       });
     }
-    return { refunded: 0, row, failed: true };
+    // Found already refunded at Stripe and the rest failed: book what is done; the rest stays owed.
+    if (refunded <= 0) return { refunded: 0, row, failed: true };
+    failed = true;
   }
   if (refunded <= 0) return { refunded: 0, row, failed: false };
 
@@ -365,7 +384,7 @@ export async function refundOrderOwed(
       console.error(`[store] cancelling refunded order ${row.id} failed:`, e?.message || e);
     }
   }
-  return { refunded, row, failed: false };
+  return { refunded, row, failed };
 }
 
 export const ORDER_REFUND_RETRY_AFTER_MIN = 2;

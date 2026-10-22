@@ -106,8 +106,10 @@ export async function handleStripe(url: URL, init: { method: string; headers: Re
   if (fi >= 0) {
     const f = stripe.failNext.splice(fi, 1)[0];
     if (f.afterProcess) {
-      // Stripe did the work; the response never arrived (timeout after the request was accepted).
+      // Stripe did the work; the response never arrived (timeout after the request was accepted),
+      // or (with a status) Stripe answered an error anyway (a 500 that actually refunded).
       await route(url, init, req, path, params);
+      if (f.status) return json(f.status, f.body ?? { error: { message: 'fake failure', code: 'api_error' } });
       throw new Error('The operation was aborted due to timeout');
     }
     if (f.network) throw new Error('fake stripe: network error');
@@ -165,6 +167,15 @@ async function route(url: URL, init: { method: string }, req: StripeRequest, pat
   if (init.method === 'GET' && get) {
     const s = stripe.sessions.get(decodeURIComponent(get[1]));
     return s ? json(200, s) : error(404, 'resource_missing');
+  }
+
+  if (init.method === 'GET' && path === '/refunds') {
+    // Refunds on a payment intent (one item per amount refunded so far, dashboard ones included).
+    const c = params.payment_intent ? stripe.charges.get(params.payment_intent) : undefined;
+    const data = c && c.account === req.account && c.refunded > 0
+      ? [{ id: `re_list_${params.payment_intent}`, object: 'refund', amount: c.refunded, payment_intent: params.payment_intent, status: 'succeeded' }]
+      : [];
+    return json(200, { object: 'list', data, has_more: false });
   }
 
   if (init.method === 'GET' && path === '/charges') {

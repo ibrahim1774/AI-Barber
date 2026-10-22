@@ -5,7 +5,7 @@ import { DateTime, IANAZone } from 'luxon';
 import { freeSlotsAny, type AnySlot, type MemberSchedule } from './slots.js';
 import { depositCents, refundOnCancel } from './money.js';
 import { refundKey, type Notify, type Payments } from './deps.js';
-import { REFUND_5XX_EVENT, isStripe5xx, withRefundAttempt } from './payments.js';
+import { REFUND_5XX_EVENT, alreadyRefundedBeforeRetry, isStripe5xx, withRefundAttempt } from './payments.js';
 import { entitlementActive } from '../ios/lapse.js';
 import {
   MANUAL_METHODS,
@@ -533,16 +533,36 @@ async function refundOwed(
   logEvent: boolean,
 ): Promise<{ refunded: number; row: AppointmentRow; failed: boolean }> {
   let refunded = 0;
-  const baseKey = refundKey.cancel(row.id, amount, row.amount_refunded_cents);
-  const attempt = deps.repo.refundAttempts ? await deps.repo.refundAttempts(baseKey).catch(() => 0) : 0;
+  let failed = false;
+  let baseKey = refundKey.cancel(row.id, amount, row.amount_refunded_cents);
+  let attempt = deps.repo.refundAttempts ? await deps.repo.refundAttempts(baseKey).catch(() => 0) : 0;
+  let send = amount;
   try {
-    const r = await deps.payments.refundAppointment(shop, row, amount, { idempotencyKey: withRefundAttempt(baseKey, attempt) });
-    refunded = Math.max(0, Math.min(amount, Math.floor(Number(r?.refundedCents) || 0)));
+    if (attempt > 0) {
+      // A new key suffix could refund twice if the 5xx attempt actually refunded: count what
+      // Stripe already refunded first, and send (under a key for it) only the rest.
+      const pi = row.stripe_payment_intent_id;
+      const done = await alreadyRefundedBeforeRetry(
+        deps.payments.refundedOnStripe && pi ? () => deps.payments.refundedOnStripe!(shop, pi) : undefined, row.amount_refunded_cents, amount);
+      if (done > 0) {
+        console.warn(`[bookings] appointment ${row.id}: ${done} already refunded at Stripe (the failed attempt landed); not refunding it again`);
+        refunded = done;
+        send = amount - done;
+        baseKey = refundKey.cancel(row.id, send, row.amount_refunded_cents + done);
+        attempt = deps.repo.refundAttempts ? await deps.repo.refundAttempts(baseKey).catch(() => 0) : 0;
+      }
+    }
+    if (send > 0) {
+      const r = await deps.payments.refundAppointment(shop, { ...row, amount_refunded_cents: row.amount_refunded_cents + refunded }, send, { idempotencyKey: withRefundAttempt(baseKey, attempt) });
+      refunded += Math.max(0, Math.min(send, Math.floor(Number(r?.refundedCents) || 0)));
+    }
   } catch (e: any) {
     console.error(`[bookings] refund failed for appointment ${row.id} (left pending for retry):`, e?.message || e);
     if (isStripe5xx(e)) await safeLog(deps, shop.id, REFUND_5XX_EVENT, { key: baseKey, attempt, appointmentId: row.id });
     if (logEvent) await safeLog(deps, shop.id, 'refund_failed', { appointmentId: row.id, amountCents: amount, ...ctx, error: String(e?.message || e) });
-    return { refunded: 0, row, failed: true };
+    // Found already refunded at Stripe and the rest failed: book what is done; the rest stays owed.
+    if (refunded <= 0) return { refunded: 0, row, failed: true };
+    failed = true;
   }
   if (refunded > 0) {
     // S2's charge.refunded webhook writes Stripe's cumulative total under the same guard, so
@@ -558,7 +578,7 @@ async function refundOwed(
       console.error(`[bookings] refund bookkeeping failed for appointment ${row.id}:`, e?.message || e);
     }
   }
-  return { refunded, row, failed: false };
+  return { refunded, row, failed };
 }
 
 // ---------------------------------------------------------------------------
@@ -571,7 +591,7 @@ export const REFUND_RETRY_BATCH = 25;
 
 export interface RefundSweepDeps {
   repo: BookingRepo;
-  payments: Pick<Payments, 'refundAppointment'>;
+  payments: Pick<Payments, 'refundAppointment'> & Partial<Pick<Payments, 'refundedOnStripe'>>;
 }
 
 /**

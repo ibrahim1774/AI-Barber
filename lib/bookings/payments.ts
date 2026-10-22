@@ -230,6 +230,45 @@ export const REFUND_5XX_EVENT = 'refund_5xx';
 /** A definite Stripe 5xx answer (not a timeout, network error or 4xx). */
 export const isStripe5xx = (e: unknown): boolean => e instanceof StripeApiError && e.status >= 500 && e.status < 600;
 
+/**
+ * Cents already refunded on a payment intent, from Stripe's refunds list (succeeded or still
+ * pending). Asked before a refund retry under a NEW key suffix (fix 13 follow-up): a Stripe 500
+ * that actually refunded must count as done, so the new key can never refund twice. Throws on
+ * any error (the caller then skips the retry this run).
+ */
+export async function stripeRefundedTotal(shop: PayShop, paymentIntentId: string, opts: StripeOpts = {}): Promise<number> {
+  if (!shop.stripe_account_id) throw new StripeApiError('shop has no connected account', 400, 'no-account');
+  let total = 0;
+  let after: string | null = null;
+  for (let page = 0; page < 10; page++) {
+    const list = await stripeRequest('GET', '/refunds', { payment_intent: paymentIntentId, limit: 100, ...(after ? { starting_after: after } : {}) }, {
+      account: shop.stripe_account_id, fetch: opts.fetch,
+    });
+    const data: any[] = Array.isArray(list?.data) ? list.data : [];
+    for (const r of data) {
+      if (['succeeded', 'pending', 'requires_action'].includes(r?.status)) total += Math.max(0, Math.floor(Number(r?.amount) || 0));
+    }
+    if (!list?.has_more || !data.length) return total;
+    after = data[data.length - 1].id;
+  }
+  throw new StripeApiError('refund list too long', 500, 'list-too-long');
+}
+
+/**
+ * Before a retry under a new key suffix: whatever Stripe already refunded beyond the stored total
+ * (the 5xx attempt that landed, or a dashboard refund) is booked as done, and only the rest is
+ * sent, under a key for that remaining amount. Returns the amount found already refunded (<= amount).
+ */
+export async function alreadyRefundedBeforeRetry(
+  refundedOnStripe: (() => Promise<number>) | undefined,
+  storedRefunded: number,
+  amount: number,
+): Promise<number> {
+  if (!refundedOnStripe) return 0;
+  const onStripe = await refundedOnStripe();
+  return Math.max(0, Math.min(amount, onStripe - storedRefunded));
+}
+
 export interface RefundOpts extends StripeOpts {
   /** Use a reason-scoped key from `refundKey` (e.g. refundKey.cancel(appt.id) for the cancel path).
    *  Default: per payment intent + already-refunded + amount (for manual partial refunds). */

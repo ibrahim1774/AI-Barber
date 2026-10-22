@@ -198,6 +198,22 @@ describe('cancel refunds: refund_due_cents and retryPendingRefunds', () => {
     expect(w.state.appointments[0]).toMatchObject({ amount_refunded_cents: 3000 });
   });
 
+  it('fix 13 follow-up: a 5xx that actually refunded is found in Stripe\'s refunds before the new-suffix retry; nothing is refunded twice', async () => {
+    const { StripeApiError } = await import('../../lib/bookings/payments.js');
+    const w = world({ shop: cardShop });
+    const a = await paidCardBooking(w);
+    let onStripe = 0;
+    w.payments.refundAppointment.mockImplementation(async (_s, _a, amount) => { onStripe += amount; throw new StripeApiError('api_error', 500); });
+    (w.deps.payments as any).refundedOnStripe = vi.fn(async () => onStripe);
+    await customerCancel(w, a.manage_token);
+    expect(onStripe).toBe(3000);
+    w.setNow('2026-11-02T12:05:00Z');
+    expect(await retryPendingRefunds(w.deps, Date.parse('2026-11-02T12:05:00Z'))).toMatchObject({ refunded: 1, failed: 0 });
+    expect(w.payments.refundAppointment).toHaveBeenCalledTimes(1);
+    expect((w.deps.payments as any).refundedOnStripe).toHaveBeenCalledWith(expect.anything(), 'pi_1');
+    expect(w.state.appointments[0]).toMatchObject({ amount_refunded_cents: 3000, payment_status: 'refunded' });
+  });
+
   it('no double refund when the first attempt went through at Stripe but the response was lost', async () => {
     const w = world({ shop: cardShop });
     const stripe = fakeStripe(w);
