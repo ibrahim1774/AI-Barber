@@ -579,10 +579,12 @@ export interface RefundSweepDeps {
 export async function retryPendingRefunds(
   deps: RefundSweepDeps,
   nowMs: number = Date.now(),
+  budget: SweepBudget = {},
 ): Promise<{ retried: number; refunded: number; failed: number; stuck: number }> {
   const out = { retried: 0, refunded: 0, failed: 0, stuck: 0 };
   const rows = await deps.repo.pendingRefunds(iso(nowMs - REFUND_RETRY_AFTER_MIN * MIN), REFUND_RETRY_BATCH);
   for (const row of rows) {
+    if (pastDeadline(budget)) break; // out of time (e2e I4): the rest wait for the next run
     try {
       const owed = row.refund_due_cents - row.amount_refunded_cents;
       if (owed <= 0 || row.status !== 'cancelled') continue;
@@ -619,49 +621,95 @@ export async function retryPendingRefunds(
 // ---------------------------------------------------------------------------
 /** A card hold older than this with nothing paid is expired (Checkout itself lasts 30 min). */
 export const CARD_HOLD_EXPIRY_MIN = 35;
+/** A hold whose Checkout is complete but whose payment was never recorded is alerted on after this. */
+export const CARD_HOLD_PAID_ALERT_MIN = 60;
+
+/**
+ * A shared wall-clock budget for the reminders cron's sweeps (e2e I4): a sweep stops starting
+ * rows once `deadline` has passed, so a slow Stripe can't push the run past maxDuration before
+ * the reminders start. Same shape as lib/store/core.ts SweepBudget.
+ */
+export interface SweepBudget { deadline?: number; clock?: () => number }
+const pastDeadline = (b: SweepBudget) => b.deadline != null && (b.clock ?? Date.now)() >= b.deadline;
+
+/** 'expired' | 'complete' | 'unknown', as lib/store/checkout.ts closeCheckoutSession answers. */
+export type HoldCheckoutState = 'expired' | 'complete' | 'unknown';
 
 export interface SweepDeps {
   repo: BookingRepo;
-  payments: Pick<Payments, 'expireCheckoutSession'>;
+  payments: Pick<Payments, 'expireCheckoutSession'> & Partial<Pick<Payments, 'closeCheckoutSession'>>;
   now(): number;
+}
+
+/** Ask Stripe to close the hold's session; never throws. Without closeCheckoutSession (older fakes), a refused expire is 'unknown'. */
+async function closeHoldCheckout(deps: SweepDeps, shop: ShopRow, sessionId: string): Promise<HoldCheckoutState> {
+  try {
+    if (deps.payments.closeCheckoutSession) return await deps.payments.closeCheckoutSession(shop, sessionId);
+    return (await deps.payments.expireCheckoutSession(shop, sessionId)) ? 'expired' : 'unknown';
+  } catch (e: any) {
+    console.error(`[bookings] closing checkout ${sessionId} failed:`, e?.message || e);
+    return 'unknown';
+  }
 }
 
 /**
  * Expire orphaned card holds: booked + card + awaiting + nothing paid, created more than
  * 35 minutes ago (e.g. the function died between the insert and Checkout, so no
- * checkout.session.expired webhook will ever come). Same fields as S2's expireHold
- * (cancelled_by 'customer', payment_status 'none'), under a compare-and-set so a payment
- * that lands mid-sweep is never overwritten. Never refunds and never notifies (the customer
- * was never confirmed). Exported for S2's reminders cron to call at merge.
+ * checkout.session.expired webhook will ever come).
+ *
+ * Stripe is asked FIRST (e2e I7, mirroring the store's expireStaleOrderHolds): a customer who
+ * paid on time while the completed webhook is still on its way must keep the slot. Only a
+ * session Stripe says is expired (now, or already) is cancelled; 'complete' is left to the
+ * webhook (alerted once after an hour); 'unknown' is left for the next run. A hold that never
+ * got a session is cancelled. Same fields as S2's expireHold (cancelled_by 'customer',
+ * payment_status 'none'), under a compare-and-set so a payment that lands mid-sweep is never
+ * overwritten. Never refunds and never notifies (the customer was never confirmed). Skipped
+ * holds are touched so the next run tries the others first. Stops at the shared budget (I4).
  */
-export async function expireStaleCardHolds(deps: SweepDeps, limit = 200): Promise<{ expired: number }> {
+export async function expireStaleCardHolds(
+  deps: SweepDeps,
+  limit = 200,
+  budget: SweepBudget = {},
+): Promise<{ expired: number; paid: number; unresolved: number }> {
   const nowMs = deps.now();
   const holds = await deps.repo.staleCardHolds(iso(nowMs - CARD_HOLD_EXPIRY_MIN * MIN), limit);
-  let expired = 0;
+  const out = { expired: 0, paid: 0, unresolved: 0 };
+  const guard = { status: 'booked', method: 'card', paymentStatusIn: ['awaiting'], paidCents: 0 } as const;
   for (const h of holds) {
+    if (pastDeadline(budget)) break; // out of time: the rest wait for the next run
     try {
-      const upd = await deps.repo.updateAppointment(
-        h.id,
-        { status: 'cancelled', cancelled_by: 'customer', cancelled_at: iso(nowMs), payment_status: 'none' },
-        { status: 'booked', method: 'card', paymentStatusIn: ['awaiting'], paidCents: 0 },
-      );
-      if (upd.ok === false) continue;
-      expired++;
-      if (upd.row.stripe_checkout_session_id) {
-        const shop = await deps.repo.shopById(upd.row.shop_id);
-        if (shop) {
-          try {
-            await deps.payments.expireCheckoutSession(shop, upd.row.stripe_checkout_session_id);
-          } catch (e: any) {
-            console.error(`[bookings] expiring checkout for ${upd.row.id} failed:`, e?.message || e);
+      if (h.stripe_checkout_session_id) {
+        const shop = await deps.repo.shopById(h.shop_id);
+        const state: HoldCheckoutState = shop ? await closeHoldCheckout(deps, shop, h.stripe_checkout_session_id) : 'unknown';
+        if (state !== 'expired') {
+          if (state === 'complete') {
+            out.paid++;
+            const alertAt = Date.parse(h.created_at ?? '') + CARD_HOLD_PAID_ALERT_MIN * MIN;
+            if (nowMs >= alertAt && Date.parse(h.updated_at ?? '') < alertAt) {
+              console.error(`[bookings] appointment ${h.id}: Checkout ${h.stripe_checkout_session_id} is complete but the payment was never recorded`);
+              await safeLog(deps, h.shop_id, 'hold_paid_unrecorded', { appointmentId: h.id, sessionId: h.stripe_checkout_session_id });
+            }
+          } else {
+            console.error(`[bookings] card hold ${h.id}: checkout session state unknown; left for the next sweep`);
+            out.unresolved++;
           }
+          // Rotate it behind the other holds (a miss means the webhook resolved it meanwhile).
+          await deps.repo.updateAppointment(h.id, { stripe_checkout_session_id: h.stripe_checkout_session_id }, { ...guard, paymentStatusIn: [...guard.paymentStatusIn] });
+          continue;
         }
       }
+      const upd = await deps.repo.updateAppointment(
+        h.id,
+        { status: 'cancelled', cancelled_by: 'customer', cancelled_at: iso(deps.now()), payment_status: 'none' },
+        { ...guard, paymentStatusIn: [...guard.paymentStatusIn] },
+      );
+      if (upd.ok === false) continue;
+      out.expired++;
     } catch (e: any) {
       console.error(`[bookings] expiring card hold ${h.id} failed:`, e?.message || e);
     }
   }
-  return { expired };
+  return out;
 }
 
 export { MIN, DAY };

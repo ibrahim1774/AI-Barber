@@ -392,7 +392,9 @@ export function supabaseBookingRepo(client?: SupabaseClient): BookingRepo {
     staleCardHolds: (createdBeforeIso, limit) =>
       many('staleCardHolds', db().from('ab_appointments').select(APPT_COLS)
         .eq('status', 'booked').eq('payment_method', 'card').eq('payment_status', 'awaiting').eq('amount_paid_cents', 0)
-        .lt('created_at', createdBeforeIso).order('created_at').limit(limit)),
+        // updated_at: a hold the sweep had to leave (Stripe: complete or unknown) is touched and
+        // rotates behind the others (e2e I7), like the store's order holds.
+        .lt('created_at', createdBeforeIso).order('updated_at').limit(limit)),
     pendingRefunds: (updatedBeforeIso, limit) =>
       many('pendingRefunds', db().from('ab_appointments').select(APPT_COLS)
         .eq('status', 'cancelled').eq('refund_pending', true).not('stripe_payment_intent_id', 'is', null)

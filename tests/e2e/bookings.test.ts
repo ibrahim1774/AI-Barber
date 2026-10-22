@@ -351,16 +351,19 @@ describe('booking card-hold sweep vs a customer who paid on time (webhook late)'
     id: 'cs_paid', payment_status: 'paid', amount_total: 3000, currency: 'usd', payment_intent: 'pi_paid', client_reference_id: null, metadata: {},
   } } };
 
-  it('setup: the sweep cancels the paid hold (Stripe said the session could not be expired) and the late webhook refunds the customer in full', async () => {
+  it('setup (was: cancelled, then refunded in full by the late webhook): the sweep leaves the hold; the late webhook books the payment, no refund', async () => {
     const id = paidOnTimeHold();
-    expect(await expireStaleCardHolds(b.deps)).toEqual({ expired: 1 });
-    expect(b.state.appointments.find((x) => x.id === id)).toMatchObject({ status: 'cancelled', payment_status: 'none' });
+    // Live payments answer 'complete' (closeCheckoutSession reads the session after the refused expire).
+    (b.deps.payments as any).closeCheckoutSession = vi.fn(async () => 'complete');
+    expect(await expireStaleCardHolds(b.deps)).toEqual({ expired: 0, paid: 1, unresolved: 0 });
+    expect(b.state.appointments.find((x) => x.id === id)).toMatchObject({ status: 'booked', payment_status: 'awaiting' });
     const refunds: { pi: string; amount: number; key: string }[] = [];
-    expect(await handleConnectEvent(completed as any, apptWebhook(refunds))).toBe('refunded:cancelled-before-payment');
-    expect(refunds).toEqual([{ pi: 'pi_paid', amount: 3000, key: 'refund-pac-pi_paid' }]);
+    expect(await handleConnectEvent(completed as any, apptWebhook(refunds))).not.toBe('refunded:cancelled-before-payment');
+    expect(b.state.appointments.find((x) => x.id === id)).toMatchObject({ status: 'booked', amount_paid_cents: 3000 });
+    expect(refunds).toEqual([]);
   });
 
-  it.fails('BUG: a customer who paid on time loses the booking (cancelled before Stripe is asked); the store sweep asks Stripe first', async () => {
+  it('I7 (fixed): a customer who paid on time keeps the booking (Stripe is asked first, like the store sweep)', async () => {
     const id = paidOnTimeHold();
     await expireStaleCardHolds(b.deps);
     expect(b.state.appointments.find((x) => x.id === id)!.status).toBe('booked');
@@ -438,7 +441,7 @@ describe('reminders cron', () => {
     expect(c.elapsed()).toBeLessThan(60_000);
   });
 
-  it.fails('BUG: with Stripe timing out (10 s), the booking sweeps ignore the shared budget and run past maxDuration (300 s) before reminders start', async () => {
+  it('I4 (fixed): with Stripe timing out (10 s), the booking sweeps stop at the shared budget and reminders start well before maxDuration (300 s)', async () => {
     const c = cronWorld({ stripeMs: 10_000, holds: 50, refunds: 25 });
     const res = httpRes();
     await remindersHandler(httpReq({ method: 'GET', headers: { authorization: 'Bearer e2e-cron' } }), res);

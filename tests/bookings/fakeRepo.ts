@@ -107,7 +107,8 @@ export function fakeRepo(state: State, nowFn: () => number = Date.now): BookingR
     },
     staleCardHolds: async (before, limit) =>
       clone(state.appointments.filter((a) => a.status === 'booked' && a.payment_method === 'card' && a.payment_status === 'awaiting'
-        && a.amount_paid_cents === 0 && Date.parse(a.created_at!) < Date.parse(before)).slice(0, limit)),
+        && a.amount_paid_cents === 0 && Date.parse(a.created_at!) < Date.parse(before))
+        .sort((a, b) => Date.parse(a.updated_at!) - Date.parse(b.updated_at!)).slice(0, limit)),
     pendingRefunds: async (before, limit) =>
       clone(state.appointments.filter((a) => a.status === 'cancelled' && a.refund_due_cents > a.amount_refunded_cents
         && a.refund_stuck_at == null && a.stripe_payment_intent_id != null && Date.parse(a.updated_at!) < Date.parse(before))

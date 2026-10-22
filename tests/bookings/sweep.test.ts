@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { expireStaleCardHolds, retryPendingRefunds } from '../../lib/bookings/core.js';
 import { createAppointment } from '../../lib/bookings/publicFlow.js';
 import { world } from './fakeRepo.js';
@@ -25,7 +25,7 @@ describe('expireStaleCardHolds (orphaned card holds)', () => {
     w.notified.length = 0;
 
     w.setNow('2026-11-02T12:36:00Z'); // the first two are 36 min old, the third 2 min
-    expect(await expireStaleCardHolds(w.deps)).toEqual({ expired: 2 });
+    expect(await expireStaleCardHolds(w.deps)).toEqual({ expired: 2, paid: 0, unresolved: 0 });
     for (const id of [old.id, orphan.id]) {
       expect(w.state.appointments.find((a) => a.id === id)).toMatchObject({
         status: 'cancelled', cancelled_by: 'customer', cancelled_at: '2026-11-02T12:36:00.000Z', payment_status: 'none', amount_refunded_cents: 0,
@@ -36,7 +36,7 @@ describe('expireStaleCardHolds (orphaned card holds)', () => {
     expect(w.payments.expireCheckoutSession).toHaveBeenCalledWith(expect.objectContaining({ id: w.ids.shopId }), `cs_${old.id}`);
     expect(w.payments.refundAppointment).not.toHaveBeenCalled();
     expect(w.notified).toEqual([]);
-    expect(await expireStaleCardHolds(w.deps)).toEqual({ expired: 0 }); // idempotent
+    expect(await expireStaleCardHolds(w.deps)).toEqual({ expired: 0, paid: 0, unresolved: 0 }); // idempotent
   });
 
   it('leaves paid card bookings and non-card bookings alone', async () => {
@@ -48,7 +48,7 @@ describe('expireStaleCardHolds (orphaned card holds)', () => {
       customer: { name: 'M', phone: '5550000009', email: 'm@example.com' }, pay: 'manual',
     }, w.deps);
     w.setNow('2026-11-03T12:00:00Z');
-    expect(await expireStaleCardHolds(w.deps)).toEqual({ expired: 0 });
+    expect(await expireStaleCardHolds(w.deps)).toEqual({ expired: 0, paid: 0, unresolved: 0 });
     expect(w.state.appointments.every((a) => a.status === 'booked')).toBe(true);
     expect(paid.id).toBeTruthy();
   });
@@ -62,9 +62,40 @@ describe('expireStaleCardHolds (orphaned card holds)', () => {
       return orig(id, patch, expect);
     };
     w.setNow('2026-11-02T13:00:00Z');
-    expect(await expireStaleCardHolds(w.deps)).toEqual({ expired: 0 });
+    expect(await expireStaleCardHolds(w.deps)).toMatchObject({ expired: 0 });
     expect(w.state.appointments[0]).toMatchObject({ status: 'booked', payment_status: 'paid' });
-    expect(w.payments.expireCheckoutSession).not.toHaveBeenCalled();
+    // Stripe is asked first now (e2e I7); the cancel is still compare-and-set.
+    expect(w.payments.expireCheckoutSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('I7: asks Stripe before cancelling: complete is left to the webhook (alerted once after an hour), unknown is left for the next run', async () => {
+    const w = world({ shop: cardShop });
+    const paid = await cardHold(w, '2026-11-03T15:00:00Z', '5550000001');
+    const open = await cardHold(w, '2026-11-03T16:00:00Z', '5550000002');
+    const expired = await cardHold(w, '2026-11-03T17:00:00Z', '5550000003');
+    const states: Record<string, 'complete' | 'unknown' | 'expired'> = { [`cs_${paid.id}`]: 'complete', [`cs_${open.id}`]: 'unknown', [`cs_${expired.id}`]: 'expired' };
+    (w.deps.payments as any).closeCheckoutSession = vi.fn(async (_s: unknown, sid: string) => states[sid]);
+    const logged: string[] = [];
+    const realLog = w.deps.repo.logEvent;
+    w.deps.repo.logEvent = async (shop, kind, payload) => { logged.push(kind); return realLog(shop, kind, payload); };
+    w.setNow('2026-11-02T12:40:00Z');
+    expect(await expireStaleCardHolds(w.deps)).toEqual({ expired: 1, paid: 1, unresolved: 1 });
+    const status = (id: string) => w.state.appointments.find((a) => a.id === id)!.status;
+    expect([status(paid.id), status(open.id), status(expired.id)]).toEqual(['booked', 'booked', 'cancelled']);
+    expect(logged).toEqual([]);
+    w.setNow('2026-11-02T13:05:00Z'); // past the hour: one alert for the paid-but-unrecorded hold
+    await expireStaleCardHolds(w.deps);
+    await expireStaleCardHolds(w.deps);
+    expect(logged).toEqual(['hold_paid_unrecorded']);
+  });
+
+  it('I4: stops starting holds once the shared budget is spent', async () => {
+    const w = world({ shop: cardShop });
+    for (let i = 0; i < 3; i++) await cardHold(w, `2026-11-03T1${5 + i}:00:00Z`, `555000000${i}`);
+    w.setNow('2026-11-02T12:40:00Z');
+    let t = 0;
+    (w.deps.payments as any).closeCheckoutSession = vi.fn(async () => { t += 10_000; return 'expired'; });
+    expect(await expireStaleCardHolds(w.deps, 50, { deadline: 15_000, clock: () => t })).toMatchObject({ expired: 2 });
   });
 });
 

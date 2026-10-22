@@ -14,8 +14,8 @@ import { liveStoreDeps } from '../../lib/store/live.js';
 // them. Whatever doesn't fit runs next time. Both sweeps are compare-and-set, so a run killed
 // mid-way leaves nothing half-done.
 const SWEEP_LIMIT = 50;
-// One shared wall-clock budget for all the sweeps (~60 s from the handler's start); the order
-// sweeps stop picking up new rows past it, and the reminders get whatever is left of theirs.
+// One shared wall-clock budget for all the sweeps (~60 s from the handler's start); every sweep
+// stops picking up new rows past it, and the reminders get whatever is left of theirs.
 const SWEEP_BUDGET_MS = 60_000;
 
 async function sweep(name: string, run: () => Promise<unknown>) {
@@ -33,8 +33,10 @@ export default async function handler(req: any, res: any) {
   if (!authorized(req)) return res.status(401).json({ error: 'Not authorized' });
   const started = Date.now();
   const budget = { deadline: started + SWEEP_BUDGET_MS };
-  const holds = await sweep('card-hold sweep', () => expireStaleCardHolds(liveDeps(), SWEEP_LIMIT));
-  const refunds = await sweep('refund retry', () => retryPendingRefunds(liveDeps()));
+  // Every sweep takes the shared budget (e2e I4): with Stripe timing out, the booking sweeps used
+  // to run past maxDuration before the reminders started.
+  const holds = await sweep('card-hold sweep', () => expireStaleCardHolds(liveDeps(), SWEEP_LIMIT, budget));
+  const refunds = await sweep('refund retry', () => retryPendingRefunds(liveDeps(), undefined, budget));
   // Store orders (Phase 3): orphaned card holds (50 per run) and owed owner refunds (25 per run).
   const orderHolds = await sweep('order-hold sweep', () => expireStaleOrderHolds(liveStoreDeps(), SWEEP_LIMIT, budget));
   const orderRefunds = await sweep('order refund retry', () => retryPendingOrderRefunds(liveStoreDeps(), undefined, budget));
