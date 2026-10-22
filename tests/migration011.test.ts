@@ -26,7 +26,7 @@ describe('011_site_subpages.sql', () => {
     const m = /site_base_url ~ '([^']+)'/.exec(code);
     expect(m).not.toBeNull();
     const re = new RegExp(m![1]);
-    for (const ok of [pickPublicBase([{ name: 'freshcuts.com', verified: true }], null), pickPublicBase(null, 'https://Fresh-Cuts-abc.vercel.app/x')]) {
+    for (const ok of [pickPublicBase([{ name: 'freshcuts.com', verified: true }], () => true), pickPublicBase([{ name: 'Fresh-Cuts-abc.vercel.app', verified: true }], () => false)]) {
       expect(re.test(ok!)).toBe(true);
     }
     for (const bad of ['http://x.com', 'https://x.com/path', 'https://x.com?q', 'javascript:x', 'https://']) expect(re.test(bad)).toBe(false);

@@ -25,7 +25,7 @@ vi.mock('@supabase/supabase-js', () => ({
 }));
 vi.mock('../../lib/siteSubpages.js', async (orig) => ({
   ...(await orig<object>()), findShopForSite,
-  liveSiteBaseDeps: { projectDomains: async () => [], updateShop: async () => {} },
+  liveSiteBaseDeps: { projectDomains: async () => [], domainServing: async () => false, updateShop: async () => {} },
 }));
 vi.mock('../../lib/ios/slug.js', async (orig) => ({ ...(await orig<object>()), vercelProjectExists }));
 vi.mock('../../lib/bookings/rateLimit.js', async (orig) => ({ ...(await orig<object>()), publicLimiter: { allow } }));

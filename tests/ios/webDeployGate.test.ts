@@ -300,7 +300,11 @@ describe('gatedWebDeploy site versions', () => {
 describe('gatedWebDeploy and the site subpages', () => {
   const withShop = (shop: { id: string; slug: string } | null | Error) => {
     const d = deps();
-    const siteBase = { projectDomains: vi.fn(async () => []), updateShop: vi.fn(async () => {}) };
+    const siteBase = {
+      projectDomains: vi.fn(async () => [{ name: 'fade-studio-x7k2.vercel.app', verified: true }]),
+      domainServing: vi.fn(async () => true),
+      updateShop: vi.fn(async (_id: string, _f: any) => {}),
+    };
     return Object.assign(d, {
       findShop: vi.fn(async () => { if (shop instanceof Error) throw shop; return shop; }),
       siteBase,
@@ -313,6 +317,12 @@ describe('gatedWebDeploy and the site subpages', () => {
     expect(d.findShop).toHaveBeenCalledWith('fade-studio-x7k2');
     expect((d.deploy.mock.calls[0] as any)[0]).toMatchObject({ siteId: 'fade-studio-x7k2', subpages: { mode: 'full', shopSlug: 'fade' } });
     expect(d.siteBase.updateShop).toHaveBeenCalledWith('shop-1', expect.objectContaining({ site_base_url: 'https://fade-studio-x7k2.vercel.app' }));
+  });
+
+  it('a deploy without site data refreshes the base only and leaves the stored look alone', async () => {
+    const d = withShop({ id: 'shop-1', slug: 'fade' });
+    await gatedWebDeploy(body(), owner(), d);
+    expect(d.siteBase.updateShop).toHaveBeenCalledWith('shop-1', { site_base_url: 'https://fade-studio-x7k2.vercel.app' });
   });
 
   it('an app site without a shop deploys no rewrites', async () => {

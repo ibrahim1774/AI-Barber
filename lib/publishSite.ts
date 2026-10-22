@@ -314,7 +314,7 @@ export async function publishSite(
       // Customer-facing URLs (Stripe returns, emails) follow the site's domain from now on.
       // Best effort: the site is live; until this lands they keep the previous base.
       await refreshSiteBase(
-        { shopId: shop.id, projectName: projectName || safe, deployedUrl: deploymentUrl, siteData: sd, imageUrlMap },
+        { shopId: shop.id, projectName: projectName || safe, siteData: sd, imageUrlMap },
         opts.siteBase ?? liveSiteBaseDeps,
       ).catch((e) => console.warn(`[Publish] ${safe}: live, but storing the shop's site URL failed:`, e?.message || e));
     }

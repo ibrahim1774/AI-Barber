@@ -183,24 +183,28 @@ describe('withSubpageLinks', () => {
 });
 
 describe('pickPublicBase', () => {
-  it('prefers a verified custom domain that does not redirect', () => {
-    expect(pickPublicBase([
+  const serving = (names: string[]) => (n: string) => names.includes(n);
+  it('prefers a verified custom domain that does not redirect and whose DNS Vercel reports as correct', () => {
+    const domains = [
       { name: 'fresh-cuts.vercel.app', verified: true },
       { name: 'www.freshcuts.com', verified: true, redirect: 'freshcuts.com' },
       { name: 'freshcuts.com', verified: true },
-    ], 'https://fresh-cuts.vercel.app')).toBe('https://freshcuts.com');
+    ];
+    expect(pickPublicBase(domains, serving(['freshcuts.com']))).toBe('https://freshcuts.com');
+    // Verified (ownership) but DNS not pointed yet: not the base.
+    expect(pickPublicBase(domains, serving([]))).toBe('https://fresh-cuts.vercel.app');
   });
 
-  it('falls back to the deployed URL (origin only) when no custom domain is usable', () => {
-    expect(pickPublicBase([{ name: 'freshcuts.com', verified: false }, { name: 'x.vercel.app', verified: true }], 'https://fresh-cuts.vercel.app/'))
-      .toBe('https://fresh-cuts.vercel.app');
-    expect(pickPublicBase(null, 'https://fresh-cuts-abc.vercel.app')).toBe('https://fresh-cuts-abc.vercel.app');
+  it('falls back only to the project\'s own .vercel.app domain from Vercel\'s list, never a constructed one', () => {
+    expect(pickPublicBase([{ name: 'ada-pearl-phi.vercel.app', verified: true }, { name: 'freshcuts.com', verified: false }], serving(['freshcuts.com'])))
+      .toBe('https://ada-pearl-phi.vercel.app');
+    expect(pickPublicBase([], serving([]))).toBeNull();
+    expect(pickPublicBase(null, serving([]))).toBeNull();
+    expect(pickPublicBase([{ name: 'x.vercel.app', verified: true, redirect: 'y.com' }], serving([]))).toBeNull();
   });
 
-  it('never returns a non-https or malformed origin', () => {
-    expect(pickPublicBase([{ name: 'bad host/x', verified: true }], 'http://x.vercel.app')).toBeNull();
-    expect(pickPublicBase([], 'javascript:alert(1)')).toBeNull();
-    expect(pickPublicBase([], '')).toBeNull();
+  it('never returns a malformed host', () => {
+    expect(pickPublicBase([{ name: 'bad host/x', verified: true }, { name: 'a.vercel.app/x', verified: true }], () => true)).toBeNull();
   });
 });
 
@@ -220,30 +224,43 @@ describe('siteLookOf', () => {
 });
 
 describe('refreshSiteBase', () => {
-  it('stores the picked base and the look on the shop', async () => {
-    const update = vi.fn(async () => {});
-    const domains = vi.fn(async () => [{ name: 'freshcuts.com', verified: true }]);
-    const out = await refreshSiteBase(
-      { shopId: 's1', projectName: 'fresh-cuts', deployedUrl: 'https://fresh-cuts.vercel.app', siteData: { template: 'prime' } as any, imageUrlMap: {} },
-      { projectDomains: domains, updateShop: update },
-    );
-    expect(domains).toHaveBeenCalledWith('fresh-cuts');
-    expect(out).toBe('https://freshcuts.com');
-    expect(update).toHaveBeenCalledWith('s1', { site_base_url: 'https://freshcuts.com', site_look: expect.objectContaining({ template: 'prime' }) });
+  const deps = (over: Partial<Record<'projectDomains' | 'domainServing' | 'updateShop', any>> = {}) => ({
+    projectDomains: vi.fn(async (_p: string) => [{ name: 'fresh-cuts.vercel.app', verified: true }, { name: 'freshcuts.com', verified: true }]),
+    domainServing: vi.fn(async (n: string) => n === 'freshcuts.com'),
+    updateShop: vi.fn(async (_id: string, _f: any) => {}),
+    ...over,
   });
 
-  it('a failed domain lookup falls back to the deployed URL; no usable base leaves the shop untouched', async () => {
-    const update = vi.fn(async () => {});
-    await refreshSiteBase(
-      { shopId: 's1', projectName: 'p', deployedUrl: 'https://p.vercel.app', siteData: {} as any, imageUrlMap: {} },
-      { projectDomains: async () => { throw new Error('vercel down'); }, updateShop: update },
-    );
-    expect(update).toHaveBeenCalledWith('s1', expect.objectContaining({ site_base_url: 'https://p.vercel.app' }));
-    update.mockClear();
-    expect(await refreshSiteBase(
-      { shopId: 's1', projectName: 'p', deployedUrl: 'nope', siteData: {} as any, imageUrlMap: {} },
-      { projectDomains: async () => [], updateShop: update },
-    )).toBeNull();
-    expect(update).not.toHaveBeenCalled();
+  it('stores the picked base and the look on the shop', async () => {
+    const d = deps();
+    const out = await refreshSiteBase({ shopId: 's1', projectName: 'fresh-cuts', siteData: { template: 'prime' } as any, imageUrlMap: {} }, d);
+    expect(d.projectDomains).toHaveBeenCalledWith('fresh-cuts');
+    expect(d.domainServing).toHaveBeenCalledWith('freshcuts.com');
+    expect(d.domainServing).not.toHaveBeenCalledWith('fresh-cuts.vercel.app');
+    expect(out).toBe('https://freshcuts.com');
+    expect(d.updateShop).toHaveBeenCalledWith('s1', { site_base_url: 'https://freshcuts.com', site_look: expect.objectContaining({ template: 'prime' }) });
+  });
+
+  it('a domain whose DNS check fails is not used', async () => {
+    const d = deps({ domainServing: vi.fn(async () => { throw new Error('vercel down'); }) });
+    expect(await refreshSiteBase({ shopId: 's1', projectName: 'p', siteData: {} as any }, d)).toBe('https://fresh-cuts.vercel.app');
+  });
+
+  it('a failed domains lookup keeps the stored base (only the look is written)', async () => {
+    const d = deps({ projectDomains: vi.fn(async () => { throw new Error('vercel down'); }) });
+    expect(await refreshSiteBase({ shopId: 's1', projectName: 'p', siteData: { template: 'euphoria' } as any }, d)).toBeNull();
+    expect(d.updateShop).toHaveBeenCalledWith('s1', { site_look: expect.objectContaining({ template: 'euphoria' }) });
+  });
+
+  it('without site data the look is left alone (only the base is written)', async () => {
+    const d = deps();
+    await refreshSiteBase({ shopId: 's1', projectName: 'p', siteData: null }, d);
+    expect(d.updateShop).toHaveBeenCalledWith('s1', { site_base_url: 'https://freshcuts.com' });
+  });
+
+  it('nothing usable and no look: the shop is not touched', async () => {
+    const d = deps({ projectDomains: vi.fn(async () => []) });
+    expect(await refreshSiteBase({ shopId: 's1', projectName: 'p', siteData: null }, d)).toBeNull();
+    expect(d.updateShop).not.toHaveBeenCalled();
   });
 });

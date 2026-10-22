@@ -117,8 +117,8 @@ export async function gatedWebDeploy(
     await refreshSiteBase({
       shopId: shop.id,
       projectName: result.projectName || slug,
-      deployedUrl: result.deploymentUrl,
-      siteData: renderable(siteData) ? siteData : {},
+      // No (usable) site data: only the base is refreshed; the stored look stays.
+      siteData: renderable(siteData) ? siteData : null,
       imageUrlMap: isObj(deployInput.imageUrls) ? deployInput.imageUrls : {},
     }, deps.siteBase).catch((e: any) => console.warn(`[Deploy Site] ${slug}: deployed, but storing the shop's site URL failed:`, e?.message || e));
   }

@@ -18,6 +18,7 @@ import { isSiteBookLink, isSiteShopLink, SITE_CONFIG_PATH } from './render/subpa
 import { resolveAibTheme } from './render/luxe.js';
 import { resolvePrimeTheme } from './render/prime.js';
 import { resolveEuphoriaTheme } from './render/euphoria.js';
+import { isMissingSiteColumn } from './siteColumns.js';
 
 /** Where the proxied pages and APIs live. Never the request's host. */
 export const AIBARBER_ORIGIN = 'https://www.aibarber.org';
@@ -159,30 +160,23 @@ export interface ProjectDomain { name: string; verified?: boolean; redirect?: st
 
 const HOSTNAME = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i;
 
-/** An https origin (no path), or null. */
-export function httpsOrigin(u: unknown): string | null {
-  if (typeof u !== 'string' || !u.trim()) return null;
-  try {
-    const p = new URL(u.trim());
-    if (p.protocol !== 'https:' || !HOSTNAME.test(p.hostname) || p.port || p.username || p.password) return null;
-    return `https://${p.hostname.toLowerCase()}`;
-  } catch {
-    return null;
-  }
-}
-
 /**
- * The shop's public base: a verified custom domain on the site's project that doesn't redirect
- * elsewhere (shortest first), else the deployed URL the deploy resolved. Never a constructed
- * `{slug}.vercel.app` (short names can belong to strangers; see lib/deploySite.ts).
+ * The shop's public base, from the Vercel project's own domain list only:
+ * - a custom domain that is verified, doesn't redirect elsewhere and whose DNS Vercel reports
+ *   as correctly pointed (`serving`), shortest first;
+ * - else the project's own *.vercel.app production domain from that list.
+ * Never a constructed `{project}.vercel.app` (short names belong to strangers; see
+ * lib/deploySite.ts) and never the deploy's fallback URL. Null when nothing qualifies.
  */
-export function pickPublicBase(domains: ProjectDomain[] | null | undefined, deployedUrl: string | null | undefined): string | null {
-  const custom = (domains || [])
-    .filter((d) => d && typeof d.name === 'string' && d.verified === true && !d.redirect && !/\.vercel\.app$/i.test(d.name) && HOSTNAME.test(d.name))
+export function pickPublicBase(domains: ProjectDomain[] | null | undefined, serving: (name: string) => boolean): string | null {
+  const usable = (domains || [])
+    .filter((d) => d && typeof d.name === 'string' && d.verified === true && !d.redirect && HOSTNAME.test(d.name))
     .map((d) => d.name.toLowerCase())
-    .sort((a, b) => a.length - b.length || a.localeCompare(b));
-  if (custom[0]) return `https://${custom[0]}`;
-  return httpsOrigin(deployedUrl);
+    .sort((x, y) => x.length - y.length || x.localeCompare(y));
+  const custom = usable.find((n) => !n.endsWith('.vercel.app') && serving(n));
+  if (custom) return `https://${custom}`;
+  const own = usable.find((n) => n.endsWith('.vercel.app'));
+  return own ? `https://${own}` : null;
 }
 
 export interface SiteLook {
@@ -223,25 +217,46 @@ export function siteLookOf(sd: Pick<WebsiteData, 'template' | 'colorTheme'>, ima
 }
 
 export interface SiteBaseDeps {
-  /** The Vercel project's domains. Throws on an outage (the deployed URL is used then). */
+  /** The Vercel project's domains. Throws on an outage (the stored base is then kept). */
   projectDomains(projectName: string): Promise<ProjectDomain[]>;
-  updateShop(shopId: string, fields: { site_base_url: string; site_look: SiteLook }): Promise<void>;
+  /** Does Vercel report this custom domain's DNS as correctly pointed (config misconfigured === false)? Throws on an outage. */
+  domainServing(name: string): Promise<boolean>;
+  /** A partial update: only the fields given are written. */
+  updateShop(shopId: string, fields: { site_base_url?: string; site_look?: SiteLook }): Promise<void>;
 }
 
-/** After a deploy that included the pages: store the shop's public base and look. Returns the base, or null when none is usable. */
+/**
+ * After a deploy that included the pages: store the shop's public base and look.
+ * - A failed domains lookup keeps the stored base (only the look is written).
+ * - No site data (a web-editor deploy without it) leaves the stored look alone.
+ * Returns the base written, or null when the base was left as it was.
+ */
 export async function refreshSiteBase(
-  input: { shopId: string; projectName: string; deployedUrl: string; siteData: Pick<WebsiteData, 'template' | 'colorTheme'>; imageUrlMap?: Record<string, string> | null },
+  input: { shopId: string; projectName: string; siteData?: Pick<WebsiteData, 'template' | 'colorTheme'> | null; imageUrlMap?: Record<string, string> | null },
   deps: SiteBaseDeps,
 ): Promise<string | null> {
-  let domains: ProjectDomain[] | null = null;
+  const fields: { site_base_url?: string; site_look?: SiteLook } = {};
+  if (input.siteData) fields.site_look = siteLookOf(input.siteData, input.imageUrlMap);
+  let base: string | null = null;
   try {
-    domains = await deps.projectDomains(input.projectName);
+    const domains = await deps.projectDomains(input.projectName);
+    const serving = new Set<string>();
+    for (const d of domains || []) {
+      const name = typeof d?.name === 'string' ? d.name.toLowerCase() : '';
+      if (!name || name.endsWith('.vercel.app') || d.verified !== true || d.redirect) continue;
+      try {
+        if (await deps.domainServing(name)) serving.add(name);
+      } catch (e: any) {
+        console.warn(`[siteSubpages] ${input.projectName}: DNS check for ${name} failed; not using it:`, e?.message || e);
+      }
+    }
+    base = pickPublicBase(domains, (n) => serving.has(n));
   } catch (e: any) {
-    console.warn(`[siteSubpages] ${input.projectName}: domain lookup failed, using the deployed URL:`, e?.message || e);
+    console.warn(`[siteSubpages] ${input.projectName}: domain lookup failed; keeping the stored base:`, e?.message || e);
   }
-  const base = pickPublicBase(domains, input.deployedUrl);
-  if (!base) return null;
-  await deps.updateShop(input.shopId, { site_base_url: base, site_look: siteLookOf(input.siteData, input.imageUrlMap) });
+  if (base) fields.site_base_url = base;
+  if (!fields.site_base_url && !fields.site_look) return null;
+  await deps.updateShop(input.shopId, fields);
   return base;
 }
 
@@ -287,8 +302,30 @@ export const liveSiteBaseDeps: SiteBaseDeps = {
     const body = (await res.json()) as { domains?: ProjectDomain[] };
     return Array.isArray(body?.domains) ? body.domains : [];
   },
-  async updateShop(shopId, fields) {
-    const { error } = await db().from('ab_shops').update(fields).eq('id', shopId);
-    if (error) throw new Error(`ab_shops update failed: ${error.message}`);
+  async domainServing(name) {
+    const token = process.env.VERCEL_TOKEN;
+    if (!token) throw new Error('VERCEL_TOKEN is not set');
+    const res = await fetch(`https://api.vercel.com/v6/domains/${encodeURIComponent(name)}/config`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) throw new Error(`Vercel domain config ${res.status}`);
+    const body = (await res.json()) as { misconfigured?: boolean };
+    return body?.misconfigured === false;
   },
+  updateShop: (shopId, fields) => updateShopSite(db(), shopId, fields),
 };
+
+/**
+ * Write the 011 columns. Before migration 011 is applied the columns don't exist: the write is
+ * skipped (logged), so deploys never fail on it and the shop keeps today's aibarber.org URLs.
+ */
+export async function updateShopSite(client: SupabaseClient, shopId: string, fields: { site_base_url?: string; site_look?: SiteLook }): Promise<void> {
+  const { error } = await client.from('ab_shops').update(fields).eq('id', shopId);
+  if (!error) return;
+  if (isMissingSiteColumn(error)) {
+    console.warn(`[siteSubpages] ab_shops has no site columns yet (migration 011 not applied); skipping the site URL for ${shopId}`);
+    return;
+  }
+  throw new Error(`ab_shops update failed: ${error.message}`);
+}

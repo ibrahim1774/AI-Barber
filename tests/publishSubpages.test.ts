@@ -44,7 +44,11 @@ beforeEach(() => {
   process.env.GCS_CREDENTIALS = JSON.stringify({ project_id: 'p' });
 });
 
-const baseDeps = () => ({ projectDomains: vi.fn(async () => [{ name: 'freshcuts.com', verified: true }]), updateShop: vi.fn(async () => {}) });
+const baseDeps = () => ({
+  projectDomains: vi.fn(async () => [{ name: 'freshcuts.com', verified: true }, { name: 'fresh-cuts.vercel.app', verified: true }]),
+  domainServing: vi.fn(async () => true),
+  updateShop: vi.fn(async () => {}),
+});
 
 describe('publishSite with the site subpages', () => {
   it('a site with a shop deploys the rewrites, renders /book and /shop, and stores the shop base + look', async () => {
@@ -103,7 +107,7 @@ describe('publishSite with the site subpages', () => {
     await writePendingSite('fresh-cuts', pending(OLD));
     const out = await publishSite('fresh-cuts', {
       force: true, findShop: async () => ({ id: 'shop-1', slug: 'fresh' }),
-      siteBase: { projectDomains: async () => [], updateShop: async () => { throw new Error('db down'); } },
+      siteBase: { projectDomains: async () => [], domainServing: async () => true, updateShop: async () => { throw new Error('db down'); } },
     });
     expect(out.ok).toBe(true);
   });
