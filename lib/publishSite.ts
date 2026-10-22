@@ -76,13 +76,20 @@ export interface PublishOutcome {
   error?: string;
 }
 
+/**
+ * The canonical slug: the GCS key, the Vercel project name and every authorisation lookup.
+ * Idempotent (slugify(slugify(x)) === slugify(x)): dashes are trimmed again AFTER the cut at 50.
+ * Before, a 50-character cut could end on a dash, and slugifying that again dropped it, so
+ * `S + '-zzz'` was checked as `S-` but deployed to `S` (hotfix review, finding 1).
+ */
 export const slugify = (raw: string): string =>
   raw
     .toLowerCase()
     .replace(/[''`]/g, '')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
-    .substring(0, 50);
+    .substring(0, 50)
+    .replace(/-+$/, '');
 
 /** The GCS bucket holding pending-sites/ (and the admin history copies). */
 export function bucket() {

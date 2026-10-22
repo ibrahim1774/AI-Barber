@@ -5,26 +5,38 @@
 // Slugs are public (they are the site URL), so anyone could replace any customer's site.
 //
 // The target is always derived here, never taken from the body as is:
-// - slugify(body.siteId) is the requested slug.
+// - slugify(body.siteId) is the requested slug. slugify is idempotent, and `target` is used
+//   downstream exactly as returned (the gate refuses a non-canonical one).
 // - body.deployedUrl is only a hint: its *.vercel.app label is used when it is an
 //   app (iOS) slug that the caller owns (or the caller is the admin). An app site renamed
-//   on the web keeps its bound slug this way. A hint the caller does not own is ignored.
+//   on the web keeps its bound slug this way. A hint naming an app slug the caller does not
+//   own is refused (401/403); it never falls through to a web deploy on the shop-name slug.
 //
 // Proof, strongest first:
 // - Admin: Supabase bearer whose user is ADMIN_EMAIL (lib/admin/auth.ts). Any slug.
 // - App slug (ios_purchases.site_slug): only a Supabase bearer whose user is
 //   ios_purchases.user_id. A checkout session never counts for an app slug.
 // - Web slug:
-//   - a paid aibarber Stripe Checkout Session for this slug (the first publish after
-//     checkout, and the /recover replay), created within CHECKOUT_PROOF_MAX_AGE_MS; or
-//   - a valid Supabase bearer, unless another account's `sites` row already claims this
-//     slug and the caller's does not. NOTE: `sites` rows are user-writable under RLS, so this
-//     is "signed in", not proof of ownership. See the hotfix report for the options.
+//   - a paid, complete aibarber *subscription* Checkout Session for exactly this slug (the
+//     first publish after checkout, and the /recover replay), created within
+//     CHECKOUT_PROOF_MAX_AGE_MS; or
+//   - a valid Supabase bearer, where:
+//     - a `sites` row of another account claiming the clean URL or the stamped URL (and
+//       none of the caller's) refuses;
+//     - a stored copy stamped by the server (deployedUrl: the site is published) needs the
+//       caller's own `sites` row claiming it;
+//     - no stamp and an existing Vercel project: allowed (the old rule);
+//     - no stamp and no Vercel project (a brand-new site) needs checkout or the admin, except
+//       a rename: the caller is the only account claiming the deployedUrl hint, and that hint
+//       is an existing project.
+//   NOTE: `sites` rows are user-writable under RLS, so a claim is not proof of ownership.
+//   A server-only owner table replaces this (see the hotfix report).
 //
 // Every lookup fails closed (503): an outage must not turn into an unauthenticated deploy.
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { ADMIN_EMAIL } from './admin/auth.js';
-import { slugify } from './publishSite.js';
+import { readPendingSite, slugify } from './publishSite.js';
+import { vercelProjectExists } from './ios/slug.js';
 import { supabasePurchases, type PurchaseRow } from './ios/purchases.js';
 import { withTimeout } from './ios/timeout.js';
 
@@ -37,10 +49,15 @@ export interface DeployUser {
 }
 
 export interface CheckoutProof {
+  /** payment_status === 'paid'. */
   paid: boolean;
+  /** Session status ('complete', 'open', 'expired'); null when absent. */
+  status: string | null;
+  /** 'subscription' for every site checkout; 'payment' for a domain purchase. */
+  mode: string | null;
   /** metadata.siteId, else client_reference_id. */
   siteId: string | null;
-  /** metadata.app; null when absent (older sessions). */
+  /** metadata.app; must be 'aibarber'. */
   app: string | null;
   /** Unix seconds. */
   created: number;
@@ -53,8 +70,12 @@ export interface DeployAuthDeps {
   findBySlug(slug: string): Promise<PurchaseRow | null>;
   /** The Checkout Session, or null when Stripe does not know it. Throws on an outage. */
   checkoutSession(sessionId: string): Promise<CheckoutProof | null>;
-  /** User ids of `sites` rows whose deployed_url is https://{slug}.vercel.app. Throws on an outage. */
-  webClaimants(slug: string): Promise<string[]>;
+  /** User ids of `sites` rows whose deployed_url is one of these origins (with or without a trailing slash). Throws on an outage. */
+  webClaimants(urls: string[]): Promise<string[]>;
+  /** The server-written deployedUrl stamp on pending-sites/{slug}.json, or null. Throws on an outage. */
+  storedStamp(slug: string): Promise<string | null>;
+  /** Does a Vercel project with this name exist? Throws on an outage. */
+  projectExists(slug: string): Promise<boolean>;
   now(): number;
   lookupTimeoutMs?: number;
 }
@@ -92,7 +113,18 @@ export function vercelAppLabel(deployedUrl: unknown): string | null {
     const host = new URL(deployedUrl).hostname.toLowerCase();
     if (!host.endsWith(VERCEL_APP)) return null;
     const label = host.split('.')[0];
-    return label && /^[a-z0-9-]+$/.test(label) ? slugify(label) || null : null;
+    return label && /^[a-z0-9-]+$/.test(label) && slugify(label) === label ? label : null;
+  } catch {
+    return null;
+  }
+}
+
+/** https://{host} of a URL, or null. The form `sites.deployed_url` is matched against. */
+export function originOf(url: unknown): string | null {
+  if (typeof url !== 'string' || !url) return null;
+  try {
+    const u = new URL(url);
+    return u.protocol === 'https:' && u.hostname ? `https://${u.hostname.toLowerCase()}` : null;
   } catch {
     return null;
   }
@@ -134,12 +166,15 @@ export async function authorizeDeploy(input: DeployAuthInput, deps: DeployAuthDe
   const isAdmin = !!user && (user.email || '').toLowerCase() === ADMIN_EMAIL;
   const owns = (row: PurchaseRow | null) => !!row && !!user && !!row.user_id && row.user_id === user.id;
 
-  // The deployedUrl hint: only to an app slug the caller may deploy to.
+  // The deployedUrl hint: only to an app slug the caller may deploy to. A hint naming someone
+  // else's app site is refused: web customers never send one, and falling through would
+  // deploy an unlinked app owner's edit to an unrelated web project on the shop-name slug.
   if (labelRow && (isAdmin || owns(labelRow))) {
     return { ok: true, target: label!, row: labelRow, actor: isAdmin ? 'admin' : 'app-owner', userId: user!.id };
   }
   if (labelRow) {
-    console.warn(`[Deploy Site] ${shopSlug}: ignoring deployedUrl hint ${label} (caller does not own it)`);
+    console.warn(`[Deploy Site] ${shopSlug}: deployedUrl hint ${label} is an app site the caller does not own; refusing`);
+    return user ? deny(403, 'not-authorized') : deny(401, 'sign-in-required');
   }
 
   if (isAdmin) return { ok: true, target: shopSlug, row: shopRow, actor: 'admin', userId: user!.id };
@@ -162,9 +197,11 @@ export async function authorizeDeploy(input: DeployAuthInput, deps: DeployAuthDe
       return unavailable;
     }
     const fresh = !!proof && deps.now() - proof.created * 1000 <= CHECKOUT_PROOF_MAX_AGE_MS;
+    // Only a site checkout: a domain purchase (mode 'payment', no metadata.app, client-priced)
+    // or any other app's session never counts.
     if (
-      proof && proof.paid && fresh &&
-      (proof.app == null || proof.app === 'aibarber') &&
+      proof && proof.paid && proof.status === 'complete' && proof.mode === 'subscription' && fresh &&
+      proof.app === 'aibarber' &&
       slugify(proof.siteId || '') === shopSlug
     ) {
       return { ok: true, target: shopSlug, row: null, actor: 'checkout', userId: user?.id ?? null };
@@ -172,26 +209,64 @@ export async function authorizeDeploy(input: DeployAuthInput, deps: DeployAuthDe
     console.warn(`[Deploy Site] ${shopSlug}: checkout session does not authorise this slug`);
   }
 
-  if (user) {
-    let claimants: string[];
-    try {
-      claimants = await withTimeout(deps.webClaimants(shopSlug), ms, 'sites claim lookup');
-    } catch (e: any) {
-      console.error(`[Deploy Site] ${shopSlug}: sites claim lookup failed (refusing):`, e?.message || e);
-      return unavailable;
-    }
-    if (claimants.length > 0 && !claimants.includes(user.id)) {
-      console.warn(`[Deploy Site] ${shopSlug}: claimed by another account; refusing ${user.id}`);
-      return deny(403, 'not-authorized');
-    }
-    return { ok: true, target: shopSlug, row: null, actor: 'web-user', userId: user.id };
-  }
+  if (user) return authorizeWebUser(shopSlug, label, user, deps, ms);
 
   // A checkout that does not match (another slug, unpaid, older than the proof window).
   return sessionId ? deny(403, 'checkout-not-valid') : deny(401, 'sign-in-required');
 }
 
-/** Live dependencies: Supabase (service role) and Stripe. Clients are created on first use. */
+/** A signed-in, non-admin caller on a web slug, with no valid checkout proof. */
+async function authorizeWebUser(
+  shopSlug: string,
+  label: string | null,
+  user: DeployUser,
+  deps: DeployAuthDeps,
+  ms: number,
+): Promise<DeployAuthResult> {
+  const ok: DeployAuthResult = { ok: true, target: shopSlug, row: null, actor: 'web-user', userId: user.id };
+  try {
+    const rawStamp = await withTimeout(deps.storedStamp(shopSlug), ms, 'stored copy read');
+    const stamp = originOf(rawStamp);
+    const urls = [`https://${shopSlug}.vercel.app`, ...(stamp ? [stamp] : [])];
+    const claimants = await withTimeout(deps.webClaimants([...new Set(urls)]), ms, 'sites claim lookup');
+    const mine = claimants.includes(user.id);
+    if (claimants.length > 0 && !mine) {
+      console.warn(`[Deploy Site] ${shopSlug}: claimed by another account; refusing ${user.id}`);
+      return deny(403, 'not-authorized');
+    }
+    // Published (the server stamped the stored copy): only an account that claims it.
+    if (rawStamp) {
+      if (mine) return ok;
+      console.warn(`[Deploy Site] ${shopSlug}: published site no account of the caller claims; refusing ${user.id}`);
+      return deny(403, 'not-authorized');
+    }
+    if (await withTimeout(deps.projectExists(shopSlug), ms, 'vercel project lookup')) return ok;
+
+    // A brand-new Vercel project. Sites are created through checkout (or by the admin); the one
+    // signed-in flow that creates one is the editor renaming a shop (the slug follows the shop
+    // name). Allowed only when the caller is the only account claiming the old URL (the
+    // deployedUrl hint, rebuilt from its parsed label) and that old project exists.
+    if (label && label !== shopSlug) {
+      const old = `https://${label}.vercel.app`;
+      const [oldClaimants, oldExists] = await withTimeout(
+        Promise.all([deps.webClaimants([old]), deps.projectExists(label)]),
+        ms,
+        'rename lookup',
+      );
+      if (oldExists && oldClaimants.length === 1 && oldClaimants[0] === user.id) {
+        console.log(`[Deploy Site] ${shopSlug}: new project for a rename of ${label} by ${user.id}`);
+        return ok;
+      }
+    }
+    console.warn(`[Deploy Site] ${shopSlug}: new site without checkout; refusing ${user.id}`);
+    return deny(403, 'new-site-needs-checkout');
+  } catch (e: any) {
+    console.error(`[Deploy Site] ${shopSlug}: web ownership lookup failed (refusing):`, e?.message || e);
+    return unavailable;
+  }
+}
+
+/** Live dependencies: Supabase (service role), Stripe, GCS and Vercel. Clients are created on first use. */
 export function liveDeployAuthDeps(): DeployAuthDeps {
   let sb: SupabaseClient | undefined;
   const db = () => (sb ??= createClient(
@@ -227,17 +302,21 @@ export function liveDeployAuthDeps(): DeployAuthDeps {
         null;
       return {
         paid: s?.payment_status === 'paid',
+        status: typeof s?.status === 'string' ? s.status : null,
+        mode: typeof s?.mode === 'string' ? s.mode : null,
         siteId,
         app: typeof s?.metadata?.app === 'string' ? s.metadata.app : null,
         created: typeof s?.created === 'number' ? s.created : 0,
       };
     },
-    async webClaimants(slug) {
-      const url = `https://${slug}.vercel.app`;
-      const { data, error } = await db().from('sites').select('user_id').in('deployed_url', [url, `${url}/`]);
+    async webClaimants(urls) {
+      const forms = urls.flatMap((u) => [u, `${u}/`]);
+      const { data, error } = await db().from('sites').select('user_id').in('deployed_url', forms);
       if (error) throw new Error(`sites claim lookup failed: ${error.message}`);
       return [...new Set((data || []).map((r: any) => r.user_id).filter((u: unknown): u is string => typeof u === 'string'))];
     },
+    storedStamp: async (slug) => (await readPendingSite(slug))?.deployedUrl || null,
+    projectExists: (slug) => vercelProjectExists(slug),
     now: () => Date.now(),
   };
 }

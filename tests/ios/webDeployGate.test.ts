@@ -66,10 +66,35 @@ describe('gatedWebDeploy', () => {
   it('a web deploy stamps the live URL on the stored copy (server-owned stamp); an app deploy does not', async () => {
     const d = { ...deps(), stampWebPending: vi.fn(async (_s: string, _u: string) => {}) };
     await gatedWebDeploy(body(), web('fresh-cuts'), d);
-    expect(d.stampWebPending).toHaveBeenCalledWith('fresh-cuts', 'https://fresh-cuts.vercel.app');
+    expect(d.stampWebPending).toHaveBeenCalledWith('fresh-cuts', 'https://fresh-cuts.vercel.app', undefined);
     d.stampWebPending.mockClear();
     await gatedWebDeploy(body(), owner(), d);
     expect(d.stampWebPending).not.toHaveBeenCalled();
+  });
+
+  it('only a checkout deploy supplies the stored copy\'s content (stamped by the live deps)', async () => {
+    const sd = { shopName: 'Fresh Cuts', hero: {}, about: {}, gallery: [], services: [] };
+    const d = { ...deps(), stampWebPending: vi.fn(async (_s: string, _u: string, _f?: PendingSite) => {}) };
+    await gatedWebDeploy(body({ siteData: sd, existingSiteId: 'draft-1' }), { target: 'fresh-cuts', row: null, actor: 'checkout' }, d);
+    expect(d.stampWebPending).toHaveBeenCalledWith('fresh-cuts', 'https://fresh-cuts.vercel.app', {
+      siteId: 'fresh-cuts', siteData: sd, imageUrlMap: { hero: 'https://h' }, existingSiteId: 'draft-1', timestamp: NOW,
+    });
+    d.stampWebPending.mockClear();
+    await gatedWebDeploy(body({ siteData: sd }), web('fresh-cuts'), d);
+    expect(d.stampWebPending).toHaveBeenCalledWith('fresh-cuts', 'https://fresh-cuts.vercel.app', undefined);
+    d.stampWebPending.mockClear();
+    // Not a renderable copy: stamp only.
+    await gatedWebDeploy(body({ siteData: { shopName: 'x' } }), { target: 'fresh-cuts', row: null, actor: 'checkout' }, d);
+    expect(d.stampWebPending).toHaveBeenCalledWith('fresh-cuts', 'https://fresh-cuts.vercel.app', undefined);
+  });
+
+  it('deploys to exactly the authorised target and refuses a non-canonical one (never re-slugified)', async () => {
+    const d = deps();
+    await expect(gatedWebDeploy(body(), web('a'.repeat(45) + '-bcd-'), d)).rejects.toThrow(/non-canonical/);
+    await expect(gatedWebDeploy(body(), web('Fresh Cuts'), d)).rejects.toThrow(/non-canonical/);
+    expect(d.deploy).not.toHaveBeenCalled();
+    await gatedWebDeploy(body(), web('a'.repeat(45) + '-bcd'), d);
+    expect(d.deploy).toHaveBeenCalledWith(expect.objectContaining({ siteId: 'a'.repeat(45) + '-bcd' }));
   });
 
   it('a failing stamp never fails a deploy that went live', async () => {

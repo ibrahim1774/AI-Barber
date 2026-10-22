@@ -1,4 +1,5 @@
 import { Storage } from '@google-cloud/storage';
+import { slugify } from '../lib/publishSite.js';
 
 // Server-side recovery for the pendingSite payload when the visitor
 // returns to the Stripe success URL from a context that lost the
@@ -59,7 +60,8 @@ export default async function handler(req: any, res: any) {
     if (!siteIdRaw) {
       return res.status(404).json({ ok: false, error: 'No siteId on session' });
     }
-    const safeSiteId = siteIdRaw.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
+    // Same canonical key api/save-pending-site writes and the server reads.
+    const safeSiteId = slugify(siteIdRaw);
     if (!safeSiteId) {
       return res.status(404).json({ ok: false, error: 'Invalid siteId on session' });
     }

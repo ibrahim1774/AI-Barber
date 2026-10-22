@@ -12,6 +12,7 @@ import { clientIp, publicLimiter, type RateLimiter } from '../lib/bookings/rateL
 //
 // Every deploy is authorised first (lib/deployAuth.ts): who may deploy, and to which slug.
 // The body never picks the target by itself. 401 sign-in-required, 403 not-authorized,
+// 403 checkout-not-valid, 403 new-site-needs-checkout (a new Vercel project without checkout),
 // 429 rate-limited, 503 temporarily-unavailable (a lookup failed: fail closed).
 // An app site that is taken down or revoked gets 402 { ok:false, error:'subscription-inactive' }
 // (lib/ios/webDeployGate.ts), and only its verified owner's edit refreshes its stored copy.
@@ -36,6 +37,8 @@ interface DeploymentRequest {
   deployedUrl?: unknown;
   /** Paid Stripe Checkout Session for this slug (first publish after checkout). */
   checkoutSessionId?: unknown;
+  /** The draft's id, kept on the stored copy written after a checkout deploy. */
+  existingSiteId?: unknown;
 }
 
 export interface DeploySiteDeps {
@@ -101,6 +104,7 @@ export async function deploySite(req: any, res: any, deps: DeploySiteDeps) {
       css: body.css,
       imageUrls: body.imageUrls,
       siteData: body.siteData,
+      existingSiteId: body.existingSiteId,
     }, { target: auth.target, row: auth.row ?? null, actor: auth.actor }, deps.deploy);
     if (gated.blocked) {
       return res.status(402).json({ ok: false, error: 'subscription-inactive' });

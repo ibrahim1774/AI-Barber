@@ -3,7 +3,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // /api/deploy-site through its real default export: only the edges are faked (Supabase auth and
 // tables, Stripe, Vercel, GCS). C1 in the 2026-10-22 server report: an unauthenticated POST
 // replaced any customer's live site and an app site's stored copy.
-const { findBySlug, deployRenderedSite, writePendingSite, readPendingSite, getUser, siteClaims, allow } = vi.hoisted(() => ({
+const { findBySlug, deployRenderedSite, writePendingSite, readPendingSite, getUser, siteClaims, allow, vercelProjectExists } = vi.hoisted(() => ({
+  vercelProjectExists: vi.fn(async (_s: string) => true),
   readPendingSite: vi.fn(async (_s: string): Promise<unknown> => null),
   findBySlug: vi.fn(),
   deployRenderedSite: vi.fn(async (i: { siteId: string }) => ({ deploymentUrl: `https://${i.siteId}.vercel.app`, uploadedImages: {} })),
@@ -21,6 +22,7 @@ vi.mock('@supabase/supabase-js', () => ({
     from: (_t: string) => ({ select: () => ({ in: async (_c: string, urls: string[]) => ({ data: await siteClaims(urls), error: null }) }) }),
   }),
 }));
+vi.mock('../../lib/ios/slug.js', async (orig) => ({ ...(await orig<object>()), vercelProjectExists }));
 vi.mock('../../lib/bookings/rateLimit.js', async (orig) => ({ ...(await orig<object>()), publicLimiter: { allow } }));
 
 import handler from '../../api/deploy-site.js';
@@ -47,7 +49,7 @@ const appRow = (over: Record<string, unknown> = {}) => ({
   expires_at: '2999-01-01T00:00:00Z', revoked_at: null, taken_down_at: null, ...over,
 });
 const stripeSession = (over: Record<string, unknown> = {}) => ({
-  id: SESSION, payment_status: 'paid', metadata: { app: 'aibarber', siteId: 'fresh-cuts' },
+  id: SESSION, payment_status: 'paid', status: 'complete', mode: 'subscription', metadata: { app: 'aibarber', siteId: 'fresh-cuts' },
   client_reference_id: 'fresh-cuts', created: Math.floor(Date.now() / 1000) - 60, ...over,
 });
 
@@ -59,6 +61,8 @@ describe('api/deploy-site authorisation (C1)', () => {
     findBySlug.mockReset().mockResolvedValue(null);
     deployRenderedSite.mockClear();
     writePendingSite.mockClear();
+    readPendingSite.mockReset().mockResolvedValue(null);
+    vercelProjectExists.mockReset().mockResolvedValue(true);
     siteClaims.mockReset().mockResolvedValue([]);
     allow.mockReset().mockResolvedValue(true);
     getUser.mockReset().mockImplementation(async (t: string) => (TOKENS[t]
@@ -107,13 +111,12 @@ describe('api/deploy-site authorisation (C1)', () => {
     const r1 = mkRes();
     await handler(post({ siteId: 'my-own-site', html: '<h1>x</h1>', deployedUrl: 'https://fade-lab.vercel.app', siteData: sd }), r1);
     expect(r1.status).toHaveBeenCalledWith(401);
-    // Signed in as someone else: the hint is ignored; only their own slug is deployed.
+    // Signed in as someone else: refused too (never a web deploy on the shop-name slug).
     const r2 = mkRes();
     await handler(post({ siteId: 'my-own-site', html: '<h1>x</h1>', deployedUrl: 'https://fade-lab.vercel.app', siteData: sd }, 'other-jwt'), r2);
-    expect(r2.status).toHaveBeenCalledWith(200);
-    expect(deployRenderedSite).toHaveBeenCalledTimes(1);
-    expect(deployRenderedSite).toHaveBeenCalledWith(expect.objectContaining({ siteId: 'my-own-site' }));
-    expect(deployRenderedSite).not.toHaveBeenCalledWith(expect.objectContaining({ siteId: 'fade-lab' }));
+    expect(r2.status).toHaveBeenCalledWith(403);
+    expect(r2.json).toHaveBeenCalledWith({ ok: false, error: 'not-authorized' });
+    expect(deployRenderedSite).not.toHaveBeenCalled();
     expect(writePendingSite).not.toHaveBeenCalled();
   });
 
@@ -150,7 +153,7 @@ describe('api/deploy-site authorisation (C1)', () => {
 
   it('an authorised web deploy stamps the stored pre-checkout copy with the live URL', async () => {
     siteClaims.mockResolvedValue([{ user_id: OWNER }]);
-    readPendingSite.mockResolvedValueOnce({ siteId: 'fresh-cuts', siteData: sd } as any);
+    readPendingSite.mockResolvedValue({ siteId: 'fresh-cuts', siteData: sd } as any);
     const res = mkRes();
     await handler(post({ siteId: 'fresh-cuts', html: '<h1/>' }, 'owner-jwt'), res);
     expect(res.status).toHaveBeenCalledWith(200);
@@ -173,6 +176,81 @@ describe('api/deploy-site authorisation (C1)', () => {
     await handler(post({ siteId: 'fresh-cuts', html: '<h1/>', checkoutSessionId: SESSION }), res);
     expect(res.status).toHaveBeenCalledWith(403);
     expect(deployRenderedSite).not.toHaveBeenCalled();
+  });
+
+  it('a domain-purchase session (mode payment, no metadata.app) never authorises a deploy (review finding 2)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(stripeSession({
+      mode: 'payment', metadata: { type: 'domain_purchase', siteId: 'fresh-cuts' }, client_reference_id: null,
+    })), { status: 200 })));
+    const res = mkRes();
+    await handler(post({ siteId: 'fresh-cuts', html: '<h1>phish</h1>', checkoutSessionId: SESSION }), res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(deployRenderedSite).not.toHaveBeenCalled();
+  });
+
+  it('a 49-character claimed slug cannot be reached with a longer siteId; the deploy target is exactly the authorised slug (review finding 1)', async () => {
+    const S = 'a'.repeat(45) + '-bcd';
+    siteClaims.mockImplementation(async (urls: string[]) => (urls.includes(`https://${S}.vercel.app`) ? [{ user_id: OWNER }] : []));
+    const r1 = mkRes();
+    await handler(post({ siteId: S + '-zzz', html: '<h1>phish</h1>' }, 'other-jwt'), r1);
+    expect(r1.status).toHaveBeenCalledWith(403);
+    expect(deployRenderedSite).not.toHaveBeenCalled();
+    const r2 = mkRes();
+    await handler(post({ siteId: S + '-zzz', html: '<h1/>' }, 'owner-jwt'), r2);
+    expect(r2.status).toHaveBeenCalledWith(200);
+    expect(deployRenderedSite).toHaveBeenCalledWith(expect.objectContaining({ siteId: S }));
+  });
+
+  it('a published (stamped) web site no account of the caller claims → 403 (review finding 4)', async () => {
+    readPendingSite.mockResolvedValue({ siteId: 'ada', siteData: sd, deployedUrl: 'https://ada-pearl-phi.vercel.app' });
+    const res = mkRes();
+    await handler(post({ siteId: 'ada', html: '<h1>phish</h1>' }, 'other-jwt'), res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(siteClaims).toHaveBeenCalledWith(expect.arrayContaining(['https://ada.vercel.app', 'https://ada-pearl-phi.vercel.app']));
+    expect(deployRenderedSite).not.toHaveBeenCalled();
+  });
+
+  it('a brand-new Vercel project needs checkout or the admin: a signed-in user → 403 new-site-needs-checkout (review finding 5)', async () => {
+    vercelProjectExists.mockResolvedValue(false);
+    const res = mkRes();
+    await handler(post({ siteId: 'free-phish-host', html: '<h1>phish</h1>' }, 'other-jwt'), res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith({ ok: false, error: 'new-site-needs-checkout' });
+    expect(vercelProjectExists).toHaveBeenCalledWith('free-phish-host');
+    expect(deployRenderedSite).not.toHaveBeenCalled();
+    const admin = mkRes();
+    await handler(post({ siteId: 'free-phish-host', html: '<h1/>' }, 'admin-jwt'), admin);
+    expect(admin.status).toHaveBeenCalledWith(200);
+  });
+
+  it('a Vercel project lookup failure fails closed (503)', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vercelProjectExists.mockRejectedValue(new Error('vercel down'));
+    const res = mkRes();
+    await handler(post({ siteId: 'fresh-cuts', html: '<h1/>' }, 'other-jwt'), res);
+    expect(res.status).toHaveBeenCalledWith(503);
+    expect(deployRenderedSite).not.toHaveBeenCalled();
+  });
+
+  it('a checkout deploy with no stored copy writes one, stamped, from the paid browser\'s content (review finding 6)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(stripeSession()), { status: 200 })));
+    const fresh = { ...sd, shopName: 'Fresh Cuts' };
+    const res = mkRes();
+    await handler(post({ siteId: 'fresh-cuts', html: '<h1/>', imageUrls: { hero: 'https://img/h.jpg' }, checkoutSessionId: SESSION, siteData: fresh, existingSiteId: 'draft-1' }), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(writePendingSite).toHaveBeenCalledWith('fresh-cuts', expect.objectContaining({
+      siteId: 'fresh-cuts', siteData: fresh, imageUrlMap: { hero: 'https://img/h.jpg' }, existingSiteId: 'draft-1',
+      deployedUrl: 'https://fresh-cuts.vercel.app',
+    }));
+  });
+
+  it('a checkout deploy replaces an unstamped stored copy (anyone could have written it) with its own content', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(stripeSession()), { status: 200 })));
+    readPendingSite.mockResolvedValue({ siteId: 'fresh-cuts', siteData: { ...sd, shopName: 'PHISH' } });
+    const res = mkRes();
+    await handler(post({ siteId: 'fresh-cuts', html: '<h1/>', checkoutSessionId: SESSION, siteData: sd }), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(writePendingSite).toHaveBeenCalledWith('fresh-cuts', expect.objectContaining({ siteData: sd, deployedUrl: 'https://fresh-cuts.vercel.app' }));
   });
 
   it('rate limited → 429 before any lookup', async () => {

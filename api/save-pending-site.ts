@@ -1,6 +1,6 @@
 import { Storage } from '@google-cloud/storage';
 import { supabasePurchases } from '../lib/ios/purchases.js';
-import { readPendingSite } from '../lib/publishSite.js';
+import { readPendingSite, slugify } from '../lib/publishSite.js';
 
 // Server-side persistence for the pendingSite payload that drives
 // post-payment deployment. Mirrors the localStorage write in
@@ -73,13 +73,15 @@ export async function savePendingSite(req: any, res: any, deps: SavePendingDeps)
     }
     // Sanitize: only allow basic slug characters in the storage key so
     // a tampered siteId can't traverse out of the prefix.
-    const safeSiteId = siteId.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
+    // The canonical slug (lib/publishSite.slugify) is the key every server path reads, and the
+    // published check below reads exactly the object this request writes or deletes.
+    const safeSiteId = slugify(siteId);
     if (!safeSiteId) {
       return res.status(400).json({ ok: false, error: 'Invalid siteId' });
     }
 
     try {
-      if (await deps.isAppSlug(safeSiteId.toLowerCase())) {
+      if (await deps.isAppSlug(safeSiteId)) {
         console.warn(`[save-pending-site] ${req.method} refused: ${safeSiteId} is an iOS app site`);
         return res.status(409).json({ ok: false, error: 'slug-taken' });
       }
@@ -88,7 +90,7 @@ export async function savePendingSite(req: any, res: any, deps: SavePendingDeps)
       return res.status(503).json({ ok: false, error: 'lookup-failed' });
     }
     try {
-      if (await deps.isPublished(safeSiteId.toLowerCase())) {
+      if (await deps.isPublished(safeSiteId)) {
         console.warn(`[save-pending-site] ${req.method} refused: ${safeSiteId} is already published`);
         return res.status(409).json({ ok: false, error: 'site-published' });
       }
@@ -136,7 +138,7 @@ export async function savePendingSite(req: any, res: any, deps: SavePendingDeps)
 
     return res.status(200).json({ ok: true });
   } catch (error: any) {
-    console.error('[save-pending-site] Error:', error);
-    return res.status(500).json({ ok: false, error: error.message || 'Internal error' });
+    console.error('[save-pending-site] Error:', error?.message || error);
+    return res.status(500).json({ ok: false, error: 'Internal error' });
   }
 }

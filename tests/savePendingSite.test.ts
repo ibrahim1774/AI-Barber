@@ -94,6 +94,26 @@ describe('api/save-pending-site', () => {
     expect(deleted).toEqual([]);
   });
 
+  it('writes, deletes and checks one canonical key: the object the server reads (review finding 1)', async () => {
+    const S = 'a'.repeat(45) + '-bcd';
+    const d = deps([], [S]);
+    // The 50-character client slug ends with a dash; the published check and the write both use S.
+    const r = await call({ method: 'POST', body: { siteId: S + '-', data: { siteData: {} } } }, d);
+    expect(r.statusCode).toBe(409);
+    expect(d.isPublished).toHaveBeenCalledWith(S);
+    const r2 = await call({ method: 'POST', body: { siteId: 'Web_Shop', data: { siteData: {} } } });
+    expect(r2.statusCode).toBe(200);
+    expect([...store.keys()]).toEqual(['pending-sites/web-shop.json']);
+  });
+
+  it('a 500 carries a fixed message, never the error text', async () => {
+    delete process.env.GCS_CREDENTIALS;
+    process.env.GCP_SERVICE_ACCOUNT_JSON = '{not json';
+    const r = await call({ method: 'POST', body: { siteId: 'web-shop', data: { siteData: {} } } });
+    delete process.env.GCP_SERVICE_ACCOUNT_JSON;
+    expect(r).toMatchObject({ statusCode: 500, body: { ok: false, error: 'Internal error' } });
+  });
+
   it('DELETE of a web site still works', async () => {
     const r = await call({ method: 'DELETE', body: { siteId: 'web-shop' } });
     expect(r.statusCode).toBe(200);
