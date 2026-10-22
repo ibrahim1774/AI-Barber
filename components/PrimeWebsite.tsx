@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { isPayFirstPlan } from '../lib/payFirst';
+import { authHeaders, checkoutErrorMessage, payFirstPlaceholderSlug } from '../services/checkoutClient';
 import { WebsiteData, SiteInstance, SaveStatus } from '../types';
 import { CameraIcon } from './Icons';
 import { EditorToolbar } from './EditorToolbar';
@@ -258,7 +259,8 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
     plan: 'monthly' | 'monthly-booksy' | 'monthly-free' | 'monthly-booking' | 'yearly' | 'yearly-booksy' | 'yearly-free' | 'yearly-booking' = 'monthly',
   ): Promise<{ siteId: string } | { error: string }> => {
     try {
-      const siteId = siteSlug;
+      // /custom-15 pay-first: a unique placeholder per purchase; the details step names the real slug.
+      const siteId = isPayFirstPlan(String(plan)) ? payFirstPlaceholderSlug(siteSlug) : siteSlug;
       const imagesToUpload: Array<{ key: string; filename: string; base64: string }> = [];
       const timestamp = Date.now();
 
@@ -358,12 +360,12 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
     }
     try {
       const checkoutResponse = await fetch('/api/create-checkout-session', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
         body: JSON.stringify({ siteId: prep.siteId, plan, page: window.location.pathname }),
       });
       const checkoutData = await checkoutResponse.json();
       if (!checkoutResponse.ok || !checkoutData.url) {
-        throw new Error(checkoutData.error || 'Failed to create checkout session');
+        throw new Error(checkoutErrorMessage(checkoutResponse.status, checkoutData));
       }
       markRedirecting();
       window.location.href = checkoutData.url;
