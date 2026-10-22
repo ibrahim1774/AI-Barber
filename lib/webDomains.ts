@@ -177,6 +177,8 @@ export interface WebDomainDeps {
    * keys per subscription). A paid slot refused before anything was bought (N2).
    */
   cancelAndRefund(subscriptionId: string): Promise<void>;
+  /** Email support@davoxa.com (domain, site, amount only). Best effort. */
+  notifySupport?(subject: string, text: string): Promise<void>;
 }
 
 /** Stripe test mode, from Stripe's own livemode flag (never the key prefix). */
@@ -241,6 +243,9 @@ export async function purchaseDomain(body: any, authorization: unknown, deps: We
   if (reserved.result) {
     const refused = await recordRefusedPaidSlot(c, reserved.result, deps);
     if (refused.refunded) return refundedResult(c.domain);
+    if (!refused.refundable) {
+      return { status: 409, body: { error: refused.code, refunded: false, needsSupport: true, message: 'We could not set up this domain. Our team has been notified and will contact you; email support@davoxa.com with any questions.' } };
+    }
     return { status: 503, body: { error: 'Try again shortly' } }; // the refund is retried
   }
   const r = await advanceSlot(c.key, payer, deps.flow);
@@ -263,7 +268,7 @@ function refundedResult(domain: string): WebResult {
 }
 
 /** Cancel + refund (idempotent at Stripe), then stamp the row. True once refunded. */
-async function finishRefund(row: { original_transaction_id: string; domain: string }, deps: Pick<WebDomainDeps, 'cancelAndRefund' | 'flow'>): Promise<boolean> {
+async function finishRefund(row: { original_transaction_id: string; domain: string; site_slug?: string }, deps: Pick<WebDomainDeps, 'cancelAndRefund' | 'flow' | 'notifySupport'>): Promise<boolean> {
   const subId = row.original_transaction_id.replace(/^stripe:/, '');
   try {
     await deps.cancelAndRefund(subId);
@@ -276,6 +281,10 @@ async function finishRefund(row: { original_transaction_id: string; domain: stri
     last_error: 'REFUNDED: the paid subscription was refused before anything was bought; cancelled and refunded in full',
   });
   console.error(`[domains/web] REFUNDED ${subId} (${row.domain}): refused before anything was bought`);
+  await deps.notifySupport?.(
+    `Domain refund: ${row.domain}`,
+    `A paid $39.00 website domain subscription was refused before anything was bought, then cancelled and refunded in full.\n\nDomain: ${row.domain}\nSite: ${(row as any).site_slug ?? '—'}\nSubscription: ${subId}\nAmount refunded: $39.00`,
+  ).catch(() => {});
   return true;
 }
 
@@ -287,8 +296,8 @@ async function finishRefund(row: { original_transaction_id: string; domain: stri
 async function recordRefusedPaidSlot(
   c: { key: string; slug: string; domain: string; simulated: boolean },
   result: { body: unknown },
-  deps: Pick<WebDomainDeps, 'cancelAndRefund' | 'flow'>,
-): Promise<{ code: string; refunded: boolean }> {
+  deps: Pick<WebDomainDeps, 'cancelAndRefund' | 'flow' | 'notifySupport'>,
+): Promise<{ code: string; refunded: boolean; refundable: boolean }> {
   const code = String((result.body as any)?.error || 'refused');
   const reason = REFUSAL_REASON[code] || 'refused';
   await deps.flow.repo.insertFailed({
@@ -296,9 +305,14 @@ async function recordRefusedPaidSlot(
     simulated: c.simulated, auto_renew: false,
   }, reason);
   const row = await deps.flow.repo.get(c.key);
-  if (row?.refunded_at) return { code, refunded: true };
-  if (row && row.state !== 'failed') return { code, refunded: false }; // not ours to refund
-  return { code, refunded: await finishRefund({ original_transaction_id: c.key, domain: c.domain }, deps) };
+  if (row?.refunded_at) return { code, refunded: true, refundable: true };
+  if (row && row.state !== 'failed') {
+    // Not a refusal we can refund (the slot is in use, e.g. transferred): flag it, final answer.
+    console.error(`[domains/web] ALERT ${c.key} (${c.domain}): refused (${code}) but the slot is ${row.state}; support must look`);
+    await deps.notifySupport?.(`Domain needs support: ${c.domain}`, `A paid website domain checkout was refused (${code}) while its slot is ${row.state}. No automatic refund.\n\nDomain: ${c.domain}\nSite: ${c.slug}\nSubscription: ${c.key.replace(/^stripe:/, '')}\nAmount: $39.00`).catch(() => {});
+    return { code, refunded: false, refundable: false };
+  }
+  return { code, refunded: await finishRefund({ original_transaction_id: c.key, domain: c.domain, site_slug: c.slug }, deps), refundable: true };
 }
 
 // ─── Stripe webhook ───
@@ -381,6 +395,7 @@ export async function handleDomainStripeEvent(
     if (reserved.result) {
       const refused = await recordRefusedPaidSlot(c, reserved.result, deps);
       // 500 until the refund went through, so Stripe retries (the existing-row path finishes it).
+      if (!refused.refunded && !refused.refundable) return { handled: true, status: 200, body: { received: true, domain: false, refused: refused.code, needsSupport: true }, purchase };
       if (!refused.refunded) return { handled: true, status: 500, body: { error: 'refund-pending' } };
       return { handled: true, status: 200, body: { received: true, domain: false, refused: refused.code, refunded: true }, purchase };
     }

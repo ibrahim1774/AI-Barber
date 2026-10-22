@@ -102,7 +102,7 @@ export interface DomainFlowDeps {
    * has no shop (web sites) or the column doesn't exist yet; then nothing is checked. `refresh`
    * re-derives it from the project's domains (site-subpages refreshSiteBase), without a deploy.
    */
-  base?: { read(slug: string): Promise<string | null | undefined>; refresh(slug: string): Promise<unknown> };
+  base?: { read(slug: string): Promise<string | null | undefined>; refresh(slug: string): Promise<unknown>; clear(slug: string): Promise<void> };
 }
 
 /** A claim holds the row this long (the function's 300 s budget); the sweep skips leased rows. */
@@ -119,6 +119,9 @@ const ms = (v: string | null | undefined) => (v ? Date.parse(v) : NaN);
 const errMsg = (e: unknown) => String((e as any)?.code || (e as Error)?.message || e).slice(0, 300);
 const TX_RE = /^\d{1,32}$/;
 const STOPPED: readonly DomainState[] = ['detaching', 'unlinking', 'detached', 'failed', 'transferred'];
+/** A registration counts as GONE only when absent, or expired longer than this (registry grace). */
+export const GONE_AFTER_EXPIRY_MS = 45 * 24 * 3600_000;
+export const BASE_UNLINK_PENDING = 'base URL still points at the detached domain; retried once';
 export const BASE_PENDING = 'base URL not yet the domain; retried by the sweep';
 export const RENEWAL_UNKNOWN = 'ALERT: renewal status unknown at the payer; Vercel auto-renew left as it is';
 
@@ -376,7 +379,10 @@ export async function step(row: DomainRow, deps: DomainFlowDeps, ctx: Ctx = {}):
           if (deps.base && (await deps.base.read(row.site_slug)) === `https://${row.domain}`) {
             await deps.base.refresh(row.site_slug);
             if ((await deps.base.read(row.site_slug)) === `https://${row.domain}`) {
-              return wait(deps, row, 'base URL still points at the detached domain; retried');
+              // No *.vercel.app fallback in the project (or a second blip): clear the base, so
+              // links go back to aibarber.org, and finish. Never wait forever.
+              if (row.last_error !== BASE_UNLINK_PENDING) return wait(deps, row, BASE_UNLINK_PENDING);
+              await deps.base.clear(row.site_slug);
             }
           }
         }
@@ -400,7 +406,9 @@ export async function step(row: DomainRow, deps: DomainFlowDeps, ctx: Ctx = {}):
         if (sim) owned = simOwned(deps);
         else owned = await registrar(deps).owned(row.domain); // throws on errors: never read as "gone"
         if (!owned) {
-          // Confirmed gone from our account: only now is the slot freed.
+          // Only a CONFIRMED gone registration frees the slot (and auto-renew goes OFF first).
+          if (!sim && !(await confirmedGone(row.domain, deps))) return wait(deps, row, 'registration expired at Vercel; waiting (it may still renew)');
+          if (!sim && !(await forceRenewOff(row.domain, deps))) return wait(deps, row, 'auto-renew OFF failed; retried');
           return move(deps, row, ['detached'], { state: 'failed', failure_reason: 'registration-expired', auto_renew: false });
         }
         try {
@@ -447,7 +455,9 @@ export async function syncAutoRenew(row: DomainRow, deps: DomainFlowDeps): Promi
       && (e.code === 'domain_not_found' || e.code === 'domain_not_registered' || e.code === 'domain_not_renewable');
     // Keep the registration through the period already paid: if it would end before paid_until,
     // Vercel renews it once even when the subscriber turned renewal off.
+    // Only for a payer still in a paid, non-revoked, non-refunded period.
     const coverPaid = !row.auto_renew && !!owned && ATTACHED_STATES.includes(row.state)
+      && !row.revoked_at && !row.refunded_at && ms(row.paid_until) > deps.now()
       && ms(row.paid_until) > owned.expiresAt;
     if (coverPaid) {
       if (!owned!.renew) await v.setAutoRenew(row.domain, true);
@@ -480,6 +490,28 @@ export async function syncAutoRenew(row: DomainRow, deps: DomainFlowDeps): Promi
     console.error(`[domains] ${row.domain}: auto-renew ${row.auto_renew ? 'on' : 'off'} failed (retried by the sweep): ${errMsg(e)}`);
     if (row.auto_renew_synced) await deps.repo.update(row.original_transaction_id, null, { auto_renew_synced: false }).catch(() => {});
     return row;
+  }
+}
+
+/**
+ * Vercel CONFIRMS the registration is gone: not in the account (or not bought via Vercel), or
+ * expired more than GONE_AFTER_EXPIRY_MS ago. A just-expired one may still be renewing. Throws
+ * on Vercel errors (never read as gone).
+ */
+export async function confirmedGone(domain: string, deps: Pick<DomainFlowDeps, 'vercel' | 'now'>): Promise<boolean> {
+  const r = await registrar(deps as DomainFlowDeps).lookup(domain);
+  return !r || r.expiresAt < deps.now() - GONE_AFTER_EXPIRY_MS;
+}
+
+/** Before failing a row that may own a registration: auto-renew OFF at Vercel. True when done. */
+export async function forceRenewOff(domain: string, deps: Pick<DomainFlowDeps, 'vercel'>): Promise<boolean> {
+  try {
+    await registrar(deps as DomainFlowDeps).setAutoRenew(domain, false);
+    return true;
+  } catch (e) {
+    if (e instanceof VercelApiError && (e.code === 'domain_not_found' || e.code === 'domain_not_registered' || e.code === 'domain_not_renewable')) return true;
+    console.error(`[domains] ${domain}: auto-renew OFF before failing the row failed; retried:`, errMsg(e));
+    return false;
   }
 }
 
@@ -878,13 +910,12 @@ export async function sweepDomains(
    * - detached and the payer ended (N7): nothing left to watch; failed, never re-checked.
    */
   async function settleGone(row: DomainRow, s: PayerStatus): Promise<DomainRow> {
-    let owned;
     try {
-      owned = await deps.vercel!.owned(row.domain);
+      if (!(await confirmedGone(row.domain, deps))) return row;
     } catch {
       return row;
     }
-    if (owned) return row;
+    if (!(await forceRenewOff(row.domain, deps))) return row;
     if (ATTACHED_STATES.includes(row.state) && s.active) {
       console.error(`[domains] ALERT ${row.domain} (${row.original_transaction_id}): paid, but the registration is gone at Vercel; unlinking, the slot is reusable`);
       try {

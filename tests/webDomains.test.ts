@@ -61,6 +61,7 @@ function world() {
     getStripeSession: vi.fn(async () => ({ ok: true, status: 200, data: sessionData })),
     getSubscription, flow, secret: SECRET,
     cancelAndRefund: vi.fn(async (_id: string) => {}),
+    notifySupport: vi.fn(async (_s: string, _t: string) => {}),
   };
   return {
     reg, repo, subs, deps, flow, hooks,
@@ -320,6 +321,29 @@ describe('Stripe webhook: the same lifecycle as the app', () => {
     // The success page asks again: the same answer, no second refund.
     expect(await purchaseDomain({ sessionId: SID }, OWNER_AUTH, w.deps)).toMatchObject({ status: 409, body: { refunded: true } });
     expect(w.deps.cancelAndRefund).toHaveBeenCalledTimes(1);
+  });
+
+  it('R5: a refund emails support with the domain, site and amount only', async () => {
+    const w = world();
+    w.reg.takeByStranger('freshcuts.com');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await purchaseDomain({ sessionId: SID }, OWNER_AUTH, w.deps);
+    expect(w.deps.notifySupport).toHaveBeenCalledTimes(1);
+    const [subject, text] = w.deps.notifySupport.mock.calls[0];
+    expect(subject).toBe('Domain refund: freshcuts.com');
+    expect(text).toMatch(/Site: fresh-cuts/);
+    expect(text).toMatch(/\$39\.00/);
+    expect(text).not.toMatch(/@/); // no customer email or other PII
+  });
+
+  it('R7: a refusal that cannot be refunded (slot in use) is flagged and answered with a final status', async () => {
+    const w = world();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await w.repo.insertReserved({ original_transaction_id: 'stripe:sub_dom1', source: 'stripe', environment: 'Production', site_slug: 'fresh-cuts', domain: 'other.com', simulated: false, auto_renew: false });
+    await w.repo.update('stripe:sub_dom1', null, { state: 'transferred' });
+    const r = await purchaseDomain({ sessionId: SID }, OWNER_AUTH, w.deps);
+    expect(r.status).toBe(409);
+    expect(w.deps.cancelAndRefund).not.toHaveBeenCalled();
   });
 
   it('a failed refund is retried (webhook 500, then the next delivery finishes it)', async () => {

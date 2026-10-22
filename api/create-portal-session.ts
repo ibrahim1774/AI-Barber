@@ -1,3 +1,4 @@
+import { STRIPE_API_VERSION } from '../lib/stripeVersion.js';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { resolvePortalCustomer } from '../lib/portalAuth.js';
 import { FIRST_PARTY_ORIGINS, setFirstPartyCors } from '../lib/webCors.js';
@@ -37,7 +38,7 @@ export default async function handler(req: any, res: any) {
       },
       async customersByEmail(email) {
         const r = await fetch(`https://api.stripe.com/v1/customers?email=${encodeURIComponent(email)}&limit=10`, {
-          headers: { Authorization: `Bearer ${stripeSecretKey}`, 'Stripe-Version': '2024-06-20' },
+          headers: { Authorization: `Bearer ${stripeSecretKey}`, 'Stripe-Version': STRIPE_API_VERSION },
           signal: AbortSignal.timeout(8_000),
         });
         if (!r.ok) throw new Error(`Stripe customers ${r.status}`);
@@ -50,7 +51,7 @@ export default async function handler(req: any, res: any) {
     const params = new URLSearchParams({ customer: auth.customer, return_url: origin || FIRST_PARTY_ORIGINS[0] });
     const response = await fetch('https://api.stripe.com/v1/billing_portal/sessions', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${stripeSecretKey}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: { Authorization: `Bearer ${stripeSecretKey}`, 'Content-Type': 'application/x-www-form-urlencoded', 'Stripe-Version': STRIPE_API_VERSION },
       body: params.toString(),
     });
     if (!response.ok) {

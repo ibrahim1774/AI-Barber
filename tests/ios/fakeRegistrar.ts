@@ -17,7 +17,11 @@ export type BuyMode =
 
 export const YEAR_MS = 365 * 24 * 3600_000;
 
-export function fakeRegistrar(opts: { now: () => number; taken?: string[]; prices?: Record<string, { purchasePrice: unknown; renewalPrice: unknown }> }) {
+export function fakeRegistrar(opts: {
+  now: () => number; taken?: string[]; prices?: Record<string, { purchasePrice: unknown; renewalPrice: unknown }>;
+  /** A renewing registration reads as EXPIRED for this long before its renewal lands (card retry, registry grace). */
+  renewLagMs?: number;
+}) {
   const registered = new Map<string, { boughtAt: number; expiresAt: number; renew: boolean }>();
   const taken = new Set(opts.taken ?? []);
   const orders = new Map<string, { domain: string; status: 'purchasing' | 'completed' | 'failed'; errorCode: string | null; years: number; renew: boolean }>();
@@ -32,7 +36,7 @@ export function fakeRegistrar(opts: { now: () => number; taken?: string[]; price
   function renewDue() {
     const t = opts.now();
     for (const [domain, r] of registered) {
-      while (r.renew && r.expiresAt <= t) {
+      while (r.renew && r.expiresAt + (opts.renewLagMs ?? 0) <= t) {
         r.expiresAt += YEAR_MS;
         charges.push({ domain, kind: 'renewal', at: t });
       }
@@ -81,12 +85,18 @@ export function fakeRegistrar(opts: { now: () => number; taken?: string[]; price
       const r = live(domain);
       return r ? { ...r } : null;
     }),
+    lookup: vi.fn(async (domain: string) => {
+      renewDue();
+      const r = registered.get(domain);
+      return r ? { ...r } : null;
+    }),
     listDomains: vi.fn(async () => {
       renewDue();
       return [...registered.entries()].map(([name, r]) => ({ name, boughtAt: r.boughtAt, expiresAt: r.expiresAt, renew: r.renew, serviceType: 'zeit.world' }));
     }),
     setAutoRenew: vi.fn(async (domain: string, on: boolean) => {
-      const r = live(domain);
+      renewDue();
+      const r = registered.get(domain); // the registry still accepts it in the grace window
       if (!r) throw new VercelApiError(404, 'domain_not_found');
       r.renew = on;
     }),

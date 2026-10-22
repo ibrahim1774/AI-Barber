@@ -1,3 +1,4 @@
+import { STRIPE_API_VERSION } from '../lib/stripeVersion.js';
 import { createDomainCheckout } from '../lib/webDomains.js';
 import { authorizeSiteOwner, liveDeployAuthDeps } from '../lib/deployAuth.js';
 import { liveVercelDomains } from '../lib/ios/vercelDomains.js';
@@ -31,7 +32,7 @@ export default async function handler(req: any, res: any) {
       async createStripeSession(params) {
         const response = await fetch('https://api.stripe.com/v1/checkout/sessions', {
           method: 'POST',
-          headers: { Authorization: `Bearer ${stripeSecretKey}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+          headers: { Authorization: `Bearer ${stripeSecretKey}`, 'Content-Type': 'application/x-www-form-urlencoded', 'Stripe-Version': STRIPE_API_VERSION },
           body: params.toString(),
         });
         return { ok: response.ok, status: response.status, data: await response.json().catch(() => ({})) };

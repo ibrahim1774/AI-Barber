@@ -18,7 +18,7 @@ const deps = (over: Partial<PortalDeps> = {}): PortalDeps => ({
 describe('create-portal-session: only the caller\'s own Stripe customer', () => {
   it('no or bad token → 401', async () => {
     expect(await resolvePortalCustomer({}, deps())).toEqual({ ok: false, status: 401, error: 'sign-in-required' });
-    expect((await resolvePortalCustomer({ authorization: 'Bearer junk' }, deps())).status).toBe(401);
+    expect(((await resolvePortalCustomer({ authorization: 'Bearer junk' }, deps())) as any).status).toBe(401);
   });
 
   it("the customer is derived from the caller's verified email; a customerId from the browser is ignored", async () => {
@@ -28,9 +28,9 @@ describe('create-portal-session: only the caller\'s own Stripe customer', () => 
   });
 
   it('unverified email → 403; no billing account → 404', async () => {
-    expect((await resolvePortalCustomer({ authorization: 'Bearer unverified' }, deps())).status).toBe(403);
+    expect(((await resolvePortalCustomer({ authorization: 'Bearer unverified' }, deps())) as any).status).toBe(403);
     const d = deps({ userOf: vi.fn(async () => ({ id: 'u3', email: 'new@example.com', emailVerified: true })) });
-    expect((await resolvePortalCustomer({ authorization: 'Bearer x' }, d)).status).toBe(404);
+    expect(((await resolvePortalCustomer({ authorization: 'Bearer x' }, d)) as any).status).toBe(404);
   });
 
   it('the admin may open any named customer', async () => {
@@ -39,8 +39,8 @@ describe('create-portal-session: only the caller\'s own Stripe customer', () => 
 
   it('lookup errors fail closed (503)', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    expect((await resolvePortalCustomer({ authorization: 'Bearer barber' }, deps({ userOf: vi.fn(async () => { throw new Error('down'); }) }))).status).toBe(503);
-    expect((await resolvePortalCustomer({ authorization: 'Bearer barber' }, deps({ customersByEmail: vi.fn(async () => { throw new Error('down'); }) }))).status).toBe(503);
+    expect(((await resolvePortalCustomer({ authorization: 'Bearer barber' }, deps({ userOf: vi.fn(async () => { throw new Error('down'); }) }))) as any).status).toBe(503);
+    expect(((await resolvePortalCustomer({ authorization: 'Bearer barber' }, deps({ customersByEmail: vi.fn(async () => { throw new Error('down'); }) }))) as any).status).toBe(503);
   });
 
   it('the handler never reads customerId for the portal except through resolvePortalCustomer; first-party CORS', () => {

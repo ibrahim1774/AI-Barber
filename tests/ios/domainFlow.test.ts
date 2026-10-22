@@ -579,6 +579,13 @@ describe('lifecycle: cancel, lapse, resubscribe — always from the payer and Ve
     w.domainSubs['100'].expiresAt = w.deps.now() + 365 * DAY;
     await w.notify('SUBSCRIBED');
     await w.sweep();
+    // expired 31 days ago: may still renew in the registry's grace window → not freed yet
+    expect(w.repo.rows.get('d-o1')!.state).toBe('detached');
+    w.tick(20 * DAY);
+    w.domainSubs['100'].autoRenew = true;
+    w.domainSubs['100'].expiresAt = w.deps.now() + 365 * DAY;
+    await w.notify('SUBSCRIBED');
+    await w.sweep();
     expect(w.repo.rows.get('d-o1')).toMatchObject({ state: 'failed', failure_reason: 'registration-expired' });
   });
 
@@ -762,7 +769,11 @@ describe('fix round 2', () => {
     w.domainSubs['100'].autoRenew = null; // renewal info never decodes
     await w.claim(CLAIM);
     expect(w.reg.registered.get('freshcuts.com')!.renew).toBe(false);
-    w.tick(400 * DAY);
+    w.tick(390 * DAY);
+    w.domainSubs['100'].expiresAt = w.deps.now() + 300 * DAY;
+    await w.sweep(); // expired 25 days ago: not gone yet (grace window)
+    expect(w.repo.rows.get('d-o1')!.state).toBe('live');
+    w.tick(30 * DAY);
     w.domainSubs['100'].expiresAt = w.deps.now() + 300 * DAY; // Apple keeps renewing
     vi.spyOn(console, 'error').mockImplementation(() => {});
     await w.sweep();
@@ -808,7 +819,7 @@ describe('fix round 2', () => {
     let blips = 1;
     const refresh = vi.fn(async () => { stored = 'https://freshcuts.com'; });
     w.hooks.onDomainLinked.mockImplementation(async () => { if (blips-- <= 0) stored = 'https://freshcuts.com'; });
-    w.deps.base = { read: async () => stored, refresh };
+    w.deps.base = { read: async () => stored, refresh, clear: vi.fn(async () => {}) };
     await w.claim(CLAIM); // republish #1 (blip: base unchanged)
     await w.sweep(); // DNS ok → republish #2 → still blip? no: second call sets it
     expect(w.repo.rows.get('d-o1')!.dns_ready_at).not.toBeNull();
@@ -819,7 +830,7 @@ describe('fix round 2', () => {
     const w = world();
     let stored: string | null = 'https://fresh-cuts.vercel.app';
     const refresh = vi.fn(async () => { stored = 'https://freshcuts.com'; });
-    w.deps.base = { read: async () => stored, refresh };
+    w.deps.base = { read: async () => stored, refresh, clear: vi.fn(async () => {}) };
     await w.claim(CLAIM);
     await w.sweep();
     expect(w.repo.rows.get('d-o1')).toMatchObject({ dns_ready_at: null, last_error: BASE_PENDING });
@@ -829,20 +840,19 @@ describe('fix round 2', () => {
     expect(w.hooks.onDomainLinked).toHaveBeenCalledTimes(2); // claim + first DNS republish only
   });
 
-  it('N3: unlinking waits until the base no longer points at the detached domain', async () => {
+  it('N3: unlinking retries the base refresh when it still points at the detached domain', async () => {
     const w = world();
     let stored: string | null = 'https://freshcuts.com';
-    let ok = false;
-    w.deps.base = { read: async () => stored, refresh: vi.fn(async () => { if (ok) stored = 'https://fresh-cuts.vercel.app'; }) };
+    let calls = 0;
+    const clear = vi.fn(async () => {});
+    w.deps.base = { read: async () => stored, refresh: vi.fn(async () => { if (++calls >= 2) stored = 'https://fresh-cuts.vercel.app'; }), clear };
     await w.claim(CLAIM);
     w.domainSubs['100'].status = 2;
     w.tick(366 * DAY);
-    await w.sweep();
-    expect(w.repo.rows.get('d-o1')!.state).toBe('unlinking');
-    ok = true;
-    await w.sweep();
+    await w.sweep(); // lapse pass: first refresh blips → waits; resume pass: second refresh works
     expect(w.repo.rows.get('d-o1')!.state).toBe('detached');
     expect(stored).toBe('https://fresh-cuts.vercel.app');
+    expect(clear).not.toHaveBeenCalled();
   });
 
   it('N6: the same site re-buys its own detached name with a new subscription: handed over, no second purchase', async () => {
@@ -869,12 +879,73 @@ describe('fix round 2', () => {
     w.domainSubs['100'].status = 2;
     w.tick(370 * DAY);
     await w.sweep();
-    w.tick(13 * 3600_000);
+    w.tick(50 * DAY);
     await w.sweep();
     expect(w.repo.rows.get('d-o1')).toMatchObject({ state: 'failed', failure_reason: 'registration-expired' });
     const calls = w.verifyDomain.mock.calls.length;
     w.tick(13 * 3600_000);
     await w.sweep();
     expect(w.verifyDomain.mock.calls.length).toBe(calls);
+  });
+});
+
+describe('fix round 3', () => {
+  it('R1: a renewing registration that reads as expired (renewal lag) is never failed; renew OFF is sent before any fail', async () => {
+    let now = T0;
+    const w = world();
+    // swap in a registrar with a 20-day renewal lag
+    const lagReg = fakeRegistrar({ now: () => w.deps.now(), renewLagMs: 20 * DAY });
+    w.deps.vercel = lagReg.api;
+    await w.claim(CLAIM);
+    expect(lagReg.registered.get('freshcuts.com')!.renew).toBe(true);
+    w.tick(370 * DAY); // expired 5 days, the renewal not landed yet
+    w.domainSubs['100'].expiresAt = w.deps.now() + 300 * DAY;
+    await w.sweep();
+    expect(w.repo.rows.get('d-o1')!.state).toBe('live');
+    w.tick(20 * DAY); // the renewal lands
+    await w.sweep();
+    expect(w.repo.rows.get('d-o1')!.state).toBe('live');
+    expect(lagReg.renewals('freshcuts.com')).toBe(1);
+    void now;
+  });
+
+  it('R1: before failing a gone registration, auto-renew OFF is sent', async () => {
+    const w = world();
+    w.domainSubs['100'].autoRenew = false;
+    await w.claim(CLAIM);
+    w.domainSubs['100'].status = 2;
+    w.tick(370 * DAY);
+    await w.sweep();
+    w.tick(50 * DAY);
+    (w.reg.api.setAutoRenew as any).mockClear();
+    await w.sweep();
+    expect(w.repo.rows.get('d-o1')!.state).toBe('failed');
+    expect(w.reg.api.setAutoRenew).toHaveBeenCalledWith('freshcuts.com', false);
+  });
+
+  it('R3: no cover-the-paid-period renewal for a revoked (refunded) payer', async () => {
+    const w = world();
+    w.domainSubs['100'].expiresAt = T0 + 500 * DAY;
+    w.domainSubs['100'].autoRenew = false;
+    w.domainSubs['100'].revoked = true;
+    w.domainSubs['100'].status = 1;
+    w.repo.rows.set('d-o1', blankRow({ original_transaction_id: 'd-o1', site_slug: 'fresh-cuts', domain: 'freshcuts.com', state: 'live', paid_until: new Date(T0 + 500 * DAY).toISOString(), revoked_at: new Date(T0).toISOString(), auto_renew_synced: false }));
+    w.reg.seed('freshcuts.com', 1, false);
+    await w.sweep();
+    expect(w.reg.registered.get('freshcuts.com')!.renew).toBe(false);
+  });
+
+  it('R6: unlinking never waits forever: no vercel.app fallback → the base is cleared and the row detaches', async () => {
+    const w = world();
+    let stored: string | null = 'https://freshcuts.com';
+    const clear = vi.fn(async () => { stored = null; });
+    w.deps.base = { read: async () => stored, refresh: vi.fn(async () => {}), clear };
+    await w.claim(CLAIM);
+    w.domainSubs['100'].status = 2;
+    w.tick(366 * DAY);
+    await w.sweep(); // waits once, then (resume pass) clears instead of waiting forever
+    expect(clear).toHaveBeenCalledWith('fresh-cuts');
+    expect(w.repo.rows.get('d-o1')!.state).toBe('detached');
+    expect(stored).toBeNull();
   });
 });

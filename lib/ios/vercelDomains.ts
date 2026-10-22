@@ -103,6 +103,11 @@ export interface VercelDomains {
    * outage is never read as "gone".
    */
   owned(domain: string): Promise<OwnedDomain | null>;
+  /**
+   * The registration as Vercel holds it, EXPIRED ones included (a renewal may still land in the
+   * registry's grace window); null only when it is not in the account or not bought via Vercel.
+   */
+  lookup(domain: string): Promise<OwnedDomain | null>;
   /** Every domain in the account (admin listing; read-only). */
   listDomains(): Promise<AccountDomain[]>;
   setAutoRenew(domain: string, on: boolean): Promise<void>;
@@ -187,11 +192,16 @@ export function makeVercelDomains(opts: { token: string; teamId?: string; fetch:
     },
 
     async owned(domain) {
+      const d = await this.lookup(domain);
+      return d && d.expiresAt > now() ? d : null;
+    },
+
+    async lookup(domain) {
       const r = await call('GET', `/v5/domains/${enc(domain)}`);
       if (r.status === 404) return null;
       if (!r.ok) throw new VercelApiError(r.status, errCode(r.data));
       const d = r.data?.domain;
-      if (!d || typeof d.boughtAt !== 'number' || typeof d.expiresAt !== 'number' || d.expiresAt <= now()) return null;
+      if (!d || typeof d.boughtAt !== 'number' || typeof d.expiresAt !== 'number') return null;
       return { boughtAt: d.boughtAt, expiresAt: d.expiresAt, renew: d.renew === true };
     },
 
