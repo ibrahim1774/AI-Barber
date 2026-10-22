@@ -5,6 +5,7 @@ import { router, useFocusEffect, useNavigation } from 'expo-router';
 import type { WebsiteData } from '@/web/types';
 import { colors, fonts } from '@/constants/theme';
 import { onSiteAdopted } from '@/lib/account';
+import { syncQuietly, takeNotice } from '@/lib/adminSync';
 import { track } from '@/lib/analytics';
 import { useEntitlements } from '@/lib/entitlements';
 import { hasEntitlement } from '@/lib/paywall';
@@ -149,10 +150,18 @@ export default function Editor() {
       if (getSubscriptionStatus() === 'lapsed') recheckSubscriptionStatus(true);
       let alive = true;
       loadMyShop().then((sh) => alive && setShop(sh)).catch(() => {});
+      // An admin edit made from the server is adopted in the background and the
+      // editor reloads on it. Silent on any failure, never blocks editing.
+      void syncQuietly().then((r) => {
+        if (r.kind === 'adopted' && alive) void openRecord(r.site, () => alive);
+        const n = alive ? takeNotice() : null;
+        if (n) Alert.alert('Site updated', n);
+      });
       loadSite().then((s) => {
         const cur = siteRef.current;
         if (!alive || !s || !cur) return;
-        if (s.draftId !== cur.draftId) {
+        if (s.draftId !== cur.draftId || (s.editedBy === 'admin' && s.serverVersion !== cur.serverVersion)) {
+          // A different draft (restore), or an admin edit adopted at launch: reload on it.
           void openRecord(s, () => alive);
           return;
         }

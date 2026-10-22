@@ -1,3 +1,4 @@
+import { adoptServerCopy, isNewerAdminEdit, versionFields } from '@/lib/adminSync';
 import { randomUUID } from 'expo-crypto';
 import type { ShopInputs, WebsiteData } from '@/web/types';
 import { resetUser, track } from '@/lib/analytics';
@@ -251,11 +252,13 @@ export async function restore(deps: RestoreDeps): Promise<Restored | null> {
   const record: SiteRecord =
     sameSite && local
       ? {
-          ...local,
+          // A newer admin edit replaces the local copy; otherwise local edits are kept.
+          ...(isNewerAdminEdit(local, bound) ? adoptServerCopy(local, bound) : local),
           slug: bound.siteId,
           deployedUrl: bound.deployedUrl ?? local.deployedUrl,
           transactionId,
           updatedAt: Date.now(),
+          ...versionFields(bound),
         }
       : {
           draftId: local && !local.deployedUrl ? local.draftId : randomUUID(),
@@ -265,6 +268,7 @@ export async function restore(deps: RestoreDeps): Promise<Restored | null> {
           slug: bound.siteId,
           deployedUrl: bound.deployedUrl,
           transactionId,
+          ...versionFields(bound),
         };
   // A pending publish is left alone: it is paid content for this same
   // subscription, and the launch retry still sends it to the bound site.

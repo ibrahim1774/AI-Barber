@@ -1,3 +1,4 @@
+import { syncQuietly } from '@/lib/adminSync';
 import { usePlacement, useSuperwall, useSuperwallEvents, useUser } from 'expo-superwall';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, AppState } from 'react-native';
@@ -323,6 +324,7 @@ export function usePublishDeps(): PublishDeps {
       showPaywall: () => paywall('publish'),
       latestTransactionId,
       iosPublish: api.iosPublish,
+      syncFromServer: syncQuietly,
       linkContext: loadLinkContext,
       store: siteStore,
       // The site is bound to the Apple transaction; a signed-in user is linked to it too.

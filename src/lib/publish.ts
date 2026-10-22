@@ -7,6 +7,7 @@ import { resolveLinks, type LinkContext } from '@/lib/bookingChoice';
 import { stripLapsedLinks } from '@/lib/tierLinks';
 import { cancelRemindersInBackground } from '@/lib/reminders';
 import type { SiteRecord } from '@/lib/siteStore';
+import { adoptAndSave, queueNotice, UPDATED_ON_PUBLISH_MESSAGE, versionFields, type ServerSite, type SyncResult } from '@/lib/adminSync';
 import { LOOKUP_TIMEOUT_MS, withTimeout } from '@/lib/timeout';
 
 /**
@@ -45,6 +46,8 @@ export interface PublishDeps {
   /** The shop facts that decide the Book / Shop links on every publish. Without it, links the plan lacks are only stripped. */
   linkContext?(): Promise<LinkContext | null>;
   store: typeof import('./siteStore');
+  /** GET /api/ios/site → adopt a newer admin edit (adminSync.syncFromServer). Optional; never throws. */
+  syncFromServer?(transactionId: string): Promise<SyncResult>;
   /** The signed-in Supabase user, so the server can link the purchase to the account. */
   userId(): string | null;
   /**
@@ -59,7 +62,9 @@ export type PublishOutcome =
   | { kind: 'live'; url: string; republished: boolean }
   | { kind: 'declined' }
   | { kind: 'pending'; message: string }
-  | { kind: 'inactive' };
+  | { kind: 'inactive' }
+  /** An admin edit is newer: the server copy was adopted and nothing was published. Review, then publish again. */
+  | { kind: 'site-updated'; message: string };
 
 /** Superwall can lag behind StoreKit right after a purchase: first try plus 3 retries, 1 s apart. */
 const TX_RETRIES = 3;
@@ -147,12 +152,31 @@ async function send(
   let res: Awaited<ReturnType<PublishDeps['iosPublish']>>;
   const ctx = deps.linkContext ? await deps.linkContext().catch(() => null) : null;
   const rec = ctx ? await deps.store.loadSite().catch(() => null) : null;
+  const baseVersion = (rec ?? (await deps.store.loadSite().catch(() => null)))?.serverVersion;
   const siteData = ctx
     ? stripLapsedLinks(resolveLinks(pending.data, rec?.inputs, ctx), ctx.ents)
     : stripLapsedLinks(pending.data, getEntitlements());
   try {
-    res = await deps.iosPublish({ transactionId: pending.transactionId, siteData, userId: deps.userId() });
+    res = await deps.iosPublish({
+      transactionId: pending.transactionId,
+      siteData,
+      userId: deps.userId(),
+      ...(typeof baseVersion === 'number' ? { baseVersion } : {}),
+    });
   } catch (e) {
+    if (e instanceof ApiError && e.status === 409 && e.code === 'site-updated') {
+      const server = e.body?.site as ServerSite | undefined;
+      const cur = await deps.store.loadSite();
+      // Never auto-republish: adopt the admin's copy and let the barber review it.
+      await deps.store.savePendingPublish(null);
+      track('publish_site_updated');
+      if (cur && server?.siteData) {
+        const { site } = await adoptAndSave(deps.store, cur, server, UPDATED_ON_PUBLISH_MESSAGE);
+        notifyLive(deps, site);
+      }
+      queueNotice(UPDATED_ON_PUBLISH_MESSAGE);
+      return { kind: 'site-updated', message: UPDATED_ON_PUBLISH_MESSAGE };
+    }
     if (e instanceof ApiError && e.status === 402) {
       await deps.store.savePendingPublish(null);
       track('publish_inactive');
@@ -170,7 +194,14 @@ async function send(
   const cur = await deps.store.loadSite();
   let saved: SiteRecord | null = null;
   if (cur) {
-    saved = { ...cur, slug: res.siteId, deployedUrl: res.deployedUrl, transactionId: pending.transactionId };
+    saved = {
+      ...cur,
+      slug: res.siteId,
+      deployedUrl: res.deployedUrl,
+      transactionId: pending.transactionId,
+      syncedAt: cur.updatedAt,
+      ...versionFields(res),
+    };
     await deps.store.saveSite(saved);
   }
   await deps.store.savePendingPublish(null);
@@ -228,6 +259,13 @@ export async function publishFlow(site: SiteRecord, deps: PublishDeps): Promise<
     }
     const transactionId = await findTransactionId(deps.latestTransactionId);
     if (!transactionId) return { kind: 'pending', message: UNCONFIRMED_MESSAGE } as const;
+    // An admin edit must reach the barber before their publish can overwrite it.
+    const synced = await deps.syncFromServer?.(transactionId).catch(() => null);
+    if (synced?.kind === 'adopted') {
+      await deps.store.savePendingPublish(null);
+      queueNotice(UPDATED_ON_PUBLISH_MESSAGE);
+      return { kind: 'site-updated', message: UPDATED_ON_PUBLISH_MESSAGE } as const;
+    }
     const pending = { transactionId, data, createdAt: Date.now() };
     await deps.store.savePendingPublish(pending);
     return send(pending, deps, paid ? PENDING_MESSAGE : UPDATING_MESSAGE);

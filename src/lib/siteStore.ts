@@ -10,6 +10,12 @@ export interface SiteRecord {
   slug: string | null;
   deployedUrl: string | null;
   transactionId: string | null;
+  /** The server's site version at the last publish / sync. Absent: an older server or record (no version info). */
+  serverVersion?: number;
+  editedBy?: 'owner' | 'admin';
+  editedAt?: string;
+  /** `updatedAt` as of the last publish or adopted server copy; later edits are unpublished. */
+  syncedAt?: number;
 }
 
 export interface PendingPublish {

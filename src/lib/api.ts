@@ -36,10 +36,17 @@ export interface Candidate {
  * "retry later" (network / 5xx) from "rejected" (4xx).
  */
 export class ApiError extends Error {
-  constructor(public status: number, public code: string, message: string) {
+  constructor(public status: number, public code: string, message: string, public body?: any) {
     super(message);
     this.name = 'ApiError';
   }
+}
+
+/** Added by the admin-edits server; absent from an older one. */
+export interface ServerVersionInfo {
+  version?: number;
+  editedBy?: 'owner' | 'admin';
+  editedAt?: string;
 }
 
 const base = () => process.env.EXPO_PUBLIC_API_BASE ?? 'https://www.aibarber.org';
@@ -97,6 +104,7 @@ async function post<T>(path: string, body: unknown, opts: RequestOpts = {}): Pro
       serverMsg || `http-${status}`,
       serverMsg ||
         (status >= 500 ? opts.slowMessage ?? SLOW_MESSAGE : opts.failMessage ?? 'Import failed'),
+      data,
     );
   }
   if (data === null) {
@@ -153,13 +161,17 @@ export const api = {
     transactionId: string;
     siteData: WebsiteData;
     userId?: string | null;
-  }): Promise<{ siteId: string; deployedUrl: string; republished: boolean }> {
+    /** The site version this phone last saw; the server 409s `site-updated` if an admin edit is newer. */
+    baseVersion?: number;
+  }): Promise<{ siteId: string; deployedUrl: string; republished: boolean } & ServerVersionInfo> {
     return post('/api/ios/publish', body, { timeoutMs: SCRAPE_TIMEOUT_MS, failMessage: 'Publish failed', slowMessage: 'Publishing is temporarily unavailable — try again shortly.' });
   },
 
   iosSite(
     transactionId: string,
-  ): Promise<{ siteId: string; deployedUrl: string | null; siteData: WebsiteData | null; active: boolean }> {
+  ): Promise<
+    { siteId: string; deployedUrl: string | null; siteData: WebsiteData | null; active: boolean } & ServerVersionInfo
+  > {
     return post('/api/ios/site', { transactionId }, { failMessage: 'Could not load your site' });
   },
 

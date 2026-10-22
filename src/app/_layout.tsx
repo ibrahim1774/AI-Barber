@@ -14,6 +14,7 @@ import {
 } from '@/lib/paywall';
 import { resetTo } from '@/lib/nav';
 import { RevenueCatStart } from '@/lib/revenueCatStart';
+import { syncQuietly } from '@/lib/adminSync';
 import { publishBusy, resumePendingPublish } from '@/lib/publish';
 import { onReminderTap, refreshReminders, routeForReminderTap, takeLaunchReminderTap } from '@/lib/reminders';
 import { loadSite } from '@/lib/siteStore';
@@ -186,6 +187,8 @@ function ResumePublish() {
   useEffect(() => {
     if (!navReady) return;
     const resume = () => {
+      // Quiet: an admin edit is adopted now, and told to the barber on the Edit tab.
+      void syncQuietly();
       resumePendingPublish(depsRef.current)
         .then((out) => {
           // A user publish queued behind this retry navigates for itself.
