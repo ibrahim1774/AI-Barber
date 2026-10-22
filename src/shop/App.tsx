@@ -3,11 +3,12 @@ import { ApiError, type ShopApi } from './api';
 import { addItem, cartTotals, loadCart, MAX_QTY, reconcile, removeItem, saveCart, setQty } from './cart';
 import {
   CHANGED_MESSAGE, checkoutBody, directionsUrl, EMPTY_ADDRESS, EXPIRED_MESSAGE, formatAddress, formatMoney, manualLink, METHOD_LABEL,
-  newClientKey, onAccent, parseShopRoute, paymentLine, payRows, placeOrder, safeAccent, sentErrorMessage, shipsWithinLabel, invalidMessage, STATUS_LABEL, telUrl,
+  newClientKey, parseShopRoute, paymentLine, payRows, placeOrder, sentErrorMessage, shipsWithinLabel, invalidMessage, STATUS_LABEL, telUrl,
   tokenFromStatusUrl, validateCheckout, type AddressForm, type CheckoutState,
 } from './logic';
 import { CHECKOUT_POLL_MS, parseCheckout, shouldKeepPolling, type CheckoutReturn } from '../book/logic';
 import type { Cart, Fulfilment, ManualMethod, OrderResponse, PayChoice, Product, ShopInfo, ShopResponse, StorageLike } from './types';
+import { applySite, homeHref, loadSiteSlug, onSiteNow, shopBackHref, type SiteInfo } from '../site/site';
 
 const US_STATES = 'AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY'.split(' ');
 
@@ -15,11 +16,10 @@ function getStorage(): StorageLike | undefined {
   try { return window.localStorage; } catch { return undefined; }
 }
 
-function applyAccent(accent: string | null | undefined) {
-  const a = safeAccent(accent);
-  const r = document.documentElement.style;
-  r.setProperty('--accent', a);
-  r.setProperty('--on-accent', onAccent(a));
+/** The shop's name, linking to its site's homepage when it has one. */
+function ShopName({ name, site }: { name: string; site?: SiteInfo }) {
+  const home = homeHref(site);
+  return home ? <a className="home" href={home}>{name}</a> : <>{name}</>;
 }
 
 function Shell({ children }: { children: React.ReactNode }) { return <main className="wrap">{children}</main>; }
@@ -28,9 +28,13 @@ function Message({ title, body }: { title: string; body?: string }) {
 }
 function Spinner() { return <p className="spin" role="status">Loading…</p>; }
 
-export function App({ api, pathname, search = '' }: { api: ShopApi; pathname: string; search?: string }) {
+export function App({ api, pathname, search = '', loadSlug = () => loadSiteSlug() }: {
+  api: ShopApi; pathname: string; search?: string;
+  /** The shop slug on the barber's own site (/shop), from its /ab-site.json. */
+  loadSlug?: () => Promise<string | null>;
+}) {
   const route = useMemo(() => parseShopRoute(pathname), [pathname]);
-  if (route.kind === 'shop') return <ShopPage api={api} slug={route.slug} />;
+  if (route.kind === 'shop') return <ShopPage api={api} pathSlug={route.slug} loadSlug={loadSlug} />;
   if (route.kind === 'order') return <StatusPage api={api} token={route.token} checkout={parseCheckout(search)} />;
   return <Shell><Message title="We couldn't find this shop." body="Check the link and try again." /></Shell>;
 }
@@ -40,7 +44,10 @@ export function App({ api, pathname, search = '' }: { api: ShopApi; pathname: st
 type Loaded = Extract<ShopResponse, { paused: false }>;
 type View = { kind: 'shop' } | { kind: 'checkout' } | { kind: 'status'; token: string };
 
-function ShopPage({ api, slug }: { api: ShopApi; slug: string }) {
+function ShopPage({ api, pathSlug, loadSlug }: { api: ShopApi; pathSlug: string | null; loadSlug: () => Promise<string | null> }) {
+  // On the barber's own site (/shop) the slug comes from the site's config.
+  const onSite = pathSlug === null;
+  const [slug, setSlug] = useState<string | null>(pathSlug);
   const [data, setData] = useState<ShopResponse | null>(null);
   const [error, setError] = useState<'not-found' | 'failed' | null>(null);
   const [cart, setCartState] = useState<Cart>({ lines: [] });
@@ -50,25 +57,29 @@ function ShopPage({ api, slug }: { api: ShopApi; slug: string }) {
   const [notice, setNotice] = useState<string | null>(null);
   const storage = useMemo(getStorage, []);
 
-  const setCart = (c: Cart) => { setCartState(c); saveCart(slug, c, storage); };
+  const setCart = (c: Cart) => { setCartState(c); if (slug) saveCart(slug, c, storage); };
 
   useEffect(() => {
-    api.shop(slug).then((d) => {
-      setData(d);
-      if (d.paused) return;
-      const ok = d as Loaded;
-      applyAccent(ok.shop.accent);
-      document.title = ok.shop.name;
-      const r = reconcile(loadCart(slug, storage), ok.products);
-      setCartState(r.cart);
-      saveCart(slug, r.cart, storage);
-      if (r.dropped.length) setNotice('Some items in your cart are no longer available.');
+    (pathSlug ? Promise.resolve(pathSlug) : loadSlug()).then((s) => {
+      if (!s) { setError('not-found'); return; }
+      setSlug(s);
+      return api.shop(s).then((d) => {
+        setData(d);
+        applySite(d.site, d.paused ? null : (d as Loaded).shop.accent, 'shop');
+        if (d.paused) return;
+        const ok = d as Loaded;
+        document.title = ok.shop.name;
+        const r = reconcile(loadCart(s, storage), ok.products);
+        setCartState(r.cart);
+        saveCart(s, r.cart, storage);
+        if (r.dropped.length) setNotice('Some items in your cart are no longer available.');
+      });
     }).catch((e) => setError(e instanceof ApiError && e.status === 404 ? 'not-found' : 'failed'));
-  }, [slug]);
+  }, [pathSlug]);
 
   if (error === 'not-found') return <Shell><Message title="We couldn't find this shop." /></Shell>;
   if (error) return <Shell><Message title="Something went wrong" body="Please refresh and try again." /></Shell>;
-  if (!data) return <Shell><Spinner /></Shell>;
+  if (!data || !slug) return <Shell><Spinner /></Shell>;
   if (data.paused) return <Shell><Message title={`${data.shop.name}'s online shop is closed right now.`} /></Shell>;
   const d = data as Loaded;
   const { shop, products } = d;
@@ -80,14 +91,14 @@ function ShopPage({ api, slug }: { api: ShopApi; slug: string }) {
       const fresh = await api.shop(slug);
       if (fresh.paused) { setData(fresh); return; }
       next = fresh as Loaded;
-      applyAccent(next.shop.accent);
+      applySite(next.site, next.shop.accent, null);
     } catch { /* keep the products from the 409 */ }
     setData(next);
     setCart(reconcile(cart, next.products).cart);
   };
   const closed = () => setData({ paused: true, shop: { name: shop.name } });
 
-  if (view.kind === 'status') return <Shell><StatusView api={api} token={view.token} checkout={null} fresh /></Shell>;
+  if (view.kind === 'status') return <Shell><StatusView api={api} token={view.token} checkout={null} fresh onSite={onSite} /></Shell>;
 
   if (view.kind === 'checkout') {
     return (
@@ -115,7 +126,7 @@ function ShopPage({ api, slug }: { api: ShopApi; slug: string }) {
       <div className="head">
         <span className="logo" aria-hidden>{(shop.name[0] || '?').toUpperCase()}</span>
         <div className="meta">
-          <h1>{shop.name}</h1>
+          <h1><ShopName name={shop.name} site={d.site} /></h1>
           {shop.address && <a href={directionsUrl(shop.address)} target="_blank" rel="noopener noreferrer">{shop.address}</a>}
         </div>
       </div>
@@ -366,10 +377,13 @@ function Checkout({ api, shop, products, cart, onBack, onRefresh, onSoldOut, onR
 /* ===================== status ===================== */
 
 function StatusPage({ api, token, checkout }: { api: ShopApi; token: string; checkout: CheckoutReturn }) {
-  return <Shell><StatusView api={api} token={token} checkout={checkout} /></Shell>;
+  // /shop/manage/{token} is the same path on aibarber.org and on a barber's site: ask which.
+  const [onSite, setOnSite] = useState(false);
+  useEffect(() => { onSiteNow().then(setOnSite); }, []);
+  return <Shell><StatusView api={api} token={token} checkout={checkout} onSite={onSite} /></Shell>;
 }
 
-function StatusView({ api, token, checkout, fresh }: { api: ShopApi; token: string; checkout: CheckoutReturn; fresh?: boolean }) {
+function StatusView({ api, token, checkout, fresh, onSite = false }: { api: ShopApi; token: string; checkout: CheckoutReturn; fresh?: boolean; onSite?: boolean }) {
   const [data, setData] = useState<OrderResponse | null>(null);
   const [error, setError] = useState<'not-found' | 'failed' | null>(null);
   const [sentOk, setSentOk] = useState(false);
@@ -377,7 +391,7 @@ function StatusView({ api, token, checkout, fresh }: { api: ShopApi; token: stri
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    api.order(token).then((d) => { setData(d); applyAccent(d.shop.accent); document.title = `Order #${d.order.number}`; })
+    api.order(token).then((d) => { setData(d); applySite(d.site, d.shop.accent, null); document.title = `Order #${d.order.number}`; })
       .catch((e) => setError(e instanceof ApiError && e.status === 404 ? 'not-found' : 'failed'));
   }, [token]);
 
@@ -402,6 +416,7 @@ function StatusView({ api, token, checkout, fresh }: { api: ShopApi; token: stri
   if (error) return <Message title="Something went wrong" body="Please refresh and try again." />;
   if (!data) return <Spinner />;
   const { order: o, shop } = data;
+  const backHref = shopBackHref(shop.slug, data.site, onSite, data.shopOpen !== false);
   const method = (o.paymentMethod ?? '') as ManualMethod;
   const handle = shop.manual[method];
   const link = handle ? manualLink(method, handle, o.totalCents, `Order #${o.number}`) : null;
@@ -466,7 +481,7 @@ function StatusView({ api, token, checkout, fresh }: { api: ShopApi; token: stri
       {!data.canSayPaid && !sentOk && o.customerSaysPaid && o.paymentStatus !== 'paid' && <div className="note" role="status">Thanks. {shop.name} will confirm your payment.</div>}
 
       {shop.phone && <a className="btn ghost" href={telUrl(shop.phone)}>Call {shop.name}</a>}
-      <a className="btn ghost" href={`/shop/${encodeURIComponent(shop.slug)}`}>Back to shop</a>
+      {backHref && <a className="btn ghost" href={backHref}>Back to shop</a>}
       <p className="sub">Keep this page. It's your link to this order.</p>
     </div>
   );

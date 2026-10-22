@@ -55,15 +55,36 @@ function configuredBase(): string | null {
   return raw.trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '').toLowerCase() || null;
 }
 
-/** An AI Barber booking page link (a Booksy or Square link is not one). */
+// The site's own booking page (lib/render/subpages.ts): the relative `/book`, proxied to
+// aibarber.org by the site's rewrites (lib/siteSubpages.ts). Kept in step with isSiteBookLink;
+// no import so this module stays dependency-free.
+const SITE_BOOKING = /^\/book(?=[?#]|$)/;
+
+/** An AI Barber booking page link, old (aibarber.org/book/…) or new (/book). A Booksy or Square link is not one. */
 export function isAiBarberBookingLink(url: unknown): boolean {
   if (typeof url !== 'string') return false;
   const u = url.trim();
-  if (AI_BARBER_BOOKING.test(u)) return true;
+  if (AI_BARBER_BOOKING.test(u) || SITE_BOOKING.test(u)) return true;
   const base = configuredBase();
   if (!base) return false;
   const rest = u.replace(/^https?:\/\//i, '').toLowerCase();
   if (!rest.startsWith(`${base}/book`)) return false;
+  const next = rest.charAt(base.length + 5);
+  return next === '' || next === '/' || next === '?' || next === '#';
+}
+
+const AI_BARBER_SHOP = /^(https?:\/\/)?(www\.)?aibarber\.org\/shop(?=[/?#]|$)/i;
+const SITE_SHOP = /^\/shop(?=[?#]|$)/;
+
+/** An AI Barber shop page link, old (aibarber.org/shop/…, or the BOOKING_BASE_URL form) or new (/shop). A barber's own store is not one. */
+export function isAiBarberShopLink(url: unknown): boolean {
+  if (typeof url !== 'string') return false;
+  const u = url.trim();
+  if (AI_BARBER_SHOP.test(u) || SITE_SHOP.test(u)) return true;
+  const base = configuredBase();
+  if (!base) return false;
+  const rest = u.replace(/^https?:\/\//i, '').toLowerCase();
+  if (!rest.startsWith(`${base}/shop`)) return false;
   const next = rest.charAt(base.length + 5);
   return next === '' || next === '/' || next === '?' || next === '#';
 }

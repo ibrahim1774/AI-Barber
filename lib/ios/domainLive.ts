@@ -13,8 +13,9 @@ import { publicLimiter } from '../bookings/rateLimit.js';
 import { serviceClient, supabaseBookingRepo } from '../bookings/repo.js';
 import { publishSite, readPendingSite } from '../publishSite.js';
 import { VerifyFailure, lazyDefaultVerifier } from './appleVerify.js';
-import { PayerFailure, appleStatus, applyDomainNotification, sweepDomains, type DomainFlowDeps, type DomainSweepSummary, type PayerStatus } from './domainFlow.js';
-import { makeDomainHooks } from './domainHooks.js';
+import { PayerFailure, appleStatus, projectFor, applyDomainNotification, sweepDomains, type DomainFlowDeps, type DomainSweepSummary, type PayerStatus } from './domainFlow.js';
+import { makeDomainHooks, makeRefreshBase } from './domainHooks.js';
+import { findShopForSite, liveSiteBaseDeps, refreshSiteBase } from '../siteSubpages.js';
 import { supabaseDomains, type DomainRow } from './domainsRepo.js';
 import type { DomainNotificationSink } from './notifications.js';
 import { supabasePurchases } from './purchases.js';
@@ -95,7 +96,8 @@ export function liveDomainDeps(): DomainFlowDeps {
       publish: (slug, opts) => publishSite(slug, opts),
       now: Date.now,
       takedownSandbox: process.env.IOS_TAKEDOWN_SANDBOX === '1',
-      // site-subpages: setSiteBaseUrl → ab_shops.site_base_url (see lib/ios/domainHooks.ts).
+      // publishSite refreshes ab_shops.site_base_url after each deploy; when no deploy happens:
+      refreshBase: makeRefreshBase({ findShop: findShopForSite, refreshSiteBase, siteBaseDeps: liveSiteBaseDeps, projectFor }),
     }),
     limiter: publicLimiter,
     now: Date.now,

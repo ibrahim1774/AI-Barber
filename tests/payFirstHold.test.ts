@@ -23,6 +23,8 @@ vi.mock('@google-cloud/storage', () => ({
 
 const deployRenderedSite = vi.fn(async (_args: any) => ({ deploymentUrl: 'https://x.vercel.app', uploadedImages: {} }));
 vi.mock('../lib/deploySite.js', () => ({ deployRenderedSite: (a: any) => deployRenderedSite(a) }));
+// A web site: no shop behind the slug (lib/siteSubpages.ts; a lookup error would fail the publish).
+vi.mock('../lib/siteSubpages.js', async (orig) => ({ ...(await orig<object>()), findShopForSite: async () => null }));
 
 import { publishSite, writePendingSite } from '../lib/publishSite.js';
 import { httpImageUrlMap, isAwaitingDetails, isPayFirstPlan, validatePayFirstDetails } from '../lib/payFirst';

@@ -6,6 +6,7 @@
 // The interface is domain-level (e.g. insertAppointment reports 'overlap' instead of a
 // Postgres error) so the flows are testable with an in-memory fake.
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { withSiteCols } from '../siteColumns.js';
 
 export type ManualHandles = { cashapp?: string; venmo?: string; zelle?: string; paypal?: string };
 export type ManualMethod = keyof ManualHandles;
@@ -35,6 +36,9 @@ export interface ShopRow {
   phone: string | null;
   accent: string | null;
   daily_summary: boolean;
+  /** The shop's own site origin and look (011, server-written after a site deploy). */
+  site_base_url?: string | null;
+  site_look?: unknown;
 }
 
 export interface MemberRow {
@@ -273,6 +277,7 @@ const SHOP_COLS =
   'id, owner_id, site_id, slug, name, timezone, currency, lead_days, min_notice_min, buffer_min, cancel_cutoff_min, ' +
   'slot_step_min, pay_in_shop, manual_handles, stripe_account_id, stripe_charges_enabled, platform_fee_bps, ' +
   'bookings_enabled, ios_otid, address, phone, accent, daily_summary';
+// + site_base_url, site_look (011) through withSiteCols, so code deployed before the migration still reads shops.
 const MEMBER_COLS = 'id, shop_id, user_id, role, display_name, photo_url, bio, sort, active, ics_token';
 const SERVICE_COLS =
   'id, shop_id, name, price_cents, duration_min, description, photo_url, bookable, show_on_site, deposit_type, deposit_value, sort, active';
@@ -311,9 +316,9 @@ export function supabaseBookingRepo(client?: SupabaseClient): BookingRepo {
   };
 
   return {
-    shopBySlug: (slug) => one('shopBySlug', db().from('ab_shops').select(SHOP_COLS).eq('slug', slug).maybeSingle()),
-    shopByOwner: (userId) => one('shopByOwner', db().from('ab_shops').select(SHOP_COLS).eq('owner_id', userId).maybeSingle()),
-    shopById: (id) => one('shopById', db().from('ab_shops').select(SHOP_COLS).eq('id', id).maybeSingle()),
+    shopBySlug: (slug) => one('shopBySlug', withSiteCols(SHOP_COLS, (c) => db().from('ab_shops').select(c).eq('slug', slug).maybeSingle())),
+    shopByOwner: (userId) => one('shopByOwner', withSiteCols(SHOP_COLS, (c) => db().from('ab_shops').select(c).eq('owner_id', userId).maybeSingle())),
+    shopById: (id) => one('shopById', withSiteCols(SHOP_COLS, (c) => db().from('ab_shops').select(c).eq('id', id).maybeSingle())),
     purchase: (otid) =>
       one('purchase', db().from('ios_purchases').select('user_id, product_id, revoked_at, taken_down_at, expires_at, site_slug, published_at, environment')
         .eq('original_transaction_id', otid).maybeSingle()),

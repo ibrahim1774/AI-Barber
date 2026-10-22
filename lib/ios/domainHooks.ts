@@ -2,13 +2,15 @@
 // lib/ios/domainFlow.ts calls onDomainLinked once the domain is attached to the site's Vercel
 // project, and onDomainUnlinked once it has been removed at the end of the paid period.
 //
-// Each hook (1) records the site's public base URL through `setSiteBaseUrl` and (2) republishes
-// the site so its emails, payment returns and Book/Shop pages use it.
-//
-// site-subpages (ab_shops.site_base_url, migration 011, customerBase(shop)) plugs in at
-// `setSiteBaseUrl`: set ab_shops.site_base_url = 'https://{domain}' for the shop whose ios_otid is
-// the purchase bound to `slug` (ios_purchases.site_slug = slug), and null on unlink, so
-// customerBase(shop) falls back to the vercel.app address. Until then it is a no-op here.
+// Each hook republishes the site. lib/publishSite.ts then runs site-subpages' refreshSiteBase,
+// which derives ab_shops.site_base_url from the PROJECT's verified domains: the custom domain
+// once Vercel reports its DNS correctly pointed, else the project's own *.vercel.app. So:
+// - link: the base follows the domain as soon as its DNS is correct (the domain sweep republishes
+//   once more at that moment, lib/ios/domainFlow.ts pass 6);
+// - unlink: the domain was removed from the project first, so the base falls back to vercel.app.
+// When the site is NOT republished (it shows the offline page, or has no stored copy), the base
+// is still refreshed directly (`refreshBase`), so emails and payment returns never keep pointing
+// at a detached domain.
 //
 // Republish rules mirror the admin republish (lib/admin/sites.ts): never deploy content over the
 // offline page (revoked, taken down except a Sandbox row the sweep only gate-closed, or expired),
@@ -22,8 +24,11 @@ export interface DomainHookDeps {
   findBySlug(slug: string): Promise<PurchaseRow | null>;
   readPending(slug: string): Promise<PendingSite | null>;
   publish(slug: string, opts: { force: boolean; pending?: PendingSite }): Promise<PublishOutcome>;
-  /** Where the public base URL lives (site-subpages: ab_shops.site_base_url). Absent: nothing stored. */
-  setSiteBaseUrl?(slug: string, baseUrl: string | null): Promise<void>;
+  /**
+   * Refresh the shop's public base from the project's domains without deploying (site-subpages:
+   * findShopForSite + refreshSiteBase). Used only when the site is not republished.
+   */
+  refreshBase?(slug: string): Promise<unknown>;
   now(): number;
   /** Same switch as the sweep (IOS_TAKEDOWN_SANDBOX=1). */
   takedownSandbox?: boolean;
@@ -54,14 +59,28 @@ async function republish(slug: string, deps: DomainHookDeps): Promise<HookOutcom
 }
 
 export function makeDomainHooks(deps: DomainHookDeps) {
+  async function run(slug: string): Promise<HookOutcome> {
+    const out = await republish(slug, deps);
+    // publishSite refreshed the base itself; otherwise do it here (a lookup error throws: retried).
+    if (out !== 'republished' && deps.refreshBase) await deps.refreshBase(slug);
+    return out;
+  }
   return {
-    async onDomainLinked(slug: string, domain: string): Promise<HookOutcome> {
-      if (deps.setSiteBaseUrl) await deps.setSiteBaseUrl(slug, `https://${domain}`);
-      return republish(slug, deps);
-    },
-    async onDomainUnlinked(slug: string): Promise<HookOutcome> {
-      if (deps.setSiteBaseUrl) await deps.setSiteBaseUrl(slug, null);
-      return republish(slug, deps);
-    },
+    onDomainLinked: (slug: string, _domain: string) => run(slug),
+    onDomainUnlinked: (slug: string) => run(slug),
+  };
+}
+
+/** site-subpages' base refresh for a slug, without a deploy (no shop → nothing to do). */
+export function makeRefreshBase(d: {
+  findShop(slug: string): Promise<{ id: string } | null>;
+  refreshSiteBase(input: { shopId: string; projectName: string }, deps: any): Promise<string | null>;
+  siteBaseDeps: unknown;
+  projectFor(slug: string): string;
+}) {
+  return async (slug: string) => {
+    const shop = await d.findShop(slug);
+    if (!shop) return null;
+    return d.refreshSiteBase({ shopId: shop.id, projectName: d.projectFor(slug) }, d.siteBaseDeps);
   };
 }

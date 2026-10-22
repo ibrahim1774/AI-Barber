@@ -7,7 +7,7 @@
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:vite\"",
     "dev:server": "tsx server.ts",
     "dev:vite": "vite",
-    "build": "vite build",
+    "build": "vite build && vite build -c vite.subpages.config.ts",
     "preview": "vite preview",
     "test": "vitest run"
   },
@@ -34,6 +34,7 @@
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
     "concurrently": "^9.2.1",
+    "path-to-regexp-updated": "npm:path-to-regexp@6.3.0",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vercel": "^50.1.3",

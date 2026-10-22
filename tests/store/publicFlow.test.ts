@@ -541,6 +541,7 @@ describe('getOrder', () => {
         pickupNote: 'Ring the bell', shipsWithinDays: 3, manual: { cashapp: '$freshcuts' },
       },
       canSayPaid: true,
+      shopOpen: true,
     });
   });
 

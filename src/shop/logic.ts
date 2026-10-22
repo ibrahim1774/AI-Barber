@@ -16,14 +16,16 @@ export function shipsWithinLabel(n: number | null | undefined): string | null {
 
 /* ---------- routing ---------- */
 
+/** slug null: the barber's own site (/shop); the slug comes from the site config (src/site/site.ts). */
 export type ShopRoute =
-  | { kind: 'shop'; slug: string }
+  | { kind: 'shop'; slug: string | null }
   | { kind: 'order'; token: string }
   | { kind: 'none' };
 
 export function parseShopRoute(pathname: string): ShopRoute {
   const parts = pathname.split('/').filter(Boolean);
-  if (parts[0] !== 'shop' || !parts[1]) return { kind: 'none' };
+  if (parts[0] !== 'shop') return { kind: 'none' };
+  if (!parts[1]) return parts.length === 1 ? { kind: 'shop', slug: null } : { kind: 'none' };
   if (parts[1] === 'manage') {
     return parts[2] ? { kind: 'order', token: decodeURIComponent(parts[2]) } : { kind: 'none' };
   }

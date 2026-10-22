@@ -27,6 +27,8 @@ import {
 
 export const WEB_DOMAIN_PRICE_CENTS = 3900;
 export const DOMAIN_SESSION_APP = 'aibarber-domain';
+/** lib/pixelMeta.ts plan slug of the domain sale (Meta Purchase content, Triple Whale). */
+export const DOMAIN_PURCHASE_PLAN = 'domain-yearly';
 const SESSION_ID = /^cs_(test|live)_[A-Za-z0-9_]{8,200}$/;
 const SLUG = /^[a-z0-9](?:[a-z0-9-]{0,48}[a-z0-9])?$/;
 
@@ -262,6 +264,8 @@ export interface DomainEventResult {
   body?: Record<string, unknown>;
   /** Long work (the purchase) to run after answering Stripe (waitUntil). */
   background?: () => Promise<unknown>;
+  /** A paid, verified domain checkout: report its Purchase like a site checkout. */
+  purchase?: boolean;
 }
 
 const SUB_EVENTS = new Set(['customer.subscription.created', 'customer.subscription.updated', 'customer.subscription.deleted', 'invoice.paid']);
@@ -303,13 +307,16 @@ export async function handleDomainStripeEvent(
     const key = `stripe:${subId}`;
     const sub = await deps.getSubscription(subId);
     const existing = await deps.flow.repo.get(key);
+    // A completed, paid checkout for a verified domain subscription is a sale (Meta dedupes on the session id).
+    const purchase = event.type === 'checkout.session.completed' && obj.payment_status === 'paid'
+      && (!!existing || !!verifyDomainSubscription(sub, deps.secret, deps.priceId));
     if (existing) {
       // The row is the proof (it was created from a verified purchase): apply the subscription's
       // CURRENT state, whatever happened to the signing secret since.
       if (!sub) throw new Error('subscription not found at Stripe');
       const payer = stripePayerStatus(sub, deps.flow.now());
       await applyPayerEvent(key, event.type, { ...deps.flow, payer: async () => payer });
-      return { handled: true, status: 200, body: { received: true, domain: true } };
+      return { handled: true, status: 200, body: { received: true, domain: true }, purchase };
     }
     const v = verifyDomainSubscription(sub, deps.secret, deps.priceId);
     if (!v) {
@@ -322,10 +329,10 @@ export async function handleDomainStripeEvent(
     const reserved = await reserveSlot(c, deps.flow);
     if (reserved.result) {
       const refused = await recordRefusedPaidSlot(c, reserved.result, deps.flow);
-      return { handled: true, status: 200, body: { received: true, domain: false, refused } };
+      return { handled: true, status: 200, body: { received: true, domain: false, refused }, purchase };
     }
     return {
-      handled: true, status: 200, body: { received: true, domain: true },
+      handled: true, status: 200, body: { received: true, domain: true }, purchase,
       background: () => advanceSlot(key, payer, deps.flow),
     };
   } catch (e: any) {

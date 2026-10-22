@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
-  IOS_PRODUCT_IDS, tierOf, entitlementsOf, grants, isAiBarberBookingLink, stripLapsedLinks,
+  IOS_PRODUCT_IDS, tierOf, entitlementsOf, grants, isAiBarberBookingLink, isAiBarberShopLink, stripLapsedLinks,
 } from '../../lib/ios/tiers.js';
 import { IOS_PRODUCT_IDS as VERIFY_IDS } from '../../lib/ios/appleVerify.js';
 
@@ -80,6 +80,26 @@ describe('isAiBarberBookingLink', () => {
     }
   });
 
+  it.each([
+    ['/book', true],
+    ['/book?ref=ig', true],
+    [' /book ', true],
+    ['/books', false],
+    ['/book/other-shop', false],
+    ['//evil.test/book', false],
+  ])('site subpage: %s → %s', (url, want) => expect(isAiBarberBookingLink(url)).toBe(want));
+
+  it.each([
+    ['https://www.aibarber.org/shop/fresh', true],
+    ['aibarber.org/shop', true],
+    ['/shop', true],
+    ['/shop#x', true],
+    ['https://www.aibarber.org/shopping', false],
+    ['https://aibarber.org.evil.com/shop/x', false],
+    ['https://myshop.example.com', false],
+    ['/shop/other', false],
+  ])('isAiBarberShopLink: %s → %s', (url, want) => expect(isAiBarberShopLink(url)).toBe(want));
+
   it('non-strings are not links', () => {
     expect(isAiBarberBookingLink(undefined)).toBe(false);
     expect(isAiBarberBookingLink(42 as any)).toBe(false);
@@ -128,6 +148,17 @@ describe('stripLapsedLinks', () => {
     const out = stripLapsedLinks(input, `${P}hosting.monthly`);
     expect(JSON.stringify(input)).toBe(before);
     expect(out).not.toBe(input);
+  });
+
+  it('the relative site links (/book, /shop) lapse like the old aibarber.org forms', () => {
+    const rel = site({ bookingUrl: '/book', shopUrl: '/shop' });
+    const web = stripLapsedLinks(rel, `${P}hosting.monthly`);
+    expect('bookingUrl' in web).toBe(false);
+    expect('shopUrl' in web).toBe(false);
+    const book = stripLapsedLinks(rel, `${P}bookings.monthly`);
+    expect(book.bookingUrl).toBe('/book');
+    expect('shopUrl' in book).toBe(false);
+    expect(stripLapsedLinks(rel, `${P}store.yearly`)).toMatchObject({ bookingUrl: '/book', shopUrl: '/shop' });
   });
 
   it('leaves a site without links unchanged', () => {

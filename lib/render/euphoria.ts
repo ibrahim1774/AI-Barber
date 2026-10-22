@@ -9,6 +9,7 @@
 // Pure: WebsiteData in, HTML string out. Keep it that way.
 import type { WebsiteData } from '../../types';
 import { safeHref } from './safeHref.js';
+import { bookStripHtml, isSiteBookLink, shopPreviewHtml, type SectionSkin } from './subpages.js';
 import {
   contactEmail, copyrightYear, displayPrice, hasServices, photoAlt, serviceMeta, siteDescription, siteTitle,
   withoutLegacyCopy,
@@ -204,11 +205,40 @@ export const cityStateOnly = (raw: string): string => {
   return parts.slice(-2).join(', ');
 };
 // Exported so App.tsx / publish path can reuse for post-payment deploy
+// Book strip and Shop preview in EUPHORIA's look (brand colour from the theme vars).
+const EUPHORIA_SKIN: SectionSkin = {
+  section: 'eu-section',
+  inner: 'eu-container ab-sub',
+  heading: 'eu-display',
+  list: 'ab-sub-list',
+  item: 'ab-sub-row',
+  name: 'eu-serif ab-sub-name',
+  price: 'ab-sub-price',
+  button: 'eu-cta eu-cta-solid',
+  grid: 'ab-sub-grid',
+  link: 'eu-cta',
+  css: '.ab-sub{text-align:center}.ab-sub .eu-display{font-size:clamp(32px,5vw,56px);margin:0 0 32px}'
+    + '.ab-sub-list{list-style:none;padding:0;max-width:640px;margin:0 auto 32px;text-align:left}'
+    + '.ab-sub-row{display:flex;justify-content:space-between;gap:16px;padding:14px 0;border-bottom:1px solid var(--eu-line-soft)}'
+    + '.ab-sub-name{font-size:20px;color:var(--eu-ink)}.ab-sub-price{color:var(--eu-brand);font-style:italic;white-space:nowrap}'
+    + '.ab-sub-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin:0 auto 32px;max-width:880px;text-align:left}'
+    + '@media(min-width:768px){.ab-sub-grid{grid-template-columns:repeat(4,1fr)}}'
+    + '.ab-sp-card{display:flex;flex-direction:column;gap:6px;text-decoration:none;color:var(--eu-ink)}'
+    + '.ab-sp-img{width:100%;aspect-ratio:1/1;object-fit:cover;background:var(--eu-bg-3)}'
+    + ".ab-sp-name{font-family:'Newsreader',Georgia,serif;font-size:18px}"
+    + '.ab-sp-price{color:var(--eu-brand)}',
+};
+
 export function generateEuphoriaHTMLWithPlaceholders(input: WebsiteData): string {
   // Older stored sites: drop the copy we invented for them (honest.ts).
   const siteData = withoutLegacyCopy(input);
   const bookingUrl = safeHref(siteData.bookingUrl);
   const shopUrl = safeHref(siteData.shopUrl);
+  // The site's own /book page opens in the same tab; another booking site in a new one.
+  const bookTarget = bookingUrl && !isSiteBookLink(bookingUrl) ? ' target="_blank" rel="noopener noreferrer"' : '';
+  // Homepage previews of the site's own /book and /shop pages (lib/render/subpages.ts).
+  const bookStrip = bookStripHtml(siteData, EUPHORIA_SKIN);
+  const shopPreview = shopPreviewHtml(siteData, EUPHORIA_SKIN);
   const formattedPhone = escapeHtml((siteData.phone || '').replace(/\s+/g, ''));
   const hasPhone = !!(siteData.phone || '').trim();
   // tel: links only for a phone with digits ("call us" gets no link).
@@ -321,7 +351,7 @@ ${EUPHORIA_SCOPED_CSS}
     <div class="eu-container" style="display:flex;align-items:center;justify-content:space-between;padding:18px 24px;">
       <a href="#top" style="text-decoration:none;color:var(--eu-ink);font-family:'Newsreader',serif;font-size:20px;letter-spacing:0.04em;">${safeName}</a>${shopUrl ? `
       <a href="${escapeHtml(shopUrl)}" style="text-decoration:none;color:var(--eu-ink-soft);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;">Shop</a>` : ''}
-      ${navBookHref ? `<a href="${navBookHref}"${bookingUrl ? ' target="_blank" rel="noopener noreferrer"' : ''} class="eu-cta" style="padding:10px 18px;font-size:10px;">Book now</a>` : ''}
+      ${navBookHref ? `<a href="${navBookHref}"${bookTarget} class="eu-cta" style="padding:10px 18px;font-size:10px;">Book now</a>` : ''}
     </div>
   </nav>
 
@@ -339,7 +369,7 @@ ${EUPHORIA_SCOPED_CSS}
       </p>
       <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;">
         ${canCall ? `<a href="tel:${formattedPhone}" class="eu-cta eu-cta-solid">Call ${escapeHtml(siteData.phone)}</a>` : ''}
-        ${bookingUrl ? `<a href="${escapeHtml(bookingUrl)}" target="_blank" rel="noopener noreferrer" class="eu-cta eu-cta-solid">Book Appointment</a>` : ''}
+        ${bookingUrl ? `<a href="${escapeHtml(bookingUrl)}"${bookTarget} class="eu-cta eu-cta-solid">Book Appointment</a>` : ''}
         ${showServices ? `<a href="#services" class="eu-cta">View services</a>` : ''}
       </div>
     </div>
@@ -357,9 +387,9 @@ ${EUPHORIA_SCOPED_CSS}
     </div>
   </section>
 
-  ${servicesMarkup}
+  ${servicesMarkup}${bookStrip}
 
-  ${galleryMarkup}
+  ${galleryMarkup}${shopPreview}
 
   <!-- Visit -->
   <section class="eu-section" style="background:var(--eu-bg-2);">
@@ -371,7 +401,7 @@ ${EUPHORIA_SCOPED_CSS}
           ${siteData.contact.address ? `<div><div style="color:var(--eu-ink-muted);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;margin-bottom:6px;">Location</div>${escapeHtml(siteData.contact.address)}</div>` : ''}
           ${hasPhone ? `<div><div style="color:var(--eu-ink-muted);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;margin-bottom:6px;">Phone</div>${canCall ? `<a href="tel:${formattedPhone}" style="color:var(--eu-ink);text-decoration:none;">${escapeHtml(siteData.phone)}</a>` : escapeHtml(siteData.phone)}</div>` : ''}
           ${email ? `<div><div style="color:var(--eu-ink-muted);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;margin-bottom:6px;">Email</div><a href="mailto:${escapeHtml(email)}" style="color:var(--eu-ink);text-decoration:none;">${escapeHtml(email)}</a></div>` : ''}
-          ${bookingUrl ? `<div style="margin-top:16px;"><a href="${escapeHtml(bookingUrl)}" target="_blank" rel="noopener noreferrer" class="eu-cta eu-cta-solid">Book Appointment</a></div>` : ''}${shopUrl ? `
+          ${bookingUrl ? `<div style="margin-top:16px;"><a href="${escapeHtml(bookingUrl)}"${bookTarget} class="eu-cta eu-cta-solid">Book Appointment</a></div>` : ''}${shopUrl ? `
           <div style="margin-top:16px;"><a href="${escapeHtml(shopUrl)}" class="eu-cta">Shop online</a></div>` : ''}
         </div>
       </div>

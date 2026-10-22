@@ -27,9 +27,13 @@ export type Member = {
   bio: string | null;
   serviceIds: string[] | null;
 };
+import type { SiteInfo } from '../site/site';
+export type { SiteInfo };
+
+/** site: the shop's own site and look, when its site has the /book and /shop pages. */
 export type ShopResponse =
-  | { paused: false; shop: Shop; services: Service[]; members: Member[] }
-  | { paused: true; shop: { name: string } };
+  | { paused: false; shop: Shop; services: Service[]; members: Member[]; site?: SiteInfo }
+  | { paused: true; shop: { name: string }; site?: SiteInfo };
 
 export type Slot = { start: string; memberId: string };
 export type PayChoice = 'shop' | 'manual' | 'card';
@@ -65,4 +69,5 @@ export type ManageResponse = {
   canCancel: boolean;
   canReschedule: boolean;
   refundCentsIfCancelled: number;
+  site?: SiteInfo;
 };

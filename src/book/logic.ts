@@ -3,14 +3,16 @@ import type { ManualHandles, ManualMethod, Member, Service, Shop } from './types
 
 /* ---------- routing ---------- */
 
+/** slug null: the barber's own site (/book); the slug comes from the site config (src/site/site.ts). */
 export type Route =
-  | { kind: 'book'; slug: string }
+  | { kind: 'book'; slug: string | null }
   | { kind: 'manage'; token: string }
   | { kind: 'none' };
 
 export function parseRoute(pathname: string): Route {
   const parts = pathname.split('/').filter(Boolean);
-  if (parts[0] !== 'book' || !parts[1]) return { kind: 'none' };
+  if (parts[0] !== 'book') return { kind: 'none' };
+  if (!parts[1]) return parts.length === 1 ? { kind: 'book', slug: null } : { kind: 'none' };
   if (parts[1] === 'manage') {
     return parts[2] ? { kind: 'manage', token: decodeURIComponent(parts[2]) } : { kind: 'none' };
   }

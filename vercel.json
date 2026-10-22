@@ -1,4 +1,5 @@
 {
+  "buildCommand": "npm run build",
   "rewrites": [
     {
       "source": "/api/(.*)",
@@ -38,15 +39,26 @@
     },
     {
       "source": "/book/(.*)",
-      "destination": "/book.html"
+      "destination": "/_ab/book.html"
     },
     {
       "source": "/shop/(.*)",
-      "destination": "/shop.html"
+      "destination": "/_ab/shop.html"
     },
     {
-      "source": "/((?!api/.*).*)",
+      "source": "/((?!api/|_ab/).*)",
       "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/_ab/assets/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
     }
   ],
   "crons": [
@@ -116,6 +128,9 @@
     "api/stripe-webhook.ts": {
       "maxDuration": 300,
       "includeFiles": "lib/ios/certs/**"
+    },
+    "api/deploy-site.ts": {
+      "maxDuration": 300
     }
   }
 }

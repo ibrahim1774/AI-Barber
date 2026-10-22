@@ -221,8 +221,8 @@ describe('purchase-domain: owner of the session site, strict session checks, ide
 describe('Stripe webhook: the same lifecycle as the app', () => {
   it('checkout.session.completed reserves the slot at once (a closed tab still gets the domain) and buys in the background', async () => {
     const w = world();
-    const r = await w.event('checkout.session.completed', { id: SID, subscription: 'sub_dom1', metadata: signedMd() });
-    expect(r).toMatchObject({ handled: true, status: 200 });
+    const r = await w.event('checkout.session.completed', { id: SID, subscription: 'sub_dom1', payment_status: 'paid', metadata: signedMd() });
+    expect(r).toMatchObject({ handled: true, status: 200, purchase: true });
     expect(w.repo.rows.get('stripe:sub_dom1')!.state).toBe('reserved');
     await r.background!();
     expect(w.repo.rows.get('stripe:sub_dom1')!.state).toBe('live');
@@ -315,6 +315,14 @@ describe('Stripe webhook: the same lifecycle as the app', () => {
     const r = await handleDomainStripeEvent({ type: 'customer.subscription.updated', data: { object: { id: 'sub_dom1', metadata: signedMd() } } }, () => ({ ...w.deps, secret: 'rotated' }));
     expect(r).toMatchObject({ handled: true, status: 200, body: { domain: true } });
     expect(w.repo.rows.get('stripe:sub_dom1')!.auto_renew).toBe(false);
+  });
+
+  it('only a paid, verified domain checkout is reported as a Purchase', async () => {
+    const w = world();
+    expect((await w.event('checkout.session.completed', { id: SID, subscription: 'sub_dom1', payment_status: 'unpaid', metadata: signedMd() })).purchase).toBe(false);
+    expect((await w.event('customer.subscription.updated', { id: 'sub_dom1', metadata: signedMd() })).purchase).toBeFalsy();
+    w.subs.sub_forged = { ...w.subs.sub_dom1, id: 'sub_forged', metadata: { ...signedMd(), sig: '0'.repeat(64) } };
+    expect((await w.event('checkout.session.completed', { id: SID, subscription: 'sub_forged', payment_status: 'paid', metadata: { type: 'domain_purchase' } })).purchase).toBeFalsy();
   });
 
   it('a Stripe outage → 500 so Stripe retries', async () => {

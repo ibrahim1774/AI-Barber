@@ -4,6 +4,7 @@ import {
   type PayShop, type StripeOpts,
 } from '../bookings/payments.js';
 import { STORE_APP } from './constants.js';
+import { orderStatusUrl, type SiteBased } from '../customerUrls.js';
 
 /**
  * Stripe for store orders: Checkout and refunds on the shop's connected account (Standard,
@@ -25,7 +26,7 @@ export function shipsWithinLabel(n: number | null | undefined): string {
 export const orderNoLabel = (o: { id: string; order_no: number | null }) => `#${o.order_no ?? o.id.slice(0, 8)}`;
 
 /** The order status page (the Checkout return URLs hang off it). */
-export const orderManageUrl = (token: string) => `${SITE_ORIGIN}/shop/manage/${encodeURIComponent(token)}`;
+export const orderManageUrl = (token: string, shop?: SiteBased | null) => orderStatusUrl(shop, token, SITE_ORIGIN);
 
 // ---------------------------------------------------------------------------
 // Types (structural subsets of the ab_orders / ab_order_items rows)
@@ -99,7 +100,7 @@ export async function createOrderCheckout(
   const now = (opts.now ?? Date.now)();
   const minuteSec = Math.floor(now / 60_000) * 60;
   const meta = { order_id: order.id, shop_id: shop.id, app: STORE_APP };
-  const link = orderManageUrl(order.manage_token);
+  const link = orderManageUrl(order.manage_token, shop);
 
   const params: Record<string, string | number | undefined> = {
     mode: 'payment',

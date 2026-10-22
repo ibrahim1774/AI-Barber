@@ -18,6 +18,7 @@ import { buildImageUrlMap, toPendingSiteData } from './pendingData.js';
 import { stripLapsedLinks } from './tiers.js';
 import type { PurchaseRow } from './purchases.js';
 import type { DeployActor } from '../deployAuth.js';
+import { findShopForSite, liveSiteBaseDeps, refreshSiteBase, type SiteBaseDeps, type SiteShop } from '../siteSubpages.js';
 
 export { vercelAppLabel } from '../deployAuth.js';
 
@@ -43,6 +44,14 @@ export interface WebDeployDeps {
    * site stays up, so it must not block a web deploy. Default false.
    */
   takedownSandbox?: boolean;
+  /**
+   * The shop behind an app site's slug (lib/siteSubpages.ts): its deploys carry the /book and
+   * /shop rewrites. Only ever asked for an app site (a bound iOS row); a web site never gets
+   * them. Absent: no rewrites.
+   */
+  findShop?(siteSlug: string): Promise<SiteShop | null>;
+  /** Stores the shop's public base URL and look after the deploy. Absent: not stored. */
+  siteBase?: SiteBaseDeps;
 }
 
 /** What lib/deployAuth.ts authorised. */
@@ -96,7 +105,23 @@ export async function gatedWebDeploy(
 
   // Never `images` (raw uploads to {siteId}/{filename} in GCS): no browser path sends them, and
   // they would let a deploy write anywhere under the bucket.
-  const result = await deps.deploy({ html: deployInput.html, css: deployInput.css, imageUrls: deployInput.imageUrls, siteId: slug });
+  // Site subpages, for an app site with a shop only. A lookup error fails closed (nothing is
+  // deployed): the browser's HTML may carry /book and /shop, which need the rewrites.
+  const shop = row && deps.findShop ? await deps.findShop(slug) : null;
+  const result = await deps.deploy({
+    html: deployInput.html, css: deployInput.css, imageUrls: deployInput.imageUrls, siteId: slug,
+    ...(shop ? { subpages: { mode: 'full' as const, shopSlug: shop.slug } } : {}),
+  });
+  if (shop && deps.siteBase) {
+    // Best effort: the site is live. The look comes from the data the browser rendered.
+    await refreshSiteBase({
+      shopId: shop.id,
+      projectName: result.projectName || slug,
+      // No (usable) site data: only the base is refreshed; the stored look stays.
+      siteData: renderable(siteData) ? siteData : null,
+      imageUrlMap: isObj(deployInput.imageUrls) ? deployInput.imageUrls : {},
+    }, deps.siteBase).catch((e: any) => console.warn(`[Deploy Site] ${slug}: deployed, but storing the shop's site URL failed:`, e?.message || e));
+  }
 
   if (!row && deps.stampWebPending) {
     // Best effort: the site is already live. Only the paid checkout's deploy may supply the
@@ -186,5 +211,7 @@ export function liveWebDeployDeps(): WebDeployDeps {
     },
     now: () => Date.now(),
     takedownSandbox: process.env.IOS_TAKEDOWN_SANDBOX === '1',
+    findShop: findShopForSite,
+    siteBase: liveSiteBaseDeps,
   };
 }
