@@ -1,0 +1,213 @@
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
+import { canClaim, recordCheckoutOwner, supabaseSiteOwners, webOwnerDecision, type SiteOwnerRow, type SiteOwnerStore } from '../lib/siteOwners.js';
+import { authorizeDeploy, type CheckoutProof, type DeployAuthDeps } from '../lib/deployAuth.js';
+import { deploySite, type DeploySiteDeps } from '../api/deploy-site.js';
+
+const NOW = 1_800_000_000_000;
+const A = '3f2b8c1e-5d4a-4b6f-9e2d-1a2b3c4d5e6f';
+const B = '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d';
+const SESSION = 'cs_live_a1B2c3D4e5F6g7H8i9J0';
+
+/** In-memory site_owners with the live store's conditional writes. */
+function memStore(rows: SiteOwnerRow[] = []): SiteOwnerStore & { rows: Map<string, SiteOwnerRow> } {
+  const m = new Map(rows.map((r) => [r.slug, { ...r }]));
+  return {
+    rows: m,
+    get: vi.fn(async (s: string) => (m.has(s) ? { ...m.get(s)! } : null)),
+    insertIfAbsent: vi.fn(async (r: SiteOwnerRow) => (m.has(r.slug) ? false : (m.set(r.slug, { ...r }), true))),
+    claim: vi.fn(async (s: string, uid: string, email: string, at: string) => {
+      const r = m.get(s);
+      if (!r || r.user_id || r.claim_email !== email) return false;
+      Object.assign(r, { user_id: uid, claimed_at: at });
+      return true;
+    }),
+    upsert: vi.fn(async (r: SiteOwnerRow) => { m.set(r.slug, { ...r }); }),
+  };
+}
+const owned = (slug: string, user: string): SiteOwnerRow => ({ slug, user_id: user, claim_email: null, source: 'checkout', checkout_session_id: null });
+const pending = (slug: string, email: string): SiteOwnerRow => ({ slug, user_id: null, claim_email: email, source: 'checkout', checkout_session_id: SESSION });
+const userA = { id: A, email: 'barber@example.com', emailConfirmed: true };
+
+afterEach(() => vi.restoreAllMocks());
+
+describe('webOwnerDecision (the one owner predicate)', () => {
+  it('no row → no-owner; the owner → owner; anyone else → not-owner', async () => {
+    const s = memStore([owned('fresh-cuts', A)]);
+    expect(await webOwnerDecision('other', userA, s)).toBe('no-owner');
+    expect(await webOwnerDecision('fresh-cuts', userA, s)).toBe('owner');
+    expect(await webOwnerDecision('Fresh Cuts', { id: B, email: 'b@example.com', emailConfirmed: true }, s)).toBe('not-owner');
+  });
+
+  it('an unclaimed row is claimed by a CONFIRMED, exactly matching email (case-insensitive), once', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const s = memStore([pending('fresh-cuts', 'barber@example.com')]);
+    expect(await webOwnerDecision('fresh-cuts', { ...userA, email: 'Barber@Example.com' }, s, () => NOW)).toBe('owner');
+    expect(s.rows.get('fresh-cuts')).toMatchObject({ user_id: A, claimed_at: new Date(NOW).toISOString() });
+    // Now owned: another confirmed account with the same email can't take it.
+    expect(await webOwnerDecision('fresh-cuts', { id: B, email: 'barber@example.com', emailConfirmed: true }, s)).toBe('not-owner');
+  });
+
+  it('an unconfirmed or different email never claims (the row stays "no owner yet")', async () => {
+    const s = memStore([pending('fresh-cuts', 'barber@example.com')]);
+    expect(await webOwnerDecision('fresh-cuts', { ...userA, emailConfirmed: false }, s)).toBe('no-owner');
+    expect(await webOwnerDecision('fresh-cuts', { ...userA, emailConfirmed: undefined }, s)).toBe('no-owner');
+    expect(await webOwnerDecision('fresh-cuts', { ...userA, email: 'barber@example.co' }, s)).toBe('no-owner');
+    expect(await webOwnerDecision('fresh-cuts', { ...userA, email: 'xbarber@example.com' }, s)).toBe('no-owner');
+    expect(s.rows.get('fresh-cuts')!.user_id).toBeNull();
+    expect(canClaim({ user_id: null, claim_email: null }, userA)).toBe(false);
+  });
+
+  it('a lost claim race answers with whoever won', async () => {
+    const s = memStore([pending('fresh-cuts', 'barber@example.com')]);
+    s.claim = vi.fn(async () => { s.rows.get('fresh-cuts')!.user_id = B; return false; });
+    expect(await webOwnerDecision('fresh-cuts', userA, s)).toBe('not-owner');
+  });
+});
+
+describe('recordCheckoutOwner (first paid checkout)', () => {
+  it('the signed-in buyer whose confirmed email is the checkout email becomes the owner', async () => {
+    const s = memStore();
+    expect(await recordCheckoutOwner('Fresh Cuts', { user: userA, checkoutEmail: ' BARBER@example.com ', sessionId: SESSION }, s))
+      .toMatchObject({ slug: 'fresh-cuts', user_id: A, claim_email: null, source: 'checkout', checkout_session_id: SESSION });
+  });
+
+  it('otherwise the checkout email is stored to be claimed (unconfirmed, other email, or not signed in)', async () => {
+    for (const user of [{ ...userA, emailConfirmed: false }, { ...userA, email: 'other@example.com' }, null]) {
+      const s = memStore();
+      expect(await recordCheckoutOwner('fresh-cuts', { user, checkoutEmail: 'barber@example.com' }, s))
+        .toMatchObject({ user_id: null, claim_email: 'barber@example.com' });
+    }
+  });
+
+  it('never replaces an existing owner; nothing is written without an email', async () => {
+    const s = memStore([owned('fresh-cuts', B)]);
+    expect(await recordCheckoutOwner('fresh-cuts', { user: userA, checkoutEmail: 'barber@example.com' }, s)).toBeNull();
+    expect(s.rows.get('fresh-cuts')!.user_id).toBe(B);
+    expect(await recordCheckoutOwner('new-shop', { checkoutEmail: 'not an email' }, s)).toBeNull();
+    expect(s.rows.has('new-shop')).toBe(false);
+  });
+});
+
+describe('authorizeDeploy with the owner list (lib/deployAuth.ts web rule)', () => {
+  const users: Record<string, { id: string; email: string; emailConfirmed: boolean }> = {
+    'a-jwt': userA, 'b-jwt': { id: B, email: 'b@example.com', emailConfirmed: true },
+  };
+  const deps = (store: SiteOwnerStore, over: Partial<DeployAuthDeps> = {}): DeployAuthDeps => ({
+    userOf: async (t) => users[t] ?? null,
+    findBySlug: async () => null,
+    checkoutSession: async () => null,
+    // The interim rule would let B in: B's `sites` row claims the URL.
+    webClaimants: async () => [B],
+    storedStamp: async () => 'https://fresh-cuts.vercel.app',
+    projectExists: async () => true,
+    siteOwners: store,
+    now: () => NOW,
+    ...over,
+  });
+  const quiet = () => vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+  it('an owned site: its owner deploys (no `sites` claim needed); anyone else is 403 even with a `sites` claim', async () => {
+    quiet();
+    const store = memStore([owned('fresh-cuts', A)]);
+    expect(await authorizeDeploy({ siteId: 'fresh-cuts', authorization: 'Bearer a-jwt' }, deps(store))).toMatchObject({ ok: true, actor: 'web-user', userId: A });
+    expect(await authorizeDeploy({ siteId: 'fresh-cuts', authorization: 'Bearer b-jwt' }, deps(store))).toEqual({ ok: false, status: 403, error: 'not-authorized' });
+  });
+
+  it('no owner row yet: the interim `sites` rule decides (B claims it → ok, A does not → 403)', async () => {
+    quiet();
+    const store = memStore();
+    expect((await authorizeDeploy({ siteId: 'fresh-cuts', authorization: 'Bearer b-jwt' }, deps(store))).ok).toBe(true);
+    expect(await authorizeDeploy({ siteId: 'fresh-cuts', authorization: 'Bearer a-jwt' }, deps(store))).toEqual({ ok: false, status: 403, error: 'not-authorized' });
+  });
+
+  it('an unclaimed row: the buyer\'s confirmed email claims it and deploys; an outage fails closed (503)', async () => {
+    quiet();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const store = memStore([pending('fresh-cuts', 'barber@example.com')]);
+    expect(await authorizeDeploy({ siteId: 'fresh-cuts', authorization: 'Bearer a-jwt' }, deps(store))).toMatchObject({ ok: true, userId: A });
+    expect(store.rows.get('fresh-cuts')!.user_id).toBe(A);
+    const down = memStore();
+    down.get = async () => { throw new Error('db down'); };
+    expect(await authorizeDeploy({ siteId: 'fresh-cuts', authorization: 'Bearer a-jwt' }, deps(down))).toEqual({ ok: false, status: 503, error: 'temporarily-unavailable' });
+  });
+
+  it('a fresh paid checkout for the slug still authorises an owned site (the /recover replay)', async () => {
+    const proof: CheckoutProof = { paid: true, status: 'complete', mode: 'subscription', siteId: 'fresh-cuts', app: 'aibarber', created: Math.floor(NOW / 1000) - 60, email: 'barber@example.com' };
+    const store = memStore([owned('fresh-cuts', B)]);
+    expect(await authorizeDeploy({ siteId: 'fresh-cuts', checkoutSessionId: SESSION }, deps(store, { checkoutSession: async () => proof })))
+      .toMatchObject({ ok: true, actor: 'checkout', checkout: { sessionId: SESSION, email: 'barber@example.com' } });
+  });
+});
+
+describe('/api/deploy-site records the owner at the checkout deploy', () => {
+  const res = () => { const r: any = { statusCode: 0, body: null, setHeader() {}, status(c: number) { this.statusCode = c; return this; }, json(b: unknown) { this.body = b; return this; }, end() { return this; } }; return r; };
+  const proof: CheckoutProof = { paid: true, status: 'complete', mode: 'subscription', siteId: 'fresh-cuts', app: 'aibarber', created: Math.floor(Date.now() / 1000) - 60, email: 'Barber@Example.com' };
+  const handlerDeps = (store: SiteOwnerStore, user: unknown = null): DeploySiteDeps => ({
+    auth: {
+      userOf: async () => user as any, findBySlug: async () => null, checkoutSession: async () => proof, webClaimants: async () => [],
+      storedStamp: async () => null, projectExists: async () => false, siteOwners: store, now: () => Date.now(),
+    },
+    deploy: {
+      deploy: async (i) => ({ deploymentUrl: `https://${i.siteId}.vercel.app`, uploadedImages: {} }),
+      writePending: async () => {}, now: () => Date.now(),
+    },
+    limiter: { allow: async () => true },
+  });
+
+  it('not signed in: the checkout email is stored to be claimed', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const store = memStore();
+    const r = res();
+    await deploySite({ method: 'POST', body: { siteId: 'fresh-cuts', html: '<h1/>', checkoutSessionId: SESSION }, headers: {} }, r, handlerDeps(store));
+    expect(r.statusCode).toBe(200);
+    expect(store.rows.get('fresh-cuts')).toMatchObject({ user_id: null, claim_email: 'barber@example.com', source: 'checkout', checkout_session_id: SESSION });
+  });
+
+  it('signed in with the confirmed checkout email: that account owns it; a failing owner write never fails the deploy', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const store = memStore();
+    const r = res();
+    await deploySite({ method: 'POST', body: { siteId: 'fresh-cuts', html: '<h1/>', checkoutSessionId: SESSION }, headers: { authorization: 'Bearer t' } }, r, handlerDeps(store, userA));
+    expect(store.rows.get('fresh-cuts')).toMatchObject({ user_id: A, claim_email: null });
+    const broken = memStore();
+    broken.insertIfAbsent = async () => { throw new Error('db down'); };
+    const r2 = res();
+    await deploySite({ method: 'POST', body: { siteId: 'fresh-cuts', html: '<h1/>', checkoutSessionId: SESSION }, headers: {} }, r2, handlerDeps(broken));
+    expect(r2.statusCode).toBe(200);
+  });
+});
+
+describe('supabaseSiteOwners: migration 013 not applied', () => {
+  it('a missing table reads as no owner and skips writes (the interim rule keeps working)', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const missing = { data: null, error: { code: 'PGRST205', message: "Could not find the table 'public.site_owners' in the schema cache" } };
+    const q: any = { select: () => q, eq: () => q, is: () => q, update: () => q, upsert: () => q, maybeSingle: async () => missing, then: (f: any) => Promise.resolve(missing).then(f) };
+    const store = supabaseSiteOwners({ from: () => q } as any);
+    expect(await store.get('fresh-cuts')).toBeNull();
+    expect(await store.insertIfAbsent(pending('fresh-cuts', 'a@b.co'))).toBe(false);
+    expect(await store.claim('fresh-cuts', A, 'a@b.co', 'x')).toBe(false);
+  });
+});
+
+describe('013_site_owners.sql', () => {
+  const s = fs.readFileSync(path.join(__dirname, '../supabase/migrations/013_site_owners.sql'), 'utf8');
+  const code = s.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n').replace(/\s+/g, ' ').trim();
+  it('one server-only table: RLS on, no policy, nothing granted to clients', () => {
+    expect(code).toContain('create table if not exists public.site_owners (');
+    expect(code).toContain('alter table public.site_owners enable row level security;');
+    expect(code).toContain('revoke all on table public.site_owners from anon, authenticated;');
+    expect(code).not.toMatch(/\bgrant\b|\bcreate policy\b/i);
+    expect(code.replace(/on delete cascade/g, '')).not.toMatch(/\bdrop\b|\bdelete\b|\btruncate\b/i);
+  });
+  it('slug unique, the three sources, someone to own it, lower-case claim emails', () => {
+    expect(code).toMatch(/slug text primary key/);
+    expect(code).toContain("check (source in ('checkout', 'admin', 'backfill'))");
+    expect(code).toContain('check (user_id is not null or claim_email is not null)');
+    expect(code).toMatch(/claim_email = lower\(claim_email\)/);
+    expect(code).toMatch(/references auth\.users \(id\) on delete cascade/);
+  });
+});

@@ -5,6 +5,7 @@ import { getPlanContentMeta } from '../lib/pixelMeta.js';
 import { pushOrderToTripleWhale } from './_twOrder.js';
 import { waitUntil } from '@vercel/functions';
 import { publishSite } from '../lib/publishSite.js';
+import { recordCheckoutOwner, supabaseSiteOwners } from '../lib/siteOwners.js';
 
 // Stripe webhook -> Meta CAPI Purchase. The browser pixel + client CAPI
 // only fire if the customer returns to ?stripe_session=...; closed tabs,
@@ -205,6 +206,14 @@ export default async function handler(req: any, res: any) {
     // Custom-design ($29 Google-Form) sales have no pending payload and
     // nothing to deploy — publishSite reports 'no-backup' and that's fine.
     const siteId = typeof session.metadata?.siteId === 'string' ? session.metadata.siteId : '';
+    if (siteId && session.mode === 'subscription') {
+      // The site's owner list (013 site_owners): the checkout email, claimed by the account that
+      // signs in with it (confirmed). Never replaces an existing owner. Best effort.
+      waitUntil(
+        recordCheckoutOwner(siteId, { checkoutEmail: details.email || session.customer_email || null, sessionId: session.id }, supabaseSiteOwners())
+          .catch((e: any) => console.warn('[Stripe Webhook] recording the site owner failed (ignored):', e?.message || e)),
+      );
+    }
     if (siteId) {
       waitUntil(
         // Give the browser first refusal. When the customer's tab DOES come

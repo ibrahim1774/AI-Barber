@@ -145,7 +145,7 @@ describe('authorizeDeploy: web sites', () => {
   it('first publish after checkout: a paid aibarber session for exactly this slug → ok', async () => {
     const d = deps({ sessions: { [SESSION]: paid('fresh-cuts') } });
     expect(await authorizeDeploy({ siteId: 'fresh-cuts', checkoutSessionId: SESSION }, d))
-      .toEqual({ ok: true, target: 'fresh-cuts', row: null, actor: 'checkout', userId: null });
+      .toMatchObject({ ok: true, target: 'fresh-cuts', row: null, actor: 'checkout', userId: null, checkout: { sessionId: SESSION } });
   });
 
   it.each([
@@ -180,7 +180,7 @@ describe('authorizeDeploy: web sites', () => {
   it('a signed-in caller whose account row claims the slug → ok', async () => {
     const d = deps({ users, claims: { [url('fresh-cuts')]: [OWNER] } });
     expect(await authorizeDeploy({ siteId: 'fresh-cuts', authorization: 'Bearer owner-jwt' }, d))
-      .toEqual({ ok: true, target: 'fresh-cuts', row: null, actor: 'web-user', userId: OWNER });
+      .toMatchObject({ ok: true, target: 'fresh-cuts', row: null, actor: 'web-user', userId: OWNER });
   });
 
   it('a signed-in caller on an existing, unstamped, unclaimed project → ok (the old rule)', async () => {
@@ -281,7 +281,7 @@ describe('authorizeDeploy: published (stamped) web sites and new projects', () =
     const d = deps({ users, projects: ['fresh-cuts'], claims: { [url('fresh-cuts')]: [OWNER] } });
     expect(await authorizeDeploy(
       { siteId: 'fresh-cuts-nyc', deployedUrl: 'https://fresh-cuts.vercel.app/', authorization: 'Bearer owner-jwt' }, d))
-      .toEqual({ ok: true, target: 'fresh-cuts-nyc', row: null, actor: 'web-user', userId: OWNER });
+      .toMatchObject({ ok: true, target: 'fresh-cuts-nyc', row: null, actor: 'web-user', userId: OWNER });
   });
 
   it.each([

@@ -24,7 +24,10 @@ vi.mock('../../lib/publishSite.js', async (orig) => ({
 vi.mock('@supabase/supabase-js', () => ({
   createClient: () => ({
     auth: { getUser },
-    from: (_t: string) => ({ select: () => ({ in: async (_c: string, urls: string[]) => ({ data: await siteClaims(urls), error: null }) }) }),
+    from: (t: string) => (t === 'site_owners'
+      // The owner list (013): no rows here, so the interim `sites` rule decides (owner-list cases: tests/siteOwners.test.ts).
+      ? { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }), upsert: () => ({ select: async () => ({ data: [], error: null }) }) }
+      : { select: () => ({ in: async (_c: string, urls: string[]) => ({ data: await siteClaims(urls), error: null }) }) }),
   }),
 }));
 vi.mock('../../lib/siteSubpages.js', async (orig) => ({

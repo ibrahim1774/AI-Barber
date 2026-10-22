@@ -30,7 +30,10 @@
 //       a rename: the caller is the only account claiming the deployedUrl hint, and that hint
 //       is an existing project.
 //   NOTE: `sites` rows are user-writable under RLS, so a claim is not proof of ownership.
-//   A server-only owner table replaces this (see the hotfix report).
+//   The server-only owner list (013 site_owners, lib/siteOwners.ts) now decides first: a web
+//   site with an owner row is the owner's only (403 for anyone else; an unclaimed row is claimed
+//   by a confirmed, exactly matching checkout email). Only a site with no owner yet falls back
+//   to the `sites`-claim rule above.
 //
 // Every lookup fails closed (503): an outage must not turn into an unauthenticated deploy.
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
@@ -39,6 +42,7 @@ import { readPendingSite, slugify } from './publishSite.js';
 import { vercelProjectExists } from './ios/slug.js';
 import { supabasePurchases, type PurchaseRow } from './ios/purchases.js';
 import { withTimeout } from './ios/timeout.js';
+import { supabaseSiteOwners, webOwnerDecision, type SiteOwnerStore } from './siteOwners.js';
 
 export const CHECKOUT_PROOF_MAX_AGE_MS = 7 * 24 * 3600 * 1000;
 const LOOKUP_TIMEOUT_MS = 5000;
@@ -46,6 +50,8 @@ const LOOKUP_TIMEOUT_MS = 5000;
 export interface DeployUser {
   id: string;
   email: string | null;
+  /** auth.users.email_confirmed_at is set (owner-list email claims need it). */
+  emailConfirmed?: boolean;
 }
 
 export interface CheckoutProof {
@@ -61,6 +67,8 @@ export interface CheckoutProof {
   app: string | null;
   /** Unix seconds. */
   created: number;
+  /** customer_details.email, else customer_email: who paid (the owner list's checkout email). */
+  email?: string | null;
 }
 
 export interface DeployAuthDeps {
@@ -76,6 +84,8 @@ export interface DeployAuthDeps {
   storedStamp(slug: string): Promise<string | null>;
   /** Does a Vercel project with this name exist? Throws on an outage. */
   projectExists(slug: string): Promise<boolean>;
+  /** The web site owner list (013). Absent: the interim rule only. */
+  siteOwners?: SiteOwnerStore;
   now(): number;
   lookupTimeoutMs?: number;
 }
@@ -101,6 +111,10 @@ export interface DeployAuthResult {
   row?: PurchaseRow | null;
   actor?: DeployActor;
   userId?: string | null;
+  /** The signed-in caller, when there is one (the checkout deploy records the owner with it). */
+  user?: DeployUser | null;
+  /** Set for actor 'checkout': the session that authorised it and who paid. */
+  checkout?: { sessionId: string; email: string | null };
 }
 
 const VERCEL_APP = '.vercel.app';
@@ -204,7 +218,10 @@ export async function authorizeDeploy(input: DeployAuthInput, deps: DeployAuthDe
       proof.app === 'aibarber' &&
       slugify(proof.siteId || '') === shopSlug
     ) {
-      return { ok: true, target: shopSlug, row: null, actor: 'checkout', userId: user?.id ?? null };
+      return {
+        ok: true, target: shopSlug, row: null, actor: 'checkout', userId: user?.id ?? null, user,
+        checkout: { sessionId, email: proof.email ?? null },
+      };
     }
     console.warn(`[Deploy Site] ${shopSlug}: checkout session does not authorise this slug`);
   }
@@ -223,8 +240,18 @@ async function authorizeWebUser(
   deps: DeployAuthDeps,
   ms: number,
 ): Promise<DeployAuthResult> {
-  const ok: DeployAuthResult = { ok: true, target: shopSlug, row: null, actor: 'web-user', userId: user.id };
+  const ok: DeployAuthResult = { ok: true, target: shopSlug, row: null, actor: 'web-user', userId: user.id, user };
   try {
+    // The owner list first (013): an owned site is its owner's only; an unowned one (no row, or
+    // a row the caller can't claim) keeps the interim rule below.
+    if (deps.siteOwners) {
+      const verdict = await withTimeout(webOwnerDecision(shopSlug, user, deps.siteOwners, deps.now), ms, 'site owner lookup');
+      if (verdict === 'owner') return ok;
+      if (verdict === 'not-owner') {
+        console.warn(`[Deploy Site] ${shopSlug}: owned by another account (site_owners); refusing ${user.id}`);
+        return deny(403, 'not-authorized');
+      }
+    }
     const rawStamp = await withTimeout(deps.storedStamp(shopSlug), ms, 'stored copy read');
     const stamp = originOf(rawStamp);
     const urls = [`https://${shopSlug}.vercel.app`, ...(stamp ? [stamp] : [])];
@@ -275,6 +302,7 @@ export function liveDeployAuthDeps(): DeployAuthDeps {
     { auth: { persistSession: false, autoRefreshToken: false } },
   ));
   let repo: ReturnType<typeof supabasePurchases> | undefined;
+  let owners: SiteOwnerStore | undefined;
   return {
     async userOf(token) {
       const { data, error } = await db().auth.getUser(token);
@@ -284,7 +312,9 @@ export function liveDeployAuthDeps(): DeployAuthDeps {
         if (typeof status === 'number' && status >= 400 && status < 500) return null;
         throw new Error(`auth.getUser failed: ${error.message}`);
       }
-      return data?.user ? { id: data.user.id, email: data.user.email?.toLowerCase() ?? null } : null;
+      return data?.user
+        ? { id: data.user.id, email: data.user.email?.toLowerCase() ?? null, emailConfirmed: !!data.user.email_confirmed_at }
+        : null;
     },
     findBySlug: (slug) => (repo ??= supabasePurchases(db())).findBySlug(slug),
     async checkoutSession(sessionId) {
@@ -307,6 +337,8 @@ export function liveDeployAuthDeps(): DeployAuthDeps {
         siteId,
         app: typeof s?.metadata?.app === 'string' ? s.metadata.app : null,
         created: typeof s?.created === 'number' ? s.created : 0,
+        email: (typeof s?.customer_details?.email === 'string' && s.customer_details.email) ||
+          (typeof s?.customer_email === 'string' && s.customer_email) || null,
       };
     },
     async webClaimants(urls) {
@@ -317,6 +349,7 @@ export function liveDeployAuthDeps(): DeployAuthDeps {
     },
     storedStamp: async (slug) => (await readPendingSite(slug))?.deployedUrl || null,
     projectExists: (slug) => vercelProjectExists(slug),
+    get siteOwners() { return (owners ??= supabaseSiteOwners(db())); },
     now: () => Date.now(),
   };
 }

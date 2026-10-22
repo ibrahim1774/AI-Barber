@@ -1,6 +1,7 @@
 import { authorizeDeploy, liveDeployAuthDeps, type DeployAuthDeps } from '../lib/deployAuth.js';
 import { gatedWebDeploy, liveWebDeployDeps, type WebDeployDeps } from '../lib/ios/webDeployGate.js';
 import { clientIp, deployLimiter, type RateLimiter } from '../lib/bookings/rateLimit.js';
+import { recordCheckoutOwner } from '../lib/siteOwners.js';
 
 // HTTP wrapper over lib/deploySite. The deploy logic moved there so the
 // Stripe webhook can run it in-process instead of self-calling this endpoint —
@@ -110,6 +111,15 @@ export async function deploySite(req: any, res: any, deps: DeploySiteDeps) {
       return res.status(402).json({ ok: false, error: 'subscription-inactive' });
     }
     const result = gated.result;
+
+    // The first paid checkout deploy records the site's owner (013 site_owners; never replaces
+    // one): the signed-in buyer if their confirmed email is the checkout email, else that email
+    // to be claimed at sign-in. Best effort: the site is live either way.
+    if (auth.actor === 'checkout' && auth.checkout && deps.auth.siteOwners) {
+      await recordCheckoutOwner(auth.target!, { user: auth.user ?? null, checkoutEmail: auth.checkout.email, sessionId: auth.checkout.sessionId }, deps.auth.siteOwners)
+        .then((r) => r && console.log(`[Deploy Site] ${auth.target}: owner recorded (${r.user_id ? 'signed-in buyer' : 'checkout email to claim'})`))
+        .catch((e: any) => console.warn(`[Deploy Site] ${auth.target}: recording the owner failed (ignored):`, e?.message || e));
+    }
 
     return res.status(200).json({
       ok: true,
