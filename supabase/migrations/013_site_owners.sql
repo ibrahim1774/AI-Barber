@@ -75,5 +75,11 @@ revoke all on function public.site_owners_keep_claim() from public, anon, authen
 create index if not exists site_owners_user_idx on public.site_owners (user_id);
 create index if not exists site_owners_claim_idx on public.site_owners (claim_email) where user_id is null;
 
+-- Refund retry attempt counter (re-review R4): lib/{bookings,store}/repo.ts refundAttempts counts
+-- ab_events rows kind = 'refund_5xx' by payload->>'key' on every refund; keep that an index scan.
+create index if not exists ab_events_refund_5xx_key_idx
+  on public.ab_events ((payload->>'key'))
+  where kind = 'refund_5xx';
+
 alter table public.site_owners enable row level security;
 revoke all on table public.site_owners from anon, authenticated;

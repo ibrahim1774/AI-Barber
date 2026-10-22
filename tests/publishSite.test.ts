@@ -281,3 +281,31 @@ describe('casPending (compare-and-set on the stored copy, e2e I1)', () => {
     expect(r.written).toBeUndefined();
   });
 });
+
+describe('pay-first move (re-review R1): the webhook / sweeper follow the details step\'s slug', () => {
+  const held = { ...pending, siteData: { ...pending.siteData, shopName: 'Premium Cuts', awaitingDetails: true } };
+  it('placeholder movedTo X and X movedFrom placeholder: publishes X (confirmed copy); the placeholder stays unpublished', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('nope', { status: 404 })));
+    deployRenderedSite.mockClear();
+    await writePendingSite('premium-cuts-k3m9p2xq', { ...held, siteId: 'premium-cuts-k3m9p2xq', movedTo: 'jacks-cuts-x7k2' });
+    await writePendingSite('jacks-cuts-x7k2', { ...pending, siteId: 'jacks-cuts-x7k2', movedFrom: 'premium-cuts-k3m9p2xq', siteData: { ...pending.siteData, shopName: 'Jacks Cuts', detailsConfirmed: true } });
+    const out = await publishSite('premium-cuts-k3m9p2xq', { plan: 'monthly-custom15' });
+    expect(out).toMatchObject({ ok: true, siteId: 'jacks-cuts-x7k2' });
+    expect(deployRenderedSite.mock.calls.map((c) => c[0].siteId)).toEqual(['jacks-cuts-x7k2']);
+    expect(deployRenderedSite.mock.calls[0][0].html).toContain('Jacks Cuts');
+  });
+
+  it('a move that does not point back, or a non-pay-first plan, is not followed (the placeholder stays held)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('nope', { status: 404 })));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    deployRenderedSite.mockClear();
+    await writePendingSite('premium-cuts-k3m9p2xq', { ...held, siteId: 'premium-cuts-k3m9p2xq', movedTo: 'someone-else' });
+    await writePendingSite('someone-else', { ...pending, siteId: 'someone-else' });
+    expect(await publishSite('premium-cuts-k3m9p2xq', { plan: 'monthly-custom15' })).toMatchObject({ ok: false, reason: 'awaiting-details' });
+    await writePendingSite('premium-cuts-k3m9p2xq', { ...held, siteId: 'premium-cuts-k3m9p2xq', movedTo: 'jacks-cuts-x7k2' });
+    await writePendingSite('jacks-cuts-x7k2', { ...pending, siteId: 'jacks-cuts-x7k2', movedFrom: 'premium-cuts-k3m9p2xq' });
+    const regular = await publishSite('premium-cuts-k3m9p2xq', { plan: 'monthly' });
+    expect(regular.siteId).toBe('premium-cuts-k3m9p2xq');
+    expect(deployRenderedSite.mock.calls.every((c) => c[0].siteId !== 'jacks-cuts-x7k2')).toBe(true);
+  });
+});

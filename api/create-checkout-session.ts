@@ -5,7 +5,7 @@ let guardDeps: CheckoutGuardDeps | undefined;
 const liveGuardDeps = (): CheckoutGuardDeps => {
   if (guardDeps) return guardDeps;
   const a = liveDeployAuthDeps();
-  return (guardDeps = { storedStamp: a.storedStamp, projectExists: a.projectExists, userOf: a.userOf, get siteOwners() { return a.siteOwners; }, now: a.now });
+  return (guardDeps = { userOf: a.userOf, get siteOwners() { return a.siteOwners; }, now: a.now });
 };
 
 export default async function handler(req: any, res: any) {
@@ -30,8 +30,8 @@ export default async function handler(req: any, res: any) {
     if (!siteId) {
       return res.status(400).json({ error: 'Missing required field: siteId' });
     }
-    // A checkout is deploy proof for its slug (lib/deployAuth.ts): an already-published slug is
-    // its owner's (signed in) or the admin's only (lib/checkoutGuard.ts).
+    // A slug with an owner (013 site_owners) is checked out only by that owner (signed in) or the
+    // admin: anyone else's payment could never deploy it (lib/checkoutGuard.ts). Fails open.
     const guard = await checkoutSlugAllowed(siteId, req.headers?.authorization, liveGuardDeps());
     if (guard.ok === false) return res.status(guard.status).json({ error: guard.error });
 

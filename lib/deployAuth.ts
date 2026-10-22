@@ -42,7 +42,8 @@ import { readPendingSite, slugify } from './publishSite.js';
 import { vercelProjectExists } from './ios/slug.js';
 import { supabasePurchases, type PurchaseRow } from './ios/purchases.js';
 import { withTimeout } from './ios/timeout.js';
-import { supabaseSiteOwners, webOwnerDecision, type SiteOwnerStore } from './siteOwners.js';
+import { normEmail, supabaseSiteOwners, webOwnerDecision, type SiteOwnerStore } from './siteOwners.js';
+import { isPayFirstPlan } from './payFirst.js';
 
 export const CHECKOUT_PROOF_MAX_AGE_MS = 7 * 24 * 3600 * 1000;
 const LOOKUP_TIMEOUT_MS = 5000;
@@ -69,6 +70,8 @@ export interface CheckoutProof {
   created: number;
   /** customer_details.email, else customer_email: who paid (the owner list's checkout email). */
   email?: string | null;
+  /** metadata.plan ('/custom-15' pay-first plans may name their real slug at the details step). */
+  plan?: string | null;
 }
 
 export interface DeployAuthDeps {
@@ -119,7 +122,7 @@ export interface DeployAuthResult {
    * Only a first publish records an owner: a checkout naming an already-live site must never
    * hand it to whoever paid (they could claim it and lock the real owner out).
    */
-  checkout?: { sessionId: string; email: string | null; firstPublish: boolean };
+  checkout?: { sessionId: string; email: string | null; firstPublish: boolean; renamedFrom?: string };
 }
 
 const VERCEL_APP = '.vercel.app';
@@ -218,11 +221,12 @@ export async function authorizeDeploy(input: DeployAuthInput, deps: DeployAuthDe
     const fresh = !!proof && deps.now() - proof.created * 1000 <= CHECKOUT_PROOF_MAX_AGE_MS;
     // Only a site checkout: a domain purchase (mode 'payment', no metadata.app, client-priced)
     // or any other app's session never counts.
-    if (
-      proof && proof.paid && proof.status === 'complete' && proof.mode === 'subscription' && fresh &&
-      proof.app === 'aibarber' &&
-      slugify(proof.siteId || '') === shopSlug
-    ) {
+    const valid = !!proof && proof.paid && proof.status === 'complete' && proof.mode === 'subscription' && fresh && proof.app === 'aibarber';
+    const proofSlug = slugify(proof?.siteId || '');
+    // /custom-15 pay-first (re-review R1): the checkout names a unique placeholder slug, and the
+    // details step after payment picks the real one. That session may publish ONE brand-new slug.
+    const payFirstRename = valid && proofSlug !== shopSlug && isPayFirstPlan(proof!.plan);
+    if (valid && (proofSlug === shopSlug || payFirstRename)) {
       let firstPublish = false;
       try {
         const [stamp, exists] = await withTimeout(Promise.all([deps.storedStamp(shopSlug), deps.projectExists(shopSlug)]), ms, 'first-publish check');
@@ -232,24 +236,37 @@ export async function authorizeDeploy(input: DeployAuthInput, deps: DeployAuthDe
       }
       // Review fix round 1 (finding 2): a checkout is never proof against the owner list. With an
       // owner row (claimed or not), only the session that created it still counts (the buyer's own
-      // /recover replay); any other session falls through to the signed-in rules below.
-      let ownerBlocks = false;
-      if (deps.siteOwners) {
+      // /recover replay), or (R2) a checkout paid with the owner's email (re-checkout after a
+      // lapse); any other session falls through to the signed-in rules below.
+      const liveRename = 'pay-first rename to a slug that is already live';
+      let blocked: string | null = payFirstRename && !firstPublish && !deps.siteOwners ? liveRename : null;
+      if (deps.siteOwners && !blocked) {
         try {
           const row = await withTimeout(deps.siteOwners.get(shopSlug), ms, 'site owner lookup');
-          ownerBlocks = !!row && row.checkout_session_id !== sessionId;
+          const paidAs = normEmail(proof!.email);
+          const ownersEmail = !!row && !!paidAs && (paidAs === row.owner_email || paidAs === row.claim_email);
+          if (row && row.checkout_session_id !== sessionId && !ownersEmail) blocked = 'owned site; this checkout is not its owner\'s';
+          // A live slug is never a pay-first rename target, except the one this session already
+          // published (its owner row carries this session: the /recover replay).
+          if (!blocked && payFirstRename && !firstPublish && row?.checkout_session_id !== sessionId) blocked = liveRename;
+          if (!blocked && payFirstRename && deps.siteOwners.slugsForSession) {
+            // One site per pay-first purchase: the session may only ever bind its placeholder and this slug.
+            const bound = await withTimeout(deps.siteOwners.slugsForSession(sessionId), ms, 'session owner lookup');
+            if (bound.some((s) => s !== proofSlug && s !== shopSlug)) blocked = 'this pay-first checkout already published another site';
+          }
         } catch (e: any) {
           console.error(`[Deploy Site] ${shopSlug}: owner lookup failed (refusing):`, e?.message || e);
           return unavailable;
         }
       }
-      if (!ownerBlocks) {
+      if (!blocked) {
+        if (payFirstRename) console.log(`[Deploy Site] ${shopSlug}: pay-first site named at the details step (checkout placeholder ${proofSlug})`);
         return {
           ok: true, target: shopSlug, row: null, actor: 'checkout', userId: user?.id ?? null, user,
-          checkout: { sessionId, email: proof.email ?? null, firstPublish },
+          checkout: { sessionId, email: proof!.email ?? null, firstPublish, ...(payFirstRename ? { renamedFrom: proofSlug } : {}) },
         };
       }
-      console.warn(`[Deploy Site] ${shopSlug}: owned site; checkout ${sessionId} is not its owner's; not accepted as proof`);
+      console.warn(`[Deploy Site] ${shopSlug}: checkout ${sessionId} not accepted as proof (${blocked})`);
     } else {
       console.warn(`[Deploy Site] ${shopSlug}: checkout session does not authorise this slug`);
     }
@@ -368,6 +385,7 @@ export function liveDeployAuthDeps(): DeployAuthDeps {
         siteId,
         app: typeof s?.metadata?.app === 'string' ? s.metadata.app : null,
         created: typeof s?.created === 'number' ? s.created : 0,
+        plan: typeof s?.metadata?.plan === 'string' ? s.metadata.plan : null,
         email: (typeof s?.customer_details?.email === 'string' && s.customer_details.email) ||
           (typeof s?.customer_email === 'string' && s.customer_email) || null,
       };

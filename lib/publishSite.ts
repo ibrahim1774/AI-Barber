@@ -21,7 +21,7 @@ import { deployRenderedSite } from './deploySite.js';
 import { generateHTMLWithPlaceholders } from './render/luxe.js';
 import { generatePrimeHTMLWithPlaceholders } from './render/prime.js';
 import { generateEuphoriaHTMLWithPlaceholders } from './render/euphoria.js';
-import { isAwaitingDetails } from './payFirst.js';
+import { isAwaitingDetails, isPayFirstPlan } from './payFirst.js';
 import {
   findShopForSite, liveSiteBaseDeps, refreshSiteBase, withSubpageLinks,
   type SiteBaseDeps, type SiteShop, type SiteSubpages,
@@ -49,6 +49,13 @@ export interface PendingSite {
   adminVersion?: number;
   /** Admin edit note (audit). */
   note?: string;
+  /**
+   * /custom-15 pay-first (re-review R1): on the checkout's placeholder copy, the slug the details
+   * step picked; on that slug's copy, `movedFrom` names the placeholder. The webhook and the
+   * sweeper (which only know the checkout's siteId) follow it only when both sides agree.
+   */
+  movedTo?: string;
+  movedFrom?: string;
 }
 
 /** Stored version of a pending copy; 0 when absent (stored before versioning). */
@@ -418,6 +425,8 @@ export async function publishSite(
     findShop?: (siteSlug: string) => Promise<SiteShop | null>;
     /** Where the shop's public base URL and look are stored after the deploy. Injectable for tests. */
     siteBase?: SiteBaseDeps;
+    /** Internal: a followed pay-first move is never followed again. */
+    noFollow?: boolean;
   } = {},
 ): Promise<PublishOutcome> {
   const safe = slugify(siteId);
@@ -431,6 +440,20 @@ export async function publishSite(
   }
   if (!pending) return { ok: false, reason: 'no-backup', siteId: safe };
   if (!pending.siteData) return { ok: false, reason: 'bad-backup', siteId: safe };
+
+  // /custom-15 pay-first: the details step named the real slug. Publish that one when its copy
+  // points back here (both sides agree); otherwise this placeholder stays held below.
+  if (!opts.pending && !opts.noFollow && pending.movedTo && isPayFirstPlan(opts.plan)) {
+    const target = slugify(pending.movedTo);
+    if (target && target !== safe) {
+      const moved = await readPendingSite(target).catch(() => null);
+      if (moved && slugify(moved.movedFrom || '') === safe) {
+        console.log(`[Publish] ${safe}: pay-first site moved to ${target} at the details step; publishing that`);
+        return publishSite(target, { ...opts, noFollow: true });
+      }
+      console.warn(`[Publish] ${safe}: movedTo ${target} does not point back; not following`);
+    }
+  }
 
   // /custom-15 pay-first hold: the stored copy is still the sample (placeholder
   // name, no way to reach the shop). Never publish it, not even with force; the

@@ -168,25 +168,112 @@ describe('authorizeDeploy with the owner list (lib/deployAuth.ts web rule)', () 
   });
 });
 
-describe('checkout creation refuses an already-published slug except for its owner (lib/checkoutGuard.ts)', () => {
-  const guardDeps = (live: { stamp?: string | null; project?: boolean }, store = memStore([owned('fresh-cuts', A)])): CheckoutGuardDeps => ({
-    storedStamp: async () => live.stamp ?? null, projectExists: async () => live.project ?? false,
+describe('checkout creation (lib/checkoutGuard.ts, re-review R1): refused only for an owned slug and a caller who is not its owner', () => {
+  const guardDeps = (store = memStore([{ ...owned('fresh-cuts', A), owner_email: 'barber@example.com' }])): CheckoutGuardDeps => ({
     userOf: async (t) => (t === 'a-jwt' ? userA : t === 'b-jwt' ? { id: B, email: 'b@example.com', emailConfirmed: true } : t === 'admin-jwt' ? { id: 'adm', email: 'ibrahim3709@gmail.com' } : null),
     siteOwners: store, now: () => NOW,
   });
-  it('a new slug is open to anyone; a published one only to its owner or the admin; lookups fail closed', async () => {
+  it('no owner row (published or not, e.g. a lapsed customer before the backfill): allowed', async () => {
+    expect(await checkoutSlugAllowed('Old Shop', undefined, guardDeps())).toEqual({ ok: true, slug: 'old-shop' });
+  });
+  it('an owned slug: the owner (signed in) re-checks out, the admin too; anyone else gets 409 site-owned', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-    expect(await checkoutSlugAllowed('Fresh Cuts', undefined, guardDeps({}))).toEqual({ ok: true, slug: 'fresh-cuts' });
-    for (const live of [{ stamp: 'https://fresh-cuts.vercel.app' }, { project: true }]) {
-      expect(await checkoutSlugAllowed('fresh-cuts', undefined, guardDeps(live))).toEqual({ ok: false, status: 409, error: 'site-published' });
-      expect(await checkoutSlugAllowed('fresh-cuts', 'Bearer b-jwt', guardDeps(live))).toMatchObject({ ok: false, status: 409 });
-      expect(await checkoutSlugAllowed('fresh-cuts', 'Bearer a-jwt', guardDeps(live))).toMatchObject({ ok: true });
-      expect(await checkoutSlugAllowed('fresh-cuts', 'Bearer admin-jwt', guardDeps(live))).toMatchObject({ ok: true });
+    expect(await checkoutSlugAllowed('fresh-cuts', 'Bearer a-jwt', guardDeps())).toMatchObject({ ok: true });
+    expect(await checkoutSlugAllowed('fresh-cuts', 'Bearer admin-jwt', guardDeps())).toMatchObject({ ok: true });
+    expect(await checkoutSlugAllowed('fresh-cuts', 'Bearer b-jwt', guardDeps())).toEqual({ ok: false, status: 409, error: 'site-owned' });
+    expect(await checkoutSlugAllowed('fresh-cuts', undefined, guardDeps())).toEqual({ ok: false, status: 409, error: 'site-owned' });
+  });
+  it('the fixed funnel siteIds are never refused, even with an owner row', async () => {
+    const { FUNNEL_SITE_IDS } = await import('../lib/checkoutGuard.js');
+    expect([...FUNNEL_SITE_IDS].sort()).toEqual(['custom-design-request', 'pre-publish', 'primebarber-landing']);
+    for (const id of FUNNEL_SITE_IDS) {
+      expect(await checkoutSlugAllowed(id, undefined, guardDeps(memStore([owned(id, B)])))).toMatchObject({ ok: true });
     }
-    expect(await checkoutSlugAllowed('fresh-cuts', undefined, { ...guardDeps({}), projectExists: async () => { throw new Error('vercel down'); } }))
-      .toEqual({ ok: false, status: 503, error: 'temporarily-unavailable' });
-    expect(await checkoutSlugAllowed('!!!', undefined, guardDeps({}))).toMatchObject({ ok: false, status: 400 });
+  });
+  it('a lookup failure fails OPEN (logged): deploys are still authorised by lib/deployAuth.ts', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const down = memStore();
+    down.get = async () => { throw new Error('db down'); };
+    expect(await checkoutSlugAllowed('fresh-cuts', undefined, guardDeps(down))).toEqual({ ok: true, slug: 'fresh-cuts' });
+    expect(await checkoutSlugAllowed('!!!', undefined, guardDeps())).toMatchObject({ ok: false, status: 400 });
+  });
+});
+
+describe('re-review R2: a re-checkout paid with the owner\'s email deploys an owned site (lapsed customer re-pays)', () => {
+  const proofAs = (email: string, over: Partial<CheckoutProof> = {}): CheckoutProof =>
+    ({ paid: true, status: 'complete', mode: 'subscription', siteId: 'fresh-cuts', app: 'aibarber', created: Math.floor(NOW / 1000) - 60, email, plan: 'monthly', ...over });
+  const NEW_SESSION = 'cs_live_newsession1234567890';
+  const base = (store: SiteOwnerStore, proof: CheckoutProof): DeployAuthDeps => ({
+    userOf: async () => null, findBySlug: async () => null, checkoutSession: async () => proof, webClaimants: async () => [],
+    storedStamp: async () => 'https://fresh-cuts.vercel.app', projectExists: async () => true, siteOwners: store, now: () => NOW,
+  });
+  it('owner_email (claimed) or claim_email (unclaimed) match → ok; any other email → 403', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const claimed = memStore([{ ...owned('fresh-cuts', A), owner_email: 'barber@example.com', checkout_session_id: SESSION }]);
+    expect(await authorizeDeploy({ siteId: 'fresh-cuts', checkoutSessionId: NEW_SESSION }, base(claimed, proofAs('Barber@Example.com'))))
+      .toMatchObject({ ok: true, actor: 'checkout', checkout: { sessionId: NEW_SESSION, firstPublish: false } });
+    expect((await authorizeDeploy({ siteId: 'fresh-cuts', checkoutSessionId: NEW_SESSION }, base(claimed, proofAs('stranger@example.com')))).status).toBe(403);
+    const unclaimed = memStore([pending('fresh-cuts', 'barber@example.com')]);
+    expect((await authorizeDeploy({ siteId: 'fresh-cuts', checkoutSessionId: NEW_SESSION }, base(unclaimed, proofAs('barber@example.com')))).ok).toBe(true);
+  });
+  it('end to end through /api/deploy-site: the lapsed owner\'s new checkout redeploys; no owner row is added or changed', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const store = memStore([{ ...owned('fresh-cuts', A), owner_email: 'barber@example.com', checkout_session_id: SESSION }]);
+    const deployed: string[] = [];
+    const r: any = { statusCode: 0, body: null, setHeader() {}, status(c: number) { this.statusCode = c; return this; }, json(b: unknown) { this.body = b; return this; }, end() { return this; } };
+    await deploySite({ method: 'POST', body: { siteId: 'fresh-cuts', html: '<h1>back</h1>', checkoutSessionId: NEW_SESSION }, headers: {} }, r, {
+      auth: base(store, proofAs('barber@example.com')),
+      deploy: { deploy: async (i) => { deployed.push(i.siteId); return { deploymentUrl: `https://${i.siteId}.vercel.app`, uploadedImages: {} }; }, writePending: async () => {}, now: () => NOW },
+      limiter: { allow: async () => true },
+    });
+    expect(r.statusCode).toBe(200);
+    expect(deployed).toEqual(['fresh-cuts']);
+    expect(store.rows.get('fresh-cuts')).toMatchObject({ user_id: A, checkout_session_id: SESSION });
+  });
+});
+
+describe('re-review R1: /custom-15 pay-first names its real slug at the details step (one site per purchase)', () => {
+  const S1 = 'cs_live_payfirst1aaaaaaaaaaaa';
+  const S2 = 'cs_live_payfirst2bbbbbbbbbbbb';
+  const proofs: Record<string, CheckoutProof> = {
+    [S1]: { paid: true, status: 'complete', mode: 'subscription', siteId: 'premium-cuts-k3m9p2xq', app: 'aibarber', created: Math.floor(NOW / 1000) - 60, email: 'one@example.com', plan: 'monthly-custom15' },
+    [S2]: { paid: true, status: 'complete', mode: 'subscription', siteId: 'premium-cuts-7hq2w8zt', app: 'aibarber', created: Math.floor(NOW / 1000) - 30, email: 'two@example.com', plan: 'monthly-custom15' },
+  };
+  const live = new Set<string>(['taken-shop-ab12']);
+  const deps = (store: SiteOwnerStore): DeployAuthDeps => ({
+    userOf: async () => null, findBySlug: async () => null, checkoutSession: async (id) => proofs[id] ?? null, webClaimants: async () => [],
+    storedStamp: async () => null, projectExists: async (s) => live.has(s), siteOwners: store, now: () => NOW,
+  });
+  const withSessions = (rows: SiteOwnerRow[] = []) => {
+    const st = memStore(rows);
+    st.slugsForSession = async (id) => [...st.rows.values()].filter((r) => r.checkout_session_id === id).map((r) => r.slug);
+    return st;
+  };
+
+  it('two pay-first purchases in a row: different placeholders, each publishes its own real slug', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const store = withSessions([pending('premium-cuts-k3m9p2xq', 'one@example.com'), pending('premium-cuts-7hq2w8zt', 'two@example.com')]);
+    store.rows.get('premium-cuts-k3m9p2xq')!.checkout_session_id = S1;
+    store.rows.get('premium-cuts-7hq2w8zt')!.checkout_session_id = S2;
+    const a = await authorizeDeploy({ siteId: 'jacks-cuts-x7k2', checkoutSessionId: S1 }, deps(store));
+    expect(a).toMatchObject({ ok: true, target: 'jacks-cuts-x7k2', actor: 'checkout', checkout: { firstPublish: true, renamedFrom: 'premium-cuts-k3m9p2xq' } });
+    await recordCheckoutOwner(a.target!, { checkoutEmail: 'one@example.com', sessionId: S1 }, store);
+    live.add('jacks-cuts-x7k2');
+    const b = await authorizeDeploy({ siteId: 'fades-by-ana-q9w3', checkoutSessionId: S2 }, deps(store));
+    expect(b).toMatchObject({ ok: true, target: 'fades-by-ana-q9w3', checkout: { renamedFrom: 'premium-cuts-7hq2w8zt' } });
+    // The first buyer's site is untouched by the second purchase.
+    expect((await authorizeDeploy({ siteId: 'jacks-cuts-x7k2', checkoutSessionId: S2 }, deps(store))).ok).toBe(false);
+  });
+
+  it('a pay-first session cannot publish a second site, take a live slug, or be used by a non-pay-first plan', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const store = withSessions([{ ...pending('jacks-cuts-x7k2', 'one@example.com'), checkout_session_id: S1 }]);
+    expect((await authorizeDeploy({ siteId: 'another-site-zz11', checkoutSessionId: S1 }, deps(store))).status).toBe(403);
+    expect((await authorizeDeploy({ siteId: 'taken-shop-ab12', checkoutSessionId: S2 }, deps(withSessions()))).status).toBe(403);
+    proofs.cs_live_regularplan12345678 = { ...proofs[S2], plan: 'monthly' };
+    expect((await authorizeDeploy({ siteId: 'renamed-xx99', checkoutSessionId: 'cs_live_regularplan12345678' }, deps(withSessions()))).status).toBe(403);
+    // The placeholder itself and the bound slug still replay.
+    expect((await authorizeDeploy({ siteId: 'jacks-cuts-x7k2', checkoutSessionId: S1 }, deps(store))).ok).toBe(true);
   });
 });
 
@@ -307,6 +394,8 @@ describe('013_site_owners.sql', () => {
     expect(code).toContain('new.claim_email := old.owner_email;');
     expect(code).toMatch(/create trigger site_owners_keep_claim before update on public\.site_owners/);
     expect(code).toContain('check (user_id is null or (owner_email is not null');
+    // Re-review R4: the refund 5xx counter is an index scan.
+    expect(code).toMatch(/create index if not exists ab_events_refund_5xx_key_idx on public\.ab_events \(\(payload->>'key'\)\) where kind = 'refund_5xx';/);
   });
 });
 

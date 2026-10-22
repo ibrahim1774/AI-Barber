@@ -46,6 +46,8 @@ export interface SiteOwnerStore {
   claim(slug: string, userId: string, email: string, at: string): Promise<boolean>;
   /** Admin: set (or replace) the owner. */
   upsert(row: SiteOwnerRow): Promise<void>;
+  /** Slugs whose row was recorded from this checkout session (pay-first: one site per purchase). Optional for older fakes. */
+  slugsForSession?(sessionId: string): Promise<string[]>;
 }
 
 export const normEmail = (e: unknown): string | null => {
@@ -194,6 +196,12 @@ export function supabaseSiteOwners(client?: SupabaseClient): SiteOwnerStore {
       if (tableMissing(error)) return false;
       if (error) throw new Error(`site_owners claim failed: ${error.message}`);
       return Array.isArray(data) && data.length > 0;
+    },
+    async slugsForSession(sessionId) {
+      const { data, error } = await c().from('site_owners').select('slug').eq('checkout_session_id', sessionId);
+      if (tableMissing(error)) return [];
+      if (error) throw new Error(`site_owners session lookup failed: ${error.message}`);
+      return ((data as { slug: string }[]) ?? []).map((r) => r.slug);
     },
     async upsert(row) {
       const { error } = await c().from('site_owners')
