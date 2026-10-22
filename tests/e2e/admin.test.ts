@@ -156,6 +156,28 @@ describe('edit / replace / rollback through the handler', () => {
 });
 
 // ---------------------------------------------------------------------------
+describe('admin edits during Apple billing grace', () => {
+  it.fails('BUG (minor): a site live in billing grace (stored expiry passed, Apple status 4) is treated as "expired": the edit is stored but not deployed', async () => {
+    const { otid } = await app();
+    w.clock.advance(31 * DAY);
+    w.apple.setStatus(otid, 4);
+    expect((await w.sweep()).stillActive).toEqual(['fade-lab']); // the sweep keeps it up
+    const r = await call({ body: { action: 'update', slug: 'fade-lab', set: { area: 'Grace edit' } } });
+    expect(r.body).toMatchObject({ ok: true, deployed: true });
+  });
+
+  it('setup: the same edit answers skipped site-offline (expired) while the old content stays live', async () => {
+    const { otid } = await app();
+    w.clock.advance(31 * DAY);
+    w.apple.setStatus(otid, 4);
+    await w.sweep();
+    const r = await call({ body: { action: 'update', slug: 'fade-lab', set: { area: 'Grace edit' } } });
+    expect(r.body).toMatchObject({ ok: true, deployed: false, skipped: 'site-offline', offline: 'expired' });
+    expect(vercel.live.get('fade-lab')).not.toContain('Grace edit');
+  });
+});
+
+// ---------------------------------------------------------------------------
 describe('malformed admin input never writes', () => {
   const bad: [string, Record<string, unknown>][] = [
     ['patch and set together', { action: 'update', slug: 'fade-lab', patch: { area: 'x' }, set: { area: 'y' } }],

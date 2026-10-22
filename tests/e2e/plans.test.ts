@@ -146,3 +146,43 @@ describe.each(PLANS)('$name', (plan) => {
     expect(order.status).toBe(plan.store ? 201 : 423);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Book-link matrix, server half: what the published site may carry (tier strip) and whether the
+// AI Barber booking page it points to is open (bookings_enabled × purchase linked × tier). The
+// app-side resolver (own link vs AI link, shop exists) lives in the iOS repo.
+describe('Book-link matrix (server half)', () => {
+  const cases = PLANS.flatMap((plan) => [true, false].flatMap((enabled) => [true, false].map((linkedPurchase) => ({ plan, enabled, linkedPurchase }))));
+  it.each(cases)('$plan.name, bookings_enabled=$enabled, linked=$linkedPurchase', async ({ plan, enabled, linkedPurchase }) => {
+    const { otid, transactionId } = w.apple.buy(plan.product);
+    await w.publish(transactionId, siteData({ bookingUrl: AI_BOOK }));
+    const b = bookingWorld({ shop: { ios_otid: linkedPurchase ? otid : null, bookings_enabled: enabled } });
+    b.deps.repo.purchase = w.gateRow;
+    const page = (await getShop({ slug: 'fresh-cuts' }, b.deps)).body as any;
+    const open = enabled && linkedPurchase && plan.bookings;
+    expect(page.paused).toBe(!open);
+    // The site keeps the AI Book link only on a plan with bookings (shop state is the app's call).
+    expect(pendingOf('fade-lab').siteData.bookingUrl === AI_BOOK).toBe(plan.bookings);
+  });
+
+  it.each([
+    ['https://aibarber.org/book/fade-lab'], ['http://www.aibarber.org/book'], ['AIBARBER.ORG/book?x=1'], ['https://www.aibarber.org/book#top'],
+  ])('a Website plan strips the AI Book link written as %s', async (url) => {
+    const { transactionId } = w.apple.buy(PRODUCTS.websiteMonthly);
+    await w.publish(transactionId, siteData({ bookingUrl: url }));
+    expect(pendingOf('fade-lab').siteData).not.toHaveProperty('bookingUrl');
+  });
+
+  it.each([['https://aibarber.org:443/book/fade-lab'], ['https://www.aibarber.org./book/fade-lab']])(
+    'setup: the AI Barber URL written as %s is not recognised and is kept on a Website plan', async (url) => {
+      const { transactionId } = w.apple.buy(PRODUCTS.websiteMonthly);
+      await w.publish(transactionId, siteData({ bookingUrl: url }));
+      expect(pendingOf('fade-lab').siteData.bookingUrl).toBe(url);
+    });
+
+  it.fails('BUG (minor): the same AI Barber booking URL with an explicit :443 port or a trailing-dot host survives the Website-plan strip', async () => {
+    const { transactionId } = w.apple.buy(PRODUCTS.websiteMonthly);
+    await w.publish(transactionId, siteData({ bookingUrl: 'https://aibarber.org:443/book/fade-lab' }));
+    expect(pendingOf('fade-lab').siteData).not.toHaveProperty('bookingUrl');
+  });
+});
