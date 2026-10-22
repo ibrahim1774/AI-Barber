@@ -3,10 +3,7 @@
 // account linking. Bugs are it.fails with a sibling `it` proving the setup reaches the bad state.
 vi.mock('@google-cloud/storage', async () => (await import('./harness/gcs.js')).storageModule);
 vi.mock('../../lib/deploySite.js', async () => (await import('./harness/vercel.js')).deploySiteModule);
-vi.mock('../../lib/ios/webDeployGate.js', async (importOriginal) => {
-  const real: any = await importOriginal();
-  return { ...real, liveWebDeployDeps: () => (globalThis as any).__e2eWebDeployDeps() };
-});
+vi.mock('../../lib/siteSubpages.js', async (orig) => (await import('./harness/subpages.js')).subpagesModule(await orig()));
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { AI_SHOP, normHtml, resetBoundaries, siteData, siteWorld, httpReq, httpRes, type SiteWorld } from './harness/world.js';
@@ -16,16 +13,12 @@ import { deferred, deploysOf, vercel } from './harness/vercel.js';
 import { readPendingSite, renderPending, writePendingSite } from '../../lib/publishSite.js';
 import { updateSite, republish, getSite } from '../../lib/admin/sites.js';
 import { deployRenderedSite } from '../../lib/deploySite.js';
-import deploySiteHandler from '../../api/deploy-site.js';
+import { deploySite, type DeploySiteDeps } from '../../api/deploy-site.js';
 
 let w: SiteWorld;
 beforeEach(() => {
   resetBoundaries();
   w = siteWorld();
-  (globalThis as any).__e2eWebDeployDeps = () => ({
-    findBySlug: (s: string) => w.repo.findBySlug(s), deploy: deployRenderedSite, writePending: writePendingSite,
-    readPending: readPendingSite, now: w.clock.now,
-  });
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -184,47 +177,80 @@ describe('publish stores before it renders (admin dry-renders first; the phone p
 });
 
 // ---------------------------------------------------------------------------
+// C1 (fixed by the deploy-auth hotfix, PR #243): /api/deploy-site now authorises every deploy
+// (lib/deployAuth.ts). Driven through the real handler with in-process auth deps: tokens map to
+// users, the purchase lookups read the same ios_purchases rows, Stripe has no sessions.
 describe('/api/deploy-site (web editor deploy) reaching an app site', () => {
-  it('setup: an unauthenticated POST naming an active app slug deploys arbitrary HTML and rewrites the stored copy', async () => {
-    await published();
-    await updateSite('fade-lab', { set: { phone: '555-ADMIN' } }, w.adminDeps()); // v2 by admin
+  const tokens: Record<string, { id: string; email: string | null }> = {
+    'owner-a': { id: USER_A, email: 'a@example.com' },
+    'owner-b': { id: USER_B, email: 'b@example.com' },
+  };
+  const deploy = async (body: Record<string, unknown>, token?: string) => {
     const res = httpRes();
-    await deploySiteHandler(httpReq({ body: { siteId: 'fade-lab', html: '<h1>not the barber</h1>', siteData: siteData({ phone: '000' }) } }), res);
+    const deps: DeploySiteDeps = {
+      auth: {
+        userOf: async (t) => tokens[t] ?? null,
+        findBySlug: (s) => w.repo.findBySlug(s),
+        checkoutSession: async () => null,
+        webClaimants: async () => [],
+        storedStamp: async (s) => (await readPendingSite(s))?.deployedUrl || null,
+        projectExists: async (s) => vercel.live.has(s) || vercel.projects.has(s),
+        now: w.clock.now,
+      },
+      deploy: {
+        deploy: deployRenderedSite, writePending: writePendingSite, readPending: readPendingSite, now: w.clock.now,
+      },
+      limiter: { allow: async () => true },
+    };
+    await deploySite(httpReq({ body, headers: token ? { authorization: `Bearer ${token}` } : {} }), res, deps);
+    return res;
+  };
+  const ownedBy = async (user: string) => {
+    const p = await published();
+    w.db.row(p.otid)!.user_id = user;
+    return p;
+  };
+
+  it('setup: the Apple-bound owner (signed in) deploys and refreshes the stored copy as an owner write', async () => {
+    await ownedBy(USER_A);
+    await updateSite('fade-lab', { set: { phone: '555-ADMIN' } }, w.adminDeps()); // v2 by admin
+    const res = await deploy({ siteId: 'fade-lab', html: '<h1>owner edit</h1>', siteData: siteData({ phone: '000' }) }, 'owner-a');
     expect(res.statusCode).toBe(200);
-    expect(vercel.live.get('fade-lab')).toBe('<h1>not the barber</h1>');
+    expect(vercel.live.get('fade-lab')).toBe('<h1>owner edit</h1>');
     expect(pendingOf('fade-lab')).toMatchObject({ version: 3, editedBy: 'owner', adminVersion: 2 });
     expect(pendingOf('fade-lab').siteData.phone).toBe('000');
   });
 
-  it.fails('BUG (security): an app site can be replaced without the Apple-verified purchase (expected 401/403)', async () => {
-    await published();
-    const res = httpRes();
-    await deploySiteHandler(httpReq({ body: { siteId: 'fade-lab', html: '<h1>phish</h1>' } }), res);
-    expect([401, 402, 403]).toContain(res.statusCode);
+  it('C1 (fixed): an app site can not be replaced without the Apple-bound owner (401 / 403)', async () => {
+    await ownedBy(USER_A);
+    const anon = await deploy({ siteId: 'fade-lab', html: '<h1>phish</h1>' });
+    expect(anon.statusCode).toBe(401);
+    const other = await deploy({ siteId: 'fade-lab', html: '<h1>phish</h1>' }, 'owner-b');
+    expect(other.statusCode).toBe(403);
+    expect(vercel.live.get('fade-lab')).not.toContain('phish');
   });
 
-  it.fails('BUG: a web deploy overwrites an admin edit with no baseVersion check (expected 409 site-updated)', async () => {
-    await published();
+  it.fails('BUG (parked, not in round 2): the owner\'s web deploy overwrites an admin edit with no baseVersion check (expected 409 site-updated)', async () => {
+    await ownedBy(USER_A);
     await updateSite('fade-lab', { set: { phone: '555-ADMIN' } }, w.adminDeps());
-    const res = httpRes();
-    await deploySiteHandler(httpReq({ body: { siteId: 'fade-lab', html: '<h1>x</h1>', siteData: siteData() } }), res);
+    const res = await deploy({ siteId: 'fade-lab', html: '<h1>x</h1>', siteData: siteData() }, 'owner-a');
     expect(res.statusCode).toBe(409);
   });
 
-  it('deployedUrl retargets the deploy to whichever bound slug its label names', async () => {
-    await published();
-    const res = httpRes();
-    await deploySiteHandler(httpReq({ body: { siteId: 'my-own-site', html: '<h1>x</h1>', deployedUrl: 'https://fade-lab.vercel.app' } }), res);
+  it('deployedUrl retargets only for the bound slug\'s owner; anyone else is refused', async () => {
+    await ownedBy(USER_A);
+    expect((await deploy({ siteId: 'my-own-site', html: '<h1>x</h1>', deployedUrl: 'https://fade-lab.vercel.app' }, 'owner-b')).statusCode).toBe(403);
+    expect(vercel.live.get('fade-lab')).not.toBe('<h1>x</h1>');
+    const res = await deploy({ siteId: 'my-own-site', html: '<h1>x</h1>', deployedUrl: 'https://fade-lab.vercel.app' }, 'owner-a');
     expect(res.statusCode).toBe(200);
     expect(vercel.live.get('fade-lab')).toBe('<h1>x</h1>');
     expect(vercel.live.has('my-own-site')).toBe(false);
   });
 
-  it('a taken-down or revoked app site is refused with 402', async () => {
-    const { otid } = await published();
+  it('a taken-down or revoked app site is refused with 402, even for its owner', async () => {
+    const { otid } = await ownedBy(USER_A);
     w.db.row(otid)!.revoked_at = new Date().toISOString();
-    const res = httpRes();
-    await deploySiteHandler(httpReq({ body: { siteId: 'fade-lab', html: '<h1>x</h1>' } }), res);
+    const res = await deploy({ siteId: 'fade-lab', html: '<h1>x</h1>' }, 'owner-a');
     expect(res).toMatchObject({ statusCode: 402, body: { error: 'subscription-inactive' } });
   });
 });

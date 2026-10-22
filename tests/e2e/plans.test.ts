@@ -2,6 +2,7 @@
 // iOS publish flow, site lookup, tier link strip, and the bookings + store gates.
 vi.mock('@google-cloud/storage', async () => (await import('./harness/gcs.js')).storageModule);
 vi.mock('../../lib/deploySite.js', async () => (await import('./harness/vercel.js')).deploySiteModule);
+vi.mock('../../lib/siteSubpages.js', async (orig) => (await import('./harness/subpages.js')).subpagesModule(await orig()));
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { AI_BOOK, AI_SHOP, BOOKSY, NOW, normHtml, resetBoundaries, siteData, siteWorld, type SiteWorld } from './harness/world.js';

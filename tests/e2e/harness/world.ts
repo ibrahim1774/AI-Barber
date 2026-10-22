@@ -29,6 +29,7 @@ import { fakeApple, BUNDLE } from './apple.js';
 import { purchasesDb } from './purchasesDb.js';
 import { resetGcs } from './gcs.js';
 import { resetVercel } from './vercel.js';
+import { resetSubpages } from './subpages.js';
 import { resetStripe } from './stripe.js';
 import { installNetwork } from './net.js';
 
@@ -67,6 +68,7 @@ export function makeClock(start = NOW) {
 export function resetBoundaries() {
   resetGcs();
   resetVercel();
+  resetSubpages();
   resetStripe();
   installNetwork();
   vi.spyOn(console, 'log').mockImplementation(() => {});

@@ -2,6 +2,7 @@
 // sweep, /api/shop/plan, and the bookings + store gates reading the same ios_purchases row.
 vi.mock('@google-cloud/storage', async () => (await import('./harness/gcs.js')).storageModule);
 vi.mock('../../lib/deploySite.js', async () => (await import('./harness/vercel.js')).deploySiteModule);
+vi.mock('../../lib/siteSubpages.js', async (orig) => (await import('./harness/subpages.js')).subpagesModule(await orig()));
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { randomUUID } from 'node:crypto';

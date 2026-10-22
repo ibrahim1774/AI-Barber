@@ -3,6 +3,7 @@
 // the real api/* handlers, with only their live-deps factories pointed at the in-process world.
 vi.mock('@google-cloud/storage', async () => (await import('./harness/gcs.js')).storageModule);
 vi.mock('../../lib/deploySite.js', async () => (await import('./harness/vercel.js')).deploySiteModule);
+vi.mock('../../lib/siteSubpages.js', async (orig) => (await import('./harness/subpages.js')).subpagesModule(await orig()));
 const holder = vi.hoisted(() => ({ deps: {} as Record<string, () => any> }));
 vi.mock('../../lib/ios/publishFlow.js', async (orig) => ({ ...(await orig<any>()), liveDeps: () => holder.deps.publish() }));
 vi.mock('../../lib/ios/notifications.js', async (orig) => ({ ...(await orig<any>()), liveNotificationDeps: () => holder.deps.notification() }));

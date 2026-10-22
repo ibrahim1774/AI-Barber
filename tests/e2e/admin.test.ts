@@ -3,13 +3,14 @@
 // phone publish flow racing it. Plus /api/save-pending-site's refusal of app slugs.
 vi.mock('@google-cloud/storage', async () => (await import('./harness/gcs.js')).storageModule);
 vi.mock('../../lib/deploySite.js', async () => (await import('./harness/vercel.js')).deploySiteModule);
+vi.mock('../../lib/siteSubpages.js', async (orig) => (await import('./harness/subpages.js')).subpagesModule(await orig()));
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { AI_BOOK, AI_SHOP, DAY, httpReq, httpRes, normHtml, resetBoundaries, siteData, siteWorld, type SiteWorld } from './harness/world.js';
 import { PRODUCTS } from './harness/apple.js';
 import { gcs, gcsJson, pendingOf, putJson } from './harness/gcs.js';
 import { deferred, deploysOf, vercel } from './harness/vercel.js';
-import { renderPending } from '../../lib/publishSite.js';
+import { readPendingSite, renderPending } from '../../lib/publishSite.js';
 import { savePendingSite } from '../../api/save-pending-site.js';
 
 let w: SiteWorld;
@@ -194,7 +195,8 @@ describe('malformed admin input never writes', () => {
     ['replace null', { action: 'replace', slug: 'fade-lab', siteData: null }],
     ['replace array', { action: 'replace', slug: 'fade-lab', siteData: [] }],
     ['replace > 3 MB', { action: 'replace', slug: 'fade-lab', siteData: siteData({ area: 'x'.repeat(3 * 1024 * 1024) }) }],
-    ['euphoria with a title-less hero', { action: 'replace', slug: 'fade-lab', siteData: { ...siteData({ template: 'euphoria' }), hero: { imageUrl: '' } } }],
+    // (A title-less euphoria hero was unrenderable when this suite was written; the honest-sites
+    // renderer work made it render, so it is no longer a bad input.)
     ['unknown action', { action: 'delete', slug: 'fade-lab' }],
     ['no slug', { action: 'update', set: { area: 'x' } }],
     ['slug wrong type', { action: 'update', slug: 42, set: { area: 'x' } }],
@@ -317,7 +319,8 @@ describe('republish-all', () => {
 describe('/api/save-pending-site never touches an app site', () => {
   const run = async (method: string, body: unknown, isAppSlug = (s: string) => w.repo.findBySlug(s).then((r) => r != null)) => {
     const res = httpRes();
-    await savePendingSite(httpReq({ method, body }), res, { isAppSlug });
+    // isPublished (the deployedUrl stamp check) arrived with the deploy-auth hotfix.
+    await savePendingSite(httpReq({ method, body }), res, { isAppSlug, isPublished: async (s) => !!(await readPendingSite(s))?.deployedUrl });
     return res;
   };
 
@@ -351,11 +354,13 @@ describe('/api/save-pending-site never touches an app site', () => {
     expect((await run('GET', {})).statusCode).toBe(405);
   });
 
-  it('look-alike ids ("fade_lab", "fade-lab-") are stored under their own keys and never reach the app copy', async () => {
+  it('look-alike ids ("fade_lab", "fade-lab-") canonicalise to the app slug and are refused; the app copy is untouched', async () => {
+    // Since the deploy-auth hotfix every key is the canonical slugify(), so the look-alikes are
+    // the app slug itself (before, they were stored under their own keys).
     await app();
     const before = gcsJson('pending-sites/fade-lab.json');
-    expect((await run('POST', { siteId: 'fade_lab', data: { siteData: siteData({ shopName: 'X' }) } })).statusCode).toBe(200);
-    expect((await run('POST', { siteId: 'fade-lab-', data: { siteData: siteData({ shopName: 'X' }) } })).statusCode).toBe(200);
+    expect((await run('POST', { siteId: 'fade_lab', data: { siteData: siteData({ shopName: 'X' }) } })).statusCode).toBe(409);
+    expect((await run('POST', { siteId: 'fade-lab-', data: { siteData: siteData({ shopName: 'X' }) } })).statusCode).toBe(409);
     expect(gcsJson('pending-sites/fade-lab.json')).toEqual(before);
   });
 });
