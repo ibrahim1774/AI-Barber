@@ -386,7 +386,7 @@ describe('handleConnectEvent', () => {
     expect(await handleConnectEvent(completed(), deps)).toBe('refunded:cancelled-before-payment');
     expect(deps.recordPaidAfterCancel).toHaveBeenCalledWith('appt-1', { amountPaidCents: 3000, paymentIntentId: 'pi_1' });
     expect(deps.state.row?.paid_at).toBeNull();
-    expect(deps.refund).toHaveBeenCalledWith(shop, expect.objectContaining({ stripe_payment_intent_id: 'pi_1' }), 3000, 'refund-pac-pi_1');
+    expect(deps.refund).toHaveBeenCalledWith(shop, expect.objectContaining({ stripe_payment_intent_id: 'pi_1' }), 3000, 'refund-pac-pi_1-3000-0');
     expect(deps.state.row?.amount_refunded_cents).toBe(3000);
     expect(deps.notify).not.toHaveBeenCalled();
   });
@@ -398,7 +398,7 @@ describe('handleConnectEvent', () => {
     expect(deps.state.row).toMatchObject({ status: 'cancelled', paid_at: null, stripe_payment_intent_id: 'pi_1', amount_refunded_cents: 0 });
     expect(deps.recordEvent).not.toHaveBeenCalled();
     expect(await handleConnectEvent(completed(), deps)).toBe('refunded:cancelled-before-payment');
-    expect((deps.refund as any).mock.calls.map((c: any[]) => [c[2], c[3]])).toEqual([[3000, 'refund-pac-pi_1'], [3000, 'refund-pac-pi_1']]);
+    expect((deps.refund as any).mock.calls.map((c: any[]) => [c[2], c[3]])).toEqual([[3000, 'refund-pac-pi_1-3000-0'], [3000, 'refund-pac-pi_1-3000-0']]);
     expect(deps.state.row?.amount_refunded_cents).toBe(3000);
     // and further deliveries are plain no-ops
     expect(await handleConnectEvent({ ...completed(), id: 'evt_9' }, deps)).toBe('noop:already-refunded');
@@ -410,7 +410,7 @@ describe('handleConnectEvent', () => {
     (deps as any).setRefunded = vi.fn().mockRejectedValueOnce(new Error('killed')).mockImplementation(async (_id: string, total: number) => { deps.state.row = { ...deps.state.row!, amount_refunded_cents: total }; });
     await expect(handleConnectEvent(completed(), deps)).rejects.toThrow('killed');
     expect(await handleConnectEvent(completed(), deps)).toBe('refunded:cancelled-before-payment');
-    expect((deps.refund as any).mock.calls.map((c: any[]) => c[3])).toEqual(['refund-pac-pi_1', 'refund-pac-pi_1']);
+    expect((deps.refund as any).mock.calls.map((c: any[]) => c[3])).toEqual(['refund-pac-pi_1-3000-0', 'refund-pac-pi_1-3000-0']);
     expect(deps.state.row?.amount_refunded_cents).toBe(3000);
   });
 
@@ -503,12 +503,12 @@ describe('handleConnectEvent', () => {
 
 describe('refundKey + refundAppointment idempotency option', () => {
   it('reason-scoped keys, used as the Idempotency-Key when given', async () => {
-    expect(refundKey.cancel('appt-1')).toBe('refund-cancel-appt-1');
-    expect(refundKey.pac('pi_1')).toBe('refund-pac-pi_1');
+    expect(refundKey.cancel('appt-1', 3000, 0)).toBe('refund-cancel-appt-1-3000-0');
+    expect(refundKey.pac('pi_1', 3000, 0)).toBe('refund-pac-pi_1-3000-0');
     expect(refundKey.duplicate('pi_1')).toBe('refund-dup-pi_1');
     const { f, calls } = fakeFetch({ body: { id: 're', amount: 3000, status: 'succeeded' } });
-    await refundAppointment(shop, { ...appt, stripe_payment_intent_id: 'pi_1', amount_paid_cents: 3000 }, 3000, { fetch: f, idempotencyKey: refundKey.cancel('appt-1') });
-    expect(calls[0].init.headers['Idempotency-Key']).toBe('refund-cancel-appt-1');
+    await refundAppointment(shop, { ...appt, stripe_payment_intent_id: 'pi_1', amount_paid_cents: 3000 }, 3000, { fetch: f, idempotencyKey: refundKey.cancel('appt-1', 3000, 0) });
+    expect(calls[0].init.headers['Idempotency-Key']).toBe('refund-cancel-appt-1-3000-0');
   });
 });
 

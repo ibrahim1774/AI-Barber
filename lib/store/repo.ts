@@ -95,6 +95,8 @@ export interface StoreRepo {
   pendingOrderRefunds(updatedBeforeIso: string, limit: number): Promise<OrderRow[]>;
 
   logEvent(shopId: string | null, kind: string, payload: Record<string, unknown>): Promise<void>;
+  /** Review fix 13: definite Stripe 5xx answers recorded for this refund key (ab_events refund_5xx). Optional for older fakes. */
+  refundAttempts?(baseKey: string): Promise<number>;
 }
 
 const SHOP_COLS =
@@ -185,6 +187,13 @@ export function supabaseStoreRepo(client?: SupabaseClient): StoreRepo {
       many('pendingOrderRefunds', db().from('ab_orders').select(ORDER_COLS)
         .eq('refund_pending', true).not('stripe_payment_intent_id', 'is', null)
         .lt('updated_at', updatedBeforeIso).order('updated_at').limit(limit)),
+
+    async refundAttempts(baseKey) {
+      const { count, error } = await db().from('ab_events').select('id', { count: 'exact', head: true })
+        .eq('kind', 'refund_5xx').eq('payload->>key', baseKey);
+      if (error) fail('refundAttempts', error);
+      return count ?? 0;
+    },
 
     async logEvent(shopId, kind, payload) {
       const { error } = await db().from('ab_events').insert({ shop_id: shopId, kind, payload });

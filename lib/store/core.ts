@@ -5,6 +5,7 @@ import { isObj, isUuid, iso, text, type FlowResult } from '../bookings/core.js';
 import { MANUAL_METHODS } from '../bookings/repo.js';
 import { entitlementActive } from '../ios/lapse.js';
 import { orderRefundKey, type CheckoutCloseResult, type NotifyOrder, type StorePayments } from './deps.js';
+import { REFUND_5XX_EVENT, isStripe5xx, withRefundAttempt } from '../bookings/payments.js';
 import type { OrderGuard, StoreRepo } from './repo.js';
 import type { Fulfilment, OrderItemRow, OrderRow, ProductRow, ShippingAddress, ShopStoreRow, StoreNotifyEvent } from './types.js';
 
@@ -316,12 +317,17 @@ export async function refundOrderOwed(
   let refunded = 0;
   // Order + target + amount + the refunded total it was computed from (stored state only): the
   // same attempt (a double tap, a lost response, the retry sweep) always sends the same key.
-  const key = orderRefundKey(row.id, row.refund_due_cents, amount, row.amount_refunded_cents);
+  const baseKey = orderRefundKey(row.id, row.refund_due_cents, amount, row.amount_refunded_cents);
+  // Review fix 13: after a definite Stripe 5xx on this attempt, a new suffix (Stripe replays a
+  // saved 500 for the same key for 24 h).
+  const attempt = deps.repo.refundAttempts ? await deps.repo.refundAttempts(baseKey).catch(() => 0) : 0;
+  const key = withRefundAttempt(baseKey, attempt);
   try {
     const r = await deps.payments.refundOrder(shop, row, amount, { idempotencyKey: key });
     refunded = Math.max(0, Math.min(amount, Math.floor(Number(r?.refundedCents) || 0)));
   } catch (e: any) {
     console.error(`[store] refund failed for order ${row.id} (left owed for retry):`, e?.message || e);
+    if (isStripe5xx(e)) await safeLog(deps, shop.id, REFUND_5XX_EVENT, { key: baseKey, attempt, orderId: row.id });
     if (logFailure) {
       await safeLog(deps, shop.id, 'order_refund_failed', {
         orderId: row.id, amountCents: amount, dueCents: row.refund_due_cents, error: String(e?.message || e),

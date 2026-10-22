@@ -263,6 +263,8 @@ export interface BookingRepo {
   insertTimeOff(row: { member_id: string; start_at: string; end_at: string; reason: string | null }): Promise<TimeOffRow>;
   upsertPushToken(userId: string, expoToken: string, platform: 'ios' | 'android'): Promise<void>;
   logEvent(shopId: string | null, kind: string, payload: Record<string, unknown>): Promise<void>;
+  /** Review fix 13: definite Stripe 5xx answers recorded for this refund key (ab_events refund_5xx). Optional for older fakes. */
+  refundAttempts?(baseKey: string): Promise<number>;
 
   // setup
   slugTaken(slug: string): Promise<boolean>;
@@ -426,6 +428,13 @@ export function supabaseBookingRepo(client?: SupabaseClient): BookingRepo {
         .upsert({ user_id: userId, expo_token: expoToken, platform }, { onConflict: 'expo_token' });
       if (error) fail('upsertPushToken', error);
     },
+    async refundAttempts(baseKey) {
+      const { count, error } = await db().from('ab_events').select('id', { count: 'exact', head: true })
+        .eq('kind', 'refund_5xx').eq('payload->>key', baseKey);
+      if (error) fail('refundAttempts', error);
+      return count ?? 0;
+    },
+
     async logEvent(shopId, kind, payload) {
       const { error } = await db().from('ab_events').insert({ shop_id: shopId, kind, payload });
       if (error) fail('logEvent', error);

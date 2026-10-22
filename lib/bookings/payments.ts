@@ -195,8 +195,15 @@ export async function createCardCheckout(
  * pac and duplicate are shared with store orders (payment intents are unique across both tables).
  */
 export const refundKey = {
-  cancel: (appointmentId: string) => `refund-cancel-${appointmentId}`,
-  pac: (paymentIntentId: string) => `refund-pac-${paymentIntentId}`,
+  /**
+   * The cancel refund of an appointment: its id, the amount sent and the refunded total it was
+   * computed from (stored state only), like the store's order key. A retry of the same attempt
+   * sends the same key and amount; a retry computed after a dashboard refund moved the state
+   * gets its own key (a reused key with another amount is an error at Stripe). Review fix 5.
+   */
+  cancel: (appointmentId: string, amountCents: number, refundedCents: number) => `refund-cancel-${appointmentId}-${amountCents}-${refundedCents}`,
+  /** A payment that landed on a cancelled booking / order: the payment intent, amount and refunded total (review fix 5). */
+  pac: (paymentIntentId: string, amountCents: number, refundedCents: number) => `refund-pac-${paymentIntentId}-${amountCents}-${refundedCents}`,
   duplicate: (paymentIntentId: string) => `refund-dup-${paymentIntentId}`,
   /**
    * An owner's order refund attempt: the order, the target total being claimed, the amount sent
@@ -210,6 +217,18 @@ export const refundKey = {
   order: (orderId: string, targetTotalCents: number, amountCents: number, refundedCents: number) =>
     `refund-order-${orderId}-${targetTotalCents}-${amountCents}-${refundedCents}`,
 };
+
+/**
+ * Review fix 13: Stripe saves the first result under an idempotency key for 24 h, a 500
+ * included, so every retry of an attempt that got a definite 5xx would replay that 500. After a
+ * definite 5xx (never a timeout or network error: that refund may have happened) the attempt
+ * counter for the base key is bumped (an ab_events 'refund_5xx' row) and the next attempt sends
+ * `{base}-a{n}`.
+ */
+export const withRefundAttempt = (baseKey: string, attempt: number): string => (attempt > 0 ? `${baseKey}-a${attempt}` : baseKey);
+export const REFUND_5XX_EVENT = 'refund_5xx';
+/** A definite Stripe 5xx answer (not a timeout, network error or 4xx). */
+export const isStripe5xx = (e: unknown): boolean => e instanceof StripeApiError && e.status >= 500 && e.status < 600;
 
 export interface RefundOpts extends StripeOpts {
   /** Use a reason-scoped key from `refundKey` (e.g. refundKey.cancel(appt.id) for the cancel path).
@@ -720,7 +739,7 @@ async function sessionPaid(event: StripeEvent, obj: any, deps: WebhookDeps, orde
     if (already >= paid) return { outcome: 'noop:already-refunded' };
     console.error('[stripe/connect-webhook] payment on a cancelled booking, refunding in full:',
       JSON.stringify({ appointment: appt.id, paymentIntent: pi, amount: paid - already }));
-    const refunded = await refundOnce(deps, shop, { ...appt, stripe_payment_intent_id: pi, amount_paid_cents: paid, amount_refunded_cents: already }, paid - already, refundKey.pac(pi));
+    const refunded = await refundOnce(deps, shop, { ...appt, stripe_payment_intent_id: pi, amount_paid_cents: paid, amount_refunded_cents: already }, paid - already, refundKey.pac(pi, paid - already, already));
     const total = already + refunded;
     await deps.setRefunded(appt.id, total, total >= paid ? 'refunded' : 'partially_refunded');
     return { outcome: 'refunded:cancelled-before-payment' };

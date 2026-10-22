@@ -5,6 +5,7 @@ import { DateTime, IANAZone } from 'luxon';
 import { freeSlotsAny, type AnySlot, type MemberSchedule } from './slots.js';
 import { depositCents, refundOnCancel } from './money.js';
 import { refundKey, type Notify, type Payments } from './deps.js';
+import { REFUND_5XX_EVENT, isStripe5xx, withRefundAttempt } from './payments.js';
 import { entitlementActive } from '../ios/lapse.js';
 import {
   MANUAL_METHODS,
@@ -532,11 +533,14 @@ async function refundOwed(
   logEvent: boolean,
 ): Promise<{ refunded: number; row: AppointmentRow; failed: boolean }> {
   let refunded = 0;
+  const baseKey = refundKey.cancel(row.id, amount, row.amount_refunded_cents);
+  const attempt = deps.repo.refundAttempts ? await deps.repo.refundAttempts(baseKey).catch(() => 0) : 0;
   try {
-    const r = await deps.payments.refundAppointment(shop, row, amount, { idempotencyKey: refundKey.cancel(row.id) });
+    const r = await deps.payments.refundAppointment(shop, row, amount, { idempotencyKey: withRefundAttempt(baseKey, attempt) });
     refunded = Math.max(0, Math.min(amount, Math.floor(Number(r?.refundedCents) || 0)));
   } catch (e: any) {
     console.error(`[bookings] refund failed for appointment ${row.id} (left pending for retry):`, e?.message || e);
+    if (isStripe5xx(e)) await safeLog(deps, shop.id, REFUND_5XX_EVENT, { key: baseKey, attempt, appointmentId: row.id });
     if (logEvent) await safeLog(deps, shop.id, 'refund_failed', { appointmentId: row.id, amountCents: amount, ...ctx, error: String(e?.message || e) });
     return { refunded: 0, row, failed: true };
   }

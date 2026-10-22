@@ -106,6 +106,7 @@ export function fakeStoreRepo(state: StoreState, nowFn: () => number = Date.now)
         && Date.parse(o.updated_at) < Date.parse(before))
         .sort((a, b) => Date.parse(a.updated_at) - Date.parse(b.updated_at)).slice(0, limit)),
 
+    refundAttempts: async (key: string) => state.events.filter((e) => e.kind === 'refund_5xx' && e.payload.key === key).length,
     async logEvent(shopId, kind, payload) {
       state.events.push({ shop_id: shopId, kind, payload });
     },

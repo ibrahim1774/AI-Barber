@@ -132,6 +132,7 @@ export function fakeRepo(state: State, nowFn: () => number = Date.now): BookingR
       if (cur) Object.assign(cur, { user_id: userId, platform });
       else state.pushTokens.push({ user_id: userId, expo_token: expoToken, platform });
     },
+    refundAttempts: async (key: string) => state.events.filter((e) => e.kind === 'refund_5xx' && e.payload.key === key).length,
     async logEvent(shopId, kind, payload) {
       state.events.push({ shop_id: shopId, kind, payload });
     },

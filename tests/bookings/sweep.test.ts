@@ -141,9 +141,49 @@ describe('cancel refunds: refund_due_cents and retryPendingRefunds', () => {
     expect(await retryPendingRefunds(w.deps, Date.parse('2026-11-02T12:03:00Z'))).toEqual({ retried: 1, refunded: 1, failed: 0, stuck: 0 });
     expect(w.state.appointments[0]).toMatchObject({ refund_due_cents: 3000, amount_refunded_cents: 3000, payment_status: 'refunded' });
     const keys = w.payments.refundAppointment.mock.calls.map((c) => c[3]);
-    expect(keys).toEqual([{ idempotencyKey: `refund-cancel-${a.id}` }, { idempotencyKey: `refund-cancel-${a.id}` }]);
+    expect(keys).toEqual([{ idempotencyKey: `refund-cancel-${a.id}-3000-0` }, { idempotencyKey: `refund-cancel-${a.id}-3000-0` }]);
     expect(w.payments.refundAppointment.mock.calls.map((c) => c[2])).toEqual([3000, 3000]);
     expect(await retryPendingRefunds(w.deps, Date.parse('2026-11-02T12:10:00Z'))).toMatchObject({ retried: 0 }); // nothing left
+  });
+
+  it('review fix 5: a dashboard refund between the failed attempt and the retry: the retry has its own key (amount + refunded total)', async () => {
+    const w = world({ shop: cardShop });
+    const stripe = fakeStripe(w);
+    const a = await paidCardBooking(w);
+    stripe.mode.fail = true;
+    await customerCancel(w, a.manage_token);
+    stripe.mode.fail = false;
+    w.state.appointments[0].amount_refunded_cents = 1000; // charge.refunded booked a dashboard refund
+    w.setNow('2026-11-02T12:05:00Z');
+    await retryPendingRefunds(w.deps, Date.parse('2026-11-02T12:05:00Z'));
+    expect(w.payments.refundAppointment.mock.calls.map((c) => [c[2], c[3]!.idempotencyKey])).toEqual([
+      [3000, `refund-cancel-${a.id}-3000-0`], [2000, `refund-cancel-${a.id}-2000-1000`],
+    ]);
+    expect(w.state.appointments[0]).toMatchObject({ amount_refunded_cents: 3000, payment_status: 'refunded' });
+  });
+
+  it('review fix 13: after a definite Stripe 5xx the next attempt uses a new key suffix; a timeout keeps the same key', async () => {
+    const { StripeApiError } = await import('../../lib/bookings/payments.js');
+    const w = world({ shop: cardShop });
+    const a = await paidCardBooking(w);
+    const keys: string[] = [];
+    let n = 0;
+    w.payments.refundAppointment.mockImplementation(async (_s, _a, amount, opts) => {
+      keys.push(opts!.idempotencyKey!);
+      n++;
+      if (n === 1) throw new StripeApiError('api_error', 500);
+      if (n === 2) throw new Error('The operation was aborted due to timeout');
+      return { refundedCents: amount };
+    });
+    await customerCancel(w, a.manage_token);
+    for (const t of ['12:05', '12:10']) {
+      w.setNow(`2026-11-02T${t}:00Z`);
+      await retryPendingRefunds(w.deps, Date.parse(`2026-11-02T${t}:00Z`));
+    }
+    const base = `refund-cancel-${a.id}-3000-0`;
+    expect(keys).toEqual([base, `${base}-a1`, `${base}-a1`]);
+    expect(w.state.events.filter((e) => e.kind === 'refund_5xx')).toHaveLength(1);
+    expect(w.state.appointments[0]).toMatchObject({ amount_refunded_cents: 3000 });
   });
 
   it('no double refund when the first attempt went through at Stripe but the response was lost', async () => {
@@ -156,7 +196,7 @@ describe('cancel refunds: refund_due_cents and retryPendingRefunds', () => {
     stripe.mode.loseResponse = false;
     w.setNow('2026-11-02T12:05:00Z');
     await retryPendingRefunds(w.deps, Date.parse('2026-11-02T12:05:00Z'));
-    expect(stripe.refunds).toEqual(new Map([[`refund-cancel-${a.id}`, 3000]])); // one refund at Stripe
+    expect(stripe.refunds).toEqual(new Map([[`refund-cancel-${a.id}-3000-0`, 3000]])); // one refund at Stripe
     expect(w.state.appointments[0]).toMatchObject({ amount_refunded_cents: 3000, payment_status: 'refunded' });
   });
 

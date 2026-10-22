@@ -472,7 +472,7 @@ describe('manage by token', () => {
     expect((r.body as any).appointment.status).toBe('cancelled');
     expect(w.payments.refundAppointment).toHaveBeenCalledTimes(1);
     expect(w.payments.refundAppointment.mock.calls[0][2]).toBe(3000);
-    expect(w.payments.refundAppointment.mock.calls[0][3]).toEqual({ idempotencyKey: `refund-cancel-${a.id}` });
+    expect(w.payments.refundAppointment.mock.calls[0][3]).toEqual({ idempotencyKey: `refund-cancel-${a.id}-3000-0` });
     expect(w.state.appointments[0]).toMatchObject({ status: 'cancelled', cancelled_by: 'customer', amount_refunded_cents: 3000, payment_status: 'refunded' });
     // double tap: idempotent, no second refund
     expect((await postManage({ token: a.manage_token, action: 'cancel' }, w.deps)).status).toBe(200);

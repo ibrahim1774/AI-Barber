@@ -185,7 +185,7 @@ describe('idempotent order creation and numbering', () => {
     expect(d.body.outcome).toBe('order:refunded:cancelled-before-payment');
     expect(m.order(o.id)).toMatchObject({ amount_paid_cents: 3500, amount_refunded_cents: 3500, payment_status: 'refunded', status: 'cancelled' });
     expect(refundReqs()).toHaveLength(1);
-    expect(refundReqs()[0].idempotencyKey).toBe(`refund-pac-${session.payment_intent}`);
+    expect(refundReqs()[0].idempotencyKey).toBe(`refund-pac-${session.payment_intent}-3500-0`);
     expect(stripe.charges.get(session.payment_intent!)!.refunded).toBe(3500);
   });
 
@@ -556,5 +556,22 @@ describe('paid-outside (manual rail) orders', () => {
     expect((await createOrder({ ...base, address: { ...ADDRESS, postalCode: 'K1A0B1' } }, m.deps)).body).toMatchObject({ field: 'address' });
     expect((await createOrder({ ...base, address: ADDRESS }, m.deps)).status).toBe(201);
     expect((await createOrder({ ...base, clientKey: key(), pay: 'shop', address: ADDRESS }, m.deps)).body).toMatchObject({ field: 'pay' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('review fix 13: a Stripe 5xx on an owner refund', () => {
+  it('the retry sweep uses a new key suffix (a saved 500 is never replayed); one refund in the end', async () => {
+    const { id } = await paidOrder();
+    const pi = m.order(id).stripe_payment_intent_id!;
+    stripe.failNext.push({ match: (q) => q.path === '/refunds', status: 500 });
+    await refundOwnerOrder(AUTH, id, {}, m.deps);
+    expect(stripe.charges.get(pi)!.refunded).toBe(0);
+    m.setNow(new Date(Date.parse('2026-11-02T12:00:00Z') + 600_000).toISOString());
+    await retryPendingOrderRefunds(m.deps);
+    const keys = refundReqs().map((q) => q.idempotencyKey);
+    expect(keys).toEqual([`refund-order-${id}-3500-3500-0`, `refund-order-${id}-3500-3500-0-a1`]);
+    expect(stripe.charges.get(pi)!.refunded).toBe(3500);
+    expect(m.order(id)).toMatchObject({ amount_refunded_cents: 3500, status: 'cancelled' });
   });
 });

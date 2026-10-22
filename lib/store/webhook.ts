@@ -186,7 +186,7 @@ export async function handleOrderSession(event: StripeEvent, obj: any, deps: Ord
     const already = Math.max(0, Math.floor(order.amount_refunded_cents ?? 0));
     if (already >= paid) return { outcome: 'order:noop:already-refunded' };
     console.error(`${LOG} payment on a cancelled order, refunding in full:`, JSON.stringify({ order: order.id, paymentIntent: pi, amount: paid - already }));
-    const refunded = await refundOnce(deps, shop, { ...order, stripe_payment_intent_id: pi, amount_paid_cents: paid, amount_refunded_cents: already }, paid - already, refundKey.pac(pi));
+    const refunded = await refundOnce(deps, shop, { ...order, stripe_payment_intent_id: pi, amount_paid_cents: paid, amount_refunded_cents: already }, paid - already, refundKey.pac(pi, paid - already, already));
     const total = already + refunded;
     await deps.setOrderRefunded(order.id, total, total >= paid ? 'refunded' : 'partially_refunded');
     return { outcome: 'order:refunded:cancelled-before-payment' };
