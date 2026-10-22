@@ -14,7 +14,8 @@ import { syncOwnLink } from '@/lib/bookingChoice';
 import { useLinkContext } from '@/lib/linkContext';
 import { stripLapsedLinks } from '@/lib/tierLinks';
 import { getPath, previewBackground, setPath } from '@/lib/editable';
-import { applyBookingLink, applyHomePrompts, fieldLabel, setColour, switchDesign } from '@/lib/editor';
+import { applyBookingLink, applyHomePrompts, editorRecord, fieldLabel, setColour, stockPhotoPaths, switchDesign } from '@/lib/editor';
+import { StockPhotoNudge } from '@/components/StockPhotoNudge';
 import { advanceOverlay, hasSeen, markSeen, nextOverlay, type Overlay } from '@/lib/overlayFlags';
 import { pickAndUploadPhoto } from '@/lib/photos';
 import { takePublishRequest } from '@/lib/publishRequest';
@@ -118,7 +119,9 @@ export default function Editor() {
   // Load (or reload, for a different draft) the record. The overlay is
   // resolved before anything shows, so the editor is never interactive while
   // the prompts / guide are still to come.
-  const openRecord = useCallback(async (s: SiteRecord, isAlive: () => boolean) => {
+  const openRecord = useCallback(async (raw: SiteRecord, isAlive: () => boolean) => {
+    // Shown and edited as the published page renders it (old invented copy removed).
+    const s = editorRecord(raw);
     const o = await nextOverlay(s);
     if (!isAlive()) return;
     siteRef.current = s;
@@ -485,6 +488,9 @@ export default function Editor() {
           )}
         </View>
 
+        {overlay == null && stockPhotoPaths(data).length > 0 && (
+          <StockPhotoNudge onAddPhotos={() => setSheet('photos')} />
+        )}
         <PublishBar
           onSections={openSections}
           onText={() => setSheet('fields')}

@@ -2,6 +2,7 @@ import type { TemplateId, WebsiteData } from '@/web/types';
 import { resolveAibTheme } from '@/web/lib/render/luxe';
 import { resolvePrimeTheme } from '@/web/lib/render/prime';
 import { resolveEuphoriaTheme } from '@/web/lib/render/euphoria';
+import { serviceMeta, withoutLegacyCopy } from '@/web/lib/render/honest';
 import { forRender, renderSite, withImages } from '@/lib/render';
 export { EDITOR_JS } from '@/lib/editorScript';
 
@@ -338,7 +339,29 @@ export function withPreviewBackground(html: string, bg: string): string {
 }
 
 /** The exact document SitePreview loads. */
-export function buildPreviewHtml(data: WebsiteData, editable: boolean): string {
+/**
+ * The data as the published page shows it, made explicit so editor markers can't change it: old invented
+ * copy removed (withoutLegacyCopy), and a service subtitle that only repeats the price ("30 min · $25",
+ * "$25") cut back the way serviceMeta prints it. Inside a marked string serviceMeta can no longer see the
+ * repeat, so without this the preview would show a line the published page drops. Same object when clean.
+ */
+export function asPublished(d: WebsiteData): WebsiteData {
+  const clean = withoutLegacyCopy(d);
+  const services = Array.isArray(clean.services) ? clean.services : [];
+  let changed = false;
+  const next = services.map((s) => {
+    const sub = s?.subtitle ?? '';
+    const shown = serviceMeta({ subtitle: sub, price: s?.price });
+    if (!sub || shown === sub.trim()) return s;
+    changed = true;
+    return { ...s, subtitle: shown };
+  });
+  return changed ? { ...clean, services: next } : clean;
+}
+
+export function buildPreviewHtml(raw: WebsiteData, editable: boolean): string {
+  // Markers go in only after the data is what the published page would render.
+  const data = asPublished(raw);
   const bg = previewBackground(data);
   if (!editable) return withPreviewBackground(withImages(stripTracking(renderSite(forRender(data))), data), bg);
   const { marked, ids } = markData(data);

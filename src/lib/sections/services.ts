@@ -1,5 +1,6 @@
 import type { ServiceItem, WebsiteData } from '@/web/types';
 import { cleanText } from '@/lib/sections/text';
+import { displayPrice, serviceMeta } from '@/web/lib/render/honest';
 
 type Icon = ServiceItem['icon'];
 
@@ -50,6 +51,11 @@ export const SERVICE_LIBRARY: { group: string; items: { title: string; duration:
 ];
 
 export const DURATIONS = [15, 30, 45, 60, 90] as const;
+
+/** The list row's detail line, as the published page prints it: the price once ("25" → "$25"), then the length. */
+export function serviceRowMeta(s: { price?: string; subtitle?: string; duration?: string }): string {
+  return [displayPrice(s.price), serviceMeta(s)].filter(Boolean).join('  ·  ');
+}
 
 export type ServiceDraft = {
   title: string;

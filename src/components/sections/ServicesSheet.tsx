@@ -5,7 +5,7 @@ import { colors, fonts } from '@/constants/theme';
 import { track } from '@/lib/analytics';
 import {
   DURATIONS, SERVICE_LIBRARY, addService, durationLabel, formatPrice, moveService, newService, parseDuration,
-  removeService, updateService, type ServiceDraft,
+  removeService, serviceRowMeta, updateService, type ServiceDraft,
 } from '@/lib/sections/services';
 import { cleanText } from '@/lib/sections/text';
 import { Button } from '@/components/Button';
@@ -144,7 +144,7 @@ export function ServicesSheet({ visible, data, onChange, onClose, onDismiss, upl
               >
                 <Text style={styles.rowTitle} numberOfLines={1}>{s.title || 'Untitled'}</Text>
                 <Text style={styles.rowMeta} numberOfLines={1}>
-                  {[s.price, s.duration].filter(Boolean).join('  ·  ') || 'Tap to add a price'}
+                  {serviceRowMeta(s) || 'Tap to add a price'}
                 </Text>
               </Pressable>
               <Move label={`Move ${s.title} up`} glyph="↑" disabled={i === 0} onPress={() => onChange((d) => moveService(d, i, -1))} />

@@ -3,8 +3,9 @@ import { buildSiteFromScrape } from '@/web/lib/buildSiteFromScrape';
 import { extractFirstUrl, isSupportedBookingHost } from '@/web/lib/supportedBookingHost';
 import { generateContent } from '@/web/services/geminiService';
 import { DEFAULT_PULLQUOTE } from '@/web/lib/render/prime';
+import { isStockImage } from '@/web/lib/stockImages';
 import { api } from '@/lib/api';
-import { IMAGE_PATHS } from '@/lib/editable';
+import { IMAGE_PATHS, asPublished, getPath } from '@/lib/editable';
 
 /**
  * Port of App.tsx handleHomeDesignSwitch: the same content re-skinned, only
@@ -122,4 +123,20 @@ export function imageLabel(path: string): string {
  */
 export function photoSlots(d: WebsiteData): string[] {
   return IMAGE_PATHS(d).filter((p) => !p.startsWith('craftImages.'));
+}
+
+/** The photo slots still showing one of the generator's sample (stock) photos. */
+export function stockPhotoPaths(d: WebsiteData): string[] {
+  return photoSlots(d).filter((p) => isStockImage(getPath(d, p) as string | undefined));
+}
+
+export const STOCK_NUDGE = 'These are sample photos. Add your own so customers see your work.';
+
+/**
+ * The record as the editor shows and edits it: the same data the published page renders (old invented
+ * copy removed, no price repeated in a subtitle; see asPublished). The same object when nothing changes.
+ */
+export function editorRecord<T extends { data: WebsiteData }>(r: T): T {
+  const data = asPublished(r.data);
+  return data === r.data ? r : { ...r, data };
 }
