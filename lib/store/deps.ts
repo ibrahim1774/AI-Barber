@@ -26,8 +26,9 @@ export interface StorePayments {
 /** Never throws (the flows still wrap it). */
 export type NotifyOrder = (event: StoreNotifyEvent) => Promise<void>;
 
-/** refundKey.order(orderId, targetTotalCents): every owner refund attempt and its retries. */
-export const orderRefundKey = (orderId: string, targetTotalCents: number): string => refundKey.order(orderId, targetTotalCents);
+/** refundKey.order(orderId, target, amount, refunded): one owner refund attempt; its retries send the same key. */
+export const orderRefundKey = (orderId: string, targetTotalCents: number, amountCents: number, refundedCents: number): string =>
+  refundKey.order(orderId, targetTotalCents, amountCents, refundedCents);
 
 export const liveStorePayments: StorePayments = {
   createOrderCheckout: (shop, order, items) => createOrderCheckout(shop, order, items),

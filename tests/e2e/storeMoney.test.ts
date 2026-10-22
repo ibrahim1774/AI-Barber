@@ -372,17 +372,36 @@ describe('Connect webhook: replay, duplicates, ordering, other apps', () => {
 
 // ---------------------------------------------------------------------------
 describe('owner refunds: full, partial, over-refund, stuck', () => {
+  it('refund idempotency: a double tap refunds once; a lost Stripe response retried by the sweep replays the same refund, never a second', async () => {
+    const { id } = await paidOrder();
+    const pi = m.order(id).stripe_payment_intent_id!;
+    const [x, y] = await Promise.all([refundOwnerOrder(AUTH, id, { amountCents: 1000 }, m.deps), refundOwnerOrder(AUTH, id, { amountCents: 1000 }, m.deps)]);
+    expect([x.status, y.status].sort()).toEqual([200, 409]);
+    expect(stripe.charges.get(pi)!.refunded).toBe(1000);
+    // Stripe refunds, the response is lost; the owner taps again (refund-pending), the sweep retries.
+    stripe.failNext.push({ match: (q) => q.path === '/refunds', afterProcess: true });
+    await refundOwnerOrder(AUTH, id, { amountCents: 500 }, m.deps);
+    expect(stripe.charges.get(pi)!.refunded).toBe(1500);
+    expect((await refundOwnerOrder(AUTH, id, { amountCents: 500 }, m.deps)).status).toBe(409);
+    m.setNow(new Date(Date.parse('2026-11-02T12:00:00Z') + 600_000).toISOString());
+    await retryPendingOrderRefunds(m.deps);
+    expect(stripe.charges.get(pi)!.refunded).toBe(1500);
+    const keys = refundReqs().slice(1).map((q) => q.idempotencyKey);
+    expect(keys).toEqual([`refund-order-${id}-1500-500-1000`, `refund-order-${id}-1500-500-1000`]);
+    expect(m.order(id)).toMatchObject({ amount_refunded_cents: 1500, refund_due_cents: 1500 });
+  });
+
   it('partial then the rest: absolute totals, keys per target, one cancellation email, webhooks change nothing', async () => {
     const { id, pi } = await paidOrder();
     const p = await refundOwnerOrder(AUTH, id, { amountCents: 500 }, m.deps);
     expect(p).toMatchObject({ status: 200, body: { refundedCents: 500, pending: false } });
     expect(m.order(id)).toMatchObject({ status: 'paid', payment_status: 'partially_refunded', amount_refunded_cents: 500, refund_due_cents: 500 });
-    expect(refundReqs()[0]).toMatchObject({ account: 'acct_1', idempotencyKey: `refund-order-${id}-500` });
+    expect(refundReqs()[0]).toMatchObject({ account: 'acct_1', idempotencyKey: `refund-order-${id}-500-500-0` });
     expect(refundReqs()[0].params).toMatchObject({ amount: '500', refund_application_fee: 'true', payment_intent: pi });
     await m.deliver(m.event('charge.refunded', chargeRefundedObject(pi)));
     const rest = await refundOwnerOrder(AUTH, id, {}, m.deps);
     expect(rest).toMatchObject({ status: 200, body: { refundedCents: 3000 } });
-    expect(refundReqs()[1].idempotencyKey).toBe(`refund-order-${id}-3500`);
+    expect(refundReqs()[1].idempotencyKey).toBe(`refund-order-${id}-3500-3000-500`);
     expect(m.order(id)).toMatchObject({ status: 'cancelled', cancelled_by: 'shop', payment_status: 'refunded', amount_refunded_cents: 3500 });
     await m.deliver(m.event('charge.refunded', chargeRefundedObject(pi)));
     expect(m.notes.filter((n) => n.kind === 'order_cancelled')).toHaveLength(1);
@@ -435,7 +454,7 @@ describe('owner refunds: full, partial, over-refund, stuck', () => {
     expect((view.body as any).order).toMatchObject({ refundStuck: true, refundPending: false });
   });
 
-  it('a dashboard refund between the owner claim and the Stripe call: the cron retry refunds the rest under the same key (assumes Stripe saves no idempotent result for the 400; verify against real Stripe)', async () => {
+  it('a dashboard refund between the owner claim and the Stripe call: the cron retry refunds the rest under its own key (amount and refunded total are in the key: P5 resolved)', async () => {
     const { id, pi } = await paidOrder();
     // The owner taps "refund all" (target 3500). Before our refund call, the barber refunds 1000 in the dashboard.
     stripe.failNext.push({ match: (q) => q.path === '/refunds', status: 400, body: { error: { code: 'amount_too_large', message: 'too large' } } });
@@ -447,7 +466,9 @@ describe('owner refunds: full, partial, over-refund, stuck', () => {
       await retryPendingOrderRefunds(m.deps);
     }
     expect(stripe.charges.get(pi)!.refunded).toBe(3500);
-    expect(refundReqs().map((q) => [q.idempotencyKey, q.params.amount])).toEqual([[`refund-order-${id}-3500`, '3500'], [`refund-order-${id}-3500`, '2500']]);
+    // Key = order + target + amount + refunded total (P5): the retry's smaller amount has its own
+    // key, so it never depends on whether Stripe saved a result for the first 400.
+    expect(refundReqs().map((q) => [q.idempotencyKey, q.params.amount])).toEqual([[`refund-order-${id}-3500-3500-0`, '3500'], [`refund-order-${id}-3500-2500-1000`, '2500']]);
     expect(m.order(id)).toMatchObject({ status: 'cancelled', amount_refunded_cents: 3500 });
   });
 

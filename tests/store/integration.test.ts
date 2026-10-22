@@ -127,7 +127,7 @@ describe('integration: a refund to zero whose Stripe call timed out', () => {
     expect(w.order(id)).toMatchObject({ status: 'paid', refund_due_cents: 3000, amount_refunded_cents: 0 });
     expect(cancelled()).toHaveLength(0);
     const key = w.payments.refundOrder.mock.calls[0][3].idempotencyKey;
-    expect(key).toBe(`refund-order-${id}-3000`);
+    expect(key).toBe(`refund-order-${id}-3000-3000-0`);
 
     // 2. charge.refunded: the webhook records the refund and finalizes the order.
     expect(await handleConnectEvent(chargeRefunded('evt_refund_1', pi, 3000), webhook, orderDeps)).toBe('order:refund:recorded:cancelled');
@@ -171,7 +171,7 @@ describe('integration: a refund to zero whose Stripe call timed out', () => {
     w.setNow('2026-11-02T12:10:00Z');
     expect(await retryPendingOrderRefunds(w.deps)).toMatchObject({ retried: 1, refunded: 1, failed: 0 });
     const keys = w.payments.refundOrder.mock.calls.map((c) => c[3].idempotencyKey);
-    expect(keys).toEqual([`refund-order-${id}-3000`, `refund-order-${id}-3000`]);
+    expect(keys).toEqual([`refund-order-${id}-3000-3000-0`, `refund-order-${id}-3000-3000-0`]);
     expect(w.order(id)).toMatchObject({ status: 'cancelled', payment_status: 'refunded', amount_refunded_cents: 3000 });
     expect(cancelled()).toHaveLength(1);
 

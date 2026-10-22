@@ -314,7 +314,9 @@ export async function refundOrderOwed(
   logFailure: boolean,
 ): Promise<{ refunded: number; row: OrderRow; failed: boolean }> {
   let refunded = 0;
-  const key = orderRefundKey(row.id, row.refund_due_cents);
+  // Order + target + amount + the refunded total it was computed from (stored state only): the
+  // same attempt (a double tap, a lost response, the retry sweep) always sends the same key.
+  const key = orderRefundKey(row.id, row.refund_due_cents, amount, row.amount_refunded_cents);
   try {
     const r = await deps.payments.refundOrder(shop, row, amount, { idempotencyKey: key });
     refunded = Math.max(0, Math.min(amount, Math.floor(Number(r?.refundedCents) || 0)));

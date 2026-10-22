@@ -178,16 +178,16 @@ describe('retryPendingOrderRefunds', () => {
     expect(await retryPendingOrderRefunds(w.deps)).toEqual({ retried: 1, refunded: 1, failed: 0, stuck: 0 });
     expect(w.payments.refundOrder).toHaveBeenCalledTimes(2);
     expect(w.payments.refundOrder.mock.calls[1][3]).toEqual(firstKey);
-    expect(firstKey).toEqual({ idempotencyKey: `refund-order-${o.id}-1200` });
+    expect(firstKey).toEqual({ idempotencyKey: `refund-order-${o.id}-1200-1200-0` });
     expect(w.payments.refundOrder.mock.calls[1][2]).toBe(1200);
     expect(w.order(o.id)).toMatchObject({ amount_refunded_cents: 1200, refund_due_cents: 1200, payment_status: 'partially_refunded', status: 'paid' });
     expect(await retryPendingOrderRefunds(w.deps, Date.parse('2026-11-02T12:10:00Z'))).toEqual({ retried: 0, refunded: 0, failed: 0, stuck: 0 });
   });
 
-  // The first attempt never reached Stripe (its key is unused), and meanwhile a dashboard refund
-  // moved amount_refunded_cents. The retry sends due − refunded under the original key. Had the
-  // first call reached Stripe, Stripe would refuse the reused key with a different amount
-  // (idempotency_error): the row would then fail each run and go stuck at 23 h (no over-refund).
+  // The first attempt never reached Stripe, and meanwhile a dashboard refund moved
+  // amount_refunded_cents. The retry sends due − refunded under a key that names that amount and
+  // refunded total, so it never collides with the first attempt's key (a reused key with another
+  // amount would be an idempotency_error at Stripe and the row would go stuck).
   it('first call never reached Stripe, then a partial refund elsewhere: the retry refunds only the rest', async () => {
     const w = storeWorld();
     const o = await owed(w);
@@ -195,7 +195,8 @@ describe('retryPendingOrderRefunds', () => {
     w.setNow('2026-11-02T12:03:00Z');
     await retryPendingOrderRefunds(w.deps);
     expect(w.payments.refundOrder.mock.calls[1][2]).toBe(2000);
-    expect(w.payments.refundOrder.mock.calls[1][3]).toEqual({ idempotencyKey: `refund-order-${o.id}-3000` });
+    // Its own key: the amount and the refunded total moved (a reused key with another amount is an error at Stripe).
+    expect(w.payments.refundOrder.mock.calls[1][3]).toEqual({ idempotencyKey: `refund-order-${o.id}-3000-2000-1000` });
     expect(w.order(o.id)).toMatchObject({ amount_refunded_cents: 3000, status: 'cancelled', cancelled_by: 'shop', payment_status: 'refunded' });
   });
 

@@ -198,7 +198,17 @@ export const refundKey = {
   cancel: (appointmentId: string) => `refund-cancel-${appointmentId}`,
   pac: (paymentIntentId: string) => `refund-pac-${paymentIntentId}`,
   duplicate: (paymentIntentId: string) => `refund-dup-${paymentIntentId}`,
-  order: (orderId: string, targetTotalCents: number) => `refund-order-${orderId}-${targetTotalCents}`,
+  /**
+   * An owner's order refund attempt: the order, the target total being claimed, the amount sent
+   * and the refunded total it was computed from (the "attempt", from stored state only, never
+   * time or randomness). A double tap or a retry of the same attempt sends the identical key and
+   * amount, so Stripe replays instead of refunding twice. When the stored state moved (e.g. a
+   * dashboard refund landed between the claim and the call), the amount changes and so does the
+   * key: a reused key with different parameters is an error at Stripe, and a saved failure for
+   * the old amount could otherwise be replayed forever (e2e P5).
+   */
+  order: (orderId: string, targetTotalCents: number, amountCents: number, refundedCents: number) =>
+    `refund-order-${orderId}-${targetTotalCents}-${amountCents}-${refundedCents}`,
 };
 
 export interface RefundOpts extends StripeOpts {
