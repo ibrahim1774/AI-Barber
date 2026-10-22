@@ -31,3 +31,43 @@ export function withUploadedImageUrls(data: WebsiteData, imageUrlMap: Record<str
       : {}),
   });
 }
+
+// Proof of a paid checkout, kept by handleStripeReturn so a publish from this browser right
+// after paying (before an account exists) is still the owner's. /api/deploy-site re-checks it
+// with Stripe (paid, this slug, recent); it never counts for an app site.
+const CHECKOUT_PROOF_KEY = 'checkoutProof';
+
+/** Remember the verified checkout session for `siteId`. Never throws. */
+export function rememberCheckoutProof(siteId: string, sessionId: string): void {
+  try {
+    globalThis.localStorage?.setItem(CHECKOUT_PROOF_KEY, JSON.stringify({ siteId, sessionId }));
+  } catch { /* private mode etc. */ }
+}
+
+/** The remembered checkout session id when it is for `siteId`, else null. Never throws. */
+export function checkoutProofFor(siteId: string): string | null {
+  try {
+    const raw = globalThis.localStorage?.getItem(CHECKOUT_PROOF_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw);
+    return p && p.siteId === siteId && typeof p.sessionId === 'string' ? p.sessionId : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The message shown when /api/deploy-site refuses. */
+export function deployErrorMessage(status: number, data: { error?: unknown } | null | undefined): string {
+  if (status === 401) return 'Please sign in to your account to publish this site.';
+  if (status === 403 && data?.error === 'checkout-not-valid') {
+    return "We couldn't confirm the payment for this site. Your payment is safe; please contact support and we'll finish publishing.";
+  }
+  if (status === 403 && data?.error === 'new-site-needs-checkout') {
+    return "This would publish a new site address. If you renamed your shop, please contact support and we'll move your site for you.";
+  }
+  if (status === 403) return 'This site belongs to a different account. Sign in with the account that owns it to publish.';
+  if (status === 429) return 'Too many publish attempts. Please wait a minute and try again.';
+  if (status === 503) return 'Publishing is temporarily unavailable. Please try again in a minute.';
+  const err = data && typeof data.error === 'string' ? data.error : 'Unknown error';
+  return `Deployment failed: ${err}`;
+}

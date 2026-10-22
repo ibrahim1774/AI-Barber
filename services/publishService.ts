@@ -1,12 +1,27 @@
 import { SiteInstance, WebsiteData } from '../types';
 import { generateHTMLForTemplate } from './templateRenderer';
 import { dualWriteSave } from './saveService';
-import { SUBSCRIPTION_ENDED_MESSAGE, withUploadedImageUrls } from './publishTarget';
+import { SUBSCRIPTION_ENDED_MESSAGE, checkoutProofFor, deployErrorMessage, withUploadedImageUrls } from './publishTarget';
+import { supabase } from '../lib/supabase';
+
+/** The signed-in account's access token, or null. Never throws. */
+async function currentAccessToken(): Promise<string | null> {
+  try {
+    const { data } = await supabase.auth.getSession();
+    return data.session?.access_token ?? null;
+  } catch {
+    return null;
+  }
+}
 
 export async function publishSite(
   site: SiteInstance,
   userId: string | null,
-  opts: { skipIndexedDB?: boolean } = {}
+  opts: {
+    skipIndexedDB?: boolean;
+    /** Deploy as this account instead of the main client's session (AdminGenerator). */
+    accessToken?: string | null;
+  } = {}
 ): Promise<{ url: string; imageUrlMap: Record<string, string> }> {
   // Step 1: Save before publish — fire-and-forget so it doesn't gate the deploy.
   // Failures only mean the local snapshot lags; the post-publish save (with the
@@ -95,10 +110,16 @@ export async function publishSite(
 
   const html = await generateHTMLForTemplate(restoredSiteData);
 
-  // Step 4: Deploy to Vercel
+  // Step 4: Deploy to Vercel. The server only deploys for the site's owner: the signed-in
+  // account (bearer), or the paid checkout this browser just completed for this slug.
+  const accessToken = opts.accessToken ?? (await currentAccessToken());
+  const checkoutSessionId = checkoutProofFor(siteSlug);
   const deployResponse = await fetch('/api/deploy-site', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    },
     body: JSON.stringify({
       siteId: siteSlug,
       html,
@@ -108,6 +129,7 @@ export async function publishSite(
       // siteData keeps the iOS site's stored copy current.
       deployedUrl: site.deployedUrl || null,
       siteData: withUploadedImageUrls(site.data, imageUrlMap),
+      ...(checkoutSessionId ? { checkoutSessionId } : {}),
     }),
   });
 
@@ -126,7 +148,7 @@ export async function publishSite(
   }
 
   if (!deployResponse.ok) {
-    throw new Error(`Deployment failed: ${deployData.error || deployData.details || 'Unknown error'}`);
+    throw new Error(deployErrorMessage(deployResponse.status, deployData));
   }
 
   return { url: deployData.deploymentUrl, imageUrlMap };

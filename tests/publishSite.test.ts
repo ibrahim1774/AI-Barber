@@ -69,6 +69,17 @@ describe('publishSite', () => {
     expect(deployRenderedSite).toHaveBeenCalledTimes(1);
   });
 
+  it('slugify is idempotent: a cut at 50 never leaves a trailing dash (review finding 1)', () => {
+    const S = 'a'.repeat(45) + '-bcd';
+    for (const raw of [S + '-zzz', S + '-', S + '--x', 'Fresh Cuts', "Joe's  Barber -- Shop!", '-x-', 'é'.repeat(80)]) {
+      const once = slugify(raw);
+      expect(slugify(once)).toBe(once);
+      expect(once).not.toMatch(/^-|-$/);
+      expect(once.length).toBeLessThanOrEqual(50);
+    }
+    expect(slugify(S + '-zzz')).toBe(S);
+  });
+
   it('writePendingSite then publishSite reads it back', async () => {
     await writePendingSite('Fresh Cuts', pending);
     expect(slugify('Fresh Cuts')).toBe('fresh-cuts');

@@ -1,4 +1,12 @@
 import { Storage } from '@google-cloud/storage';
+import { imageFilename, imageFolder } from '../lib/uploadTarget.js';
+
+// Signed PUT URLs for image uploads (the iOS app): POST { siteId: folder, filenames } -> { urls }.
+// Unauthenticated, and the bucket also holds the server's own JSON, so the folder and names are
+// restricted to image paths (lib/uploadTarget.ts), and a name that already exists is refused
+// (409): a signed URL must never overwrite a live site's image. The shipped app does not send
+// an x-goog-if-generation-match header, so the URL itself cannot carry that precondition.
+const MAX_FILES = 20;
 
 // Initialize with your existing environment variables
 const credentialsJson = process.env.GCP_SERVICE_ACCOUNT_JSON || process.env.GCS_CREDENTIALS;
@@ -23,7 +31,15 @@ export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).end();
 
   try {
-    const { siteId, filenames } = req.body;
+    const { siteId, filenames } = req.body || {};
+    const folder = imageFolder(siteId);
+    if (!folder || !Array.isArray(filenames) || filenames.length === 0 || filenames.length > MAX_FILES) {
+      return res.status(400).json({ error: 'Invalid siteId or filenames' });
+    }
+    const names = filenames.map(imageFilename);
+    if (names.some((n) => !n)) {
+      return res.status(400).json({ error: 'Invalid siteId or filenames' });
+    }
 
     if (!credentialsJson) {
       console.error('Missing Google Cloud credentials (GCP_SERVICE_ACCOUNT_JSON or GCS_CREDENTIALS)');
@@ -53,8 +69,13 @@ export default async function handler(req: any, res: any) {
     // CORS is configured on the bucket via GCP Console (service account lacks storage.buckets.update)
 
     // Generate a signed URL and public URL for each image
-    const urls = await Promise.all(filenames.map(async (name: string) => {
-      const file = bucket.file(`${siteId}/${name}`);
+    const existing = await Promise.all(names.map(async (name) => (await bucket.file(`${folder}/${name}`).exists())[0]));
+    if (existing.some(Boolean)) {
+      return res.status(409).json({ error: 'File already exists' });
+    }
+
+    const urls = await Promise.all(names.map(async (name: string) => {
+      const file = bucket.file(`${folder}/${name}`);
       const [signedUrl] = await file.getSignedUrl({
         version: 'v4',
         action: 'write',
@@ -63,7 +84,7 @@ export default async function handler(req: any, res: any) {
       });
 
       // Construct public URL
-      const publicUrl = `https://storage.googleapis.com/${bucketName}/${siteId}/${name}`;
+      const publicUrl = `https://storage.googleapis.com/${bucketName}/${folder}/${name}`;
 
       return {
         filename: name,
@@ -74,7 +95,7 @@ export default async function handler(req: any, res: any) {
 
     return res.status(200).json({ urls });
   } catch (error: any) {
-    console.error('API Error in get-upload-urls:', error);
-    return res.status(500).json({ error: error.message || 'Internal Server Error' });
+    console.error('API Error in get-upload-urls:', error?.message || error);
+    return res.status(500).json({ error: 'Could not create upload URLs' });
   }
 }

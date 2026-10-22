@@ -1,5 +1,6 @@
 import { Storage } from '@google-cloud/storage';
 import { supabasePurchases } from '../lib/ios/purchases.js';
+import { readPendingSite, slugify } from '../lib/publishSite.js';
 
 // Server-side persistence for the pendingSite payload that drives
 // post-payment deployment. Mirrors the localStorage write in
@@ -20,17 +21,27 @@ import { supabasePurchases } from '../lib/ios/purchases.js';
 // ios_purchases.site_slug is refused (409 slug-taken) for POST and DELETE, and
 // a lookup failure refuses too (the web flow keeps its localStorage copy).
 // The version fields only the server sets are always dropped from `data`.
+//
+// A web site that has been published (its stored copy carries a deployedUrl stamp) is
+// refused too (409 site-published), for POST and DELETE: the stamp is what tells the Stripe
+// webhook and api/publish-sweeper the site is live. Before this, anyone could replace a
+// just-paid customer's copy with their own content and a dead deployedUrl, and the next
+// sweep deployed it to the customer's site. deployedUrl is now server-owned: dropped from
+// `data`, stamped by /api/deploy-site after an authorised deploy and by lib/publishSite.
 
-/** Fields only server code (iOS publish, admin edits) may write. */
-export const SERVER_ONLY_FIELDS = ['version', 'editedBy', 'editedAt', 'adminVersion', 'note'] as const;
+/** Fields only server code (iOS publish, admin edits, deploys) may write. */
+export const SERVER_ONLY_FIELDS = ['version', 'editedBy', 'editedAt', 'adminVersion', 'note', 'deployedUrl'] as const;
 
 export interface SavePendingDeps {
   /** Is this slug bound to an iOS purchase? Throws when the lookup fails. */
   isAppSlug(slug: string): Promise<boolean>;
+  /** Does this slug's stored copy carry a deployedUrl stamp (the site is published)? Throws when the read fails. */
+  isPublished(slug: string): Promise<boolean>;
 }
 
 const liveDeps: SavePendingDeps = {
   isAppSlug: async (slug) => (await supabasePurchases().findBySlug(slug)) != null,
+  isPublished: async (slug) => !!(await readPendingSite(slug))?.deployedUrl,
 };
 
 export default function handler(req: any, res: any) {
@@ -62,18 +73,29 @@ export async function savePendingSite(req: any, res: any, deps: SavePendingDeps)
     }
     // Sanitize: only allow basic slug characters in the storage key so
     // a tampered siteId can't traverse out of the prefix.
-    const safeSiteId = siteId.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
+    // The canonical slug (lib/publishSite.slugify) is the key every server path reads, and the
+    // published check below reads exactly the object this request writes or deletes.
+    const safeSiteId = slugify(siteId);
     if (!safeSiteId) {
       return res.status(400).json({ ok: false, error: 'Invalid siteId' });
     }
 
     try {
-      if (await deps.isAppSlug(safeSiteId.toLowerCase())) {
+      if (await deps.isAppSlug(safeSiteId)) {
         console.warn(`[save-pending-site] ${req.method} refused: ${safeSiteId} is an iOS app site`);
         return res.status(409).json({ ok: false, error: 'slug-taken' });
       }
     } catch (e: any) {
       console.error(`[save-pending-site] ${req.method} ${safeSiteId}: ios_purchases lookup failed (refusing):`, e?.message || e);
+      return res.status(503).json({ ok: false, error: 'lookup-failed' });
+    }
+    try {
+      if (await deps.isPublished(safeSiteId)) {
+        console.warn(`[save-pending-site] ${req.method} refused: ${safeSiteId} is already published`);
+        return res.status(409).json({ ok: false, error: 'site-published' });
+      }
+    } catch (e: any) {
+      console.error(`[save-pending-site] ${req.method} ${safeSiteId}: stored copy read failed (refusing):`, e?.message || e);
       return res.status(503).json({ ok: false, error: 'lookup-failed' });
     }
 
@@ -116,7 +138,7 @@ export async function savePendingSite(req: any, res: any, deps: SavePendingDeps)
 
     return res.status(200).json({ ok: true });
   } catch (error: any) {
-    console.error('[save-pending-site] Error:', error);
-    return res.status(500).json({ ok: false, error: error.message || 'Internal error' });
+    console.error('[save-pending-site] Error:', error?.message || error);
+    return res.status(500).json({ ok: false, error: 'Internal error' });
   }
 }

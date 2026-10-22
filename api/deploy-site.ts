@@ -1,19 +1,21 @@
-import type { DeployImage } from '../lib/deploySite.js';
-import { gatedWebDeploy, liveWebDeployDeps } from '../lib/ios/webDeployGate.js';
+import { authorizeDeploy, liveDeployAuthDeps, type DeployAuthDeps } from '../lib/deployAuth.js';
+import { gatedWebDeploy, liveWebDeployDeps, type WebDeployDeps } from '../lib/ios/webDeployGate.js';
+import { clientIp, publicLimiter, type RateLimiter } from '../lib/bookings/rateLimit.js';
 
 // HTTP wrapper over lib/deploySite. The deploy logic moved there so the
 // Stripe webhook can run it in-process instead of self-calling this endpoint —
 // see lib/deploySite.ts for why that matters.
 //
-// The request/response contract is unchanged: the browser publish path still
-// POSTs { siteId, html, imageUrls } and reads { ok, deploymentUrl }.
+// POST { siteId, html, imageUrls, siteData?, deployedUrl?, checkoutSessionId? } with
+// Authorization: Bearer <Supabase access token> (the editor) or checkoutSessionId (the first
+// publish after Stripe). Reads { ok, deploymentUrl }.
 //
-// Slugs bound to an iOS purchase are gated (lib/ios/webDeployGate.ts): a
-// taken-down or revoked iOS site gets 402 { ok:false, error:'subscription-inactive' }
-// and is not deployed. The browser also sends deployedUrl (an iOS site whose
-// *.vercel.app label is its bound slug deploys there, not to the shop-name
-// slug) and siteData (refreshes an iOS site's pending file after a deploy).
-// Web (Stripe) slugs have no iOS row and behave exactly as before.
+// Every deploy is authorised first (lib/deployAuth.ts): who may deploy, and to which slug.
+// The body never picks the target by itself. 401 sign-in-required, 403 not-authorized,
+// 403 checkout-not-valid, 403 new-site-needs-checkout (a new Vercel project without checkout),
+// 429 rate-limited, 503 temporarily-unavailable (a lookup failed: fail closed).
+// An app site that is taken down or revoked gets 402 { ok:false, error:'subscription-inactive' }
+// (lib/ios/webDeployGate.ts), and only its verified owner's edit refreshes its stored copy.
 //
 // Vercel kills serverless functions at the plan's default cap (60s on Pro)
 // unless told otherwise. This is the slowest route — it downloads images from
@@ -28,21 +30,37 @@ interface DeploymentRequest {
   siteId: string;
   html: string;
   css?: string;
-  images?: DeployImage[];
   imageUrls?: Record<string, string>;
-  /** Site data with uploaded image URLs; only used for iOS-bound slugs. */
+  /** Site data with uploaded image URLs; only used for the owner's app site. */
   siteData?: unknown;
-  /** The site's current live URL; only used to find an iOS-bound slug. */
+  /** The site's current live URL; a hint only (lib/deployAuth.ts). */
   deployedUrl?: unknown;
+  /** Paid Stripe Checkout Session for this slug (first publish after checkout). */
+  checkoutSessionId?: unknown;
+  /** The draft's id, kept on the stored copy written after a checkout deploy. */
+  existingSiteId?: unknown;
 }
 
-export default async function handler(req: any, res: any) {
+export interface DeploySiteDeps {
+  auth: DeployAuthDeps;
+  deploy: WebDeployDeps;
+  limiter: Pick<RateLimiter, 'allow'>;
+}
+
+let live: DeploySiteDeps | undefined;
+const liveDeps = (): DeploySiteDeps => (live ??= { auth: liveDeployAuthDeps(), deploy: liveWebDeployDeps(), limiter: publicLimiter });
+
+export default function handler(req: any, res: any) {
+  return deploySite(req, res, liveDeps());
+}
+
+export async function deploySite(req: any, res: any, deps: DeploySiteDeps) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+  res.setHeader('Access-Control-Allow-Methods', 'OPTIONS,POST');
   res.setHeader(
     'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
+    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization'
   );
 
   if (req.method === 'OPTIONS') {
@@ -54,23 +72,40 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const body: DeploymentRequest = req.body || {};
-    if (!body.siteId) {
+    const body: DeploymentRequest = (req.body && typeof req.body === 'object') ? req.body : ({} as DeploymentRequest);
+    if (!body.siteId || typeof body.siteId !== 'string') {
       return res.status(400).json({ ok: false, error: 'Missing required field: siteId' });
     }
-    if (!body.html) {
+    if (!body.html || typeof body.html !== 'string') {
       return res.status(400).json({ ok: false, error: 'Missing required field: html' });
     }
 
-    const gated = await gatedWebDeploy({
+    let allowed = true;
+    try {
+      allowed = await deps.limiter.allow(`deploy:${clientIp(req.headers)}`, 'write');
+    } catch (e: any) {
+      console.error('[Deploy Site] rate limiter failed, allowing:', e?.message || e); // fail open, like every limiter here
+    }
+    if (!allowed) return res.status(429).json({ ok: false, error: 'rate-limited' });
+
+    const auth = await authorizeDeploy({
       siteId: body.siteId,
+      deployedUrl: body.deployedUrl,
+      authorization: req.headers?.authorization,
+      checkoutSessionId: body.checkoutSessionId,
+    }, deps.auth);
+    if (!auth.ok) {
+      return res.status(auth.status).json({ ok: false, error: auth.error });
+    }
+    console.log(`[Deploy Site] ${auth.target}: authorised (${auth.actor}${auth.userId ? ` ${auth.userId}` : ''})`);
+
+    const gated = await gatedWebDeploy({
       html: body.html,
       css: body.css,
       imageUrls: body.imageUrls,
-      images: body.images,
       siteData: body.siteData,
-      deployedUrl: body.deployedUrl,
-    }, liveWebDeployDeps());
+      existingSiteId: body.existingSiteId,
+    }, { target: auth.target, row: auth.row ?? null, actor: auth.actor }, deps.deploy);
     if (gated.blocked) {
       return res.status(402).json({ ok: false, error: 'subscription-inactive' });
     }
@@ -83,11 +118,7 @@ export default async function handler(req: any, res: any) {
       stripeLink: process.env.STRIPE_PAYMENT_LINK || null,
     });
   } catch (error: any) {
-    console.error('[Deploy Site] Deployment failed:', error.message);
-    return res.status(500).json({
-      ok: false,
-      error: 'Deployment failed',
-      details: error.message,
-    });
+    console.error('[Deploy Site] Deployment failed:', error?.message || error);
+    return res.status(500).json({ ok: false, error: 'Deployment failed' });
   }
 }
