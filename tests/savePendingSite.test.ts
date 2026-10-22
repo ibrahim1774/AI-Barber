@@ -26,8 +26,9 @@ function res() {
   return r;
 }
 
-const deps = (bound: string[] | Error = []) => ({
+const deps = (bound: string[] | Error = [], published: string[] | Error = []) => ({
   isAppSlug: vi.fn(async (slug: string) => { if (bound instanceof Error) throw bound; return bound.includes(slug); }),
+  isPublished: vi.fn(async (slug: string) => { if (published instanceof Error) throw published; return published.includes(slug); }),
 });
 const call = async (req: any, d = deps()) => { const r = res(); await savePendingSite(req, r, d); return r; };
 
@@ -52,7 +53,25 @@ describe('api/save-pending-site', () => {
       siteId: 'web-shop', siteData: {}, version: 999, editedBy: 'admin', editedAt: 'x', adminVersion: 999, note: 'n', deployedUrl: 'https://u',
     } } });
     const data = JSON.parse(store.get('pending-sites/web-shop.json')!).data;
-    expect(data).toEqual({ siteId: 'web-shop', siteData: {}, deployedUrl: 'https://u' });
+    // deployedUrl is server-owned too: a client stamp told the sweeper a live site was not live.
+    expect(data).toEqual({ siteId: 'web-shop', siteData: {} });
+  });
+
+  it('a published web site (stamped copy) → 409 site-published for POST and DELETE, nothing written or deleted', async () => {
+    store.set('pending-sites/fresh-cuts.json', 'original');
+    const d = deps([], ['fresh-cuts']);
+    const post = await call({ method: 'POST', body: { siteId: 'fresh-cuts', data: { siteData: { shopName: 'phish' }, deployedUrl: 'https://nothing.example' } } }, d);
+    expect(post).toMatchObject({ statusCode: 409, body: { ok: false, error: 'site-published' } });
+    const del = await call({ method: 'DELETE', body: { siteId: 'fresh-cuts' } }, d);
+    expect(del.statusCode).toBe(409);
+    expect(store.get('pending-sites/fresh-cuts.json')).toBe('original');
+    expect(deleted).toEqual([]);
+  });
+
+  it('a failed read of the stored copy refuses (503), never writes', async () => {
+    const r = await call({ method: 'POST', body: { siteId: 'fresh-cuts', data: { siteData: {} } } }, deps([], new Error('gcs down')));
+    expect(r).toMatchObject({ statusCode: 503, body: { ok: false, error: 'lookup-failed' } });
+    expect(store.size).toBe(0);
   });
 
   it('POST and DELETE on an iOS app slug → 409 slug-taken, nothing written or deleted', async () => {

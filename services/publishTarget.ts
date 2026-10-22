@@ -59,6 +59,9 @@ export function checkoutProofFor(siteId: string): string | null {
 /** The message shown when /api/deploy-site refuses. */
 export function deployErrorMessage(status: number, data: { error?: unknown } | null | undefined): string {
   if (status === 401) return 'Please sign in to your account to publish this site.';
+  if (status === 403 && data?.error === 'checkout-not-valid') {
+    return "We couldn't confirm the payment for this site. Your payment is safe; please contact support and we'll finish publishing.";
+  }
   if (status === 403) return 'This site belongs to a different account. Sign in with the account that owns it to publish.';
   if (status === 429) return 'Too many publish attempts. Please wait a minute and try again.';
   if (status === 503) return 'Publishing is temporarily unavailable. Please try again in a minute.';

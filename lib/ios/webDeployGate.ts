@@ -26,6 +26,12 @@ export interface WebDeployDeps {
   writePending(slug: string, p: PendingSite): Promise<void>;
   /** The stored copy, so its version is carried forward (admin-edit sync). Absent: version restarts. */
   readPending?(slug: string): Promise<PendingSite | null>;
+  /**
+   * Web sites: stamp the live URL on the stored (pre-checkout) copy, if one exists. The stamp
+   * is server-owned (api/save-pending-site drops it and refuses a stamped copy), and it is what
+   * tells the webhook and the publish sweeper the site is live.
+   */
+  stampWebPending?(slug: string, deployedUrl: string): Promise<void>;
   now(): number;
   /**
    * The sweep deploys offline pages for Sandbox purchases too (env IOS_TAKEDOWN_SANDBOX=1).
@@ -86,6 +92,15 @@ export async function gatedWebDeploy(
   // they would let a deploy write anywhere under the bucket.
   const result = await deps.deploy({ html: deployInput.html, css: deployInput.css, imageUrls: deployInput.imageUrls, siteId: slug });
 
+  if (!row && deps.stampWebPending) {
+    // Best effort: the site is already live.
+    try {
+      await deps.stampWebPending(slug, result.deploymentUrl);
+    } catch (e: any) {
+      console.warn(`[Deploy Site] ${slug}: deployed, but stamping the stored copy failed:`, e?.message || e);
+    }
+  }
+
   // Only the Apple-bound owner's web edit is the owner's copy. The admin's deploys never write it.
   if (row && auth.actor === 'app-owner' && siteData !== undefined) {
     // Best effort: the site is already live, and failing the request now would
@@ -135,6 +150,10 @@ export function liveWebDeployDeps(): WebDeployDeps {
     deploy: deployRenderedSite,
     writePending: writePendingSite,
     readPending: readPendingSite,
+    async stampWebPending(slug, deployedUrl) {
+      const p = await readPendingSite(slug);
+      if (p && p.deployedUrl !== deployedUrl) await writePendingSite(slug, { ...p, deployedUrl });
+    },
     now: () => Date.now(),
     takedownSandbox: process.env.IOS_TAKEDOWN_SANDBOX === '1',
   };

@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // tables, Stripe, Vercel, GCS). C1 in the 2026-10-22 server report: an unauthenticated POST
 // replaced any customer's live site and an app site's stored copy.
 const { findBySlug, deployRenderedSite, writePendingSite, readPendingSite, getUser, siteClaims, allow } = vi.hoisted(() => ({
-  readPendingSite: vi.fn(async (_s: string) => null),
+  readPendingSite: vi.fn(async (_s: string): Promise<unknown> => null),
   findBySlug: vi.fn(),
   deployRenderedSite: vi.fn(async (i: { siteId: string }) => ({ deploymentUrl: `https://${i.siteId}.vercel.app`, uploadedImages: {} })),
   writePendingSite: vi.fn(async (_s: string, _p: unknown) => {}),
@@ -146,6 +146,15 @@ describe('api/deploy-site authorisation (C1)', () => {
     await handler(post({ siteId: 'fresh-cuts', html: '<h1/>', siteData: sd }, 'owner-jwt'), res);
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true, deploymentUrl: 'https://fresh-cuts.vercel.app' }));
+  });
+
+  it('an authorised web deploy stamps the stored pre-checkout copy with the live URL', async () => {
+    siteClaims.mockResolvedValue([{ user_id: OWNER }]);
+    readPendingSite.mockResolvedValueOnce({ siteId: 'fresh-cuts', siteData: sd } as any);
+    const res = mkRes();
+    await handler(post({ siteId: 'fresh-cuts', html: '<h1/>' }, 'owner-jwt'), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(writePendingSite).toHaveBeenCalledWith('fresh-cuts', { siteId: 'fresh-cuts', siteData: sd, deployedUrl: 'https://fresh-cuts.vercel.app' });
   });
 
   it('first publish after checkout: the paid Stripe session for this slug → 200 with no account', async () => {

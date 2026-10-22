@@ -145,7 +145,7 @@ describe('authorizeDeploy: web sites', () => {
     quiet();
     const d = deps({ sessions: { [SESSION]: proof } });
     expect(await authorizeDeploy({ siteId: 'fresh-cuts', checkoutSessionId: SESSION }, d))
-      .toEqual({ ok: false, status: 403, error: 'not-authorized' });
+      .toEqual({ ok: false, status: 403, error: 'checkout-not-valid' });
   });
 
   it('a malformed session id is never sent to Stripe', async () => {

@@ -63,6 +63,23 @@ describe('gatedWebDeploy', () => {
     expect(Object.keys(d.deploy.mock.calls[0][0])).not.toContain('images');
   });
 
+  it('a web deploy stamps the live URL on the stored copy (server-owned stamp); an app deploy does not', async () => {
+    const d = { ...deps(), stampWebPending: vi.fn(async (_s: string, _u: string) => {}) };
+    await gatedWebDeploy(body(), web('fresh-cuts'), d);
+    expect(d.stampWebPending).toHaveBeenCalledWith('fresh-cuts', 'https://fresh-cuts.vercel.app');
+    d.stampWebPending.mockClear();
+    await gatedWebDeploy(body(), owner(), d);
+    expect(d.stampWebPending).not.toHaveBeenCalled();
+  });
+
+  it('a failing stamp never fails a deploy that went live', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const d = { ...deps(), stampWebPending: vi.fn(async () => { throw new Error('gcs down'); }) };
+    const out = await gatedWebDeploy(body(), web('fresh-cuts'), d);
+    expect(out.blocked).toBe(false);
+    expect(out.result!.deploymentUrl).toBe('https://fresh-cuts.vercel.app');
+  });
+
   it('the admin deploying an app site never writes its stored copy (admin edits go through /api/admin/sites)', async () => {
     const d = deps();
     const out = await gatedWebDeploy(body({ siteData: siteData() }), { target: 'fade-studio-x7k2', row: iosRow(), actor: 'admin' }, d);

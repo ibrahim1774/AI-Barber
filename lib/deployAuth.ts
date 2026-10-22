@@ -187,7 +187,8 @@ export async function authorizeDeploy(input: DeployAuthInput, deps: DeployAuthDe
     return { ok: true, target: shopSlug, row: null, actor: 'web-user', userId: user.id };
   }
 
-  return sessionId ? deny(403, 'not-authorized') : deny(401, 'sign-in-required');
+  // A checkout that does not match (another slug, unpaid, older than the proof window).
+  return sessionId ? deny(403, 'checkout-not-valid') : deny(401, 'sign-in-required');
 }
 
 /** Live dependencies: Supabase (service role) and Stripe. Clients are created on first use. */

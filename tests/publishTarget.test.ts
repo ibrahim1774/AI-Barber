@@ -56,6 +56,7 @@ describe('deployErrorMessage', () => {
   it('explains each refusal', () => {
     expect(deployErrorMessage(401, { error: 'sign-in-required' })).toMatch(/sign in/i);
     expect(deployErrorMessage(403, { error: 'not-authorized' })).toMatch(/different account/i);
+    expect(deployErrorMessage(403, { error: 'checkout-not-valid' })).toMatch(/payment is safe/i);
     expect(deployErrorMessage(429, {})).toMatch(/wait a minute/i);
     expect(deployErrorMessage(503, {})).toMatch(/temporarily unavailable/i);
     expect(deployErrorMessage(500, { error: 'Deployment failed' })).toBe('Deployment failed: Deployment failed');

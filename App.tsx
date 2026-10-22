@@ -26,7 +26,7 @@ import { upsertSiteToSupabase, fetchUserSites } from './services/supabaseDataSer
 import { getPlanContentMeta, getViewContentMeta } from './lib/pixelMeta';
 import { getAllSites as getAllLocalSites } from './services/indexedDBService.ts';
 import { readMetaCookies, splitName } from './services/metaMatchParams.ts';
-import { rememberCheckoutProof } from './services/publishTarget.ts';
+import { deployErrorMessage, rememberCheckoutProof } from './services/publishTarget.ts';
 import { captureAdParamsOnLoad } from './services/adAttribution.ts';
 
 // Heavy components — lazy-loaded so first paint only ships the
@@ -719,7 +719,7 @@ const App: React.FC = () => {
         }
 
         if (!deployResponse.ok) {
-          throw new Error(`Deployment failed: ${deployData.error || deployData.details || 'Unknown error'}`);
+          throw new Error(deployErrorMessage(deployResponse.status, deployData));
         }
 
         console.log('[Deploy] Site deployed:', deployData.deploymentUrl);
