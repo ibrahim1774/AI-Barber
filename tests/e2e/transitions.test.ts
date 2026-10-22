@@ -213,6 +213,15 @@ describe('lapse → sweep takedown → renewal restore', () => {
     expect(await gates(otid)).toEqual({ bookings: true, store: true });
   });
 
+  it('OBSERVATION: without the renewal notification (lost / not configured) the sweep never asks Apple about the taken-down row, so it stays offline until the app republishes', async () => {
+    const { otid } = await lapsed();
+    await w.sweep();
+    w.apple.renew(otid, { at: w.clock.peek() });
+    const s = await w.sweep();
+    expect(s.restored).toEqual([]);
+    expect(live()).toContain(OFFLINE);
+  });
+
   it('a phone publish after resubscribing restores the site at once (no wait for the sweep)', async () => {
     const { otid, transactionId } = await lapsed();
     await w.sweep();
