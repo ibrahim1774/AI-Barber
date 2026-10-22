@@ -1,10 +1,10 @@
-import { useCallback, useRef } from 'react';
+import { useCallback } from 'react';
 import { Alert } from 'react-native';
 import { router } from 'expo-router';
 import { isPlainSiteData, SYNC_TIMEOUT_MS } from '@/lib/adminSync';
 import { track } from '@/lib/analytics';
 import { api } from '@/lib/api';
-import { linksOf, linksToSend, type LiveLinks } from '@/lib/bookingChoice';
+import { canonicalLinks, linksOf, linksToSend, type LiveLinks } from '@/lib/bookingChoice';
 import { getEntitlements, type Entitlements } from '@/lib/entitlements';
 import { loadLinkContext } from '@/lib/linkContext';
 import { isAiBarberBookingUrl } from '@/lib/shop';
@@ -39,8 +39,11 @@ export function setupPrompt(input: {
   /** What a publish would send now. */
   next: LiveLinks;
 }): SitePrompt | null {
-  const { published, ents, live, next } = input;
-  if (!published || !ents.known || !ents.hosting || !live) return null;
+  const { published, ents } = input;
+  if (!published || !ents.known || !ents.hosting || !input.live) return null;
+  // Old aibarber.org links and the site's own /book, /shop are the same button: no prompt after the switch.
+  const live = canonicalLinks(input.live);
+  const next = canonicalLinks(input.next);
   const liveAi = isAiBarberBookingUrl(live.bookingUrl);
   const nextAi = isAiBarberBookingUrl(next.bookingUrl);
   const add: string[] = [];
@@ -80,36 +83,77 @@ export type OfferResult = 'prompted' | 'unpublished' | 'no-change';
 /**
  * `offer()`: call after a setup change is saved. Asks when the live site's buttons would change, and
  * Update my site runs the normal publish (the /publishing screen: progress, paywall, 402 / 409 and errors).
- * A second tap on Update my site does nothing; the next `offer()` re-arms it.
+ * One alert at a time across the app, and one /publishing per alert.
  */
 export function useUpdateSitePrompt(source: 'bookings' | 'store'): { offer(): Promise<OfferResult>; update(): void } {
-  const updating = useRef(false);
-
-  const update = useCallback(() => {
-    if (updating.current) return;
-    updating.current = true;
-    track('setup_prompt_update', { source });
-    router.push('/publishing');
-  }, [source]);
-
-  const offer = useCallback(async (): Promise<OfferResult> => {
-    updating.current = false;
-    const site = await loadSite().catch(() => null);
-    if (!site?.deployedUrl) return 'unpublished';
-    const ents = getEntitlements();
-    if (!ents.known || !ents.hosting) return 'no-change';
-    const [live, ctx] = await Promise.all([liveLinksOf(site), withTimeout(loadLinkContext(), SYNC_TIMEOUT_MS).catch(() => null)]);
-    // Without the shop facts the result can't be known: say nothing rather than guess.
-    if (!ctx) return 'no-change';
-    const prompt = setupPrompt({ published: true, ents, live, next: linksOf(linksToSend(site.data, site.inputs, ctx)) });
-    if (!prompt) return 'no-change';
-    track('setup_prompt_shown', { source });
-    Alert.alert(prompt.title, prompt.message, [
-      { text: NOT_NOW, style: 'cancel' },
-      { text: UPDATE_SITE, onPress: update },
-    ]);
-    return 'prompted';
-  }, [source, update]);
-
+  const update = useCallback(() => updateSite(source), [source]);
+  const offer = useCallback(() => offerUpdate(source), [source]);
   return { offer, update };
+}
+
+// One prompt at a time, app-wide (the hub, the wizard and the store form each mount the hook). Rapid
+// toggles while a check runs are folded into one more check on the latest state; while an alert is up,
+// new checks are dropped (the barber answers that one first). Update my site opens /publishing once per alert.
+let checking: Promise<OfferResult> | null = null;
+let again = false;
+let alertOpen = false;
+let pushed = false;
+
+/** Test only. */
+export function resetSetupPromptForTests(): void {
+  checking = null;
+  again = false;
+  alertOpen = false;
+  pushed = false;
+}
+
+function updateSite(source: 'bookings' | 'store'): void {
+  alertOpen = false;
+  if (pushed) return;
+  pushed = true;
+  track('setup_prompt_update', { source });
+  router.push('/publishing');
+}
+
+function offerUpdate(source: 'bookings' | 'store'): Promise<OfferResult> {
+  if (alertOpen) return Promise.resolve('no-change');
+  if (checking) {
+    again = true;
+    return checking;
+  }
+  const run = async (): Promise<OfferResult> => {
+    let out: OfferResult;
+    do {
+      again = false;
+      out = await check(source);
+    } while (again && out !== 'prompted');
+    return out;
+  };
+  checking = run().finally(() => {
+    checking = null;
+    again = false;
+  });
+  return checking;
+}
+
+async function check(source: 'bookings' | 'store'): Promise<OfferResult> {
+  const site = await loadSite().catch(() => null);
+  if (!site?.deployedUrl) return 'unpublished';
+  const ents = getEntitlements();
+  if (!ents.known || !ents.hosting) return 'no-change';
+  const [live, ctx] = await Promise.all([liveLinksOf(site), withTimeout(loadLinkContext(), SYNC_TIMEOUT_MS).catch(() => null)]);
+  // Without the shop facts the result can't be known: say nothing rather than guess.
+  if (!ctx) return 'no-change';
+  // A newer change is waiting: this answer is stale, check again before asking.
+  if (again) return 'no-change';
+  const prompt = setupPrompt({ published: true, ents, live, next: linksOf(linksToSend(site.data, site.inputs, ctx)) });
+  if (!prompt) return 'no-change';
+  track('setup_prompt_shown', { source });
+  alertOpen = true;
+  pushed = false;
+  Alert.alert(prompt.title, prompt.message, [
+    { text: NOT_NOW, style: 'cancel', onPress: () => { alertOpen = false; } },
+    { text: UPDATE_SITE, onPress: () => updateSite(source) },
+  ]);
+  return 'prompted';
 }

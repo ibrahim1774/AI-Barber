@@ -11,16 +11,17 @@ jest.mock('expo-router', () => ({ router: { push: (...a: unknown[]) => mockPush(
 const mockCtx = jest.fn();
 jest.mock('@/lib/linkContext', () => ({ loadLinkContext: () => mockCtx() }));
 
-import { setupPrompt, useUpdateSitePrompt, NOT_NOW, UPDATE_SITE } from '@/lib/setupPrompt';
+import { resetSetupPromptForTests, setupPrompt, useUpdateSitePrompt, NOT_NOW, UPDATE_SITE } from '@/lib/setupPrompt';
 import * as store from '@/lib/siteStore';
 import { resetEntitlementsForTests, setEntitlementsFromStatus, getEntitlements } from '@/lib/entitlements';
 import type { SiteRecord } from '@/lib/siteStore';
 
 const OWN = 'https://booksy.com/en-us/123_fade-lab';
 const SQUARE = 'https://squareup.com/appointments/book/fade';
-const AI = 'https://www.aibarber.org/book/fade-lab';
-const AI_OTHER = 'https://www.aibarber.org/book/fade-lab-2';
-const SHOP = 'https://www.aibarber.org/shop/fade-lab';
+const AI = '/book';
+const OLD_AI = 'https://www.aibarber.org/book/fade-lab';
+const SHOP = '/shop';
+const OLD_SHOP = 'https://www.aibarber.org/shop/fade-lab';
 const L = (bookingUrl: string | null, shopUrl: string | null = null) => ({ bookingUrl, shopUrl });
 const ON = { known: true, hosting: true };
 
@@ -32,7 +33,10 @@ describe('setupPrompt: when it shows', () => {
     ['what is live is unknown', { published: true, ents: ON, live: null, next: L(AI) }, null],
     ['AI booking turned on over the own link', { published: true, ents: ON, live: L(OWN), next: L(AI) }, { title: 'Add the Book button to your website?' }],
     ['AI booking turned on, no Book button yet', { published: true, ents: ON, live: L(null), next: L(AI) }, { title: 'Add the Book button to your website?' }],
-    ['the booking page moved (new slug)', { published: true, ents: ON, live: L(AI_OTHER), next: L(AI) }, { title: 'Add the Book button to your website?' }],
+    ['old aibarber.org Book link live, /book next: the same button, no prompt', { published: true, ents: ON, live: L(OLD_AI), next: L(AI) }, null],
+    ['old aibarber.org Shop link live, /shop next: the same button, no prompt', { published: true, ents: ON, live: L(OLD_AI, OLD_SHOP), next: L(AI, SHOP) }, null],
+    ['old Book link live, bookings off with an own link: back to own', { published: true, ents: ON, live: L(OLD_AI), next: L(OWN) }, { title: 'Point your Book button back to your own booking link?' }],
+    ['old Shop link live, shop closed', { published: true, ents: ON, live: L(OWN, OLD_SHOP), next: L(OWN) }, { title: 'Remove the Shop button from your website?' }],
     ['AI Book button already live', { published: true, ents: ON, live: L(AI), next: L(AI) }, null],
     ['own link chosen and live', { published: true, ents: ON, live: L(OWN), next: L(OWN) }, null],
     ['own link edited (not a setup change)', { published: true, ents: ON, live: L(OWN), next: L(SQUARE) }, null],
@@ -71,6 +75,7 @@ describe('useUpdateSitePrompt', () => {
   let alert: jest.SpyInstance;
   beforeEach(async () => {
     mockPush.mockClear();
+    resetSetupPromptForTests();
     resetEntitlementsForTests();
     setEntitlementsFromStatus({ status: 'ACTIVE', entitlements: [{ id: 'hosting' }, { id: 'bookings' }] });
     mockCtx.mockReset().mockImplementation(async () => ctx());
@@ -93,7 +98,7 @@ describe('useUpdateSitePrompt', () => {
     });
     expect(out).toBe('prompted');
     expect(alert).toHaveBeenCalledWith('Add the Book button to your website?', undefined, [
-      { text: NOT_NOW, style: 'cancel' },
+      expect.objectContaining({ text: NOT_NOW, style: 'cancel' }),
       expect.objectContaining({ text: UPDATE_SITE }),
     ]);
     press(UPDATE_SITE);
@@ -165,5 +170,46 @@ describe('useUpdateSitePrompt', () => {
     });
     expect(out).toBe('no-change'); // the AI Book button is already live
     expect((global as any).fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('rapid toggles: checks running at once fold into one alert; a check while an alert is up asks nothing', async () => {
+    await store.saveSite(site());
+    await render(<Probe />);
+    await act(async () => {
+      await Promise.all([api.offer(), api.offer(), api.offer()]);
+    });
+    expect(alert).toHaveBeenCalledTimes(1);
+    // The alert is still up: another toggle asks nothing.
+    await act(async () => {
+      expect(await api.offer()).toBe('no-change');
+    });
+    expect(alert).toHaveBeenCalledTimes(1);
+    // Two hooks (hub + store form) share it too.
+    let other!: ReturnType<typeof useUpdateSitePrompt>;
+    function Other() {
+      other = useUpdateSitePrompt('store');
+      return null;
+    }
+    await render(<Other />);
+    await act(async () => {
+      await other.offer();
+    });
+    expect(alert).toHaveBeenCalledTimes(1);
+    press(UPDATE_SITE);
+    other.update();
+    expect(mockPush).toHaveBeenCalledTimes(1);
+  });
+
+  it('after Not now, the next change can ask again', async () => {
+    await store.saveSite(site());
+    await render(<Probe />);
+    await act(async () => {
+      await api.offer();
+    });
+    press(NOT_NOW);
+    await act(async () => {
+      await api.offer();
+    });
+    expect(alert).toHaveBeenCalledTimes(2);
   });
 });
