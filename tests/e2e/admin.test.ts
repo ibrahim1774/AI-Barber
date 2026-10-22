@@ -160,7 +160,9 @@ describe('edit / replace / rollback through the handler', () => {
 
 // ---------------------------------------------------------------------------
 describe('admin edits during Apple billing grace', () => {
-  it.fails('BUG (minor): a site live in billing grace (stored expiry passed, Apple status 4) is treated as "expired": the edit is stored but not deployed', async () => {
+  // M3 PARKED (round 2 ruling: fix only if Apple's grace info is stored; ios_purchases keeps no
+  // Apple status or grace expiry, so the admin path can't tell grace from expired).
+  it.fails('BUG (minor, M3 parked): a site live in billing grace (stored expiry passed, Apple status 4) is treated as "expired": the edit is stored but not deployed', async () => {
     const { otid } = await app();
     w.clock.advance(31 * DAY);
     w.apple.setStatus(otid, 4);

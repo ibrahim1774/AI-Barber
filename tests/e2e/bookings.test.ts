@@ -162,7 +162,8 @@ describe('time off', () => {
     expect((await T({ cancelConflicts: 'yes' })).status).toBe(400);
   });
 
-  it.fails('BUG (minor): time off added while a booking request is in flight: the booking lands inside it and the owner is told of no conflict', async () => {
+  // M7 PARKED (round 2 ruling: needs time off in the DB exclusion constraint).
+  it.fails('BUG (minor, M7 parked): time off added while a booking request is in flight: the booking lands inside it and the owner is told of no conflict', async () => {
     const realTimeOff = b.deps.repo.timeOff;
     let fired = false;
     let ownerResult: any;
