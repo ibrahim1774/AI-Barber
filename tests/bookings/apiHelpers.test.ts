@@ -93,10 +93,10 @@ describe('rate limit', () => {
     expect(clientIp({ 'x-real-ip': '9.9.9.9', 'x-forwarded-for': '1.1.1.1' })).toBe('9.9.9.9');
     expect(clientIp({ 'x-forwarded-for': '1.1.1.1, 2.2.2.2' })).toBe('1.1.1.1');
     expect(clientIp({})).toBe('unknown');
-    // Vercel's own header first: x-forwarded-for / x-real-ip can be rewritten by a proxy in front
-    // (Vercel docs, request headers); a client-sent value never outranks it.
-    expect(clientIp({ 'x-vercel-forwarded-for': '7.7.7.7', 'x-real-ip': '6.6.6.6', 'x-forwarded-for': '6.6.6.6' })).toBe('7.7.7.7');
-    expect(clientIp({ 'x-vercel-forwarded-for': '7.7.7.7, 8.8.8.8' })).toBe('7.7.7.7');
+    // x-vercel-forwarded-for is never read: it may be client-sent on a direct request. The live
+    // check through a barber site's proxy decides whether this order changes.
+    expect(clientIp({ 'x-vercel-forwarded-for': '7.7.7.7', 'x-real-ip': '6.6.6.6', 'x-forwarded-for': '5.5.5.5' })).toBe('6.6.6.6');
+    expect(clientIp({ 'x-vercel-forwarded-for': '7.7.7.7' })).toBe('unknown');
   });
 });
 

@@ -227,7 +227,7 @@ export interface SiteBaseDeps {
 
 /**
  * After a deploy that included the pages: store the shop's public base and look.
- * - A failed domains lookup keeps the stored base (only the look is written).
+ * - A failed domains lookup, or any DNS check that errors, keeps the stored base (only the look is written).
  * - No site data (a web-editor deploy without it) leaves the stored look alone.
  * Returns the base written, or null when the base was left as it was.
  */
@@ -241,16 +241,20 @@ export async function refreshSiteBase(
   try {
     const domains = await deps.projectDomains(input.projectName);
     const serving = new Set<string>();
+    let unsure = false;
     for (const d of domains || []) {
       const name = typeof d?.name === 'string' ? d.name.toLowerCase() : '';
       if (!name || name.endsWith('.vercel.app') || d.verified !== true || d.redirect) continue;
       try {
         if (await deps.domainServing(name)) serving.add(name);
       } catch (e: any) {
-        console.warn(`[siteSubpages] ${input.projectName}: DNS check for ${name} failed; not using it:`, e?.message || e);
+        // Only a successful "not pointed" answer may demote a custom domain: an error leaves the
+        // stored base as it is (a blip must not move customers' links to .vercel.app).
+        unsure = true;
+        console.warn(`[siteSubpages] ${input.projectName}: DNS check for ${name} failed; keeping the stored base:`, e?.message || e);
       }
     }
-    base = pickPublicBase(domains, (n) => serving.has(n));
+    if (!unsure) base = pickPublicBase(domains, (n) => serving.has(n));
   } catch (e: any) {
     console.warn(`[siteSubpages] ${input.projectName}: domain lookup failed; keeping the stored base:`, e?.message || e);
   }

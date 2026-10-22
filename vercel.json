@@ -105,6 +105,9 @@
     },
     "api/admin/sites.ts": {
       "maxDuration": 300
+    },
+    "api/deploy-site.ts": {
+      "maxDuration": 300
     }
   }
 }

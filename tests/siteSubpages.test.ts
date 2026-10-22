@@ -253,9 +253,23 @@ describe('refreshSiteBase', () => {
     expect(d.updateShop).toHaveBeenCalledWith('s1', { site_base_url: 'https://freshcuts.com', site_look: expect.objectContaining({ template: 'prime' }) });
   });
 
-  it('a domain whose DNS check fails is not used', async () => {
-    const d = deps({ domainServing: vi.fn(async () => { throw new Error('vercel down'); }) });
-    expect(await refreshSiteBase({ shopId: 's1', projectName: 'p', siteData: {} as any }, d)).toBe('https://fresh-cuts.vercel.app');
+  it('a DNS check that throws keeps the stored base (only a "not pointed" answer may demote a custom domain)', async () => {
+    const d = deps({ domainServing: vi.fn(async () => { throw new Error('vercel 503'); }) });
+    expect(await refreshSiteBase({ shopId: 's1', projectName: 'p', siteData: { template: 'prime' } as any }, d)).toBeNull();
+    expect(d.updateShop).toHaveBeenCalledWith('s1', { site_look: expect.objectContaining({ template: 'prime' }) });
+    // Even when another domain answered fine.
+    const e = deps({
+      projectDomains: vi.fn(async () => [{ name: 'p.vercel.app', verified: true }, { name: 'a.com', verified: true }, { name: 'bb.com', verified: true }]),
+      domainServing: vi.fn(async (n: string) => { if (n === 'a.com') throw new Error('timeout'); return false; }),
+    });
+    expect(await refreshSiteBase({ shopId: 's1', projectName: 'p', siteData: null }, e)).toBeNull();
+    expect(e.updateShop).not.toHaveBeenCalled();
+  });
+
+  it('a successful "not pointed" answer demotes to the project\'s .vercel.app domain', async () => {
+    const d = deps({ domainServing: vi.fn(async () => false) });
+    expect(await refreshSiteBase({ shopId: 's1', projectName: 'p', siteData: null }, d)).toBe('https://fresh-cuts.vercel.app');
+    expect(d.updateShop).toHaveBeenCalledWith('s1', { site_base_url: 'https://fresh-cuts.vercel.app' });
   });
 
   it('a failed domains lookup keeps the stored base (only the look is written)', async () => {
