@@ -5,11 +5,12 @@ import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
 import { AlertCircleIcon, RefreshIcon } from '@/components/Icons';
 import { track } from '@/lib/analytics';
+import { takeNotice } from '@/lib/adminSync';
 import { usePublishDeps } from '@/lib/paywall';
 import { publishBusy, publishFlow, type PublishDeps } from '@/lib/publish';
 import { loadSite } from '@/lib/siteStore';
 
-type Phase = 'paywall' | 'publishing' | 'pending' | 'inactive' | 'error';
+type Phase = 'paywall' | 'publishing' | 'pending' | 'inactive' | 'error' | 'updated';
 type Pending = { message: string };
 
 const FAILED_MESSAGE =
@@ -66,6 +67,10 @@ export default function Publishing() {
         } else if (out.kind === 'pending') {
           setPending({ message: out.message });
           setPhase('pending');
+        } else if (out.kind === 'site-updated') {
+          void takeNotice(); // this screen is the notice
+          setPending({ message: out.message });
+          setPhase('updated');
         } else {
           setPhase('inactive');
         }
@@ -114,6 +119,17 @@ export default function Publishing() {
           message={pending.message}
         >
           <Button variant="ghost" title="Back to Editor" onPress={back} style={styles.wide} />
+        </Result>
+      )}
+
+      {phase === 'updated' && (
+        <Result
+          icon={<AlertCircleIcon size={40} color={colors.accent} />}
+          tint="rgba(244,161,0,0.2)"
+          title={<>Site <Text style={{ color: colors.accent }}>updated</Text></>}
+          message={pending.message}
+        >
+          <Button title="Review my site" onPress={back} style={styles.wide} />
         </Result>
       )}
 

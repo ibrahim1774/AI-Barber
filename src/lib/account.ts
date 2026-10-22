@@ -1,10 +1,12 @@
 import { randomUUID } from 'expo-crypto';
 import type { ShopInputs, WebsiteData } from '@/web/types';
+import { adoptServerCopy, isNewerAdminEdit, versionFields } from '@/lib/adminSync';
 import { resetUser, track } from '@/lib/analytics';
 import { api } from '@/lib/api';
 import { clearOverlayFlags } from '@/lib/overlayFlags';
 import { findTransactionId, publishPayload } from '@/lib/publish';
 import { cancelAllReminders, cancelRemindersInBackground } from '@/lib/reminders';
+import { emitSiteAdopted, onSiteAdopted } from '@/lib/siteEvents';
 import * as siteStore from '@/lib/siteStore';
 import type { SiteRecord } from '@/lib/siteStore';
 import { supabase } from '@/lib/supabase';
@@ -72,15 +74,7 @@ const ROW_COLUMNS = 'id, site_data, deployed_url, updated_at';
 
 export type PullResult = 'adopted' | 'unchanged' | null;
 
-const adoptedListeners = new Set<(site: SiteRecord) => void>();
-
-/** Called with the new local record whenever pullSiteFromAccount adopts one. Returns the unsubscribe. */
-export function onSiteAdopted(cb: (site: SiteRecord) => void): () => void {
-  adoptedListeners.add(cb);
-  return () => {
-    adoptedListeners.delete(cb);
-  };
-}
+export { onSiteAdopted };
 
 function isSiteData(v: unknown): v is WebsiteData & { source?: unknown } {
   return !!v && typeof v === 'object' && !Array.isArray(v);
@@ -154,13 +148,7 @@ export async function pullSiteFromAccount(userId: string): Promise<PullResult> {
           transactionId: null,
         };
     await siteStore.saveSite(next);
-    adoptedListeners.forEach((l) => {
-      try {
-        l(next);
-      } catch (e) {
-        console.warn('[account] adopted listener failed:', e);
-      }
-    });
+    emitSiteAdopted(next);
     return 'adopted';
   } catch (e) {
     console.warn('[account] loading the site from the account failed:', e);
@@ -248,23 +236,29 @@ export async function restore(deps: RestoreDeps): Promise<Restored | null> {
   const sameSite = local != null && boundMatches(local, bound);
   if (!sameSite && !bound.siteData) return null;
 
+  const now = Date.now();
   const record: SiteRecord =
     sameSite && local
       ? {
-          ...local,
+          // A newer admin edit replaces the local copy; otherwise local edits are kept.
+          ...(isNewerAdminEdit(local, bound) ? adoptServerCopy(local, bound) : local),
           slug: bound.siteId,
           deployedUrl: bound.deployedUrl ?? local.deployedUrl,
           transactionId,
-          updatedAt: Date.now(),
+          updatedAt: now,
+          syncedAt: now,
+          ...versionFields(bound),
         }
       : {
           draftId: local && !local.deployedUrl ? local.draftId : randomUUID(),
           inputs: inputsFrom(bound.siteData!),
           data: bound.siteData!,
-          updatedAt: Date.now(),
+          updatedAt: now,
+          syncedAt: now,
           slug: bound.siteId,
           deployedUrl: bound.deployedUrl,
           transactionId,
+          ...versionFields(bound),
         };
   // A pending publish is left alone: it is paid content for this same
   // subscription, and the launch retry still sends it to the bound site.

@@ -10,6 +10,14 @@ export interface SiteRecord {
   slug: string | null;
   deployedUrl: string | null;
   transactionId: string | null;
+  /** The server's site version at the last publish / sync. Absent: an older server or record (no version info). */
+  serverVersion?: number;
+  editedBy?: 'owner' | 'admin';
+  editedAt?: string;
+  /** `updatedAt` as of the last publish or adopted server copy; later edits are unpublished. */
+  syncedAt?: number;
+  /** An admin edit was adopted and the barber has not been told yet: the message to show, cleared when shown. */
+  noticePending?: string;
 }
 
 export interface PendingPublish {
@@ -17,6 +25,8 @@ export interface PendingPublish {
   transactionId: string | null;
   data: WebsiteData;
   createdAt: number;
+  /** The site version this data was based on; a resumed publish carries it, never a newer one. */
+  baseVersion?: number;
 }
 
 const SITE_KEY = 'site.v1';

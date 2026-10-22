@@ -4,7 +4,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect, useNavigation } from 'expo-router';
 import type { WebsiteData } from '@/web/types';
 import { colors, fonts } from '@/constants/theme';
-import { onSiteAdopted } from '@/lib/account';
+import { syncQuietly, takeNotice, withDiskVersion } from '@/lib/adminSync';
+import { onSiteAdopted } from '@/lib/siteEvents';
 import { track } from '@/lib/analytics';
 import { useEntitlements } from '@/lib/entitlements';
 import { hasEntitlement } from '@/lib/paywall';
@@ -149,10 +150,15 @@ export default function Editor() {
       if (getSubscriptionStatus() === 'lapsed') recheckSubscriptionStatus(true);
       let alive = true;
       loadMyShop().then((sh) => alive && setShop(sh)).catch(() => {});
+      // An admin edit made from the server is adopted in the background (the
+      // onSiteAdopted subscriber below reloads the editor). Silent on any
+      // failure, never blocks editing. A notice left from launch is shown here.
+      void syncQuietly().then(() => { if (alive) void showNotice(); });
       loadSite().then((s) => {
         const cur = siteRef.current;
         if (!alive || !s || !cur) return;
-        if (s.draftId !== cur.draftId) {
+        if (s.draftId !== cur.draftId || (s.editedBy === 'admin' && s.serverVersion !== cur.serverVersion)) {
+          // A different draft (restore), or an admin edit adopted at launch: reload on it.
           void openRecord(s, () => alive);
           return;
         }
@@ -160,6 +166,12 @@ export default function Editor() {
           const next = { ...cur, slug: s.slug, deployedUrl: s.deployedUrl, transactionId: s.transactionId };
           siteRef.current = next;
           setSite(next);
+        }
+        // The version bookkeeping a publish (or a version learn) saved, so the next edit doesn't write the old one back.
+        const versioned = withDiskVersion(siteRef.current!, s);
+        if (versioned) {
+          siteRef.current = versioned;
+          setSite(versioned);
         }
         // The Bookings setup (a screen over this tab) can switch the Book button or
         // mirror services into the saved site: take those two, nothing else.
@@ -191,15 +203,43 @@ export default function Editor() {
     }, [openRecord, runPublishRequest]),
   );
 
-  // A newer copy loaded from the account (launch, sign-in): show it.
+  // Tells the barber an admin edit was adopted (the message lives on the record until shown).
+  const showNotice = useCallback(async () => {
+    if (!mountedRef.current) return;
+    const n = await takeNotice();
+    // Whatever happened, a later edit must not write the flag back.
+    if (siteRef.current?.noticePending) siteRef.current = { ...siteRef.current, noticePending: undefined };
+    if (!n || !mountedRef.current) return;
+    Alert.alert('Site updated', n);
+  }, []);
+
+  // A newer copy loaded from the account or from an admin edit (launch, sign-in,
+  // focus, foreground, publish): show it. Not under an open sheet or a photo
+  // upload; it is applied when they are done.
+  const deferred = useRef<SiteRecord | null>(null);
+  const aliveRef = useRef(true);
+  const applyAdopted = useCallback((s: SiteRecord) => {
+    void openRecord(s, () => aliveRef.current).then(() => showNotice());
+  }, [openRecord, showNotice]);
   useEffect(() => {
-    let alive = true;
-    const unsubscribe = onSiteAdopted((s) => void openRecord(s, () => alive));
+    aliveRef.current = true;
+    const unsubscribe = onSiteAdopted((s) => {
+      if (sheetOpenRef.current || uploadingRef.current) deferred.current = s;
+      else applyAdopted(s);
+    });
     return () => {
-      alive = false;
+      aliveRef.current = false;
       unsubscribe();
     };
-  }, [openRecord]);
+  }, [applyAdopted]);
+  const sheetOpenRef = useRef(false);
+  sheetOpenRef.current = sheet != null;
+  useEffect(() => {
+    if (sheet != null || uploading || !deferred.current) return;
+    const s = deferred.current;
+    deferred.current = null;
+    applyAdopted(s);
+  }, [sheet, uploading, applyAdopted]);
 
   useEffect(() => {
     if (!locked) return;
@@ -224,7 +264,8 @@ export default function Editor() {
   /** Every change goes through here: new record, state, and saveSite. */
   const commitRecord = useCallback((change: (r: SiteRecord) => SiteRecord) => {
     const cur = siteRef.current;
-    if (!cur) return;
+    // An adopted copy is waiting for this sheet to close; an edit made now would be replaced by it.
+    if (!cur || deferred.current) return;
     // A changed Book link is the barber's own link (Contact edit, or a rebuilt-from-link site).
     const next = { ...syncOwnLink(cur, change(cur)), updatedAt: Date.now() };
     siteRef.current = next;
