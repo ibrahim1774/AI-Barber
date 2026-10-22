@@ -38,19 +38,28 @@ async function published(product: string = PRODUCTS.storeMonthly) {
 
 // ---------------------------------------------------------------------------
 describe('account link: a publish body re-points ios_purchases.user_id', () => {
-  it('setup: the shop owner (user A) links the purchase through /api/shop/plan', async () => {
+  it('setup (was: the publish re-points user_id to B): the owner links through /api/shop/plan; a publish naming user B (body) or signed in as B (bearer) leaves A', async () => {
     const { otid, transactionId } = await published();
     const shop = { id: 'shop-a', ios_otid: null as string | null };
     const r = await w.refreshPlan('Bearer owner-jwt', { transactionId }, w.planDeps(shop, { id: USER_A }));
     expect(r.status).toBe(200);
     expect(w.row(otid)!.user_id).toBe(USER_A);
-    // An unauthenticated publish naming user B (another app account on the same Apple ID) is accepted...
     const p = await w.publish(transactionId, siteData(), { userId: USER_B, baseVersion: 1 });
     expect(p.status).toBe(200);
-    expect(w.row(otid)!.user_id).toBe(USER_B);
+    expect(w.row(otid)!.user_id).toBe(USER_A);
+    const signedInB = await w.publish(transactionId, siteData(), { baseVersion: 2 }, { authorization: 'Bearer jwt-b' });
+    expect(signedInB.status).toBe(200);
+    expect(w.row(otid)!.user_id).toBe(USER_A);
   });
 
-  it.fails('BUG: after a publish names another userId, the real owner is locked out of /api/shop/plan (409 purchase-in-use)', async () => {
+  it('I6: a verified bearer links a purchase that has no account yet', async () => {
+    const { otid, transactionId } = await published();
+    expect(w.row(otid)!.user_id).toBeNull();
+    await w.publish(transactionId, siteData(), { userId: USER_B, baseVersion: 1 }, { authorization: 'Bearer jwt-a' });
+    expect(w.row(otid)!.user_id).toBe(USER_A);
+  });
+
+  it('I6 (fixed): after a publish names another userId, the real owner still refreshes /api/shop/plan', async () => {
     const { transactionId } = await published();
     const shop = { id: 'shop-a', ios_otid: null as string | null };
     await w.refreshPlan('Bearer owner-jwt', { transactionId }, w.planDeps(shop, { id: USER_A }));

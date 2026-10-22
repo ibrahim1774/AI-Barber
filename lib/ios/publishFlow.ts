@@ -23,6 +23,7 @@ import {
 } from '../publishSite.js';
 import { VerifyFailure, isActive, lazyDefaultVerifier, type VerifiedTx } from './appleVerify.js';
 import { supabasePurchases, type PurchasesRepo } from './purchases.js';
+import { createClient } from '@supabase/supabase-js';
 import { chooseSlug, makeIsTaken, urlServes, vercelProjectExists } from './slug.js';
 import { buildImageUrlMap, toPendingSiteData } from './pendingData.js';
 import { stripLapsedLinks } from './tiers.js';
@@ -77,6 +78,11 @@ export interface PublishDeps {
   readPending(slug: string): Promise<PendingSite | null>;
   /** The stored copy with its GCS generation (compare-and-set). Absent: unconditional writes (older fakes). */
   readPendingVersioned?(slug: string): Promise<VersionedPending>;
+  /**
+   * The Supabase account behind a bearer token (null when the token is not valid; throws on an
+   * outage). The only way a publish links the purchase to an account (e2e I6). Absent: no link.
+   */
+  userOf?(token: string): Promise<{ id: string } | null>;
   /** Dry render before storing (lib/publishSite.ts renderPending). Throws on unrenderable data. */
   render?(p: Pick<PendingSite, 'siteData' | 'imageUrlMap'>): string;
   now(): number;
@@ -120,7 +126,18 @@ function validInput(input: unknown): input is IosPublishInput {
 const badRequest = { status: 400 as const, body: { error: 'bad-request' } };
 const unavailable = { status: 503 as const, body: { error: 'temporarily-unavailable' } };
 
-export async function runIosPublish(input: IosPublishInput, deps: PublishDeps): Promise<IosPublishResult> {
+/** Request context that is not part of the JSON body. */
+export interface IosPublishContext {
+  /** The Authorization header (Bearer <Supabase access token>), if the app sent one. */
+  authorization?: unknown;
+}
+
+const bearer = (h: unknown): string => {
+  const v = Array.isArray(h) ? h[0] : h;
+  return (typeof v === 'string' ? v : '').replace(/^Bearer\s+/i, '').trim();
+};
+
+export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, ctx: IosPublishContext = {}): Promise<IosPublishResult> {
   // Size + data-URL checks before anything else: the app must upload images
   // first and send URLs, never inline base64.
   let raw: string;
@@ -181,10 +198,26 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps): 
   try {
     const row = await deps.repo.upsertVerified(tx, { checkedAt });
 
-    // Unauthenticated, best-effort account link: never blocks a paid publish.
-    if (typeof input.userId === 'string' && UUID_RE.test(input.userId)) {
-      await deps.repo.setUser(otid, input.userId).catch((e) =>
-        console.warn(`[ios/publish] ${otid}: setUser failed (ignored):`, e?.message || e));
+    // Account link (e2e I6). The body's userId is never trusted: anyone with the transaction id
+    // could name any account and re-point the purchase, locking the real owner out of
+    // /api/shop/plan and /api/shop/setup (409 purchase-in-use). Only a verified Supabase bearer
+    // links, and only a purchase with no account yet (conditional in SQL); an existing owner is
+    // changed only by the relink rules in /api/shop/plan. Best effort: never blocks a paid publish.
+    const token = bearer(ctx.authorization);
+    if (token && deps.userOf && deps.repo.setUserIfUnlinked) {
+      try {
+        const user = await deps.userOf(token);
+        if (user?.id && UUID_RE.test(user.id)) {
+          const linked = await deps.repo.setUserIfUnlinked(otid, user.id);
+          if (!linked && row.user_id && row.user_id !== user.id) {
+            console.warn(`[ios/publish] ${otid}: already linked to another account; not re-pointed`);
+          }
+        }
+      } catch (e: any) {
+        console.warn(`[ios/publish] ${otid}: account link failed (ignored):`, e?.message || e);
+      }
+    } else if (typeof input.userId === 'string' && input.userId) {
+      console.log(`[ios/publish] ${otid}: body userId ignored (only a verified bearer links an account)`);
     }
 
     // "republished" means the site was live before; any bound slug is force-deployed.
@@ -340,6 +373,21 @@ export function liveDeps(): PublishDeps {
     publish: (slug, opts) => publishSite(slug, opts),
     readPending: readPendingSite,
     readPendingVersioned,
+    userOf: liveUserOf,
     now: () => Date.now(),
   };
+}
+
+/** A Supabase access token's user (service role). Invalid / expired token: null; outage: throws. */
+async function liveUserOf(token: string): Promise<{ id: string } | null> {
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set');
+  const { data, error } = await createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } }).auth.getUser(token);
+  if (error) {
+    const status = (error as any).status;
+    if (typeof status === 'number' && status >= 400 && status < 500) return null;
+    throw new Error(`auth.getUser failed: ${error.message}`);
+  }
+  return data?.user ? { id: data.user.id } : null;
 }

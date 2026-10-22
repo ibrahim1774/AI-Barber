@@ -30,6 +30,11 @@ export interface PurchasesRepo {
   slugTaken(slug: string): Promise<boolean>;
   markPublished(otid: string): Promise<void>;
   setUser(otid: string, userId: string): Promise<void>;
+  /**
+   * Link the purchase to this account only while it has none (conditional in SQL): never
+   * re-points an existing owner. True when this call linked it. Optional for older fakes.
+   */
+  setUserIfUnlinked?(otid: string, userId: string): Promise<boolean>;
   applyNotification(n: {
     otid: string; productId: string; environment: IosEnv; expiresAt: number | null; revokedAt: number | null; type: string;
     /** REFUND_REVERSED: set revoked_at = null (wins over revokedAt). */
@@ -192,6 +197,13 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
     async setUser(otid, userId) {
       const { error } = await db().from(TABLE).update({ user_id: userId }).eq('original_transaction_id', otid);
       if (error) fail('setUser', error);
+    },
+
+    async setUserIfUnlinked(otid, userId) {
+      const { data, error } = await db().from(TABLE).update({ user_id: userId })
+        .eq('original_transaction_id', otid).is('user_id', null).select('original_transaction_id');
+      if (error) fail('setUserIfUnlinked', error);
+      return Array.isArray(data) && data.length > 0;
     },
 
     async applyNotification(n) {

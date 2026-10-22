@@ -35,6 +35,9 @@ import { installNetwork } from './net.js';
 export const NOW = Date.parse('2026-11-02T12:00:00Z');
 export const DAY = 86_400_000;
 export const ADMIN = 'ibrahim3709@gmail.com';
+/** Two Supabase accounts (app users). */
+export const USER_A = '3f2b8c1e-5d4a-4b6f-9e2d-1a2b3c4d5e6f';
+export const USER_B = '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d';
 
 export function siteData(over: Partial<WebsiteData> = {}): WebsiteData {
   return {
@@ -96,6 +99,8 @@ export function siteWorld() {
     publish: (slug, opts) => publishSite(slug, opts),
     readPending: readPendingSite,
     readPendingVersioned,
+    // Supabase auth for the publish bearer (I6): jwt-a / jwt-b are two app accounts.
+    userOf: async (t) => (({ 'jwt-a': { id: USER_A }, 'jwt-b': { id: USER_B } }) as Record<string, { id: string }>)[t] ?? null,
     now: clock.now,
   };
 
@@ -146,8 +151,8 @@ export function siteWorld() {
 
   return {
     clock, apple, db, repo, audits, emails, adminTokens, publishDeps,
-    publish: (transactionId: string, sd: WebsiteData = siteData(), extra: Record<string, unknown> = {}) =>
-      runIosPublish({ transactionId, siteData: sd, ...extra } as any, publishDeps),
+    publish: (transactionId: string, sd: WebsiteData = siteData(), extra: Record<string, unknown> = {}, ctx: { authorization?: string } = {}) =>
+      runIosPublish({ transactionId, siteData: sd, ...extra } as any, publishDeps, ctx),
     lookup: (transactionId: string) => runIosSiteLookup(transactionId, publishDeps),
     notify: (signedPayload: string) =>
       handleAppleNotification(signedPayload, {

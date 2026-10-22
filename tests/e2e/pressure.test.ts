@@ -13,7 +13,7 @@ vi.mock('../../lib/store/live.js', async (orig) => ({ ...(await orig<any>()), li
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { httpReq, httpRes, normHtml, resetBoundaries, siteData, siteWorld, type SiteWorld } from './harness/world.js';
+import { USER_A, httpReq, httpRes, normHtml, resetBoundaries, siteData, siteWorld, type SiteWorld } from './harness/world.js';
 import { BUNDLE, PRODUCTS } from './harness/apple.js';
 import { pendingOf } from './harness/gcs.js';
 import { vercel } from './harness/vercel.js';
@@ -377,5 +377,17 @@ describe('rate limits', () => {
   it('setup: each bogus lookup asks Apple in both environments', async () => {
     for (let i = 0; i < 10; i++) await hit(iosSite, { body: { transactionId: String(900000 + i) }, headers: { 'x-real-ip': '203.0.113.50' } });
     expect(w.apple.state.calls).toBe(20);
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('I6: POST /api/ios/publish links only through the Authorization header', () => {
+  it('the handler forwards the bearer; a body userId alone links nothing', async () => {
+    const a = w.apple.buy(PRODUCTS.websiteMonthly);
+    expect((await hit(iosPublish, { body: { transactionId: a.transactionId, siteData: siteData(), userId: randomUUID() } })).statusCode).toBe(200);
+    expect(w.row(a.otid)!.user_id).toBeNull();
+    const r = await hit(iosPublish, { body: { transactionId: a.transactionId, siteData: siteData(), baseVersion: 1 }, headers: { authorization: 'Bearer jwt-a' } });
+    expect(r.statusCode).toBe(200);
+    expect(w.row(a.otid)!.user_id).toBe(USER_A);
   });
 });
