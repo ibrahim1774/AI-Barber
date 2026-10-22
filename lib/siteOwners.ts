@@ -21,6 +21,8 @@ export interface SiteOwnerRow {
   slug: string;
   user_id: string | null;
   claim_email: string | null;
+  /** The owner account's email when user_id is set (013: becomes the claim email if that account is deleted). */
+  owner_email?: string | null;
   source: OwnerSource;
   checkout_session_id: string | null;
   created_at?: string;
@@ -106,6 +108,7 @@ export async function recordCheckoutOwner(
     slug: s,
     user_id: userMatches ? u!.id : null,
     claim_email: userMatches ? null : email,
+    owner_email: userMatches ? email : null,
     source: 'checkout',
     checkout_session_id: input.sessionId ?? null,
   };
@@ -151,7 +154,7 @@ function db(): SupabaseClient {
   return (sb = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } }));
 }
 
-const COLS = 'slug, user_id, claim_email, source, checkout_session_id, created_at, claimed_at';
+const COLS = 'slug, user_id, claim_email, owner_email, source, checkout_session_id, created_at, claimed_at';
 
 /**
  * Migration 013 not applied yet (PostgREST: PGRST205 / Postgres 42P01): reads see no owner and
@@ -186,7 +189,7 @@ export function supabaseSiteOwners(client?: SupabaseClient): SiteOwnerStore {
     },
     async claim(slug, userId, email, at) {
       const { data, error } = await c().from('site_owners')
-        .update({ user_id: userId, claimed_at: at, updated_at: at })
+        .update({ user_id: userId, owner_email: email, claim_email: null, claimed_at: at, updated_at: at })
         .eq('slug', slug).is('user_id', null).eq('claim_email', email).select('slug');
       if (tableMissing(error)) return false;
       if (error) throw new Error(`site_owners claim failed: ${error.message}`);
@@ -254,7 +257,7 @@ export async function setWebOwner(slug: unknown, email: unknown, deps: WebOwnerA
   // confirmed sign-in instead, like the backfill.
   const user = found?.emailConfirmed ? found : null;
   const row: SiteOwnerRow = {
-    slug: s, user_id: user?.id ?? null, claim_email: user ? null : e, source: 'admin', checkout_session_id: null,
+    slug: s, user_id: user?.id ?? null, claim_email: user ? null : e, owner_email: user ? e : null, source: 'admin', checkout_session_id: null,
     claimed_at: user ? new Date(deps.now()).toISOString() : null,
   };
   await deps.store.upsert(row);

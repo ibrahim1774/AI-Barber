@@ -21,7 +21,7 @@ function memStore(rows: SiteOwnerRow[] = []): SiteOwnerStore & { rows: Map<strin
     claim: vi.fn(async (s: string, uid: string, email: string, at: string) => {
       const r = m.get(s);
       if (!r || r.user_id || r.claim_email !== email) return false;
-      Object.assign(r, { user_id: uid, claimed_at: at });
+      Object.assign(r, { user_id: uid, owner_email: email, claim_email: null, claimed_at: at });
       return true;
     }),
     upsert: vi.fn(async (r: SiteOwnerRow) => { m.set(r.slug, { ...r }); }),
@@ -71,7 +71,7 @@ describe('recordCheckoutOwner (first paid checkout)', () => {
   it('the signed-in buyer whose confirmed email is the checkout email becomes the owner', async () => {
     const s = memStore();
     expect(await recordCheckoutOwner('Fresh Cuts', { user: userA, checkoutEmail: ' BARBER@example.com ', sessionId: SESSION }, s))
-      .toMatchObject({ slug: 'fresh-cuts', user_id: A, claim_email: null, source: 'checkout', checkout_session_id: SESSION });
+      .toMatchObject({ slug: 'fresh-cuts', user_id: A, claim_email: null, owner_email: 'barber@example.com', source: 'checkout', checkout_session_id: SESSION });
   });
 
   it('otherwise the checkout email is stored to be claimed (unconfirmed, other email, or not signed in)', async () => {
@@ -283,14 +283,18 @@ describe('013_site_owners.sql', () => {
     expect(code).toContain('alter table public.site_owners enable row level security;');
     expect(code).toContain('revoke all on table public.site_owners from anon, authenticated;');
     expect(code).not.toMatch(/\bgrant\b|\bcreate policy\b/i);
-    expect(code.replace(/on delete cascade/g, '')).not.toMatch(/\bdrop\b|\bdelete\b|\btruncate\b/i);
+    expect(code.replace(/on delete set null/g, '').replace(/drop trigger if exists site_owners_keep_claim/g, '')).not.toMatch(/\bdrop\b|\bdelete\b|\btruncate\b/i);
   });
   it('slug unique, the three sources, someone to own it, lower-case claim emails', () => {
     expect(code).toMatch(/slug text primary key/);
     expect(code).toContain("check (source in ('checkout', 'admin', 'backfill'))");
     expect(code).toContain('check (user_id is not null or claim_email is not null)');
     expect(code).toMatch(/claim_email = lower\(claim_email\)/);
-    expect(code).toMatch(/references auth\.users \(id\) on delete cascade/);
+    // Review fix 10: deleting the owner's account keeps the row, claimable by the owner's email.
+    expect(code).toMatch(/references auth\.users \(id\) on delete set null/);
+    expect(code).toContain('new.claim_email := old.owner_email;');
+    expect(code).toMatch(/create trigger site_owners_keep_claim before update on public\.site_owners/);
+    expect(code).toContain('check (user_id is null or (owner_email is not null');
   });
 });
 
@@ -387,9 +391,9 @@ describe('backfill planner (scripts/backfill-site-owners.mjs)', () => {
       appSlugs: new Set(['fade-lab']),
     });
     expect(plan.insert).toEqual([
-      { slug: 'fresh-cuts', user_id: A, claim_email: null, source: 'backfill', checkout_session_id: 'cs_1' },
-      { slug: 'new-shop', user_id: null, claim_email: 'nobody@example.com', source: 'backfill', checkout_session_id: 'cs_3' },
-      { slug: 'pre-registered', user_id: null, claim_email: 'victim@example.com', source: 'backfill', checkout_session_id: 'cs_4' },
+      { slug: 'fresh-cuts', user_id: A, claim_email: null, owner_email: 'barber@example.com', source: 'backfill', checkout_session_id: 'cs_1' },
+      { slug: 'new-shop', user_id: null, claim_email: 'nobody@example.com', owner_email: null, source: 'backfill', checkout_session_id: 'cs_3' },
+      { slug: 'pre-registered', user_id: null, claim_email: 'victim@example.com', owner_email: null, source: 'backfill', checkout_session_id: 'cs_4' },
     ]);
     expect(plan.skipped).toEqual([
       { slug: 'already', reason: 'already-owned' },

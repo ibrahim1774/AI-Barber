@@ -83,6 +83,7 @@ export function planBackfill(
       slug,
       user_id: account?.emailConfirmed ? account.id : null,
       claim_email: account?.emailConfirmed ? null : email,
+      owner_email: account?.emailConfirmed ? email : null,
       source: 'backfill',
       checkout_session_id: first.id,
     });
