@@ -276,7 +276,8 @@ export async function createStandardAccount(
     type: 'standard',
     email: ownerEmail || undefined,
     'business_profile[name]': shop.name || undefined,
-    'business_profile[url]': shop.slug ? bookingPageUrl(shop.slug, shop) : undefined,
+    // Owner-facing and part of the account's idempotency hash inputs: stays on aibarber.org.
+    'business_profile[url]': shop.slug ? bookingPageUrl(shop.slug) : undefined,
     'business_profile[support_phone]': withPhone ? shop.phone || undefined : undefined,
     'metadata[shop_id]': shop.id,
     'metadata[app]': 'aibarber-bookings',

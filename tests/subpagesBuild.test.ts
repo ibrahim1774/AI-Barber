@@ -16,9 +16,11 @@ describe('the booking and shop page build', () => {
     expect(Object.keys(c.build.rollupOptions.input).sort()).toEqual(['book', 'shop']);
   });
 
-  it('npm run build runs both builds, main first', () => {
+  it('npm run build runs both builds, main first, and Vercel is pinned to it', () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
     expect(pkg.scripts.build).toBe('vite build && vite build -c vite.subpages.config.ts');
+    // Without the second build /_ab/*.html would not exist and every /book/{slug} link would 404.
+    expect(cfg.buildCommand).toBe('npm run build');
   });
 
   it('aibarber.org serves /book/{slug} and /shop/{slug} from the /_ab/ pages, before the catch-all', () => {

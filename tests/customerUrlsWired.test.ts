@@ -102,3 +102,18 @@ describe('order emails', () => {
     expect(orderCancelledEmail(ctx(null), 0).html).toContain('https://www.aibarber.org/shop/fresh');
   });
 });
+
+describe('Connect onboarding (owner-facing)', () => {
+  it('business_profile[url] and the idempotency key do not depend on the shop\'s site', async () => {
+    const { createStandardAccount } = await import('../lib/bookings/payments');
+    const run = async (site: string | null) => {
+      const f = vi.fn(async (_u: string, _i: any) => ({ ok: true, status: 200, json: async () => ({ id: 'acct_1' }) }));
+      await createStandardAccount({ id: 'shop-1', slug: 'fresh', name: 'Fresh', stripe_account_id: null, platform_fee_bps: 200, site_base_url: site }, 'o@x.test', { fetch: f });
+      return { url: new URLSearchParams(f.mock.calls[0][1].body).get('business_profile[url]'), key: f.mock.calls[0][1].headers['Idempotency-Key'] };
+    };
+    const a = await run(null);
+    const b = await run(SITE);
+    expect(a.url).toBe('https://www.aibarber.org/book/fresh');
+    expect(b).toEqual(a);
+  });
+});
