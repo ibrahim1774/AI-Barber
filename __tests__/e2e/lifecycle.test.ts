@@ -281,8 +281,8 @@ describe('app killed between steps', () => {
 });
 
 describe('the own Book link after a restore', () => {
-  // BUG (flow-level proof of the bookLinkMatrix unit case): restore fills inputs.bookingUrl from the
-  // server copy; clearing the Book link deletes only ownBookingUrl, so publish puts Booksy back.
+  // Fixed (bug 3), flow level: restore fills inputs.bookingUrl from the server copy; clearing the Book
+  // link used to delete only ownBookingUrl, so publish put Booksy back.
   async function restoredThenCleared() {
     // Published once from another phone, with the Booksy link.
     w = await boot(server, { user: 'u1' });
@@ -304,13 +304,16 @@ describe('the own Book link after a restore', () => {
     expect(await publish(w)).toMatchObject({ kind: 'live' });
   }
 
-  it.failing('BUG: a Book link cleared after a restore stays cleared on the live site', async () => {
+  it('a Book link cleared after a restore stays cleared on the live site', async () => {
     await restoredThenCleared();
     expect(lastSent().bookingUrl).toBeFalsy();
   });
 
-  it('observed: the cleared Booksy link is published again', async () => {
+  it('a later Restore of the same site does not bring the cleared link back', async () => {
     await restoredThenCleared();
-    expect(lastSent().bookingUrl).toBe(BOOKSY);
+    await w.restore();
+    expect((await w.site())?.inputs.ownBookingCleared).toBe(true);
+    await publish(w);
+    expect(lastSent().bookingUrl).toBeFalsy();
   });
 });

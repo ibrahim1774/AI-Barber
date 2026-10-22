@@ -9,13 +9,13 @@
  * purchaseLinked; else the barber's own link; else no Book button. The Shop
  * link only with store + linked shop + store open. By design nothing is
  * decided while the entitlements are unknown or hosting isn't visibly active
- * (the server decides), and an unknown context keeps the site's own links,
- * only dropping what the plan lacks.
+ * (the server decides), and an unknown context keeps the site's links, only
+ * dropping what the plan lacks; a dropped AI link falls back to the own link.
  */
 import * as store from '@/lib/siteStore';
 import { publishFlow, type PublishDeps } from '@/lib/publish';
 import { resetEntitlementsForTests, setEntitlementsFromStatus, getEntitlements } from '@/lib/entitlements';
-import { withChoice, syncOwnLink, resolveLinks, type LinkContext } from '@/lib/bookingChoice';
+import { bookingPrefs, withChoice, syncOwnLink, resolveLinks, type LinkContext } from '@/lib/bookingChoice';
 import { stripLapsedLinks } from '@/lib/tierLinks';
 import type { SiteRecord } from '@/lib/siteStore';
 
@@ -63,15 +63,13 @@ for (const choice of ['own', 'aibarber', 'unset'] as Choice[])
               rows.push({ choice, own, ents, ctx, enabled, linked, storeOpen });
 
 /** The expected Book / Shop links (spec + the documented "server decides" / "unknown keeps" rules). */
-function expected(r: (typeof rows)[number], data: SiteRecord['data']): { book?: string; shop?: string; bug?: string } {
+function expected(r: (typeof rows)[number], data: SiteRecord['data']): { book?: string; shop?: string } {
   const e = getEntitlements();
   if (!e.known || !e.hosting) return { book: data.bookingUrl, shop: (data as any).shopUrl };
   const effective = r.own ? (r.choice === 'unset' ? 'own' : r.choice) : 'aibarber';
   if (r.ctx === 'unknown') {
     // Unknown shop: the site's own links stay; a link the plan lacks goes, and then the own link is the fallback.
-    if (data.bookingUrl === AI && !e.bookings) {
-      return { book: r.own ? OWN : undefined, bug: r.own ? 'unknown-context-no-own-fallback' : undefined };
-    }
+    if (data.bookingUrl === AI && !e.bookings) return { book: r.own ? OWN : undefined };
     return { book: data.bookingUrl };
   }
   const ai = effective === 'aibarber' && e.bookings && r.ctx === 'shop' && r.enabled && r.linked;
@@ -117,11 +115,7 @@ beforeEach(() => resetEntitlementsForTests());
 
 describe('Book / Shop link matrix through publishFlow', () => {
   for (const r of rows) {
-    ENTS[r.ents]();
-    const exp = expected(r, record(r.choice, r.own).data);
-    resetEntitlementsForTests();
-    const t = exp.bug ? it.failing : it;
-    t(`${exp.bug ? `BUG(${exp.bug}): ` : ''}${name(r)}`, async () => {
+    it(name(r), async () => {
       const { sent, rec } = await send(r);
       const want = expected(r, rec.data);
       expect(sent.bookingUrl).toBe(want.book);
@@ -144,22 +138,32 @@ describe('the own link through edits', () => {
     updatedAt: 1, slug: 'fade-lab', deployedUrl: 'https://fade-lab.aibarber.org', transactionId: 'tx-1',
   });
 
-  // BUG: clearing the Book link in the editor deletes ownBookingUrl, but bookingPrefs falls back to
+  // Fixed (bug 3): clearing the link deleted ownBookingUrl, but bookingPrefs fell back to
   // inputs.bookingUrl (the import's copy), so publish and the preview put the deleted link back.
-  it.failing('BUG: a Book link the barber deleted stays deleted on publish (Website plan, signed in)', () => {
+  it('a Book link the barber deleted stays deleted on publish (Website plan, signed in)', () => {
     ENTS.website();
     const prev = imported();
     const next = syncOwnLink(prev, { ...prev, data: { ...prev.data, bookingUrl: '' } });
+    expect(next.inputs).toMatchObject({ ownBookingCleared: true });
     expect(next.inputs.ownBookingUrl).toBeUndefined();
     const sent = stripLapsedLinks(resolveLinks(next.data, next.inputs, ctx()), getEntitlements());
     expect(sent.bookingUrl).toBeUndefined();
+    // Signed out (unknown context) too.
+    expect(stripLapsedLinks(next.data, getEntitlements()).bookingUrl).toBeFalsy();
   });
 
-  it('observed: the deleted Booksy link is what publish sends', () => {
-    ENTS.website();
+  it('after clearing, AI Barber booking still works, and typing a new own link replaces the cleared state', () => {
+    ENTS.bookings();
     const prev = imported();
-    const next = syncOwnLink(prev, { ...prev, data: { ...prev.data, bookingUrl: '' } });
-    expect(resolveLinks(next.data, next.inputs, ctx()).bookingUrl).toBe(OWN);
+    let r = syncOwnLink(prev, { ...prev, data: { ...prev.data, bookingUrl: '' } });
+    r = withChoice(r, 'aibarber', { slug: 'fade-lab' });
+    expect(resolveLinks(r.data, r.inputs, ctx()).bookingUrl).toBe(AI);
+    // The cleared Booksy link is never offered or derived again.
+    expect(bookingPrefs(r).own).toBeNull();
+    const square = 'https://squareup.com/appointments/book/abc';
+    r = syncOwnLink(r, { ...r, data: { ...r.data, bookingUrl: square } });
+    expect(r.inputs.ownBookingCleared).toBeUndefined();
+    expect(resolveLinks(r.data, r.inputs, ctx()).bookingUrl).toBe(square);
   });
 
   it('switching AI Barber -> own -> AI Barber never loses the own link; a new own link replaces it', () => {

@@ -10,16 +10,31 @@ import type { SiteRecord } from '@/lib/siteStore';
  * `bookingChoice` says which one the website uses.
  */
 export type BookingChoice = 'own' | 'aibarber';
-export type BookingPrefs = { ownBookingUrl?: string; bookingChoice?: BookingChoice };
+export type BookingPrefs = {
+  ownBookingUrl?: string;
+  bookingChoice?: BookingChoice;
+  /**
+   * The barber cleared their own link. Until they type a new one, no own link is derived from the
+   * site data or the import's / restore's `inputs.bookingUrl`, so a cleared link never comes back.
+   */
+  ownBookingCleared?: boolean;
+};
 
 const ownLinkOf = (url?: string | null): string | null => {
   const u = url?.trim();
   return u && !isAiBarberBookingUrl(u) ? u : null;
 };
 
-/** The barber's own link from a record: the stored one, else a non-AI-Barber Book link in the data or inputs. */
-const deriveOwn = (rec: { inputs: Partial<SiteRecord['inputs']>; data: WebsiteData }): string | null =>
-  rec.inputs.ownBookingUrl?.trim() || ownLinkOf(rec.data.bookingUrl) || ownLinkOf(rec.inputs.bookingUrl);
+/**
+ * The barber's own link from a record: the stored one, else (unless they cleared it) a non-AI-Barber
+ * Book link in the data or inputs.
+ */
+const deriveOwn = (rec: { inputs: Partial<SiteRecord['inputs']>; data: WebsiteData }): string | null => {
+  const stored = rec.inputs.ownBookingUrl?.trim();
+  if (stored) return stored;
+  if (rec.inputs.ownBookingCleared) return null;
+  return ownLinkOf(rec.data.bookingUrl) || ownLinkOf(rec.inputs.bookingUrl);
+};
 
 /** The own link and the effective choice (default: own when an own link exists, else AI Barber). */
 export function bookingPrefs(rec: { inputs: Partial<SiteRecord['inputs']>; data: WebsiteData }): { own: string | null; choice: BookingChoice } {
@@ -66,11 +81,14 @@ export function syncOwnLink(prev: SiteRecord, next: SiteRecord): SiteRecord {
   if (after) {
     inputs.ownBookingUrl = after;
     inputs.bookingChoice = 'own';
+    delete inputs.ownBookingCleared;
   } else if (isAiBarberBookingUrl(before)) {
     // They cleared a link they didn't type: the own link is kept, and the site goes back to it.
     inputs.bookingChoice = 'own';
   } else {
+    // Cleared on purpose: remembered, so the import's copy (inputs.bookingUrl) is never used again.
     delete inputs.ownBookingUrl;
+    inputs.ownBookingCleared = true;
   }
   return { ...next, inputs };
 }

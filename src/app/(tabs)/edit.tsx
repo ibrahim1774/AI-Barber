@@ -9,7 +9,7 @@ import { onSiteAdopted } from '@/lib/siteEvents';
 import { track } from '@/lib/analytics';
 import { useEntitlements } from '@/lib/entitlements';
 import { hasEntitlement } from '@/lib/paywall';
-import { resolveLinks } from '@/lib/bookingChoice';
+import { bookingPrefs, resolveLinks } from '@/lib/bookingChoice';
 import { syncOwnLink } from '@/lib/bookingChoice';
 import { useLinkContext } from '@/lib/linkContext';
 import { stripLapsedLinks } from '@/lib/tierLinks';
@@ -63,7 +63,12 @@ export default function Editor() {
   const linkCtx = useLinkContext(site?.updatedAt);
   const siteInputs = site?.inputs;
   const previewData = useMemo(
-    () => (siteData ? (linkCtx ? resolveLinks(siteData, siteInputs, linkCtx) : stripLapsedLinks(siteData, ents)) : null),
+    () =>
+      siteData
+        ? linkCtx
+          ? resolveLinks(siteData, siteInputs, linkCtx)
+          : stripLapsedLinks(siteData, ents, bookingPrefs({ data: siteData, inputs: siteInputs ?? {} }).own)
+        : null,
     [siteData, siteInputs, ents, linkCtx],
   );
   const subscription = useSubscriptionStatus();
@@ -186,6 +191,7 @@ export default function Editor() {
               ...siteRef.current!.inputs,
               bookingUrl: s.inputs.bookingUrl,
               ownBookingUrl: s.inputs.ownBookingUrl,
+              ownBookingCleared: s.inputs.ownBookingCleared,
               bookingChoice: s.inputs.bookingChoice,
             },
             updatedAt: s.updatedAt,

@@ -4,7 +4,7 @@ import { track } from '@/lib/analytics';
 import { ApiError, type api } from '@/lib/api';
 import { stripMarkers } from '@/lib/editable';
 import { getEntitlements } from '@/lib/entitlements';
-import { resolveLinks, type LinkContext } from '@/lib/bookingChoice';
+import { bookingPrefs, resolveLinks, type LinkContext } from '@/lib/bookingChoice';
 import { stripLapsedLinks } from '@/lib/tierLinks';
 import { cancelRemindersInBackground } from '@/lib/reminders';
 import type { SiteRecord } from '@/lib/siteStore';
@@ -154,9 +154,11 @@ async function send(
   // One load: its inputs decide the links, its updatedAt marks what this publish covers.
   const rec = await deps.store.loadSite().catch(() => null);
   const sentAt = rec?.updatedAt;
+  // Whenever the AI Barber link is dropped (plan, shop, unknown context), the barber's own link is used.
+  const own = bookingPrefs({ data: pending.data, inputs: rec?.inputs ?? {} }).own;
   const siteData = ctx
-    ? stripLapsedLinks(resolveLinks(pending.data, rec?.inputs, ctx), ctx.ents)
-    : stripLapsedLinks(pending.data, getEntitlements());
+    ? stripLapsedLinks(resolveLinks(pending.data, rec?.inputs, ctx), ctx.ents, own)
+    : stripLapsedLinks(pending.data, getEntitlements(), own);
   try {
     res = await deps.iosPublish({
       transactionId: pending.transactionId,

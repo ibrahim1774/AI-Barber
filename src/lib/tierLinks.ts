@@ -11,14 +11,18 @@ const AIBARBER_BOOK = /^(https?:\/\/)?(www\.)?aibarber\.org\/book(?=[/?#]|$)/i;
  * subscription itself isn't visibly active (Superwall can lag right after a
  * purchase), nothing is dropped and the server decides.
  */
-export function stripLapsedLinks<T extends WebsiteData>(data: T, ents: Entitlements): T {
+export function stripLapsedLinks<T extends WebsiteData>(data: T, ents: Entitlements, ownFallback?: string | null): T {
   if (!ents.known || !ents.hosting) return data;
   const d = data as WebsiteData & { shopUrl?: string };
   const dropBooking = !ents.bookings && typeof d.bookingUrl === 'string' && AIBARBER_BOOK.test(d.bookingUrl.trim());
   const dropShop = !ents.store && d.shopUrl != null;
   if (!dropBooking && !dropShop) return data;
   const out = { ...data } as Record<string, unknown>;
-  if (dropBooking) delete out.bookingUrl;
+  // A dropped AI Barber link falls back to the barber's own link when they have one.
+  if (dropBooking) {
+    if (ownFallback?.trim()) out.bookingUrl = ownFallback.trim();
+    else delete out.bookingUrl;
+  }
   if (dropShop) delete out.shopUrl;
   return out as T;
 }
