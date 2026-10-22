@@ -324,6 +324,17 @@ describe('Connect webhook: replay, duplicates, ordering, other apps', () => {
     expect(m.notes.filter((n) => n.kind === 'order_created')).toHaveLength(0);
   });
 
+  it('I5: a 4xx on the refund check (e.g. an API version quirk) books no refund but still confirms the payment (never a retry loop)', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await cardOrder();
+    const o = m.state.orders.at(-1)!;
+    const session = paySession(o.stripe_checkout_session_id!);
+    stripe.failNext.push({ match: (r) => r.method === 'GET' && r.path === '/charges', status: 400, body: { error: { code: 'parameter_unknown', message: 'x' } } });
+    const d = await m.deliver(m.event('checkout.session.completed', session));
+    expect(d).toMatchObject({ statusCode: 200, body: { outcome: 'order:paid' } });
+    expect(m.notes.filter((n) => n.kind === 'order_created')).toHaveLength(1);
+  });
+
   it('I5: a partial dashboard refund before completed is booked as partially refunded; the order stays paid and is confirmed', async () => {
     await cardOrder();
     const o = m.state.orders.at(-1)!;
@@ -339,7 +350,7 @@ describe('Connect webhook: replay, duplicates, ordering, other apps', () => {
     const o = m.state.orders.at(-1)!;
     const session = paySession(o.stripe_checkout_session_id!);
     await m.deliver(m.event('charge.refunded', dashboardRefund(session.payment_intent!, 1000)));
-    stripe.failNext.push({ match: (r) => r.method === 'GET' && r.path.startsWith('/payment_intents/'), status: 500 });
+    stripe.failNext.push({ match: (r) => r.method === 'GET' && r.path === '/charges', status: 500 });
     const ev = m.event('checkout.session.completed', session);
     expect((await m.deliver(ev)).statusCode).toBe(500);
     expect(m.processed.has(ev.id)).toBe(false);

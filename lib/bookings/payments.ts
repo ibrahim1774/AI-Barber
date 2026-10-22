@@ -249,18 +249,29 @@ export async function refundAppointment(
 }
 
 /**
- * Cumulative refunded cents on a payment intent's latest charge (connected account). Used when a
+ * Cumulative refunded cents on a payment intent's charges (connected account). Used when a
  * payment is recorded, so a refund whose charge.refunded event arrived BEFORE the payment's own
- * event (and was therefore unmatched) is still booked (e2e I5). Throws on a Stripe error.
+ * event (and was therefore unmatched) is still booked (e2e I5). Lists the charges by payment
+ * intent (works on every Stripe API version; `latest_charge` needs 2022-11-15 and no version is
+ * pinned here). Throws only when Stripe is unreachable or answers 5xx / 429 (the webhook then
+ * 500s and Stripe retries); any other error is logged and reads as 0, so a payment is never
+ * left unconfirmed by this check.
  */
 export async function paymentRefundedCents(shop: PayShop, paymentIntentId: string, opts: StripeOpts = {}): Promise<number> {
-  if (!shop.stripe_account_id) throw new StripeApiError('shop has no connected account', 400, 'no-account');
-  const pi = await stripeRequest('GET', `/payment_intents/${encodeURIComponent(paymentIntentId)}`, { 'expand[]': 'latest_charge' }, {
-    account: shop.stripe_account_id, fetch: opts.fetch,
-  });
-  const charge = pi?.latest_charge;
-  const refunded = charge && typeof charge === 'object' ? Number(charge.amount_refunded) : 0;
-  return Number.isFinite(refunded) && refunded > 0 ? Math.floor(refunded) : 0;
+  if (!shop.stripe_account_id) return 0;
+  try {
+    const list = await stripeRequest('GET', '/charges', { payment_intent: paymentIntentId, limit: 10 }, {
+      account: shop.stripe_account_id, fetch: opts.fetch,
+    });
+    const total = (Array.isArray(list?.data) ? list.data : [])
+      .reduce((n: number, c: any) => n + (Number.isFinite(Number(c?.amount_refunded)) ? Math.max(0, Math.floor(Number(c.amount_refunded))) : 0), 0);
+    return total;
+  } catch (e: any) {
+    const status = e instanceof StripeApiError ? e.status : 0;
+    if (!status || status >= 500 || status === 429) throw e;
+    console.error(`[stripe] refund check for ${paymentIntentId} refused (${status} ${e?.code || ''}); booking no refund:`, e?.message || e);
+    return 0;
+  }
 }
 
 /**
