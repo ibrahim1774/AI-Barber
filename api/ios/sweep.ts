@@ -11,6 +11,7 @@ import { supabasePurchases } from '../../lib/ios/purchases.js';
 import { offlineHtml } from '../../lib/ios/offlinePage.js';
 import { lazyDefaultVerifier } from '../../lib/ios/appleVerify.js';
 import { makeStripPending, sweepIos } from '../../lib/ios/sweep.js';
+import { findShopForSite } from '../../lib/siteSubpages.js';
 
 export const config = { maxDuration: 300 };
 
@@ -21,7 +22,14 @@ export default async function handler(req: any, res: any) {
       repo: supabasePurchases(),
       publish: (slug, opts) => publishSite(slug, opts),
       deployOffline: async (slug) => {
-        await deployRenderedSite({ siteId: slug, html: offlineHtml() });
+        // A site with a shop keeps its manage/order pages (lib/siteSubpages.ts manage-only), so
+        // customers' links in emails already sent still work. A failed lookup never blocks the
+        // takedown: it then ships no rewrites.
+        const shop = await findShopForSite(slug).catch((e) => {
+          console.warn(`[Sweeper:iOS] ${slug}: shop lookup failed, offline page without manage links:`, e?.message || e);
+          return null;
+        });
+        await deployRenderedSite({ siteId: slug, html: offlineHtml(), subpages: shop ? { mode: 'manage-only' } : null });
       },
       // App Review's sandbox site must never vanish; flipped on for our own device tests.
       takedownSandbox: process.env.IOS_TAKEDOWN_SANDBOX === '1',

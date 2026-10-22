@@ -43,11 +43,16 @@ function configuredBase(): string | null {
   return raw.trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '').toLowerCase() || null;
 }
 
-/** An AI Barber booking page link (a Booksy or Square link is not one). */
+// The site's own booking page (lib/render/subpages.ts): the relative `/book`, proxied to
+// aibarber.org by the site's rewrites (lib/siteSubpages.ts). Kept in step with isSiteBookLink;
+// no import so this module stays dependency-free.
+const SITE_BOOKING = /^\/book(?=[?#]|$)/;
+
+/** An AI Barber booking page link, old (aibarber.org/book/…) or new (/book). A Booksy or Square link is not one. */
 export function isAiBarberBookingLink(url: unknown): boolean {
   if (typeof url !== 'string') return false;
   const u = url.trim();
-  if (AI_BARBER_BOOKING.test(u)) return true;
+  if (AI_BARBER_BOOKING.test(u) || SITE_BOOKING.test(u)) return true;
   const base = configuredBase();
   if (!base) return false;
   const rest = u.replace(/^https?:\/\//i, '').toLowerCase();

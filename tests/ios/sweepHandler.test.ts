@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const { unpublishedBound, restoreCandidates, takedownCandidates, markTakenDown, clearTakenDown, publishSite, writePendingSite, readPendingSite, deployRenderedSite, appleVerify } = vi.hoisted(() => ({
+const { unpublishedBound, restoreCandidates, takedownCandidates, markTakenDown, clearTakenDown, publishSite, writePendingSite, readPendingSite, deployRenderedSite, appleVerify, findShopForSite } = vi.hoisted(() => ({
   unpublishedBound: vi.fn(),
   restoreCandidates: vi.fn(),
   takedownCandidates: vi.fn(),
@@ -11,9 +11,11 @@ const { unpublishedBound, restoreCandidates, takedownCandidates, markTakenDown, 
   readPendingSite: vi.fn(async (_s: string): Promise<any> => null),
   deployRenderedSite: vi.fn(async (_i: { siteId: string; html: string }) => ({ deploymentUrl: 'https://x.vercel.app', uploadedImages: {} })),
   appleVerify: vi.fn(),
+  findShopForSite: vi.fn(async (_s: string): Promise<any> => null),
 }));
 vi.mock('../../lib/publishSite.js', () => ({ publishSite, writePendingSite, readPendingSite }));
 vi.mock('../../lib/deploySite.js', () => ({ deployRenderedSite }));
+vi.mock('../../lib/siteSubpages.js', async (orig) => ({ ...(await orig<object>()), findShopForSite }));
 vi.mock('../../lib/ios/appleVerify.js', async (orig) => ({ ...(await orig<object>()), lazyDefaultVerifier: () => appleVerify }));
 vi.mock('../../lib/ios/purchases.js', () => ({
   supabasePurchases: () => ({
@@ -59,6 +61,29 @@ describe('api/ios/sweep', () => {
     await handler(cron, res);
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith({ ok: true, checked: 1, published: ['a'], failed: [], missing: [], deferred: [], ...empty });
+  });
+
+  it('takedown of a site with a shop keeps only the manage/order rewrites (customers\' links in emails still work)', async () => {
+    unpublishedBound.mockResolvedValue([]);
+    takedownCandidates.mockResolvedValue([{ original_transaction_id: 'o9', site_slug: 'fade-studio-x7k2', revoked_at: '2026-10-01T00:00:00Z' }]);
+    appleVerify.mockImplementation(appleSays(2));
+    findShopForSite.mockResolvedValueOnce({ id: 'shop-1', slug: 'fade' });
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    await handler(cron, mkRes());
+    expect(findShopForSite).toHaveBeenCalledWith('fade-studio-x7k2');
+    expect((deployRenderedSite.mock.calls[0][0] as any).subpages).toEqual({ mode: 'manage-only' });
+  });
+
+  it('takedown still happens when the shop lookup fails (no rewrites then)', async () => {
+    unpublishedBound.mockResolvedValue([]);
+    takedownCandidates.mockResolvedValue([{ original_transaction_id: 'o9', site_slug: 'fade-studio-x7k2', revoked_at: '2026-10-01T00:00:00Z' }]);
+    appleVerify.mockImplementation(appleSays(2));
+    findShopForSite.mockRejectedValueOnce(new Error('db down'));
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await handler(cron, mkRes());
+    expect(deployRenderedSite).toHaveBeenCalledTimes(1);
+    expect((deployRenderedSite.mock.calls[0][0] as any).subpages).toBeNull();
   });
 
   it('takedown deploys the offline page to the slug and never publishes or writes the pending file', async () => {
