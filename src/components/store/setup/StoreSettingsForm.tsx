@@ -11,6 +11,7 @@ import {
   loadStoreSettings, shopUrl, updateStoreSettings, type StoreSettings,
 } from '@/lib/store/data';
 import { canOpenShop, formFromSettings, validateSettings, type SettingsForm } from '@/lib/store/settings';
+import { useUpdateSitePrompt } from '@/lib/setupPrompt';
 import type { WebsiteData } from '@/web/types';
 
 /** `shopUrl` joins WebsiteData when the controller runs sync-web.sh; until then this carries it. */
@@ -26,6 +27,7 @@ export function StoreSettingsForm({ shop, onChanged }: { shop: Shop; onChanged?(
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const sitePrompt = useUpdateSitePrompt('store');
 
   useEffect(() => {
     let alive = true;
@@ -111,7 +113,9 @@ export function StoreSettingsForm({ shop, onChanged }: { shop: Shop; onChanged?(
         );
         return;
       }
-      if (open) Alert.alert('Your shop is open', 'Publish to add a Shop link to your website.');
+      // A live site: offer to add / remove the Shop button now. Not published yet: the next Publish adds it.
+      const asked = await sitePrompt.offer().catch(() => 'no-change' as const);
+      if (asked === 'unpublished' && open) Alert.alert('Your shop is open', 'Publish to add a Shop link to your website.');
     });
 
   return (

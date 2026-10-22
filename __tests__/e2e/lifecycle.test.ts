@@ -368,3 +368,48 @@ describe('the own Book link after a restore', () => {
     expect(lastSent().bookingUrl).toBeFalsy();
   });
 });
+
+describe('what the live site shows (liveLinks) drives the setup prompt', () => {
+  const nextLinks = async (world: World) => {
+    const rec = (await world.site())!;
+    const ctx = await world.m.linkContext.loadLinkContext();
+    return world.m.bookingChoice.linksOf(world.m.bookingChoice.linksToSend(rec.data, rec.inputs, ctx));
+  };
+  const prompt = async (world: World) => {
+    const rec = (await world.site())!;
+    const { setupPrompt } = require('@/lib/setupPrompt');
+    return setupPrompt({ published: !!rec.deployedUrl, ents: world.m.entitlements.getEntitlements(), live: rec.liveLinks ?? null, next: await nextLinks(world) });
+  };
+
+  it('publish, admin adoption and restore record the live links; the prompt shows after setup and is gone once updated', async () => {
+    w = await boot(server, { user: 'u1' });
+    await w.m.siteStore.saveSite(draft());
+    w.willBuy(P.bookingsMonthly);
+    await publish(w);
+    await w.superwallSync();
+    expect((await w.site())?.liveLinks).toEqual({ bookingUrl: BOOKSY, shopUrl: null });
+    // Bookings setup: shop on, AI Barber chosen.
+    server.sb.rows.push({ id: 'shop-1', owner_id: 'u1', slug: 'fade-lab', bookings_enabled: true, store_enabled: false, ios_otid: 'tx-1' });
+    await w.m.siteSync.updateSiteRecord((r) => w.m.bookingChoice.withChoice(r, 'aibarber', { slug: 'fade-lab' }));
+    expect(await prompt(w)).toEqual({ title: 'Add the Book button to your website?' });
+    // Update my site = the normal publish.
+    await publish(w);
+    expect((await w.site())?.liveLinks).toEqual({ bookingUrl: AI_BOOK, shopUrl: null });
+    expect(await prompt(w)).toBeNull();
+    // Bookings switched off: the AI button would go, the own link comes back.
+    server.shopRow().bookings_enabled = false;
+    expect((await prompt(w))?.title).toBe('Point your Book button back to your own booking link?');
+    // An admin copy is what is live now.
+    w.m.adminSync.resetSyncState();
+    server.adminEdit((d) => ({ ...d, bookingUrl: BOOKSY }));
+    await w.m.adminSync.syncQuietly();
+    expect((await w.site())?.liveLinks).toEqual({ bookingUrl: BOOKSY, shopUrl: null });
+    // A restore on a new phone knows what is live too.
+    w.unmount();
+    jest.resetModules();
+    wipeDisk();
+    w = await boot(server, { user: 'u1' });
+    await w.restore();
+    expect((await w.site())?.liveLinks).toEqual({ bookingUrl: BOOKSY, shopUrl: null });
+  });
+});

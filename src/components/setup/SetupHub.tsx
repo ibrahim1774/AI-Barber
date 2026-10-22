@@ -5,6 +5,7 @@ import { Card, Note, Row, TextAction, ToggleRow } from '@/components/setup/ui';
 import { BookButtonPicker } from '@/components/setup/BookButtonPicker';
 import { bookingPrefs, withChoice, type BookingChoice } from '@/lib/bookingChoice';
 import { updateSiteRecord } from '@/lib/setup/siteSync';
+import { useUpdateSitePrompt } from '@/lib/setupPrompt';
 import { bookingUrl, icsUrl, listMembers, updateShopSettings, type Member, type Shop } from '@/lib/shop';
 import type { SiteRecord } from '@/lib/siteStore';
 
@@ -24,6 +25,7 @@ export function SetupHub({
 }) {
   const [members, setMembers] = useState<Member[]>([]);
   const [busy, setBusy] = useState(false);
+  const sitePrompt = useUpdateSitePrompt('bookings');
   useEffect(() => { listMembers(shop.id).then(setMembers).catch(() => {}); }, [shop.id]);
 
   const { own, choice } = bookingPrefs(site);
@@ -33,6 +35,8 @@ export function SetupHub({
     try {
       await updateShopSettings(shop.id, { bookingsEnabled: on });
       onShopChanged();
+      // Bookings on or off changes the live site's Book button: offer to update it now.
+      void sitePrompt.offer().catch(() => {});
     } catch (e) {
       Alert.alert("Couldn't save", e instanceof Error ? e.message : 'Try again.');
     } finally {
@@ -42,8 +46,10 @@ export function SetupHub({
 
   const setChoice = async (c: BookingChoice) => {
     const saved = await updateSiteRecord((r) => withChoice(r, c, shop)).catch(() => null);
-    if (saved) onSiteChanged(saved);
-    else Alert.alert("Couldn't save", 'Try again.');
+    if (saved) {
+      onSiteChanged(saved);
+      void sitePrompt.offer().catch(() => {});
+    } else Alert.alert("Couldn't save", 'Try again.');
   };
 
   const copyCalendar = async (m: Member) => {

@@ -14,6 +14,7 @@ import { pickAndUploadPhoto } from '@/lib/photos';
 import { shareMessage } from '@/lib/share';
 import { BookButtonPicker } from '@/components/setup/BookButtonPicker';
 import { bookingPrefs, withChoice } from '@/lib/bookingChoice';
+import { useUpdateSitePrompt } from '@/lib/setupPrompt';
 import { withMirroredServices } from '@/lib/setup/servicesMap';
 import { updateSiteData, updateSiteRecord } from '@/lib/setup/siteSync';
 import {
@@ -44,6 +45,7 @@ export function Wizard({ shop, site, onShopChanged, onFinish }: Props) {
   const [addBarbers, setAddBarbers] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [finishing, setFinishing] = useState(false);
+  const sitePrompt = useUpdateSitePrompt('bookings');
   const hoursSave = useRef<(() => Promise<boolean>) | null>(null);
   const step = currentStep(state);
 
@@ -66,7 +68,9 @@ export function Wizard({ shop, site, onShopChanged, onFinish }: Props) {
       await markWizardDone(shop.id);
       void registerPushForShop();
       track('bookings_setup_done', { skipped: state.skipped.length, switched_book_button: state.switchBookButton });
-      if (saved && bookingPrefs(saved).choice === 'aibarber') Alert.alert(WIZARD_PUBLISH_TITLE, WIZARD_PUBLISH_BODY);
+      // A live site: offer to add the Book button now. Not published yet: the next Publish adds it.
+      const asked = await sitePrompt.offer().catch(() => 'no-change' as const);
+      if (asked === 'unpublished' && saved && bookingPrefs(saved).choice === 'aibarber') Alert.alert(WIZARD_PUBLISH_TITLE, WIZARD_PUBLISH_BODY);
       onFinish();
     } catch (e) {
       Alert.alert("Couldn't finish setup", e instanceof Error ? e.message : 'Try again.');
