@@ -40,7 +40,6 @@ export const ServiceChecklist: React.FC<Props> = ({ value, onChange, centered, c
             {on && (
               <input
                 type="text"
-                inputMode="decimal"
                 aria-label={`${t} price (optional)`}
                 placeholder="Price (optional)"
                 value={value[t]?.price || ''}

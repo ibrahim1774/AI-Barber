@@ -164,7 +164,8 @@ describe('reviews — source labels, no "verified", no invented stars', () => {
     expect(reviewsSourceLabel(withReviews({ reviewsSource: 'theCut' }))).toBe('Reviews from theCut');
     // legacy booksy site: platform inferred from the booking link
     expect(reviewsSourceLabel(withReviews({ bookingUrl: 'https://booksy.com/en-us/1_x' }))).toBe('Reviews from Booksy');
-    expect(reviewsSourceLabel(withReviews())).toBe('Reviews');
+    // unknown source, nothing filtered → no source line (review finding 6)
+    expect(reviewsSourceLabel(withReviews())).toBe('');
   });
 
   for (const name of ['luxe', 'prime'] as const) {
@@ -221,8 +222,9 @@ describe('prime — policy, walk-ins, stock-photo line', () => {
   it('says "no stock photos" only when the gallery has photos and none is stock', () => {
     const line = /no stock photos/i;
     expect(generatePrimeHTMLWithPlaceholders(bare())).not.toMatch(line);
-    expect(generatePrimeHTMLWithPlaceholders(bare({ gallery: [STOCK_IMAGE_URLS[0], 'https://example.com/mine.jpg'] }))).not.toMatch(line);
-    expect(generatePrimeHTMLWithPlaceholders(bare({ gallery: ['https://example.com/mine.jpg'] }))).toMatch(line);
+    expect(generatePrimeHTMLWithPlaceholders(bare({ gallery: [STOCK_IMAGE_URLS[0], 'https://example.com/mine.jpg'], importedFrom: 'booking' }))).not.toMatch(line);
+    // booking-page photos only (review finding 8; see honestRound1.test.ts)
+    expect(generatePrimeHTMLWithPlaceholders(bare({ gallery: ['https://example.com/mine.jpg'], importedFrom: 'booking' }))).toMatch(line);
   });
 
   it('never shows "0 Reviews" when the source gave a rating but no count', () => {

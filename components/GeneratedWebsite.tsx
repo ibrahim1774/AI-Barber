@@ -15,8 +15,11 @@ import { useResetOnReturnFromStripe } from '../hooks/useResetOnReturnFromStripe'
 import PrePaymentBanner from './PrePaymentBanner.tsx';
 import { AIB_THEME_CSS, AibTheme, cityStateOnly, resolveAibTheme, to12h } from '../lib/render/luxe';
 import {
-  aggregateToShow, copyrightYear, hasServices, nicheOf, photoAlt, reviewStars, reviewsSourceLabel, visibleFeatureCards,
+  aggregateToShow, copyrightYear, nicheCopy, nicheOf, photoAlt, reviewStars, reviewsSourceLabel, serviceMeta,
+  visibleFeatureCards, withoutLegacyCopy,
 } from '../lib/render/honest';
+import { AddServiceRow } from './AddServiceRow';
+import type { ServiceItem } from '../types';
 
 interface GeneratedWebsiteProps {
   data: WebsiteData;
@@ -143,6 +146,16 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
   // writes it and triggers a save post-payment — mirrors the hours
   // editing pattern below.
   const lbl = (key: string, fallback: string) => (siteData.labels && siteData.labels[key]) || fallback;
+  // What the deployed page shows: older sites' invented copy (default
+  // service menu, "Premium…" tagline, templated about text) removed. Edits
+  // are made against this view, so saving replaces the invented copy.
+  const view = withoutLegacyCopy(siteData);
+  // Service edits (immutable; based on the view so a legacy menu is replaced).
+  const optionalText = (val: string, placeholder: string) => (val.trim() === placeholder ? '' : val.trim());
+  const updateService = (i: number, patch: Partial<ServiceItem>) =>
+    handleTextChange('services', view.services.map((s, k) => (k === i ? { ...s, ...patch } : s)) as any);
+  const removeService = (i: number) => handleTextChange('services', view.services.filter((_, k) => k !== i) as any);
+  const addService = (svc: ServiceItem) => handleTextChange('services', [...view.services, svc] as any);
   const setLabel = (key: string, value: string) => {
     setSiteData(prev => ({ ...prev, labels: { ...(prev.labels || {}), [key]: value } }));
     if (isPostPayment) triggerSave();
@@ -679,7 +692,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
 
         <div className="relative z-10 text-center px-4 md:px-6 max-w-5xl pb-28 md:pb-32 pt-20 md:pt-0">
           <p className="text-[#f4a100] font-montserrat font-bold text-[8px] md:text-sm tracking-[3px] md:tracking-[5px] uppercase mb-3 md:mb-6 opacity-90">
-            <EditableText text={siteData.hero.tagline} onSave={(val) => handleTextChange('hero.tagline', val)} />
+            <EditableText text={view.hero.tagline} onSave={(val) => handleTextChange('hero.tagline', val)} />
           </p>
 
           <h1 className="text-3xl md:text-6xl lg:text-7xl font-montserrat font-black text-white leading-tight uppercase tracking-[1px] md:tracking-[4px] mb-8 md:mb-12">
@@ -761,16 +774,16 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
               <EditableText className="text-[#f4a100] text-[10px] md:text-xs font-bold tracking-[3px] md:tracking-[4px] uppercase font-montserrat" tagName="span" text={lbl('aboutEyebrow', 'About Us')} onSave={(v) => setLabel('aboutEyebrow', v)} />
             </div>
             <h2 className="text-2xl md:text-5xl font-montserrat font-black text-white mb-6 md:mb-8 leading-tight uppercase tracking-[2px]">
-              <EditableText text={siteData.about.heading} onSave={(val) => handleTextChange('about.heading', val)} />
+              <EditableText text={view.about.heading} onSave={(val) => handleTextChange('about.heading', val)} />
             </h2>
             <div className="space-y-4 md:space-y-6 text-[#cccccc] font-light leading-relaxed text-sm md:text-base">
-              {siteData.about.description.map((p, i) => (
+              {view.about.description.map((p, i) => (
                 <div key={i}>
                   <EditableText
                     text={p}
                     tagName="p"
                     onSave={(val) => {
-                      const newDesc = [...siteData.about.description];
+                      const newDesc = [...view.about.description];
                       newDesc[i] = val;
                       handleTextChange('about.description', newDesc as any);
                     }}
@@ -824,73 +837,60 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           one row, duration/subtitle below, then description. Price is
           editable separately when present (only set by scraped Booksy
           imports). Empty fields just don't render in deployed HTML. */}
-      {/* Hidden when the barber has no services (none ticked / none on
-          the booking page), matching the deployed page. */}
-      {hasServices(siteData) && (
+      {/* Services. Editor: always shown so the barber can add, edit and
+          remove services (title, optional price, optional description).
+          The deployed page hides the section when the list is empty and
+          skips empty price / description rows; the muted "Add price" /
+          "Add description" slots are editor-only. */}
       <section id="our-services" className="py-12 md:py-32 bg-[#0d0d0d] px-6">
         <div className="container mx-auto max-w-7xl">
           <div className="text-center mb-10 md:mb-16">
             <EditableText className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat" tagName="h3" text={lbl('servicesEyebrow', 'Services')} onSave={(v) => setLabel('servicesEyebrow', v)} />
             <EditableText className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]" tagName="h2" text={lbl('servicesHeading', 'What We Offer')} onSave={(v) => setLabel('servicesHeading', v)} />
+            {view.services.length === 0 && (
+              <p className="text-white/50 text-xs mt-4">No services yet. Add the ones you offer — this section stays hidden on your site until you do.</p>
+            )}
           </div>
+          {view.services.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-            {siteData.services.map((service, i) => (
-              <div key={i} className="group border-2 border-[#f4a100] p-6 md:p-10 flex flex-col hover:bg-[#1a1a1a] transition-all duration-500">
-                <div className="flex items-start justify-between gap-3 mb-3 md:mb-4">
+            {view.services.map((service, i) => (
+              <div key={i} className="group relative border-2 border-[#f4a100] p-6 md:p-10 flex flex-col hover:bg-[#1a1a1a] transition-all duration-500">
+                <button
+                  type="button"
+                  onClick={() => removeService(i)}
+                  aria-label={`Remove ${service.title}`}
+                  className="absolute top-2 right-2 text-[9px] font-bold uppercase tracking-[0.16em] text-white/50 hover:text-red-400 px-2 py-1 border border-white/15"
+                >
+                  Remove
+                </button>
+                <div className="flex items-start justify-between gap-3 mb-3 md:mb-4 pr-14">
                   <h3 className="font-montserrat font-black text-white text-base md:text-lg tracking-[1px] uppercase leading-tight flex-1">
-                    <EditableText
-                      text={service.title}
-                      onSave={(val) => {
-                        const newServices = [...siteData.services];
-                        newServices[i].title = val;
-                        handleTextChange('services', newServices as any);
-                      }}
-                    />
+                    <EditableText text={service.title} onSave={(val) => updateService(i, { title: val.trim() || service.title })} />
                   </h3>
-                  {(service.price || '') && (
-                    <span className="font-montserrat font-black text-[#f4a100] text-base md:text-lg whitespace-nowrap">
-                      <EditableText
-                        text={service.price || ''}
-                        onSave={(val) => {
-                          const newServices = [...siteData.services];
-                          newServices[i].price = val;
-                          handleTextChange('services', newServices as any);
-                        }}
-                      />
-                    </span>
-                  )}
+                  <span className={`font-montserrat font-black text-base md:text-lg whitespace-nowrap ${service.price ? 'text-[#f4a100]' : 'text-white/30 text-xs'}`}>
+                    <EditableText text={service.price || 'Add price'} onSave={(val) => updateService(i, { price: optionalText(val, 'Add price') })} />
+                  </span>
                 </div>
-                {(service.duration || service.subtitle) && (
+                {serviceMeta(service) && (
                   <p className="text-[#f4a100] text-[10px] md:text-[11px] font-bold tracking-[2px] mb-3 uppercase">
                     <EditableText
-                      text={service.duration || service.subtitle}
-                      onSave={(val) => {
-                        const newServices = [...siteData.services];
-                        if (service.duration) newServices[i].duration = val;
-                        else newServices[i].subtitle = val;
-                        handleTextChange('services', newServices as any);
-                      }}
+                      text={serviceMeta(service)}
+                      onSave={(val) => updateService(i, service.duration ? { duration: val } : { subtitle: val })}
                     />
                   </p>
                 )}
-                {service.description && (
-                <p className="text-[#999999] text-xs md:text-sm leading-relaxed">
-                  <EditableText
-                    text={service.description}
-                    onSave={(val) => {
-                      const newServices = [...siteData.services];
-                      newServices[i].description = val;
-                      handleTextChange('services', newServices as any);
-                    }}
-                  />
+                <p className={`text-xs md:text-sm leading-relaxed ${service.description ? 'text-[#999999]' : 'text-white/30'}`}>
+                  <EditableText text={service.description || 'Add description'} onSave={(val) => updateService(i, { description: optionalText(val, 'Add description') })} />
                 </p>
-                )}
               </div>
             ))}
           </div>
+          )}
+          <div className="mt-6 max-w-md mx-auto">
+            <AddServiceRow onAdd={addService} />
+          </div>
         </div>
       </section>
-      )}
 
       {/* Reviews Section — shows aggregate rating header when set
           (Booksy JSON-LD ships it), then up to 12 review cards. Older
@@ -916,7 +916,9 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
             <div className="text-center mb-10 md:mb-14">
               <EditableText className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat" tagName="h3" text={lbl('reviewsEyebrow', 'Reviews')} onSave={(v) => setLabel('reviewsEyebrow', v)} />
               <EditableText className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]" tagName="h2" text={lbl('reviewsHeading', 'What Our Clients Say')} onSave={(v) => setLabel('reviewsHeading', v)} />
-              <p className="text-white/50 text-[10px] md:text-xs uppercase tracking-[2px] font-bold mt-4">{reviewsSourceLabel(siteData)}</p>
+              {reviewsSourceLabel(siteData) && (
+                <p className="text-white/50 text-[10px] md:text-xs uppercase tracking-[2px] font-bold mt-4">{reviewsSourceLabel(siteData)}</p>
+              )}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
               {siteData.reviews.slice(0, 12).map((r, i) => (
@@ -952,7 +954,7 @@ export const GeneratedWebsite: React.FC<GeneratedWebsiteProps> = ({ data, onBack
           <div className="container mx-auto max-w-6xl">
             <div className="text-center mb-10 md:mb-16">
               <EditableText className="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat" tagName="h3" text={lbl('teamEyebrow', 'The Team')} onSave={(v) => setLabel('teamEyebrow', v)} />
-              <EditableText className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]" tagName="h2" text={lbl('teamHeading', 'Meet Our Barbers')} onSave={(v) => setLabel('teamHeading', v)} />
+              <EditableText className="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]" tagName="h2" text={lbl('teamHeading', nicheCopy(siteData).teamHeading)} onSave={(v) => setLabel('teamHeading', v)} />
             </div>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
               {siteData.staff.map((s, i) => (

@@ -9,7 +9,9 @@ import { useResetOnReturnFromStripe } from '../hooks/useResetOnReturnFromStripe'
 import PrePaymentBanner from './PrePaymentBanner.tsx';
 import { isCustomDesignAnyPath } from '../lib/dealMode.ts';
 import { EUPHORIA_FONT_LINK_ID, EUPHORIA_SCOPED_CSS, EUPHORIA_STYLE_ID, cityStateOnly, resolveEuphoriaTheme } from '../lib/render/euphoria';
-import { contactEmail, copyrightYear, hasServices, photoAlt } from '../lib/render/honest';
+import { contactEmail, copyrightYear, displayPrice, hasServices, photoAlt, serviceMeta, withoutLegacyCopy } from '../lib/render/honest';
+import { AddServiceRow } from './AddServiceRow';
+import type { ServiceItem } from '../types';
 
 interface EuphoriaWebsiteProps {
   data: WebsiteData;
@@ -345,6 +347,14 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
   };
 
   const formattedPhone = siteData.phone.replace(/\s+/g, '');
+  // What the deployed page shows: older sites' invented copy removed
+  // (withoutLegacyCopy). Edits are made against this view.
+  const view = withoutLegacyCopy(siteData);
+  const optionalText = (val: string, placeholder: string) => (val.trim() === placeholder ? '' : val.trim());
+  const updateService = (i: number, p: Partial<ServiceItem>) =>
+    handleTextChange('services', view.services.map((s, k) => (k === i ? { ...s, ...p } : s)) as any);
+  const removeService = (i: number) => handleTextChange('services', view.services.filter((_, k) => k !== i) as any);
+  const addService = (svc: ServiceItem) => handleTextChange('services', [...view.services, svc] as any);
   const mapQuery = encodeURIComponent(`${siteData.shopName} ${siteData.area}`);
 
   const handlePublish = () => { setShowPublishOverlay(true); setIsPublishing(true); };
@@ -450,7 +460,7 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
             <Editable text={siteData.hero.heading} onSave={v => handleTextChange('hero.heading', v)} />
           </h1>
           <p className="eu-serif" style={{ fontSize: 'clamp(16px,2.2vw,22px)', fontStyle: 'italic', color: 'var(--eu-ink-soft)', maxWidth: 640, margin: '0 auto 40px' }}>
-            <Editable text={siteData.hero.tagline} onSave={v => handleTextChange('hero.tagline', v)} />
+            <Editable text={view.hero.tagline} onSave={v => handleTextChange('hero.tagline', v)} />
           </p>
           <div style={{ display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
             <a href={`tel:${formattedPhone}`} className="eu-cta eu-cta-solid">
@@ -467,7 +477,7 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
                 Book Appointment
               </a>
             )}
-            {hasServices(siteData) && <a href="#services" className="eu-cta">View services</a>}
+            {hasServices(view) && <a href="#services" className="eu-cta">View services</a>}
           </div>
         </div>
       </section>
@@ -478,14 +488,14 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
           <div>
             <div className="eu-eyebrow" style={{ marginBottom: 16 }}>About</div>
             <h2 className="eu-display" style={{ fontSize: 'clamp(32px,5vw,56px)', margin: '0 0 32px' }}>
-              <Editable text={siteData.about.heading} onSave={v => handleTextChange('about.heading', v)} />
+              <Editable text={view.about.heading} onSave={v => handleTextChange('about.heading', v)} />
             </h2>
-            {siteData.about.description.map((p, i) => (
+            {view.about.description.map((p, i) => (
               <p key={i} className="eu-serif" style={{ fontSize: 18, lineHeight: 1.6, color: 'var(--eu-ink-soft)', margin: '0 0 20px' }}>
                 <Editable
                   text={p}
                   onSave={v => {
-                    const next = [...siteData.about.description];
+                    const next = [...view.about.description];
                     next[i] = v;
                     handleTextChange('about.description', next);
                   }}
@@ -504,64 +514,53 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
         </div>
       </section>
 
-      {/* Services — hidden when none, like the deployed page. Price shows
-          beside the title; empty subtitle / description rows are skipped. */}
-      {hasServices(siteData) && (
+      {/* Services. Editor: always shown so the barber can add, edit and
+          remove services. The deployed page hides the section when empty
+          and skips empty price / description rows; the muted "Add price" /
+          "Add description" slots are editor-only. */}
       <section id="services" className="eu-section" style={{ background: 'var(--eu-bg-2)' }}>
         <div className="eu-container">
           <div style={{ marginBottom: 48, textAlign: 'center' }}>
             <div className="eu-eyebrow">Services</div>
             <h2 className="eu-display" style={{ fontSize: 'clamp(32px,5vw,56px)', marginTop: 16 }}>What we offer.</h2>
+            {view.services.length === 0 && (
+              <p style={{ color: 'var(--eu-ink-soft)', fontSize: 14, marginTop: 12 }}>No services yet. Add the ones you offer — this section stays hidden on your site until you do.</p>
+            )}
           </div>
+          {view.services.length > 0 && (
           <div className="eu-services-list">
-            {siteData.services.map((s, i) => (
+            {view.services.map((s, i) => (
               <div key={i} className="eu-service-row">
                 <div className="eu-service-num">{String(i + 1).padStart(2, '0')}</div>
                 <div>
                   <h3 style={{ fontSize: 24, margin: '0 0 8px', fontWeight: 500 }}>
-                    <Editable text={s.title} onSave={v => {
-                      const next = [...siteData.services];
-                      next[i] = { ...next[i], title: v };
-                      handleTextChange('services', next as any);
-                    }} />
-                    {s.price && (
-                      <>
-                        {' '}
-                        <span style={{ color: 'var(--eu-brand)', fontStyle: 'italic', whiteSpace: 'nowrap' }}>
-                          <Editable text={s.price} onSave={v => {
-                            const next = [...siteData.services];
-                            next[i] = { ...next[i], price: v };
-                            handleTextChange('services', next as any);
-                          }} />
-                        </span>
-                      </>
-                    )}
+                    <Editable text={s.title} onSave={v => updateService(i, { title: v.trim() || s.title })} />
+                    {' '}
+                    <span style={{ color: s.price ? 'var(--eu-brand)' : 'var(--eu-ink-muted)', fontStyle: 'italic', whiteSpace: 'nowrap', fontSize: s.price ? undefined : 13 }}>
+                      <Editable text={s.price ? displayPrice(s.price) : 'Add price'} onSave={v => updateService(i, { price: optionalText(v, 'Add price') })} />
+                    </span>
                   </h3>
-                  {(s.duration || s.subtitle) && (
+                  {serviceMeta(s) && (
                     <div className="eu-eyebrow" style={{ marginBottom: 12, fontSize: 10 }}>
-                      <Editable text={s.duration || s.subtitle} onSave={v => {
-                        const next = [...siteData.services];
-                        next[i] = next[i].duration ? { ...next[i], duration: v } : { ...next[i], subtitle: v };
-                        handleTextChange('services', next as any);
-                      }} />
+                      <Editable text={serviceMeta(s)} onSave={v => updateService(i, s.duration ? { duration: v } : { subtitle: v })} />
                     </div>
                   )}
-                  {s.description && (
-                    <p style={{ color: 'var(--eu-ink-soft)', fontSize: 15, lineHeight: 1.6, margin: 0, maxWidth: 640 }}>
-                      <Editable text={s.description} onSave={v => {
-                        const next = [...siteData.services];
-                        next[i] = { ...next[i], description: v };
-                        handleTextChange('services', next as any);
-                      }} />
-                    </p>
-                  )}
+                  <p style={{ color: s.description ? 'var(--eu-ink-soft)' : 'var(--eu-ink-muted)', fontSize: 15, lineHeight: 1.6, margin: 0, maxWidth: 640 }}>
+                    <Editable text={s.description || 'Add description'} onSave={v => updateService(i, { description: optionalText(v, 'Add description') })} />
+                  </p>
+                  <button type="button" onClick={() => removeService(i)} aria-label={`Remove ${s.title}`} style={{ marginTop: 10, background: 'transparent', border: '1px solid var(--eu-line)', color: 'var(--eu-ink-muted)', padding: '4px 8px', fontSize: 9, letterSpacing: '0.16em', textTransform: 'uppercase', cursor: 'pointer' }}>
+                    Remove
+                  </button>
                 </div>
               </div>
             ))}
           </div>
+          )}
+          <div style={{ maxWidth: 480, margin: '24px auto 0' }}>
+            <AddServiceRow onAdd={addService} accent="var(--eu-brand)" />
+          </div>
         </div>
       </section>
-      )}
 
       {/* Gallery */}
       <section className="eu-section" style={{ paddingTop: 64, paddingBottom: 96 }}>

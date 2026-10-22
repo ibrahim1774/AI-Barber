@@ -148,11 +148,14 @@ function labelFromBookingUrl(url?: string): string | undefined {
   }
 }
 
-// "Reviews from Google" / "Selected reviews from Google" / "Reviews".
+// "Reviews from Google" / "Selected reviews from Google" / "Selected
+// reviews". Empty when the source is unknown and nothing was filtered:
+// templates then print no source line at all (no lone "Reviews").
 export function reviewsSourceLabel(site: Pick<WebsiteData, 'reviewsSource' | 'reviewsSelected' | 'bookingUrl'>): string {
   const source = (site.reviewsSource || '').trim() || labelFromBookingUrl(site.bookingUrl);
   const lead = site.reviewsSelected ? 'Selected reviews' : 'Reviews';
-  return source ? `${lead} from ${source}` : lead;
+  if (source) return `${lead} from ${source}`;
+  return site.reviewsSelected ? lead : '';
 }
 
 // A review's star count, 1-5, or null when the source didn't give one.
@@ -172,6 +175,16 @@ export function aggregateToShow(site: Pick<WebsiteData, 'aggregateRating'>): { r
 }
 
 // ── Photos ───────────────────────────────────────────────────────────
+// Photos pulled from the shop's own booking page (Booksy, theCut …). Not
+// Google: listing photos include customer uploads, exteriors and Street
+// View, so "real cuts from inside the shop" can't be claimed for them.
+// Older sites without `importedFrom` count only if their booking link is
+// a known booking platform.
+export function photosAreFromBookingPage(site: Pick<WebsiteData, 'importedFrom' | 'bookingUrl'>): boolean {
+  if (site.importedFrom) return site.importedFrom === 'booking';
+  return !!labelFromBookingUrl(site.bookingUrl);
+}
+
 // True only when there are photos and none is a sample: the condition for
 // Prime's "no stock photos" line.
 export function galleryIsAllOwnPhotos(urls: (string | null | undefined)[]): boolean {
@@ -181,4 +194,215 @@ export function galleryIsAllOwnPhotos(urls: (string | null | undefined)[]): bool
 
 export function hasServices(site: Pick<WebsiteData, 'services'>): boolean {
   return Array.isArray(site.services) && site.services.some((s) => (s?.title || '').trim());
+}
+
+// ── Prices ───────────────────────────────────────────────────────────
+// A bare number ("25", "25.50") is a dollar price → "$25". Anything else
+// ("$25", "25+", "£20", "from $30") is shown as typed.
+export function displayPrice(raw: string | null | undefined): string {
+  const p = (raw || '').trim();
+  return /^\d+(\.\d{1,2})?$/.test(p) ? `$${p}` : p;
+}
+
+// The small line under a service title: duration, else subtitle. Never a
+// second copy of the price (older scraped sites stored "30 min · $30" or
+// just "$30" as the subtitle).
+export function serviceMeta(s: { duration?: string; subtitle?: string; price?: string }): string {
+  let meta = (s.duration || s.subtitle || '').trim();
+  const price = (s.price || '').trim();
+  if (!meta || !price) return meta;
+  if (meta === price || meta === displayPrice(price)) return '';
+  for (const p of [price, displayPrice(price)]) {
+    const suffix = ` · ${p}`;
+    if (meta.endsWith(suffix)) meta = meta.slice(0, -suffix.length).trim();
+  }
+  return meta;
+}
+
+// ── Niche-aware body copy ────────────────────────────────────────────
+export function nicheCopy(site: Pick<WebsiteData, 'niche'>): {
+  teamHeading: string;
+  bookingEyebrow: string;
+  bookingNext: string;
+  visitEyebrow: string;
+  pullQuote: string;
+} {
+  if (nicheOf(site).key === 'barber') {
+    return {
+      teamHeading: 'Meet Our Barbers',
+      bookingEyebrow: 'Take a Chair',
+      bookingNext: 'your next cut?',
+      visitEyebrow: 'Find the chair',
+      pullQuote: "A great cut isn't a transaction — it's a craft.",
+    };
+  }
+  return {
+    teamHeading: 'Meet the Team',
+    bookingEyebrow: 'Book a Visit',
+    bookingNext: 'your next visit?',
+    visitEyebrow: 'Find us',
+    pullQuote: 'We look forward to seeing you.',
+  };
+}
+
+// ── Legacy invented copy on older stored sites ───────────────────────
+// Sites saved before 2026-10-22 carry copy we wrote on the barber's
+// behalf. Hidden on render by EXACT match only (same tradeoff as the
+// invented email): anything the barber changed is kept.
+
+// The 5-service menus every typed site (luxe / euphoria) and every old
+// Google import (GbpImportPage's default, same text as luxe) received.
+const LEGACY_SERVICE_SETS: string[][] = [
+  [
+    'Classic Haircut|A clean, considered cut tailored to how you actually wear your hair.',
+    'Beard Trim & Styling|Defined lines, blended length, and a finish that holds between visits.',
+    'Hot Towel Shave|A traditional straight-razor shave with warm towels and a clean, close finish.',
+    'Skin Fade|Precise tapering from skin upward, blended for a clean, modern shape.',
+    'Hair & Scalp Treatment|A thorough cleanse and conditioning treatment to reset the scalp.',
+  ],
+  [
+    'Classic Haircut|A clean, considered cut shaped around how you actually wear your hair.',
+    'Beard Trim & Styling|Defined edges and blended length — a finish that reads on and off the chair.',
+    'Hot Towel Shave|Warm towels and a straight razor, finished close and clean.',
+    'Skin Fade|Precise skin-up tapering blended into a clean, modern shape.',
+    'Hair & Scalp Treatment|A deep cleanse and conditioning treatment to reset the scalp between cuts.',
+  ],
+].map((set) => [...set].sort());
+
+const LEGACY_BOOK_AHEAD = 'Book ahead — same care every visit.';
+
+const LEGACY_TAGLINES = new Set([
+  'Premium grooming, considered every step.',
+  'Hand-cut, head by head.',
+  'Premium grooming services tailored to your style.',
+  'Lash and brow work done with a careful, steady hand.',
+  'Braids and locs styled with patience and care.',
+  'Nail care that lasts, in a space you can relax in.',
+  'Aesthetic treatments planned around what you actually want changed.',
+  'Facials and skin treatments matched to your skin.',
+  'Massage and bodywork in a calm, unhurried space.',
+  'Hair removal done quickly, cleanly, and comfortably.',
+  'Makeup for the day you actually have planned.',
+  'Custom tattoo work, start to finish.',
+  'Grooming your pet is comfortable with.',
+  'Training built around where you are starting from.',
+  'Dental care explained plainly, at a pace you are comfortable with.',
+  'Care that treats the cause, not just the symptom.',
+  'Reliable work at your place, when we say we will be there.',
+  'Straightforward service from someone who answers the phone.',
+  'Cut, color, and styling tailored to your hair.',
+]);
+
+const LEGACY_ABOUT_HEADINGS = new Set(['Built around the cut.', 'Craft, character, and community.']);
+
+// Old generateContent about paragraphs (shop name and area stitched in).
+const LEGACY_ABOUT_PATTERNS: RegExp[] = [
+  /^.+ is a neighborhood barbershop in .* built around honest work and consistent craft\. Every visit starts with a real conversation and ends with a cut you can wear with confidence\.$/,
+  /^.+ is a barbershop in .* built around the cut you want — sharp, considered, and made for the people we serve\. Every appointment is real conversation followed by real craft\.$/,
+];
+
+// Old niche fallbacks: "<shop> " + first, then second as its own paragraph.
+const LEGACY_FALLBACK_FIRST = [
+  'is a neighborhood barbershop built around honest work and consistent craft.',
+  'is a lash and brow studio built around detail and a comfortable appointment.',
+  'is a braiding and locs salon built around protective styles that last.',
+  'is a neighborhood nail salon built around clean work and careful detail.',
+  'is a medical aesthetics clinic built around careful assessment before any treatment.',
+  'is a skin care studio built around treatments that suit your skin, not a script.',
+  'is a massage studio built around real bodywork and a calm room.',
+  'is a waxing studio built around fast, comfortable appointments.',
+  'is a makeup studio built around looks that hold up all day and photograph well.',
+  'is a tattoo studio built around custom work and a clean, careful process.',
+  'is a pet grooming salon built around low-stress handling and a clean finish.',
+  'is a training studio built around steady progress, not quick fixes.',
+  'is a dental practice built around clear explanations and unhurried appointments.',
+  'is a wellness clinic built around getting to the root of the problem.',
+  'is a local home services company built around showing up on time and doing the job properly.',
+  'is a local business built around doing right by the people it works with.',
+  'is a neighborhood hair salon built around honest work and consistent results.',
+];
+const LEGACY_FALLBACK_SECOND = new Set([
+  'Every visit starts with a real conversation and ends with a cut you can wear with confidence.',
+  'Every set is shaped to suit your eyes, your routine, and how much upkeep you want.',
+  'Every appointment is unhurried, so your style is installed the way it should be.',
+  'Every appointment is unhurried, so your set is finished the way you want it.',
+  'Every visit starts with a consultation so the plan fits your face and your budget.',
+  'Every appointment starts with a proper look at your skin before anything else.',
+  'Every session is adjusted to how you feel that day, not a fixed routine.',
+  'Every service is done with clean technique so you are in and out without fuss.',
+  'Every appointment starts with what you are getting ready for.',
+  'Every piece starts with a consult so the design is right before the needle.',
+  'Every groom goes at your pet’s pace, however long that takes.',
+  'Every session is planned around your goals and how your week actually looks.',
+  'Every visit starts by listening, so you know what is happening and why.',
+  'Every plan is built around your history and how your body actually responds.',
+  'Every job is quoted clearly up front, so there are no surprises at the end.',
+  'Every job starts with a proper conversation about what you actually need.',
+  'Every appointment starts with a real conversation about your hair before anything is cut.',
+]);
+
+const isLegacyAboutParagraph = (p: string): boolean => {
+  const t = (p || '').trim();
+  if (LEGACY_FALLBACK_SECOND.has(t)) return true;
+  if (LEGACY_ABOUT_PATTERNS.some((re) => re.test(t))) return true;
+  return LEGACY_FALLBACK_FIRST.some((f) => t.endsWith(` ${f}`));
+};
+
+const isLegacyServiceSet = (services: WebsiteData['services']): boolean => {
+  if (!Array.isArray(services) || services.length !== 5) return false;
+  const pairs = services.map((s) => `${(s?.title || '').trim()}|${(s?.description || '').trim()}`).sort();
+  return LEGACY_SERVICE_SETS.some((set) => set.every((v, i) => v === pairs[i]));
+};
+
+// The filler descriptions old booking-link imports wrote.
+const legacyFiller = (s: { description?: string; price?: string }): boolean => {
+  const d = (s.description || '').trim();
+  if (d === LEGACY_BOOK_AHEAD) return true;
+  const m = d.match(/^Starting at (.+)\.$/);
+  return !!m && m[1].trim() === (s.price || '').trim();
+};
+
+// A copy of the site with the known invented legacy copy removed:
+// the default 5-service set, filler service descriptions, "Premium…" and
+// old niche taglines, and the templated about heading / text (replaced by
+// today's generic niche wording). Returns the site unchanged (same
+// object) when none of it is present.
+export function withoutLegacyCopy<T extends WebsiteData>(site: T): T {
+  if (!site) return site;
+  const niche = nicheOf(site);
+  let out: T = site;
+  const patch = (p: Partial<WebsiteData>) => { out = { ...out, ...p }; };
+
+  const services = Array.isArray(site.services) ? site.services : [];
+  if (isLegacyServiceSet(services)) {
+    patch({ services: [] });
+  } else if (services.some(legacyFiller)) {
+    patch({ services: services.map((s) => (legacyFiller(s) ? { ...s, description: '' } : s)) });
+  }
+
+  const tagline = (site.hero?.tagline || '').trim();
+  if (LEGACY_TAGLINES.has(tagline)) patch({ hero: { ...site.hero, tagline: niche.heroTagline } });
+
+  const heading = (site.about?.heading || '').trim();
+  const desc = Array.isArray(site.about?.description) ? site.about.description : [];
+  const legacyParas = desc.filter(isLegacyAboutParagraph);
+  if (LEGACY_ABOUT_HEADINGS.has(heading) || legacyParas.length > 0) {
+    let kept = desc.filter((p) => !isLegacyAboutParagraph(p));
+    if (kept.length === 0 && legacyParas.length > 0) {
+      const area = (site.area || '').trim();
+      const article = /^[aeiou]/i.test(niche.noun) ? 'an' : 'a';
+      kept = [
+        `${site.shopName} is ${article} ${niche.noun}${area ? ` in ${area}` : ''}.`,
+        niche.aboutFallback[1],
+      ];
+    }
+    patch({
+      about: {
+        ...site.about,
+        heading: LEGACY_ABOUT_HEADINGS.has(heading) ? niche.aboutHeading : site.about.heading,
+        description: kept,
+      },
+    });
+  }
+  return out;
 }

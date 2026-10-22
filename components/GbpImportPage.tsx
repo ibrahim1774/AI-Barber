@@ -959,7 +959,6 @@ const GbpImportPage: React.FC<Props> = ({ onImported, onUseManualForm, onSignIn 
                             {on && (
                               <input
                                 type="text"
-                                inputMode="decimal"
                                 aria-label={`${t} price (optional)`}
                                 placeholder="Price (optional)"
                                 value={picked[t]?.price || ''}

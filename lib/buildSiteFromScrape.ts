@@ -112,8 +112,10 @@ export function buildSiteFromScrape(data: ScrapeResponse, fallbackUrl: string, o
     fallbackUrl || data.bookingUrl || '',
     (manual.shopName || data.shopName || ''),
     [
-      // Google categories first: "Barber shop" must win over a ticked
-      // "Haircut" (which alone would read as a hair salon).
+      // Google categories feed detection too: with "Barber shop" in the
+      // haystack the barber niche matches (it is checked before hair), so
+      // a ticked "Haircut" alone no longer reads as a hair salon. Order in
+      // this list doesn't matter; BOOKSY_NICHES order sets precedence.
       ...(Array.isArray(data._categories) ? data._categories : []),
       ...(data.services || []).map((s: any) => `${s?.title || ''} ${s?.category || ''}`),
     ],
@@ -173,10 +175,11 @@ export function buildSiteFromScrape(data: ScrapeResponse, fallbackUrl: string, o
       imageUrl: data.photos?.[1] || data.photos?.[0] || '',
     },
     services: (data.services || []).slice(0, 12).map((s: any, i: number) => {
-      const subtitleParts = [s.duration, s.price].filter(Boolean);
       return {
         title: s.title,
-        subtitle: subtitleParts.join(' · ') || s.category || '',
+        // Duration (or category) only: the price has its own field and
+        // shows once.
+        subtitle: s.duration || s.category || '',
         // The booking page's own description, verbatim, or nothing. The
         // scraped price shows as the price.
         description: s.description || '',
@@ -203,6 +206,7 @@ export function buildSiteFromScrape(data: ScrapeResponse, fallbackUrl: string, o
     ...(platformLabel(data._platform) ? { reviewsSource: platformLabel(data._platform) } : {}),
     ...(data._platform === 'gbp' ? { reviewsSelected: true } : {}),
     niche: nicheProfile.key,
+    ...(data._platform ? { importedFrom: data._platform === 'gbp' ? 'gbp' as const : 'booking' as const } : {}),
     bio,
     aggregateRating: data.aggregateRating,
     hours: data.hours || [],

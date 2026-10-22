@@ -9,7 +9,10 @@
 // Pure: WebsiteData in, HTML string out. Keep it that way.
 import type { WebsiteData } from '../../types';
 import { safeHref } from './safeHref.js';
-import { contactEmail, copyrightYear, hasServices, photoAlt, siteDescription, siteTitle } from './honest.js';
+import {
+  contactEmail, copyrightYear, displayPrice, hasServices, photoAlt, serviceMeta, siteDescription, siteTitle,
+  withoutLegacyCopy,
+} from './honest.js';
 
 // Shared Euphoria CSS — scoped inside `.euphoria-root` so it can't leak into the Luxe flow.
 // Mirrors euphoria-build/styles.css custom properties + typography + section rhythm.
@@ -201,10 +204,15 @@ export const cityStateOnly = (raw: string): string => {
   return parts.slice(-2).join(', ');
 };
 // Exported so App.tsx / publish path can reuse for post-payment deploy
-export function generateEuphoriaHTMLWithPlaceholders(siteData: WebsiteData): string {
+export function generateEuphoriaHTMLWithPlaceholders(input: WebsiteData): string {
+  // Older stored sites: drop the copy we invented for them (honest.ts).
+  const siteData = withoutLegacyCopy(input);
   const bookingUrl = safeHref(siteData.bookingUrl);
   const shopUrl = safeHref(siteData.shopUrl);
-  const formattedPhone = siteData.phone.replace(/\s+/g, '');
+  const formattedPhone = escapeHtml((siteData.phone || '').replace(/\s+/g, ''));
+  const hasPhone = !!(siteData.phone || '').trim();
+  // Nav "Book now": the booking link, else a call; neither → hidden.
+  const navBookHref = bookingUrl ? escapeHtml(bookingUrl) : hasPhone ? `tel:${formattedPhone}` : '';
   const safeName = escapeHtml(siteData.shopName);
   const altAttr = escapeHtml(photoAlt(siteData));
   const showServices = hasServices(siteData);
@@ -253,12 +261,13 @@ export function generateEuphoriaHTMLWithPlaceholders(siteData: WebsiteData): str
       </div>
       <div class="eu-services-list">
         ${services.map((s, i) => {
-          const meta = s.duration || s.subtitle || '';
+          const meta = serviceMeta(s);
+          const price = displayPrice(s.price);
           return `
           <div class="eu-service-row">
             <div class="eu-service-num">${String(i + 1).padStart(2, '0')}</div>
             <div>
-              <h3 style="font-size:24px;margin:0 0 8px;font-weight:500;">${escapeHtml(s.title)}${s.price ? ` <span style="color:var(--eu-brand);font-style:italic;white-space:nowrap;">${escapeHtml(s.price)}</span>` : ''}</h3>
+              <h3 style="font-size:24px;margin:0 0 8px;font-weight:500;">${escapeHtml(s.title)}${price ? ` <span style="color:var(--eu-brand);font-style:italic;white-space:nowrap;">${escapeHtml(price)}</span>` : ''}</h3>
               ${meta ? `<div class="eu-eyebrow" style="margin-bottom:12px;font-size:10px;">${escapeHtml(meta)}</div>` : ''}
               ${s.description ? `<p style="color:var(--eu-ink-soft);font-size:15px;line-height:1.6;margin:0;max-width:640px;">${escapeHtml(s.description)}</p>` : ''}
             </div>
@@ -310,7 +319,7 @@ ${EUPHORIA_SCOPED_CSS}
     <div class="eu-container" style="display:flex;align-items:center;justify-content:space-between;padding:18px 24px;">
       <a href="#top" style="text-decoration:none;color:var(--eu-ink);font-family:'Newsreader',serif;font-size:20px;letter-spacing:0.04em;">${safeName}</a>${shopUrl ? `
       <a href="${escapeHtml(shopUrl)}" style="text-decoration:none;color:var(--eu-ink-soft);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;">Shop</a>` : ''}
-      <a href="tel:${formattedPhone}" class="eu-cta" style="padding:10px 18px;font-size:10px;">Book now</a>
+      ${navBookHref ? `<a href="${navBookHref}"${bookingUrl ? ' target="_blank" rel="noopener noreferrer"' : ''} class="eu-cta" style="padding:10px 18px;font-size:10px;">Book now</a>` : ''}
     </div>
   </nav>
 
@@ -327,7 +336,7 @@ ${EUPHORIA_SCOPED_CSS}
         ${escapeHtml(siteData.hero.tagline)}
       </p>
       <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;">
-        <a href="tel:${formattedPhone}" class="eu-cta eu-cta-solid">Call ${escapeHtml(siteData.phone)}</a>
+        ${hasPhone ? `<a href="tel:${formattedPhone}" class="eu-cta eu-cta-solid">Call ${escapeHtml(siteData.phone)}</a>` : ''}
         ${bookingUrl ? `<a href="${escapeHtml(bookingUrl)}" target="_blank" rel="noopener noreferrer" class="eu-cta eu-cta-solid">Book Appointment</a>` : ''}
         ${showServices ? `<a href="#services" class="eu-cta">View services</a>` : ''}
       </div>
@@ -358,7 +367,7 @@ ${EUPHORIA_SCOPED_CSS}
         <h2 class="eu-display" style="font-size:clamp(28px,4vw,44px);margin:0 0 32px;">Come in.</h2>
         <div style="display:grid;gap:24px;color:var(--eu-ink-soft);font-size:16px;line-height:1.6;">
           ${siteData.contact.address ? `<div><div style="color:var(--eu-ink-muted);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;margin-bottom:6px;">Location</div>${escapeHtml(siteData.contact.address)}</div>` : ''}
-          <div><div style="color:var(--eu-ink-muted);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;margin-bottom:6px;">Phone</div><a href="tel:${formattedPhone}" style="color:var(--eu-ink);text-decoration:none;">${escapeHtml(siteData.phone)}</a></div>
+          ${hasPhone ? `<div><div style="color:var(--eu-ink-muted);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;margin-bottom:6px;">Phone</div><a href="tel:${formattedPhone}" style="color:var(--eu-ink);text-decoration:none;">${escapeHtml(siteData.phone)}</a></div>` : ''}
           ${email ? `<div><div style="color:var(--eu-ink-muted);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;margin-bottom:6px;">Email</div><a href="mailto:${escapeHtml(email)}" style="color:var(--eu-ink);text-decoration:none;">${escapeHtml(email)}</a></div>` : ''}
           ${bookingUrl ? `<div style="margin-top:16px;"><a href="${escapeHtml(bookingUrl)}" target="_blank" rel="noopener noreferrer" class="eu-cta eu-cta-solid">Book Appointment</a></div>` : ''}${shopUrl ? `
           <div style="margin-top:16px;"><a href="${escapeHtml(shopUrl)}" class="eu-cta">Shop online</a></div>` : ''}

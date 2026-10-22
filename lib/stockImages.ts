@@ -76,14 +76,17 @@ export const SERVICE_CHOICES: readonly string[] = [
 
 // Checklist state (title → ticked + optional price) → the `services`
 // input generateContent / buildSiteFromScrape take. Keeps SERVICE_CHOICES
-// order; unticked rows dropped; an empty price is left off.
+// order; unticked rows dropped; an empty price is left off; a bare
+// number gets "$".
 export type ServicePicks = Record<string, { on: boolean; price?: string }>;
 
 export function checklistToServices(picks: ServicePicks): { title: string; price?: string }[] {
   return SERVICE_CHOICES
     .filter((t) => picks[t]?.on)
     .map((t) => {
-      const price = (picks[t]?.price || '').trim();
+      const raw = (picks[t]?.price || '').trim();
+      // A bare number ("25") is a dollar price: store it as "$25".
+      const price = /^\d+(\.\d{1,2})?$/.test(raw) ? `$${raw}` : raw;
       return price ? { title: t, price } : { title: t };
     });
 }

@@ -83,6 +83,10 @@ export interface WebsiteData {
   // True when the reviews were filtered (Google imports keep only 4★+),
   // so templates say "Selected reviews".
   reviewsSelected?: boolean;
+  // Where an imported site came from: its booking page or a confirmed
+  // Google listing. Absent on typed sites and older sites. Prime's "no
+  // stock photos" line needs booking-page photos.
+  importedFrom?: 'booking' | 'gbp';
   // Business type key from lib/booksyNiche.ts ('barber', 'nails' …) so
   // meta tags and footers name the right kind of business. Absent →
   // barbershop.
