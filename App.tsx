@@ -706,7 +706,9 @@ const App: React.FC = () => {
         const deployResponse = await fetch('/api/deploy-site', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ siteId, html, imageUrls: imageUrlMap, checkoutSessionId: sessionId }),
+          // siteData + existingSiteId: the server writes the stamped recovery copy from them
+          // (lib/ios/webDeployGate.ts); the browser can no longer write a published copy.
+          body: JSON.stringify({ siteId, html, imageUrls: imageUrlMap, checkoutSessionId: sessionId, siteData, existingSiteId: existingSiteId ?? null }),
         });
 
         const contentType = deployResponse.headers.get('content-type');
@@ -788,19 +790,9 @@ const App: React.FC = () => {
         try {
           localStorage.removeItem('pendingSite');
         } catch { /* ignore — private mode etc. */ }
-        // Refresh the server-side recovery copy (same pending shape
-        // recover-site parses) with the REAL deployed URL stamped on,
-        // instead of deleting it. Until a Supabase sites row exists under
-        // a user, this file is the ONLY cross-device recovery source —
-        // the old delete here made /recover and the dashboard self-heal
-        // 404 for every customer. handleAuthSuccess removes it after a
-        // successful account attach.
-        fetch('/api/save-pending-site', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ siteId, data: { ...pending, deployedUrl: deployData.deploymentUrl } }),
-          keepalive: true,
-        }).catch(() => { /* ignore */ });
+        // The server-side recovery copy (same pending shape recover-site parses) is written
+        // and stamped with the real deployed URL by /api/deploy-site itself. A browser refresh
+        // here would be refused (409: a published copy is server-owned).
         return { url: deployData.deploymentUrl } as { url?: string; error?: string };
 
       } catch (error: any) {

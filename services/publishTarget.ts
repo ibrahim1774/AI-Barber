@@ -62,6 +62,9 @@ export function deployErrorMessage(status: number, data: { error?: unknown } | n
   if (status === 403 && data?.error === 'checkout-not-valid') {
     return "We couldn't confirm the payment for this site. Your payment is safe; please contact support and we'll finish publishing.";
   }
+  if (status === 403 && data?.error === 'new-site-needs-checkout') {
+    return "This would publish a new site address. If you renamed your shop, please contact support and we'll move your site for you.";
+  }
   if (status === 403) return 'This site belongs to a different account. Sign in with the account that owns it to publish.';
   if (status === 429) return 'Too many publish attempts. Please wait a minute and try again.';
   if (status === 503) return 'Publishing is temporarily unavailable. Please try again in a minute.';
