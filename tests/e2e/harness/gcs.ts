@@ -117,7 +117,11 @@ class FakeFile {
     });
   }
 
-  async delete(): Promise<void> {
+  async delete(opts: { ifGenerationMatch?: number | string } = {}): Promise<void> {
+    const cur = gcs.objects.get(this.name);
+    if (opts?.ifGenerationMatch != null && String(cur?.generation ?? 0) !== String(opts.ifGenerationMatch)) {
+      throw Object.assign(new Error('Precondition Failed'), { code: 412 });
+    }
     gcs.log.push({ op: 'delete', path: this.name });
     gcs.objects.delete(this.name);
   }

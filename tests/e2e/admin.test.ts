@@ -10,7 +10,7 @@ import { AI_BOOK, AI_SHOP, DAY, httpReq, httpRes, normHtml, resetBoundaries, sit
 import { PRODUCTS } from './harness/apple.js';
 import { gcs, gcsJson, pendingOf, putJson } from './harness/gcs.js';
 import { deferred, deploysOf, vercel } from './harness/vercel.js';
-import { readPendingSite, renderPending } from '../../lib/publishSite.js';
+import { readPendingSite, readPendingVersioned, renderPending, writePendingSite } from '../../lib/publishSite.js';
 import { savePendingSite } from '../../api/save-pending-site.js';
 
 let w: SiteWorld;
@@ -333,7 +333,7 @@ describe('/api/save-pending-site never touches an app site', () => {
   const run = async (method: string, body: unknown, isAppSlug = (s: string) => w.repo.findBySlug(s).then((r) => r != null)) => {
     const res = httpRes();
     // isPublished (the deployedUrl stamp check) arrived with the deploy-auth hotfix.
-    await savePendingSite(httpReq({ method, body }), res, { isAppSlug, isPublished: async (s) => !!(await readPendingSite(s))?.deployedUrl });
+    await savePendingSite(httpReq({ method, body }), res, { isAppSlug, isPublished: async (s) => !!(await readPendingSite(s))?.deployedUrl, readVersioned: readPendingVersioned });
     return res;
   };
 
@@ -375,5 +375,32 @@ describe('/api/save-pending-site never touches an app site', () => {
     expect((await run('POST', { siteId: 'fade_lab', data: { siteData: siteData({ shopName: 'X' }) } })).statusCode).toBe(409);
     expect((await run('POST', { siteId: 'fade-lab-', data: { siteData: siteData({ shopName: 'X' }) } })).statusCode).toBe(409);
     expect(gcsJson('pending-sites/fade-lab.json')).toEqual(before);
+  });
+
+  it('review fix 6: a server stamp landing between the published check and the save or delete is never dropped (409 site-published)', async () => {
+    putJson('pending-sites/web-shop.json', { siteId: 'web-shop', data: { siteData: siteData() } });
+    const stamp = async () => {
+      const cur = (await readPendingSite('web-shop'))!;
+      await writePendingSite('web-shop', { ...cur, deployedUrl: 'https://web-shop.vercel.app' });
+    };
+    let fired = false;
+    gcs.afterDownload = async (path) => {
+      if (fired || path !== 'pending-sites/web-shop.json') return;
+      fired = true;
+      await stamp(); // the first checkout deploy stamps it meanwhile
+    };
+    expect((await run('POST', { siteId: 'web-shop', data: { siteData: siteData({ shopName: 'Late re-save' }) } })).body).toEqual({ ok: false, error: 'site-published' });
+    expect(gcsJson('pending-sites/web-shop.json').data.deployedUrl).toBe('https://web-shop.vercel.app');
+    // Same race on DELETE: the stamped copy survives.
+    gcs.objects.delete('pending-sites/web-shop.json');
+    putJson('pending-sites/web-shop.json', { siteId: 'web-shop', data: { siteData: siteData() } });
+    fired = false;
+    expect((await run('DELETE', { siteId: 'web-shop' })).body).toEqual({ ok: false, error: 'site-published' });
+    expect(gcsJson('pending-sites/web-shop.json').data.deployedUrl).toBe('https://web-shop.vercel.app');
+    // No race: a new copy is created (generation 0) and an absent one deletes as a no-op.
+    gcs.afterDownload = null;
+    expect((await run('POST', { siteId: 'brand-new', data: { siteData: siteData() } })).statusCode).toBe(200);
+    expect((await run('DELETE', { siteId: 'never-saved' })).statusCode).toBe(200);
+    expect(gcs.saveOpts.find((x) => x.path === 'pending-sites/brand-new.json')!.opts.preconditionOpts).toEqual({ ifGenerationMatch: 0 });
   });
 });
