@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect, useNavigation } from 'expo-router';
 import type { WebsiteData } from '@/web/types';
 import { colors, fonts } from '@/constants/theme';
-import { syncQuietly, takeNotice } from '@/lib/adminSync';
+import { syncQuietly, takeNotice, withDiskVersion } from '@/lib/adminSync';
 import { onSiteAdopted } from '@/lib/siteEvents';
 import { track } from '@/lib/analytics';
 import { useEntitlements } from '@/lib/entitlements';
@@ -163,13 +163,15 @@ export default function Editor() {
           return;
         }
         if (s.slug !== cur.slug || s.deployedUrl !== cur.deployedUrl || s.transactionId !== cur.transactionId) {
-          // Also the version bookkeeping a publish saved, so the next edit doesn't write the old one back.
-          const next = {
-            ...cur, slug: s.slug, deployedUrl: s.deployedUrl, transactionId: s.transactionId,
-            serverVersion: s.serverVersion, editedBy: s.editedBy, editedAt: s.editedAt, syncedAt: s.syncedAt,
-          };
+          const next = { ...cur, slug: s.slug, deployedUrl: s.deployedUrl, transactionId: s.transactionId };
           siteRef.current = next;
           setSite(next);
+        }
+        // The version bookkeeping a publish (or a version learn) saved, so the next edit doesn't write the old one back.
+        const versioned = withDiskVersion(siteRef.current!, s);
+        if (versioned) {
+          siteRef.current = versioned;
+          setSite(versioned);
         }
         // The Bookings setup (a screen over this tab) can switch the Book button or
         // mirror services into the saved site: take those two, nothing else.
@@ -203,9 +205,11 @@ export default function Editor() {
 
   // Tells the barber an admin edit was adopted (the message lives on the record until shown).
   const showNotice = useCallback(async () => {
+    if (!mountedRef.current) return;
     const n = await takeNotice();
-    if (!n || !mountedRef.current) return;
+    // Whatever happened, a later edit must not write the flag back.
     if (siteRef.current?.noticePending) siteRef.current = { ...siteRef.current, noticePending: undefined };
+    if (!n || !mountedRef.current) return;
     Alert.alert('Site updated', n);
   }, []);
 
@@ -260,7 +264,8 @@ export default function Editor() {
   /** Every change goes through here: new record, state, and saveSite. */
   const commitRecord = useCallback((change: (r: SiteRecord) => SiteRecord) => {
     const cur = siteRef.current;
-    if (!cur) return;
+    // An adopted copy is waiting for this sheet to close; an edit made now would be replaced by it.
+    if (!cur || deferred.current) return;
     // A changed Book link is the barber's own link (Contact edit, or a rebuilt-from-link site).
     const next = { ...syncOwnLink(cur, change(cur)), updatedAt: Date.now() };
     siteRef.current = next;

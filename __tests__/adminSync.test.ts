@@ -1,7 +1,7 @@
 import * as store from '@/lib/siteStore';
 import type { SiteRecord } from '@/lib/siteStore';
 import { ApiError } from '@/lib/api';
-import { SYNC_NOTICE, UPDATED_ON_PUBLISH_MESSAGE, resetSyncState, syncFromServer, takeNotice } from '@/lib/adminSync';
+import { SYNC_NOTICE, withDiskVersion, UPDATED_ON_PUBLISH_MESSAGE, resetSyncState, syncFromServer, takeNotice } from '@/lib/adminSync';
 import { restore } from '@/lib/account';
 import { onSiteAdopted } from '@/lib/siteEvents';
 import { publishFlow, resumePendingPublish, type PublishDeps } from '@/lib/publish';
@@ -238,4 +238,13 @@ test('restore() adopts a newer admin copy of the same site and marks the record 
   expect(res!.site.serverVersion).toBe(3);
   expect(res!.site.syncedAt).toBe(res!.site.updatedAt);
   expect(res!.site.inputs.ownBookingUrl).toBe('https://booksy.com/fade');
+});
+
+test('withDiskVersion copies a publish/learn version but never an admin one', () => {
+  const cur = local({ serverVersion: 2, editedBy: 'owner', syncedAt: 100 });
+  expect(withDiskVersion(cur, cur)).toBeNull();
+  const published = withDiskVersion(cur, local({ serverVersion: 4, editedBy: 'owner', syncedAt: 150 }))!;
+  expect(published).toMatchObject({ serverVersion: 4, syncedAt: 150 });
+  expect(published.data).toBe(cur.data);
+  expect(withDiskVersion(cur, local({ serverVersion: 5, editedBy: 'admin' }))).toBeNull();
 });

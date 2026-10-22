@@ -68,6 +68,21 @@ export function adoptServerCopy(cur: SiteRecord, server: ServerSite): SiteRecord
   };
 }
 
+/**
+ * The editor's record with the version bookkeeping from disk (a publish of its
+ * own, or a version learned), or null when nothing differs. Never from an
+ * admin-edited disk copy: that arrives through a reload, and stamping its
+ * version on stale editor data would let a publish overwrite the admin edit.
+ */
+export function withDiskVersion(cur: SiteRecord, disk: SiteRecord): SiteRecord | null {
+  if (disk.editedBy === 'admin') return null;
+  const same =
+    cur.serverVersion === disk.serverVersion && cur.editedBy === disk.editedBy &&
+    cur.editedAt === disk.editedAt && cur.syncedAt === disk.syncedAt;
+  if (same) return null;
+  return { ...cur, serverVersion: disk.serverVersion, editedBy: disk.editedBy, editedAt: disk.editedAt, syncedAt: disk.syncedAt };
+}
+
 /** 'yes': edits after the last publish. 'maybe': a published record from before edits were tracked. */
 export function unpublishedEdits(r: SiteRecord): 'yes' | 'maybe' | 'no' {
   if (r.syncedAt != null) return r.updatedAt > r.syncedAt ? 'yes' : 'no';
