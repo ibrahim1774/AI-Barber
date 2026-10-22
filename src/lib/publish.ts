@@ -1,5 +1,5 @@
 import type { WebsiteData } from '@/web/types';
-import { adoptAndSave, SYNC_NOTICE, UPDATED_ON_PUBLISH_MESSAGE, versionFields, type ServerSite, type SyncResult } from '@/lib/adminSync';
+import { adoptAndSave, SYNC_NOTICE, SYNC_TIMEOUT_MS, UPDATED_ON_PUBLISH_MESSAGE, versionFields, type ServerSite, type SyncResult } from '@/lib/adminSync';
 import { track } from '@/lib/analytics';
 import { ApiError, type api } from '@/lib/api';
 import { stripMarkers } from '@/lib/editable';
@@ -150,7 +150,8 @@ async function send(
   retryMessage: string,
 ): Promise<PublishOutcome> {
   let res: Awaited<ReturnType<PublishDeps['iosPublish']>>;
-  const ctx = deps.linkContext ? await deps.linkContext().catch(() => null) : null;
+  // Capped like the admin sync: a stalled shop lookup is "unknown", never a stuck publish.
+  const ctx = deps.linkContext ? await withTimeout(deps.linkContext(), SYNC_TIMEOUT_MS).catch(() => null) : null;
   // One load: its inputs decide the links, its updatedAt marks what this publish covers.
   const rec = await deps.store.loadSite().catch(() => null);
   const sentAt = rec?.updatedAt;

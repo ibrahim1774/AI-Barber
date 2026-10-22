@@ -146,18 +146,19 @@ describe('the other network steps of a publish', () => {
     expect(server.published.at(-1).bookingUrl).toBe(BOOKSY);
   });
 
-  // BUG (low): loadLinkContext (two Supabase reads) runs before every publish with no cap, inside the
-  // publish queue. The admin sync before it is capped at 8 s; this is not, so a stalled Supabase read
-  // holds the "Publishing..." spinner (and any queued retry) for as long as the OS lets the socket hang.
-  it.failing('BUG: a hung shop lookup is given up like the admin sync, and the publish goes out', async () => {
+  // Fixed (bug 9): loadLinkContext (two Supabase reads) ran before every publish with no cap.
+  it('a hung shop lookup is given up after 8 s like the admin sync (unknown context), and the publish goes out', async () => {
     await liveWebsite();
     jest.spyOn(require('@/lib/shop'), 'loadMyShop').mockImplementation(() => new Promise(() => {}));
     jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
     let out: any = null;
     const p = publish(w).then((o) => (out = o));
-    await jest.advanceTimersByTimeAsync(30_000);
+    await jest.advanceTimersByTimeAsync(7_500);
+    expect(out).toBeNull();
+    await jest.advanceTimersByTimeAsync(1_000);
+    await p;
     expect(out).toMatchObject({ kind: 'live' });
-    void p;
+    expect(server.published.at(-1).bookingUrl).toBe(BOOKSY); // unknown context: the site's own link stays
   });
 
   it('the plan refresh after publish failing: still live, nothing thrown', async () => {
