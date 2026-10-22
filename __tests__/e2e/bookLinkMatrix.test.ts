@@ -1,0 +1,185 @@
+/**
+ * Every combination of the Book-link decision as publish sends it:
+ * choice (own / aibarber / unset) x own link (yes / no) x entitlements
+ * (unknown, lapsed, Website, Bookings, Store) x link context (unknown, no
+ * shop, shop with bookingsEnabled x purchaseLinked) x store open.
+ *
+ * Rule (spec): AI Barber's link only when the choice is aibarber AND the
+ * bookings entitlement is active AND a shop exists AND bookingsEnabled AND
+ * purchaseLinked; else the barber's own link; else no Book button. The Shop
+ * link only with store + linked shop + store open. By design nothing is
+ * decided while the entitlements are unknown or hosting isn't visibly active
+ * (the server decides), and an unknown context keeps the site's own links,
+ * only dropping what the plan lacks.
+ */
+import * as store from '@/lib/siteStore';
+import { publishFlow, type PublishDeps } from '@/lib/publish';
+import { resetEntitlementsForTests, setEntitlementsFromStatus, getEntitlements } from '@/lib/entitlements';
+import { withChoice, syncOwnLink, resolveLinks, type LinkContext } from '@/lib/bookingChoice';
+import { stripLapsedLinks } from '@/lib/tierLinks';
+import type { SiteRecord } from '@/lib/siteStore';
+
+const OWN = 'https://booksy.com/en-us/123_fade-lab';
+const AI = 'https://www.aibarber.org/book/fade-lab';
+const SHOP = 'https://www.aibarber.org/shop/fade-lab';
+
+type Ents = 'unknown' | 'lapsed' | 'website' | 'bookings' | 'store';
+type Ctx = 'unknown' | 'no-shop' | 'shop';
+type Choice = 'own' | 'aibarber' | 'unset';
+
+const ENTS: Record<Ents, () => void> = {
+  unknown: () => resetEntitlementsForTests(),
+  lapsed: () => setEntitlementsFromStatus({ status: 'INACTIVE' }),
+  website: () => setEntitlementsFromStatus({ status: 'ACTIVE', entitlements: [{ id: 'hosting' }] }),
+  bookings: () => setEntitlementsFromStatus({ status: 'ACTIVE', entitlements: [{ id: 'hosting' }, { id: 'bookings' }] }),
+  store: () => setEntitlementsFromStatus({ status: 'ACTIVE', entitlements: [{ id: 'hosting' }, { id: 'bookings' }, { id: 'store' }] }),
+};
+
+function record(choice: Choice, own: boolean): SiteRecord {
+  const base = {
+    draftId: 'd1',
+    inputs: { shopName: 'Fade Lab', area: 'Brooklyn', phone: '555' } as SiteRecord['inputs'],
+    data: {
+      shopName: 'Fade Lab', area: 'Brooklyn', phone: '555',
+      hero: { heading: 'h', tagline: 't', imageUrl: '' }, about: { heading: 'a', description: ['x'], imageUrl: '' },
+      services: [], gallery: [],
+      ...(own ? { bookingUrl: OWN } : {}),
+    } as unknown as SiteRecord['data'],
+    updatedAt: 1, slug: 'fade-lab', deployedUrl: 'https://fade-lab.aibarber.org', transactionId: 'tx-1',
+  } as SiteRecord;
+  if (own) base.inputs.ownBookingUrl = OWN;
+  // What the editor saves when the barber picks (withChoice sets the data's Book link too).
+  return choice === 'unset' ? base : withChoice(base, choice, { slug: 'fade-lab' });
+}
+
+const rows: { choice: Choice; own: boolean; ents: Ents; ctx: Ctx; enabled: boolean; linked: boolean; storeOpen: boolean }[] = [];
+for (const choice of ['own', 'aibarber', 'unset'] as Choice[])
+  for (const own of [true, false])
+    for (const ents of Object.keys(ENTS) as Ents[])
+      for (const ctx of ['unknown', 'no-shop', 'shop'] as Ctx[])
+        for (const enabled of ctx === 'shop' ? [true, false] : [false])
+          for (const linked of ctx === 'shop' ? [true, false] : [false])
+            for (const storeOpen of ctx === 'shop' ? [true, false] : [false])
+              rows.push({ choice, own, ents, ctx, enabled, linked, storeOpen });
+
+/** The expected Book / Shop links (spec + the documented "server decides" / "unknown keeps" rules). */
+function expected(r: (typeof rows)[number], data: SiteRecord['data']): { book?: string; shop?: string; bug?: string } {
+  const e = getEntitlements();
+  if (!e.known || !e.hosting) return { book: data.bookingUrl, shop: (data as any).shopUrl };
+  const effective = r.own ? (r.choice === 'unset' ? 'own' : r.choice) : 'aibarber';
+  if (r.ctx === 'unknown') {
+    // Unknown shop: the site's own links stay; a link the plan lacks goes, and then the own link is the fallback.
+    if (data.bookingUrl === AI && !e.bookings) {
+      return { book: r.own ? OWN : undefined, bug: r.own ? 'unknown-context-no-own-fallback' : undefined };
+    }
+    return { book: data.bookingUrl };
+  }
+  const ai = effective === 'aibarber' && e.bookings && r.ctx === 'shop' && r.enabled && r.linked;
+  const shop = e.store && r.ctx === 'shop' && r.linked && r.storeOpen;
+  return { book: ai ? AI : r.own ? OWN : undefined, shop: shop ? SHOP : undefined };
+}
+
+async function send(r: (typeof rows)[number]): Promise<any> {
+  ENTS[r.ents]();
+  const rec = record(r.choice, r.own);
+  await store.saveSite(rec);
+  await store.savePendingPublish(null);
+  const ctx: LinkContext | null =
+    r.ctx === 'unknown'
+      ? null
+      : {
+          ents: getEntitlements(),
+          shop: r.ctx === 'shop' ? { slug: 'fade-lab', bookingsEnabled: r.enabled, purchaseLinked: r.linked } : null,
+          storeEnabled: r.ctx === 'shop' && r.storeOpen,
+        };
+  let sent: any = null;
+  const deps: PublishDeps = {
+    hasEntitlement: async () => true,
+    showPaywall: async () => 'declined',
+    latestTransactionId: async () => 'tx-1',
+    iosPublish: jest.fn(async (b: any) => {
+      sent = b.siteData;
+      return { siteId: 'fade-lab', deployedUrl: 'https://fade-lab.aibarber.org', republished: true };
+    }) as any,
+    linkContext: async () => ctx,
+    store,
+    userId: () => null,
+  };
+  const out = await publishFlow(rec, deps);
+  expect(out.kind).toBe('live');
+  return { sent, rec };
+}
+
+const name = (r: (typeof rows)[number]) =>
+  `choice=${r.choice} own=${r.own} ents=${r.ents} ctx=${r.ctx}${r.ctx === 'shop' ? ` enabled=${r.enabled} linked=${r.linked} storeOpen=${r.storeOpen}` : ''}`;
+
+beforeEach(() => resetEntitlementsForTests());
+
+describe('Book / Shop link matrix through publishFlow', () => {
+  for (const r of rows) {
+    ENTS[r.ents]();
+    const exp = expected(r, record(r.choice, r.own).data);
+    resetEntitlementsForTests();
+    const t = exp.bug ? it.failing : it;
+    t(`${exp.bug ? `BUG(${exp.bug}): ` : ''}${name(r)}`, async () => {
+      const { sent, rec } = await send(r);
+      const want = expected(r, rec.data);
+      expect(sent.bookingUrl).toBe(want.book);
+      expect(sent.shopUrl).toBe(want.shop);
+    });
+  }
+
+  it('covers every combination', () => {
+    expect(rows).toHaveLength(3 * 2 * 5 * (1 + 1 + 8));
+  });
+});
+
+describe('the own link through edits', () => {
+  const ctx = (): LinkContext => ({ ents: getEntitlements(), shop: { slug: 'fade-lab', bookingsEnabled: true, purchaseLinked: true }, storeEnabled: false });
+  const imported = (): SiteRecord => ({
+    draftId: 'd1',
+    // An import from a Booksy link leaves the link in the inputs too (editor.ts / account.inputsFrom).
+    inputs: { shopName: 'Fade Lab', area: 'Brooklyn', phone: '555', bookingUrl: OWN, ownBookingUrl: OWN, bookingChoice: 'own' },
+    data: { shopName: 'Fade Lab', area: 'Brooklyn', phone: '555', bookingUrl: OWN, hero: {}, about: {}, services: [], gallery: [] } as any,
+    updatedAt: 1, slug: 'fade-lab', deployedUrl: 'https://fade-lab.aibarber.org', transactionId: 'tx-1',
+  });
+
+  // BUG: clearing the Book link in the editor deletes ownBookingUrl, but bookingPrefs falls back to
+  // inputs.bookingUrl (the import's copy), so publish and the preview put the deleted link back.
+  it.failing('BUG: a Book link the barber deleted stays deleted on publish (Website plan, signed in)', () => {
+    ENTS.website();
+    const prev = imported();
+    const next = syncOwnLink(prev, { ...prev, data: { ...prev.data, bookingUrl: '' } });
+    expect(next.inputs.ownBookingUrl).toBeUndefined();
+    const sent = stripLapsedLinks(resolveLinks(next.data, next.inputs, ctx()), getEntitlements());
+    expect(sent.bookingUrl).toBeUndefined();
+  });
+
+  it('observed: the deleted Booksy link is what publish sends', () => {
+    ENTS.website();
+    const prev = imported();
+    const next = syncOwnLink(prev, { ...prev, data: { ...prev.data, bookingUrl: '' } });
+    expect(resolveLinks(next.data, next.inputs, ctx()).bookingUrl).toBe(OWN);
+  });
+
+  it('switching AI Barber -> own -> AI Barber never loses the own link; a new own link replaces it', () => {
+    ENTS.bookings();
+    let r = withChoice(imported(), 'aibarber', { slug: 'fade-lab' });
+    expect(resolveLinks(r.data, r.inputs, ctx()).bookingUrl).toBe(AI);
+    r = withChoice(r, 'own', { slug: 'fade-lab' });
+    expect(resolveLinks(r.data, r.inputs, ctx()).bookingUrl).toBe(OWN);
+    const square = 'https://squareup.com/appointments/book/abc';
+    r = syncOwnLink(r, { ...r, data: { ...r.data, bookingUrl: square } });
+    expect(r.inputs).toMatchObject({ ownBookingUrl: square, bookingChoice: 'own' });
+    r = withChoice(r, 'aibarber', { slug: 'fade-lab' });
+    r = withChoice(r, 'own', { slug: 'fade-lab' });
+    expect(resolveLinks(r.data, r.inputs, ctx()).bookingUrl).toBe(square);
+  });
+
+  it('an AI Barber link typed by hand is never taken as the own link; other shops\' AI links neither', () => {
+    ENTS.bookings();
+    const prev = imported();
+    const next = syncOwnLink(prev, { ...prev, data: { ...prev.data, bookingUrl: 'https://aibarber.org/book/other-shop' } });
+    expect(next.inputs.ownBookingUrl).toBe(OWN);
+  });
+});

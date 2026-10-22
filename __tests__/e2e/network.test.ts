@@ -1,0 +1,337 @@
+/**
+ * Offline / slow / malformed at every network step of publish, resume, the
+ * plan and the tier gate, through the real api.ts and ownerApi.ts parsing.
+ * BUG-marked tests are `it.failing`: they pass while the bug is there.
+ */
+jest.mock('expo-superwall', () => require('./mocks').superwallMock());
+jest.mock('expo-sqlite/kv-store', () => require('./mocks').diskMock());
+
+import { Alert } from 'react-native';
+import { BOOKSY, FakeServer, P, boot, draft, installFetch, kill, type World } from './harness';
+import { wipeDisk } from './mocks';
+
+let server: FakeServer;
+let w: World;
+
+beforeEach(async () => {
+  jest.resetModules();
+  wipeDisk();
+  server = new FakeServer();
+  installFetch(server);
+  jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  jest.spyOn(console, 'warn').mockImplementation(() => {});
+});
+afterEach(() => {
+  jest.useRealTimers();
+  try {
+    w?.unmount();
+  } catch {
+    /* unmounted */
+  }
+  jest.restoreAllMocks();
+});
+
+const drain = () => new Promise((r) => setTimeout(r, 20));
+
+async function publish(world: World) {
+  const site = await world.m.siteStore.loadSite();
+  return world.m.publish.publishFlow(site!, world.deps);
+}
+
+/** A live Website-plan site on the phone (published once). */
+async function liveWebsite(user: string | null = 'u1') {
+  w = await boot(server, { user });
+  await w.m.siteStore.saveSite(draft());
+  w.willBuy(P.websiteMonthly);
+  expect(await publish(w)).toMatchObject({ kind: 'live' });
+  await drain();
+  await w.superwallSync();
+}
+
+describe('first publish (paid this run), the publish request fails', () => {
+  beforeEach(async () => {
+    w = await boot(server, { user: 'u1' });
+    await w.m.siteStore.saveSite(draft());
+    w.willBuy(P.websiteMonthly);
+  });
+
+  it.each([
+    ['offline', { kind: 'offline' as const }],
+    ['HTML 504 gateway page', { kind: 'html' as const, status: 504 }],
+    ['503 temporarily-unavailable', { kind: 'json' as const, status: 503, body: { error: 'temporarily-unavailable' } }],
+    ['404 while Apple catches up', { kind: 'json' as const, status: 404, body: { error: 'transaction-not-found' } }],
+    ['200 with a non-JSON body', { kind: 'html' as const, status: 200 }],
+  ])('%s: "payment went through" pending, kept for the relaunch, which finishes it', async (_n, fault) => {
+    server.fail('/api/ios/publish', fault);
+    const out = await publish(w);
+    expect(out).toEqual({ kind: 'pending', message: w.m.publish.PENDING_MESSAGE });
+    expect(await w.pending()).toMatchObject({ transactionId: 'tx-1' });
+    expect((await w.site())?.slug).toBeNull();
+    w = await kill(w);
+    expect(await w.m.publish.resumePendingPublish(w.deps)).toMatchObject({ kind: 'live' });
+    expect(await w.pending()).toBeNull();
+    expect(server.published).toHaveLength(1);
+  });
+
+  it('a request that never answers is aborted after 100 s and kept as pending', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+    server.fail('/api/ios/publish', { kind: 'hang' });
+    let out: unknown = null;
+    const p = publish(w).then((o) => (out = o));
+    await jest.advanceTimersByTimeAsync(99_000);
+    expect(out).toBeNull();
+    await jest.advanceTimersByTimeAsync(2_000);
+    await p;
+    expect(out).toEqual({ kind: 'pending', message: w.m.publish.PENDING_MESSAGE });
+    expect(await w.pending()).toMatchObject({ transactionId: 'tx-1' });
+  });
+
+  it('402: subscription inactive; the pending publish is dropped, the site kept', async () => {
+    server.fail('/api/ios/publish', { kind: 'json', status: 402, body: { error: 'subscription-inactive' } });
+    expect(await publish(w)).toEqual({ kind: 'inactive' });
+    expect(await w.pending()).toBeNull();
+    expect((await w.site())?.data.shopName).toBe('Fade Lab');
+  });
+
+  it('400 bad-request: thrown (error screen), the pending publish is dropped', async () => {
+    server.fail('/api/ios/publish', { kind: 'json', status: 400, body: { error: 'bad-request' } });
+    await expect(publish(w)).rejects.toMatchObject({ status: 400, code: 'bad-request' });
+    expect(await w.pending()).toBeNull();
+  });
+
+  // BUG: a JSON 200 without siteId / deployedUrl is treated as live.
+  it.failing('BUG: a garbled 200 ({}) is not "live": the pending publish is kept for the retry', async () => {
+    server.fail('/api/ios/publish', { kind: 'json', status: 200, body: {} });
+    const out = await publish(w);
+    expect(out.kind).toBe('pending');
+    expect(await w.pending()).toMatchObject({ transactionId: 'tx-1' });
+  });
+
+  // What the bug does, observed (passes today): live with no URL, a record bound to nothing.
+  it('observed: a garbled 200 reports live with url undefined and clears the pending publish', async () => {
+    server.fail('/api/ios/publish', { kind: 'json', status: 200, body: {} });
+    const out = await publish(w);
+    expect(out).toEqual({ kind: 'live', url: undefined, republished: undefined });
+    expect(await w.pending()).toBeNull();
+    const rec = await w.site();
+    expect(rec?.slug).toBeUndefined();
+    expect(rec?.deployedUrl).toBeUndefined();
+    // Nothing on the phone points at a site any more: sync and the status check can never match it.
+    expect(rec?.transactionId).toBe('tx-1');
+  });
+
+  it.failing('BUG: wrong types in a 200 (siteId number, deployedUrl null) are not stored as the live site', async () => {
+    server.fail('/api/ios/publish', { kind: 'json', status: 200, body: { siteId: 42, deployedUrl: null, republished: 'yes', version: '7' } });
+    const out = await publish(w);
+    expect(out.kind).toBe('pending');
+  });
+});
+
+describe('the other network steps of a publish', () => {
+  it('the pre-publish admin sync offline / timing out: the publish still goes through', async () => {
+    await liveWebsite();
+    server.fail('/api/ios/site', { kind: 'offline' });
+    expect(await publish(w)).toMatchObject({ kind: 'live', republished: true });
+  });
+
+  it('the pre-publish admin sync hanging: given up after 8 s, then published', async () => {
+    await liveWebsite();
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+    server.fail('/api/ios/site', { kind: 'hang' });
+    let out: any = null;
+    const p = publish(w).then((o) => (out = o));
+    await jest.advanceTimersByTimeAsync(7_000);
+    expect(out).toBeNull();
+    await jest.advanceTimersByTimeAsync(2_000);
+    await p;
+    expect(out).toMatchObject({ kind: 'live' });
+  });
+
+  it('the shop lookup failing (Supabase down): unknown context, the site links are kept, not removed', async () => {
+    await liveWebsite();
+    w.sb.selectError = { message: 'offline' };
+    await publish(w);
+    expect(server.published.at(-1).bookingUrl).toBe(BOOKSY);
+  });
+
+  // BUG (low): loadLinkContext (two Supabase reads) runs before every publish with no cap, inside the
+  // publish queue. The admin sync before it is capped at 8 s; this is not, so a stalled Supabase read
+  // holds the "Publishing..." spinner (and any queued retry) for as long as the OS lets the socket hang.
+  it.failing('BUG: a hung shop lookup is given up like the admin sync, and the publish goes out', async () => {
+    await liveWebsite();
+    jest.spyOn(require('@/lib/shop'), 'loadMyShop').mockImplementation(() => new Promise(() => {}));
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+    let out: any = null;
+    const p = publish(w).then((o) => (out = o));
+    await jest.advanceTimersByTimeAsync(30_000);
+    expect(out).toMatchObject({ kind: 'live' });
+    void p;
+  });
+
+  it('the plan refresh after publish failing: still live, nothing thrown', async () => {
+    w = await boot(server, { user: 'u1' });
+    await w.m.siteStore.saveSite(draft());
+    w.willBuy(P.websiteMonthly);
+    server.fail('/api/shop/plan', { kind: 'html', status: 502 });
+    expect(await publish(w)).toMatchObject({ kind: 'live' });
+    await drain();
+    expect(w.m.plan.getSharedPlan()).toBeNull();
+  });
+
+  it('the account sync failing after publish: still live', async () => {
+    w = await boot(server, { user: 'u1' });
+    await w.m.siteStore.saveSite(draft());
+    w.sb.upsertError = { message: 'rls' };
+    w.willBuy(P.websiteMonthly);
+    expect(await publish(w)).toMatchObject({ kind: 'live' });
+  });
+
+  it('CustomerInfo failing right after the purchase: unconfirmed (never "payment went through"); the relaunch finishes it', async () => {
+    w = await boot(server, { user: 'u1' });
+    await w.m.siteStore.saveSite(draft());
+    w.willBuy(P.websiteMonthly);
+    let n = 0;
+    w.sw.customerInfo = async () => {
+      n++;
+      if (n === 1) return { subscriptions: server.apple }; // the paywall's own check
+      throw new Error('offline');
+    };
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+    let out: any = null;
+    const p = publish(w).then((o) => (out = o));
+    await jest.advanceTimersByTimeAsync(5_000);
+    await p;
+    expect(out).toEqual({ kind: 'pending', message: w.m.publish.UNCONFIRMED_MESSAGE });
+    expect(await w.pending()).toMatchObject({ transactionId: null });
+    jest.useRealTimers();
+    w = await kill(w);
+    expect(await w.m.publish.resumePendingPublish(w.deps)).toMatchObject({ kind: 'live' });
+  });
+
+  it('a paid pending publish older than 7 days is dropped at launch', async () => {
+    w = await boot(server, { user: 'u1' });
+    await w.m.siteStore.saveSite(draft());
+    await w.m.siteStore.savePendingPublish({ transactionId: 'tx-9', data: draft().data, createdAt: Date.now() - 8 * 86_400_000 });
+    expect(await w.m.publish.resumePendingPublish(w.deps)).toBeNull();
+    expect(await w.pending()).toBeNull();
+    expect(server.count('/api/ios/publish')).toBe(0);
+  });
+
+  it('Superwall never configured at launch: a no-id pending publish waits (6 s cap), it is not dropped', async () => {
+    w = await boot(server, { user: 'u1' });
+    await w.m.siteStore.saveSite(draft());
+    await w.m.siteStore.savePendingPublish({ transactionId: null, data: draft().data, createdAt: Date.now() });
+    w.sw.customerInfo = () => new Promise(() => {});
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+    let out: any = null;
+    const p = w.m.publish.resumePendingPublish(w.deps).then((o) => (out = o));
+    await jest.advanceTimersByTimeAsync(6_100);
+    await p;
+    expect(out).toEqual({ kind: 'pending', message: w.m.publish.UPDATING_MESSAGE });
+    expect(await w.pending()).toMatchObject({ transactionId: null });
+  });
+});
+
+describe('the plan (GET /api/shop/plan) and the tier gate', () => {
+  /** A signed-in barber whose Superwall never reports (offline launch): the server's plan decides the tabs. */
+  async function superwallUnknown() {
+    server.buy(P.bookingsMonthly);
+    server.pinnedStatus = 'UNKNOWN';
+    w = await boot(server, { user: 'u1' });
+    expect(w.m.entitlements.getEntitlements().known).toBe(false);
+  }
+
+  it('Superwall unknown, plan answers: Bookings is entitled, Store is not', async () => {
+    await superwallUnknown();
+    const b = await w.probe(() => w.m.tierAccess.useTierAccess('bookings'));
+    await b.flush();
+    expect(b.get()).toMatchObject({ status: 'ready', entitled: true, hosting: true, expired: false });
+    const s = await w.probe(() => w.m.tierAccess.useTierAccess('store'));
+    await s.flush();
+    expect(s.get()).toMatchObject({ status: 'ready', entitled: false });
+  });
+
+  it('Superwall unknown, plan offline: error (Try again), never an endless spinner; Retry recovers', async () => {
+    await superwallUnknown();
+    server.fail('/api/shop/plan', { kind: 'offline' });
+    const b = await w.probe(() => w.m.tierAccess.useTierAccess('bookings'));
+    await b.flush();
+    expect(b.get().status).toBe('error');
+    await w.act(async () => b.get().retry());
+    await b.flush();
+    expect(b.get()).toMatchObject({ status: 'ready', entitled: true });
+  });
+
+  it('Superwall unknown and signed out: the plan cannot be asked, error (not a spinner)', async () => {
+    server.buy(P.bookingsMonthly);
+    server.pinnedStatus = 'UNKNOWN';
+    w = await boot(server, { user: null });
+    const b = await w.probe(() => w.m.tierAccess.useTierAccess('bookings'));
+    await b.flush();
+    expect(b.get().status).toBe('error');
+  });
+
+  // BUG: ownerApi.call returns null for a 200 whose body isn't JSON (a captive-portal / proxy page);
+  // useTierAccess stores null as "no plan yet" and stays 'loading' with nothing to retry.
+  it.failing('BUG: a 200 HTML page for the plan shows the error card, not an endless spinner', async () => {
+    await superwallUnknown();
+    server.fail('/api/shop/plan', { kind: 'html', status: 200 });
+    const b = await w.probe(() => w.m.tierAccess.useTierAccess('bookings'));
+    await b.flush();
+    await b.flush();
+    expect(b.get().status).toBe('error');
+  });
+
+  it('observed: a 200 HTML plan leaves the tab loading forever', async () => {
+    await superwallUnknown();
+    server.fail('/api/shop/plan', { kind: 'html', status: 200 });
+    const b = await w.probe(() => w.m.tierAccess.useTierAccess('bookings'));
+    for (let i = 0; i < 5; i++) await b.flush();
+    expect(b.get().status).toBe('loading');
+    expect(server.count('/api/shop/plan')).toBe(1); // no retry is ever scheduled
+  });
+
+  // BUG: a 200 JSON plan without `entitlements` crashes the Bookings / Store tab render.
+  it.failing('BUG: a plan of {} (Superwall unknown) does not crash the tab', async () => {
+    await superwallUnknown();
+    server.fail('/api/shop/plan', { kind: 'json', status: 200, body: {} });
+    const b = await w.probe(() => w.m.tierAccess.useTierAccess('bookings'));
+    await b.flush();
+    expect(b.error()).toBeNull();
+    expect(b.get().status).toBe('error');
+  });
+
+  it.failing('BUG: a plan of {} after a lapse (Superwall INACTIVE) does not crash the tab', async () => {
+    server.buy(P.bookingsMonthly);
+    server.lapse();
+    w = await boot(server, { user: 'u1' });
+    expect(w.m.entitlements.getEntitlements()).toMatchObject({ known: true, hosting: false });
+    server.fail('/api/shop/plan', { kind: 'json', status: 200, body: {} });
+    const b = await w.probe(() => w.m.tierAccess.useTierAccess('bookings'));
+    await b.flush();
+    expect(b.error()).toBeNull();
+  });
+
+  it('lapsed under 30 days: Bookings readable (not expired); over 30 days: expired (upgrade card only)', async () => {
+    server.buy(P.bookingsMonthly);
+    server.lapse(3 * 86_400_000);
+    w = await boot(server, { user: 'u1' });
+    const recent = await w.probe(() => w.m.tierAccess.useTierAccess('bookings'));
+    await recent.flush();
+    expect(recent.get()).toMatchObject({ status: 'ready', entitled: false, hosting: false, expired: false });
+    recent.unmount();
+    w.m.plan.setSharedPlan(null);
+    server.apple[0].expirationDate = new Date(Date.now() - 31 * 86_400_000).toISOString();
+    const old = await w.probe(() => w.m.tierAccess.useTierAccess('bookings'));
+    await old.flush();
+    expect(old.get()).toMatchObject({ status: 'ready', entitled: false, expired: true });
+  });
+
+  it('entitlements known false (lapsed) vs unknown: known never waits on Superwall; unknown waits for the plan', async () => {
+    server.buy(P.storeMonthly);
+    w = await boot(server, { user: 'u1' });
+    const known = await w.probe(() => w.m.tierAccess.useTierAccess('store'));
+    expect(known.get()).toMatchObject({ status: 'ready', entitled: true }); // no network needed
+    expect(server.count('/api/shop/plan')).toBe(0);
+  });
+});
