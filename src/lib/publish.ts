@@ -47,8 +47,10 @@ export interface PublishDeps {
   store: typeof import('./siteStore');
   /** GET /api/ios/site → adopt a newer admin edit (adminSync.syncFromServer). Optional; never throws. */
   syncFromServer?(transactionId: string): Promise<SyncResult>;
-  /** The signed-in Supabase user, so the server can link the purchase to the account. */
+  /** The signed-in Supabase user (older servers read it from the body). */
   userId(): string | null;
+  /** The signed-in user's access token (refreshed when near expiry): the server links the purchase only from it. */
+  accessToken?(): Promise<string | null>;
   /**
    * After a publish is saved locally (publishFlow and the launch retry alike):
    * keeps the account's `sites` row current. Not awaited, and its failure
@@ -157,13 +159,18 @@ async function send(
   // Whenever the AI Barber link is dropped (plan, shop, unknown context), the barber's own link is used.
   const siteData = linksToSend(pending.data, rec?.inputs, ctx);
   try {
-    res = await deps.iosPublish({
-      transactionId: pending.transactionId,
-      siteData,
-      userId: deps.userId(),
-      // The version this data was based on, never the live record's (an admin edit may have landed since).
-      ...(typeof pending.baseVersion === 'number' ? { baseVersion: pending.baseVersion } : {}),
-    });
+    const token = deps.accessToken ? await deps.accessToken().catch(() => null) : null;
+    res = await deps.iosPublish(
+      {
+        transactionId: pending.transactionId,
+        siteData,
+        userId: deps.userId(),
+        // The version this data was based on, never the live record's (an admin edit may have landed since).
+        ...(typeof pending.baseVersion === 'number' ? { baseVersion: pending.baseVersion } : {}),
+      },
+      // Only when signed in (older callers and test doubles see the one-argument call).
+      ...(token ? [token] : []),
+    );
   } catch (e) {
     if (e instanceof ApiError && e.status === 409 && e.code === 'site-updated') {
       // Never auto-republish: adopt the admin's copy and let the barber review it.

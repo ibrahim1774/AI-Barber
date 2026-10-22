@@ -8,6 +8,7 @@ import { restore, syncIfSignedIn, type Restored } from '@/lib/account';
 import { appsFlyerUID, track, trackConversion } from '@/lib/analytics';
 import { api } from '@/lib/api';
 import { currentUserId } from '@/lib/auth';
+import { accessToken } from '@/lib/accessToken';
 import { PaywallSettle, type PaywallResult } from '@/lib/paywallSettle';
 import { loadLinkContext } from '@/lib/linkContext';
 import { PLAN_ENTITLEMENT, getEntitlements, setEntitlementsFromStatus } from '@/lib/entitlements';
@@ -360,6 +361,8 @@ export function usePublishDeps(): PublishDeps {
       store: siteStore,
       // The site is bound to the Apple transaction; a signed-in user is linked to it too.
       userId: currentUserId,
+      // The server links the purchase to the account only from a verified bearer.
+      accessToken,
       // Live proves the subscription is active (the editor unlocks), and
       // keeps the account's `sites` row (deployed_url, status) current.
       onLive: (site) => {

@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { accessToken } from '@/lib/accessToken';
 import type { SiteRecord } from '@/lib/siteStore';
 import { websiteToSetupServices, type SetupService } from '@/lib/setup/servicesMap';
 
@@ -14,8 +14,7 @@ export class OwnerApiError extends Error {
 const OFFLINE = "Couldn't reach AI Barber. Check your connection and try again.";
 
 export async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
-  const { data: s } = await supabase.auth.getSession();
-  const token = s.session?.access_token;
+  const token = await accessToken();
   if (!token) throw new OwnerApiError(401, 'unauthorized', 'Sign in to continue.');
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 30_000);

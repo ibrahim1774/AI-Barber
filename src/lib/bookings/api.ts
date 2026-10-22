@@ -1,5 +1,6 @@
 import { ApiError } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
+import { accessToken as sessionToken } from '@/lib/accessToken';
 import type { Appointment, TimeOff } from '@/lib/bookings/calendar';
 
 /**
@@ -45,8 +46,7 @@ export function friendlyBookingError(e: unknown): string {
 }
 
 async function accessToken(): Promise<string> {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
+  const token = await sessionToken();
   if (!token) throw new BookingApiError(401, 'unauthorized', FRIENDLY.unauthorized);
   return token;
 }

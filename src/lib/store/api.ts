@@ -1,5 +1,5 @@
 import { ApiError } from '@/lib/api';
-import { supabase } from '@/lib/supabase';
+import { accessToken } from '@/lib/accessToken';
 import type { Order } from '@/lib/store/data';
 
 /** Owner side of orders: POST /api/shop/orders/:id/{mark,refund}. Orders are read straight from Supabase. */
@@ -38,8 +38,7 @@ export function friendlyOrderError(e: unknown): string {
 }
 
 async function ownerPost<T>(path: string, body: unknown): Promise<T> {
-  const { data: s } = await supabase.auth.getSession();
-  const token = s.session?.access_token;
+  const token = await accessToken();
   if (!token) throw new OrderApiError(401, 'unauthorized', FRIENDLY.unauthorized);
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);

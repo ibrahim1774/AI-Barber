@@ -3,16 +3,9 @@ import { claimDomain, domainStatus, loadDomainClaim, saveDomainClaim } from '@/l
 import { claimOutcome, rememberedClaim, type ClaimOutcome, type DomainClaimRecord, type DomainStatus } from '@/lib/domains/model';
 import { emitSiteLive } from '@/lib/siteEvents';
 import { loadSite } from '@/lib/siteStore';
-import { supabase } from '@/lib/supabase';
+import { accessToken } from '@/lib/accessToken';
 
-export const accessToken = async (): Promise<string | null> => {
-  try {
-    const { data } = await supabase.auth.getSession();
-    return data.session?.access_token ?? null;
-  } catch {
-    return null;
-  }
-};
+export { accessToken };
 
 /**
  * Sends a claim and reads what it means. After the request went out, a timeout or a "try later" answer is

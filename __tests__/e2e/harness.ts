@@ -83,7 +83,7 @@ export class FakeServer {
   lastQuery = '';
   /** Run once, just before the next request to a path is handled (e.g. an admin edit landing mid-publish). */
   before: Record<string, (() => void)[]> = {};
-  calls: { path: string; method: string; body: any }[] = [];
+  calls: { path: string; method: string; body: any; headers?: Record<string, string> }[] = [];
   /** Every siteData the server accepted, in order. */
   published: any[] = [];
   /** The 409 carries the server copy (true) or only the error code (false). */
@@ -196,7 +196,7 @@ export class FakeServer {
     this.lastQuery = u.search;
     const method = init.method ?? 'GET';
     const body = init.body ? JSON.parse(init.body) : undefined;
-    this.calls.push({ path, method, body });
+    this.calls.push({ path, method, body, headers: init.headers ?? {} });
     this.before[path]?.shift()?.();
     const fault = this.faults[path]?.shift();
     if (fault) {

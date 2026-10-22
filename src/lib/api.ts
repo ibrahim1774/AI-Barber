@@ -171,14 +171,22 @@ export const api = {
    * 404 verify codes, 502 publish-failed, 503 temporarily-unavailable |
    * apple-unavailable | slug-bind-failed.
    */
-  iosPublish(body: {
-    transactionId: string;
-    siteData: WebsiteData;
-    userId?: string | null;
-    /** The site version this phone last saw; the server 409s `site-updated` if an admin edit is newer. */
-    baseVersion?: number;
-  }): Promise<{ siteId: string; deployedUrl: string; republished: boolean } & ServerVersionInfo> {
-    return post('/api/ios/publish', body, { timeoutMs: SCRAPE_TIMEOUT_MS, failMessage: 'Publish failed', slowMessage: 'Publishing is temporarily unavailable — try again shortly.' });
+  iosPublish(
+    body: {
+      transactionId: string;
+      siteData: WebsiteData;
+      /** Kept for older servers; the server links the account only from the verified bearer. */
+      userId?: string | null;
+      /** The site version this phone last saw; the server 409s `site-updated` if an admin edit is newer. */
+      baseVersion?: number;
+    },
+    /** The signed-in user's Supabase access token, sent as `Authorization: Bearer …`. */
+    accessToken?: string | null,
+  ): Promise<{ siteId: string; deployedUrl: string; republished: boolean } & ServerVersionInfo> {
+    return post('/api/ios/publish', body, {
+      timeoutMs: SCRAPE_TIMEOUT_MS, failMessage: 'Publish failed', slowMessage: 'Publishing is temporarily unavailable — try again shortly.',
+      ...(accessToken ? { headers: { Authorization: `Bearer ${accessToken}` } } : {}),
+    });
   },
 
   iosSite(
