@@ -21,6 +21,7 @@ import { deployRenderedSite } from './deploySite.js';
 import { generateHTMLWithPlaceholders } from './render/luxe.js';
 import { generatePrimeHTMLWithPlaceholders } from './render/prime.js';
 import { generateEuphoriaHTMLWithPlaceholders } from './render/euphoria.js';
+import { isAwaitingDetails } from './payFirst.js';
 
 export type SiteEditor = 'owner' | 'admin';
 
@@ -59,7 +60,7 @@ export function adminVersionOf(p: Pick<PendingSite, 'version' | 'editedBy' | 'ad
   return Math.max(carried, p.editedBy === 'admin' ? versionOf(p) : 0);
 }
 
-export type PublishFailure = 'no-backup' | 'bad-backup' | 'deploy-failed';
+export type PublishFailure = 'no-backup' | 'bad-backup' | 'deploy-failed' | 'awaiting-details';
 
 // Flat rather than a discriminated union: this repo compiles with
 // strictNullChecks off, and without it TS won't narrow on an `ok: true | false`
@@ -225,6 +226,11 @@ export async function publishSite(
      * beyond the deployedUrl stamp.
      */
     pending?: PendingSite;
+    /**
+     * The checkout plan, when the caller knows it (webhook, sweeper). A pay-first plan
+     * (/custom-15) only publishes a copy whose details were confirmed after payment.
+     */
+    plan?: string | null;
   } = {},
 ): Promise<PublishOutcome> {
   const safe = slugify(siteId);
@@ -238,6 +244,14 @@ export async function publishSite(
   }
   if (!pending) return { ok: false, reason: 'no-backup', siteId: safe };
   if (!pending.siteData) return { ok: false, reason: 'bad-backup', siteId: safe };
+
+  // /custom-15 pay-first hold: the stored copy is still the sample (placeholder
+  // name, no way to reach the shop). Never publish it, not even with force; the
+  // barber's details step after payment writes a confirmed copy.
+  if (isAwaitingDetails(pending.siteData, opts.plan)) {
+    console.log(`[Publish] ${safe}: awaiting the barber's details (pay-first) — not publishing the sample`);
+    return { ok: false, reason: 'awaiting-details', siteId: safe };
+  }
 
   // Idempotency gate. Both the webhook and the sweeper can land on the same
   // site, and Stripe retries webhooks — none of that should mean two deploys.

@@ -12,6 +12,8 @@ import { GeneratorForm } from './components/GeneratorForm.tsx';
 import { HomeBookingPrompts } from './components/HomeBookingPrompts.tsx';
 import { HomeLaunchGuide } from './components/HomeLaunchGuide.tsx';
 import { Custom15BookingPrompt } from './components/Custom15BookingPrompt.tsx';
+import { PayFirstDetailsStep } from './components/PayFirstDetailsStep.tsx';
+import { isAwaitingDetails, isPayFirstPlan } from './lib/payFirst.ts';
 import { buildSiteFromScrape } from './lib/buildSiteFromScrape.ts';
 import { ensureUuid } from './lib/ensureUuid.ts';
 import { extractFirstUrl, isSupportedBookingHost } from './lib/supportedBookingHost.ts';
@@ -98,6 +100,10 @@ const App: React.FC = () => {
   // The awaitingBookingLink flag persists with the site, so the prompt
   // returns next session until a link is actually given.
   const [custom15PromptDismissed, setCustom15PromptDismissed] = useState(false);
+  // /custom-15 pay-first hold: after the Stripe return, the paid copy is still
+  // the sample. Collect the shop's details first; only then run the deploy
+  // (same Stripe session id, so the first deploy carries its checkout proof).
+  const [payFirstGate, setPayFirstGate] = useState<null | { sessionId: string; plan: string; pending: any }>(null);
 
   // Post-generation intro modal — fires once after a /new visitor lands
   // in the editor. Mirrors the "Your site is fully editable" tour from
@@ -330,7 +336,7 @@ const App: React.FC = () => {
     if (stripeSessionId) {
       window.history.replaceState({}, '', window.location.pathname);
       setAppReady(true);
-      handleStripeReturn(stripeSessionId, stripePlan);
+      void beginStripeReturn(stripeSessionId, stripePlan);
       return;
     }
 
@@ -481,6 +487,39 @@ const App: React.FC = () => {
     }
   };
 
+  // Read the pre-checkout copy: localStorage first, then the server backup.
+  const loadPendingSite = async (sessionId: string): Promise<any> => {
+    try {
+      const pendingJson = localStorage.getItem('pendingSite');
+      if (pendingJson) return JSON.parse(pendingJson);
+    } catch { /* private mode etc. */ }
+    try {
+      const r = await fetch('/api/recover-pending-site', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId }),
+      });
+      if (r.ok) {
+        const d = await r.json();
+        if (d?.ok && d?.data) return d.data;
+      }
+    } catch { /* fall through */ }
+    return null;
+  };
+
+  // Stripe return entry. A /custom-15 pay-first copy still awaiting details
+  // goes to the details step; everything else deploys as before. /recover
+  // replays land here too, so a buyer who paid and never filled in their
+  // details finishes the same way.
+  const beginStripeReturn = async (sessionId: string, plan: string) => {
+    const pending = await loadPendingSite(sessionId);
+    if (pending && isAwaitingDetails(pending?.siteData, plan)) {
+      setPayFirstGate({ sessionId, plan, pending });
+      return;
+    }
+    handleStripeReturn(sessionId, plan);
+  };
+
   const handleStripeReturn = async (sessionId: string, plan: string = 'monthly') => {
     isLegitDeployRef.current = true;
     setState('deploying');
@@ -546,6 +585,11 @@ const App: React.FC = () => {
 
         if (!pending) {
           throw new Error('We could not find your site data. Please contact support — your payment is safe and we can finish publishing manually.');
+        }
+        // Never deploy the pay-first sample (beginStripeReturn routes it to
+        // the details step; this is the backstop).
+        if (isAwaitingDetails(pending?.siteData, plan)) {
+          throw new Error('We still need your shop details before we can publish. Reload this page to add them — your payment is safe.');
         }
         const { siteId, siteData, imageUrlMap, existingSiteId } = pending as {
           siteId: string;
@@ -726,7 +770,9 @@ const App: React.FC = () => {
         const fullSiteData: WebsiteData = {
           // /custom-15 pay-first: what just deployed is the sample. The
           // editor prompts for the booking link until this clears.
-          ...((plan === 'monthly-custom15' || plan === 'monthly-custom10') ? { awaitingBookingLink: true } : {}),
+          // Details were confirmed before this deploy; keep prompting for a
+          // booking link only when the barber gave a phone instead of one.
+          ...(isPayFirstPlan(plan) && !siteData.bookingUrl ? { awaitingBookingLink: true } : {}),
           ...siteData,
           hero: { ...siteData.hero, imageUrl: imageUrlMap['hero'] || siteData.hero.imageUrl || '' },
           about: { ...siteData.about, imageUrl: imageUrlMap['about'] || siteData.about.imageUrl || '' },
@@ -1357,6 +1403,16 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#0d0d0d] text-white">
+    {payFirstGate && (
+      <PayFirstDetailsStep
+        pending={payFirstGate.pending}
+        onReady={() => {
+          const gate = payFirstGate;
+          setPayFirstGate(null);
+          handleStripeReturn(gate.sessionId, gate.plan);
+        }}
+      />
+    )}
     <Suspense fallback={null}>
       {state === 'generator' && (
         isBareRootPath() && !useManualForm ? (

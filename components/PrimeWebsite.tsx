@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { isPayFirstPlan } from '../lib/payFirst';
 import { WebsiteData, SiteInstance, SaveStatus } from '../types';
 import { CameraIcon } from './Icons';
 import { EditorToolbar } from './EditorToolbar';
@@ -283,6 +284,9 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
         existingSiteId: site?.id ?? null,
         siteData: {
           ...siteData,
+          // /custom-15 pay-first: this copy is the sample. Hold it (nothing
+          // publishes it) until the barber enters their details after payment.
+          ...(isPayFirstPlan(String(plan)) ? { awaitingDetails: true } : {}),
           hero: { ...siteData.hero, imageUrl: imageUrlMap['hero'] ? 'uploaded' : '' },
           about: { ...siteData.about, imageUrl: imageUrlMap['about'] ? 'uploaded' : '' },
           gallery: siteData.gallery.map((_, i) => imageUrlMap[`gallery${i}`] ? 'uploaded' : ''),

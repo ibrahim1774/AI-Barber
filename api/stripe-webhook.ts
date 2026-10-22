@@ -218,7 +218,9 @@ export default async function handler(req: any, res: any) {
         // Cost is bounded: this runs under waitUntil with maxDuration 300, so
         // the delay plus a 60-90s deploy still fits comfortably.
         new Promise((r) => setTimeout(r, PUBLISH_GRACE_MS))
-          .then(() => publishSite(siteId))
+          // `plan` lets publishSite hold a /custom-15 pay-first site until the
+          // barber has entered their details after payment.
+          .then(() => publishSite(siteId, { plan: typeof plan === 'string' ? plan : null }))
           .then((outcome) => {
             if (!outcome.ok) {
               console[outcome.reason === 'deploy-failed' ? 'error' : 'warn'](

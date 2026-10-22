@@ -52,6 +52,13 @@ export interface WebsiteData {
   // the site from it, and clears this. Persisted with the site so the
   // prompt survives devices/sessions until the link is actually given.
   awaitingBookingLink?: boolean;
+  // /custom-15 pay-first hold. Set on the pre-checkout copy: the site is the
+  // sample ("Premium Cuts", stock photos) and must not go public. Nothing
+  // publishes it (browser, webhook, sweeper, admin) until the barber has
+  // entered a shop name and a phone or booking link after payment; that
+  // rebuilt copy drops this flag and carries detailsConfirmed instead.
+  awaitingDetails?: boolean;
+  detailsConfirmed?: boolean;
   hero: {
     heading: string;
     tagline: string;

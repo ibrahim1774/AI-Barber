@@ -66,14 +66,16 @@ export default async function handler(req: any, res: any) {
           break;
         }
 
-        const outcome = await publishSite(siteId);
+        // The plan holds a /custom-15 pay-first site until its details are in.
+        const outcome = await publishSite(siteId, { plan: s.metadata?.plan || null });
         if (!outcome.ok) {
           if (outcome.reason === 'deploy-failed') {
             failed.push({ siteId: outcome.siteId, error: outcome.error });
             console.error(`[Sweeper] FAILED ${outcome.siteId}: ${outcome.error}`);
           } else {
             // no-backup: a custom-design ($29) sale, or a session that predates
-            // the pre-checkout backup. Nothing to build, not an error.
+            // the pre-checkout backup. awaiting-details: a /custom-15 buyer who
+            // hasn't entered their details yet. Nothing to build, not an error.
             failed.push({ siteId: outcome.siteId, reason: outcome.reason });
           }
         } else if (!outcome.alreadyLive) {
