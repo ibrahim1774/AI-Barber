@@ -18,6 +18,8 @@ import { randomUUID } from 'node:crypto';
 import { createAppointment, getSlots, postManage, postSent, getShop } from '../../lib/bookings/publicFlow.js';
 import { createOwnerAppointment, createTimeOff, rescheduleOwnerAppointment } from '../../lib/bookings/ownerFlow.js';
 import { runReminders, REMINDER_BUDGET_MS } from '../../lib/bookings/notify.js';
+import { expireStaleCardHolds } from '../../lib/bookings/core.js';
+import { handleConnectEvent, type WebhookDeps } from '../../lib/bookings/payments.js';
 import remindersHandler from '../../api/book/reminders.js';
 import { world, type State } from '../bookings/fakeRepo.js';
 import { storeWorld } from '../store/fakeRepo.js';
@@ -290,6 +292,78 @@ describe('"I\'ve sent it" (manual rail) on a booking', () => {
     b.state.shops[0].bookings_enabled = false;
     const r = await postSent({ token: b.state.appointments[0].manage_token, method: 'cashapp' }, b.deps);
     expect(r.status).toBe(423);
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('booking card-hold sweep vs a customer who paid on time (webhook late)', () => {
+  /** A card hold created 36 min ago whose Checkout the customer completed at minute 31. */
+  function paidOnTimeHold() {
+    b.state.shops[0].stripe_account_id = 'acct_1';
+    b.state.shops[0].stripe_charges_enabled = true;
+    const created = Date.parse('2026-11-02T11:24:00Z');
+    const id = randomUUID();
+    b.state.appointments.push({
+      id, shop_id: b.ids.shopId, member_id: b.ids.mike, service_id: b.ids.cut, start_at: '2026-11-03T15:00:00.000Z', end_at: '2026-11-03T15:30:00.000Z',
+      service_name: 'Haircut', price_cents: 3000, duration_min: 30, customer_name: 'Paid', customer_phone: '5550101010', customer_email: 'p@example.com',
+      note: null, status: 'booked', payment_status: 'awaiting', payment_method: 'card', source: 'online', cancelled_by: null, cancelled_at: null,
+      reminder_sent_at: null, amount_paid_cents: 0, amount_refunded_cents: 0, stripe_payment_intent_id: null, stripe_checkout_session_id: 'cs_paid',
+      manage_token: 'p'.repeat(40), customer_says_paid_at: null, shop_rescheduled_at: null, refund_due_cents: 0, refund_stuck_at: null,
+      created_at: new Date(created).toISOString(), updated_at: new Date(created).toISOString(),
+    } as any);
+    // Stripe refuses to expire a session that is already complete (expireCheckoutSession → false).
+    b.deps.payments.expireCheckoutSession = vi.fn(async () => false) as any;
+    return id;
+  }
+
+  /** The appointment side of the Connect webhook over the booking world's rows (live deps' guards). */
+  function apptWebhook(refunds: { pi: string; amount: number; key: string }[]): WebhookDeps {
+    const seen = new Set<string>();
+    const a = (id: string) => b.state.appointments.find((x) => x.id === id)!;
+    const clone = (x: any) => (x ? JSON.parse(JSON.stringify(x)) : null);
+    return {
+      eventProcessed: async (id) => seen.has(id), recordEvent: async (id) => { seen.add(id); },
+      appointmentBySession: async (sid) => clone(b.state.appointments.find((x) => x.stripe_checkout_session_id === sid)),
+      appointmentByPaymentIntent: async (pi) => clone(b.state.appointments.find((x) => x.stripe_payment_intent_id === pi)),
+      appointmentById: async (id) => clone(b.state.appointments.find((x) => x.id === id)),
+      shop: async (id) => clone(b.state.shops.find((x) => x.id === id)),
+      markPaid: async (id, f) => {
+        const x = a(id);
+        if (x.status === 'cancelled' || x.stripe_payment_intent_id) return false;
+        Object.assign(x, { payment_status: f.paymentStatus, payment_method: 'card', amount_paid_cents: f.amountPaidCents, stripe_payment_intent_id: f.paymentIntentId, paid_at: new Date().toISOString() });
+        return true;
+      },
+      recordPaidAfterCancel: async (id, f) => {
+        const x = a(id) as any;
+        if (x.status !== 'cancelled' || x.paid_at || x.stripe_payment_intent_id) return false;
+        Object.assign(x, { payment_method: 'card', amount_paid_cents: f.amountPaidCents, stripe_payment_intent_id: f.paymentIntentId });
+        return true;
+      },
+      expireHold: async () => false,
+      setRefunded: async (id, total, ps) => { const x = a(id); if (x.amount_refunded_cents <= total) Object.assign(x, { amount_refunded_cents: total, payment_status: ps }); },
+      setChargesEnabledForAccount: async () => {}, disconnectAccount: async () => false,
+      refund: async (_s, appt, amount, key) => { refunds.push({ pi: appt.stripe_payment_intent_id!, amount, key }); return { refundedCents: amount }; },
+      notify: async () => {}, now: () => b.deps.now(),
+    };
+  }
+
+  const completed = { id: 'evt_late_paid', type: 'checkout.session.completed', account: 'acct_1', data: { object: {
+    id: 'cs_paid', payment_status: 'paid', amount_total: 3000, currency: 'usd', payment_intent: 'pi_paid', client_reference_id: null, metadata: {},
+  } } };
+
+  it('setup: the sweep cancels the paid hold (Stripe said the session could not be expired) and the late webhook refunds the customer in full', async () => {
+    const id = paidOnTimeHold();
+    expect(await expireStaleCardHolds(b.deps)).toEqual({ expired: 1 });
+    expect(b.state.appointments.find((x) => x.id === id)).toMatchObject({ status: 'cancelled', payment_status: 'none' });
+    const refunds: { pi: string; amount: number; key: string }[] = [];
+    expect(await handleConnectEvent(completed as any, apptWebhook(refunds))).toBe('refunded:cancelled-before-payment');
+    expect(refunds).toEqual([{ pi: 'pi_paid', amount: 3000, key: 'refund-pac-pi_paid' }]);
+  });
+
+  it.fails('BUG: a customer who paid on time loses the booking (cancelled before Stripe is asked); the store sweep asks Stripe first', async () => {
+    const id = paidOnTimeHold();
+    await expireStaleCardHolds(b.deps);
+    expect(b.state.appointments.find((x) => x.id === id)!.status).toBe('booked');
   });
 });
 
