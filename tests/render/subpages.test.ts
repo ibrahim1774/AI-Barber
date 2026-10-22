@@ -33,8 +33,8 @@ describe('site subpage links', () => {
 });
 
 const skin: SectionSkin = {
-  section: 'S', inner: 'I', eyebrow: 'E', heading: 'H', list: 'L', item: 'IT', name: 'N', price: 'P', button: 'B',
-  grid: 'G', card: 'C', img: 'IM', cardName: 'CN', cardPrice: 'CP', link: 'LK',
+  section: 'S', inner: 'I', heading: 'H', list: 'L', item: 'IT', name: 'N', price: 'P', button: 'B',
+  grid: 'G', link: 'LK', css: '.ab-sp-card{color:red}',
 };
 const site = (over: Record<string, unknown> = {}) => ({
   bookingUrl: '/book',
@@ -97,8 +97,9 @@ describe('shop preview', () => {
     expect(html).toContain('href="/shop"');
     expect(html).toContain('See all');
     expect(html).toContain(SHOP_PREVIEW_SCRIPT);
-    // No product markup is server-rendered.
-    expect(html).not.toContain('class="C"');
+    // No product markup is server-rendered; the template's card styles ride along.
+    expect(html).not.toContain('class="ab-sp-card"');
+    expect(html).toContain('.ab-sp-card{color:red}');
   });
 });
 

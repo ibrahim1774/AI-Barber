@@ -9,6 +9,7 @@
 // Pure: WebsiteData in, HTML string out. Keep it that way.
 import type { WebsiteData } from '../../types';
 import { safeHref } from './safeHref.js';
+import { bookStripHtml, isSiteBookLink, shopPreviewHtml, type SectionSkin } from './subpages.js';
 import {
   aggregateToShow, copyrightYear, displayPrice, footerLine, hasServices, nicheCopy, photoAlt, reviewStars,
   reviewsSourceLabel, serviceMeta, siteDescription, siteTitle, withoutLegacyCopy,
@@ -111,6 +112,24 @@ export function aibThemeVars(theme: AibTheme): string {
 const escapeAttr = (s: string): string =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
+// Book strip and Shop preview in LUXE's look (accent rides on the .aib-themed overrides).
+const LUXE_SKIN: SectionSkin = {
+  section: 'py-12 md:py-24 bg-[#0d0d0d] px-6 border-y border-white/5',
+  inner: 'container mx-auto max-w-5xl text-center',
+  heading: 'text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px] mb-8',
+  list: 'max-w-xl mx-auto mb-8 divide-y divide-white/10 text-left',
+  item: 'flex items-center justify-between gap-4 py-3',
+  name: 'font-montserrat font-bold text-white uppercase tracking-[1px] text-sm md:text-base',
+  price: 'font-montserrat font-black text-[#f4a100] whitespace-nowrap',
+  button: 'inline-flex items-center gap-3 bg-[#f4a100] text-[#1a1a1a] px-8 py-4 md:px-12 md:py-5 font-montserrat font-black tracking-[2px] uppercase hover:bg-white transition-all duration-300 shadow-lg text-xs md:text-sm',
+  grid: 'grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-8 text-left',
+  link: 'inline-flex items-center gap-3 border-2 border-[#f4a100] text-[#f4a100] px-8 py-4 font-montserrat font-black tracking-[2px] uppercase hover:bg-[#f4a100] hover:text-[#1a1a1a] transition-all duration-300 text-xs md:text-sm',
+  css: '.ab-sp-card{display:flex;flex-direction:column;gap:6px;text-decoration:none;color:inherit}'
+    + '.ab-sp-img{width:100%;aspect-ratio:1/1;object-fit:cover;background:#1a1a1a}'
+    + ".ab-sp-name{font-family:'Montserrat',sans-serif;font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:1px;color:#fff}"
+    + ".ab-sp-price{font-family:'Montserrat',sans-serif;font-weight:900;color:var(--aib-accent,#f4a100)}",
+};
+
 export function generateHTMLWithPlaceholders(input: WebsiteData): string {
   // Older stored sites: drop the copy we invented for them (honest.ts).
   const siteData = withoutLegacyCopy(input);
@@ -118,6 +137,11 @@ export function generateHTMLWithPlaceholders(input: WebsiteData): string {
   const esc = (v: unknown): string => escapeAttr(String(v ?? ''));
   const bookingUrl = safeHref(siteData.bookingUrl);
   const shopUrl = safeHref(siteData.shopUrl);
+  // The site's own /book page opens in the same tab; another booking site in a new one.
+  const bookTarget = bookingUrl && !isSiteBookLink(bookingUrl) ? ' target="_blank" rel="noopener noreferrer"' : '';
+  // Homepage previews of the site's own /book and /shop pages (lib/render/subpages.ts).
+  const bookStrip = bookStripHtml(siteData, LUXE_SKIN);
+  const shopPreview = shopPreviewHtml(siteData, LUXE_SKIN);
   const formattedPhone = esc((siteData.phone || '').replace(/\s+/g, ''));
   const hasPhone = !!(siteData.phone || '').trim();
   // tel: links only for a phone with digits ("call us" gets no link).
@@ -403,7 +427,7 @@ ${showServices ? `        <a href="#services" class="text-[12px] font-montserrat
         ${canCall ? `<a href="tel:${formattedPhone}" class="inline-flex items-center gap-3 border-2 border-[#f4a100] text-[#f4a100] px-6 py-4 md:px-12 md:py-6 font-montserrat font-black tracking-[2px] uppercase hover:bg-[#f4a100] hover:text-[#1a1a1a] transition-all duration-300 group shadow-lg text-xs md:text-base">
           <span>Call Now: ${esc(siteData.phone)}</span>
         </a>` : ''}
-        ${bookingUrl ? `<a href="${escapeAttr(bookingUrl)}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-3 bg-[#f4a100] text-[#1a1a1a] px-6 py-4 md:px-12 md:py-6 font-montserrat font-black tracking-[2px] uppercase hover:bg-white transition-all duration-300 shadow-lg text-xs md:text-base"><span>Book Appointment</span></a>` : ''}
+        ${bookingUrl ? `<a href="${escapeAttr(bookingUrl)}"${bookTarget} class="inline-flex items-center gap-3 bg-[#f4a100] text-[#1a1a1a] px-6 py-4 md:px-12 md:py-6 font-montserrat font-black tracking-[2px] uppercase hover:bg-white transition-all duration-300 shadow-lg text-xs md:text-base"><span>Book Appointment</span></a>` : ''}
       </div>
     </div>
   </section>
@@ -426,7 +450,7 @@ ${showServices ? `        <a href="#services" class="text-[12px] font-montserrat
 
   ${gallerySection}
 
-  ${servicesSection}
+  ${servicesSection}${bookStrip}
 
   ${reviewsSection}
 
@@ -434,7 +458,7 @@ ${showServices ? `        <a href="#services" class="text-[12px] font-montserrat
 
   ${hoursSection}
 
-  ${craftSection}
+  ${craftSection}${shopPreview}
 
   <section id="contact" class="py-12 md:py-32 bg-[#0d0d0d] px-4 md:px-6">
     <div class="container mx-auto max-w-6xl bg-[#1a1a1a] p-8 md:p-20">
@@ -448,7 +472,7 @@ ${showServices ? `        <a href="#services" class="text-[12px] font-montserrat
           <h4 class="text-[#f4a100] font-bold text-[10px] md:text-xs tracking-[2px] mb-1 md:mb-2 font-montserrat">${lbl('contactPhoneLabel', 'PHONE')}</h4>
           <p class="text-[#cccccc] text-xs md:text-sm leading-relaxed">${esc(siteData.phone)}</p>
         </div>` : ''}
-        ${bookingUrl ? `<div class="pt-4"><a href="${escapeAttr(bookingUrl)}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-3 bg-[#f4a100] text-[#1a1a1a] px-8 py-4 md:px-12 md:py-5 font-montserrat font-black tracking-[2px] uppercase hover:bg-white transition-all duration-300 shadow-lg text-xs md:text-sm">Book Appointment</a></div>` : ''}${shopUrl ? `
+        ${bookingUrl ? `<div class="pt-4"><a href="${escapeAttr(bookingUrl)}"${bookTarget} class="inline-flex items-center gap-3 bg-[#f4a100] text-[#1a1a1a] px-8 py-4 md:px-12 md:py-5 font-montserrat font-black tracking-[2px] uppercase hover:bg-white transition-all duration-300 shadow-lg text-xs md:text-sm">Book Appointment</a></div>` : ''}${shopUrl ? `
         <div class="pt-4"><a href="${escapeAttr(shopUrl)}" class="inline-flex items-center gap-3 border-2 border-[#f4a100] text-[#f4a100] px-8 py-4 md:px-12 md:py-5 font-montserrat font-black tracking-[2px] uppercase hover:bg-[#f4a100] hover:text-[#1a1a1a] transition-all duration-300 text-xs md:text-sm">Shop online</a></div>` : ''}
       </div>
     </div>

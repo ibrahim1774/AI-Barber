@@ -9,6 +9,7 @@
 // Pure: WebsiteData in, HTML string out. Keep it that way.
 import type { WebsiteData } from '../../types';
 import { safeHref } from './safeHref.js';
+import { bookStripHtml, isSiteBookLink, shopPreviewHtml, type SectionSkin } from './subpages.js';
 import {
   aggregateToShow, copyrightYear, displayPrice, galleryIsAllOwnPhotos, hasServices, nicheCopy, photoAlt,
   photosAreFromBookingPage, policyToShow, reviewStars, reviewsSourceLabel, serviceMeta, siteDescription, siteTitle,
@@ -190,11 +191,39 @@ export function resolvePrimeTheme(slug?: string): { brand: string; bright: strin
 // builders; only the prime sections differ. Reviews / hours / gallery render
 // only when data is present, matching the live editor.
 // ===========================================================================
+// Book strip and Shop preview in PRIME's look (brand colour from the theme vars).
+const PRIME_SKIN: SectionSkin = {
+  section: 'p-section',
+  inner: 'p-container ab-sub',
+  heading: 'p-display',
+  list: 'p-svc ab-sub-list',
+  item: 'p-svc-row',
+  name: 'p-serif p-italic ab-sub-name',
+  price: 'p-serif p-italic ab-sub-price',
+  button: 'p-cta p-cta-solid',
+  grid: 'ab-sub-grid',
+  link: 'p-cta',
+  css: '.ab-sub{text-align:center}.ab-sub .p-display{font-size:clamp(28px,5vw,46px);margin:0 0 28px}'
+    + '.ab-sub-list{max-width:640px;margin:0 auto 28px;text-align:left}.ab-sub-name{font-size:1.2rem;font-weight:600}'
+    + '.ab-sub-price{font-size:1.4rem;color:var(--p-brand-bright);white-space:nowrap}'
+    + '.ab-sub-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin:0 auto 28px;max-width:880px;text-align:left}'
+    + '@media(min-width:768px){.ab-sub-grid{grid-template-columns:repeat(4,1fr)}}'
+    + '.ab-sp-card{display:flex;flex-direction:column;gap:6px;text-decoration:none;color:var(--p-ink)}'
+    + '.ab-sp-img{width:100%;aspect-ratio:1/1;object-fit:cover;background:var(--p-bg-3)}'
+    + ".ab-sp-name{font-family:'Newsreader',Georgia,serif;font-style:italic;font-size:1.05rem}"
+    + '.ab-sp-price{color:var(--p-brand-bright)}',
+};
+
 export function generatePrimeHTMLWithPlaceholders(input: WebsiteData): string {
   // Older stored sites: drop the copy we invented for them (honest.ts).
   const siteData = withoutLegacyCopy(input);
   const bookingUrl = safeHref(siteData.bookingUrl);
   const shopUrl = safeHref(siteData.shopUrl);
+  // The site's own /book page opens in the same tab; another booking site in a new one.
+  const bookTarget = bookingUrl && !isSiteBookLink(bookingUrl) ? ' target="_blank" rel="noopener noreferrer"' : '';
+  // Homepage previews of the site's own /book and /shop pages (lib/render/subpages.ts).
+  const bookStrip = bookStripHtml(siteData, PRIME_SKIN);
+  const shopPreview = shopPreviewHtml(siteData, PRIME_SKIN);
   const formattedPhone = escapeHtml((siteData.phone || '').replace(/\s+/g, ''));
   const phoneDigits = (siteData.phone || '').replace(/\D/g, '');
   // Book: the booking link, else a call. Neither → no booking buttons.
@@ -383,7 +412,7 @@ ${PRIME_SCOPED_CSS}
     <div class="p-container" style="display:flex;align-items:center;justify-content:space-between;padding:16px 6vw;">
       <a href="#top" class="p-serif" style="text-decoration:none;color:var(--p-ink);font-size:20px;letter-spacing:0.04em;">${safeName}</a>${shopUrl ? `
       <a href="${escapeHtml(shopUrl)}" class="p-eyebrow" style="text-decoration:none;">Shop</a>` : ''}
-      ${bookHref ? `<a href="${escapeHtml(bookHref)}"${bookingUrl ? ' target="_blank" rel="noopener noreferrer"' : ''} class="p-cta p-cta-solid" style="padding:10px 18px;font-size:10px;">Book Now</a>` : ''}
+      ${bookHref ? `<a href="${escapeHtml(bookHref)}"${bookTarget} class="p-cta p-cta-solid" style="padding:10px 18px;font-size:10px;">Book Now</a>` : ''}
     </div>
   </nav>
 
@@ -396,7 +425,7 @@ ${PRIME_SCOPED_CSS}
       <h1 class="p-display p-italic" style="font-size:clamp(2.2rem,5.5vw,4.6rem);margin:0 0 14px;color:var(--p-brand);">${escapeHtml(siteData.hero.heading)}</h1>
       <p class="p-serif p-italic" style="font-size:clamp(1rem,2.2vw,1.4rem);color:var(--p-ink-soft);max-width:640px;margin:0 auto 22px;">${escapeHtml(siteData.hero.tagline)}</p>
       <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;">
-        ${bookHref ? `<a href="${escapeHtml(bookHref)}"${bookingUrl ? ' target="_blank" rel="noopener noreferrer"' : ''} class="p-cta p-cta-solid">Book an Appointment</a>` : ''}
+        ${bookHref ? `<a href="${escapeHtml(bookHref)}"${bookTarget} class="p-cta p-cta-solid">Book an Appointment</a>` : ''}
         ${showServices ? `<a href="#services" class="p-cta">View Services</a>` : ''}
       </div>
       ${agg ? `<div style="margin-top:28px;color:var(--p-ink-soft);font-size:13px;"><span style="color:var(--p-brand);">${'★'.repeat(Math.round(agg.rating))}</span> ${agg.rating.toFixed(1)}${agg.count > 0 ? ` · ${agg.count.toLocaleString()} reviews` : ''}</div>` : ''}
@@ -416,7 +445,7 @@ ${PRIME_SCOPED_CSS}
     </div>
   </section>
 
-  ${servicesSection}
+  ${servicesSection}${bookStrip}
 
   ${policySection}
 
@@ -424,14 +453,14 @@ ${PRIME_SCOPED_CSS}
 
   ${reviewsSection}
 
-  ${pullQuoteSection}
+  ${pullQuoteSection}${shopPreview}
 
   <!-- Booking strip -->
   <section style="background:var(--p-cream);color:#1a1a1a;text-align:center;padding:64px 6vw;">
     <div class="p-eyebrow" style="color:var(--p-brand-deep);margin-bottom:14px;">${copy.bookingEyebrow}</div>
     <h2 class="p-display" style="font-size:clamp(2rem,5vw,3rem);margin:0 0 16px;color:#1a1a1a;">Ready for <span class="p-italic">${copy.bookingNext}</span></h2>
     ${bookingNote ? `<p class="p-serif p-italic" style="color:#555;margin:0 0 28px;">${escapeHtml(bookingNote)}</p>` : ''}
-    ${bookHref ? `<a href="${escapeHtml(bookHref)}"${bookingUrl ? ' target="_blank" rel="noopener noreferrer"' : ''} class="p-cta" style="background:#1a1a1a;color:var(--p-brand);border-color:#1a1a1a;">Book an Appointment</a>` : ''}
+    ${bookHref ? `<a href="${escapeHtml(bookHref)}"${bookTarget} class="p-cta" style="background:#1a1a1a;color:var(--p-brand);border-color:#1a1a1a;">Book an Appointment</a>` : ''}
   </section>
 
   <!-- Visit -->
@@ -443,7 +472,7 @@ ${PRIME_SCOPED_CSS}
         <div style="display:grid;gap:22px;color:var(--p-ink-soft);font-size:16px;line-height:1.6;">
           ${siteData.contact.address ? `<div><div class="p-eyebrow" style="margin-bottom:6px;">The Address</div><div class="p-serif p-italic" style="color:var(--p-ink);font-size:1.2rem;">${escapeHtml(siteData.contact.address)}</div></div>` : ''}
           ${phoneDigits ? `<div><div class="p-eyebrow" style="margin-bottom:6px;">By Phone</div><a href="tel:${formattedPhone}" class="p-serif p-italic" style="color:var(--p-ink);font-size:1.2rem;text-decoration:none;">${escapeHtml(siteData.phone)}</a></div>` : ''}
-          ${bookingUrl ? `<div><div class="p-eyebrow" style="margin-bottom:6px;">Online Booking</div><a href="${escapeHtml(bookingUrl)}" target="_blank" rel="noopener noreferrer" class="p-serif p-italic" style="color:var(--p-ink);font-size:1.1rem;">Book online →</a></div>` : ''}${shopUrl ? `
+          ${bookingUrl ? `<div><div class="p-eyebrow" style="margin-bottom:6px;">Online Booking</div><a href="${escapeHtml(bookingUrl)}"${bookTarget} class="p-serif p-italic" style="color:var(--p-ink);font-size:1.1rem;">Book online →</a></div>` : ''}${shopUrl ? `
           <div><div class="p-eyebrow" style="margin-bottom:6px;">The Shop</div><a href="${escapeHtml(shopUrl)}" class="p-serif p-italic" style="color:var(--p-ink);font-size:1.1rem;">Shop online → pickup or shipping</a></div>` : ''}
         </div>
       </div>

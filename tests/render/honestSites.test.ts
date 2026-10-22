@@ -451,6 +451,8 @@ describe('React previews and vendored sources carry none of the removed copy', (
       'types.ts', 'services/geminiService.ts', 'lib/render/luxe.ts', 'lib/render/prime.ts', 'lib/render/euphoria.ts',
       'lib/render/safeHref.ts', 'lib/render/honest.ts', 'lib/buildSiteFromScrape.ts', 'lib/booksyNiche.ts',
       'lib/brandSwatches.ts', 'lib/supportedBookingHost.ts', 'lib/stockImages.ts',
+      // Site subpages (2026-10-22): link rules + Book/Shop homepage sections. Add to the app's sync-web.sh.
+      'lib/render/subpages.ts',
     ];
     const norm = (p: string) => p.replace(/\.(ts|js)$/, '');
     const set = new Set(VENDORED.map(norm));
