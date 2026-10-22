@@ -39,7 +39,7 @@ export const stripe = {
   idem: new Map<string, { status: number; body: any }>(),
   requests: [] as StripeRequest[],
   /** Fail the next matching request: return { status, body } or throw (network). */
-  failNext: [] as { match: (r: StripeRequest) => boolean; status?: number; body?: any; network?: boolean }[],
+  failNext: [] as { match: (r: StripeRequest) => boolean; status?: number; body?: any; network?: boolean; afterProcess?: boolean }[],
   /** Make Checkout report this amount_total instead of the computed one (total-mismatch probe). */
   overrideTotal: null as number | null,
 };
@@ -105,9 +105,18 @@ export async function handleStripe(url: URL, init: { method: string; headers: Re
   const fi = stripe.failNext.findIndex((f) => f.match(req));
   if (fi >= 0) {
     const f = stripe.failNext.splice(fi, 1)[0];
+    if (f.afterProcess) {
+      // Stripe did the work; the response never arrived (timeout after the request was accepted).
+      await route(url, init, req, path, params);
+      throw new Error('The operation was aborted due to timeout');
+    }
     if (f.network) throw new Error('fake stripe: network error');
     return json(f.status ?? 500, f.body ?? { error: { message: 'fake failure', code: 'api_error' } });
   }
+  return route(url, init, req, path, params);
+}
+
+async function route(url: URL, init: { method: string }, req: StripeRequest, path: string, params: Record<string, string>) {
 
   if (req.idempotencyKey && init.method === 'POST') {
     const prior = stripe.idem.get(`${req.account}|${req.idempotencyKey}`);
