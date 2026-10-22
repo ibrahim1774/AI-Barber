@@ -32,7 +32,7 @@ vi.mock('../../lib/siteSubpages.js', async (orig) => ({
   liveSiteBaseDeps: { projectDomains: async () => [], domainServing: async () => false, updateShop: async () => {} },
 }));
 vi.mock('../../lib/ios/slug.js', async (orig) => ({ ...(await orig<object>()), vercelProjectExists }));
-vi.mock('../../lib/bookings/rateLimit.js', async (orig) => ({ ...(await orig<object>()), publicLimiter: { allow } }));
+vi.mock('../../lib/bookings/rateLimit.js', async (orig) => ({ ...(await orig<object>()), deployLimiter: { allow } }));
 
 import handler from '../../api/deploy-site.js';
 
@@ -299,7 +299,7 @@ describe('api/deploy-site authorisation (C1)', () => {
     await handler(post({ siteId: 'fresh-cuts', html: '<h1/>' }, 'owner-jwt'), res);
     expect(res.status).toHaveBeenCalledWith(429);
     expect(res.json).toHaveBeenCalledWith({ ok: false, error: 'rate-limited' });
-    expect(allow).toHaveBeenCalledWith('deploy:203.0.113.9', 'write');
+    expect(allow).toHaveBeenCalledWith('203.0.113.9', 'write'); // deployLimiter's own 'deploy' scope
     expect(findBySlug).not.toHaveBeenCalled();
     expect(getUser).not.toHaveBeenCalled();
   });

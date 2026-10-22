@@ -87,9 +87,9 @@ describe('api handlers', () => {
     }
     expect(codes.slice(0, 10).every((c) => c === 201)).toBe(true);
     expect(codes[10]).toBe(429);
-    expect(rpcState.calls[0]).toEqual(['ab_rate_hit', { p_key: 'write:10.9.9.9', p_window_s: 60, p_max: 10 }]);
+    expect(rpcState.calls[0]).toEqual(['ab_rate_hit', { p_key: 'public:write:10.9.9.9', p_window_s: 60, p_max: 10 }]);
     // another instance (a fresh in-memory map) would still be refused: the count is in the store
-    expect(rpcState.hits.get('write:10.9.9.9')).toBe(11);
+    expect(rpcState.hits.get('public:write:10.9.9.9')).toBe(11);
   });
 
   it('reads stay in memory (no RPC)', async () => {

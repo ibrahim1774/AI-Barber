@@ -53,8 +53,34 @@ describe('rate limit', () => {
     const rl = makeRateLimiter(reads, () => 5, writes);
     expect(await rl.allow('1.1.1.1', 'read')).toBe(true);
     expect(await rl.allow('1.1.1.1', 'write')).toBe(false);
-    expect(reads.hit).toHaveBeenCalledWith('read:1.1.1.1', 60, 60_000, 5);
-    expect(writes.hit).toHaveBeenCalledWith('write:1.1.1.1', 10, 60_000, 5);
+    expect(reads.hit).toHaveBeenCalledWith('public:read:1.1.1.1', 60, 60_000, 5);
+    expect(writes.hit).toHaveBeenCalledWith('public:write:1.1.1.1', 10, 60_000, 5);
+  });
+
+  it('keys are scope:kind:subject with a trusted scope, so limiters never share a bucket', async () => {
+    const store = { hit: vi.fn(() => true) };
+    await makeRateLimiter(store, () => 5, store, { read: 60, write: 20 }, 'ios').allow('1.2.3.4', 'write');
+    expect(store.hit).toHaveBeenCalledWith('ios:write:1.2.3.4', 20, 60_000, 5);
+  });
+
+  it('a forged client IP (e.g. "write:ios:1.2.3.4") is not a subject: it lands in the fixed unknown bucket, never another limiter\'s', async () => {
+    const store = memoryStore();
+    const ios = makeRateLimiter(store, () => 5, store, { read: 1, write: 1 }, 'ios');
+    const pub = makeRateLimiter(store, () => 5, store, { read: 1, write: 1 }, 'public');
+    for (const forged of ['write:ios:1.2.3.4', 'ios:write:1.2.3.4', '1.2.3.4, 5.6.7.8:x', 'user:abc', ' ', '1.2.3.4:80', '[::1]']) {
+      expect(clientIp({ 'x-forwarded-for': forged })).toBe(forged.trim().startsWith('1.2.3.4,') ? '1.2.3.4' : 'unknown');
+      expect(clientIp({ 'x-real-ip': forged })).toBe(forged.trim() ? 'unknown' : clientIp({}));
+    }
+    // The real 1.2.3.4's ios bucket is untouched by a public hit whose header was forged at it.
+    expect(await pub.allow(clientIp({ 'x-forwarded-for': 'write:ios:1.2.3.4' }), 'write')).toBe(true);
+    expect(await ios.allow(clientIp({ 'x-real-ip': '1.2.3.4' }), 'write')).toBe(true);
+  });
+
+  it('clientIp keeps valid IPv4 / IPv6 literals (IPv6 lower-cased)', () => {
+    expect(clientIp({ 'x-real-ip': '203.0.113.9' })).toBe('203.0.113.9');
+    expect(clientIp({ 'x-real-ip': '2001:DB8::1' })).toBe('2001:db8::1');
+    expect(clientIp({ 'x-forwarded-for': '2001:db8::2, 10.0.0.1' })).toBe('2001:db8::2');
+    expect(clientIp({ 'x-real-ip': '999.1.1.1' })).toBe('unknown');
   });
 
   it('supabaseRateStore calls ab_rate_hit and throws on an RPC error', async () => {

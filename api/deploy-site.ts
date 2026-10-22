@@ -1,6 +1,6 @@
 import { authorizeDeploy, liveDeployAuthDeps, type DeployAuthDeps } from '../lib/deployAuth.js';
 import { gatedWebDeploy, liveWebDeployDeps, type WebDeployDeps } from '../lib/ios/webDeployGate.js';
-import { clientIp, publicLimiter, type RateLimiter } from '../lib/bookings/rateLimit.js';
+import { clientIp, deployLimiter, type RateLimiter } from '../lib/bookings/rateLimit.js';
 
 // HTTP wrapper over lib/deploySite. The deploy logic moved there so the
 // Stripe webhook can run it in-process instead of self-calling this endpoint —
@@ -48,7 +48,7 @@ export interface DeploySiteDeps {
 }
 
 let live: DeploySiteDeps | undefined;
-const liveDeps = (): DeploySiteDeps => (live ??= { auth: liveDeployAuthDeps(), deploy: liveWebDeployDeps(), limiter: publicLimiter });
+const liveDeps = (): DeploySiteDeps => (live ??= { auth: liveDeployAuthDeps(), deploy: liveWebDeployDeps(), limiter: deployLimiter });
 
 export default function handler(req: any, res: any) {
   return deploySite(req, res, liveDeps());
@@ -82,7 +82,7 @@ export async function deploySite(req: any, res: any, deps: DeploySiteDeps) {
 
     let allowed = true;
     try {
-      allowed = await deps.limiter.allow(`deploy:${clientIp(req.headers)}`, 'write');
+      allowed = await deps.limiter.allow(clientIp(req.headers), 'write'); // its own 'deploy' scope
     } catch (e: any) {
       console.error('[Deploy Site] rate limiter failed, allowing:', e?.message || e); // fail open, like every limiter here
     }

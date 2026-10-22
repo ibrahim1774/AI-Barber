@@ -7,7 +7,7 @@
 import { authenticate, liveGetUser, type GetUser } from '../bookings/auth.js';
 import { isObj, type FlowResult } from '../bookings/core.js';
 import { serviceClient, supabaseBookingRepo, type ShopRow } from '../bookings/repo.js';
-import { publicLimiter, type RateLimiter } from '../bookings/rateLimit.js';
+import { userLimiter, type RateLimiter } from '../bookings/rateLimit.js';
 import { VerifyFailure, isActive, lazyDefaultVerifier, type VerifiedTx } from './appleVerify.js';
 import { entitlementActive, purchaseLive } from './lapse.js';
 import { supabasePurchases, type PurchaseRow } from './purchases.js';
@@ -115,7 +115,7 @@ export async function refreshPlan(auth: Auth, body: unknown, deps: PlanDeps): Pr
   if (deps.limiter) {
     let allowed = true;
     try {
-      allowed = await deps.limiter.allow(`user:${user.id}`, 'write');
+      allowed = await deps.limiter.allow(user.id, 'write'); // the 'user' scope
     } catch (e: any) {
       console.error('[shop/plan] rate limiter failed, allowing:', e?.message || e); // fail open
     }
@@ -174,6 +174,6 @@ export function livePlanDeps(): PlanDeps {
     setShopOtid: (id, otid) => shops.setShopOtid(id, otid),
     setUser: (otid, uid) => purchases.setUser(otid, uid),
     now: Date.now,
-    limiter: publicLimiter,
+    limiter: userLimiter,
   };
 }

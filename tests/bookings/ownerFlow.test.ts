@@ -415,7 +415,7 @@ describe('POST /api/shop/setup', () => {
       w.deps.writeLimiter = { allow: vi.fn(async () => false) };
       const r = await setup(w, { ...body, transactionId: '2000000555' });
       expect(r).toEqual({ status: 429, body: { error: 'rate-limited' }, headers: { 'Retry-After': '60' } });
-      expect(w.deps.writeLimiter.allow).toHaveBeenCalledWith(`user:${NEW_USER}`, 'write');
+      expect(w.deps.writeLimiter.allow).toHaveBeenCalledWith(NEW_USER, 'write') // the limiter's own 'user' scope;
       expect(w.deps.purchases!.verify).not.toHaveBeenCalled();
       expect(w.state.shops).toHaveLength(1);
     });
