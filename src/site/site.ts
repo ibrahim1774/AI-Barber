@@ -80,11 +80,20 @@ export function canonicalHref(site: SiteInfo | null | undefined, page: 'book' | 
   return b ? `${b}/${page}` : null;
 }
 
-/** "Back to shop": /shop on the site, the site's /shop from an aibarber.org page, else the old /shop/{slug}. */
-export function shopBackHref(slug: string, site: SiteInfo | null | undefined, onSite: boolean): string {
+/**
+ * "Back to shop": /shop on the site, the site's /shop from an aibarber.org page, else the old
+ * /shop/{slug}. Null (no link) when the shop page isn't open (a lapsed site serves no /shop).
+ */
+export function shopBackHref(slug: string, site: SiteInfo | null | undefined, onSite: boolean, open = true): string | null {
+  if (!open) return null;
   if (onSite) return '/shop';
   const b = base(site);
   return b ? `${b}/shop` : `/shop/${encodeURIComponent(slug)}`;
+}
+
+/** Is this page on a barber's own site? Only those deploys ship /ab-site.json (aibarber.org answers with its HTML). */
+export async function onSiteNow(fetchImpl?: (url: string) => Promise<Response>): Promise<boolean> {
+  return (await loadSiteSlug(fetchImpl)) !== null;
 }
 
 /** Apply the site's look to the document (browser only). */

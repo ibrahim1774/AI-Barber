@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { loadSiteSlug, siteTheme, canonicalHref, homeHref, shopBackHref, SITE_FONTS } from '../../src/site/site';
+import { loadSiteSlug, siteTheme, canonicalHref, homeHref, shopBackHref, onSiteNow, SITE_FONTS } from '../../src/site/site';
 import { parseRoute } from '../../src/book/logic';
 import { parseShopRoute } from '../../src/shop/logic';
 
@@ -65,10 +65,20 @@ describe('links', () => {
     expect(canonicalHref(site, 'shop')).toBe('https://freshcuts.com/shop');
     expect(canonicalHref(undefined, 'book')).toBeNull();
   });
-  it('Back to shop: /shop on the site, the site\'s /shop from aibarber.org, else the old path', () => {
+  it('Back to shop: /shop on the site (null base too), the site\'s /shop from aibarber.org, else the old path; none when closed', () => {
     expect(shopBackHref('fresh', site, true)).toBe('/shop');
     expect(shopBackHref('fresh', undefined, true)).toBe('/shop');
+    expect(shopBackHref('fresh', { baseUrl: null, look: null }, true)).toBe('/shop');
     expect(shopBackHref('fresh', site, false)).toBe('https://freshcuts.com/shop');
     expect(shopBackHref('fresh cuts', undefined, false)).toBe('/shop/fresh%20cuts');
+    // Lapsed (manage-only site) or closed store: no link.
+    expect(shopBackHref('fresh', site, true, false)).toBeNull();
+    expect(shopBackHref('fresh', site, false, false)).toBeNull();
+  });
+
+  it('onSiteNow: the page is on a barber site when its /ab-site.json names a shop (aibarber.org answers with HTML)', async () => {
+    expect(await onSiteNow(async () => ({ ok: true, json: async () => ({ slug: 'fresh' }) }) as any)).toBe(true);
+    expect(await onSiteNow(async () => ({ ok: true, json: async () => { throw new SyntaxError('html'); } }) as any)).toBe(false);
+    expect(await onSiteNow(async () => ({ ok: false, json: async () => ({}) }) as any)).toBe(false);
   });
 });

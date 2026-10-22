@@ -61,6 +61,22 @@ export function isAiBarberBookingLink(url: unknown): boolean {
   return next === '' || next === '/' || next === '?' || next === '#';
 }
 
+const AI_BARBER_SHOP = /^(https?:\/\/)?(www\.)?aibarber\.org\/shop(?=[/?#]|$)/i;
+const SITE_SHOP = /^\/shop(?=[?#]|$)/;
+
+/** An AI Barber shop page link, old (aibarber.org/shop/…, or the BOOKING_BASE_URL form) or new (/shop). A barber's own store is not one. */
+export function isAiBarberShopLink(url: unknown): boolean {
+  if (typeof url !== 'string') return false;
+  const u = url.trim();
+  if (AI_BARBER_SHOP.test(u) || SITE_SHOP.test(u)) return true;
+  const base = configuredBase();
+  if (!base) return false;
+  const rest = u.replace(/^https?:\/\//i, '').toLowerCase();
+  if (!rest.startsWith(`${base}/shop`)) return false;
+  const next = rest.charAt(base.length + 5);
+  return next === '' || next === '/' || next === '?' || next === '#';
+}
+
 /**
  * A copy of the site data without the links the product doesn't cover: the AI Barber
  * `bookingUrl` without `bookings`, and `shopUrl` without `store`. Other booking links

@@ -309,7 +309,12 @@ export async function getOrder(params: Params, deps: StoreDeps): Promise<FlowRes
   const c = await byToken(deps, params.token);
   if (!c) return notFound();
   const items = await deps.repo.orderItems(c.order.id);
-  return ok({ ...publicOrderView(c.order, items, c.shop, manualHandles(c.shop) as Record<string, string>), ...siteField(c.shop) });
+  return ok({
+    ...publicOrderView(c.order, items, c.shop, manualHandles(c.shop) as Record<string, string>),
+    // Whether the shop page is open now: the order page shows "Back to shop" only then.
+    shopOpen: await storeOpen(deps.repo, c.shop),
+    ...siteField(c.shop),
+  });
 }
 
 // ---------------------------------------------------------------------------

@@ -165,6 +165,16 @@ describe('withSubpageLinks', () => {
     expect(abs.bookingUrl).toBe('https://www.aibarber.org/book/x');
   });
 
+  it('only the AI Barber shop link becomes /shop; a barber\'s own store link stays as it is', () => {
+    for (const shopUrl of ['https://myshop.example.com', 'https://jacks.square.site/store', 'https://www.aibarber.org.evil.com/shop/x']) {
+      expect(withSubpageLinks(sd({ shopUrl }), true).shopUrl).toBe(shopUrl);
+      expect(withSubpageLinks(sd({ shopUrl }), false).shopUrl).toBe(shopUrl);
+    }
+    for (const shopUrl of ['https://www.aibarber.org/shop/fresh', 'aibarber.org/shop/fresh', '/shop', '/shop?x=1']) {
+      expect(withSubpageLinks(sd({ shopUrl }), true).shopUrl).toBe('/shop');
+    }
+  });
+
   it('without the pages: drops relative /book and /shop (no dead buttons), keeps old absolute links', () => {
     const out = withSubpageLinks(sd({ bookingUrl: '/book', shopUrl: '/shop' }), false);
     expect('bookingUrl' in out).toBe(false);
@@ -178,6 +188,8 @@ describe('withSubpageLinks', () => {
     expect(hasAiBarberSiteLinks(sd({ shopUrl: '/shop' }))).toBe(true);
     expect(hasAiBarberSiteLinks(sd({ bookingUrl: 'https://www.aibarber.org/book/x' }))).toBe(true);
     expect(hasAiBarberSiteLinks(sd({ bookingUrl: 'https://booksy.com/x' }))).toBe(false);
+    expect(hasAiBarberSiteLinks(sd({ shopUrl: 'https://myshop.example.com' }))).toBe(false);
+    expect(hasAiBarberSiteLinks(sd({ shopUrl: 'https://www.aibarber.org/shop/x' }))).toBe(true);
     expect(hasAiBarberSiteLinks(sd({}))).toBe(false);
   });
 });

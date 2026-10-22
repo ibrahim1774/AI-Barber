@@ -8,7 +8,7 @@ import {
 } from './logic';
 import { CHECKOUT_POLL_MS, parseCheckout, shouldKeepPolling, type CheckoutReturn } from '../book/logic';
 import type { Cart, Fulfilment, ManualMethod, OrderResponse, PayChoice, Product, ShopInfo, ShopResponse, StorageLike } from './types';
-import { applySite, homeHref, loadSiteSlug, shopBackHref, type SiteInfo } from '../site/site';
+import { applySite, homeHref, loadSiteSlug, onSiteNow, shopBackHref, type SiteInfo } from '../site/site';
 
 const US_STATES = 'AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY'.split(' ');
 
@@ -377,7 +377,10 @@ function Checkout({ api, shop, products, cart, onBack, onRefresh, onSoldOut, onR
 /* ===================== status ===================== */
 
 function StatusPage({ api, token, checkout }: { api: ShopApi; token: string; checkout: CheckoutReturn }) {
-  return <Shell><StatusView api={api} token={token} checkout={checkout} /></Shell>;
+  // /shop/manage/{token} is the same path on aibarber.org and on a barber's site: ask which.
+  const [onSite, setOnSite] = useState(false);
+  useEffect(() => { onSiteNow().then(setOnSite); }, []);
+  return <Shell><StatusView api={api} token={token} checkout={checkout} onSite={onSite} /></Shell>;
 }
 
 function StatusView({ api, token, checkout, fresh, onSite = false }: { api: ShopApi; token: string; checkout: CheckoutReturn; fresh?: boolean; onSite?: boolean }) {
@@ -413,6 +416,7 @@ function StatusView({ api, token, checkout, fresh, onSite = false }: { api: Shop
   if (error) return <Message title="Something went wrong" body="Please refresh and try again." />;
   if (!data) return <Spinner />;
   const { order: o, shop } = data;
+  const backHref = shopBackHref(shop.slug, data.site, onSite, data.shopOpen !== false);
   const method = (o.paymentMethod ?? '') as ManualMethod;
   const handle = shop.manual[method];
   const link = handle ? manualLink(method, handle, o.totalCents, `Order #${o.number}`) : null;
@@ -477,7 +481,7 @@ function StatusView({ api, token, checkout, fresh, onSite = false }: { api: Shop
       {!data.canSayPaid && !sentOk && o.customerSaysPaid && o.paymentStatus !== 'paid' && <div className="note" role="status">Thanks. {shop.name} will confirm your payment.</div>}
 
       {shop.phone && <a className="btn ghost" href={telUrl(shop.phone)}>Call {shop.name}</a>}
-      <a className="btn ghost" href={shopBackHref(shop.slug, data.site, onSite)}>Back to shop</a>
+      {backHref && <a className="btn ghost" href={backHref}>Back to shop</a>}
       <p className="sub">Keep this page. It's your link to this order.</p>
     </div>
   );

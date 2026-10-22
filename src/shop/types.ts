@@ -84,6 +84,8 @@ export type OrderResponse = {
     manual: ManualHandles;
   };
   canSayPaid: boolean;
+  /** The shop page is open now (else "Back to shop" is hidden). */
+  shopOpen?: boolean;
   site?: SiteInfo;
 };
 

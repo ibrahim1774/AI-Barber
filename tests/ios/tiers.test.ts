@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
-  IOS_PRODUCT_IDS, tierOf, entitlementsOf, grants, isAiBarberBookingLink, stripLapsedLinks,
+  IOS_PRODUCT_IDS, tierOf, entitlementsOf, grants, isAiBarberBookingLink, isAiBarberShopLink, stripLapsedLinks,
 } from '../../lib/ios/tiers.js';
 import { IOS_PRODUCT_IDS as VERIFY_IDS } from '../../lib/ios/appleVerify.js';
 
@@ -88,6 +88,17 @@ describe('isAiBarberBookingLink', () => {
     ['/book/other-shop', false],
     ['//evil.test/book', false],
   ])('site subpage: %s → %s', (url, want) => expect(isAiBarberBookingLink(url)).toBe(want));
+
+  it.each([
+    ['https://www.aibarber.org/shop/fresh', true],
+    ['aibarber.org/shop', true],
+    ['/shop', true],
+    ['/shop#x', true],
+    ['https://www.aibarber.org/shopping', false],
+    ['https://aibarber.org.evil.com/shop/x', false],
+    ['https://myshop.example.com', false],
+    ['/shop/other', false],
+  ])('isAiBarberShopLink: %s → %s', (url, want) => expect(isAiBarberShopLink(url)).toBe(want));
 
   it('non-strings are not links', () => {
     expect(isAiBarberBookingLink(undefined)).toBe(false);

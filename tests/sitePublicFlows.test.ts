@@ -57,5 +57,9 @@ describe('store with a site', () => {
     expect(statusUrl.startsWith(`${SITE}/shop/manage/`)).toBe(true);
     const token = decodeURIComponent(statusUrl.split('/').pop()!);
     expect(((await getOrder({ token }, w.deps)).body as any).site).toEqual({ baseUrl: SITE, look: LOOK });
+    expect(((await getOrder({ token }, w.deps)).body as any).shopOpen).toBe(true);
+    // A lapsed or closed store: the order page hides "Back to shop" (that page would 404 or be closed).
+    w.state.shops[0].store_enabled = false;
+    expect(((await getOrder({ token }, w.deps)).body as any).shopOpen).toBe(false);
   });
 });

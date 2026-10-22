@@ -13,7 +13,7 @@
 // returns, manage links, emails) use the barber's domain.
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { WebsiteData } from '../types.js';
-import { isAiBarberBookingLink } from './ios/tiers.js';
+import { isAiBarberBookingLink, isAiBarberShopLink } from './ios/tiers.js';
 import { isSiteBookLink, isSiteShopLink, SITE_CONFIG_PATH } from './render/subpages.js';
 import { resolveAibTheme } from './render/luxe.js';
 import { resolvePrimeTheme } from './render/prime.js';
@@ -129,22 +129,22 @@ type Links = { bookingUrl?: unknown; shopUrl?: unknown };
 
 /** Does the site show an AI Barber Book or Shop link (old absolute or new relative form)? */
 export function hasAiBarberSiteLinks(sd: Links): boolean {
-  return isAiBarberBookingLink(sd.bookingUrl) || isSiteShopLink(sd.shopUrl)
-    || (typeof sd.shopUrl === 'string' && sd.shopUrl.trim() !== '');
+  return isAiBarberBookingLink(sd.bookingUrl) || isAiBarberShopLink(sd.shopUrl);
 }
 
 /**
  * The copy that gets rendered for a deploy (the stored copy is not changed):
- * - with the pages: an AI Barber booking link (either form) is `/book`, a shop link is `/shop`;
+ * - with the pages: an AI Barber booking link (either form) is `/book`, an AI Barber shop link
+ *   (either form) is `/shop`;
  * - without them: a relative `/book` or `/shop` is dropped (it would be a dead button). Old
  *   absolute aibarber.org links stay (those pages still work).
- * Another booking site's link is never touched.
+ * Another booking site's link, and a barber's own store link, are never touched.
  */
 export function withSubpageLinks<T extends Links>(sd: T, hasPages: boolean): T {
   const out = { ...sd };
   if (hasPages) {
     if (isAiBarberBookingLink(out.bookingUrl)) out.bookingUrl = '/book';
-    if (typeof out.shopUrl === 'string' && out.shopUrl.trim()) out.shopUrl = '/shop';
+    if (isAiBarberShopLink(out.shopUrl)) out.shopUrl = '/shop';
   } else {
     if (isSiteBookLink(out.bookingUrl)) delete out.bookingUrl;
     if (isSiteShopLink(out.shopUrl)) delete out.shopUrl;
