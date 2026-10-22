@@ -19,7 +19,7 @@ const BG = 'https://images.unsplash.com/photo-1503951914875-452162b0f3f1?auto=fo
 
 // The classic form's name-only layout (GeneratorForm.tsx `nameOnly` branch):
 // full-bleed barber photo, logo top-left, Sign In top-right, centred
-// name + colours form. Generates from the shop name alone.
+// name + colours form, plus the optional services checklist. Builds from what the barber typed and ticked.
 export default function Manual() {
   const insets = useSafeAreaInsets();
   const [shopName, setShopName] = useState('');
@@ -75,7 +75,7 @@ export default function Manual() {
 
           <View style={styles.center}>
             <Text style={styles.h1}>
-              Generate Custom Barbershop Website{'\n'}
+              Build Your Barbershop Website{'\n'}
               <Text style={{ color: colors.accent }}>in Seconds</Text>
             </Text>
 
@@ -116,7 +116,7 @@ export default function Manual() {
 
               <ServiceChecklist tone="dark" picks={picks} onChange={setPicks} />
 
-              <Button variant="solid" title="Generate My Barbershop Website" loading={busy} onPress={() => void submit()} />
+              <Button variant="solid" title="Build My Barbershop Website" loading={busy} onPress={() => void submit()} />
               {!!error && <Text style={styles.error}>{error}</Text>}
               <Pressable accessibilityRole="button" hitSlop={8} onPress={() => router.back()} style={styles.back}>
                 <Text style={styles.backText}>← Back</Text>

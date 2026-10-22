@@ -32,7 +32,7 @@ export default function Start() {
         <Button variant="ghost" title="No, I don’t have one" onPress={() => go('/find-listing')} />
       </View>
       <Text variant="caps" style={styles.note}>
-        Photos, services & reviews imported automatically
+        Photos & reviews imported automatically
       </Text>
       <Button
         variant="link"

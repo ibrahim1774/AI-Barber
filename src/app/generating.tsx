@@ -2,33 +2,33 @@ import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import { resetTo } from '@/lib/nav';
 import { colors, fonts } from '@/constants/theme';
-import { ScissorsIcon, WarningIcon } from '@/components/Icons';
+import { ScissorsIcon } from '@/components/Icons';
+import { generatingSteps } from '@/lib/generatingSteps';
+import { loadSite } from '@/lib/siteStore';
 
-// Copied from LoadingScreen.tsx.
-const MESSAGES = [
-  'Sharpening the blades...',
-  'Designing luxury layouts...',
-  'Generating premium AI imagery (2/2)...',
-  'Crafting custom descriptions...',
-  'Clipping the final code...',
-  'Styling your unique identity...',
-  'Preparing the barber chair...',
-  'Applying high-end filters...',
-  'Ensuring pixel-perfect results...',
-];
-
-// The draft is already saved when this screen opens. On the web the loading
-// screen only shows while the site generates; here it holds long enough for
-// the first two staged messages, then snaps to 100% and opens the Edit tab.
+// The draft is already saved when this screen opens. It holds briefly, stepping through what actually
+// happened for this draft (generatingSteps), then snaps to 100% and opens the Edit tab.
 const HOLD_MS = 3000;
 
 export default function Generating() {
   const [progress, setProgress] = useState(0);
   const [messageIndex, setMessageIndex] = useState(0);
+  const [steps, setSteps] = useState<string[]>(['Building your website']);
+
+  useEffect(() => {
+    let alive = true;
+    loadSite()
+      .then((s) => alive && setSteps(generatingSteps(s)))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => setProgress((p) => Math.min(100, p + 1)), 100);
-    const messageTimer = setInterval(() => setMessageIndex((i) => (i + 1) % MESSAGES.length), 2500);
+    // Every step gets its turn inside the hold; the last one stays.
+    const messageTimer = setInterval(() => setMessageIndex((i) => i + 1), HOLD_MS / 5);
     let go: ReturnType<typeof setTimeout>;
     const done = setTimeout(() => {
       clearInterval(timer);
@@ -55,19 +55,16 @@ export default function Generating() {
       </Text>
 
       <Pulse>
-        <Text style={styles.message}>{MESSAGES[messageIndex]}</Text>
+        <Text style={styles.message}>{steps[Math.min(messageIndex, steps.length - 1)]}…</Text>
       </Pulse>
 
       <View style={styles.track}>
         <View style={[styles.fill, { width: `${progress}%` }]} />
       </View>
 
-      <Text style={styles.percent}>GENERATING LUXURY ASSETS: {progress}%</Text>
+      <Text style={styles.percent}>{progress}%</Text>
 
-      <View style={styles.warning}>
-        <WarningIcon size={16} color={colors.accent} />
-        <Text style={styles.warningText}>Do not close or navigate away — your website build may fail.</Text>
-      </View>
+      <Text style={styles.warningText}>Your website is saved. Opening the editor next.</Text>
     </View>
   );
 }
@@ -121,6 +118,5 @@ const styles = StyleSheet.create({
   },
   fill: { height: '100%', borderRadius: 3, backgroundColor: colors.accent },
   percent: { fontFamily: fonts.mono, fontSize: 12, letterSpacing: 1.2, color: 'rgba(255,255,255,0.4)' },
-  warning: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 24, paddingHorizontal: 8 },
-  warningText: { flexShrink: 1, fontFamily: fonts.body, fontSize: 12, letterSpacing: 0.3, color: colors.grey },
+  warningText: { marginTop: 24, paddingHorizontal: 8, fontFamily: fonts.body, fontSize: 12, letterSpacing: 0.3, color: colors.grey, textAlign: 'center' },
 });

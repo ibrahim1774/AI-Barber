@@ -84,7 +84,7 @@ describe('the typed path, end to end', () => {
     await act(async () => byLabel(tree, 'Haircut price').props.onChangeText('30'));
     expect(allText(tree).join(' ')).toContain('2 ticked');
     const go = tree.root.findAll((n: any) => n.props?.accessibilityRole === 'button' && typeof n.props.onPress === 'function'
-      && allText({ root: n }).join('') === 'Generate My Barbershop Website')[0];
+      && allText({ root: n }).join('') === 'Build My Barbershop Website')[0];
     await act(async () => {
       await go.props.onPress();
       await new Promise((r) => setTimeout(r, 400));
@@ -98,7 +98,7 @@ describe('the typed path, end to end', () => {
     const tree = await render(<Manual />);
     await act(async () => byLabel(tree, 'Barbershop Name').props.onChangeText('Fade Lab'));
     const go = tree.root.findAll((n: any) => n.props?.accessibilityRole === 'button' && typeof n.props.onPress === 'function'
-      && allText({ root: n }).join('') === 'Generate My Barbershop Website')[0];
+      && allText({ root: n }).join('') === 'Build My Barbershop Website')[0];
     await act(async () => {
       await go.props.onPress();
       await new Promise((r) => setTimeout(r, 400));
