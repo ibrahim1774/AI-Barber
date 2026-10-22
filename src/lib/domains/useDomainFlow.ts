@@ -1,15 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { track } from '@/lib/analytics';
-import { ApiError } from '@/lib/api';
-import { claimDomain, domainStatus, loadDomainClaim, saveDomainClaim } from '@/lib/domains/api';
+import { domainStatus, loadDomainClaim, saveDomainClaim } from '@/lib/domains/api';
 import {
-  DOMAIN_PLACEMENT, claimOutcome, statusView, type ClaimOutcome, type DomainClaimRecord, type DomainStatus,
+  DOMAIN_PLACEMENT, rememberedClaim, statusView, type ClaimOutcome, type DomainClaimRecord, type DomainStatus,
 } from '@/lib/domains/model';
+import { resumeDomainClaim, sendClaim } from '@/lib/domains/resume';
 import { useLatestDomainTransactionId, useLatestTransactionId, usePaywall } from '@/lib/paywall';
 import { findTransactionId } from '@/lib/publish';
 import { emitSiteLive } from '@/lib/siteEvents';
 import { loadSite } from '@/lib/siteStore';
-import { supabase } from '@/lib/supabase';
 
 export type BuyResult =
   | ClaimOutcome
@@ -25,20 +24,13 @@ export function slotIsFree(s: DomainStatus | null): boolean {
   return v.phase === 'failed' && (v.pickAnother || v.retrySame);
 }
 
-const accessToken = async (): Promise<string | null> => {
-  try {
-    const { data } = await supabase.auth.getSession();
-    return data.session?.access_token ?? null;
-  } catch {
-    return null;
-  }
-};
-
 /**
  * The custom-domain flow: what is there now (the remembered claim, else the active domain subscription,
- * and its server status), buying a name (the `custom_domain` paywall unless an unused paid slot exists,
- * then claim), retrying a claim, and polling. One buy / claim at a time: a second tap does nothing.
- * When the domain goes Live, the site's share links are refreshed (onSiteLive).
+ * and its server status; a remembered claim the server never saw is sent again), buying a name (the
+ * `custom_domain` paywall unless an unused paid slot exists, then claim), renewing an ended domain
+ * (the paywall, then the same name, which the server re-attaches), retrying a claim, and polling.
+ * One buy / claim at a time: a second tap does nothing. When the domain goes Live, the site's share links
+ * are refreshed (onSiteLive).
  */
 export function useDomainFlow() {
   const paywall = usePaywall();
@@ -63,19 +55,17 @@ export function useDomainFlow() {
   }, []);
 
   const refresh = useCallback(async () => {
-    const rec = await loadDomainClaim();
+    const active = await latestDomainTx().catch(() => null);
+    // Resumes a claim the server never saw, and drops a record for another subscription or site.
+    const resumed = await resumeDomainClaim(active);
+    const site = await loadSite().catch(() => null);
+    const rec = rememberedClaim(await loadDomainClaim(), active, site?.transactionId ?? null);
     setRecord(rec);
-    const tx = rec?.transactionId ?? (await latestDomainTx().catch(() => null));
+    const tx = rec?.transactionId ?? active;
     setDomainTx(tx);
-    if (tx) {
-      try {
-        apply(await domainStatus(tx));
-      } catch {
-        // keep what is shown; the next poll tries again
-      }
-    } else {
-      apply(null);
-    }
+    if (resumed) apply(resumed);
+    else if (tx) apply(await domainStatus(tx).catch(() => null));
+    else apply(null);
     setLoaded(true);
   }, [latestDomainTx, apply]);
 
@@ -87,68 +77,73 @@ export function useDomainFlow() {
     const site = await loadSite().catch(() => null);
     const siteTx = site?.transactionId ?? (await latestSiteTx().catch(() => null));
     if (!siteTx) return { kind: 'no-site' };
-    const rec = { transactionId: tx, domain };
+    const rec = { transactionId: tx, domain, siteTransactionId: siteTx };
     await saveDomainClaim(rec);
     setRecord(rec);
     setDomainTx(tx);
-    let out: ClaimOutcome;
-    try {
-      const a = await claimDomain({ transactionId: tx, siteTransactionId: siteTx, domain }, await accessToken());
-      out = claimOutcome(a.status, a.body);
-    } catch (e) {
-      out = { kind: 'retry-later', code: e instanceof ApiError ? e.code : 'network' };
-    }
+    const out = await sendClaim(rec);
     track('domain_claim', { result: out.kind });
     if ('status' in out && out.status) apply(out.status);
-    // Nothing reserved: forget the name so the next search starts clean (the slot stays paid).
-    if (out.kind === 'taken' || out.kind === 'not-eligible') {
-      await saveDomainClaim(null);
-      setRecord(null);
-    }
+    if (out.kind === 'taken' || out.kind === 'not-eligible') setRecord(null);
     return out;
   }, [latestSiteTx, apply]);
 
-  /** Buy `domain` (an eligible search result). */
-  const buy = useCallback(async (domain: string): Promise<BuyResult> => {
+  const guarded = useCallback(async (work: () => Promise<BuyResult>): Promise<BuyResult> => {
     if (busyRef.current) return { kind: 'busy' };
     busyRef.current = true;
     setBusy(true);
     try {
-      let tx = await latestDomainTx().catch(() => null);
-      if (tx) {
-        // An unused paid slot: claim without paying again. A slot already holding a name answers slot-in-use.
-        const s = await domainStatus(tx).catch(() => null);
-        if (s && !slotIsFree(s)) {
-          apply(s);
-          return { kind: 'slot-in-use', status: s };
-        }
-      } else {
-        const r = await paywall(DOMAIN_PLACEMENT);
-        if (r === 'declined') return { kind: 'declined' };
-        tx = await findTransactionId(latestDomainTx);
-        if (!tx) return { kind: 'unconfirmed' };
-      }
-      return await claim(tx, domain);
+      return await work();
     } finally {
       busyRef.current = false;
       setBusy(false);
     }
-  }, [latestDomainTx, paywall, claim, apply]);
+  }, []);
+
+  const payForSlot = useCallback(async (): Promise<string | BuyResult> => {
+    const r = await paywall(DOMAIN_PLACEMENT);
+    if (r === 'declined') return { kind: 'declined' };
+    const tx = await findTransactionId(latestDomainTx);
+    return tx ?? { kind: 'unconfirmed' };
+  }, [paywall, latestDomainTx]);
+
+  /** Buy `domain` (an eligible search result). */
+  const buy = useCallback((domain: string) => guarded(async () => {
+    let tx = await latestDomainTx().catch(() => null);
+    if (tx) {
+      // An unused paid slot: claim without paying again. A slot already holding a name shows that instead.
+      const s = await domainStatus(tx).catch(() => null);
+      if (s && !slotIsFree(s)) {
+        apply(s);
+        return { kind: 'slot-in-use', status: s };
+      }
+    } else {
+      const paid = await payForSlot();
+      if (typeof paid !== 'string') return paid;
+      tx = paid;
+    }
+    return claim(tx, domain);
+  }), [guarded, latestDomainTx, apply, payForSlot, claim]);
+
+  /** The domain subscription ended (expired / inactive): pay again, then claim the same name (re-attached). */
+  const renew = useCallback(() => guarded(async () => {
+    const domain = status?.domain ?? record?.domain;
+    if (!domain) return { kind: 'retry-later', code: 'no-claim' };
+    let tx = await latestDomainTx().catch(() => null);
+    if (!tx) {
+      const paid = await payForSlot();
+      if (typeof paid !== 'string') return paid;
+      tx = paid;
+    }
+    return claim(tx, domain);
+  }), [guarded, status, record, latestDomainTx, payForSlot, claim]);
 
   /** Claim the remembered name again (the server resumes where it stopped; never buys twice). */
-  const retry = useCallback(async (): Promise<BuyResult> => {
-    if (busyRef.current) return { kind: 'busy' };
+  const retry = useCallback(() => guarded(async () => {
     const rec = record ?? (await loadDomainClaim());
     if (!rec) return { kind: 'retry-later', code: 'no-claim' };
-    busyRef.current = true;
-    setBusy(true);
-    try {
-      return await claim(rec.transactionId, rec.domain);
-    } finally {
-      busyRef.current = false;
-      setBusy(false);
-    }
-  }, [record, claim]);
+    return claim(rec.transactionId, rec.domain);
+  }), [guarded, record, claim]);
 
   /** One status read (the screen polls this while the state says so). */
   const poll = useCallback(async () => {
@@ -161,5 +156,5 @@ export function useDomainFlow() {
     }
   }, [domainTx, record, apply]);
 
-  return { loaded, record, domainTx, status, busy, refresh, buy, retry, poll };
+  return { loaded, record, domainTx, status, busy, refresh, buy, renew, retry, poll };
 }

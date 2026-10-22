@@ -3,7 +3,7 @@ import { Alert } from 'react-native';
 import { syncIfSignedIn, type Restored } from '@/lib/account';
 import { ApiError } from '@/lib/api';
 import { resetTo } from '@/lib/nav';
-import { hasEntitlement, useLatestTransactionId, useRestorePurchases } from '@/lib/paywall';
+import { hasEntitlement, useLatestDomainTransactionId, useLatestTransactionId, useRestorePurchases } from '@/lib/paywall';
 import { refreshPlanQuietly } from '@/lib/plan';
 import { relinkShopPurchase } from '@/lib/setup/relink';
 import { recheckSubscriptionStatus } from '@/lib/subscriptionStatus';
@@ -16,9 +16,14 @@ const TITLE = 'Restore purchases';
  * the error it threw. null = say nothing (no subscription: Superwall has
  * already shown its own reworded restoreFailed alert).
  */
+export const DOMAIN_ONLY_RESTORE =
+  'We found your custom domain subscription, but no AI Barber website plan. Subscribe to a plan to publish; your domain stays in Settings › Custom domain.';
+
 export function restoreMessage(
   outcome: Restored | null | unknown,
   entitled: boolean,
+  /** An active custom-domain subscription was found (Superwall then shows no failure alert of its own). */
+  domainFound = false,
 ): { title: string; message: string } | null {
   const say = (message: string) => ({ title: TITLE, message });
   if (outcome instanceof Error) {
@@ -42,6 +47,8 @@ export function restoreMessage(
         : 'We restored your website, but this subscription isn’t active — subscribe again to publish changes.',
     );
   }
+  // Only the domain subscription came back: Superwall reports ACTIVE, so it showed no alert of its own.
+  if (!entitled && domainFound) return say(DOMAIN_ONLY_RESTORE);
   // Superwall says subscribed (so it showed no alert), but the transaction isn't readable yet.
   if (entitled) {
     return say(`Your subscription is active, but we couldn’t load your website yet. Try again in a moment, or email ${SUPPORT_EMAIL}.`);
@@ -57,6 +64,7 @@ export function restoreMessage(
 export function useRestoreFlow(): { restore: () => Promise<void>; busy: boolean } {
   const restorePurchases = useRestorePurchases();
   const latestTransactionId = useLatestTransactionId();
+  const latestDomainTransactionId = useLatestDomainTransactionId();
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
 
@@ -84,9 +92,10 @@ export function useRestoreFlow(): { restore: () => Promise<void>; busy: boolean 
     }
     // Whatever happened, the subscription may have changed (locks / unlocks the editor).
     recheckSubscriptionStatus(true);
-    const msg = restoreMessage(outcome, hasEntitlement());
+    const domainFound = outcome == null && !hasEntitlement() ? (await latestDomainTransactionId().catch(() => null)) != null : false;
+    const msg = restoreMessage(outcome, hasEntitlement(), domainFound);
     if (msg) Alert.alert(msg.title, msg.message);
-  }, [restorePurchases, latestTransactionId]);
+  }, [restorePurchases, latestTransactionId, latestDomainTransactionId]);
 
   return { restore, busy };
 }

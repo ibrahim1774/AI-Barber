@@ -16,7 +16,7 @@ import { tierFromEntitlements, useEntitlements } from '@/lib/entitlements';
 import { goBackOrHome, resetTo } from '@/lib/nav';
 import { useLatestDomainTransactionId, usePaywall } from '@/lib/paywall';
 import { domainStatus, loadDomainClaim } from '@/lib/domains/api';
-import { DOMAIN_PRICE_LINE, settingsDetail } from '@/lib/domains/model';
+import { DOMAIN_DISCLOSURE, DOMAIN_PRICE_LINE, settingsDetail } from '@/lib/domains/model';
 import { planLabel } from '@/lib/plan';
 import { requestPublish } from '@/lib/publishRequest';
 import { useRestoreFlow } from '@/lib/restoreFlow';
@@ -327,7 +327,12 @@ function DomainRow() {
       };
     }, [latestDomainTx]),
   );
-  return <Row label="Custom domain" detail={detail} onPress={() => router.push('/domain')} chevron />;
+  return (
+    <>
+      <Row label="Custom domain" detail={detail} onPress={() => router.push('/domain')} chevron />
+      <Text style={styles.domainNote}>{DOMAIN_DISCLOSURE}</Text>
+    </>
+  );
 }
 
 function Section({ title, children }: { title?: string; children: ReactNode }) {
@@ -403,6 +408,7 @@ const styles = StyleSheet.create({
   site: { padding: 16 },
   siteName: { fontFamily: fonts.heading, fontSize: 20, lineHeight: 26, color: colors.heading },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
+  domainNote: { fontFamily: fonts.body, fontSize: 12, lineHeight: 17, color: colors.faint, paddingHorizontal: 16, paddingBottom: 12 },
   dot: { width: 8, height: 8, borderRadius: 4 },
   status: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.muted },
   url: { fontFamily: fonts.mono, fontSize: 13, color: colors.accent, marginTop: 12, textDecorationLine: 'underline' },

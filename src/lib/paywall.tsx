@@ -93,6 +93,18 @@ export function SubscriptionSync() {
   return null;
 }
 
+/**
+ * Superwall's status as the plan's lapse check needs it: ACTIVE only when a plan entitlement is active. A
+ * custom-domain subscription alone also reads ACTIVE, and must not hide a lapsed plan.
+ */
+export function planSuperwallStatus(
+  s: { status: string; entitlements?: { id: string }[] } | null | undefined,
+): 'ACTIVE' | 'INACTIVE' | 'UNKNOWN' {
+  if (s?.status === 'ACTIVE') return (s.entitlements ?? []).some((e) => PLAN_ENTITLEMENTS.includes(e.id)) ? 'ACTIVE' : 'INACTIVE';
+  if (s?.status === 'INACTIVE') return 'INACTIVE';
+  return 'UNKNOWN';
+}
+
 /** How long an upgrade placement waits for the target entitlement to turn on after a purchase. */
 const UPGRADE_PATIENCE_MS = 10_000;
 const UPGRADE_POLL_MS = 500;
@@ -145,7 +157,7 @@ export function SubscriptionStatusSync() {
       const result = await checkSubscriptionStatus({
         site,
         pendingPublish: pending != null,
-        superwallStatus: sw.subscriptionStatus?.status ?? 'UNKNOWN',
+        superwallStatus: planSuperwallStatus(sw.subscriptionStatus),
         customerInfo: () => sw.getCustomerInfo(),
         iosSite: api.iosSite,
       });

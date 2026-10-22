@@ -19,8 +19,10 @@ import { allText } from '../store/render';
 import { DOMAIN_PRODUCT, FakeServer, P, boot, draft, installFetch, kill, type World } from './harness';
 import { wipeDisk } from './mocks';
 import {
-  DOMAIN_DISCLOSURE, DOMAIN_PRICE_LINE, claimOutcome, normalizeLabel, pickDomainTransactionId, settingsDetail, statusView,
+  DOMAIN_DISCLOSURE, DOMAIN_PRICE_LINE, claimOutcome, normalizeLabel, pickDomainTransactionId, rememberedClaim, retryLaterMessage,
+  settingsDetail, statusView,
 } from '@/lib/domains/model';
+import { CLAIM_TIMEOUT_MS } from '@/lib/domains/api';
 
 describe('statusView / settingsDetail', () => {
   it.each([
@@ -313,5 +315,157 @@ describe('the custom domain screen', () => {
     tree = await openScreen();
     expect(texts(tree)).toContain('fadelab.com');
     expect(texts(tree)).toContain('Registering…');
+    expect(claims()).toHaveLength(1); // nothing re-sent: the server has it
+  });
+
+  // Review 5: killed before the claim reached the server: the remembered claim is sent again.
+  it('killed before the claim reached the server: the relaunch sends it again (no second payment)', async () => {
+    await liveSite();
+    let tree = await openScreen();
+    w.willBuy(DOMAIN_PRODUCT);
+    server.fail('/api/ios/domain/claim', { kind: 'dead' }); // the request never lands: no row on the server
+    void w.act(async () => {
+      rowFor(tree, 'fadelab.com').props.onPress();
+      await tick();
+    });
+    await tick();
+    expect(server.domains.size).toBe(0);
+    w = await kill(w);
+    // At launch (ResumePublish runs this after the publish retry).
+    const { resumeDomainClaim } = require('@/lib/domains/resume');
+    const s1 = await resumeDomainClaim('tx-2');
+    expect(s1).toMatchObject({ domain: 'fadelab.com', state: 'registering' });
+    expect(claims()).toHaveLength(2);
+    expect(claims()[1].body).toEqual(claims()[0].body);
+    expect(server.apple.filter((a) => a.productId === DOMAIN_PRODUCT)).toHaveLength(1);
+    tree = await openScreen();
+    expect(texts(tree)).toContain('fadelab.com');
+  });
+
+  // Review 1: the phone gave up (timeout / 5xx) after the claim was sent: status takes over.
+  it('a claim answer lost after it was sent (5xx): the screen follows the server\'s progress instead of an error', async () => {
+    await liveSite();
+    const tree = await openScreen();
+    w.willBuy(DOMAIN_PRODUCT);
+    server.before['/api/ios/domain/claim'] = [() => {
+      server.domains.set('tx-2', { domain: 'fadelab.com', states: [{ state: 'registering' }] });
+    }];
+    server.fail('/api/ios/domain/claim', { kind: 'html', status: 504 });
+    await tap(rowFor(tree, 'fadelab.com'));
+    expect(texts(tree)).toContain('Registering…');
+    expect(texts(tree)).not.toContain("Couldn't reach");
+  });
+
+  it('offline before anything reached the server: the offline message, the record kept for the retry', async () => {
+    await liveSite();
+    const tree = await openScreen();
+    w.willBuy(DOMAIN_PRODUCT);
+    server.fail('/api/ios/domain/claim', { kind: 'offline' });
+    await tap(rowFor(tree, 'fadelab.com'));
+    expect(texts(tree)).toContain("Couldn't reach AI Barber. Check your connection");
+    expect(await require('@/lib/domains/api').loadDomainClaim()).toMatchObject({ domain: 'fadelab.com', transactionId: 'tx-2', siteTransactionId: 'tx-1' });
+  });
+
+  it('rate-limited: its own message, not "offline"', async () => {
+    await liveSite();
+    const tree = await openScreen();
+    w.willBuy(DOMAIN_PRODUCT);
+    server.nextClaim = { status: 429, body: { error: 'rate-limited' } };
+    await tap(rowFor(tree, 'fadelab.com'));
+    expect(texts(tree)).toContain('Too many tries. Wait a minute and try again.');
+  });
+
+  // Review 4: an expired domain is renewed through the domain paywall, which re-attaches the same name.
+  it('expired: Renew opens the domain paywall, then claims the same name', async () => {
+    await liveSite();
+    const d = server.buy(DOMAIN_PRODUCT);
+    d.isActive = false;
+    server.domains.set(d.transactionId, { domain: 'fadelab.com', states: [{ state: 'expired' }] });
+    await require('@/lib/domains/api').saveDomainClaim({ transactionId: d.transactionId, domain: 'fadelab.com', siteTransactionId: 'tx-1' });
+    const tree = await openScreen();
+    expect(texts(tree)).toContain('Expired');
+    let registers = 0;
+    w.willBuy(DOMAIN_PRODUCT);
+    const reg = w.sw.register;
+    w.sw.register = async () => {
+      registers++;
+      await reg();
+    };
+    await tap(button(tree, 'Renew'));
+    expect(registers).toBe(1);
+    expect(claims().at(-1)?.body).toMatchObject({ domain: 'fadelab.com', transactionId: 'tx-3', siteTransactionId: 'tx-1' });
+    expect(texts(tree)).toContain('Registering…');
+  });
+
+  // Review 8: one read at a time; 30 s while only the secure connection is pending; stop after 15 min.
+  it('SSL pending: polls every 30 s, then stops after 15 minutes with a "check back soon" note', async () => {
+    await liveSite();
+    server.domainScript = [{ state: 'live', vercel: { verified: true, dnsOk: true, ssl: 'pending' } }];
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+    fake = true;
+    const tree = await openScreen();
+    w.willBuy(DOMAIN_PRODUCT);
+    await tap(rowFor(tree, 'fadelab.com'));
+    expect(texts(tree)).toContain('Live in a few minutes');
+    const reads = () => server.calls.filter((c) => c.path === '/api/ios/domain/status').length;
+    const before = reads();
+    await w.act(async () => {
+      await jest.advanceTimersByTimeAsync(29_000);
+    });
+    expect(reads()).toBe(before);
+    await w.act(async () => {
+      await jest.advanceTimersByTimeAsync(2_000);
+    });
+    expect(reads()).toBe(before + 1);
+    await w.act(async () => {
+      await jest.advanceTimersByTimeAsync(16 * 60_000);
+    });
+    const after = reads();
+    expect(texts(tree)).toContain('check back soon');
+    await w.act(async () => {
+      await jest.advanceTimersByTimeAsync(5 * 60_000);
+    });
+    expect(reads()).toBe(after);
+  });
+});
+
+describe('review fixes: helpers', () => {
+  it('the claim waits past the server\'s 140 s step cutoff', () => {
+    expect(CLAIM_TIMEOUT_MS).toBeGreaterThanOrEqual(150_000);
+  });
+
+  it('expired and subscription-inactive offer Renew (never "pick another")', () => {
+    expect(statusView({ domain: 'a.com', state: 'expired' })).toMatchObject({ renew: true, pickAnother: false });
+    expect(statusView({ domain: 'a.com', state: 'failed:subscription-inactive', canRetry: true })).toMatchObject({
+      renew: true, pickAnother: false, title: "Your domain subscription isn't active",
+    });
+  });
+
+  it('retry-later messages are distinct from offline', () => {
+    const offline = retryLaterMessage('network');
+    for (const c of ['rate-limited', 'invalid', 'apple-unavailable', 'domains-unavailable']) expect(retryLaterMessage(c)).not.toBe(offline);
+    expect(claimOutcome(400, { error: 'invalid', field: 'domain' })).toEqual({ kind: 'retry-later', code: 'invalid' });
+  });
+
+  it('a remembered claim for another domain subscription or another site is dropped', () => {
+    const rec = { transactionId: '1', domain: 'a.com', siteTransactionId: 's1' };
+    expect(rememberedClaim(rec, '1', 's1')).toBe(rec);
+    expect(rememberedClaim(rec, null, 's1')).toBe(rec); // ended subscription: keep, to show its state
+    expect(rememberedClaim(rec, '2', 's1')).toBeNull();
+    expect(rememberedClaim(rec, '1', 's2')).toBeNull();
+  });
+
+  it('the plan lapse check sees ACTIVE only with a plan entitlement (a domain-only ACTIVE is not a plan)', () => {
+    const { planSuperwallStatus } = require('@/lib/paywall');
+    expect(planSuperwallStatus({ status: 'ACTIVE', entitlements: [{ id: 'domain' }] })).toBe('INACTIVE');
+    expect(planSuperwallStatus({ status: 'ACTIVE', entitlements: [{ id: 'domain' }, { id: 'hosting' }] })).toBe('ACTIVE');
+    expect(planSuperwallStatus({ status: 'INACTIVE' })).toBe('INACTIVE');
+    expect(planSuperwallStatus({ status: 'UNKNOWN' })).toBe('UNKNOWN');
+    expect(planSuperwallStatus(null)).toBe('UNKNOWN');
+  });
+
+  it('the disclosure is also under the Settings row', () => {
+    const src = fs.readFileSync(path.join(__dirname, '../../src/app/(tabs)/settings.tsx'), 'utf8');
+    expect(src).toMatch(/<Row label="Custom domain"[\s\S]{0,200}\{DOMAIN_DISCLOSURE\}/);
   });
 });

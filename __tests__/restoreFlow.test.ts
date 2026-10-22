@@ -46,7 +46,9 @@ jest.mock('@/lib/paywall', () => ({
   hasEntitlement: () => false,
   useRestorePurchases: () => mockRestore,
   useLatestTransactionId: () => async () => null,
+  useLatestDomainTransactionId: () => () => mockDomainTx(),
 }));
+let mockDomainTx = async (): Promise<string | null> => null;
 const mockRelink = jest.fn(async (_o?: unknown) => false);
 jest.mock('@/lib/setup/relink', () => ({ relinkShopPurchase: (o: unknown) => mockRelink(o) }));
 
@@ -91,4 +93,21 @@ test('an active restore asks the server to re-read the plan for the restored tra
   mockRestore.mockResolvedValueOnce({ site: { ...site, transactionId: 'tx-9' }, active: true });
   await runRestoreFlow();
   expect(mockRefresh).toHaveBeenCalledWith('tx-9');
+});
+
+// Review fix 2: a restore that finds only the custom-domain subscription says so (Superwall shows no alert then).
+test('a domain-only restore explains the domain was found but no website plan', async () => {
+  const { DOMAIN_ONLY_RESTORE } = require('@/lib/restoreFlow');
+  mockDomainTx = async () => '2000000000001';
+  mockRestore.mockResolvedValueOnce(null);
+  await runRestoreFlow();
+  const { Alert } = require('react-native');
+  expect(Alert.alert).toHaveBeenCalledWith('Restore purchases', DOMAIN_ONLY_RESTORE);
+  mockDomainTx = async () => null;
+});
+
+test('restoreMessage: domain-only, and nothing at all', () => {
+  const { restoreMessage, DOMAIN_ONLY_RESTORE } = require('@/lib/restoreFlow');
+  expect(restoreMessage(null, false, true)).toEqual({ title: 'Restore purchases', message: DOMAIN_ONLY_RESTORE });
+  expect(restoreMessage(null, false, false)).toBeNull();
 });

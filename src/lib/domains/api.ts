@@ -4,8 +4,11 @@ import type { DomainClaimRecord, DomainStatus, SearchResult } from '@/lib/domain
 
 const base = () => process.env.EXPO_PUBLIC_API_BASE ?? 'https://www.aibarber.org';
 const TIMEOUT_MS = 30_000;
-/** A claim can run the registrar and a republish: the server answers within its 300 s budget. */
-const CLAIM_TIMEOUT_MS = 120_000;
+/**
+ * A claim can run the registrar and a republish. The server starts steps only in its first 140 s (then answers
+ * 202), within a 300 s limit: wait longer than that cutoff so the phone never gives up first.
+ */
+export const CLAIM_TIMEOUT_MS = 170_000;
 const OFFLINE = "Couldn't reach AI Barber — check your connection and try again.";
 
 type Answer = { status: number; body: any };

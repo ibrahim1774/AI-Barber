@@ -11,8 +11,10 @@ import { syncQuietly } from '@/lib/adminSync';
 import { initAttribution, POSTHOG_AUTOCAPTURE, posthog, screen } from '@/lib/analytics';
 import { LaunchPrompts } from '@/lib/launchPrompts';
 import {
-  SubscriptionStatusSync, SubscriptionSync, SUPERWALL_KEY, SUPERWALL_OPTIONS, superwallActive, usePublishDeps,
+  SubscriptionStatusSync, SubscriptionSync, SUPERWALL_KEY, SUPERWALL_OPTIONS, superwallActive, useLatestDomainTransactionId,
+  usePublishDeps,
 } from '@/lib/paywall';
+import { resumeDomainClaim } from '@/lib/domains/resume';
 import { resetTo } from '@/lib/nav';
 import { RevenueCatStart } from '@/lib/revenueCatStart';
 import { publishBusy, resumePendingPublish } from '@/lib/publish';
@@ -182,6 +184,9 @@ function ResumePublish() {
   const deps = usePublishDeps();
   const depsRef = useRef(deps);
   depsRef.current = deps;
+  const latestDomainTx = useLatestDomainTransactionId();
+  const latestDomainTxRef = useRef(latestDomainTx);
+  latestDomainTxRef.current = latestDomainTx;
   const navReady = useRootNavigationState()?.key != null;
 
   useEffect(() => {
@@ -191,6 +196,11 @@ function ResumePublish() {
       // built on the old copy), then told to the barber on the Edit tab.
       syncQuietly()
         .then(() => resumePendingPublish(depsRef.current))
+        .then((out) => {
+          // A custom-domain claim the server never saw (killed mid-claim) is sent again; never blocks.
+          void latestDomainTxRef.current().catch(() => null).then((tx) => resumeDomainClaim(tx));
+          return out;
+        })
         .then((out) => {
           // A user publish queued behind this retry navigates for itself.
           if (out?.kind !== 'live' || publishBusy()) return;

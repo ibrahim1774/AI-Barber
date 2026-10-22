@@ -41,6 +41,10 @@ export type StatusView = {
   /** The paid slot is free again: pick another name without paying. */
   pickAnother: boolean;
   needsSupport: boolean;
+  /** The domain subscription ended: renew through the domain paywall, which re-attaches the same name. */
+  renew: boolean;
+  /** SSL pending: poll slower, and stop after a while with a "check back soon" note. */
+  slowPoll?: boolean;
 };
 
 const FAILED: Record<string, string> = {
@@ -59,23 +63,28 @@ export function formatDay(iso: string | null | undefined): string {
 
 /** The status body (or a claim answer's body) as the progress screen and the Settings row show it. */
 export function statusView(s: DomainStatus | null | undefined): StatusView {
-  const base = { polling: false, retrySame: false, pickAnother: false, needsSupport: !!s?.needsSupport };
+  const base = { polling: false, retrySame: false, pickAnother: false, renew: false, needsSupport: !!s?.needsSupport };
   const state = s?.state ?? 'none';
   if (state === 'registering') return { ...base, phase: 'registering', title: 'Registering…', polling: true };
   if (state === 'linking') return { ...base, phase: 'linking', title: 'Linking…', polling: true };
   if (state === 'live') {
     return s?.vercel?.ssl === 'pending'
-      ? { ...base, phase: 'almost', title: 'Live in a few minutes', detail: 'Setting up the secure connection.', polling: true }
+      ? { ...base, phase: 'almost', title: 'Live in a few minutes', detail: 'Setting up the secure connection.', polling: true, slowPoll: true }
       : { ...base, phase: 'live', title: 'Live' };
   }
   if (state.startsWith('cancelled-until:')) {
     const day = formatDay(state.slice('cancelled-until:'.length));
     return { ...base, phase: 'cancelled', title: day ? `Cancelled — works until ${day}` : 'Cancelled' };
   }
-  if (state === 'expired') return { ...base, phase: 'expired', title: 'Expired' };
+  if (state === 'expired') {
+    return { ...base, phase: 'expired', title: 'Expired', detail: 'Renew to bring this name back to your site.', renew: true };
+  }
   if (state === 'transferred') return { ...base, phase: 'transferred', title: 'Transferred to you', needsSupport: base.needsSupport };
   if (state.startsWith('failed:')) {
     const reason = state.slice('failed:'.length);
+    if (reason === 'subscription-inactive') {
+      return { ...base, phase: 'failed', title: "Your domain subscription isn't active", detail: 'Renew it to finish getting this name.', renew: true };
+    }
     // A failed claim leaves the paid slot unused: same name again (canRetry) or another name, no new payment.
     const reusable = !!s?.canRetry || reason === 'registration-expired' || reason === 'taken' || reason === 'price';
     return {
@@ -120,6 +129,7 @@ export function claimOutcome(httpStatus: number, body: any): ClaimOutcome {
     return { kind: 'support', code };
   }
   if (httpStatus === 402) return { kind: 'inactive' };
+  if (httpStatus === 400 && (code === 'invalid' || code === 'bad-bundle')) return { kind: 'retry-later', code };
   if (httpStatus === 403 || httpStatus === 404 || code === 'bad-product') return { kind: 'support', code };
   return { kind: 'retry-later', code };
 }
@@ -142,7 +152,31 @@ export function normalizeLabel(q: string): string {
 export const buyable = (r: SearchResult): boolean => r.available && r.eligible;
 
 /** A pending or finished claim the app remembers (survives a kill): which slot and which name. */
-export type DomainClaimRecord = { transactionId: string; domain: string };
+export type DomainClaimRecord = { transactionId: string; domain: string; siteTransactionId?: string };
+
+/** Claim answers that are not "offline": each gets its own words. */
+export function retryLaterMessage(code: string): string {
+  if (code === 'network') return "Couldn't reach AI Barber. Check your connection and try again — you won't pay twice.";
+  if (code === 'rate-limited') return 'Too many tries. Wait a minute and try again.';
+  if (code === 'invalid' || code === 'bad-bundle') return "That name can't be used. Pick another.";
+  if (code === 'domains-unavailable') return "Custom domains aren't available right now. Try again later — you won't pay twice.";
+  return "AI Barber is busy right now. Try again in a minute — you won't pay twice.";
+}
+
+/**
+ * The remembered claim, if it still belongs here: the active domain subscription (when one is active)
+ * and this site. A record for another subscription or another site is dropped.
+ */
+export function rememberedClaim(
+  rec: DomainClaimRecord | null,
+  activeDomainTx: string | null,
+  siteTx: string | null,
+): DomainClaimRecord | null {
+  if (!rec) return null;
+  if (activeDomainTx && rec.transactionId !== activeDomainTx) return null;
+  if (rec.siteTransactionId && siteTx && rec.siteTransactionId !== siteTx) return null;
+  return rec;
+}
 
 /** The newest active domain subscription's transaction id (CustomerInfo.subscriptions). */
 export function pickDomainTransactionId(

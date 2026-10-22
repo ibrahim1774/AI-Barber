@@ -6,12 +6,16 @@ import { Page } from '@/components/Page';
 import { goBackOrHome } from '@/lib/nav';
 import { searchDomains } from '@/lib/domains/api';
 import {
-  DOMAIN_DISCLOSURE, DOMAIN_PRICE_LINE, DOMAIN_SUPPORT_LINE, buyable, statusView, type SearchResult,
+  DOMAIN_DISCLOSURE, DOMAIN_PRICE_LINE, DOMAIN_SUPPORT_LINE, buyable, retryLaterMessage, statusView, type SearchResult,
 } from '@/lib/domains/model';
 import { useDomainFlow, type BuyResult } from '@/lib/domains/useDomainFlow';
 import { loadSite } from '@/lib/siteStore';
 
 export const POLL_MS = 5000;
+/** While the secure connection is still being set up (live, SSL pending): slower, and not for ever. */
+export const SLOW_POLL_MS = 30_000;
+export const SLOW_POLL_LIMIT_MS = 15 * 60_000;
+export const CHECK_BACK_NOTE = 'Your domain is set up. The secure connection can take a little longer — check back soon.';
 
 const MESSAGES: Partial<Record<BuyResult['kind'], string>> = {
   taken: 'That name was just taken. Pick another.',
@@ -19,7 +23,6 @@ const MESSAGES: Partial<Record<BuyResult['kind'], string>> = {
   inactive: "Your domain subscription isn't active. Restore purchases, or buy again.",
   unconfirmed: "We couldn't confirm the purchase yet. If you were charged, try again in a minute — you won't pay twice.",
   'no-site': 'Publish your website first, then add a domain.',
-  'retry-later': "Couldn't reach AI Barber. Check your connection and try again — you won't pay twice.",
 };
 
 /**
@@ -69,13 +72,37 @@ export default function Domain() {
     });
   }, [flow.loaded, showStatus, search]);
 
-  // Follow the claim while the server is still working on it.
+  // Follow the claim while the server is still working on it: one read at a time; every 5 s, or every 30 s
+  // while only the secure connection is pending, which stops after 15 min with a note.
   const poll = flow.poll;
+  const slowSince = useRef<number | null>(null);
+  const [gaveUp, setGaveUp] = useState(false);
   useEffect(() => {
-    if (!showStatus || !view.polling) return;
-    const t = setInterval(() => void poll(), POLL_MS);
-    return () => clearInterval(t);
-  }, [showStatus, view.polling, poll]);
+    if (!view.slowPoll) {
+      slowSince.current = null;
+      setGaveUp(false);
+    } else if (slowSince.current == null) slowSince.current = Date.now();
+  }, [view.slowPoll]);
+  useEffect(() => {
+    if (!showStatus || !view.polling || gaveUp) return;
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const next = () => {
+      timer = setTimeout(async () => {
+        if (view.slowPoll && slowSince.current != null && Date.now() - slowSince.current >= SLOW_POLL_LIMIT_MS) {
+          if (alive) setGaveUp(true);
+          return;
+        }
+        await poll();
+        if (alive) next();
+      }, view.slowPoll ? SLOW_POLL_MS : POLL_MS);
+    };
+    next();
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [showStatus, view.polling, view.slowPoll, gaveUp, poll]);
 
   const after = (r: BuyResult) => {
     setSupport(r.kind === 'support');
@@ -84,7 +111,7 @@ export default function Domain() {
       setMessage(null);
       return;
     }
-    setMessage(r.kind === 'support' ? null : MESSAGES[r.kind] ?? null);
+    setMessage(r.kind === 'support' ? null : r.kind === 'retry-later' ? retryLaterMessage(r.code) : MESSAGES[r.kind] ?? null);
     if (r.kind === 'taken' || r.kind === 'not-eligible') void search(q);
   };
 
@@ -94,6 +121,7 @@ export default function Domain() {
   };
 
   const retry = async () => after(await flow.retry());
+  const renew = async () => after(await flow.renew());
 
   if (!flow.loaded) {
     return (
@@ -110,7 +138,9 @@ export default function Domain() {
           <Text style={st.domain} selectable>{flow.status!.domain}</Text>
           <Text style={[st.state, view.phase === 'live' && { color: '#22c55e' }]}>{view.title}</Text>
           {!!view.detail && <Text style={st.p}>{view.detail}</Text>}
-          {view.polling && <ActivityIndicator color={colors.accent} style={{ marginTop: 12 }} />}
+          {view.polling && !gaveUp && <ActivityIndicator color={colors.accent} style={{ marginTop: 12 }} />}
+          {gaveUp && <Text style={st.p}>{CHECK_BACK_NOTE}</Text>}
+          {view.renew && <Button title="Renew" loading={flow.busy} onPress={() => void renew()} style={st.gap} />}
           {flow.status?.sandbox && <Text style={st.small}>Test purchase: nothing was registered.</Text>}
           {view.retrySame && <Button title="Try again" loading={flow.busy} onPress={() => void retry()} style={st.gap} />}
           {view.pickAnother && (
