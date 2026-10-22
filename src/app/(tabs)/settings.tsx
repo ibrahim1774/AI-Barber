@@ -14,7 +14,9 @@ import { ApiError } from '@/lib/api';
 import { signOut, useSession } from '@/lib/auth';
 import { tierFromEntitlements, useEntitlements } from '@/lib/entitlements';
 import { goBackOrHome, resetTo } from '@/lib/nav';
-import { usePaywall } from '@/lib/paywall';
+import { useLatestDomainTransactionId, usePaywall } from '@/lib/paywall';
+import { domainStatus, loadDomainClaim } from '@/lib/domains/api';
+import { DOMAIN_PRICE_LINE, settingsDetail } from '@/lib/domains/model';
 import { planLabel } from '@/lib/plan';
 import { requestPublish } from '@/lib/publishRequest';
 import { useRestoreFlow } from '@/lib/restoreFlow';
@@ -283,6 +285,7 @@ function YourWebsite({ site }: { site: SiteRecord }) {
           <Row label="Share your site" detail="Message, QR code, Instagram bio" onPress={shareSite} chevron />
           <Row label="Bookings setup" detail="Services, barbers, hours" onPress={() => router.push('/bookings-setup')} chevron />
           <Row label="Get paid" detail="Cash App, Venmo, Zelle, PayPal, cards" onPress={() => router.push('/get-paid')} chevron />
+          <DomainRow />
         </Section>
         <ShareSheet
           visible={shareOpen}
@@ -303,6 +306,28 @@ function deleteError(e: unknown): string {
     if (e.status === 401) return 'Your sign-in has expired. Sign out, sign in again, then delete your account.';
   }
   return `We couldn’t delete your account right now. Try again, or email ${SUPPORT_EMAIL}.`;
+}
+
+/** Settings → Custom domain: the domain and its state, or the offer. */
+function DomainRow() {
+  const latestDomainTx = useLatestDomainTransactionId();
+  const [detail, setDetail] = useState(DOMAIN_PRICE_LINE);
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      (async () => {
+        const rec = await loadDomainClaim();
+        const tx = rec?.transactionId ?? (await latestDomainTx().catch(() => null));
+        if (!tx) return alive && setDetail(DOMAIN_PRICE_LINE);
+        const st = await domainStatus(tx).catch(() => null);
+        if (alive) setDetail(st ? settingsDetail(st) : rec ? rec.domain : DOMAIN_PRICE_LINE);
+      })();
+      return () => {
+        alive = false;
+      };
+    }, [latestDomainTx]),
+  );
+  return <Row label="Custom domain" detail={detail} onPress={() => router.push('/domain')} chevron />;
 }
 
 function Section({ title, children }: { title?: string; children: ReactNode }) {

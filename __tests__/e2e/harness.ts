@@ -26,6 +26,9 @@ export const P = {
 } as const;
 export type ProductId = (typeof P)[keyof typeof P];
 
+export const DOMAIN_PRODUCT = 'com.ibrahim1774.aibarber.domain.yearly';
+export const isDomainProduct = (productId: string): boolean => productId === DOMAIN_PRODUCT;
+
 export function entsFor(productId: string): ('hosting' | 'bookings' | 'store')[] {
   if (productId.includes('.store.')) return ['hosting', 'bookings', 'store'];
   if (productId.includes('.bookings.')) return ['hosting', 'bookings'];
@@ -77,6 +80,7 @@ export class FakeServer {
   boundSiteId: string | null = null;
   sites = new Map<string, ServerSiteRow>();
   faults: Record<string, Fault[]> = {};
+  lastQuery = '';
   /** Run once, just before the next request to a path is handled (e.g. an admin edit landing mid-publish). */
   before: Record<string, (() => void)[]> = {};
   calls: { path: string; method: string; body: any }[] = [];
@@ -92,8 +96,10 @@ export class FakeServer {
   /** A purchase (also an immediate upgrade within the group): the old one ends, the new one is active. */
   buy(productId: string, opts: { revokeOld?: boolean } = {}): AppleSub {
     this.n++;
+    // The domain is its own subscription group: buying it never ends a plan, and the reverse.
+    const group = isDomainProduct(productId);
     for (const s of this.apple) {
-      if (s.isActive) {
+      if (s.isActive && isDomainProduct(s.productId) === group) {
         s.isActive = false;
         s.expirationDate = new Date(T0 + this.n * 60_000).toISOString();
         if (opts.revokeOld) s.isRevoked = true;
@@ -119,24 +125,46 @@ export class FakeServer {
   /** The subscription ended `agoMs` ago (no renewal). */
   lapse(agoMs = 2 * 60 * 60 * 1000): void {
     for (const s of this.apple) {
-      if (s.isActive) {
+      if (s.isActive && !isDomainProduct(s.productId)) {
         s.isActive = false;
         s.expirationDate = new Date(Date.now() - agoMs).toISOString();
       }
     }
   }
 
+  /** The active plan subscription (the domain one is separate: activeDomainSub). */
   activeSub(): AppleSub | null {
-    const act = this.apple.filter((s) => s.isActive && !s.isRevoked);
+    const act = this.apple.filter((s) => s.isActive && !s.isRevoked && !isDomainProduct(s.productId));
     return act.sort((a, b) => Date.parse(b.purchaseDate) - Date.parse(a.purchaseDate))[0] ?? null;
   }
 
   superwallStatus(): { status: 'ACTIVE' | 'INACTIVE' | 'UNKNOWN'; ents: string[] } {
     if (this.pinnedStatus) return { status: this.pinnedStatus, ents: [] };
     const a = this.activeSub();
-    if (a) return { status: 'ACTIVE', ents: entsFor(a.productId) };
+    const d = this.activeDomainSub() ? ['domain'] : [];
+    if (a || d.length) return { status: 'ACTIVE', ents: [...(a ? entsFor(a.productId) : []), ...d] };
     return { status: 'INACTIVE', ents: [] };
   }
+
+  activeDomainSub(): AppleSub | null {
+    return this.apple.filter((s) => s.isActive && !s.isRevoked && isDomainProduct(s.productId)).at(-1) ?? null;
+  }
+
+  // ---- custom domains (/api/ios/domain/*, shapes from the server report) ----
+  /** Names the registrar says are taken (search) or that get taken between search and claim (claimTaken). */
+  domainTaken = new Set<string>();
+  domainClaimTaken = new Set<string>();
+  /** Per domain-subscription tx: the claimed name and the states status will walk through, one per read. */
+  domains = new Map<string, { domain: string; states: any[] }>();
+  /** The states a successful claim walks: first answer is the claim's own (202). */
+  domainScript: any[] = [
+    { state: 'registering' },
+    { state: 'linking' },
+    { state: 'live', vercel: { verified: true, dnsOk: true, ssl: 'pending' } },
+    { state: 'live', url: '', vercel: { verified: true, dnsOk: true, ssl: 'ready' } },
+  ];
+  /** A forced claim answer (status code + body) for the next claim. */
+  nextClaim: { status: number; body: any } | null = null;
 
   // ---- admin --------------------------------------------------------------
 
@@ -163,7 +191,9 @@ export class FakeServer {
   // ---- fetch ----------------------------------------------------------------
 
   async handle(url: string, init: { method?: string; body?: string; signal?: AbortSignal; headers?: Record<string, string> } = {}) {
-    const path = new URL(url).pathname;
+    const u = new URL(url);
+    const path = u.pathname;
+    this.lastQuery = u.search;
     const method = init.method ?? 'GET';
     const body = init.body ? JSON.parse(init.body) : undefined;
     this.calls.push({ path, method, body });
@@ -222,6 +252,50 @@ export class FakeServer {
             version: row.version, editedBy: row.editedBy, editedAt: row.editedAt,
           },
         };
+      }
+      case '/api/ios/domain/search': {
+        const label = String(body?.q ?? '').toLowerCase().replace(/[^a-z0-9-]/g, '');
+        if (label.length < 3) return { status: 400, body: { error: 'invalid', field: 'q' } };
+        const names = [label, `${label}barber`, `${label}barbershop`, `the${label}`, `${label}cuts`, `${label}studio`];
+        return {
+          status: 200,
+          body: { results: names.map((n) => ({ domain: `${n}.com`, available: !this.domainTaken.has(`${n}.com`), eligible: !this.domainTaken.has(`${n}.com`) })) },
+        };
+      }
+      case '/api/ios/domain/claim': {
+        if (this.nextClaim) {
+          const f = this.nextClaim;
+          this.nextClaim = null;
+          return f;
+        }
+        const d = sub(body.transactionId);
+        if (!d || !isDomainProduct(d.productId)) return { status: 400, body: { error: 'bad-product' } };
+        if (!d.isActive) return { status: 402, body: { error: 'subscription-inactive' } };
+        const site = sub(body.siteTransactionId);
+        if (!site || isDomainProduct(site.productId)) return { status: 400, body: { error: 'bad-product' } };
+        const cur = this.domains.get(body.transactionId);
+        if (cur && cur.domain !== body.domain && !String(cur.states[0]?.state).startsWith('failed:')) {
+          return { status: 409, body: { error: 'slot-in-use', domain: cur.domain, ...cur.states[0] } };
+        }
+        if (this.domainTaken.has(body.domain)) return { status: 409, body: { error: 'domain-taken' } };
+        if (this.domainClaimTaken.has(body.domain)) {
+          const failed = { state: 'failed:taken', canRetry: true };
+          this.domains.set(body.transactionId, { domain: body.domain, states: [failed] });
+          return { status: 409, body: { error: 'claim-failed', domain: body.domain, ...failed } };
+        }
+        const states = this.domainScript.map((x) => ({ ...x, ...(x.url === '' ? { url: `https://${body.domain}` } : {}) }));
+        this.domains.set(body.transactionId, { domain: body.domain, states });
+        const first = states[0];
+        return { status: first.state === 'live' ? 200 : 202, body: { domain: body.domain, ...first } };
+      }
+      case '/api/ios/domain/status': {
+        const tx = body?.transactionId ?? new URLSearchParams(this.lastQuery).get('transactionId');
+        const d = sub(tx);
+        if (!d || !isDomainProduct(d.productId)) return { status: 404, body: { error: 'not-found' } };
+        const row = this.domains.get(tx);
+        if (!row) return { status: 200, body: { domain: null, state: 'none' } };
+        if (row.states.length > 1) row.states.shift();
+        return { status: 200, body: { domain: row.domain, ...row.states[0] } };
       }
       case '/api/ios/site': {
         const s = sub(body.transactionId);
@@ -381,6 +455,14 @@ export async function boot(server: FakeServer, opts: { user?: string | null } = 
         sw.callbacks.onDismiss?.({ closeReason: 'manualClose' }, { type: 'declined' });
       };
       return presentThenClose;
+    },
+    /** Renders an element (a screen) in its own tree with this launch's React. */
+    async render(el: React.ReactElement) {
+      let t: any;
+      await act(async () => {
+        t = create(el);
+      });
+      return t;
     },
     /** Renders `useHook` in its own tree; `get()` is its latest value. Throws if the render throws. */
     async probe<T>(useHook: () => T) {

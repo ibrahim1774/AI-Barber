@@ -13,6 +13,7 @@ import { loadLinkContext } from '@/lib/linkContext';
 import { PLAN_ENTITLEMENT, getEntitlements, setEntitlementsFromStatus } from '@/lib/entitlements';
 import { refreshPlan, refreshPlanQuietly, setSharedPlan } from '@/lib/plan';
 import { findTransactionId, pickLatestTransactionId, type PublishDeps } from '@/lib/publish';
+import { pickDomainTransactionId } from '@/lib/domains/model';
 import { syncRevenueCatPurchases } from '@/lib/revenuecat';
 import * as siteStore from '@/lib/siteStore';
 import {
@@ -21,7 +22,7 @@ import {
 } from '@/lib/subscriptionStatus';
 
 /** Placements configured in the Superwall dashboard (AI Barber campaign). */
-export type Placement = 'publish' | 'bookings_upgrade' | 'store_upgrade';
+export type Placement = 'publish' | 'bookings_upgrade' | 'store_upgrade' | 'custom_domain';
 export type { PaywallResult };
 
 const PLAN_ENTITLEMENTS = ['hosting', 'bookings', 'store'];
@@ -96,7 +97,7 @@ export function SubscriptionSync() {
 const UPGRADE_PATIENCE_MS = 10_000;
 const UPGRADE_POLL_MS = 500;
 
-const isUpgrade = (p: Placement): p is 'bookings_upgrade' | 'store_upgrade' => p !== 'publish';
+const isUpgrade = (p: Placement): p is 'bookings_upgrade' | 'store_upgrade' => p === 'bookings_upgrade' || p === 'store_upgrade';
 
 /** The target entitlement is active now; when patient, keeps re-reading for up to 10 s. */
 async function entitlementActive(target: 'bookings' | 'store', patient: boolean): Promise<boolean> {
@@ -236,6 +237,7 @@ function useSuperwallPaywall() {
   // whichever signal settles a PaywallSettle first. Only a found transaction
   // (or a purchased / restored dismiss) counts as paid.
   const latestTransactionId = useLatestTransactionId();
+  const latestDomainTransactionId = useLatestDomainTransactionId();
   const session = useRef<PaywallSettle | null>(null);
 
   const { registerPlacement } = usePlacement({
@@ -257,10 +259,11 @@ function useSuperwallPaywall() {
         session.current?.supersede();
         // An upgrade is paid when its target entitlement is active (a transaction always exists for a
         // subscriber); the publish paywall is paid when any of the plan's transactions exists.
+        // The domain placement is paid only by an active domain subscription (never a plan's).
+        const lookup = placement === 'custom_domain' ? latestDomainTransactionId : latestTransactionId;
         const verify = isUpgrade(placement)
           ? (patient: boolean) => entitlementActive(PLAN_ENTITLEMENT[placement], patient)
-          : async (patient: boolean) =>
-              (patient ? await findTransactionId(latestTransactionId) : await latestTransactionId()) != null;
+          : async (patient: boolean) => (patient ? await findTransactionId(lookup) : await lookup()) != null;
         const s = new PaywallSettle(
           verify,
           (result, { presented }) => {
@@ -272,7 +275,9 @@ function useSuperwallPaywall() {
               if (result !== 'declined') afterUpgrade(latestTransactionId);
             }
             // No paywall ever showed (skip, holdout, error, timeout): say why nothing happened.
-            if (result === 'declined' && !presented) Alert.alert(isUpgrade(placement) ? 'Upgrade' : 'Publish', PAYWALL_ERROR);
+            if (result === 'declined' && !presented) {
+              Alert.alert(isUpgrade(placement) ? 'Upgrade' : placement === 'custom_domain' ? 'Custom domain' : 'Publish', PAYWALL_ERROR);
+            }
             resolve(result);
           },
           isUpgrade(placement) ? UPGRADE_PATIENCE_MS + 1000 : undefined,
@@ -286,7 +291,7 @@ function useSuperwallPaywall() {
           s.error();
         });
       }),
-    [latestTransactionId, registerPlacement],
+    [latestTransactionId, latestDomainTransactionId, registerPlacement],
   );
 }
 
@@ -305,6 +310,20 @@ export function useLatestTransactionId() {
 }
 
 const noTransactionId = async () => null;
+
+/** The newest active custom-domain subscription's transaction id (the domain "slot"). */
+export function useLatestDomainTransactionId() {
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  return superwallActive ? useSuperwallLatestDomainTransactionId() : noTransactionId;
+}
+
+function useSuperwallLatestDomainTransactionId() {
+  const { getCustomerInfo } = useUser();
+  return useCallback(
+    async () => pickDomainTransactionId((await getCustomerInfo()).subscriptions ?? []),
+    [getCustomerInfo],
+  );
+}
 
 function useSuperwallLatestTransactionId() {
   const { getCustomerInfo } = useUser();
