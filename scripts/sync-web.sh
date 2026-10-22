@@ -10,6 +10,7 @@ FILES=(
   lib/render/luxe.ts
   lib/render/prime.ts
   lib/render/euphoria.ts
+  lib/render/safeHref.ts
   lib/buildSiteFromScrape.ts
   lib/booksyNiche.ts
   lib/brandSwatches.ts
@@ -21,8 +22,10 @@ for f in "${FILES[@]}"; do
   mkdir -p "$DEST/$(dirname "$f")"
   git -C "$SRC" show "origin/main:$f" > "$DEST/$f"
 done
-# Metro/TS resolve extensionless imports: drop the .ts suffix on relative imports.
-sed -i.bak -E "s#(from )([\"'])(\.{1,2}/[^\"']*)\.ts([\"'])#\1\2\3\4#" "$DEST/services/geminiService.ts"
-rm -f "$DEST/services/geminiService.ts.bak"
+# Metro/TS resolve extensionless imports: drop the .ts/.js suffix on relative imports.
+for f in "${FILES[@]}"; do
+  sed -i.bak -E "s#(from )([\"'])(\.{1,2}/[^\"']*)\.(ts|js)([\"'])#\1\2\3\5#" "$DEST/$f"
+  rm -f "$DEST/$f.bak"
+done
 printf 'repo: ibrahim1774/AI-Barber\nbranch: origin/main\nsha: %s\nsynced: %s\n' "$SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$DEST/SOURCE"
 echo "Vendored $SHA"
