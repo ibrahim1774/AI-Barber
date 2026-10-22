@@ -225,6 +225,15 @@ describe('prime — policy, walk-ins, stock-photo line', () => {
     expect(generatePrimeHTMLWithPlaceholders(bare({ gallery: ['https://example.com/mine.jpg'] }))).toMatch(line);
   });
 
+  it('never shows "0 Reviews" when the source gave a rating but no count', () => {
+    const html = generatePrimeHTMLWithPlaceholders(bare({
+      aggregateRating: { rating: 4.8, count: 0 },
+      reviews: [{ author: 'Ann', rating: 5, comment: 'Great fade, will be back.' }],
+    }));
+    expect(html).toContain('4.8');
+    expect(html).not.toMatch(/>0<|\b0 reviews|· 0\b/i);
+  });
+
   it('does not promise instant confirmation', () => {
     const html = generatePrimeHTMLWithPlaceholders(bare({ bookingUrl: 'https://booksy.com/x' }));
     expect(html).not.toMatch(/confirmed instantly/i);

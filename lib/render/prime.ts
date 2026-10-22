@@ -213,9 +213,9 @@ export function generatePrimeHTMLWithPlaceholders(siteData: WebsiteData): string
 
   // About stat ribbon (rating / reviews) — only with an aggregate rating.
   const statRibbon = agg
-    ? `<div class="p-grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:1px;margin-top:28px;border:1px solid rgba(212,166,74,0.25);background:rgba(212,166,74,0.04);">
+    ? `<div class="p-grid-2" style="display:grid;grid-template-columns:${agg.count > 0 ? '1fr 1fr' : '1fr'};gap:1px;margin-top:28px;border:1px solid rgba(212,166,74,0.25);background:rgba(212,166,74,0.04);">
         <div style="text-align:center;padding:18px;"><div class="p-serif p-italic" style="font-size:2rem;color:var(--p-brand);">${agg.rating.toFixed(1)}</div><div class="p-eyebrow" style="font-size:9px;margin-top:4px;color:var(--p-ink-muted);">Rating</div></div>
-        <div style="text-align:center;padding:18px;border-left:1px solid rgba(212,166,74,0.25);"><div class="p-serif p-italic" style="font-size:2rem;color:var(--p-brand);">${agg.count.toLocaleString()}</div><div class="p-eyebrow" style="font-size:9px;margin-top:4px;color:var(--p-ink-muted);">Reviews</div></div>
+        ${agg.count > 0 ? `<div style="text-align:center;padding:18px;border-left:1px solid rgba(212,166,74,0.25);"><div class="p-serif p-italic" style="font-size:2rem;color:var(--p-brand);">${agg.count.toLocaleString()}</div><div class="p-eyebrow" style="font-size:9px;margin-top:4px;color:var(--p-ink-muted);">Reviews</div></div>` : ''}
       </div>`
     : '';
 

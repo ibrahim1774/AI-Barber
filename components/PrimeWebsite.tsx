@@ -527,15 +527,18 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
               </p>
             ))}
             {agg && (
-              <div className="p-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, marginTop: 28, border: '1px solid rgba(212,166,74,0.25)', background: 'rgba(212,166,74,0.04)' }}>
+              <div className="p-grid-2" style={{ display: 'grid', gridTemplateColumns: agg.count > 0 ? '1fr 1fr' : '1fr', gap: 1, marginTop: 28, border: '1px solid rgba(212,166,74,0.25)', background: 'rgba(212,166,74,0.04)' }}>
                 <div style={{ textAlign: 'center', padding: 18 }}>
                   <div className="p-serif p-italic" style={{ fontSize: '2rem', color: 'var(--p-brand)' }}>{agg.rating.toFixed(1)}</div>
                   <div className="p-eyebrow" style={{ fontSize: 9, marginTop: 4, color: 'var(--p-ink-muted)' }}>Rating</div>
                 </div>
-                <div style={{ textAlign: 'center', padding: 18, borderLeft: '1px solid rgba(212,166,74,0.25)' }}>
-                  <div className="p-serif p-italic" style={{ fontSize: '2rem', color: 'var(--p-brand)' }}>{agg.count.toLocaleString()}</div>
-                  <div className="p-eyebrow" style={{ fontSize: 9, marginTop: 4, color: 'var(--p-ink-muted)' }}>Reviews</div>
-                </div>
+                {/* No count from the source → no "0 Reviews" cell. */}
+                {agg.count > 0 && (
+                  <div style={{ textAlign: 'center', padding: 18, borderLeft: '1px solid rgba(212,166,74,0.25)' }}>
+                    <div className="p-serif p-italic" style={{ fontSize: '2rem', color: 'var(--p-brand)' }}>{agg.count.toLocaleString()}</div>
+                    <div className="p-eyebrow" style={{ fontSize: 9, marginTop: 4, color: 'var(--p-ink-muted)' }}>Reviews</div>
+                  </div>
+                )}
               </div>
             )}
           </div>
