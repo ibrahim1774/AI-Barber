@@ -18,6 +18,7 @@ import { VerifyFailure, isActive, lazyDefaultVerifier, type VerifiedTx } from '.
 import { supabasePurchases, type PurchasesRepo } from './purchases.js';
 import { chooseSlug, makeIsTaken, urlServes, vercelProjectExists } from './slug.js';
 import { buildImageUrlMap, toPendingSiteData } from './pendingData.js';
+import { stripLapsedLinks } from './tiers.js';
 
 export { buildImageUrlMap, toPendingSiteData };
 
@@ -125,6 +126,10 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps): 
     return { status: 503, body: { error: 'apple-unavailable' } };
   }
   if (!isActive(tx, deps.now())) return { status: 402, body: { error: 'subscription-inactive' } };
+  // Phase 4 tiers, server-side so old app builds can't bypass it: the AI Barber Book link
+  // needs the bookings entitlement and the Shop link the store one, by the verified
+  // (latest) product. Any of the six products may publish.
+  pendingData = stripLapsedLinks(pendingData, tx.productId);
 
   // Every repo call is keyed on Apple's originalTransactionId, never the
   // transactionId the app sent (renewals have new transactionIds).

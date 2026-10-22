@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { GRACE_MS, isActiveRow, isLapsed } from '../../lib/ios/lapse.js';
+import { GRACE_MS, entitlementActive, isActiveRow, isLapsed, purchaseLive, sweepWatches } from '../../lib/ios/lapse.js';
 import { offlineHtml } from '../../lib/ios/offlinePage.js';
 
 const NOW = 1_800_000_000_000;
@@ -53,5 +53,68 @@ describe('offlineHtml', () => {
     expect(html).not.toContain('published-at');
     // The only absolute URL is the footer link.
     expect(html.match(/https?:\/\//g)).toEqual(['https://']);
+  });
+});
+
+describe('entitlementActive (Phase 4 tiers)', () => {
+  const P = 'com.ibrahim1774.aibarber.';
+  const row = (product_id: string | null, over: { revoked_at?: string | null; taken_down_at?: string | null } = {}) =>
+    ({ product_id, revoked_at: null, taken_down_at: null, ...over });
+
+  it('true for an entitlement the product has', () => {
+    expect(entitlementActive(row(`${P}store.yearly`), 'store')).toBe(true);
+    expect(entitlementActive(row(`${P}store.yearly`), 'bookings')).toBe(true);
+    expect(entitlementActive(row(`${P}bookings.monthly`), 'bookings')).toBe(true);
+    expect(entitlementActive(row(`${P}hosting.monthly`), 'hosting')).toBe(true);
+  });
+  it('false for an entitlement the product lacks', () => {
+    expect(entitlementActive(row(`${P}hosting.monthly`), 'bookings')).toBe(false);
+    expect(entitlementActive(row(`${P}bookings.yearly`), 'store')).toBe(false);
+    expect(entitlementActive(row(null), 'hosting')).toBe(false);
+  });
+  it('false when revoked', () => expect(entitlementActive(row(`${P}store.monthly`, { revoked_at: iso(NOW) }), 'store')).toBe(false));
+  it('false when taken down', () => expect(entitlementActive(row(`${P}store.monthly`, { taken_down_at: iso(NOW) }), 'bookings')).toBe(false));
+  it('false with no row', () => expect(entitlementActive(null, 'hosting')).toBe(false));
+});
+
+describe('I2: purchases the sweep never takes down close the gates once lapsed', () => {
+  const P = 'com.ibrahim1774.aibarber.';
+  const swept = {
+    product_id: `${P}store.monthly`, revoked_at: null, taken_down_at: null,
+    site_slug: 'fresh-cuts', published_at: iso(NOW - 40 * GRACE_MS), environment: 'Production',
+  };
+  const expired = iso(NOW - 2 * GRACE_MS);
+
+  it('sweepWatches: bound and published, Production or Sandbox (fix round 2: the sweep watches Sandbox)', () => {
+    expect(sweepWatches(swept)).toBe(true);
+    expect(sweepWatches({ ...swept, environment: 'Sandbox' })).toBe(true);
+    expect(sweepWatches({ ...swept, site_slug: null })).toBe(false);
+    expect(sweepWatches({ ...swept, published_at: null })).toBe(false);
+  });
+
+  it('a watched Sandbox row past expiry stays open: the gate trusts the sweep (renewing, or billing grace)', () => {
+    expect(entitlementActive({ ...swept, environment: 'Sandbox', expires_at: expired }, 'store', NOW)).toBe(true);
+    expect(entitlementActive({ ...swept, environment: 'Sandbox', expires_at: expired, taken_down_at: iso(NOW) }, 'store', NOW)).toBe(false);
+  });
+
+  it('a swept row past expiry stays open (the sweep asks Apple; billing grace keeps it up)', () => {
+    expect(entitlementActive({ ...swept, expires_at: expired }, 'store', NOW)).toBe(true);
+  });
+
+  it.each([
+    ['unbound', { site_slug: null }],
+    ['bound but never published', { published_at: null }],
+    ['unbound Sandbox', { environment: 'Sandbox', site_slug: null }],
+  ])('%s and lapsed → closed', (_n, over) => {
+    const row = { ...swept, ...over, expires_at: expired };
+    expect(purchaseLive(row, NOW)).toBe(false);
+    expect(entitlementActive(row, 'store', NOW)).toBe(false);
+    expect(entitlementActive(row, 'hosting', NOW)).toBe(false);
+  });
+
+  it('unswept but not yet lapsed (inside the grace hour, or no expiry known) → open', () => {
+    expect(entitlementActive({ ...swept, site_slug: null, expires_at: iso(NOW - 1000) }, 'store', NOW)).toBe(true);
+    expect(entitlementActive({ ...swept, site_slug: null, expires_at: iso(NOW + GRACE_MS) }, 'store', NOW)).toBe(true);
+    expect(entitlementActive({ ...swept, site_slug: null, expires_at: null }, 'store', NOW)).toBe(true);
   });
 });

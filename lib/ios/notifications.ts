@@ -1,4 +1,4 @@
-import { signedDataVerifierFor, type AppleDecode, type IosEnv } from './appleVerify.js';
+import { signedDataVerifierFor, toDecodedTransaction, type AppleDecode, type IosEnv } from './appleVerify.js';
 import { supabasePurchases, type PurchasesRepo } from './purchases.js';
 
 export interface DecodedNotification {
@@ -63,7 +63,10 @@ export async function handleAppleNotification(signedPayload: string, deps: Notif
   const now = (deps.now ?? Date.now)();
   // REFUND_REVERSED: Apple reinstated the purchase, so the stored revocation is cleared.
   const reinstated = n.notificationType === 'REFUND_REVERSED';
-  const revokedAt = reinstated ? null : tx.revocationDate ?? (REVOKING_TYPES.has(n.notificationType) ? now : null);
+  // The transaction a same-group upgrade replaced carries a revocationDate, but the
+  // purchase (same originalTransactionId) lives on in the upgraded product: never a revocation.
+  const upgradedAway = tx.isUpgraded === true;
+  const revokedAt = reinstated || upgradedAway ? null : tx.revocationDate ?? (REVOKING_TYPES.has(n.notificationType) ? now : null);
   try {
     await deps.repo.applyNotification({
       otid: tx.originalTransactionId,
@@ -72,6 +75,9 @@ export async function handleAppleNotification(signedPayload: string, deps: Notif
       expiresAt: tx.expiresDate ?? null,
       revokedAt,
       type: n.notificationType,
+      // Orders the product write (never backwards); an upgraded-away product is never written.
+      ...(tx.purchaseDate != null ? { purchasedAt: tx.purchaseDate } : {}),
+      ...(upgradedAway ? { isUpgraded: true } : {}),
       ...(reinstated ? { clearRevoked: true } : {}),
       ...(!reinstated && PURCHASE_TYPES.has(n.notificationType) && tx.revocationDate == null && tx.purchaseDate != null
         ? { clearRevokedBefore: tx.purchaseDate }
@@ -89,14 +95,8 @@ export function liveNotificationDeps(): NotificationDeps {
   return {
     bundleId,
     repo: supabasePurchases(),
-    decodeTransaction: async (env, signed) => {
-      const p = await signedDataVerifierFor(env).verifyAndDecodeTransaction(signed);
-      return {
-        bundleId: p.bundleId, productId: p.productId,
-        originalTransactionId: p.originalTransactionId, transactionId: p.transactionId,
-        expiresDate: p.expiresDate, revocationDate: p.revocationDate, purchaseDate: p.purchaseDate,
-      };
-    },
+    decodeTransaction: async (env, signed) =>
+      toDecodedTransaction(await signedDataVerifierFor(env).verifyAndDecodeTransaction(signed)),
     async decodeNotification(p) {
       let firstErr: unknown;
       for (const env of ['Production', 'Sandbox'] as const) {

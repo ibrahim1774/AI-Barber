@@ -174,6 +174,54 @@ describe('gatedWebDeploy', () => {
   });
 });
 
+describe('gatedWebDeploy: a Sandbox row the sweep only gate-closed (N4)', () => {
+  const sandboxDown = () => iosRow({ environment: 'Sandbox', taken_down_at: iso(NOW - DAY), expires_at: iso(NOW - 2 * DAY) });
+
+  it('its website is still up (no offline page without IOS_TAKEDOWN_SANDBOX), so a web deploy goes ahead', async () => {
+    const d = deps(sandboxDown());
+    const out = await gatedWebDeploy(body({ siteData: siteData() }), d);
+    expect(out.blocked).toBe(false);
+    expect(d.deploy).toHaveBeenCalledTimes(1);
+    expect(d.writePending).toHaveBeenCalledTimes(1);
+  });
+
+  it('with takedownSandbox (the offline page was deployed) it is blocked like Production', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const d = { ...deps(sandboxDown()), takedownSandbox: true };
+    expect(await gatedWebDeploy(body(), d)).toEqual({ blocked: true });
+    expect(d.deploy).not.toHaveBeenCalled();
+  });
+
+  it('a revoked Sandbox row is still blocked', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const d = deps(iosRow({ environment: 'Sandbox', revoked_at: iso(NOW - 1) }));
+    expect(await gatedWebDeploy(body(), d)).toEqual({ blocked: true });
+  });
+});
+
+describe('gatedWebDeploy tiers (M3): the pending copy gets the same link strip as the app publish', () => {
+  const P = 'com.ibrahim1774.aibarber.';
+  const linked = () => ({ ...siteData(), bookingUrl: 'https://www.aibarber.org/book/fade', shopUrl: 'https://www.aibarber.org/shop/fade' });
+
+  it.each([
+    ['hosting.monthly', false, false],
+    ['bookings.yearly', true, false],
+    ['store.monthly', true, true],
+  ])('%s', async (suffix, keepsBook, keepsShop) => {
+    const d = deps(iosRow({ product_id: P + suffix }));
+    await gatedWebDeploy(body({ siteData: linked() }), d);
+    const sd = d.writePending.mock.calls[0][1].siteData as any;
+    expect('bookingUrl' in sd).toBe(keepsBook);
+    expect('shopUrl' in sd).toBe(keepsShop);
+  });
+
+  it('a Booksy link is kept on Website', async () => {
+    const d = deps(iosRow({ product_id: `${P}hosting.monthly` }));
+    await gatedWebDeploy(body({ siteData: { ...siteData(), bookingUrl: 'https://booksy.com/x' } }), d);
+    expect((d.writePending.mock.calls[0][1].siteData as any).bookingUrl).toBe('https://booksy.com/x');
+  });
+});
+
 describe('gatedWebDeploy target slug from deployedUrl', () => {
   afterEach(() => vi.restoreAllMocks());
   const bySlug = (rows: Record<string, PurchaseRow>) => {

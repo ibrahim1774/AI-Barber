@@ -6,7 +6,7 @@ import {
   runIosSiteLookup,
   type PublishDeps,
 } from '../../lib/ios/publishFlow.js';
-import { VerifyFailure, type VerifiedTx } from '../../lib/ios/appleVerify.js';
+import { VerifyFailure, makeVerifier, type VerifiedTx } from '../../lib/ios/appleVerify.js';
 import { makeIsTaken, vercelProjectExists } from '../../lib/ios/slug.js';
 import type { PurchaseRow, PurchasesRepo } from '../../lib/ios/purchases.js';
 import type { PendingSite, PublishOutcome } from '../../lib/publishSite.js';
@@ -412,6 +412,89 @@ describe('runIosPublish', () => {
     const { deps } = fakes({ verified: tx({ environment: 'Sandbox' }) });
     const r: any = await runIosPublish(input(), deps);
     expect(r.body.siteId).toBe('ios-test-fresh-cuts');
+  });
+});
+
+describe('runIosPublish tiers (Phase 4)', () => {
+  const P = 'com.ibrahim1774.aibarber.';
+  const AB_BOOK = 'https://www.aibarber.org/book/fresh-cuts';
+  const AB_SHOP = 'https://www.aibarber.org/shop/fresh-cuts';
+  const linked = (over: Partial<WebsiteData> = {}) => input({ siteData: site({ bookingUrl: AB_BOOK, shopUrl: AB_SHOP, ...over }) });
+
+  it('a Website-tier publish with an AI Barber bookingUrl and a shopUrl: the pending payload has neither', async () => {
+    const { deps, pending } = fakes({ verified: tx({ productId: `${P}hosting.monthly` }) });
+    expect((await runIosPublish(linked(), deps)).status).toBe(200);
+    const sd = pending.get('fresh-cuts')!.siteData;
+    expect('bookingUrl' in sd).toBe(false);
+    expect('shopUrl' in sd).toBe(false);
+  });
+
+  it('a Store-tier publish keeps both', async () => {
+    const { deps, pending } = fakes({ verified: tx({ productId: `${P}store.yearly` }) });
+    expect((await runIosPublish(linked(), deps)).status).toBe(200);
+    const sd = pending.get('fresh-cuts')!.siteData;
+    expect(sd.bookingUrl).toBe(AB_BOOK);
+    expect(sd.shopUrl).toBe(AB_SHOP);
+  });
+
+  it('a Booksy bookingUrl is kept on Website', async () => {
+    const { deps, pending } = fakes({ verified: tx({ productId: `${P}hosting.yearly` }) });
+    await runIosPublish(linked({ bookingUrl: 'https://booksy.com/en-us/1_fresh-cuts' }), deps);
+    expect(pending.get('fresh-cuts')!.siteData.bookingUrl).toBe('https://booksy.com/en-us/1_fresh-cuts');
+  });
+
+  it('strips by the verified (latest) product, not anything the app sends', async () => {
+    const { deps, pending } = fakes({ verified: tx({ productId: `${P}bookings.monthly` }) });
+    await runIosPublish({ ...linked(), productId: `${P}store.yearly`, tier: 'store' } as any, deps);
+    const sd = pending.get('fresh-cuts')!.siteData;
+    expect(sd.bookingUrl).toBe(AB_BOOK);
+    expect('shopUrl' in sd).toBe(false);
+  });
+
+  // Controller update (2026-10-21): the publish paywall sells all six products, so a Bookings or
+  // Store purchase at publish must verify, publish and record its tier straight away.
+  describe('a purchase of any of the six products at publish', () => {
+    function appleSays(productId: string, purchaseDate: number) {
+      const decoded = {
+        bundleId: 'com.ibrahim1774.aibarber', productId, originalTransactionId: OTID, transactionId: 't-123',
+        expiresDate: NOW + 30 * 86_400_000, purchaseDate,
+      };
+      return makeVerifier({
+        bundleId: 'com.ibrahim1774.aibarber',
+        lookup: async (env) => (env === 'Production' ? { status: 200, signedTransactionInfo: 'sent' } : { status: 404 }),
+        decode: async () => decoded,
+        statuses: async () => ({ status: 200, items: [{ status: 1, originalTransactionId: OTID, signedTransactionInfo: 'latest' }] }),
+      });
+    }
+
+    it.each([
+      ['bookings.monthly', true, false],
+      ['store.yearly', true, true],
+      ['bookings.yearly', true, false],
+      ['store.monthly', true, true],
+      ['hosting.monthly', false, false],
+    ])('%s: 200, the tier is recorded, links kept per tier', async (suffix, keepsBook, keepsShop) => {
+      const { deps, repo, rows, pending } = fakes();
+      deps.verify = appleSays(P + suffix, NOW - 60_000);
+      const r = await runIosPublish(linked(), deps);
+      expect(r).toEqual({ status: 200, body: { siteId: 'fresh-cuts', deployedUrl: 'https://fresh-cuts.vercel.app', republished: false } });
+      expect(repo.upsertVerified).toHaveBeenCalledWith(
+        expect.objectContaining({ originalTransactionId: OTID, productId: P + suffix, productPurchasedAt: NOW - 60_000 }),
+        { checkedAt: NOW },
+      );
+      expect(rows.get(OTID)!.product_id).toBe(P + suffix);
+      const sd = pending.get('fresh-cuts')!.siteData;
+      expect('bookingUrl' in sd).toBe(keepsBook);
+      expect('shopUrl' in sd).toBe(keepsShop);
+    });
+
+    it('an unknown product is still 400 bad-product (nothing bound or written)', async () => {
+      const { deps, repo, pending } = fakes();
+      deps.verify = appleSays('com.other.app.monthly', NOW);
+      expect(await runIosPublish(linked(), deps)).toEqual({ status: 400, body: { error: 'bad-product' } });
+      expect(repo.upsertVerified).not.toHaveBeenCalled();
+      expect(pending.size).toBe(0);
+    });
   });
 });
 

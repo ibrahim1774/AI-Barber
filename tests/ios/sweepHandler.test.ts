@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const { unpublishedBound, restoreCandidates, takedownCandidates, markTakenDown, clearTakenDown, publishSite, writePendingSite, deployRenderedSite, appleVerify } = vi.hoisted(() => ({
+const { unpublishedBound, restoreCandidates, takedownCandidates, markTakenDown, clearTakenDown, publishSite, writePendingSite, readPendingSite, deployRenderedSite, appleVerify } = vi.hoisted(() => ({
   unpublishedBound: vi.fn(),
   restoreCandidates: vi.fn(),
   takedownCandidates: vi.fn(),
@@ -8,10 +8,11 @@ const { unpublishedBound, restoreCandidates, takedownCandidates, markTakenDown, 
   clearTakenDown: vi.fn(async (_o: string) => {}),
   publishSite: vi.fn(async (s: string, _o?: unknown) => ({ ok: true, siteId: s })),
   writePendingSite: vi.fn(async () => {}),
+  readPendingSite: vi.fn(async (_s: string): Promise<any> => null),
   deployRenderedSite: vi.fn(async (_i: { siteId: string; html: string }) => ({ deploymentUrl: 'https://x.vercel.app', uploadedImages: {} })),
   appleVerify: vi.fn(),
 }));
-vi.mock('../../lib/publishSite.js', () => ({ publishSite, writePendingSite }));
+vi.mock('../../lib/publishSite.js', () => ({ publishSite, writePendingSite, readPendingSite }));
 vi.mock('../../lib/deploySite.js', () => ({ deployRenderedSite }));
 vi.mock('../../lib/ios/appleVerify.js', async (orig) => ({ ...(await orig<object>()), lazyDefaultVerifier: () => appleVerify }));
 vi.mock('../../lib/ios/purchases.js', () => ({
@@ -28,7 +29,7 @@ const mkRes = () => { const res: any = { status: vi.fn().mockReturnThis(), json:
 const cron = { headers: { 'user-agent': 'vercel-cron/1.0' } };
 const empty = {
   skippedLapsed: [], restored: [], restoreFailed: [], notRestored: [], takenDown: [], takedownFailed: [], takedownUncertain: [],
-  stillActive: [], appleUnavailable: [], appleUnresolvable: [], appleUnavailableCount: 0, appleUnresolvableCount: 0,
+  stillActive: [], sandboxGatesClosed: [], appleUnavailable: [], appleUnresolvable: [], appleUnavailableCount: 0, appleUnresolvableCount: 0,
 };
 const appleSays = (status: number) => async (otid: string) => ({
   originalTransactionId: otid, transactionId: 't', productId: 'p', environment: 'Production', expiresAt: 0, revoked: status === 5, status,
@@ -88,6 +89,17 @@ describe('api/ios/sweep', () => {
     expect(clearTakenDown).toHaveBeenCalledWith('o9');
   });
 
+  it('M4: restore strips the pending file for the current plan before publishing (wired to the pending store)', async () => {
+    unpublishedBound.mockResolvedValue([]);
+    restoreCandidates.mockResolvedValue([{ original_transaction_id: 'o9', site_slug: 'a' }]);
+    appleVerify.mockImplementation(async (otid: string) => ({ ...(await appleSays(1)(otid)), productId: 'com.ibrahim1774.aibarber.hosting.monthly' }));
+    readPendingSite.mockResolvedValueOnce({ siteId: 'a', siteData: { shopName: 'A', shopUrl: 'https://www.aibarber.org/shop/a' } });
+    await handler(cron, mkRes());
+    expect(readPendingSite).toHaveBeenCalledWith('a');
+    expect(writePendingSite).toHaveBeenCalledWith('a', { siteId: 'a', siteData: { shopName: 'A' } });
+    expect((writePendingSite.mock.invocationCallOrder as number[])[0]).toBeLessThan((publishSite.mock.invocationCallOrder as number[])[0]);
+  });
+
   it('500 with { error } when unpublishedBound throws', async () => {
     unpublishedBound.mockRejectedValue(new Error('db down'));
     vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -97,16 +109,21 @@ describe('api/ios/sweep', () => {
     expect(res.json).toHaveBeenCalledWith({ error: 'db down' });
   });
 
-  it('Sandbox rows are excluded from takedown unless IOS_TAKEDOWN_SANDBOX=1', async () => {
+  it('Sandbox rows are always watched; only IOS_TAKEDOWN_SANDBOX=1 deploys their offline page', async () => {
     unpublishedBound.mockResolvedValue([]);
     const prev = process.env.IOS_TAKEDOWN_SANDBOX;
     try {
       delete process.env.IOS_TAKEDOWN_SANDBOX;
+      takedownCandidates.mockResolvedValue([{ original_transaction_id: 's9', site_slug: 'sb', environment: 'Sandbox', expires_at: '2020-01-01T00:00:00Z', published_at: '2019-01-01T00:00:00Z' }]);
+      appleVerify.mockImplementation(appleSays(2));
       await handler(cron, mkRes());
-      expect(takedownCandidates).toHaveBeenLastCalledWith(50, expect.any(Number), { includeSandbox: false });
+      expect(takedownCandidates).toHaveBeenLastCalledWith(50, expect.any(Number), { includeSandbox: true });
+      expect(markTakenDown).toHaveBeenCalledWith('s9', expect.any(Number));
+      expect(deployRenderedSite).not.toHaveBeenCalled();
       process.env.IOS_TAKEDOWN_SANDBOX = '1';
       await handler(cron, mkRes());
       expect(takedownCandidates).toHaveBeenLastCalledWith(50, expect.any(Number), { includeSandbox: true });
+      expect(deployRenderedSite).toHaveBeenCalledWith(expect.objectContaining({ siteId: 'sb' }));
     } finally {
       if (prev === undefined) delete process.env.IOS_TAKEDOWN_SANDBOX; else process.env.IOS_TAKEDOWN_SANDBOX = prev;
     }

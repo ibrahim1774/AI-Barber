@@ -42,7 +42,7 @@ export async function authenticate(authorization: string | string[] | undefined,
 export async function requireOwner(
   authorization: string | string[] | undefined,
   getUser: GetUser,
-  repo: BookingRepo,
+  repo: Pick<BookingRepo, 'shopByOwner'>,
 ): Promise<OwnerResult> {
   const a = await authenticate(authorization, getUser);
   if (a.ok === false) return a;

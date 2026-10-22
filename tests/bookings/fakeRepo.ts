@@ -221,7 +221,7 @@ export function world(over: { shop?: Partial<ShopRow> } = {}) {
     availability: [...tueSat(mike), ...tueSat(jay)],
     timeOff: [],
     appointments: [],
-    purchases: { [OTID]: { user_id: OWNER_USER, revoked_at: null, taken_down_at: null } },
+    purchases: { [OTID]: { user_id: OWNER_USER, product_id: 'com.ibrahim1774.aibarber.store.monthly', revoked_at: null, taken_down_at: null } },
     sites: {},
     pushTokens: [],
     events: [],

@@ -14,9 +14,11 @@ import {
   memberName,
   notFound,
   ok,
+  ownerBookingsAllowed,
   ownerRules,
   ownerView,
   parseInstant,
+  paused,
   safeNotify,
   text,
   validZone,
@@ -26,6 +28,7 @@ import {
   type FlowResult,
 } from './core.js';
 import { chooseShopSlug, vercelLabel } from './slug.js';
+import type { RateLimiter } from './rateLimit.js';
 import type { AppointmentRow, MemberRow, NewAppointment, NewService, PaymentStatus, ShopRow } from './repo.js';
 
 export interface VerifiedPurchase {
@@ -42,6 +45,8 @@ export interface PurchaseVerifier {
 export interface OwnerDeps extends FlowDeps {
   getUser: GetUser;
   purchases?: PurchaseVerifier;
+  /** Per-user write limit on setup's Apple verify (shared with POST /api/shop/plan). Absent = none. */
+  writeLimiter?: Pick<RateLimiter, 'allow'>;
   rand?: () => string;
 }
 
@@ -136,6 +141,16 @@ export async function setupShop(authorization: string | string[] | undefined, bo
   let otid: string | null = null;
   if (input.transactionId) {
     if (!deps.purchases) return err(503, 'temporarily-unavailable');
+    // Each verify costs App Store Server API calls: the same per-user write limit as /api/shop/plan.
+    if (deps.writeLimiter) {
+      let allowed = true;
+      try {
+        allowed = await deps.writeLimiter.allow(`user:${user.id}`, 'write');
+      } catch (e: any) {
+        console.error('[shop/setup] rate limiter failed, allowing:', e?.message || e); // fail open
+      }
+      if (!allowed) return { status: 429, body: { error: 'rate-limited' }, headers: { 'Retry-After': '60' } };
+    }
     try {
       otid = (await deps.purchases.verify(input.transactionId)).originalTransactionId;
     } catch (e: any) {
@@ -235,6 +250,8 @@ export async function createOwnerAppointment(authorization: string | string[] | 
   const o = await requireOwner(authorization, deps.getUser, deps.repo);
   if (o.ok === false) return { status: o.status, body: o.body };
   const { shop } = o;
+  // Phase 4: creating or moving bookings needs a live plan with bookings (cancel and mark never do).
+  if (!(await ownerBookingsAllowed(deps.repo, shop))) return paused();
   if (!isObj(body)) return invalid('body');
   const startMs = parseInstant(body.start, { wholeMinute: true });
   if (startMs == null) return invalid('start');
@@ -319,6 +336,8 @@ export async function rescheduleOwnerAppointment(
   const o = await requireOwner(authorization, deps.getUser, deps.repo);
   if (o.ok === false) return { status: o.status, body: o.body };
   const { shop } = o;
+  // Phase 4: creating or moving bookings needs a live plan with bookings (cancel and mark never do).
+  if (!(await ownerBookingsAllowed(deps.repo, shop))) return paused();
   if (!isObj(body)) return invalid('body');
   const startMs = parseInstant(body.start, { wholeMinute: true });
   if (startMs == null) return invalid('start');
@@ -411,6 +430,8 @@ export async function createTimeOff(authorization: string | string[] | undefined
   const o = await requireOwner(authorization, deps.getUser, deps.repo);
   if (o.ok === false) return { status: o.status, body: o.body };
   const { shop } = o;
+  // Phase 4: creating or moving bookings needs a live plan with bookings (cancel and mark never do).
+  if (!(await ownerBookingsAllowed(deps.repo, shop))) return paused();
   if (!isObj(body)) return invalid('body');
   const startMs = parseInstant(body.start, { wholeMinute: true });
   if (startMs == null) return invalid('start');

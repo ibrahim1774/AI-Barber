@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { isIndefiniteDeployError, sweepIos, type IosSweepSummary } from '../../lib/ios/sweep.js';
+import { isIndefiniteDeployError, makeStripPending, sweepIos, type IosSweepSummary } from '../../lib/ios/sweep.js';
 import type { PurchaseRow, PurchasesRepo } from '../../lib/ios/purchases.js';
 import type { PublishOutcome } from '../../lib/publishSite.js';
-import { VerifyFailure, type VerifiedTx } from '../../lib/ios/appleVerify.js';
+import { VerifyFailure, makeVerifier, type VerifiedTx } from '../../lib/ios/appleVerify.js';
 
 const row = (otid: string, slug: string): PurchaseRow => ({
   original_transaction_id: otid, product_id: 'p', environment: 'Production', site_slug: slug,
@@ -27,7 +27,7 @@ const neverVerify = async (_otid: string): Promise<VerifiedTx> => { throw new Er
 const summary = (over: Partial<IosSweepSummary> = {}): IosSweepSummary => ({
   checked: 0, published: [], failed: [], missing: [], deferred: [],
   skippedLapsed: [], restored: [], restoreFailed: [], notRestored: [],
-  takenDown: [], takedownFailed: [], takedownUncertain: [], stillActive: [],
+  takenDown: [], takedownFailed: [], takedownUncertain: [], stillActive: [], sandboxGatesClosed: [],
   appleUnavailable: [], appleUnresolvable: [],
   ...over,
   appleUnavailableCount: (over.appleUnavailable ?? []).length,
@@ -157,7 +157,7 @@ describe('sweepIos lapse takedown / restore (Apple decides)', () => {
     const deployOffline = vi.fn(async (_s: string) => {});
     const verify = apple({ o2: 2, o3: 3, o5: 5 });
     const out = await sweepIos({ repo: r, publish, deployOffline, verify }, 50, { now: () => NOW });
-    expect(takedownCandidates).toHaveBeenCalledWith(50, NOW, { includeSandbox: false });
+    expect(takedownCandidates).toHaveBeenCalledWith(50, NOW, { includeSandbox: true });
     expect(verify.mock.calls).toEqual([['o2'], ['o3'], ['o5']]);
     expect(deployOffline.mock.calls).toEqual([['a'], ['b'], ['c']]);
     expect(markTakenDown.mock.calls).toEqual([['o2', NOW], ['o3', NOW], ['o5', NOW]]);
@@ -175,6 +175,30 @@ describe('sweepIos lapse takedown / restore (Apple decides)', () => {
     expect(markTakenDown).not.toHaveBeenCalled();
     expect(upsertVerified).toHaveBeenCalledWith(expect.objectContaining({ originalTransactionId: 'o4', status: 4 }), { checkedAt: NOW });
     expect(out).toEqual(summary({ stillActive: ['g'] }));
+  });
+
+  it('a downgrade at renewal whose DID_RENEW was missed: Apple active on the LOWER product → recorded, not taken down', async () => {
+    const P = 'com.ibrahim1774.aibarber.';
+    const { r, markTakenDown, upsertVerified } = repo([], [], [{ ...lapsed('o5', 'h'), product_id: `${P}store.monthly` }]);
+    const renewedAt = NOW - DAY;
+    // The real verifier: the original transaction was Store, the latest (after the renewal) is Website.
+    const verify = makeVerifier({
+      bundleId: 'b',
+      lookup: async (env) => (env === 'Production' ? { status: 200, signedTransactionInfo: 'orig' } : { status: 404 }),
+      decode: async (_env, signed) => signed === 'orig'
+        ? { bundleId: 'b', productId: `${P}store.monthly`, originalTransactionId: 'o5', transactionId: 't0', purchaseDate: NOW - 40 * DAY, expiresDate: NOW - 10 * DAY }
+        : { bundleId: 'b', productId: `${P}hosting.monthly`, originalTransactionId: 'o5', transactionId: 't2', purchaseDate: renewedAt, expiresDate: NOW + 29 * DAY },
+      statuses: async () => ({ status: 200, items: [{ status: 1, originalTransactionId: 'o5', signedTransactionInfo: 'latest' }] }),
+    });
+    const deployOffline = vi.fn(async (_s: string) => {});
+    const out = await sweepIos({ repo: r, publish: vi.fn(), deployOffline, verify }, 50, { now: () => NOW });
+    expect(upsertVerified).toHaveBeenCalledWith(
+      expect.objectContaining({ originalTransactionId: 'o5', productId: `${P}hosting.monthly`, productPurchasedAt: renewedAt, status: 1 }),
+      { checkedAt: NOW },
+    );
+    expect(markTakenDown).not.toHaveBeenCalled();
+    expect(deployOffline).not.toHaveBeenCalled();
+    expect(out).toEqual(summary({ stillActive: ['h'] }));
   });
 
   it('Apple says active (renewal notification missed) → not taken down', async () => {
@@ -253,6 +277,32 @@ describe('sweepIos lapse takedown / restore (Apple decides)', () => {
     expect(markPublished).not.toHaveBeenCalled();
     expect(deployOffline).not.toHaveBeenCalled();
     expect(out).toEqual(summary({ restored: ['a'] }));
+  });
+
+  it('M4: a restore first strips the pending copy for the tier Apple reports NOW (never adds links)', async () => {
+    const { r } = repo([], [active('o1', 'a')]);
+    const order: string[] = [];
+    const publish = vi.fn(async (s: string, _o?: { force: boolean }) => { order.push('publish'); return ok(s); });
+    const stripPending = vi.fn(async (_s: string, _p: string) => { order.push('strip'); });
+    const out = await sweepIos({ repo: r, publish, deployOffline: noOffline, verify: apple({ o1: 1 }), stripPending }, 50, { now: () => NOW });
+    expect(stripPending.mock.calls).toEqual([['a', 'p']]); // Apple's (latest) product, not the stored row's
+    expect(order).toEqual(['strip', 'publish']);
+    expect(out.restored).toEqual(['a']);
+  });
+
+  it('M4: a failing strip never blocks the restore (the gates stay authoritative)', async () => {
+    quiet();
+    const { r } = repo([], [active('o1', 'a')]);
+    const stripPending = vi.fn(async () => { throw new Error('gcs down'); });
+    const out = await sweepIos({ repo: r, publish: vi.fn(async (s: string) => ok(s)), deployOffline: noOffline, verify: apple({ o1: 1 }), stripPending }, 50, { now: () => NOW });
+    expect(out.restored).toEqual(['a']);
+  });
+
+  it('M4: nothing is stripped when Apple says not active (no restore)', async () => {
+    const { r } = repo([], [active('o1', 'a')]);
+    const stripPending = vi.fn(async () => {});
+    await sweepIos({ repo: r, publish: vi.fn(), deployOffline: noOffline, verify: apple({ o1: 2 }), stripPending }, 50, { now: () => NOW });
+    expect(stripPending).not.toHaveBeenCalled();
   });
 
   it('billing grace (4) also counts as active for a restore', async () => {
@@ -438,13 +488,48 @@ describe('sweepIos lapse takedown / restore (Apple decides)', () => {
     expect(second.takenDown).toEqual(['real']);
   });
 
-  it('Sandbox: takedown candidates exclude Sandbox by default; included with takedownSandbox', async () => {
-    const a = repo([], [], []);
-    await sweepIos({ repo: a.r, publish: vi.fn(), deployOffline: noOffline, verify: neverVerify }, 50, { now: () => NOW });
-    expect(a.takedownCandidates).toHaveBeenCalledWith(50, NOW, { includeSandbox: false });
-    const b = repo([], [], []);
-    await sweepIos({ repo: b.r, publish: vi.fn(), deployOffline: noOffline, verify: neverVerify, takedownSandbox: true }, 50, { now: () => NOW });
-    expect(b.takedownCandidates).toHaveBeenCalledWith(50, NOW, { includeSandbox: true });
+  it('Sandbox: takedown candidates always include Sandbox (the sweep watches them, fix round 2)', async () => {
+    for (const takedownSandbox of [undefined, true]) {
+      const a = repo([], [], []);
+      await sweepIos({ repo: a.r, publish: vi.fn(), deployOffline: noOffline, verify: neverVerify, takedownSandbox }, 50, { now: () => NOW });
+      expect(a.takedownCandidates).toHaveBeenCalledWith(50, NOW, { includeSandbox: true });
+    }
+  });
+
+  it('a renewing Sandbox purchase is refreshed from Apple (fresh expiry) and left alone', async () => {
+    const sbx = { ...lapsed('s2', 'ios-test-cuts'), environment: 'Sandbox' as const };
+    const { r, markTakenDown, upsertVerified } = repo([], [], [sbx]);
+    const deployOffline = vi.fn(async (_s: string) => {});
+    const out = await sweepIos({ repo: r, publish: vi.fn(), deployOffline, verify: apple({ s2: 1 }) }, 50, { now: () => NOW });
+    expect(upsertVerified).toHaveBeenCalledWith(expect.objectContaining({ originalTransactionId: 's2', expiresAt: NOW + 30 * DAY, environment: 'Production' }), { checkedAt: NOW });
+    expect(markTakenDown).not.toHaveBeenCalled();
+    expect(deployOffline).not.toHaveBeenCalled();
+    expect(out).toEqual(summary({ stillActive: ['ios-test-cuts'] }));
+  });
+
+  it('a truly expired Sandbox purchase: gates closed (flag stamped) but the website is left up, unless takedownSandbox', async () => {
+    quiet();
+    const sbx = () => ({ ...lapsed('s3', 'ios-test-cuts'), environment: 'Sandbox' as const });
+    const a = repo([], [], [sbx()]);
+    const offA = vi.fn(async (_s: string) => {});
+    const outA = await sweepIos({ repo: a.r, publish: vi.fn(), deployOffline: offA, verify: apple({ s3: 2 }) }, 50, { now: () => NOW });
+    expect(a.markTakenDown.mock.calls).toEqual([['s3', NOW]]);
+    expect(offA).not.toHaveBeenCalled();
+    expect(outA).toEqual(summary({ sandboxGatesClosed: ['ios-test-cuts'] }));
+
+    const b = repo([], [], [sbx()]);
+    const offB = vi.fn(async (_s: string) => {});
+    const outB = await sweepIos({ repo: b.r, publish: vi.fn(), deployOffline: offB, verify: apple({ s3: 2 }), takedownSandbox: true }, 50, { now: () => NOW });
+    expect(offB.mock.calls).toEqual([['ios-test-cuts']]);
+    expect(outB).toEqual(summary({ takenDown: ['ios-test-cuts'] }));
+  });
+
+  it('a Sandbox gate-close whose stamp fails is reported as a failed takedown', async () => {
+    quiet();
+    const { r, markTakenDown } = repo([], [], [{ ...lapsed('s4', 'x'), environment: 'Sandbox' as const }]);
+    markTakenDown.mockRejectedValueOnce(new Error('db'));
+    const out = await sweepIos({ repo: r, publish: vi.fn(), deployOffline: noOffline, verify: apple({ s4: 2 }) }, 50, { now: () => NOW });
+    expect(out).toEqual(summary({ takedownFailed: ['x'] }));
   });
 
   it('Sandbox rows are still restored when Apple says active', async () => {
@@ -470,5 +555,28 @@ describe('sweepIos lapse takedown / restore (Apple decides)', () => {
     expect(isIndefiniteDeployError(Object.assign(new Error('500'), { isAxiosError: true, response: { status: 500 } }))).toBe(false);
     expect(isIndefiniteDeployError(new Error('Vercel deployment error'))).toBe(false);
     expect(isIndefiniteDeployError(null)).toBe(false);
+  });
+});
+
+describe('makeStripPending (M4)', () => {
+  const P = 'com.ibrahim1774.aibarber.';
+  const pendingWith = (over: Record<string, unknown>) => ({ siteId: 'a', siteData: { shopName: 'A', ...over } as any, imageUrlMap: {} });
+
+  it('rewrites the pending file without the links the current product lacks', async () => {
+    const stored = pendingWith({ bookingUrl: 'https://www.aibarber.org/book/a', shopUrl: 'https://www.aibarber.org/shop/a' });
+    const writePending = vi.fn(async () => {});
+    await makeStripPending({ readPending: async () => stored, writePending })('a', `${P}bookings.monthly`);
+    expect(writePending).toHaveBeenCalledTimes(1);
+    const written = (writePending.mock.calls[0] as any[])[1];
+    expect(written.siteData.bookingUrl).toBe('https://www.aibarber.org/book/a');
+    expect('shopUrl' in written.siteData).toBe(false);
+    expect(written.imageUrlMap).toEqual({});
+  });
+
+  it('writes nothing when nothing changes, or there is no pending file', async () => {
+    const writePending = vi.fn(async () => {});
+    await makeStripPending({ readPending: async () => pendingWith({ bookingUrl: 'https://www.aibarber.org/book/a' }), writePending })('a', `${P}store.yearly`);
+    await makeStripPending({ readPending: async () => null, writePending })('a', `${P}hosting.monthly`);
+    expect(writePending).not.toHaveBeenCalled();
   });
 });

@@ -11,8 +11,11 @@
 //    offline page, if Apple confirms it is inactive (expired, billing retry,
 //    revoked). Billing grace counts as active. Only the live deployment
 //    changes: the pending file, the sites table and published_at are untouched,
-//    so the content survives. Sandbox rows are exempt unless takedownSandbox
-//    (env IOS_TAKEDOWN_SANDBOX=1), so App Review's sandbox site never vanishes.
+//    so the content survives. Sandbox rows are watched like Production ones
+//    (asked about, refreshed from Apple), but an inactive one only gets its
+//    taken_down_at stamped, which closes the Bookings/Store gates, and its
+//    website is left up unless takedownSandbox (env IOS_TAKEDOWN_SANDBOX=1),
+//    so App Review's sandbox site never vanishes.
 //
 // Apple is the authority for every takedown and restore; the row rules only
 // pick which rows to ask about. If Apple can't be asked (error or timeout),
@@ -21,11 +24,12 @@
 // and candidates come oldest-checked first, so rows Apple can't resolve or
 // that sit in billing grace rotate to the back instead of starving the rest.
 import type { PurchasesRepo, PurchaseRow } from './purchases.js';
-import type { PublishOutcome } from '../publishSite.js';
+import type { PendingSite, PublishOutcome } from '../publishSite.js';
 import type { VerifiedTx } from './appleVerify.js';
 import { isActive } from './txStatus.js';
 import { isLapsed } from './lapse.js';
 import { withTimeout } from './timeout.js';
+import { stripLapsedLinks } from './tiers.js';
 
 export interface IosSweepSummary {
   checked: number;
@@ -51,6 +55,8 @@ export interface IosSweepSummary {
   takedownUncertain: string[];
   /** Takedown candidates Apple says are still active (e.g. billing grace); left up. */
   stillActive: string[];
+  /** Sandbox purchases Apple says are inactive: taken_down_at stamped (gates closed), website left up. */
+  sandboxGatesClosed: string[];
   /** Rows left alone because Apple was unreachable or slow; retried next sweep. */
   appleUnavailable: string[];
   /** Rows Apple can't resolve (not-found, bad-product, bad-bundle); left alone, rotated to the back. */
@@ -69,8 +75,31 @@ export interface IosSweepDeps {
   deployOffline(slug: string): Promise<void>;
   /** Apple's live state for a purchase (appleVerify makeVerifier), keyed by originalTransactionId. */
   verify(originalTransactionId: string): Promise<VerifiedTx>;
-  /** Take down Sandbox purchases too (env IOS_TAKEDOWN_SANDBOX=1). Default false. */
+  /**
+   * Deploy the offline page for inactive Sandbox purchases too (env IOS_TAKEDOWN_SANDBOX=1).
+   * Default false: their gates still close (taken_down_at), the website stays up.
+   */
   takedownSandbox?: boolean;
+  /**
+   * Before a restore: drop the Book/Shop links the purchase's CURRENT product (Apple's latest)
+   * doesn't cover from the slug's pending file (makeStripPending). Never adds links: they come
+   * back with the app's next publish. Best effort; absent = skipped.
+   */
+  stripPending?(slug: string, productId: string): Promise<void>;
+}
+
+/** stripPending over the pending-file store: rewrites it only when a link is removed. */
+export function makeStripPending(deps: {
+  readPending(slug: string): Promise<PendingSite | null>;
+  writePending(slug: string, p: PendingSite): Promise<void>;
+}): (slug: string, productId: string) => Promise<void> {
+  return async (slug, productId) => {
+    const pending = await deps.readPending(slug);
+    if (!pending?.siteData) return;
+    const siteData = stripLapsedLinks(pending.siteData, productId);
+    if (Object.keys(siteData).length === Object.keys(pending.siteData).length) return;
+    await deps.writePending(slug, { ...pending, siteData });
+  };
 }
 
 /** Errors meaning Apple will never resolve this purchase as-is. */
@@ -101,7 +130,7 @@ export async function sweepIos(
   const out: IosSweepSummary = {
     checked: rows.length, published: [], failed: [], missing: [], deferred: [],
     skippedLapsed: [], restored: [], restoreFailed: [], notRestored: [],
-    takenDown: [], takedownFailed: [], takedownUncertain: [], stillActive: [],
+    takenDown: [], takedownFailed: [], takedownUncertain: [], stillActive: [], sandboxGatesClosed: [],
     appleUnavailable: [], appleUnresolvable: [], appleUnavailableCount: 0, appleUnresolvableCount: 0,
   };
 
@@ -109,7 +138,7 @@ export async function sweepIos(
    * Apple's verdict for this row: true active, false inactive, null couldn't ask
    * (the row is skipped). `stamp` records lapse_checked_at whatever the outcome.
    */
-  async function appleSaysActive(row: PurchaseRow, slug: string, stamp: boolean): Promise<boolean | null> {
+  async function appleSaysActive(row: PurchaseRow, slug: string, stamp: boolean): Promise<{ active: boolean; tx: VerifiedTx } | null> {
     const otid = row.original_transaction_id;
     const checkedAt = now();
     let tx: VerifiedTx | null = null;
@@ -133,7 +162,7 @@ export async function sweepIos(
     // older than this check is cleared if Apple says active). Best effort.
     await deps.repo.upsertVerified(tx, { checkedAt }).catch((e: any) =>
       console.warn(`[Sweeper:iOS] ${slug} (${otid}): refreshing the row from Apple failed (ignored):`, e?.message || e));
-    return isActive(tx, now());
+    return { active: isActive(tx, now()), tx };
   }
 
   // Pass 1. Sequential on purpose: deploys are heavy.
@@ -146,9 +175,9 @@ export async function sweepIos(
     }
     const otid = row.original_transaction_id;
     if (isLapsed(row, now())) {
-      const active = await appleSaysActive(row, slug, false);
-      if (active === null) continue;
-      if (!active) {
+      const answer = await appleSaysActive(row, slug, false);
+      if (answer === null) continue;
+      if (!answer.active) {
         out.skippedLapsed.push(slug);
         continue;
       }
@@ -181,11 +210,17 @@ export async function sweepIos(
       continue;
     }
     const otid = row.original_transaction_id;
-    const active = await appleSaysActive(row, slug, true);
-    if (active === null) continue;
-    if (!active) {
+    const answer = await appleSaysActive(row, slug, true);
+    if (answer === null) continue;
+    if (!answer.active) {
       out.notRestored.push(slug);
       continue;
+    }
+    if (deps.stripPending) {
+      // The pending copy may carry links from an older, higher tier (a downgrade, then a
+      // lapse and a resubscribe). Strip by what Apple says now; the gates stay authoritative.
+      await deps.stripPending(slug, answer.tx.productId).catch((e: any) =>
+        console.error(`[Sweeper:iOS] ${slug} (${otid}): stripping links before the restore failed (restoring anyway):`, e?.message || e));
     }
     try {
       const outcome = await deps.publish(slug, { force: true });
@@ -205,7 +240,9 @@ export async function sweepIos(
   // Pass 3: takedowns.
   const takedowns = outOfLateTime()
     ? []
-    : await deps.repo.takedownCandidates(limit, now(), { includeSandbox: deps.takedownSandbox === true });
+    // Sandbox rows too: asking Apple keeps a renewing App Review / TestFlight purchase's stored
+    // expiry fresh, and an inactive one closes its Bookings/Store gates (below).
+    : await deps.repo.takedownCandidates(limit, now(), { includeSandbox: true });
   for (const row of takedowns) {
     const slug = row.site_slug as string;
     if (outOfLateTime()) {
@@ -213,9 +250,9 @@ export async function sweepIos(
       continue;
     }
     const otid = row.original_transaction_id;
-    const active = await appleSaysActive(row, slug, true);
-    if (active === null) continue;
-    if (active) {
+    const answer = await appleSaysActive(row, slug, true);
+    if (answer === null) continue;
+    if (answer.active) {
       out.stillActive.push(slug);
       continue;
     }
@@ -226,6 +263,13 @@ export async function sweepIos(
     } catch (err: any) {
       console.error(`[Sweeper:iOS] takedown not started for ${slug} (${otid}): stamping failed:`, err?.message || err);
       out.takedownFailed.push(slug);
+      continue;
+    }
+    if (row.environment === 'Sandbox' && deps.takedownSandbox !== true) {
+      // Gates closed (they read taken_down_at); the website stays up for App Review. A
+      // resubscribe is restored like any other (a forced republish of the same content).
+      console.log(`[Sweeper:iOS] SANDBOX ${slug} (${otid}): inactive per Apple; Bookings/Store closed, website left up`);
+      out.sandboxGatesClosed.push(slug);
       continue;
     }
     try {

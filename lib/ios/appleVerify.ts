@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { IOS_PRODUCT_IDS } from './tiers.js';
 import { AppStoreServerAPIClient, APIException, SignedDataVerifier, VerificationException, VerificationStatus, Environment } from '@apple/app-store-server-library';
 
 export type IosEnv = 'Production' | 'Sandbox';
@@ -14,6 +15,11 @@ export interface VerifiedTx {
   revoked: boolean;
   /** Apple subscription status: 1 Active, 2 Expired, 3 Billing retry, 4 Billing grace period, 5 Revoked. */
   status?: number;
+  /**
+   * Purchase date of the LATEST transaction, whose product `productId` is (Phase 4). Orders
+   * product writes: ios_purchases.product_id never moves backwards (purchases.ts).
+   */
+  productPurchasedAt?: number | null;
 }
 
 export type VerifyError = 'not-found' | 'bad-bundle' | 'bad-product' | 'apple-unavailable';
@@ -25,10 +31,8 @@ export class VerifyFailure extends Error {
   }
 }
 
-export const IOS_PRODUCT_IDS: readonly string[] = [
-  'com.ibrahim1774.aibarber.hosting.monthly',
-  'com.ibrahim1774.aibarber.hosting.yearly',
-];
+// The six products (Website, Bookings, Store × monthly, yearly) live in tiers.ts.
+export { IOS_PRODUCT_IDS };
 
 // Lives in txStatus.ts (no Apple SDK import) so purchases.ts can use it
 // without pulling the App Store library into every function that reads rows.
@@ -37,11 +41,27 @@ export { isActive } from './txStatus.js';
 export interface AppleLookup {
   (env: IosEnv, transactionId: string): Promise<{ status: number; signedTransactionInfo?: string }>;
 }
+export interface DecodedTransaction {
+  bundleId: string; productId: string; originalTransactionId: string; transactionId: string;
+  expiresDate?: number; revocationDate?: number; purchaseDate?: number;
+  /** True on the transaction a same-group upgrade replaced (it is not the current product). */
+  isUpgraded?: boolean;
+}
 export interface AppleDecode {
-  (env: IosEnv, signed: string): Promise<{
-    bundleId: string; productId: string; originalTransactionId: string; transactionId: string;
-    expiresDate?: number; revocationDate?: number; purchaseDate?: number;
-  }>;
+  (env: IosEnv, signed: string): Promise<DecodedTransaction>;
+}
+
+/** The fields we use from Apple's decoded JWSTransaction (both default decoders). */
+export function toDecodedTransaction(p: {
+  bundleId?: string; productId?: string; originalTransactionId?: string; transactionId?: string;
+  expiresDate?: number; revocationDate?: number; purchaseDate?: number; isUpgraded?: boolean;
+}): DecodedTransaction {
+  return {
+    bundleId: p.bundleId as string, productId: p.productId as string,
+    originalTransactionId: p.originalTransactionId as string, transactionId: p.transactionId as string,
+    expiresDate: p.expiresDate, revocationDate: p.revocationDate, purchaseDate: p.purchaseDate,
+    isUpgraded: p.isUpgraded === true,
+  };
 }
 
 /** One lastTransactions entry from Get All Subscription Statuses (flattened across subscription groups). */
@@ -103,15 +123,19 @@ export function makeVerifier(deps: { lookup: AppleLookup; decode: AppleDecode; s
         throw unavailable(); // Apple-fetched payload: decode failure = misconfiguration, not a forgery
       }
       if (latest.originalTransactionId !== d.originalTransactionId) throw unavailable();
+      // Upgrades and downgrades stay in the one subscription group (same originalTransactionId),
+      // so the latest transaction carries the CURRENT product. It must be one of ours too.
+      if (!IOS_PRODUCT_IDS.includes(latest.productId)) throw new VerifyFailure('bad-product');
 
       return {
         originalTransactionId: d.originalTransactionId,
         transactionId: d.transactionId,
-        productId: d.productId,
+        productId: latest.productId,
         environment: env,
         expiresAt: latest.expiresDate ?? null,
         revoked: latest.revocationDate != null || item.status === 5,
         status: item.status,
+        productPurchasedAt: latest.purchaseDate ?? null,
       };
     }
     throw new VerifyFailure('not-found');
@@ -210,11 +234,7 @@ export function defaultVerifier() {
       }
       throw e; // other failures: makeVerifier maps to apple-unavailable
     }
-    return {
-      bundleId: p.bundleId, productId: p.productId,
-      originalTransactionId: p.originalTransactionId, transactionId: p.transactionId,
-      expiresDate: p.expiresDate, revocationDate: p.revocationDate,
-    };
+    return toDecodedTransaction(p);
   };
 
   return makeVerifier({ lookup, decode, statuses, bundleId });

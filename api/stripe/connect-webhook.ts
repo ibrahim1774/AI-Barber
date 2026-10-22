@@ -4,7 +4,10 @@
 // .async_payment_succeeded / .async_payment_failed, charge.refunded, account.updated and
 // account.application.deauthorized. The event id is recorded (ab_events.dedupe_key =
 // 'stripe:<id>') only after its work succeeds; every branch is idempotent on row state.
-import { handleConnectEvent, liveWebhookDeps, verifyStripeSignature, type WebhookDeps } from '../../lib/bookings/payments.js';
+// Store orders (Checkout metadata app=aibarber-store) ride the same endpoint, events and secret:
+// handleConnectEvent routes them to the order branch (lib/store/webhook.ts).
+import { handleConnectEvent, liveWebhookDeps, serviceDb, verifyStripeSignature, type WebhookDeps } from '../../lib/bookings/payments.js';
+import { liveOrderWebhookDeps, type OrderWebhookDeps } from '../../lib/store/webhook.js';
 
 // bodyParser off: the signature is over the raw bytes.
 export const config = { api: { bodyParser: false }, maxDuration: 60 };
@@ -18,7 +21,7 @@ function readRawBody(req: any): Promise<Buffer> {
   });
 }
 
-export async function handleWebhook(req: any, res: any, deps?: () => WebhookDeps) {
+export async function handleWebhook(req: any, res: any, deps?: () => WebhookDeps, orderDeps?: () => OrderWebhookDeps) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'method-not-allowed' });
   const secret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET;
   if (!secret) {
@@ -40,7 +43,17 @@ export async function handleWebhook(req: any, res: any, deps?: () => WebhookDeps
   }
 
   try {
-    const outcome = await handleConnectEvent(event, (deps ?? liveWebhookDeps)());
+    let d: WebhookDeps;
+    let od: OrderWebhookDeps | undefined;
+    if (deps) {
+      d = deps();
+      od = orderDeps?.();
+    } else {
+      const db = serviceDb();
+      d = liveWebhookDeps(db);
+      od = (orderDeps ?? (() => liveOrderWebhookDeps(db)))();
+    }
+    const outcome = await handleConnectEvent(event, d, od);
     return res.status(200).json({ received: true, outcome });
   } catch (e: any) {
     // 500 so Stripe retries; the event was not recorded, so the retry finishes the work.

@@ -41,6 +41,10 @@
       "destination": "/book.html"
     },
     {
+      "source": "/shop/(.*)",
+      "destination": "/shop.html"
+    },
+    {
       "source": "/((?!api/.*).*)",
       "destination": "/index.html"
     }
@@ -75,6 +79,9 @@
       "includeFiles": "lib/ios/certs/**"
     },
     "api/shop/setup.ts": {
+      "includeFiles": "lib/ios/certs/**"
+    },
+    "api/shop/plan.ts": {
       "includeFiles": "lib/ios/certs/**"
     },
     "api/ios/sweep.ts": {

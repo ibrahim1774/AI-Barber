@@ -21,6 +21,7 @@ function fakeClient(result: Result = { data: null, error: null }, ...queued: Res
 }
 const find = (calls: Call[], m: string) => calls.find((c) => c.method === m);
 
+// upsertVerified and applyNotification: tests/ios/purchasesWrites.test.ts (stateful fake).
 describe('supabasePurchases', () => {
   it('bindSlug only updates when site_slug is null', async () => {
     const { client, calls } = fakeClient({ data: [{ original_transaction_id: 'o1' }], error: null });
@@ -41,166 +42,11 @@ describe('supabasePurchases', () => {
     expect(await supabasePurchases(client).bindSlug('o1', 'x')).toBe(false);
   });
 
-  it('upsertVerified does not send site_slug, user_id or published_at', async () => {
-    const row = { original_transaction_id: 'o1' };
-    const { client, calls } = fakeClient({ data: row, error: null });
-    const out = await supabasePurchases(client).upsertVerified({
-      originalTransactionId: 'o1', transactionId: 't1', productId: 'p', environment: 'Sandbox',
-      expiresAt: 2_000_000_000_000, revoked: false,
-    });
-    expect(out).toBe(row);
-    const payload = find(calls, 'upsert')!.args[0] as Record<string, unknown>;
-    expect(Object.keys(payload)).not.toContain('site_slug');
-    expect(Object.keys(payload)).not.toContain('user_id');
-    expect(Object.keys(payload)).not.toContain('published_at');
-    expect(Object.keys(payload)).not.toContain('revoked_at');
-    expect(payload.expires_at).toBe(new Date(2_000_000_000_000).toISOString());
-    expect(find(calls, 'upsert')!.args[1]).toEqual({ onConflict: 'original_transaction_id' });
-  });
-
-  it('upsertVerified sets revoked_at when revoked and null expires_at for null expiry', async () => {
-    const { client, calls } = fakeClient({ data: {}, error: null });
-    await supabasePurchases(client).upsertVerified({
-      originalTransactionId: 'o1', transactionId: 't1', productId: 'p', environment: 'Production', expiresAt: null, revoked: true,
-    });
-    const payload = find(calls, 'upsert')!.args[0] as Record<string, unknown>;
-    expect(payload.expires_at).toBeNull();
-    expect(typeof payload.revoked_at).toBe('string');
-  });
-
-  describe('upsertVerified never moves expires_at backwards', () => {
-    const tx = (expiresAt: number | null) => ({
-      originalTransactionId: 'o1', transactionId: 't1', productId: 'p', environment: 'Production' as const, expiresAt, revoked: false,
-    });
-    const STORED = 2_000_000_000_000;
-
-    it('reads the stored row for this purchase first', async () => {
-      const { client, calls } = fakeClient({ data: {}, error: null }, { data: null, error: null });
-      await supabasePurchases(client).upsertVerified(tx(STORED));
-      expect(calls[1]).toEqual({ method: 'select', args: ['expires_at'] });
-      expect(find(calls, 'eq')!.args).toEqual(['original_transaction_id', 'o1']);
-      expect(calls.findIndex((c) => c.method === 'select')).toBeLessThan(calls.findIndex((c) => c.method === 'upsert'));
-    });
-
-    it('older incoming expiry is not written', async () => {
-      const stored = { data: { expires_at: new Date(STORED).toISOString() }, error: null };
-      const { client, calls } = fakeClient({ data: {}, error: null }, stored);
-      await supabasePurchases(client).upsertVerified(tx(STORED - 86_400_000));
-      expect(Object.keys(find(calls, 'upsert')!.args[0] as object)).not.toContain('expires_at');
-    });
-
-    it('newer incoming expiry is written', async () => {
-      const stored = { data: { expires_at: new Date(STORED).toISOString() }, error: null };
-      const { client, calls } = fakeClient({ data: {}, error: null }, stored);
-      await supabasePurchases(client).upsertVerified(tx(STORED + 86_400_000));
-      expect((find(calls, 'upsert')!.args[0] as Record<string, unknown>).expires_at).toBe(new Date(STORED + 86_400_000).toISOString());
-    });
-
-    it('null incoming expiry does not wipe a stored one', async () => {
-      const stored = { data: { expires_at: new Date(STORED).toISOString() }, error: null };
-      const { client, calls } = fakeClient({ data: {}, error: null }, stored);
-      await supabasePurchases(client).upsertVerified(tx(null));
-      expect(Object.keys(find(calls, 'upsert')!.args[0] as object)).not.toContain('expires_at');
-    });
-
-    it('no stored row: expiry written', async () => {
-      const { client, calls } = fakeClient({ data: {}, error: null }, { data: null, error: null });
-      await supabasePurchases(client).upsertVerified(tx(STORED));
-      expect((find(calls, 'upsert')!.args[0] as Record<string, unknown>).expires_at).toBe(new Date(STORED).toISOString());
-    });
-
-    it('read error throws, nothing written', async () => {
-      const { client, calls } = fakeClient({ data: {}, error: null }, { data: null, error: { message: 'db down' } });
-      await expect(supabasePurchases(client).upsertVerified(tx(STORED))).rejects.toThrow(/upsertVerified/);
-      expect(find(calls, 'upsert')).toBeUndefined();
-    });
-  });
-
   it('slugTaken reflects whether a row exists', async () => {
     expect(await supabasePurchases(fakeClient({ data: [{ original_transaction_id: 'o' }], error: null }).client).slugTaken('a')).toBe(true);
     const { client, calls } = fakeClient({ data: [], error: null });
     expect(await supabasePurchases(client).slugTaken('a')).toBe(false);
     expect(find(calls, 'eq')!.args).toEqual(['site_slug', 'a']);
-  });
-
-  it('applyNotification upserts without touching site_slug, user_id or published_at', async () => {
-    const { client, calls } = fakeClient();
-    await supabasePurchases(client).applyNotification({
-      otid: 'o1', productId: 'p', environment: 'Production', expiresAt: 5000, revokedAt: null, type: 'DID_RENEW',
-    });
-    const payload = find(calls, 'upsert')!.args[0] as Record<string, unknown>;
-    expect(payload).toMatchObject({ original_transaction_id: 'o1', product_id: 'p', last_notification: 'DID_RENEW' });
-    for (const k of ['site_slug', 'user_id', 'published_at', 'revoked_at']) expect(Object.keys(payload)).not.toContain(k);
-    expect(payload.expires_at).toBe(new Date(5000).toISOString());
-  });
-
-  describe('applyNotification never moves expires_at backwards', () => {
-    const STORED = 1_800_000_000_000;
-    const apply = (client: any, expiresAt: number) => supabasePurchases(client).applyNotification({
-      otid: 'o1', productId: 'p', environment: 'Production', expiresAt, revokedAt: null, type: 'DID_RENEW',
-    });
-
-    it('an older (late, retried) notification keeps the stored expiry but still records the rest', async () => {
-      const { client, calls } = fakeClient({ data: null, error: null }, { data: { expires_at: new Date(STORED).toISOString() }, error: null });
-      await apply(client, STORED - 86_400_000);
-      const payload = find(calls, 'upsert')!.args[0] as Record<string, unknown>;
-      expect(Object.keys(payload)).not.toContain('expires_at');
-      expect(payload.last_notification).toBe('DID_RENEW');
-    });
-
-    it('a newer expiry is written', async () => {
-      const { client, calls } = fakeClient({ data: null, error: null }, { data: { expires_at: new Date(STORED).toISOString() }, error: null });
-      await apply(client, STORED + 86_400_000);
-      expect((find(calls, 'upsert')!.args[0] as Record<string, unknown>).expires_at).toBe(new Date(STORED + 86_400_000).toISOString());
-    });
-
-    it('no stored expiry takes the new value', async () => {
-      const { client, calls } = fakeClient({ data: null, error: null }, { data: { expires_at: null }, error: null });
-      await apply(client, STORED);
-      expect((find(calls, 'upsert')!.args[0] as Record<string, unknown>).expires_at).toBe(new Date(STORED).toISOString());
-    });
-
-    it('a read error throws (Apple retries) and nothing is written', async () => {
-      const { client, calls } = fakeClient({ data: null, error: null }, { data: null, error: { message: 'boom' } });
-      await expect(apply(client, STORED)).rejects.toThrow(/applyNotification/);
-      expect(find(calls, 'upsert')).toBeUndefined();
-    });
-  });
-
-  it('applyNotification omits expires_at when expiresAt is null', async () => {
-    const { client, calls } = fakeClient();
-    await supabasePurchases(client).applyNotification({
-      otid: 'o1', productId: 'p', environment: 'Production', expiresAt: null, revokedAt: null, type: 'DID_CHANGE_RENEWAL_STATUS',
-    });
-    expect(Object.keys(find(calls, 'upsert')!.args[0] as object)).not.toContain('expires_at');
-  });
-
-  it('applyNotification sets revoked_at when given', async () => {
-    const { client, calls } = fakeClient();
-    await supabasePurchases(client).applyNotification({
-      otid: 'o1', productId: 'p', environment: 'Production', expiresAt: null, revokedAt: 7000, type: 'REFUND',
-    });
-    const payload = find(calls, 'upsert')!.args[0] as Record<string, unknown>;
-    expect(payload.revoked_at).toBe(new Date(7000).toISOString());
-  });
-
-  it('applyNotification with clearRevoked sets revoked_at to null', async () => {
-    const { client, calls } = fakeClient();
-    await supabasePurchases(client).applyNotification({
-      otid: 'o1', productId: 'p', environment: 'Production', expiresAt: 9000, revokedAt: null, clearRevoked: true, type: 'REFUND_REVERSED',
-    });
-    const payload = find(calls, 'upsert')!.args[0] as Record<string, unknown>;
-    expect(Object.keys(payload)).toContain('revoked_at');
-    expect(payload.revoked_at).toBeNull();
-    expect(payload.last_notification).toBe('REFUND_REVERSED');
-  });
-
-  it('applyNotification: clearRevoked wins over a revokedAt', async () => {
-    const { client, calls } = fakeClient();
-    await supabasePurchases(client).applyNotification({
-      otid: 'o1', productId: 'p', environment: 'Production', expiresAt: null, revokedAt: 7000, clearRevoked: true, type: 'REFUND_REVERSED',
-    });
-    expect((find(calls, 'upsert')!.args[0] as Record<string, unknown>).revoked_at).toBeNull();
   });
 
   it('unpublishedBound filters bound, unpublished, unrevoked, oldest first', async () => {
@@ -216,57 +62,6 @@ describe('supabasePurchases', () => {
   it('get returns null when missing', async () => {
     const { client } = fakeClient({ data: null, error: null });
     expect(await supabasePurchases(client).get('nope')).toBeNull();
-  });
-
-  describe('stale revocations clear only on a newer, active, unrevoked answer', () => {
-    const T = 1_800_000_000_000;
-    const vtx = (over: Record<string, unknown> = {}) => ({
-      originalTransactionId: 'o1', transactionId: 't9', productId: 'p', environment: 'Production' as const,
-      expiresAt: T + 86_400_000, revoked: false, status: 1, ...over,
-    });
-    const revokedRow = { original_transaction_id: 'o1', revoked_at: new Date(T - 86_400_000).toISOString() };
-
-    it('upsertVerified with checkedAt + Apple active clears a revocation older than the check (conditional in SQL)', async () => {
-      // awaits: read expires_at, upsert, conditional clear
-      const { client, calls } = fakeClient({ data: [{ original_transaction_id: 'o1' }], error: null },
-        { data: null, error: null }, { data: revokedRow, error: null });
-      const row = await supabasePurchases(client).upsertVerified(vtx(), { checkedAt: T });
-      expect(row.revoked_at).toBeNull();
-      expect(find(calls, 'update')!.args).toEqual([{ revoked_at: null }]);
-      expect(find(calls, 'lt')!.args).toEqual(['revoked_at', new Date(T).toISOString()]);
-    });
-
-    it('a revocation recorded after the check survives (SQL condition matches nothing)', async () => {
-      const { client } = fakeClient({ data: [], error: null }, { data: null, error: null }, { data: revokedRow, error: null });
-      const row = await supabasePurchases(client).upsertVerified(vtx(), { checkedAt: T });
-      expect(row.revoked_at).toBe(revokedRow.revoked_at);
-    });
-
-    it('never clears without checkedAt, for a revoked tx, or when Apple says inactive (billing retry)', async () => {
-      for (const [tx, opts] of [[vtx(), undefined], [vtx({ revoked: true, status: 5 }), { checkedAt: T }], [vtx({ status: 3 }), { checkedAt: T }]] as const) {
-        const { client, calls } = fakeClient({ data: revokedRow, error: null });
-        await supabasePurchases(client).upsertVerified(tx as any, opts as any);
-        expect(calls.filter((c) => c.method === 'update')).toEqual([]);
-      }
-    });
-
-    it('applyNotification with clearRevokedBefore clears only revocations older than the purchase', async () => {
-      const { client, calls } = fakeClient();
-      await supabasePurchases(client).applyNotification({
-        otid: 'o1', productId: 'p', environment: 'Production', expiresAt: null, revokedAt: null, type: 'SUBSCRIBED', clearRevokedBefore: T,
-      });
-      expect(find(calls, 'update')!.args).toEqual([{ revoked_at: null }]);
-      expect(find(calls, 'lt')!.args).toEqual(['revoked_at', new Date(T).toISOString()]);
-      expect(Object.keys(find(calls, 'upsert')!.args[0] as object)).not.toContain('revoked_at');
-    });
-
-    it('applyNotification without clearRevokedBefore issues no clear', async () => {
-      const { client, calls } = fakeClient();
-      await supabasePurchases(client).applyNotification({
-        otid: 'o1', productId: 'p', environment: 'Production', expiresAt: null, revokedAt: null, type: 'DID_RENEW',
-      });
-      expect(find(calls, 'update')).toBeUndefined();
-    });
   });
 
   describe('lapse takedown queries', () => {

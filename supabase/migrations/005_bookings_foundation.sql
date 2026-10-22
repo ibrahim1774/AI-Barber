@@ -15,7 +15,7 @@
 --
 -- Idempotent where cheap: re-running the file is a no-op.
 --
--- RE-RUN ORDER: if this file is ever re-run, re-run 006, 007 and 008 after it, in order.
+-- RE-RUN ORDER: if this file is ever re-run, re-run 006, 007, 008 and 009 after it, in order.
 -- Its table-level `revoke insert, update on ab_shops from authenticated` also drops the
 -- column UPDATE grants that 006/008 add (address, phone, accent, daily_summary), and 008's
 -- `revoke delete on ab_shops` must stay in force.

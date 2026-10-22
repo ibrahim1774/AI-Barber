@@ -38,6 +38,8 @@ export interface WebsiteData {
   phone: string;
   template?: TemplateId;
   bookingUrl?: string;
+  // Set only by the iOS app when the Store tier is on; absent for web customers, so their sites are unchanged.
+  shopUrl?: string;
   // Picked color-theme slug, persisted with the site so renderers can
   // restore the right canvas + accent after publish.
   colorTheme?: string;

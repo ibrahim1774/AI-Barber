@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
-  makeVerifier, isActive, VerifyFailure, IOS_PRODUCT_IDS,
+  makeVerifier, isActive, VerifyFailure, IOS_PRODUCT_IDS, toDecodedTransaction,
   type AppleLookup, type AppleDecode, type AppleStatuses, type AppleStatusItem, type VerifiedTx,
 } from '../../lib/ios/appleVerify.js';
 
@@ -49,7 +49,7 @@ describe('makeVerifier', () => {
     const tx = await verify('t1');
     expect(tx).toEqual({
       originalTransactionId: 'o1', transactionId: 't1', productId: PRODUCT,
-      environment: 'Production', expiresAt: 2_000_000_000_000, revoked: false, status: 1,
+      environment: 'Production', expiresAt: 2_000_000_000_000, revoked: false, status: 1, productPurchasedAt: null,
     });
     expect(lookup).toHaveBeenCalledTimes(1);
   });
@@ -212,6 +212,53 @@ describe('makeVerifier decode failures', () => {
   it('other decode errors are apple-unavailable', async () => {
     const v = withDecode(async () => { throw new Error('boom'); }, { Production: 200 });
     expect(await code(v('t1'))).toBe('apple-unavailable');
+  });
+});
+
+describe('makeVerifier tiers (Phase 4): the current product is the latest transaction\'s', () => {
+  const P = 'com.ibrahim1774.aibarber.';
+
+  it('sent hosting.monthly, latest store.monthly → productId store.monthly with its purchase date', async () => {
+    const latest = payload({ productId: `${P}store.monthly`, transactionId: 't9', purchaseDate: 1_900_000_000_000 });
+    const { verify } = setup({ Production: 200 }, payload({ productId: `${P}hosting.monthly`, purchaseDate: 1_800_000_000_000 }), { decoded: latest });
+    const tx = await verify('t1');
+    expect(tx.productId).toBe(`${P}store.monthly`);
+    expect(tx.productPurchasedAt).toBe(1_900_000_000_000);
+    expect(tx.transactionId).toBe('t1');
+  });
+
+  it('a latest product outside the list is bad-product', async () => {
+    const { verify } = setup({ Production: 200 }, payload(), { decoded: payload({ productId: 'com.x.other' }) });
+    expect(await code(verify('t1'))).toBe('bad-product');
+  });
+
+  it.each(['bookings.monthly', 'bookings.yearly', 'store.monthly', 'store.yearly', 'hosting.yearly'])(
+    'a %s purchase (sent and latest) verifies', async (suffix) => {
+      const d = payload({ productId: P + suffix, purchaseDate: 1_700_000_000_000 });
+      const tx = await setup({ Production: 200 }, d).verify('t1');
+      expect(tx.productId).toBe(P + suffix);
+      expect(tx.productPurchasedAt).toBe(1_700_000_000_000);
+    });
+
+  it('a latest transaction without a purchase date gives productPurchasedAt null', async () => {
+    expect((await setup({ Production: 200 }).verify('t1')).productPurchasedAt).toBeNull();
+  });
+});
+
+describe('toDecodedTransaction (the default decoders)', () => {
+  it('reads purchaseDate and isUpgraded from the signed payload', () => {
+    const d = toDecodedTransaction({
+      bundleId: BUNDLE, productId: PRODUCT, originalTransactionId: 'o1', transactionId: 't1',
+      expiresDate: 5, revocationDate: 6, purchaseDate: 4, isUpgraded: true, extra: 'ignored',
+    } as any);
+    expect(d).toEqual({
+      bundleId: BUNDLE, productId: PRODUCT, originalTransactionId: 'o1', transactionId: 't1',
+      expiresDate: 5, revocationDate: 6, purchaseDate: 4, isUpgraded: true,
+    });
+  });
+
+  it('isUpgraded is false unless Apple says true', () => {
+    expect(toDecodedTransaction({ bundleId: BUNDLE } as any).isUpgraded).toBe(false);
   });
 });
 

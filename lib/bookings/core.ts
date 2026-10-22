@@ -5,6 +5,7 @@ import { DateTime, IANAZone } from 'luxon';
 import { freeSlotsAny, type AnySlot, type MemberSchedule } from './slots.js';
 import { depositCents, refundOnCancel } from './money.js';
 import { refundKey, type Notify, type Payments } from './deps.js';
+import { entitlementActive } from '../ios/lapse.js';
 import {
   MANUAL_METHODS,
   type AppointmentRow,
@@ -154,18 +155,42 @@ export const inShopAllowed = (shop: ShopRow) =>
 // ---------------------------------------------------------------------------
 /**
  * Public booking is open when bookings_enabled AND the linked iOS purchase exists, is not
- * revoked and not taken down. A shop whose timezone is not a valid IANA zone is treated as
+ * revoked and not taken down, AND its plan includes bookings (Phase 4 tiers). A shop whose timezone is not a valid IANA zone is treated as
  * paused (logged) instead of letting the slot engine throw a 500.
  */
 export async function bookingsOpen(repo: BookingRepo, shop: ShopRow): Promise<boolean> {
+  return bookingsGate(repo, shop, 'bookings');
+}
+
+/**
+ * A customer's follow-up on an EXISTING booking ("I've sent it"): the Phase 2 rule only. It
+ * survives a downgrade to the Website plan, so a customer who already paid is never stuck;
+ * only a full lapse (revoked, taken down, or an unswept purchase past expiry) refuses it.
+ */
+export async function bookingsFollowUpOpen(repo: BookingRepo, shop: ShopRow): Promise<boolean> {
+  return bookingsGate(repo, shop, 'hosting');
+}
+
+async function bookingsGate(repo: BookingRepo, shop: ShopRow, ent: 'bookings' | 'hosting'): Promise<boolean> {
   if (!shop.bookings_enabled) return false;
   if (!validZone(shop.timezone)) {
     console.error(`[bookings] shop ${shop.id} has an invalid timezone '${shop.timezone}'; treating as paused`);
     return false;
   }
   if (!shop.ios_otid) return false;
-  const p = await repo.purchase(shop.ios_otid);
-  return !!p && !p.revoked_at && !p.taken_down_at;
+  // Phase 4: and the plan includes `ent` (bookings: the Bookings or Store tier).
+  return entitlementActive(await repo.purchase(shop.ios_otid), ent);
+}
+
+/**
+ * Owner writes that create or move bookings (walk-in, reschedule, time-off): the shop is linked
+ * to a purchase that is not revoked or taken down and whose plan includes bookings. Ignores
+ * bookings_enabled (an owner may fill the calendar before opening the page). Cancel and mark
+ * are never gated, so existing bookings can always be finished or refunded.
+ */
+export async function ownerBookingsAllowed(repo: Pick<BookingRepo, 'purchase'>, shop: Pick<ShopRow, 'ios_otid'>): Promise<boolean> {
+  if (!shop.ios_otid) return false;
+  return entitlementActive(await repo.purchase(shop.ios_otid), 'bookings');
 }
 
 // ---------------------------------------------------------------------------

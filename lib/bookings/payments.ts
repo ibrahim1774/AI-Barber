@@ -2,7 +2,10 @@ import crypto from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { waitUntil } from '@vercel/functions';
 import { platformFeeCents } from './money.js';
+import { STORE_APP } from '../store/constants.js';
 import type { NotifyEvent } from './notify.js';
+import type { OrderWebhookDeps } from '../store/webhook.js';
+import type { StoreNotifyEvent } from '../store/notify.js';
 
 /**
  * Stripe Connect for bookings (Standard accounts, direct charges), raw fetch only.
@@ -182,11 +185,14 @@ export async function createCardCheckout(
  * - cancel: the one refund an appointment's cancellation makes (an appointment is cancelled once)
  * - pac: paid-after-cancel (payment landed on an already cancelled booking), one per payment
  * - duplicate: a second payment for an appointment that is already paid, one per payment
+ * - order: a store owner's refund up to a target cumulative total (each attempt and its retries)
+ * pac and duplicate are shared with store orders (payment intents are unique across both tables).
  */
 export const refundKey = {
   cancel: (appointmentId: string) => `refund-cancel-${appointmentId}`,
   pac: (paymentIntentId: string) => `refund-pac-${paymentIntentId}`,
   duplicate: (paymentIntentId: string) => `refund-dup-${paymentIntentId}`,
+  order: (orderId: string, targetTotalCents: number) => `refund-order-${orderId}-${targetTotalCents}`,
 };
 
 export interface RefundOpts extends StripeOpts {
@@ -527,7 +533,10 @@ export interface StripeEvent {
   data: { object: any };
 }
 
-interface Outcome { outcome: string; notify?: NotifyEvent[] }
+interface Outcome { outcome: string; notify?: NotifyEvent[]; orderNotify?: StoreNotifyEvent[] }
+
+/** The store's order branch. Dynamic import, so this module and lib/store never form a static cycle. */
+const storeWebhook = () => import('../store/webhook.js');
 
 /**
  * Process one verified event. The event id is recorded only AFTER its work succeeds, and every
@@ -535,16 +544,23 @@ interface Outcome { outcome: string; notify?: NotifyEvent[] }
  * error finishes whatever was left undone. Throws so the caller returns 500 and Stripe retries.
  * Notifications are sent after the work and the record, and never block or fail the response.
  */
-export async function handleConnectEvent(event: StripeEvent, deps: WebhookDeps): Promise<string> {
+export async function handleConnectEvent(event: StripeEvent, deps: WebhookDeps, orderDeps?: OrderWebhookDeps): Promise<string> {
   if (!event?.id || !event?.type) return 'ignored:malformed';
   if (await deps.eventProcessed(event.id)) return 'duplicate';
-  const r = await dispatch(event, deps);
+  const r = await dispatch(event, deps, orderDeps);
   await deps.recordEvent(event.id, event.type, event.account ?? null);
   for (const n of r.notify ?? []) {
     try {
       void deps.notify(n).catch((e: any) => console.error('[stripe/connect-webhook] notify failed:', e?.message || e));
     } catch (e: any) {
       console.error('[stripe/connect-webhook] notify failed:', e?.message || e);
+    }
+  }
+  for (const n of r.orderNotify ?? []) {
+    try {
+      void orderDeps?.notify(n).catch((e: any) => console.error('[stripe/connect-webhook] order notify failed:', e?.message || e));
+    } catch (e: any) {
+      console.error('[stripe/connect-webhook] order notify failed:', e?.message || e);
     }
   }
   return r.outcome;
@@ -573,11 +589,16 @@ async function apptForEvent(
 
 const piOf = (v: any): string | null => (typeof v === 'string' ? v : v?.id ?? null);
 
-async function sessionPaid(event: StripeEvent, obj: any, deps: WebhookDeps): Promise<Outcome> {
+async function sessionPaid(event: StripeEvent, obj: any, deps: WebhookDeps, orderDeps?: OrderWebhookDeps): Promise<Outcome> {
   if (obj.payment_status !== 'paid') return { outcome: 'ignored:unpaid' };
   const amount = Math.max(0, Math.floor(Number(obj.amount_total) || 0));
   const pi = piOf(obj.payment_intent);
   const found = await apptForEvent({ kind: 'session', id: obj.id, clientReferenceId: obj.client_reference_id }, event.account, deps);
+  if (!found && orderDeps) {
+    // No appointment: an order session whose metadata didn't come through, matched by session id.
+    const order = await (await storeWebhook()).handleOrderSession(event, obj, orderDeps);
+    if (order) return order;
+  }
   if (!found || !pi) {
     // Real money with nothing to attach it to (row deleted, session id never stored, account mismatch).
     console.error('[stripe/connect-webhook] paid session without a matching appointment:',
@@ -649,16 +670,27 @@ async function refundOnce(deps: WebhookDeps, shop: PayShop, appt: PayAppointment
   }
 }
 
-async function dispatch(event: StripeEvent, deps: WebhookDeps): Promise<Outcome> {
+async function dispatch(event: StripeEvent, deps: WebhookDeps, orderDeps?: OrderWebhookDeps): Promise<Outcome> {
   const obj = event.data?.object ?? {};
+  // Store orders are routed by the session's metadata BEFORE any appointment lookup. The check is
+  // inline (same as lib/store isStoreSession), so appointment events never wait on the store module.
+  if (event.type.startsWith('checkout.session.') && obj?.metadata?.app === STORE_APP) {
+    // Never record a store event we can't process: throw so Stripe retries.
+    if (!orderDeps) throw new Error('store session but no order deps');
+    return (await storeWebhook()).handleStoreSessionEvent(event, obj, orderDeps);
+  }
   switch (event.type) {
     case 'checkout.session.completed':
     // Card-only Checkout never produces async payments; handled defensively all the same.
     case 'checkout.session.async_payment_succeeded':
-      return sessionPaid(event, obj, deps);
+      return sessionPaid(event, obj, deps, orderDeps);
     case 'checkout.session.expired':
     case 'checkout.session.async_payment_failed': {
       const found = await apptForEvent({ kind: 'session', id: obj.id, clientReferenceId: obj.client_reference_id }, event.account, deps);
+      if (!found && orderDeps) {
+        const order = await (await storeWebhook()).handleOrderExpired(event, obj, orderDeps);
+        if (order) return order;
+      }
       if (!found) return { outcome: 'ignored:no-appointment' };
       const changed = await deps.expireHold(found.appt.id, new Date(deps.now()).toISOString());
       return { outcome: changed ? 'cancelled:expired' : 'noop:not-held' };
@@ -667,6 +699,11 @@ async function dispatch(event: StripeEvent, deps: WebhookDeps): Promise<Outcome>
       const pi = piOf(obj.payment_intent);
       if (!pi) return { outcome: 'ignored:no-pi' };
       const found = await apptForEvent({ kind: 'pi', id: pi }, event.account, deps);
+      if (!found && orderDeps) {
+        // Not an appointment's payment: an order's (payment intents are unique across both tables).
+        const order = await (await storeWebhook()).handleOrderRefunded(event, obj, orderDeps);
+        if (order) return order;
+      }
       if (!found) return { outcome: 'ignored:no-appointment' };
       // Stripe's cumulative total, never an increment: idempotent with the API's own write.
       const refunded = Math.max(0, Math.floor(Number(obj.amount_refunded) || 0));
