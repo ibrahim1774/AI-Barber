@@ -3,22 +3,13 @@ import { buildSiteFromScrape } from '@/web/lib/buildSiteFromScrape';
 import { extractFirstUrl, isSupportedBookingHost } from '@/web/lib/supportedBookingHost';
 import { generateContent } from '@/web/services/geminiService';
 import { BRAND_SWATCHES, DEFAULT_SWATCH } from '@/web/lib/brandSwatches';
-import type { ScrapePayload } from '@/lib/api';
+import type { ListingMatch, ScrapePayload } from '@/lib/api';
 
 // Same rule as the web's themeForInputs(): only a known swatch is carried over.
 function resolveTheme(brandColor: string): string | undefined {
   return BRAND_SWATCHES.find((c) => c.toLowerCase() === brandColor.toLowerCase());
 }
 
-// A Google listing has no service menu — seed the barber default so the
-// services section isn't an empty shell (copied from GbpImportPage.tsx).
-const DEFAULT_BARBER_SERVICES = [
-  { title: 'Classic Haircut', description: 'A clean, considered cut tailored to how you actually wear your hair.' },
-  { title: 'Beard Trim & Styling', description: 'Defined lines, blended length, and a finish that holds between visits.' },
-  { title: 'Hot Towel Shave', description: 'A traditional straight-razor shave with warm towels and a clean, close finish.' },
-  { title: 'Skin Fade', description: 'Precise tapering from skin upward, blended for a clean, modern shape.' },
-  { title: 'Hair & Scalp Treatment', description: 'A thorough cleanse and conditioning treatment to reset the scalp.' },
-];
 
 export function checkBookingLink(text: string): { ok: true; url: string } | { ok: false; message: string } {
   const normalized = extractFirstUrl(text);
@@ -39,9 +30,9 @@ export function toShopSite(
   source: 'booking' | 'gbp',
   brandColor: string = DEFAULT_SWATCH,
 ): { inputs: ShopInputs; site: WebsiteData } {
-  const data: ScrapePayload = payload.services?.length
-    ? payload
-    : { ...payload, services: DEFAULT_BARBER_SERVICES.map((s) => ({ ...s })) };
+  // Honest sites: no default menu is ever injected. A booking page's own services are used as scraped;
+  // a Google listing gets only the services the barber ticked (listingSite), else none.
+  const data = payload;
   const theme = resolveTheme(brandColor);
   const built = buildSiteFromScrape(data, fallbackUrl, {
     manual: {
@@ -72,4 +63,50 @@ export async function manualSite(
   } as ShopInputs;
   const site = await generateContent(inputs);
   return { inputs, site };
+}
+
+const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
+const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null);
+
+/**
+ * What the Google import found, for "Is this you?": the server's `match` block, or (an older server
+ * without it) the same facts read from the payload. Ratings only when they are real numbers.
+ */
+export function listingMatch(payload: ScrapePayload): ListingMatch {
+  const m = (payload.match && typeof payload.match === 'object' ? payload.match : null) as Partial<ListingMatch> | null;
+  if (m) {
+    const rating = num(m.rating);
+    return {
+      name: str(m.name) || str(payload.shopName),
+      address: str(m.address),
+      photoUrl: str(m.photoUrl) || null,
+      rating,
+      ratingCount: rating != null ? num(m.ratingCount) : null,
+      category: str(m.category) || null,
+    };
+  }
+  const agg = payload.aggregateRating && typeof payload.aggregateRating === 'object' ? payload.aggregateRating : {};
+  const rating = num(agg.rating);
+  return {
+    name: str(payload.shopName),
+    address: str(payload.address) || str(payload.area),
+    photoUrl: str(payload.photos?.[0]) || null,
+    rating,
+    ratingCount: rating != null ? num(agg.count) : null,
+    category: str(payload._categories?.[0]) || null,
+  };
+}
+
+/**
+ * The confirmed Google listing as a site: the ticked services (optional prices) go in as the payload's
+ * services before buildSiteFromScrape; `_platform` / `_categories` stay so the review label and the
+ * business type come out right. `match` is display-only and is dropped.
+ */
+export function listingSite(
+  payload: ScrapePayload,
+  services: { title: string; price?: string }[] | undefined,
+  brandColor: string = DEFAULT_SWATCH,
+): { inputs: ShopInputs; site: WebsiteData } {
+  const { match: _match, ...rest } = payload;
+  return toShopSite({ ...rest, services: services ?? [] }, '', 'gbp', brandColor);
 }

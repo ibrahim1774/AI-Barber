@@ -3,7 +3,8 @@ import type { ShopInputs, WebsiteData } from '@/web/types';
 import { loadSite, saveSite, type SiteRecord } from '@/lib/siteStore';
 import { track } from '@/lib/analytics';
 import { api } from '@/lib/api';
-import { toShopSite } from '@/lib/importer';
+import { listingSite, toShopSite } from '@/lib/importer';
+import type { ScrapePayload } from '@/lib/api';
 import { clearOverlayFlags } from '@/lib/overlayFlags';
 
 type ShopSite = { inputs: ShopInputs; site: WebsiteData };
@@ -48,11 +49,20 @@ export async function importBooking(url: string, brandColor?: string): Promise<S
  * imported EXACTLY via its place_id Maps URL; a picked typeahead suggestion by
  * "name, address" (its newer 'Eg…' place ids aren't resolvable by the crawler).
  */
+export function fetchListing(pick: { placeId: string } | { query: string }): Promise<ScrapePayload> {
+  const target =
+    'placeId' in pick ? `https://www.google.com/maps/place/?q=place_id:${pick.placeId}` : pick.query;
+  return api.importBusiness(target);
+}
+
+/**
+ * Fetch + build in one go (kept for callers that don't confirm). The screen confirms first:
+ * fetchListing → "Is this you?" → services checklist → listingSite.
+ */
 export async function importListing(
   pick: { placeId: string } | { query: string },
   brandColor?: string,
+  services?: { title: string; price?: string }[],
 ): Promise<ShopSite> {
-  const target =
-    'placeId' in pick ? `https://www.google.com/maps/place/?q=place_id:${pick.placeId}` : pick.query;
-  return toShopSite(await api.importBusiness(target), '', 'gbp', brandColor);
+  return listingSite(await fetchListing(pick), services, brandColor);
 }

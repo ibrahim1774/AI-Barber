@@ -102,5 +102,34 @@ export function useImportRun() {
     setSlowHint(false);
   };
 
-  return { busy, progress, slowHint, run };
+  /**
+   * The same progress overlay for a step that only fetches (the Google listing, before "Is this you?"):
+   * nothing is saved and the screen stays; `onDone` gets the result. Stale runs report nothing.
+   */
+  const fetchOnly = async <T,>(work: () => Promise<T>, onDone: (result: T) => void, onFail: (message: string) => void) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    Keyboard.dismiss();
+    setBusy(true);
+    capRef.current = 92;
+    setSlowHint(false);
+    const slowTimer = setTimeout(() => setSlowHint(true), 15_000);
+    const guard = guardRef.current!;
+    const runId = guard.next();
+    let result: { ok: true; value: T } | { ok: false; message: string };
+    try {
+      result = { ok: true, value: await work() };
+    } catch (err: any) {
+      result = { ok: false, message: err?.message || 'Something went wrong — try again.' };
+    }
+    clearTimeout(slowTimer);
+    if (!guard.isCurrent(runId)) return;
+    busyRef.current = false;
+    setBusy(false);
+    setSlowHint(false);
+    if (result.ok) onDone(result.value);
+    else onFail(result.message);
+  };
+
+  return { busy, progress, slowHint, run, fetchOnly };
 }

@@ -108,7 +108,7 @@ describe('import helpers', () => {
     expect(r.inputs.shopName).toBe('Kings Barber Shop & Unisex');
     expect(r.inputs.phone).toBe('(718) 513-4171');
     expect(r.inputs.colorTheme).toBe('#22c55e');
-    expect(r.site.services).toHaveLength(5); // default barber menu seeded
+    expect(r.site.services).toEqual([]); // honest sites: no default menu without ticks
   });
 
   test('importListing imports a picked suggestion by "name, address"', async () => {

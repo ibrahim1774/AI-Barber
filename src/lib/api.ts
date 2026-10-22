@@ -17,6 +17,20 @@ export interface ScrapePayload {
   staff?: any[];
   aggregateRating?: any;
   _platform?: string;
+  /** Google listing categories ("Barber shop"); buildSiteFromScrape reads them for the business type. */
+  _categories?: string[];
+  /** /api/import-business only: what was found, for the "Is this you?" confirm step. */
+  match?: ListingMatch;
+}
+
+/** The listing /api/import-business found, shown to the barber before anything is built. */
+export interface ListingMatch {
+  name: string;
+  address: string;
+  photoUrl: string | null;
+  rating: number | null;
+  ratingCount: number | null;
+  category: string | null;
 }
 
 // One row of /api/find-business `candidates` (search-only; import it afterwards

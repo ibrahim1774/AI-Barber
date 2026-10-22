@@ -34,11 +34,11 @@ describe('importer', () => {
     expect(JSON.stringify(site)).toContain(gbp.reviews[0].author);
   });
 
-  it('seeds the default barber menu for an empty-services Google listing without mutating the payload', () => {
+  it('honest sites: an empty-services Google listing gets no invented menu, and the payload is not mutated', () => {
     const before = JSON.stringify(gbp);
     const { site } = toShopSite(gbp, '', 'gbp');
     expect(JSON.stringify(gbp)).toBe(before);
-    expect(site.services.length).toBeGreaterThan(0);
+    expect(site.services).toEqual([]);
   });
 
   it('default import carries the default swatch colorTheme on inputs and site', () => {

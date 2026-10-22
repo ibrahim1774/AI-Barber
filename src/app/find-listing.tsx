@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text as RNText, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text as RNText, View } from 'react-native';
 import { router } from 'expo-router';
 import { DEFAULT_SWATCH } from '@/web/lib/brandSwatches';
 import { colors, fonts } from '@/constants/theme';
@@ -10,9 +10,12 @@ import { ArrowRight } from '@/components/Icons';
 import { Em, Text } from '@/components/Text';
 import { Card, ErrorNote, StageChips, SwatchRow, WorksWith } from '@/components/Importer';
 import { ImportProgress, LISTING_STEPS } from '@/components/ImportProgress';
+import { ServiceChecklist } from '@/components/ServiceChecklist';
 import { useImportRun } from '@/lib/useImportRun';
-import { api, type Candidate } from '@/lib/api';
-import { importListing } from '@/lib/flow';
+import { api, type Candidate, type ListingMatch, type ScrapePayload } from '@/lib/api';
+import { fetchListing } from '@/lib/flow';
+import { listingMatch, listingSite } from '@/lib/importer';
+import { servicesFromPicks, type ServicePicks } from '@/lib/serviceChecklist';
 
 // Shop names for the self-typing placeholder (GbpImportPage TYPE_NAMES).
 const TYPE_NAMES = [
@@ -48,7 +51,11 @@ export default function FindListing() {
   // older query is dropped instead of re-opening the list.
   const reqIdRef = useRef(0);
   const findBusyRef = useRef(false);
-  const { busy, progress, slowHint, run } = useImportRun();
+  const { busy, progress, slowHint, run, fetchOnly } = useImportRun();
+  // The listing found, waiting for "Is this you?"; then (confirmed) the services checklist.
+  const [found, setFound] = useState<{ payload: ScrapePayload; match: ListingMatch } | null>(null);
+  const [confirmed, setConfirmed] = useState(false);
+  const [picks, setPicks] = useState<ServicePicks>({});
 
   const cancelSuggestions = () => {
     reqIdRef.current += 1;
@@ -82,8 +89,30 @@ export default function FindListing() {
     }, 350);
   };
 
+  // Find the listing (progress overlay), then ask "Is this you?" before anything is built.
   const runImport = (pick: { placeId: string } | { query: string }) =>
-    void run(() => importListing(pick, brandColor), (msg) => setError(msg));
+    void fetchOnly(
+      () => fetchListing(pick),
+      (payload) => {
+        setFound({ payload, match: listingMatch(payload) });
+        setConfirmed(false);
+        setPicks({});
+      },
+      (msg) => setError(msg),
+    );
+
+  const notMine = () => {
+    setFound(null);
+    setConfirmed(false);
+    setError(null);
+  };
+
+  // Build only after "Yes, that's me", with the ticked services.
+  const build = () => {
+    if (!found || !confirmed) return;
+    const payload = found.payload;
+    void run(async () => listingSite(payload, servicesFromPicks(picks), brandColor), (msg) => setError(msg));
+  };
 
   // Import by exact NAME + ADDRESS (newer 'Eg…' place ids don't resolve).
   const handleSuggestionPick = (sg: Suggestion) => {
@@ -136,9 +165,33 @@ export default function FindListing() {
         Get a beautiful <Em>barber</Em> <Em color={colors.silver}>website</Em>.
       </Text>
       <Text variant="body" style={styles.sub}>
-        Photos, services & reviews imported automatically. Live in about a minute — edit anything after.
+        Photos & reviews come from your Google listing. Live in about a minute — edit anything after.
       </Text>
 
+      {found ? (
+        <Card>
+          <RNText style={styles.pickLabel}>{confirmed ? 'Your services' : 'Is this you?'}</RNText>
+          <MatchCard match={found.match} />
+          {!confirmed ? (
+            <View style={styles.confirm}>
+              <Button title="Yes, that's me" arrow onPress={() => setConfirmed(true)} />
+              <Button variant="pill" tone="light" title="Not my business" onPress={notMine} />
+            </View>
+          ) : (
+            <View style={styles.confirm}>
+              <ServiceChecklist picks={picks} onChange={setPicks} startOpen />
+              <View style={styles.actions}>
+                <SwatchRow value={brandColor} onChange={setBrandColor} />
+                <Button size="sm" title="Build my website" arrow loading={busy} onPress={build} />
+              </View>
+              <Pressable accessibilityRole="button" hitSlop={8} onPress={notMine}>
+                <RNText style={styles.none}>Not my business</RNText>
+              </Pressable>
+            </View>
+          )}
+          <ErrorNote message={error} />
+        </Card>
+      ) : (
       <Card>
         <Field
           label="Type your shop name"
@@ -218,6 +271,7 @@ export default function FindListing() {
         </View>
         <ErrorNote message={error} />
       </Card>
+      )}
 
       <WorksWith names={['Google Business Profile']} />
 
@@ -229,6 +283,22 @@ export default function FindListing() {
       />
       <Button variant="link" title="← Back" onPress={() => router.back()} style={styles.back} />
     </Screen>
+  );
+}
+
+/** "Is this you?": what the Google import found (photo, name, category, address, rating). */
+export function MatchCard({ match }: { match: ListingMatch }) {
+  const rating = match.rating != null ? `★ ${match.rating}${match.ratingCount != null ? ` (${match.ratingCount})` : ''}` : null;
+  return (
+    <View style={styles.match} accessibilityLabel={`${match.name}${match.address ? `, ${match.address}` : ''}`}>
+      {match.photoUrl ? <Image source={{ uri: match.photoUrl }} style={styles.matchPhoto} accessibilityIgnoresInvertColors /> : null}
+      <View style={styles.rowText}>
+        <RNText style={styles.matchName}>{match.name}</RNText>
+        {!!match.category && <RNText style={styles.rowDetail}>{match.category}</RNText>}
+        {!!match.address && <RNText style={styles.rowDetail}>{match.address}</RNText>}
+        {!!rating && <RNText style={[styles.rating, { marginTop: 4 }]}>{rating}</RNText>}
+      </View>
+    </View>
   );
 }
 
@@ -287,5 +357,12 @@ const styles = StyleSheet.create({
   rating: { fontFamily: fonts.bodyBold, fontSize: 11, color: colors.ink },
   actions: { marginTop: 32, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', rowGap: 24, columnGap: 32 },
   escape: { marginTop: 20 },
+  confirm: { marginTop: 20, gap: 12 },
+  match: {
+    flexDirection: 'row', gap: 14, alignItems: 'center', padding: 12, borderRadius: 12, borderWidth: 1,
+    borderColor: 'rgba(11,14,20,0.1)', backgroundColor: '#ffffff',
+  },
+  matchPhoto: { width: 72, height: 72, borderRadius: 10, backgroundColor: 'rgba(11,14,20,0.06)' },
+  matchName: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.ink },
   back: { marginTop: 16 },
 });
