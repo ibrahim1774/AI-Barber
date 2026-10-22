@@ -248,7 +248,11 @@ export async function setWebOwner(slug: unknown, email: unknown, deps: WebOwnerA
   if (!e) return { ok: false, error: 'bad-request', detail: 'a valid email is required' };
   if (await deps.isAppSlug(s)) return { ok: false, error: 'app-site', detail: 'an iOS app site: its owner is the App Store purchase\'s account' };
   const previous = await deps.store.get(s);
-  const user = await deps.userByEmail(e);
+  const found = await deps.userByEmail(e);
+  // Review fix round 1 (finding 4): only a CONFIRMED account owns at once. An unconfirmed one may
+  // be a squatter who pre-registered the barber's address: store the email to be claimed at a
+  // confirmed sign-in instead, like the backfill.
+  const user = found?.emailConfirmed ? found : null;
   const row: SiteOwnerRow = {
     slug: s, user_id: user?.id ?? null, claim_email: user ? null : e, source: 'admin', checkout_session_id: null,
     claimed_at: user ? new Date(deps.now()).toISOString() : null,
@@ -256,8 +260,9 @@ export async function setWebOwner(slug: unknown, email: unknown, deps: WebOwnerA
   await deps.store.upsert(row);
   await deps.audit?.({ action: 'set-web-owner', slug: s, by, userId: row.user_id, claimEmail: row.claim_email, previous })
     .catch((err: any) => console.warn('[SiteOwners] audit write failed (ignored):', err?.message || err));
-  console.log(`[SiteOwners] ${s}: owner set by ${by || 'admin'} (${user ? 'existing account' : 'email to claim'})`);
-  return getWebOwner(s, deps);
+  console.log(`[SiteOwners] ${s}: owner set by ${by || 'admin'} (${user ? 'existing account' : found ? 'unconfirmed account: email to claim' : 'email to claim'})`);
+  const view = await getWebOwner(s, deps);
+  return found && !user ? { ...view, detail: 'that account has not confirmed its email: it owns the site once it signs in with the email confirmed' } : view;
 }
 
 /** auth.users by email (service role), paging listUsers. */

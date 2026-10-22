@@ -314,6 +314,16 @@ describe('admin: web-owner / set-web-owner (API action, CLI)', () => {
     expect(await getWebOwner('nobody', d)).toEqual({ ok: true, slug: 'nobody', owner: null });
   });
 
+  it('an UNCONFIRMED account with that email does not own it at once: the email waits for a confirmed sign-in (review finding 4)', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const { setWebOwner } = await import('../lib/siteOwners.js');
+    const d = { ...adminDeps(), userByEmail: async (e: string) => ({ id: B, email: e, emailConfirmed: false }) };
+    const r = await setWebOwner('fresh-cuts', 'barber@example.com', d);
+    expect(r).toMatchObject({ ok: true, owner: { userId: null, claimEmail: 'barber@example.com' } });
+    expect(r.detail).toMatch(/not confirmed/);
+    expect(d.store.rows.get('fresh-cuts')).toMatchObject({ user_id: null, claim_email: 'barber@example.com', source: 'admin' });
+  });
+
   it('refuses app (iOS) slugs, bad emails and missing slugs', async () => {
     const { setWebOwner } = await import('../lib/siteOwners.js');
     const d = adminDeps();
