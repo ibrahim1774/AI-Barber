@@ -8,6 +8,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { bucket, publishSite, readPendingSite, readPendingVersioned, renderPending, slugify, writePendingSite, type PendingSite } from '../publishSite.js';
 import type { PurchaseRow } from '../ios/purchases.js';
 import type { AdminSitesDeps, HistoryEntry, RepublishRun, SiteStore } from './sites.js';
+import { liveWebOwnerAdminDeps } from '../siteOwners.js';
 
 const HISTORY = 'pending-sites-history';
 const RUNS = 'admin-republish-runs';
@@ -161,6 +162,13 @@ export function liveAdminDeps(): AdminSitesDeps {
 
     now: () => Date.now(),
     takedownSandbox: process.env.IOS_TAKEDOWN_SANDBOX === '1',
+    get webOwners() {
+      return liveWebOwnerAdminDeps(db(), async (slug) => {
+        const { data, error } = await db().from('ios_purchases').select('original_transaction_id').eq('site_slug', slug).limit(1);
+        if (error) throw new Error(`ios_purchases lookup failed: ${error.message}`);
+        return Array.isArray(data) && data.length > 0;
+      });
+    },
   };
 }
 

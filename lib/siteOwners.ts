@@ -172,3 +172,95 @@ export function supabaseSiteOwners(client?: SupabaseClient): SiteOwnerStore {
     },
   };
 }
+
+// ─── admin (comped sites): /api/admin/sites actions web-owner / set-web-owner, CLI ───
+
+export interface WebOwnerAdminDeps {
+  store: SiteOwnerStore;
+  /** Is this slug an iOS app site (ios_purchases.site_slug)? Their owner is not kept here. */
+  isAppSlug(slug: string): Promise<boolean>;
+  /** The Supabase account with this email, or null. */
+  userByEmail(email: string): Promise<{ id: string; email: string; emailConfirmed: boolean } | null>;
+  /** The account's email, or null. */
+  emailOf(userId: string): Promise<string | null>;
+  audit?(e: { action: 'set-web-owner'; slug: string; by?: string; userId: string | null; claimEmail: string | null; previous: SiteOwnerRow | null }): Promise<void>;
+  now(): number;
+}
+
+export interface WebOwnerView {
+  ok: boolean;
+  error?: 'bad-request' | 'app-site';
+  detail?: string;
+  slug?: string;
+  owner?: { userId: string | null; email: string | null; claimEmail: string | null; source: OwnerSource; since: string | null } | null;
+}
+
+export async function getWebOwner(slug: unknown, deps: WebOwnerAdminDeps): Promise<WebOwnerView> {
+  const s = slugify(String(slug ?? ''));
+  if (!s) return { ok: false, error: 'bad-request', detail: 'slug required' };
+  const row = await deps.store.get(s);
+  if (!row) return { ok: true, slug: s, owner: null };
+  return {
+    ok: true, slug: s,
+    owner: {
+      userId: row.user_id, email: row.user_id ? await deps.emailOf(row.user_id) : null, claimEmail: row.claim_email,
+      source: row.source, since: row.claimed_at ?? row.created_at ?? null,
+    },
+  };
+}
+
+/**
+ * Admin: set (or replace) a web site's owner by email, e.g. a comped site with no checkout. An
+ * existing account with that email becomes the owner at once; otherwise the email is stored and
+ * claimed when that person signs in with a confirmed email. Refuses app (iOS) slugs.
+ */
+export async function setWebOwner(slug: unknown, email: unknown, deps: WebOwnerAdminDeps, by?: string): Promise<WebOwnerView> {
+  const s = slugify(String(slug ?? ''));
+  const e = normEmail(email);
+  if (!s) return { ok: false, error: 'bad-request', detail: 'slug required' };
+  if (!e) return { ok: false, error: 'bad-request', detail: 'a valid email is required' };
+  if (await deps.isAppSlug(s)) return { ok: false, error: 'app-site', detail: 'an iOS app site: its owner is the App Store purchase\'s account' };
+  const previous = await deps.store.get(s);
+  const user = await deps.userByEmail(e);
+  const row: SiteOwnerRow = {
+    slug: s, user_id: user?.id ?? null, claim_email: user ? null : e, source: 'admin', checkout_session_id: null,
+    claimed_at: user ? new Date(deps.now()).toISOString() : null,
+  };
+  await deps.store.upsert(row);
+  await deps.audit?.({ action: 'set-web-owner', slug: s, by, userId: row.user_id, claimEmail: row.claim_email, previous })
+    .catch((err: any) => console.warn('[SiteOwners] audit write failed (ignored):', err?.message || err));
+  console.log(`[SiteOwners] ${s}: owner set by ${by || 'admin'} (${user ? 'existing account' : 'email to claim'})`);
+  return getWebOwner(s, deps);
+}
+
+/** auth.users by email (service role), paging listUsers. */
+export async function findUserByEmail(client: SupabaseClient, email: string): Promise<{ id: string; email: string; emailConfirmed: boolean } | null> {
+  const want = normEmail(email);
+  if (!want) return null;
+  for (let page = 1; page <= 100; page++) {
+    const { data, error } = await client.auth.admin.listUsers({ page, perPage: 1000 });
+    if (error) throw new Error(`auth listUsers failed: ${error.message}`);
+    const users = ((data as any)?.users ?? []) as { id: string; email?: string | null; email_confirmed_at?: string | null }[];
+    const u = users.find((x) => normEmail(x.email) === want);
+    if (u) return { id: u.id, email: want, emailConfirmed: !!u.email_confirmed_at };
+    if (users.length < 1000) break;
+  }
+  return null;
+}
+
+export function liveWebOwnerAdminDeps(client: SupabaseClient, isAppSlug: (slug: string) => Promise<boolean>): WebOwnerAdminDeps {
+  return {
+    store: supabaseSiteOwners(client),
+    isAppSlug,
+    userByEmail: (email) => findUserByEmail(client, email),
+    async emailOf(id) {
+      const { data } = await client.auth.admin.getUserById(id);
+      return data?.user?.email?.toLowerCase() ?? null;
+    },
+    async audit(e) {
+      const { error } = await client.from('ab_events').insert({ kind: 'admin_site_owner', payload: { ...e, at: new Date().toISOString() } });
+      if (error) throw new Error(error.message);
+    },
+    now: () => Date.now(),
+  };
+}

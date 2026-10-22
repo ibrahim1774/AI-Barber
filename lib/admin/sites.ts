@@ -23,6 +23,7 @@ import { buildImageUrlMap, toPendingSiteData } from '../ios/pendingData.js';
 import { isObj, restoreImageUrls, validationProblem } from '../ios/siteShape.js';
 import { stripLapsedLinks, tierOf, type Tier } from '../ios/tiers.js';
 import { PatchError, applyPatch, applySets } from './patch.js';
+import type { WebOwnerAdminDeps } from '../siteOwners.js';
 
 // ─── deps ───
 
@@ -92,6 +93,8 @@ export interface AdminSitesDeps {
   now(): number;
   /** Same switch as the sweep: Sandbox takedowns only count as offline when this is on. */
   takedownSandbox?: boolean;
+  /** Web site owner list (013 site_owners): the web-owner / set-web-owner actions. Absent: 503. */
+  webOwners?: WebOwnerAdminDeps;
 }
 
 // ─── shared helpers ───

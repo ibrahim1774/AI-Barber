@@ -2,6 +2,7 @@
 // Pure over injected deps and output so it is testable; prints site content and
 // customer emails only, never env values.
 import type { WebsiteData } from '../../types.js';
+import { getWebOwner, setWebOwner, type WebOwnerView } from '../siteOwners.js';
 import {
   findSites, getSite, republish, republishAll, rollback, updateSite,
   type AdminSitesDeps, type UpdateResult,
@@ -20,6 +21,8 @@ export const USAGE = `AI Barber app sites (admin). Changes live customer sites â
   node scripts/admin-sites.mjs republish-all                    dry run: list what would be republished (default)
   node scripts/admin-sites.mjs republish-all --yes [--run <id>] [--limit <n>]   really republish every app site (resume with --run)
   node scripts/admin-sites.mjs rollback <slug> <version> [--expect <version>]   bring back a history version (4 or 4-1729â€¦) as a new version
+  node scripts/admin-sites.mjs web-owner <slug>                  who owns a WEB (Stripe) site (site_owners)
+  node scripts/admin-sites.mjs set-web-owner <slug> <email>      set it (comped sites); an email with no account is claimed at sign-in
 
 Options: --env <file> (default .env.local, then .env)`;
 
@@ -220,7 +223,32 @@ export async function runCli(argv: string[], deps: () => AdminSitesDeps, io: Cli
       return r.ok ? 0 : 1;
     }
 
+    case 'web-owner':
+    case 'set-web-owner': {
+      const [slug, email] = pos;
+      if (!slug || (cmd === 'set-web-owner' && !email)) return usage();
+      const d = deps().webOwners;
+      if (!d) {
+        io.err('The owner list is not available.');
+        return 1;
+      }
+      const r = cmd === 'web-owner' ? await getWebOwner(slug, d) : await setWebOwner(slug, email, d, by);
+      printOwner(io, r);
+      return r.ok ? 0 : 1;
+    }
+
     default:
       return usage();
   }
+}
+
+function printOwner(io: CliIo, r: WebOwnerView) {
+  if (!r.ok) {
+    io.err(`${r.error}${r.detail ? `: ${r.detail}` : ''}`);
+    return;
+  }
+  const o = r.owner;
+  if (!o) io.out(`${r.slug}: no owner yet (the interim rule applies).`);
+  else if (o.userId) io.out(`${r.slug}: owned by ${o.email || o.userId} (${o.source}${o.since ? `, since ${o.since}` : ''}).`);
+  else io.out(`${r.slug}: waiting for ${o.claimEmail} to sign in with a confirmed email (${o.source}).`);
 }

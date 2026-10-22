@@ -211,3 +211,61 @@ describe('013_site_owners.sql', () => {
     expect(code).toMatch(/references auth\.users \(id\) on delete cascade/);
   });
 });
+
+describe('admin: web-owner / set-web-owner (API action, CLI)', () => {
+  const adminDeps = (store = memStore(), accounts: Record<string, string> = { 'barber@example.com': A }) => ({
+    store,
+    isAppSlug: async (s: string) => s === 'fade-lab',
+    userByEmail: async (e: string) => (accounts[e] ? { id: accounts[e], email: e, emailConfirmed: true } : null),
+    emailOf: async (id: string) => Object.entries(accounts).find(([, v]) => v === id)?.[0] ?? null,
+    audit: vi.fn(async () => {}),
+    now: () => NOW,
+  });
+
+  it('set-web-owner: an existing account owns it at once (replacing a previous owner, audited); an unknown email waits to be claimed', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const { getWebOwner, setWebOwner } = await import('../lib/siteOwners.js');
+    const d = adminDeps(memStore([owned('fresh-cuts', B)]));
+    expect(await setWebOwner('Fresh Cuts', 'BARBER@example.com', d, 'admin@x')).toMatchObject({ ok: true, slug: 'fresh-cuts', owner: { userId: A, email: 'barber@example.com', source: 'admin' } });
+    expect(d.audit).toHaveBeenCalledWith(expect.objectContaining({ slug: 'fresh-cuts', userId: A, previous: expect.objectContaining({ user_id: B }) }));
+    expect(await setWebOwner('comped-shop', 'new@example.com', d)).toMatchObject({ owner: { userId: null, claimEmail: 'new@example.com', source: 'admin' } });
+    expect(await getWebOwner('nobody', d)).toEqual({ ok: true, slug: 'nobody', owner: null });
+  });
+
+  it('refuses app (iOS) slugs, bad emails and missing slugs', async () => {
+    const { setWebOwner } = await import('../lib/siteOwners.js');
+    const d = adminDeps();
+    expect(await setWebOwner('fade-lab', 'barber@example.com', d)).toMatchObject({ ok: false, error: 'app-site' });
+    expect(await setWebOwner('fresh-cuts', 'nope', d)).toMatchObject({ ok: false, error: 'bad-request' });
+    expect(await setWebOwner('', 'barber@example.com', d)).toMatchObject({ ok: false, error: 'bad-request' });
+    expect(d.store.rows.size).toBe(0);
+  });
+
+  it('through /api/admin/sites (admin only) and the CLI', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const { makeAdminSitesHandler } = await import('../api/admin/sites.js');
+    const { memoryStore } = await import('../lib/bookings/rateLimit.js');
+    const { runCli } = await import('../lib/admin/cli.js');
+    const d = adminDeps();
+    const core = () => ({ webOwners: d }) as any;
+    const h = makeAdminSitesHandler({
+      emailOf: () => async (t) => (t === 'admin' ? 'ibrahim3709@gmail.com' : t === 'user' ? 'x@example.com' : null),
+      core, reads: memoryStore(), writes: memoryStore(), now: () => NOW, configured: () => true,
+    });
+    const call = async (body: unknown, token = 'admin') => {
+      const r: any = { statusCode: 0, body: null, setHeader() {}, status(c: number) { this.statusCode = c; return this; }, json(b: unknown) { this.body = b; return this; } };
+      await h({ method: 'POST', body, headers: { authorization: `Bearer ${token}` } } as any, r);
+      return r;
+    };
+    expect((await call({ action: 'set-web-owner', slug: 'fresh-cuts', email: 'barber@example.com' }, 'user')).statusCode).toBe(403);
+    expect(d.store.rows.size).toBe(0);
+    expect(await call({ action: 'set-web-owner', slug: 'fresh-cuts', email: 'barber@example.com' })).toMatchObject({ statusCode: 200, body: { owner: { userId: A } } });
+    expect((await call({ action: 'set-web-owner', slug: 'fade-lab', email: 'barber@example.com' })).statusCode).toBe(409);
+    expect((await call({ action: 'web-owner', slug: 'fresh-cuts' })).body).toMatchObject({ ok: true, owner: { email: 'barber@example.com' } });
+    const out: string[] = [];
+    const io = { out: (l: string) => out.push(l), err: (l: string) => out.push(`ERR ${l}`), readFile: () => '', newRunId: () => 'r' };
+    expect(await runCli(['set-web-owner', 'comped', 'new@example.com'], core, io)).toBe(0);
+    expect(await runCli(['web-owner', 'comped'], core, io)).toBe(0);
+    expect(out.at(-1)).toBe('comped: waiting for new@example.com to sign in with a confirmed email (admin).');
+  });
+});
