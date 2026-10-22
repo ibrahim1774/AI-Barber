@@ -1,38 +1,41 @@
-// /api/deploy-site gate for slugs that belong to an iOS purchase.
+// /api/deploy-site: deploy to the target lib/deployAuth.ts authorised, and keep an app
+// site's stored copy in step.
 //
-// The browser publish path (services/publishService.ts) sends today's
-// shop-name slug as siteId, plus the site's current deployedUrl and siteData.
-// The server picks the target:
-// - deployedUrl is a *.vercel.app URL whose first label is an iOS-bound slug →
-//   deploy to THAT slug (a renamed shop, or a suffixed slug like
-//   fade-studio-x7k2, keeps its own link);
-// - otherwise siteId exactly as before (still gated if it is iOS-bound itself).
-// Web (Stripe) customers have no ios_purchases row, so nothing changes for
-// them, and a failed lookup always falls back to today's behaviour. Only a
-// FOUND iOS row can block, and only when it is taken down (its offline page is
-// live; not a Sandbox row the sweep only gate-closed) or revoked: expiry
-// is Apple's call (billing grace), which the sweep makes, not this endpoint.
-// When an iOS deploy goes ahead and the browser sent siteData, the pending
-// file is refreshed in the iOS shape, so a later restore (sweep) or site
-// lookup (app) brings back these web edits, not the older app copy.
+// The caller (api/deploy-site.ts) authorises first (lib/deployAuth.ts): the target slug and
+// the iOS row (if any) come from there, never from the body. This module only:
+// - refuses an app site that is taken down (its offline page is live; not a Sandbox row the
+//   sweep only gate-closed) or revoked (402). Expiry is Apple's call (billing grace), made by
+//   the sweep, not here;
+// - deploys the HTML to the authorised target;
+// - when the caller is the app site's verified owner and sent siteData, refreshes the
+//   pending file in the iOS shape, so a later restore (sweep) or site lookup (app) brings
+//   back these web edits. The admin's deploys never write the stored copy (admin content
+//   edits go through /api/admin/sites, which keeps history and the version guard).
 import type { WebsiteData } from '../../types.js';
 import { deployRenderedSite, type DeployRenderedSiteInput, type DeployRenderedSiteResult } from '../deploySite.js';
 import { adminVersionOf, readPendingSite, slugify, versionOf, writePendingSite, type PendingSite } from '../publishSite.js';
 import { buildImageUrlMap, toPendingSiteData } from './pendingData.js';
 import { stripLapsedLinks } from './tiers.js';
-import { supabasePurchases, type PurchaseRow } from './purchases.js';
-import { withTimeout } from './timeout.js';
+import type { PurchaseRow } from './purchases.js';
+import type { DeployActor } from '../deployAuth.js';
 
-const LOOKUP_TIMEOUT_MS = 3000;
+export { vercelAppLabel } from '../deployAuth.js';
 
 export interface WebDeployDeps {
-  findBySlug(slug: string): Promise<PurchaseRow | null>;
-  /** Cap on the whole lookup phase; a slow lookup fails open like an error. Default 3000. */
-  lookupTimeoutMs?: number;
   deploy(input: DeployRenderedSiteInput): Promise<DeployRenderedSiteResult>;
   writePending(slug: string, p: PendingSite): Promise<void>;
   /** The stored copy, so its version is carried forward (admin-edit sync). Absent: version restarts. */
   readPending?(slug: string): Promise<PendingSite | null>;
+  /**
+   * Web sites: stamp the live URL on the stored (pre-checkout) copy. The stamp is server-owned
+   * (api/save-pending-site drops it and refuses a stamped copy), and it is what tells the
+   * webhook and the publish sweeper the site is live.
+   * - A stamped copy gets the new URL.
+   * - An unstamped or missing copy is replaced by `fresh` (stamped) when given: the paid
+   *   checkout's own content, so a copy anyone could write never survives the first deploy.
+   * - Otherwise an unstamped copy is stamped as it is, and a missing one stays missing.
+   */
+  stampWebPending?(slug: string, deployedUrl: string, fresh?: PendingSite): Promise<void>;
   now(): number;
   /**
    * The sweep deploys offline pages for Sandbox purchases too (env IOS_TAKEDOWN_SANDBOX=1).
@@ -40,6 +43,15 @@ export interface WebDeployDeps {
    * site stays up, so it must not block a web deploy. Default false.
    */
   takedownSandbox?: boolean;
+}
+
+/** What lib/deployAuth.ts authorised. */
+export interface AuthorisedTarget {
+  /** Slug to deploy to. */
+  target: string;
+  /** The iOS purchase bound to `target`, or null for a web site. */
+  row: PurchaseRow | null;
+  actor: DeployActor;
 }
 
 // Flat, not a discriminated union: this repo compiles with strictNullChecks off,
@@ -63,56 +75,16 @@ function renderable(sd: unknown): sd is WebsiteData {
   return true;
 }
 
-const VERCEL_APP = '.vercel.app';
-
-/** First host label of a *.vercel.app URL, or null. */
-export function vercelAppLabel(deployedUrl: unknown): string | null {
-  if (typeof deployedUrl !== 'string' || !deployedUrl) return null;
-  try {
-    const host = new URL(deployedUrl).hostname.toLowerCase();
-    if (!host.endsWith(VERCEL_APP)) return null;
-    const label = host.split('.')[0];
-    return label && /^[a-z0-9-]+$/.test(label) ? slugify(label) || null : null;
-  } catch {
-    return null;
-  }
-}
-
 export async function gatedWebDeploy(
-  input: DeployRenderedSiteInput & { siteData?: unknown; deployedUrl?: unknown },
+  input: Pick<DeployRenderedSiteInput, 'html' | 'css' | 'imageUrls'> & { siteData?: unknown; existingSiteId?: unknown },
+  auth: AuthorisedTarget,
   deps: WebDeployDeps,
 ): Promise<GatedDeployResult> {
-  const { siteData, deployedUrl, ...deployInput } = input;
-  const shopSlug = slugify(String(input.siteId ?? ''));
-
-  // Defaults are today's behaviour: deploy body.siteId, no gate.
-  let target = input.siteId;
-  let slug = shopSlug;
-  let row: PurchaseRow | null = null;
-  const lookup = async (): Promise<{ row: PurchaseRow | null; slug: string } | null> => {
-    const label = vercelAppLabel(deployedUrl);
-    if (label && label !== shopSlug) {
-      const byLabel = await deps.findBySlug(label);
-      if (byLabel) return { row: byLabel, slug: label };
-    }
-    return shopSlug ? { row: await deps.findBySlug(shopSlug), slug: shopSlug } : null;
-  };
-  try {
-    // Bounded: before this gate, deploy-site never touched Supabase, so a
-    // degraded (slow, not failing) Supabase must not hold up web publishes.
-    const found = await withTimeout(lookup(), deps.lookupTimeoutMs ?? LOOKUP_TIMEOUT_MS, 'ios_purchases lookup');
-    if (found?.row) {
-      row = found.row;
-      slug = found.slug;
-      target = found.slug === shopSlug ? input.siteId : found.slug;
-    }
-  } catch (e: any) {
-    // Never block or redirect web customers on our own lookup failure or timeout.
-    console.error(`[Deploy Site] ios_purchases lookup failed for ${shopSlug} (continuing as web):`, e?.message || e);
-    row = null;
-    target = input.siteId;
-    slug = shopSlug;
-  }
+  const { siteData, existingSiteId, ...deployInput } = input;
+  // Exactly the slug lib/deployAuth.ts authorised; never re-derived here.
+  const slug = auth.target;
+  if (!slug || slugify(slug) !== slug) throw new Error(`non-canonical deploy target: ${String(slug).slice(0, 80)}`);
+  const row = auth.row;
 
   // A Sandbox row the sweep only gate-closed (no offline page) still has its site up: edits go
   // ahead, and taken_down_at stays as it is (the gates stay closed until Apple says active).
@@ -122,12 +94,39 @@ export async function gatedWebDeploy(
     return { blocked: true };
   }
 
-  if (row && target !== input.siteId) {
-    console.log(`[Deploy Site] ${input.siteId}: deploying to its iOS-bound project ${slug}`);
-  }
-  const result = await deps.deploy({ ...deployInput, siteId: target });
+  // Never `images` (raw uploads to {siteId}/{filename} in GCS): no browser path sends them, and
+  // they would let a deploy write anywhere under the bucket.
+  const result = await deps.deploy({ html: deployInput.html, css: deployInput.css, imageUrls: deployInput.imageUrls, siteId: slug });
 
-  if (row && siteData !== undefined) {
+  if (!row && deps.stampWebPending) {
+    // Best effort: the site is already live. Only the paid checkout's deploy may supply the
+    // copy's content (the same pendingSite shape the browser stored before checkout).
+    // Two callers send a checkout proof, in two shapes: the Stripe return sends the stored
+    // pending shape ('uploaded' markers + imageUrls as the map); the editor sends real URLs
+    // inline. Merging both maps, then the preparePendingSite transform, gives the pending
+    // shape from either.
+    let fresh: PendingSite | undefined;
+    if (auth.actor === 'checkout' && renderable(siteData)) {
+      const sent = isObj(deployInput.imageUrls) ? deployInput.imageUrls : {};
+      const imageUrlMap: Record<string, string> = { ...buildImageUrlMap(siteData) };
+      for (const [k, v] of Object.entries(sent)) if (typeof v === 'string' && /^https?:\/\//.test(v)) imageUrlMap[k] = v;
+      fresh = {
+        siteId: slug,
+        siteData: toPendingSiteData(siteData, imageUrlMap),
+        imageUrlMap,
+        existingSiteId: typeof existingSiteId === 'string' && existingSiteId ? existingSiteId.slice(0, 100) : null,
+        timestamp: deps.now(),
+      };
+    }
+    try {
+      await deps.stampWebPending(slug, result.deploymentUrl, fresh);
+    } catch (e: any) {
+      console.warn(`[Deploy Site] ${slug}: deployed, but stamping the stored copy failed:`, e?.message || e);
+    }
+  }
+
+  // Only the Apple-bound owner's web edit is the owner's copy. The admin's deploys never write it.
+  if (row && auth.actor === 'app-owner' && siteData !== undefined) {
     // Best effort: the site is already live, and failing the request now would
     // show "Publishing Failed" for a site that deployed.
     try {
@@ -171,12 +170,20 @@ export async function gatedWebDeploy(
 }
 
 export function liveWebDeployDeps(): WebDeployDeps {
-  let repo: ReturnType<typeof supabasePurchases> | undefined;
   return {
-    findBySlug: (slug) => (repo ??= supabasePurchases()).findBySlug(slug),
     deploy: deployRenderedSite,
     writePending: writePendingSite,
     readPending: readPendingSite,
+    async stampWebPending(slug, deployedUrl, fresh) {
+      const p = await readPendingSite(slug);
+      if (p?.deployedUrl) {
+        if (p.deployedUrl !== deployedUrl) await writePendingSite(slug, { ...p, deployedUrl });
+      } else if (fresh) {
+        await writePendingSite(slug, { ...fresh, deployedUrl });
+      } else if (p) {
+        await writePendingSite(slug, { ...p, deployedUrl });
+      }
+    },
     now: () => Date.now(),
     takedownSandbox: process.env.IOS_TAKEDOWN_SANDBOX === '1',
   };

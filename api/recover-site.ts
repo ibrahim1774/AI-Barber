@@ -296,7 +296,9 @@ export default async function handler(req: any, res: any) {
       // Paid, but the site was never built. The client can finish the
       // job by replaying the post-Stripe deploy path with these two.
       needsDeploy: !isLive,
-      sessionId: session.id || null,
+      // Only for the replay. A paid session id is proof of a first publish for its slug
+      // (/api/deploy-site), and this endpoint answers anyone who knows the email.
+      sessionId: isLive ? null : (session.id || null),
       plan: session.metadata?.plan || null,
       pendingSite: isLive ? null : pending,
     });

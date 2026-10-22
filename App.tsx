@@ -26,6 +26,7 @@ import { upsertSiteToSupabase, fetchUserSites } from './services/supabaseDataSer
 import { getPlanContentMeta, getViewContentMeta } from './lib/pixelMeta';
 import { getAllSites as getAllLocalSites } from './services/indexedDBService.ts';
 import { readMetaCookies, splitName } from './services/metaMatchParams.ts';
+import { deployErrorMessage, rememberCheckoutProof } from './services/publishTarget.ts';
 import { captureAdParamsOnLoad } from './services/adAttribution.ts';
 
 // Heavy components — lazy-loaded so first paint only ships the
@@ -572,6 +573,10 @@ const App: React.FC = () => {
         }
 
         console.log('[Deploy] Payment verified, deploying site...');
+        // The paid session is this browser's proof that it may publish this slug
+        // (/api/deploy-site re-checks it with Stripe). Kept so an editor publish
+        // before an account exists is still allowed.
+        rememberCheckoutProof(siteId, sessionId);
 
         // Step 1.5: Fire Purchase pixel BEFORE deploy. Payment is
         // verified at this point — the customer was charged. If the
@@ -701,7 +706,9 @@ const App: React.FC = () => {
         const deployResponse = await fetch('/api/deploy-site', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ siteId, html, imageUrls: imageUrlMap }),
+          // siteData + existingSiteId: the server writes the stamped recovery copy from them
+          // (lib/ios/webDeployGate.ts); the browser can no longer write a published copy.
+          body: JSON.stringify({ siteId, html, imageUrls: imageUrlMap, checkoutSessionId: sessionId, siteData, existingSiteId: existingSiteId ?? null }),
         });
 
         const contentType = deployResponse.headers.get('content-type');
@@ -714,7 +721,7 @@ const App: React.FC = () => {
         }
 
         if (!deployResponse.ok) {
-          throw new Error(`Deployment failed: ${deployData.error || deployData.details || 'Unknown error'}`);
+          throw new Error(deployErrorMessage(deployResponse.status, deployData));
         }
 
         console.log('[Deploy] Site deployed:', deployData.deploymentUrl);
@@ -783,19 +790,9 @@ const App: React.FC = () => {
         try {
           localStorage.removeItem('pendingSite');
         } catch { /* ignore — private mode etc. */ }
-        // Refresh the server-side recovery copy (same pending shape
-        // recover-site parses) with the REAL deployed URL stamped on,
-        // instead of deleting it. Until a Supabase sites row exists under
-        // a user, this file is the ONLY cross-device recovery source —
-        // the old delete here made /recover and the dashboard self-heal
-        // 404 for every customer. handleAuthSuccess removes it after a
-        // successful account attach.
-        fetch('/api/save-pending-site', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ siteId, data: { ...pending, deployedUrl: deployData.deploymentUrl } }),
-          keepalive: true,
-        }).catch(() => { /* ignore */ });
+        // The server-side recovery copy (same pending shape recover-site parses) is written
+        // and stamped with the real deployed URL by /api/deploy-site itself. A browser refresh
+        // here would be refused (409: a published copy is server-owned).
         return { url: deployData.deploymentUrl } as { url?: string; error?: string };
 
       } catch (error: any) {

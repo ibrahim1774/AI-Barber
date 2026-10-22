@@ -123,6 +123,9 @@ export const AdminGenerator: React.FC = () => {
       // through the shared client and silently fails RLS — harmless
       // (fire-and-forget); the canonical save is below using the
       // ephemeral client that's authenticated as the customer.
+      // /api/deploy-site creates a brand-new site only for a paid checkout or the admin: deploy
+      // with the operator's own (admin) session, which publishSite reads from the main client.
+      // The customer's `sites` row (upserted below) then claims the site for their account.
       const { url } = await publishSite(site, newUserId, { skipIndexedDB: true });
 
       const deployedSite: SiteInstance = {
