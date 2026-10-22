@@ -179,6 +179,8 @@ export interface AppointmentGuard {
   refundDue?: number;
   /** refund_stuck_at is null. */
   notStuck?: boolean;
+  /** customer_says_paid_at is null (the "I've sent it" once-only guard, e2e M5). */
+  saysPaidNull?: boolean;
 }
 
 export type WriteResult<T> = { ok: true; row: T } | { ok: false; reason: 'overlap' | 'stale' };
@@ -383,6 +385,7 @@ export function supabaseBookingRepo(client?: SupabaseClient): BookingRepo {
       if (g.refundedLte != null) q = q.lte('amount_refunded_cents', g.refundedLte);
       if (g.refundDue != null) q = q.eq('refund_due_cents', g.refundDue);
       if (g.notStuck) q = q.is('refund_stuck_at', null);
+      if (g.saysPaidNull) q = q.is('customer_says_paid_at', null);
       const { data, error } = await q.select(APPT_COLS);
       if (isOverlap(error)) return { ok: false, reason: 'overlap' };
       if (error) fail('updateAppointment', error);

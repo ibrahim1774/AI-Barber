@@ -98,7 +98,8 @@ export function fakeRepo(state: State, nowFn: () => number = Date.now): BookingR
         && (g.paidCents == null || cur.amount_paid_cents === g.paidCents)
         && (g.refundedLte == null || cur.amount_refunded_cents <= g.refundedLte)
         && (g.refundDue == null || cur.refund_due_cents === g.refundDue)
-        && (!g.notStuck || cur.refund_stuck_at == null);
+        && (!g.notStuck || cur.refund_stuck_at == null)
+        && (!g.saysPaidNull || cur.customer_says_paid_at == null);
       if (!cur || !matches) return { ok: false, reason: 'stale' };
       const next = { ...cur, ...patch } as AppointmentRow;
       if (conflicts(next)) return { ok: false, reason: 'overlap' };

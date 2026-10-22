@@ -626,14 +626,22 @@ describe('postOrderSent', () => {
     expect(w.notified).toEqual([]);
   });
 
-  it('423 while paused, 404 for an unknown token, 400 for an unknown method', async () => {
+  it('423 on a full lapse, 404 for an unknown token, 400 for an unknown method', async () => {
     const w = storeWorld();
     const o = await manual(w);
     expect(await postOrderSent({ token: o.manage_token, method: 'bitcoin' }, w.deps)).toEqual({ status: 400, body: { error: 'invalid', field: 'method' } });
     expect((await postOrderSent({ token: 'y'.repeat(64), method: 'cashapp' }, w.deps)).status).toBe(404);
-    w.state.shops[0].store_enabled = false;
+    for (const p of Object.values(w.state.purchases)) p.revoked_at = new Date().toISOString();
     expect(await postOrderSent({ token: o.manage_token, method: 'cashapp' }, w.deps)).toEqual({ status: 423, body: { error: 'store-paused' } });
     expect(w.order(o.id).customer_says_paid_at).toBeNull();
+  });
+
+  it('P2: the owner switching the store off does not stop an existing customer saying "I\'ve sent it" (same rule as a downgrade)', async () => {
+    const w = storeWorld();
+    const o = await manual(w);
+    w.state.shops[0].store_enabled = false;
+    expect((await postOrderSent({ token: o.manage_token, method: 'cashapp' }, w.deps)).status).toBe(200);
+    expect(w.order(o.id).customer_says_paid_at).not.toBeNull();
   });
 
   it('a concurrent "sent" that already landed: 200, no second push (compare-and-set on customer_says_paid_at)', async () => {

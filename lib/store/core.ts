@@ -53,7 +53,10 @@ export async function storeOpen(repo: Pick<StoreRepo, 'purchase'>, shop: ShopSto
  * (revoked, taken down, or an unswept purchase past expiry) refuses it.
  */
 export async function storeFollowUpOpen(repo: Pick<StoreRepo, 'purchase'>, shop: ShopStoreRow): Promise<boolean> {
-  return storeGate(repo, shop, 'hosting');
+  // e2e P2: not store_enabled either (the owner switching the store off is the same as a
+  // downgrade for an order that already exists).
+  if (!shop.ios_otid) return false;
+  return entitlementActive(await repo.purchase(shop.ios_otid), 'hosting');
 }
 
 async function storeGate(repo: Pick<StoreRepo, 'purchase'>, shop: ShopStoreRow, ent: 'store' | 'hosting'): Promise<boolean> {

@@ -483,7 +483,8 @@ export async function postSent(body: unknown, deps: FlowDeps): Promise<FlowResul
   const c = await byToken(deps, body.token);
   if (isResult(c)) return c;
   const { appt, shop } = c;
-  // An existing booking: allowed after a downgrade, refused only on a full lapse (Phase 4).
+  // An existing booking: allowed after a downgrade or with bookings switched off (e2e P2: same
+  // rule as a downgrade), refused only on a full lapse (Phase 4).
   if (!(await bookingsFollowUpOpen(deps.repo, shop))) return paused();
   if (!manualHandles(shop)[method]) return invalid('method');
   // Only an online booking on the manual rail chosen at booking time, still unpaid. Never
@@ -498,12 +499,18 @@ export async function postSent(body: unknown, deps: FlowDeps): Promise<FlowResul
   }
   if (appt.customer_says_paid_at) return ok({}); // already told the barber; don't push again
 
+  // Once-only (e2e M5): the write requires customer_says_paid_at to still be null, so of two
+  // concurrent taps only one stamps it and pushes the barber; the other answers ok.
   const upd = await deps.repo.updateAppointment(
     appt.id,
     { customer_says_paid_at: iso(deps.now()) },
-    { status: 'booked', method, paymentStatusIn: SENT_PAYMENT_STATUSES },
+    { status: 'booked', method, paymentStatusIn: SENT_PAYMENT_STATUSES, saysPaidNull: true },
   );
-  if (upd.ok === false) return err(409, 'not-awaiting-payment');
+  if (upd.ok === false) {
+    const cur = await deps.repo.appointmentById(appt.id);
+    const stillAwaiting = !!cur && cur.status === 'booked' && cur.payment_method === method && SENT_PAYMENT_STATUSES.includes(cur.payment_status);
+    return stillAwaiting && cur!.customer_says_paid_at ? ok({}) : err(409, 'not-awaiting-payment');
+  }
   // The amount the page asked the customer to send (W's manualAmountCents): the deposit when
   // the service has one above 0, else the (member) price. Computed like createAppointment's
   // depositCents; a removed service falls back to the price.

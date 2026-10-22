@@ -269,11 +269,12 @@ describe('past times and notice', () => {
 
 // ---------------------------------------------------------------------------
 describe('"I\'ve sent it" (manual rail) on a booking', () => {
-  it.fails('BUG (minor): a double-tapped "I\'ve sent it" pushes the barber twice (no once-only guard on the write)', async () => {
+  it('M5 (fixed): a double-tapped "I\'ve sent it" pushes the barber once (once-only guard on the write); both taps answer 200', async () => {
     b.state.shops[0].manual_handles = { cashapp: '$fresh' };
     await book({ pay: 'manual' });
     const token = b.state.appointments[0].manage_token;
-    await Promise.all([postSent({ token, method: 'cashapp' }, b.deps), postSent({ token, method: 'cashapp' }, b.deps)]);
+    const rs = await Promise.all([postSent({ token, method: 'cashapp' }, b.deps), postSent({ token, method: 'cashapp' }, b.deps)]);
+    expect(rs.map((r) => r.status)).toEqual([200, 200]);
     expect(b.notified.filter((n) => n.kind === 'customer_says_paid')).toHaveLength(1);
   });
 
@@ -286,12 +287,15 @@ describe('"I\'ve sent it" (manual rail) on a booking', () => {
     expect(b.notified.filter((n) => n.kind === 'customer_says_paid')).toHaveLength(1);
   });
 
-  it('POLICY: after the owner switches bookings off, an existing customer can no longer say "I\'ve sent it" (423)', async () => {
+  it('P2 (fixed; was POLICY 423): after the owner switches bookings off, an existing customer can still say "I\'ve sent it"', async () => {
     b.state.shops[0].manual_handles = { cashapp: '$fresh' };
     await book({ pay: 'manual' });
     b.state.shops[0].bookings_enabled = false;
     const r = await postSent({ token: b.state.appointments[0].manage_token, method: 'cashapp' }, b.deps);
-    expect(r.status).toBe(423);
+    expect(r.status).toBe(200);
+    expect(b.notified.filter((n) => n.kind === 'customer_says_paid')).toHaveLength(1);
+    // New bookings stay closed.
+    expect((await book({ customer: customer(5) })).status).toBe(423);
   });
 });
 

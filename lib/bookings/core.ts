@@ -168,7 +168,11 @@ export async function bookingsOpen(repo: BookingRepo, shop: ShopRow): Promise<bo
  * only a full lapse (revoked, taken down, or an unswept purchase past expiry) refuses it.
  */
 export async function bookingsFollowUpOpen(repo: BookingRepo, shop: ShopRow): Promise<boolean> {
-  return bookingsGate(repo, shop, 'hosting');
+  // e2e P2: not bookings_enabled. A customer who already booked (and may already have paid)
+  // can still say "I've sent it" after the owner switches the page off, the same rule as a
+  // downgrade; only a full lapse (revoked, taken down, past expiry) refuses it.
+  if (!shop.ios_otid) return false;
+  return entitlementActive(await repo.purchase(shop.ios_otid), 'hosting');
 }
 
 async function bookingsGate(repo: BookingRepo, shop: ShopRow, ent: 'bookings' | 'hosting'): Promise<boolean> {
