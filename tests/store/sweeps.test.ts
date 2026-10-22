@@ -121,6 +121,20 @@ describe('expireStaleOrderHolds', () => {
     expect(w.order(fresh.id)).toMatchObject({ status: 'cancelled', cancelled_by: 'customer' });
   });
 
+  it('review fix 7: a hold Stripe still can\'t answer about 25 h after creation is cancelled and logged', async () => {
+    const w = storeWorld();
+    const o = await place(w); // created 12:00 with a session
+    w.payments.closeCheckoutSession.mockResolvedValue('unknown');
+    const e = quiet();
+    w.setNow('2026-11-03T12:00:00Z');
+    expect(await expireStaleOrderHolds(w.deps, 50)).toMatchObject({ expired: 0, unresolved: 1 });
+    w.setNow('2026-11-03T13:00:00Z');
+    expect(await expireStaleOrderHolds(w.deps, 50)).toMatchObject({ expired: 1, unresolved: 0 });
+    e.mockRestore();
+    expect(w.order(o.id)).toMatchObject({ status: 'cancelled', cancelled_by: 'customer' });
+    expect(w.state.events.map((x) => x.kind)).toEqual(['order_hold_given_up']);
+  });
+
   it('a hold still complete an hour after creation is logged once as order_hold_paid_unrecorded, and left alone', async () => {
     const w = storeWorld();
     const o = await place(w);

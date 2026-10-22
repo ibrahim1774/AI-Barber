@@ -631,6 +631,12 @@ export async function retryPendingRefunds(
 export const CARD_HOLD_EXPIRY_MIN = 35;
 /** A hold whose Checkout is complete but whose payment was never recorded is alerted on after this. */
 export const CARD_HOLD_PAID_ALERT_MIN = 60;
+/**
+ * Review fix round 1 (finding 7): a hold Stripe still can't tell us about this long after it was
+ * created (Checkout Sessions expire within 24 h; e.g. the shop disconnected Stripe, or the
+ * session is gone) is cancelled and logged, so the slot is freed instead of held forever.
+ */
+export const CARD_HOLD_GIVE_UP_MIN = 25 * 60;
 
 /**
  * A shared wall-clock budget for the reminders cron's sweeps (e2e I4): a sweep stops starting
@@ -697,6 +703,19 @@ export async function expireStaleCardHolds(
               console.error(`[bookings] appointment ${h.id}: Checkout ${h.stripe_checkout_session_id} is complete but the payment was never recorded`);
               await safeLog(deps, h.shop_id, 'hold_paid_unrecorded', { appointmentId: h.id, sessionId: h.stripe_checkout_session_id });
             }
+          } else if (nowMs - Date.parse(h.created_at ?? '') >= CARD_HOLD_GIVE_UP_MIN * MIN) {
+            // Past any Checkout Session's life and Stripe still can't answer: free the slot.
+            const upd = await deps.repo.updateAppointment(
+              h.id,
+              { status: 'cancelled', cancelled_by: 'customer', cancelled_at: iso(deps.now()), payment_status: 'none' },
+              { ...guard, paymentStatusIn: [...guard.paymentStatusIn] },
+            );
+            if (upd.ok) {
+              out.expired++;
+              console.error(`[bookings] card hold ${h.id}: session state still unknown after ${CARD_HOLD_GIVE_UP_MIN / 60} h; cancelled to free the slot`);
+              await safeLog(deps, h.shop_id, 'hold_given_up', { appointmentId: h.id, sessionId: h.stripe_checkout_session_id });
+            }
+            continue;
           } else {
             console.error(`[bookings] card hold ${h.id}: checkout session state unknown; left for the next sweep`);
             out.unresolved++;

@@ -89,6 +89,18 @@ describe('expireStaleCardHolds (orphaned card holds)', () => {
     expect(logged).toEqual(['hold_paid_unrecorded']);
   });
 
+  it('review fix 7: a hold Stripe still can\'t answer about after 25 h is cancelled (slot freed) and logged; before that it waits', async () => {
+    const w = world({ shop: cardShop });
+    const h = await cardHold(w, '2026-11-03T15:00:00Z', '5550000001');
+    (w.deps.payments as any).closeCheckoutSession = vi.fn(async () => 'unknown');
+    w.setNow('2026-11-03T12:00:00Z'); // 24 h old
+    expect(await expireStaleCardHolds(w.deps)).toMatchObject({ expired: 0, unresolved: 1 });
+    w.setNow('2026-11-03T13:01:00Z'); // 25 h old
+    expect(await expireStaleCardHolds(w.deps)).toMatchObject({ expired: 1, unresolved: 0 });
+    expect(w.state.appointments.find((a) => a.id === h.id)).toMatchObject({ status: 'cancelled', payment_status: 'none' });
+    expect(w.state.events.map((e) => e.kind)).toEqual(['hold_given_up']);
+  });
+
   it('I4: stops starting holds once the shared budget is spent', async () => {
     const w = world({ shop: cardShop });
     for (let i = 0; i < 3; i++) await cardHold(w, `2026-11-03T1${5 + i}:00:00Z`, `555000000${i}`);

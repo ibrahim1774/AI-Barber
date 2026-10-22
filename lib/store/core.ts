@@ -428,6 +428,8 @@ export async function retryPendingOrderRefunds(
 export const ORDER_HOLD_EXPIRY_MIN = 35;
 /** A hold whose session is 'complete' this long after creation means a payment the webhook never recorded. */
 export const ORDER_HOLD_PAID_ALERT_MIN = 60;
+/** A hold Stripe still can't answer about this long after creation is cancelled (Checkout lasts at most 24 h). */
+export const ORDER_HOLD_GIVE_UP_MIN = 25 * 60;
 
 /**
  * Expire orphaned card holds (new + card + awaiting + nothing paid, created more than 35 min
@@ -472,6 +474,16 @@ export async function expireStaleOrderHolds(
               console.error(`[store] order ${h.id}: Checkout ${h.stripe_checkout_session_id} is complete but the payment was never recorded`);
               await safeLog(deps, h.shop_id, 'order_hold_paid_unrecorded', { orderId: h.id, sessionId: h.stripe_checkout_session_id });
             }
+          } else if (nowMs - Date.parse(h.created_at) >= ORDER_HOLD_GIVE_UP_MIN * MIN) {
+            // Review fix round 1 (finding 7): past any Checkout Session's life and Stripe still
+            // can't answer (e.g. the shop disconnected Stripe): cancel the hold, logged.
+            const upd = await deps.repo.updateOrder(h.id, expiredHoldPatch(deps.now()), LIVE_HOLD);
+            if (upd.ok) {
+              out.expired++;
+              console.error(`[store] order hold ${h.id}: session state still unknown after ${ORDER_HOLD_GIVE_UP_MIN / 60} h; cancelled`);
+              await safeLog(deps, h.shop_id, 'order_hold_given_up', { orderId: h.id, sessionId: h.stripe_checkout_session_id });
+            }
+            continue;
           } else {
             console.error(`[store] order hold ${h.id}: checkout session state unknown; left for the next sweep`);
             out.unresolved++;
