@@ -12,6 +12,7 @@
 // directly.
 import { Storage } from '@google-cloud/storage';
 import axios from 'axios';
+import { siteConfigFile, siteVercelConfig, SITE_CONFIG_FILE, type SiteSubpages } from './siteSubpages.js';
 
 export interface DeployImage {
   key: string;
@@ -27,11 +28,18 @@ export interface DeployRenderedSiteInput {
   imageUrls?: Record<string, string>;
   /** Raw images to upload server-side first. Used by the legacy browser path. */
   images?: DeployImage[];
+  /**
+   * The site's /book and /shop pages (lib/siteSubpages.ts): only for a site with a shop. Absent
+   * or null: the deploy is exactly what it always was.
+   */
+  subpages?: SiteSubpages | null;
 }
 
 export interface DeployRenderedSiteResult {
   deploymentUrl: string;
   uploadedImages: Record<string, string>;
+  /** The Vercel project the deploy landed in (for its domains). */
+  projectName?: string;
 }
 
 export interface VercelFile {
@@ -236,6 +244,24 @@ export function swapImagePlaceholders(html: string, imageUrlMap: Record<string, 
   return out;
 }
 
+/**
+ * The deployment's files: the page, its CSS, vercel.json (Cache-Control headers, plus the
+ * closed /book and /shop rewrite list for a site with a shop) and, for a site with the pages,
+ * /ab-site.json (which shop they are).
+ */
+export function buildSiteFiles(html: string, css: string | undefined, subpages: SiteSubpages | null): VercelFile[] {
+  const b64 = (s: string) => Buffer.from(s, 'utf-8').toString('base64');
+  const files: VercelFile[] = [
+    { file: 'index.html', data: b64(html), encoding: 'base64' },
+    { file: 'styles.css', data: b64(css || '/* No custom styles */'), encoding: 'base64' },
+    { file: 'vercel.json', data: b64(JSON.stringify(siteVercelConfig(subpages))), encoding: 'base64' },
+  ];
+  if (subpages?.mode === 'full') {
+    files.push({ file: SITE_CONFIG_FILE.replace(/^\//, ''), data: b64(siteConfigFile(subpages.shopSlug)), encoding: 'base64' });
+  }
+  return files;
+}
+
 export async function deployRenderedSite(
   input: DeployRenderedSiteInput,
 ): Promise<DeployRenderedSiteResult> {
@@ -310,19 +336,9 @@ export async function deployRenderedSite(
 
   // Step 5: build the file set. Cache-Control on the HTML so a republish is
   // visible immediately instead of being served stale from the CDN.
+  const files = buildSiteFiles(processedHtml, cssContent, input.subpages ?? null);
   const htmlBuffer = Buffer.from(processedHtml, 'utf-8');
   const cssBuffer = Buffer.from(cssContent, 'utf-8');
-  const vercelConfig = JSON.stringify({
-    headers: [
-      { source: '/index.html', headers: [{ key: 'Cache-Control', value: 'public, max-age=0, must-revalidate' }] },
-      { source: '/', headers: [{ key: 'Cache-Control', value: 'public, max-age=0, must-revalidate' }] },
-    ],
-  });
-  const files: VercelFile[] = [
-    { file: 'index.html', data: htmlBuffer.toString('base64'), encoding: 'base64' },
-    { file: 'styles.css', data: cssBuffer.toString('base64'), encoding: 'base64' },
-    { file: 'vercel.json', data: Buffer.from(vercelConfig, 'utf-8').toString('base64'), encoding: 'base64' },
-  ];
 
   const totalSizeMB = (htmlBuffer.length + cssBuffer.length) / (1024 * 1024);
   console.log(`[Deploy Site] Deployment payload size: ${totalSizeMB.toFixed(2)} MB (HTML: ${(htmlBuffer.length / 1024).toFixed(2)} KB, CSS: ${(cssBuffer.length / 1024).toFixed(2)} KB)`);
@@ -347,5 +363,5 @@ export async function deployRenderedSite(
   }
 
   console.log(`[Deploy Site] Deployment ready: ${finalUrl}`);
-  return { deploymentUrl: finalUrl, uploadedImages };
+  return { deploymentUrl: finalUrl, uploadedImages, projectName: vercelResult.actualProjectName };
 }

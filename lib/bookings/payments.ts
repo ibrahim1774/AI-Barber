@@ -6,6 +6,7 @@ import { STORE_APP } from '../store/constants.js';
 import type { NotifyEvent } from './notify.js';
 import type { OrderWebhookDeps } from '../store/webhook.js';
 import type { StoreNotifyEvent } from '../store/notify.js';
+import { bookingManageUrl, bookingPageUrl as shopBookingPageUrl, type SiteBased } from '../customerUrls.js';
 
 /**
  * Stripe Connect for bookings (Standard accounts, direct charges), raw fetch only.
@@ -28,8 +29,11 @@ export const CHECKOUT_HOLD_SEC = 32 * 60;
 export const STRIPE_TIMEOUT_MS = 10_000;
 export const MIN_CHARGE_CENTS = 50;
 
-export const manageUrl = (token: string) => `${SITE_ORIGIN}/book/manage/${encodeURIComponent(token)}`;
-export const bookingPageUrl = (slug: string) => `${SITE_ORIGIN}/book/${encodeURIComponent(slug)}`;
+/** The customer's manage page: on the shop's own site when it has one (lib/customerUrls.ts), else aibarber.org. */
+export const manageUrl = (token: string, shop?: SiteBased | null) => bookingManageUrl(shop, token, SITE_ORIGIN);
+/** The booking page: `{site}/book`, else aibarber.org/book/{slug}. */
+export const bookingPageUrl = (slug: string, shop?: SiteBased | null) =>
+  shopBookingPageUrl({ slug, site_base_url: shop?.site_base_url ?? null }, SITE_ORIGIN)!;
 export const stripeReturnUrl = (shopId: string, state: 'return' | 'refresh') =>
   `${SITE_ORIGIN}/stripe-return?shop=${encodeURIComponent(shopId)}&state=${state}`;
 
@@ -44,6 +48,8 @@ export interface PayShop {
   currency?: string | null;
   stripe_account_id: string | null;
   platform_fee_bps: number;
+  /** The shop's own site origin (011); customer return URLs use it when set. */
+  site_base_url?: string | null;
 }
 
 export interface PayAppointment {
@@ -147,8 +153,8 @@ export async function createCardCheckout(
 
   const params: Record<string, string | number | undefined> = {
     mode: 'payment',
-    success_url: `${manageUrl(appt.manage_token)}?checkout=success`,
-    cancel_url: `${manageUrl(appt.manage_token)}?checkout=cancelled`,
+    success_url: `${manageUrl(appt.manage_token, shop)}?checkout=success`,
+    cancel_url: `${manageUrl(appt.manage_token, shop)}?checkout=cancelled`,
     expires_at: minuteSec + CHECKOUT_HOLD_SEC,
     'payment_method_types[0]': 'card',
     client_reference_id: appt.id,
@@ -270,6 +276,7 @@ export async function createStandardAccount(
     type: 'standard',
     email: ownerEmail || undefined,
     'business_profile[name]': shop.name || undefined,
+    // Owner-facing and part of the account's idempotency hash inputs: stays on aibarber.org.
     'business_profile[url]': shop.slug ? bookingPageUrl(shop.slug) : undefined,
     'business_profile[support_phone]': withPhone ? shop.phone || undefined : undefined,
     'metadata[shop_id]': shop.id,

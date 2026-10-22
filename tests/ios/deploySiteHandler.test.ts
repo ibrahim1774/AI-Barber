@@ -3,7 +3,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // /api/deploy-site through its real default export: only the edges are faked (Supabase auth and
 // tables, Stripe, Vercel, GCS). C1 in the 2026-10-22 server report: an unauthenticated POST
 // replaced any customer's live site and an app site's stored copy.
-const { findBySlug, deployRenderedSite, writePendingSite, readPendingSite, getUser, siteClaims, allow, vercelProjectExists } = vi.hoisted(() => ({
+const { findBySlug, deployRenderedSite, writePendingSite, readPendingSite, getUser, siteClaims, allow, vercelProjectExists, findShopForSite } = vi.hoisted(() => ({
+  findShopForSite: vi.fn(async (_slug: string): Promise<{ id: string; slug: string } | null> => null),
   vercelProjectExists: vi.fn(async (_s: string) => true),
   readPendingSite: vi.fn(async (_s: string): Promise<unknown> => null),
   findBySlug: vi.fn(),
@@ -21,6 +22,10 @@ vi.mock('@supabase/supabase-js', () => ({
     auth: { getUser },
     from: (_t: string) => ({ select: () => ({ in: async (_c: string, urls: string[]) => ({ data: await siteClaims(urls), error: null }) }) }),
   }),
+}));
+vi.mock('../../lib/siteSubpages.js', async (orig) => ({
+  ...(await orig<object>()), findShopForSite,
+  liveSiteBaseDeps: { projectDomains: async () => [], domainServing: async () => false, updateShop: async () => {} },
 }));
 vi.mock('../../lib/ios/slug.js', async (orig) => ({ ...(await orig<object>()), vercelProjectExists }));
 vi.mock('../../lib/bookings/rateLimit.js', async (orig) => ({ ...(await orig<object>()), publicLimiter: { allow } }));
@@ -141,6 +146,28 @@ describe('api/deploy-site authorisation (C1)', () => {
     expect(res.status).toHaveBeenCalledWith(200);
     expect(deployRenderedSite).toHaveBeenCalledWith(expect.objectContaining({ siteId: 'fade-lab-x7k2' }));
     expect(writePendingSite).toHaveBeenCalledWith('fade-lab-x7k2', expect.objectContaining({ editedBy: 'owner' }));
+  });
+
+  it('site subpages: the owner\'s app site with a shop gets the rewrites for the AUTHORISED slug\'s shop only', async () => {
+    findBySlug.mockImplementation(async (s: string) => (s === 'fade-lab-x7k2' ? appRow({ site_slug: 'fade-lab-x7k2' }) : null));
+    findShopForSite.mockImplementation(async (s: string) => (s === 'fade-lab-x7k2' ? { id: 'shop-1', slug: 'fade-lab' } : null));
+    const res = mkRes();
+    await handler(post({ siteId: 'fade-lab-renamed', html: '<h1/>', deployedUrl: 'https://fade-lab-x7k2.vercel.app', siteData: sd }, 'owner-jwt'), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(findShopForSite).toHaveBeenCalledWith('fade-lab-x7k2');
+    expect(deployRenderedSite).toHaveBeenCalledWith(expect.objectContaining({ siteId: 'fade-lab-x7k2', subpages: { mode: 'full', shopSlug: 'fade-lab' } }));
+    findShopForSite.mockReset();
+    findShopForSite.mockImplementation(async () => null);
+  });
+
+  it('site subpages: a web customer\'s deploy is never looked up and never gets rewrites', async () => {
+    siteClaims.mockResolvedValue([{ user_id: OWNER }]);
+    findShopForSite.mockClear();
+    const res = mkRes();
+    await handler(post({ siteId: 'fresh-cuts', html: '<h1/>', siteData: sd }, 'owner-jwt'), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(findShopForSite).not.toHaveBeenCalled();
+    expect((deployRenderedSite.mock.calls.at(-1) as any)[0].subpages).toBeUndefined();
   });
 
   it('owner: a web customer editing the site their account row claims → 200', async () => {

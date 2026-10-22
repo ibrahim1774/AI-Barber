@@ -9,9 +9,7 @@ describe('parseShopRoute', () => {
   it('/shop/manage/{token} is an order', () => {
     expect(parseShopRoute('/shop/manage/abc123_-XYZ')).toEqual({ kind: 'order', token: 'abc123_-XYZ' });
   });
-  it('/shop/ and /shop/manage are none', () => {
-    expect(parseShopRoute('/shop/')).toEqual({ kind: 'none' });
-    expect(parseShopRoute('/shop')).toEqual({ kind: 'none' });
+  it('/shop and /shop/ are the barber site\'s own shop page (tests/site/site.test.ts); /shop/manage is none', () => {
     expect(parseShopRoute('/shop/manage')).toEqual({ kind: 'none' });
     expect(parseShopRoute('/shop/manage/')).toEqual({ kind: 'none' });
     expect(parseShopRoute('/book/x')).toEqual({ kind: 'none' });

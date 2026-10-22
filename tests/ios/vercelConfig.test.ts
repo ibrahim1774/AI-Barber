@@ -20,6 +20,17 @@ describe('vercel.json', () => {
     expect(cfg.functions['api/shop/setup.ts'].includeFiles).toBe('lib/ios/certs/**');
   });
 
+  it('/api/deploy-site gets 300 s like the other deploy paths (READY wait + domain and DNS checks after the deploy)', () => {
+    expect(cfg.functions['api/deploy-site.ts'].maxDuration).toBe(300);
+  });
+
+  it('the allow-list tests\' matcher is pinned to the path-to-regexp Vercel uses', () => {
+    const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'));
+    expect(pkg.devDependencies['path-to-regexp-updated']).toBe('npm:path-to-regexp@6.3.0');
+    const lock = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package-lock.json'), 'utf8'));
+    expect(lock.packages[''].devDependencies['path-to-regexp-updated']).toBe('npm:path-to-regexp@6.3.0');
+  });
+
   it('admin site edits get 300 s: republish-all batches deploy several sites per call', () => {
     expect(cfg.functions['api/admin/sites.ts'].maxDuration).toBe(300);
   });

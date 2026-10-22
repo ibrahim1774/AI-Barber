@@ -121,7 +121,12 @@ export function shopBookingLimiter(store: RateLimitStore = sharedStore, now: () 
 
 type Headers = Record<string, string | string[] | undefined>;
 
-/** Client IP on Vercel: x-real-ip, else the first x-forwarded-for hop (both set by Vercel's edge). */
+/**
+ * Client IP on Vercel: x-real-ip, else the first x-forwarded-for hop (both set by Vercel's edge).
+ * x-vercel-forwarded-for is not read: it may be client-sent on a direct request. Whether a barber
+ * site's proxy (external rewrite) preserves the visitor's address is a live-site check
+ * (2026-10-22-subpages server-report); it decides whether this order changes.
+ */
 export function clientIp(headers: Headers | undefined): string {
   const pick = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
   const real = pick(headers?.['x-real-ip'])?.trim();

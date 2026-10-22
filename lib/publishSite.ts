@@ -22,6 +22,10 @@ import { generateHTMLWithPlaceholders } from './render/luxe.js';
 import { generatePrimeHTMLWithPlaceholders } from './render/prime.js';
 import { generateEuphoriaHTMLWithPlaceholders } from './render/euphoria.js';
 import { isAwaitingDetails } from './payFirst.js';
+import {
+  findShopForSite, liveSiteBaseDeps, refreshSiteBase, withSubpageLinks,
+  type SiteBaseDeps, type SiteShop, type SiteSubpages,
+} from './siteSubpages.js';
 
 export type SiteEditor = 'owner' | 'admin';
 
@@ -238,6 +242,13 @@ export async function publishSite(
      * (/custom-15) only publishes a copy whose details were confirmed after payment.
      */
     plan?: string | null;
+    /**
+     * The shop behind this site slug (lib/siteSubpages.ts findShopForSite): its deploys carry
+     * the /book and /shop rewrites. Injectable for tests.
+     */
+    findShop?: (siteSlug: string) => Promise<SiteShop | null>;
+    /** Where the shop's public base URL and look are stored after the deploy. Injectable for tests. */
+    siteBase?: SiteBaseDeps;
   } = {},
 ): Promise<PublishOutcome> {
   const safe = slugify(siteId);
@@ -275,13 +286,35 @@ export async function publishSite(
   const imageUrlMap = pending.imageUrlMap || {};
   const sd = pending.siteData;
 
+  // Site subpages: a site whose slug has a shop serves /book and /shop on its own domain.
+  // A deploy that can't tell must not guess: shipping without the rewrites would break the
+  // pages, manage links in sent emails and Stripe returns on the barber's domain. So a failed
+  // lookup fails the publish for any site; the callers' sweeps (and the next publish) retry.
+  let shop: SiteShop | null = null;
   try {
-    const html = renderPending(pending);
+    shop = await (opts.findShop ?? findShopForSite)(safe);
+  } catch (e: any) {
+    console.error(`[Publish] ${safe}: shop lookup failed (${e?.message || e}); not deploying, will be retried`);
+    return { ok: false, reason: 'deploy-failed', siteId: safe, error: `shop lookup failed: ${e?.message || e}` };
+  }
+  const subpages: SiteSubpages | null = shop ? { mode: 'full', shopSlug: shop.slug } : null;
+
+  try {
+    // The links are normalised for this deploy only; the stored copy keeps what the owner saved.
+    const html = renderPending({ ...pending, siteData: withSubpageLinks(sd, !!subpages) });
     console.log(`[Publish] ${safe}: rendered ${html.length} bytes (template=${sd.template || 'luxe'}), deploying...`);
-    const { deploymentUrl } = await deployRenderedSite({ siteId: safe, html, imageUrls: imageUrlMap });
+    const { deploymentUrl, projectName } = await deployRenderedSite({ siteId: safe, html, imageUrls: imageUrlMap, subpages });
     await stampDeployedUrl(safe, pending, deploymentUrl).catch((e) =>
       console.warn(`[Publish] ${safe}: deployed but stamping the backup failed:`, e?.message),
     );
+    if (shop) {
+      // Customer-facing URLs (Stripe returns, emails) follow the site's domain from now on.
+      // Best effort: the site is live; until this lands they keep the previous base.
+      await refreshSiteBase(
+        { shopId: shop.id, projectName: projectName || safe, siteData: sd, imageUrlMap },
+        opts.siteBase ?? liveSiteBaseDeps,
+      ).catch((e) => console.warn(`[Publish] ${safe}: live, but storing the shop's site URL failed:`, e?.message || e));
+    }
     console.log(`[Publish] ${safe}: LIVE at ${deploymentUrl}`);
     return { ok: true, deployedUrl: deploymentUrl, alreadyLive: false, siteId: safe };
   } catch (e: any) {

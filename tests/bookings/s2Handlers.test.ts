@@ -242,7 +242,7 @@ describe('vercel.json + stripe-return page', () => {
 
   it('/stripe-return rewrites come before the SPA catch-all', () => {
     const srcs = cfg.rewrites.map((r: any) => r.source);
-    const catchAll = srcs.indexOf('/((?!api/.*).*)');
+    const catchAll = srcs.indexOf('/((?!api/|_ab/).*)');
     for (const s of ['/stripe-return', '/stripe-return/']) {
       const i = srcs.indexOf(s);
       expect(i).toBeGreaterThanOrEqual(0);
