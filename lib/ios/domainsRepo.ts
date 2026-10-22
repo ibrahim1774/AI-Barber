@@ -55,6 +55,8 @@ export interface DomainRow {
   detached_at: string | null;
   transferred_at: string | null;
   transferred_by: string | null;
+  /** Website: a paid subscription refused before anything was bought was cancelled and refunded. */
+  refunded_at: string | null;
   lease_until: string | null;
   created_at: string;
   updated_at: string;
@@ -67,6 +69,8 @@ export interface DomainsRepo {
   get(otid: string): Promise<DomainRow | null>;
   /** The row holding this site's slot (SITE_HOLDING_STATES), if any. */
   holdingSite(slug: string): Promise<DomainRow | null>;
+  /** The real (non-simulated), non-failed row holding this domain name, if any. */
+  byDomain(domain: string): Promise<DomainRow | null>;
   /** Insert a reserved row. 'conflict' when the otid, the domain or the site slot is already taken. */
   insertReserved(row: NewDomainRow): Promise<'ok' | 'conflict'>;
   /**
@@ -134,6 +138,12 @@ export function supabaseDomains(client?: SupabaseClient): DomainsRepo {
     async holdingSite(slug) {
       const { data, error } = await db().from(TABLE).select('*').eq('site_slug', slug).in('state', SITE_HOLDING_STATES as string[]).limit(1);
       if (error) fail('holdingSite', error);
+      return Array.isArray(data) && data[0] ? num(data[0]) : null;
+    },
+
+    async byDomain(domain) {
+      const { data, error } = await db().from(TABLE).select('*').eq('domain', domain).neq('state', 'failed').eq('simulated', false).limit(1);
+      if (error) fail('byDomain', error);
       return Array.isArray(data) && data[0] ? num(data[0]) : null;
     },
 

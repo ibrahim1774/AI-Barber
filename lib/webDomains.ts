@@ -21,7 +21,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { DeployAuthResult } from './deployAuth.js';
 import { isComDomain } from './ios/domainNames.js';
 import {
-  advanceSlot, applyPayerEvent, precheckDomain, reserveSlot, statusBody,
+  advanceSlot, applyPayerEvent, ownDetached, precheckDomain, reserveSlot, statusBody,
   type DomainFlowDeps, type PayerStatus,
 } from './ios/domainFlow.js';
 
@@ -83,7 +83,8 @@ export function verifyDomainSubscription(sub: any, secret: string, priceId?: str
 export function stripePayerStatus(sub: any, now: number): PayerStatus {
   const status = String(sub?.status || '');
   const periodEnd = Number(sub?.current_period_end ?? sub?.items?.data?.[0]?.current_period_end);
-  const active = status === 'active' || status === 'trialing';
+  // Only 'active' is paid: we offer no trial, and a trialing subscription must never buy a domain.
+  const active = status === 'active';
   const ended = Number(sub?.ended_at);
   const cancelling = sub?.cancel_at_period_end === true || sub?.cancel_at != null;
   return {
@@ -122,8 +123,9 @@ export async function createDomainCheckout(body: any, origin: string, authorizat
   try {
     if (await deps.flow.repo.holdingSite(slug)) return { status: 409, body: { error: 'This site already has a custom domain' } };
     const pre = await precheckDomain(deps.flow, domain);
-    if (pre === 'domain-taken') return { status: 409, body: { error: 'Domain is not available' } };
-    if (pre) return { status: 409, body: { error: 'Domain is not available at a standard price' } };
+    // The same site may buy back its OWN detached name (still registered to us).
+    if (pre === 'domain-taken' && !(await ownDetached(deps.flow, slug, domain))) return { status: 409, body: { error: 'Domain is not available' } };
+    if (pre && pre !== 'domain-taken') return { status: 409, body: { error: 'Domain is not available at a standard price' } };
   } catch (e: any) {
     console.error('[CreateDomainCheckout] lookup failed:', e?.code || e?.message || e);
     return { status: 503, body: { error: 'Could not check the domain right now' } };
@@ -170,9 +172,15 @@ export interface WebDomainDeps {
   flow: DomainFlowDeps;
   secret: string;
   priceId?: string;
-  /** STRIPE_SECRET_KEY is a test key: the lifecycle is simulated, nothing is bought. */
-  testMode: boolean;
+  /**
+   * Cancel the subscription now and refund its payment in full (idempotent: Stripe idempotency
+   * keys per subscription). A paid slot refused before anything was bought (N2).
+   */
+  cancelAndRefund(subscriptionId: string): Promise<void>;
 }
+
+/** Stripe test mode, from Stripe's own livemode flag (never the key prefix). */
+const isTestMode = (...objs: any[]) => objs.some((o) => o && o.livemode === false);
 
 const badSession: WebResult = { status: 400, body: { error: 'Invalid checkout session' } };
 
@@ -211,10 +219,16 @@ export async function purchaseDomain(body: any, authorization: unknown, deps: We
   if (!v || v.slug !== md.slug || v.domain !== md.domain) return { status: 400, body: { error: 'Not a paid domain purchase' } };
   const payer = stripePayerStatus(sub, deps.flow.now());
   if (!payer.active) return { status: 402, body: { error: 'subscription-inactive' } };
-  if (!deps.testMode && (!deps.flow.vercel || !deps.flow.contact)) return { status: 503, body: { error: 'domains-unavailable' } };
+  const testMode = isTestMode(session, sub);
+  if (!testMode && (!deps.flow.vercel || !deps.flow.contact)) return { status: 503, body: { error: 'domains-unavailable' } };
+  const existing = await deps.flow.repo.get(`stripe:${v.subscriptionId}`);
+  if (existing?.refunded_at) return refundedResult(existing.domain);
+  if (existing && existing.state === 'failed' && REFUND_REASONS.has(existing.failure_reason || '')) {
+    return (await finishRefund(existing, deps)) ? refundedResult(existing.domain) : { status: 503, body: { error: 'Try again shortly' } };
+  }
 
   const c = {
-    key: `stripe:${v.subscriptionId}`, source: 'stripe' as const, environment: 'Production' as const, simulated: deps.testMode,
+    key: `stripe:${v.subscriptionId}`, source: 'stripe' as const, environment: 'Production' as const, simulated: testMode,
     slug: v.slug, domain: v.domain, payer,
   };
   let reserved;
@@ -225,8 +239,9 @@ export async function purchaseDomain(body: any, authorization: unknown, deps: We
     return { status: 503, body: { error: 'Try again shortly' } };
   }
   if (reserved.result) {
-    await recordRefusedPaidSlot(c, reserved.result, deps.flow);
-    return { status: reserved.result.status, body: { ...(reserved.result.body as Record<string, unknown>), paidSubscriptionNeedsSupport: true } };
+    const refused = await recordRefusedPaidSlot(c, reserved.result, deps);
+    if (refused.refunded) return refundedResult(c.domain);
+    return { status: 503, body: { error: 'Try again shortly' } }; // the refund is retried
   }
   const r = await advanceSlot(c.key, payer, deps.flow);
   return { status: r.status, body: r.body as Record<string, unknown> };
@@ -235,24 +250,55 @@ export async function purchaseDomain(body: any, authorization: unknown, deps: We
 const REFUSAL_REASON: Record<string, string> = {
   'domain-taken': 'taken', 'domain-not-eligible': 'price', 'site-has-domain': 'site-has-domain',
 };
+const REFUND_REASONS = new Set([...Object.values(REFUSAL_REASON), 'refused']);
+
+function refundedResult(domain: string): WebResult {
+  return {
+    status: 409,
+    body: {
+      error: 'domain-taken', refunded: true, domain,
+      message: `${domain} was taken just before your payment went through. Your $39 has been refunded in full and the subscription cancelled; please pick another name.`,
+    },
+  };
+}
+
+/** Cancel + refund (idempotent at Stripe), then stamp the row. True once refunded. */
+async function finishRefund(row: { original_transaction_id: string; domain: string }, deps: Pick<WebDomainDeps, 'cancelAndRefund' | 'flow'>): Promise<boolean> {
+  const subId = row.original_transaction_id.replace(/^stripe:/, '');
+  try {
+    await deps.cancelAndRefund(subId);
+  } catch (e: any) {
+    console.error(`[domains/web] ALERT refund of ${subId} (${row.domain}) failed; retried:`, e?.message || e);
+    return false;
+  }
+  await deps.flow.repo.update(row.original_transaction_id, ['failed'], {
+    refunded_at: new Date(deps.flow.now()).toISOString(),
+    last_error: 'REFUNDED: the paid subscription was refused before anything was bought; cancelled and refunded in full',
+  });
+  console.error(`[domains/web] REFUNDED ${subId} (${row.domain}): refused before anything was bought`);
+  return true;
+}
 
 /**
  * A paid website subscription refused before anything was bought (the name was taken between
  * checkout and payment, or a second checkout for a site that already has a domain): persist it
- * as a FAILED row so the admin tab shows it. Support cancels and refunds the subscription; there
- * is no web UI to repoint. Returns the refusal code.
+ * as a FAILED row (admin-visible), then cancel the subscription and refund it in full.
  */
-async function recordRefusedPaidSlot(c: { key: string; slug: string; domain: string; simulated: boolean }, result: { body: unknown }, flow: DomainFlowDeps): Promise<string> {
+async function recordRefusedPaidSlot(
+  c: { key: string; slug: string; domain: string; simulated: boolean },
+  result: { body: unknown },
+  deps: Pick<WebDomainDeps, 'cancelAndRefund' | 'flow'>,
+): Promise<{ code: string; refunded: boolean }> {
   const code = String((result.body as any)?.error || 'refused');
-  const reason = REFUSAL_REASON[code];
-  console.error(`[domains/web] PAID subscription ${c.key} for ${c.domain} on ${c.slug} refused (${code}): support must cancel + refund`);
-  if (reason) {
-    await flow.repo.insertFailed({
-      original_transaction_id: c.key, source: 'stripe', environment: 'Production', site_slug: c.slug, domain: c.domain,
-      simulated: c.simulated, auto_renew: false,
-    }, reason).catch((e) => console.error(`[domains/web] recording the refused slot ${c.key} failed:`, e?.message || e));
-  }
-  return code;
+  const reason = REFUSAL_REASON[code] || 'refused';
+  await deps.flow.repo.insertFailed({
+    original_transaction_id: c.key, source: 'stripe', environment: 'Production', site_slug: c.slug, domain: c.domain,
+    simulated: c.simulated, auto_renew: false,
+  }, reason);
+  const row = await deps.flow.repo.get(c.key);
+  if (row?.refunded_at) return { code, refunded: true };
+  if (row && row.state !== 'failed') return { code, refunded: false }; // not ours to refund
+  return { code, refunded: await finishRefund({ original_transaction_id: c.key, domain: c.domain }, deps) };
 }
 
 // ─── Stripe webhook ───
@@ -311,6 +357,11 @@ export async function handleDomainStripeEvent(
     const purchase = event.type === 'checkout.session.completed' && obj.payment_status === 'paid'
       && (!!existing || !!verifyDomainSubscription(sub, deps.secret, deps.priceId));
     if (existing) {
+      // A refused paid slot whose refund did not go through yet: finish it.
+      if (existing.state === 'failed' && !existing.refunded_at && REFUND_REASONS.has(existing.failure_reason || '')) {
+        const r = await finishRefund(existing, deps);
+        return r ? { handled: true, status: 200, body: { received: true, domain: false, refunded: true } } : { handled: true, status: 500, body: { error: 'refund-pending' } };
+      }
       // The row is the proof (it was created from a verified purchase): apply the subscription's
       // CURRENT state, whatever happened to the signing secret since.
       if (!sub) throw new Error('subscription not found at Stripe');
@@ -325,11 +376,13 @@ export async function handleDomainStripeEvent(
     }
     const payer = stripePayerStatus(sub, deps.flow.now());
     if (!payer.active) return { handled: true, status: 200, body: { received: true, ignored: 'subscription-inactive' } };
-    const c = { key, source: 'stripe' as const, environment: 'Production' as const, simulated: deps.testMode, slug: v.slug, domain: v.domain, payer };
+    const c = { key, source: 'stripe' as const, environment: 'Production' as const, simulated: isTestMode(obj, sub), slug: v.slug, domain: v.domain, payer };
     const reserved = await reserveSlot(c, deps.flow);
     if (reserved.result) {
-      const refused = await recordRefusedPaidSlot(c, reserved.result, deps.flow);
-      return { handled: true, status: 200, body: { received: true, domain: false, refused }, purchase };
+      const refused = await recordRefusedPaidSlot(c, reserved.result, deps);
+      // 500 until the refund went through, so Stripe retries (the existing-row path finishes it).
+      if (!refused.refunded) return { handled: true, status: 500, body: { error: 'refund-pending' } };
+      return { handled: true, status: 200, body: { received: true, domain: false, refused: refused.code, refunded: true }, purchase };
     }
     return {
       handled: true, status: 200, body: { received: true, domain: true }, purchase,

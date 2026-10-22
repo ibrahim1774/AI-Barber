@@ -97,6 +97,12 @@ export interface DomainFlowDeps {
   sandboxRealOtids?: ReadonlySet<string>;
   /** Live probe of the domain over HTTPS (status only). */
   probeHttps?(domain: string): Promise<boolean>;
+  /**
+   * The shop's stored public base (ab_shops.site_base_url) for a site: undefined when the site
+   * has no shop (web sites) or the column doesn't exist yet; then nothing is checked. `refresh`
+   * re-derives it from the project's domains (site-subpages refreshSiteBase), without a deploy.
+   */
+  base?: { read(slug: string): Promise<string | null | undefined>; refresh(slug: string): Promise<unknown> };
 }
 
 /** A claim holds the row this long (the function's 300 s budget); the sweep skips leased rows. */
@@ -113,6 +119,8 @@ const ms = (v: string | null | undefined) => (v ? Date.parse(v) : NaN);
 const errMsg = (e: unknown) => String((e as any)?.code || (e as Error)?.message || e).slice(0, 300);
 const TX_RE = /^\d{1,32}$/;
 const STOPPED: readonly DomainState[] = ['detaching', 'unlinking', 'detached', 'failed', 'transferred'];
+export const BASE_PENDING = 'base URL not yet the domain; retried by the sweep';
+export const RENEWAL_UNKNOWN = 'ALERT: renewal status unknown at the payer; Vercel auto-renew left as it is';
 
 /** The Vercel project for a site: the slug (lib/deploySite.ts names projects this way). */
 export function projectFor(slug: string): string {
@@ -180,11 +188,20 @@ export async function refreshFromPayer(row: DomainRow, s: PayerStatus, deps: Pic
   const otid = row.original_transaction_id;
   if (s.expiresAt != null) await deps.repo.extendPaidUntil(otid, s.expiresAt);
   for (let i = 0; i < 2; i++) {
-    const want = desiredAutoRenew(row.state, s);
+    // Apple's renewal status unknown while the subscription is active: keep the current setting
+    // (never a fresh change either way) and flag it for the admin.
+    const unknown = s.active && s.autoRenew == null && !STOPPED.includes(row.state);
+    const want = unknown ? row.auto_renew : desiredAutoRenew(row.state, s);
     const patch: Partial<DomainRow> = {
       payer_checked_at: iso(deps.now()),
       revoked_at: s.revoked ? (row.revoked_at ?? iso(deps.now())) : null,
     };
+    if (unknown) {
+      patch.last_error = RENEWAL_UNKNOWN;
+      console.error(`[domains] ALERT ${row.domain} (${otid}): the payer's renewal status is unknown; Vercel auto-renew left as it is`);
+    } else if (row.last_error === RENEWAL_UNKNOWN) {
+      patch.last_error = null;
+    }
     if (want !== row.auto_renew) {
       patch.auto_renew = want;
       patch.auto_renew_synced = false;
@@ -236,7 +253,8 @@ async function toBought(deps: DomainFlowDeps, row: DomainRow, owned: { boughtAt:
     state: 'bought',
     vercel_bought_at: iso(owned.boughtAt),
     registration_expires_at: iso(owned.expiresAt),
-    auto_renew_synced: owned.renew === row.auto_renew,
+    // Always re-checked by syncAutoRenew right after (it may need to cover the paid period).
+    auto_renew_synced: false,
     last_error: null,
   });
 }
@@ -352,7 +370,16 @@ export async function step(row: DomainRow, deps: DomainFlowDeps, ctx: Ctx = {}):
       }
 
       case 'unlinking': {
-        if (!sim) await deps.hooks.onDomainUnlinked(row.site_slug);
+        if (!sim) {
+          await deps.hooks.onDomainUnlinked(row.site_slug);
+          // The shop's public base must no longer be the domain (emails, payment returns).
+          if (deps.base && (await deps.base.read(row.site_slug)) === `https://${row.domain}`) {
+            await deps.base.refresh(row.site_slug);
+            if ((await deps.base.read(row.site_slug)) === `https://${row.domain}`) {
+              return wait(deps, row, 'base URL still points at the detached domain; retried');
+            }
+          }
+        }
         return move(deps, row, ['unlinking'], { state: 'detached', detached_at: iso(deps.now()), last_error: null });
       }
 
@@ -418,6 +445,16 @@ export async function syncAutoRenew(row: DomainRow, deps: DomainFlowDeps): Promi
     const owned = await v.owned(row.domain);
     const gone = (e: unknown) => e instanceof VercelApiError
       && (e.code === 'domain_not_found' || e.code === 'domain_not_registered' || e.code === 'domain_not_renewable');
+    // Keep the registration through the period already paid: if it would end before paid_until,
+    // Vercel renews it once even when the subscriber turned renewal off.
+    const coverPaid = !row.auto_renew && !!owned && ATTACHED_STATES.includes(row.state)
+      && ms(row.paid_until) > owned.expiresAt;
+    if (coverPaid) {
+      if (!owned!.renew) await v.setAutoRenew(row.domain, true);
+      // Not marked synced: once the registration outlasts paid_until, the next pass turns it off.
+      const r = await deps.repo.update(row.original_transaction_id, null, { registration_expires_at: iso(owned!.expiresAt) });
+      return r ?? row;
+    }
     if (!row.auto_renew) {
       // OFF is always sent unless Vercel already shows it off: a registration just past its
       // expiry reads as "not ours" but may still be renewable in the registry's grace window.
@@ -533,6 +570,13 @@ export async function precheckDomain(deps: Pick<DomainFlowDeps, 'vercel'>, domai
   return null;
 }
 
+/** A detached row of this site holding this name, whose registration Vercel says is still ours. */
+export async function ownDetached(deps: Pick<DomainFlowDeps, 'repo' | 'vercel'>, slug: string, domain: string): Promise<DomainRow | null> {
+  const row = await deps.repo.byDomain(domain);
+  if (!row || row.site_slug !== slug || row.state !== 'detached' || row.simulated || !deps.vercel) return null;
+  return (await deps.vercel.owned(domain)) ? row : null;
+}
+
 export function resultFor(row: DomainRow): FlowResult {
   const body = statusBody(row);
   if (row.state === 'live') return { status: 200, body };
@@ -587,7 +631,16 @@ export async function reserveSlot(c: SlotClaim, deps: DomainFlowDeps): Promise<{
     if (holder) return { result: { status: 409, body: { error: 'site-has-domain' } } };
     if (precheckNeeded) {
       const pre = await precheckDomain(deps, domain);
-      if (pre) return { result: { status: 409, body: { error: pre } } };
+      // The same site re-buying its OWN detached name (still registered to us): the old slot
+      // hands the registration over; the new one records it as bought without a purchase.
+      const own = pre === 'domain-taken' ? await ownDetached(deps, slug, domain) : null;
+      if (pre && !own) return { result: { status: 409, body: { error: pre } } };
+      if (own) {
+        await deps.repo.update(own.original_transaction_id, ['detached'], {
+          state: 'failed', failure_reason: 'moved-to-new-subscription', auto_renew: false,
+          last_error: `registration handed over to ${key}`,
+        });
+      }
     }
     const ins = await deps.repo.insertReserved({
       original_transaction_id: key, source: c.source, environment: c.environment, site_slug: slug, domain,
@@ -818,6 +871,42 @@ export async function sweepDomains(
     }
   }
 
+  /**
+   * Vercel CONFIRMS the registration is gone (a read, not an error):
+   * - still attached and paid (N1): unlink it and fail the row, so the app offers "pick another
+   *   name" on the same slot instead of a dead domain;
+   * - detached and the payer ended (N7): nothing left to watch; failed, never re-checked.
+   */
+  async function settleGone(row: DomainRow, s: PayerStatus): Promise<DomainRow> {
+    let owned;
+    try {
+      owned = await deps.vercel!.owned(row.domain);
+    } catch {
+      return row;
+    }
+    if (owned) return row;
+    if (ATTACHED_STATES.includes(row.state) && s.active) {
+      console.error(`[domains] ALERT ${row.domain} (${row.original_transaction_id}): paid, but the registration is gone at Vercel; unlinking, the slot is reusable`);
+      try {
+        const project = projectFor(row.site_slug);
+        await deps.vercel!.removeProjectDomain(project, `www.${row.domain}`);
+        await deps.vercel!.removeProjectDomain(project, row.domain);
+        await deps.hooks.onDomainUnlinked(row.site_slug);
+      } catch (e) {
+        console.error(`[domains] ${row.domain}: unlinking the expired registration failed; retried:`, errMsg(e));
+        return row;
+      }
+      return (await deps.repo.update(row.original_transaction_id, ATTACHED_STATES, {
+        state: 'failed', failure_reason: 'registration-expired', auto_renew: false,
+        last_error: 'ALERT: the registration expired at Vercel while paid; the barber can pick a name again',
+      })) ?? row;
+    }
+    if (row.state === 'detached' && !s.active) {
+      return (await deps.repo.update(row.original_transaction_id, ['detached'], { state: 'failed', failure_reason: 'registration-expired', auto_renew: false })) ?? row;
+    }
+    return row;
+  }
+
   // 1. Lapses: the paid period ended (payer confirms) → detach, under the row's lease.
   await pass('lapse', async () => {
     for (const cand of await deps.repo.lapseCandidates(limit, deps.now() - GRACE_MS)) {
@@ -831,7 +920,7 @@ export async function sweepDomains(
         row = await refreshFromPayer(row, s, deps);
         if (s.active) {
           out.stillActive.push(row.domain);
-          return row;
+          return deps.vercel && !row.simulated ? settleGone(row, s) : row;
         }
         const moved = await deps.repo.update(otid, ATTACHED_STATES, { state: 'detaching', auto_renew: false, auto_renew_synced: false });
         if (!moved) return row;
@@ -875,6 +964,7 @@ export async function sweepDomains(
         const s = await payerOf(row);
         if (s) row = await refreshFromPayer(row, s, deps);
         row = await syncAutoRenew({ ...row, auto_renew_synced: false }, deps);
+        if (s && !row.simulated && deps.vercel) row = await settleGone(row, s);
         out.refreshed.push(row.domain);
       });
     }
@@ -903,8 +993,19 @@ export async function sweepDomains(
           deps.vercel!.domainConfig(row.domain),
         ]);
         if (!pd?.verified || !cfg || cfg.misconfigured) return;
-        await deps.hooks.onDomainLinked(row.site_slug, row.domain);
-        await deps.repo.update(row.original_transaction_id, ['live'], { dns_ready_at: iso(deps.now()) });
+        const want = `https://${row.domain}`;
+        // First time: republish (publishSite refreshes the base). Later sweeps: refresh the base
+        // only, until it really is the domain (a Vercel blip during the refresh keeps the old one).
+        if (row.last_error === BASE_PENDING && deps.base) await deps.base.refresh(row.site_slug);
+        else await deps.hooks.onDomainLinked(row.site_slug, row.domain);
+        const base = deps.base ? await deps.base.read(row.site_slug) : undefined;
+        if (base !== undefined && base !== want) {
+          await deps.repo.update(row.original_transaction_id, ['live'], { last_error: BASE_PENDING });
+          return;
+        }
+        await deps.repo.update(row.original_transaction_id, ['live'], {
+          dns_ready_at: iso(deps.now()), ...(row.last_error === BASE_PENDING ? { last_error: null } : {}),
+        });
         out.relinked.push(row.domain);
       });
     }

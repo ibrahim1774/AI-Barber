@@ -16,6 +16,7 @@ import { VerifyFailure, lazyDefaultVerifier } from './appleVerify.js';
 import { PayerFailure, appleStatus, projectFor, applyDomainNotification, sweepDomains, type DomainFlowDeps, type DomainSweepSummary, type PayerStatus } from './domainFlow.js';
 import { makeDomainHooks, makeRefreshBase } from './domainHooks.js';
 import { findShopForSite, liveSiteBaseDeps, refreshSiteBase } from '../siteSubpages.js';
+import { isMissingSiteColumn } from '../siteColumns.js';
 import { supabaseDomains, type DomainRow } from './domainsRepo.js';
 import type { DomainNotificationSink } from './notifications.js';
 import { supabasePurchases } from './purchases.js';
@@ -47,6 +48,41 @@ export async function stripeSubscription(id: string): Promise<any | null> {
   if (r.status === 404) return null;
   if (!r.ok) throw new Error(`Stripe subscription lookup failed: ${r.status}`);
   return r.json();
+}
+
+async function stripe(method: string, path: string, opts: { form?: Record<string, string>; idem?: string } = {}) {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) throw new Error('STRIPE_SECRET_KEY not set');
+  const headers: Record<string, string> = { Authorization: `Bearer ${key}` };
+  if (opts.form) headers['Content-Type'] = 'application/x-www-form-urlencoded';
+  if (opts.idem) headers['Idempotency-Key'] = opts.idem;
+  const r = await fetch(`https://api.stripe.com${path}`, {
+    method, headers, body: opts.form ? new URLSearchParams(opts.form).toString() : undefined, signal: AbortSignal.timeout(10_000),
+  });
+  const data: any = await r.json().catch(() => null);
+  return { ok: r.ok, status: r.status, data };
+}
+
+/**
+ * Cancel a domain subscription NOW and refund its latest payment in full. Idempotent: the
+ * refund carries an Idempotency-Key per subscription, an already-cancelled subscription is fine,
+ * and an already-refunded charge (charge_already_refunded) counts as done.
+ */
+export async function stripeCancelAndRefund(subId: string): Promise<void> {
+  if (!/^sub_[A-Za-z0-9]{6,200}$/.test(subId)) throw new Error('bad subscription id');
+  const sub = await stripe('GET', `/v1/subscriptions/${subId}?expand[]=latest_invoice.payment_intent`);
+  if (!sub.ok) throw new Error(`subscription lookup failed: ${sub.status}`);
+  const inv = sub.data?.latest_invoice;
+  const pi = typeof inv?.payment_intent === 'string' ? inv.payment_intent : inv?.payment_intent?.id
+    ?? inv?.payments?.data?.[0]?.payment?.payment_intent;
+  const charge = typeof inv?.charge === 'string' ? inv.charge : inv?.charge?.id;
+  if (!pi && !charge) throw new Error('no payment to refund on the latest invoice');
+  const ref = await stripe('POST', '/v1/refunds', { form: pi ? { payment_intent: pi } : { charge }, idem: `domain-refund-${subId}` });
+  if (!ref.ok && ref.data?.error?.code !== 'charge_already_refunded') throw new Error(`refund failed: ${ref.status} ${ref.data?.error?.code || ''}`);
+  if (sub.data?.status !== 'canceled') {
+    const del = await stripe('DELETE', `/v1/subscriptions/${subId}`, { idem: `domain-cancel-${subId}` });
+    if (!del.ok && del.status !== 404) throw new Error(`cancel failed: ${del.status}`);
+  }
 }
 
 /** The payer of a domain row, asked NOW: Apple (domain verifier, latest renewal info) or Stripe. */
@@ -103,6 +139,19 @@ export function liveDomainDeps(): DomainFlowDeps {
     now: Date.now,
     sandboxRealOtids: sandboxRealOtids(),
     probeHttps,
+    base: {
+      async read(slug) {
+        const shop = await findShopForSite(slug);
+        if (!shop) return undefined;
+        const { data, error } = await client.from('ab_shops').select('site_base_url').eq('id', shop.id).maybeSingle();
+        if (error) {
+          if (isMissingSiteColumn(error)) return undefined; // 011 not applied: nothing to check
+          throw new Error(`ab_shops read failed: ${error.message}`);
+        }
+        return (data as any)?.site_base_url ?? null;
+      },
+      refresh: makeRefreshBase({ findShop: findShopForSite, refreshSiteBase, siteBaseDeps: liveSiteBaseDeps, projectFor }),
+    },
   };
 }
 
@@ -121,7 +170,7 @@ export function liveWebDomainDeps(authorize: WebDomainDeps['authorize']): WebDom
     flow: liveDomainDeps(),
     secret: process.env.DOMAIN_CHECKOUT_SECRET || '',
     priceId: process.env.STRIPE_DOMAIN_PRICE_ID || undefined,
-    testMode: key.startsWith('sk_test_'),
+    cancelAndRefund: (subId) => stripeCancelAndRefund(subId),
   };
 }
 

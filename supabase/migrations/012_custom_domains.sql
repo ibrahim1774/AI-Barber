@@ -46,6 +46,8 @@ create table public.ios_domains (
   detached_at timestamptz,
   transferred_at timestamptz,
   transferred_by text,
+  -- website: a paid subscription refused before anything was bought was cancelled and refunded
+  refunded_at timestamptz,
   -- a claim or the sweep is working on the row until then
   lease_until timestamptz,
   created_at timestamptz not null default now(),

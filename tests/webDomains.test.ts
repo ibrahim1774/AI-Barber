@@ -59,7 +59,8 @@ function world() {
   const deps = {
     authorize,
     getStripeSession: vi.fn(async () => ({ ok: true, status: 200, data: sessionData })),
-    getSubscription, flow, secret: SECRET, testMode: false,
+    getSubscription, flow, secret: SECRET,
+    cancelAndRefund: vi.fn(async (_id: string) => {}),
   };
   return {
     reg, repo, subs, deps, flow, hooks,
@@ -153,6 +154,7 @@ describe('signed metadata and the domain price', () => {
     expect(stripePayerStatus(base, 0)).toEqual({ active: true, autoRenew: true, expiresAt: 2_000_000, revoked: false });
     expect(stripePayerStatus({ ...base, cancel_at_period_end: true }, 0)).toMatchObject({ active: true, autoRenew: false });
     expect(stripePayerStatus({ ...base, status: 'past_due' }, 0)).toMatchObject({ active: false, autoRenew: false });
+    expect(stripePayerStatus({ ...base, status: 'trialing' }, 0)).toMatchObject({ active: false }); // no trial: never paid
     expect(stripePayerStatus({ ...base, status: 'canceled', ended_at: 100, current_period_end: 100_000 }, 0)).toMatchObject({ active: false, revoked: true });
     expect(stripePayerStatus({ ...base, status: 'canceled', ended_at: 100_000, current_period_end: 100_000 }, 0)).toMatchObject({ revoked: false });
     // newer Stripe API: the period on the item
@@ -211,9 +213,19 @@ describe('purchase-domain: owner of the session site, strict session checks, ide
     expect(w.reg.api.buy).not.toHaveBeenCalled();
   });
 
-  it('Stripe test mode is simulated: nothing is bought', async () => {
+  it('a live session is real whatever the key looks like (test mode only from Stripe livemode)', async () => {
     const w = world();
-    expect(await purchaseDomain({ sessionId: SID }, OWNER_AUTH, { ...w.deps, testMode: true })).toMatchObject({ status: 200, body: { sandbox: true } });
+    vi.stubEnv('STRIPE_SECRET_KEY', 'rk_test_restricted');
+    w.setSession({ livemode: true });
+    expect(await purchaseDomain({ sessionId: SID }, OWNER_AUTH, w.deps)).toMatchObject({ status: 200 });
+    expect(w.reg.api.buy).toHaveBeenCalledTimes(1);
+    vi.unstubAllEnvs();
+  });
+
+  it('Stripe test mode (livemode false) is simulated: nothing is bought', async () => {
+    const w = world();
+    w.setSession({ livemode: false });
+    expect(await purchaseDomain({ sessionId: SID }, OWNER_AUTH, w.deps)).toMatchObject({ status: 200, body: { sandbox: true } });
     expect(w.reg.api.buy).not.toHaveBeenCalled();
   });
 });
@@ -287,18 +299,62 @@ describe('Stripe webhook: the same lifecycle as the app', () => {
     await purchaseDomain({ sessionId: SID }, OWNER_AUTH, w.deps);
     w.subs.sub_dom2 = { ...structuredClone(w.subs.sub_dom1), id: 'sub_dom2', metadata: signedMd('secondname.com') };
     const r = await w.event('checkout.session.completed', { id: 'cs_live_second0001', subscription: 'sub_dom2', metadata: signedMd('secondname.com') });
-    expect(r).toMatchObject({ handled: true, status: 200, body: { domain: false, refused: 'site-has-domain' } });
+    expect(r).toMatchObject({ handled: true, status: 200, body: { domain: false, refused: 'site-has-domain', refunded: true } });
     expect(w.repo.rows.get('stripe:sub_dom2')).toMatchObject({ state: 'failed', failure_reason: 'site-has-domain', site_slug: 'fresh-cuts' });
+    expect(w.repo.rows.get('stripe:sub_dom2')!.refunded_at).not.toBeNull();
+    expect(w.deps.cancelAndRefund).toHaveBeenCalledWith('sub_dom2');
     expect(w.reg.api.buy).toHaveBeenCalledTimes(1);
+    // Stripe retries the event: idempotent, no second refund.
+    await w.event('checkout.session.completed', { id: 'cs_live_second0001', subscription: 'sub_dom2', metadata: signedMd('secondname.com') });
+    expect(w.deps.cancelAndRefund).toHaveBeenCalledTimes(1);
   });
 
   it('the name taken between checkout and payment → failed:taken row, nothing bought', async () => {
     const w = world();
     w.reg.takeByStranger('freshcuts.com');
     const r = await purchaseDomain({ sessionId: SID }, OWNER_AUTH, w.deps);
-    expect(r).toMatchObject({ status: 409, body: { error: 'domain-taken', paidSubscriptionNeedsSupport: true } });
+    expect(r).toMatchObject({ status: 409, body: { error: 'domain-taken', refunded: true, message: expect.stringMatching(/refunded in full/) } });
     expect(w.repo.rows.get('stripe:sub_dom1')).toMatchObject({ state: 'failed', failure_reason: 'taken' });
+    expect(w.deps.cancelAndRefund).toHaveBeenCalledWith('sub_dom1');
     expect(w.reg.api.buy).not.toHaveBeenCalled();
+    // The success page asks again: the same answer, no second refund.
+    expect(await purchaseDomain({ sessionId: SID }, OWNER_AUTH, w.deps)).toMatchObject({ status: 409, body: { refunded: true } });
+    expect(w.deps.cancelAndRefund).toHaveBeenCalledTimes(1);
+  });
+
+  it('a failed refund is retried (webhook 500, then the next delivery finishes it)', async () => {
+    const w = world();
+    w.reg.takeByStranger('freshcuts.com');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    w.deps.cancelAndRefund.mockRejectedValueOnce(new Error('stripe down'));
+    const ev = { id: SID, subscription: 'sub_dom1', payment_status: 'paid', metadata: signedMd() };
+    expect(await w.event('checkout.session.completed', ev)).toMatchObject({ status: 500 });
+    expect(w.repo.rows.get('stripe:sub_dom1')!.refunded_at).toBeNull();
+    expect(await w.event('checkout.session.completed', ev)).toMatchObject({ status: 200, body: { refunded: true } });
+    expect(w.repo.rows.get('stripe:sub_dom1')!.refunded_at).not.toBeNull();
+  });
+
+  it('the same site may buy back its own detached name: no new purchase, the registration is handed over', async () => {
+    const w = world();
+    await purchaseDomain({ sessionId: SID }, OWNER_AUTH, w.deps);
+    w.subs.sub_dom1.status = 'canceled';
+    w.subs.sub_dom1.ended_at = (T0 + 365 * DAY) / 1000;
+    w.tick(366 * DAY);
+    w.reg.registered.get('freshcuts.com')!.expiresAt = w.flow.now() + 200 * DAY; // still ours (renewed earlier)
+    await w.sweep();
+    expect(w.repo.rows.get('stripe:sub_dom1')!.state).toBe('detached');
+    // checkout for the same name on the same site is allowed …
+    const createStripeSession = vi.fn(async () => ({ ok: true, status: 200, data: { url: 'u' } }));
+    expect((await createDomainCheckout({ domain: 'freshcuts.com', siteId: 'fresh-cuts' }, 'o', OWNER_AUTH, { authorize, flow: w.flow, secret: SECRET, createStripeSession })).status).toBe(200);
+    // … and the new subscription takes the registration over without buying again.
+    w.subs.sub_dom3 = { ...structuredClone(w.subs.sub_dom1), id: 'sub_dom3', status: 'active', ended_at: null, current_period_end: (w.flow.now() + 365 * DAY) / 1000 };
+    w.setSession({ subscription: 'sub_dom3' });
+    expect(await purchaseDomain({ sessionId: SID }, OWNER_AUTH, w.deps)).toMatchObject({ status: 200, body: { state: 'live', domain: 'freshcuts.com' } });
+    expect(w.reg.api.buy).toHaveBeenCalledTimes(1);
+    expect(w.repo.rows.get('stripe:sub_dom1')).toMatchObject({ state: 'failed', failure_reason: 'moved-to-new-subscription' });
+    // another site can't take it
+    const other = await createDomainCheckout({ domain: 'freshcuts.com', siteId: 'other-shop' }, 'o', OWNER_AUTH, { authorize, flow: w.flow, secret: SECRET, createStripeSession });
+    expect(other.status).toBe(403);
   });
 
   it('a missing signing secret → 500 (Stripe retries), never a silent 200', async () => {
