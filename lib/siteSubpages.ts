@@ -40,11 +40,20 @@ export interface Rewrite { source: string; destination: string }
 
 const BOOK_HTML = '/_ab/book.html';
 const SHOP_HTML = '/_ab/shop.html';
-// Unnamed group on purpose: a named parameter unused in the destination is appended to the
-// upstream query. The page reads the token from the browser's path.
-const BOOK_MANAGE = '/book/manage/([^/]+)';
-const SHOP_MANAGE = '/shop/manage/([^/]+)';
-const ASSETS = '/_ab/assets/:file';
+// Manage and order tokens: the ab_appointments / ab_orders manage_token alphabet (005), as an
+// unnamed group (a named parameter unused in the destination is appended to the upstream
+// query). The page reads the token from the browser's path.
+const TOKEN = '([A-Za-z0-9_-]+)';
+const BOOK_MANAGE = `/book/manage/${TOKEN}`;
+const SHOP_MANAGE = `/shop/manage/${TOKEN}`;
+/**
+ * A file the /_ab build emits: `[name]-[hash].js|css`, one segment, no dots but the extension
+ * (vite.subpages.config.ts names its output to match; tests/subpagesBuild.test.ts checks every
+ * emitted file). Nothing else under /_ab/assets is proxied, so a miss is the barber site's 404.
+ */
+export const SUBPAGE_ASSET_FILE = '[A-Za-z0-9_-]+\\.(?:js|css)';
+const ASSETS = `/_ab/assets/:file(${SUBPAGE_ASSET_FILE})`;
+const ASSETS_DEST = '/_ab/assets/:file';
 
 /** Every public endpoint src/book and src/shop call (src/book/api.ts, src/shop/api.ts). */
 const PAGE_APIS = [
@@ -55,25 +64,28 @@ const PAGE_APIS = [
 const MANAGE_APIS = ['/api/book/manage', '/api/book/sent', '/api/store/order', '/api/store/sent'] as const;
 
 const to = (path: string): string => `${AIBARBER_ORIGIN}${path}`;
+// Vercel matches sources strictly: the trailing-slash form is its own rule, to the same page.
+const page = (source: string, dest: string): Rewrite[] => [
+  { source, destination: to(dest) },
+  { source: `${source}/`, destination: to(dest) },
+];
 
 /** The closed allow-list. The only place a barber site's proxy rules are made. */
 export function subpageRewrites(sp: SiteSubpages): Rewrite[] {
+  const assets = { source: ASSETS, destination: to(ASSETS_DEST) };
   if (sp.mode === 'full') {
     if (!isShopSlug(sp.shopSlug)) throw new Error(`invalid shop slug for site subpages: ${String(sp.shopSlug).slice(0, 80)}`);
     return [
-      { source: '/book', destination: to(BOOK_HTML) },
-      { source: BOOK_MANAGE, destination: to(BOOK_HTML) },
-      { source: '/shop', destination: to(SHOP_HTML) },
-      { source: SHOP_MANAGE, destination: to(SHOP_HTML) },
-      { source: ASSETS, destination: to(ASSETS) },
+      ...page('/book', BOOK_HTML), ...page(BOOK_MANAGE, BOOK_HTML),
+      ...page('/shop', SHOP_HTML), ...page(SHOP_MANAGE, SHOP_HTML),
+      assets,
       ...PAGE_APIS.map((p) => ({ source: p, destination: to(p) })),
     ];
   }
   if (sp.mode === 'manage-only') {
     return [
-      { source: BOOK_MANAGE, destination: to(BOOK_HTML) },
-      { source: SHOP_MANAGE, destination: to(SHOP_HTML) },
-      { source: ASSETS, destination: to(ASSETS) },
+      ...page(BOOK_MANAGE, BOOK_HTML), ...page(SHOP_MANAGE, SHOP_HTML),
+      assets,
       ...MANAGE_APIS.map((p) => ({ source: p, destination: to(p) })),
     ];
   }

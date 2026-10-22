@@ -28,6 +28,11 @@ export default defineConfig({
       },
       output: {
         manualChunks: { 'vendor-react': ['react', 'react-dom'] },
+        // [name]-[hash].js|css, no dots but the extension: the only file names barber sites
+        // proxy (lib/siteSubpages.ts SUBPAGE_ASSET_FILE). Shared chunks are named by hash only.
+        entryFileNames: 'assets/[name]-[hash].js',
+        chunkFileNames: (c) => (c.name === 'vendor-react' ? 'assets/vendor-react-[hash].js' : 'assets/chunk-[hash].js'),
+        assetFileNames: 'assets/[name]-[hash][extname]',
       },
     },
   },
