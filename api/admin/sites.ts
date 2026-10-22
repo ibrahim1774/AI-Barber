@@ -85,7 +85,12 @@ export function makeAdminSitesHandler(d: AdminSitesHandlerDeps) {
       const by = auth.email;
       const slug = str(body.slug);
       const needSlug = () => res.status(400).json({ ok: false, error: 'bad-request', detail: 'slug required' });
-      const expectedVersion = Number.isInteger(body.expectedVersion) ? body.expectedVersion : undefined;
+      // Present but not a whole number >= 0 (e.g. the string "1" from a stale form) is a 400: before,
+      // it was silently dropped and the write became a blind overwrite (e2e M2).
+      if (body.expectedVersion != null && !(Number.isInteger(body.expectedVersion) && body.expectedVersion >= 0)) {
+        return res.status(400).json({ ok: false, error: 'bad-request', detail: 'expectedVersion must be a whole number' });
+      }
+      const expectedVersion: number | undefined = body.expectedVersion ?? undefined;
       const note = typeof body.note === 'string' ? body.note : undefined;
 
       let r: any;

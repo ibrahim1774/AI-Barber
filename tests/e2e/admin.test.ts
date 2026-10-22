@@ -141,18 +141,20 @@ describe('edit / replace / rollback through the handler', () => {
     expect(r).toMatchObject({ statusCode: 409, body: { error: 'conflict', version: 1 } });
   });
 
-  it.fails('BUG: expectedVersion sent as a string ("1") is silently ignored, so a stale dashboard overwrites (expected 400 or 409)', async () => {
+  it('M2 (fixed): expectedVersion sent as a string ("1") is refused, never a blind overwrite', async () => {
     await app();
     await call({ body: { action: 'update', slug: 'fade-lab', set: { area: 'Newer' } } }); // v2
     const r = await call({ body: { action: 'update', slug: 'fade-lab', set: { area: 'Stale tab' }, expectedVersion: '1' } });
     expect([400, 409]).toContain(r.statusCode);
   });
 
-  it('setup: with a string expectedVersion the write goes through as v3 over v2', async () => {
+  it.each([['1'], [1.5], [-1], [true], [{}]])('setup (was: the write goes through as v3): expectedVersion %j is 400 and nothing is written', async (ev) => {
     await app();
     await call({ body: { action: 'update', slug: 'fade-lab', set: { area: 'Newer' } } });
-    const r = await call({ body: { action: 'update', slug: 'fade-lab', set: { area: 'Stale tab' }, expectedVersion: '1' } });
-    expect(r.body).toMatchObject({ ok: true, version: 3 });
+    const r = await call({ body: { action: 'update', slug: 'fade-lab', set: { area: 'Stale tab' }, expectedVersion: ev } });
+    expect(r).toMatchObject({ statusCode: 400, body: { error: 'bad-request' } });
+    expect(pendingOf('fade-lab')).toMatchObject({ version: 2 });
+    expect(pendingOf('fade-lab').siteData.area).toBe('Newer');
   });
 });
 
