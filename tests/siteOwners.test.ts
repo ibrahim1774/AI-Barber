@@ -269,3 +269,42 @@ describe('admin: web-owner / set-web-owner (API action, CLI)', () => {
     expect(out.at(-1)).toBe('comped: waiting for new@example.com to sign in with a confirmed email (admin).');
   });
 });
+
+describe('backfill planner (scripts/backfill-site-owners.mjs)', () => {
+  it('site checkouts only; confirmed account -> owner, else the email to claim; owned, app and ambiguous slugs skipped', async () => {
+    const { planBackfill, toBackfillSession } = await import('../lib/siteOwnersBackfill.js');
+    const s = (id: string, siteId: string, email: string | null, over: Record<string, unknown> = {}) => toBackfillSession({
+      id, mode: 'subscription', status: 'complete', payment_status: 'paid', metadata: { app: 'aibarber', siteId },
+      customer_details: { email }, created: Number(id.replace(/\D/g, '')) || 1, ...over,
+    });
+    const plan = planBackfill([
+      s('cs_1', 'Fresh Cuts', 'Barber@Example.com'),
+      s('cs_2', 'fresh-cuts', 'barber@example.com'), // a renewal checkout, same email
+      s('cs_3', 'new-shop', 'nobody@example.com'),
+      s('cs_4', 'pre-registered', 'victim@example.com'),
+      s('cs_5', 'two-buyers', 'a@example.com'),
+      s('cs_6', 'two-buyers', 'b@example.com'),
+      s('cs_7', 'already', 'x@example.com'),
+      s('cs_8', 'fade-lab', 'x@example.com'),
+      s('cs_9', 'domain', 'x@example.com', { mode: 'payment' }),
+      s('cs_10', 'other-app', 'x@example.com', { metadata: { app: 'primehub', siteId: 'other-app' } }),
+      s('cs_11', 'no-email', null),
+    ], {
+      accountByEmail: new Map([['barber@example.com', { id: A, emailConfirmed: true }], ['victim@example.com', { id: B, emailConfirmed: false }]]),
+      owned: new Set(['already']),
+      appSlugs: new Set(['fade-lab']),
+    });
+    expect(plan.insert).toEqual([
+      { slug: 'fresh-cuts', user_id: A, claim_email: null, source: 'backfill', checkout_session_id: 'cs_1' },
+      { slug: 'new-shop', user_id: null, claim_email: 'nobody@example.com', source: 'backfill', checkout_session_id: 'cs_3' },
+      { slug: 'pre-registered', user_id: null, claim_email: 'victim@example.com', source: 'backfill', checkout_session_id: 'cs_4' },
+    ]);
+    expect(plan.skipped).toEqual([
+      { slug: 'already', reason: 'already-owned' },
+      { slug: 'fade-lab', reason: 'app-site' },
+      { slug: 'no-email', reason: 'no-email' },
+      { slug: 'two-buyers', reason: 'several-emails', detail: 'a@example.com, b@example.com' },
+    ]);
+    expect(plan.ignoredSessions).toBe(2);
+  });
+});
