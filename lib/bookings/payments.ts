@@ -239,6 +239,21 @@ export async function refundAppointment(
 }
 
 /**
+ * Cumulative refunded cents on a payment intent's latest charge (connected account). Used when a
+ * payment is recorded, so a refund whose charge.refunded event arrived BEFORE the payment's own
+ * event (and was therefore unmatched) is still booked (e2e I5). Throws on a Stripe error.
+ */
+export async function paymentRefundedCents(shop: PayShop, paymentIntentId: string, opts: StripeOpts = {}): Promise<number> {
+  if (!shop.stripe_account_id) throw new StripeApiError('shop has no connected account', 400, 'no-account');
+  const pi = await stripeRequest('GET', `/payment_intents/${encodeURIComponent(paymentIntentId)}`, { 'expand[]': 'latest_charge' }, {
+    account: shop.stripe_account_id, fetch: opts.fetch,
+  });
+  const charge = pi?.latest_charge;
+  const refunded = charge && typeof charge === 'object' ? Number(charge.amount_refunded) : 0;
+  return Number.isFinite(refunded) && refunded > 0 ? Math.floor(refunded) : 0;
+}
+
+/**
  * Close an unpaid Checkout Session now (e.g. the customer cancels a held card booking), so it
  * can no longer be paid. Never throws; returns false if Stripe refused (already complete/expired).
  */
@@ -530,6 +545,8 @@ export interface WebhookDeps {
   /** Fire-and-forget (live: waitUntil). Must not block or fail the webhook response. */
   notify(event: NotifyEvent): Promise<void>;
   now(): number;
+  /** Stripe's cumulative refunded cents on the payment's charge (paymentRefundedCents), asked when a payment is recorded (e2e I5). Absent: not asked. */
+  refundedOnStripe?(shop: PayShop, paymentIntentId: string): Promise<number>;
 }
 
 export interface StripeEvent {
@@ -564,6 +581,18 @@ export async function handleConnectEvent(event: StripeEvent, deps: WebhookDeps, 
     }
   }
   for (const n of r.orderNotify ?? []) {
+    // The order confirmation goes out once (e2e M4): two concurrent deliveries of one completed
+    // event both pass the processed-event check, and the second used to re-send it. A claim that
+    // can't be checked (store error) sends anyway: a rare duplicate beats a lost confirmation.
+    if (n.kind === 'order_created' && orderDeps?.claimOnce) {
+      let first = true;
+      try {
+        first = await orderDeps.claimOnce(`order_created:${n.orderId}`);
+      } catch (e: any) {
+        console.error('[stripe/connect-webhook] confirmation claim failed, sending anyway:', e?.message || e);
+      }
+      if (!first) continue;
+    }
     try {
       void orderDeps?.notify(n).catch((e: any) => console.error('[stripe/connect-webhook] order notify failed:', e?.message || e));
     } catch (e: any) {
@@ -596,6 +625,21 @@ async function apptForEvent(
 
 const piOf = (v: any): string | null => (typeof v === 'string' ? v : v?.id ?? null);
 
+/**
+ * e2e I5 (booking side): a charge.refunded that arrived before this payment's completed event
+ * matched nothing and was recorded as handled. When the payment is recorded, book Stripe's
+ * cumulative refund with the same monotonic write. A failed read throws (500): the event is not
+ * recorded, Stripe retries, and the retry lands in the already-recorded branch, which syncs.
+ */
+async function syncApptRefunds(deps: WebhookDeps, shop: PayShop, appt: { id: string; amount_paid_cents?: number | null; amount_refunded_cents?: number | null }, pi: string) {
+  if (!deps.refundedOnStripe) return;
+  const refunded = await deps.refundedOnStripe(shop, pi);
+  if (refunded <= Math.max(0, Math.floor(appt.amount_refunded_cents ?? 0))) return;
+  const paid = Math.max(0, Math.floor(appt.amount_paid_cents ?? 0));
+  console.warn('[stripe/connect-webhook] payment recorded with a refund already on Stripe; booking it:', JSON.stringify({ appointment: appt.id, paymentIntent: pi, refunded }));
+  await deps.setRefunded(appt.id, refunded, paid > 0 && refunded >= paid ? 'refunded' : 'partially_refunded');
+}
+
 async function sessionPaid(event: StripeEvent, obj: any, deps: WebhookDeps, orderDeps?: OrderWebhookDeps): Promise<Outcome> {
   if (obj.payment_status !== 'paid') return { outcome: 'ignored:unpaid' };
   const amount = Math.max(0, Math.floor(Number(obj.amount_total) || 0));
@@ -618,6 +662,7 @@ async function sessionPaid(event: StripeEvent, obj: any, deps: WebhookDeps, orde
   // 1. The normal case: the booking is live. Atomic with the cancel path (which updates
   //    `where status = 'booked'`): whichever commits first decides who owns the money.
   if (await deps.markPaid(before.id, { paymentStatus, amountPaidCents: amount, paymentIntentId: pi })) {
+    await syncApptRefunds(deps, shop, { ...before, amount_paid_cents: amount }, pi);
     return { outcome: `paid:${paymentStatus}`, notify: [{ kind: 'booking_created', appointmentId: before.id }] };
   }
 
@@ -636,7 +681,9 @@ async function sessionPaid(event: StripeEvent, obj: any, deps: WebhookDeps, orde
     // The payment landed while the booking was live (an earlier delivery). If it was cancelled
     // since, the cancel path saw the payment and owns the refund policy: nothing to do here.
     if (appt.status === 'cancelled') return { outcome: 'noop:cancel-owns-refund' };
-    // Redelivery of an event that was not recorded: the confirmation was not sent either.
+    // Redelivery of an event that was not recorded: finish the refund sync (I5); the
+    // confirmation was not sent either.
+    await syncApptRefunds(deps, shop, appt, pi);
     return { outcome: 'noop:already-recorded', notify: [{ kind: 'booking_created', appointmentId: appt.id }] };
   }
 
@@ -824,6 +871,7 @@ export function liveWebhookDeps(db: SupabaseClient = serviceDb()): WebhookDeps {
     refund: (shop, appt, amount, idempotencyKey) => refundAppointment(shop, appt, amount, { idempotencyKey }),
     // After the response, kept alive by waitUntil. Dynamic import: notify.ts imports this module.
     notify: async (e) => { waitUntil(import('./notify.js').then((m) => m.notify(e))); },
+    refundedOnStripe: (shop, pi) => paymentRefundedCents(shop, pi),
     now: () => Date.now(),
   };
 }

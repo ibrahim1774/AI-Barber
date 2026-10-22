@@ -282,7 +282,7 @@ describe('Connect webhook: replay, duplicates, ordering, other apps', () => {
     expect(m.order(id).amount_paid_cents).toBe(3500);
   });
 
-  it.fails('BUG: two concurrent deliveries of one completed event send the order confirmation twice', async () => {
+  it('M4 (fixed): two concurrent deliveries of one completed event send the order confirmation once', async () => {
     await cardOrder();
     const o = m.state.orders.at(-1)!;
     const ev = m.event('checkout.session.completed', paySession(o.stripe_checkout_session_id!));
@@ -290,15 +290,17 @@ describe('Connect webhook: replay, duplicates, ordering, other apps', () => {
     expect(m.notes.filter((n) => n.kind === 'order_created')).toHaveLength(1);
   });
 
-  it('setup: both concurrent deliveries pass the processed-event check before either records it', async () => {
+  it('setup: both concurrent deliveries pass the processed-event check before either records it (the confirmation claim makes it harmless)', async () => {
     await cardOrder();
     const o = m.state.orders.at(-1)!;
     const ev = m.event('checkout.session.completed', paySession(o.stripe_checkout_session_id!));
+    const before = m.rawNotes.filter((n) => n.kind === 'order_created').length; // the hold's own (suppressed) one
     const [a, b] = await Promise.all([m.deliver(ev), m.deliver(ev)]);
     expect([a.body.outcome, b.body.outcome].sort()).toEqual(['order:noop:already-recorded', 'order:paid']);
+    expect(m.rawNotes.filter((n) => n.kind === 'order_created').length - before).toBe(1);
   });
 
-  it.fails('BUG: charge.refunded delivered before checkout.session.completed is recorded as handled and the refund is never booked', async () => {
+  it('I5 (fixed): charge.refunded delivered before checkout.session.completed is booked when the payment is recorded', async () => {
     await cardOrder();
     const o = m.state.orders.at(-1)!;
     const session = paySession(o.stripe_checkout_session_id!);
@@ -310,15 +312,40 @@ describe('Connect webhook: replay, duplicates, ordering, other apps', () => {
     expect(m.order(o.id).amount_refunded_cents).toBe(3500);
   });
 
-  it('setup: the early charge.refunded is ignored and recorded as processed, then completed marks it paid in full', async () => {
+  it('setup (was: completed marks it paid in full): the early charge.refunded is still ignored (unmatched) and recorded; completed then books the full refund and cancels, no confirmation', async () => {
     await cardOrder();
     const o = m.state.orders.at(-1)!;
     const session = paySession(o.stripe_checkout_session_id!);
     const ev = m.event('charge.refunded', dashboardRefund(session.payment_intent!, 3500));
     expect((await m.deliver(ev)).body.outcome).toBe('ignored:no-appointment');
     expect(m.processed.has(ev.id)).toBe(true);
+    expect((await m.deliver(m.event('checkout.session.completed', session))).body.outcome).toBe('order:paid:refunded-on-stripe:cancelled');
+    expect(m.order(o.id)).toMatchObject({ status: 'cancelled', payment_status: 'refunded', amount_refunded_cents: 3500 });
+    expect(m.notes.filter((n) => n.kind === 'order_created')).toHaveLength(0);
+  });
+
+  it('I5: a partial dashboard refund before completed is booked as partially refunded; the order stays paid and is confirmed', async () => {
+    await cardOrder();
+    const o = m.state.orders.at(-1)!;
+    const session = paySession(o.stripe_checkout_session_id!);
+    await m.deliver(m.event('charge.refunded', dashboardRefund(session.payment_intent!, 1000)));
     await m.deliver(m.event('checkout.session.completed', session));
-    expect(m.order(o.id)).toMatchObject({ status: 'paid', payment_status: 'paid', amount_refunded_cents: 0 });
+    expect(m.order(o.id)).toMatchObject({ status: 'paid', payment_status: 'partially_refunded', amount_refunded_cents: 1000 });
+    expect(m.notes.filter((n) => n.kind === 'order_created')).toHaveLength(1);
+  });
+
+  it('I5: a Stripe outage on the refund check is a 500 (event not recorded); the retry books it and confirms once', async () => {
+    await cardOrder();
+    const o = m.state.orders.at(-1)!;
+    const session = paySession(o.stripe_checkout_session_id!);
+    await m.deliver(m.event('charge.refunded', dashboardRefund(session.payment_intent!, 1000)));
+    stripe.failNext.push({ match: (r) => r.method === 'GET' && r.path.startsWith('/payment_intents/'), status: 500 });
+    const ev = m.event('checkout.session.completed', session);
+    expect((await m.deliver(ev)).statusCode).toBe(500);
+    expect(m.processed.has(ev.id)).toBe(false);
+    expect((await m.deliver(ev)).statusCode).toBe(200);
+    expect(m.order(o.id)).toMatchObject({ status: 'paid', amount_refunded_cents: 1000 });
+    expect(m.notes.filter((n) => n.kind === 'order_created')).toHaveLength(1);
   });
 
   it('a failing order write is a 500 and the event is not recorded, so the Stripe retry finishes it', async () => {

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { waitUntil } from '@vercel/functions';
-import { refundKey, serviceDb, StripeApiError, type PayShop, type StripeEvent } from '../bookings/payments.js';
+import { paymentRefundedCents, refundKey, serviceDb, StripeApiError, type PayShop, type StripeEvent } from '../bookings/payments.js';
 import { refundOrder, orderShippingFromSession, STORE_APP, type PayOrder, type OrderAddress } from './payments.js';
 import type { StoreNotifyEvent } from './notify.js';
 
@@ -48,6 +48,17 @@ export interface OrderWebhookDeps {
   /** Fire-and-forget (live: waitUntil). Must not block or fail the webhook response. */
   notify(event: StoreNotifyEvent): Promise<void>;
   now(): number;
+  /**
+   * Stripe's cumulative refunded cents on the payment's charge (lib/bookings/payments.ts
+   * paymentRefundedCents). Asked when a payment is recorded (e2e I5). Throws on an outage.
+   * Absent (older fakes): not asked.
+   */
+  refundedOnStripe?(shop: PayShop, paymentIntentId: string): Promise<number>;
+  /**
+   * Once-only claim (ab_events unique dedupe_key): true for the first caller of `key` only.
+   * The order confirmation is claimed before it is sent (e2e M4). Absent: always true.
+   */
+  claimOnce?(key: string): Promise<boolean>;
 }
 
 export interface OrderOutcome { outcome: string; orderNotify?: StoreNotifyEvent[] }
@@ -143,6 +154,8 @@ export async function handleOrderSession(event: StripeEvent, obj: any, deps: Ord
       if (addr) f.shippingAddress = addr;
     }
     if (await deps.markOrderPaid(before.id, f)) {
+      const synced = await syncStripeRefunds(deps, shop, { ...before, status: 'paid', amount_paid_cents: amount }, pi);
+      if (synced) return synced;
       return { outcome: 'order:paid', orderNotify: [{ kind: 'order_created', orderId: before.id }] };
     }
     // 2. Not recorded by this call: decide on the CURRENT row.
@@ -154,7 +167,11 @@ export async function handleOrderSession(event: StripeEvent, obj: any, deps: Ord
   if (order.paid_at) {
     // Recorded on an earlier delivery. If cancelled since, the owner refund path owns the money.
     if (order.status === 'cancelled') return { outcome: 'order:noop:cancel-owns-refund' };
-    // Redelivery of an event that was not recorded: the confirmation was not sent either.
+    // Redelivery of an event that was not recorded (e.g. the refund check below failed): finish
+    // the refund sync, then the confirmation (claimed once, M4: a concurrent delivery that
+    // recorded the payment has already sent it).
+    const synced = await syncStripeRefunds(deps, shop, order, pi);
+    if (synced) return { ...synced, outcome: 'order:noop:already-recorded:refund-synced' };
     return { outcome: 'order:noop:already-recorded', orderNotify: [{ kind: 'order_created', orderId: order.id }] };
   }
 
@@ -177,6 +194,33 @@ export async function handleOrderSession(event: StripeEvent, obj: any, deps: Ord
 
   console.error(`${LOG} could not record payment:`, JSON.stringify({ order: order.id, status: order.status, paymentIntent: pi, stored: order.stripe_payment_intent_id ?? null }));
   return { outcome: 'order:noop:unrecordable' };
+}
+
+/**
+ * e2e I5: charge.refunded can arrive BEFORE checkout.session.completed (the completed delivery
+ * failed once and Stripe retries it later, while the barber refunded in the dashboard). That
+ * early event matches no order yet and is recorded as handled, so the refund would never be
+ * booked: the order would show paid in full and the app would offer to refund money already
+ * returned. So whenever a payment is recorded, Stripe's cumulative refund on the charge is
+ * read and booked with the same monotonic write as charge.refunded (and a full refund cancels
+ * the order the same way). A failed read throws: the event is not recorded and Stripe's retry
+ * finishes it (markOrderPaid is compare-and-set, so the retry lands here via already-recorded).
+ * Returns an outcome when a refund was booked (no confirmation for a refunded order), else null.
+ */
+async function syncStripeRefunds(deps: OrderWebhookDeps, shop: PayShop, order: WebhookOrder, pi: string): Promise<OrderOutcome | null> {
+  if (!deps.refundedOnStripe) return null;
+  const refunded = await deps.refundedOnStripe(shop, pi);
+  const already = Math.max(0, Math.floor(order.amount_refunded_cents ?? 0));
+  if (refunded <= already) return null;
+  const paid = Math.max(0, Math.floor(order.amount_paid_cents ?? 0));
+  console.warn(`${LOG} payment recorded with a refund already on Stripe; booking it:`, JSON.stringify({ order: order.id, paymentIntent: pi, refunded }));
+  await deps.setOrderRefunded(order.id, refunded, paid > 0 && refunded >= paid ? 'refunded' : 'partially_refunded');
+  if (paid > 0 && refunded >= paid && (order.status === 'new' || order.status === 'paid')) {
+    if (await deps.cancelRefundedOrder(order.id, order.status, new Date(deps.now()).toISOString())) {
+      return { outcome: 'order:paid:refunded-on-stripe:cancelled', orderNotify: [{ kind: 'order_cancelled', orderId: order.id, refundedCents: refunded }] };
+    }
+  }
+  return { outcome: 'order:paid:refund-synced', orderNotify: [{ kind: 'order_created', orderId: order.id }] };
 }
 
 /** checkout.session.expired / async_payment_failed for an order. Null: no order matches. */
@@ -307,5 +351,12 @@ export function liveOrderWebhookDeps(db: SupabaseClient = serviceDb()): OrderWeb
     // After the response, kept alive by waitUntil. Dynamic import, as the booking notify does.
     notify: async (e) => { waitUntil(import('./notify.js').then((m) => m.notifyOrder(e))); },
     now: () => Date.now(),
+    refundedOnStripe: (shop, pi) => paymentRefundedCents(shop, pi),
+    async claimOnce(key) {
+      const { error } = await db.from('ab_events').insert({ kind: 'once', dedupe_key: key.slice(0, 200), payload: { key } });
+      if (!error) return true;
+      if ((error as { code?: string }).code === '23505') return false;
+      dbFail('claimOnce', error);
+    },
   };
 }

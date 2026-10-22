@@ -10,6 +10,7 @@ import { handleWebhook } from '../../../api/stripe/connect-webhook.js';
 import type { WebhookDeps } from '../../../lib/bookings/payments.js';
 import { liveStorePayments } from '../../../lib/store/deps.js';
 import { refundOrder } from '../../../lib/store/payments.js';
+import { paymentRefundedCents } from '../../../lib/bookings/payments.js';
 import type { OrderWebhookDeps, WebhookOrder } from '../../../lib/store/webhook.js';
 import type { OrderRow, StoreNotifyEvent } from '../../../lib/store/types.js';
 import { storeWorld, type StoreWorld } from '../../store/fakeRepo.js';
@@ -46,6 +47,7 @@ export function moneyWorld(over: Parameters<typeof storeWorld>[0] = {}) {
   };
   w.deps.notify = vi.fn(async (e: StoreNotifyEvent) => { send(e); });
   const processed = new Set<string>();
+  const claims = new Set<string>();
   const outcomes: string[] = [];
 
   const nowIso = () => new Date(w.deps.now()).toISOString();
@@ -98,6 +100,9 @@ export function moneyWorld(over: Parameters<typeof storeWorld>[0] = {}) {
     refund: (shop, order, amount, key) => refundOrder(shop, order, amount, { idempotencyKey: key }),
     notify: async (e) => { send(e); },
     now: () => w.deps.now(),
+    // Live wiring: Stripe's refunded total on the charge (I5) and the once-only claim (M4, ab_events).
+    refundedOnStripe: (shop, pi) => paymentRefundedCents(shop, pi),
+    claimOnce: async (key) => { if (claims.has(key)) return false; claims.add(key); return true; },
   };
 
   const none = async () => null;

@@ -367,6 +367,14 @@ describe('booking card-hold sweep vs a customer who paid on time (webhook late)'
     expect(refunds).toEqual([]);
   });
 
+  it('I5 (booking side): a refund Stripe already holds when the payment is recorded is booked (its early charge.refunded matched nothing)', async () => {
+    const id = paidOnTimeHold();
+    const deps = { ...apptWebhook([]), refundedOnStripe: vi.fn(async () => 1000) };
+    expect(await handleConnectEvent(completed as any, deps)).toBe('paid:paid');
+    expect(deps.refundedOnStripe).toHaveBeenCalledWith(expect.objectContaining({ stripe_account_id: 'acct_1' }), 'pi_paid');
+    expect(b.state.appointments.find((x) => x.id === id)).toMatchObject({ amount_paid_cents: 3000, amount_refunded_cents: 1000, payment_status: 'partially_refunded' });
+  });
+
   it('I7 (fixed): a customer who paid on time keeps the booking (Stripe is asked first, like the store sweep)', async () => {
     const id = paidOnTimeHold();
     await expireStaleCardHolds(b.deps);

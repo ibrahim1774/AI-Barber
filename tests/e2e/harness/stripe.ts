@@ -167,6 +167,15 @@ async function route(url: URL, init: { method: string }, req: StripeRequest, pat
     return s ? json(200, s) : error(404, 'resource_missing');
   }
 
+  const getPi = /^\/payment_intents\/([^/]+)$/.exec(path);
+  if (init.method === 'GET' && getPi) {
+    const pi = decodeURIComponent(getPi[1]);
+    const c = stripe.charges.get(pi);
+    if (!c || c.account !== req.account) return error(404, 'resource_missing');
+    const charge = { id: `ch_${pi}`, object: 'charge', amount: c.amount, amount_captured: c.amount, amount_refunded: c.refunded, refunded: c.refunded >= c.amount };
+    return json(200, { id: pi, object: 'payment_intent', amount: c.amount, latest_charge: params['expand[]'] === 'latest_charge' ? charge : charge.id });
+  }
+
   if (init.method === 'POST' && path === '/refunds') {
     const pi = params.payment_intent;
     const c = stripe.charges.get(pi);
