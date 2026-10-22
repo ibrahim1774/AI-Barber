@@ -1,9 +1,12 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { purchaseDomain, supabaseWebPurchases } from '../lib/webDomains.js';
 import { liveVercelDomains, registrantContact } from '../lib/ios/vercelDomains.js';
+import { authorizeSiteOwner, liveDeployAuthDeps } from '../lib/deployAuth.js';
+import { setFirstPartyCors } from '../lib/webCors.js';
 
-// POST { sessionId } after a paid domain Checkout: buys the domain on Vercel and adds it to the
-// site's project. Single-use per paid session (web_domain_purchases, migration 012): a replayed
+// POST { sessionId, domain? } + Authorization: Bearer <Supabase access token of the site's owner>
+// after a paid domain Checkout: buys the domain on Vercel and adds it to the site's project.
+// Owner of the session's own metadata.siteId only (lib/deployAuth.ts authorizeSiteOwner). Single-use per paid session (web_domain_purchases, migration 012): a replayed
 // session id returns the stored result and never buys again. Price and project come only from
 // the session metadata we wrote at checkout (lib/webDomains.ts).
 let sb: SupabaseClient | undefined;
@@ -14,16 +17,9 @@ const db = () => (sb ??= createClient(
 ));
 
 export default async function handler(req: any, res: any) {
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST');
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
-  );
-
+  const origin = setFirstPartyCors(req, res);
   if (req.method === 'OPTIONS') {
-    res.status(200).end();
+    res.status(origin ? 200 : 403).end();
     return;
   }
 
@@ -34,7 +30,9 @@ export default async function handler(req: any, res: any) {
     if (!stripeSecretKey || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
       return res.status(500).json({ error: 'Server configuration error' });
     }
-    const r = await purchaseDomain(req.body, {
+    const authDeps = liveDeployAuthDeps();
+    const r = await purchaseDomain(req.body, req.headers?.authorization, {
+      authorize: (siteId, authorization) => authorizeSiteOwner({ siteId, authorization }, authDeps),
       async getStripeSession(sessionId) {
         const response = await fetch(`https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}`, {
           headers: { Authorization: `Bearer ${stripeSecretKey}` },
@@ -48,7 +46,7 @@ export default async function handler(req: any, res: any) {
     });
     return res.status(r.status).json(r.body);
   } catch (error: any) {
-    console.error('[PurchaseDomain] Error:', error);
-    return res.status(500).json({ error: error.message || 'Internal error' });
+    console.error('[PurchaseDomain] Error:', error?.message || error);
+    return res.status(500).json({ error: 'Internal error' });
   }
 }

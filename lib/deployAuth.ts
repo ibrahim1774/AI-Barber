@@ -266,6 +266,55 @@ async function authorizeWebUser(
   }
 }
 
+/**
+ * Owner of a site, for paid add-ons on it (the web custom-domain checkout and purchase,
+ * lib/webDomains.ts). Stricter than authorizeDeploy: a signed-in Supabase bearer is ALWAYS
+ * required (no checkout-session proof, no "existing project" fallback):
+ * - the admin (ADMIN_EMAIL): any slug;
+ * - an app (iOS) slug: the user is ios_purchases.user_id;
+ * - a web slug: the user has a `sites` row claiming the slug's clean URL or the server-stamped
+ *   URL, and no other account claims either (the interim rule deploy-site uses; see the NOTE at
+ *   the top: a server-only owner table replaces it).
+ * Every lookup fails closed (503). The result's `target` is the authorised slug: callers derive
+ * the Vercel project from it, never from the body.
+ */
+export async function authorizeSiteOwner(
+  input: { siteId: unknown; authorization?: unknown },
+  deps: Pick<DeployAuthDeps, 'userOf' | 'findBySlug' | 'webClaimants' | 'storedStamp' | 'lookupTimeoutMs'>,
+): Promise<DeployAuthResult> {
+  const slug = slugify(String(input.siteId ?? ''));
+  if (!slug) return { ok: false, status: 400, error: 'bad-request' };
+  const token = bearerOf(input.authorization);
+  if (!token) return deny(401, 'sign-in-required');
+  const ms = deps.lookupTimeoutMs ?? LOOKUP_TIMEOUT_MS;
+  let user: DeployUser | null;
+  let row: PurchaseRow | null;
+  try {
+    [user, row] = await withTimeout(Promise.all([deps.userOf(token), deps.findBySlug(slug)]), ms, 'owner lookup');
+  } catch (e: any) {
+    console.error(`[SiteOwner] ${slug}: lookup failed (refusing):`, e?.message || e);
+    return unavailable;
+  }
+  if (!user) return deny(401, 'sign-in-required');
+  if ((user.email || '').toLowerCase() === ADMIN_EMAIL) return { ok: true, target: slug, row, actor: 'admin', userId: user.id };
+  if (row) {
+    if (row.user_id && row.user_id === user.id) return { ok: true, target: slug, row, actor: 'app-owner', userId: user.id };
+    return deny(403, 'not-authorized');
+  }
+  try {
+    const stamp = originOf(await withTimeout(deps.storedStamp(slug), ms, 'stored copy read'));
+    const urls = [...new Set([`https://${slug}.vercel.app`, ...(stamp ? [stamp] : [])])];
+    const claimants = await withTimeout(deps.webClaimants(urls), ms, 'sites claim lookup');
+    if (claimants.length > 0 && claimants.every((c) => c === user!.id)) {
+      return { ok: true, target: slug, row: null, actor: 'web-user', userId: user.id };
+    }
+    return deny(403, 'not-authorized');
+  } catch (e: any) {
+    console.error(`[SiteOwner] ${slug}: web ownership lookup failed (refusing):`, e?.message || e);
+    return unavailable;
+  }
+}
+
 /** Live dependencies: Supabase (service role), Stripe, GCS and Vercel. Clients are created on first use. */
 export function liveDeployAuthDeps(): DeployAuthDeps {
   let sb: SupabaseClient | undefined;

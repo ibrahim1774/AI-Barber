@@ -1,23 +1,18 @@
 import { createDomainCheckout } from '../lib/webDomains.js';
+import { authorizeSiteOwner, liveDeployAuthDeps } from '../lib/deployAuth.js';
 import { liveVercelDomains } from '../lib/ios/vercelDomains.js';
+import { FIRST_PARTY_ORIGINS, setFirstPartyCors } from '../lib/webCors.js';
 
-// POST { domain, siteId } → { url } of a Stripe Checkout for the domain. The price comes from
-// Vercel's own price for the name and the project from the site id, both server-side; any
-// `vercelPrice` / `projectName` the client sends is ignored (lib/webDomains.ts).
+// POST { domain, siteId } + Authorization: Bearer <Supabase access token of the site's owner>
+// → { url } of a Stripe Checkout for the domain. Owner only (lib/deployAuth.ts
+// authorizeSiteOwner); the project is the authorised slug and the price is Vercel's own price,
+// both server-side. First-party origin only (lib/webCors.ts).
 export default async function handler(req: any, res: any) {
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST');
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
-  );
-
+  const origin = setFirstPartyCors(req, res);
   if (req.method === 'OPTIONS') {
-    res.status(200).end();
+    res.status(origin ? 200 : 403).end();
     return;
   }
-
   if (req.method !== 'POST') return res.status(405).end();
 
   try {
@@ -25,9 +20,9 @@ export default async function handler(req: any, res: any) {
     if (!stripeSecretKey) {
       return res.status(500).json({ error: 'Server configuration error: missing STRIPE_SECRET_KEY' });
     }
-    // Determine origin for success/cancel URLs
-    const origin = req.headers.origin || req.headers.referer?.replace(/\/$/, '') || 'http://localhost:3000';
-    const r = await createDomainCheckout(req.body, origin, {
+    const authDeps = liveDeployAuthDeps();
+    const r = await createDomainCheckout(req.body, origin || FIRST_PARTY_ORIGINS[0], req.headers?.authorization, {
+      authorize: (siteId, authorization) => authorizeSiteOwner({ siteId, authorization }, authDeps),
       vercel: liveVercelDomains(),
       async createStripeSession(params) {
         const response = await fetch('https://api.stripe.com/v1/checkout/sessions', {
@@ -40,7 +35,7 @@ export default async function handler(req: any, res: any) {
     });
     return res.status(r.status).json(r.body);
   } catch (error: any) {
-    console.error('[CreateDomainCheckout] Error:', error);
-    return res.status(500).json({ error: error.message || 'Internal error' });
+    console.error('[CreateDomainCheckout] Error:', error?.message || error);
+    return res.status(500).json({ error: 'Internal error' });
   }
 }

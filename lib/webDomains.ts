@@ -9,8 +9,22 @@
 //   result and never a second purchase. A definite refusal (nothing bought) may be retried.
 // - The buy sends what Vercel's API requires today: expectedPrice and the registrant contact
 //   (server config, VERCEL_REGISTRANT_CONTACT). The old body ({ autoRenew, years }) was refused.
+//
+// Ownership (security review 2026-10-22): both calls require the SITE OWNER, by Supabase bearer
+// (lib/deployAuth.ts authorizeSiteOwner: the admin; an app site's ios_purchases.user_id; a web
+// site's sole `sites` claimant). The project is the authorised slug only. purchase-domain checks
+// the owner again against the session's own metadata.siteId, so a leaked session id (it rides in
+// the success redirect) is useless to anyone else: it is a lookup key, single-use, owner-only.
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { DeployAuthResult } from './deployAuth.js';
 import type { RegistrantContact, VercelDomains } from './ios/vercelDomains.js';
+
+/** lib/deployAuth.ts authorizeSiteOwner bound to its live deps. */
+export type AuthorizeOwner = (siteId: unknown, authorization: unknown) => Promise<DeployAuthResult>;
+
+function denied(a: DeployAuthResult): WebResult {
+  return { status: a.status || 403, body: { error: a.error || 'not-authorized' } };
+}
 
 /** Our margin on top of Vercel's price, USD (unchanged from the original flow). */
 export const WEB_MARKUP_USD = 5;
@@ -37,16 +51,19 @@ const okPrice = (v: unknown): v is number => typeof v === 'number' && Number.isF
 export interface WebResult { status: number; body: Record<string, unknown> }
 
 export interface CheckoutDeps {
+  authorize: AuthorizeOwner;
   vercel: VercelDomains | null;
   /** POST https://api.stripe.com/v1/checkout/sessions (form params) → the session JSON. */
   createStripeSession(params: URLSearchParams): Promise<{ ok: boolean; status: number; data: any }>;
 }
 
-/** { domain, siteId } (+ ignored client fields) → { url } of a Stripe Checkout priced server-side. */
-export async function createDomainCheckout(body: any, origin: string, deps: CheckoutDeps): Promise<WebResult> {
+/** { domain, siteId } (+ ignored client fields) → { url } of a Stripe Checkout priced server-side. Site owner only. */
+export async function createDomainCheckout(body: any, origin: string, authorization: unknown, deps: CheckoutDeps): Promise<WebResult> {
   const domain = normalizeWebDomain(body?.domain);
-  const project = projectOf(body?.siteId);
-  if (!domain || !project) return { status: 400, body: { error: 'Missing or invalid fields: domain, siteId' } };
+  if (!domain || !projectOf(body?.siteId)) return { status: 400, body: { error: 'Missing or invalid fields: domain, siteId' } };
+  const auth = await deps.authorize(body.siteId, authorization);
+  if (!auth.ok || !auth.target) return denied(auth);
+  const project = auth.target;
   if (!deps.vercel) return { status: 500, body: { error: 'Server configuration error: missing VERCEL_TOKEN' } };
 
   let available: boolean;
@@ -76,7 +93,7 @@ export async function createDomainCheckout(body: any, origin: string, deps: Chec
   params.append('metadata[type]', 'domain_purchase');
   params.append('metadata[domain]', domain);
   params.append('metadata[projectName]', project);
-  params.append('metadata[siteId]', String(body.siteId));
+  params.append('metadata[siteId]', project);
   // Server-computed; purchase-domain sends it to Vercel as expectedPrice.
   params.append('metadata[vercelPrice]', String(vercelPrice));
 
@@ -104,6 +121,7 @@ export interface WebPurchasesRepo {
 }
 
 export interface PurchaseDeps {
+  authorize: AuthorizeOwner;
   getStripeSession(sessionId: string): Promise<{ ok: boolean; status: number; data: any }>;
   repo: WebPurchasesRepo;
   vercel: VercelDomains | null;
@@ -118,7 +136,7 @@ function storedResult(row: WebPurchaseRow): WebResult {
   return { status: 400, body: { error: `Domain purchase failed: ${row.error || 'unknown'}`, domain: row.domain } };
 }
 
-export async function purchaseDomain(body: any, deps: PurchaseDeps): Promise<WebResult> {
+export async function purchaseDomain(body: any, authorization: unknown, deps: PurchaseDeps): Promise<WebResult> {
   const sessionId = typeof body?.sessionId === 'string' ? body.sessionId.trim() : '';
   if (!/^cs_[A-Za-z0-9_]{8,200}$/.test(sessionId)) return { status: 400, body: { error: 'Missing sessionId' } };
 
@@ -127,11 +145,20 @@ export async function purchaseDomain(body: any, deps: PurchaseDeps): Promise<Web
   const session = s.data || {};
   if (session.payment_status !== 'paid') return { status: 400, body: { error: `Payment not completed: ${session.payment_status}` } };
   const md = session.metadata || {};
-  if (md.type !== 'domain_purchase') return { status: 400, body: { error: 'Not a domain purchase' } };
+  if (md.type !== 'domain_purchase' || (session.mode != null && session.mode !== 'payment')) return { status: 400, body: { error: 'Not a domain purchase' } };
   const domain = normalizeWebDomain(md.domain);
   const project = projectOf(md.projectName);
   const expectedPrice = Number(md.vercelPrice);
   if (!domain || !project) return { status: 400, body: { error: 'Missing domain or projectName in session metadata' } };
+  // The session is for exactly this site and domain: metadata.siteId and projectName name the
+  // same slug (both written by create-domain-checkout from the authorised slug), and a domain the
+  // caller names must be the session's.
+  if (projectOf(md.siteId) !== project) return { status: 400, body: { error: 'Session is not for this site' } };
+  if (body?.domain != null && normalizeWebDomain(body.domain) !== domain) return { status: 400, body: { error: 'Session is not for this domain' } };
+  // The owner of THAT site, checked again now (before any buy, attach, or replayed result).
+  const auth = await deps.authorize(md.siteId, authorization);
+  if (!auth.ok) return denied(auth);
+  if (auth.target !== project) return { status: 403, body: { error: 'not-authorized' } };
   if (!deps.testMode && !okPrice(expectedPrice)) return { status: 400, body: { error: 'Missing price in session metadata' } };
   if (!deps.testMode && (!deps.vercel || !deps.contact)) return { status: 500, body: { error: 'Server configuration error' } };
 
