@@ -373,3 +373,11 @@ describe('authorizeSiteOwner (paid add-ons: the web custom-domain flow)', () => 
     expect((await authorizeSiteOwner({ siteId: 'fresh-cuts', authorization: 'Bearer owner-jwt' }, d2)).status).toBe(503);
   });
 });
+
+describe('a website domain checkout is never deploy proof', () => {
+  it('mode subscription but app aibarber-domain → refused', async () => {
+    const d = deps({ sessions: { [SESSION]: paid('fresh-cuts', { app: 'aibarber-domain' }) } });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect((await authorizeDeploy({ siteId: 'fresh-cuts', checkoutSessionId: SESSION }, d)).ok).toBe(false);
+  });
+});

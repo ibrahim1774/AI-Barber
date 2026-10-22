@@ -27,6 +27,12 @@ export interface VerifiedTx {
    * purchases were made by the same purchaser.
    */
   accountOriginalTransactionIds?: string[];
+  /**
+   * Only with makeVerifier({ includeRenewal: true }) (the domain endpoints): Apple's CURRENT
+   * renewal status for this subscription (signedRenewalInfo.autoRenewStatus === 1). null when
+   * Apple sent no renewal info or it could not be verified: callers treat that as "not renewing".
+   */
+  autoRenew?: boolean | null;
 }
 
 export type VerifyError = 'not-found' | 'bad-bundle' | 'bad-product' | 'apple-unavailable';
@@ -76,6 +82,12 @@ export interface AppleStatusItem {
   status?: number;
   originalTransactionId?: string;
   signedTransactionInfo?: string;
+  signedRenewalInfo?: string;
+}
+
+/** Verifies and decodes a signedRenewalInfo (the fields we use). */
+export interface AppleDecodeRenewal {
+  (env: IosEnv, signed: string): Promise<{ autoRenewStatus?: number }>;
 }
 export interface AppleStatuses {
   (env: IosEnv, transactionId: string): Promise<{ status: number; items?: AppleStatusItem[] }>;
@@ -94,9 +106,11 @@ export interface VerifierOptions {
   products?: readonly string[];
   /** Return accountOriginalTransactionIds (see VerifiedTx). Default false. */
   includeAccount?: boolean;
+  /** Return autoRenew from the latest signedRenewalInfo (see VerifiedTx). Default false. */
+  includeRenewal?: boolean;
 }
 
-export function makeVerifier(deps: { lookup: AppleLookup; decode: AppleDecode; statuses: AppleStatuses; bundleId: string } & VerifierOptions) {
+export function makeVerifier(deps: { lookup: AppleLookup; decode: AppleDecode; statuses: AppleStatuses; bundleId: string; decodeRenewal?: AppleDecodeRenewal } & VerifierOptions) {
   const products = deps.products ?? IOS_PRODUCT_IDS;
   return async function verify(transactionId: string): Promise<VerifiedTx> {
     for (const env of ENVS) {
@@ -156,6 +170,18 @@ export function makeVerifier(deps: { lookup: AppleLookup; decode: AppleDecode; s
         status: item.status,
         productPurchasedAt: latest.purchaseDate ?? null,
       };
+      if (deps.includeRenewal) {
+        let auto: boolean | null = null;
+        if (item.signedRenewalInfo && deps.decodeRenewal) {
+          try {
+            const r = await deps.decodeRenewal(env, item.signedRenewalInfo);
+            auto = typeof r.autoRenewStatus === 'number' ? r.autoRenewStatus === 1 : null;
+          } catch {
+            auto = null; // unknown: never read as "renewing"
+          }
+        }
+        out.autoRenew = auto;
+      }
       if (deps.includeAccount) {
         out.accountOriginalTransactionIds = [...new Set((st.items || [])
           .map((i) => i.originalTransactionId).filter((o): o is string => typeof o === 'string' && o.length > 0))];
@@ -240,6 +266,7 @@ export function defaultVerifier(opts: VerifierOptions = {}) {
           status: t.status == null ? undefined : Number(t.status),
           originalTransactionId: t.originalTransactionId,
           signedTransactionInfo: t.signedTransactionInfo,
+          signedRenewalInfo: t.signedRenewalInfo,
         }))),
       };
     } catch (e) {
@@ -262,5 +289,13 @@ export function defaultVerifier(opts: VerifierOptions = {}) {
     return toDecodedTransaction(p);
   };
 
-  return makeVerifier({ lookup, decode, statuses, bundleId, products: opts.products, includeAccount: opts.includeAccount });
+  const decodeRenewal: AppleDecodeRenewal = async (env, signed) => {
+    const r = await signedDataVerifierFor(env).verifyAndDecodeRenewalInfo(signed);
+    return { autoRenewStatus: r.autoRenewStatus == null ? undefined : Number(r.autoRenewStatus) };
+  };
+
+  return makeVerifier({
+    lookup, decode, statuses, bundleId, decodeRenewal,
+    products: opts.products, includeAccount: opts.includeAccount, includeRenewal: opts.includeRenewal,
+  });
 }

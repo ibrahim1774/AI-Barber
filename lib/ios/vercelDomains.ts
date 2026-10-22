@@ -6,7 +6,9 @@
 //   POST   /v1/registrar/domains/{domain}/buy        { autoRenew, years, expectedPrice, contactInformation } → { orderId, _links }
 //   GET    /v1/registrar/orders/{orderId}            → { orderId, status: draft|purchasing|completed|failed, domains: [{ domainName, status: pending|completed|failed|refunded|refund-failed }], error?: { code } }
 //   PATCH  /v1/registrar/domains/{domain}/auto-renew { autoRenew }              → 204
-//   GET    /v5/domains/{domain}                      → { domain: { boughtAt, expiresAt, renew, ... } } (404 when not in this account)
+//   GET    /v5/domains/{domain}                      → { domain: { boughtAt, expiresAt, renew, ... } } (404 when not in this account;
+//                                                     boughtAt/expiresAt null when the domain was NOT bought through Vercel)
+//   GET    /v5/domains?limit=&until=                 → { domains: [...], pagination: { next } } (admin listing, read-only)
 //   POST   /v10/projects/{idOrName}/domains          { name, redirect?, redirectStatusCode? } (409 / 400 when already there)
 //   GET    /v9/projects/{idOrName}/domains/{domain}  → { name, verified, redirect, ... }
 //   DELETE /v9/projects/{idOrName}/domains/{domain}
@@ -48,7 +50,8 @@ export function registrantContact(raw: string | undefined = process.env.VERCEL_R
   }
   if (!c || typeof c !== 'object') return null;
   for (const k of REQUIRED_CONTACT) if (typeof c[k] !== 'string' || !c[k].trim()) return null;
-  if (!/^\+[1-9]\d{0,2}\.?\d+$/.test(c.phone) || !/^[A-Z]{2}$/.test(c.country) || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(c.email)) return null;
+  // Vercel's own E.164 rule (8–15 digits), so a bad phone is caught at config time, not at the first buy.
+  if (!/^(?=(?:\D*\d){8,15}$)\+[1-9]\d{0,2}\.?\d+$/.test(c.phone) || !/^[A-Z]{2}$/.test(c.country) || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(c.email)) return null;
   const out: RegistrantContact = {} as RegistrantContact;
   for (const k of [...REQUIRED_CONTACT, 'address2', 'companyName'] as const) {
     if (typeof c[k] === 'string' && c[k].trim()) (out as any)[k] = c[k].trim();
@@ -73,10 +76,20 @@ export interface OrderState {
   errorCode: string | null;
 }
 
+/** A registration Vercel holds for us: bought through Vercel and not expired. */
 export interface OwnedDomain {
+  boughtAt: number;
+  expiresAt: number;
+  renew: boolean;
+}
+
+/** One entry of the account's domain list (admin, read-only). */
+export interface AccountDomain {
+  name: string;
   boughtAt: number | null;
   expiresAt: number | null;
   renew: boolean;
+  serviceType: string | null;
 }
 
 export interface VercelDomains {
@@ -84,8 +97,14 @@ export interface VercelDomains {
   prices(domains: string[]): Promise<Map<string, DomainPrice>>;
   buy(domain: string, opts: { expectedPrice: number; autoRenew: boolean; contact: RegistrantContact }): Promise<BuyResult>;
   order(orderId: string, domain: string): Promise<OrderState>;
-  /** The domain as registered in this account (GET /v5/domains), or null when it isn't. */
+  /**
+   * The registration in this account (GET /v5/domains/{d}), or null when it is not ours: not in
+   * the account, NOT bought through Vercel (boughtAt null), or expired. Throws on errors, so an
+   * outage is never read as "gone".
+   */
   owned(domain: string): Promise<OwnedDomain | null>;
+  /** Every domain in the account (admin listing; read-only). */
+  listDomains(): Promise<AccountDomain[]>;
   setAutoRenew(domain: string, on: boolean): Promise<void>;
   /** Add `name` to the project; 'exists' when it is already on THIS project. */
   addProjectDomain(project: string, name: string, redirectTo?: string): Promise<'added' | 'exists'>;
@@ -97,8 +116,9 @@ export interface VercelDomains {
 const API = 'https://api.vercel.com';
 const enc = encodeURIComponent;
 
-export function makeVercelDomains(opts: { token: string; teamId?: string; fetch: Fetch; timeoutMs?: number }): VercelDomains {
+export function makeVercelDomains(opts: { token: string; teamId?: string; fetch: Fetch; timeoutMs?: number; now?: () => number }): VercelDomains {
   const timeoutMs = opts.timeoutMs ?? 20_000;
+  const now = opts.now ?? Date.now;
   const url = (path: string) => `${API}${path}${opts.teamId ? `${path.includes('?') ? '&' : '?'}teamId=${enc(opts.teamId)}` : ''}`;
 
   async function call(method: string, path: string, body?: unknown) {
@@ -171,12 +191,30 @@ export function makeVercelDomains(opts: { token: string; teamId?: string; fetch:
       if (r.status === 404) return null;
       if (!r.ok) throw new VercelApiError(r.status, errCode(r.data));
       const d = r.data?.domain;
-      if (!d) return null;
-      return {
-        boughtAt: typeof d.boughtAt === 'number' ? d.boughtAt : null,
-        expiresAt: typeof d.expiresAt === 'number' ? d.expiresAt : null,
-        renew: d.renew === true,
-      };
+      if (!d || typeof d.boughtAt !== 'number' || typeof d.expiresAt !== 'number' || d.expiresAt <= now()) return null;
+      return { boughtAt: d.boughtAt, expiresAt: d.expiresAt, renew: d.renew === true };
+    },
+
+    async listDomains() {
+      const out: AccountDomain[] = [];
+      let until: number | null = null;
+      for (let page = 0; page < 50; page++) {
+        const data = await must('GET', `/v5/domains?limit=100${until != null ? `&until=${until}` : ''}`);
+        for (const d of data?.domains || []) {
+          if (typeof d?.name !== 'string') continue;
+          out.push({
+            name: d.name,
+            boughtAt: typeof d.boughtAt === 'number' ? d.boughtAt : null,
+            expiresAt: typeof d.expiresAt === 'number' ? d.expiresAt : null,
+            renew: d.renew === true,
+            serviceType: typeof d.serviceType === 'string' ? d.serviceType : null,
+          });
+        }
+        const next = data?.pagination?.next;
+        if (typeof next !== 'number' || !(data?.domains || []).length) break;
+        until = next;
+      }
+      return out;
     },
 
     async setAutoRenew(domain, on) {

@@ -13,8 +13,6 @@ const { unpublishedBound, restoreCandidates, takedownCandidates, markTakenDown, 
   appleVerify: vi.fn(),
 }));
 vi.mock('../../lib/publishSite.js', () => ({ publishSite, writePendingSite, readPendingSite }));
-const { runDomainSweep } = vi.hoisted(() => ({ runDomainSweep: vi.fn(async (_deadline: number): Promise<any> => ({ resumed: [] })) }));
-vi.mock('../../lib/ios/domainLive.js', () => ({ runDomainSweep }));
 vi.mock('../../lib/deploySite.js', () => ({ deployRenderedSite }));
 vi.mock('../../lib/ios/appleVerify.js', async (orig) => ({ ...(await orig<object>()), lazyDefaultVerifier: () => appleVerify }));
 vi.mock('../../lib/ios/purchases.js', () => ({
@@ -60,27 +58,7 @@ describe('api/ios/sweep', () => {
     const res = mkRes();
     await handler(cron, res);
     expect(res.status).toHaveBeenCalledWith(200);
-    expect(res.json).toHaveBeenCalledWith({ ok: true, checked: 1, published: ['a'], failed: [], missing: [], deferred: [], ...empty, domains: { resumed: [] } });
-  });
-
-  it('runs the custom-domain step after the site passes, starting steps only until 140 s after the handler began', async () => {
-    unpublishedBound.mockResolvedValue([]);
-    runDomainSweep.mockClear();
-    const before = Date.now();
-    const res = mkRes();
-    await handler(cron, res);
-    const deadline = runDomainSweep.mock.calls[0][0];
-    expect(deadline).toBeGreaterThanOrEqual(before + 140_000);
-    expect(deadline).toBeLessThanOrEqual(Date.now() + 140_000);
-  });
-
-  it('a domain sweep error is reported but never fails the site sweep', async () => {
-    unpublishedBound.mockResolvedValue([]);
-    runDomainSweep.mockResolvedValueOnce({ error: 'db down' });
-    const res = mkRes();
-    await handler(cron, res);
-    expect(res.status).toHaveBeenCalledWith(200);
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true, domains: { error: 'db down' } }));
+    expect(res.json).toHaveBeenCalledWith({ ok: true, checked: 1, published: ['a'], failed: [], missing: [], deferred: [], ...empty });
   });
 
   it('takedown deploys the offline page to the slug and never publishes or writes the pending file', async () => {

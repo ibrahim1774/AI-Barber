@@ -18,18 +18,23 @@ const NOW = 1_800_000_000_000;
 const SITE_PRODUCT = 'com.ibrahim1774.aibarber.store.yearly';
 
 /** A real makeVerifier whose Apple fakes answer with a transaction of `productId`. */
-function verifierFor(productId: string, opts: { products?: readonly string[]; includeAccount?: boolean } = {}) {
+function verifierFor(productId: string, opts: { products?: readonly string[]; includeAccount?: boolean; includeRenewal?: boolean; renewal?: any } = {}) {
   const decoded = { bundleId: BUNDLE, productId, originalTransactionId: 'dom-o1', transactionId: 'dom-t1', expiresDate: NOW + 1e9 };
   const lookup = vi.fn<AppleLookup>(async () => ({ status: 200, signedTransactionInfo: 'signed' }));
   const decode = vi.fn<AppleDecode>(async () => decoded);
   const statuses = vi.fn<AppleStatuses>(async () => ({
     status: 200,
     items: [
-      { status: 1, originalTransactionId: 'dom-o1', signedTransactionInfo: 'latest' },
+      { status: 1, originalTransactionId: 'dom-o1', signedTransactionInfo: 'latest', signedRenewalInfo: opts.renewal === undefined ? 'renew-on' : opts.renewal },
       { status: 1, originalTransactionId: 'site-o1', signedTransactionInfo: 'other-group' },
     ],
   }));
-  return makeVerifier({ lookup, decode, statuses, bundleId: BUNDLE, ...opts });
+  const decodeRenewal = vi.fn(async (_env: string, signed: string) => {
+    if (signed === 'bad') throw new Error('bad signature');
+    return { autoRenewStatus: signed === 'renew-on' ? 1 : 0 };
+  });
+  const { renewal: _r, ...rest } = opts;
+  return makeVerifier({ lookup, decode, statuses, bundleId: BUNDLE, decodeRenewal, ...rest });
 }
 
 const code = async (p: Promise<unknown>) => { try { await p; } catch (e) { return (e as VerifyFailure).code; } return null; };
@@ -80,6 +85,15 @@ describe('site verifier (default products) rejects a domain transaction', () => 
     expect(plain).not.toHaveProperty('accountOriginalTransactionIds');
     const withAcct = await verifierFor(DOMAIN_PRODUCT_ID, { products: [DOMAIN_PRODUCT_ID], includeAccount: true })('dom-t1');
     expect(withAcct.accountOriginalTransactionIds).toEqual(['dom-o1', 'site-o1']);
+    expect(withAcct).not.toHaveProperty('autoRenew');
+  });
+
+  it("renewal status is opt-in and comes from Apple's latest signedRenewalInfo; unknown is null (never 'on')", async () => {
+    const o = { products: [DOMAIN_PRODUCT_ID], includeRenewal: true };
+    expect((await verifierFor(DOMAIN_PRODUCT_ID, o)('dom-t1')).autoRenew).toBe(true);
+    expect((await verifierFor(DOMAIN_PRODUCT_ID, { ...o, renewal: 'renew-off' })('dom-t1')).autoRenew).toBe(false);
+    expect((await verifierFor(DOMAIN_PRODUCT_ID, { ...o, renewal: null })('dom-t1')).autoRenew).toBeNull();
+    expect((await verifierFor(DOMAIN_PRODUCT_ID, { ...o, renewal: 'bad' })('dom-t1')).autoRenew).toBeNull();
   });
 });
 

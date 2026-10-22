@@ -1,12 +1,14 @@
 import { createDomainCheckout } from '../lib/webDomains.js';
 import { authorizeSiteOwner, liveDeployAuthDeps } from '../lib/deployAuth.js';
 import { liveVercelDomains } from '../lib/ios/vercelDomains.js';
+import { supabaseDomains } from '../lib/ios/domainsRepo.js';
+import { serviceClient } from '../lib/bookings/repo.js';
 import { FIRST_PARTY_ORIGINS, setFirstPartyCors } from '../lib/webCors.js';
 
 // POST { domain, siteId } + Authorization: Bearer <Supabase access token of the site's owner>
-// → { url } of a Stripe Checkout for the domain. Owner only (lib/deployAuth.ts
-// authorizeSiteOwner); the project is the authorised slug and the price is Vercel's own price,
-// both server-side. First-party origin only (lib/webCors.ts).
+// → { url } of a $39/year Stripe subscription Checkout for the domain (lib/webDomains.ts).
+// Owner only (lib/deployAuth.ts authorizeSiteOwner); the site is the authorised slug and the
+// domain, site and price are fixed and signed server-side. First-party origin only.
 export default async function handler(req: any, res: any) {
   const origin = setFirstPartyCors(req, res);
   if (req.method === 'OPTIONS') {
@@ -23,7 +25,9 @@ export default async function handler(req: any, res: any) {
     const authDeps = liveDeployAuthDeps();
     const r = await createDomainCheckout(req.body, origin || FIRST_PARTY_ORIGINS[0], req.headers?.authorization, {
       authorize: (siteId, authorization) => authorizeSiteOwner({ siteId, authorization }, authDeps),
-      vercel: liveVercelDomains(),
+      flow: { vercel: liveVercelDomains(), repo: supabaseDomains(serviceClient()) },
+      secret: process.env.DOMAIN_CHECKOUT_SECRET || '',
+      priceId: process.env.STRIPE_DOMAIN_PRICE_ID || undefined,
       async createStripeSession(params) {
         const response = await fetch('https://api.stripe.com/v1/checkout/sessions', {
           method: 'POST',

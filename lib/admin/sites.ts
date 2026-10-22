@@ -24,6 +24,7 @@ import { MAX_BODY_BYTES, hasDataUrl, isObj, jsonBytes, restoreImageUrls, validSi
 import { stripLapsedLinks, tierOf, type Tier } from '../ios/tiers.js';
 import { PatchError, applyPatch, applySets } from './patch.js';
 import type { DomainRow } from '../ios/domainsRepo.js';
+import type { AccountDomain } from '../ios/vercelDomains.js';
 import { publicState } from '../ios/domainFlow.js';
 
 // ─── deps ───
@@ -95,6 +96,10 @@ export interface AdminSitesDeps {
   domains?(): Promise<DomainRow[]>;
   /** lib/ios/domainFlow.ts markTransferred: the manual transfer is done; the lifecycle stops touching it. */
   markDomainTransferred?(slug: string, by: string): Promise<{ ok: boolean; error?: string; domain?: string }>;
+  /** lib/ios/domainFlow.ts releaseStuckBuy: a buy whose outcome stayed unknown, checked by hand in Vercel. */
+  releaseStuckDomainBuy?(slug: string, to: 'retry' | 'abandon', by: string): Promise<{ ok: boolean; error?: string; domain?: string }>;
+  /** Every domain in our Vercel account (GET /v5/domains; read-only). */
+  vercelDomains?(): Promise<AccountDomain[]>;
 }
 
 // ─── shared helpers ───
@@ -655,4 +660,44 @@ export async function domainTransferred(slug: string, deps: AdminSitesDeps, by =
   if (!deps.markDomainTransferred) return { ok: false, slug, error: 'not-found' };
   const r = await deps.markDomainTransferred(slug, by);
   return r.ok ? { ok: true, slug, domain: r.domain } : { ok: false, slug, error: r.error === 'no-domain' ? 'not-found' : 'conflict' };
+}
+
+/** Admin: a buy whose outcome stayed unknown (the row waits in `buying`); after checking Vercel by hand. */
+export async function domainBuyRelease(slug: string, to: unknown, deps: AdminSitesDeps, by = 'admin'): Promise<{ ok: boolean; slug: string; error?: string; domain?: string }> {
+  if (to !== 'retry' && to !== 'abandon') return { ok: false, slug, error: 'bad-request' };
+  if (!deps.releaseStuckDomainBuy) return { ok: false, slug, error: 'not-found' };
+  const r = await deps.releaseStuckDomainBuy(slug, to, by);
+  return r.ok ? { ok: true, slug, domain: r.domain } : { ok: false, slug, error: r.error === 'no-domain' ? 'not-found' : 'conflict' };
+}
+
+export interface AccountDomainRow {
+  name: string;
+  /** Bought through Vercel (registered by us), or only added to the account. */
+  boughtThroughVercel: boolean;
+  boughtAt: string | null;
+  expiresAt: string | null;
+  autoRenew: boolean;
+  /** The app/website domain lifecycle row managing it, if any. Untracked = bought before it (old web flow, by hand). */
+  tracked: { source: string; state: string; site: string } | null;
+}
+
+/**
+ * READ-ONLY: every domain in our Vercel account with its auto-renew state and expiry, and whether
+ * the domain lifecycle manages it. For the owner to decide each untracked (e.g. old web) domain;
+ * nothing here changes any domain.
+ */
+export async function listAccountDomains(deps: AdminSitesDeps): Promise<{ ok: boolean; error?: string; domains?: AccountDomainRow[] }> {
+  if (!deps.vercelDomains) return { ok: false, error: 'not-configured' };
+  const [list, rows] = await Promise.all([deps.vercelDomains(), deps.domains ? deps.domains().catch(() => [] as DomainRow[]) : Promise.resolve([] as DomainRow[])]);
+  const byName = new Map<string, DomainRow>();
+  for (const r of rows) if (r.state !== 'failed' && !r.simulated) byName.set(r.domain, r);
+  const isoOf = (ms: number | null) => (ms == null ? null : new Date(ms).toISOString());
+  const domains = list.map((d) => {
+    const t = byName.get(d.name);
+    return {
+      name: d.name, boughtThroughVercel: d.boughtAt != null, boughtAt: isoOf(d.boughtAt), expiresAt: isoOf(d.expiresAt), autoRenew: d.renew,
+      tracked: t ? { source: t.source, state: t.state, site: t.site_slug } : null,
+    };
+  }).sort((a, b) => (a.expiresAt || '9').localeCompare(b.expiresAt || '9'));
+  return { ok: true, domains };
 }

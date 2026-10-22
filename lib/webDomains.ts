@@ -1,101 +1,154 @@
-// The web custom-domain flow (api/create-domain-checkout → Stripe → api/purchase-domain), with
-// the money hole closed (spec 2026-10-22-custom-domains, Server, last bullet):
+// The website's custom domain: a $39/year Stripe SUBSCRIPTION (owner decision 2026-10-22), run
+// through the SAME state machine as the app's (lib/ios/domainFlow.ts), keyed `stripe:<sub id>`:
+// bought with Vercel auto-renew OFF, auto-renew on only while the Stripe subscription is active
+// and set to renew, cancel → auto-renew off and the domain works until the paid period ends,
+// then detach; resubscribe before the registration runs out → re-attach.
 //
-// - The price is computed HERE from Vercel's own price for the name (never the client's
-//   `vercelPrice`), and the Vercel project from the site id (never the client's `projectName`).
-//   Both travel to purchase-domain only inside the Stripe session's metadata, which we wrote.
-// - purchase-domain is single-use per paid Checkout session: a web_domain_purchases row keyed by
-//   the session id is inserted BEFORE the Vercel buy, so a replayed session id gets the stored
-//   result and never a second purchase. A definite refusal (nothing bought) may be retried.
-// - The buy sends what Vercel's API requires today: expectedPrice and the registrant contact
-//   (server config, VERCEL_REGISTRANT_CONTACT). The old body ({ autoRenew, years }) was refused.
+//   api/create-domain-checkout  owner only → Stripe Checkout (mode=subscription, server price)
+//   api/purchase-domain         owner of the session's own site → claim the slot (idempotent)
+//   api/stripe-webhook          checkout.session.completed / customer.subscription.* / invoice.paid
+//                               for a domain subscription → reserve / refresh (handleDomainStripeEvent)
 //
-// Ownership (security review 2026-10-22): both calls require the SITE OWNER, by Supabase bearer
-// (lib/deployAuth.ts authorizeSiteOwner: the admin; an app site's ios_purchases.user_id; a web
-// site's sole `sites` claimant). The project is the authorised slug only. purchase-domain checks
-// the owner again against the session's own metadata.siteId, so a leaked session id (it rides in
-// the success redirect) is useless to anyone else: it is a lookup key, single-use, owner-only.
-import type { SupabaseClient } from '@supabase/supabase-js';
+// Trust: the domain, the site and the price are fixed server-side at checkout and SIGNED
+// (HMAC, DOMAIN_CHECKOUT_SECRET) into the session's and the subscription's metadata, so nothing
+// a client can put into Stripe metadata (api/create-checkout-session copies cookie keys) can make
+// a site subscription look like a domain purchase. Every path also checks the subscription is
+// exactly one item at the domain price ($39.00 USD, yearly, or STRIPE_DOMAIN_PRICE_ID).
+//
+// Single use: one subscription is one slot (the row's primary key), so replaying a session never
+// buys twice; it resumes or returns the stored status.
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { DeployAuthResult } from './deployAuth.js';
-import type { RegistrantContact, VercelDomains } from './ios/vercelDomains.js';
+import { isComDomain } from './ios/domainNames.js';
+import {
+  advanceSlot, applyPayerEvent, claimSlot, precheckDomain, reserveSlot, statusBody,
+  type DomainFlowDeps, type PayerStatus,
+} from './ios/domainFlow.js';
+
+export const WEB_DOMAIN_PRICE_CENTS = 3900;
+export const DOMAIN_SESSION_APP = 'aibarber-domain';
+const SESSION_ID = /^cs_(test|live)_[A-Za-z0-9_]{8,200}$/;
+const SLUG = /^[a-z0-9](?:[a-z0-9-]{0,48}[a-z0-9])?$/;
 
 /** lib/deployAuth.ts authorizeSiteOwner bound to its live deps. */
 export type AuthorizeOwner = (siteId: unknown, authorization: unknown) => Promise<DeployAuthResult>;
+
+export interface WebResult { status: number; body: Record<string, unknown> }
 
 function denied(a: DeployAuthResult): WebResult {
   return { status: a.status || 403, body: { error: a.error || 'not-authorized' } };
 }
 
-/** Our margin on top of Vercel's price, USD (unchanged from the original flow). */
-export const WEB_MARKUP_USD = 5;
-/** Never sell a name whose first-year or renewal price is above this (premium names). */
-export const WEB_MAX_PRICE_USD = 50;
+// ─── signed metadata ───
 
-const HOST_RE = /^(?=.{4,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}$/;
-
-export function normalizeWebDomain(v: unknown): string | null {
-  if (typeof v !== 'string') return null;
-  const d = v.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
-  return HOST_RE.test(d) && !/(^|\.)xn--/.test(d) ? d : null;
+export function domainSig(secret: string, domain: string, slug: string): string {
+  return createHmac('sha256', secret).update(`v1|domain_purchase|${domain}|${slug}`).digest('hex');
 }
 
-/** The Vercel project of a site: the canonical slug (lib/publishSite.ts slugify, same rules). */
-export function projectOf(siteId: unknown): string | null {
-  if (typeof siteId !== 'string') return null;
-  const p = siteId.toLowerCase().replace(/[''`]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').substring(0, 50).replace(/-+$/, '');
-  return p || null;
+/** The signed domain-purchase metadata, or null when it isn't one (or the signature is wrong). */
+export function readDomainMetadata(md: any, secret: string): { domain: string; slug: string } | null {
+  if (!md || md.type !== 'domain_purchase' || md.app !== DOMAIN_SESSION_APP) return null;
+  const domain = typeof md.domain === 'string' ? md.domain : '';
+  const slug = typeof md.siteId === 'string' ? md.siteId : '';
+  const sig = typeof md.sig === 'string' ? md.sig : '';
+  if (!isComDomain(domain) || !SLUG.test(slug) || !/^[0-9a-f]{64}$/.test(sig) || !secret) return null;
+  const want = Buffer.from(domainSig(secret, domain, slug), 'hex');
+  const got = Buffer.from(sig, 'hex');
+  return want.length === got.length && timingSafeEqual(want, got) ? { domain, slug } : null;
 }
 
-const okPrice = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= WEB_MAX_PRICE_USD;
+/** Exactly one item at the domain price: $39.00 USD yearly (or the configured price id). */
+export function isDomainPriceSubscription(sub: any, priceId?: string): boolean {
+  const items = sub?.items?.data;
+  if (!Array.isArray(items) || items.length !== 1) return false;
+  const it = items[0];
+  const price = it?.price;
+  if ((it?.quantity ?? 1) !== 1 || !price) return false;
+  if (priceId) return price.id === priceId;
+  return price.currency === 'usd' && price.unit_amount === WEB_DOMAIN_PRICE_CENTS && price.recurring?.interval === 'year'
+    && (price.recurring?.interval_count ?? 1) === 1;
+}
 
-export interface WebResult { status: number; body: Record<string, unknown> }
+/** A verified domain subscription: signed metadata + the domain price. */
+export function verifyDomainSubscription(sub: any, secret: string, priceId?: string): { domain: string; slug: string; subscriptionId: string } | null {
+  if (!sub || typeof sub.id !== 'string' || !sub.id.startsWith('sub_')) return null;
+  const md = readDomainMetadata(sub.metadata, secret);
+  if (!md || !isDomainPriceSubscription(sub, priceId)) return null;
+  return { ...md, subscriptionId: sub.id };
+}
+
+/** The Stripe subscription's CURRENT state as the domain state machine's payer status. */
+export function stripePayerStatus(sub: any, now: number): PayerStatus {
+  const status = String(sub?.status || '');
+  const periodEnd = Number(sub?.current_period_end ?? sub?.items?.data?.[0]?.current_period_end);
+  const active = status === 'active' || status === 'trialing';
+  const ended = Number(sub?.ended_at);
+  const cancelling = sub?.cancel_at_period_end === true || sub?.cancel_at != null;
+  return {
+    active,
+    autoRenew: active && !cancelling,
+    expiresAt: active && Number.isFinite(periodEnd) ? periodEnd * 1000 : null,
+    // Cancelled before its period ended (an immediate cancel or a refund): the period is void.
+    revoked: status === 'canceled' && Number.isFinite(ended) && Number.isFinite(periodEnd) && ended < periodEnd - 3600,
+  };
+}
+
+// ─── create-domain-checkout ───
 
 export interface CheckoutDeps {
   authorize: AuthorizeOwner;
-  vercel: VercelDomains | null;
+  flow: Pick<DomainFlowDeps, 'vercel' | 'repo'>;
+  secret: string;
+  /** Optional configured Stripe price (env STRIPE_DOMAIN_PRICE_ID); else price_data $39/year. */
+  priceId?: string;
   /** POST https://api.stripe.com/v1/checkout/sessions (form params) → the session JSON. */
   createStripeSession(params: URLSearchParams): Promise<{ ok: boolean; status: number; data: any }>;
 }
 
-/** { domain, siteId } (+ ignored client fields) → { url } of a Stripe Checkout priced server-side. Site owner only. */
+/** { domain, siteId } → { url } of a $39/year Stripe subscription Checkout. Site owner only. */
 export async function createDomainCheckout(body: any, origin: string, authorization: unknown, deps: CheckoutDeps): Promise<WebResult> {
-  const domain = normalizeWebDomain(body?.domain);
-  if (!domain || !projectOf(body?.siteId)) return { status: 400, body: { error: 'Missing or invalid fields: domain, siteId' } };
+  const domain = typeof body?.domain === 'string' ? body.domain.trim().toLowerCase() : '';
+  if (!isComDomain(domain) || typeof body?.siteId !== 'string' || !body.siteId.trim()) {
+    return { status: 400, body: { error: 'Missing or invalid fields: domain (.com), siteId' } };
+  }
+  if (!deps.secret) return { status: 500, body: { error: 'Server configuration error' } };
   const auth = await deps.authorize(body.siteId, authorization);
   if (!auth.ok || !auth.target) return denied(auth);
-  const project = auth.target;
-  if (!deps.vercel) return { status: 500, body: { error: 'Server configuration error: missing VERCEL_TOKEN' } };
+  const slug = auth.target;
+  if (!deps.flow.vercel) return { status: 500, body: { error: 'Server configuration error: missing VERCEL_TOKEN' } };
 
-  let available: boolean;
-  let price: { purchasePrice: unknown; renewalPrice: unknown } | undefined;
   try {
-    available = (await deps.vercel.availability([domain])).get(domain) === true;
-    price = available ? (await deps.vercel.prices([domain])).get(domain) : undefined;
+    if (await deps.flow.repo.holdingSite(slug)) return { status: 409, body: { error: 'This site already has a custom domain' } };
+    const pre = await precheckDomain(deps.flow, domain);
+    if (pre === 'domain-taken') return { status: 409, body: { error: 'Domain is not available' } };
+    if (pre) return { status: 409, body: { error: 'Domain is not available at a standard price' } };
   } catch (e: any) {
-    console.error('[CreateDomainCheckout] Vercel lookup failed:', e?.code || e?.message || e);
+    console.error('[CreateDomainCheckout] lookup failed:', e?.code || e?.message || e);
     return { status: 503, body: { error: 'Could not check the domain right now' } };
   }
-  if (!available) return { status: 409, body: { error: 'Domain is not available' } };
-  if (!price || !okPrice(price.purchasePrice) || !okPrice(price.renewalPrice)) {
-    return { status: 409, body: { error: 'Domain is not available at a standard price' } };
-  }
-  const vercelPrice = price.purchasePrice;
-  const priceInCents = Math.round((vercelPrice + WEB_MARKUP_USD) * 100);
 
+  const sig = domainSig(deps.secret, domain, slug);
   const params = new URLSearchParams();
-  params.append('mode', 'payment');
+  params.append('mode', 'subscription');
   params.append('success_url', `${origin}?domain_payment=success&session_id={CHECKOUT_SESSION_ID}`);
   params.append('cancel_url', `${origin}?domain_payment=cancelled`);
-  params.append('line_items[0][price_data][currency]', 'usd');
-  params.append('line_items[0][price_data][product_data][name]', `Domain Registration - ${domain}`);
-  params.append('line_items[0][price_data][unit_amount]', String(priceInCents));
+  if (deps.priceId) {
+    params.append('line_items[0][price]', deps.priceId);
+  } else {
+    params.append('line_items[0][price_data][currency]', 'usd');
+    params.append('line_items[0][price_data][unit_amount]', String(WEB_DOMAIN_PRICE_CENTS));
+    params.append('line_items[0][price_data][recurring][interval]', 'year');
+    params.append('line_items[0][price_data][product_data][name]', `Custom domain - ${domain}`);
+  }
   params.append('line_items[0][quantity]', '1');
-  params.append('metadata[type]', 'domain_purchase');
-  params.append('metadata[domain]', domain);
-  params.append('metadata[projectName]', project);
-  params.append('metadata[siteId]', project);
-  // Server-computed; purchase-domain sends it to Vercel as expectedPrice.
-  params.append('metadata[vercelPrice]', String(vercelPrice));
+  for (const prefix of ['metadata', 'subscription_data[metadata]']) {
+    params.append(`${prefix}[type]`, 'domain_purchase');
+    // Not 'aibarber': a domain checkout must never count as a site checkout (deploy proof, pixels, publish).
+    params.append(`${prefix}[app]`, DOMAIN_SESSION_APP);
+    params.append(`${prefix}[domain]`, domain);
+    params.append(`${prefix}[siteId]`, slug);
+    params.append(`${prefix}[sig]`, sig);
+  }
 
   const r = await deps.createStripeSession(params);
   if (!r.ok) {
@@ -105,120 +158,143 @@ export async function createDomainCheckout(body: any, origin: string, authorizat
   return { status: 200, body: { url: r.data?.url } };
 }
 
-// ─── purchase-domain ───
+// ─── purchase-domain (the browser's return from Checkout) ───
 
-export interface WebPurchaseRow {
-  stripe_session_id: string; domain: string; project: string;
-  state: 'buying' | 'bought' | 'failed'; order_id: string | null; error: string | null;
-}
-
-export interface WebPurchasesRepo {
-  /** Insert in state 'buying'; 'conflict' when this session already has a row. */
-  insert(row: Pick<WebPurchaseRow, 'stripe_session_id' | 'domain' | 'project'>): Promise<'ok' | 'conflict'>;
-  get(sessionId: string): Promise<WebPurchaseRow | null>;
-  /** Conditional on the current state; null when it was not in `from`. */
-  update(sessionId: string, from: WebPurchaseRow['state'], patch: Partial<WebPurchaseRow>): Promise<WebPurchaseRow | null>;
-}
-
-export interface PurchaseDeps {
+export interface WebDomainDeps {
   authorize: AuthorizeOwner;
   getStripeSession(sessionId: string): Promise<{ ok: boolean; status: number; data: any }>;
-  repo: WebPurchasesRepo;
-  vercel: VercelDomains | null;
-  contact: RegistrantContact | null;
-  /** STRIPE_SECRET_KEY starts with sk_test_: never buy for real. */
+  /** GET /v1/subscriptions/{id}; null when Stripe doesn't know it. Throws on an outage. */
+  getSubscription(id: string): Promise<any | null>;
+  flow: DomainFlowDeps;
+  secret: string;
+  priceId?: string;
+  /** STRIPE_SECRET_KEY is a test key: the lifecycle is simulated, nothing is bought. */
   testMode: boolean;
 }
 
-function storedResult(row: WebPurchaseRow): WebResult {
-  if (row.state === 'bought') return { status: 200, body: { success: true, domain: row.domain, orderId: row.order_id, alreadyProcessed: true } };
-  if (row.state === 'buying') return { status: 409, body: { error: 'Purchase already in progress for this payment', domain: row.domain } };
-  return { status: 400, body: { error: `Domain purchase failed: ${row.error || 'unknown'}`, domain: row.domain } };
+const badSession: WebResult = { status: 400, body: { error: 'Invalid checkout session' } };
+
+/**
+ * { sessionId, domain? } + the site owner's bearer → the domain status (200 live, 202 in
+ * progress, 409 failed). Idempotent: one subscription is one slot.
+ */
+export async function purchaseDomain(body: any, authorization: unknown, deps: WebDomainDeps): Promise<WebResult> {
+  const sessionId = typeof body?.sessionId === 'string' ? body.sessionId.trim() : '';
+  if (!SESSION_ID.test(sessionId)) return badSession;
+  const s = await deps.getStripeSession(sessionId);
+  if (!s.ok || !s.data) return badSession;
+  const session = s.data;
+
+  // Ownership FIRST: nothing about the session (paid? domain?) is revealed to anyone else.
+  const auth = await deps.authorize(session.metadata?.siteId, authorization);
+  if (!auth.ok) return denied(auth);
+
+  const md = readDomainMetadata(session.metadata, deps.secret);
+  const subId = typeof session.subscription === 'string' ? session.subscription : session.subscription?.id;
+  if (
+    !md || session.mode !== 'subscription' || session.status !== 'complete' || session.payment_status !== 'paid'
+    || session.currency !== 'usd' || session.amount_total !== WEB_DOMAIN_PRICE_CENTS || typeof subId !== 'string'
+  ) return { status: 400, body: { error: 'Not a paid domain purchase' } };
+  if (auth.target !== md.slug) return { status: 403, body: { error: 'not-authorized' } };
+  if (body?.domain != null && String(body.domain).trim().toLowerCase() !== md.domain) return { status: 400, body: { error: 'Session is not for this domain' } };
+
+  let sub: any;
+  try {
+    sub = await deps.getSubscription(subId);
+  } catch (e: any) {
+    console.error('[PurchaseDomain] subscription lookup failed:', e?.message || e);
+    return { status: 503, body: { error: 'Try again shortly' } };
+  }
+  const v = verifyDomainSubscription(sub, deps.secret, deps.priceId);
+  if (!v || v.slug !== md.slug || v.domain !== md.domain) return { status: 400, body: { error: 'Not a paid domain purchase' } };
+  const payer = stripePayerStatus(sub, deps.flow.now());
+  if (!payer.active) return { status: 402, body: { error: 'subscription-inactive' } };
+  if (!deps.testMode && (!deps.flow.vercel || !deps.flow.contact)) return { status: 503, body: { error: 'domains-unavailable' } };
+
+  const r = await claimSlot({
+    key: `stripe:${v.subscriptionId}`, source: 'stripe', environment: 'Production', simulated: deps.testMode,
+    slug: v.slug, domain: v.domain, payer,
+  }, deps.flow);
+  return { status: r.status, body: r.body as Record<string, unknown> };
 }
 
-export async function purchaseDomain(body: any, authorization: unknown, deps: PurchaseDeps): Promise<WebResult> {
-  const sessionId = typeof body?.sessionId === 'string' ? body.sessionId.trim() : '';
-  if (!/^cs_[A-Za-z0-9_]{8,200}$/.test(sessionId)) return { status: 400, body: { error: 'Missing sessionId' } };
+// ─── Stripe webhook ───
 
-  const s = await deps.getStripeSession(sessionId);
-  if (!s.ok) return { status: 400, body: { error: 'Invalid checkout session' } };
-  const session = s.data || {};
-  if (session.payment_status !== 'paid') return { status: 400, body: { error: `Payment not completed: ${session.payment_status}` } };
-  const md = session.metadata || {};
-  if (md.type !== 'domain_purchase' || (session.mode != null && session.mode !== 'payment')) return { status: 400, body: { error: 'Not a domain purchase' } };
-  const domain = normalizeWebDomain(md.domain);
-  const project = projectOf(md.projectName);
-  const expectedPrice = Number(md.vercelPrice);
-  if (!domain || !project) return { status: 400, body: { error: 'Missing domain or projectName in session metadata' } };
-  // The session is for exactly this site and domain: metadata.siteId and projectName name the
-  // same slug (both written by create-domain-checkout from the authorised slug), and a domain the
-  // caller names must be the session's.
-  if (projectOf(md.siteId) !== project) return { status: 400, body: { error: 'Session is not for this site' } };
-  if (body?.domain != null && normalizeWebDomain(body.domain) !== domain) return { status: 400, body: { error: 'Session is not for this domain' } };
-  // The owner of THAT site, checked again now (before any buy, attach, or replayed result).
-  const auth = await deps.authorize(md.siteId, authorization);
-  if (!auth.ok) return denied(auth);
-  if (auth.target !== project) return { status: 403, body: { error: 'not-authorized' } };
-  if (!deps.testMode && !okPrice(expectedPrice)) return { status: 400, body: { error: 'Missing price in session metadata' } };
-  if (!deps.testMode && (!deps.vercel || !deps.contact)) return { status: 500, body: { error: 'Server configuration error' } };
+export interface DomainEventResult {
+  /** Not a domain event: the caller handles it as before. */
+  handled: boolean;
+  status?: number;
+  body?: Record<string, unknown>;
+  /** Long work (the purchase) to run after answering Stripe (waitUntil). */
+  background?: () => Promise<unknown>;
+}
 
-  // Single use: the row is written BEFORE any buy.
-  let row: WebPurchaseRow | null;
-  if ((await deps.repo.insert({ stripe_session_id: sessionId, domain, project })) === 'conflict') {
-    const existing = await deps.repo.get(sessionId);
-    if (!existing) return { status: 503, body: { error: 'Try again shortly' } };
-    // Only a DEFINITE earlier refusal (nothing was bought) may be retried.
-    if (existing.state !== 'failed' || !existing.error?.startsWith('definite:')) return storedResult(existing);
-    row = await deps.repo.update(sessionId, 'failed', { state: 'buying', error: null });
-    if (!row) return storedResult((await deps.repo.get(sessionId)) ?? existing);
+const SUB_EVENTS = new Set(['customer.subscription.created', 'customer.subscription.updated', 'customer.subscription.deleted', 'invoice.paid']);
+
+/**
+ * Domain subscriptions in the Stripe webhook. A paid checkout reserves the slot (so a closed
+ * tab still gets its domain) and the purchase runs in the background; subscription and invoice
+ * events re-read the subscription and apply its CURRENT state (never the event's payload).
+ * Errors answer 500 so Stripe retries.
+ */
+export async function handleDomainStripeEvent(
+  event: any,
+  getDeps: () => Omit<WebDomainDeps, 'authorize' | 'getStripeSession'>,
+): Promise<DomainEventResult> {
+  // Recognised from the event's own metadata only (no lookups), so every other event is untouched.
+  // Domain subscriptions always carry type=domain_purchase (subscription_data[metadata]); the
+  // signature and the price are checked below on the subscription re-read from Stripe.
+  const obj = event?.data?.object || {};
+  let subId: string | null = null;
+  if (event?.type === 'checkout.session.completed') {
+    if (obj.metadata?.type !== 'domain_purchase' && obj.metadata?.app !== DOMAIN_SESSION_APP) return { handled: false };
+    subId = typeof obj.subscription === 'string' ? obj.subscription : obj.subscription?.id ?? null;
+  } else if (event?.type === 'invoice.paid') {
+    const details = obj.subscription_details ?? obj.parent?.subscription_details;
+    if (details?.metadata?.type !== 'domain_purchase') return { handled: false };
+    subId = typeof obj.subscription === 'string' ? obj.subscription : details?.subscription ?? null;
+  } else if (SUB_EVENTS.has(event?.type)) {
+    if (obj.metadata?.type !== 'domain_purchase') return { handled: false };
+    subId = typeof obj.id === 'string' ? obj.id : null;
+  } else {
+    return { handled: false };
   }
-
-  if (deps.testMode) {
-    console.log(`[PurchaseDomain] TEST MODE: Skipping real purchase for ${domain}`);
-    const orderId = `test_order_${sessionId.slice(-12)}`;
-    await deps.repo.update(sessionId, 'buying', { state: 'bought', order_id: orderId });
-    return { status: 200, body: { success: true, domain, orderId } };
-  }
-
-  const r = await deps.vercel!.buy(domain, { expectedPrice, autoRenew: true, contact: deps.contact! });
-  if (r.ok === false) {
-    console.error('[PurchaseDomain] Vercel buy error:', r.status, r.code);
-    // Unknown outcome (timeout / 5xx): the row stays 'buying', so a replay can never buy again.
-    if (r.definite) await deps.repo.update(sessionId, 'buying', { state: 'failed', error: `definite:${r.code}` });
-    return { status: 400, body: { error: `Domain purchase failed: ${r.code}` } };
-  }
-  await deps.repo.update(sessionId, 'buying', { state: 'bought', order_id: r.orderId });
+  if (!subId) return { handled: true, status: 200, body: { received: true, ignored: 'no-subscription' } };
 
   try {
-    await deps.vercel!.addProjectDomain(project, domain);
+    const deps = getDeps();
+    const sub = await deps.getSubscription(subId);
+    const v = verifyDomainSubscription(sub, deps.secret, deps.priceId);
+    if (!v) {
+      console.error(`[Stripe Webhook] ${event.type} ${subId}: not a valid domain subscription (signature / price); ignored`);
+      return { handled: true, status: 200, body: { received: true, ignored: 'not-a-domain-subscription' } };
+    }
+    const key = `stripe:${subId}`;
+    const payer = stripePayerStatus(sub, deps.flow.now());
+    const existing = await deps.flow.repo.get(key);
+    if (existing) {
+      await applyPayerEvent(key, event.type, { ...deps.flow, payer: async () => payer });
+      return { handled: true, status: 200, body: { received: true, domain: true } };
+    }
+    if (!payer.active) return { handled: true, status: 200, body: { received: true, ignored: 'subscription-inactive' } };
+    const c = { key, source: 'stripe' as const, environment: 'Production' as const, simulated: deps.testMode, slug: v.slug, domain: v.domain, payer };
+    const reserved = await reserveSlot(c, deps.flow);
+    if (reserved.result) {
+      // e.g. the name was taken between checkout and payment: nothing is bought; support refunds.
+      console.error(`[Stripe Webhook] domain ${v.domain} for ${v.slug} (${subId}) not reserved:`, JSON.stringify(reserved.result.body));
+      return { handled: true, status: 200, body: { received: true, domain: false, refused: (reserved.result.body as any)?.error } };
+    }
+    return {
+      handled: true, status: 200, body: { received: true, domain: true },
+      background: () => advanceSlot(key, payer, deps.flow),
+    };
   } catch (e: any) {
-    // Non-fatal: the domain is bought; it can be attached by hand.
-    console.error('[PurchaseDomain] Add domain to project error:', e?.status || '', e?.code || e?.message || e);
+    console.error(`[Stripe Webhook] domain event ${event.type} ${subId} failed:`, e?.message || e);
+    return { handled: true, status: 500, body: { error: 'temporarily-unavailable' } };
   }
-  return { status: 200, body: { success: true, domain, orderId: r.orderId } };
 }
 
-export function supabaseWebPurchases(client: () => SupabaseClient): WebPurchasesRepo {
-  const T = 'web_domain_purchases';
-  return {
-    async insert(row) {
-      const { error } = await client().from(T).insert({ ...row, state: 'buying' });
-      if (error) {
-        if ((error as { code?: string }).code === '23505') return 'conflict';
-        throw new Error(`${T} insert failed: ${error.message}`);
-      }
-      return 'ok';
-    },
-    async get(id) {
-      const { data, error } = await client().from(T).select('*').eq('stripe_session_id', id).maybeSingle();
-      if (error) throw new Error(`${T} get failed: ${error.message}`);
-      return (data as WebPurchaseRow) ?? null;
-    },
-    async update(id, from, patch) {
-      const { data, error } = await client().from(T).update({ ...patch, updated_at: new Date().toISOString() })
-        .eq('stripe_session_id', id).eq('state', from).select();
-      if (error) throw new Error(`${T} update failed: ${error.message}`);
-      return Array.isArray(data) && data[0] ? (data[0] as WebPurchaseRow) : null;
-    },
-  };
+/** For admin / support: the status body of a web domain by subscription id. */
+export async function webDomainStatus(subId: string, deps: Pick<DomainFlowDeps, 'repo'>) {
+  return statusBody(await deps.repo.get(`stripe:${subId}`));
 }

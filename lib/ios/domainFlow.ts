@@ -1,28 +1,35 @@
-// Custom domains from the app (spec 2026-10-22-custom-domains, Server).
+// Custom domains (spec 2026-10-22-custom-domains, Server), from the app (Apple yearly
+// subscription) and the website (Stripe $39/year subscription), through ONE state machine.
 //
-// The barber's yearly `domain` subscription (Apple, its own subscription group) is a "domain
-// slot": one .com, registered on AI Barber's Vercel account and attached (apex + www → apex)
-// to the barber's site project. The ios_domains row IS a state machine; every step is
-// idempotent and recorded BEFORE and AFTER its side effect, so a crash anywhere is resumed by
-// the next claim call (the app retries) or by the iOS sweep, without buying twice or losing
-// the domain:
+// A domain subscription is a "domain slot": one .com, registered on AI Barber's Vercel account
+// and attached (apex + www → apex) to the site's project. The ios_domains row IS the state
+// machine; every step is idempotent and recorded BEFORE and AFTER its side effect, so a crash
+// anywhere is resumed by the next claim call or by the domain sweep, without buying twice or
+// losing the domain:
 //
-//   reserved ──buy──▶ buying ──orderId──▶ ordered ──completed──▶ bought ──attach──▶ attached ──link──▶ live
-//      │                │  (crash / unknown outcome: owned? → bought; after 30 min not ours:
-//      │                │   available → reserved (retry), taken → failed)
-//      ▼                ▼
-//    failed (taken | price | registrar | subscription-inactive | registration-expired): the slot
-//    is unused; claim may point the same row at another (or the same) name.
+//   reserved ──buy (auto-renew OFF)──▶ buying ──orderId──▶ ordered ──completed──▶ bought ──attach──▶ attached ──link──▶ live
+//     │  buying with an unknown outcome: ours (Vercel says so) → bought; otherwise it STAYS
+//     │  buying (admin-visible) until an admin releases it: never re-bought on availability alone.
+//     ▼
+//   failed (taken | price | registrar | subscription-inactive | registration-expired): the slot
+//   is unused; claim may point the row at another (or the same) name. A slot is only freed when
+//   nothing was bought, or Vercel confirms the registration is gone.
 //
-//   live/attached/bought ──Apple period over (sweep asks Apple)──▶ detaching ──remove + unlink──▶ detached
-//   detached/detaching ──resubscribe before the registration runs out──▶ bought (re-attach)
+//   bought/attached/live ──period over (payer says inactive)──▶ detaching ──remove──▶ unlinking ──republish──▶ detached
+//   detached ──paid again, and Vercel confirms the registration is still ours──▶ bought (re-attach)
+//                                    (a newer domain on the same site wins: this one stays detached)
 //   any registered state ──admin "transferred"──▶ transferred (never touched again)
 //
-// Sandbox purchases (App Review, TestFlight) are SIMULATED: the row walks the same states but
-// Vercel is never called (no purchase, no attach) and the site is not republished. Only otids
-// listed in DOMAINS_SANDBOX_REAL_OTIDS use the real registrar from Sandbox.
+// Money rules:
+// - Every buy is made with Vercel auto-renew OFF. Auto-renew is then turned on only while the
+//   payer's CURRENT renewal status (Apple's latest signedRenewalInfo / the Stripe subscription,
+//   re-fetched, never a notification payload) says it renews.
+// - Every auto-renew / expiry / slot decision reads Vercel LIVE (owned()); the stored
+//   registration_expires_at is display only.
+// - Sandbox (and Stripe test mode) rows are SIMULATED: Vercel is never called. Only otids in
+//   DOMAINS_SANDBOX_REAL_OTIDS use the real registrar from Sandbox.
 //
-// Pure over injected deps; lib/ios/domainLive.ts wires Apple, Supabase and Vercel.
+// Pure over injected deps; lib/ios/domainLive.ts wires Apple, Stripe, Supabase and Vercel.
 import { createHash } from 'node:crypto';
 import type { FlowResult } from '../bookings/core.js';
 import type { GetUser } from '../bookings/auth.js';
@@ -33,10 +40,11 @@ import { GRACE_MS } from './lapse.js';
 import { withTimeout } from './timeout.js';
 import { candidateDomains, eligiblePrice, isComDomain, normalizeLabel } from './domainNames.js';
 import {
-  DomainConflict, OWNED_STATES, type DomainRow, type DomainState, type DomainsRepo,
+  ATTACHED_STATES, DomainConflict, OWNED_STATES, SITE_HOLDING_STATES,
+  type DomainRow, type DomainSource, type DomainState, type DomainsRepo,
 } from './domainsRepo.js';
 import type { DomainNotification } from './notifications.js';
-import type { RegistrantContact, VercelDomains } from './vercelDomains.js';
+import { VercelApiError, type RegistrantContact, type VercelDomains } from './vercelDomains.js';
 
 export interface DomainHooks {
   /** The site's public address becomes https://{domain}; republish (lib/ios/domainHooks.ts). Throws when it must be retried. */
@@ -45,16 +53,36 @@ export interface DomainHooks {
   onDomainUnlinked(slug: string): Promise<unknown>;
 }
 
+/** The payer's CURRENT state for a domain subscription (Apple or Stripe), freshly fetched. */
+export interface PayerStatus {
+  active: boolean;
+  /** Will it renew? null = unknown (treated as "no"). */
+  autoRenew: boolean | null;
+  /** End of the current paid period. */
+  expiresAt: number | null;
+  revoked: boolean;
+}
+
+/** The payer could not answer. `permanent`: it never will (unknown purchase). */
+export class PayerFailure extends Error {
+  constructor(public permanent: boolean, public code: string) {
+    super(code);
+    this.name = 'PayerFailure';
+  }
+}
+
 export interface DomainFlowDeps {
   repo: DomainsRepo;
   /** Null when VERCEL_TOKEN is missing. */
   vercel: VercelDomains | null;
   /** Null when VERCEL_REGISTRANT_CONTACT is missing or invalid: no real purchase can be made. */
   contact: RegistrantContact | null;
-  /** Apple, domain product ONLY, with accountOriginalTransactionIds. */
+  /** Apple, domain product ONLY, with accountOriginalTransactionIds and autoRenew. */
   verifyDomain(transactionId: string): Promise<VerifiedTx>;
   /** Apple, the six site products only (the normal site verifier). */
   verifySite(transactionId: string): Promise<VerifiedTx>;
+  /** The payer's current status for a row (Apple by otid, Stripe by subscription). Throws PayerFailure. */
+  payer(row: Pick<DomainRow, 'original_transaction_id' | 'source'>): Promise<PayerStatus>;
   /** The ios_purchases row of a site purchase. */
   sitePurchase(otid: string): Promise<{ original_transaction_id: string; site_slug: string | null } | null>;
   /** Signed-in fallback proof: the Supabase user … */
@@ -65,7 +93,6 @@ export interface DomainFlowDeps {
   /** Shared rate limiter (lib/bookings/rateLimit.ts). Fails open. */
   limiter?: { allow(key: string, kind: 'read' | 'write'): Promise<boolean> };
   now(): number;
-  sleep?(ms: number): Promise<void>;
   /** Sandbox otids that may use the REAL registrar (internal testing only). Default: none. */
   sandboxRealOtids?: ReadonlySet<string>;
   /** Live probe of the domain over HTTPS (status only). */
@@ -74,16 +101,10 @@ export interface DomainFlowDeps {
 
 /** A claim holds the row this long (the function's 300 s budget); the sweep skips leased rows. */
 export const LEASE_MS = 290_000;
-/** An uncertain buy (crash / timeout, no order id) is only retried after this long. */
-export const BUY_UNCERTAIN_MS = 30 * 60_000;
-/**
- * …and only declared lost (failed:taken, slot freed) after this long: a slow order of ours makes
- * the name look "unavailable and not ours" until it completes, and freeing the slot early would
- * let the barber buy a second domain while the first one lands.
- */
-export const BUY_GIVE_UP_MS = 24 * 3600_000;
 /** A claim call only STARTS steps this long (one slow republish still ends inside 300 s). */
 export const CLAIM_STEP_CUTOFF_MS = 140_000;
+/** The sweep re-asks every registered row's payer at least this often (renewal status drift). */
+export const PAYER_REFRESH_MS = 12 * 3600_000;
 const YEAR_MS = 365 * 24 * 3600_000;
 const MAX_STEPS = 12;
 
@@ -91,10 +112,20 @@ const iso = (ms: number) => new Date(ms).toISOString();
 const ms = (v: string | null | undefined) => (v ? Date.parse(v) : NaN);
 const errMsg = (e: unknown) => String((e as any)?.code || (e as Error)?.message || e).slice(0, 300);
 const TX_RE = /^\d{1,32}$/;
+const STOPPED: readonly DomainState[] = ['detaching', 'unlinking', 'detached', 'failed', 'transferred'];
 
 /** The Vercel project for a site: the slug (lib/deploySite.ts names projects this way). */
 export function projectFor(slug: string): string {
   return slug.toLowerCase().replace(/[''`]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').substring(0, 50).replace(/-+$/, '');
+}
+
+export function appleStatus(tx: VerifiedTx, now: number): PayerStatus {
+  return { active: isActive(tx, now), autoRenew: tx.autoRenew ?? null, expiresAt: tx.expiresAt, revoked: tx.revoked };
+}
+
+/** Vercel auto-renew we want: paid, renewing (per the payer NOW), and the domain still in use. */
+export function desiredAutoRenew(state: DomainState, s: PayerStatus): boolean {
+  return s.active && s.autoRenew === true && !STOPPED.includes(state);
 }
 
 // ─── public status ───
@@ -117,7 +148,7 @@ export function publicState(row: DomainRow): string {
     case 'reserved': case 'buying': case 'ordered': return 'registering';
     case 'bought': case 'attached': return 'linking';
     case 'live': return row.auto_renew || !row.paid_until ? 'live' : `cancelled-until:${new Date(row.paid_until).toISOString()}`;
-    case 'detaching': case 'detached': return 'expired';
+    case 'detaching': case 'unlinking': case 'detached': return 'expired';
     case 'failed': return `failed:${row.failure_reason || 'unknown'}`;
     case 'transferred': return 'transferred';
     default: return 'unknown';
@@ -138,12 +169,45 @@ export function statusBody(row: DomainRow | null): DomainStatusBody {
   return b;
 }
 
+// ─── payer refresh ───
+
+/**
+ * Record the payer's CURRENT word: paid_until (max), revocation, and the desired auto-renew.
+ * The update is conditional on the state it was computed for, so a concurrent transition
+ * (e.g. to detaching) is never overwritten with a stale desire.
+ */
+export async function refreshFromPayer(row: DomainRow, s: PayerStatus, deps: Pick<DomainFlowDeps, 'repo' | 'now'>): Promise<DomainRow> {
+  const otid = row.original_transaction_id;
+  if (s.expiresAt != null) await deps.repo.extendPaidUntil(otid, s.expiresAt);
+  for (let i = 0; i < 2; i++) {
+    const want = desiredAutoRenew(row.state, s);
+    const patch: Partial<DomainRow> = {
+      payer_checked_at: iso(deps.now()),
+      revoked_at: s.revoked ? (row.revoked_at ?? iso(deps.now())) : null,
+    };
+    if (want !== row.auto_renew) {
+      patch.auto_renew = want;
+      patch.auto_renew_synced = false;
+    }
+    const r = await deps.repo.update(otid, [row.state], patch);
+    if (r) return r;
+    const fresh = await deps.repo.get(otid);
+    if (!fresh) return row;
+    row = fresh;
+  }
+  return row;
+}
+
+async function askPayer(row: DomainRow, deps: DomainFlowDeps, timeoutMs = 8_000): Promise<PayerStatus> {
+  return withTimeout(deps.payer(row), timeoutMs, 'payer status');
+}
+
 // ─── the state machine ───
 
 type Next = 'continue' | 'wait' | 'done';
 interface Ctx {
-  /** The claim just asked Apple: the subscription is active. Otherwise reserved rows ask first. */
-  appleActive?: boolean;
+  /** The caller just asked the payer (claim): use this instead of asking again. */
+  payer?: PayerStatus;
 }
 
 async function move(deps: DomainFlowDeps, row: DomainRow, from: DomainState[], patch: Partial<DomainRow>): Promise<{ row: DomainRow; next: Next }> {
@@ -151,7 +215,7 @@ async function move(deps: DomainFlowDeps, row: DomainRow, from: DomainState[], p
   if (moved) return { row: moved, next: 'continue' };
   // Someone else moved it (should not happen under the lease): re-read and re-evaluate.
   const fresh = await deps.repo.get(row.original_transaction_id);
-  return { row: fresh ?? row, next: fresh ? 'continue' : 'done' };
+  return { row: fresh ?? row, next: fresh && fresh.state !== row.state ? 'continue' : 'done' };
 }
 
 async function wait(deps: DomainFlowDeps, row: DomainRow, lastError: string | null): Promise<{ row: DomainRow; next: Next }> {
@@ -162,15 +226,16 @@ async function wait(deps: DomainFlowDeps, row: DomainRow, lastError: string | nu
   return { row, next: 'wait' };
 }
 
+/** Free the slot: only from states where nothing of ours is registered. */
 const fail = (deps: DomainFlowDeps, row: DomainRow, reason: string, lastError: string | null = null) =>
-  move(deps, row, ['reserved', 'buying', 'ordered'], { state: 'failed', failure_reason: reason, last_error: lastError });
+  move(deps, row, ['reserved', 'buying', 'ordered'], { state: 'failed', failure_reason: reason, last_error: lastError, auto_renew: false });
 
-/** The registration exists on our account: record it (from reserved, buying or ordered). */
-async function toBought(deps: DomainFlowDeps, row: DomainRow, owned: { boughtAt: number | null; expiresAt: number | null; renew: boolean }) {
+/** The registration exists on our account (Vercel said so just now): record it. */
+async function toBought(deps: DomainFlowDeps, row: DomainRow, owned: { boughtAt: number; expiresAt: number; renew: boolean }) {
   return move(deps, row, ['reserved', 'buying', 'ordered'], {
     state: 'bought',
-    vercel_bought_at: iso(owned.boughtAt ?? deps.now()),
-    registration_expires_at: owned.expiresAt != null ? iso(owned.expiresAt) : null,
+    vercel_bought_at: iso(owned.boughtAt),
+    registration_expires_at: iso(owned.expiresAt),
     auto_renew_synced: owned.renew === row.auto_renew,
     last_error: null,
   });
@@ -181,25 +246,26 @@ function registrar(deps: DomainFlowDeps): VercelDomains {
   return deps.vercel;
 }
 
+const simOwned = (deps: DomainFlowDeps) => ({ boughtAt: deps.now(), expiresAt: deps.now() + YEAR_MS, renew: false });
+
 /** One step from the row's current state. Throws only on repo errors. */
 export async function step(row: DomainRow, deps: DomainFlowDeps, ctx: Ctx = {}): Promise<{ row: DomainRow; next: Next }> {
-  const now = deps.now();
   const sim = row.simulated;
   try {
     switch (row.state) {
       case 'reserved': {
-        if (!ctx.appleActive) {
-          let tx: VerifiedTx;
+        let s = ctx.payer;
+        if (!s) {
           try {
-            tx = await withTimeout(deps.verifyDomain(row.original_transaction_id), 8_000, 'Apple verify');
+            s = await askPayer(row, deps);
           } catch (e: any) {
-            if (e instanceof VerifyFailure && e.code !== 'apple-unavailable') return fail(deps, row, 'subscription-inactive', e.code);
-            return wait(deps, row, `apple: ${errMsg(e)}`);
+            if (e instanceof PayerFailure && e.permanent) return fail(deps, row, 'subscription-inactive', e.code);
+            return wait(deps, row, `payer: ${errMsg(e)}`);
           }
-          if (!isActive(tx, now)) return fail(deps, row, 'subscription-inactive');
-          if (tx.expiresAt != null) await deps.repo.extendPaidUntil(row.original_transaction_id, tx.expiresAt);
+          row = await refreshFromPayer(row, s, deps);
         }
-        if (sim) return toBought(deps, row, { boughtAt: now, expiresAt: now + YEAR_MS, renew: row.auto_renew });
+        if (!s.active) return fail(deps, row, 'subscription-inactive');
+        if (sim) return toBought(deps, row, simOwned(deps));
         if (!deps.contact) return wait(deps, row, 'registrar-not-configured');
         const v = registrar(deps);
         // Already ours (a buy whose response was lost)? Then never buy again.
@@ -212,42 +278,38 @@ export async function step(row: DomainRow, deps: DomainFlowDeps, ctx: Ctx = {}):
         const expectedPrice = price!.purchasePrice as number;
         // Recorded BEFORE the call: a crash during it leaves `buying`, never a second blind buy.
         const buying = await deps.repo.update(row.original_transaction_id, ['reserved'], {
-          state: 'buying', buy_started_at: iso(now), expected_price: expectedPrice, last_error: null,
+          state: 'buying', buy_started_at: iso(deps.now()), expected_price: expectedPrice, last_error: null,
         });
         if (!buying) return move(deps, row, ['reserved'], {});
         row = buying;
-        const r = await v.buy(row.domain, { expectedPrice, autoRenew: row.auto_renew, contact: deps.contact });
+        // Auto-renew OFF at purchase: it is turned on only once recorded, and only while the payer renews.
+        const r = await v.buy(row.domain, { expectedPrice, autoRenew: false, contact: deps.contact });
         if (r.ok === true) return move(deps, row, ['buying'], { state: 'ordered', order_id: r.orderId });
-        if (!r.definite) return wait(deps, row, `buy: ${r.code} (outcome unknown)`);
+        if (!r.definite) return wait(deps, row, `buy outcome unknown (${r.code}): waiting for Vercel to show it; an admin releases it if it never does`);
         if (r.code === 'domain_not_available') {
           const mine = await v.owned(row.domain);
           return mine ? toBought(deps, row, mine) : fail(deps, row, 'taken', r.code);
         }
         if (r.code === 'expected_price_mismatch' || r.code === 'order_too_expensive') return fail(deps, row, 'price', r.code);
-        // Any other definite refusal (contact data, token scope, TLD): nothing was bought. Back to
+        // Any other definite refusal (contact data, token scope): nothing was bought. Back to
         // reserved so it is retried once the configuration is fixed; the slot is not burned.
         const back = await move(deps, row, ['buying'], { state: 'reserved', buy_started_at: null, last_error: `buy: ${r.code}` });
         return { row: back.row, next: 'wait' };
       }
 
       case 'buying': {
-        if (sim) return toBought(deps, row, { boughtAt: now, expiresAt: now + YEAR_MS, renew: row.auto_renew });
-        const v = registrar(deps);
-        const owned = await v.owned(row.domain);
+        if (sim) return toBought(deps, row, simOwned(deps));
+        // The buy's outcome is unknown. Ours now? Recorded. Otherwise stay here: availability
+        // alone never proves no order of ours is in flight, so this is never re-bought
+        // automatically (admin: lib/admin/sites.ts domainBuyRelease after checking Vercel).
+        const owned = await registrar(deps).owned(row.domain);
         if (owned) return toBought(deps, row, owned);
-        const age = now - ms(row.buy_started_at);
-        if (!(age >= BUY_UNCERTAIN_MS)) return wait(deps, row, row.last_error);
-        // Still available after the cooldown: no order of ours holds it, so buying again is safe.
-        const available = (await v.availability([row.domain])).get(row.domain) === true;
-        if (available) return move(deps, row, ['buying'], { state: 'reserved', buy_started_at: null });
-        // Unavailable and not (yet) ours: maybe a slow order of ours. Wait; give up only much later.
-        if (!(age >= BUY_GIVE_UP_MS)) return wait(deps, row, 'buy outcome unknown: name unavailable, not in our account yet');
-        return fail(deps, row, 'taken');
+        return wait(deps, row, row.last_error || 'buy outcome unknown: not in our Vercel account; admin must check Vercel and release');
       }
 
       case 'ordered': {
-        if (sim) return toBought(deps, row, { boughtAt: now, expiresAt: now + YEAR_MS, renew: row.auto_renew });
-        if (!row.order_id) return move(deps, row, ['ordered'], { state: 'buying', buy_started_at: row.buy_started_at ?? iso(now) });
+        if (sim) return toBought(deps, row, simOwned(deps));
+        if (!row.order_id) return move(deps, row, ['ordered'], { state: 'buying', buy_started_at: row.buy_started_at ?? iso(deps.now()) });
         const v = registrar(deps);
         const o = await v.order(row.order_id, row.domain);
         const lineFailed = o.domainStatus === 'failed' || o.domainStatus === 'refunded' || o.domainStatus === 'refund-failed';
@@ -276,7 +338,7 @@ export async function step(row: DomainRow, deps: DomainFlowDeps, ctx: Ctx = {}):
       case 'attached': {
         // Sandbox: the address is not real, so the site keeps its vercel.app links.
         if (!sim) await deps.hooks.onDomainLinked(row.site_slug, row.domain);
-        return move(deps, row, ['attached'], { state: 'live', linked_at: iso(now), last_error: null });
+        return move(deps, row, ['attached'], { state: 'live', linked_at: iso(deps.now()), dns_ready_at: null, last_error: null });
       }
 
       case 'detaching': {
@@ -285,13 +347,52 @@ export async function step(row: DomainRow, deps: DomainFlowDeps, ctx: Ctx = {}):
           const project = projectFor(row.site_slug);
           await v.removeProjectDomain(project, `www.${row.domain}`);
           await v.removeProjectDomain(project, row.domain);
-          await deps.hooks.onDomainUnlinked(row.site_slug);
         }
-        return move(deps, row, ['detaching'], { state: 'detached', detached_at: iso(now), last_error: null });
+        return move(deps, row, ['detaching'], { state: 'unlinking', last_error: null });
+      }
+
+      case 'unlinking': {
+        if (!sim) await deps.hooks.onDomainUnlinked(row.site_slug);
+        return move(deps, row, ['unlinking'], { state: 'detached', detached_at: iso(deps.now()), last_error: null });
+      }
+
+      case 'detached': {
+        // Re-attach only when paid again AND Vercel confirms the registration is still ours.
+        let s = ctx.payer;
+        if (!s) {
+          if (!(ms(row.paid_until) > deps.now()) || row.revoked_at) return { row, next: 'done' };
+          try {
+            s = await askPayer(row, deps);
+          } catch (e) {
+            return wait(deps, row, `payer: ${errMsg(e)}`);
+          }
+          row = await refreshFromPayer(row, s, deps);
+        }
+        if (!s.active) return { row, next: 'done' };
+        let owned: Awaited<ReturnType<VercelDomains['owned']>> = null;
+        if (sim) owned = simOwned(deps);
+        else owned = await registrar(deps).owned(row.domain); // throws on errors: never read as "gone"
+        if (!owned) {
+          // Confirmed gone from our account: only now is the slot freed.
+          return move(deps, row, ['detached'], { state: 'failed', failure_reason: 'registration-expired', auto_renew: false });
+        }
+        try {
+          return await move(deps, row, ['detached'], {
+            state: 'bought', detached_at: null, registration_expires_at: iso(owned.expiresAt),
+            auto_renew: desiredAutoRenew('bought', s), auto_renew_synced: false, last_error: null,
+          });
+        } catch (e) {
+          if (!(e instanceof DomainConflict)) throw e;
+          // The site took a newer domain meanwhile: newer wins; this one stays detached, not renewing.
+          const r = await deps.repo.update(row.original_transaction_id, ['detached'], {
+            last_error: 'the site has a newer domain; this one stays detached', auto_renew: false, auto_renew_synced: false,
+          });
+          return { row: r ?? row, next: 'done' };
+        }
       }
 
       default:
-        return { row, next: 'done' }; // live, detached, failed, transferred
+        return { row, next: 'done' }; // live, failed, transferred
     }
   } catch (e) {
     if (e instanceof DomainConflict) throw e;
@@ -301,17 +402,33 @@ export async function step(row: DomainRow, deps: DomainFlowDeps, ctx: Ctx = {}):
   }
 }
 
-/** Apply the desired Vercel auto-renew (from Apple). Best effort; the sweep retries. */
+/**
+ * Make Vercel's auto-renew match the desired one, reading Vercel LIVE (never the stored expiry):
+ * gone or expired at Vercel → nothing to renew; otherwise PATCH when it differs. Marks the row
+ * synced only after Vercel confirmed (a read or a successful PATCH), and only if auto_renew did
+ * not change meanwhile.
+ */
 export async function syncAutoRenew(row: DomainRow, deps: DomainFlowDeps): Promise<DomainRow> {
-  if (row.auto_renew_synced || !OWNED_STATES.includes(row.state)) return row;
+  if (!OWNED_STATES.includes(row.state)) return row;
+  const markSynced = async (extra: Partial<DomainRow> = {}) =>
+    (await deps.repo.update(row.original_transaction_id, OWNED_STATES, { auto_renew_synced: true, ...extra }, { auto_renew: row.auto_renew })) ?? row;
+  if (row.simulated) return row.auto_renew_synced ? row : markSynced();
   try {
-    const expired = Number.isFinite(ms(row.registration_expires_at)) && ms(row.registration_expires_at) <= deps.now();
-    if (!row.simulated && !expired) await registrar(deps).setAutoRenew(row.domain, row.auto_renew);
-    // Only if auto_renew did not change meanwhile (a notification landing during the call).
-    const r = await deps.repo.update(row.original_transaction_id, null, { auto_renew_synced: true }, { auto_renew: row.auto_renew });
-    return r ?? row;
+    const v = registrar(deps);
+    const owned = await v.owned(row.domain);
+    if (!owned) return markSynced(); // not ours / expired: nothing renews
+    if (owned.renew !== row.auto_renew) {
+      try {
+        await v.setAutoRenew(row.domain, row.auto_renew);
+      } catch (e) {
+        const gone = e instanceof VercelApiError && (e.code === 'domain_not_found' || e.code === 'domain_not_registered');
+        if (!gone) throw e;
+      }
+    }
+    return markSynced({ registration_expires_at: iso(owned.expiresAt) });
   } catch (e) {
     console.error(`[domains] ${row.domain}: auto-renew ${row.auto_renew ? 'on' : 'off'} failed (retried by the sweep): ${errMsg(e)}`);
+    if (row.auto_renew_synced) await deps.repo.update(row.original_transaction_id, null, { auto_renew_synced: false }).catch(() => {});
     return row;
   }
 }
@@ -323,7 +440,18 @@ export async function advance(row: DomainRow, deps: DomainFlowDeps, ctx: Ctx = {
     row = r.row;
     if (r.next !== 'continue') break;
   }
-  return syncAutoRenew(row, deps);
+  return row.auto_renew_synced ? row : syncAutoRenew(row, deps);
+}
+
+/** Run `fn` holding the row's lease; null when someone else holds it. */
+async function leased<T>(otid: string, deps: Pick<DomainFlowDeps, 'repo' | 'now'>, fn: () => Promise<T>): Promise<T | null> {
+  const token = await deps.repo.acquireLease(otid, deps.now(), LEASE_MS);
+  if (!token) return null;
+  try {
+    return await fn();
+  } finally {
+    await deps.repo.releaseLease(otid, token).catch((e) => console.error(`[domains] ${otid}: releasing the lease failed:`, errMsg(e)));
+  }
 }
 
 // ─── shared helpers ───
@@ -333,7 +461,7 @@ const rateLimited: FlowResult = { status: 429, body: { error: 'rate-limited' }, 
 const unavailable: FlowResult = { status: 503, body: { error: 'temporarily-unavailable' } };
 const VERIFY_STATUS = { 'not-found': 404, 'bad-bundle': 400, 'bad-product': 400, 'apple-unavailable': 503 } as const;
 
-async function allowed(deps: DomainFlowDeps, key: string, kind: 'read' | 'write'): Promise<boolean> {
+async function allowed(deps: Pick<DomainFlowDeps, 'limiter'>, key: string, kind: 'read' | 'write'): Promise<boolean> {
   if (!deps.limiter) return true;
   try {
     return await deps.limiter.allow(key, kind);
@@ -344,7 +472,6 @@ async function allowed(deps: DomainFlowDeps, key: string, kind: 'read' | 'write'
 }
 
 const hashKey = (s: string) => createHash('sha256').update(s).digest('hex').slice(0, 32);
-
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 
 // ─── POST /api/ios/domain/search ───
@@ -354,18 +481,17 @@ export interface SearchResult { domain: string; available: boolean; eligible: bo
 /**
  * { transactionId?, q } → { results: [{ domain, available, eligible }] }. Never asks Apple: the
  * transactionId is only a (hashed) rate-limit key, so the answer is the same whether or not it
- * exists. The exact .com first, then close suggestions. eligible = available and Vercel's
- * first-year AND renewal price ≤ $15 (never premium). Per-IP limits run in the handler.
+ * exists. eligible = available and Vercel's first-year AND renewal price ≤ $15.
  */
 export async function runDomainSearch(body: unknown, deps: Pick<DomainFlowDeps, 'vercel' | 'limiter'>, ip?: string): Promise<FlowResult> {
   // Own buckets (not the bookings' shared write:<ip> one): 10/min per IP, shared across instances.
-  if (ip && !(await allowed(deps as DomainFlowDeps, `domain-search-ip:${ip}`, 'write'))) return rateLimited;
+  if (ip && !(await allowed(deps, `domain-search-ip:${ip}`, 'write'))) return rateLimited;
   if (!isObj(body)) return bad('q');
   const label = normalizeLabel(body.q);
   if (!label) return bad('q');
   const tx = body.transactionId;
   if (tx != null && (typeof tx !== 'string' || tx.length > 64)) return bad('transactionId');
-  if (typeof tx === 'string' && tx.trim() && !(await allowed(deps as DomainFlowDeps, `domain-search-tx:${hashKey(tx.trim())}`, 'write'))) return rateLimited;
+  if (typeof tx === 'string' && tx.trim() && !(await allowed(deps, `domain-search-tx:${hashKey(tx.trim())}`, 'write'))) return rateLimited;
   if (!deps.vercel) return unavailable;
   const domains = candidateDomains(label);
   try {
@@ -383,6 +509,116 @@ export async function runDomainSearch(body: unknown, deps: Pick<DomainFlowDeps, 
   }
 }
 
+// ─── claim (shared by the app and the website) ───
+
+/** Available and price-eligible now? null when fine. Throws on Vercel errors. */
+export async function precheckDomain(deps: Pick<DomainFlowDeps, 'vercel'>, domain: string): Promise<'domain-taken' | 'domain-not-eligible' | null> {
+  const v = deps.vercel;
+  if (!v) throw Object.assign(new Error('registrar-not-configured'), { code: 'registrar-not-configured' });
+  if (!((await v.availability([domain])).get(domain) === true)) return 'domain-taken';
+  if (!eligiblePrice((await v.prices([domain])).get(domain))) return 'domain-not-eligible';
+  return null;
+}
+
+export function resultFor(row: DomainRow): FlowResult {
+  const body = statusBody(row);
+  if (row.state === 'live') return { status: 200, body };
+  if (row.state === 'failed') return { status: 409, body: { error: 'claim-failed', ...body } };
+  return { status: 202, body };
+}
+
+export interface SlotClaim {
+  key: string;
+  source: DomainSource;
+  environment: 'Production' | 'Sandbox';
+  simulated: boolean;
+  slug: string;
+  domain: string;
+  /** The payer's current status, just fetched by the caller. */
+  payer: PayerStatus;
+}
+
+/**
+ * Reserve (or resume / repoint) the slot `c.key` for `c.domain` on `c.slug`. The caller has
+ * proven payment and ownership. Returns the row, or the refusal. Throws on repo / Vercel errors.
+ */
+export async function reserveSlot(c: SlotClaim, deps: DomainFlowDeps): Promise<{ row: DomainRow; result?: undefined } | { result: FlowResult; row?: undefined }> {
+  const { key, slug, domain } = c;
+  let row = await deps.repo.get(key);
+  const precheckNeeded = !c.simulated || !!deps.vercel;
+  if (row) {
+    // One domain subscription, one site, forever.
+    if (row.site_slug !== slug) return { result: { status: 409, body: { error: 'slot-bound-to-other-site' } } };
+    if (row.state === 'transferred') return { result: { status: 409, body: { error: 'transferred', ...statusBody(row) } } };
+    if (row.state === 'failed') {
+      if (precheckNeeded) {
+        const pre = await precheckDomain(deps, domain);
+        if (pre) return { result: { status: 409, body: { error: pre } } };
+      }
+      const holder = await deps.repo.holdingSite(slug);
+      if (holder && holder.original_transaction_id !== key) return { result: { status: 409, body: { error: 'site-has-domain' } } };
+      try {
+        row = (await deps.repo.update(key, ['failed'], {
+          state: 'reserved', domain, failure_reason: null, last_error: null, order_id: null, buy_started_at: null,
+          expected_price: null, environment: c.environment, simulated: c.simulated, auto_renew: desiredAutoRenew('reserved', c.payer),
+        })) ?? (await deps.repo.get(key));
+      } catch (e) {
+        if (e instanceof DomainConflict) return { result: { status: 409, body: { error: 'domain-taken' } } };
+        throw e;
+      }
+    } else if (row.domain !== domain) {
+      return { result: { status: 409, body: { error: 'slot-in-use', ...statusBody(row) } } };
+    }
+  } else {
+    const holder = await deps.repo.holdingSite(slug);
+    if (holder) return { result: { status: 409, body: { error: 'site-has-domain' } } };
+    if (precheckNeeded) {
+      const pre = await precheckDomain(deps, domain);
+      if (pre) return { result: { status: 409, body: { error: pre } } };
+    }
+    const ins = await deps.repo.insertReserved({
+      original_transaction_id: key, source: c.source, environment: c.environment, site_slug: slug, domain,
+      simulated: c.simulated, auto_renew: desiredAutoRenew('reserved', c.payer),
+      paid_until: c.payer.expiresAt != null ? iso(c.payer.expiresAt) : null,
+    });
+    row = await deps.repo.get(key);
+    if (ins === 'conflict' && (!row || row.domain !== domain || row.site_slug !== slug)) {
+      // Lost a race: say which constraint.
+      const h = await deps.repo.holdingSite(slug);
+      if (h && h.original_transaction_id !== key) return { result: { status: 409, body: { error: 'site-has-domain' } } };
+      return { result: { status: 409, body: { error: row ? 'slot-in-use' : 'domain-taken' } } };
+    }
+  }
+  if (!row) return { result: unavailable };
+  return { row };
+}
+
+/** Advance a reserved slot under its lease (202 when someone else holds it). */
+export async function advanceSlot(key: string, payer: PayerStatus, deps: DomainFlowDeps): Promise<FlowResult> {
+  const done = await leased(key, deps, async () => {
+    const cur = await deps.repo.get(key);
+    if (!cur) return null;
+    const fresh = await refreshFromPayer(cur, payer, deps);
+    return advance(fresh, deps, { payer }, deps.now() + CLAIM_STEP_CUTOFF_MS);
+  });
+  if (!done) {
+    const cur = await deps.repo.get(key);
+    return { status: 202, body: statusBody(cur) };
+  }
+  return resultFor(done);
+}
+
+export async function claimSlot(c: SlotClaim, deps: DomainFlowDeps): Promise<FlowResult> {
+  try {
+    const r = await reserveSlot(c, deps);
+    if (r.result) return r.result;
+    return await advanceSlot(c.key, c.payer, deps);
+  } catch (e) {
+    console.error(`[domains/claim] ${c.key}: unexpected error:`, errMsg(e));
+    return unavailable;
+  }
+}
+
 // ─── POST /api/ios/domain/claim ───
 
 async function verifyOrResult(fn: () => Promise<VerifiedTx>, tag: string): Promise<VerifiedTx | FlowResult> {
@@ -395,21 +631,6 @@ async function verifyOrResult(fn: () => Promise<VerifiedTx>, tag: string): Promi
   }
 }
 const isResult = (v: unknown): v is FlowResult => isObj(v) && typeof (v as any).status === 'number' && 'body' in v;
-
-/** Available and price-eligible now? null when fine. Throws on Vercel errors. */
-async function precheck(deps: DomainFlowDeps, domain: string): Promise<'domain-taken' | 'domain-not-eligible' | null> {
-  const v = registrar(deps);
-  if (!((await v.availability([domain])).get(domain) === true)) return 'domain-taken';
-  if (!eligiblePrice((await v.prices([domain])).get(domain))) return 'domain-not-eligible';
-  return null;
-}
-
-function resultFor(row: DomainRow): FlowResult {
-  const body = statusBody(row);
-  if (row.state === 'live') return { status: 200, body };
-  if (row.state === 'failed') return { status: 409, body: { error: 'claim-failed', ...body } };
-  return { status: 202, body };
-}
 
 /**
  * { transactionId (domain subscription), siteTransactionId (the site's plan), domain } →
@@ -430,7 +651,8 @@ export async function runDomainClaim(body: unknown, authorization: string | stri
   // 1. The domain subscription: Apple-verified, the domain product only, active.
   const dtx = await verifyOrResult(() => deps.verifyDomain(transactionId), 'domain');
   if (isResult(dtx)) return dtx;
-  if (!isActive(dtx, deps.now())) return { status: 402, body: { error: 'subscription-inactive' } };
+  const payer = appleStatus(dtx, deps.now());
+  if (!payer.active) return { status: 402, body: { error: 'subscription-inactive' } };
   const otid = dtx.originalTransactionId;
   const simulated = dtx.environment === 'Sandbox' && !(deps.sandboxRealOtids?.has(otid) ?? false);
   if (!simulated && (!deps.vercel || !deps.contact)) {
@@ -452,7 +674,6 @@ export async function runDomainClaim(body: unknown, authorization: string | stri
     return unavailable;
   }
   if (!site?.site_slug) return { status: 404, body: { error: 'no-site' } };
-  const slug = site.site_slug;
 
   // 3. Same purchaser: Apple lists the site purchase under the same Apple account, or the
   //    signed-in owner's shop is linked to it.
@@ -463,72 +684,7 @@ export async function runDomainClaim(body: unknown, authorization: string | stri
   }
   if (!owner) return { status: 403, body: { error: 'not-owner' } };
 
-  try {
-    let row = await deps.repo.get(otid);
-    const now = deps.now();
-    if (row) {
-      // One domain subscription, one site, forever.
-      if (row.site_slug !== slug) return { status: 409, body: { error: 'slot-bound-to-other-site' } };
-      if (row.state === 'transferred') return { status: 409, body: { error: 'transferred', ...statusBody(row) } };
-      if (row.state === 'failed') {
-        if (!simulated || deps.vercel) {
-          const pre = await precheck(deps, domain);
-          if (pre) return { status: 409, body: { error: pre } };
-        }
-        const holder = await deps.repo.holdingSite(slug);
-        if (holder && holder.original_transaction_id !== otid) return { status: 409, body: { error: 'site-has-domain' } };
-        try {
-          row = await deps.repo.update(otid, ['failed'], {
-            state: 'reserved', domain, failure_reason: null, last_error: null, order_id: null, buy_started_at: null,
-            expected_price: null, environment: dtx.environment, simulated,
-          }) ?? (await deps.repo.get(otid));
-        } catch (e) {
-          if (e instanceof DomainConflict) return { status: 409, body: { error: 'domain-taken' } };
-          throw e;
-        }
-      } else if (row.domain !== domain) {
-        return { status: 409, body: { error: 'slot-in-use', ...statusBody(row) } };
-      } else if (row.state === 'detached' || row.state === 'detaching') {
-        // Resubscribed: re-attach while the registration is still ours.
-        if (Number.isFinite(ms(row.registration_expires_at)) && ms(row.registration_expires_at) > now) {
-          row = await deps.repo.update(otid, ['detached', 'detaching'], {
-            state: 'bought', auto_renew: true, auto_renew_synced: false, detached_at: null, revoked_at: null,
-          }) ?? (await deps.repo.get(otid));
-        } else {
-          row = await deps.repo.update(otid, ['detached', 'detaching'], { state: 'failed', failure_reason: 'registration-expired' }) ?? row;
-          return resultFor(row!);
-        }
-      }
-    } else {
-      const holder = await deps.repo.holdingSite(slug);
-      if (holder) return { status: 409, body: { error: 'site-has-domain' } };
-      if (!simulated || deps.vercel) {
-        const pre = await precheck(deps, domain);
-        if (pre) return { status: 409, body: { error: pre } };
-      }
-      const ins = await deps.repo.insertReserved({
-        original_transaction_id: otid, environment: dtx.environment, site_slug: slug, domain, simulated,
-        paid_until: dtx.expiresAt != null ? iso(dtx.expiresAt) : null,
-      });
-      row = await deps.repo.get(otid);
-      if (ins === 'conflict' && (!row || row.domain !== domain || row.site_slug !== slug)) {
-        return { status: 409, body: { error: row ? 'slot-in-use' : 'domain-taken' } };
-      }
-    }
-    if (!row) return unavailable;
-    if (dtx.expiresAt != null) await deps.repo.extendPaidUntil(otid, dtx.expiresAt);
-
-    if (!(await deps.repo.acquireLease(otid, deps.now(), LEASE_MS))) return { status: 202, body: statusBody(row) };
-    try {
-      row = await advance(row, deps, { appleActive: true }, deps.now() + CLAIM_STEP_CUTOFF_MS);
-    } finally {
-      await deps.repo.releaseLease(otid).catch((e) => console.error(`[domains/claim] ${otid}: releasing the lease failed:`, errMsg(e)));
-    }
-    return resultFor(row);
-  } catch (e) {
-    console.error(`[domains/claim] ${otid}: unexpected error:`, errMsg(e));
-    return unavailable;
-  }
+  return claimSlot({ key: otid, source: 'apple', environment: dtx.environment, simulated, slug: site.site_slug, domain, payer }, deps);
 }
 
 // ─── GET/POST /api/ios/domain/status ───
@@ -540,15 +696,17 @@ export async function runDomainStatus(transactionIdRaw: unknown, deps: DomainFlo
   if (isResult(tx)) return tx;
   try {
     const row = await deps.repo.get(tx.originalTransactionId);
-    const body = statusBody(row);
-    if (row && !row.simulated && (row.state === 'live' || row.state === 'attached') && deps.vercel) {
-      body.vercel = await probe(row, deps);
-    }
-    return { status: 200, body };
+    return { status: 200, body: await statusWithProbe(row, deps) };
   } catch (e) {
     console.error('[domains/status] failed:', errMsg(e));
     return unavailable;
   }
+}
+
+export async function statusWithProbe(row: DomainRow | null, deps: DomainFlowDeps): Promise<DomainStatusBody> {
+  const body = statusBody(row);
+  if (row && !row.simulated && (row.state === 'live' || row.state === 'attached') && deps.vercel) body.vercel = await probe(row, deps);
+  return body;
 }
 
 async function probe(row: DomainRow, deps: DomainFlowDeps): Promise<NonNullable<DomainStatusBody['vercel']>> {
@@ -565,55 +723,34 @@ async function probe(row: DomainRow, deps: DomainFlowDeps): Promise<NonNullable<
   };
 }
 
-// ─── App Store Server Notifications (domain product) ───
-
-const RENEWING = new Set(['SUBSCRIBED', 'DID_RENEW', 'REFUND_REVERSED']);
+// ─── payer events: App Store Server Notifications / Stripe subscription events ───
 
 /**
- * Records Apple's word on the domain subscription. DB only (Apple wants a fast 200); the sweep
- * applies Vercel side effects (auto-renew, detach). Re-attach on resubscribe is a state move to
- * `bought`, which the sweep (or the app's claim retry) carries out.
+ * A payer event for a domain subscription (any type, any order). The event's own payload is
+ * never trusted for state: the payer's CURRENT status is re-fetched and applied, so a late,
+ * older event (a DID_RENEW after a cancel) can never turn auto-renew back on. DB only (a fast
+ * answer); the sweep applies Vercel side effects. Throws when the payer can't be asked, so the
+ * sender retries.
  */
-export async function applyDomainNotification(n: DomainNotification, deps: Pick<DomainFlowDeps, 'repo' | 'now'>): Promise<{ ok: boolean; ignored?: string }> {
-  const row = await deps.repo.get(n.otid);
+export async function applyPayerEvent(key: string, label: string, deps: Pick<DomainFlowDeps, 'repo' | 'now' | 'payer'>): Promise<{ ok: boolean; ignored?: string }> {
+  const row = await deps.repo.get(key);
   if (!row) {
-    console.log(`[domains/notification] ${n.type} for ${n.otid}: no domain claimed yet; nothing to do`);
+    console.log(`[domains/event] ${label} for ${key}: no domain claimed yet; nothing to do (a claim reads the payer itself)`);
     return { ok: true, ignored: 'no-domain' };
   }
   if (row.state === 'transferred') return { ok: true, ignored: 'transferred' };
-  if (n.expiresAt != null) await deps.repo.extendPaidUntil(n.otid, n.expiresAt);
-
-  const patch: Partial<DomainRow> = { last_notification: n.subtype ? `${n.type}:${n.subtype}` : n.type };
-  let wantRenew: boolean | null = null;
-  if (n.type === 'DID_CHANGE_RENEWAL_STATUS') {
-    if (n.subtype === 'AUTO_RENEW_DISABLED') wantRenew = false;
-    if (n.subtype === 'AUTO_RENEW_ENABLED') wantRenew = true;
-  } else if (n.revokedAt != null) {
-    patch.revoked_at = iso(n.revokedAt);
-    wantRenew = false;
-  } else if (n.type === 'EXPIRED' || n.type === 'GRACE_PERIOD_EXPIRED') {
-    wantRenew = false;
-  } else if (RENEWING.has(n.type)) {
-    patch.revoked_at = null;
-    wantRenew = true;
-  }
-  if (wantRenew !== null && wantRenew !== row.auto_renew) {
-    patch.auto_renew = wantRenew;
-    patch.auto_renew_synced = false;
-  }
-  const updated = await deps.repo.update(n.otid, null, patch);
-
-  // Resubscribed after the domain was detached: re-attach while the registration is ours.
-  if (RENEWING.has(n.type) && n.revokedAt == null && updated && (updated.state === 'detached' || updated.state === 'detaching')) {
-    const regOk = Number.isFinite(ms(updated.registration_expires_at)) && ms(updated.registration_expires_at) > deps.now();
-    await deps.repo.update(n.otid, ['detached', 'detaching'], regOk
-      ? { state: 'bought', detached_at: null }
-      : { state: 'failed', failure_reason: 'registration-expired' });
-  }
+  const s = await withTimeout(deps.payer(row), 8_000, 'payer status');
+  await refreshFromPayer(row, s, deps);
+  await deps.repo.update(key, null, { last_notification: label }).catch(() => {});
   return { ok: true };
 }
 
-// ─── sweep (runs inside the existing /api/ios/sweep cron) ───
+/** App Store Server Notifications for the domain product (lib/ios/notifications.ts routes them here). */
+export function applyDomainNotification(n: DomainNotification, deps: Pick<DomainFlowDeps, 'repo' | 'now' | 'payer'>) {
+  return applyPayerEvent(n.otid, n.subtype ? `${n.type}:${n.subtype}` : n.type, deps);
+}
+
+// ─── sweep (its own cron: /api/ios/domain-sweep) ───
 
 export interface DomainSweepSummary {
   resumed: string[];
@@ -621,99 +758,144 @@ export interface DomainSweepSummary {
   failed: string[];
   waiting: string[];
   detached: string[];
+  reattached: string[];
   stillActive: string[];
+  refreshed: string[];
   autoRenewSynced: string[];
-  appleUnavailable: string[];
+  relinked: string[];
+  payerUnavailable: string[];
   deferred: string[];
   errors: string[];
 }
 
 export async function sweepDomains(
   deps: DomainFlowDeps,
-  opts: { deadline: number; limit?: number; appleTimeoutMs?: number },
+  opts: { deadline: number; limit?: number; payerTimeoutMs?: number },
 ): Promise<DomainSweepSummary> {
   const limit = opts.limit ?? 25;
   const out: DomainSweepSummary = {
-    resumed: [], live: [], failed: [], waiting: [], detached: [], stillActive: [], autoRenewSynced: [], appleUnavailable: [], deferred: [], errors: [],
+    resumed: [], live: [], failed: [], waiting: [], detached: [], reattached: [], stillActive: [], refreshed: [],
+    autoRenewSynced: [], relinked: [], payerUnavailable: [], deferred: [], errors: [],
   };
   const outOfTime = () => deps.now() >= opts.deadline;
-
-  async function runLeased(row: DomainRow, ctx: Ctx = {}) {
-    const otid = row.original_transaction_id;
-    if (!(await deps.repo.acquireLease(otid, deps.now(), LEASE_MS))) return null;
+  const pass = async (name: string, fn: () => Promise<void>) => {
     try {
-      const fresh = (await deps.repo.get(otid)) ?? row;
-      return await advance(fresh, deps, ctx, opts.deadline);
-    } finally {
-      await deps.repo.releaseLease(otid).catch(() => {});
+      await fn();
+    } catch (e) {
+      console.error(`[domains/sweep] ${name} pass failed:`, errMsg(e));
+      out.errors.push(`${name}: ${errMsg(e)}`);
+    }
+  };
+  const tally = (r: DomainRow | null) => {
+    if (!r) return;
+    if (r.state === 'live') out.live.push(r.domain);
+    else if (r.state === 'failed') out.failed.push(r.domain);
+    else if (r.state === 'detached') out.detached.push(r.domain);
+    else out.waiting.push(r.domain);
+  };
+  /** The payer's status, or null (recorded as unavailable). Permanent failures read as "ended". */
+  async function payerOf(row: DomainRow): Promise<PayerStatus | null> {
+    try {
+      return await askPayer(row, deps, opts.payerTimeoutMs ?? 5_000);
+    } catch (e: any) {
+      if (e instanceof PayerFailure && e.permanent) return { active: false, autoRenew: false, expiresAt: null, revoked: false };
+      out.payerUnavailable.push(row.domain);
+      await deps.repo.update(row.original_transaction_id, null, { payer_checked_at: iso(deps.now()) }).catch(() => {});
+      return null;
     }
   }
 
-  // 1. Lapses first (cheap Apple calls): the Apple period ended → detach.
-  try {
-    const now = deps.now();
-    for (const row of await deps.repo.lapseCandidates(limit, now - GRACE_MS)) {
-      if (outOfTime()) { out.deferred.push(row.domain); continue; }
-      const otid = row.original_transaction_id;
-      let tx: VerifiedTx | null = null;
-      try {
-        tx = await withTimeout(deps.verifyDomain(otid), opts.appleTimeoutMs ?? 5_000, 'Apple verify');
-      } catch (e: any) {
-        if (!(e instanceof VerifyFailure) || e.code === 'apple-unavailable') {
-          out.appleUnavailable.push(row.domain);
-          await deps.repo.update(otid, null, { lapse_checked_at: iso(deps.now()) }).catch(() => {});
-          continue;
+  // 1. Lapses: the paid period ended (payer confirms) → detach, under the row's lease.
+  await pass('lapse', async () => {
+    for (const cand of await deps.repo.lapseCandidates(limit, deps.now() - GRACE_MS)) {
+      if (outOfTime()) { out.deferred.push(cand.domain); continue; }
+      const otid = cand.original_transaction_id;
+      const r = await leased(otid, deps, async () => {
+        let row = (await deps.repo.get(otid)) ?? cand;
+        if (!ATTACHED_STATES.includes(row.state)) return row;
+        const s = await payerOf(row);
+        if (!s) return null;
+        row = await refreshFromPayer(row, s, deps);
+        if (s.active) {
+          out.stillActive.push(row.domain);
+          return row;
         }
-        // not-found / bad-product: Apple will never vouch for it; treat as ended.
-      }
-      await deps.repo.update(otid, null, { lapse_checked_at: iso(deps.now()) }).catch(() => {});
-      if (tx && isActive(tx, deps.now())) {
-        if (tx.expiresAt != null) await deps.repo.extendPaidUntil(otid, tx.expiresAt);
-        if (row.revoked_at && !tx.revoked) await deps.repo.update(otid, null, { revoked_at: null });
-        out.stillActive.push(row.domain);
-        continue;
-      }
-      const moved = await deps.repo.update(otid, ['bought', 'attached', 'live'], {
-        state: 'detaching', auto_renew: false, auto_renew_synced: row.auto_renew === false ? row.auto_renew_synced : false,
+        const moved = await deps.repo.update(otid, ATTACHED_STATES, { state: 'detaching', auto_renew: false, auto_renew_synced: false });
+        if (!moved) return row;
+        return advance(moved, deps, {}, opts.deadline);
       });
-      if (!moved) continue;
-      const done = await runLeased(moved);
-      if (done?.state === 'detached') out.detached.push(row.domain);
-      else out.waiting.push(row.domain);
+      if (r === null) out.deferred.push(cand.domain);
+      else if (r.state === 'detached') out.detached.push(r.domain);
+      else if (r.state === 'detaching' || r.state === 'unlinking') out.waiting.push(r.domain);
     }
-  } catch (e) {
-    console.error('[domains/sweep] lapse pass failed:', errMsg(e));
-    out.errors.push(`lapse: ${errMsg(e)}`);
-  }
+  });
 
-  // 2. Resume every row with a step still due (crashed claims, pending orders, re-attaches).
-  try {
-    for (const row of await deps.repo.resumable(limit, deps.now())) {
-      if (outOfTime()) { out.deferred.push(row.domain); continue; }
-      out.resumed.push(row.domain);
-      const done = await runLeased(row);
-      if (!done) continue;
-      if (done.state === 'live') out.live.push(done.domain);
-      else if (done.state === 'failed') out.failed.push(done.domain);
-      else if (done.state === 'detached') out.detached.push(done.domain);
-      else out.waiting.push(done.domain);
+  // 2. Resume every row with a step still due (crashed claims, pending orders, detaches).
+  await pass('resume', async () => {
+    for (const cand of await deps.repo.resumable(limit, deps.now())) {
+      if (outOfTime()) { out.deferred.push(cand.domain); continue; }
+      out.resumed.push(cand.domain);
+      tally(await leased(cand.original_transaction_id, deps, async () =>
+        advance((await deps.repo.get(cand.original_transaction_id)) ?? cand, deps, {}, opts.deadline)));
     }
-  } catch (e) {
-    console.error('[domains/sweep] resume pass failed:', errMsg(e));
-    out.errors.push(`resume: ${errMsg(e)}`);
-  }
+  });
 
-  // 3. Vercel auto-renew follows Apple's renewal status.
-  try {
+  // 3. Re-attach detached rows that are paid again (Vercel confirms the registration first).
+  await pass('reattach', async () => {
+    for (const cand of await deps.repo.reattachCandidates(limit, deps.now())) {
+      if (outOfTime()) { out.deferred.push(cand.domain); continue; }
+      const r = await leased(cand.original_transaction_id, deps, async () =>
+        advance((await deps.repo.get(cand.original_transaction_id)) ?? cand, deps, {}, opts.deadline));
+      if (r && r.state === 'live') out.reattached.push(r.domain);
+      else tally(r);
+    }
+  });
+
+  // 4. Every registered row: re-ask the payer (renewal status drift, missed events) and make
+  //    Vercel's auto-renew match, read live (a multi-year or auto-renewed registration too).
+  await pass('refresh', async () => {
+    for (const cand of await deps.repo.payerStale(limit, deps.now() - PAYER_REFRESH_MS)) {
+      if (outOfTime()) { out.deferred.push(cand.domain); continue; }
+      const otid = cand.original_transaction_id;
+      await leased(otid, deps, async () => {
+        let row = (await deps.repo.get(otid)) ?? cand;
+        const s = await payerOf(row);
+        if (s) row = await refreshFromPayer(row, s, deps);
+        row = await syncAutoRenew({ ...row, auto_renew_synced: false }, deps);
+        out.refreshed.push(row.domain);
+      });
+    }
+  });
+
+  // 5. Rows whose desired auto-renew changed since (events).
+  await pass('auto-renew', async () => {
     for (const row of await deps.repo.autoRenewUnsynced(limit)) {
       if (outOfTime()) { out.deferred.push(row.domain); continue; }
       const r = await syncAutoRenew(row, deps);
       if (r.auto_renew_synced) out.autoRenewSynced.push(row.domain);
     }
-  } catch (e) {
-    console.error('[domains/sweep] auto-renew pass failed:', errMsg(e));
-    out.errors.push(`auto-renew: ${errMsg(e)}`);
-  }
+  });
+
+  // 6. Once Vercel reports the domain verified with correct DNS, republish once more so the
+  //    site (and site-subpages' base URL, derived from the project's verified domains) uses it.
+  await pass('dns', async () => {
+    if (!deps.vercel) return;
+    for (const cand of await deps.repo.awaitingDns(limit)) {
+      if (outOfTime()) { out.deferred.push(cand.domain); continue; }
+      await leased(cand.original_transaction_id, deps, async () => {
+        const row = (await deps.repo.get(cand.original_transaction_id)) ?? cand;
+        if (row.state !== 'live' || row.dns_ready_at) return;
+        const [pd, cfg] = await Promise.all([
+          deps.vercel!.projectDomain(projectFor(row.site_slug), row.domain),
+          deps.vercel!.domainConfig(row.domain),
+        ]);
+        if (!pd?.verified || !cfg || cfg.misconfigured) return;
+        await deps.hooks.onDomainLinked(row.site_slug, row.domain);
+        await deps.repo.update(row.original_transaction_id, ['live'], { dns_ready_at: iso(deps.now()) });
+        out.relinked.push(row.domain);
+      });
+    }
+  });
   return out;
 }
 
@@ -721,10 +903,26 @@ export async function sweepDomains(
 
 /** Manual transfer to the barber is done in Vercel: stop the lifecycle from touching the domain. */
 export async function markTransferred(slug: string, by: string, deps: Pick<DomainFlowDeps, 'repo' | 'now'>): Promise<{ ok: boolean; error?: string; domain?: string }> {
-  const row = (await deps.repo.all()).find((r) => r.site_slug === slug && OWNED_STATES.includes(r.state));
+  const all = (await deps.repo.all()).filter((r) => r.site_slug === slug && OWNED_STATES.includes(r.state));
+  // The site's live (holding) row first; an old detached one only when it is the only one.
+  const row = all.find((r) => SITE_HOLDING_STATES.includes(r.state)) ?? all.sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0];
   if (!row) return { ok: false, error: 'no-domain' };
   const moved = await deps.repo.update(row.original_transaction_id, OWNED_STATES, {
     state: 'transferred', transferred_at: iso(deps.now()), transferred_by: by,
   });
+  return moved ? { ok: true, domain: moved.domain } : { ok: false, error: 'conflict' };
+}
+
+/**
+ * A buy whose outcome stayed unknown (`buying`, not in our Vercel account). After checking
+ * Vercel by hand, an admin either retries the purchase or abandons it (frees the slot).
+ */
+export async function releaseStuckBuy(slug: string, to: 'retry' | 'abandon', by: string, deps: Pick<DomainFlowDeps, 'repo' | 'now'>): Promise<{ ok: boolean; error?: string; domain?: string }> {
+  const row = (await deps.repo.all()).find((r) => r.site_slug === slug && r.state === 'buying');
+  if (!row) return { ok: false, error: 'no-domain' };
+  const patch: Partial<DomainRow> = to === 'retry'
+    ? { state: 'reserved', buy_started_at: null, last_error: `released for retry by ${by}` }
+    : { state: 'failed', failure_reason: 'registrar', last_error: `abandoned by ${by}`, auto_renew: false };
+  const moved = await deps.repo.update(row.original_transaction_id, ['buying'], patch);
   return moved ? { ok: true, domain: moved.domain } : { ok: false, error: 'conflict' };
 }

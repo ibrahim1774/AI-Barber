@@ -8,15 +8,19 @@ const s = fs.readFileSync(path.join(__dirname, '../../supabase/migrations/012_cu
 const code = s.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
 
 describe('012_custom_domains.sql', () => {
-  it('creates ios_domains and web_domain_purchases, nothing else touched', () => {
-    expect(code.match(/create table public\.(\w+)/g)).toEqual(['create table public.ios_domains', 'create table public.web_domain_purchases']);
+  it('creates ios_domains only, nothing else touched', () => {
+    expect(code.match(/create table public\.(\w+)/g)).toEqual(['create table public.ios_domains']);
     expect(code).not.toMatch(/ios_purchases/);
-    expect(code).not.toMatch(/\balter table public\.(?!ios_domains|web_domain_purchases)/);
+    expect(code).not.toMatch(/\balter table public\.(?!ios_domains)/);
   });
 
-  it('RLS on both tables and no policies or grants (service role only)', () => {
+  it('a row is an Apple or a Stripe subscription; bought with auto-renew off by default', () => {
+    expect(code).toMatch(/source text not null default 'apple' check \(source in \('apple', 'stripe'\)\)/);
+    expect(code).toMatch(/auto_renew boolean not null default false/);
+  });
+
+  it('RLS on and no policies or grants (service role only)', () => {
     expect(code).toMatch(/alter table public\.ios_domains enable row level security;/);
-    expect(code).toMatch(/alter table public\.web_domain_purchases enable row level security;/);
     expect(s).not.toMatch(/create policy/i);
     expect(s).not.toMatch(/\bgrant\b/i);
   });
@@ -39,9 +43,8 @@ describe('012_custom_domains.sql', () => {
     expect(site[1].match(/'([a-z]+)'/g)!.map((x) => x.replace(/'/g, ''))).toEqual([...SITE_HOLDING_STATES]);
   });
 
-  it('the otid is the primary key (a domain transaction has one row) and the stripe session is single-use', () => {
+  it('the subscription key is the primary key (one subscription, one slot: single use)', () => {
     expect(code).toMatch(/original_transaction_id text primary key/);
-    expect(code).toMatch(/stripe_session_id text primary key/);
   });
 
   it('says it is not applied', () => expect(s).toMatch(/NOT APPLIED/));

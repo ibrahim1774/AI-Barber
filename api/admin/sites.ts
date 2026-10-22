@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { checkAdmin, supabaseEmailOf, type EmailOfToken } from '../../lib/admin/auth.js';
 import { adminSupabase, liveAdminDeps } from '../../lib/admin/live.js';
 import {
-  domainTransferred, findSites, getSite, republish, republishAll, rollback, updateSite, type AdminSitesDeps,
+  domainBuyRelease, domainTransferred, findSites, listAccountDomains, getSite, republish, republishAll, rollback, updateSite, type AdminSitesDeps,
 } from '../../lib/admin/sites.js';
 import { memoryStore, supabaseRateStore, withFallback, type RateLimitStore } from '../../lib/bookings/rateLimit.js';
 
@@ -14,6 +14,7 @@ import { memoryStore, supabaseRateStore, withFallback, type RateLimitStore } fro
  *
  * GET  ?q=<text>             → { ok, sites: SiteRow[] }        (shop name, slug, email, URL, transaction id)
  * GET  ?slug=<slug>          → { ok, site: SiteDetail }        (siteData with real image URLs, version, history)
+ * GET  ?vercelDomains=1      → { ok, domains }                 READ-ONLY: every domain in our Vercel account, auto-renew, expiry, tracked?
  * POST { action, ... }:
  *   update       { slug, patch? | set?, note?, expectedVersion? }
  *   replace      { slug, siteData, note?, expectedVersion? }
@@ -22,6 +23,8 @@ import { memoryStore, supabaseRateStore, withFallback, type RateLimitStore } fro
  *   rollback     { slug, version: "4" | "4-1729…" (history id), expectedVersion? }
  *   domain-transferred { slug }   the custom domain was transferred by hand in Vercel; the
  *                                 domain lifecycle (lib/ios/domainFlow.ts) stops touching it
+ *   domain-buy-release { slug, to: 'retry' | 'abandon' }   a buy whose outcome stayed unknown,
+ *                                 after checking Vercel by hand
  */
 
 const READ_LIMIT = 120;
@@ -68,6 +71,10 @@ export function makeAdminSitesHandler(d: AdminSitesHandlerDeps) {
     try {
       const core = d.core();
       if (req.method === 'GET') {
+        if (str(one(req.query?.vercelDomains))) {
+          const r = await listAccountDomains(core);
+          return res.status(r.ok ? 200 : 500).json(r);
+        }
         const slug = str(one(req.query?.slug));
         if (slug) {
           const r = await getSite(slug, core);
@@ -111,6 +118,10 @@ export function makeAdminSitesHandler(d: AdminSitesHandlerDeps) {
         case 'domain-transferred':
           if (!slug) return needSlug();
           r = await domainTransferred(slug, core, by);
+          break;
+        case 'domain-buy-release':
+          if (!slug) return needSlug();
+          r = await domainBuyRelease(slug, body.to, core, by);
           break;
         case 'republish-all': {
           const dryRun = body.dryRun !== false;

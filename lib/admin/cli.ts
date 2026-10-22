@@ -3,7 +3,7 @@
 // customer emails only, never env values.
 import type { WebsiteData } from '../../types.js';
 import {
-  findSites, getSite, republish, republishAll, rollback, updateSite,
+  findSites, getSite, listAccountDomains, republish, republishAll, rollback, updateSite,
   type AdminSitesDeps, type UpdateResult,
 } from './sites.js';
 
@@ -20,6 +20,7 @@ export const USAGE = `AI Barber app sites (admin). Changes live customer sites �
   node scripts/admin-sites.mjs republish-all                    dry run: list what would be republished (default)
   node scripts/admin-sites.mjs republish-all --yes [--run <id>] [--limit <n>]   really republish every app site (resume with --run)
   node scripts/admin-sites.mjs rollback <slug> <version> [--expect <version>]   bring back a history version (4 or 4-1729…) as a new version
+  node scripts/admin-sites.mjs vercel-domains [--json]         READ-ONLY: every domain in our Vercel account (auto-renew, expiry, tracked?)
 
 Options: --env <file> (default .env.local, then .env)`;
 
@@ -210,6 +211,25 @@ export async function runCli(argv: string[], deps: () => AdminSitesDeps, io: Cli
         }
         io.out(`  … ${r.remaining} to go`);
       }
+    }
+
+    case 'vercel-domains': {
+      const r = await listAccountDomains(deps());
+      if (!r.ok) {
+        io.err(`FAILED: ${r.error}`);
+        return 1;
+      }
+      if (opt.json) {
+        io.out(JSON.stringify(r.domains, null, 2));
+        return 0;
+      }
+      io.out(`${pad('DOMAIN', 34)} ${pad('BOUGHT', 11)} ${pad('EXPIRES', 11)} ${pad('AUTO-RENEW', 10)} TRACKED`);
+      for (const d of r.domains!) {
+        io.out(`${pad(d.name, 34)} ${pad(d.boughtAt?.slice(0, 10) || '(not via Vercel)', 11)} ${pad(d.expiresAt?.slice(0, 10) || '—', 11)} ` +
+          `${pad(d.autoRenew ? 'ON' : 'off', 10)} ${d.tracked ? `${d.tracked.source} ${d.tracked.state} (${d.tracked.site})` : 'untracked'}`);
+      }
+      io.out(`${r.domains!.length} domain(s). Read-only: nothing was changed.`);
+      return 0;
     }
 
     case 'rollback': {

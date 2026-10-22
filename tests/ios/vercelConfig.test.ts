@@ -26,6 +26,17 @@ describe('vercel.json', () => {
     expect(cfg.functions['api/ios/domain/status.ts'].includeFiles).toBe('lib/ios/certs/**');
   });
 
+  it('the domain sweep is its own cron with its own 300 s budget (independent of the site sweep)', () => {
+    expect(cfg.crons).toContainEqual({ path: '/api/ios/domain-sweep', schedule: '*/10 * * * *' });
+    expect(cfg.functions['api/ios/domain-sweep.ts'].maxDuration).toBe(300);
+    expect(cfg.functions['api/ios/domain-sweep.ts'].includeFiles).toBe('lib/ios/certs/**');
+  });
+
+  it('the website domain purchase and the Stripe webhook may run a domain claim (300 s)', () => {
+    expect(cfg.functions['api/purchase-domain.ts'].maxDuration).toBe(300);
+    expect(cfg.functions['api/stripe-webhook.ts'].maxDuration).toBe(300);
+  });
+
   it('apple-notification bundles the certs (it now also routes the domain product)', () => {
     expect(cfg.functions['api/ios/apple-notification.ts'].includeFiles).toBe('lib/ios/certs/**');
   });

@@ -7,13 +7,15 @@ vi.mock('../../lib/admin/sites.js', () => ({
   republish: vi.fn(async (slug: string) => ({ ok: true, slug })),
   rollback: vi.fn(async (slug: string) => ({ ok: false, slug, error: 'no-history' })),
   republishAll: vi.fn(async (i: any) => ({ dryRun: i.dryRun, results: [], skipped: [], remaining: 0, done: true })),
+  listAccountDomains: vi.fn(async () => ({ ok: true, domains: [{ name: 'a.com' }] })),
+  domainBuyRelease: vi.fn(async (slug: string) => ({ ok: true, slug })),
   domainTransferred: vi.fn(async (slug: string) => (slug === 'fade-lab' ? { ok: true, slug, domain: 'fadelab.com' } : { ok: false, slug, error: 'not-found' })),
 }));
 vi.mock('../../lib/admin/live.js', () => ({ adminSupabase: vi.fn(), liveAdminDeps: vi.fn(() => ({})) }));
 
 import { makeAdminSitesHandler } from '../../api/admin/sites.js';
 import { checkAdmin, ADMIN_EMAIL } from '../../lib/admin/auth.js';
-import { findSites, getSite, updateSite, republish, republishAll, rollback, domainTransferred } from '../../lib/admin/sites.js';
+import { findSites, getSite, updateSite, republish, republishAll, rollback, domainTransferred, listAccountDomains, domainBuyRelease } from '../../lib/admin/sites.js';
 import { memoryStore } from '../../lib/bookings/rateLimit.js';
 
 function res() {
@@ -137,5 +139,22 @@ describe('api/admin/sites domain-transferred', () => {
     expect(ok).toMatchObject({ statusCode: 200, body: { ok: true, domain: 'fadelab.com' } });
     expect(domainTransferred).toHaveBeenCalledWith('fade-lab', expect.anything(), ADMIN_EMAIL);
     expect((await call(h, { method: 'POST', body: { action: 'domain-transferred', slug: 'nope' } })).statusCode).toBe(404);
+  });
+});
+
+describe('api/admin/sites custom-domain admin', () => {
+  it('GET ?vercelDomains=1 is admin-only and read-only', async () => {
+    const h = handler();
+    expect((await call(h, { method: 'GET', headers: { authorization: 'Bearer other' }, query: { vercelDomains: '1' } })).statusCode).toBe(403);
+    expect(listAccountDomains).not.toHaveBeenCalled();
+    const r = await call(h, { method: 'GET', query: { vercelDomains: '1' } });
+    expect(r).toMatchObject({ statusCode: 200, body: { ok: true, domains: [{ name: 'a.com' }] } });
+  });
+
+  it('POST domain-buy-release passes slug, to and the admin', async () => {
+    const h = handler();
+    const r = await call(h, { method: 'POST', body: { action: 'domain-buy-release', slug: 'fade-lab', to: 'retry' } });
+    expect(r.statusCode).toBe(200);
+    expect(domainBuyRelease).toHaveBeenCalledWith('fade-lab', 'retry', expect.anything(), ADMIN_EMAIL);
   });
 });

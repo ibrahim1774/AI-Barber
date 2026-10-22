@@ -5,6 +5,14 @@ import { getPlanContentMeta } from '../lib/pixelMeta.js';
 import { pushOrderToTripleWhale } from './_twOrder.js';
 import { waitUntil } from '@vercel/functions';
 import { publishSite } from '../lib/publishSite.js';
+import { handleDomainStripeEvent } from '../lib/webDomains.js';
+import { liveWebDomainDeps } from '../lib/ios/domainLive.js';
+
+/** The domain flow's deps for webhook events (no owner check: the session/subscription metadata is server-signed). */
+function domainEventDeps() {
+  const { authorize: _a, getStripeSession: _g, ...rest } = liveWebDomainDeps(async () => ({ ok: false, status: 403, error: 'not-used' }));
+  return rest;
+}
 
 // Stripe webhook -> Meta CAPI Purchase. The browser pixel + client CAPI
 // only fire if the customer returns to ?stripe_session=...; closed tabs,
@@ -84,6 +92,16 @@ export default async function handler(req: any, res: any) {
   } catch (err: any) {
     console.error('[Stripe Webhook] Body/parse error:', err.message);
     return res.status(400).json({ error: 'Bad request' });
+  }
+
+  // 2a. Custom-domain subscriptions ($39/year, lib/webDomains.ts): checkout, renewal and cancel
+  //     events go through the domain state machine and nowhere else (no pixels, no site publish).
+  const domainResult = await handleDomainStripeEvent(event, domainEventDeps);
+  if (domainResult.handled) {
+    if (domainResult.background) {
+      waitUntil(domainResult.background().catch((e: any) => console.error('[Stripe Webhook] domain purchase failed (the domain sweep resumes it):', e?.message || e)));
+    }
+    return res.status(domainResult.status ?? 200).json(domainResult.body ?? { received: true });
   }
 
   // 2. Only paid checkout completions matter.

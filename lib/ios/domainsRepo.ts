@@ -1,30 +1,35 @@
-// ios_domains (migration 012): one row per custom-domain subscription (Apple
-// originalTransactionId). The row IS the state machine (lib/ios/domainFlow.ts); every state
-// change is a conditional UPDATE on the current state, so two runners can never both move it.
-// Service role only.
+// ios_domains (migration 012): one row per custom-domain subscription, the app's (Apple
+// originalTransactionId) or the website's (`stripe:<subscription id>`). The row IS the state
+// machine (lib/ios/domainFlow.ts); every state change is a conditional UPDATE on the current
+// state, so two runners can never both move it. Service role only.
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { IosEnv } from './appleVerify.js';
 
 export const DOMAIN_STATES = [
-  'reserved', 'buying', 'ordered', 'bought', 'attached', 'live', 'detaching', 'detached', 'failed', 'transferred',
+  'reserved', 'buying', 'ordered', 'bought', 'attached', 'live', 'detaching', 'unlinking', 'detached', 'failed', 'transferred',
 ] as const;
 export type DomainState = (typeof DOMAIN_STATES)[number];
+export type DomainSource = 'apple' | 'stripe';
 
 /** States in which a site's domain slot is taken (one per site; partial unique index in 012). */
-export const SITE_HOLDING_STATES: readonly DomainState[] = ['reserved', 'buying', 'ordered', 'bought', 'attached', 'live', 'detaching'];
+export const SITE_HOLDING_STATES: readonly DomainState[] = ['reserved', 'buying', 'ordered', 'bought', 'attached', 'live', 'detaching', 'unlinking'];
 /** States the sweep resumes (a step is still due). */
-export const RESUMABLE_STATES: readonly DomainState[] = ['reserved', 'buying', 'ordered', 'bought', 'attached', 'detaching'];
-/** The domain is registered on our account (until it runs out). */
-export const OWNED_STATES: readonly DomainState[] = ['bought', 'attached', 'live', 'detaching', 'detached'];
+export const RESUMABLE_STATES: readonly DomainState[] = ['reserved', 'buying', 'ordered', 'bought', 'attached', 'detaching', 'unlinking'];
+/** The registration may be ours (until it runs out): auto-renew is managed for these. */
+export const OWNED_STATES: readonly DomainState[] = ['bought', 'attached', 'live', 'detaching', 'unlinking', 'detached'];
+/** Attached to the site and paid for: a subscription that ended moves these to detaching. */
+export const ATTACHED_STATES: readonly DomainState[] = ['bought', 'attached', 'live'];
 
 export interface DomainRow {
+  /** Apple originalTransactionId, or `stripe:<subscription id>` for a website purchase. */
   original_transaction_id: string;
+  source: DomainSource;
   environment: IosEnv;
   /** Bound at the first claim and never changed: one domain subscription, one site. */
   site_slug: string;
   domain: string;
   state: DomainState;
-  /** Sandbox purchase: the whole lifecycle is simulated, Vercel is never called (see domainFlow). */
+  /** Sandbox / Stripe test mode: the whole lifecycle is simulated, Vercel is never called. */
   simulated: boolean;
   failure_reason: string | null;
   last_error: string | null;
@@ -32,17 +37,21 @@ export interface DomainRow {
   expected_price: number | null;
   buy_started_at: string | null;
   vercel_bought_at: string | null;
+  /** Last expiry READ from Vercel (display only: decisions always read Vercel live). */
   registration_expires_at: string | null;
-  /** Desired Vercel auto-renew: on while the Apple subscription renews. */
+  /** Desired Vercel auto-renew: the payer's CURRENT renewal status (Apple / Stripe), never a stale event. */
   auto_renew: boolean;
-  /** False after auto_renew changed until the sweep (or the step) applied it at Vercel. */
+  /** False when auto_renew changed and Vercel may not have it yet (a hint; the sweep also re-checks). */
   auto_renew_synced: boolean;
-  /** The Apple period paid for (expiresDate); never moves backwards. */
+  /** End of the period paid for; never moves backwards. */
   paid_until: string | null;
   revoked_at: string | null;
   last_notification: string | null;
-  lapse_checked_at: string | null;
+  /** When the payer (Apple / Stripe) was last asked; rotation for the sweep. */
+  payer_checked_at: string | null;
   linked_at: string | null;
+  /** Re-published once Vercel reported the domain verified and DNS correct. */
+  dns_ready_at: string | null;
   detached_at: string | null;
   transferred_at: string | null;
   transferred_by: string | null;
@@ -51,7 +60,7 @@ export interface DomainRow {
   updated_at: string;
 }
 
-export type NewDomainRow = Pick<DomainRow, 'original_transaction_id' | 'environment' | 'site_slug' | 'domain' | 'simulated'> &
+export type NewDomainRow = Pick<DomainRow, 'original_transaction_id' | 'source' | 'environment' | 'site_slug' | 'domain' | 'simulated' | 'auto_renew'> &
   Partial<Pick<DomainRow, 'paid_until'>>;
 
 export interface DomainsRepo {
@@ -61,22 +70,28 @@ export interface DomainsRepo {
   /** Insert a reserved row. 'conflict' when the otid, the domain or the site slot is already taken. */
   insertReserved(row: NewDomainRow): Promise<'ok' | 'conflict'>;
   /**
-   * UPDATE … WHERE otid AND state IN `from` (any state when `from` is null). Returns the new
-   * row, or null when the row was not in one of those states (someone else moved it).
-   * `updated_at` is always bumped. A 23505 (domain held by another row) throws DomainConflict.
+   * UPDATE … WHERE otid AND state IN `from` (any state when null) [AND auto_renew = where.auto_renew].
+   * Returns the new row, or null when the row did not match. A 23505 throws DomainConflict.
    */
   update(otid: string, from: readonly DomainState[] | null, patch: Partial<DomainRow>, where?: { auto_renew?: boolean }): Promise<DomainRow | null>;
   /** paid_until = max(paid_until, at), in SQL. */
   extendPaidUntil(otid: string, at: number): Promise<void>;
-  /** Take the row's lease until now + ms when it is free (null or past). */
-  acquireLease(otid: string, now: number, ms: number): Promise<boolean>;
-  releaseLease(otid: string): Promise<void>;
+  /** Take the row's lease until now + ms when it is free. Returns the lease token (its lease_until), or null. */
+  acquireLease(otid: string, now: number, ms: number): Promise<string | null>;
+  /** Release only the lease this token took (a runner whose lease expired never clears another's). */
+  releaseLease(otid: string, token: string): Promise<void>;
   /** RESUMABLE_STATES, lease free, least recently updated first. */
   resumable(limit: number, now: number): Promise<DomainRow[]>;
-  /** OWNED attached rows whose Apple period may have ended: revoked, or paid_until ≤ cutoff. Oldest-checked first. */
+  /** ATTACHED rows whose paid period may have ended: revoked, or paid_until ≤ cutoff. Oldest-checked first. */
   lapseCandidates(limit: number, cutoff: number): Promise<DomainRow[]>;
-  /** auto_renew_synced = false and the registration is ours. */
+  /** Detached rows paid again (paid_until > now, not revoked): re-attach candidates. */
+  reattachCandidates(limit: number, now: number): Promise<DomainRow[]>;
+  /** OWNED rows whose payer was last asked before `before` (or never). Oldest first. */
+  payerStale(limit: number, before: number): Promise<DomainRow[]>;
+  /** auto_renew_synced = false and OWNED. */
   autoRenewUnsynced(limit: number): Promise<DomainRow[]>;
+  /** Live, real rows not yet re-published after DNS became correct. */
+  awaitingDns(limit: number): Promise<DomainRow[]>;
   /** Every row (admin; small table). */
   all(): Promise<DomainRow[]>;
 }
@@ -96,6 +111,7 @@ function fail(op: string, error: { message?: string } | null): never {
 }
 
 const num = (r: any): DomainRow => (r && r.expected_price != null ? { ...r, expected_price: Number(r.expected_price) } : r);
+const rows = (data: unknown) => ((data as DomainRow[]) ?? []).map(num);
 
 export function supabaseDomains(client?: SupabaseClient): DomainsRepo {
   let sb = client;
@@ -143,14 +159,15 @@ export function supabaseDomains(client?: SupabaseClient): DomainsRepo {
     },
 
     async acquireLease(otid, now, ms) {
-      const { data, error } = await db().from(TABLE).update({ lease_until: iso(now + ms) })
+      const token = iso(now + ms);
+      const { data, error } = await db().from(TABLE).update({ lease_until: token })
         .eq('original_transaction_id', otid).or(`lease_until.is.null,lease_until.lt."${iso(now)}"`).select('original_transaction_id');
       if (error) fail('acquireLease', error);
-      return Array.isArray(data) && data.length > 0;
+      return Array.isArray(data) && data.length > 0 ? token : null;
     },
 
-    async releaseLease(otid) {
-      const { error } = await db().from(TABLE).update({ lease_until: null }).eq('original_transaction_id', otid);
+    async releaseLease(otid, token) {
+      const { error } = await db().from(TABLE).update({ lease_until: null }).eq('original_transaction_id', otid).eq('lease_until', token);
       if (error) fail('releaseLease', error);
     },
 
@@ -158,28 +175,50 @@ export function supabaseDomains(client?: SupabaseClient): DomainsRepo {
       const { data, error } = await db().from(TABLE).select('*').in('state', RESUMABLE_STATES as string[])
         .or(`lease_until.is.null,lease_until.lt."${iso(now)}"`).order('updated_at', { ascending: true }).limit(limit);
       if (error) fail('resumable', error);
-      return ((data as DomainRow[]) ?? []).map(num);
+      return rows(data);
     },
 
     async lapseCandidates(limit, cutoff) {
-      const { data, error } = await db().from(TABLE).select('*').in('state', ['bought', 'attached', 'live'])
+      const { data, error } = await db().from(TABLE).select('*').in('state', ATTACHED_STATES as string[])
         .or(`revoked_at.not.is.null,paid_until.lte."${iso(cutoff)}"`)
-        .order('lapse_checked_at', { ascending: true, nullsFirst: true }).limit(limit);
+        .order('payer_checked_at', { ascending: true, nullsFirst: true }).limit(limit);
       if (error) fail('lapseCandidates', error);
-      return ((data as DomainRow[]) ?? []).map(num);
+      return rows(data);
+    },
+
+    async reattachCandidates(limit, now) {
+      const { data, error } = await db().from(TABLE).select('*').eq('state', 'detached').is('revoked_at', null)
+        .gt('paid_until', iso(now)).order('updated_at', { ascending: true }).limit(limit);
+      if (error) fail('reattachCandidates', error);
+      return rows(data);
+    },
+
+    async payerStale(limit, before) {
+      const { data, error } = await db().from(TABLE).select('*').in('state', OWNED_STATES as string[])
+        .or(`payer_checked_at.is.null,payer_checked_at.lt."${iso(before)}"`)
+        .order('payer_checked_at', { ascending: true, nullsFirst: true }).limit(limit);
+      if (error) fail('payerStale', error);
+      return rows(data);
     },
 
     async autoRenewUnsynced(limit) {
       const { data, error } = await db().from(TABLE).select('*').eq('auto_renew_synced', false)
         .in('state', OWNED_STATES as string[]).order('updated_at', { ascending: true }).limit(limit);
       if (error) fail('autoRenewUnsynced', error);
-      return ((data as DomainRow[]) ?? []).map(num);
+      return rows(data);
+    },
+
+    async awaitingDns(limit) {
+      const { data, error } = await db().from(TABLE).select('*').eq('state', 'live').eq('simulated', false)
+        .is('dns_ready_at', null).order('updated_at', { ascending: true }).limit(limit);
+      if (error) fail('awaitingDns', error);
+      return rows(data);
     },
 
     async all() {
       const { data, error } = await db().from(TABLE).select('*').order('created_at', { ascending: true });
       if (error) fail('all', error);
-      return ((data as DomainRow[]) ?? []).map(num);
+      return rows(data);
     },
   };
 }

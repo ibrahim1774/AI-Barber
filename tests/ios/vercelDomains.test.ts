@@ -72,13 +72,13 @@ describe('makeVercelDomains: exact endpoints and bodies', () => {
   it('order status, owned domain, auto-renew', async () => {
     const { f, calls } = fakeFetch([
       { status: 200, body: { orderId: 'o', status: 'completed', domains: [{ domainName: 'x.com', status: 'completed' }] } },
-      { status: 200, body: { domain: { boughtAt: 1, expiresAt: 2, renew: true } } },
+      { status: 200, body: { domain: { boughtAt: 1, expiresAt: 4_000_000_000_000, renew: true } } },
       { status: 404, body: { error: { code: 'not_found' } } },
       { status: 204 },
     ]);
     const v = makeVercelDomains({ token: 't', fetch: f });
     expect(await v.order('o', 'x.com')).toEqual({ status: 'completed', domainStatus: 'completed', errorCode: null });
-    expect(await v.owned('x.com')).toEqual({ boughtAt: 1, expiresAt: 2, renew: true });
+    expect(await v.owned('x.com')).toEqual({ boughtAt: 1, expiresAt: 4_000_000_000_000, renew: true });
     expect(await v.owned('y.com')).toBeNull();
     await v.setAutoRenew('x.com', false);
     expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
@@ -118,10 +118,41 @@ describe('makeVercelDomains: exact endpoints and bodies', () => {
   });
 });
 
+describe('owned(): only a live registration bought through Vercel counts', () => {
+  it.each([
+    ['not bought through Vercel', { boughtAt: null, expiresAt: null, renew: false }],
+    ['expired', { boughtAt: 1, expiresAt: 1_000, renew: true }],
+    ['no expiry', { boughtAt: 1, expiresAt: null, renew: true }],
+  ])('%s → null', async (_n, domain) => {
+    const { f } = fakeFetch([{ status: 200, body: { domain } }]);
+    expect(await makeVercelDomains({ token: 't', fetch: f, now: () => 2_000 }).owned('x.com')).toBeNull();
+  });
+
+  it('an outage throws (never read as "gone")', async () => {
+    const { f } = fakeFetch([{ status: 500, body: { code: 'internal_server_error' } }]);
+    await expect(makeVercelDomains({ token: 't', fetch: f }).owned('x.com')).rejects.toMatchObject({ status: 500 });
+  });
+});
+
+describe('listDomains (admin, read-only)', () => {
+  it('pages with until=pagination.next and only GETs', async () => {
+    const { f, calls } = fakeFetch([
+      { status: 200, body: { domains: [{ name: 'a.com', boughtAt: 1, expiresAt: 2, renew: true, serviceType: 'zeit.world' }], pagination: { next: 99 } } },
+      { status: 200, body: { domains: [{ name: 'b.com', boughtAt: null, expiresAt: null, renew: false }], pagination: { next: null } } },
+    ]);
+    const list = await makeVercelDomains({ token: 't', fetch: f }).listDomains();
+    expect(list.map((d) => d.name)).toEqual(['a.com', 'b.com']);
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
+      'GET https://api.vercel.com/v5/domains?limit=100',
+      'GET https://api.vercel.com/v5/domains?limit=100&until=99',
+    ]);
+  });
+});
+
 describe('registrantContact (env VERCEL_REGISTRANT_CONTACT)', () => {
   it('parses a complete contact', () => expect(registrantContact(JSON.stringify(CONTACT))).toEqual(CONTACT));
   it.each([
     [undefined], [''], ['not json'], [JSON.stringify({ ...CONTACT, phone: '555-0100' })],
-    [JSON.stringify({ ...CONTACT, country: 'usa' })], [JSON.stringify({ ...CONTACT, zip: '' })], [JSON.stringify({ ...CONTACT, email: 'nope' })],
+    [JSON.stringify({ ...CONTACT, country: 'usa' })], [JSON.stringify({ ...CONTACT, phone: '+1555' })], [JSON.stringify({ ...CONTACT, zip: '' })], [JSON.stringify({ ...CONTACT, email: 'nope' })],
   ])('rejects %s', (raw) => expect(registrantContact(raw as any)).toBeNull());
 });

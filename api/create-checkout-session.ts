@@ -1,3 +1,5 @@
+import { safeAttributionKey } from '../lib/stripeMetadata.js';
+
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -350,7 +352,8 @@ export default async function handler(req: any, res: any) {
         const attr = JSON.parse(decodeURIComponent(match.slice('aib_attr='.length)));
         if (attr && typeof attr === 'object') {
           Object.entries(attr)
-            .filter(([k, v]) => typeof v === 'string' && v && /^[a-z0-9_]{1,36}$/i.test(k))
+            // Never a server key (type, app, domain, siteId, …): lib/stripeMetadata.ts.
+            .filter(([k, v]) => typeof v === 'string' && v && safeAttributionKey(k, (key) => params.has(`metadata[${key}]`)))
             .slice(0, 20)
             .forEach(([k, v]) => params.append(`metadata[${k}]`, String(v).slice(0, 500)));
         }
