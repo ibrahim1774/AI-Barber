@@ -23,6 +23,15 @@ export const gcs = {
   afterDownload: null as Hook | null,
   /** Make the next save of a path throw this error. */
   failSave: new Map<string, Error>(),
+  /**
+   * The error shape a failed precondition has. 'api' is ApiError { code: 412 } (what the real
+   * SDK throws for a non-resumable upload). 'gaxios' is what a RESUMABLE upload's session-start
+   * 412 looks like with @google-cloud/storage 7.18 (code undefined, status / response.status 412):
+   * a resumable save ignoring it would be a bug, and the code under test must still re-decide.
+   */
+  preconditionShape: 'api' as 'api' | 'gaxios',
+  /** Every save's options (to assert resumable: false on conditional writes). */
+  saveOpts: [] as { path: string; opts: any }[],
 };
 
 export function resetGcs() {
@@ -32,6 +41,8 @@ export function resetGcs() {
   gcs.beforeSave = null;
   gcs.afterDownload = null;
   gcs.failSave.clear();
+  gcs.preconditionShape = 'api';
+  gcs.saveOpts.length = 0;
 }
 
 /** Parsed JSON at a path (null when absent). */
@@ -83,6 +94,7 @@ class FakeFile {
   }
 
   async save(data: string | Buffer, opts: any = {}): Promise<void> {
+    gcs.saveOpts.push({ path: this.name, opts });
     if (gcs.beforeSave) await gcs.beforeSave(this.name);
     const fail = gcs.failSave.get(this.name);
     if (fail) {
@@ -92,7 +104,9 @@ class FakeFile {
     const cur = gcs.objects.get(this.name);
     const want = opts?.preconditionOpts?.ifGenerationMatch;
     if (want != null && String(cur?.generation ?? 0) !== String(want)) {
-      throw Object.assign(new Error('Precondition Failed'), { code: 412 });
+      throw gcs.preconditionShape === 'gaxios'
+        ? Object.assign(new Error('Request failed with status code 412'), { status: 412, response: { status: 412 } })
+        : Object.assign(new Error('Precondition Failed'), { code: 412 });
     }
     gcs.log.push({ op: 'save', path: this.name });
     const meta = opts?.metadata ?? {};

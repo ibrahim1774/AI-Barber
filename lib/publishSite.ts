@@ -145,8 +145,17 @@ export class PendingConflictError extends Error {
   }
 }
 
-export const isPendingConflict = (e: unknown): boolean =>
-  e instanceof PendingConflictError || (e as { code?: unknown })?.code === 412 || (e as { code?: unknown })?.code === '412';
+/**
+ * A failed GCS precondition, in every shape the SDK produces: ApiError { code: 412 } (simple
+ * upload, finalize) or GaxiosError { status / response.status: 412 } with no code (a resumable
+ * upload's session start, measured with @google-cloud/storage 7.18).
+ */
+export function isPreconditionFailed(e: unknown): boolean {
+  const x = e as { code?: unknown; status?: unknown; response?: { status?: unknown } } | null;
+  return [x?.code, x?.status, x?.response?.status].some((v) => v === 412 || v === '412');
+}
+
+export const isPendingConflict = (e: unknown): boolean => e instanceof PendingConflictError || isPreconditionFailed(e);
 
 const isNotFound = (e: unknown) => {
   const code = (e as { code?: unknown })?.code;
@@ -197,6 +206,8 @@ export async function writePendingSite(siteId: string, pending: PendingSite, opt
   try {
     await bucket().file(`pending-sites/${safe}.json`).save(payload, {
       contentType: 'application/json',
+      // A small JSON body: one multipart request (a precondition failure is a plain 412 ApiError).
+      resumable: false,
       metadata: { cacheControl: 'private, max-age=0, no-store' },
       ...(opts.ifGeneration != null ? { preconditionOpts: { ifGenerationMatch: opts.ifGeneration } } : {}),
     });

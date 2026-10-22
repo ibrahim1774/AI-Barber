@@ -321,3 +321,42 @@ describe('sweep restore strips links with a read-modify-write of the stored copy
     expect('shopUrl' in pendingOf('fade-lab').siteData).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Fix round 1 (review finding 1): the real SDK's precondition error shapes. A resumable upload's
+// session-start 412 is a GaxiosError with no `code` (status / response.status 412); the I1
+// writers must still re-decide, and conditional writes go out as simple (non-resumable) uploads.
+describe('I1 with the real GCS 412 shapes', () => {
+  beforeEach(() => { gcs.preconditionShape = 'gaxios'; });
+
+  it('an admin edit landing between the phone read and write: still a 409 with the admin copy', async () => {
+    const { transactionId } = await published();
+    let fired = false;
+    gcs.afterDownload = async (path) => {
+      if (fired || path !== 'pending-sites/fade-lab.json') return;
+      fired = true;
+      await updateSite('fade-lab', { set: { phone: '555-ADMIN' } }, w.adminDeps());
+    };
+    const phone = await w.publish(transactionId, siteData({ area: 'Phone edit' }), { baseVersion: 1 });
+    expect(phone).toMatchObject({ status: 409, body: { error: 'site-updated', site: { version: 2 } } });
+    expect(pendingOf('fade-lab').siteData.phone).toBe('555-ADMIN');
+  });
+
+  it('10 parallel republishes: all 200, 10 distinct versions; 5 parallel admin edits: v2..v6', async () => {
+    const { transactionId } = await published();
+    const rs = await Promise.all(Array.from({ length: 10 }, (_, i) => w.publish(transactionId, siteData({ area: `edit ${i}` }), { baseVersion: 1 })));
+    expect(rs.map((r) => r.status)).toEqual(Array(10).fill(200));
+    expect(new Set(rs.map((r) => (r.body as any).version)).size).toBe(10);
+    const admin = await Promise.all(Array.from({ length: 5 }, (_, i) => updateSite('fade-lab', { set: { 'services.0.subtitle': `e${i}` } }, w.adminDeps())));
+    expect(admin.every((r) => r.ok)).toBe(true);
+    expect(pendingOf('fade-lab').version).toBe(16);
+  });
+
+  it('every write of pending-sites/ and the admin history goes out with resumable: false', async () => {
+    await published();
+    await updateSite('fade-lab', { set: { phone: '1' } }, w.adminDeps());
+    const writes = gcs.saveOpts.filter((s) => s.path.startsWith('pending-sites'));
+    expect(writes.length).toBeGreaterThan(2);
+    expect(writes.every((s) => s.opts?.resumable === false)).toBe(true);
+  });
+});

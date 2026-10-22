@@ -5,6 +5,7 @@
 // Env: SUPABASE_URL (or VITE_SUPABASE_URL), SUPABASE_SERVICE_ROLE_KEY,
 // GCP_SERVICE_ACCOUNT_JSON (or GCS_CREDENTIALS), GCS_BUCKET_NAME, VERCEL_TOKEN.
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { isPreconditionFailed } from '../publishSite.js';
 import { bucket, publishSite, readPendingSite, readPendingVersioned, renderPending, slugify, writePendingSite, type PendingSite } from '../publishSite.js';
 import type { PurchaseRow } from '../ios/purchases.js';
 import type { AdminSitesDeps, HistoryEntry, RepublishRun, SiteStore } from './sites.js';
@@ -58,6 +59,7 @@ export function gcsSiteStore(): SiteStore {
       const save = (id: string) =>
         bucket().file(`${HISTORY}/${safe}/${id}.json`).save(json({ siteId: safe, savedAt: Date.now(), data: p }), {
           contentType: 'application/json',
+          resumable: false,
           // Write-once: a history copy is never overwritten.
           preconditionOpts: { ifGenerationMatch: 0 },
           metadata: { ...noStore, metadata: { version: String(version), editedBy: p.editedBy || '', editedAt: p.editedAt || '' } },
@@ -67,7 +69,7 @@ export function gcsSiteStore(): SiteStore {
         await save(id);
         return id;
       } catch (e: any) {
-        if (e?.code !== 412) throw e;
+        if (!isPreconditionFailed(e)) throw e;
       }
       // That version number is already kept. Same content (a retried edit): reuse it.
       // Different content (the version number repeated): keep this one under its own key.
