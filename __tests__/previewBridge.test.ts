@@ -5,7 +5,9 @@ import { parsePreviewMessage, shouldAllowPreviewRequest } from '@/lib/previewBri
 let data: WebsiteData;
 beforeAll(async () => {
   data = await generateContent({ shopName: 'Fresh Cuts', area: 'Brooklyn, NY', phone: '555-0100', template: 'luxe' });
-  data = { ...data, template: 'luxe', staff: [{ name: 'Sam', photo: '' }] };
+  // generateContent no longer invents a menu: give the fixture three services with descriptions.
+  const svc = (title: string) => ({ title, subtitle: '30 min', description: `${title} as you like it.`, price: '$30', icon: 'scissors' as const, imageUrl: '' });
+  data = { ...data, template: 'luxe', staff: [{ name: 'Sam', photo: '' }], services: [svc('Haircut'), svc('Skin fade'), svc('Beard trim')] };
 });
 
 const msg = (o: unknown) => JSON.stringify(o);

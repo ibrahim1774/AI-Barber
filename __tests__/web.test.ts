@@ -5,10 +5,16 @@ import { renderSite, withImages, forRender } from '@/lib/render';
 const inputs = { shopName: 'Fresh Cuts', area: 'Brooklyn, NY', phone: '555-0100' };
 
 describe('vendored web modules', () => {
-  test('generateContent builds a site for a shop name', async () => {
+  test('generateContent builds a site for a shop name and invents no services', async () => {
     const data = await generateContent(inputs);
     expect(data.shopName).toBe('Fresh Cuts');
-    expect(data.services.length).toBeGreaterThan(0);
+    expect(data.services).toEqual([]);
+    expect(data.contact?.email ?? '').toBe('');
+  });
+
+  test('generateContent uses exactly the ticked services, with their optional prices', async () => {
+    const data = await generateContent({ ...inputs, services: [{ title: 'Haircut', price: '$30' }, { title: 'Beard trim' }] });
+    expect(data.services.map((s) => [s.title, s.price || ''])).toEqual([['Haircut', '$30'], ['Beard trim', '']]);
   });
 
   test('renderSite renders luxe and prime', async () => {

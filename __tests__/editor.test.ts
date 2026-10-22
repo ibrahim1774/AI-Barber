@@ -1,5 +1,5 @@
 import * as gemini from '@/web/services/geminiService';
-import { DEFAULT_POLICY, DEFAULT_PULLQUOTE } from '@/web/lib/render/prime';
+import { DEFAULT_PULLQUOTE } from '@/web/lib/render/prime';
 import type { WebsiteData } from '@/web/types';
 import { api, ApiError } from '@/lib/api';
 import { IMAGE_PATHS, editableTextPaths, setPath } from '@/lib/editable';
@@ -16,8 +16,11 @@ import {
 const booksy = require('./fixtures/scrape-booksy.json');
 const BOOKSY_URL = 'https://booksy.com/en-us/dl/show-business/998736';
 
+// Honest sites: generateContent never invents services, so the fixture ticks some.
 const site = (over: Partial<WebsiteData> = {}) =>
-  gemini.generateContent({ shopName: 'Fresh Cuts', area: '', phone: '', colorTheme: '#3b82f6' }).then((d) => ({ ...d, ...over }));
+  gemini
+    .generateContent({ shopName: 'Fresh Cuts', area: '', phone: '', colorTheme: '#3b82f6', services: [{ title: 'Haircut', price: '$30' }, { title: 'Beard trim' }] })
+    .then((d) => ({ ...d, ...over }));
 
 
 afterEach(() => jest.restoreAllMocks());
@@ -37,16 +40,14 @@ describe('switchDesign', () => {
     expect(rest).toEqual(orig);
   });
 
-  test('switchDesign to prime seeds policy and pullQuote like the web', async () => {
+  test('switchDesign to prime seeds only the generic pull quote, never a policy (barber-written only)', async () => {
     const prime = switchDesign(await site(), 'prime');
-    // The web renders siteData.policy || DEFAULT_POLICY; seeding the same
-    // defaults keeps the page identical and makes them editable here.
-    expect(prime.policy).toEqual(DEFAULT_POLICY);
+    expect(prime.policy).toBeUndefined();
     expect(prime.pullQuote).toEqual(DEFAULT_PULLQUOTE);
-    expect(prime.policy).not.toBe(DEFAULT_POLICY);
     expect(prime.pullQuote).not.toBe(DEFAULT_PULLQUOTE);
-    // ...so they show up as editable paths with both policy fields present.
-    expect(editableTextPaths(prime)).toEqual(expect.arrayContaining(['policy.title', 'policy.body', 'pullQuote.text']));
+    expect(editableTextPaths(prime)).toEqual(expect.arrayContaining(['pullQuote.text']));
+    // The policy fields stay offered (All fields) so a barber can write one; nothing is pre-filled.
+    expect(editableTextPaths(prime)).toEqual(expect.arrayContaining(['policy.title', 'policy.body']));
   });
 
   test('switchDesign keeps an edited policy and pull quote, and luxe only changes the template', async () => {
@@ -80,6 +81,8 @@ describe('applyHomePrompts', () => {
     expect(out.shopName).toBe('Fresh Cuts');
     expect(out.colorTheme).toBe('#22c55e');
     expect(out.bookingUrl).toBe('https://booksy.com/x');
+    // The ticked services survive the regeneration (generateContent invents none).
+    expect(out.services.map((s) => s.title)).toEqual(['Haircut', 'Beard trim']);
   });
 
   test('falls back to patching area, phone and address when generation throws', async () => {

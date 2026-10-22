@@ -1,5 +1,6 @@
 import { generateContent } from '@/web/services/geminiService';
-import { DEFAULT_POLICY, DEFAULT_PULLQUOTE } from '@/web/lib/render/prime';
+import { DEFAULT_PULLQUOTE } from '@/web/lib/render/prime';
+import { photoAlt } from '@/web/lib/render/honest';
 import type { TemplateId, WebsiteData } from '@/web/types';
 import { toShopSite } from '@/lib/importer';
 import { renderSite, forRender } from '@/lib/render';
@@ -24,7 +25,11 @@ import {
 const booksy = require('./fixtures/scrape-booksy.json');
 const MARK = '\u2063';
 
-const inputs = { shopName: 'Fresh Cuts', area: 'Brooklyn, NY', phone: '555-0100' };
+// Honest sites: generateContent never invents a menu, so the fixtures tick services like a barber would.
+const inputs = {
+  shopName: 'Fresh Cuts', area: 'Brooklyn, NY', phone: '555-0100',
+  services: [{ title: 'Haircut', price: '$30' }, { title: 'Skin fade' }, { title: 'Beard trim', price: '$15' }],
+};
 
 type Fixture = { name: string; data: WebsiteData };
 let cached: Promise<Fixture[]> | null = null;
@@ -39,7 +44,8 @@ async function buildFixtures(): Promise<Fixture[]> {
     ...primeBase,
     template: 'prime',
     bookingUrl: 'https://booksy.com/en-us/x',
-    policy: { ...DEFAULT_POLICY },
+    // No default policy any more (DEFAULT_POLICY is empty): a barber-written one.
+    policy: { title: 'Please note', body: 'Arrive five minutes early.' },
     pullQuote: { ...DEFAULT_PULLQUOTE },
   };
   const euphoria = await generateContent({ ...inputs, template: 'euphoria' });
@@ -260,7 +266,8 @@ describe('images', () => {
     // in the real scrape gallery[1] is the same URL as about.imageUrl
     expect(scraped.gallery[1]).toBe(scraped.about.imageUrl);
     const html = buildPreviewHtml(scraped, true);
-    expect(html).toContain(`src="${scraped.about.imageUrl}" data-edit-image="about.imageUrl" alt="Barber Shop Atmosphere"`);
+    // Neutral alt text now (honest.ts photoAlt): the shop name + "photo", never "Barber Shop Atmosphere".
+    expect(html).toContain(`src="${scraped.about.imageUrl}" data-edit-image="about.imageUrl" alt="${photoAlt(scraped)}"`);
     expect(html).not.toContain('data-edit-image="gallery.1"'); // luxe does not render gallery slot 1
     expect(html).not.toMatch(/\{\{[a-zA-Z0-9]+\}\}/);
     expect(html).not.toContain(MARK);

@@ -15,6 +15,8 @@ FILES=(
   lib/booksyNiche.ts
   lib/brandSwatches.ts
   lib/supportedBookingHost.ts
+  lib/stockImages.ts
+  lib/render/honest.ts
 )
 git -C "$SRC" fetch origin
 SHA="$(git -C "$SRC" rev-parse origin/main)"

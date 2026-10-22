@@ -2,23 +2,22 @@ import type { WebsiteData } from '@/web/types';
 import { buildSiteFromScrape } from '@/web/lib/buildSiteFromScrape';
 import { extractFirstUrl, isSupportedBookingHost } from '@/web/lib/supportedBookingHost';
 import { generateContent } from '@/web/services/geminiService';
-import { DEFAULT_POLICY, DEFAULT_PULLQUOTE } from '@/web/lib/render/prime';
+import { DEFAULT_PULLQUOTE } from '@/web/lib/render/prime';
 import { api } from '@/lib/api';
 import { IMAGE_PATHS } from '@/lib/editable';
 
 /**
  * Port of App.tsx handleHomeDesignSwitch: the same content re-skinned, only
- * `template` changes. Going to prime also seeds policy / pullQuote with the
- * defaults the prime renderer falls back to (siteData.policy || DEFAULT_POLICY),
- * so the page looks the same as on the web and both become editable (markData
- * only marks values that exist). A site's own policy / pull quote is kept.
+ * `template` changes. Going to prime seeds the generic pull quote the prime
+ * renderer falls back to, so it is editable (markData only marks values that
+ * exist). There is no default policy any more (honest sites: barber-written
+ * only), so none is seeded. A site's own policy / pull quote is kept.
  */
 export function switchDesign(d: WebsiteData, t: 'luxe' | 'prime'): WebsiteData {
   if (t !== 'prime') return { ...d, template: t };
   return {
     ...d,
     template: t,
-    policy: d.policy ?? { ...DEFAULT_POLICY },
     pullQuote: d.pullQuote ?? { ...DEFAULT_PULLQUOTE },
   };
 }
@@ -30,7 +29,8 @@ export function switchDesign(d: WebsiteData, t: 'luxe' | 'prime'): WebsiteData {
  */
 export async function applyHomePrompts(d: WebsiteData, area: string, phone: string): Promise<WebsiteData> {
   try {
-    return await generateContent({
+    // generateContent invents no services: the site's own (ticked or edited) ones are kept.
+    const regenerated = await generateContent({
       shopName: d.shopName,
       area,
       phone,
@@ -38,6 +38,7 @@ export async function applyHomePrompts(d: WebsiteData, area: string, phone: stri
       colorTheme: d.colorTheme,
       bookingUrl: d.bookingUrl,
     });
+    return { ...regenerated, services: d.services ?? [] };
   } catch {
     return { ...d, area, phone, contact: { ...d.contact, address: area } };
   }

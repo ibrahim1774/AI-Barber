@@ -8,6 +8,7 @@
 //     services, hours, reviews, bio, staff).
 import type { WebsiteData, ShopInputs } from '../types';
 import { detectBooksyNiche } from './booksyNiche';
+import { platformLabel } from './render/honest';
 
 const SERVICE_ICONS = ['scissors', 'razor', 'mustache', 'face', 'sparkles'] as const;
 
@@ -24,6 +25,10 @@ interface ScrapeResponse {
   hours?: any[];
   staff?: any[];
   aggregateRating?: any;
+  // Import metadata: which adapter served the scrape ('booksy', 'gbp' …)
+  // and, for Google, the listing's categories ("Barber shop").
+  _platform?: string;
+  _categories?: string[];
 }
 
 interface BuildOptions {
@@ -106,7 +111,14 @@ export function buildSiteFromScrape(data: ScrapeResponse, fallbackUrl: string, o
   const nicheProfile = detectBooksyNiche(
     fallbackUrl || data.bookingUrl || '',
     (manual.shopName || data.shopName || ''),
-    (data.services || []).map((s: any) => `${s?.title || ''} ${s?.category || ''}`),
+    [
+      // Google categories feed detection too: with "Barber shop" in the
+      // haystack the barber niche matches (it is checked before hair), so
+      // a ticked "Haircut" alone no longer reads as a hair salon. Order in
+      // this list doesn't matter; BOOKSY_NICHES order sets precedence.
+      ...(Array.isArray(data._categories) ? data._categories : []),
+      ...(data.services || []).map((s: any) => `${s?.title || ''} ${s?.category || ''}`),
+    ],
   );
   const shopName = (manual.shopName || '').trim()
     || (data.shopName || '').trim()
@@ -116,7 +128,8 @@ export function buildSiteFromScrape(data: ScrapeResponse, fallbackUrl: string, o
   const phone = (manual.phone || '').trim() || (data.phone || '').trim() || '';
   const bookingUrl = (manual.bookingUrl || data.bookingUrl || fallbackUrl || '').trim();
 
-  // Bio → 2 paragraphs, or generic default if scrape returned nothing.
+  // Bio → 2 paragraphs, or a generic welcome (no claims) if the scrape
+  // returned nothing.
   const bio = (data.description || '').trim();
   const aboutParas: string[] = bio
     ? (bio
@@ -126,7 +139,9 @@ export function buildSiteFromScrape(data: ScrapeResponse, fallbackUrl: string, o
         .filter(Boolean)
         .slice(0, 2) || [bio])
     : [
-        `${shopName} ${nicheProfile.aboutFallback[0]}`,
+        area
+          ? `${shopName} is ${/^[aeiou]/i.test(nicheProfile.noun) ? 'an' : 'a'} ${nicheProfile.noun} in ${area}.`
+          : `${shopName} ${nicheProfile.aboutFallback[0]}`,
         nicheProfile.aboutFallback[1],
       ];
 
@@ -160,11 +175,14 @@ export function buildSiteFromScrape(data: ScrapeResponse, fallbackUrl: string, o
       imageUrl: data.photos?.[1] || data.photos?.[0] || '',
     },
     services: (data.services || []).slice(0, 12).map((s: any, i: number) => {
-      const subtitleParts = [s.duration, s.price].filter(Boolean);
       return {
         title: s.title,
-        subtitle: subtitleParts.join(' · ') || s.category || '',
-        description: s.description || (s.price ? `Starting at ${s.price}.` : 'Book ahead — same care every visit.'),
+        // Duration (or category) only: the price has its own field and
+        // shows once.
+        subtitle: s.duration || s.category || '',
+        // The booking page's own description, verbatim, or nothing. The
+        // scraped price shows as the price.
+        description: s.description || '',
         icon: SERVICE_ICONS[i % SERVICE_ICONS.length],
         imageUrl: '',
         duration: s.duration || '',
@@ -182,12 +200,13 @@ export function buildSiteFromScrape(data: ScrapeResponse, fallbackUrl: string, o
       data.photos?.[6] || '',
       data.photos?.[7] || '',
     ],
-    featureCards: [
-      { title: 'Experience', sub: 'Professional' },
-      { title: 'Service', sub: 'Trusted' },
-      { title: 'Open Monday to Friday', sub: '9am - 7pm' },
-    ],
     reviews: (data.reviews || []).slice(0, 12),
+    // Where the reviews came from; Google imports keep only 4★+ reviews,
+    // so they're labelled "Selected reviews".
+    ...(platformLabel(data._platform) ? { reviewsSource: platformLabel(data._platform) } : {}),
+    ...(data._platform === 'gbp' ? { reviewsSelected: true } : {}),
+    niche: nicheProfile.key,
+    ...(data._platform ? { importedFrom: data._platform === 'gbp' ? 'gbp' as const : 'booking' as const } : {}),
     bio,
     aggregateRating: data.aggregateRating,
     hours: data.hours || [],
