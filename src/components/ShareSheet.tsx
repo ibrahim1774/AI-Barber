@@ -7,7 +7,7 @@ import { QrScreen } from '@/components/QrScreen';
 import { Sheet } from '@/components/EditSheet';
 import { track } from '@/lib/analytics';
 import { useEntitlements } from '@/lib/entitlements';
-import { customerBookingUrl, customerShopUrl } from '@/lib/customerLinks';
+import { resolveCustomerLinks } from '@/lib/customerLinks';
 import { loadMyShop } from '@/lib/shop';
 import { loadSite } from '@/lib/siteStore';
 import { loadStoreSettings } from '@/lib/store/data';
@@ -36,10 +36,12 @@ export function ShareSheet({ visible, shopName, links: given, source, onClose }:
       .then(async ([shop, site]) => {
         if (!alive) return;
         // Customers get the barber's own site + /book or /shop once it has the pages.
-        setBookingLink(shop?.bookingsEnabled ? customerBookingUrl(shop, site) : null);
+        const links = shop ? await resolveCustomerLinks(shop, site) : null;
+        if (!alive) return;
+        setBookingLink(shop?.bookingsEnabled && links ? links.booking : null);
         const open = shop ? (await loadStoreSettings(shop.id)).storeEnabled : false;
         // The shop page also needs a linked purchase; without one it still says it is closed.
-        if (alive) setStoreLink(shop && open && shop.purchaseLinked ? customerShopUrl(shop, site) : null);
+        if (alive) setStoreLink(shop && open && shop.purchaseLinked && links ? links.shop : null);
       })
       .catch(() => {});
     return () => {

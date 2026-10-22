@@ -26,7 +26,7 @@ jest.mock('@/lib/setup/relink', () => ({ registerPushForShop: jest.fn(async () =
 const mockLoadSite = jest.fn();
 jest.mock('@/lib/siteStore', () => ({ loadSite: () => mockLoadSite() }));
 const mockLoadMyShop = jest.fn();
-jest.mock('@/lib/shop', () => ({ loadMyShop: () => mockLoadMyShop() }));
+jest.mock('@/lib/shop', () => ({ ...jest.requireActual('@/lib/shop'), loadMyShop: () => mockLoadMyShop() }));
 const mockShopSetup = jest.fn();
 jest.mock('@/lib/setup/ownerApi', () => ({
   ...jest.requireActual('@/lib/setup/ownerApi'),

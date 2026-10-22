@@ -98,17 +98,27 @@ let checking: Promise<OfferResult> | null = null;
 let again = false;
 let alertOpen = false;
 let pushed = false;
+let safety: ReturnType<typeof setTimeout> | null = null;
+
+/** An alert that is never answered (never shown under another modal, dismissed by the system) re-arms after this. */
+export const ALERT_SAFETY_MS = 120_000;
+
+function closeAlert(): void {
+  alertOpen = false;
+  if (safety) clearTimeout(safety);
+  safety = null;
+}
 
 /** Test only. */
 export function resetSetupPromptForTests(): void {
   checking = null;
   again = false;
-  alertOpen = false;
   pushed = false;
+  closeAlert();
 }
 
 function updateSite(source: 'bookings' | 'store'): void {
-  alertOpen = false;
+  closeAlert();
   if (pushed) return;
   pushed = true;
   track('setup_prompt_update', { source });
@@ -122,17 +132,20 @@ function offerUpdate(source: 'bookings' | 'store'): Promise<OfferResult> {
     return checking;
   }
   const run = async (): Promise<OfferResult> => {
-    let out: OfferResult;
-    do {
+    try {
+      let out: OfferResult;
+      do {
+        again = false;
+        out = await check(source);
+      } while (again && out !== 'prompted');
+      return out;
+    } finally {
+      // Cleared in the same tick the last check ends: a later offer() starts a fresh check, never joins a finished one.
+      checking = null;
       again = false;
-      out = await check(source);
-    } while (again && out !== 'prompted');
-    return out;
+    }
   };
-  checking = run().finally(() => {
-    checking = null;
-    again = false;
-  });
+  checking = run();
   return checking;
 }
 
@@ -151,9 +164,17 @@ async function check(source: 'bookings' | 'store'): Promise<OfferResult> {
   track('setup_prompt_shown', { source });
   alertOpen = true;
   pushed = false;
-  Alert.alert(prompt.title, prompt.message, [
-    { text: NOT_NOW, style: 'cancel', onPress: () => { alertOpen = false; } },
-    { text: UPDATE_SITE, onPress: () => updateSite(source) },
-  ]);
+  if (safety) clearTimeout(safety);
+  safety = setTimeout(closeAlert, ALERT_SAFETY_MS);
+  Alert.alert(
+    prompt.title,
+    prompt.message,
+    [
+      { text: NOT_NOW, style: 'cancel', onPress: closeAlert },
+      { text: UPDATE_SITE, onPress: () => updateSite(source) },
+    ],
+    // Dismissed without a button (tap outside / back on Android): the queue re-arms.
+    { cancelable: true, onDismiss: closeAlert },
+  );
   return 'prompted';
 }

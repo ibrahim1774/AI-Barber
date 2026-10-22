@@ -6,7 +6,7 @@ import { BookButtonPicker } from '@/components/setup/BookButtonPicker';
 import { bookingPrefs, withChoice, type BookingChoice } from '@/lib/bookingChoice';
 import { updateSiteRecord } from '@/lib/setup/siteSync';
 import { useUpdateSitePrompt } from '@/lib/setupPrompt';
-import { customerBookingUrl, useSiteForLinks } from '@/lib/customerLinks';
+import { customerBookingUrl, useCustomerLinks } from '@/lib/customerLinks';
 import { icsUrl, listMembers, updateShopSettings, type Member, type Shop } from '@/lib/shop';
 import type { SiteRecord } from '@/lib/siteStore';
 
@@ -27,7 +27,7 @@ export function SetupHub({
   const [members, setMembers] = useState<Member[]>([]);
   const [busy, setBusy] = useState(false);
   const sitePrompt = useUpdateSitePrompt('bookings');
-  const linkSite = useSiteForLinks();
+  const links = useCustomerLinks(shop);
   useEffect(() => { listMembers(shop.id).then(setMembers).catch(() => {}); }, [shop.id]);
 
   const { own, choice } = bookingPrefs(site);
@@ -70,7 +70,7 @@ export function SetupHub({
             !shop.bookingsEnabled
               ? 'Off: your booking page shows as paused.'
               : shop.purchaseLinked
-                ? customerBookingUrl(shop, linkSite)
+                ? links?.booking ?? customerBookingUrl(shop)
                 : PLAN_PENDING
           }
           value={shop.bookingsEnabled}

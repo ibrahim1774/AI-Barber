@@ -11,7 +11,7 @@ jest.mock('expo-router', () => ({ router: { push: (...a: unknown[]) => mockPush(
 const mockCtx = jest.fn();
 jest.mock('@/lib/linkContext', () => ({ loadLinkContext: () => mockCtx() }));
 
-import { resetSetupPromptForTests, setupPrompt, useUpdateSitePrompt, NOT_NOW, UPDATE_SITE } from '@/lib/setupPrompt';
+import { ALERT_SAFETY_MS, resetSetupPromptForTests, setupPrompt, useUpdateSitePrompt, NOT_NOW, UPDATE_SITE } from '@/lib/setupPrompt';
 import * as store from '@/lib/siteStore';
 import { resetEntitlementsForTests, setEntitlementsFromStatus, getEntitlements } from '@/lib/entitlements';
 import type { SiteRecord } from '@/lib/siteStore';
@@ -100,7 +100,7 @@ describe('useUpdateSitePrompt', () => {
     expect(alert).toHaveBeenCalledWith('Add the Book button to your website?', undefined, [
       expect.objectContaining({ text: NOT_NOW, style: 'cancel' }),
       expect.objectContaining({ text: UPDATE_SITE }),
-    ]);
+    ], expect.objectContaining({ cancelable: true }));
     press(UPDATE_SITE);
     press(UPDATE_SITE);
     api.update();
@@ -172,19 +172,36 @@ describe('useUpdateSitePrompt', () => {
     expect((global as any).fetch).toHaveBeenCalledTimes(1);
   });
 
-  it('rapid toggles: checks running at once fold into one alert; a check while an alert is up asks nothing', async () => {
+  it('rapid toggles: the folded re-check asks about the LATEST state, once', async () => {
+    await store.saveSite(site());
+    await render(<Probe />);
+    // Toggle 1: bookings on (the AI Book button would be added). Its shop lookup is slow.
+    let release!: (v: unknown) => void;
+    mockCtx.mockImplementationOnce(() => new Promise((r) => (release = r)));
+    let first!: Promise<string>;
+    await act(async () => {
+      first = api.offer();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    // Toggles 2 and 3 while it runs: bookings back off, and the live site already shows the AI button.
+    await store.saveSite(site({ liveLinks: { bookingUrl: AI, shopUrl: null } }));
+    mockCtx.mockImplementation(async () => ctx(false));
+    await act(async () => {
+      void api.offer();
+      void api.offer();
+      release(ctx(true));
+      await first;
+    });
+    expect(alert).toHaveBeenCalledTimes(1);
+    expect(alert.mock.calls[0][0]).toBe('Point your Book button back to your own booking link?');
+  });
+
+  it('a check while an alert is up asks nothing, across screens; Update opens /publishing once', async () => {
     await store.saveSite(site());
     await render(<Probe />);
     await act(async () => {
-      await Promise.all([api.offer(), api.offer(), api.offer()]);
+      await api.offer();
     });
-    expect(alert).toHaveBeenCalledTimes(1);
-    // The alert is still up: another toggle asks nothing.
-    await act(async () => {
-      expect(await api.offer()).toBe('no-change');
-    });
-    expect(alert).toHaveBeenCalledTimes(1);
-    // Two hooks (hub + store form) share it too.
     let other!: ReturnType<typeof useUpdateSitePrompt>;
     function Other() {
       other = useUpdateSitePrompt('store');
@@ -192,12 +209,64 @@ describe('useUpdateSitePrompt', () => {
     }
     await render(<Other />);
     await act(async () => {
-      await other.offer();
+      expect(await other.offer()).toBe('no-change');
     });
     expect(alert).toHaveBeenCalledTimes(1);
     press(UPDATE_SITE);
     other.update();
     expect(mockPush).toHaveBeenCalledTimes(1);
+  });
+
+  it('an alert dismissed without a button (onDismiss) re-arms the queue', async () => {
+    await store.saveSite(site());
+    await render(<Probe />);
+    await act(async () => {
+      await api.offer();
+    });
+    const opts = alert.mock.calls[0][3];
+    expect(opts).toMatchObject({ cancelable: true });
+    opts.onDismiss();
+    await act(async () => {
+      await api.offer();
+    });
+    expect(alert).toHaveBeenCalledTimes(2);
+  });
+
+  it('an alert that is never answered (never shown) stops blocking after the safety timeout', async () => {
+    await store.saveSite(site());
+    await render(<Probe />);
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+    await act(async () => {
+      await api.offer();
+    });
+    await act(async () => {
+      expect(await api.offer()).toBe('no-change');
+    });
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(ALERT_SAFETY_MS + 1);
+    });
+    await act(async () => {
+      expect(await api.offer()).toBe('prompted');
+    });
+    expect(alert).toHaveBeenCalledTimes(2);
+    jest.useRealTimers();
+  });
+
+  it('a check started right after another finished runs fresh (no lost offer)', async () => {
+    await store.saveSite(site({ liveLinks: { bookingUrl: AI, shopUrl: null } })); // nothing to ask
+    await render(<Probe />);
+    let out1: string | undefined;
+    await act(async () => {
+      out1 = await api.offer().then(async (r) => {
+        // Same tick the first check ended: the state changes and another toggle checks.
+        await store.saveSite(site());
+        return r;
+      });
+    });
+    expect(out1).toBe('no-change');
+    await act(async () => {
+      expect(await api.offer()).toBe('prompted');
+    });
   });
 
   it('after Not now, the next change can ask again', async () => {

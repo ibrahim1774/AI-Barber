@@ -15,7 +15,7 @@ import { shareMessage } from '@/lib/share';
 import { BookButtonPicker } from '@/components/setup/BookButtonPicker';
 import { bookingPrefs, withChoice } from '@/lib/bookingChoice';
 import { useUpdateSitePrompt } from '@/lib/setupPrompt';
-import { customerBookingUrl } from '@/lib/customerLinks';
+import { customerBookingUrl, useCustomerLinks } from '@/lib/customerLinks';
 import { withMirroredServices } from '@/lib/setup/servicesMap';
 import { updateSiteData, updateSiteRecord } from '@/lib/setup/siteSync';
 import {
@@ -47,6 +47,7 @@ export function Wizard({ shop, site, onShopChanged, onFinish }: Props) {
   const [shareOpen, setShareOpen] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const sitePrompt = useUpdateSitePrompt('bookings');
+  const customerLinks = useCustomerLinks(shop);
   const hoursSave = useRef<(() => Promise<boolean>) | null>(null);
   const step = currentStep(state);
 
@@ -90,7 +91,7 @@ export function Wizard({ shop, site, onShopChanged, onFinish }: Props) {
     setState(n);
   };
 
-  const url = customerBookingUrl(shop, site);
+  const url = customerLinks?.booking ?? customerBookingUrl(shop);
   return (
     <View>
       <Text style={st.progress}>{progressLabel(state)}</Text>

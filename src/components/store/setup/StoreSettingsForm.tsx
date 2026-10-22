@@ -12,7 +12,7 @@ import {
 } from '@/lib/store/data';
 import { canOpenShop, formFromSettings, validateSettings, type SettingsForm } from '@/lib/store/settings';
 import { useUpdateSitePrompt } from '@/lib/setupPrompt';
-import { customerShopUrl, useSiteForLinks } from '@/lib/customerLinks';
+import { customerShopUrl, useCustomerLinks } from '@/lib/customerLinks';
 import { SITE_SHOP_PATH } from '@/web/lib/render/subpages';
 import type { WebsiteData } from '@/web/types';
 
@@ -30,9 +30,9 @@ export function StoreSettingsForm({ shop, onChanged }: { shop: Shop; onChanged?(
   const [busy, setBusy] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const sitePrompt = useUpdateSitePrompt('store');
-  const linkSite = useSiteForLinks();
+  const links = useCustomerLinks(shop);
   // What customers open: the barber's own site + /shop once it has the page, else the aibarber.org page.
-  const customerUrl = customerShopUrl(shop, linkSite);
+  const customerUrl = links?.shop ?? customerShopUrl(shop);
 
   useEffect(() => {
     let alive = true;

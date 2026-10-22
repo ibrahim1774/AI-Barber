@@ -5,6 +5,7 @@ import { ApiError, type api } from '@/lib/api';
 import { stripMarkers } from '@/lib/editable';
 import { linksOf, linksToSend, type LinkContext } from '@/lib/bookingChoice';
 import { cancelRemindersInBackground } from '@/lib/reminders';
+import { emitSiteLive } from '@/lib/siteEvents';
 import type { SiteRecord } from '@/lib/siteStore';
 import { LOOKUP_TIMEOUT_MS, withTimeout } from '@/lib/timeout';
 
@@ -219,6 +220,7 @@ async function send(
       ...(newerOnDisk ? {} : { syncedAt: sentAt ?? cur.updatedAt, ...learned, liveLinks: linksOf(siteData) }),
     };
     await deps.store.saveSite(saved);
+    emitSiteLive(saved);
   }
   await deps.store.savePendingPublish(null);
   track('site_published', { republished });

@@ -23,7 +23,10 @@ import { SHOP_PREVIEW_SCRIPT } from '@/web/lib/render/subpages';
 import type { WebsiteData } from '@/web/types';
 import { ShareSheet } from '@/components/ShareSheet';
 import { canonicalLinks, resolveLinks, withChoice, type LinkContext } from '@/lib/bookingChoice';
-import { customerBookingUrl, customerShopUrl, siteBase } from '@/lib/customerLinks';
+import {
+  customerBookingUrl, resetPagesChecksForTests, resolveCustomerLinks, sitePagesLive, useCustomerLinks, verifiedSiteBase,
+} from '@/lib/customerLinks';
+import { emitSiteLive } from '@/lib/siteEvents';
 import { SHOP_PREVIEW_EDITOR_NOTE, SHOP_PREVIEW_PLACEHOLDER, buildPreviewHtml, stripMarkers, withShopPreview } from '@/lib/editable';
 import { resetEntitlementsForTests, setEntitlementsFromStatus, getEntitlements } from '@/lib/entitlements';
 import { renderSite, forRender } from '@/lib/render';
@@ -69,23 +72,100 @@ describe('link forms', () => {
 
 describe('customer links (share, QR, copy)', () => {
   const shop = (siteBaseUrl: string | null) => ({ slug: 'fade-lab', siteBaseUrl });
+  const LIVE_SITE = { deployedUrl: 'https://fade-lab.vercel.app/', liveLinks: { bookingUrl: '/book', shopUrl: null } };
+  let fetched: string[];
+  const serve = (status: number, body: unknown) => {
+    fetched = [];
+    (global as any).fetch = jest.fn(async (url: string) => {
+      fetched.push(url);
+      return { status, ok: status >= 200 && status < 300, text: async () => (typeof body === 'string' ? body : JSON.stringify(body)) };
+    });
+  };
+  beforeEach(() => resetPagesChecksForTests());
 
-  it('the server\'s stored base wins: never aibarber.org then', () => {
+  it('the server\'s stored base wins: never aibarber.org, no check needed', async () => {
+    serve(500, {});
+    expect(await resolveCustomerLinks(shop(BASE), LIVE_SITE)).toEqual({ booking: `${BASE}/book`, shop: `${BASE}/shop` });
     expect(customerBookingUrl(shop(BASE))).toBe(`${BASE}/book`);
-    expect(customerShopUrl(shop(BASE))).toBe(`${BASE}/shop`);
+    expect(fetched).toEqual([]);
   });
 
-  it('no stored base yet: the local live address when its last publish carried the pages', () => {
-    const site = { deployedUrl: 'https://fade-lab.vercel.app/', liveLinks: { bookingUrl: '/book', shopUrl: null } };
-    expect(customerBookingUrl(shop(null), site)).toBe('https://fade-lab.vercel.app/book');
-    expect(customerShopUrl(shop(null), site)).toBe('https://fade-lab.vercel.app/shop');
+  it('no stored base: the live address only when its /ab-site.json confirms the pages', async () => {
+    serve(200, { slug: 'fade-lab' });
+    expect(await resolveCustomerLinks(shop(null), LIVE_SITE)).toEqual({
+      booking: 'https://fade-lab.vercel.app/book', shop: 'https://fade-lab.vercel.app/shop',
+    });
+    expect(fetched).toEqual(['https://fade-lab.vercel.app/ab-site.json']);
   });
 
-  it('a site without the pages yet (old links, own link, unpublished): the aibarber.org page, which keeps working', () => {
-    expect(customerBookingUrl(shop(null), { deployedUrl: 'https://fade-lab.vercel.app', liveLinks: { bookingUrl: OLD_BOOK, shopUrl: null } })).toBe(OLD_BOOK);
-    expect(customerBookingUrl(shop(null), { deployedUrl: 'https://fade-lab.vercel.app', liveLinks: { bookingUrl: 'https://booksy.com/x', shopUrl: null } })).toBe(OLD_BOOK);
-    expect(customerShopUrl(shop(null), { deployedUrl: null, liveLinks: undefined })).toBe(OLD_SHOP);
-    expect(siteBase(null, null)).toBeNull();
+  // Review F1: the app recorded /book (what it sent), but the server found no shop and shipped no pages.
+  it.each([
+    ['404 (no pages shipped)', 404, 'Not found'],
+    ['200 HTML (not the config)', 200, '<html></html>'],
+    ['200 without a slug', 200, {}],
+  ])('no stored base and the check fails (%s): the aibarber.org page, never a 404 link', async (_n, status, body) => {
+    serve(status as number, body);
+    expect(await resolveCustomerLinks(shop(null), LIVE_SITE)).toEqual({ booking: OLD_BOOK, shop: OLD_SHOP });
+  });
+
+  it('offline or hanging: aibarber.org (3 s cap)', async () => {
+    (global as any).fetch = jest.fn(() => Promise.reject(new TypeError('offline')));
+    expect(await resolveCustomerLinks(shop(null), LIVE_SITE)).toEqual({ booking: OLD_BOOK, shop: OLD_SHOP });
+    resetPagesChecksForTests();
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+    (global as any).fetch = jest.fn((_u: string, init: any) => new Promise((_r, reject) => init.signal.addEventListener('abort', () => reject(new Error('abort')))));
+    const p = resolveCustomerLinks(shop(null), LIVE_SITE);
+    await jest.advanceTimersByTimeAsync(3_100);
+    expect(await p).toEqual({ booking: OLD_BOOK, shop: OLD_SHOP });
+    jest.useRealTimers();
+  });
+
+  it('a confirmed check is cached for the session; a failed one is retried after a minute', async () => {
+    serve(404, 'x');
+    const t0 = Date.now();
+    expect(await sitePagesLive('https://a.vercel.app', t0)).toBe(false);
+    expect(await sitePagesLive('https://a.vercel.app', t0 + 10_000)).toBe(false);
+    expect(fetched).toHaveLength(1);
+    serve(200, { slug: 'a' });
+    expect(await sitePagesLive('https://a.vercel.app', t0 + 61_000)).toBe(true);
+    expect(await sitePagesLive('https://a.vercel.app', t0 + 10 * 60_000)).toBe(true);
+    expect(fetched).toHaveLength(1);
+  });
+
+  it('a site without the pages in its last publish (old links, own link, unpublished) is never checked', async () => {
+    serve(200, { slug: 'fade-lab' });
+    for (const site of [
+      { deployedUrl: 'https://fade-lab.vercel.app', liveLinks: { bookingUrl: OLD_BOOK, shopUrl: null } },
+      { deployedUrl: 'https://fade-lab.vercel.app', liveLinks: { bookingUrl: 'https://booksy.com/x', shopUrl: null } },
+      { deployedUrl: null, liveLinks: undefined },
+    ]) {
+      expect(await resolveCustomerLinks(shop(null), site as any)).toEqual({ booking: OLD_BOOK, shop: OLD_SHOP });
+    }
+    expect(fetched).toEqual([]);
+    expect(await verifiedSiteBase(null, null)).toBeNull();
+  });
+
+  it('useCustomerLinks: the no-network answer first, then the verified one; re-resolved after a publish', async () => {
+    serve(404, 'x');
+    await store.saveSite({ draftId: 'd', inputs: {} as any, data: {} as any, updatedAt: 1, slug: 'fade-lab', ...LIVE_SITE, transactionId: 'tx' });
+    let got: any;
+    function Probe() {
+      got = useCustomerLinks(shop(null));
+      return null;
+    }
+    await render(<Probe />);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+    expect(got).toEqual({ booking: OLD_BOOK, shop: OLD_SHOP });
+    // The pages ship with the next publish: the screen updates without a remount.
+    resetPagesChecksForTests();
+    serve(200, { slug: 'fade-lab' });
+    await act(async () => {
+      emitSiteLive((await store.loadSite())!);
+      await new Promise((r) => setTimeout(r, 10));
+    });
+    expect(got.booking).toBe('https://fade-lab.vercel.app/book');
   });
 
   it('toShop reads site_base_url only as an https origin', () => {
@@ -96,6 +176,7 @@ describe('customer links (share, QR, copy)', () => {
   });
 
   it('the Share sheet offers the barber-domain booking and shop links', async () => {
+    resetPagesChecksForTests();
     mockShop.mockResolvedValue({ id: 's1', slug: 'fade-lab', bookingsEnabled: true, purchaseLinked: true, siteBaseUrl: BASE });
     resetEntitlementsForTests();
     setEntitlementsFromStatus({ status: 'ACTIVE', entitlements: [{ id: 'hosting' }, { id: 'bookings' }, { id: 'store' }] });

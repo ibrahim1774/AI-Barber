@@ -19,3 +19,23 @@ export function emitSiteAdopted(site: SiteRecord): void {
     }
   });
 }
+
+const liveListeners = new Set<(site: SiteRecord) => void>();
+
+/** Called after a publish saved what the live site now shows (deployedUrl, liveLinks). Returns the unsubscribe. */
+export function onSiteLive(cb: (site: SiteRecord) => void): () => void {
+  liveListeners.add(cb);
+  return () => {
+    liveListeners.delete(cb);
+  };
+}
+
+export function emitSiteLive(site: SiteRecord): void {
+  liveListeners.forEach((l) => {
+    try {
+      l(site);
+    } catch (e) {
+      console.warn('[site] live listener failed:', e);
+    }
+  });
+}
