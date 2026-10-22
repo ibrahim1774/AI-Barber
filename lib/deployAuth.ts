@@ -286,8 +286,10 @@ async function authorizeWebUser(
     const urls = [`https://${shopSlug}.vercel.app`, ...(stamp ? [stamp] : [])];
     const claimants = await withTimeout(deps.webClaimants([...new Set(urls)]), ms, 'sites claim lookup');
     const mine = claimants.includes(user.id);
-    if (claimants.length > 0 && !mine) {
-      console.warn(`[Deploy Site] ${shopSlug}: claimed by another account; refusing ${user.id}`);
+    // Review fix round 1 (finding 11): `sites` rows are user-writable, so a co-claim is no proof.
+    // With no owner row yet, the caller must be the ONLY account claiming the URL.
+    if (claimants.length > 0 && !(mine && claimants.length === 1)) {
+      console.warn(`[Deploy Site] ${shopSlug}: ${mine ? 'also ' : ''}claimed by another account; refusing ${user.id}`);
       return deny(403, 'not-authorized');
     }
     // Published (the server stamped the stored copy): only an account that claims it.

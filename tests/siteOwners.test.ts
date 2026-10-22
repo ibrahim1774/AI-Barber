@@ -123,6 +123,18 @@ describe('authorizeDeploy with the owner list (lib/deployAuth.ts web rule)', () 
     expect(await authorizeDeploy({ siteId: 'fresh-cuts', authorization: 'Bearer a-jwt' }, deps(store))).toEqual({ ok: false, status: 403, error: 'not-authorized' });
   });
 
+  it('review fix 11: with no owner yet, a co-claimant is refused; only the sole `sites` claimant passes', async () => {
+    quiet();
+    const store = memStore();
+    const d = (claimants: string[]) => deps(store, { webClaimants: async () => claimants });
+    expect(await authorizeDeploy({ siteId: 'fresh-cuts', authorization: 'Bearer a-jwt' }, d([A, B]))).toEqual({ ok: false, status: 403, error: 'not-authorized' });
+    expect(await authorizeDeploy({ siteId: 'fresh-cuts', authorization: 'Bearer b-jwt' }, d([A, B]))).toEqual({ ok: false, status: 403, error: 'not-authorized' });
+    expect((await authorizeDeploy({ siteId: 'fresh-cuts', authorization: 'Bearer a-jwt' }, d([A]))).ok).toBe(true);
+    // An unclaimed owner row is "no owner yet" too: same rule.
+    const pend = memStore([pending('fresh-cuts', 'someone-else@example.com')]);
+    expect((await authorizeDeploy({ siteId: 'fresh-cuts', authorization: 'Bearer a-jwt' }, deps(pend, { webClaimants: async () => [A, B] }))).status).toBe(403);
+  });
+
   it('an unclaimed row: the buyer\'s confirmed email claims it and deploys; an outage fails closed (503)', async () => {
     quiet();
     vi.spyOn(console, 'log').mockImplementation(() => {});
