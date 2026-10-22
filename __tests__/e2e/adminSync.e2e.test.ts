@@ -184,8 +184,8 @@ describe('admin edit during a publish', () => {
     expect((await w.site())?.data.hero.tagline).toBe('Edited by support');
   });
 
-  // BUG (race): the publish answer is saved over a version the phone learned while it was in flight.
-  it.failing('BUG: a slow publish answer never lowers the version adopted from an admin edit meanwhile', async () => {
+  // Fixed (bug 7, race): the publish answer was saved over a version the phone learned while it was in flight.
+  it('a slow publish answer never lowers the version adopted from an admin edit meanwhile', async () => {
     await liveSite();
     let release!: () => void;
     server.fail('/api/ios/publish', { kind: 'held', release: new Promise<void>((r) => (release = r)) });
@@ -204,7 +204,7 @@ describe('admin edit during a publish', () => {
     expect(rec?.editedBy).toBe('admin');
   });
 
-  it('observed: after that race the phone holds the admin data stamped v2/owner, and re-adopts with a false "lost edits" notice', async () => {
+  it('after that race the phone keeps the admin copy at v3: no second adoption, no false "lost edits" notice', async () => {
     await liveSite();
     let release!: () => void;
     server.fail('/api/ios/publish', { kind: 'held', release: new Promise<void>((r) => (release = r)) });
@@ -217,11 +217,14 @@ describe('admin edit during a publish', () => {
     await w.m.adminSync.takeNotice(); // the Edit tab showed the first notice
     release();
     await p;
-    expect(await w.site()).toMatchObject({ serverVersion: 2, editedBy: 'owner' });
+    expect(await w.site()).toMatchObject({ serverVersion: 3, editedBy: 'admin', slug: 'fade-lab' });
+    expect(w.m.adminSync.unpublishedEdits((await w.site())!)).toBe('no');
     spy.mockReturnValue(now + 125_000);
-    const again = await w.m.adminSync.syncQuietly();
-    expect(again).toMatchObject({ kind: 'adopted' });
-    expect((again as any).message).toMatch(/Changes you had not published yet were replaced/);
+    expect(await w.m.adminSync.syncQuietly()).toEqual({ kind: 'none' });
+    // Publishing the reviewed admin copy goes on top of v3.
+    spy.mockRestore();
+    expect(await publish(w)).toMatchObject({ kind: 'live' });
+    expect(await w.site()).toMatchObject({ serverVersion: 4, editedBy: 'owner' });
   });
 });
 

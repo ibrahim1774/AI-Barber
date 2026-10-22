@@ -208,14 +208,19 @@ async function send(
   const cur = await deps.store.loadSite();
   let saved: SiteRecord | null = null;
   if (cur) {
+    const learned = versionFields(res);
+    // Never lower the version: a newer one may have been adopted (an admin edit) while this answer was on
+    // its way. Then that record's version and sync point stay; this publish is older than what it holds.
+    const newerOnDisk =
+      typeof cur.serverVersion === 'number' && typeof learned.serverVersion === 'number' &&
+      cur.serverVersion > learned.serverVersion;
     saved = {
       ...cur,
       slug: res.siteId,
       deployedUrl: res.deployedUrl,
       transactionId: pending.transactionId,
       // Edits made while the request ran are not published.
-      syncedAt: sentAt ?? cur.updatedAt,
-      ...versionFields(res),
+      ...(newerOnDisk ? {} : { syncedAt: sentAt ?? cur.updatedAt, ...learned }),
     };
     await deps.store.saveSite(saved);
   }
