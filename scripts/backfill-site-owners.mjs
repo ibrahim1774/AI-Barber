@@ -79,14 +79,28 @@ const appSlugs = new Set();
   for (const r of data || []) appSlugs.add(r.site_slug);
 }
 
+// `sites` claimants of each slug's *.vercel.app URL (who edits it today under the interim rule).
+const claimantsBySlug = new Map();
+for (let from = 0; ; from += 1000) {
+  const { data, error } = await db.from('sites').select('user_id, deployed_url').not('deployed_url', 'is', null).range(from, from + 999);
+  if (error) { console.error(`sites read failed: ${error.message}`); process.exit(1); }
+  for (const r of data || []) {
+    const m = /^https:\/\/([a-z0-9-]+)\.vercel\.app\/?$/i.exec(String(r.deployed_url).trim());
+    if (!m || !r.user_id) continue;
+    const slug = m[1].toLowerCase();
+    claimantsBySlug.set(slug, [...(claimantsBySlug.get(slug) || []), r.user_id]);
+  }
+  if (!data || data.length < 1000) break;
+}
+
 // 3. The plan.
-const plan = planBackfill(sessions, { accountByEmail, owned, appSlugs });
+const plan = planBackfill(sessions, { accountByEmail, owned, appSlugs, claimantsBySlug });
 console.log(`${sessions.length} complete sessions; ${plan.ignoredSessions} not site checkouts.`);
 console.log(`${plan.insert.length} owner row(s) to write:`);
 for (const r of plan.insert) console.log(`  ${r.slug.padEnd(40)} ${r.user_id ? 'account (confirmed email)' : 'email to claim'}`);
 if (plan.skipped.length) {
   console.log(`${plan.skipped.length} skipped:`);
-  for (const s of plan.skipped) console.log(`  ${s.slug.padEnd(40)} ${s.reason}${s.reason === 'several-emails' ? ' (resolve with set-web-owner)' : ''}`);
+  for (const s of plan.skipped) console.log(`  ${s.slug.padEnd(40)} ${s.reason}${s.reason === 'several-emails' || s.reason === 'claimant-differs' ? ` (resolve with set-web-owner): ${s.detail}` : ''}`);
 }
 if (!write) {
   console.log('\nDry run: nothing written. Re-run with --yes to write (after migration 013 is applied).');

@@ -389,4 +389,19 @@ describe('backfill planner (scripts/backfill-site-owners.mjs)', () => {
     ]);
     expect(plan.ignoredSessions).toBe(2);
   });
+
+  it('claimant-differs (review finding 3): the email-matched account must be the only `sites` claimant', async () => {
+    const { planBackfill, toBackfillSession } = await import('../lib/siteOwnersBackfill.js');
+    const s = (id: string, siteId: string, email: string) => toBackfillSession({
+      id, mode: 'subscription', status: 'complete', payment_status: 'paid', metadata: { app: 'aibarber', siteId }, customer_details: { email }, created: 1,
+    });
+    const plan = planBackfill([s('cs_1', 'second-account', 'jack@gmail.com'), s('cs_2', 'shared', 'jack@gmail.com'), s('cs_3', 'same', 'jack@gmail.com'), s('cs_4', 'no-account', 'new@example.com'), s('cs_5', 'unclaimed', 'new@example.com')], {
+      accountByEmail: new Map([['jack@gmail.com', { id: A, emailConfirmed: true }]]),
+      owned: new Set(), appSlugs: new Set(),
+      claimantsBySlug: new Map([['second-account', [B]], ['shared', [A, B]], ['same', [A]], ['no-account', [B]]]),
+    });
+    expect(plan.insert.map((r) => [r.slug, r.user_id ?? r.claim_email])).toEqual([['same', A], ['unclaimed', 'new@example.com']]);
+    expect(plan.skipped.map((x) => [x.slug, x.reason])).toEqual([['no-account', 'claimant-differs'], ['second-account', 'claimant-differs'], ['shared', 'claimant-differs']]);
+    expect(plan.skipped.find((x) => x.slug === 'second-account')!.detail).toContain(B);
+  });
 });

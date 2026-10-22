@@ -9,6 +9,10 @@
 // - A slug whose sessions name more than one email is reported and skipped (ambiguous: the
 //   admin decides with set-web-owner).
 // - A slug that already has an owner row is skipped (never replaced); an iOS app slug too.
+// - Review fix round 1 (finding 3): when the site already has `sites` claimants (the accounts
+//   that edit it today under the interim rule), the email-matched account must be the ONLY
+//   claimant; otherwise the slug is skipped as `claimant-differs` (the buyer may edit from a
+//   second account, which the backfill would lock out). The admin resolves it with set-web-owner.
 // - A confirmed account with exactly that email becomes the owner. Otherwise (no account, or
 //   one whose email is unconfirmed) the email is stored to be claimed at a confirmed sign-in:
 //   an unconfirmed account may be someone who pre-registered the buyer's address.
@@ -31,7 +35,7 @@ export interface BackfillAccount { id: string; emailConfirmed: boolean }
 
 export interface BackfillPlan {
   insert: SiteOwnerRow[];
-  skipped: { slug: string; reason: 'already-owned' | 'app-site' | 'several-emails' | 'no-email'; detail?: string }[];
+  skipped: { slug: string; reason: 'already-owned' | 'app-site' | 'several-emails' | 'no-email' | 'claimant-differs'; detail?: string }[];
   /** Sessions that are not site checkouts (counted, not listed). */
   ignoredSessions: number;
 }
@@ -42,6 +46,8 @@ export function planBackfill(
     accountByEmail: Map<string, BackfillAccount>;
     owned: Set<string>;
     appSlugs: Set<string>;
+    /** `sites` claimants (user ids) of each slug's URL. Absent / empty: nobody edits it yet. */
+    claimantsBySlug?: Map<string, string[]>;
   },
 ): BackfillPlan {
   const bySlug = new Map<string, BackfillSession[]>();
@@ -64,6 +70,14 @@ export function planBackfill(
     if (emails.length > 1) { plan.skipped.push({ slug, reason: 'several-emails', detail: emails.join(', ') }); continue; }
     const email = emails[0];
     const account = ctx.accountByEmail.get(email);
+    const claimants = [...new Set(ctx.claimantsBySlug?.get(slug) ?? [])];
+    if (claimants.length > 0 && !(claimants.length === 1 && account && claimants[0] === account.id)) {
+      plan.skipped.push({
+        slug, reason: 'claimant-differs',
+        detail: `checkout email ${email} (${account ? `account ${account.id}` : 'no account'}); sites claimants: ${claimants.join(', ')}`,
+      });
+      continue;
+    }
     const first = list[0];
     plan.insert.push({
       slug,
