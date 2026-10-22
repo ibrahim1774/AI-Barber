@@ -17,9 +17,9 @@ export const USAGE = `AI Barber app sites (admin). Changes live customer sites �
   node scripts/admin-sites.mjs replace <slug> <file.json> [--note "why"] [--expect <version>]
         file is the whole siteData (start from: show <slug> --json > site.json)
   node scripts/admin-sites.mjs republish <slug>
-  node scripts/admin-sites.mjs republish-all --dry-run          list what would be republished
-  node scripts/admin-sites.mjs republish-all [--run <id>] [--limit <n>]   republish every app site (resume with --run)
-  node scripts/admin-sites.mjs rollback <slug> <version>        bring back a history version (as a new version)
+  node scripts/admin-sites.mjs republish-all                    dry run: list what would be republished (default)
+  node scripts/admin-sites.mjs republish-all --yes [--run <id>] [--limit <n>]   really republish every app site (resume with --run)
+  node scripts/admin-sites.mjs rollback <slug> <version> [--expect <version>]   bring back a history version (4 or 4-1729…) as a new version
 
 Options: --env <file> (default .env.local, then .env)`;
 
@@ -38,7 +38,7 @@ function flags(args: string[]) {
     if (a.startsWith('--')) {
       const key = a.slice(2);
       const next = args[i + 1];
-      if (['note', 'expect', 'run', 'limit', 'env'].includes(key) && next !== undefined) {
+      if (['note', 'expect', 'run', 'limit', 'env'].includes(key) && next !== undefined && !next.startsWith('--')) {
         opt[key] = next;
         i++;
       } else opt[key] = true;
@@ -69,7 +69,7 @@ const pad = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` 
 function printUpdate(io: CliIo, r: UpdateResult) {
   if (r.ok) {
     io.out(`OK ${r.slug}: v${r.fromVersion} → v${r.version}` +
-      (r.deployed ? `, live at ${r.deployedUrl}` : r.skipped ? ' (site is offline: saved, goes live when restored)' : ''));
+      (r.deployed ? `, live at ${r.deployedUrl}` : r.skipped ? ` (site is offline — ${r.offline}: saved, not deployed; goes live when restored/renewed)` : ''));
   } else {
     io.err(`FAILED ${r.slug}: ${r.error}${r.detail ? ` — ${r.detail}` : ''}` +
       (r.saved ? ` (v${r.version} is saved; run: republish ${r.slug})` : ''));
@@ -125,7 +125,7 @@ export async function runCli(argv: string[], deps: () => AdminSitesDeps, io: Cli
       io.out(`Customer: ${s.email || '—'}  transaction ${s.transactionId} (${s.environment})`);
       io.out(`Plan:     ${s.tier || '?'} (${s.productId})  status ${s.status}`);
       io.out(`Version:  v${s.version}${s.editedBy ? ` by ${s.editedBy}` : ''}${s.editedAt ? ` at ${s.editedAt}` : ''}${s.note ? `  note: ${s.note}` : ''}`);
-      io.out(`History:  ${s.history.length ? s.history.map((h) => `v${h.version}${h.editedBy ? ` (${h.editedBy})` : ''}`).join(', ') : 'none'}`);
+      io.out(`History:  ${s.history.length ? s.history.map((h) => `v${h.id}${h.editedBy ? ` (${h.editedBy})` : ''}`).join(', ') : 'none'}`);
       io.out('');
       io.out(JSON.stringify(s.siteData, null, 2));
       return 0;
@@ -174,25 +174,39 @@ export async function runCli(argv: string[], deps: () => AdminSitesDeps, io: Cli
 
     case 'republish-all': {
       const d = deps();
-      if (opt['dry-run']) {
+      let limit = 6;
+      if (opt.limit !== undefined) {
+        limit = typeof opt.limit === 'string' && /^\d+$/.test(opt.limit) ? Number(opt.limit) : NaN;
+        if (!(limit >= 1)) {
+          io.err('--limit must be a positive whole number');
+          return 2;
+        }
+      }
+      // A real run redeploys every live app site: it needs --yes. Anything else is a dry run.
+      if (!opt.yes) {
         const r = await republishAll({ dryRun: true }, d);
-        io.out(`Would republish ${r.eligible!.length} site(s):`);
+        io.out(`DRY RUN — would republish ${r.eligible!.length} site(s) (add --yes to do it):`);
         for (const s of r.eligible!) io.out(`  ${s}`);
+        for (const w of r.wouldStrip || []) io.out(`  note: ${w.slug} deploys without ${w.links.join(', ')} (not in its plan)`);
         if (r.skipped.length) io.out(`Skipped ${r.skipped.length}: ${r.skipped.map((s) => `${s.slug} (${s.reason})`).join(', ')}`);
         return 0;
       }
       const runId = typeof opt.run === 'string' ? opt.run : io.newRunId();
-      const limit = typeof opt.limit === 'string' ? Number(opt.limit) : 6;
-      io.out(`Run ${runId} (if it stops, resume with: republish-all --run ${runId})`);
+      io.out(`Run ${runId} (if it stops, resume with: republish-all --yes --run ${runId})`);
       for (;;) {
         const r = await republishAll({ dryRun: false, runId, limit, by }, d);
         for (const x of r.results) {
           if (x.ok) io.out(`  OK     ${x.slug}  ${x.deployedUrl || ''}`);
           else io.err(`  FAILED ${x.slug}: ${x.error}${x.detail ? ` — ${x.detail}` : ''}`);
         }
-        if (r.done || !r.results.length) {
+        if (r.done) {
           io.out(`Done: ${r.totals.ok} republished, ${r.totals.failed} failed, ${r.skipped.length} skipped.`);
           return r.totals.failed ? 1 : 0;
+        }
+        if (!r.results.length) {
+          io.err(`Stopped: no progress on this call; ${r.remaining} site(s) not reached (${(r.notReached || []).slice(0, 10).join(', ')}${r.remaining > 10 ? ', …' : ''}).`);
+          io.err(`Resume with: node scripts/admin-sites.mjs republish-all --yes --run ${runId}`);
+          return 1;
         }
         io.out(`  … ${r.remaining} to go`);
       }
@@ -200,8 +214,8 @@ export async function runCli(argv: string[], deps: () => AdminSitesDeps, io: Cli
 
     case 'rollback': {
       const [slug, v] = pos;
-      if (!slug || v === undefined || !/^\d+$/.test(v)) return usage();
-      const r = await rollback(slug, Number(v), deps(), by);
+      if (!slug || v === undefined || !/^\d+(-\d+)?$/.test(v)) return usage();
+      const r = await rollback(slug, v, deps(), { by, expectedVersion });
       printUpdate(io, r);
       return r.ok ? 0 : 1;
     }

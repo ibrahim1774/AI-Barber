@@ -52,7 +52,7 @@ interface SiteRow {
 }
 interface SiteDetail extends SiteRow {
   siteData: any; note: string | null; productId: string; environment: string;
-  history: { version: number; editedBy: string | null; editedAt: string | null }[];
+  history: { id: string; version: number; editedBy: string | null; editedAt: string | null }[];
 }
 type Msg = { kind: 'ok' | 'err' | 'info'; text: string } | null;
 
@@ -78,7 +78,10 @@ const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString('en-US',
 
 function describeSave(r: any): Msg {
   const stripped = r.strippedLinks?.length ? ` Removed ${r.strippedLinks.join(', ')} (not in this customer's plan).` : '';
-  if (r.skipped === 'site-offline') return { kind: 'info', text: `Saved v${r.version}. Site is offline (lapsed or refunded): it goes live when restored.${stripped}` };
+  if (r.skipped === 'site-offline') {
+    const why = r.offline === 'expired' ? 'subscription expired' : r.offline === 'revoked' ? 'refunded' : 'taken down';
+    return { kind: 'info', text: `Saved v${r.version}, not deployed: the site is offline (${why}). It goes live when restored or renewed.${stripped}` };
+  }
   return { kind: 'ok', text: `Saved v${r.version} and published.${stripped}` };
 }
 
@@ -181,9 +184,9 @@ export const AdminAppSites: React.FC = () => {
   const doRepublish = () =>
     act('republish', { action: 'republish' }, (r) => ({ kind: 'ok', text: `Republished: ${r.deployedUrl || ''}` }));
 
-  const doRollback = (version: number) => {
-    if (!site || !window.confirm(`Bring back v${version} of ${site.shopName || site.slug}? (Saved as a new version; nothing is lost.)`)) return;
-    act('rollback', { action: 'rollback', version }, (r) => ({ kind: 'ok', text: `Rolled back to v${version} (now v${r.version}).` }));
+  const doRollback = (id: string) => {
+    if (!site || !window.confirm(`Bring back v${id} of ${site.shopName || site.slug}? (Saved as a new version; nothing is lost.)`)) return;
+    act('rollback', { action: 'rollback', version: id, expectedVersion: site.version }, (r) => r.skipped ? describeSave(r) : ({ kind: 'ok', text: `Rolled back to v${id} (now v${r.version}).` }));
   };
 
   // ─── republish all ───
@@ -204,20 +207,30 @@ export const AdminAppSites: React.FC = () => {
     setBulk((b) => ({ ...b, runId, running: true, msg: undefined }));
     const log: string[] = [...bulk.log];
     try {
-      for (let i = 0; i < 200; i++) {
+      // Loop until the run is done; a call that makes no progress stops (never reported as finished).
+      for (;;) {
         const r = await api('POST', '', { action: 'republish-all', dryRun: false, runId, limit: 6 });
         for (const x of r.results) log.push(x.ok ? `OK  ${x.slug}` : `FAILED  ${x.slug}: ${x.error}${x.detail ? ` — ${x.detail}` : ''}`);
         setBulk((b) => ({ ...b, log: [...log], msg: { kind: 'info', text: `${r.totals.ok} done, ${r.totals.failed} failed, ${r.remaining} to go…` } }));
-        if (r.done || !r.results.length) {
+        if (r.done) {
           setBulk((b) => ({
             ...b, dry: undefined, runId: undefined, log: [...log], running: false,
             msg: { kind: r.totals.failed ? 'err' : 'ok', text: `Finished: ${r.totals.ok} republished, ${r.totals.failed} failed.` },
           }));
           return;
         }
+        if (!r.results.length) {
+          setBulk((b) => ({
+            ...b, log: [...log], running: false,
+            msg: { kind: 'err', text: `Stopped with no progress: ${r.remaining} site(s) not reached (${(r.notReached || []).slice(0, 8).join(', ')}${r.remaining > 8 ? ', …' : ''}). Press Continue to resume run ${runId}.` },
+          }));
+          return;
+        }
       }
     } catch (e: any) {
       setBulk((b) => ({ ...b, log: [...log], running: false, msg: { kind: 'err', text: `${e.message}. Press Continue to resume run ${runId}.` } }));
+    } finally {
+      setBulk((b) => (b.running ? { ...b, running: false } : b));
     }
   };
 
@@ -265,6 +278,12 @@ export const AdminAppSites: React.FC = () => {
               Dry run: <b style={{ color: INK }}>{bulk.dry.eligible.length}</b> site(s) would be redeployed from their stored copies
               (content unchanged).{' '}
               {bulk.dry.skipped.length > 0 && <>Skipped {bulk.dry.skipped.length}: {bulk.dry.skipped.map((s: any) => `${s.slug} (${s.reason})`).join(', ')}.</>}
+              {bulk.dry.wouldStrip?.length > 0 && (
+                <div style={{ color: WARN, marginTop: 4 }}>
+                  Deployed without links their plan doesn't cover (stored copies unchanged):{' '}
+                  {bulk.dry.wouldStrip.map((w: any) => `${w.slug} (${w.links.join(', ')})`).join('; ')}.
+                </div>
+              )}
             </div>
           )}
           {msgBox(bulk.msg || null)}
@@ -355,8 +374,8 @@ export const AdminAppSites: React.FC = () => {
 
             {site.status !== 'live' && (
               <div style={{ fontSize: 12.5, color: WARN }}>
-                Status: {site.status}. {site.status === 'taken-down' || site.status === 'revoked'
-                  ? 'Edits are saved but not deployed until the subscription is restored.' : ''}
+                Status: {site.status}. {site.status === 'taken-down' || site.status === 'revoked' || site.status === 'expired'
+                  ? 'Edits are saved but not deployed until the subscription is restored or renewed.' : ''}
               </div>
             )}
             {msgBox(msg)}
@@ -416,10 +435,10 @@ export const AdminAppSites: React.FC = () => {
               <div style={{ fontSize: 12, fontWeight: 600, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>History</div>
               {site.history.length === 0 && <div style={{ fontSize: 12.5, color: FAINT }}>No earlier versions yet (one is kept before every admin save).</div>}
               {site.history.map((h) => (
-                <div key={h.version} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 0', borderBottom: `1px solid ${LINE}`, fontSize: 12.5 }}>
-                  <span className="adm-num" style={{ width: 40 }}>v{h.version}</span>
+                <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 0', borderBottom: `1px solid ${LINE}`, fontSize: 12.5 }}>
+                  <span className="adm-num" style={{ width: 40 }} title={h.id}>v{h.version}{h.id.includes('-') ? '*' : ''}</span>
                   <span style={{ color: MUTED, flex: 1 }}>{h.editedBy || 'unknown'}{h.editedAt ? ` · ${fmt(h.editedAt)}` : ''}</span>
-                  <button style={{ ...ghostBtn, padding: '4px 10px', fontSize: 12 }} onClick={() => doRollback(h.version)} disabled={!!busy}>Roll back</button>
+                  <button style={{ ...ghostBtn, padding: '4px 10px', fontSize: 12 }} onClick={() => doRollback(h.id)} disabled={!!busy}>Roll back</button>
                 </div>
               ))}
             </div>

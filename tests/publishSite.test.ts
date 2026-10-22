@@ -84,3 +84,42 @@ describe('publishSite', () => {
     expect(deployRenderedSite.mock.calls[0][0].siteId).toBe('fresh-cuts');
   });
 });
+
+describe('publishSite stamping (stored copy can change during a deploy)', () => {
+  const read = () => JSON.parse(store.get('pending-sites/fresh-cuts.json')!).data;
+
+  it('stamps deployedUrl onto the copy it deployed', async () => {
+    await writePendingSite('fresh-cuts', { ...pending, version: 3, timestamp: 10 });
+    await publishSite('fresh-cuts', { force: true });
+    expect(read()).toMatchObject({ version: 3, deployedUrl: 'https://x.vercel.app' });
+  });
+
+  it('a newer copy written during the deploy is not overwritten by the stale stamp', async () => {
+    await writePendingSite('fresh-cuts', { ...pending, version: 3, timestamp: 10 });
+    deployRenderedSite.mockImplementationOnce(async () => {
+      await writePendingSite('fresh-cuts', { ...pending, siteData: { ...pending.siteData, phone: 'NEW' }, version: 4, timestamp: 20 });
+      return { deploymentUrl: 'https://x.vercel.app', uploadedImages: {} };
+    });
+    await publishSite('fresh-cuts', { force: true });
+    expect(read()).toMatchObject({ version: 4, timestamp: 20 });
+    expect(read().siteData.phone).toBe('NEW');
+  });
+
+  it('opts.pending deploys that copy and leaves the stored content as it was', async () => {
+    await writePendingSite('fresh-cuts', { ...pending, version: 3, timestamp: 10, siteData: { ...pending.siteData, shopUrl: 'https://s' } });
+    const alt = { ...pending, version: 3, timestamp: 10, siteData: { ...pending.siteData, shopName: 'Rendered Copy' } };
+    await publishSite('fresh-cuts', { force: true, pending: alt });
+    expect(deployRenderedSite.mock.calls[0][0].html).toContain('Rendered Copy');
+    expect(read().siteData.shopName).toBe('Fresh Cuts');
+    expect(read().siteData.shopUrl).toBe('https://s');
+    expect(read().deployedUrl).toBe('https://x.vercel.app');
+  });
+});
+
+describe('renderPending', () => {
+  it('renders a stored copy; throws on data the renderers cannot handle', async () => {
+    const { renderPending } = await import('../lib/publishSite.js');
+    expect(renderPending(pending)).toContain('Fresh Cuts');
+    expect(() => renderPending({ ...pending, siteData: { ...pending.siteData, contact: undefined } })).toThrow();
+  });
+});

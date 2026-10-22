@@ -1,13 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const { findBySlug, deployRenderedSite, writePendingSite } = vi.hoisted(() => ({
+const { findBySlug, deployRenderedSite, writePendingSite, readPendingSite } = vi.hoisted(() => ({
+  // The gate reads the previous copy to carry its version (no stored copy here).
+  readPendingSite: vi.fn(async (_s: string) => null),
   findBySlug: vi.fn(),
   deployRenderedSite: vi.fn(async (_i: unknown) => ({ deploymentUrl: 'https://fresh-cuts.vercel.app', uploadedImages: {} })),
   writePendingSite: vi.fn(async (_s: string, _p: unknown) => {}),
 }));
 vi.mock('../../lib/deploySite.js', () => ({ deployRenderedSite }));
 vi.mock('../../lib/ios/purchases.js', () => ({ supabasePurchases: () => ({ findBySlug }) }));
-vi.mock('../../lib/publishSite.js', async (orig) => ({ ...(await orig<object>()), writePendingSite }));
+vi.mock('../../lib/publishSite.js', async (orig) => ({ ...(await orig<object>()), writePendingSite, readPendingSite }));
 
 import handler from '../../api/deploy-site.js';
 

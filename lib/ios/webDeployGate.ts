@@ -133,11 +133,17 @@ export async function gatedWebDeploy(
     try {
       if (!renderable(siteData)) throw new Error('siteData has an unexpected shape');
       const imageUrlMap = buildImageUrlMap(siteData);
+      // The previous copy carries the version; if it can't be read, a refresh would restart the
+      // version and could repeat a number the history already holds. Skip the refresh (the
+      // stored copy stays as it was; the next app publish or admin edit brings it up to date).
       let previous: PendingSite | null = null;
-      try {
-        previous = deps.readPending ? await deps.readPending(slug) : null;
-      } catch (e: any) {
-        console.warn(`[Deploy Site] ${slug}: reading the previous pending file failed (version restarts):`, e?.message || e);
+      if (deps.readPending) {
+        try {
+          previous = await deps.readPending(slug);
+        } catch (e: any) {
+          console.warn(`[Deploy Site] ${slug}: deployed, but reading the previous pending file failed; not refreshing it:`, e?.message || e);
+          return { blocked: false, result };
+        }
       }
       const adminVersion = adminVersionOf(previous);
       await deps.writePending(slug, {

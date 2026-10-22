@@ -27,6 +27,8 @@ import { PatchError, applyPatch, applySets } from './patch.js';
 // ─── deps ───
 
 export interface HistoryEntry {
+  /** History key: the version ("4"), or "4-<ms>" when that version number was already kept with other content. */
+  id: string;
   version: number;
   editedBy: SiteEditor | null;
   editedAt: string | null;
@@ -44,9 +46,13 @@ export interface RepublishRun {
 export interface SiteStore {
   readPending(slug: string): Promise<PendingSite | null>;
   writePending(slug: string, p: PendingSite): Promise<void>;
-  /** Write-once: an existing history file for that version is kept as it is. */
-  writeHistory(slug: string, version: number, p: PendingSite): Promise<void>;
-  readHistory(slug: string, version: number): Promise<PendingSite | null>;
+  /**
+   * Keep `p` as history for `version`; returns the id written. Never overwrites: if that version
+   * is already kept with the same content it is reused, otherwise it goes to "{version}-{ms}".
+   */
+  writeHistory(slug: string, version: number, p: PendingSite): Promise<string>;
+  /** By id ("4" or "4-1729…"). */
+  readHistory(slug: string, id: string): Promise<PendingSite | null>;
   /** Newest first. */
   listHistory(slug: string): Promise<HistoryEntry[]>;
   readRun(runId: string): Promise<RepublishRun | null>;
@@ -72,8 +78,13 @@ export interface AdminSitesDeps {
   /** user_id → email. With ids, only those are needed. */
   emailsByUserId(ids?: string[]): Promise<Map<string, string>>;
   store: SiteStore;
-  /** lib/publishSite.ts publishSite: renders the stored copy and deploys the slug's own project. */
-  publish(slug: string, opts: { force: boolean }): Promise<PublishOutcome>;
+  /**
+   * lib/publishSite.ts publishSite: renders the stored copy (or `pending`, without storing it)
+   * and deploys the slug's own project.
+   */
+  publish(slug: string, opts: { force: boolean; pending?: PendingSite }): Promise<PublishOutcome>;
+  /** lib/publishSite.ts renderPending: the HTML a deploy would ship. Throws on unrenderable data. */
+  render(p: Pick<PendingSite, 'siteData' | 'imageUrlMap'>): string;
   audit(e: AuditEvent): Promise<void>;
   now(): number;
   /** Same switch as the sweep: Sandbox takedowns only count as offline when this is on. */
@@ -92,10 +103,17 @@ function statusOf(row: PurchaseRow, now: number): SiteStatus {
   return 'live';
 }
 
-/** The live site is the offline page (or the purchase was refunded): never deploy content over it. */
-function offlineReason(row: PurchaseRow, deps: Pick<AdminSitesDeps, 'takedownSandbox'>): 'revoked' | 'taken-down' | null {
+export type OfflineReason = 'revoked' | 'taken-down' | 'expired';
+
+/**
+ * Never deploy content for these: the live site is the offline page, the purchase was
+ * refunded, or the subscription has expired (a normal publish would get 402; the sweep takes
+ * it down after Apple confirms). Edits are still stored and go live on restore / renewal.
+ */
+function offlineReason(row: PurchaseRow, deps: Pick<AdminSitesDeps, 'takedownSandbox' | 'now'>): OfflineReason | null {
   if (row.revoked_at) return 'revoked';
   if (row.taken_down_at && !(row.environment === 'Sandbox' && deps.takedownSandbox !== true)) return 'taken-down';
+  if (row.expires_at && Date.parse(row.expires_at) <= deps.now()) return 'expired';
   return null;
 }
 
@@ -259,6 +277,7 @@ export interface UpdateResult {
   deployedUrl?: string | null;
   /** Set when the site is offline: the edit is stored and goes live on restore. */
   skipped?: 'site-offline';
+  offline?: OfflineReason;
   /** Links removed by the tier rules (the purchase's product doesn't cover them). */
   strippedLinks?: string[];
 }
@@ -276,6 +295,12 @@ function nextSiteData(input: UpdateInput, current: WebsiteData | null): WebsiteD
 
 function validationProblem(sd: unknown): string | null {
   if (!validSiteData(sd)) return 'siteData needs shopName, hero, about, gallery[] and services[] (craftImages/staff must be lists)';
+  // Deeper than the publish shape check: these are what the renderers dereference.
+  if (!isObj(sd.contact)) return 'contact must be an object ({ address, email })';
+  const badService = sd.services.findIndex((x: unknown) => !isObj(x) || typeof x.title !== 'string');
+  if (badService >= 0) return `services.${badService} must be an object with a text title`;
+  const desc = (sd.about as any).description;
+  if (!Array.isArray(desc) || desc.some((d: unknown) => typeof d !== 'string')) return 'about.description must be a list of text paragraphs';
   if (hasDataUrl(sd)) return 'inline data: images are not allowed; upload the image and use its https URL';
   if (jsonBytes(sd) > MAX_BODY_BYTES) return 'siteData is larger than 3 MB';
   return null;
@@ -316,6 +341,13 @@ async function write(
   }
   const strippedLinks = (['bookingUrl', 'shopUrl'] as const).filter((k) => k in next && !(k in siteData));
 
+  // Dry render: never store (or hand to the phone) what the templates can't render.
+  try {
+    deps.render({ siteData, imageUrlMap });
+  } catch (e) {
+    return { ok: false, slug, error: 'bad-request', detail: `the template can't render this: ${errMsg(e)}` };
+  }
+
   // History first: if it can't be kept, nothing is overwritten.
   if (cur) {
     try {
@@ -345,9 +377,10 @@ async function write(
   const audit = (ok: boolean, detail?: string) =>
     safeAudit(deps, { action, slug, ok, by: input.by, fromVersion, toVersion: version, note: pending.note, detail });
 
-  if (offlineReason(row, deps)) {
-    await audit(true, 'site offline: stored, not deployed');
-    return { ok: true, ...base, deployed: false, skipped: 'site-offline', deployedUrl: pending.deployedUrl ?? null };
+  const offline = offlineReason(row, deps);
+  if (offline) {
+    await audit(true, `site offline (${offline}): stored, not deployed`);
+    return { ok: true, ...base, deployed: false, skipped: 'site-offline', offline, deployedUrl: pending.deployedUrl ?? null };
   }
   const outcome = await deps.publish(slug, { force: true });
   if (!outcome.ok) {
@@ -363,12 +396,18 @@ export function updateSite(slug: string, input: UpdateInput, deps: AdminSitesDep
   return write(slug, input || {}, input?.replace !== undefined ? 'replace' : 'update', deps);
 }
 
-/** Bring back the content of history `version`, as a new version. */
-export async function rollback(slug: string, version: number, deps: AdminSitesDeps, by?: string): Promise<UpdateResult> {
-  if (!Number.isInteger(version) || version < 0) return { ok: false, slug, error: 'bad-request', detail: 'version must be a whole number' };
-  const h = await deps.store.readHistory(slug, version);
-  if (!h?.siteData) return { ok: false, slug, error: 'no-history', detail: `no history copy v${version}` };
-  return write(slug, { replace: restored(h)!, note: `rollback to v${version}`, by }, 'rollback', deps);
+/** Bring back the content of history entry `id` ("4" or "4-1729…"), as a new version. */
+export async function rollback(
+  slug: string,
+  id: string | number,
+  deps: AdminSitesDeps,
+  opts: { by?: string; expectedVersion?: number } = {},
+): Promise<UpdateResult> {
+  const ref = String(id ?? '').trim();
+  if (!/^\d+(-\d+)?$/.test(ref)) return { ok: false, slug, error: 'bad-request', detail: 'version must look like 4 or 4-1729000000000' };
+  const h = await deps.store.readHistory(slug, ref);
+  if (!h?.siteData) return { ok: false, slug, error: 'no-history', detail: `no history copy v${ref}` };
+  return write(slug, { replace: restored(h)!, note: `rollback to v${ref}`, by: opts.by, expectedVersion: opts.expectedVersion }, 'rollback', deps);
 }
 
 // ─── republish ───
@@ -376,10 +415,16 @@ export async function rollback(slug: string, version: number, deps: AdminSitesDe
 export interface RepublishResult {
   ok: boolean;
   slug: string;
-  error?: 'not-found' | 'no-copy' | 'site-offline' | 'publish-failed' | 'exception';
+  error?: 'not-found' | 'no-copy' | 'invalid-copy' | 'site-offline' | 'publish-failed' | 'exception';
   detail?: string;
   deployedUrl?: string | null;
   strippedLinks?: string[];
+}
+
+/** Links the product doesn't cover that a deploy of this copy would drop. */
+function linksToStrip(sd: WebsiteData, productId: string): string[] {
+  const stripped = stripLapsedLinks(sd, productId);
+  return (['bookingUrl', 'shopUrl'] as const).filter((k) => k in sd && !(k in stripped));
 }
 
 async function republishRow(row: PurchaseRow, deps: AdminSitesDeps, by?: string, runId?: string): Promise<RepublishResult> {
@@ -388,16 +433,21 @@ async function republishRow(row: PurchaseRow, deps: AdminSitesDeps, by?: string,
   if (off) return { ok: false, slug, error: 'site-offline', detail: off };
   const cur = await deps.store.readPending(slug);
   if (!cur?.siteData) return { ok: false, slug, error: 'no-copy' };
-  // Same tier rule as a publish and the sweep's stripPending: links the current product no
-  // longer covers come out of the stored copy (no version bump: content is the owner's).
-  const stripped = stripLapsedLinks(cur.siteData, row.product_id);
-  const strippedLinks = (['bookingUrl', 'shopUrl'] as const).filter((k) => k in cur.siteData && !(k in stripped));
-  if (strippedLinks.length) await deps.store.writePending(slug, { ...cur, siteData: stripped });
-  const outcome = await deps.publish(slug, { force: true });
+  // Never deploy a copy an admin save would refuse (e.g. planted or hand-broken data).
+  const problem = validationProblem(restored(cur));
+  if (problem) {
+    await safeAudit(deps, { action: 'republish', slug, ok: false, by, runId, detail: `invalid stored copy: ${problem}` });
+    return { ok: false, slug, error: 'invalid-copy', detail: problem };
+  }
+  // Same tier rule as a publish: links the current product no longer covers are left out of
+  // the DEPLOY. The stored copy is not changed (republish never changes content or version).
+  const strippedLinks = linksToStrip(cur.siteData, row.product_id);
+  const toDeploy: PendingSite = strippedLinks.length ? { ...cur, siteData: stripLapsedLinks(cur.siteData, row.product_id) } : cur;
+  const outcome = await deps.publish(slug, { force: true, pending: toDeploy });
   const ok = !!outcome.ok;
   await safeAudit(deps, {
     action: 'republish', slug, ok, by, runId,
-    detail: ok ? (strippedLinks.length ? `stripped ${strippedLinks.join(',')}` : undefined) : `${outcome.reason} ${outcome.error || ''}`.trim(),
+    detail: ok ? (strippedLinks.length ? `deployed without ${strippedLinks.join(',')}` : undefined) : `${outcome.reason} ${outcome.error || ''}`.trim(),
   });
   if (!ok) return { ok: false, slug, error: 'publish-failed', detail: outcome.error || outcome.reason, strippedLinks };
   return { ok: true, slug, deployedUrl: outcome.deployedUrl ?? null, strippedLinks };
@@ -429,7 +479,11 @@ export interface RepublishAllResult {
   runId?: string;
   /** Dry run: every site a real run would republish (slug order). */
   eligible?: string[];
-  skipped: { slug: string; reason: 'revoked' | 'taken-down' | 'unpublished' | 'no-copy' }[];
+  skipped: { slug: string; reason: OfflineReason | 'unpublished' | 'no-copy' }[];
+  /** Dry run: links each site's deploy would leave out (not covered by its plan). */
+  wouldStrip?: { slug: string; links: string[] }[];
+  /** Real run: this run's sites not reached by this call (call again with the same runId). */
+  notReached?: string[];
   /** This call's sites. */
   results: RepublishResult[];
   /** Sites of this run still to do after this call. */
@@ -473,13 +527,20 @@ export async function republishAll(input: RepublishAllInput, deps: AdminSitesDep
   // Copy-less sites can't be rendered: skip them up front. A read error leaves the site in
   // (its republish then records the failure).
   const hasCopy = new Map<string, boolean>();
+  const wouldStrip: { slug: string; links: string[] }[] = [];
   await pool(candidates, 16, async (r) => {
     try {
-      hasCopy.set(r.site_slug!, !!(await deps.store.readPending(r.site_slug!))?.siteData);
+      const p = await deps.store.readPending(r.site_slug!);
+      hasCopy.set(r.site_slug!, !!p?.siteData);
+      if (p?.siteData) {
+        const links = linksToStrip(p.siteData, r.product_id);
+        if (links.length) wouldStrip.push({ slug: r.site_slug!, links });
+      }
     } catch {
       hasCopy.set(r.site_slug!, true);
     }
   });
+  wouldStrip.sort((a, b) => a.slug.localeCompare(b.slug));
   const eligible = candidates.filter((r) => {
     if (hasCopy.get(r.site_slug!)) return true;
     skipped.push({ slug: r.site_slug!, reason: 'no-copy' });
@@ -489,12 +550,14 @@ export async function republishAll(input: RepublishAllInput, deps: AdminSitesDep
 
   if (dryRun) {
     return {
-      dryRun: true, eligible: eligible.map((r) => r.site_slug!), skipped, results: [],
+      dryRun: true, eligible: eligible.map((r) => r.site_slug!), skipped, wouldStrip, results: [],
       remaining: eligible.length, done: false, totals: { ok: 0, failed: 0 }, failed: [],
     };
   }
 
-  const limit = Math.max(1, Math.min(50, Math.floor(input.limit ?? 6)));
+  const rawLimit = input.limit ?? 6;
+  if (!Number.isInteger(rawLimit) || rawLimit < 1) throw new Error('republishAll: limit must be a positive whole number');
+  const limit = Math.min(50, rawLimit);
   const budget = input.budgetMs ?? 150_000;
   const batch = eligible.slice(0, limit);
   const results = new Map<string, RepublishResult>();
@@ -527,9 +590,10 @@ export async function republishAll(input: RepublishAllInput, deps: AdminSitesDep
   await save;
 
   const ordered = batch.map((r) => results.get(r.site_slug!)).filter(Boolean) as RepublishResult[];
-  const remaining = eligible.length - ordered.length;
+  const notReached = eligible.map((r) => r.site_slug!).filter((slug) => !results.has(slug));
+  const remaining = notReached.length;
   return {
-    dryRun: false, runId: run!.runId, skipped, results: ordered, remaining, done: remaining === 0,
+    dryRun: false, runId: run!.runId, skipped, results: ordered, remaining, notReached, done: remaining === 0,
     totals: { ok: run!.done.length, failed: run!.failed.length }, failed: run!.failed,
   };
 }

@@ -84,9 +84,11 @@ describe('api/admin/sites', () => {
     expect((updateSite as any).mock.calls[1][1]).toMatchObject({ replace: { shopName: 'X' }, by: ADMIN_EMAIL });
     expect((await call(h, { method: 'POST', body: { action: 'republish', slug: 'fade-lab' } })).statusCode).toBe(200);
     expect(republish).toHaveBeenCalledWith('fade-lab', expect.anything(), ADMIN_EMAIL);
-    const rb = await call(h, { method: 'POST', body: { action: 'rollback', slug: 'fade-lab', version: 2 } });
+    const rb = await call(h, { method: 'POST', body: { action: 'rollback', slug: 'fade-lab', version: 2, expectedVersion: 5 } });
     expect(rb).toMatchObject({ statusCode: 404, body: { error: 'no-history' } });
-    expect(rollback).toHaveBeenCalledWith('fade-lab', 2, expect.anything(), ADMIN_EMAIL);
+    expect(rollback).toHaveBeenCalledWith('fade-lab', '2', expect.anything(), { by: ADMIN_EMAIL, expectedVersion: 5 });
+    await call(h, { method: 'POST', body: { action: 'rollback', slug: 'fade-lab', version: '2-1729' } });
+    expect((rollback as any).mock.calls[1][1]).toBe('2-1729');
   });
 
   it('republish-all is a dry run unless dryRun:false, and a real run needs a runId', async () => {
@@ -94,6 +96,7 @@ describe('api/admin/sites', () => {
     const dry = await call(h, { method: 'POST', body: { action: 'republish-all' } });
     expect(dry).toMatchObject({ statusCode: 200, body: { ok: true, dryRun: true } });
     expect((await call(h, { method: 'POST', body: { action: 'republish-all', dryRun: false } })).statusCode).toBe(400);
+    expect((await call(h, { method: 'POST', body: { action: 'republish-all', dryRun: false, runId: 'ui-1', limit: 0 } })).statusCode).toBe(400);
     await call(h, { method: 'POST', body: { action: 'republish-all', dryRun: false, runId: 'ui-1', limit: 4 } });
     expect((republishAll as any).mock.calls.at(-1)[0]).toMatchObject({ dryRun: false, runId: 'ui-1', limit: 4, by: ADMIN_EMAIL });
   });

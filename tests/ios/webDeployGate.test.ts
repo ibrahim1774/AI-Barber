@@ -320,10 +320,12 @@ describe('gatedWebDeploy site versions', () => {
     expect(d.writePending.mock.calls[0][1]).toMatchObject({ version: 5, editedBy: 'owner', editedAt: iso(NOW), adminVersion: 4 });
   });
 
-  it('a failed read of the previous copy still refreshes the pending file (version restarts at 1)', async () => {
+  it('a failed read of the previous copy skips the refresh (never restarts the version); the deploy still succeeds', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const d = { ...deps(iosRow()), readPending: vi.fn(async () => { throw new Error('gcs down'); }) };
-    await gatedWebDeploy(body({ siteData: siteData() }), d);
-    expect(d.writePending.mock.calls[0][1]).toMatchObject({ version: 1, editedBy: 'owner' });
+    const out = await gatedWebDeploy(body({ siteData: siteData() }), d);
+    expect(out.blocked).toBe(false);
+    expect(out.result!.deploymentUrl).toMatch(/vercel\.app$/);
+    expect(d.writePending).not.toHaveBeenCalled();
   });
 });

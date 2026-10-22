@@ -5,12 +5,23 @@
 // Env: SUPABASE_URL (or VITE_SUPABASE_URL), SUPABASE_SERVICE_ROLE_KEY,
 // GCP_SERVICE_ACCOUNT_JSON (or GCS_CREDENTIALS), GCS_BUCKET_NAME, VERCEL_TOKEN.
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { bucket, publishSite, readPendingSite, slugify, writePendingSite } from '../publishSite.js';
+import { bucket, publishSite, readPendingSite, renderPending, slugify, writePendingSite, type PendingSite } from '../publishSite.js';
 import type { PurchaseRow } from '../ios/purchases.js';
 import type { AdminSitesDeps, HistoryEntry, RepublishRun, SiteStore } from './sites.js';
 
 const HISTORY = 'pending-sites-history';
 const RUNS = 'admin-republish-runs';
+
+/** Same stored content (ignoring nothing: a history copy is the whole pending object). */
+export function sameContent(a: PendingSite, b: PendingSite): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/** Newest first: by version, then by the "-<ms>" suffix (a later duplicate first). */
+export function sortHistory(entries: HistoryEntry[]): HistoryEntry[] {
+  const suffix = (id: string) => Number(id.split('-')[1] || 0);
+  return [...entries].sort((a, b) => b.version - a.version || suffix(b.id) - suffix(a.id));
+}
 
 export function adminSupabase(): SupabaseClient {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
@@ -42,37 +53,49 @@ export function gcsSiteStore(): SiteStore {
 
     async writeHistory(slug, version, p) {
       const safe = slugify(slug);
-      try {
-        await bucket().file(`${HISTORY}/${safe}/${version}.json`).save(json({ siteId: safe, savedAt: Date.now(), data: p }), {
+      const save = (id: string) =>
+        bucket().file(`${HISTORY}/${safe}/${id}.json`).save(json({ siteId: safe, savedAt: Date.now(), data: p }), {
           contentType: 'application/json',
-          // Write-once: a history copy is never overwritten (a retried edit keeps the first one).
+          // Write-once: a history copy is never overwritten.
           preconditionOpts: { ifGenerationMatch: 0 },
           metadata: { ...noStore, metadata: { version: String(version), editedBy: p.editedBy || '', editedAt: p.editedAt || '' } },
         });
+      const id = String(version);
+      try {
+        await save(id);
+        return id;
       } catch (e: any) {
-        if (e?.code === 412) return; // already kept
-        throw e;
+        if (e?.code !== 412) throw e;
       }
+      // That version number is already kept. Same content (a retried edit): reuse it.
+      // Different content (the version number repeated): keep this one under its own key.
+      const existing = ((await readJson(`${HISTORY}/${safe}/${id}.json`)) || {}).data as PendingSite | undefined;
+      if (existing && sameContent(existing, p)) return id;
+      const unique = `${version}-${Date.now()}`;
+      await save(unique);
+      return unique;
     },
 
-    async readHistory(slug, version) {
-      return ((await readJson(`${HISTORY}/${slugify(slug)}/${version}.json`)) || {}).data || null;
+    async readHistory(slug, id) {
+      if (!/^\d+(-\d+)?$/.test(id)) return null;
+      return ((await readJson(`${HISTORY}/${slugify(slug)}/${id}.json`)) || {}).data || null;
     },
 
     async listHistory(slug) {
       const [files] = await bucket().getFiles({ prefix: `${HISTORY}/${slugify(slug)}/` });
       const out: HistoryEntry[] = [];
       for (const f of files) {
-        const m = /\/(\d+)\.json$/.exec(f.name);
+        const m = /\/((\d+)(?:-\d+)?)\.json$/.exec(f.name);
         if (!m) continue;
         const meta = (f.metadata?.metadata || {}) as Record<string, string>;
         out.push({
-          version: Number(m[1]),
+          id: m[1],
+          version: Number(m[2]),
           editedBy: meta.editedBy === 'admin' || meta.editedBy === 'owner' ? meta.editedBy : null,
           editedAt: meta.editedAt || null,
         });
       }
-      return out.sort((a, b) => b.version - a.version);
+      return sortHistory(out);
     },
 
     async readRun(runId) {
@@ -91,9 +114,15 @@ export function liveAdminDeps(): AdminSitesDeps {
   const store = gcsSiteStore();
   return {
     async listBound() {
-      const { data, error } = await db().from('ios_purchases').select('*').not('site_slug', 'is', null).limit(5000);
-      if (error) throw new Error(`ios_purchases list failed: ${error.message}`);
-      return (data || []) as PurchaseRow[];
+      const PAGE = 1000;
+      const all: PurchaseRow[] = [];
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await db().from('ios_purchases').select('*').not('site_slug', 'is', null)
+          .order('site_slug', { ascending: true }).range(from, from + PAGE - 1);
+        if (error) throw new Error(`ios_purchases list failed: ${error.message}`);
+        all.push(...((data || []) as PurchaseRow[]));
+        if (!data || data.length < PAGE) return all;
+      }
     },
 
     async findBySlug(slug) {
@@ -122,6 +151,7 @@ export function liveAdminDeps(): AdminSitesDeps {
 
     store,
     publish: (slug, opts) => publishSite(slug, opts),
+    render: (p) => renderPending(p),
 
     async audit(e) {
       const { error } = await db().from('ab_events').insert({ kind: 'admin_site_edit', payload: { ...e, at: new Date().toISOString() } });

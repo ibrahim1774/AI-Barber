@@ -186,6 +186,76 @@ describe('updateSite', () => {
   });
 });
 
+describe('updateSite: never stores what cannot render (review F2)', () => {
+  it.each([
+    ['no contact', { replace: (() => { const x: any = site(); delete x.contact; return x; })() }, /contact/],
+    ['a null service', { set: { 'services.0': null } }, /services\.0/],
+    ['about.description as text', { set: { 'about.description': 'text' } }, /about\.description/],
+  ])('%s → bad-request, nothing written', async (_n, input, detail) => {
+    const f = fakes();
+    const r = await updateSite('fade-lab', input as any, f.deps);
+    expect(r).toMatchObject({ ok: false, error: 'bad-request' });
+    expect(r.detail).toMatch(detail);
+    expect(f.store.writeHistory).not.toHaveBeenCalled();
+    expect(f.store.writePending).not.toHaveBeenCalled();
+  });
+
+  it('a renderer throw (dry render) → bad-request with its message, before any write', async () => {
+    const f = fakes();
+    (f.deps.render as any).mockImplementationOnce(() => { throw new Error('reviews.map is not a function'); });
+    const r = await updateSite('fade-lab', { patch: { phone: '1' } }, f.deps);
+    expect(r).toMatchObject({ ok: false, error: 'bad-request' });
+    expect(r.detail).toMatch(/reviews\.map is not a function/);
+    expect(f.store.writeHistory).not.toHaveBeenCalled();
+    expect(f.store.writePending).not.toHaveBeenCalled();
+  });
+
+  it('the dry render sees the stored shape (markers + map)', async () => {
+    const f = fakes();
+    await updateSite('fade-lab', { patch: { phone: '1' } }, f.deps);
+    const arg = (f.deps.render as any).mock.calls[0][0];
+    expect(arg.siteData.hero.imageUrl).toBe('uploaded');
+    expect(arg.imageUrlMap.hero).toBe('https://img.example/hero.jpg');
+  });
+});
+
+describe('updateSite: expired subscription (review F8)', () => {
+  it('saves the edit but does not deploy, and says why', async () => {
+    const f = fakes({ rows: [purchase('fade-lab', { expires_at: iso(NOW - DAY) })] });
+    const r = await updateSite('fade-lab', { patch: { phone: '1' } }, f.deps);
+    expect(r).toMatchObject({ ok: true, version: 4, deployed: false, skipped: 'site-offline', offline: 'expired' });
+    expect(f.deps.publish).not.toHaveBeenCalled();
+  });
+});
+
+describe('history version collisions (review F3)', () => {
+  it('a repeated version number with different content is kept under its own id, never dropped', async () => {
+    const f = fakes({ pending: { 'fade-lab': stored('fade-lab', site(), { version: 1, editedBy: 'owner' }) } });
+    await updateSite('fade-lab', { patch: { phone: 'A-admin' } }, f.deps); // history 1 = original, pending v2
+    // something restarted the version at 1 with other content (C)
+    f.pending.set('fade-lab', stored('fade-lab', site({ phone: 'C-content' }), { version: 1, editedBy: 'owner' }));
+    f.tick(5_000);
+    const r = await updateSite('fade-lab', { patch: { phone: 'B-admin' } }, f.deps);
+    expect(r).toMatchObject({ ok: true, fromVersion: 1, version: 2 });
+    const ids = (await f.store.listHistory('fade-lab')).map((h) => h.id);
+    expect(ids).toEqual(expect.arrayContaining(['1', `1-${NOW + 5_000}`]));
+    expect(f.history.get('fade-lab/1')!.siteData.phone).toBe('555-0100');
+    expect(f.history.get(`fade-lab/1-${NOW + 5_000}`)!.siteData.phone).toBe('C-content');
+    // and C can be rolled back to
+    const rb = await rollback('fade-lab', `1-${NOW + 5_000}`, f.deps);
+    expect(rb.ok).toBe(true);
+    expect(f.pending.get('fade-lab')!.siteData.phone).toBe('C-content');
+  });
+
+  it('a retried edit with the same content reuses the existing history id', async () => {
+    const f = fakes();
+    const cur = f.pending.get('fade-lab')!;
+    expect(await f.store.writeHistory('fade-lab', 3, cur)).toBe('3');
+    expect(await f.store.writeHistory('fade-lab', 3, structuredClone(cur))).toBe('3');
+    expect(f.history.size).toBe(1);
+  });
+});
+
 describe('rollback', () => {
   it('restores a history copy as a NEW higher version (never goes backwards)', async () => {
     const f = fakes();
@@ -201,8 +271,17 @@ describe('rollback', () => {
     expect(f.events.at(-1)).toMatchObject({ action: 'rollback', toVersion: 6 });
   });
 
-  it('unknown version → no-history', async () => {
+  it('unknown version → no-history; malformed id → bad-request', async () => {
     expect(await rollback('fade-lab', 1, fakes().deps)).toMatchObject({ ok: false, error: 'no-history' });
+    expect(await rollback('fade-lab', '../x', fakes().deps)).toMatchObject({ ok: false, error: 'bad-request' });
+  });
+
+  it('expectedVersion guards a rollback like any other save (review F6)', async () => {
+    const f = fakes();
+    await updateSite('fade-lab', { patch: { phone: '555-1111' } }, f.deps); // v4
+    const r = await rollback('fade-lab', 3, f.deps, { expectedVersion: 3 });
+    expect(r).toMatchObject({ ok: false, error: 'conflict', version: 4 });
+    expect(await rollback('fade-lab', 3, f.deps, { expectedVersion: 4 })).toMatchObject({ ok: true, version: 5 });
   });
 });
 
@@ -211,20 +290,37 @@ describe('republish', () => {
     const f = fakes();
     const r = await republish('fade-lab', f.deps);
     expect(r).toMatchObject({ ok: true, slug: 'fade-lab', deployedUrl: 'https://fade-lab.vercel.app' });
-    expect(f.deps.publish).toHaveBeenCalledWith('fade-lab', { force: true });
+    expect(f.deps.publish).toHaveBeenCalledWith('fade-lab', { force: true, pending: expect.objectContaining({ version: 3 }) });
     expect(f.store.writePending).not.toHaveBeenCalled();
     expect(f.pending.get('fade-lab')!.version).toBe(3);
   });
 
-  it('strips links the current tier lost (same rule as a publish) before deploying', async () => {
+  it('deploys without links the current tier lost, but never writes the strip back (content unchanged)', async () => {
     const f = fakes({
       rows: [purchase('fade-lab', { product_id: `${P}hosting.yearly` })],
       pending: { 'fade-lab': stored('fade-lab', site({ bookingUrl: 'https://aibarber.org/book/fade-lab' }), { version: 3 }) },
     });
     const r = await republish('fade-lab', f.deps);
-    expect(r.ok).toBe(true);
-    expect((f.pending.get('fade-lab')!.siteData as any).bookingUrl).toBeUndefined();
+    expect(r).toMatchObject({ ok: true, strippedLinks: ['bookingUrl'] });
+    const deployed = (f.deps.publish as any).mock.calls[0][1].pending;
+    expect(deployed.siteData.bookingUrl).toBeUndefined();
+    expect(f.store.writePending).not.toHaveBeenCalled();
+    expect((f.pending.get('fade-lab')!.siteData as any).bookingUrl).toBe('https://aibarber.org/book/fade-lab');
     expect(f.pending.get('fade-lab')!.version).toBe(3);
+  });
+
+  it('refuses to deploy a stored copy an admin save would reject (invalid-copy)', async () => {
+    const bad = stored('fade-lab', site(), { version: 3 });
+    (bad.siteData as any).contact = null;
+    const f = fakes({ pending: { 'fade-lab': bad } });
+    expect(await republish('fade-lab', f.deps)).toMatchObject({ ok: false, error: 'invalid-copy' });
+    expect(f.deps.publish).not.toHaveBeenCalled();
+  });
+
+  it('expired subscription → site-offline (expired), nothing deployed', async () => {
+    const f = fakes({ rows: [purchase('fade-lab', { expires_at: iso(NOW - DAY) })] });
+    expect(await republish('fade-lab', f.deps)).toMatchObject({ ok: false, error: 'site-offline', detail: 'expired' });
+    expect(f.deps.publish).not.toHaveBeenCalled();
   });
 
   it('refuses taken-down and revoked sites; no copy → no-copy; publish failure → publish-failed', async () => {
@@ -263,15 +359,26 @@ describe('republishAll', () => {
       { slug: 'f-unpublished', reason: 'unpublished' },
       { slug: 'g-nocopy', reason: 'no-copy' },
     ]);
+    expect(r.wouldStrip).toEqual([]);
     expect(f.deps.publish).not.toHaveBeenCalled();
     expect(f.store.writeRun).not.toHaveBeenCalled();
+  });
+
+  it('dry run lists the links each deploy would leave out, and skips expired rows', async () => {
+    const f = fakes({
+      rows: [purchase('a', { product_id: `${P}hosting.monthly` }), purchase('b', { expires_at: iso(NOW - DAY) })],
+      pending: { a: stored('a', site({ bookingUrl: 'https://aibarber.org/book/a', shopUrl: 'https://aibarber.org/shop/a' } as any)), b: stored('b') },
+    });
+    const r = await republishAll({ dryRun: true }, f.deps);
+    expect(r.wouldStrip).toEqual([{ slug: 'a', links: ['bookingUrl', 'shopUrl'] }]);
+    expect(r.skipped).toEqual([{ slug: 'b', reason: 'expired' }]);
   });
 
   it('batched + resumable: each call does `limit` sites of the same run, in slug order, until done', async () => {
     const f = fleet();
     const r1 = await republishAll({ dryRun: false, runId: 'run-1', limit: 2 }, f.deps);
     expect(r1.results.map((x) => x.slug)).toEqual(['a-site', 'b-site']);
-    expect(r1).toMatchObject({ runId: 'run-1', remaining: 1, done: false });
+    expect(r1).toMatchObject({ runId: 'run-1', remaining: 1, notReached: ['c-site'], done: false });
     const r2 = await republishAll({ dryRun: false, runId: 'run-1', limit: 2 }, f.deps);
     expect(r2.results.map((x) => x.slug)).toEqual(['c-site']);
     expect(r2).toMatchObject({ remaining: 0, done: true });
@@ -326,6 +433,18 @@ describe('republishAll', () => {
     const r = await republishAll({ dryRun: false, runId: 'run-5', limit: 10, concurrency: 1 }, f.deps);
     expect(r.results.map((x) => [x.slug, x.ok])).toEqual([['a-site', true], ['b-site', false], ['c-site', true]]);
     expect(r.failed).toEqual([{ slug: 'b-site', error: 'exception' }]);
+  });
+
+  it('limit must be a positive whole number', async () => {
+    for (const limit of [0, -1, 1.5, NaN]) {
+      await expect(republishAll({ dryRun: false, runId: 'r', limit }, fleet().deps)).rejects.toThrow(/limit/);
+    }
+  });
+
+  it('a call whose budget is spent before any site starts reports every site as not reached (not done)', async () => {
+    const f = fleet();
+    const r = await republishAll({ dryRun: false, runId: 'run-6', budgetMs: 0 }, f.deps);
+    expect(r).toMatchObject({ results: [], done: false, remaining: 3, notReached: ['a-site', 'b-site', 'c-site'] });
   });
 
   it('a real run needs a runId', async () => {

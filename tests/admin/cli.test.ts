@@ -87,19 +87,49 @@ describe('runCli', () => {
     expect(await runCli(['rollback', 'fade-lab', '99'], () => f.deps, o.x)).toBe(1);
   });
 
-  it('republish-all --dry-run lists; a real run loops batches to the end', async () => {
+  it('republish-all is a dry run unless --yes; a real run loops batches to the end', async () => {
     const f = fakes({
       rows: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map((s) => purchase(s)),
       pending: Object.fromEntries(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map((s) => [s, stored(s)])),
     });
-    const o = io();
-    expect(await runCli(['republish-all', '--dry-run'], () => f.deps, o.x)).toBe(0);
-    expect(o.text()).toMatch(/Would republish 8 site/);
+    for (const args of [['republish-all'], ['republish-all', '--dry-run'], ['republish-all', '--limit', '3']]) {
+      const o = io();
+      expect(await runCli(args, () => f.deps, o.x)).toBe(0);
+      expect(o.text()).toMatch(/DRY RUN — would republish 8 site\(s\) \(add --yes/);
+    }
     expect(f.deps.publish).not.toHaveBeenCalled();
     const o2 = io();
-    expect(await runCli(['republish-all', '--limit', '3'], () => f.deps, o2.x)).toBe(0);
+    expect(await runCli(['republish-all', '--yes', '--limit', '3'], () => f.deps, o2.x)).toBe(0);
     expect(o2.text()).toMatch(/Run cli-run-1/);
     expect(o2.text()).toMatch(/Done: 8 republished, 0 failed/);
     expect(f.deps.publish).toHaveBeenCalledTimes(8);
+  });
+
+  it('republish-all --limit must be a positive whole number', async () => {
+    for (const bad of ['abc', '0', '-2', '1.5']) {
+      const o = io();
+      expect(await runCli(['republish-all', '--yes', '--limit', bad], () => fakes().deps, o.x)).toBe(2);
+      expect(o.errText()).toMatch(/--limit/);
+    }
+  });
+
+  it('a call that makes no progress stops with a resume command instead of "Done"', async () => {
+    const f = fakes({ rows: [purchase('a'), purchase('b')], pending: { a: stored('a'), b: stored('b') } });
+    let clock = 0;
+    f.deps.now = () => (clock += 200_000); // every call's budget is spent before the first site
+    const o = io();
+    expect(await runCli(['republish-all', '--yes', '--run', 'r1'], () => f.deps, o.x)).toBe(1);
+    expect(o.errText()).toMatch(/no progress.*2 site\(s\) not reached \(a, b\)/);
+    expect(o.errText()).toMatch(/republish-all --yes --run r1/);
+    expect(o.text()).not.toMatch(/Done/);
+  });
+
+  it('rollback takes a history id and --expect', async () => {
+    const f = fakes();
+    const o = io();
+    await runCli(['set', 'fade-lab', 'phone=1'], () => f.deps, o.x); // v4
+    expect(await runCli(['rollback', 'fade-lab', '3', '--expect', '3'], () => f.deps, o.x)).toBe(1);
+    expect(o.errText()).toMatch(/conflict/);
+    expect(await runCli(['rollback', 'fade-lab', '3', '--expect', '4'], () => f.deps, o.x)).toBe(0);
   });
 });

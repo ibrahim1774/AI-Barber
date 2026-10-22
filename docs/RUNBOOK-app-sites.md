@@ -21,7 +21,14 @@ Two ways to do the same things:
 5. The customer's app picks up the new version the next time it opens or before they edit. It shows "Your site was updated by AI Barber support." An old phone that tries to publish over your edit gets `409 site-updated`, adopts your version, and asks the barber to review.
 6. Every save is logged in `ab_events` (kind `admin_site_edit`) and in the Vercel function logs.
 
-If the site is **taken down** (lapsed) or **revoked** (refunded), the edit is saved but not deployed. It goes live when the subscription comes back.
+If the site is **taken down** (lapsed), **revoked** (refunded) or its subscription has **expired**, the edit is saved but not deployed. The result says which. It goes live when the subscription comes back.
+
+Before anything is stored, the new content is also test-rendered with the site's template. Content the template can't render is refused with `bad-request`, for example:
+- a missing `contact`
+- a service that isn't an object with a title
+- `about.description` that isn't a list of text paragraphs
+
+Only server code writes an app site's stored copy. The public `/api/save-pending-site` endpoint refuses app slugs with `409 slug-taken`, and it never stores version fields.
 
 ## One-time setup for the terminal
 
@@ -104,31 +111,38 @@ Do this after a template or renderer fix, or when a deploy failed.
 
 ```bash
 node scripts/admin-sites.mjs republish fade-lab
-node scripts/admin-sites.mjs republish-all --dry-run      # always first: shows what would run and what is skipped
-node scripts/admin-sites.mjs republish-all                # prints a run id; deploys 6 at a time until done
-node scripts/admin-sites.mjs republish-all --run <id>     # resume a stopped run (finished sites are not redone)
+node scripts/admin-sites.mjs republish-all                # DRY RUN (the default): what would run, what is skipped, links left out
+node scripts/admin-sites.mjs republish-all --yes          # really do it: prints a run id; deploys 6 at a time until done
+node scripts/admin-sites.mjs republish-all --yes --run <id>   # resume a stopped run (finished sites are not redone)
 ```
+
+Republish never changes the stored copy or its version. When a site's plan no longer covers its Book or Shop link, the link is left out of the deploy only. The dry run lists those sites.
 
 Republish-all skips these sites:
 - revoked
 - taken down
+- expired
 - never published
 - no stored copy
 
-A site that fails is reported and left for a single `republish`.
+A site that fails is reported and left for a single `republish`, and so is a stored copy that fails the checks (`invalid-copy`).
 
-Web: **Republish all app sites…** always shows the dry run first. Then press **Republish N site(s)**. If it stops, press **Continue**.
+If a call makes no progress, the run stops and prints the resume command. It never says "Done" while sites are left.
+
+Web: **Republish all app sites…** always shows the dry run first. Then press **Republish N site(s)**. If it stops, the panel lists the sites it didn't reach; press **Continue**.
 
 ## Roll back
 
 ```bash
-node scripts/admin-sites.mjs show fade-lab              # "History: v5 (admin), v4 (owner), …"
-node scripts/admin-sites.mjs rollback fade-lab 4
+node scripts/admin-sites.mjs show fade-lab              # "History: v5 (admin), v4 (owner), v4-1729… (owner), …"
+node scripts/admin-sites.mjs rollback fade-lab 4 --expect 6
 ```
+
+Pass the history id exactly as `show` prints it. An id like `4-1729…` means version 4 was kept twice with different content, and both copies are kept. `--expect` refuses the rollback if the site changed since you looked.
 
 A rollback is saved as a new, higher version. Nothing is deleted, and you can roll back the rollback.
 
-Web: use the **History** list in the site panel, then **Roll back**.
+Web: use the **History** list in the site panel, then **Roll back**. It refuses the rollback if someone saved the site since you opened it.
 
 ## If something goes wrong
 
@@ -140,13 +154,14 @@ Web: use the **History** list in the site panel, then **Roll back**.
 | `conflict` | The site changed since you looked. Run `show` again and redo the edit. |
 | `history-failed` | GCS could not keep the history copy, so nothing was changed. Try again. |
 | `publish-failed` | The new version **is saved** but Vercel failed. Run `republish <slug>`. |
-| `site-offline` | The site is taken down or revoked. Edits are saved and go live on restore. |
+| `site-offline` | The site is taken down, revoked or expired. Edits are saved and go live on restore or renewal. |
+| `invalid-copy` | The stored copy fails the checks, so republish refuses to deploy it. Fix it with `set` or `replace`. |
 
 ## For Claude
 
 - Start with `find`, then `show`. Make the smallest `set` that does the job, and always pass `--note`.
 - Check the live URL afterwards. `show` prints it.
-- Run `republish-all` without `--dry-run` only after a dry run and an explicit go-ahead from Ibrahim.
+- `republish-all` is a dry run unless you add `--yes`. Add `--yes` only after Ibrahim gives an explicit go-ahead.
 - Never print or commit `.env.local`.
 
 Code:

@@ -2,7 +2,7 @@ import { vi } from 'vitest';
 import type { AdminSitesDeps, RepublishRun, SiteStore } from '../../lib/admin/sites.js';
 import { buildImageUrlMap, toPendingSiteData } from '../../lib/ios/pendingData.js';
 import type { PurchaseRow } from '../../lib/ios/purchases.js';
-import type { PendingSite, PublishOutcome } from '../../lib/publishSite.js';
+import { renderPending, type PendingSite, type PublishOutcome } from '../../lib/publishSite.js';
 import type { WebsiteData } from '../../types.js';
 
 export const NOW = 1_800_000_000_000;
@@ -43,22 +43,29 @@ export function fakes(opts: { rows?: PurchaseRow[]; pending?: Record<string, Pen
   const history = new Map<string, PendingSite>();
   const runs = new Map<string, RepublishRun>();
   const events: any[] = [];
+  let clock = NOW;
   const store: SiteStore = {
     readPending: vi.fn(async (slug: string) => (pending.has(slug) ? structuredClone(pending.get(slug)!) : null)),
     writePending: vi.fn(async (slug: string, p: PendingSite) => { pending.set(slug, structuredClone(p)); }),
+    // Mirrors gcsSiteStore: write-once; same content reuses the id, different content gets "{v}-{ms}".
     writeHistory: vi.fn(async (slug: string, version: number, p: PendingSite) => {
-      const k = `${slug}/${version}`;
-      if (!history.has(k)) history.set(k, structuredClone(p));
+      const id = String(version);
+      const existing = history.get(`${slug}/${id}`);
+      if (!existing) { history.set(`${slug}/${id}`, structuredClone(p)); return id; }
+      if (JSON.stringify(existing) === JSON.stringify(p)) return id;
+      const unique = `${version}-${clock}`;
+      history.set(`${slug}/${unique}`, structuredClone(p));
+      return unique;
     }),
-    readHistory: vi.fn(async (slug: string, version: number) => history.get(`${slug}/${version}`) ?? null),
+    readHistory: vi.fn(async (slug: string, id: string) => history.get(`${slug}/${id}`) ?? null),
     listHistory: vi.fn(async (slug: string) =>
-      [...history.entries()].filter(([k]) => k.startsWith(`${slug}/`)).map(([k, p]) => ({
-        version: Number(k.split('/')[1]), editedBy: p.editedBy ?? null, editedAt: p.editedAt ?? null,
-      })).sort((a, b) => b.version - a.version)),
+      [...history.entries()].filter(([k]) => k.startsWith(`${slug}/`)).map(([k, p]) => {
+        const id = k.split('/')[1];
+        return { id, version: Number(id.split('-')[0]), editedBy: p.editedBy ?? null, editedAt: p.editedAt ?? null };
+      }).sort((a, b) => b.version - a.version || b.id.length - a.id.length)),
     readRun: vi.fn(async (id: string) => (runs.has(id) ? structuredClone(runs.get(id)!) : null)),
     writeRun: vi.fn(async (id: string, r: RepublishRun) => { runs.set(id, structuredClone(r)); }),
   };
-  let clock = NOW;
   const deps: AdminSitesDeps = {
     listBound: vi.fn(async () => rows.map((r) => ({ ...r }))),
     findBySlug: vi.fn(async (slug: string) => rows.find((r) => r.site_slug === slug) ?? null),
@@ -66,6 +73,7 @@ export function fakes(opts: { rows?: PurchaseRow[]; pending?: Record<string, Pen
     store,
     publish: vi.fn(async (slug: string) =>
       opts.outcome ? opts.outcome(slug) : { ok: true, siteId: slug, deployedUrl: `https://${slug}.vercel.app`, alreadyLive: false }),
+    render: vi.fn((p: Pick<PendingSite, 'siteData' | 'imageUrlMap'>) => renderPending(p)),
     audit: vi.fn(async (e) => { events.push(e); }),
     now: () => clock,
   };

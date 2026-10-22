@@ -19,7 +19,7 @@ import { memoryStore, supabaseRateStore, withFallback, type RateLimitStore } fro
  *   replace      { slug, siteData, note?, expectedVersion? }
  *   republish    { slug }
  *   republish-all{ dryRun = true, runId?, limit? }   call again with the same runId until done
- *   rollback     { slug, version }
+ *   rollback     { slug, version: "4" | "4-1729…" (history id), expectedVersion? }
  */
 
 const READ_LIMIT = 120;
@@ -28,7 +28,7 @@ const WINDOW_MS = 60_000;
 
 const STATUS: Record<string, number> = {
   'not-found': 404, 'no-copy': 404, 'no-history': 404, 'bad-request': 400, conflict: 409, 'site-offline': 409,
-  'history-failed': 503, 'publish-failed': 502, exception: 500,
+  'invalid-copy': 422, 'history-failed': 503, 'publish-failed': 502, exception: 500,
 };
 
 export interface AdminSitesHandlerDeps {
@@ -104,14 +104,17 @@ export function makeAdminSitesHandler(d: AdminSitesHandlerDeps) {
           break;
         case 'rollback':
           if (!slug) return needSlug();
-          r = await rollback(slug, Number(body.version), core, by);
+          r = await rollback(slug, String(body.version ?? ''), core, { by, expectedVersion });
           break;
         case 'republish-all': {
           const dryRun = body.dryRun !== false;
           if (!dryRun && !/^[a-zA-Z0-9_-]{1,80}$/.test(str(body.runId))) {
             return res.status(400).json({ ok: false, error: 'bad-request', detail: 'runId required for a real run' });
           }
-          const limit = Number.isInteger(body.limit) ? body.limit : undefined;
+          if (body.limit !== undefined && !(Number.isInteger(body.limit) && body.limit > 0)) {
+            return res.status(400).json({ ok: false, error: 'bad-request', detail: 'limit must be a positive whole number' });
+          }
+          const limit = body.limit;
           const out = await republishAll({ dryRun, runId: str(body.runId) || undefined, limit, by }, core);
           return res.status(200).json({ ok: true, ...out });
         }
