@@ -4,8 +4,9 @@ import { splitName } from './_hashPii.js';
 import { getPlanContentMeta } from '../lib/pixelMeta.js';
 import { pushOrderToTripleWhale } from './_twOrder.js';
 import { waitUntil } from '@vercel/functions';
-import { publishSite } from '../lib/publishSite.js';
-import { recordCheckoutOwner, supabaseSiteOwners } from '../lib/siteOwners.js';
+import { publishSite, readPendingSite } from '../lib/publishSite.js';
+import { recordCheckoutOwnerIfFirst, supabaseSiteOwners } from '../lib/siteOwners.js';
+import { vercelProjectExists } from '../lib/ios/slug.js';
 
 // Stripe webhook -> Meta CAPI Purchase. The browser pixel + client CAPI
 // only fire if the customer returns to ?stripe_session=...; closed tabs,
@@ -208,9 +209,13 @@ export default async function handler(req: any, res: any) {
     const siteId = typeof session.metadata?.siteId === 'string' ? session.metadata.siteId : '';
     if (siteId && session.mode === 'subscription') {
       // The site's owner list (013 site_owners): the checkout email, claimed by the account that
-      // signs in with it (confirmed). Never replaces an existing owner. Best effort.
+      // signs in with it (confirmed). Only for a site not live yet (checked before this webhook's
+      // publish); never replaces an existing owner. Best effort.
       waitUntil(
-        recordCheckoutOwner(siteId, { checkoutEmail: details.email || session.customer_email || null, sessionId: session.id }, supabaseSiteOwners())
+        recordCheckoutOwnerIfFirst(siteId, { checkoutEmail: details.email || session.customer_email || null, sessionId: session.id }, supabaseSiteOwners(), {
+          storedStamp: async (s) => (await readPendingSite(s))?.deployedUrl || null,
+          projectExists: (s) => vercelProjectExists(s),
+        })
           .catch((e: any) => console.warn('[Stripe Webhook] recording the site owner failed (ignored):', e?.message || e)),
       );
     }

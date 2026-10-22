@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { canClaim, recordCheckoutOwner, supabaseSiteOwners, webOwnerDecision, type SiteOwnerRow, type SiteOwnerStore } from '../lib/siteOwners.js';
+import { canClaim, recordCheckoutOwner, recordCheckoutOwnerIfFirst, supabaseSiteOwners, webOwnerDecision, type SiteOwnerRow, type SiteOwnerStore } from '../lib/siteOwners.js';
 import { authorizeDeploy, type CheckoutProof, type DeployAuthDeps } from '../lib/deployAuth.js';
 import { deploySite, type DeploySiteDeps } from '../api/deploy-site.js';
 
@@ -145,10 +145,10 @@ describe('authorizeDeploy with the owner list (lib/deployAuth.ts web rule)', () 
 describe('/api/deploy-site records the owner at the checkout deploy', () => {
   const res = () => { const r: any = { statusCode: 0, body: null, setHeader() {}, status(c: number) { this.statusCode = c; return this; }, json(b: unknown) { this.body = b; return this; }, end() { return this; } }; return r; };
   const proof: CheckoutProof = { paid: true, status: 'complete', mode: 'subscription', siteId: 'fresh-cuts', app: 'aibarber', created: Math.floor(Date.now() / 1000) - 60, email: 'Barber@Example.com' };
-  const handlerDeps = (store: SiteOwnerStore, user: unknown = null): DeploySiteDeps => ({
+  const handlerDeps = (store: SiteOwnerStore, user: unknown = null, live: { stamp?: string | null; project?: boolean } = {}): DeploySiteDeps => ({
     auth: {
       userOf: async () => user as any, findBySlug: async () => null, checkoutSession: async () => proof, webClaimants: async () => [],
-      storedStamp: async () => null, projectExists: async () => false, siteOwners: store, now: () => Date.now(),
+      storedStamp: async () => live.stamp ?? null, projectExists: async () => live.project ?? false, siteOwners: store, now: () => Date.now(),
     },
     deploy: {
       deploy: async (i) => ({ deploymentUrl: `https://${i.siteId}.vercel.app`, uploadedImages: {} }),
@@ -178,6 +178,52 @@ describe('/api/deploy-site records the owner at the checkout deploy', () => {
     const r2 = res();
     await deploySite({ method: 'POST', body: { siteId: 'fresh-cuts', html: '<h1/>', checkoutSessionId: SESSION }, headers: {} }, r2, handlerDeps(broken));
     expect(r2.statusCode).toBe(200);
+  });
+});
+
+describe('a checkout naming an ALREADY-LIVE site records no owner (it could be a stranger paying for someone else\'s slug)', () => {
+  const res = () => { const r: any = { statusCode: 0, body: null, setHeader() {}, status(c: number) { this.statusCode = c; return this; }, json(b: unknown) { this.body = b; return this; }, end() { return this; } }; return r; };
+  const proof: CheckoutProof = { paid: true, status: 'complete', mode: 'subscription', siteId: 'fresh-cuts', app: 'aibarber', created: Math.floor(Date.now() / 1000) - 60, email: 'stranger@example.com' };
+  const depsFor = (store: SiteOwnerStore, live: { stamp?: string | null; project?: boolean }): DeploySiteDeps => ({
+    auth: {
+      userOf: async () => null, findBySlug: async () => null, checkoutSession: async () => proof, webClaimants: async () => [],
+      storedStamp: async () => live.stamp ?? null, projectExists: async () => live.project ?? false, siteOwners: store, now: () => Date.now(),
+    },
+    deploy: { deploy: async (i) => ({ deploymentUrl: `https://${i.siteId}.vercel.app`, uploadedImages: {} }), writePending: async () => {}, now: () => Date.now() },
+    limiter: { allow: async () => true },
+  });
+
+  it.each([[{ stamp: 'https://fresh-cuts.vercel.app' }], [{ project: true }]])('deploy-site: unowned but live (%j) → no row', async (live) => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const store = memStore();
+    const r = res();
+    await deploySite({ method: 'POST', body: { siteId: 'fresh-cuts', html: '<h1/>', checkoutSessionId: SESSION }, headers: {} }, r, depsFor(store, live));
+    expect(r.statusCode).toBe(200); // the 7-day checkout proof still deploys, as before
+    expect(store.rows.size).toBe(0);
+  });
+
+  it('the webhook helper: a live slug (stamp or project) or a failed check records nothing; a new one records the checkout email', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const store = memStore();
+    const input = { checkoutEmail: 'buyer@example.com', sessionId: SESSION };
+    expect(await recordCheckoutOwnerIfFirst('fresh-cuts', input, store, { storedStamp: async () => 'https://x.vercel.app', projectExists: async () => false })).toBeNull();
+    expect(await recordCheckoutOwnerIfFirst('fresh-cuts', input, store, { storedStamp: async () => null, projectExists: async () => true })).toBeNull();
+    expect(await recordCheckoutOwnerIfFirst('fresh-cuts', input, store, { storedStamp: async () => { throw new Error('gcs down'); }, projectExists: async () => false })).toBeNull();
+    expect(store.rows.size).toBe(0);
+    expect(await recordCheckoutOwnerIfFirst('fresh-cuts', input, store, { storedStamp: async () => null, projectExists: async () => false }))
+      .toMatchObject({ slug: 'fresh-cuts', claim_email: 'buyer@example.com', user_id: null });
+  });
+
+  it('authorizeDeploy reports firstPublish from the state BEFORE the deploy', async () => {
+    const base: DeployAuthDeps = {
+      userOf: async () => null, findBySlug: async () => null, checkoutSession: async () => proof, webClaimants: async () => [],
+      storedStamp: async () => null, projectExists: async () => false, now: () => Date.now(),
+    };
+    expect((await authorizeDeploy({ siteId: 'fresh-cuts', checkoutSessionId: SESSION }, base)).checkout).toMatchObject({ firstPublish: true });
+    expect((await authorizeDeploy({ siteId: 'fresh-cuts', checkoutSessionId: SESSION }, { ...base, projectExists: async () => true })).checkout).toMatchObject({ firstPublish: false });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect((await authorizeDeploy({ siteId: 'fresh-cuts', checkoutSessionId: SESSION }, { ...base, storedStamp: async () => { throw new Error('x'); } })).checkout).toMatchObject({ firstPublish: false });
   });
 });
 

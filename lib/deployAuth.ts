@@ -113,8 +113,13 @@ export interface DeployAuthResult {
   userId?: string | null;
   /** The signed-in caller, when there is one (the checkout deploy records the owner with it). */
   user?: DeployUser | null;
-  /** Set for actor 'checkout': the session that authorised it and who paid. */
-  checkout?: { sessionId: string; email: string | null };
+  /**
+   * Set for actor 'checkout': the session that authorised it, who paid, and whether the slug was
+   * NOT live before this deploy (no server stamp, no Vercel project; read before the deploy).
+   * Only a first publish records an owner: a checkout naming an already-live site must never
+   * hand it to whoever paid (they could claim it and lock the real owner out).
+   */
+  checkout?: { sessionId: string; email: string | null; firstPublish: boolean };
 }
 
 const VERCEL_APP = '.vercel.app';
@@ -218,9 +223,16 @@ export async function authorizeDeploy(input: DeployAuthInput, deps: DeployAuthDe
       proof.app === 'aibarber' &&
       slugify(proof.siteId || '') === shopSlug
     ) {
+      let firstPublish = false;
+      try {
+        const [stamp, exists] = await withTimeout(Promise.all([deps.storedStamp(shopSlug), deps.projectExists(shopSlug)]), ms, 'first-publish check');
+        firstPublish = !stamp && !exists;
+      } catch (e: any) {
+        console.warn(`[Deploy Site] ${shopSlug}: first-publish check failed; no owner will be recorded:`, e?.message || e);
+      }
       return {
         ok: true, target: shopSlug, row: null, actor: 'checkout', userId: user?.id ?? null, user,
-        checkout: { sessionId, email: proof.email ?? null },
+        checkout: { sessionId, email: proof.email ?? null, firstPublish },
       };
     }
     console.warn(`[Deploy Site] ${shopSlug}: checkout session does not authorise this slug`);

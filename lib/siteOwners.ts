@@ -113,6 +113,33 @@ export async function recordCheckoutOwner(
   return (await store.insertIfAbsent(row)) ? row : null;
 }
 
+/**
+ * The Stripe webhook's write: record the checkout owner only when the slug is not live yet (no
+ * server stamp on the stored copy, no Vercel project). Until the backfill runs, an existing
+ * site has no owner row, so without this a paid checkout naming someone else's live slug would
+ * store the payer's email, which they could claim to lock the real owner out. A lookup error
+ * records nothing (the deploy path or the admin can set it later).
+ */
+export async function recordCheckoutOwnerIfFirst(
+  slug: string,
+  input: { checkoutEmail?: unknown; sessionId?: string | null },
+  store: SiteOwnerStore,
+  live: { storedStamp(slug: string): Promise<string | null>; projectExists(slug: string): Promise<boolean> },
+): Promise<SiteOwnerRow | null> {
+  const s = slugify(slug);
+  if (!s) return null;
+  try {
+    if ((await live.storedStamp(s)) || (await live.projectExists(s))) {
+      console.log(`[SiteOwners] ${s}: already live before this checkout; no owner recorded from it`);
+      return null;
+    }
+  } catch (e: any) {
+    console.warn(`[SiteOwners] ${s}: first-publish check failed; no owner recorded:`, e?.message || e);
+    return null;
+  }
+  return recordCheckoutOwner(s, input, store);
+}
+
 // ─── live store (service role) ───
 
 let sb: SupabaseClient | undefined;

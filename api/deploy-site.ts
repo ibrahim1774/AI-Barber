@@ -114,8 +114,10 @@ export async function deploySite(req: any, res: any, deps: DeploySiteDeps) {
 
     // The first paid checkout deploy records the site's owner (013 site_owners; never replaces
     // one): the signed-in buyer if their confirmed email is the checkout email, else that email
-    // to be claimed at sign-in. Best effort: the site is live either way.
-    if (auth.actor === 'checkout' && auth.checkout && deps.auth.siteOwners) {
+    // to be claimed at sign-in. Only when the slug was not live before (firstPublish, read
+    // before the deploy): a paid checkout naming someone else's live site records nothing.
+    // Best effort: the site is live either way.
+    if (auth.actor === 'checkout' && auth.checkout?.firstPublish && deps.auth.siteOwners) {
       await recordCheckoutOwner(auth.target!, { user: auth.user ?? null, checkoutEmail: auth.checkout.email, sessionId: auth.checkout.sessionId }, deps.auth.siteOwners)
         .then((r) => r && console.log(`[Deploy Site] ${auth.target}: owner recorded (${r.user_id ? 'signed-in buyer' : 'checkout email to claim'})`))
         .catch((e: any) => console.warn(`[Deploy Site] ${auth.target}: recording the owner failed (ignored):`, e?.message || e));
