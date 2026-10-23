@@ -602,6 +602,7 @@ export default function Editor() {
           onClose={() => closeThen(() => setSheet('sections'))}
           onDismiss={onSheetDismiss}
           upload={uploadForSection}
+          onOpenTeam={() => closeThen(() => router.push('/team'))}
         />
         <GallerySheet
           visible={sheet === 'gallery'}

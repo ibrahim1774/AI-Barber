@@ -269,3 +269,39 @@ describe('limits', () => {
     expect(await memberProfileLive()).toBe(false);
   });
 });
+
+describe('new barber hours', () => {
+  it('copy-from-shop: a new barber without a chosen week gets the owner\'s hours, not a hard-coded default', async () => {
+    mockShop.listMembers.mockResolvedValueOnce([{ id: 'own', role: 'owner' }] as any);
+    mockShop.listAvailability.mockResolvedValueOnce([{ weekday: 0, startMin: 600, endMin: 900, breakStartMin: null, breakEndMin: null }] as any);
+    mockCall.mockResolvedValueOnce(apiMember());
+    await saveTeamMember({ shop: SHOP, profileLive: false, member: null, draft: draft({ week: null }), services: SERVICES });
+    expect(mockShop.saveAvailability).toHaveBeenCalledWith(UUID, [{ weekday: 0, startMin: 600, endMin: 900, breakStartMin: null, breakEndMin: null }]);
+    expect((mockSite!.data.staff as any)[0].hours[0]).toEqual({ day: 'Monday', open: '10:00 AM', close: '3:00 PM' });
+  });
+});
+
+describe('cards', () => {
+  const { teamCards, openDays, daysOfHours } = require('@/lib/team');
+  const member = (id: string, name: string, role = 'barber', o: object = {}) => ({ id, name, role, photoUrl: null, bio: '', title: null, bookingUrl: null, sort: 1, icsToken: null, shopId: 's', ...o });
+  const view = (m: any, ids: string[] | null = null) => ({ member: m, serviceIds: ids, week: defaultWeek() });
+  it('shows every member (even over the plan limit) then website-only entries; mini-week is Monday first', () => {
+    const views = [view(member('a', 'Jack', 'owner')), view(member('b', 'Sam'), ['s1', 's2', 's3', 's4']), view(member('c', 'Ali'))];
+    const cards = teamCards(views, [{ name: 'Booksy Bob', role: 'Barber' }], SERVICES, true);
+    expect(cards.map((c: any) => c.name)).toEqual(['Jack', 'Sam', 'Ali', 'Booksy Bob']);
+    expect(cards[0].title).toBe('Owner');
+    expect(cards[1].days).toEqual([false, true, true, true, true, true, false]); // default week: Tue-Sat
+    expect(cards[1].chips).toEqual(['Fade', 'Beard', 'Shave']);
+    expect(cards[1].more).toBe(1);
+    expect(cards[2].chips).toEqual(['All services']);
+    expect(cards[3]).toMatchObject({ kind: 'site', siteIndex: 0, view: null });
+  });
+  it('without a shop every entry is a website-only card; linked entries are not doubled', () => {
+    const cards = teamCards([], [{ name: 'A' }, { name: 'B', memberId: UUID }, { name: '' }], [], false);
+    expect(cards.map((c: any) => c.name)).toEqual(['A']);
+  });
+  it('site hours become the same 7 dots', () => {
+    expect(daysOfHours(weekToWeeklyHours(defaultWeek()))).toEqual(openDays(defaultWeek()));
+    expect(daysOfHours(undefined)).toEqual([false, false, false, false, false, false, false]);
+  });
+});

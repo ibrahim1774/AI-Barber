@@ -17,12 +17,14 @@ interface Props {
   onDismiss?(): void;
   /** Picks and uploads one photo through the editor's upload guard; null if cancelled or dropped. */
   upload(onPicked?: () => void): Promise<string | null>;
+  /** A barber who is also a booking member is managed on the Team screen (ab_members is their source of truth). */
+  onOpenTeam?(): void;
 }
 
 /** null = the list; 'new' = adding; a number = editing that person. */
 type Form = null | 'new' | number;
 
-export function TeamSheet({ visible, data, onChange, onClose, onDismiss, upload }: Props) {
+export function TeamSheet({ visible, data, onChange, onClose, onDismiss, upload, onOpenTeam }: Props) {
   const f1 = useRef<TextInput>(null);
   const f2 = useRef<TextInput>(null);
   const [form, setForm] = useState<Form>(null);
@@ -104,11 +106,12 @@ export function TeamSheet({ visible, data, onChange, onClose, onDismiss, upload 
       <ScrollView style={styles.scroll}>
         {staff.map((m, i) => (
           <View key={i} style={styles.row}>
-            <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${m.name}`} onPress={() => open(i)} style={styles.person}>
+            <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${m.name}`} onPress={() => (m.memberId && onOpenTeam ? onOpenTeam() : open(i))} style={styles.person}>
               <View style={styles.thumb}>{m.photo ? <Image source={{ uri: m.photo }} style={styles.circleImg} /> : null}</View>
               <View style={styles.flex}>
                 <Text style={styles.name} numberOfLines={1}>{m.name}</Text>
                 {m.role ? <Text style={styles.roleText} numberOfLines={1}>{m.role}</Text> : null}
+                {m.memberId ? <Text style={styles.roleText} numberOfLines={1}>On your booking page · edit in Team</Text> : null}
               </View>
             </Pressable>
             <Pressable accessibilityRole="button" accessibilityLabel={`Move ${m.name} up`} disabled={i === 0} onPress={() => commit((d) => moveMember(d, i, -1))} hitSlop={8} style={[styles.move, i === 0 && styles.off]}>
@@ -121,6 +124,7 @@ export function TeamSheet({ visible, data, onChange, onClose, onDismiss, upload 
         ))}
         {staff.length === 0 ? <Text style={styles.note}>No one added yet.</Text> : null}
         <SheetAction title="Add a person" onPress={() => open('new')} />
+        {onOpenTeam ? <SheetAction title="Manage barbers and bookings" onPress={onOpenTeam} /> : null}
       </ScrollView>
     </Sheet>
   );

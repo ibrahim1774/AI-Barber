@@ -24,7 +24,12 @@ export function updateMember(d: WebsiteData, i: number, m: MemberInput): Website
   const staff = d.staff ?? [];
   const member = build(m);
   if (!member || i < 0 || i >= staff.length) return d;
-  return { ...d, staff: staff.map((s, k) => (k === i ? member : s)) };
+  // Team profiles: bio, booking link, services, hours and the booking member id belong to the entry and survive a rename.
+  return { ...d, staff: staff.map((s, k) => (k === i ? { ...s, role: undefined, photo: undefined, ...member } : s)).map(dropUndefined) };
+}
+
+function dropUndefined<T extends object>(o: T): T {
+  return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
 }
 
 export function removeMember(d: WebsiteData, i: number): WebsiteData {

@@ -301,6 +301,7 @@ function YourWebsite({ site }: { site: SiteRecord }) {
       <>
         <Section>
           <Row label="Share your site" detail="Message, QR code, Instagram bio" onPress={shareSite} chevron />
+          <Row label="Your team" detail="Barbers, photos, services, hours" onPress={() => router.push('/team')} chevron />
           <Row label="Bookings setup" detail="Services, barbers, hours" onPress={() => router.push('/bookings-setup')} chevron />
           <Row label="Get paid" detail="Cash App, Venmo, Zelle, PayPal, cards" onPress={() => router.push('/get-paid')} chevron />
           <DomainRow />

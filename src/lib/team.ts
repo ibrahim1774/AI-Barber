@@ -227,15 +227,90 @@ export async function refreshTeamData(shop: Shop | null, d: WebsiteData): Promis
   }
 }
 
-/** Writes the refreshed team into the saved site (the Team screen and Barbers on open). */
-export async function refreshSavedTeam(shop: Shop | null): Promise<void> {
-  if (!shop) return;
+/**
+ * Loads the live team and writes it into the saved site (the Team screen and Barbers on open).
+ * Returns what it loaded, or null when the lookup failed (the site is then left as it was).
+ */
+export async function refreshSavedTeam(shop: Shop | null): Promise<{ views: MemberView[]; services: Service[]; profileLive: boolean } | null> {
+  if (!shop) return null;
   try {
     const profileLive = await memberProfileLive();
-    const { views, services } = await loadMemberViews(shop.id);
-    await updateSiteData((d) => refreshStaff(d, views, services, profileLive));
+    const loaded = await loadMemberViews(shop.id);
+    await updateSiteData((d) => refreshStaff(d, loaded.views, loaded.services, profileLive));
+    return { ...loaded, profileLive };
   } catch {
-    // the next open tries again
+    return null; // the next open tries again
+  }
+}
+
+// ---- cards -------------------------------------------------------------------
+
+export type TeamCard = {
+  key: string;
+  /** member: a booking member. site: a website-only entry (scraped, legacy, or no shop). */
+  kind: 'member' | 'site';
+  name: string;
+  title: string;
+  photo: string | null;
+  /** Monday first: the 7-dot mini-week */
+  days: boolean[];
+  /** at most 3 */
+  chips: string[];
+  more: number;
+  isOwner: boolean;
+  view: MemberView | null;
+  siteIndex: number | null;
+  entry: TeamMember | null;
+};
+
+const CHIP_MAX = 3;
+
+function chipsOf(names: string[]): { chips: string[]; more: number } {
+  return { chips: names.slice(0, CHIP_MAX), more: Math.max(0, names.length - CHIP_MAX) };
+}
+
+/** Days a stored WeeklyHours is open (Monday first); all false when none is stored. */
+export function daysOfHours(h: WeeklyHours | undefined): boolean[] {
+  return WEEKDAYS.map((name) => {
+    const row = h?.find((r) => r.day === name);
+    return !!row && !row.closed && !!row.open;
+  });
+}
+
+/**
+ * The Team screen's cards: every active member first (all of them, however many the plan allows), then the
+ * website-only entries (scraped or legacy staff, or everything when there is no shop).
+ */
+export function teamCards(views: MemberView[], staff: WebsiteData['staff'], services: Service[], profileLive: boolean): TeamCard[] {
+  const list = Array.isArray(staff) ? staff : [];
+  const cards: TeamCard[] = views.map((v) => {
+    const at = list.findIndex((s) => s?.memberId === v.member.id);
+    const entry = at >= 0 ? list[at] : null;
+    const names = v.serviceIds ? services.filter((s) => v.serviceIds!.includes(s.id)).map((s) => s.name) : ['All services'];
+    const title = (profileLive ? v.member.title : null) ?? entry?.role ?? v.member.title ?? (v.member.role === 'owner' ? 'Owner' : 'Barber');
+    return {
+      key: v.member.id, kind: 'member', name: v.member.name, title, photo: v.member.photoUrl, days: openDays(v.week),
+      ...chipsOf(names), isOwner: v.member.role === 'owner', view: v, siteIndex: at >= 0 ? at : null, entry,
+    };
+  });
+  list.forEach((s, i) => {
+    if (!s || s.memberId || !s.name) return;
+    cards.push({
+      key: `site-${i}`, kind: 'site', name: s.name, title: s.role || 'Team', photo: s.photo && /^https?:\/\//i.test(s.photo) ? s.photo : null,
+      days: daysOfHours(s.hours), ...chipsOf(s.serviceNames ?? []), isOwner: false, view: null, siteIndex: i, entry: s,
+    });
+  });
+  return cards;
+}
+
+/** The shop's weekly hours (the owner's availability), the default a new barber copies. */
+export async function shopWeek(shopId: string): Promise<DayHours[]> {
+  try {
+    const owner = (await listMembers(shopId)).find((m) => m.role === 'owner');
+    const rows = owner ? await listAvailability(owner.id) : [];
+    return rows.length ? rowsToWeek(rows) : defaultWeek();
+  } catch {
+    return defaultWeek();
   }
 }
 
@@ -273,7 +348,8 @@ export type SaveArgs = {
  * - Without a shop: the site entry only.
  */
 export async function saveTeamMember(a: SaveArgs): Promise<{ member: Member | null }> {
-  const { shop, profileLive, draft, services } = a;
+  const { shop, profileLive, services } = a;
+  let draft = a.draft;
   const name = draft.name.trim();
   if (!name) throw new Error('Give this barber a name.');
   const title = draft.title.trim();
@@ -309,7 +385,9 @@ export async function saveTeamMember(a: SaveArgs): Promise<{ member: Member | nu
     member = { ...created.member, shopId: shop.id };
     a.onCreated?.(member);
     // A new barber works the hours the sheet showed (copied from the shop unless changed).
-    await saveAvailability(member.id, weekToRows(draft.week ?? defaultWeek()));
+    const first = draft.week ?? (await shopWeek(shop.id));
+    await saveAvailability(member.id, weekToRows(first));
+    draft = { ...draft, week: first };
   }
   await setMemberServiceIds(member.id, draft.serviceIds);
 

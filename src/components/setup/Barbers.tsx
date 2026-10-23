@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, StyleSheet, Text, View } from 'react-native';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
 import { pickAndUploadPhoto } from '@/lib/photos';
-import { weekToRows, defaultWeek } from '@/lib/setup/availability';
 import {
-  addMember, countUpcoming, getMemberServiceIds, listMembers, listServices, removeMember, saveAvailability,
-  setMemberServiceIds, updateMember, type Member, type Service, type Shop,
+  getMemberServiceIds, listMembers, listServices, type Member, type Service, type Shop,
 } from '@/lib/shop';
+import { loadSite } from '@/lib/siteStore';
+import { memberProfileLive, refreshSavedTeam, removeTeamMember, saveTeamMember } from '@/lib/team';
+import { useTeamLimits } from '@/lib/useTeamLimits';
 import { MemberHours } from '@/components/setup/HoursGrid';
 import { Card, Chip, Chips, Input, Label, Note, TextAction } from '@/components/setup/ui';
 
@@ -17,6 +18,7 @@ type View_ = { kind: 'list' } | { kind: 'form'; member: Member | null };
 export function Barbers({ shop, uploadFolder, onChanged }: { shop: Shop; uploadFolder: string; onChanged?(): void }) {
   const [members, setMembers] = useState<Member[] | null>(null);
   const [view, setView] = useState<View_>({ kind: 'list' });
+  const limits = useTeamLimits();
 
   const reload = useCallback(async () => {
     try {
@@ -27,6 +29,8 @@ export function Barbers({ shop, uploadFolder, onChanged }: { shop: Shop; uploadF
     }
   }, [shop.id]);
   useEffect(() => { void reload(); }, [reload]);
+  // The site's team cards follow ab_members: refresh them whenever this list opens.
+  useEffect(() => { void refreshSavedTeam(shop); }, [shop]);
 
   if (!members) return <ActivityIndicator color={colors.accent} style={{ marginVertical: 24 }} />;
 
@@ -36,6 +40,7 @@ export function Barbers({ shop, uploadFolder, onChanged }: { shop: Shop; uploadF
         shop={shop}
         uploadFolder={uploadFolder}
         member={view.member}
+        onAddError={limits.handleAddError}
         onDone={async () => { setView({ kind: 'list' }); await reload(); onChanged?.(); }}
         onCancel={() => setView({ kind: 'list' })}
         onSaved={async (m) => { await reload(); setView({ kind: 'form', member: m }); onChanged?.(); }}
@@ -55,7 +60,10 @@ export function Barbers({ shop, uploadFolder, onChanged }: { shop: Shop; uploadF
           <TextAction title="Edit" onPress={() => setView({ kind: 'form', member: m })} />
         </View>
       ))}
-      <Button title="Add a barber" size="sm" onPress={() => setView({ kind: 'form', member: null })} style={{ marginTop: 8 }} />
+      <Button
+        title="Add a barber" size="sm" loading={limits.busy} style={{ marginTop: 8 }}
+        onPress={() => { if (limits.canAdd(members.length)) setView({ kind: 'form', member: null }); }}
+      />
       <Note>Each barber has their own hours, services and calendar. Customers can pick a barber or "Any".</Note>
     </View>
   );
@@ -70,12 +78,17 @@ function Avatar({ url, name }: { url: string | null; name: string }) {
 }
 
 function BarberForm({
-  shop, uploadFolder, member, onDone, onCancel, onSaved,
+  shop, uploadFolder, member, onDone, onCancel, onSaved, onAddError,
 }: {
   shop: Shop; uploadFolder: string; member: Member | null;
-  onDone(): void; onCancel(): void; onSaved(m: Member): void;
+  onDone(): void; onCancel(): void; onSaved(m: Member): void; onAddError(e: unknown): boolean;
 }) {
   const [name, setName] = useState(member?.name ?? '');
+  const [title, setTitle] = useState(member?.title ?? '');
+  const [link, setLink] = useState(member?.bookingUrl ?? '');
+  const [profileLive, setProfileLive] = useState(false);
+  // A member created by an earlier attempt of this save: a retry updates it, never adds a second one.
+  const created = useRef<Member | null>(null);
   const [bio, setBio] = useState(member?.bio ?? '');
   const [photo, setPhoto] = useState<string | null>(member?.photoUrl ?? null);
   const [services, setServices] = useState<Service[]>([]);
@@ -87,6 +100,16 @@ function BarberForm({
     let alive = true;
     listServices(shop.id).then((l) => alive && setServices(l)).catch(() => {});
     if (member) getMemberServiceIds(member.id).then((ids) => alive && setSelected(ids)).catch(() => {});
+    memberProfileLive().then((live) => alive && setProfileLive(live)).catch(() => {});
+    // Before migration 015 the role and link of a barber live in the site's team entry.
+    if (member) {
+      loadSite().then((rec) => {
+        const e = rec?.data.staff?.find((x) => x?.memberId === member.id);
+        if (!alive || !e) return;
+        setTitle((t) => t || e.role || '');
+        setLink((l) => l || e.bookingUrl || '');
+      }).catch(() => {});
+    }
     return () => { alive = false; };
   }, [shop.id, member]);
 
@@ -114,16 +137,15 @@ function BarberForm({
     if (selected && selected.length === 0) return Alert.alert('Pick at least one service, or choose All services.');
     setBusy(true);
     try {
-      let m = member;
-      if (m) {
-        await updateMember(m.id, { name: clean, bio: bio.trim(), photoUrl: photo });
-      } else {
-        m = await addMember(shop.id, { name: clean, bio: bio.trim(), photoUrl: photo });
-        await saveAvailability(m.id, weekToRows(defaultWeek()));
-      }
-      await setMemberServiceIds(m.id, selected);
-      onSaved({ ...m, name: clean, bio: bio.trim(), photoUrl: photo });
+      const r = await saveTeamMember({
+        shop, profileLive, member: member ?? created.current,
+        draft: { name: clean, title, photo, bio, bookingUrl: link, serviceIds: selected, week: null },
+        services,
+        onCreated: (m) => { created.current = m; },
+      });
+      onSaved(r.member!);
     } catch (e) {
+      if (onAddError(e)) return onCancel();
       Alert.alert("Couldn't save", e instanceof Error ? e.message : 'Try again.');
     } finally {
       setBusy(false);
@@ -133,24 +155,26 @@ function BarberForm({
   const remove = async () => {
     if (!member) return;
     try {
-      const upcoming = await countUpcoming(member.id);
-      if (upcoming > 0) {
+      const r = await removeTeamMember({ shop, member });
+      if (r.kind === 'has-bookings') {
         Alert.alert(
-          `${member.name} has ${upcoming} upcoming booking${upcoming === 1 ? '' : 's'}`,
+          `${member.name} has ${r.count} upcoming booking${r.count === 1 ? '' : 's'}`,
           'Cancel or move them in the Bookings tab first, then remove this barber.',
         );
         return;
       }
-      Alert.alert(`Remove ${member.name}?`, 'They stop appearing on your booking page. Past bookings keep their details.', [
-        { text: 'Keep', style: 'cancel' },
-        {
-          text: 'Remove', style: 'destructive',
-          onPress: () => removeMember(member.id).then(onDone).catch((e) => Alert.alert("Couldn't remove", e?.message)),
-        },
-      ]);
+      onDone();
     } catch (e) {
-      Alert.alert("Couldn't check bookings", e instanceof Error ? e.message : 'Try again.');
+      Alert.alert("Couldn't remove", e instanceof Error ? e.message : 'Try again.');
     }
+  };
+
+  const confirmRemove = () => {
+    if (!member) return;
+    Alert.alert(`Remove ${member.name}?`, 'They stop appearing on your booking page and your website. Past bookings keep their details.', [
+      { text: 'Keep', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: () => void remove() },
+    ]);
   };
 
   const isOwner = member?.role === 'owner';
@@ -163,7 +187,12 @@ function BarberForm({
           {uploading && <ActivityIndicator color={colors.accent} />}
         </View>
         <Input title="Name" label="Name" value={name} onChangeText={setName} placeholder="e.g. Mike" />
+        <Input title="Role" label="Role" value={title} onChangeText={setTitle} placeholder="Barber, Owner and master barber…" maxLength={80} />
         <Input title="Short bio (optional)" label="Bio" value={bio} onChangeText={setBio} multiline />
+        <Input
+          title="Booking link (optional)" label="Booking link" value={link} onChangeText={setLink}
+          placeholder="https://" autoCapitalize="none" autoCorrect={false} keyboardType="url"
+        />
         <Label>Services they do</Label>
         <Chips>
           <Chip label="All services" selected={selected === null} onPress={() => setSelected(null)} />
@@ -180,7 +209,7 @@ function BarberForm({
       )}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
         <TextAction title="Back" onPress={member ? onDone : onCancel} />
-        {member && !isOwner && <TextAction title="Remove barber" danger onPress={() => void remove()} />}
+        {member && !isOwner && <TextAction title="Remove barber" danger onPress={confirmRemove} />}
       </View>
     </View>
   );

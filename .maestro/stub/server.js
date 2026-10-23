@@ -12,7 +12,7 @@ const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
 
 let S;
 function reset() {
-  S = { users: [], tables: {}, files: {}, sites: {}, byTx: {}, tier: null, log: [], fails: [], faults: [], version: 0, kv: {}, sw: { status: 'INACTIVE', ents: [], subs: [], n: 0 }, lapsedDays: null, stripe: { connected: false, chargesEnabled: false, detailsSubmitted: false } };
+  S = { users: [], tables: {}, files: {}, sites: {}, byTx: {}, tier: null, log: [], fails: [], faults: [], version: 0, kv: {}, sw: { status: 'INACTIVE', ents: [], subs: [], n: 0 }, lapsedDays: null, memberLimit: null, memberProfile: true, stripe: { connected: false, chargesEnabled: false, detailsSubmitted: false } };
   S.users.push({ id: uuid(), email: 'qa@example.com', password: 'Passw0rd!' });
 }
 reset();
@@ -60,8 +60,8 @@ const tierOf = (tx) => ({ 1: 'website', 2: 'bookings', 3: 'store' })[String(tx |
 const RANK = { website: 1, bookings: 2, store: 3 };
 const bumpTier = (tx) => { const t = tierOf(tx); if (t && (!S.tier || RANK[t] > RANK[S.tier])) S.tier = t; };
 const plan = () => S.lapsedDays != null && S.tier
-  ? { linked: true, tier: S.tier, entitlements: { hosting: false, bookings: false, store: false }, active: false, expiresAt: new Date(Date.now() - S.lapsedDays * 864e5).toISOString(), takenDownAt: null, revoked: false }
-  : { linked: !!S.tier, tier: S.tier, entitlements: { hosting: !!S.tier, bookings: RANK[S.tier] >= 2, store: RANK[S.tier] >= 3 }, active: !!S.tier, expiresAt: S.tier ? new Date(Date.now() + 365 * 864e5).toISOString() : null, takenDownAt: null, revoked: false };
+  ? { linked: true, tier: S.tier, entitlements: { hosting: false, bookings: false, store: false }, active: false, expiresAt: new Date(Date.now() - S.lapsedDays * 864e5).toISOString(), takenDownAt: null, revoked: false, capabilities: { memberProfile: S.memberProfile } }
+  : { linked: !!S.tier, tier: S.tier, entitlements: { hosting: !!S.tier, bookings: RANK[S.tier] >= 2, store: RANK[S.tier] >= 3 }, active: !!S.tier, expiresAt: S.tier ? new Date(Date.now() + 365 * 864e5).toISOString() : null, takenDownAt: null, revoked: false, capabilities: { memberProfile: S.memberProfile } };
 const slugOf = (s) => String(s || 'site').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'site';
 
 // ---------- PostgREST emulator ----------
@@ -179,6 +179,9 @@ async function route(req, res, url, body) {
     const row = { id: uuid(), shop_id: shop.id, member_id: mem.id, service_id: sv.id, start_at: start.toISOString(), end_at: new Date(start.getTime() + sv.duration_min * 6e4).toISOString(), service_name: sv.name, price_cents: sv.price_cents ?? null, duration_min: sv.duration_min, customer_name: body.name || 'Marcus T.', customer_phone: '(512) 555-0199', customer_email: null, note: null, status: 'booked', payment_status: 'none', payment_method: null, amount_paid_cents: 0, customer_says_paid_at: null, source: 'online' };
     (S.tables.ab_appointments = S.tables.ab_appointments || []).push(row); return send(res, 200, row);
   }
+  //   POST /__e2e/members {limit?, profile?} -> forces the member limit POST /api/shop/members reports (null = by plan: Bookings 2, Store 5);
+  //                                              profile=false: migration 015 not live (plan capability off, endpoint answers 503)
+  if (p === '/__e2e/members') { if ('limit' in body) S.memberLimit = body.limit; if ('profile' in body) S.memberProfile = !!body.profile; return send(res, 200, { memberLimit: S.memberLimit, memberProfile: S.memberProfile }); }
   if (p === '/__e2e/stripe') { Object.assign(S.stripe, body); return send(res, 200, S.stripe); }
   // ---- fault injection (edge pass): POST /__e2e/fault {path, mode, times?}  path = prefix match; times omitted = until cleared
   //   mode: offline (socket destroyed, request never answered) | hang (never answers; the app's own timeout fires) | 500 | 429 | html500 (gateway HTML page)
@@ -265,6 +268,23 @@ async function route(req, res, url, body) {
       body.services.forEach((s, i) => (S.tables.ab_services = S.tables.ab_services || []).push({ id: uuid(), shop_id: shop.id, name: s.name, price_cents: s.priceCents, duration_min: s.durationMin, description: s.description || null, photo_url: s.photoUrl || null, sort: i, ...DEFAULTS.ab_services() }));
     } else if (body.transactionId) shop.ios_otid = body.transactionId;
     return send(res, 200, { shop: { id: shop.id, slug: shop.slug } });
+  }
+  if (p === '/api/shop/members' && req.method === 'POST') {
+    // The server half of P2: owner only, plan-gated, limit 2 (Bookings) / 5 (Store); existing members are never touched.
+    const u = bearerUser(req); if (!u) return send(res, 401, { error: 'unauthorized' });
+    const shop = (S.tables.ab_shops || []).find((x) => x.owner_id === u.id); if (!shop) return send(res, 404, { error: 'no-shop' });
+    const ents = plan().entitlements;
+    if (!ents.bookings && !ents.store) return send(res, 403, { error: 'members-need-bookings' });
+    if (!S.memberProfile) return send(res, 503, { error: 'members-unavailable' });
+    const name = typeof body.name === 'string' ? body.name.trim() : '';
+    if (!name || name.length > 80) return send(res, 400, { error: 'invalid', field: 'name' });
+    if (body.bookingUrl && !/^https?:\/\//i.test(body.bookingUrl)) return send(res, 400, { error: 'invalid', field: 'bookingUrl' });
+    const limit = S.memberLimit != null ? S.memberLimit : (ents.store ? 5 : 2);
+    const members = (S.tables.ab_members = S.tables.ab_members || []);
+    if (members.filter((m) => m.shop_id === shop.id && m.active !== false).length >= limit) return send(res, 409, { error: 'member-limit', limit });
+    const row = { id: uuid(), shop_id: shop.id, display_name: name, title: body.title || null, photo_url: body.photo || null, bio: body.bio || null, booking_url: body.bookingUrl || null, sort: 10, created_at: new Date().toISOString(), ...DEFAULTS.ab_members(), role: 'barber' };
+    members.push(row);
+    return send(res, 200, { member: { id: row.id, name, title: row.title, photo: row.photo_url, bio: row.bio, bookingUrl: row.booking_url, role: 'barber', sort: 10, active: true }, limit });
   }
   if (p === '/api/shop/stripe/onboard') return send(res, 200, { url: `${SELF}/stripe-stub` });
   if (p === '/api/shop/stripe/status') return send(res, 200, S.stripe);

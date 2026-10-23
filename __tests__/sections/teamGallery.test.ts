@@ -18,6 +18,10 @@ describe('team', () => {
   it('cleans text', () => {
     expect(addMember(site(), { name: '<b>Mo</b>', role: 'Fade <i>king' }).staff).toEqual([{ name: 'bMo/b', role: 'Fade iking' }]);
   });
+  it('editing name/role/photo keeps the rest of a team profile (member id, bio, link, services, hours)', () => {
+    const rich = site({ staff: [{ name: 'A', role: 'Owner', photo: 'p', memberId: 'm1', bio: 'b', bookingUrl: 'https://x.test', serviceNames: ['Fade'] }] });
+    expect(updateMember(rich, 0, { name: 'A2', role: '' }).staff).toEqual([{ name: 'A2', memberId: 'm1', bio: 'b', bookingUrl: 'https://x.test', serviceNames: ['Fade'] }]);
+  });
   it('updates, removes and moves', () => {
     expect(updateMember(two, 1, { name: 'B2', role: 'Barber' }).staff).toEqual([{ name: 'A', role: 'Owner' }, { name: 'B2', role: 'Barber' }]);
     expect(removeMember(two, 0).staff).toEqual([{ name: 'B' }]);
