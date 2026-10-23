@@ -1,0 +1,38 @@
+appId: com.ibrahim1774.aibarber
+---
+#
+# then dismisses the OS "Open in" prompt, the dev-client menu and system prompts (ATT, notifications).
+- openLink: exp+aibarber://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A8090
+- tapOn:
+    text: "Open"
+    optional: true
+- extendedWaitUntil:
+    visible: "Continue"
+    timeout: 120000
+    optional: true
+- repeat:
+    times: 4
+    commands:
+      - tapOn:
+          text: "Ask App Not to Track"
+          optional: true
+      - tapOn:
+          text: "Continue"
+          optional: true
+      - tapOn:
+          text: "Don’t Allow"
+          optional: true
+      - tapOn:
+          text: "Not Now"
+          optional: true
+      - runFlow:
+          when:
+            visible: "Reload"
+          commands:
+            - tapOn:
+                point: "84%,92%"   # switch off the floating dev Tools button
+            - tapOn:
+                point: "90%,48%"
+- extendedWaitUntil:
+    visible: ".*booking link.*"
+    timeout: 60000

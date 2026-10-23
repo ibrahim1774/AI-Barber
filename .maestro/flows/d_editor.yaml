@@ -1,0 +1,71 @@
+appId: com.ibrahim1774.aibarber
+---
+# (d) Editor: every section sheet + text/photos/colour tools.
+- runFlow: _launch.yaml
+- runFlow: _manual_site.yaml
+- tapOn: "SECTIONS"
+- takeScreenshot: 01_sections_list
+- tapOn: "Services, .*"
+- takeScreenshot: 02_services_list
+- tapOn: "Add a service"
+- takeScreenshot: 03_service_library
+- tapOn: "Add your own"
+- takeScreenshot: 04_service_form_empty
+- tapOn: "e.g. Skin fade"
+- inputText: "Skin fade"
+- tapOn: "30"
+- inputText: "25"
+- takeScreenshot: 05_service_form_filled
+- tapOn: "Save"
+- takeScreenshot: 06_services_after_add
+- tapOn: "Done"
+- tapOn: "SECTIONS"
+- tapOn: "Team, .*"
+- takeScreenshot: 07_team_empty
+- tapOn: "Add a person"
+- takeScreenshot: 07b_team_form_open
+- tapOn:
+    text: "Name"
+    index: 1
+- inputText: "Jack"
+- tapOn: "Barber, Owner.*"
+- inputText: "Owner"
+- takeScreenshot: 08_team_form
+- tapOn: "Save"
+- takeScreenshot: 09_team_after
+- tapOn: "Done"
+- tapOn: "SECTIONS"
+- tapOn: "Hours, .*"
+- takeScreenshot: 10_hours
+- tapOn: "Done"
+- tapOn: "SECTIONS"
+- tapOn: "Gallery, .*"
+- takeScreenshot: 11_gallery
+- tapOn: "Done"
+- tapOn: "SECTIONS"
+- tapOn: "About, .*"
+- takeScreenshot: 12_about
+- tapOn: "Save"
+- takeScreenshot: 12b_after_about_save
+- waitForAnimationToEnd:
+    timeout: 5000
+- tapOn:
+    point: "50%,87%"   # Contact card (a11y tree is empty right after About > Save)
+- takeScreenshot: 13_contact
+- tapOn: "Save"
+- takeScreenshot: 13b_sections_after
+- tapOn:
+    point: "50%,94%"   # Done (a11y tree empty after a sheet Save, see core-report)
+- tapOn: "COLOUR"
+- takeScreenshot: 14_colour
+- tapOn:
+    point: "73%,91%"   # blue swatch
+- takeScreenshot: 14b_colour_blue
+- tapOn:
+    point: "87%,84%"   # Done (sheet content is missing from the a11y tree)
+- tapOn: "PHOTOS"
+- takeScreenshot: 15_photos
+- tapOn:
+    point: "87%,41%"   # Done
+- tapOn: "TEXT"
+- takeScreenshot: 16_text_all_fields

@@ -1,0 +1,7 @@
+appId: com.ibrahim1774.aibarber
+---
+- runFlow: _launch.yaml
+- extendedWaitUntil:
+    visible: ".*booking link.*"
+    timeout: 60000
+- takeScreenshot: start

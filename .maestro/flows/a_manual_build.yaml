@@ -1,0 +1,42 @@
+appId: com.ibrahim1774.aibarber
+---
+# (a) Build a site by typing details, incl. services checklist and the stock-photo nudge.
+- runFlow: _launch.yaml
+- takeScreenshot: 01_start
+- tapOn: "Rather type it in yourself.*"
+- takeScreenshot: 02_manual_form
+- tapOn: "The Gentlemen.*"
+- inputText: "Jack's Barbershop"
+- tapOn: "Choose Your Colors.*"
+- tapOn: "Add your services.*"
+- takeScreenshot: 03_services_open
+- tapOn: "Haircut"
+- tapOn: "Beard trim"
+- tapOn: "Hot towel shave"
+- takeScreenshot: 04_services_ticked
+- scrollUntilVisible:
+    element: "Build My Barbershop Website"
+- takeScreenshot: 05_before_build
+- tapOn: "Build My Barbershop Website"
+- extendedWaitUntil:
+    visible: "Don't have"
+    timeout: 60000
+- takeScreenshot: 06_step1_booking_card
+- tapOn: "Don't have"
+- takeScreenshot: 07_final_details_card
+- tapOn: "Dallas, TX"
+- inputText: "Austin, TX"
+- tapOn: "\\(555\\) 123-4567"
+- inputText: "5125550142"
+- takeScreenshot: 08_details_filled
+- tapOn: "Finish generating"
+- extendedWaitUntil:
+    visible: "Got it.*"
+    timeout: 20000
+- takeScreenshot: 09_exit_notice
+- tapOn: "Got it.*"
+- takeScreenshot: 10_editor_home
+- scrollUntilVisible:
+    element: "Add photos"
+    optional: true
+- takeScreenshot: 11_editor_photo_nudge
