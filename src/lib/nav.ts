@@ -25,3 +25,22 @@ export function goBackOrHome(): void {
     .then((s) => resetTo(homeRoute(s)))
     .catch(() => resetTo('/start'));
 }
+
+// Set when "Update my site" (a Bookings or Store setup prompt) starts a publish: that publish's live screen
+// returns to the setup screen the barber was on, not to Settings.
+let returnAfterLive = false;
+export const markReturnAfterLive = (): void => {
+  returnAfterLive = true;
+};
+/** Read once when the live screen opens. */
+export function takeReturnAfterLive(): boolean {
+  const v = returnAfterLive;
+  returnAfterLive = false;
+  return v;
+}
+
+/** The live screen's Done: back to where the barber was (setup prompt), else the Settings tab. */
+export function leaveLive(back: boolean): void {
+  if (back && router.canGoBack()) router.back();
+  else resetTo('/settings');
+}

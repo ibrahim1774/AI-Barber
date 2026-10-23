@@ -9,7 +9,7 @@ import { CheckCircleIcon, CheckIcon, CloseIcon, CopyIcon } from '@/components/Ic
 import { track } from '@/lib/analytics';
 import { useSession } from '@/lib/auth';
 import { useEntitlements } from '@/lib/entitlements';
-import { homeRoute, resetTo } from '@/lib/nav';
+import { homeRoute, leaveLive, resetTo, takeReturnAfterLive } from '@/lib/nav';
 import { loadMyShop } from '@/lib/shop';
 import { loadSite } from '@/lib/siteStore';
 import { useLinkActions } from '@/lib/useLinkActions';
@@ -23,6 +23,7 @@ export default function Live() {
   const { session, ready } = useSession();
   const [saveDismissed, setSaveDismissed] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [returnBack] = useState(takeReturnAfterLive);
   const [shopName, setShopName] = useState('');
   const { open, copy, copied } = useLinkActions(url, 'live');
   // A Bookings or Store plan bought on the publish paywall: the next step is its booking page.
@@ -53,10 +54,10 @@ export default function Live() {
 
   if (!url) return <View style={styles.root} />;
 
-  // Done → the Settings tab, where the live link stays.
+  // Done → where the barber was (after "Update my site"), else the Settings tab, where the live link stays.
   const done = () => {
     track('live_done_tapped');
-    resetTo('/settings');
+    leaveLive(returnBack);
   };
 
   return (

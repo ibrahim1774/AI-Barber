@@ -6,6 +6,7 @@ import { track } from '@/lib/analytics';
 import { api } from '@/lib/api';
 import { canonicalLinks, linksOf, linksToSend, type LiveLinks } from '@/lib/bookingChoice';
 import { getEntitlements, type Entitlements } from '@/lib/entitlements';
+import { markReturnAfterLive } from '@/lib/nav';
 import { loadLinkContext } from '@/lib/linkContext';
 import { isAiBarberBookingUrl } from '@/lib/shop';
 import { loadSite, type SiteRecord } from '@/lib/siteStore';
@@ -121,6 +122,7 @@ function updateSite(source: 'bookings' | 'store'): void {
   closeAlert();
   if (pushed) return;
   pushed = true;
+  markReturnAfterLive();
   track('setup_prompt_update', { source });
   router.push('/publishing');
 }
