@@ -123,6 +123,29 @@ describe('the Google path, end to end', () => {
     expect(mockReplace).not.toHaveBeenCalled();
   });
 
+  it('a failed import keeps the candidate list so the barber can retry or pick another', async () => {
+    const real = (global as any).fetch;
+    (global as any).fetch = jest.fn(async (url: string) => {
+      if (new URL(url).pathname === '/api/import-business') {
+        return { status: 500, ok: false, text: async () => JSON.stringify({ error: 'e2e-internal' }) };
+      }
+      return real(url);
+    });
+    const tree = await render(<FindListing />);
+    await act(async () => byLabel(tree, 'Your shop name and city').props.onChangeText('Kings Barber'));
+    await press(tree, 'Find my business');
+    const pickRow = () => tree.root.findAll((n: any) => n.props?.accessibilityRole === 'button' && typeof n.props.onPress === 'function'
+      && allText({ root: n }).join('').startsWith('Kings Barber Shop'))[0];
+    await act(async () => { pickRow().props.onPress(); await new Promise((r) => setTimeout(r, 20)); });
+    const text = allText(tree).join(' | ');
+    expect(text).not.toContain('e2e-internal');
+    expect(text).toContain('Brooklyn');
+    expect(pickRow()).toBeDefined();
+    (global as any).fetch = real;
+    await act(async () => { pickRow().props.onPress(); await new Promise((r) => setTimeout(r, 20)); });
+    expect(allText(tree).join(' ')).toContain('Is this you?');
+  });
+
   it('"Not my business" goes back to the search and builds nothing', async () => {
     const tree = await toConfirm();
     await press(tree, 'Not my business');

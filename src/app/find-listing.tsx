@@ -97,6 +97,7 @@ export default function FindListing() {
     void fetchOnly(
       () => fetchListing(pick),
       (payload) => {
+        setCandidates(null);
         setFound({ payload, match: listingMatch(payload) });
         setConfirmed(false);
         setPicks({});
@@ -156,7 +157,8 @@ export default function FindListing() {
 
   const handlePick = (placeId: string) => {
     if (busy) return;
-    setCandidates(null);
+    // The list stays up while importing; it is cleared only on success (see runImport), so a failed
+    // import leaves it there for a retry or another pick.
     runImport({ placeId });
   };
 

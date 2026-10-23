@@ -74,6 +74,17 @@ const TIMEOUT_MESSAGE =
   'This is taking longer than it should. Tap Build my website once more — the second try is usually faster.';
 const OFFLINE_MESSAGE = "Couldn't reach AI Barber — check your connection and try again.";
 
+const GENERIC_MESSAGE = "Couldn't do that right now. Try again in a moment.";
+
+/**
+ * A server string may be shown to the user only when it is a short readable
+ * sentence ("No shop found at that link"). Codes like `bad-request` or
+ * `e2e-internal`, and anything long or technical, never reach the screen.
+ */
+function isReadable(msg: string): boolean {
+  return msg.length > 0 && msg.length <= 140 && /\s/.test(msg) && !/^[\w.-]+:/.test(msg) && !/[{}<>]/.test(msg);
+}
+
 interface RequestOpts {
   headers?: Record<string, string>;
   timeoutMs?: number;
@@ -116,8 +127,13 @@ async function post<T>(path: string, body: unknown, opts: RequestOpts = {}): Pro
     throw new ApiError(
       status,
       serverMsg || `http-${status}`,
-      serverMsg ||
-        (status >= 500 ? opts.slowMessage ?? SLOW_MESSAGE : opts.failMessage ?? 'Import failed'),
+      status >= 500
+        ? opts.slowMessage ?? SLOW_MESSAGE
+        : isReadable(serverMsg)
+          ? serverMsg
+          : serverMsg
+            ? GENERIC_MESSAGE
+            : opts.failMessage ?? 'Import failed',
       data,
     );
   }

@@ -22,6 +22,28 @@ describe('api', () => {
     expect(err.message).toBe('No shop found at that link');
   });
 
+  it('never shows a raw server code or a 5xx server string to the user', async () => {
+    mockFetch.mockResolvedValue(res(500, { error: 'e2e-internal' }));
+    const err = await api.importScrape('https://booksy.com/x').catch((e) => e);
+    expect(err.code).toBe('e2e-internal');
+    expect(err.message).not.toMatch(/e2e-internal/);
+    expect(err.message).toMatch(/took too long/);
+
+    mockFetch.mockResolvedValue(res(502, { error: 'Upstream exploded: ECONNRESET at db-3' }));
+    const e2 = await api.importScrape('https://booksy.com/x').catch((e) => e);
+    expect(e2.message).not.toMatch(/ECONNRESET/);
+  });
+
+  it('replaces a slug-style 4xx code with friendly copy but keeps the code', async () => {
+    mockFetch.mockResolvedValue(res(400, { error: 'bad-request' }));
+    const err = await api.iosPublish({ transactionId: 't', siteData: {} as any }).catch((e) => e);
+    expect(err.code).toBe('bad-request');
+    expect(err.message).toBe("Couldn't do that right now. Try again in a moment.");
+    mockFetch.mockResolvedValue(res(429, { error: 'rate_limited' }));
+    const e2 = await api.importScrape('https://x').catch((e) => e);
+    expect(e2.message).toBe("Couldn't do that right now. Try again in a moment.");
+  });
+
   it('uses the web fallback copy for 5xx with an HTML body and http-<status> code', async () => {
     mockFetch.mockResolvedValue(res(504, '<html>timeout</html>', true));
     const err = await api.importScrape('https://booksy.com/x').catch((e) => e);
