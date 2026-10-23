@@ -128,16 +128,13 @@ export function ProductForm({ visible, shopId, product, onClose, onSubmit, onDel
           </ScrollView>
           {!!errors.photos && <Note tone="error">{errors.photos}</Note>}
 
-          <Label>Name</Label>
-          <Input label="Name" value={draft.name} onChangeText={(t) => patch({ name: t })} placeholder="e.g. Matte pomade" maxLength={80} autoFocus={!product} />
+          <Input title="Name" label="Name" value={draft.name} onChangeText={(t) => patch({ name: t })} placeholder="e.g. Matte pomade" maxLength={80} autoFocus={!product} />
           {!!errors.name && <Note tone="error">{errors.name}</Note>}
 
-          <Label>Price</Label>
-          <Input label="Price in dollars" value={draft.price} onChangeText={(t) => patch({ price: t })} keyboardType="decimal-pad" placeholder="12.50" />
+          <Input title="Price" label="Price in dollars" value={draft.price} onChangeText={(t) => patch({ price: t })} keyboardType="decimal-pad" placeholder="12.50" />
           {!!errors.price && <Note tone="error">{errors.price}</Note>}
 
-          <Label>Description (optional)</Label>
-          <Input label="Description" value={draft.description} onChangeText={(t) => patch({ description: t })} multiline />
+          <Input title="Description (optional)" label="Description" value={draft.description} onChangeText={(t) => patch({ description: t })} multiline />
           {!!errors.description && <Note tone="error">{errors.description}</Note>}
 
           <ToggleRow

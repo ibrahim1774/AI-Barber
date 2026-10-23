@@ -162,10 +162,8 @@ function BarberForm({
           <TextAction title={photo ? 'Change photo' : 'Add photo'} onPress={() => void pick()} disabled={uploading} />
           {uploading && <ActivityIndicator color={colors.accent} />}
         </View>
-        <Label>Name</Label>
-        <Input label="Name" value={name} onChangeText={setName} placeholder="e.g. Mike" />
-        <Label>Short bio (optional)</Label>
-        <Input label="Bio" value={bio} onChangeText={setBio} multiline />
+        <Input title="Name" label="Name" value={name} onChangeText={setName} placeholder="e.g. Mike" />
+        <Input title="Short bio (optional)" label="Bio" value={bio} onChangeText={setBio} multiline />
         <Label>Services they do</Label>
         <Chips>
           <Chip label="All services" selected={selected === null} onPress={() => setSelected(null)} />

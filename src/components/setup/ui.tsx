@@ -1,6 +1,21 @@
-import type { ReactNode } from 'react';
-import { Pressable, StyleSheet, Switch, Text, TextInput, View, type TextInputProps } from 'react-native';
+import { forwardRef, useRef, type ReactNode } from 'react';
+import { InputAccessoryView, Keyboard, Platform, Pressable, StyleSheet, Switch, Text, TextInput, View, type TextInputProps } from 'react-native';
 import { colors, fonts } from '@/constants/theme';
+
+/** The decimal and number keypads have no Return key; this bar above them gives them a Done (mounted once, in the root layout). */
+export const NUMERIC_DONE_ID = 'numeric-done';
+export function NumericDoneBar() {
+  if (Platform.OS !== 'ios') return null;
+  return (
+    <InputAccessoryView nativeID={NUMERIC_DONE_ID}>
+      <View style={s.doneBar}>
+        <Pressable onPress={() => Keyboard.dismiss()} hitSlop={8} accessibilityRole="button" accessibilityLabel="Done">
+          <Text style={s.doneText}>Done</Text>
+        </Pressable>
+      </View>
+    </InputAccessoryView>
+  );
+}
 
 export function Card({ title, children }: { title?: string; children: ReactNode }) {
   return (
@@ -26,18 +41,39 @@ export function Note({ children, tone }: { children: ReactNode; tone?: 'warn' | 
   );
 }
 
-export function Input(props: TextInputProps & { label: string }) {
-  const { label, ...rest } = props;
-  return (
+/**
+ * A text input. With `title` it draws its own caption above it, and tapping the caption focuses the input
+ * (the accessibility `label` stays on the input, so VoiceOver skips the caption).
+ */
+export const Input = forwardRef<TextInput, TextInputProps & { label: string; title?: string }>(function Input(props, ref) {
+  const { label, title, ...rest } = props;
+  const inner = useRef<TextInput | null>(null);
+  const setRef = (node: TextInput | null) => {
+    inner.current = node;
+    if (typeof ref === 'function') ref(node);
+    else if (ref) ref.current = node;
+  };
+  const input = (
     <TextInput
+      ref={setRef}
       accessibilityLabel={label}
       placeholderTextColor="rgba(255,255,255,0.3)"
       selectionColor={colors.accent}
+      inputAccessoryViewID={rest.keyboardType === 'decimal-pad' || rest.keyboardType === 'number-pad' ? NUMERIC_DONE_ID : undefined}
       {...rest}
       style={[s.input, rest.multiline && { minHeight: 64, textAlignVertical: 'top' }, rest.style]}
     />
   );
-}
+  if (!title) return input;
+  return (
+    <View style={{ gap: 10 }}>
+      <Text onPress={() => inner.current?.focus()} importantForAccessibility="no" accessibilityElementsHidden style={s.label}>
+        {title}
+      </Text>
+      {input}
+    </View>
+  );
+});
 
 export function Chip({ label, selected, onPress }: { label: string; selected?: boolean; onPress(): void }) {
   return (
@@ -61,10 +97,17 @@ export function ToggleRow({
 }: { label: string; detail?: string; value: boolean; onValueChange(v: boolean): void; disabled?: boolean }) {
   return (
     <View style={s.toggle}>
-      <View style={{ flex: 1 }}>
+      {/* Tapping the text flips the switch, like a row in Settings. The Switch carries the accessibility label. */}
+      <Pressable
+        style={{ flex: 1 }}
+        disabled={disabled}
+        onPress={() => onValueChange(!value)}
+        importantForAccessibility="no"
+        accessibilityElementsHidden
+      >
         <Text style={s.toggleLabel}>{label}</Text>
         {!!detail && <Text style={s.toggleDetail}>{detail}</Text>}
-      </View>
+      </Pressable>
       <Switch
         value={value}
         onValueChange={onValueChange}
@@ -125,6 +168,8 @@ export function Stepper({
 }
 
 export const s = StyleSheet.create({
+  doneBar: { flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: '#1c1c1e' },
+  doneText: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.accent },
   card: {
     borderRadius: 14, borderWidth: 1, borderColor: colors.hair, backgroundColor: 'rgba(255,255,255,0.04)',
     padding: 16, marginBottom: 16, gap: 10,

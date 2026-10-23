@@ -138,7 +138,7 @@ describe('store setup', () => {
 
   it('will not open with neither pickup nor shipping', async () => {
     const tree = await render(<StoreSetup />);
-    await toggle(tree, 'Pickup', false);
+    await toggle(tree, 'Offer pickup', false);
     await press(tree, 'Open my shop');
     expect(mockUpdateSettings).not.toHaveBeenCalled();
     expect(allText(tree).join(' ')).toContain('Turn on pickup, shipping, or both');
@@ -146,7 +146,7 @@ describe('store setup', () => {
 
   it('saves edited shipping settings in cents', async () => {
     const tree = await render(<StoreSetup />);
-    await toggle(tree, 'Shipping', true);
+    await toggle(tree, 'Offer shipping', true);
     await typeInto(tree, 'Flat shipping rate', '$7.50');
     await typeInto(tree, 'Ships within days', '3');
     await press(tree, 'Save');

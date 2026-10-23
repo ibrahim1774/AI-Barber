@@ -131,8 +131,7 @@ export function GetPaid({ shop, onChanged }: { shop: Shop; onChanged(): void }) 
         </Note>
         {METHODS.map((m) => (
           <Fragment key={m.key}>
-            <Label>{m.label}</Label>
-            <Input
+            <Input title={m.label}
               label={m.label}
               value={inputs[m.key]}
               onChangeText={(t) => setInputs((p) => ({ ...p, [m.key]: t }))}

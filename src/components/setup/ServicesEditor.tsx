@@ -42,18 +42,15 @@ export function ServicesEditorView({ ed }: { ed: Ed }) {
     const existing = ed.services.find((x) => x.id === view.id);
     return (
       <View style={{ gap: 6 }}>
-        <Label>Name</Label>
-        <Input label="Name" value={d.name} onChangeText={(t) => ed.setDraft({ name: t })} placeholder="e.g. Skin fade" autoFocus={view.id == null} />
-        <Label>Price</Label>
-        <Input label="Price in dollars" value={d.price} onChangeText={(t) => ed.setDraft({ price: t })} keyboardType="decimal-pad" placeholder="30 (leave blank to ask)" />
+        <Input title="Name" label="Name" value={d.name} onChangeText={(t) => ed.setDraft({ name: t })} placeholder="e.g. Skin fade" autoFocus={view.id == null} />
+        <Input title="Price" label="Price in dollars" value={d.price} onChangeText={(t) => ed.setDraft({ price: t })} keyboardType="decimal-pad" placeholder="30 (leave blank to ask)" />
         <Label>Length</Label>
         <Chips>
           {DURATIONS.map((m) => (
             <Chip key={m} label={durationLabel(m)} selected={d.durationMin === m} onPress={() => ed.setDraft({ durationMin: m })} />
           ))}
         </Chips>
-        <Label>Description (optional)</Label>
-        <Input label="Description" value={d.description} onChangeText={(t) => ed.setDraft({ description: t })} multiline />
+        <Input title="Description (optional)" label="Description" value={d.description} onChangeText={(t) => ed.setDraft({ description: t })} multiline />
         <Label>Photo (optional)</Label>
         <View style={st.photoRow}>
           {!!d.photoUrl && <Image source={{ uri: d.photoUrl }} style={st.thumb} />}

@@ -130,11 +130,10 @@ export function StoreSettingsForm({ shop, onChanged }: { shop: Shop; onChanged?(
   return (
     <>
       <Card title="Pickup">
-        <ToggleRow label="Pickup" detail="Customers collect from you." value={form.pickup} onValueChange={(v) => set({ pickup: v })} />
+        <ToggleRow label="Offer pickup" detail="Customers collect from you." value={form.pickup} onValueChange={(v) => set({ pickup: v })} />
         {form.pickup && (
           <>
-            <Label>Pickup instructions</Label>
-            <Input
+            <Input title="Pickup instructions"
               label="Pickup instructions"
               placeholder="Ask at the front desk, or text when you're outside."
               value={form.pickupNote}
@@ -146,13 +145,11 @@ export function StoreSettingsForm({ shop, onChanged }: { shop: Shop; onChanged?(
         )}
       </Card>
       <Card title="Shipping">
-        <ToggleRow label="Shipping" detail="One flat rate per order." value={form.shipping} onValueChange={(v) => set({ shipping: v })} />
+        <ToggleRow label="Offer shipping" detail="One flat rate per order." value={form.shipping} onValueChange={(v) => set({ shipping: v })} />
         {form.shipping && (
           <>
-            <Label>Flat shipping rate</Label>
-            <Input label="Flat shipping rate" placeholder="$5.00" value={form.shippingFlat} onChangeText={(v) => set({ shippingFlat: v })} keyboardType="decimal-pad" />
-            <Label>Ships within (days)</Label>
-            <Input label="Ships within days" placeholder="3" value={form.shipsWithin} onChangeText={(v) => set({ shipsWithin: v })} keyboardType="number-pad" />
+            <Input title="Flat shipping rate" label="Flat shipping rate" placeholder="$5.00" value={form.shippingFlat} onChangeText={(v) => set({ shippingFlat: v })} keyboardType="decimal-pad" />
+            <Input title="Ships within (days)" label="Ships within days" placeholder="3" value={form.shipsWithin} onChangeText={(v) => set({ shipsWithin: v })} keyboardType="number-pad" />
           </>
         )}
       </Card>
