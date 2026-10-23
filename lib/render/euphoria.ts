@@ -11,7 +11,7 @@ import type { WebsiteData } from '../../types';
 import { safeHref } from './safeHref.js';
 import { bookStripHtml, isSiteBookLink, shopPreviewHtml, type SectionSkin } from './subpages.js';
 import {
-  contactEmail, copyrightYear, displayPhone, displayPrice, hasServices, nicheOf, photoAlt, serviceMeta, siteDescription, siteTitle, withoutLegacyCopy,
+  contactEmail, copyrightYear, displayPhone, displayPrice, hasServices, nicheOf, photoAlt, serviceMeta, siteDescription, siteTitle, teamBookLink, teamOf, firstName, withoutLegacyCopy,
 } from './honest.js';
 import { t, type LabelKey } from './labels.js';
 
@@ -279,6 +279,35 @@ export function generateEuphoriaHTMLWithPlaceholders(input: WebsiteData): string
 </section>`
     : '';
 
+  // Team (honest.ts teamOf: max 5 cards, the stored staff[] is never cut). Book button rules: teamBookLink.
+  const team = teamOf(siteData);
+  const bookingLive = isSiteBookLink(siteData.bookingUrl);
+  const teamMarkup = team.length > 0
+    ? `<!-- Team -->
+  <section id="team" class="eu-section" style="padding-top:64px;padding-bottom:96px;">
+  <style>.ab-team-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:24px}.ab-team-card{display:flex;flex-direction:column;gap:8px}.ab-team-photo{width:100%;aspect-ratio:4/5;object-fit:cover;background:var(--eu-bg-3);display:flex;align-items:center;justify-content:center;font-size:2.4rem;color:var(--eu-brand)}.ab-team-bio{margin:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.ab-team-chips{display:flex;flex-wrap:wrap;gap:6px}.ab-team-chip{font-size:10px;letter-spacing:.12em;text-transform:uppercase;border:1px solid var(--eu-line-soft);padding:3px 8px;color:var(--eu-ink-soft)}</style>
+  <div class="eu-container">
+    <div style="margin-bottom:48px;">
+      <div class="eu-eyebrow">${L('euTeamEyebrow')}</div>
+      <h2 class="eu-display" style="font-size:42px;margin-top:12px;">${L('euTeamHeading')}</h2>
+    </div>
+    <div class="ab-team-grid">
+      ${team.map((m) => {
+        const link = teamBookLink(siteData, m, bookingLive);
+        return `<div class="ab-team-card" id="team-${escapeHtml(m.slug)}">
+        ${m.photo ? `<img class="ab-team-photo" src="{{staff${m.index}}}" alt="${escapeHtml(m.name)}">` : `<div class="ab-team-photo" aria-hidden="true">${escapeHtml(Array.from(m.name)[0].toUpperCase())}</div>`}
+        <h3 class="eu-serif" style="font-size:22px;margin:8px 0 0;">${escapeHtml(m.name)}</h3>
+        ${m.role ? `<div class="eu-eyebrow">${escapeHtml(m.role)}</div>` : ''}
+        ${m.bio ? `<p class="eu-serif ab-team-bio" style="color:var(--eu-ink-soft);font-size:16px;line-height:1.5;">${escapeHtml(m.bio)}</p>` : ''}
+        ${m.serviceNames ? `<div class="ab-team-chips">${m.serviceNames.map((n) => `<span class="ab-team-chip">${escapeHtml(n)}</span>`).join('')}</div>` : ''}
+        ${link ? `<a href="${escapeHtml(link.href)}"${link.newTab ? ' target="_blank" rel="noopener noreferrer"' : ''} class="eu-cta" style="margin-top:8px;justify-content:center;">${L('teamBookWith')} ${escapeHtml(firstName(m.name))}</a>` : ''}
+      </div>`;
+      }).join('')}
+    </div>
+  </div>
+  </section>`
+    : '';
+
   const aboutImageMarkup = siteData.about.imageUrl
     ? `<div class="eu-img-tile" style="aspect-ratio: 4/5;"><img src="{{about}}" alt="${altAttr}"></div>`
     : '';
@@ -392,7 +421,7 @@ ${EUPHORIA_SCOPED_CSS}
 
   ${servicesMarkup}${bookStrip}
 
-  ${galleryMarkup}${shopPreview}
+  ${galleryMarkup}${teamMarkup}${shopPreview}
 
   <!-- Visit -->
   <section class="eu-section" style="background:var(--eu-bg-2);">

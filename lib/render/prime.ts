@@ -13,7 +13,7 @@ import { bookStripHtml, isSiteBookLink, shopPreviewHtml, type SectionSkin } from
 import {
   aggregateToShow, copyrightYear, displayPrice, galleryIsAllOwnPhotos, hasServices, nicheCopy, photoAlt,
   displayPhone, nicheOf, photosAreFromBookingPage, policyToShow, reviewStars, reviewsSourceLabel, serviceMeta,
-  siteDescription, siteTitle, visibleReviews, withoutLegacyCopy,
+  siteDescription, siteTitle, teamBookLink, teamOf, firstName, visibleReviews, withoutLegacyCopy,
 } from './honest.js';
 import { ratingLineCustom, t, type LabelKey } from './labels.js';
 
@@ -323,6 +323,34 @@ export function generatePrimeHTMLWithPlaceholders(input: WebsiteData): string {
 </section>`
     : '';
 
+  // Team (honest.ts teamOf: max 5 cards, the stored staff[] is never cut). Book button rules: teamBookLink.
+  const team = teamOf(siteData);
+  const bookingLive = isSiteBookLink(siteData.bookingUrl);
+  const teamSection = team.length > 0
+    ? `<section id="team" class="p-section" style="padding-top:48px;">
+  <style>.ab-team-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:20px;max-width:1000px;margin:0 auto}.ab-team-card{text-align:center;display:flex;flex-direction:column;gap:8px}.ab-team-photo{width:100%;aspect-ratio:1/1;object-fit:cover;background:var(--p-bg-3);display:flex;align-items:center;justify-content:center;font-size:2.4rem;color:var(--p-brand)}.ab-team-bio{margin:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.ab-team-chips{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}.ab-team-chip{font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--p-line);padding:3px 8px}</style>
+  <div class="p-container">
+    <div style="text-align:center;margin-bottom:32px;">
+      <div class="p-eyebrow">${L('primeTeamEyebrow')}</div>
+      <h2 class="p-display" style="font-size:clamp(28px,4.5vw,44px);margin-top:12px;"><span class="p-italic" style="color:var(--p-brand);">${L('primeTeamHeading')}</span></h2>
+    </div>
+    <div class="ab-team-grid">
+      ${team.map((m) => {
+        const link = teamBookLink(siteData, m, bookingLive);
+        return `<div class="p-review-card ab-team-card" id="team-${escapeHtml(m.slug)}">
+        ${m.photo ? `<img class="ab-team-photo" src="{{staff${m.index}}}" alt="${escapeHtml(m.name)}">` : `<div class="ab-team-photo" aria-hidden="true">${escapeHtml(Array.from(m.name)[0].toUpperCase())}</div>`}
+        <h3 class="p-serif" style="font-size:1.2rem;margin:0;">${escapeHtml(m.name)}</h3>
+        ${m.role ? `<div class="p-eyebrow" style="font-size:10px;">${escapeHtml(m.role)}</div>` : ''}
+        ${m.bio ? `<p class="p-serif p-italic ab-team-bio" style="color:var(--p-ink-soft);font-size:0.9rem;">${escapeHtml(m.bio)}</p>` : ''}
+        ${m.serviceNames ? `<div class="ab-team-chips">${m.serviceNames.map((n) => `<span class="ab-team-chip">${escapeHtml(n)}</span>`).join('')}</div>` : ''}
+        ${link ? `<a href="${escapeHtml(link.href)}"${link.newTab ? ' target="_blank" rel="noopener noreferrer"' : ''} class="p-cta" style="padding:10px 14px;font-size:10px;justify-content:center;">${L('teamBookWith')} ${escapeHtml(firstName(m.name))}</a>` : ''}
+      </div>`;
+      }).join('')}
+    </div>
+  </div>
+</section>`
+    : '';
+
   // Reviews.
   const reviews = visibleReviews(siteData);
   const reviewsSection = reviews.length > 0
@@ -455,7 +483,7 @@ ${PRIME_SCOPED_CSS}
 
   ${policySection}
 
-  ${gallerySection}
+  ${gallerySection}${teamSection}
 
   ${reviewsSection}
 
