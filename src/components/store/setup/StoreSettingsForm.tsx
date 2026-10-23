@@ -5,10 +5,11 @@ import { Button } from '@/components/Button';
 import { ShareSheet } from '@/components/ShareSheet';
 import { Card, Input, Label, Note, Row, ToggleRow } from '@/components/setup/ui';
 import { colors } from '@/constants/theme';
+import { loadSite } from '@/lib/siteStore';
 import { updateSiteData } from '@/lib/setup/siteSync';
 import type { Shop } from '@/lib/shop';
 import {
-  loadStoreSettings, updateStoreSettings, type StoreSettings,
+  listProducts, loadStoreSettings, updateStoreSettings, type StoreSettings,
 } from '@/lib/store/data';
 import { canOpenShop, formFromSettings, validateSettings, type SettingsForm } from '@/lib/store/settings';
 import { useUpdateSitePrompt } from '@/lib/setupPrompt';
@@ -119,6 +120,8 @@ export function StoreSettingsForm({ shop, onChanged }: { shop: Shop; onChanged?(
         );
         return;
       }
+      // Opening an empty shop asks nothing yet: the Shop button is offered with the first product (Store tab).
+      if (open && (await listProducts(shop.id).catch(() => [])).length === 0 && (await loadSite().catch(() => null))?.deployedUrl) return;
       // A live site: offer to add / remove the Shop button now. Not published yet: the next Publish adds it.
       const asked = await sitePrompt.offer().catch(() => 'no-change' as const);
       if (asked === 'unpublished' && open) Alert.alert('Your shop is open', 'Publish to add a Shop link to your website.');

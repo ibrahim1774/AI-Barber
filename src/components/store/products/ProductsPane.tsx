@@ -19,13 +19,15 @@ const PAD = 16;
  * Read-only when `locked` (the hosting lapse).
  */
 export function ProductsPane({
-  shopId, locked, lockReason = 'lapsed', onUpgrade,
+  shopId, locked, lockReason = 'lapsed', onUpgrade, onFirstProduct,
 }: {
   shopId: string;
   locked: boolean;
   /** 'lapsed': the subscription ended. 'plan': the plan doesn't include the Store (upgrade invited). */
   lockReason?: 'lapsed' | 'plan';
   onUpgrade?(): void;
+  /** The shop's very first product was just saved. */
+  onFirstProduct?(): void;
 }) {
   const planLock = locked && lockReason === 'plan';
   const { width } = useWindowDimensions();
@@ -47,7 +49,12 @@ export function ProductsPane({
   const submit = async (d: ProductDraft): Promise<boolean> => {
     const next = draftToProduct(d);
     const cur = form?.product;
-    if (!cur) return add(next);
+    if (!cur) {
+      const first = products.length === 0;
+      const ok = await add(next);
+      if (ok && first) onFirstProduct?.();
+      return ok;
+    }
     // Send only what changed.
     const patch: Partial<typeof next> = {};
     if (next.name !== cur.name) patch.name = next.name;

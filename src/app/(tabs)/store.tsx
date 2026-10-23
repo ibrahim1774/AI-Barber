@@ -15,6 +15,7 @@ import { loadMyShop, type Shop } from '@/lib/shop';
 import { loadSite, type SiteRecord } from '@/lib/siteStore';
 import { isLocked, useSubscriptionStatus } from '@/lib/subscriptionStatus';
 import { useOpenStoreUpgrade, useStoreAccess } from '@/lib/store/gate';
+import { useUpdateSitePrompt } from '@/lib/setupPrompt';
 import { countNewOrders, hasAnyOrders, loadStoreSettings } from '@/lib/store/data';
 
 type Phase = 'loading' | 'error' | 'no-store' | 'ready';
@@ -42,6 +43,7 @@ export default function Store() {
   const [tab, setTab] = useState<Tab>(params.tab === 'orders' ? 'orders' : 'products');
   const [sharing, setSharing] = useState(false);
   const seq = useRef(0);
+  const sitePrompt = useUpdateSitePrompt('store');
 
   // A push tap while the tab is mounted changes the params.
   useEffect(() => {
@@ -178,7 +180,10 @@ export default function Store() {
       />
       <View style={styles.flex}>
         {tab === 'products' ? (
-          <ProductsPane shopId={shop.id} locked={locked} lockReason={lapsed ? 'lapsed' : 'plan'} onUpgrade={upgrade.open} />
+          <ProductsPane shopId={shop.id} locked={locked} lockReason={lapsed ? 'lapsed' : 'plan'} onUpgrade={upgrade.open}
+            // The Shop button is offered once there is something to buy.
+            onFirstProduct={() => { if (storeOpen) void sitePrompt.offer().catch(() => {}); }}
+          />
         ) : (
           <OrdersPane
             shopId={shop.id}

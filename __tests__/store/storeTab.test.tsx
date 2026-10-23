@@ -46,7 +46,7 @@ jest.mock('@/lib/store/data', () => ({
 }));
 let mockAccess = 'active';
 jest.mock('@/lib/store/gate', () => ({
-  useStoreAccess: () => ({ status: mockAccess, expired: false, retry: () => {} }),
+  useStoreAccess: () => ({ status: mockAccess, expired: false, hosting: true, retry: () => {} }),
   useOpenStoreUpgrade: () => ({ open: jest.fn(), busy: false }),
 }));
 

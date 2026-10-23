@@ -34,11 +34,15 @@ jest.mock('@/lib/setup/ownerApi', () => ({
 }));
 const mockUpdateSite = jest.fn();
 jest.mock('@/lib/setup/siteSync', () => ({ updateSiteData: (...a: unknown[]) => mockUpdateSite(...a) }));
+const mockListProducts = jest.fn();
+const mockOffer = jest.fn();
+jest.mock('@/lib/setupPrompt', () => ({ useUpdateSitePrompt: () => ({ offer: () => mockOffer(), update: jest.fn() }) }));
 const mockLoadSettings = jest.fn();
 const mockUpdateSettings = jest.fn();
 jest.mock('@/lib/store/data', () => ({
   loadStoreSettings: (id: string) => mockLoadSettings(id),
   updateStoreSettings: (...a: unknown[]) => mockUpdateSettings(...a),
+  listProducts: (...a: unknown[]) => mockListProducts(...a),
   shopUrl: (s: { slug: string }) => `https://www.aibarber.org/shop/${s.slug}`,
 }));
 
@@ -61,6 +65,8 @@ beforeEach(() => {
   mockLoadMyShop.mockReset().mockResolvedValue(SHOP);
   mockShopSetup.mockReset().mockResolvedValue({ shop: { id: 's1', slug: 'fade-lab' } });
   mockUpdateSite.mockReset().mockResolvedValue(SITE);
+  mockListProducts.mockReset().mockResolvedValue([]);
+  mockOffer.mockReset().mockResolvedValue('unpublished');
   mockLoadSettings.mockReset().mockResolvedValue({ ...SETTINGS });
   mockUpdateSettings.mockReset().mockResolvedValue(undefined);
   takePostAuthReturn();
@@ -104,6 +110,18 @@ describe('store setup', () => {
     expect(change({ shopName: 'Fade Lab' }, {})).toEqual({ shopName: 'Fade Lab', shopUrl: '/shop' });
     expect(hasButton(tree, 'Close my shop')).toBe(true);
     expect(Alert.alert).toHaveBeenCalledWith('Your shop is open', 'Publish to add a Shop link to your website.');
+  });
+
+  it('opening an empty shop on a live site does not offer the Shop button yet; with a product it does', async () => {
+    mockLoadSite.mockResolvedValue({ ...SITE, deployedUrl: 'https://fade.test' });
+    const tree = await render(<StoreSetup />);
+    await press(tree, 'Open my shop');
+    expect(mockOffer).not.toHaveBeenCalled();
+    mockListProducts.mockResolvedValue([{ id: 'p1' }]);
+    mockLoadSettings.mockResolvedValue({ ...SETTINGS });
+    const again = await render(<StoreSetup />);
+    await press(again, 'Open my shop');
+    expect(mockOffer).toHaveBeenCalledTimes(1);
   });
 
   it('Close my shop clears shopUrl', async () => {
