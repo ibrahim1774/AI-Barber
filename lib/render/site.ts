@@ -17,7 +17,7 @@ import { copyrightYear, displayPhone, nicheOf, withoutLegacyCopy } from './hones
 import { aibThemeVars, generateHTMLWithPlaceholders, resolveAibTheme } from './luxe.js';
 import { t } from './labels.js';
 import { renderPageBody } from './pageBodies.js';
-import { buildPageSet, canonicalBase, plainText, sitemapXml, type PageContext, type PageFile, type PageSet, type SiteFile } from './pages.js';
+import { buildPageSet, canonicalBase, isMultiPage, singlePageSet, plainText, sitemapXml, type PageContext, type PageFile, type PageSet, type SiteFile } from './pages.js';
 import { euphoriaRootStyle, generateEuphoriaHTMLWithPlaceholders } from './euphoria.js';
 import { generatePrimeHTMLWithPlaceholders, primeRootStyle } from './prime.js';
 import { safeHref } from './safeHref.js';
@@ -87,7 +87,8 @@ export function renderSiteBundle(data: WebsiteData, opts: RenderSiteOptions = {}
   const template = known(templateOverride ?? data.template);
   const map = opts.imageUrls ?? imageUrlMapOf(data);
   const page: PageContext = { imageUrls: map };
-  const set = buildPageSet(data, page);
+  const full = buildPageSet(data, page);
+  const set = isMultiPage(data) ? full : singlePageSet(full);
   const prepared = forRender(data, map);
   const base = canonicalBase({ customDomain: opts.customDomain, siteBaseUrl: opts.siteBaseUrl });
 

@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { renderSite, renderSiteBundle } from '../../lib/render/site';
 import { generateHTMLWithPlaceholders } from '../../lib/render/luxe';
@@ -24,6 +26,7 @@ const full = (extra: Partial<WebsiteData> = {}): WebsiteData => ({
   hours: [{ day: 'Mon', open: '09:00', close: '17:00' }, { day: 'Sun', open: '', close: '', closed: true }],
   staff: [{ name: 'Sam Fade', role: 'Owner', photo: 'https://i.example.com/s.jpg', bio: 'Fades.', memberId: MID, serviceIds: ['x'], serviceNames: ['Skin Fade', 'Beard'] }],
   contact: { address: '1 Main St, Austin, TX', email: 'hi@fresh.com' },
+  pages: { order: [], hidden: [] }, // multi-page is opt-in (P3b review B1)
   ...extra,
 });
 
@@ -232,5 +235,28 @@ describe('page content', () => {
     const f = renderSite(full({ reviews, hiddenReviews: [reviewKey(reviews[0])] }));
     const h = byPath(f, 'reviews/index.html');
     expect(h).not.toContain('Great cut'); expect(h).toContain('Fine work');
+  });
+});
+
+describe('multi-page is opt-in (P3b review B1)', () => {
+  const golden = JSON.parse(readFileSync(join(__dirname, 'fixtures/prep3b-single-page.json'), 'utf8')) as Record<string, string>;
+  const imageUrls = { hero: 'https://i.example.com/h.jpg', gallery0: 'https://i.example.com/g0.jpg', gallery1: 'https://i.example.com/g1.jpg', gallery2: 'https://i.example.com/g2.jpg', staff0: 'https://i.example.com/s.jpg' };
+  const pending = (template: TemplateId): WebsiteData => {
+    const d = full({ template, hero: { heading: 'Fresh Cuts', tagline: 'Walk-ins welcome', imageUrl: 'x' }, gallery: ['x', 'x', 'x'] });
+    delete d.pages;
+    d.staff = d.staff!.map((s) => ({ ...s, photo: 'x' }));
+    return d;
+  };
+  it.each(TEMPLATES)('%s: a stored site with no pages renders ONLY index.html, identical to the pre-P3b output', (template) => {
+    const data = pending(template);
+    expect(data.pages).toBeUndefined();
+    const r = renderSiteBundle(data, { imageUrls });
+    expect(r.pages.map((f) => f.path)).toEqual(['index.html']);
+    expect(r.pages[0].html).toBe(golden[template]);
+    expect(r.sitemap).toBeNull();
+  });
+  it.each(TEMPLATES)('%s: with pages present the page set is built', (template) => {
+    const r = renderSiteBundle({ ...pending(template), pages: { order: [], hidden: [] } }, { imageUrls });
+    expect(r.pages.length).toBeGreaterThan(1);
   });
 });

@@ -34,6 +34,7 @@ const pending = (extra: Record<string, unknown> = {}, imageUrlMap: Record<string
     staff: [{ name: 'Sam', bio: 'Fades.', photo: 'uploaded', memberId: MID }],
     reviews: [{ author: 'A', rating: 5, comment: 'Great' }],
     hours: [{ day: 'Mon', open: '9', close: '5' }],
+    pages: { order: [], hidden: [] }, // multi-page is opt-in (P3b review B1)
     ...extra,
   },
   imageUrlMap: { ...imageUrlMap, ...(extra.staff === undefined ? { staff0: 'https://img.test/sam.jpg' } : {}) },

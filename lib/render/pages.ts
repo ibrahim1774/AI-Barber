@@ -314,6 +314,15 @@ export function buildPageSet(d: WebsiteData, ctx?: PageContext): PageSet {
   return { eligible, hidden, nav, files, services, team, shopInternal: isSiteShopLink(clean.shopUrl) };
 }
 
+/** Multi-page is opt-in: only a site whose data carries `pages` (the app writes it) gets more than Home. */
+export const isMultiPage = (d: Pick<WebsiteData, 'pages'>): boolean => !!d.pages && typeof d.pages === 'object';
+
+/** The page set of a site that has not opted in: Home alone, exactly the pre-P3b single page. */
+export function singlePageSet(set: PageSet): PageSet {
+  const home = set.files.find((f) => f.key === 'home') ?? { key: 'home' as PageKey, path: 'index.html', href: '/' };
+  return { eligible: ['home'], hidden: [], nav: ['home'], files: [home], services: [], team: [], shopInternal: set.shopInternal };
+}
+
 /** True when the site has pages beyond Home that are files (so the nav on Home links to them). */
 export const hasFilePages = (set: PageSet): boolean => set.files.some((f) => f.key !== 'home');
 
