@@ -50,6 +50,8 @@ export default function BookingsSetup() {
   const { session, ready } = useSession();
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' });
   const [sub, setSub] = useState<Sub>('hub');
+  // Set when the first-run wizard finishes: the hub opens with a "You're set" confirmation.
+  const [finished, setFinished] = useState(false);
   const signedIn = !!session;
   const latestTransactionId = useLatestTransactionId();
   const tier = useTierAccess('bookings');
@@ -157,9 +159,10 @@ export default function BookingsSetup() {
           shop={phase.shop}
           site={phase.site}
           onShopChanged={reloadShop}
-          onFinish={() => { setSub('hub'); setPhase({ ...phase, wizard: false }); void reloadShop(); }}
+          onFinish={() => { setSub('hub'); setFinished(true); setPhase({ ...phase, wizard: false }); void reloadShop(); }}
         />
       )}
+      {phase.kind === 'ready' && !phase.wizard && finished && sub === 'hub' && <YoureSet />}
       {phase.kind === 'ready' && !phase.wizard && (
         <SubView
           sub={sub}
@@ -171,6 +174,16 @@ export default function BookingsSetup() {
         />
       )}
     </Page>
+  );
+}
+
+/** The confirmation under the hub header right after the first-run wizard. */
+export function YoureSet() {
+  return (
+    <View style={st.set} accessibilityRole="summary" accessibilityLabel="You're set">
+      <Text style={st.setTitle}>You're set</Text>
+      <Text style={st.setBody}>Your booking setup is saved. You can change anything here any time.</Text>
+    </View>
   );
 }
 
@@ -230,6 +243,9 @@ function HoursPane({ shop }: { shop: Shop }) {
 }
 
 const st = StyleSheet.create({
+  set: { borderRadius: 14, borderWidth: 1, borderColor: colors.accent, padding: 16, marginBottom: 16, gap: 4 },
+  setTitle: { fontFamily: fonts.heading, fontSize: 18, color: colors.heading },
+  setBody: { fontFamily: fonts.body, fontSize: 14, lineHeight: 20, color: colors.body },
   center: { gap: 16 },
   h: { fontFamily: fonts.heading, fontSize: 24, color: colors.heading },
   p: { fontFamily: fonts.body, fontSize: 15, lineHeight: 22, color: colors.body },

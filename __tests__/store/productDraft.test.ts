@@ -39,6 +39,9 @@ describe('productDraft', () => {
     expect(formatPrice(1250)).toBe('$12.50');
     expect(formatPrice(1200)).toBe('$12');
     expect(formatPrice(5)).toBe('$0.05');
+    expect(formatPrice(1_000_000)).toBe('$10,000');
+    expect(formatPrice(123_456_789)).toBe('$1,234,567.89');
+    expect(validateDraft({ ...emptyDraft(), name: 'x', price: '99999999' }).price).toBe('The highest price is $10,000.');
   });
   it('round-trips a draft', () => {
     const p = draftToProduct({ ...ok, description: ' Strong hold ', photos: ['a', 'b'], soldOut: true });

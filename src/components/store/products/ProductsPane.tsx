@@ -188,7 +188,7 @@ export function ProductsPane({
                 <Image source={{ uri: p.photos[0] }} style={{ width: cardW, height: cardW, backgroundColor: 'rgba(255,255,255,0.08)' }} />
               ) : (
                 <View style={[styles.noPhoto, { width: cardW, height: cardW }]}>
-                  <Text style={styles.noPhotoText}>{p.name.trim().charAt(0).toUpperCase()}</Text>
+                  {!p.soldOut && <Text style={styles.noPhotoText}>{p.name.trim().charAt(0).toUpperCase()}</Text>}
                 </View>
               )}
               {p.soldOut && (
@@ -234,7 +234,7 @@ const styles = StyleSheet.create({
   plusText: { fontFamily: fonts.bodySemi, fontSize: 14, color: colors.accent },
   noPhoto: { alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.06)' },
   noPhotoText: { fontFamily: fonts.heading, fontSize: 40, color: colors.faint },
-  veil: { position: 'absolute', top: 0, left: 0, right: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(13,13,13,0.62)' },
+  veil: { position: 'absolute', top: 0, left: 0, right: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(13,13,13,0.72)' },
   veilText: { fontFamily: fonts.bodyBold, fontSize: 13, letterSpacing: 1, textTransform: 'uppercase', color: colors.text },
   meta: { paddingHorizontal: 12, paddingVertical: 10 },
   name: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.text },

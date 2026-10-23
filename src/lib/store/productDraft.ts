@@ -28,9 +28,9 @@ export function parsePrice(input: string): number | null {
   return Math.round(parseFloat(t.replace(/,/g, '')) * 100);
 }
 
-/** 1250 -> "$12.50", 1200 -> "$12". */
+/** 1250 -> "$12.50", 1200 -> "$12", 1000000 -> "$10,000". */
 export function formatPrice(cents: number): string {
-  const whole = Math.floor(cents / 100);
+  const whole = String(Math.floor(cents / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   const rest = cents % 100;
   return rest === 0 ? `$${whole}` : `$${whole}.${String(rest).padStart(2, '0')}`;
 }
