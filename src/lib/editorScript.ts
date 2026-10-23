@@ -12,7 +12,11 @@
  *    {type:'edit'|'image', path} for taps on editable things;
  *  - reports scrollY (after the native side has restored it) and posts 'ready'
  *    on load so the native side can restore the scroll position after a
- *    re-render reloads the document.
+ *    re-render reloads the document;
+ *  - reports where each tappable photo ([data-edit-image]) is on screen
+ *    ('rects', the visible part of it) after load, resize, layout change and
+ *    when scrolling stops, and 'scrolling' when it starts, so the native
+ *    "Change image" pills can sit on the photos and hide while they move.
  *
  * Plain ES5, ASCII-only source (no backslash escapes: Babel cooks \u escapes
  * even inside String.raw) — it is a string, not compiled.
@@ -91,11 +95,44 @@ export const EDITOR_JS = String.raw`(function () {
     }
   }, true);
 
+  // Photo rectangles for the native "Change image" pills: the visible part of
+  // every [data-edit-image], in viewport points, small and capped.
+  var rectTimer = null;
+  var moving = false;
+  function postRects() {
+    try {
+      var vw = window.innerWidth || document.documentElement.clientWidth || 0;
+      var vh = window.innerHeight || document.documentElement.clientHeight || 0;
+      var els = document.querySelectorAll('[data-edit-image]');
+      var items = [];
+      for (var i = 0; i < els.length && items.length < 24; i++) {
+        var r = els[i].getBoundingClientRect();
+        var x1 = Math.max(0, r.left);
+        var y1 = Math.max(0, r.top);
+        var x2 = Math.min(vw, r.right);
+        var y2 = Math.min(vh, r.bottom);
+        if (x2 - x1 < 56 || y2 - y1 < 44) continue;
+        items.push({ path: els[i].getAttribute('data-edit-image'), x: Math.round(x1), y: Math.round(y1), w: Math.round(x2 - x1), h: Math.round(y2 - y1) });
+      }
+      moving = false;
+      post({ type: 'rects', items: items });
+    } catch (e) {}
+  }
+  function scheduleRects() {
+    clearTimeout(rectTimer);
+    rectTimer = setTimeout(postRects, 160);
+  }
+  window.addEventListener('resize', scheduleRects);
+  document.addEventListener('load', scheduleRects, true);
+  try { if (window.ResizeObserver) new ResizeObserver(scheduleRects).observe(document.documentElement); } catch (e) {}
+
   // Scroll: report only after the native side restored the previous position,
   // so the fresh document's scrollY=0 never overwrites the saved value.
   var restored = false;
   var pending = false;
   window.addEventListener('scroll', function () {
+    if (!moving) { moving = true; post({ type: 'scrolling' }); }
+    scheduleRects();
     if (!restored || pending) return;
     pending = true;
     setTimeout(function () {
@@ -115,11 +152,13 @@ export const EDITOR_JS = String.raw`(function () {
       if (tries < 8 && Math.abs((window.scrollY || 0) - y) > 2) { setTimeout(go, 100); return; }
       root.style.scrollBehavior = '';
       restored = true;
+      scheduleRects();
     }
     go();
   };
 
-  function ready() { sweep(); post({ type: 'ready' }); }
+  // Tailwind CDN and web fonts move things after load: report again a little later.
+  function ready() { sweep(); post({ type: 'ready' }); scheduleRects(); setTimeout(postRects, 700); setTimeout(postRects, 2000); }
   if (document.readyState === 'complete') ready();
   else window.addEventListener('load', ready);
 })();

@@ -13,8 +13,8 @@ import { bookingPrefs, resolveLinks } from '@/lib/bookingChoice';
 import { syncOwnLink } from '@/lib/bookingChoice';
 import { useLinkContext } from '@/lib/linkContext';
 import { stripLapsedLinks } from '@/lib/tierLinks';
-import { getPath, previewBackground, setPath } from '@/lib/editable';
-import { applyBookingLink, applyHomePrompts, editorRecord, fieldLabel, setColour, stockPhotoPaths, switchDesign } from '@/lib/editor';
+import { previewBackground, setPath, textMaxLength, textValue } from '@/lib/editable';
+import { applyBookingLink, applyHomePrompts, editorRecord, fieldLabel, savePathValue, setColour, stockPhotoPaths, switchDesign } from '@/lib/editor';
 import { StockPhotoNudge } from '@/components/StockPhotoNudge';
 import type { PreviewProduct } from '@/lib/editable';
 import { listProducts } from '@/lib/store/data';
@@ -43,11 +43,13 @@ import { HoursSheet } from '@/components/sections/HoursSheet';
 import { TeamSheet } from '@/components/sections/TeamSheet';
 import { GallerySheet } from '@/components/sections/GallerySheet';
 import { AboutSheet } from '@/components/sections/AboutSheet';
+import { ReviewsSheet } from '@/components/sections/ReviewsSheet';
 import { ContactSheet } from '@/components/sections/ContactSheet';
 import type { SectionKey } from '@/lib/sections/list';
 import { HomePrompts } from '@/components/HomePrompts';
 import { TutorialLayer } from '@/components/tutorial/TutorialLayer';
 import { useTour } from '@/components/tutorial/useTour';
+import { useTutorialTarget } from '@/components/tutorial/registry';
 import { editTourReady } from '@/components/tutorial/tours';
 import { useSession } from '@/lib/auth';
 import { PublishBar } from '@/components/PublishBar';
@@ -492,6 +494,9 @@ export default function Editor() {
     },
   });
 
+  // The hero's (else the first) "Change image" pill, which the Edit tour's photo step points at.
+  const changeImageRef = useTutorialTarget('edit.changeImage');
+
   if (!site) return <View style={styles.root} />;
 
   if (locked) {
@@ -503,7 +508,7 @@ export default function Editor() {
   }
 
   const data = site.data;
-  const editValue = getPath(data, edit.path);
+  const editValue = textValue(data, edit.path);
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -511,7 +516,7 @@ export default function Editor() {
       <View style={styles.body}>
         {/* The site's own background, so nothing else shows around the page. */}
         <View style={[styles.preview, { backgroundColor: previewBackground(data) }]}>
-          <SitePreview data={previewData ?? data} editable shopProducts={shopProducts} onEditText={onPreviewText} onEditImage={onPreviewImage} />
+          <SitePreview data={previewData ?? data} editable shopProducts={shopProducts} onEditText={onPreviewText} onEditImage={onPreviewImage} pillTourRef={changeImageRef} />
           {/* Hidden over a published site and while the prompts / guide are up. */}
           {site.slug == null && !site.deployedUrl && overlay == null && (
             <DesignSwitcher current={data.template} onSelect={handleDesign} busy={switching} />
@@ -606,6 +611,13 @@ export default function Editor() {
           onDismiss={onSheetDismiss}
           upload={uploadForSection}
         />
+        <ReviewsSheet
+          visible={sheet === 'reviews'}
+          data={data}
+          onChange={commit}
+          onClose={() => closeThen(() => setSheet('sections'))}
+          onDismiss={onSheetDismiss}
+        />
         <AboutSheet
           visible={sheet === 'about'}
           data={data}
@@ -624,8 +636,9 @@ export default function Editor() {
           visible={sheet === 'edit'}
           path={edit.path}
           label={fieldLabel(edit.path)}
-          value={typeof editValue === 'string' ? editValue : ''}
-          onSave={(v) => commit((d) => setPath(d, edit.path, v))}
+          value={editValue}
+          maxLength={textMaxLength(edit.path)}
+          onSave={(v) => commit((d) => savePathValue(d, edit.path, v))}
           onClose={closeEdit}
           onDismiss={onSheetDismiss}
         />

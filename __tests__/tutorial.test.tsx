@@ -16,7 +16,7 @@ const { act, create } = require('react-test-renderer');
 
 const SRC = path.join(__dirname, '..', 'src');
 const SCREEN_FILES: Record<string, string[]> = {
-  edit: ['components/PublishBar.tsx'],
+  edit: ['components/PublishBar.tsx', 'app/(tabs)/edit.tsx'], // the Change-image pill's target is registered by the screen that owns the preview
   bookings: ['app/(tabs)/bookings.tsx', 'components/bookings/Fab.tsx'],
   store: ['app/(tabs)/store.tsx'],
   getpaid: ['app/get-paid.tsx'],

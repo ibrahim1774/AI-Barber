@@ -1,10 +1,11 @@
-import { useCallback, useMemo, useRef } from 'react';
-import { StyleSheet } from 'react-native';
+import { useCallback, useMemo, useRef, useState, type RefObject } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import type { ShouldStartLoadRequest } from 'react-native-webview/lib/WebViewTypes';
 import type { WebsiteData } from '@/web/types';
 import { EDITOR_JS, buildPreviewHtml, previewBackground, type PreviewProduct } from '@/lib/editable';
-import { parsePreviewMessage, shouldAllowPreviewRequest } from '@/lib/previewBridge';
+import { parsePreviewMessage, shouldAllowPreviewRequest, type ImageRect } from '@/lib/previewBridge';
+import { ChangeImagePills } from '@/components/ChangeImagePills';
 
 export interface SitePreviewProps {
   data: WebsiteData;
@@ -13,6 +14,8 @@ export interface SitePreviewProps {
   shopProducts?: PreviewProduct[] | null;
   onEditText(path: string): void;
   onEditImage(path: string): void;
+  /** Registered with the tutorial on the tour's "Change image" pill. */
+  pillTourRef?: RefObject<View | null>;
 }
 
 /**
@@ -22,9 +25,12 @@ export interface SitePreviewProps {
  * Each data change reloads the document; the last reported scrollY is
  * restored once the new document posts 'ready'.
  */
-export default function SitePreview({ data, editable, shopProducts, onEditText, onEditImage }: SitePreviewProps) {
+export default function SitePreview({ data, editable, shopProducts, onEditText, onEditImage, pillTourRef }: SitePreviewProps) {
   const webRef = useRef<WebView>(null);
   const scrollY = useRef(0);
+  // Where each photo is on screen (for the "Change image" pills), and whether the page is moving.
+  const [rects, setRects] = useState<ImageRect[]>([]);
+  const [moving, setMoving] = useState(false);
 
   // Memoised on data/editable: the templates stamp Date.now() into the HTML, so
   // re-rendering on every parent render would reload the page.
@@ -50,6 +56,13 @@ export default function SitePreview({ data, editable, shopProducts, onEditText, 
         case 'scrollY':
           scrollY.current = m.y;
           return;
+        case 'rects':
+          setRects(m.items);
+          setMoving(false);
+          return;
+        case 'scrolling':
+          setMoving(true);
+          return;
         case 'ready':
           webRef.current?.injectJavaScript(`window.__aibRestore && window.__aibRestore(${Math.round(scrollY.current)}); true;`);
           return;
@@ -61,6 +74,7 @@ export default function SitePreview({ data, editable, shopProducts, onEditText, 
   const onShouldStartLoadWithRequest = useCallback((req: ShouldStartLoadRequest) => shouldAllowPreviewRequest(req), []);
 
   return (
+    <View style={styles.fill}>
     <WebView
       ref={webRef}
       style={style}
@@ -83,9 +97,12 @@ export default function SitePreview({ data, editable, shopProducts, onEditText, 
       dataDetectorTypes="none"
       allowsBackForwardNavigationGestures={false}
     />
+    {editable && <ChangeImagePills items={rects} hidden={moving} onPress={onEditImage} tourRef={pillTourRef} />}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  fill: { flex: 1 },
   web: { flex: 1, backgroundColor: '#0d0d0d' },
 });

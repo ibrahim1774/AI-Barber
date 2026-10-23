@@ -139,3 +139,13 @@ export function PencilIcon({ size = 20, color }: IconProps) {
     </Svg>
   );
 }
+
+/** lucide Camera (the "Change image" pill). */
+export function CameraIcon({ size = 14, color }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+      <Circle cx="12" cy="13" r="3" />
+    </Svg>
+  );
+}
