@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
 import { colors, fonts } from '@/constants/theme';
 
@@ -19,14 +19,28 @@ export const Field = forwardRef<TextInput, FieldProps>(function Field(
   ref,
 ) {
   const [focused, setFocused] = useState(false);
+  const inner = useRef<TextInput | null>(null);
+  const setRef = useCallback((node: TextInput | null) => {
+    inner.current = node;
+    if (typeof ref === 'function') ref(node);
+    else if (ref) ref.current = node;
+  }, [ref]);
   const typed = useTypewriter(typeExamples ?? [], !!typeExamples?.length && !value);
   const card = tone === 'card';
   return (
     <View>
-      <Text style={card ? styles.cardLabel : tone === 'form' ? styles.formLabel : styles.darkLabel}>{label}</Text>
+      {/* Tapping the label focuses the field. The input carries the accessibility label, so VoiceOver skips this one. */}
+      <Text
+        onPress={() => inner.current?.focus()}
+        importantForAccessibility="no"
+        accessibilityElementsHidden
+        style={card ? styles.cardLabel : tone === 'form' ? styles.formLabel : styles.darkLabel}
+      >
+        {label}
+      </Text>
       <View>
         <TextInput
-          ref={ref}
+          ref={setRef}
           {...input}
           value={value}
           accessibilityLabel={input.accessibilityLabel ?? label}

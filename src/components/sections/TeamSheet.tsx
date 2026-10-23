@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import { FormLabel } from '@/components/FormLabel';
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { WebsiteData } from '@/web/types';
 import { colors, fonts } from '@/constants/theme';
@@ -22,6 +23,8 @@ interface Props {
 type Form = null | 'new' | number;
 
 export function TeamSheet({ visible, data, onChange, onClose, onDismiss, upload }: Props) {
+  const f1 = useRef<TextInput>(null);
+  const f2 = useRef<TextInput>(null);
   const [form, setForm] = useState<Form>(null);
   const [name, setName] = useState('');
   const [role, setRole] = useState('');
@@ -82,11 +85,11 @@ export function TeamSheet({ visible, data, onChange, onClose, onDismiss, upload 
             </View>
             <Text style={styles.photoText}>{photo ? 'Change photo' : 'Add photo'}</Text>
           </Pressable>
-          <Text style={styles.label}>Name</Text>
-          <TextInput value={name} onChangeText={(t) => { setError(''); setName(t); }} accessibilityLabel="Name" selectionColor={colors.accent} placeholderTextColor="rgba(255,255,255,0.3)" style={styles.input} />
+          <FormLabel input={f1} style={styles.label}>Name</FormLabel>
+          <TextInput ref={f1} value={name} onChangeText={(t) => { setError(''); setName(t); }} accessibilityLabel="Name" selectionColor={colors.accent} placeholderTextColor="rgba(255,255,255,0.3)" style={styles.input} />
           {error ? <Text style={styles.error}>{error}</Text> : null}
-          <Text style={styles.label}>Role</Text>
-          <TextInput value={role} onChangeText={setRole} placeholder="Barber, Owner…" accessibilityLabel="Role" selectionColor={colors.accent} placeholderTextColor="rgba(255,255,255,0.3)" style={styles.input} />
+          <FormLabel input={f2} style={styles.label}>Role</FormLabel>
+          <TextInput ref={f2} value={role} onChangeText={setRole} placeholder="Barber, Owner…" accessibilityLabel="Role" selectionColor={colors.accent} placeholderTextColor="rgba(255,255,255,0.3)" style={styles.input} />
           {form !== 'new' ? <SheetAction title="Remove" onPress={remove} /> : null}
         </ScrollView>
       </Sheet>

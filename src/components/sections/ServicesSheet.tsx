@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { FormLabel } from '@/components/FormLabel';
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import type { WebsiteData } from '@/web/types';
 import { colors, fonts } from '@/constants/theme';
@@ -29,6 +30,9 @@ type View_ = { kind: 'list' } | { kind: 'add' } | { kind: 'form'; form: Form };
 const PHOTO_FAIL = "Couldn't upload that photo. Check your connection and try again.";
 
 export function ServicesSheet({ visible, data, onChange, onClose, onDismiss, upload }: Props) {
+  const fPrice = useRef<TextInput>(null);
+  const f1 = useRef<TextInput>(null);
+  const f2 = useRef<TextInput>(null);
   const { height } = useWindowDimensions();
   const [view, setView] = useState<View_>({ kind: 'list' });
   const [picking, setPicking] = useState(false);
@@ -184,8 +188,8 @@ export function ServicesSheet({ visible, data, onChange, onClose, onDismiss, upl
     body = (
       <>
         <ScrollView style={{ maxHeight: maxH }} keyboardShouldPersistTaps="handled">
-          <Text style={styles.label}>Name</Text>
-          <TextInput
+          <FormLabel input={f1} style={styles.label}>Name</FormLabel>
+          <TextInput ref={f1}
             value={form.draft.title}
             onChangeText={(t) => set({ title: t })}
             autoFocus={form.index == null}
@@ -195,11 +199,12 @@ export function ServicesSheet({ visible, data, onChange, onClose, onDismiss, upl
             placeholderTextColor="rgba(255,255,255,0.3)"
             style={styles.input}
           />
-          <Text style={styles.label}>Price</Text>
+          <FormLabel input={fPrice} style={styles.label}>Price</FormLabel>
           <View style={styles.priceRow}>
             {/* Imported text like "From $25" is shown as it is, without the $ prefix. */}
             {(!form.draft.price.trim() || formatPrice(form.draft.price) != null) && <Text style={styles.dollar}>$</Text>}
             <TextInput
+              ref={fPrice}
               value={formatPrice(form.draft.price) != null ? form.draft.price.replace(/^\$\s*/, '') : form.draft.price}
               onChangeText={(t) => set({ price: t })}
               autoFocus={form.fresh && form.index != null}
@@ -217,8 +222,8 @@ export function ServicesSheet({ visible, data, onChange, onClose, onDismiss, upl
               <Chip key={m} label={durationLabel(m)} selected={form.draft.duration === m} onPress={() => set({ duration: m })} />
             ))}
           </View>
-          <Text style={styles.label}>Description (optional)</Text>
-          <TextInput
+          <FormLabel input={f2} style={styles.label}>Description (optional)</FormLabel>
+          <TextInput ref={f2}
             value={form.draft.description}
             onChangeText={(t) => set({ description: t })}
             multiline

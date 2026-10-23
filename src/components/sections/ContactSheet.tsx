@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import { FormLabel } from '@/components/FormLabel';
 import { ScrollView, StyleSheet, Text, TextInput } from 'react-native';
 import type { WebsiteData } from '@/web/types';
 import { colors, fonts } from '@/constants/theme';
@@ -16,6 +17,9 @@ interface Props {
 }
 
 export function ContactSheet({ visible, data, onChange, onClose, onDismiss }: Props) {
+  const f1 = useRef<TextInput>(null);
+  const f2 = useRef<TextInput>(null);
+  const f3 = useRef<TextInput>(null);
   const [f, setF] = useState(contactFields(data));
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -34,12 +38,12 @@ export function ContactSheet({ visible, data, onChange, onClose, onDismiss }: Pr
   return (
     <Sheet visible={visible} title="Contact" onClose={onClose} onDismiss={onDismiss} right={<SheetAction title="Save" primary onPress={save} />}>
       <ScrollView keyboardShouldPersistTaps="handled" style={styles.scroll}>
-        <Text style={styles.label}>Phone</Text>
-        <TextInput value={f.phone} onChangeText={(phone) => setF({ ...f, phone })} keyboardType="phone-pad" autoCorrect={false} accessibilityLabel="Phone" selectionColor={colors.accent} placeholderTextColor="rgba(255,255,255,0.3)" style={styles.input} />
-        <Text style={styles.label}>Address</Text>
-        <TextInput value={f.address} onChangeText={(address) => setF({ ...f, address })} accessibilityLabel="Address" selectionColor={colors.accent} placeholderTextColor="rgba(255,255,255,0.3)" style={styles.input} />
-        <Text style={styles.label}>Email</Text>
-        <TextInput value={f.email} onChangeText={(email) => { setError(null); setF({ ...f, email }); }} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} accessibilityLabel="Email" selectionColor={colors.accent} placeholderTextColor="rgba(255,255,255,0.3)" style={styles.input} />
+        <FormLabel input={f1} style={styles.label}>Phone</FormLabel>
+        <TextInput ref={f1} value={f.phone} onChangeText={(phone) => setF({ ...f, phone })} keyboardType="phone-pad" autoCorrect={false} accessibilityLabel="Phone" selectionColor={colors.accent} placeholderTextColor="rgba(255,255,255,0.3)" style={styles.input} />
+        <FormLabel input={f2} style={styles.label}>Address</FormLabel>
+        <TextInput ref={f2} value={f.address} onChangeText={(address) => setF({ ...f, address })} accessibilityLabel="Address" selectionColor={colors.accent} placeholderTextColor="rgba(255,255,255,0.3)" style={styles.input} />
+        <FormLabel input={f3} style={styles.label}>Email</FormLabel>
+        <TextInput ref={f3} value={f.email} onChangeText={(email) => { setError(null); setF({ ...f, email }); }} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} accessibilityLabel="Email" selectionColor={colors.accent} placeholderTextColor="rgba(255,255,255,0.3)" style={styles.input} />
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </ScrollView>
     </Sheet>

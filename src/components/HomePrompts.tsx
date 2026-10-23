@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { FormLabel } from '@/components/FormLabel';
 import {
   ActivityIndicator, Animated, KeyboardAvoidingView, Pressable, StyleSheet, Text, TextInput, View,
 } from 'react-native';
@@ -32,6 +33,8 @@ export function HomePrompts({ onSubmitBookingLink, onFinish, onComplete, initial
   const [bookingUrl, setBookingUrl] = useState('');
   const [area, setArea] = useState(initialArea);
   const [phone, setPhone] = useState(initialPhone);
+  const areaRef = useRef<TextInput>(null);
+  const phoneRef = useRef<TextInput>(null);
   const [scraping, setScraping] = useState(false);
   const [scrapeNote, setScrapeNote] = useState<string | null>(null);
   const [countdown, setCountdown] = useState(PULL_ESTIMATE_SECONDS);
@@ -158,8 +161,9 @@ export function HomePrompts({ onSubmitBookingLink, onFinish, onComplete, initial
             <Text style={styles.sub}>
               {scrapeNote || "We'll add these throughout your site so locals can find and call you."}
             </Text>
-            <Text style={styles.label}>Service area</Text>
+            <FormLabel input={areaRef} style={styles.label}>Service area</FormLabel>
             <TextInput
+              ref={areaRef}
               value={area}
               onChangeText={setArea}
               placeholder="Dallas, TX"
@@ -170,8 +174,9 @@ export function HomePrompts({ onSubmitBookingLink, onFinish, onComplete, initial
               selectionColor={colors.overlayGold}
               style={styles.input}
             />
-            <Text style={styles.label}>Phone number</Text>
+            <FormLabel input={phoneRef} style={styles.label}>Phone number</FormLabel>
             <TextInput
+              ref={phoneRef}
               value={phone}
               onChangeText={setPhone}
               placeholder="(555) 123-4567"

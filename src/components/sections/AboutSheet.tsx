@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import { FormLabel } from '@/components/FormLabel';
 import { ScrollView, StyleSheet, Text, TextInput } from 'react-native';
 import type { WebsiteData } from '@/web/types';
 import { colors, fonts } from '@/constants/theme';
@@ -16,6 +17,9 @@ interface Props {
 }
 
 export function AboutSheet({ visible, data, onChange, onClose, onDismiss }: Props) {
+  const f1 = useRef<TextInput>(null);
+  const f2 = useRef<TextInput>(null);
+  const f3 = useRef<TextInput>(null);
   const [f, setF] = useState(aboutFields(data));
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -34,13 +38,13 @@ export function AboutSheet({ visible, data, onChange, onClose, onDismiss }: Prop
   return (
     <Sheet visible={visible} title="About" onClose={onClose} onDismiss={onDismiss} right={<SheetAction title="Save" primary onPress={save} />}>
       <ScrollView keyboardShouldPersistTaps="handled" style={styles.scroll}>
-        <Text style={styles.label}>Shop name</Text>
-        <TextInput value={f.shopName} onChangeText={(shopName) => { setError(null); setF({ ...f, shopName }); }} accessibilityLabel="Shop name" selectionColor={colors.accent} placeholderTextColor="rgba(255,255,255,0.3)" style={styles.input} />
+        <FormLabel input={f1} style={styles.label}>Shop name</FormLabel>
+        <TextInput ref={f1} value={f.shopName} onChangeText={(shopName) => { setError(null); setF({ ...f, shopName }); }} accessibilityLabel="Shop name" selectionColor={colors.accent} placeholderTextColor="rgba(255,255,255,0.3)" style={styles.input} />
         {error ? <Text style={styles.error}>{error}</Text> : null}
-        <Text style={styles.label}>Tagline</Text>
-        <TextInput value={f.tagline} onChangeText={(tagline) => setF({ ...f, tagline })} accessibilityLabel="Tagline" selectionColor={colors.accent} placeholderTextColor="rgba(255,255,255,0.3)" style={styles.input} />
-        <Text style={styles.label}>About your shop</Text>
-        <TextInput value={f.about} onChangeText={(about) => setF({ ...f, about })} multiline accessibilityLabel="About your shop" selectionColor={colors.accent} placeholderTextColor="rgba(255,255,255,0.3)" style={[styles.input, styles.multi]} />
+        <FormLabel input={f2} style={styles.label}>Tagline</FormLabel>
+        <TextInput ref={f2} value={f.tagline} onChangeText={(tagline) => setF({ ...f, tagline })} accessibilityLabel="Tagline" selectionColor={colors.accent} placeholderTextColor="rgba(255,255,255,0.3)" style={styles.input} />
+        <FormLabel input={f3} style={styles.label}>About your shop</FormLabel>
+        <TextInput ref={f3} value={f.about} onChangeText={(about) => setF({ ...f, about })} multiline accessibilityLabel="About your shop" selectionColor={colors.accent} placeholderTextColor="rgba(255,255,255,0.3)" style={[styles.input, styles.multi]} />
       </ScrollView>
     </Sheet>
   );
