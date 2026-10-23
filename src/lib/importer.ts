@@ -13,7 +13,14 @@ function resolveTheme(brandColor: string): string | undefined {
 
 export function checkBookingLink(text: string): { ok: true; url: string } | { ok: false; message: string } {
   const normalized = extractFirstUrl(text);
-  if (!normalized) return { ok: false, message: 'Paste your booking link to continue.' };
+  if (!normalized) {
+    return {
+      ok: false,
+      message: text.trim()
+        ? "That doesn't look like a valid link. Paste the full booking link from Booksy, theCut, Fresha, Square, Vagaro or StyleSeat."
+        : 'Paste your booking link to continue.',
+    };
+  }
   if (!isSupportedBookingHost(normalized)) {
     return {
       ok: false,

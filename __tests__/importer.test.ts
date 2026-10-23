@@ -15,6 +15,11 @@ describe('importer', () => {
     expect(r).toEqual({ ok: false, message: 'Paste your booking link to continue.' });
   });
 
+  it('text that is not a link says so, instead of reading as empty', () => {
+    const r = checkBookingLink('not a link');
+    expect(r).toEqual({ ok: false, message: "That doesn't look like a valid link. Paste the full booking link from Booksy, theCut, Fresha, Square, Vagaro or StyleSeat." });
+  });
+
   it('extracts a supported URL out of a share sentence', () => {
     const r = checkBookingLink("I'm using Willi Barber. Check it out on Booksy here: https://booksy.com/en-us/dl/show-business/998736");
     expect(r).toEqual({ ok: true, url: 'https://booksy.com/en-us/dl/show-business/998736' });
