@@ -146,7 +146,7 @@ export function AppointmentSheet({ appt, tz, today, barberName, bookingLink, res
             {(
               <View style={styles.actions}>
                 {can.markDone && <Button title="Done" loading={busy} onPress={() => void run(() => markDone(a.id))} />}
-                {can.rebind && (
+                {can.rebind && !!bookingLink && (
                   <Button
                     title="Text rebook link"
                     onPress={() => open(smsUrl(a.customerPhone!, REBOOK_MESSAGE(bookingLink)))}

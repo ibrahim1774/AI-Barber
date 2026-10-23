@@ -6,7 +6,7 @@ import { QrScreen } from '@/components/QrScreen';
 import { Sheet } from '@/components/EditSheet';
 import { track } from '@/lib/analytics';
 import { useEntitlements } from '@/lib/entitlements';
-import { resolveCustomerLinks } from '@/lib/customerLinks';
+import { resolveLiveLinks } from '@/lib/customerLinks';
 import { loadMyShop } from '@/lib/shop';
 import { loadSite } from '@/lib/siteStore';
 import { loadStoreSettings } from '@/lib/store/data';
@@ -35,7 +35,8 @@ export function ShareSheet({ visible, shopName, links: given, source, onClose }:
       .then(async ([shop, site]) => {
         if (!alive) return;
         // Customers get the barber's own site + /book or /shop once it has the pages.
-        const links = shop ? await resolveCustomerLinks(shop, site) : null;
+        // Only where the pages are really live: a booking / shop row never points at a page that is not there yet.
+        const links = shop ? await resolveLiveLinks(shop, site) : null;
         if (!alive) return;
         setBookingLink(shop?.bookingsEnabled && links ? links.booking : null);
         const open = shop ? (await loadStoreSettings(shop.id)).storeEnabled : false;

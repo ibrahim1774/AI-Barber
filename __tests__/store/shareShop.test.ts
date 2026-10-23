@@ -5,9 +5,10 @@ const { act, create } = require('react-test-renderer');
 
 let mockStoreEnabled = false;
 let mockLinked = true;
+let mockBase: string | null = 'https://fade-lab.com';
 jest.mock('@/lib/shop', () => ({
   bookingUrl: (s: { slug: string }) => `https://www.aibarber.org/book/${s.slug}`,
-  loadMyShop: async () => ({ id: 's1', slug: 'fade-lab', bookingsEnabled: false, purchaseLinked: mockLinked }),
+  loadMyShop: async () => ({ id: 's1', slug: 'fade-lab', bookingsEnabled: false, purchaseLinked: mockLinked, siteBaseUrl: mockBase }),
 }));
 jest.mock('@/lib/store/data', () => ({
   loadStoreSettings: async () => ({ storeEnabled: mockStoreEnabled }),
@@ -61,6 +62,17 @@ describe('ShareSheet', () => {
     const l = await labels();
     expect(l).toContain('Share Shop link');
     expect(l).toContain('Share Website link');
+  });
+
+  it('omits the Shop row while the pages are not live (publish first)', async () => {
+    mockStoreEnabled = true;
+    mockBase = null;
+    try {
+      (global as any).fetch = jest.fn();
+      expect(await labels()).not.toContain('Share Shop link');
+    } finally {
+      mockBase = 'https://fade-lab.com';
+    }
   });
 
   it('omits the Shop row while the purchase is not linked', async () => {

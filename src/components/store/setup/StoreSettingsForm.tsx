@@ -13,7 +13,8 @@ import {
 } from '@/lib/store/data';
 import { canOpenShop, formFromSettings, validateSettings, type SettingsForm } from '@/lib/store/settings';
 import { useUpdateSitePrompt } from '@/lib/setupPrompt';
-import { customerShopUrl, useCustomerLinks } from '@/lib/customerLinks';
+import { PublishForLink } from '@/components/PublishForLink';
+import { PUBLISH_FOR_SHOP_LINK, useCustomerLinkState } from '@/lib/customerLinks';
 import { SITE_SHOP_PATH } from '@/web/lib/render/subpages';
 import type { WebsiteData } from '@/web/types';
 
@@ -31,9 +32,9 @@ export function StoreSettingsForm({ shop, onChanged }: { shop: Shop; onChanged?(
   const [busy, setBusy] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const sitePrompt = useUpdateSitePrompt('store');
-  const links = useCustomerLinks(shop);
-  // What customers open: the barber's own site + /shop once it has the page, else the aibarber.org page.
-  const customerUrl = links?.shop ?? customerShopUrl(shop);
+  const linkState = useCustomerLinkState(shop);
+  // What customers open: the barber's own site + /shop, only once the page is live.
+  const customerUrl = linkState.live?.shop ?? null;
 
   useEffect(() => {
     let alive = true;
@@ -167,7 +168,7 @@ export function StoreSettingsForm({ shop, onChanged }: { shop: Shop; onChanged?(
       <Card title={saved.storeEnabled ? 'Your shop is open' : 'Open your shop'}>
         <Note>
           {saved.storeEnabled
-            ? shop.purchaseLinked ? customerUrl : PLAN_PENDING
+            ? shop.purchaseLinked ? customerUrl ?? (linkState.gate === 'publish' ? PUBLISH_FOR_SHOP_LINK : ' ') : PLAN_PENDING
             : 'Customers can browse and order once it is open. You can add products any time.'}
         </Note>
         <Button
@@ -176,13 +177,16 @@ export function StoreSettingsForm({ shop, onChanged }: { shop: Shop; onChanged?(
           loading={busy}
           onPress={() => void setOpen(!saved.storeEnabled)}
         />
-        {saved.storeEnabled && <Row label="Share your shop link" onPress={() => setShareOpen(true)} />}
+        {saved.storeEnabled && shop.purchaseLinked && linkState.gate === 'publish' && (
+          <PublishForLink kind="shop" source="store_settings" align="left" />
+        )}
+        {saved.storeEnabled && customerUrl && <Row label="Share your shop link" onPress={() => setShareOpen(true)} />}
       </Card>
       <View />
       <ShareSheet
-        visible={shareOpen}
+        visible={shareOpen && !!customerUrl}
         shopName={shop.name}
-        links={[{ kind: 'shop', url: customerUrl }]}
+        links={customerUrl ? [{ kind: 'shop', url: customerUrl }] : []}
         source="settings"
         onClose={() => setShareOpen(false)}
       />

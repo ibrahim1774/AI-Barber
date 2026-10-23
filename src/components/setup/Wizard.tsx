@@ -15,7 +15,8 @@ import { shareMessage } from '@/lib/share';
 import { BookButtonPicker } from '@/components/setup/BookButtonPicker';
 import { bookingPrefs, withChoice } from '@/lib/bookingChoice';
 import { useUpdateSitePrompt } from '@/lib/setupPrompt';
-import { customerBookingUrl, useCustomerLinks } from '@/lib/customerLinks';
+import { PublishForLink } from '@/components/PublishForLink';
+import { useCustomerLinkState } from '@/lib/customerLinks';
 import { withMirroredServices } from '@/lib/setup/servicesMap';
 import { updateSiteData, updateSiteRecord } from '@/lib/setup/siteSync';
 import {
@@ -47,7 +48,7 @@ export function Wizard({ shop, site, onShopChanged, onFinish }: Props) {
   const [shareOpen, setShareOpen] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const sitePrompt = useUpdateSitePrompt('bookings');
-  const customerLinks = useCustomerLinks(shop);
+  const customerLinks = useCustomerLinkState(shop);
   const hoursSave = useRef<(() => Promise<boolean>) | null>(null);
   const step = currentStep(state);
 
@@ -91,7 +92,7 @@ export function Wizard({ shop, site, onShopChanged, onFinish }: Props) {
     setState(n);
   };
 
-  const url = customerLinks?.booking ?? customerBookingUrl(shop);
+  const url = customerLinks.live?.booking ?? null;
   return (
     <View>
       <Text style={st.progress}>{progressLabel(state)}</Text>
@@ -140,19 +141,25 @@ export function Wizard({ shop, site, onShopChanged, onFinish }: Props) {
       {step === 'share' && (
         <>
           <Card title="Your booking link">
-            <Text selectable style={st.url}>{url}</Text>
-            {!shop.purchaseLinked && <Note tone="warn">{PLAN_PENDING}</Note>}
-            <Note>Put it in your Instagram bio, text it to regulars, or show the QR code at the counter.</Note>
-            <Button title="Share booking link" size="sm" onPress={() => setShareOpen(true)} />
-            <TextAction
-              title="Send as a message"
-              onPress={() => void Share.share({ message: shareMessage('booking', shop.name, url) })}
-            />
+            {url ? (
+              <>
+                <Text selectable style={st.url}>{url}</Text>
+                {!shop.purchaseLinked && <Note tone="warn">{PLAN_PENDING}</Note>}
+                <Note>Put it in your Instagram bio, text it to regulars, or show the QR code at the counter.</Note>
+                <Button title="Share booking link" size="sm" onPress={() => setShareOpen(true)} />
+                <TextAction
+                  title="Send as a message"
+                  onPress={() => void Share.share({ message: shareMessage('booking', shop.name, url) })}
+                />
+              </>
+            ) : customerLinks.gate === 'publish' ? (
+              <PublishForLink kind="booking" source="wizard" align="left" />
+            ) : null}
           </Card>
           <ShareSheet
-            visible={shareOpen}
+            visible={shareOpen && !!url}
             shopName={shop.name}
-            links={[{ kind: 'booking', url }, ...(site.deployedUrl ? [{ kind: 'website' as const, url: site.deployedUrl }] : [])]}
+            links={[...(url ? [{ kind: 'booking' as const, url }] : []), ...(site.deployedUrl ? [{ kind: 'website' as const, url: site.deployedUrl }] : [])]}
             source="settings"
             onClose={() => setShareOpen(false)}
           />

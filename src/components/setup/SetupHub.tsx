@@ -6,7 +6,8 @@ import { BookButtonPicker } from '@/components/setup/BookButtonPicker';
 import { bookingPrefs, withChoice, type BookingChoice } from '@/lib/bookingChoice';
 import { updateSiteRecord } from '@/lib/setup/siteSync';
 import { useUpdateSitePrompt } from '@/lib/setupPrompt';
-import { customerBookingUrl, useCustomerLinks } from '@/lib/customerLinks';
+import { PublishForLink } from '@/components/PublishForLink';
+import { PUBLISH_FOR_BOOKING_LINK, useCustomerLinkState } from '@/lib/customerLinks';
 import { icsUrl, listMembers, updateShopSettings, type Member, type Shop } from '@/lib/shop';
 import type { SiteRecord } from '@/lib/siteStore';
 
@@ -27,7 +28,7 @@ export function SetupHub({
   const [members, setMembers] = useState<Member[]>([]);
   const [busy, setBusy] = useState(false);
   const sitePrompt = useUpdateSitePrompt('bookings');
-  const links = useCustomerLinks(shop);
+  const link = useCustomerLinkState(shop);
   useEffect(() => { listMembers(shop.id).then(setMembers).catch(() => {}); }, [shop.id]);
 
   const { own, choice } = bookingPrefs(site);
@@ -70,13 +71,16 @@ export function SetupHub({
             !shop.bookingsEnabled
               ? 'Off: your booking page shows as paused.'
               : shop.purchaseLinked
-                ? links?.booking ?? customerBookingUrl(shop)
+                ? link.live?.booking ?? (link.gate === 'publish' ? PUBLISH_FOR_BOOKING_LINK : ' ')
                 : PLAN_PENDING
           }
           value={shop.bookingsEnabled}
           onValueChange={(v) => void setEnabled(v)}
           disabled={busy}
         />
+        {shop.bookingsEnabled && shop.purchaseLinked && link.gate === 'publish' && (
+          <PublishForLink kind="booking" source="setup_hub" align="left" />
+        )}
       </Card>
       <BookButtonPicker own={own} choice={choice} onChange={(c) => void setChoice(c)} />
       <Card>

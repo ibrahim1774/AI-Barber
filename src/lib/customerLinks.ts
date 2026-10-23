@@ -85,11 +85,33 @@ export async function resolveCustomerLinks(shop: ShopLike, site: SiteLike | null
   return linksFrom(shop, await verifiedSiteBase(shop, site));
 }
 
+export const PUBLISH_FOR_BOOKING_LINK = 'Publish your changes to get your booking link';
+export const PUBLISH_FOR_SHOP_LINK = 'Publish your changes to get your shop link';
+
+/**
+ * Whether a customer link may be shown: 'live' once a verified base exists, 'checking' while the page
+ * check has not answered yet (show nothing), 'publish' when it answered and there is no live page.
+ */
+export type LinkGate = 'checking' | 'live' | 'publish';
+export function linkGate(base: string | null | undefined, resolved: boolean): LinkGate {
+  if (base) return 'live';
+  return resolved ? 'publish' : 'checking';
+}
+
+/** The customer links only when the booking/shop pages are really live; null before that (no aibarber.org fallback). */
+export async function resolveLiveLinks(shop: ShopLike, site: SiteLike | null | undefined): Promise<CustomerLinks | null> {
+  const base = await verifiedSiteBase(shop, site);
+  return base ? linksFrom(shop, base) : null;
+}
+
+export type CustomerLinkState = { gate: LinkGate; links: CustomerLinks | null; live: CustomerLinks | null };
+
 /**
  * The customer links for a screen: the no-network answer at once, then the verified one. Re-resolved when
- * the screen regains focus and after a publish (or an adopted copy) changed what is live.
+ * the screen regains focus and after a publish (or an adopted copy) changed what is live. `gate` says whether
+ * the link may be shown (see linkGate); `live` is the links only when gate is 'live'.
  */
-export function useCustomerLinks(shop: ShopLike | null): CustomerLinks | null {
+export function useCustomerLinkState(shop: ShopLike | null): CustomerLinkState {
   const navigation = useContext(NavigationContext);
   const [n, setN] = useState(0);
   useEffect(() => {
@@ -101,23 +123,33 @@ export function useCustomerLinks(shop: ShopLike | null): CustomerLinks | null {
 
   const slug = shop?.slug;
   const base = shop?.siteBaseUrl ?? null;
-  const [links, setLinks] = useState<CustomerLinks | null>(() => (shop ? customerLinksNow(shop) : null));
+  const [verified, setVerified] = useState<{ base: string | null; resolved: boolean }>({ base, resolved: !!base });
   useEffect(() => {
     if (!slug) {
-      setLinks(null);
+      setVerified({ base: null, resolved: true });
       return;
     }
     const s: ShopLike = { slug, siteBaseUrl: base };
     let alive = true;
-    setLinks(customerLinksNow(s));
+    // The stored base is already an answer; anything else waits for the check (a stale 'live' is kept meanwhile).
+    setVerified((v) => (base ? { base, resolved: true } : v.resolved ? v : { base: null, resolved: false }));
     loadSite()
       .catch(() => null)
-      .then((site) => resolveCustomerLinks(s, site))
-      .then((l) => alive && setLinks(l))
-      .catch(() => {});
+      .then((site) => verifiedSiteBase(s, site))
+      .then((b) => alive && setVerified({ base: b, resolved: true }))
+      .catch(() => alive && setVerified({ base: null, resolved: true }));
     return () => {
       alive = false;
     };
   }, [slug, base, n]);
-  return links;
+
+  const effective = base ?? verified.base;
+  const gate = linkGate(effective, verified.resolved || !!base);
+  const links = shop && slug ? linksFrom({ slug, siteBaseUrl: base }, effective) : null;
+  return { gate, links, live: gate === 'live' ? links : null };
+}
+
+/** The (possibly aibarber.org-fallback) links for a screen. Prefer useCustomerLinkState wherever a link is shown. */
+export function useCustomerLinks(shop: ShopLike | null): CustomerLinks | null {
+  return useCustomerLinkState(shop).links;
 }

@@ -1,13 +1,16 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
+import { PublishForLink } from '@/components/PublishForLink';
+import type { LinkGate } from '@/lib/customerLinks';
 
 /** An empty day: points the barber at their booking link. */
-export function EmptyDay({ onShare, readOnly }: { onShare(): void; readOnly?: boolean }) {
+export function EmptyDay({ onShare, readOnly, gate = 'live' }: { onShare(): void; readOnly?: boolean; gate?: LinkGate }) {
   return (
     <View style={styles.wrap}>
       <Text style={styles.title}>No bookings yet</Text>
-      {!readOnly && (
+      {!readOnly && gate === 'publish' && <PublishForLink kind="booking" source="empty_day" />}
+      {!readOnly && gate === 'live' && (
         <>
           <Text style={styles.body}>Share your booking link so clients can book themselves.</Text>
           <Button title="Share" onPress={onShare} variant="pill" style={styles.btn} />

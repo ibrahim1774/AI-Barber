@@ -22,7 +22,7 @@ import {
   appointmentsForDay, countsByDay, dateFromPushData, dayHeading, stripDays, timeOffForDay, todayKey, type DateKey,
 } from '@/lib/bookings/calendar';
 import { BOOKING_SHARE_KIND, memberName } from '@/lib/bookings/shop';
-import { useCustomerLinks } from '@/lib/customerLinks';
+import { useCustomerLinkState } from '@/lib/customerLinks';
 import { loadSite, type SiteRecord } from '@/lib/siteStore';
 import { isLocked, useSubscriptionStatus } from '@/lib/subscriptionStatus';
 import { useTierAccess, useUpgrade } from '@/lib/tierAccess';
@@ -83,8 +83,9 @@ export default function Bookings() {
   const names = useMemo(() => new Map(members.map((m) => [m.id, memberName(m)])), [members]);
   const several = members.length > 1;
   const open = openId ? appts.find((a) => a.id === openId) ?? null : null;
-  const customer = useCustomerLinks(shop);
-  const link = shop ? customer?.booking ?? '' : '';
+  const customer = useCustomerLinkState(shop);
+  // Nothing customer-facing until the booking page is live; the rebook text then has no link to add.
+  const link = shop && customer.live ? customer.live.booking : '';
 
   const pull = async () => {
     setPulling(true);
@@ -156,9 +157,11 @@ export default function Bookings() {
       <View style={styles.header}>
         <Text style={styles.title} numberOfLines={1} accessibilityRole="header">{shop.name}</Text>
         <View style={styles.headerBtns}>
-          <Pressable onPress={() => setSharing(true)} hitSlop={10} accessibilityRole="button" accessibilityLabel="Share booking link">
-            <ShareIcon size={22} color={colors.text} />
-          </Pressable>
+          {customer.gate === 'live' && (
+            <Pressable onPress={() => setSharing(true)} hitSlop={10} accessibilityRole="button" accessibilityLabel="Share booking link">
+              <ShareIcon size={22} color={colors.text} />
+            </Pressable>
+          )}
           {!locked && (
             <Pressable
               onPress={() => router.push('/bookings-setup' as never)}
@@ -187,7 +190,7 @@ export default function Bookings() {
       >
         <Text style={styles.dayHeading}>{dayHeading(day, today)}</Text>
         {dayAppts.length === 0 && dayBlocks.length === 0 ? (
-          <EmptyDay readOnly={locked} onShare={() => setSharing(true)} />
+          <EmptyDay readOnly={locked} gate={customer.gate} onShare={() => setSharing(true)} />
         ) : (
           <>
             {dayBlocks.map((b) => (
@@ -243,9 +246,9 @@ export default function Bookings() {
         onBlocked={refresh}
       />
       <ShareSheet
-        visible={sharing}
+        visible={sharing && customer.gate === 'live'}
         shopName={shop.name}
-        links={[{ kind: BOOKING_SHARE_KIND, url: link }]}
+        links={link ? [{ kind: BOOKING_SHARE_KIND, url: link }] : []}
         source="settings"
         onClose={() => setSharing(false)}
       />
