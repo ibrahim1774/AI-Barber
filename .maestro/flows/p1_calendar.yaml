@@ -33,7 +33,8 @@ appId: com.ibrahim1774.aibarber
 - tapOn:
     point: "50%,8%"
     optional: true
-- tapOn: "Month view"
+- tapOn:
+    point: "78%,15%"   # the Month segment (its centre sits under the dev Tools gear)
 - waitForAnimationToEnd
 - takeScreenshot: 06_month_view
 - tapOn: "Next month"
@@ -44,3 +45,12 @@ appId: com.ibrahim1774.aibarber
     point: "50%,60%"   # a day in the grid -> Day view on that date
 - waitForAnimationToEnd
 - takeScreenshot: 08_month_tap_day
+# Settings > Tutorial: replay the Edit tour
+- tapOn:
+    point: "87%,94%"
+- waitForAnimationToEnd
+- scroll
+- takeScreenshot: 09_settings_tutorial_rows
+- tapOn: "Editing your site"
+- waitForAnimationToEnd
+- takeScreenshot: 10_replay_edit_tour

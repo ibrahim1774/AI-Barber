@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { colors, fonts } from '@/constants/theme';
 
@@ -26,10 +27,23 @@ export function ChipRow<T extends string | number | null>({
   onChange(v: T): void;
   style?: StyleProp<ViewStyle>;
 }) {
+  const scroll = useRef<ScrollView>(null);
+  const scrolledTo = useRef(false);
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.scroll, style]} contentContainerStyle={styles.row}>
+    <ScrollView ref={scroll} horizontal showsHorizontalScrollIndicator={false} style={[styles.scroll, style]} contentContainerStyle={styles.row}>
       {options.map((o) => (
-        <Chip key={String(o.value)} label={o.label} on={o.value === value} onPress={() => onChange(o.value)} />
+        <View
+          key={String(o.value)}
+          // Bring a preselected chip that starts off-screen into view once (e.g. the time picked by a long-press).
+          onLayout={o.value === value ? (e) => {
+            if (scrolledTo.current) return;
+            scrolledTo.current = true;
+            const x = e.nativeEvent.layout.x;
+            if (x > 120) scroll.current?.scrollTo({ x: x - 24, animated: false });
+          } : undefined}
+        >
+          <Chip label={o.label} on={o.value === value} onPress={() => onChange(o.value)} />
+        </View>
       ))}
     </ScrollView>
   );
