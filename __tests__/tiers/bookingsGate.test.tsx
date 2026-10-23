@@ -57,7 +57,7 @@ beforeEach(() => {
   mockPaywall.mockClear();
   mockCall.mockReset().mockRejectedValue(new Error('offline'));
   mockData = {
-    phase: 'ready', shop: SHOP, members: [], services: [], appts: [], timeOff: [], refresh: async () => {},
+    phase: 'ready', shop: SHOP, members: [], services: [], appts: [], timeOff: [], availability: [], refresh: async () => {},
   };
 });
 
