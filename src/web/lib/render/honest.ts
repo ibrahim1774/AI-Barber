@@ -58,6 +58,23 @@ export function photoAlt(site: Pick<WebsiteData, 'shopName'>): string {
   return name ? `${name} photo` : 'Shop photo';
 }
 
+// ── Phone ────────────────────────────────────────────────────────────
+// How a phone number is PRINTED: "(512) 555-0142" when it is exactly ten digits with ordinary
+// separators, otherwise as typed ("call us", "+44 20 7946 0958", "5125550142 ext 2" stay). Idempotent.
+// The tel: link keeps using the digits of the stored value. A value wrapped in the app's editor
+// markers (U+2063 id U+2063 ... U+2063 / U+2063) keeps its wrapper, so the preview stays tappable.
+const PHONE_WRAPPED = /^(\u2063[a-z]+\u2063)([\s\S]*?)(\u2063\/\u2063)$/;
+export function displayPhone(raw: string | null | undefined): string {
+  const value = String(raw ?? '');
+  const m = PHONE_WRAPPED.exec(value);
+  const [open, text, close] = m ? [m[1], m[2], m[3]] : ['', value, ''];
+  const typed = text.trim();
+  if (!/^[\d\s().\-]+$/.test(typed)) return value;
+  const d = typed.replace(/\D/g, '');
+  if (d.length !== 10) return value;
+  return `${open}(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}${close}`;
+}
+
 // ── Policy ───────────────────────────────────────────────────────────
 // The invented Prime default every site used to carry. Sites saved with
 // it (in full or with only the title edited) must not show it.
@@ -148,11 +165,16 @@ function labelFromBookingUrl(url?: string): string | undefined {
   }
 }
 
+// The platform the reviews came from ("Google", "Booksy"), or '' when unknown.
+export function reviewsSourceName(site: Pick<WebsiteData, 'reviewsSource' | 'bookingUrl'>): string {
+  return (site.reviewsSource || '').trim() || labelFromBookingUrl(site.bookingUrl) || '';
+}
+
 // "Reviews from Google" / "Selected reviews from Google" / "Selected
 // reviews". Empty when the source is unknown and nothing was filtered:
 // templates then print no source line at all (no lone "Reviews").
 export function reviewsSourceLabel(site: Pick<WebsiteData, 'reviewsSource' | 'reviewsSelected' | 'bookingUrl'>): string {
-  const source = (site.reviewsSource || '').trim() || labelFromBookingUrl(site.bookingUrl);
+  const source = reviewsSourceName(site);
   const lead = site.reviewsSelected ? 'Selected reviews' : 'Reviews';
   if (source) return `${lead} from ${source}`;
   return site.reviewsSelected ? lead : '';
@@ -165,13 +187,40 @@ export function reviewStars(r: { rating?: number | null } | null | undefined): n
   return Math.min(5, Math.round(n));
 }
 
-// The scraped aggregate, or null when absent / unreadable.
-export function aggregateToShow(site: Pick<WebsiteData, 'aggregateRating'>): { rating: number; count: number } | null {
+// The scraped aggregate, or null when absent / unreadable / hidden by the barber
+// (display.rating 'hide'). Every place a template prints the rating or the review count asks here.
+export function aggregateToShow(
+  site: Pick<WebsiteData, 'aggregateRating'> & { display?: WebsiteData['display'] },
+): { rating: number; count: number } | null {
+  if (site.display?.rating === 'hide') return null;
   const a = site.aggregateRating;
   const rating = Number(a?.rating);
   if (!a || !Number.isFinite(rating) || rating <= 0) return null;
   const count = Number(a.count);
   return { rating: Math.min(5, rating), count: Number.isFinite(count) && count > 0 ? Math.round(count) : 0 };
+}
+
+// A review's identity for hiding: a 32-bit FNV-1a hash of author + comment (trimmed, lower-cased), in
+// base 36. Not the array position: importing again reorders reviews. Pure JS (the app runs this in
+// Hermes, which has no Node crypto).
+export function reviewKey(r: { author?: string; comment?: string } | null | undefined): string {
+  const text = `${(r?.author || '').trim()}\n${(r?.comment || '').trim()}`.toLowerCase();
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(36);
+}
+
+// The reviews the page shows: those the barber has not hidden. Applied BEFORE any slice, and the
+// reviews section appears only if something is left.
+export function visibleReviews<T extends { author?: string; comment?: string }>(
+  site: { reviews?: T[]; hiddenReviews?: string[] },
+): T[] {
+  const reviews = Array.isArray(site.reviews) ? site.reviews : [];
+  const hidden = new Set(Array.isArray(site.hiddenReviews) ? site.hiddenReviews.filter((k) => typeof k === 'string') : []);
+  return hidden.size === 0 ? reviews : reviews.filter((r) => !hidden.has(reviewKey(r)));
 }
 
 // ── Photos ───────────────────────────────────────────────────────────
