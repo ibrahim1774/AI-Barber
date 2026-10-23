@@ -2,10 +2,12 @@ import { ActionSheetIOS, Pressable, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/constants/theme';
 import { PlusIcon } from '@/components/bookings/icons';
+import { useTutorialTarget } from '@/components/tutorial/registry';
 
 /** Floating +: Add booking / Block time. */
 export function Fab({ onAdd, onBlock }: { onAdd(): void; onBlock(): void }) {
   const insets = useSafeAreaInsets();
+  const ref = useTutorialTarget('bookings.add');
   const open = () =>
     ActionSheetIOS.showActionSheetWithOptions(
       { options: ['Add booking', 'Block time', 'Cancel'], cancelButtonIndex: 2 },
@@ -16,6 +18,8 @@ export function Fab({ onAdd, onBlock }: { onAdd(): void; onBlock(): void }) {
     );
   return (
     <Pressable
+      ref={ref}
+      collapsable={false}
       onPress={open}
       accessibilityRole="button"
       accessibilityLabel="Add booking or block time"

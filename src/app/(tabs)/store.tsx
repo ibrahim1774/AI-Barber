@@ -10,6 +10,9 @@ import { ShareSheet } from '@/components/ShareSheet';
 import { OrdersPane } from '@/components/store/OrdersPane';
 import { Segmented } from '@/components/store/Segmented';
 import { StoreHeader } from '@/components/store/StoreHeader';
+import { TutorialLayer } from '@/components/tutorial/TutorialLayer';
+import { useTutorialTarget } from '@/components/tutorial/registry';
+import { useTour } from '@/components/tutorial/useTour';
 import { ProductsPane } from '@/components/store/products/ProductsPane';
 import { loadMyShop, type Shop } from '@/lib/shop';
 import { loadSite, type SiteRecord } from '@/lib/siteStore';
@@ -43,6 +46,8 @@ export default function Store() {
   const [tab, setTab] = useState<Tab>(params.tab === 'orders' ? 'orders' : 'products');
   const [sharing, setSharing] = useState(false);
   const seq = useRef(0);
+  const headerRef = useTutorialTarget('store.header');
+  const tabsRef = useTutorialTarget('store.tabs');
   const sitePrompt = useUpdateSitePrompt('store');
 
   // A push tap while the tab is mounted changes the params.
@@ -102,6 +107,7 @@ export default function Store() {
 
   const noPlan = access.status === 'inactive';
   const lapsed = isLocked(site, status);
+  const tour = useTour('store', { auto: 'store', ready: phase === 'ready' && !!shop && access.status !== 'loading' && access.status !== 'error' });
   // Products are view-only without the Store plan or after a lapse. Orders never are.
   const locked = lapsed || noPlan;
   const shell = [styles.root, { paddingTop: insets.top }];
@@ -162,7 +168,9 @@ export default function Store() {
   }
   return (
     <View style={shell}>
-      <StoreHeader title={shop.name} locked={locked} onShare={() => setSharing(true)} onSetup={() => router.push('/store-setup' as never)} />
+      <View ref={headerRef} collapsable={false}>
+        <StoreHeader title={shop.name} locked={locked} onShare={() => setSharing(true)} onSetup={() => router.push('/store-setup' as never)} />
+      </View>
       {lapsed && (
         <Text style={styles.locked}>Your subscription has ended. Your store is read-only until you resubscribe.</Text>
       )}
@@ -170,14 +178,16 @@ export default function Store() {
       {!storeOpen && (
         <Text style={styles.locked}>Your shop is closed to customers. Open it in Store setup.</Text>
       )}
-      <Segmented<Tab>
-        options={[
-          { key: 'products', label: 'Products' },
-          { key: 'orders', label: 'Orders', badge: newOrders },
-        ]}
-        value={tab}
-        onChange={setTab}
-      />
+      <View ref={tabsRef} collapsable={false}>
+        <Segmented<Tab>
+          options={[
+            { key: 'products', label: 'Products' },
+            { key: 'orders', label: 'Orders', badge: newOrders },
+          ]}
+          value={tab}
+          onChange={setTab}
+        />
+      </View>
       <View style={styles.flex}>
         {tab === 'products' ? (
           <ProductsPane shopId={shop.id} locked={locked} lockReason={lapsed ? 'lapsed' : 'plan'} onUpgrade={upgrade.open}
@@ -195,6 +205,7 @@ export default function Store() {
           />
         )}
       </View>
+      <TutorialLayer controller={tour} />
       <ShareSheet
         visible={sharing}
         shopName={shop.name}

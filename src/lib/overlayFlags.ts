@@ -1,5 +1,6 @@
 import Storage from 'expo-sqlite/kv-store';
 import type { SiteRecord } from '@/lib/siteStore';
+import { hasTourSeen } from '@/components/tutorial/tours';
 
 // Once-per-generation editor overlays: HomePrompts, then LaunchGuide. Flags
 // live in kv as `prompts.v1.<draftId>` / `guide.v1.<draftId>`.
@@ -39,7 +40,8 @@ export async function nextOverlay(site: SiteRecord): Promise<Overlay | null> {
   // A published site (or one live per the account, loaded without a slug) needs no onboarding.
   if (site.slug != null || site.deployedUrl) return null;
   if (!site.inputs.importedFrom && !(await hasSeen('prompts', site.draftId))) return 'prompts';
-  if (!(await hasSeen('guide', site.draftId))) return 'guide';
+  // The guide is the Edit tour; tours are per install, so a new or adopted draft does not bring it back.
+  if (!(await hasSeen('guide', site.draftId)) && !(await hasTourSeen('edit'))) return 'guide';
   return null;
 }
 

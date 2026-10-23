@@ -20,6 +20,9 @@ import { Fab } from '@/components/bookings/Fab';
 import { MonthView } from '@/components/bookings/MonthView';
 import { RangeNav, ViewSwitch } from '@/components/bookings/ViewSwitch';
 import { WeekView } from '@/components/bookings/WeekView';
+import { TutorialLayer } from '@/components/tutorial/TutorialLayer';
+import { useTutorialTarget } from '@/components/tutorial/registry';
+import { useTour } from '@/components/tutorial/useTour';
 import { ShareIcon } from '@/components/bookings/icons';
 import { DAYS_AHEAD, DAYS_BACK, useBookingsData } from '@/components/bookings/useBookingsData';
 import {
@@ -63,6 +66,8 @@ export default function Bookings() {
   const [blocking, setBlocking] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [pulling, setPulling] = useState(false);
+  const viewsRef = useTutorialTarget('bookings.views');
+  const setupRef = useTutorialTarget('bookings.setup');
 
   useFocusEffect(
     useCallback(() => {
@@ -98,6 +103,7 @@ export default function Bookings() {
   // The plan not covering bookings (a Website plan) is read-only too; the server pauses the page.
   const paused = tier.status === 'ready' && !tier.entitled;
   const locked = lapsed || paused;
+  const tour = useTour('bookings', { auto: 'bookings', ready: phase === 'ready' && !!shop && tier.status === 'ready' && !locked });
   const day = selected ?? today;
 
   // A tapped booking push opens the tab on that day (once the shop's timezone is known).
@@ -230,6 +236,8 @@ export default function Bookings() {
           )}
           {!locked && (
             <Pressable
+              ref={setupRef}
+              collapsable={false}
               onPress={() => router.push('/bookings-setup' as never)}
               hitSlop={10}
               accessibilityRole="button"
@@ -246,7 +254,9 @@ export default function Bookings() {
       )}
       {paused && !lapsed && <PausedBanner kind="bookings" onUpgrade={() => void upgrade.run()} />}
 
-      <ViewSwitch value={view} onChange={chooseView} />
+      <View ref={viewsRef} collapsable={false}>
+        <ViewSwitch value={view} onChange={chooseView} />
+      </View>
       {view === 'day' && <DateStrip days={days} selected={day} today={today} counts={counts} onSelect={setSelected} />}
       {view !== 'day' && (
         <RangeNav
@@ -367,6 +377,7 @@ export default function Bookings() {
         onClose={() => setBlocking(false)}
         onBlocked={refresh}
       />
+      <TutorialLayer controller={tour} />
       <ShareSheet
         visible={sharing && customer.gate === 'live'}
         shopName={shop.name}

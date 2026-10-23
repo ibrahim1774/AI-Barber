@@ -46,7 +46,8 @@ import { AboutSheet } from '@/components/sections/AboutSheet';
 import { ContactSheet } from '@/components/sections/ContactSheet';
 import type { SectionKey } from '@/lib/sections/list';
 import { HomePrompts } from '@/components/HomePrompts';
-import { LaunchGuide } from '@/components/LaunchGuide';
+import { TutorialLayer } from '@/components/tutorial/TutorialLayer';
+import { useTour } from '@/components/tutorial/useTour';
 import { PublishBar } from '@/components/PublishBar';
 import { LapsedCard } from '@/components/LapsedCard';
 
@@ -476,6 +477,16 @@ export default function Editor() {
     void finishOverlay('guide').then(() => refreshReminders());
   }, [finishOverlay]);
 
+  // The first-site guide is the Edit tour (its first step is Publish); a replay from Settings opens it any time.
+  const tour = useTour('edit', {
+    auto: overlay === 'guide' ? 'edit' : null,
+    ignoreFlag: true,
+    ready: overlay === 'guide' && !!site,
+    onDone: (id) => {
+      if (id === 'edit' && overlayRef.current === 'guide') onGuideClose();
+    },
+  });
+
   if (!site) return <View style={styles.root} />;
 
   if (locked) {
@@ -623,7 +634,7 @@ export default function Editor() {
             initialPhone={data.phone || ''}
           />
         )}
-        {overlay === 'guide' && <LaunchGuide onClose={onGuideClose} />}
+        <TutorialLayer controller={tour} />
       </View>
     </View>
   );

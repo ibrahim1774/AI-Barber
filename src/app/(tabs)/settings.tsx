@@ -24,6 +24,7 @@ import { loadSite, type SiteRecord } from '@/lib/siteStore';
 import { siteOffline, useSubscriptionStatus } from '@/lib/subscriptionStatus';
 import { tabBarStyle } from '@/lib/tabBar';
 import { useLinkActions } from '@/lib/useLinkActions';
+import { requestTour, TOURS, TOUR_ORDER, type TourId } from '@/components/tutorial/tours';
 import { websiteView } from '@/lib/website';
 
 const SUPPORT_EMAIL = 'support@davoxa.com';
@@ -37,6 +38,7 @@ const SUBSCRIPTION_SEPARATE = 'Deleting doesn’t cancel your subscription — d
 const GREEN = '#22c55e';
 
 type Busy = 'delete' | 'signout' | null;
+const REPLAY_ROUTE = { edit: '/edit', bookings: '/bookings', store: '/store', getpaid: '/get-paid' } as const;
 
 /**
  * The Settings tab ("Settings" on aibarber.org/support): Your website (the
@@ -165,6 +167,13 @@ export default function Settings() {
     }
   };
 
+  // Replays ignore the seen flag: the tour's own screen picks the request up when it is focused.
+  const replayTour = (id: TourId) => {
+    track('tutorial_replayed', { tour: id });
+    requestTour(id);
+    router.navigate(REPLAY_ROUTE[TOURS[id].screen] as never);
+  };
+
   const version = `${Application.nativeApplicationVersion ?? '1.0.0'} (${Application.nativeBuildVersion ?? '1'})`;
 
   return (
@@ -192,6 +201,14 @@ export default function Settings() {
         <Row label="Restore purchases" onPress={() => void restore()} busy={restoring} />
         <Row label="Manage subscription" onPress={manageSubscription} external />
       </Section>
+
+      {site && (
+        <Section title="Tutorial">
+          {TOUR_ORDER.map((id) => (
+            <Row key={id} label={TOURS[id].label} onPress={() => replayTour(id)} chevron />
+          ))}
+        </Section>
+      )}
 
       <Section title="Help">
         <Row label="Privacy Policy" onPress={() => void WebBrowser.openBrowserAsync(PRIVACY_URL)} external />

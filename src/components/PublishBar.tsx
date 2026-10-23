@@ -2,6 +2,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fonts } from '@/constants/theme';
 import { ArrowRight } from '@/components/Icons';
+import { useTutorialTarget } from '@/components/tutorial/registry';
 
 /**
  * The editor's tool bar (the web's EditorToolbar, minus Save — every change
@@ -21,13 +22,16 @@ export function PublishBar({
   padBottom?: boolean;
 }) {
   const insets = useSafeAreaInsets();
+  const publishRef = useTutorialTarget('edit.publish');
   return (
     <View style={[styles.bar, { paddingBottom: 10 + (padBottom ? insets.bottom : 0) }]}>
-      <Tool title="Sections" hint="Services, team, hours and more" onPress={onSections} disabled={disabled} />
-      <Tool title="Text" hint="All text fields" onPress={onText} disabled={disabled} />
-      <Tool title="Photos" onPress={onPhotos} disabled={disabled} />
-      <Tool title="Colour" onPress={onColour} disabled={disabled} />
+      <Tool target="edit.sections" title="Sections" hint="Services, team, hours and more" onPress={onSections} disabled={disabled} />
+      <Tool target="edit.text" title="Text" hint="All text fields" onPress={onText} disabled={disabled} />
+      <Tool target="edit.photos" title="Photos" onPress={onPhotos} disabled={disabled} />
+      <Tool target="edit.colour" title="Colour" onPress={onColour} disabled={disabled} />
       <Pressable
+        ref={publishRef}
+        collapsable={false}
         accessibilityRole="button"
         accessibilityState={{ disabled: !!disabled }}
         onPress={onPublish}
@@ -41,9 +45,12 @@ export function PublishBar({
   );
 }
 
-function Tool({ title, hint, onPress, disabled }: { title: string; hint?: string; onPress(): void; disabled?: boolean }) {
+function Tool({ target, title, hint, onPress, disabled }: { target: string; title: string; hint?: string; onPress(): void; disabled?: boolean }) {
+  const ref = useTutorialTarget(target);
   return (
     <Pressable
+      ref={ref}
+      collapsable={false}
       accessibilityRole="button"
       accessibilityHint={hint}
       accessibilityState={{ disabled: !!disabled }}
