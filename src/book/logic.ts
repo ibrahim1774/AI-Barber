@@ -175,6 +175,27 @@ export function eligibleMembers(members: Member[], serviceId: string | null): Me
   return members.filter((m) => m.serviceIds == null || m.serviceIds.includes(serviceId));
 }
 
+const BARBER_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * `?barber=<uuid>` from a team card on the barber's site (lib/render/honest.ts teamBookLink): the
+ * member id when it is UUID-shaped AND is one of this shop's bookable members, else 'any'. Anything
+ * else (a missing, repeated, malformed or foreign id) is ignored, never an error.
+ */
+export function barberFromSearch(search: string, members: Pick<Member, 'id'>[]): string {
+  let all: string[];
+  try { all = new URLSearchParams(search).getAll('barber'); } catch { return 'any'; }
+  const id = all.length === 1 ? all[0] : '';
+  if (!BARBER_UUID.test(id)) return 'any';
+  const hit = members.find((m) => m.id.toLowerCase() === id.toLowerCase());
+  return hit ? hit.id : 'any';
+}
+
+/** The preselected barber if they do the chosen service, else 'any'. */
+export function preferredFor(preferred: string, members: Member[], serviceId: string | null): string {
+  return preferred !== 'any' && eligibleMembers(members, serviceId).some((m) => m.id === preferred) ? preferred : 'any';
+}
+
 /** Shown on the details step when payOptions() leaves nothing for the chosen service. */
 export const NO_WAY_TO_PAY = "This service can't be booked online right now. Please call the shop.";
 
