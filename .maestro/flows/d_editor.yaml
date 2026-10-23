@@ -18,6 +18,12 @@ appId: com.ibrahim1774.aibarber
     point: "55%,32%"   # Price field
 - inputText: "25"
 - takeScreenshot: 05_service_form_filled
+- swipe:
+    start: "50%,50%"
+    end: "50%,38%"
+- tapOn: "Description.*"   # tapping the label focuses the field (F2) and scrolls it above the keyboard (F7)
+- inputText: "Clean fade"
+- takeScreenshot: 05b_service_description
 - tapOn: "Save"
 - takeScreenshot: 06_services_after_add
 - tapOn: "Done"
@@ -26,9 +32,7 @@ appId: com.ibrahim1774.aibarber
 - takeScreenshot: 07_team_empty
 - tapOn: "Add a person"
 - takeScreenshot: 07b_team_form_open
-- tapOn:
-    text: "Name"
-    index: 1
+- tapOn: "Name"   # the label itself focuses the field (F2)
 - inputText: "Jack"
 - tapOn: "Barber, Owner.*"
 - inputText: "Owner"
