@@ -35,6 +35,8 @@ const deployed = vi.hoisted(() => [] as string[]);
 vi.mock('../lib/deploySite.js', () => ({
   deployRenderedSite: async (i: { siteId: string }) => { deployed.push(i.siteId); return { deploymentUrl: `https://${i.siteId}.vercel.app`, uploadedImages: {} }; },
 }));
+const projects = vi.hoisted(() => new Set<string>());
+vi.mock('../lib/ios/slug.js', async (orig) => ({ ...(await orig<object>()), vercelProjectExists: async (s: string) => projects.has(s) }));
 vi.mock('../lib/siteSubpages.js', async (orig) => ({ ...(await orig<object>()), findShopForSite: async () => null }));
 const owners = vi.hoisted(() => ({ rows: new Map<string, any>() }));
 vi.mock('../lib/siteOwners.js', async (orig) => {
@@ -73,6 +75,7 @@ beforeEach(() => {
   gcs.objects.clear();
   deployed.length = 0;
   owners.rows.clear();
+  projects.clear();
   waits.length = 0;
   vi.spyOn(console, 'log').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -116,6 +119,24 @@ describe('publish-sweeper: first publish by the server records the owner', () =>
     expect((await run()).repaired).toEqual([{ siteId: 'jacks-cuts-x7k2', url: 'https://jacks-cuts-x7k2.vercel.app' }]);
     expect(deployed).toEqual(['jacks-cuts-x7k2']);
     expect(owners.rows.get('jacks-cuts-x7k2')).toMatchObject({ claim_email: 'buyer@example.com', user_id: null });
+  });
+
+  it('B1: a slug that already has a Vercel project (unstamped copy) is redeployed but records no owner', async () => {
+    projects.add('jacks-cuts');
+    await writePendingSite('jacks-cuts', site('Jacks Cuts'));
+    network([session('jacks-cuts')]);
+    expect((await run()).repaired).toEqual([{ siteId: 'jacks-cuts', url: 'https://jacks-cuts.vercel.app' }]);
+    expect(deployed).toEqual(['jacks-cuts']);
+    expect(owners.rows.has('jacks-cuts')).toBe(false);
+  });
+
+  it('B1: a failed project lookup reports no first publish, so no owner is recorded', async () => {
+    const slug = await import('../lib/ios/slug.js');
+    vi.spyOn(slug, 'vercelProjectExists').mockRejectedValueOnce(new Error('vercel down'));
+    await writePendingSite('fresh-cuts', site('Fresh Cuts'));
+    network([session('fresh-cuts')]);
+    await run();
+    expect(owners.rows.has('fresh-cuts')).toBe(false);
   });
 
   it('nothing deployed (already live, held, or a site that was published before) records nothing; an existing owner is kept', async () => {

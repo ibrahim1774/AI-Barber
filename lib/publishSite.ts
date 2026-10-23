@@ -22,6 +22,8 @@ import { generateHTMLWithPlaceholders } from './render/luxe.js';
 import { generatePrimeHTMLWithPlaceholders } from './render/prime.js';
 import { generateEuphoriaHTMLWithPlaceholders } from './render/euphoria.js';
 import { isAwaitingDetails, isPayFirstPlan } from './payFirst.js';
+import { vercelProjectExists } from './ios/slug.js';
+import type { SiteOwnerStore } from './siteOwners.js';
 import {
   findShopForSite, liveSiteBaseDeps, refreshSiteBase, withSubpageLinks,
   type SiteBaseDeps, type SiteShop, type SiteSubpages,
@@ -397,6 +399,36 @@ export function renderPending(pending: Pick<PendingSite, 'siteData' | 'imageUrlM
  * site is already serving, this returns that URL without touching Vercel.
  * `opts.force` skips that check and redeploys regardless.
  */
+/**
+ * The same rules authorizeDeploy applies to a browser pay-first rename, for the server's follow
+ * (both pointers come from the unauthenticated save-pending-site): the target is brand-new (no
+ * stamp, no Vercel project), no other session owns it, and this purchase binds no other slug.
+ * Any lookup failure refuses.
+ */
+async function payFirstMoveAllowed(
+  placeholder: string,
+  target: string,
+  moved: PendingSite,
+  opts: { projectExists?: (slug: string) => Promise<boolean>; siteOwners?: SiteOwnerStore; sessionId?: string | null },
+): Promise<boolean> {
+  const refuse = (why: string) => { console.warn(`[Publish] ${placeholder}: pay-first move to ${target} refused (${why})`); return false; };
+  if (moved.deployedUrl) return refuse('target already published');
+  try {
+    if (await (opts.projectExists ?? vercelProjectExists)(target)) return refuse('target has a Vercel project');
+    if (opts.siteOwners) {
+      const row = await opts.siteOwners.get(target);
+      if (row && (!opts.sessionId || row.checkout_session_id !== opts.sessionId)) return refuse('target is owned by another session');
+      if (opts.sessionId && opts.siteOwners.slugsForSession) {
+        const bound = await opts.siteOwners.slugsForSession(opts.sessionId);
+        if (bound.some((s) => s !== placeholder && s !== target)) return refuse('this purchase already published another site');
+      }
+    }
+  } catch (e: any) {
+    return refuse(`lookup failed: ${e?.message || e}`);
+  }
+  return true;
+}
+
 export async function publishSite(
   siteId: string,
   opts: {
@@ -431,6 +463,12 @@ export async function publishSite(
     findShop?: (siteSlug: string) => Promise<SiteShop | null>;
     /** Where the shop's public base URL and look are stored after the deploy. Injectable for tests. */
     siteBase?: SiteBaseDeps;
+    /** Does a Vercel project with this name exist? Throws when it can't tell. Injectable for tests. */
+    projectExists?: (slug: string) => Promise<boolean>;
+    /** The web owner list, for the pay-first move rules (with sessionId). Absent: those two rules are skipped. */
+    siteOwners?: SiteOwnerStore;
+    /** The checkout session behind this publish (webhook, sweeper): the pay-first purchase whose binding is checked. */
+    sessionId?: string | null;
     /** Internal: a followed pay-first move is never followed again. */
     noFollow?: boolean;
   } = {},
@@ -453,11 +491,11 @@ export async function publishSite(
     const target = slugify(pending.movedTo);
     if (target && target !== safe) {
       const moved = await readPendingSite(target).catch(() => null);
-      if (moved && slugify(moved.movedFrom || '') === safe) {
+      if (moved && slugify(moved.movedFrom || '') === safe && (await payFirstMoveAllowed(safe, target, moved, opts))) {
         console.log(`[Publish] ${safe}: pay-first site moved to ${target} at the details step; publishing that`);
         return publishSite(target, { ...opts, noFollow: true });
       }
-      console.warn(`[Publish] ${safe}: movedTo ${target} does not point back; not following`);
+      else console.warn(`[Publish] ${safe}: movedTo ${target} is not an allowed pay-first move; not following (placeholder held)`);
     }
   }
 
@@ -493,6 +531,18 @@ export async function publishSite(
     return { ok: false, reason: 'deploy-failed', siteId: safe, error: `shop lookup failed: ${e?.message || e}` };
   }
   const subpages: SiteSubpages | null = shop ? { mode: 'full', shopSlug: shop.slug } : null;
+
+  // Was this slug brand-new before the deploy (no stamp AND no Vercel project)? Only then may a
+  // server publish record an owner; an unstamped legacy site with a live project must not. A
+  // failed lookup says no.
+  let firstPublish = false;
+  if (!opts.force && !pending.deployedUrl) {
+    try {
+      firstPublish = !(await (opts.projectExists ?? vercelProjectExists)(safe));
+    } catch (e: any) {
+      console.warn(`[Publish] ${safe}: project lookup failed; not reporting a first publish:`, e?.message || e);
+    }
+  }
 
   try {
     // A deploy takes minutes, and the stored copy can be replaced meanwhile (a phone publish,
@@ -537,7 +587,7 @@ export async function publishSite(
       ).catch((e) => console.warn(`[Publish] ${safe}: live, but storing the shop's site URL failed:`, e?.message || e));
     }
     console.log(`[Publish] ${safe}: LIVE at ${deploymentUrl}`);
-    return { ok: true, deployedUrl: deploymentUrl, alreadyLive: false, siteId: safe, firstPublish: !opts.force && !pending.deployedUrl };
+    return { ok: true, deployedUrl: deploymentUrl, alreadyLive: false, siteId: safe, firstPublish };
   } catch (e: any) {
     console.error(`[Publish] ${safe}: deploy failed:`, e?.message || e);
     return { ok: false, reason: 'deploy-failed', siteId: safe, error: e?.message || String(e) };

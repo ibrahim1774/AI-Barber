@@ -68,7 +68,7 @@ export default async function handler(req: any, res: any) {
         }
 
         // The plan holds a /custom-15 pay-first site until its details are in.
-        const outcome = await publishSite(siteId, { plan: s.metadata?.plan || null });
+        const outcome = await publishSite(siteId, { plan: s.metadata?.plan || null, sessionId: typeof s.id === 'string' ? s.id : null, siteOwners: supabaseSiteOwners() });
         if (!outcome.ok) {
           if (outcome.reason === 'deploy-failed') {
             failed.push({ siteId: outcome.siteId, error: outcome.error });

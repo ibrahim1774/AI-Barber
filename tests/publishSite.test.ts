@@ -289,7 +289,7 @@ describe('pay-first move (re-review R1): the webhook / sweeper follow the detail
     deployRenderedSite.mockClear();
     await writePendingSite('premium-cuts-k3m9p2xq', { ...held, siteId: 'premium-cuts-k3m9p2xq', movedTo: 'jacks-cuts-x7k2' });
     await writePendingSite('jacks-cuts-x7k2', { ...pending, siteId: 'jacks-cuts-x7k2', movedFrom: 'premium-cuts-k3m9p2xq', siteData: { ...pending.siteData, shopName: 'Jacks Cuts', detailsConfirmed: true } });
-    const out = await publishSite('premium-cuts-k3m9p2xq', { plan: 'monthly-custom15' });
+    const out = await publishSite('premium-cuts-k3m9p2xq', { plan: 'monthly-custom15', projectExists: async () => false });
     expect(out).toMatchObject({ ok: true, siteId: 'jacks-cuts-x7k2' });
     expect(deployRenderedSite.mock.calls.map((c) => c[0].siteId)).toEqual(['jacks-cuts-x7k2']);
     expect(deployRenderedSite.mock.calls[0][0].html).toContain('Jacks Cuts');
@@ -307,5 +307,55 @@ describe('pay-first move (re-review R1): the webhook / sweeper follow the detail
     const regular = await publishSite('premium-cuts-k3m9p2xq', { plan: 'monthly' });
     expect(regular.siteId).toBe('premium-cuts-k3m9p2xq');
     expect(deployRenderedSite.mock.calls.every((c) => c[0].siteId !== 'jacks-cuts-x7k2')).toBe(true);
+  });
+});
+
+describe('S1: the pay-first move is followed only to a brand-new slug this purchase may take', () => {
+  const held = { ...pending, siteData: { ...pending.siteData, shopName: 'Premium Cuts', awaitingDetails: true } };
+  const PH = 'premium-cuts-k3m9p2xq';
+  const TARGET = 'jacks-cuts-x7k2';
+  const SID = 'cs_live_payfirst1aaaaaaaaaaaa';
+  const setup = async (targetExtra: Record<string, unknown> = {}) => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('nope', { status: 404 })));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    deployRenderedSite.mockClear();
+    await writePendingSite(PH, { ...held, siteId: PH, movedTo: TARGET });
+    await writePendingSite(TARGET, { ...pending, siteId: TARGET, movedFrom: PH, siteData: { ...pending.siteData, shopName: 'Jacks Cuts', detailsConfirmed: true }, ...targetExtra });
+  };
+  const store = (rows: Record<string, any> = {}, bound: string[] = [PH]) => ({
+    get: async (s: string) => rows[s] ?? null, insertIfAbsent: async () => true, claim: async () => false, upsert: async () => {},
+    slugsForSession: async () => bound,
+  });
+  const run = (o: Record<string, unknown>) => publishSite(PH, { plan: 'monthly-custom15', sessionId: SID, projectExists: async () => false, ...o } as any);
+
+  it('follows a brand-new target (no project, no owner row, only the placeholder bound)', async () => {
+    await setup();
+    expect(await run({ siteOwners: store() })).toMatchObject({ ok: true, siteId: TARGET });
+  });
+  it('a target that already has a Vercel project is not followed (placeholder held)', async () => {
+    await setup();
+    expect(await run({ projectExists: async () => true, siteOwners: store() })).toMatchObject({ ok: false, reason: 'awaiting-details' });
+    expect(deployRenderedSite).not.toHaveBeenCalled();
+  });
+  it('a failed project lookup, or a stamped target, is not followed', async () => {
+    await setup();
+    expect(await run({ projectExists: async () => { throw new Error('x'); } })).toMatchObject({ ok: false, reason: 'awaiting-details' });
+    await setup({ deployedUrl: 'https://jacks-cuts-x7k2.vercel.app' });
+    expect(await run({})).toMatchObject({ ok: false, reason: 'awaiting-details' });
+    expect(deployRenderedSite).not.toHaveBeenCalled();
+  });
+  it('an owned target (owner row from another session) is not followed', async () => {
+    await setup();
+    const owned = { [TARGET]: { slug: TARGET, user_id: 'u1', claim_email: null, source: 'admin', checkout_session_id: 'cs_other' } };
+    expect(await run({ siteOwners: store(owned) })).toMatchObject({ ok: false, reason: 'awaiting-details' });
+    expect(deployRenderedSite).not.toHaveBeenCalled();
+  });
+  it('a session that already bound another site, or whose owner lookup fails, is not followed', async () => {
+    await setup();
+    expect(await run({ siteOwners: store({}, [PH, 'another-site']) })).toMatchObject({ ok: false, reason: 'awaiting-details' });
+    const broken = { ...store(), slugsForSession: async () => { throw new Error('site_owners table is missing'); } };
+    expect(await run({ siteOwners: broken })).toMatchObject({ ok: false, reason: 'awaiting-details' });
+    expect(deployRenderedSite).not.toHaveBeenCalled();
   });
 });

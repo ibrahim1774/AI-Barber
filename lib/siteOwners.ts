@@ -225,7 +225,9 @@ export function supabaseSiteOwners(client?: SupabaseClient): SiteOwnerStore {
     },
     async slugsForSession(sessionId) {
       const { data, error } = await c().from('site_owners').select('slug').eq('checkout_session_id', sessionId);
-      if (tableMissing(error)) return [];
+      // Missing table: the binding cannot be known, so a pay-first rename must be refused (it
+      // would otherwise let one purchase publish any number of new slugs), not allowed.
+      if (tableMissing(error)) throw new Error('site_owners table is missing (migration 013 not applied): cannot check the pay-first binding');
       if (error) throw new Error(`site_owners session lookup failed: ${error.message}`);
       return ((data as { slug: string }[]) ?? []).map((r) => r.slug);
     },

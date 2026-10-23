@@ -244,7 +244,11 @@ export async function authorizeDeploy(input: DeployAuthInput, deps: DeployAuthDe
         try {
           const row = await withTimeout(deps.siteOwners.get(shopSlug), ms, 'site owner lookup');
           const paidAs = normEmail(proof!.email);
-          const ownersEmail = !!row && !!paidAs && (paidAs === row.owner_email || paidAs === row.claim_email);
+          // N1: the email is the payer's own typing, so it only counts for a checkout opened AFTER
+          // the owner row existed (an older one could have been paid with the owner's public email).
+          const rowAt = row?.created_at ? Date.parse(row.created_at) : NaN;
+          const afterRow = Number.isNaN(rowAt) || proof!.created * 1000 > rowAt;
+          const ownersEmail = !!row && !!paidAs && afterRow && (paidAs === row.owner_email || paidAs === row.claim_email);
           if (row && row.checkout_session_id !== sessionId && !ownersEmail) blocked = 'owned site; this checkout is not its owner\'s';
           // A live slug is never a pay-first rename target, except the one this session already
           // published (its owner row carries this session: the /recover replay).

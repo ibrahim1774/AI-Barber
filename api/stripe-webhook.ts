@@ -234,7 +234,7 @@ export default async function handler(req: any, res: any) {
         new Promise((r) => setTimeout(r, PUBLISH_GRACE_MS))
           // `plan` lets publishSite hold a /custom-15 pay-first site until the
           // barber has entered their details after payment.
-          .then(() => publishSite(siteId, { plan: typeof plan === 'string' ? plan : null }))
+          .then(() => publishSite(siteId, { plan: typeof plan === 'string' ? plan : null, sessionId: typeof session.id === 'string' ? session.id : null, siteOwners: supabaseSiteOwners() }))
           .then((outcome) => {
             if (!outcome.ok) {
               console[outcome.reason === 'deploy-failed' ? 'error' : 'warn'](

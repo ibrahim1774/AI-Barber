@@ -232,6 +232,22 @@ describe('re-review R2: a re-checkout paid with the owner\'s email deploys an ow
   });
 });
 
+describe('N1: the owner-email proof must be a checkout opened after the owner row existed', () => {
+  const NEW_SESSION = 'cs_live_newsession1234567890';
+  it('a checkout created before the row is not proof by email; one created after is', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const rowAt = new Date(NOW - 3600_000).toISOString();
+    const store = memStore([{ ...pending('fresh-cuts', 'barber@example.com'), checkout_session_id: SESSION, created_at: rowAt }]);
+    const mk = (created: number): DeployAuthDeps => ({
+      userOf: async () => null, findBySlug: async () => null, webClaimants: async () => [],
+      checkoutSession: async () => ({ paid: true, status: 'complete', mode: 'subscription', siteId: 'fresh-cuts', app: 'aibarber', created, email: 'barber@example.com', plan: 'monthly' }),
+      storedStamp: async () => 'https://fresh-cuts.vercel.app', projectExists: async () => true, siteOwners: store, now: () => NOW,
+    });
+    expect((await authorizeDeploy({ siteId: 'fresh-cuts', checkoutSessionId: NEW_SESSION }, mk(Math.floor(NOW / 1000) - 7200))).status).toBe(403);
+    expect((await authorizeDeploy({ siteId: 'fresh-cuts', checkoutSessionId: NEW_SESSION }, mk(Math.floor(NOW / 1000) - 60))).ok).toBe(true);
+  });
+});
+
 describe('re-review R1: /custom-15 pay-first names its real slug at the details step (one site per purchase)', () => {
   const S1 = 'cs_live_payfirst1aaaaaaaaaaaa';
   const S2 = 'cs_live_payfirst2bbbbbbbbbbbb';
@@ -371,6 +387,13 @@ describe('supabaseSiteOwners: migration 013 not applied', () => {
     expect(await store.get('fresh-cuts')).toBeNull();
     expect(await store.insertIfAbsent(pending('fresh-cuts', 'a@b.co'))).toBe(false);
     expect(await store.claim('fresh-cuts', A, 'a@b.co', 'x')).toBe(false);
+  });
+  it('S2: but the session binding cannot be read, so it throws (a pay-first rename is refused, not allowed)', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const missing = { data: null, error: { code: 'PGRST205', message: "Could not find the table 'public.site_owners' in the schema cache" } };
+    const q: any = { select: () => q, eq: () => q, then: (f: any) => Promise.resolve(missing).then(f) };
+    const store = supabaseSiteOwners({ from: () => q } as any);
+    await expect(store.slugsForSession!('cs_live_x')).rejects.toThrow(/missing/);
   });
 });
 
