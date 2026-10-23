@@ -6,7 +6,18 @@ export type PreviewMessage =
   | { type: 'edit'; path: string }
   | { type: 'image'; path: string }
   | { type: 'scrollY'; y: number }
+  | { type: 'rects'; items: ImageRect[] }
+  | { type: 'scrolling' }
   | { type: 'ready' };
+
+/** Where a tappable photo is in the page, in WebView points (the visible part of it). */
+export interface ImageRect { path: string; x: number; y: number; w: number; h: number }
+
+// 2,000 characters for every message but the photo rectangles, which carry one entry per visible photo.
+const MAX_MESSAGE = 2000;
+const MAX_RECTS_MESSAGE = 8000;
+const MAX_RECTS = 24;
+const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && Math.abs(n) < 100000;
 
 /**
  * Validate a raw WebView message. The page runs third-party script (Tailwind
@@ -16,7 +27,7 @@ export type PreviewMessage =
  * still ignored (null).
  */
 export function parsePreviewMessage(raw: unknown, data: WebsiteData): PreviewMessage | null {
-  if (typeof raw !== 'string' || raw.length > 2000) return null;
+  if (typeof raw !== 'string' || raw.length > MAX_RECTS_MESSAGE) return null;
   let m: unknown;
   try {
     m = JSON.parse(raw);
@@ -25,6 +36,7 @@ export function parsePreviewMessage(raw: unknown, data: WebsiteData): PreviewMes
   }
   if (m === null || typeof m !== 'object' || Array.isArray(m)) return null;
   const o = m as Record<string, unknown>;
+  if (o.type !== 'rects' && raw.length > MAX_MESSAGE) return null;
   switch (o.type) {
     case 'edit':
       return typeof o.path === 'string' && editableTextPaths(data).includes(o.path) ? { type: 'edit', path: o.path } : null;
@@ -32,6 +44,22 @@ export function parsePreviewMessage(raw: unknown, data: WebsiteData): PreviewMes
       return typeof o.path === 'string' && IMAGE_PATHS(data).includes(o.path) ? { type: 'image', path: o.path } : null;
     case 'scrollY':
       return typeof o.y === 'number' && Number.isFinite(o.y) ? { type: 'scrollY', y: Math.max(0, o.y) } : null;
+    case 'rects': {
+      if (!Array.isArray(o.items)) return null;
+      const slots = new Set(IMAGE_PATHS(data));
+      const items: ImageRect[] = [];
+      for (const it of o.items) {
+        if (items.length >= MAX_RECTS) break;
+        if (it === null || typeof it !== 'object' || Array.isArray(it)) continue;
+        const r = it as Record<string, unknown>;
+        if (typeof r.path !== 'string' || !slots.has(r.path)) continue;
+        if (!finite(r.x) || !finite(r.y) || !finite(r.w) || !finite(r.h) || r.w <= 0 || r.h <= 0) continue;
+        items.push({ path: r.path, x: r.x, y: r.y, w: r.w, h: r.h });
+      }
+      return { type: 'rects', items };
+    }
+    case 'scrolling':
+      return { type: 'scrolling' };
     case 'ready':
       return { type: 'ready' };
     default:

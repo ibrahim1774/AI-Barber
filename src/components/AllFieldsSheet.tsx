@@ -1,7 +1,7 @@
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { WebsiteData } from '@/web/types';
 import { colors, fonts } from '@/constants/theme';
-import { editableTextPaths, getPath } from '@/lib/editable';
+import { editableTextPaths, getPath, textValue } from '@/lib/editable';
 import { fieldLabel, imageLabel, photoSlots } from '@/lib/editor';
 import { Sheet, SheetAction } from '@/components/EditSheet';
 
@@ -23,8 +23,8 @@ export function AllFieldsSheet({ visible, data, onPick, onClose, onDismiss }: Li
     <Sheet visible={visible} title="All fields" onClose={onClose} onDismiss={onDismiss} right={<SheetAction title="Done" onPress={onClose} />}>
       <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
         {editableTextPaths(data).map((path) => {
-          const value = getPath(data, path);
-          const text = typeof value === 'string' ? value : '';
+          // A label shows the wording the page prints (its default when none is stored).
+          const text = textValue(data, path);
           return (
             <Pressable
               key={path}

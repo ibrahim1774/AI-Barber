@@ -7,7 +7,9 @@ import { generateContent } from '@/web/services/geminiService';
 import { DEFAULT_PULLQUOTE } from '@/web/lib/render/prime';
 import { isStockImage } from '@/web/lib/stockImages';
 import { api } from '@/lib/api';
-import { IMAGE_PATHS, asPublished, getPath } from '@/lib/editable';
+import { IMAGE_PATHS, asPublished, getPath, labelKeyOfPath, setPath } from '@/lib/editable';
+import { LABELS, clampLabel, defaultLabel, type LabelDef } from '@/web/lib/render/labels';
+import { nicheOf } from '@/web/lib/render/honest';
 
 /**
  * Port of App.tsx handleHomeDesignSwitch: the same content re-skinned, only
@@ -94,11 +96,31 @@ const FIELD_LABELS: Record<string, string> = {
   'pullQuote.text': 'Pull quote',
 };
 
+/**
+ * Save text typed for `path`. A label is trimmed and cut to its maximum, and stored only when it differs
+ * from the design's own wording (the same wording, or nothing, removes the key so the default follows the
+ * business type). A `labels.` path outside the registry changes nothing. Everything else is set as typed.
+ */
+export function savePathValue(d: WebsiteData, path: string, value: string): WebsiteData {
+  if (path.startsWith('labels.')) {
+    const key = labelKeyOfPath(path);
+    if (!key) return d;
+    const text = clampLabel(value, (LABELS as Record<string, LabelDef>)[key].max);
+    const { [key]: _gone, ...rest } = (d.labels ?? {}) as Record<string, string>;
+    void _gone;
+    if (text === '' || text === defaultLabel(key, nicheOf(d), d)) return { ...d, labels: rest };
+    return setPath(d, path, text);
+  }
+  return setPath(d, path, value);
+}
+
 const SERVICE_FIELD: Record<string, string> = { title: 'name', subtitle: 'subtitle', description: 'description' };
 
 /** "services.2.title" → "Service 3 name". */
 export function fieldLabel(path: string): string {
   if (FIELD_LABELS[path]) return FIELD_LABELS[path];
+  const labelKey = labelKeyOfPath(path);
+  if (labelKey) return (LABELS as Record<string, LabelDef>)[labelKey].title;
   let m = /^about\.description\.(\d+)$/.exec(path);
   if (m) return `About paragraph ${Number(m[1]) + 1}`;
   m = /^services\.(\d+)\.(title|subtitle|description)$/.exec(path);

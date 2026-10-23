@@ -58,13 +58,15 @@ export interface EditSheetProps {
   label: string;
   path: string;
   value: string;
+  /** Longest text the field accepts (a label's cap); shown as a counter. */
+  maxLength?: number;
   onSave(value: string): void;
   onClose(): void;
   onDismiss?(): void;
 }
 
 /** Edits one text field: the same sheet for a tap in the preview or a row in "All fields". */
-export function EditSheet({ visible, label, path, value, onSave, onClose, onDismiss }: EditSheetProps) {
+export function EditSheet({ visible, label, path, value, maxLength, onSave, onClose, onDismiss }: EditSheetProps) {
   const [text, setText] = useState(value);
   useEffect(() => {
     if (visible) setText(value);
@@ -90,6 +92,7 @@ export function EditSheet({ visible, label, path, value, onSave, onClose, onDism
         onChangeText={setText}
         autoFocus
         multiline={multiline}
+        maxLength={maxLength}
         keyboardType={keyboard}
         autoCapitalize={path === 'bookingUrl' ? 'none' : 'sentences'}
         autoCorrect={path !== 'bookingUrl' && path !== 'phone'}
@@ -100,6 +103,7 @@ export function EditSheet({ visible, label, path, value, onSave, onClose, onDism
         placeholderTextColor="rgba(255,255,255,0.3)"
         style={[styles.input, multiline && styles.inputMulti]}
       />
+      {maxLength ? <Text style={styles.counter} accessibilityLabel={`${text.length} of ${maxLength} characters`}>{text.length}/{maxLength}</Text> : null}
       <SheetAction title="Cancel" onPress={onClose} />
     </Sheet>
   );
@@ -132,5 +136,6 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)', borderRadius: 8,
     paddingHorizontal: 12, paddingVertical: 12, marginBottom: 8,
   },
+  counter: { alignSelf: 'flex-end', fontFamily: fonts.body, fontSize: 11, color: 'rgba(255,255,255,0.45)', marginBottom: 4 },
   inputMulti: { minHeight: 120, maxHeight: 260, textAlignVertical: 'top' },
 });

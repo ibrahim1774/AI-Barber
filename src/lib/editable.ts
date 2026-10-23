@@ -2,7 +2,8 @@ import type { TemplateId, WebsiteData } from '@/web/types';
 import { resolveAibTheme } from '@/web/lib/render/luxe';
 import { resolvePrimeTheme } from '@/web/lib/render/prime';
 import { resolveEuphoriaTheme } from '@/web/lib/render/euphoria';
-import { serviceMeta, withoutLegacyCopy } from '@/web/lib/render/honest';
+import { nicheOf, serviceMeta, withoutLegacyCopy } from '@/web/lib/render/honest';
+import { LABELS, LABEL_KEYS, clampLabel, defaultLabel, isLabelKey, visibleLabelKeys, type LabelDef, type LabelKey } from '@/web/lib/render/labels';
 import { SHOP_PREVIEW_SCRIPT, SITE_SHOP_PATH, isSiteSubpageLink } from '@/web/lib/render/subpages';
 import { forRender, renderSite, withImages } from '@/lib/render';
 export { EDITOR_JS } from '@/lib/editorScript';
@@ -29,6 +30,45 @@ export const EDITABLE_TEXT_PATHS: string[] = [
   'policy.body',
   'pullQuote.text',
 ];
+
+// ---------------------------------------------------------------------------
+// Labels (small visible text: nav items, buttons, section headings...)
+// ---------------------------------------------------------------------------
+//
+// Every label of the registry (web/lib/render/labels.ts) is tap-to-edit as path `labels.<LabelKey>`.
+// The allow-list below is STATIC (built from the registry, never read from the page or the data), and a
+// site only offers the ones its design prints (visibleLabelKeys).
+
+const LABEL_PREFIX = 'labels.';
+const defs = LABELS as Record<LabelKey, LabelDef>;
+
+/** Every label path the bridge can ever accept (ratingLine has its own control, not a tap target). */
+export const LABEL_TEXT_PATHS: string[] = LABEL_KEYS.filter((k) => defs[k].tap !== false).map((k) => `${LABEL_PREFIX}${k}`);
+
+/** `labels.galleryHeading` -> 'galleryHeading'; null for anything not in the static list. */
+export function labelKeyOfPath(path: string): LabelKey | null {
+  if (!path.startsWith(LABEL_PREFIX)) return null;
+  const key = path.slice(LABEL_PREFIX.length);
+  return isLabelKey(key) && defs[key].tap !== false ? key : null;
+}
+
+/** The text a path shows now: the stored value, or for a label the design's wording when none is stored. */
+export function textValue(d: WebsiteData, path: string): string {
+  const key = labelKeyOfPath(path);
+  if (key) {
+    const stored = getPath(d, path);
+    const text = typeof stored === 'string' ? clampLabel(stored, defs[key].max) : '';
+    return text !== '' ? text : defaultLabel(key, nicheOf(d), d);
+  }
+  const v = getPath(d, path);
+  return typeof v === 'string' ? v : '';
+}
+
+/** The longest text a path accepts, or undefined for free-length fields. */
+export function textMaxLength(path: string): number | undefined {
+  const key = labelKeyOfPath(path);
+  return key ? defs[key].max : undefined;
+}
 
 const PRIME_ONLY = new Set(['policy.title', 'policy.body', 'pullQuote.text']);
 
@@ -77,6 +117,7 @@ export function editableTextPaths(d: WebsiteData): string[] {
     if (!Array.isArray(arr)) continue;
     arr.forEach((_, n) => out.push(pattern.replace('{i}', String(n))));
   }
+  for (const key of visibleLabelKeys(d)) out.push(`${LABEL_PREFIX}${key}`);
   return out;
 }
 
@@ -198,11 +239,16 @@ export function markData(d: WebsiteData): { marked: WebsiteData; ids: Record<str
   let marked = d;
   let n = 0;
   for (const path of editableTextPaths(d)) {
-    const value = getPath(d, path);
+    const labelKey = labelKeyOfPath(path);
+    // A label is marked with the wording the page shows (its default when none is stored), capped to its
+    // maximum BEFORE the markers go on so a marker is never cut in half.
+    const value = labelKey ? clampLabel(textValue(d, path), defs[labelKey].max) : getPath(d, path);
     // Never mark empty values: templates branch on truthiness (bookingUrl ?, s.description ?).
     if (typeof value !== 'string' || value === '') continue;
-    // The site's own /book page link must reach the renderer as is: it decides the "Book online" strip.
-    if (path === 'bookingUrl' && isSiteSubpageLink(value)) continue;
+    // A booking link is never marked: it only lands in href attributes (sheet-only), and the renderers test it
+    // with safeHref(), which refuses a URL wrapped in markers, so a marked link would drop every Book button
+    // from the preview. (The site's own /book page link also decides the "Book online" strip.)
+    if (path === 'bookingUrl') continue;
     const id = letterId(n++);
     ids[id] = path;
     marked = setPath(marked, path, `${M}${id}${M}${value}${M}/${M}`);

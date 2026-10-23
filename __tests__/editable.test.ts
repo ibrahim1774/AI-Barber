@@ -175,7 +175,13 @@ describe('markers', () => {
 
   test('published payload never contains markers', async () => {
     for (const { data } of await fixtures()) {
-      expect(stripMarkers(JSON.stringify(markData(data).marked))).toBe(JSON.stringify(data));
+      // The marked copy also carries the wording of every label the page prints (defaults included, so they
+      // can be tapped); that is preview-only. Everything else strips back to exactly the stored data.
+      const stripped = JSON.parse(stripMarkers(JSON.stringify(markData(data).marked)));
+      const { labels: shownLabels, ...rest } = stripped;
+      const { labels: storedLabels, ...orig } = data;
+      expect(JSON.stringify(rest)).toBe(JSON.stringify(orig));
+      expect(shownLabels).toEqual(expect.objectContaining(storedLabels ?? {}));
     }
   });
 
