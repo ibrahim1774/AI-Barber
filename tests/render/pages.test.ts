@@ -59,6 +59,26 @@ describe('eligibility table', () => {
       expect(isGeneratedAbout('We are a barbershop in Austin and we love it.')).toBe(false);
       expect(isGeneratedAbout('Fresh Cuts is a barbershop in Austin, TX.')).toBe(true);
     });
+
+    it('real barber text that merely starts like a generated sentence is kept (P3b review S2)', () => {
+      for (const p of [
+        "Fresh Cuts is a barbershop in Austin. We've cut hair since 1998.",
+        'Our shop is a barbershop in the heart of Austin where every cut is done by hand.',
+        'Kings Cuts is a barbershop in Brooklyn serving the community since 2005.',
+        'Fresh Cuts is a barbershop in Austin. Get in touch to book your next appointment. We love fades.',
+      ]) expect(isGeneratedAbout(p), p).toBe(false);
+      expect(aboutParagraphs({ about: { heading: 'About', description: ["Fresh Cuts is a barbershop in Austin. We've cut hair since 1998."], imageUrl: '' } })).toHaveLength(1);
+    });
+
+    it('the generated sentences are still recognised, with an abbreviation in the area', () => {
+      expect(isGeneratedAbout('Fresh Cuts is a barbershop in St. Louis, MO.')).toBe(true);
+      expect(isGeneratedAbout('Fresh Cuts is a barbershop in Austin, TX. Get in touch to book your next appointment.')).toBe(true);
+      expect(isGeneratedAbout('Fresh Cuts is a barbershop.')).toBe(true);
+      // a long area is still ours when it is the stored one
+      const area = 'the Greater Metropolitan Area of Central Texas and Beyond';
+      expect(isGeneratedAbout(`Fresh Cuts is a barbershop in ${area}.`, { shopName: 'Fresh Cuts', area })).toBe(true);
+      expect(isGeneratedAbout(`Fresh Cuts is a barbershop in ${area}.`)).toBe(false);
+    });
   });
 
   describe('Services and per-service pages', () => {

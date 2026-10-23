@@ -159,22 +159,46 @@ const norm = (s: string): string => plainText(s).replace(/\s+/g, ' ');
 const NICHES = BOOKSY_NICHES;
 const FALLBACK_SECOND = new Set(NICHES.map((n) => n.aboutFallback[1]));
 const FALLBACK_FIRST = Array.from(new Set(NICHES.map((n) => n.aboutFallback[0])));
-const NOUN_SENTENCE = new RegExp(`^.+ is an? (?:${Array.from(new Set(NICHES.map((n) => n.noun))).map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})(?: in .+)?\\.$`, 'i');
-const GEMINI_COMBINED = /^.+ is a barbershop(?: in .+)?\. Get in touch to book your next appointment\.$/i;
+// A shop name or an area is a short run of words with no sentence end in it (an abbreviation like "St." is
+// fine): so "... is a barbershop in Austin. We've cut hair since 1998." and "... in the heart of Austin where
+// every cut is done by hand." are the barber's own text, not ours.
+const TOKEN = String.raw`(?:[^\s.!?]+|(?:St|Mt|Ft|Mr|Dr|Jr|Sr)\.)`;
+const NAME_RE = String.raw`${TOKEN}(?: ${TOKEN}){0,5}`;
+const AREA_RE = String.raw`${TOKEN}(?: ${TOKEN}){0,4}`;
+const NOUN_SENTENCE = new RegExp(`^${NAME_RE} is an? (?:${Array.from(new Set(NICHES.map((n) => n.noun))).map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})(?: in ${AREA_RE})?\\.$`, 'i');
+const GEMINI_COMBINED = new RegExp(`^${NAME_RE} is a barbershop(?: in ${AREA_RE})?\\. Get in touch to book your next appointment\\.$`, 'i');
+const NAME_ONLY = new RegExp(`^${NAME_RE}$`);
 
-/** Is this About paragraph one we wrote (not the barber)? */
-export function isGeneratedAbout(paragraph: unknown): boolean {
+/** Is this About paragraph one we wrote (not the barber)? `known` = the stored shop name and area, for an exact match. */
+export function isGeneratedAbout(paragraph: unknown, known?: { shopName?: unknown; area?: unknown }): boolean {
   const p = norm(String(paragraph ?? ''));
   if (!p) return true;
   if (FALLBACK_SECOND.has(p)) return true;
+  if (known) {
+    const shop = norm(String(known.shopName ?? ''));
+    const area = norm(String(known.area ?? ''));
+    if (shop) {
+      const lead = `${shop} is a`;
+      const rest = p.startsWith(lead + ' ') || p.startsWith(lead + 'n ') ? p.slice(lead.length).replace(/^n? /, '') : null;
+      if (rest !== null) {
+        for (const n of new Set(NICHES.map((x) => x.noun))) {
+          const sentence = `${n}${area ? ` in ${area}` : ''}.`;
+          if (rest === sentence || rest === `${n}.` || rest === `${sentence} Get in touch to book your next appointment.`) return true;
+        }
+      }
+    }
+  }
   if (GEMINI_COMBINED.test(p) || NOUN_SENTENCE.test(p)) return true;
-  return FALLBACK_FIRST.some((f) => p.endsWith(` ${f}`) && p.length > f.length + 1);
+  return FALLBACK_FIRST.some((f) => {
+    if (!p.endsWith(` ${f}`)) return false;
+    return NAME_ONLY.test(p.slice(0, p.length - f.length - 1));
+  });
 }
 
 /** The About paragraphs the barber wrote or imported (the page prints only these). */
-export function aboutParagraphs(d: Pick<WebsiteData, 'about'>): string[] {
+export function aboutParagraphs(d: Pick<WebsiteData, 'about'> & Partial<Pick<WebsiteData, 'shopName' | 'area'>>): string[] {
   const list = Array.isArray(d.about?.description) ? d.about.description : [];
-  return list.filter((p) => typeof p === 'string' && !isGeneratedAbout(p));
+  return list.filter((p) => typeof p === 'string' && !isGeneratedAbout(p, d));
 }
 
 const imageUrlFor = (ctx: PageContext | undefined, key: string, raw: unknown): string =>
