@@ -1,8 +1,9 @@
 import { isStockImage } from '@/web/lib/stockImages';
 import type { WebsiteData } from '@/web/types';
 import { gallerySlots } from '@/lib/sections/gallery';
+import { hasRatingOrReviews, reviewRows } from '@/lib/sections/reviews';
 
-export type SectionKey = 'services' | 'team' | 'hours' | 'gallery' | 'about' | 'contact';
+export type SectionKey = 'services' | 'team' | 'hours' | 'gallery' | 'about' | 'contact' | 'reviews';
 
 export function sectionCards(d: WebsiteData): { key: SectionKey; title: string; summary: string }[] {
   const n = d.services?.length ?? 0;
@@ -13,7 +14,7 @@ export function sectionCards(d: WebsiteData): { key: SectionKey; title: string; 
   const filled = slots.filter((i) => d.gallery?.[i] && !isStockImage(d.gallery[i])).length;
   // Euphoria shows every photo, with no fixed count to measure against.
   const gallery = d.template === 'euphoria' ? (filled === 1 ? '1 photo' : `${filled} photos`) : `${filled} of ${slots.length} photos`;
-  return [
+  const cards: { key: SectionKey; title: string; summary: string }[] = [
     { key: 'services', title: 'Services', summary: services },
     { key: 'team', title: 'Team', summary: team === 0 ? 'Not set' : team === 1 ? '1 person' : `${team} people` },
     { key: 'hours', title: 'Hours', summary: d.hours?.length ? `Open ${openDays} ${openDays === 1 ? 'day' : 'days'}` : 'Not set' },
@@ -21,4 +22,11 @@ export function sectionCards(d: WebsiteData): { key: SectionKey; title: string; 
     { key: 'about', title: 'About', summary: d.shopName || 'Not set' },
     { key: 'contact', title: 'Contact', summary: d.phone || 'Not set' },
   ];
+  // Only a site with a scraped rating or reviews has anything to show, hide or re-word.
+  if (hasRatingOrReviews(d)) {
+    const rows = reviewRows(d);
+    const shown = rows.filter((r) => !r.hidden).length;
+    cards.push({ key: 'reviews', title: 'Reviews', summary: rows.length ? `${shown} of ${rows.length} shown` : 'Rating only' });
+  }
+  return cards;
 }
