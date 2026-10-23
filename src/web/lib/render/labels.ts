@@ -36,6 +36,8 @@ export interface LabelDef {
   max: number;
   /** Whether the page prints it for this site (a hidden section has no label to tap). Absent = always. */
   shows?: (site: WebsiteData) => boolean;
+  /** true = plain words only: the label sits next to a real figure, so it may not hold one. */
+  plain?: true;
   /** false = not tappable in the preview (the app edits it from its own control). */
   tap?: false;
 }
@@ -63,23 +65,29 @@ const euNavBook = (s: WebsiteData) => hasBook(s) || canCall(s);
 
 const copy = (niche: BooksyNiche) => nicheCopy({ niche: niche.key });
 
+/**
+ * Cap for the labels barbers could already save before P3a, when the web editors had no limit at all
+ * (a long walk-in policy line in bookingNote, a long gallery heading). High enough that nothing real is cut.
+ */
+const LEGACY_MAX = 200;
+
 export const LABELS = {
   // ── Design 1 (luxe). These keys are already saved by barbers: never rename. ──
-  galleryEyebrow: { title: 'Gallery eyebrow', default: 'Gallery', template: 'luxe', max: 40, shows: luxeGallery },
-  galleryHeading: { title: 'Gallery heading', default: 'The Look', template: 'luxe', max: 60, shows: luxeGallery },
-  teamEyebrow: { title: 'Team eyebrow', default: 'The Team', template: 'luxe', max: 40, shows: hasStaff },
-  teamHeading: { title: 'Team heading', default: (n) => copy(n).teamHeading, template: 'luxe', max: 60, shows: hasStaff },
-  hoursEyebrow: { title: 'Hours eyebrow', default: 'Hours', template: 'luxe', max: 40, shows: hasHours },
-  hoursHeading: { title: 'Hours heading', default: "When We're Open", template: 'luxe', max: 60, shows: hasHours },
-  reviewsEyebrow: { title: 'Reviews eyebrow', default: 'Reviews', template: 'luxe', max: 40, shows: hasReviews },
-  reviewsHeading: { title: 'Reviews heading', default: 'What Our Clients Say', template: 'luxe', max: 60, shows: hasReviews },
-  servicesEyebrow: { title: 'Services eyebrow', default: 'Services', template: 'luxe', max: 40, shows: hasServices },
-  servicesHeading: { title: 'Services heading', default: 'What We Offer', template: 'luxe', max: 60, shows: hasServices },
-  contactHeading: { title: 'Contact heading', default: 'Contact Us', template: 'luxe', max: 60 },
-  contactLocationLabel: { title: 'Location label', default: 'LOCATION', template: 'luxe', max: 30, shows: hasAddress },
-  contactPhoneLabel: { title: 'Phone label', default: 'PHONE', template: 'luxe', max: 30, shows: hasPhone },
-  mapEyebrow: { title: 'Map eyebrow', default: 'Find Us', template: 'luxe', max: 40 },
-  mapHeading: { title: 'Map heading', default: 'Stop By', template: 'luxe', max: 60 },
+  galleryEyebrow: { title: 'Gallery eyebrow', default: 'Gallery', template: 'luxe', max: LEGACY_MAX, shows: luxeGallery },
+  galleryHeading: { title: 'Gallery heading', default: 'The Look', template: 'luxe', max: LEGACY_MAX, shows: luxeGallery },
+  teamEyebrow: { title: 'Team eyebrow', default: 'The Team', template: 'luxe', max: LEGACY_MAX, shows: hasStaff },
+  teamHeading: { title: 'Team heading', default: (n) => copy(n).teamHeading, template: 'luxe', max: LEGACY_MAX, shows: hasStaff },
+  hoursEyebrow: { title: 'Hours eyebrow', default: 'Hours', template: 'luxe', max: LEGACY_MAX, shows: hasHours },
+  hoursHeading: { title: 'Hours heading', default: "When We're Open", template: 'luxe', max: LEGACY_MAX, shows: hasHours },
+  reviewsEyebrow: { title: 'Reviews eyebrow', default: 'Reviews', template: 'luxe', max: LEGACY_MAX, shows: hasReviews },
+  reviewsHeading: { title: 'Reviews heading', default: 'What Our Clients Say', template: 'luxe', max: LEGACY_MAX, shows: hasReviews },
+  servicesEyebrow: { title: 'Services eyebrow', default: 'Services', template: 'luxe', max: LEGACY_MAX, shows: hasServices },
+  servicesHeading: { title: 'Services heading', default: 'What We Offer', template: 'luxe', max: LEGACY_MAX, shows: hasServices },
+  contactHeading: { title: 'Contact heading', default: 'Contact Us', template: 'luxe', max: LEGACY_MAX },
+  contactLocationLabel: { title: 'Location label', default: 'LOCATION', template: 'luxe', max: LEGACY_MAX, shows: hasAddress },
+  contactPhoneLabel: { title: 'Phone label', default: 'PHONE', template: 'luxe', max: LEGACY_MAX, shows: hasPhone },
+  mapEyebrow: { title: 'Map eyebrow', default: 'Find Us', template: 'luxe', max: LEGACY_MAX },
+  mapHeading: { title: 'Map heading', default: 'Stop By', template: 'luxe', max: LEGACY_MAX },
   // ── Design 1: new ──
   navHome: { title: 'Menu: Home', default: 'HOME', template: 'luxe', max: 20 },
   navServices: { title: 'Menu: Services', default: 'SERVICES', template: 'luxe', max: 20, shows: hasServices },
@@ -97,7 +105,7 @@ export const LABELS = {
   },
 
   // ── Design 2 (prime) ──
-  bookingNote: { title: 'Booking note', default: '', template: 'prime', max: 140 },
+  bookingNote: { title: 'Booking note', default: '', template: 'prime', max: LEGACY_MAX },
   primeWelcome: { title: 'Welcome bar text', default: 'Welcome', template: 'prime', max: 30 },
   primeNavShop: { title: 'Menu: Shop', default: 'Shop', template: 'prime', max: 20, shows: hasShop },
   primeNavBook: { title: 'Menu: Book button', default: 'Book Now', template: 'prime', max: 24, shows: primeBook },
@@ -114,8 +122,8 @@ export const LABELS = {
   primeReviewsEyebrow: { title: 'Reviews eyebrow', default: 'Client Reviews', template: 'prime', max: 40, shows: hasReviews },
   primeReviewsLead: { title: 'Reviews heading, first part', default: 'What clients', template: 'prime', max: 40, shows: hasReviews },
   primeReviewsAccent: { title: 'Reviews heading, accent part', default: 'are saying.', template: 'prime', max: 40, shows: hasReviews },
-  primeStatRating: { title: 'Rating box label', default: 'Rating', template: 'prime', max: 20, shows: showsRating },
-  primeStatReviews: { title: 'Review count box label', default: 'Reviews', template: 'prime', max: 20, shows: (s) => (aggregateToShow(s)?.count ?? 0) > 0 },
+  primeStatRating: { title: 'Rating box label', default: 'Rating', template: 'prime', max: 20, plain: true, shows: showsRating },
+  primeStatReviews: { title: 'Review count box label', default: 'Reviews', template: 'prime', max: 20, plain: true, shows: (s) => (aggregateToShow(s)?.count ?? 0) > 0 },
   primeBookingEyebrow: { title: 'Booking strip eyebrow', default: (n) => copy(n).bookingEyebrow, template: 'prime', max: 40 },
   primeBookingLead: { title: 'Booking strip heading, first part', default: 'Ready for', template: 'prime', max: 40 },
   primeBookingNext: { title: 'Booking strip heading, accent part', default: (n) => copy(n).bookingNext, template: 'prime', max: 40 },
@@ -192,6 +200,7 @@ const escapeText = (s: string): string =>
 
 /** The label's default text for this niche/site (unescaped). */
 export function defaultLabel(key: LabelKey, niche?: BooksyNiche, site?: Pick<WebsiteData, 'area' | 'niche'>): string {
+  if (!isLabelKey(key)) return '';
   const d = DEFS[key].default;
   const n = niche ?? nicheByKey(site?.niche);
   return typeof d === 'function' ? d(n, site) : d;
@@ -202,7 +211,10 @@ function storedLabel(labels: WebsiteData['labels'], key: LabelKey): string {
   if (!isLabelKey(key) || !labels || typeof labels !== 'object') return '';
   if (!Object.prototype.hasOwnProperty.call(labels, key)) return '';
   const v = (labels as Record<string, unknown>)[key];
-  return typeof v === 'string' ? clampLabel(v, DEFS[key].max) : '';
+  if (typeof v !== 'string') return '';
+  const text = clampLabel(v, DEFS[key].max);
+  // A label printed beside a real figure may not carry a typed one: fall back to the default wording.
+  return DEFS[key].plain && !isFigureFreeLabel(text) ? '' : text;
 }
 
 /**
@@ -235,6 +247,7 @@ export function visibleLabelKeys(site: WebsiteData): LabelKey[] {
 // may re-word the sentence around them or hide the rating, never type a number: a `ratingLine`
 // may hold the placeholders {rating} {count} {source} and plain words, nothing numeric.
 const PLACEHOLDER = /\{(rating|count|source)\}/g;
+const PLACEHOLDER_SPLIT = /\{(?:rating|count|source)\}/;
 // Number words (and fractions of them) that would state a figure.
 const NUMBER_WORDS = [
   'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve',
@@ -248,6 +261,30 @@ const NUMBER_WORD_RE = new RegExp(`(?<![\\p{L}\\p{N}])(?:${NUMBER_WORDS.join('|'
 // other alphabets (a Cyrillic "о" would let "оne" slip past the number-word check).
 const ALLOWED_REST = /^[\p{Script=Latin}\p{Zs}\p{P}]*$/u;
 const PERCENTS = /[%％﹪٪‰]/u;
+// Asterisks and look-alikes read as a typed star rating ("*****").
+const STAR_MARKS = /[*⁎∗✱✲＊﹡٭]/u;
+// "fivestar", "five-star", "four stars": a number word joined to "star" with no boundary after it.
+const STAR_COMPOUND = /(?<!\p{L})(?:one|two|three|four|five)[\s-]*stars?/iu;
+
+/**
+ * Whether `text` (no placeholders left in it) is plain words: Latin letters, spaces and punctuation, with
+ * no digit, star, asterisk, percent sign or number word. Zero-width and combining characters are dropped
+ * first so they cannot split a number word.
+ */
+function isPlainWords(text: string): boolean {
+  const rest = text.replace(/[\p{Cf}\p{M}]/gu, '');
+  if (/[{}]/.test(rest)) return false;
+  if (PERCENTS.test(rest) || STAR_MARKS.test(rest) || !ALLOWED_REST.test(rest)) return false;
+  return !NUMBER_WORD_RE.test(rest) && !STAR_COMPOUND.test(rest);
+}
+
+/** Whether a label that sits beside a real figure (the prime stat boxes) holds no figure of its own. */
+export function isFigureFreeLabel(value: string): boolean {
+  const text = String(value ?? '');
+  return text === text.normalize('NFKC') && isPlainWords(text);
+}
+
+
 
 /** The text of a stored ratingLine without any editor marker wrapper or stray separators. */
 function ratingText(value: string): string {
@@ -262,15 +299,20 @@ function ratingText(value: string): string {
  */
 export function isValidRatingLine(value: unknown): boolean {
   if (typeof value !== 'string') return false;
-  const text = ratingText(value).normalize('NFKC').trim();
+  const raw = ratingText(value).trim();
+  const text = raw.normalize('NFKC');
+  // A compatibility numeral (Roman numeral Ⅴ, fullwidth digits ...) would print as typed but validate
+  // as something else, so only text that NFKC leaves alone is allowed.
+  if (text !== raw) return false;
   if (text === '' || Array.from(text).length > DEFS.ratingLine.max) return false;
-  // Only whole placeholders are allowed to carry the figures; strip them, then look at what is left.
-  // Zero-width and combining characters are dropped first so they cannot split a number word.
-  const rest = text.replace(PLACEHOLDER, ' ').replace(/[\p{Cf}\p{M}]/gu, '');
-  if (/[{}]/.test(rest)) return false; // an unknown placeholder or a stray brace
-  if (PERCENTS.test(rest) || !ALLOWED_REST.test(rest)) return false;
-  if (NUMBER_WORD_RE.test(rest)) return false;
-  return true;
+  // Each placeholder at most once, and two placeholders need a word between them: "{count}{count}"
+  // would print "1212" and "{count}.{count}" "12.12", figures nobody wrote.
+  const found = text.match(PLACEHOLDER) ?? [];
+  if (new Set(found).size !== found.length) return false;
+  const parts = text.split(PLACEHOLDER_SPLIT);
+  for (let i = 1; i < parts.length - 1; i++) if (!/\p{Script=Latin}/u.test(parts[i])) return false;
+  // Only whole placeholders carry the figures; take them out and look at what is left.
+  return isPlainWords(parts.join(' '));
 }
 
 /** Why a wording was refused, for the app's message. '' when it is fine. */
@@ -301,7 +343,7 @@ export function ratingLineCustom(site: WebsiteData): string | null {
     ? (site.labels as Record<string, unknown>).ratingLine
     : '';
   if (typeof raw !== 'string' || !isValidRatingLine(raw)) return null;
-  const body = cap(tidy(ratingText(raw)), DEFS.ratingLine.max);
+  const body = cap(tidy(ratingText(raw)).normalize('NFKC'), DEFS.ratingLine.max);
   const source = reviewsSourceName(site);
   if (agg.count <= 0 && /\{count\}/.test(body)) return null;
   if (!source && /\{source\}/.test(body)) return null;
