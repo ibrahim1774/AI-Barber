@@ -59,7 +59,7 @@ export default function Domain() {
     }
   }, [flow.domainTx]);
 
-  // Suggestions from the shop name, once.
+  // The box starts with the shop name, once. Nothing is searched until the user presses Search.
   const seeded = useRef(false);
   useEffect(() => {
     if (seeded.current || showStatus || !flow.loaded) return;
@@ -67,10 +67,9 @@ export default function Domain() {
     void loadSite().then((s) => {
       const name = (s?.data.shopName || s?.inputs.shopName || '').trim();
       if (!name) return;
-      setQ(name);
-      void search(name);
+      setQ((cur) => cur || name);
     });
-  }, [flow.loaded, showStatus, search]);
+  }, [flow.loaded, showStatus]);
 
   // Follow the claim while the server is still working on it: one read at a time; every 5 s, or every 30 s
   // while only the secure connection is pending, which stops after 15 min with a note.

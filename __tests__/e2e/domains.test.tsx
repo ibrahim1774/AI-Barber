@@ -139,13 +139,23 @@ async function liveSite() {
   await w.superwallSync();
 }
 
-async function openScreen() {
+async function openScreen(opts: { search?: boolean } = {}) {
   const ReactM = require('react');
   const Domain = require('@/app/domain').default;
   const tree = await w.render(ReactM.createElement(Domain));
   await w.act(async () => {
     await tick();
   });
+  // The screen never searches by itself: the user presses Search (the box is pre-filled from the shop name).
+  const search = tree.root.findAll(
+    (n: any) => n.props?.accessibilityRole === 'button' && typeof n.props.onPress === 'function' && allText({ root: n }).join('') === 'Search',
+  )[0];
+  if (search && opts.search !== false) {
+    await w.act(async () => {
+      search.props.onPress();
+      await tick();
+    });
+  }
   return tree;
 }
 
@@ -163,6 +173,16 @@ async function tap(node: any) {
 const claims = () => server.calls.filter((c) => c.path === '/api/ios/domain/claim');
 
 describe('the custom domain screen', () => {
+  it('does not search, or show an error, before the user presses Search', async () => {
+    await liveSite();
+    server.fail('/api/ios/domain/search', { kind: 'dead' });
+    const tree = await openScreen({ search: false });
+    expect(server.calls.filter((c) => c.path.includes('domain/search'))).toHaveLength(0);
+    expect(texts(tree)).not.toContain("Couldn't");
+    expect(rowFor(tree, 'fadelab.com')).toBeUndefined();
+    expect(tree.root.findAll((n: any) => n.props?.accessibilityLabel === 'Search for a name')[0].props.value).toBe('Fade Lab');
+  });
+
   it('search from the shop name → buy (paywall) → claim with both transactions → Registering → Linking → Live in a few minutes → Live; share links refresh', async () => {
     await liveSite();
     server.domainTaken.add('fadelabbarber.com');
@@ -244,9 +264,7 @@ describe('the custom domain screen', () => {
     expect(texts(tree)).toContain("Couldn't get that name — pick another");
     expect(button(tree, 'Try again')).toBeUndefined();
     await tap(button(tree, 'Pick another name'));
-    await w.act(async () => {
-      await tick();
-    });
+    await tap(button(tree, 'Search'));
     let registers = 0;
     w.sw.register = async () => {
       registers++;
