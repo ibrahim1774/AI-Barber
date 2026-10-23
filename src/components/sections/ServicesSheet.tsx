@@ -10,6 +10,7 @@ import {
 } from '@/lib/sections/services';
 import { cleanText } from '@/lib/sections/text';
 import { Button } from '@/components/Button';
+import { useKeyboardHeight, sheetBodyMaxHeight } from '@/lib/keyboard';
 import { Sheet, SheetAction } from '@/components/EditSheet';
 
 type Props = {
@@ -30,6 +31,7 @@ type View_ = { kind: 'list' } | { kind: 'add' } | { kind: 'form'; form: Form };
 const PHOTO_FAIL = "Couldn't upload that photo. Check your connection and try again.";
 
 export function ServicesSheet({ visible, data, onChange, onClose, onDismiss, upload }: Props) {
+  const formScroll = useRef<ScrollView>(null);
   const fPrice = useRef<TextInput>(null);
   const f1 = useRef<TextInput>(null);
   const f2 = useRef<TextInput>(null);
@@ -127,7 +129,8 @@ export function ServicesSheet({ visible, data, onChange, onClose, onDismiss, upl
     else onDismiss?.();
   };
 
-  const maxH = Math.max(240, height * 0.85 - 150);
+  const keyboard = useKeyboardHeight();
+  const maxH = sheetBodyMaxHeight(height, keyboard);
 
   let title = 'Services';
   let right: React.ReactNode = <SheetAction title="Done" primary onPress={close} />;
@@ -187,7 +190,7 @@ export function ServicesSheet({ visible, data, onChange, onClose, onDismiss, upl
     right = <SheetAction title="Back" onPress={() => setView({ kind: 'list' })} />;
     body = (
       <>
-        <ScrollView style={{ maxHeight: maxH }} keyboardShouldPersistTaps="handled">
+        <ScrollView ref={formScroll} style={{ maxHeight: maxH }} keyboardShouldPersistTaps="handled">
           <FormLabel input={f1} style={styles.label}>Name</FormLabel>
           <TextInput ref={f1}
             value={form.draft.title}
@@ -228,6 +231,7 @@ export function ServicesSheet({ visible, data, onChange, onClose, onDismiss, upl
             onChangeText={(t) => set({ description: t })}
             multiline
             numberOfLines={2}
+            onFocus={() => setTimeout(() => formScroll.current?.scrollToEnd({ animated: true }), 250)}
             accessibilityLabel="Description"
             selectionColor={colors.accent}
             placeholderTextColor="rgba(255,255,255,0.3)"

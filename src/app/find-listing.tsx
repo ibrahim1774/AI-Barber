@@ -12,6 +12,7 @@ import { Card, ErrorNote, StageChips, SwatchRow, WorksWith } from '@/components/
 import { ImportProgress, LISTING_STEPS } from '@/components/ImportProgress';
 import { ServiceChecklist } from '@/components/ServiceChecklist';
 import { useImportRun } from '@/lib/useImportRun';
+import { useRevealAboveKeyboard } from '@/lib/keyboard';
 import { api, type Candidate, type ListingMatch, type ScrapePayload } from '@/lib/api';
 import { fetchListing } from '@/lib/flow';
 import { listingMatch, listingSite } from '@/lib/importer';
@@ -56,6 +57,8 @@ export default function FindListing() {
   const [found, setFound] = useState<{ payload: ScrapePayload; match: ListingMatch } | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [picks, setPicks] = useState<ServicePicks>({});
+
+  const reveal = useRevealAboveKeyboard([suggestions, candidates, bizName.trim().length > 0, error]);
 
   const cancelSuggestions = () => {
     reqIdRef.current += 1;
@@ -158,7 +161,7 @@ export default function FindListing() {
   };
 
   return (
-    <Screen overlay={busy ? <ImportProgress steps={LISTING_STEPS} progress={progress} slowHint={slowHint} /> : null}>
+    <Screen scrollRef={reveal.scrollRef} onScroll={reveal.onScroll} overlay={busy ? <ImportProgress steps={LISTING_STEPS} progress={progress} slowHint={slowHint} /> : null}>
       <StageChips />
       <Text variant="h1" style={styles.h1}>{found ? 'We found your shop.' : 'Type your shop name.'}</Text>
       <Text variant="h1">
@@ -192,6 +195,7 @@ export default function FindListing() {
           <ErrorNote message={error} />
         </Card>
       ) : (
+      <View ref={reveal.cardRef} collapsable={false} style={styles.cardWrap}>
       <Card>
         <Field
           label="Type your shop name"
@@ -271,6 +275,7 @@ export default function FindListing() {
         </View>
         <ErrorNote message={error} />
       </Card>
+      </View>
       )}
 
       <WorksWith names={['Google Business Profile']} />
@@ -327,6 +332,7 @@ function Row({
 
 const styles = StyleSheet.create({
   h1: { marginTop: 24 },
+  cardWrap: { alignSelf: 'stretch' },
   sub: { marginTop: 24, maxWidth: 512 },
   hint: { marginTop: 12, fontFamily: fonts.body, fontSize: 12, lineHeight: 19, color: colors.inkMuted },
   list: {

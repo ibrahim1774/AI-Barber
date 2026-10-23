@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { KeyboardAvoidingView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import type { ReactNode, RefObject } from 'react';
+import { KeyboardAvoidingView, ScrollView, type NativeScrollEvent, type NativeSyntheticEvent, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
@@ -12,7 +12,15 @@ import { useSession } from '@/lib/auth';
  * top glow, "A · AI Barber" header with the Sign in pill (Account once signed
  * in), centred content, and the hairline footer. `overlay` renders above everything (import progress).
  */
-export function Screen({ children, overlay }: { children: ReactNode; overlay?: ReactNode }) {
+export function Screen({
+  children, overlay, scrollRef, onScroll,
+}: {
+  children: ReactNode;
+  overlay?: ReactNode;
+  /** For screens that scroll a card into view above the keyboard (see useRevealAboveKeyboard). */
+  scrollRef?: RefObject<ScrollView | null>;
+  onScroll?(e: NativeSyntheticEvent<NativeScrollEvent>): void;
+}) {
   const insets = useSafeAreaInsets();
   const { session } = useSession();
   return (
@@ -20,6 +28,9 @@ export function Screen({ children, overlay }: { children: ReactNode; overlay?: R
       <Glow />
       <KeyboardAvoidingView behavior="padding" style={styles.flex}>
         <ScrollView
+          ref={scrollRef}
+          onScroll={onScroll}
+          scrollEventThrottle={16}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={[styles.scroll, { paddingTop: insets.top }]}
         >
