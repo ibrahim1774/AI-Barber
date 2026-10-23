@@ -1,3 +1,4 @@
+import type { LabelKey } from './lib/render/labels.js';
 
 export type TemplateId = 'luxe' | 'euphoria' | 'prime';
 
@@ -116,7 +117,13 @@ export interface WebsiteData {
   // small labels (keyed by stable string, e.g. "galleryHeading"). When a
   // key is absent the renderer falls back to its hardcoded default, so
   // older saved sites render exactly as before.
-  labels?: Record<string, string>;
+  labels?: Partial<Record<LabelKey, string>>;
+  // Rating line shown on the page (from aggregateRating). Absent = 'show'. 'hide' removes every
+  // place the page prints the scraped rating or review count; the data itself is kept.
+  display?: { rating?: 'show' | 'hide' };
+  // Scraped reviews the barber hid, by reviewKey() (a hash of author + comment, not array position,
+  // because re-importing reorders reviews). Reviews are quotes: hidden, never edited.
+  hiddenReviews?: string[];
   // Optional staff cards — name, role, photo. Renderer shows a
   // "Meet the Team" section when at least one staff entry exists.
   // Photo is editable in the preview (replace-image overlay).
