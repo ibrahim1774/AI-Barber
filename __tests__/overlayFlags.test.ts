@@ -104,3 +104,13 @@ describe('advanceOverlay (decided in memory, whatever storage did)', () => {
     expect(await hasSeen('guide', 'x')).toBe(false);
   });
 });
+
+describe('visibleOverlay', () => {
+  const { visibleOverlay } = require('@/lib/overlayFlags');
+  it('holds the guide back until an account exists, and never hides the prompts', () => {
+    expect(visibleOverlay('guide', false)).toBeNull();
+    expect(visibleOverlay('guide', true)).toBe('guide');
+    expect(visibleOverlay('prompts', false)).toBe('prompts');
+    expect(visibleOverlay(null, true)).toBeNull();
+  });
+});

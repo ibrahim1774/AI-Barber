@@ -19,7 +19,7 @@ import { StockPhotoNudge } from '@/components/StockPhotoNudge';
 import type { PreviewProduct } from '@/lib/editable';
 import { listProducts } from '@/lib/store/data';
 import { isSiteShopLink } from '@/web/lib/render/subpages';
-import { advanceOverlay, hasSeen, markSeen, nextOverlay, type Overlay } from '@/lib/overlayFlags';
+import { advanceOverlay, hasSeen, markSeen, nextOverlay, visibleOverlay, type Overlay } from '@/lib/overlayFlags';
 import { pickAndUploadPhoto } from '@/lib/photos';
 import { takePublishRequest } from '@/lib/publishRequest';
 import { refreshReminders } from '@/lib/reminders';
@@ -87,7 +87,10 @@ export default function Editor() {
   // The latest record, so slow work (a photo upload, a scrape) applies its
   // change on top of whatever was edited meanwhile, never on a stale copy.
   const siteRef = useRef<SiteRecord | null>(null);
-  const [overlay, setOverlay] = useState<Overlay | null>(null);
+  const [overlayState, setOverlay] = useState<Overlay | null>(null);
+  const { session } = useSession();
+  // The Edit tour (the 'guide' overlay) waits for an account: until then it neither shows nor locks the editor.
+  const overlay = visibleOverlay(overlayState, !!session);
   // The bookings shop, when there is one: then ab_services is the services source.
   const [shop, setShop] = useState<Shop | null>(null);
   // The barber's products for the homepage Shop section in the preview (only while it has one).
@@ -479,7 +482,6 @@ export default function Editor() {
     void finishOverlay('guide').then(() => refreshReminders());
   }, [finishOverlay]);
 
-  const { session } = useSession();
   // The first-site guide is the Edit tour (its first step is Publish); a replay from Settings opens it any time.
   const tour = useTour('edit', {
     auto: overlay === 'guide' ? 'edit' : null,

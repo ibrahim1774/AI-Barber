@@ -53,3 +53,8 @@ export async function nextOverlay(site: SiteRecord): Promise<Overlay | null> {
 export function advanceOverlay(finished: Overlay, guideSeen: boolean): Overlay | null {
   return finished === 'prompts' && !guideSeen ? 'guide' : null;
 }
+
+/** The overlay actually shown: the guide (the Edit tour) waits for an account and, until then, neither shows nor locks the editor. */
+export function visibleOverlay(overlay: Overlay | null, signedIn: boolean): Overlay | null {
+  return overlay === 'guide' && !signedIn ? null : overlay;
+}
