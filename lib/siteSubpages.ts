@@ -248,9 +248,22 @@ export async function refreshSiteBase(
 ): Promise<string | null> {
   const fields: { site_base_url?: string; site_look?: SiteLook } = {};
   if (input.siteData) fields.site_look = siteLookOf(input.siteData, input.imageUrlMap);
-  let base: string | null = null;
+  const base = await resolvePublicBase(input.projectName, deps);
+  if (base) fields.site_base_url = base;
+  if (!fields.site_base_url && !fields.site_look) return null;
+  await deps.updateShop(input.shopId, fields);
+  return base;
+}
+
+/**
+ * The project's public base right now (the same rules refreshSiteBase stores, without writing): a verified
+ * custom domain whose DNS Vercel reports as pointed, else the project's own *.vercel.app. Null when it can't
+ * be told: a failed domains lookup, a DNS check that errored (only a successful "not pointed" may demote a
+ * custom domain), or no qualifying domain. Callers then keep the stored base, or go without.
+ */
+export async function resolvePublicBase(projectName: string, deps: Pick<SiteBaseDeps, 'projectDomains' | 'domainServing'>): Promise<string | null> {
   try {
-    const domains = await deps.projectDomains(input.projectName);
+    const domains = await deps.projectDomains(projectName);
     const serving = new Set<string>();
     let unsure = false;
     for (const d of domains || []) {
@@ -259,20 +272,15 @@ export async function refreshSiteBase(
       try {
         if (await deps.domainServing(name)) serving.add(name);
       } catch (e: any) {
-        // Only a successful "not pointed" answer may demote a custom domain: an error leaves the
-        // stored base as it is (a blip must not move customers' links to .vercel.app).
         unsure = true;
-        console.warn(`[siteSubpages] ${input.projectName}: DNS check for ${name} failed; keeping the stored base:`, e?.message || e);
+        console.warn(`[siteSubpages] ${projectName}: DNS check for ${name} failed; keeping the stored base:`, e?.message || e);
       }
     }
-    if (!unsure) base = pickPublicBase(domains, (n) => serving.has(n));
+    return unsure ? null : pickPublicBase(domains, (n) => serving.has(n));
   } catch (e: any) {
-    console.warn(`[siteSubpages] ${input.projectName}: domain lookup failed; keeping the stored base:`, e?.message || e);
+    console.warn(`[siteSubpages] ${projectName}: domain lookup failed; keeping the stored base:`, e?.message || e);
+    return null;
   }
-  if (base) fields.site_base_url = base;
-  if (!fields.site_base_url && !fields.site_look) return null;
-  await deps.updateShop(input.shopId, fields);
-  return base;
 }
 
 // ---------------------------------------------------------------------------

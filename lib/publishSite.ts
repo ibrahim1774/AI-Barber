@@ -19,12 +19,12 @@ import { Storage } from '@google-cloud/storage';
 import type { WebsiteData } from '../types';
 import { deployRenderedSite } from './deploySite.js';
 import { renderSiteBundle, type RenderedSite, type RenderSiteOptions } from './render/site.js';
-import type { SiteFile } from './render/pages.js';
+import { isMultiPage, type SiteFile } from './render/pages.js';
 import { isAwaitingDetails, isPayFirstPlan } from './payFirst.js';
 import { vercelProjectExists } from './ios/slug.js';
 import type { SiteOwnerStore } from './siteOwners.js';
 import {
-  findShopForSite, liveSiteBaseDeps, refreshSiteBase, withSubpageLinks,
+  findShopForSite, liveSiteBaseDeps, refreshSiteBase, resolvePublicBase, withSubpageLinks,
   type SiteBaseDeps, type SiteShop, type SiteSubpages,
 } from './siteSubpages.js';
 
@@ -541,12 +541,19 @@ export async function publishSite(
     }
   }
 
-  // Best effort: a failed read just means no canonical links and no sitemap on this publish.
-  let storedBase: string | null = null;
-  if (shop) {
-    try { storedBase = (await (opts.siteBase ?? liveSiteBaseDeps).readBase?.(shop.id)) ?? null; }
-    catch (e: any) { console.warn(`[Publish] ${safe}: reading the stored site base failed (${e?.message || e}); no canonical links this time`); }
-  }
+  // Canonical links and the sitemap (multi-page sites only) use the base valid NOW: the project's own domain
+  // list, so a domain attached since the last publish is already in this deploy. A failed lookup falls back to
+  // the base stored by the previous publish (best effort: a failed read is no base), and with neither the
+  // pages ship without canonical links and without a sitemap. Single-page sites never look anything up.
+  const siteBaseDeps = opts.siteBase ?? liveSiteBaseDeps;
+  let baseMemo: Promise<string | null> | null = null;
+  const publicBase = (): Promise<string | null> => (baseMemo ??= (async () => {
+    const live = await resolvePublicBase(safe, siteBaseDeps);
+    if (live) return live;
+    if (!shop) return null;
+    try { return (await siteBaseDeps.readBase?.(shop.id)) ?? null; }
+    catch (e: any) { console.warn(`[Publish] ${safe}: reading the stored site base failed (${e?.message || e}); no canonical links this time`); return null; }
+  })());
 
   try {
     // A deploy takes minutes, and the stored copy can be replaced meanwhile (a phone publish,
@@ -563,9 +570,8 @@ export async function publishSite(
     for (let round = 0; ; round++) {
       const csd = current.siteData;
       // The links are normalised for this deploy only; the stored copy keeps what the owner saved.
-      // The public base is only known from a previous deploy (ab_shops.site_base_url); with none, the
-      // pages ship without canonical links and without a sitemap on this publish.
-      const rendered = renderPendingBundle({ ...current, siteData: withSubpageLinks(csd, !!subpages) }, { siteBaseUrl: storedBase });
+      const siteBaseUrl = isMultiPage(csd) ? await publicBase() : null;
+      const rendered = renderPendingBundle({ ...current, siteData: withSubpageLinks(csd, !!subpages) }, { siteBaseUrl });
       const html = rendered.pages[0].html;
       console.log(`[Publish] ${safe}: rendered ${rendered.pages.length} page${rendered.pages.length === 1 ? '' : 's'}, ${html.length} bytes of home (template=${csd.template || 'luxe'})${round ? ` (redeploy ${round}: the stored copy changed)` : ''}, deploying...`);
       const out = await deployRenderedSite({ siteId: safe, html, pages: rendered.pages, sitemap: rendered.sitemap, imageUrls: current.imageUrlMap || {}, subpages });
