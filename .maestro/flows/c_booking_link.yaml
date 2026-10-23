@@ -17,7 +17,10 @@ appId: com.ibrahim1774.aibarber
 - pressKey: Enter
 - takeScreenshot: 04_importing
 - extendedWaitUntil:
-    visible: "Tap Publish.*"
+    visible: "PUBLISH"
     timeout: 60000
 - takeScreenshot: 05_editor_imported
-- tapOn: "Skip tour"
+# no account yet, so no Edit tour here (it waits for an account); skip it if one is showing
+- tapOn:
+    text: "Skip tour"
+    optional: true

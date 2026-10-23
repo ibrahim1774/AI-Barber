@@ -31,10 +31,13 @@ appId: com.ibrahim1774.aibarber
 - takeScreenshot: 08_details_filled
 - tapOn: "Finish generating"
 - extendedWaitUntil:
-    visible: "Tap Publish.*"
+    visible: "PUBLISH"
     timeout: 20000
 - takeScreenshot: 09_edit_tour
-- tapOn: "Skip tour"
+# no account yet, so no Edit tour here (it waits for an account); skip it if one is showing
+- tapOn:
+    text: "Skip tour"
+    optional: true
 - takeScreenshot: 10_editor_home
 - scrollUntilVisible:
     element: "Add photos"
