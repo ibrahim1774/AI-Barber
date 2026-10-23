@@ -16,6 +16,8 @@ import {
   siteDescription, siteTitle, teamBookLink, teamOf, firstName, visibleReviews, withoutLegacyCopy,
 } from './honest.js';
 import { ratingLineCustom, t, type LabelKey } from './labels.js';
+import { hasFilePages } from './pages.js';
+import { HEADER_CSS, NAV_CSS, headerHtml, navItemsFor, navListHtml, type RenderCtx } from './shell.js';
 
 // Policy: there is NO default. A shop's policy is a fact only the barber
 // can state, so the "Please note" block renders only from barber-written
@@ -186,6 +188,13 @@ export function resolvePrimeTheme(slug?: string): { brand: string; bright: strin
   if (slug === 'purpleGreen') return { brand: '#22c55e', bright: '#4ade80', deep: '#15803d', bg: '#160328', bg2: '#1f0436', bg3: '#2a0747' };
   return null; // goldBlack / unknown → defaults from PRIME_SCOPED_CSS
 }
+// The inline style that puts a picked colour theme on the root element ('' for the default gold).
+export function primeRootStyle(slug?: string): string {
+  const theme = resolvePrimeTheme(slug);
+  return theme
+    ? `--p-brand:${theme.brand};--p-brand-bright:${theme.bright};--p-brand-deep:${theme.deep};--p-bg:${theme.bg};--p-bg-2:${theme.bg2};--p-bg-3:${theme.bg3};background:${theme.bg};`
+    : '';
+}
 // ===========================================================================
 // Deploy export — builds the static HTML with {{image}} placeholders that
 // /api/deploy-site swaps for uploaded URLs. Mirrors the luxe/euphoria
@@ -215,7 +224,7 @@ const PRIME_SKIN: SectionSkin = {
     + '.ab-sp-price{color:var(--p-brand-bright)}',
 };
 
-export function generatePrimeHTMLWithPlaceholders(input: WebsiteData): string {
+export function generatePrimeHTMLWithPlaceholders(input: WebsiteData, ctx?: RenderCtx): string {
   // Older stored sites: drop the copy we invented for them (honest.ts).
   const siteData = withoutLegacyCopy(input);
   const bookingUrl = safeHref(siteData.bookingUrl);
@@ -233,13 +242,13 @@ export function generatePrimeHTMLWithPlaceholders(input: WebsiteData): string {
   const copy = nicheCopy(siteData);
   const niche = nicheOf(siteData);
   const L = (key: LabelKey) => t(siteData.labels, key, niche, siteData);
+  // A multi-page site (lib/render/site.ts passes its page set): the header carries the page menu.
+  // Without a page set, or with Home alone, this is the single-page site every web publish ships.
+  const menuSet = ctx?.pages && hasFilePages(ctx.pages) ? ctx.pages : null;
   const safeName = escapeHtml(siteData.shopName);
   const safeAreaShort = escapeHtml(cityStateOnly(siteData.area));
   const mapQuery = encodeURIComponent(`${siteData.shopName} ${siteData.area}`);
-  const theme = resolvePrimeTheme(siteData.colorTheme);
-  const rootStyle = theme
-    ? `--p-brand:${theme.brand};--p-brand-bright:${theme.bright};--p-brand-deep:${theme.deep};--p-bg:${theme.bg};--p-bg-2:${theme.bg2};--p-bg-3:${theme.bg3};background:${theme.bg};`
-    : '';
+  const rootStyle = primeRootStyle(siteData.colorTheme);
 
   // Only a scraped aggregate; unreadable → none.
   const agg = aggregateToShow(siteData);
@@ -432,7 +441,7 @@ export function generatePrimeHTMLWithPlaceholders(input: WebsiteData): string {
     body { margin: 0; padding: 0; background: #0a0a0a; color: #f0ece4; font-family: 'Inter', system-ui, sans-serif; }
     a { color: inherit; }
     img { max-width: 100%; height: auto; }
-${PRIME_SCOPED_CSS}
+${PRIME_SCOPED_CSS}${menuSet ? HEADER_CSS.prime + NAV_CSS.prime : ''}
   </style>
 </head>
 <body>
@@ -442,13 +451,13 @@ ${PRIME_SCOPED_CSS}
   <div class="p-welcome"><span>${L('primeWelcome')}</span>${safeAreaShort ? `<span style="color:var(--p-ink-muted);">${safeAreaShort}</span>` : ''}${ratingChip}</div>
 
   <!-- Nav -->
-  <nav style="position:sticky;top:0;z-index:50;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--p-line-soft);">
+  ${menuSet ? headerHtml('prime', { name: siteData.shopName, cta: bookHref ? { href: bookHref, label: L('primeNavBook'), newTab: bookTarget !== '' } : null, nav: navListHtml(navItemsFor('prime', menuSet, siteData, 'home'), L('pgMenu')) }) : `<nav style="position:sticky;top:0;z-index:50;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--p-line-soft);">
     <div class="p-container" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 6vw;">
       <a href="#top" class="p-serif" style="text-decoration:none;color:var(--p-ink);font-size:20px;letter-spacing:0.04em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${safeName}</a>${shopUrl ? `
       <a href="${escapeHtml(shopUrl)}" class="p-eyebrow" style="text-decoration:none;flex-shrink:0;white-space:nowrap;">${L('primeNavShop')}</a>` : ''}
       ${bookHref ? `<a href="${escapeHtml(bookHref)}"${bookTarget} class="p-cta p-cta-solid" style="padding:10px 18px;font-size:10px;flex-shrink:0;">${L('primeNavBook')}</a>` : ''}
     </div>
-  </nav>
+  </nav>`}
 
   <!-- Hero -->
   <section id="top" style="position:relative;min-height:42vh;display:flex;align-items:center;justify-content:center;overflow:hidden;">

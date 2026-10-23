@@ -15,6 +15,8 @@ import {
   displayPhone, firstName, nicheOf, reviewsSourceLabel, serviceMeta, siteDescription, siteTitle, teamBookLink, teamOf, visibleReviews, withoutLegacyCopy,
 } from './honest.js';
 import { ratingLineCustom, t, type LabelKey } from './labels.js';
+import { hasFilePages } from './pages.js';
+import { NAV_CSS, navItemsFor, navListHtml, type RenderCtx } from './shell.js';
 
 // 24h → 12h with AM/PM. Idempotent: if the input already contains an
 // AM/PM marker, return it unchanged. Handles "09:00", "9:00", "9", "20:30".
@@ -131,7 +133,7 @@ const LUXE_SKIN: SectionSkin = {
     + ".ab-sp-price{font-family:'Montserrat',sans-serif;font-weight:900;color:var(--aib-accent,#f4a100)}",
 };
 
-export function generateHTMLWithPlaceholders(input: WebsiteData): string {
+export function generateHTMLWithPlaceholders(input: WebsiteData, ctx?: RenderCtx): string {
   // Older stored sites: drop the copy we invented for them (honest.ts).
   const siteData = withoutLegacyCopy(input);
   // Every barber / scraped value is escaped before it lands in the page.
@@ -163,6 +165,9 @@ export function generateHTMLWithPlaceholders(input: WebsiteData): string {
   // t() escapes (registry: lib/render/labels.ts); the default is the literal that was here before.
   const niche = nicheOf(siteData);
   const lbl = (key: LabelKey) => t(siteData.labels, key, niche, siteData);
+  // A multi-page site (lib/render/site.ts passes its page set): the menu lists the pages. Without a
+  // page set, or with Home alone, this is the single-page site every web publish still ships.
+  const menuSet = ctx?.pages && hasFilePages(ctx.pages) ? ctx.pages : null;
 
   // Gallery — slot 0 doubles as the about-section seed and slot 1 as
   // the hero/about fallback, so the gallery renders
@@ -400,7 +405,8 @@ export function generateHTMLWithPlaceholders(input: WebsiteData): string {
       backdrop-filter: blur(2px);
     }
   </style>
-  <style>${AIB_THEME_CSS}</style>
+  <style>${AIB_THEME_CSS}</style>${menuSet ? `
+  <style>${NAV_CSS.luxe}</style>` : ''}
 </head>
 <body class="aib-themed bg-[#0d0d0d] text-white overflow-x-hidden" style="${aibThemeVars(luxeTheme)}">
   <header id="header" class="fixed top-0 left-0 w-full z-50 transition-all duration-300 bg-black/20 py-5 md:py-8">
@@ -421,12 +427,12 @@ export function generateHTMLWithPlaceholders(input: WebsiteData): string {
           <span class="ab-call-text whitespace-nowrap text-sm md:text-xl lg:text-2xl font-bold tracking-tight">${shownPhone}</span>
         </a>` : ''}
       </div>
-      <nav class="hidden lg:flex items-center gap-10">
+      ${menuSet ? navListHtml(navItemsFor('luxe', menuSet, siteData, 'home'), lbl('pgMenu')) : `<nav class="hidden lg:flex items-center gap-10">
         <a href="#home" class="text-[12px] font-montserrat font-bold tracking-[2px] hover:text-[#f4a100] transition-colors">${lbl('navHome')}</a>
 ${showServices ? `        <a href="#services" class="text-[12px] font-montserrat font-bold tracking-[2px] hover:text-[#f4a100] transition-colors">${lbl('navServices')}</a>
 ` : ''}        <a href="#contact" class="text-[12px] font-montserrat font-bold tracking-[2px] hover:text-[#f4a100] transition-colors">${lbl('navContact')}</a>${shopUrl ? `
         <a href="${escapeAttr(shopUrl)}" class="text-[12px] font-montserrat font-bold tracking-[2px] hover:text-[#f4a100] transition-colors">${lbl('navShop')}</a>` : ''}
-      </nav>
+      </nav>`}
     </div>
   </header>
 
