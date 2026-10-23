@@ -110,7 +110,7 @@ export default function RootLayout() {
     initAttribution().catch(() => {});
   }, []);
   const [loaded, error] = useFonts(fontAssets);
-  // Render nothing until Montserrat/Manrope are ready; on a font load error
+  // Render nothing until the app font is ready; on a font load error
   // fall back to system fonts rather than a blank app.
   if (!loaded && !error) return null;
   const screens = (

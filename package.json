@@ -11,8 +11,7 @@
     "test": "jest"
   },
   "dependencies": {
-    "@expo-google-fonts/manrope": "^0.4.2",
-    "@expo-google-fonts/montserrat": "^0.4.2",
+    "@expo-google-fonts/plus-jakarta-sans": "^0.4.2",
     "@react-navigation/native": "^7.5.1",
     "@supabase/supabase-js": "^2.118.0",
     "@types/react": "~19.2.10",

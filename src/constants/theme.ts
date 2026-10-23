@@ -1,18 +1,3 @@
-import {
-  Montserrat_400Regular,
-  Montserrat_400Regular_Italic,
-  Montserrat_600SemiBold,
-  Montserrat_600SemiBold_Italic,
-  Montserrat_700Bold,
-  Montserrat_900Black,
-} from '@expo-google-fonts/montserrat';
-import {
-  Manrope_400Regular,
-  Manrope_600SemiBold,
-  Manrope_700Bold,
-  Manrope_800ExtraBold,
-} from '@expo-google-fonts/manrope';
-
 // Colours copied from the web. Importer screens use GbpImportPage.tsx's BK
 // tokens (ink-blue-black canvas, porcelain text, ONE gold accent); the
 // generating screen and the classic form use the app-wide #0d0d0d / #f4a100.
@@ -65,31 +50,5 @@ export const swatchNames: Record<string, string> = {
 };
 export const swatchLabel = (hex: string) => `Use color ${swatchNames[hex.toLowerCase()] ?? hex}`;
 
-// Montserrat for headings, Manrope for body text. The web importer's
-// Instrument Serif headlines are set in Montserrat (app-wide font rule).
-export const fonts = {
-  heading: 'Montserrat_700Bold',
-  headingItalic: 'Montserrat_600SemiBold_Italic',
-  headingBlack: 'Montserrat_900Black',
-  serifish: 'Montserrat_400Regular_Italic', // web's italic serif step lines
-  subhead: 'Montserrat_600SemiBold',
-  label: 'Montserrat_400Regular',
-  body: 'Manrope_400Regular',
-  bodySemi: 'Manrope_600SemiBold',
-  bodyBold: 'Manrope_700Bold',
-  bodyExtra: 'Manrope_800ExtraBold',
-  mono: 'Menlo',
-} as const;
-
-export const fontAssets = {
-  Montserrat_400Regular,
-  Montserrat_400Regular_Italic,
-  Montserrat_600SemiBold,
-  Montserrat_600SemiBold_Italic,
-  Montserrat_700Bold,
-  Montserrat_900Black,
-  Manrope_400Regular,
-  Manrope_600SemiBold,
-  Manrope_700Bold,
-  Manrope_800ExtraBold,
-};
+// Typography lives in one file; re-exported so existing imports keep working.
+export { fonts, fontAssets } from '@/theme/fonts';
