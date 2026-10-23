@@ -374,8 +374,14 @@ describe('image slots: tappable or sheet-only', () => {
     );
     expect(sheetOnlyImagePaths({ ...rich, template: 'luxe' })).not.toContain('staff.0.photo');
     expect(sheetOnlyImagePaths({ ...rich, template: 'prime' })).toEqual(
-      expect.arrayContaining(['gallery.6', 'gallery.7', 'craftImages.3', 'staff.0.photo']),
+      expect.arrayContaining(['gallery.6', 'gallery.7', 'craftImages.3', 'staff.1.photo']),
     );
+    // P2: prime and euphoria render the team section too, so a staff photo is a tap target there as well.
+    for (const t of ['prime', 'euphoria'] as const) expect(sheetOnlyImagePaths({ ...rich, template: t })).not.toContain('staff.0.photo');
+    // Only the first five named entries render as cards: a sixth photo is sheet-only.
+    const six = { ...rich, template: 'prime' as const, staff: Array.from({ length: 6 }, (_, i) => ({ name: `B${i}`, photo: `https://x.test/${i}.jpg` })) };
+    expect(sheetOnlyImagePaths(six)).toContain('staff.5.photo');
+    expect(sheetOnlyImagePaths(six)).not.toContain('staff.4.photo');
     const empty = variants(base)[2].data;
     expect(sheetOnlyImagePaths({ ...empty, template: 'prime' })).toContain('hero.imageUrl');
     expect(sheetOnlyImagePaths({ ...empty, template: 'luxe' })).not.toContain('hero.imageUrl'); // luxe always renders the hero <img>

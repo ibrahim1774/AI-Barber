@@ -2,7 +2,7 @@ import type { TemplateId, WebsiteData } from '@/web/types';
 import { resolveAibTheme } from '@/web/lib/render/luxe';
 import { resolvePrimeTheme } from '@/web/lib/render/prime';
 import { resolveEuphoriaTheme } from '@/web/lib/render/euphoria';
-import { nicheOf, serviceMeta, withoutLegacyCopy } from '@/web/lib/render/honest';
+import { nicheOf, serviceMeta, teamOf, withoutLegacyCopy } from '@/web/lib/render/honest';
 import { LABELS, LABEL_KEYS, clampLabel, defaultLabel, isFigureFreeLabel, isLabelKey, visibleLabelKeys, type LabelDef, type LabelKey } from '@/web/lib/render/labels';
 import { SHOP_PREVIEW_SCRIPT, SITE_SHOP_PATH, isSiteSubpageLink } from '@/web/lib/render/subpages';
 import { forRender, renderSite, withImages } from '@/lib/render';
@@ -140,9 +140,9 @@ const filled = (u: unknown): boolean => typeof u === 'string' && u !== '';
  *    when filled (0/1 seed hero/about); staff only with a photo (otherwise a
  *    placeholder <div>); craftImages never (the Craft section was removed).
  *  - prime: hero/about only when filled; gallery slots 0..5 when filled
- *    (.slice(0, 6)); no staff, no craft.
- *  - euphoria: hero/about only when filled; every filled gallery slot; no
- *    staff, no craft.
+ *    (.slice(0, 6)); staff like luxe (P2 team section); no craft.
+ *  - euphoria: hero/about only when filled; every filled gallery slot; staff
+ *    like luxe (P2 team section); no craft.
  */
 function imageSlotTappable(d: WebsiteData, path: string): boolean {
   const template = d.template || 'luxe';
@@ -159,7 +159,8 @@ function imageSlotTappable(d: WebsiteData, path: string): boolean {
       if (template === 'prime') return i < 6;
       return true;
     case 'staff':
-      return template === 'luxe' && filled(d.staff?.[i]?.photo);
+      // All three designs render a Team card per named entry (first five), with an <img> when it has a photo.
+      return filled(d.staff?.[i]?.photo) && teamOf(d).some((c) => c.index === i);
     default:
       return false; // craftImages: no template renders {{craftN}}
   }

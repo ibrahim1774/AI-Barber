@@ -37,6 +37,30 @@ export interface ServiceItem {
   price?: string;
 }
 
+/** Weekly opening hours of one barber, the same row shape as the shop's `hours`. */
+export type WeeklyHours = { day: string; open: string; close: string; closed?: boolean }[];
+
+/** One person on the team. The stored field stays `WebsiteData.staff`. */
+export interface TeamMember {
+  /** Stable id of the site entry (optional: older entries have none). */
+  id?: string;
+  name: string;
+  /** Job title shown under the name, e.g. "Owner & master barber". */
+  role?: string;
+  /** Photo: an image data/http URL while editing, 'has-image' when published (the `staff<i>` slot). */
+  photo?: string;
+  bio?: string;
+  /** The barber's own booking link (http/https only; the renderer re-checks with safeHref). */
+  bookingUrl?: string;
+  /** ab_services ids this barber does (empty or absent = all). */
+  serviceIds?: string[];
+  /** Display names of those services, refreshed by the app from ab_services; the card shows up to 3 as chips. */
+  serviceNames?: string[];
+  hours?: WeeklyHours;
+  /** ab_members.id when the barber is also a booking member (drives /book?barber=<id>). */
+  memberId?: string;
+}
+
 export interface WebsiteData {
   shopName: string;
   area: string;
@@ -127,7 +151,10 @@ export interface WebsiteData {
   // Optional staff cards — name, role, photo. Renderer shows a
   // "Meet the Team" section when at least one staff entry exists.
   // Photo is editable in the preview (replace-image overlay).
-  staff?: { name: string; role?: string; photo?: string }[];
+  // Widened for team profiles (spec 2026-10-23, P2): every field after `name` is optional, so
+  // stored sites, `staff<i>` image keys and older app builds keep working. Renderers read it
+  // only through teamOf() (lib/render/honest.ts).
+  staff?: TeamMember[];
   // Optional "Please note" policy box — used by the Prime (Design 2)
   // template. Barber-written only: there is no default, and the block
   // renders only when `body` has text. Other templates ignore it.
