@@ -277,6 +277,8 @@ export default function Bookings() {
             today={today}
             tz={tz}
             byDay={byDay}
+            timeOff={timeOff}
+            barber={barber}
             startHour={hours.startHour}
             endHour={hours.endHour}
             colorOf={(id) => palette.get(id) ?? '#f4a100'}

@@ -48,6 +48,8 @@ import type { SectionKey } from '@/lib/sections/list';
 import { HomePrompts } from '@/components/HomePrompts';
 import { TutorialLayer } from '@/components/tutorial/TutorialLayer';
 import { useTour } from '@/components/tutorial/useTour';
+import { editTourReady } from '@/components/tutorial/tours';
+import { useSession } from '@/lib/auth';
 import { PublishBar } from '@/components/PublishBar';
 import { LapsedCard } from '@/components/LapsedCard';
 
@@ -477,11 +479,12 @@ export default function Editor() {
     void finishOverlay('guide').then(() => refreshReminders());
   }, [finishOverlay]);
 
+  const { session } = useSession();
   // The first-site guide is the Edit tour (its first step is Publish); a replay from Settings opens it any time.
   const tour = useTour('edit', {
     auto: overlay === 'guide' ? 'edit' : null,
     ignoreFlag: true,
-    ready: overlay === 'guide' && !!site,
+    ready: editTourReady({ overlay, hasSite: !!site, signedIn: !!session }),
     onDone: (id) => {
       if (id === 'edit' && overlayRef.current === 'guide') onGuideClose();
     },

@@ -23,7 +23,7 @@ export const TOURS: Record<TourId, Tour> = {
   edit: {
     id: 'edit', screen: 'edit', label: 'Editing your site', auto: false,
     steps: [
-      { target: 'edit.publish', tip: 'Tap Publish to put your site online. Create an account when asked and you can edit it any time.' },
+      { target: 'edit.publish', tip: 'Tap Publish to put your site online. You can edit it any time.' },
       { target: 'edit.sections', tip: 'Sections: services, team, hours and the rest of your page.' },
       { target: 'edit.text', tip: 'Text: change any wording on your site.' },
       { target: 'edit.photos', tip: 'Photos: swap any picture. You can also tap a picture on the page.' },
@@ -106,4 +106,9 @@ export function takeTourRequest(screen: TourScreen): TourId | null {
 
 export function resetTourRequestForTests(): void {
   requested = null;
+}
+
+/** The Edit tour starts only after account setup and a first generated site (spec: "after account setup"). */
+export function editTourReady(s: { overlay: string | null; hasSite: boolean; signedIn: boolean }): boolean {
+  return s.overlay === 'guide' && s.hasSite && s.signedIn;
 }

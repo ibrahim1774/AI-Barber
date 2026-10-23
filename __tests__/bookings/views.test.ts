@@ -1,5 +1,5 @@
 import {
-  addMonths, bucketAppointments, countText, monthLabel, weekLabel, closedWeekdays, dayLayout, hourWindow, memberColors, monthGrid, viewRange, weekRange,
+  addMonths, bucketAppointments, countText, timeOffSpans, monthLabel, weekLabel, closedWeekdays, dayLayout, hourWindow, memberColors, monthGrid, viewRange, weekRange,
   type Appointment,
 } from '@/lib/bookings/calendar';
 import { fetchAllPages } from '@/lib/bookings/api';
@@ -193,5 +193,22 @@ describe('labels', () => {
     expect(weekLabel(weekRange('2026-11-01', NY))).toBe('Oct 26 - Nov 1');
     expect(monthLabel('2026-10-23')).toBe('October 2026');
     expect([countText(4), countText(9), countText(10)]).toEqual(['4', '9', '9+']);
+  });
+});
+
+describe('timeOffSpans (greyed blocks in Week view)', () => {
+  const off = (over = {}) => ({ id: 't1', memberId: 'm1', start: '2026-10-23T16:00:00Z', end: '2026-10-23T18:00:00Z', reason: null, ...over });
+  it('gives local minutes on the day, 12:00 to 14:00 New York', () => {
+    expect(timeOffSpans([off()], '2026-10-23', NY, null)).toEqual([{ id: 't1', startMin: 720, endMin: 840 }]);
+  });
+  it('clips a block that runs past midnight to each day it touches', () => {
+    const t = off({ start: '2026-10-23T22:00:00Z', end: '2026-10-24T14:00:00Z' });
+    expect(timeOffSpans([t], '2026-10-23', NY, null)).toEqual([{ id: 't1', startMin: 1080, endMin: 1440 }]);
+    expect(timeOffSpans([t], '2026-10-24', NY, null)).toEqual([{ id: 't1', startMin: 0, endMin: 600 }]);
+    expect(timeOffSpans([t], '2026-10-25', NY, null)).toEqual([]);
+  });
+  it('filters to one barber when one is selected', () => {
+    expect(timeOffSpans([off({ memberId: 'm2' })], '2026-10-23', NY, 'm1')).toEqual([]);
+    expect(timeOffSpans([off({ memberId: 'm2' })], '2026-10-23', NY, 'm2')).toHaveLength(1);
   });
 });

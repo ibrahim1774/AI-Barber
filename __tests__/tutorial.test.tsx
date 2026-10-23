@@ -172,3 +172,14 @@ describe('placeTip', () => {
     expect(placeTip({ x: 10, y: 760, w: 100, h: 40 }, 390, 844)).toMatchObject({ centred: false, above: true, edge: 746 });
   });
 });
+
+describe('Edit tour start condition', () => {
+  const { editTourReady } = require('@/components/tutorial/tours');
+  it('needs the guide overlay, a generated site and an account', () => {
+    expect(editTourReady({ overlay: 'guide', hasSite: true, signedIn: true })).toBe(true);
+    expect(editTourReady({ overlay: 'guide', hasSite: true, signedIn: false })).toBe(false);
+    expect(editTourReady({ overlay: 'guide', hasSite: false, signedIn: true })).toBe(false);
+    expect(editTourReady({ overlay: 'prompts', hasSite: true, signedIn: true })).toBe(false);
+    expect(editTourReady({ overlay: null, hasSite: true, signedIn: true })).toBe(false);
+  });
+});

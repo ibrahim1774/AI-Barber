@@ -194,6 +194,19 @@ export function timeOffForDay(
     .sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
 }
 
+/** Time off as local minutes on one day (clipped to it), for the greyed blocks in Week view. */
+export function timeOffSpans(
+  list: TimeOff[], key: DateKey, tz: string, memberId: string | null = null,
+): { id: string; startMin: number; endMin: number }[] {
+  const { start } = dayRange(key, tz);
+  const d0 = Date.parse(start);
+  return timeOffForDay(list, key, tz, memberId).map((t) => ({
+    id: t.id,
+    startMin: Math.max(0, Math.round((Date.parse(t.start) - d0) / 60000)),
+    endMin: Math.min(24 * 60, Math.round((Date.parse(t.end) - d0) / 60000)),
+  }));
+}
+
 /** Live appointments per day, for the date strip's dots. */
 export function countsByDay(list: Appointment[], tz: string, memberId: string | null = null): Record<DateKey, number> {
   const out: Record<DateKey, number> = {};

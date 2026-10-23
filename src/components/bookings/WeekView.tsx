@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors, fonts } from '@/constants/theme';
 import {
-  dayLayout, dayOfMonth, formatMinutes, weekdayShort, type Appointment, type DateKey,
+  dayLayout, dayOfMonth, formatMinutes, timeOffSpans, weekdayShort, type Appointment, type DateKey, type TimeOff,
 } from '@/lib/bookings/calendar';
 
 export const HOUR_H = 56;
@@ -16,12 +16,16 @@ export interface LegendItem { id: string; name: string; color: string }
  * Tap a block to open it, long-press an empty spot to add a booking there, tap a day name to open that day.
  */
 export function WeekView({
-  days, today, tz, byDay, startHour, endHour, colorOf, legend, closed, onOpen, onDay, onAddAt,
+  days, today, tz, byDay, timeOff, barber, startHour, endHour, colorOf, legend, closed, onOpen, onDay, onAddAt,
 }: {
   days: DateKey[];
   today: DateKey;
   tz: string;
   byDay: Record<DateKey, Appointment[]>;
+  /** Time off, drawn greyed; it cannot be tapped to book. */
+  timeOff: TimeOff[];
+  /** The barber picked in the header filter (null = everyone). */
+  barber: string | null;
   startHour: number;
   endHour: number;
   colorOf(memberId: string): string;
@@ -105,6 +109,20 @@ export function WeekView({
               {hours.map((h, i) => (
                 <View key={h} pointerEvents="none" style={[styles.line, { top: i * HOUR_H }]} />
               ))}
+              {timeOffSpans(timeOff, d, tz, barber).map((t) => (
+                <View
+                  key={t.id}
+                  pointerEvents="none"
+                  accessibilityLabel={`Time off ${formatMinutes(t.startMin)} to ${formatMinutes(t.endMin)}`}
+                  style={[
+                    styles.off,
+                    {
+                      top: Math.max(0, ((t.startMin - startHour * 60) / 60) * HOUR_H),
+                      height: Math.max(4, ((t.endMin - Math.max(t.startMin, startHour * 60)) / 60) * HOUR_H),
+                    },
+                  ]}
+                />
+              ))}
               {dayLayout(byDay[d] ?? [], d, tz).map((p) => {
                 const top = ((p.startMin - startHour * 60) / 60) * HOUR_H;
                 const h = Math.max(14, ((p.endMin - p.startMin) / 60) * HOUR_H - 1);
@@ -158,6 +176,7 @@ const styles = StyleSheet.create({
   colClosed: { backgroundColor: 'rgba(237,239,244,0.035)' },
   colToday: { backgroundColor: 'rgba(244,161,0,0.06)' },
   line: { position: 'absolute', left: 0, right: 0, height: StyleSheet.hairlineWidth, backgroundColor: colors.hair },
+  off: { position: 'absolute', left: 0, right: 0, backgroundColor: 'rgba(120,124,135,0.28)', borderTopWidth: 1, borderBottomWidth: 1, borderColor: 'rgba(120,124,135,0.45)' },
   block: { position: 'absolute', borderRadius: 5, paddingHorizontal: 3, paddingVertical: 2, borderWidth: 1, borderColor: 'rgba(0,0,0,0.25)' },
   blockText: { fontFamily: fonts.bodyBold, fontSize: 9, lineHeight: 11, color: colors.accentInk },
 });
