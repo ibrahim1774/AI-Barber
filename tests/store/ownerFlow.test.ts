@@ -329,7 +329,7 @@ describe('mark: concurrency', () => {
 });
 
 describe('refund', () => {
-  it('full: claims refund_due = paid, refunds under refund-order-{id}-{paid}, writes the absolute total, paid -> cancelled', async () => {
+  it('full: claims refund_due = paid, refunds under refund-order-{id}-{paid}-{paid}-0, writes the absolute total, paid -> cancelled', async () => {
     const w = storeWorld();
     const o = await paidCard(w);
     const upd = vi.spyOn(w.deps.repo, 'updateOrder');
@@ -339,7 +339,7 @@ describe('refund', () => {
     expect(upd.mock.calls[0][2]).toEqual({ paymentMethod: 'card', refundDue: 0, refundedEq: 0, paidCents: 3000 });
     expect(w.payments.refundOrder).toHaveBeenCalledTimes(1);
     expect(w.payments.refundOrder.mock.calls[0][2]).toBe(3000);
-    expect(w.payments.refundOrder.mock.calls[0][3]).toEqual({ idempotencyKey: `refund-order-${o.id}-3000` });
+    expect(w.payments.refundOrder.mock.calls[0][3]).toEqual({ idempotencyKey: `refund-order-${o.id}-3000-3000-0` });
     expect(upd.mock.calls[1][1]).toEqual({ amount_refunded_cents: 3000, payment_status: 'refunded' });
     expect(upd.mock.calls[1][2]).toEqual({ refundedLte: 3000 });
     expect(w.order(o.id)).toMatchObject({
@@ -364,11 +364,11 @@ describe('refund', () => {
     const o = await paidCard(w);
     const r1 = await refund(w, o.id, { amountCents: 500 });
     expect(r1.body).toMatchObject({ refundedCents: 500, pending: false });
-    expect(w.payments.refundOrder.mock.calls[0][3]).toEqual({ idempotencyKey: `refund-order-${o.id}-500` });
+    expect(w.payments.refundOrder.mock.calls[0][3]).toEqual({ idempotencyKey: `refund-order-${o.id}-500-500-0` });
     expect(w.order(o.id)).toMatchObject({ status: 'paid', payment_status: 'partially_refunded', amount_refunded_cents: 500, refund_due_cents: 500 });
     await refund(w, o.id, { amountCents: 500 });
     expect(w.payments.refundOrder.mock.calls[1][2]).toBe(500);
-    expect(w.payments.refundOrder.mock.calls[1][3]).toEqual({ idempotencyKey: `refund-order-${o.id}-1000` });
+    expect(w.payments.refundOrder.mock.calls[1][3]).toEqual({ idempotencyKey: `refund-order-${o.id}-1000-500-500` });
     expect(w.order(o.id)).toMatchObject({ amount_refunded_cents: 1000, refund_due_cents: 1000, status: 'paid' });
     // the rest: refundable is 2000
     const r3 = await refund(w, o.id, {});

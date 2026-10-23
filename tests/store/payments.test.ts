@@ -167,12 +167,12 @@ describe('refundOrder', () => {
 
   it('clamps to what is refundable, passes the given key, refunds the application fee, tags the order', async () => {
     const { f, calls } = fakeFetch({ body: { id: 're_1', amount: 3500, status: 'succeeded' } });
-    const r = await refundOrder(shop, paid, 9999, { fetch: f, idempotencyKey: refundKey.order('ord-1', 4500) });
+    const r = await refundOrder(shop, paid, 9999, { fetch: f, idempotencyKey: refundKey.order('ord-1', 4500, 4500, 0) });
     expect(r).toEqual({ refundedCents: 3500 });
     const { url, init, params: p } = calls[0];
     expect(url).toBe('https://api.stripe.com/v1/refunds');
     expect(init.headers['Stripe-Account']).toBe('acct_123');
-    expect(init.headers['Idempotency-Key']).toBe('refund-order-ord-1-4500');
+    expect(init.headers['Idempotency-Key']).toBe('refund-order-ord-1-4500-4500-0');
     expect(p.get('payment_intent')).toBe('pi_o1');
     expect(p.get('amount')).toBe('3500');
     expect(p.get('refund_application_fee')).toBe('true');
@@ -197,8 +197,11 @@ describe('refundOrder', () => {
     expect(g.f).not.toHaveBeenCalled();
   });
 
-  it('refundKey.order is per order and target total', () => {
-    expect(refundKey.order('ord-1', 2500)).toBe('refund-order-ord-1-2500');
+  it('refundKey.order is per order, target total, amount and the refunded total it starts from', () => {
+    expect(refundKey.order('ord-1', 2500, 2500, 0)).toBe('refund-order-ord-1-2500-2500-0');
+    // Same attempt, same key (double tap / retry); any change in the stored state, another key.
+    expect(refundKey.order('ord-1', 2500, 2500, 0)).toBe(refundKey.order('ord-1', 2500, 2500, 0));
+    expect(refundKey.order('ord-1', 2500, 1500, 1000)).not.toBe(refundKey.order('ord-1', 2500, 2500, 0));
   });
 });
 

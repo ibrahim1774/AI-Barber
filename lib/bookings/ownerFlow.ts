@@ -145,7 +145,7 @@ export async function setupShop(authorization: string | string[] | undefined, bo
     if (deps.writeLimiter) {
       let allowed = true;
       try {
-        allowed = await deps.writeLimiter.allow(`user:${user.id}`, 'write');
+        allowed = await deps.writeLimiter.allow(user.id, 'write'); // the 'user' scope
       } catch (e: any) {
         console.error('[shop/setup] rate limiter failed, allowing:', e?.message || e); // fail open
       }

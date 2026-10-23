@@ -125,7 +125,9 @@ describe('crons', () => {
       holds: { expired: 1 }, refunds: { retried: 1, refunded: 1, failed: 0, stuck: 0 },
       orderHolds: { expired: 3 }, orderRefunds: { retried: 2, refunded: 1, failed: 1, stuck: 0 },
     });
-    expect(expireStaleCardHolds).toHaveBeenCalledWith({}, 50);
+    // Every sweep shares one budget (e2e I4).
+    expect(expireStaleCardHolds).toHaveBeenCalledWith({}, 50, { deadline: expect.any(Number) });
+    expect(retryPendingRefunds).toHaveBeenCalledWith({}, undefined, { deadline: expect.any(Number) });
     expect(expireStaleOrderHolds).toHaveBeenCalledWith({ store: true }, 50, { deadline: expect.any(Number) });
     expect(retryPendingOrderRefunds).toHaveBeenCalledWith({ store: true }, undefined, { deadline: expect.any(Number) });
     // The sweeps run first, then the reminders.

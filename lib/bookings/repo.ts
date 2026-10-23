@@ -179,6 +179,8 @@ export interface AppointmentGuard {
   refundDue?: number;
   /** refund_stuck_at is null. */
   notStuck?: boolean;
+  /** customer_says_paid_at is null (the "I've sent it" once-only guard, e2e M5). */
+  saysPaidNull?: boolean;
 }
 
 export type WriteResult<T> = { ok: true; row: T } | { ok: false; reason: 'overlap' | 'stale' };
@@ -261,6 +263,8 @@ export interface BookingRepo {
   insertTimeOff(row: { member_id: string; start_at: string; end_at: string; reason: string | null }): Promise<TimeOffRow>;
   upsertPushToken(userId: string, expoToken: string, platform: 'ios' | 'android'): Promise<void>;
   logEvent(shopId: string | null, kind: string, payload: Record<string, unknown>): Promise<void>;
+  /** Review fix 13: definite Stripe 5xx answers recorded for this refund key (ab_events refund_5xx). Optional for older fakes. */
+  refundAttempts?(baseKey: string): Promise<number>;
 
   // setup
   slugTaken(slug: string): Promise<boolean>;
@@ -383,6 +387,7 @@ export function supabaseBookingRepo(client?: SupabaseClient): BookingRepo {
       if (g.refundedLte != null) q = q.lte('amount_refunded_cents', g.refundedLte);
       if (g.refundDue != null) q = q.eq('refund_due_cents', g.refundDue);
       if (g.notStuck) q = q.is('refund_stuck_at', null);
+      if (g.saysPaidNull) q = q.is('customer_says_paid_at', null);
       const { data, error } = await q.select(APPT_COLS);
       if (isOverlap(error)) return { ok: false, reason: 'overlap' };
       if (error) fail('updateAppointment', error);
@@ -392,7 +397,9 @@ export function supabaseBookingRepo(client?: SupabaseClient): BookingRepo {
     staleCardHolds: (createdBeforeIso, limit) =>
       many('staleCardHolds', db().from('ab_appointments').select(APPT_COLS)
         .eq('status', 'booked').eq('payment_method', 'card').eq('payment_status', 'awaiting').eq('amount_paid_cents', 0)
-        .lt('created_at', createdBeforeIso).order('created_at').limit(limit)),
+        // updated_at: a hold the sweep had to leave (Stripe: complete or unknown) is touched and
+        // rotates behind the others (e2e I7), like the store's order holds.
+        .lt('created_at', createdBeforeIso).order('updated_at').limit(limit)),
     pendingRefunds: (updatedBeforeIso, limit) =>
       many('pendingRefunds', db().from('ab_appointments').select(APPT_COLS)
         .eq('status', 'cancelled').eq('refund_pending', true).not('stripe_payment_intent_id', 'is', null)
@@ -421,6 +428,13 @@ export function supabaseBookingRepo(client?: SupabaseClient): BookingRepo {
         .upsert({ user_id: userId, expo_token: expoToken, platform }, { onConflict: 'expo_token' });
       if (error) fail('upsertPushToken', error);
     },
+    async refundAttempts(baseKey) {
+      const { count, error } = await db().from('ab_events').select('id', { count: 'exact', head: true })
+        .eq('kind', 'refund_5xx').eq('payload->>key', baseKey);
+      if (error) fail('refundAttempts', error);
+      return count ?? 0;
+    },
+
     async logEvent(shopId, kind, payload) {
       const { error } = await db().from('ab_events').insert({ shop_id: shopId, kind, payload });
       if (error) fail('logEvent', error);

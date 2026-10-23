@@ -290,7 +290,7 @@ describe('republish', () => {
     const f = fakes();
     const r = await republish('fade-lab', f.deps);
     expect(r).toMatchObject({ ok: true, slug: 'fade-lab', deployedUrl: 'https://fade-lab.vercel.app' });
-    expect(f.deps.publish).toHaveBeenCalledWith('fade-lab', { force: true, pending: expect.objectContaining({ version: 3 }) });
+    expect(f.deps.publish).toHaveBeenCalledWith('fade-lab', { force: true, pending: expect.objectContaining({ version: 3 }), transform: expect.any(Function) });
     expect(f.store.writePending).not.toHaveBeenCalled();
     expect(f.pending.get('fade-lab')!.version).toBe(3);
   });

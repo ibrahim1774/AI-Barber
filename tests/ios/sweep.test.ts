@@ -28,7 +28,7 @@ const summary = (over: Partial<IosSweepSummary> = {}): IosSweepSummary => ({
   checked: 0, published: [], failed: [], missing: [], deferred: [],
   skippedLapsed: [], restored: [], restoreFailed: [], notRestored: [],
   takenDown: [], takedownFailed: [], takedownUncertain: [], stillActive: [], sandboxGatesClosed: [],
-  appleUnavailable: [], appleUnresolvable: [],
+  appleUnavailable: [], appleUnresolvable: [], linksStripped: [], linksFailed: [],
   ...over,
   appleUnavailableCount: (over.appleUnavailable ?? []).length,
   appleUnresolvableCount: (over.appleUnresolvable ?? []).length,
@@ -578,5 +578,31 @@ describe('makeStripPending (M4)', () => {
     await makeStripPending({ readPending: async () => pendingWith({ bookingUrl: 'https://www.aibarber.org/book/a' }), writePending })('a', `${P}store.yearly`);
     await makeStripPending({ readPending: async () => null, writePending })('a', `${P}hosting.monthly`);
     expect(writePending).not.toHaveBeenCalled();
+  });
+});
+
+describe('sweepIos pass 4: link strip after a downgrade (e2e M1)', () => {
+  const due = (otid: string, slug: string): PurchaseRow => ({ ...row(otid, slug), published_at: '2026-01-01T00:00:00Z', links_due_at: '2026-02-01T00:00:00.000Z' });
+
+  it('strips, redeploys and clears the stamp it handled; a failed redeploy keeps it', async () => {
+    const { r } = repo([]);
+    const clearLinksDue = vi.fn(async () => {});
+    Object.assign(r, { linksDue: vi.fn(async () => [due('o1', 'a'), due('o2', 'b')]), clearLinksDue });
+    const stripPending = vi.fn(async () => true);
+    const publish = vi.fn(async (s: string) => (s === 'b' ? { ok: false, siteId: s, reason: 'deploy-failed' as const } : ok(s)));
+    const out = await sweepIos({ repo: r, publish, deployOffline: noOffline, verify: neverVerify, stripPending });
+    expect(stripPending).toHaveBeenCalledWith('a', 'p');
+    expect(publish).toHaveBeenCalledWith('a', { force: true });
+    expect(out.linksStripped).toEqual(['a']);
+    expect(out.linksFailed).toEqual(['b']);
+    expect(clearLinksDue).toHaveBeenCalledTimes(1);
+    expect(clearLinksDue).toHaveBeenCalledWith('o1', '2026-02-01T00:00:00.000Z');
+  });
+
+  it('a failing candidate query (migration 014 not applied) skips the pass; the rest of the sweep stands', async () => {
+    const { r } = repo([]);
+    Object.assign(r, { linksDue: vi.fn(async () => { throw new Error('column "links_due_at" does not exist'); }), clearLinksDue: vi.fn() });
+    const out = await sweepIos({ repo: r, publish: vi.fn(), deployOffline: noOffline, verify: neverVerify, stripPending: vi.fn() });
+    expect(out).toEqual(summary());
   });
 });

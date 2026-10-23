@@ -4,6 +4,7 @@ import { adminSupabase, liveAdminDeps } from '../../lib/admin/live.js';
 import {
   findSites, getSite, republish, republishAll, rollback, updateSite, type AdminSitesDeps,
 } from '../../lib/admin/sites.js';
+import { getWebOwner, setWebOwner } from '../../lib/siteOwners.js';
 import { memoryStore, supabaseRateStore, withFallback, type RateLimitStore } from '../../lib/bookings/rateLimit.js';
 
 /*
@@ -20,7 +21,14 @@ import { memoryStore, supabaseRateStore, withFallback, type RateLimitStore } fro
  *   republish    { slug }
  *   republish-all{ dryRun = true, runId?, limit? }   call again with the same runId until done
  *   rollback     { slug, version: "4" | "4-1729…" (history id), expectedVersion? }
+ *   web-owner    { slug }            → { ok, slug, owner }   the WEB site's owner (013 site_owners)
+ *   set-web-owner{ slug, email }     → { ok, slug, owner }   set / replace it (comped sites); an
+ *                                       email with no account yet is claimed at that person's first
+ *                                       sign-in with a confirmed email. Refuses app (iOS) slugs.
  */
+
+// Edits and republish deploy (and may redeploy a newer copy once); vercel.json also sets 300 s.
+export const config = { maxDuration: 300 };
 
 const READ_LIMIT = 120;
 const WRITE_LIMIT = 30;
@@ -85,7 +93,12 @@ export function makeAdminSitesHandler(d: AdminSitesHandlerDeps) {
       const by = auth.email;
       const slug = str(body.slug);
       const needSlug = () => res.status(400).json({ ok: false, error: 'bad-request', detail: 'slug required' });
-      const expectedVersion = Number.isInteger(body.expectedVersion) ? body.expectedVersion : undefined;
+      // Present but not a whole number >= 0 (e.g. the string "1" from a stale form) is a 400: before,
+      // it was silently dropped and the write became a blind overwrite (e2e M2).
+      if (body.expectedVersion != null && !(Number.isInteger(body.expectedVersion) && body.expectedVersion >= 0)) {
+        return res.status(400).json({ ok: false, error: 'bad-request', detail: 'expectedVersion must be a whole number' });
+      }
+      const expectedVersion: number | undefined = body.expectedVersion ?? undefined;
       const note = typeof body.note === 'string' ? body.note : undefined;
 
       let r: any;
@@ -106,6 +119,13 @@ export function makeAdminSitesHandler(d: AdminSitesHandlerDeps) {
           if (!slug) return needSlug();
           r = await rollback(slug, String(body.version ?? ''), core, { by, expectedVersion });
           break;
+        case 'web-owner':
+        case 'set-web-owner': {
+          if (!slug) return needSlug();
+          if (!core.webOwners) return res.status(503).json({ ok: false, error: 'temporarily-unavailable' });
+          const w = body.action === 'web-owner' ? await getWebOwner(slug, core.webOwners) : await setWebOwner(slug, body.email, core.webOwners, by);
+          return res.status(w.ok ? 200 : w.error === 'app-site' ? 409 : 400).json(w);
+        }
         case 'republish-all': {
           const dryRun = body.dryRun !== false;
           if (!dryRun && !/^[a-zA-Z0-9_-]{1,80}$/.test(str(body.runId))) {

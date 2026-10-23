@@ -47,3 +47,20 @@ export function restoreImageUrls(sd: WebsiteData, map: Record<string, string>): 
     staff: sd.staff ? sd.staff.map((s, i) => ({ ...s, photo: back(s.photo, `staff${i}`) })) : sd.staff,
   };
 }
+
+/**
+ * Why the renderers can't take this siteData (null when they can). Deeper than validSiteData:
+ * these are what the templates dereference. Shared by admin saves and the phone publish (both
+ * also dry-render before storing anything).
+ */
+export function validationProblem(sd: unknown): string | null {
+  if (!validSiteData(sd)) return 'siteData needs shopName, hero, about, gallery[] and services[] (craftImages/staff must be lists)';
+  if (!isObj(sd.contact)) return 'contact must be an object ({ address, email })';
+  const badService = sd.services.findIndex((x: unknown) => !isObj(x) || typeof (x as any).title !== 'string');
+  if (badService >= 0) return `services.${badService} must be an object with a text title`;
+  const desc = (sd.about as any).description;
+  if (!Array.isArray(desc) || desc.some((d: unknown) => typeof d !== 'string')) return 'about.description must be a list of text paragraphs';
+  if (hasDataUrl(sd)) return 'inline data: images are not allowed; upload the image and use its https URL';
+  if (jsonBytes(sd) > MAX_BODY_BYTES) return 'siteData is larger than 3 MB';
+  return null;
+}

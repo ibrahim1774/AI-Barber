@@ -227,7 +227,7 @@ describe('POST /api/shop/plan', () => {
       deps.limiter = { allow: vi.fn(async () => false) };
       const r = await refreshPlan(AUTH, { transactionId: '2000000555' }, deps);
       expect(r).toEqual({ status: 429, body: { error: 'rate-limited' }, headers: { 'Retry-After': '60' } });
-      expect(deps.limiter.allow).toHaveBeenCalledWith(`user:${USER}`, 'write');
+      expect(deps.limiter.allow).toHaveBeenCalledWith(USER, 'write');
       expect(deps.verify).not.toHaveBeenCalled();
     });
 

@@ -313,7 +313,7 @@ describe('redelivery', () => {
 });
 
 describe('paid after cancel', () => {
-  it('recorded WITHOUT paid_at, refunded in full with refund-pac-{pi}, setOrderRefunded absolute', async () => {
+  it('recorded WITHOUT paid_at, refunded in full with refund-pac-{pi}-{amount}-{refunded}, setOrderRefunded absolute', async () => {
     const o = mkOrderDeps({ ...baseOrder, status: 'cancelled', payment_status: 'none', cancelled_at: 'T_CANCEL' });
     expect(await handleConnectEvent(completed(), mkApptDeps(), o)).toBe('order:refunded:cancelled-before-payment');
     expect(o.markOrderPaid).not.toHaveBeenCalled();
@@ -324,17 +324,17 @@ describe('paid after cancel', () => {
     expect(s).toEqual(shop);
     expect(row).toMatchObject({ id: ORDER_ID, stripe_payment_intent_id: 'pi_o1', amount_paid_cents: 4500, amount_refunded_cents: 0 });
     expect(amt).toBe(4500);
-    expect(key).toBe('refund-pac-pi_o1');
+    expect(key).toBe('refund-pac-pi_o1-4500-0');
     expect(o.setOrderRefunded).toHaveBeenCalledWith(ORDER_ID, 4500, 'refunded');
     expect(o.notify).not.toHaveBeenCalled();
   });
 
-  it('a partial refund already recorded: refunds the rest under the same key and writes the cumulative total', async () => {
+  it('a partial refund already recorded: refunds the rest under its own key (amount + refunded total) and writes the cumulative total', async () => {
     const o = mkOrderDeps({ ...baseOrder, status: 'cancelled', stripe_payment_intent_id: 'pi_o1', amount_paid_cents: 4500, amount_refunded_cents: 1000, payment_status: 'partially_refunded' });
     expect(await handleConnectEvent(completed(), mkApptDeps(), o)).toBe('order:refunded:cancelled-before-payment');
     expect(o.recordOrderPaidAfterCancel).not.toHaveBeenCalled();
     expect(o.refund.mock.calls[0][2]).toBe(3500);
-    expect(o.refund.mock.calls[0][3]).toBe('refund-pac-pi_o1');
+    expect(o.refund.mock.calls[0][3]).toBe('refund-pac-pi_o1-3500-1000');
     expect(o.setOrderRefunded).toHaveBeenCalledWith(ORDER_ID, 4500, 'refunded');
   });
 

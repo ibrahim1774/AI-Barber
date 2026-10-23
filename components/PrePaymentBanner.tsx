@@ -3,6 +3,7 @@ import { X, ArrowRight, Rocket, Loader2, Sparkles, Check } from 'lucide-react';
 import { isBooksyPath, isFreeBarberPath, isBookingPath, isGeneratePath, isBarberGeneratePath, isHome2Path, isHome15Path, isHome20Path, isHome7Path, isHome9Path, isCustomDesignAnyPath, isCustomDesignPath, isCustomDesign29Path, isCustom15Path, isHomeRootPath } from '../lib/dealMode.ts';
 import { loadStripe, type Stripe } from '@stripe/stripe-js';
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js';
+import { authHeaders, checkoutErrorMessage } from '../services/checkoutClient';
 
 const STRIPE_PK = (import.meta as any).env?.VITE_STRIPE_PUBLISHABLE_KEY as string | undefined;
 let stripePromise: Promise<Stripe | null> | null = null;
@@ -274,7 +275,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
     try {
       const res = await fetch('/api/create-checkout-session', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
         body: JSON.stringify({
           siteId: embedSiteIdRef.current || 'pre-publish',
           plan: planSlug,
@@ -284,7 +285,7 @@ const PrePaymentBanner: React.FC<PrePaymentBannerProps> = ({ onDeploy, onPrepare
         signal: controller.signal,
       });
       const data = await res.json();
-      if (!res.ok || !data.clientSecret) throw new Error(data.error || 'Could not start checkout.');
+      if (!res.ok || !data.clientSecret) throw new Error(res.ok ? 'Could not start checkout.' : checkoutErrorMessage(res.status, data));
       setEmbedSecret(data.clientSecret);
     } catch (err: any) {
       if (err?.name === 'AbortError') return;

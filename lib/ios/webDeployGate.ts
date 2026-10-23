@@ -13,7 +13,10 @@
 //   edits go through /api/admin/sites, which keeps history and the version guard).
 import type { WebsiteData } from '../../types.js';
 import { deployRenderedSite, type DeployRenderedSiteInput, type DeployRenderedSiteResult } from '../deploySite.js';
-import { adminVersionOf, readPendingSite, slugify, versionOf, writePendingSite, type PendingSite } from '../publishSite.js';
+import {
+  adminVersionOf, casPending, readPendingSite, readPendingVersioned, slugify, versionOf, writePendingSite,
+  type PendingSite, type VersionedPending,
+} from '../publishSite.js';
 import { buildImageUrlMap, toPendingSiteData } from './pendingData.js';
 import { stripLapsedLinks } from './tiers.js';
 import type { PurchaseRow } from './purchases.js';
@@ -24,9 +27,12 @@ export { vercelAppLabel } from '../deployAuth.js';
 
 export interface WebDeployDeps {
   deploy(input: DeployRenderedSiteInput): Promise<DeployRenderedSiteResult>;
-  writePending(slug: string, p: PendingSite): Promise<void>;
+  /** With `ifGeneration`: compare-and-set (a 412 PendingConflictError when the copy changed since that read). */
+  writePending(slug: string, p: PendingSite, opts?: { ifGeneration?: number | null }): Promise<void>;
   /** The stored copy, so its version is carried forward (admin-edit sync). Absent: version restarts. */
   readPending?(slug: string): Promise<PendingSite | null>;
+  /** The stored copy with its generation (compare-and-set). Absent: unconditional write. */
+  readPendingVersioned?(slug: string): Promise<VersionedPending>;
   /**
    * Web sites: stamp the live URL on the stored (pre-checkout) copy. The stamp is server-owned
    * (api/save-pending-site drops it and refuses a stamped copy), and it is what tells the
@@ -160,32 +166,39 @@ export async function gatedWebDeploy(
       // The previous copy carries the version; if it can't be read, a refresh would restart the
       // version and could repeat a number the history already holds. Skip the refresh (the
       // stored copy stays as it was; the next app publish or admin edit brings it up to date).
-      let previous: PendingSite | null = null;
-      if (deps.readPending) {
+      // Compare-and-set (e2e I1): a write landing meanwhile is built on, never overwritten.
+      const readPending = deps.readPending;
+      if (!readPending) {
+        await deps.writePending(slug, ownerCopy(null));
+      } else {
         try {
-          previous = await deps.readPending(slug);
+          const r = await casPending(slug, { readPending, writePending: deps.writePending, readPendingVersioned: deps.readPendingVersioned },
+            (previous) => ({ write: ownerCopy(previous) }));
+          if (r.exhausted) console.warn(`[Deploy Site] ${slug}: deployed, but the stored copy kept changing; not refreshed`);
         } catch (e: any) {
-          console.warn(`[Deploy Site] ${slug}: deployed, but reading the previous pending file failed; not refreshing it:`, e?.message || e);
+          console.warn(`[Deploy Site] ${slug}: deployed, but reading or writing the pending file failed; not refreshing it:`, e?.message || e);
           return { blocked: false, result };
         }
       }
-      const adminVersion = adminVersionOf(previous);
-      await deps.writePending(slug, {
-        siteId: slug,
-        existingSiteId: null,
-        // Same Book/Shop link strip as the app publish (Phase 4 tiers), by the stored product.
-        // The browser HTML just deployed is left as sent; the gates stay authoritative, and
-        // every later restore or republish renders from this stripped copy.
-        siteData: stripLapsedLinks(toPendingSiteData(siteData, imageUrlMap), row.product_id),
-        imageUrlMap,
-        timestamp: deps.now(),
-        deployedUrl: result.deploymentUrl,
-        // A web edit is the owner's: same version bump as an app publish (lib/ios/publishFlow.ts).
-        version: versionOf(previous) + 1,
-        editedBy: 'owner',
-        editedAt: new Date(deps.now()).toISOString(),
-        ...(adminVersion ? { adminVersion } : {}),
-      });
+      function ownerCopy(previous: PendingSite | null): PendingSite {
+        const adminVersion = adminVersionOf(previous);
+        return {
+          siteId: slug,
+          existingSiteId: null,
+          // Same Book/Shop link strip as the app publish (Phase 4 tiers), by the stored product.
+          // The browser HTML just deployed is left as sent; the gates stay authoritative, and
+          // every later restore or republish renders from this stripped copy.
+          siteData: stripLapsedLinks(toPendingSiteData(siteData as WebsiteData, imageUrlMap), row!.product_id),
+          imageUrlMap,
+          timestamp: deps.now(),
+          deployedUrl: result.deploymentUrl,
+          // A web edit is the owner's: same version bump as an app publish (lib/ios/publishFlow.ts).
+          version: versionOf(previous) + 1,
+          editedBy: 'owner',
+          editedAt: new Date(deps.now()).toISOString(),
+          ...(adminVersion ? { adminVersion } : {}),
+        };
+      }
     } catch (e: any) {
       console.error(`[Deploy Site] ${slug}: deployed, but refreshing the iOS pending file failed:`, e?.message || e);
     }
@@ -199,15 +212,16 @@ export function liveWebDeployDeps(): WebDeployDeps {
     deploy: deployRenderedSite,
     writePending: writePendingSite,
     readPending: readPendingSite,
+    readPendingVersioned,
     async stampWebPending(slug, deployedUrl, fresh) {
-      const p = await readPendingSite(slug);
-      if (p?.deployedUrl) {
-        if (p.deployedUrl !== deployedUrl) await writePendingSite(slug, { ...p, deployedUrl });
-      } else if (fresh) {
-        await writePendingSite(slug, { ...fresh, deployedUrl });
-      } else if (p) {
-        await writePendingSite(slug, { ...p, deployedUrl });
-      }
+      // Compare-and-set (e2e I1): never overwrites a copy written since the read.
+      const r = await casPending(slug, { readPending: readPendingSite, writePending: writePendingSite, readPendingVersioned }, (p) => {
+        if (p?.deployedUrl) return p.deployedUrl !== deployedUrl ? { write: { ...p, deployedUrl } } : { stop: undefined };
+        if (fresh) return { write: { ...fresh, deployedUrl } };
+        if (p) return { write: { ...p, deployedUrl } };
+        return { stop: undefined };
+      });
+      if (r.exhausted) throw new Error('the stored copy kept changing; not stamped');
     },
     now: () => Date.now(),
     takedownSandbox: process.env.IOS_TAKEDOWN_SANDBOX === '1',

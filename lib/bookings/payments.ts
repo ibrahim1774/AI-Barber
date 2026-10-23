@@ -195,11 +195,79 @@ export async function createCardCheckout(
  * pac and duplicate are shared with store orders (payment intents are unique across both tables).
  */
 export const refundKey = {
-  cancel: (appointmentId: string) => `refund-cancel-${appointmentId}`,
-  pac: (paymentIntentId: string) => `refund-pac-${paymentIntentId}`,
+  /**
+   * The cancel refund of an appointment: its id, the amount sent and the refunded total it was
+   * computed from (stored state only), like the store's order key. A retry of the same attempt
+   * sends the same key and amount; a retry computed after a dashboard refund moved the state
+   * gets its own key (a reused key with another amount is an error at Stripe). Review fix 5.
+   */
+  cancel: (appointmentId: string, amountCents: number, refundedCents: number) => `refund-cancel-${appointmentId}-${amountCents}-${refundedCents}`,
+  /** A payment that landed on a cancelled booking / order: the payment intent, amount and refunded total (review fix 5). */
+  pac: (paymentIntentId: string, amountCents: number, refundedCents: number) => `refund-pac-${paymentIntentId}-${amountCents}-${refundedCents}`,
   duplicate: (paymentIntentId: string) => `refund-dup-${paymentIntentId}`,
-  order: (orderId: string, targetTotalCents: number) => `refund-order-${orderId}-${targetTotalCents}`,
+  /**
+   * An owner's order refund attempt: the order, the target total being claimed, the amount sent
+   * and the refunded total it was computed from (the "attempt", from stored state only, never
+   * time or randomness). A double tap or a retry of the same attempt sends the identical key and
+   * amount, so Stripe replays instead of refunding twice. When the stored state moved (e.g. a
+   * dashboard refund landed between the claim and the call), the amount changes and so does the
+   * key: a reused key with different parameters is an error at Stripe, and a saved failure for
+   * the old amount could otherwise be replayed forever (e2e P5).
+   */
+  order: (orderId: string, targetTotalCents: number, amountCents: number, refundedCents: number) =>
+    `refund-order-${orderId}-${targetTotalCents}-${amountCents}-${refundedCents}`,
 };
+
+/**
+ * Review fix 13: Stripe saves the first result under an idempotency key for 24 h, a 500
+ * included, so every retry of an attempt that got a definite 5xx would replay that 500. After a
+ * definite 5xx (never a timeout or network error: that refund may have happened) the attempt
+ * counter for the base key is bumped (an ab_events 'refund_5xx' row) and the next attempt sends
+ * `{base}-a{n}`.
+ */
+export const withRefundAttempt = (baseKey: string, attempt: number): string => (attempt > 0 ? `${baseKey}-a${attempt}` : baseKey);
+export const REFUND_5XX_EVENT = 'refund_5xx';
+/** A definite Stripe 5xx answer (not a timeout, network error or 4xx). */
+export const isStripe5xx = (e: unknown): boolean => e instanceof StripeApiError && e.status >= 500 && e.status < 600;
+
+/**
+ * Cents already refunded on a payment intent, from Stripe's refunds list (succeeded or still
+ * pending). Asked before a refund retry under a NEW key suffix (fix 13 follow-up): a Stripe 500
+ * that actually refunded must count as done, so the new key can never refund twice. Throws on
+ * any error (the caller then skips the retry this run).
+ */
+export async function stripeRefundedTotal(shop: PayShop, paymentIntentId: string, opts: StripeOpts = {}): Promise<number> {
+  if (!shop.stripe_account_id) throw new StripeApiError('shop has no connected account', 400, 'no-account');
+  let total = 0;
+  let after: string | null = null;
+  for (let page = 0; page < 10; page++) {
+    const list = await stripeRequest('GET', '/refunds', { payment_intent: paymentIntentId, limit: 100, ...(after ? { starting_after: after } : {}) }, {
+      account: shop.stripe_account_id, fetch: opts.fetch,
+    });
+    const data: any[] = Array.isArray(list?.data) ? list.data : [];
+    for (const r of data) {
+      if (['succeeded', 'pending', 'requires_action'].includes(r?.status)) total += Math.max(0, Math.floor(Number(r?.amount) || 0));
+    }
+    if (!list?.has_more || !data.length) return total;
+    after = data[data.length - 1].id;
+  }
+  throw new StripeApiError('refund list too long', 500, 'list-too-long');
+}
+
+/**
+ * Before a retry under a new key suffix: whatever Stripe already refunded beyond the stored total
+ * (the 5xx attempt that landed, or a dashboard refund) is booked as done, and only the rest is
+ * sent, under a key for that remaining amount. Returns the amount found already refunded (<= amount).
+ */
+export async function alreadyRefundedBeforeRetry(
+  refundedOnStripe: (() => Promise<number>) | undefined,
+  storedRefunded: number,
+  amount: number,
+): Promise<number> {
+  if (!refundedOnStripe) return 0;
+  const onStripe = await refundedOnStripe();
+  return Math.max(0, Math.min(amount, onStripe - storedRefunded));
+}
 
 export interface RefundOpts extends StripeOpts {
   /** Use a reason-scoped key from `refundKey` (e.g. refundKey.cancel(appt.id) for the cancel path).
@@ -236,6 +304,32 @@ export async function refundAppointment(
     throw new StripeApiError(`refund ${refund?.id} ${refund?.status}`, 502, 'refund-failed');
   }
   return { refundedCents: Number(refund?.amount) || amount };
+}
+
+/**
+ * Cumulative refunded cents on a payment intent's charges (connected account). Used when a
+ * payment is recorded, so a refund whose charge.refunded event arrived BEFORE the payment's own
+ * event (and was therefore unmatched) is still booked (e2e I5). Lists the charges by payment
+ * intent (works on every Stripe API version; `latest_charge` needs 2022-11-15 and no version is
+ * pinned here). Throws only when Stripe is unreachable or answers 5xx / 429 (the webhook then
+ * 500s and Stripe retries); any other error is logged and reads as 0, so a payment is never
+ * left unconfirmed by this check.
+ */
+export async function paymentRefundedCents(shop: PayShop, paymentIntentId: string, opts: StripeOpts = {}): Promise<number> {
+  if (!shop.stripe_account_id) return 0;
+  try {
+    const list = await stripeRequest('GET', '/charges', { payment_intent: paymentIntentId, limit: 10 }, {
+      account: shop.stripe_account_id, fetch: opts.fetch,
+    });
+    const total = (Array.isArray(list?.data) ? list.data : [])
+      .reduce((n: number, c: any) => n + (Number.isFinite(Number(c?.amount_refunded)) ? Math.max(0, Math.floor(Number(c.amount_refunded))) : 0), 0);
+    return total;
+  } catch (e: any) {
+    const status = e instanceof StripeApiError ? e.status : 0;
+    if (!status || status >= 500 || status === 429) throw e;
+    console.error(`[stripe] refund check for ${paymentIntentId} refused (${status} ${e?.code || ''}); booking no refund:`, e?.message || e);
+    return 0;
+  }
 }
 
 /**
@@ -530,6 +624,8 @@ export interface WebhookDeps {
   /** Fire-and-forget (live: waitUntil). Must not block or fail the webhook response. */
   notify(event: NotifyEvent): Promise<void>;
   now(): number;
+  /** Stripe's cumulative refunded cents on the payment's charge (paymentRefundedCents), asked when a payment is recorded (e2e I5). Absent: not asked. */
+  refundedOnStripe?(shop: PayShop, paymentIntentId: string): Promise<number>;
 }
 
 export interface StripeEvent {
@@ -564,6 +660,18 @@ export async function handleConnectEvent(event: StripeEvent, deps: WebhookDeps, 
     }
   }
   for (const n of r.orderNotify ?? []) {
+    // The order confirmation goes out once (e2e M4): two concurrent deliveries of one completed
+    // event both pass the processed-event check, and the second used to re-send it. A claim that
+    // can't be checked (store error) sends anyway: a rare duplicate beats a lost confirmation.
+    if (n.kind === 'order_created' && orderDeps?.claimOnce) {
+      let first = true;
+      try {
+        first = await orderDeps.claimOnce(`order_created:${n.orderId}`);
+      } catch (e: any) {
+        console.error('[stripe/connect-webhook] confirmation claim failed, sending anyway:', e?.message || e);
+      }
+      if (!first) continue;
+    }
     try {
       void orderDeps?.notify(n).catch((e: any) => console.error('[stripe/connect-webhook] order notify failed:', e?.message || e));
     } catch (e: any) {
@@ -596,6 +704,21 @@ async function apptForEvent(
 
 const piOf = (v: any): string | null => (typeof v === 'string' ? v : v?.id ?? null);
 
+/**
+ * e2e I5 (booking side): a charge.refunded that arrived before this payment's completed event
+ * matched nothing and was recorded as handled. When the payment is recorded, book Stripe's
+ * cumulative refund with the same monotonic write. A failed read throws (500): the event is not
+ * recorded, Stripe retries, and the retry lands in the already-recorded branch, which syncs.
+ */
+async function syncApptRefunds(deps: WebhookDeps, shop: PayShop, appt: { id: string; amount_paid_cents?: number | null; amount_refunded_cents?: number | null }, pi: string) {
+  if (!deps.refundedOnStripe) return;
+  const refunded = await deps.refundedOnStripe(shop, pi);
+  if (refunded <= Math.max(0, Math.floor(appt.amount_refunded_cents ?? 0))) return;
+  const paid = Math.max(0, Math.floor(appt.amount_paid_cents ?? 0));
+  console.warn('[stripe/connect-webhook] payment recorded with a refund already on Stripe; booking it:', JSON.stringify({ appointment: appt.id, paymentIntent: pi, refunded }));
+  await deps.setRefunded(appt.id, refunded, paid > 0 && refunded >= paid ? 'refunded' : 'partially_refunded');
+}
+
 async function sessionPaid(event: StripeEvent, obj: any, deps: WebhookDeps, orderDeps?: OrderWebhookDeps): Promise<Outcome> {
   if (obj.payment_status !== 'paid') return { outcome: 'ignored:unpaid' };
   const amount = Math.max(0, Math.floor(Number(obj.amount_total) || 0));
@@ -618,6 +741,7 @@ async function sessionPaid(event: StripeEvent, obj: any, deps: WebhookDeps, orde
   // 1. The normal case: the booking is live. Atomic with the cancel path (which updates
   //    `where status = 'booked'`): whichever commits first decides who owns the money.
   if (await deps.markPaid(before.id, { paymentStatus, amountPaidCents: amount, paymentIntentId: pi })) {
+    await syncApptRefunds(deps, shop, { ...before, amount_paid_cents: amount }, pi);
     return { outcome: `paid:${paymentStatus}`, notify: [{ kind: 'booking_created', appointmentId: before.id }] };
   }
 
@@ -636,7 +760,9 @@ async function sessionPaid(event: StripeEvent, obj: any, deps: WebhookDeps, orde
     // The payment landed while the booking was live (an earlier delivery). If it was cancelled
     // since, the cancel path saw the payment and owns the refund policy: nothing to do here.
     if (appt.status === 'cancelled') return { outcome: 'noop:cancel-owns-refund' };
-    // Redelivery of an event that was not recorded: the confirmation was not sent either.
+    // Redelivery of an event that was not recorded: finish the refund sync (I5); the
+    // confirmation was not sent either.
+    await syncApptRefunds(deps, shop, appt, pi);
     return { outcome: 'noop:already-recorded', notify: [{ kind: 'booking_created', appointmentId: appt.id }] };
   }
 
@@ -652,7 +778,7 @@ async function sessionPaid(event: StripeEvent, obj: any, deps: WebhookDeps, orde
     if (already >= paid) return { outcome: 'noop:already-refunded' };
     console.error('[stripe/connect-webhook] payment on a cancelled booking, refunding in full:',
       JSON.stringify({ appointment: appt.id, paymentIntent: pi, amount: paid - already }));
-    const refunded = await refundOnce(deps, shop, { ...appt, stripe_payment_intent_id: pi, amount_paid_cents: paid, amount_refunded_cents: already }, paid - already, refundKey.pac(pi));
+    const refunded = await refundOnce(deps, shop, { ...appt, stripe_payment_intent_id: pi, amount_paid_cents: paid, amount_refunded_cents: already }, paid - already, refundKey.pac(pi, paid - already, already));
     const total = already + refunded;
     await deps.setRefunded(appt.id, total, total >= paid ? 'refunded' : 'partially_refunded');
     return { outcome: 'refunded:cancelled-before-payment' };
@@ -824,6 +950,7 @@ export function liveWebhookDeps(db: SupabaseClient = serviceDb()): WebhookDeps {
     refund: (shop, appt, amount, idempotencyKey) => refundAppointment(shop, appt, amount, { idempotencyKey }),
     // After the response, kept alive by waitUntil. Dynamic import: notify.ts imports this module.
     notify: async (e) => { waitUntil(import('./notify.js').then((m) => m.notify(e))); },
+    refundedOnStripe: (shop, pi) => paymentRefundedCents(shop, pi),
     now: () => Date.now(),
   };
 }

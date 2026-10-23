@@ -9,20 +9,26 @@
 import type { WebsiteData } from '../../types.js';
 import {
   publishSite,
+  REQUEST_MAX_REDEPLOYS,
+  renderPending,
   readPendingSite,
+  readPendingVersioned,
   writePendingSite,
   adminVersionOf,
+  casPending,
   versionOf,
   type PendingSite,
   type PublishOutcome,
   type SiteEditor,
+  type VersionedPending,
 } from '../publishSite.js';
 import { VerifyFailure, isActive, lazyDefaultVerifier, type VerifiedTx } from './appleVerify.js';
 import { supabasePurchases, type PurchasesRepo } from './purchases.js';
+import { createClient } from '@supabase/supabase-js';
 import { chooseSlug, makeIsTaken, urlServes, vercelProjectExists } from './slug.js';
 import { buildImageUrlMap, toPendingSiteData } from './pendingData.js';
 import { stripLapsedLinks } from './tiers.js';
-import { MAX_BODY_BYTES, hasDataUrl, isObj, restoreImageUrls, validSiteData } from './siteShape.js';
+import { MAX_BODY_BYTES, hasDataUrl, isObj, restoreImageUrls, validSiteData, validationProblem } from './siteShape.js';
 
 export { buildImageUrlMap, toPendingSiteData };
 
@@ -67,11 +73,27 @@ export interface PublishDeps {
   verify(transactionId: string): Promise<VerifiedTx>;
   repo: PurchasesRepo;
   isTaken(slug: string): Promise<boolean>;
-  writePending(slug: string, p: PendingSite): Promise<void>;
+  /** With `ifGeneration`: compare-and-set (throws a 412 PendingConflictError when the copy changed). */
+  writePending(slug: string, p: PendingSite, opts?: { ifGeneration?: number | null }): Promise<void>;
   publish(slug: string, opts: { force: boolean }): Promise<PublishOutcome>;
   readPending(slug: string): Promise<PendingSite | null>;
+  /** The stored copy with its GCS generation (compare-and-set). Absent: unconditional writes (older fakes). */
+  readPendingVersioned?(slug: string): Promise<VersionedPending>;
+  /**
+   * The Supabase account behind a bearer token (null when the token is not valid; throws on an
+   * outage). The only way a publish links the purchase to an account (e2e I6). Absent: no link.
+   */
+  userOf?(token: string): Promise<{ id: string } | null>;
+  /** Dry render before storing (lib/publishSite.ts renderPending). Throws on unrenderable data. */
+  render?(p: Pick<PendingSite, 'siteData' | 'imageUrlMap'>): string;
   now(): number;
 }
+
+/**
+ * Phone publishes racing each other (a tap storm, a retry) re-decide on the fresh copy; each
+ * attempt is a new version. Bounded: past this the publish answers 409 site-updated.
+ */
+export const PUBLISH_CAS_ATTEMPTS = 12;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -105,7 +127,18 @@ function validInput(input: unknown): input is IosPublishInput {
 const badRequest = { status: 400 as const, body: { error: 'bad-request' } };
 const unavailable = { status: 503 as const, body: { error: 'temporarily-unavailable' } };
 
-export async function runIosPublish(input: IosPublishInput, deps: PublishDeps): Promise<IosPublishResult> {
+/** Request context that is not part of the JSON body. */
+export interface IosPublishContext {
+  /** The Authorization header (Bearer <Supabase access token>), if the app sent one. */
+  authorization?: unknown;
+}
+
+const bearer = (h: unknown): string => {
+  const v = Array.isArray(h) ? h[0] : h;
+  return (typeof v === 'string' ? v : '').replace(/^Bearer\s+/i, '').trim();
+};
+
+export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, ctx: IosPublishContext = {}): Promise<IosPublishResult> {
   // Size + data-URL checks before anything else: the app must upload images
   // first and send URLs, never inline base64.
   let raw: string;
@@ -126,6 +159,21 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps): 
     imageUrlMap = buildImageUrlMap(sd);
     pendingData = toPendingSiteData(sd, imageUrlMap);
   } catch {
+    return badRequest;
+  }
+  // Same checks and dry render as an admin save (e2e I3): the stored copy is replaced BEFORE
+  // the deploy renders it, so data the templates can't render (no contact, about.description
+  // as a string from an old build, ...) would destroy the last good copy. Refused here, before
+  // Apple is asked and before anything is written.
+  const problem = validationProblem(sd);
+  if (problem) {
+    console.warn(`[ios/publish] refused before any write: ${problem}`);
+    return badRequest;
+  }
+  try {
+    (deps.render ?? renderPending)({ siteData: pendingData, imageUrlMap });
+  } catch (e) {
+    console.warn(`[ios/publish] refused before any write: the template can't render this: ${(e as Error)?.message || e}`);
     return badRequest;
   }
 
@@ -151,73 +199,115 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps): 
   try {
     const row = await deps.repo.upsertVerified(tx, { checkedAt });
 
-    // Unauthenticated, best-effort account link: never blocks a paid publish.
-    if (typeof input.userId === 'string' && UUID_RE.test(input.userId)) {
-      await deps.repo.setUser(otid, input.userId).catch((e) =>
-        console.warn(`[ios/publish] ${otid}: setUser failed (ignored):`, e?.message || e));
+    // Account link (e2e I6). The body's userId is never trusted: anyone with the transaction id
+    // could name any account and re-point the purchase, locking the real owner out of
+    // /api/shop/plan and /api/shop/setup (409 purchase-in-use). Only a verified Supabase bearer
+    // links, and only a purchase with no account yet (conditional in SQL); an existing owner is
+    // changed only by the relink rules in /api/shop/plan. Best effort: never blocks a paid publish.
+    const token = bearer(ctx.authorization);
+    if (token && deps.userOf && deps.repo.setUserIfUnlinked) {
+      try {
+        const user = await deps.userOf(token);
+        if (user?.id && UUID_RE.test(user.id)) {
+          const linked = await deps.repo.setUserIfUnlinked(otid, user.id);
+          if (!linked && row.user_id && row.user_id !== user.id) {
+            console.warn(`[ios/publish] ${otid}: already linked to another account; not re-pointed`);
+          }
+        }
+      } catch (e: any) {
+        console.warn(`[ios/publish] ${otid}: account link failed (ignored):`, e?.message || e);
+      }
+    } else if (typeof input.userId === 'string' && input.userId) {
+      console.log(`[ios/publish] ${otid}: body userId ignored (only a verified bearer links an account)`);
     }
 
     // "republished" means the site was live before; any bound slug is force-deployed.
     const republished = !!row.published_at;
     let slug: string;
     let force: boolean;
-    let previous: PendingSite | null = null;
+    const wasBound = !!row.site_slug;
     if (row.site_slug) {
       // Bound slug is permanent, whatever the shop is now called.
       slug = row.site_slug;
       force = true;
-      previous = await deps.readPending(slug);
-      // Admin edits (lib/admin/sites.ts) must never be silently overwritten by a phone that
-      // missed the sync: a publish based on a copy older than the last admin edit is refused
-      // with the server copy so the app can adopt it. Only after Apple verified the caller.
-      const lastAdmin = adminVersionOf(previous);
-      if (input.baseVersion == null) {
-        // No baseVersion (an app record from before versioning) counts as 0: refused only while
-        // the stored copy itself is an admin edit. A copy with no version never refuses.
-        console.warn(`[ios/publish] ${slug}: publish without baseVersion; stored v${versionOf(previous)} by ${previous?.editedBy || 'unknown'}`);
-        if (previous?.editedBy === 'admin' && versionOf(previous) > 0) {
-          console.warn(`[ios/publish] ${slug}: no baseVersion over admin v${versionOf(previous)}: site-updated`);
-          return { status: 409, body: { error: 'site-updated', site: siteBody(slug, previous, true) } };
-        }
-      } else if (input.baseVersion < lastAdmin) {
-        console.warn(`[ios/publish] ${slug}: baseVersion ${input.baseVersion} < admin v${lastAdmin}: site-updated`);
-        return { status: 409, body: { error: 'site-updated', site: siteBody(slug, previous, true) } };
-      }
     } else {
       force = false;
-      let candidate: string;
-      try {
-        candidate = await chooseSlug(sd.shopName, tx.environment, deps.isTaken);
-      } catch (e) {
-        if ((e as Error)?.message === 'slug-exhausted') return { status: 503, body: { error: 'slug-exhausted' } };
-        throw e;
-      }
-      if (await deps.repo.bindSlug(otid, candidate)) {
-        slug = candidate;
-      } else {
-        // A concurrent request for this purchase bound first: publish onto its slug.
+      // Two attempts (e2e M10): when another purchase binds the same name at the same moment,
+      // the loser (still unbound) picks again inside this request (the taken name now shows as
+      // taken, so it gets a suffix) instead of answering 503 for the app to retry.
+      let bound: string | null = null;
+      for (let attempt = 0; attempt < 2 && !bound; attempt++) {
+        let candidate: string;
+        try {
+          candidate = await chooseSlug(sd.shopName, tx.environment, deps.isTaken);
+        } catch (e) {
+          if ((e as Error)?.message === 'slug-exhausted') return { status: 503, body: { error: 'slug-exhausted' } };
+          throw e;
+        }
+        if (await deps.repo.bindSlug(otid, candidate)) {
+          bound = candidate;
+          break;
+        }
+        // A concurrent request for THIS purchase bound first: publish onto its slug.
         const again = await deps.repo.get(otid);
-        if (!again?.site_slug) return { status: 503, body: { error: 'slug-bind-failed' } };
-        slug = again.site_slug;
+        if (again?.site_slug) bound = again.site_slug;
+        else console.warn(`[ios/publish] ${otid}: ${candidate} was bound by another purchase meanwhile${attempt === 0 ? '; choosing again' : ''}`);
       }
+      if (!bound) return { status: 503, body: { error: 'slug-bind-failed' } };
+      slug = bound;
     }
 
-    const pending: PendingSite = {
-      siteId: slug,
-      existingSiteId: null,
-      siteData: pendingData,
-      imageUrlMap,
-      timestamp: deps.now(),
-      version: versionOf(previous) + 1,
-      editedBy: 'owner',
-      editedAt: new Date(deps.now()).toISOString(),
-    };
-    // Carried forward so a stale phone is still refused after the owner adopted the admin edit.
-    const carriedAdmin = adminVersionOf(previous);
-    if (carriedAdmin) pending.adminVersion = carriedAdmin;
-    // Keep the last live URL so a failed redeploy doesn't lose it for the site lookup.
-    if (previous?.deployedUrl) pending.deployedUrl = previous.deployedUrl;
-    await deps.writePending(slug, pending);
+    // Compare-and-set on the stored copy (e2e I1): read it with its generation, decide, write
+    // only if nobody wrote in between. A lost race re-reads and decides again on the fresh copy:
+    // an admin edit that landed meanwhile is caught by the same 409 rule as one that landed
+    // before (the phone gets the server copy to adopt; nothing is overwritten), while another
+    // owner publish of this purchase (a tap storm, a retry) is simply the copy this one builds
+    // on, as the next version. Version numbers are never reused.
+    const io = { readPending: deps.readPending, writePending: deps.writePending, readPendingVersioned: deps.readPendingVersioned };
+    type Refusal = { status: 409; body: { error: 'site-updated'; site: IosSiteBody } };
+    const cas = await casPending<Refusal | null>(slug, io, (previous) => {
+      if (wasBound) {
+        // Admin edits (lib/admin/sites.ts) must never be silently overwritten by a phone that
+        // missed the sync: a publish based on a copy older than the last admin edit is refused
+        // with the server copy so the app can adopt it. Only after Apple verified the caller.
+        const lastAdmin = adminVersionOf(previous);
+        if (input.baseVersion == null) {
+          // No baseVersion (an app record from before versioning) counts as 0: refused only while
+          // the stored copy itself is an admin edit. A copy with no version never refuses.
+          console.warn(`[ios/publish] ${slug}: publish without baseVersion; stored v${versionOf(previous)} by ${previous?.editedBy || 'unknown'}`);
+          if (previous?.editedBy === 'admin' && versionOf(previous) > 0) {
+            console.warn(`[ios/publish] ${slug}: no baseVersion over admin v${versionOf(previous)}: site-updated`);
+            return { stop: { status: 409, body: { error: 'site-updated', site: siteBody(slug, previous, true) } } };
+          }
+        } else if (input.baseVersion < lastAdmin) {
+          console.warn(`[ios/publish] ${slug}: baseVersion ${input.baseVersion} < admin v${lastAdmin}: site-updated`);
+          return { stop: { status: 409, body: { error: 'site-updated', site: siteBody(slug, previous, true) } } };
+        }
+      }
+      const next: PendingSite = {
+        siteId: slug,
+        existingSiteId: null,
+        siteData: pendingData,
+        imageUrlMap,
+        timestamp: deps.now(),
+        version: versionOf(previous) + 1,
+        editedBy: 'owner',
+        editedAt: new Date(deps.now()).toISOString(),
+      };
+      // Carried forward so a stale phone is still refused after the owner adopted the admin edit.
+      const carriedAdmin = adminVersionOf(previous);
+      if (carriedAdmin) next.adminVersion = carriedAdmin;
+      // Keep the last live URL so a failed redeploy doesn't lose it for the site lookup.
+      if (previous?.deployedUrl) next.deployedUrl = previous.deployedUrl;
+      return { write: next, result: null };
+    }, PUBLISH_CAS_ATTEMPTS);
+    if (cas.result) return cas.result;
+    if (!cas.written) {
+      // The copy kept changing under this publish: hand the app the latest copy to adopt.
+      console.warn(`[ios/publish] ${slug}: the stored copy kept changing; site-updated`);
+      return { status: 409, body: { error: 'site-updated', site: siteBody(slug, await deps.readPending(slug), true) } };
+    }
+    const pending = cas.written;
 
     const outcome = await deps.publish(slug, { force });
     if (!outcome.ok) {
@@ -289,8 +379,25 @@ export function liveDeps(): PublishDeps {
       urlServes,
     }),
     writePending: writePendingSite,
-    publish: (slug, opts) => publishSite(slug, opts),
+    // A request: at most one redeploy of a newer copy (review fix round 1, finding 9).
+    publish: (slug, opts) => publishSite(slug, { ...opts, maxRedeploys: REQUEST_MAX_REDEPLOYS }),
     readPending: readPendingSite,
+    readPendingVersioned,
+    userOf: liveUserOf,
     now: () => Date.now(),
   };
+}
+
+/** A Supabase access token's user (service role). Invalid / expired token: null; outage: throws. */
+async function liveUserOf(token: string): Promise<{ id: string } | null> {
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set');
+  const { data, error } = await createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } }).auth.getUser(token);
+  if (error) {
+    const status = (error as any).status;
+    if (typeof status === 'number' && status >= 400 && status < 500) return null;
+    throw new Error(`auth.getUser failed: ${error.message}`);
+  }
+  return data?.user ? { id: data.user.id } : null;
 }
