@@ -33,6 +33,11 @@ describe('sectionCards', () => {
   it('uses indices 0-5 for Design 2', () => {
     expect(sum(d({ template: 'prime', gallery: ['a', 'b', '', '', '', '', 'x', 'y'] })).gallery).toBe('2 of 6 photos');
   });
+  it('does not count sample (stock) photos as the barber\'s own', () => {
+    const { DEMO_GALLERY_STOCK } = require('@/web/lib/stockImages');
+    expect(sum(d({ gallery: ['a', 'b', DEMO_GALLERY_STOCK[0], DEMO_GALLERY_STOCK[1], 'mine', ''] })).gallery).toBe('1 of 6 photos');
+  });
+
   it('counts every photo for euphoria', () => {
     expect(sum(d({ template: 'euphoria', gallery: [] })).gallery).toBe('0 photos');
     expect(sum(d({ template: 'euphoria', gallery: ['a'] })).gallery).toBe('1 photo');

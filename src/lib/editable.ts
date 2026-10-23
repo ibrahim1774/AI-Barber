@@ -159,6 +159,10 @@ function setIn(node: unknown, keys: string[], value: unknown): unknown {
       : /^\d+$/.test(key)
         ? ([] as unknown as Record<string, unknown>)
         : {};
+  if (!rest.length && Array.isArray(copy) && /^\d+$/.test(key)) {
+    // A slot past the end (the Photos sheet offers every gallery slot): pad with '' so no holes become null.
+    while ((copy as unknown as unknown[]).length < Number(key)) (copy as unknown as unknown[]).push('');
+  }
   copy[key] = rest.length ? setIn(copy[key], rest, value) : value;
   return copy;
 }

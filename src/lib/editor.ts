@@ -1,3 +1,4 @@
+import { gallerySlots } from '@/lib/sections/gallery';
 import { formatPhone } from '@/lib/phone';
 import type { WebsiteData } from '@/web/types';
 import { buildSiteFromScrape } from '@/web/lib/buildSiteFromScrape';
@@ -106,11 +107,15 @@ export function fieldLabel(path: string): string {
 }
 
 /** "gallery.2" → "Gallery 3", "staff.0.photo" → "Staff 1 photo". */
-export function imageLabel(path: string): string {
+export function imageLabel(path: string, d?: WebsiteData): string {
   if (path === 'hero.imageUrl') return 'Hero photo';
   if (path === 'about.imageUrl') return 'About photo';
   let m = /^gallery\.(\d+)$/.exec(path);
-  if (m) return `Gallery ${Number(m[1]) + 1}`;
+  if (m) {
+    // Counted the way the Gallery sheet counts: first slot this design shows is "Gallery 1".
+    const pos = d ? gallerySlots(d).indexOf(Number(m[1])) : -1;
+    return `Gallery ${pos >= 0 ? pos + 1 : Number(m[1]) + 1}`;
+  }
   m = /^craftImages\.(\d+)$/.exec(path);
   if (m) return `Craft photo ${Number(m[1]) + 1}`;
   m = /^staff\.(\d+)\.photo$/.exec(path);
@@ -124,7 +129,17 @@ export function imageLabel(path: string): string {
  * there would never appear. The data field itself is left alone.
  */
 export function photoSlots(d: WebsiteData): string[] {
-  return IMAGE_PATHS(d).filter((p) => !p.startsWith('craftImages.'));
+  // Gallery: exactly the slots the Gallery sheet shows for this design (Design 1 keeps gallery.0/1 for the
+  // hero and about backdrops), so the two lists always agree.
+  const gallery = gallerySlots(d).map((i) => `gallery.${i}`);
+  const out: string[] = [];
+  for (const p of IMAGE_PATHS(d)) {
+    if (p.startsWith('craftImages.')) continue;
+    if (p.startsWith('gallery.')) continue;
+    out.push(p);
+    if (p === 'about.imageUrl') out.push(...gallery);
+  }
+  return out;
 }
 
 /** The photo slots still showing one of the generator's sample (stock) photos. */

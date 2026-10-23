@@ -56,7 +56,7 @@ export function PhotosSheet({ visible, data, onPick, onClose, onDismiss }: ListS
             <Pressable
               key={path}
               accessibilityRole="button"
-              accessibilityLabel={`Change ${imageLabel(path)}`}
+              accessibilityLabel={`Change ${imageLabel(path, data)}`}
               onPress={() => onPick(path)}
               style={({ pressed }) => [styles.tile, pressed && styles.pressed]}
             >
@@ -67,7 +67,7 @@ export function PhotosSheet({ visible, data, onPick, onClose, onDismiss }: ListS
                   <Text style={styles.plus}>+</Text>
                 </View>
               )}
-              <Text style={styles.tileLabel} numberOfLines={1}>{imageLabel(path)}</Text>
+              <Text style={styles.tileLabel} numberOfLines={1}>{imageLabel(path, data)}</Text>
             </Pressable>
           );
         })}

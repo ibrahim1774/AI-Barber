@@ -153,6 +153,19 @@ test('photoSlots offers every image slot except the never-rendered craft photos'
   expect(d.craftImages?.length).toBeGreaterThan(0);
   const slots = photoSlots(d);
   expect(slots.some((p) => p.startsWith('craftImages.'))).toBe(false);
-  expect(slots).toEqual(IMAGE_PATHS(d).filter((p) => !p.startsWith('craftImages.')));
-  expect(slots).toEqual(expect.arrayContaining(['hero.imageUrl', 'about.imageUrl', 'gallery.0', 'staff.0.photo']));
+  expect(slots).toEqual(expect.arrayContaining(['hero.imageUrl', 'about.imageUrl', 'gallery.2', 'staff.0.photo']));
+});
+
+test('the Photos sheet lists the same gallery slots as the Gallery sheet, labelled by position', async () => {
+  const { gallerySlots } = require('@/lib/sections/gallery');
+  const { setPath } = require('@/lib/editable');
+  for (const t of ['luxe', 'prime'] as const) {
+    const d = switchDesign(await site(), t);
+    const gal = photoSlots(d).filter((p) => p.startsWith('gallery.'));
+    expect(gal).toEqual(gallerySlots(d).map((i: number) => `gallery.${i}`));
+    expect(gal.map((p) => imageLabel(p, d))).toEqual(['Gallery 1', 'Gallery 2', 'Gallery 3', 'Gallery 4', 'Gallery 5', 'Gallery 6']);
+  }
+  // A slot beyond the stored photos can be filled without leaving holes.
+  const d = await site({ gallery: ['a', 'b'] });
+  expect(setPath(d, 'gallery.4', 'x').gallery).toEqual(['a', 'b', '', '', 'x']);
 });

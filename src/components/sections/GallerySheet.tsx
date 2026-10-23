@@ -1,3 +1,4 @@
+import { isStockImage } from '@/web/lib/stockImages';
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { WebsiteData } from '@/web/types';
 import { colors, fonts } from '@/constants/theme';
@@ -55,11 +56,12 @@ export function GallerySheet({ visible, data, onChange, onClose, onDismiss, uplo
             <Pressable
               key={slot}
               accessibilityRole="button"
-              accessibilityLabel={url ? `Photo ${n + 1}: replace or remove` : 'Add photo'}
+              accessibilityLabel={url ? `${isStockImage(url) ? 'Sample photo' : 'Photo'} ${n + 1}: replace or remove` : 'Add photo'}
               onPress={() => tap(slot, url)}
               style={({ pressed }) => [styles.tile, pressed && { opacity: 0.7 }]}
             >
               {url ? <Image source={{ uri: url }} style={styles.img} /> : <Text style={styles.add}>+ Add photo</Text>}
+              {!!url && isStockImage(url) && <Text style={styles.sample}>Sample</Text>}
             </Pressable>
           );
         })}
@@ -79,6 +81,10 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)', borderStyle: 'dashed', backgroundColor: 'rgba(255,255,255,0.04)',
   },
   img: { width: '100%', height: '100%' },
+  sample: {
+    position: 'absolute', left: 6, bottom: 6, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, overflow: 'hidden',
+    backgroundColor: 'rgba(0,0,0,0.7)', color: '#fff', fontFamily: fonts.bodyBold, fontSize: 10, letterSpacing: 1, textTransform: 'uppercase',
+  },
   add: { fontFamily: fonts.bodySemi, fontSize: 12, color: colors.accent, textAlign: 'center' },
   busy: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingTop: 12 },
   busyText: { fontFamily: fonts.body, fontSize: 13, color: 'rgba(255,255,255,0.7)' },

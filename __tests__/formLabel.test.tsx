@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, create } from 'react-test-renderer';
+const { act, create } = require('react-test-renderer');
 import { Field } from '@/components/Field';
 import { FormLabel } from '@/components/FormLabel';
 import { Text, TextInput } from 'react-native';

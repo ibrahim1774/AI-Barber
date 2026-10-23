@@ -1,3 +1,4 @@
+import { isStockImage } from '@/web/lib/stockImages';
 import type { WebsiteData } from '@/web/types';
 import { gallerySlots } from '@/lib/sections/gallery';
 
@@ -9,7 +10,7 @@ export function sectionCards(d: WebsiteData): { key: SectionKey; title: string; 
   const team = d.staff?.length ?? 0;
   const openDays = (d.hours ?? []).filter((h) => !h.closed).length;
   const slots = gallerySlots(d);
-  const filled = slots.filter((i) => d.gallery?.[i]).length;
+  const filled = slots.filter((i) => d.gallery?.[i] && !isStockImage(d.gallery[i])).length;
   // Euphoria shows every photo, with no fixed count to measure against.
   const gallery = d.template === 'euphoria' ? (filled === 1 ? '1 photo' : `${filled} photos`) : `${filled} of ${slots.length} photos`;
   return [
