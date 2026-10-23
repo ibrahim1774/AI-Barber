@@ -1,5 +1,6 @@
 import { forwardRef, useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
+import { straightenQuotes } from '@/lib/sections/text';
 import { colors, fonts } from '@/constants/theme';
 
 export interface FieldProps extends Omit<TextInputProps, 'style' | 'placeholder'> {
@@ -15,7 +16,7 @@ export interface FieldProps extends Omit<TextInputProps, 'style' | 'placeholder'
 }
 
 export const Field = forwardRef<TextInput, FieldProps>(function Field(
-  { label, tone = 'card', typeExamples, placeholder, value, onFocus, onBlur, ...input },
+  { label, tone = 'card', typeExamples, placeholder, value, onFocus, onBlur, onChangeText, ...input },
   ref,
 ) {
   const [focused, setFocused] = useState(false);
@@ -43,6 +44,7 @@ export const Field = forwardRef<TextInput, FieldProps>(function Field(
           ref={setRef}
           {...input}
           value={value}
+          onChangeText={onChangeText && !input.secureTextEntry ? (t) => onChangeText(straightenQuotes(t)) : onChangeText}
           accessibilityLabel={input.accessibilityLabel ?? label}
           placeholder={card ? undefined : placeholder}
           placeholderTextColor="rgba(255,255,255,0.2)"

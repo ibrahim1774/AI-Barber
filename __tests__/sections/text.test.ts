@@ -8,3 +8,9 @@ describe('cleanText', () => {
     expect(cleanText("Mike's Cut & Shave")).toBe("Mike's Cut & Shave");
   });
 });
+
+test('smart quotes typed on iOS are straightened so names match the page', () => {
+  const { straightenQuotes, cleanText } = require('@/lib/sections/text');
+  expect(straightenQuotes('Jack\u2019s \u2018Cuts\u2019')).toBe("Jack's 'Cuts'");
+  expect(cleanText(' Jack\u2019s <b>')).toBe("Jack's b");
+});
