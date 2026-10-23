@@ -17,6 +17,7 @@ appId: com.ibrahim1774.aibarber
 - pressKey: Enter
 - takeScreenshot: 04_importing
 - extendedWaitUntil:
-    visible: ".*Got it.*"
+    visible: "Tap Publish.*"
     timeout: 60000
 - takeScreenshot: 05_editor_imported
+- tapOn: "Skip tour"

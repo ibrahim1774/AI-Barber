@@ -82,12 +82,17 @@ appId: com.ibrahim1774.aibarber
 - tapOn: "Continue"
 - waitForAnimationToEnd
 - takeScreenshot: ${PREFIX}16_step5_share
-- tapOn: "Share booking link"
-- waitForAnimationToEnd
-- takeScreenshot: ${PREFIX}17_share_sheet
-- tapOn:
-    point: "50%,8%"   # close the sheet
-- waitForAnimationToEnd
+# the share button exists only once the site's pages are live (link gate); otherwise the Publish card is shown instead
+- runFlow:
+    when:
+      visible: "Share booking link"
+    commands:
+      - tapOn: "Share booking link"
+      - waitForAnimationToEnd
+      - takeScreenshot: ${PREFIX}17_share_sheet
+      - tapOn:
+          point: "50%,8%"   # close the sheet
+      - waitForAnimationToEnd
 - tapOn: "Finish"
 - waitForAnimationToEnd
 - takeScreenshot: ${PREFIX}18_book_button_prompt
@@ -110,6 +115,14 @@ appId: com.ibrahim1774.aibarber
     point: "6%,9%"   # back out of the setup hub (finishing leaves you on it)
 - waitForAnimationToEnd
 - takeScreenshot: ${PREFIX}21_bookings_tab_no_bookings
+# the first open of Bookings runs its tour (views, + button, setup): look at step 2, then skip it
+- tapOn:
+    text: "Next"
+    optional: true
+- takeScreenshot: ${PREFIX}21b_tour_add_button
+- tapOn:
+    text: "Skip tour"
+    optional: true
 # a customer books through the (stub) booking page; the Bookings tab shows it on the next focus
 - runFlow:
     file: _stub.yaml

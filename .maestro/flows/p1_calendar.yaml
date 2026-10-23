@@ -1,0 +1,46 @@
+appId: com.ibrahim1774.aibarber
+---
+# (p1b) Week and Month views, long-press add, view remembered; Settings tutorial replay. Set SIM for iPhone 17 or abi-se3.
+- runFlow: _p1_shop_ready.yaml
+- runFlow:
+    when:
+      visible: "Booking details|Mark paid|Done"
+    commands:
+      - tapOn:
+          point: "50%,8%"
+- runFlow:
+    file: _bookings_seed.yaml
+    env: { HOURS: "-52,-30,-6,-5,3,3,5,26,26,28,50,52,75,100,100,100,100,130,170,260,400" }
+- tapOn:
+    point: "12%,94%"
+- tapOn:
+    point: "37%,94%"
+- waitForAnimationToEnd
+- takeScreenshot: 01_day_view
+- tapOn: "Week view"
+- waitForAnimationToEnd
+- takeScreenshot: 02_week_view
+- scroll
+- takeScreenshot: 03_week_view_scrolled
+- tapOn: "Next week"
+- waitForAnimationToEnd
+- takeScreenshot: 04_week_next
+- tapOn: "Go to today"
+- longPressOn:
+    point: "50%,60%"
+- waitForAnimationToEnd
+- takeScreenshot: 05_week_long_press_add
+- tapOn:
+    point: "50%,8%"
+    optional: true
+- tapOn: "Month view"
+- waitForAnimationToEnd
+- takeScreenshot: 06_month_view
+- tapOn: "Next month"
+- waitForAnimationToEnd
+- takeScreenshot: 07_month_next
+- tapOn: "Go to today"
+- tapOn:
+    point: "50%,60%"   # a day in the grid -> Day view on that date
+- waitForAnimationToEnd
+- takeScreenshot: 08_month_tap_day

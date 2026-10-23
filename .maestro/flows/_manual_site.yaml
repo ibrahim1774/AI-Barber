@@ -23,9 +23,9 @@ appId: com.ibrahim1774.aibarber
 - tapOn: "Finish generating"
 - waitForAnimationToEnd
 - extendedWaitUntil:
-    visible: "Got it.*"
-    timeout: 20000
+    visible: "Tap Publish.*"
+    timeout: 30000
     optional: true
 - tapOn:
-    text: "Got it.*"
+    text: "Skip tour"
     optional: true

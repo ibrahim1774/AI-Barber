@@ -1,0 +1,46 @@
+appId: com.ibrahim1774.aibarber
+---
+# (p1a) Edit tour arrows (Publish) and the booking link gate: hidden before the site's pages are live, shown after.
+- runFlow: _launch.yaml
+# the Edit tour starts only once an account exists: sign in first (seeded session), then generate the first site
+- runFlow:
+    file: _seed.yaml
+    env: { TIER: "", LAPSE: "", STRIPE: "", SIGNIN: "true", SIGNOUT: "", EMAIL: "", SITEBASE: "", BOOKING_NAME: "" }
+- runFlow: _manual_site_to_tour.yaml
+- takeScreenshot: 01_edit_tour_publish_arrow
+- tapOn: "Next"
+- waitForAnimationToEnd
+- takeScreenshot: 02_edit_tour_sections
+- tapOn: "Skip tour"
+- tapOn: "PUBLISH"
+- extendedWaitUntil:
+    visible: ".*E2E MOCK PAYWALL.*"
+    timeout: 15000
+- tapOn: "E2E: buy publish"
+- extendedWaitUntil:
+    visible: ".*live!.*"
+    timeout: 30000
+- tapOn: "Done"
+- runFlow:
+    file: _seed.yaml
+    env: { TIER: bookings, LAPSE: "", STRIPE: "", SIGNIN: "true", SIGNOUT: "", EMAIL: "", SITEBASE: "", BOOKING_NAME: "" }
+- waitForAnimationToEnd
+- runFlow:
+    file: _bookings_wizard.yaml
+    env: { PROMPT_TAP: "Not now", PREFIX: "w_" }
+# Bookings tab: a booking exists, the site base is not live yet -> no share icon
+- tapOn:
+    point: "50%,8%"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: 03_bookings_link_hidden
+- runFlow:
+    file: _stub.yaml
+    env: { TIER: "", LAPSE: "", STRIPE: "", SIGNIN: "", SIGNOUT: "", EMAIL: "", SITEBASE: "https://jacks-barbershop.example.test", BOOKING_NAME: "" }
+- tapOn:
+    point: "12%,94%"   # Edit tab and back so Bookings re-checks the pages
+- tapOn:
+    point: "37%,94%"
+- waitForAnimationToEnd
+- takeScreenshot: 05_bookings_link_shown
+# Link gate evidence: 03 has no share icon; wizard step 5 (w_16) and the empty day show the Publish card; 05 shows the share icon.

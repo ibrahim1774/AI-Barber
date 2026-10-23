@@ -69,7 +69,10 @@ appId: com.ibrahim1774.aibarber
     optional: true
 - takeScreenshot: c9_retry
 - extendedWaitUntil:
-    visible: ".*Got it.*"
+    visible: "Tap Publish.*"
     timeout: 30000
     optional: true
 - takeScreenshot: c9b_after
+- tapOn:
+    text: "Skip tour"
+    optional: true

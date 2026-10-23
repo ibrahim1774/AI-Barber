@@ -1,0 +1,7 @@
+appId: com.ibrahim1774.aibarber
+---
+# Adds customer bookings to the stub at HOURS (comma list, hours from now). No reload.
+- runScript:
+    file: ../scripts/bookings_seed.js
+    env:
+      HOURS: ${HOURS}

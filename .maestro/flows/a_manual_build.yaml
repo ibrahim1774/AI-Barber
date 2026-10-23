@@ -31,10 +31,10 @@ appId: com.ibrahim1774.aibarber
 - takeScreenshot: 08_details_filled
 - tapOn: "Finish generating"
 - extendedWaitUntil:
-    visible: "Got it.*"
+    visible: "Tap Publish.*"
     timeout: 20000
-- takeScreenshot: 09_exit_notice
-- tapOn: "Got it.*"
+- takeScreenshot: 09_edit_tour
+- tapOn: "Skip tour"
 - takeScreenshot: 10_editor_home
 - scrollUntilVisible:
     element: "Add photos"
