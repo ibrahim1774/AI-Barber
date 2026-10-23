@@ -26,9 +26,9 @@ end $$;
 --    Server only (execute: service_role). It bypasses RLS, so it checks ownership itself:
 --    the shop must be owned by p_owner (the user id api/shop/members.ts got from requireOwner;
 --    the shop id also comes from there, never from the request body).
---    Race safety: `select ... for update` on the shop row serialises concurrent adds for one
+--    Race safety: `select ... for no key update` on the shop row serialises concurrent adds for one
 --    shop, so two creates at the limit cannot both pass the count. (Postgres rejects
---    `select count(*) ... for update`, and supabase-js has no transactions, hence the lock on
+--    `select count(*) ... for no key update`, and supabase-js has no transactions, hence the lock on
 --    the shop row and a plain count after it.)
 --    Errors (SQLSTATE P0001, message): 'member-limit' (active members >= p_limit),
 --    'not-owner' (no such shop for p_owner), 'invalid-name', 'invalid-limit'.
@@ -55,7 +55,7 @@ begin
     raise exception 'invalid-name';
   end if;
 
-  perform 1 from public.ab_shops where id = p_shop and owner_id = p_owner for update;
+  perform 1 from public.ab_shops where id = p_shop and owner_id = p_owner for no key update;
   if not found then
     raise exception 'not-owner';
   end if;
@@ -102,7 +102,7 @@ drop trigger if exists ab_members_guard_reactivate on public.ab_members;
 create trigger ab_members_guard_reactivate before update of active on public.ab_members
   for each row execute function public.ab_members_guard_reactivate();
 
--- 4. Re-state the grants the app relies on (a re-run of 005 revokes and re-grants around
---    here; see 008/009). Owners keep select/update/delete on ab_members through
+-- 4. Re-state the grants the app relies on (a re-run of 005 does not touch ab_members grants; this
+--    is a no-op re-statement; see 008/009). Owners keep select/update/delete on ab_members through
 --    ab_members_owner_all; INSERT is removed separately by 016, after the new app build ships.
 grant select, update, delete on public.ab_members to authenticated;

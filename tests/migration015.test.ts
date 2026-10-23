@@ -19,8 +19,8 @@ describe('015_members_profile.sql', () => {
   });
   it('ab_add_member locks the shop row, counts after the lock, checks ownership, service_role only', () => {
     expect(s).toMatch(/security definer set search_path = public/);
-    expect(s).toMatch(/where id = p_shop and owner_id = p_owner for update/);
-    expect(s.indexOf('for update')).toBeLessThan(s.indexOf('select count(*)'));
+    expect(s).toMatch(/where id = p_shop and owner_id = p_owner for no key update/);
+    expect(s.indexOf('for no key update')).toBeLessThan(s.indexOf('select count(*)'));
     expect(s).not.toMatch(/count\(\*\)[^;]*for update/);
     expect(s).toMatch(/if v_count >= p_limit then raise exception 'member-limit'/);
     expect(s).toMatch(/revoke all on function public\.ab_add_member\(uuid, uuid, int, text, text, text, text, text\) from public, anon, authenticated;/);
