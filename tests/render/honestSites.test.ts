@@ -455,6 +455,8 @@ describe('React previews and vendored sources carry none of the removed copy', (
       'lib/render/subpages.ts',
       // Label registry (2026-10-23, P3a). Add to the app's sync-web.sh.
       'lib/render/labels.ts',
+      // Multi-page sites (2026-10-23, P3b): page set + eligibility. Add to the app's sync-web.sh.
+      'lib/render/pages.ts',
     ];
     const norm = (p: string) => p.replace(/\.(ts|js)$/, '');
     const set = new Set(VENDORED.map(norm));
