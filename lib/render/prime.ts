@@ -12,9 +12,10 @@ import { safeHref } from './safeHref.js';
 import { bookStripHtml, isSiteBookLink, shopPreviewHtml, type SectionSkin } from './subpages.js';
 import {
   aggregateToShow, copyrightYear, displayPrice, galleryIsAllOwnPhotos, hasServices, nicheCopy, photoAlt,
-  photosAreFromBookingPage, policyToShow, reviewStars, reviewsSourceLabel, serviceMeta, siteDescription, siteTitle,
-  withoutLegacyCopy,
+  displayPhone, nicheOf, photosAreFromBookingPage, policyToShow, reviewStars, reviewsSourceLabel, serviceMeta,
+  siteDescription, siteTitle, visibleReviews, withoutLegacyCopy,
 } from './honest.js';
+import { ratingLineCustom, t, type LabelKey } from './labels.js';
 
 // Policy: there is NO default. A shop's policy is a fact only the barber
 // can state, so the "Please note" block renders only from barber-written
@@ -165,8 +166,8 @@ export const to12h = (raw: string | null | undefined): string => {
   const h12 = h24 === 0 || h24 === 24 ? 12 : h24 > 12 ? h24 - 12 : h24;
   return `${h12}:${mm} ${period}`;
 };
-export const fmtHours = (h: { open: string; close: string; closed?: boolean }): string =>
-  h.closed ? 'Closed' : `${to12h(h.open)} – ${to12h(h.close)}`;
+export const fmtHours = (h: { open: string; close: string; closed?: boolean }, closedText = 'Closed'): string =>
+  h.closed ? closedText : `${to12h(h.open)} – ${to12h(h.close)}`;
 // Trailing "City, State" only — keeps the hero eyebrow from echoing a full
 // street address even if one is pasted in.
 export const cityStateOnly = (raw: string): string => {
@@ -228,7 +229,10 @@ export function generatePrimeHTMLWithPlaceholders(input: WebsiteData): string {
   const phoneDigits = (siteData.phone || '').replace(/\D/g, '');
   // Book: the booking link, else a call. Neither → no booking buttons.
   const bookHref = bookingUrl || (phoneDigits ? `tel:+1${phoneDigits}` : '');
+  // Small visible text comes from the label registry (labels.ts); t() escapes.
   const copy = nicheCopy(siteData);
+  const niche = nicheOf(siteData);
+  const L = (key: LabelKey) => t(siteData.labels, key, niche, siteData);
   const safeName = escapeHtml(siteData.shopName);
   const safeAreaShort = escapeHtml(cityStateOnly(siteData.area));
   const mapQuery = encodeURIComponent(`${siteData.shopName} ${siteData.area}`);
@@ -239,6 +243,8 @@ export function generatePrimeHTMLWithPlaceholders(input: WebsiteData): string {
 
   // Only a scraped aggregate; unreadable → none.
   const agg = aggregateToShow(siteData);
+  // The barber's own wording around the real figures (labels.ts), else the standard text.
+  const ratingCustom = ratingLineCustom(siteData);
   const altAttr = escapeHtml(photoAlt(siteData));
   const showServices = hasServices(siteData);
   const ratingChip = agg
@@ -248,8 +254,8 @@ export function generatePrimeHTMLWithPlaceholders(input: WebsiteData): string {
   // About stat ribbon (rating / reviews) — only with an aggregate rating.
   const statRibbon = agg
     ? `<div class="p-grid-2" style="display:grid;grid-template-columns:${agg.count > 0 ? '1fr 1fr' : '1fr'};gap:1px;margin-top:28px;border:1px solid rgba(212,166,74,0.25);background:rgba(212,166,74,0.04);">
-        <div style="text-align:center;padding:18px;"><div class="p-serif p-italic" style="font-size:2rem;color:var(--p-brand);">${agg.rating.toFixed(1)}</div><div class="p-eyebrow" style="font-size:9px;margin-top:4px;color:var(--p-ink-muted);">Rating</div></div>
-        ${agg.count > 0 ? `<div style="text-align:center;padding:18px;border-left:1px solid rgba(212,166,74,0.25);"><div class="p-serif p-italic" style="font-size:2rem;color:var(--p-brand);">${agg.count.toLocaleString()}</div><div class="p-eyebrow" style="font-size:9px;margin-top:4px;color:var(--p-ink-muted);">Reviews</div></div>` : ''}
+        <div style="text-align:center;padding:18px;"><div class="p-serif p-italic" style="font-size:2rem;color:var(--p-brand);">${agg.rating.toFixed(1)}</div><div class="p-eyebrow" style="font-size:9px;margin-top:4px;color:var(--p-ink-muted);">${L('primeStatRating')}</div></div>
+        ${agg.count > 0 ? `<div style="text-align:center;padding:18px;border-left:1px solid rgba(212,166,74,0.25);"><div class="p-serif p-italic" style="font-size:2rem;color:var(--p-brand);">${agg.count.toLocaleString()}</div><div class="p-eyebrow" style="font-size:9px;margin-top:4px;color:var(--p-ink-muted);">${L('primeStatReviews')}</div></div>` : ''}
       </div>`
     : '';
 
@@ -263,8 +269,8 @@ export function generatePrimeHTMLWithPlaceholders(input: WebsiteData): string {
     ? `<section id="services" class="p-section">
   <div class="p-container">
     <div style="text-align:center;margin-bottom:36px;">
-      <div class="p-eyebrow">Services &amp; Prices</div>
-      <h2 class="p-display" style="font-size:clamp(28px,5vw,46px);margin-top:14px;">What we <span class="p-italic" style="color:var(--p-brand);">offer.</span></h2>
+      <div class="p-eyebrow">${L('primeServicesEyebrow')}</div>
+      <h2 class="p-display" style="font-size:clamp(28px,5vw,46px);margin-top:14px;">${L('primeServicesLead')} <span class="p-italic" style="color:var(--p-brand);">${L('primeServicesAccent')}</span></h2>
     </div>
     <div class="p-svc" style="max-width:880px;margin:0 auto;">
       ${services.map((s) => {
@@ -291,7 +297,7 @@ export function generatePrimeHTMLWithPlaceholders(input: WebsiteData): string {
     ? `<section class="p-section" style="padding-top:${showServices ? '0' : '48px'};">
   <div class="p-container">
     <div style="max-width:880px;margin:0 auto;display:grid;grid-template-columns:auto 1fr;gap:28px;padding:24px 28px;border:1px solid var(--p-brand-deep);background:rgba(212,166,74,0.05);" class="p-grid-2">
-      <div class="p-eyebrow" style="white-space:nowrap;">Please Note</div>
+      <div class="p-eyebrow" style="white-space:nowrap;">${L('primePolicyEyebrow')}</div>
       <div>${policy.title ? `<h3 style="font-size:1.2rem;margin:0 0 8px;">${escapeHtml(policy.title)}</h3>` : ''}<p class="p-serif" style="color:var(--p-ink-soft);font-size:0.95rem;margin:0;">${escapeHtml(policy.body)}</p></div>
     </div>
   </div>
@@ -304,7 +310,7 @@ export function generatePrimeHTMLWithPlaceholders(input: WebsiteData): string {
     ? `<section class="p-section" style="padding-top:48px;">
   <div class="p-container">
     <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px;margin-bottom:32px;">
-      <div><div class="p-eyebrow">Gallery</div><h2 class="p-display" style="font-size:clamp(28px,4.5vw,44px);margin-top:12px;"><span class="p-italic" style="color:var(--p-brand);">The look.</span></h2></div>
+      <div><div class="p-eyebrow">${L('primeGalleryEyebrow')}</div><h2 class="p-display" style="font-size:clamp(28px,4.5vw,44px);margin-top:12px;"><span class="p-italic" style="color:var(--p-brand);">${L('primeGalleryHeading')}</span></h2></div>
       ${photosAreFromBookingPage(siteData) && galleryIsAllOwnPhotos(galleryTiles.map((t) => t.url)) ? `<p class="p-serif p-italic" style="color:var(--p-ink-soft);">Real cuts from inside the shop — no stock photos.</p>` : ''}
     </div>
     <div class="p-gallery">
@@ -318,17 +324,17 @@ export function generatePrimeHTMLWithPlaceholders(input: WebsiteData): string {
     : '';
 
   // Reviews.
-  const reviews = siteData.reviews || [];
+  const reviews = visibleReviews(siteData);
   const reviewsSection = reviews.length > 0
     ? `<section class="p-section" style="background:var(--p-bg-2);">
   <div class="p-container">
     <div style="text-align:center;margin-bottom:32px;">
-      <div class="p-eyebrow">Client Reviews</div>
-      <h2 class="p-display" style="font-size:clamp(28px,5vw,46px);margin-top:14px;">What clients <span class="p-italic" style="color:var(--p-brand);">are saying.</span></h2>
+      <div class="p-eyebrow">${L('primeReviewsEyebrow')}</div>
+      <h2 class="p-display" style="font-size:clamp(28px,5vw,46px);margin-top:14px;">${L('primeReviewsLead')} <span class="p-italic" style="color:var(--p-brand);">${L('primeReviewsAccent')}</span></h2>
       ${reviewsSourceLabel(siteData) ? `<p data-reviews-source class="p-serif p-italic" style="color:var(--p-ink-soft);margin:10px 0 0;">${escapeHtml(reviewsSourceLabel(siteData))}</p>` : ''}
     </div>
     ${agg ? `<div style="max-width:820px;margin:0 auto 32px;display:grid;grid-template-columns:1fr auto;gap:24px;align-items:center;padding:22px 28px;border:1px solid var(--p-brand);background:linear-gradient(135deg,rgba(212,166,74,0.18),rgba(212,166,74,0.05));" class="p-grid-2">
-      <div><h3 style="font-size:1.15rem;margin:0;">${agg.rating.toFixed(1)} stars${agg.count > 0 ? ` across ${agg.count.toLocaleString()} reviews` : ''}</h3></div>
+      <div><h3 style="font-size:1.15rem;margin:0;">${ratingCustom !== null ? escapeHtml(ratingCustom) : `${agg.rating.toFixed(1)} stars${agg.count > 0 ? ` across ${agg.count.toLocaleString()} reviews` : ''}`}</h3></div>
       <div style="text-align:right;"><div class="p-serif p-italic" style="font-size:2.4rem;color:var(--p-brand);">${agg.rating.toFixed(1)}</div><div style="color:var(--p-brand);">${'★'.repeat(Math.round(agg.rating))}</div></div>
     </div>` : ''}
     <div class="p-review-grid">
@@ -360,15 +366,15 @@ export function generatePrimeHTMLWithPlaceholders(input: WebsiteData): string {
   const hours = siteData.hours || [];
   const hoursMarkup = hours.length > 0
     ? `<div>
-        <div class="p-eyebrow" style="margin-bottom:14px;">Hours of Service</div>
+        <div class="p-eyebrow" style="margin-bottom:14px;">${L('primeHoursEyebrow')}</div>
         <ul style="list-style:none;margin:0;padding:0;">
-          ${hours.map((h) => `<li class="p-hours-row"><span style="text-transform:uppercase;font-size:12px;letter-spacing:0.08em;">${escapeHtml(h.day)}</span><span class="p-serif p-italic" style="font-size:1.05rem;color:var(--p-brand);">${escapeHtml(fmtHours(h))}</span></li>`).join('')}
+          ${hours.map((h) => `<li class="p-hours-row"><span style="text-transform:uppercase;font-size:12px;letter-spacing:0.08em;">${escapeHtml(h.day)}</span><span class="p-serif p-italic" style="font-size:1.05rem;color:var(--p-brand);">${h.closed ? L('primeClosedLabel') : escapeHtml(fmtHours(h))}</span></li>`).join('')}
         </ul>
       </div>`
     : `<div><iframe src="https://maps.google.com/maps?q=${mapQuery}&output=embed" width="100%" height="320" style="border:0;display:block;" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="${safeName} on Google Maps"></iframe></div>`;
 
   // Booking-strip note (e.g. a walk-in line): barber-written only.
-  const bookingNote = ((siteData.labels && siteData.labels.bookingNote) || '').trim();
+  const bookingNote = L('bookingNote');
 
   const publishedAt = String(Date.now());
 
@@ -405,14 +411,14 @@ ${PRIME_SCOPED_CSS}
 <div class="prime-root" style="${rootStyle}">
 
   <!-- Welcome bar -->
-  <div class="p-welcome"><span>Welcome</span>${safeAreaShort ? `<span style="color:var(--p-ink-muted);">${safeAreaShort}</span>` : ''}${ratingChip}</div>
+  <div class="p-welcome"><span>${L('primeWelcome')}</span>${safeAreaShort ? `<span style="color:var(--p-ink-muted);">${safeAreaShort}</span>` : ''}${ratingChip}</div>
 
   <!-- Nav -->
   <nav style="position:sticky;top:0;z-index:50;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--p-line-soft);">
-    <div class="p-container" style="display:flex;align-items:center;justify-content:space-between;padding:16px 6vw;">
-      <a href="#top" class="p-serif" style="text-decoration:none;color:var(--p-ink);font-size:20px;letter-spacing:0.04em;">${safeName}</a>${shopUrl ? `
-      <a href="${escapeHtml(shopUrl)}" class="p-eyebrow" style="text-decoration:none;">Shop</a>` : ''}
-      ${bookHref ? `<a href="${escapeHtml(bookHref)}"${bookTarget} class="p-cta p-cta-solid" style="padding:10px 18px;font-size:10px;">Book Now</a>` : ''}
+    <div class="p-container" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 6vw;">
+      <a href="#top" class="p-serif" style="text-decoration:none;color:var(--p-ink);font-size:20px;letter-spacing:0.04em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${safeName}</a>${shopUrl ? `
+      <a href="${escapeHtml(shopUrl)}" class="p-eyebrow" style="text-decoration:none;flex-shrink:0;white-space:nowrap;">${L('primeNavShop')}</a>` : ''}
+      ${bookHref ? `<a href="${escapeHtml(bookHref)}"${bookTarget} class="p-cta p-cta-solid" style="padding:10px 18px;font-size:10px;flex-shrink:0;">${L('primeNavBook')}</a>` : ''}
     </div>
   </nav>
 
@@ -421,14 +427,14 @@ ${PRIME_SCOPED_CSS}
     ${siteData.hero.imageUrl ? `<img src="{{hero}}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:brightness(0.5) contrast(1.08);">` : ''}
     <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.55) 70%), linear-gradient(180deg, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0.7) 100%);"></div>
     <div class="p-container" style="position:relative;text-align:center;padding:32px 6vw;">
-      <div class="p-eyebrow" style="margin-bottom:12px;">Welcome to</div>
+      <div class="p-eyebrow" style="margin-bottom:12px;">${L('primeHeroEyebrow')}</div>
       <h1 class="p-display p-italic" style="font-size:clamp(2.2rem,5.5vw,4.6rem);margin:0 0 14px;color:var(--p-brand);">${escapeHtml(siteData.hero.heading)}</h1>
       <p class="p-serif p-italic" style="font-size:clamp(1rem,2.2vw,1.4rem);color:var(--p-ink-soft);max-width:640px;margin:0 auto 22px;">${escapeHtml(siteData.hero.tagline)}</p>
       <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;">
-        ${bookHref ? `<a href="${escapeHtml(bookHref)}"${bookTarget} class="p-cta p-cta-solid">Book an Appointment</a>` : ''}
-        ${showServices ? `<a href="#services" class="p-cta">View Services</a>` : ''}
+        ${bookHref ? `<a href="${escapeHtml(bookHref)}"${bookTarget} class="p-cta p-cta-solid">${L('primeBookButton')}</a>` : ''}
+        ${showServices ? `<a href="#services" class="p-cta">${L('primeViewServices')}</a>` : ''}
       </div>
-      ${agg ? `<div style="margin-top:28px;color:var(--p-ink-soft);font-size:13px;"><span style="color:var(--p-brand);">${'★'.repeat(Math.round(agg.rating))}</span> ${agg.rating.toFixed(1)}${agg.count > 0 ? ` · ${agg.count.toLocaleString()} reviews` : ''}</div>` : ''}
+      ${agg ? `<div style="margin-top:28px;color:var(--p-ink-soft);font-size:13px;"><span style="color:var(--p-brand);">${'★'.repeat(Math.round(agg.rating))}</span> ${ratingCustom !== null ? escapeHtml(ratingCustom) : `${agg.rating.toFixed(1)}${agg.count > 0 ? ` · ${agg.count.toLocaleString()} reviews` : ''}`}</div>` : ''}
     </div>
   </section>
 
@@ -436,7 +442,7 @@ ${PRIME_SCOPED_CSS}
   <section class="p-section">
     <div class="p-container p-grid-2" style="display:grid;grid-template-columns:${siteData.about.imageUrl ? '1fr 1fr' : '1fr'};gap:56px;align-items:start;">
       <div>
-        <div class="p-eyebrow" style="margin-bottom:14px;">Our Story</div>
+        <div class="p-eyebrow" style="margin-bottom:14px;">${L('primeAboutEyebrow')}</div>
         <h2 class="p-display" style="font-size:clamp(2rem,4.2vw,3.2rem);margin:0 0 28px;">${escapeHtml(siteData.about.heading)}</h2>
         ${siteData.about.description.map((p, i) => `<p class="p-serif ${i === 0 ? 'p-dropcap' : ''}" style="font-size:1.06rem;line-height:1.75;color:var(--p-ink-soft);margin:0 0 18px;">${escapeHtml(p)}</p>`).join('')}
         ${statRibbon}
@@ -457,23 +463,23 @@ ${PRIME_SCOPED_CSS}
 
   <!-- Booking strip -->
   <section style="background:var(--p-cream);color:#1a1a1a;text-align:center;padding:64px 6vw;">
-    <div class="p-eyebrow" style="color:var(--p-brand-deep);margin-bottom:14px;">${copy.bookingEyebrow}</div>
-    <h2 class="p-display" style="font-size:clamp(2rem,5vw,3rem);margin:0 0 16px;color:#1a1a1a;">Ready for <span class="p-italic">${copy.bookingNext}</span></h2>
-    ${bookingNote ? `<p class="p-serif p-italic" style="color:#555;margin:0 0 28px;">${escapeHtml(bookingNote)}</p>` : ''}
-    ${bookHref ? `<a href="${escapeHtml(bookHref)}"${bookTarget} class="p-cta" style="background:#1a1a1a;color:var(--p-brand);border-color:#1a1a1a;">Book an Appointment</a>` : ''}
+    <div class="p-eyebrow" style="color:var(--p-brand-deep);margin-bottom:14px;">${L('primeBookingEyebrow')}</div>
+    <h2 class="p-display" style="font-size:clamp(2rem,5vw,3rem);margin:0 0 16px;color:#1a1a1a;">${L('primeBookingLead')} <span class="p-italic">${L('primeBookingNext')}</span></h2>
+    ${bookingNote ? `<p class="p-serif p-italic" style="color:#555;margin:0 0 28px;">${bookingNote}</p>` : ''}
+    ${bookHref ? `<a href="${escapeHtml(bookHref)}"${bookTarget} class="p-cta" style="background:#1a1a1a;color:var(--p-brand);border-color:#1a1a1a;">${L('primeBookButton')}</a>` : ''}
   </section>
 
   <!-- Visit -->
   <section class="p-section" style="background:var(--p-bg-2);">
     <div class="p-container p-grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:48px;">
       <div>
-        <div class="p-eyebrow" style="margin-bottom:16px;">${copy.visitEyebrow}</div>
-        <h2 class="p-display" style="font-size:clamp(1.8rem,4vw,2.8rem);margin:0 0 28px;">Pay a visit.</h2>
+        <div class="p-eyebrow" style="margin-bottom:16px;">${L('primeVisitEyebrow')}</div>
+        <h2 class="p-display" style="font-size:clamp(1.8rem,4vw,2.8rem);margin:0 0 28px;">${L('primeVisitHeading')}</h2>
         <div style="display:grid;gap:22px;color:var(--p-ink-soft);font-size:16px;line-height:1.6;">
-          ${siteData.contact.address ? `<div><div class="p-eyebrow" style="margin-bottom:6px;">The Address</div><div class="p-serif p-italic" style="color:var(--p-ink);font-size:1.2rem;">${escapeHtml(siteData.contact.address)}</div></div>` : ''}
-          ${phoneDigits ? `<div><div class="p-eyebrow" style="margin-bottom:6px;">By Phone</div><a href="tel:${formattedPhone}" class="p-serif p-italic" style="color:var(--p-ink);font-size:1.2rem;text-decoration:none;">${escapeHtml(siteData.phone)}</a></div>` : ''}
-          ${bookingUrl ? `<div><div class="p-eyebrow" style="margin-bottom:6px;">Online Booking</div><a href="${escapeHtml(bookingUrl)}"${bookTarget} class="p-serif p-italic" style="color:var(--p-ink);font-size:1.1rem;">Book online →</a></div>` : ''}${shopUrl ? `
-          <div><div class="p-eyebrow" style="margin-bottom:6px;">The Shop</div><a href="${escapeHtml(shopUrl)}" class="p-serif p-italic" style="color:var(--p-ink);font-size:1.1rem;">Shop online → pickup or shipping</a></div>` : ''}
+          ${siteData.contact.address ? `<div><div class="p-eyebrow" style="margin-bottom:6px;">${L('primeAddressLabel')}</div><div class="p-serif p-italic" style="color:var(--p-ink);font-size:1.2rem;">${escapeHtml(siteData.contact.address)}</div></div>` : ''}
+          ${phoneDigits ? `<div><div class="p-eyebrow" style="margin-bottom:6px;">${L('primePhoneLabel')}</div><a href="tel:${formattedPhone}" class="p-serif p-italic" style="color:var(--p-ink);font-size:1.2rem;text-decoration:none;">${escapeHtml(displayPhone(siteData.phone))}</a></div>` : ''}
+          ${bookingUrl ? `<div><div class="p-eyebrow" style="margin-bottom:6px;">${L('primeOnlineBookingLabel')}</div><a href="${escapeHtml(bookingUrl)}"${bookTarget} class="p-serif p-italic" style="color:var(--p-ink);font-size:1.1rem;">${L('primeBookOnlineLink')}</a></div>` : ''}${shopUrl ? `
+          <div><div class="p-eyebrow" style="margin-bottom:6px;">${L('primeShopLabel')}</div><a href="${escapeHtml(shopUrl)}" class="p-serif p-italic" style="color:var(--p-ink);font-size:1.1rem;">${L('primeShopLink')}</a></div>` : ''}
         </div>
       </div>
       ${hoursMarkup}
