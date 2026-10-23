@@ -54,6 +54,34 @@ export interface MemberRow {
   ics_token: string | null;
 }
 
+/** A barber added through ab_add_member (migration 015); the row it returns. */
+export interface TeamMemberRow {
+  id: string;
+  shop_id: string;
+  role: 'owner' | 'barber';
+  display_name: string;
+  title: string | null;
+  photo_url: string | null;
+  bio: string | null;
+  booking_url: string | null;
+  sort: number;
+  active: boolean;
+}
+export interface NewTeamMember {
+  shop_id: string;
+  /** The verified caller (requireOwner); ab_add_member re-checks the shop is theirs. */
+  owner_id: string;
+  /** Active-member cap for this plan (store 5, bookings 2). */
+  limit: number;
+  display_name: string;
+  title: string | null;
+  photo_url: string | null;
+  bio: string | null;
+  booking_url: string | null;
+}
+/** 'unavailable' = migration 015 is not applied (ab_add_member does not exist yet). */
+export type AddMemberResult = { ok: true; row: TeamMemberRow } | { ok: false; reason: 'member-limit' | 'not-owner' | 'invalid' | 'unavailable' };
+
 export type DepositType = 'none' | 'fixed' | 'percent';
 
 export interface ServiceRow {
@@ -271,6 +299,10 @@ export interface BookingRepo {
   insertShop(row: NewShop): Promise<InsertShopResult>;
   setShopOtid(shopId: string, otid: string): Promise<'ok' | 'taken'>;
   insertMember(row: { shop_id: string; user_id: string; role: 'owner'; display_name: string; sort: number }): Promise<MemberRow>;
+  /** Add a barber through the ab_add_member SQL function: locks the shop row, counts active members, refuses at the limit. */
+  addMember(row: NewTeamMember): Promise<AddMemberResult>;
+  /** Is migration 015 applied (the title / booking_url columns and ab_add_member exist)? */
+  memberProfileLive(): Promise<boolean>;
   insertServices(rows: NewService[]): Promise<void>;
   insertAvailability(rows: Omit<AvailabilityDbRow, 'break_start_min' | 'break_end_min'>[]): Promise<void>;
   /** The sites row with this id: its deployed URL when it is the caller's, 'foreign' when another user's, null when absent. */
@@ -462,6 +494,26 @@ export function supabaseBookingRepo(client?: SupabaseClient): BookingRepo {
     async insertMember(row) {
       const r = await one<MemberRow>('insertMember', db().from('ab_members').insert(row).select(MEMBER_COLS).single());
       return r!;
+    },
+    async addMember(row) {
+      const { data, error } = await db().rpc('ab_add_member', {
+        p_shop: row.shop_id, p_owner: row.owner_id, p_limit: row.limit, p_name: row.display_name,
+        p_title: row.title, p_photo: row.photo_url, p_bio: row.bio, p_booking_url: row.booking_url,
+      });
+      if (error) {
+        const msg = error.message ?? '';
+        if (msg.includes('member-limit')) return { ok: false, reason: 'member-limit' };
+        if (msg.includes('not-owner')) return { ok: false, reason: 'not-owner' };
+        if (msg.includes('invalid-') || error.code === '23514') return { ok: false, reason: 'invalid' };
+        // 42883 / PGRST202: the function is not there yet (015 not applied).
+        if (error.code === '42883' || error.code === 'PGRST202') return { ok: false, reason: 'unavailable' };
+        fail('addMember', error);
+      }
+      return { ok: true, row: data as TeamMemberRow };
+    },
+    async memberProfileLive() {
+      const { error } = await db().from('ab_members').select('title, booking_url').limit(1);
+      return !error;
     },
     async insertServices(rows) {
       if (rows.length === 0) return;
