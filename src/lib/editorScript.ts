@@ -80,6 +80,12 @@ export const EDITOR_JS = String.raw`(function () {
     var el = e.target && e.target.nodeType === 1 ? e.target : e.target && e.target.parentElement;
     var text = closestAttr(el, 'data-edit');
     if (text) { post({ type: 'edit', path: text.getAttribute('data-edit') }); return; }
+    // A button or link whose text is editable: tapping anywhere on it edits that text (its padding, a
+    // dev overlay over the middle of it), since the preview never follows links.
+    var link = el;
+    while (link && link.nodeType === 1 && link.tagName !== 'A') link = link.parentElement;
+    var inner = link && link.nodeType === 1 && link.querySelectorAll ? link.querySelectorAll('[data-edit]') : null;
+    if (inner && inner.length === 1) { post({ type: 'edit', path: inner[0].getAttribute('data-edit') }); return; }
     var img = closestAttr(el, 'data-edit-image');
     if (img) { post({ type: 'image', path: img.getAttribute('data-edit-image') }); return; }
     // Photos sit under overlays (hero gradient). Not for taps on links/buttons.

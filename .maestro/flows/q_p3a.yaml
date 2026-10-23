@@ -1,0 +1,17 @@
+appId: com.ibrahim1774.aibarber
+---
+# (q) P3a: Change image pill on the hero in both designs, phone number in the header, tap "Book Now" opens its editor.
+- runFlow: _launch.yaml
+- runFlow: _manual_site.yaml
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: 01_design1_top
+- tapOn: "Design 2"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: 02_design2_top
+- tapOn:
+    point: "75%,15%"   # the BOOK NOW text; the dev gear covers its right half
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: 03_book_now_editor
