@@ -26,9 +26,16 @@ function buy(placement) {
   for (const e of p.ent) if (!st.ents.includes(e)) st.ents.push(e);
   if (p.ent.length) st.status = 'ACTIVE';
   refresh();
+  push();
   return p;
 }
 global.__E2E_SW = st; // debugging
+// The subscription state lives in the stub (like the real Superwall's does across launches): load it at start,
+// write it back after a purchase. Only 127.0.0.1:8787 is contacted.
+const SW = 'http://127.0.0.1:8787/__e2e/sw';
+const pull = () => fetch(SW).then((r) => r.json()).then((s) => { st.status = s.status; st.ents = s.ents; st.subs = s.subs; st.n = s.n; refresh(); }).catch(() => {});
+const push = () => fetch(SW, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: st.status, ents: st.ents, subs: st.subs, n: st.n }) }).catch(() => {});
+pull();
 
 function useSub() {
   return React.useSyncExternalStore((l) => { listeners.add(l); return () => listeners.delete(l); }, () => cached);

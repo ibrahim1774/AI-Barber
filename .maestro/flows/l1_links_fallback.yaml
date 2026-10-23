@@ -1,0 +1,36 @@
+appId: com.ibrahim1774.aibarber
+---
+# (l1) Share / copy the booking link when the server has stored no site base: expect the aibarber.org /book/<slug> page.
+# The clipboard after the run (clipboard.txt) must be that link.
+- runFlow:
+    file: _signed_in.yaml
+    env: { TIER: bookings, LAPSE: "" }
+- tapOn:
+    point: "37%,94%"
+- waitForAnimationToEnd
+- tapOn:
+    point: "50%,55%"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element: "Continue"
+- tapOn: "Continue"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element: "Continue"
+- tapOn: "Continue"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element: "Continue"
+- tapOn: "Continue"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element: "Continue"
+- tapOn: "Continue"
+- waitForAnimationToEnd
+- takeScreenshot: 01_share_step_fallback_base
+- tapOn: "Share booking link"
+- waitForAnimationToEnd
+- takeScreenshot: 02_share_sheet_fallback_base
+- tapOn: "Copy link"
+- waitForAnimationToEnd
+- takeScreenshot: 03_after_copy_fallback_base

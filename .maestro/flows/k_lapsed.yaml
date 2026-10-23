@@ -1,0 +1,101 @@
+appId: com.ibrahim1774.aibarber
+---
+# (k) Lapsed plan. Set Bookings + Shop up on a Store plan and publish both buttons, then the stub reports the plan
+# lapsed 5 days ago (read-only window), then 45 days ago (window over). Book/Shop buttons should come off, manage-only copy shows.
+- runFlow:
+    file: _signed_in.yaml
+    env: { TIER: store, LAPSE: "" }
+# ---- bookings, quickest path, buttons published ----
+- tapOn:
+    point: "37%,94%"
+- waitForAnimationToEnd
+- tapOn:
+    point: "50%,55%"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element: "Continue"
+- tapOn: "Continue"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element: "Continue"
+- tapOn: "Continue"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element: "Continue"
+- tapOn: "Continue"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element: "Continue"
+- tapOn: "Continue"
+- waitForAnimationToEnd
+- tapOn: "Finish"
+- waitForAnimationToEnd
+- tapOn: "Update my site"
+- extendedWaitUntil:
+    visible: ".*live!.*"
+    timeout: 30000
+- tapOn: "Done"
+# ---- shop, buttons published ----
+- tapOn:
+    point: "62%,94%"
+- waitForAnimationToEnd
+- tapOn:
+    point: "50%,56%"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element: "Open my shop"
+- tapOn: "Open my shop"
+- waitForAnimationToEnd
+- tapOn: "Update my site"
+- extendedWaitUntil:
+    visible: ".*live!.*"
+    timeout: 30000
+- takeScreenshot: 01_site_live_with_book_and_shop
+- tapOn: "Done"
+- waitForAnimationToEnd
+- tapOn:
+    point: "12%,94%"
+- waitForAnimationToEnd
+- takeScreenshot: 02_edit_before_lapse
+# ---- lapsed 5 days ----
+- runFlow:
+    file: _seed.yaml
+    env: { TIER: "", LAPSE: "5", STRIPE: "", SIGNIN: "", SIGNOUT: "", EMAIL: "", SITEBASE: "", BOOKING_NAME: "" }
+- waitForAnimationToEnd
+- takeScreenshot: 03_lapsed5_launch
+- tapOn:
+    point: "12%,94%"
+- waitForAnimationToEnd
+- takeScreenshot: 04_lapsed5_edit
+- tapOn:
+    point: "37%,94%"
+- waitForAnimationToEnd
+- takeScreenshot: 05_lapsed5_bookings
+- tapOn:
+    point: "62%,94%"
+- waitForAnimationToEnd
+- takeScreenshot: 06_lapsed5_store
+- tapOn:
+    point: "87%,94%"
+- waitForAnimationToEnd
+- takeScreenshot: 07_lapsed5_settings
+- scroll
+- takeScreenshot: 08_lapsed5_settings_scrolled
+# ---- lapsed 45 days ----
+- runFlow:
+    file: _seed.yaml
+    env: { TIER: "", LAPSE: "45", STRIPE: "", SIGNIN: "", SIGNOUT: "", EMAIL: "", SITEBASE: "", BOOKING_NAME: "" }
+- waitForAnimationToEnd
+- takeScreenshot: 09_lapsed45_launch
+- tapOn:
+    point: "37%,94%"
+- waitForAnimationToEnd
+- takeScreenshot: 10_lapsed45_bookings
+- tapOn:
+    point: "62%,94%"
+- waitForAnimationToEnd
+- takeScreenshot: 11_lapsed45_store
+- tapOn:
+    point: "12%,94%"
+- waitForAnimationToEnd
+- takeScreenshot: 12_lapsed45_edit

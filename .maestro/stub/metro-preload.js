@@ -13,6 +13,7 @@ Module._load = function (request, parent, isMain) {
         const prev = cfg.resolver.resolveRequest;
         cfg.resolver.resolveRequest = (ctx, name, plat) => {
           if (name === 'expo-superwall') return { type: 'sourceFile', filePath: path.join(__dirname, 'superwall-e2e.js') };
+          if (name === 'expo-secure-store') return { type: 'sourceFile', filePath: path.join(__dirname, 'secure-store-e2e.js') };
           return prev ? prev(ctx, name, plat) : ctx.resolveRequest(ctx, name, plat);
         };
         cfg.watchFolders = [...(cfg.watchFolders || []), __dirname];

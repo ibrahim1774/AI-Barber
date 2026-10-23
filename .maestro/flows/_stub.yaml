@@ -1,0 +1,14 @@
+appId: com.ibrahim1774.aibarber
+---
+# Changes stub state WITHOUT reloading the app. env: TIER, LAPSE, STRIPE, SIGNIN, SIGNOUT, EMAIL (use "" for unused)
+- runScript:
+    file: ../scripts/seed.js
+    env:
+      TIER: ${TIER}
+      LAPSE: ${LAPSE}
+      STRIPE: ${STRIPE}
+      SIGNIN: ${SIGNIN}
+      SIGNOUT: ${SIGNOUT}
+      EMAIL: ${EMAIL}
+      SITEBASE: ${SITEBASE}
+      BOOKING_NAME: ${BOOKING_NAME}

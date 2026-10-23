@@ -1,0 +1,71 @@
+appId: com.ibrahim1774.aibarber
+---
+# (l2) The server stored the site's public base (ab_shops.site_base_url, an https host): links must be <base>/book and <base>/shop.
+# Copies the SHOP link last; clipboard.txt must be <base>/shop.
+- runFlow:
+    file: _stub.yaml
+    env: { TIER: "", LAPSE: "", STRIPE: "", SIGNIN: "", SIGNOUT: "", EMAIL: "", SITEBASE: "https://jacks-barbershop.example.test", BOOKING_NAME: "" }
+- runFlow:
+    file: _signed_in.yaml
+    env: { TIER: store, LAPSE: "" }
+- tapOn:
+    point: "37%,94%"
+- waitForAnimationToEnd
+- tapOn:
+    point: "50%,55%"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element: "Continue"
+- tapOn: "Continue"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element: "Continue"
+- tapOn: "Continue"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element: "Continue"
+- tapOn: "Continue"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element: "Continue"
+- tapOn: "Continue"
+- waitForAnimationToEnd
+- takeScreenshot: 01_share_step_site_base
+- tapOn: "Share booking link"
+- waitForAnimationToEnd
+- takeScreenshot: 02_share_sheet_site_base
+- tapOn:
+    point: "50%,8%"
+- waitForAnimationToEnd
+- tapOn: "Finish"
+- waitForAnimationToEnd
+- tapOn:
+    text: "Not now"
+    optional: true
+- waitForAnimationToEnd
+- tapOn:
+    point: "6%,9%"   # back out of the setup hub
+- waitForAnimationToEnd
+- tapOn:
+    point: "62%,94%"
+- waitForAnimationToEnd
+- takeScreenshot: 03_store_tab
+- tapOn:
+    point: "50%,56%"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element: "Open my shop"
+- tapOn: "Open my shop"
+- waitForAnimationToEnd
+- tapOn:
+    text: "Not now"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: 04_shop_open_site_base
+- tapOn:
+    point: "40%,87%"   # Share your shop link (text lookup is empty right after an alert)
+- waitForAnimationToEnd
+- takeScreenshot: 05_shop_share_sheet_site_base
+- tapOn: "Copy link"
+- waitForAnimationToEnd
+- takeScreenshot: 06_after_copy_shop_site_base

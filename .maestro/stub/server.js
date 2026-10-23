@@ -12,7 +12,7 @@ const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
 
 let S;
 function reset() {
-  S = { users: [], tables: {}, files: {}, sites: {}, byTx: {}, tier: null, log: [], fails: [], version: 0 };
+  S = { users: [], tables: {}, files: {}, sites: {}, byTx: {}, tier: null, log: [], fails: [], version: 0, kv: {}, sw: { status: 'INACTIVE', ents: [], subs: [], n: 0 }, lapsedDays: null, stripe: { connected: false, chargesEnabled: false, detailsSubmitted: false } };
   S.users.push({ id: uuid(), email: 'qa@example.com', password: 'Passw0rd!' });
 }
 reset();
@@ -59,7 +59,9 @@ const bearerUser = (req) => { const t = (req.headers.authorization || '').replac
 const tierOf = (tx) => ({ 1: 'website', 2: 'bookings', 3: 'store' })[String(tx || '')[8]] || null;
 const RANK = { website: 1, bookings: 2, store: 3 };
 const bumpTier = (tx) => { const t = tierOf(tx); if (t && (!S.tier || RANK[t] > RANK[S.tier])) S.tier = t; };
-const plan = () => ({ linked: !!S.tier, tier: S.tier, entitlements: { hosting: !!S.tier, bookings: RANK[S.tier] >= 2, store: RANK[S.tier] >= 3 }, active: !!S.tier, expiresAt: S.tier ? new Date(Date.now() + 365 * 864e5).toISOString() : null, takenDownAt: null, revoked: false });
+const plan = () => S.lapsedDays != null && S.tier
+  ? { linked: true, tier: S.tier, entitlements: { hosting: false, bookings: false, store: false }, active: false, expiresAt: new Date(Date.now() - S.lapsedDays * 864e5).toISOString(), takenDownAt: null, revoked: false }
+  : { linked: !!S.tier, tier: S.tier, entitlements: { hosting: !!S.tier, bookings: RANK[S.tier] >= 2, store: RANK[S.tier] >= 3 }, active: !!S.tier, expiresAt: S.tier ? new Date(Date.now() + 365 * 864e5).toISOString() : null, takenDownAt: null, revoked: false };
 const slugOf = (s) => String(s || 'site').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'site';
 
 // ---------- PostgREST emulator ----------
@@ -125,17 +127,64 @@ const NOT_DEPLOYED = '<!DOCTYPE html><html><head><title>404: NOT_FOUND</title></
 
 async function route(req, res, url, body) {
   const p = url.pathname;
+  let m;
   // control plane
   if (p === '/__e2e/reset') { reset(); return send(res, 200, { ok: true }); }
   if (p === '/__e2e/log') return send(res, 200, S.log);
   if (p === '/__e2e/state') return send(res, 200, { tier: S.tier, users: S.users.map((u) => u.email), tables: Object.fromEntries(Object.entries(S.tables).map(([k, v]) => [k, v.length])), sites: Object.keys(S.sites) });
   if (p === '/__e2e/fail') { S.fails.push({ path: body.path, status: body.status || 500, error: body.error || 'e2e-forced', times: body.times || 1 }); return send(res, 200, { ok: true }); }
+  // ---- E2E session seeding (replaces typing into the secure password field) ----
+  // expo-secure-store is swapped for a shim (secure-store-e2e.js) that keeps the Supabase session HERE, so
+  //   POST /__e2e/signin {email?}  -> signs the user in (session written under sb-127-auth-token); relaunch the app to pick it up
+  //   POST /__e2e/signout          -> drops it (what the app's own Sign out does through the shim as well)
+  //   POST /__e2e/lapse {days}     -> plan lapsed `days` ago (null/absent = active again); Superwall stand-in goes INACTIVE
+  //   POST /__e2e/tier {tier}      -> grant a tier server-side + in the Superwall stand-in (website|bookings|store)
+  //   POST /__e2e/stripe {...}     -> what /api/shop/stripe/status reports
+  if ((m = /^\/__e2e\/kv\/(.+)$/.exec(p))) {
+    const k = decodeURIComponent(m[1]);
+    if (req.method === 'PUT') { S.kv[k] = req.rawBody.toString(); return send(res, 200, { ok: true }); }
+    if (req.method === 'DELETE') { delete S.kv[k]; return send(res, 200, { ok: true }); }
+    return k in S.kv ? send(res, 200, S.kv[k], 'text/plain') : send(res, 404, 'none', 'text/plain');
+  }
+  if (p === '/__e2e/signin') {
+    const email = body.email || 'qa@example.com';
+    let u = S.users.find((x) => x.email === email);
+    if (!u) { u = { id: uuid(), email, password: 'Passw0rd!' }; S.users.push(u); }
+    S.kv['sb-127-auth-token'] = JSON.stringify(session(u));
+    return send(res, 200, { ok: true, userId: u.id });
+  }
+  if (p === '/__e2e/signout') { delete S.kv['sb-127-auth-token']; return send(res, 200, { ok: true }); }
+  if (p === '/__e2e/sw') {
+    if (req.method === 'POST') S.sw = body;
+    return send(res, 200, S.sw);
+  }
+  if (p === '/__e2e/tier') {
+    const ents = { website: ['hosting'], bookings: ['hosting', 'bookings'], store: ['hosting', 'bookings', 'store'] }[body.tier] || [];
+    S.tier = body.tier || null; S.lapsedDays = null;
+    // keep the subscription the app already bought (the site is bound to its transaction id); only widen the entitlements
+    const subs = S.sw.subs.length || !ents.length ? S.sw.subs : [{ transactionId: `20000000${RANK[body.tier]}900`, productId: `com.ibrahim1774.aibarber.${body.tier}.yearly`, purchaseDate: new Date().toISOString(), isActive: true, isRevoked: false, expirationDate: new Date(Date.now() + 365 * 864e5).toISOString() }];
+    S.sw = { status: ents.length ? 'ACTIVE' : 'INACTIVE', ents, n: S.sw.n, subs };
+    return send(res, 200, S.sw);
+  }
+  if (p === '/__e2e/lapse') {
+    S.lapsedDays = body.days == null ? null : Number(body.days);
+    if (S.lapsedDays != null) S.sw = { ...S.sw, status: 'INACTIVE', ents: [], subs: S.sw.subs.map((x) => ({ ...x, isActive: false, expirationDate: new Date(Date.now() - S.lapsedDays * 864e5).toISOString() })) };
+    return send(res, 200, { lapsedDays: S.lapsedDays });
+  }
+  if (p === '/__e2e/siteBase') { S.siteBase = body.url || null; (S.tables.ab_shops || []).forEach((r) => (r.site_base_url = S.siteBase)); return send(res, 200, { siteBase: S.siteBase }); }   // POST {url}: the server's stored site base (https host, no path)
+  if (p === '/__e2e/booking') {   // POST {name, hours} : a customer booking (as the booking page would write it) starting in `hours` hours
+    const shop = (S.tables.ab_shops || [])[0]; if (!shop) return send(res, 409, { error: 'no shop yet' });
+    const mem = (S.tables.ab_members || []).find((x) => x.shop_id === shop.id), sv = (S.tables.ab_services || []).find((x) => x.shop_id === shop.id);
+    const start = new Date(Date.now() + (body.hours || 3) * 36e5); start.setMinutes(0, 0, 0);
+    const row = { id: uuid(), shop_id: shop.id, member_id: mem.id, service_id: sv.id, start_at: start.toISOString(), end_at: new Date(start.getTime() + sv.duration_min * 6e4).toISOString(), service_name: sv.name, price_cents: sv.price_cents ?? null, duration_min: sv.duration_min, customer_name: body.name || 'Marcus T.', customer_phone: '(512) 555-0199', customer_email: null, note: null, status: 'booked', payment_status: 'none', payment_method: null, amount_paid_cents: 0, customer_says_paid_at: null, source: 'online' };
+    (S.tables.ab_appointments = S.tables.ab_appointments || []).push(row); return send(res, 200, row);
+  }
+  if (p === '/__e2e/stripe') { Object.assign(S.stripe, body); return send(res, 200, S.stripe); }
   const f = S.fails.find((x) => x.path === p && x.times > 0);
   if (f) { f.times--; return send(res, f.status, { error: f.error }); }
 
   if (req.method === 'OPTIONS') return send(res, 204, '');
   // images + uploads
-  let m;
   if ((m = /^\/img\/(\d+)\.png$/.exec(p))) return send(res, 200, png(600, 400, COLORS[Number(m[1]) % COLORS.length]), 'image/png');
   if (p === '/api/get-upload-urls') {
     const urls = (body.filenames || []).map((fn) => ({ filename: fn, signedUrl: `${SELF}/upload/${body.siteId}/${fn}`, publicUrl: `${SELF}/public/${body.siteId}/${fn}` }));
@@ -189,7 +238,7 @@ async function route(req, res, url, body) {
     const shops = (S.tables.ab_shops = S.tables.ab_shops || []);
     let shop = shops.find((s) => s.owner_id === u.id);
     if (!shop) {
-      shop = { id: uuid(), owner_id: u.id, slug: slugOf(body.name), name: body.name, timezone: body.timezone, address: body.address || null, phone: body.phone || null, ios_otid: body.transactionId || null, site_base_url: null, ...DEFAULTS.ab_shops(), created_at: new Date().toISOString() };
+      shop = { id: uuid(), owner_id: u.id, slug: slugOf(body.name), name: body.name, timezone: body.timezone, address: body.address || null, phone: body.phone || null, ios_otid: body.transactionId || null, site_base_url: S.siteBase || null, ...DEFAULTS.ab_shops(), created_at: new Date().toISOString() };
       shops.push(shop);
       (S.tables.ab_members = S.tables.ab_members || []).push({ id: uuid(), shop_id: shop.id, role: 'owner', display_name: 'Jack', sort: 0, ...DEFAULTS.ab_members(), role: 'owner' });
       body.services.forEach((s, i) => (S.tables.ab_services = S.tables.ab_services || []).push({ id: uuid(), shop_id: shop.id, name: s.name, price_cents: s.priceCents, duration_min: s.durationMin, description: s.description || null, photo_url: s.photoUrl || null, sort: i, ...DEFAULTS.ab_services() }));
@@ -197,7 +246,7 @@ async function route(req, res, url, body) {
     return send(res, 200, { shop: { id: shop.id, slug: shop.slug } });
   }
   if (p === '/api/shop/stripe/onboard') return send(res, 200, { url: `${SELF}/stripe-stub` });
-  if (p === '/api/shop/stripe/status') return send(res, 200, { connected: false, chargesEnabled: false, detailsSubmitted: false });
+  if (p === '/api/shop/stripe/status') return send(res, 200, S.stripe);
   if (p === '/api/shop/push-token' || p === '/api/sync-auth-phone' || p === '/api/ios/delete-account') return send(res, 200, { ok: true });
   if (p.startsWith('/api/ios/domain/')) return send(res, 404, NOT_DEPLOYED, 'text/html'); // "server not deployed"
   if (p === '/api/shop/time-off') return send(res, 200, { conflicts: [] });

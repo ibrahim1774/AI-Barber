@@ -1,0 +1,9 @@
+appId: com.ibrahim1774.aibarber
+---
+# (j3) Signed-in Store plan: setup, open shop, Shop-button prompt ACCEPTED, products incl. price edge cases + photo + sold out.
+- runFlow:
+    file: _signed_in.yaml
+    env: { TIER: store, LAPSE: "" }
+- runFlow:
+    file: _store_setup.yaml
+    env: { PROMPT_TAP: "Update my site", PREFIX: "" }

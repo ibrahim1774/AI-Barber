@@ -1,0 +1,126 @@
+appId: com.ibrahim1774.aibarber
+---
+# Bookings setup wizard end to end on a signed-in account. env: PROMPT_TAP ("Update my site" | "Not now"), PREFIX
+- tapOn:
+    point: "37%,94%"   # Bookings tab
+- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}01_bookings_tab_unset
+- tapOn:
+    point: "50%,55%"   # SET UP BOOKINGS (text match hits the heading)
+- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}02_step1_services
+# price + deposit on Haircut
+- tapOn: "Edit Haircut"
+- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}03_service_form
+- tapOn: "Price in dollars"
+- inputText: "30"
+- tapOn: "LENGTH"   # a numeric keypad has no Done key: tapping plain text dismisses it
+- scrollUntilVisible:
+    element: "Fixed .*"
+- tapOn: "Fixed .*"
+- scrollUntilVisible:
+    element: "10"
+- tapOn: "10"   # the deposit field (its placeholder)
+- inputText: "10"
+- tapOn: "ADVANCED: DEPOSIT"
+- takeScreenshot: ${PREFIX}04_service_form_deposit
+- scrollUntilVisible:
+    element: "Save"
+- tapOn: "Save"
+- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}05_services_after_save
+- scrollUntilVisible:
+    element: "Continue"
+- tapOn: "Continue"
+- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}06_step2_hours
+- scroll
+- takeScreenshot: ${PREFIX}07_step2_hours_scrolled
+- scrollUntilVisible:
+    element: "Continue"
+- tapOn: "Continue"
+- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}08_step3_team
+- tapOn: "Add barbers"
+- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}09_step3_add_barbers
+- tapOn: "Just me"
+- scrollUntilVisible:
+    element: "Continue"
+- tapOn: "Continue"
+- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}10_step4_pay
+- scrollUntilVisible:
+    element: "Connect cards with Stripe"
+- takeScreenshot: ${PREFIX}11_step4_pay_cards
+- tapOn: "Connect cards with Stripe"
+- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}12_stripe_system_prompt
+- tapOn:
+    text: "Continue"
+    index: 0
+- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}13_stripe_web_sheet_stub
+- tapOn:
+    point: "9%,12%"   # X of the Stripe web sheet
+- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}14_after_stripe_not_connected
+# the stub now reports the account as connected (what Stripe's return would do)
+- runFlow:
+    file: _stub.yaml
+    env: { TIER: "", LAPSE: "", STRIPE: '{"connected":true,"chargesEnabled":true,"detailsSubmitted":true}', SIGNIN: "", SIGNOUT: "", EMAIL: "", SITEBASE: "", BOOKING_NAME: "" }
+- tapOn: "Connect cards with Stripe"
+- tapOn:
+    text: "Continue"
+    index: 0
+- waitForAnimationToEnd
+- tapOn:
+    point: "9%,12%"
+- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}15_after_stripe_connected
+- tapOn: "Continue"
+- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}16_step5_share
+- tapOn: "Share booking link"
+- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}17_share_sheet
+- tapOn:
+    point: "50%,8%"   # close the sheet
+- waitForAnimationToEnd
+- tapOn: "Finish"
+- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}18_book_button_prompt
+- tapOn: "${PROMPT_TAP}"
+- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}19_after_prompt
+- extendedWaitUntil:
+    visible: ".*live!.*"
+    timeout: 20000
+    optional: true
+- runFlow:
+    when:
+      visible: ".*live!.*"
+    commands:
+      - takeScreenshot: ${PREFIX}19b_republished_live
+      - tapOn: "Done"
+- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}20_bookings_home
+- tapOn:
+    point: "6%,9%"   # back out of the setup hub (finishing leaves you on it)
+- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}21_bookings_tab_no_bookings
+# a customer books through the (stub) booking page; the Bookings tab shows it on the next focus
+- runFlow:
+    file: _stub.yaml
+    env: { TIER: "", LAPSE: "", STRIPE: "", SIGNIN: "", SIGNOUT: "", EMAIL: "", SITEBASE: "", BOOKING_NAME: "Marcus T." }
+- tapOn:
+    point: "12%,94%"   # Edit tab and back, so Bookings reloads
+- tapOn:
+    point: "37%,94%"
+- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}22_booking_appears
+- tapOn:
+    point: "50%,33%"   # the booking row
+- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}23_booking_detail

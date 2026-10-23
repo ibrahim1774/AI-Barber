@@ -1,0 +1,96 @@
+appId: com.ibrahim1774.aibarber
+---
+# (m) Auth. Sign-up/in layout + validation (password cannot be typed in the simulator, so only the errors reachable
+# without it), forgot password, then sign in through the seeded session, sign out, and sign in again via the seed.
+- runFlow: _launch.yaml
+- runFlow: _publish_site.yaml
+- takeScreenshot: 01_live_signed_out
+- tapOn: "CREATE ACCOUNT"
+- waitForAnimationToEnd
+- takeScreenshot: 02_signup_form
+- tapOn:
+    point: "50%,66%"   # Create Account button (its text also matches the screen title)
+- waitForAnimationToEnd
+- takeScreenshot: 03_signup_all_empty
+- tapOn:
+    point: "50%,38%"   # Phone (required: the first error is about it)
+- inputText: "5125550142"
+- tapOn:
+    point: "50%,29%"   # Full name
+- inputText: "Jack Rivera"
+- tapOn:
+    point: "50%,47%"   # Email
+- inputText: "not-an-email"
+- tapOn: "Please save the email.*"   # plain text: dismisses the keyboard
+- takeScreenshot: 04_signup_filled_bad_email
+- tapOn:
+    point: "50%,71%"   # the button sits lower once an error line is showing
+- waitForAnimationToEnd
+- takeScreenshot: 05_signup_bad_email_error
+- tapOn:
+    point: "50%,47%"
+- eraseText: 30
+- inputText: "jack@example.com"
+- tapOn: "Please save the email.*"
+- tapOn:
+    point: "50%,71%"
+- waitForAnimationToEnd
+- takeScreenshot: 06_signup_valid_email_no_password
+- tapOn:
+    point: "69%,78%"   # Sign In link
+- waitForAnimationToEnd
+- takeScreenshot: 07_signin_form
+- tapOn:
+    point: "50%,42%"   # Sign In button, nothing typed
+- waitForAnimationToEnd
+- takeScreenshot: 08_signin_empty_error
+- tapOn: "Email"
+- inputText: "qa@example.com"
+- takeScreenshot: 08a_signin_email_typed
+- tapOn: "PASSWORD"   # label of the secure field: focus only, nothing can be typed (simulator)
+- waitForAnimationToEnd
+- takeScreenshot: 08b_signin_password_focused
+- tapOn:
+    point: "50%,10%"
+- takeScreenshot: 08c_signin_email_only
+- tapOn:
+    point: "82%,36%"   # Forgot password?
+- waitForAnimationToEnd
+- takeScreenshot: 09_forgot_password
+# ---- seeded session replaces typing the password ----
+- runFlow:
+    file: _seed.yaml
+    env: { TIER: website, LAPSE: "", STRIPE: "", SIGNIN: "true", SIGNOUT: "", EMAIL: "", SITEBASE: "", BOOKING_NAME: "" }
+- waitForAnimationToEnd
+- takeScreenshot: 10_after_seed_launch
+- tapOn:
+    point: "87%,94%"   # Settings tab
+- waitForAnimationToEnd
+- takeScreenshot: 11_settings_signed_in_top
+- scroll
+- scroll
+- takeScreenshot: 11b_settings_signed_in_bottom
+- tapOn: "Sign out"   # no confirmation dialog
+- waitForAnimationToEnd
+- takeScreenshot: 12_after_sign_out_bottom
+- swipe:
+    direction: DOWN
+- swipe:
+    direction: DOWN
+- takeScreenshot: 13_settings_signed_out_top
+# a relaunch must stay signed out
+- runFlow:
+    file: _seed.yaml
+    env: { TIER: "", LAPSE: "", STRIPE: "", SIGNIN: "", SIGNOUT: "", EMAIL: "", SITEBASE: "", BOOKING_NAME: "" }
+- tapOn:
+    point: "87%,94%"
+- waitForAnimationToEnd
+- takeScreenshot: 14_relaunch_still_signed_out
+# sign in again through the seed
+- runFlow:
+    file: _seed.yaml
+    env: { TIER: "", LAPSE: "", STRIPE: "", SIGNIN: "true", SIGNOUT: "", EMAIL: "", SITEBASE: "", BOOKING_NAME: "" }
+- tapOn:
+    point: "87%,94%"
+- waitForAnimationToEnd
+- takeScreenshot: 15_signed_in_again

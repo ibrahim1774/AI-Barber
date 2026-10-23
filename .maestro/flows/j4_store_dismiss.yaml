@@ -1,0 +1,9 @@
+appId: com.ibrahim1774.aibarber
+---
+# (j4) Same, Shop-button prompt DISMISSED.
+- runFlow:
+    file: _signed_in.yaml
+    env: { TIER: store, LAPSE: "" }
+- runFlow:
+    file: _store_setup.yaml
+    env: { PROMPT_TAP: "Not now", PREFIX: "" }

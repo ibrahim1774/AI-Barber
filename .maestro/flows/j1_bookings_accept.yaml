@@ -1,0 +1,9 @@
+appId: com.ibrahim1774.aibarber
+---
+# (j1) Signed-in (seeded session) Bookings plan: full setup wizard, Book-button prompt ACCEPTED, booking appears.
+- runFlow:
+    file: _signed_in.yaml
+    env: { TIER: bookings, LAPSE: "" }
+- runFlow:
+    file: _bookings_wizard.yaml
+    env: { PROMPT_TAP: "Update my site", PREFIX: "" }

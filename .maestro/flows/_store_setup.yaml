@@ -1,0 +1,119 @@
+appId: com.ibrahim1774.aibarber
+---
+# Store setup + products on a signed-in Store plan. env: PROMPT_TAP ("Update my site" | "Not now"), PREFIX
+- tapOn:
+    point: "62%,94%"   # Store tab
+- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}01_store_tab_unset
+- tapOn:
+    point: "50%,56%"   # SET UP YOUR SHOP (text match hits the heading)
+- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}02_store_setup
+- tapOn: "Shipping"
+- waitForAnimationToEnd
+- scroll
+- takeScreenshot: ${PREFIX}03_store_setup_scrolled
+- scrollUntilVisible:
+    element: "Open my shop"
+- tapOn: "Open my shop"
+- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}04_shop_button_prompt
+- tapOn: "${PROMPT_TAP}"
+- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}05_after_prompt
+- extendedWaitUntil:
+    visible: ".*live!.*"
+    timeout: 20000
+    optional: true
+- runFlow:
+    when:
+      visible: ".*live!.*"
+    commands:
+      - takeScreenshot: ${PREFIX}05b_republished_live
+      - tapOn: "Done"
+- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}06_store_setup_open
+- runFlow:
+    when:
+      visible: "Store setup"
+    commands:
+      - tapOn:
+          point: "6%,9%"   # back out of Store setup
+- waitForAnimationToEnd
+- tapOn:
+    point: "62%,94%"   # Store tab (after "Update my site" the app lands on Settings)
+- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}07_store_empty
+# ---- product 1: price edge cases, then a photo ----
+- tapOn: "Add product"
+- waitForAnimationToEnd
+- tapOn: "e.g. Matte pomade"   # the field's placeholder: tapping the "Name" label text does not focus it
+- inputText: "Matte pomade"
+- tapOn: "Price in dollars"
+- inputText: "0"
+- tapOn: "NAME"
+- tapOn: "Save"
+- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}08_price_zero_error
+- tapOn: "Price in dollars"
+- eraseText: 20
+- inputText: "99999999"
+- tapOn: "NAME"
+- tapOn: "Save"
+- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}09_price_huge_error
+- tapOn: "Price in dollars"
+- eraseText: 20
+- inputText: "12.345"
+- tapOn: "NAME"
+- tapOn: "Save"
+- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}10_price_three_decimals_error
+- tapOn: "Price in dollars"
+- eraseText: 20
+- inputText: "12.50"
+- tapOn: "NAME"
+- tapOn: "Add photo"
+- waitForAnimationToEnd
+- tapOn: "Library"
+- extendedWaitUntil:
+    visible: ".*Select up to.*"
+    timeout: 15000
+- tapOn:
+    point: "16%,47%"   # first picture in the library
+- takeScreenshot: ${PREFIX}11_picker_selected
+- tapOn:
+    point: "90%,16%"   # confirm
+- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}12_form_with_photo
+- tapOn: "Save"
+- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}13_product_with_photo_listed
+# ---- product 2: no photo, decimals, sold out ----
+- tapOn: "Add product"
+- waitForAnimationToEnd
+- tapOn: "e.g. Matte pomade"
+- inputText: "Beard oil"
+- tapOn: "Price in dollars"
+- inputText: "7.5"
+- tapOn: "NAME"
+- tapOn:
+    point: "87%,83%"   # the Sold out switch (tapping its label does not toggle it)
+- takeScreenshot: ${PREFIX}14_form_no_photo_sold_out
+- tapOn: "Save"
+- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}15_two_products
+# ---- product 3: the highest allowed price ----
+- tapOn: "Add product"
+- waitForAnimationToEnd
+- tapOn: "e.g. Matte pomade"
+- inputText: "Gift card"
+- tapOn: "Price in dollars"
+- inputText: "10000"
+- tapOn: "NAME"
+- tapOn: "Save"
+- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}16_max_price_listed
+- tapOn: "Edit Beard oil"
+- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}17_edit_sold_out_product

@@ -1,0 +1,27 @@
+appId: com.ibrahim1774.aibarber
+---
+# Seeds the stub (tier / lapse / stripe / session) and reloads the app so it picks the state up.
+# Replaces typing into the secure password field. env: TIER, LAPSE, STRIPE, SIGNIN, SIGNOUT, EMAIL
+- runScript:
+    file: ../scripts/seed.js
+    env:
+      TIER: ${TIER}
+      LAPSE: ${LAPSE}
+      STRIPE: ${STRIPE}
+      SIGNIN: ${SIGNIN}
+      SIGNOUT: ${SIGNOUT}
+      EMAIL: ${EMAIL}
+      SITEBASE: ${SITEBASE}
+      BOOKING_NAME: ${BOOKING_NAME}
+- openLink: exp+aibarber://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A8090
+- tapOn:
+    text: "Open"
+    optional: true
+- extendedWaitUntil:
+    visible: "Continue"
+    timeout: 60000
+    optional: true
+- tapOn:
+    text: "Continue"
+    optional: true
+- waitForAnimationToEnd
