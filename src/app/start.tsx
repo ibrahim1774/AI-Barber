@@ -31,9 +31,6 @@ export default function Start() {
         <Button title="Yes, I have a booking link" arrow onPress={() => go('/booking-link')} />
         <Button variant="ghost" title="No, I don’t have one" onPress={() => go('/find-listing')} />
       </View>
-      <Text variant="caps" style={styles.note}>
-        Photos & reviews imported automatically
-      </Text>
       <Button
         variant="link"
         title="Rather type it in yourself? Use the classic form →"
@@ -55,7 +52,6 @@ const styles = StyleSheet.create({
   h1: { marginTop: 24 },
   sub: { marginTop: 24, maxWidth: 512 },
   buttons: { marginTop: 44, alignSelf: 'stretch', gap: 16 },
-  note: { marginTop: 32 },
-  manual: { marginTop: 32 },
+  manual: { marginTop: 40 },
   restore: { marginTop: 20 },
 });

@@ -160,7 +160,7 @@ export default function FindListing() {
   return (
     <Screen overlay={busy ? <ImportProgress steps={LISTING_STEPS} progress={progress} slowHint={slowHint} /> : null}>
       <StageChips />
-      <Text variant="h1" style={styles.h1}>Type your shop name.</Text>
+      <Text variant="h1" style={styles.h1}>{found ? 'We found your shop.' : 'Type your shop name.'}</Text>
       <Text variant="h1">
         Get a beautiful <Em>barber</Em> <Em color={colors.silver}>website</Em>.
       </Text>
