@@ -44,6 +44,8 @@ export interface PublishDeps {
   iosPublish: typeof api.iosPublish;
   /** The shop facts that decide the Book / Shop links on every publish. Without it, links the plan lacks are only stripped. */
   linkContext?(): Promise<LinkContext | null>;
+  /** The site data with `staff` refreshed from ab_members (team profiles). Must not throw; capped like linkContext. */
+  refreshTeam?(data: WebsiteData): Promise<WebsiteData>;
   store: typeof import('./siteStore');
   /** GET /api/ios/site → adopt a newer admin edit (adminSync.syncFromServer). Optional; never throws. */
   syncFromServer?(transactionId: string): Promise<SyncResult>;
@@ -157,7 +159,9 @@ async function send(
   const rec = await deps.store.loadSite().catch(() => null);
   const sentAt = rec?.updatedAt;
   // Whenever the AI Barber link is dropped (plan, shop, unknown context), the barber's own link is used.
-  const siteData = linksToSend(pending.data, rec?.inputs, ctx);
+  // Team cards come from ab_members (source of truth): refresh them before they go online.
+  const fresh = deps.refreshTeam ? await withTimeout(deps.refreshTeam(pending.data), SYNC_TIMEOUT_MS).catch(() => pending.data) : pending.data;
+  const siteData = linksToSend(fresh, rec?.inputs, ctx);
   try {
     const token = deps.accessToken ? await deps.accessToken().catch(() => null) : null;
     res = await deps.iosPublish(

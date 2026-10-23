@@ -6,6 +6,7 @@ import { getPlan, hostingReadOnlyOpen, planLabel, refreshPlan } from '@/lib/plan
 const PLAN = {
   linked: true, tier: 'bookings', entitlements: { hosting: true, bookings: true, store: false },
   active: true, expiresAt: '2026-11-01T00:00:00Z', takenDownAt: null, revoked: false,
+  capabilities: { memberProfile: false },
 };
 const respond = (status: number, body: unknown) =>
   ((global as any).fetch = jest.fn().mockResolvedValue({ status, text: async () => JSON.stringify(body) }));
@@ -58,4 +59,14 @@ it('planLabel', () => {
   expect(planLabel('bookings')).toBe('Bookings');
   expect(planLabel('store')).toBe('Store');
   expect(planLabel(null)).toBe('None');
+});
+
+it('reads the member-profile capability flag (only true counts; absent means 015 is not live)', async () => {
+  respond(200, { ...PLAN, capabilities: { memberProfile: true } });
+  await expect(getPlan()).resolves.toMatchObject({ capabilities: { memberProfile: true } });
+  const { capabilities: _c, ...legacy } = PLAN;
+  respond(200, legacy);
+  await expect(getPlan()).resolves.toMatchObject({ capabilities: { memberProfile: false } });
+  respond(200, { ...PLAN, capabilities: { memberProfile: 'yes' } });
+  await expect(getPlan()).resolves.toMatchObject({ capabilities: { memberProfile: false } });
 });

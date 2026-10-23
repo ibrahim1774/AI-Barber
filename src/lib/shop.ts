@@ -48,6 +48,10 @@ export type Member = {
   name: string;
   photoUrl: string | null;
   bio: string;
+  /** Job title shown under the name (ab_members.title, migration 015); null when empty or the column is not live yet. */
+  title: string | null;
+  /** The barber's own booking link (ab_members.booking_url, migration 015); null when empty or not live. */
+  bookingUrl: string | null;
   sort: number;
   icsToken: string | null;
 };
@@ -154,6 +158,8 @@ export function toMember(r: Record<string, any>): Member {
     name: r.display_name ?? '',
     photoUrl: r.photo_url ?? null,
     bio: r.bio ?? '',
+    title: typeof r.title === 'string' && r.title ? r.title : null,
+    bookingUrl: typeof r.booking_url === 'string' && r.booking_url ? r.booking_url : null,
     sort: r.sort ?? 0,
     icsToken: r.ics_token ?? null,
   };
@@ -260,27 +266,17 @@ export async function listMembers(shopId: string): Promise<Member[]> {
   return ((data ?? []) as Record<string, any>[]).map(toMember);
 }
 
-export async function addMember(
-  shopId: string,
-  m: { name: string; bio?: string; photoUrl?: string | null; sort?: number },
-): Promise<Member> {
-  const { data, error } = await supabase
-    .from('ab_members')
-    .insert({ shop_id: shopId, role: 'barber', display_name: m.name, bio: m.bio || null, photo_url: m.photoUrl ?? null, sort: m.sort ?? 10 })
-    .select('*')
-    .single();
-  if (error) fail(error);
-  return toMember(data as Record<string, any>);
-}
-
 export async function updateMember(
   id: string,
-  m: Partial<{ name: string; bio: string; photoUrl: string | null }>,
+  m: Partial<{ name: string; bio: string; photoUrl: string | null; title: string | null; bookingUrl: string | null }>,
 ): Promise<void> {
   const row: Record<string, unknown> = {};
   if (m.name !== undefined) row.display_name = m.name;
   if (m.bio !== undefined) row.bio = m.bio || null;
   if (m.photoUrl !== undefined) row.photo_url = m.photoUrl;
+  // Only pass these when the server reports migration 015 live (the columns do not exist before).
+  if (m.title !== undefined) row.title = m.title || null;
+  if (m.bookingUrl !== undefined) row.booking_url = m.bookingUrl || null;
   if (Object.keys(row).length === 0) return;
   const { error } = await supabase.from('ab_members').update(row).eq('id', id);
   if (error) fail(error);

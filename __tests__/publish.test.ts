@@ -408,3 +408,24 @@ describe('publish decides the Book / Shop links from the choice', () => {
     jest.dontMock('@/lib/store/data');
   });
 });
+
+
+describe('team profiles: staff is refreshed from ab_members before it goes online', () => {
+  const withTeam = { ...site, data: { ...site.data, staff: [{ name: 'Stale', memberId: '3f2b8a52-6c1d-4e1f-9a57-0c9d1d2e3f40' }] } } as unknown as SiteRecord;
+  test('the refreshed staff is what is sent', async () => {
+    await store.saveSite(withTeam);
+    const deps = makeDeps({
+      hasEntitlement: jest.fn(async () => true),
+      refreshTeam: jest.fn(async (d) => ({ ...d, staff: [{ name: 'Fresh', memberId: '3f2b8a52-6c1d-4e1f-9a57-0c9d1d2e3f40' }] })),
+    });
+    await publishFlow(withTeam, deps);
+    expect((deps.iosPublish as jest.Mock).mock.calls[0][0].siteData.staff[0].name).toBe('Fresh');
+  });
+  test('a refresh that throws or hangs never blocks the publish: the saved staff is sent', async () => {
+    await store.saveSite(withTeam);
+    const deps = makeDeps({ hasEntitlement: jest.fn(async () => true), refreshTeam: jest.fn(async () => { throw new Error('offline'); }) });
+    const out = await publishFlow(withTeam, deps);
+    expect(out.kind).toBe('live');
+    expect((deps.iosPublish as jest.Mock).mock.calls[0][0].siteData.staff[0].name).toBe('Stale');
+  });
+});

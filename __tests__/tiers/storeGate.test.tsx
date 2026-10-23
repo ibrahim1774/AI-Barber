@@ -77,7 +77,7 @@ describe('Store tab gating', () => {
 
   const lapsedPlan = (daysAgo: number) => ({
     linked: true, tier: 'store' as const, entitlements: { hosting: false, bookings: false, store: false }, active: false,
-    expiresAt: new Date(Date.now() - daysAgo * 86400000).toISOString(), takenDownAt: null, revoked: false,
+    expiresAt: new Date(Date.now() - daysAgo * 86400000).toISOString(), takenDownAt: null, revoked: false, capabilities: { memberProfile: false },
   });
 
   it('lapsed 5 days, no orders: products stay visible read-only with the upgrade banner on top (like Bookings)', async () => {

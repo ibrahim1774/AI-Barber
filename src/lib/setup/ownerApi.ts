@@ -5,9 +5,12 @@ import { websiteToSetupServices, type SetupService } from '@/lib/setup/servicesM
 const base = () => process.env.EXPO_PUBLIC_API_BASE ?? 'https://www.aibarber.org';
 
 export class OwnerApiError extends Error {
-  constructor(public status: number, public code: string, message: string) {
+  /** The server's JSON error body when it sent one (e.g. `{ error: 'member-limit', limit: 2 }`). */
+  body?: Record<string, unknown>;
+  constructor(public status: number, public code: string, message: string, body?: Record<string, unknown>) {
     super(message);
     this.name = 'OwnerApiError';
+    if (body) this.body = body;
   }
 }
 
@@ -42,7 +45,7 @@ export async function call<T>(method: 'GET' | 'POST', path: string, body?: unkno
   }
   if (status < 200 || status >= 300) {
     const code = typeof json?.error === 'string' && json.error ? json.error : `http-${status}`;
-    throw new OwnerApiError(status, code, friendly(status, code));
+    throw new OwnerApiError(status, code, friendly(status, code), json && typeof json === 'object' && !Array.isArray(json) ? json : undefined);
   }
   return json as T;
 }
@@ -52,6 +55,9 @@ function friendly(status: number, code: string): string {
   if (code === 'store-paused') return 'Your AI Barber plan needs to be active to sell online.';
   if (status === 423 || code === 'bookings-paused') return 'Your AI Barber plan needs to be active to take bookings.';
   if (code === 'stripe-account-unavailable') return "We couldn't reach your Stripe account. Email support@davoxa.com and we'll sort it out.";
+  if (code === 'members-unavailable') return "Adding barbers isn't available yet. Try again in a little while.";
+  if (code === 'members-need-bookings') return 'Adding barbers is part of the Bookings plan.';
+  if (code === 'member-limit') return "You've reached the number of barbers your plan includes.";
   if (status === 400) return "Some of your details couldn't be saved. Check your services and try again.";
   if (status >= 500) return 'AI Barber is having trouble right now. Try again in a minute.';
   return code.replace(/-/g, ' ');

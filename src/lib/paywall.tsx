@@ -11,6 +11,7 @@ import { currentUserId } from '@/lib/auth';
 import { accessToken } from '@/lib/accessToken';
 import { PaywallSettle, type PaywallResult } from '@/lib/paywallSettle';
 import { loadLinkContext } from '@/lib/linkContext';
+import { refreshTeamBeforePublish } from '@/lib/team';
 import { PLAN_ENTITLEMENT, getEntitlements, setEntitlementsFromStatus } from '@/lib/entitlements';
 import { refreshPlan, refreshPlanQuietly, setSharedPlan } from '@/lib/plan';
 import { findTransactionId, pickLatestTransactionId, type PublishDeps } from '@/lib/publish';
@@ -358,6 +359,7 @@ export function usePublishDeps(): PublishDeps {
       iosPublish: api.iosPublish,
       syncFromServer: syncNow,
       linkContext: loadLinkContext,
+      refreshTeam: refreshTeamBeforePublish,
       store: siteStore,
       // The site is bound to the Apple transaction; a signed-in user is linked to it too.
       userId: currentUserId,

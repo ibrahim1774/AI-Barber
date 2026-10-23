@@ -11,6 +11,8 @@ export type Plan = {
   expiresAt: string | null;
   takenDownAt: string | null;
   revoked: boolean;
+  /** What the deployed server supports: `memberProfile` is true once migration 015 is live (title / booking_url columns, POST /api/shop/members). */
+  capabilities: { memberProfile: boolean };
 };
 
 const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -31,6 +33,7 @@ export function normalizePlan(raw: unknown): Plan | null {
     expiresAt: str(raw.expiresAt),
     takenDownAt: str(raw.takenDownAt),
     revoked: raw.revoked === true,
+    capabilities: { memberProfile: isObject(raw.capabilities) && raw.capabilities.memberProfile === true },
   };
 }
 
