@@ -1,0 +1,67 @@
+appId: com.ibrahim1774.aibarber
+---
+# (P2, resume: app already on the Bookings tab, shop ready) Team screen on a Bookings shop: cards render, Add a barber 3-step sheet, the stub's 409 opens the store_upgrade
+# paywall (stand-in alert), the second add succeeds, the third is stopped before the sheet (plan cap 2), and nothing
+# on screen shows a yearly price as a monthly one. Set SIM to the iPhone 17 or abi-se3. Screenshots: 01_ .. 14_.
+- tapOn:
+    point: "87%,94%"      # Settings tab
+- waitForAnimationToEnd
+- takeScreenshot: 01_settings_your_team_row
+- tapOn: "Your team"
+- waitForAnimationToEnd
+- takeScreenshot: 02_team_owner_only
+# --- the stub says the plan would allow 2, but the server says 1: the app's pre-check passes, the server answers 409
+- runFlow:
+    file: _members.yaml
+    env: { MLIMIT: "1", MREPORT: "", MPROFILE: "" }
+- tapOn: "Add a barber"
+- waitForAnimationToEnd
+- takeScreenshot: 03_sheet_step1_empty
+- tapOn: "e.g. Sam Fade"
+- inputText: "Mike Fade"
+- tapOn: "Role"
+- inputText: "Fade specialist"
+- hideKeyboard
+- takeScreenshot: 04_sheet_step1_filled
+- tapOn: "Next"
+- waitForAnimationToEnd
+- takeScreenshot: 05_sheet_step2_services_hours
+- tapOn: "Beard Trim"
+- tapOn: "Same hours as the shop"
+- waitForAnimationToEnd
+- takeScreenshot: 06_sheet_step2_own_hours
+- scroll
+- takeScreenshot: 07_sheet_step2_scrolled
+- tapOn: "Next"
+- waitForAnimationToEnd
+- takeScreenshot: 08_sheet_step3_about_link
+- tapOn: "Add barber"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: ".*MOCK PAYWALL.*"
+    timeout: 15000
+- takeScreenshot: 09_over_limit_store_upgrade_paywall
+- tapOn: "E2E: close"
+- waitForAnimationToEnd
+- takeScreenshot: 10_after_409_cards
+# --- room again: add succeeds
+- runFlow:
+    file: _members.yaml
+    env: { MLIMIT: "plan", MREPORT: "", MPROFILE: "" }
+- tapOn: "Add a barber"
+- waitForAnimationToEnd
+- tapOn: "e.g. Sam Fade"
+- inputText: "Mike Fade"
+- tapOn: "Next"
+- tapOn: "Next"
+- tapOn: "Add barber"
+- waitForAnimationToEnd
+- takeScreenshot: 11_two_barbers
+# --- Bookings plan = 2 people: the third is stopped before the sheet opens
+- tapOn: "Add a barber"
+- extendedWaitUntil:
+    visible: ".*MOCK PAYWALL.*"
+    timeout: 15000
+- takeScreenshot: 12_at_plan_cap_paywall
+- tapOn: "E2E: close"
+- waitForAnimationToEnd

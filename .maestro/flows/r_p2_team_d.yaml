@@ -1,0 +1,52 @@
+appId: com.ibrahim1774.aibarber
+---
+# (P2, resume) reload the app (session + site persist), then: Team cards, add succeeds, third add stopped by the plan cap.
+- openLink: exp+aibarber://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A8090
+- tapOn:
+    text: "Open"
+    optional: true
+- extendedWaitUntil:
+    visible: "Continue"
+    timeout: 90000
+    optional: true
+- tapOn:
+    text: "Continue"
+    optional: true
+- waitForAnimationToEnd
+- tapOn:
+    point: "87%,94%"
+- waitForAnimationToEnd
+- tapOn: "Your team"
+- waitForAnimationToEnd
+- takeScreenshot: 20_team_before_add
+- tapOn: "Add a barber"
+- extendedWaitUntil:
+    visible: "e.g. Sam Fade"
+    timeout: 10000
+- tapOn: "e.g. Sam Fade"
+- inputText: "Mike Fade"
+- tapOn: "Role"
+- inputText: "Fade specialist"
+- takeScreenshot: 21_step1_keyboard
+- tapOn: "Next"
+- waitForAnimationToEnd
+- tapOn: "Next"
+- waitForAnimationToEnd
+- tapOn: "https://"
+- inputText: "https://booksy.com/mike"
+- takeScreenshot: 22_step3_link
+- tapOn: "Add barber"
+- waitForAnimationToEnd
+- takeScreenshot: 23_two_barbers
+- swipe:
+    start: "80%,35%"
+    end: "10%,35%"
+- takeScreenshot: 24_cards_swiped
+- tapOn: "Add a barber"
+- extendedWaitUntil:
+    visible: ".*MOCK PAYWALL.*"
+    timeout: 15000
+- takeScreenshot: 25_at_plan_cap_paywall
+- tapOn: "E2E: close"
+- waitForAnimationToEnd
+- takeScreenshot: 26_after_close

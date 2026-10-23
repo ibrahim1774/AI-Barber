@@ -12,7 +12,7 @@ const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
 
 let S;
 function reset() {
-  S = { users: [], tables: {}, files: {}, sites: {}, byTx: {}, tier: null, log: [], fails: [], faults: [], version: 0, kv: {}, sw: { status: 'INACTIVE', ents: [], subs: [], n: 0 }, lapsedDays: null, memberLimit: null, memberProfile: true, stripe: { connected: false, chargesEnabled: false, detailsSubmitted: false } };
+  S = { users: [], tables: {}, files: {}, sites: {}, byTx: {}, tier: null, log: [], fails: [], faults: [], version: 0, kv: {}, sw: { status: 'INACTIVE', ents: [], subs: [], n: 0 }, lapsedDays: null, memberLimit: null, memberReport: null, memberProfile: true, stripe: { connected: false, chargesEnabled: false, detailsSubmitted: false } };
   S.users.push({ id: uuid(), email: 'qa@example.com', password: 'Passw0rd!' });
 }
 reset();
@@ -179,9 +179,10 @@ async function route(req, res, url, body) {
     const row = { id: uuid(), shop_id: shop.id, member_id: mem.id, service_id: sv.id, start_at: start.toISOString(), end_at: new Date(start.getTime() + sv.duration_min * 6e4).toISOString(), service_name: sv.name, price_cents: sv.price_cents ?? null, duration_min: sv.duration_min, customer_name: body.name || 'Marcus T.', customer_phone: '(512) 555-0199', customer_email: null, note: null, status: 'booked', payment_status: 'none', payment_method: null, amount_paid_cents: 0, customer_says_paid_at: null, source: 'online' };
     (S.tables.ab_appointments = S.tables.ab_appointments || []).push(row); return send(res, 200, row);
   }
-  //   POST /__e2e/members {limit?, profile?} -> forces the member limit POST /api/shop/members reports (null = by plan: Bookings 2, Store 5);
+  //   POST /__e2e/members {limit?, report?, profile?} -> forces the member limit POST /api/shop/members enforces (null = by plan: Bookings 2, Store 5) and,
+  //                                              with report, the number its 409 body carries;
   //                                              profile=false: migration 015 not live (plan capability off, endpoint answers 503)
-  if (p === '/__e2e/members') { if ('limit' in body) S.memberLimit = body.limit; if ('profile' in body) S.memberProfile = !!body.profile; return send(res, 200, { memberLimit: S.memberLimit, memberProfile: S.memberProfile }); }
+  if (p === '/__e2e/members') { if ('limit' in body) S.memberLimit = body.limit; if ('report' in body) S.memberReport = body.report; if ('profile' in body) S.memberProfile = !!body.profile; return send(res, 200, { memberLimit: S.memberLimit, memberReport: S.memberReport, memberProfile: S.memberProfile }); }
   if (p === '/__e2e/stripe') { Object.assign(S.stripe, body); return send(res, 200, S.stripe); }
   // ---- fault injection (edge pass): POST /__e2e/fault {path, mode, times?}  path = prefix match; times omitted = until cleared
   //   mode: offline (socket destroyed, request never answered) | hang (never answers; the app's own timeout fires) | 500 | 429 | html500 (gateway HTML page)
@@ -281,7 +282,7 @@ async function route(req, res, url, body) {
     if (body.bookingUrl && !/^https?:\/\//i.test(body.bookingUrl)) return send(res, 400, { error: 'invalid', field: 'bookingUrl' });
     const limit = S.memberLimit != null ? S.memberLimit : (ents.store ? 5 : 2);
     const members = (S.tables.ab_members = S.tables.ab_members || []);
-    if (members.filter((m) => m.shop_id === shop.id && m.active !== false).length >= limit) return send(res, 409, { error: 'member-limit', limit });
+    if (members.filter((m) => m.shop_id === shop.id && m.active !== false).length >= limit) return send(res, 409, { error: 'member-limit', limit: S.memberReport != null ? S.memberReport : limit });
     const row = { id: uuid(), shop_id: shop.id, display_name: name, title: body.title || null, photo_url: body.photo || null, bio: body.bio || null, booking_url: body.bookingUrl || null, sort: 10, created_at: new Date().toISOString(), ...DEFAULTS.ab_members(), role: 'barber' };
     members.push(row);
     return send(res, 200, { member: { id: row.id, name, title: row.title, photo: row.photo_url, bio: row.bio, bookingUrl: row.booking_url, role: 'barber', sort: 10, active: true }, limit });

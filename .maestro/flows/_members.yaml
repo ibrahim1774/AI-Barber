@@ -1,0 +1,9 @@
+appId: com.ibrahim1774.aibarber
+---
+# Stub switches for POST /api/shop/members, no reload. env: MLIMIT (number | "plan" | ""), MREPORT (number | "plan" | ""), MPROFILE (true | false | "")
+- runScript:
+    file: ../scripts/members.js
+    env:
+      MLIMIT: ${MLIMIT}
+      MREPORT: ${MREPORT}
+      MPROFILE: ${MPROFILE}

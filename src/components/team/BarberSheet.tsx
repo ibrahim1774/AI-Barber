@@ -231,6 +231,7 @@ export function BarberSheet({ visible, card, shop, services, shopHours, profileL
           size="sm"
           onPress={last ? () => void save() : next}
           loading={busy}
+          style={{ minWidth: 170 }}
         />
       </View>
     </Sheet>
