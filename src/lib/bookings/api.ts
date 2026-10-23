@@ -167,17 +167,32 @@ export function toAppointment(r: any): Appointment {
   };
 }
 
-/** The shop's non-cancelled appointments starting in [fromIso, toIso). */
+/** Pages through a capped endpoint (Supabase returns at most 1,000 rows) until a short page comes back. */
+export async function fetchAllPages<T>(page: (from: number, to: number) => Promise<T[]>, size = 1000): Promise<T[]> {
+  const out: T[] = [];
+  for (let from = 0; ; from += size) {
+    const rows = await page(from, from + size - 1);
+    out.push(...rows);
+    if (rows.length < size) return out;
+  }
+}
+
+/** The shop's non-cancelled appointments starting in [fromIso, toIso), every page. */
 export async function listAppointments(shopId: string, fromIso: string, toIso: string): Promise<Appointment[]> {
-  const { data, error } = await (supabase.from('ab_appointments') as any)
-    .select(APPT_COLUMNS)
-    .eq('shop_id', shopId)
-    .neq('status', 'cancelled')
-    .gte('start_at', fromIso)
-    .lt('start_at', toIso)
-    .order('start_at', { ascending: true });
-  if (error) throw error;
-  return ((data ?? []) as any[]).map(toAppointment);
+  const rows = await fetchAllPages(async (from, to) => {
+    const { data, error } = await (supabase.from('ab_appointments') as any)
+      .select(APPT_COLUMNS)
+      .eq('shop_id', shopId)
+      .neq('status', 'cancelled')
+      .gte('start_at', fromIso)
+      .lt('start_at', toIso)
+      .order('start_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, to);
+    if (error) throw error;
+    return (data ?? []) as any[];
+  });
+  return rows.map(toAppointment);
 }
 
 /** Time off of these barbers overlapping [fromIso, toIso). */

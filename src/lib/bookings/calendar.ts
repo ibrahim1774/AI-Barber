@@ -307,3 +307,153 @@ export function blockRange(
   if (toMin <= fromMin) return null;
   return { start: startIso(key, fromMin, tz), end: startIso(key, toMin, tz) };
 }
+
+// ---- week and month views -------------------------------------------------
+
+export type CalendarView = 'day' | 'week' | 'month';
+
+/** Monday-based weekday of a key: 0 = Monday ... 6 = Sunday (the same numbering as ab_availability). */
+export const mondayIndex = (key: DateKey): number => (weekdayOf(key) + 6) % 7;
+
+/** The 7 keys of the Monday-to-Sunday week holding `key`. Keys are calendar dates, so DST cannot add or drop one. */
+export function weekRange(key: DateKey, _tz?: string): DateKey[] {
+  const first = addDays(key, -mondayIndex(key));
+  return Array.from({ length: 7 }, (_, i) => addDays(first, i));
+}
+
+export interface MonthCell { key: DateKey; day: number; inMonth: boolean }
+
+/** 6 x 7 cells for month `m` (1-12) of year `y`, Monday first; days outside the month are flagged. */
+export function monthGrid(y: number, m: number, _tz?: string): MonthCell[] {
+  const first = makeKey(y, m, 1);
+  const start = addDays(first, -mondayIndex(first));
+  return Array.from({ length: 42 }, (_, i) => {
+    const key = addDays(start, i);
+    const p = parseKey(key)!;
+    return { key, day: p.d, inMonth: p.y === y && p.m === m };
+  });
+}
+
+/** `key` moved by whole months; the day is clamped to the target month's length. */
+export function addMonths(key: DateKey, n: number): DateKey {
+  const p = parseKey(key)!;
+  const idx = p.y * 12 + (p.m - 1) + n;
+  const y = Math.floor(idx / 12);
+  const m = (idx % 12 + 12) % 12 + 1;
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return makeKey(y, m, Math.min(p.d, last));
+}
+
+/** The keys a week or month view shows: [from, to) in dates (to is exclusive). */
+export function viewRange(view: 'week' | 'month', anchor: DateKey, tz: string): { from: DateKey; to: DateKey } {
+  if (view === 'week') {
+    const w = weekRange(anchor, tz);
+    return { from: w[0], to: addDays(w[6], 1) };
+  }
+  const p = parseKey(anchor)!;
+  const g = monthGrid(p.y, p.m, tz);
+  return { from: g[0].key, to: addDays(g[41].key, 1) };
+}
+
+/** Live appointments per cell (shop-local day), time-ordered, optionally for one barber. Out-of-range ones are dropped. */
+export function bucketAppointments(
+  list: Appointment[], cells: (DateKey | { key: DateKey })[], tz: string, memberId: string | null = null,
+): Record<DateKey, Appointment[]> {
+  const out: Record<DateKey, Appointment[]> = {};
+  for (const c of cells) out[typeof c === 'string' ? c : c.key] = [];
+  for (const a of list) {
+    if (!isLive(a) || (memberId && a.memberId !== memberId)) continue;
+    const bucket = out[dayKey(a.start, tz)];
+    if (bucket) bucket.push(a);
+  }
+  for (const k of Object.keys(out)) {
+    out[k].sort((a, b) => Date.parse(a.start) - Date.parse(b.start) || a.id.localeCompare(b.id));
+  }
+  return out;
+}
+
+/** Colours for barbers: the palette entry at the member's index in `sort` order, the same in every view. */
+export const MEMBER_PALETTE = ['#f4a100', '#4aa3df', '#5bbd7f', '#d1648a', '#9a7bd8', '#e4694e', '#3fb8b0', '#c9b458'] as const;
+export function memberColors(members: { id: string; sort: number }[]): Map<string, string> {
+  const ordered = [...members].sort((a, b) => a.sort - b.sort || a.id.localeCompare(b.id));
+  return new Map(ordered.map((m, i) => [m.id, MEMBER_PALETTE[i % MEMBER_PALETTE.length]]));
+}
+
+/** Weekdays (0 = Monday) nobody works. Empty when no hours are set at all (nothing to call closed). */
+export function closedWeekdays(rows: { weekday: number }[]): number[] {
+  if (!rows.length) return [];
+  const open = new Set(rows.map((r) => r.weekday));
+  return [0, 1, 2, 3, 4, 5, 6].filter((d) => !open.has(d));
+}
+
+/** The hour rows the week grid shows: open hours +/- 1h (8-20 when unset), widened to hold every appointment. */
+export function hourWindow(
+  rows: { startMin: number; endMin: number }[], appts: Appointment[], tz: string,
+): { startHour: number; endHour: number } {
+  let lo = rows.length ? Math.floor(Math.min(...rows.map((r) => r.startMin)) / 60) - 1 : 8;
+  let hi = rows.length ? Math.ceil(Math.max(...rows.map((r) => r.endMin)) / 60) + 1 : 20;
+  for (const a of appts) {
+    if (!isLive(a)) continue;
+    lo = Math.min(lo, Math.floor(minutesOfDay(a.start, tz) / 60));
+    const end = minutesOfDay(a.end, tz);
+    hi = Math.max(hi, end === 0 || end < minutesOfDay(a.start, tz) ? 24 : Math.ceil(end / 60));
+  }
+  return { startHour: Math.max(0, lo), endHour: Math.min(24, Math.max(hi, lo + 1)) };
+}
+
+export interface PlacedAppt { appt: Appointment; startMin: number; endMin: number; lane: number; lanes: number }
+
+/** One day column: minutes on that local day (clamped) and side-by-side lanes for overlaps. */
+export function dayLayout(list: Appointment[], key: DateKey, tz: string): PlacedAppt[] {
+  const { start, end } = dayRange(key, tz);
+  const d0 = Date.parse(start), d1 = Date.parse(end);
+  const items = list
+    .filter((a) => isLive(a))
+    .map((a) => {
+      const s = Math.max(Date.parse(a.start), d0), e = Math.min(Date.parse(a.end), d1);
+      return { appt: a, startMin: Math.round((s - d0) / 60000), endMin: Math.max(Math.round((e - d0) / 60000), Math.round((s - d0) / 60000) + 15) };
+    })
+    .filter((x) => x.startMin < 24 * 60)
+    .map((x) => ({ ...x, endMin: Math.min(24 * 60, x.endMin) }))
+    .sort((a, b) => a.startMin - b.startMin || a.appt.id.localeCompare(b.appt.id));
+  const out: PlacedAppt[] = [];
+  let cluster: typeof out = [];
+  let clusterEnd = -1;
+  const flush = () => {
+    const lanes = cluster.reduce((m, p) => Math.max(m, p.lane + 1), 1);
+    for (const p of cluster) p.lanes = lanes;
+    out.push(...cluster);
+    cluster = [];
+  };
+  const laneEnds: number[] = [];
+  for (const it of items) {
+    if (cluster.length && it.startMin >= clusterEnd) {
+      flush();
+      laneEnds.length = 0;
+    }
+    let lane = laneEnds.findIndex((e) => e <= it.startMin);
+    if (lane < 0) lane = laneEnds.length;
+    laneEnds[lane] = it.endMin;
+    cluster.push({ ...it, lane, lanes: 1 });
+    clusterEnd = Math.max(clusterEnd, it.endMin);
+  }
+  if (cluster.length) flush();
+  return out;
+}
+
+const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+/** 'Oct 19 - 25' / 'Oct 26 - Nov 1' for a week's keys. */
+export function weekLabel(week: DateKey[]): string {
+  const a = parseKey(week[0])!, b = parseKey(week[6])!;
+  return a.m === b.m ? `${MONTHS[a.m - 1]} ${a.d} - ${b.d}` : `${MONTHS[a.m - 1]} ${a.d} - ${MONTHS[b.m - 1]} ${b.d}`;
+}
+/** 'October 2026' */
+export function monthLabel(key: DateKey): string {
+  const p = parseKey(key)!;
+  return `${MONTHS_LONG[p.m - 1]} ${p.y}`;
+}
+/** The text for a day's count in the month grid: dots up to 3, then the number, then '9+'. */
+export function countText(n: number): string {
+  return n > 9 ? '9+' : String(n);
+}

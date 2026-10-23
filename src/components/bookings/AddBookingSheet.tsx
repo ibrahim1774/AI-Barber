@@ -17,6 +17,8 @@ type Props = {
   /** The day being viewed, and the barber filter, are the starting choices. */
   day: DateKey;
   defaultMemberId: string | null;
+  /** A start time chosen on the week grid (minutes after midnight); else the next quarter hour / 9 AM. */
+  initialMinutes?: number | null;
   members: Member[];
   services: Service[];
   onClose(): void;
@@ -25,7 +27,7 @@ type Props = {
 
 /** Walk-in / owner booking: barber, service, time, name, optional phone. */
 export function AddBookingSheet({
-  visible, tz, today, day: viewed, defaultMemberId, members, services, onClose, onAdded,
+  visible, tz, today, day: viewed, defaultMemberId, initialMinutes, members, services, onClose, onAdded,
 }: Props) {
   const [memberId, setMemberId] = useState<string>('');
   const [serviceId, setServiceId] = useState<string>('');
@@ -41,7 +43,7 @@ export function AddBookingSheet({
     setMemberId(defaultMemberId ?? members[0]?.id ?? '');
     setServiceId(services[0]?.id ?? '');
     setDay(viewed);
-    setMinutes(viewed === today ? nextQuarter(Date.now(), tz) : 9 * 60);
+    setMinutes(initialMinutes ?? (viewed === today ? nextQuarter(Date.now(), tz) : 9 * 60));
     setName('');
     setPhone('');
     setBusy(false);
