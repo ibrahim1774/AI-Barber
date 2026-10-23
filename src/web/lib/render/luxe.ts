@@ -203,9 +203,9 @@ export function generateHTMLWithPlaceholders(input: WebsiteData): string {
     : '';
 
   // ── Meet the Team section — cards: photo, name, role, 1-line bio, up to 3 service chips and a
-  //    "Book with <first name>" button (honest.ts teamOf: at most 5 cards, the stored staff[] is
-  //    never cut; teamBookLink holds the button rules). Skipped when there is no team.
-  const team = teamOf(siteData);
+  //    "Book with <first name>" button (honest.ts teamOf: at most 5 entries with a memberId, older
+  //    entries stay uncapped as before; the stored staff[] is never cut; teamBookLink holds the button rules). Skipped when there is no team.
+  const team = teamOf(siteData, { legacyUncapped: true });
   const bookingLive = isSiteBookLink(siteData.bookingUrl);
   const teamSection = team.length > 0
     ? `<section id="team" class="py-16 md:py-28 bg-[#0a0a0a] px-6 border-y border-white/5">
@@ -226,7 +226,7 @@ export function generateHTMLWithPlaceholders(input: WebsiteData): string {
             ${s.role ? `<p class="text-[#f4a100] text-[10px] md:text-[11px] font-bold tracking-[2px] uppercase mt-1">${esc(s.role)}</p>` : ''}
             ${s.bio ? `<p class="text-white/70 text-xs md:text-sm mt-2" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${esc(s.bio)}</p>` : ''}
             ${s.serviceNames ? `<div class="flex flex-wrap justify-center gap-1.5 mt-2">${s.serviceNames.map((n) => `<span class="text-[9px] tracking-[1px] uppercase border border-white/15 text-white/60 px-2 py-0.5">${esc(n)}</span>`).join('')}</div>` : ''}
-            ${link ? `<a href="${esc(link.href)}"${link.newTab ? ' target="_blank" rel="noopener noreferrer"' : ''} class="mt-3 inline-flex items-center border border-[#f4a100] text-[#f4a100] px-4 py-2 font-montserrat font-black tracking-[2px] uppercase hover:bg-[#f4a100] hover:text-[#1a1a1a] transition-all duration-300 text-[10px]">${lbl('teamBookWith')} ${esc(firstName(s.name))}</a>` : ''}
+            ${link ? `<a href="${esc(link.href)}"${link.newTab ? ' target="_blank" rel="noopener noreferrer"' : ''} class="mt-3 inline-flex items-center border border-[#f4a100] text-[#f4a100] px-4 py-2 font-montserrat font-black tracking-[2px] uppercase hover:bg-[#f4a100] hover:text-[#1a1a1a] transition-all duration-300 text-[10px]">${link.kind === 'member' ? `${lbl('teamBookWith')} ${esc(firstName(s.name))}` : lbl('bookButton')}</a>` : ''}
           </div>
         `;
         }).join('')}

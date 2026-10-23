@@ -343,7 +343,7 @@ export function generatePrimeHTMLWithPlaceholders(input: WebsiteData): string {
         ${m.role ? `<div class="p-eyebrow" style="font-size:10px;">${escapeHtml(m.role)}</div>` : ''}
         ${m.bio ? `<p class="p-serif p-italic ab-team-bio" style="color:var(--p-ink-soft);font-size:0.9rem;">${escapeHtml(m.bio)}</p>` : ''}
         ${m.serviceNames ? `<div class="ab-team-chips">${m.serviceNames.map((n) => `<span class="ab-team-chip">${escapeHtml(n)}</span>`).join('')}</div>` : ''}
-        ${link ? `<a href="${escapeHtml(link.href)}"${link.newTab ? ' target="_blank" rel="noopener noreferrer"' : ''} class="p-cta" style="padding:10px 14px;font-size:10px;justify-content:center;">${L('teamBookWith')} ${escapeHtml(firstName(m.name))}</a>` : ''}
+        ${link ? `<a href="${escapeHtml(link.href)}"${link.newTab ? ' target="_blank" rel="noopener noreferrer"' : ''} class="p-cta" style="padding:10px 14px;font-size:10px;justify-content:center;">${link.kind === 'member' ? `${L('teamBookWith')} ${escapeHtml(firstName(m.name))}` : L('primeNavBook')}</a>` : ''}
       </div>`;
       }).join('')}
     </div>
