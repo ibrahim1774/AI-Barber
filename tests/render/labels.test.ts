@@ -5,7 +5,7 @@ import { generateHTMLWithPlaceholders } from '../../lib/render/luxe';
 import { generatePrimeHTMLWithPlaceholders } from '../../lib/render/prime';
 import { generateEuphoriaHTMLWithPlaceholders } from '../../lib/render/euphoria';
 import {
-  LABELS, LABEL_KEYS, clampLabel, defaultLabel, isLabelKey, isValidRatingLine, ratingLineCustom, ratingLineProblem,
+  LABELS, LABEL_KEYS, clampLabel, isFigureFreeLabel, defaultLabel, isLabelKey, isValidRatingLine, ratingLineCustom, ratingLineProblem,
   t, visibleLabelKeys, type LabelKey,
 } from '../../lib/render/labels';
 import { aggregateToShow, displayPhone, reviewKey, visibleReviews } from '../../lib/render/honest';
@@ -128,7 +128,7 @@ describe('t()', () => {
   });
 
   it('caps by characters, never in the middle of an emoji', () => {
-    const out = t({ contactPhoneLabel: '😀'.repeat(100) }, 'contactPhoneLabel');
+    const out = t({ contactPhoneLabel: '😀'.repeat(LABELS.contactPhoneLabel.max + 50) }, 'contactPhoneLabel');
     expect(Array.from(out).length).toBe(LABELS.contactPhoneLabel.max);
     expect(out).not.toMatch(/[\ud800-\udbff]$/);
   });
@@ -240,6 +240,30 @@ describe('rating line', () => {
     expect(pr).toContain('Rated 4.8 by 1,200 clients on Booksy');
   });
 
+  it('placeholders may not repeat or sit next to each other (they would make up a figure)', () => {
+    const bad = [
+      '{count}{count} happy clients', '{rating}{count}', '{count}.{count}', '{rating} / {count}', '{rating} - {count}',
+      '{rating} {count}', '{count} and {count} clients', 'Rated {rating}, {rating} stars?', '{source}{source}',
+    ];
+    for (const v of bad) {
+      expect(isValidRatingLine(v), v).toBe(false);
+      const site = withTemplate('luxe', { aggregateRating: { rating: 4.8, count: 12 }, labels: { ratingLine: v } });
+      expect(ratingLineCustom(site), v).toBeNull();
+    }
+    expect(isValidRatingLine('{rating} from {count} clients')).toBe(true);
+    expect(isValidRatingLine('{count} clients on {source}')).toBe(true);
+    const site = withTemplate('luxe', { aggregateRating: { rating: 4.8, count: 12 }, labels: { ratingLine: '{count}{count} happy clients' } });
+    expect(render.luxe(site)).not.toContain('1212');
+  });
+
+  it('asterisks, numeral glyphs and star compounds are not allowed', () => {
+    const bad = ['Rated ***** by clients', '*****', '⁎⁎⁎⁎⁎', '∗∗∗∗∗', '✱✱✱', 'Ⅴ stars from {count}', 'ⅰ client', 'fivestar service', 'five-star', '5star', 'Four stars'];
+    for (const v of bad) expect(isValidRatingLine(v), v).toBe(false);
+    expect(isValidRatingLine('Loved starting from day one!')).toBe(false); // "one" as a number word stays out
+    expect(isValidRatingLine('Someone starred us')).toBe(true);
+    expect(isValidRatingLine('Honest, friendly (and fast)!')).toBe(true);
+  });
+
   it('plain words with no figures are allowed', () => {
     expect(isValidRatingLine('Loved by our clients')).toBe(true);
     expect(lineOf('luxe', 'Loved by our clients')).toContain('Loved by our clients');
@@ -278,8 +302,8 @@ describe('rating line', () => {
   });
 
   it('a source that looks like a placeholder is not expanded a second time', () => {
-    const site = withTemplate('luxe', { reviewsSource: '{count}', labels: { ratingLine: 'On {source}, {count} reviews' } });
-    expect(ratingLineCustom(site)).toBe('On {count}, 1,200 reviews');
+    const site = withTemplate('luxe', { reviewsSource: '{count}', labels: { ratingLine: 'On {source} from {count} reviews' } });
+    expect(ratingLineCustom(site)).toBe('On {count} from 1,200 reviews');
   });
 
   it('a wording that needs a count the data does not have falls back to the standard line', () => {
@@ -424,5 +448,34 @@ describe('phone number in the header', () => {
       expect(buttons.length, template).toBeGreaterThan(0);
       for (const b of buttons) expect(b, template).toContain('flex-shrink:0');
     }
+  });
+});
+
+describe('legacy and figure-free labels', () => {
+  it('a long saved legacy label renders in full (no silent truncation)', () => {
+    const note = 'Walk-ins welcome Monday to Friday, appointments get priority on Saturdays. '.repeat(2).trim();
+    expect(Array.from(note).length).toBeGreaterThan(140);
+    const heading = 'A gallery heading that a barber saved long before there was any limit at all on it';
+    expect(Array.from(heading).length).toBeGreaterThan(60);
+    expect(t({ bookingNote: note }, 'bookingNote')).toBe(esc(note));
+    expect(t({ galleryHeading: heading }, 'galleryHeading')).toBe(esc(heading));
+    expect(clampLabel(note, LABELS.bookingNote.max)).toBe(note);
+  });
+
+  it('the prime stat-box labels cannot hold a typed figure', () => {
+    for (const bad of ['out of 5 (500+ clients)', '5 stars', 'Rated ★★★★★', '100% happy', 'Five stars']) {
+      expect(t({ primeStatRating: bad }, 'primeStatRating'), bad).toBe('Rating');
+      expect(t({ primeStatReviews: bad }, 'primeStatReviews'), bad).toBe('Reviews');
+    }
+    expect(t({ primeStatRating: 'Our score' }, 'primeStatRating')).toBe('Our score');
+    expect(isFigureFreeLabel('Our score')).toBe(true);
+    expect(isFigureFreeLabel('Our 5')).toBe(false);
+  });
+});
+
+describe('non-own keys', () => {
+  it('t() and defaultLabel() return an empty string for a name that is not a label', () => {
+    expect(t({}, 'toString' as LabelKey)).toBe('');
+    expect(defaultLabel('constructor' as LabelKey)).toBe('');
   });
 });
