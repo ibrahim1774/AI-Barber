@@ -9,6 +9,7 @@ import { updateShopSettings, type ManualMethod, type Shop } from '@/lib/shop';
 import { colors } from '@/constants/theme';
 import { Card, Input, Label, Note, ToggleRow } from '@/components/setup/ui';
 
+export const CARDS_NOT_SET_UP = "Card payments aren't set up yet.";
 export const GET_PAID_RETURN = 'aibarber://get-paid';
 
 /** Three cards: in the shop, Cash App / Venmo / Zelle / PayPal handles, card payments through Stripe. */
@@ -23,6 +24,7 @@ export function GetPaid({ shop, onChanged }: { shop: Shop; onChanged(): void }) 
   const [status, setStatus] = useState<StripeStatus | null>(null);
   const [stripeBusy, setStripeBusy] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [cardNote, setCardNote] = useState<string | null>(null);
   const opening = useRef(false);
 
   const cardReady = status ? status.chargesEnabled : shop.stripeChargesEnabled;
@@ -95,6 +97,7 @@ export function GetPaid({ shop, onChanged }: { shop: Shop; onChanged(): void }) 
     if (stripeBusy) return;
     setStripeBusy(true);
     opening.current = true;
+    setCardNote(null);
     try {
       const { url } = await stripeOnboard();
       track('stripe_onboarding_started');
@@ -105,6 +108,9 @@ export function GetPaid({ shop, onChanged }: { shop: Shop; onChanged(): void }) 
       if (st.chargesEnabled) {
         track('stripe_onboarding_done');
         onChanged();
+      } else if (!st.connected) {
+        // The sheet was closed before an account was created.
+        setCardNote(CARDS_NOT_SET_UP);
       }
     } catch (e) {
       Alert.alert("Couldn't open Stripe", e instanceof Error ? e.message : 'Try again.');
@@ -157,6 +163,7 @@ export function GetPaid({ shop, onChanged }: { shop: Shop; onChanged(): void }) 
         ) : connected ? (
           <Note tone="warn">Stripe still needs a few details before cards can be used. Finish setup to turn them on.</Note>
         ) : null}
+        {!!cardNote && !cardReady && <Note tone="warn">{cardNote}</Note>}
         {checking && <ActivityIndicator color={colors.accent} />}
         {!cardReady && (
           <Button
