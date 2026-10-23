@@ -17,7 +17,7 @@ import { copyrightYear, displayPhone, nicheOf, withoutLegacyCopy } from './hones
 import { aibThemeVars, generateHTMLWithPlaceholders, resolveAibTheme } from './luxe.js';
 import { t } from './labels.js';
 import { renderPageBody } from './pageBodies.js';
-import { buildPageSet, canonicalBase, isMultiPage, singlePageSet, plainText, sitemapXml, type PageContext, type PageFile, type PageSet, type SiteFile } from './pages.js';
+import { buildPageSet, canonicalBase, hasFilePages, isMultiPage, singlePageSet, plainText, sitemapXml, type PageContext, type PageFile, type PageSet, type SiteFile } from './pages.js';
 import { euphoriaRootStyle, generateEuphoriaHTMLWithPlaceholders } from './euphoria.js';
 import { generatePrimeHTMLWithPlaceholders, primeRootStyle } from './prime.js';
 import { safeHref } from './safeHref.js';
@@ -90,7 +90,8 @@ export function renderSiteBundle(data: WebsiteData, opts: RenderSiteOptions = {}
   const full = buildPageSet(data, page);
   const set = isMultiPage(data) ? full : singlePageSet(full);
   const prepared = forRender(data, map);
-  const base = canonicalBase({ customDomain: opts.customDomain, siteBaseUrl: opts.siteBaseUrl });
+  // Canonical links and the sitemap belong to multi-page output only: a single-page site is byte-identical to before P3b.
+  const base = hasFilePages(set) ? canonicalBase({ customDomain: opts.customDomain, siteBaseUrl: opts.siteBaseUrl }) : null;
 
   // Home: the design's own page; with other pages it gets the menu, and a canonical link when a base is known.
   let home = renderHome(template, prepared, { pages: set });

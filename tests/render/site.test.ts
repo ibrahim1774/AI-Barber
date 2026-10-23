@@ -260,3 +260,24 @@ describe('multi-page is opt-in (P3b review B1)', () => {
     expect(r.pages.length).toBeGreaterThan(1);
   });
 });
+
+describe('single-page output is unchanged once a base is stored (P3b review S4)', () => {
+  const golden = JSON.parse(readFileSync(join(__dirname, 'fixtures/prep3b-single-page.json'), 'utf8')) as Record<string, string>;
+  const imageUrls = { hero: 'https://i.example.com/h.jpg', gallery0: 'https://i.example.com/g0.jpg', gallery1: 'https://i.example.com/g1.jpg', gallery2: 'https://i.example.com/g2.jpg', staff0: 'https://i.example.com/s.jpg' };
+  const BASE = { siteBaseUrl: 'https://fresh-cuts.vercel.app', customDomain: 'freshcuts.com' };
+  it.each(TEMPLATES)('%s: no pages field + a stored base -> pre-P3b home, no canonical, no sitemap', (template) => {
+    const d = full({ template, hero: { heading: 'Fresh Cuts', tagline: 'Walk-ins welcome', imageUrl: 'x' }, gallery: ['x', 'x', 'x'] });
+    delete d.pages;
+    d.staff = d.staff!.map((s) => ({ ...s, photo: 'x' }));
+    const r = renderSiteBundle(d, { imageUrls, ...BASE });
+    expect(r.pages.map((f) => f.path)).toEqual(['index.html']);
+    expect(r.pages[0].html).toBe(golden[template]);
+    expect(r.sitemap).toBeNull();
+  });
+  it.each(TEMPLATES)('%s: pages present but every page off + a base -> no canonical, no sitemap', (template) => {
+    const r = renderSiteBundle(full({ template, pages: { order: [], hidden: ['about', 'services', 'team', 'gallery', 'reviews', 'hours', 'contact'] } }), BASE);
+    expect(r.pages.map((f) => f.path)).toEqual(['index.html']);
+    expect(r.pages[0].html).not.toContain('rel="canonical"');
+    expect(r.sitemap).toBeNull();
+  });
+});
