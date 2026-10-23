@@ -1,3 +1,4 @@
+import { formatPhone } from '@/lib/phone';
 import type { WebsiteData } from '@/web/types';
 import { buildSiteFromScrape } from '@/web/lib/buildSiteFromScrape';
 import { extractFirstUrl, isSupportedBookingHost } from '@/web/lib/supportedBookingHost';
@@ -28,7 +29,8 @@ export function switchDesign(d: WebsiteData, t: 'luxe' | 'prime'): WebsiteData {
  * the copy bakes in the real service area. Falls back to patching area,
  * phone and contact.address if generation throws.
  */
-export async function applyHomePrompts(d: WebsiteData, area: string, phone: string): Promise<WebsiteData> {
+export async function applyHomePrompts(d: WebsiteData, area: string, rawPhone: string): Promise<WebsiteData> {
+  const phone = formatPhone(rawPhone);
   try {
     // generateContent invents no services: the site's own (ticked or edited) ones are kept.
     const regenerated = await generateContent({

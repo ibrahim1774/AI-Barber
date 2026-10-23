@@ -1,3 +1,4 @@
+import { formatPhone } from '@/lib/phone';
 import type { WebsiteData } from '@/web/types';
 import { cleanText } from '@/lib/sections/text';
 
@@ -44,7 +45,7 @@ export function setContact(d: WebsiteData, f: ContactFields): WebsiteData {
   if (contactError(f)) return d;
   return {
     ...d,
-    phone: cleanText(f.phone),
+    phone: formatPhone(cleanText(f.phone)),
     contact: { ...d.contact, address: cleanText(f.address), email: cleanText(f.email) },
   };
 }
