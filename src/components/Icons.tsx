@@ -33,6 +33,14 @@ export function WarningIcon({ size = 16, color }: IconProps) {
   );
 }
 
+export function InfoIcon({ size = 16, color }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M12 16v-4m0-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </Svg>
+  );
+}
+
 // PublishOverlay's spinner (heroicons refresh), success check-circle, error
 // alert-circle, and the success screen's copy / copied icons.
 export function RefreshIcon({ size = 24, color }: IconProps) {

@@ -4,9 +4,10 @@ import { router } from 'expo-router';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
 import { Field } from '@/components/Field';
-import { WarningIcon } from '@/components/Icons';
+import { InfoIcon } from '@/components/Icons';
 import { Page } from '@/components/Page';
-import { PASSWORD_TOO_SHORT, signUp } from '@/lib/auth';
+import { signUp } from '@/lib/auth';
+import { validateSignUp } from '@/lib/signUpValidation';
 import { goBackOrHome } from '@/lib/nav';
 
 /**
@@ -34,16 +35,10 @@ export default function SignUp() {
   const submit = async () => {
     if (busyRef.current) return;
     setError('');
-    if (!phone.trim()) {
-      setError('Please enter a phone number');
-      return;
-    }
-    if (!email.trim()) {
-      setError('Please enter your email');
-      return;
-    }
-    if (password.length < 6) {
-      setError(PASSWORD_TOO_SHORT);
+    const problem = validateSignUp({ phone, email, password });
+    if (problem) {
+      setError(problem.message);
+      ({ phone: phoneInput, email: emailInput, password: passwordInput })[problem.field].current?.focus();
       return;
     }
     busyRef.current = true;
@@ -74,8 +69,8 @@ export default function SignUp() {
 
   return (
     <Page title="Create account" onBack={goBackOrHome}>
-      <View style={styles.notice} accessibilityRole="alert">
-        <WarningIcon size={16} color="#f87171" />
+      <View style={styles.notice}>
+        <InfoIcon size={16} color={colors.accent} />
         <Text style={styles.noticeText}>
           Please save the email & password you use here — you&apos;ll need them to sign back in.
         </Text>
@@ -155,10 +150,10 @@ export default function SignUp() {
 
 const styles = StyleSheet.create({
   notice: {
-    flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: 'rgba(239,68,68,0.4)',
-    backgroundColor: 'rgba(239,68,68,0.1)', paddingHorizontal: 12, paddingVertical: 10, marginBottom: 24,
+    flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: colors.hair,
+    backgroundColor: 'rgba(255,255,255,0.05)', paddingHorizontal: 12, paddingVertical: 10, marginBottom: 24,
   },
-  noticeText: { flex: 1, fontFamily: fonts.bodyBold, fontSize: 12, lineHeight: 17, color: '#fca5a5' },
+  noticeText: { flex: 1, fontFamily: fonts.bodyBold, fontSize: 12, lineHeight: 17, color: colors.text },
   form: { gap: 24 },
   error: { fontFamily: fonts.body, fontSize: 13, lineHeight: 19, color: '#f87171' },
   switchRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 4, marginTop: 28 },
