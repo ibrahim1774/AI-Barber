@@ -1,0 +1,17 @@
+appId: com.apple.Preferences
+---
+# One-off simulator setup: switch off Password AutoFill so secure fields accept typing. Device setting; persists.
+- launchApp:
+    appId: com.apple.Preferences
+    stopApp: true
+- tapOn: "General"
+- scrollUntilVisible:
+    element: "AutoFill.*"
+- takeScreenshot: s1
+- tapOn: "AutoFill.*"
+- takeScreenshot: s2
+- tapOn:
+    point: "83%,20%"   # AutoFill Passwords and Passkeys -> off
+- tapOn:
+    point: "83%,33%"   # Suggest Strong Passwords -> off (moves up once AutoFill is off)
+- takeScreenshot: s3

@@ -1,0 +1,45 @@
+appId: com.ibrahim1774.aibarber
+---
+# (b) No booking link: find the business on Google, "Is this you?" card, "Not my business", then confirm and build.
+- runFlow: _launch.yaml
+- tapOn: "NO, I DON.T HAVE ONE"
+- takeScreenshot: 01_find_listing
+- tapOn: "Your shop name and city"
+- inputText: "Jack's Barbershop Austin"
+- takeScreenshot: 02_typed
+- pressKey: Enter
+- takeScreenshot: 02b_after_search_key
+- extendedWaitUntil:
+    visible: ".*Jackson.*"
+    timeout: 20000
+- takeScreenshot: 03_candidates
+- tapOn: ".*123 Main St.*"
+- extendedWaitUntil:
+    visible: ".*Not my business.*"
+    timeout: 20000
+- takeScreenshot: 04_is_this_you
+- tapOn: ".*Not my business.*"
+- takeScreenshot: 05_after_not_my_business
+- tapOn: "FIND MY BUSINESS.*"
+- extendedWaitUntil:
+    visible: ".*Jackson.*"
+    timeout: 20000
+- takeScreenshot: 05b_search_again
+- tapOn: ".*123 Main St.*"
+- extendedWaitUntil:
+    visible: ".*Not my business.*"
+    timeout: 20000
+- tapOn: ".*Yes, that.s me.*"
+- takeScreenshot: 06_confirmed
+- tapOn: "Haircut"
+- scrollUntilVisible:
+    element: "BUILD MY WEBSITE.*"
+- takeScreenshot: 06b_before_build
+- tapOn: "BUILD MY WEBSITE.*"
+- takeScreenshot: 07_building
+- extendedWaitUntil:
+    visible: ".*Don.t have.*"
+    timeout: 60000
+    optional: true
+- takeScreenshot: 07b_editor
+- takeScreenshot: 08_after_build

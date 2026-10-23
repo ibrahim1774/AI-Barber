@@ -3,7 +3,7 @@
 # Resets the stub + app state (uninstall/reinstall, keychain reset), then runs the flow.
 # Requires: stub on 8787, Metro (stub-wired) on 8090, simulator booted, app built (see README).
 set -u
-D=${SIM:-FD310E95-F88F-45BF-8D6A-EF380A8D1BA6}
+D=${SIM:-19BDE908-A7A6-4C11-A974-E4D579820E06}
 APP=${APP_PATH:-$HOME/Library/Developer/Xcode/DerivedData/AIBarber-deaylxtmimafxvfeparpmsgxmflx/Build/Products/Debug-iphonesimulator/AIBarber.app}
 export JAVA_HOME=/opt/homebrew/opt/openjdk@17 PATH=/opt/homebrew/opt/openjdk@17/bin:$PATH
 HERE=${0:A:h}

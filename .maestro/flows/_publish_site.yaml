@@ -1,0 +1,12 @@
+appId: com.ibrahim1774.aibarber
+---
+# Builds the demo site and publishes it via the simulated paywall. Ends on the "Your site is live" screen.
+- runFlow: _manual_site.yaml
+- tapOn: "PUBLISH"
+- extendedWaitUntil:
+    visible: ".*E2E MOCK PAYWALL.*"
+    timeout: 15000
+- tapOn: "E2E: buy publish"
+- extendedWaitUntil:
+    visible: ".*live!.*"
+    timeout: 30000

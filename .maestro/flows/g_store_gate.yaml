@@ -1,0 +1,24 @@
+appId: com.ibrahim1774.aibarber
+---
+# (g) Store from the signed-out, website-only state: tab, setup gate.
+- runFlow: _launch.yaml
+- runFlow: _publish_site.yaml
+- tapOn: "Done"
+- tapOn:
+    point: "62%,94%"   # Store tab
+- waitForAnimationToEnd
+- takeScreenshot: 01_store_tab
+- tapOn: "SEE THE STORE PLAN"
+- extendedWaitUntil:
+    visible: ".*E2E MOCK PAYWALL.*"
+    timeout: 15000
+- takeScreenshot: 02_paywall_standin
+- tapOn: "E2E: buy store_upgrade"
+- waitForAnimationToEnd
+- takeScreenshot: 03_after_purchase
+- waitForAnimationToEnd
+- takeScreenshot: 04_next
+- tapOn:
+    point: "50%,56%"   # SET UP YOUR SHOP button (text match hits the heading)
+- waitForAnimationToEnd
+- takeScreenshot: 05_store_setup_account_gate

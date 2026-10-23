@@ -1,0 +1,19 @@
+appId: com.ibrahim1774.aibarber
+---
+# (h) Settings top to bottom, then Custom domain: the server routes are not deployed (stub answers a Vercel-style 404 page).
+- runFlow: _launch.yaml
+- runFlow: _publish_site.yaml
+- tapOn: "Done"
+- takeScreenshot: 01_settings_top
+- tapOn: "Custom domain.*"
+- waitForAnimationToEnd
+- takeScreenshot: 03_domain_screen
+- tapOn: "Search for a name"
+- inputText: "jacksbarbershop"
+- takeScreenshot: 04_domain_typed
+- pressKey: Enter
+- extendedWaitUntil:
+    visible: "NEVER_ZZZ"
+    timeout: 5000
+    optional: true
+- takeScreenshot: 05_domain_search_result

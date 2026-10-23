@@ -1,0 +1,27 @@
+appId: com.ibrahim1774.aibarber
+---
+# (f) Bookings from the signed-out, website-only state: tab, setup gate. (Sign-in cannot be driven on the simulator, see README.)
+- runFlow: _launch.yaml
+- runFlow: _publish_site.yaml
+- tapOn: "Done"
+- tapOn:
+    point: "37%,94%"   # Bookings tab
+- waitForAnimationToEnd
+- takeScreenshot: 01_bookings_tab
+- tapOn: "SEE THE BOOKINGS PLAN"
+- extendedWaitUntil:
+    visible: ".*E2E MOCK PAYWALL.*"
+    timeout: 15000
+- takeScreenshot: 02_paywall_standin
+- tapOn: "E2E: buy bookings_upgrade"
+- waitForAnimationToEnd
+- takeScreenshot: 03_after_purchase
+- waitForAnimationToEnd
+- takeScreenshot: 04_next
+- tapOn:
+    point: "50%,55%"   # SET UP BOOKINGS button
+- extendedWaitUntil:
+    visible: ".*account.*"
+    timeout: 10000
+    optional: true
+- takeScreenshot: 05_setup_account_gate

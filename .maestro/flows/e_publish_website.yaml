@@ -1,0 +1,18 @@
+appId: com.ibrahim1774.aibarber
+---
+# (e1) Publish the website through the (simulated) paywall, then open the account sign-up form.
+- runFlow: _launch.yaml
+- runFlow: _manual_site.yaml
+- tapOn: "PUBLISH"
+- extendedWaitUntil:
+    visible: ".*E2E MOCK PAYWALL.*"
+    timeout: 15000
+- takeScreenshot: 01_paywall_standin
+- tapOn: "E2E: buy publish"
+- extendedWaitUntil:
+    visible: ".*live!.*"
+    timeout: 30000
+- takeScreenshot: 02_live
+- tapOn: "CREATE ACCOUNT"
+- takeScreenshot: 03_signup_form
+# Typing the password is not possible on the simulator (see README), so the account itself is not created here.

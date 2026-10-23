@@ -11,9 +11,11 @@ appId: com.ibrahim1774.aibarber
 - takeScreenshot: 03_service_library
 - tapOn: "Add your own"
 - takeScreenshot: 04_service_form_empty
-- tapOn: "e.g. Skin fade"
+- tapOn:
+    point: "50%,23%"   # Name field
 - inputText: "Skin fade"
-- tapOn: "30"
+- tapOn:
+    point: "55%,32%"   # Price field
 - inputText: "25"
 - takeScreenshot: 05_service_form_filled
 - tapOn: "Save"

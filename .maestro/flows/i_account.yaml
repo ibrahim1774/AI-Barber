@@ -1,0 +1,22 @@
+appId: com.ibrahim1774.aibarber
+---
+# (i) Settings and restore purchases. Sign in / sign out cannot be driven on the simulator (secure field, see README).
+- runFlow: _launch.yaml
+- runFlow: _publish_site.yaml
+- tapOn: "Done"
+- tapOn: "Settings"
+- takeScreenshot: 01_settings_top
+- scrollUntilVisible:
+    element: "Delete account"
+- takeScreenshot: 02_settings_bottom
+- tapOn: "Restore purchases"
+- takeScreenshot: 03_restore_result
+- tapOn:
+    point: "50%,57%"   # OK on the system alert (alert content is not in the a11y tree)
+- tapOn:
+    point: "87%,94%"   # Settings tab
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element: "Delete account"
+- tapOn: "Sign in"
+- takeScreenshot: 04_signin_form
