@@ -130,7 +130,7 @@ describe('two deploys of one slug in flight: the one that FINISHES last is live'
     expect((await phone).status).toBe(200);
     const stored = pendingOf('fade-lab');
     expect(stored.siteData.area).toBe('Admin v3');
-    expect(normHtml(vercel.live.get('fade-lab'))).toBe(normHtml(renderPending(stored)));
+    expect(normHtml(vercel.live.get('fade-lab'))).toBe(normHtml(renderPending(stored)[0].html));
   });
 
   it('setup (was: the live HTML stays the phone v2 render): the late phone deploy is followed by a redeploy of admin v3, and the stamp lands on v3', async () => {

@@ -18,9 +18,8 @@
 import { Storage } from '@google-cloud/storage';
 import type { WebsiteData } from '../types';
 import { deployRenderedSite } from './deploySite.js';
-import { generateHTMLWithPlaceholders } from './render/luxe.js';
-import { generatePrimeHTMLWithPlaceholders } from './render/prime.js';
-import { generateEuphoriaHTMLWithPlaceholders } from './render/euphoria.js';
+import { renderSiteBundle, type RenderedSite, type RenderSiteOptions } from './render/site.js';
+import type { SiteFile } from './render/pages.js';
 import { isAwaitingDetails, isPayFirstPlan } from './payFirst.js';
 import { vercelProjectExists } from './ios/slug.js';
 import type { SiteOwnerStore } from './siteOwners.js';
@@ -367,31 +366,29 @@ async function alreadyLive(url: string | undefined | null): Promise<boolean> {
   }
 }
 
-function renderSite(siteData: WebsiteData): string {
-  if (siteData.template === 'prime') return generatePrimeHTMLWithPlaceholders(siteData);
-  if (siteData.template === 'euphoria') return generateEuphoriaHTMLWithPlaceholders(siteData);
-  return generateHTMLWithPlaceholders(siteData);
+/**
+ * Render a stored (pending-shape) copy to the pages that get deployed: `index.html` (the home page)
+ * first, then one file per page that has data behind it (lib/render/site.ts). Throws when the renderer
+ * can't handle the data: admin saves and the iOS publish call it first as a dry render.
+ *
+ * The renderers want 'has-image' markers where an image exists; the real URLs live in imageUrlMap and are
+ * substituted into the {{placeholders}} during deploy. Page eligibility (a gallery of the barber's own
+ * photos) is decided on those real URLs. `opts` carries the public base, when known, for canonical links
+ * and the sitemap.
+ */
+export function renderPending(
+  pending: Pick<PendingSite, 'siteData' | 'imageUrlMap'>,
+  opts: Pick<RenderSiteOptions, 'customDomain' | 'siteBaseUrl'> = {},
+): SiteFile[] {
+  return renderPendingBundle(pending, opts).pages;
 }
 
-/**
- * Render a stored (pending-shape) copy to the HTML that gets deployed. Throws when the
- * renderer can't handle the data — admin saves call it first as a dry render.
- */
-export function renderPending(pending: Pick<PendingSite, 'siteData' | 'imageUrlMap'>): string {
-  // The renderer wants 'has-image' markers where an image exists; the real URLs
-  // are substituted into the {{placeholders}} during deploy. Mirrors what the
-  // browser publish path does before calling deploy-site.
-  const imageUrlMap = pending.imageUrlMap || {};
-  const sd = pending.siteData;
-  const forRender: WebsiteData = {
-    ...sd,
-    hero: { ...sd.hero, imageUrl: imageUrlMap['hero'] ? 'has-image' : '' },
-    about: { ...sd.about, imageUrl: imageUrlMap['about'] ? 'has-image' : '' },
-    gallery: (sd.gallery || []).map((_: string, i: number) => (imageUrlMap[`gallery${i}`] ? 'has-image' : '')),
-    craftImages: (sd.craftImages || []).map((_: string, i: number) => (imageUrlMap[`craft${i}`] ? 'has-image' : '')),
-    staff: (sd.staff || []).map((s: any, i: number) => ({ ...s, photo: imageUrlMap[`staff${i}`] ? 'has-image' : '' })),
-  };
-  return renderSite(forRender);
+/** renderPending() with the sitemap. */
+export function renderPendingBundle(
+  pending: Pick<PendingSite, 'siteData' | 'imageUrlMap'>,
+  opts: Pick<RenderSiteOptions, 'customDomain' | 'siteBaseUrl'> = {},
+): RenderedSite {
+  return renderSiteBundle(pending.siteData, { ...opts, imageUrls: pending.imageUrlMap || {} });
 }
 
 /**
@@ -544,6 +541,13 @@ export async function publishSite(
     }
   }
 
+  // Best effort: a failed read just means no canonical links and no sitemap on this publish.
+  let storedBase: string | null = null;
+  if (shop) {
+    try { storedBase = (await (opts.siteBase ?? liveSiteBaseDeps).readBase?.(shop.id)) ?? null; }
+    catch (e: any) { console.warn(`[Publish] ${safe}: reading the stored site base failed (${e?.message || e}); no canonical links this time`); }
+  }
+
   try {
     // A deploy takes minutes, and the stored copy can be replaced meanwhile (a phone publish,
     // an admin edit, a sweep strip). Whichever deploy FINISHES last is what stays live, so an
@@ -559,9 +563,12 @@ export async function publishSite(
     for (let round = 0; ; round++) {
       const csd = current.siteData;
       // The links are normalised for this deploy only; the stored copy keeps what the owner saved.
-      const html = renderPending({ ...current, siteData: withSubpageLinks(csd, !!subpages) });
-      console.log(`[Publish] ${safe}: rendered ${html.length} bytes (template=${csd.template || 'luxe'})${round ? ` (redeploy ${round}: the stored copy changed)` : ''}, deploying...`);
-      const out = await deployRenderedSite({ siteId: safe, html, imageUrls: current.imageUrlMap || {}, subpages });
+      // The public base is only known from a previous deploy (ab_shops.site_base_url); with none, the
+      // pages ship without canonical links and without a sitemap on this publish.
+      const rendered = renderPendingBundle({ ...current, siteData: withSubpageLinks(csd, !!subpages) }, { siteBaseUrl: storedBase });
+      const html = rendered.pages[0].html;
+      console.log(`[Publish] ${safe}: rendered ${rendered.pages.length} page${rendered.pages.length === 1 ? '' : 's'}, ${html.length} bytes of home (template=${csd.template || 'luxe'})${round ? ` (redeploy ${round}: the stored copy changed)` : ''}, deploying...`);
+      const out = await deployRenderedSite({ siteId: safe, html, pages: rendered.pages, sitemap: rendered.sitemap, imageUrls: current.imageUrlMap || {}, subpages });
       deploymentUrl = out.deploymentUrl;
       projectName = out.projectName;
       if (round >= (opts.maxRedeploys ?? MAX_REDEPLOYS)) break;

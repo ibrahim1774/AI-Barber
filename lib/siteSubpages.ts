@@ -230,6 +230,8 @@ export interface SiteBaseDeps {
   projectDomains(projectName: string): Promise<ProjectDomain[]>;
   /** Does Vercel report this custom domain's DNS as correctly pointed (config misconfigured === false)? Throws on an outage. */
   domainServing(name: string): Promise<boolean>;
+  /** The stored public base (ab_shops.site_base_url), or null. Optional: absent means no canonical links. */
+  readBase?(shopId: string): Promise<string | null>;
   /** A partial update: only the fields given are written. */
   updateShop(shopId: string, fields: { site_base_url?: string; site_look?: SiteLook }): Promise<void>;
 }
@@ -327,7 +329,19 @@ export const liveSiteBaseDeps: SiteBaseDeps = {
     return body?.misconfigured === false;
   },
   updateShop: (shopId, fields) => updateShopSite(db(), shopId, fields),
+  readBase: (shopId) => readShopBase(db(), shopId),
 };
+
+/** ab_shops.site_base_url, or null when unset or before migration 011 (the column is missing). */
+export async function readShopBase(client: SupabaseClient, shopId: string): Promise<string | null> {
+  const { data, error } = await client.from('ab_shops').select('site_base_url').eq('id', shopId).maybeSingle();
+  if (error) {
+    if (isMissingSiteColumn(error)) return null;
+    throw new Error(`ab_shops read failed: ${error.message}`);
+  }
+  const v = (data as { site_base_url?: unknown } | null)?.site_base_url;
+  return typeof v === 'string' && v ? v : null;
+}
 
 /**
  * Write the 011 columns. Before migration 011 is applied the columns don't exist: the write is

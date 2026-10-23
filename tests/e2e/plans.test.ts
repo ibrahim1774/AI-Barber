@@ -56,7 +56,7 @@ describe.each(PLANS)('$name', (plan) => {
     expect('shopUrl' in stored.siteData).toBe(plan.store);
     // The live site is exactly the stored copy rendered (deployRenderedSite got that HTML).
     expect(deploysOf('fade-lab')).toHaveLength(1);
-    expect(normHtml(vercel.live.get('fade-lab'))).toBe(normHtml(renderPending(stored)));
+    expect(normHtml(vercel.live.get('fade-lab'))).toBe(normHtml(renderPending(stored)[0].html));
     expect(net.blocked).toEqual([]);
   });
 

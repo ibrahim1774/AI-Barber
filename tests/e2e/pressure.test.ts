@@ -112,7 +112,7 @@ describe('parallel publishes', () => {
     expect(rs.every((r) => r.status === 200)).toBe(true);
     for (let i = 0; i < 20; i++) {
       const slug = `shop-number-${i}`;
-      expect(normHtml(vercel.live.get(slug))).toBe(normHtml(renderPending(pendingOf(slug))));
+      expect(normHtml(vercel.live.get(slug))).toBe(normHtml(renderPending(pendingOf(slug))[0].html));
     }
   });
 
@@ -124,7 +124,7 @@ describe('parallel publishes', () => {
     expect(new Set(rs.map((r) => (r.body as any).version)).size).toBe(10);
     expect(pendingOf('fade-lab').version).toBe(11);
     // And the live page is the stored copy (I2).
-    expect(normHtml(vercel.live.get('fade-lab'))).toBe(normHtml(renderPending(pendingOf('fade-lab'))));
+    expect(normHtml(vercel.live.get('fade-lab'))).toBe(normHtml(renderPending(pendingOf('fade-lab'))[0].html));
   });
 });
 
