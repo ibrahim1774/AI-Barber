@@ -1,4 +1,5 @@
 import type { LabelKey } from './lib/render/labels.js';
+import type { PagesModel } from './lib/render/pages.js';
 
 export type TemplateId = 'luxe' | 'euphoria' | 'prime';
 
@@ -148,6 +149,9 @@ export interface WebsiteData {
   // Scraped reviews the barber hid, by reviewKey() (a hash of author + comment, not array position,
   // because re-importing reorders reviews). Reviews are quotes: hidden, never edited.
   hiddenReviews?: string[];
+  // Multi-page sites (spec 2026-10-23, P3b): the nav order and the pages the barber turned off. Which pages
+  // exist is computed from the data (lib/render/pages.ts), never stored. Absent = every eligible page, default order.
+  pages?: PagesModel;
   // Optional staff cards — name, role, photo. Renderer shows a
   // "Meet the Team" section when at least one staff entry exists.
   // Photo is editable in the preview (replace-image overlay).
