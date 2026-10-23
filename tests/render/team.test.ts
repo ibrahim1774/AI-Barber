@@ -63,8 +63,8 @@ describe.each(TEMPLATES)('%s team section', (name, render) => {
     expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
   });
 
-  it('stored staff longer than 5 is not cut; only 5 render', () => {
-    const staff = Array.from({ length: 8 }, (_, i) => ({ name: `Barber${i}`, photo: 'has-image' }));
+  it('stored staff longer than 5 is not cut; only 5 with a memberId render (luxe keeps legacy entries, see S1)', () => {
+    const staff = Array.from({ length: 8 }, (_, i) => ({ name: `Barber${i}`, photo: 'has-image', memberId: `3f2b8c1e-4a5d-4e6f-8a9b-0c1d2e3f4a5${i}` }));
     const data = fixture({ staff });
     const html = render(data);
     expect(data.staff).toHaveLength(8);
@@ -87,26 +87,26 @@ describe('Book button rule table', () => {
     return teamBookLink(full, card, /^\/book(?=[?#]|$)/.test(full.bookingUrl ?? ''));
   };
   it('1. live AI booking + UUID memberId -> /book?barber=<id>, same tab', () => {
-    expect(pick({ bookingUrl: '/book' }, { memberId: MID, bookingUrl: 'https://own.example.com' })).toEqual({ href: `/book?barber=${MID}`, newTab: false });
+    expect(pick({ bookingUrl: '/book' }, { memberId: MID, bookingUrl: 'https://own.example.com' })).toEqual({ href: `/book?barber=${MID}`, newTab: false, kind: 'member' });
   });
   it('1b. live booking but memberId is not a UUID -> member link', () => {
-    expect(pick({ bookingUrl: '/book' }, { memberId: 'not-a-uuid', bookingUrl: 'https://own.example.com/x' })).toEqual({ href: 'https://own.example.com/x', newTab: true });
-    expect(pick({ bookingUrl: '/book' }, { memberId: '../x?y=1' })).toEqual({ href: '/book', newTab: false });
+    expect(pick({ bookingUrl: '/book' }, { memberId: 'not-a-uuid', bookingUrl: 'https://own.example.com/x' })).toEqual({ href: 'https://own.example.com/x', newTab: true, kind: 'member' });
+    expect(pick({ bookingUrl: '/book' }, { memberId: '../x?y=1' })).toEqual({ href: '/book', newTab: false, kind: 'shop' });
   });
   it('1c. booking not live (external shop link) ignores memberId', () => {
-    expect(pick({ bookingUrl: 'https://booksy.com/shop' }, { memberId: MID })).toEqual({ href: 'https://booksy.com/shop', newTab: true });
+    expect(pick({ bookingUrl: 'https://booksy.com/shop' }, { memberId: MID })).toEqual({ href: 'https://booksy.com/shop', newTab: true, kind: 'shop' });
   });
   it('2. else the member bookingUrl, new tab', () => {
-    expect(pick({ bookingUrl: 'https://booksy.com/shop' }, { bookingUrl: 'https://cal.example.com/sam' })).toEqual({ href: 'https://cal.example.com/sam', newTab: true });
-    expect(pick({}, { bookingUrl: 'http://cal.example.com/sam' })).toEqual({ href: 'http://cal.example.com/sam', newTab: true });
+    expect(pick({ bookingUrl: 'https://booksy.com/shop' }, { bookingUrl: 'https://cal.example.com/sam' })).toEqual({ href: 'https://cal.example.com/sam', newTab: true, kind: 'member' });
+    expect(pick({}, { bookingUrl: 'http://cal.example.com/sam' })).toEqual({ href: 'http://cal.example.com/sam', newTab: true, kind: 'member' });
   });
   it('2b. unsafe or relative member links are ignored (javascript:, data:, /shop)', () => {
     for (const u of ['javascript:alert(1)', 'data:text/html,x', '/shop', '/book', 'ftp://x.co', '//evil.com']) {
-      expect(pick({ bookingUrl: 'https://booksy.com/shop' }, { bookingUrl: u })).toEqual({ href: 'https://booksy.com/shop', newTab: true });
+      expect(pick({ bookingUrl: 'https://booksy.com/shop' }, { bookingUrl: u })).toEqual({ href: 'https://booksy.com/shop', newTab: true, kind: 'shop' });
     }
   });
   it('3. else the shop booking link', () => {
-    expect(pick({ bookingUrl: 'https://booksy.com/shop' }, {})).toEqual({ href: 'https://booksy.com/shop', newTab: true });
+    expect(pick({ bookingUrl: 'https://booksy.com/shop' }, {})).toEqual({ href: 'https://booksy.com/shop', newTab: true, kind: 'shop' });
   });
   it('4. else no button', () => {
     expect(pick({}, {})).toBeNull();
@@ -117,6 +117,44 @@ describe('Book button rule table', () => {
     expect(html).toMatch(/href="https:\/\/cal\.example\.com\/sam" target="_blank" rel="noopener noreferrer"/);
     const live = render(fixture({ bookingUrl: '/book', staff: [{ name: 'Sam', memberId: MID.toUpperCase() }] }));
     expect(live).toContain(`href="/book?barber=${MID.toUpperCase()}"`);
+  });
+});
+
+describe('S4: Book with <name> only when the link is the member own', () => {
+  it.each(TEMPLATES)('%s: shop-kind link uses the neutral label, member-kind keeps "Book with Sam"', (_n, render) => {
+    const shop = render(fixture({ bookingUrl: 'https://booksy.com/shop', staff: [{ name: 'Sam Fade' }] }));
+    expect(shop).toContain('href="https://booksy.com/shop"');
+    expect(shop).not.toContain('Book with Sam');
+    const own = render(fixture({ bookingUrl: 'https://booksy.com/shop', staff: [{ name: 'Sam Fade', bookingUrl: 'https://cal.example.com/sam' }] }));
+    expect(own).toContain('Book with Sam');
+    const live = render(fixture({ bookingUrl: '/book', staff: [{ name: 'Sam Fade', memberId: MID }, { name: 'Old Timer' }] }));
+    expect(live).toContain('Book with Sam');
+    expect(live).not.toContain('Book with Old');
+    const none = render(fixture({ staff: [{ name: 'Sam Fade' }] }));
+    expect(none).not.toContain('Book with Sam');
+  });
+});
+
+describe('S1: display cap applies only to entries with a memberId', () => {
+  const legacy = Array.from({ length: 12 }, (_, i) => ({ name: `Booksy${i}` }));
+  it('luxe renders every legacy entry', () => {
+    const html = generateHTMLWithPlaceholders(fixture({ staff: legacy }));
+    for (let i = 0; i < 12; i++) expect(html).toContain(`Booksy${i}`);
+  });
+  it('luxe caps entries with a memberId at 5, legacy beside them stay', () => {
+    const ids = Array.from({ length: 7 }, (_, i) => ({ name: `Member${i}`, memberId: `3f2b8c1e-4a5d-4e6f-8a9b-0c1d2e3f4a5${i}` }));
+    const html = generateHTMLWithPlaceholders(fixture({ staff: [...legacy.slice(0, 3), ...ids] }));
+    for (let i = 0; i < 5; i++) expect(html).toContain(`Member${i}`);
+    expect(html).not.toContain('Member5');
+    expect(html).toContain('Booksy2');
+  });
+  it('prime and euphoria gain the Team section from staff[] and keep the 5 cap', () => {
+    for (const render of [generatePrimeHTMLWithPlaceholders, generateEuphoriaHTMLWithPlaceholders]) {
+      const html = render(fixture({ staff: legacy }));
+      expect(html).toContain('id="team"');
+      expect(html).toContain('Booksy4');
+      expect(html).not.toContain('Booksy5');
+    }
   });
 });
 
@@ -140,7 +178,7 @@ describe('label registry', () => {
   it('has the new keys with defaults, shown only with a team', () => {
     for (const k of ['primeTeamEyebrow', 'primeTeamHeading', 'euTeamEyebrow', 'euTeamHeading', 'teamBookWith'] as const) expect(LABELS[k]).toBeDefined();
     expect(LABELS.teamBookWith.default).toBe('Book with');
-    expect(visibleLabelKeys(fixture({ template: 'prime', staff: [sam] })).filter((k) => /Team|teamBook/.test(k)).sort()).toEqual(['primeTeamEyebrow', 'primeTeamHeading', 'teamBookWith']);
+    expect(visibleLabelKeys(fixture({ template: 'prime', bookingUrl: '/book', staff: [sam] })).filter((k) => /Team|teamBook/.test(k)).sort()).toEqual(['primeTeamEyebrow', 'primeTeamHeading', 'teamBookWith']);
     expect(visibleLabelKeys(fixture({ template: 'prime' })).filter((k) => /Team|teamBook/.test(k))).toEqual([]);
   });
 });

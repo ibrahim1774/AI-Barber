@@ -300,7 +300,7 @@ export function generateEuphoriaHTMLWithPlaceholders(input: WebsiteData): string
         ${m.role ? `<div class="eu-eyebrow">${escapeHtml(m.role)}</div>` : ''}
         ${m.bio ? `<p class="eu-serif ab-team-bio" style="color:var(--eu-ink-soft);font-size:16px;line-height:1.5;">${escapeHtml(m.bio)}</p>` : ''}
         ${m.serviceNames ? `<div class="ab-team-chips">${m.serviceNames.map((n) => `<span class="ab-team-chip">${escapeHtml(n)}</span>`).join('')}</div>` : ''}
-        ${link ? `<a href="${escapeHtml(link.href)}"${link.newTab ? ' target="_blank" rel="noopener noreferrer"' : ''} class="eu-cta" style="margin-top:8px;justify-content:center;">${L('teamBookWith')} ${escapeHtml(firstName(m.name))}</a>` : ''}
+        ${link ? `<a href="${escapeHtml(link.href)}"${link.newTab ? ' target="_blank" rel="noopener noreferrer"' : ''} class="eu-cta" style="margin-top:8px;justify-content:center;">${link.kind === 'member' ? `${L('teamBookWith')} ${escapeHtml(firstName(m.name))}` : L('euNavBook')}</a>` : ''}
       </div>`;
       }).join('')}
     </div>

@@ -497,17 +497,24 @@ const slugOf = (name: string): string =>
 /**
  * The ONLY reader of `staff` for the renderers. Entries without a name are skipped, text fields are
  * cleaned and capped, `memberId` survives only as a UUID and `bookingUrl` only as an absolute http(s)
- * link. At most TEAM_DISPLAY_CAP cards come back; the stored array is not changed.
+ * link. At most TEAM_DISPLAY_CAP cards come back (with legacyUncapped, only entries that have a
+ * memberId are capped; older entries without one all stay); the stored array is not changed.
  */
-export function teamOf(site: Pick<WebsiteData, 'staff'>): TeamCard[] {
+export function teamOf(site: Pick<WebsiteData, 'staff'>, opts: { legacyUncapped?: boolean } = {}): TeamCard[] {
   const staff = Array.isArray(site.staff) ? site.staff : [];
   const out: TeamCard[] = [];
   const used = new Set<string>();
-  for (let index = 0; index < staff.length && out.length < TEAM_DISPLAY_CAP; index++) {
+  for (let index = 0; index < staff.length; index++) {
     const s = staff[index] as Partial<TeamMember> | null;
     if (!s || typeof s !== 'object') continue;
     const name = cleanStr(s.name, 80);
     if (!name) continue;
+    const hasId = typeof s.memberId === 'string' && UUID.test(s.memberId);
+    // legacyUncapped (luxe, which always showed every staff entry): the cap counts only entries with a
+    // memberId. Otherwise (prime, euphoria: a new section) every entry counts toward the cap.
+    if (opts.legacyUncapped) {
+      if (hasId && out.filter((c) => c.memberId).length >= TEAM_DISPLAY_CAP) continue;
+    } else if (out.length >= TEAM_DISPLAY_CAP) break;
     let slug = slugOf(name);
     for (let n = 2; used.has(slug); n++) slug = `${slugOf(name)}-${n}`;
     used.add(slug);
@@ -538,20 +545,21 @@ export const firstName = (name: string): string => name.trim().split(/\s+/)[0] |
  *  2. else the member's own booking link, new tab;
  *  3. else the shop's booking link (the site's /book same tab, another site new tab);
  *  4. else none.
- * The caller escapes `href` for the attribute.
+ * `kind` is 'member' when the link goes to this member (1, 2) and 'shop' otherwise (3): only 'member'
+ * may say "Book with <name>". The caller escapes `href` for the attribute.
  */
 export function teamBookLink(
   site: Pick<WebsiteData, 'bookingUrl'>,
   member: Pick<TeamCard, 'memberId' | 'bookingUrl'>,
   bookingLive: boolean,
-): { href: string; newTab: boolean } | null {
+): { href: string; newTab: boolean; kind: 'member' | 'shop' } | null {
   if (bookingLive && member.memberId && UUID.test(member.memberId)) {
-    return { href: `/book?barber=${encodeURIComponent(member.memberId)}`, newTab: false };
+    return { href: `/book?barber=${encodeURIComponent(member.memberId)}`, newTab: false, kind: 'member' };
   }
   if (member.bookingUrl) {
     const own = safeHref(member.bookingUrl);
-    if (own && /^https?:\/\//i.test(own)) return { href: own, newTab: true };
+    if (own && /^https?:\/\//i.test(own)) return { href: own, newTab: true, kind: 'member' };
   }
   const shop = safeHref(site.bookingUrl);
-  return shop ? { href: shop, newTab: !shop.startsWith('/') } : null;
+  return shop ? { href: shop, newTab: !shop.startsWith('/'), kind: 'shop' } : null;
 }

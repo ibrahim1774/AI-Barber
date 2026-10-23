@@ -22,7 +22,8 @@ import type { TemplateId, WebsiteData } from '../../types';
 import type { BooksyNiche } from '../booksyNiche.js';
 import { nicheByKey } from '../booksyNiche.js';
 import { safeHref } from './safeHref.js';
-import { aggregateToShow, footerLine, hasServices, nicheCopy, reviewsSourceName, teamOf, visibleReviews } from './honest.js';
+import { aggregateToShow, footerLine, hasServices, nicheCopy, reviewsSourceName, teamBookLink, teamOf, visibleReviews } from './honest.js';
+import { isSiteBookLink } from './subpages.js';
 
 export type LabelDefault = string | ((niche: BooksyNiche, site?: Pick<WebsiteData, 'area' | 'niche'>) => string);
 
@@ -51,6 +52,8 @@ const luxeGallery = (s: WebsiteData) => LUXE_GALLERY.some((i) => has(s.gallery?.
 const primeGallery = (s: WebsiteData) => (s.gallery || []).slice(0, 6).some((u) => has(u));
 const euGallery = (s: WebsiteData) => (s.gallery || []).some((u) => has(u));
 const hasStaff = (s: WebsiteData) => teamOf(s).length > 0;
+// "Book with <name>" prints only on a card whose link goes to that member (honest.ts teamBookLink kind).
+const hasMemberBook = (s: WebsiteData) => teamOf(s, { legacyUncapped: true }).some((m) => teamBookLink(s, m, isSiteBookLink(s.bookingUrl))?.kind === 'member');
 const hasHours = (s: WebsiteData) => Array.isArray(s.hours) && s.hours.length > 0;
 const hasReviews = (s: WebsiteData) => visibleReviews(s).length > 0;
 const hasClosedDay = (s: WebsiteData) => hasHours(s) && s.hours!.some((h) => h.closed);
@@ -162,7 +165,7 @@ export const LABELS = {
   euShopButton: { title: 'Shop button text', default: 'Shop online', template: 'euphoria', max: 30, shows: hasShop },
 
   // ── Team cards (all designs): the Book button reads "<this> <first name>", e.g. "Book with Sam". ──
-  teamBookWith: { title: 'Team book button', default: 'Book with', max: 24, shows: hasStaff },
+  teamBookWith: { title: 'Team book button', default: 'Book with', max: 24, shows: hasMemberBook },
 
   // ── Rating wording (all designs). Edited from the app's rating control, not by tapping the page. ──
   ratingLine: { title: 'Rating wording', default: '', max: 80, tap: false },
