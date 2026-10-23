@@ -27,7 +27,8 @@ describe('015_members_profile.sql', () => {
     expect(s).toMatch(/grant execute on function public\.ab_add_member\(uuid, uuid, int, text, text, text, text, text\) to service_role;/);
   });
   it('guards reactivation and re-states grants; never revokes INSERT, drops data or deactivates', () => {
-    expect(s).toMatch(/old\.active is not true and new\.active is true and current_user in \('authenticated', 'anon'\)/);
+    expect(s).toMatch(/old\.active is not true and new\.active is true and current_user not in \('service_role', 'postgres', 'supabase_admin'\)/);
+    expect(s).not.toMatch(/current_user in \('authenticated'/);
     expect(s).toMatch(/grant select, update, delete on public\.ab_members to authenticated;/);
     expect(s).not.toMatch(/revoke insert/i);
     expect(s).not.toMatch(/\bdrop (table|column)\b|\bdelete from\b|\btruncate\b|set active\s*=\s*false/i);
@@ -41,5 +42,10 @@ describe('016_members_revoke_insert.sql', () => {
     expect(s).toContain('revoke insert on public.ab_members from authenticated;');
     expect(s).not.toMatch(/\bdrop\b|\bdelete from\b|\btruncate\b|\balter\b|\bupdate ab_members\b/i);
     expect(raw.split('\n').slice(0, 8).join('\n')).toMatch(/NOT APPLIED until the\s+-- new app build .* is INSTALLED/s);
+  });
+  it('aborts unless 015 (ab_add_member) exists, before the revoke', () => {
+    expect(s).toMatch(/to_regprocedure\('public\.ab_add_member\(uuid,uuid,int,text,text,text,text,text\)'\) is null then raise exception/);
+    expect(s.indexOf('to_regprocedure')).toBeGreaterThanOrEqual(0);
+    expect(s.indexOf('to_regprocedure')).toBeLessThan(s.indexOf('revoke insert'));
   });
 });

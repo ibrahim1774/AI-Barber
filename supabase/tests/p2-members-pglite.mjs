@@ -83,6 +83,13 @@ await db.exec(`set role service_role`);
 await db.exec(`update ab_members set active = true where display_name = 'Tom'`);
 check('service_role may reactivate', true);
 await db.exec('reset role');
+// allowlist: an unlisted role with UPDATE is refused too (not just authenticated/anon)
+await db.exec(`create role integration; grant select, update on public.ab_members to integration; update ab_members set active = false where display_name = 'Tom'`);
+await db.exec(`set role integration`);
+await rejects('other login role may not reactivate', `update ab_members set active = true where display_name = 'Tom'`, /reactivate-forbidden/);
+await db.exec('reset role');
+await db.exec(`update ab_members set active = true where display_name = 'Tom'`);
+check('postgres may reactivate', true);
 
 // 016
 await db.exec(read('016_members_revoke_insert.sql'));

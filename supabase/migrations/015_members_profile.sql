@@ -86,11 +86,11 @@ grant execute on function public.ab_add_member(uuid, uuid, int, text, text, text
 --    longer INSERT, and this trigger closes the other write path around the limit (flipping
 --    active false -> true with a direct UPDATE). Deactivating (true -> false) stays allowed.
 --    It is not security definer: current_user is the role the statement runs as
---    (authenticated / anon for app and web clients, service_role or postgres for the server).
+--    (authenticated / anon for app and web clients; only service_role, postgres and supabase_admin may reactivate).
 create or replace function public.ab_members_guard_reactivate()
 returns trigger language plpgsql set search_path = public as $$
 begin
-  if old.active is not true and new.active is true and current_user in ('authenticated', 'anon') then
+  if old.active is not true and new.active is true and current_user not in ('service_role', 'postgres', 'supabase_admin') then
     raise exception 'reactivate-forbidden' using errcode = '42501';
   end if;
   return new;
