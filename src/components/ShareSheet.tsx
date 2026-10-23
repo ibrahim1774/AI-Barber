@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { colors, fonts } from '@/constants/theme';
-import { ChevronRightIcon } from '@/components/Icons';
 import { QrScreen } from '@/components/QrScreen';
 import { Sheet } from '@/components/EditSheet';
 import { track } from '@/lib/analytics';
@@ -11,7 +10,7 @@ import { resolveCustomerLinks } from '@/lib/customerLinks';
 import { loadMyShop } from '@/lib/shop';
 import { loadSite } from '@/lib/siteStore';
 import { loadStoreSettings } from '@/lib/store/data';
-import { displayHost, shareLabel, shareMessage, type ShareLink } from '@/lib/share';
+import { displayHost, pickLink, shareLabel, shareMessage, type ShareKind, type ShareLink } from '@/lib/share';
 
 type Props = {
   visible: boolean;
@@ -59,7 +58,10 @@ export function ShareSheet({ visible, shopName, links: given, source, onClose }:
   const next = useRef<'qr' | 'sheet' | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const first = links[0];
+  // The entry point's own link is the default (Store -> shop link, Bookings -> booking link); tapping a row picks another.
+  const entry = given[0]?.kind;
+  const [selected, setSelected] = useState<ShareKind | null>(null);
+  const first = pickLink(links, selected, entry);
 
   useEffect(() => {
     if (visible) track('share_sheet_opened', { source });
@@ -67,6 +69,7 @@ export function ShareSheet({ visible, shopName, links: given, source, onClose }:
 
   useEffect(() => {
     if (!visible) {
+      setSelected(null);
       next.current = null;
       setQrOpen(false);
       setSheetHidden(false);
@@ -130,10 +133,11 @@ export function ShareSheet({ visible, shopName, links: given, source, onClose }:
         {links.map((link) => (
           <Pressable
             key={link.kind}
-            onPress={() => shareLink(link)}
-            accessibilityRole="button"
+            onPress={() => setSelected(link.kind)}
+            accessibilityRole="radio"
+            accessibilityState={{ selected: first?.kind === link.kind }}
             accessibilityLabel={`Share ${shareLabel(link.kind)}`}
-            style={({ pressed }) => [styles.link, pressed && { opacity: 0.7 }]}
+            style={({ pressed }) => [styles.link, first?.kind === link.kind && styles.linkSelected, pressed && { opacity: 0.7 }]}
           >
             <View style={styles.linkText}>
               <Text style={styles.linkTitle}>{shareLabel(link.kind)}</Text>
@@ -141,11 +145,14 @@ export function ShareSheet({ visible, shopName, links: given, source, onClose }:
                 {displayHost(link.url)}
               </Text>
             </View>
-            <ChevronRightIcon size={16} color={colors.faint} />
+            <View style={[styles.radio, first?.kind === link.kind && styles.radioOn]}>
+              {first?.kind === link.kind && <View style={styles.radioDot} />}
+            </View>
           </Pressable>
         ))}
         {!!first && (
           <>
+            <Option title="Send this link" onPress={() => shareLink(first)} />
             <Option title="Show QR code" onPress={showQr} />
             <Option title="Copy link" onPress={() => void copy('Copied')} />
             <Option
@@ -180,6 +187,10 @@ const styles = StyleSheet.create({
     minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12,
     borderRadius: 14, borderWidth: 1, borderColor: colors.accent, marginBottom: 12,
   },
+  linkSelected: { borderWidth: 2, backgroundColor: colors.accent + '1A' },
+  radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: colors.faint, alignItems: 'center', justifyContent: 'center' },
+  radioOn: { borderColor: colors.accent },
+  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.accent },
   linkText: { flex: 1 },
   linkTitle: { fontFamily: fonts.bodyBold, fontSize: 17, color: colors.text },
   linkHost: { fontFamily: fonts.mono, fontSize: 12, color: colors.accent, marginTop: 3 },

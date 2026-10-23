@@ -32,3 +32,12 @@ export function shareLabel(kind: ShareKind): string {
 export function displayHost(url: string): string {
   return url.replace(/^https?:\/\//, '').replace(/\/$/, '');
 }
+
+/** The link Copy / Instagram bio / QR use: the row the barber picked, else the link of the entry point they came from, else the first. */
+export function pickLink(links: ShareLink[], selected: ShareKind | null, entry: ShareKind | undefined): ShareLink | undefined {
+  return (
+    (selected && links.find((l) => l.kind === selected)) ||
+    (entry && links.find((l) => l.kind === entry)) ||
+    links[0]
+  );
+}
