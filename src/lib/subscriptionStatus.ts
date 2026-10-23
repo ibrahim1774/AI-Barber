@@ -62,6 +62,18 @@ export function isLocked(site: SiteRecord | null | undefined, status: Subscripti
   return isPublished(site) && status === 'lapsed';
 }
 
+/**
+ * Settings' "Offline" pill: a confirmed lapse, or a published site whose plan no longer includes hosting
+ * (known entitlements without `hosting`), which is when the server takes the site down.
+ */
+export function siteOffline(
+  site: SiteRecord | null | undefined,
+  status: SubscriptionStatus,
+  ents: { known: boolean; hosting: boolean },
+): boolean {
+  return isLocked(site, status) || (isPublished(site) && ents.known && !ents.hosting);
+}
+
 const isOurs = (s: SubscriptionEntry) => (PRODUCT_IDS as readonly string[]).includes(s.productId);
 const time = (iso: string | null | undefined) => {
   const t = Date.parse(iso ?? '');

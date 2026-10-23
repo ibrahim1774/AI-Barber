@@ -21,7 +21,7 @@ import { planLabel } from '@/lib/plan';
 import { requestPublish } from '@/lib/publishRequest';
 import { useRestoreFlow } from '@/lib/restoreFlow';
 import { loadSite, type SiteRecord } from '@/lib/siteStore';
-import { isLocked, useSubscriptionStatus } from '@/lib/subscriptionStatus';
+import { siteOffline, useSubscriptionStatus } from '@/lib/subscriptionStatus';
 import { tabBarStyle } from '@/lib/tabBar';
 import { useLinkActions } from '@/lib/useLinkActions';
 import { websiteView } from '@/lib/website';
@@ -214,7 +214,8 @@ export default function Settings() {
  * Publish.
  */
 function YourWebsite({ site }: { site: SiteRecord }) {
-  const lapsed = isLocked(site, useSubscriptionStatus());
+  const ents = useEntitlements();
+  const lapsed = siteOffline(site, useSubscriptionStatus(), ents);
   const view = websiteView(site, lapsed);
   const { open, copy, copied } = useLinkActions(view.url, 'settings');
   const [shareOpen, setShareOpen] = useState(false);
@@ -259,7 +260,7 @@ function YourWebsite({ site }: { site: SiteRecord }) {
             <Text style={styles.offlineUrl} numberOfLines={1}>
               {view.host}
             </Text>
-            <Button variant="solid" title="Resubscribe" onPress={resubscribe} style={styles.publish} />
+            <Button variant="solid" title="Renew to put your site back" onPress={resubscribe} style={styles.publish} />
           </>
         ) : view.live ? (
           <>
