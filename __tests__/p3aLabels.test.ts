@@ -219,3 +219,29 @@ describe('saving a label', () => {
     expect(savePathValue(d, 'labels.__proto__', 'x')).toBe(d);
   });
 });
+
+describe('legacy labels and figure-free stat labels (review S3, S5)', () => {
+  const prime = () => ({ ...fixtures[0].data, template: 'prime' as const, aggregateRating: { rating: 4.8, count: 500 } });
+
+  test('a 150-character saved booking note shows in full and survives a save', () => {
+    const note = 'Walk-ins welcome Monday to Friday. Saturday is appointments only, so please book ahead if you can, and tell us if you need to cancel.';
+    expect(note.length).toBeGreaterThan(120);
+    expect(note.length).toBeLessThan(200);
+    const d = { ...prime(), labels: { bookingNote: note } } as any;
+    expect(textValue(d, 'labels.bookingNote')).toBe(note);
+    expect((savePathValue(d, 'labels.bookingNote', note).labels as any).bookingNote).toBe(note);
+    const heading = 'x'.repeat(100);
+    expect((savePathValue(prime(), 'labels.galleryHeading', heading).labels as any).galleryHeading).toBe(heading);
+  });
+
+  test('the prime rating and review-count box labels refuse a typed figure', () => {
+    const d = prime();
+    for (const key of ['primeStatRating', 'primeStatReviews']) {
+      expect(savePathValue(d, `labels.${key}`, 'out of 5 (500+ clients)')).toBe(d);
+      expect(savePathValue(d, `labels.${key}`, 'Rated *****')).toBe(d);
+      expect((savePathValue(d, `labels.${key}`, 'Our score').labels as any)[key]).toBe('Our score');
+    }
+    const stored = { ...d, labels: { primeStatRating: '500+ clients' } } as any;
+    expect(textValue(stored, 'labels.primeStatRating')).toBe('Rating');
+  });
+});

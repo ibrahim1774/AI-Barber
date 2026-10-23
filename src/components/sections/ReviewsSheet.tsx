@@ -35,18 +35,23 @@ export function ReviewsSheet({ visible, data, onChange, onClose, onDismiss }: Pr
   const source = ratingSource(data);
   const rows = reviewRows(data);
 
-  const saveWording = () => {
+  /** Saves the typed wording. False when it was refused (the error shows and the sheet stays open). */
+  const saveWording = (): boolean => {
+    if (!ratingShown(data) || wording.trim() === stored.trim()) return true;
     const r = setRatingLine(data, wording);
     setError(r.error);
-    if (r.error) return;
-    if (r.data !== data) {
-      onChange((d) => setRatingLine(d, wording).data);
-      track('section_saved', { section: 'reviews' });
-    }
+    if (r.error) return false;
+    onChange((d) => setRatingLine(d, wording).data);
+    track('section_saved', { section: 'reviews' });
+    return true;
   };
 
+  // Done, the backdrop and the back gesture all save the wording first: a TextInput that unmounts with the
+  // sheet does not reliably blur, so typed words would be lost. A refused wording keeps the sheet open.
+  const close = () => { if (saveWording()) onClose(); };
+
   return (
-    <Sheet visible={visible} title="Reviews" onClose={onClose} onDismiss={onDismiss} right={<SheetAction title="Done" primary onPress={onClose} />}>
+    <Sheet visible={visible} title="Reviews" onClose={close} onDismiss={onDismiss} right={<SheetAction title="Done" primary onPress={close} />}>
       <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
         {rating ? (
           <View style={styles.block}>

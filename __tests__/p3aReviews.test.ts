@@ -98,3 +98,16 @@ describe('hiding a review', () => {
     expect(reviewRows(reordered).map((r) => r.hidden)).toEqual([false, true]);
   });
 });
+
+describe('wording: made-up figures through placeholders or look-alike glyphs (review B1, S1, S2)', () => {
+  test('repeated or adjacent placeholders, asterisks, numeral glyphs and star compounds are refused', () => {
+    const d = base();
+    for (const bad of ['{count}{count} happy clients', '{rating}{count}', '{count}.{count}', '{rating} / {count}', '{count} and {count}',
+      'Rated ***** by clients', '*****', 'Ⅴ stars from {count}', 'fivestar service']) {
+      const r = setRatingLine(d, bad);
+      expect(r.error).not.toBe('');
+      expect(r.data).toBe(d);
+    }
+    expect(setRatingLine(d, '{rating} from {count} clients on {source}').error).toBe('');
+  });
+});

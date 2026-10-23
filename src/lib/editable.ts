@@ -3,7 +3,7 @@ import { resolveAibTheme } from '@/web/lib/render/luxe';
 import { resolvePrimeTheme } from '@/web/lib/render/prime';
 import { resolveEuphoriaTheme } from '@/web/lib/render/euphoria';
 import { nicheOf, serviceMeta, withoutLegacyCopy } from '@/web/lib/render/honest';
-import { LABELS, LABEL_KEYS, clampLabel, defaultLabel, isLabelKey, visibleLabelKeys, type LabelDef, type LabelKey } from '@/web/lib/render/labels';
+import { LABELS, LABEL_KEYS, clampLabel, defaultLabel, isFigureFreeLabel, isLabelKey, visibleLabelKeys, type LabelDef, type LabelKey } from '@/web/lib/render/labels';
 import { SHOP_PREVIEW_SCRIPT, SITE_SHOP_PATH, isSiteSubpageLink } from '@/web/lib/render/subpages';
 import { forRender, renderSite, withImages } from '@/lib/render';
 export { EDITOR_JS } from '@/lib/editorScript';
@@ -57,7 +57,8 @@ export function textValue(d: WebsiteData, path: string): string {
   const key = labelKeyOfPath(path);
   if (key) {
     const stored = getPath(d, path);
-    const text = typeof stored === 'string' ? clampLabel(stored, defs[key].max) : '';
+    let text = typeof stored === 'string' ? clampLabel(stored, defs[key].max) : '';
+    if (defs[key].plain && !isFigureFreeLabel(text)) text = ''; // the page prints the default for it
     return text !== '' ? text : defaultLabel(key, nicheOf(d), d);
   }
   const v = getPath(d, path);

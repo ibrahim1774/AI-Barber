@@ -8,7 +8,7 @@ import { DEFAULT_PULLQUOTE } from '@/web/lib/render/prime';
 import { isStockImage } from '@/web/lib/stockImages';
 import { api } from '@/lib/api';
 import { IMAGE_PATHS, asPublished, getPath, labelKeyOfPath, setPath } from '@/lib/editable';
-import { LABELS, clampLabel, defaultLabel, type LabelDef } from '@/web/lib/render/labels';
+import { LABELS, clampLabel, defaultLabel, isFigureFreeLabel, type LabelDef } from '@/web/lib/render/labels';
 import { nicheOf } from '@/web/lib/render/honest';
 
 /**
@@ -105,7 +105,10 @@ export function savePathValue(d: WebsiteData, path: string, value: string): Webs
   if (path.startsWith('labels.')) {
     const key = labelKeyOfPath(path);
     if (!key) return d;
-    const text = clampLabel(value, (LABELS as Record<string, LabelDef>)[key].max);
+    const def = (LABELS as Record<string, LabelDef>)[key];
+    const text = clampLabel(value, def.max);
+    // A label printed beside a real figure (the prime rating and review-count boxes) may not hold one.
+    if (def.plain && !isFigureFreeLabel(text)) return d;
     const { [key]: _gone, ...rest } = (d.labels ?? {}) as Record<string, string>;
     void _gone;
     if (text === '' || text === defaultLabel(key, nicheOf(d), d)) return { ...d, labels: rest };
