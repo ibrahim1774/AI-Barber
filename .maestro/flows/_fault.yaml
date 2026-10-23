@@ -1,0 +1,10 @@
+appId: com.ibrahim1774.aibarber
+---
+# Arms (or clears) a stub fault WITHOUT touching the app. env: FPATH, FMODE, FTIMES, FCLEAR (pass every one, "" if unused)
+- runScript:
+    file: ../scripts/fault.js
+    env:
+      FPATH: ${FPATH}
+      FMODE: ${FMODE}
+      FTIMES: ${FTIMES}
+      FCLEAR: ${FCLEAR}

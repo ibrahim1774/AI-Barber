@@ -1,0 +1,62 @@
+appId: com.ibrahim1774.aibarber
+---
+- runFlow: { file: _fault.yaml, env: { FPATH: "/api/ios/publish", FMODE: "500", FTIMES: "1", FCLEAR: "" } }
+- tapOn: "PUBLISH"
+- extendedWaitUntil:
+    visible: "NEVER_ZZZ"
+    timeout: 8000
+    optional: true
+- takeScreenshot: a0_500
+- tapOn:
+    text: "BACK TO EDITOR"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: a0_500_after
+- runFlow: { file: _fault.yaml, env: { FPATH: "/api/ios/publish", FMODE: "429", FTIMES: "1", FCLEAR: "" } }
+- tapOn: "PUBLISH"
+- extendedWaitUntil:
+    visible: "NEVER_ZZZ"
+    timeout: 8000
+    optional: true
+- takeScreenshot: a1_429
+- tapOn:
+    text: "BACK TO EDITOR"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: a1_429_after
+- runFlow: { file: _fault.yaml, env: { FPATH: "/api/ios/publish", FMODE: "malformed", FTIMES: "1", FCLEAR: "" } }
+- tapOn: "PUBLISH"
+- extendedWaitUntil:
+    visible: "NEVER_ZZZ"
+    timeout: 8000
+    optional: true
+- takeScreenshot: a2_malformed
+- tapOn:
+    text: "BACK TO EDITOR"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: a2_malformed_after
+- runFlow: { file: _fault.yaml, env: { FPATH: "/api/ios/publish", FMODE: "lose", FTIMES: "1", FCLEAR: "" } }
+- tapOn: "PUBLISH"
+- extendedWaitUntil:
+    visible: "NEVER_ZZZ"
+    timeout: 8000
+    optional: true
+- takeScreenshot: a3_lose
+- tapOn:
+    text: "BACK TO EDITOR"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: a3_lose_after
+- runFlow: { file: _fault.yaml, env: { FPATH: "/api/ios/publish", FMODE: "hang", FTIMES: "1", FCLEAR: "" } }
+- tapOn: "PUBLISH"
+- extendedWaitUntil:
+    visible: "NEVER_ZZZ"
+    timeout: 12000
+    optional: true
+- takeScreenshot: a4_hang
+- tapOn:
+    text: "BACK TO EDITOR"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: a4_hang_after

@@ -1,0 +1,71 @@
+appId: com.ibrahim1774.aibarber
+---
+- runFlow: _launch.yaml
+- tapOn: "NO, I DON.T HAVE ONE"
+- runFlow: { file: _fault.yaml, env: { FPATH: "/api/find-business", FMODE: "500", FTIMES: "1", FCLEAR: "" } }
+- tapOn: "Your shop name and city"
+- eraseText: 60
+- inputText: "Jack's Barbershop Austin"
+- pressKey: Enter
+- extendedWaitUntil:
+    visible: "NEVER_ZZZ"
+    timeout: 5000
+    optional: true
+- takeScreenshot: d0_find500
+- runFlow: { file: _fault.yaml, env: { FPATH: "/api/find-business", FMODE: "offline", FTIMES: "1", FCLEAR: "" } }
+- tapOn: "Your shop name and city"
+- eraseText: 60
+- inputText: "Jack's Barbershop Austin"
+- pressKey: Enter
+- extendedWaitUntil:
+    visible: "NEVER_ZZZ"
+    timeout: 5000
+    optional: true
+- takeScreenshot: d1_findoffline
+- runFlow: { file: _fault.yaml, env: { FPATH: "/api/find-business", FMODE: "malformed", FTIMES: "1", FCLEAR: "" } }
+- tapOn: "Your shop name and city"
+- eraseText: 60
+- inputText: "Jack's Barbershop Austin"
+- pressKey: Enter
+- extendedWaitUntil:
+    visible: "NEVER_ZZZ"
+    timeout: 5000
+    optional: true
+- takeScreenshot: d2_findmalformed
+- tapOn: "Your shop name and city"
+- eraseText: 60
+- inputText: "Jack's Barbershop Austin"
+- pressKey: Enter
+- extendedWaitUntil:
+    visible: ".*Jackson.*"
+    timeout: 20000
+    optional: true
+- extendedWaitUntil:
+    visible: "NEVER_ZZZ"
+    timeout: 1000
+    optional: true
+- takeScreenshot: d3_find_ok
+- runFlow: { file: _fault.yaml, env: { FPATH: "/api/import-business", FMODE: "500", FTIMES: "1", FCLEAR: "" } }
+- tapOn: ".*123 Main St.*"
+- extendedWaitUntil:
+    visible: "NEVER_ZZZ"
+    timeout: 8000
+    optional: true
+- takeScreenshot: d4_import500
+- runFlow: { file: _fault.yaml, env: { FPATH: "/api/import-business", FMODE: "html500", FTIMES: "1", FCLEAR: "" } }
+- tapOn: ".*123 Main St.*"
+- extendedWaitUntil:
+    visible: "NEVER_ZZZ"
+    timeout: 8000
+    optional: true
+- takeScreenshot: d5_importhtml
+- tapOn: ".*123 Main St.*"
+- extendedWaitUntil:
+    visible: ".*Not my business.*"
+    timeout: 20000
+    optional: true
+- extendedWaitUntil:
+    visible: "NEVER_ZZZ"
+    timeout: 1000
+    optional: true
+- takeScreenshot: d6_import_ok

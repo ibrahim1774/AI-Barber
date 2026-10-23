@@ -12,7 +12,7 @@ const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
 
 let S;
 function reset() {
-  S = { users: [], tables: {}, files: {}, sites: {}, byTx: {}, tier: null, log: [], fails: [], version: 0, kv: {}, sw: { status: 'INACTIVE', ents: [], subs: [], n: 0 }, lapsedDays: null, stripe: { connected: false, chargesEnabled: false, detailsSubmitted: false } };
+  S = { users: [], tables: {}, files: {}, sites: {}, byTx: {}, tier: null, log: [], fails: [], faults: [], version: 0, kv: {}, sw: { status: 'INACTIVE', ents: [], subs: [], n: 0 }, lapsedDays: null, stripe: { connected: false, chargesEnabled: false, detailsSubmitted: false } };
   S.users.push({ id: uuid(), email: 'qa@example.com', password: 'Passw0rd!' });
 }
 reset();
@@ -180,6 +180,27 @@ async function route(req, res, url, body) {
     (S.tables.ab_appointments = S.tables.ab_appointments || []).push(row); return send(res, 200, row);
   }
   if (p === '/__e2e/stripe') { Object.assign(S.stripe, body); return send(res, 200, S.stripe); }
+  // ---- fault injection (edge pass): POST /__e2e/fault {path, mode, times?}  path = prefix match; times omitted = until cleared
+  //   mode: offline (socket destroyed, request never answered) | hang (never answers; the app's own timeout fires) | 500 | 429 | html500 (gateway HTML page)
+  //         | malformed (200 with a body that is not JSON) | lose (request is processed, then the reply is dropped: the 'it worked but the app never heard' case)
+  //   POST /__e2e/faults/clear  removes all.   GET /__e2e/faults lists them.
+  if (p === '/__e2e/fault') { S.faults.push({ path: body.path, mode: body.mode, times: body.times == null ? -1 : body.times }); return send(res, 200, S.faults); }
+  if (p === '/__e2e/faults/clear') { S.faults = []; return send(res, 200, { ok: true }); }
+  if (p === '/__e2e/faults') return send(res, 200, S.faults);
+  const fault = S.faults.find((x) => p.startsWith(x.path) && x.times !== 0);
+  if (fault) {
+    if (fault.times > 0) fault.times--;
+    const note = `FAULT ${fault.mode} on ${req.method} ${p}`; S.log.push(note); console.log(note);
+    switch (fault.mode) {
+      case 'offline': req.socket.destroy(); return;
+      case 'hang': return;   // leave the request open
+      case '500': return send(res, 500, { error: 'e2e-internal' });
+      case '429': return send(res, 429, { error: 'Too many requests, slow down.' }, 'application/json', { 'Retry-After': '30' });
+      case 'html500': return send(res, 502, '<html><body><h1>502 Bad Gateway</h1></body></html>', 'text/html');
+      case 'malformed': return send(res, 200, '{"siteId": "abc", "deployedUr', 'application/json');
+      case 'lose': res.write = () => true; res.end = () => { req.socket.destroy(); }; res.writeHead = () => res; break;   // handler runs, reply never leaves
+    }
+  }
   const f = S.fails.find((x) => x.path === p && x.times > 0);
   if (f) { f.times--; return send(res, f.status, { error: f.error }); }
 

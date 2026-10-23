@@ -1,0 +1,193 @@
+appId: com.ibrahim1774.aibarber
+---
+# (n4) Server down. Set Bookings + Shop up on a Store plan and publish both buttons, then the stub reports the plan
+# lapsed 5 days ago (read-only window), then 45 days ago (window over). Book/Shop buttons should come off, manage-only copy shows.
+- runFlow:
+    file: _signed_in.yaml
+    env: { TIER: store, LAPSE: "" }
+# ---- bookings, quickest path, buttons published ----
+- tapOn:
+    point: "37%,94%"
+- waitForAnimationToEnd
+- tapOn:
+    point: "50%,55%"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element: "Continue"
+- tapOn: "Continue"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element: "Continue"
+- tapOn: "Continue"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element: "Continue"
+- tapOn: "Continue"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element: "Continue"
+- tapOn: "Continue"
+- waitForAnimationToEnd
+- tapOn: "Finish"
+- waitForAnimationToEnd
+- tapOn: "Update my site"
+- extendedWaitUntil:
+    visible: ".*live!.*"
+    timeout: 30000
+- tapOn: "Done"
+- waitForAnimationToEnd
+- tapOn:
+    point: "6%,9%"   # F5: Done returns to the Bookings setup hub; back out to the tabs
+- waitForAnimationToEnd
+# ---- shop, buttons published ----
+- tapOn:
+    point: "62%,94%"
+- waitForAnimationToEnd
+- tapOn:
+    point: "50%,56%"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element: "Open my shop"
+- tapOn: "Open my shop"
+- waitForAnimationToEnd
+- tapOn:
+    point: "6%,9%"   # F4: no prompt while the shop is empty; back to the Store tab and add a product
+- waitForAnimationToEnd
+- tapOn: "Add product"
+- waitForAnimationToEnd
+- tapOn: "e.g. Matte pomade"
+- inputText: "Pomade"
+- tapOn: "Price in dollars"
+- inputText: "10"
+- tapOn: "Done"   # F6: the decimal keypad now has a Done bar
+- tapOn: "Save"
+- waitForAnimationToEnd
+- tapOn: "Update my site"
+- extendedWaitUntil:
+    visible: ".*live!.*"
+    timeout: 30000
+- takeScreenshot: 01_site_live_with_book_and_shop
+- tapOn: "Done"
+- waitForAnimationToEnd
+- tapOn:
+    point: "12%,94%"
+- waitForAnimationToEnd
+- takeScreenshot: 02_edit_before_lapse
+
+- runFlow: { file: _fault.yaml, env: { FPATH: "", FMODE: "", FTIMES: "", FCLEAR: "true" } }
+- runFlow: { file: _fault.yaml, env: { FPATH: "/rest/v1", FMODE: "offline", FTIMES: "", FCLEAR: "" } }
+- runFlow: { file: _fault.yaml, env: { FPATH: "/api/shop", FMODE: "offline", FTIMES: "", FCLEAR: "" } }
+- runFlow:
+    file: _seed.yaml
+    env: { TIER: "", LAPSE: "", STRIPE: "", SIGNIN: "", SIGNOUT: "", EMAIL: "", SITEBASE: "", BOOKING_NAME: "" }
+- waitForAnimationToEnd
+- tapOn:
+    point: "37%,94%"
+- extendedWaitUntil:
+    visible: "NEVER_ZZZ"
+    timeout: 7000
+    optional: true
+- takeScreenshot: e_offline_bookings
+- tapOn:
+    point: "62%,94%"
+- extendedWaitUntil:
+    visible: "NEVER_ZZZ"
+    timeout: 7000
+    optional: true
+- takeScreenshot: e_offline_store
+- tapOn:
+    point: "87%,94%"
+- extendedWaitUntil:
+    visible: "NEVER_ZZZ"
+    timeout: 7000
+    optional: true
+- takeScreenshot: e_offline_settings
+- runFlow: { file: _fault.yaml, env: { FPATH: "", FMODE: "", FTIMES: "", FCLEAR: "true" } }
+- runFlow: { file: _fault.yaml, env: { FPATH: "/rest/v1", FMODE: "500", FTIMES: "", FCLEAR: "" } }
+- runFlow: { file: _fault.yaml, env: { FPATH: "/api/shop", FMODE: "500", FTIMES: "", FCLEAR: "" } }
+- runFlow:
+    file: _seed.yaml
+    env: { TIER: "", LAPSE: "", STRIPE: "", SIGNIN: "", SIGNOUT: "", EMAIL: "", SITEBASE: "", BOOKING_NAME: "" }
+- waitForAnimationToEnd
+- tapOn:
+    point: "37%,94%"
+- extendedWaitUntil:
+    visible: "NEVER_ZZZ"
+    timeout: 7000
+    optional: true
+- takeScreenshot: e_500_bookings
+- tapOn:
+    point: "62%,94%"
+- extendedWaitUntil:
+    visible: "NEVER_ZZZ"
+    timeout: 7000
+    optional: true
+- takeScreenshot: e_500_store
+- tapOn:
+    point: "87%,94%"
+- extendedWaitUntil:
+    visible: "NEVER_ZZZ"
+    timeout: 7000
+    optional: true
+- takeScreenshot: e_500_settings
+- runFlow: { file: _fault.yaml, env: { FPATH: "", FMODE: "", FTIMES: "", FCLEAR: "true" } }
+- runFlow: { file: _fault.yaml, env: { FPATH: "/rest/v1", FMODE: "hang", FTIMES: "", FCLEAR: "" } }
+- runFlow: { file: _fault.yaml, env: { FPATH: "/api/shop", FMODE: "hang", FTIMES: "", FCLEAR: "" } }
+- runFlow:
+    file: _seed.yaml
+    env: { TIER: "", LAPSE: "", STRIPE: "", SIGNIN: "", SIGNOUT: "", EMAIL: "", SITEBASE: "", BOOKING_NAME: "" }
+- waitForAnimationToEnd
+- tapOn:
+    point: "37%,94%"
+- extendedWaitUntil:
+    visible: "NEVER_ZZZ"
+    timeout: 7000
+    optional: true
+- takeScreenshot: e_hang_bookings
+- tapOn:
+    point: "62%,94%"
+- extendedWaitUntil:
+    visible: "NEVER_ZZZ"
+    timeout: 7000
+    optional: true
+- takeScreenshot: e_hang_store
+- tapOn:
+    point: "87%,94%"
+- extendedWaitUntil:
+    visible: "NEVER_ZZZ"
+    timeout: 7000
+    optional: true
+- takeScreenshot: e_hang_settings
+- extendedWaitUntil:
+    visible: "NEVER_ZZZ"
+    timeout: 30000
+    optional: true
+- tapOn:
+    point: "37%,94%"
+- takeScreenshot: e_hang_bookings_30s
+- runFlow: { file: _fault.yaml, env: { FPATH: "", FMODE: "", FTIMES: "", FCLEAR: "true" } }
+- runFlow:
+    file: _seed.yaml
+    env: { TIER: "", LAPSE: "", STRIPE: "", SIGNIN: "", SIGNOUT: "", EMAIL: "", SITEBASE: "", BOOKING_NAME: "" }
+- waitForAnimationToEnd
+- tapOn:
+    point: "37%,94%"
+- extendedWaitUntil:
+    visible: "NEVER_ZZZ"
+    timeout: 7000
+    optional: true
+- takeScreenshot: e_recovered_bookings
+- tapOn:
+    point: "62%,94%"
+- extendedWaitUntil:
+    visible: "NEVER_ZZZ"
+    timeout: 7000
+    optional: true
+- takeScreenshot: e_recovered_store
+- tapOn:
+    point: "87%,94%"
+- extendedWaitUntil:
+    visible: "NEVER_ZZZ"
+    timeout: 7000
+    optional: true
+- takeScreenshot: e_recovered_settings

@@ -1,0 +1,11 @@
+appId: com.ibrahim1774.aibarber
+---
+# (o) Small phone (iPhone SE 3rd gen) + accessibility-XXXL text: start, editor, paywall stand-in, live, Bookings, Store, Settings.
+- runFlow: _launch.yaml
+- takeScreenshot: o1_start
+- tapOn: "Rather type it in yourself.*"
+- takeScreenshot: o2_manual
+- tapOn: "The Gentlemen.*"
+- inputText: "Jack's Barbershop"
+- scroll
+- takeScreenshot: o3_manual_scrolled

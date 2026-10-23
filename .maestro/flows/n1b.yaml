@@ -1,0 +1,6 @@
+appId: com.ibrahim1774.aibarber
+---
+- takeScreenshot: 02_still
+- tapOn: "BACK TO EDITOR"
+- waitForAnimationToEnd
+- takeScreenshot: 03_editor_after

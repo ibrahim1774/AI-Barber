@@ -1,0 +1,75 @@
+appId: com.ibrahim1774.aibarber
+---
+- runFlow: _launch.yaml
+- tapOn: "YES, I HAVE A BOOKING LINK.*"
+- runFlow: { file: _fault.yaml, env: { FPATH: "/api/import-scrape", FMODE: "offline", FTIMES: "1", FCLEAR: "" } }
+- tapOn:
+    point: "50%,54%"
+- eraseText: 100
+- inputText: "booksy.com/en-us/12345_jacks-barbershop_barber-shop_austin"
+- pressKey: Enter
+- extendedWaitUntil:
+    visible: "NEVER_ZZZ"
+    timeout: 6000
+    optional: true
+- takeScreenshot: c0_offline
+- runFlow: { file: _fault.yaml, env: { FPATH: "/api/import-scrape", FMODE: "500", FTIMES: "1", FCLEAR: "" } }
+- tapOn:
+    point: "50%,54%"
+- eraseText: 100
+- inputText: "booksy.com/en-us/12345_jacks-barbershop_barber-shop_austin"
+- pressKey: Enter
+- extendedWaitUntil:
+    visible: "NEVER_ZZZ"
+    timeout: 6000
+    optional: true
+- takeScreenshot: c1_500
+- runFlow: { file: _fault.yaml, env: { FPATH: "/api/import-scrape", FMODE: "429", FTIMES: "1", FCLEAR: "" } }
+- tapOn:
+    point: "50%,54%"
+- eraseText: 100
+- inputText: "booksy.com/en-us/12345_jacks-barbershop_barber-shop_austin"
+- pressKey: Enter
+- extendedWaitUntil:
+    visible: "NEVER_ZZZ"
+    timeout: 6000
+    optional: true
+- takeScreenshot: c2_429
+- runFlow: { file: _fault.yaml, env: { FPATH: "/api/import-scrape", FMODE: "html500", FTIMES: "1", FCLEAR: "" } }
+- tapOn:
+    point: "50%,54%"
+- eraseText: 100
+- inputText: "booksy.com/en-us/12345_jacks-barbershop_barber-shop_austin"
+- pressKey: Enter
+- extendedWaitUntil:
+    visible: "NEVER_ZZZ"
+    timeout: 6000
+    optional: true
+- takeScreenshot: c3_html500
+- runFlow: { file: _fault.yaml, env: { FPATH: "/api/import-scrape", FMODE: "malformed", FTIMES: "1", FCLEAR: "" } }
+- tapOn:
+    point: "50%,54%"
+- eraseText: 100
+- inputText: "booksy.com/en-us/12345_jacks-barbershop_barber-shop_austin"
+- pressKey: Enter
+- extendedWaitUntil:
+    visible: "NEVER_ZZZ"
+    timeout: 6000
+    optional: true
+- takeScreenshot: c4_malformed
+- runFlow: { file: _fault.yaml, env: { FPATH: "", FMODE: "", FTIMES: "", FCLEAR: "true" } }
+- tapOn:
+    point: "50%,54%"
+- eraseText: 100
+- inputText: "booksy.com/en-us/12345_jacks-barbershop_barber-shop_austin"
+- pressKey: Enter
+- extendedWaitUntil:
+    visible: "NEVER_ZZZ"
+    timeout: 6000
+    optional: true
+- takeScreenshot: c9_retry
+- extendedWaitUntil:
+    visible: ".*Got it.*"
+    timeout: 30000
+    optional: true
+- takeScreenshot: c9b_after

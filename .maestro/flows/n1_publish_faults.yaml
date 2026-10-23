@@ -1,0 +1,17 @@
+appId: com.ibrahim1774.aibarber
+---
+# (n1) Publish failure paths: offline, 500, 429, malformed body, "published but reply lost", then a clean retry.
+- runFlow: _launch.yaml
+- runFlow: _manual_site.yaml
+- takeScreenshot: 00_editor
+- runFlow: { file: _fault.yaml, env: { FPATH: "/api/ios/publish", FMODE: "offline", FTIMES: "1", FCLEAR: "" } }
+- tapOn: "PUBLISH"
+- extendedWaitUntil:
+    visible: ".*E2E MOCK PAYWALL.*"
+    timeout: 15000
+- tapOn: "E2E: buy publish"
+- extendedWaitUntil:
+    visible: ".*"
+    timeout: 6000
+- waitForAnimationToEnd
+- takeScreenshot: 01_after_offline

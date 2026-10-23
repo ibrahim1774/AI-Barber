@@ -1,0 +1,18 @@
+appId: com.ibrahim1774.aibarber
+---
+- takeScreenshot: b0_hang_state
+- extendedWaitUntil:
+    visible: "BACK TO EDITOR"
+    timeout: 120000
+    optional: true
+- takeScreenshot: b1_hang_timeout
+- tapOn:
+    text: "BACK TO EDITOR"
+    optional: true
+- runFlow: { file: _fault.yaml, env: { FPATH: "", FMODE: "", FTIMES: "", FCLEAR: "true" } }
+- tapOn: "PUBLISH"
+- extendedWaitUntil:
+    visible: ".*live!.*"
+    timeout: 30000
+    optional: true
+- takeScreenshot: b2_retry_ok
