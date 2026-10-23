@@ -1,13 +1,12 @@
-import { forwardRef, useRef, type ReactNode } from 'react';
+import { forwardRef, useId, useRef, type ReactNode } from 'react';
 import { InputAccessoryView, Keyboard, Platform, Pressable, StyleSheet, Switch, Text, TextInput, View, type TextInputProps } from 'react-native';
 import { colors, fonts } from '@/constants/theme';
 
-/** The decimal and number keypads have no Return key; this bar above them gives them a Done (mounted once, in the root layout). */
-export const NUMERIC_DONE_ID = 'numeric-done';
-export function NumericDoneBar() {
+/** The decimal and number keypads have no Return key; this bar above them gives them a Done. Rendered next to its input (a Modal is its own window). */
+function NumericDoneBar({ id }: { id: string }) {
   if (Platform.OS !== 'ios') return null;
   return (
-    <InputAccessoryView nativeID={NUMERIC_DONE_ID}>
+    <InputAccessoryView nativeID={id}>
       <View style={s.doneBar}>
         <Pressable onPress={() => Keyboard.dismiss()} hitSlop={8} accessibilityRole="button" accessibilityLabel="Done">
           <Text style={s.doneText}>Done</Text>
@@ -48,21 +47,26 @@ export function Note({ children, tone }: { children: ReactNode; tone?: 'warn' | 
 export const Input = forwardRef<TextInput, TextInputProps & { label: string; title?: string }>(function Input(props, ref) {
   const { label, title, ...rest } = props;
   const inner = useRef<TextInput | null>(null);
+  const accessoryId = useId();
+  const numeric = rest.keyboardType === 'decimal-pad' || rest.keyboardType === 'number-pad';
   const setRef = (node: TextInput | null) => {
     inner.current = node;
     if (typeof ref === 'function') ref(node);
     else if (ref) ref.current = node;
   };
   const input = (
+    <>
     <TextInput
       ref={setRef}
       accessibilityLabel={label}
       placeholderTextColor="rgba(255,255,255,0.3)"
       selectionColor={colors.accent}
-      inputAccessoryViewID={rest.keyboardType === 'decimal-pad' || rest.keyboardType === 'number-pad' ? NUMERIC_DONE_ID : undefined}
+      inputAccessoryViewID={numeric ? accessoryId : undefined}
       {...rest}
       style={[s.input, rest.multiline && { minHeight: 64, textAlignVertical: 'top' }, rest.style]}
     />
+    {numeric && <NumericDoneBar id={accessoryId} />}
+    </>
   );
   if (!title) return input;
   return (

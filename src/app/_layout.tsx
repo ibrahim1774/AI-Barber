@@ -5,7 +5,6 @@ import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
 import { SuperwallProvider } from 'expo-superwall';
 import { PostHogProvider } from 'posthog-react-native';
-import { NumericDoneBar } from '@/components/setup/ui';
 import { fontAssets } from '@/constants/theme';
 import { onSiteAdopted, pullSiteOnLaunch } from '@/lib/account';
 import { syncQuietly } from '@/lib/adminSync';
@@ -142,7 +141,6 @@ export default function RootLayout() {
         <Stack.Screen name="sign-in" />
         <Stack.Screen name="sign-up" />
       </Stack>
-      <NumericDoneBar />
     </>
   );
   // Touches as in Crew Lens, but never on-screen text (see POSTHOG_AUTOCAPTURE).

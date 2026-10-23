@@ -35,6 +35,10 @@ appId: com.ibrahim1774.aibarber
     visible: ".*live!.*"
     timeout: 30000
 - tapOn: "Done"
+- waitForAnimationToEnd
+- tapOn:
+    point: "6%,9%"   # F5: Done returns to the Bookings setup hub; back out to the tabs
+- waitForAnimationToEnd
 # ---- shop, buttons published ----
 - tapOn:
     point: "62%,94%"
@@ -45,6 +49,18 @@ appId: com.ibrahim1774.aibarber
 - scrollUntilVisible:
     element: "Open my shop"
 - tapOn: "Open my shop"
+- waitForAnimationToEnd
+- tapOn:
+    point: "6%,9%"   # F4: no prompt while the shop is empty; back to the Store tab and add a product
+- waitForAnimationToEnd
+- tapOn: "Add product"
+- waitForAnimationToEnd
+- tapOn: "e.g. Matte pomade"
+- inputText: "Pomade"
+- tapOn: "Price in dollars"
+- inputText: "10"
+- tapOn: "Done"   # F6: the decimal keypad now has a Done bar
+- tapOn: "Save"
 - waitForAnimationToEnd
 - tapOn: "Update my site"
 - extendedWaitUntil:

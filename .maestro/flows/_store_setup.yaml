@@ -9,29 +9,16 @@ appId: com.ibrahim1774.aibarber
     point: "50%,56%"   # SET UP YOUR SHOP (text match hits the heading)
 - waitForAnimationToEnd
 - takeScreenshot: ${PREFIX}02_store_setup
-- tapOn: "Shipping"
+- tapOn: "Offer shipping"   # F6: the label flips the switch on ...
 - waitForAnimationToEnd
 - scroll
 - takeScreenshot: ${PREFIX}03_store_setup_scrolled
+- tapOn: "Offer shipping"   # ... and off again (an empty rate would block opening)
 - scrollUntilVisible:
     element: "Open my shop"
 - tapOn: "Open my shop"
 - waitForAnimationToEnd
-- takeScreenshot: ${PREFIX}04_shop_button_prompt
-- tapOn: "${PROMPT_TAP}"
-- waitForAnimationToEnd
-- takeScreenshot: ${PREFIX}05_after_prompt
-- extendedWaitUntil:
-    visible: ".*live!.*"
-    timeout: 20000
-    optional: true
-- runFlow:
-    when:
-      visible: ".*live!.*"
-    commands:
-      - takeScreenshot: ${PREFIX}05b_republished_live
-      - tapOn: "Done"
-- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}04_shop_open_no_prompt   # F4: opening the empty shop asks nothing
 - takeScreenshot: ${PREFIX}06_store_setup_open
 - runFlow:
     when:
@@ -41,7 +28,7 @@ appId: com.ibrahim1774.aibarber
           point: "6%,9%"   # back out of Store setup
 - waitForAnimationToEnd
 - tapOn:
-    point: "62%,94%"   # Store tab (after "Update my site" the app lands on Settings)
+    point: "62%,94%"   # Store tab
 - waitForAnimationToEnd
 - takeScreenshot: ${PREFIX}07_store_empty
 # ---- product 1: price edge cases, then a photo ----
@@ -51,28 +38,29 @@ appId: com.ibrahim1774.aibarber
 - inputText: "Matte pomade"
 - tapOn: "Price in dollars"
 - inputText: "0"
-- tapOn: "NAME"
+- takeScreenshot: ${PREFIX}08a_decimal_keypad_done_bar
+- tapOn: "Done"   # F6: the decimal keypad now has a Done bar
 - tapOn: "Save"
 - waitForAnimationToEnd
 - takeScreenshot: ${PREFIX}08_price_zero_error
 - tapOn: "Price in dollars"
 - eraseText: 20
 - inputText: "99999999"
-- tapOn: "NAME"
+- tapOn: "Done"   # F6: the decimal keypad now has a Done bar
 - tapOn: "Save"
 - waitForAnimationToEnd
 - takeScreenshot: ${PREFIX}09_price_huge_error
 - tapOn: "Price in dollars"
 - eraseText: 20
 - inputText: "12.345"
-- tapOn: "NAME"
+- tapOn: "Done"   # F6: the decimal keypad now has a Done bar
 - tapOn: "Save"
 - waitForAnimationToEnd
 - takeScreenshot: ${PREFIX}10_price_three_decimals_error
 - tapOn: "Price in dollars"
 - eraseText: 20
 - inputText: "12.50"
-- tapOn: "NAME"
+- tapOn: "Done"   # F6: the decimal keypad now has a Done bar
 - tapOn: "Add photo"
 - waitForAnimationToEnd
 - tapOn: "Library"
@@ -88,7 +76,21 @@ appId: com.ibrahim1774.aibarber
 - takeScreenshot: ${PREFIX}12_form_with_photo
 - tapOn: "Save"
 - waitForAnimationToEnd
-- takeScreenshot: ${PREFIX}13_product_with_photo_listed
+- takeScreenshot: ${PREFIX}12b_shop_button_prompt   # F4: offered with the first product
+- tapOn: "${PROMPT_TAP}"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: ".*live!.*"
+    timeout: 20000
+    optional: true
+- runFlow:
+    when:
+      visible: ".*live!.*"
+    commands:
+      - takeScreenshot: ${PREFIX}12c_republished_live
+      - tapOn: "Done"
+- waitForAnimationToEnd
+- takeScreenshot: ${PREFIX}13_product_with_photo_listed   # F5: Done lands back on the Store tab
 # ---- product 2: no photo, decimals, sold out ----
 - tapOn: "Add product"
 - waitForAnimationToEnd
@@ -96,9 +98,8 @@ appId: com.ibrahim1774.aibarber
 - inputText: "Beard oil"
 - tapOn: "Price in dollars"
 - inputText: "7.5"
-- tapOn: "NAME"
-- tapOn:
-    point: "87%,83%"   # the Sold out switch (tapping its label does not toggle it)
+- tapOn: "Done"   # F6: the decimal keypad now has a Done bar
+- tapOn: "Sold out"   # F6: the label flips the switch
 - takeScreenshot: ${PREFIX}14_form_no_photo_sold_out
 - tapOn: "Save"
 - waitForAnimationToEnd
@@ -110,7 +111,7 @@ appId: com.ibrahim1774.aibarber
 - inputText: "Gift card"
 - tapOn: "Price in dollars"
 - inputText: "10000"
-- tapOn: "NAME"
+- tapOn: "Done"   # F6: the decimal keypad now has a Done bar
 - tapOn: "Save"
 - waitForAnimationToEnd
 - takeScreenshot: ${PREFIX}16_max_price_listed
