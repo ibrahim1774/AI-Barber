@@ -102,12 +102,21 @@ const REVALIDATE = [{ key: 'Cache-Control', value: 'public, max-age=0, must-reva
 // and the APIs are personal and live. Hashed /_ab/assets/* may be cached.
 const NO_REWRITE_CACHE = [{ key: 'x-vercel-enable-rewrite-caching', value: '0' }];
 
-/** The vercel.json every site deploy ships. Without subpages: exactly the config sites always had. */
-export function siteVercelConfig(sp: SiteSubpages | null): SiteVercelConfig {
+/**
+ * The vercel.json every site deploy ships. Without subpages and nested pages: exactly the config sites
+ * always had. A multi-page deploy (`nestedPages`) adds the same revalidate header for `/<page>/` and
+ * `/<page>/index.html` (any depth), so a republish shows at once on every page; nothing else changes
+ * (no cleanUrls, no trailingSlash, no rewrite for the pages: Vercel serves `/about` and `/about/` from
+ * `about/index.html`).
+ */
+export function siteVercelConfig(sp: SiteSubpages | null, opts: { nestedPages?: boolean } = {}): SiteVercelConfig {
   const headers: Header[] = [
     { source: '/index.html', headers: REVALIDATE },
     { source: '/', headers: REVALIDATE },
   ];
+  if (opts.nestedPages) {
+    headers.push({ source: '/(.*)/', headers: REVALIDATE }, { source: '/(.*)/index.html', headers: REVALIDATE });
+  }
   if (!sp) return { headers };
   const rewrites = subpageRewrites(sp);
   for (const r of rewrites) if (r.source !== ASSETS) headers.push({ source: r.source, headers: NO_REWRITE_CACHE });
