@@ -68,4 +68,13 @@ describe('multi-page labels', () => {
     expect(plainLabel({ pgAboutTitle: '⁣ab⁣Our story⁣/⁣' }, 'pgAboutTitle')).toBe('Our story');
     expect(plainLabel({}, 'pgAboutTitle')).toBe('About us');
   });
+  it('the Reviews page title and menu label cannot carry a typed rating or count (P3b review S1)', () => {
+    const typed = site({ labels: { pgReviewsTitle: '5.0 stars from 999 reviews', pgNavReviews: '999 reviews' } });
+    expect(t(typed.labels, 'pgReviewsTitle', nicheByKey('barber'), typed)).toBe('What clients say');
+    expect(t(typed.labels, 'pgNavReviews', nicheByKey('barber'), typed)).toBe('Reviews');
+    expect(plainLabel(typed.labels, 'pgReviewsTitle', nicheByKey('barber'), typed)).toBe('What clients say');
+    const words = site({ labels: { pgReviewsTitle: 'Kind words', pgNavReviews: 'Praise' } });
+    expect(t(words.labels, 'pgReviewsTitle', nicheByKey('barber'), words)).toBe('Kind words');
+    expect(t(words.labels, 'pgNavReviews', nicheByKey('barber'), words)).toBe('Praise');
+  });
 });
