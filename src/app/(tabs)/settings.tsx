@@ -47,7 +47,7 @@ type Busy = 'delete' | 'signout' | null;
 export default function Settings() {
   const navigation = useNavigation();
   const { session, ready } = useSession();
-  const { restore, busy: restoring } = useRestoreFlow();
+  const { restore, busy: restoring } = useRestoreFlow({ stay: true });
   const [busy, setBusy] = useState<Busy>(null);
   // undefined while loading; fresh on every visit (the editor and a publish change it).
   const [site, setSite] = useState<SiteRecord | null | undefined>(undefined);

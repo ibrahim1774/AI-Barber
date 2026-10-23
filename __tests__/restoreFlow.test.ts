@@ -55,7 +55,7 @@ jest.mock('@/lib/setup/relink', () => ({ relinkShopPurchase: (o: unknown) => moc
 const mockRefresh = jest.fn(async (_id?: unknown) => {});
 jest.mock('@/lib/plan', () => ({ refreshPlanQuietly: (id: unknown) => mockRefresh(id) }));
 
-async function runRestoreFlow() {
+async function runRestoreFlow(opts?: { stay?: boolean }) {
   const React = require('react');
   const { act, create } = require('react-test-renderer');
   const { useRestoreFlow } = require('@/lib/restoreFlow');
@@ -63,7 +63,7 @@ async function runRestoreFlow() {
   jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   let flow: { restore: () => Promise<void> } | null = null;
   function Probe() {
-    flow = useRestoreFlow();
+    flow = useRestoreFlow(opts);
     return null;
   }
   await act(async () => {
@@ -79,6 +79,15 @@ test('restore success routes to the Edit tab', async () => {
   mockRestore.mockResolvedValueOnce({ site, active: true });
   await runRestoreFlow();
   expect(mockResetTo).toHaveBeenCalledWith('/edit');
+});
+
+test('restore from Settings stays on Settings and still says it was restored', async () => {
+  mockResetTo.mockClear();
+  mockRestore.mockResolvedValueOnce({ site, active: true });
+  await runRestoreFlow({ stay: true });
+  expect(mockResetTo).not.toHaveBeenCalled();
+  const { Alert } = require('react-native');
+  expect(Alert.alert).toHaveBeenCalledWith('Restore purchases', 'Your subscription and your website have been restored.');
 });
 
 test('a restore that finds nothing stays put', async () => {

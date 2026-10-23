@@ -58,10 +58,10 @@ export function restoreMessage(
 
 /**
  * Restore purchases as Settings, /start and the lapsed Edit tab run it:
- * restore, push the site to a signed-in account, go to the Edit tab, re-check
+ * restore, push the site to a signed-in account, go to the Edit tab (unless `stay`), re-check
  * the subscription, then say what happened.
  */
-export function useRestoreFlow(): { restore: () => Promise<void>; busy: boolean } {
+export function useRestoreFlow(opts: { stay?: boolean } = {}): { restore: () => Promise<void>; busy: boolean } {
   const restorePurchases = useRestorePurchases();
   const latestTransactionId = useLatestTransactionId();
   const latestDomainTransactionId = useLatestDomainTransactionId();
@@ -81,7 +81,8 @@ export function useRestoreFlow(): { restore: () => Promise<void>; busy: boolean 
           void relinkShopPurchase({ latestTransactionId, transactionId: res.site.transactionId });
           void refreshPlanQuietly(res.site.transactionId);
         }
-        resetTo('/edit');
+        // Settings passes stay: the alert says it was restored and the user is not moved away.
+        if (!opts.stay) resetTo('/edit');
       }
       outcome = res;
     } catch (e) {
@@ -95,7 +96,7 @@ export function useRestoreFlow(): { restore: () => Promise<void>; busy: boolean 
     const domainFound = outcome == null && !hasEntitlement() ? (await latestDomainTransactionId().catch(() => null)) != null : false;
     const msg = restoreMessage(outcome, hasEntitlement(), domainFound);
     if (msg) Alert.alert(msg.title, msg.message);
-  }, [restorePurchases, latestTransactionId, latestDomainTransactionId]);
+  }, [restorePurchases, latestTransactionId, latestDomainTransactionId, opts.stay]);
 
   return { restore, busy };
 }
