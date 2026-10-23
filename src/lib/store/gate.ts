@@ -10,6 +10,8 @@ export type StoreAccess = {
   status: 'active' | 'inactive' | 'loading' | 'error';
   /** Hosting lapsed over 30 days ago: only the upgrade card shows. */
   expired: boolean;
+  /** Hosting is on (so a missing store entitlement is a plan choice, not a lapse). */
+  hosting: boolean;
   retry(): void;
 };
 
@@ -19,7 +21,7 @@ function statusOf(t: TierAccess): StoreAccess['status'] {
 
 export function useStoreAccess(): StoreAccess {
   const t = useTierAccess('store');
-  return { status: statusOf(t), expired: t.expired, retry: t.retry };
+  return { status: statusOf(t), expired: t.expired, hosting: t.hosting, retry: t.retry };
 }
 
 /** Presents the `store_upgrade` paywall. */

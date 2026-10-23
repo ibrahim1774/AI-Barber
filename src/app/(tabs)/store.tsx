@@ -149,8 +149,9 @@ export default function Store() {
     );
   }
 
-  // No Store plan and no orders to keep serving.
-  if (noPlan && !anyOrders) {
+  // No Store plan and no orders to keep serving. Inside the 30-day window after a lapse the shop stays readable
+  // (like Bookings); after it, only the upgrade card.
+  if (noPlan && !anyOrders && (access.hosting || access.expired)) {
     return (
       <View style={[...shell, styles.center]}>
         <UpgradeCard kind="store" onUpgrade={upgrade.open} busy={upgrade.busy} />
@@ -163,7 +164,7 @@ export default function Store() {
       {lapsed && (
         <Text style={styles.locked}>Your subscription has ended. Your store is read-only until you resubscribe.</Text>
       )}
-      {noPlan && !lapsed && <PausedBanner kind="store" onUpgrade={upgrade.open} action="See plans" />}
+      {noPlan && (!lapsed || !access.hosting) && <PausedBanner kind="store" onUpgrade={upgrade.open} action="See plans" />}
       {!storeOpen && (
         <Text style={styles.locked}>Your shop is closed to customers. Open it in Store setup.</Text>
       )}

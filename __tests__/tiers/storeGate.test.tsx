@@ -75,6 +75,28 @@ describe('Store tab gating', () => {
     expect(hasButton(tree, 'Mark ready')).toBe(true);
   });
 
+  const lapsedPlan = (daysAgo: number) => ({
+    linked: true, tier: 'store' as const, entitlements: { hosting: false, bookings: false, store: false }, active: false,
+    expiresAt: new Date(Date.now() - daysAgo * 86400000).toISOString(), takenDownAt: null, revoked: false,
+  });
+
+  it('lapsed 5 days, no orders: products stay visible read-only with the upgrade banner on top (like Bookings)', async () => {
+    ents();
+    setSharedPlan(lapsedPlan(5));
+    const tree = await render(<Store />);
+    expect(hasText(tree, /^products-locked$/)).toBe(true);
+    expect(hasText(tree, /Your shop page is offline/)).toBe(true);
+    expect(hasText(tree, /Sell from your website/)).toBe(false);
+  });
+
+  it('lapsed 45 days, no orders: only the upgrade card', async () => {
+    ents();
+    setSharedPlan(lapsedPlan(45));
+    const tree = await render(<Store />);
+    expect(hasText(tree, /Sell from your website/)).toBe(true);
+    expect(hasText(tree, /^products-locked$/)).toBe(false);
+  });
+
   it('Store plan: normal', async () => {
     ents('hosting', 'bookings', 'store');
     const tree = await render(<Store />);
