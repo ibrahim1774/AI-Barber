@@ -12,7 +12,7 @@ import { safeHref } from './safeHref.js';
 import { bookStripHtml, isSiteBookLink, shopPreviewHtml, type SectionSkin } from './subpages.js';
 import {
   aggregateToShow, copyrightYear, displayPrice, footerLine, hasServices, photoAlt, reviewStars,
-  displayPhone, nicheOf, reviewsSourceLabel, serviceMeta, siteDescription, siteTitle, visibleReviews, withoutLegacyCopy,
+  displayPhone, firstName, nicheOf, reviewsSourceLabel, serviceMeta, siteDescription, siteTitle, teamBookLink, teamOf, visibleReviews, withoutLegacyCopy,
 } from './honest.js';
 import { ratingLineCustom, t, type LabelKey } from './labels.js';
 
@@ -202,25 +202,34 @@ export function generateHTMLWithPlaceholders(input: WebsiteData): string {
   </section>`
     : '';
 
-  // ── Meet the Team section — staff cards with photo + name + role.
-  //    Skipped when no staff array.
-  const teamSection = siteData.staff && siteData.staff.length > 0
-    ? `<section class="py-16 md:py-28 bg-[#0a0a0a] px-6 border-y border-white/5">
+  // ── Meet the Team section — cards: photo, name, role, 1-line bio, up to 3 service chips and a
+  //    "Book with <first name>" button (honest.ts teamOf: at most 5 entries with a memberId, older
+  //    entries stay uncapped as before; the stored staff[] is never cut; teamBookLink holds the button rules). Skipped when there is no team.
+  const team = teamOf(siteData, { legacyUncapped: true });
+  const bookingLive = isSiteBookLink(siteData.bookingUrl);
+  const teamSection = team.length > 0
+    ? `<section id="team" class="py-16 md:py-28 bg-[#0a0a0a] px-6 border-y border-white/5">
     <div class="container mx-auto max-w-6xl">
       <div class="text-center mb-10 md:mb-16">
         <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">${lbl('teamEyebrow')}</h3>
         <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">${lbl('teamHeading')}</h2>
       </div>
-      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
-        ${siteData.staff.map((s, i) => `
-          <div class="flex flex-col items-center text-center group">
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 md:gap-6">
+        ${team.map((s) => {
+          const link = teamBookLink(siteData, s, bookingLive);
+          return `
+          <div class="flex flex-col items-center text-center group" id="team-${esc(s.slug)}">
             <div class="relative w-full aspect-square mb-3 overflow-hidden bg-[#1a1a1a] border border-white/5">
-              ${s.photo ? `<img src="{{staff${i}}}" alt="${esc(s.name || 'Staff')}" class="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-700">` : `<div class="w-full h-full flex items-center justify-center text-[#f4a100]/30"><svg class="w-12 h-12" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 22v-2c0-3.31 3.58-6 8-6s8 2.69 8 6v2H4z"/></svg></div>`}
+              ${s.photo ? `<img src="{{staff${s.index}}}" alt="${esc(s.name)}" class="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-700">` : `<div class="w-full h-full flex items-center justify-center text-[#f4a100]/30"><svg class="w-12 h-12" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 22v-2c0-3.31 3.58-6 8-6s8 2.69 8 6v2H4z"/></svg></div>`}
             </div>
             <h4 class="font-montserrat font-black text-white text-sm md:text-base tracking-[1px] uppercase">${esc(s.name)}</h4>
             ${s.role ? `<p class="text-[#f4a100] text-[10px] md:text-[11px] font-bold tracking-[2px] uppercase mt-1">${esc(s.role)}</p>` : ''}
+            ${s.bio ? `<p class="text-white/70 text-xs md:text-sm mt-2" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${esc(s.bio)}</p>` : ''}
+            ${s.serviceNames ? `<div class="flex flex-wrap justify-center gap-1.5 mt-2">${s.serviceNames.map((n) => `<span class="text-[9px] tracking-[1px] uppercase border border-white/15 text-white/60 px-2 py-0.5">${esc(n)}</span>`).join('')}</div>` : ''}
+            ${link ? `<a href="${esc(link.href)}"${link.newTab ? ' target="_blank" rel="noopener noreferrer"' : ''} class="mt-3 inline-flex items-center border border-[#f4a100] text-[#f4a100] px-4 py-2 font-montserrat font-black tracking-[2px] uppercase hover:bg-[#f4a100] hover:text-[#1a1a1a] transition-all duration-300 text-[10px]">${link.kind === 'member' ? `${lbl('teamBookWith')} ${esc(firstName(s.name))}` : lbl('bookButton')}</a>` : ''}
           </div>
-        `).join('')}
+        `;
+        }).join('')}
       </div>
     </div>
   </section>`

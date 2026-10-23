@@ -8,9 +8,10 @@
 // wording true of any barbershop.
 //
 // Pure functions, no DOM. Imports only other vendored modules.
-import type { WebsiteData } from '../../types';
+import type { TeamMember, WebsiteData } from '../../types';
 import { nicheByKey, type BooksyNiche } from '../booksyNiche.js';
 import { isStockImage } from '../stockImages.js';
+import { safeHref } from './safeHref.js';
 
 // Trailing "City, State" only, so a pasted street address never lands in
 // a footer or meta line.
@@ -470,4 +471,95 @@ export function withoutLegacyCopy<T extends WebsiteData>(site: T): T {
     });
   }
   return out;
+}
+
+
+// ── Team (spec 2026-10-23, P2) ────────────────────────────────────────────
+/** Renders show at most this many team cards. The stored staff[] is never cut. */
+export const TEAM_DISPLAY_CAP = 5;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const cleanStr = (v: unknown, max: number): string | undefined => {
+  if (typeof v !== 'string') return undefined;
+  const t = v.replace(/[\u0000-\u001F\u007F-\u009F]+/g, ' ').trim();
+  return t ? Array.from(t).slice(0, max).join('') : undefined;
+};
+
+/** A team member as the renderers see it: cleaned, plus `index` = its position in the stored staff[] (the `staff<i>` image key). */
+export interface TeamCard extends TeamMember {
+  index: number;
+  /** URL-safe id for the card anchor (#team-<slug>), unique within the team. */
+  slug: string;
+}
+
+const slugOf = (name: string): string =>
+  name.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'member';
+
+/**
+ * The ONLY reader of `staff` for the renderers. Entries without a name are skipped, text fields are
+ * cleaned and capped, `memberId` survives only as a UUID and `bookingUrl` only as an absolute http(s)
+ * link. At most TEAM_DISPLAY_CAP cards come back (with legacyUncapped, only entries that have a
+ * memberId are capped; older entries without one all stay); the stored array is not changed.
+ */
+export function teamOf(site: Pick<WebsiteData, 'staff'>, opts: { legacyUncapped?: boolean } = {}): TeamCard[] {
+  const staff = Array.isArray(site.staff) ? site.staff : [];
+  const out: TeamCard[] = [];
+  const used = new Set<string>();
+  for (let index = 0; index < staff.length; index++) {
+    const s = staff[index] as Partial<TeamMember> | null;
+    if (!s || typeof s !== 'object') continue;
+    const name = cleanStr(s.name, 80);
+    if (!name) continue;
+    const hasId = typeof s.memberId === 'string' && UUID.test(s.memberId);
+    // legacyUncapped (luxe, which always showed every staff entry): the cap counts only entries with a
+    // memberId. Otherwise (prime, euphoria: a new section) every entry counts toward the cap.
+    if (opts.legacyUncapped) {
+      if (hasId && out.filter((c) => c.memberId).length >= TEAM_DISPLAY_CAP) continue;
+    } else if (out.length >= TEAM_DISPLAY_CAP) break;
+    let slug = slugOf(name);
+    for (let n = 2; used.has(slug); n++) slug = `${slugOf(name)}-${n}`;
+    used.add(slug);
+    const url = typeof s.bookingUrl === 'string' && /^https?:\/\//i.test(s.bookingUrl.trim()) ? safeHref(s.bookingUrl) : null;
+    const names = Array.isArray(s.serviceNames)
+      ? s.serviceNames.map((n) => cleanStr(n, 40)).filter((n): n is string => !!n).slice(0, 3)
+      : [];
+    out.push({
+      index, slug, name,
+      role: cleanStr(s.role, 80),
+      photo: typeof s.photo === 'string' && s.photo ? s.photo : undefined,
+      bio: cleanStr(s.bio, 600),
+      bookingUrl: url ?? undefined,
+      serviceNames: names.length ? names : undefined,
+      memberId: typeof s.memberId === 'string' && UUID.test(s.memberId) ? s.memberId : undefined,
+    });
+  }
+  return out;
+}
+
+/** "Sam Fade" -> "Sam". */
+export const firstName = (name: string): string => name.trim().split(/\s+/)[0] || name;
+
+/**
+ * Where a team card's Book button goes, or null for no button:
+ *  1. the site's own booking page is live (`bookingLive`, i.e. bookingUrl is /book) and the member
+ *     is a booking member (UUID memberId): /book?barber=<id>, same tab;
+ *  2. else the member's own booking link, new tab;
+ *  3. else the shop's booking link (the site's /book same tab, another site new tab);
+ *  4. else none.
+ * `kind` is 'member' when the link goes to this member (1, 2) and 'shop' otherwise (3): only 'member'
+ * may say "Book with <name>". The caller escapes `href` for the attribute.
+ */
+export function teamBookLink(
+  site: Pick<WebsiteData, 'bookingUrl'>,
+  member: Pick<TeamCard, 'memberId' | 'bookingUrl'>,
+  bookingLive: boolean,
+): { href: string; newTab: boolean; kind: 'member' | 'shop' } | null {
+  if (bookingLive && member.memberId && UUID.test(member.memberId)) {
+    return { href: `/book?barber=${encodeURIComponent(member.memberId)}`, newTab: false, kind: 'member' };
+  }
+  if (member.bookingUrl) {
+    const own = safeHref(member.bookingUrl);
+    if (own && /^https?:\/\//i.test(own)) return { href: own, newTab: true, kind: 'member' };
+  }
+  const shop = safeHref(site.bookingUrl);
+  return shop ? { href: shop, newTab: !shop.startsWith('/'), kind: 'shop' } : null;
 }

@@ -39,7 +39,7 @@ const full = (extra: Partial<WebsiteData> = {}): WebsiteData => ({
     { author: 'Bo', comment: 'Fine work', rating: 4 },
   ],
   hours: [{ day: 'Mon', open: '09:00', close: '17:00' }, { day: 'Sun', open: '', close: '', closed: true }],
-  staff: [{ name: 'Sam', role: 'Barber', photo: 'p' }],
+  staff: [{ name: 'Sam', role: 'Barber', photo: 'p', bookingUrl: 'https://cal.example.com/sam' }],
   bookingUrl: 'https://booksy.com/x',
   shopUrl: 'https://www.aibarber.org/shop/x',
   policy: { title: 'Note', body: 'Be on time' },

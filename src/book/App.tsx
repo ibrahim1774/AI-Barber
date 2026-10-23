@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ApiError, type Api } from './api';
 import { DayPicker, TimePicker } from './pickers';
 import {
-  bookingErrorMessage, buildIcs, NO_WAY_TO_PAY, directionsUrl, rescheduleErrorMessage, sentErrorMessage, eligibleMembers, formatMoney, formatWhen, manualAmountCents, manualLink, manualMethods,
+  bookingErrorMessage, buildIcs, NO_WAY_TO_PAY, directionsUrl, rescheduleErrorMessage, sentErrorMessage, eligibleMembers, barberFromSearch, preferredFor, formatMoney, formatWhen, manualAmountCents, manualLink, manualMethods,
   METHOD_LABEL, nextStep, parseRoute, payOptions, prevStep, progress, serviceLabel, telUrl,
   tokenFromManageUrl, type Step, formatDay, parseCheckout, shouldKeepPolling, resolveIds, CHECKOUT_POLL_MS, type CheckoutReturn,
 } from './logic';
@@ -15,7 +15,7 @@ export function App({ api, pathname, search = '', loadSlug = () => loadSiteSlug(
   loadSlug?: () => Promise<string | null>;
 }) {
   const route = useMemo(() => parseRoute(pathname), [pathname]);
-  if (route.kind === 'book') return <BookPage api={api} slug={route.slug} loadSlug={loadSlug} />;
+  if (route.kind === 'book') return <BookPage api={api} slug={route.slug} loadSlug={loadSlug} search={search} />;
   if (route.kind === 'manage') return <ManagePage api={api} token={route.token} checkout={parseCheckout(search)} />;
   return <Shell><Message title="Page not found" body="Check the link and try again." /></Shell>;
 }
@@ -42,7 +42,7 @@ function Spinner() { return <p className="spin" role="status">Loading…</p>; }
 
 type Loaded = Extract<ShopResponse, { paused: false }>;
 
-function BookPage({ api, slug, loadSlug }: { api: Api; slug: string | null; loadSlug: () => Promise<string | null> }) {
+function BookPage({ api, slug, loadSlug, search }: { api: Api; slug: string | null; loadSlug: () => Promise<string | null>; search: string }) {
   const [data, setData] = useState<ShopResponse | null>(null);
   const [error, setError] = useState<'not-found' | 'failed' | null>(null);
   useEffect(() => {
@@ -60,15 +60,17 @@ function BookPage({ api, slug, loadSlug }: { api: Api; slug: string | null; load
   if (error) return <Shell><Message title="Something went wrong" body="Please refresh and try again." /></Shell>;
   if (!data) return <Shell><Spinner /></Shell>;
   if (data.paused) return <Shell><Message title={data.shop.name} body="Bookings are paused for now — call the shop." /></Shell>;
-  return <Shell><Flow api={api} d={data as Loaded} /></Shell>;
+  return <Shell><Flow api={api} d={data as Loaded} search={search} /></Shell>;
 }
 
-function Flow({ api, d }: { api: Api; d: Loaded }) {
+function Flow({ api, d, search = '' }: { api: Api; d: Loaded; search?: string }) {
   const { shop, services, members } = d;
+  // ?barber=<uuid> from a team card: only a member of this shop counts, else 'any'.
+  const preferred = useMemo(() => barberFromSearch(search, members), [search, members]);
   const tz = shop.timezone;
   const [step, setStep] = useState<Step>('service');
   const [service, setService] = useState<Service | null>(null);
-  const [memberId, setMemberId] = useState('any');
+  const [memberId, setMemberId] = useState(preferred);
   const [date, setDate] = useState<string | null>(null);
   const [slot, setSlot] = useState<Slot | null>(null);
   const [cust, setCust] = useState({ name: '', phone: '', email: '', note: '' });
@@ -152,8 +154,9 @@ function Flow({ api, d }: { api: Api; d: Loaded }) {
           <button key={s.id} className="row" onClick={() => {
             setService(s); setSlot(null); setDate(null);
             const e = eligibleMembers(members, s.id);
-            setMemberId('any');
-            setStep(e.length > 1 ? 'barber' : 'day');
+            const who = preferredFor(preferred, members, s.id);
+            setMemberId(who);
+            setStep(who !== 'any' || e.length <= 1 ? 'day' : 'barber');
           }}>
             <span className="grow"><div className="t">{s.name}</div><div className="m">{serviceLabel(s)}</div>{s.description && <div className="m">{s.description}</div>}</span>
             <span aria-hidden>›</span>

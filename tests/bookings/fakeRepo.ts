@@ -157,6 +157,17 @@ export function fakeRepo(state: State, nowFn: () => number = Date.now): BookingR
       state.members.push(m);
       return clone(m);
     },
+    // Emulates ab_add_member (015): owner check, then count active, refuse at the limit.
+    async addMember(row) {
+      if (!state.shops.some((x) => x.id === row.shop_id && x.owner_id === row.owner_id)) return { ok: false, reason: 'not-owner' };
+      if (state.members.filter((m) => m.shop_id === row.shop_id && m.active).length >= row.limit) return { ok: false, reason: 'member-limit' };
+      const sort = Math.max(-1, ...state.members.filter((m) => m.shop_id === row.shop_id).map((m) => m.sort)) + 1;
+      const m = makeMember({ id: randomUUID(), shop_id: row.shop_id, display_name: row.display_name, photo_url: row.photo_url, bio: row.bio, sort });
+      state.members.push(m);
+      return { ok: true, row: { id: m.id, shop_id: m.shop_id, role: 'barber', display_name: m.display_name, title: row.title,
+        photo_url: row.photo_url, bio: row.bio, booking_url: row.booking_url, sort, active: true } };
+    },
+    memberProfileLive: async () => true,
     async insertServices(rows) {
       for (const r of rows) state.services.push(makeService({ ...r, id: randomUUID() }));
     },

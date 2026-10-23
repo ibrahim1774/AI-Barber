@@ -22,7 +22,8 @@ import type { TemplateId, WebsiteData } from '../../types';
 import type { BooksyNiche } from '../booksyNiche.js';
 import { nicheByKey } from '../booksyNiche.js';
 import { safeHref } from './safeHref.js';
-import { aggregateToShow, footerLine, hasServices, nicheCopy, reviewsSourceName, visibleReviews } from './honest.js';
+import { aggregateToShow, footerLine, hasServices, nicheCopy, reviewsSourceName, teamBookLink, teamOf, visibleReviews } from './honest.js';
+import { isSiteBookLink } from './subpages.js';
 
 export type LabelDefault = string | ((niche: BooksyNiche, site?: Pick<WebsiteData, 'area' | 'niche'>) => string);
 
@@ -50,7 +51,9 @@ const LUXE_GALLERY = [2, 3, 4, 5, 6, 7];
 const luxeGallery = (s: WebsiteData) => LUXE_GALLERY.some((i) => has(s.gallery?.[i]));
 const primeGallery = (s: WebsiteData) => (s.gallery || []).slice(0, 6).some((u) => has(u));
 const euGallery = (s: WebsiteData) => (s.gallery || []).some((u) => has(u));
-const hasStaff = (s: WebsiteData) => Array.isArray(s.staff) && s.staff.length > 0;
+const hasStaff = (s: WebsiteData) => teamOf(s).length > 0;
+// "Book with <name>" prints only on a card whose link goes to that member (honest.ts teamBookLink kind).
+const hasMemberBook = (s: WebsiteData) => teamOf(s, { legacyUncapped: true }).some((m) => teamBookLink(s, m, isSiteBookLink(s.bookingUrl))?.kind === 'member');
 const hasHours = (s: WebsiteData) => Array.isArray(s.hours) && s.hours.length > 0;
 const hasReviews = (s: WebsiteData) => visibleReviews(s).length > 0;
 const hasClosedDay = (s: WebsiteData) => hasHours(s) && s.hours!.some((h) => h.closed);
@@ -138,7 +141,12 @@ export const LABELS = {
   primeHoursEyebrow: { title: 'Hours label', default: 'Hours of Service', template: 'prime', max: 40, shows: hasHours },
   primeClosedLabel: { title: 'Closed day text', default: 'Closed', template: 'prime', max: 20, shows: hasClosedDay },
 
+  primeTeamEyebrow: { title: 'Team eyebrow', default: 'The Team', template: 'prime', max: 40, shows: hasStaff },
+  primeTeamHeading: { title: 'Team heading', default: (n) => copy(n).teamHeading, template: 'prime', max: 60, shows: hasStaff },
+
   // ── Design 3 (euphoria) ──
+  euTeamEyebrow: { title: 'Team eyebrow', default: 'The Team', template: 'euphoria', max: 40, shows: hasStaff },
+  euTeamHeading: { title: 'Team heading', default: (n) => copy(n).teamHeading, template: 'euphoria', max: 60, shows: hasStaff },
   euNavShop: { title: 'Menu: Shop', default: 'Shop', template: 'euphoria', max: 20, shows: hasShop },
   euNavBook: { title: 'Menu: Book button', default: 'Book now', template: 'euphoria', max: 24, shows: euNavBook },
   euCall: { title: 'Call button text', default: 'Call', template: 'euphoria', max: 24, shows: canCall },
@@ -155,6 +163,9 @@ export const LABELS = {
   euPhoneLabel: { title: 'Phone label', default: 'Phone', template: 'euphoria', max: 30, shows: hasPhone },
   euEmailLabel: { title: 'Email label', default: 'Email', template: 'euphoria', max: 30, shows: (s) => has(s.contact?.email) },
   euShopButton: { title: 'Shop button text', default: 'Shop online', template: 'euphoria', max: 30, shows: hasShop },
+
+  // ── Team cards (all designs): the Book button reads "<this> <first name>", e.g. "Book with Sam". ──
+  teamBookWith: { title: 'Team book button', default: 'Book with', max: 24, shows: hasMemberBook },
 
   // ── Rating wording (all designs). Edited from the app's rating control, not by tapping the page. ──
   ratingLine: { title: 'Rating wording', default: '', max: 80, tap: false },

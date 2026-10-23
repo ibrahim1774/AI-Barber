@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DateTime } from 'luxon';
 import {
   buildIcs, cashAppLink, formatTime, formatWhen, manualAmountCents, manualLink, monthGrid, nextStep, onAccent,
-  parseRoute, parseCheckout, shouldKeepPolling, resolveIds, paypalLink, payOptions, prevStep, progress, safeAccent, shiftMonth, todayKey, tokenFromManageUrl, venmoLink, dateKey, eligibleMembers,
+  parseRoute, parseCheckout, shouldKeepPolling, resolveIds, paypalLink, payOptions, prevStep, progress, safeAccent, shiftMonth, barberFromSearch, preferredFor, todayKey, tokenFromManageUrl, venmoLink, dateKey, eligibleMembers,
 } from '../../src/book/logic';
 
 describe('shop-timezone formatting', () => {
@@ -210,5 +210,34 @@ describe('mock API with manual method', () => {
   });
   it('one payment row per manual method', () => {
     expect(manualMethods({ venmo: '@a', zelle: '1', cashapp: ' ' })).toEqual(['venmo', 'zelle']);
+  });
+});
+
+describe('?barber= preselect', () => {
+  const A = '3f2b8c1e-4a5d-4e6f-8a9b-0c1d2e3f4a5b';
+  const B = '0a1b2c3d-1111-4222-8333-444455556666';
+  const members = [{ id: A, serviceIds: null }, { id: B, serviceIds: ['svc1'] }] as any[];
+  it('accepts a UUID that is a member of the shop', () => {
+    expect(barberFromSearch(`?barber=${A}`, members)).toBe(A);
+    expect(barberFromSearch(`barber=${A.toUpperCase()}`, members)).toBe(A);
+    expect(barberFromSearch(`?x=1&barber=${B}`, members)).toBe(B);
+  });
+  it.each([
+    ['', 'none'],
+    ['?barber=', 'empty'],
+    ['?barber=any', 'not a uuid'],
+    ['?barber=../../x', 'path-ish'],
+    ['?barber=<script>', 'markup'],
+    [`?barber=${A}x`, 'trailing junk'],
+    ['?barber=11111111-2222-4333-8444-555555555555', 'uuid but not a member'],
+    [`?barber=${A}&barber=${B}`, 'repeated'],
+  ])('falls back to any for %s (%s)', (search) => {
+    expect(barberFromSearch(search, members)).toBe('any');
+  });
+  it('keeps the barber only for a service they do', () => {
+    expect(preferredFor(B, members, 'svc1')).toBe(B);
+    expect(preferredFor(B, members, 'svc2')).toBe('any');
+    expect(preferredFor(A, members, 'svc2')).toBe(A);
+    expect(preferredFor('any', members, 'svc1')).toBe('any');
   });
 });
