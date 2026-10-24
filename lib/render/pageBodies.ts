@@ -9,7 +9,7 @@
 import type { TemplateId, WebsiteData } from '../../types';
 import {
   aggregateToShow, contactEmail, displayPhone, displayPrice, firstName, nicheOf, photoAlt, reviewsSourceLabel, reviewStars,
-  serviceMeta, siteDescription, teamBookLink, teamOf, visibleReviews, type TeamCard,
+  serviceMeta, siteDescription, teamBookLink, teamOf, to12h, visibleReviews, type TeamCard,
 } from './honest.js';
 import {
   beardServices, extraBlocks, guideBlocks, howOftenRows, serviceGuideFor, titledServices, type CopyEnv, type LinkInfo, type LinkKey, type ResolvedBlock, type Seg,
@@ -42,21 +42,6 @@ export interface PageBody {
   /** Raw whole <title>, when it is not "{heading} · {shop}" (the Location page). */
   title?: string;
 }
-
-// 24h -> 12h like the home pages ("09:00" -> "9:00 AM"); anything else is printed as typed.
-const to12h = (raw: string | null | undefined): string => {
-  if (!raw) return raw ?? '';
-  const s = String(raw).trim();
-  if (!s) return s;
-  if (/\b(AM|PM|am|pm|noon|midnight)\b/i.test(s)) return s.replace(/\s+/g, ' ').toUpperCase().replace('NOON', 'Noon').replace('MIDNIGHT', 'Midnight');
-  const m = s.match(/^(\d{1,2})(?::(\d{2}))?$/);
-  if (!m) return s;
-  const h24 = parseInt(m[1], 10);
-  if (isNaN(h24) || h24 < 0 || h24 > 24) return s;
-  const period = h24 >= 12 && h24 < 24 ? 'PM' : 'AM';
-  const h12 = h24 === 0 || h24 === 24 ? 12 : h24 > 12 ? h24 - 12 : h24;
-  return `${h12}:${m[2] || '00'} ${period}`;
-};
 
 const clip = (s: string, n: number): string => {
   const t0 = plainText(s).replace(/\s+/g, ' ');

@@ -11,7 +11,7 @@ import type { WebsiteData } from '../../types';
 import { safeHref } from './safeHref.js';
 import { bookStripHtml, isSiteBookLink, shopPreviewHtml, type SectionSkin } from './subpages.js';
 import {
-  aggregateToShow, copyrightYear, displayPrice, galleryIsAllOwnPhotos, hasServices, nicheCopy, photoAlt,
+  aggregateToShow, copyrightYear, displayPrice, galleryIsAllOwnPhotos, hasServices, nicheCopy, photoAlt, to12h,
   displayPhone, nicheOf, photosAreFromBookingPage, policyToShow, reviewStars, reviewsSourceLabel, serviceMeta,
   siteDescription, siteTitle, teamBookLink, teamOf, firstName, visibleReviews, withoutLegacyCopy,
 } from './honest.js';
@@ -154,20 +154,7 @@ export function escapeHtml(s: string): string {
 }
 // 24h → 12h with AM/PM. Idempotent (passes AM/PM strings through). Same
 // helper used by the luxe renderer so hours read consistently.
-export const to12h = (raw: string | null | undefined): string => {
-  if (!raw) return raw ?? '';
-  const s = String(raw).trim();
-  if (!s) return s;
-  if (/\b(AM|PM|am|pm|noon|midnight)\b/i.test(s)) return s.replace(/\s+/g, ' ').toUpperCase().replace('NOON', 'Noon').replace('MIDNIGHT', 'Midnight');
-  const m = s.match(/^(\d{1,2})(?::(\d{2}))?$/);
-  if (!m) return s;
-  const h24 = parseInt(m[1], 10);
-  const mm = m[2] || '00';
-  if (isNaN(h24) || h24 < 0 || h24 > 24) return s;
-  const period = h24 >= 12 && h24 < 24 ? 'PM' : 'AM';
-  const h12 = h24 === 0 || h24 === 24 ? 12 : h24 > 12 ? h24 - 12 : h24;
-  return `${h12}:${mm} ${period}`;
-};
+export { to12h };
 export const fmtHours = (h: { open: string; close: string; closed?: boolean }, closedText = 'Closed'): string =>
   h.closed ? closedText : `${to12h(h.open)} – ${to12h(h.close)}`;
 // Trailing "City, State" only — keeps the hero eyebrow from echoing a full

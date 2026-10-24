@@ -462,6 +462,8 @@ describe('React previews and vendored sources carry none of the removed copy', (
       'lib/render/copyLibrary.ts', 'lib/render/copyRules.ts', 'lib/render/guides.ts',
       // Page heroes and section settings (pages v2, Phase C). Add to the app's sync-web.sh.
       'lib/render/heroes.ts', 'lib/render/sections.ts', 'lib/pagesV2.ts',
+      // Editable everywhere (2026-10-24): marker helpers + the data paths the preview makes tappable. Add to the app's sync-web.sh.
+      'lib/render/markers.ts', 'lib/render/editPaths.ts',
     ];
     const norm = (p: string) => p.replace(/\.(ts|js)$/, '');
     const set = new Set(VENDORED.map(norm));

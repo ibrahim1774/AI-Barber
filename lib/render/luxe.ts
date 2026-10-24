@@ -11,7 +11,7 @@ import type { WebsiteData } from '../../types';
 import { safeHref } from './safeHref.js';
 import { bookStripHtml, isSiteBookLink, shopPreviewHtml, type SectionSkin } from './subpages.js';
 import {
-  aggregateToShow, copyrightYear, displayPrice, footerLine, hasServices, photoAlt, reviewStars,
+  aggregateToShow, copyrightYear, displayPrice, footerLine, hasServices, photoAlt, reviewStars, to12h,
   displayPhone, firstName, nicheOf, reviewsSourceLabel, serviceMeta, siteDescription, siteTitle, teamBookLink, teamOf, visibleReviews, withoutLegacyCopy,
 } from './honest.js';
 import { ratingLineCustom, t, type LabelKey } from './labels.js';
@@ -22,20 +22,7 @@ import { NAV_CSS, navItemsFor, navListHtml, type RenderCtx } from './shell.js';
 // AM/PM marker, return it unchanged. Handles "09:00", "9:00", "9", "20:30".
 // Anything that doesn't parse cleanly is returned as-is so user-typed
 // values like "9am-1pm" or "By appointment" survive unchanged.
-export const to12h = (raw: string | null | undefined): string => {
-  if (!raw) return raw ?? '';
-  const s = String(raw).trim();
-  if (!s) return s;
-  if (/\b(AM|PM|am|pm|noon|midnight)\b/i.test(s)) return s.replace(/\s+/g, ' ').toUpperCase().replace('NOON', 'Noon').replace('MIDNIGHT', 'Midnight');
-  const m = s.match(/^(\d{1,2})(?::(\d{2}))?$/);
-  if (!m) return s;
-  const h24 = parseInt(m[1], 10);
-  const mm = m[2] || '00';
-  if (isNaN(h24) || h24 < 0 || h24 > 24) return s;
-  const period = h24 >= 12 && h24 < 24 ? 'PM' : 'AM';
-  const h12 = h24 === 0 || h24 === 24 ? 12 : h24 > 12 ? h24 - 12 : h24;
-  return `${h12}:${mm} ${period}`;
-};
+export { to12h };
 // Extracts the trailing "City, State [ZIP]" portion of an area string so
 // the footer "<niche> in ..." line never echoes the
 // full street address even if the user pastes one in. Inputs with two

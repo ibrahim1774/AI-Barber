@@ -17,6 +17,7 @@ import type { TeamMember, WebsiteData } from '../../types';
 import { nicheByKey, type BooksyNiche } from '../booksyNiche.js';
 import { isStockImage } from '../stockImages.js';
 import { safeHref } from './safeHref.js';
+import { mapMarked, unmarked } from './markers.js';
 
 // Trailing "City, State" only, so a pasted street address never lands in
 // a footer or meta line.
@@ -99,6 +100,26 @@ export function displayPhone(raw: string | null | undefined): string {
   if (d.length !== 10) return value;
   return `${open}(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}${close}`;
 }
+
+// ── Hours ────────────────────────────────────────────────────────────
+// 24h -> 12h with AM/PM. Idempotent: if the input already contains an AM/PM marker, return it unchanged. Handles
+// "09:00", "9:00", "9", "20:30". Anything that doesn't parse cleanly is returned as-is so user-typed values like
+// "9am-1pm" or "By appointment" survive unchanged. A value in the editor's markers keeps its wrapper (markers.ts).
+export const to12h = (raw: string | null | undefined): string => {
+  if (!raw) return raw ?? '';
+  return mapMarked(String(raw).trim(), (s0) => {
+    const s = s0.trim();
+    if (!s) return s;
+    if (/\b(AM|PM|am|pm|noon|midnight)\b/i.test(s)) return s.replace(/\s+/g, ' ').toUpperCase().replace('NOON', 'Noon').replace('MIDNIGHT', 'Midnight');
+    const m = s.match(/^(\d{1,2})(?::(\d{2}))?$/);
+    if (!m) return s;
+    const h24 = parseInt(m[1], 10);
+    if (isNaN(h24) || h24 < 0 || h24 > 24) return s;
+    const period = h24 >= 12 && h24 < 24 ? 'PM' : 'AM';
+    const h12 = h24 === 0 || h24 === 24 ? 12 : h24 > 12 ? h24 - 12 : h24;
+    return `${h12}:${m[2] || '00'} ${period}`;
+  });
+};
 
 // ── Policy ───────────────────────────────────────────────────────────
 // The invented Prime default every site used to carry. Sites saved with
@@ -274,23 +295,26 @@ export function hasServices(site: Pick<WebsiteData, 'services'>): boolean {
 // A bare number ("25", "25.50") is a dollar price → "$25". Anything else
 // ("$25", "25+", "£20", "from $30") is shown as typed.
 export function displayPrice(raw: string | null | undefined): string {
-  const p = (raw || '').trim();
-  return /^\d+(\.\d{1,2})?$/.test(p) ? `$${p}` : p;
+  // Marker-aware (see markers.ts): the "$" goes inside the editor wrapper, so the preview prints what the page prints.
+  return mapMarked((raw || '').trim(), (p) => (/^\d+(\.\d{1,2})?$/.test(p.trim()) ? `$${p.trim()}` : p));
 }
 
 // The small line under a service title: duration, else subtitle. Never a
 // second copy of the price (older scraped sites stored "30 min · $30" or
 // just "$30" as the subtitle).
 export function serviceMeta(s: { duration?: string; subtitle?: string; price?: string }): string {
-  let meta = (s.duration || s.subtitle || '').trim();
-  const price = (s.price || '').trim();
-  if (!meta || !price) return meta;
+  // Decisions use the unmarked text; the value printed keeps its editor wrapper (markers.ts).
+  const raw = (s.duration || s.subtitle || '').trim();
+  let meta = unmarked(raw).trim();
+  const price = unmarked((s.price || '').trim()).trim();
+  if (!meta || !price) return raw;
   if (meta === price || meta === displayPrice(price)) return '';
+  let cut = false;
   for (const p of [price, displayPrice(price)]) {
     const suffix = ` · ${p}`;
-    if (meta.endsWith(suffix)) meta = meta.slice(0, -suffix.length).trim();
+    if (meta.endsWith(suffix)) { meta = meta.slice(0, -suffix.length).trim(); cut = true; }
   }
-  return meta;
+  return cut ? mapMarked(raw, () => meta) : raw;
 }
 
 // ── Niche-aware body copy ────────────────────────────────────────────
@@ -506,7 +530,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const cleanStr = (v: unknown, max: number): string | undefined => {
   if (typeof v !== 'string') return undefined;
   const t = v.replace(/[\u0000-\u001F\u007F-\u009F]+/g, ' ').trim();
-  return t ? Array.from(t).slice(0, max).join('') : undefined;
+  // The cap counts the barber's text only: an editor wrapper (markers.ts) must never be cut in half.
+  const out = mapMarked(t, (text) => Array.from(text.trim()).slice(0, max).join(''));
+  return out || undefined;
 };
 
 /** A team member as the renderers see it: cleaned, plus `index` = its position in the stored staff[] (the `staff<i>` image key). */
@@ -517,7 +543,7 @@ export interface TeamCard extends TeamMember {
 }
 
 const slugOf = (name: string): string =>
-  name.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'member';
+  unmarked(name).toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'member';
 
 /**
  * The ONLY reader of `staff` for the renderers. Entries without a name are skipped, text fields are
@@ -561,7 +587,7 @@ export function teamOf(site: Pick<WebsiteData, 'staff'>, opts: { legacyUncapped?
 }
 
 /** "Sam Fade" -> "Sam". */
-export const firstName = (name: string): string => name.trim().split(/\s+/)[0] || name;
+export const firstName = (name: string): string => mapMarked(name.trim(), (n) => n.trim().split(/\s+/)[0] || n) || name;
 
 /**
  * Where a team card's Book button goes, or null for no button:
