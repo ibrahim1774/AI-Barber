@@ -31,9 +31,32 @@ export const RICH_SITE: WebsiteData = {
     { name: 'Sam Fade', role: 'Owner and master barber', photo: 'https://img.example.com/sam.jpg', bio: 'Sam has been cutting for twelve years.', serviceNames: ['Skin Fade', 'Taper'], serviceIds: ['a', 'b'],
       hours: [{ day: 'Mon', open: '09:00', close: '17:00' }, { day: 'Sun', open: '', close: '', closed: true }] },
     { name: 'Alex Line', role: 'Barber', photo: 'https://img.example.com/alex.jpg', bio: 'Alex does beards.' },
+    { name: 'Jo Park', role: 'Barber', memberId: '0b6f2d1e-3c4a-4b8e-9d11-5a7c2e9f0a42', bio: 'Jo takes the early chair.' },
   ],
+  bio: 'A neighbourhood shop with a loyal crowd and a calm chair.',
+  featureCards: [{ title: 'Hot towel', sub: 'With every cut' }, { title: 'Late hours', sub: 'Open until nine on Fridays' }],
   policy: { title: 'Please note', body: 'Walk-ins welcome when we have a chair free.' },
   pullQuote: { text: 'Look sharp, feel sharp.' },
   pages: { order: [], hidden: [] },
   extraPages: { on: ['faq', 'first-visit', 'hair-care', 'beard-care'], serviceGuides: true, seed: 11 },
+} as WebsiteData;
+
+/** Short values everywhere: a length rule that counts the editor markers would decide differently from the published page. */
+export const SHORT_SITE: WebsiteData = {
+  ...RICH_SITE,
+  shopName: 'Ace', area: 'Austin, TX', phone: '555-0100', bio: 'Short bio here ok.',
+  hero: { heading: 'Ace', tagline: 'Fades.', imageUrl: '' },
+  about: { heading: 'Hi', description: ['One.'], imageUrl: '' },
+  services: [svc('Fade', { price: '25', duration: '30 min' }), svc('Taper', { price: '20' }), svc('Beard Trim', { price: '10' })],
+  contact: { address: 'main street, Austin, TX', email: 'a@b.co' },
+  staff: [{ name: 'Al', role: 'Pro', bio: 'Hi.' }],
+  hours: [{ day: 'Mon', open: '9', close: '5' }, { day: 'Tue', open: '9am', close: '5pm' }],
+  policy: { title: 'Note', body: 'Be on time.' },
+  pullQuote: { text: 'Sharp.' },
+} as WebsiteData;
+
+/** The booking and shop links are other sites (new-tab buttons), and no booking member: the other button variants. */
+export const EXTERNAL_SITE: WebsiteData = {
+  ...RICH_SITE,
+  bookingUrl: 'https://booksy.com/en-us/123_fresh-cuts', shopUrl: 'https://shop.example.com',
 } as WebsiteData;

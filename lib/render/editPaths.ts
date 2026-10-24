@@ -19,6 +19,7 @@ const TABLE: readonly (readonly [string, number | null])[] = [
   ['hero.tagline', null],
   ['about.heading', null],
   ['about.description.{i}', null],
+  ['bio', null],
   ['services.{i}.title', null],
   ['services.{i}.subtitle', null],
   ['services.{i}.description', null],

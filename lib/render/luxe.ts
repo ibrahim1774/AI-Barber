@@ -9,7 +9,7 @@
 // Pure: WebsiteData in, HTML string out. Keep it that way.
 import type { WebsiteData } from '../../types';
 import { safeHref } from './safeHref.js';
-import { unwrapMarked } from './markers.js';
+import { mapMarked, unwrapMarked } from './markers.js';
 import { bookStripHtml, isSiteBookLink, shopPreviewHtml, type SectionSkin } from './subpages.js';
 import {
   aggregateToShow, copyrightYear, displayPrice, footerLine, hasServices, photoAlt, reviewStars, to12h,
@@ -189,7 +189,7 @@ export function generateHTMLWithPlaceholders(input: WebsiteData, ctx?: RenderCtx
   // ── Bio section — shows the shop's Booksy description as a pull
   //    quote between hero and about. Skipped when bio is empty (e.g.
   //    manual-form sites or platforms without descriptions).
-  const bioSection = siteData.bio && siteData.bio.trim().length > 20
+  const bioSection = siteData.bio && unwrapMarked(siteData.bio.trim())[1].length > 20
     ? `<section class="py-12 md:py-20 bg-[#0d0d0d] px-6 border-y border-white/5">
     <div class="container mx-auto max-w-3xl text-center">
       <svg class="w-8 h-8 mx-auto mb-6 text-[#f4a100]/40" viewBox="0 0 24 24" fill="currentColor"><path d="M6 17h3l2-4V7H5v6h3l-2 4zm8 0h3l2-4V7h-6v6h3l-2 4z"/></svg>
@@ -482,7 +482,7 @@ ${showServices ? `        <a href="#services" class="text-[12px] font-montserrat
       <div class="space-y-6 md:space-y-10">
         ${address ? `<div>
           <h4 class="text-[#f4a100] font-bold text-[10px] md:text-xs tracking-[2px] mb-1 md:mb-2 font-montserrat">${lbl('contactLocationLabel')}</h4>
-          <p class="text-[#cccccc] text-xs md:text-sm leading-relaxed">${esc(address.charAt(0).toUpperCase() + address.slice(1))}</p>
+          <p class="text-[#cccccc] text-xs md:text-sm leading-relaxed">${esc(mapMarked(address, (a) => a.charAt(0).toUpperCase() + a.slice(1)))}</p>
         </div>` : ''}
         ${hasPhone ? `<div>
           <h4 class="text-[#f4a100] font-bold text-[10px] md:text-xs tracking-[2px] mb-1 md:mb-2 font-montserrat">${lbl('contactPhoneLabel')}</h4>

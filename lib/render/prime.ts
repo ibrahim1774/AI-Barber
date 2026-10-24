@@ -9,6 +9,7 @@
 // Pure: WebsiteData in, HTML string out. Keep it that way.
 import type { WebsiteData } from '../../types';
 import { safeHref } from './safeHref.js';
+import { unmarked } from './markers.js';
 import { bookStripHtml, isSiteBookLink, shopPreviewHtml, type SectionSkin } from './subpages.js';
 import {
   aggregateToShow, copyrightYear, displayPrice, galleryIsAllOwnPhotos, hasServices, nicheCopy, photoAlt, to12h,
@@ -307,7 +308,7 @@ export function generatePrimeHTMLWithPlaceholders(input: WebsiteData, ctx?: Rend
   <div class="p-container">
     <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px;margin-bottom:32px;">
       <div><div class="p-eyebrow">${L('primeGalleryEyebrow')}</div><h2 class="p-display" style="font-size:clamp(28px,4.5vw,44px);margin-top:12px;"><span class="p-italic" style="color:var(--p-brand);">${L('primeGalleryHeading')}</span></h2></div>
-      ${photosAreFromBookingPage(siteData) && galleryIsAllOwnPhotos(galleryTiles.map((t) => t.url)) ? `<p class="p-serif p-italic" style="color:var(--p-ink-soft);">Real cuts from inside the shop — no stock photos.</p>` : ''}
+      ${photosAreFromBookingPage(siteData) && galleryIsAllOwnPhotos(galleryTiles.map((t) => t.url)) ? `<p class="p-serif p-italic" style="color:var(--p-ink-soft);">${L('primeGalleryNote')}</p>` : ''}
     </div>
     <div class="p-gallery">
       ${galleryTiles.map((t) => {
@@ -334,7 +335,7 @@ export function generatePrimeHTMLWithPlaceholders(input: WebsiteData, ctx?: Rend
       ${team.map((m) => {
         const link = teamBookLink(siteData, m, bookingLive);
         return `<div class="p-review-card ab-team-card" id="team-${escapeHtml(m.slug)}">
-        ${m.photo ? `<img class="ab-team-photo" src="{{staff${m.index}}}" alt="${escapeHtml(m.name)}">` : `<div class="ab-team-photo" aria-hidden="true">${escapeHtml(Array.from(m.name)[0].toUpperCase())}</div>`}
+        ${m.photo ? `<img class="ab-team-photo" src="{{staff${m.index}}}" alt="${escapeHtml(m.name)}">` : `<div class="ab-team-photo" aria-hidden="true">${escapeHtml(Array.from(unmarked(m.name))[0].toUpperCase())}</div>`}
         <h3 class="p-serif" style="font-size:1.2rem;margin:0;">${escapeHtml(m.name)}</h3>
         ${m.role ? `<div class="p-eyebrow" style="font-size:10px;">${escapeHtml(m.role)}</div>` : ''}
         ${m.bio ? `<p class="p-serif p-italic ab-team-bio" style="color:var(--p-ink-soft);font-size:0.9rem;">${escapeHtml(m.bio)}</p>` : ''}

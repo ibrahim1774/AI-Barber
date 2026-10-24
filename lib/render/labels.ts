@@ -22,10 +22,10 @@ import type { TemplateId, WebsiteData } from '../../types';
 import type { BooksyNiche } from '../booksyNiche.js';
 import { nicheByKey } from '../booksyNiche.js';
 import { safeHref } from './safeHref.js';
-import { aggregateToShow, cityStateOnly, placeFromArea, footerLine, hasServices, nicheCopy, reviewsSourceName, teamBookLink, teamOf, visibleReviews } from './honest.js';
+import { aggregateToShow, cityStateOnly, photosAreFromBookingPage, placeFromArea, footerLine, hasServices, nicheCopy, reviewsSourceName, teamBookLink, teamOf, visibleReviews } from './honest.js';
 import { isSiteBookLink } from './subpages.js';
 import { beardServices, isHaircutTitle, serviceGuideFor, titledServices } from './guides.js';
-import { buildPageSet, hasFilePages, plainText, type PageContext, type PageKey, type PageSet } from './pages.js';
+import { buildPageSet, hasFilePages, memberHasOwnHours, plainText, type PageContext, type PageKey, type PageSet } from './pages.js';
 
 export type LabelDefault = string | ((niche: BooksyNiche, site?: Pick<WebsiteData, 'area' | 'niche'>) => string);
 
@@ -48,6 +48,11 @@ export interface LabelDef {
    * page. Never by the single-page renderers, so visibleLabelKeys() leaves these out; the preview of a
    * chosen page asks visiblePageLabelKeys().
    */
+  /**
+   * A single-page label (no `multi`) that a nested page prints as well, e.g. "Book with" on the Team pages. The page's
+   * list adds it when `shows` says the site prints it.
+   */
+  alsoOn?: PageKey[];
   multi?: { page?: PageKey | PageKey[]; shows?: (site: WebsiteData, set: PageSet, page: PageKey) => boolean };
 }
 
@@ -62,6 +67,7 @@ const euGallery = (s: WebsiteData) => (s.gallery || []).some((u) => has(u));
 const hasStaff = (s: WebsiteData) => teamOf(s).length > 0;
 // "Book with <name>" prints only on a card whose link goes to that member (honest.ts teamBookLink kind).
 const hasMemberBook = (s: WebsiteData) => teamOf(s, { legacyUncapped: true }).some((m) => teamBookLink(s, m, isSiteBookLink(s.bookingUrl))?.kind === 'member');
+const hasMemberHours = (s: WebsiteData) => (Array.isArray(s.staff) ? s.staff : []).some((m) => memberHasOwnHours(m, s.hours));
 const hasHours = (s: WebsiteData) => Array.isArray(s.hours) && s.hours.length > 0;
 const hasReviews = (s: WebsiteData) => visibleReviews(s).length > 0;
 const hasClosedDay = (s: WebsiteData) => hasHours(s) && s.hours!.some((h) => h.closed);
@@ -136,6 +142,7 @@ export const LABELS = {
   primePolicyEyebrow: { title: 'Policy label', default: 'Please Note', template: 'prime', max: 30, shows: (s) => has(s.policy?.body) },
   primeGalleryEyebrow: { title: 'Gallery eyebrow', default: 'Gallery', template: 'prime', max: 40, shows: primeGallery },
   primeGalleryHeading: { title: 'Gallery heading', default: 'The look.', template: 'prime', max: 60, shows: primeGallery },
+  primeGalleryNote: { title: 'Gallery note', default: 'Real cuts from inside the shop — no stock photos.', template: 'prime', max: 80, shows: (s) => primeGallery(s) && photosAreFromBookingPage(s) },
   primeReviewsEyebrow: { title: 'Reviews eyebrow', default: 'Client Reviews', template: 'prime', max: 40, shows: hasReviews },
   primeReviewsLead: { title: 'Reviews heading, first part', default: 'What clients', template: 'prime', max: 40, shows: hasReviews },
   primeReviewsAccent: { title: 'Reviews heading, accent part', default: 'are saying.', template: 'prime', max: 40, shows: hasReviews },
@@ -261,11 +268,11 @@ export const LABELS = {
   pgBackServices: { title: 'Back to services link', default: 'All services', max: 30, multi: { page: 'services' } },
   pgBackTeam: { title: 'Back to team link', default: 'The whole team', max: 30, multi: { page: 'team' } },
   pgViewProfile: { title: 'Team profile link', default: 'View profile', max: 30, multi: { page: 'team' } },
-  pgMemberServices: { title: 'Barber services heading', default: 'Services', max: 40, multi: { page: 'team' } },
-  pgMemberHours: { title: 'Barber hours heading', default: 'Hours', max: 40, multi: { page: 'team' } },
+  pgMemberServices: { title: 'Barber services heading', default: 'Services', max: 40, multi: { page: 'team', shows: (s) => hasServiceTeam(s) } },
+  pgMemberHours: { title: 'Barber hours heading', default: 'Hours', max: 40, multi: { page: 'team', shows: (s) => hasMemberHours(s) } },
 
   // ── Team cards (all designs): the Book button reads "<this> <first name>", e.g. "Book with Sam". ──
-  teamBookWith: { title: 'Team book button', default: 'Book with', max: 24, shows: hasMemberBook },
+  teamBookWith: { title: 'Team book button', default: 'Book with', max: 24, shows: hasMemberBook, alsoOn: ['team'] },
 
   // ── Rating wording (all designs). Edited from the app's rating control, not by tapping the page. ──
   ratingLine: { title: 'Rating wording', default: '', max: 80, tap: false },
@@ -400,6 +407,7 @@ export function visiblePageLabelKeys(site: WebsiteData, page: PageKey, ctx?: Pag
   if (page === 'home') for (const k of visibleLabelKeys(site)) add(k);
   for (const k of LABEL_KEYS) {
     const d = DEFS[k];
+    if (d.alsoOn && d.alsoOn.includes(page) && d.tap !== false && !d.multi && (!d.template || d.template === template) && (d.shows ? d.shows(site) : true)) add(k);
     if (!d.multi || d.tap === false) continue;
     const pages = d.multi.page === undefined ? [] : Array.isArray(d.multi.page) ? d.multi.page : [d.multi.page];
     if (!pages.includes(page)) continue;
