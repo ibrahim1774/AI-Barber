@@ -107,9 +107,9 @@ export interface FooterInput {
 export function footerHtml(template: TemplateId, f: FooterInput): string {
   const name = escapeAttr(f.name);
   if (template === 'luxe') {
-    return `<footer class="ab-foot"><div class="ab-wrap"><div class="ab-foot-name">${name}</div>${f.line ? `<p class="ab-foot-line">${f.line}</p>` : ''}<p class="ab-foot-copy">Copyright &copy; ${f.year} ${name}. Built by AIBarber.</p></div></footer>`;
+    return `<footer class="ab-foot"><div class="ab-wrap"><div class="ab-foot-name">${name}</div>${f.line ? `<p class="ab-foot-line">${f.line}</p>` : ''}<p class="ab-foot-copy">Copyright &copy; ${f.year} ${name}. Built by Prime Barber.</p></div></footer>`;
   }
-  return `<footer class="ab-foot"><div class="ab-wrap"><div class="ab-foot-name">${name}</div><p class="ab-foot-copy">&copy; ${f.year} &middot; Built by AIBarber</p></div></footer>`;
+  return `<footer class="ab-foot"><div class="ab-wrap"><div class="ab-foot-name">${name}</div><p class="ab-foot-copy">&copy; ${f.year} &middot; Built by Prime Barber</p></div></footer>`;
 }
 
 // ── CSS ─────────────────────────────────────────────────────────────────────────────────────────
