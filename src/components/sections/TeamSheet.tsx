@@ -7,6 +7,7 @@ import { track } from '@/lib/analytics';
 import { Sheet, SheetAction } from '@/components/EditSheet';
 import { addMember, moveMember, removeMember, updateMember } from '@/lib/sections/team';
 import { usePhotoPick } from '@/components/sections/usePhotoPick';
+import { BARBER_PAGE_HINT, barberNeedsDescription } from '@/lib/sitePages';
 
 interface Props {
   visible: boolean;
@@ -27,10 +28,12 @@ type Form = null | 'new' | number;
 export function TeamSheet({ visible, data, onChange, onClose, onDismiss, upload, onOpenTeam }: Props) {
   const f1 = useRef<TextInput>(null);
   const f2 = useRef<TextInput>(null);
+  const f3 = useRef<TextInput>(null);
   const [form, setForm] = useState<Form>(null);
   const [name, setName] = useState('');
   const [role, setRole] = useState('');
   const [photo, setPhoto] = useState('');
+  const [bio, setBio] = useState('');
   const [error, setError] = useState('');
   const staff = data.staff ?? [];
 
@@ -45,6 +48,7 @@ export function TeamSheet({ visible, data, onChange, onClose, onDismiss, upload,
     setName(m?.name ?? '');
     setRole(m?.role ?? '');
     setPhoto(m?.photo ?? '');
+    setBio(m?.bio ?? '');
     setError('');
     setForm(f);
   };
@@ -53,7 +57,7 @@ export function TeamSheet({ visible, data, onChange, onClose, onDismiss, upload,
     track('section_saved', { section: 'team' });
   };
   const save = () => {
-    const input = { name, role, photo };
+    const input = { name, role, photo, bio };
     const index = form as number;
     const update = (d: WebsiteData) => (form === 'new' ? addMember(d, input) : updateMember(d, index, input));
     if (update(data) === data) { setError('Add a name.'); return; }
@@ -92,6 +96,8 @@ export function TeamSheet({ visible, data, onChange, onClose, onDismiss, upload,
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <FormLabel input={f2} style={styles.label}>Role</FormLabel>
           <TextInput ref={f2} value={role} onChangeText={setRole} placeholder="Barber, Owner…" accessibilityLabel="Role" selectionColor={colors.accent} placeholderTextColor="rgba(255,255,255,0.3)" style={styles.input} />
+          <FormLabel input={f3} style={styles.label}>Description (optional)</FormLabel>
+          <TextInput ref={f3} value={bio} onChangeText={setBio} multiline placeholder="A few words about this barber" accessibilityLabel="Description" selectionColor={colors.accent} placeholderTextColor="rgba(255,255,255,0.3)" style={[styles.input, styles.inputMulti]} />
           {form !== 'new' ? <SheetAction title="Remove" onPress={remove} /> : null}
         </ScrollView>
       </Sheet>
@@ -112,6 +118,7 @@ export function TeamSheet({ visible, data, onChange, onClose, onDismiss, upload,
                 <Text style={styles.name} numberOfLines={1}>{m.name}</Text>
                 {m.role ? <Text style={styles.roleText} numberOfLines={1}>{m.role}</Text> : null}
                 {m.memberId ? <Text style={styles.roleText} numberOfLines={1}>On your booking page · edit in Team</Text> : null}
+                {barberNeedsDescription(data, i) ? <Text style={styles.hint}>{BARBER_PAGE_HINT}</Text> : null}
               </View>
             </Pressable>
             <Pressable accessibilityRole="button" accessibilityLabel={`Move ${m.name} up`} disabled={i === 0} onPress={() => commit((d) => moveMember(d, i, -1))} hitSlop={8} style={[styles.move, i === 0 && styles.off]}>
@@ -149,5 +156,7 @@ const styles = StyleSheet.create({
   photoText: { fontFamily: fonts.bodyBold, fontSize: 12, letterSpacing: 1.2, textTransform: 'uppercase', color: colors.accent },
   label: { fontFamily: fonts.bodySemi, fontSize: 12, letterSpacing: 1.2, textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)', marginBottom: 6, marginTop: 8 },
   input: { fontFamily: fonts.body, fontSize: 16, lineHeight: 22, color: '#fff', borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 12 },
+  hint: { fontFamily: fonts.bodySemi, fontSize: 12, color: colors.accent, marginTop: 3 },
+  inputMulti: { minHeight: 80, textAlignVertical: 'top' },
   error: { fontFamily: fonts.body, fontSize: 13, color: colors.danger, marginTop: 6 },
 });

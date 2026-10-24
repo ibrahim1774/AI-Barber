@@ -71,7 +71,7 @@ describe('page script and tour', () => {
   });
 
   test('the Edit tour\'s photo step points at the Change image pill and the tour keeps at most five steps', () => {
-    expect(TOURS.edit.steps.map((s) => s.target)).toEqual(['edit.publish', 'edit.sections', 'edit.text', 'edit.changeImage', 'edit.colour']);
+    expect(TOURS.edit.steps.map((s) => s.target)).toEqual(['edit.publish', 'edit.sections', 'edit.pages', 'edit.text', 'edit.changeImage']);
     expect(TOURS.edit.steps.length).toBeLessThanOrEqual(5);
   });
 });

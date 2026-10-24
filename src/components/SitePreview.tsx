@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import type { ShouldStartLoadRequest } from 'react-native-webview/lib/WebViewTypes';
 import type { WebsiteData } from '@/web/types';
-import { EDITOR_JS, buildPreviewHtml, previewBackground, type PreviewProduct } from '@/lib/editable';
+import { EDITOR_JS, buildPreviewHtml, previewBackground, type PreviewPage, type PreviewProduct } from '@/lib/editable';
 import { parsePreviewMessage, shouldAllowPreviewRequest, type ImageRect } from '@/lib/previewBridge';
 import { ChangeImagePills } from '@/components/ChangeImagePills';
 
@@ -12,6 +12,8 @@ export interface SitePreviewProps {
   editable: boolean;
   /** The barber's products for the homepage Shop section (the preview can't fetch the live store). */
   shopProducts?: PreviewProduct[] | null;
+  /** The page of a multi-page site to show (Home when absent or when the site is a single page). */
+  page?: PreviewPage | null;
   onEditText(path: string): void;
   onEditImage(path: string): void;
   /** Registered with the tutorial on the tour's "Change image" pill. */
@@ -25,7 +27,7 @@ export interface SitePreviewProps {
  * Each data change reloads the document; the last reported scrollY is
  * restored once the new document posts 'ready'.
  */
-export default function SitePreview({ data, editable, shopProducts, onEditText, onEditImage, pillTourRef }: SitePreviewProps) {
+export default function SitePreview({ data, editable, shopProducts, page, onEditText, onEditImage, pillTourRef }: SitePreviewProps) {
   const webRef = useRef<WebView>(null);
   const scrollY = useRef(0);
   // Where each photo is on screen (for the "Change image" pills), and whether the page is moving.
@@ -34,7 +36,14 @@ export default function SitePreview({ data, editable, shopProducts, onEditText, 
 
   // Memoised on data/editable: the templates stamp Date.now() into the HTML, so
   // re-rendering on every parent render would reload the page.
-  const html = useMemo(() => buildPreviewHtml(data, editable, shopProducts), [data, editable, shopProducts]);
+  const pageKey = page ? `${page.key}:${page.index ?? ''}` : '';
+  const shownPage = useRef(pageKey);
+  // A different page starts at the top, not where the last one was scrolled to.
+  if (shownPage.current !== pageKey) {
+    shownPage.current = pageKey;
+    scrollY.current = 0;
+  }
+  const html = useMemo(() => buildPreviewHtml(data, editable, shopProducts, page), [data, editable, shopProducts, page]);
   const source = useMemo(() => ({ html }), [html]);
   // The site's own background behind the page. On iOS (Fabric) the WKWebView
   // is transparent, so this view is what the overscroll bounce, a reload and
@@ -44,7 +53,7 @@ export default function SitePreview({ data, editable, shopProducts, onEditText, 
 
   const onMessage = useCallback(
     (e: WebViewMessageEvent) => {
-      const m = parsePreviewMessage(e.nativeEvent.data, data);
+      const m = parsePreviewMessage(e.nativeEvent.data, data, page);
       if (!m) return;
       switch (m.type) {
         case 'edit':
@@ -68,7 +77,7 @@ export default function SitePreview({ data, editable, shopProducts, onEditText, 
           return;
       }
     },
-    [data, editable, onEditText, onEditImage],
+    [data, editable, page, onEditText, onEditImage],
   );
 
   const onShouldStartLoadWithRequest = useCallback((req: ShouldStartLoadRequest) => shouldAllowPreviewRequest(req), []);

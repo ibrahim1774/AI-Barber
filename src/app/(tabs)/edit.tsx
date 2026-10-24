@@ -13,7 +13,9 @@ import { bookingPrefs, resolveLinks } from '@/lib/bookingChoice';
 import { syncOwnLink } from '@/lib/bookingChoice';
 import { useLinkContext } from '@/lib/linkContext';
 import { stripLapsedLinks } from '@/lib/tierLinks';
-import { previewBackground, setPath, textMaxLength, textValue } from '@/lib/editable';
+import { previewBackground, setPath, textMaxLength, textValue, type PreviewPage } from '@/lib/editable';
+import { pageChips, resolvePage, withPages } from '@/lib/sitePages';
+import type { PagesModel, PageKey } from '@/web/lib/render/pages';
 import { applyBookingLink, applyHomePrompts, editorRecord, fieldLabel, savePathValue, setColour, stockPhotoPaths, switchDesign } from '@/lib/editor';
 import { StockPhotoNudge } from '@/components/StockPhotoNudge';
 import type { PreviewProduct } from '@/lib/editable';
@@ -30,6 +32,8 @@ import {
 } from '@/lib/subscriptionStatus';
 import { tabBarStyle } from '@/lib/tabBar';
 import SitePreview from '@/components/SitePreview';
+import { PagesBar } from '@/components/PagesBar';
+import { PagesSheet } from '@/components/PagesSheet';
 import { DesignSwitcher } from '@/components/DesignSwitcher';
 import { EditSheet } from '@/components/EditSheet';
 import { AllFieldsSheet, PhotosSheet } from '@/components/AllFieldsSheet';
@@ -55,7 +59,7 @@ import { useSession } from '@/lib/auth';
 import { PublishBar } from '@/components/PublishBar';
 import { LapsedCard } from '@/components/LapsedCard';
 
-type SheetKind = 'fields' | 'photos' | 'colour' | 'edit' | 'sections' | SectionKey;
+type SheetKind = 'fields' | 'photos' | 'colour' | 'edit' | 'sections' | 'pages' | SectionKey;
 
 /**
  * The Edit tab: the site preview with tap-to-edit, the design switcher, and
@@ -116,6 +120,8 @@ export default function Editor() {
   const overlayRef = useRef<Overlay | null>(null);
   overlayRef.current = overlay;
   const [sheet, setSheet] = useState<SheetKind | null>(null);
+  // The page of a multi-page site the preview shows. Never saved; Home when that page goes away.
+  const [wantedPage, setWantedPage] = useState<PreviewPage | null>(null);
   // Kept after the edit sheet closes so its label/value don't blank mid-slide.
   const [edit, setEdit] = useState<{ path: string; fromList: boolean }>({ path: 'shopName', fromList: false });
   const [uploading, setUploading] = useState(false);
@@ -413,6 +419,13 @@ export default function Editor() {
     setSheet('sections');
   }, []);
 
+  // Saving the Pages sheet writes pages {order, hidden} (the first save is what makes an older site multi-page).
+  const savePages = useCallback((model: PagesModel, show?: PageKey) => {
+    track('pages_saved', { hidden: model.hidden.length });
+    commit((d) => withPages(d, model));
+    setWantedPage(show ? { key: show } : null);
+  }, [commit]);
+
   const handleDesign = useCallback(
     (t: 'luxe' | 'prime') => {
       setSwitching(true);
@@ -496,6 +509,7 @@ export default function Editor() {
 
   // The hero's (else the first) "Change image" pill, which the Edit tour's photo step points at.
   const changeImageRef = useTutorialTarget('edit.changeImage');
+  const pagesRef = useTutorialTarget('edit.pages');
 
   if (!site) return <View style={styles.root} />;
 
@@ -509,14 +523,18 @@ export default function Editor() {
 
   const data = site.data;
   const editValue = textValue(data, edit.path);
+  const shown = previewData ?? data;
+  const page = resolvePage(shown, wantedPage);
+  const chips = pageChips(shown);
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       {/* The prompts / guide cover this body; the tab bar is hidden meanwhile. */}
       <View style={styles.body}>
+        <PagesBar chips={chips} current={page} onSelect={setWantedPage} onOpenPages={() => setSheet('pages')} buttonRef={pagesRef} disabled={uploading || overlay != null} />
         {/* The site's own background, so nothing else shows around the page. */}
         <View style={[styles.preview, { backgroundColor: previewBackground(data) }]}>
-          <SitePreview data={previewData ?? data} editable shopProducts={shopProducts} onEditText={onPreviewText} onEditImage={onPreviewImage} pillTourRef={changeImageRef} />
+          <SitePreview data={shown} editable page={page} shopProducts={shopProducts} onEditText={onPreviewText} onEditImage={onPreviewImage} pillTourRef={changeImageRef} />
           {/* Hidden over a published site and while the prompts / guide are up. */}
           {site.slug == null && !site.deployedUrl && overlay == null && (
             <DesignSwitcher current={data.template} onSelect={handleDesign} busy={switching} />
@@ -561,6 +579,13 @@ export default function Editor() {
           current={data.colorTheme}
           onPick={(hex) => commit((d) => setColour(d, hex))}
           onClose={() => setSheet(null)}
+        />
+        <PagesSheet
+          visible={sheet === 'pages'}
+          data={data}
+          onSave={savePages}
+          onClose={() => setSheet(null)}
+          onDismiss={onSheetDismiss}
         />
         <SectionsSheet
           visible={sheet === 'sections'}
