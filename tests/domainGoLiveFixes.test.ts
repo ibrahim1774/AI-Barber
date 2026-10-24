@@ -373,3 +373,55 @@ describe('L3: a cached Stripe 5xx does not delay the refund by 24h', () => {
     expect(call).toHaveBeenCalledWith('DELETE', '/v1/subscriptions/sub_abc123', expect.anything());
   });
 });
+
+describe('S1: the support email only counts when it was really sent', () => {
+  it('skipped (no SMTP env) and failed both throw; sent resolves', async () => {
+    vi.resetModules();
+    const sendEmail = vi.fn();
+    vi.doMock('../lib/bookings/email.js', async (orig) => ({ ...(await orig<object>()), sendEmail }));
+    const { notifySupportEmail } = await import('../lib/ios/domainLive.js');
+    sendEmail.mockResolvedValueOnce('skipped');
+    await expect(notifySupportEmail('s', 't')).rejects.toThrow(/skipped/);
+    sendEmail.mockResolvedValueOnce('failed');
+    await expect(notifySupportEmail('s', 't')).rejects.toThrow(/failed/);
+    sendEmail.mockResolvedValueOnce('sent');
+    await expect(notifySupportEmail('s', 't')).resolves.toBeUndefined();
+    vi.doUnmock('../lib/bookings/email.js');
+    vi.resetModules();
+  });
+
+  it('a failed alert email is retried by the next sweep (not marked sent)', async () => {
+    quiet();
+    const w = world();
+    w.reg.queueBuy('network');
+    await purchaseDomain({ sessionId: SID }, OWNER_AUTH, w.deps);
+    w.tick(STALL_ALERT_MS + 60_000);
+    w.notifySupport.mockRejectedValueOnce(new Error('smtp down'));
+    expect((await w.sweep()).alerted).toEqual([]);
+    expect((await w.sweep()).alerted).toEqual(['freshcuts.com']);
+    expect(w.notifySupport).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('S2: a refund that keeps failing is emailed once', () => {
+  it('after 30 minutes of failed attempts, support hears once; the sweep keeps retrying', async () => {
+    quiet();
+    const w = world();
+    w.reg.setOrderMode({ failed: 'payment-failed' });
+    w.cancelAndRefund.mockRejectedValue(new Error('no invoice to refund'));
+    await purchaseDomain({ sessionId: SID }, OWNER_AUTH, w.deps);
+    await w.sweep();
+    expect(w.notifySupport).not.toHaveBeenCalled();
+    w.tick(STALL_ALERT_MS + 60_000);
+    await w.sweep();
+    await w.sweep();
+    w.tick(DAY);
+    await w.sweep();
+    expect(w.notifySupport).toHaveBeenCalledTimes(1);
+    expect(w.notifySupport.mock.calls[0][0]).toBe('Domain refund keeps failing: freshcuts.com');
+    expect(row(w).refunded_at).toBeNull();
+    w.cancelAndRefund.mockResolvedValue(undefined);
+    await w.sweep();
+    expect(row(w).refunded_at).not.toBeNull();
+  });
+});

@@ -128,7 +128,7 @@ type RefundDeps = Pick<DomainFlowDeps, 'repo' | 'now' | 'notifySupport' | 'cance
 
 /** Cancel + refund (idempotent at Stripe), stamp the row, email support once. True once refunded. */
 export async function refundWebRow(
-  row: Pick<DomainRow, 'original_transaction_id' | 'domain'> & { site_slug?: string; failure_reason?: string | null; last_error?: string | null },
+  row: Pick<DomainRow, 'original_transaction_id' | 'domain'> & { site_slug?: string; failure_reason?: string | null; last_error?: string | null; updated_at?: string },
   deps: RefundDeps,
 ): Promise<boolean> {
   const subId = row.original_transaction_id.replace(/^stripe:/, '');
@@ -140,6 +140,13 @@ export async function refundWebRow(
     await deps.cancelAndRefund(subId);
   } catch (e: any) {
     console.error(`[domains/web] ALERT refund of ${subId} (${row.domain}) failed; retried:`, e?.message || e);
+    // S2: a refund that keeps failing (no invoice to refund, a dispute) must not loop silently.
+    const since = Date.parse(row.updated_at || '');
+    if (Number.isFinite(since) && deps.now() - since >= STALL_ALERT_MS) {
+      await alertOnce({ original_transaction_id: row.original_transaction_id, alerts_sent: null }, 'refund-failing',
+        `Domain refund keeps failing: ${row.domain}`,
+        `A paid $39.00 website domain subscription ended without a domain, but cancelling and refunding it has failed for over ${Math.round(STALL_ALERT_MS / 60_000)} minutes. Refund it by hand in Stripe. The sweep keeps retrying.\n\nDomain: ${row.domain}\nSite: ${row.site_slug ?? '—'}\nSubscription: ${subId}\nReason: ${row.failure_reason ?? '-'}\nError: ${String(e?.message || e).slice(0, 200)}`, deps);
+    }
     return false;
   }
   const why = row.failure_reason ? ` (${row.failure_reason})` : '';
