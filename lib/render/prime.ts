@@ -9,9 +9,10 @@
 // Pure: WebsiteData in, HTML string out. Keep it that way.
 import type { WebsiteData } from '../../types';
 import { safeHref } from './safeHref.js';
+import { unmarked, mapMarked } from './markers.js';
 import { bookStripHtml, isSiteBookLink, shopPreviewHtml, type SectionSkin } from './subpages.js';
 import {
-  aggregateToShow, copyrightYear, displayPrice, galleryIsAllOwnPhotos, hasServices, nicheCopy, photoAlt,
+  aggregateToShow, copyrightYear, displayPrice, galleryIsAllOwnPhotos, hasServices, nicheCopy, photoAlt, to12h,
   displayPhone, nicheOf, photosAreFromBookingPage, policyToShow, reviewStars, reviewsSourceLabel, serviceMeta,
   siteDescription, siteTitle, teamBookLink, teamOf, firstName, visibleReviews, withoutLegacyCopy,
 } from './honest.js';
@@ -154,28 +155,18 @@ export function escapeHtml(s: string): string {
 }
 // 24h → 12h with AM/PM. Idempotent (passes AM/PM strings through). Same
 // helper used by the luxe renderer so hours read consistently.
-export const to12h = (raw: string | null | undefined): string => {
-  if (!raw) return raw ?? '';
-  const s = String(raw).trim();
-  if (!s) return s;
-  if (/\b(AM|PM|am|pm|noon|midnight)\b/i.test(s)) return s.replace(/\s+/g, ' ').toUpperCase().replace('NOON', 'Noon').replace('MIDNIGHT', 'Midnight');
-  const m = s.match(/^(\d{1,2})(?::(\d{2}))?$/);
-  if (!m) return s;
-  const h24 = parseInt(m[1], 10);
-  const mm = m[2] || '00';
-  if (isNaN(h24) || h24 < 0 || h24 > 24) return s;
-  const period = h24 >= 12 && h24 < 24 ? 'PM' : 'AM';
-  const h12 = h24 === 0 || h24 === 24 ? 12 : h24 > 12 ? h24 - 12 : h24;
-  return `${h12}:${mm} ${period}`;
-};
+export { to12h };
 export const fmtHours = (h: { open: string; close: string; closed?: boolean }, closedText = 'Closed'): string =>
   h.closed ? closedText : `${to12h(h.open)} – ${to12h(h.close)}`;
 // Trailing "City, State" only — keeps the hero eyebrow from echoing a full
 // street address even if one is pasted in.
 export const cityStateOnly = (raw: string): string => {
-  const parts = (raw || '').split(',').map((s) => s.trim()).filter(Boolean);
-  if (parts.length <= 2) return raw || '';
-  return parts.slice(-2).join(', ');
+  // A value in the editor's markers keeps its wrapper round the cut text (markers.ts): the result stays tappable.
+  return mapMarked(raw || '', (text) => {
+    const parts = text.split(',').map((s) => s.trim()).filter(Boolean);
+    if (parts.length <= 2) return text;
+    return parts.slice(-2).join(', ');
+  });
 };
 // Resolve the gold trio from a colorTheme slug or raw hex. Mirrors the
 // preset set used by the luxe/euphoria renderers so a picked color carries
@@ -233,7 +224,7 @@ export function generatePrimeHTMLWithPlaceholders(input: WebsiteData, ctx?: Rend
   const bookTarget = bookingUrl && !isSiteBookLink(bookingUrl) ? ' target="_blank" rel="noopener noreferrer"' : '';
   // Homepage previews of the site's own /book and /shop pages (lib/render/subpages.ts).
   const bookStrip = bookStripHtml(siteData, PRIME_SKIN, { heading: t(siteData.labels, 'bookStripHeading', undefined, siteData), button: t(siteData.labels, 'bookStripButton', undefined, siteData) });
-  const shopPreview = shopPreviewHtml(siteData, PRIME_SKIN);
+  const shopPreview = shopPreviewHtml(siteData, PRIME_SKIN, { heading: t(siteData.labels, 'shopStripHeading', undefined, siteData), link: t(siteData.labels, 'shopStripLink', undefined, siteData) });
   const formattedPhone = escapeHtml((siteData.phone || '').replace(/\s+/g, ''));
   const phoneDigits = (siteData.phone || '').replace(/\D/g, '');
   // Book: the booking link, else a call. Neither → no booking buttons.
@@ -320,7 +311,7 @@ export function generatePrimeHTMLWithPlaceholders(input: WebsiteData, ctx?: Rend
   <div class="p-container">
     <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px;margin-bottom:32px;">
       <div><div class="p-eyebrow">${L('primeGalleryEyebrow')}</div><h2 class="p-display" style="font-size:clamp(28px,4.5vw,44px);margin-top:12px;"><span class="p-italic" style="color:var(--p-brand);">${L('primeGalleryHeading')}</span></h2></div>
-      ${photosAreFromBookingPage(siteData) && galleryIsAllOwnPhotos(galleryTiles.map((t) => t.url)) ? `<p class="p-serif p-italic" style="color:var(--p-ink-soft);">Real cuts from inside the shop — no stock photos.</p>` : ''}
+      ${photosAreFromBookingPage(siteData) && galleryIsAllOwnPhotos(galleryTiles.map((t) => t.url)) ? `<p class="p-serif p-italic" style="color:var(--p-ink-soft);">${L('primeGalleryNote')}</p>` : ''}
     </div>
     <div class="p-gallery">
       ${galleryTiles.map((t) => {
@@ -347,7 +338,7 @@ export function generatePrimeHTMLWithPlaceholders(input: WebsiteData, ctx?: Rend
       ${team.map((m) => {
         const link = teamBookLink(siteData, m, bookingLive);
         return `<div class="p-review-card ab-team-card" id="team-${escapeHtml(m.slug)}">
-        ${m.photo ? `<img class="ab-team-photo" src="{{staff${m.index}}}" alt="${escapeHtml(m.name)}">` : `<div class="ab-team-photo" aria-hidden="true">${escapeHtml(Array.from(m.name)[0].toUpperCase())}</div>`}
+        ${m.photo ? `<img class="ab-team-photo" src="{{staff${m.index}}}" alt="${escapeHtml(m.name)}">` : `<div class="ab-team-photo" aria-hidden="true">${escapeHtml(Array.from(unmarked(m.name))[0].toUpperCase())}</div>`}
         <h3 class="p-serif" style="font-size:1.2rem;margin:0;">${escapeHtml(m.name)}</h3>
         ${m.role ? `<div class="p-eyebrow" style="font-size:10px;">${escapeHtml(m.role)}</div>` : ''}
         ${m.bio ? `<p class="p-serif p-italic ab-team-bio" style="color:var(--p-ink-soft);font-size:0.9rem;">${escapeHtml(m.bio)}</p>` : ''}
@@ -390,12 +381,13 @@ export function generatePrimeHTMLWithPlaceholders(input: WebsiteData, ctx?: Rend
 
   // Pull quote.
   // The barber's own pull quote, else a generic line for their niche.
-  const pullQuote = siteData.pullQuote && (siteData.pullQuote.text || '').trim()
-    ? siteData.pullQuote
-    : { text: copy.pullQuote };
+  const ownQuote = siteData.pullQuote && (siteData.pullQuote.text || '').trim() ? siteData.pullQuote : null;
+  const pullQuote: { text: string; accent?: string } = ownQuote ?? { text: '' };
+  // Without a quote of their own the line is a label (primePullQuote), so it can be reworded from the page too.
+  const pullQuoteText = ownQuote ? escapeHtml(ownQuote.text) : L('primePullQuote');
   const pullQuoteSection = `<section class="p-section" style="background:radial-gradient(ellipse at center, rgba(212,166,74,0.07) 0%, transparent 60%), var(--p-bg);text-align:center;">
   <div style="max-width:1000px;margin:0 auto;">
-    <p class="p-serif p-italic" style="font-size:clamp(1.5rem,3.6vw,2.7rem);line-height:1.3;color:var(--p-ink);margin:0;">${escapeHtml(pullQuote.text)}${pullQuote.accent ? ` <span style="color:var(--p-brand);font-weight:600;">${escapeHtml(pullQuote.accent)}</span>` : ''}</p>
+    <p class="p-serif p-italic" style="font-size:clamp(1.5rem,3.6vw,2.7rem);line-height:1.3;color:var(--p-ink);margin:0;">${pullQuoteText}${pullQuote.accent ? ` <span style="color:var(--p-brand);font-weight:600;">${escapeHtml(pullQuote.accent)}</span>` : ''}</p>
   </div>
 </section>`;
 

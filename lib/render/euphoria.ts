@@ -9,6 +9,7 @@
 // Pure: WebsiteData in, HTML string out. Keep it that way.
 import type { WebsiteData } from '../../types';
 import { safeHref } from './safeHref.js';
+import { unmarked, mapMarked } from './markers.js';
 import { bookStripHtml, isSiteBookLink, shopPreviewHtml, type SectionSkin } from './subpages.js';
 import {
   contactEmail, copyrightYear, displayPhone, displayPrice, hasServices, nicheOf, photoAlt, serviceMeta, siteDescription, siteTitle, teamBookLink, teamOf, firstName, withoutLegacyCopy,
@@ -202,9 +203,12 @@ export function euphoriaRootStyle(slug?: string): string {
 // pastes one in. Inputs with two or fewer comma-separated parts pass
 // through unchanged.
 export const cityStateOnly = (raw: string): string => {
-  const parts = (raw || '').split(',').map((s) => s.trim()).filter(Boolean);
-  if (parts.length <= 2) return raw || '';
-  return parts.slice(-2).join(', ');
+  // A value in the editor's markers keeps its wrapper round the cut text (markers.ts): the result stays tappable.
+  return mapMarked(raw || '', (text) => {
+    const parts = text.split(',').map((s) => s.trim()).filter(Boolean);
+    if (parts.length <= 2) return text;
+    return parts.slice(-2).join(', ');
+  });
 };
 // Exported so App.tsx / publish path can reuse for post-payment deploy
 // Book strip and Shop preview in EUPHORIA's look (brand colour from the theme vars).
@@ -240,7 +244,7 @@ export function generateEuphoriaHTMLWithPlaceholders(input: WebsiteData, ctx?: R
   const bookTarget = bookingUrl && !isSiteBookLink(bookingUrl) ? ' target="_blank" rel="noopener noreferrer"' : '';
   // Homepage previews of the site's own /book and /shop pages (lib/render/subpages.ts).
   const bookStrip = bookStripHtml(siteData, EUPHORIA_SKIN, { heading: t(siteData.labels, 'bookStripHeading', undefined, siteData), button: t(siteData.labels, 'bookStripButton', undefined, siteData) });
-  const shopPreview = shopPreviewHtml(siteData, EUPHORIA_SKIN);
+  const shopPreview = shopPreviewHtml(siteData, EUPHORIA_SKIN, { heading: t(siteData.labels, 'shopStripHeading', undefined, siteData), link: t(siteData.labels, 'shopStripLink', undefined, siteData) });
   const formattedPhone = escapeHtml((siteData.phone || '').replace(/\s+/g, ''));
   const hasPhone = !!(siteData.phone || '').trim();
   // tel: links only for a phone with digits ("call us" gets no link).
@@ -300,7 +304,7 @@ export function generateEuphoriaHTMLWithPlaceholders(input: WebsiteData, ctx?: R
       ${team.map((m) => {
         const link = teamBookLink(siteData, m, bookingLive);
         return `<div class="ab-team-card" id="team-${escapeHtml(m.slug)}">
-        ${m.photo ? `<img class="ab-team-photo" src="{{staff${m.index}}}" alt="${escapeHtml(m.name)}">` : `<div class="ab-team-photo" aria-hidden="true">${escapeHtml(Array.from(m.name)[0].toUpperCase())}</div>`}
+        ${m.photo ? `<img class="ab-team-photo" src="{{staff${m.index}}}" alt="${escapeHtml(m.name)}">` : `<div class="ab-team-photo" aria-hidden="true">${escapeHtml(Array.from(unmarked(m.name))[0].toUpperCase())}</div>`}
         <h3 class="eu-serif" style="font-size:22px;margin:8px 0 0;">${escapeHtml(m.name)}</h3>
         ${m.role ? `<div class="eu-eyebrow">${escapeHtml(m.role)}</div>` : ''}
         ${m.bio ? `<p class="eu-serif ab-team-bio" style="color:var(--eu-ink-soft);font-size:16px;line-height:1.5;">${escapeHtml(m.bio)}</p>` : ''}

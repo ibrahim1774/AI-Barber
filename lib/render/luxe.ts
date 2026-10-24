@@ -9,9 +9,10 @@
 // Pure: WebsiteData in, HTML string out. Keep it that way.
 import type { WebsiteData } from '../../types';
 import { safeHref } from './safeHref.js';
+import { mapMarked, unwrapMarked } from './markers.js';
 import { bookStripHtml, isSiteBookLink, shopPreviewHtml, type SectionSkin } from './subpages.js';
 import {
-  aggregateToShow, copyrightYear, displayPrice, footerLine, hasServices, photoAlt, reviewStars,
+  aggregateToShow, copyrightYear, displayPrice, footerLine, hasServices, photoAlt, reviewStars, to12h,
   displayPhone, firstName, nicheOf, reviewsSourceLabel, serviceMeta, siteDescription, siteTitle, teamBookLink, teamOf, visibleReviews, withoutLegacyCopy,
 } from './honest.js';
 import { ratingLineCustom, t, type LabelKey } from './labels.js';
@@ -22,28 +23,18 @@ import { NAV_CSS, navItemsFor, navListHtml, type RenderCtx } from './shell.js';
 // AM/PM marker, return it unchanged. Handles "09:00", "9:00", "9", "20:30".
 // Anything that doesn't parse cleanly is returned as-is so user-typed
 // values like "9am-1pm" or "By appointment" survive unchanged.
-export const to12h = (raw: string | null | undefined): string => {
-  if (!raw) return raw ?? '';
-  const s = String(raw).trim();
-  if (!s) return s;
-  if (/\b(AM|PM|am|pm|noon|midnight)\b/i.test(s)) return s.replace(/\s+/g, ' ').toUpperCase().replace('NOON', 'Noon').replace('MIDNIGHT', 'Midnight');
-  const m = s.match(/^(\d{1,2})(?::(\d{2}))?$/);
-  if (!m) return s;
-  const h24 = parseInt(m[1], 10);
-  const mm = m[2] || '00';
-  if (isNaN(h24) || h24 < 0 || h24 > 24) return s;
-  const period = h24 >= 12 && h24 < 24 ? 'PM' : 'AM';
-  const h12 = h24 === 0 || h24 === 24 ? 12 : h24 > 12 ? h24 - 12 : h24;
-  return `${h12}:${mm} ${period}`;
-};
+export { to12h };
 // Extracts the trailing "City, State [ZIP]" portion of an area string so
 // the footer "<niche> in ..." line never echoes the
 // full street address even if the user pastes one in. Inputs with two
 // or fewer comma-separated parts pass through unchanged.
 export const cityStateOnly = (raw: string): string => {
-  const parts = (raw || '').split(',').map((s) => s.trim()).filter(Boolean);
-  if (parts.length <= 2) return raw || '';
-  return parts.slice(-2).join(', ');
+  // A value in the editor's markers keeps its wrapper round the cut text (markers.ts): the result stays tappable.
+  return mapMarked(raw || '', (text) => {
+    const parts = text.split(',').map((s) => s.trim()).filter(Boolean);
+    if (parts.length <= 2) return text;
+    return parts.slice(-2).join(', ');
+  });
 };
 // ---------------------------------------------------------------------------
 // Color themes — picked on the GeneratorForm. The slug is persisted on
@@ -144,7 +135,7 @@ export function generateHTMLWithPlaceholders(input: WebsiteData, ctx?: RenderCtx
   const bookTarget = bookingUrl && !isSiteBookLink(bookingUrl) ? ' target="_blank" rel="noopener noreferrer"' : '';
   // Homepage previews of the site's own /book and /shop pages (lib/render/subpages.ts).
   const bookStrip = bookStripHtml(siteData, LUXE_SKIN, { heading: t(siteData.labels, 'bookStripHeading', undefined, siteData), button: t(siteData.labels, 'bookStripButton', undefined, siteData) });
-  const shopPreview = shopPreviewHtml(siteData, LUXE_SKIN);
+  const shopPreview = shopPreviewHtml(siteData, LUXE_SKIN, { heading: t(siteData.labels, 'shopStripHeading', undefined, siteData), link: t(siteData.labels, 'shopStripLink', undefined, siteData) });
   const formattedPhone = esc((siteData.phone || '').replace(/\s+/g, ''));
   // The number as printed: "(512) 555-0142" for a plain ten-digit number (honest.ts displayPhone).
   const shownPhone = esc(displayPhone(siteData.phone));
@@ -154,8 +145,11 @@ export function generateHTMLWithPlaceholders(input: WebsiteData, ctx?: RenderCtx
   // Non-optional on purpose: a site with no contact block is malformed and
   // must fail the render (publishSite's dry render relies on that).
   const address = (siteData.contact.address || '').trim();
-  const nameFirst = esc(siteData.shopName.split(' ')[0]);
-  const nameRest = esc(siteData.shopName.split(' ').slice(1).join(' '));
+  // The logo prints the first word and the rest apart; a name in the editor's markers keeps its wrapper (same id) round each part.
+  const [nameOpen, nameText, nameClose] = unwrapMarked(siteData.shopName);
+  const nameWords = nameText.split(' ');
+  const nameFirst = esc(nameOpen + nameWords[0] + nameClose);
+  const nameRest = nameWords.length > 1 ? esc(nameOpen + nameWords.slice(1).join(' ') + nameClose) : '';
   // Picked theme — applied via .aib-themed CSS vars on <body> so the deployed
   // site matches the editor preview. Defaults to gold/black when unset.
   const luxeTheme = resolveAibTheme(siteData);
@@ -198,7 +192,7 @@ export function generateHTMLWithPlaceholders(input: WebsiteData, ctx?: RenderCtx
   // ── Bio section — shows the shop's Booksy description as a pull
   //    quote between hero and about. Skipped when bio is empty (e.g.
   //    manual-form sites or platforms without descriptions).
-  const bioSection = siteData.bio && siteData.bio.trim().length > 20
+  const bioSection = siteData.bio && unwrapMarked(siteData.bio.trim())[1].trim().length > 20
     ? `<section class="py-12 md:py-20 bg-[#0d0d0d] px-6 border-y border-white/5">
     <div class="container mx-auto max-w-3xl text-center">
       <svg class="w-8 h-8 mx-auto mb-6 text-[#f4a100]/40" viewBox="0 0 24 24" fill="currentColor"><path d="M6 17h3l2-4V7H5v6h3l-2 4zm8 0h3l2-4V7h-6v6h3l-2 4z"/></svg>
@@ -491,7 +485,7 @@ ${showServices ? `        <a href="#services" class="text-[12px] font-montserrat
       <div class="space-y-6 md:space-y-10">
         ${address ? `<div>
           <h4 class="text-[#f4a100] font-bold text-[10px] md:text-xs tracking-[2px] mb-1 md:mb-2 font-montserrat">${lbl('contactLocationLabel')}</h4>
-          <p class="text-[#cccccc] text-xs md:text-sm leading-relaxed">${esc(address.charAt(0).toUpperCase() + address.slice(1))}</p>
+          <p class="text-[#cccccc] text-xs md:text-sm leading-relaxed">${esc(mapMarked(address, (a) => a.charAt(0).toUpperCase() + a.slice(1)))}</p>
         </div>` : ''}
         ${hasPhone ? `<div>
           <h4 class="text-[#f4a100] font-bold text-[10px] md:text-xs tracking-[2px] mb-1 md:mb-2 font-montserrat">${lbl('contactPhoneLabel')}</h4>

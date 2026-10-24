@@ -18,6 +18,7 @@
 import { Storage } from '@google-cloud/storage';
 import type { WebsiteData } from '../types';
 import { deployRenderedSite } from './deploySite.js';
+import { stripMarkersDeep, stripMarkersText } from './render/markers.js';
 import { renderSiteBundle, type RenderedSite, type RenderSiteOptions } from './render/site.js';
 import { isMultiPage, type SiteFile } from './render/pages.js';
 import { isAwaitingDetails, isPayFirstPlan } from './payFirst.js';
@@ -389,7 +390,10 @@ export function renderPendingBundle(
   opts: Pick<RenderSiteOptions, 'customDomain' | 'siteBaseUrl'> = {},
 ): RenderedSite {
   // Named fields only: nothing from a request or a stored row may reach the renderer's options.
-  return renderSiteBundle(pending.siteData, { customDomain: opts.customDomain, siteBaseUrl: opts.siteBaseUrl, imageUrls: pending.imageUrlMap || {} });
+  // The editor's invisible markers exist only in the app's preview render. A barber can paste one, so none may reach a published
+  // page: the data is cleaned here, before the renderer (which keeps them for the preview) sees it. The sitemap is cleaned too.
+  const out = renderSiteBundle(stripMarkersDeep(pending.siteData), { customDomain: opts.customDomain, siteBaseUrl: opts.siteBaseUrl, imageUrls: stripMarkersDeep(pending.imageUrlMap || {}) });
+  return { ...out, sitemap: out.sitemap === null ? null : stripMarkersText(out.sitemap) };
 }
 
 /**

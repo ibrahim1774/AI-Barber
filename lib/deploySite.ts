@@ -13,6 +13,7 @@
 import { Storage } from '@google-cloud/storage';
 import axios from 'axios';
 import { siteConfigFile, siteVercelConfig, SITE_CONFIG_FILE, type SiteSubpages } from './siteSubpages.js';
+import { stripMarkersText } from './render/markers.js';
 import { assertSiteFilePath, type SiteFile } from './render/pages.js';
 
 export type { SiteFile };
@@ -262,7 +263,8 @@ export function swapImagePlaceholders(html: string, imageUrlMap: Record<string, 
 export function finalizePages(pages: SiteFile[], imageUrlMap: Record<string, string>): SiteFile[] {
   const base64ImagePattern = /data:image\/[^;]+;base64,[A-Za-z0-9+/=]{100,}/g;
   return pages.map((p) => {
-    let html = swapImagePlaceholders(p.html, imageUrlMap);
+    // Last guard: no editor marker (markers.ts) in any shipped page, whatever rendered it.
+    let html = stripMarkersText(swapImagePlaceholders(p.html, imageUrlMap));
     const left = html.match(/\{\{[^}]+\}\}/g);
     if (left && left.length > 0) console.warn(`[Deploy Site] Warning: ${left.length} placeholders not replaced on ${p.path}:`, left);
     const b64 = html.match(base64ImagePattern);
@@ -308,7 +310,7 @@ export function buildSiteFiles(
   if (subpages?.mode === 'full') {
     files.push({ file: SITE_CONFIG_FILE.replace(/^\//, ''), data: b64(siteConfigFile(subpages.shopSlug)), encoding: 'base64' });
   }
-  if (typeof extra.sitemap === 'string' && extra.sitemap) files.push({ file: 'sitemap.xml', data: b64(extra.sitemap), encoding: 'base64' });
+  if (typeof extra.sitemap === 'string' && extra.sitemap) files.push({ file: 'sitemap.xml', data: b64(stripMarkersText(extra.sitemap)), encoding: 'base64' });
   return files;
 }
 

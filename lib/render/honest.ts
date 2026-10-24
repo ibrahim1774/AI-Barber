@@ -17,13 +17,17 @@ import type { TeamMember, WebsiteData } from '../../types';
 import { nicheByKey, type BooksyNiche } from '../booksyNiche.js';
 import { isStockImage } from '../stockImages.js';
 import { safeHref } from './safeHref.js';
+import { mapMarked, printable, unmarked } from './markers.js';
 
 // Trailing "City, State" only, so a pasted street address never lands in
 // a footer or meta line.
 export const cityStateOnly = (raw: string): string => {
-  const parts = (raw || '').split(',').map((s) => s.trim()).filter(Boolean);
-  if (parts.length <= 2) return (raw || '').trim();
-  return parts.slice(-2).join(', ');
+  // A value in the editor's markers keeps its wrapper round the cut text (markers.ts): the result stays tappable.
+  return mapMarked(raw || '', (text) => {
+    const parts = text.split(',').map((s) => s.trim()).filter(Boolean);
+    if (parts.length <= 2) return text.trim();
+    return parts.slice(-2).join(', ');
+  });
 };
 
 // The shop's one place for page titles (pgPlace default): "City, ST" from whatever `area` holds. The app importer stores
@@ -79,7 +83,7 @@ export function copyrightYear(): number {
 // Alt text for any shop photo. Never "atmosphere" / "our work": the photo
 // may be a sample.
 export function photoAlt(site: Pick<WebsiteData, 'shopName'>): string {
-  const name = (site.shopName || '').trim();
+  const name = unmarked(site.shopName || '').trim();
   return name ? `${name} photo` : 'Shop photo';
 }
 
@@ -99,6 +103,26 @@ export function displayPhone(raw: string | null | undefined): string {
   if (d.length !== 10) return value;
   return `${open}(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}${close}`;
 }
+
+// ── Hours ────────────────────────────────────────────────────────────
+// 24h -> 12h with AM/PM. Idempotent: if the input already contains an AM/PM marker, return it unchanged. Handles
+// "09:00", "9:00", "9", "20:30". Anything that doesn't parse cleanly is returned as-is so user-typed values like
+// "9am-1pm" or "By appointment" survive unchanged. A value in the editor's markers keeps its wrapper (markers.ts).
+export const to12h = (raw: string | null | undefined): string => {
+  if (!raw) return raw ?? '';
+  return mapMarked(String(raw).trim(), (s0) => {
+    const s = s0.trim();
+    if (!s) return s;
+    if (/\b(AM|PM|am|pm|noon|midnight)\b/i.test(s)) return s.replace(/\s+/g, ' ').toUpperCase().replace('NOON', 'Noon').replace('MIDNIGHT', 'Midnight');
+    const m = s.match(/^(\d{1,2})(?::(\d{2}))?$/);
+    if (!m) return s;
+    const h24 = parseInt(m[1], 10);
+    if (isNaN(h24) || h24 < 0 || h24 > 24) return s;
+    const period = h24 >= 12 && h24 < 24 ? 'PM' : 'AM';
+    const h12 = h24 === 0 || h24 === 24 ? 12 : h24 > 12 ? h24 - 12 : h24;
+    return `${h12}:${m[2] || '00'} ${period}`;
+  });
+};
 
 // ── Policy ───────────────────────────────────────────────────────────
 // The invented Prime default every site used to carry. Sites saved with
@@ -142,8 +166,10 @@ export function inventedEmailFor(shopName: string): string {
 
 export function contactEmail(site: Pick<WebsiteData, 'contact' | 'shopName'>): string {
   const email = (site.contact?.email || '').trim();
-  if (!email) return '';
-  if (email.toLowerCase() === inventedEmailFor(site.shopName).toLowerCase()) return '';
+  // Decisions read the text without any editor wrapper (markers.ts); the address printed keeps it.
+  const typed = unmarked(email).trim();
+  if (!typed) return '';
+  if (typed.toLowerCase() === inventedEmailFor(unmarked(site.shopName)).toLowerCase()) return '';
   return email;
 }
 
@@ -274,23 +300,26 @@ export function hasServices(site: Pick<WebsiteData, 'services'>): boolean {
 // A bare number ("25", "25.50") is a dollar price → "$25". Anything else
 // ("$25", "25+", "£20", "from $30") is shown as typed.
 export function displayPrice(raw: string | null | undefined): string {
-  const p = (raw || '').trim();
-  return /^\d+(\.\d{1,2})?$/.test(p) ? `$${p}` : p;
+  // Marker-aware (see markers.ts): the "$" goes inside the editor wrapper, so the preview prints what the page prints.
+  return mapMarked((raw || '').trim(), (p) => (/^\d+(\.\d{1,2})?$/.test(p.trim()) ? `$${p.trim()}` : p));
 }
 
 // The small line under a service title: duration, else subtitle. Never a
 // second copy of the price (older scraped sites stored "30 min · $30" or
 // just "$30" as the subtitle).
 export function serviceMeta(s: { duration?: string; subtitle?: string; price?: string }): string {
-  let meta = (s.duration || s.subtitle || '').trim();
-  const price = (s.price || '').trim();
-  if (!meta || !price) return meta;
+  // Decisions use the unmarked text; the value printed keeps its editor wrapper (markers.ts).
+  const raw = (s.duration || s.subtitle || '').trim();
+  let meta = unmarked(raw).trim();
+  const price = unmarked((s.price || '').trim()).trim();
+  if (!meta || !price) return raw;
   if (meta === price || meta === displayPrice(price)) return '';
+  let cut = false;
   for (const p of [price, displayPrice(price)]) {
     const suffix = ` · ${p}`;
-    if (meta.endsWith(suffix)) meta = meta.slice(0, -suffix.length).trim();
+    if (meta.endsWith(suffix)) { meta = meta.slice(0, -suffix.length).trim(); cut = true; }
   }
-  return meta;
+  return cut ? mapMarked(raw, () => meta) : raw;
 }
 
 // ── Niche-aware body copy ────────────────────────────────────────────
@@ -506,8 +535,23 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const cleanStr = (v: unknown, max: number): string | undefined => {
   if (typeof v !== 'string') return undefined;
   const t = v.replace(/[\u0000-\u001F\u007F-\u009F]+/g, ' ').trim();
-  return t ? Array.from(t).slice(0, max).join('') : undefined;
+  // The cap counts the barber's text only: an editor wrapper (markers.ts) must never be cut in half.
+  const out = mapMarked(t, (text) => Array.from(text.trim()).slice(0, max).join(''));
+  return out || undefined;
 };
+
+/**
+ * A service chip on a barber's card or page ("Skin Fade"): the name stored on the barber is a copy of a service of the
+ * shop. When it is the same text as a listed service's title, the chip prints that title (with the editor's markers in
+ * the preview), so a tap on the chip edits the service itself. Otherwise the name as stored. Published output is the
+ * same text either way.
+ */
+export function serviceChipName(site: { services?: unknown }, name: string): string {
+  const k = unmarked(name).trim();
+  const list = Array.isArray(site.services) ? (site.services as { title?: unknown }[]) : [];
+  const hit = k ? list.find((sv) => typeof sv?.title === 'string' && unmarked(sv.title).trim() === k) : undefined;
+  return hit ? printable(hit.title) : name;
+}
 
 /** A team member as the renderers see it: cleaned, plus `index` = its position in the stored staff[] (the `staff<i>` image key). */
 export interface TeamCard extends TeamMember {
@@ -517,7 +561,7 @@ export interface TeamCard extends TeamMember {
 }
 
 const slugOf = (name: string): string =>
-  name.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'member';
+  unmarked(name).toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'member';
 
 /**
  * The ONLY reader of `staff` for the renderers. Entries without a name are skipped, text fields are
@@ -525,7 +569,7 @@ const slugOf = (name: string): string =>
  * link. At most TEAM_DISPLAY_CAP cards come back (with legacyUncapped, only entries that have a
  * memberId are capped; older entries without one all stay); the stored array is not changed.
  */
-export function teamOf(site: Pick<WebsiteData, 'staff'>, opts: { legacyUncapped?: boolean } = {}): TeamCard[] {
+export function teamOf(site: Pick<WebsiteData, 'staff'> & { services?: unknown }, opts: { legacyUncapped?: boolean } = {}): TeamCard[] {
   const staff = Array.isArray(site.staff) ? site.staff : [];
   const out: TeamCard[] = [];
   const used = new Set<string>();
@@ -533,7 +577,7 @@ export function teamOf(site: Pick<WebsiteData, 'staff'>, opts: { legacyUncapped?
     const s = staff[index] as Partial<TeamMember> | null;
     if (!s || typeof s !== 'object') continue;
     const name = cleanStr(s.name, 80);
-    if (!name) continue;
+    if (!name || !unmarked(name).trim()) continue;
     const hasId = typeof s.memberId === 'string' && UUID.test(s.memberId);
     // legacyUncapped (luxe, which always showed every staff entry): the cap counts only entries with a
     // memberId. Otherwise (prime, euphoria: a new section) every entry counts toward the cap.
@@ -545,7 +589,7 @@ export function teamOf(site: Pick<WebsiteData, 'staff'>, opts: { legacyUncapped?
     used.add(slug);
     const url = typeof s.bookingUrl === 'string' && /^https?:\/\//i.test(s.bookingUrl.trim()) ? safeHref(s.bookingUrl) : null;
     const names = Array.isArray(s.serviceNames)
-      ? s.serviceNames.map((n) => cleanStr(n, 40)).filter((n): n is string => !!n).slice(0, 3)
+      ? s.serviceNames.map((n) => cleanStr(n, 40)).filter((n): n is string => !!n).slice(0, 3).map((n) => serviceChipName(site, n))
       : [];
     out.push({
       index, slug, name,
@@ -561,7 +605,7 @@ export function teamOf(site: Pick<WebsiteData, 'staff'>, opts: { legacyUncapped?
 }
 
 /** "Sam Fade" -> "Sam". */
-export const firstName = (name: string): string => name.trim().split(/\s+/)[0] || name;
+export const firstName = (name: string): string => mapMarked(name.trim(), (n) => n.trim().split(/\s+/)[0] || n) || name;
 
 /**
  * Where a team card's Book button goes, or null for no button:

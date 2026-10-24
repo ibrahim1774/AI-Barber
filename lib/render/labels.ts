@@ -22,10 +22,10 @@ import type { TemplateId, WebsiteData } from '../../types';
 import type { BooksyNiche } from '../booksyNiche.js';
 import { nicheByKey } from '../booksyNiche.js';
 import { safeHref } from './safeHref.js';
-import { aggregateToShow, cityStateOnly, placeFromArea, footerLine, hasServices, nicheCopy, reviewsSourceName, teamBookLink, teamOf, visibleReviews } from './honest.js';
-import { isSiteBookLink } from './subpages.js';
+import { aggregateToShow, cityStateOnly, photosAreFromBookingPage, placeFromArea, footerLine, hasServices, nicheCopy, reviewsSourceName, teamBookLink, teamOf, visibleReviews } from './honest.js';
+import { isSiteBookLink, isSiteShopLink } from './subpages.js';
 import { beardServices, isHaircutTitle, serviceGuideFor, titledServices } from './guides.js';
-import { buildPageSet, hasFilePages, plainText, type PageContext, type PageKey, type PageSet } from './pages.js';
+import { buildPageSet, hasFilePages, memberHasOwnHours, plainText, type PageContext, type PageKey, type PageSet } from './pages.js';
 
 export type LabelDefault = string | ((niche: BooksyNiche, site?: Pick<WebsiteData, 'area' | 'niche'>) => string);
 
@@ -48,7 +48,12 @@ export interface LabelDef {
    * page. Never by the single-page renderers, so visibleLabelKeys() leaves these out; the preview of a
    * chosen page asks visiblePageLabelKeys().
    */
-  multi?: { page?: PageKey | PageKey[]; shows?: (site: WebsiteData, set: PageSet) => boolean };
+  /**
+   * A single-page label (no `multi`) that a nested page prints as well, e.g. "Book with" on the Team pages. The page's
+   * list adds it when `shows` says the site prints it.
+   */
+  alsoOn?: PageKey[];
+  multi?: { page?: PageKey | PageKey[]; shows?: (site: WebsiteData, set: PageSet, page: PageKey) => boolean };
 }
 
 const has = (v: unknown): boolean => typeof v === 'string' && v.trim() !== '';
@@ -62,9 +67,14 @@ const euGallery = (s: WebsiteData) => (s.gallery || []).some((u) => has(u));
 const hasStaff = (s: WebsiteData) => teamOf(s).length > 0;
 // "Book with <name>" prints only on a card whose link goes to that member (honest.ts teamBookLink kind).
 const hasMemberBook = (s: WebsiteData) => teamOf(s, { legacyUncapped: true }).some((m) => teamBookLink(s, m, isSiteBookLink(s.bookingUrl))?.kind === 'member');
+const hasMemberHours = (s: WebsiteData) => (Array.isArray(s.staff) ? s.staff : []).some((m) => memberHasOwnHours(m, s.hours));
 const hasHours = (s: WebsiteData) => Array.isArray(s.hours) && s.hours.length > 0;
 const hasReviews = (s: WebsiteData) => visibleReviews(s).length > 0;
 const hasClosedDay = (s: WebsiteData) => hasHours(s) && s.hours!.some((h) => h.closed);
+// A barber's own hours (their page) with a closed day.
+const memberClosedDay = (s: WebsiteData) => (Array.isArray(s.staff) ? s.staff : []).some((m) => Array.isArray(m?.hours) && m!.hours!.some((h) => h?.closed));
+// The links under "Also see": Location, Hours, Contact when the site has them as pages, never the page itself.
+const alsoSeeKeys = (set: PageSet, page: PageKey) => (['location', 'hours', 'contact'] as const).filter((k) => k !== page && set.nav.includes(k) && set.files.some((f) => f.key === k && !f.child));
 const canCall = (s: WebsiteData) => /\d/.test(s.phone || '');
 const hasPhone = (s: WebsiteData) => has(s.phone);
 const hasBook = (s: WebsiteData) => !!safeHref(s.bookingUrl);
@@ -132,6 +142,8 @@ export const LABELS = {
   primePolicyEyebrow: { title: 'Policy label', default: 'Please Note', template: 'prime', max: 30, shows: (s) => has(s.policy?.body) },
   primeGalleryEyebrow: { title: 'Gallery eyebrow', default: 'Gallery', template: 'prime', max: 40, shows: primeGallery },
   primeGalleryHeading: { title: 'Gallery heading', default: 'The look.', template: 'prime', max: 60, shows: primeGallery },
+  primeGalleryNote: { title: 'Gallery note', default: 'Real cuts from inside the shop — no stock photos.', template: 'prime', max: 80, shows: (s) => primeGallery(s) && photosAreFromBookingPage(s) },
+  primePullQuote: { title: 'Quote line (when you wrote none)', default: (n) => copy(n).pullQuote, template: 'prime', max: 140, shows: (s) => !has((s as { pullQuote?: { text?: string } }).pullQuote?.text) },
   primeReviewsEyebrow: { title: 'Reviews eyebrow', default: 'Client Reviews', template: 'prime', max: 40, shows: hasReviews },
   primeReviewsLead: { title: 'Reviews heading, first part', default: 'What clients', template: 'prime', max: 40, shows: hasReviews },
   primeReviewsAccent: { title: 'Reviews heading, accent part', default: 'are saying.', template: 'prime', max: 40, shows: hasReviews },
@@ -179,6 +191,10 @@ export const LABELS = {
   bookStripHeading: { title: 'Book online heading', default: 'Book online', max: 40, shows: (s) => isSiteBookLink(s.bookingUrl) },
   bookStripButton: { title: 'Book online button', default: 'Book', max: 24, shows: (s) => isSiteBookLink(s.bookingUrl) },
 
+  // The "Shop" strip on the homepage (lib/render/subpages.ts): its cards are filled in the browser from the live store.
+  shopStripHeading: { title: 'Shop heading', default: 'Shop', max: 40, shows: (s) => isSiteShopLink(s.shopUrl) },
+  shopStripLink: { title: 'Shop "see all" link', default: 'See all', max: 24, shows: (s) => isSiteShopLink(s.shopUrl) },
+
   // ── Multi-page sites (renderSite, P3b): the menu, the page titles and the small words on the new pages. ──
   pgMenu: { title: 'Menu button name', default: 'Menu', max: 20, tap: false, multi: {} },
   pgNavHome: { title: 'Menu: Home', default: 'Home', max: 20, multi: {} },
@@ -202,6 +218,10 @@ export const LABELS = {
   pgPlace: {
     title: 'Place name', default: (_n, site) => placeFromArea(site?.area || ''), max: 60,
     multi: { page: ['services', 'location'], shows: (s) => has(s.area) || has((s as { labels?: Record<string, unknown> }).labels?.pgPlace) },
+  },
+  pgInPlace: {
+    title: 'Service page: line over the heading', default: (n) => `${n.industry} in`, max: 40,
+    multi: { page: 'services', shows: (s, set) => set.services.length > 0 && (has(s.area) || has((s as { labels?: Record<string, unknown> }).labels?.pgPlace)) },
   },
   pgAboutTitle: { title: 'About page title', default: 'About us', max: 60, multi: { page: 'about' } },
   pgServicesTitle: { title: 'Services page title', default: 'Services', max: 60, multi: { page: 'services' } },
@@ -243,21 +263,21 @@ export const LABELS = {
   pgAddressLabel: { title: 'Address label', default: 'Address', max: 30, multi: { page: ['contact', 'location'], shows: (s) => hasAddress(s) } },
   pgPhoneLabel: { title: 'Phone label', default: 'Phone', max: 30, multi: { page: ['contact', 'location'], shows: (s) => hasPhone(s) } },
   pgEmailLabel: { title: 'Email label', default: 'Email', max: 30, multi: { page: 'contact', shows: (s) => has(s.contact?.email) } },
-  pgClosed: { title: 'Closed day text', default: 'Closed', max: 20, multi: { page: ['hours', 'location'], shows: (s) => hasClosedDay(s) } },
-  pgBookCta: { title: 'Book button text', default: 'Book now', max: 30, multi: { page: ['services', 'team', 'contact', 'location'], shows: (s) => hasBook(s) } },
+  pgClosed: { title: 'Closed day text', default: 'Closed', max: 20, multi: { page: ['hours', 'location', 'team'], shows: (s, _set, page) => (page === 'team' ? memberClosedDay(s) : hasClosedDay(s)) } },
+  pgBookCta: { title: 'Book button text', default: 'Book now', max: 30, multi: { page: ['services', 'team', 'contact', 'location', 'faq', 'first-visit', 'hair-care', 'beard-care'], shows: (s) => hasBook(s) } },
   pgShopCta: { title: 'Shop button text', default: 'Shop online', max: 30, multi: { page: 'contact', shows: (s) => hasShop(s) } },
   pgDirectionsCta: { title: 'Directions button text', default: 'Get directions', max: 30, multi: { page: 'location' } },
   pgOfferedBy: { title: 'Service page: who does it', default: 'Offered by', max: 40, multi: { page: 'services', shows: (s) => hasServiceTeam(s) } },
   pgOtherServices: { title: 'Service page: other services', default: 'Other services', max: 40, multi: { page: 'services', shows: (_s, set) => set.services.length > 1 } },
-  pgAlsoSee: { title: 'Service page: related pages', default: 'Also see', max: 40, multi: { page: ['services', 'location'], shows: (_s, set) => set.nav.some((k) => k === 'location' || k === 'hours' || k === 'contact') } },
+  pgAlsoSee: { title: 'Related pages heading', default: 'Also see', max: 40, multi: { page: ['services', 'location', 'hours', 'faq', 'first-visit', 'hair-care', 'beard-care'], shows: (_s, set, page) => alsoSeeKeys(set, page).length > 0 } },
   pgBackServices: { title: 'Back to services link', default: 'All services', max: 30, multi: { page: 'services' } },
   pgBackTeam: { title: 'Back to team link', default: 'The whole team', max: 30, multi: { page: 'team' } },
   pgViewProfile: { title: 'Team profile link', default: 'View profile', max: 30, multi: { page: 'team' } },
-  pgMemberServices: { title: 'Barber services heading', default: 'Services', max: 40, multi: { page: 'team' } },
-  pgMemberHours: { title: 'Barber hours heading', default: 'Hours', max: 40, multi: { page: 'team' } },
+  pgMemberServices: { title: 'Barber services heading', default: 'Services', max: 40, multi: { page: 'team', shows: (s) => hasServiceTeam(s) } },
+  pgMemberHours: { title: 'Barber hours heading', default: 'Hours', max: 40, multi: { page: 'team', shows: (s) => hasMemberHours(s) } },
 
   // ── Team cards (all designs): the Book button reads "<this> <first name>", e.g. "Book with Sam". ──
-  teamBookWith: { title: 'Team book button', default: 'Book with', max: 24, shows: hasMemberBook },
+  teamBookWith: { title: 'Team book button', default: 'Book with', max: 24, shows: hasMemberBook, alsoOn: ['team'] },
 
   // ── Rating wording (all designs). Edited from the app's rating control, not by tapping the page. ──
   ratingLine: { title: 'Rating wording', default: '', max: 80, tap: false },
@@ -386,13 +406,19 @@ export function visiblePageLabelKeys(site: WebsiteData, page: PageKey, ctx?: Pag
   if (hasFilePages(set) && set.nav.length > 5) add('pgMore');
   if (hasFilePages(set) && page !== 'home') add('pgPages');
   if (template === 'luxe') add('footerLine');
-  if (page === 'home') for (const k of visibleLabelKeys(site)) add(k);
+  // The header button of Prime and Euphoria sits on every page.
+  if (template === 'prime' && primeBook(site)) add('primeNavBook');
+  if (template === 'euphoria' && euNavBook(site)) add('euNavBook');
+  // A site with other pages has the page menu instead of the single page's anchors: its entries are those of set.nav above.
+  const SINGLE_PAGE_MENU: LabelKey[] = ['navHome', 'navServices', 'navContact', 'navShop', 'primeNavShop', 'euNavShop'];
+  if (page === 'home') for (const k of visibleLabelKeys(site)) if (!(hasFilePages(set) && SINGLE_PAGE_MENU.includes(k))) add(k);
   for (const k of LABEL_KEYS) {
     const d = DEFS[k];
+    if (d.alsoOn && d.alsoOn.includes(page) && d.tap !== false && !d.multi && (!d.template || d.template === template) && (d.shows ? d.shows(site) : true)) add(k);
     if (!d.multi || d.tap === false) continue;
     const pages = d.multi.page === undefined ? [] : Array.isArray(d.multi.page) ? d.multi.page : [d.multi.page];
     if (!pages.includes(page)) continue;
-    if (d.multi.shows && !d.multi.shows(site, set)) continue;
+    if (d.multi.shows && !d.multi.shows(site, set, page)) continue;
     add(k);
   }
   return out;
