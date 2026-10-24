@@ -2,7 +2,7 @@ import type { WebsiteData } from '@/web/types';
 import { cleanText } from '@/lib/sections/text';
 
 export type Member = NonNullable<WebsiteData['staff']>[number];
-export interface MemberInput { name: string; role?: string; photo?: string }
+export interface MemberInput { name: string; role?: string; photo?: string; bio?: string }
 
 function build(m: MemberInput): Member | null {
   const name = cleanText(m.name);
@@ -11,6 +11,8 @@ function build(m: MemberInput): Member | null {
   const role = cleanText(m.role ?? '');
   if (role) out.role = role;
   if (m.photo) out.photo = m.photo;
+  const bio = cleanText(m.bio ?? '');
+  if (bio) out.bio = bio;
   return out;
 }
 
@@ -25,7 +27,9 @@ export function updateMember(d: WebsiteData, i: number, m: MemberInput): Website
   const member = build(m);
   if (!member || i < 0 || i >= staff.length) return d;
   // Team profiles: bio, booking link, services, hours and the booking member id belong to the entry and survive a rename.
-  return { ...d, staff: staff.map((s, k) => (k === i ? { ...s, role: undefined, photo: undefined, ...member } : s)).map(dropUndefined) };
+  // `bio` is cleared only when the caller sent one (the sheet's Description box); other callers leave it alone.
+  const clearBio = m.bio !== undefined ? { bio: undefined } : {};
+  return { ...d, staff: staff.map((s, k) => (k === i ? { ...s, role: undefined, photo: undefined, ...clearBio, ...member } : s)).map(dropUndefined) };
 }
 
 function dropUndefined<T extends object>(o: T): T {

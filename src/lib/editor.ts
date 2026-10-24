@@ -44,7 +44,8 @@ export async function applyHomePrompts(d: WebsiteData, area: string, rawPhone: s
       colorTheme: d.colorTheme,
       bookingUrl: d.bookingUrl,
     });
-    return { ...regenerated, services: d.services ?? [] };
+    // The pages choice is the barber's, not generated: a rebuilt site keeps it.
+    return { ...regenerated, services: d.services ?? [], ...(d.pages ? { pages: d.pages } : {}) };
   } catch {
     return { ...d, area, phone, contact: { ...d.contact, address: area } };
   }
@@ -66,7 +67,7 @@ export async function applyBookingLink(d: WebsiteData, link: string): Promise<We
       template: d.template === 'euphoria' ? 'euphoria' : 'luxe',
     });
     if (!built?.scraped?.shopName) return null;
-    return { ...built.scraped, colorTheme: d.colorTheme };
+    return { ...built.scraped, colorTheme: d.colorTheme, ...(d.pages ? { pages: d.pages } : {}) };
   } catch (err) {
     console.warn('[home funnel] booking-link scrape failed:', err);
     return null;

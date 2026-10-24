@@ -44,6 +44,7 @@ describe('label paths', () => {
   test('the allow-list is static: one path per tappable LabelKey (none for ratingLine or pgMenu)', () => {
     expect(LABEL_TEXT_PATHS).toEqual(LABEL_KEYS.filter((k) => (LABELS[k] as { tap?: boolean }).tap !== false).map((k) => `labels.${k}`));
     expect(LABEL_TEXT_PATHS).not.toContain('labels.ratingLine');
+    expect(LABEL_TEXT_PATHS).not.toContain('labels.pgMenu');
     for (const p of LABEL_TEXT_PATHS) expect(EDITABLE_TEXT_PATHS).not.toContain(p);
   });
 

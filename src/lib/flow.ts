@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { listingSite, toShopSite } from '@/lib/importer';
 import type { ScrapePayload } from '@/lib/api';
 import { clearOverlayFlags } from '@/lib/overlayFlags';
+import { withPagesByDefault } from '@/lib/sitePages';
 
 type ShopSite = { inputs: ShopInputs; site: WebsiteData };
 
@@ -21,7 +22,8 @@ export async function startDraft(result: ShopSite): Promise<SiteRecord> {
   const record: SiteRecord = {
     draftId: prev?.draftId ?? randomUUID(),
     inputs: result.inputs,
-    data: result.site,
+    // A newly generated site is multi-page from the start (an older site stays single-page until its first Pages save).
+    data: withPagesByDefault(result.site),
     updatedAt: Date.now(),
     slug: prev?.slug ?? null,
     deployedUrl: prev?.deployedUrl ?? null,

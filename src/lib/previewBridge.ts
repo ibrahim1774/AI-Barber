@@ -1,5 +1,5 @@
 import type { WebsiteData } from '@/web/types';
-import { IMAGE_PATHS, editableTextPaths } from '@/lib/editable';
+import { IMAGE_PATHS, editableTextPaths, type PreviewPage } from '@/lib/editable';
 
 /** The only messages the native side acts on. */
 export type PreviewMessage =
@@ -26,7 +26,7 @@ const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFi
  * is not exactly one of our messages, for a path this site actually has, is
  * still ignored (null).
  */
-export function parsePreviewMessage(raw: unknown, data: WebsiteData): PreviewMessage | null {
+export function parsePreviewMessage(raw: unknown, data: WebsiteData, page?: PreviewPage | null): PreviewMessage | null {
   if (typeof raw !== 'string' || raw.length > MAX_RECTS_MESSAGE) return null;
   let m: unknown;
   try {
@@ -39,7 +39,7 @@ export function parsePreviewMessage(raw: unknown, data: WebsiteData): PreviewMes
   if (o.type !== 'rects' && raw.length > MAX_MESSAGE) return null;
   switch (o.type) {
     case 'edit':
-      return typeof o.path === 'string' && editableTextPaths(data).includes(o.path) ? { type: 'edit', path: o.path } : null;
+      return typeof o.path === 'string' && editableTextPaths(data, page).includes(o.path) ? { type: 'edit', path: o.path } : null;
     case 'image':
       return typeof o.path === 'string' && IMAGE_PATHS(data).includes(o.path) ? { type: 'image', path: o.path } : null;
     case 'scrollY':

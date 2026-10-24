@@ -3,9 +3,11 @@ import { resolveAibTheme } from '@/web/lib/render/luxe';
 import { resolvePrimeTheme } from '@/web/lib/render/prime';
 import { resolveEuphoriaTheme } from '@/web/lib/render/euphoria';
 import { nicheOf, serviceMeta, teamOf, withoutLegacyCopy } from '@/web/lib/render/honest';
-import { LABELS, LABEL_KEYS, clampLabel, defaultLabel, isFigureFreeLabel, isLabelKey, visibleLabelKeys, type LabelDef, type LabelKey } from '@/web/lib/render/labels';
+import { LABELS, LABEL_KEYS, clampLabel, defaultLabel, isFigureFreeLabel, isLabelKey, visibleLabelKeys, visiblePageLabelKeys, type LabelDef, type LabelKey } from '@/web/lib/render/labels';
+import { buildPageSet, isMultiPage, pageFileFor, type PageKey, type PageSet } from '@/web/lib/render/pages';
+import { renderSiteBundle } from '@/web/lib/render/site';
 import { SHOP_PREVIEW_SCRIPT, SITE_SHOP_PATH, isSiteSubpageLink } from '@/web/lib/render/subpages';
-import { forRender, renderSite, withImages } from '@/lib/render';
+import { forRender, imageUrlMap, renderSite, withImages } from '@/lib/render';
 export { EDITOR_JS } from '@/lib/editorScript';
 
 /**
@@ -104,8 +106,28 @@ export function isSheetOnly(template: TemplateId, path: string): boolean {
   return (SHEET_ONLY_PATHS[template] || []).includes(pathPattern(path));
 }
 
+/**
+ * The page the preview shows (multi-page sites). `index` is the position of a per-item page in
+ * `services[]` / `staff[]` (the page of the Services or Team group); absent = the group's own page.
+ * The slug is resolved from the data on every render, never stored: it changes when an item is renamed.
+ */
+export type PreviewPage = { key: PageKey; index?: number };
+
+/**
+ * The labels a tap can name. Multi-page sites: those of the chosen page, or (no page given) of every
+ * page they have. Single-page sites: today's list. Always static registry keys, never read from the page.
+ */
+function labelKeysFor(d: WebsiteData, page?: PreviewPage | null): LabelKey[] {
+  if (!isMultiPage(d)) return visibleLabelKeys(d);
+  const ctx = { imageUrls: imageUrlMap(d) };
+  if (page) return visiblePageLabelKeys(d, page.key, ctx);
+  const out: LabelKey[] = [];
+  for (const key of buildPageSet(d, ctx).eligible) for (const k of visiblePageLabelKeys(d, key, ctx)) if (!out.includes(k)) out.push(k);
+  return out;
+}
+
 /** EDITABLE_TEXT_PATHS with `{i}` expanded against this site's arrays. */
-export function editableTextPaths(d: WebsiteData): string[] {
+export function editableTextPaths(d: WebsiteData, page?: PreviewPage | null): string[] {
   const out: string[] = [];
   for (const pattern of EDITABLE_TEXT_PATHS) {
     if (PRIME_ONLY.has(pattern) && d.template !== 'prime') continue;
@@ -118,7 +140,7 @@ export function editableTextPaths(d: WebsiteData): string[] {
     if (!Array.isArray(arr)) continue;
     arr.forEach((_, n) => out.push(pattern.replace('{i}', String(n))));
   }
-  for (const key of visibleLabelKeys(d)) out.push(`${LABEL_PREFIX}${key}`);
+  for (const key of labelKeysFor(d, page)) out.push(`${LABEL_PREFIX}${key}`);
   return out;
 }
 
@@ -236,11 +258,11 @@ function letterId(n: number): string {
   return s;
 }
 
-export function markData(d: WebsiteData): { marked: WebsiteData; ids: Record<string, string> } {
+export function markData(d: WebsiteData, page?: PreviewPage | null): { marked: WebsiteData; ids: Record<string, string> } {
   const ids: Record<string, string> = {};
   let marked = d;
   let n = 0;
-  for (const path of editableTextPaths(d)) {
+  for (const path of editableTextPaths(d, page)) {
     const labelKey = labelKeyOfPath(path);
     // A label is marked with the wording the page shows (its default when none is stored), capped to its
     // maximum BEFORE the markers go on so a marker is never cut in half.
@@ -451,14 +473,36 @@ export function withShopPreview(html: string, products: PreviewProduct[] | null 
     .replace(/(<div id="shop-preview-grid"[^>]*>)(<\/div>)/, (_m, open: string, close: string) => `${open}${cards}${close}${note}`);
 }
 
-export function buildPreviewHtml(raw: WebsiteData, editable: boolean, shopProducts?: PreviewProduct[] | null): string {
+export function buildPreviewHtml(raw: WebsiteData, editable: boolean, shopProducts?: PreviewProduct[] | null, page?: PreviewPage | null): string {
   // Markers go in only after the data is what the published page would render.
   const data = asPublished(raw);
   const bg = previewBackground(data);
+  // Multi-page is opt-in (WebsiteData.pages): a site without it previews its one page exactly as before.
+  if (isMultiPage(data)) return buildPageHtml(data, editable, shopProducts, page ?? { key: 'home' }, bg);
   if (!editable) return withPreviewBackground(withShopPreview(withImages(stripTracking(renderSite(forRender(data))), data), shopProducts), bg);
   const { marked, ids } = markData(data);
   return withPreviewBackground(
     withShopPreview(withImages(tagImageSlots(prepareEditableHtml(stripTracking(renderSite(forRender(marked))), ids)), data), shopProducts),
     bg,
   );
+}
+
+/** The deploy path of a preview page in a page set; Home when that page is off, has no data, or the item is gone. */
+export function previewFileOf(set: PageSet, page: PreviewPage): { path: string } {
+  const home = { path: 'index.html' };
+  if (page.index === undefined) return pageFileFor(set, page.key) ?? home;
+  const kids = page.key === 'services' ? set.services : page.key === 'team' ? set.team : [];
+  const child = kids.find((c) => c.index === page.index);
+  return (child && pageFileFor(set, page.key, child.slug)) || home;
+}
+
+/** One page of a multi-page site, through the same pipeline as the single page (markers, image slots, backgrounds). */
+function buildPageHtml(data: WebsiteData, editable: boolean, shopProducts: PreviewProduct[] | null | undefined, page: PreviewPage, bg: string): string {
+  const { marked, ids } = editable ? markData(data, page) : { marked: data, ids: {} as Record<string, string> };
+  const bundle = renderSiteBundle(marked, { imageUrls: imageUrlMap(data) });
+  const file = previewFileOf(bundle.set, page);
+  const html = (bundle.pages.find((f) => f.path === file.path) ?? bundle.pages[0]).html;
+  const clean = stripTracking(html);
+  const inner = editable ? tagImageSlots(prepareEditableHtml(clean, ids)) : clean;
+  return withPreviewBackground(withShopPreview(withImages(inner, data), shopProducts), bg);
 }
