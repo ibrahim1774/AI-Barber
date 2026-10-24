@@ -51,7 +51,7 @@ describe('Checkout session creation (live request building)', () => {
     const [req] = sessionReqs();
     expect(req.account).toBe('acct_1');
     expect(req.params).toMatchObject({
-      mode: 'payment', 'payment_method_types[0]': 'card', client_reference_id: o.id, customer_email: 'sam@example.com',
+      mode: 'payment', client_reference_id: o.id, customer_email: 'sam@example.com',
       'payment_intent_data[application_fee_amount]': '70',
       'line_items[0][price_data][currency]': 'usd', 'line_items[0][price_data][unit_amount]': '1500', 'line_items[0][quantity]': '1',
       'line_items[0][price_data][product_data][images][0]': 'https://img/oil-1.jpg',

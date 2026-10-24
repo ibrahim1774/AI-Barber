@@ -1,6 +1,6 @@
 import { platformFeeCents } from '../bookings/money.js';
 import {
-  stripeRequest, expireCheckoutSession, StripeApiError, CHECKOUT_HOLD_SEC, MIN_CHARGE_CENTS, SITE_ORIGIN,
+  stripeRequest, expireCheckoutSession, StripeApiError, CHECKOUT_HOLD_SEC, CHECKOUT_CARD_ONLY, CHECKOUT_STRIPE_VERSION, MIN_CHARGE_CENTS, SITE_ORIGIN,
   type PayShop, type StripeOpts,
 } from '../bookings/payments.js';
 import { STORE_APP } from './constants.js';
@@ -107,7 +107,7 @@ export async function createOrderCheckout(
     success_url: `${link}?checkout=success`,
     cancel_url: `${link}?checkout=cancelled`,
     expires_at: minuteSec + CHECKOUT_HOLD_SEC,
-    'payment_method_types[0]': 'card',
+    ...CHECKOUT_CARD_ONLY,
     client_reference_id: order.id,
     customer_email: order.customer_email || undefined,
     'payment_intent_data[application_fee_amount]': fee > 0 ? fee : undefined,
@@ -143,6 +143,7 @@ export async function createOrderCheckout(
     account: shop.stripe_account_id,
     idempotencyKey: `ab-order-checkout-${order.id}-${total}-${minuteSec}`,
     fetch: opts.fetch,
+    stripeVersion: CHECKOUT_STRIPE_VERSION,
   });
   if (!session?.url || !session?.id) throw new StripeApiError('Checkout Session has no url', 502);
   if (Number(session.amount_total) !== total) {

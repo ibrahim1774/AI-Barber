@@ -76,5 +76,7 @@ input,textarea,select{width:100%;background:var(--card);color:var(--text);border
 .sr{position:absolute;left:-9999px}
 /* The barber site's look (src/site/site.ts sets these on the barber's own domain). */
 body{font-family:var(--font-body,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif)}
-h1,h2,h3{font-family:var(--font-head,inherit)}
+h1,h2,h3{font-family:var(--font-head,inherit);font-weight:var(--head-weight,700);text-transform:var(--head-transform,none)}
+h1{letter-spacing:var(--head-track,-.01em)}
+h2,h3{letter-spacing:var(--head-track,normal)}
 .home{color:inherit;text-decoration:none}

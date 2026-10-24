@@ -31,24 +31,80 @@ export async function loadSiteSlug(fetchImpl: (url: string) => Promise<Response>
   }
 }
 
-/** The fonts each template uses (lib/render/*), loaded from Google Fonts like the site itself. */
-export const SITE_FONTS: Record<SiteLook['template'], { head: string; body: string; href: string }> = {
+/**
+ * The fonts each template uses (lib/render/*: luxe.ts, prime.ts, euphoria.ts and the heading
+ * variables in shell.ts), loaded from Google Fonts like the site itself. Only the weights the
+ * booking and shop pages use are requested. head/body are the site's families; weight, transform
+ * and track are the site's heading look (the shell's --ab-head-* values).
+ */
+export const SITE_FONTS: Record<SiteLook['template'], { head: string; body: string; headWeight: string; headTransform: string; headTrack: string; href: string }> = {
   luxe: {
     head: "'Montserrat', sans-serif",
     body: "'Montserrat', sans-serif",
+    headWeight: '900',
+    headTransform: 'uppercase',
+    headTrack: '2px',
     href: 'https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;900&display=swap',
   },
   prime: {
     head: "'Newsreader', Georgia, serif",
     body: "'Inter', system-ui, sans-serif",
-    href: 'https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;600;700&display=swap',
+    headWeight: '500',
+    headTransform: 'none',
+    headTrack: '-.01em',
+    href: 'https://fonts.googleapis.com/css2?family=Newsreader:wght@400;500&family=Inter:wght@400;500;600;700&display=swap',
   },
   euphoria: {
     head: "'Newsreader', Georgia, serif",
     body: "'Inter', system-ui, sans-serif",
-    href: 'https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;600;700&display=swap',
+    headWeight: '500',
+    headTransform: 'none',
+    headTrack: '-.01em',
+    href: 'https://fonts.googleapis.com/css2?family=Newsreader:wght@400;500&family=Inter:wght@400;500;600;700&display=swap',
   },
 };
+
+/**
+ * The rest of each template's look, copied from its real CSS (prime.ts .p-cta/.p-eyebrow/.p-review-card,
+ * euphoria.ts .eu-cta/.eu-eyebrow, luxe.ts button/eyebrow classes). The pages read these as CSS
+ * variables (src/site/look.css); without a site look none are set and the page keeps its own style.
+ */
+export const SITE_TOKENS: Record<SiteLook['template'], Record<string, string>> = {
+  luxe: {
+    '--card': '#1a1a1a', '--line': 'rgba(255,255,255,.14)', '--mute': '#a3a3a3',
+    '--r': '0px', '--r-in': '0px',
+    '--prose-font': "'Montserrat', sans-serif",
+    '--name-font': "'Montserrat', sans-serif", '--name-weight': '700', '--name-transform': 'uppercase', '--name-track': '1px', '--name-size': '14px',
+    '--eyebrow-tt': 'uppercase', '--eyebrow-size': '12px', '--eyebrow-weight': '700', '--eyebrow-track': '5px', '--eyebrow-color': 'var(--accent)',
+    '--btn-size': '12px', '--btn-weight': '900', '--btn-track': '2px', '--btn-tt': 'uppercase',
+    '--btn-bg': 'var(--accent)', '--btn-fg': 'var(--on-accent)', '--btn-ghost-border': 'var(--accent)', '--btn-ghost-fg': 'var(--accent)',
+    '--h1-color': 'var(--text)',
+  },
+  prime: {
+    '--card': '#161616', '--line': 'rgba(255,255,255,.18)', '--mute': '#9a958e',
+    '--r': '4px', '--r-in': '2px',
+    '--prose-font': "'Newsreader', Georgia, serif",
+    '--name-font': "'Newsreader', Georgia, serif", '--name-weight': '500', '--name-transform': 'none', '--name-track': '-.01em', '--name-size': '19px',
+    '--eyebrow-tt': 'uppercase', '--eyebrow-size': '11px', '--eyebrow-weight': '400', '--eyebrow-track': '.3em', '--eyebrow-color': 'var(--accent)',
+    '--btn-size': '11px', '--btn-weight': '600', '--btn-track': '.22em', '--btn-tt': 'uppercase', '--r-btn': '2px',
+    '--btn-bg': 'var(--accent)', '--btn-fg': 'var(--on-accent)', '--btn-ghost-border': 'var(--accent)', '--btn-ghost-fg': 'var(--text)',
+    '--h1-style': 'italic', '--h1-color': 'var(--accent)',
+  },
+  euphoria: {
+    '--card': '#141414', '--line': 'rgba(255,255,255,.22)', '--mute': '#9a958e',
+    '--r': '2px', '--r-in': '0px',
+    '--prose-font': "'Newsreader', Georgia, serif",
+    '--name-font': "'Newsreader', Georgia, serif", '--name-weight': '500', '--name-transform': 'none', '--name-track': '-.01em', '--name-size': '19px',
+    '--eyebrow-tt': 'uppercase', '--eyebrow-size': '11px', '--eyebrow-weight': '400', '--eyebrow-track': '.28em', '--eyebrow-color': 'var(--mute)',
+    '--btn-size': '11px', '--btn-weight': '500', '--btn-track': '.22em', '--btn-tt': 'uppercase', '--r-btn': '0px',
+    '--btn-bg': 'var(--text)', '--btn-fg': 'var(--bg)', '--btn-ghost-border': 'var(--line)', '--btn-ghost-fg': 'var(--text)',
+    '--h1-color': 'var(--text)',
+  },
+};
+
+/** The fonts for a template, or null for an unknown one (the page keeps its own fonts). */
+export const fontsFor = (template: unknown) =>
+  typeof template === 'string' && Object.prototype.hasOwnProperty.call(SITE_FONTS, template) ? SITE_FONTS[template as SiteLook['template']] : null;
 
 const hex = (v: unknown): string | null => (typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v.trim()) ? v.trim().toLowerCase() : null);
 
@@ -62,9 +118,14 @@ export function siteTheme(site: SiteInfo | null | undefined, shopAccent: string 
   const text = hex(look.text);
   if (bg) vars['--bg'] = bg;
   if (text) vars['--text'] = text;
-  const fonts = SITE_FONTS[look.template] ?? SITE_FONTS.luxe;
+  const fonts = fontsFor(look.template);
+  if (!fonts) return { vars, fontHref: null };
   vars['--font-head'] = fonts.head;
   vars['--font-body'] = fonts.body;
+  vars['--head-weight'] = fonts.headWeight;
+  vars['--head-transform'] = fonts.headTransform;
+  vars['--head-track'] = fonts.headTrack;
+  Object.assign(vars, SITE_TOKENS[look.template as SiteLook['template']]);
   return { vars, fontHref: fonts.href };
 }
 
