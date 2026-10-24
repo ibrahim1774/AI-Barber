@@ -107,7 +107,6 @@ export async function createOrderCheckout(
     success_url: `${link}?checkout=success`,
     cancel_url: `${link}?checkout=cancelled`,
     expires_at: minuteSec + CHECKOUT_HOLD_SEC,
-    'payment_method_types[0]': 'card',
     client_reference_id: order.id,
     customer_email: order.customer_email || undefined,
     'payment_intent_data[application_fee_amount]': fee > 0 ? fee : undefined,

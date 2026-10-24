@@ -156,7 +156,6 @@ export async function createCardCheckout(
     success_url: `${manageUrl(appt.manage_token, shop)}?checkout=success`,
     cancel_url: `${manageUrl(appt.manage_token, shop)}?checkout=cancelled`,
     expires_at: minuteSec + CHECKOUT_HOLD_SEC,
-    'payment_method_types[0]': 'card',
     client_reference_id: appt.id,
     customer_email: appt.customer_email || undefined,
     'line_items[0][quantity]': 1,

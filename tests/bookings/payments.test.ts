@@ -45,8 +45,8 @@ describe('createCardCheckout', () => {
     expect(c.init.signal).toBeInstanceOf(AbortSignal);
     const p = c.params;
     expect(p.get('mode')).toBe('payment');
-    expect(p.get('payment_method_types[0]')).toBe('card');
-    expect([...p.keys()].filter((k) => k.startsWith('payment_method_types'))).toEqual(['payment_method_types[0]']);
+    // Stripe rejects payment_method_types on Checkout now; methods come from the account's Dashboard settings.
+    expect([...p.keys()].filter((k) => k.startsWith('payment_method_types'))).toEqual([]);
     expect(p.get('payment_intent_data[application_fee_amount]')).toBe('60');
     expect(p.get('line_items[0][price_data][unit_amount]')).toBe('3000');
     expect(p.get('line_items[0][price_data][currency]')).toBe('usd');
