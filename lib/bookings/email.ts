@@ -19,7 +19,7 @@ export interface EmailMessage {
   subject: string;
   html: string;
   text?: string;
-  /** Display name of the sender, e.g. "Fade Factory via AI Barber". The address is always SMTP_FROM. */
+  /** Display name of the sender, e.g. "Fade Factory via Prime Barber". The address is always SMTP_FROM. */
   fromName?: string;
   replyTo?: string | null;
   attachments?: EmailAttachment[];
@@ -84,7 +84,7 @@ export async function sendEmail(msg: EmailMessage, transport?: MailTransport): P
     }
     const t = transport ?? liveTransport(env);
     await t.sendMail({
-      from: { name: cleanDisplayName(msg.fromName || 'AI Barber'), address: env.from },
+      from: { name: cleanDisplayName(msg.fromName || 'Prime Barber'), address: env.from },
       to: msg.to,
       ...(msg.replyTo && isEmail(msg.replyTo) ? { replyTo: msg.replyTo } : {}),
       subject: msg.subject.replace(/[\r\n]+/g, ' '),

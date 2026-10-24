@@ -102,12 +102,21 @@ const REVALIDATE = [{ key: 'Cache-Control', value: 'public, max-age=0, must-reva
 // and the APIs are personal and live. Hashed /_ab/assets/* may be cached.
 const NO_REWRITE_CACHE = [{ key: 'x-vercel-enable-rewrite-caching', value: '0' }];
 
-/** The vercel.json every site deploy ships. Without subpages: exactly the config sites always had. */
-export function siteVercelConfig(sp: SiteSubpages | null): SiteVercelConfig {
+/**
+ * The vercel.json every site deploy ships. Without subpages and nested pages: exactly the config sites
+ * always had. A multi-page deploy (`nestedPages`) adds the same revalidate header for `/<page>/` and
+ * `/<page>/index.html` (any depth), so a republish shows at once on every page; nothing else changes
+ * (no cleanUrls, no trailingSlash, no rewrite for the pages: Vercel serves `/about` and `/about/` from
+ * `about/index.html`).
+ */
+export function siteVercelConfig(sp: SiteSubpages | null, opts: { nestedPages?: boolean } = {}): SiteVercelConfig {
   const headers: Header[] = [
     { source: '/index.html', headers: REVALIDATE },
     { source: '/', headers: REVALIDATE },
   ];
+  if (opts.nestedPages) {
+    headers.push({ source: '/(.*)/', headers: REVALIDATE }, { source: '/(.*)/index.html', headers: REVALIDATE });
+  }
   if (!sp) return { headers };
   const rewrites = subpageRewrites(sp);
   for (const r of rewrites) if (r.source !== ASSETS) headers.push({ source: r.source, headers: NO_REWRITE_CACHE });
@@ -221,6 +230,8 @@ export interface SiteBaseDeps {
   projectDomains(projectName: string): Promise<ProjectDomain[]>;
   /** Does Vercel report this custom domain's DNS as correctly pointed (config misconfigured === false)? Throws on an outage. */
   domainServing(name: string): Promise<boolean>;
+  /** The stored public base (ab_shops.site_base_url), or null. Optional: absent means no canonical links. */
+  readBase?(shopId: string): Promise<string | null>;
   /** A partial update: only the fields given are written. */
   updateShop(shopId: string, fields: { site_base_url?: string; site_look?: SiteLook }): Promise<void>;
 }
@@ -237,9 +248,22 @@ export async function refreshSiteBase(
 ): Promise<string | null> {
   const fields: { site_base_url?: string; site_look?: SiteLook } = {};
   if (input.siteData) fields.site_look = siteLookOf(input.siteData, input.imageUrlMap);
-  let base: string | null = null;
+  const base = await resolvePublicBase(input.projectName, deps);
+  if (base) fields.site_base_url = base;
+  if (!fields.site_base_url && !fields.site_look) return null;
+  await deps.updateShop(input.shopId, fields);
+  return base;
+}
+
+/**
+ * The project's public base right now (the same rules refreshSiteBase stores, without writing): a verified
+ * custom domain whose DNS Vercel reports as pointed, else the project's own *.vercel.app. Null when it can't
+ * be told: a failed domains lookup, a DNS check that errored (only a successful "not pointed" may demote a
+ * custom domain), or no qualifying domain. Callers then keep the stored base, or go without.
+ */
+export async function resolvePublicBase(projectName: string, deps: Pick<SiteBaseDeps, 'projectDomains' | 'domainServing'>): Promise<string | null> {
   try {
-    const domains = await deps.projectDomains(input.projectName);
+    const domains = await deps.projectDomains(projectName);
     const serving = new Set<string>();
     let unsure = false;
     for (const d of domains || []) {
@@ -248,20 +272,15 @@ export async function refreshSiteBase(
       try {
         if (await deps.domainServing(name)) serving.add(name);
       } catch (e: any) {
-        // Only a successful "not pointed" answer may demote a custom domain: an error leaves the
-        // stored base as it is (a blip must not move customers' links to .vercel.app).
         unsure = true;
-        console.warn(`[siteSubpages] ${input.projectName}: DNS check for ${name} failed; keeping the stored base:`, e?.message || e);
+        console.warn(`[siteSubpages] ${projectName}: DNS check for ${name} failed; keeping the stored base:`, e?.message || e);
       }
     }
-    if (!unsure) base = pickPublicBase(domains, (n) => serving.has(n));
+    return unsure ? null : pickPublicBase(domains, (n) => serving.has(n));
   } catch (e: any) {
-    console.warn(`[siteSubpages] ${input.projectName}: domain lookup failed; keeping the stored base:`, e?.message || e);
+    console.warn(`[siteSubpages] ${projectName}: domain lookup failed; keeping the stored base:`, e?.message || e);
+    return null;
   }
-  if (base) fields.site_base_url = base;
-  if (!fields.site_base_url && !fields.site_look) return null;
-  await deps.updateShop(input.shopId, fields);
-  return base;
 }
 
 // ---------------------------------------------------------------------------
@@ -318,7 +337,19 @@ export const liveSiteBaseDeps: SiteBaseDeps = {
     return body?.misconfigured === false;
   },
   updateShop: (shopId, fields) => updateShopSite(db(), shopId, fields),
+  readBase: (shopId) => readShopBase(db(), shopId),
 };
+
+/** ab_shops.site_base_url, or null when unset or before migration 011 (the column is missing). */
+export async function readShopBase(client: SupabaseClient, shopId: string): Promise<string | null> {
+  const { data, error } = await client.from('ab_shops').select('site_base_url').eq('id', shopId).maybeSingle();
+  if (error) {
+    if (isMissingSiteColumn(error)) return null;
+    throw new Error(`ab_shops read failed: ${error.message}`);
+  }
+  const v = (data as { site_base_url?: unknown } | null)?.site_base_url;
+  return typeof v === 'string' && v ? v : null;
+}
 
 /**
  * Write the 011 columns. Before migration 011 is applied the columns don't exist: the write is

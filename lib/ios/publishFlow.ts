@@ -7,6 +7,7 @@
 // Pure flow over injected deps so it is testable without Apple, Supabase, GCS
 // or Vercel; liveDeps() wires the real ones for the api/ios/* handlers.
 import type { WebsiteData } from '../../types.js';
+import type { SiteFile } from '../render/pages.js';
 import {
   publishSite,
   REQUEST_MAX_REDEPLOYS,
@@ -85,7 +86,7 @@ export interface PublishDeps {
    */
   userOf?(token: string): Promise<{ id: string } | null>;
   /** Dry render before storing (lib/publishSite.ts renderPending). Throws on unrenderable data. */
-  render?(p: Pick<PendingSite, 'siteData' | 'imageUrlMap'>): string;
+  render?(p: Pick<PendingSite, 'siteData' | 'imageUrlMap'>): SiteFile[];
   now(): number;
 }
 

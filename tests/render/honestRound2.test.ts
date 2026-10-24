@@ -91,7 +91,7 @@ describe('deploySite: image URLs are escaped into src', () => {
   });
 
   it('deployRenderedSite uses it', () => {
-    expect(read('lib/deploySite.ts')).toContain('swapImagePlaceholders(html, imageUrlMap)');
+    expect(read('lib/deploySite.ts')).toContain('swapImagePlaceholders(p.html, imageUrlMap)');
   });
 });
 

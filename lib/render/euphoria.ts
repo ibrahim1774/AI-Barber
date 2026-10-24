@@ -14,6 +14,8 @@ import {
   contactEmail, copyrightYear, displayPhone, displayPrice, hasServices, nicheOf, photoAlt, serviceMeta, siteDescription, siteTitle, teamBookLink, teamOf, firstName, withoutLegacyCopy,
 } from './honest.js';
 import { t, type LabelKey } from './labels.js';
+import { hasFilePages } from './pages.js';
+import { HEADER_CSS, NAV_CSS, headerHtml, navItemsFor, navListHtml, type RenderCtx } from './shell.js';
 
 // Shared Euphoria CSS — scoped inside `.euphoria-root` so it can't leak into the Luxe flow.
 // Mirrors euphoria-build/styles.css custom properties + typography + section rhythm.
@@ -229,7 +231,7 @@ const EUPHORIA_SKIN: SectionSkin = {
     + '.ab-sp-price{color:var(--eu-brand)}',
 };
 
-export function generateEuphoriaHTMLWithPlaceholders(input: WebsiteData): string {
+export function generateEuphoriaHTMLWithPlaceholders(input: WebsiteData, ctx?: RenderCtx): string {
   // Older stored sites: drop the copy we invented for them (honest.ts).
   const siteData = withoutLegacyCopy(input);
   const bookingUrl = safeHref(siteData.bookingUrl);
@@ -248,6 +250,9 @@ export function generateEuphoriaHTMLWithPlaceholders(input: WebsiteData): string
   // Small visible text comes from the label registry (labels.ts); t() escapes.
   const niche = nicheOf(siteData);
   const L = (key: LabelKey) => t(siteData.labels, key, niche, siteData);
+  // A multi-page site (lib/render/site.ts passes its page set): the header carries the page menu.
+  // Without a page set, or with Home alone, this is the single-page site every web publish ships.
+  const menuSet = ctx?.pages && hasFilePages(ctx.pages) ? ctx.pages : null;
   const safeName = escapeHtml(siteData.shopName);
   const altAttr = escapeHtml(photoAlt(siteData));
   const showServices = hasServices(siteData);
@@ -372,20 +377,20 @@ export function generateEuphoriaHTMLWithPlaceholders(input: WebsiteData): string
     body { margin: 0; padding: 0; background: #000; color: #f0ece4; font-family: 'Inter', system-ui, sans-serif; }
     a { color: inherit; }
     img { max-width: 100%; height: auto; }
-${EUPHORIA_SCOPED_CSS}
+${EUPHORIA_SCOPED_CSS}${menuSet ? HEADER_CSS.euphoria + NAV_CSS.euphoria : ''}
   </style>
 </head>
 <body>
 <div class="euphoria-root"${rootStyle ? ` style="${rootStyle}"` : ''}>
 
   <!-- Nav -->
-  <nav style="position:sticky;top:0;z-index:50;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--eu-line-soft);">
+  ${menuSet ? headerHtml('euphoria', { name: siteData.shopName, cta: bookingUrl || canCall ? { href: bookingUrl || `tel:${(siteData.phone || '').replace(/\s+/g, '')}`, label: L('euNavBook'), newTab: bookTarget !== '' } : null, nav: navListHtml(navItemsFor('euphoria', menuSet, siteData, 'home'), L('pgMenu')) }) : `<nav style="position:sticky;top:0;z-index:50;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--eu-line-soft);">
     <div class="eu-container" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 24px;">
       <a href="#top" style="text-decoration:none;color:var(--eu-ink);font-family:'Newsreader',serif;font-size:20px;letter-spacing:0.04em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${safeName}</a>${shopUrl ? `
       <a href="${escapeHtml(shopUrl)}" style="text-decoration:none;color:var(--eu-ink-soft);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;flex-shrink:0;white-space:nowrap;">${L('euNavShop')}</a>` : ''}
       ${navBookHref ? `<a href="${navBookHref}"${bookTarget} class="eu-cta" style="padding:10px 18px;font-size:10px;flex-shrink:0;white-space:nowrap;">${L('euNavBook')}</a>` : ''}
     </div>
-  </nav>
+  </nav>`}
 
   <!-- Hero -->
   <section id="top" style="position:relative;min-height:80vh;display:flex;align-items:center;justify-content:center;overflow:hidden;">
@@ -451,7 +456,7 @@ ${EUPHORIA_SCOPED_CSS}
   <footer style="padding:48px 24px;border-top:1px solid var(--eu-line-soft);text-align:center;">
     <div class="eu-container">
       <div class="eu-serif" style="font-size:18px;color:var(--eu-ink);margin-bottom:8px;">${safeName}</div>
-      <div class="eu-eyebrow">© ${copyrightYear()} · Built by AIBarber</div>
+      <div class="eu-eyebrow">© ${copyrightYear()} · Built by Prime Barber</div>
     </div>
   </footer>
 

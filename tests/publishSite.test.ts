@@ -204,7 +204,9 @@ describe('publishSite stamping (stored copy can change during a deploy)', () => 
 describe('renderPending', () => {
   it('renders a stored copy; throws on data the renderers cannot handle', async () => {
     const { renderPending } = await import('../lib/publishSite.js');
-    expect(renderPending(pending)).toContain('Fresh Cuts');
+    const files = renderPending(pending);
+    expect(files[0].path).toBe('index.html');
+    expect(files[0].html).toContain('Fresh Cuts');
     expect(() => renderPending({ ...pending, siteData: { ...pending.siteData, contact: undefined } })).toThrow();
   });
 });

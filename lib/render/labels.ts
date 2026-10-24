@@ -24,6 +24,7 @@ import { nicheByKey } from '../booksyNiche.js';
 import { safeHref } from './safeHref.js';
 import { aggregateToShow, footerLine, hasServices, nicheCopy, reviewsSourceName, teamBookLink, teamOf, visibleReviews } from './honest.js';
 import { isSiteBookLink } from './subpages.js';
+import { buildPageSet, hasFilePages, plainText, type PageContext, type PageKey, type PageSet } from './pages.js';
 
 export type LabelDefault = string | ((niche: BooksyNiche, site?: Pick<WebsiteData, 'area' | 'niche'>) => string);
 
@@ -41,6 +42,12 @@ export interface LabelDef {
   plain?: true;
   /** false = not tappable in the preview (the app edits it from its own control). */
   tap?: false;
+  /**
+   * Multi-page sites only (renderSite): printed by the shared menu and footer (no `page`) or by that
+   * page. Never by the single-page renderers, so visibleLabelKeys() leaves these out; the preview of a
+   * chosen page asks visiblePageLabelKeys().
+   */
+  multi?: { page?: PageKey | PageKey[]; shows?: (site: WebsiteData, set: PageSet) => boolean };
 }
 
 const has = (v: unknown): boolean => typeof v === 'string' && v.trim() !== '';
@@ -164,6 +171,38 @@ export const LABELS = {
   euEmailLabel: { title: 'Email label', default: 'Email', template: 'euphoria', max: 30, shows: (s) => has(s.contact?.email) },
   euShopButton: { title: 'Shop button text', default: 'Shop online', template: 'euphoria', max: 30, shows: hasShop },
 
+
+  // ── Multi-page sites (renderSite, P3b): the menu, the page titles and the small words on the new pages. ──
+  pgMenu: { title: 'Menu button name', default: 'Menu', max: 20, tap: false, multi: {} },
+  pgNavHome: { title: 'Menu: Home', default: 'Home', max: 20, multi: {} },
+  pgNavAbout: { title: 'Menu: About', default: 'About', max: 20, multi: {} },
+  pgNavServices: { title: 'Menu: Services', default: 'Services', max: 20, multi: {} },
+  pgNavTeam: { title: 'Menu: Team', default: 'Team', max: 20, multi: {} },
+  pgNavGallery: { title: 'Menu: Gallery', default: 'Gallery', max: 20, multi: {} },
+  pgNavReviews: { title: 'Menu: Reviews', default: 'Reviews', max: 20, plain: true, multi: {} },
+  pgNavHours: { title: 'Menu: Hours & Location', default: 'Hours & Location', max: 28, multi: {} },
+  pgNavContact: { title: 'Menu: Contact', default: 'Contact', max: 20, multi: {} },
+  pgNavBook: { title: 'Menu: Book', default: 'Book', max: 20, multi: {} },
+  pgAboutTitle: { title: 'About page title', default: 'About us', max: 60, multi: { page: 'about' } },
+  pgServicesTitle: { title: 'Services page title', default: 'Services', max: 60, multi: { page: 'services' } },
+  pgTeamTitle: { title: 'Team page title', default: (n) => copy(n).teamHeading, max: 60, multi: { page: 'team' } },
+  pgGalleryTitle: { title: 'Gallery page title', default: 'Gallery', max: 60, multi: { page: 'gallery' } },
+  pgReviewsTitle: { title: 'Reviews page title', default: 'What clients say', max: 60, plain: true, multi: { page: 'reviews' } },
+  pgHoursTitle: { title: 'Hours page title', default: 'Hours & location', max: 60, multi: { page: 'hours' } },
+  pgContactTitle: { title: 'Contact page title', default: 'Contact', max: 60, multi: { page: 'contact' } },
+  pgHoursHeading: { title: 'Hours heading', default: 'Hours', max: 40, multi: { page: 'hours', shows: (s) => hasHours(s) } },
+  pgAddressLabel: { title: 'Address label', default: 'Address', max: 30, multi: { page: 'contact', shows: (s) => hasAddress(s) } },
+  pgPhoneLabel: { title: 'Phone label', default: 'Phone', max: 30, multi: { page: 'contact', shows: (s) => hasPhone(s) } },
+  pgEmailLabel: { title: 'Email label', default: 'Email', max: 30, multi: { page: 'contact', shows: (s) => has(s.contact?.email) } },
+  pgClosed: { title: 'Closed day text', default: 'Closed', max: 20, multi: { page: 'hours', shows: (s) => hasClosedDay(s) } },
+  pgBookCta: { title: 'Book button text', default: 'Book now', max: 30, multi: { page: ['services', 'team', 'contact'], shows: (s) => hasBook(s) } },
+  pgShopCta: { title: 'Shop button text', default: 'Shop online', max: 30, multi: { page: 'contact', shows: (s) => hasShop(s) } },
+  pgBackServices: { title: 'Back to services link', default: 'All services', max: 30, multi: { page: 'services' } },
+  pgBackTeam: { title: 'Back to team link', default: 'The whole team', max: 30, multi: { page: 'team' } },
+  pgViewProfile: { title: 'Team profile link', default: 'View profile', max: 30, multi: { page: 'team' } },
+  pgMemberServices: { title: 'Barber services heading', default: 'Services', max: 40, multi: { page: 'team' } },
+  pgMemberHours: { title: 'Barber hours heading', default: 'Hours', max: 40, multi: { page: 'team' } },
+
   // ── Team cards (all designs): the Book button reads "<this> <first name>", e.g. "Book with Sam". ──
   teamBookWith: { title: 'Team book button', default: 'Book with', max: 24, shows: hasMemberBook },
 
@@ -248,9 +287,65 @@ export function visibleLabelKeys(site: WebsiteData): LabelKey[] {
   return LABEL_KEYS.filter((k) => {
     const d = DEFS[k];
     if (d.tap === false) return false;
+    if (d.multi) return false;
     if (d.template && d.template !== template) return false;
     return d.shows ? d.shows(site) : true;
   });
+}
+
+// ── Multi-page sites ────────────────────────────────────────────────────────────────────────────
+
+/** The menu label a design prints for a page. Keys barbers already saved (luxe navHome ..., the Shop labels) are kept. */
+export function navLabelKey(template: TemplateId, page: PageKey): LabelKey {
+  if (template === 'luxe') {
+    if (page === 'home') return 'navHome';
+    if (page === 'services') return 'navServices';
+    if (page === 'contact') return 'navContact';
+    if (page === 'shop') return 'navShop';
+  }
+  if (page === 'shop') return template === 'prime' ? 'primeNavShop' : template === 'euphoria' ? 'euNavShop' : 'navShop';
+  const table: Record<Exclude<PageKey, 'shop'>, LabelKey> = {
+    home: 'pgNavHome', about: 'pgNavAbout', services: 'pgNavServices', team: 'pgNavTeam', gallery: 'pgNavGallery',
+    reviews: 'pgNavReviews', hours: 'pgNavHours', contact: 'pgNavContact', book: 'pgNavBook',
+  };
+  return table[page];
+}
+
+/** The title label of a page (its <h1> and the first part of its <title>). */
+export const PAGE_TITLE_KEY: Partial<Record<PageKey, LabelKey>> = {
+  about: 'pgAboutTitle', services: 'pgServicesTitle', team: 'pgTeamTitle', gallery: 'pgGalleryTitle',
+  reviews: 'pgReviewsTitle', hours: 'pgHoursTitle', contact: 'pgContactTitle',
+};
+
+/**
+ * The labels the preview of one page of a multi-page site can tap: the menu entries that are on, the
+ * design's footer line, and that page's own labels. Home adds the single-page sections' labels.
+ */
+export function visiblePageLabelKeys(site: WebsiteData, page: PageKey, ctx?: PageContext): LabelKey[] {
+  const template: TemplateId = site.template || 'luxe';
+  const set = buildPageSet(site, ctx);
+  const out: LabelKey[] = [];
+  const add = (k: LabelKey) => { if (!out.includes(k)) out.push(k); };
+  if (hasFilePages(set)) for (const p of set.nav) add(navLabelKey(template, p));
+  if (template === 'luxe') add('footerLine');
+  if (page === 'home') for (const k of visibleLabelKeys(site)) add(k);
+  for (const k of LABEL_KEYS) {
+    const d = DEFS[k];
+    if (!d.multi || d.tap === false) continue;
+    const pages = d.multi.page === undefined ? [] : Array.isArray(d.multi.page) ? d.multi.page : [d.multi.page];
+    if (!pages.includes(page)) continue;
+    if (d.multi.shows && !d.multi.shows(site, set)) continue;
+    add(k);
+  }
+  return out;
+}
+
+/** A label's text for a <title> or a meta tag: unescaped (the caller escapes it once), without editor markers. */
+export function plainLabel(
+  labels: WebsiteData['labels'], key: LabelKey, niche?: BooksyNiche, site?: Pick<WebsiteData, 'area' | 'niche'>,
+): string {
+  const stored = storedLabel(labels, key);
+  return plainText(stored !== '' ? stored : defaultLabel(key, niche, site));
 }
 
 // ── Rating wording ──────────────────────────────────────────────────────

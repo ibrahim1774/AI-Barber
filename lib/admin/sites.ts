@@ -17,6 +17,7 @@
 // Pure over injected deps (like the rest of lib/); lib/admin/live.ts wires the real ones
 // for api/admin/sites.ts and scripts/admin-sites.mjs.
 import type { WebsiteData } from '../../types.js';
+import type { SiteFile } from '../render/pages.js';
 import type { PurchaseRow } from '../ios/purchases.js';
 import { casPending, type PendingSite, type PublishOutcome, type SiteEditor, type VersionedPending } from '../publishSite.js';
 import { buildImageUrlMap, toPendingSiteData } from '../ios/pendingData.js';
@@ -88,7 +89,7 @@ export interface AdminSitesDeps {
    */
   publish(slug: string, opts: { force: boolean; pending?: PendingSite; transform?: (p: PendingSite) => PendingSite }): Promise<PublishOutcome>;
   /** lib/publishSite.ts renderPending: the HTML a deploy would ship. Throws on unrenderable data. */
-  render(p: Pick<PendingSite, 'siteData' | 'imageUrlMap'>): string;
+  render(p: Pick<PendingSite, 'siteData' | 'imageUrlMap'>): SiteFile[];
   audit(e: AuditEvent): Promise<void>;
   now(): number;
   /** Same switch as the sweep: Sandbox takedowns only count as offline when this is on. */

@@ -41,7 +41,7 @@ describe('offlineHtml', () => {
     expect(html).toContain('<meta name="robots" content="noindex">');
     expect(html).toContain('name="viewport"');
     expect(html).toContain('href="https://www.aibarber.org"');
-    expect(html).toContain('Built with AI Barber');
+    expect(html).toContain('Built with Prime Barber');
     expect(html).toContain('#0d0d0d');
     expect(html).toContain('#f4a100');
   });

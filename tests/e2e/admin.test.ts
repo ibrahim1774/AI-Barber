@@ -63,7 +63,7 @@ describe('edit / replace / rollback through the handler', () => {
     expect(r.body).toMatchObject({ ok: true, version: 2, fromVersion: 1, deployed: true, deployedUrl: 'https://fade-lab.vercel.app' });
     expect(pendingOf('fade-lab')).toMatchObject({ version: 2, editedBy: 'admin', adminVersion: 2, note: 'price change' });
     expect(gcsJson('pending-sites-history/fade-lab/1.json').data.version).toBe(1);
-    expect(normHtml(vercel.live.get('fade-lab'))).toBe(normHtml(renderPending(pendingOf('fade-lab'))));
+    expect(normHtml(vercel.live.get('fade-lab'))).toBe(normHtml(renderPending(pendingOf('fade-lab'))[0].html));
     expect(w.audits.at(-1)).toMatchObject({ action: 'update', slug: 'fade-lab', ok: true, by: 'ibrahim3709@gmail.com', fromVersion: 1, toVersion: 2 });
 
     const stale = await w.publish(transactionId, siteData(), { baseVersion: 1 });
@@ -302,7 +302,7 @@ describe('republish-all', () => {
     expect(phone.status).toBe(200);
     hold.resolve();
     await run;
-    expect(normHtml(vercel.live.get('fade-lab'))).toBe(normHtml(renderPending(pendingOf('fade-lab'))));
+    expect(normHtml(vercel.live.get('fade-lab'))).toBe(normHtml(renderPending(pendingOf('fade-lab'))[0].html));
   });
 
   it('setup (was: all claim version 2): 5 parallel admin edits all answer 200 ok with versions 2..6, each in history', async () => {

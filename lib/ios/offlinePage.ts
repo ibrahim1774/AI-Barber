@@ -38,7 +38,7 @@ export function offlineHtml(): string {
   <h1>This website is no longer available</h1>
   <p>Please check back later.</p>
 </main>
-<footer><a href="https://www.aibarber.org">Built with AI Barber</a></footer>
+<footer><a href="https://www.aibarber.org">Built with Prime Barber</a></footer>
 </body>
 </html>
 `;
