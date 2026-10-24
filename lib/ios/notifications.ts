@@ -1,6 +1,24 @@
 import { signedDataVerifierFor, toDecodedTransaction, type AppleDecode, type IosEnv } from './appleVerify.js';
 import { supabasePurchases, type PurchasesRepo, type PurchaseRow } from './purchases.js';
-import { grants } from './tiers.js';
+import { grants, isDomainProduct } from './tiers.js';
+import { liveDomainNotificationSink } from './domainLive.js';
+
+/** One App Store notification about the custom-domain subscription (lib/ios/domainFlow.ts). */
+export interface DomainNotification {
+  otid: string;
+  type: string;
+  subtype?: string;
+  environment: IosEnv;
+  expiresAt: number | null;
+  /** Set on REFUND / REVOKE (or a transaction carrying a revocationDate). */
+  revokedAt: number | null;
+  /** REFUND_REVERSED: the purchase is live again. */
+  reinstated: boolean;
+}
+
+export interface DomainNotificationSink {
+  applyNotification(n: DomainNotification): Promise<unknown>;
+}
 
 export interface DecodedNotification {
   notificationType: string;
@@ -12,6 +30,11 @@ export interface NotificationDeps {
   decodeNotification(p: string): Promise<DecodedNotification>;
   decodeTransaction: AppleDecode;
   repo: PurchasesRepo;
+  /**
+   * The custom-domain lifecycle. The domain product is routed here and NEVER to `repo`
+   * (ios_purchases), so it can never become a site purchase. Absent: 500 so Apple retries.
+   */
+  domain?: DomainNotificationSink;
   bundleId: string;
   now?: () => number;
 }
@@ -62,6 +85,30 @@ export async function handleAppleNotification(signedPayload: string, deps: Notif
   if (tx.bundleId !== deps.bundleId) return { status: 200, body: { ignored: 'bundle' } };
 
   const now = (deps.now ?? Date.now)();
+
+  if (isDomainProduct(tx.productId)) {
+    if (!deps.domain) {
+      console.error('[ios/apple-notification] domain notification but no domain handler wired; refusing so Apple retries');
+      return { status: 500, body: { error: 'temporarily-unavailable' } };
+    }
+    const reinstatedDomain = n.notificationType === 'REFUND_REVERSED';
+    try {
+      await deps.domain.applyNotification({
+        otid: tx.originalTransactionId,
+        type: n.notificationType,
+        ...(n.subtype ? { subtype: n.subtype } : {}),
+        environment,
+        expiresAt: tx.expiresDate ?? null,
+        revokedAt: reinstatedDomain ? null : tx.revocationDate ?? (REVOKING_TYPES.has(n.notificationType) ? now : null),
+        reinstated: reinstatedDomain,
+      });
+    } catch (e: any) {
+      console.error('[ios/apple-notification] domain handler error:', e?.message || e);
+      return { status: 500, body: { error: 'temporarily-unavailable' } }; // Apple retries
+    }
+    return { status: 200, body: { ok: true } };
+  }
+
   // REFUND_REVERSED: Apple reinstated the purchase, so the stored revocation is cleared.
   const reinstated = n.notificationType === 'REFUND_REVERSED';
   // The transaction a same-group upgrade replaced carries a revocationDate, but the
@@ -124,6 +171,7 @@ export function liveNotificationDeps(): NotificationDeps {
   return {
     bundleId,
     repo: supabasePurchases(),
+    domain: liveDomainNotificationSink(),
     decodeTransaction: async (env, signed) =>
       toDecodedTransaction(await signedDataVerifierFor(env).verifyAndDecodeTransaction(signed)),
     async decodeNotification(p) {

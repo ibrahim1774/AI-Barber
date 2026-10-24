@@ -24,6 +24,9 @@ import { buildImageUrlMap, toPendingSiteData } from '../ios/pendingData.js';
 import { isObj, restoreImageUrls, validationProblem } from '../ios/siteShape.js';
 import { stripLapsedLinks, tierOf, type Tier } from '../ios/tiers.js';
 import { PatchError, applyPatch, applySets } from './patch.js';
+import type { DomainRow } from '../ios/domainsRepo.js';
+import type { AccountDomain } from '../ios/vercelDomains.js';
+import { publicState } from '../ios/domainFlow.js';
 import type { WebOwnerAdminDeps } from '../siteOwners.js';
 
 // ─── deps ───
@@ -94,6 +97,14 @@ export interface AdminSitesDeps {
   now(): number;
   /** Same switch as the sweep: Sandbox takedowns only count as offline when this is on. */
   takedownSandbox?: boolean;
+  /** Every ios_domains row (custom domains). Absent: no domain column. */
+  domains?(): Promise<DomainRow[]>;
+  /** lib/ios/domainFlow.ts markTransferred: the manual transfer is done; the lifecycle stops touching it. */
+  markDomainTransferred?(slug: string, by: string): Promise<{ ok: boolean; error?: string; domain?: string }>;
+  /** lib/ios/domainFlow.ts releaseStuckBuy: a buy whose outcome stayed unknown, checked by hand in Vercel. */
+  releaseStuckDomainBuy?(slug: string, to: 'retry' | 'abandon', by: string): Promise<{ ok: boolean; error?: string; domain?: string }>;
+  /** Every domain in our Vercel account (GET /v5/domains; read-only). */
+  vercelDomains?(): Promise<AccountDomain[]>;
   /** Web site owner list (013 site_owners): the web-owner / set-web-owner actions. Absent: 503. */
   webOwners?: WebOwnerAdminDeps;
 }
@@ -170,9 +181,50 @@ export interface SiteRow {
   version: number;
   editedBy: SiteEditor | null;
   editedAt: string | null;
+  /** The site's custom domain (ios_domains), if one was ever claimed. */
+  customDomain: SiteDomain | null;
 }
 
-function toRow(row: PurchaseRow, p: PendingSite | null, email: string | null, now: number): SiteRow {
+export interface SiteDomain {
+  domain: string;
+  /** What the app shows: registering | linking | live | cancelled-until:… | failed:… | expired | transferred */
+  state: string;
+  /** The state machine's own state (lib/ios/domainFlow.ts). */
+  internalState: string;
+  sandbox: boolean;
+  paidUntil: string | null;
+  autoRenew: boolean;
+  lastError: string | null;
+}
+
+function toDomain(d: DomainRow | undefined): SiteDomain | null {
+  if (!d) return null;
+  return {
+    domain: d.domain, state: publicState(d), internalState: d.state, sandbox: d.simulated,
+    paidUntil: d.paid_until, autoRenew: d.auto_renew, lastError: d.last_error,
+  };
+}
+
+/** slug → its current domain row: the one holding the site, else the most recently updated. */
+async function domainsBySlug(deps: AdminSitesDeps): Promise<Map<string, DomainRow>> {
+  const out = new Map<string, DomainRow>();
+  if (!deps.domains) return out;
+  let rows: DomainRow[] = [];
+  try {
+    rows = await deps.domains();
+  } catch (e) {
+    console.warn(`[admin/sites] reading custom domains failed (column left empty): ${errMsg(e)}`);
+    return out;
+  }
+  const rank = (d: DomainRow) => (d.state === 'failed' ? 0 : 1);
+  for (const d of rows) {
+    const cur = out.get(d.site_slug);
+    if (!cur || rank(d) > rank(cur) || (rank(d) === rank(cur) && d.updated_at > cur.updated_at)) out.set(d.site_slug, d);
+  }
+  return out;
+}
+
+function toRow(row: PurchaseRow, p: PendingSite | null, email: string | null, now: number, domain: DomainRow | undefined = undefined): SiteRow {
   const status = statusOf(row, now);
   return {
     slug: row.site_slug!,
@@ -190,6 +242,7 @@ function toRow(row: PurchaseRow, p: PendingSite | null, email: string | null, no
     version: versionOf(p),
     editedBy: p?.editedBy ?? null,
     editedAt: p?.editedAt ?? null,
+    customDomain: toDomain(domain),
   };
 }
 
@@ -212,9 +265,10 @@ export async function findSites(query: string, deps: AdminSitesDeps, opts: { lim
     }
   });
   const now = deps.now();
+  const domains = await domainsBySlug(deps);
   const out = rows
-    .map((r) => toRow(r, pendings.get(r.site_slug!) ?? null, (r.user_id && emails.get(r.user_id)) || null, now))
-    .filter((s) => !q || [s.shopName, s.slug, s.email, s.deployedUrl, s.transactionId]
+    .map((r) => toRow(r, pendings.get(r.site_slug!) ?? null, (r.user_id && emails.get(r.user_id)) || null, now, domains.get(r.site_slug!)))
+    .filter((s) => !q || [s.shopName, s.slug, s.email, s.deployedUrl, s.transactionId, s.customDomain?.domain]
       .some((v) => typeof v === 'string' && v.toLowerCase().includes(q)))
     .sort((a, b) => (a.shopName || a.slug).localeCompare(b.shopName || b.slug));
   return out.slice(0, opts.limit ?? 500);
@@ -236,15 +290,16 @@ export interface GetResult {
 export async function getSite(slug: string, deps: AdminSitesDeps): Promise<GetResult> {
   const row = await deps.findBySlug(slug);
   if (!row?.site_slug) return { ok: false, error: 'not-found' };
-  const [p, history, emails] = await Promise.all([
+  const [p, history, emails, domains] = await Promise.all([
     deps.store.readPending(row.site_slug),
     deps.store.listHistory(row.site_slug),
     row.user_id ? deps.emailsByUserId([row.user_id]) : Promise.resolve(new Map<string, string>()),
+    domainsBySlug(deps),
   ]);
   return {
     ok: true,
     site: {
-      ...toRow(row, p, (row.user_id && emails.get(row.user_id)) || null, deps.now()),
+      ...toRow(row, p, (row.user_id && emails.get(row.user_id)) || null, deps.now(), domains.get(row.site_slug)),
       siteData: restored(p),
       note: p?.note ?? null,
       history,
@@ -615,4 +670,53 @@ export async function republishAll(input: RepublishAllInput, deps: AdminSitesDep
     dryRun: false, runId: run!.runId, skipped, results: ordered, remaining, notReached, done: remaining === 0,
     totals: { ok: run!.done.length, failed: run!.failed.length }, failed: run!.failed,
   };
+}
+
+// ─── custom domain ───
+
+/** Admin: the domain was transferred to the barber by hand in Vercel; stop the lifecycle. */
+export async function domainTransferred(slug: string, deps: AdminSitesDeps, by = 'admin'): Promise<{ ok: boolean; slug: string; error?: string; domain?: string }> {
+  if (!deps.markDomainTransferred) return { ok: false, slug, error: 'not-found' };
+  const r = await deps.markDomainTransferred(slug, by);
+  return r.ok ? { ok: true, slug, domain: r.domain } : { ok: false, slug, error: r.error === 'no-domain' ? 'not-found' : 'conflict' };
+}
+
+/** Admin: a buy whose outcome stayed unknown (the row waits in `buying`); after checking Vercel by hand. */
+export async function domainBuyRelease(slug: string, to: unknown, deps: AdminSitesDeps, by = 'admin'): Promise<{ ok: boolean; slug: string; error?: string; domain?: string }> {
+  if (to !== 'retry' && to !== 'abandon') return { ok: false, slug, error: 'bad-request' };
+  if (!deps.releaseStuckDomainBuy) return { ok: false, slug, error: 'not-found' };
+  const r = await deps.releaseStuckDomainBuy(slug, to, by);
+  return r.ok ? { ok: true, slug, domain: r.domain } : { ok: false, slug, error: r.error === 'no-domain' ? 'not-found' : 'conflict' };
+}
+
+export interface AccountDomainRow {
+  name: string;
+  /** Bought through Vercel (registered by us), or only added to the account. */
+  boughtThroughVercel: boolean;
+  boughtAt: string | null;
+  expiresAt: string | null;
+  autoRenew: boolean;
+  /** The app/website domain lifecycle row managing it, if any. Untracked = bought before it (old web flow, by hand). */
+  tracked: { source: string; state: string; site: string } | null;
+}
+
+/**
+ * READ-ONLY: every domain in our Vercel account with its auto-renew state and expiry, and whether
+ * the domain lifecycle manages it. For the owner to decide each untracked (e.g. old web) domain;
+ * nothing here changes any domain.
+ */
+export async function listAccountDomains(deps: AdminSitesDeps): Promise<{ ok: boolean; error?: string; domains?: AccountDomainRow[] }> {
+  if (!deps.vercelDomains) return { ok: false, error: 'not-configured' };
+  const [list, rows] = await Promise.all([deps.vercelDomains(), deps.domains ? deps.domains().catch(() => [] as DomainRow[]) : Promise.resolve([] as DomainRow[])]);
+  const byName = new Map<string, DomainRow>();
+  for (const r of rows) if (r.state !== 'failed' && !r.simulated) byName.set(r.domain, r);
+  const isoOf = (ms: number | null) => (ms == null ? null : new Date(ms).toISOString());
+  const domains = list.map((d) => {
+    const t = byName.get(d.name);
+    return {
+      name: d.name, boughtThroughVercel: d.boughtAt != null, boughtAt: isoOf(d.boughtAt), expiresAt: isoOf(d.expiresAt), autoRenew: d.renew,
+      tracked: t ? { source: t.source, state: t.state, site: t.site_slug } : null,
+    };
+  }).sort((a, b) => (a.expiresAt || '9').localeCompare(b.expiresAt || '9'));
+  return { ok: true, domains };
 }

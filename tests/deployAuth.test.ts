@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { authorizeDeploy, bearerOf, CHECKOUT_PROOF_MAX_AGE_MS, type CheckoutProof, type DeployAuthDeps } from '../lib/deployAuth.js';
+import { authorizeDeploy, authorizeSiteOwner, bearerOf, CHECKOUT_PROOF_MAX_AGE_MS, type CheckoutProof, type DeployAuthDeps } from '../lib/deployAuth.js';
 import { ADMIN_EMAIL } from '../lib/admin/auth.js';
 import type { PurchaseRow } from '../lib/ios/purchases.js';
 
@@ -322,5 +322,62 @@ describe('bearerOf', () => {
     expect(bearerOf(['bearer xyz'])).toBe('xyz');
     expect(bearerOf(undefined)).toBe('');
     expect(bearerOf(42)).toBe('');
+  });
+});
+
+describe('authorizeSiteOwner (paid add-ons: the web custom-domain flow)', () => {
+  afterEach(() => vi.restoreAllMocks());
+  const quiet = () => { vi.spyOn(console, 'warn').mockImplementation(() => {}); vi.spyOn(console, 'error').mockImplementation(() => {}); };
+
+  it('no token → 401; bad token → 401', async () => {
+    expect(await authorizeSiteOwner({ siteId: 'fresh-cuts' }, deps())).toEqual({ ok: false, status: 401, error: 'sign-in-required' });
+    expect((await authorizeSiteOwner({ siteId: 'fresh-cuts', authorization: 'Bearer junk' }, deps({ users }))).status).toBe(401);
+  });
+
+  it('a checkout session is never enough (no session input at all)', async () => {
+    const d = deps({ users, sessions: { [SESSION]: paid('fresh-cuts') } });
+    expect((await authorizeSiteOwner({ siteId: 'fresh-cuts', checkoutSessionId: SESSION } as any, d)).status).toBe(401);
+  });
+
+  it('admin: any slug', async () => {
+    expect(await authorizeSiteOwner({ siteId: 'Fresh Cuts', authorization: 'Bearer admin-jwt' }, deps({ users })))
+      .toMatchObject({ ok: true, target: 'fresh-cuts', actor: 'admin' });
+  });
+
+  it('app slug: only ios_purchases.user_id', async () => {
+    const d = deps({ users, rows: { 'fade-lab': iosRow() } });
+    expect(await authorizeSiteOwner({ siteId: 'fade-lab', authorization: 'Bearer owner-jwt' }, d)).toMatchObject({ ok: true, target: 'fade-lab', actor: 'app-owner' });
+    expect(await authorizeSiteOwner({ siteId: 'fade-lab', authorization: 'Bearer other-jwt' }, d)).toEqual({ ok: false, status: 403, error: 'not-authorized' });
+  });
+
+  it('web slug: the caller claims it and nobody else does', async () => {
+    const mine = deps({ users, claims: { [url('fresh-cuts')]: [OWNER] } });
+    expect(await authorizeSiteOwner({ siteId: 'fresh-cuts', authorization: 'Bearer owner-jwt' }, mine)).toMatchObject({ ok: true, target: 'fresh-cuts', actor: 'web-user' });
+    const contested = deps({ users, claims: { [url('fresh-cuts')]: [OWNER, OTHER] } });
+    expect((await authorizeSiteOwner({ siteId: 'fresh-cuts', authorization: 'Bearer owner-jwt' }, contested)).status).toBe(403);
+    // unclaimed + existing project: deploy-site allows a signed-in user; a paid add-on does not
+    const unclaimed = deps({ users });
+    expect((await authorizeSiteOwner({ siteId: 'fresh-cuts', authorization: 'Bearer owner-jwt' }, unclaimed)).status).toBe(403);
+    // the stamped URL counts too
+    const stamped = deps({ users, stamps: { 'fresh-cuts': 'https://fresh-cuts-x1.vercel.app' }, claims: { 'https://fresh-cuts-x1.vercel.app': [OTHER] } });
+    expect((await authorizeSiteOwner({ siteId: 'fresh-cuts', authorization: 'Bearer owner-jwt' }, stamped)).status).toBe(403);
+  });
+
+  it('every lookup failure is 503 (fail closed)', async () => {
+    quiet();
+    const d1 = deps({ users });
+    d1.findBySlug.mockRejectedValueOnce(new Error('db'));
+    expect((await authorizeSiteOwner({ siteId: 'fresh-cuts', authorization: 'Bearer owner-jwt' }, d1)).status).toBe(503);
+    const d2 = deps({ users });
+    d2.webClaimants.mockRejectedValueOnce(new Error('db'));
+    expect((await authorizeSiteOwner({ siteId: 'fresh-cuts', authorization: 'Bearer owner-jwt' }, d2)).status).toBe(503);
+  });
+});
+
+describe('a website domain checkout is never deploy proof', () => {
+  it('mode subscription but app aibarber-domain → refused', async () => {
+    const d = deps({ sessions: { [SESSION]: paid('fresh-cuts', { app: 'aibarber-domain' }) } });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect((await authorizeDeploy({ siteId: 'fresh-cuts', checkoutSessionId: SESSION }, d)).ok).toBe(false);
   });
 });

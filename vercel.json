@@ -77,6 +77,10 @@
     {
       "path": "/api/book/daily-summary",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/ios/domain-sweep",
+      "schedule": "*/10 * * * *"
     }
   ],
   "functions": {
@@ -105,6 +109,25 @@
     },
     "api/admin/sites.ts": {
       "maxDuration": 300
+    },
+    "api/ios/domain/claim.ts": {
+      "maxDuration": 300,
+      "includeFiles": "lib/ios/certs/**"
+    },
+    "api/ios/domain/status.ts": {
+      "includeFiles": "lib/ios/certs/**"
+    },
+    "api/ios/domain-sweep.ts": {
+      "maxDuration": 300,
+      "includeFiles": "lib/ios/certs/**"
+    },
+    "api/purchase-domain.ts": {
+      "maxDuration": 300,
+      "includeFiles": "lib/ios/certs/**"
+    },
+    "api/stripe-webhook.ts": {
+      "maxDuration": 300,
+      "includeFiles": "lib/ios/certs/**"
     },
     "api/deploy-site.ts": {
       "maxDuration": 300

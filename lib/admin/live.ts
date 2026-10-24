@@ -5,6 +5,9 @@
 // Env: SUPABASE_URL (or VITE_SUPABASE_URL), SUPABASE_SERVICE_ROLE_KEY,
 // GCP_SERVICE_ACCOUNT_JSON (or GCS_CREDENTIALS), GCS_BUCKET_NAME, VERCEL_TOKEN.
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { supabaseDomains } from '../ios/domainsRepo.js';
+import { markTransferred, releaseStuckBuy } from '../ios/domainFlow.js';
+import { liveVercelDomains } from '../ios/vercelDomains.js';
 import {
   REQUEST_MAX_REDEPLOYS, bucket, isPreconditionFailed, publishSite, readPendingSite, readPendingVersioned, renderPending, slugify, writePendingSite, type PendingSite } from '../publishSite.js';
 import type { PurchaseRow } from '../ios/purchases.js';
@@ -165,6 +168,14 @@ export function liveAdminDeps(): AdminSitesDeps {
 
     now: () => Date.now(),
     takedownSandbox: process.env.IOS_TAKEDOWN_SANDBOX === '1',
+    domains: () => supabaseDomains(db()).all(),
+    markDomainTransferred: (slug, by) => markTransferred(slugify(slug), by, { repo: supabaseDomains(db()), now: Date.now }),
+    releaseStuckDomainBuy: (slug, to, by) => releaseStuckBuy(slugify(slug), to, by, { repo: supabaseDomains(db()), now: Date.now }),
+    async vercelDomains() {
+      const v = liveVercelDomains();
+      if (!v) throw new Error('VERCEL_TOKEN not set');
+      return v.listDomains();
+    },
     get webOwners() {
       return liveWebOwnerAdminDeps(db(), async (slug) => {
         const { data, error } = await db().from('ios_purchases').select('original_transaction_id').eq('site_slug', slug).limit(1);
