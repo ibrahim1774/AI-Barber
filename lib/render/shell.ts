@@ -135,7 +135,8 @@ export interface FooterInput {
 
 export function footerHtml(template: TemplateId, f: FooterInput): string {
   const name = escapeAttr(f.name);
-  const digits = String(f.phone ?? '').replace(/\s+/g, '');
+  // Digits and a leading + only, like the prime header (an extension or a bracket must not end up in the tel: link).
+  const digits = String(f.phone ?? '').replace(/[^\d+]/g, '');
   const phone = f.shownPhone
     ? /\d/.test(digits) ? `<p class="ab-foot-phone"><a href="tel:${escapeAttr(digits)}">${f.shownPhone}</a></p>` : `<p class="ab-foot-phone">${f.shownPhone}</p>`
     : '';

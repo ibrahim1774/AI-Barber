@@ -8,6 +8,7 @@ import {
   isPageKey, isReservedPath, pageHref, pagePath, sitemapXml, PAGE_KEYS, type ExtraKey,
 } from '../../lib/render/pages';
 import { renderSite, renderSiteBundle } from '../../lib/render/site';
+import { cityStateOnly, placeFromArea } from '../../lib/render/honest';
 import type { WebsiteData } from '../../types';
 
 const svc = (title: string, extra: Record<string, unknown> = {}) => ({ title, subtitle: '', description: '', icon: 'scissors' as const, imageUrl: '', ...extra });
@@ -180,5 +181,47 @@ describe('the page shells: menu, titles, links and sitemap only reach deployed p
     const h = r.pages.find((p) => p.path === 'hours/index.html')!.html;
     expect(h).toContain('>FAQ<'); expect(h).toContain('1st &lt;b&gt;visit&lt;/b&gt;');
     expect(h).not.toContain('<b>visit');
+  });
+});
+
+describe('the place default (Phase A review B1, S1)', () => {
+  it.each<[string, string]>([
+    ['123 Main St, Brooklyn, NY 11201, USA', 'Brooklyn, NY'],
+    ['123 Main St, Brooklyn, NY 11201', 'Brooklyn, NY'],
+    ['123 Main St, Brooklyn, NY, United States', 'Brooklyn, NY'],
+    ['728 Franklin Ave, Brooklyn, NY 11238, USA', 'Brooklyn, NY'],
+    ['10 King St W, Toronto, ON M5V 3A8, Canada', 'Toronto, ON'],
+    ['Austin, TX', 'Austin, TX'],
+    ['Austin, TX, USA', 'Austin, TX'],
+    ['Downtown, Brooklyn, NY', 'Brooklyn, NY'],
+    ['Brooklyn', 'Brooklyn'],
+    ['1 Main St, Austin', ''],
+    ['1 Main St', ''],
+    ['', ''],
+    ['x'.repeat(61), ''],
+  ])('%s -> %s', (area, place) => { expect(placeFromArea(area)).toBe(place); });
+  it('a formatted-address area gives a clean service title, Location title and eyebrow', () => {
+    const d = shop({ area: '123 Main St, Brooklyn, NY 11201, USA' });
+    const html = renderSite(d).find((f) => f.path === 'services/skin-fade/index.html')!.html;
+    expect(html).toContain('<title>Skin Fade in Brooklyn, NY · Fresh Cuts</title>');
+    expect(html).toContain('Barbershop in Brooklyn, NY');
+    expect(renderSite(d).find((f) => f.path === 'location/index.html')!.html).toContain('<title>Barbershop in Brooklyn, NY · Fresh Cuts</title>');
+  });
+  it('a street-address area that gives no place keeps the old titles and prints no place line', () => {
+    const html = renderSite(shop({ area: '1 Main St, Austin' })).find((f) => f.path === 'services/skin-fade/index.html')!.html;
+    expect(html).toContain('<title>Skin Fade · Fresh Cuts</title>');
+    expect(/<main[\s\S]*<\/main>/.exec(html)![0]).not.toContain('ab-eyebrow');
+  });
+  it('the single-page footer line still uses cityStateOnly (single pages did not move)', () => {
+    expect(cityStateOnly('123 Main St, Brooklyn, NY 11201, USA')).toBe('NY 11201, USA');
+  });
+});
+
+describe('the footer call link (Phase A review S3)', () => {
+  it('keeps digits and + only', () => {
+    const html = renderSite(shop({ phone: '(512) 555-0100 ext 2' })).find((f) => f.path === 'hours/index.html')!.html;
+    const foot = /<footer[\s\S]*<\/footer>/.exec(html)![0];
+    expect(foot).toContain('href="tel:51255501002"');
+    expect(foot).not.toContain('tel:(512)');
   });
 });

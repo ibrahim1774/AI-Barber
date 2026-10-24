@@ -155,7 +155,7 @@ describe('footer', () => {
     const foot = /<footer[\s\S]*<\/footer>/.exec(h)![0];
     expect(foot).toContain('Fresh Cuts');
     expect(foot).toContain('1 Main St, Brooklyn, NY 11201');
-    expect(foot).toContain('href="tel:(512)555-0100"');
+    expect(foot).toContain('href="tel:5125550100"');
     for (const href of ['/', '/services/', '/services/skin-fade/', '/services/beard-trim/', '/services/line-up/', '/hours/', '/location/', '/contact/']) expect(foot).toContain(`href="${href}"`);
     expect(foot).toContain('>Pages<');
   });

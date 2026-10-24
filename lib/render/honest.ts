@@ -21,6 +21,25 @@ export const cityStateOnly = (raw: string): string => {
   return parts.slice(-2).join(', ');
 };
 
+// The shop's one place for page titles (pgPlace default): "City, ST" from whatever `area` holds. The app importer stores
+// the whole street address when no area is given, so "123 Main St, Brooklyn, NY 11201, USA" must give "Brooklyn, NY".
+// Drops a trailing country and a ZIP, then takes the city and state like gbpPlaces locationFromAddress. A result that
+// still holds a digit (a street address) or is longer than 60 characters is not a place: '' (the page keeps its old
+// title and shows no place line). cityStateOnly above is untouched: the single-page renderers use it.
+const COUNTRY = /^(?:usa|u\.s\.a\.?|us|u\.s\.|united states(?: of america)?|canada|mexico|uk|united kingdom)$/i;
+export function placeFromArea(raw: string): string {
+  const parts = String(raw || '').split(',').map((p) => p.trim()).filter(Boolean);
+  if (parts.length > 1 && COUNTRY.test(parts[parts.length - 1])) parts.pop();
+  let place: string;
+  if (parts.length >= 3) {
+    const state = parts[parts.length - 1].replace(/\s+\S*\d\S*(?:\s+\S*\d\S*)?$/, '').trim();
+    place = [parts[parts.length - 2], state].filter(Boolean).join(', ');
+  } else {
+    place = parts.join(', ');
+  }
+  return /\d/.test(place) || Array.from(place).length > 60 ? '' : place;
+}
+
 export function nicheOf(site: Pick<WebsiteData, 'niche'>): BooksyNiche {
   return nicheByKey(site.niche);
 }

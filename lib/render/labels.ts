@@ -22,7 +22,7 @@ import type { TemplateId, WebsiteData } from '../../types';
 import type { BooksyNiche } from '../booksyNiche.js';
 import { nicheByKey } from '../booksyNiche.js';
 import { safeHref } from './safeHref.js';
-import { aggregateToShow, cityStateOnly, footerLine, hasServices, nicheCopy, reviewsSourceName, teamBookLink, teamOf, visibleReviews } from './honest.js';
+import { aggregateToShow, cityStateOnly, placeFromArea, footerLine, hasServices, nicheCopy, reviewsSourceName, teamBookLink, teamOf, visibleReviews } from './honest.js';
 import { isSiteBookLink } from './subpages.js';
 import { beardServices, isHaircutTitle, serviceGuideFor, titledServices } from './guides.js';
 import { buildPageSet, hasFilePages, plainText, type PageContext, type PageKey, type PageSet } from './pages.js';
@@ -200,7 +200,7 @@ export const LABELS = {
   // The one place the shop works from: the default is the shop's own city and state (never another town). The barber
   // may name a neighbourhood instead. Printed in service page and Location titles and over the service page heading.
   pgPlace: {
-    title: 'Place name', default: (_n, site) => cityStateOnly(site?.area || ''), max: 60,
+    title: 'Place name', default: (_n, site) => placeFromArea(site?.area || ''), max: 60,
     multi: { page: ['services', 'location'], shows: (s) => has(s.area) || has((s.labels as Record<string, unknown> | undefined)?.pgPlace) },
   },
   pgAboutTitle: { title: 'About page title', default: 'About us', max: 60, multi: { page: 'about' } },
