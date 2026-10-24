@@ -15,7 +15,7 @@
 import type { TemplateId, WebsiteData } from '../../types';
 import { copyrightYear, displayPhone, nicheOf, withoutLegacyCopy } from './honest.js';
 import { aibThemeVars, generateHTMLWithPlaceholders, resolveAibTheme } from './luxe.js';
-import { t } from './labels.js';
+import { navLabelKey, plainLabel, t } from './labels.js';
 import { renderPageBody } from './pageBodies.js';
 import { buildPageSet, canonicalBase, hasFilePages, isMultiPage, singlePageSet, plainText, sitemapXml, type PageContext, type PageFile, type PageSet, type SiteFile } from './pages.js';
 import { euphoriaRootStyle, generateEuphoriaHTMLWithPlaceholders } from './euphoria.js';
@@ -108,7 +108,7 @@ export function renderSiteBundle(data: WebsiteData, opts: RenderSiteOptions = {}
   const themeStyle = themeStyleOf(template, d);
 
   const headerFor = (file: PageFile): string => {
-    const nav = navListHtml(navItemsFor(template, set, d, file.key), L('pgMenu'));
+    const nav = navListHtml(navItemsFor(template, set, d, file.key), L('pgMenu'), L('pgMore'));
     if (template === 'luxe') return headerHtml('luxe', { name: shop, phone, shownPhone: escapeAttr(displayPhone(phone)), nav });
     if (template === 'prime') {
       const href = bookingUrl || (digits ? `tel:+1${digits}` : '');
@@ -117,7 +117,16 @@ export function renderSiteBundle(data: WebsiteData, opts: RenderSiteOptions = {}
     const href = bookingUrl || (/\d/.test(phone) ? `tel:${phone.replace(/\s+/g, '')}` : '');
     return headerHtml('euphoria', { name: shop, cta: href ? { href, label: L('euNavBook'), newTab: !!bookingUrl && !bookingUrl.startsWith('/') } : null, nav });
   };
-  const footer = footerHtml(template, { name: shop, year: copyrightYear(), line: template === 'luxe' ? L('footerLine') : undefined });
+  // The footer lists every page that is a file in the set (top-level pages, then the service pages), nothing else.
+  const footerPages = [
+    ...navItemsFor(template, set, d, 'home').map((i) => ({ href: i.href, label: escapeAttr(plainLabel(d.labels, navLabelKey(template, i.key), niche, d)), external: i.external })),
+    ...set.files.filter((f) => f.key === 'services' && f.child).map((f) => ({ href: f.href, label: escapeAttr(f.child!.title) })),
+  ];
+  const footer = footerHtml(template, {
+    name: shop, year: copyrightYear(), line: template === 'luxe' ? L('footerLine') : undefined,
+    address: plainText(d.contact?.address), phone, shownPhone: phone ? escapeAttr(displayPhone(phone)) : '',
+    pagesHeading: L('pgPages'), pages: footerPages,
+  });
 
   for (const file of set.files) {
     if (file.key === 'home') continue;

@@ -68,6 +68,8 @@ export function renderPageBody(ctx: BodyCtx, file: PageFile): PageBody {
   const title = (): string => L(PAGE_TITLE_KEY[file.key] as LabelKey);
   const heading = (): string => P(PAGE_TITLE_KEY[file.key] as LabelKey);
   const generic = siteDescription(d);
+  // The one place the shop works from (pgPlace: the shop's own city and state unless the barber named a neighbourhood).
+  const place = P('pgPlace');
 
   // Buttons: the booking link (the site's own /book in this tab, another site in a new one) and the shop link.
   const bookingUrl = safeHref(d.bookingUrl);
@@ -149,10 +151,13 @@ export function renderPageBody(ctx: BodyCtx, file: PageFile): PageBody {
     const othersBlock = others.length
       ? `<h2 class="ab-h2" style="margin-top:32px">${L('pgOtherServices')}</h2><div class="ab-chips">${others.map((c) => `<a class="ab-chip" href="${esc(`/services/${c.slug}/`)}">${esc(c.title)}</a>`).join('')}</div>`
       : '';
+    // One URL per service, titled with the shop's place: "Skin Fade in Brooklyn, NY · Fresh Cuts". No place, no change.
+    const eyebrow = place ? `<p class="ab-eyebrow">${esc(niche.industry)} in ${L('pgPlace')}</p>` : '';
     return {
       heading: plainText(s.title),
+      title: place ? clip(`${plainText(s.title)} in ${place} · ${plainText(d.shopName)}`, 120) : undefined,
       description: clip(s.description || '', 155) || generic,
-      body: `<section class="ab-sec"><div class="ab-wrap"><a class="ab-back" href="/services/">${L('pgBackServices')}</a><h1 class="ab-h1">${esc(s.title)}</h1>${price ? `<p class="ab-price">${esc(price)}</p>` : ''}${meta ? `<div class="ab-meta">${esc(meta)}</div>` : ''}<div class="ab-prose">${desc}</div>${bookBtn ? `<div class="ab-actions">${bookBtn}</div>` : ''}${whoBlock}${othersBlock}${alsoSee()}</div></section>`,
+      body: `<section class="ab-sec"><div class="ab-wrap"><a class="ab-back" href="/services/">${L('pgBackServices')}</a>${eyebrow}<h1 class="ab-h1">${esc(s.title)}</h1>${price ? `<p class="ab-price">${esc(price)}</p>` : ''}${meta ? `<div class="ab-meta">${esc(meta)}</div>` : ''}<div class="ab-prose">${desc}</div>${bookBtn ? `<div class="ab-actions">${bookBtn}</div>` : ''}${whoBlock}${othersBlock}${alsoSee()}</div></section>`,
     };
   }
 
@@ -248,7 +253,7 @@ export function renderPageBody(ctx: BodyCtx, file: PageFile): PageBody {
     const map = `<div class="ab-map"><iframe title="${esc(shop)} on Google Maps" src="https://maps.google.com/maps?q=${encodeURIComponent(`${shop} ${address}`)}&amp;output=embed" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe></div>`;
     return {
       heading: heading(),
-      title: clip(`${shop} — ${niche.noun} at ${address}`, 110),
+      title: place ? clip(`${niche.industry} in ${place} · ${shop}`, 120) : clip(`${shop} — ${niche.noun} at ${address}`, 110),
       description: clip(`${shop}, ${address}.`, 155),
       body: `<section class="ab-sec"><div class="ab-wrap"><h1 class="ab-h1">${title()}</h1><dl class="ab-facts">${facts}</dl><div class="ab-actions"><a class="ab-btn ab-btn-solid" href="${esc(directions)}" target="_blank" rel="noopener noreferrer">${L('pgDirectionsCta')}</a>${bookBtn}</div>${map}${hoursBlock}${alsoSee()}</div></section>`,
     };

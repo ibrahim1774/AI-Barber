@@ -50,8 +50,9 @@ describe.each(TEMPLATES)('%s multi-page site', (template) => {
     const files = renderSite({ ...data, pages: { order: ['contact', 'about'], hidden: ['reviews'] } }, template);
     const expected = ['/', '/contact/', '/about/', '/services/', '/team/', '/gallery/', '/hours/', '/location/', '/book', '/shop'];
     for (const f of files) {
-      expect(navLinks(f.html), f.path).toEqual(expected);
-      const current = [...f.html.matchAll(/<a href="([^"]*)" class="is-active" aria-current="page"/g)].map((m) => m[1]);
+      // More than 5 items: the first 5, then the rest twice (flat for phones, and in the More dropdown) - Phase A of pages v2.
+      expect(navLinks(f.html), f.path).toEqual([...expected, ...expected.slice(5)]);
+      const current = [...new Set([...f.html.matchAll(/<a href="([^"]*)" class="is-active" aria-current="page"/g)].map((m) => m[1]))]; // an item under More is in both copies
       const want = f.path === 'index.html' ? '/' : '/' + f.path.split('/')[0] + '/'; // a service page highlights Services
       expect(current, f.path).toEqual([want]);
     }
@@ -203,7 +204,8 @@ describe('page content', () => {
     const h = byPath(files, 'services/index.html');
     expect(h).toContain('href="/services/skin-fade/"');
     expect(h).toContain('href="/services/beard/"');
-    expect(h.match(/href="\/services\/[a-z0-9-]+\/"/g)).toHaveLength(2);
+    const main = /<main[\s\S]*<\/main>/.exec(h)![0]; // the footer lists the service pages too
+    expect(main.match(/href="\/services\/[a-z0-9-]+\/"/g)).toHaveLength(2);
   });
   it('team member page: bio, picked services with prices, book with <first name> to /book?barber=', () => {
     const h = byPath(files, 'team/sam-fade/index.html');
@@ -215,7 +217,8 @@ describe('page content', () => {
   });
   it('hours page: rows and Closed; the address and map moved to the Location page', () => {
     const h = byPath(files, 'hours/index.html');
-    expect(h).toContain('9:00 AM'); expect(h).toContain('Closed'); expect(h).not.toContain('maps.google.com'); expect(h).not.toContain('1 Main St');
+    const main = /<main[\s\S]*<\/main>/.exec(h)![0]; // the footer now prints the address
+    expect(h).toContain('9:00 AM'); expect(h).toContain('Closed'); expect(h).not.toContain('maps.google.com'); expect(main).not.toContain('1 Main St');
   });
   it('reviews page: visible reviews, source, rating', () => {
     const h = byPath(files, 'reviews/index.html');

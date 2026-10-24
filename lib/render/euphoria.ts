@@ -384,7 +384,7 @@ ${EUPHORIA_SCOPED_CSS}${menuSet ? HEADER_CSS.euphoria + NAV_CSS.euphoria : ''}
 <div class="euphoria-root"${rootStyle ? ` style="${rootStyle}"` : ''}>
 
   <!-- Nav -->
-  ${menuSet ? headerHtml('euphoria', { name: siteData.shopName, cta: bookingUrl || canCall ? { href: bookingUrl || `tel:${(siteData.phone || '').replace(/\s+/g, '')}`, label: L('euNavBook'), newTab: bookTarget !== '' } : null, nav: navListHtml(navItemsFor('euphoria', menuSet, siteData, 'home'), L('pgMenu')) }) : `<nav style="position:sticky;top:0;z-index:50;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--eu-line-soft);">
+  ${menuSet ? headerHtml('euphoria', { name: siteData.shopName, cta: bookingUrl || canCall ? { href: bookingUrl || `tel:${(siteData.phone || '').replace(/\s+/g, '')}`, label: L('euNavBook'), newTab: bookTarget !== '' } : null, nav: navListHtml(navItemsFor('euphoria', menuSet, siteData, 'home'), L('pgMenu'), L('pgMore')) }) : `<nav style="position:sticky;top:0;z-index:50;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--eu-line-soft);">
     <div class="eu-container" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 24px;">
       <a href="#top" style="text-decoration:none;color:var(--eu-ink);font-family:'Newsreader',serif;font-size:20px;letter-spacing:0.04em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${safeName}</a>${shopUrl ? `
       <a href="${escapeHtml(shopUrl)}" style="text-decoration:none;color:var(--eu-ink-soft);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;flex-shrink:0;white-space:nowrap;">${L('euNavShop')}</a>` : ''}
