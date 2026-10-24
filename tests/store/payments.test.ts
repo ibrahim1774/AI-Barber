@@ -56,7 +56,8 @@ describe('createOrderCheckout', () => {
 
     expect(p.get('mode')).toBe('payment');
     expect(p.get('expires_at')).toBe(String(MINUTE + CHECKOUT_HOLD_SEC));
-    expect(p.get('payment_method_types[0]')).toBe('card');
+    expect([...p.keys()].filter((k) => k.startsWith('payment_method_types'))).toEqual([]);
+    expect(p.get('allowed_payment_method_types[0]')).toBe('card');
     expect(p.get('client_reference_id')).toBe('ord-1');
     expect(p.get('customer_email')).toBe('sam@example.com');
     expect(p.get('success_url')).toBe('https://www.aibarber.org/shop/manage/tok_order?checkout=success');
