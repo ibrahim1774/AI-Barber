@@ -83,7 +83,7 @@ export function copyrightYear(): number {
 // Alt text for any shop photo. Never "atmosphere" / "our work": the photo
 // may be a sample.
 export function photoAlt(site: Pick<WebsiteData, 'shopName'>): string {
-  const name = (site.shopName || '').trim();
+  const name = unmarked(site.shopName || '').trim();
   return name ? `${name} photo` : 'Shop photo';
 }
 
@@ -577,7 +577,7 @@ export function teamOf(site: Pick<WebsiteData, 'staff'> & { services?: unknown }
     const s = staff[index] as Partial<TeamMember> | null;
     if (!s || typeof s !== 'object') continue;
     const name = cleanStr(s.name, 80);
-    if (!name) continue;
+    if (!name || !unmarked(name).trim()) continue;
     const hasId = typeof s.memberId === 'string' && UUID.test(s.memberId);
     // legacyUncapped (luxe, which always showed every staff entry): the cap counts only entries with a
     // memberId. Otherwise (prime, euphoria: a new section) every entry counts toward the cap.

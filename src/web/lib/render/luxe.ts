@@ -192,7 +192,7 @@ export function generateHTMLWithPlaceholders(input: WebsiteData, ctx?: RenderCtx
   // ── Bio section — shows the shop's Booksy description as a pull
   //    quote between hero and about. Skipped when bio is empty (e.g.
   //    manual-form sites or platforms without descriptions).
-  const bioSection = siteData.bio && unwrapMarked(siteData.bio.trim())[1].length > 20
+  const bioSection = siteData.bio && unwrapMarked(siteData.bio.trim())[1].trim().length > 20
     ? `<section class="py-12 md:py-20 bg-[#0d0d0d] px-6 border-y border-white/5">
     <div class="container mx-auto max-w-3xl text-center">
       <svg class="w-8 h-8 mx-auto mb-6 text-[#f4a100]/40" viewBox="0 0 24 24" fill="currentColor"><path d="M6 17h3l2-4V7H5v6h3l-2 4zm8 0h3l2-4V7h-6v6h3l-2 4z"/></svg>

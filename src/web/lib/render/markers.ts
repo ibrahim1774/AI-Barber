@@ -41,5 +41,27 @@ const STRAY = /⁣(?:[a-zA-Z]+|\/)⁣/g;
 export function printable(v: unknown): string {
   if (typeof v !== 'string') return '';
   const t = v.trim();
-  return WRAPPED.test(t) ? t : t.replace(STRAY, '').replace(/⁣/g, '').trim();
+  // Padding inside a wrapper is cut like the padding outside it, so the preview prints what the published page prints.
+  const w = WRAPPED.exec(t);
+  return w ? w[1] + w[2].trim() + w[3] : t.replace(STRAY, '').replace(/⁣/g, '').trim();
+}
+
+/** Text without any editor marker, wrapped or stray (what published output may contain). */
+export const stripMarkersText = (s: string): string => s.replace(STRAY, '').replace(/⁣/g, '');
+
+/** A copy of any JSON-like value with every string cleaned by stripMarkersText. Same object when nothing changes. */
+export function stripMarkersDeep<T>(v: T): T {
+  if (typeof v === 'string') return (v.includes('⁣') ? stripMarkersText(v) : v) as unknown as T;
+  if (Array.isArray(v)) {
+    const out = v.map(stripMarkersDeep);
+    return (out.some((x, i) => x !== v[i]) ? out : v) as unknown as T;
+  }
+  if (v && typeof v === 'object') {
+    const src = v as Record<string, unknown>;
+    let changed = false;
+    const out: Record<string, unknown> = {};
+    for (const k of Object.keys(src)) { out[k] = stripMarkersDeep(src[k]); if (out[k] !== src[k]) changed = true; }
+    return (changed ? out : v) as T;
+  }
+  return v;
 }
