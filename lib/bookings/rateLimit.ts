@@ -5,6 +5,7 @@
 // (006: ab_rate_hits + ab_rate_hit()), so they hold across every warm function instance.
 // Reads stay in memory per instance. If the Supabase call fails, the limiter falls back to
 // the in-memory store and logs: it fails open and never 500s a real customer.
+import { isIP } from 'node:net';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { serviceClient } from './repo.js';
 
@@ -84,23 +85,31 @@ export function withFallback(
 export type RateKind = 'read' | 'write';
 
 export interface RateLimiter {
-  allow(ip: string, kind: RateKind): Promise<boolean>;
+  /** `subject`: a validated IP literal (clientIp) or a server-derived id (a verified user id). */
+  allow(subject: string, kind: RateKind): Promise<boolean>;
 }
 
+/** Limiter scopes: a fixed, server-chosen namespace per limiter, never from the request. */
+export type RateScope = 'public' | 'ios' | 'deploy' | 'user';
+
 /**
- * Per-IP limiter: reads count in `readStore` (default in memory), writes in `writeStore`
- * (default: the same store as reads).
+ * Limiter keyed `${scope}:${kind}:${subject}`: reads count in `readStore` (default in memory),
+ * writes in `writeStore` (default: the same store as reads). The scope and kind are trusted and
+ * colon-free and come first, so no subject (an IP, even a forged header value; clientIp only
+ * passes validated literals anyway) can land in another limiter's or kind's bucket.
  */
 export function makeRateLimiter(
   readStore: RateLimitStore = memoryStore(),
   now: () => number = Date.now,
   writeStore: RateLimitStore = readStore,
+  limits: { read: number; write: number } = { read: READ_LIMIT, write: WRITE_LIMIT },
+  scope: RateScope = 'public',
 ): RateLimiter {
   return {
-    async allow(ip, kind) {
-      const limit = kind === 'read' ? READ_LIMIT : WRITE_LIMIT;
+    async allow(subject, kind) {
+      const limit = kind === 'read' ? limits.read : limits.write;
       const store = kind === 'read' ? readStore : writeStore;
-      return store.hit(`${kind}:${ip}`, limit, WINDOW_MS, now());
+      return store.hit(`${scope}:${kind}:${subject}`, limit, WINDOW_MS, now());
     },
   };
 }
@@ -108,8 +117,25 @@ export function makeRateLimiter(
 /** Cross-instance store (Supabase, in-memory fallback). The client is created on first use. */
 const sharedStore: RateLimitStore = withFallback(supabaseRateStore(() => serviceClient()));
 
-/** The limiter every /api/book/* handler uses: reads in memory, writes shared. */
-export const publicLimiter = makeRateLimiter(memoryStore(), Date.now, sharedStore);
+/** The limiter every /api/book/* and /api/store/* handler uses, per IP: reads in memory, writes shared. */
+export const publicLimiter = makeRateLimiter(memoryStore(), Date.now, sharedStore, { read: READ_LIMIT, write: WRITE_LIMIT }, 'public');
+
+/** /api/deploy-site, per IP (same limits as the public pages, its own buckets). */
+export const deployLimiter = makeRateLimiter(memoryStore(), Date.now, sharedStore, { read: READ_LIMIT, write: WRITE_LIMIT }, 'deploy');
+
+/** Per signed-in user (subject = the verified Supabase user id): /api/shop/plan and setup's Apple verify. */
+export const userLimiter = makeRateLimiter(memoryStore(), Date.now, sharedStore, { read: READ_LIMIT, write: WRITE_LIMIT }, 'user');
+
+/**
+ * The iOS endpoints (/api/ios/site lookups = read, /api/ios/publish = write), per IP, shared
+ * across instances (e2e M9). Each call costs up to two App Store Server API requests, so a flood
+ * would exhaust Apple's quota and real publishes would get 503. Looser than the booking limits:
+ * phones on one carrier NAT share an address. Keys are prefixed so they never share a bucket
+ * with the booking pages.
+ */
+export const IOS_READ_LIMIT = 60;
+export const IOS_WRITE_LIMIT = 20;
+export const iosLimiter = makeRateLimiter(sharedStore, Date.now, sharedStore, { read: IOS_READ_LIMIT, write: IOS_WRITE_LIMIT }, 'ios');
 
 /** Per-shop online-booking cap (core FlowLimits.shopBooking). Fails open, never throws. */
 export function shopBookingLimiter(store: RateLimitStore = sharedStore, now: () => number = Date.now) {
@@ -130,7 +156,19 @@ type Headers = Record<string, string | string[] | undefined>;
 export function clientIp(headers: Headers | undefined): string {
   const pick = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
   const real = pick(headers?.['x-real-ip'])?.trim();
-  if (real) return real;
+  if (real) return ipLiteral(real);
   const xff = pick(headers?.['x-forwarded-for'])?.split(',')[0]?.trim();
-  return xff || 'unknown';
+  return xff ? ipLiteral(xff) : 'unknown';
+}
+
+/**
+ * Only a valid IPv4 / IPv6 literal is a limiter subject (IPv6 lower-cased); anything else (a
+ * forged header such as `write:ios:1.2.3.4`) shares the one fixed 'unknown' bucket.
+ */
+function ipLiteral(v: string): string {
+  if (v.length > 64) return 'unknown';
+  const kind = isIP(v);
+  if (kind === 4) return v;
+  if (kind === 6) return v.toLowerCase();
+  return 'unknown';
 }

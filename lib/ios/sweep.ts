@@ -24,7 +24,7 @@
 // and candidates come oldest-checked first, so rows Apple can't resolve or
 // that sit in billing grace rotate to the back instead of starving the rest.
 import type { PurchasesRepo, PurchaseRow } from './purchases.js';
-import type { PendingSite, PublishOutcome } from '../publishSite.js';
+import { casPending, type PendingIO, type PendingSite, type PublishOutcome } from '../publishSite.js';
 import type { VerifiedTx } from './appleVerify.js';
 import { isActive } from './txStatus.js';
 import { isLapsed } from './lapse.js';
@@ -63,6 +63,10 @@ export interface IosSweepSummary {
   appleUnresolvable: string[];
   appleUnavailableCount: number;
   appleUnresolvableCount: number;
+  /** M1: sites redeployed without the Book/Shop links a downgrade no longer covers (stored copy stripped). */
+  linksStripped: string[];
+  /** M1: strip or redeploy failed; the row stays due and is retried next sweep. */
+  linksFailed: string[];
 }
 
 export interface IosSweepDeps {
@@ -85,20 +89,24 @@ export interface IosSweepDeps {
    * doesn't cover from the slug's pending file (makeStripPending). Never adds links: they come
    * back with the app's next publish. Best effort; absent = skipped.
    */
-  stripPending?(slug: string, productId: string): Promise<void>;
+  stripPending?(slug: string, productId: string): Promise<boolean | void>;
 }
 
-/** stripPending over the pending-file store: rewrites it only when a link is removed. */
-export function makeStripPending(deps: {
-  readPending(slug: string): Promise<PendingSite | null>;
-  writePending(slug: string, p: PendingSite): Promise<void>;
-}): (slug: string, productId: string) => Promise<void> {
+/**
+ * stripPending over the pending-file store: rewrites it only when a link is removed, and
+ * returns whether it did. Compare-and-set (e2e I1): a publish landing between the read and the
+ * write is never overwritten by the older copy; the strip is re-applied to the fresh copy.
+ */
+export function makeStripPending(deps: PendingIO): (slug: string, productId: string) => Promise<boolean> {
   return async (slug, productId) => {
-    const pending = await deps.readPending(slug);
-    if (!pending?.siteData) return;
-    const siteData = stripLapsedLinks(pending.siteData, productId);
-    if (Object.keys(siteData).length === Object.keys(pending.siteData).length) return;
-    await deps.writePending(slug, { ...pending, siteData });
+    const r = await casPending<boolean>(slug, deps, (pending) => {
+      if (!pending?.siteData) return { stop: false };
+      const siteData = stripLapsedLinks(pending.siteData, productId);
+      if (Object.keys(siteData).length === Object.keys(pending.siteData).length) return { stop: false };
+      return { write: { ...pending, siteData }, result: true };
+    });
+    if (r.exhausted) throw new Error('the stored copy kept changing; strip not applied');
+    return r.result === true;
   };
 }
 
@@ -132,6 +140,7 @@ export async function sweepIos(
     skippedLapsed: [], restored: [], restoreFailed: [], notRestored: [],
     takenDown: [], takedownFailed: [], takedownUncertain: [], stillActive: [], sandboxGatesClosed: [],
     appleUnavailable: [], appleUnresolvable: [], appleUnavailableCount: 0, appleUnresolvableCount: 0,
+    linksStripped: [], linksFailed: [],
   };
 
   /**
@@ -286,6 +295,45 @@ export async function sweepIos(
       out.takedownFailed.push(slug);
       await deps.repo.clearTakenDown(otid).catch((e: any) =>
         console.error(`[Sweeper:iOS] ALERT ${slug} (${otid}): offline deploy failed AND clearing taken_down_at failed; site is live but flagged:`, e?.message || e));
+    }
+  }
+
+  // Pass 4 (e2e M1): a downgrade at renewal queued this site (links_due_at). Strip the Book/Shop
+  // links the current product doesn't cover from the stored copy (compare-and-set) and redeploy,
+  // so the live buttons stop pointing at paused pages. The product came from a signed App Store
+  // notification; no Apple call here. Always redeployed while due (downgrades are rare): a strip
+  // that landed in a run whose redeploy failed finds nothing left to strip on the retry, but the
+  // live site still needs the deploy. The stamp is cleared only after a good deploy.
+  if (deps.repo.linksDue && deps.repo.clearLinksDue && deps.stripPending && !outOfLateTime()) {
+    let due: PurchaseRow[] = [];
+    try {
+      due = await deps.repo.linksDue(limit);
+    } catch (err: any) {
+      // e.g. migration 014 not applied yet: skip the pass, nothing else depends on it.
+      console.error('[Sweeper:iOS] link-strip candidates failed (pass skipped):', err?.message || err);
+    }
+    for (const row of due) {
+      const slug = row.site_slug as string;
+      if (outOfTime()) {
+        out.deferred.push(slug);
+        continue;
+      }
+      const otid = row.original_transaction_id;
+      try {
+        await deps.stripPending(slug, row.product_id);
+        const outcome = await deps.publish(slug, { force: true });
+        if (!outcome.ok) {
+          console.error(`[Sweeper:iOS] LINK STRIP ${slug} (${otid}): redeploy failed (${outcome.reason}); retried next sweep`);
+          out.linksFailed.push(slug);
+          continue;
+        }
+        console.log(`[Sweeper:iOS] ${slug} (${otid}): redeployed without the Book/Shop links the plan no longer covers`);
+        out.linksStripped.push(slug);
+        await deps.repo.clearLinksDue(otid, row.links_due_at as string);
+      } catch (err: any) {
+        console.error(`[Sweeper:iOS] link strip for ${slug} (${otid}) failed; retried next sweep:`, err?.message || err);
+        out.linksFailed.push(slug);
+      }
     }
   }
 

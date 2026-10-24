@@ -47,7 +47,7 @@ describe('notify', () => {
     expect(d.push).toHaveBeenCalledWith(['owner-1'], { body: 'New booking: Sam <b>, Fade, Fri 2:00 PM', data: DATA });
     const m = d.sendEmail.mock.calls[0][0];
     expect(m.to).toBe('sam@example.com');
-    expect(m.fromName).toBe('Fade Factory via AI Barber');
+    expect(m.fromName).toBe('Fade Factory via Prime Barber');
     expect(m.replyTo).toBe('owner@example.com');
     expect(m.subject).toBe("You're booked at Fade Factory: Friday, October 23 at 2:00 PM");
     expect(m.html).toContain('https://www.aibarber.org/book/manage/tok_abc');

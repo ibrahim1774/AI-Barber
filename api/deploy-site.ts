@@ -1,6 +1,7 @@
 import { authorizeDeploy, liveDeployAuthDeps, type DeployAuthDeps } from '../lib/deployAuth.js';
 import { gatedWebDeploy, liveWebDeployDeps, type WebDeployDeps } from '../lib/ios/webDeployGate.js';
-import { clientIp, publicLimiter, type RateLimiter } from '../lib/bookings/rateLimit.js';
+import { clientIp, deployLimiter, type RateLimiter } from '../lib/bookings/rateLimit.js';
+import { recordCheckoutOwner } from '../lib/siteOwners.js';
 
 // HTTP wrapper over lib/deploySite. The deploy logic moved there so the
 // Stripe webhook can run it in-process instead of self-calling this endpoint —
@@ -48,7 +49,7 @@ export interface DeploySiteDeps {
 }
 
 let live: DeploySiteDeps | undefined;
-const liveDeps = (): DeploySiteDeps => (live ??= { auth: liveDeployAuthDeps(), deploy: liveWebDeployDeps(), limiter: publicLimiter });
+const liveDeps = (): DeploySiteDeps => (live ??= { auth: liveDeployAuthDeps(), deploy: liveWebDeployDeps(), limiter: deployLimiter });
 
 export default function handler(req: any, res: any) {
   return deploySite(req, res, liveDeps());
@@ -82,7 +83,7 @@ export async function deploySite(req: any, res: any, deps: DeploySiteDeps) {
 
     let allowed = true;
     try {
-      allowed = await deps.limiter.allow(`deploy:${clientIp(req.headers)}`, 'write');
+      allowed = await deps.limiter.allow(clientIp(req.headers), 'write'); // its own 'deploy' scope
     } catch (e: any) {
       console.error('[Deploy Site] rate limiter failed, allowing:', e?.message || e); // fail open, like every limiter here
     }
@@ -110,6 +111,17 @@ export async function deploySite(req: any, res: any, deps: DeploySiteDeps) {
       return res.status(402).json({ ok: false, error: 'subscription-inactive' });
     }
     const result = gated.result;
+
+    // The first paid checkout deploy records the site's owner (013 site_owners; never replaces
+    // one): the signed-in buyer if their confirmed email is the checkout email, else that email
+    // to be claimed at sign-in. Only when the slug was not live before (firstPublish, read
+    // before the deploy): a paid checkout naming someone else's live site records nothing.
+    // Best effort: the site is live either way.
+    if (auth.actor === 'checkout' && auth.checkout?.firstPublish && deps.auth.siteOwners) {
+      await recordCheckoutOwner(auth.target!, { user: auth.user ?? null, checkoutEmail: auth.checkout.email, sessionId: auth.checkout.sessionId }, deps.auth.siteOwners)
+        .then((r) => r && console.log(`[Deploy Site] ${auth.target}: owner recorded (${r.user_id ? 'signed-in buyer' : 'checkout email to claim'})`))
+        .catch((e: any) => console.warn(`[Deploy Site] ${auth.target}: recording the owner failed (ignored):`, e?.message || e));
+    }
 
     return res.status(200).json({
       ok: true,

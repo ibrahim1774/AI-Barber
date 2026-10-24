@@ -11,7 +11,7 @@
 --   any registered state → transferred (manual transfer done; never touched again)
 -- Written only by the server (service role). Independent of ios_purchases: the domain product
 -- is never a site purchase and never opens a website / bookings / store gate.
-create table public.ios_domains (
+create table if not exists public.ios_domains (
   original_transaction_id text primary key,
   source text not null default 'apple' check (source in ('apple', 'stripe')),
   environment text not null check (environment in ('Production', 'Sandbox')),
@@ -58,11 +58,11 @@ create table public.ios_domains (
 
 -- A domain belongs to at most one real row (a failed row gave it up; a simulated Sandbox row
 -- never registered it, so it must not block a paying customer from the name).
-create unique index ios_domains_domain_key on public.ios_domains (domain) where state <> 'failed' and not simulated;
+create unique index if not exists ios_domains_domain_key on public.ios_domains (domain) where state <> 'failed' and not simulated;
 -- One domain per site.
-create unique index ios_domains_site_key on public.ios_domains (site_slug)
+create unique index if not exists ios_domains_site_key on public.ios_domains (site_slug)
   where state in ('reserved', 'buying', 'ordered', 'bought', 'attached', 'live', 'detaching', 'unlinking');
-create index ios_domains_state_idx on public.ios_domains (state, updated_at);
+create index if not exists ios_domains_state_idx on public.ios_domains (state, updated_at);
 
 -- RLS on with no policies: only the service role (which bypasses RLS) can access.
 alter table public.ios_domains enable row level security;

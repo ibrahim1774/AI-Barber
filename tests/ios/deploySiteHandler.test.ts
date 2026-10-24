@@ -16,11 +16,18 @@ const { findBySlug, deployRenderedSite, writePendingSite, readPendingSite, getUs
 }));
 vi.mock('../../lib/deploySite.js', () => ({ deployRenderedSite }));
 vi.mock('../../lib/ios/purchases.js', () => ({ supabasePurchases: () => ({ findBySlug }) }));
-vi.mock('../../lib/publishSite.js', async (orig) => ({ ...(await orig<object>()), writePendingSite, readPendingSite }));
+// No generations in this fake: the compare-and-set writes fall back to unconditional ones.
+vi.mock('../../lib/publishSite.js', async (orig) => ({
+  ...(await orig<object>()), writePendingSite, readPendingSite,
+  readPendingVersioned: async (s: string) => ({ pending: await readPendingSite(s), generation: null }),
+}));
 vi.mock('@supabase/supabase-js', () => ({
   createClient: () => ({
     auth: { getUser },
-    from: (_t: string) => ({ select: () => ({ in: async (_c: string, urls: string[]) => ({ data: await siteClaims(urls), error: null }) }) }),
+    from: (t: string) => (t === 'site_owners'
+      // The owner list (013): no rows here, so the interim `sites` rule decides (owner-list cases: tests/siteOwners.test.ts).
+      ? { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }), upsert: () => ({ select: async () => ({ data: [], error: null }) }) }
+      : { select: () => ({ in: async (_c: string, urls: string[]) => ({ data: await siteClaims(urls), error: null }) }) }),
   }),
 }));
 vi.mock('../../lib/siteSubpages.js', async (orig) => ({
@@ -28,7 +35,7 @@ vi.mock('../../lib/siteSubpages.js', async (orig) => ({
   liveSiteBaseDeps: { projectDomains: async () => [], domainServing: async () => false, updateShop: async () => {} },
 }));
 vi.mock('../../lib/ios/slug.js', async (orig) => ({ ...(await orig<object>()), vercelProjectExists }));
-vi.mock('../../lib/bookings/rateLimit.js', async (orig) => ({ ...(await orig<object>()), publicLimiter: { allow } }));
+vi.mock('../../lib/bookings/rateLimit.js', async (orig) => ({ ...(await orig<object>()), deployLimiter: { allow } }));
 
 import handler from '../../api/deploy-site.js';
 
@@ -295,7 +302,7 @@ describe('api/deploy-site authorisation (C1)', () => {
     await handler(post({ siteId: 'fresh-cuts', html: '<h1/>' }, 'owner-jwt'), res);
     expect(res.status).toHaveBeenCalledWith(429);
     expect(res.json).toHaveBeenCalledWith({ ok: false, error: 'rate-limited' });
-    expect(allow).toHaveBeenCalledWith('deploy:203.0.113.9', 'write');
+    expect(allow).toHaveBeenCalledWith('203.0.113.9', 'write'); // deployLimiter's own 'deploy' scope
     expect(findBySlug).not.toHaveBeenCalled();
     expect(getUser).not.toHaveBeenCalled();
   });

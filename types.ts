@@ -1,3 +1,5 @@
+import type { LabelKey } from './lib/render/labels.js';
+import type { PagesModel } from './lib/render/pages.js';
 
 export type TemplateId = 'luxe' | 'euphoria' | 'prime';
 
@@ -34,6 +36,30 @@ export interface ServiceItem {
   duration?: string;
   category?: string;
   price?: string;
+}
+
+/** Weekly opening hours of one barber, the same row shape as the shop's `hours`. */
+export type WeeklyHours = { day: string; open: string; close: string; closed?: boolean }[];
+
+/** One person on the team. The stored field stays `WebsiteData.staff`. */
+export interface TeamMember {
+  /** Stable id of the site entry (optional: older entries have none). */
+  id?: string;
+  name: string;
+  /** Job title shown under the name, e.g. "Owner & master barber". */
+  role?: string;
+  /** Photo: an image data/http URL while editing, 'has-image' when published (the `staff<i>` slot). */
+  photo?: string;
+  bio?: string;
+  /** The barber's own booking link (http/https only; the renderer re-checks with safeHref). */
+  bookingUrl?: string;
+  /** ab_services ids this barber does (empty or absent = all). */
+  serviceIds?: string[];
+  /** Display names of those services, refreshed by the app from ab_services; the card shows up to 3 as chips. */
+  serviceNames?: string[];
+  hours?: WeeklyHours;
+  /** ab_members.id when the barber is also a booking member (drives /book?barber=<id>). */
+  memberId?: string;
 }
 
 export interface WebsiteData {
@@ -116,11 +142,23 @@ export interface WebsiteData {
   // small labels (keyed by stable string, e.g. "galleryHeading"). When a
   // key is absent the renderer falls back to its hardcoded default, so
   // older saved sites render exactly as before.
-  labels?: Record<string, string>;
+  labels?: Partial<Record<LabelKey, string>>;
+  // Rating line shown on the page (from aggregateRating). Absent = 'show'. 'hide' removes every
+  // place the page prints the scraped rating or review count; the data itself is kept.
+  display?: { rating?: 'show' | 'hide' };
+  // Scraped reviews the barber hid, by reviewKey() (a hash of author + comment, not array position,
+  // because re-importing reorders reviews). Reviews are quotes: hidden, never edited.
+  hiddenReviews?: string[];
+  // Multi-page sites (spec 2026-10-23, P3b): the nav order and the pages the barber turned off. Which pages
+  // exist is computed from the data (lib/render/pages.ts), never stored. Absent = every eligible page, default order.
+  pages?: PagesModel;
   // Optional staff cards — name, role, photo. Renderer shows a
   // "Meet the Team" section when at least one staff entry exists.
   // Photo is editable in the preview (replace-image overlay).
-  staff?: { name: string; role?: string; photo?: string }[];
+  // Widened for team profiles (spec 2026-10-23, P2): every field after `name` is optional, so
+  // stored sites, `staff<i>` image keys and older app builds keep working. Renderers read it
+  // only through teamOf() (lib/render/honest.ts).
+  staff?: TeamMember[];
   // Optional "Please note" policy box — used by the Prime (Design 2)
   // template. Barber-written only: there is no default, and the block
   // renders only when `body` has text. Other templates ignore it.

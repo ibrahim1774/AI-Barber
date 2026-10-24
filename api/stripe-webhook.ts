@@ -4,7 +4,9 @@ import { splitName } from './_hashPii.js';
 import { getPlanContentMeta } from '../lib/pixelMeta.js';
 import { pushOrderToTripleWhale } from './_twOrder.js';
 import { waitUntil } from '@vercel/functions';
-import { publishSite } from '../lib/publishSite.js';
+import { publishSite, readPendingSite } from '../lib/publishSite.js';
+import { recordCheckoutOwnerIfFirst, recordServerFirstPublishOwner, supabaseSiteOwners } from '../lib/siteOwners.js';
+import { vercelProjectExists } from '../lib/ios/slug.js';
 import { DOMAIN_PURCHASE_PLAN, handleDomainStripeEvent } from '../lib/webDomains.js';
 import { liveWebDomainDeps } from '../lib/ios/domainLive.js';
 
@@ -244,6 +246,18 @@ export default async function handler(req: any, res: any) {
     // Custom-design ($29 Google-Form) sales have no pending payload and
     // nothing to deploy — publishSite reports 'no-backup' and that's fine.
     const siteId = typeof session.metadata?.siteId === 'string' ? session.metadata.siteId : '';
+    if (siteId && session.mode === 'subscription') {
+      // The site's owner list (013 site_owners): the checkout email, claimed by the account that
+      // signs in with it (confirmed). Only for a site not live yet (checked before this webhook's
+      // publish); never replaces an existing owner. Best effort.
+      waitUntil(
+        recordCheckoutOwnerIfFirst(siteId, { checkoutEmail: session.customer_details?.email || session.customer_email || null, sessionId: session.id }, supabaseSiteOwners(), {
+          storedStamp: async (s) => (await readPendingSite(s))?.deployedUrl || null,
+          projectExists: (s) => vercelProjectExists(s),
+        })
+          .catch((e: any) => console.warn('[Stripe Webhook] recording the site owner failed (ignored):', e?.message || e)),
+      );
+    }
     if (siteId) {
       waitUntil(
         // Give the browser first refusal. When the customer's tab DOES come
@@ -259,7 +273,7 @@ export default async function handler(req: any, res: any) {
         new Promise((r) => setTimeout(r, PUBLISH_GRACE_MS))
           // `plan` lets publishSite hold a /custom-15 pay-first site until the
           // barber has entered their details after payment.
-          .then(() => publishSite(siteId, { plan: typeof plan === 'string' ? plan : null }))
+          .then(() => publishSite(siteId, { plan: typeof plan === 'string' ? plan : null, sessionId: typeof session.id === 'string' ? session.id : null, siteOwners: supabaseSiteOwners() }))
           .then((outcome) => {
             if (!outcome.ok) {
               console[outcome.reason === 'deploy-failed' ? 'error' : 'warn'](
@@ -270,6 +284,9 @@ export default async function handler(req: any, res: any) {
                 `[Stripe Webhook] Publish ${outcome.alreadyLive ? 'already-live' : 'deployed'}: ${outcome.deployedUrl}`,
               );
             }
+            // The server made the first publish (the tab died): record the owner as the browser
+            // path would have, on the slug actually published (a pay-first move's target).
+            return recordServerFirstPublishOwner(outcome, session, supabaseSiteOwners());
           })
           .catch((e: any) => {
             console.error('[Stripe Webhook] Publish threw:', e?.message || e);

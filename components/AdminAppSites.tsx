@@ -89,6 +89,53 @@ function describeSave(r: any): Msg {
   return { kind: 'ok', text: `Saved v${r.version} and published.${stripped}` };
 }
 
+/**
+ * Web (Stripe) site owners (013 site_owners): who may edit a web site in the editor. Set one for a
+ * comped site, or fix a buyer whose web account uses a different email than their checkout.
+ * An email with no account yet is claimed at that person's first sign-in with a confirmed email.
+ */
+const WebOwnerPanel: React.FC = () => {
+  const [slug, setSlug] = useState('');
+  const [email, setEmail] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<Msg>(null);
+  const describe = (r: any): Msg => {
+    const o = r.owner;
+    if (!o) return { kind: 'info', text: `${r.slug}: no owner yet (the interim rule applies).` };
+    if (o.userId) return { kind: 'ok', text: `${r.slug}: owned by ${o.email || o.userId} (${o.source}).` };
+    return { kind: 'info', text: `${r.slug}: waiting for ${o.claimEmail} to sign in with a confirmed email (${o.source}).` };
+  };
+  const run = async (action: 'web-owner' | 'set-web-owner') => {
+    if (!slug.trim()) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      setMsg(describe(await api('POST', '', { action, slug: slug.trim(), ...(action === 'set-web-owner' ? { email: email.trim() } : {}) })));
+    } catch (e: any) {
+      setMsg({ kind: 'err', text: e?.message || 'Failed' });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const color = msg?.kind === 'err' ? BAD : msg?.kind === 'ok' ? OK : MUTED;
+  return (
+    <details style={{ ...panel, padding: 14 }}>
+      <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Web site owners</summary>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10, alignItems: 'flex-end' }}>
+        <label style={{ ...label, flex: '1 1 200px' }}>Site address (slug)
+          <input style={input} placeholder="fresh-cuts" value={slug} onChange={(e) => setSlug(e.target.value)} />
+        </label>
+        <label style={{ ...label, flex: '1 1 220px' }}>Owner email
+          <input style={input} placeholder="barber@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+        </label>
+        <button style={ghostBtn} onClick={() => run('web-owner')} disabled={busy}>Look up</button>
+        <button style={primaryBtn} onClick={() => run('set-web-owner')} disabled={busy || !email.trim()}>Set owner</button>
+      </div>
+      {msg && <div style={{ fontSize: 12.5, color, marginTop: 8 }}>{msg.text}</div>}
+    </details>
+  );
+};
+
 export const AdminAppSites: React.FC = () => {
   const [q, setQ] = useState('');
   const [rows, setRows] = useState<SiteRow[] | null>(null);
@@ -279,6 +326,8 @@ export const AdminAppSites: React.FC = () => {
         </form>
         <button style={ghostBtn} onClick={dryRunAll} disabled={bulk.running}>Republish all app sites…</button>
       </div>
+
+      <WebOwnerPanel />
 
       {(bulk.dry || bulk.msg || bulk.log.length > 0) && (
         <div style={{ ...panel, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>

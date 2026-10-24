@@ -8,9 +8,11 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { supabaseDomains } from '../ios/domainsRepo.js';
 import { markTransferred, releaseStuckBuy } from '../ios/domainFlow.js';
 import { liveVercelDomains } from '../ios/vercelDomains.js';
-import { bucket, publishSite, readPendingSite, renderPending, slugify, writePendingSite, type PendingSite } from '../publishSite.js';
+import {
+  REQUEST_MAX_REDEPLOYS, bucket, isPreconditionFailed, publishSite, readPendingSite, readPendingVersioned, renderPending, slugify, writePendingSite, type PendingSite } from '../publishSite.js';
 import type { PurchaseRow } from '../ios/purchases.js';
 import type { AdminSitesDeps, HistoryEntry, RepublishRun, SiteStore } from './sites.js';
+import { liveWebOwnerAdminDeps } from '../siteOwners.js';
 
 const HISTORY = 'pending-sites-history';
 const RUNS = 'admin-republish-runs';
@@ -53,12 +55,14 @@ export function gcsSiteStore(): SiteStore {
   return {
     readPending: readPendingSite,
     writePending: writePendingSite,
+    readPendingVersioned,
 
     async writeHistory(slug, version, p) {
       const safe = slugify(slug);
       const save = (id: string) =>
         bucket().file(`${HISTORY}/${safe}/${id}.json`).save(json({ siteId: safe, savedAt: Date.now(), data: p }), {
           contentType: 'application/json',
+          resumable: false,
           // Write-once: a history copy is never overwritten.
           preconditionOpts: { ifGenerationMatch: 0 },
           metadata: { ...noStore, metadata: { version: String(version), editedBy: p.editedBy || '', editedAt: p.editedAt || '' } },
@@ -68,7 +72,7 @@ export function gcsSiteStore(): SiteStore {
         await save(id);
         return id;
       } catch (e: any) {
-        if (e?.code !== 412) throw e;
+        if (!isPreconditionFailed(e)) throw e;
       }
       // That version number is already kept. Same content (a retried edit): reuse it.
       // Different content (the version number repeated): keep this one under its own key.
@@ -153,7 +157,8 @@ export function liveAdminDeps(): AdminSitesDeps {
     },
 
     store,
-    publish: (slug, opts) => publishSite(slug, opts),
+    // Requests and CLI: at most one redeploy of a newer copy (review fix round 1, finding 9).
+    publish: (slug, opts) => publishSite(slug, { ...opts, maxRedeploys: REQUEST_MAX_REDEPLOYS }),
     render: (p) => renderPending(p),
 
     async audit(e) {
@@ -170,6 +175,13 @@ export function liveAdminDeps(): AdminSitesDeps {
       const v = liveVercelDomains();
       if (!v) throw new Error('VERCEL_TOKEN not set');
       return v.listDomains();
+    },
+    get webOwners() {
+      return liveWebOwnerAdminDeps(db(), async (slug) => {
+        const { data, error } = await db().from('ios_purchases').select('original_transaction_id').eq('site_slug', slug).limit(1);
+        if (error) throw new Error(`ios_purchases lookup failed: ${error.message}`);
+        return Array.isArray(data) && data.length > 0;
+      });
     },
   };
 }

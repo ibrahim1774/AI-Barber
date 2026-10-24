@@ -1,6 +1,6 @@
 import { Storage } from '@google-cloud/storage';
 import { supabasePurchases } from '../lib/ios/purchases.js';
-import { readPendingSite, slugify } from '../lib/publishSite.js';
+import { isPreconditionFailed, readPendingSite, readPendingVersioned, slugify, type VersionedPending } from '../lib/publishSite.js';
 
 // Server-side persistence for the pendingSite payload that drives
 // post-payment deployment. Mirrors the localStorage write in
@@ -37,11 +37,19 @@ export interface SavePendingDeps {
   isAppSlug(slug: string): Promise<boolean>;
   /** Does this slug's stored copy carry a deployedUrl stamp (the site is published)? Throws when the read fails. */
   isPublished(slug: string): Promise<boolean>;
+  /**
+   * The stored copy with its GCS generation (review fix round 1, finding 6). With it, the save and
+   * the delete are conditional on that generation, so a server stamp landing between the
+   * published check and the write (the first checkout deploy) is never dropped or deleted.
+   * Absent (older fakes): isPublished and unconditional writes.
+   */
+  readVersioned?(slug: string): Promise<VersionedPending>;
 }
 
 const liveDeps: SavePendingDeps = {
   isAppSlug: async (slug) => (await supabasePurchases().findBySlug(slug)) != null,
   isPublished: async (slug) => !!(await readPendingSite(slug))?.deployedUrl,
+  readVersioned: readPendingVersioned,
 };
 
 export default function handler(req: any, res: any) {
@@ -89,8 +97,17 @@ export async function savePendingSite(req: any, res: any, deps: SavePendingDeps)
       console.error(`[save-pending-site] ${req.method} ${safeSiteId}: ios_purchases lookup failed (refusing):`, e?.message || e);
       return res.status(503).json({ ok: false, error: 'lookup-failed' });
     }
+    let generation: number | null = null;
     try {
-      if (await deps.isPublished(safeSiteId)) {
+      let published: boolean;
+      if (deps.readVersioned) {
+        const v = await deps.readVersioned(safeSiteId);
+        published = !!v.pending?.deployedUrl;
+        generation = v.generation;
+      } else {
+        published = await deps.isPublished(safeSiteId);
+      }
+      if (published) {
         console.warn(`[save-pending-site] ${req.method} refused: ${safeSiteId} is already published`);
         return res.status(409).json({ ok: false, error: 'site-published' });
       }
@@ -111,10 +128,18 @@ export async function savePendingSite(req: any, res: any, deps: SavePendingDeps)
     const filePath = `pending-sites/${safeSiteId}.json`;
     const file = bucket.file(filePath);
 
+    // A write that lost the race to a server stamp (412) is the published case.
+    const stampedMeanwhile = () => {
+      console.warn(`[save-pending-site] ${req.method} refused: ${safeSiteId} changed since the check (published meanwhile)`);
+      return res.status(409).json({ ok: false, error: 'site-published' });
+    };
+
     if (req.method === 'DELETE') {
+      if (generation === 0) return res.status(200).json({ ok: true }); // nothing stored
       try {
-        await file.delete({ ignoreNotFound: true } as any);
-      } catch {
+        await file.delete({ ignoreNotFound: true, ...(generation != null ? { ifGenerationMatch: generation } : {}) } as any);
+      } catch (e: any) {
+        if (generation != null && isPreconditionFailed(e)) return stampedMeanwhile();
         // Older GCS clients don't support ignoreNotFound — swallow 404s.
       }
       return res.status(200).json({ ok: true });
@@ -131,10 +156,17 @@ export async function savePendingSite(req: any, res: any, deps: SavePendingDeps)
       return res.status(413).json({ ok: false, error: 'Pending site payload too large' });
     }
 
-    await file.save(payload, {
-      contentType: 'application/json',
-      metadata: { cacheControl: 'private, max-age=0, no-store' },
-    });
+    try {
+      await file.save(payload, {
+        contentType: 'application/json',
+        resumable: false,
+        metadata: { cacheControl: 'private, max-age=0, no-store' },
+        ...(generation != null ? { preconditionOpts: { ifGenerationMatch: generation } } : {}),
+      });
+    } catch (e: any) {
+      if (generation != null && isPreconditionFailed(e)) return stampedMeanwhile();
+      throw e;
+    }
 
     return res.status(200).json({ ok: true });
   } catch (error: any) {

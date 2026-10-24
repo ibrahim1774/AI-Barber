@@ -1,0 +1,446 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`vercel.json > a multi-page deploy adds the revalidate rule for nested pages and nothing else (exact JSON, full shop) 1`] = `
+"{
+  "headers": [
+    {
+      "source": "/index.html",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/(.*)/",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/(.*)/index.html",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/book",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "source": "/book/",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "source": "/book/manage/([A-Za-z0-9_-]+)",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "source": "/book/manage/([A-Za-z0-9_-]+)/",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "source": "/shop",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "source": "/shop/",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "source": "/shop/manage/([A-Za-z0-9_-]+)",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "source": "/shop/manage/([A-Za-z0-9_-]+)/",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "source": "/api/book/shop",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "source": "/api/book/days",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "source": "/api/book/slots",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "source": "/api/book/appointments",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "source": "/api/book/manage",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "source": "/api/book/sent",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "source": "/api/store/shop",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "source": "/api/store/orders",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "source": "/api/store/order",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "source": "/api/store/sent",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "source": "/ab-site.json",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/book",
+      "destination": "https://www.aibarber.org/_ab/book.html"
+    },
+    {
+      "source": "/book/",
+      "destination": "https://www.aibarber.org/_ab/book.html"
+    },
+    {
+      "source": "/book/manage/([A-Za-z0-9_-]+)",
+      "destination": "https://www.aibarber.org/_ab/book.html"
+    },
+    {
+      "source": "/book/manage/([A-Za-z0-9_-]+)/",
+      "destination": "https://www.aibarber.org/_ab/book.html"
+    },
+    {
+      "source": "/shop",
+      "destination": "https://www.aibarber.org/_ab/shop.html"
+    },
+    {
+      "source": "/shop/",
+      "destination": "https://www.aibarber.org/_ab/shop.html"
+    },
+    {
+      "source": "/shop/manage/([A-Za-z0-9_-]+)",
+      "destination": "https://www.aibarber.org/_ab/shop.html"
+    },
+    {
+      "source": "/shop/manage/([A-Za-z0-9_-]+)/",
+      "destination": "https://www.aibarber.org/_ab/shop.html"
+    },
+    {
+      "source": "/_ab/assets/:file([A-Za-z0-9_-]+\\\\.(?:js|css))",
+      "destination": "https://www.aibarber.org/_ab/assets/:file"
+    },
+    {
+      "source": "/api/book/shop",
+      "destination": "https://www.aibarber.org/api/book/shop"
+    },
+    {
+      "source": "/api/book/days",
+      "destination": "https://www.aibarber.org/api/book/days"
+    },
+    {
+      "source": "/api/book/slots",
+      "destination": "https://www.aibarber.org/api/book/slots"
+    },
+    {
+      "source": "/api/book/appointments",
+      "destination": "https://www.aibarber.org/api/book/appointments"
+    },
+    {
+      "source": "/api/book/manage",
+      "destination": "https://www.aibarber.org/api/book/manage"
+    },
+    {
+      "source": "/api/book/sent",
+      "destination": "https://www.aibarber.org/api/book/sent"
+    },
+    {
+      "source": "/api/store/shop",
+      "destination": "https://www.aibarber.org/api/store/shop"
+    },
+    {
+      "source": "/api/store/orders",
+      "destination": "https://www.aibarber.org/api/store/orders"
+    },
+    {
+      "source": "/api/store/order",
+      "destination": "https://www.aibarber.org/api/store/order"
+    },
+    {
+      "source": "/api/store/sent",
+      "destination": "https://www.aibarber.org/api/store/sent"
+    }
+  ]
+}"
+`;
+
+exports[`vercel.json > multi-page, no shop and offline page 1`] = `
+"{
+  "headers": [
+    {
+      "source": "/index.html",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/(.*)/",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/(.*)/index.html",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/book/manage/([A-Za-z0-9_-]+)",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "source": "/book/manage/([A-Za-z0-9_-]+)/",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "source": "/shop/manage/([A-Za-z0-9_-]+)",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "source": "/shop/manage/([A-Za-z0-9_-]+)/",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "source": "/api/book/manage",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "source": "/api/book/sent",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "source": "/api/store/order",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "source": "/api/store/sent",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "0"
+        }
+      ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/book/manage/([A-Za-z0-9_-]+)",
+      "destination": "https://www.aibarber.org/_ab/book.html"
+    },
+    {
+      "source": "/book/manage/([A-Za-z0-9_-]+)/",
+      "destination": "https://www.aibarber.org/_ab/book.html"
+    },
+    {
+      "source": "/shop/manage/([A-Za-z0-9_-]+)",
+      "destination": "https://www.aibarber.org/_ab/shop.html"
+    },
+    {
+      "source": "/shop/manage/([A-Za-z0-9_-]+)/",
+      "destination": "https://www.aibarber.org/_ab/shop.html"
+    },
+    {
+      "source": "/_ab/assets/:file([A-Za-z0-9_-]+\\\\.(?:js|css))",
+      "destination": "https://www.aibarber.org/_ab/assets/:file"
+    },
+    {
+      "source": "/api/book/manage",
+      "destination": "https://www.aibarber.org/api/book/manage"
+    },
+    {
+      "source": "/api/book/sent",
+      "destination": "https://www.aibarber.org/api/book/sent"
+    },
+    {
+      "source": "/api/store/order",
+      "destination": "https://www.aibarber.org/api/store/order"
+    },
+    {
+      "source": "/api/store/sent",
+      "destination": "https://www.aibarber.org/api/store/sent"
+    }
+  ]
+}"
+`;

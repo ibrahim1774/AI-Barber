@@ -5,6 +5,7 @@ import { isObj, isUuid, iso, text, type FlowResult } from '../bookings/core.js';
 import { MANUAL_METHODS } from '../bookings/repo.js';
 import { entitlementActive } from '../ios/lapse.js';
 import { orderRefundKey, type CheckoutCloseResult, type NotifyOrder, type StorePayments } from './deps.js';
+import { REFUND_5XX_EVENT, alreadyRefundedBeforeRetry, isStripe5xx, withRefundAttempt } from '../bookings/payments.js';
 import type { OrderGuard, StoreRepo } from './repo.js';
 import type { Fulfilment, OrderItemRow, OrderRow, ProductRow, ShippingAddress, ShopStoreRow, StoreNotifyEvent } from './types.js';
 
@@ -53,7 +54,10 @@ export async function storeOpen(repo: Pick<StoreRepo, 'purchase'>, shop: ShopSto
  * (revoked, taken down, or an unswept purchase past expiry) refuses it.
  */
 export async function storeFollowUpOpen(repo: Pick<StoreRepo, 'purchase'>, shop: ShopStoreRow): Promise<boolean> {
-  return storeGate(repo, shop, 'hosting');
+  // e2e P2: not store_enabled either (the owner switching the store off is the same as a
+  // downgrade for an order that already exists).
+  if (!shop.ios_otid) return false;
+  return entitlementActive(await repo.purchase(shop.ios_otid), 'hosting');
 }
 
 async function storeGate(repo: Pick<StoreRepo, 'purchase'>, shop: ShopStoreRow, ent: 'store' | 'hosting'): Promise<boolean> {
@@ -289,7 +293,7 @@ export async function safeLog(deps: { repo: Pick<StoreRepo, 'logEvent'> }, shopI
 // ---------------------------------------------------------------------------
 export interface RefundDeps {
   repo: StoreRepo;
-  payments: Pick<StorePayments, 'refundOrder'>;
+  payments: Pick<StorePayments, 'refundOrder' | 'refundedOnStripe'>;
   now(): number;
   notify?: NotifyOrder;
 }
@@ -311,18 +315,44 @@ export async function refundOrderOwed(
   logFailure: boolean,
 ): Promise<{ refunded: number; row: OrderRow; failed: boolean }> {
   let refunded = 0;
-  const key = orderRefundKey(row.id, row.refund_due_cents);
+  let failed = false;
+  // Order + target + amount + the refunded total it was computed from (stored state only): the
+  // same attempt (a double tap, a lost response, the retry sweep) always sends the same key.
+  let baseKey = orderRefundKey(row.id, row.refund_due_cents, amount, row.amount_refunded_cents);
+  // Review fix 13: after a definite Stripe 5xx on this attempt, a new suffix (Stripe replays a
+  // saved 500 for the same key for 24 h).
+  let attempt = deps.repo.refundAttempts ? await deps.repo.refundAttempts(baseKey).catch(() => 0) : 0;
+  let send = amount;
   try {
-    const r = await deps.payments.refundOrder(shop, row, amount, { idempotencyKey: key });
-    refunded = Math.max(0, Math.min(amount, Math.floor(Number(r?.refundedCents) || 0)));
+    if (attempt > 0) {
+      // A new key could refund twice if the 5xx attempt actually refunded: count what Stripe
+      // already refunded first, and send (under a key for it) only the rest.
+      const pi = row.stripe_payment_intent_id;
+      const done = await alreadyRefundedBeforeRetry(
+        deps.payments.refundedOnStripe && pi ? () => deps.payments.refundedOnStripe!(shop, pi) : undefined, row.amount_refunded_cents, amount);
+      if (done > 0) {
+        console.warn(`[store] order ${row.id}: ${done} already refunded at Stripe (the failed attempt landed); not refunding it again`);
+        refunded = done;
+        send = amount - done;
+        baseKey = orderRefundKey(row.id, row.refund_due_cents, send, row.amount_refunded_cents + done);
+        attempt = deps.repo.refundAttempts ? await deps.repo.refundAttempts(baseKey).catch(() => 0) : 0;
+      }
+    }
+    if (send > 0) {
+      const r = await deps.payments.refundOrder(shop, { ...row, amount_refunded_cents: row.amount_refunded_cents + refunded }, send, { idempotencyKey: withRefundAttempt(baseKey, attempt) });
+      refunded += Math.max(0, Math.min(send, Math.floor(Number(r?.refundedCents) || 0)));
+    }
   } catch (e: any) {
     console.error(`[store] refund failed for order ${row.id} (left owed for retry):`, e?.message || e);
+    if (isStripe5xx(e)) await safeLog(deps, shop.id, REFUND_5XX_EVENT, { key: baseKey, attempt, orderId: row.id });
     if (logFailure) {
       await safeLog(deps, shop.id, 'order_refund_failed', {
         orderId: row.id, amountCents: amount, dueCents: row.refund_due_cents, error: String(e?.message || e),
       });
     }
-    return { refunded: 0, row, failed: true };
+    // Found already refunded at Stripe and the rest failed: book what is done; the rest stays owed.
+    if (refunded <= 0) return { refunded: 0, row, failed: true };
+    failed = true;
   }
   if (refunded <= 0) return { refunded: 0, row, failed: false };
 
@@ -354,7 +384,7 @@ export async function refundOrderOwed(
       console.error(`[store] cancelling refunded order ${row.id} failed:`, e?.message || e);
     }
   }
-  return { refunded, row, failed: false };
+  return { refunded, row, failed };
 }
 
 export const ORDER_REFUND_RETRY_AFTER_MIN = 2;
@@ -417,6 +447,8 @@ export async function retryPendingOrderRefunds(
 export const ORDER_HOLD_EXPIRY_MIN = 35;
 /** A hold whose session is 'complete' this long after creation means a payment the webhook never recorded. */
 export const ORDER_HOLD_PAID_ALERT_MIN = 60;
+/** A hold Stripe still can't answer about this long after creation is cancelled (Checkout lasts at most 24 h). */
+export const ORDER_HOLD_GIVE_UP_MIN = 25 * 60;
 
 /**
  * Expire orphaned card holds (new + card + awaiting + nothing paid, created more than 35 min
@@ -461,6 +493,16 @@ export async function expireStaleOrderHolds(
               console.error(`[store] order ${h.id}: Checkout ${h.stripe_checkout_session_id} is complete but the payment was never recorded`);
               await safeLog(deps, h.shop_id, 'order_hold_paid_unrecorded', { orderId: h.id, sessionId: h.stripe_checkout_session_id });
             }
+          } else if (nowMs - Date.parse(h.created_at) >= ORDER_HOLD_GIVE_UP_MIN * MIN) {
+            // Review fix round 1 (finding 7): past any Checkout Session's life and Stripe still
+            // can't answer (e.g. the shop disconnected Stripe): cancel the hold, logged.
+            const upd = await deps.repo.updateOrder(h.id, expiredHoldPatch(deps.now()), LIVE_HOLD);
+            if (upd.ok) {
+              out.expired++;
+              console.error(`[store] order hold ${h.id}: session state still unknown after ${ORDER_HOLD_GIVE_UP_MIN / 60} h; cancelled`);
+              await safeLog(deps, h.shop_id, 'order_hold_given_up', { orderId: h.id, sessionId: h.stripe_checkout_session_id });
+            }
+            continue;
           } else {
             console.error(`[store] order hold ${h.id}: checkout session state unknown; left for the next sweep`);
             out.unresolved++;

@@ -15,6 +15,7 @@ import { HomeLaunchGuide } from './components/HomeLaunchGuide.tsx';
 import { Custom15BookingPrompt } from './components/Custom15BookingPrompt.tsx';
 import { PayFirstDetailsStep } from './components/PayFirstDetailsStep.tsx';
 import { isAwaitingDetails, isPayFirstPlan } from './lib/payFirst.ts';
+import { authHeaders } from './services/checkoutClient';
 import { buildSiteFromScrape } from './lib/buildSiteFromScrape.ts';
 import { ensureUuid } from './lib/ensureUuid.ts';
 import { extractFirstUrl, isSupportedBookingHost } from './lib/supportedBookingHost.ts';
@@ -753,7 +754,8 @@ const App: React.FC = () => {
         // Step 3: Deploy to Vercel
         const deployResponse = await fetch('/api/deploy-site', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          // The signed-in account too (re-review R1): an owner's re-checkout is authorised either way.
+          headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
           // siteData + existingSiteId: the server writes the stamped recovery copy from them
           // (lib/ios/webDeployGate.ts); the browser can no longer write a published copy.
           body: JSON.stringify({ siteId, html, imageUrls: imageUrlMap, checkoutSessionId: sessionId, siteData, existingSiteId: existingSiteId ?? null }),

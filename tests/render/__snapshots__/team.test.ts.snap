@@ -1,0 +1,842 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`euphoria team section > snapshot 1`] = `
+"<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="published-at" content="1767225600000">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>Fresh Cuts Barbershop in Austin, TX</title>
+  <meta name="description" content="Fresh Cuts Barbershop — Barbershop in Austin, TX. Book online.">
+  <script type="text/javascript">
+    (function(c,l,a,r,i,t,y){
+      c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+      t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+      y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+    })(window, document, "clarity", "script", "w5jdq6huun");
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; padding: 0; background: #000; color: #f0ece4; font-family: 'Inter', system-ui, sans-serif; }
+    a { color: inherit; }
+    img { max-width: 100%; height: auto; }
+
+.euphoria-root {
+  --eu-bg:        #000000;
+  --eu-bg-2:      #0c0c0c;
+  --eu-bg-3:      #141414;
+  --eu-ink:       #f0ece4;
+  --eu-ink-soft:  #9a958e;
+  --eu-ink-muted: #6e6962;
+  --eu-line:      rgba(255,255,255,0.22);
+  --eu-line-soft: rgba(255,255,255,0.10);
+  --eu-brand:     #d4a64a;
+  --eu-brand-bright: #e8c074;
+  background: var(--eu-bg);
+  color: var(--eu-ink);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-weight: 400;
+}
+.euphoria-root .eu-serif { font-family: 'Newsreader', Georgia, serif; }
+.euphoria-root .eu-display {
+  font-family: 'Newsreader', Georgia, serif;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1.05;
+}
+.euphoria-root h1, .euphoria-root h2, .euphoria-root h3 {
+  font-family: 'Newsreader', Georgia, serif;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.euphoria-root .eu-eyebrow {
+  font-family: 'Inter', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.28em;
+  font-size: 11px;
+  color: var(--eu-ink-muted);
+}
+.euphoria-root .eu-section { padding: 96px 24px; }
+@media (min-width: 768px) { .euphoria-root .eu-section { padding: 128px 48px; } }
+.euphoria-root .eu-container { max-width: 1200px; margin: 0 auto; }
+.euphoria-root .eu-rule { height: 1px; background: var(--eu-line-soft); width: 100%; }
+.euphoria-root .eu-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 28px;
+  border: 1px solid var(--eu-line);
+  color: var(--eu-ink);
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  font-size: 11px;
+  font-weight: 500;
+  background: transparent;
+  text-decoration: none;
+  transition: background 200ms ease, color 200ms ease, border-color 200ms ease;
+}
+.euphoria-root .eu-cta:hover { background: var(--eu-ink); color: var(--eu-bg); border-color: var(--eu-ink); }
+.euphoria-root .eu-cta-solid {
+  background: var(--eu-ink);
+  color: var(--eu-bg);
+}
+.euphoria-root .eu-cta-solid:hover { background: var(--eu-brand-bright); border-color: var(--eu-brand-bright); color: var(--eu-bg); }
+.euphoria-root .eu-editable {
+  outline: none;
+  border-radius: 2px;
+  padding: 0 2px;
+  margin: 0 -2px;
+  transition: box-shadow 150ms ease;
+}
+.euphoria-root .eu-editable:focus { box-shadow: 0 0 0 1px var(--eu-brand-bright); }
+.euphoria-root .eu-img-tile {
+  position: relative;
+  overflow: hidden;
+  background: var(--eu-bg-3);
+}
+.euphoria-root .eu-img-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* Full-cover click target: tapping ANYWHERE on the image opens the file
+   picker (not just a small pill). z-index:1 sits above the photo but below
+   any section content (e.g. the hero CTAs/text, which we raise to z-index:2)
+   so those stay clickable/editable. The pill (.eu-img-pill) is a
+   visual-only affordance, pinned bottom-right, that survives mobile (no
+   hover) and never collides with the fixed editor header at the top. */
+.euphoria-root .eu-img-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 12px;
+  cursor: pointer;
+  background: transparent;
+  transition: background 150ms ease;
+}
+.euphoria-root .eu-img-overlay:hover { background: rgba(0,0,0,0.12); }
+.euphoria-root .eu-img-pill {
+  pointer-events: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.72);
+  color: #fff;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.32), 0 0 0 1px rgba(255,255,255,0.12);
+}
+.euphoria-root .eu-img-overlay:hover .eu-img-pill { background: rgba(0,0,0,0.88); }
+.euphoria-root .eu-img-pill svg { width: 11px; height: 11px; }
+.euphoria-root .eu-img-placeholder {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 100%; height: 100%;
+  background: var(--eu-bg-3);
+  border: 1px dashed var(--eu-line);
+  cursor: pointer;
+  color: var(--eu-ink-soft);
+}
+.euphoria-root .eu-services-list { display: grid; gap: 0; }
+.euphoria-root .eu-service-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 24px;
+  padding: 32px 0;
+  border-top: 1px solid var(--eu-line-soft);
+  align-items: baseline;
+}
+.euphoria-root .eu-service-row:last-child { border-bottom: 1px solid var(--eu-line-soft); }
+.euphoria-root .eu-service-num {
+  font-family: 'Newsreader', Georgia, serif;
+  font-style: italic;
+  color: var(--eu-ink-muted);
+  font-size: 14px;
+  letter-spacing: 0.06em;
+  min-width: 40px;
+}
+.euphoria-root .eu-gallery-mosaic {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 12px;
+}
+@media (max-width: 767px) {
+  .euphoria-root .eu-gallery-mosaic { grid-template-columns: repeat(2, 1fr); }
+}
+
+  </style>
+</head>
+<body>
+<div class="euphoria-root">
+
+  <!-- Nav -->
+  <nav style="position:sticky;top:0;z-index:50;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--eu-line-soft);">
+    <div class="eu-container" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 24px;">
+      <a href="#top" style="text-decoration:none;color:var(--eu-ink);font-family:'Newsreader',serif;font-size:20px;letter-spacing:0.04em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Fresh Cuts Barbershop</a>
+      <a href="/book" class="eu-cta" style="padding:10px 18px;font-size:10px;flex-shrink:0;white-space:nowrap;">Book now</a>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section id="top" style="position:relative;min-height:80vh;display:flex;align-items:center;justify-content:center;overflow:hidden;">
+    
+    <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,0.4) 0%,rgba(0,0,0,0.7) 100%);"></div>
+    <div class="eu-container" style="position:relative;text-align:center;padding:96px 24px;">
+      <div class="eu-eyebrow" style="margin-bottom:24px;">Austin, TX</div>
+      <h1 class="eu-display" style="font-size:clamp(40px,8vw,96px);margin:0 0 28px;font-weight:500;color:var(--eu-ink);">
+        Sharp cuts
+      </h1>
+      <p class="eu-serif" style="font-size:clamp(16px,2.2vw,22px);font-style:italic;color:var(--eu-ink-soft);max-width:640px;margin:0 auto 40px;">
+        Walk-ins welcome
+      </p>
+      <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;">
+        <a href="tel:(512)555-0100" class="eu-cta eu-cta-solid">Call (512) 555-0100</a>
+        <a href="/book" class="eu-cta eu-cta-solid">Book Appointment</a>
+        <a href="#services" class="eu-cta">View services</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- About -->
+  <section class="eu-section">
+    <div class="eu-container" style="display:grid;grid-template-columns:1fr;gap:64px;align-items:center;">
+      <div>
+        <div class="eu-eyebrow" style="margin-bottom:16px;">About</div>
+        <h2 class="eu-display" style="font-size:clamp(32px,5vw,56px);margin:0 0 32px;">About</h2>
+        <p class="eu-serif" style="font-size:18px;line-height:1.6;color:var(--eu-ink-soft);margin:0 0 20px;">Family owned.</p>
+      </div>
+      
+    </div>
+  </section>
+
+  <!-- Services -->
+  <section id="services" class="eu-section" style="background:var(--eu-bg-2);">
+    <div class="eu-container">
+      <div style="margin-bottom:48px;text-align:center;">
+        <div class="eu-eyebrow">Services</div>
+        <h2 class="eu-display" style="font-size:clamp(32px,5vw,56px);margin-top:16px;">What we offer.</h2>
+      </div>
+      <div class="eu-services-list">
+        
+          <div class="eu-service-row">
+            <div class="eu-service-num">01</div>
+            <div>
+              <h3 style="font-size:24px;margin:0 0 8px;font-weight:500;">Haircut</h3>
+              <div class="eu-eyebrow" style="margin-bottom:12px;font-size:10px;">$30</div>
+              <p style="color:var(--eu-ink-soft);font-size:15px;line-height:1.6;margin:0;max-width:640px;">Classic cut</p>
+            </div>
+          </div>
+        
+      </div>
+    </div>
+  </section><section id="book-online" class="eu-section"><style>.ab-sub{text-align:center}.ab-sub .eu-display{font-size:clamp(32px,5vw,56px);margin:0 0 32px}.ab-sub-list{list-style:none;padding:0;max-width:640px;margin:0 auto 32px;text-align:left}.ab-sub-row{display:flex;justify-content:space-between;gap:16px;padding:14px 0;border-bottom:1px solid var(--eu-line-soft)}.ab-sub-name{font-size:20px;color:var(--eu-ink)}.ab-sub-price{color:var(--eu-brand);font-style:italic;white-space:nowrap}.ab-sub-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin:0 auto 32px;max-width:880px;text-align:left}@media(min-width:768px){.ab-sub-grid{grid-template-columns:repeat(4,1fr)}}.ab-sp-card{display:flex;flex-direction:column;gap:6px;text-decoration:none;color:var(--eu-ink)}.ab-sp-img{width:100%;aspect-ratio:1/1;object-fit:cover;background:var(--eu-bg-3)}.ab-sp-name{font-family:'Newsreader',Georgia,serif;font-size:18px}.ab-sp-price{color:var(--eu-brand)}</style><div class="eu-container ab-sub"><h2 class="eu-display">Book online</h2><ul class="ab-sub-list"><li class="ab-sub-row"><span class="eu-serif ab-sub-name">Haircut</span></li></ul><a href="/book" class="eu-cta eu-cta-solid">Book</a></div></section>
+
+  <!-- Team -->
+  <section id="team" class="eu-section" style="padding-top:64px;padding-bottom:96px;">
+  <style>.ab-team-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:24px}.ab-team-card{display:flex;flex-direction:column;gap:8px}.ab-team-photo{width:100%;aspect-ratio:4/5;object-fit:cover;background:var(--eu-bg-3);display:flex;align-items:center;justify-content:center;font-size:2.4rem;color:var(--eu-brand)}.ab-team-bio{margin:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.ab-team-chips{display:flex;flex-wrap:wrap;gap:6px}.ab-team-chip{font-size:10px;letter-spacing:.12em;text-transform:uppercase;border:1px solid var(--eu-line-soft);padding:3px 8px;color:var(--eu-ink-soft)}</style>
+  <div class="eu-container">
+    <div style="margin-bottom:48px;">
+      <div class="eu-eyebrow">The Team</div>
+      <h2 class="eu-display" style="font-size:42px;margin-top:12px;">Meet Our Barbers</h2>
+    </div>
+    <div class="ab-team-grid">
+      <div class="ab-team-card" id="team-sam-fade">
+        <img class="ab-team-photo" src="{{staff0}}" alt="Sam Fade">
+        <h3 class="eu-serif" style="font-size:22px;margin:8px 0 0;">Sam Fade</h3>
+        <div class="eu-eyebrow">Owner &amp; master barber</div>
+        <p class="eu-serif ab-team-bio" style="color:var(--eu-ink-soft);font-size:16px;line-height:1.5;">Skin fades and beard work.</p>
+        <div class="ab-team-chips"><span class="ab-team-chip">Haircut</span><span class="ab-team-chip">Beard trim</span><span class="ab-team-chip">Hot towel</span></div>
+        <a href="/book?barber=3f2b8c1e-4a5d-4e6f-8a9b-0c1d2e3f4a5b" class="eu-cta" style="margin-top:8px;justify-content:center;">Book with Sam</a>
+      </div><div class="ab-team-card" id="team-jay-cut">
+        <div class="ab-team-photo" aria-hidden="true">J</div>
+        <h3 class="eu-serif" style="font-size:22px;margin:8px 0 0;">Jay Cut</h3>
+        <div class="eu-eyebrow">Barber</div>
+        
+        
+        <a href="https://cal.example.com/jay" target="_blank" rel="noopener noreferrer" class="eu-cta" style="margin-top:8px;justify-content:center;">Book with Jay</a>
+      </div>
+    </div>
+  </div>
+  </section>
+
+  <!-- Visit -->
+  <section class="eu-section" style="background:var(--eu-bg-2);">
+    <div class="eu-container" style="display:grid;grid-template-columns:1fr 1fr;gap:64px;">
+      <div>
+        <div class="eu-eyebrow" style="margin-bottom:16px;">Visit</div>
+        <h2 class="eu-display" style="font-size:clamp(28px,4vw,44px);margin:0 0 32px;">Come in.</h2>
+        <div style="display:grid;gap:24px;color:var(--eu-ink-soft);font-size:16px;line-height:1.6;">
+          <div><div style="color:var(--eu-ink-muted);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;margin-bottom:6px;">Location</div>1 Main St, Austin, TX</div>
+          <div><div style="color:var(--eu-ink-muted);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;margin-bottom:6px;">Phone</div><a href="tel:(512)555-0100" style="color:var(--eu-ink);text-decoration:none;">(512) 555-0100</a></div>
+          <div><div style="color:var(--eu-ink-muted);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;margin-bottom:6px;">Email</div><a href="mailto:hi@example.com" style="color:var(--eu-ink);text-decoration:none;">hi@example.com</a></div>
+          <div style="margin-top:16px;"><a href="/book" class="eu-cta eu-cta-solid">Book Appointment</a></div>
+        </div>
+      </div>
+      <div>
+        <iframe
+          src="https://maps.google.com/maps?q=Fresh%20Cuts%20Barbershop%20Austin%2C%20TX&output=embed"
+          width="100%" height="360" style="border:0;display:block;"
+          loading="lazy" referrerpolicy="no-referrer-when-downgrade"
+          title="Fresh Cuts Barbershop on Google Maps"></iframe>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer style="padding:48px 24px;border-top:1px solid var(--eu-line-soft);text-align:center;">
+    <div class="eu-container">
+      <div class="eu-serif" style="font-size:18px;color:var(--eu-ink);margin-bottom:8px;">Fresh Cuts Barbershop</div>
+      <div class="eu-eyebrow">© 2026 · Built by Prime Barber</div>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>"
+`;
+
+exports[`luxe team section > snapshot 1`] = `
+"<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="published-at" content="1767225600000">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>Fresh Cuts Barbershop in Austin, TX</title>
+  <meta name="description" content="Fresh Cuts Barbershop — Barbershop in Austin, TX. Book online.">
+  <script type="text/javascript">
+    (function(c,l,a,r,i,t,y){
+      c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+      t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+      y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+    })(window, document, "clarity", "script", "w5jdq6huun");
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;700;900&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    * { font-family: 'Montserrat', sans-serif; }
+    html { scroll-behavior: smooth; }
+    /* Glossy LUXE pass — keeps every existing utility intact, layers
+       depth via gradient surfaces + a hairline highlight on every
+       section seam + a soft gold glow on accent buttons. Scoped tight
+       so the upgrade doesn't bleed into elements that should stay flat. */
+    .serif-accent { font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400; }
+    /* Header on a narrow phone: the number never wraps; under 380px the call link is the icon alone
+       (the full number stays in the hero button and the contact section). */
+    @media (max-width: 379px) { .ab-call-text { display: none; } .ab-call svg { width: 1.75rem; height: 1.75rem; } }
+    section.py-12, section.py-16 {
+      background-image: linear-gradient(180deg, rgba(255,255,255,0.025) 0%, transparent 35%, transparent 65%, rgba(0,0,0,0.4) 100%);
+      background-blend-mode: overlay;
+    }
+    section + section { box-shadow: inset 0 1px 0 rgba(244,161,0,0.06); }
+    a[href^="tel:"][class*="bg-[#f4a100]"], a[class*="bg-[#f4a100]"][class*="px-"] {
+      box-shadow: 0 0 30px rgba(244,161,0,0.18), 0 8px 20px rgba(0,0,0,0.35);
+    }
+    /* Glass-card treatment on bordered service / review / team cards. */
+    .border-2.border-\\[\\#f4a100\\], .border.border-white\\/10 {
+      background-image: linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0));
+      backdrop-filter: blur(2px);
+    }
+  </style>
+  <style>
+        /* Glossy LUXE pass — gradient depth + hairline section seam +
+           gold glow on accent buttons + glass-card treatment. */
+        .aib-themed .serif-accent { font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400; }
+        .aib-themed section + section { box-shadow: inset 0 1px 0 rgba(244,161,0,0.06); }
+        .aib-themed a[class*="bg-[#f4a100]"][class*="px-"] {
+          box-shadow: 0 0 30px rgba(244,161,0,0.18), 0 8px 20px rgba(0,0,0,0.35);
+        }
+
+        /* Rewire the hardcoded LUXE color utilities onto the picked theme.
+           Specificity bump via .aib-themed parent so these win against
+           the standalone utility classes. */
+        .aib-themed.bg-\\[\\#0d0d0d\\], .aib-themed .bg-\\[\\#0d0d0d\\] { background-color: var(--aib-bg) !important; }
+        .aib-themed .bg-\\[\\#111111\\] { background-color: rgb(var(--aib-bg-rgb) / 0.92) !important; }
+        .aib-themed .bg-\\[\\#0c0c0c\\] { background-color: rgb(var(--aib-bg-rgb) / 0.95) !important; }
+        .aib-themed .bg-\\[\\#1a1a1a\\] { background-color: rgb(var(--aib-bg-rgb) / 0.85) !important; }
+
+        .aib-themed .text-\\[\\#f4a100\\] { color: var(--aib-accent) !important; }
+        .aib-themed .bg-\\[\\#f4a100\\] { background-color: var(--aib-accent) !important; }
+        .aib-themed .border-\\[\\#f4a100\\] { border-color: var(--aib-accent) !important; }
+        .aib-themed .from-\\[\\#f4a100\\] { --tw-gradient-from: var(--aib-accent) !important; }
+        .aib-themed .to-\\[\\#f4a100\\] { --tw-gradient-to: var(--aib-accent) !important; }
+        .aib-themed .hover\\:bg-\\[\\#f4a100\\]:hover { background-color: var(--aib-accent) !important; }
+        .aib-themed .hover\\:text-\\[\\#f4a100\\]:hover { color: var(--aib-accent) !important; }
+        .aib-themed .hover\\:border-\\[\\#f4a100\\]:hover { border-color: var(--aib-accent) !important; }
+        .aib-themed .focus\\:border-\\[\\#f4a100\\]:focus { border-color: var(--aib-accent) !important; }
+        .aib-themed .ring-\\[\\#f4a100\\] { --tw-ring-color: var(--aib-accent) !important; }
+
+        /* Light cream variants used for hovers / pull quotes */
+        .aib-themed .text-\\[\\#e8c074\\] { color: var(--aib-accent-hover) !important; }
+        .aib-themed .bg-\\[\\#e8c074\\] { background-color: var(--aib-accent-hover) !important; }
+</style>
+</head>
+<body class="aib-themed bg-[#0d0d0d] text-white overflow-x-hidden" style="--aib-bg:rgb(13 13 13);--aib-bg-rgb:13 13 13;--aib-text:rgb(255 255 255);--aib-text-rgb:255 255 255;--aib-accent:#f4a100;--aib-accent-hover:#ffb43a;">
+  <header id="header" class="fixed top-0 left-0 w-full z-50 transition-all duration-300 bg-black/20 py-5 md:py-8">
+    <div class="container mx-auto flex justify-between items-center px-4 md:px-6">
+      <div class="flex items-center gap-3 md:gap-8 min-w-0">
+        <div class="flex items-center gap-3 md:gap-5 min-w-0">
+          <svg class="w-8 h-8 md:w-12 md:h-12 shrink-0 text-[#f4a100]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M6 6l12 12M6 18L18 6"></path>
+          </svg>
+          <span class="font-montserrat font-black text-lg md:text-3xl lg:text-4xl tracking-[1px] md:tracking-[2px] uppercase whitespace-nowrap min-w-0 truncate">
+            Fresh <span class="text-[#f4a100]">Cuts Barbershop</span>
+          </span>
+        </div>
+        <a href="tel:(512)555-0100" aria-label="Call (512) 555-0100" class="ab-call flex items-center shrink-0 gap-2 md:gap-4 text-[#f4a100] border-l-2 border-white/20 pl-3 md:pl-8 hover:text-white transition-colors">
+          <svg class="w-5 h-5 md:w-7 md:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path>
+          </svg>
+          <span class="ab-call-text whitespace-nowrap text-sm md:text-xl lg:text-2xl font-bold tracking-tight">(512) 555-0100</span>
+        </a>
+      </div>
+      <nav class="hidden lg:flex items-center gap-10">
+        <a href="#home" class="text-[12px] font-montserrat font-bold tracking-[2px] hover:text-[#f4a100] transition-colors">HOME</a>
+        <a href="#services" class="text-[12px] font-montserrat font-bold tracking-[2px] hover:text-[#f4a100] transition-colors">SERVICES</a>
+        <a href="#contact" class="text-[12px] font-montserrat font-bold tracking-[2px] hover:text-[#f4a100] transition-colors">CONTACT</a>
+      </nav>
+    </div>
+  </header>
+
+  <section id="home" class="relative h-[55vh] flex flex-col justify-center items-center overflow-hidden">
+    <div class="absolute inset-0 z-0">
+      <img src="{{hero}}" alt="Fresh Cuts Barbershop photo" class="w-full h-full object-cover">
+      <div class="absolute inset-0 bg-black/40 bg-gradient-to-b from-black/30 via-transparent to-[#0d0d0d]"></div>
+    </div>
+    <div class="relative z-10 text-center px-4 md:px-6 max-w-5xl pb-28 md:pb-32 pt-20 md:pt-0">
+      <p class="text-[#f4a100] font-montserrat font-bold text-[8px] md:text-sm tracking-[3px] md:tracking-[5px] uppercase mb-3 md:mb-6 opacity-90">
+        Walk-ins welcome
+      </p>
+      <h1 class="text-3xl md:text-6xl lg:text-7xl font-montserrat font-black text-white leading-tight uppercase tracking-[1px] md:tracking-[4px] mb-8 md:mb-12">
+        Sharp cuts
+      </h1>
+      <div class="flex flex-col sm:flex-row items-center justify-center gap-3 md:gap-4">
+        <a href="tel:(512)555-0100" class="inline-flex items-center gap-3 border-2 border-[#f4a100] text-[#f4a100] px-6 py-4 md:px-12 md:py-6 font-montserrat font-black tracking-[2px] uppercase hover:bg-[#f4a100] hover:text-[#1a1a1a] transition-all duration-300 group shadow-lg text-xs md:text-base">
+          <span>Call Now: (512) 555-0100</span>
+        </a>
+        <a href="/book" class="inline-flex items-center gap-3 bg-[#f4a100] text-[#1a1a1a] px-6 py-4 md:px-12 md:py-6 font-montserrat font-black tracking-[2px] uppercase hover:bg-white transition-all duration-300 shadow-lg text-xs md:text-base"><span>Book Appointment</span></a>
+      </div>
+    </div>
+  </section>
+
+  
+
+  <section id="about-us" class="py-12 md:py-32 px-6 bg-[#1a1a1a]">
+    <div class="container mx-auto grid  gap-10 md:gap-20 items-center">
+      <div class="relative">
+        <h2 class="text-2xl md:text-5xl font-montserrat font-black text-white mb-6 md:mb-8 leading-tight uppercase tracking-[2px]">
+          About
+        </h2>
+        <div class="space-y-4 md:space-y-6 text-[#cccccc] font-light leading-relaxed text-sm md:text-base">
+          <p>Family owned.</p>
+        </div>
+      </div>
+      
+    </div>
+  </section>
+
+  
+
+  <section id="services" class="py-12 md:py-32 bg-[#0d0d0d] px-6">
+    <div class="container mx-auto max-w-7xl">
+      <div class="text-center mb-10 md:mb-16">
+        <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">Services</h3>
+        <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">What We Offer</h2>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+        
+          <div class="group border-2 border-[#f4a100] p-6 md:p-10 flex flex-col hover:bg-[#1a1a1a] transition-all duration-500">
+            <div class="flex items-start justify-between gap-3 mb-3 md:mb-4">
+              <h3 class="font-montserrat font-black text-white text-base md:text-lg tracking-[1px] uppercase leading-tight flex-1">Haircut</h3>
+              
+            </div>
+            <p class="text-[#f4a100] text-[10px] md:text-[11px] font-bold tracking-[2px] mb-3 uppercase">$30</p>
+            <p class="text-[#999999] text-xs md:text-sm leading-relaxed">Classic cut</p>
+          </div>
+        
+      </div>
+    </div>
+  </section><section id="book-online" class="py-12 md:py-24 bg-[#0d0d0d] px-6 border-y border-white/5"><style>.ab-sp-card{display:flex;flex-direction:column;gap:6px;text-decoration:none;color:inherit}.ab-sp-img{width:100%;aspect-ratio:1/1;object-fit:cover;background:#1a1a1a}.ab-sp-name{font-family:'Montserrat',sans-serif;font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:1px;color:#fff}.ab-sp-price{font-family:'Montserrat',sans-serif;font-weight:900;color:var(--aib-accent,#f4a100)}</style><div class="container mx-auto max-w-5xl text-center"><h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px] mb-8">Book online</h2><ul class="max-w-xl mx-auto mb-8 divide-y divide-white/10 text-left"><li class="flex items-center justify-between gap-4 py-3"><span class="font-montserrat font-bold text-white uppercase tracking-[1px] text-sm md:text-base">Haircut</span></li></ul><a href="/book" class="inline-flex items-center gap-3 bg-[#f4a100] text-[#1a1a1a] px-8 py-4 md:px-12 md:py-5 font-montserrat font-black tracking-[2px] uppercase hover:bg-white transition-all duration-300 shadow-lg text-xs md:text-sm">Book</a></div></section>
+
+  
+
+  <section id="team" class="py-16 md:py-28 bg-[#0a0a0a] px-6 border-y border-white/5">
+    <div class="container mx-auto max-w-6xl">
+      <div class="text-center mb-10 md:mb-16">
+        <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-4 font-montserrat">The Team</h3>
+        <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px]">Meet Our Barbers</h2>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 md:gap-6">
+        
+          <div class="flex flex-col items-center text-center group" id="team-sam-fade">
+            <div class="relative w-full aspect-square mb-3 overflow-hidden bg-[#1a1a1a] border border-white/5">
+              <img src="{{staff0}}" alt="Sam Fade" class="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-700">
+            </div>
+            <h4 class="font-montserrat font-black text-white text-sm md:text-base tracking-[1px] uppercase">Sam Fade</h4>
+            <p class="text-[#f4a100] text-[10px] md:text-[11px] font-bold tracking-[2px] uppercase mt-1">Owner &amp; master barber</p>
+            <p class="text-white/70 text-xs md:text-sm mt-2" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">Skin fades and beard work.</p>
+            <div class="flex flex-wrap justify-center gap-1.5 mt-2"><span class="text-[9px] tracking-[1px] uppercase border border-white/15 text-white/60 px-2 py-0.5">Haircut</span><span class="text-[9px] tracking-[1px] uppercase border border-white/15 text-white/60 px-2 py-0.5">Beard trim</span><span class="text-[9px] tracking-[1px] uppercase border border-white/15 text-white/60 px-2 py-0.5">Hot towel</span></div>
+            <a href="/book?barber=3f2b8c1e-4a5d-4e6f-8a9b-0c1d2e3f4a5b" class="mt-3 inline-flex items-center border border-[#f4a100] text-[#f4a100] px-4 py-2 font-montserrat font-black tracking-[2px] uppercase hover:bg-[#f4a100] hover:text-[#1a1a1a] transition-all duration-300 text-[10px]">Book with Sam</a>
+          </div>
+        
+          <div class="flex flex-col items-center text-center group" id="team-jay-cut">
+            <div class="relative w-full aspect-square mb-3 overflow-hidden bg-[#1a1a1a] border border-white/5">
+              <div class="w-full h-full flex items-center justify-center text-[#f4a100]/30"><svg class="w-12 h-12" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 22v-2c0-3.31 3.58-6 8-6s8 2.69 8 6v2H4z"/></svg></div>
+            </div>
+            <h4 class="font-montserrat font-black text-white text-sm md:text-base tracking-[1px] uppercase">Jay Cut</h4>
+            <p class="text-[#f4a100] text-[10px] md:text-[11px] font-bold tracking-[2px] uppercase mt-1">Barber</p>
+            
+            
+            <a href="https://cal.example.com/jay" target="_blank" rel="noopener noreferrer" class="mt-3 inline-flex items-center border border-[#f4a100] text-[#f4a100] px-4 py-2 font-montserrat font-black tracking-[2px] uppercase hover:bg-[#f4a100] hover:text-[#1a1a1a] transition-all duration-300 text-[10px]">Book with Jay</a>
+          </div>
+        
+      </div>
+    </div>
+  </section>
+
+  
+
+  
+
+  <section id="contact" class="py-12 md:py-32 bg-[#0d0d0d] px-4 md:px-6">
+    <div class="container mx-auto max-w-6xl bg-[#1a1a1a] p-8 md:p-20">
+      <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white mb-8 md:mb-12 uppercase tracking-[2px]">Contact Us</h2>
+      <div class="space-y-6 md:space-y-10">
+        <div>
+          <h4 class="text-[#f4a100] font-bold text-[10px] md:text-xs tracking-[2px] mb-1 md:mb-2 font-montserrat">LOCATION</h4>
+          <p class="text-[#cccccc] text-xs md:text-sm leading-relaxed">1 Main St, Austin, TX</p>
+        </div>
+        <div>
+          <h4 class="text-[#f4a100] font-bold text-[10px] md:text-xs tracking-[2px] mb-1 md:mb-2 font-montserrat">PHONE</h4>
+          <p class="text-[#cccccc] text-xs md:text-sm leading-relaxed">(512) 555-0100</p>
+        </div>
+        <div class="pt-4"><a href="/book" class="inline-flex items-center gap-3 bg-[#f4a100] text-[#1a1a1a] px-8 py-4 md:px-12 md:py-5 font-montserrat font-black tracking-[2px] uppercase hover:bg-white transition-all duration-300 shadow-lg text-xs md:text-sm">Book Appointment</a></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="find-us" class="py-12 md:py-20 bg-[#0d0d0d] px-4 md:px-6 border-t border-white/5">
+    <div class="container mx-auto max-w-4xl text-center">
+      <h3 class="text-[#f4a100] text-xs font-bold tracking-[5px] uppercase mb-3 md:mb-4 font-montserrat">Find Us</h3>
+      <h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px] mb-8 md:mb-12">Stop By</h2>
+      <div class="bg-[#1a1a1a] p-1 border border-white/5">
+        <iframe
+          title="Fresh Cuts Barbershop on Google Maps"
+          src="https://maps.google.com/maps?q=Fresh%20Cuts%20Barbershop%201%20Main%20St%2C%20Austin%2C%20TX&output=embed"
+          width="100%" height="360"
+          loading="lazy"
+          referrerpolicy="no-referrer-when-downgrade"
+          style="border:0;display:block;filter:grayscale(0.2) contrast(1.05);"></iframe>
+      </div>
+    </div>
+  </section>
+
+  <footer class="py-12 md:py-20 bg-[#0a0a0a] border-t border-white/5 text-center">
+    <div class="container mx-auto px-6">
+      <span class="font-montserrat font-black text-sm md:text-2xl tracking-[2px] md:tracking-[4px] uppercase">
+        Fresh <span class="text-[#f4a100]">Cuts Barbershop</span>
+      </span>
+      <p class="text-[#666666] text-[8px] md:text-xs uppercase tracking-[2px] md:tracking-[4px] mt-8 mb-12">
+        Barbershop in Austin, TX
+      </p>
+      <div class="pt-8 border-t border-white/5 text-[#444444] text-[8px] uppercase tracking-[2px]">
+        Copyright &copy; 2026 Fresh Cuts Barbershop. Built by Prime Barber.
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    window.addEventListener('scroll', () => {
+      const header = document.getElementById('header');
+      if (window.scrollY > 20) {
+        header.classList.remove('bg-black/20', 'py-5', 'md:py-8');
+        header.classList.add('bg-[#1a1a1a]/95', 'backdrop-blur-md', 'shadow-xl', 'py-3', 'md:py-4');
+      } else {
+        header.classList.add('bg-black/20', 'py-5', 'md:py-8');
+        header.classList.remove('bg-[#1a1a1a]/95', 'backdrop-blur-md', 'shadow-xl', 'py-3', 'md:py-4');
+      }
+    });
+  </script>
+</body>
+</html>"
+`;
+
+exports[`prime team section > snapshot 1`] = `
+"<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="published-at" content="1767225600000">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>Fresh Cuts Barbershop in Austin, TX</title>
+  <meta name="description" content="Fresh Cuts Barbershop — Barbershop in Austin, TX. Book online.">
+  <script type="text/javascript">
+    (function(c,l,a,r,i,t,y){
+      c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+      t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+      y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+    })(window, document, "clarity", "script", "w5jdq6huun");
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,400;1,6..72,600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; padding: 0; background: #0a0a0a; color: #f0ece4; font-family: 'Inter', system-ui, sans-serif; }
+    a { color: inherit; }
+    img { max-width: 100%; height: auto; }
+
+.prime-root {
+  --p-bg:        #0a0a0a;
+  --p-bg-2:      #111111;
+  --p-bg-3:      #161616;
+  --p-ink:       #f0ece4;
+  --p-ink-soft:  #9a958e;
+  --p-ink-muted: #6e6962;
+  --p-line:      rgba(255,255,255,0.18);
+  --p-line-soft: rgba(255,255,255,0.08);
+  --p-brand:        #d4a64a;
+  --p-brand-bright: #e8c074;
+  --p-brand-deep:   #a87f30;
+  --p-cream:     #f0ece4;
+  background: var(--p-bg);
+  color: var(--p-ink);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-weight: 400;
+  line-height: 1.7;
+}
+.prime-root .p-serif { font-family: 'Newsreader', Georgia, serif; }
+.prime-root .p-display { font-family: 'Newsreader', Georgia, serif; font-weight: 500; letter-spacing: -0.01em; line-height: 1.05; }
+.prime-root h1, .prime-root h2, .prime-root h3, .prime-root h4 { font-family: 'Newsreader', Georgia, serif; font-weight: 500; letter-spacing: -0.01em; }
+.prime-root .p-italic { font-style: italic; }
+.prime-root .p-eyebrow { font-family: 'Inter', sans-serif; text-transform: uppercase; letter-spacing: 0.3em; font-size: 11px; color: var(--p-brand); }
+.prime-root .p-section { padding: 72px 6vw; }
+.prime-root .p-container { max-width: 1200px; margin: 0 auto; }
+.prime-root .p-rule { height: 1px; background: var(--p-line-soft); width: 100%; }
+.prime-root .p-cta {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 14px 28px; border: 1px solid var(--p-brand); color: var(--p-ink);
+  text-transform: uppercase; letter-spacing: 0.22em; font-size: 11px; font-weight: 600;
+  background: transparent; text-decoration: none; border-radius: 2px;
+  font-family: 'Inter', sans-serif; transition: all 200ms ease; white-space: nowrap;
+}
+.prime-root .p-cta:hover { background: var(--p-brand); color: #1a1a1a; }
+.prime-root .p-cta-solid { background: var(--p-brand); color: #1a1a1a; border-color: var(--p-brand); }
+.prime-root .p-cta-solid:hover { background: var(--p-brand-bright); border-color: var(--p-brand-bright); color: #1a1a1a; }
+.prime-root .p-editable { outline: none; border-radius: 2px; padding: 0 2px; margin: 0 -2px; transition: box-shadow 150ms ease; }
+.prime-root .p-editable:focus { box-shadow: 0 0 0 1px var(--p-brand-bright); }
+.prime-root .p-welcome {
+  display: flex; align-items: center; justify-content: center; gap: 14px;
+  padding: 9px 16px; border-bottom: 1px solid var(--p-line-soft); background: #000;
+  font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.34em; color: var(--p-brand);
+}
+.prime-root .p-dropcap::first-letter {
+  font-family: 'Newsreader', Georgia, serif; font-style: italic; font-weight: 700;
+  color: var(--p-brand); float: left; font-size: 5rem; line-height: 0.8; padding: 8px 14px 0 0;
+}
+.prime-root .p-img-tile { position: relative; overflow: hidden; background: var(--p-bg-3); }
+.prime-root .p-img-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.prime-root .p-img-overlay {
+  position: absolute; inset: 0; z-index: 1; display: flex; align-items: flex-end; justify-content: flex-end;
+  padding: 12px; cursor: pointer; background: transparent; transition: background 150ms ease;
+}
+.prime-root .p-img-overlay:hover { background: rgba(0,0,0,0.18); }
+.prime-root .p-img-pill {
+  pointer-events: none; display: inline-flex; align-items: center; gap: 5px; padding: 6px 10px;
+  border-radius: 999px; background: rgba(0,0,0,0.72); color: #fff; font-family: 'Inter', sans-serif;
+  font-size: 8px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.32), 0 0 0 1px rgba(255,255,255,0.12);
+}
+.prime-root .p-img-pill svg { width: 11px; height: 11px; }
+/* Large hero variant — matches Design 1's hero "Replace Photo" pill size. */
+.prime-root .p-img-overlay--lg { padding: 18px; }
+.prime-root .p-img-pill--lg { font-size: 11px; padding: 11px 18px; gap: 8px; }
+.prime-root .p-img-pill--lg svg { width: 18px; height: 18px; }
+.prime-root .p-img-placeholder {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 100%; height: 100%; background: var(--p-bg-3); border: 1px dashed var(--p-line);
+  cursor: pointer; color: var(--p-ink-soft);
+}
+.prime-root .p-svc { border: 1px solid var(--p-line); background: var(--p-bg-2); }
+.prime-root .p-svc-row {
+  display: grid; grid-template-columns: 1fr auto; gap: 20px; padding: 18px 28px;
+  border-bottom: 1px dashed rgba(212,166,74,0.22); align-items: baseline;
+}
+.prime-root .p-svc-row:last-child { border-bottom: none; }
+.prime-root .p-gallery { display: grid; grid-template-columns: repeat(12, 1fr); gap: 12px; max-width: 760px; margin: 0 auto; }
+.prime-root .p-review-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.prime-root .p-review-card { background: var(--p-bg-3); border: 1px solid var(--p-line); border-radius: 4px; padding: 22px; transition: all 200ms ease; }
+.prime-root .p-review-card:hover { border-color: var(--p-brand); transform: translateY(-3px); box-shadow: 0 8px 24px rgba(212,166,74,0.08); }
+.prime-root .p-avatar {
+  width: 38px; height: 38px; border-radius: 999px; display: flex; align-items: center; justify-content: center;
+  font-family: 'Newsreader', serif; font-style: italic; color: #1a1a1a;
+  background: linear-gradient(135deg, var(--p-brand), var(--p-brand-deep));
+}
+.prime-root .p-hours-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--p-line-soft); }
+@media (max-width: 767px) {
+  .prime-root .p-gallery { grid-template-columns: repeat(2, 1fr); }
+  .prime-root .p-gallery > div { grid-column: span 1 !important; }
+  .prime-root .p-review-grid { grid-template-columns: 1fr; }
+  .prime-root .p-section { padding: 52px 6vw; }
+  .prime-root .p-grid-2 { grid-template-columns: 1fr !important; }
+}
+
+  </style>
+</head>
+<body>
+<div class="prime-root" style="">
+
+  <!-- Welcome bar -->
+  <div class="p-welcome"><span>Welcome</span><span style="color:var(--p-ink-muted);">Austin, TX</span></div>
+
+  <!-- Nav -->
+  <nav style="position:sticky;top:0;z-index:50;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--p-line-soft);">
+    <div class="p-container" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 6vw;">
+      <a href="#top" class="p-serif" style="text-decoration:none;color:var(--p-ink);font-size:20px;letter-spacing:0.04em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Fresh Cuts Barbershop</a>
+      <a href="/book" class="p-cta p-cta-solid" style="padding:10px 18px;font-size:10px;flex-shrink:0;">Book Now</a>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section id="top" style="position:relative;min-height:42vh;display:flex;align-items:center;justify-content:center;overflow:hidden;">
+    
+    <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.55) 70%), linear-gradient(180deg, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0.7) 100%);"></div>
+    <div class="p-container" style="position:relative;text-align:center;padding:32px 6vw;">
+      <div class="p-eyebrow" style="margin-bottom:12px;">Welcome to</div>
+      <h1 class="p-display p-italic" style="font-size:clamp(2.2rem,5.5vw,4.6rem);margin:0 0 14px;color:var(--p-brand);">Sharp cuts</h1>
+      <p class="p-serif p-italic" style="font-size:clamp(1rem,2.2vw,1.4rem);color:var(--p-ink-soft);max-width:640px;margin:0 auto 22px;">Walk-ins welcome</p>
+      <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;">
+        <a href="/book" class="p-cta p-cta-solid">Book an Appointment</a>
+        <a href="#services" class="p-cta">View Services</a>
+      </div>
+      
+    </div>
+  </section>
+
+  <!-- About -->
+  <section class="p-section">
+    <div class="p-container p-grid-2" style="display:grid;grid-template-columns:1fr;gap:56px;align-items:start;">
+      <div>
+        <div class="p-eyebrow" style="margin-bottom:14px;">Our Story</div>
+        <h2 class="p-display" style="font-size:clamp(2rem,4.2vw,3.2rem);margin:0 0 28px;">About</h2>
+        <p class="p-serif p-dropcap" style="font-size:1.06rem;line-height:1.75;color:var(--p-ink-soft);margin:0 0 18px;">Family owned.</p>
+        
+      </div>
+      
+    </div>
+  </section>
+
+  <section id="services" class="p-section">
+  <div class="p-container">
+    <div style="text-align:center;margin-bottom:36px;">
+      <div class="p-eyebrow">Services &amp; Prices</div>
+      <h2 class="p-display" style="font-size:clamp(28px,5vw,46px);margin-top:14px;">What we <span class="p-italic" style="color:var(--p-brand);">offer.</span></h2>
+    </div>
+    <div class="p-svc" style="max-width:880px;margin:0 auto;">
+      <div class="p-svc-row">
+          <div>
+            <div class="p-serif p-italic" style="font-size:1.25rem;font-weight:600;">Haircut</div>
+            <div class="p-eyebrow" style="font-size:10px;margin-top:6px;">$30</div>
+            <p class="p-serif" style="color:var(--p-ink-soft);font-size:0.9rem;margin-top:8px;max-width:560px;">Classic cut</p>
+          </div>
+          
+        </div>
+    </div>
+  </div>
+</section><section id="book-online" class="p-section"><style>.ab-sub{text-align:center}.ab-sub .p-display{font-size:clamp(28px,5vw,46px);margin:0 0 28px}.ab-sub-list{max-width:640px;margin:0 auto 28px;text-align:left}.ab-sub-name{font-size:1.2rem;font-weight:600}.ab-sub-price{font-size:1.4rem;color:var(--p-brand-bright);white-space:nowrap}.ab-sub-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin:0 auto 28px;max-width:880px;text-align:left}@media(min-width:768px){.ab-sub-grid{grid-template-columns:repeat(4,1fr)}}.ab-sp-card{display:flex;flex-direction:column;gap:6px;text-decoration:none;color:var(--p-ink)}.ab-sp-img{width:100%;aspect-ratio:1/1;object-fit:cover;background:var(--p-bg-3)}.ab-sp-name{font-family:'Newsreader',Georgia,serif;font-style:italic;font-size:1.05rem}.ab-sp-price{color:var(--p-brand-bright)}</style><div class="p-container ab-sub"><h2 class="p-display">Book online</h2><ul class="p-svc ab-sub-list"><li class="p-svc-row"><span class="p-serif p-italic ab-sub-name">Haircut</span></li></ul><a href="/book" class="p-cta p-cta-solid">Book</a></div></section>
+
+  
+
+  <section id="team" class="p-section" style="padding-top:48px;">
+  <style>.ab-team-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:20px;max-width:1000px;margin:0 auto}.ab-team-card{text-align:center;display:flex;flex-direction:column;gap:8px}.ab-team-photo{width:100%;aspect-ratio:1/1;object-fit:cover;background:var(--p-bg-3);display:flex;align-items:center;justify-content:center;font-size:2.4rem;color:var(--p-brand)}.ab-team-bio{margin:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.ab-team-chips{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}.ab-team-chip{font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--p-line);padding:3px 8px}</style>
+  <div class="p-container">
+    <div style="text-align:center;margin-bottom:32px;">
+      <div class="p-eyebrow">The Team</div>
+      <h2 class="p-display" style="font-size:clamp(28px,4.5vw,44px);margin-top:12px;"><span class="p-italic" style="color:var(--p-brand);">Meet Our Barbers</span></h2>
+    </div>
+    <div class="ab-team-grid">
+      <div class="p-review-card ab-team-card" id="team-sam-fade">
+        <img class="ab-team-photo" src="{{staff0}}" alt="Sam Fade">
+        <h3 class="p-serif" style="font-size:1.2rem;margin:0;">Sam Fade</h3>
+        <div class="p-eyebrow" style="font-size:10px;">Owner &amp; master barber</div>
+        <p class="p-serif p-italic ab-team-bio" style="color:var(--p-ink-soft);font-size:0.9rem;">Skin fades and beard work.</p>
+        <div class="ab-team-chips"><span class="ab-team-chip">Haircut</span><span class="ab-team-chip">Beard trim</span><span class="ab-team-chip">Hot towel</span></div>
+        <a href="/book?barber=3f2b8c1e-4a5d-4e6f-8a9b-0c1d2e3f4a5b" class="p-cta" style="padding:10px 14px;font-size:10px;justify-content:center;">Book with Sam</a>
+      </div><div class="p-review-card ab-team-card" id="team-jay-cut">
+        <div class="ab-team-photo" aria-hidden="true">J</div>
+        <h3 class="p-serif" style="font-size:1.2rem;margin:0;">Jay Cut</h3>
+        <div class="p-eyebrow" style="font-size:10px;">Barber</div>
+        
+        
+        <a href="https://cal.example.com/jay" target="_blank" rel="noopener noreferrer" class="p-cta" style="padding:10px 14px;font-size:10px;justify-content:center;">Book with Jay</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+  
+
+  <section class="p-section" style="background:radial-gradient(ellipse at center, rgba(212,166,74,0.07) 0%, transparent 60%), var(--p-bg);text-align:center;">
+  <div style="max-width:1000px;margin:0 auto;">
+    <p class="p-serif p-italic" style="font-size:clamp(1.5rem,3.6vw,2.7rem);line-height:1.3;color:var(--p-ink);margin:0;">A great cut isn&#39;t a transaction — it&#39;s a craft.</p>
+  </div>
+</section>
+
+  <!-- Booking strip -->
+  <section style="background:var(--p-cream);color:#1a1a1a;text-align:center;padding:64px 6vw;">
+    <div class="p-eyebrow" style="color:var(--p-brand-deep);margin-bottom:14px;">Take a Chair</div>
+    <h2 class="p-display" style="font-size:clamp(2rem,5vw,3rem);margin:0 0 16px;color:#1a1a1a;">Ready for <span class="p-italic">your next cut?</span></h2>
+    
+    <a href="/book" class="p-cta" style="background:#1a1a1a;color:var(--p-brand);border-color:#1a1a1a;">Book an Appointment</a>
+  </section>
+
+  <!-- Visit -->
+  <section class="p-section" style="background:var(--p-bg-2);">
+    <div class="p-container p-grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:48px;">
+      <div>
+        <div class="p-eyebrow" style="margin-bottom:16px;">Find the chair</div>
+        <h2 class="p-display" style="font-size:clamp(1.8rem,4vw,2.8rem);margin:0 0 28px;">Pay a visit.</h2>
+        <div style="display:grid;gap:22px;color:var(--p-ink-soft);font-size:16px;line-height:1.6;">
+          <div><div class="p-eyebrow" style="margin-bottom:6px;">The Address</div><div class="p-serif p-italic" style="color:var(--p-ink);font-size:1.2rem;">1 Main St, Austin, TX</div></div>
+          <div><div class="p-eyebrow" style="margin-bottom:6px;">By Phone</div><a href="tel:(512)555-0100" class="p-serif p-italic" style="color:var(--p-ink);font-size:1.2rem;text-decoration:none;">(512) 555-0100</a></div>
+          <div><div class="p-eyebrow" style="margin-bottom:6px;">Online Booking</div><a href="/book" class="p-serif p-italic" style="color:var(--p-ink);font-size:1.1rem;">Book online →</a></div>
+        </div>
+      </div>
+      <div><iframe src="https://maps.google.com/maps?q=Fresh%20Cuts%20Barbershop%20Austin%2C%20TX&output=embed" width="100%" height="320" style="border:0;display:block;" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Fresh Cuts Barbershop on Google Maps"></iframe></div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer style="padding:48px 6vw;border-top:1px solid var(--p-line-soft);text-align:center;">
+    <div class="p-container">
+      <div class="p-serif p-italic" style="font-size:18px;color:var(--p-brand);margin-bottom:8px;">Fresh Cuts Barbershop</div>
+      <div class="p-eyebrow" style="color:var(--p-ink-muted);">© 2026 · Built by Prime Barber</div>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>"
+`;

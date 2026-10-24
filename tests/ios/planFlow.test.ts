@@ -128,6 +128,19 @@ describe('GET /api/shop/plan', () => {
   });
 });
 
+describe('GET /api/shop/plan capabilities (migration 015 flag)', () => {
+  it('absent dep: body unchanged; present: capabilities.memberProfile mirrors the probe; a failing probe reads false', async () => {
+    const { deps } = fakes();
+    expect((await getPlan(AUTH, deps)).body).not.toHaveProperty('capabilities');
+    deps.memberProfileLive = vi.fn(async () => true);
+    expect((await getPlan(AUTH, deps)).body).toMatchObject({ linked: true, capabilities: { memberProfile: true } });
+    deps.memberProfileLive = vi.fn(async () => false);
+    expect((await getPlan(AUTH, deps)).body).toMatchObject({ capabilities: { memberProfile: false } });
+    deps.memberProfileLive = vi.fn(async () => { throw new Error('db'); });
+    expect((await getPlan(AUTH, deps)).body).toMatchObject({ capabilities: { memberProfile: false } });
+  });
+});
+
 describe('POST /api/shop/plan', () => {
   it('verifies with Apple, upserts, and returns the GET body with the new tier', async () => {
     const { deps } = fakes();
@@ -227,7 +240,7 @@ describe('POST /api/shop/plan', () => {
       deps.limiter = { allow: vi.fn(async () => false) };
       const r = await refreshPlan(AUTH, { transactionId: '2000000555' }, deps);
       expect(r).toEqual({ status: 429, body: { error: 'rate-limited' }, headers: { 'Retry-After': '60' } });
-      expect(deps.limiter.allow).toHaveBeenCalledWith(`user:${USER}`, 'write');
+      expect(deps.limiter.allow).toHaveBeenCalledWith(USER, 'write');
       expect(deps.verify).not.toHaveBeenCalled();
     });
 

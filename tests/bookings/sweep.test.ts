@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { expireStaleCardHolds, retryPendingRefunds } from '../../lib/bookings/core.js';
 import { createAppointment } from '../../lib/bookings/publicFlow.js';
 import { world } from './fakeRepo.js';
@@ -25,7 +25,7 @@ describe('expireStaleCardHolds (orphaned card holds)', () => {
     w.notified.length = 0;
 
     w.setNow('2026-11-02T12:36:00Z'); // the first two are 36 min old, the third 2 min
-    expect(await expireStaleCardHolds(w.deps)).toEqual({ expired: 2 });
+    expect(await expireStaleCardHolds(w.deps)).toEqual({ expired: 2, paid: 0, unresolved: 0 });
     for (const id of [old.id, orphan.id]) {
       expect(w.state.appointments.find((a) => a.id === id)).toMatchObject({
         status: 'cancelled', cancelled_by: 'customer', cancelled_at: '2026-11-02T12:36:00.000Z', payment_status: 'none', amount_refunded_cents: 0,
@@ -36,7 +36,7 @@ describe('expireStaleCardHolds (orphaned card holds)', () => {
     expect(w.payments.expireCheckoutSession).toHaveBeenCalledWith(expect.objectContaining({ id: w.ids.shopId }), `cs_${old.id}`);
     expect(w.payments.refundAppointment).not.toHaveBeenCalled();
     expect(w.notified).toEqual([]);
-    expect(await expireStaleCardHolds(w.deps)).toEqual({ expired: 0 }); // idempotent
+    expect(await expireStaleCardHolds(w.deps)).toEqual({ expired: 0, paid: 0, unresolved: 0 }); // idempotent
   });
 
   it('leaves paid card bookings and non-card bookings alone', async () => {
@@ -48,7 +48,7 @@ describe('expireStaleCardHolds (orphaned card holds)', () => {
       customer: { name: 'M', phone: '5550000009', email: 'm@example.com' }, pay: 'manual',
     }, w.deps);
     w.setNow('2026-11-03T12:00:00Z');
-    expect(await expireStaleCardHolds(w.deps)).toEqual({ expired: 0 });
+    expect(await expireStaleCardHolds(w.deps)).toEqual({ expired: 0, paid: 0, unresolved: 0 });
     expect(w.state.appointments.every((a) => a.status === 'booked')).toBe(true);
     expect(paid.id).toBeTruthy();
   });
@@ -62,9 +62,52 @@ describe('expireStaleCardHolds (orphaned card holds)', () => {
       return orig(id, patch, expect);
     };
     w.setNow('2026-11-02T13:00:00Z');
-    expect(await expireStaleCardHolds(w.deps)).toEqual({ expired: 0 });
+    expect(await expireStaleCardHolds(w.deps)).toMatchObject({ expired: 0 });
     expect(w.state.appointments[0]).toMatchObject({ status: 'booked', payment_status: 'paid' });
-    expect(w.payments.expireCheckoutSession).not.toHaveBeenCalled();
+    // Stripe is asked first now (e2e I7); the cancel is still compare-and-set.
+    expect(w.payments.expireCheckoutSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('I7: asks Stripe before cancelling: complete is left to the webhook (alerted once after an hour), unknown is left for the next run', async () => {
+    const w = world({ shop: cardShop });
+    const paid = await cardHold(w, '2026-11-03T15:00:00Z', '5550000001');
+    const open = await cardHold(w, '2026-11-03T16:00:00Z', '5550000002');
+    const expired = await cardHold(w, '2026-11-03T17:00:00Z', '5550000003');
+    const states: Record<string, 'complete' | 'unknown' | 'expired'> = { [`cs_${paid.id}`]: 'complete', [`cs_${open.id}`]: 'unknown', [`cs_${expired.id}`]: 'expired' };
+    (w.deps.payments as any).closeCheckoutSession = vi.fn(async (_s: unknown, sid: string) => states[sid]);
+    const logged: string[] = [];
+    const realLog = w.deps.repo.logEvent;
+    w.deps.repo.logEvent = async (shop, kind, payload) => { logged.push(kind); return realLog(shop, kind, payload); };
+    w.setNow('2026-11-02T12:40:00Z');
+    expect(await expireStaleCardHolds(w.deps)).toEqual({ expired: 1, paid: 1, unresolved: 1 });
+    const status = (id: string) => w.state.appointments.find((a) => a.id === id)!.status;
+    expect([status(paid.id), status(open.id), status(expired.id)]).toEqual(['booked', 'booked', 'cancelled']);
+    expect(logged).toEqual([]);
+    w.setNow('2026-11-02T13:05:00Z'); // past the hour: one alert for the paid-but-unrecorded hold
+    await expireStaleCardHolds(w.deps);
+    await expireStaleCardHolds(w.deps);
+    expect(logged).toEqual(['hold_paid_unrecorded']);
+  });
+
+  it('review fix 7: a hold Stripe still can\'t answer about after 25 h is cancelled (slot freed) and logged; before that it waits', async () => {
+    const w = world({ shop: cardShop });
+    const h = await cardHold(w, '2026-11-03T15:00:00Z', '5550000001');
+    (w.deps.payments as any).closeCheckoutSession = vi.fn(async () => 'unknown');
+    w.setNow('2026-11-03T12:00:00Z'); // 24 h old
+    expect(await expireStaleCardHolds(w.deps)).toMatchObject({ expired: 0, unresolved: 1 });
+    w.setNow('2026-11-03T13:01:00Z'); // 25 h old
+    expect(await expireStaleCardHolds(w.deps)).toMatchObject({ expired: 1, unresolved: 0 });
+    expect(w.state.appointments.find((a) => a.id === h.id)).toMatchObject({ status: 'cancelled', payment_status: 'none' });
+    expect(w.state.events.map((e) => e.kind)).toEqual(['hold_given_up']);
+  });
+
+  it('I4: stops starting holds once the shared budget is spent', async () => {
+    const w = world({ shop: cardShop });
+    for (let i = 0; i < 3; i++) await cardHold(w, `2026-11-03T1${5 + i}:00:00Z`, `555000000${i}`);
+    w.setNow('2026-11-02T12:40:00Z');
+    let t = 0;
+    (w.deps.payments as any).closeCheckoutSession = vi.fn(async () => { t += 10_000; return 'expired'; });
+    expect(await expireStaleCardHolds(w.deps, 50, { deadline: 15_000, clock: () => t })).toMatchObject({ expired: 2 });
   });
 });
 
@@ -110,9 +153,65 @@ describe('cancel refunds: refund_due_cents and retryPendingRefunds', () => {
     expect(await retryPendingRefunds(w.deps, Date.parse('2026-11-02T12:03:00Z'))).toEqual({ retried: 1, refunded: 1, failed: 0, stuck: 0 });
     expect(w.state.appointments[0]).toMatchObject({ refund_due_cents: 3000, amount_refunded_cents: 3000, payment_status: 'refunded' });
     const keys = w.payments.refundAppointment.mock.calls.map((c) => c[3]);
-    expect(keys).toEqual([{ idempotencyKey: `refund-cancel-${a.id}` }, { idempotencyKey: `refund-cancel-${a.id}` }]);
+    expect(keys).toEqual([{ idempotencyKey: `refund-cancel-${a.id}-3000-0` }, { idempotencyKey: `refund-cancel-${a.id}-3000-0` }]);
     expect(w.payments.refundAppointment.mock.calls.map((c) => c[2])).toEqual([3000, 3000]);
     expect(await retryPendingRefunds(w.deps, Date.parse('2026-11-02T12:10:00Z'))).toMatchObject({ retried: 0 }); // nothing left
+  });
+
+  it('review fix 5: a dashboard refund between the failed attempt and the retry: the retry has its own key (amount + refunded total)', async () => {
+    const w = world({ shop: cardShop });
+    const stripe = fakeStripe(w);
+    const a = await paidCardBooking(w);
+    stripe.mode.fail = true;
+    await customerCancel(w, a.manage_token);
+    stripe.mode.fail = false;
+    w.state.appointments[0].amount_refunded_cents = 1000; // charge.refunded booked a dashboard refund
+    w.setNow('2026-11-02T12:05:00Z');
+    await retryPendingRefunds(w.deps, Date.parse('2026-11-02T12:05:00Z'));
+    expect(w.payments.refundAppointment.mock.calls.map((c) => [c[2], c[3]!.idempotencyKey])).toEqual([
+      [3000, `refund-cancel-${a.id}-3000-0`], [2000, `refund-cancel-${a.id}-2000-1000`],
+    ]);
+    expect(w.state.appointments[0]).toMatchObject({ amount_refunded_cents: 3000, payment_status: 'refunded' });
+  });
+
+  it('review fix 13: after a definite Stripe 5xx the next attempt uses a new key suffix; a timeout keeps the same key', async () => {
+    const { StripeApiError } = await import('../../lib/bookings/payments.js');
+    const w = world({ shop: cardShop });
+    const a = await paidCardBooking(w);
+    const keys: string[] = [];
+    let n = 0;
+    w.payments.refundAppointment.mockImplementation(async (_s, _a, amount, opts) => {
+      keys.push(opts!.idempotencyKey!);
+      n++;
+      if (n === 1) throw new StripeApiError('api_error', 500);
+      if (n === 2) throw new Error('The operation was aborted due to timeout');
+      return { refundedCents: amount };
+    });
+    await customerCancel(w, a.manage_token);
+    for (const t of ['12:05', '12:10']) {
+      w.setNow(`2026-11-02T${t}:00Z`);
+      await retryPendingRefunds(w.deps, Date.parse(`2026-11-02T${t}:00Z`));
+    }
+    const base = `refund-cancel-${a.id}-3000-0`;
+    expect(keys).toEqual([base, `${base}-a1`, `${base}-a1`]);
+    expect(w.state.events.filter((e) => e.kind === 'refund_5xx')).toHaveLength(1);
+    expect(w.state.appointments[0]).toMatchObject({ amount_refunded_cents: 3000 });
+  });
+
+  it('fix 13 follow-up: a 5xx that actually refunded is found in Stripe\'s refunds before the new-suffix retry; nothing is refunded twice', async () => {
+    const { StripeApiError } = await import('../../lib/bookings/payments.js');
+    const w = world({ shop: cardShop });
+    const a = await paidCardBooking(w);
+    let onStripe = 0;
+    w.payments.refundAppointment.mockImplementation(async (_s, _a, amount) => { onStripe += amount; throw new StripeApiError('api_error', 500); });
+    (w.deps.payments as any).refundedOnStripe = vi.fn(async () => onStripe);
+    await customerCancel(w, a.manage_token);
+    expect(onStripe).toBe(3000);
+    w.setNow('2026-11-02T12:05:00Z');
+    expect(await retryPendingRefunds(w.deps, Date.parse('2026-11-02T12:05:00Z'))).toMatchObject({ refunded: 1, failed: 0 });
+    expect(w.payments.refundAppointment).toHaveBeenCalledTimes(1);
+    expect((w.deps.payments as any).refundedOnStripe).toHaveBeenCalledWith(expect.anything(), 'pi_1');
+    expect(w.state.appointments[0]).toMatchObject({ amount_refunded_cents: 3000, payment_status: 'refunded' });
   });
 
   it('no double refund when the first attempt went through at Stripe but the response was lost', async () => {
@@ -125,7 +224,7 @@ describe('cancel refunds: refund_due_cents and retryPendingRefunds', () => {
     stripe.mode.loseResponse = false;
     w.setNow('2026-11-02T12:05:00Z');
     await retryPendingRefunds(w.deps, Date.parse('2026-11-02T12:05:00Z'));
-    expect(stripe.refunds).toEqual(new Map([[`refund-cancel-${a.id}`, 3000]])); // one refund at Stripe
+    expect(stripe.refunds).toEqual(new Map([[`refund-cancel-${a.id}-3000-0`, 3000]])); // one refund at Stripe
     expect(w.state.appointments[0]).toMatchObject({ amount_refunded_cents: 3000, payment_status: 'refunded' });
   });
 

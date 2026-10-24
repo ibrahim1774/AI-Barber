@@ -91,7 +91,7 @@ describe('POST /api/shop/appointments/:id/cancel', () => {
     expect(r.status).toBe(200);
     expect((r.body as any).appointment).toMatchObject({ status: 'cancelled', cancelledBy: 'shop', amountRefundedCents: 1000, paymentStatus: 'refunded' });
     expect(w.payments.refundAppointment.mock.calls[0][2]).toBe(1000);
-    expect(w.payments.refundAppointment.mock.calls[0][3]).toEqual({ idempotencyKey: `refund-cancel-${a.id}` });
+    expect(w.payments.refundAppointment.mock.calls[0][3]).toEqual({ idempotencyKey: `refund-cancel-${a.id}-1000-0` });
     expect((await cancelOwnerAppointment(AUTH, a.id, w.deps)).status).toBe(200);
     expect(w.payments.refundAppointment).toHaveBeenCalledTimes(1);
     const ev = w.notified.find((e) => e.kind === 'booking_cancelled') as any;
@@ -415,7 +415,7 @@ describe('POST /api/shop/setup', () => {
       w.deps.writeLimiter = { allow: vi.fn(async () => false) };
       const r = await setup(w, { ...body, transactionId: '2000000555' });
       expect(r).toEqual({ status: 429, body: { error: 'rate-limited' }, headers: { 'Retry-After': '60' } });
-      expect(w.deps.writeLimiter.allow).toHaveBeenCalledWith(`user:${NEW_USER}`, 'write');
+      expect(w.deps.writeLimiter.allow).toHaveBeenCalledWith(NEW_USER, 'write') // the limiter's own 'user' scope;
       expect(w.deps.purchases!.verify).not.toHaveBeenCalled();
       expect(w.state.shops).toHaveLength(1);
     });

@@ -36,7 +36,7 @@ if (!argv.length || argv[0] === '--help' || argv[0] === '-h' || argv[0] === 'hel
   process.exit(argv.length ? 0 : 2);
 }
 
-const COMMANDS = ['find', 'show', 'set', 'replace', 'republish', 'republish-all', 'rollback'];
+const COMMANDS = ['find', 'show', 'set', 'replace', 'republish', 'republish-all', 'rollback', 'web-owner', 'set-web-owner'];
 if (!COMMANDS.includes(argv[0])) {
   console.error(USAGE);
   process.exit(2);

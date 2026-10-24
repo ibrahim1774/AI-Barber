@@ -1,5 +1,6 @@
 import { Storage } from '@google-cloud/storage';
 import { imageFilename, imageFolder, isImageContentType } from '../lib/uploadTarget.js';
+import { isPreconditionFailed } from '../lib/publishSite.js';
 
 // Unauthenticated image upload: POST { siteId, filename, base64 } -> { publicUrl }.
 // It writes `${siteId}/${filename}` in the bucket that also holds the server's own JSON, so
@@ -79,7 +80,7 @@ export default async function handler(req: any, res: any) {
         preconditionOpts: { ifGenerationMatch: 0 },
       });
     } catch (e: any) {
-      if (e?.code === 412) return res.status(409).json({ error: 'File already exists' });
+      if (isPreconditionFailed(e)) return res.status(409).json({ error: 'File already exists' });
       throw e;
     }
 

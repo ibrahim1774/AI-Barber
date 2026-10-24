@@ -3,7 +3,7 @@ import { isComDomain, normalizeLabel } from '../lib/ios/domainNames';
 
 export const DOMAIN_PRICE_LABEL = '$39/year';
 export const DOMAIN_DISCLOSURE =
-  "Registered by AI Barber for your site. If you ever leave, contact support@davoxa.com and we'll transfer it to you.";
+  "Registered by Prime Barber for your site. If you ever leave, contact support@davoxa.com and we'll transfer it to you.";
 export const DOMAIN_CANCEL_NOTE =
   'Cancelling stops next year\'s renewal. Your domain keeps working until the end of the year you already paid for, then your site goes back to its free address.';
 

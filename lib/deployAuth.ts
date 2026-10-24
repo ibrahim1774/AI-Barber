@@ -30,7 +30,10 @@
 //       a rename: the caller is the only account claiming the deployedUrl hint, and that hint
 //       is an existing project.
 //   NOTE: `sites` rows are user-writable under RLS, so a claim is not proof of ownership.
-//   A server-only owner table replaces this (see the hotfix report).
+//   The server-only owner list (013 site_owners, lib/siteOwners.ts) now decides first: a web
+//   site with an owner row is the owner's only (403 for anyone else; an unclaimed row is claimed
+//   by a confirmed, exactly matching checkout email). Only a site with no owner yet falls back
+//   to the `sites`-claim rule above.
 //
 // Every lookup fails closed (503): an outage must not turn into an unauthenticated deploy.
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
@@ -39,6 +42,8 @@ import { readPendingSite, slugify } from './publishSite.js';
 import { vercelProjectExists } from './ios/slug.js';
 import { supabasePurchases, type PurchaseRow } from './ios/purchases.js';
 import { withTimeout } from './ios/timeout.js';
+import { normEmail, supabaseSiteOwners, webOwnerDecision, type SiteOwnerStore } from './siteOwners.js';
+import { isPayFirstPlan } from './payFirst.js';
 
 export const CHECKOUT_PROOF_MAX_AGE_MS = 7 * 24 * 3600 * 1000;
 const LOOKUP_TIMEOUT_MS = 5000;
@@ -46,6 +51,8 @@ const LOOKUP_TIMEOUT_MS = 5000;
 export interface DeployUser {
   id: string;
   email: string | null;
+  /** auth.users.email_confirmed_at is set (owner-list email claims need it). */
+  emailConfirmed?: boolean;
 }
 
 export interface CheckoutProof {
@@ -61,6 +68,10 @@ export interface CheckoutProof {
   app: string | null;
   /** Unix seconds. */
   created: number;
+  /** customer_details.email, else customer_email: who paid (the owner list's checkout email). */
+  email?: string | null;
+  /** metadata.plan ('/custom-15' pay-first plans may name their real slug at the details step). */
+  plan?: string | null;
 }
 
 export interface DeployAuthDeps {
@@ -76,6 +87,8 @@ export interface DeployAuthDeps {
   storedStamp(slug: string): Promise<string | null>;
   /** Does a Vercel project with this name exist? Throws on an outage. */
   projectExists(slug: string): Promise<boolean>;
+  /** The web site owner list (013). Absent: the interim rule only. */
+  siteOwners?: SiteOwnerStore;
   now(): number;
   lookupTimeoutMs?: number;
 }
@@ -101,6 +114,15 @@ export interface DeployAuthResult {
   row?: PurchaseRow | null;
   actor?: DeployActor;
   userId?: string | null;
+  /** The signed-in caller, when there is one (the checkout deploy records the owner with it). */
+  user?: DeployUser | null;
+  /**
+   * Set for actor 'checkout': the session that authorised it, who paid, and whether the slug was
+   * NOT live before this deploy (no server stamp, no Vercel project; read before the deploy).
+   * Only a first publish records an owner: a checkout naming an already-live site must never
+   * hand it to whoever paid (they could claim it and lock the real owner out).
+   */
+  checkout?: { sessionId: string; email: string | null; firstPublish: boolean; renamedFrom?: string };
 }
 
 const VERCEL_APP = '.vercel.app';
@@ -199,14 +221,59 @@ export async function authorizeDeploy(input: DeployAuthInput, deps: DeployAuthDe
     const fresh = !!proof && deps.now() - proof.created * 1000 <= CHECKOUT_PROOF_MAX_AGE_MS;
     // Only a site checkout: a domain purchase (mode 'payment', no metadata.app, client-priced)
     // or any other app's session never counts.
-    if (
-      proof && proof.paid && proof.status === 'complete' && proof.mode === 'subscription' && fresh &&
-      proof.app === 'aibarber' &&
-      slugify(proof.siteId || '') === shopSlug
-    ) {
-      return { ok: true, target: shopSlug, row: null, actor: 'checkout', userId: user?.id ?? null };
+    const valid = !!proof && proof.paid && proof.status === 'complete' && proof.mode === 'subscription' && fresh && proof.app === 'aibarber';
+    const proofSlug = slugify(proof?.siteId || '');
+    // /custom-15 pay-first (re-review R1): the checkout names a unique placeholder slug, and the
+    // details step after payment picks the real one. That session may publish ONE brand-new slug.
+    const payFirstRename = valid && proofSlug !== shopSlug && isPayFirstPlan(proof!.plan);
+    if (valid && (proofSlug === shopSlug || payFirstRename)) {
+      let firstPublish = false;
+      try {
+        const [stamp, exists] = await withTimeout(Promise.all([deps.storedStamp(shopSlug), deps.projectExists(shopSlug)]), ms, 'first-publish check');
+        firstPublish = !stamp && !exists;
+      } catch (e: any) {
+        console.warn(`[Deploy Site] ${shopSlug}: first-publish check failed; no owner will be recorded:`, e?.message || e);
+      }
+      // Review fix round 1 (finding 2): a checkout is never proof against the owner list. With an
+      // owner row (claimed or not), only the session that created it still counts (the buyer's own
+      // /recover replay), or (R2) a checkout paid with the owner's email (re-checkout after a
+      // lapse); any other session falls through to the signed-in rules below.
+      const liveRename = 'pay-first rename to a slug that is already live';
+      let blocked: string | null = payFirstRename && !firstPublish && !deps.siteOwners ? liveRename : null;
+      if (deps.siteOwners && !blocked) {
+        try {
+          const row = await withTimeout(deps.siteOwners.get(shopSlug), ms, 'site owner lookup');
+          const paidAs = normEmail(proof!.email);
+          // N1: the email is the payer's own typing, so it only counts for a checkout opened AFTER
+          // the owner row existed (an older one could have been paid with the owner's public email).
+          const rowAt = row?.created_at ? Date.parse(row.created_at) : NaN;
+          const afterRow = Number.isNaN(rowAt) || proof!.created * 1000 > rowAt;
+          const ownersEmail = !!row && !!paidAs && afterRow && (paidAs === row.owner_email || paidAs === row.claim_email);
+          if (row && row.checkout_session_id !== sessionId && !ownersEmail) blocked = 'owned site; this checkout is not its owner\'s';
+          // A live slug is never a pay-first rename target, except the one this session already
+          // published (its owner row carries this session: the /recover replay).
+          if (!blocked && payFirstRename && !firstPublish && row?.checkout_session_id !== sessionId) blocked = liveRename;
+          if (!blocked && payFirstRename && deps.siteOwners.slugsForSession) {
+            // One site per pay-first purchase: the session may only ever bind its placeholder and this slug.
+            const bound = await withTimeout(deps.siteOwners.slugsForSession(sessionId), ms, 'session owner lookup');
+            if (bound.some((s) => s !== proofSlug && s !== shopSlug)) blocked = 'this pay-first checkout already published another site';
+          }
+        } catch (e: any) {
+          console.error(`[Deploy Site] ${shopSlug}: owner lookup failed (refusing):`, e?.message || e);
+          return unavailable;
+        }
+      }
+      if (!blocked) {
+        if (payFirstRename) console.log(`[Deploy Site] ${shopSlug}: pay-first site named at the details step (checkout placeholder ${proofSlug})`);
+        return {
+          ok: true, target: shopSlug, row: null, actor: 'checkout', userId: user?.id ?? null, user,
+          checkout: { sessionId, email: proof!.email ?? null, firstPublish, ...(payFirstRename ? { renamedFrom: proofSlug } : {}) },
+        };
+      }
+      console.warn(`[Deploy Site] ${shopSlug}: checkout ${sessionId} not accepted as proof (${blocked})`);
+    } else {
+      console.warn(`[Deploy Site] ${shopSlug}: checkout session does not authorise this slug`);
     }
-    console.warn(`[Deploy Site] ${shopSlug}: checkout session does not authorise this slug`);
   }
 
   if (user) return authorizeWebUser(shopSlug, label, user, deps, ms);
@@ -223,15 +290,27 @@ async function authorizeWebUser(
   deps: DeployAuthDeps,
   ms: number,
 ): Promise<DeployAuthResult> {
-  const ok: DeployAuthResult = { ok: true, target: shopSlug, row: null, actor: 'web-user', userId: user.id };
+  const ok: DeployAuthResult = { ok: true, target: shopSlug, row: null, actor: 'web-user', userId: user.id, user };
   try {
+    // The owner list first (013): an owned site is its owner's only; an unowned one (no row, or
+    // a row the caller can't claim) keeps the interim rule below.
+    if (deps.siteOwners) {
+      const verdict = await withTimeout(webOwnerDecision(shopSlug, user, deps.siteOwners, deps.now), ms, 'site owner lookup');
+      if (verdict === 'owner') return ok;
+      if (verdict === 'not-owner') {
+        console.warn(`[Deploy Site] ${shopSlug}: owned by another account (site_owners); refusing ${user.id}`);
+        return deny(403, 'not-authorized');
+      }
+    }
     const rawStamp = await withTimeout(deps.storedStamp(shopSlug), ms, 'stored copy read');
     const stamp = originOf(rawStamp);
     const urls = [`https://${shopSlug}.vercel.app`, ...(stamp ? [stamp] : [])];
     const claimants = await withTimeout(deps.webClaimants([...new Set(urls)]), ms, 'sites claim lookup');
     const mine = claimants.includes(user.id);
-    if (claimants.length > 0 && !mine) {
-      console.warn(`[Deploy Site] ${shopSlug}: claimed by another account; refusing ${user.id}`);
+    // Review fix round 1 (finding 11): `sites` rows are user-writable, so a co-claim is no proof.
+    // With no owner row yet, the caller must be the ONLY account claiming the URL.
+    if (claimants.length > 0 && !(mine && claimants.length === 1)) {
+      console.warn(`[Deploy Site] ${shopSlug}: ${mine ? 'also ' : ''}claimed by another account; refusing ${user.id}`);
       return deny(403, 'not-authorized');
     }
     // Published (the server stamped the stored copy): only an account that claims it.
@@ -324,6 +403,7 @@ export function liveDeployAuthDeps(): DeployAuthDeps {
     { auth: { persistSession: false, autoRefreshToken: false } },
   ));
   let repo: ReturnType<typeof supabasePurchases> | undefined;
+  let owners: SiteOwnerStore | undefined;
   return {
     async userOf(token) {
       const { data, error } = await db().auth.getUser(token);
@@ -333,7 +413,9 @@ export function liveDeployAuthDeps(): DeployAuthDeps {
         if (typeof status === 'number' && status >= 400 && status < 500) return null;
         throw new Error(`auth.getUser failed: ${error.message}`);
       }
-      return data?.user ? { id: data.user.id, email: data.user.email?.toLowerCase() ?? null } : null;
+      return data?.user
+        ? { id: data.user.id, email: data.user.email?.toLowerCase() ?? null, emailConfirmed: !!data.user.email_confirmed_at }
+        : null;
     },
     findBySlug: (slug) => (repo ??= supabasePurchases(db())).findBySlug(slug),
     async checkoutSession(sessionId) {
@@ -356,6 +438,9 @@ export function liveDeployAuthDeps(): DeployAuthDeps {
         siteId,
         app: typeof s?.metadata?.app === 'string' ? s.metadata.app : null,
         created: typeof s?.created === 'number' ? s.created : 0,
+        plan: typeof s?.metadata?.plan === 'string' ? s.metadata.plan : null,
+        email: (typeof s?.customer_details?.email === 'string' && s.customer_details.email) ||
+          (typeof s?.customer_email === 'string' && s.customer_email) || null,
       };
     },
     async webClaimants(urls) {
@@ -366,6 +451,7 @@ export function liveDeployAuthDeps(): DeployAuthDeps {
     },
     storedStamp: async (slug) => (await readPendingSite(slug))?.deployedUrl || null,
     projectExists: (slug) => vercelProjectExists(slug),
+    get siteOwners() { return (owners ??= supabaseSiteOwners(db())); },
     now: () => Date.now(),
   };
 }

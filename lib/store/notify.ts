@@ -92,7 +92,7 @@ const label = (m: string) => METHOD_LABEL[m as ManualMethod] ?? m;
 
 const orderNo = orderNoLabel;
 const customerLabel = (o: NotifyOrder) => o.customer_name?.trim() || 'A customer';
-const fromName = (shop: NotifyStoreShop) => `${shop.name} via AI Barber`;
+const fromName = (shop: NotifyStoreShop) => `${shop.name} via Prime Barber`;
 const orderData = (o: NotifyOrder) => ({ kind: 'order', orderId: o.id });
 const isHttps = (u: unknown): u is string => typeof u === 'string' && /^https:\/\/\S+$/i.test(u);
 

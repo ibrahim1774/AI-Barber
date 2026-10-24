@@ -14,7 +14,7 @@ const app = fs.readFileSync(path.join(process.cwd(), 'App.tsx'), 'utf8');
 describe('DomainManager (source checks)', () => {
   it('shows $39/year and the exact disclosure; never a monthly equivalent', () => {
     expect(DOMAIN_PRICE_LABEL).toBe('$39/year');
-    expect(DOMAIN_DISCLOSURE).toBe("Registered by AI Barber for your site. If you ever leave, contact support@davoxa.com and we'll transfer it to you.");
+    expect(DOMAIN_DISCLOSURE).toBe("Registered by Prime Barber for your site. If you ever leave, contact support@davoxa.com and we'll transfer it to you.");
     expect(src).toMatch(/DOMAIN_PRICE_LABEL/);
     expect(src).toMatch(/DOMAIN_DISCLOSURE/);
     expect(src + fs.readFileSync(path.join(process.cwd(), 'services/domainUi.ts'), 'utf8')).not.toMatch(/\/mo\b|per month|a month|monthly|\$3\.25/i);

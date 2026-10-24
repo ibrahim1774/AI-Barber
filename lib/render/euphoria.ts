@@ -11,9 +11,11 @@ import type { WebsiteData } from '../../types';
 import { safeHref } from './safeHref.js';
 import { bookStripHtml, isSiteBookLink, shopPreviewHtml, type SectionSkin } from './subpages.js';
 import {
-  contactEmail, copyrightYear, displayPrice, hasServices, photoAlt, serviceMeta, siteDescription, siteTitle,
-  withoutLegacyCopy,
+  contactEmail, copyrightYear, displayPhone, displayPrice, hasServices, nicheOf, photoAlt, serviceMeta, siteDescription, siteTitle, teamBookLink, teamOf, firstName, withoutLegacyCopy,
 } from './honest.js';
+import { t, type LabelKey } from './labels.js';
+import { hasFilePages } from './pages.js';
+import { HEADER_CSS, NAV_CSS, headerHtml, navItemsFor, navListHtml, type RenderCtx } from './shell.js';
 
 // Shared Euphoria CSS — scoped inside `.euphoria-root` so it can't leak into the Luxe flow.
 // Mirrors euphoria-build/styles.css custom properties + typography + section rhythm.
@@ -229,7 +231,7 @@ const EUPHORIA_SKIN: SectionSkin = {
     + '.ab-sp-price{color:var(--eu-brand)}',
 };
 
-export function generateEuphoriaHTMLWithPlaceholders(input: WebsiteData): string {
+export function generateEuphoriaHTMLWithPlaceholders(input: WebsiteData, ctx?: RenderCtx): string {
   // Older stored sites: drop the copy we invented for them (honest.ts).
   const siteData = withoutLegacyCopy(input);
   const bookingUrl = safeHref(siteData.bookingUrl);
@@ -245,6 +247,12 @@ export function generateEuphoriaHTMLWithPlaceholders(input: WebsiteData): string
   const canCall = /\d/.test(siteData.phone || '');
   // Nav "Book now": the booking link, else a call; neither → hidden.
   const navBookHref = bookingUrl ? escapeHtml(bookingUrl) : canCall ? `tel:${formattedPhone}` : '';
+  // Small visible text comes from the label registry (labels.ts); t() escapes.
+  const niche = nicheOf(siteData);
+  const L = (key: LabelKey) => t(siteData.labels, key, niche, siteData);
+  // A multi-page site (lib/render/site.ts passes its page set): the header carries the page menu.
+  // Without a page set, or with Home alone, this is the single-page site every web publish ships.
+  const menuSet = ctx?.pages && hasFilePages(ctx.pages) ? ctx.pages : null;
   const safeName = escapeHtml(siteData.shopName);
   const altAttr = escapeHtml(photoAlt(siteData));
   const showServices = hasServices(siteData);
@@ -262,8 +270,8 @@ export function generateEuphoriaHTMLWithPlaceholders(input: WebsiteData): string
     ? `<section class="eu-section" style="padding-top:64px;padding-bottom:96px;">
   <div class="eu-container">
     <div style="margin-bottom:48px;">
-      <div class="eu-eyebrow">Gallery</div>
-      <h2 class="eu-display" style="font-size:42px;margin-top:12px;">The look.</h2>
+      <div class="eu-eyebrow">${L('euGalleryEyebrow')}</div>
+      <h2 class="eu-display" style="font-size:42px;margin-top:12px;">${L('euGalleryHeading')}</h2>
     </div>
     <div class="eu-gallery-mosaic">
       ${galleryTiles.map((t, idx) => {
@@ -274,6 +282,35 @@ export function generateEuphoriaHTMLWithPlaceholders(input: WebsiteData): string
     </div>
   </div>
 </section>`
+    : '';
+
+  // Team (honest.ts teamOf: max 5 cards, the stored staff[] is never cut). Book button rules: teamBookLink.
+  const team = teamOf(siteData);
+  const bookingLive = isSiteBookLink(siteData.bookingUrl);
+  const teamMarkup = team.length > 0
+    ? `<!-- Team -->
+  <section id="team" class="eu-section" style="padding-top:64px;padding-bottom:96px;">
+  <style>.ab-team-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:24px}.ab-team-card{display:flex;flex-direction:column;gap:8px}.ab-team-photo{width:100%;aspect-ratio:4/5;object-fit:cover;background:var(--eu-bg-3);display:flex;align-items:center;justify-content:center;font-size:2.4rem;color:var(--eu-brand)}.ab-team-bio{margin:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.ab-team-chips{display:flex;flex-wrap:wrap;gap:6px}.ab-team-chip{font-size:10px;letter-spacing:.12em;text-transform:uppercase;border:1px solid var(--eu-line-soft);padding:3px 8px;color:var(--eu-ink-soft)}</style>
+  <div class="eu-container">
+    <div style="margin-bottom:48px;">
+      <div class="eu-eyebrow">${L('euTeamEyebrow')}</div>
+      <h2 class="eu-display" style="font-size:42px;margin-top:12px;">${L('euTeamHeading')}</h2>
+    </div>
+    <div class="ab-team-grid">
+      ${team.map((m) => {
+        const link = teamBookLink(siteData, m, bookingLive);
+        return `<div class="ab-team-card" id="team-${escapeHtml(m.slug)}">
+        ${m.photo ? `<img class="ab-team-photo" src="{{staff${m.index}}}" alt="${escapeHtml(m.name)}">` : `<div class="ab-team-photo" aria-hidden="true">${escapeHtml(Array.from(m.name)[0].toUpperCase())}</div>`}
+        <h3 class="eu-serif" style="font-size:22px;margin:8px 0 0;">${escapeHtml(m.name)}</h3>
+        ${m.role ? `<div class="eu-eyebrow">${escapeHtml(m.role)}</div>` : ''}
+        ${m.bio ? `<p class="eu-serif ab-team-bio" style="color:var(--eu-ink-soft);font-size:16px;line-height:1.5;">${escapeHtml(m.bio)}</p>` : ''}
+        ${m.serviceNames ? `<div class="ab-team-chips">${m.serviceNames.map((n) => `<span class="ab-team-chip">${escapeHtml(n)}</span>`).join('')}</div>` : ''}
+        ${link ? `<a href="${escapeHtml(link.href)}"${link.newTab ? ' target="_blank" rel="noopener noreferrer"' : ''} class="eu-cta" style="margin-top:8px;justify-content:center;">${link.kind === 'member' ? `${L('teamBookWith')} ${escapeHtml(firstName(m.name))}` : L('euNavBook')}</a>` : ''}
+      </div>`;
+      }).join('')}
+    </div>
+  </div>
+  </section>`
     : '';
 
   const aboutImageMarkup = siteData.about.imageUrl
@@ -288,8 +325,8 @@ export function generateEuphoriaHTMLWithPlaceholders(input: WebsiteData): string
   <section id="services" class="eu-section" style="background:var(--eu-bg-2);">
     <div class="eu-container">
       <div style="margin-bottom:48px;text-align:center;">
-        <div class="eu-eyebrow">Services</div>
-        <h2 class="eu-display" style="font-size:clamp(32px,5vw,56px);margin-top:16px;">What we offer.</h2>
+        <div class="eu-eyebrow">${L('euServicesEyebrow')}</div>
+        <h2 class="eu-display" style="font-size:clamp(32px,5vw,56px);margin-top:16px;">${L('euServicesHeading')}</h2>
       </div>
       <div class="eu-services-list">
         ${services.map((s, i) => {
@@ -340,20 +377,20 @@ export function generateEuphoriaHTMLWithPlaceholders(input: WebsiteData): string
     body { margin: 0; padding: 0; background: #000; color: #f0ece4; font-family: 'Inter', system-ui, sans-serif; }
     a { color: inherit; }
     img { max-width: 100%; height: auto; }
-${EUPHORIA_SCOPED_CSS}
+${EUPHORIA_SCOPED_CSS}${menuSet ? HEADER_CSS.euphoria + NAV_CSS.euphoria : ''}
   </style>
 </head>
 <body>
 <div class="euphoria-root"${rootStyle ? ` style="${rootStyle}"` : ''}>
 
   <!-- Nav -->
-  <nav style="position:sticky;top:0;z-index:50;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--eu-line-soft);">
-    <div class="eu-container" style="display:flex;align-items:center;justify-content:space-between;padding:18px 24px;">
-      <a href="#top" style="text-decoration:none;color:var(--eu-ink);font-family:'Newsreader',serif;font-size:20px;letter-spacing:0.04em;">${safeName}</a>${shopUrl ? `
-      <a href="${escapeHtml(shopUrl)}" style="text-decoration:none;color:var(--eu-ink-soft);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;">Shop</a>` : ''}
-      ${navBookHref ? `<a href="${navBookHref}"${bookTarget} class="eu-cta" style="padding:10px 18px;font-size:10px;">Book now</a>` : ''}
+  ${menuSet ? headerHtml('euphoria', { name: siteData.shopName, cta: bookingUrl || canCall ? { href: bookingUrl || `tel:${(siteData.phone || '').replace(/\s+/g, '')}`, label: L('euNavBook'), newTab: bookTarget !== '' } : null, nav: navListHtml(navItemsFor('euphoria', menuSet, siteData, 'home'), L('pgMenu')) }) : `<nav style="position:sticky;top:0;z-index:50;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--eu-line-soft);">
+    <div class="eu-container" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 24px;">
+      <a href="#top" style="text-decoration:none;color:var(--eu-ink);font-family:'Newsreader',serif;font-size:20px;letter-spacing:0.04em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${safeName}</a>${shopUrl ? `
+      <a href="${escapeHtml(shopUrl)}" style="text-decoration:none;color:var(--eu-ink-soft);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;flex-shrink:0;white-space:nowrap;">${L('euNavShop')}</a>` : ''}
+      ${navBookHref ? `<a href="${navBookHref}"${bookTarget} class="eu-cta" style="padding:10px 18px;font-size:10px;flex-shrink:0;white-space:nowrap;">${L('euNavBook')}</a>` : ''}
     </div>
-  </nav>
+  </nav>`}
 
   <!-- Hero -->
   <section id="top" style="position:relative;min-height:80vh;display:flex;align-items:center;justify-content:center;overflow:hidden;">
@@ -368,9 +405,9 @@ ${EUPHORIA_SCOPED_CSS}
         ${escapeHtml(siteData.hero.tagline)}
       </p>
       <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;">
-        ${canCall ? `<a href="tel:${formattedPhone}" class="eu-cta eu-cta-solid">Call ${escapeHtml(siteData.phone)}</a>` : ''}
-        ${bookingUrl ? `<a href="${escapeHtml(bookingUrl)}"${bookTarget} class="eu-cta eu-cta-solid">Book Appointment</a>` : ''}
-        ${showServices ? `<a href="#services" class="eu-cta">View services</a>` : ''}
+        ${canCall ? `<a href="tel:${formattedPhone}" class="eu-cta eu-cta-solid">${L('euCall')} ${escapeHtml(displayPhone(siteData.phone))}</a>` : ''}
+        ${bookingUrl ? `<a href="${escapeHtml(bookingUrl)}"${bookTarget} class="eu-cta eu-cta-solid">${L('euBookButton')}</a>` : ''}
+        ${showServices ? `<a href="#services" class="eu-cta">${L('euViewServices')}</a>` : ''}
       </div>
     </div>
   </section>
@@ -379,7 +416,7 @@ ${EUPHORIA_SCOPED_CSS}
   <section class="eu-section">
     <div class="eu-container" style="display:grid;grid-template-columns:${siteData.about.imageUrl ? '1fr 1fr' : '1fr'};gap:64px;align-items:center;">
       <div>
-        <div class="eu-eyebrow" style="margin-bottom:16px;">About</div>
+        <div class="eu-eyebrow" style="margin-bottom:16px;">${L('euAboutEyebrow')}</div>
         <h2 class="eu-display" style="font-size:clamp(32px,5vw,56px);margin:0 0 32px;">${escapeHtml(siteData.about.heading)}</h2>
         ${siteData.about.description.map(p => `<p class="eu-serif" style="font-size:18px;line-height:1.6;color:var(--eu-ink-soft);margin:0 0 20px;">${escapeHtml(p)}</p>`).join('')}
       </div>
@@ -389,20 +426,20 @@ ${EUPHORIA_SCOPED_CSS}
 
   ${servicesMarkup}${bookStrip}
 
-  ${galleryMarkup}${shopPreview}
+  ${galleryMarkup}${teamMarkup}${shopPreview}
 
   <!-- Visit -->
   <section class="eu-section" style="background:var(--eu-bg-2);">
     <div class="eu-container" style="display:grid;grid-template-columns:1fr 1fr;gap:64px;">
       <div>
-        <div class="eu-eyebrow" style="margin-bottom:16px;">Visit</div>
-        <h2 class="eu-display" style="font-size:clamp(28px,4vw,44px);margin:0 0 32px;">Come in.</h2>
+        <div class="eu-eyebrow" style="margin-bottom:16px;">${L('euVisitEyebrow')}</div>
+        <h2 class="eu-display" style="font-size:clamp(28px,4vw,44px);margin:0 0 32px;">${L('euVisitHeading')}</h2>
         <div style="display:grid;gap:24px;color:var(--eu-ink-soft);font-size:16px;line-height:1.6;">
-          ${siteData.contact.address ? `<div><div style="color:var(--eu-ink-muted);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;margin-bottom:6px;">Location</div>${escapeHtml(siteData.contact.address)}</div>` : ''}
-          ${hasPhone ? `<div><div style="color:var(--eu-ink-muted);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;margin-bottom:6px;">Phone</div>${canCall ? `<a href="tel:${formattedPhone}" style="color:var(--eu-ink);text-decoration:none;">${escapeHtml(siteData.phone)}</a>` : escapeHtml(siteData.phone)}</div>` : ''}
-          ${email ? `<div><div style="color:var(--eu-ink-muted);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;margin-bottom:6px;">Email</div><a href="mailto:${escapeHtml(email)}" style="color:var(--eu-ink);text-decoration:none;">${escapeHtml(email)}</a></div>` : ''}
-          ${bookingUrl ? `<div style="margin-top:16px;"><a href="${escapeHtml(bookingUrl)}"${bookTarget} class="eu-cta eu-cta-solid">Book Appointment</a></div>` : ''}${shopUrl ? `
-          <div style="margin-top:16px;"><a href="${escapeHtml(shopUrl)}" class="eu-cta">Shop online</a></div>` : ''}
+          ${siteData.contact.address ? `<div><div style="color:var(--eu-ink-muted);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;margin-bottom:6px;">${L('euLocationLabel')}</div>${escapeHtml(siteData.contact.address)}</div>` : ''}
+          ${hasPhone ? `<div><div style="color:var(--eu-ink-muted);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;margin-bottom:6px;">${L('euPhoneLabel')}</div>${canCall ? `<a href="tel:${formattedPhone}" style="color:var(--eu-ink);text-decoration:none;">${escapeHtml(displayPhone(siteData.phone))}</a>` : escapeHtml(displayPhone(siteData.phone))}</div>` : ''}
+          ${email ? `<div><div style="color:var(--eu-ink-muted);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;margin-bottom:6px;">${L('euEmailLabel')}</div><a href="mailto:${escapeHtml(email)}" style="color:var(--eu-ink);text-decoration:none;">${escapeHtml(email)}</a></div>` : ''}
+          ${bookingUrl ? `<div style="margin-top:16px;"><a href="${escapeHtml(bookingUrl)}"${bookTarget} class="eu-cta eu-cta-solid">${L('euBookButton')}</a></div>` : ''}${shopUrl ? `
+          <div style="margin-top:16px;"><a href="${escapeHtml(shopUrl)}" class="eu-cta">${L('euShopButton')}</a></div>` : ''}
         </div>
       </div>
       <div>
@@ -419,7 +456,7 @@ ${EUPHORIA_SCOPED_CSS}
   <footer style="padding:48px 24px;border-top:1px solid var(--eu-line-soft);text-align:center;">
     <div class="eu-container">
       <div class="eu-serif" style="font-size:18px;color:var(--eu-ink);margin-bottom:8px;">${safeName}</div>
-      <div class="eu-eyebrow">© ${copyrightYear()} · Built by AIBarber</div>
+      <div class="eu-eyebrow">© ${copyrightYear()} · Built by Prime Barber</div>
     </div>
   </footer>
 

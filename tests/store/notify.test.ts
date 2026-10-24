@@ -56,7 +56,7 @@ describe('notifyOrder: order_created', () => {
     expect(d.sendEmail).toHaveBeenCalledTimes(1);
     const m = d.sendEmail.mock.calls[0][0];
     expect(m.to).toBe('sam@example.com');
-    expect(m.fromName).toBe('Fade Factory via AI Barber');
+    expect(m.fromName).toBe('Fade Factory via Prime Barber');
     expect(m.replyTo).toBe('owner@example.com');
     expect(m.subject).toBe('Order #1001 at Fade Factory');
     expect(m.html).toContain('2 × Beard oil');

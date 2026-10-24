@@ -16,6 +16,8 @@ export interface PurchaseRow {
    * by a transaction purchased at or after this; null on rows from before 010.
    */
   product_purchased_at?: string | null;
+  /** 014: set when a downgrade left Book/Shop links the plan no longer covers (the sweep strips them). */
+  links_due_at?: string | null;
 }
 
 export interface PurchasesRepo {
@@ -30,6 +32,11 @@ export interface PurchasesRepo {
   slugTaken(slug: string): Promise<boolean>;
   markPublished(otid: string): Promise<void>;
   setUser(otid: string, userId: string): Promise<void>;
+  /**
+   * Link the purchase to this account only while it has none (conditional in SQL): never
+   * re-points an existing owner. True when this call linked it. Optional for older fakes.
+   */
+  setUserIfUnlinked?(otid: string, userId: string): Promise<boolean>;
   applyNotification(n: {
     otid: string; productId: string; environment: IosEnv; expiresAt: number | null; revokedAt: number | null; type: string;
     /** REFUND_REVERSED: set revoked_at = null (wins over revokedAt). */
@@ -55,6 +62,12 @@ export interface PurchasesRepo {
   markLapseChecked(otid: string, at: number): Promise<void>;
   /** The purchase bound to this slug, if any. */
   findBySlug(slug: string): Promise<PurchaseRow | null>;
+  /** 014 (M1): stamp links_due_at (the product stopped covering Book/Shop links). Optional for older fakes. */
+  markLinksDue?(otid: string, at: number): Promise<void>;
+  /** 014 (M1): bound, published, live rows with links_due_at set, oldest first. */
+  linksDue?(limit: number): Promise<PurchaseRow[]>;
+  /** 014 (M1): clear links_due_at only if it is still `dueAt` (a newer downgrade keeps its stamp). */
+  clearLinksDue?(otid: string, dueAt: string): Promise<void>;
 }
 
 const TABLE = 'ios_purchases';
@@ -192,6 +205,33 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
     async setUser(otid, userId) {
       const { error } = await db().from(TABLE).update({ user_id: userId }).eq('original_transaction_id', otid);
       if (error) fail('setUser', error);
+    },
+
+    async setUserIfUnlinked(otid, userId) {
+      const { data, error } = await db().from(TABLE).update({ user_id: userId })
+        .eq('original_transaction_id', otid).is('user_id', null).select('original_transaction_id');
+      if (error) fail('setUserIfUnlinked', error);
+      return Array.isArray(data) && data.length > 0;
+    },
+
+    async markLinksDue(otid, at) {
+      const { error } = await db().from(TABLE).update({ links_due_at: iso(at) }).eq('original_transaction_id', otid);
+      if (error) fail('markLinksDue', error);
+    },
+
+    async linksDue(limit) {
+      const { data, error } = await db().from(TABLE).select('*')
+        .not('links_due_at', 'is', null).not('site_slug', 'is', null).not('published_at', 'is', null)
+        .is('taken_down_at', null).is('revoked_at', null)
+        .order('links_due_at', { ascending: true }).limit(limit);
+      if (error) fail('linksDue', error);
+      return (data as PurchaseRow[]) ?? [];
+    },
+
+    async clearLinksDue(otid, dueAt) {
+      const { error } = await db().from(TABLE).update({ links_due_at: null })
+        .eq('original_transaction_id', otid).eq('links_due_at', dueAt);
+      if (error) fail('clearLinksDue', error);
     },
 
     async applyNotification(n) {

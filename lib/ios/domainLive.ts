@@ -225,6 +225,6 @@ export async function runDomainSweep(deadline: number): Promise<DomainSweepSumma
 /** An email to support (domain refunds / refusals): domain, site and amount only, no customer PII. */
 export async function notifySupportEmail(subject: string, text: string): Promise<void> {
   const esc = (v: string) => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const r = await sendEmail({ to: 'support@davoxa.com', subject, text, html: `<pre>${esc(text)}</pre>`, fromName: 'AI Barber domains' });
+  const r = await sendEmail({ to: 'support@davoxa.com', subject, text, html: `<pre>${esc(text)}</pre>`, fromName: 'Prime Barber domains' });
   if (r === 'failed') console.error(`[domains/web] support email failed: ${subject}`);
 }

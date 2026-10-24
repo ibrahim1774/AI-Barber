@@ -27,6 +27,7 @@ import {
   type FlowDeps,
   type FlowResult,
 } from './core.js';
+import { entitlementActive } from '../ios/lapse.js';
 import { chooseShopSlug, vercelLabel } from './slug.js';
 import type { RateLimiter } from './rateLimit.js';
 import type { AppointmentRow, MemberRow, NewAppointment, NewService, PaymentStatus, ShopRow } from './repo.js';
@@ -145,7 +146,7 @@ export async function setupShop(authorization: string | string[] | undefined, bo
     if (deps.writeLimiter) {
       let allowed = true;
       try {
-        allowed = await deps.writeLimiter.allow(`user:${user.id}`, 'write');
+        allowed = await deps.writeLimiter.allow(user.id, 'write'); // the 'user' scope
       } catch (e: any) {
         console.error('[shop/setup] rate limiter failed, allowing:', e?.message || e); // fail open
       }
@@ -473,4 +474,75 @@ export async function registerPushToken(authorization: string | string[] | undef
   if (body.platform !== 'ios') return invalid('platform');
   await deps.repo.upsertPushToken(a.user.id, body.expoToken, 'ios');
   return ok({});
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/shop/members  { name, title?, photo?, bio?, bookingUrl? }
+// Adds a barber. The only add path once migration 016 revokes direct INSERT: the cap is
+// enforced in the database (ab_add_member locks the shop row and counts active members).
+// Limit by plan: Store 5, Bookings 2 (owner included), else 403 members-need-bookings (also
+// with no linked purchase). The shop id comes only from requireOwner. Limits gate adding
+// only: nothing here (or anywhere) deactivates an existing member.
+// ---------------------------------------------------------------------------
+export const MEMBER_LIMITS = { store: 5, bookings: 2 } as const;
+
+/**
+ * An absolute http(s) URL of at most `max` chars, trimmed (null when absent/empty). undefined
+ * when invalid: not a string, a non-http(s) scheme (javascript:, data:, ...), relative,
+ * protocol-relative, no host, or containing whitespace/control characters.
+ */
+export function httpUrl(v: unknown, max: number): string | null | undefined {
+  if (v == null || v === '') return null;
+  if (typeof v !== 'string') return undefined;
+  const t = v.trim();
+  if (!t) return null;
+  if (t.length > max || /[\u0000-\u0020\u007F-\u009F]/.test(t)) return undefined;
+  if (!/^https?:\/\/[^/?#]+/i.test(t)) return undefined;
+  try {
+    const u = new URL(t);
+    return (u.protocol === 'http:' || u.protocol === 'https:') && u.hostname ? t : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export async function addTeamMember(authorization: string | string[] | undefined, body: Body, deps: OwnerDeps): Promise<FlowResult> {
+  const o = await requireOwner(authorization, deps.getUser, deps.repo);
+  if (o.ok === false) return { status: o.status, body: o.body };
+  const { shop, user } = o;
+  // Same gate as the bookings flows: the linked purchase is live and its product grants the tier.
+  const purchase = shop.ios_otid ? await deps.repo.purchase(shop.ios_otid) : null;
+  const limit = entitlementActive(purchase, 'store') ? MEMBER_LIMITS.store : entitlementActive(purchase, 'bookings') ? MEMBER_LIMITS.bookings : 0;
+  if (!limit) return err(403, 'members-need-bookings');
+
+  if (!isObj(body)) return invalid('body');
+  const name = text(body.name, 80);
+  if (!name) return invalid('name');
+  const title = text(body.title, 80, true);
+  if (title === undefined) return invalid('title');
+  const bio = text(body.bio, 600, true);
+  if (bio === undefined) return invalid('bio');
+  const photo = httpUrl(body.photo, 2048);
+  if (photo === undefined) return invalid('photo');
+  const bookingUrl = httpUrl(body.bookingUrl, 2048);
+  if (bookingUrl === undefined) return invalid('bookingUrl');
+
+  const r = await deps.repo.addMember({
+    shop_id: shop.id, owner_id: user.id, limit,
+    display_name: name, title, photo_url: photo, bio, booking_url: bookingUrl,
+  });
+  if (r.ok === false) {
+    if (r.reason === 'member-limit') return err(409, 'member-limit', { limit });
+    if (r.reason === 'unavailable') return err(503, 'members-unavailable');
+    if (r.reason === 'invalid') return invalid('member');
+    return err(404, 'no-shop'); // not-owner: cannot happen with a shop from requireOwner
+  }
+  const m = r.row;
+  return ok({
+    member: {
+      id: m.id, name: m.display_name, title: m.title, photo: m.photo_url, bio: m.bio,
+      bookingUrl: m.booking_url, role: m.role, sort: m.sort, active: m.active,
+    },
+    limit,
+  });
 }

@@ -13,7 +13,8 @@ const { unpublishedBound, restoreCandidates, takedownCandidates, markTakenDown, 
   appleVerify: vi.fn(),
   findShopForSite: vi.fn(async (_s: string): Promise<any> => null),
 }));
-vi.mock('../../lib/publishSite.js', () => ({ publishSite, writePendingSite, readPendingSite }));
+// The real compare-and-set helper over these fakes (no generations: unconditional writes).
+vi.mock('../../lib/publishSite.js', async (orig) => ({ ...(await orig<object>()), publishSite, writePendingSite, readPendingSite, readPendingVersioned: undefined }));
 vi.mock('../../lib/deploySite.js', () => ({ deployRenderedSite }));
 vi.mock('../../lib/siteSubpages.js', async (orig) => ({ ...(await orig<object>()), findShopForSite }));
 vi.mock('../../lib/ios/appleVerify.js', async (orig) => ({ ...(await orig<object>()), lazyDefaultVerifier: () => appleVerify }));
@@ -31,7 +32,7 @@ const mkRes = () => { const res: any = { status: vi.fn().mockReturnThis(), json:
 const cron = { headers: { 'user-agent': 'vercel-cron/1.0' } };
 const empty = {
   skippedLapsed: [], restored: [], restoreFailed: [], notRestored: [], takenDown: [], takedownFailed: [], takedownUncertain: [],
-  stillActive: [], sandboxGatesClosed: [], appleUnavailable: [], appleUnresolvable: [], appleUnavailableCount: 0, appleUnresolvableCount: 0,
+  stillActive: [], sandboxGatesClosed: [], appleUnavailable: [], appleUnresolvable: [], appleUnavailableCount: 0, appleUnresolvableCount: 0, linksStripped: [], linksFailed: [],
 };
 const appleSays = (status: number) => async (otid: string) => ({
   originalTransactionId: otid, transactionId: 't', productId: 'p', environment: 'Production', expiresAt: 0, revoked: status === 5, status,

@@ -14,6 +14,7 @@
 // short-circuits on anything already serving, so a quiet sweep is a handful of
 // HEAD-ish requests and no deploys.
 import { publishSite } from '../lib/publishSite.js';
+import { recordServerFirstPublishOwner, supabaseSiteOwners } from '../lib/siteOwners.js';
 import { authorized } from '../lib/cronAuth.js';
 
 export const config = { maxDuration: 300 };
@@ -67,7 +68,7 @@ export default async function handler(req: any, res: any) {
         }
 
         // The plan holds a /custom-15 pay-first site until its details are in.
-        const outcome = await publishSite(siteId, { plan: s.metadata?.plan || null });
+        const outcome = await publishSite(siteId, { plan: s.metadata?.plan || null, sessionId: typeof s.id === 'string' ? s.id : null, siteOwners: supabaseSiteOwners() });
         if (!outcome.ok) {
           if (outcome.reason === 'deploy-failed') {
             failed.push({ siteId: outcome.siteId, error: outcome.error });
@@ -82,6 +83,9 @@ export default async function handler(req: any, res: any) {
           publishes++;
           repaired.push({ siteId: outcome.siteId, url: outcome.deployedUrl });
           console.log(`[Sweeper] REPAIRED ${outcome.siteId} -> ${outcome.deployedUrl}`);
+          // First publish by the server (the buyer's tab died): record the owner as the browser
+          // path would have (pending claim by the checkout email; a pay-first move's target slug).
+          await recordServerFirstPublishOwner(outcome, s, supabaseSiteOwners());
         }
       }
 

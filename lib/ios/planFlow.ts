@@ -7,7 +7,7 @@
 import { authenticate, liveGetUser, type GetUser } from '../bookings/auth.js';
 import { isObj, type FlowResult } from '../bookings/core.js';
 import { serviceClient, supabaseBookingRepo, type ShopRow } from '../bookings/repo.js';
-import { publicLimiter, type RateLimiter } from '../bookings/rateLimit.js';
+import { userLimiter, type RateLimiter } from '../bookings/rateLimit.js';
 import { VerifyFailure, isActive, lazyDefaultVerifier, type VerifiedTx } from './appleVerify.js';
 import { entitlementActive, purchaseLive } from './lapse.js';
 import { supabasePurchases, type PurchaseRow } from './purchases.js';
@@ -36,6 +36,8 @@ export interface PlanDeps {
   setShopOtid(shopId: string, otid: string): Promise<'ok' | 'taken'>;
   setUser(otid: string, userId: string): Promise<void>;
   now?(): number;
+  /** Is migration 015 (member title / booking_url, ab_add_member) applied? Adds `capabilities.memberProfile` to GET when present. */
+  memberProfileLive?(): Promise<boolean>;
   /** Per-user write limit on POST (each call costs App Store Server API requests). Absent = none. */
   limiter?: Pick<RateLimiter, 'allow'>;
 }
@@ -92,7 +94,11 @@ export async function getPlan(auth: Auth, deps: PlanDeps): Promise<FlowResult> {
   const o = await owner(auth, deps);
   if (o.result) return o.result;
   const row = o.shop.ios_otid ? await deps.purchase(o.shop.ios_otid) : null;
-  return { status: 200, body: planView(o.shop, row, (deps.now ?? Date.now)()) };
+  const view = planView(o.shop, row, (deps.now ?? Date.now)());
+  if (!deps.memberProfileLive) return { status: 200, body: view };
+  // A failed probe reads as "not live": the app then keeps website-only fields in site JSON.
+  const memberProfile = await deps.memberProfileLive().catch(() => false);
+  return { status: 200, body: { ...view, capabilities: { memberProfile } } };
 }
 
 /**
@@ -115,7 +121,7 @@ export async function refreshPlan(auth: Auth, body: unknown, deps: PlanDeps): Pr
   if (deps.limiter) {
     let allowed = true;
     try {
-      allowed = await deps.limiter.allow(`user:${user.id}`, 'write');
+      allowed = await deps.limiter.allow(user.id, 'write'); // the 'user' scope
     } catch (e: any) {
       console.error('[shop/plan] rate limiter failed, allowing:', e?.message || e); // fail open
     }
@@ -174,6 +180,7 @@ export function livePlanDeps(): PlanDeps {
     setShopOtid: (id, otid) => shops.setShopOtid(id, otid),
     setUser: (otid, uid) => purchases.setUser(otid, uid),
     now: Date.now,
-    limiter: publicLimiter,
+    memberProfileLive: () => shops.memberProfileLive(),
+    limiter: userLimiter,
   };
 }

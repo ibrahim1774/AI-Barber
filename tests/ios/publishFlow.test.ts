@@ -25,10 +25,12 @@ function site(over: Partial<WebsiteData> = {}): WebsiteData {
     phone: '555-0100',
     hero: { heading: 'H', tagline: 'T', imageUrl: 'https://img.example/hero.jpg' },
     about: { heading: 'A', description: ['d'], imageUrl: '' },
-    services: [{ name: 'Fade', price: '$30', imageUrl: 'https://img.example/svc.jpg' } as any],
+    services: [{ title: 'Fade', name: 'Fade', price: '$30', imageUrl: 'https://img.example/svc.jpg' } as any],
     gallery: ['https://img.example/g0.jpg', '', 'http://img.example/g2.jpg'],
     craftImages: ['https://img.example/c0.jpg'],
     staff: [{ name: 'Sam', photo: 'https://img.example/s0.jpg' }, { name: 'Lee', photo: '' }],
+    // Renderable (the publish dry-renders before storing, e2e I3).
+    contact: { address: '1 Main St', email: 'a@b.co' },
     ...over,
   } as WebsiteData;
 }
@@ -326,28 +328,53 @@ describe('runIosPublish', () => {
     expect(deps.verify).not.toHaveBeenCalled();
   });
 
-  it('userId given → setUser called with the row\'s otid', async () => {
-    const { deps, repo } = fakes();
-    await runIosPublish(input({ userId: USER }), deps);
-    expect(repo.setUser).toHaveBeenCalledTimes(1);
-    expect(repo.setUser).toHaveBeenCalledWith(OTID, USER);
-  });
+  // e2e I6: only a verified Supabase bearer links the purchase, and only while it is unlinked.
+  const OTHER = '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d';
+  const withAuth = (f: ReturnType<typeof fakes>) => {
+    f.deps.userOf = vi.fn(async (t: string) => (t === 'tok-user' ? { id: USER } : t === 'tok-other' ? { id: OTHER } : null));
+    f.repo.setUserIfUnlinked = vi.fn(async (otid: string, uid: string) => {
+      const r = f.rows.get(otid)!;
+      if (r.user_id) return false;
+      r.user_id = uid;
+      return true;
+    });
+    return f;
+  };
 
-  it('no userId → setUser not called', async () => {
-    const { deps, repo } = fakes();
-    await runIosPublish(input({ userId: null }), deps);
-    expect(repo.setUser).not.toHaveBeenCalled();
-  });
-
-  it('a malformed userId is ignored and a failing setUser does not block publishing', async () => {
-    const a = fakes();
-    await runIosPublish(input({ userId: 'not-a-uuid' }), a.deps);
-    expect(a.repo.setUser).not.toHaveBeenCalled();
-
-    const b = fakes();
-    (b.repo.setUser as any).mockRejectedValueOnce(new Error('fk violation'));
-    const r = await runIosPublish(input({ userId: USER }), b.deps);
+  it('a body userId alone never links (or re-points) the purchase', async () => {
+    const f = withAuth(fakes());
+    const r = await runIosPublish(input({ userId: USER }), f.deps);
     expect(r.status).toBe(200);
+    expect(f.repo.setUser).not.toHaveBeenCalled();
+    expect(f.repo.setUserIfUnlinked).not.toHaveBeenCalled();
+    expect(f.rows.get(OTID)!.user_id).toBeNull();
+  });
+
+  it('a verified bearer links an unlinked purchase to that account (body userId ignored)', async () => {
+    const f = withAuth(fakes());
+    await runIosPublish(input({ userId: OTHER }), f.deps, { authorization: 'Bearer tok-user' });
+    expect(f.repo.setUserIfUnlinked).toHaveBeenCalledWith(OTID, USER);
+    expect(f.rows.get(OTID)!.user_id).toBe(USER);
+  });
+
+  it('a verified bearer of another account never re-points a linked purchase', async () => {
+    const f = withAuth(fakes({ existing: row({ user_id: USER }) }));
+    const r = await runIosPublish(input(), f.deps, { authorization: 'Bearer tok-other' });
+    expect(r.status).toBe(200);
+    expect(f.rows.get(OTID)!.user_id).toBe(USER);
+    expect(f.repo.setUser).not.toHaveBeenCalled();
+  });
+
+  it('an invalid token, or a failing auth lookup or link, never blocks publishing', async () => {
+    const a = withAuth(fakes());
+    expect((await runIosPublish(input(), a.deps, { authorization: 'Bearer nope' })).status).toBe(200);
+    expect(a.rows.get(OTID)!.user_id).toBeNull();
+    const b = withAuth(fakes());
+    (b.deps.userOf as any).mockRejectedValueOnce(new Error('auth down'));
+    expect((await runIosPublish(input(), b.deps, { authorization: 'Bearer tok-user' })).status).toBe(200);
+    const c = withAuth(fakes());
+    (c.repo.setUserIfUnlinked as any).mockRejectedValueOnce(new Error('fk violation'));
+    expect((await runIosPublish(input(), c.deps, { authorization: 'Bearer tok-user' })).status).toBe(200);
   });
 
   it('repo errors surface as 503 temporarily-unavailable', async () => {

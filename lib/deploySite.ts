@@ -13,6 +13,9 @@
 import { Storage } from '@google-cloud/storage';
 import axios from 'axios';
 import { siteConfigFile, siteVercelConfig, SITE_CONFIG_FILE, type SiteSubpages } from './siteSubpages.js';
+import { assertSiteFilePath, type SiteFile } from './render/pages.js';
+
+export type { SiteFile };
 
 export interface DeployImage {
   key: string;
@@ -22,7 +25,15 @@ export interface DeployImage {
 
 export interface DeployRenderedSiteInput {
   siteId: string;
+  /** The home page. With `pages` it must be the same as pages' index.html (kept for old callers). */
   html: string;
+  /**
+   * A multi-page site (lib/render/site.ts): every page of the deploy, `index.html` first. Absent:
+   * the single page `html`, exactly what a deploy always was (the browser path, api/deploy-site.ts).
+   */
+  pages?: SiteFile[];
+  /** sitemap.xml for a multi-page deploy; null or absent: none is shipped on this publish. */
+  sitemap?: string | null;
   css?: string;
   /** Already-uploaded image URLs, keyed the same as the {{placeholders}}. */
   imageUrls?: Record<string, string>;
@@ -245,20 +256,59 @@ export function swapImagePlaceholders(html: string, imageUrlMap: Record<string, 
 }
 
 /**
- * The deployment's files: the page, its CSS, vercel.json (Cache-Control headers, plus the
- * closed /book and /shop rewrite list for a site with a shop) and, for a site with the pages,
- * /ab-site.json (which shop they are).
+ * The pages of a deploy, ready to write: placeholders swapped for the image URLs on EVERY page, and
+ * any base64 image that slipped through removed (they belong in GCS and blow the payload limit).
  */
-export function buildSiteFiles(html: string, css: string | undefined, subpages: SiteSubpages | null): VercelFile[] {
+export function finalizePages(pages: SiteFile[], imageUrlMap: Record<string, string>): SiteFile[] {
+  const base64ImagePattern = /data:image\/[^;]+;base64,[A-Za-z0-9+/=]{100,}/g;
+  return pages.map((p) => {
+    let html = swapImagePlaceholders(p.html, imageUrlMap);
+    const left = html.match(/\{\{[^}]+\}\}/g);
+    if (left && left.length > 0) console.warn(`[Deploy Site] Warning: ${left.length} placeholders not replaced on ${p.path}:`, left);
+    const b64 = html.match(base64ImagePattern);
+    if (b64 && b64.length > 0) {
+      console.warn(`[Deploy Site] Warning: Found ${b64.length} base64 images in ${p.path}. These should be replaced with GCS URLs.`);
+      html = html.replace(base64ImagePattern, '');
+    }
+    return { path: p.path, html };
+  });
+}
+
+/**
+ * The deployment's files: every page (`index.html`, `<page>/index.html`, `<group>/<slug>/index.html`),
+ * its CSS, vercel.json (Cache-Control headers, plus the closed /book and /shop rewrite list for a site
+ * with a shop), /ab-site.json (which shop the pages are) and, when given, sitemap.xml.
+ *
+ * Every path is checked here, at the layer that writes files: exactly one index.html, no duplicates,
+ * segments of [a-z0-9-], and no reserved top segment (a book/index.html would sit ahead of the /book
+ * proxy rewrite).
+ */
+export function buildSiteFiles(
+  pages: SiteFile[],
+  css: string | undefined,
+  subpages: SiteSubpages | null,
+  extra: { sitemap?: string | null } = {},
+): VercelFile[] {
+  if (!Array.isArray(pages) || pages.length === 0) throw new Error('a deploy needs at least the home page');
+  const seen = new Set<string>();
+  for (const p of pages) {
+    assertSiteFilePath(p?.path);
+    if (seen.has(p.path)) throw new Error(`duplicate site file: ${p.path}`);
+    seen.add(p.path);
+  }
+  if (!seen.has('index.html')) throw new Error('a deploy needs an index.html');
   const b64 = (s: string) => Buffer.from(s, 'utf-8').toString('base64');
+  const home = pages.find((p) => p.path === 'index.html') as SiteFile;
   const files: VercelFile[] = [
-    { file: 'index.html', data: b64(html), encoding: 'base64' },
+    { file: 'index.html', data: b64(home.html), encoding: 'base64' },
+    ...pages.filter((p) => p !== home).map((p): VercelFile => ({ file: p.path, data: b64(p.html), encoding: 'base64' })),
     { file: 'styles.css', data: b64(css || '/* No custom styles */'), encoding: 'base64' },
-    { file: 'vercel.json', data: b64(JSON.stringify(siteVercelConfig(subpages))), encoding: 'base64' },
+    { file: 'vercel.json', data: b64(JSON.stringify(siteVercelConfig(subpages, { nestedPages: pages.length > 1 }))), encoding: 'base64' },
   ];
   if (subpages?.mode === 'full') {
     files.push({ file: SITE_CONFIG_FILE.replace(/^\//, ''), data: b64(siteConfigFile(subpages.shopSlug)), encoding: 'base64' });
   }
+  if (typeof extra.sitemap === 'string' && extra.sitemap) files.push({ file: 'sitemap.xml', data: b64(extra.sitemap), encoding: 'base64' });
   return files;
 }
 
@@ -267,7 +317,8 @@ export async function deployRenderedSite(
 ): Promise<DeployRenderedSiteResult> {
   const { siteId, html } = input;
   if (!siteId) throw new Error('Missing required field: siteId');
-  if (!html) throw new Error('Missing required field: html');
+  const inputPages: SiteFile[] = input.pages && input.pages.length > 0 ? input.pages : [{ path: 'index.html', html }];
+  if (!html && !(input.pages && input.pages.length > 0)) throw new Error('Missing required field: html');
 
   console.log(`[Deploy Site] Starting deployment for siteId: ${siteId}`);
 
@@ -315,33 +366,19 @@ export async function deployRenderedSite(
     console.log('[Deploy Site] No images to process');
   }
 
-  // Step 2: swap {{key}} placeholders for the resolved URLs.
-  let processedHtml = swapImagePlaceholders(html, imageUrlMap);
-
-  const remainingPlaceholders = processedHtml.match(/\{\{[^}]+\}\}/g);
-  if (remainingPlaceholders && remainingPlaceholders.length > 0) {
-    console.warn(`[Deploy Site] Warning: ${remainingPlaceholders.length} placeholders not replaced:`, remainingPlaceholders);
-  }
-  console.log(`[Deploy Site] HTML placeholders replaced. Processed HTML size: ${processedHtml.length} bytes`);
-
-  // Step 3-4: CSS, and strip any base64 images that slipped through (they
-  // belong in GCS, and they blow the deployment payload limit).
+  // Step 2: swap {{key}} placeholders for the resolved URLs on every page, and strip any base64
+  // images that slipped through (they belong in GCS, and they blow the deployment payload limit).
+  const finalPages = finalizePages(inputPages, imageUrlMap);
   const cssContent = input.css || '/* No custom styles */';
-  const base64ImagePattern = /data:image\/[^;]+;base64,[A-Za-z0-9+/=]{100,}/g;
-  const base64Matches = processedHtml.match(base64ImagePattern);
-  if (base64Matches && base64Matches.length > 0) {
-    console.warn(`[Deploy Site] Warning: Found ${base64Matches.length} base64 images in HTML. These should be replaced with GCS URLs.`);
-    processedHtml = processedHtml.replace(base64ImagePattern, '');
-  }
 
   // Step 5: build the file set. Cache-Control on the HTML so a republish is
   // visible immediately instead of being served stale from the CDN.
-  const files = buildSiteFiles(processedHtml, cssContent, input.subpages ?? null);
-  const htmlBuffer = Buffer.from(processedHtml, 'utf-8');
+  const files = buildSiteFiles(finalPages, cssContent, input.subpages ?? null, { sitemap: input.sitemap });
+  const htmlBytes = finalPages.reduce((n, p) => n + Buffer.byteLength(p.html, 'utf-8'), 0);
   const cssBuffer = Buffer.from(cssContent, 'utf-8');
 
-  const totalSizeMB = (htmlBuffer.length + cssBuffer.length) / (1024 * 1024);
-  console.log(`[Deploy Site] Deployment payload size: ${totalSizeMB.toFixed(2)} MB (HTML: ${(htmlBuffer.length / 1024).toFixed(2)} KB, CSS: ${(cssBuffer.length / 1024).toFixed(2)} KB)`);
+  const totalSizeMB = (htmlBytes + cssBuffer.length) / (1024 * 1024);
+  console.log(`[Deploy Site] Deployment payload size: ${totalSizeMB.toFixed(2)} MB (${finalPages.length} page${finalPages.length === 1 ? '' : 's'}, HTML: ${(htmlBytes / 1024).toFixed(2)} KB, CSS: ${(cssBuffer.length / 1024).toFixed(2)} KB)`);
   if (totalSizeMB > 4.5) {
     console.warn(`[Deploy Site] Warning: Payload size (${totalSizeMB.toFixed(2)} MB) exceeds Vercel's recommended limit of 4.5 MB`);
   }

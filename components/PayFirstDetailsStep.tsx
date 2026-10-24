@@ -6,6 +6,7 @@ import { buildSiteFromScrape } from '../lib/buildSiteFromScrape';
 import { extractFirstUrl } from '../lib/supportedBookingHost';
 import { checklistToServices, type ServicePicks } from '../lib/stockImages';
 import { httpImageUrlMap, validatePayFirstDetails } from '../lib/payFirst';
+import { payFirstSiteSlug } from '../services/checkoutClient';
 import { ServiceChecklist } from './ServiceChecklist';
 
 // /custom-15 pay-first: the buyer paid for the sample site. Before anything is
@@ -85,15 +86,23 @@ export const PayFirstDetailsStep: React.FC<Props> = ({ pending, onReady }) => {
         awaitingDetails: undefined,
         detailsConfirmed: true,
       };
-      const next = { ...pending, siteData, imageUrlMap: httpImageUrlMap(siteData), timestamp: Date.now() };
+      // The real slug comes from the shop name (re-review R1): the checkout paid for a unique
+      // placeholder; this purchase may publish one brand-new slug (lib/deployAuth.ts). A retry
+      // of this step keeps the slug it already picked.
+      const placeholder: string = pending.movedFrom || pending.siteId;
+      const siteId: string = pending.movedTo || (pending.movedFrom ? pending.siteId : payFirstSiteSlug(siteData.shopName));
+      const next = { ...pending, siteId, movedFrom: placeholder, movedTo: undefined, siteData, imageUrlMap: httpImageUrlMap(siteData), timestamp: Date.now() };
       try { localStorage.setItem('pendingSite', JSON.stringify(next)); } catch { /* server copy below */ }
-      // Server backup: lets the webhook / sweeper finish the publish if this
-      // tab dies mid-deploy (a confirmed copy is no longer held).
-      await fetch('/api/save-pending-site', {
+      // Server backups: the confirmed copy under the real slug, and the placeholder (still the
+      // held sample) pointing at it, so the webhook / sweeper, which know only the checkout's
+      // siteId, can finish the publish if this tab dies mid-deploy.
+      const save = (id: string, data: unknown) => fetch('/api/save-pending-site', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ siteId: pending.siteId, data: next }),
+        body: JSON.stringify({ siteId: id, data }),
       }).catch((err) => console.warn('[pay-first] save-pending-site failed (non-blocking):', err));
+      await save(siteId, next);
+      if (placeholder !== siteId) await save(placeholder, { ...pending, siteId: placeholder, movedTo: siteId, movedFrom: undefined });
       onReady();
     } catch (err: any) {
       console.error('[pay-first] building the site failed:', err);
