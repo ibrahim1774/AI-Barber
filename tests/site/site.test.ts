@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
+import { SITE_TOKENS } from '../../src/site/site';
 import { loadSiteSlug, siteTheme, canonicalHref, homeHref, shopBackHref, onSiteNow, SITE_FONTS, fontsFor } from '../../src/site/site';
 import { parseRoute } from '../../src/book/logic';
 import { parseShopRoute } from '../../src/shop/logic';
@@ -122,5 +123,47 @@ describe('template fonts match the site (lib/render)', () => {
       const c = readFileSync(css, 'utf8');
       for (const v of ['--font-head', '--font-body', '--head-weight', '--head-transform', '--head-track']) expect(c).toContain(v);
     }
+  });
+});
+
+describe('template look tokens match the site CSS', () => {
+  const src = (f: string) => readFileSync(`lib/render/${f}.ts`, 'utf8');
+  const rule = (css: string, sel: string) => css.slice(css.indexOf(sel), css.indexOf('}', css.indexOf(sel)));
+  it('prime: buttons, eyebrow and cards', () => {
+    const css = src('prime'); const t = SITE_TOKENS.prime;
+    const cta = rule(css, '.prime-root .p-cta {');
+    expect(cta).toContain(`letter-spacing: ${t['--btn-track'].replace('.', '0.')}`);
+    expect(cta).toContain(`font-size: ${t['--btn-size']}`);
+    expect(cta).toContain(`font-weight: ${t['--btn-weight']}`);
+    expect(cta).toContain(`border-radius: ${t['--r-btn']}`);
+    expect(rule(css, '.prime-root .p-eyebrow')).toContain(`letter-spacing: ${t['--eyebrow-track'].replace('.', '0.')}`);
+    expect(rule(css, '.prime-root .p-review-card')).toContain(`border-radius: ${t['--r']}`);
+    expect(css.toLowerCase()).toMatch(new RegExp(`--p-bg-3:\\s*${t['--card']}`));
+    expect(t['--prose-font']).toContain('Newsreader'); // .p-serif paragraphs
+  });
+  it('euphoria: buttons and eyebrow', () => {
+    const css = src('euphoria'); const t = SITE_TOKENS.euphoria;
+    const cta = rule(css, '.euphoria-root .eu-cta {');
+    expect(cta).toContain(`letter-spacing: ${t['--btn-track'].replace('.', '0.')}`);
+    expect(cta).toContain(`font-weight: ${t['--btn-weight']}`);
+    expect(cta).not.toContain('border-radius');
+    expect(t['--r-btn']).toBe('0px');
+    expect(rule(css, '.euphoria-root .eu-eyebrow')).toContain(`letter-spacing: ${t['--eyebrow-track'].replace('.', '0.')}`);
+  });
+  it('luxe: buttons and eyebrow', () => {
+    const css = src('luxe'); const t = SITE_TOKENS.luxe;
+    expect(css).toContain("button: 'inline-flex items-center gap-3 bg-[#f4a100] text-[#1a1a1a]");
+    expect(css).toContain(`font-montserrat font-black tracking-[${t['--btn-track']}] uppercase`);
+    expect(css).toContain(`font-bold tracking-[${t['--eyebrow-track']}] uppercase`);
+    expect(t['--r']).toBe('0px');
+  });
+  it('look.css is only variable-driven with page fallbacks and is loaded by both pages', () => {
+    const c = readFileSync('src/site/look.css', 'utf8');
+    for (const v of ['--prose-font', '--name-font', '--eyebrow-track', '--btn-track', '--btn-bg', '--r-in']) expect(c).toContain(v);
+    expect(readFileSync('src/book/main.tsx', 'utf8')).toContain('look.css');
+    expect(readFileSync('src/shop/main.tsx', 'utf8')).toContain('look.css');
+  });
+  it('no look, no tokens', () => {
+    expect(siteTheme({ baseUrl: null, look: null }, null).vars['--btn-track']).toBeUndefined();
   });
 });

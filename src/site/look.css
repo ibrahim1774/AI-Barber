@@ -1,0 +1,16 @@
+/* The barber site's typographic look (variables set by src/site/site.ts on a page with a site look).
+   Every value falls back to the page's own style, so a page without a site look is unchanged. */
+.sub,.summary,.row .m,.desc,.note,.summary span:first-child,.tile .info .m{font-family:var(--prose-font,inherit)}
+.row .t,.tile .nm,.line .nm{font-family:var(--name-font,inherit);font-weight:var(--name-weight,600);text-transform:var(--name-transform,none);letter-spacing:var(--name-track,normal);font-size:var(--name-size,inherit)}
+h1{font-style:var(--h1-style,normal);color:var(--h1-color,inherit)}
+label,.dow{font-weight:var(--eyebrow-weight,400);letter-spacing:var(--eyebrow-track,normal);text-transform:var(--eyebrow-tt,none);color:var(--eyebrow-color,var(--mute))}
+label{font-size:var(--eyebrow-size,14px)}
+.dow{font-size:var(--eyebrow-size,12px)}
+.row,.tile,.note,.summary,.stepper,.actions a{border-radius:var(--r,14px)}
+input,textarea,select,.day,.time,.cal-head button{border-radius:var(--r-in,12px)}
+.btn{border-radius:var(--r-btn,var(--r,14px));text-transform:var(--btn-tt,none);letter-spacing:var(--btn-track,normal);font-size:var(--btn-size,17px);font-weight:var(--btn-weight,700);background:var(--btn-bg,var(--accent));color:var(--btn-fg,var(--on-accent));min-height:48px}
+.btn.ghost{font-weight:var(--btn-weight,600);background:transparent;color:var(--btn-ghost-fg,var(--text));border-color:var(--btn-ghost-border,var(--line))}
+.btn.danger{background:transparent;color:var(--bad);border-color:var(--bad)}
+.btn.ghost,.btn.danger{border-style:solid}
+h1 a,.head h1 a{color:var(--h1-color,var(--mute))}
+.actions a{font-size:var(--btn-size,inherit);font-weight:var(--btn-weight,600);letter-spacing:var(--btn-track,normal);text-transform:var(--btn-tt,none);border-color:var(--btn-ghost-border,var(--line));color:var(--btn-ghost-fg,var(--text));min-height:44px;display:flex;align-items:center;justify-content:center}

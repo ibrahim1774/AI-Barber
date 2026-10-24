@@ -1,6 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import './shop.css';
+import '../site/look.css';
 import { App } from './App';
 import { createShopApi } from './api';
 
