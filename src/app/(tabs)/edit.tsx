@@ -184,7 +184,7 @@ export default function Editor() {
   }, [openRecord]);
 
   // Coming back from /publishing, /live or Settings re-arms the Publish button
-  // and picks up the publish result (slug hides the design switcher), keeping
+  // and picks up the publish result keeping
   // any edits. A different draft (a restore from Settings) reloads the editor.
   useFocusEffect(
     useCallback(() => {
@@ -535,6 +535,12 @@ export default function Editor() {
         {/* The site's own background, so nothing else shows around the page. */}
         <View style={[styles.preview, { backgroundColor: previewBackground(data) }]}>
           <SitePreview data={shown} editable page={page} shopProducts={shopProducts} onEditText={onPreviewText} onEditImage={onPreviewImage} pillTourRef={changeImageRef} />
+          {/* The two floating controls, Design above Colour, hidden while the prompts / guide are up.
+              Design is offered on a published site too: it only edits the draft (like Colour), and the
+              change goes live on the next Publish. */}
+          {overlay == null && (
+            <DesignSwitcher current={data.template} onSelect={handleDesign} busy={switching} disabled={uploading} />
+          )}
           {overlay == null && (
             <ColourButton onPress={() => setSheet('colour')} disabled={uploading} />
           )}
@@ -550,10 +556,6 @@ export default function Editor() {
           <StockPhotoNudge onAddPhotos={() => setSheet('photos')} />
         )}
         <PagesBar chips={chips} current={page} onSelect={setWantedPage} onOpenPages={() => setSheet('pages')} buttonRef={pagesRef} disabled={uploading || overlay != null}
-          // Hidden over a published site and while the prompts / guide are up.
-          leading={site.slug == null && !site.deployedUrl && overlay == null ? (
-            <DesignSwitcher current={data.template} onSelect={handleDesign} busy={switching} disabled={uploading} />
-          ) : undefined}
         />
         <PublishBar
           onSections={openSections}

@@ -85,16 +85,13 @@ describe('Colour moved off the tool bar', () => {
   });
 });
 
-describe('design switcher in the bottom row', () => {
+describe('floating design switcher', () => {
   const { DesignSwitcher } = require('@/components/DesignSwitcher');
   const radio = (tree: any, label: string) => tree.root.findAll((n: any) => n.props?.accessibilityLabel === label && typeof n.props?.onPress === 'function')[0];
 
-  test('renders at the left of the tabs row, before the tabs, via leading', () => {
-    const m = mount(multi, { leading: <DesignSwitcher current="luxe" onSelect={() => {}} /> });
-    const json = JSON.stringify(m.tree.toJSON());
-    expect(json.indexOf('Switch site design')).toBeGreaterThan(-1);
-    expect(json.indexOf('Switch site design')).toBeLessThan(json.indexOf('Show Home'));
-    expect(json.indexOf('Show Hours')).toBeLessThan(json.indexOf('"Pages"'));
+  test('the bottom bar has no design switcher, only tabs and Pages', () => {
+    const m = mount(multi);
+    expect(JSON.stringify(m.tree.toJSON())).not.toContain('Switch site design');
   });
 
   test('marks the active design and switches on tap', () => {
@@ -117,12 +114,18 @@ describe('design switcher in the bottom row', () => {
     expect(radio(tree, 'Design 2').props.accessibilityState.disabled).toBe(true);
   });
 
-  test('Colour button is now always vertically centred on the left edge', () => {
+  test('Design and Colour are stacked on the left edge: Design above, 44pt each, not overlapping', () => {
     const { ColourButton } = require('@/components/ColourButton');
-    let tree: any;
-    act(() => { tree = create(<ColourButton onPress={() => {}} />); });
-    const style = tree.root.findAll((n: any) => n.props?.accessibilityLabel === 'Colour' && typeof n.props?.onPress === 'function')[0].props.style;
-    const s = typeof style === 'function' ? style({ pressed: false }) : style;
-    expect(JSON.stringify(s)).toContain('"translateY":-22');
+    let d: any, c: any;
+    act(() => { d = create(<DesignSwitcher current="luxe" onSelect={() => {}} />); c = create(<ColourButton onPress={() => {}} />); });
+    const flat = (st: any) => Object.assign({}, ...[st].flat(3).filter(Boolean));
+    const pill = flat(d.root.findAll((n: any) => n.props?.accessibilityLabel === 'Switch site design')[0].props.style);
+    const cb = c.root.findAll((n: any) => n.props?.accessibilityLabel === 'Colour' && typeof n.props?.onPress === 'function')[0].props.style;
+    const col = flat(typeof cb === 'function' ? cb({ pressed: false }) : cb);
+    expect(pill.position).toBe('absolute'); expect(col.position).toBe('absolute');
+    expect(pill.left).toBe(col.left);
+    expect(pill.height).toBeGreaterThanOrEqual(44); expect(col.minHeight).toBeGreaterThanOrEqual(44);
+    const dy = (x: any) => x.transform[0].translateY;
+    expect(dy(pill) + pill.height).toBeLessThanOrEqual(dy(col));
   });
 });

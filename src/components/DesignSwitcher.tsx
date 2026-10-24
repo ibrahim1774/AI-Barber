@@ -1,7 +1,8 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, fonts } from '@/constants/theme';
 
-// Compact two-segment pill (1 | 2) that sits at the bottom-left of the page-tabs row.
+// Floating Design control on the preview's left edge, stacked just above the Colour pill: a dark translucent
+// pill with a "Design" caption and two segments (1 | 2).
 // Any non-prime template counts as Design 1.
 
 const OPTIONS: { key: 'luxe' | 'prime'; label: string; short: string }[] = [
@@ -20,7 +21,8 @@ export function DesignSwitcher({
   const activeKey = current === 'prime' ? 'prime' : 'luxe';
   const off = !!busy || !!disabled;
   return (
-    <View style={[styles.pill, off && { opacity: 0.6 }]} accessibilityRole="radiogroup" accessibilityLabel="Switch site design">
+    <View style={[styles.pill, { transform: [{ translateY: -48 }] }, off && { opacity: 0.6 }]} accessibilityRole="radiogroup" accessibilityLabel="Switch site design">
+      <Text style={styles.caption}>Design</Text>
       {OPTIONS.map((o) => {
         const active = activeKey === o.key;
         return (
@@ -43,10 +45,13 @@ export function DesignSwitcher({
 
 const styles = StyleSheet.create({
   pill: {
-    flexDirection: 'row', height: 44, borderRadius: 22, overflow: 'hidden',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)', backgroundColor: 'rgba(255,255,255,0.06)',
+    position: 'absolute', left: 12, top: '50%', height: 44, borderRadius: 22, overflow: 'hidden',
+    flexDirection: 'row', alignItems: 'center', paddingLeft: 12,
+    backgroundColor: colors.overlayCard, borderWidth: 1, borderColor: colors.overlayGold,
+    shadowColor: '#000', shadowOpacity: 0.7, shadowRadius: 25, shadowOffset: { width: 0, height: 18 },
   },
-  seg: { width: 38, height: 42, alignItems: 'center', justifyContent: 'center' },
+  caption: { fontFamily: fonts.bodyBold, fontSize: 11, letterSpacing: 1.3, textTransform: 'uppercase', color: '#fff', marginRight: 6 },
+  seg: { width: 40, height: 42, alignItems: 'center', justifyContent: 'center' },
   segOn: { backgroundColor: colors.accent },
   segText: { fontFamily: fonts.bodyBold, fontSize: 14 },
 });

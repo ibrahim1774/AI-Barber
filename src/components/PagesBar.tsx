@@ -1,6 +1,6 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useEffect, useRef } from 'react';
-import type { ReactNode, RefObject } from 'react';
+import type { RefObject } from 'react';
 import { colors, fonts } from '@/constants/theme';
 import type { PreviewPage } from '@/lib/editable';
 import type { PageChips } from '@/lib/sitePages';
@@ -14,7 +14,7 @@ const same = (a: PreviewPage, b: PreviewPage) => a.key === b.key && a.index === 
  * service or barber page. A single-page site has no tabs, only the Pages button (the way to add pages).
  */
 export function PagesBar({
-  chips, current, onSelect, onOpenPages, buttonRef, disabled, leading,
+  chips, current, onSelect, onOpenPages, buttonRef, disabled,
 }: {
   chips: PageChips;
   current: PreviewPage;
@@ -22,8 +22,6 @@ export function PagesBar({
   onOpenPages(): void;
   buttonRef?: RefObject<View | null>;
   disabled?: boolean;
-  /** Pinned at the left of the tabs row (the design switcher). */
-  leading?: ReactNode;
 }) {
   const kids = current.key === 'services' ? chips.children.services : current.key === 'team' ? chips.children.team : undefined;
   const topScroll = useRef<ScrollView>(null);
@@ -61,7 +59,6 @@ export function PagesBar({
         </ScrollView>
       )}
       <View style={styles.row}>
-        {leading}
         {chips.top.length > 0 && (
           <ScrollView ref={topScroll} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips} style={styles.scroll}>
             {chips.top.map((c) => (
