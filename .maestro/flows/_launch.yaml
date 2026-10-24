@@ -27,6 +27,12 @@ appId: com.ibrahim1774.aibarber
           optional: true
       - runFlow:
           when:
+            visible: "This is the.*"   # dev menu at huge text sizes: Continue is off-screen, use the close X
+          commands:
+            - tapOn:
+                point: "88%,55%"
+      - runFlow:
+          when:
             visible: "Reload"
           commands:
             - tapOn:

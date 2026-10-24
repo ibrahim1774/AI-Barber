@@ -93,6 +93,7 @@ const styles = StyleSheet.create({
   scroll: { flexGrow: 1 },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    flexWrap: 'wrap', rowGap: 12, // wraps the Sign in pill under the brand at huge text sizes
     paddingHorizontal: 24, paddingVertical: 20,
   },
   brand: { flexDirection: 'row', alignItems: 'center', gap: 10 },

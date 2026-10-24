@@ -10,7 +10,9 @@ export interface AppTextProps extends TextProps {
 /** RN Text with the app's type scale (sizes are the web's at 390 px). */
 export function Text({ variant = 'body', style, ...rest }: AppTextProps) {
   // Headlines wrap. (numberOfLines 1 + adjustsFontSizeToFit made iOS shrink nested-<Em> headlines to ~6pt.)
-  return <RNText {...rest} style={[styles[variant], style]} />;
+  // Headlines are already large: cap their Dynamic Type growth so one word never fills the screen.
+  const cap = variant === 'h1' ? { maxFontSizeMultiplier: 1.5 } : null;
+  return <RNText {...cap} {...rest} style={[styles[variant], style]} />;
 }
 
 /** Italic accent word inside a heading ("booking link", "website"). */
