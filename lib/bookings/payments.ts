@@ -94,7 +94,12 @@ export class StripeApiError extends Error {
  * sweep, `payment_method: 'card'` writes and refunds assume a synchronous card payment.
  */
 export const CHECKOUT_STRIPE_VERSION = '2026-09-30.endive';
-export const CHECKOUT_CARD_ONLY = { 'allowed_payment_method_types[0]': 'card' } as const;
+// `wallet_options[link][display]=never` hides Link ("Save my information with Link", Bank, Klarna via
+// Link) on the hosted page; documented per-session param (Checkout Sessions create, since 2025-04-30.basil).
+export const CHECKOUT_CARD_ONLY = {
+  'allowed_payment_method_types[0]': 'card',
+  'wallet_options[link][display]': 'never',
+} as const;
 
 export async function stripeRequest(
   method: 'GET' | 'POST',
