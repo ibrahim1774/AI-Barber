@@ -23,7 +23,7 @@ const family = {
 } as const;
 
 export const fonts = {
-  heading: family.extrabold,
+  heading: family.bold, // was Montserrat Bold (700) before the font swap; 800 felt too heavy
   headingItalic: family.semiboldItalic,
   headingBlack: family.extrabold,
   serifish: family.regularItalic,
@@ -33,7 +33,7 @@ export const fonts = {
   bodyMedium: family.medium,
   bodySemi: family.semibold,
   bodyBold: family.bold,
-  bodyExtra: family.extrabold,
+  bodyExtra: family.bold, // Manrope ExtraBold looked lighter than Jakarta 800
   mono: 'Menlo',
 } as const;
 
