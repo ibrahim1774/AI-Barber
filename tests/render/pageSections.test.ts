@@ -63,7 +63,7 @@ describe('pageSectionsOf (untrusted JSON)', () => {
     expect(ids({ pageSections: { service: { order } } }, 'service')[0]).toBe('cta');
   });
   it('composeSections prints visible sections in order', () => {
-    expect(composeSections({ pageSections: { location: { hidden: ['hours'], order: ['rating'] } } } as WebsiteData, 'location', { map: 'M', hours: 'H', services: 'S', team: 'T', rating: 'R' })).toBe('RMST');
+    expect(composeSections({ pageSections: { location: { hidden: ['hours'], order: ['rating'] } } } as unknown as WebsiteData, 'location', { map: 'M', hours: 'H', services: 'S', team: 'T', rating: 'R' })).toBe('RMST');
   });
 });
 
