@@ -57,10 +57,29 @@ export function navItemsFor(template: TemplateId, set: PageSet, d: WebsiteData, 
   return items;
 }
 
-/** <nav> with the page links; on a phone a checkbox opens it (no script). `menu` is the escaped button name. */
-export function navListHtml(items: NavItem[], menu: string): string {
-  const lis = items.map((i) =>
-    `<li><a href="${escapeAttr(i.href)}"${i.active ? ' class="is-active" aria-current="page"' : ''}${i.external ? ' target="_blank" rel="noopener noreferrer"' : ''}>${i.label}</a></li>`).join('');
+/** The menu shows this many items in the bar; the rest go under "More". */
+export const NAV_VISIBLE = 5;
+
+const navLi = (i: NavItem, cls = ''): string =>
+  `<li${cls}><a href="${escapeAttr(i.href)}"${i.active ? ' class="is-active" aria-current="page"' : ''}${i.external ? ' target="_blank" rel="noopener noreferrer"' : ''}>${i.label}</a></li>`;
+
+/**
+ * <nav> with the page links; on a phone a checkbox opens it (no script). `menu` is the escaped button name.
+ *
+ * With more than NAV_VISIBLE items the first five stay in the bar and the rest go under `more` (the escaped
+ * "More" label). A closed <details> cannot be forced open with CSS, and a phone wants one flat list, so the
+ * overflow items are written twice: flat <li>s (shown on a phone, hidden at 1024px and up) and a <details>
+ * dropdown (the reverse). Whichever copy is hidden is display:none, so it is out of the tab order too.
+ */
+export function navListHtml(items: NavItem[], menu: string, more = 'More'): string {
+  const head = items.slice(0, NAV_VISIBLE);
+  const rest = items.slice(NAV_VISIBLE);
+  let lis = head.map((i) => navLi(i)).join('');
+  if (rest.length) {
+    const open = rest.some((i) => i.active) ? ' class="is-active"' : '';
+    lis += rest.map((i) => navLi(i, ' class="ab-more-flat"')).join('');
+    lis += `<li class="ab-more"><details class="ab-more-d"><summary${open}>${more}</summary><ul class="ab-more-list">${rest.map((i) => navLi(i)).join('')}</ul></details></li>`;
+  }
   return `<nav class="ab-nav" aria-label="${menu}"><input type="checkbox" id="ab-nav-toggle" class="ab-nav-toggle" aria-label="${menu}"><label for="ab-nav-toggle" class="ab-burger" aria-hidden="true"><i></i></label><ul class="ab-nav-list">${lis}</ul></nav>`;
 }
 
@@ -102,14 +121,34 @@ export interface FooterInput {
   year: number;
   /** Luxe: the footer line label, escaped. */
   line?: string;
+  /** Raw address (multi-page footers). Escaped here. */
+  address?: string;
+  /** Raw phone as stored; a number with digits gets a call link. */
+  phone?: string;
+  /** The phone as printed (escaped). */
+  shownPhone?: string;
+  /** The "Pages" heading, escaped. Printed only with `pages`. */
+  pagesHeading?: string;
+  /** Every deployed page the site has: root-absolute href (raw, escaped here) and escaped label. Built from the page set only. */
+  pages?: { href: string; label: string; external?: boolean }[];
 }
 
 export function footerHtml(template: TemplateId, f: FooterInput): string {
   const name = escapeAttr(f.name);
+  // Digits and a leading + only, like the prime header (an extension or a bracket must not end up in the tel: link).
+  const digits = String(f.phone ?? '').replace(/[^\d+]/g, '');
+  const phone = f.shownPhone
+    ? /\d/.test(digits) ? `<p class="ab-foot-phone"><a href="tel:${escapeAttr(digits)}">${f.shownPhone}</a></p>` : `<p class="ab-foot-phone">${f.shownPhone}</p>`
+    : '';
+  const address = f.address ? `<p class="ab-foot-addr">${escapeAttr(f.address)}</p>` : '';
+  const pages = f.pages && f.pages.length
+    ? `<nav class="ab-foot-pages"${f.pagesHeading ? ` aria-label="${f.pagesHeading}"` : ''}>${f.pagesHeading ? `<div class="ab-foot-h">${f.pagesHeading}</div>` : ''}<ul>${f.pages.map((p) => `<li><a href="${escapeAttr(p.href)}"${p.external ? ' target="_blank" rel="noopener noreferrer"' : ''}>${p.label}</a></li>`).join('')}</ul></nav>`
+    : '';
+  const info = `${address}${phone}${pages}`;
   if (template === 'luxe') {
-    return `<footer class="ab-foot"><div class="ab-wrap"><div class="ab-foot-name">${name}</div>${f.line ? `<p class="ab-foot-line">${f.line}</p>` : ''}<p class="ab-foot-copy">Copyright &copy; ${f.year} ${name}. Built by Prime Barber.</p></div></footer>`;
+    return `<footer class="ab-foot"><div class="ab-wrap"><div class="ab-foot-name">${name}</div>${f.line ? `<p class="ab-foot-line">${f.line}</p>` : ''}${info}<p class="ab-foot-copy">Copyright &copy; ${f.year} ${name}. Built by Prime Barber.</p></div></footer>`;
   }
-  return `<footer class="ab-foot"><div class="ab-wrap"><div class="ab-foot-name">${name}</div><p class="ab-foot-copy">&copy; ${f.year} &middot; Built by Prime Barber</p></div></footer>`;
+  return `<footer class="ab-foot"><div class="ab-wrap"><div class="ab-foot-name">${name}</div>${info}<p class="ab-foot-copy">&copy; ${f.year} &middot; Built by Prime Barber</p></div></footer>`;
 }
 
 // ── CSS ─────────────────────────────────────────────────────────────────────────────────────────
@@ -128,6 +167,13 @@ export const NAV_CSS: Record<TemplateId, string> = {
 .ab-nav-list a{display:block;padding:12px 18px;color:#fff;text-decoration:none;text-transform:uppercase;font-size:12px;font-weight:700;letter-spacing:2px;white-space:nowrap}
 .ab-nav-list a:hover,.ab-nav-list a.is-active{color:var(--aib-accent,#f4a100)}
 @media(min-width:1024px){.ab-burger{display:none}.ab-nav-list{display:flex;position:static;background:none;border:0;padding:0;min-width:0;gap:26px}.ab-nav-list a{padding:6px 0}}
+.ab-more{display:none}
+.ab-more-d summary{list-style:none;cursor:pointer;color:#fff;text-transform:uppercase;font-size:12px;font-weight:700;letter-spacing:2px;white-space:nowrap;padding:6px 0}
+.ab-more-d summary::-webkit-details-marker{display:none}
+.ab-more-d summary::after{content:'\\25BE';margin-left:6px}
+.ab-more-d summary:hover,.ab-more-d summary.is-active,.ab-more-d[open] summary{color:var(--aib-accent,#f4a100)}
+.ab-more-d summary:focus-visible{outline:2px solid var(--aib-accent,#f4a100);outline-offset:2px}
+@media(min-width:1024px){.ab-more-flat{display:none}.ab-more{display:block;position:relative}.ab-more-list{position:absolute;right:0;top:calc(100% + 10px);min-width:200px;list-style:none;margin:0;padding:6px 0;background:#1a1a1a;border:1px solid rgba(255,255,255,.12);z-index:60}.ab-nav-list .ab-more-list a{padding:10px 18px}}
 `,
   prime: `
 .ab-nav{position:relative;margin-left:auto}
@@ -141,6 +187,13 @@ export const NAV_CSS: Record<TemplateId, string> = {
 .ab-nav-list a{display:block;padding:12px 18px;color:var(--p-ink,#f0ece4);text-decoration:none;text-transform:uppercase;font-family:'Inter',sans-serif;font-size:11px;font-weight:600;letter-spacing:.22em;white-space:nowrap}
 .ab-nav-list a:hover,.ab-nav-list a.is-active{color:var(--p-brand,#d4a64a)}
 @media(min-width:1024px){.ab-burger{display:none}.ab-nav-list{display:flex;position:static;background:none;border:0;padding:0;min-width:0;gap:22px}.ab-nav-list a{padding:6px 0}}
+.ab-more{display:none}
+.ab-more-d summary{list-style:none;cursor:pointer;color:var(--p-ink,#f0ece4);text-transform:uppercase;font-family:'Inter',sans-serif;font-size:11px;font-weight:600;letter-spacing:.22em;white-space:nowrap;padding:6px 0}
+.ab-more-d summary::-webkit-details-marker{display:none}
+.ab-more-d summary::after{content:'\\25BE';margin-left:6px}
+.ab-more-d summary:hover,.ab-more-d summary.is-active,.ab-more-d[open] summary{color:var(--p-brand,#d4a64a)}
+.ab-more-d summary:focus-visible{outline:2px solid var(--p-brand,#d4a64a);outline-offset:2px}
+@media(min-width:1024px){.ab-more-flat{display:none}.ab-more{display:block;position:relative}.ab-more-list{position:absolute;right:0;top:calc(100% + 10px);min-width:200px;list-style:none;margin:0;padding:6px 0;background:var(--p-bg-2,#111);border:1px solid var(--p-line,rgba(255,255,255,.18));z-index:60}.ab-nav-list .ab-more-list a{padding:10px 18px}}
 `,
   euphoria: `
 .ab-nav{position:relative;margin-left:auto}
@@ -155,6 +208,13 @@ export const NAV_CSS: Record<TemplateId, string> = {
 .ab-nav-list a:hover,.ab-nav-list a.is-active{color:var(--eu-ink,#f0ece4)}
 .ab-nav-list a.is-active{color:var(--eu-brand,#d4a64a)}
 @media(min-width:1024px){.ab-burger{display:none}.ab-nav-list{display:flex;position:static;background:none;border:0;padding:0;min-width:0;gap:22px}.ab-nav-list a{padding:6px 0}}
+.ab-more{display:none}
+.ab-more-d summary{list-style:none;cursor:pointer;color:var(--eu-ink-soft,#9a958e);text-transform:uppercase;font-family:'Inter',sans-serif;font-size:11px;letter-spacing:.28em;white-space:nowrap;padding:6px 0}
+.ab-more-d summary::-webkit-details-marker{display:none}
+.ab-more-d summary::after{content:'\\25BE';margin-left:6px}
+.ab-more-d summary:hover,.ab-more-d summary.is-active,.ab-more-d[open] summary{color:var(--eu-brand,#d4a64a)}
+.ab-more-d summary:focus-visible{outline:2px solid var(--eu-brand,#d4a64a);outline-offset:2px}
+@media(min-width:1024px){.ab-more-flat{display:none}.ab-more{display:block;position:relative}.ab-more-list{position:absolute;right:0;top:calc(100% + 10px);min-width:200px;list-style:none;margin:0;padding:6px 0;background:var(--eu-bg-2,#0c0c0c);border:1px solid var(--eu-line,rgba(255,255,255,.22));z-index:60}.ab-nav-list .ab-more-list a{padding:10px 18px}}
 `,
 };
 
@@ -213,6 +273,9 @@ body.ab-page{margin:0;background:var(--ab-bg);color:var(--ab-ink);font-family:va
 .ab-h1{font-size:clamp(28px,5vw,48px)}
 .ab-h2{font-size:clamp(20px,3vw,28px);margin-bottom:16px}
 .ab-prose p{margin:0 0 16px;color:var(--ab-soft)}
+.ab-copy-h{font-family:var(--ab-head-font);font-weight:var(--ab-head-weight);font-size:18px;margin:24px 0 8px}
+ul.ab-copy,ol.ab-copy{margin:0 0 16px;padding-left:22px;color:var(--ab-soft)}
+ul.ab-copy li,ol.ab-copy li{margin:0 0 6px}
 .ab-meta{color:var(--ab-accent);font-size:12px;letter-spacing:.12em;text-transform:uppercase;margin:0 0 12px}
 .ab-muted{color:var(--ab-muted)}
 .ab-btn{display:inline-flex;align-items:center;justify-content:center;padding:14px 28px;border:1px solid var(--ab-accent);border-radius:var(--ab-radius);color:var(--ab-accent);background:transparent;text-decoration:none;text-transform:uppercase;letter-spacing:var(--ab-btn-track);font-size:12px;font-weight:700;font-family:var(--ab-body-font)}
@@ -257,6 +320,13 @@ body.ab-page{margin:0;background:var(--ab-bg);color:var(--ab-ink);font-family:va
 .ab-foot-name{font-family:var(--ab-head-font);font-size:18px;margin-bottom:8px}
 .ab-foot-line{color:var(--ab-muted);font-size:11px;letter-spacing:.2em;text-transform:uppercase;margin:12px 0}
 .ab-foot-copy{color:var(--ab-muted);font-size:11px;letter-spacing:.12em;margin:8px 0 0}
+.ab-foot-addr,.ab-foot-phone{color:var(--ab-soft);font-size:14px;margin:6px 0}
+.ab-foot-phone a{text-decoration:none;color:var(--ab-ink)}
+.ab-foot-pages{margin:20px 0 8px}
+.ab-foot-h{color:var(--ab-accent);font-size:11px;letter-spacing:.24em;text-transform:uppercase;margin:0 0 8px}
+.ab-foot-pages ul{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;justify-content:center;gap:4px 18px}
+.ab-foot-pages a{color:var(--ab-soft);text-decoration:none;font-size:13px}
+.ab-foot-pages a:hover{color:var(--ab-accent)}
 `;
 
 // Third-party analytics tag every page of these designs carries (the same one the home pages load).

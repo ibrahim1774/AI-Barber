@@ -388,7 +388,8 @@ export function renderPendingBundle(
   pending: Pick<PendingSite, 'siteData' | 'imageUrlMap'>,
   opts: Pick<RenderSiteOptions, 'customDomain' | 'siteBaseUrl'> = {},
 ): RenderedSite {
-  return renderSiteBundle(pending.siteData, { ...opts, imageUrls: pending.imageUrlMap || {} });
+  // Named fields only: nothing from a request or a stored row may reach the renderer's options.
+  return renderSiteBundle(pending.siteData, { customDomain: opts.customDomain, siteBaseUrl: opts.siteBaseUrl, imageUrls: pending.imageUrlMap || {} });
 }
 
 /**

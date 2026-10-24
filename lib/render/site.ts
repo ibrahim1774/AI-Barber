@@ -15,7 +15,9 @@
 import type { TemplateId, WebsiteData } from '../../types';
 import { copyrightYear, displayPhone, nicheOf, withoutLegacyCopy } from './honest.js';
 import { aibThemeVars, generateHTMLWithPlaceholders, resolveAibTheme } from './luxe.js';
-import { t } from './labels.js';
+import { HERO_EXTRA_PAGES } from './heroes.js';
+import { hasPagesV2 } from '../pagesV2.js';
+import { navLabelKey, plainLabel, t } from './labels.js';
 import { renderPageBody } from './pageBodies.js';
 import { buildPageSet, canonicalBase, hasFilePages, isMultiPage, singlePageSet, plainText, sitemapXml, type PageContext, type PageFile, type PageSet, type SiteFile } from './pages.js';
 import { euphoriaRootStyle, generateEuphoriaHTMLWithPlaceholders } from './euphoria.js';
@@ -49,6 +51,15 @@ export function imageUrlMapOf(data: WebsiteData): Record<string, string> {
   (data.gallery || []).forEach((u, i) => put(`gallery${i}`, u));
   (data.craftImages || []).forEach((u, i) => put(`craft${i}`, u));
   (data.staff || []).forEach((s, i) => put(`staff${i}`, s?.photo));
+  // Page hero photos (pages v2, plan section 4). Only sites that opted into pages v2 have them; older sites gain no key.
+  if (hasPagesV2(data)) {
+    const putHttp = (key: string, url: unknown) => { if (typeof url === 'string' && /^https?:\/\//i.test(url)) map[key] = url; };
+    (data.services || []).forEach((s, i) => putHttp(`service${i}`, s?.imageUrl));
+    const images = (data.extraPages as { images?: unknown }).images;
+    if (images && typeof images === 'object') {
+      for (const k of HERO_EXTRA_PAGES) if (Object.prototype.hasOwnProperty.call(images, k)) putHttp(`page-${k}`, (images as Record<string, unknown>)[k]);
+    }
+  }
   return map;
 }
 
@@ -57,8 +68,16 @@ export function imageUrlMapOf(data: WebsiteData): Record<string, string> {
  * {{placeholders}} afterwards, at deploy or in the preview).
  */
 export function forRender(sd: WebsiteData, map: Record<string, string>): WebsiteData {
+  const v2 = hasPagesV2(sd);
+  const images = v2 ? (sd.extraPages as { images?: unknown }).images : null;
   return {
     ...sd,
+    ...(v2 ? {
+      services: (sd.services || []).map((s: any, i: number) => ({ ...s, imageUrl: map[`service${i}`] ? 'has-image' : '' })),
+      extraPages: images && typeof images === 'object'
+        ? { ...sd.extraPages!, images: Object.fromEntries(HERO_EXTRA_PAGES.filter((k) => map[`page-${k}`]).map((k) => [k, 'has-image'])) }
+        : sd.extraPages,
+    } : {}),
     hero: { ...sd.hero, imageUrl: map['hero'] ? 'has-image' : '' },
     about: { ...sd.about, imageUrl: map['about'] ? 'has-image' : '' },
     gallery: (sd.gallery || []).map((_: string, i: number) => (map[`gallery${i}`] ? 'has-image' : '')),
@@ -108,7 +127,7 @@ export function renderSiteBundle(data: WebsiteData, opts: RenderSiteOptions = {}
   const themeStyle = themeStyleOf(template, d);
 
   const headerFor = (file: PageFile): string => {
-    const nav = navListHtml(navItemsFor(template, set, d, file.key), L('pgMenu'));
+    const nav = navListHtml(navItemsFor(template, set, d, file.key), L('pgMenu'), L('pgMore'));
     if (template === 'luxe') return headerHtml('luxe', { name: shop, phone, shownPhone: escapeAttr(displayPhone(phone)), nav });
     if (template === 'prime') {
       const href = bookingUrl || (digits ? `tel:+1${digits}` : '');
@@ -117,7 +136,16 @@ export function renderSiteBundle(data: WebsiteData, opts: RenderSiteOptions = {}
     const href = bookingUrl || (/\d/.test(phone) ? `tel:${phone.replace(/\s+/g, '')}` : '');
     return headerHtml('euphoria', { name: shop, cta: href ? { href, label: L('euNavBook'), newTab: !!bookingUrl && !bookingUrl.startsWith('/') } : null, nav });
   };
-  const footer = footerHtml(template, { name: shop, year: copyrightYear(), line: template === 'luxe' ? L('footerLine') : undefined });
+  // The footer lists every page that is a file in the set (top-level pages, then the service pages), nothing else.
+  const footerPages = [
+    ...navItemsFor(template, set, d, 'home').map((i) => ({ href: i.href, label: escapeAttr(plainLabel(d.labels, navLabelKey(template, i.key), niche, d)), external: i.external })),
+    ...set.files.filter((f) => f.key === 'services' && f.child).map((f) => ({ href: f.href, label: escapeAttr(f.child!.title) })),
+  ];
+  const footer = footerHtml(template, {
+    name: shop, year: copyrightYear(), line: template === 'luxe' ? L('footerLine') : undefined,
+    address: plainText(d.contact?.address), phone, shownPhone: phone ? escapeAttr(displayPhone(phone)) : '',
+    pagesHeading: L('pgPages'), pages: footerPages,
+  });
 
   for (const file of set.files) {
     if (file.key === 'home') continue;

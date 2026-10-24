@@ -41,7 +41,7 @@ describe.each(TEMPLATES)('%s: service and location pages', (template) => {
 
   it('a service page: name, real price/duration/description, book button, back link, no photo, full shell', () => {
     const h = at(files, 'services/skin-fade/index.html');
-    expect(h).toContain('<title>Skin Fade · Fresh Cuts</title>');
+    expect(h).toContain('<title>Skin Fade in Austin, TX · Fresh Cuts</title>'); // pages v2: the shop's place in the title
     expect(h).toContain('<h1 class="ab-h1">Skin Fade</h1>');
     expect(h).toContain('$35'); expect(h).toContain('45 min'); expect(h).toContain('Tight fade.');
     expect(h).toContain('href="/book"'); expect(h).not.toContain('/book?service');
@@ -66,13 +66,13 @@ describe.each(TEMPLATES)('%s: service and location pages', (template) => {
 
   it('related links: other services, Location, Hours, Contact', () => {
     const h = at(files, 'services/skin-fade/index.html');
-    expect(h).toContain('Other services'); expect(h).toContain('href="/services/beard/"'); expect(h).not.toMatch(/Other services[\s\S]*href="\/services\/skin-fade\/"/);
+    expect(h).toContain('Other services'); expect(h).toContain('href="/services/beard/"'); expect(h).not.toMatch(/Other services[\s\S]*href="\/services\/skin-fade\/"[\s\S]*<\/main>/);
     for (const href of ['/location/', '/hours/', '/contact/']) expect(h).toContain(`href="${href}"`);
   });
 
   it('the location page: facts, directions link, map, hours, book; title from the real address', () => {
     const h = at(files, 'location/index.html');
-    expect(h).toContain('<title>Fresh Cuts — barbershop at 1 Main St, Austin, TX 78701</title>');
+    expect(h).toContain('<title>Barbershop in Austin, TX · Fresh Cuts</title>');
     expect(h).toContain('<meta name="description" content="Fresh Cuts, 1 Main St, Austin, TX 78701.">');
     expect(h).toContain('href="https://www.google.com/maps/search/?api=1&amp;query=1%20Main%20St%2C%20Austin%2C%20TX%2078701"');
     expect(h).toContain('maps.google.com/maps?q=Fresh%20Cuts%201%20Main%20St');
@@ -207,7 +207,7 @@ describe('labels: the app can edit every new text', () => {
   it('a renamed label shows on the page, escaped', () => {
     const f = renderSite(shop({ labels: { pgDirectionsCta: 'Take me <there>', pgLocationTitle: 'Come by' } as never }));
     const h = at(f, 'location/index.html');
-    expect(h).toContain('Take me &lt;there&gt;'); expect(h).toContain('<h1 class="ab-h1">Come by</h1>'); expect(h).toContain('<title>Fresh Cuts — barbershop at');
+    expect(h).toContain('Take me &lt;there&gt;'); expect(h).toContain('<h1 class="ab-h1">Come by</h1>'); expect(h).toContain('<title>Barbershop in Austin, TX · Fresh Cuts</title>');
   });
 });
 

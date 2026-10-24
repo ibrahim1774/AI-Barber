@@ -427,7 +427,7 @@ export function generateHTMLWithPlaceholders(input: WebsiteData, ctx?: RenderCtx
           <span class="ab-call-text whitespace-nowrap text-sm md:text-xl lg:text-2xl font-bold tracking-tight">${shownPhone}</span>
         </a>` : ''}
       </div>
-      ${menuSet ? navListHtml(navItemsFor('luxe', menuSet, siteData, 'home'), lbl('pgMenu')) : `<nav class="hidden lg:flex items-center gap-10">
+      ${menuSet ? navListHtml(navItemsFor('luxe', menuSet, siteData, 'home'), lbl('pgMenu'), lbl('pgMore')) : `<nav class="hidden lg:flex items-center gap-10">
         <a href="#home" class="text-[12px] font-montserrat font-bold tracking-[2px] hover:text-[#f4a100] transition-colors">${lbl('navHome')}</a>
 ${showServices ? `        <a href="#services" class="text-[12px] font-montserrat font-bold tracking-[2px] hover:text-[#f4a100] transition-colors">${lbl('navServices')}</a>
 ` : ''}        <a href="#contact" class="text-[12px] font-montserrat font-bold tracking-[2px] hover:text-[#f4a100] transition-colors">${lbl('navContact')}</a>${shopUrl ? `

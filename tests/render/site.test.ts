@@ -50,8 +50,9 @@ describe.each(TEMPLATES)('%s multi-page site', (template) => {
     const files = renderSite({ ...data, pages: { order: ['contact', 'about'], hidden: ['reviews'] } }, template);
     const expected = ['/', '/contact/', '/about/', '/services/', '/team/', '/gallery/', '/hours/', '/location/', '/book', '/shop'];
     for (const f of files) {
-      expect(navLinks(f.html), f.path).toEqual(expected);
-      const current = [...f.html.matchAll(/<a href="([^"]*)" class="is-active" aria-current="page"/g)].map((m) => m[1]);
+      // More than 5 items: the first 5, then the rest twice (flat for phones, and in the More dropdown) - Phase A of pages v2.
+      expect(navLinks(f.html), f.path).toEqual([...expected, ...expected.slice(5)]);
+      const current = [...new Set([...f.html.matchAll(/<a href="([^"]*)" class="is-active" aria-current="page"/g)].map((m) => m[1]))]; // an item under More is in both copies
       const want = f.path === 'index.html' ? '/' : '/' + f.path.split('/')[0] + '/'; // a service page highlights Services
       expect(current, f.path).toEqual([want]);
     }
@@ -203,7 +204,8 @@ describe('page content', () => {
     const h = byPath(files, 'services/index.html');
     expect(h).toContain('href="/services/skin-fade/"');
     expect(h).toContain('href="/services/beard/"');
-    expect(h.match(/href="\/services\/[a-z0-9-]+\/"/g)).toHaveLength(2);
+    const main = /<main[\s\S]*<\/main>/.exec(h)![0]; // the footer lists the service pages too
+    expect(main.match(/href="\/services\/[a-z0-9-]+\/"/g)).toHaveLength(2);
   });
   it('team member page: bio, picked services with prices, book with <first name> to /book?barber=', () => {
     const h = byPath(files, 'team/sam-fade/index.html');
@@ -215,7 +217,8 @@ describe('page content', () => {
   });
   it('hours page: rows and Closed; the address and map moved to the Location page', () => {
     const h = byPath(files, 'hours/index.html');
-    expect(h).toContain('9:00 AM'); expect(h).toContain('Closed'); expect(h).not.toContain('maps.google.com'); expect(h).not.toContain('1 Main St');
+    const main = /<main[\s\S]*<\/main>/.exec(h)![0]; // the footer now prints the address
+    expect(h).toContain('9:00 AM'); expect(h).toContain('Closed'); expect(h).not.toContain('maps.google.com'); expect(main).not.toContain('1 Main St');
   });
   it('reviews page: visible reviews, source, rating', () => {
     const h = byPath(files, 'reviews/index.html');
@@ -254,6 +257,35 @@ describe('multi-page is opt-in (P3b review B1)', () => {
     expect(r.pages.map((f) => f.path)).toEqual(['index.html']);
     expect(r.pages[0].html).toBe(golden[template]);
     expect(r.sitemap).toBeNull();
+  });
+  it.each(TEMPLATES)('%s: extraPages, copy, pageSections and the new labels (pages v2, Phase A) do not move one byte of a single page', (template) => {
+    const data: WebsiteData = {
+      ...pending(template),
+      extraPages: { on: ['faq', 'first-visit', 'hair-care', 'beard-care'], serviceGuides: true, seed: 5, pick: { a: 1 }, images: { faq: 'https://x/y.jpg' } },
+      copy: { 'guide.fade.what': 'Hello <script>', 'faq.intro': 'x' },
+      pageSections: { service: { hidden: ['guide'], order: ['hero'] } },
+      labels: { pgPlace: 'Elsewhere', pgMore: 'Etc', pgPages: 'All' } as never,
+    };
+    const r = renderSiteBundle(data, { imageUrls });
+    expect(r.pages.map((f) => f.path)).toEqual(['index.html']);
+    expect(r.pages[0].html).toBe(golden[template]);
+    expect(r.sitemap).toBeNull();
+  });
+  it.each(TEMPLATES)('%s: page hero photos (service imageUrl, extraPages.images, their map keys, sections) do not move one byte of a single page (Phase C)', (template) => {
+    const base = pending(template);
+    const data: WebsiteData = {
+      ...base,
+      services: base.services.map((s) => ({ ...s, imageUrl: 'https://i.example.com/svc.jpg' })),
+      extraPages: { on: ['first-visit', 'hair-care'], serviceGuides: true, seed: 5, images: { 'first-visit': 'https://i.example.com/p.jpg', 'hair-care': 'uploaded' } },
+      pageSections: { 'first-visit': { hidden: ['hero'], order: ['cta'] }, service: { hidden: ['guide'] } },
+    };
+    const urls = { ...imageUrls, service0: 'https://i.example.com/svc.jpg', 'page-first-visit': 'https://i.example.com/p.jpg' };
+    const r = renderSiteBundle(data, { imageUrls: urls });
+    expect(r.pages.map((f) => f.path)).toEqual(['index.html']);
+    expect(r.pages[0].html).toBe(golden[template]);
+    const r2 = renderSiteBundle(data);
+    expect(r2.pages.map((f) => f.path)).toEqual(['index.html']);
+    expect(r2.pages[0].html.replace(/published-at" content="\d+"/, '')).toBe(golden[template].replace(/published-at" content="\d+"/, ''));
   });
   it.each(TEMPLATES)('%s: with pages present the page set is built', (template) => {
     const r = renderSiteBundle({ ...pending(template), pages: { order: [], hidden: [] } }, { imageUrls });

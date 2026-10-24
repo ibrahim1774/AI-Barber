@@ -13,8 +13,10 @@
 import type { WebsiteData } from '../../types';
 import { BOOKSY_NICHES } from '../booksyNiche.js';
 import { isStockImage } from '../stockImages.js';
-import { contactEmail, teamOf, visibleReviews, withoutLegacyCopy } from './honest.js';
+import { contactEmail, policyToShow, teamOf, visibleReviews, withoutLegacyCopy } from './honest.js';
 import { safeHref } from './safeHref.js';
+import { pageSectionsOf } from './sections.js';
+import { faqDataQuestions, hasOpenDay, isBeardTitle, isHaircutTitle } from './guides.js';
 import { isSiteBookLink, isSiteShopLink } from './subpages.js';
 
 /** One file of the deployed site. `path` is validated by assertSiteFilePath before it is written. */
@@ -23,8 +25,25 @@ export interface SiteFile {
   html: string;
 }
 
-export const PAGE_KEYS = ['home', 'about', 'services', 'team', 'gallery', 'reviews', 'hours', 'location', 'contact', 'book', 'shop'] as const;
+/**
+ * The guide pages a barber can add (plan 2026-10-24). They are NOT stored in `pages`: the on/off state lives in
+ * `WebsiteData.extraPages.on`, because an older app build saves `pages` whole and would wipe anything kept there.
+ */
+export const EXTRA_KEYS = ['faq', 'first-visit', 'hair-care', 'beard-care'] as const;
+export type ExtraKey = (typeof EXTRA_KEYS)[number];
+export const isExtraKey = (k: unknown): k is ExtraKey => typeof k === 'string' && (EXTRA_KEYS as readonly string[]).includes(k);
+
+export const PAGE_KEYS = ['home', 'about', 'services', 'team', 'gallery', 'reviews', 'hours', 'location', 'contact', 'book', 'shop', ...EXTRA_KEYS] as const;
 export type PageKey = (typeof PAGE_KEYS)[number];
+
+/** WebsiteData.extraPages (plan 2026-10-24 §6a). Only `on` is read by Phase A; the rest is kept for Phases B to D. */
+export interface ExtraPagesModel {
+  on: ExtraKey[];
+  serviceGuides?: boolean;
+  seed?: number;
+  pick?: Record<string, number>;
+  images?: Partial<Record<ExtraKey, string>>;
+}
 
 /** Per-item pages live under these groups: `services/<slug>/`, `team/<slug>/`. */
 export type PageGroup = 'services' | 'team';
@@ -145,6 +164,36 @@ export function cleanPagesModel(raw: unknown): PagesModel {
   return { order: list(r.order), hidden: list(r.hidden).filter((k) => k !== 'home') };
 }
 
+/** What a new site gets (decision 2): FAQ and First visit and service guides on; Hair care and Beard care suggested but off. The app adds `seed`. */
+export function defaultExtraPages(seed?: number): ExtraPagesModel {
+  const out: ExtraPagesModel = { on: ['faq', 'first-visit'], serviceGuides: true };
+  if (typeof seed === 'number' && Number.isInteger(seed)) out.seed = seed;
+  return out;
+}
+
+/** WebsiteData.extraPages cleaned (untrusted JSON): known page keys once, a safe seed, closed pick/images. */
+export function cleanExtraPages(raw: unknown): ExtraPagesModel {
+  const r = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  const on: ExtraKey[] = [];
+  if (Array.isArray(r.on)) for (const k of r.on) if (isExtraKey(k) && !on.includes(k)) on.push(k);
+  const out: ExtraPagesModel = { on, serviceGuides: r.serviceGuides === true };
+  if (typeof r.seed === 'number' && Number.isInteger(r.seed) && Math.abs(r.seed) <= Number.MAX_SAFE_INTEGER) out.seed = r.seed;
+  if (r.pick && typeof r.pick === 'object' && !Array.isArray(r.pick)) {
+    const pick: Record<string, number> = Object.create(null);
+    for (const [k, v] of Object.entries(r.pick as Record<string, unknown>)) {
+      if (k.length <= 80 && typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 2) pick[k] = v;
+    }
+    out.pick = { ...pick };
+  }
+  if (r.images && typeof r.images === 'object' && !Array.isArray(r.images)) {
+    const images: Partial<Record<ExtraKey, string>> = {};
+    const src = r.images as Record<string, unknown>;
+    for (const k of EXTRA_KEYS) if (Object.prototype.hasOwnProperty.call(src, k) && typeof src[k] === 'string') images[k] = src[k] as string;
+    out.images = images;
+  }
+  return out;
+}
+
 // ── Eligibility ───────────────────────────────────────────────────────────────────────────────
 
 const has = (v: unknown): boolean => plainText(v) !== '';
@@ -245,6 +294,52 @@ export function memberHasOwnContent(raw: unknown, shopHours: unknown): boolean {
   return Array.isArray(s.hours) && s.hours.length > 0 && hoursSig(s.hours) !== hoursSig(shopHours);
 }
 
+// ── Extra (guide) pages ─────────────────────────────────────────────────────────────────────────
+// The page copy is the library's (copyLibrary.ts, guides.ts); a page exists when the barber turned it on and the data floor
+// of plan 1c is met. Service types come from guides.ts matching.
+
+const REASON: Record<ExtraKey, string> = {
+  faq: 'Add your booking link or phone, hours, address, prices or durations to get this page',
+  'first-visit': 'Add a booking link or phone, and an address or hours, to get this page',
+  'hair-care': 'Add a haircut service to get this page',
+  'beard-care': 'Add a beard or shave service to get this page',
+};
+
+/** Every content section of an extra page is hidden (the photo and the Book button alone are not a page). */
+function allSectionsHidden(key: ExtraKey, d: WebsiteData): boolean {
+  return pageSectionsOf(d, key).every((s) => s.hidden || s.id === 'hero' || s.id === 'cta');
+}
+
+/** The data floor of one extra page (plan 1c) on the cleaned site: true when the page has the real data it needs. */
+function extraFloorMet(key: ExtraKey, d: WebsiteData): boolean {
+  const titled = (Array.isArray(d.services) ? d.services : []).filter((s) => has(s?.title));
+  const book = !!safeHref(d.bookingUrl);
+  const phone = /\d/.test(plainText(d.phone));
+  const address = has(d.contact?.address);
+  const hours = hasOpenDay(d.hours);
+  if (key === 'first-visit') return (book || phone) && (address || hours);
+  if (key === 'hair-care') return titled.some((s) => isHaircutTitle(s.title));
+  if (key === 'beard-care') return titled.some((s) => isBeardTitle(s.title));
+  // FAQ: at least 3 questions the data can answer (guides.ts faqDataQuestions).
+  return faqDataQuestions(d) >= 3;
+}
+
+/**
+ * The extra pages as the Pages sheet lists them: `on` = the barber turned it on (and has not hidden it),
+ * `eligible` = it has its data floor and its copy, `reason` = why not ('' when eligible).
+ */
+export function extraPageRows(input: WebsiteData, _ctx?: PageContext): { key: ExtraKey; on: boolean; eligible: boolean; reason: string }[] {
+  const d = withoutLegacyCopy(input);
+  const on = cleanExtraPages(d.extraPages).on;
+  const hidden = cleanPagesModel(d.pages).hidden;
+  return EXTRA_KEYS.map((key) => {
+    const floor = extraFloorMet(key, d);
+    const noSections = floor && allSectionsHidden(key, d);
+    const eligible = floor && !noSections;
+    return { key, on: on.includes(key) && !hidden.includes(key), eligible, reason: eligible ? '' : noSections ? 'Every section of this page is hidden. Show one to get this page' : REASON[key] };
+  });
+}
+
 /** Pages with data behind them, in the default order, ignoring what the barber turned off. Runs on withoutLegacyCopy(d). */
 export function eligiblePages(input: WebsiteData, ctx?: PageContext): PageKey[] {
   const d = withoutLegacyCopy(input);
@@ -257,6 +352,9 @@ export function eligiblePages(input: WebsiteData, ctx?: PageContext): PageKey[] 
   if (Array.isArray(d.hours) && d.hours.length > 0) out.push('hours');
   if (has(d.contact?.address)) out.push('location');
   if (has(d.phone) || contactEmail(d) || has(d.contact?.address) || safeHref(d.bookingUrl)) out.push('contact');
+  // Extra pages exist only when the barber turned them on (extraPages.on), they have their data floor and their copy.
+  const on = cleanExtraPages(d.extraPages).on;
+  for (const k of EXTRA_KEYS) if (on.includes(k) && extraFloorMet(k, d) && !allSectionsHidden(k, d)) out.push(k);
   if (isSiteBookLink(d.bookingUrl)) out.push('book');
   if (safeHref(d.shopUrl)) out.push('shop');
   return out;
@@ -294,6 +392,8 @@ export interface PageSet {
   /** Titled services past SERVICE_PAGE_CAP: they are listed on the Services page but have no page of their own. */
   servicesOverCap: number;
   team: ChildPage[];
+  /** The extra (guide) pages that are files in this set (eligible and not hidden), in menu order. */
+  extras: ExtraKey[];
   /** The Shop entry is this site's own proxied /shop page (else it is the barber's own store link). */
   shopInternal: boolean;
 }
@@ -351,7 +451,7 @@ export function buildPageSet(d: WebsiteData, ctx?: PageContext): PageSet {
     const kids = key === 'services' ? services : key === 'team' ? team : [];
     for (const c of kids) files.push({ key, path: pagePath(key, c.slug) as string, href: pageHref(key, c.slug), child: c });
   }
-  return { eligible, hidden, nav, files, services, servicesOverCap, team, shopInternal: isSiteShopLink(clean.shopUrl) };
+  return { eligible, hidden, nav, files, services, servicesOverCap, team, extras: nav.filter(isExtraKey), shopInternal: isSiteShopLink(clean.shopUrl) };
 }
 
 /** Multi-page is opt-in: only a site whose data carries `pages` (the app writes it) gets more than Home. */
@@ -360,7 +460,7 @@ export const isMultiPage = (d: Pick<WebsiteData, 'pages'>): boolean => !!d.pages
 /** The page set of a site that has not opted in: Home alone, exactly the pre-P3b single page. */
 export function singlePageSet(set: PageSet): PageSet {
   const home = set.files.find((f) => f.key === 'home') ?? { key: 'home' as PageKey, path: 'index.html', href: '/' };
-  return { eligible: ['home'], hidden: [], nav: ['home'], files: [home], services: [], servicesOverCap: 0, team: [], shopInternal: set.shopInternal };
+  return { eligible: ['home'], hidden: [], nav: ['home'], files: [home], services: [], servicesOverCap: 0, team: [], extras: [], shopInternal: set.shopInternal };
 }
 
 /** True when the site has pages beyond Home that are files (so the nav on Home links to them). */
