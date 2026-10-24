@@ -15,7 +15,7 @@ import { safeHref } from './safeHref.js';
 
 // Trailing "City, State" only, so a pasted street address never lands in
 // a footer or meta line.
-const cityStateOnly = (raw: string): string => {
+export const cityStateOnly = (raw: string): string => {
   const parts = (raw || '').split(',').map((s) => s.trim()).filter(Boolean);
   if (parts.length <= 2) return (raw || '').trim();
   return parts.slice(-2).join(', ');

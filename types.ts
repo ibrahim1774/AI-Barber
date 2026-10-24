@@ -1,5 +1,5 @@
 import type { LabelKey } from './lib/render/labels.js';
-import type { PagesModel } from './lib/render/pages.js';
+import type { ExtraPagesModel, PagesModel } from './lib/render/pages.js';
 
 export type TemplateId = 'luxe' | 'euphoria' | 'prime';
 
@@ -152,6 +152,14 @@ export interface WebsiteData {
   // Multi-page sites (spec 2026-10-23, P3b): the nav order and the pages the barber turned off. Which pages
   // exist is computed from the data (lib/render/pages.ts), never stored. Absent = every eligible page, default order.
   pages?: PagesModel;
+  // Generic and location pages (plan 2026-10-24, Phase A). All optional and additive: a site without them
+  // renders exactly as before. `extraPages.on` lists the guide pages the barber turned on (FAQ, First visit,
+  // Hair care, Beard care); it is the ONLY thing that can make one of them exist. `copy` holds the barber's
+  // edits of library text blocks (closed key set, read from Phase B on). `pageSections` holds per-page-type
+  // section hide/order (closed section ids, read from Phase C on).
+  extraPages?: ExtraPagesModel;
+  copy?: Record<string, string>;
+  pageSections?: Record<string, { hidden?: string[]; order?: string[] }>;
   // Optional staff cards — name, role, photo. Renderer shows a
   // "Meet the Team" section when at least one staff entry exists.
   // Photo is editable in the preview (replace-image overlay).

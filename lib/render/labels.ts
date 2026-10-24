@@ -22,7 +22,7 @@ import type { TemplateId, WebsiteData } from '../../types';
 import type { BooksyNiche } from '../booksyNiche.js';
 import { nicheByKey } from '../booksyNiche.js';
 import { safeHref } from './safeHref.js';
-import { aggregateToShow, footerLine, hasServices, nicheCopy, reviewsSourceName, teamBookLink, teamOf, visibleReviews } from './honest.js';
+import { aggregateToShow, cityStateOnly, footerLine, hasServices, nicheCopy, reviewsSourceName, teamBookLink, teamOf, visibleReviews } from './honest.js';
 import { isSiteBookLink } from './subpages.js';
 import { buildPageSet, hasFilePages, plainText, type PageContext, type PageKey, type PageSet } from './pages.js';
 
@@ -190,6 +190,18 @@ export const LABELS = {
   pgNavLocation: { title: 'Menu: Location', default: 'Location', max: 28, multi: {} },
   pgNavContact: { title: 'Menu: Contact', default: 'Contact', max: 20, multi: {} },
   pgNavBook: { title: 'Menu: Book', default: 'Book', max: 20, multi: {} },
+  pgNavFaq: { title: 'Menu: FAQ', default: 'FAQ', max: 20, multi: {} },
+  pgNavFirstVisit: { title: 'Menu: First visit', default: 'First visit', max: 28, multi: {} },
+  pgNavHairCare: { title: 'Menu: Hair care', default: 'Hair care', max: 28, multi: {} },
+  pgNavBeardCare: { title: 'Menu: Beard care', default: 'Beard care', max: 28, multi: {} },
+  pgMore: { title: 'Menu: More', default: 'More', max: 20, multi: { shows: (_s, set) => set.nav.length > 5 } },
+  pgPages: { title: 'Footer: pages heading', default: 'Pages', max: 30, multi: { shows: (_s, set) => hasFilePages(set) } },
+  // The one place the shop works from: the default is the shop's own city and state (never another town). The barber
+  // may name a neighbourhood instead. Printed in service page and Location titles and over the service page heading.
+  pgPlace: {
+    title: 'Place name', default: (_n, site) => cityStateOnly(site?.area || ''), max: 60,
+    multi: { page: ['services', 'location'], shows: (s) => has(s.area) },
+  },
   pgAboutTitle: { title: 'About page title', default: 'About us', max: 60, multi: { page: 'about' } },
   pgServicesTitle: { title: 'Services page title', default: 'Services', max: 60, multi: { page: 'services' } },
   pgTeamTitle: { title: 'Team page title', default: (n) => copy(n).teamHeading, max: 60, multi: { page: 'team' } },
@@ -198,6 +210,10 @@ export const LABELS = {
   pgHoursTitle: { title: 'Hours page title', default: 'Hours', max: 60, multi: { page: 'hours' } },
   pgLocationTitle: { title: 'Location page title', default: 'Find us', max: 60, multi: { page: 'location' } },
   pgContactTitle: { title: 'Contact page title', default: 'Contact', max: 60, multi: { page: 'contact' } },
+  pgFaqTitle: { title: 'FAQ page title', default: 'Questions', max: 60, multi: { page: 'faq' } },
+  pgFirstVisitTitle: { title: 'First visit page title', default: 'Your first visit', max: 60, multi: { page: 'first-visit' } },
+  pgHairCareTitle: { title: 'Hair care page title', default: 'Hair care between cuts', max: 60, multi: { page: 'hair-care' } },
+  pgBeardCareTitle: { title: 'Beard care page title', default: 'Beard care', max: 60, multi: { page: 'beard-care' } },
   pgHoursHeading: { title: 'Hours heading', default: 'Hours', max: 40, multi: { page: 'location', shows: (s) => hasHours(s) } },
   pgAddressLabel: { title: 'Address label', default: 'Address', max: 30, multi: { page: ['contact', 'location'], shows: (s) => hasAddress(s) } },
   pgPhoneLabel: { title: 'Phone label', default: 'Phone', max: 30, multi: { page: ['contact', 'location'], shows: (s) => hasPhone(s) } },
@@ -319,6 +335,7 @@ export function navLabelKey(template: TemplateId, page: PageKey): LabelKey {
   const table: Record<Exclude<PageKey, 'shop'>, LabelKey> = {
     home: 'pgNavHome', about: 'pgNavAbout', services: 'pgNavServices', team: 'pgNavTeam', gallery: 'pgNavGallery',
     reviews: 'pgNavReviews', hours: 'pgNavHours', location: 'pgNavLocation', contact: 'pgNavContact', book: 'pgNavBook',
+    faq: 'pgNavFaq', 'first-visit': 'pgNavFirstVisit', 'hair-care': 'pgNavHairCare', 'beard-care': 'pgNavBeardCare',
   };
   return table[page];
 }
@@ -327,6 +344,7 @@ export function navLabelKey(template: TemplateId, page: PageKey): LabelKey {
 export const PAGE_TITLE_KEY: Partial<Record<PageKey, LabelKey>> = {
   about: 'pgAboutTitle', services: 'pgServicesTitle', team: 'pgTeamTitle', gallery: 'pgGalleryTitle',
   reviews: 'pgReviewsTitle', hours: 'pgHoursTitle', location: 'pgLocationTitle', contact: 'pgContactTitle',
+  faq: 'pgFaqTitle', 'first-visit': 'pgFirstVisitTitle', 'hair-care': 'pgHairCareTitle', 'beard-care': 'pgBeardCareTitle',
 };
 
 /**
