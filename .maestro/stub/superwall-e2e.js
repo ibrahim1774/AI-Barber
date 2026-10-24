@@ -52,7 +52,7 @@ exports.useSuperwall = (selector) => {
     isConfigured: true, configurationError: null,
     restorePurchases: async () => {
       if (st.subs.length) return { result: 'restored' };
-      Alert.alert('No subscription found', 'We couldn’t find an active AI Barber subscription for this Apple ID. (E2E mock)', [{ text: 'OK' }]);
+      Alert.alert('No subscription found', 'We couldn’t find an active Prime Barber subscription for this Apple ID. (E2E mock)', [{ text: 'OK' }]);
       return { result: 'failed' };
     },
   };

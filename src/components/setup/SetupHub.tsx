@@ -11,7 +11,7 @@ import { PUBLISH_FOR_BOOKING_LINK, useCustomerLinkState } from '@/lib/customerLi
 import { icsUrl, listMembers, updateShopSettings, type Member, type Shop } from '@/lib/shop';
 import type { SiteRecord } from '@/lib/siteStore';
 
-export const PLAN_PENDING = 'Your booking page opens once your AI Barber plan is active.';
+export const PLAN_PENDING = 'Your booking page opens once your Prime Barber plan is active.';
 
 export type HubTarget = 'services' | 'barbers' | 'hours' | 'rules' | 'pay';
 

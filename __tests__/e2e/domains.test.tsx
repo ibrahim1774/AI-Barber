@@ -94,7 +94,7 @@ describe('other helpers', () => {
   });
 
   it('the disclosure, word for word; and no monthly figure for the $39 yearly price anywhere in the domain code', () => {
-    expect(DOMAIN_DISCLOSURE).toBe("Registered by AI Barber for your site. If you ever leave, contact support@davoxa.com and we'll transfer it to you.");
+    expect(DOMAIN_DISCLOSURE).toBe("Registered by Prime Barber for your site. If you ever leave, contact support@davoxa.com and we'll transfer it to you.");
     const root = path.join(__dirname, '../..');
     for (const f of ['src/lib/domains/model.ts', 'src/app/domain.tsx', 'src/app/(tabs)/settings.tsx']) {
       expect(fs.readFileSync(path.join(root, f), 'utf8')).not.toMatch(/\/mo\b|per month|a month|3\.25|3\.24/i);
@@ -380,7 +380,7 @@ describe('the custom domain screen', () => {
     w.willBuy(DOMAIN_PRODUCT);
     server.fail('/api/ios/domain/claim', { kind: 'offline' });
     await tap(rowFor(tree, 'fadelab.com'));
-    expect(texts(tree)).toContain("Couldn't reach AI Barber. Check your connection");
+    expect(texts(tree)).toContain("Couldn't reach Prime Barber. Check your connection");
     expect(await require('@/lib/domains/api').loadDomainClaim()).toMatchObject({ domain: 'fadelab.com', transactionId: 'tx-2', siteTransactionId: 'tx-1' });
   });
 

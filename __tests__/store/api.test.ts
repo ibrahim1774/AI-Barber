@@ -76,7 +76,7 @@ describe('errors', () => {
     fetchMock.mockRejectedValueOnce(new Error('offline'));
     const e = await markOrder('o1', 'paid').catch((x) => x);
     expect(e.status).toBe(0);
-    expect(friendlyOrderError(e)).toMatch(/Couldn't reach AI Barber/);
+    expect(friendlyOrderError(e)).toMatch(/Couldn't reach Prime Barber/);
   });
   it('falls back for unknown codes and non-API errors', () => {
     expect(friendlyOrderError(new OrderApiError(500, 'http-500', 'x'))).toBe('Something went wrong. Please try again.');

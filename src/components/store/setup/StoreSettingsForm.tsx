@@ -21,7 +21,7 @@ import type { WebsiteData } from '@/web/types';
 /** `shopUrl` joins WebsiteData when the controller runs sync-web.sh; until then this carries it. */
 type WithShopUrl = WebsiteData & { shopUrl?: string };
 
-export const PLAN_PENDING = 'Your shop opens to customers once your AI Barber plan is active.';
+export const PLAN_PENDING = 'Your shop opens to customers once your Prime Barber plan is active.';
 
 /** Pickup, shipping, Get paid, and Open / Close my shop. */
 export function StoreSettingsForm({ shop, onChanged }: { shop: Shop; onChanged?(): void }) {

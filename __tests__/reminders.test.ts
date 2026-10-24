@@ -75,7 +75,7 @@ test('schedule has two reminders a day for 30 days at 10:00 and 18:00 local', ()
     expect([r.at.getFullYear(), r.at.getMonth(), r.at.getDate()]).toEqual([
       expected.getFullYear(), expected.getMonth(), expected.getDate(),
     ]);
-    expect(r.title).toBe('AI Barber');
+    expect(r.title).toBe('Prime Barber');
     expect(r.at.getTime()).toBeGreaterThan(NOW.getTime());
   });
   // The window crosses the end of US daylight time (Nov 1).

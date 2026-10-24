@@ -138,7 +138,7 @@ export default function Publishing() {
           icon={<AlertCircleIcon size={40} color={colors.danger} />}
           tint="rgba(239,68,68,0.2)"
           title={<>Subscription <Text style={{ color: colors.danger }}>inactive</Text></>}
-          message="Your website is saved, but your AI Barber subscription isn't active, so it can't go live. Subscribe to publish it."
+          message="Your website is saved, but your Prime Barber subscription isn't active, so it can't go live. Subscribe to publish it."
         >
           <Button title="Try again" onPress={() => void run(true)} style={styles.wide} />
           <Button variant="link" title="Back to Editor" onPress={back} style={styles.link} />

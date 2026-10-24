@@ -10,7 +10,7 @@ export const DOMAIN_PLACEMENT = 'custom_domain';
 
 export const DOMAIN_PRICE_LINE = 'Get your own .com — $39/year';
 export const DOMAIN_DISCLOSURE =
-  "Registered by AI Barber for your site. If you ever leave, contact support@davoxa.com and we'll transfer it to you.";
+  "Registered by Prime Barber for your site. If you ever leave, contact support@davoxa.com and we'll transfer it to you.";
 export const DOMAIN_SUPPORT_LINE = "Something needs a hand on our side. Email support@davoxa.com and we'll sort it out.";
 
 export type SearchResult = { domain: string; available: boolean; eligible: boolean };
@@ -156,11 +156,11 @@ export type DomainClaimRecord = { transactionId: string; domain: string; siteTra
 
 /** Claim answers that are not "offline": each gets its own words. */
 export function retryLaterMessage(code: string): string {
-  if (code === 'network') return "Couldn't reach AI Barber. Check your connection and try again — you won't pay twice.";
+  if (code === 'network') return "Couldn't reach Prime Barber. Check your connection and try again — you won't pay twice.";
   if (code === 'rate-limited') return 'Too many tries. Wait a minute and try again.';
   if (code === 'invalid' || code === 'bad-bundle') return "That name can't be used. Pick another.";
   if (code === 'domains-unavailable') return "Custom domains aren't available right now. Try again later — you won't pay twice.";
-  return "AI Barber is busy right now. Try again in a minute — you won't pay twice.";
+  return "Prime Barber is busy right now. Try again in a minute — you won't pay twice.";
 }
 
 /**

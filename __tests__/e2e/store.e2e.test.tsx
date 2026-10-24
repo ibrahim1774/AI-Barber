@@ -237,11 +237,11 @@ describe('order sheet', () => {
   it('a refund that failed offline says so and keeps the order as it was', async () => {
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
     const { OrderApiError } = jest.requireActual('@/lib/store/api');
-    mockRefund.mockRejectedValueOnce(new OrderApiError(0, 'network', "Couldn't reach AI Barber. Check your connection and try again."));
+    mockRefund.mockRejectedValueOnce(new OrderApiError(0, 'network', "Couldn't reach Prime Barber. Check your connection and try again."));
     const tree = await mount(order({ paymentMethod: 'card', paymentStatus: 'paid', amountPaidCents: 3300, status: 'paid' }));
     await press(tree, 'Refund');
     await press(tree, 'Refund');
-    expect(alert).toHaveBeenCalledWith("Couldn't do that", "Couldn't reach AI Barber. Check your connection and try again.");
+    expect(alert).toHaveBeenCalledWith("Couldn't do that", "Couldn't reach Prime Barber. Check your connection and try again.");
     expect(hasButton(tree, 'Refund')).toBe(true); // still on the refund panel, can retry
   });
 });

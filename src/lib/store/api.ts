@@ -6,7 +6,7 @@ import type { Order } from '@/lib/store/data';
 
 const base = () => process.env.EXPO_PUBLIC_API_BASE ?? 'https://www.aibarber.org';
 const TIMEOUT_MS = 30_000;
-const OFFLINE = "Couldn't reach AI Barber. Check your connection and try again.";
+const OFFLINE = "Couldn't reach Prime Barber. Check your connection and try again.";
 
 export class OrderApiError extends ApiError {
   constructor(status: number, code: string, message: string, public data: any = null) {
@@ -23,7 +23,7 @@ const FRIENDLY: Record<string, string> = {
   'nothing-to-refund': 'There is nothing left to refund on this order.',
   'not-markable': "This order just changed. We've updated it; please check and try again.",
   'not-card': 'Only card payments can be refunded here. Send other refunds yourself.',
-  'store-paused': 'Your AI Barber plan needs to be active to sell online.',
+  'store-paused': 'Your Prime Barber plan needs to be active to sell online.',
   'not-found': 'That order is no longer available.',
   invalid: "Some details weren't right. Please check and try again.",
   unauthorized: 'Please sign in again.',

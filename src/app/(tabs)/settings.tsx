@@ -123,7 +123,7 @@ export default function Settings() {
     if (signedIn) {
       Alert.alert(
         'Delete account?',
-        `This permanently deletes your AI Barber account and the site records saved to it, and removes your website from this phone. ${SITE_STAYS_LIVE}\n\n${SUBSCRIPTION_SEPARATE}`,
+        `This permanently deletes your Prime Barber account and the site records saved to it, and removes your website from this phone. ${SITE_STAYS_LIVE}\n\n${SUBSCRIPTION_SEPARATE}`,
         [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Delete account', style: 'destructive', onPress: () => void runDelete() },
@@ -146,7 +146,7 @@ export default function Settings() {
     try {
       await deleteAccountAndData();
       resetTo('/start');
-      Alert.alert('Account deleted', `Your AI Barber account has been deleted. ${SITE_STAYS_LIVE}`);
+      Alert.alert('Account deleted', `Your Prime Barber account has been deleted. ${SITE_STAYS_LIVE}`);
     } catch (e) {
       Alert.alert('Delete account', deleteError(e));
     } finally {
@@ -220,7 +220,7 @@ export default function Settings() {
         <Row label="Delete account" onPress={confirmDelete} busy={busy === 'delete'} danger />
       </Section>
 
-      <Text style={styles.version}>AI Barber {version}</Text>
+      <Text style={styles.version}>Prime Barber {version}</Text>
     </Page>
   );
 }

@@ -18,4 +18,4 @@ export function switchInputs(i: ShopInputs, _shop?: Pick<Shop, 'slug'>): ShopInp
 }
 
 export const DOUBLE_BOOKING_WARNING =
-  'You already have a booking link on your website. If you keep two calendars, customers can book the same time twice. Switch only if AI Barber will be your one calendar.';
+  'You already have a booking link on your website. If you keep two calendars, customers can book the same time twice. Switch only if Prime Barber will be your one calendar.';

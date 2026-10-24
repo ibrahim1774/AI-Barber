@@ -13,7 +13,7 @@ import {
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { sb, supabase } = require('@/lib/supabase');
 
-const OFFLINE = "Couldn't reach AI Barber — check your connection and try again.";
+const OFFLINE = "Couldn't reach Prime Barber — check your connection and try again.";
 
 beforeEach(() => {
   jest.restoreAllMocks();

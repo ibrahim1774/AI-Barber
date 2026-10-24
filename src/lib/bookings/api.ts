@@ -11,7 +11,7 @@ import type { Appointment, TimeOff } from '@/lib/bookings/calendar';
 
 const base = () => process.env.EXPO_PUBLIC_API_BASE ?? 'https://www.aibarber.org';
 const TIMEOUT_MS = 30_000;
-const OFFLINE = "Couldn't reach AI Barber. Check your connection and try again.";
+const OFFLINE = "Couldn't reach Prime Barber. Check your connection and try again.";
 
 export interface SlotAlternative { start: string; memberId: string }
 

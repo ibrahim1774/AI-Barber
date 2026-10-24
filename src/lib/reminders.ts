@@ -22,7 +22,7 @@ export interface Reminder {
   kind: ReminderKind;
 }
 
-export const REMINDER_TITLE = 'AI Barber';
+export const REMINDER_TITLE = 'Prime Barber';
 export const FINISH_LINES = [
   '{Shop} is almost live ✂️ — publish your website in under a minute.',
   'Your barbershop website is ready. Tap to publish it and start getting bookings.',

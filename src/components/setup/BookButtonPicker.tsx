@@ -6,7 +6,7 @@ import { shortLink, type BookingChoice } from '@/lib/bookingChoice';
 
 export const AIBARBER_DETAIL = 'Built in: deposits, reminders, your calendar';
 export const DOUBLE_BOOKING_NOTE = "Turn off your old booking app so clients don't double-book.";
-export const NO_OWN_NOTE = 'Your Book button will use AI Barber booking after you publish.';
+export const NO_OWN_NOTE = 'Your Book button will use Prime Barber booking after you publish.';
 export const PUBLISH_NOTE = 'Publish your site to update your Book button.';
 
 /**
@@ -37,7 +37,7 @@ export function BookButtonPicker({
   return (
     <Card title="Your Book button">
       <Option label="Keep my link" detail={shortLink(own)} selected={choice === 'own'} onPress={() => pick('own')} />
-      <Option label="Use AI Barber booking" detail={AIBARBER_DETAIL} selected={choice === 'aibarber'} onPress={() => pick('aibarber')} />
+      <Option label="Use Prime Barber booking" detail={AIBARBER_DETAIL} selected={choice === 'aibarber'} onPress={() => pick('aibarber')} />
       {choice === 'aibarber' && <Note tone="warn">{DOUBLE_BOOKING_NOTE}</Note>}
       {changed && <Note>{PUBLISH_NOTE}</Note>}
     </Card>

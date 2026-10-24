@@ -9,10 +9,10 @@ import { withTimeout } from '@/lib/timeout';
 import { boundMatches } from '@/lib/website';
 
 /** Shown once after the app quietly adopts an admin edit. */
-export const SYNC_NOTICE = 'Your site was updated by AI Barber support.';
+export const SYNC_NOTICE = 'Your site was updated by Prime Barber support.';
 /** Shown when a publish was refused because an admin edit is newer. */
 export const UPDATED_ON_PUBLISH_MESSAGE =
-  'Your site was just updated by AI Barber support. Review it and publish again.';
+  'Your site was just updated by Prime Barber support. Review it and publish again.';
 /** Added when the barber had edits that were not published yet. */
 const LOST_EDITS = ' Changes you had not published yet were replaced by their version.';
 /** A published record from before edits were tracked: we cannot tell. */

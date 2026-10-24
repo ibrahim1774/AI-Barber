@@ -14,7 +14,7 @@ export default function ResetPassword() {
   return (
     <Page title="Reset password" onBack={goBackOrHome}>
       <View style={styles.form}>
-        <Text style={styles.body}>Open AI Barber and use Forgot password to get a code.</Text>
+        <Text style={styles.body}>Open Prime Barber and use Forgot password to get a code.</Text>
         <Button variant="solid" title="Forgot password" onPress={() => router.replace('/forgot-password')} />
       </View>
     </Page>

@@ -17,7 +17,7 @@ const TITLE = 'Restore purchases';
  * already shown its own reworded restoreFailed alert).
  */
 export const DOMAIN_ONLY_RESTORE =
-  'We found your custom domain subscription, but no AI Barber website plan. Subscribe to a plan to publish; your domain stays in Settings › Custom domain.';
+  'We found your custom domain subscription, but no Prime Barber website plan. Subscribe to a plan to publish; your domain stays in Settings › Custom domain.';
 
 export function restoreMessage(
   outcome: Restored | null | unknown,

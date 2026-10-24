@@ -392,7 +392,7 @@ export const SUPERWALL_OPTIONS = {
     restoreFailed: {
       title: 'No subscription found',
       message:
-        'We couldn’t find an active AI Barber subscription for this Apple ID. Make sure this phone is signed in to the App Store with the Apple ID you subscribed with.',
+        'We couldn’t find an active Prime Barber subscription for this Apple ID. Make sure this phone is signed in to the App Store with the Apple ID you subscribed with.',
       closeButtonTitle: 'OK',
     },
   },

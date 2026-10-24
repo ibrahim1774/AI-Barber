@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "AI Barber",
+    "name": "Prime Barber",
     "slug": "aibarber",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -39,8 +39,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "AI Barber uses your photos so you can put your own shop and haircuts on your website.",
-          "cameraPermission": "AI Barber uses your camera so you can photograph products for your shop."
+          "photosPermission": "Prime Barber uses your photos so you can put your own shop and haircuts on your website.",
+          "cameraPermission": "Prime Barber uses your camera so you can photograph products for your shop."
         }
       ],
       [
@@ -54,7 +54,7 @@
       [
         "expo-tracking-transparency",
         {
-          "userTrackingPermission": "AI Barber uses this to understand which ads bring barbers to the app."
+          "userTrackingPermission": "Prime Barber uses this to understand which ads bring barbers to the app."
         }
       ],
       [

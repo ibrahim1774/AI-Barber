@@ -132,7 +132,7 @@ export function GetPaid({ shop, onChanged }: { shop: Shop; onChanged(): void }) 
 
       <Card title="Cash App, Venmo, Zelle, PayPal">
         <Note>
-          Customers see your handle after they book and send the money themselves. AI Barber doesn't move this money, so
+          Customers see your handle after they book and send the money themselves. Prime Barber doesn't move this money, so
           tap Mark paid when it arrives.
         </Note>
         {METHODS.map((m) => (
@@ -154,7 +154,7 @@ export function GetPaid({ shop, onChanged }: { shop: Shop; onChanged(): void }) 
 
       <Card title="Card payments">
         <Note>
-          Takes about 5 minutes. Customers pay by card or Apple Pay and the money goes to your bank automatically. AI Barber
+          Takes about 5 minutes. Customers pay by card or Apple Pay and the money goes to your bank automatically. Prime Barber
           keeps {fee} of each card payment, and Stripe charges its own processing fee on top. There is no monthly fee for
           cards.
         </Note>

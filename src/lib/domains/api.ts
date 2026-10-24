@@ -9,7 +9,7 @@ const TIMEOUT_MS = 30_000;
  * 202), within a 300 s limit: wait longer than that cutoff so the phone never gives up first.
  */
 export const CLAIM_TIMEOUT_MS = 170_000;
-const OFFLINE = "Couldn't reach AI Barber — check your connection and try again.";
+const OFFLINE = "Couldn't reach Prime Barber — check your connection and try again.";
 
 type Answer = { status: number; body: any };
 

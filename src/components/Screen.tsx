@@ -9,7 +9,7 @@ import { useSession } from '@/lib/auth';
 
 /**
  * The importer page shell from GbpImportPage.tsx: #070709 canvas with the gold
- * top glow, "A · AI Barber" header with the Sign in pill (Account once signed
+ * top glow, "P · Prime Barber" header with the Sign in pill (Account once signed
  * in), centred content, and the hairline footer. `overlay` renders above everything (import progress).
  */
 export function Screen({
@@ -37,10 +37,10 @@ export function Screen({
           <View style={styles.header}>
             <View style={styles.brand}>
               <View style={styles.mark}>
-                <Text style={styles.markText}>A</Text>
+                <Text style={styles.markText}>P</Text>
               </View>
               <Text style={styles.brandText}>
-                AI<Text style={{ color: colors.accent }}>Barber</Text>
+                Prime <Text style={{ color: colors.accent }}>Barber</Text>
               </Text>
             </View>
             {session?.user ? (
