@@ -18,6 +18,7 @@ import { aibThemeVars, generateHTMLWithPlaceholders, resolveAibTheme } from './l
 import { HERO_EXTRA_PAGES } from './heroes.js';
 import { hasPagesV2 } from '../pagesV2.js';
 import { printable } from './markers.js';
+import { capDataPaths } from './editPaths.js';
 import { navLabelKey, plainLabel, t } from './labels.js';
 import { renderPageBody } from './pageBodies.js';
 import { buildPageSet, canonicalBase, hasFilePages, isMultiPage, singlePageSet, plainText, sitemapXml, type PageContext, type PageFile, type PageSet, type SiteFile } from './pages.js';
@@ -103,7 +104,8 @@ function themeStyleOf(template: TemplateId, d: WebsiteData): string {
 }
 
 /** The pages and the sitemap of a site. */
-export function renderSiteBundle(data: WebsiteData, opts: RenderSiteOptions = {}, templateOverride?: TemplateId): RenderedSite {
+export function renderSiteBundle(rawData: WebsiteData, opts: RenderSiteOptions = {}, templateOverride?: TemplateId): RenderedSite {
+  const data = capDataPaths(rawData);
   const template = known(templateOverride ?? data.template);
   const map = opts.imageUrls ?? imageUrlMapOf(data);
   const page: PageContext = { imageUrls: map };

@@ -11,10 +11,10 @@
 //
 // Pure, no DOM. Imports only vendored modules.
 import type { WebsiteData } from '../../types';
-import { unmarked } from './markers.js';
-import { isMultiPage } from './pages.js';
+import { mapMarked, unmarked } from './markers.js';
+import { isMultiPage, memberHasOwnHours } from './pages.js';
 
-/** [pattern, longest accepted text in characters, or null for no limit]. Limits equal what the renderer keeps (teamOf: 80 / 80 / 600). */
+/** [pattern, longest accepted text in characters, or null for no limit]. The renderer enforces every limit (capDataPaths below; teamOf keeps name / role / bio at 80 / 80 / 600), so the app and the published page agree. */
 const TABLE: readonly (readonly [string, number | null])[] = [
   ['shopName', null],
   ['hero.heading', null],
@@ -36,11 +36,11 @@ const TABLE: readonly (readonly [string, number | null])[] = [
   ['staff.{i}.role', 80],
   ['staff.{i}.bio', 600],
   ['hours.{i}.day', 20],
-  ['hours.{i}.open', 12],
-  ['hours.{i}.close', 12],
+  ['hours.{i}.open', 24],
+  ['hours.{i}.close', 24],
   ['staff.{i}.hours.{j}.day', 20],
-  ['staff.{i}.hours.{j}.open', 12],
-  ['staff.{i}.hours.{j}.close', 12],
+  ['staff.{i}.hours.{j}.open', 24],
+  ['staff.{i}.hours.{j}.close', 24],
   ['policy.title', null],
   ['policy.body', null],
   ['pullQuote.text', null],
@@ -78,6 +78,10 @@ const own = (o: unknown, k: string): boolean => !!o && typeof o === 'object' && 
  * does not print simply has no marker to tap; sheetOnlyDataPaths() names the ones no page of this site prints.
  */
 export function editableDataPaths(d: WebsiteData, _page?: { key: string; index?: number } | null): string[] {
+  return expandPaths(d, false);
+}
+
+function expandPaths(d: WebsiteData, everyDesign: boolean): string[] {
   const out: string[] = [];
   const walk = (node: unknown, parts: string[], at: number, trail: string[], leaf: string): void => {
     if (at === parts.length) { out.push(trail.join('.')); return; }
@@ -90,8 +94,8 @@ export function editableDataPaths(d: WebsiteData, _page?: { key: string; index?:
     walk((node as Record<string, unknown>)[part], parts, at + 1, [...trail, part], leaf);
   };
   for (const [pattern] of TABLE) {
-    if ((PRIME_ONLY.has(pattern) || pattern === PRIME_CATEGORY) && d.template !== 'prime') continue;
-    if (LUXE_ONLY.has(pattern) && (d.template ?? 'luxe') !== 'luxe') continue;
+    if (!everyDesign && (PRIME_ONLY.has(pattern) || pattern === PRIME_CATEGORY) && d.template !== 'prime') continue;
+    if (!everyDesign && LUXE_ONLY.has(pattern) && (d.template ?? 'luxe') !== 'luxe') continue;
     walk(d, pattern.split('.'), 0, [], pattern);
   }
   return out;
@@ -104,6 +108,7 @@ export function editableDataPaths(d: WebsiteData, _page?: { key: string; index?:
  *    the whole field);
  *  - a service subtitle that a duration hides (every design prints `duration || subtitle`);
  *  - the shop bio when luxe's bio band is not printed (the band needs more than 20 characters; only luxe has it);
+ *  - a barber's own hours that equal the shop's (their page prints them only when they differ);
  *  - on a site with a single page: the contact email (Luxe and Prime show it on their Contact page only) and a barber's own
  *    hours (nested pages only), and for Euphoria the shop hours (it has no hours section on its one page).
  * (The booking link is not text and is not in the table.)
@@ -120,9 +125,37 @@ export function sheetOnlyDataPaths(d: WebsiteData): string[] {
       return unmarked(String(svc?.duration ?? '')).trim() !== '';
     }
     if (pattern === 'bio') return unmarked(String(d.bio ?? '')).trim().length <= 20;
+    // A barber's own hours are printed on their page only when they differ from the shop's.
+    if (pattern.startsWith('staff.{i}.hours.') && !memberHasOwnHours(Array.isArray(d.staff) ? d.staff[Number(path.split('.')[1])] : null, d.hours)) return true;
     if (multi) return false;
     if (pattern === 'contact.email') return template !== 'euphoria';
     if (pattern.startsWith('staff.{i}.hours.')) return true;
     return template === 'euphoria' && pattern.startsWith('hours.');
   });
+}
+
+/**
+ * The site with every text of the table cut to its limit (counted in characters of the barber's text; an editor wrapper is
+ * never cut). The renderer calls this first, so the limits hold for the preview and the published page alike. The same
+ * object when nothing is over a limit (the case for every site that follows the app's own limits).
+ */
+export function capDataPaths(d: WebsiteData): WebsiteData {
+  let out = d;
+  for (const path of expandPaths(d, true)) {
+    const max = dataPathMax(path);
+    if (max === undefined) continue;
+    const keys = path.split('.');
+    let v: unknown = out;
+    for (const k of keys) v = (v as Record<string, unknown> | undefined)?.[k];
+    if (typeof v !== 'string') continue;
+    const cut = mapMarked(v, (text) => (Array.from(text).length > max ? Array.from(text).slice(0, max).join('') : text));
+    if (cut === v) continue;
+    const set = (node: any, i: number): any => {
+      const c = Array.isArray(node) ? [...node] : { ...node };
+      c[keys[i]] = i === keys.length - 1 ? cut : set(c[keys[i]], i + 1);
+      return c;
+    };
+    out = set(out, 0);
+  }
+  return out;
 }
