@@ -201,7 +201,7 @@ export const LABELS = {
   // may name a neighbourhood instead. Printed in service page and Location titles and over the service page heading.
   pgPlace: {
     title: 'Place name', default: (_n, site) => placeFromArea(site?.area || ''), max: 60,
-    multi: { page: ['services', 'location'], shows: (s) => has(s.area) || has((s.labels as Record<string, unknown> | undefined)?.pgPlace) },
+    multi: { page: ['services', 'location'], shows: (s) => has(s.area) || has((s as { labels?: Record<string, unknown> }).labels?.pgPlace) },
   },
   pgAboutTitle: { title: 'About page title', default: 'About us', max: 60, multi: { page: 'about' } },
   pgServicesTitle: { title: 'Services page title', default: 'Services', max: 60, multi: { page: 'services' } },
