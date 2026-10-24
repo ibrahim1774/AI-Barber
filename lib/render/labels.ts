@@ -69,6 +69,8 @@ const hasPhone = (s: WebsiteData) => has(s.phone);
 const hasBook = (s: WebsiteData) => !!safeHref(s.bookingUrl);
 const hasShop = (s: WebsiteData) => !!safeHref(s.shopUrl);
 const hasAddress = (s: WebsiteData) => has(s.contact?.address);
+// Some barber has an explicit service subset (so a service page can name who does it).
+const hasServiceTeam = (s: WebsiteData) => (Array.isArray(s.staff) ? s.staff : []).some((m) => Array.isArray(m?.serviceNames) && m.serviceNames.some((n) => has(n)) && Array.isArray(m?.serviceIds) && m.serviceIds.some((n) => has(n)));
 const showsRating = (s: WebsiteData) => aggregateToShow(s) !== null;
 const primeBook = (s: WebsiteData) => hasBook(s) || canCall(s);
 const euNavBook = (s: WebsiteData) => hasBook(s) || canCall(s);
@@ -184,7 +186,8 @@ export const LABELS = {
   pgNavTeam: { title: 'Menu: Team', default: 'Team', max: 20, multi: {} },
   pgNavGallery: { title: 'Menu: Gallery', default: 'Gallery', max: 20, multi: {} },
   pgNavReviews: { title: 'Menu: Reviews', default: 'Reviews', max: 20, plain: true, multi: {} },
-  pgNavHours: { title: 'Menu: Hours & Location', default: 'Hours & Location', max: 28, multi: {} },
+  pgNavHours: { title: 'Menu: Hours', default: 'Hours', max: 28, multi: {} },
+  pgNavLocation: { title: 'Menu: Location', default: 'Location', max: 28, multi: {} },
   pgNavContact: { title: 'Menu: Contact', default: 'Contact', max: 20, multi: {} },
   pgNavBook: { title: 'Menu: Book', default: 'Book', max: 20, multi: {} },
   pgAboutTitle: { title: 'About page title', default: 'About us', max: 60, multi: { page: 'about' } },
@@ -192,15 +195,20 @@ export const LABELS = {
   pgTeamTitle: { title: 'Team page title', default: (n) => copy(n).teamHeading, max: 60, multi: { page: 'team' } },
   pgGalleryTitle: { title: 'Gallery page title', default: 'Gallery', max: 60, multi: { page: 'gallery' } },
   pgReviewsTitle: { title: 'Reviews page title', default: 'What clients say', max: 60, plain: true, multi: { page: 'reviews' } },
-  pgHoursTitle: { title: 'Hours page title', default: 'Hours & location', max: 60, multi: { page: 'hours' } },
+  pgHoursTitle: { title: 'Hours page title', default: 'Hours', max: 60, multi: { page: 'hours' } },
+  pgLocationTitle: { title: 'Location page title', default: 'Find us', max: 60, multi: { page: 'location' } },
   pgContactTitle: { title: 'Contact page title', default: 'Contact', max: 60, multi: { page: 'contact' } },
-  pgHoursHeading: { title: 'Hours heading', default: 'Hours', max: 40, multi: { page: 'hours', shows: (s) => hasHours(s) } },
-  pgAddressLabel: { title: 'Address label', default: 'Address', max: 30, multi: { page: 'contact', shows: (s) => hasAddress(s) } },
-  pgPhoneLabel: { title: 'Phone label', default: 'Phone', max: 30, multi: { page: 'contact', shows: (s) => hasPhone(s) } },
+  pgHoursHeading: { title: 'Hours heading', default: 'Hours', max: 40, multi: { page: 'location', shows: (s) => hasHours(s) } },
+  pgAddressLabel: { title: 'Address label', default: 'Address', max: 30, multi: { page: ['contact', 'location'], shows: (s) => hasAddress(s) } },
+  pgPhoneLabel: { title: 'Phone label', default: 'Phone', max: 30, multi: { page: ['contact', 'location'], shows: (s) => hasPhone(s) } },
   pgEmailLabel: { title: 'Email label', default: 'Email', max: 30, multi: { page: 'contact', shows: (s) => has(s.contact?.email) } },
-  pgClosed: { title: 'Closed day text', default: 'Closed', max: 20, multi: { page: 'hours', shows: (s) => hasClosedDay(s) } },
-  pgBookCta: { title: 'Book button text', default: 'Book now', max: 30, multi: { page: ['services', 'team', 'contact'], shows: (s) => hasBook(s) } },
+  pgClosed: { title: 'Closed day text', default: 'Closed', max: 20, multi: { page: ['hours', 'location'], shows: (s) => hasClosedDay(s) } },
+  pgBookCta: { title: 'Book button text', default: 'Book now', max: 30, multi: { page: ['services', 'team', 'contact', 'location'], shows: (s) => hasBook(s) } },
   pgShopCta: { title: 'Shop button text', default: 'Shop online', max: 30, multi: { page: 'contact', shows: (s) => hasShop(s) } },
+  pgDirectionsCta: { title: 'Directions button text', default: 'Get directions', max: 30, multi: { page: 'location' } },
+  pgOfferedBy: { title: 'Service page: who does it', default: 'Offered by', max: 40, multi: { page: 'services', shows: (s) => hasServiceTeam(s) } },
+  pgOtherServices: { title: 'Service page: other services', default: 'Other services', max: 40, multi: { page: 'services', shows: (_s, set) => set.services.length > 1 } },
+  pgAlsoSee: { title: 'Service page: related pages', default: 'Also see', max: 40, multi: { page: ['services', 'location'], shows: (_s, set) => set.nav.some((k) => k === 'location' || k === 'hours' || k === 'contact') } },
   pgBackServices: { title: 'Back to services link', default: 'All services', max: 30, multi: { page: 'services' } },
   pgBackTeam: { title: 'Back to team link', default: 'The whole team', max: 30, multi: { page: 'team' } },
   pgViewProfile: { title: 'Team profile link', default: 'View profile', max: 30, multi: { page: 'team' } },
@@ -310,7 +318,7 @@ export function navLabelKey(template: TemplateId, page: PageKey): LabelKey {
   if (page === 'shop') return template === 'prime' ? 'primeNavShop' : template === 'euphoria' ? 'euNavShop' : 'navShop';
   const table: Record<Exclude<PageKey, 'shop'>, LabelKey> = {
     home: 'pgNavHome', about: 'pgNavAbout', services: 'pgNavServices', team: 'pgNavTeam', gallery: 'pgNavGallery',
-    reviews: 'pgNavReviews', hours: 'pgNavHours', contact: 'pgNavContact', book: 'pgNavBook',
+    reviews: 'pgNavReviews', hours: 'pgNavHours', location: 'pgNavLocation', contact: 'pgNavContact', book: 'pgNavBook',
   };
   return table[page];
 }
@@ -318,7 +326,7 @@ export function navLabelKey(template: TemplateId, page: PageKey): LabelKey {
 /** The title label of a page (its <h1> and the first part of its <title>). */
 export const PAGE_TITLE_KEY: Partial<Record<PageKey, LabelKey>> = {
   about: 'pgAboutTitle', services: 'pgServicesTitle', team: 'pgTeamTitle', gallery: 'pgGalleryTitle',
-  reviews: 'pgReviewsTitle', hours: 'pgHoursTitle', contact: 'pgContactTitle',
+  reviews: 'pgReviewsTitle', hours: 'pgHoursTitle', location: 'pgLocationTitle', contact: 'pgContactTitle',
 };
 
 /**

@@ -31,8 +31,8 @@ const full = (extra: Partial<WebsiteData> = {}): WebsiteData => ({
 });
 
 const FULL_PATHS = [
-  'index.html', 'about/index.html', 'services/index.html', 'services/skin-fade/index.html', 'team/index.html', 'team/sam-fade/index.html',
-  'gallery/index.html', 'reviews/index.html', 'hours/index.html', 'contact/index.html',
+  'index.html', 'about/index.html', 'services/index.html', 'services/skin-fade/index.html', 'services/beard/index.html', 'team/index.html', 'team/sam-fade/index.html',
+  'gallery/index.html', 'reviews/index.html', 'hours/index.html', 'location/index.html', 'contact/index.html',
 ];
 const navLinks = (html: string): string[] => {
   const nav = /<nav class="ab-nav"[\s\S]*?<\/nav>/.exec(html)?.[0] ?? '';
@@ -48,11 +48,11 @@ describe.each(TEMPLATES)('%s multi-page site', (template) => {
 
   it('the menu on every page = eligible minus turned off, in order; current page marked', () => {
     const files = renderSite({ ...data, pages: { order: ['contact', 'about'], hidden: ['reviews'] } }, template);
-    const expected = ['/', '/contact/', '/about/', '/services/', '/team/', '/gallery/', '/hours/', '/book', '/shop'];
+    const expected = ['/', '/contact/', '/about/', '/services/', '/team/', '/gallery/', '/hours/', '/location/', '/book', '/shop'];
     for (const f of files) {
       expect(navLinks(f.html), f.path).toEqual(expected);
       const current = [...f.html.matchAll(/<a href="([^"]*)" class="is-active" aria-current="page"/g)].map((m) => m[1]);
-      const want = f.path === 'index.html' ? '/' : '/' + f.path.split('/')[0] + '/';
+      const want = f.path === 'index.html' ? '/' : '/' + f.path.split('/')[0] + '/'; // a service page highlights Services
       expect(current, f.path).toEqual([want]);
     }
     expect(files.map((f) => f.path)).not.toContain('reviews/index.html');
@@ -199,11 +199,11 @@ describe('page content', () => {
     expect(h).toContain('Tight fade.'); expect(h).toContain('$35'); expect(h).toContain('45 min');
     expect(h).toContain('href="/services/"'); expect(h).toContain('href="/book"');
   });
-  it('services page links only the services that have a page', () => {
+  it('services page links every service (each has a page)', () => {
     const h = byPath(files, 'services/index.html');
     expect(h).toContain('href="/services/skin-fade/"');
-    expect(h.match(/href="\/services\/[a-z0-9-]+\/"/g)).toHaveLength(1);
-    expect(h).toContain('Beard');
+    expect(h).toContain('href="/services/beard/"');
+    expect(h.match(/href="\/services\/[a-z0-9-]+\/"/g)).toHaveLength(2);
   });
   it('team member page: bio, picked services with prices, book with <first name> to /book?barber=', () => {
     const h = byPath(files, 'team/sam-fade/index.html');
@@ -213,9 +213,9 @@ describe('page content', () => {
     const f = renderSite(full({ staff: [{ name: 'Sam Fade', bio: 'Fades.' }] }));
     expect(byPath(f, 'team/sam-fade/index.html')).not.toContain('<div class="ab-rows">');
   });
-  it('hours page: rows, Closed, address and map', () => {
+  it('hours page: rows and Closed; the address and map moved to the Location page', () => {
     const h = byPath(files, 'hours/index.html');
-    expect(h).toContain('9:00 AM'); expect(h).toContain('Closed'); expect(h).toContain('maps.google.com'); expect(h).toContain('1 Main St');
+    expect(h).toContain('9:00 AM'); expect(h).toContain('Closed'); expect(h).not.toContain('maps.google.com'); expect(h).not.toContain('1 Main St');
   });
   it('reviews page: visible reviews, source, rating', () => {
     const h = byPath(files, 'reviews/index.html');
@@ -275,7 +275,7 @@ describe('single-page output is unchanged once a base is stored (P3b review S4)'
     expect(r.sitemap).toBeNull();
   });
   it.each(TEMPLATES)('%s: pages present but every page off + a base -> no canonical, no sitemap', (template) => {
-    const r = renderSiteBundle(full({ template, pages: { order: [], hidden: ['about', 'services', 'team', 'gallery', 'reviews', 'hours', 'contact'] } }), BASE);
+    const r = renderSiteBundle(full({ template, pages: { order: [], hidden: ['about', 'services', 'team', 'gallery', 'reviews', 'hours', 'location', 'contact'] } }), BASE);
     expect(r.pages.map((f) => f.path)).toEqual(['index.html']);
     expect(r.pages[0].html).not.toContain('rel="canonical"');
     expect(r.sitemap).toBeNull();
