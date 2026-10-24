@@ -198,7 +198,7 @@ export const LABELS = {
   pgHoursTitle: { title: 'Hours page title', default: 'Hours', max: 60, multi: { page: 'hours' } },
   pgLocationTitle: { title: 'Location page title', default: 'Find us', max: 60, multi: { page: 'location' } },
   pgContactTitle: { title: 'Contact page title', default: 'Contact', max: 60, multi: { page: 'contact' } },
-  pgHoursHeading: { title: 'Hours heading', default: 'Hours', max: 40, multi: { page: ['hours', 'location'], shows: (s) => hasHours(s) } },
+  pgHoursHeading: { title: 'Hours heading', default: 'Hours', max: 40, multi: { page: 'location', shows: (s) => hasHours(s) } },
   pgAddressLabel: { title: 'Address label', default: 'Address', max: 30, multi: { page: ['contact', 'location'], shows: (s) => hasAddress(s) } },
   pgPhoneLabel: { title: 'Phone label', default: 'Phone', max: 30, multi: { page: ['contact', 'location'], shows: (s) => hasPhone(s) } },
   pgEmailLabel: { title: 'Email label', default: 'Email', max: 30, multi: { page: 'contact', shows: (s) => has(s.contact?.email) } },

@@ -210,3 +210,43 @@ describe('labels: the app can edit every new text', () => {
     expect(h).toContain('Take me &lt;there&gt;'); expect(h).toContain('<h1 class="ab-h1">Come by</h1>'); expect(h).toContain('<title>Fresh Cuts — barbershop at');
   });
 });
+
+describe('review round 2', () => {
+  it('S1: with Team turned off, a service page has no Offered by block and no link to an undeployed team page', () => {
+    const f = renderSite(shop({ pages: { order: [], hidden: ['team'] } }));
+    expect(f.map((x) => x.path).some((p) => p.startsWith('team/'))).toBe(false);
+    const h = at(f, 'services/skin-fade/index.html');
+    expect(h).not.toContain('/team/'); expect(h).not.toContain('Offered by');
+  });
+  it('S1: every internal link on every page points at a file that is deployed (or /book, /shop)', () => {
+    for (const pages of [{ order: [], hidden: [] }, { order: [], hidden: ['team'] }, { order: [], hidden: ['location', 'hours'] }] as const) {
+      const f = renderSite(shop({ pages: { order: [...pages.order], hidden: [...pages.hidden] } as never }));
+      const paths = new Set(f.map((x) => x.path));
+      for (const file of f) for (const m of file.html.matchAll(/href="(\/[^"#?]*)"/g)) {
+        const h = m[1];
+        if (h === '/' || h === '/book' || h === '/shop' || h === '/styles.css') continue;
+        expect(paths.has(`${h.replace(/^\//, '')}index.html`), `${file.path} -> ${h}`).toBe(true);
+      }
+    }
+  });
+  it('S2: a setup saved before Location existed that hid Hours keeps Location off', () => {
+    const old = shop({ hours: [], pages: { order: ['hours', 'contact'], hidden: ['hours'] } });
+    const r = renderSiteBundle(old);
+    expect(r.pages.map((x) => x.path)).not.toContain('location/index.html');
+    expect(r.set.hidden).toContain('location');
+    // the sheet can still list it, and turning it on (saved order now lists it) works
+    expect(pageList(old).find((p) => p.key === 'location')?.on).toBe(false);
+    const on = renderSite(shop({ hours: [], pages: { order: ['hours', 'contact', 'location'], hidden: [] } }));
+    expect(on.map((x) => x.path)).toContain('location/index.html');
+    // a model that lists location and hides only hours keeps Location on
+    const f = renderSite(shop({ pages: { order: ['location'], hidden: ['hours'] } }));
+    expect(f.map((x) => x.path)).toContain('location/index.html');
+    // hidden hours with hours rows and no saved order: also treated as the old setup
+    expect(renderSite(shop({ pages: { order: [], hidden: ['hours'] } })).map((x) => x.path)).not.toContain('location/index.html');
+  });
+  it('M3: the Hours page prints "Hours" once', () => {
+    const h = at(renderSite(shop()), 'hours/index.html');
+    expect(((/<main[\s\S]*<\/main>/.exec(h)?.[0] ?? '').replace(/<[^>]+>/g, ' ').match(/\bHours\b/g) ?? []).length).toBe(1);
+    expect(h).not.toContain('<h2 class="ab-h2">Hours</h2>');
+  });
+});

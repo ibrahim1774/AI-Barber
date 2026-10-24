@@ -315,6 +315,9 @@ export function buildPageSet(d: WebsiteData, ctx?: PageContext): PageSet {
   const model = cleanPagesModel(d.pages);
   const eligible = ordered(eligiblePages(d, ctx), model.order);
   const hidden = model.hidden.filter((k) => eligible.includes(k));
+  // A setup saved before Location existed (it hid Hours & Location and does not list `location`) keeps that
+  // choice: the address and map moved to Location, so it stays off until the barber turns it on.
+  if (eligible.includes('location') && model.hidden.includes('hours') && !model.order.includes('location') && !hidden.includes('location')) hidden.push('location');
   const nav = eligible.filter((k) => !hidden.includes(k));
 
   // Slugs are numbered over every titled item (not only those with a page), so adding a description to

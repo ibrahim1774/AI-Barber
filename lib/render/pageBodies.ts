@@ -131,8 +131,9 @@ export function renderPageBody(ctx: BodyCtx, file: PageFile): PageBody {
     // Who does it: only barbers with an explicit service subset that names this service (no subset = "does
     // everything" is inherited, not stated). Linked when the barber has a page of their own.
     const want = plainText(s.title).toLowerCase();
-    const kids = new Map(set.team.map((c) => [c.index, c]));
-    const who = teamOf(d, { legacyUncapped: true }).filter((m) => {
+    // Link only to team pages that are really deployed (set.files); with Team turned off the block is dropped.
+    const kids = new Map(set.files.filter((f) => f.key === 'team' && f.child).map((f) => [f.child!.index, f.child!]));
+    const who = !set.nav.includes('team') ? [] : teamOf(d, { legacyUncapped: true }).filter((m) => {
       const raw = ((Array.isArray(d.staff) ? d.staff[m.index] : null) ?? {}) as { serviceIds?: unknown[]; serviceNames?: unknown[] };
       return Array.isArray(raw.serviceIds) && raw.serviceIds.some((x) => plainText(x))
         && Array.isArray(raw.serviceNames) && raw.serviceNames.some((n) => plainText(n).toLowerCase() === want);
@@ -224,7 +225,7 @@ export function renderPageBody(ctx: BodyCtx, file: PageFile): PageBody {
     const hours = Array.isArray(d.hours) ? d.hours : [];
     return {
       heading: heading(), description: generic,
-      body: `<section class="ab-sec"><div class="ab-wrap"><h1 class="ab-h1">${title()}</h1><h2 class="ab-h2">${L('pgHoursHeading')}</h2><div class="ab-rows">${hours.map((h) => hoursRow(h, L('pgClosed'))).join('')}</div>${alsoSee()}</div></section>`,
+      body: `<section class="ab-sec"><div class="ab-wrap"><h1 class="ab-h1">${title()}</h1><div class="ab-rows">${hours.map((h) => hoursRow(h, L('pgClosed'))).join('')}</div>${alsoSee()}</div></section>`,
     };
   }
 
