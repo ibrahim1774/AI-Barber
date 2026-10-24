@@ -1,5 +1,6 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
-import { loadSiteSlug, siteTheme, canonicalHref, homeHref, shopBackHref, onSiteNow, SITE_FONTS } from '../../src/site/site';
+import { loadSiteSlug, siteTheme, canonicalHref, homeHref, shopBackHref, onSiteNow, SITE_FONTS, fontsFor } from '../../src/site/site';
 import { parseRoute } from '../../src/book/logic';
 import { parseShopRoute } from '../../src/shop/logic';
 
@@ -80,5 +81,46 @@ describe('links', () => {
     expect(await onSiteNow(async () => ({ ok: true, json: async () => ({ slug: 'fresh' }) }) as any)).toBe(true);
     expect(await onSiteNow(async () => ({ ok: true, json: async () => { throw new SyntaxError('html'); } }) as any)).toBe(false);
     expect(await onSiteNow(async () => ({ ok: false, json: async () => ({}) }) as any)).toBe(false);
+  });
+});
+
+describe('template fonts match the site (lib/render)', () => {
+  const shell = readFileSync('lib/render/shell.ts', 'utf8');
+  const themeBlock = shell.slice(shell.indexOf('const THEME_CSS'));
+  const themeCss = (t: string) => themeBlock.match(new RegExp('^  ' + t + ': `([^`]*)`', 'm'))![1];
+  const families = (href: string) => [...href.matchAll(/family=([A-Za-z+]+)/g)].map((m) => m[1].replace(/\+/g, ' '));
+  for (const t of ['luxe', 'prime', 'euphoria'] as const) {
+    it(`${t}: same families, heading weight, case and tracking as the site`, () => {
+      const css = themeCss(t);
+      const f = SITE_FONTS[t];
+      expect(css).toContain(`--ab-head-font:${f.head.replace(/, /g, ',')}`);
+      expect(css).toContain(`--ab-body-font:${f.body.replace(/, /g, ',')}`);
+      expect(css).toContain(`--ab-head-weight:${f.headWeight}`);
+      expect(css).toContain(`--ab-head-transform:${f.headTransform}`);
+      expect(css).toContain(`--ab-head-track:${f.headTrack}`);
+      for (const fam of families(f.href)) expect(`${f.head} ${f.body}`).toContain(fam);
+      // the head weight is among the loaded weights, and font-display is swap
+      expect(f.href).toContain(f.headWeight);
+      expect(f.href).toContain('display=swap');
+    });
+    it(`${t}: siteTheme applies them`, () => {
+      const th = siteTheme({ baseUrl: null, look: { template: t, accent: null, bg: null, text: null, heroUrl: null } }, null);
+      expect(th.vars['--font-head']).toBe(SITE_FONTS[t].head);
+      expect(th.vars['--head-weight']).toBe(SITE_FONTS[t].headWeight);
+      expect(th.fontHref).toBe(SITE_FONTS[t].href);
+    });
+  }
+  it('an unknown template keeps the page\'s own fonts', () => {
+    expect(fontsFor('retro')).toBeNull();
+    expect(fontsFor('__proto__')).toBeNull();
+    const th = siteTheme({ baseUrl: null, look: { template: 'retro' as any, accent: '#112233', bg: null, text: null, heroUrl: null } }, null);
+    expect(th.vars['--font-head']).toBeUndefined();
+    expect(th.fontHref).toBeNull();
+  });
+  it('book and shop stylesheets read the font variables', () => {
+    for (const css of ['src/book/book.css', 'src/shop/shop.css']) {
+      const c = readFileSync(css, 'utf8');
+      for (const v of ['--font-head', '--font-body', '--head-weight', '--head-transform', '--head-track']) expect(c).toContain(v);
+    }
   });
 });

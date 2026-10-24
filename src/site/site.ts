@@ -31,24 +31,42 @@ export async function loadSiteSlug(fetchImpl: (url: string) => Promise<Response>
   }
 }
 
-/** The fonts each template uses (lib/render/*), loaded from Google Fonts like the site itself. */
-export const SITE_FONTS: Record<SiteLook['template'], { head: string; body: string; href: string }> = {
+/**
+ * The fonts each template uses (lib/render/*: luxe.ts, prime.ts, euphoria.ts and the heading
+ * variables in shell.ts), loaded from Google Fonts like the site itself. Only the weights the
+ * booking and shop pages use are requested. head/body are the site's families; weight, transform
+ * and track are the site's heading look (the shell's --ab-head-* values).
+ */
+export const SITE_FONTS: Record<SiteLook['template'], { head: string; body: string; headWeight: string; headTransform: string; headTrack: string; href: string }> = {
   luxe: {
     head: "'Montserrat', sans-serif",
     body: "'Montserrat', sans-serif",
+    headWeight: '900',
+    headTransform: 'uppercase',
+    headTrack: '2px',
     href: 'https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;900&display=swap',
   },
   prime: {
     head: "'Newsreader', Georgia, serif",
     body: "'Inter', system-ui, sans-serif",
-    href: 'https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;600;700&display=swap',
+    headWeight: '500',
+    headTransform: 'none',
+    headTrack: '-.01em',
+    href: 'https://fonts.googleapis.com/css2?family=Newsreader:wght@500&family=Inter:wght@400;600;700&display=swap',
   },
   euphoria: {
     head: "'Newsreader', Georgia, serif",
     body: "'Inter', system-ui, sans-serif",
-    href: 'https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;600;700&display=swap',
+    headWeight: '500',
+    headTransform: 'none',
+    headTrack: '-.01em',
+    href: 'https://fonts.googleapis.com/css2?family=Newsreader:wght@500&family=Inter:wght@400;600;700&display=swap',
   },
 };
+
+/** The fonts for a template, or null for an unknown one (the page keeps its own fonts). */
+export const fontsFor = (template: unknown) =>
+  typeof template === 'string' && Object.prototype.hasOwnProperty.call(SITE_FONTS, template) ? SITE_FONTS[template as SiteLook['template']] : null;
 
 const hex = (v: unknown): string | null => (typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v.trim()) ? v.trim().toLowerCase() : null);
 
@@ -62,9 +80,13 @@ export function siteTheme(site: SiteInfo | null | undefined, shopAccent: string 
   const text = hex(look.text);
   if (bg) vars['--bg'] = bg;
   if (text) vars['--text'] = text;
-  const fonts = SITE_FONTS[look.template] ?? SITE_FONTS.luxe;
+  const fonts = fontsFor(look.template);
+  if (!fonts) return { vars, fontHref: null };
   vars['--font-head'] = fonts.head;
   vars['--font-body'] = fonts.body;
+  vars['--head-weight'] = fonts.headWeight;
+  vars['--head-transform'] = fonts.headTransform;
+  vars['--head-track'] = fonts.headTrack;
   return { vars, fontHref: fonts.href };
 }
 
