@@ -84,3 +84,45 @@ describe('Colour moved off the tool bar', () => {
     expect(b().props.disabled).toBe(true);
   });
 });
+
+describe('design switcher in the bottom row', () => {
+  const { DesignSwitcher } = require('@/components/DesignSwitcher');
+  const radio = (tree: any, label: string) => tree.root.findAll((n: any) => n.props?.accessibilityLabel === label && typeof n.props?.onPress === 'function')[0];
+
+  test('renders at the left of the tabs row, before the tabs, via leading', () => {
+    const m = mount(multi, { leading: <DesignSwitcher current="luxe" onSelect={() => {}} /> });
+    const json = JSON.stringify(m.tree.toJSON());
+    expect(json.indexOf('Switch site design')).toBeGreaterThan(-1);
+    expect(json.indexOf('Switch site design')).toBeLessThan(json.indexOf('Show Home'));
+    expect(json.indexOf('Show Hours')).toBeLessThan(json.indexOf('"Pages"'));
+  });
+
+  test('marks the active design and switches on tap', () => {
+    const onSelect = jest.fn();
+    let tree: any;
+    act(() => { tree = create(<DesignSwitcher current={undefined} onSelect={onSelect} />); });
+    expect(radio(tree, 'Design 1').props.accessibilityState.selected).toBe(true);
+    act(() => { radio(tree, 'Design 1').props.onPress(); });
+    expect(onSelect).not.toHaveBeenCalled();
+    act(() => { radio(tree, 'Design 2').props.onPress(); });
+    expect(onSelect).toHaveBeenCalledWith('prime');
+  });
+
+  test('busy and disabled block taps', () => {
+    const onSelect = jest.fn();
+    let tree: any;
+    act(() => { tree = create(<DesignSwitcher current="luxe" onSelect={onSelect} busy />); });
+    expect(radio(tree, 'Design 2').props.accessibilityState).toMatchObject({ disabled: true, busy: true });
+    act(() => { tree.update(<DesignSwitcher current="luxe" onSelect={onSelect} disabled />); });
+    expect(radio(tree, 'Design 2').props.accessibilityState.disabled).toBe(true);
+  });
+
+  test('Colour button is now always vertically centred on the left edge', () => {
+    const { ColourButton } = require('@/components/ColourButton');
+    let tree: any;
+    act(() => { tree = create(<ColourButton onPress={() => {}} />); });
+    const style = tree.root.findAll((n: any) => n.props?.accessibilityLabel === 'Colour' && typeof n.props?.onPress === 'function')[0].props.style;
+    const s = typeof style === 'function' ? style({ pressed: false }) : style;
+    expect(JSON.stringify(s)).toContain('"translateY":-22');
+  });
+});

@@ -535,12 +535,8 @@ export default function Editor() {
         {/* The site's own background, so nothing else shows around the page. */}
         <View style={[styles.preview, { backgroundColor: previewBackground(data) }]}>
           <SitePreview data={shown} editable page={page} shopProducts={shopProducts} onEditText={onPreviewText} onEditImage={onPreviewImage} pillTourRef={changeImageRef} />
-          {/* Hidden over a published site and while the prompts / guide are up. */}
-          {site.slug == null && !site.deployedUrl && overlay == null && (
-            <DesignSwitcher current={data.template} onSelect={handleDesign} busy={switching} />
-          )}
           {overlay == null && (
-            <ColourButton onPress={() => setSheet('colour')} disabled={uploading} belowSwitcher={site.slug == null && !site.deployedUrl} />
+            <ColourButton onPress={() => setSheet('colour')} disabled={uploading} />
           )}
           {uploading && (
             <View style={styles.uploading} pointerEvents="none">
@@ -553,7 +549,12 @@ export default function Editor() {
         {overlay == null && stockPhotoPaths(data).length > 0 && (
           <StockPhotoNudge onAddPhotos={() => setSheet('photos')} />
         )}
-        <PagesBar chips={chips} current={page} onSelect={setWantedPage} onOpenPages={() => setSheet('pages')} buttonRef={pagesRef} disabled={uploading || overlay != null} />
+        <PagesBar chips={chips} current={page} onSelect={setWantedPage} onOpenPages={() => setSheet('pages')} buttonRef={pagesRef} disabled={uploading || overlay != null}
+          // Hidden over a published site and while the prompts / guide are up.
+          leading={site.slug == null && !site.deployedUrl && overlay == null ? (
+            <DesignSwitcher current={data.template} onSelect={handleDesign} busy={switching} disabled={uploading} />
+          ) : undefined}
+        />
         <PublishBar
           onSections={openSections}
           onText={() => setSheet('fields')}

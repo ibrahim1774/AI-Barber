@@ -3,10 +3,9 @@ import { colors, fonts } from '@/constants/theme';
 import { useTutorialTarget } from '@/components/tutorial/registry';
 
 /**
- * A small floating Colour control on the preview's left edge, under the design switcher (or centred when the
- * switcher is hidden on a published site). Opens the colour sheet. 44pt tall, dark translucent like the switcher.
+ * A small floating Colour control on the preview's left edge, at its vertical middle. Opens the colour sheet. 44pt tall, dark translucent.
  */
-export function ColourButton({ onPress, disabled, belowSwitcher }: { onPress(): void; disabled?: boolean; belowSwitcher?: boolean }) {
+export function ColourButton({ onPress, disabled }: { onPress(): void; disabled?: boolean }) {
   const ref = useTutorialTarget('edit.colour');
   return (
     <Pressable
@@ -18,7 +17,7 @@ export function ColourButton({ onPress, disabled, belowSwitcher }: { onPress(): 
       accessibilityState={{ disabled: !!disabled }}
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [styles.btn, { transform: [{ translateY: belowSwitcher ? 70 : -22 }] }, (pressed || disabled) && { opacity: 0.6 }]}
+      style={({ pressed }) => [styles.btn, { transform: [{ translateY: -22 }] }, (pressed || disabled) && { opacity: 0.6 }]}
     >
       <View style={styles.dot} />
       <Text style={styles.text}>Colour</Text>
