@@ -9,7 +9,7 @@ vi.mock('nodemailer', () => ({ default: { createTransport } }));
 import { sendEmail, escapeHtml, cleanDisplayName } from '../../lib/bookings/email.js';
 
 const ENV = { SMTP_HOST: 'smtp.gmail.com', SMTP_PORT: '465', SMTP_USER: 'support@davoxa.com', SMTP_PASS: 'pw', SMTP_FROM: 'support@davoxa.com' };
-const msg = { to: 'sam@example.com', subject: 'Hi', html: '<p>x</p>', fromName: 'Fade "Factory" via AI Barber', replyTo: 'owner@example.com' };
+const msg = { to: 'sam@example.com', subject: 'Hi', html: '<p>x</p>', fromName: 'Fade "Factory" via Prime Barber', replyTo: 'owner@example.com' };
 
 describe('sendEmail', () => {
   const saved = { ...process.env };
@@ -30,7 +30,7 @@ describe('sendEmail', () => {
       connectionTimeout: 10_000, greetingTimeout: 10_000, socketTimeout: 20_000,
     }));
     const opts = sendMail.mock.calls[0][0];
-    expect(opts.from).toEqual({ name: 'Fade Factory via AI Barber', address: 'support@davoxa.com' });
+    expect(opts.from).toEqual({ name: 'Fade Factory via Prime Barber', address: 'support@davoxa.com' });
     expect(opts.replyTo).toBe('owner@example.com');
     expect(opts.attachments).toHaveLength(1);
   });

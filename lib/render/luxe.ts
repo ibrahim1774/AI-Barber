@@ -528,7 +528,7 @@ ${showServices ? `        <a href="#services" class="text-[12px] font-montserrat
         ${lbl('footerLine')}
       </p>
       <div class="pt-8 border-t border-white/5 text-[#444444] text-[8px] uppercase tracking-[2px]">
-        Copyright &copy; ${copyrightYear()} ${esc(siteData.shopName)}. Built by AIBarber.
+        Copyright &copy; ${copyrightYear()} ${esc(siteData.shopName)}. Built by Prime Barber.
       </div>
     </div>
   </footer>

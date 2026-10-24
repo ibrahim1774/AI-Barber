@@ -527,7 +527,7 @@ ${PRIME_SCOPED_CSS}${menuSet ? HEADER_CSS.prime + NAV_CSS.prime : ''}
   <footer style="padding:48px 6vw;border-top:1px solid var(--p-line-soft);text-align:center;">
     <div class="p-container">
       <div class="p-serif p-italic" style="font-size:18px;color:var(--p-brand);margin-bottom:8px;">${safeName}</div>
-      <div class="p-eyebrow" style="color:var(--p-ink-muted);">© ${copyrightYear()} · Built by AIBarber</div>
+      <div class="p-eyebrow" style="color:var(--p-ink-muted);">© ${copyrightYear()} · Built by Prime Barber</div>
     </div>
   </footer>
 

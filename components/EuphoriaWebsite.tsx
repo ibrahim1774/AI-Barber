@@ -667,7 +667,7 @@ export const EuphoriaWebsite: React.FC<EuphoriaWebsiteProps> = ({ data, onBack, 
       <footer style={{ padding: '48px 24px', borderTop: '1px solid var(--eu-line-soft)', textAlign: 'center' }}>
         <div className="eu-container">
           <div className="eu-serif" style={{ fontSize: 18, marginBottom: 8 }}>{siteData.shopName}</div>
-          <div className="eu-eyebrow">© {copyrightYear()} · Built by AIBarber</div>
+          <div className="eu-eyebrow">© {copyrightYear()} · Built by Prime Barber</div>
         </div>
       </footer>
 

@@ -3,7 +3,7 @@
 import type { WebsiteData } from '../types';
 
 export const SUBSCRIPTION_ENDED_MESSAGE =
-  "This site's subscription has ended. Open the AI Barber app to resubscribe and bring it back.";
+  "This site's subscription has ended. Open the Prime Barber app to resubscribe and bring it back.";
 
 /** Replace any remaining inline data: URL (at any depth) with ''; they belong in GCS, not in a request body. */
 function stripDataUrls<T>(v: T): T {

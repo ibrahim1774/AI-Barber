@@ -833,7 +833,7 @@ export const PrimeWebsite: React.FC<PrimeWebsiteProps> = ({ data, onBack, site, 
       <footer style={{ padding: '48px 6vw', borderTop: '1px solid var(--p-line-soft)', textAlign: 'center' }}>
         <div className="p-container">
           <div className="p-serif p-italic" style={{ fontSize: 18, color: 'var(--p-brand)', marginBottom: 8 }}>{siteData.shopName}</div>
-          <div className="p-eyebrow" style={{ color: 'var(--p-ink-muted)' }}>© {copyrightYear()} · Built by AIBarber</div>
+          <div className="p-eyebrow" style={{ color: 'var(--p-ink-muted)' }}>© {copyrightYear()} · Built by Prime Barber</div>
         </div>
       </footer>
 

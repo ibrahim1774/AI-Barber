@@ -298,7 +298,7 @@ exports[`euphoria team section > snapshot 1`] = `
   <footer style="padding:48px 24px;border-top:1px solid var(--eu-line-soft);text-align:center;">
     <div class="eu-container">
       <div class="eu-serif" style="font-size:18px;color:var(--eu-ink);margin-bottom:8px;">Fresh Cuts Barbershop</div>
-      <div class="eu-eyebrow">© 2026 · Built by AIBarber</div>
+      <div class="eu-eyebrow">© 2026 · Built by Prime Barber</div>
     </div>
   </footer>
 
@@ -558,7 +558,7 @@ exports[`luxe team section > snapshot 1`] = `
         Barbershop in Austin, TX
       </p>
       <div class="pt-8 border-t border-white/5 text-[#444444] text-[8px] uppercase tracking-[2px]">
-        Copyright &copy; 2026 Fresh Cuts Barbershop. Built by AIBarber.
+        Copyright &copy; 2026 Fresh Cuts Barbershop. Built by Prime Barber.
       </div>
     </div>
   </footer>
@@ -832,7 +832,7 @@ exports[`prime team section > snapshot 1`] = `
   <footer style="padding:48px 6vw;border-top:1px solid var(--p-line-soft);text-align:center;">
     <div class="p-container">
       <div class="p-serif p-italic" style="font-size:18px;color:var(--p-brand);margin-bottom:8px;">Fresh Cuts Barbershop</div>
-      <div class="p-eyebrow" style="color:var(--p-ink-muted);">© 2026 · Built by AIBarber</div>
+      <div class="p-eyebrow" style="color:var(--p-ink-muted);">© 2026 · Built by Prime Barber</div>
     </div>
   </footer>
 
