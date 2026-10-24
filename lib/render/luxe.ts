@@ -29,9 +29,12 @@ export { to12h };
 // full street address even if the user pastes one in. Inputs with two
 // or fewer comma-separated parts pass through unchanged.
 export const cityStateOnly = (raw: string): string => {
-  const parts = (raw || '').split(',').map((s) => s.trim()).filter(Boolean);
-  if (parts.length <= 2) return raw || '';
-  return parts.slice(-2).join(', ');
+  // A value in the editor's markers keeps its wrapper round the cut text (markers.ts): the result stays tappable.
+  return mapMarked(raw || '', (text) => {
+    const parts = text.split(',').map((s) => s.trim()).filter(Boolean);
+    if (parts.length <= 2) return text;
+    return parts.slice(-2).join(', ');
+  });
 };
 // ---------------------------------------------------------------------------
 // Color themes — picked on the GeneratorForm. The slug is persisted on

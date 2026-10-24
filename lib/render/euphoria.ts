@@ -9,7 +9,7 @@
 // Pure: WebsiteData in, HTML string out. Keep it that way.
 import type { WebsiteData } from '../../types';
 import { safeHref } from './safeHref.js';
-import { unmarked } from './markers.js';
+import { unmarked, mapMarked } from './markers.js';
 import { bookStripHtml, isSiteBookLink, shopPreviewHtml, type SectionSkin } from './subpages.js';
 import {
   contactEmail, copyrightYear, displayPhone, displayPrice, hasServices, nicheOf, photoAlt, serviceMeta, siteDescription, siteTitle, teamBookLink, teamOf, firstName, withoutLegacyCopy,
@@ -203,9 +203,12 @@ export function euphoriaRootStyle(slug?: string): string {
 // pastes one in. Inputs with two or fewer comma-separated parts pass
 // through unchanged.
 export const cityStateOnly = (raw: string): string => {
-  const parts = (raw || '').split(',').map((s) => s.trim()).filter(Boolean);
-  if (parts.length <= 2) return raw || '';
-  return parts.slice(-2).join(', ');
+  // A value in the editor's markers keeps its wrapper round the cut text (markers.ts): the result stays tappable.
+  return mapMarked(raw || '', (text) => {
+    const parts = text.split(',').map((s) => s.trim()).filter(Boolean);
+    if (parts.length <= 2) return text;
+    return parts.slice(-2).join(', ');
+  });
 };
 // Exported so App.tsx / publish path can reuse for post-payment deploy
 // Book strip and Shop preview in EUPHORIA's look (brand colour from the theme vars).

@@ -72,3 +72,6 @@ export const SPARSE_SITE: WebsiteData = {
 
 /** Another kind of business: the wording that depends on the niche. */
 export const NAILS_SITE: WebsiteData = { ...RICH_SITE, niche: 'nails', shopName: 'Polish Studio' } as WebsiteData;
+
+/** A street address in the area field: Prime and Euphoria cut it to city and state, so it cannot be tapped there. */
+export const STREET_AREA_SITE: WebsiteData = { ...RICH_SITE, area: '12 Main St, Brooklyn, NY' } as WebsiteData;

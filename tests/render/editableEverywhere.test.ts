@@ -7,17 +7,22 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { TemplateId, WebsiteData } from '../../types';
 import { renderSiteBundle } from '../../lib/render/site';
 import { defaultLabel, visiblePageLabelKeys, visibleLabelKeys, type LabelKey } from '../../lib/render/labels';
-import { buildPageSet } from '../../lib/render/pages';
+import { buildPageSet, isMultiPage } from '../../lib/render/pages';
+import { imageUrlMapOf } from '../../lib/render/site';
+import { editableDataPaths, sheetOnlyDataPaths } from '../../lib/render/editPaths';
 import { visibleCopyKeys } from '../../lib/render/guides';
 import { auditSite, type PageAudit } from './helpers/editAudit';
 import { ALLOW, allowedBy } from './helpers/editAllow';
-import { EXTERNAL_SITE, NAILS_SITE, RICH_SITE, SHORT_SITE, SPARSE_SITE } from './helpers/richSite';
+import { EXTERNAL_SITE, NAILS_SITE, RICH_SITE, SHORT_SITE, SPARSE_SITE, STREET_AREA_SITE } from './helpers/richSite';
 
 beforeAll(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2031-06-01T12:00:00Z')); });
 afterAll(() => { vi.useRealTimers(); });
 
 const TEMPLATES: TemplateId[] = ['luxe', 'prime', 'euphoria'];
-const SITES: [string, WebsiteData, number][] = [['rich', RICH_SITE, 15], ['short', SHORT_SITE, 15], ['external links', EXTERNAL_SITE, 15], ['nails', NAILS_SITE, 15], ['sparse (every fallback wording)', SPARSE_SITE, 2]];
+const single = (s: WebsiteData): WebsiteData => { const { pages: _p, ...rest } = s; void _p; return rest as WebsiteData; };
+const MULTI: [string, WebsiteData, number][] = [['rich', RICH_SITE, 15], ['short', SHORT_SITE, 15], ['external links', EXTERNAL_SITE, 15], ['nails', NAILS_SITE, 15], ['street address as area', STREET_AREA_SITE, 15], ['sparse (every fallback wording)', SPARSE_SITE, 2]];
+// Most live sites have no `pages` model: the app previews their one page with the single-page label list.
+const SITES: [string, WebsiteData, number][] = [...MULTI, ...MULTI.map(([n, s]): [string, WebsiteData, number] => [`${n}, single page`, single(s), 1])];
 
 const used = new Set<string>();
 
@@ -63,11 +68,11 @@ describe.each(SITES)('%s site', (name, site, minPages) => {
 
     it('every label and library text the app lists for a page is on that page', () => {
       const a = auditOf(name, d, t);
-      const set = buildPageSet(d, {});
+      const set = buildPageSet(d, { imageUrls: imageUrlMapOf(d) });
       const present = (pred: (p: PageAudit) => boolean): Set<string> => new Set(a.filter(pred).flatMap((p) => Object.values(p.ids).filter((path) => p.previewHtml.includes(`data-edit="${path}"`))));
-      for (const key of new Set(set.files.map((f) => f.key))) {
+      for (const key of isMultiPage(d) ? new Set(set.files.map((f) => f.key)) : ['home']) {
         const on = present((p) => p.ref.key === key);
-        for (const k of visiblePageLabelKeys(d, key as never)) {
+        for (const k of isMultiPage(d) ? visiblePageLabelKeys(d, key as never, { imageUrls: imageUrlMapOf(d) }) : visibleLabelKeys(d)) {
           // Listed for the app's "all texts" sheet, not printed in the body: an optional line with no wording yet (default
           // '', e.g. the Prime booking note: it prints once written), and the place name on Location (it names the page title only).
           if (defaultLabel(k as LabelKey, undefined, d) === '' || (k === 'pgPlace' && key === 'location')) continue;
@@ -79,6 +84,22 @@ describe.each(SITES)('%s site', (name, site, minPages) => {
         const file = set.files.find((f) => f.path === p.page)!;
         for (const k of visibleCopyKeys(d, file, set.services.map((c) => c.index))) expect(on.has(`copy.${k}`), `${t} ${p.page}: copy ${k} is listed but not printed`).toBe(true);
       }
+    });
+
+    it('every data path the app would offer is a tap target on some page, or is on the sheet-only list', () => {
+      const a = auditOf(name, d, t);
+      const tapped = new Set(a.flatMap((p) => Object.values(p.ids).filter((path) => p.previewHtml.includes(`data-edit="${path}"`))));
+      // The app never marks an empty value (templates branch on truthiness), so an empty field has no tap target to find.
+      const filled = (path: string): boolean => { let v: unknown = d; for (const k of path.split('.')) v = (v as Record<string, unknown> | undefined)?.[k]; return typeof v === 'string' && v !== ''; };
+      const sheetOnly = new Set(sheetOnlyDataPaths(d));
+      const missing = editableDataPaths(d, null).filter((path) => filled(path) && !tapped.has(path) && !sheetOnly.has(path));
+      expect(missing).toEqual([]);
+    });
+
+    it('the sheet-only data paths are exactly the ones with no tap target (no stale entries)', () => {
+      const tapped = new Set(auditOf(name, d, t).flatMap((p) => Object.values(p.ids).filter((path) => p.previewHtml.includes(`data-edit="${path}"`))));
+      const filled = (path: string): boolean => { let v: unknown = d; for (const k of path.split('.')) v = (v as Record<string, unknown> | undefined)?.[k]; return typeof v === 'string' && v !== ''; };
+      expect(sheetOnlyDataPaths(d).filter((p) => filled(p) && tapped.has(p))).toEqual([]);
     });
 
     it('published HTML has no editor markers and no tap targets', () => {

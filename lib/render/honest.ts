@@ -22,9 +22,12 @@ import { mapMarked, printable, unmarked } from './markers.js';
 // Trailing "City, State" only, so a pasted street address never lands in
 // a footer or meta line.
 export const cityStateOnly = (raw: string): string => {
-  const parts = (raw || '').split(',').map((s) => s.trim()).filter(Boolean);
-  if (parts.length <= 2) return (raw || '').trim();
-  return parts.slice(-2).join(', ');
+  // A value in the editor's markers keeps its wrapper round the cut text (markers.ts): the result stays tappable.
+  return mapMarked(raw || '', (text) => {
+    const parts = text.split(',').map((s) => s.trim()).filter(Boolean);
+    if (parts.length <= 2) return text.trim();
+    return parts.slice(-2).join(', ');
+  });
 };
 
 // The shop's one place for page titles (pgPlace default): "City, ST" from whatever `area` holds. The app importer stores

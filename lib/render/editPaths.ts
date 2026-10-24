@@ -11,6 +11,8 @@
 //
 // Pure, no DOM. Imports only vendored modules.
 import type { WebsiteData } from '../../types';
+import { unmarked } from './markers.js';
+import { isMultiPage } from './pages.js';
 
 /** [pattern, longest accepted text in characters, or null for no limit]. Limits equal what the renderer keeps (teamOf: 80 / 80 / 600). */
 const TABLE: readonly (readonly [string, number | null])[] = [
@@ -45,6 +47,9 @@ const TABLE: readonly (readonly [string, number | null])[] = [
   ['pullQuote.accent', null],
 ];
 
+/** Patterns only the Luxe design prints (the shop bio quote). */
+const LUXE_ONLY = new Set(['bio']);
+
 /** Patterns only the Prime design prints. */
 const PRIME_ONLY = new Set(['policy.title', 'policy.body', 'pullQuote.text', 'pullQuote.accent']);
 /** Patterns only the Prime design prints a service category for. */
@@ -67,7 +72,11 @@ export function dataPathMax(path: string): number | undefined {
 
 const own = (o: unknown, k: string): boolean => !!o && typeof o === 'object' && Object.prototype.hasOwnProperty.call(o, k);
 
-/** The patterns with their indexes filled in for this site: one path per existing array entry. */
+/**
+ * The patterns with their indexes filled in for this site: one path per existing array entry. The list is site-wide (like the
+ * static list it replaces): `_page` is accepted so a caller can pass the page on screen, and ignored. A field the page on screen
+ * does not print simply has no marker to tap; sheetOnlyDataPaths() names the ones no page of this site prints.
+ */
 export function editableDataPaths(d: WebsiteData, _page?: { key: string; index?: number } | null): string[] {
   const out: string[] = [];
   const walk = (node: unknown, parts: string[], at: number, trail: string[], leaf: string): void => {
@@ -82,7 +91,38 @@ export function editableDataPaths(d: WebsiteData, _page?: { key: string; index?:
   };
   for (const [pattern] of TABLE) {
     if ((PRIME_ONLY.has(pattern) || pattern === PRIME_CATEGORY) && d.template !== 'prime') continue;
+    if (LUXE_ONLY.has(pattern) && (d.template ?? 'luxe') !== 'luxe') continue;
     walk(d, pattern.split('.'), 0, [], pattern);
   }
   return out;
+}
+
+/**
+ * The data paths of editableDataPaths(d) that NO page of this site prints as text, so the preview has nothing to tap and the
+ * app's "All fields" sheet edits them (tests/render/editableEverywhere.test.ts checks this list against the real render):
+ *  - `area`: Luxe never prints it as text (title and meta only); Prime and Euphoria print its city and state (the tap edits
+ *    the whole field);
+ *  - a service subtitle that a duration hides (every design prints `duration || subtitle`);
+ *  - the shop bio when luxe's bio band is not printed (the band needs more than 20 characters; only luxe has it);
+ *  - on a site with a single page: the contact email (Luxe and Prime show it on their Contact page only) and a barber's own
+ *    hours (nested pages only), and for Euphoria the shop hours (it has no hours section on its one page).
+ * (The booking link is not text and is not in the table.)
+ */
+export function sheetOnlyDataPaths(d: WebsiteData): string[] {
+  const multi = isMultiPage(d);
+  const template = d.template ?? 'luxe';
+  const services = Array.isArray(d.services) ? d.services : [];
+  return editableDataPaths(d).filter((path) => {
+    const pattern = dataPattern(path);
+    if (pattern === 'area') return template === 'luxe';
+    if (pattern === 'services.{i}.subtitle') {
+      const svc = services[Number(path.split('.')[1])];
+      return unmarked(String(svc?.duration ?? '')).trim() !== '';
+    }
+    if (pattern === 'bio') return unmarked(String(d.bio ?? '')).trim().length <= 20;
+    if (multi) return false;
+    if (pattern === 'contact.email') return template !== 'euphoria';
+    if (pattern.startsWith('staff.{i}.hours.')) return true;
+    return template === 'euphoria' && pattern.startsWith('hours.');
+  });
 }

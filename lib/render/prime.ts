@@ -9,7 +9,7 @@
 // Pure: WebsiteData in, HTML string out. Keep it that way.
 import type { WebsiteData } from '../../types';
 import { safeHref } from './safeHref.js';
-import { unmarked } from './markers.js';
+import { unmarked, mapMarked } from './markers.js';
 import { bookStripHtml, isSiteBookLink, shopPreviewHtml, type SectionSkin } from './subpages.js';
 import {
   aggregateToShow, copyrightYear, displayPrice, galleryIsAllOwnPhotos, hasServices, nicheCopy, photoAlt, to12h,
@@ -161,9 +161,12 @@ export const fmtHours = (h: { open: string; close: string; closed?: boolean }, c
 // Trailing "City, State" only — keeps the hero eyebrow from echoing a full
 // street address even if one is pasted in.
 export const cityStateOnly = (raw: string): string => {
-  const parts = (raw || '').split(',').map((s) => s.trim()).filter(Boolean);
-  if (parts.length <= 2) return raw || '';
-  return parts.slice(-2).join(', ');
+  // A value in the editor's markers keeps its wrapper round the cut text (markers.ts): the result stays tappable.
+  return mapMarked(raw || '', (text) => {
+    const parts = text.split(',').map((s) => s.trim()).filter(Boolean);
+    if (parts.length <= 2) return text;
+    return parts.slice(-2).join(', ');
+  });
 };
 // Resolve the gold trio from a colorTheme slug or raw hex. Mirrors the
 // preset set used by the luxe/euphoria renderers so a picked color carries
