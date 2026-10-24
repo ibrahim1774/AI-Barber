@@ -41,12 +41,12 @@ export function parsePreviewMessage(raw: unknown, data: WebsiteData, page?: Prev
     case 'edit':
       return typeof o.path === 'string' && editableTextPaths(data, page).includes(o.path) ? { type: 'edit', path: o.path } : null;
     case 'image':
-      return typeof o.path === 'string' && IMAGE_PATHS(data).includes(o.path) ? { type: 'image', path: o.path } : null;
+      return typeof o.path === 'string' && IMAGE_PATHS(data, page).includes(o.path) ? { type: 'image', path: o.path } : null;
     case 'scrollY':
       return typeof o.y === 'number' && Number.isFinite(o.y) ? { type: 'scrollY', y: Math.max(0, o.y) } : null;
     case 'rects': {
       if (!Array.isArray(o.items)) return null;
-      const slots = new Set(IMAGE_PATHS(data));
+      const slots = new Set(IMAGE_PATHS(data, page));
       const items: ImageRect[] = [];
       for (const it of o.items) {
         if (items.length >= MAX_RECTS) break;

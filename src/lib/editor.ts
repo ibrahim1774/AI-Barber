@@ -7,7 +7,9 @@ import { generateContent } from '@/web/services/geminiService';
 import { DEFAULT_PULLQUOTE } from '@/web/lib/render/prime';
 import { isStockImage } from '@/web/lib/stockImages';
 import { api } from '@/lib/api';
-import { IMAGE_PATHS, asPublished, getPath, labelKeyOfPath, setPath } from '@/lib/editable';
+import { IMAGE_PATHS, asPublished, copyKeyOfPath, getPath, labelKeyOfPath, setPath } from '@/lib/editable';
+import { copyBlockInfo } from '@/web/lib/render/guides';
+import { saveCopyText } from '@/lib/copyEdit';
 import { LABELS, clampLabel, defaultLabel, isFigureFreeLabel, type LabelDef } from '@/web/lib/render/labels';
 import { nicheOf } from '@/web/lib/render/honest';
 
@@ -24,6 +26,19 @@ export function switchDesign(d: WebsiteData, t: 'luxe' | 'prime'): WebsiteData {
     ...d,
     template: t,
     pullQuote: d.pullQuote ?? { ...DEFAULT_PULLQUOTE },
+  };
+}
+
+/**
+ * What the barber chose about pages, kept when a rebuild replaces the rest of the data: which pages are on, the
+ * guide pages (extraPages, with their seed and photos), the edited library texts and the section settings.
+ */
+export function keptPageChoices(d: WebsiteData): Partial<WebsiteData> {
+  return {
+    ...(d.pages ? { pages: d.pages } : {}),
+    ...(d.extraPages ? { extraPages: d.extraPages } : {}),
+    ...(d.copy ? { copy: d.copy } : {}),
+    ...(d.pageSections ? { pageSections: d.pageSections } : {}),
   };
 }
 
@@ -45,7 +60,7 @@ export async function applyHomePrompts(d: WebsiteData, area: string, rawPhone: s
       bookingUrl: d.bookingUrl,
     });
     // The pages choice is the barber's, not generated: a rebuilt site keeps it.
-    return { ...regenerated, services: d.services ?? [], ...(d.pages ? { pages: d.pages } : {}) };
+    return { ...regenerated, services: d.services ?? [], ...keptPageChoices(d) };
   } catch {
     return { ...d, area, phone, contact: { ...d.contact, address: area } };
   }
@@ -67,7 +82,7 @@ export async function applyBookingLink(d: WebsiteData, link: string): Promise<We
       template: d.template === 'euphoria' ? 'euphoria' : 'luxe',
     });
     if (!built?.scraped?.shopName) return null;
-    return { ...built.scraped, colorTheme: d.colorTheme, ...(d.pages ? { pages: d.pages } : {}) };
+    return { ...built.scraped, colorTheme: d.colorTheme, ...keptPageChoices(d) };
   } catch (err) {
     console.warn('[home funnel] booking-link scrape failed:', err);
     return null;
@@ -103,6 +118,10 @@ const FIELD_LABELS: Record<string, string> = {
  * business type). A `labels.` path outside the registry changes nothing. Everything else is set as typed.
  */
 export function savePathValue(d: WebsiteData, path: string, value: string): WebsiteData {
+  if (path.startsWith('copy.')) {
+    const ck = copyKeyOfPath(path);
+    return ck ? saveCopyText(d, ck, value) : d;
+  }
   if (path.startsWith('labels.')) {
     const key = labelKeyOfPath(path);
     if (!key) return d;
@@ -123,6 +142,8 @@ const SERVICE_FIELD: Record<string, string> = { title: 'name', subtitle: 'subtit
 /** "services.2.title" → "Service 3 name". */
 export function fieldLabel(path: string): string {
   if (FIELD_LABELS[path]) return FIELD_LABELS[path];
+  const copyKey = copyKeyOfPath(path);
+  if (copyKey) return copyLabel(copyKey);
   const labelKey = labelKeyOfPath(path);
   if (labelKey) return (LABELS as Record<string, LabelDef>)[labelKey].title;
   let m = /^about\.description\.(\d+)$/.exec(path);
@@ -130,6 +151,21 @@ export function fieldLabel(path: string): string {
   m = /^services\.(\d+)\.(title|subtitle|description)$/.exec(path);
   if (m) return `Service ${Number(m[1]) + 1} ${SERVICE_FIELD[m[2]]}`;
   return path;
+}
+
+const humanize = (id: string): string => {
+  const t = id.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[-_]/g, ' ').toLowerCase();
+  return t.charAt(0).toUpperCase() + t.slice(1);
+};
+const COPY_SCOPE: Record<string, string> = { faq: 'FAQ', 'first-visit': 'First visit', 'hair-care': 'Hair care', 'beard-care': 'Beard care' };
+
+/** "guide.fade.what" -> "Service guide: Fade, what"; "faq.book" -> the question itself. */
+export function copyLabel(key: string): string {
+  const info = copyBlockInfo(key);
+  if (info?.q) return info.q;
+  const parts = key.split('.');
+  if (parts[0] === 'guide') return `Service guide: ${humanize(parts[1])}, ${humanize(parts.slice(2).join(' ')).toLowerCase()}`;
+  return `${COPY_SCOPE[parts[0]] ?? humanize(parts[0])}: ${humanize(parts.slice(1).join(' ')).toLowerCase()}`;
 }
 
 /** "gallery.2" → "Gallery 3", "staff.0.photo" → "Staff 1 photo". */
@@ -146,6 +182,10 @@ export function imageLabel(path: string, d?: WebsiteData): string {
   if (m) return `Craft photo ${Number(m[1]) + 1}`;
   m = /^staff\.(\d+)\.photo$/.exec(path);
   if (m) return `Staff ${Number(m[1]) + 1} photo`;
+  m = /^services\.(\d+)\.imageUrl$/.exec(path);
+  if (m) return `Service ${Number(m[1]) + 1} page photo`;
+  m = /^extraPages\.images\.(first-visit|hair-care|beard-care)$/.exec(path);
+  if (m) return `${COPY_SCOPE[m[1]]} page photo`;
   return path;
 }
 

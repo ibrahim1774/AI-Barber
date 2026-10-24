@@ -25,7 +25,12 @@ test('startDraft saves a draft and returns it with a uuid', async () => {
   expect(rec.draftId).toMatch(UUID);
   expect(rec.inputs).toEqual(result.inputs);
   // A newly generated site opts in to multi-page (P3b): every eligible page on, default order.
-  expect(rec.data).toEqual({ ...result.site, pages: { order: [], hidden: [] } });
+  // Pages v2: also the suggested guide pages (FAQ, First visit, service guides) with a stored seed.
+  expect(rec.data).toEqual({
+    ...result.site,
+    pages: { order: [], hidden: [] },
+    extraPages: { on: ['faq', 'first-visit'], serviceGuides: true, seed: expect.any(Number) },
+  });
   expect(rec.slug).toBeNull();
   expect(rec.deployedUrl).toBeNull();
   expect(rec.transactionId).toBeNull();

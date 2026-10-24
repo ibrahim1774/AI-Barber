@@ -1,45 +1,62 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, PanResponder, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Animated, PanResponder, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import type { WebsiteData } from '@/web/types';
-import type { PagesModel, PageKey } from '@/web/lib/render/pages';
+import type { PageKey } from '@/web/lib/render/pages';
 import { colors, fonts } from '@/constants/theme';
 import { Sheet, SheetAction } from '@/components/EditSheet';
+import type { PreviewPage } from '@/lib/editable';
 import {
-  MULTI_PAGE_NOTE, moveRow, needsMultiPageConfirm, pageRows, pagesFromRows, servicesOverCapNote, servicesOverCapOf, setRowOn, type PageRow,
+  MULTI_PAGE_NOTE, PLACE_NOTE, addSuggested, changeFromRows, matchesQuery, menuRows, moreStartsAt, moveRow, needsMultiPageConfirm,
+  pageRows, placeText, sameChange, serviceGuidesOn, serviceRows, servicesOverCapNote, servicesOverCapOf, setRowOn, showSearch,
+  suggestedRows, type PageRow, type PagesChange,
 } from '@/lib/sitePages';
 
 export const ROW_H = 64;
 
 /**
- * The Pages sheet: every page this site has data for, in nav order, with an on/off switch (Home is locked on)
- * and a handle to drag it up or down. Tap a page's name to see it in the preview. Nothing is stored until Save;
- * the first Save on a site that has no pages yet is the one-time "becomes a multi-page site" confirm.
+ * The Pages sheet, in three groups: Menu pages (every page this site has data for, in menu order, with an on/off
+ * switch and a handle to drag it; Home is locked on), Service pages (one per listed service; tap to see it, and
+ * the service guides switch) and Suggested pages (guide pages that are off or cannot exist yet, each with an Add
+ * button or the reason it is disabled). A search box appears when the lists are long, and a Place name row edits
+ * the one place the pages are named after. Nothing is stored until Save; the first Save on a site that has no
+ * pages yet is the one-time "becomes a multi-page site" confirm.
  */
 export function PagesSheet({
-  visible, data, onSave, onClose, onDismiss,
+  visible, data, onSave, onEditPlace, onClose, onDismiss,
 }: {
   visible: boolean;
   data: WebsiteData;
   /** `show`: a page to open in the preview after saving. */
-  onSave(model: PagesModel, show?: PageKey): void;
+  onSave(change: PagesChange, show?: PreviewPage): void;
+  /** The Place name row: edit the place label (any other change in the sheet is saved first). */
+  onEditPlace?(): void;
   onClose(): void;
   onDismiss?(): void;
 }) {
   const [rows, setRows] = useState<PageRow[]>(() => pageRows(data));
+  const [guides, setGuides] = useState<boolean>(() => serviceGuidesOn(data));
+  const [query, setQuery] = useState('');
   const [drag, setDrag] = useState<{ from: number; to: number } | null>(null);
   const confirmFirst = needsMultiPageConfirm(data);
 
   // Open on the site as it is now; edits wait for Save.
   useEffect(() => {
-    if (visible) setRows(pageRows(data));
+    if (visible) {
+      setRows(pageRows(data));
+      setGuides(serviceGuidesOn(data));
+      setQuery('');
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
   const overCapNote = useMemo(() => servicesOverCapNote(servicesOverCapOf(data)), [data]);
-  const dirty = useMemo(() => JSON.stringify(pagesFromRows(rows)) !== JSON.stringify(pagesFromRows(pageRows(data))), [rows, data]);
+  const services = useMemo(() => serviceRows(data), [data]);
+  // Compared with the seed fixed: the real seed is made at Save, so it never decides whether something changed.
+  const baseline = useMemo(() => changeFromRows(data, pageRows(data), serviceGuidesOn(data), () => 0), [data]);
+  const dirty = useMemo(() => !sameChange(changeFromRows(data, rows, guides, () => 0), baseline), [data, rows, guides, baseline]);
 
-  const save = (show?: PageKey) => {
-    onSave(pagesFromRows(rows), show);
+  const save = (show?: PreviewPage) => {
+    onSave(changeFromRows(data, rows, guides), show);
     onClose();
   };
   const toggle = (key: PageKey, on: boolean) => setRows((r) => setRowOn(r, key, on));
@@ -50,6 +67,15 @@ export function PagesSheet({
     if (drag.to < drag.from && i >= drag.to && i < drag.from) return ROW_H;
     return 0;
   };
+
+  const menu = menuRows(rows);
+  const suggested = suggestedRows(rows);
+  const searching = query.trim() !== '';
+  const searchable = showSearch(rows.length + services.length);
+  const divideAt = moreStartsAt(menu);
+  const place = placeText(data);
+  const shownServices = services.filter((s) => matchesQuery(s.title, query));
+  const shownSuggested = suggested.filter((r) => matchesQuery(r.title, query));
 
   return (
     <Sheet
@@ -63,21 +89,112 @@ export function PagesSheet({
         Each page is made only from what you have added. Turn a page off to hide it from your menu, and drag the handle to change the order.
       </Text>
       {overCapNote ? <Text style={styles.lead}>{overCapNote}</Text> : null}
+      {searchable && (
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search pages"
+          placeholderTextColor="rgba(255,255,255,0.3)"
+          accessibilityLabel="Search pages"
+          selectionColor={colors.accent}
+          autoCorrect={false}
+          autoCapitalize="none"
+          clearButtonMode="while-editing"
+          style={styles.search}
+        />
+      )}
       <ScrollView style={styles.list} scrollEnabled={!drag} keyboardShouldPersistTaps="handled">
-        {rows.map((r, i) => (
-          <Row
-            key={r.key}
-            row={r}
-            index={i}
-            offset={dragOffset(i)}
-            canView={!confirmFirst}
-            onToggle={(on) => toggle(r.key, on)}
-            onView={() => save(r.key)}
-            onMove={move}
-            onDrag={setDrag}
-            count={rows.length}
-          />
-        ))}
+        {!confirmFirst && onEditPlace && !searching && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Place name, ${place || 'not set'}. Change`}
+            onPress={() => { if (dirty) onSave(changeFromRows(data, rows, guides)); onEditPlace(); }}
+            style={({ pressed }) => [styles.placeRow, pressed && { opacity: 0.6 }]}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={styles.title}>Place name</Text>
+              <Text style={styles.sub} numberOfLines={1}>{place || 'Not set'}</Text>
+            </View>
+            <Text style={styles.action}>Change</Text>
+          </Pressable>
+        )}
+        <Text style={styles.group} accessibilityRole="header">Menu pages</Text>
+        {menu.map((r, i) => {
+          if (searching && !matchesQuery(r.title, query)) return null;
+          return (
+            <View key={r.key}>
+              {!searching && i === divideAt && <Text style={styles.divider}>Below here: under More on the site</Text>}
+              <Row
+                row={r}
+                index={i}
+                offset={dragOffset(i)}
+                canView={!confirmFirst}
+                dragEnabled={!searching}
+                onToggle={(on) => toggle(r.key, on)}
+                onView={() => save({ key: r.key })}
+                onMove={move}
+                onDrag={setDrag}
+                count={menu.length}
+              />
+            </View>
+          );
+        })}
+        {!confirmFirst && shownServices.length > 0 && (
+          <>
+            <Text style={styles.group} accessibilityRole="header">{`Service pages (${services.length})`}</Text>
+            <Text style={styles.lead}>Every listed service gets a page (the first 12).</Text>
+            {shownServices.map((s) => (
+              <Pressable
+                key={s.index}
+                accessibilityRole="button"
+                accessibilityLabel={`Show ${s.title}`}
+                onPress={() => save({ key: 'services', index: s.index })}
+                style={({ pressed }) => [styles.simple, pressed && { opacity: 0.6 }]}
+              >
+                <Text style={styles.title} numberOfLines={1}>{s.title}</Text>
+              </Pressable>
+            ))}
+            {!searching && (
+              <View style={styles.simple}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.title}>Service guides</Text>
+                  <Text style={styles.sub}>Adds About this service text to the page of a service it fits.</Text>
+                </View>
+                <Switch
+                  value={guides}
+                  onValueChange={setGuides}
+                  accessibilityLabel="Service guides"
+                  trackColor={{ false: 'rgba(255,255,255,0.18)', true: colors.accent }}
+                />
+              </View>
+            )}
+          </>
+        )}
+        {!confirmFirst && shownSuggested.length > 0 && (
+          <>
+            <Text style={styles.group} accessibilityRole="header">Suggested pages</Text>
+            {shownSuggested.map((r) => (
+              <View key={r.key} style={[styles.simple, !r.eligible && { opacity: 0.6 }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.title}>{r.title}</Text>
+                  {r.reason ? <Text style={styles.sub}>{r.reason}</Text> : null}
+                </View>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Add ${r.title}`}
+                  accessibilityState={{ disabled: !r.eligible }}
+                  disabled={!r.eligible}
+                  hitSlop={8}
+                  onPress={() => setRows((cur) => addSuggested(cur, r.key))}
+                  style={({ pressed }) => [styles.add, !r.eligible && styles.addOff, pressed && { opacity: 0.6 }]}
+                >
+                  <Text style={styles.addText}>Add</Text>
+                </Pressable>
+              </View>
+            ))}
+          </>
+        )}
+        {!confirmFirst && <Text style={[styles.lead, { marginTop: 12 }]}>{PLACE_NOTE}</Text>}
       </ScrollView>
       {confirmFirst && (
         <View style={styles.note} accessibilityRole="summary">
@@ -93,13 +210,14 @@ export function PagesSheet({
 }
 
 function Row({
-  row, index, count, offset, canView, onToggle, onView, onMove, onDrag,
+  row, index, count, offset, canView, dragEnabled, onToggle, onView, onMove, onDrag,
 }: {
   row: PageRow;
   index: number;
   count: number;
   offset: number;
   canView: boolean;
+  dragEnabled: boolean;
   onToggle(on: boolean): void;
   onView(): void;
   onMove(from: number, to: number): void;
@@ -110,10 +228,12 @@ function Row({
   const live = useRef({ index, count, onMove, onDrag });
   live.current = { index, count, onMove, onDrag };
   const target = (dy: number) => Math.max(1, Math.min(live.current.count - 1, live.current.index + Math.round(dy / ROW_H)));
+  const canDrag = useRef(!row.locked && dragEnabled);
+  canDrag.current = !row.locked && dragEnabled;
   const pan = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => !row.locked,
-      onMoveShouldSetPanResponder: () => !row.locked,
+      onStartShouldSetPanResponder: () => canDrag.current,
+      onMoveShouldSetPanResponder: () => canDrag.current,
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: () => live.current.onDrag({ from: live.current.index, to: live.current.index }),
       onPanResponderMove: (_e, g) => {
@@ -133,7 +253,7 @@ function Row({
     }),
   ).current;
 
-  const sub = row.children > 0 ? `${row.children} ${row.key === 'services' ? (row.children === 1 ? 'service page' : 'service pages') : row.children === 1 ? 'barber page' : 'barber pages'}` : row.locked ? 'Always on' : undefined;
+  const sub = row.extra ? 'Guide page' : row.children > 0 ? `${row.children} ${row.key === 'services' ? (row.children === 1 ? 'service page' : 'service pages') : row.children === 1 ? 'barber page' : 'barber pages'}` : row.locked ? 'Always on' : undefined;
   return (
     <Animated.View
       style={[styles.row, { transform: [{ translateY: Animated.add(y, offset) }] }, !row.on && styles.rowOff]}
@@ -161,8 +281,8 @@ function Row({
         />
       </View>
       <View
-        {...(row.locked ? {} : pan.panHandlers)}
-        accessible={!row.locked}
+        {...(row.locked || !dragEnabled ? {} : pan.panHandlers)}
+        accessible={!row.locked && dragEnabled}
         accessibilityRole="adjustable"
         accessibilityLabel={`Reorder ${row.title}`}
         accessibilityActions={[{ name: 'increment', label: 'Move down' }, { name: 'decrement', label: 'Move up' }]}
@@ -170,7 +290,7 @@ function Row({
           if (e.nativeEvent.actionName === 'increment') onMove(index, index + 1);
           if (e.nativeEvent.actionName === 'decrement') onMove(index, index - 1);
         }}
-        style={[styles.handle, row.locked && { opacity: 0.2 }]}
+        style={[styles.handle, (row.locked || !dragEnabled) && { opacity: 0.2 }]}
         testID={`pages-handle-${row.key}`}
       >
         <View style={styles.bars}><View style={styles.bar} /><View style={styles.bar} /><View style={styles.bar} /></View>
@@ -217,7 +337,28 @@ function Thumb({ kind, off }: { kind: PageKey; off: boolean }) {
 
 const styles = StyleSheet.create({
   lead: { fontFamily: fonts.body, fontSize: 13, lineHeight: 18, color: 'rgba(255,255,255,0.6)', marginBottom: 10 },
-  list: { maxHeight: 460 },
+  list: { maxHeight: 520 },
+  search: {
+    fontFamily: fonts.body, fontSize: 15, color: '#fff', borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)',
+    borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 10,
+  },
+  group: {
+    fontFamily: fonts.bodyBold, fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', color: 'rgba(255,255,255,0.55)',
+    marginTop: 10, marginBottom: 8,
+  },
+  divider: { fontFamily: fonts.body, fontSize: 12, color: colors.accent, marginBottom: 8, marginTop: 2 },
+  placeRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 12, marginBottom: 8, borderRadius: 10,
+    backgroundColor: '#1d1d1d', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+  },
+  action: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.accent },
+  simple: {
+    flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 12, marginBottom: 8, borderRadius: 10,
+    backgroundColor: '#1d1d1d', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', minHeight: 48,
+  },
+  add: { paddingHorizontal: 16, height: 36, justifyContent: 'center', borderRadius: 18, backgroundColor: colors.accent },
+  addOff: { backgroundColor: 'rgba(255,255,255,0.18)' },
+  addText: { fontFamily: fonts.headingBlack, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: colors.buttonInk },
   row: {
     height: ROW_H - 8, marginBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 10,
     paddingLeft: 10, paddingRight: 4, borderRadius: 10,

@@ -51,7 +51,7 @@ export function SheetAction({ title, onPress, primary, disabled }: { title: stri
 }
 
 // Long-form fields get a multi-line box; names, phone, links stay single-line.
-const MULTILINE = /^(about\.description\.\d+|services\.\d+\.description|policy\.body|pullQuote\.text|hero\.tagline)$/;
+const MULTILINE = /^(about\.description\.\d+|services\.\d+\.description|policy\.body|pullQuote\.text|hero\.tagline|copy\..+)$/;
 
 export interface EditSheetProps {
   visible: boolean;
@@ -60,13 +60,17 @@ export interface EditSheetProps {
   value: string;
   /** Longest text the field accepts (a label's cap); shown as a counter. */
   maxLength?: number;
+  /** A line under the box (for example: this text no longer follows your prices). */
+  note?: string;
+  /** Extra buttons under the box (library text: Reset to suggested, Try other wording). Each closes the sheet. */
+  actions?: { title: string; onPress(): void }[];
   onSave(value: string): void;
   onClose(): void;
   onDismiss?(): void;
 }
 
 /** Edits one text field: the same sheet for a tap in the preview or a row in "All fields". */
-export function EditSheet({ visible, label, path, value, maxLength, onSave, onClose, onDismiss }: EditSheetProps) {
+export function EditSheet({ visible, label, path, value, maxLength, note, actions, onSave, onClose, onDismiss }: EditSheetProps) {
   const [text, setText] = useState(value);
   useEffect(() => {
     if (visible) setText(value);
@@ -104,6 +108,10 @@ export function EditSheet({ visible, label, path, value, maxLength, onSave, onCl
         style={[styles.input, multiline && styles.inputMulti]}
       />
       {maxLength ? <Text style={styles.counter} accessibilityLabel={`${text.length} of ${maxLength} characters`}>{text.length}/{maxLength}</Text> : null}
+      {note ? <Text style={styles.note}>{note}</Text> : null}
+      {actions?.map((a) => (
+        <SheetAction key={a.title} title={a.title} onPress={() => { a.onPress(); onClose(); }} />
+      ))}
       <SheetAction title="Cancel" onPress={onClose} />
     </Sheet>
   );
@@ -136,6 +144,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)', borderRadius: 8,
     paddingHorizontal: 12, paddingVertical: 12, marginBottom: 8,
   },
+  note: { fontFamily: fonts.body, fontSize: 12.5, lineHeight: 17, color: 'rgba(255,255,255,0.6)', marginBottom: 8 },
   counter: { alignSelf: 'flex-end', fontFamily: fonts.body, fontSize: 11, color: 'rgba(255,255,255,0.45)', marginBottom: 4 },
   inputMulti: { minHeight: 120, maxHeight: 260, textAlignVertical: 'top' },
 });

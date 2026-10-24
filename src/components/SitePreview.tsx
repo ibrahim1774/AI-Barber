@@ -18,6 +18,8 @@ export interface SitePreviewProps {
   onEditImage(path: string): void;
   /** Registered with the tutorial on the tour's "Change image" pill. */
   pillTourRef?: RefObject<View | null>;
+  /** Paths of photos on this page that are still samples (they get a "replace with yours" prompt). */
+  samplePaths?: string[];
 }
 
 /**
@@ -31,7 +33,7 @@ function sameRects(a: ImageRect[], b: ImageRect[]): boolean {
   return a.length === b.length && a.every((r, i) => r.path === b[i].path && r.x === b[i].x && r.y === b[i].y && r.w === b[i].w && r.h === b[i].h);
 }
 
-export default function SitePreview({ data, editable, shopProducts, page, onEditText, onEditImage, pillTourRef }: SitePreviewProps) {
+export default function SitePreview({ data, editable, shopProducts, page, onEditText, onEditImage, pillTourRef, samplePaths }: SitePreviewProps) {
   const webRef = useRef<WebView>(null);
   const scrollY = useRef(0);
   // Where each photo is on screen (for the "Change image" pills), and whether the page is moving.
@@ -108,7 +110,7 @@ export default function SitePreview({ data, editable, shopProducts, page, onEdit
       dataDetectorTypes="none"
       allowsBackForwardNavigationGestures={false}
     />
-    {editable && <ChangeImagePills items={rects} hidden={false} onPress={onEditImage} tourRef={pillTourRef} />}
+    {editable && <ChangeImagePills items={rects} hidden={false} onPress={onEditImage} tourRef={pillTourRef} samplePaths={samplePaths} />}
     </View>
   );
 }

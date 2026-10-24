@@ -2,6 +2,7 @@ import type { WebsiteData } from '@/web/types';
 import { generateHTMLWithPlaceholders } from '@/web/lib/render/luxe';
 import { generatePrimeHTMLWithPlaceholders } from '@/web/lib/render/prime';
 import { generateEuphoriaHTMLWithPlaceholders } from '@/web/lib/render/euphoria';
+import { imageUrlMapOf } from '@/web/lib/render/site';
 
 /** Same template switch as the web's lib/publishSite.ts renderSite. */
 export function renderSite(siteData: WebsiteData): string {
@@ -12,16 +13,9 @@ export function renderSite(siteData: WebsiteData): string {
 
 /** Placeholder key -> real URL, keyed the same as the {{placeholders}} in rendered HTML. */
 export function imageUrlMap(data: WebsiteData): Record<string, string> {
-  const map: Record<string, string> = {};
-  const put = (key: string, url: unknown) => {
-    if (typeof url === 'string' && url) map[key] = url;
-  };
-  put('hero', data.hero?.imageUrl);
-  put('about', data.about?.imageUrl);
-  (data.gallery || []).forEach((u, i) => put(`gallery${i}`, u));
-  (data.craftImages || []).forEach((u, i) => put(`craft${i}`, u));
-  (data.staff || []).forEach((s, i) => put(`staff${i}`, s?.photo));
-  return map;
+  // The vendored renderer's own map, so the preview and the deploy agree (it adds the page-hero keys `service<i>` and
+  // `page-<key>` for a site that carries extraPages).
+  return imageUrlMapOf(data);
 }
 
 /**
@@ -52,11 +46,11 @@ export function safeImageUrl(url: string): string {
 }
 
 /**
- * Fill {{hero}}, {{about}}, {{gallery{i}}}, {{craft{i}}}, {{staff{i}}} in rendered HTML
+ * Fill {{hero}}, {{about}}, {{gallery{i}}}, {{craft{i}}}, {{staff{i}}}, {{service{i}}}, {{page-<key>}} in rendered HTML
  * from the data's own URLs (preview). Mirrors the replacement in deployRenderedSite,
  * plus safeImageUrl() on every substituted value.
  */
 export function withImages(html: string, data: WebsiteData): string {
   const m = imageUrlMap(data);
-  return html.replace(/\{\{([a-zA-Z0-9]+)\}\}/g, (whole, key: string) => (m[key] !== undefined ? safeImageUrl(m[key]) : whole));
+  return html.replace(/\{\{([a-zA-Z0-9-]+)\}\}/g, (whole, key: string) => (m[key] !== undefined ? safeImageUrl(m[key]) : whole));
 }

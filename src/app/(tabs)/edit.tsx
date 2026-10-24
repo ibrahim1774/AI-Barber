@@ -13,9 +13,11 @@ import { bookingPrefs, resolveLinks } from '@/lib/bookingChoice';
 import { syncOwnLink } from '@/lib/bookingChoice';
 import { useLinkContext } from '@/lib/linkContext';
 import { stripLapsedLinks } from '@/lib/tierLinks';
-import { previewBackground, setPath, textMaxLength, textValue, type PreviewPage } from '@/lib/editable';
-import { pageChips, resolvePage, withPages } from '@/lib/sitePages';
-import type { PagesModel, PageKey } from '@/web/lib/render/pages';
+import { copyKeyOfPath, previewBackground, textMaxLength, textValue, type PreviewPage } from '@/lib/editable';
+import { PAGE_TITLES, pageChips, resolvePage, serviceRows, withPageChange, type PagesChange } from '@/lib/sitePages';
+import { clearHero, isHeroPath, sampleHeroPaths, setPhoto } from '@/lib/pageHero';
+import { isCopyEdited, resetCopy, tryOtherWording } from '@/lib/copyEdit';
+import { sectionPageFor } from '@/lib/pageSections';
 import { applyBookingLink, applyHomePrompts, editorRecord, fieldLabel, savePathValue, setColour, stockPhotoPaths, switchDesign } from '@/lib/editor';
 import { StockPhotoNudge } from '@/components/StockPhotoNudge';
 import type { PreviewProduct } from '@/lib/editable';
@@ -34,6 +36,8 @@ import { tabBarStyle } from '@/lib/tabBar';
 import SitePreview from '@/components/SitePreview';
 import { PagesBar } from '@/components/PagesBar';
 import { PagesSheet } from '@/components/PagesSheet';
+import { PageSectionsSheet } from '@/components/PageSectionsSheet';
+import { HeroPhotoSheet } from '@/components/HeroPhotoSheet';
 import { ColourButton } from '@/components/ColourButton';
 import { DesignSwitcher } from '@/components/DesignSwitcher';
 import { EditSheet } from '@/components/EditSheet';
@@ -60,7 +64,7 @@ import { useSession } from '@/lib/auth';
 import { PublishBar } from '@/components/PublishBar';
 import { LapsedCard } from '@/components/LapsedCard';
 
-type SheetKind = 'fields' | 'photos' | 'colour' | 'edit' | 'sections' | 'pages' | SectionKey;
+type SheetKind = 'fields' | 'photos' | 'colour' | 'edit' | 'sections' | 'pages' | 'pageSections' | 'hero' | SectionKey;
 
 /**
  * The Edit tab: the site preview with tap-to-edit, the design switcher, and
@@ -124,7 +128,9 @@ export default function Editor() {
   // The page of a multi-page site the preview shows. Never saved; Home when that page goes away.
   const [wantedPage, setWantedPage] = useState<PreviewPage | null>(null);
   // Kept after the edit sheet closes so its label/value don't blank mid-slide.
-  const [edit, setEdit] = useState<{ path: string; fromList: boolean }>({ path: 'shopName', fromList: false });
+  const [edit, setEdit] = useState<{ path: string; fromList: boolean; fromPage?: boolean }>({ path: 'shopName', fromList: false });
+  // The page hero photo being changed (services.<i>.imageUrl, extraPages.images.<key>).
+  const [heroPath, setHeroPath] = useState('');
   const [uploading, setUploading] = useState(false);
   const uploadingRef = useRef(false);
   const mountedRef = useRef(true);
@@ -355,7 +361,7 @@ export default function Editor() {
         });
         // Skip if the screen went away (delete) or another draft (restore) took over.
         if (url && mountedRef.current && siteRef.current?.draftId === cur.draftId) {
-          commit((d) => setPath(d, path, url));
+          commit((d) => setPhoto(d, path, url));
           AccessibilityInfo.announceForAccessibility('Photo updated');
         }
       } catch (e) {
@@ -392,22 +398,30 @@ export default function Editor() {
     [],
   );
 
-  const openEdit = useCallback((path: string, fromList = false) => {
-    setEdit({ path, fromList });
+  const openEdit = useCallback((path: string, fromList = false, fromPage = false) => {
+    setEdit({ path, fromList, fromPage });
     setSheet('edit');
   }, []);
   const onPreviewText = useCallback((path: string) => {
     if (!overlayRef.current) openEdit(path);
   }, [openEdit]);
+  const openHero = useCallback((path: string) => {
+    setHeroPath(path);
+    setSheet('hero');
+  }, []);
   const onPreviewImage = useCallback((path: string) => {
-    if (!overlayRef.current) void pickPhoto(path);
-  }, [pickPhoto]);
+    if (overlayRef.current) return;
+    // A page hero offers the gallery and the sample photo too; every other photo goes straight to the library.
+    if (isHeroPath(path)) openHero(path);
+    else void pickPhoto(path);
+  }, [pickPhoto, openHero]);
 
   // From "All fields", closing the edit sheet goes back to the list.
   const closeEdit = useCallback(() => {
     if (edit.fromList) closeThen(() => setSheet('fields'));
+    else if (edit.fromPage) closeThen(() => setSheet('pageSections'));
     else setSheet(null);
-  }, [closeThen, edit.fromList]);
+  }, [closeThen, edit.fromList, edit.fromPage]);
 
   // The Sections list: each card closes the list, then opens its editor
   // (every SectionKey is also a SheetKind).
@@ -420,12 +434,14 @@ export default function Editor() {
     setSheet('sections');
   }, []);
 
-  // Saving the Pages sheet writes pages {order, hidden} (the first save is what makes an older site multi-page).
-  const savePages = useCallback((model: PagesModel, show?: PageKey) => {
-    track('pages_saved', { hidden: model.hidden.length });
-    commit((d) => withPages(d, model));
-    setWantedPage(show ? { key: show } : null);
+  // Saving the Pages sheet writes pages {order, hidden} and, for guide pages, extraPages (the first save is what
+  // makes an older site multi-page).
+  const savePages = useCallback((change: PagesChange, show?: PreviewPage) => {
+    track('pages_saved', { hidden: change.pages.hidden.length, guides: change.extraPages?.on.length ?? 0 });
+    commit((d) => withPageChange(d, change));
+    setWantedPage(show ?? null);
   }, [commit]);
+  const editPlace = useCallback(() => closeThen(() => openEdit('labels.pgPlace')), [closeThen, openEdit]);
 
   const handleDesign = useCallback(
     (t: 'luxe' | 'prime') => {
@@ -511,6 +527,7 @@ export default function Editor() {
   // The hero's (else the first) "Change image" pill, which the Edit tour's photo step points at.
   const changeImageRef = useTutorialTarget('edit.changeImage');
   const pagesRef = useTutorialTarget('edit.pages');
+  const editPageRef = useTutorialTarget('edit.editPage');
 
   if (!site) return <View style={styles.root} />;
 
@@ -527,6 +544,11 @@ export default function Editor() {
   const shown = previewData ?? data;
   const page = resolvePage(shown, wantedPage);
   const chips = pageChips(shown);
+  const canEditPage = overlay == null && sectionPageFor(page) !== null;
+  const pageTitle = page.index !== undefined && page.key === 'services'
+    ? serviceRows(shown).find((r) => r.index === page.index)?.title ?? PAGE_TITLES.services
+    : PAGE_TITLES[page.key];
+  const editedCopyKey = copyKeyOfPath(edit.path);
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -534,7 +556,7 @@ export default function Editor() {
       <View style={styles.body}>
         {/* The site's own background, so nothing else shows around the page. */}
         <View style={[styles.preview, { backgroundColor: previewBackground(data) }]}>
-          <SitePreview data={shown} editable page={page} shopProducts={shopProducts} onEditText={onPreviewText} onEditImage={onPreviewImage} pillTourRef={changeImageRef} />
+          <SitePreview data={shown} editable page={page} shopProducts={shopProducts} onEditText={onPreviewText} onEditImage={onPreviewImage} pillTourRef={changeImageRef} samplePaths={sampleHeroPaths(shown, page)} />
           {/* The two floating controls, Design above Colour, hidden while the prompts / guide are up.
               Design is offered on a published site too: it only edits the draft (like Colour), and the
               change goes live on the next Publish. */}
@@ -555,7 +577,7 @@ export default function Editor() {
         {overlay == null && stockPhotoPaths(data).length > 0 && (
           <StockPhotoNudge onAddPhotos={() => setSheet('photos')} />
         )}
-        <PagesBar chips={chips} current={page} onSelect={setWantedPage} onOpenPages={() => setSheet('pages')} buttonRef={pagesRef} disabled={uploading || overlay != null}
+        <PagesBar chips={chips} current={page} onSelect={setWantedPage} onOpenPages={() => setSheet('pages')} onEditPage={canEditPage ? () => setSheet('pageSections') : undefined} editPageRef={editPageRef} buttonRef={pagesRef} disabled={uploading || overlay != null}
         />
         <PublishBar
           onSections={openSections}
@@ -590,6 +612,29 @@ export default function Editor() {
           visible={sheet === 'pages'}
           data={data}
           onSave={savePages}
+          onEditPlace={editPlace}
+          onClose={() => setSheet(null)}
+          onDismiss={onSheetDismiss}
+        />
+        <PageSectionsSheet
+          visible={sheet === 'pageSections'}
+          data={data}
+          page={page}
+          title={pageTitle}
+          onChange={commit}
+          onEditText={(path) => closeThen(() => openEdit(path, false, true))}
+          onChangeImage={(path) => closeThen(() => openHero(path))}
+          onOpenSource={(key) => closeThen(() => setSheet(key))}
+          onClose={() => setSheet(null)}
+          onDismiss={onSheetDismiss}
+        />
+        <HeroPhotoSheet
+          visible={sheet === 'hero'}
+          data={data}
+          path={heroPath}
+          onPhone={() => closeThen(() => pickPhoto(heroPath))}
+          onGallery={(url) => { commit((d) => setPhoto(d, heroPath, url)); setSheet(null); }}
+          onSample={() => { commit((d) => clearHero(d, heroPath)); setSheet(null); }}
           onClose={() => setSheet(null)}
           onDismiss={onSheetDismiss}
         />
@@ -670,6 +715,11 @@ export default function Editor() {
           label={fieldLabel(edit.path)}
           value={editValue}
           maxLength={textMaxLength(edit.path)}
+          note={editedCopyKey && isCopyEdited(data, editedCopyKey) ? 'This text no longer updates with your prices.' : undefined}
+          actions={editedCopyKey ? [
+            { title: 'Reset to suggested', onPress: () => commit((d) => resetCopy(d, editedCopyKey)) },
+            { title: 'Try other wording', onPress: () => commit((d) => tryOtherWording(d, editedCopyKey)) },
+          ] : undefined}
           onSave={(v) => commit((d) => savePathValue(d, edit.path, v))}
           onClose={closeEdit}
           onDismiss={onSheetDismiss}

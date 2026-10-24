@@ -103,7 +103,8 @@ export function updateService(d: WebsiteData, i: number, patch: ServiceDraft): W
     ...cur,
     title: cleanText(patch.title),
     description: cleanText(patch.description),
-    imageUrl: patch.imageUrl,
+    // A pasted link may carry spaces or a line break: store it trimmed.
+    imageUrl: typeof patch.imageUrl === 'string' ? patch.imageUrl.trim() : patch.imageUrl,
   };
   const typed = patch.price.trim();
   if (typed === (cur.price ?? '')) {

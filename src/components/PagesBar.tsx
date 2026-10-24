@@ -14,12 +14,15 @@ const same = (a: PreviewPage, b: PreviewPage) => a.key === b.key && a.index === 
  * service or barber page. A single-page site has no tabs, only the Pages button (the way to add pages).
  */
 export function PagesBar({
-  chips, current, onSelect, onOpenPages, buttonRef, disabled,
+  chips, current, onSelect, onOpenPages, onEditPage, editPageRef, buttonRef, disabled,
 }: {
   chips: PageChips;
   current: PreviewPage;
   onSelect(page: PreviewPage): void;
   onOpenPages(): void;
+  /** Given only while the page on screen has sections to edit (a service page, Location or a guide page). */
+  onEditPage?(): void;
+  editPageRef?: RefObject<View | null>;
   buttonRef?: RefObject<View | null>;
   disabled?: boolean;
 }) {
@@ -73,6 +76,21 @@ export function PagesBar({
             ))}
           </ScrollView>
         )}
+        {onEditPage && (
+          <Pressable
+            ref={editPageRef}
+            collapsable={false}
+            accessibilityRole="button"
+            accessibilityLabel="Edit this page"
+            accessibilityHint="Hide, reorder and reword the sections of this page"
+            accessibilityState={{ disabled: !!disabled }}
+            onPress={onEditPage}
+            disabled={disabled}
+            style={({ pressed }) => [styles.editPage, (pressed || disabled) && { opacity: 0.6 }]}
+          >
+            <Text style={styles.editPageText}>Edit page</Text>
+          </Pressable>
+        )}
         <Pressable
           ref={buttonRef}
           collapsable={false}
@@ -113,6 +131,11 @@ const styles = StyleSheet.create({
   wrap: { backgroundColor: '#111111', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', paddingTop: 6, paddingBottom: 2 },
   row: { flexDirection: 'row', alignItems: 'center', paddingLeft: 6, paddingRight: 10, gap: 8 },
   pages: { paddingHorizontal: 16, height: 44, justifyContent: 'center', borderRadius: 22, backgroundColor: colors.accent },
+  editPage: {
+    paddingHorizontal: 14, height: 44, justifyContent: 'center', borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: colors.accent,
+  },
+  editPageText: { fontFamily: fonts.headingBlack, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: colors.accent },
   pagesAlone: { marginLeft: 'auto' },
   pagesText: { fontFamily: fonts.headingBlack, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: colors.buttonInk },
   scroll: { flex: 1 },

@@ -5,6 +5,8 @@ import { resolveEuphoriaTheme } from '@/web/lib/render/euphoria';
 import { nicheOf, serviceMeta, teamOf, withoutLegacyCopy } from '@/web/lib/render/honest';
 import { LABELS, LABEL_KEYS, clampLabel, defaultLabel, isFigureFreeLabel, isLabelKey, visibleLabelKeys, visiblePageLabelKeys, type LabelDef, type LabelKey } from '@/web/lib/render/labels';
 import { buildPageSet, isMultiPage, pageFileFor, type PageKey, type PageSet } from '@/web/lib/render/pages';
+import { copyBlockInfo, copyDefault, isCopyKey, visibleCopyKeys } from '@/web/lib/render/guides';
+import { fileOfPage, heroOfPage, servicePageIndexes } from '@/lib/pageFile';
 import { renderSiteBundle } from '@/web/lib/render/site';
 import { SHOP_PREVIEW_SCRIPT, SITE_SHOP_PATH, isSiteSubpageLink } from '@/web/lib/render/subpages';
 import { forRender, imageUrlMap, renderSite, withImages } from '@/lib/render';
@@ -54,8 +56,31 @@ export function labelKeyOfPath(path: string): LabelKey | null {
   return isLabelKey(key) && defs[key].tap !== false ? key : null;
 }
 
+// ---------------------------------------------------------------------------
+// Library copy (pages v2): the wording of the guide blocks and guide pages
+// ---------------------------------------------------------------------------
+//
+// `copy` is a flat map whose keys hold dots (`guide.fade.what`, `faq.book`), so a copy text is the path
+// `copy.<key>` and is read and written through these helpers, never through getPath / setPath. The key set is
+// the vendored library's closed set (isCopyKey).
+
+const COPY_PREFIX = 'copy.';
+
+/** `copy.guide.fade.what` -> 'guide.fade.what'; null for anything not in the library's closed set. */
+export function copyKeyOfPath(path: string): string | null {
+  if (!path.startsWith(COPY_PREFIX)) return null;
+  const key = path.slice(COPY_PREFIX.length);
+  return isCopyKey(key) ? key : null;
+}
+export const copyPath = (key: string): string => `${COPY_PREFIX}${key}`;
+
 /** The text a path shows now: the stored value, or for a label the design's wording when none is stored. */
 export function textValue(d: WebsiteData, path: string): string {
+  const ck = copyKeyOfPath(path);
+  if (ck) {
+    const stored = d.copy && Object.prototype.hasOwnProperty.call(d.copy, ck) ? d.copy[ck] : '';
+    return typeof stored === 'string' && stored.trim() !== '' ? stored : copyDefault(d, ck);
+  }
   const key = labelKeyOfPath(path);
   if (key) {
     const stored = getPath(d, path);
@@ -69,6 +94,8 @@ export function textValue(d: WebsiteData, path: string): string {
 
 /** The longest text a path accepts, or undefined for free-length fields. */
 export function textMaxLength(path: string): number | undefined {
+  const ck = copyKeyOfPath(path);
+  if (ck) return copyBlockInfo(ck)?.max;
   const key = labelKeyOfPath(path);
   return key ? defs[key].max : undefined;
 }
@@ -141,16 +168,32 @@ export function editableTextPaths(d: WebsiteData, page?: PreviewPage | null): st
     arr.forEach((_, n) => out.push(pattern.replace('{i}', String(n))));
   }
   for (const key of labelKeysFor(d, page)) out.push(`${LABEL_PREFIX}${key}`);
+  for (const key of copyKeysFor(d, page)) out.push(copyPath(key));
+  return out;
+}
+
+/** The library text blocks a tap can name: those of the chosen page, or (no page given) of every page of the site. */
+function copyKeysFor(d: WebsiteData, page?: PreviewPage | null): string[] {
+  if (!isMultiPage(d)) return [];
+  const servicePages = servicePageIndexes(d);
+  if (page) return visibleCopyKeys(d, fileOfPage(page), servicePages);
+  const out: string[] = [];
+  for (const f of buildPageSet(d, { imageUrls: imageUrlMap(d) }).files) {
+    for (const k of visibleCopyKeys(d, f, servicePages)) if (!out.includes(k)) out.push(k);
+  }
   return out;
 }
 
 /** Every image slot, keyed like setPath paths. */
-export const IMAGE_PATHS = (d: WebsiteData): string[] => [
+export const IMAGE_PATHS = (d: WebsiteData, page?: PreviewPage | null): string[] => [
   'hero.imageUrl',
   'about.imageUrl',
   ...(d.gallery || []).map((_, i) => `gallery.${i}`),
   ...(d.craftImages || []).map((_, i) => `craftImages.${i}`),
   ...(d.staff || []).map((_, i) => `staff.${i}.photo`),
+  // The hero photo of the service or guide page on screen (services.<i>.imageUrl, extraPages.images.<key>). Only the
+  // page on screen: the Photos sheet and the sample-photo nudge never list these (heroes.ts).
+  ...((): string[] => { const h = page && isMultiPage(d) ? heroOfPage(d, page) : null; return h ? [h.path] : []; })(),
 ];
 
 const filled = (u: unknown): boolean => typeof u === 'string' && u !== '';
@@ -263,6 +306,17 @@ export function markData(d: WebsiteData, page?: PreviewPage | null): { marked: W
   let marked = d;
   let n = 0;
   for (const path of editableTextPaths(d, page)) {
+    const copyKey = copyKeyOfPath(path);
+    if (copyKey) {
+      // The block's wording as the page prints it, as the block's text (an edited block is the barber's own words).
+      // `copy` is replaced, never changed in place: the renderer caches the overrides per object.
+      const text = textValue(d, path);
+      if (text === '') continue;
+      const id = letterId(n++);
+      ids[id] = path;
+      marked = { ...marked, copy: { ...(marked.copy ?? {}), [copyKey]: markCopyText(text, copyBlockInfo(copyKey)?.kind ?? 'p', copyBlockInfo(copyKey)?.max ?? 600, id) } };
+      continue;
+    }
     const labelKey = labelKeyOfPath(path);
     // A label is marked with the wording the page shows (its default when none is stored), capped to its
     // maximum BEFORE the markers go on so a marker is never cut in half.
@@ -278,6 +332,20 @@ export function markData(d: WebsiteData, page?: PreviewPage | null): { marked: W
     marked = setPath(marked, path, `${M}${id}${M}${value}${M}/${M}`);
   }
   return { marked, ids };
+}
+
+/**
+ * A copy text with the editor markers. The renderer splits an override into items (lines of a list, paragraphs of a
+ * text) before it prints, so each item gets its own marker pair, all with the one id; a pair around the whole text
+ * would be cut in half. The text is capped to the block's maximum first, so a marker is never cut either.
+ */
+export function markCopyText(text: string, kind: 'p' | 'list' | 'qa' | 'step', max: number, id: string): string {
+  const capped = Array.from(text.trim()).slice(0, max).join('');
+  const sep = kind === 'list' || kind === 'step' ? /(\r?\n+)/ : /(\r?\n\s*\r?\n)/;
+  return capped
+    .split(sep)
+    .map((part, i) => (i % 2 === 1 || part.trim() === '' ? part : `${M}${id}${M}${part.trim()}${M}/${M}`))
+    .join('');
 }
 
 const RAW_MARKER = /\u2063(?:[a-zA-Z]+|\/)\u2063/g; // case-insensitive: a template may upper-case a value
@@ -336,10 +404,24 @@ const SLOT_PATH: Record<string, (i: string) => string> = {
  * Booksy scrape seeds gallery[1] with the about photo).
  */
 export function tagImageSlots(html: string): string {
-  return html.replace(/src="\{\{(hero|about|gallery|craft|staff)(\d*)\}\}"/g, (whole, slot: string, i: string) => {
-    if ((slot === 'hero' || slot === 'about') !== (i === '')) return whole;
-    return `${whole} data-edit-image="${SLOT_PATH[slot](i)}"`;
-  });
+  return html
+    .replace(/src="\{\{(hero|about|gallery|craft|staff)(\d*)\}\}"/g, (whole, slot: string, i: string) => {
+      if ((slot === 'hero' || slot === 'about') !== (i === '')) return whole;
+      return `${whole} data-edit-image="${SLOT_PATH[slot](i)}"`;
+    })
+    // The page hero of a service page or guide page (pages v2): the barber's own photo is a placeholder.
+    .replace(/src="\{\{(?:service(\d+)|page-(first-visit|hair-care|beard-care))\}\}"/g, (whole, i: string | undefined, key: string | undefined) =>
+      `${whole} data-edit-image="${i !== undefined ? `services.${i}.imageUrl` : `extraPages.images.${key}`}"`);
+}
+
+/**
+ * PREVIEW ONLY: a page hero with no photo of the barber's shows a sample photo printed as its own URL (not a
+ * placeholder), so it gets its tap target here. The published page is not touched.
+ */
+export function tagSampleHero(html: string, d: WebsiteData, page: PreviewPage): string {
+  const slot = heroOfPage(d, page);
+  if (!slot || slot.own) return html;
+  return html.replace('<img class="ab-photo ab-hero" ', `<img data-edit-image="${slot.path}" class="ab-photo ab-hero" `);
 }
 
 const TRACKING = /clarity\.ms|googletagmanager|google-analytics|gtag\(|connect\.facebook\.net|fbq\(|analytics\.tiktok\.com|ttq\./;
@@ -503,6 +585,6 @@ function buildPageHtml(data: WebsiteData, editable: boolean, shopProducts: Previ
   const file = previewFileOf(bundle.set, page);
   const html = (bundle.pages.find((f) => f.path === file.path) ?? bundle.pages[0]).html;
   const clean = stripTracking(html);
-  const inner = editable ? tagImageSlots(prepareEditableHtml(clean, ids)) : clean;
+  const inner = editable ? tagSampleHero(tagImageSlots(prepareEditableHtml(clean, ids)), data, page) : clean;
   return withPreviewBackground(withShopPreview(withImages(inner, data), shopProducts), bg);
 }
