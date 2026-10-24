@@ -70,14 +70,19 @@ export function bookStripServices(site: Pick<WebsiteData, 'services'>): { name: 
  * "Book online": up to 3 services and a Book button to /book. Only when the site's Book button
  * is the site's own booking page. With no services it is the heading and the button.
  */
-export function bookStripHtml(site: Pick<WebsiteData, 'bookingUrl' | 'services'>, skin: SectionSkin): string {
+export function bookStripHtml(
+  site: Pick<WebsiteData, 'bookingUrl' | 'services'>,
+  skin: SectionSkin,
+  /** The heading and button text as HTML-escaped text (the renderers pass t(labels, ...); labels.ts imports this module, so it is not read here). */
+  words: { heading: string; button: string } = { heading: 'Book online', button: 'Book' },
+): string {
   if (!isSiteBookLink(site.bookingUrl)) return '';
   const services = bookStripServices(site);
   const list = services.length
     ? `<ul${cls(skin.list)}>${services.map((s) =>
       `<li${cls(skin.item)}><span${cls(skin.name)}>${esc(s.name)}</span>${s.price ? `<span${cls(skin.price)}>${esc(s.price)}</span>` : ''}</li>`).join('')}</ul>`
     : '';
-  return `<section id="book-online"${cls(skin.section)}>${style(skin)}<div${cls(skin.inner)}><h2${cls(skin.heading)}>Book online</h2>${list}<a href="${SITE_BOOK_PATH}"${cls(skin.button)}>Book</a></div></section>`;
+  return `<section id="book-online"${cls(skin.section)}>${style(skin)}<div${cls(skin.inner)}><h2${cls(skin.heading)}>${words.heading}</h2>${list}<a href="${SITE_BOOK_PATH}"${cls(skin.button)}>${words.button}</a></div></section>`;
 }
 
 /**
