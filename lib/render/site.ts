@@ -16,6 +16,7 @@ import type { TemplateId, WebsiteData } from '../../types';
 import { copyrightYear, displayPhone, nicheOf, withoutLegacyCopy } from './honest.js';
 import { aibThemeVars, generateHTMLWithPlaceholders, resolveAibTheme } from './luxe.js';
 import { HERO_EXTRA_PAGES } from './heroes.js';
+import { hasPagesV2 } from '../pagesV2.js';
 import { navLabelKey, plainLabel, t } from './labels.js';
 import { renderPageBody } from './pageBodies.js';
 import { buildPageSet, canonicalBase, hasFilePages, isMultiPage, singlePageSet, plainText, sitemapXml, type PageContext, type PageFile, type PageSet, type SiteFile } from './pages.js';
@@ -51,7 +52,7 @@ export function imageUrlMapOf(data: WebsiteData): Record<string, string> {
   (data.craftImages || []).forEach((u, i) => put(`craft${i}`, u));
   (data.staff || []).forEach((s, i) => put(`staff${i}`, s?.photo));
   // Page hero photos (pages v2, plan section 4). Only sites that opted into pages v2 have them; older sites gain no key.
-  if (data.extraPages && typeof data.extraPages === 'object') {
+  if (hasPagesV2(data)) {
     const putHttp = (key: string, url: unknown) => { if (typeof url === 'string' && /^https?:\/\//i.test(url)) map[key] = url; };
     (data.services || []).forEach((s, i) => putHttp(`service${i}`, s?.imageUrl));
     const images = (data.extraPages as { images?: unknown }).images;
@@ -67,7 +68,7 @@ export function imageUrlMapOf(data: WebsiteData): Record<string, string> {
  * {{placeholders}} afterwards, at deploy or in the preview).
  */
 export function forRender(sd: WebsiteData, map: Record<string, string>): WebsiteData {
-  const v2 = !!sd.extraPages && typeof sd.extraPages === 'object';
+  const v2 = hasPagesV2(sd);
   const images = v2 ? (sd.extraPages as { images?: unknown }).images : null;
   return {
     ...sd,

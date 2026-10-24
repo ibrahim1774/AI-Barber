@@ -3,10 +3,10 @@
 // the /api/deploy-site gate (which refreshes the pending file after a web edit),
 // so both write exactly the same thing.
 import type { WebsiteData } from '../../types.js';
+import { hasPagesV2 as hasV2 } from '../pagesV2.js';
 
 // The guide pages that have a hero photo (lib/render/heroes.ts HERO_EXTRA_PAGES); kept literal so this file imports nothing.
 const HERO_PAGES = ['first-visit', 'hair-care', 'beard-care'] as const;
-const hasV2 = (sd: WebsiteData): boolean => !!sd.extraPages && typeof sd.extraPages === 'object' && !Array.isArray(sd.extraPages);
 const isHttp = (v: unknown): v is string => typeof v === 'string' && /^https?:\/\//i.test(v);
 
 /** Image slots that already hold an http(s) URL, keyed the way the renderer/deployer expects. */

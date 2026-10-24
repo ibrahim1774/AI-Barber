@@ -15,6 +15,7 @@ import { BOOKSY_NICHES } from '../booksyNiche.js';
 import { isStockImage } from '../stockImages.js';
 import { contactEmail, policyToShow, teamOf, visibleReviews, withoutLegacyCopy } from './honest.js';
 import { safeHref } from './safeHref.js';
+import { pageSectionsOf } from './sections.js';
 import { faqDataQuestions, hasOpenDay, isBeardTitle, isHaircutTitle } from './guides.js';
 import { isSiteBookLink, isSiteShopLink } from './subpages.js';
 
@@ -304,6 +305,11 @@ const REASON: Record<ExtraKey, string> = {
   'beard-care': 'Add a beard or shave service to get this page',
 };
 
+/** Every content section of an extra page is hidden (the photo and the Book button alone are not a page). */
+function allSectionsHidden(key: ExtraKey, d: WebsiteData): boolean {
+  return pageSectionsOf(d, key).every((s) => s.hidden || s.id === 'hero' || s.id === 'cta');
+}
+
 /** The data floor of one extra page (plan 1c) on the cleaned site: true when the page has the real data it needs. */
 function extraFloorMet(key: ExtraKey, d: WebsiteData): boolean {
   const titled = (Array.isArray(d.services) ? d.services : []).filter((s) => has(s?.title));
@@ -328,8 +334,9 @@ export function extraPageRows(input: WebsiteData, _ctx?: PageContext): { key: Ex
   const hidden = cleanPagesModel(d.pages).hidden;
   return EXTRA_KEYS.map((key) => {
     const floor = extraFloorMet(key, d);
-    const eligible = floor;
-    return { key, on: on.includes(key) && !hidden.includes(key), eligible, reason: eligible ? '' : REASON[key] };
+    const noSections = floor && allSectionsHidden(key, d);
+    const eligible = floor && !noSections;
+    return { key, on: on.includes(key) && !hidden.includes(key), eligible, reason: eligible ? '' : noSections ? 'Every section of this page is hidden. Show one to get this page' : REASON[key] };
   });
 }
 
@@ -347,7 +354,7 @@ export function eligiblePages(input: WebsiteData, ctx?: PageContext): PageKey[] 
   if (has(d.phone) || contactEmail(d) || has(d.contact?.address) || safeHref(d.bookingUrl)) out.push('contact');
   // Extra pages exist only when the barber turned them on (extraPages.on), they have their data floor and their copy.
   const on = cleanExtraPages(d.extraPages).on;
-  for (const k of EXTRA_KEYS) if (on.includes(k) && extraFloorMet(k, d)) out.push(k);
+  for (const k of EXTRA_KEYS) if (on.includes(k) && extraFloorMet(k, d) && !allSectionsHidden(k, d)) out.push(k);
   if (isSiteBookLink(d.bookingUrl)) out.push('book');
   if (safeHref(d.shopUrl)) out.push('shop');
   return out;

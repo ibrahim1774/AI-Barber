@@ -133,11 +133,11 @@ export function renderPageBody(ctx: BodyCtx, file: PageFile): PageBody {
   };
 
   // The hero photo under a page's heading (heroes.ts): the page's own photo (a placeholder swapped at deploy), else a
-  // sample printed as its own URL. The alt text is the page or service name, never a claim that it is the shop's work.
+  // sample printed as its own URL. The alt text of the barber's own photo is the page or service name (never a claim that it is the shop's work); a sample is decorative (alt empty). A hero is the first image on its page, so it is not lazy-loaded.
   const heroHtml = (f: { key: string; child?: { index: number } | null }, alt: string): string => {
     const slot = heroSlot(d, f, ctx.page.imageUrls ?? {});
     if (!slot) return '';
-    return `<img class="ab-photo ab-hero" style="aspect-ratio:16/9;margin:0 0 24px" src="${slot.own ? `{{${slot.key}}}` : esc(slot.url)}" alt="${esc(alt)}" loading="lazy">`;
+    return `<img class="ab-photo ab-hero" style="aspect-ratio:16/9;margin:0 0 24px" src="${slot.own ? `{{${slot.key}}}` : esc(slot.url)}" alt="${slot.own ? esc(alt) : ''}" loading="eager">`;
   };
 
   // ── About ──────────────────────────────────────────────────────────────────────────────────────

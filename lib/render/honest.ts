@@ -445,7 +445,8 @@ const isLegacyServiceSet = (services: WebsiteData['services']): boolean => {
 };
 
 // The filler descriptions old booking-link imports wrote.
-const legacyFiller = (s: { description?: string; price?: string }): boolean => {
+const legacyFiller = (s: { description?: string; price?: string } | null): boolean => {
+  if (!s) return false;
   const d = (s.description || '').trim();
   if (d === LEGACY_BOOK_AHEAD) return true;
   const m = d.match(/^Starting at (.+)\.$/);

@@ -14,16 +14,20 @@
 import type { WebsiteData } from '../../types';
 import { DEMO_GALLERY_STOCK, isStockImage } from '../stockImages.js';
 import { guideIdForTitle } from './guides.js';
+import { hasPagesV2 } from '../pagesV2.js';
 import type { GuideId } from './copyRules.js';
 
 export const HERO_EXTRA_PAGES = ['first-visit', 'hair-care', 'beard-care'] as const;
 export type HeroExtraPage = (typeof HERO_EXTRA_PAGES)[number];
 
-/** Fixed table: which sample (index in DEMO_GALLERY_STOCK) a service guide / guide page shows when there is no photo. */
+/**
+ * Fixed table: which sample (index in DEMO_GALLERY_STOCK) a service guide / guide page shows when there is no photo.
+ * Index 5 is a women's salon and is never used; the tools shot (2) stands in where no photo of a person fits.
+ */
 export const SAMPLE_FOR_GUIDE: Record<GuideId, number> = {
-  'cut-beard': 3, fade: 1, taper: 2, 'line-up': 4, 'beard-trim': 5, shave: 6, 'kids-cut': 7, design: 0, color: 6, haircut: 2,
+  'cut-beard': 3, fade: 4, taper: 0, 'line-up': 3, 'beard-trim': 7, shave: 6, 'kids-cut': 2, design: 2, color: 6, haircut: 2,
 };
-export const SAMPLE_FOR_PAGE: Record<HeroExtraPage, number> = { 'first-visit': 5, 'hair-care': 1, 'beard-care': 3 };
+export const SAMPLE_FOR_PAGE: Record<HeroExtraPage, number> = { 'first-visit': 1, 'hair-care': 0, 'beard-care': 7 };
 
 type FileLike = { key: string; child?: { index: number } | null };
 
@@ -84,7 +88,7 @@ export function heroSlot(d: WebsiteData, file: FileLike, imageUrls?: Record<stri
   const key = heroKeyOf(file);
   const path = heroPathOf(file);
   if (!key || !path) return null;
-  if (!d.extraPages || typeof d.extraPages !== 'object' || Array.isArray(d.extraPages)) return null;
+  if (!hasPagesV2(d)) return null;
   const fromMap = imageUrls && Object.prototype.hasOwnProperty.call(imageUrls, key) ? imageUrls[key] : undefined;
   const own = isHttp(fromMap) ? fromMap : imageUrls ? '' : isHttp(rawOf(d, file)) ? (rawOf(d, file) as string) : '';
   if (own) return { key, path, own: true, sample: isStockImage(own), url: own };
@@ -93,7 +97,7 @@ export function heroSlot(d: WebsiteData, file: FileLike, imageUrls?: Record<stri
 
 /** Every hero slot of a site, in page order (the services in the barber's order, then the guide pages), for the app's pickers. */
 export function heroSlotsOf(d: WebsiteData): HeroSlot[] {
-  if (!d.extraPages || typeof d.extraPages !== 'object') return [];
+  if (!hasPagesV2(d)) return [];
   const out: HeroSlot[] = [];
   (Array.isArray(d.services) ? d.services : []).forEach((s, index) => {
     if (typeof s?.title === 'string' && s.title.trim()) { const h = heroSlot(d, { key: 'services', child: { index } }); if (h) out.push(h); }

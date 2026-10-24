@@ -8,6 +8,8 @@ import { renderSiteBundle, imageUrlMapOf, forRender } from '../../lib/render/sit
 import { buildImageUrlMap, toPendingSiteData } from '../../lib/ios/pendingData';
 import { restoreImageUrls, validationProblem } from '../../lib/ios/siteShape';
 import { finalizePages } from '../../lib/deploySite';
+import { SECTION_IDS } from '../../lib/render/sections';
+import { extraPageRows } from '../../lib/render/pages';
 import type { WebsiteData } from '../../types';
 
 const svc = (title: string, extra: Record<string, unknown> = {}) => ({ title, subtitle: '', description: '', icon: 'scissors' as const, imageUrl: '', ...extra });
@@ -86,10 +88,10 @@ describe('rendering the hero', () => {
     expect(h).toMatch(/alt="Skin Fade"/);
     expect(h).not.toMatch(/our work|our shop/i);
   });
-  it('no photo prints the sample URL directly (escaped), with the service name as alt', () => {
+  it('no photo prints the sample URL directly (escaped), with an empty alt', () => {
     const h = html(shop(), 'services/skin-fade/index.html');
     expect(h).toMatch(/<img class="ab-photo ab-hero"[^>]*src="https:\/\/images\.unsplash\.com[^"]*"/);
-    expect(h).toContain('alt="Skin Fade"');
+    expect(h).toMatch(/ab-hero"[^>]*alt=""/);
   });
   it('guide pages carry a hero too, FAQ and the rest do not', () => {
     const d = shop();
@@ -187,5 +189,63 @@ describe('the publish path', () => {
   it('the publish route does not special-case images (the shared transforms are the only path)', () => {
     const src = readFileSync(join(__dirname, '../../lib/ios/publishFlow.ts'), 'utf8');
     expect(src).toContain('buildImageUrlMap(sd)');
+  });
+});
+
+describe('Phase C review fixes', () => {
+  it('B1: the sample tables use the corrected photos and never the women\'s salon photo (index 5)', async () => {
+    const { SAMPLE_FOR_GUIDE, SAMPLE_FOR_PAGE } = await import('../../lib/render/heroes');
+    expect(DEMO_GALLERY_STOCK).toHaveLength(8);
+    expect(SAMPLE_FOR_GUIDE).toEqual({ 'cut-beard': 3, fade: 4, taper: 0, 'line-up': 3, 'beard-trim': 7, shave: 6, 'kids-cut': 2, design: 2, color: 6, haircut: 2 });
+    expect(SAMPLE_FOR_PAGE).toEqual({ 'first-visit': 1, 'hair-care': 0, 'beard-care': 7 });
+    for (const n of [...Object.values(SAMPLE_FOR_GUIDE), ...Object.values(SAMPLE_FOR_PAGE)]) { expect(n).not.toBe(5); expect(n).toBeLessThan(8); }
+  });
+  it('N1: one opt-in helper; an array extraPages is not pages v2 anywhere', async () => {
+    const { hasPagesV2 } = await import('../../lib/pagesV2');
+    expect(hasPagesV2({ extraPages: { on: [] } } as never)).toBe(true);
+    for (const v of [[], undefined, null, 'x', 5, true]) expect(hasPagesV2({ extraPages: v } as never)).toBe(false);
+    const d = shop({ extraPages: [] as never, services: [svc('Skin Fade', { imageUrl: OWN })] });
+    expect(imageUrlMapOf(d)).not.toHaveProperty('service0');
+    expect(forRender(d, imageUrlMapOf(d)).services[0].imageUrl).toBe(d.services[0].imageUrl);
+    expect(buildImageUrlMap(d)).not.toHaveProperty('service0');
+  });
+  it('N4: a sample hero has an empty alt; the first hero image is not lazy; an own photo keeps the service name as alt', () => {
+    const sample = html(shop(), 'services/skin-fade/index.html');
+    const tag = /<img class="ab-photo ab-hero"[^>]*>/.exec(sample)![0];
+    expect(tag).toContain('alt=""');
+    expect(tag).not.toContain('loading="lazy"');
+    for (const p of ['first-visit', 'hair-care', 'beard-care']) expect(/<img class="ab-photo ab-hero"[^>]*>/.exec(html(shop(), `${p}/index.html`))![0]).toContain('alt=""');
+    const own = /<img class="ab-photo ab-hero"[^>]*>/.exec(html(shop({ services: [svc('Skin Fade', { imageUrl: OWN })] }), 'services/skin-fade/index.html'))![0];
+    expect(own).toContain('alt="Skin Fade"');
+    expect(own).not.toContain('loading="lazy"');
+  });
+  it('null entries in services do not throw', () => {
+    expect(() => renderSiteBundle(shop({ services: [null as never, svc('Haircut')] }), {})).not.toThrow();
+  });
+});
+
+describe('S1: a page whose content sections are all hidden is switched off', () => {
+  const ids = (page: 'first-visit' | 'hair-care' | 'beard-care' | 'faq') => SECTION_IDS[page].filter((x) => x !== 'hero' && x !== 'cta');
+  it('is not published, not in the menu, not in the sitemap; the Pages sheet row says why', () => {
+    const d = shop({ pageSections: { 'hair-care': { hidden: ids('hair-care') } } as never });
+    const r = renderSiteBundle(d, { siteBaseUrl: 'https://fresh.example.com' });
+    expect(r.pages.some((p) => p.path === 'hair-care/index.html')).toBe(false);
+    expect(r.pages.some((p) => p.path.includes('hair-care'))).toBe(false);
+    for (const p of r.pages) expect(p.html, p.path).not.toContain('href="/hair-care/"');
+    expect(r.pages.find((p) => p.path === 'sitemap.xml')?.html ?? '').not.toContain('hair-care');
+    const row = extraPageRows(d).find((x) => x.key === 'hair-care')!;
+    expect(row.eligible).toBe(false);
+    expect(row.reason).toMatch(/section/i);
+  });
+  it('showing one section brings the page back', () => {
+    const hidden = ids('hair-care').filter((x) => x !== 'wash');
+    const r = renderSiteBundle(shop({ pageSections: { 'hair-care': { hidden } } as never }), {});
+    expect(r.pages.some((p) => p.path === 'hair-care/index.html')).toBe(true);
+  });
+  it('the other extra pages behave the same', () => {
+    for (const k of ['first-visit', 'beard-care', 'faq'] as const) {
+      const r = renderSiteBundle(shop({ pageSections: { [k]: { hidden: ids(k) } } as never }), {});
+      expect(r.pages.some((p) => p.path === `${k}/index.html`), k).toBe(false);
+    }
   });
 });

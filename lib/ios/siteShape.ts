@@ -2,6 +2,7 @@
 // the iOS publish (publishFlow.ts) and the admin edit tools (lib/admin/sites.ts).
 // No imports on purpose beyond types: the admin CLI must not pull in the App Store library.
 import type { WebsiteData } from '../../types.js';
+import { hasPagesV2 as hasPageHeroes } from '../pagesV2.js';
 
 /** Largest publish body (or admin site) accepted, serialized. */
 export const MAX_BODY_BYTES = 3 * 1024 * 1024;
@@ -36,7 +37,6 @@ export function jsonBytes(v: unknown): number {
 }
 
 const HERO_PAGES = ['first-visit', 'hair-care', 'beard-care'] as const;
-const hasPageHeroes = (sd: WebsiteData): boolean => !!sd.extraPages && typeof sd.extraPages === 'object' && !Array.isArray(sd.extraPages);
 /** Page hero photos (pages v2): services[i].imageUrl and extraPages.images, back from 'uploaded' to the URL in the map. */
 function pageHeroesBack(sd: WebsiteData, back: (v: string | undefined, key: string) => string | undefined): Partial<WebsiteData> {
   const out: Partial<WebsiteData> = {
