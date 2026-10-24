@@ -14,9 +14,9 @@ import { ApiError } from '@/lib/api';
 import { signOut, useSession } from '@/lib/auth';
 import { tierFromEntitlements, useEntitlements } from '@/lib/entitlements';
 import { goBackOrHome, resetTo } from '@/lib/nav';
-import { useLatestDomainTransactionId, usePaywall } from '@/lib/paywall';
-import { domainStatus, loadDomainClaim } from '@/lib/domains/api';
-import { DOMAIN_DISCLOSURE, DOMAIN_PRICE_LINE, settingsDetail } from '@/lib/domains/model';
+import { usePaywall } from '@/lib/paywall';
+import { DOMAIN_DISCLOSURE, DOMAIN_PRICE_LINE } from '@/lib/domains/model';
+import { useDomainOffer } from '@/lib/domains/useDomainOffer';
 import { planLabel } from '@/lib/plan';
 import { requestPublish } from '@/lib/publishRequest';
 import { useRestoreFlow } from '@/lib/restoreFlow';
@@ -301,12 +301,12 @@ function YourWebsite({ site }: { site: SiteRecord }) {
     </Section>
     {view.live && view.url && (
       <>
+        <DomainCard />
         <Section>
           <Row label="Share your site" detail="Message, QR code, Instagram bio" onPress={shareSite} chevron />
           <Row label="Your team" detail="Barbers, photos, services, hours" onPress={() => router.push('/team')} chevron />
           <Row label="Bookings setup" detail="Services, barbers, hours" onPress={() => router.push('/bookings-setup')} chevron />
           <Row label="Get paid" detail="Cash App, Venmo, Zelle, PayPal, cards" onPress={() => router.push('/get-paid')} chevron />
-          <DomainRow />
         </Section>
         <ShareSheet
           visible={shareOpen}
@@ -329,30 +329,34 @@ function deleteError(e: unknown): string {
   return `We couldn’t delete your account right now. Try again, or email ${SUPPORT_EMAIL}.`;
 }
 
-/** Settings → Custom domain: the domain and its state, or the offer. */
-function DomainRow() {
-  const latestDomainTx = useLatestDomainTransactionId();
-  const [detail, setDetail] = useState(DOMAIN_PRICE_LINE);
+/**
+ * Settings → right under "Your website": a compact custom-domain card. The offer ("Get your own .com — $39/year")
+ * with a button into the domain screen, or, once the site has a domain, that domain and its status.
+ */
+function DomainCard() {
+  const [focused, setFocused] = useState(false);
   useFocusEffect(
     useCallback(() => {
-      let alive = true;
-      (async () => {
-        const rec = await loadDomainClaim();
-        const tx = rec?.transactionId ?? (await latestDomainTx().catch(() => null));
-        if (!tx) return alive && setDetail(DOMAIN_PRICE_LINE);
-        const st = await domainStatus(tx).catch(() => null);
-        if (alive) setDetail(st ? settingsDetail(st) : rec ? rec.domain : DOMAIN_PRICE_LINE);
-      })();
-      return () => {
-        alive = false;
-      };
-    }, [latestDomainTx]),
+      setFocused(true);
+      return () => setFocused(false);
+    }, []),
   );
+  const { known, hasDomain, detail } = useDomainOffer(focused);
+  const open = () => {
+    track('domain_card_tapped', { screen: 'settings', has_domain: hasDomain });
+    router.push('/domain');
+  };
   return (
-    <>
-      <Row label="Custom domain" detail={detail} onPress={() => router.push('/domain')} chevron />
+    <View style={styles.domainCard}>
+      <View style={styles.domainTop}>
+        <View style={styles.domainText}>
+          <Text style={styles.rowLabel}>Custom domain</Text>
+          <Text style={styles.rowDetail} numberOfLines={2}>{known ? detail : DOMAIN_PRICE_LINE}</Text>
+        </View>
+        <Button variant="ghost" title={hasDomain ? 'Manage' : 'Get yours'} onPress={open} style={styles.domainButton} />
+      </View>
       <Text style={styles.domainNote}>{DOMAIN_DISCLOSURE}</Text>
-    </>
+    </View>
   );
 }
 
@@ -429,7 +433,11 @@ const styles = StyleSheet.create({
   site: { padding: 16 },
   siteName: { fontFamily: fonts.heading, fontSize: 20, lineHeight: 26, color: colors.heading },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
-  domainNote: { fontFamily: fonts.body, fontSize: 12, lineHeight: 17, color: colors.faint, paddingHorizontal: 16, paddingBottom: 12 },
+  domainCard: { marginBottom: 28, marginTop: -12, backgroundColor: colors.sheet, borderRadius: 14, borderWidth: 1, borderColor: colors.hair, paddingTop: 12 },
+  domainTop: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16 },
+  domainText: { flex: 1 },
+  domainButton: { paddingHorizontal: 14, minHeight: 40 },
+  domainNote: { fontFamily: fonts.body, fontSize: 12, lineHeight: 17, color: colors.faint, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12 },
   dot: { width: 8, height: 8, borderRadius: 4 },
   status: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.muted },
   url: { fontFamily: fonts.mono, fontSize: 13, color: colors.accent, marginTop: 12, textDecorationLine: 'underline' },

@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
+import { router } from 'expo-router';
 import { colors, fonts } from '@/constants/theme';
 import { QrScreen } from '@/components/QrScreen';
 import { Sheet } from '@/components/EditSheet';
 import { track } from '@/lib/analytics';
 import { useEntitlements } from '@/lib/entitlements';
 import { resolveLiveLinks } from '@/lib/customerLinks';
+import { useDomainOffer } from '@/lib/domains/useDomainOffer';
 import { loadMyShop } from '@/lib/shop';
 import { loadSite } from '@/lib/siteStore';
 import { loadStoreSettings } from '@/lib/store/data';
@@ -56,7 +58,11 @@ export function ShareSheet({ visible, shopName, links: given, source, onClose }:
   // hides first and the QR opens from its onDismiss, and the reverse on Done.
   const [qrOpen, setQrOpen] = useState(false);
   const [sheetHidden, setSheetHidden] = useState(false);
-  const next = useRef<'qr' | 'sheet' | null>(null);
+  const next = useRef<'qr' | 'sheet' | 'domain' | null>(null);
+  // Only offered when the answer is in and the site has no custom domain yet.
+  const domain = useDomainOffer(visible);
+  const showDomainOffer = domain.known && !domain.hasDomain;
+  const domainTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // The entry point's own link is the default (Store -> shop link, Bookings -> booking link); tapping a row picks another.
@@ -71,7 +77,7 @@ export function ShareSheet({ visible, shopName, links: given, source, onClose }:
   useEffect(() => {
     if (!visible) {
       setSelected(null);
-      next.current = null;
+      if (next.current !== 'domain') next.current = null;
       setQrOpen(false);
       setSheetHidden(false);
     }
@@ -80,6 +86,7 @@ export function ShareSheet({ visible, shopName, links: given, source, onClose }:
   useEffect(
     () => () => {
       if (timer.current) clearTimeout(timer.current);
+      if (domainTimer.current) clearTimeout(domainTimer.current);
     },
     [],
   );
@@ -89,7 +96,22 @@ export function ShareSheet({ visible, shopName, links: given, source, onClose }:
     next.current = 'qr';
     setSheetHidden(true);
   };
+  const goDomain = () => {
+    if (next.current !== 'domain') return;
+    next.current = null;
+    if (domainTimer.current) clearTimeout(domainTimer.current);
+    router.push('/domain');
+  };
+  // Closes the sheet first; iOS can't push a screen while the sheet is still sliding away, so the push
+  // waits for onDismiss (with a timer as a fallback if the modal never reports it).
+  const openDomain = () => {
+    track('domain_card_tapped', { screen: 'share_sheet' });
+    next.current = 'domain';
+    domainTimer.current = setTimeout(goDomain, 700);
+    close();
+  };
   const onSheetDismiss = () => {
+    if (next.current === 'domain') return goDomain();
     if (next.current !== 'qr') return;
     next.current = null;
     setQrOpen(true);
@@ -162,6 +184,19 @@ export function ShareSheet({ visible, shopName, links: given, source, onClose }:
             />
           </>
         )}
+        {showDomainOffer && (
+          <View style={styles.domainRow}>
+            <Text style={styles.domainText}>Use your own domain, like freshcuts.com</Text>
+            <Pressable
+              onPress={openDomain}
+              accessibilityRole="button"
+              accessibilityLabel="Get your own domain"
+              style={({ pressed }) => [styles.domainButton, pressed && { opacity: 0.7 }]}
+            >
+              <Text style={styles.optionText}>Get yours</Text>
+            </Pressable>
+          </View>
+        )}
         <Text style={styles.note} accessibilityLiveRegion="polite">
           {note ?? ' '}
         </Text>
@@ -197,5 +232,8 @@ const styles = StyleSheet.create({
   linkHost: { fontFamily: fonts.mono, fontSize: 12, color: colors.accent, marginTop: 3 },
   option: { minHeight: 48, justifyContent: 'center', paddingHorizontal: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.hair },
   optionText: { fontFamily: fonts.bodySemi, fontSize: 15, color: colors.text },
+  domainRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.hair },
+  domainText: { flex: 1, fontFamily: fonts.body, fontSize: 13, color: colors.faint },
+  domainButton: { minHeight: 36, justifyContent: 'center', paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, borderColor: colors.accent },
   note: { fontFamily: fonts.bodySemi, fontSize: 13, color: '#22c55e', textAlign: 'center', marginTop: 12, minHeight: 18 },
 });

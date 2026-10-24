@@ -482,8 +482,8 @@ describe('review fixes: helpers', () => {
     expect(planSuperwallStatus(null)).toBe('UNKNOWN');
   });
 
-  it('the disclosure is also under the Settings row', () => {
+  it('the disclosure is also in the Settings custom-domain card', () => {
     const src = fs.readFileSync(path.join(__dirname, '../../src/app/(tabs)/settings.tsx'), 'utf8');
-    expect(src).toMatch(/<Row label="Custom domain"[\s\S]{0,200}\{DOMAIN_DISCLOSURE\}/);
+    expect(src).toMatch(/function DomainCard[\s\S]*\{DOMAIN_DISCLOSURE\}/);
   });
 });
