@@ -1,0 +1,29 @@
+appId: com.ibrahim1774.aibarber
+---
+- runFlow: _launch.yaml
+- tapOn: "Rather type it in yourself.*"
+- tapOn: "The Gentlemen.*"
+- inputText: "Jack's Barbershop"
+- tapOn: "Choose Your Colors.*"
+- tapOn: "Add your services.*"
+- tapOn: "Haircut"
+- tapOn: "Beard trim"
+- tapOn: "Hot towel shave"
+- scrollUntilVisible:
+    element: "Build My Barbershop Website"
+- tapOn: "Build My Barbershop Website"
+- extendedWaitUntil:
+    visible: "Don't have"
+    timeout: 60000
+- tapOn: "Don't have"
+- tapOn: "Dallas, TX"
+- inputText: "Austin, TX"
+- tapOn: "\\(555\\) 123-4567"
+- inputText: "5125550142"
+- tapOn: "Finish generating"
+- waitForAnimationToEnd:
+    timeout: 15000
+- extendedWaitUntil:
+    visible: "Skip tour"
+    timeout: 30000
+- takeScreenshot: 01_tour_tip

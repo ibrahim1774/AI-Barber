@@ -1,0 +1,4 @@
+appId: com.ibrahim1774.aibarber
+---
+- runFlow: _launch.yaml
+- takeScreenshot: 01_start
