@@ -1,4 +1,4 @@
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { router, type Href } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { Button } from '@/components/Button';
@@ -16,13 +16,15 @@ export default function Start() {
   const { restore, busy } = useRestoreFlow();
   // The permission itself is asked at launch (LaunchPrompts in _layout); this
   // only keeps the schedule current.
+  // The 84px push balances the removed chips on tall phones; short screens (SE) keep Restore above the fold.
+  const short = useWindowDimensions().height < 700;
   const go = (href: Href) => {
     void refreshReminders();
     router.push(href);
   };
   return (
     <Screen>
-      <Text variant="h1" style={styles.h1}>
+      <Text variant="h1" style={[styles.h1, short && styles.h1Short]}>
         {'Barbers, run it all\nfrom '}
         <Text variant="h1" style={styles.gold}>one place.</Text>
       </Text>
@@ -62,6 +64,7 @@ export default function Start() {
 // The old headline was 30/37; the approved one is 0.88 of that.
 const styles = StyleSheet.create({
   h1: { marginTop: 84, fontSize: 26.4, lineHeight: 32.5 },
+  h1Short: { marginTop: 16 },
   gold: { color: colors.accent },
   sub: { marginTop: 24, maxWidth: 512, color: '#FFFFFF' },
   options: { marginTop: 32, alignSelf: 'stretch', gap: 14 },
