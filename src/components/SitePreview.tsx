@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import type { ShouldStartLoadRequest } from 'react-native-webview/lib/WebViewTypes';
 import type { WebsiteData } from '@/web/types';
-import { EDITOR_JS, buildPreviewHtml, previewBackground, type PreviewPage, type PreviewProduct } from '@/lib/editable';
+import { EDITOR_JS, buildPreviewHtml, previewBackground, previewEditPaths, type PreviewPage, type PreviewProduct } from '@/lib/editable';
 import { parsePreviewMessage, shouldAllowPreviewRequest, type ImageRect } from '@/lib/previewBridge';
 import { ChangeImagePills } from '@/components/ChangeImagePills';
 
@@ -50,6 +50,7 @@ export default function SitePreview({ data, editable, shopProducts, page, onEdit
   }
   const html = useMemo(() => buildPreviewHtml(data, editable, shopProducts, page), [data, editable, shopProducts, page]);
   const source = useMemo(() => ({ html }), [html]);
+  const editPaths = useMemo(() => (editable ? previewEditPaths(data, page) : []), [data, editable, page]);
   // The site's own background behind the page. On iOS (Fabric) the WKWebView
   // is transparent, so this view is what the overscroll bounce, a reload and
   // any inset below the footer show: never a fixed or light colour.
@@ -58,7 +59,7 @@ export default function SitePreview({ data, editable, shopProducts, page, onEdit
 
   const onMessage = useCallback(
     (e: WebViewMessageEvent) => {
-      const m = parsePreviewMessage(e.nativeEvent.data, data, page);
+      const m = parsePreviewMessage(e.nativeEvent.data, data, page, editPaths);
       if (!m) return;
       switch (m.type) {
         case 'edit':
@@ -81,7 +82,7 @@ export default function SitePreview({ data, editable, shopProducts, page, onEdit
           return;
       }
     },
-    [data, editable, page, onEditText, onEditImage],
+    [editable, editPaths, data, page, onEditText, onEditImage],
   );
 
   const onShouldStartLoadWithRequest = useCallback((req: ShouldStartLoadRequest) => shouldAllowPreviewRequest(req), []);

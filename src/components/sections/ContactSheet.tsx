@@ -4,6 +4,7 @@ import { ScrollView, StyleSheet, Text, TextInput } from 'react-native';
 import type { WebsiteData } from '@/web/types';
 import { colors, fonts } from '@/constants/theme';
 import { track } from '@/lib/analytics';
+import { textMaxLength } from '@/lib/editable';
 import { Sheet, SheetAction } from '@/components/EditSheet';
 import { contactError, contactFields, setContact } from '@/lib/sections/aboutContact';
 
@@ -43,7 +44,7 @@ export function ContactSheet({ visible, data, onChange, onClose, onDismiss }: Pr
         <FormLabel input={f2} style={styles.label}>Address</FormLabel>
         <TextInput ref={f2} value={f.address} onChangeText={(address) => setF({ ...f, address })} accessibilityLabel="Address" selectionColor={colors.accent} placeholderTextColor="rgba(255,255,255,0.3)" style={styles.input} />
         <FormLabel input={f3} style={styles.label}>Email</FormLabel>
-        <TextInput ref={f3} value={f.email} onChangeText={(email) => { setError(null); setF({ ...f, email }); }} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} accessibilityLabel="Email" selectionColor={colors.accent} placeholderTextColor="rgba(255,255,255,0.3)" style={styles.input} />
+        <TextInput ref={f3} value={f.email} onChangeText={(email) => { setError(null); setF({ ...f, email }); }} maxLength={textMaxLength('contact.email')} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} accessibilityLabel="Email" selectionColor={colors.accent} placeholderTextColor="rgba(255,255,255,0.3)" style={styles.input} />
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </ScrollView>
     </Sheet>

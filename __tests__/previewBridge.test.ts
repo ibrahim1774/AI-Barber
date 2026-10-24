@@ -54,7 +54,8 @@ describe('parsePreviewMessage', () => {
     expect(parsePreviewMessage(msg({ type: 'edit', path: 'services.99.title' }), data)).toBeNull(); // out of range
     expect(parsePreviewMessage(msg({ type: 'edit', path: 'services.{i}.title' }), data)).toBeNull(); // raw pattern
     expect(parsePreviewMessage(msg({ type: 'edit', path: '__proto__.polluted' }), data)).toBeNull();
-    expect(parsePreviewMessage(msg({ type: 'edit', path: 'contact.email' }), data)).not.toBeNull(); // editable since editable-everywhere
+    expect(parsePreviewMessage(msg({ type: 'edit', path: 'contact.email' }), { ...data, contact: { ...data.contact, email: 'a@b.co' } })).not.toBeNull(); // editable since editable-everywhere, once the page prints it
+    expect(parsePreviewMessage(msg({ type: 'edit', path: 'contact.email' }), { ...data, contact: { ...data.contact, email: '' } })).toBeNull(); // no value, no marker, not tappable
     expect(parsePreviewMessage(msg({ type: 'edit', path: 'policy.title' }), data)).toBeNull(); // prime-only, luxe site
     expect(parsePreviewMessage(msg({ type: 'edit', path: 'contact.phone' }), data)).toBeNull(); // not a field
     expect(parsePreviewMessage(msg({ type: 'image', path: 'gallery.99' }), data)).toBeNull();

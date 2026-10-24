@@ -135,7 +135,7 @@ describe.each(TEMPLATES)('%s: every tap target of every page type resolves', (te
     expect(textMaxLength('services.0.category')).toBe(40);
     expect(textMaxLength('contact.email')).toBe(120);
     expect(textMaxLength('hours.0.day')).toBe(20);
-    expect(textMaxLength('staff.1.hours.2.open')).toBe(12);
+    expect(textMaxLength('staff.1.hours.2.open')).toBe(24);
     expect(textMaxLength('shopName')).toBeUndefined();
     expect(editableTextPaths(d).length).toBeGreaterThan(50);
   });

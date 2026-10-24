@@ -313,6 +313,17 @@ export function markData(d: WebsiteData, page?: PreviewPage | null): { marked: W
 }
 
 /**
+ * The paths the preview of this render can name: exactly the values of the ids map markData produces for it (the
+ * same data, the same page). The preview bridge accepts nothing else, so a path that is not marked on screen
+ * (an empty field, a label or copy block of another page) cannot be edited by a message from the page.
+ */
+export function previewEditPaths(raw: WebsiteData, page?: PreviewPage | null): string[] {
+  const data = asPublished(raw);
+  const { ids } = isMultiPage(data) ? markData(data, page ?? { key: 'home' }) : markData(data);
+  return Object.values(ids);
+}
+
+/**
  * A copy text with the editor markers. The renderer splits an override into items (lines of a list, paragraphs of a
  * text) before it prints, so each item gets its own marker pair, all with the one id; a pair around the whole text
  * would be cut in half. The text is capped to the block's maximum first, so a marker is never cut either.

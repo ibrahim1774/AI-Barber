@@ -4,6 +4,7 @@ import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Tex
 import type { WebsiteData } from '@/web/types';
 import { colors, fonts } from '@/constants/theme';
 import { track } from '@/lib/analytics';
+import { textMaxLength } from '@/lib/editable';
 import {
   DURATIONS, SERVICE_LIBRARY, addService, durationLabel, formatPrice, moveService, newService, parseDuration,
   removeService, serviceRowMeta, updateService, type ServiceDraft,
@@ -212,6 +213,7 @@ export function ServicesSheet({ visible, data, onChange, onClose, onDismiss, upl
               onChangeText={(t) => set({ price: t })}
               autoFocus={form.fresh && form.index != null}
               keyboardType="decimal-pad"
+              maxLength={textMaxLength('services.0.price')}
               accessibilityLabel="Price"
               selectionColor={colors.accent}
               placeholder="30"

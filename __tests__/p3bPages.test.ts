@@ -183,11 +183,11 @@ describe('page-aware preview', () => {
 
 describe('bridge accepts a page label only on its page', () => {
   const msg = (path: string) => JSON.stringify({ type: 'edit', path });
-  test('pgBackServices: service page yes, Home no, no page given = any page of the site', () => {
+  test('pgBackServices: service page yes, Home no, no page given = the Home render', () => {
     const d = multi(sites.luxe);
     expect(parsePreviewMessage(msg('labels.pgBackServices'), d, { key: 'services', index: 0 })).toEqual({ type: 'edit', path: 'labels.pgBackServices' });
     expect(parsePreviewMessage(msg('labels.pgBackServices'), d, { key: 'home' })).toBeNull();
-    expect(parsePreviewMessage(msg('labels.pgBackServices'), d)).not.toBeNull();
+    expect(parsePreviewMessage(msg('labels.pgBackServices'), d)).toBeNull(); // no page given renders Home
     expect(editableTextPaths(d, { key: 'services' })).not.toContain('labels.pgMenu');
   });
   test('single-page sites keep today\'s list: no page labels', () => {

@@ -5,6 +5,7 @@ import { useKeyboardHeight, sheetBodyMaxHeight } from '@/lib/keyboard';
 import type { WebsiteData } from '@/web/types';
 import { colors, fonts } from '@/constants/theme';
 import { track } from '@/lib/analytics';
+import { textMaxLength } from '@/lib/editable';
 import { Sheet, SheetAction } from '@/components/EditSheet';
 import { addMember, moveMember, removeMember, updateMember } from '@/lib/sections/team';
 import { usePhotoPick } from '@/components/sections/usePhotoPick';
@@ -97,12 +98,12 @@ export function TeamSheet({ visible, data, onChange, onClose, onDismiss, upload,
             <Text style={styles.photoText}>{photo ? 'Change photo' : 'Add photo'}</Text>
           </Pressable>
           <FormLabel input={f1} style={styles.label}>Name</FormLabel>
-          <TextInput ref={f1} value={name} onChangeText={(t) => { setError(''); setName(t); }} accessibilityLabel="Name" selectionColor={colors.accent} placeholderTextColor="rgba(255,255,255,0.3)" style={styles.input} />
+          <TextInput ref={f1} maxLength={textMaxLength('staff.0.name')} value={name} onChangeText={(t) => { setError(''); setName(t); }} accessibilityLabel="Name" selectionColor={colors.accent} placeholderTextColor="rgba(255,255,255,0.3)" style={styles.input} />
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <FormLabel input={f2} style={styles.label}>Role</FormLabel>
-          <TextInput ref={f2} value={role} onChangeText={setRole} placeholder="Barber, Owner…" accessibilityLabel="Role" selectionColor={colors.accent} placeholderTextColor="rgba(255,255,255,0.3)" style={styles.input} />
+          <TextInput ref={f2} maxLength={textMaxLength('staff.0.role')} value={role} onChangeText={setRole} placeholder="Barber, Owner…" accessibilityLabel="Role" selectionColor={colors.accent} placeholderTextColor="rgba(255,255,255,0.3)" style={styles.input} />
           <FormLabel input={f3} style={styles.label}>Description (optional)</FormLabel>
-          <TextInput ref={f3} onFocus={() => setTimeout(() => formScroll.current?.scrollToEnd({ animated: true }), 250)} value={bio} onChangeText={setBio} multiline placeholder="A few words about this barber" accessibilityLabel="Description" selectionColor={colors.accent} placeholderTextColor="rgba(255,255,255,0.3)" style={[styles.input, styles.inputMulti]} />
+          <TextInput ref={f3} maxLength={textMaxLength('staff.0.bio')} onFocus={() => setTimeout(() => formScroll.current?.scrollToEnd({ animated: true }), 250)} value={bio} onChangeText={setBio} multiline placeholder="A few words about this barber" accessibilityLabel="Description" selectionColor={colors.accent} placeholderTextColor="rgba(255,255,255,0.3)" style={[styles.input, styles.inputMulti]} />
           {form !== 'new' ? <SheetAction title="Remove" onPress={remove} /> : null}
         </ScrollView>
       </Sheet>
