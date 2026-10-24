@@ -30,8 +30,6 @@ export interface RenderSiteOptions {
   customDomain?: string | null;
   /** The stored public base (ab_shops.site_base_url), when known. */
   siteBaseUrl?: string | null;
-  /** Test seam (see PageContext.extraCopy): the extra pages whose copy exists. Leave unset: Phase B supplies it. */
-  extraCopy?: PageContext['extraCopy'];
 }
 
 export interface RenderedSite {
@@ -88,7 +86,7 @@ function themeStyleOf(template: TemplateId, d: WebsiteData): string {
 export function renderSiteBundle(data: WebsiteData, opts: RenderSiteOptions = {}, templateOverride?: TemplateId): RenderedSite {
   const template = known(templateOverride ?? data.template);
   const map = opts.imageUrls ?? imageUrlMapOf(data);
-  const page: PageContext = { imageUrls: map, extraCopy: opts.extraCopy };
+  const page: PageContext = { imageUrls: map };
   const full = buildPageSet(data, page);
   const set = isMultiPage(data) ? full : singlePageSet(full);
   const prepared = forRender(data, map);

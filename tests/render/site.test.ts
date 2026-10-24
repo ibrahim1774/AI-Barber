@@ -266,7 +266,7 @@ describe('multi-page is opt-in (P3b review B1)', () => {
       pageSections: { service: { hidden: ['guide'], order: ['hero'] } },
       labels: { pgPlace: 'Elsewhere', pgMore: 'Etc', pgPages: 'All' } as never,
     };
-    const r = renderSiteBundle(data, { imageUrls, extraCopy: ['faq', 'first-visit', 'hair-care', 'beard-care'] });
+    const r = renderSiteBundle(data, { imageUrls });
     expect(r.pages.map((f) => f.path)).toEqual(['index.html']);
     expect(r.pages[0].html).toBe(golden[template]);
     expect(r.sitemap).toBeNull();

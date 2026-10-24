@@ -24,6 +24,7 @@ import { nicheByKey } from '../booksyNiche.js';
 import { safeHref } from './safeHref.js';
 import { aggregateToShow, cityStateOnly, footerLine, hasServices, nicheCopy, reviewsSourceName, teamBookLink, teamOf, visibleReviews } from './honest.js';
 import { isSiteBookLink } from './subpages.js';
+import { beardServices, isHaircutTitle, serviceGuideFor, titledServices } from './guides.js';
 import { buildPageSet, hasFilePages, plainText, type PageContext, type PageKey, type PageSet } from './pages.js';
 
 export type LabelDefault = string | ((niche: BooksyNiche, site?: Pick<WebsiteData, 'area' | 'niche'>) => string);
@@ -214,6 +215,30 @@ export const LABELS = {
   pgFirstVisitTitle: { title: 'First visit page title', default: 'Your first visit', max: 60, multi: { page: 'first-visit' } },
   pgHairCareTitle: { title: 'Hair care page title', default: 'Hair care between cuts', max: 60, multi: { page: 'hair-care' } },
   pgBeardCareTitle: { title: 'Beard care page title', default: 'Beard care', max: 60, multi: { page: 'beard-care' } },
+  // ── Library copy headings (pages v2, plan 2026-10-24). The words under them are the `copy` overrides (guides.ts). ──
+  pgGuideHeading: { title: 'Service page: guide heading', default: 'About this service', max: 40, multi: { page: 'services', shows: (s: WebsiteData, set: PageSet) => serviceGuideFor(s, set.services.map((c) => c.index)).size > 0 } },
+  pgGuideWhat: { title: 'Service guide: what it is', default: 'What it is', max: 40, multi: { page: 'services', shows: (s: WebsiteData, set: PageSet) => serviceGuideFor(s, set.services.map((c) => c.index)).size > 0 } },
+  pgGuideWho: { title: 'Service guide: who it suits', default: 'Who it suits', max: 40, multi: { page: 'services', shows: (s: WebsiteData, set: PageSet) => serviceGuideFor(s, set.services.map((c) => c.index)).size > 0 } },
+  pgGuideAsk: { title: 'Service guide: how to ask for it', default: 'How to ask for it', max: 40, multi: { page: 'services', shows: (s: WebsiteData, set: PageSet) => serviceGuideFor(s, set.services.map((c) => c.index)).size > 0 } },
+  pgGuideCare: { title: 'Service guide: keeping it up', default: 'Keeping it up', max: 40, multi: { page: 'services', shows: (s: WebsiteData, set: PageSet) => serviceGuideFor(s, set.services.map((c) => c.index)).size > 0 } },
+  pgFvBooking: { title: 'First visit: booking heading', default: 'Booking', max: 40, multi: { page: 'first-visit', shows: (s: WebsiteData) => hasBook(s) || hasPhone(s) } },
+  pgFvFindUs: { title: 'First visit: finding the shop heading', default: 'Finding the shop', max: 40, multi: { page: 'first-visit', shows: (s: WebsiteData) => hasAddress(s) || hasHours(s) } },
+  pgFvBefore: { title: 'First visit: before you come heading', default: 'Before you come', max: 40, multi: { page: 'first-visit' } },
+  pgFvInChair: { title: 'First visit: in the chair heading', default: 'In the chair', max: 40, multi: { page: 'first-visit' } },
+  pgFvPrices: { title: 'First visit: prices heading', default: 'Services and prices', max: 40, multi: { page: 'first-visit', shows: (s: WebsiteData) => titledServices(s).some((x) => x.price) } },
+  pgHcWash: { title: 'Hair care: washing heading', default: 'Washing', max: 40, multi: { page: 'hair-care' } },
+  pgHcDry: { title: 'Hair care: drying heading', default: 'Drying', max: 40, multi: { page: 'hair-care' } },
+  pgHcStyle: { title: 'Hair care: styling heading', default: 'Styling', max: 40, multi: { page: 'hair-care' } },
+  pgHcScalp: { title: 'Hair care: scalp heading', default: 'Scalp', max: 40, multi: { page: 'hair-care' } },
+  pgHcBetween: { title: 'Hair care: between cuts heading', default: 'Between cuts', max: 40, multi: { page: 'hair-care' } },
+  pgHcOften: { title: 'Hair care: how often heading', default: 'How often to come back', max: 40, multi: { page: 'hair-care', shows: (s: WebsiteData) => titledServices(s).some((x) => isHaircutTitle(x.title)) } },
+  pgBcWash: { title: 'Beard care: washing heading', default: 'Washing', max: 40, multi: { page: 'beard-care' } },
+  pgBcBrush: { title: 'Beard care: brushing heading', default: 'Brushing', max: 40, multi: { page: 'beard-care' } },
+  pgBcSkin: { title: 'Beard care: skin heading', default: 'Skin', max: 40, multi: { page: 'beard-care' } },
+  pgBcTrim: { title: 'Beard care: trimming heading', default: 'Trimming', max: 40, multi: { page: 'beard-care' } },
+  pgBcServices: { title: 'Beard care: services heading', default: 'Beard services', max: 40, multi: { page: 'beard-care', shows: (s: WebsiteData) => beardServices(s).length > 0 } },
+  pgLocServices: { title: 'Location: services heading', default: 'Services here', max: 40, multi: { page: 'location', shows: (s: WebsiteData, set: PageSet) => !!s.extraPages && set.services.length > 0 } },
+  pgLocTeam: { title: 'Location: team heading', default: 'Meet the team', max: 40, multi: { page: 'location', shows: (s: WebsiteData, set: PageSet) => !!s.extraPages && set.team.length > 0 } },
   pgHoursHeading: { title: 'Hours heading', default: 'Hours', max: 40, multi: { page: 'location', shows: (s) => hasHours(s) } },
   pgAddressLabel: { title: 'Address label', default: 'Address', max: 30, multi: { page: ['contact', 'location'], shows: (s) => hasAddress(s) } },
   pgPhoneLabel: { title: 'Phone label', default: 'Phone', max: 30, multi: { page: ['contact', 'location'], shows: (s) => hasPhone(s) } },

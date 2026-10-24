@@ -1,6 +1,8 @@
 // Phase A of generic-and-location pages (plan 2026-10-24): the extra page keys, their gate, and the
 // suppression until Phase B supplies copy.
 import { describe, expect, it } from 'vitest';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   assertSiteFilePath, buildPageSet, cleanExtraPages, cleanPagesModel, defaultExtraPages, EXTRA_KEYS, eligiblePages, extraPageRows,
   isPageKey, isReservedPath, pageHref, pagePath, sitemapXml, PAGE_KEYS, type ExtraKey,
@@ -19,8 +21,7 @@ const shop = (extra: Partial<WebsiteData> = {}): WebsiteData => ({
   pages: { order: [], hidden: [] },
   ...extra,
 });
-// A test seam: pretend Phase B shipped copy for these pages.
-const READY = { extraCopy: [...EXTRA_KEYS] as ExtraKey[] };
+const READY = undefined;
 
 describe('extra page keys', () => {
   it('are page keys, appended after the existing ones, with clean file paths that are not reserved', () => {
@@ -82,30 +83,31 @@ describe('gate: only extraPages.on can create an extra page (the S2 trap)', () =
   });
 });
 
-describe('suppressed until Phase B supplies copy', () => {
+describe('with the library copy (Phase B): every extra on and every floor met', () => {
   const all = shop({ extraPages: { on: [...EXTRA_KEYS] } });
-  it('every extra on, every floor met: still no extra page, no file, no sitemap entry, no link', () => {
+  it('the four pages are files, in the sitemap and the menu', () => {
     const set = buildPageSet(all);
-    expect(set.extras).toEqual([]);
-    expect(set.files.map((f) => f.path)).toEqual(['index.html', 'services/index.html', 'services/skin-fade/index.html', 'services/beard-trim/index.html', 'services/kids-cut/index.html', 'hours/index.html', 'location/index.html', 'contact/index.html']);
+    expect(set.extras).toEqual([...EXTRA_KEYS]);
+    expect(set.files.map((f) => f.path)).toEqual(expect.arrayContaining(['faq/index.html', 'first-visit/index.html', 'hair-care/index.html', 'beard-care/index.html']));
     const b = renderSiteBundle(all, { siteBaseUrl: 'https://fresh.example.com' });
-    expect(b.sitemap).not.toMatch(/faq|first-visit|hair-care|beard-care/);
-    for (const f of b.pages) expect(f.html).not.toMatch(/href="\/(faq|first-visit|hair-care|beard-care)\//);
+    expect(b.sitemap).toMatch(/faq/);
   });
-  it('output with all four on is identical to output with none on', () => {
-    const a = renderSite(all).map((f) => f.html.replace(/published-at" content="\d+"/, ''));
-    const b = renderSite({ ...all, extraPages: undefined }).map((f) => f.html.replace(/published-at" content="\d+"/, ''));
-    expect(a).toEqual(b);
+  it('with none on, no extra page exists (the S2 gate)', () => {
+    const none = shop({ extraPages: { on: [] } });
+    expect(buildPageSet(none).extras).toEqual([]);
   });
-  it('the Pages sheet rows exist, are on, are not eligible, and carry a reason', () => {
+  it('the Pages sheet rows are on and eligible', () => {
     const rows = extraPageRows(all);
     expect(rows.map((r) => r.key)).toEqual([...EXTRA_KEYS]);
-    for (const r of rows) expect(r).toMatchObject({ on: true, eligible: false });
-    for (const r of rows) expect(r.reason).not.toBe('');
+    for (const r of rows) expect(r).toMatchObject({ on: true, eligible: true, reason: '' });
+  });
+  it('there is no extraCopy seam anywhere in lib/ (review S2)', () => {
+    const walk = (dir: string): string[] => readdirSync(dir).flatMap((n) => (statSync(join(dir, n)).isDirectory() ? walk(join(dir, n)) : [join(dir, n)]));
+    for (const f of walk(join(__dirname, '..', '..', 'lib'))) expect(readFileSync(f, 'utf8'), f).not.toContain('extraCopy');
   });
 });
 
-describe('with copy available (seam): the gates of plan 1c', () => {
+describe('the data floors of plan 1c', () => {
   const rows = (d: WebsiteData) => Object.fromEntries(extraPageRows(d, READY).map((r) => [r.key, r.eligible]));
   const on = { extraPages: { on: [...EXTRA_KEYS] } };
   it('FAQ needs at least 3 data-answered questions', () => {
@@ -142,9 +144,9 @@ describe('with copy available (seam): the gates of plan 1c', () => {
   });
 });
 
-describe('the page shells (copy seam on): menu, titles, links and sitemap only reach deployed pages', () => {
+describe('the page shells: menu, titles, links and sitemap only reach deployed pages', () => {
   const d = shop({ extraPages: { on: [...EXTRA_KEYS] } });
-  const base = { extraCopy: READY.extraCopy, siteBaseUrl: 'https://fresh.example.com' };
+  const base = { siteBaseUrl: 'https://fresh.example.com' };
   it.each(['luxe', 'prime', 'euphoria'] as const)('%s: each extra page is a file with its own title, a self-canonical and the full shell', (template) => {
     const r = renderSiteBundle({ ...d, template }, base);
     const paths = r.pages.map((p) => p.path);

@@ -416,6 +416,7 @@ describe('React previews and vendored sources carry none of the removed copy', (
     'components/GbpImportPage.tsx',
     'lib/render/luxe.ts', 'lib/render/prime.ts', 'lib/render/euphoria.ts',
     'services/geminiService.ts', 'lib/buildSiteFromScrape.ts', 'lib/booksyNiche.ts',
+    'lib/render/copyLibrary.ts', 'lib/render/guides.ts',
   ];
   const BANNED = [
     'Our Work', 'Our work, on the chair', 'Barber Shop Atmosphere', 'verified reviews', 'Pulled directly from the booking page',
@@ -457,6 +458,8 @@ describe('React previews and vendored sources carry none of the removed copy', (
       'lib/render/labels.ts',
       // Multi-page sites (2026-10-23, P3b): page set + eligibility. Add to the app's sync-web.sh.
       'lib/render/pages.ts', 'lib/render/shell.ts', 'lib/render/pageBodies.ts', 'lib/render/site.ts',
+      // Copy library (pages v2, plan 2026-10-24). Add to the app's sync-web.sh.
+      'lib/render/copyLibrary.ts', 'lib/render/copyRules.ts', 'lib/render/guides.ts',
     ];
     const norm = (p: string) => p.replace(/\.(ts|js)$/, '');
     const set = new Set(VENDORED.map(norm));

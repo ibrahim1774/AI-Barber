@@ -15,6 +15,7 @@ import { BOOKSY_NICHES } from '../booksyNiche.js';
 import { isStockImage } from '../stockImages.js';
 import { contactEmail, policyToShow, teamOf, visibleReviews, withoutLegacyCopy } from './honest.js';
 import { safeHref } from './safeHref.js';
+import { faqDataQuestions, isBeardTitle, isHaircutTitle } from './guides.js';
 import { isSiteBookLink, isSiteShopLink } from './subpages.js';
 
 /** One file of the deployed site. `path` is validated by assertSiteFilePath before it is written. */
@@ -55,11 +56,6 @@ export interface PagesModel {
 /** Placeholder key (`gallery3`, `staff0`, `about`) -> the real URL, when the caller has one (the pending shape). */
 export interface PageContext {
   imageUrls?: Record<string, string> | null;
-  /**
-   * The extra pages whose library copy exists. Absent = EXTRA_COPY_READY (none, until Phase B ships the copy), so
-   * every extra page stays suppressed. A test seam: Phase B replaces it with the library's own check.
-   */
-  extraCopy?: readonly ExtraKey[];
 }
 
 export const isPageKey = (k: unknown): k is PageKey => typeof k === 'string' && (PAGE_KEYS as readonly string[]).includes(k);
@@ -298,17 +294,8 @@ export function memberHasOwnContent(raw: unknown, shopHours: unknown): boolean {
 }
 
 // ── Extra (guide) pages ─────────────────────────────────────────────────────────────────────────
-// Library copy arrives in Phase B. Until it does, no extra page is eligible: the page shells exist in the
-// renderer but are suppressed, so nothing here can change a site's output.
-export const EXTRA_COPY_READY: Readonly<Record<ExtraKey, boolean>> = { faq: false, 'first-visit': false, 'hair-care': false, 'beard-care': false };
-
-// Provisional service-type matchers for the gates (plan 1c). Phase B's guides.ts matching replaces these.
-const BEARD_SVC = /beard|shave|razor|line[\s-]?up|shape[\s-]?up|edge[\s-]?up/i;
-const HAIRCUT_SVC = /cut|fade|taper|buzz|crew|clipper|scissor|kids?\b|child|boys?\b|junior/i;
-const KIDS_SVC = /kids?\b|child|boys?\b|junior/i;
-// A beard-only service is not a haircut-type one ("Beard Trim", "Line Up"); "Haircut & Beard" is both.
-const isBeardService = (title: string): boolean => BEARD_SVC.test(title);
-const isHaircutService = (title: string): boolean => HAIRCUT_SVC.test(title);
+// The page copy is the library's (copyLibrary.ts, guides.ts); a page exists when the barber turned it on and the data floor
+// of plan 1c is met. Service types come from guides.ts matching.
 
 const REASON: Record<ExtraKey, string> = {
   faq: 'Add your booking link or phone, hours, address, prices or durations to get this page',
@@ -325,35 +312,24 @@ function extraFloorMet(key: ExtraKey, d: WebsiteData): boolean {
   const address = has(d.contact?.address);
   const hours = Array.isArray(d.hours) && d.hours.length > 0;
   if (key === 'first-visit') return (book || phone) && (address || hours);
-  if (key === 'hair-care') return titled.some((s) => isHaircutService(plainText(s.title)));
-  if (key === 'beard-care') return titled.some((s) => isBeardService(plainText(s.title)));
-  // FAQ: at least 3 questions the data can answer (How do I book / When open / Where / haircut price / how long / kids / cancellation).
-  const answers = [
-    book || phone,
-    hours,
-    address,
-    titled.some((s) => isHaircutService(plainText(s.title)) && has(s.price)),
-    titled.some((s) => has(s.duration)),
-    titled.some((s) => KIDS_SVC.test(plainText(s.title))),
-    !!policyToShow(d),
-  ].filter(Boolean).length;
-  return answers >= 3;
+  if (key === 'hair-care') return titled.some((s) => isHaircutTitle(s.title));
+  if (key === 'beard-care') return titled.some((s) => isBeardTitle(s.title));
+  // FAQ: at least 3 questions the data can answer (guides.ts faqDataQuestions).
+  return faqDataQuestions(d) >= 3;
 }
-
-const copyReady = (key: ExtraKey, ctx?: PageContext): boolean => (ctx?.extraCopy ? ctx.extraCopy.includes(key) : EXTRA_COPY_READY[key]);
 
 /**
  * The extra pages as the Pages sheet lists them: `on` = the barber turned it on (and has not hidden it),
  * `eligible` = it has its data floor and its copy, `reason` = why not ('' when eligible).
  */
-export function extraPageRows(input: WebsiteData, ctx?: PageContext): { key: ExtraKey; on: boolean; eligible: boolean; reason: string }[] {
+export function extraPageRows(input: WebsiteData, _ctx?: PageContext): { key: ExtraKey; on: boolean; eligible: boolean; reason: string }[] {
   const d = withoutLegacyCopy(input);
   const on = cleanExtraPages(d.extraPages).on;
   const hidden = cleanPagesModel(d.pages).hidden;
   return EXTRA_KEYS.map((key) => {
     const floor = extraFloorMet(key, d);
-    const eligible = floor && copyReady(key, ctx);
-    return { key, on: on.includes(key) && !hidden.includes(key), eligible, reason: eligible ? '' : floor ? 'Not available yet' : REASON[key] };
+    const eligible = floor;
+    return { key, on: on.includes(key) && !hidden.includes(key), eligible, reason: eligible ? '' : REASON[key] };
   });
 }
 
@@ -371,7 +347,7 @@ export function eligiblePages(input: WebsiteData, ctx?: PageContext): PageKey[] 
   if (has(d.phone) || contactEmail(d) || has(d.contact?.address) || safeHref(d.bookingUrl)) out.push('contact');
   // Extra pages exist only when the barber turned them on (extraPages.on), they have their data floor and their copy.
   const on = cleanExtraPages(d.extraPages).on;
-  for (const k of EXTRA_KEYS) if (on.includes(k) && extraFloorMet(k, d) && copyReady(k, ctx)) out.push(k);
+  for (const k of EXTRA_KEYS) if (on.includes(k) && extraFloorMet(k, d)) out.push(k);
   if (isSiteBookLink(d.bookingUrl)) out.push('book');
   if (safeHref(d.shopUrl)) out.push('shop');
   return out;

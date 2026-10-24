@@ -177,7 +177,7 @@ describe('back-compat with the pre-change multi-page output', () => {
   // The changes the plan makes (6d), and nothing else: <title>/og:title (place), the service eyebrow, the footer.
   // The CSS and the menu are compared too, after taking out only what Phase A added to them: the lines of More /
   // footer css (each on its own line) and the More dropdown with the flat overflow copies turned back into plain items.
-  const NEW_CSS_LINE = /^.*(?:ab-more|ab-foot-(?:addr|phone|pages|h)\b).*\n/gm;
+  const NEW_CSS_LINE = /^.*(?:ab-more|ab-copy|ab-foot-(?:addr|phone|pages|h)\b).*\n/gm;
   const oldNav = (h: string) => h
     .replace(/<li class="ab-more"><details[\s\S]*?<\/details><\/li>/g, '')
     .replace(/<li class="ab-more-flat">/g, '<li>')
@@ -221,7 +221,7 @@ describe('size: a maxed-out site stays well under the deploy limit', () => {
     });
     const imageUrls: Record<string, string> = { hero: 'https://i/h.jpg', ...Object.fromEntries([0, 1, 2, 3, 4, 5].map((i) => [`gallery${i}`, `https://i/g${i}.jpg`])), ...Object.fromEntries([0, 1, 2].map((i) => [`staff${i}`, `https://i/s${i}.jpg`])) };
     for (const template of TEMPLATES) {
-      const r = renderSiteBundle({ ...d, template }, { imageUrls, extraCopy: [...EXTRA_KEYS] });
+      const r = renderSiteBundle({ ...d, template }, { imageUrls });
       const bytes = r.pages.reduce((n, p) => n + Buffer.byteLength(p.html), 0);
       expect(r.pages.length).toBeGreaterThanOrEqual(28);
       expect(bytes).toBeLessThan(2 * 1024 * 1024);

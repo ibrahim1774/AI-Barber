@@ -272,6 +272,9 @@ body.ab-page{margin:0;background:var(--ab-bg);color:var(--ab-ink);font-family:va
 .ab-h1{font-size:clamp(28px,5vw,48px)}
 .ab-h2{font-size:clamp(20px,3vw,28px);margin-bottom:16px}
 .ab-prose p{margin:0 0 16px;color:var(--ab-soft)}
+.ab-copy-h{font-family:var(--ab-head-font);font-weight:var(--ab-head-weight);font-size:18px;margin:24px 0 8px}
+ul.ab-copy,ol.ab-copy{margin:0 0 16px;padding-left:22px;color:var(--ab-soft)}
+ul.ab-copy li,ol.ab-copy li{margin:0 0 6px}
 .ab-meta{color:var(--ab-accent);font-size:12px;letter-spacing:.12em;text-transform:uppercase;margin:0 0 12px}
 .ab-muted{color:var(--ab-muted)}
 .ab-btn{display:inline-flex;align-items:center;justify-content:center;padding:14px 28px;border:1px solid var(--ab-accent);border-radius:var(--ab-radius);color:var(--ab-accent);background:transparent;text-decoration:none;text-transform:uppercase;letter-spacing:var(--ab-btn-track);font-size:12px;font-weight:700;font-family:var(--ab-body-font)}

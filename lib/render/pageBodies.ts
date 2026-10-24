@@ -11,6 +11,9 @@ import {
   aggregateToShow, contactEmail, displayPhone, displayPrice, firstName, nicheOf, photoAlt, reviewsSourceLabel, reviewStars,
   serviceMeta, siteDescription, teamBookLink, teamOf, visibleReviews, type TeamCard,
 } from './honest.js';
+import {
+  beardServices, extraBlocks, guideBlocks, howOftenRows, serviceGuideFor, titledServices, type CopyEnv, type LinkInfo, type LinkKey, type ResolvedBlock, type Seg,
+} from './guides.js';
 import { defaultRatingLine, navLabelKey, plainLabel, PAGE_TITLE_KEY, ratingLineCustom, t, type LabelKey } from './labels.js';
 import { aboutParagraphs, isExtraKey, ownGallerySlots, pageHref as pageHrefOf, plainText, type PageContext, type PageFile, type PageSet } from './pages.js';
 import { escapeAttr } from './shell.js';
@@ -88,6 +91,36 @@ export function renderPageBody(ctx: BodyCtx, file: PageFile): PageBody {
     return `<h2 class="ab-h2" style="margin-top:32px">${L('pgAlsoSee')}</h2><div class="ab-chips">${keys.map((k) => `<a class="ab-chip" href="${pageHrefOf(k)}">${t(d.labels, navLabelKey(ctx.template, k), niche, d)}</a>`).join('')}</div>`;
   };
 
+  // ── Library copy (guides.ts): the environment a sentence is resolved in, and how a block becomes markup ──────────
+  // Links are built from the page set only (never from site data): a link to a page that is not a file drops its sentence.
+  const links: Partial<Record<LinkKey, LinkInfo>> = {};
+  for (const k of ['location', 'hours', 'contact', 'services'] as const) {
+    if (set.files.some((f) => f.key === k && !f.child)) links[k] = { href: pageHrefOf(k), label: plainLabel(d.labels, navLabelKey(ctx.template, k), niche, d) };
+  }
+  if (bookingUrl) links.book = { href: bookingUrl, label: P('pgBookCta'), newTab: !isSiteBookLink(bookingUrl) };
+  // Only services whose page is a deployed file are linked (hiding Services drops them all).
+  const serviceSlug = (index: number): string | null => set.files.find((f) => f.key === 'services' && f.child?.index === index)?.child?.slug ?? null;
+  const copyEnv: CopyEnv = { d, place, industry: niche.industry, links, serviceHref: (i) => { const sl = serviceSlug(i); return sl ? `/services/${sl}/` : null; } };
+  const segsHtml = (segs: readonly Seg[]): string => segs.map((g) => (g.t === 'text' ? esc(g.s) : `<a href="${esc(g.href)}"${g.newTab ? ' target="_blank" rel="noopener noreferrer"' : ''}>${esc(g.label)}</a>`)).join('');
+  const blockHtml = (b: ResolvedBlock): string => {
+    const head = b.kind === 'qa' ? `<h3 class="ab-copy-h">${esc(b.q ?? '')}</h3>` : b.h ? `<h3 class="ab-copy-h">${L(b.h as LabelKey)}</h3>` : '';
+    const paras = b.items.map((it) => `<p>${segsHtml(it)}</p>`).join('');
+    if (b.kind === 'list') return `${head}<ul class="ab-copy">${b.items.map((it) => `<li>${segsHtml(it)}</li>`).join('')}</ul>`;
+    if (b.kind === 'step') return `${head}<ol class="ab-copy">${b.items.map((it) => `<li>${segsHtml(it)}</li>`).join('')}</ol>`;
+    return `<div class="ab-copy ab-prose">${head}${paras}</div>`;
+  };
+  const blocksHtml = (bs: readonly ResolvedBlock[]): string => bs.map(blockHtml).join('');
+  const firstWords = (bs: readonly ResolvedBlock[]): string => {
+    const first = bs[0]?.items[0];
+    return first ? clip(first.map((g) => (g.t === 'text' ? g.s : g.label)).join(''), 155) : '';
+  };
+  // A service row: its name (linked when it has a page) and its listed price.
+  const svcRow = (sv: { index: number; title: string; price: string }): string => {
+    const slug = serviceSlug(sv.index);
+    const price = displayPrice(sv.price);
+    return `<div class="ab-row"><span>${slug ? `<a href="${esc(`/services/${slug}/`)}">${esc(sv.title)}</a>` : esc(sv.title)}</span>${price ? `<span>${esc(price)}</span>` : ''}</div>`;
+  };
+
   const card = (m: TeamCard): { link: ReturnType<typeof teamBookLink>; button: string } => {
     const link = teamBookLink(d, m, bookingLive);
     const text = link ? (link.kind === 'member' ? `${L('teamBookWith')} ${esc(firstName(m.name))}` : L('pgBookCta')) : '';
@@ -153,11 +186,17 @@ export function renderPageBody(ctx: BodyCtx, file: PageFile): PageBody {
       : '';
     // One URL per service, titled with the shop's place: "Skin Fade in Brooklyn, NY · Fresh Cuts". No place, no change.
     const eyebrow = place ? `<p class="ab-eyebrow">${esc(niche.industry)} in ${L('pgPlace')}</p>` : '';
+    // "About this service": the library guide for this service, only when the barber turned guides on and this is the
+    // first service of its kind. Every sentence is library text or a token resolved from this site's own data.
+    const guideId = serviceGuideFor(d, set.services.map((c) => c.index)).get(file.child.index);
+    const subject = titledServices(d).find((x) => x.index === file.child!.index);
+    const guideBs = guideId && subject ? guideBlocks(copyEnv, guideId, subject) : [];
+    const guideBlock = guideBs.length ? `<h2 class="ab-h2" style="margin-top:32px">${L('pgGuideHeading')}</h2>${blocksHtml(guideBs)}` : '';
     return {
       heading: plainText(s.title),
       title: place ? clip(`${plainText(s.title)} in ${place} · ${plainText(d.shopName)}`, 120) : undefined,
       description: clip(s.description || '', 155) || generic,
-      body: `<section class="ab-sec"><div class="ab-wrap"><a class="ab-back" href="/services/">${L('pgBackServices')}</a>${eyebrow}<h1 class="ab-h1">${esc(s.title)}</h1>${price ? `<p class="ab-price">${esc(price)}</p>` : ''}${meta ? `<div class="ab-meta">${esc(meta)}</div>` : ''}<div class="ab-prose">${desc}</div>${bookBtn ? `<div class="ab-actions">${bookBtn}</div>` : ''}${whoBlock}${othersBlock}${alsoSee()}</div></section>`,
+      body: `<section class="ab-sec"><div class="ab-wrap"><a class="ab-back" href="/services/">${L('pgBackServices')}</a>${eyebrow}<h1 class="ab-h1">${esc(s.title)}</h1>${price ? `<p class="ab-price">${esc(price)}</p>` : ''}${meta ? `<div class="ab-meta">${esc(meta)}</div>` : ''}<div class="ab-prose">${desc}</div>${guideBlock}${bookBtn ? `<div class="ab-actions">${bookBtn}</div>` : ''}${whoBlock}${othersBlock}${alsoSee()}</div></section>`,
     };
   }
 
@@ -251,11 +290,23 @@ export function renderPageBody(ctx: BodyCtx, file: PageFile): PageBody {
       ? `<h2 class="ab-h2" style="margin-top:32px">${L('pgHoursHeading')}</h2><div class="ab-rows">${hours.map((h) => hoursRow(h, L('pgClosed'))).join('')}</div>`
       : '';
     const map = `<div class="ab-map"><iframe title="${esc(shop)} on Google Maps" src="https://maps.google.com/maps?q=${encodeURIComponent(`${shop} ${address}`)}&amp;output=embed" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe></div>`;
+    // Services here, the team and the rating: real data only, and only for sites that opted into pages v2 (extraPages),
+    // so a site saved before it keeps its Location page as it was.
+    const v2 = !!d.extraPages && typeof d.extraPages === 'object';
+    const svcHere = v2 ? titledServices(d).filter((x) => serviceSlug(x.index)).slice(0, 12) : [];
+    const teamKids = v2 && set.nav.includes('team') ? set.files.filter((f) => f.key === 'team' && f.child) : [];
+    const agg = v2 ? aggregateToShow(d) : null;
+    const customRating = ratingLineCustom(d);
+    const extraSecs = [
+      svcHere.length ? `<h2 class="ab-h2" style="margin-top:32px">${L('pgLocServices')}</h2><div class="ab-rows">${svcHere.map(svcRow).join('')}</div>` : '',
+      teamKids.length ? `<h2 class="ab-h2" style="margin-top:32px">${L('pgLocTeam')}</h2><div class="ab-chips">${teamKids.map((f) => `<a class="ab-chip" href="${esc(f.href)}">${esc(f.child!.title)}</a>`).join('')}</div>` : '',
+      agg ? `<div class="ab-rating" style="margin-top:32px"><span class="ab-stars">★</span>${customRating !== null ? `<span>${esc(customRating)}</span>` : `<span><b>${esc(defaultRatingLine(agg))}</b></span>`}</div>` : '',
+    ].join('');
     return {
       heading: heading(),
       title: place ? clip(`${niche.industry} in ${place} · ${shop}`, 120) : clip(`${shop} — ${niche.noun} at ${address}`, 110),
       description: clip(`${shop}, ${address}.`, 155),
-      body: `<section class="ab-sec"><div class="ab-wrap"><h1 class="ab-h1">${title()}</h1><dl class="ab-facts">${facts}</dl><div class="ab-actions"><a class="ab-btn ab-btn-solid" href="${esc(directions)}" target="_blank" rel="noopener noreferrer">${L('pgDirectionsCta')}</a>${bookBtn}</div>${map}${hoursBlock}${alsoSee()}</div></section>`,
+      body: `<section class="ab-sec"><div class="ab-wrap"><h1 class="ab-h1">${title()}</h1><dl class="ab-facts">${facts}</dl><div class="ab-actions"><a class="ab-btn ab-btn-solid" href="${esc(directions)}" target="_blank" rel="noopener noreferrer">${L('pgDirectionsCta')}</a>${bookBtn}</div>${map}${hoursBlock}${extraSecs}${alsoSee()}</div></section>`,
     };
   }
 
@@ -277,17 +328,35 @@ export function renderPageBody(ctx: BodyCtx, file: PageFile): PageBody {
   }
 
   // ── Extra (guide) pages: FAQ, First visit, Hair care, Beard care ───────────────────────────────
-  // Phase A: the shell only. The library copy arrives in Phase B and the hero photo in Phase C, so until then
-  // pages.ts keeps these pages suppressed (EXTRA_COPY_READY) and this branch is not reached in production.
-  // Nothing here is generic text of ours: the heading is a label, the buttons and links are the site's own.
+  // Library copy (copyLibrary.ts) plus real data from the site: every sentence about the shop is a token resolved from
+  // the barber's own data, and a sentence whose data is missing is dropped (guides.ts). The hero photo slot is Phase C.
   if (isExtraKey(file.key)) {
     const shopName = plainText(d.shopName);
+    const blocks = extraBlocks(copyEnv, file.key);
+    const byId = (id: string): ResolvedBlock[] => blocks.filter((b) => b.id === id);
+    const actions = bookBtn ? `<div class="ab-actions">${bookBtn}</div>` : '';
+    const h2 = (key: LabelKey): string => `<h2 class="ab-h2" style="margin-top:32px">${L(key)}</h2>`;
+    const rows = (list: { index: number; title: string; price: string }[]): string => `<div class="ab-rows">${list.map(svcRow).join('')}</div>`;
+    let inner = '';
+    if (file.key === 'faq') inner = blocksHtml(blocks);
+    else if (file.key === 'first-visit') {
+      const priced = titledServices(d).filter((x) => x.price).slice(0, 12);
+      inner = blocksHtml(byId('booking')) + blocksHtml(byId('findUs')) + blocksHtml(byId('before')) + blocksHtml(byId('inChair'))
+        + (priced.length ? h2('pgFvPrices') + rows(priced) : '');
+    } else if (file.key === 'hair-care') {
+      const often = howOftenRows(copyEnv);
+      inner = blocksHtml(blocks)
+        + (often.length ? h2('pgHcOften') + `<ul class="ab-copy">${often.map((r) => { const sl = serviceSlug(r.index); return `<li>${sl ? `<a href="${esc(`/services/${sl}/`)}">${esc(r.title)}</a>` : esc(r.title)}: ${segsHtml(r.segs)}</li>`; }).join('')}</ul>` : '');
+    } else {
+      const bs = beardServices(d);
+      inner = blocksHtml(blocks) + (bs.length ? h2('pgBcServices') + rows(bs) : '');
+    }
     return {
       heading: heading(),
       title: file.key === 'faq' ? clip(`${heading()} · ${shopName}${place ? `, ${place}` : ''}`, 120) : undefined,
-      description: generic,
+      description: firstWords(blocks) || generic,
       // (Phase C: the hero photo slot sits above the heading.)
-      body: `<section class="ab-sec"><div class="ab-wrap"><h1 class="ab-h1">${title()}</h1>${bookBtn ? `<div class="ab-actions">${bookBtn}</div>` : ''}${alsoSee()}</div></section>`,
+      body: `<section class="ab-sec"><div class="ab-wrap"><h1 class="ab-h1">${title()}</h1>${inner}${actions}${alsoSee()}</div></section>`,
     };
   }
 
