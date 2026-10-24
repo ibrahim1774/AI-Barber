@@ -23,17 +23,20 @@ const family = {
 } as const;
 
 export const fonts = {
-  heading: family.bold, // was Montserrat Bold (700) before the font swap; 800 felt too heavy
-  headingItalic: family.semiboldItalic,
-  headingBlack: family.extrabold,
+  // Premium, light feel (Ibrahim picked 'A': Medium 500 for headlines and buttons, Regular 400
+  // for body text). Names are kept so nothing else in the app changes; the hierarchy now comes
+  // from size, spacing and colour rather than weight. To get heavier again, change these lines only.
+  heading: family.medium,
+  headingItalic: family.regularItalic,
+  headingBlack: family.medium,
   serifish: family.regularItalic,
-  subhead: family.semibold,
+  subhead: family.medium,
   label: family.regular,
   body: family.regular,
   bodyMedium: family.medium,
-  bodySemi: family.semibold,
-  bodyBold: family.bold,
-  bodyExtra: family.bold, // Manrope ExtraBold looked lighter than Jakarta 800
+  bodySemi: family.medium,
+  bodyBold: family.medium,
+  bodyExtra: family.medium,
   mono: 'Menlo',
 } as const;
 
