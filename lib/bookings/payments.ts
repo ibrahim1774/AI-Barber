@@ -87,11 +87,20 @@ export class StripeApiError extends Error {
 // Low-level request
 // ---------------------------------------------------------------------------
 
+/**
+ * Checkout Sessions are pinned to this API version. 2026-09-30 removed `payment_method_types` and
+ * added `allowed_payment_method_types`; pinning makes the card-only allowlist mean the same on every
+ * account (sandbox and live default to different versions). Checkout must stay card-only: the hold,
+ * sweep, `payment_method: 'card'` writes and refunds assume a synchronous card payment.
+ */
+export const CHECKOUT_STRIPE_VERSION = '2026-09-30.endive';
+export const CHECKOUT_CARD_ONLY = { 'allowed_payment_method_types[0]': 'card' } as const;
+
 export async function stripeRequest(
   method: 'GET' | 'POST',
   path: string,
   params: Record<string, string | number | boolean | null | undefined> = {},
-  opts: { account?: string | null; idempotencyKey?: string; fetch?: FetchLike } = {},
+  opts: { account?: string | null; idempotencyKey?: string; fetch?: FetchLike; stripeVersion?: string } = {},
 ): Promise<any> {
   const key = process.env.STRIPE_CONNECT_SECRET_KEY;
   if (!key) throw new StripeApiError('missing STRIPE_CONNECT_SECRET_KEY', 500, 'config');
@@ -101,6 +110,7 @@ export async function stripeRequest(
   const headers: Record<string, string> = { Authorization: `Bearer ${key}` };
   if (opts.account) headers['Stripe-Account'] = opts.account;
   if (opts.idempotencyKey && method === 'POST') headers['Idempotency-Key'] = opts.idempotencyKey;
+  if (opts.stripeVersion) headers['Stripe-Version'] = opts.stripeVersion;
 
   let url = `${STRIPE_API}${path}`;
   const init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal } = {
@@ -156,6 +166,7 @@ export async function createCardCheckout(
     success_url: `${manageUrl(appt.manage_token, shop)}?checkout=success`,
     cancel_url: `${manageUrl(appt.manage_token, shop)}?checkout=cancelled`,
     expires_at: minuteSec + CHECKOUT_HOLD_SEC,
+    ...CHECKOUT_CARD_ONLY,
     client_reference_id: appt.id,
     customer_email: appt.customer_email || undefined,
     'line_items[0][quantity]': 1,
@@ -174,6 +185,7 @@ export async function createCardCheckout(
     account: shop.stripe_account_id,
     idempotencyKey: `ab-checkout-${appt.id}-${amount}-${minuteSec}`,
     fetch: opts.fetch,
+    stripeVersion: CHECKOUT_STRIPE_VERSION,
   });
   if (!session?.url || !session?.id) throw new StripeApiError('Checkout Session has no url', 502);
   return { url: session.url, sessionId: session.id };
