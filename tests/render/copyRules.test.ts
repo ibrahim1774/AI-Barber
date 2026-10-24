@@ -104,3 +104,23 @@ describe('details', () => {
     expect(VOCAB_GROUPS).toContain('beard');
   });
 });
+
+describe('M1: health, hygiene and cost words, ASCII only, range cap, #1', () => {
+  it.each([
+    ['R10', 'This cures dandruff.'], ['R10', 'Helps hair regrow thicker.'], ['R10', 'It is safe for babies.'], ['R10', 'Treatment for hair loss.'], ['R10', 'It can prevent breakage.'], ['R10', 'Good for hair growth.'],
+    ['R4', 'Sterile tools every time.'], ['R4', 'Tools are disinfected between visits.'], ['R4', 'Clean, hygienic tools.'], ['R4', 'At no cost.'], ['R4', 'Done on the house.'], ['R4', 'No charge for kids.'],
+    ['R4', 'Open every day of the week.'], ['R4', 'Open 24/7.'], ['R4', 'Low prices all round.'],
+    ['R2', '#1 for fades.'],
+  ])('%s: %s', (id, text) => { expect(rule(text), text).toContain(id); });
+  it('non-ASCII text is refused, apart from the apostrophe and dashes', () => {
+    expect(rule('Our best Bеard care.')).toContain('R11'); // Cyrillic e
+    expect(rule('Fresh cut é')).toContain('R11');
+    expect(copyProblems('A kids’ cut every 4–6 weeks — it varies.', { allow: ['kids-cut'] })).toEqual([]);
+  });
+  it('advice ranges need both numbers at 12 or less', () => {
+    expect(rule('Come back in 1-100 weeks.')).toContain('R6');
+    expect(rule('Come back in 2–40 weeks.')).toContain('R6');
+    expect(rule('Come back in 2–4 weeks.')).toEqual([]);
+    expect(rule('Come back in 6–12 weeks.')).toEqual([]);
+  });
+});

@@ -14,6 +14,8 @@
 //   R7 no places    no place names (a capitalised word inside a sentence is refused); the place comes only from {place}.
 //   R8 service gate a sentence names a service (fade, taper, shave, kids ...) only inside the guide of that service,
 //                   otherwise only through {svc:<guide>}, which resolves to the barber's own service or drops the sentence.
+//   R10 no health  no cure / treat / heal / dandruff / hair loss / regrow / growth / thicker / prevent / safe for.
+//   R11 ASCII      plain ASCII only, apart from the apostrophe and the en and em dash (no look-alike letters).
 //   R9 no people    no quotes, no client counts, no "clients say", no reviews.
 //
 // Pure, no DOM, imports nothing.
@@ -58,23 +60,26 @@ const R: { id: string; re: RegExp }[] = [
   // R1 voice
   { id: 'R1', re: /\b(?:we|our|ours|ourselves|us)\b/i },
   // R2 rank, superlatives, filler
-  { id: 'R2', re: /\b(?:best|#1|number one|leading|premier|finest|awards?|award-winning|voted|renowned|famous|premium|luxury|luxurious|world-class|unmatched|unrivaled|unrivalled|expert|experts|expertise|masters?|top[\s-](?:rated|notch|tier|quality|class|barbers?|shops?)|highest|friendly|professional|professionals|skilled|talented|passionate|high-quality|quality|precision|artisan|crafted|craftsmanship|excellence|exceptional|amazing|incredible|state-of-the-art|second to none|trusted|reliable)\b/i },
+  { id: 'R2', re: /#1|\b(?:best|number one|leading|premier|finest|awards?|award-winning|voted|renowned|famous|premium|luxury|luxurious|world-class|unmatched|unrivaled|unrivalled|expert|experts|expertise|masters?|top[\s-](?:rated|notch|tier|quality|class|barbers?|shops?)|highest|friendly|professional|professionals|skilled|talented|passionate|high-quality|quality|precision|artisan|crafted|craftsmanship|excellence|exceptional|amazing|incredible|state-of-the-art|second to none|trusted|reliable)\b/i },
   // R3 tenure and credentials
   { id: 'R3', re: /\b(?:years?|since|established|est\.|decades?|generations?|family-owned|family owned|licensed|licenced|certified|trained|accredited|experienced|veterans?|seasoned)\b/i },
   // R4 practices and amenities
-  { id: 'R4', re: /\b(?:walk-?ins?|appointments? only|appointment-only|parking|wheelchair|accessible|wi-?fi|drinks?|coffee|beer|complimentary|free|same-day|no wait|open late|sanitis(?:e|ed|ing)|sanitiz(?:e|ed|ing)|steril(?:ise|ize)d?|cash|cards?|payments?|pay)\b/i },
+  { id: 'R4', re: /\b(?:walk-?ins?|appointments? only|appointment-only|parking|wheelchair|accessible|wi-?fi|drinks?|coffee|beer|complimentary|free|same-day|no wait|open late|sanitis(?:e|ed|ing)|sanitiz(?:e|ed|ing)|steril\w*|disinfect\w*|hygien\w*|no cost|no charge|on the house|open every day|every day of the week|24\/7|low prices?|cash|cards?|payments?|pay)\b/i },
   // R5 promises
   { id: 'R5', re: /\b(?:guarantee[ds]?|satisfaction|satisfied|perfect|perfectly|flawless|promise[sd]?)\b|100\s*%/i },
   // R6 figures (digits are checked separately)
   { id: 'R6', re: /\b(?:affordable|cheap|cheaper|competitive|deals?|discounts?|inexpensive|value for money)\b/i },
   // R7 places
   { id: 'R7', re: /\b(?:near|nearby|serving|serves|surrounding|minutes from|downtown|neighbou?rhood|in town|around the corner|local|locally|street|avenue|boulevard|county|city)\b/i },
+  // R10 health claims
+  { id: 'R10', re: /\b(?:cures?|cured|treat(?:s|ed|ment|ments)?|heal(?:s|ed|ing)?|dandruff|hair loss|regrow\w*|growth|thicker|prevent\w*|safe for)\b/i },
   // R9 people and reviews
   { id: 'R9', re: /["“”]|\b(?:clients?|customers?|guests?|regulars?)\s+(?:say|said|love|loves|trust|choose|keep|return|come back|rave)\b|\b(?:testimonials?|reviews?|reviewed|rated|ratings?|stars?|thousands|hundreds|many clients|our clients|barber named)\b/i },
 ];
 
 // Reader advice may hold a range of days or weeks ("2–4 weeks"); nothing else may hold a digit.
-const ADVICE_RANGE = /\d+[–-]\d+\s+(?:days?|weeks?)\b/g;
+const ADVICE_RANGE = /(\d+)[–-](\d+)\s+(?:days?|weeks?)\b/g;
+const RANGE_CAP = 12;
 
 /** Capitalised words inside a sentence are proper nouns (a town, a barber's name): refused. */
 function properNouns(text: string): string[] {
@@ -105,9 +110,11 @@ export function copyProblems(text: string, opts: { allow?: readonly VocabGroup[]
     const m = re.exec(bare);
     if (m) out.push(`${id}: ${m[0].trim()}`);
   }
-  const noAdvice = bare.replace(ADVICE_RANGE, ' ');
+  const noAdvice = bare.replace(ADVICE_RANGE, (all, a: string, b: string) => (Number(a) <= RANGE_CAP && Number(b) <= RANGE_CAP ? ' ' : all));
   const digit = /\d/.exec(noAdvice);
   if (digit) out.push(`R6: digit "${digit[0]}"`);
+  const odd = /[^\x00-\x7F’–—]/.exec(bare);
+  if (odd) out.push(`R11: non-ASCII "${odd[0]}"`);
   for (const w of properNouns(bare)) out.push(`R7: name "${w}"`);
   const allow = new Set(opts.allow ?? []);
   for (const g of VOCAB_GROUPS) {
