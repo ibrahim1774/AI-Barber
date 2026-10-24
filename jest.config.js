@@ -12,6 +12,7 @@ module.exports = {
     '^@/lib/supabase$': '<rootDir>/test/mocks/supabase.ts',
     '^expo-image-manipulator$': '<rootDir>/test/mocks/image-manipulator.ts',
     '^expo-image-picker$': '<rootDir>/test/mocks/image-picker.ts',
+    '^expo-video$': '<rootDir>/test/mocks/video.ts',
     '^expo-crypto$': '<rootDir>/test/mocks/crypto.ts',
     '^expo-superwall$': '<rootDir>/test/mocks/superwall.ts',
     '^expo-notifications$': '<rootDir>/test/mocks/notifications.ts',

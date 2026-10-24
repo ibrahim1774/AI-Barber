@@ -24,7 +24,8 @@ import { loadSite, type SiteRecord } from '@/lib/siteStore';
 import { siteOffline, useSubscriptionStatus } from '@/lib/subscriptionStatus';
 import { tabBarStyle } from '@/lib/tabBar';
 import { useLinkActions } from '@/lib/useLinkActions';
-import { requestTour, TOURS, TOUR_ORDER, type TourId } from '@/components/tutorial/tours';
+import { requestTour, TOUR_ROUTE, TOURS, TOUR_ORDER, type TourId } from '@/components/tutorial/tours';
+import { TutorialEntry } from '@/components/tutorial/TutorialEntry';
 import { websiteView } from '@/lib/website';
 
 const SUPPORT_EMAIL = 'support@davoxa.com';
@@ -38,7 +39,6 @@ const SUBSCRIPTION_SEPARATE = 'Deleting doesn’t cancel your subscription — d
 const GREEN = '#22c55e';
 
 type Busy = 'delete' | 'signout' | null;
-const REPLAY_ROUTE = { edit: '/edit', bookings: '/bookings', store: '/store', getpaid: '/get-paid' } as const;
 
 /**
  * The Settings tab ("Settings" on aibarber.org/support): Your website (the
@@ -171,13 +171,15 @@ export default function Settings() {
   const replayTour = (id: TourId) => {
     track('tutorial_replayed', { tour: id });
     requestTour(id);
-    router.navigate(REPLAY_ROUTE[TOURS[id].screen] as never);
+    router.navigate(TOUR_ROUTE[TOURS[id].screen] as never);
   };
 
   const version = `${Application.nativeApplicationVersion ?? '1.0.0'} (${Application.nativeBuildVersion ?? '1'})`;
 
   return (
     <Page title="Settings" onBack={standalone ? goBackOrHome : undefined}>
+      <TutorialEntry onPress={() => { track('tutorial_opened'); router.push('/tutorial' as never); }} />
+
       {site && <YourWebsite site={site} />}
 
       <Section title="Account">

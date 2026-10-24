@@ -60,6 +60,9 @@ export const TOURS: Record<TourId, Tour> = {
   },
 };
 
+/** Where each tour's screen lives (Settings replay and the Tutorial topics both navigate here). */
+export const TOUR_ROUTE = { edit: '/edit', bookings: '/bookings', store: '/store', getpaid: '/get-paid' } as const;
+
 /** The order Settings lists them in. */
 export const TOUR_ORDER: TourId[] = ['edit', 'bookings', 'store', 'getpaid', 'publishing'];
 
