@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Keyboard } from 'react-native';
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import type { ShopInputs, WebsiteData } from '@/web/types';
 import { startDraft } from '@/lib/flow';
 
@@ -79,7 +79,8 @@ export function useImportRun() {
     return () => clearInterval(timer);
   }, [busy]);
 
-  const run = async (work: () => Promise<ShopSite>, onFail: (message: string) => void) => {
+  /** `to`: where the saved draft goes next. Imports pass the review screen; the typed form goes straight to /generating. */
+  const run = async (work: () => Promise<ShopSite>, onFail: (message: string) => void, to: Href = '/generating') => {
     if (busyRef.current) return;
     busyRef.current = true;
     Keyboard.dismiss();
@@ -95,7 +96,7 @@ export function useImportRun() {
         setBusy(false);
       },
       save: startDraft,
-      navigate: () => router.replace('/generating'),
+      navigate: () => router.replace(to),
       wait: sleep,
     });
     clearTimeout(slowTimer);

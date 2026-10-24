@@ -117,7 +117,9 @@ describe('the Google path, end to end', () => {
     expect(text).toContain('Kings Barber Shop & Unisex');
     expect(text).toContain('Barber shop');
     expect(text).toContain('123 Bay 53rd St');
-    expect(text).toContain('★ 4.8 (212)');
+    expect(text).toContain('★ 4.8');
+    expect(text).toContain('212 reviews');
+    expect(text).toContain('Photos, hours and phone come along.');
     expect(buttons(tree, "Yes, that's me")).toHaveLength(1);
     expect(await store.loadSite()).toBeNull();
     expect(mockReplace).not.toHaveBeenCalled();
@@ -146,11 +148,20 @@ describe('the Google path, end to end', () => {
     expect(allText(tree).join(' ')).toContain('Is this you?');
   });
 
-  it('"Not my business" goes back to the search and builds nothing', async () => {
+  it('"Not mine" goes back to the search and builds nothing; "Search again" also clears the name', async () => {
     const tree = await toConfirm();
-    await press(tree, 'Not my business');
+    await press(tree, 'Not mine');
     expect(allText(tree).join(' ')).not.toContain('Is this you?');
     expect(buttons(tree, 'Find my business')).toHaveLength(1);
+    expect(await store.loadSite()).toBeNull();
+    expect(byLabel(tree, 'Your shop name and city').props.value).toBe('Kings Barber');
+  });
+
+  it('"Search again" is a fresh search: the typed name is gone', async () => {
+    const tree = await toConfirm();
+    await press(tree, 'Search again');
+    expect(allText(tree).join(' ')).not.toContain('Is this you?');
+    expect(byLabel(tree, 'Your shop name and city').props.value).toBe('');
     expect(await store.loadSite()).toBeNull();
   });
 
@@ -165,7 +176,8 @@ describe('the Google path, end to end', () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 300));
     });
-    expect(mockReplace).toHaveBeenCalledWith('/generating');
+    expect(mockReplace).toHaveBeenCalledWith('/import-review');
+    expect(mockReplace).not.toHaveBeenCalledWith('/generating');
     const saved = await store.loadSite();
     expect(saved?.data.services.map((s) => [s.title, s.price])).toEqual([['Haircut', '$25'], ['Line up', '']]);
     expect(saved?.data.reviewsSource).toBe('Google');

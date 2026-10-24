@@ -1,10 +1,11 @@
 import type { ReactNode, RefObject } from 'react';
-import { KeyboardAvoidingView, ScrollView, type NativeScrollEvent, type NativeSyntheticEvent, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Pressable, ScrollView, type NativeScrollEvent, type NativeSyntheticEvent, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
+import { ChevronLeftIcon } from '@/components/Icons';
 import { useSession } from '@/lib/auth';
 
 /**
@@ -13,9 +14,11 @@ import { useSession } from '@/lib/auth';
  * in), centred content, and the hairline footer. `overlay` renders above everything (import progress).
  */
 export function Screen({
-  children, overlay, scrollRef, onScroll,
+  children, overlay, scrollRef, onScroll, onBack,
 }: {
   children: ReactNode;
+  /** The flow screens after Start: a back chevron instead of the brand header, content from the top, no footer. */
+  onBack?(): void;
   overlay?: ReactNode;
   /** For screens that scroll a card into view above the keyboard (see useRevealAboveKeyboard). */
   scrollRef?: RefObject<ScrollView | null>;
@@ -34,6 +37,13 @@ export function Screen({
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={[styles.scroll, { paddingTop: insets.top }]}
         >
+          {onBack ? (
+            <View style={styles.flowHeader}>
+              <Pressable accessibilityRole="button" accessibilityLabel="Back" hitSlop={12} onPress={onBack} style={styles.backBtn}>
+                <ChevronLeftIcon size={22} color={colors.text} />
+              </Pressable>
+            </View>
+          ) : (
           <View style={styles.header}>
             <View style={styles.brand}>
               <View style={styles.mark}>
@@ -49,7 +59,9 @@ export function Screen({
               <Button variant="pill" title="Sign in" onPress={() => router.push('/sign-in')} />
             )}
           </View>
-          <View style={styles.main}>{children}</View>
+          )}
+          <View style={onBack ? styles.flowMain : styles.main}>{children}</View>
+          {onBack ? <View style={{ height: 24 + insets.bottom }} /> : (
           <View style={[styles.footer, { paddingBottom: 20 + insets.bottom }]}>
             <Text style={styles.footerText}>
               Photos, services & reviews imported
@@ -59,6 +71,7 @@ export function Screen({
               Edit anything after
             </Text>
           </View>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
       {overlay}
@@ -105,6 +118,9 @@ const styles = StyleSheet.create({
   brandText: {
     fontFamily: fonts.bodySemi, fontSize: 11, letterSpacing: 2.9, textTransform: 'uppercase', color: colors.text,
   },
+  flowHeader: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 },
+  backBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  flowMain: { flex: 1, alignItems: 'center', paddingHorizontal: 24, paddingTop: 36 },
   main: {
     flex: 1, alignItems: 'center', justifyContent: 'center',
     paddingHorizontal: 24, paddingTop: 40, paddingBottom: 64,

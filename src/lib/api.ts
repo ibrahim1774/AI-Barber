@@ -69,9 +69,9 @@ const SCRAPE_TIMEOUT_MS = 100_000;
 const DEFAULT_TIMEOUT_MS = 30_000;
 
 const SLOW_MESSAGE =
-  'That took too long to answer. Tap Build my website once more — the second try is usually faster.';
+  'That took too long to answer. Tap the button once more — the second try is usually faster.';
 const TIMEOUT_MESSAGE =
-  'This is taking longer than it should. Tap Build my website once more — the second try is usually faster.';
+  'This is taking longer than it should. Tap the button once more — the second try is usually faster.';
 const OFFLINE_MESSAGE = "Couldn't reach Prime Barber — check your connection and try again.";
 
 const GENERIC_MESSAGE = "Couldn't do that right now. Try again in a moment.";

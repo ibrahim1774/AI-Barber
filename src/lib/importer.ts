@@ -25,7 +25,7 @@ export function checkBookingLink(text: string): { ok: true; url: string } | { ok
     return {
       ok: false,
       message:
-        "That link isn't Booksy / theCut / Fresha / Square / Vagaro / StyleSeat. Tap “No booking link?” below and we'll find you on Google instead.",
+        "That link isn't Booksy / theCut / Fresha / Square / Vagaro / StyleSeat. Tap “I don't have a link” below and we'll find you on Google instead.",
     };
   }
   return { ok: true, url: normalized };

@@ -124,6 +124,8 @@ export default function RootLayout() {
       <Reminders />
       <AccountPull />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }}>
+        {/* "Here's what we found": replaced by /generating; no swipe past it into a half-finished import. */}
+        <Stack.Screen name="import-review" options={{ gestureEnabled: false }} />
         <Stack.Screen name="generating" options={{ gestureEnabled: false, animation: 'fade' }} />
         {/* Home once a site exists (Edit, Settings); no swipe back into the importer. */}
         <Stack.Screen name="(tabs)" options={{ gestureEnabled: false, animation: 'fade' }} />

@@ -321,6 +321,8 @@ test('tap routing: the Edit tab with a site, start without, never mid-publish or
   expect(routeForReminderTap(null, '/start', false)).toEqual({ stay: true });
   expect(routeForReminderTap(null, '/booking-link', false)).toEqual({ stay: true });
   expect(routeForReminderTap(null, '/generating', false)).toEqual({ stay: true });
+  // The review after an import: the draft is saved, but a tap must not skip the review.
+  expect(routeForReminderTap(draft, '/import-review', false)).toEqual({ stay: true });
   expect(routeForReminderTap(draft, '/publishing', false)).toEqual({ stay: true });
   expect(routeForReminderTap(draft, '/settings', true)).toEqual({ stay: true });
 });

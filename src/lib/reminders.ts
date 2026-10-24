@@ -287,8 +287,8 @@ export function takeLaunchReminderTap(): ReminderKind | null {
 }
 
 /** Screens where a tap must not move the user: mid-import, generating, publishing. */
-const IMPORT_FLOW = ['/start', '/booking-link', '/find-listing', '/manual', '/generating'];
-const NEVER_LEAVE = ['/generating', '/publishing', '/live'];
+const IMPORT_FLOW = ['/start', '/booking-link', '/find-listing', '/manual', '/import-review', '/generating'];
+const NEVER_LEAVE = ['/import-review', '/generating', '/publishing', '/live'];
 
 export type TapRoute = { go: '/edit' | '/start' } | { wait: true } | { stay: true };
 
