@@ -17,7 +17,7 @@ import {
 import { defaultRatingLine, navLabelKey, plainLabel, PAGE_TITLE_KEY, ratingLineCustom, t, type LabelKey } from './labels';
 import { aboutParagraphs, isExtraKey, ownGallerySlots, pageHref as pageHrefOf, plainText, type PageContext, type PageFile, type PageSet } from './pages';
 import { heroSlot } from './heroes';
-import { composeSections } from './sections';
+import { composeSections, pageSectionsOf, type SectionPage } from './sections';
 import { escapeAttr } from './shell';
 import { safeHref } from './safeHref';
 import { isSiteBookLink } from './subpages';
@@ -112,8 +112,11 @@ export function renderPageBody(ctx: BodyCtx, file: PageFile): PageBody {
     return `<div class="ab-copy ab-prose">${head}${paras}</div>`;
   };
   const blocksHtml = (bs: readonly ResolvedBlock[]): string => bs.map(blockHtml).join('');
-  const firstWords = (bs: readonly ResolvedBlock[]): string => {
-    const first = bs[0]?.items[0];
+  // The meta description comes from the first block the page actually prints: hidden sections never feed it.
+  const firstWords = (bs: readonly ResolvedBlock[], page: SectionPage): string => {
+    const shown = pageSectionsOf(d, page).filter((x) => !x.hidden).map((x) => x.id);
+    const visible = shown.map((id) => bs.find((b) => b.id === id)).filter((b): b is ResolvedBlock => !!b);
+    const first = visible[0]?.items[0];
     return first ? clip(first.map((g) => (g.t === 'text' ? g.s : g.label)).join(''), 155) : '';
   };
   // A service row: its name (linked when it has a page) and its listed price.
@@ -213,7 +216,7 @@ export function renderPageBody(ctx: BodyCtx, file: PageFile): PageBody {
     return {
       heading: plainText(s.title),
       title: place ? clip(`${plainText(s.title)} in ${place} · ${plainText(d.shopName)}`, 120) : undefined,
-      description: clip(s.description || '', 155) || generic,
+      description: (pageSectionsOf(d, 'service').find((x) => x.id === 'description')?.hidden ? '' : clip(s.description || '', 155)) || generic,
       body: `<section class="ab-sec"><div class="ab-wrap"><a class="ab-back" href="/services/">${L('pgBackServices')}</a>${eyebrow}<h1 class="ab-h1">${esc(s.title)}</h1>${price ? `<p class="ab-price">${esc(price)}</p>` : ''}${meta ? `<div class="ab-meta">${esc(meta)}</div>` : ''}${composeSections(d, 'service', parts)}${alsoSee()}</div></section>`,
     };
   }
@@ -372,7 +375,7 @@ export function renderPageBody(ctx: BodyCtx, file: PageFile): PageBody {
     return {
       heading: heading(),
       title: file.key === 'faq' ? clip(`${heading()} · ${shopName}${place ? `, ${place}` : ''}`, 120) : undefined,
-      description: firstWords(blocks) || generic,
+      description: firstWords(blocks, file.key as SectionPage) || generic,
       body: `<section class="ab-sec"><div class="ab-wrap"><h1 class="ab-h1">${title()}</h1>${inner}${alsoSee()}</div></section>`,
     };
   }
