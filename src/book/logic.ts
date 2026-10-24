@@ -266,7 +266,7 @@ export function buildIcs(a: { id: string; start: string; end: string; summary: s
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//AI Barber//Booking//EN',
+    'PRODID:-//Prime Barber//Booking//EN',
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
     'BEGIN:VEVENT',

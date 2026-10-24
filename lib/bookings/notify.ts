@@ -101,7 +101,7 @@ const METHOD_LABEL: Record<ManualMethod, string> = { cashapp: 'Cash App', venmo:
 
 const customerLabel = (a: NotifyAppointment) => a.customer_name?.trim() || 'Walk-in';
 const bookingData = (a: NotifyAppointment) => ({ kind: 'booking', appointmentId: a.id, start: new Date(a.start_at).toISOString() });
-const fromName = (shop: NotifyShop) => `${shop.name} via AI Barber`;
+const fromName = (shop: NotifyShop) => `${shop.name} via Prime Barber`;
 
 function accent(shop: Pick<NotifyShop, 'accent'>): string {
   return shop.accent && /^#[0-9a-fA-F]{6}$/.test(shop.accent) ? shop.accent : '#111111';
@@ -122,7 +122,7 @@ export function emailLayout(shop: Pick<NotifyShop, 'name' | 'accent'>, heading: 
 <h1 style="margin:0 0 16px;font-size:22px;color:#111">${escapeHtml(heading)}</h1>
 ${rows.length ? `<table style="border-collapse:collapse;font-size:15px">${rowHtml}</table>` : ''}
 ${paras}${btn}
-<p style="margin:24px 0 0;color:#999;font-size:12px">Sent by AI Barber for ${escapeHtml(shop.name)}. Reply to this email to reach the shop.</p>
+<p style="margin:24px 0 0;color:#999;font-size:12px">Sent by Prime Barber for ${escapeHtml(shop.name)}. Reply to this email to reach the shop.</p>
 </div></body></html>`;
 }
 

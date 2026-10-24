@@ -45,7 +45,7 @@ describe('ics', () => {
       { name: 'Mike', now: new Date('2026-10-01T00:00:00Z') });
     expect(ics.endsWith('END:VCALENDAR\r\n')).toBe(true);
     expect(ics.split('\r\n').every((l) => !l.includes('\n'))).toBe(true);
-    for (const p of ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//AI Barber//Bookings//EN', 'METHOD:PUBLISH', 'X-WR-CALNAME:Mike',
+    for (const p of ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Prime Barber//Bookings//EN', 'METHOD:PUBLISH', 'X-WR-CALNAME:Mike',
       'BEGIN:VEVENT', 'UID:u1@x', 'DTSTAMP:20261001T000000Z', 'DTSTART:20261024T180000Z', 'DTEND:20261024T183000Z',
       'SUMMARY:Cut\\, shave\\; done', 'STATUS:CONFIRMED', 'END:VEVENT']) {
       expect(ics).toContain(p + '\r\n');

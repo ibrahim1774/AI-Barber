@@ -102,7 +102,7 @@ export function buildCalendar(events: IcsEvent[], opts: IcsCalendarOptions = {})
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//AI Barber//Bookings//EN',
+    'PRODID:-//Prime Barber//Bookings//EN',
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
   ];

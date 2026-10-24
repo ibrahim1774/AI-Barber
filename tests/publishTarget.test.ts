@@ -22,7 +22,7 @@ describe('withUploadedImageUrls', () => {
     expect(JSON.stringify(out)).not.toContain('data:');
   });
   it('the 402 message is the one the brief specifies', () => {
-    expect(SUBSCRIPTION_ENDED_MESSAGE).toBe("This site's subscription has ended. Open the AI Barber app to resubscribe and bring it back.");
+    expect(SUBSCRIPTION_ENDED_MESSAGE).toBe("This site's subscription has ended. Open the Prime Barber app to resubscribe and bring it back.");
   });
 });
 
