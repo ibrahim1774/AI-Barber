@@ -5,7 +5,7 @@ import type { PagesModel, PageKey } from '@/web/lib/render/pages';
 import { colors, fonts } from '@/constants/theme';
 import { Sheet, SheetAction } from '@/components/EditSheet';
 import {
-  MULTI_PAGE_NOTE, moveRow, needsMultiPageConfirm, pageRows, pagesFromRows, setRowOn, type PageRow,
+  MULTI_PAGE_NOTE, moveRow, needsMultiPageConfirm, pageRows, pagesFromRows, servicesOverCapNote, servicesOverCapOf, setRowOn, type PageRow,
 } from '@/lib/sitePages';
 
 export const ROW_H = 64;
@@ -35,6 +35,7 @@ export function PagesSheet({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
+  const overCapNote = useMemo(() => servicesOverCapNote(servicesOverCapOf(data)), [data]);
   const dirty = useMemo(() => JSON.stringify(pagesFromRows(rows)) !== JSON.stringify(pagesFromRows(pageRows(data))), [rows, data]);
 
   const save = (show?: PageKey) => {
@@ -61,6 +62,7 @@ export function PagesSheet({
       <Text style={styles.lead}>
         Each page is made only from what you have added. Turn a page off to hide it from your menu, and drag the handle to change the order.
       </Text>
+      {overCapNote ? <Text style={styles.lead}>{overCapNote}</Text> : null}
       <ScrollView style={styles.list} scrollEnabled={!drag} keyboardShouldPersistTaps="handled">
         {rows.map((r, i) => (
           <Row
@@ -198,6 +200,9 @@ function Thumb({ kind, off }: { kind: PageKey; off: boolean }) {
       break;
     case 'reviews':
       inner = (<><View style={[styles.stars, { backgroundColor: a }]} />{line(22)}{line(18)}</>);
+      break;
+    case 'location':
+      inner = (<><View style={{ height: 8, width: 8, borderRadius: 4, backgroundColor: a, alignSelf: 'center' }} />{line(22)}{line(14)}</>);
       break;
     case 'book':
     case 'shop':

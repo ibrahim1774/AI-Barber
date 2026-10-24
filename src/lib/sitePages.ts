@@ -1,6 +1,6 @@
 import type { WebsiteData } from '@/web/types';
 import {
-  buildPageSet, isMultiPage, memberHasOwnContent, pageList, servicePageEligible, type ChildPage, type PageKey, type PagesModel,
+  buildPageSet, isMultiPage, memberHasOwnContent, pageList, SERVICE_PAGE_CAP, type ChildPage, type PageKey, type PagesModel,
 } from '@/web/lib/render/pages';
 import { imageUrlMap } from '@/lib/render';
 import type { PreviewPage } from '@/lib/editable';
@@ -14,7 +14,7 @@ import type { PreviewPage } from '@/lib/editable';
 
 export const PAGE_TITLES: Record<PageKey, string> = {
   home: 'Home', about: 'About', services: 'Services', team: 'Team', gallery: 'Gallery', reviews: 'Reviews',
-  hours: 'Hours & location', contact: 'Contact', book: 'Book', shop: 'Shop',
+  hours: 'Hours', location: 'Location', contact: 'Contact', book: 'Book', shop: 'Shop',
 };
 
 /** Every eligible page on, default order: what a newly generated site starts with. */
@@ -87,14 +87,13 @@ export function resolvePage(d: WebsiteData, want: PreviewPage | null | undefined
   return kids.some((c) => c.index === want.index) ? { key: want.key, index: want.index } : { key: want.key };
 }
 
-/** Inline hints (never generated text): a titled service or a named barber that has nothing to build a page from. */
-export const SERVICE_PAGE_HINT = 'Add a description to get a page for this service';
+/** Inline hints (never generated text). */
 export const BARBER_PAGE_HINT = 'Add a description to get a page for this barber';
 export const MULTI_PAGE_NOTE = 'Your site will become a multi-page site';
 
-export function serviceNeedsDescription(s: { title?: string; description?: string; price?: string; duration?: string } | null | undefined): boolean {
-  return !!s && typeof s.title === 'string' && s.title.trim() !== '' && !servicePageEligible(s);
-}
+/** Titled services past the cap: listed on the Services page but without a page of their own. */
+export const servicesOverCapOf = (d: WebsiteData): number => buildPageSet(d, ctxOf(d)).servicesOverCap;
+export const servicesOverCapNote = (n: number): string | null => (n > 0 ? `Only the first ${SERVICE_PAGE_CAP} services get their own page.` : null);
 
 export function barberNeedsDescription(d: WebsiteData, i: number): boolean {
   const m = d.staff?.[i];

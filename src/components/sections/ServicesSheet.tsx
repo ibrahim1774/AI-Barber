@@ -12,7 +12,6 @@ import { cleanText } from '@/lib/sections/text';
 import { Button } from '@/components/Button';
 import { useKeyboardHeight, sheetBodyMaxHeight } from '@/lib/keyboard';
 import { Sheet, SheetAction } from '@/components/EditSheet';
-import { SERVICE_PAGE_HINT, serviceNeedsDescription } from '@/lib/sitePages';
 
 type Props = {
   visible: boolean;
@@ -154,7 +153,6 @@ export function ServicesSheet({ visible, data, onChange, onClose, onDismiss, upl
                 <Text style={styles.rowMeta} numberOfLines={1}>
                   {serviceRowMeta(s) || 'Tap to add a price'}
                 </Text>
-                {serviceNeedsDescription(s) && <Text style={styles.rowHint}>{SERVICE_PAGE_HINT}</Text>}
               </Pressable>
               <Move label={`Move ${s.title} up`} glyph="↑" disabled={i === 0} onPress={() => onChange((d) => moveService(d, i, -1))} />
               <Move label={`Move ${s.title} down`} glyph="↓" disabled={i === services.length - 1} onPress={() => onChange((d) => moveService(d, i, 1))} />
@@ -303,7 +301,6 @@ const styles = StyleSheet.create({
   rowMain: { flex: 1, paddingHorizontal: 14, paddingVertical: 12 },
   rowTitle: { fontFamily: fonts.bodyBold, fontSize: 15, color: '#fff' },
   rowMeta: { fontFamily: fonts.body, fontSize: 12, color: 'rgba(255,255,255,0.55)', marginTop: 2 },
-  rowHint: { fontFamily: fonts.bodySemi, fontSize: 12, color: colors.accent, marginTop: 4 },
   move: { width: 36, height: 44, alignItems: 'center', justifyContent: 'center' },
   moveText: { fontFamily: fonts.bodyBold, fontSize: 18, color: colors.accent },
   addBtn: { marginTop: 8, marginBottom: 4 },

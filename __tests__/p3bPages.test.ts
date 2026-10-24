@@ -8,7 +8,7 @@ import { parsePreviewMessage } from '@/lib/previewBridge';
 import { savePathValue, applyHomePrompts } from '@/lib/editor';
 import {
   barberNeedsDescription, defaultPages, moveRow, needsMultiPageConfirm, pageChips, pageRows, pagesFromRows, resolvePage,
-  serviceNeedsDescription, setRowOn, withPages, withPagesByDefault,
+  pageRows as rowsOf, servicesOverCapNote, servicesOverCapOf, setRowOn, withPages, withPagesByDefault,
 } from '@/lib/sitePages';
 
 const inputs = {
@@ -84,12 +84,28 @@ describe('Pages model', () => {
 });
 
 describe('hints', () => {
-  test('a titled service with nothing to build a page from; never for one with a description, price or length', () => {
-    expect(serviceNeedsDescription({ title: 'Fade' })).toBe(true);
-    expect(serviceNeedsDescription({ title: 'Fade', description: 'x' })).toBe(false);
-    expect(serviceNeedsDescription({ title: 'Fade', price: '$20' })).toBe(false);
-    expect(serviceNeedsDescription({ title: 'Fade', duration: '30 min' })).toBe(false);
-    expect(serviceNeedsDescription({ title: '' })).toBe(false);
+  test('every titled service gets a page; none is over the cap', () => {
+    const d = multi(sites.luxe);
+    expect(pageChips(d).children.services?.map((x) => x.title)).toEqual(['Haircut', 'Skin fade', 'Beard trim']);
+    expect(servicesOverCapOf(d)).toBe(0);
+    expect(servicesOverCapNote(0)).toBeNull();
+  });
+  test('services past the cap: one Services tab, 12 child chips, and a note', () => {
+    const many = { ...multi(sites.luxe), services: Array.from({ length: 15 }, (_, i) => ({ title: `Cut ${i + 1}` })) as WebsiteData['services'] };
+    const c = pageChips(many);
+    expect(c.top.filter((t) => t.key === 'services')).toHaveLength(1);
+    expect(c.children.services).toHaveLength(12);
+    expect(servicesOverCapOf(many)).toBe(3);
+    expect(servicesOverCapNote(3)).toBe('Only the first 12 services get their own page.');
+  });
+  test('Location is a normal page with its own title; Hours is titled Hours', () => {
+    const d = multi(sites.luxe);
+    const rows = rowsOf(d);
+    expect(rows.find((r) => r.key === 'location')?.title).toBe('Location');
+    expect(rows.find((r) => r.key === 'hours')?.title).toBe('Hours');
+    expect(pageChips(d).top.map((t) => t.key)).toContain('location');
+    expect(resolvePage(d, { key: 'location' })).toEqual({ key: 'location' });
+    expect(resolvePage(d, { key: 'services', index: 2 })).toEqual({ key: 'services', index: 2 });
   });
   test('a barber with only a name and role', () => {
     const d = sites.luxe;
@@ -107,7 +123,7 @@ describe('page chips and resolving', () => {
     const c = pageChips(multi(sites.luxe));
     expect(c.top[0].key).toBe('home');
     expect(c.top.map((t) => t.key)).toContain('services');
-    expect(c.children.services?.map((s) => s.title)).toEqual(['Haircut', 'Skin fade']); // Beard trim has nothing to build a page from
+    expect(c.children.services?.map((s) => s.title)).toEqual(['Haircut', 'Skin fade', 'Beard trim']);
     expect(c.children.team?.map((s) => s.title)).toEqual(['Sam']);
   });
   test('a page that is off or an item that is gone falls back', () => {
