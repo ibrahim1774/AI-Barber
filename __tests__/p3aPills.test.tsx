@@ -52,7 +52,7 @@ describe('Change image pills', () => {
     expect(StyleSheet.flatten(texts[0].props.style).fontSize).toBe(11);
     expect(pill.findAll((n: any) => n.props?.viewBox === '0 0 24 24')).toHaveLength(0);
     const h = pill.props.hitSlop;
-    expect(h.top + h.bottom + 11 + 4).toBeGreaterThanOrEqual(44);
+    expect(h.top + h.bottom + 15 + 4).toBeGreaterThanOrEqual(44);
   });
 
   test('stable: re-measures with the same or moved rects keep the same pills mounted', () => {

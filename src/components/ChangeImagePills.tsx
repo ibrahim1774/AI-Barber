@@ -39,7 +39,7 @@ export function ChangeImagePills({
             collapsable={false}
             accessibilityRole="button"
             accessibilityLabel="Change image"
-            hitSlop={{ top: 14, bottom: 14, left: 14, right: 20 }}
+            hitSlop={{ top: 16, bottom: 16, left: 14, right: 20 }}
             onPress={() => onPress(r.path)}
             style={({ pressed }) => [styles.pill, pressed && { opacity: 0.7 }]}
           >
