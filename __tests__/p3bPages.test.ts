@@ -56,8 +56,8 @@ describe('Pages model', () => {
     const rows = pageRows(sites.luxe);
     expect(rows[0]).toMatchObject({ key: 'home', locked: true, on: true });
     const keys = rows.map((r) => r.key);
-    expect(keys).toEqual(expect.arrayContaining(['about', 'services', 'team', 'gallery', 'reviews', 'hours', 'contact']));
-    expect(rows.find((r) => r.key === 'services')?.children).toBe(2);
+    expect(keys).toEqual(expect.arrayContaining(['about', 'services', 'team', 'gallery', 'reviews', 'hours', 'location', 'contact']));
+    expect(rows.find((r) => r.key === 'services')?.children).toBe(3);
     expect(rows.find((r) => r.key === 'team')?.children).toBe(1); // Kit has a role only: no page
   });
 
