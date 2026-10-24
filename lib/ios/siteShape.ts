@@ -35,6 +35,22 @@ export function jsonBytes(v: unknown): number {
   }
 }
 
+const HERO_PAGES = ['first-visit', 'hair-care', 'beard-care'] as const;
+const hasPageHeroes = (sd: WebsiteData): boolean => !!sd.extraPages && typeof sd.extraPages === 'object' && !Array.isArray(sd.extraPages);
+/** Page hero photos (pages v2): services[i].imageUrl and extraPages.images, back from 'uploaded' to the URL in the map. */
+function pageHeroesBack(sd: WebsiteData, back: (v: string | undefined, key: string) => string | undefined): Partial<WebsiteData> {
+  const out: Partial<WebsiteData> = {
+    services: (sd.services || []).map((s, i) => ({ ...s, imageUrl: back(s?.imageUrl, `service${i}`) as string })),
+  };
+  const ep = sd.extraPages as unknown as Record<string, unknown>;
+  if (ep.images && typeof ep.images === 'object') {
+    const images: Record<string, string | undefined> = { ...(ep.images as Record<string, string>) };
+    for (const k of HERO_PAGES) if (Object.prototype.hasOwnProperty.call(images, k)) images[k] = back(images[k], `page-${k}`);
+    out.extraPages = { ...ep, images } as unknown as WebsiteData['extraPages'];
+  }
+  return out;
+}
+
 /** Inverse of toPendingSiteData for the image slots: 'uploaded' markers back to real URLs. */
 export function restoreImageUrls(sd: WebsiteData, map: Record<string, string>): WebsiteData {
   const back = (v: string | undefined, key: string) => (v === 'uploaded' ? map[key] || '' : v);
@@ -45,6 +61,7 @@ export function restoreImageUrls(sd: WebsiteData, map: Record<string, string>): 
     gallery: (sd.gallery || []).map((v, i) => back(v, `gallery${i}`)),
     craftImages: sd.craftImages ? sd.craftImages.map((v, i) => back(v, `craft${i}`)) : sd.craftImages,
     staff: sd.staff ? sd.staff.map((s, i) => ({ ...s, photo: back(s.photo, `staff${i}`) })) : sd.staff,
+    ...(hasPageHeroes(sd) ? pageHeroesBack(sd, back) : {}),
   };
 }
 

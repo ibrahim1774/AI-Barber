@@ -271,6 +271,22 @@ describe('multi-page is opt-in (P3b review B1)', () => {
     expect(r.pages[0].html).toBe(golden[template]);
     expect(r.sitemap).toBeNull();
   });
+  it.each(TEMPLATES)('%s: page hero photos (service imageUrl, extraPages.images, their map keys, sections) do not move one byte of a single page (Phase C)', (template) => {
+    const base = pending(template);
+    const data: WebsiteData = {
+      ...base,
+      services: base.services.map((s) => ({ ...s, imageUrl: 'https://i.example.com/svc.jpg' })),
+      extraPages: { on: ['first-visit', 'hair-care'], serviceGuides: true, seed: 5, images: { 'first-visit': 'https://i.example.com/p.jpg', 'hair-care': 'uploaded' } },
+      pageSections: { 'first-visit': { hidden: ['hero'], order: ['cta'] }, service: { hidden: ['guide'] } },
+    };
+    const urls = { ...imageUrls, service0: 'https://i.example.com/svc.jpg', 'page-first-visit': 'https://i.example.com/p.jpg' };
+    const r = renderSiteBundle(data, { imageUrls: urls });
+    expect(r.pages.map((f) => f.path)).toEqual(['index.html']);
+    expect(r.pages[0].html).toBe(golden[template]);
+    const r2 = renderSiteBundle(data);
+    expect(r2.pages.map((f) => f.path)).toEqual(['index.html']);
+    expect(r2.pages[0].html.replace(/published-at" content="\d+"/, '')).toBe(golden[template].replace(/published-at" content="\d+"/, ''));
+  });
   it.each(TEMPLATES)('%s: with pages present the page set is built', (template) => {
     const r = renderSiteBundle({ ...pending(template), pages: { order: [], hidden: [] } }, { imageUrls });
     expect(r.pages.length).toBeGreaterThan(1);
