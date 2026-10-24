@@ -155,7 +155,7 @@ describe('onboard / status', () => {
     const acct = calls[0];
     expect(acct.url).toBe('https://api.stripe.com/v1/accounts');
     expect(acct.init.headers['Stripe-Account']).toBeUndefined();
-    expect(acct.init.headers['Idempotency-Key']).toMatch(/^ab-account-shop-1-[0-9a-f]{16}$/);
+    expect(acct.init.headers['Idempotency-Key']).toMatch(/^ab-account-shop-1-\d+-[0-9a-f]{16}$/);
     expect(acct.params.get('type')).toBe('standard');
     expect(acct.params.get('email')).toBe('owner@example.com');
     expect(acct.params.get('business_profile[name]')).toBe('Fade Factory');
@@ -188,9 +188,52 @@ describe('onboard / status', () => {
     expect(await stripeOnboard('Bearer good', mkDeps({}, f))).toEqual({ status: 200, body: { url: 'L' } });
     expect(calls[0].params.get('business_profile[support_phone]')).toBe('+15551234567');
     expect(calls[1].params.has('business_profile[support_phone]')).toBe(false);
-    expect(calls[1].init.headers['Idempotency-Key']).toMatch(/^ab-account-shop-1-[0-9a-f]{16}$/);
+    expect(calls[1].init.headers['Idempotency-Key']).toMatch(/^ab-account-shop-1-\d+-[0-9a-f]{16}$/);
     expect(calls[1].init.headers['Idempotency-Key']).not.toBe(calls[0].init.headers['Idempotency-Key']);
     expect(calls[2].params.get('account')).toBe('acct_np');
+  });
+
+  describe('account idempotency key time bucket', () => {
+    const T0 = Date.UTC(2026, 9, 23, 12, 0, 0);
+    const BUCKET = 10 * 60 * 1000;
+    const keyOf = (c: Call) => c.init.headers['Idempotency-Key'] as string;
+
+    it('same bucket -> same key (double-tap collapses)', async () => {
+      const a = fakeFetch({ body: { id: 'acct_1' } }, { body: { url: 'L' } });
+      const b = fakeFetch({ body: { id: 'acct_1' } }, { body: { url: 'L' } });
+      await stripeOnboard('Bearer good', mkDeps({ stripe: { fetch: a.f, now: () => T0 } }));
+      await stripeOnboard('Bearer good', mkDeps({ stripe: { fetch: b.f, now: () => T0 + BUCKET - 1 } }));
+      expect(keyOf(a.calls[0])).toBe(keyOf(b.calls[0]));
+    });
+
+    it('next bucket -> new key', async () => {
+      const a = fakeFetch({ body: { id: 'acct_1' } }, { body: { url: 'L' } });
+      const b = fakeFetch({ body: { id: 'acct_1' } }, { body: { url: 'L' } });
+      await stripeOnboard('Bearer good', mkDeps({ stripe: { fetch: a.f, now: () => T0 } }));
+      await stripeOnboard('Bearer good', mkDeps({ stripe: { fetch: b.f, now: () => T0 + BUCKET } }));
+      expect(keyOf(a.calls[0])).not.toBe(keyOf(b.calls[0]));
+      expect(keyOf(a.calls[0])).toMatch(/^ab-account-shop-1-\d+-[0-9a-f]{16}$/);
+    });
+
+    it('stored account id short-circuits creation (no POST /accounts)', async () => {
+      const { f, calls } = fakeFetch({ body: { url: 'L2' } });
+      const deps = mkDeps({ shopForOwner: vi.fn(async () => ({ ...ownerShop, stripe_account_id: 'acct_old' })), stripe: { fetch: f, now: () => T0 } });
+      await stripeOnboard('Bearer good', deps);
+      expect(calls.every((c) => !c.url.endsWith('/v1/accounts'))).toBe(true);
+      expect(deps.saveAccountId).not.toHaveBeenCalled();
+    });
+
+    it('a first-call 400 (no phone retry possible) then a later-bucket retry creates the account', async () => {
+      const noPhone = { ...ownerShop, phone: null };
+      const first = fakeFetch({ status: 400, body: { error: { message: 'This is a replay of a previous request', type: 'invalid_request_error' } } });
+      const r1 = await stripeOnboard('Bearer good', mkDeps({ shopForOwner: vi.fn(async () => ({ ...noPhone })), stripe: { fetch: first.f, now: () => T0 } }));
+      expect(r1.status).toBe(502);
+      const second = fakeFetch({ body: { id: 'acct_ok' } }, { body: { url: 'L' } });
+      const deps = mkDeps({ shopForOwner: vi.fn(async () => ({ ...noPhone })), stripe: { fetch: second.f, now: () => T0 + BUCKET } });
+      expect(await stripeOnboard('Bearer good', deps)).toEqual({ status: 200, body: { url: 'L' } });
+      expect(keyOf(second.calls[0])).not.toBe(keyOf(first.calls[0]));
+      expect(deps.saveAccountId).toHaveBeenCalledWith('shop-1', 'acct_ok');
+    });
   });
 
   it('onboard: a 403/404 on the stored account → 409, logged + audited, nothing cleared or created', async () => {

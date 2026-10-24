@@ -357,6 +357,11 @@ export interface OnboardShop extends PayShop {
   phone?: string | null;
 }
 
+/** Account-create idempotency window. Stripe pins the stored response (4xx included) to a key for
+ *  24 h, so the key carries a short bucket: taps inside it collapse to one account, while a retry
+ *  after a failure gets a fresh key. */
+export const ACCOUNT_KEY_BUCKET_MS = 10 * 60 * 1000;
+
 export async function createStandardAccount(
   shop: OnboardShop,
   ownerEmail: string | null,
@@ -364,6 +369,7 @@ export async function createStandardAccount(
 ): Promise<string> {
   // The key covers the prefilled values, so editing the shop's name/phone between taps never hits
   // Stripe's "same key, different parameters" error.
+  const bucket = Math.floor((opts.now ?? Date.now)() / ACCOUNT_KEY_BUCKET_MS);
   const paramsHash = (withPhone: boolean) => crypto.createHash('sha256')
     .update(JSON.stringify([ownerEmail, shop.name, shop.slug, withPhone ? shop.phone : null])).digest('hex').slice(0, 16);
   const create = (withPhone: boolean) => stripeRequest('POST', '/accounts', {
@@ -375,7 +381,7 @@ export async function createStandardAccount(
     'business_profile[support_phone]': withPhone ? shop.phone || undefined : undefined,
     'metadata[shop_id]': shop.id,
     'metadata[app]': 'aibarber-bookings',
-  }, { idempotencyKey: `ab-account-${shop.id}-${paramsHash(withPhone)}`, fetch: opts.fetch });
+  }, { idempotencyKey: `ab-account-${shop.id}-${bucket}-${paramsHash(withPhone)}`, fetch: opts.fetch });
   let acct: any;
   try {
     acct = await create(Boolean(shop.phone));
