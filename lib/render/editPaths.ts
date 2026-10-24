@@ -23,6 +23,7 @@ const TABLE: readonly (readonly [string, number | null])[] = [
   ['services.{i}.title', null],
   ['services.{i}.subtitle', null],
   ['services.{i}.description', null],
+  ['services.{i}.category', 40],
   ['services.{i}.price', 24],
   ['services.{i}.duration', 24],
   ['phone', null],
@@ -41,10 +42,13 @@ const TABLE: readonly (readonly [string, number | null])[] = [
   ['policy.title', null],
   ['policy.body', null],
   ['pullQuote.text', null],
+  ['pullQuote.accent', null],
 ];
 
 /** Patterns only the Prime design prints. */
-const PRIME_ONLY = new Set(['policy.title', 'policy.body', 'pullQuote.text']);
+const PRIME_ONLY = new Set(['policy.title', 'policy.body', 'pullQuote.text', 'pullQuote.accent']);
+/** Patterns only the Prime design prints a service category for. */
+const PRIME_CATEGORY = 'services.{i}.category';
 
 /** Every data pattern, `{i}` / `{j}` unexpanded. */
 export const EDITABLE_DATA_PATTERNS: readonly string[] = TABLE.map(([p]) => p);
@@ -77,7 +81,7 @@ export function editableDataPaths(d: WebsiteData, _page?: { key: string; index?:
     walk((node as Record<string, unknown>)[part], parts, at + 1, [...trail, part], leaf);
   };
   for (const [pattern] of TABLE) {
-    if (PRIME_ONLY.has(pattern) && d.template !== 'prime') continue;
+    if ((PRIME_ONLY.has(pattern) || pattern === PRIME_CATEGORY) && d.template !== 'prime') continue;
     walk(d, pattern.split('.'), 0, [], pattern);
   }
   return out;

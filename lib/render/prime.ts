@@ -378,12 +378,13 @@ export function generatePrimeHTMLWithPlaceholders(input: WebsiteData, ctx?: Rend
 
   // Pull quote.
   // The barber's own pull quote, else a generic line for their niche.
-  const pullQuote = siteData.pullQuote && (siteData.pullQuote.text || '').trim()
-    ? siteData.pullQuote
-    : { text: copy.pullQuote };
+  const ownQuote = siteData.pullQuote && (siteData.pullQuote.text || '').trim() ? siteData.pullQuote : null;
+  const pullQuote: { text: string; accent?: string } = ownQuote ?? { text: '' };
+  // Without a quote of their own the line is a label (primePullQuote), so it can be reworded from the page too.
+  const pullQuoteText = ownQuote ? escapeHtml(ownQuote.text) : L('primePullQuote');
   const pullQuoteSection = `<section class="p-section" style="background:radial-gradient(ellipse at center, rgba(212,166,74,0.07) 0%, transparent 60%), var(--p-bg);text-align:center;">
   <div style="max-width:1000px;margin:0 auto;">
-    <p class="p-serif p-italic" style="font-size:clamp(1.5rem,3.6vw,2.7rem);line-height:1.3;color:var(--p-ink);margin:0;">${escapeHtml(pullQuote.text)}${pullQuote.accent ? ` <span style="color:var(--p-brand);font-weight:600;">${escapeHtml(pullQuote.accent)}</span>` : ''}</p>
+    <p class="p-serif p-italic" style="font-size:clamp(1.5rem,3.6vw,2.7rem);line-height:1.3;color:var(--p-ink);margin:0;">${pullQuoteText}${pullQuote.accent ? ` <span style="color:var(--p-brand);font-weight:600;">${escapeHtml(pullQuote.accent)}</span>` : ''}</p>
   </div>
 </section>`;
 

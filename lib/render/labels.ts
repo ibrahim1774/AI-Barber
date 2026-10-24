@@ -143,6 +143,7 @@ export const LABELS = {
   primeGalleryEyebrow: { title: 'Gallery eyebrow', default: 'Gallery', template: 'prime', max: 40, shows: primeGallery },
   primeGalleryHeading: { title: 'Gallery heading', default: 'The look.', template: 'prime', max: 60, shows: primeGallery },
   primeGalleryNote: { title: 'Gallery note', default: 'Real cuts from inside the shop — no stock photos.', template: 'prime', max: 80, shows: (s) => primeGallery(s) && photosAreFromBookingPage(s) },
+  primePullQuote: { title: 'Quote line (when you wrote none)', default: (n) => copy(n).pullQuote, template: 'prime', max: 140, shows: (s) => !has((s as { pullQuote?: { text?: string } }).pullQuote?.text) },
   primeReviewsEyebrow: { title: 'Reviews eyebrow', default: 'Client Reviews', template: 'prime', max: 40, shows: hasReviews },
   primeReviewsLead: { title: 'Reviews heading, first part', default: 'What clients', template: 'prime', max: 40, shows: hasReviews },
   primeReviewsAccent: { title: 'Reviews heading, accent part', default: 'are saying.', template: 'prime', max: 40, shows: hasReviews },
@@ -408,7 +409,9 @@ export function visiblePageLabelKeys(site: WebsiteData, page: PageKey, ctx?: Pag
   // The header button of Prime and Euphoria sits on every page.
   if (template === 'prime' && primeBook(site)) add('primeNavBook');
   if (template === 'euphoria' && euNavBook(site)) add('euNavBook');
-  if (page === 'home') for (const k of visibleLabelKeys(site)) add(k);
+  // A site with other pages has the page menu instead of the single page's anchors: its entries are those of set.nav above.
+  const SINGLE_PAGE_MENU: LabelKey[] = ['navHome', 'navServices', 'navContact', 'navShop', 'primeNavShop', 'euNavShop'];
+  if (page === 'home') for (const k of visibleLabelKeys(site)) if (!(hasFilePages(set) && SINGLE_PAGE_MENU.includes(k))) add(k);
   for (const k of LABEL_KEYS) {
     const d = DEFS[k];
     if (d.alsoOn && d.alsoOn.includes(page) && d.tap !== false && !d.multi && (!d.template || d.template === template) && (d.shows ? d.shows(site) : true)) add(k);

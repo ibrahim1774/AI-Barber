@@ -10,13 +10,13 @@ import { defaultLabel, visiblePageLabelKeys, visibleLabelKeys, type LabelKey } f
 import { buildPageSet } from '../../lib/render/pages';
 import { visibleCopyKeys } from '../../lib/render/guides';
 import { auditSite, type PageAudit } from './helpers/editAudit';
-import { EXTERNAL_SITE, RICH_SITE, SHORT_SITE } from './helpers/richSite';
+import { EXTERNAL_SITE, NAILS_SITE, RICH_SITE, SHORT_SITE, SPARSE_SITE } from './helpers/richSite';
 
 beforeAll(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2031-06-01T12:00:00Z')); });
 afterAll(() => { vi.useRealTimers(); });
 
 const TEMPLATES: TemplateId[] = ['luxe', 'prime', 'euphoria'];
-const SITES: [string, WebsiteData][] = [['rich', RICH_SITE], ['short', SHORT_SITE], ['external links', EXTERNAL_SITE]];
+const SITES: [string, WebsiteData, number][] = [['rich', RICH_SITE, 15], ['short', SHORT_SITE, 15], ['external links', EXTERNAL_SITE, 15], ['nails', NAILS_SITE, 15], ['sparse (every fallback wording)', SPARSE_SITE, 2]];
 
 /** Words that are intentionally NOT editable in the preview, and why. Each entry must match something in the run (no dead entries). */
 interface Allowed { name: string; why: string; test: (text: string, d: WebsiteData) => boolean }
@@ -56,13 +56,13 @@ const auditOf = (name: string, d: WebsiteData, t: TemplateId): PageAudit[] => {
 
 const noAnchors = (h: string): string => h.replace(/<a\b[^>]*>/g, '').replace(/<\/a>/g, '').toLowerCase();
 
-describe.each(SITES)('%s site', (name, site) => {
+describe.each(SITES)('%s site', (name, site, minPages) => {
   describe.each(TEMPLATES)('%s', (t) => {
     const d = { ...site, template: t } as WebsiteData;
 
     it('every visible text on every page is editable or on the allow-list', () => {
       const a = auditOf(name, d, t);
-      expect(a.length).toBeGreaterThanOrEqual(15);
+      expect(a.length).toBeGreaterThanOrEqual(minPages);
       expect(uncovered(a, d)).toEqual([]);
     });
 
