@@ -23,7 +23,7 @@ const family = {
 } as const;
 
 export const fonts = {
-  // Premium, light feel (Ibrahim picked 'A': Medium 500 for headlines and buttons, Regular 400
+  // Refined, light feel (Ibrahim picked 'A': Medium 500 for headlines and buttons, Regular 400
   // for body text). Names are kept so nothing else in the app changes; the hierarchy now comes
   // from size, spacing and colour rather than weight. To get heavier again, change these lines only.
   heading: family.medium,
