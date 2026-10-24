@@ -2,7 +2,7 @@ appId: com.ibrahim1774.aibarber
 ---
 # (c) Booking-link path: validation error for a bad link, then a real Booksy-shaped link.
 - runFlow: _launch.yaml
-- tapOn: "YES, I HAVE A BOOKING LINK.*"
+- tapOn: "USE MY BOOKING LINK"
 - takeScreenshot: 01_booking_link_screen
 - tapOn:
     point: "50%,54%"   # the field (tapping the label does not focus it)

@@ -1,0 +1,59 @@
+appId: com.ibrahim1774.aibarber
+---
+# (v) Imported site (3 services, 2 team members): Pages sheet, switch the preview to a service page, edit text on it.
+# Taps avoid the floating dev Tools gear (top right) by using chips/points left of it.
+- runFlow: _launch.yaml
+- tapOn: "USE MY BOOKING LINK"
+- tapOn:
+    point: "50%,54%"
+- inputText: "booksy.com/en-us/12345_jacks-barbershop_barber-shop_austin"
+- pressKey: Enter
+- extendedWaitUntil:
+    visible: "PUBLISH"
+    timeout: 60000
+- tapOn:
+    text: "Skip tour"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: 01_editor
+- tapOn: "Pages"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: 02_sheet
+- tapOn:
+    point: "86%,31%"   # Done
+- waitForAnimationToEnd:
+    timeout: 2000
+- tapOn: "Show Services"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: 03_services_page
+- tapOn: "Show Beard Trim"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: 04_service_item_page
+- tapOn:
+    point: "25%,37%"
+- waitForAnimationToEnd:
+    timeout: 2500
+- takeScreenshot: 05_tap_text
+- tapOn:
+    point: "25%,37%"
+- waitForAnimationToEnd:
+    timeout: 2500
+- takeScreenshot: 05b_second_tap
+- extendedWaitUntil:
+    visible: "SAVE"
+    timeout: 8000
+- eraseText: 30
+- inputText: "Beard Sculpt"
+- takeScreenshot: 06_typed
+- tapOn: "SAVE"
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: 07_after_save
+- tapOn: "Show Services"
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: 08_services_after

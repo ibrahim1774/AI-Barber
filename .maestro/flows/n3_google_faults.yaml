@@ -1,7 +1,7 @@
 appId: com.ibrahim1774.aibarber
 ---
 - runFlow: _launch.yaml
-- tapOn: "NO, I DON.T HAVE ONE"
+- tapOn: "FIND ME ON GOOGLE"
 - runFlow: { file: _fault.yaml, env: { FPATH: "/api/find-business", FMODE: "500", FTIMES: "1", FCLEAR: "" } }
 - tapOn: "Your shop name and city"
 - eraseText: 60

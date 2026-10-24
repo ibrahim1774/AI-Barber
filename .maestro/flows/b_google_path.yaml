@@ -2,7 +2,7 @@ appId: com.ibrahim1774.aibarber
 ---
 # (b) No booking link: find the business on Google, "Is this you?" card, "Not my business", then confirm and build.
 - runFlow: _launch.yaml
-- tapOn: "NO, I DON.T HAVE ONE"
+- tapOn: "FIND ME ON GOOGLE"
 - takeScreenshot: 01_find_listing
 - tapOn: "Your shop name and city"
 - inputText: "Jack's Barbershop Austin"

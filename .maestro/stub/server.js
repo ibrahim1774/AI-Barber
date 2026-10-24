@@ -42,7 +42,7 @@ const BUSINESS = {
   ],
   reviews: [{ author: 'Marcus T.', rating: 5, text: 'Best fade in Austin. Jack is a pro.', date: '2026-08-01' }, { author: 'Dee R.', rating: 5, text: 'Clean shop, great vibe.', date: '2026-07-12' }],
   hours: [{ day: 'Monday', open: '9:00 AM', close: '6:00 PM' }, { day: 'Tuesday', open: '9:00 AM', close: '6:00 PM' }, { day: 'Sunday', open: '', close: '', closed: true }],
-  staff: [], aggregateRating: { ratingValue: 4.9, reviewCount: 212 },
+  staff: [{ name: 'Jack Miller', role: 'Master barber', bio: 'Twenty years behind the chair.', photo: photo(1) }, { name: 'Sam Ortiz', role: 'Barber', bio: 'Fades and beard work.', photo: photo(2) }], aggregateRating: { ratingValue: 4.9, reviewCount: 212 },
 };
 const MATCH = { name: "Jack's Barbershop", address: '123 Main St, Austin, TX', photoUrl: photo(0), rating: 4.9, ratingCount: 212, category: 'Barber shop' };
 

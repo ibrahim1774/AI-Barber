@@ -1,7 +1,7 @@
 appId: com.ibrahim1774.aibarber
 ---
 - runFlow: _launch.yaml
-- tapOn: "YES, I HAVE A BOOKING LINK.*"
+- tapOn: "USE MY BOOKING LINK"
 - runFlow: { file: _fault.yaml, env: { FPATH: "/api/import-scrape", FMODE: "offline", FTIMES: "1", FCLEAR: "" } }
 - tapOn:
     point: "50%,54%"
