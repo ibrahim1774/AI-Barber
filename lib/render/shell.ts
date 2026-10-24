@@ -17,6 +17,7 @@
 // Pure, no DOM. Imports only other vendored modules.
 import type { TemplateId, WebsiteData } from '../../types';
 import { nicheOf } from './honest.js';
+import { unwrapMarked } from './markers.js';
 import { navLabelKey, t } from './labels.js';
 import { pageHref, plainText, type PageKey, type PageSet } from './pages.js';
 import { safeHref } from './safeHref.js';
@@ -101,9 +102,12 @@ const PHONE_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" 
 /** The header (brand, call link or button, menu) in a design's look. */
 export function headerHtml(template: TemplateId, h: HeaderInput): string {
   const name = String(h.name ?? '');
-  const words = name.split(' ');
+  // The luxe logo prints the first word and the rest apart. A name in the editor's markers (markers.ts) keeps its
+  // wrapper around each part, with the same id, so both words are tappable and open the one shop name.
+  const [open, text, close] = unwrapMarked(name);
+  const words = text.split(' ');
   const brand = template === 'luxe'
-    ? `<a class="ab-brand" href="/">${escapeAttr(words[0])}${words.length > 1 ? ` <span class="ab-accent">${escapeAttr(words.slice(1).join(' '))}</span>` : ''}</a>`
+    ? `<a class="ab-brand" href="/">${escapeAttr(open + words[0] + close)}${words.length > 1 ? ` <span class="ab-accent">${escapeAttr(open + words.slice(1).join(' ') + close)}</span>` : ''}</a>`
     : `<a class="ab-brand" href="/">${escapeAttr(name)}</a>`;
   const digits = String(h.phone ?? '').replace(/\s+/g, '');
   const call = template === 'luxe' && /\d/.test(String(h.phone ?? ''))

@@ -124,11 +124,15 @@ export function renderSiteBundle(data: WebsiteData, opts: RenderSiteOptions = {}
   const digits = phone.replace(/\D/g, '');
   const bookingUrl = safeHref(d.bookingUrl);
   const shop = plainText(d.shopName);
+  // What the header and footer PRINT keeps the editor's markers (markers.ts); decisions, titles and links use the plain values above.
+  const shopShown = String(d.shopName ?? '').trim();
+  const phoneShown = String(d.phone ?? '').trim();
+  const addressShown = String(d.contact?.address ?? '').trim();
   const themeStyle = themeStyleOf(template, d);
 
   const headerFor = (file: PageFile): string => {
     const nav = navListHtml(navItemsFor(template, set, d, file.key), L('pgMenu'), L('pgMore'));
-    if (template === 'luxe') return headerHtml('luxe', { name: shop, phone, shownPhone: escapeAttr(displayPhone(phone)), nav });
+    if (template === 'luxe') return headerHtml('luxe', { name: shopShown, phone, shownPhone: escapeAttr(displayPhone(phoneShown)), nav });
     if (template === 'prime') {
       const href = bookingUrl || (digits ? `tel:+1${digits}` : '');
       return headerHtml('prime', { name: shop, cta: href ? { href, label: L('primeNavBook'), newTab: !!bookingUrl && !bookingUrl.startsWith('/') } : null, nav });
@@ -138,12 +142,12 @@ export function renderSiteBundle(data: WebsiteData, opts: RenderSiteOptions = {}
   };
   // The footer lists every page that is a file in the set (top-level pages, then the service pages), nothing else.
   const footerPages = [
-    ...navItemsFor(template, set, d, 'home').map((i) => ({ href: i.href, label: escapeAttr(plainLabel(d.labels, navLabelKey(template, i.key), niche, d)), external: i.external })),
-    ...set.files.filter((f) => f.key === 'services' && f.child).map((f) => ({ href: f.href, label: escapeAttr(f.child!.title) })),
+    ...navItemsFor(template, set, d, 'home').map((i) => ({ href: i.href, label: t(d.labels, navLabelKey(template, i.key), niche, d), external: i.external })),
+    ...set.files.filter((f) => f.key === 'services' && f.child).map((f) => ({ href: f.href, label: escapeAttr(String(d.services?.[f.child!.index]?.title ?? '').trim() || f.child!.title) })),
   ];
   const footer = footerHtml(template, {
-    name: shop, year: copyrightYear(), line: template === 'luxe' ? L('footerLine') : undefined,
-    address: plainText(d.contact?.address), phone, shownPhone: phone ? escapeAttr(displayPhone(phone)) : '',
+    name: shopShown, year: copyrightYear(), line: template === 'luxe' ? L('footerLine') : undefined,
+    address: addressShown, phone, shownPhone: phone ? escapeAttr(displayPhone(phoneShown)) : '',
     pagesHeading: L('pgPages'), pages: footerPages,
   });
 
