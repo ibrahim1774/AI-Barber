@@ -1,13 +1,13 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, fonts } from '@/constants/theme';
 
-// Floating Design control on the preview's left edge, stacked just above the Colour pill: a dark translucent
-// pill with a "Design" caption and two segments (1 | 2).
-// Any non-prime template counts as Design 1.
+// The web's BooksyDesignSwitcher: a small vertical panel (dark glass card, gold hairline) on the preview's left
+// edge with a DESIGN caption over two stacked buttons, "Design 1" and "Design 2"; the active one is solid gold.
+// Any non-prime template counts as Design 1. Positioned by its parent (edit.tsx stacks it above the Colour panel).
 
-const OPTIONS: { key: 'luxe' | 'prime'; label: string; short: string }[] = [
-  { key: 'luxe', label: 'Design 1', short: '1' },
-  { key: 'prime', label: 'Design 2', short: '2' },
+const OPTIONS: { key: 'luxe' | 'prime'; label: string }[] = [
+  { key: 'luxe', label: 'Design 1' },
+  { key: 'prime', label: 'Design 2' },
 ];
 
 export function DesignSwitcher({
@@ -21,7 +21,7 @@ export function DesignSwitcher({
   const activeKey = current === 'prime' ? 'prime' : 'luxe';
   const off = !!busy || !!disabled;
   return (
-    <View style={[styles.pill, { transform: [{ translateY: -48 }] }, off && { opacity: 0.6 }]} accessibilityRole="radiogroup" accessibilityLabel="Switch site design">
+    <View style={[styles.card, off && { opacity: 0.6 }]} accessibilityRole="radiogroup" accessibilityLabel="Switch site design">
       <Text style={styles.caption}>Design</Text>
       {OPTIONS.map((o) => {
         const active = activeKey === o.key;
@@ -33,9 +33,9 @@ export function DesignSwitcher({
             accessibilityState={{ selected: active, disabled: off, busy: !!busy }}
             disabled={off}
             onPress={() => !active && onSelect(o.key)}
-            style={[styles.seg, active && styles.segOn]}
+            style={[styles.btn, active && styles.btnOn]}
           >
-            <Text style={[styles.segText, { color: active ? colors.buttonInk : '#fff' }]}>{o.short}</Text>
+            <Text style={[styles.btnText, { color: active ? '#0a0a0a' : '#fff' }]} numberOfLines={1}>{o.label}</Text>
           </Pressable>
         );
       })}
@@ -44,14 +44,16 @@ export function DesignSwitcher({
 }
 
 const styles = StyleSheet.create({
-  pill: {
-    position: 'absolute', left: 12, top: '50%', height: 44, borderRadius: 22, overflow: 'hidden',
-    flexDirection: 'row', alignItems: 'center', paddingLeft: 12,
-    backgroundColor: colors.overlayCard, borderWidth: 1, borderColor: colors.overlayGold,
+  // web: rounded-2xl p-3 gap-2, rgba(14,12,8,.94), 1px gold border, deep shadow
+  card: {
+    gap: 8, padding: 12, borderRadius: 16, backgroundColor: colors.overlayCard, borderWidth: 1, borderColor: colors.overlayGold,
     shadowColor: '#000', shadowOpacity: 0.7, shadowRadius: 25, shadowOffset: { width: 0, height: 18 },
   },
-  caption: { fontFamily: fonts.bodyBold, fontSize: 11, letterSpacing: 1.3, textTransform: 'uppercase', color: '#fff', marginRight: 6 },
-  seg: { width: 40, height: 42, alignItems: 'center', justifyContent: 'center' },
-  segOn: { backgroundColor: colors.accent },
-  segText: { fontFamily: fonts.bodyBold, fontSize: 14 },
+  caption: { fontFamily: fonts.bodyBold, fontSize: 9, letterSpacing: 2.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.45)', textAlign: 'center', marginBottom: 2 },
+  btn: {
+    minHeight: 44, minWidth: 44, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', borderRadius: 6,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)',
+  },
+  btnOn: { backgroundColor: colors.overlayGold, borderColor: colors.overlayGold },
+  btnText: { fontFamily: fonts.bodyBold, fontSize: 11, letterSpacing: 1.3, textTransform: 'uppercase' },
 });

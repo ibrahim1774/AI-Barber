@@ -11,8 +11,9 @@ import { useTutorialTarget } from '@/components/tutorial/registry';
  * the tab bar is hidden.
  */
 export function PublishBar({
-  onSections, onText, onPhotos, onPublish, disabled, padBottom = true,
+  onPages, onSections, onText, onPhotos, onPublish, disabled, padBottom = true,
 }: {
+  onPages(): void;
   onSections(): void;
   onText(): void;
   onPhotos(): void;
@@ -24,6 +25,7 @@ export function PublishBar({
   const publishRef = useTutorialTarget('edit.publish');
   return (
     <View style={[styles.bar, { paddingBottom: 10 + (padBottom ? insets.bottom : 0) }]}>
+      <Tool target="edit.pages" title="Pages" hint="Pick, add, hide and reorder pages" onPress={onPages} disabled={disabled} />
       <Tool target="edit.sections" title="Sections" hint="Services, team, hours and more" onPress={onSections} disabled={disabled} />
       <Tool target="edit.text" title="Text" hint="All text fields" onPress={onText} disabled={disabled} />
       <Tool target="edit.photos" title="Photos" onPress={onPhotos} disabled={disabled} />
@@ -63,8 +65,8 @@ function Tool({ target, title, hint, onPress, disabled }: { target: string; titl
 
 const styles = StyleSheet.create({
   bar: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 8, paddingTop: 10,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 6, paddingTop: 10,
     backgroundColor: '#111111', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)',
   },
   tool: {
@@ -73,7 +75,7 @@ const styles = StyleSheet.create({
   },
   toolText: { fontFamily: fonts.bodyExtra, fontSize: 10, letterSpacing: 0.5, textTransform: 'uppercase', color: '#fff' },
   publish: {
-    flex: 1.25, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+    flex: 1.2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
     paddingVertical: 12, borderRadius: 6, backgroundColor: colors.accent,
   },
   publishText: { fontFamily: fonts.headingBlack, fontSize: 10.5, letterSpacing: 1, textTransform: 'uppercase', color: colors.buttonInk },

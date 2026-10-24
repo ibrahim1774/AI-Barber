@@ -3,7 +3,6 @@ jest.mock('@/constants/theme', () => require('./store/themeMock'));
 jest.mock('@/lib/analytics', () => ({ track: jest.fn() }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 import type { WebsiteData } from '@/web/types';
-import { PagesBar } from '@/components/PagesBar';
 import { PagesSheet } from '@/components/PagesSheet';
 import { PageSectionsSheet } from '@/components/PageSectionsSheet';
 import { HeroPhotoSheet } from '@/components/HeroPhotoSheet';
@@ -15,27 +14,8 @@ import { shop } from './pagesV2Fixture';
 const { act, create } = require('react-test-renderer');
 
 const texts = (tree: any): string[] => tree.root.findAll((n: any) => typeof n.props?.children === 'string' && n.type === 'Text').map((n: any) => n.props.children);
-const byLabel = (tree: any, label: string) => tree.root.findAll((n: any) => n.props?.accessibilityLabel === label && typeof n.props?.onPress === 'function');
+const byLabel = (tree: any, label: string | RegExp) => tree.root.findAll((n: any) => (typeof label === 'string' ? n.props?.accessibilityLabel === label : label.test(n.props?.accessibilityLabel ?? '')) && typeof n.props?.onPress === 'function');
 const ALL = { on: ['faq', 'first-visit', 'hair-care', 'beard-care'], serviceGuides: true, seed: 3 } as WebsiteData['extraPages'];
-
-describe('page tabs with many pages', () => {
-  const many: PageChips = {
-    top: Array.from({ length: 30 }, (_, i) => ({ key: `p${i}`, title: `Page ${i}` })) as never,
-    children: {},
-  };
-  test('30 pages: a sideways scroller with a tab each, and Edit page appears only when offered', () => {
-    const onEditPage = jest.fn();
-    let tree: any;
-    act(() => { tree = create(<PagesBar chips={many} current={{ key: 'p3' as never }} onSelect={jest.fn()} onOpenPages={jest.fn()} />); });
-    const scrollers = tree.root.findAll((n: any) => n.props?.horizontal === true);
-    expect(scrollers.length).toBeGreaterThan(0);
-    expect(tree.root.findAll((n: any) => /^Show Page \d+$/.test(n.props?.accessibilityLabel ?? '') && typeof n.props?.onPress === 'function')).toHaveLength(30);
-    expect(byLabel(tree, 'Edit this page')).toHaveLength(0);
-    act(() => { tree = create(<PagesBar chips={many} current={{ key: 'p3' as never }} onSelect={jest.fn()} onOpenPages={jest.fn()} onEditPage={onEditPage} />); });
-    act(() => { byLabel(tree, 'Edit this page')[0].props.onPress(); });
-    expect(onEditPage).toHaveBeenCalledTimes(1);
-  });
-});
 
 describe('Pages sheet', () => {
   async function mount(extra: Partial<WebsiteData> = {}) {
@@ -45,13 +25,16 @@ describe('Pages sheet', () => {
     const onEditPlace = jest.fn();
     let tree: any;
     act(() => { tree = create(<PagesSheet visible data={d} onSave={onSave} onEditPlace={onEditPlace} onClose={onClose} />); });
+    // Service pages are a second level, closed until the Services toggle is tapped.
+    const toggle = byLabel(tree, /^Service pages, \d+$/ as never);
+    if (toggle.length) act(() => { toggle[0].props.onPress(); });
     return { d, onSave, onClose, onEditPlace, tree };
   }
 
   test('three groups, the place row and the one-line note', async () => {
     const m = await mount({ extraPages: { on: ['faq'], serviceGuides: true, seed: 1 } as never });
     const t = texts(m.tree);
-    expect(t).toEqual(expect.arrayContaining(['Menu pages', 'Service pages (3)', 'Suggested pages', 'Place name', 'Brooklyn, NY']));
+    expect(t).toEqual(expect.arrayContaining(['Menu pages', '▾  Service pages (3)', 'Suggested pages', 'Place name', 'Brooklyn, NY']));
     expect(t).toContain("Location pages cover your shop's own area only.");
     expect(byLabel(m.tree, 'Add First visit')).toHaveLength(1);
     expect(byLabel(m.tree, 'Show Skin fade')).toHaveLength(1);
@@ -196,5 +179,38 @@ describe('page hero photo', () => {
     act(() => { tree = create(<ChangeImagePills items={items} hidden={false} onPress={jest.fn()} samplePaths={['extraPages.images.first-visit']} />); });
     expect(texts(tree).filter((x) => x.startsWith('Sample photo'))).toHaveLength(1);
     expect(texts(tree).filter((x) => x === 'Change image')).toHaveLength(2);
+  });
+});
+
+describe('Pages widget as the page picker', () => {
+  async function widget(current: any, extra: Record<string, unknown> = {}) {
+    const d = await shop({});
+    const onSave = jest.fn(); const onClose = jest.fn(); const onEditPage = jest.fn();
+    let tree: any;
+    act(() => { tree = create(<PagesSheet visible data={d} current={current} currentTitle="Services" onEditPage={onEditPage} onSave={onSave} onClose={onClose} {...extra} />); });
+    return { onSave, onClose, onEditPage, tree };
+  }
+
+  test('shows the current page, highlights it, and opens the service level on a service page', async () => {
+    const m = await widget({ key: 'services', index: 1 });
+    expect(texts(m.tree)).toContain('Showing: Services');
+    expect(byLabel(m.tree, 'Show Skin fade')[0]).toBeTruthy(); // services group opened on a service page
+    expect(byLabel(m.tree, 'Services')[0].props.accessibilityState.selected).toBe(false);
+  });
+
+  test('selecting a page switches the preview to it and closes', async () => {
+    const m = await widget({ key: 'home' });
+    act(() => { byLabel(m.tree, 'Services')[0].props.onPress(); });
+    expect(m.onSave).toHaveBeenCalledWith(expect.anything(), { key: 'services' });
+    expect(m.onClose).toHaveBeenCalled();
+  });
+
+  test('Edit this page is offered only when the page has sections, and closes then edits', async () => {
+    const m = await widget({ key: 'home' });
+    act(() => { byLabel(m.tree, 'Edit this page')[0].props.onPress(); });
+    expect(m.onEditPage).toHaveBeenCalledTimes(1);
+    expect(m.onClose).toHaveBeenCalled();
+    const n = await widget({ key: 'home' }, { onEditPage: undefined });
+    expect(byLabel(n.tree, 'Edit this page')).toHaveLength(0);
   });
 });

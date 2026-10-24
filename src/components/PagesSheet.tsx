@@ -22,10 +22,15 @@ export const ROW_H = 64;
  * pages yet is the one-time "becomes a multi-page site" confirm.
  */
 export function PagesSheet({
-  visible, data, onSave, onEditPlace, onClose, onDismiss,
+  visible, data, current, currentTitle, onEditPage, onSave, onEditPlace, onClose, onDismiss,
 }: {
   visible: boolean;
   data: WebsiteData;
+  /** The page on screen in the preview: highlighted in the list (and the service group opens on it). */
+  current?: PreviewPage;
+  currentTitle?: string;
+  /** Given only while the page on screen has sections to edit; shows the Edit this page action at the top. */
+  onEditPage?(): void;
   /** `show`: a page to open in the preview after saving. */
   onSave(change: PagesChange, show?: PreviewPage): void;
   /** The Place name row: edit the place label (any other change in the sheet is saved first). */
@@ -36,6 +41,7 @@ export function PagesSheet({
   const [rows, setRows] = useState<PageRow[]>(() => pageRows(data));
   const [guides, setGuides] = useState<boolean>(() => serviceGuidesOn(data));
   const [query, setQuery] = useState('');
+  const [servicesOpen, setServicesOpen] = useState(false);
   const [drag, setDrag] = useState<{ from: number; to: number } | null>(null);
   const confirmFirst = needsMultiPageConfirm(data);
 
@@ -45,6 +51,7 @@ export function PagesSheet({
       setRows(pageRows(data));
       setGuides(serviceGuidesOn(data));
       setQuery('');
+      setServicesOpen(current?.key === 'services' && current.index !== undefined);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
@@ -58,6 +65,11 @@ export function PagesSheet({
   const save = (show?: PreviewPage) => {
     onSave(changeFromRows(data, rows, guides), show);
     onClose();
+  };
+  const editThisPage = () => {
+    if (dirty) onSave(changeFromRows(data, rows, guides), current);
+    onClose();
+    onEditPage?.();
   };
   const toggle = (key: PageKey, on: boolean) => setRows((r) => setRowOn(r, key, on));
   const move = (from: number, to: number) => setRows((r) => moveRow(r, from, to));
@@ -77,6 +89,56 @@ export function PagesSheet({
   const shownServices = services.filter((s) => matchesQuery(s.title, query));
   const shownSuggested = suggested.filter((r) => matchesQuery(r.title, query));
 
+  const ServiceLevel = () => {
+    const open = servicesOpen || searching;
+    return (
+      <View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Service pages, ${services.length}`}
+          accessibilityState={{ expanded: open }}
+          onPress={() => setServicesOpen((o) => !o)}
+          style={({ pressed }) => [styles.level, pressed && { opacity: 0.6 }]}
+        >
+          <Text style={styles.levelText}>{`${open ? '▾' : '▸'}  Service pages (${services.length})`}</Text>
+        </Pressable>
+        {open && (
+          <View style={styles.levelBody}>
+            {shownServices.map((sv) => {
+              const on = current?.key === 'services' && current.index === sv.index;
+              return (
+                <Pressable
+                  key={sv.index}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Show ${sv.title}`}
+                  accessibilityState={{ selected: on }}
+                  onPress={() => save({ key: 'services', index: sv.index })}
+                  style={({ pressed }) => [styles.simple, on && styles.rowSelected, pressed && { opacity: 0.6 }]}
+                >
+                  <Text style={styles.title} numberOfLines={1}>{sv.title}</Text>
+                </Pressable>
+              );
+            })}
+            {!searching && (
+              <View style={styles.simple}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.title}>Service guides</Text>
+                  <Text style={styles.sub}>Adds About this service text to the page of a service it fits.</Text>
+                </View>
+                <Switch
+                  value={guides}
+                  onValueChange={setGuides}
+                  accessibilityLabel="Service guides"
+                  trackColor={{ false: 'rgba(255,255,255,0.18)', true: colors.accent }}
+                />
+              </View>
+            )}
+          </View>
+        )}
+      </View>
+    );
+  };
+
   return (
     <Sheet
       visible={visible}
@@ -85,6 +147,18 @@ export function PagesSheet({
       onDismiss={onDismiss}
       right={confirmFirst ? undefined : <SheetAction title={dirty ? 'Save' : 'Done'} primary onPress={() => (dirty ? save() : onClose())} />}
     >
+      {current && currentTitle ? <Text style={styles.showing} accessibilityLiveRegion="polite">{`Showing: ${currentTitle}`}</Text> : null}
+      {onEditPage && !confirmFirst && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Edit this page"
+          accessibilityHint="Hide, reorder and reword the sections of this page"
+          onPress={editThisPage}
+          style={({ pressed }) => [styles.editPage, pressed && { opacity: 0.6 }]}
+        >
+          <Text style={styles.editPageText}>Edit this page</Text>
+        </Pressable>
+      )}
       <Text style={styles.lead}>
         Each page is made only from what you have added. Turn a page off to hide it from your menu, and drag the handle to change the order.
       </Text>
@@ -120,7 +194,7 @@ export function PagesSheet({
         )}
         <Text style={styles.group} accessibilityRole="header">Menu pages</Text>
         {menu.map((r, i) => {
-          if (searching && !matchesQuery(r.title, query)) return null;
+          if (searching && !matchesQuery(r.title, query) && !(r.key === 'services' && shownServices.length > 0)) return null;
           return (
             <View key={r.key}>
               {!searching && i === divideAt && <Text style={styles.divider}>Below here: under More on the site</Text>}
@@ -129,6 +203,7 @@ export function PagesSheet({
                 index={i}
                 offset={dragOffset(i)}
                 canView={!confirmFirst}
+                selected={!!current && current.key === r.key && current.index === undefined}
                 dragEnabled={!searching}
                 onToggle={(on) => toggle(r.key, on)}
                 onView={() => save({ key: r.key })}
@@ -136,40 +211,12 @@ export function PagesSheet({
                 onDrag={setDrag}
                 count={menu.length}
               />
+              {r.key === 'services' && !confirmFirst && shownServices.length > 0 && (
+                <ServiceLevel />
+              )}
             </View>
           );
         })}
-        {!confirmFirst && shownServices.length > 0 && (
-          <>
-            <Text style={styles.group} accessibilityRole="header">{`Service pages (${services.length})`}</Text>
-            <Text style={styles.lead}>Every listed service gets a page (the first 12).</Text>
-            {shownServices.map((s) => (
-              <Pressable
-                key={s.index}
-                accessibilityRole="button"
-                accessibilityLabel={`Show ${s.title}`}
-                onPress={() => save({ key: 'services', index: s.index })}
-                style={({ pressed }) => [styles.simple, pressed && { opacity: 0.6 }]}
-              >
-                <Text style={styles.title} numberOfLines={1}>{s.title}</Text>
-              </Pressable>
-            ))}
-            {!searching && (
-              <View style={styles.simple}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.title}>Service guides</Text>
-                  <Text style={styles.sub}>Adds About this service text to the page of a service it fits.</Text>
-                </View>
-                <Switch
-                  value={guides}
-                  onValueChange={setGuides}
-                  accessibilityLabel="Service guides"
-                  trackColor={{ false: 'rgba(255,255,255,0.18)', true: colors.accent }}
-                />
-              </View>
-            )}
-          </>
-        )}
         {!confirmFirst && shownSuggested.length > 0 && (
           <>
             <Text style={styles.group} accessibilityRole="header">Suggested pages</Text>
@@ -210,13 +257,14 @@ export function PagesSheet({
 }
 
 function Row({
-  row, index, count, offset, canView, dragEnabled, onToggle, onView, onMove, onDrag,
+  row, index, count, offset, canView, selected, dragEnabled, onToggle, onView, onMove, onDrag,
 }: {
   row: PageRow;
   index: number;
   count: number;
   offset: number;
   canView: boolean;
+  selected: boolean;
   dragEnabled: boolean;
   onToggle(on: boolean): void;
   onView(): void;
@@ -253,16 +301,17 @@ function Row({
     }),
   ).current;
 
-  const sub = row.extra ? 'Guide page' : row.children > 0 ? `${row.children} ${row.key === 'services' ? (row.children === 1 ? 'service page' : 'service pages') : row.children === 1 ? 'barber page' : 'barber pages'}` : row.locked ? 'Always on' : undefined;
+  const sub = selected ? 'Showing now' : row.extra ? 'Guide page' : row.children > 0 ? `${row.children} ${row.key === 'services' ? (row.children === 1 ? 'service page' : 'service pages') : row.children === 1 ? 'barber page' : 'barber pages'}` : row.locked ? 'Always on' : undefined;
   return (
     <Animated.View
-      style={[styles.row, { transform: [{ translateY: Animated.add(y, offset) }] }, !row.on && styles.rowOff]}
+      style={[styles.row, { transform: [{ translateY: Animated.add(y, offset) }] }, !row.on && styles.rowOff, selected && styles.rowSelected]}
       accessible={false}
     >
       <Thumb kind={row.key} off={!row.on} />
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${row.title}${row.on ? '' : ', off'}`}
+        accessibilityState={{ selected }}
         accessibilityHint={canView ? 'Shows this page in the preview' : undefined}
         onPress={onView}
         disabled={!canView || !row.on}
@@ -364,6 +413,16 @@ const styles = StyleSheet.create({
     paddingLeft: 10, paddingRight: 4, borderRadius: 10,
     backgroundColor: '#1d1d1d', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
   },
+  rowSelected: { borderColor: colors.accent, backgroundColor: 'rgba(244,161,0,0.10)' },
+  showing: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.accent, marginBottom: 8 },
+  editPage: {
+    height: 44, justifyContent: 'center', alignItems: 'center', borderRadius: 22, marginBottom: 10,
+    backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: colors.accent,
+  },
+  editPageText: { fontFamily: fonts.headingBlack, fontSize: 12, letterSpacing: 1, textTransform: 'uppercase', color: colors.accent },
+  level: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 12, marginBottom: 6 },
+  levelText: { fontFamily: fonts.bodyBold, fontSize: 12, letterSpacing: 1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.7)' },
+  levelBody: { paddingLeft: 14, marginBottom: 4 },
   rowOff: { backgroundColor: '#171717' },
   main: { flex: 1, justifyContent: 'center', height: '100%' },
   title: { fontFamily: fonts.bodyBold, fontSize: 15, color: '#fff' },

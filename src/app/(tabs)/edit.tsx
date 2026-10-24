@@ -14,7 +14,7 @@ import { syncOwnLink } from '@/lib/bookingChoice';
 import { useLinkContext } from '@/lib/linkContext';
 import { stripLapsedLinks } from '@/lib/tierLinks';
 import { copyKeyOfPath, previewBackground, textMaxLength, textValue, type PreviewPage } from '@/lib/editable';
-import { PAGE_TITLES, pageChips, resolvePage, serviceRows, withPageChange, type PagesChange } from '@/lib/sitePages';
+import { PAGE_TITLES, resolvePage, serviceRows, withPageChange, type PagesChange } from '@/lib/sitePages';
 import { clearHero, isHeroPath, sampleHeroPaths, setPhoto } from '@/lib/pageHero';
 import { isCopyEdited, resetCopy, tryOtherWording } from '@/lib/copyEdit';
 import { sectionPageFor } from '@/lib/pageSections';
@@ -34,7 +34,6 @@ import {
 } from '@/lib/subscriptionStatus';
 import { tabBarStyle } from '@/lib/tabBar';
 import SitePreview from '@/components/SitePreview';
-import { PagesBar } from '@/components/PagesBar';
 import { PagesSheet } from '@/components/PagesSheet';
 import { PageSectionsSheet } from '@/components/PageSectionsSheet';
 import { HeroPhotoSheet } from '@/components/HeroPhotoSheet';
@@ -42,7 +41,6 @@ import { ColourButton } from '@/components/ColourButton';
 import { DesignSwitcher } from '@/components/DesignSwitcher';
 import { EditSheet } from '@/components/EditSheet';
 import { AllFieldsSheet, PhotosSheet } from '@/components/AllFieldsSheet';
-import { ColourSheet } from '@/components/ColourSheet';
 import { SectionsSheet } from '@/components/sections/SectionsSheet';
 import { ServicesSheet } from '@/components/sections/ServicesSheet';
 import { BookingsServicesSheet } from '@/components/setup/BookingsServicesSheet';
@@ -526,8 +524,6 @@ export default function Editor() {
 
   // The hero's (else the first) "Change image" pill, which the Edit tour's photo step points at.
   const changeImageRef = useTutorialTarget('edit.changeImage');
-  const pagesRef = useTutorialTarget('edit.pages');
-  const editPageRef = useTutorialTarget('edit.editPage');
 
   if (!site) return <View style={styles.root} />;
 
@@ -543,7 +539,6 @@ export default function Editor() {
   const editValue = textValue(data, edit.path);
   const shown = previewData ?? data;
   const page = resolvePage(shown, wantedPage);
-  const chips = pageChips(shown);
   const canEditPage = overlay == null && sectionPageFor(page) !== null;
   const pageTitle = page.index !== undefined && page.key === 'services'
     ? serviceRows(shown).find((r) => r.index === page.index)?.title ?? PAGE_TITLES.services
@@ -561,10 +556,10 @@ export default function Editor() {
               Design is offered on a published site too: it only edits the draft (like Colour), and the
               change goes live on the next Publish. */}
           {overlay == null && (
-            <DesignSwitcher current={data.template} onSelect={handleDesign} busy={switching} disabled={uploading} />
-          )}
-          {overlay == null && (
-            <ColourButton onPress={() => setSheet('colour')} disabled={uploading} />
+            <View style={styles.floaters} pointerEvents="box-none">
+              <DesignSwitcher current={data.template} onSelect={handleDesign} busy={switching} disabled={uploading} />
+              <ColourButton current={data.colorTheme} onPick={(hex) => commit((d) => setColour(d, hex))} disabled={uploading} />
+            </View>
           )}
           {uploading && (
             <View style={styles.uploading} pointerEvents="none">
@@ -577,9 +572,8 @@ export default function Editor() {
         {overlay == null && stockPhotoPaths(data).length > 0 && (
           <StockPhotoNudge onAddPhotos={() => setSheet('photos')} />
         )}
-        <PagesBar chips={chips} current={page} onSelect={setWantedPage} onOpenPages={() => setSheet('pages')} onEditPage={canEditPage ? () => setSheet('pageSections') : undefined} editPageRef={editPageRef} buttonRef={pagesRef} disabled={uploading || overlay != null}
-        />
         <PublishBar
+          onPages={() => setSheet('pages')}
           onSections={openSections}
           onText={() => setSheet('fields')}
           onPhotos={() => setSheet('photos')}
@@ -602,15 +596,12 @@ export default function Editor() {
           onClose={() => setSheet(null)}
           onDismiss={onSheetDismiss}
         />
-        <ColourSheet
-          visible={sheet === 'colour'}
-          current={data.colorTheme}
-          onPick={(hex) => commit((d) => setColour(d, hex))}
-          onClose={() => setSheet(null)}
-        />
         <PagesSheet
           visible={sheet === 'pages'}
           data={data}
+          current={page}
+          currentTitle={pageTitle}
+          onEditPage={canEditPage ? () => closeThen(() => setSheet('pageSections')) : undefined}
           onSave={savePages}
           onEditPlace={editPlace}
           onClose={() => setSheet(null)}
@@ -744,6 +735,8 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   body: { flex: 1 },
   preview: { flex: 1 },
+  // Design above Theme, vertically centred on the preview's left edge (web: left-3, top-1/2).
+  floaters: { ...StyleSheet.absoluteFillObject, left: 12, right: undefined, justifyContent: 'center', gap: 8 },
   uploading: {
     position: 'absolute', alignSelf: 'center', top: '45%',
     flexDirection: 'row', alignItems: 'center', gap: 10,

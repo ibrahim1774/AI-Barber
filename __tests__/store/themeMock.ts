@@ -2,3 +2,4 @@
 const proxy = (v: unknown) => new Proxy({}, { get: () => v });
 export const colors = proxy('#000');
 export const fonts = proxy('System');
+export const swatchLabel = (hex: string) => `Use color ${hex}`;
