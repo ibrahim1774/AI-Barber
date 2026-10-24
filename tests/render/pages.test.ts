@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   aboutParagraphs, assertSiteFilePath, buildPageSet, canonicalBase, cleanPagesModel, eligiblePages, isGeneratedAbout,
-  isReservedPath, MIN_GALLERY_PHOTOS, ownGallerySlots, pageFileFor, pageHref, pageList, pagePath, plainText, RESERVED_PATHS,
+  isReservedPath, MIN_GALLERY_PHOTOS, ownGallerySlots, pageFileFor, pageHref, pageList, pagePath, plainText, RESERVED_PATHS, SERVICE_PAGE_CAP,
   servicePageEligible, sitemapXml, slugify, uniqueSlug,
 } from '../../lib/render/pages';
 import { LUXE_STOCK, DEMO_GALLERY_STOCK } from '../../lib/stockImages';
@@ -82,12 +82,31 @@ describe('eligibility table', () => {
   });
 
   describe('Services and per-service pages', () => {
-    it('one titled service -> Services; no description, price or duration -> no service page', () => {
+    it('every titled service gets its own page, even with nothing else set (owner feedback 2026-10-24)', () => {
       const d = base({ services: [svc('Haircut')] });
       const set = buildPageSet(d);
       expect(set.eligible).toContain('services');
+      expect(set.services.map((s) => s.slug)).toEqual(['haircut']);
+      expect(set.files.map((f) => f.path)).toEqual(['index.html', 'services/index.html', 'services/haircut/index.html']);
+    });
+    it('no services, or only untitled ones -> no Services page and no service pages', () => {
+      expect(buildPageSet(base({ services: [] })).files.map((f) => f.path)).toEqual(['index.html']);
+      const set = buildPageSet(base({ services: [svc('  '), svc('')] }));
+      expect(set.eligible).not.toContain('services');
       expect(set.services).toEqual([]);
-      expect(set.files.map((f) => f.path)).toEqual(['index.html', 'services/index.html']);
+    });
+    it(`at most ${SERVICE_PAGE_CAP} service pages: the first ones in order, the rest counted; slugs unchanged by the cap`, () => {
+      const services = Array.from({ length: 15 }, (_, i) => svc(`Cut ${i + 1}`));
+      const set = buildPageSet(base({ services }));
+      expect(set.services).toHaveLength(SERVICE_PAGE_CAP);
+      expect(set.services[0].slug).toBe('cut-1');
+      expect(set.services[SERVICE_PAGE_CAP - 1].slug).toBe(`cut-${SERVICE_PAGE_CAP}`);
+      expect(set.servicesOverCap).toBe(3);
+    });
+    it('two services with the same name get fade and fade-2; a reserved-looking name stays under services/', () => {
+      const set = buildPageSet(base({ services: [svc('Fade'), svc('fade'), svc('Book'), svc('Shop')] }));
+      expect(set.services.map((s) => s.slug)).toEqual(['fade', 'fade-2', 'book', 'shop']);
+      expect(set.files.map((f) => f.path)).toContain('services/book/index.html');
     });
     it.each([['description', { description: 'A clean cut.' }], ['price', { price: '$30' }], ['duration', { duration: '30 min' }]])(
       'a service with a %s gets its own page', (_n, extra) => {
@@ -106,14 +125,13 @@ describe('eligibility table', () => {
       ].map(([title, description, subtitle]) => svc(title, { description, subtitle }));
       expect(eligiblePages(base({ services: legacy }))).not.toContain('services');
     });
-    it('filler descriptions from old imports do not make a service page', () => {
+    it('filler descriptions from old imports are dropped, but the titled service still has its page', () => {
       const set = buildPageSet(base({ services: [svc('Haircut', { description: 'Book ahead — same care every visit.' })] }));
-      expect(set.services).toEqual([]);
+      expect(set.services.map((s) => s.slug)).toEqual(['haircut']);
     });
-    it('servicePageEligible', () => {
-      expect(servicePageEligible(svc('x'))).toBe(false);
-      expect(servicePageEligible(svc('x', { price: ' ' }))).toBe(false);
-      expect(servicePageEligible(svc('x', { price: '$5' }))).toBe(true);
+    it('servicePageEligible: a title is enough', () => {
+      expect(servicePageEligible(svc('x'))).toBe(true);
+      expect(servicePageEligible(svc(' '))).toBe(false);
       expect(servicePageEligible(null)).toBe(false);
     });
   });
@@ -191,10 +209,15 @@ describe('eligibility table', () => {
   });
 
   describe('Hours & Location, Contact, Book, Shop', () => {
-    it('hours or an address -> Hours & Location', () => {
+    it('hours -> Hours page; an address -> Location page (an address alone no longer makes an Hours page)', () => {
       expect(eligiblePages(base())).not.toContain('hours');
+      expect(eligiblePages(base())).not.toContain('location');
       expect(eligiblePages(base({ hours: [{ day: 'Mon', open: '9', close: '5' }] }))).toContain('hours');
-      expect(eligiblePages(base({ contact: { address: '1 Main St', email: '' } }))).toContain('hours');
+      expect(eligiblePages(base({ hours: [{ day: 'Mon', open: '9', close: '5' }] }))).not.toContain('location');
+      const addr = eligiblePages(base({ contact: { address: '1 Main St', email: '' } }));
+      expect(addr).toContain('location');
+      expect(addr).not.toContain('hours');
+      expect(eligiblePages(base({ contact: { address: '  ', email: '' } }))).not.toContain('location');
     });
     it('Contact needs a phone, an email, an address or a booking link', () => {
       expect(eligiblePages(base())).not.toContain('contact');
@@ -226,6 +249,7 @@ describe('page set: order, hidden, files', () => {
   it('nav is eligible minus hidden, in order, home first', () => {
     const d = full();
     expect(buildPageSet(d).nav).toEqual(['home', 'about', 'services', 'team', 'reviews', 'hours', 'contact', 'book', 'shop']);
+    expect(buildPageSet({ ...d, contact: { address: '1 Main St', email: '' } }).nav).toEqual(['home', 'about', 'services', 'team', 'reviews', 'hours', 'location', 'contact', 'book', 'shop']);
     const set = buildPageSet({ ...d, pages: { order: ['shop', 'team', 'about'], hidden: ['reviews', 'home'] } });
     expect(set.nav).toEqual(['home', 'shop', 'team', 'about', 'services', 'hours', 'contact', 'book']);
     expect(set.hidden).toEqual(['reviews']);
@@ -237,7 +261,7 @@ describe('page set: order, hidden, files', () => {
   });
   it('the file list of a full site', () => {
     expect(buildPageSet(full()).files.map((f) => f.path)).toEqual([
-      'index.html', 'about/index.html', 'services/index.html', 'services/fade/index.html', 'services/fade-2/index.html',
+      'index.html', 'about/index.html', 'services/index.html', 'services/fade/index.html', 'services/fade-2/index.html', 'services/beard/index.html',
       'team/index.html', 'team/sam/index.html', 'reviews/index.html', 'hours/index.html', 'contact/index.html',
     ]);
   });
@@ -249,18 +273,16 @@ describe('page set: order, hidden, files', () => {
   });
   it('slugs stay stable when another item gains or loses a page', () => {
     const d = full();
-    d.services[1] = svc('Fade'); // the second Fade loses its page
-    const set = buildPageSet(d);
-    expect(set.services.map((s) => s.slug)).toEqual(['fade']);
-    d.services[0] = svc('Fade'); // now neither has one; adding to the second keeps "fade-2"
-    d.services[1] = svc('Fade', { price: '$20' });
-    expect(buildPageSet(d).services.map((s) => s.slug)).toEqual(['fade-2']);
+    d.services[1] = svc('Fade'); // the second Fade keeps its page and its address
+    expect(buildPageSet(d).services.map((s) => s.slug)).toEqual(['fade', 'fade-2', 'beard']);
+    d.services[0] = svc(''); // a service losing its title loses its page (and a later same-name service takes the plain slug)
+    expect(buildPageSet(d).services.map((s) => s.slug)).toEqual(['fade', 'beard']);
   });
   it('pageList lists the eligible pages with their state; home is locked', () => {
     const list = pageList({ ...full(), pages: { order: [], hidden: ['reviews'] } });
     expect(list[0]).toMatchObject({ key: 'home', on: true, locked: true, href: '/' });
     expect(list.find((p) => p.key === 'reviews')).toMatchObject({ on: false, href: '/reviews/' });
-    expect(list.find((p) => p.key === 'services')?.children).toBe(2);
+    expect(list.find((p) => p.key === 'services')?.children).toBe(3);
   });
   it('pageFileFor finds a page or one of its items', () => {
     const set = buildPageSet(full());

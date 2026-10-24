@@ -64,6 +64,7 @@ describe('renderPending', () => {
         "team/sam/index.html",
         "reviews/index.html",
         "hours/index.html",
+        "location/index.html",
         "contact/index.html",
       ]
     `);

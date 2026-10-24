@@ -23,7 +23,7 @@ export interface SiteFile {
   html: string;
 }
 
-export const PAGE_KEYS = ['home', 'about', 'services', 'team', 'gallery', 'reviews', 'hours', 'contact', 'book', 'shop'] as const;
+export const PAGE_KEYS = ['home', 'about', 'services', 'team', 'gallery', 'reviews', 'hours', 'location', 'contact', 'book', 'shop'] as const;
 export type PageKey = (typeof PAGE_KEYS)[number];
 
 /** Per-item pages live under these groups: `services/<slug>/`, `team/<slug>/`. */
@@ -220,10 +220,16 @@ export function ownGallerySlots(d: Pick<WebsiteData, 'gallery'>, ctx?: PageConte
 
 export const MIN_GALLERY_PHOTOS = 3;
 
-/** A service gets its own page only with something of its own to say. */
+/** At most this many services get their own page (the first ones, in the barber's order). */
+export const SERVICE_PAGE_CAP = 12;
+
+/**
+ * Every service with a name gets its own page (owner feedback 2026-10-24: "each kind of service catered to"),
+ * up to SERVICE_PAGE_CAP. The page prints only the service's real fields; it never invents any. (This
+ * overrides the P3b rule that also required a description, price or duration.)
+ */
 export function servicePageEligible(s: { title?: string; description?: string; price?: string; duration?: string } | null | undefined): boolean {
-  if (!s || !has(s.title)) return false;
-  return has(s.description) || has(s.price) || has(s.duration);
+  return !!s && has(s.title);
 }
 
 type HoursRows = { day?: string; open?: string; close?: string; closed?: boolean }[];
@@ -248,7 +254,8 @@ export function eligiblePages(input: WebsiteData, ctx?: PageContext): PageKey[] 
   if (teamOf(d, { legacyUncapped: true }).length > 0) out.push('team');
   if (ownGallerySlots(d, ctx).length >= MIN_GALLERY_PHOTOS) out.push('gallery');
   if (visibleReviews(d).length > 0) out.push('reviews');
-  if ((Array.isArray(d.hours) && d.hours.length > 0) || has(d.contact?.address)) out.push('hours');
+  if (Array.isArray(d.hours) && d.hours.length > 0) out.push('hours');
+  if (has(d.contact?.address)) out.push('location');
   if (has(d.phone) || contactEmail(d) || has(d.contact?.address) || safeHref(d.bookingUrl)) out.push('contact');
   if (isSiteBookLink(d.bookingUrl)) out.push('book');
   if (safeHref(d.shopUrl)) out.push('shop');
@@ -284,6 +291,8 @@ export interface PageSet {
   /** Every file to deploy (home first), per-item pages after their group's page. */
   files: PageFile[];
   services: ChildPage[];
+  /** Titled services past SERVICE_PAGE_CAP: they are listed on the Services page but have no page of their own. */
+  servicesOverCap: number;
   team: ChildPage[];
   /** The Shop entry is this site's own proxied /shop page (else it is the barber's own store link). */
   shopInternal: boolean;
@@ -313,11 +322,15 @@ export function buildPageSet(d: WebsiteData, ctx?: PageContext): PageSet {
   const services: ChildPage[] = [];
   const takenS = new Set<string>();
   let n = 0;
+  let servicesOverCap = 0;
   (Array.isArray(clean.services) ? clean.services : []).forEach((s, index) => {
     if (!has(s?.title)) return;
     n++;
     const slug = uniqueSlug(s.title, 'services', n, takenS);
-    if (servicePageEligible(s)) services.push({ group: 'services', slug, index, title: plainText(s.title) });
+    if (servicePageEligible(s)) {
+      if (services.length < SERVICE_PAGE_CAP) services.push({ group: 'services', slug, index, title: plainText(s.title) });
+      else servicesOverCap++;
+    }
   });
 
   const team: ChildPage[] = [];
@@ -335,7 +348,7 @@ export function buildPageSet(d: WebsiteData, ctx?: PageContext): PageSet {
     const kids = key === 'services' ? services : key === 'team' ? team : [];
     for (const c of kids) files.push({ key, path: pagePath(key, c.slug) as string, href: pageHref(key, c.slug), child: c });
   }
-  return { eligible, hidden, nav, files, services, team, shopInternal: isSiteShopLink(clean.shopUrl) };
+  return { eligible, hidden, nav, files, services, servicesOverCap, team, shopInternal: isSiteShopLink(clean.shopUrl) };
 }
 
 /** Multi-page is opt-in: only a site whose data carries `pages` (the app writes it) gets more than Home. */
@@ -344,7 +357,7 @@ export const isMultiPage = (d: Pick<WebsiteData, 'pages'>): boolean => !!d.pages
 /** The page set of a site that has not opted in: Home alone, exactly the pre-P3b single page. */
 export function singlePageSet(set: PageSet): PageSet {
   const home = set.files.find((f) => f.key === 'home') ?? { key: 'home' as PageKey, path: 'index.html', href: '/' };
-  return { eligible: ['home'], hidden: [], nav: ['home'], files: [home], services: [], team: [], shopInternal: set.shopInternal };
+  return { eligible: ['home'], hidden: [], nav: ['home'], files: [home], services: [], servicesOverCap: 0, team: [], shopInternal: set.shopInternal };
 }
 
 /** True when the site has pages beyond Home that are files (so the nav on Home links to them). */
