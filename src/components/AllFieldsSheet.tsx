@@ -1,12 +1,13 @@
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { WebsiteData } from '@/web/types';
 import { colors, fonts } from '@/constants/theme';
-import { editableTextPaths, getPath, textValue } from '@/lib/editable';
+import { editableTextPaths, getPath, hoursEditorFor, textValue } from '@/lib/editable';
+import { timeLabel } from '@/lib/sections/hours';
 import { fieldLabel, imageLabel, photoSlots } from '@/lib/editor';
 import { Sheet, SheetAction } from '@/components/EditSheet';
 
 // The two "every slot" lists: all text fields ("Edit") and all photos
-// ("Photos"). They cover what the preview can't tap (SHEET_ONLY_PATHS,
+// ("Photos"). They cover what the preview can't tap (sheetOnlyTextPaths,
 // sheetOnlyImagePaths, the luxe logo's shopName). Photos skips craftImages,
 // which no template renders (see photoSlots).
 
@@ -24,7 +25,9 @@ export function AllFieldsSheet({ visible, data, onPick, onClose, onDismiss }: Li
       <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
         {editableTextPaths(data).map((path) => {
           // A label shows the wording the page prints (its default when none is stored).
-          const text = textValue(data, path);
+          const raw = textValue(data, path);
+          // Stored 09:00 shows as 9:00 AM, like the page (open / close open the time pickers).
+          const text = hoursEditorFor(path) ? timeLabel(raw) : raw;
           return (
             <Pressable
               key={path}

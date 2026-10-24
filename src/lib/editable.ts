@@ -132,9 +132,19 @@ function labelKeysFor(d: WebsiteData, page?: PreviewPage | null): LabelKey[] {
   return out;
 }
 
+const ALWAYS_OFFERED = ['shopName', 'hero.heading', 'hero.tagline', 'about.heading', 'phone', 'area', 'contact.address', 'contact.email', 'bio', 'policy.title', 'policy.body', 'pullQuote.text'];
+const PRIME_ONLY_FIELDS = new Set(['policy.title', 'policy.body', 'pullQuote.text']);
+
 /** Every path a tap can name for this site: its data fields (editableDataPaths), then labels, then library copy. */
 export function editableTextPaths(d: WebsiteData, page?: PreviewPage | null): string[] {
   const out = editableDataPaths(d, page);
+  // editableDataPaths lists the fields a site HAS; these stay offered while empty so a barber can write them in "All fields"
+  // (a field without a value has no marker, so nothing is tappable for it).
+  for (const p of ALWAYS_OFFERED) {
+    if (PRIME_ONLY_FIELDS.has(p) && d.template !== 'prime') continue;
+    if (p === 'bio' && (d.template ?? 'luxe') !== 'luxe') continue;
+    if (!out.includes(p)) out.push(p);
+  }
   for (const key of labelKeysFor(d, page)) out.push(`${LABEL_PREFIX}${key}`);
   for (const key of copyKeysFor(d, page)) out.push(copyPath(key));
   return out;

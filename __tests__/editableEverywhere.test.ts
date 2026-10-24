@@ -32,7 +32,7 @@ async function rich(template: TemplateId): Promise<WebsiteData> {
       { title: 'Skin fade', price: '$35', duration: '40 min', category: 'Cuts', description: 'Tight and clean.' },
       { title: 'Beard trim', price: '$15', duration: '20 min', category: 'Beard', description: 'Shaped and lined.' },
       { title: 'Facial', price: '$40', subtitle: 'Relaxing' },
-    ] as WebsiteData['services'],
+    ] as unknown as WebsiteData['services'],
     gallery: ['u0', 'u1', 'u2', 'u3', 'u4', 'u5', 'u6', 'u7'],
     reviews: [{ author: 'Al', comment: 'Great cut', rating: 5 }, { author: 'Bo', comment: 'Fine work', rating: 4 }],
     hours: week('09:00', '17:00'),
