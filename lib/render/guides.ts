@@ -108,6 +108,9 @@ export function copyBlockInfo(key: string): { kind: BlockKind; max: number; h?: 
   return e ? { kind: e.block.kind, max: e.block.max, h: e.block.h, q: e.block.q } : null;
 }
 
+/** Whether a key has three wordings to choose from ("Try other wording"): not a FAQ question, which has one. */
+export const copyHasWordings = (k: string): boolean => REGISTRY.has(k) && REGISTRY.get(k)!.special !== 'q';
+
 /** The renderer ignores `copy` beyond this many characters in total. */
 export const COPY_TOTAL_MAX = 40000;
 
