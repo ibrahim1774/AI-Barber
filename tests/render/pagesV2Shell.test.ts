@@ -199,3 +199,57 @@ describe('back-compat with the pre-change multi-page output', () => {
     expect(EXTRA_KEYS.some((k) => locs.includes(`/${k}/`))).toBe(false);
   });
 });
+
+describe('size: a maxed-out site stays well under the deploy limit', () => {
+  it('12 services, 3 team pages, every page and every extra on: at most 2 MB of HTML', () => {
+    const long = 'x'.repeat(500);
+    const d = shop({
+      about: { heading: 'About', description: [long, long], imageUrl: '' },
+      services: ['Skin Fade', 'Beard Trim', 'Kids Cut', 'Line Up', 'Hot Towel Shave', 'Taper', 'Haircut', 'Buzz Cut', 'Cut and Beard', 'Hair Design', 'Mid Fade', 'Low Fade', 'Burst Fade', 'Drop Fade'].map((t) => svc(t, { price: '$10', duration: '30 min', description: long })),
+      staff: Array.from({ length: 3 }, (_, i) => ({ name: `Barber ${i}`, bio: long, photo: 'x', serviceIds: ['a'], serviceNames: ['Skin Fade'] })) as never,
+      reviews: Array.from({ length: 50 }, (_, i) => ({ author: `A${i}`, rating: 5, comment: long })),
+      gallery: ['x', 'x', 'x', 'x', 'x', 'x'],
+      extraPages: { on: [...EXTRA_KEYS] },
+    });
+    const imageUrls: Record<string, string> = { hero: 'https://i/h.jpg', ...Object.fromEntries([0, 1, 2, 3, 4, 5].map((i) => [`gallery${i}`, `https://i/g${i}.jpg`])), ...Object.fromEntries([0, 1, 2].map((i) => [`staff${i}`, `https://i/s${i}.jpg`])) };
+    for (const template of TEMPLATES) {
+      const r = renderSiteBundle({ ...d, template }, { imageUrls, extraCopy: [...EXTRA_KEYS] });
+      const bytes = r.pages.reduce((n, p) => n + Buffer.byteLength(p.html), 0);
+      expect(r.pages.length).toBeGreaterThanOrEqual(28);
+      expect(bytes).toBeLessThan(2 * 1024 * 1024);
+      // eslint-disable-next-line no-console
+      console.log(`[size] ${template}: ${r.pages.length} files, ${(bytes / 1024).toFixed(0)} KB`);
+    }
+  });
+});
+
+describe('labels', () => {
+  it('pgPlace defaults to the shop\'s own city and state, is tappable on service and Location pages, and shows only with an area', async () => {
+    const { defaultLabel, visiblePageLabelKeys, isLabelKey } = await import('../../lib/render/labels');
+    expect(isLabelKey('pgPlace')).toBe(true);
+    expect(defaultLabel('pgPlace', undefined, { area: '1 Main St, Williamsburg, Brooklyn, NY', niche: undefined })).toBe('Brooklyn, NY');
+    expect(defaultLabel('pgPlace', undefined, { area: '', niche: undefined })).toBe('');
+    expect(visiblePageLabelKeys(shop(), 'services')).toContain('pgPlace');
+    expect(visiblePageLabelKeys(shop(), 'location')).toContain('pgPlace');
+    expect(visiblePageLabelKeys(shop({ area: '' }), 'services')).not.toContain('pgPlace');
+    expect(visiblePageLabelKeys(shop(), 'hours')).not.toContain('pgPlace');
+  });
+  it('pgMore is tappable only when the menu has more than 5 items', async () => {
+    const { visiblePageLabelKeys } = await import('../../lib/render/labels');
+    expect(visiblePageLabelKeys(shop({ pages: { order: [], hidden: [] } }), 'hours')).toContain('pgMore');
+    expect(visiblePageLabelKeys(shop({ pages: { order: [], hidden: ['hours', 'contact', 'location'] } }), 'services')).not.toContain('pgMore');
+  });
+  it('the single-page label list is unchanged by the new labels', async () => {
+    const { visibleLabelKeys } = await import('../../lib/render/labels');
+    for (const k of visibleLabelKeys(shop())) expect(k).not.toMatch(/^pg(Place|More|Pages|Nav(Faq|FirstVisit|HairCare|BeardCare))$/);
+  });
+});
+
+describe('the new fields survive the publish path (pending shape and back)', () => {
+  it('toPendingSiteData keeps extraPages, copy and pageSections as they were', async () => {
+    const { buildImageUrlMap, toPendingSiteData } = await import('../../lib/ios/pendingData');
+    const d = shop({ extraPages: { on: ['faq'], seed: 3 }, copy: { 'faq.intro': 'hi' }, pageSections: { service: { hidden: ['guide'] } } });
+    const p = toPendingSiteData(d, buildImageUrlMap(d));
+    expect(p.extraPages).toEqual(d.extraPages); expect(p.copy).toEqual(d.copy); expect(p.pageSections).toEqual(d.pageSections);
+  });
+});

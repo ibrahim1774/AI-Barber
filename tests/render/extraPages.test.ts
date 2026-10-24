@@ -141,3 +141,42 @@ describe('with copy available (seam): the gates of plan 1c', () => {
     expect(renderSite({ ...d, pages: undefined }, 'luxe', {}).map((f) => f.path)).toEqual(['index.html']);
   });
 });
+
+describe('the page shells (copy seam on): menu, titles, links and sitemap only reach deployed pages', () => {
+  const d = shop({ extraPages: { on: [...EXTRA_KEYS] } });
+  const base = { extraCopy: READY.extraCopy, siteBaseUrl: 'https://fresh.example.com' };
+  it.each(['luxe', 'prime', 'euphoria'] as const)('%s: each extra page is a file with its own title, a self-canonical and the full shell', (template) => {
+    const r = renderSiteBundle({ ...d, template }, base);
+    const paths = r.pages.map((p) => p.path);
+    expect(paths).toEqual(expect.arrayContaining(['faq/index.html', 'first-visit/index.html', 'hair-care/index.html', 'beard-care/index.html']));
+    const html = (p: string) => r.pages.find((x) => x.path === p)!.html;
+    expect(html('faq/index.html')).toContain('<title>Questions · Fresh Cuts, Brooklyn, NY</title>');
+    expect(html('first-visit/index.html')).toContain('<title>Your first visit · Fresh Cuts</title>');
+    expect(html('hair-care/index.html')).toContain('<title>Hair care between cuts · Fresh Cuts</title>');
+    expect(html('beard-care/index.html')).toContain('<title>Beard care · Fresh Cuts</title>');
+    expect(html('faq/index.html')).toContain('<link rel="canonical" href="https://fresh.example.com/faq/">');
+    const titles = r.pages.map((p) => /<title>([\s\S]*?)<\/title>/.exec(p.html)?.[1]);
+    expect(new Set(titles).size).toBe(titles.length);
+    expect(r.sitemap).toContain('https://fresh.example.com/first-visit/');
+  });
+  it('every internal href of every page is a file in the set (or the proxied /book)', () => {
+    for (const hidden of [[], ['hours'], ['faq'], ['services', 'location'], ['contact', 'first-visit']] as const) {
+      const r = renderSiteBundle({ ...d, pages: { order: [], hidden: [...hidden] as never } }, base);
+      const files = new Set(r.pages.map((p) => p.path));
+      for (const p of r.pages) {
+        for (const m of p.html.matchAll(/href="(\/[^"#?]*)"/g)) {
+          const href = m[1];
+          if (href === '/book' || href === '/styles.css') continue;
+          const file = href === '/' ? 'index.html' : `${href.slice(1)}index.html`;
+          expect(files.has(file), `${p.path} -> ${href} (hidden ${hidden.join(',')})`).toBe(true);
+        }
+      }
+    }
+  });
+  it('the menu and footer name the extra pages with their labels, and a renamed label is escaped', () => {
+    const r = renderSiteBundle({ ...d, labels: { pgNavFirstVisit: '1st <b>visit</b>' } as never }, base);
+    const h = r.pages.find((p) => p.path === 'hours/index.html')!.html;
+    expect(h).toContain('>FAQ<'); expect(h).toContain('1st &lt;b&gt;visit&lt;/b&gt;');
+    expect(h).not.toContain('<b>visit');
+  });
+});

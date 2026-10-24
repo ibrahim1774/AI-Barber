@@ -357,6 +357,9 @@ export function visiblePageLabelKeys(site: WebsiteData, page: PageKey, ctx?: Pag
   const out: LabelKey[] = [];
   const add = (k: LabelKey) => { if (!out.includes(k)) out.push(k); };
   if (hasFilePages(set)) for (const p of set.nav) add(navLabelKey(template, p));
+  // "More" is printed by the menu once it has more than 5 items; the footer's "Pages" heading by every nested page.
+  if (hasFilePages(set) && set.nav.length > 5) add('pgMore');
+  if (hasFilePages(set) && page !== 'home') add('pgPages');
   if (template === 'luxe') add('footerLine');
   if (page === 'home') for (const k of visibleLabelKeys(site)) add(k);
   for (const k of LABEL_KEYS) {

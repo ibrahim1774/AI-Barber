@@ -12,7 +12,7 @@ import {
   serviceMeta, siteDescription, teamBookLink, teamOf, visibleReviews, type TeamCard,
 } from './honest.js';
 import { defaultRatingLine, navLabelKey, plainLabel, PAGE_TITLE_KEY, ratingLineCustom, t, type LabelKey } from './labels.js';
-import { aboutParagraphs, ownGallerySlots, pageHref as pageHrefOf, plainText, type PageContext, type PageFile, type PageSet } from './pages.js';
+import { aboutParagraphs, isExtraKey, ownGallerySlots, pageHref as pageHrefOf, plainText, type PageContext, type PageFile, type PageSet } from './pages.js';
 import { escapeAttr } from './shell.js';
 import { safeHref } from './safeHref.js';
 import { isSiteBookLink } from './subpages.js';
@@ -273,6 +273,21 @@ export function renderPageBody(ctx: BodyCtx, file: PageFile): PageBody {
     return {
       heading: heading(), description: generic,
       body: `<section class="ab-sec"><div class="ab-wrap"><h1 class="ab-h1">${title()}</h1><dl class="ab-facts">${facts}</dl>${bookBtn || shopBtn ? `<div class="ab-actions">${bookBtn}${shopBtn}</div>` : ''}</div></section>`,
+    };
+  }
+
+  // ── Extra (guide) pages: FAQ, First visit, Hair care, Beard care ───────────────────────────────
+  // Phase A: the shell only. The library copy arrives in Phase B and the hero photo in Phase C, so until then
+  // pages.ts keeps these pages suppressed (EXTRA_COPY_READY) and this branch is not reached in production.
+  // Nothing here is generic text of ours: the heading is a label, the buttons and links are the site's own.
+  if (isExtraKey(file.key)) {
+    const shopName = plainText(d.shopName);
+    return {
+      heading: heading(),
+      title: file.key === 'faq' ? clip(`${heading()} · ${shopName}${place ? `, ${place}` : ''}`, 120) : undefined,
+      description: generic,
+      // (Phase C: the hero photo slot sits above the heading.)
+      body: `<section class="ab-sec"><div class="ab-wrap"><h1 class="ab-h1">${title()}</h1>${bookBtn ? `<div class="ab-actions">${bookBtn}</div>` : ''}${alsoSee()}</div></section>`,
     };
   }
 

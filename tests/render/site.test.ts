@@ -258,6 +258,19 @@ describe('multi-page is opt-in (P3b review B1)', () => {
     expect(r.pages[0].html).toBe(golden[template]);
     expect(r.sitemap).toBeNull();
   });
+  it.each(TEMPLATES)('%s: extraPages, copy, pageSections and the new labels (pages v2, Phase A) do not move one byte of a single page', (template) => {
+    const data: WebsiteData = {
+      ...pending(template),
+      extraPages: { on: ['faq', 'first-visit', 'hair-care', 'beard-care'], serviceGuides: true, seed: 5, pick: { a: 1 }, images: { faq: 'https://x/y.jpg' } },
+      copy: { 'guide.fade.what': 'Hello <script>', 'faq.intro': 'x' },
+      pageSections: { service: { hidden: ['guide'], order: ['hero'] } },
+      labels: { pgPlace: 'Elsewhere', pgMore: 'Etc', pgPages: 'All' } as never,
+    };
+    const r = renderSiteBundle(data, { imageUrls, extraCopy: ['faq', 'first-visit', 'hair-care', 'beard-care'] });
+    expect(r.pages.map((f) => f.path)).toEqual(['index.html']);
+    expect(r.pages[0].html).toBe(golden[template]);
+    expect(r.sitemap).toBeNull();
+  });
   it.each(TEMPLATES)('%s: with pages present the page set is built', (template) => {
     const r = renderSiteBundle({ ...pending(template), pages: { order: [], hidden: [] } }, { imageUrls });
     expect(r.pages.length).toBeGreaterThan(1);
