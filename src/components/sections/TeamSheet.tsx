@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { FormLabel } from '@/components/FormLabel';
-import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { useKeyboardHeight, sheetBodyMaxHeight } from '@/lib/keyboard';
 import type { WebsiteData } from '@/web/types';
 import { colors, fonts } from '@/constants/theme';
 import { track } from '@/lib/analytics';
@@ -29,6 +30,7 @@ export function TeamSheet({ visible, data, onChange, onClose, onDismiss, upload,
   const f1 = useRef<TextInput>(null);
   const f2 = useRef<TextInput>(null);
   const f3 = useRef<TextInput>(null);
+  const formScroll = useRef<ScrollView>(null);
   const [form, setForm] = useState<Form>(null);
   const [name, setName] = useState('');
   const [role, setRole] = useState('');
@@ -36,6 +38,9 @@ export function TeamSheet({ visible, data, onChange, onClose, onDismiss, upload,
   const [bio, setBio] = useState('');
   const [error, setError] = useState('');
   const staff = data.staff ?? [];
+  const { height } = useWindowDimensions();
+  const keyboard = useKeyboardHeight();
+  const formMax = sheetBodyMaxHeight(height, keyboard);
 
   useEffect(() => {
     if (visible) setForm(null);
@@ -84,7 +89,7 @@ export function TeamSheet({ visible, data, onChange, onClose, onDismiss, upload,
         onDismiss={dismiss}
         right={<SheetAction title="Save" primary onPress={save} />}
       >
-        <ScrollView keyboardShouldPersistTaps="handled" style={styles.scroll}>
+        <ScrollView ref={formScroll} keyboardShouldPersistTaps="handled" style={{ maxHeight: formMax }}>
           <Pressable accessibilityRole="button" accessibilityLabel={photo ? 'Change photo' : 'Add photo'} onPress={() => pick.start()} style={styles.photoWrap}>
             <View style={styles.circle}>
               {pick.busy ? <ActivityIndicator color={colors.accent} /> : photo ? <Image source={{ uri: photo }} style={styles.circleImg} /> : <Text style={styles.add}>+</Text>}
@@ -97,7 +102,7 @@ export function TeamSheet({ visible, data, onChange, onClose, onDismiss, upload,
           <FormLabel input={f2} style={styles.label}>Role</FormLabel>
           <TextInput ref={f2} value={role} onChangeText={setRole} placeholder="Barber, Owner…" accessibilityLabel="Role" selectionColor={colors.accent} placeholderTextColor="rgba(255,255,255,0.3)" style={styles.input} />
           <FormLabel input={f3} style={styles.label}>Description (optional)</FormLabel>
-          <TextInput ref={f3} value={bio} onChangeText={setBio} multiline placeholder="A few words about this barber" accessibilityLabel="Description" selectionColor={colors.accent} placeholderTextColor="rgba(255,255,255,0.3)" style={[styles.input, styles.inputMulti]} />
+          <TextInput ref={f3} onFocus={() => setTimeout(() => formScroll.current?.scrollToEnd({ animated: true }), 250)} value={bio} onChangeText={setBio} multiline placeholder="A few words about this barber" accessibilityLabel="Description" selectionColor={colors.accent} placeholderTextColor="rgba(255,255,255,0.3)" style={[styles.input, styles.inputMulti]} />
           {form !== 'new' ? <SheetAction title="Remove" onPress={remove} /> : null}
         </ScrollView>
       </Sheet>

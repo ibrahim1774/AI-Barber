@@ -1,0 +1,36 @@
+appId: com.ibrahim1774.aibarber
+---
+# (u) P3b part B: barber with description, hints, toggle a page off, reorder, service page, edit text on it.
+- runFlow: _launch.yaml
+- runFlow: _manual_site.yaml
+- waitForAnimationToEnd:
+    timeout: 4000
+- tapOn: "Pages"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: 03_sheet
+- tapOn:
+    point: "74%,90%"
+- takeScreenshot: 04_toggled
+- swipe:
+    start: "88%,75%"
+    end: "88%,86%"
+    duration: 900
+- takeScreenshot: 05_reordered
+- tapOn: "Save"
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: 06_after_save
+- tapOn: "Show Services"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: 07_services_page
+- tapOn: "Show Hot towel shave"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: 08_service_item_page
+- tapOn:
+    point: "50%,40%"
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: 09_tap_edit

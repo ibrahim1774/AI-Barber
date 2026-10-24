@@ -149,13 +149,15 @@ function Row({
         <Text style={styles.title} numberOfLines={1}>{row.title}</Text>
         {sub ? <Text style={styles.sub} numberOfLines={1}>{sub}</Text> : null}
       </Pressable>
-      <Switch
-        value={row.on}
-        disabled={row.locked}
-        onValueChange={onToggle}
-        accessibilityLabel={`${row.title} page`}
-        trackColor={{ false: 'rgba(255,255,255,0.18)', true: colors.accent }}
-      />
+      <View style={styles.switchBox}>
+        <Switch
+          value={row.on}
+          disabled={row.locked}
+          onValueChange={onToggle}
+          accessibilityLabel={`${row.title} page`}
+          trackColor={{ false: 'rgba(255,255,255,0.18)', true: colors.accent }}
+        />
+      </View>
       <View
         {...(row.locked ? {} : pan.panHandlers)}
         accessible={!row.locked}
@@ -220,6 +222,7 @@ const styles = StyleSheet.create({
   main: { flex: 1, justifyContent: 'center', height: '100%' },
   title: { fontFamily: fonts.bodyBold, fontSize: 15, color: '#fff' },
   sub: { fontFamily: fonts.body, fontSize: 12, color: 'rgba(255,255,255,0.55)', marginTop: 2 },
+  switchBox: { width: 54, height: ROW_H - 10, alignItems: 'center', justifyContent: 'center' },
   handle: { width: 44, height: '100%', alignItems: 'center', justifyContent: 'center' },
   bars: { gap: 3 },
   bar: { width: 16, height: 2, borderRadius: 1, backgroundColor: 'rgba(255,255,255,0.55)' },
