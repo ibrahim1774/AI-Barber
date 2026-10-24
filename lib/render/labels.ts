@@ -172,6 +172,10 @@ export const LABELS = {
   euShopButton: { title: 'Shop button text', default: 'Shop online', template: 'euphoria', max: 30, shows: hasShop },
 
 
+  // The "Book online" strip on the homepage (lib/render/subpages.ts), printed by all three designs.
+  bookStripHeading: { title: 'Book online heading', default: 'Book online', max: 40, shows: (s) => isSiteBookLink(s.bookingUrl) },
+  bookStripButton: { title: 'Book online button', default: 'Book', max: 24, shows: (s) => isSiteBookLink(s.bookingUrl) },
+
   // ── Multi-page sites (renderSite, P3b): the menu, the page titles and the small words on the new pages. ──
   pgMenu: { title: 'Menu button name', default: 'Menu', max: 20, tap: false, multi: {} },
   pgNavHome: { title: 'Menu: Home', default: 'Home', max: 20, multi: {} },
