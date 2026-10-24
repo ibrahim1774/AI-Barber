@@ -7,6 +7,11 @@
 // booking page, or their confirmed Google listing. Everything else is
 // wording true of any barbershop.
 //
+// Page-length copy (pages v2, 2026-10-24) is held to a stricter version of "wording true of any barbershop": the
+// rules R1 to R9 in copyRules.ts (no "we/our", no ranking, no years or licences, no walk-in/parking/free, no promises,
+// no figures except advice like "2-4 weeks", no place names, no service the shop does not list). The library
+// (copyLibrary.ts) is tested against them sentence by sentence and guides.ts checks again when it renders.
+//
 // Pure functions, no DOM. Imports only other vendored modules.
 import type { TeamMember, WebsiteData } from '../../types';
 import { nicheByKey, type BooksyNiche } from '../booksyNiche.js';
