@@ -5,35 +5,13 @@ import { resolveEuphoriaTheme } from '@/web/lib/render/euphoria';
 import { nicheOf, serviceMeta, teamOf, withoutLegacyCopy } from '@/web/lib/render/honest';
 import { LABELS, LABEL_KEYS, clampLabel, defaultLabel, isFigureFreeLabel, isLabelKey, visibleLabelKeys, visiblePageLabelKeys, type LabelDef, type LabelKey } from '@/web/lib/render/labels';
 import { buildPageSet, isMultiPage, pageFileFor, type PageKey, type PageSet } from '@/web/lib/render/pages';
-import { copyBlockInfo, copyDefault, isCopyKey, visibleCopyKeys } from '@/web/lib/render/guides';
+import { copyBlockInfo, copyDefault, copyHasWordings, isCopyKey, visibleCopyKeys } from '@/web/lib/render/guides';
+import { dataPathMax, dataPattern, editableDataPaths, sheetOnlyDataPaths } from '@/web/lib/render/editPaths';
 import { fileOfPage, heroOfPage, servicePageIndexes } from '@/lib/pageFile';
 import { renderSiteBundle } from '@/web/lib/render/site';
 import { SHOP_PREVIEW_SCRIPT, SITE_SHOP_PATH, isSiteSubpageLink } from '@/web/lib/render/subpages';
 import { forRender, imageUrlMap, renderSite, withImages } from '@/lib/render';
 export { EDITOR_JS } from '@/lib/editorScript';
-
-/**
- * Text fields the web editor makes editable in place (GeneratedWebsite.tsx /
- * PrimeWebsite.tsx). `{i}` stands for an array index; see editableTextPaths().
- * The last three are rendered by the prime template only.
- */
-export const EDITABLE_TEXT_PATHS: string[] = [
-  'shopName',
-  'hero.heading',
-  'hero.tagline',
-  'about.heading',
-  'about.description.{i}',
-  'services.{i}.title',
-  'services.{i}.subtitle',
-  'services.{i}.description',
-  'phone',
-  'area',
-  'contact.address',
-  'bookingUrl',
-  'policy.title',
-  'policy.body',
-  'pullQuote.text',
-];
 
 // ---------------------------------------------------------------------------
 // Labels (small visible text: nav items, buttons, section headings...)
@@ -97,40 +75,41 @@ export function textMaxLength(path: string): number | undefined {
   const ck = copyKeyOfPath(path);
   if (ck) return copyBlockInfo(ck)?.max;
   const key = labelKeyOfPath(path);
-  return key ? defs[key].max : undefined;
+  if (key) return defs[key].max;
+  return dataPathMax(path);
 }
 
-const PRIME_ONLY = new Set(['policy.title', 'policy.body', 'pullQuote.text']);
+/** Whether the copy sheet offers "Try other wording" for this copy path (not for FAQ questions: one fixed line each). */
+export function copyPathHasWordings(path: string): boolean {
+  const ck = copyKeyOfPath(path);
+  return !!ck && copyHasWordings(ck);
+}
 
 /**
- * Paths that are NOT reliably tappable in a template's preview, so the native
- * "All fields" sheet is the way to edit them. Patterns use `{i}` like
- * EDITABLE_TEXT_PATHS. Reasons (verified by __tests__/editable.test.ts):
- *  - bookingUrl: every template only puts it in href attributes, never in text.
- *  - area: rendered as text only through cityStateOnly(), which drops the
- *    leading parts of a 3+ part address ("1 Main St, Brooklyn, NY"); otherwise
- *    it is only in <title>/<meta>.
- *  - services.{i}.subtitle (luxe, prime): the template shows
- *    `duration || subtitle`, so a scraped service with a duration hides it.
- * Notable transforms that are still tappable: luxe splits shopName on spaces
- * for the header/footer logo (orphaned markers, stripped) but prints it whole in
- * the copyright line; luxe capitalises contact.address via charAt(0), which only
- * touches the marker. Prime/euphoria HTML-escape values (the span wraps the
- * escaped text).
+ * Stored hours are 24 hour `HH:MM` while the page shows `9:00 AM`, so the open / close of an hours row is edited with
+ * the time picker, not as text. Which editor: the shop's `hours.<i>.open|close` -> the Hours sheet; a barber's
+ * `staff.<i>.hours.<j>.open|close` -> the Team sheet (a barber's week is edited per barber there, and the Hours sheet
+ * only knows the shop's). Day names are plain text and stay in the text sheet. Null for every other path.
  */
-export const SHEET_ONLY_PATHS: Record<TemplateId, string[]> = {
-  luxe: ['bookingUrl', 'area', 'services.{i}.subtitle'],
-  prime: ['bookingUrl', 'area', 'services.{i}.subtitle'],
-  euphoria: ['bookingUrl', 'area'],
-};
-
-/** Collapse concrete indices back to the `{i}` pattern: services.3.title -> services.{i}.title */
-export function pathPattern(path: string): string {
-  return path.replace(/\.\d+(?=\.|$)/g, '.{i}');
+export function hoursEditorFor(path: string): 'hours' | 'team' | null {
+  const p = dataPattern(path);
+  if (p === 'hours.{i}.open' || p === 'hours.{i}.close') return 'hours';
+  if (p === 'staff.{i}.hours.{j}.open' || p === 'staff.{i}.hours.{j}.close') return 'team';
+  return null;
 }
 
-export function isSheetOnly(template: TemplateId, path: string): boolean {
-  return (SHEET_ONLY_PATHS[template] || []).includes(pathPattern(path));
+/**
+ * Data paths NO page of this site prints as text, so the native "All fields" sheet is their only editor. Computed by the
+ * vendored renderer module (sheetOnlyDataPaths) for this site's design and page model, never a static list. The booking
+ * link is not text and is not in the list.
+ */
+export const sheetOnlyTextPaths = (d: WebsiteData): string[] => sheetOnlyDataPaths(d);
+
+/** Collapse concrete indices back to the `{i}` / `{j}` pattern: services.3.title -> services.{i}.title */
+export const pathPattern = dataPattern;
+
+export function isSheetOnly(d: WebsiteData, path: string): boolean {
+  return path === 'bookingUrl' || sheetOnlyDataPaths(d).includes(path);
 }
 
 /**
@@ -153,20 +132,9 @@ function labelKeysFor(d: WebsiteData, page?: PreviewPage | null): LabelKey[] {
   return out;
 }
 
-/** EDITABLE_TEXT_PATHS with `{i}` expanded against this site's arrays. */
+/** Every path a tap can name for this site: its data fields (editableDataPaths), then labels, then library copy. */
 export function editableTextPaths(d: WebsiteData, page?: PreviewPage | null): string[] {
-  const out: string[] = [];
-  for (const pattern of EDITABLE_TEXT_PATHS) {
-    if (PRIME_ONLY.has(pattern) && d.template !== 'prime') continue;
-    const i = pattern.indexOf('.{i}');
-    if (i < 0) {
-      out.push(pattern);
-      continue;
-    }
-    const arr = getPath(d, pattern.slice(0, i));
-    if (!Array.isArray(arr)) continue;
-    arr.forEach((_, n) => out.push(pattern.replace('{i}', String(n))));
-  }
+  const out = editableDataPaths(d, page);
   for (const key of labelKeysFor(d, page)) out.push(`${LABEL_PREFIX}${key}`);
   for (const key of copyKeysFor(d, page)) out.push(copyPath(key));
   return out;

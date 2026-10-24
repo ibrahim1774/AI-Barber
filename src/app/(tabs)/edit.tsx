@@ -13,7 +13,7 @@ import { bookingPrefs, resolveLinks } from '@/lib/bookingChoice';
 import { syncOwnLink } from '@/lib/bookingChoice';
 import { useLinkContext } from '@/lib/linkContext';
 import { stripLapsedLinks } from '@/lib/tierLinks';
-import { copyKeyOfPath, previewBackground, textMaxLength, textValue, type PreviewPage } from '@/lib/editable';
+import { copyKeyOfPath, copyPathHasWordings, hoursEditorFor, previewBackground, textMaxLength, textValue, type PreviewPage } from '@/lib/editable';
 import { PAGE_TITLES, resolvePage, serviceRows, withPageChange, type PagesChange } from '@/lib/sitePages';
 import { clearHero, isHeroPath, sampleHeroPaths, setPhoto } from '@/lib/pageHero';
 import { isCopyEdited, resetCopy, tryOtherWording } from '@/lib/copyEdit';
@@ -397,6 +397,9 @@ export default function Editor() {
   );
 
   const openEdit = useCallback((path: string, fromList = false, fromPage = false) => {
+    // Stored hours are 24 hour HH:MM while the page shows 9:00 AM: open / close go to the time pickers, not the text box.
+    const hoursEditor = hoursEditorFor(path);
+    if (hoursEditor) { setSheet(hoursEditor); return; }
     setEdit({ path, fromList, fromPage });
     setSheet('edit');
   }, []);
@@ -709,7 +712,7 @@ export default function Editor() {
           note={editedCopyKey && isCopyEdited(data, editedCopyKey) ? 'This text no longer updates with your prices.' : undefined}
           actions={editedCopyKey ? [
             { title: 'Reset to suggested', onPress: () => commit((d) => resetCopy(d, editedCopyKey)) },
-            { title: 'Try other wording', onPress: () => commit((d) => tryOtherWording(d, editedCopyKey)) },
+            ...(copyPathHasWordings(edit.path) ? [{ title: 'Try other wording', onPress: () => commit((d) => tryOtherWording(d, editedCopyKey)) }] : []),
           ] : undefined}
           onSave={(v) => commit((d) => savePathValue(d, edit.path, v))}
           onClose={closeEdit}

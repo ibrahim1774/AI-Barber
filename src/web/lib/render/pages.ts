@@ -285,13 +285,19 @@ type HoursRows = { day?: string; open?: string; close?: string; closed?: boolean
 const hoursSig = (h: unknown): string =>
   JSON.stringify((Array.isArray(h) ? (h as HoursRows) : []).map((r) => [plainText(r?.day).toLowerCase(), plainText(r?.open), plainText(r?.close), !!r?.closed]));
 
+/** Does this barber have opening hours of their own that differ from the shop's? (Their page then prints them.) */
+export function memberHasOwnHours(raw: unknown, shopHours: unknown): boolean {
+  const s = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : null;
+  return !!s && Array.isArray(s.hours) && s.hours.length > 0 && hoursSig(s.hours) !== hoursSig(shopHours);
+}
+
 /** Does this stored staff entry hold something of the member's own (a role alone does not count)? */
 export function memberHasOwnContent(raw: unknown, shopHours: unknown): boolean {
   const s = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : null;
   if (!s) return false;
   if (has(s.bio) || has(s.photo)) return true;
   if (Array.isArray(s.serviceIds) && s.serviceIds.some((id) => has(id))) return true;
-  return Array.isArray(s.hours) && s.hours.length > 0 && hoursSig(s.hours) !== hoursSig(shopHours);
+  return memberHasOwnHours(s, shopHours);
 }
 
 // ── Extra (guide) pages ─────────────────────────────────────────────────────────────────────────

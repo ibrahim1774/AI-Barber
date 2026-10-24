@@ -122,8 +122,13 @@ if(n>0)s.removeAttribute('hidden');
  * it is never stale. Server-rendered hidden with no products; no JS means no section (the nav
  * Shop link still works). Only when the site's Shop link is the site's own shop page.
  */
-export function shopPreviewHtml(site: Pick<WebsiteData, 'shopUrl'>, skin: SectionSkin): string {
+export function shopPreviewHtml(
+  site: Pick<WebsiteData, 'shopUrl'>,
+  skin: SectionSkin,
+  /** The heading and link text as HTML-escaped text (the renderers pass t(labels, ...)). */
+  words: { heading: string; link: string } = { heading: 'Shop', link: 'See all' },
+): string {
   if (!isSiteShopLink(site.shopUrl)) return '';
-  return `<section id="shop-preview"${cls(skin.section)} hidden>${style(skin)}<div${cls(skin.inner)}><h2${cls(skin.heading)}>Shop</h2><div id="shop-preview-grid"${cls(skin.grid)}></div><a href="${SITE_SHOP_PATH}"${cls(skin.link)}>See all</a></div></section>
+  return `<section id="shop-preview"${cls(skin.section)} hidden>${style(skin)}<div${cls(skin.inner)}><h2${cls(skin.heading)}>${words.heading}</h2><div id="shop-preview-grid"${cls(skin.grid)}></div><a href="${SITE_SHOP_PATH}"${cls(skin.link)}>${words.link}</a></div></section>
 <script>${SHOP_PREVIEW_SCRIPT}</script>`;
 }

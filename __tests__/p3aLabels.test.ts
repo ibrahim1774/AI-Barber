@@ -1,11 +1,12 @@
 // P3a (spec 2026-10-23-barber-experience): every small label is tap-to-edit through the existing
 // marker system; the allow-list is static; rating and review controls.
+import { editableDataPaths } from '@/web/lib/render/editPaths';
 import { generateContent } from '@/web/services/geminiService';
 import { LABELS, LABEL_KEYS, defaultLabel } from '@/web/lib/render/labels';
 import { nicheOf } from '@/web/lib/render/honest';
 import type { TemplateId, WebsiteData } from '@/web/types';
 import {
-  EDITABLE_TEXT_PATHS, LABEL_TEXT_PATHS, buildPreviewHtml, editableTextPaths, getPath, labelKeyOfPath, markData, prepareEditableHtml,
+  LABEL_TEXT_PATHS, buildPreviewHtml, editableTextPaths, getPath, labelKeyOfPath, markData, prepareEditableHtml,
   setPath, textMaxLength, textValue,
 } from '@/lib/editable';
 import { renderSite, forRender } from '@/lib/render';
@@ -45,7 +46,7 @@ describe('label paths', () => {
     expect(LABEL_TEXT_PATHS).toEqual(LABEL_KEYS.filter((k) => (LABELS[k] as { tap?: boolean }).tap !== false).map((k) => `labels.${k}`));
     expect(LABEL_TEXT_PATHS).not.toContain('labels.ratingLine');
     expect(LABEL_TEXT_PATHS).not.toContain('labels.pgMenu');
-    for (const p of LABEL_TEXT_PATHS) expect(EDITABLE_TEXT_PATHS).not.toContain(p);
+    for (const p of LABEL_TEXT_PATHS) expect(editableDataPaths(fixtures[0].data)).not.toContain(p);
   });
 
   test('labelKeyOfPath accepts only registry keys', () => {

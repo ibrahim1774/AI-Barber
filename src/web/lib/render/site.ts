@@ -17,6 +17,7 @@ import { copyrightYear, displayPhone, nicheOf, withoutLegacyCopy } from './hones
 import { aibThemeVars, generateHTMLWithPlaceholders, resolveAibTheme } from './luxe';
 import { HERO_EXTRA_PAGES } from './heroes';
 import { hasPagesV2 } from '../pagesV2';
+import { printable } from './markers';
 import { navLabelKey, plainLabel, t } from './labels';
 import { renderPageBody } from './pageBodies';
 import { buildPageSet, canonicalBase, hasFilePages, isMultiPage, singlePageSet, plainText, sitemapXml, type PageContext, type PageFile, type PageSet, type SiteFile } from './pages';
@@ -124,26 +125,30 @@ export function renderSiteBundle(data: WebsiteData, opts: RenderSiteOptions = {}
   const digits = phone.replace(/\D/g, '');
   const bookingUrl = safeHref(d.bookingUrl);
   const shop = plainText(d.shopName);
+  // What the header and footer PRINT keeps the editor's markers (markers.ts); decisions, titles and links use the plain values above.
+  const shopShown = printable(d.shopName);
+  const phoneShown = printable(d.phone);
+  const addressShown = printable(d.contact?.address);
   const themeStyle = themeStyleOf(template, d);
 
   const headerFor = (file: PageFile): string => {
     const nav = navListHtml(navItemsFor(template, set, d, file.key), L('pgMenu'), L('pgMore'));
-    if (template === 'luxe') return headerHtml('luxe', { name: shop, phone, shownPhone: escapeAttr(displayPhone(phone)), nav });
+    if (template === 'luxe') return headerHtml('luxe', { name: shopShown, phone, shownPhone: escapeAttr(displayPhone(phoneShown)), nav });
     if (template === 'prime') {
       const href = bookingUrl || (digits ? `tel:+1${digits}` : '');
-      return headerHtml('prime', { name: shop, cta: href ? { href, label: L('primeNavBook'), newTab: !!bookingUrl && !bookingUrl.startsWith('/') } : null, nav });
+      return headerHtml('prime', { name: shopShown, cta: href ? { href, label: L('primeNavBook'), newTab: !!bookingUrl && !bookingUrl.startsWith('/') } : null, nav });
     }
     const href = bookingUrl || (/\d/.test(phone) ? `tel:${phone.replace(/\s+/g, '')}` : '');
-    return headerHtml('euphoria', { name: shop, cta: href ? { href, label: L('euNavBook'), newTab: !!bookingUrl && !bookingUrl.startsWith('/') } : null, nav });
+    return headerHtml('euphoria', { name: shopShown, cta: href ? { href, label: L('euNavBook'), newTab: !!bookingUrl && !bookingUrl.startsWith('/') } : null, nav });
   };
   // The footer lists every page that is a file in the set (top-level pages, then the service pages), nothing else.
   const footerPages = [
-    ...navItemsFor(template, set, d, 'home').map((i) => ({ href: i.href, label: escapeAttr(plainLabel(d.labels, navLabelKey(template, i.key), niche, d)), external: i.external })),
-    ...set.files.filter((f) => f.key === 'services' && f.child).map((f) => ({ href: f.href, label: escapeAttr(f.child!.title) })),
+    ...navItemsFor(template, set, d, 'home').map((i) => ({ href: i.href, label: t(d.labels, navLabelKey(template, i.key), niche, d), external: i.external })),
+    ...set.files.filter((f) => f.key === 'services' && f.child).map((f) => ({ href: f.href, label: escapeAttr(printable(d.services?.[f.child!.index]?.title) || f.child!.title) })),
   ];
   const footer = footerHtml(template, {
-    name: shop, year: copyrightYear(), line: template === 'luxe' ? L('footerLine') : undefined,
-    address: plainText(d.contact?.address), phone, shownPhone: phone ? escapeAttr(displayPhone(phone)) : '',
+    name: shopShown, year: copyrightYear(), line: template === 'luxe' ? L('footerLine') : undefined,
+    address: addressShown, phone, shownPhone: phone ? escapeAttr(displayPhone(phoneShown)) : '',
     pagesHeading: L('pgPages'), pages: footerPages,
   });
 

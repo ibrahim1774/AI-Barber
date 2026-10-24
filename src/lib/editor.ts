@@ -110,6 +110,9 @@ const FIELD_LABELS: Record<string, string> = {
   'policy.title': 'Policy title',
   'policy.body': 'Policy text',
   'pullQuote.text': 'Pull quote',
+  'pullQuote.accent': 'Pull quote highlight',
+  bio: 'Shop bio quote',
+  'contact.email': 'Email',
 };
 
 /**
@@ -137,7 +140,9 @@ export function savePathValue(d: WebsiteData, path: string, value: string): Webs
   return setPath(d, path, value);
 }
 
-const SERVICE_FIELD: Record<string, string> = { title: 'name', subtitle: 'subtitle', description: 'description' };
+const SERVICE_FIELD: Record<string, string> = { title: 'name', subtitle: 'subtitle', description: 'description', price: 'price', duration: 'length', category: 'category' };
+const STAFF_FIELD: Record<string, string> = { name: 'name', role: 'role', bio: 'bio' };
+const HOURS_FIELD: Record<string, string> = { day: 'day', open: 'opens', close: 'closes' };
 
 /** "services.2.title" → "Service 3 name". */
 export function fieldLabel(path: string): string {
@@ -148,8 +153,14 @@ export function fieldLabel(path: string): string {
   if (labelKey) return (LABELS as Record<string, LabelDef>)[labelKey].title;
   let m = /^about\.description\.(\d+)$/.exec(path);
   if (m) return `About paragraph ${Number(m[1]) + 1}`;
-  m = /^services\.(\d+)\.(title|subtitle|description)$/.exec(path);
+  m = /^services\.(\d+)\.(title|subtitle|description|price|duration|category)$/.exec(path);
   if (m) return `Service ${Number(m[1]) + 1} ${SERVICE_FIELD[m[2]]}`;
+  m = /^staff\.(\d+)\.(name|role|bio)$/.exec(path);
+  if (m) return `Barber ${Number(m[1]) + 1} ${STAFF_FIELD[m[2]]}`;
+  m = /^hours\.(\d+)\.(day|open|close)$/.exec(path);
+  if (m) return `Hours ${Number(m[1]) + 1} ${HOURS_FIELD[m[2]]}`;
+  m = /^staff\.(\d+)\.hours\.(\d+)\.(day|open|close)$/.exec(path);
+  if (m) return `Barber ${Number(m[1]) + 1} hours ${Number(m[2]) + 1} ${HOURS_FIELD[m[3]]}`;
   return path;
 }
 

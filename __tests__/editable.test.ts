@@ -5,8 +5,6 @@ import type { TemplateId, WebsiteData } from '@/web/types';
 import { toShopSite } from '@/lib/importer';
 import { renderSite, forRender } from '@/lib/render';
 import {
-  EDITABLE_TEXT_PATHS,
-  SHEET_ONLY_PATHS,
   IMAGE_PATHS,
   EDITOR_JS,
   buildPreviewHtml,
@@ -16,6 +14,7 @@ import {
   markData,
   prepareEditableHtml,
   setPath,
+  sheetOnlyTextPaths,
   sheetOnlyImagePaths,
   stripMarkers,
   stripTracking,
@@ -90,13 +89,12 @@ describe('editable paths', () => {
     const problems: string[] = [];
     let checked = 0;
     for (const { name, data } of await fixtures()) {
-      const template = (data.template || 'luxe') as TemplateId;
       const html = editableDoc(data);
       for (const path of editableTextPaths(data)) {
         if (!nonEmpty(getPath(data, path))) continue;
         checked++;
         const tappable = html.includes(`<span data-edit="${path}">`);
-        if (!tappable && !isSheetOnly(template, path)) problems.push(`${name}: ${path}`);
+        if (!tappable && !isSheetOnly(data, path)) problems.push(`${name}: ${path}`);
       }
     }
     expect(problems).toEqual([]);
@@ -113,9 +111,9 @@ describe('editable paths', () => {
     expect(editableDoc(prime)).toContain('<span data-edit="pullQuote.text">A great cut isn&#39;t a transaction — it&#39;s a craft.</span>');
   });
 
-  test('SHEET_ONLY_PATHS only names editable paths', () => {
-    for (const list of Object.values(SHEET_ONLY_PATHS)) {
-      for (const p of list) expect(EDITABLE_TEXT_PATHS).toContain(p);
+  test('sheet-only paths only name editable paths', async () => {
+    for (const { data } of await fixtures()) {
+      for (const p of sheetOnlyTextPaths(data)) expect(editableTextPaths(data)).toContain(p);
     }
   });
 
@@ -126,11 +124,10 @@ describe('editable paths', () => {
       const html = editableDoc({ ...luxe, template: t, bookingUrl: 'https://booksy.com/x' });
       expect(html).not.toContain('data-edit="bookingUrl"');
     }
-    // area: cityStateOnly() drops the leading parts of a long address
-    const long = { ...luxe, area: '1 Main St, Brooklyn, NY' };
-    for (const t of ['luxe', 'prime', 'euphoria'] as const) {
-      expect(editableDoc({ ...long, template: t })).not.toContain('data-edit="area"');
-    }
+    // area: luxe never prints it as text (prime / euphoria print city and state, and are tappable)
+    expect(editableDoc({ ...luxe, area: 'Brooklyn, NY' })).not.toContain('data-edit="area"');
+    expect(sheetOnlyTextPaths({ ...luxe, area: 'Brooklyn, NY' })).toContain('area');
+    expect(sheetOnlyTextPaths({ ...luxe, template: 'prime', area: 'Brooklyn, NY' })).not.toContain('area');
     // services.{i}.subtitle: luxe/prime show `duration || subtitle`
     const withDuration = { ...luxe, services: luxe.services.map((s) => ({ ...s, duration: '30 min' })) };
     for (const t of ['luxe', 'prime'] as const) {

@@ -85,7 +85,8 @@ export const EDITOR_JS = String.raw`(function () {
     var link = el;
     while (link && link.nodeType === 1 && link.tagName !== 'A') link = link.parentElement;
     var inner = link && link.nodeType === 1 && link.querySelectorAll ? link.querySelectorAll('[data-edit]') : null;
-    if (inner && inner.length === 1) { post({ type: 'edit', path: inner[0].getAttribute('data-edit') }); return; }
+    // Two or more ("Book with Sam": label + name): the padding opens the first, the words open their own.
+    if (inner && inner.length >= 1) { post({ type: 'edit', path: inner[0].getAttribute('data-edit') }); return; }
     var img = closestAttr(el, 'data-edit-image');
     if (img) { post({ type: 'image', path: img.getAttribute('data-edit-image') }); return; }
     // Photos sit under overlays (hero gradient). Not for taps on links/buttons.

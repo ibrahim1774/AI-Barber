@@ -34,6 +34,8 @@ FILES=(
   lib/render/heroes.ts
   lib/render/sections.ts
   lib/pagesV2.ts
+  lib/render/markers.ts
+  lib/render/editPaths.ts
 )
 # A remote ref needs a fresh fetch; a local branch or sha does not.
 if [ "$REF" = "origin/main" ] || [[ "$REF" == origin/* ]]; then git -C "$SRC" fetch origin; fi
