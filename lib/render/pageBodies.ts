@@ -9,7 +9,7 @@
 import type { TemplateId, WebsiteData } from '../../types';
 import {
   aggregateToShow, contactEmail, displayPhone, displayPrice, firstName, nicheOf, photoAlt, reviewsSourceLabel, reviewStars,
-  serviceMeta, siteDescription, teamBookLink, teamOf, to12h, visibleReviews, type TeamCard,
+  serviceChipName, serviceMeta, siteDescription, teamBookLink, teamOf, to12h, visibleReviews, type TeamCard,
 } from './honest.js';
 import {
   beardServices, extraBlocks, guideBlocks, howOftenRows, serviceGuideFor, titledServices, type CopyEnv, type LinkInfo, type LinkKey, type ResolvedBlock, type Seg,
@@ -189,7 +189,7 @@ export function renderPageBody(ctx: BodyCtx, file: PageFile): PageBody {
       ? `<h2 class="ab-h2" style="margin-top:32px">${L('pgOtherServices')}</h2><div class="ab-chips">${others.map((c) => `<a class="ab-chip" href="${esc(`/services/${c.slug}/`)}">${esc(svcTitle(c.index, c.title))}</a>`).join('')}</div>`
       : '';
     // One URL per service, titled with the shop's place: "Skin Fade in Brooklyn, NY · Fresh Cuts". No place, no change.
-    const eyebrow = place ? `<p class="ab-eyebrow">${esc(niche.industry)} in ${L('pgPlace')}</p>` : '';
+    const eyebrow = place ? `<p class="ab-eyebrow">${L('pgInPlace')} ${L('pgPlace')}</p>` : '';
     // "About this service": the library guide for this service, only when the barber turned guides on and this is the
     // first service of its kind. Every sentence is library text or a token resolved from this site's own data.
     const guideId = serviceGuideFor(d, set.services.map((c) => c.index)).get(file.child.index);
@@ -229,6 +229,8 @@ export function renderPageBody(ctx: BodyCtx, file: PageFile): PageBody {
     const raw = ((Array.isArray(d.staff) ? d.staff[kid.index] : null) ?? {}) as { serviceIds?: unknown[]; serviceNames?: unknown[]; hours?: Hours };
     const pick = Array.isArray(raw.serviceIds) && raw.serviceIds.some((x) => plainText(x));
     const names = pick && Array.isArray(raw.serviceNames) ? raw.serviceNames.map((n) => plainText(n)).filter(Boolean).slice(0, 30) : [];
+    // The chips print the service's own title (with the editor's markers) when it is the same text, so a tap edits the service.
+    const nameShown = (n: string): string => serviceChipName(d, n);
     const priceOf = (n: string): string => {
       const hit = (Array.isArray(d.services) ? d.services : []).find((s) => plainText(s?.title).toLowerCase() === n.toLowerCase());
       return hit ? displayPrice(hit.price) : '';
@@ -236,7 +238,7 @@ export function renderPageBody(ctx: BodyCtx, file: PageFile): PageBody {
     const own = Array.isArray(raw.hours) && raw.hours.length > 0 ? raw.hours : null;
     const { button } = card(m);
     const services = names.length
-      ? `<h2 class="ab-h2">${L('pgMemberServices')}</h2><div class="ab-rows">${names.map((n) => `<div class="ab-row"><span>${esc(n)}</span>${priceOf(n) ? `<span>${esc(priceOf(n))}</span>` : ''}</div>`).join('')}</div>`
+      ? `<h2 class="ab-h2">${L('pgMemberServices')}</h2><div class="ab-rows">${names.map((n) => `<div class="ab-row"><span>${esc(nameShown(n))}</span>${priceOf(n) ? `<span>${esc(priceOf(n))}</span>` : ''}</div>`).join('')}</div>`
       : '';
     const hoursBlock = own && hoursDiffer(own, d.hours)
       ? `<h2 class="ab-h2" style="margin-top:32px">${L('pgMemberHours')}</h2><div class="ab-rows">${own.map((h) => hoursRow(h, L('pgClosed'))).join('')}</div>`
@@ -361,7 +363,7 @@ export function renderPageBody(ctx: BodyCtx, file: PageFile): PageBody {
       parts.prices = priced.length ? h2('pgFvPrices') + rows(priced) : '';
     } else if (file.key === 'hair-care') {
       const often = howOftenRows(copyEnv);
-      parts.often = often.length ? h2('pgHcOften') + `<ul class="ab-copy">${often.map((r) => { const sl = serviceSlug(r.index); return `<li>${sl ? `<a href="${esc(`/services/${sl}/`)}">${esc(r.title)}</a>` : esc(r.title)}: ${segsHtml(r.segs)}</li>`; }).join('')}</ul>` : '';
+      parts.often = often.length ? h2('pgHcOften') + `<ul class="ab-copy">${often.map((r) => { const sl = serviceSlug(r.index); return `<li>${sl ? `<a href="${esc(`/services/${sl}/`)}">${esc(svcTitle(r.index, r.title))}</a>` : esc(svcTitle(r.index, r.title))}: ${segsHtml(r.segs)}</li>`; }).join('')}</ul>` : '';
     } else if (file.key === 'beard-care') {
       const bs = beardServices(d);
       parts.services = bs.length ? h2('pgBcServices') + rows(bs) : '';

@@ -136,10 +136,10 @@ export function renderSiteBundle(data: WebsiteData, opts: RenderSiteOptions = {}
     if (template === 'luxe') return headerHtml('luxe', { name: shopShown, phone, shownPhone: escapeAttr(displayPhone(phoneShown)), nav });
     if (template === 'prime') {
       const href = bookingUrl || (digits ? `tel:+1${digits}` : '');
-      return headerHtml('prime', { name: shop, cta: href ? { href, label: L('primeNavBook'), newTab: !!bookingUrl && !bookingUrl.startsWith('/') } : null, nav });
+      return headerHtml('prime', { name: shopShown, cta: href ? { href, label: L('primeNavBook'), newTab: !!bookingUrl && !bookingUrl.startsWith('/') } : null, nav });
     }
     const href = bookingUrl || (/\d/.test(phone) ? `tel:${phone.replace(/\s+/g, '')}` : '');
-    return headerHtml('euphoria', { name: shop, cta: href ? { href, label: L('euNavBook'), newTab: !!bookingUrl && !bookingUrl.startsWith('/') } : null, nav });
+    return headerHtml('euphoria', { name: shopShown, cta: href ? { href, label: L('euNavBook'), newTab: !!bookingUrl && !bookingUrl.startsWith('/') } : null, nav });
   };
   // The footer lists every page that is a file in the set (top-level pages, then the service pages), nothing else.
   const footerPages = [

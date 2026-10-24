@@ -18,6 +18,7 @@ import { EXTRA_PAGES, GUIDES, GUIDE_IDS, type Block, type BlockKind, type ExtraI
 import { copyProblems, TOKEN_RE, type VocabGroup } from './copyRules.js';
 import { displayPhone, displayPrice, policyToShow } from './honest.js';
 import { safeHref } from './safeHref.js';
+import { pageSectionsOf, type SectionPage } from './sections.js';
 
 // ── Text helpers (same marker rule as pages.ts plainText) ───────────────────────────────────────
 const RAW_MARKER = /⁣(?:[a-zA-Z]+|\/)⁣/g;
@@ -79,12 +80,23 @@ export function serviceGuideFor(d: Pick<WebsiteData, 'services' | 'extraPages'>,
 }
 
 // ── Keys, the closed set of editable blocks ─────────────────────────────────────────────────────
-interface Entry { block: Block; allow: VocabGroup[]; scope: GuideId | ExtraId; kind: 'guide' | 'page' }
+/** `special`: a key that is not a block but one line of a block's page (a FAQ question, a Hair care "how often" sentence). */
+interface Entry { block: Block; allow: VocabGroup[]; scope: GuideId | ExtraId; kind: 'guide' | 'page'; special?: 'q' | 'interval' }
 const REGISTRY = new Map<string, Entry>();
 for (const g of GUIDE_IDS) for (const block of GUIDES[g].blocks) REGISTRY.set(`guide.${g}.${block.id}`, { block, allow: [...GUIDES[g].allow, ...(block.allow ?? [])], scope: g, kind: 'guide' });
 for (const [page, def] of Object.entries(EXTRA_PAGES) as [ExtraId, (typeof EXTRA_PAGES)[ExtraId]][]) {
   for (const block of def.blocks) REGISTRY.set(`${page}.${block.id}`, { block, allow: [...def.allow, ...(block.allow ?? [])], scope: page, kind: 'page' });
 }
+
+// The FAQ questions and the Hair care "how often" sentences are library text too, so each is a key of its own
+// (`faq.book.q`, `guide.fade.interval`): a one-line text of at most this many characters. Barber-written, never linted.
+const QUESTION_MAX = 160;
+const INTERVAL_MAX = 200;
+const lineBlock = (id: string, max: number): Block => ({ id, kind: 'p', max, variants: [[], [], []] });
+for (const [page, def] of Object.entries(EXTRA_PAGES) as [ExtraId, (typeof EXTRA_PAGES)[ExtraId]][]) {
+  for (const block of def.blocks) if (block.kind === 'qa' && block.q) REGISTRY.set(`${page}.${block.id}.q`, { block: lineBlock(`${block.id}.q`, QUESTION_MAX), allow: [], scope: page, kind: 'page', special: 'q' });
+}
+for (const g of GUIDE_IDS) if (GUIDES[g].interval) REGISTRY.set(`guide.${g}.interval`, { block: lineBlock('interval', INTERVAL_MAX), allow: GUIDES[g].allow, scope: g, kind: 'guide', special: 'interval' });
 
 /** Every key a `copy` override may use. */
 export const COPY_KEYS: readonly string[] = Array.from(REGISTRY.keys());
@@ -318,8 +330,11 @@ function customItems(kind: BlockKind, text: string): Seg[][] {
 export function resolveBlock(env: CopyEnv, key: string, subject: Svc | null = null): ResolvedBlock | null {
   const e = REGISTRY.get(key);
   if (!e) return null;
+  if (e.special) return null; // a line of a block, not a block (copyDefault / howOftenRows serve it)
   const { block } = e;
-  const base = { key, id: block.id, kind: block.kind, h: block.h, q: block.q };
+  // The barber's own question (`<page>.<id>.q`), when they wrote one.
+  const ownQ = block.kind === 'qa' && !env.ignoreCopy ? copyOverrides(env.d).get(`${key}.q`) : undefined;
+  const base = { key, id: block.id, kind: block.kind, h: block.h, q: ownQ ?? block.q };
   const own = env.ignoreCopy ? undefined : copyOverrides(env.d).get(key);
   if (own !== undefined) return { ...base, items: customItems(block.kind, own), custom: true };
 
@@ -387,7 +402,9 @@ export function howOftenRows(env: CopyEnv): OftenRow[] {
     const def = GUIDES[s.guide];
     if (!def.interval) continue;
     const line = def.interval[variantIndex(env.d, `guide.${s.guide}.interval`)];
-    const segs = resolveSentence(env, line, def.allow, s);
+    // The barber's own sentence for this kind of service (`guide.<id>.interval`) is shown as written.
+    const own = env.ignoreCopy ? undefined : copyOverrides(env.d).get(`guide.${s.guide}.interval`);
+    const segs = own !== undefined ? [{ t: 'text' as const, s: own }] : resolveSentence(env, line, def.allow, s);
     if (segs) rows.push({ index: s.index, title: s.title, guide: s.guide, segs });
     if (rows.length >= 8) break;
   }
@@ -404,6 +421,14 @@ export function copyDefault(d: WebsiteData, key: string): string {
   const e = REGISTRY.get(key);
   if (!e) return '';
   const env = lenientEnv(d, { ignoreCopy: true });
+  if (e.special === 'q') return REGISTRY.get(key.slice(0, -2))?.block.q ?? '';
+  if (e.special === 'interval') {
+    const g = e.scope as GuideId;
+    const svc = titledServices(d).find((x) => x.guide === g);
+    const line = GUIDES[g].interval?.[variantIndex(d, key)];
+    const segs = svc && line ? resolveSentence(env, line, GUIDES[g].allow, svc) : null;
+    return segs ? segsText(segs) : '';
+  }
   const subject = e.kind === 'guide' ? titledServices(d).find((s) => s.guide === e.scope) ?? null : null;
   const b = resolveBlock(env, key, subject);
   return b ? blockText(b) : '';
@@ -418,10 +443,21 @@ export function visibleCopyKeys(d: WebsiteData, file: { key: string; child?: { i
   if (file.key === 'services' && file.child) {
     const g = serviceGuideFor(d, servicePages).get(file.child.index);
     const subject = titledServices(d).find((s) => s.index === file.child!.index) ?? null;
+    if (pageSectionsOf(d, 'service').find((x) => x.id === 'guide')?.hidden) return [];
     return g && subject ? guideBlocks(env, g, subject).map((b) => b.key) : [];
   }
   if (file.key === 'faq' || file.key === 'first-visit' || file.key === 'hair-care' || file.key === 'beard-care') {
-    return extraBlocks(env, file.key).map((b) => b.key);
+    const page = file.key as SectionPage;
+    const hidden = new Set(pageSectionsOf(d, page).filter((x) => x.hidden).map((x) => x.id));
+    const out: string[] = [];
+    for (const b of extraBlocks(env, file.key)) {
+      if (hidden.has(b.id)) continue;
+      // The question of a FAQ block is a text of its own, tapped apart from the answer.
+      if (b.kind === 'qa' && REGISTRY.has(`${b.key}.q`)) out.push(`${b.key}.q`);
+      out.push(b.key);
+    }
+    if (file.key === 'hair-care' && !hidden.has('often')) for (const r of howOftenRows(env)) if (!out.includes(`guide.${r.guide}.interval`)) out.push(`guide.${r.guide}.interval`);
+    return out;
   }
   return [];
 }

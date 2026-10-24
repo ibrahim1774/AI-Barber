@@ -17,7 +17,7 @@ import type { TeamMember, WebsiteData } from '../../types';
 import { nicheByKey, type BooksyNiche } from '../booksyNiche.js';
 import { isStockImage } from '../stockImages.js';
 import { safeHref } from './safeHref.js';
-import { mapMarked, unmarked } from './markers.js';
+import { mapMarked, printable, unmarked } from './markers.js';
 
 // Trailing "City, State" only, so a pasted street address never lands in
 // a footer or meta line.
@@ -537,6 +537,19 @@ const cleanStr = (v: unknown, max: number): string | undefined => {
   return out || undefined;
 };
 
+/**
+ * A service chip on a barber's card or page ("Skin Fade"): the name stored on the barber is a copy of a service of the
+ * shop. When it is the same text as a listed service's title, the chip prints that title (with the editor's markers in
+ * the preview), so a tap on the chip edits the service itself. Otherwise the name as stored. Published output is the
+ * same text either way.
+ */
+export function serviceChipName(site: { services?: unknown }, name: string): string {
+  const k = unmarked(name).trim();
+  const list = Array.isArray(site.services) ? (site.services as { title?: unknown }[]) : [];
+  const hit = k ? list.find((sv) => typeof sv?.title === 'string' && unmarked(sv.title).trim() === k) : undefined;
+  return hit ? printable(hit.title) : name;
+}
+
 /** A team member as the renderers see it: cleaned, plus `index` = its position in the stored staff[] (the `staff<i>` image key). */
 export interface TeamCard extends TeamMember {
   index: number;
@@ -553,7 +566,7 @@ const slugOf = (name: string): string =>
  * link. At most TEAM_DISPLAY_CAP cards come back (with legacyUncapped, only entries that have a
  * memberId are capped; older entries without one all stay); the stored array is not changed.
  */
-export function teamOf(site: Pick<WebsiteData, 'staff'>, opts: { legacyUncapped?: boolean } = {}): TeamCard[] {
+export function teamOf(site: Pick<WebsiteData, 'staff'> & { services?: unknown }, opts: { legacyUncapped?: boolean } = {}): TeamCard[] {
   const staff = Array.isArray(site.staff) ? site.staff : [];
   const out: TeamCard[] = [];
   const used = new Set<string>();
@@ -573,7 +586,7 @@ export function teamOf(site: Pick<WebsiteData, 'staff'>, opts: { legacyUncapped?
     used.add(slug);
     const url = typeof s.bookingUrl === 'string' && /^https?:\/\//i.test(s.bookingUrl.trim()) ? safeHref(s.bookingUrl) : null;
     const names = Array.isArray(s.serviceNames)
-      ? s.serviceNames.map((n) => cleanStr(n, 40)).filter((n): n is string => !!n).slice(0, 3)
+      ? s.serviceNames.map((n) => cleanStr(n, 40)).filter((n): n is string => !!n).slice(0, 3).map((n) => serviceChipName(site, n))
       : [];
     out.push({
       index, slug, name,

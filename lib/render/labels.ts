@@ -207,6 +207,10 @@ export const LABELS = {
     title: 'Place name', default: (_n, site) => placeFromArea(site?.area || ''), max: 60,
     multi: { page: ['services', 'location'], shows: (s) => has(s.area) || has((s as { labels?: Record<string, unknown> }).labels?.pgPlace) },
   },
+  pgInPlace: {
+    title: 'Service page: line over the heading', default: (n) => `${n.industry} in`, max: 40,
+    multi: { page: 'services', shows: (s, set) => set.services.length > 0 && (has(s.area) || has((s as { labels?: Record<string, unknown> }).labels?.pgPlace)) },
+  },
   pgAboutTitle: { title: 'About page title', default: 'About us', max: 60, multi: { page: 'about' } },
   pgServicesTitle: { title: 'Services page title', default: 'Services', max: 60, multi: { page: 'services' } },
   pgTeamTitle: { title: 'Team page title', default: (n) => copy(n).teamHeading, max: 60, multi: { page: 'team' } },
@@ -390,6 +394,9 @@ export function visiblePageLabelKeys(site: WebsiteData, page: PageKey, ctx?: Pag
   if (hasFilePages(set) && set.nav.length > 5) add('pgMore');
   if (hasFilePages(set) && page !== 'home') add('pgPages');
   if (template === 'luxe') add('footerLine');
+  // The header button of Prime and Euphoria sits on every page.
+  if (template === 'prime' && primeBook(site)) add('primeNavBook');
+  if (template === 'euphoria' && euNavBook(site)) add('euNavBook');
   if (page === 'home') for (const k of visibleLabelKeys(site)) add(k);
   for (const k of LABEL_KEYS) {
     const d = DEFS[k];
