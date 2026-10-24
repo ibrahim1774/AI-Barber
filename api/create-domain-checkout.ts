@@ -1,7 +1,7 @@
 import { STRIPE_API_VERSION } from '../lib/stripeVersion.js';
 import { createDomainCheckout } from '../lib/webDomains.js';
 import { authorizeSiteOwner, liveDeployAuthDeps } from '../lib/deployAuth.js';
-import { liveVercelDomains } from '../lib/ios/vercelDomains.js';
+import { liveVercelDomains, registrantContact } from '../lib/ios/vercelDomains.js';
 import { supabaseDomains } from '../lib/ios/domainsRepo.js';
 import { serviceClient } from '../lib/bookings/repo.js';
 import { FIRST_PARTY_ORIGINS, setFirstPartyCors } from '../lib/webCors.js';
@@ -26,7 +26,7 @@ export default async function handler(req: any, res: any) {
     const authDeps = liveDeployAuthDeps();
     const r = await createDomainCheckout(req.body, origin || FIRST_PARTY_ORIGINS[0], req.headers?.authorization, {
       authorize: (siteId, authorization) => authorizeSiteOwner({ siteId, authorization }, authDeps),
-      flow: { vercel: liveVercelDomains(), repo: supabaseDomains(serviceClient()) },
+      flow: { vercel: liveVercelDomains(), contact: registrantContact(), repo: supabaseDomains(serviceClient()) },
       secret: process.env.DOMAIN_CHECKOUT_SECRET || '',
       priceId: process.env.STRIPE_DOMAIN_PRICE_ID || undefined,
       async createStripeSession(params) {

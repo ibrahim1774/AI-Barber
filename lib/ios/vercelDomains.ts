@@ -41,22 +41,33 @@ const REQUIRED_CONTACT = ['firstName', 'lastName', 'email', 'phone', 'address1',
  * (env VERCEL_REGISTRANT_CONTACT, one JSON object), never in code. Null when missing or invalid.
  */
 export function registrantContact(raw: string | undefined = process.env.VERCEL_REGISTRANT_CONTACT): RegistrantContact | null {
-  if (!raw || !raw.trim()) return null;
+  return diagnoseRegistrantContact(raw).contact;
+}
+
+/**
+ * The contact, or WHY it is unusable: `problem` names the field or the kind of error, never a
+ * value (the contact is personal data and must not reach a log).
+ */
+export function diagnoseRegistrantContact(raw: string | undefined = process.env.VERCEL_REGISTRANT_CONTACT): { contact: RegistrantContact | null; problem: string | null } {
+  const no = (problem: string) => ({ contact: null, problem });
+  if (!raw || !raw.trim()) return no('missing');
   let c: any;
   try {
     c = JSON.parse(raw);
   } catch {
-    return null;
+    return no('not valid JSON');
   }
-  if (!c || typeof c !== 'object') return null;
-  for (const k of REQUIRED_CONTACT) if (typeof c[k] !== 'string' || !c[k].trim()) return null;
+  if (!c || typeof c !== 'object' || Array.isArray(c)) return no('not a JSON object');
+  for (const k of REQUIRED_CONTACT) if (typeof c[k] !== 'string' || !c[k].trim()) return no(`field ${k} missing or empty`);
   // Vercel's own E.164 rule (8–15 digits), so a bad phone is caught at config time, not at the first buy.
-  if (!/^(?=(?:\D*\d){8,15}$)\+[1-9]\d{0,2}\.?\d+$/.test(c.phone) || !/^[A-Z]{2}$/.test(c.country) || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(c.email)) return null;
+  if (!/^(?=(?:\D*\d){8,15}$)\+[1-9]\d{0,2}\.?\d+$/.test(c.phone)) return no('field phone is not E.164 (+15555550123, 8-15 digits, no spaces)');
+  if (!/^[A-Z]{2}$/.test(c.country)) return no('field country is not an upper-case ISO-2 code');
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(c.email)) return no('field email is not an email address');
   const out: RegistrantContact = {} as RegistrantContact;
   for (const k of [...REQUIRED_CONTACT, 'address2', 'companyName'] as const) {
     if (typeof c[k] === 'string' && c[k].trim()) (out as any)[k] = c[k].trim();
   }
-  return out;
+  return { contact: out, problem: null };
 }
 
 export interface DomainPrice { purchasePrice: unknown; renewalPrice: unknown }

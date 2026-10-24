@@ -44,7 +44,7 @@ import {
   type DomainRow, type DomainSource, type DomainState, type DomainsRepo,
 } from './domainsRepo.js';
 import type { DomainNotification } from './notifications.js';
-import { VercelApiError, type RegistrantContact, type VercelDomains } from './vercelDomains.js';
+import { VercelApiError, diagnoseRegistrantContact, type RegistrantContact, type VercelDomains } from './vercelDomains.js';
 
 export interface DomainHooks {
   /** The site's public address becomes https://{domain}; republish (lib/ios/domainHooks.ts). Throws when it must be retried. */
@@ -105,7 +105,91 @@ export interface DomainFlowDeps {
   base?: { read(slug: string): Promise<string | null | undefined>; refresh(slug: string): Promise<unknown>; clear(slug: string): Promise<void> };
   /** Email support@davoxa.com (domain, site, amounts only). Sent at most once per row and event (alertOnce). */
   notifySupport?(subject: string, text: string): Promise<void>;
+  /**
+   * Website rows only: cancel the Stripe subscription now and refund its payment in full
+   * (idempotent at Stripe). Without it a failed website purchase is only alerted, never refunded.
+   */
+  cancelAndRefund?(subscriptionId: string): Promise<void>;
 }
+
+// ─── website purchases that end without a domain: refund (B1) ───
+
+/**
+ * Failure reasons of a WEBSITE row that mean "paid, and nothing was bought": the subscription is
+ * cancelled and refunded in full, and support is told. `subscription-inactive` is not here (the
+ * payer is already inactive: cancelled or refunded; there may be nothing to refund): it only alerts.
+ */
+export const WEB_REFUND_REASONS: ReadonlySet<string> = new Set(['taken', 'price', 'registrar', 'site-has-domain', 'refused']);
+
+/** A buy left in reserved/buying/ordered this long is reported to support (never auto-refunded: it may have been bought). */
+export const STALL_ALERT_MS = 30 * 60_000;
+
+type RefundDeps = Pick<DomainFlowDeps, 'repo' | 'now' | 'notifySupport' | 'cancelAndRefund'>;
+
+/** Cancel + refund (idempotent at Stripe), stamp the row, email support once. True once refunded. */
+export async function refundWebRow(
+  row: Pick<DomainRow, 'original_transaction_id' | 'domain'> & { site_slug?: string; failure_reason?: string | null; last_error?: string | null },
+  deps: RefundDeps,
+): Promise<boolean> {
+  const subId = row.original_transaction_id.replace(/^stripe:/, '');
+  if (!deps.cancelAndRefund) {
+    console.error(`[domains/web] ALERT ${subId} (${row.domain}): refund is not wired; support must refund by hand`);
+    return false;
+  }
+  try {
+    await deps.cancelAndRefund(subId);
+  } catch (e: any) {
+    console.error(`[domains/web] ALERT refund of ${subId} (${row.domain}) failed; retried:`, e?.message || e);
+    return false;
+  }
+  const why = row.failure_reason ? ` (${row.failure_reason})` : '';
+  await deps.repo.update(row.original_transaction_id, ['failed'], {
+    refunded_at: new Date(deps.now()).toISOString(),
+    last_error: `REFUNDED${why}: the paid subscription ended without a domain; cancelled and refunded in full${row.last_error ? ` (was: ${row.last_error.slice(0, 200)})` : ''}`,
+  });
+  console.error(`[domains/web] REFUNDED ${subId} (${row.domain})${why}: nothing was bought`);
+  await alertOnce({ original_transaction_id: row.original_transaction_id, alerts_sent: null }, 'refunded',
+    `Domain refund: ${row.domain}`,
+    `A paid $39.00 website domain subscription ended without a domain${why}, then was cancelled and refunded in full.\n\nDomain: ${row.domain}\nSite: ${row.site_slug ?? '—'}\nSubscription: ${subId}\nAmount refunded: $39.00`,
+    deps);
+  return true;
+}
+
+/**
+ * A website row just failed (or is a failed row found by the sweep): refund it when nothing was
+ * bought, alert support when it cannot be. Never throws. True when the row is settled (refunded
+ * already, or nothing to do).
+ */
+export async function settleWebFailure(row: DomainRow, deps: RefundDeps): Promise<boolean> {
+  try {
+    if (row.source !== 'stripe' || row.state !== 'failed') return true;
+    if (row.refunded_at) return true;
+    const reason = row.failure_reason || '';
+    if (WEB_REFUND_REASONS.has(reason) && !row.vercel_bought_at) return await refundWebRow(row, deps);
+    if (reason === 'subscription-inactive') {
+      await alertOnce(row, 'failed:subscription-inactive', `Domain not bought, payer inactive: ${row.domain}`,
+        `A website domain subscription was no longer active when its domain was about to be bought, so nothing was bought and nothing was refunded automatically. Check Stripe.\n\nDomain: ${row.domain}\nSite: ${row.site_slug}\nSubscription: ${row.original_transaction_id.replace(/^stripe:/, '')}`, deps);
+    }
+    return true;
+  } catch (e) {
+    console.error(`[domains/web] ${row.original_transaction_id}: settling the failure threw (retried by the sweep):`, errMsg(e));
+    return false;
+  }
+}
+
+/** B2: the config a sale needs. Names only, never values (the contact is personal data). */
+export function missingDomainConfig(deps: { vercel: unknown; contact: unknown; secret?: string }, needSecret = false): string[] {
+  const out: string[] = [];
+  if (!deps.vercel) out.push('VERCEL_TOKEN missing');
+  if (!deps.contact) out.push(`VERCEL_REGISTRANT_CONTACT ${diagnoseRegistrantContact().problem ?? 'invalid'}`);
+  if (needSecret && !deps.secret) out.push('DOMAIN_CHECKOUT_SECRET missing');
+  return out;
+}
+
+export const domainsNotConfigured = (missing: string[]): FlowResult => {
+  console.error(`[domains] not configured, refusing to sell: ${missing.join('; ')}`);
+  return { status: 503, body: { error: 'domains-not-configured' } };
+};
 
 /**
  * Send a support email for (row, key) at most once: the key is recorded on the row
@@ -138,6 +222,7 @@ export const CLAIM_STEP_CUTOFF_MS = 140_000;
 /** The sweep re-asks every registered row's payer at least this often (renewal status drift). */
 export const PAYER_REFRESH_MS = 12 * 3600_000;
 const YEAR_MS = 365 * 24 * 3600_000;
+const STALL_STATES: readonly DomainState[] = ['reserved', 'buying', 'ordered'];
 const MAX_STEPS = 12;
 
 const iso = (ms: number) => new Date(ms).toISOString();
@@ -273,8 +358,19 @@ async function wait(deps: DomainFlowDeps, row: DomainRow, lastError: string | nu
 }
 
 /** Free the slot: only from states where nothing of ours is registered. */
-const fail = (deps: DomainFlowDeps, row: DomainRow, reason: string, lastError: string | null = null) =>
-  move(deps, row, ['reserved', 'buying', 'ordered'], { state: 'failed', failure_reason: reason, last_error: lastError, auto_renew: false });
+async function fail(deps: DomainFlowDeps, row: DomainRow, reason: string, lastError: string | null = null) {
+  const r = await move(deps, row, ['reserved', 'buying', 'ordered'], { state: 'failed', failure_reason: reason, last_error: lastError, auto_renew: false });
+  // B1: a paid website purchase that ends here is refunded now (or support is told), not at some
+  // later Stripe event that may never come. A refund that fails is retried by the sweep.
+  if (r.row.state === 'failed') r.row = (await settleAndReload(deps, r.row)) ?? r.row;
+  return r;
+}
+
+async function settleAndReload(deps: DomainFlowDeps, row: DomainRow): Promise<DomainRow | null> {
+  if (row.source !== 'stripe') return row;
+  await settleWebFailure(row, deps);
+  return deps.repo.get(row.original_transaction_id).catch(() => null);
+}
 
 /** The registration exists on our account (Vercel said so just now): record it. */
 async function toBought(deps: DomainFlowDeps, row: DomainRow, owned: { boughtAt: number; expiresAt: number; renew: boolean }) {
@@ -338,9 +434,15 @@ export async function step(row: DomainRow, deps: DomainFlowDeps, ctx: Ctx = {}):
           return mine ? toBought(deps, row, mine) : fail(deps, row, 'taken', r.code);
         }
         if (r.code === 'expected_price_mismatch' || r.code === 'order_too_expensive') return fail(deps, row, 'price', r.code);
-        // Any other definite refusal (contact data, token scope): nothing was bought. Back to
-        // reserved so it is retried once the configuration is fixed; the slot is not burned.
+        // Any other definite refusal (contact data, token scope): nothing was bought.
+        // Website (B1): terminal, or the $39 subscription would keep billing for a domain that
+        // never comes: failed 'registrar' → cancelled and refunded, support told (fail()).
+        if (row.source === 'stripe') return fail(deps, row, 'registrar', `buy: ${r.code}`);
+        // App: back to reserved so it is retried once the configuration is fixed; the slot is
+        // not burned. Support hears about it once (the barber paid through Apple).
         const back = await move(deps, row, ['buying'], { state: 'reserved', buy_started_at: null, last_error: `buy: ${r.code}` });
+        await alertOnce(back.row, `buy-refused:${r.code}`, `Domain purchase refused by Vercel: ${row.domain}`,
+          `Vercel refused to buy a paid app domain (${r.code}); nothing was bought. The sweep retries every 10 minutes; fix the Vercel configuration (token scope, payment method, registrant contact).\n\nDomain: ${row.domain}\nSite: ${row.site_slug}`, deps);
         return { row: back.row, next: 'wait' };
       }
 
@@ -597,7 +699,7 @@ export interface SearchResult { domain: string; available: boolean; eligible: bo
  * transactionId is only a (hashed) rate-limit key, so the answer is the same whether or not it
  * exists. eligible = available and Vercel's first-year AND renewal price ≤ $15.
  */
-export async function runDomainSearch(body: unknown, deps: Pick<DomainFlowDeps, 'vercel' | 'limiter'>, ip?: string): Promise<FlowResult> {
+export async function runDomainSearch(body: unknown, deps: Pick<DomainFlowDeps, 'vercel' | 'contact' | 'limiter'>, ip?: string): Promise<FlowResult> {
   // Own buckets (not the bookings' shared write:<ip> one): 10/min per IP, shared across instances.
   if (ip && !(await allowed(deps, `domain-search-ip:${ip}`, 'write'))) return rateLimited;
   if (!isObj(body)) return bad('q');
@@ -606,7 +708,9 @@ export async function runDomainSearch(body: unknown, deps: Pick<DomainFlowDeps, 
   const tx = body.transactionId;
   if (tx != null && (typeof tx !== 'string' || tx.length > 64)) return bad('transactionId');
   if (typeof tx === 'string' && tx.trim() && !(await allowed(deps, `domain-search-tx:${hashKey(tx.trim())}`, 'write'))) return rateLimited;
-  if (!deps.vercel) return unavailable;
+  // B2: never show a buyable name when a purchase could not be made.
+  const missing = missingDomainConfig(deps);
+  if (missing.length) return domainsNotConfigured(missing);
   const domains = candidateDomains(label);
   try {
     const avail = await deps.vercel.availability(domains);
@@ -692,6 +796,8 @@ export async function reserveSlot(c: SlotClaim, deps: DomainFlowDeps): Promise<{
     }
   } else {
     const holder = await deps.repo.holdingSite(slug);
+    // L1: the webhook inserted THIS subscription's row between our read and now: it is ours, resume it.
+    if (holder && holder.original_transaction_id === key && holder.domain === domain) return { row: holder };
     if (holder) return { result: { status: 409, body: { error: 'site-has-domain' } } };
     if (precheckNeeded) {
       const pre = await precheckDomain(deps, domain);
@@ -894,6 +1000,10 @@ export interface DomainSweepSummary {
   autoRenewSynced: string[];
   relinked: string[];
   payerUnavailable: string[];
+  /** Website purchases refunded by this sweep (a refund that failed earlier, retried). */
+  refunded: string[];
+  /** Rows reported to support: stuck in reserved/buying/ordered, or failed without a refund. */
+  alerted: string[];
   deferred: string[];
   errors: string[];
 }
@@ -905,7 +1015,7 @@ export async function sweepDomains(
   const limit = opts.limit ?? 25;
   const out: DomainSweepSummary = {
     resumed: [], live: [], failed: [], waiting: [], detached: [], reattached: [], stillActive: [], refreshed: [],
-    autoRenewSynced: [], relinked: [], payerUnavailable: [], deferred: [], errors: [],
+    autoRenewSynced: [], relinked: [], payerUnavailable: [], refunded: [], alerted: [], deferred: [], errors: [],
   };
   const outOfTime = () => deps.now() >= opts.deadline;
   const pass = async (name: string, fn: () => Promise<void>) => {
@@ -1080,6 +1190,47 @@ export async function sweepDomains(
         });
         out.relinked.push(row.domain);
       });
+    }
+  });
+
+  // 7. B1: money that would otherwise keep billing in silence.
+  //    a. A website purchase that FAILED without buying anything and whose refund did not go
+  //       through (Stripe outage at the moment of failure): refund it now (idempotent).
+  //    b. A row stuck in reserved / buying / ordered for STALL_ALERT_MS (Apple or Stripe): email
+  //       support once per state. Never refunded automatically: a buy with an unknown outcome
+  //       may have happened, and the no-re-buy rule stands (an admin releases it).
+  await pass('money', async () => {
+    const all = await deps.repo.all();
+    const now = deps.now();
+    for (const cand of all) {
+      if (outOfTime()) { out.deferred.push(cand.domain); continue; }
+      const otid = cand.original_transaction_id;
+      if (cand.source === 'stripe' && cand.state === 'failed' && !cand.refunded_at
+        && (WEB_REFUND_REASONS.has(cand.failure_reason || '') || (cand.failure_reason === 'subscription-inactive' && !cand.alerts_sent?.['failed:subscription-inactive']))) {
+        await leased(otid, deps, async () => {
+          const row = await deps.repo.get(otid);
+          if (!row || row.state !== 'failed' || row.refunded_at) return;
+          await settleWebFailure(row, deps);
+          const after = await deps.repo.get(otid);
+          if (after?.refunded_at) out.refunded.push(after.domain);
+          else if (WEB_REFUND_REASONS.has(row.failure_reason || '')) out.alerted.push(row.domain); // still pending: logged each sweep
+        });
+        continue;
+      }
+      if (!STALL_STATES.includes(cand.state) || cand.simulated) continue;
+      if (cand.lease_until && Date.parse(cand.lease_until) > now) continue; // someone is working on it
+      // buying / ordered: when the buy started. reserved is rewritten by every payer refresh, so
+      // its age is when this sweep first saw it waiting (marker in alerts_sent).
+      let since = cand.state === 'reserved' ? Date.parse(cand.alerts_sent?.['seen:reserved'] || '') : Date.parse(cand.buy_started_at || '');
+      if (cand.state === 'reserved' && !Number.isFinite(since)) {
+        await deps.repo.update(otid, ['reserved'], { alerts_sent: { ...(cand.alerts_sent ?? {}), 'seen:reserved': iso(now) } }).catch(() => {});
+        continue;
+      }
+      if (!Number.isFinite(since)) since = Date.parse(cand.updated_at);
+      if (!Number.isFinite(since) || now - since < STALL_ALERT_MS) continue;
+      const sent = await alertOnce(cand, `stalled:${cand.state}`, `Domain purchase stuck (${cand.state}): ${cand.domain}`,
+        `A paid custom domain has been in "${cand.state}" for over ${Math.round(STALL_ALERT_MS / 60_000)} minutes. Nothing is refunded automatically (a buy may have happened); check Vercel (Domains / Orders), then fix the cause, or release it in the admin (and refund in Stripe or Apple if no domain will come).\n\nDomain: ${cand.domain}\nSite: ${cand.site_slug}\nSource: ${cand.source}${cand.source === 'stripe' ? `\nSubscription: ${otid.replace(/^stripe:/, '')}` : ''}\nState: ${cand.state}\nLast error: ${cand.last_error ?? '-'}`, deps);
+      if (sent) out.alerted.push(cand.domain);
     }
   });
   return out;

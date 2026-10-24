@@ -66,3 +66,7 @@ create index if not exists ios_domains_state_idx on public.ios_domains (state, u
 
 -- RLS on with no policies: only the service role (which bypasses RLS) can access.
 alter table public.ios_domains enable row level security;
+
+-- Defence in depth (same style as 006's ab_rate_hits): no table privileges for the API roles.
+-- Idempotent: revoking what is not granted is a no-op.
+revoke all on public.ios_domains from public, anon, authenticated;

@@ -25,6 +25,11 @@ describe('012_custom_domains.sql', () => {
     expect(s).not.toMatch(/\bgrant\b/i);
   });
 
+  it('L2: table privileges revoked from public, anon and authenticated (006 style), still no grant', () => {
+    expect(code).toMatch(/revoke all on public\.ios_domains from public, anon, authenticated;/);
+    expect(s).not.toMatch(/\bgrant\b/i);
+  });
+
   it('has no drop, delete or truncate', () => {
     expect(s).not.toMatch(/\bdrop\b/i);
     expect(s).not.toMatch(/\bdelete\b/i);

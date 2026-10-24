@@ -9,7 +9,7 @@ const { allow, runDomainSearch, runDomainClaim, runDomainStatus } = vi.hoisted((
 vi.mock('../../lib/bookings/rateLimit.js', async (orig) => ({ ...(await orig<object>()), publicLimiter: { allow } }));
 vi.mock('../../lib/ios/domainFlow.js', () => ({ runDomainSearch, runDomainClaim, runDomainStatus }));
 vi.mock('../../lib/ios/domainLive.js', () => ({ liveDomainDeps: () => ({ marker: 'live' }) }));
-vi.mock('../../lib/ios/vercelDomains.js', () => ({ liveVercelDomains: () => null }));
+vi.mock('../../lib/ios/vercelDomains.js', () => ({ liveVercelDomains: () => null, registrantContact: () => null }));
 
 import search from '../../api/ios/domain/search.js';
 import claim from '../../api/ios/domain/claim.js';

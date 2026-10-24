@@ -21,7 +21,8 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { DeployAuthResult } from './deployAuth.js';
 import { isComDomain } from './ios/domainNames.js';
 import {
-  advanceSlot, alertOnce, applyPayerEvent, ownDetached, precheckDomain, reserveSlot, statusBody,
+  WEB_REFUND_REASONS, advanceSlot, alertOnce, applyPayerEvent, domainsNotConfigured, missingDomainConfig, ownDetached,
+  precheckDomain, refundWebRow, reserveSlot, statusBody,
   type DomainFlowDeps, type PayerStatus,
 } from './ios/domainFlow.js';
 
@@ -100,7 +101,7 @@ export function stripePayerStatus(sub: any, now: number): PayerStatus {
 
 export interface CheckoutDeps {
   authorize: AuthorizeOwner;
-  flow: Pick<DomainFlowDeps, 'vercel' | 'repo'>;
+  flow: Pick<DomainFlowDeps, 'vercel' | 'contact' | 'repo'>;
   secret: string;
   /** Optional configured Stripe price (env STRIPE_DOMAIN_PRICE_ID); else price_data $39/year. */
   priceId?: string;
@@ -114,11 +115,16 @@ export async function createDomainCheckout(body: any, origin: string, authorizat
   if (!isComDomain(domain) || typeof body?.siteId !== 'string' || !body.siteId.trim()) {
     return { status: 400, body: { error: 'Missing or invalid fields: domain (.com), siteId' } };
   }
-  if (!deps.secret) return { status: 500, body: { error: 'Server configuration error' } };
+  // B2: fail closed BEFORE any money moves. Without the signing secret, the Vercel token or a
+  // valid registrant contact a purchase could never complete, so no checkout is created.
+  const missing = missingDomainConfig({ vercel: deps.flow.vercel, contact: deps.flow.contact, secret: deps.secret }, true);
+  if (missing.length) {
+    const r = domainsNotConfigured(missing);
+    return { status: r.status, body: r.body as Record<string, unknown> };
+  }
   const auth = await deps.authorize(body.siteId, authorization);
   if (!auth.ok || !auth.target) return denied(auth);
   const slug = auth.target;
-  if (!deps.flow.vercel) return { status: 500, body: { error: 'Server configuration error: missing VERCEL_TOKEN' } };
 
   try {
     if (await deps.flow.repo.holdingSite(slug)) return { status: 409, body: { error: 'This site already has a custom domain' } };
@@ -224,9 +230,9 @@ export async function purchaseDomain(body: any, authorization: unknown, deps: We
   const testMode = isTestMode(session, sub);
   if (!testMode && (!deps.flow.vercel || !deps.flow.contact)) return { status: 503, body: { error: 'domains-unavailable' } };
   const existing = await deps.flow.repo.get(`stripe:${v.subscriptionId}`);
-  if (existing?.refunded_at) return refundedResult(existing.domain);
-  if (existing && existing.state === 'failed' && REFUND_REASONS.has(existing.failure_reason || '')) {
-    return (await finishRefund(existing, deps)) ? refundedResult(existing.domain) : { status: 503, body: { error: 'Try again shortly' } };
+  if (existing?.refunded_at) return refundedResult(existing.domain, existing.failure_reason);
+  if (existing && existing.state === 'failed' && !existing.vercel_bought_at && REFUND_REASONS.has(existing.failure_reason || '')) {
+    return (await finishRefund(existing, deps)) ? refundedResult(existing.domain, existing.failure_reason) : { status: 503, body: { error: 'Try again shortly' } };
   }
 
   const c = {
@@ -249,43 +255,38 @@ export async function purchaseDomain(body: any, authorization: unknown, deps: We
     return { status: 503, body: { error: 'Try again shortly' } }; // the refund is retried
   }
   const r = await advanceSlot(c.key, payer, deps.flow);
+  if (r.status === 409) {
+    // The buy ended without a domain and the flow already refunded it (B1): say so.
+    const row = await deps.flow.repo.get(c.key);
+    if (row?.refunded_at) return refundedResult(c.domain, row.failure_reason);
+  }
   return { status: r.status, body: r.body as Record<string, unknown> };
 }
 
 const REFUSAL_REASON: Record<string, string> = {
   'domain-taken': 'taken', 'domain-not-eligible': 'price', 'site-has-domain': 'site-has-domain',
 };
-const REFUND_REASONS = new Set([...Object.values(REFUSAL_REASON), 'refused']);
+const REFUND_REASONS = WEB_REFUND_REASONS;
 
-function refundedResult(domain: string): WebResult {
+function refundedResult(domain: string, reason?: string | null): WebResult {
+  const why = !reason || ['taken', 'price', 'refused', 'site-has-domain'].includes(reason)
+    ? `${domain} was taken just before your payment went through.`
+    : `We could not register ${domain}.`;
   return {
     status: 409,
     body: {
       error: 'domain-taken', refunded: true, domain,
-      message: `${domain} was taken just before your payment went through. Your $39 has been refunded in full and the subscription cancelled; please pick another name.`,
+      message: `${why} Your $39 has been refunded in full and the subscription cancelled; please pick another name.`,
     },
   };
 }
 
 /** Cancel + refund (idempotent at Stripe), then stamp the row. True once refunded. */
-async function finishRefund(row: { original_transaction_id: string; domain: string; site_slug?: string }, deps: Pick<WebDomainDeps, 'cancelAndRefund' | 'flow' | 'notifySupport'>): Promise<boolean> {
-  const subId = row.original_transaction_id.replace(/^stripe:/, '');
-  try {
-    await deps.cancelAndRefund(subId);
-  } catch (e: any) {
-    console.error(`[domains/web] ALERT refund of ${subId} (${row.domain}) failed; retried:`, e?.message || e);
-    return false;
-  }
-  await deps.flow.repo.update(row.original_transaction_id, ['failed'], {
-    refunded_at: new Date(deps.flow.now()).toISOString(),
-    last_error: 'REFUNDED: the paid subscription was refused before anything was bought; cancelled and refunded in full',
+function finishRefund(row: { original_transaction_id: string; domain: string; site_slug?: string; failure_reason?: string | null }, deps: Pick<WebDomainDeps, 'cancelAndRefund' | 'flow' | 'notifySupport'>): Promise<boolean> {
+  return refundWebRow(row, {
+    repo: deps.flow.repo, now: deps.flow.now, cancelAndRefund: deps.cancelAndRefund,
+    notifySupport: deps.notifySupport ?? deps.flow.notifySupport,
   });
-  console.error(`[domains/web] REFUNDED ${subId} (${row.domain}): refused before anything was bought`);
-  await alertOnce({ original_transaction_id: row.original_transaction_id, alerts_sent: null }, 'refunded',
-    `Domain refund: ${row.domain}`,
-    `A paid $39.00 website domain subscription was refused before anything was bought, then cancelled and refunded in full.\n\nDomain: ${row.domain}\nSite: ${(row as any).site_slug ?? '—'}\nSubscription: ${subId}\nAmount refunded: $39.00`,
-    { repo: deps.flow.repo, now: deps.flow.now, notifySupport: deps.notifySupport });
-  return true;
 }
 
 /**
@@ -314,7 +315,7 @@ async function recordRefusedPaidSlot(
       { repo: deps.flow.repo, now: deps.flow.now, notifySupport: deps.notifySupport });
     return { code, refunded: false, refundable: false };
   }
-  return { code, refunded: await finishRefund({ original_transaction_id: c.key, domain: c.domain, site_slug: c.slug }, deps), refundable: true };
+  return { code, refunded: await finishRefund({ original_transaction_id: c.key, domain: c.domain, site_slug: c.slug, failure_reason: reason }, deps), refundable: true };
 }
 
 // ─── Stripe webhook ───
@@ -374,7 +375,7 @@ export async function handleDomainStripeEvent(
       && (!!existing || !!verifyDomainSubscription(sub, deps.secret, deps.priceId));
     if (existing) {
       // A refused paid slot whose refund did not go through yet: finish it.
-      if (existing.state === 'failed' && !existing.refunded_at && REFUND_REASONS.has(existing.failure_reason || '')) {
+      if (existing.state === 'failed' && !existing.refunded_at && !existing.vercel_bought_at && REFUND_REASONS.has(existing.failure_reason || '')) {
         const r = await finishRefund(existing, deps);
         return r ? { handled: true, status: 200, body: { received: true, domain: false, refunded: true } } : { handled: true, status: 500, body: { error: 'refund-pending' } };
       }
@@ -388,6 +389,23 @@ export async function handleDomainStripeEvent(
     const v = verifyDomainSubscription(sub, deps.secret, deps.priceId);
     if (!v) {
       console.error(`[Stripe Webhook] ${event.type} ${subId}: not a valid domain subscription (signature / price); ignored`);
+      // M2: a PAID domain checkout we cannot verify (a deployment with another DOMAIN_CHECKOUT_SECRET,
+      // a rotated secret, a changed STRIPE_DOMAIN_PRICE_ID) will never get its domain and no row
+      // exists to track it: refund it now and tell support, never a silent 200.
+      if (sub && event.type === 'checkout.session.completed' && obj.payment_status === 'paid' && obj.metadata?.app === DOMAIN_SESSION_APP) {
+        try {
+          await deps.cancelAndRefund(subId);
+        } catch (e: any) {
+          console.error(`[domains/web] ALERT refund of unverifiable paid domain checkout ${subId} failed; Stripe retries:`, e?.message || e);
+          return { handled: true, status: 500, body: { error: 'refund-pending' } };
+        }
+        console.error(`[domains/web] REFUNDED ${subId}: paid domain checkout failed signature / price verification`);
+        const md = obj.metadata || {};
+        await Promise.resolve(deps.notifySupport?.('Domain checkout refunded: could not be verified',
+          `A paid $39.00 website domain checkout failed signature / price verification (DOMAIN_CHECKOUT_SECRET differs between deployments, was rotated, or STRIPE_DOMAIN_PRICE_ID changed). No domain was bought; the subscription was cancelled and refunded in full.\n\nDomain: ${typeof md.domain === 'string' ? md.domain.slice(0, 80) : '—'}\nSite: ${typeof md.siteId === 'string' ? md.siteId.slice(0, 80) : '—'}\nSubscription: ${subId}\nCheckout session: ${typeof obj.id === 'string' ? obj.id : '—'}\nAmount refunded: $39.00`))
+          .catch((e: any) => console.error('[domains/web] support email failed:', e?.message || e));
+        return { handled: true, status: 200, body: { received: true, ignored: 'not-a-domain-subscription', refunded: true } };
+      }
       return { handled: true, status: 200, body: { received: true, ignored: 'not-a-domain-subscription' } };
     }
     const payer = stripePayerStatus(sub, deps.flow.now());

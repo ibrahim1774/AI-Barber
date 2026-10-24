@@ -351,7 +351,7 @@ async function authorizeWebUser(
  * required (no checkout-session proof, no "existing project" fallback):
  * - the admin (ADMIN_EMAIL): any slug;
  * - an app (iOS) slug: the user is ios_purchases.user_id;
- * - a web slug: the user has a `sites` row claiming the slug's clean URL or the server-stamped
+ * - a web slug: site_owners (013) decides when the slug has an owner; otherwise the user has a `sites` row claiming the slug's clean URL or the server-stamped
  *   URL, and no other account claims either (the interim rule deploy-site uses; see the NOTE at
  *   the top: a server-only owner table replaces it).
  * Every lookup fails closed (503). The result's `target` is the authorised slug: callers derive
@@ -359,7 +359,7 @@ async function authorizeWebUser(
  */
 export async function authorizeSiteOwner(
   input: { siteId: unknown; authorization?: unknown },
-  deps: Pick<DeployAuthDeps, 'userOf' | 'findBySlug' | 'webClaimants' | 'storedStamp' | 'lookupTimeoutMs'>,
+  deps: Pick<DeployAuthDeps, 'userOf' | 'findBySlug' | 'webClaimants' | 'storedStamp' | 'lookupTimeoutMs' | 'siteOwners' | 'now'>,
 ): Promise<DeployAuthResult> {
   const slug = slugify(String(input.siteId ?? ''));
   if (!slug) return { ok: false, status: 400, error: 'bad-request' };
@@ -381,6 +381,17 @@ export async function authorizeSiteOwner(
     return deny(403, 'not-authorized');
   }
   try {
+    // The owner list first (013), exactly as authorizeWebUser does: an owned site is its owner's
+    // only (a `sites` row anyone can insert neither locks the owner out nor impersonates them);
+    // an unowned one keeps the claim rule below.
+    if (deps.siteOwners) {
+      const verdict = await withTimeout(webOwnerDecision(slug, user, deps.siteOwners, deps.now), ms, 'site owner lookup');
+      if (verdict === 'owner') return { ok: true, target: slug, row: null, actor: 'web-user', userId: user.id };
+      if (verdict === 'not-owner') {
+        console.warn(`[SiteOwner] ${slug}: owned by another account (site_owners); refusing ${user.id}`);
+        return deny(403, 'not-authorized');
+      }
+    }
     const stamp = originOf(await withTimeout(deps.storedStamp(slug), ms, 'stored copy read'));
     const urls = [...new Set([`https://${slug}.vercel.app`, ...(stamp ? [stamp] : [])])];
     const claimants = await withTimeout(deps.webClaimants(urls), ms, 'sites claim lookup');

@@ -96,7 +96,11 @@ export function makeCancelAndRefund(call: StripeCall) {
       charge = idOf(paid?.payment?.charge);
     }
     if (!pi && !charge) throw new Error('no payment to refund on the latest invoice');
-    const ref = await call('POST', '/v1/refunds', { form: pi ? { payment_intent: pi } : { charge: charge! }, idem: `domain-refund-${subId}` });
+    const form = pi ? { payment_intent: pi } : { charge: charge! };
+    let ref = await call('POST', '/v1/refunds', { form, idem: `domain-refund-${subId}` });
+    // L3: Stripe replays a cached 5xx for the same idempotency key for 24 hours. After one, ask
+    // again under a fresh key; if the first attempt did refund, the answer is charge_already_refunded (done).
+    if (!ref.ok && ref.status >= 500) ref = await call('POST', '/v1/refunds', { form, idem: `domain-refund-${subId}-r${Date.now().toString(36)}` });
     if (!ref.ok && ref.data?.error?.code !== 'charge_already_refunded') throw new Error(`refund failed: ${ref.status} ${ref.data?.error?.code || ''}`);
     if (sub.data?.status !== 'canceled') {
       const del = await call('DELETE', `/v1/subscriptions/${subId}`, { idem: `domain-cancel-${subId}` });
@@ -162,6 +166,8 @@ export function liveDomainDeps(): DomainFlowDeps {
     sandboxRealOtids: sandboxRealOtids(),
     probeHttps,
     notifySupport: (subject, text) => notifySupportEmail(subject, text),
+    // B1: a website purchase that ends without a domain is refunded (fail(), and the sweep retries).
+    cancelAndRefund: (subId) => stripeCancelAndRefund(subId),
     base: {
       async read(slug) {
         const shop = await findShopForSite(slug);
