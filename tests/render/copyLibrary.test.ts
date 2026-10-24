@@ -60,3 +60,32 @@ describe('the library', () => {
     for (const g of GUIDE_IDS) expect(GUIDES[g].match.length, g).toBeGreaterThan(0);
   });
 });
+
+describe('K4: no sentence dangles when a token drops', () => {
+  const DANGLING = /^(?:also|it|its|then|the other)\b|\balso\b/i;
+  // The service tokens come from one service: when the title is missing, price and duration are gone too.
+  const GROUP: Record<string, string[]> = { service: ['service', 'price', 'duration'] };
+  const blocks: { where: string; b: Block }[] = [];
+  for (const k of EXTRA_IDS) for (const b of EXTRA_PAGES[k].blocks) blocks.push({ where: `${k}.${b.id}`, b });
+  for (const g of GUIDE_IDS) for (const b of GUIDES[g].blocks) blocks.push({ where: `guide.${g}.${b.id}`, b });
+  const tokensOf = (s: string) => [...s.matchAll(/\{([A-Za-z]+)(?::([a-z-]+))?\}/g)].map((m) => (m[2] ? `${m[1]}:${m[2]}` : m[1]));
+  it('dropping any one token (or the service group) leaves a first sentence that stands on its own', () => {
+    const bad: string[] = [];
+    let checked = 0;
+    for (const { where, b } of blocks) {
+      b.variants.forEach((v, i) => {
+        const all = new Set(v.flatMap(tokensOf));
+        for (const t of all) {
+          const gone = new Set(GROUP[t] ?? [t]);
+          const left = v.filter((s) => !tokensOf(s).some((x) => gone.has(x)));
+          if (!left.length) continue;
+          checked++;
+          if (DANGLING.test(left[0]) || left.slice(1).some((s) => / also /i.test(s))) bad.push(`${where} wording ${i} without {${t}}: "${left[0]}"`);
+        }
+      });
+    }
+    expect(checked).toBeGreaterThan(30);
+    expect(bad).toEqual([]);
+  });
+});
+

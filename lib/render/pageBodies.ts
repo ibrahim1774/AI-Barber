@@ -302,7 +302,7 @@ export function renderPageBody(ctx: BodyCtx, file: PageFile): PageBody {
     const directions = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
     const facts = [
       `<div class="ab-fact"><dt>${L('pgAddressLabel')}</dt><dd>${esc(address)}</dd></div>`,
-      phone ? `<div class="ab-fact"><dt>${L('pgPhoneLabel')}</dt><dd>${/\d/.test(phone) ? `<a href="tel:${esc(phone.replace(/\s+/g, ''))}">${esc(displayPhone(phone))}</a>` : esc(displayPhone(phone))}</dd></div>` : '',
+      phone ? `<div class="ab-fact"><dt>${L('pgPhoneLabel')}</dt><dd>${/\d/.test(phone) ? `<a href="tel:${esc(telDigits(phone))}">${esc(displayPhone(phone))}</a>` : esc(displayPhone(phone))}</dd></div>` : '',
     ].join('');
     const hoursBlock = hours.length
       ? `<h2 class="ab-h2" style="margin-top:32px">${L('pgHoursHeading')}</h2><div class="ab-rows">${hours.map((h) => hoursRow(h, L('pgClosed'))).join('')}</div>`
@@ -337,7 +337,7 @@ export function renderPageBody(ctx: BodyCtx, file: PageFile): PageBody {
     const canCall = /\d/.test(phone);
     const facts = [
       address ? `<div class="ab-fact"><dt>${L('pgAddressLabel')}</dt><dd>${esc(address)}</dd></div>` : '',
-      phone ? `<div class="ab-fact"><dt>${L('pgPhoneLabel')}</dt><dd>${canCall ? `<a href="tel:${esc(phone.replace(/\s+/g, ''))}">${esc(displayPhone(phone))}</a>` : esc(displayPhone(phone))}</dd></div>` : '',
+      phone ? `<div class="ab-fact"><dt>${L('pgPhoneLabel')}</dt><dd>${canCall ? `<a href="tel:${esc(telDigits(phone))}">${esc(displayPhone(phone))}</a>` : esc(displayPhone(phone))}</dd></div>` : '',
       email ? `<div class="ab-fact"><dt>${L('pgEmailLabel')}</dt><dd><a href="mailto:${esc(email)}">${esc(email)}</a></dd></div>` : '',
     ].join('');
     return {
@@ -379,6 +379,15 @@ export function renderPageBody(ctx: BodyCtx, file: PageFile): PageBody {
 
   throw new Error(`no page body for ${file.key}`);
 }
+
+/**
+ * The number inside a tel: link. Whitespace is dropped (as before, so old sites keep their bytes); a number that holds
+ * anything but digits and tel: separators (an extension such as "ext. 4") is cut to digits and a leading +, like the footer.
+ */
+const telDigits = (phone: string): string => {
+  const t = phone.replace(/\s+/g, '');
+  return /^[\d+().-]*$/.test(t) ? t : t.replace(/[^\d+]/g, '');
+};
 
 const hoursRow = (h: { day?: string; open?: string; close?: string; closed?: boolean }, closed: string): string =>
   `<div class="ab-row"><span>${esc(h.day)}</span><span>${h.closed ? closed : `${esc(to12h(h.open))} – ${esc(to12h(h.close))}`}</span></div>`;

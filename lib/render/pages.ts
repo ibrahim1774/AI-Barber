@@ -15,7 +15,7 @@ import { BOOKSY_NICHES } from '../booksyNiche.js';
 import { isStockImage } from '../stockImages.js';
 import { contactEmail, policyToShow, teamOf, visibleReviews, withoutLegacyCopy } from './honest.js';
 import { safeHref } from './safeHref.js';
-import { faqDataQuestions, isBeardTitle, isHaircutTitle } from './guides.js';
+import { faqDataQuestions, hasOpenDay, isBeardTitle, isHaircutTitle } from './guides.js';
 import { isSiteBookLink, isSiteShopLink } from './subpages.js';
 
 /** One file of the deployed site. `path` is validated by assertSiteFilePath before it is written. */
@@ -308,9 +308,9 @@ const REASON: Record<ExtraKey, string> = {
 function extraFloorMet(key: ExtraKey, d: WebsiteData): boolean {
   const titled = (Array.isArray(d.services) ? d.services : []).filter((s) => has(s?.title));
   const book = !!safeHref(d.bookingUrl);
-  const phone = has(d.phone);
+  const phone = /\d/.test(plainText(d.phone));
   const address = has(d.contact?.address);
-  const hours = Array.isArray(d.hours) && d.hours.length > 0;
+  const hours = hasOpenDay(d.hours);
   if (key === 'first-visit') return (book || phone) && (address || hours);
   if (key === 'hair-care') return titled.some((s) => isHaircutTitle(s.title));
   if (key === 'beard-care') return titled.some((s) => isBeardTitle(s.title));

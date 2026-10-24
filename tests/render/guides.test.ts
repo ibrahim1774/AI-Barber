@@ -4,9 +4,10 @@ import { describe, expect, it } from 'vitest';
 import { GUIDES, GUIDE_IDS, type GuideId } from '../../lib/render/copyLibrary';
 import {
   COPY_KEYS, copyDefault, copyOverrides, faqDataQuestions, guideIdForTitle, isBeardTitle, isHaircutTitle, lenientEnv, resolveBlock, resolveSentence,
-  serviceGuideFor, variantIndex, visibleCopyKeys,
+  serviceGuideFor, variantIndex, visibleCopyKeys, beardServices, segsText,
 } from '../../lib/render/guides';
 import { renderSiteBundle } from '../../lib/render/site';
+import { extraPageRows } from '../../lib/render/pages';
 import type { WebsiteData } from '../../types';
 
 const svc = (title: string, extra: Record<string, unknown> = {}) => ({ title, subtitle: '', description: '', icon: 'scissors' as const, imageUrl: '', ...extra });
@@ -27,7 +28,7 @@ const get = (d: WebsiteData, path: string, template: 'luxe' | 'prime' | 'euphori
 
 describe('matching a service to a guide', () => {
   it.each<[string, GuideId | null]>([
-    ['Haircut & Beard', 'cut-beard'], ['Cut and Beard', 'cut-beard'], ['Gentleman Combo', 'cut-beard'],
+    ['Haircut & Beard', 'cut-beard'], ['Cut and Beard', 'cut-beard'],
     ['Skin Fade', 'fade'], ['Low Fade', 'fade'], ['Taper', 'taper'], ['Taper Fade', 'fade'],
     ['Line Up', 'line-up'], ['Shape-Up', 'line-up'], ['Edge up', 'line-up'], ['Beard Line Up', 'line-up'],
     ['Beard Trim', 'beard-trim'], ['Beard Shape', 'beard-trim'],
@@ -214,7 +215,7 @@ describe('only listed services are named (plan 6e)', () => {
     'cut-beard': 'Haircut & Beard', fade: 'Skin Fade', taper: 'Taper', 'line-up': 'Line Up', 'beard-trim': 'Beard Trim', shave: 'Hot Towel Shave',
     'kids-cut': 'Kids Cut', design: 'Hair Design', color: 'Color', haircut: 'Haircut',
   };
-  const BRINGS: Partial<Record<GuideId, GuideId[]>> = { 'beard-trim': ['cut-beard', 'shave', 'line-up'] };
+  const BRINGS: Partial<Record<GuideId, GuideId[]>> = { 'beard-trim': ['cut-beard', 'shave'] };
   for (const g of GUIDE_IDS.filter((x) => x !== 'haircut')) {
     it(`${g}: no page names it when the shop does not list it`, () => {
       const others = GUIDE_IDS.filter((x) => x !== g && !(BRINGS[g] ?? []).includes(x));
@@ -265,6 +266,114 @@ describe('honesty over rendered pages: 20 shops x 3 designs', () => {
         if (m[1] === '/book' || m[1] === '/styles.css') continue;
         expect(files.has(m[1] === '/' ? 'index.html' : `${m[1].slice(1)}index.html`), `${d.shopName} ${p.path} -> ${m[1]}`).toBe(true);
       }
+    }
+  });
+});
+
+// ── Phase B review fixes (K1 to K4, M3, M5, M10) ────────────────────────────────────────────────
+describe('K1: service titles that must not borrow the wrong guide', () => {
+  it.each<[string, GuideId | null]>([
+    ['Fade + eyebrows combo', 'fade'], ['Kids combo', 'kids-cut'], ['Junior barber cut', 'haircut'],
+    ['Eyebrow trim', null], ['Mustache trim', null], ['Neck trim', null],
+    ['Beard dye', 'color'], ['Beard color', 'color'], ['Grey beard blending', 'color'],
+    ['Beard shave', 'shave'], ['Hot Towel Facial', null], ['Razor part', 'design'],
+    ['Shave & haircut', 'haircut'], ['Fade and beard trim', 'cut-beard'], ['Fade & beard', 'cut-beard'],
+    ['Haircut & Beard', 'cut-beard'], ['Cut and Beard', 'cut-beard'], ['Hair Cut with a Beard', 'cut-beard'], ['Gentleman Combo', null],
+    ['Skin Fade', 'fade'], ['Beard Trim', 'beard-trim'], ['Beard Shape', 'beard-trim'], ['Hot Towel Shave', 'shave'], ['Head Shave', 'shave'],
+    ['Kids Cut', 'kids-cut'], ['Junior Cut', 'kids-cut'], ['Juniors', 'kids-cut'], ['Haircut', 'haircut'], ['Buzz Cut', 'haircut'], ['Clipper Cut', 'haircut'],
+    ['Beard Line Up', 'line-up'], ['Hair Design', 'design'], ['Highlights', 'color'],
+  ])('%s -> %s', (title, guide) => { expect(guideIdForTitle(title)).toBe(guide); });
+  it('a wrong match no longer uses up a guide for the real service below it', () => {
+    const d = shop({ services: [svc('Eyebrow trim'), svc('Neck trim'), svc('Haircut')] });
+    expect([...serviceGuideFor(d, [0, 1, 2])]).toEqual([[2, 'haircut']]);
+  });
+});
+
+describe('K2: {openDays} counts distinct open days', () => {
+  const week = (over: Record<string, Partial<{ open: string; close: string; closed: boolean }>> = {}) =>
+    ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => ({ day, open: '09:00', close: '17:00', ...(over[day] ?? {}) }));
+  const answer = (hours: WebsiteData['hours'], v: 0 | 1 | 2) => {
+    const d = shop({ hours, extraPages: { on: [], seed: 1, pick: { 'faq.hours': v } } });
+    const b = resolveBlock(lenientEnv(d), 'faq.hours');
+    return b ? b.items.map((it) => it.map((s) => (s.t === 'text' ? s.s : s.label)).join('')).join(' ') : null;
+  };
+  it.each([0, 1, 2] as const)('wording %i: six open days, one closed', (v) => {
+    expect(answer(week({ Sun: { closed: true } }), v)).toMatch(/\b6\b/);
+  });
+  it.each([0, 1, 2] as const)('wording %i: one open day reads as 1 of the seven days, never "1 days"', (v) => {
+    const closed = { Mon: { closed: true }, Tue: { closed: true }, Wed: { closed: true }, Thu: { closed: true }, Fri: { closed: true }, Sat: { closed: true } };
+    const t = answer(week(closed), v)!;
+    expect(t).toMatch(/\b1\b/);
+    expect(t).toMatch(/seven days/);
+    expect(t).not.toMatch(/1 days/);
+  });
+  it('split shifts count a day once', () => {
+    const hours = [...week({ Sun: { closed: true } }), { day: 'Mon', open: '18:00', close: '20:00' }];
+    expect(answer(hours, 0)).toMatch(/\b6\b/);
+  });
+  it('fewer than seven distinct days, an unknown day, an empty open day, or no open day: no count is stated', () => {
+    expect(answer(week().slice(0, 5), 0)).toBeNull();
+    expect(answer([...week().slice(0, 6), { day: 'Sunday?', open: '09:00', close: '17:00' }], 0)).toBeNull();
+    expect(answer(week({ Tue: { open: '', close: '' } }), 0)).toBeNull();
+    expect(answer(week(Object.fromEntries(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((x) => [x, { closed: true }]))), 0)).toBeNull();
+  });
+  it('full day names count', () => {
+    const hours = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((day) => ({ day, open: '09:00', close: '17:00' }));
+    expect(answer(hours, 0)).toMatch(/\b7\b/);
+  });
+});
+
+describe('K3: Beard care counts real beard services only', () => {
+  const eligible = (titles: string[]) => extraPageRows(shop({ services: titles.map((t) => svc(t)), extraPages: { on: ['beard-care'] } })).find((r) => r.key === 'beard-care')!.eligible;
+  it('line-ups and head shaves do not switch it on', () => {
+    expect(eligible(['Haircut', 'Line up'])).toBe(false);
+    expect(eligible(['Haircut', 'Head shave'])).toBe(false);
+    expect(eligible(['Haircut', 'Hot towel head shave'])).toBe(false);
+  });
+  it('real beard services do', () => {
+    expect(eligible(['Beard Trim'])).toBe(true);
+    expect(eligible(['Haircut & Beard'])).toBe(true);
+    expect(eligible(['Hot Towel Shave'])).toBe(true);
+  });
+  it('the "Beard services" list holds beard services only', () => {
+    const d = shop({ services: [svc('Haircut'), svc('Line up', { price: '$10' }), svc('Head shave', { price: '$25' }), svc('Beard Trim', { price: '$15' }), svc('Hot Towel Shave', { price: '$30' })] });
+    expect(beardServices(d).map((s) => s.title)).toEqual(['Beard Trim', 'Hot Towel Shave']);
+    expect(isBeardTitle('Line up')).toBe(false);
+    expect(isBeardTitle('Head shave')).toBe(false);
+  });
+});
+
+describe('M10: the first-visit floor matches its tokens', () => {
+  const fv = (extra: Partial<WebsiteData>) => extraPageRows(shop({ bookingUrl: '', phone: '(512) 555-0100', contact: { address: '', email: '' }, hours: [], extraPages: { on: ['first-visit'] }, ...extra })).find((r) => r.key === 'first-visit')!.eligible;
+  it('a phone needs digits; hours need an open day', () => {
+    expect(fv({ phone: 'call us', hours: [{ day: 'Mon', open: '09:00', close: '17:00' }] })).toBe(false);
+    expect(fv({ hours: [{ day: 'Mon', open: '', close: '', closed: true }] })).toBe(false);
+    expect(fv({ hours: [{ day: 'Mon', open: '09:00', close: '17:00' }] })).toBe(true);
+    expect(fv({ contact: { address: '1 Main St', email: '' } })).toBe(true);
+  });
+});
+
+describe('M5: {policy} is cut at a sentence boundary', () => {
+  it('a long policy ends on a full sentence', () => {
+    const body = Array.from({ length: 40 }, (_, i) => `Rule number ${i} applies here.`).join(' ');
+    const b = resolveBlock(lenientEnv(shop({ policy: { title: 'P', body } })), 'faq.policy')!;
+    const t = segsText(b.items[0]);
+    expect(t.length).toBeLessThanOrEqual(600);
+    expect(/applies here\.$/.test(t)).toBe(true);
+  });
+  it('a short policy is printed whole', () => {
+    const b = resolveBlock(lenientEnv(shop({ policy: { title: 'P', body: 'Cancel a day early.' } })), 'faq.policy')!;
+    expect(segsText(b.items[0])).toContain('Cancel a day early.');
+  });
+});
+
+describe('M3: tel links in Location and Contact use digits and + only', () => {
+  it('an extension or bracket does not reach the href', () => {
+    const d = shop({ phone: '(512) 555-0100 ext. 4', extraPages: { on: [], serviceGuides: false } });
+    for (const p of renderSiteBundle({ ...d, template: 'luxe' }, {}).pages.filter((x) => /^(location|contact)\//.test(x.path))) {
+      const hrefs = [.../<main[\s\S]*?<\/main>/.exec(p.html)![0].matchAll(/href="(tel:[^"]*)"/g)].map((m) => m[1]);
+      expect(hrefs.length, p.path).toBeGreaterThan(0);
+      for (const h of hrefs) expect(h, p.path).toMatch(/^tel:\+?\d+$/);
     }
   });
 });

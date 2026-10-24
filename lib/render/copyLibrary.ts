@@ -51,6 +51,8 @@ export interface Block {
 export interface GuideDef {
   /** A service title matches the guide when any of these matches (guides are tried most specific first). */
   match: RegExp[];
+  /** A title that matches any of these never gets this guide, whatever `match` says (review K1). */
+  not?: RegExp[];
   /** Vocabulary the guide's own text may use (R8). */
   allow: VocabGroup[];
   /** Words that must appear nowhere on a site that lists no service of this guide (tests/render/guides.test.ts). */
@@ -83,7 +85,7 @@ const guide = (what: Wordings, who: Wordings, ask: Wordings, care: Wordings): Bl
 
 export const GUIDES: Record<GuideId, GuideDef> = {
   'cut-beard': {
-    match: [/(?:hair)?cut\s*(?:&|and|\+|with)\s*(?:a\s+)?beard/i, /\bcombo\b/i],
+    match: [/\b(?:(?:hair\s?)?cuts?|fades?|tapers?)\s*(?:&|and|\+|with)\s*(?:a\s+)?beard\b/i],
     allow: ['cut-beard', 'beard'],
     mentions: ['haircut and beard', 'cut and beard', 'haircut & beard', 'combo'],
     interval: [
@@ -110,7 +112,7 @@ export const GUIDES: Record<GuideId, GuideDef> = {
       [
         ['Wash the beard with a gentle cleanser and keep the skin under it moisturized.', 'Hair and beard usually keep their shape for 2–4 weeks.'],
         ['Brush the beard each day to keep it tidy.', 'Book the next visit before the shape grows out.'],
-        ['A little beard oil or balm can soften the hair and calm the skin.', 'Comb the beard after you wash it.'],
+        ['A little beard oil or balm can soften the hair and help with dry skin.', 'Comb the beard after you wash it.'],
       ],
     ),
   },
@@ -120,15 +122,15 @@ export const GUIDES: Record<GuideId, GuideDef> = {
     allow: ['fade'],
     mentions: ['fade'],
     interval: [
-      'A fade keeps its edge for 2–3 weeks.',
-      'The contrast in a fade grows out within 2–3 weeks.',
+      'A fade usually keeps its edge for about 2–3 weeks.',
+      'The contrast in a fade often softens within 2–3 weeks.',
       'Many people refresh a fade every 2–3 weeks.',
     ],
     blocks: guide(
       [
         ['A fade blends short hair into longer hair so there is no hard line between them.', 'The height of the fade sets where the shortest hair starts.'],
-        ['In a fade the hair gets gradually shorter toward the neck and around the ears.', 'The change in length is smooth.'],
-        ['A fade is a clipper cut where the sides and back step down in length.', 'The result is an even gradient from longer to shorter.'],
+        ['In a fade the hair on the sides and back gets shorter toward the bottom, often down to the skin.', 'The change in length is smooth.'],
+        ['A fade is a cut where the sides and back step down in length, usually with clippers.', 'The result is an even gradient from longer to shorter.'],
       ],
       [
         ['A fade works with many hair types and lengths on top.', 'It suits people who like a clean, short finish on the sides.'],
@@ -211,17 +213,18 @@ export const GUIDES: Record<GuideId, GuideDef> = {
 
   'beard-trim': {
     match: [/\bbeard\b/i],
+    not: [/\bcolou?r|\bdye|\bgr[ae]y\b|\bblend|\bshav|\brazor\b|\bfacial\b/i],
     allow: ['beard-trim', 'beard'],
     mentions: ['beard trim', 'beard'],
     blocks: guide(
       [
         ['A beard trim tidies the length and the outline of the beard.', 'It removes stray hairs and shapes the cheek line and the neckline.'],
-        ['The barber trims the beard to the length you choose and shapes its edges.', 'The goal is a neat, even look.'],
+        ['A beard trim brings the beard to the length you choose and shapes its edges.', 'The goal is a neat, even look.'],
         ['A beard trim keeps the shape of the beard under control.', 'The length and the lines are chosen to suit your face.'],
       ],
       [
         ['It suits anyone with a beard, from short stubble to full length.'],
-        ['It helps if your beard looks uneven or has grown out of shape.', 'It also helps if you are growing a beard and want it to fill in neatly.'],
+        ['It helps if your beard looks uneven or has grown out of shape.', 'It also helps while you grow a beard, to keep it looking neat along the way.'],
         ['It suits beards of any length.', 'It is useful before an event or between haircuts.'],
       ],
       [
@@ -239,18 +242,19 @@ export const GUIDES: Record<GuideId, GuideDef> = {
 
   shave: {
     match: [/\bhot\s*towel\b/i, /\bstraight\s*razor\b/i, /\brazor\b/i, /\bshav(?:e|es|ing)\b/i],
+    not: [/\bfacial\b/i, /\brazor\b[^]*\b(?:parts?|lines?|designs?)\b/i, /\bhair\s?cuts?\b|\bcuts?\b/i],
     allow: ['shave'],
     mentions: ['shave', 'razor', 'hot towel'],
     blocks: guide(
       [
-        ['A shave with a straight razor removes hair close to the skin.', 'Warm towels are often used first to soften the skin and the hair.'],
-        ['A hot towel shave starts with warm towels and a lather.', 'The razor then clears the hair from the skin.'],
-        ['This service removes hair from the face or the head with a razor.', 'Towels and lather prepare the skin.'],
+        ['A razor shave removes hair close to the skin.', 'Warm towels are often used first to soften the skin and the hair.'],
+        ['A traditional shave often starts with a warm towel and a lather.', 'The razor then clears the hair from the skin.'],
+        ['This service removes hair from the face or the head with a razor.', 'The skin is usually prepared first, often with a warm towel and lather.'],
       ],
       [
-        ['It suits anyone who wants a close, smooth finish.', 'It can be done on the face, the neck or the head.'],
-        ['It is for people who like a very clean look.', 'It can be done on the face or on the head.'],
-        ['It suits anyone who wants smooth skin after a haircut.', 'The head can be done as well as the face.'],
+        ['It suits anyone who wants a close, smooth finish.', 'It gives a closer finish than clippers or a trimmer.'],
+        ['It is for people who like a very clean look.', 'It leaves the skin smooth rather than stubbly.'],
+        ['It suits anyone who prefers smooth skin to stubble.'],
       ],
       [
         ['Tell the barber about any sensitive spots, razor bumps or skin conditions before the shave starts.', 'Say if you want some hair left in places.'],
@@ -260,25 +264,25 @@ export const GUIDES: Record<GuideId, GuideDef> = {
       [
         ['After a shave, rinse with cool water and moisturize.', 'Skip harsh scrubs for the rest of the day.'],
         ['Keep the skin clean and moisturized for a day or two.', 'Avoid touching the area with unwashed hands.'],
-        ['Apply a gentle moisturizer afterward.', 'If the skin feels tight or red, give it time to settle.'],
+        ['Apply a gentle moisturizer afterward.', 'Some redness usually settles soon; if redness or bumps last, see a doctor.'],
       ],
     ),
   },
 
   'kids-cut': {
-    match: [/\bkids?\b/i, /\bchild(?:ren)?\b/i, /\bboys?\b/i, /\bjuniors?\b/i],
+    match: [/\bkids?\b/i, /\bchild(?:ren)?\b/i, /\bboys?\b/i, /\bjuniors?\b(?!\s+(?:barber|stylist))/i],
     allow: ['kids-cut'],
     mentions: ['kids', 'kid', 'child', 'children', 'boys', 'junior'],
     interval: [
       'A kids’ cut usually needs a refresh every 4–6 weeks.',
-      'Children’s hair grows quickly, so 4–6 weeks between cuts is common.',
+      'For children, 4–6 weeks between cuts is common.',
       'Many parents book a kids’ cut every 4–6 weeks.',
     ],
     blocks: guide(
       [
-        ['A kids’ cut is a haircut made for a child.', 'It is usually a simple, tidy style that is easy to keep up.'],
-        ['This is a haircut for children.', 'The style is chosen to suit the child’s hair type and the way they wear it.'],
-        ['A kids’ haircut keeps the length and the shape tidy for school, sport and play.', 'The style is chosen with the child and the parent.'],
+        ['A kids’ cut is a haircut made for a child.', 'The style should suit the child’s hair and be easy to look after at home.'],
+        ['This is a haircut for children.', 'A good style suits the child’s hair type and the way they wear it.'],
+        ['A kids’ haircut keeps the length and the shape tidy for school, sport and play.', 'It helps when the child and the parent agree on the style first.'],
       ],
       [
         ['It suits children who need a tidy cut for school, sport or an event.'],
@@ -291,21 +295,21 @@ export const GUIDES: Record<GuideId, GuideDef> = {
         ['Say how short you want the sides and how much length to keep on top.', 'Mention if your child is sensitive about the clippers or the neck.'],
       ],
       [
-        ['Keep your child’s hair clean and brush it each day.', 'Most children’s cuts need a refresh every 4–6 weeks.'],
-        ['Wash with a gentle shampoo and rinse well.', 'A cut is easier to keep tidy when the hair is brushed daily.'],
+        ['Keep your child’s hair clean and detangle it gently with a comb, a brush or your fingers.', 'Many children’s cuts are refreshed every 4–6 weeks.'],
+        ['Wash with a gentle shampoo and rinse well.', 'A cut is easier to keep tidy when the hair is detangled gently and often.'],
         ['Check the neckline as the hair grows.', 'Book the next visit before it gets untidy.'],
       ],
     ),
   },
 
   design: {
-    match: [/\bdesigns?\b/i, /\bhair\s*art\b/i, /\bpatterns?\b/i, /\bparts?\b/i],
+    match: [/\bdesigns?\b/i, /\bhair\s*art\b/i, /\bpatterns?\b/i, /\bparts?\b/i, /\brazor\b[^]*\b(?:lines?)\b/i],
     allow: ['design'],
     mentions: ['design', 'pattern'],
     blocks: guide(
       [
-        ['A hair design is a pattern or line cut into short hair with a trimmer.', 'It can be a simple line or a larger pattern.'],
-        ['A design adds a line, a part or a pattern to a short haircut.', 'It is cut into the hair with a trimmer.'],
+        ['A hair design is a pattern or line cut into short hair, usually with a trimmer.', 'It can be a simple line or a larger pattern.'],
+        ['A design adds a line, a part or a pattern to a short haircut.', 'It is usually cut in with a trimmer.'],
         ['Hair designs are shapes cut into short hair.', 'They can be a single line or a detailed pattern.'],
       ],
       [
@@ -327,19 +331,19 @@ export const GUIDES: Record<GuideId, GuideDef> = {
   },
 
   color: {
-    match: [/\bcolou?r(?:s|ing)?\b/i, /\bdye\b/i, /\bhighlights?\b/i, /\bgr[ae]y\b/i, /\bblond(?:e)?\b/i],
+    match: [/\bcolou?r(?:s|ing)?\b/i, /\bdye\b/i, /\bhighlights?\b/i, /\bgr[ae]y\b/i, /\bblond(?:e)?\b/i, /\bbeard\b[^]*\bblend/i],
     allow: ['color'],
     mentions: ['color', 'colour', 'dye', 'highlight', 'gray', 'grey'],
     blocks: guide(
       [
-        ['Hair color changes or covers the shade of your hair.', 'It can add highlights, blend gray or change the color overall.'],
+        ['Hair color changes or covers the shade of your hair.', 'How it turns out depends on the shade you start with and the shade you want.'],
         ['A color service changes the shade of the hair with dye.', 'The result depends on your starting color.'],
-        ['Color can cover gray, add depth or give a new shade.', 'The shade and the method are chosen with the barber.'],
+        ['Hair color changes the shade of the hair, a little or a lot.', 'The shade and the method are chosen with the barber.'],
       ],
       [
-        ['It suits anyone who wants to cover gray or add depth.', 'It also suits anyone ready to try a new shade.'],
+        ['It suits anyone who wants to change or even out the shade of their hair.'],
         ['It suits people who want a change from their natural shade.', 'It can be subtle or bold.'],
-        ['It suits anyone who wants to blend gray rather than hide it.', 'Highlights can soften the change.'],
+        ['It suits anyone who wants a softer change in shade.', 'Talk through how natural you want the result to look.'],
       ],
       [
         ['Bring photos of the shade you want.', 'Tell the barber about any past color or bleach on your hair.'],
@@ -355,17 +359,17 @@ export const GUIDES: Record<GuideId, GuideDef> = {
   },
 
   haircut: {
-    match: [/\bhair\s?cuts?\b/i, /\bcuts?\b/i, /\bclippers?\b/i, /\bscissors?\b/i, /\bbuzz\b/i, /\bcrew\b/i, /\btrim\b/i],
+    match: [/\bhair\s?cuts?\b/i, /^(?![^]*(?:\b(?:eye)?brows?\b|\bm(?:ou|u)stache\b|\bnose\b|\bears?\b|\bneck\b))[^]*\bcuts?\b/i, /\bclippers?\b/i, /\bscissors?\b/i, /\bbuzz\b/i, /\bcrew\b/i],
     allow: [],
     mentions: [],
     interval: [
       'Most short haircuts keep their shape for 2–4 weeks.',
       'A haircut tends to hold its shape for 2–4 weeks.',
-      'Many people book a haircut every 3–5 weeks.',
+      'Many people book a haircut every 2–4 weeks.',
     ],
     blocks: guide(
       [
-        ['A haircut shortens and shapes your hair to suit your head and your hair type.', 'The barber works from your description or a photo.'],
+        ['A haircut shortens and shapes your hair to suit your head and your hair type.', 'A clear description or a photo helps get the result you want.'],
         ['A haircut tidies the length and the outline of your hair.', 'The sides, the back and the top can each be a different length.'],
         ['In a haircut the barber trims the hair with clippers, scissors or both.', 'The result depends on your hair type and the style you ask for.'],
       ],
@@ -395,14 +399,14 @@ export const EXTRA_PAGES: Record<ExtraId, PageDef> = {
     blocks: [
       // Questions the site's own data answers. Each is dropped when its data is missing.
       qa('book', 'How do I book?', [
-        ['Use the {link:book} link to choose a time.', 'You can also call {phone}.'],
+        ['Use the {link:book} link to choose a time.', 'To book by phone, call {phone}.'],
         ['You can book online with the {link:book} link.', 'The phone number is {phone}.'],
         ['To book, use the {link:book} link.', 'If you prefer to talk, call {phone}.'],
       ]),
       qa('hours', 'When is the shop open?', [
-        ['The shop is open {openDays} days a week.', 'The full times are on the {link:hours} page.'],
-        ['The shop opens {openDays} days a week.', 'Check the {link:hours} page for the times.'],
-        ['The shop is open on {openDays} days each week.', 'See the {link:hours} page for the hours of each day.'],
+        ['The shop opens on {openDays} of the seven days of the week.', 'The full times are on the {link:hours} page.'],
+        ['Of the seven days of the week, the shop opens on {openDays}.', 'Check the {link:hours} page for the times.'],
+        ['The shop is open on {openDays} of the seven days each week.', 'See the {link:hours} page for the hours of each day.'],
       ]),
       qa('where', 'Where is the shop?', [
         ['The shop is at {address}.', 'Directions and a map are on the {link:location} page.'],
@@ -422,7 +426,7 @@ export const EXTRA_PAGES: Record<ExtraId, PageDef> = {
       qa('kids', 'Does the shop do kids’ haircuts?', [
         ['Yes. The {service} is on the service list.', 'It is listed at {price}.'],
         ['Yes, there is a {service} on the service list.', 'The listed price is {price}.'],
-        ['Yes. Look for the {service} on the {link:services} page.', 'Its listed price is {price}.'],
+        ['Yes, the {service} is on the {link:services} page.', 'The {service} is listed at {price}.'],
       ], { subject: 'kids', allow: ['kids-cut'] }),
       qa('policy', 'Does the shop have a booking policy?', [
         ['{policy}'],
@@ -438,7 +442,7 @@ export const EXTRA_PAGES: Record<ExtraId, PageDef> = {
       qa('describe', 'How do I describe the cut I want?', [
         ['Start with the length: short, medium or long.', 'Then say what you want on the sides, the back and the top.', 'If you are unsure, ask the barber what suits your hair.'],
         ['Talk about the length first, then the sides and the back.', 'Mention how you style your hair each day.', 'Ask a question if a term is new to you.'],
-        ['Use simple words: shorter or longer, tighter or looser.', 'A photo plus a few words works better than a long description.', 'Ask the barber to confirm the plan before the clippers start.'],
+        ['Use simple words: shorter or longer, tighter or looser.', 'A photo plus a few words works better than a long description.', 'Ask the barber to confirm the plan before the cut starts.'],
       ]),
       qa('often', 'How often should I get a haircut?', [
         ['Short styles keep their shape for 2–4 weeks.', 'Longer styles can wait longer between visits.'],
@@ -446,9 +450,9 @@ export const EXTRA_PAGES: Record<ExtraId, PageDef> = {
         ['Sharp, short styles tend to lose their shape within 2–3 weeks.', 'Longer hair can go for longer.'],
       ]),
       qa('wash', 'Should I wash my hair before I come?', [
-        ['Clean hair is easier to cut and to judge.', 'Arrive with your hair washed if you can.'],
-        ['Come with clean hair if you can.', 'Product and dirt can hide the true length and texture.'],
-        ['It helps to arrive with clean hair.', 'If you cannot, tell the barber so the cut can be planned around it.'],
+        ['It depends on the cut, so ask when you book.', 'If in doubt, come with clean hair and little or no product.'],
+        ['Clean hair with little or no product shows the true length and texture.', 'Some cuts, especially on curly hair, are done dry, so ask when you book.'],
+        ['Arrive with clean hair and little product if you can.', 'Ask when you book if the shop prefers something different.'],
       ]),
       qa('late', 'What if I am running late?', [
         ['Get in touch with the shop as soon as you know.', 'The details are on the {link:contact} page.'],
@@ -477,9 +481,9 @@ export const EXTRA_PAGES: Record<ExtraId, PageDef> = {
     allow: [],
     blocks: [
       p('booking', [
-        ['Use the {link:book} link to choose a time.', 'You can also call {phone}.'],
-        ['You can book online with the {link:book} link.', 'The phone number is {phone}.'],
-        ['To book, use the {link:book} link.', 'If you prefer to talk, call {phone}.'],
+        ['Book ahead with the {link:book} link.', 'Prefer the phone? The number is {phone}.'],
+        ['The {link:book} link is the quickest way to pick a time.', 'To speak to the shop first, call {phone}.'],
+        ['Book before you go with the {link:book} link.', 'You can reach the shop on {phone}.'],
       ], 'pgFvBooking'),
       p('findUs', [
         ['The shop is at {address}.', 'Directions and a map are on the {link:location} page.', 'The opening times are on the {link:hours} page.'],
@@ -539,13 +543,13 @@ export const EXTRA_PAGES: Record<ExtraId, PageDef> = {
         ['Clean the beard when it feels dirty, not every day.', 'Dry it gently with a towel.'],
       ], 'pgBcWash'),
       p('brush', [
-        ['Comb or brush the beard each day.', 'This keeps it tidy and helps it grow in neatly.'],
-        ['Use a comb for short beards and a brush for longer ones.', 'Brush in the direction the hair grows.'],
+        ['Comb or brush the beard each day.', 'This keeps it tidy and stops tangles.'],
+        ['Use a comb, a brush or a pick, whichever suits the length and texture of your beard.', 'Brush in the direction the hair grows.'],
         ['Brush the beard after you wash it.', 'It helps spread the natural oils along the hair.'],
       ], 'pgBcBrush'),
       p('skin', [
         ['Moisturize the skin under the beard.', 'A little beard oil or balm can soften the hair.'],
-        ['Dry skin under a beard can itch.', 'A light moisturizer helps.'],
+        ['Dry skin under a beard can itch.', 'A light moisturizer can help.'],
         ['Keep the skin clean and moisturized.', 'Itching or flaking that does not clear up is worth showing to a doctor.'],
       ], 'pgBcSkin'),
       p('trim', [

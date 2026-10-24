@@ -31,16 +31,22 @@ export const isGuideId = (k: unknown): k is GuideId => typeof k === 'string' && 
 export function guideIdForTitle(title: unknown): GuideId | null {
   const t0 = plain(title);
   if (!t0) return null;
-  for (const id of GUIDE_IDS) if (GUIDES[id].match.some((re) => re.test(t0))) return id;
+  for (const id of GUIDE_IDS) {
+    const g = GUIDES[id];
+    if (g.match.some((re) => re.test(t0)) && !(g.not ?? []).some((re) => re.test(t0))) return id;
+  }
   return null;
 }
 
 // Haircut-type = a service that cuts hair; beard-type = one that works on a beard or the face (plan 1c).
 const HAIRCUT_TYPE: ReadonlySet<GuideId> = new Set(['cut-beard', 'fade', 'taper', 'kids-cut', 'haircut']);
-const BEARD_TYPE: ReadonlySet<GuideId> = new Set(['cut-beard', 'beard-trim', 'line-up', 'shave']);
 const PRICE_TYPE: ReadonlySet<GuideId> = new Set(['fade', 'taper', 'haircut']);
 export const isHaircutTitle = (title: unknown): boolean => { const g = guideIdForTitle(title); return !!g && HAIRCUT_TYPE.has(g); };
-export const isBeardTitle = (title: unknown): boolean => { const g = guideIdForTitle(title); return !!g && BEARD_TYPE.has(g); };
+/** A real beard service: a cut-and-beard, a beard trim or a shave that is not a head shave (never a line-up). */
+export const isBeardTitle = (title: unknown): boolean => {
+  const g = guideIdForTitle(title);
+  return g === 'cut-beard' || g === 'beard-trim' || (g === 'shave' && !/\bhead\b/i.test(plain(title)));
+};
 export const isKidsTitle = (title: unknown): boolean => guideIdForTitle(title) === 'kids-cut';
 
 /** A service of the site with a title (editor markers removed). */
@@ -184,8 +190,49 @@ function subjectFor(env: CopyEnv, kind: NonNullable<Block['subject']>): Svc | nu
   return all.find((s) => s.guide && PRICE_TYPE.has(s.guide) && s.duration) ?? all.find((s) => s.duration) ?? null;
 }
 
-function openDays(d: WebsiteData): number {
-  return (Array.isArray(d.hours) ? d.hours : []).filter((h) => h && !h.closed && (has(h.open) || has(h.close))).length;
+const DAY_RE = /^(mon|tue|wed|thu|fri|sat|sun)(?:day|sday|nesday|rsday|urday|s)?\.?$/i;
+const DAY_KEYS = new Set(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']);
+const dayKey = (v: unknown): string | null => {
+  const m = DAY_RE.exec(plain(v));
+  return m ? m[1].toLowerCase() : null;
+};
+
+/** Is at least one day open in these hours? (A row that is not closed and has a time.) */
+export function hasOpenDay(hours: unknown): boolean {
+  return (Array.isArray(hours) ? hours : []).some((h) => h && !h.closed && (has(h.open) || has(h.close)));
+}
+
+/**
+ * How many of the seven days the shop is open: distinct recognised days, a day with several rows (split shifts) counted
+ * once. Null (nothing can be said) unless all seven days are present, every row names a day, no open row is empty and
+ * at least one day is open.
+ */
+export function openDays(d: Pick<WebsiteData, 'hours'>): number | null {
+  const rows = Array.isArray(d.hours) ? d.hours : [];
+  const seen = new Set<string>();
+  const open = new Set<string>();
+  for (const h of rows) {
+    if (!h || typeof h !== 'object') return null;
+    const k = dayKey(h.day);
+    if (!k) return null;
+    seen.add(k);
+    if (h.closed) continue;
+    if (!has(h.open) && !has(h.close)) return null;
+    open.add(k);
+  }
+  if (DAY_KEYS.size !== seen.size) return null;
+  return open.size > 0 ? open.size : null;
+}
+
+/** At most `max` characters, ending on a full sentence when one fits (else on a word). */
+export function cutAtSentence(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const head = text.slice(0, max);
+  const ends = [...head.matchAll(/[.!?](?=\s|$)/g)];
+  const last = ends.length ? ends[ends.length - 1].index! + 1 : 0;
+  if (last > 0) return head.slice(0, last).trim();
+  const sp = head.lastIndexOf(' ');
+  return (sp > 0 ? head.slice(0, sp) : head).trim();
 }
 
 function linkSeg(env: CopyEnv, key: LinkKey): Seg | null {
@@ -208,8 +255,8 @@ function tokenSeg(env: CopyEnv, name: string, arg: string | undefined, subject: 
     case 'duration': return text(subject?.duration ?? '');
     case 'phone': { const ph = plain(d.phone); return /\d/.test(ph) ? text(plain(displayPhone(ph))) : null; }
     case 'address': return text(plain(d.contact?.address));
-    case 'openDays': { const n = openDays(d); return n > 0 ? text(String(n)) : null; }
-    case 'policy': { const p0 = policyToShow(d); return p0 ? text(plain(p0.body).slice(0, 500)) : null; }
+    case 'openDays': { const n = openDays(d); return n ? text(String(n)) : null; }
+    case 'policy': { const p0 = policyToShow(d); return p0 ? text(cutAtSentence(plain(p0.body), 500)) : null; }
     case 'link': return isLinkKey(arg) ? linkSeg(env, arg) : null;
     case 'svc': {
       if (!isGuideId(arg)) return null;
@@ -348,7 +395,7 @@ export function howOftenRows(env: CopyEnv): OftenRow[] {
 }
 
 /** The listed services of the beard-type, with prices, for Beard care. */
-export const beardServices = (d: Pick<WebsiteData, 'services'>): Svc[] => titledServices(d).filter((s) => s.guide && BEARD_TYPE.has(s.guide)).slice(0, 12);
+export const beardServices = (d: Pick<WebsiteData, 'services'>): Svc[] => titledServices(d).filter((s) => isBeardTitle(s.title)).slice(0, 12);
 
 // ── For the editor ──────────────────────────────────────────────────────────────────────────────
 
