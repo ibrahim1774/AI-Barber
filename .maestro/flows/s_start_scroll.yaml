@@ -1,0 +1,6 @@
+appId: com.ibrahim1774.aibarber
+---
+# Start screen at the largest text: scroll to the bottom and capture (options, Restore, footer).
+- scroll
+- scroll
+- takeScreenshot: 02_start_bottom

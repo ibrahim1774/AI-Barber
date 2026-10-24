@@ -26,7 +26,7 @@ export default function Start() {
         {'Barbers, run it all\nfrom '}
         <Text variant="h1" style={styles.gold}>one place.</Text>
       </Text>
-      <Text variant="body" style={styles.sub}>
+      <Text variant="body" style={styles.sub} maxFontSizeMultiplier={1.4}>
         A custom site, your own booking system & sell your own products.
       </Text>
       <View style={styles.options}>

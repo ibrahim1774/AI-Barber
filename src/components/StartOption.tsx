@@ -45,10 +45,10 @@ export function StartOption({
         </View>
       )}
       <View style={styles.titleRow}>
-        <Text style={[styles.title, { color: ink }]}>{title}</Text>
+        <Text maxFontSizeMultiplier={1.4} style={[styles.title, { color: ink }]}>{title}</Text>
         {arrow && <ArrowRight size={14} color={ink} />}
       </View>
-      <Text style={[styles.subtitle, { color: primary ? colors.accentInk : colors.muted }]}>{subtitle}</Text>
+      <Text maxFontSizeMultiplier={1.4} style={[styles.subtitle, { color: primary ? colors.accentInk : colors.muted }]}>{subtitle}</Text>
     </Pressable>
   );
 }
