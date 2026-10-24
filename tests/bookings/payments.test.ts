@@ -48,6 +48,7 @@ describe('createCardCheckout', () => {
     // Card only, through the 2026-09-30 allowlist (payment_method_types is rejected from that version).
     expect([...p.keys()].filter((k) => k.startsWith('payment_method_types'))).toEqual([]);
     expect(p.get('allowed_payment_method_types[0]')).toBe('card');
+    expect(p.get('wallet_options[link][display]')).toBe('never');
     expect([...p.keys()].filter((k) => k.startsWith('allowed_payment_method_types'))).toEqual(['allowed_payment_method_types[0]']);
     expect(c.init.headers['Stripe-Version']).toBe('2026-09-30.endive');
     expect(p.get('payment_intent_data[application_fee_amount]')).toBe('60');
