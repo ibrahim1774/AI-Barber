@@ -163,8 +163,10 @@ export function inventedEmailFor(shopName: string): string {
 
 export function contactEmail(site: Pick<WebsiteData, 'contact' | 'shopName'>): string {
   const email = (site.contact?.email || '').trim();
-  if (!email) return '';
-  if (email.toLowerCase() === inventedEmailFor(site.shopName).toLowerCase()) return '';
+  // Decisions read the text without any editor wrapper (markers.ts); the address printed keeps it.
+  const typed = unmarked(email).trim();
+  if (!typed) return '';
+  if (typed.toLowerCase() === inventedEmailFor(unmarked(site.shopName)).toLowerCase()) return '';
   return email;
 }
 

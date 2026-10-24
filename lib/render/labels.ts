@@ -48,7 +48,7 @@ export interface LabelDef {
    * page. Never by the single-page renderers, so visibleLabelKeys() leaves these out; the preview of a
    * chosen page asks visiblePageLabelKeys().
    */
-  multi?: { page?: PageKey | PageKey[]; shows?: (site: WebsiteData, set: PageSet) => boolean };
+  multi?: { page?: PageKey | PageKey[]; shows?: (site: WebsiteData, set: PageSet, page: PageKey) => boolean };
 }
 
 const has = (v: unknown): boolean => typeof v === 'string' && v.trim() !== '';
@@ -65,6 +65,10 @@ const hasMemberBook = (s: WebsiteData) => teamOf(s, { legacyUncapped: true }).so
 const hasHours = (s: WebsiteData) => Array.isArray(s.hours) && s.hours.length > 0;
 const hasReviews = (s: WebsiteData) => visibleReviews(s).length > 0;
 const hasClosedDay = (s: WebsiteData) => hasHours(s) && s.hours!.some((h) => h.closed);
+// A barber's own hours (their page) with a closed day.
+const memberClosedDay = (s: WebsiteData) => (Array.isArray(s.staff) ? s.staff : []).some((m) => Array.isArray(m?.hours) && m!.hours!.some((h) => h?.closed));
+// The links under "Also see": Location, Hours, Contact when the site has them as pages, never the page itself.
+const alsoSeeKeys = (set: PageSet, page: PageKey) => (['location', 'hours', 'contact'] as const).filter((k) => k !== page && set.nav.includes(k) && set.files.some((f) => f.key === k && !f.child));
 const canCall = (s: WebsiteData) => /\d/.test(s.phone || '');
 const hasPhone = (s: WebsiteData) => has(s.phone);
 const hasBook = (s: WebsiteData) => !!safeHref(s.bookingUrl);
@@ -243,13 +247,13 @@ export const LABELS = {
   pgAddressLabel: { title: 'Address label', default: 'Address', max: 30, multi: { page: ['contact', 'location'], shows: (s) => hasAddress(s) } },
   pgPhoneLabel: { title: 'Phone label', default: 'Phone', max: 30, multi: { page: ['contact', 'location'], shows: (s) => hasPhone(s) } },
   pgEmailLabel: { title: 'Email label', default: 'Email', max: 30, multi: { page: 'contact', shows: (s) => has(s.contact?.email) } },
-  pgClosed: { title: 'Closed day text', default: 'Closed', max: 20, multi: { page: ['hours', 'location'], shows: (s) => hasClosedDay(s) } },
-  pgBookCta: { title: 'Book button text', default: 'Book now', max: 30, multi: { page: ['services', 'team', 'contact', 'location'], shows: (s) => hasBook(s) } },
+  pgClosed: { title: 'Closed day text', default: 'Closed', max: 20, multi: { page: ['hours', 'location', 'team'], shows: (s, _set, page) => (page === 'team' ? memberClosedDay(s) : hasClosedDay(s)) } },
+  pgBookCta: { title: 'Book button text', default: 'Book now', max: 30, multi: { page: ['services', 'team', 'contact', 'location', 'faq', 'first-visit', 'hair-care', 'beard-care'], shows: (s) => hasBook(s) } },
   pgShopCta: { title: 'Shop button text', default: 'Shop online', max: 30, multi: { page: 'contact', shows: (s) => hasShop(s) } },
   pgDirectionsCta: { title: 'Directions button text', default: 'Get directions', max: 30, multi: { page: 'location' } },
   pgOfferedBy: { title: 'Service page: who does it', default: 'Offered by', max: 40, multi: { page: 'services', shows: (s) => hasServiceTeam(s) } },
   pgOtherServices: { title: 'Service page: other services', default: 'Other services', max: 40, multi: { page: 'services', shows: (_s, set) => set.services.length > 1 } },
-  pgAlsoSee: { title: 'Service page: related pages', default: 'Also see', max: 40, multi: { page: ['services', 'location'], shows: (_s, set) => set.nav.some((k) => k === 'location' || k === 'hours' || k === 'contact') } },
+  pgAlsoSee: { title: 'Related pages heading', default: 'Also see', max: 40, multi: { page: ['services', 'location', 'hours', 'faq', 'first-visit', 'hair-care', 'beard-care'], shows: (_s, set, page) => alsoSeeKeys(set, page).length > 0 } },
   pgBackServices: { title: 'Back to services link', default: 'All services', max: 30, multi: { page: 'services' } },
   pgBackTeam: { title: 'Back to team link', default: 'The whole team', max: 30, multi: { page: 'team' } },
   pgViewProfile: { title: 'Team profile link', default: 'View profile', max: 30, multi: { page: 'team' } },
@@ -392,7 +396,7 @@ export function visiblePageLabelKeys(site: WebsiteData, page: PageKey, ctx?: Pag
     if (!d.multi || d.tap === false) continue;
     const pages = d.multi.page === undefined ? [] : Array.isArray(d.multi.page) ? d.multi.page : [d.multi.page];
     if (!pages.includes(page)) continue;
-    if (d.multi.shows && !d.multi.shows(site, set)) continue;
+    if (d.multi.shows && !d.multi.shows(site, set, page)) continue;
     add(k);
   }
   return out;

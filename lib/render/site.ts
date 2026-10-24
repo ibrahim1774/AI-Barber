@@ -17,6 +17,7 @@ import { copyrightYear, displayPhone, nicheOf, withoutLegacyCopy } from './hones
 import { aibThemeVars, generateHTMLWithPlaceholders, resolveAibTheme } from './luxe.js';
 import { HERO_EXTRA_PAGES } from './heroes.js';
 import { hasPagesV2 } from '../pagesV2.js';
+import { printable } from './markers.js';
 import { navLabelKey, plainLabel, t } from './labels.js';
 import { renderPageBody } from './pageBodies.js';
 import { buildPageSet, canonicalBase, hasFilePages, isMultiPage, singlePageSet, plainText, sitemapXml, type PageContext, type PageFile, type PageSet, type SiteFile } from './pages.js';
@@ -125,9 +126,9 @@ export function renderSiteBundle(data: WebsiteData, opts: RenderSiteOptions = {}
   const bookingUrl = safeHref(d.bookingUrl);
   const shop = plainText(d.shopName);
   // What the header and footer PRINT keeps the editor's markers (markers.ts); decisions, titles and links use the plain values above.
-  const shopShown = String(d.shopName ?? '').trim();
-  const phoneShown = String(d.phone ?? '').trim();
-  const addressShown = String(d.contact?.address ?? '').trim();
+  const shopShown = printable(d.shopName);
+  const phoneShown = printable(d.phone);
+  const addressShown = printable(d.contact?.address);
   const themeStyle = themeStyleOf(template, d);
 
   const headerFor = (file: PageFile): string => {
@@ -143,7 +144,7 @@ export function renderSiteBundle(data: WebsiteData, opts: RenderSiteOptions = {}
   // The footer lists every page that is a file in the set (top-level pages, then the service pages), nothing else.
   const footerPages = [
     ...navItemsFor(template, set, d, 'home').map((i) => ({ href: i.href, label: t(d.labels, navLabelKey(template, i.key), niche, d), external: i.external })),
-    ...set.files.filter((f) => f.key === 'services' && f.child).map((f) => ({ href: f.href, label: escapeAttr(String(d.services?.[f.child!.index]?.title ?? '').trim() || f.child!.title) })),
+    ...set.files.filter((f) => f.key === 'services' && f.child).map((f) => ({ href: f.href, label: escapeAttr(printable(d.services?.[f.child!.index]?.title) || f.child!.title) })),
   ];
   const footer = footerHtml(template, {
     name: shopShown, year: copyrightYear(), line: template === 'luxe' ? L('footerLine') : undefined,

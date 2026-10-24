@@ -32,3 +32,14 @@ export function mapMarkedPieces(value: string, fn: (text: string) => string[]): 
 
 /** The text of a value without any marker wrapper or stray separator. */
 export const unmarked = (value: string): string => unwrapMarked(value)[1].split(SEP).join('');
+
+const STRAY = /⁣(?:[a-zA-Z]+|\/)⁣/g;
+/**
+ * A value as the page PRINTS it: a whole editor wrapper is kept (so the preview stays tappable), anything else is the
+ * plain text exactly as plainText (pages.ts) gives it, so published output does not change.
+ */
+export function printable(v: unknown): string {
+  if (typeof v !== 'string') return '';
+  const t = v.trim();
+  return WRAPPED.test(t) ? t : t.replace(STRAY, '').replace(/⁣/g, '').trim();
+}

@@ -19,6 +19,7 @@ import { aboutParagraphs, isExtraKey, ownGallerySlots, pageHref as pageHrefOf, p
 import { heroSlot } from './heroes.js';
 import { composeSections, pageSectionsOf, type SectionPage } from './sections.js';
 import { escapeAttr } from './shell.js';
+import { printable } from './markers.js';
 import { safeHref } from './safeHref.js';
 import { isSiteBookLink } from './subpages.js';
 import { isStockImage } from '../stockImages.js';
@@ -104,11 +105,16 @@ export function renderPageBody(ctx: BodyCtx, file: PageFile): PageBody {
     const first = visible[0]?.items[0];
     return first ? clip(first.map((g) => (g.t === 'text' ? g.s : g.label)).join(''), 155) : '';
   };
+  // The name of a service as it is PRINTED: the barber's text with its editor wrapper (markers.ts), else the plain title.
+  const svcTitle = (index: number, plain: string): string => printable(d.services[index]?.title) || plain;
+  // The name of a barber as printed.
+  const memberName = (index: number, plain: string): string => printable(Array.isArray(d.staff) ? d.staff[index]?.name : '') || plain;
   // A service row: its name (linked when it has a page) and its listed price.
   const svcRow = (sv: { index: number; title: string; price: string }): string => {
     const slug = serviceSlug(sv.index);
-    const price = displayPrice(sv.price);
-    return `<div class="ab-row"><span>${slug ? `<a href="${esc(`/services/${slug}/`)}">${esc(sv.title)}</a>` : esc(sv.title)}</span>${price ? `<span>${esc(price)}</span>` : ''}</div>`;
+    const price = displayPrice(printable(d.services[sv.index]?.price) || sv.price);
+    const name = svcTitle(sv.index, sv.title);
+    return `<div class="ab-row"><span>${slug ? `<a href="${esc(`/services/${slug}/`)}">${esc(name)}</a>` : esc(name)}</span>${price ? `<span>${esc(price)}</span>` : ''}</div>`;
   };
 
   const card = (m: TeamCard): { link: ReturnType<typeof teamBookLink>; button: string } => {
@@ -180,7 +186,7 @@ export function renderPageBody(ctx: BodyCtx, file: PageFile): PageBody {
     // Related pages: the other services, then Location / Hours / Contact when the site has them.
     const others = set.services.filter((c) => c.index !== file.child!.index);
     const othersBlock = others.length
-      ? `<h2 class="ab-h2" style="margin-top:32px">${L('pgOtherServices')}</h2><div class="ab-chips">${others.map((c) => `<a class="ab-chip" href="${esc(`/services/${c.slug}/`)}">${esc(c.title)}</a>`).join('')}</div>`
+      ? `<h2 class="ab-h2" style="margin-top:32px">${L('pgOtherServices')}</h2><div class="ab-chips">${others.map((c) => `<a class="ab-chip" href="${esc(`/services/${c.slug}/`)}">${esc(svcTitle(c.index, c.title))}</a>`).join('')}</div>`
       : '';
     // One URL per service, titled with the shop's place: "Skin Fade in Brooklyn, NY · Fresh Cuts". No place, no change.
     const eyebrow = place ? `<p class="ab-eyebrow">${esc(niche.industry)} in ${L('pgPlace')}</p>` : '';
@@ -285,12 +291,14 @@ export function renderPageBody(ctx: BodyCtx, file: PageFile): PageBody {
   if (file.key === 'location') {
     const address = plainText(d.contact?.address);
     const phone = plainText(d.phone);
+    const addressShown = printable(d.contact?.address);
+    const phoneShown = printable(d.phone);
     const hours = Array.isArray(d.hours) ? d.hours : [];
     const shop = plainText(d.shopName);
     const directions = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
     const facts = [
-      `<div class="ab-fact"><dt>${L('pgAddressLabel')}</dt><dd>${esc(address)}</dd></div>`,
-      phone ? `<div class="ab-fact"><dt>${L('pgPhoneLabel')}</dt><dd>${/\d/.test(phone) ? `<a href="tel:${esc(telDigits(phone))}">${esc(displayPhone(phone))}</a>` : esc(displayPhone(phone))}</dd></div>` : '',
+      `<div class="ab-fact"><dt>${L('pgAddressLabel')}</dt><dd>${esc(addressShown)}</dd></div>`,
+      phone ? `<div class="ab-fact"><dt>${L('pgPhoneLabel')}</dt><dd>${/\d/.test(phone) ? `<a href="tel:${esc(telDigits(phone))}">${esc(displayPhone(phoneShown))}</a>` : esc(displayPhone(phoneShown))}</dd></div>` : '',
     ].join('');
     const hoursBlock = hours.length
       ? `<h2 class="ab-h2" style="margin-top:32px">${L('pgHoursHeading')}</h2><div class="ab-rows">${hours.map((h) => hoursRow(h, L('pgClosed'))).join('')}</div>`
@@ -305,7 +313,7 @@ export function renderPageBody(ctx: BodyCtx, file: PageFile): PageBody {
     const customRating = ratingLineCustom(d);
     const extra = {
       services: svcHere.length ? `<h2 class="ab-h2" style="margin-top:32px">${L('pgLocServices')}</h2><div class="ab-rows">${svcHere.map(svcRow).join('')}</div>` : '',
-      team: teamKids.length ? `<h2 class="ab-h2" style="margin-top:32px">${L('pgLocTeam')}</h2><div class="ab-chips">${teamKids.map((f) => `<a class="ab-chip" href="${esc(f.href)}">${esc(f.child!.title)}</a>`).join('')}</div>` : '',
+      team: teamKids.length ? `<h2 class="ab-h2" style="margin-top:32px">${L('pgLocTeam')}</h2><div class="ab-chips">${teamKids.map((f) => `<a class="ab-chip" href="${esc(f.href)}">${esc(memberName(f.child!.index, f.child!.title))}</a>`).join('')}</div>` : '',
       rating: agg ? `<div class="ab-rating" style="margin-top:32px"><span class="ab-stars">★</span>${customRating !== null ? `<span>${esc(customRating)}</span>` : `<span><b>${esc(defaultRatingLine(agg))}</b></span>`}</div>` : '',
     };
     const sections = composeSections(d, 'location', { map, hours: hoursBlock, ...extra });
@@ -322,11 +330,13 @@ export function renderPageBody(ctx: BodyCtx, file: PageFile): PageBody {
     const address = plainText(d.contact?.address);
     const email = contactEmail(d);
     const phone = plainText(d.phone);
+    const addressShown = printable(d.contact?.address);
+    const phoneShown = printable(d.phone);
     const canCall = /\d/.test(phone);
     const facts = [
-      address ? `<div class="ab-fact"><dt>${L('pgAddressLabel')}</dt><dd>${esc(address)}</dd></div>` : '',
-      phone ? `<div class="ab-fact"><dt>${L('pgPhoneLabel')}</dt><dd>${canCall ? `<a href="tel:${esc(telDigits(phone))}">${esc(displayPhone(phone))}</a>` : esc(displayPhone(phone))}</dd></div>` : '',
-      email ? `<div class="ab-fact"><dt>${L('pgEmailLabel')}</dt><dd><a href="mailto:${esc(email)}">${esc(email)}</a></dd></div>` : '',
+      address ? `<div class="ab-fact"><dt>${L('pgAddressLabel')}</dt><dd>${esc(addressShown)}</dd></div>` : '',
+      phone ? `<div class="ab-fact"><dt>${L('pgPhoneLabel')}</dt><dd>${canCall ? `<a href="tel:${esc(telDigits(phone))}">${esc(displayPhone(phoneShown))}</a>` : esc(displayPhone(phoneShown))}</dd></div>` : '',
+      email ? `<div class="ab-fact"><dt>${L('pgEmailLabel')}</dt><dd><a href="mailto:${esc(plainText(email))}">${esc(printable(email))}</a></dd></div>` : '',
     ].join('');
     return {
       heading: heading(), description: generic,

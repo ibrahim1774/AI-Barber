@@ -9,6 +9,7 @@
 // Pure: WebsiteData in, HTML string out. Keep it that way.
 import type { WebsiteData } from '../../types';
 import { safeHref } from './safeHref.js';
+import { unwrapMarked } from './markers.js';
 import { bookStripHtml, isSiteBookLink, shopPreviewHtml, type SectionSkin } from './subpages.js';
 import {
   aggregateToShow, copyrightYear, displayPrice, footerLine, hasServices, photoAlt, reviewStars, to12h,
@@ -141,8 +142,11 @@ export function generateHTMLWithPlaceholders(input: WebsiteData, ctx?: RenderCtx
   // Non-optional on purpose: a site with no contact block is malformed and
   // must fail the render (publishSite's dry render relies on that).
   const address = (siteData.contact.address || '').trim();
-  const nameFirst = esc(siteData.shopName.split(' ')[0]);
-  const nameRest = esc(siteData.shopName.split(' ').slice(1).join(' '));
+  // The logo prints the first word and the rest apart; a name in the editor's markers keeps its wrapper (same id) round each part.
+  const [nameOpen, nameText, nameClose] = unwrapMarked(siteData.shopName);
+  const nameWords = nameText.split(' ');
+  const nameFirst = esc(nameOpen + nameWords[0] + nameClose);
+  const nameRest = nameWords.length > 1 ? esc(nameOpen + nameWords.slice(1).join(' ') + nameClose) : '';
   // Picked theme — applied via .aib-themed CSS vars on <body> so the deployed
   // site matches the editor preview. Defaults to gold/black when unset.
   const luxeTheme = resolveAibTheme(siteData);
