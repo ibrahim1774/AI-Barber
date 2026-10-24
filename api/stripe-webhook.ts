@@ -7,6 +7,14 @@ import { waitUntil } from '@vercel/functions';
 import { publishSite, readPendingSite } from '../lib/publishSite.js';
 import { recordCheckoutOwnerIfFirst, recordServerFirstPublishOwner, supabaseSiteOwners } from '../lib/siteOwners.js';
 import { vercelProjectExists } from '../lib/ios/slug.js';
+import { DOMAIN_PURCHASE_PLAN, handleDomainStripeEvent } from '../lib/webDomains.js';
+import { liveWebDomainDeps } from '../lib/ios/domainLive.js';
+
+/** The domain flow's deps for webhook events (no owner check: the session/subscription metadata is server-signed). */
+function domainEventDeps() {
+  const { authorize: _a, getStripeSession: _g, ...rest } = liveWebDomainDeps(async () => ({ ok: false, status: 403, error: 'not-used' }));
+  return rest;
+}
 
 // Stripe webhook -> Meta CAPI Purchase. The browser pixel + client CAPI
 // only fire if the customer returns to ?stripe_session=...; closed tabs,
@@ -64,63 +72,29 @@ function verifyStripeSignature(rawBody: Buffer, sigHeader: string, secret: strin
   });
 }
 
-export default async function handler(req: any, res: any) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+type PurchaseReport =
+  | { ok: true; fbResult: any; tw: { ok: boolean; skipped?: boolean } }
+  | { ok: false; status: number; error: string };
 
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-  if (!webhookSecret) {
-    console.error('[Stripe Webhook] Missing STRIPE_WEBHOOK_SECRET env var');
-    return res.status(500).json({ error: 'Server misconfiguration' });
-  }
-
-  // 1. Read + verify the raw body against the signature.
-  let event: any;
-  try {
-    const raw = await readRawBody(req);
-    const sig = req.headers['stripe-signature'] as string;
-    if (!verifyStripeSignature(raw, sig, webhookSecret)) {
-      console.error('[Stripe Webhook] Signature verification failed');
-      return res.status(400).json({ error: 'Invalid signature' });
-    }
-    event = JSON.parse(raw.toString('utf8'));
-  } catch (err: any) {
-    console.error('[Stripe Webhook] Body/parse error:', err.message);
-    return res.status(400).json({ error: 'Bad request' });
-  }
-
-  // 2. Only paid checkout completions matter.
-  if (event.type !== 'checkout.session.completed') {
-    return res.status(200).json({ received: true, ignored: event.type });
-  }
-  const session = event.data?.object || {};
-
-  // Same-Stripe-account safety: ignore a session explicitly tagged for a
-  // different app (untagged sessions still fire — covers separate accounts
-  // + any in-flight session created before the tag shipped).
-  const sessApp = session.metadata?.app;
-  if (sessApp && sessApp !== APP_NAME) {
-    return res.status(200).json({ received: true, ignored: `app:${sessApp}` });
-  }
-  if (session.payment_status !== 'paid') {
-    return res.status(200).json({ received: true, ignored: 'unpaid' });
-  }
-
+/**
+ * The server-side Purchase for a paid Checkout: Meta CAPI (event_id = the Stripe session id, so
+ * the browser pixel dedupes) and the Triple Whale order. Shared by site checkouts and the $39/year
+ * custom-domain checkout (plan 'domain-yearly'); the same customer fields either way.
+ */
+async function reportPurchase(session: any, plan: string): Promise<PurchaseReport> {
   const accessToken = process.env.FB_ACCESS_TOKEN;
   const pixelId = process.env.FB_PIXEL_ID;
   if (!accessToken || !pixelId) {
     console.error('[Stripe Webhook] Missing FB_ACCESS_TOKEN or FB_PIXEL_ID');
-    return res.status(500).json({ error: 'Server configuration error' });
+    return { ok: false, status: 500, error: 'Server configuration error' };
   }
 
-  // 3. Build the Purchase — SAME event_id the browser pixel uses (the
-  //    raw Stripe session id) so Meta dedupes the two.
   const eventId = session.id as string;
   const value = typeof session.amount_total === 'number' ? session.amount_total / 100 : 0;
   const currency = (session.currency || 'usd').toUpperCase();
   const details = session.customer_details || {};
   const addr = details.address || {};
   const { first, last } = splitName(details.name);
-  const plan = session.metadata?.plan || 'monthly';
   const meta = getPlanContentMeta(plan, value);
 
   const userData = buildUserData({
@@ -159,34 +133,99 @@ export default async function handler(req: any, res: any) {
     access_token: accessToken,
   };
 
-  try {
-    const fbResponse = await fetch(`https://graph.facebook.com/v21.0/${pixelId}/events`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const fbResult = await fbResponse.json();
-    if (!fbResponse.ok) {
-      console.error('[Stripe Webhook] Meta CAPI error:', fbResult);
-      // 500 → Stripe retries; dedup keeps it single once it recovers.
-      return res.status(500).json({ error: fbResult.error?.message || 'FB API error' });
-    }
-    console.log(`[Stripe Webhook] Purchase → Meta ok. event_id=${eventId} value=${value} ${currency} plan=${plan}`);
+  const fbResponse = await fetch(`https://graph.facebook.com/v21.0/${pixelId}/events`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const fbResult = await fbResponse.json();
+  if (!fbResponse.ok) {
+    console.error('[Stripe Webhook] Meta CAPI error:', fbResult);
+    // 500 → Stripe retries; dedup keeps it single once it recovers.
+    return { ok: false, status: 500, error: fbResult.error?.message || 'FB API error' };
+  }
+  console.log(`[Stripe Webhook] Purchase → Meta ok. event_id=${eventId} value=${value} ${currency} plan=${plan}`);
 
-    // Push the order to Triple Whale (source-of-truth revenue; joins the
-    // client-side TriplePixel Purchase on order_id == Stripe session id).
-    // No-op until TW_API_KEY is set, so this is safe to ship ahead of the
-    // key. A transient (5xx/network) failure returns 500 so Stripe retries
-    // — re-sending the same order_id is an idempotent upsert on TW's side.
-    // A 4xx is logged but NOT retried (would loop forever) and does not
-    // block the already-succeeded Meta report.
-    const tw = await pushOrderToTripleWhale(session);
-    if (!tw.ok && !tw.skipped) {
-      console.error(`[Stripe Webhook] Triple Whale order push failed (retryable=${tw.retryable}):`, tw.error);
-      if (tw.retryable) return res.status(500).json({ error: 'TW order push failed (retryable)' });
-    } else if (tw.ok) {
-      console.log(`[Stripe Webhook] Order → Triple Whale ok. order_id=${eventId}`);
+  // Triple Whale order (source-of-truth revenue; joins the client TriplePixel Purchase on
+  // order_id == Stripe session id). No-op until TW_API_KEY is set. A transient failure → 500 so
+  // Stripe retries (idempotent upsert on TW's side); a 4xx is logged, not retried.
+  const tw = await pushOrderToTripleWhale(session);
+  if (!tw.ok && !tw.skipped) {
+    console.error(`[Stripe Webhook] Triple Whale order push failed (retryable=${tw.retryable}):`, tw.error);
+    if (tw.retryable) return { ok: false, status: 500, error: 'TW order push failed (retryable)' };
+  } else if (tw.ok) {
+    console.log(`[Stripe Webhook] Order → Triple Whale ok. order_id=${eventId}`);
+  }
+  return { ok: true, fbResult, tw };
+}
+
+export default async function handler(req: any, res: any) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!webhookSecret) {
+    console.error('[Stripe Webhook] Missing STRIPE_WEBHOOK_SECRET env var');
+    return res.status(500).json({ error: 'Server misconfiguration' });
+  }
+
+  // 1. Read + verify the raw body against the signature.
+  let event: any;
+  try {
+    const raw = await readRawBody(req);
+    const sig = req.headers['stripe-signature'] as string;
+    if (!verifyStripeSignature(raw, sig, webhookSecret)) {
+      console.error('[Stripe Webhook] Signature verification failed');
+      return res.status(400).json({ error: 'Invalid signature' });
     }
+    event = JSON.parse(raw.toString('utf8'));
+  } catch (err: any) {
+    console.error('[Stripe Webhook] Body/parse error:', err.message);
+    return res.status(400).json({ error: 'Bad request' });
+  }
+
+  // 2a. Custom-domain subscriptions ($39/year, lib/webDomains.ts): checkout, renewal and cancel
+  //     events go through the domain state machine (never a site publish). A paid domain checkout
+  //     also reports its Purchase (Meta CAPI + Triple Whale), like a site checkout.
+  const domainResult = await handleDomainStripeEvent(event, domainEventDeps);
+  if (domainResult.handled) {
+    if (domainResult.background) {
+      waitUntil(domainResult.background().catch((e: any) => console.error('[Stripe Webhook] domain purchase failed (the domain sweep resumes it):', e?.message || e)));
+    }
+    // A paid, verified domain checkout is a sale: the same server-side Purchase as a site checkout.
+    if (domainResult.purchase && (domainResult.status ?? 200) < 500) {
+      try {
+        const rep = await reportPurchase(event.data?.object || {}, DOMAIN_PURCHASE_PLAN);
+        if (rep.ok === false) return res.status(rep.status).json({ error: rep.error });
+      } catch (e: any) {
+        console.error('[Stripe Webhook] domain Purchase report failed:', e?.message || e);
+        return res.status(500).json({ error: 'Purchase report failed' });
+      }
+    }
+    return res.status(domainResult.status ?? 200).json(domainResult.body ?? { received: true });
+  }
+
+  // 2. Only paid checkout completions matter.
+  if (event.type !== 'checkout.session.completed') {
+    return res.status(200).json({ received: true, ignored: event.type });
+  }
+  const session = event.data?.object || {};
+
+  // Same-Stripe-account safety: ignore a session explicitly tagged for a
+  // different app (untagged sessions still fire — covers separate accounts
+  // + any in-flight session created before the tag shipped).
+  const sessApp = session.metadata?.app;
+  if (sessApp && sessApp !== APP_NAME) {
+    return res.status(200).json({ received: true, ignored: `app:${sessApp}` });
+  }
+  if (session.payment_status !== 'paid') {
+    return res.status(200).json({ received: true, ignored: 'unpaid' });
+  }
+
+  const plan = session.metadata?.plan || 'monthly';
+  try {
+    const rep = await reportPurchase(session, plan);
+    if (rep.ok === false) return res.status(rep.status).json({ error: rep.error });
+    const { fbResult, tw } = rep;
 
     // ── Build and deploy the site they just paid for ────────────────────
     // Started AFTER the pixel work: an ad platform must never lose a Purchase
@@ -212,7 +251,7 @@ export default async function handler(req: any, res: any) {
       // signs in with it (confirmed). Only for a site not live yet (checked before this webhook's
       // publish); never replaces an existing owner. Best effort.
       waitUntil(
-        recordCheckoutOwnerIfFirst(siteId, { checkoutEmail: details.email || session.customer_email || null, sessionId: session.id }, supabaseSiteOwners(), {
+        recordCheckoutOwnerIfFirst(siteId, { checkoutEmail: session.customer_details?.email || session.customer_email || null, sessionId: session.id }, supabaseSiteOwners(), {
           storedStamp: async (s) => (await readPendingSite(s))?.deployedUrl || null,
           projectExists: (s) => vercelProjectExists(s),
         })

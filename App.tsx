@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
+import { rememberDomainCheckout } from './services/domainUi';
 import { AppState, ShopInputs, WebsiteData, SiteInstance } from './types.ts';
 
 // Meta Pixel global (loaded in index.html). `fbq` is added to window at runtime.
@@ -344,6 +345,9 @@ const App: React.FC = () => {
 
     // Handle domain payment return
     if (domainPayment === 'success') {
+      // The domain panel (components/DomainManager.tsx) finishes the purchase with this session
+      // and shows its progress; it is only a lookup key (owner-only, single-use server-side).
+      rememberDomainCheckout(params.get('session_id'));
       window.history.replaceState({}, '', window.location.pathname);
       setAppReady(true);
       if (isAuthenticated) {

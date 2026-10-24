@@ -18,7 +18,8 @@ export type PlanSlug =
   | 'custom-design' | 'custom-design-29'
   | 'custom' | 'custom25' | 'custom-booksy' | 'custom-15' | 'custom-home' | 'yearly-custom-home'
   | 'monthly-bargen' | 'yearly-bargen' | 'custom-bargen'
-  | 'primebarber' | 'primebarber-site';
+  | 'primebarber' | 'primebarber-site'
+  | 'domain-yearly';
 
 export interface ContentMeta {
   content_id: string;
@@ -31,6 +32,8 @@ export interface ContentMeta {
 // amount to pass as valueOverride. Keep in sync with the unitAmount
 // values in api/create-checkout-session.ts.
 const PLAN_CONTENT: Record<PlanSlug, { content_id: string; content_name: string; price: number }> = {
+  // The website's $39/year custom-domain subscription (lib/webDomains.ts).
+  'domain-yearly':     { content_id: 'aibarber-custom-domain-yearly',    content_name: 'aibarber.org Custom Domain (Yearly)',            price: 39 },
   'monthly':           { content_id: 'aibarber-hosting-monthly',         content_name: 'aibarber.org Monthly Website Hosting',           price: 9 },
   'yearly':            { content_id: 'aibarber-hosting-yearly',          content_name: 'aibarber.org Yearly Website Hosting',            price: 86 },
   'monthly-booksy':    { content_id: 'aibarber-hosting-monthly-booksy',  content_name: 'aibarber.org Monthly Website Hosting (Booksy)',  price: 10 },

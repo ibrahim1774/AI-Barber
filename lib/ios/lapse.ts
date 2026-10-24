@@ -7,7 +7,7 @@
 // Rows only ever move forward: expires_at never moves backwards (see
 // purchases.ts), so a renewal or resubscribe makes a row active again by itself.
 import type { PurchaseRow } from './purchases.js';
-import { grants, type Entitlement } from './tiers.js';
+import { grants, tierOf, type Entitlement } from './tiers.js';
 
 /**
  * How long after the stored expiry a row becomes a takedown candidate. Short on
@@ -63,6 +63,9 @@ export function sweepWatches(row: Partial<GateFields>): boolean {
  */
 export function purchaseLive(row: GateFields | null | undefined, now: number = Date.now()): boolean {
   if (!row || row.revoked_at || row.taken_down_at) return false;
+  // Only the six site products (tiers.ts) can be live for a gate. The domain subscription is
+  // never written here (notifications route it away), and must never open a gate if it were.
+  if (tierOf(row.product_id) == null) return false;
   if (!sweepWatches(row) && isLapsed({ expires_at: row.expires_at ?? null, revoked_at: row.revoked_at }, now)) return false;
   return true;
 }

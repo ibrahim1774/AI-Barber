@@ -133,3 +133,18 @@ describe('runCli', () => {
     expect(await runCli(['rollback', 'fade-lab', '3', '--expect', '4'], () => f.deps, o.x)).toBe(0);
   });
 });
+
+describe('runCli vercel-domains (read-only)', () => {
+  it('prints every Vercel domain with auto-renew, expiry and tracked state; --json; changes nothing', async () => {
+    const f = fakes();
+    f.deps.vercelDomains = vi.fn(async () => [{ name: 'oldweb.com', boughtAt: 1_700_000_000_000, expiresAt: 1_900_000_000_000, renew: true, serviceType: 'zeit.world' }]);
+    const o = io();
+    expect(await runCli(['vercel-domains'], () => f.deps, o.x)).toBe(0);
+    expect(o.text()).toMatch(/oldweb\.com .*ON .*untracked/);
+    expect(o.text()).toMatch(/Read-only: nothing was changed/);
+    const j = io();
+    expect(await runCli(['vercel-domains', '--json'], () => f.deps, j.x)).toBe(0);
+    expect(JSON.parse(j.text())[0]).toMatchObject({ name: 'oldweb.com', autoRenew: true, tracked: null });
+    expect(f.deps.publish).not.toHaveBeenCalled();
+  });
+});
