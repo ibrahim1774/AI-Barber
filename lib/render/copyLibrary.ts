@@ -310,7 +310,7 @@ export const GUIDES: Record<GuideId, GuideDef> = {
       ],
       [
         ['It suits people with short hair who want a custom detail.'],
-        ['It suits anyone who wants their cut to stand out.', 'It works best on short, even hair.'],
+        ['It suits anyone who wants their cut to stand out.', 'It works well on short, even hair.'],
         ['It suits people who want a line, a part or a pattern added to a cut.', 'The shorter the hair, the clearer the design.'],
       ],
       [
@@ -347,7 +347,7 @@ export const GUIDES: Record<GuideId, GuideDef> = {
         ['Describe the shade in simple words and show a photo.', 'Say how much upkeep you are happy to do.'],
       ],
       [
-        ['Use a gentle shampoo and wash less often to keep the color longer.', 'Expect the shade to fade as the hair grows.'],
+        ['Use a gentle shampoo and wash less often to keep the color longer.', 'Expect the shade to soften as the hair grows.'],
         ['Rinse with cooler water.', 'Moisturize the hair to keep it soft.'],
         ['Protect colored hair from strong sun.', 'Book a touch-up when the shade starts to change.'],
       ],
@@ -489,7 +489,7 @@ export const EXTRA_PAGES: Record<ExtraId, PageDef> = {
       list('before', [
         ['Choose a photo of the cut you want.', 'Arrive with clean hair if you can.', 'Think about how you style your hair each day.', 'Leave a few extra minutes so you are not rushed.'],
         ['Save a few photos of cuts you like.', 'Think about what you liked and disliked about past cuts.', 'Decide how much time you want to spend on your hair each morning.', 'Plan to arrive a little early.'],
-        ['Pick a photo or two that show the cut you have in mind.', 'Note how short you want the sides and the back.', 'Mention if you wear glasses or a hat, since it can change how a cut sits.', 'Check the booking details so you know when to arrive.'],
+        ['Pick a photo or two that show the cut you have in mind.', 'Note how short you want the sides and the back.', 'Mention if you wear glasses or a hat, because it can change how a cut sits.', 'Check the booking details so you know when to arrive.'],
       ], 'pgFvBefore'),
       step('inChair', [
         ['Say what you want first: the length, the sides, the back and the top.', 'Show your photo.', 'Ask the barber to explain the plan.', 'Speak up early if you want a change.'],

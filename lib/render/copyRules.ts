@@ -5,7 +5,7 @@
 // Barber-edited text (`copy` overrides) is the barber's own words and is never checked here.
 //
 // The rules, in short:
-//   R1 voice        never "we / our / us" (or "I / my"): the text describes a service or advises the reader.
+//   R1 voice        never "we / our / us" (the shop speaking): the text describes a service or advises the reader.
 //   R2 no rank      no best / top-rated / premium / expert / award ... and no flattering filler (friendly, skilled ...).
 //   R3 no tenure    no years / since / established / licensed / certified / experienced ...
 //   R4 no practices no walk-in / parking / free / cash / card / payment / coffee ... and no product brands.
@@ -56,7 +56,7 @@ export function isKnownToken(name: string, arg?: string): boolean {
 
 const R: { id: string; re: RegExp }[] = [
   // R1 voice
-  { id: 'R1', re: /\b(?:we|our|ours|ourselves|us|i|my|me|mine)\b/i },
+  { id: 'R1', re: /\b(?:we|our|ours|ourselves|us)\b/i },
   // R2 rank, superlatives, filler
   { id: 'R2', re: /\b(?:best|#1|number one|leading|premier|finest|awards?|award-winning|voted|renowned|famous|premium|luxury|luxurious|world-class|unmatched|unrivaled|unrivalled|expert|experts|expertise|masters?|top[\s-](?:rated|notch|tier|quality|class|barbers?|shops?)|highest|friendly|professional|professionals|skilled|talented|passionate|high-quality|quality|precision|artisan|crafted|craftsmanship|excellence|exceptional|amazing|incredible|state-of-the-art|second to none|trusted|reliable)\b/i },
   // R3 tenure and credentials
@@ -83,7 +83,7 @@ function properNouns(text: string): string[] {
   words.forEach((w, i) => {
     const bare = w.replace(/^[^A-Za-z]+/, '');
     if (!/^[A-Z]/.test(bare)) return;
-    if (i === 0) return;
+    if (i === 0 || bare === 'I' || /^I['’]/.test(bare)) return;
     if (/[.!?]["')\]]*$/.test(words[i - 1])) return;
     out.push(bare.replace(/[^A-Za-z'’-].*$/, ''));
   });
