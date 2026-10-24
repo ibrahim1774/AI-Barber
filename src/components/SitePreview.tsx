@@ -27,12 +27,15 @@ export interface SitePreviewProps {
  * Each data change reloads the document; the last reported scrollY is
  * restored once the new document posts 'ready'.
  */
+function sameRects(a: ImageRect[], b: ImageRect[]): boolean {
+  return a.length === b.length && a.every((r, i) => r.path === b[i].path && r.x === b[i].x && r.y === b[i].y && r.w === b[i].w && r.h === b[i].h);
+}
+
 export default function SitePreview({ data, editable, shopProducts, page, onEditText, onEditImage, pillTourRef }: SitePreviewProps) {
   const webRef = useRef<WebView>(null);
   const scrollY = useRef(0);
   // Where each photo is on screen (for the "Change image" pills), and whether the page is moving.
   const [rects, setRects] = useState<ImageRect[]>([]);
-  const [moving, setMoving] = useState(false);
 
   // Memoised on data/editable: the templates stamp Date.now() into the HTML, so
   // re-rendering on every parent render would reload the page.
@@ -66,11 +69,10 @@ export default function SitePreview({ data, editable, shopProducts, page, onEdit
           scrollY.current = m.y;
           return;
         case 'rects':
-          setRects(m.items);
-          setMoving(false);
+          // Same photos in the same places: keep the current array so nothing re-renders (no blink).
+          setRects((prev) => (sameRects(prev, m.items) ? prev : m.items));
           return;
         case 'scrolling':
-          setMoving(true);
           return;
         case 'ready':
           webRef.current?.injectJavaScript(`window.__aibRestore && window.__aibRestore(${Math.round(scrollY.current)}); true;`);
@@ -106,7 +108,7 @@ export default function SitePreview({ data, editable, shopProducts, page, onEdit
       dataDetectorTypes="none"
       allowsBackForwardNavigationGestures={false}
     />
-    {editable && <ChangeImagePills items={rects} hidden={moving} onPress={onEditImage} tourRef={pillTourRef} />}
+    {editable && <ChangeImagePills items={rects} hidden={false} onPress={onEditImage} tourRef={pillTourRef} />}
     </View>
   );
 }

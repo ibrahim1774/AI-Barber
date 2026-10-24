@@ -105,6 +105,7 @@ export const EDITOR_JS = String.raw`(function () {
   // every [data-edit-image], in viewport points, small and capped.
   var rectTimer = null;
   var moving = false;
+  var liveTimer = null;
   function postRects() {
     try {
       var vw = window.innerWidth || document.documentElement.clientWidth || 0;
@@ -138,6 +139,8 @@ export const EDITOR_JS = String.raw`(function () {
   var pending = false;
   window.addEventListener('scroll', function () {
     if (!moving) { moving = true; post({ type: 'scrolling' }); }
+    // Keep the native pills following the photos while scrolling (throttled), so they never blink off.
+    if (!liveTimer) liveTimer = setTimeout(function () { liveTimer = null; postRects(); }, 60);
     scheduleRects();
     if (!restored || pending) return;
     pending = true;

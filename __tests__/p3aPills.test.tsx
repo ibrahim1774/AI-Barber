@@ -22,7 +22,7 @@ describe('Change image pills', () => {
     expect(pills(tree)).toHaveLength(3);
     const slots = tree.root.findAll((n: any) => n.props?.pointerEvents === 'box-none' && n.props?.style && !Array.isArray(n.props.style) === false);
     const flat = slots.map((n: any) => StyleSheet.flatten(n.props.style)).filter((s: any) => s.width === 390);
-    expect(flat[0]).toMatchObject({ left: 0, top: 40, width: 390, height: 300, justifyContent: 'flex-end', alignItems: 'flex-end' });
+    expect(flat[0]).toMatchObject({ left: 0, top: 40, width: 390, height: 300, justifyContent: 'flex-end', alignItems: 'flex-start' });
   });
 
   test('a tap passes the photo\'s slot path to the existing photo flow', () => {
@@ -41,17 +41,32 @@ describe('Change image pills', () => {
     expect(pills(tree)).toHaveLength(0);
   });
 
-  test('white 85% chip, dark text, camera glyph, 28px tall', () => {
+  test('small plain text chip, 11pt, translucent dark, hitSlop grows the tap area', () => {
     let tree: any;
     act(() => { tree = create(<ChangeImagePills items={rects.slice(0, 1)} hidden={false} onPress={() => {}} />); });
     const pill = pills(tree)[0];
     const style = StyleSheet.flatten(pill.props.style({ pressed: false }));
-    expect(style).toMatchObject({ height: 28, backgroundColor: 'rgba(255,255,255,0.85)' });
+    expect(style.backgroundColor).toBe('rgba(0,0,0,0.55)');
+    expect(style.height).toBeUndefined();
     const texts = tree.root.findAll((n: any) => n.props?.children === 'Change image' && n.type === 'Text');
-    expect(texts.length).toBeGreaterThan(0);
-    expect(StyleSheet.flatten(texts[0].props.style).color).toBe('#111111');
-    // the camera glyph is an svg inside the pill
-    expect(pill.findAll((n: any) => n.props?.viewBox === '0 0 24 24').length).toBeGreaterThan(0);
+    expect(StyleSheet.flatten(texts[0].props.style).fontSize).toBe(11);
+    expect(pill.findAll((n: any) => n.props?.viewBox === '0 0 24 24')).toHaveLength(0);
+    const h = pill.props.hitSlop;
+    expect(h.top + h.bottom + 11 + 4).toBeGreaterThanOrEqual(44);
+  });
+
+  test('stable: re-measures with the same or moved rects keep the same pills mounted', () => {
+    let tree: any;
+    act(() => { tree = create(<ChangeImagePills items={rects} hidden={false} onPress={() => {}} />); });
+    const before = pills(tree)[1];
+    act(() => { tree.update(<ChangeImagePills items={rects.map((r) => ({ ...r, y: r.y - 20 }))} hidden={false} onPress={() => {}} />); });
+    expect(pills(tree)).toHaveLength(3);
+    expect(pills(tree)[1]).toBe(before);
+  });
+
+  test('page script streams rects while scrolling and the preview never hides pills for scrolling', () => {
+    expect(EDITOR_JS).toContain('liveTimer');
+    expect(require('fs').readFileSync(require('path').join(__dirname, '../src/components/SitePreview.tsx'), 'utf8')).toContain('hidden={false}');
   });
 
   test('the tour points at the hero pill, else the first', () => {
