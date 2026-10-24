@@ -221,7 +221,7 @@ export function generatePrimeHTMLWithPlaceholders(input: WebsiteData, ctx?: Rend
   const bookTarget = bookingUrl && !isSiteBookLink(bookingUrl) ? ' target="_blank" rel="noopener noreferrer"' : '';
   // Homepage previews of the site's own /book and /shop pages (lib/render/subpages.ts).
   const bookStrip = bookStripHtml(siteData, PRIME_SKIN, { heading: t(siteData.labels, 'bookStripHeading', undefined, siteData), button: t(siteData.labels, 'bookStripButton', undefined, siteData) });
-  const shopPreview = shopPreviewHtml(siteData, PRIME_SKIN);
+  const shopPreview = shopPreviewHtml(siteData, PRIME_SKIN, { heading: t(siteData.labels, 'shopStripHeading', undefined, siteData), link: t(siteData.labels, 'shopStripLink', undefined, siteData) });
   const formattedPhone = escapeHtml((siteData.phone || '').replace(/\s+/g, ''));
   const phoneDigits = (siteData.phone || '').replace(/\D/g, '');
   // Book: the booking link, else a call. Neither → no booking buttons.

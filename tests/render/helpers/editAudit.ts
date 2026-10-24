@@ -171,7 +171,8 @@ export function auditSite(site: WebsiteData, template: TemplateId, mode: Mode): 
     const mb = renderSiteBundle(marked, { imageUrls: imageUrlMapOf(d), ...opts });
     const hit = mb.pages.find((p) => p.path === file.path);
     if (!hit) throw new Error(`marking changed the page set: ${template} ${file.path} is missing (${mb.pages.map((p) => p.path).join(', ')})`);
-    const previewHtml = prepareEditableHtml(hit.html, ids);
+    // The app fills the hidden Shop strip in (withShopPreview), so its words are visible there.
+    const previewHtml = prepareEditableHtml(hit.html, ids).replace(/(<section id="shop-preview"[^>]*?) hidden>/, '$1>');
     const { nodes, attrs } = visibleText(previewHtml);
     out.push({
       page: file.path, nodes, attrs, ref, ids, previewHtml,

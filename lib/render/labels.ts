@@ -23,7 +23,7 @@ import type { BooksyNiche } from '../booksyNiche.js';
 import { nicheByKey } from '../booksyNiche.js';
 import { safeHref } from './safeHref.js';
 import { aggregateToShow, cityStateOnly, photosAreFromBookingPage, placeFromArea, footerLine, hasServices, nicheCopy, reviewsSourceName, teamBookLink, teamOf, visibleReviews } from './honest.js';
-import { isSiteBookLink } from './subpages.js';
+import { isSiteBookLink, isSiteShopLink } from './subpages.js';
 import { beardServices, isHaircutTitle, serviceGuideFor, titledServices } from './guides.js';
 import { buildPageSet, hasFilePages, memberHasOwnHours, plainText, type PageContext, type PageKey, type PageSet } from './pages.js';
 
@@ -189,6 +189,10 @@ export const LABELS = {
   // The "Book online" strip on the homepage (lib/render/subpages.ts), printed by all three designs.
   bookStripHeading: { title: 'Book online heading', default: 'Book online', max: 40, shows: (s) => isSiteBookLink(s.bookingUrl) },
   bookStripButton: { title: 'Book online button', default: 'Book', max: 24, shows: (s) => isSiteBookLink(s.bookingUrl) },
+
+  // The "Shop" strip on the homepage (lib/render/subpages.ts): its cards are filled in the browser from the live store.
+  shopStripHeading: { title: 'Shop heading', default: 'Shop', max: 40, shows: (s) => isSiteShopLink(s.shopUrl) },
+  shopStripLink: { title: 'Shop "see all" link', default: 'See all', max: 24, shows: (s) => isSiteShopLink(s.shopUrl) },
 
   // ── Multi-page sites (renderSite, P3b): the menu, the page titles and the small words on the new pages. ──
   pgMenu: { title: 'Menu button name', default: 'Menu', max: 20, tap: false, multi: {} },

@@ -132,7 +132,7 @@ export function generateHTMLWithPlaceholders(input: WebsiteData, ctx?: RenderCtx
   const bookTarget = bookingUrl && !isSiteBookLink(bookingUrl) ? ' target="_blank" rel="noopener noreferrer"' : '';
   // Homepage previews of the site's own /book and /shop pages (lib/render/subpages.ts).
   const bookStrip = bookStripHtml(siteData, LUXE_SKIN, { heading: t(siteData.labels, 'bookStripHeading', undefined, siteData), button: t(siteData.labels, 'bookStripButton', undefined, siteData) });
-  const shopPreview = shopPreviewHtml(siteData, LUXE_SKIN);
+  const shopPreview = shopPreviewHtml(siteData, LUXE_SKIN, { heading: t(siteData.labels, 'shopStripHeading', undefined, siteData), link: t(siteData.labels, 'shopStripLink', undefined, siteData) });
   const formattedPhone = esc((siteData.phone || '').replace(/\s+/g, ''));
   // The number as printed: "(512) 555-0142" for a plain ten-digit number (honest.ts displayPhone).
   const shownPhone = esc(displayPhone(siteData.phone));
