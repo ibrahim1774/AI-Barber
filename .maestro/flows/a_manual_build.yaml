@@ -3,7 +3,7 @@ appId: com.ibrahim1774.aibarber
 # (a) Build a site by typing details, incl. services checklist and the stock-photo nudge.
 - runFlow: _launch.yaml
 - takeScreenshot: 01_start
-- tapOn: "Rather type it in yourself.*"
+- tapOn: "Start from scratch"
 - takeScreenshot: 02_manual_form
 - tapOn: "The Gentlemen.*"
 - inputText: "Jack's Barbershop"

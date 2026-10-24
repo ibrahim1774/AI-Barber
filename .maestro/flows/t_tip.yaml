@@ -5,7 +5,7 @@ appId: com.ibrahim1774.aibarber
 - scroll
 - scroll
 - scroll
-- tapOn: "Rather type it in yourself.*"
+- tapOn: "Start from scratch"
 - tapOn: "The Gentlemen.*"
 - inputText: "Jack's Barbershop"
 - tapOn: "Choose Your Colors.*"

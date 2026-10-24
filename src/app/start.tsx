@@ -2,13 +2,15 @@ import { StyleSheet, View } from 'react-native';
 import { router, type Href } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { Button } from '@/components/Button';
-import { Em, Text } from '@/components/Text';
-import { StageChips } from '@/components/Importer';
+import { StartOption } from '@/components/StartOption';
+import { Text } from '@/components/Text';
+import { colors } from '@/constants/theme';
 import { refreshReminders } from '@/lib/reminders';
 import { useRestoreFlow } from '@/lib/restoreFlow';
 
-// GbpImportPage.tsx 'gate' branch: one question, two paths, plus the escape
-// hatch to the classic (name-only) form.
+// The start screen: one headline, three ways in. Each option leads to the path
+// that used to sit behind the old "booking link?" question: booking link,
+// Google listing ("Is this you?") or the typed-in form.
 export default function Start() {
   // A reinstalled subscriber starts here: their site comes back via Restore, not a new build.
   const { restore, busy } = useRestoreFlow();
@@ -20,23 +22,32 @@ export default function Start() {
   };
   return (
     <Screen>
-      <StageChips />
       <Text variant="h1" style={styles.h1}>
-        Do you have a <Em>booking link</Em>?
+        {'Barbers, run it all\nfrom '}
+        <Text variant="h1" style={styles.gold}>one place.</Text>
       </Text>
       <Text variant="body" style={styles.sub}>
-        Booksy, theCut, Fresha, Square, Vagaro — or none at all. Your barbershop website builds itself either way.
+        A custom site, your own booking system & sell your own products.
       </Text>
-      <View style={styles.buttons}>
-        <Button title="Yes, I have a booking link" arrow onPress={() => go('/booking-link')} />
-        <Button variant="ghost" title="No, I don’t have one" onPress={() => go('/find-listing')} />
+      <View style={styles.options}>
+        <StartOption
+          primary
+          arrow
+          title="Use my booking link"
+          subtitle="Imports services, prices and photos"
+          onPress={() => go('/booking-link')}
+        />
+        <StartOption
+          title="Find me on Google"
+          subtitle="Imports photos, hours and phone"
+          onPress={() => go('/find-listing')}
+        />
+        <StartOption
+          title="Start from scratch"
+          subtitle="Answer a few quick questions"
+          onPress={() => go('/manual')}
+        />
       </View>
-      <Button
-        variant="link"
-        title="Rather type it in yourself? Use the classic form →"
-        onPress={() => go('/manual')}
-        style={styles.manual}
-      />
       <Button
         variant="link"
         title="Already subscribed? Restore purchases"
@@ -48,10 +59,11 @@ export default function Start() {
   );
 }
 
+// The old headline was 30/37; the approved one is 0.88 of that.
 const styles = StyleSheet.create({
-  h1: { marginTop: 24 },
-  sub: { marginTop: 24, maxWidth: 512 },
-  buttons: { marginTop: 44, alignSelf: 'stretch', gap: 16 },
-  manual: { marginTop: 40 },
-  restore: { marginTop: 20 },
+  h1: { marginTop: 84, fontSize: 26.4, lineHeight: 32.5 },
+  gold: { color: colors.accent },
+  sub: { marginTop: 24, maxWidth: 512, color: '#FFFFFF' },
+  options: { marginTop: 32, alignSelf: 'stretch', gap: 14 },
+  restore: { marginTop: 28 },
 });

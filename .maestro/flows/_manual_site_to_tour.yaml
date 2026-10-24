@@ -1,7 +1,7 @@
 appId: com.ibrahim1774.aibarber
 ---
 # Builds a site via the classic form (name + 3 services), finishing the area/phone card. Ends in the editor with the Edit tour's first step up.
-- tapOn: "Rather type it in yourself.*"
+- tapOn: "Start from scratch"
 - tapOn: "The Gentlemen.*"
 - inputText: "Jack's Barbershop"
 - tapOn: "Choose Your Colors.*"
