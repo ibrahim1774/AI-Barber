@@ -71,7 +71,8 @@
         {
           "mode": "production"
         }
-      ]
+      ],
+      "expo-video"
     ],
     "experiments": {
       "typedRoutes": true,
