@@ -174,10 +174,18 @@ describe('footer', () => {
 
 describe('back-compat with the pre-change multi-page output', () => {
   const pre = JSON.parse(readFileSync(join(__dirname, 'fixtures/pre-pages-v2-multi.json'), 'utf8')) as Record<string, any>;
-  // The changes the plan makes (6d): <title>/og:title (place), <style> (More menu css), the menu (More), the footer.
-  const mask = (h: string) => h
+  // The changes the plan makes (6d), and nothing else: <title>/og:title (place), the service eyebrow, the footer.
+  // The CSS and the menu are compared too, after taking out only what Phase A added to them: the lines of More /
+  // footer css (each on its own line) and the More dropdown with the flat overflow copies turned back into plain items.
+  const NEW_CSS_LINE = /^.*(?:ab-more|ab-foot-(?:addr|phone|pages|h)\b).*\n/gm;
+  const oldNav = (h: string) => h
+    .replace(/<li class="ab-more"><details[\s\S]*?<\/details><\/li>/g, '')
+    .replace(/<li class="ab-more-flat">/g, '<li>')
+    .replace(/<summary class="is-active">/g, '');
+  // (markup first, then the css lines: the menu and the footer sit on single lines that mention these classes)
+  const mask = (h: string) => oldNav(h
     .replace(/<title>[\s\S]*?<\/title>/, '').replace(/<meta property="og:title"[^>]*>/, '')
-    .replace(/<style>[\s\S]*?<\/style>/g, '<style/>').replace(/<nav class="ab-nav"[\s\S]*?<\/nav>/, '<nav/>').replace(/<footer[\s\S]*?<\/footer>/, '<footer/>').replace(/<p class="ab-eyebrow">[^<]*<\/p>/, '');
+    .replace(/<footer[\s\S]*?<\/footer>/, '<footer/>').replace(/<p class="ab-eyebrow">[^<]*<\/p>/, '')).replace(NEW_CSS_LINE, '');
   it.each(TEMPLATES)('%s: same files, same sitemap, same page bodies', (template) => {
     const r = renderSiteBundle({ ...pre.data, template }, { imageUrls: pre.imageUrls, siteBaseUrl: 'https://fresh-cuts.vercel.app' });
     expect(r.pages.map((p) => p.path)).toEqual(pre[template].paths);
