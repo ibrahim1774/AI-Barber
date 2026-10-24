@@ -451,7 +451,7 @@ ${PRIME_SCOPED_CSS}${menuSet ? HEADER_CSS.prime + NAV_CSS.prime : ''}
   <div class="p-welcome"><span>${L('primeWelcome')}</span>${safeAreaShort ? `<span style="color:var(--p-ink-muted);">${safeAreaShort}</span>` : ''}${ratingChip}</div>
 
   <!-- Nav -->
-  ${menuSet ? headerHtml('prime', { name: siteData.shopName, cta: bookHref ? { href: bookHref, label: L('primeNavBook'), newTab: bookTarget !== '' } : null, nav: navListHtml(navItemsFor('prime', menuSet, siteData, 'home'), L('pgMenu')) }) : `<nav style="position:sticky;top:0;z-index:50;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--p-line-soft);">
+  ${menuSet ? headerHtml('prime', { name: siteData.shopName, cta: bookHref ? { href: bookHref, label: L('primeNavBook'), newTab: bookTarget !== '' } : null, nav: navListHtml(navItemsFor('prime', menuSet, siteData, 'home'), L('pgMenu'), L('pgMore')) }) : `<nav style="position:sticky;top:0;z-index:50;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--p-line-soft);">
     <div class="p-container" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 6vw;">
       <a href="#top" class="p-serif" style="text-decoration:none;color:var(--p-ink);font-size:20px;letter-spacing:0.04em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${safeName}</a>${shopUrl ? `
       <a href="${escapeHtml(shopUrl)}" class="p-eyebrow" style="text-decoration:none;flex-shrink:0;white-space:nowrap;">${L('primeNavShop')}</a>` : ''}

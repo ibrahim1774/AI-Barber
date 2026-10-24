@@ -15,6 +15,7 @@ import type { PreviewPage } from '@/lib/editable';
 export const PAGE_TITLES: Record<PageKey, string> = {
   home: 'Home', about: 'About', services: 'Services', team: 'Team', gallery: 'Gallery', reviews: 'Reviews',
   hours: 'Hours', location: 'Location', contact: 'Contact', book: 'Book', shop: 'Shop',
+  faq: 'FAQ', 'first-visit': 'First visit', 'hair-care': 'Hair care', 'beard-care': 'Beard care',
 };
 
 /** Every eligible page on, default order: what a newly generated site starts with. */

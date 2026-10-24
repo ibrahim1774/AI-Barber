@@ -28,6 +28,12 @@ FILES=(
   lib/render/shell.ts
   lib/render/pageBodies.ts
   lib/render/site.ts
+  lib/render/copyLibrary.ts
+  lib/render/copyRules.ts
+  lib/render/guides.ts
+  lib/render/heroes.ts
+  lib/render/sections.ts
+  lib/pagesV2.ts
 )
 # A remote ref needs a fresh fetch; a local branch or sha does not.
 if [ "$REF" = "origin/main" ] || [[ "$REF" == origin/* ]]; then git -C "$SRC" fetch origin; fi
