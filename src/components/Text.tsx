@@ -9,10 +9,8 @@ export interface AppTextProps extends TextProps {
 
 /** RN Text with the app's type scale (sizes are the web's at 390 px). */
 export function Text({ variant = 'body', style, ...rest }: AppTextProps) {
-  // Importer headlines are single rows on the web (bk-hrow: nowrap); shrink
-  // to fit instead of wrapping.
-  const row = variant === 'h1' ? { numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.6 } : null;
-  return <RNText {...row} {...rest} style={[styles[variant], style]} />;
+  // Headlines wrap. (numberOfLines 1 + adjustsFontSizeToFit made iOS shrink nested-<Em> headlines to ~6pt.)
+  return <RNText {...rest} style={[styles[variant], style]} />;
 }
 
 /** Italic accent word inside a heading ("booking link", "website"). */
@@ -24,8 +22,8 @@ const styles = StyleSheet.create({
   // GbpImportPage h1: clamp(1.68rem, 6.7vw, …) → 27px at 390 px.
   h1: {
     fontFamily: fonts.heading,
-    fontSize: 27,
-    lineHeight: 32,
+    fontSize: 30,
+    lineHeight: 37,
     letterSpacing: -0.4,
     color: colors.heading,
     textAlign: 'center',
