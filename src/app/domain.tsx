@@ -6,7 +6,7 @@ import { Page } from '@/components/Page';
 import { goBackOrHome } from '@/lib/nav';
 import { searchDomains } from '@/lib/domains/api';
 import {
-  DOMAIN_DISCLOSURE, DOMAIN_PRICE_LINE, DOMAIN_SUPPORT_LINE, buyable, retryLaterMessage, statusView, type SearchResult,
+  DOMAIN_DISCLOSURE, DOMAIN_EXAMPLES_LABEL, DOMAIN_EXAMPLES_LINE, DOMAIN_PRICE_LINE, DOMAIN_SUPPORT_LINE, buyable, retryLaterMessage, statusView, type SearchResult,
 } from '@/lib/domains/model';
 import { useDomainFlow, type BuyResult } from '@/lib/domains/useDomainFlow';
 import { loadSite } from '@/lib/siteStore';
@@ -161,7 +161,14 @@ export default function Domain() {
   return (
     <Page title="Custom domain" onBack={goBackOrHome}>
       <Text style={st.h}>{DOMAIN_PRICE_LINE}</Text>
-      <Text style={st.p}>Your website at your own address, like freshcuts.com. Linked for you.</Text>
+      <View style={st.hero}>
+        <View style={st.pill} accessibilityLabel="yourbarbershop.com">
+          <Text style={st.pillText}>
+            <Text style={st.pillAccent}>your</Text>barbershop.com
+          </Text>
+        </View>
+        <Text style={[st.p, st.center]}>Your website at your own address, like freshcuts.com. Linked for you.</Text>
+      </View>
       <View style={st.searchRow}>
         <TextInput
           accessibilityLabel="Search for a name"
@@ -200,6 +207,9 @@ export default function Domain() {
         </View>
       )}
       {flow.busy && <ActivityIndicator color={colors.accent} style={{ marginTop: 16 }} />}
+      {!results && (
+        <Text style={st.examples}>{DOMAIN_EXAMPLES_LABEL}: {DOMAIN_EXAMPLES_LINE}</Text>
+      )}
       {support && <Text style={[st.p, st.gap]}>{DOMAIN_SUPPORT_LINE}</Text>}
       {!!message && <Text style={[st.error, st.gap]}>{message}</Text>}
       <Text style={st.disclosure}>{DOMAIN_DISCLOSURE}</Text>
@@ -231,5 +241,15 @@ const st = StyleSheet.create({
   card: { marginTop: 8 },
   domain: { fontFamily: fonts.heading, fontSize: 24, color: colors.heading },
   state: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.accent, marginTop: 8 },
-  disclosure: { fontFamily: fonts.body, fontSize: 12, lineHeight: 18, color: colors.faint, marginTop: 28 },
+  hero: { alignItems: 'center', marginTop: 20 },
+  pill: {
+    borderWidth: 1, borderColor: colors.ghostBorder, borderRadius: 999, paddingHorizontal: 20, paddingVertical: 12,
+    marginBottom: 8,
+  },
+  pillText: { fontFamily: fonts.bodyBold, fontSize: 18, color: colors.text },
+  pillAccent: { color: colors.accent },
+  center: { textAlign: 'center' },
+  examples: { fontFamily: fonts.body, fontSize: 13, lineHeight: 19, color: colors.faint, textAlign: 'center', marginTop: 20 },
+  // Fine print at the very bottom (registrant info). Small and muted on purpose.
+  disclosure: { fontFamily: fonts.body, fontSize: 11, lineHeight: 15, color: colors.faint, marginTop: 36, textAlign: 'center' },
 });

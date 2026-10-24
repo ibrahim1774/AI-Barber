@@ -19,7 +19,7 @@ import { allText } from '../store/render';
 import { DOMAIN_PRODUCT, FakeServer, P, boot, draft, installFetch, kill, type World } from './harness';
 import { wipeDisk } from './mocks';
 import {
-  DOMAIN_DISCLOSURE, DOMAIN_PRICE_LINE, claimOutcome, normalizeLabel, pickDomainTransactionId, rememberedClaim, retryLaterMessage,
+  DOMAIN_DISCLOSURE, DOMAIN_EXAMPLES_LINE, DOMAIN_PRICE_LINE, claimOutcome, normalizeLabel, pickDomainTransactionId, rememberedClaim, retryLaterMessage,
   settingsDetail, statusView,
 } from '@/lib/domains/model';
 import { CLAIM_TIMEOUT_MS } from '@/lib/domains/api';
@@ -482,8 +482,13 @@ describe('review fixes: helpers', () => {
     expect(planSuperwallStatus(null)).toBe('UNKNOWN');
   });
 
-  it('the disclosure is also in the Settings custom-domain card', () => {
+  it('the Settings custom-domain card shows the examples, not the registrant disclosure (that is fine print on the domain screen)', () => {
     const src = fs.readFileSync(path.join(__dirname, '../../src/app/(tabs)/settings.tsx'), 'utf8');
-    expect(src).toMatch(/function DomainCard[\s\S]*\{DOMAIN_DISCLOSURE\}/);
+    expect(src).toMatch(/function DomainCard[\s\S]*DOMAIN_EXAMPLES_LINE/);
+    expect(src).not.toMatch(/DOMAIN_DISCLOSURE/);
+    const dom = fs.readFileSync(path.join(__dirname, '../../src/app/domain.tsx'), 'utf8');
+    expect(dom).toMatch(/pillAccent[\s\S]*barbershop\.com/);
+    expect(dom).toMatch(/fontSize: 11[^\n]*\n?/);
+    expect(DOMAIN_EXAMPLES_LINE).toBe('jagsbarbershop.com · eileensbarbercuts.com · donaldsbarbers.com');
   });
 });

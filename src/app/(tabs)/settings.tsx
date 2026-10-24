@@ -15,7 +15,7 @@ import { signOut, useSession } from '@/lib/auth';
 import { tierFromEntitlements, useEntitlements } from '@/lib/entitlements';
 import { goBackOrHome, resetTo } from '@/lib/nav';
 import { usePaywall } from '@/lib/paywall';
-import { DOMAIN_DISCLOSURE, DOMAIN_PRICE_LINE } from '@/lib/domains/model';
+import { DOMAIN_EXAMPLES_LABEL, DOMAIN_EXAMPLES_LINE, DOMAIN_PRICE_LINE } from '@/lib/domains/model';
 import { useDomainOffer } from '@/lib/domains/useDomainOffer';
 import { planLabel } from '@/lib/plan';
 import { requestPublish } from '@/lib/publishRequest';
@@ -355,7 +355,7 @@ function DomainCard() {
         </View>
         <Button variant="ghost" title={hasDomain ? 'Manage' : 'Get yours'} onPress={open} style={styles.domainButton} />
       </View>
-      <Text style={styles.domainNote}>{DOMAIN_DISCLOSURE}</Text>
+      <Text style={styles.domainNote}>{DOMAIN_EXAMPLES_LABEL}: {DOMAIN_EXAMPLES_LINE}</Text>
     </View>
   );
 }

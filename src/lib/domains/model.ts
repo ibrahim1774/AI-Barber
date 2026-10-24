@@ -11,6 +11,10 @@ export const DOMAIN_PLACEMENT = 'custom_domain';
 export const DOMAIN_PRICE_LINE = 'Get your own .com — $39/year';
 export const DOMAIN_DISCLOSURE =
   "Registered by Prime Barber for your site. If you ever leave, contact support@davoxa.com and we'll transfer it to you.";
+/** Shown only as muted fine print at the bottom of the domain screen, not in the main view. */
+export const DOMAIN_EXAMPLES_LABEL = 'Examples';
+export const DOMAIN_EXAMPLES = ['jagsbarbershop.com', 'eileensbarbercuts.com', 'donaldsbarbers.com'];
+export const DOMAIN_EXAMPLES_LINE = DOMAIN_EXAMPLES.join(' · ');
 export const DOMAIN_SUPPORT_LINE = "Something needs a hand on our side. Email support@davoxa.com and we'll sort it out.";
 
 export type SearchResult = { domain: string; available: boolean; eligible: boolean };
