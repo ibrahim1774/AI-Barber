@@ -34,6 +34,7 @@ import { tabBarStyle } from '@/lib/tabBar';
 import SitePreview from '@/components/SitePreview';
 import { PagesBar } from '@/components/PagesBar';
 import { PagesSheet } from '@/components/PagesSheet';
+import { ColourButton } from '@/components/ColourButton';
 import { DesignSwitcher } from '@/components/DesignSwitcher';
 import { EditSheet } from '@/components/EditSheet';
 import { AllFieldsSheet, PhotosSheet } from '@/components/AllFieldsSheet';
@@ -538,6 +539,9 @@ export default function Editor() {
           {site.slug == null && !site.deployedUrl && overlay == null && (
             <DesignSwitcher current={data.template} onSelect={handleDesign} busy={switching} />
           )}
+          {overlay == null && (
+            <ColourButton onPress={() => setSheet('colour')} disabled={uploading} belowSwitcher={site.slug == null && !site.deployedUrl} />
+          )}
           {uploading && (
             <View style={styles.uploading} pointerEvents="none">
               <ActivityIndicator color={colors.accent} />
@@ -554,7 +558,6 @@ export default function Editor() {
           onSections={openSections}
           onText={() => setSheet('fields')}
           onPhotos={() => setSheet('photos')}
-          onColour={() => setSheet('colour')}
           onPublish={handlePublish}
           disabled={uploading || overlay != null}
           padBottom={tabBarHidden}

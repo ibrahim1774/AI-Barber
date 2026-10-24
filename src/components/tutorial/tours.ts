@@ -26,7 +26,7 @@ export const TOURS: Record<TourId, Tour> = {
       { target: 'edit.publish', tip: 'Tap Publish to put your site online. You can edit it any time.' },
       { target: 'edit.sections', tip: 'Sections: services, team, hours and the rest of your page.' },
       { target: 'edit.pages', tip: 'Pages: turn pages on or off, change their order, and tap one to see it.' },
-      { target: 'edit.text', tip: 'Text: change any wording on your site. Colour, below, sets the look.' },
+      { target: 'edit.text', tip: 'Text: change any wording on your site. Colour, on the left of the preview, sets the look.' },
       { target: 'edit.changeImage', tip: 'Tap Change image on any picture to swap it. Photos, below, lists them all.' },
     ],
   },

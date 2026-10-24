@@ -58,3 +58,29 @@ describe('bottom page tabs', () => {
     expect(m.onOpenPages).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('Colour moved off the tool bar', () => {
+  const { PublishBar } = require('@/components/PublishBar');
+  const { ColourButton } = require('@/components/ColourButton');
+  jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
+  const labels = (tree: any) => tree.root.findAll((n: any) => typeof n.props?.children === 'string').map((n: any) => n.props.children);
+
+  test('PublishBar no longer has a Colour button', () => {
+    let tree: any;
+    const f = jest.fn();
+    act(() => { tree = create(<PublishBar onSections={f} onText={f} onPhotos={f} onPublish={f} />); });
+    expect(labels(tree)).not.toContain('Colour');
+    expect(labels(tree)).toContain('Publish');
+  });
+
+  test('the floating Colour button opens the sheet and respects disabled', () => {
+    const onPress = jest.fn();
+    let tree: any;
+    act(() => { tree = create(<ColourButton onPress={onPress} />); });
+    const b = () => tree.root.findAll((n: any) => n.props?.accessibilityLabel === 'Colour' && typeof n.props?.onPress === 'function')[0];
+    act(() => { b().props.onPress(); });
+    expect(onPress).toHaveBeenCalledTimes(1);
+    act(() => { tree.update(<ColourButton onPress={onPress} disabled />); });
+    expect(b().props.disabled).toBe(true);
+  });
+});

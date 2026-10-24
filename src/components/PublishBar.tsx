@@ -11,12 +11,11 @@ import { useTutorialTarget } from '@/components/tutorial/registry';
  * the tab bar is hidden.
  */
 export function PublishBar({
-  onSections, onText, onPhotos, onColour, onPublish, disabled, padBottom = true,
+  onSections, onText, onPhotos, onPublish, disabled, padBottom = true,
 }: {
   onSections(): void;
   onText(): void;
   onPhotos(): void;
-  onColour(): void;
   onPublish(): void;
   disabled?: boolean;
   padBottom?: boolean;
@@ -28,7 +27,6 @@ export function PublishBar({
       <Tool target="edit.sections" title="Sections" hint="Services, team, hours and more" onPress={onSections} disabled={disabled} />
       <Tool target="edit.text" title="Text" hint="All text fields" onPress={onText} disabled={disabled} />
       <Tool target="edit.photos" title="Photos" onPress={onPhotos} disabled={disabled} />
-      <Tool target="edit.colour" title="Colour" onPress={onColour} disabled={disabled} />
       <Pressable
         ref={publishRef}
         collapsable={false}
