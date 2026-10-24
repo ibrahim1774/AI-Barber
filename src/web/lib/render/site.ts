@@ -125,7 +125,7 @@ export function renderSiteBundle(data: WebsiteData, opts: RenderSiteOptions = {}
     pages.push({
       path: file.path,
       html: SHELLS[template]({
-        title: `${out.heading} · ${shop}`,
+        title: out.title ?? `${out.heading} · ${shop}`,
         description: out.description,
         canonical: base ? `${base}${file.href}` : null,
         nav: headerFor(file),
