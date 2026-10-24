@@ -24,6 +24,10 @@ FILES=(
   lib/render/honest.ts
   lib/render/subpages.ts
   lib/render/labels.ts
+  lib/render/pages.ts
+  lib/render/shell.ts
+  lib/render/pageBodies.ts
+  lib/render/site.ts
 )
 # A remote ref needs a fresh fetch; a local branch or sha does not.
 if [ "$REF" = "origin/main" ] || [[ "$REF" == origin/* ]]; then git -C "$SRC" fetch origin; fi
