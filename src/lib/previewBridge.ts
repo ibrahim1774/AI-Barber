@@ -1,10 +1,13 @@
 import type { WebsiteData } from '@/web/types';
 import { IMAGE_PATHS, previewEditPaths, type PreviewPage } from '@/lib/editable';
+import { buildPageSet } from '@/web/lib/render/pages';
+import { imageUrlMap } from '@/lib/render';
 
 /** The only messages the native side acts on. */
 export type PreviewMessage =
   | { type: 'edit'; path: string }
   | { type: 'image'; path: string }
+  | { type: 'nav'; href: string }
   | { type: 'scrollY'; y: number }
   | { type: 'rects'; items: ImageRect[] }
   | { type: 'ready' };
@@ -22,6 +25,18 @@ const MAX_MESSAGE = 2000;
 const MAX_RECTS_MESSAGE = 8000;
 const MAX_RECTS = 24;
 const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && Math.abs(n) < 100000;
+
+const MAX_HREF = 200;
+
+/**
+ * The only links a menu tap may name: the page files of this site (computed here from the data, never read
+ * from the page) plus the proxied /book and /shop pages.
+ */
+export function pageHrefsFor(data: WebsiteData): string[] {
+  const hrefs = buildPageSet(data, { imageUrls: imageUrlMap(data) }).files.map((f) => f.href);
+  for (const h of ['/book', '/shop']) if (!hrefs.includes(h)) hrefs.push(h);
+  return hrefs;
+}
 
 /**
  * Validate a raw WebView message. The page runs third-party script (Tailwind
@@ -46,6 +61,8 @@ export function parsePreviewMessage(raw: unknown, data: WebsiteData, page?: Prev
       return typeof o.path === 'string' && (editPaths ?? previewEditPaths(data, page)).includes(o.path) ? { type: 'edit', path: o.path } : null;
     case 'image':
       return typeof o.path === 'string' && IMAGE_PATHS(data, page).includes(o.path) ? { type: 'image', path: o.path } : null;
+    case 'nav':
+      return typeof o.href === 'string' && o.href.length <= MAX_HREF && pageHrefsFor(data).includes(o.href) ? { type: 'nav', href: o.href } : null;
     case 'scrollY':
       return typeof o.y === 'number' && Number.isFinite(o.y) ? { type: 'scrollY', y: Math.max(0, o.y) } : null;
     case 'rects': {

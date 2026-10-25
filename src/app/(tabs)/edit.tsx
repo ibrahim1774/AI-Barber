@@ -13,7 +13,8 @@ import { bookingPrefs, resolveLinks } from '@/lib/bookingChoice';
 import { syncOwnLink } from '@/lib/bookingChoice';
 import { useLinkContext } from '@/lib/linkContext';
 import { stripLapsedLinks } from '@/lib/tierLinks';
-import { copyKeyOfPath, copyPathHasWordings, hoursEditorFor, previewBackground, textMaxLength, textValue, type PreviewPage } from '@/lib/editable';
+import { copyKeyOfPath, copyPathHasWordings, hoursEditorFor, pageForHref, previewBackground, textMaxLength, textValue, type PreviewPage } from '@/lib/editable';
+import { navLabelKey } from '@/web/lib/render/labels';
 import { PAGE_TITLES, resolvePage, serviceRows, withPageChange, type PagesChange } from '@/lib/sitePages';
 import { clearHero, isHeroPath, sampleHeroPaths, setPhoto } from '@/lib/pageHero';
 import { isCopyEdited, resetCopy, tryOtherWording } from '@/lib/copyEdit';
@@ -87,6 +88,9 @@ export default function Editor() {
         : null,
     [siteData, siteInputs, ents, linkCtx],
   );
+  // The data the preview shows, for the menu callback (which must not re-create on every edit).
+  const shownRef = useRef<WebsiteData | null>(null);
+  shownRef.current = previewData ?? siteData ?? null;
   const subscription = useSubscriptionStatus();
   const locked = isLocked(site, subscription);
   // For the callbacks below: a locked tab runs a publish request whatever the overlay.
@@ -406,6 +410,21 @@ export default function Editor() {
   const onPreviewText = useCallback((path: string) => {
     if (!overlayRef.current) openEdit(path);
   }, [openEdit]);
+  // A tap on a menu entry in the preview: show that page (never a real navigation). Book and Shop open their editor.
+  const onPreviewNav = useCallback((href: string) => {
+    if (overlayRef.current) return;
+    const d = shownRef.current;
+    if (d && (href === '/book' || href === '/shop')) {
+      const key = href.slice(1) as 'book' | 'shop';
+      track('preview_nav', { page: key });
+      onPreviewText(`labels.${navLabelKey(d.template ?? 'luxe', key)}`);
+      return;
+    }
+    const p = d ? pageForHref(d, href) : null;
+    if (!p) return;
+    track('preview_nav', { page: p.key });
+    setWantedPage(p);
+  }, [onPreviewText]);
   const openHero = useCallback((path: string) => {
     setHeroPath(path);
     setSheet('hero');
@@ -554,7 +573,7 @@ export default function Editor() {
       <View style={styles.body}>
         {/* The site's own background, so nothing else shows around the page. */}
         <View style={[styles.preview, { backgroundColor: previewBackground(data) }]}>
-          <SitePreview data={shown} editable page={page} shopProducts={shopProducts} onEditText={onPreviewText} onEditImage={onPreviewImage} pillTourRef={changeImageRef} samplePaths={sampleHeroPaths(shown, page)} chipsHidden={sheet != null} />
+          <SitePreview data={shown} editable page={page} shopProducts={shopProducts} onEditText={onPreviewText} onEditImage={onPreviewImage} onNavigate={onPreviewNav} pillTourRef={changeImageRef} samplePaths={sampleHeroPaths(shown, page)} chipsHidden={sheet != null} />
           {/* The two floating controls, Design above Colour, hidden while the prompts / guide are up.
               Design is offered on a published site too: it only edits the draft (like Colour), and the
               change goes live on the next Publish. */}

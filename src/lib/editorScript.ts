@@ -7,6 +7,7 @@
  *  - sweeps any stray U+2063 marker out of text, attributes and the title
  *    (defensive; prepareEditableHtml should have removed them all);
  *  - outlines editable text and photos;
+ *  - makes the site menu work (burger, entry taps -> {type:'nav'}, long press -> edit the entry's label);
  *  - swallows every click and form submit (the preview is not a browser; the
  *    native onShouldStartLoadWithRequest blocks navigation as well) and posts
  *    {type:'edit'|'image', path} for taps on editable things;
@@ -75,10 +76,90 @@ export const EDITOR_JS = String.raw`(function () {
     e.stopPropagation();
   }, true);
 
+  // The site menu. The renderer's burger is a CSS-only checkbox, and the preview swallows every click, so the
+  // checkbox is toggled here. A tap on a menu entry posts {type:'nav', href} (the native side checks it against the
+  // pages the app itself computed and only switches the rendered page); a long press (600 ms, hardly moving)
+  // posts the entry's own label for editing instead.
+  function hasClass(el, name) { return !!(el && el.classList && el.classList.contains(name)); }
+  function upTo(el, test) {
+    while (el && el.nodeType === 1) {
+      if (test(el)) return el;
+      el = el.parentElement;
+    }
+    return null;
+  }
+  function menuLink(el) {
+    var a = upTo(el, function (n) { return n.tagName === 'A'; });
+    if (!a) return null;
+    return upTo(a, function (n) { return hasClass(n, 'ab-nav-list') || hasClass(n, 'ab-foot-pages'); }) ? a : null;
+  }
+  function closeMenu() {
+    var t = document.getElementById('ab-nav-toggle');
+    if (t) t.checked = false;
+  }
+  var LONG_MS = 600;
+  var LONG_SLOP = 10;
+  var press = null;
+  var longDone = false;
+  function endPress() {
+    if (press && press.timer) clearTimeout(press.timer);
+    press = null;
+  }
+  document.addEventListener('pointerdown', function (e) {
+    endPress();
+    longDone = false;
+    var el = e.target && e.target.nodeType === 1 ? e.target : e.target && e.target.parentElement;
+    var a = menuLink(el);
+    var edit = a && a.querySelector ? a.querySelector('[data-edit]') : null;
+    if (!edit) return;
+    press = { x: e.clientX, y: e.clientY, timer: null };
+    press.timer = setTimeout(function () {
+      press.timer = null;
+      longDone = true;
+      post({ type: 'edit', path: edit.getAttribute('data-edit') });
+    }, LONG_MS);
+  }, true);
+  document.addEventListener('pointermove', function (e) {
+    if (!press || !press.timer) return;
+    if (Math.abs(e.clientX - press.x) > LONG_SLOP || Math.abs(e.clientY - press.y) > LONG_SLOP) endPress();
+  }, true);
+  document.addEventListener('pointerup', endPress, true);
+  document.addEventListener('pointercancel', endPress, true);
+
   document.addEventListener('click', function (e) {
     e.preventDefault();
     e.stopPropagation();
     var el = e.target && e.target.nodeType === 1 ? e.target : e.target && e.target.parentElement;
+    if (longDone) { longDone = false; return; }
+    // The burger: toggle the CSS checkbox the menu is built on.
+    if (upTo(el, function (n) { return n.tagName === 'LABEL' && hasClass(n, 'ab-burger'); })) {
+      var tg = document.getElementById('ab-nav-toggle');
+      if (tg) tg.checked = !tg.checked;
+      return;
+    }
+    // "More" in the menu is a <details>.
+    var sum = upTo(el, function (n) { return n.tagName === 'SUMMARY'; });
+    if (sum && sum.parentElement && hasClass(sum.parentElement, 'ab-more-d')) {
+      if (sum.parentElement.open) sum.parentElement.removeAttribute('open'); else sum.parentElement.setAttribute('open', '');
+      return;
+    }
+    var mlink = menuLink(el);
+    if (mlink) {
+      var mh = mlink.getAttribute('href') || '';
+      if (mh.charAt(0) === '#') {
+        try { var dest = mh.length > 1 ? document.querySelector(mh) : null; if (dest && dest.scrollIntoView) dest.scrollIntoView({ behavior: 'smooth' }); } catch (x) {}
+      } else {
+        post({ type: 'nav', href: mh });
+      }
+      closeMenu();
+      return;
+    }
+    // A plain in-page link (#about) with no editable text of its own scrolls, as it would on the live site.
+    var alink = upTo(el, function (n) { return n.tagName === 'A'; });
+    if (alink && (alink.getAttribute('href') || '').charAt(0) === '#' && alink.getAttribute('href').length > 1 && !alink.querySelector('[data-edit]') && !closestAttr(el, 'data-edit')) {
+      try { var d2 = document.querySelector(alink.getAttribute('href')); if (d2 && d2.scrollIntoView) d2.scrollIntoView({ behavior: 'smooth' }); } catch (x2) {}
+      return;
+    }
     var chipHost = closestAttr(el, 'data-aib-chip');
     if (chipHost) { post({ type: 'image', path: chipHost.getAttribute('data-aib-chip') }); return; }
     var text = closestAttr(el, 'data-edit');

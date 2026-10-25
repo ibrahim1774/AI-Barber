@@ -577,3 +577,14 @@ function buildPageHtml(data: WebsiteData, editable: boolean, shopProducts: Previ
   const inner = editable ? tagSampleHero(tagImageSlots(prepareEditableHtml(clean, ids)), data, page) : clean;
   return withPreviewBackground(withShopPreview(withImages(inner, data), shopProducts), bg);
 }
+
+/**
+ * The page a menu link points at (the same slug-to-index resolution the Pages sheet uses): null for an
+ * unknown link and for /book and /shop, which are sheets, not pages of the preview.
+ */
+export function pageForHref(d: WebsiteData, href: string): PreviewPage | null {
+  if (!isMultiPage(d)) return null;
+  const file = buildPageSet(d, { imageUrls: imageUrlMap(d) }).files.find((f) => f.href === href);
+  if (!file || file.key === 'book' || file.key === 'shop') return null;
+  return file.child ? { key: file.key, index: file.child.index } : { key: file.key };
+}
