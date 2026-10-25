@@ -174,3 +174,54 @@ test('the launch retry runs the same check: blocked drops the record, an error k
   expect(await store.loadPendingPublish()).toBeNull();
   expect(iosPublish).not.toHaveBeenCalled();
 });
+
+const restoreA = () => restore({
+  restorePurchases: async () => undefined,
+  latestTransactionId: async () => 'tx-A',
+  iosSite: (async () => ({ siteId: 'a-cuts', deployedUrl: 'https://a-cuts.aibarber.org', siteData: dataFor('A Cuts'), active: true })) as any,
+  store,
+});
+
+test("Restore after B's paid publish is pending: the retry still checks B's site, not the restored one, and sends nothing", async () => {
+  sb.setSession({ access_token: 'b', user: B });
+  const iosPublish = jest.fn();
+  // B pays on A's phone; Superwall lags so the record has no transaction id yet.
+  await publishFlow(bSiteNoSlug(), bDeps({
+    hasEntitlement: async () => false,
+    showPaywall: async () => 'purchased',
+    latestTransactionId: async () => null,
+    iosPublish: iosPublish as any,
+  })).catch(() => undefined);
+  expect(await store.loadPendingPublish()).toMatchObject({ transactionId: null, target: { draftId: B_DRAFT, slug: null } });
+  await store.saveSite(bSiteNoSlug());
+  await restoreA(); // swaps in A's site, which has a slug
+  expect((await store.loadSite())?.slug).toBe('a-cuts');
+  const boundElsewhere = jest.fn(async (_tx: string, site: SiteRecord) => site.slug !== 'a-cuts');
+  const out = await resumePendingPublish(bDeps({ iosPublish: iosPublish as any, boundElsewhere }));
+  expect(out).toEqual({ kind: 'blocked', message: BOUND_ELSEWHERE_MESSAGE });
+  expect(iosPublish).not.toHaveBeenCalled();
+  expect(await store.loadPendingPublish()).toBeNull();
+});
+
+test('the retry fails closed when it cannot tell which site it was paid for', async () => {
+  const iosPublish = jest.fn();
+  await store.savePendingPublish({ transactionId: 'tx-A', data: dataFor('B Fades'), createdAt: Date.now() });
+  const out = await resumePendingPublish(bDeps({ iosPublish: iosPublish as any, boundElsewhere: async () => false }));
+  expect(out?.kind).toBe('pending');
+  expect(iosPublish).not.toHaveBeenCalled();
+  expect(await store.loadPendingPublish()).not.toBeNull();
+});
+
+test("Restore while signed out never keeps the id of a site an account owns", async () => {
+  await store.saveSite(siteA({ slug: null, deployedUrl: undefined, transactionId: null })); // A's, kept after an offline sign-out
+  expect(supabase.auth.getSession).toBeDefined();
+  const res = await restoreA();
+  expect(res?.site.draftId).not.toBe(A_DRAFT);
+  expect(res?.site.ownerUserId).toBeUndefined();
+});
+
+test('Restore while signed out still keeps the id of a never-owned draft', async () => {
+  await store.saveSite(siteA({ slug: null, deployedUrl: undefined, transactionId: null, ownerUserId: undefined }));
+  const res = await restoreA();
+  expect(res?.site.draftId).toBe(A_DRAFT);
+});

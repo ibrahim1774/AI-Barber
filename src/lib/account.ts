@@ -372,7 +372,8 @@ export async function restore(deps: RestoreDeps): Promise<Restored | null> {
     /* signed out, or the session can't be read: left unowned */
   }
   // A signed-in account's own, different site must never be overwritten: the new site gets its own id.
-  const keepDraftId = !!local && !local.deployedUrl && !(local.ownerUserId && uid && local.ownerUserId === uid);
+  // Only a never-owned, unpublished draft keeps its id (photo folder key); anything an account owns gets a new row.
+  const keepDraftId = !!local && !local.deployedUrl && !local.ownerUserId;
   const record: SiteRecord =
     sameSite && local
       ? {

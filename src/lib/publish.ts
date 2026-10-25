@@ -32,6 +32,9 @@ export const UNCONFIRMED_MESSAGE =
 /** An entitled republish (nothing bought this run) that couldn't finish yet. */
 export const UPDATING_MESSAGE = "Your website is still being updated. We'll finish publishing it shortly.";
 
+/** An entitled republish whose ownership check failed: nothing is queued, so say to try again. */
+export const CHECK_FAILED_MESSAGE = "We couldn't check your site just now, so nothing was published. Please try again in a moment.";
+
 /** A pending publish older than this is dropped instead of retried. */
 const PENDING_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -82,6 +85,13 @@ export const BOUND_ELSEWHERE_MESSAGE =
 /** Superwall can lag behind StoreKit right after a purchase: first try plus 3 retries, 1 s apart. */
 const TX_RETRIES = 3;
 const TX_RETRY_MS = 1000;
+
+/** What a pending publish remembers about the site it was paid for. */
+function targetOf(site: SiteRecord | null): NonNullable<import('@/lib/siteStore').PendingPublish['target']> | undefined {
+  return site
+    ? { draftId: site.draftId, slug: site.slug ?? null, deployedUrl: site.deployedUrl ?? null, ownerUserId: site.ownerUserId }
+    : undefined;
+}
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -275,7 +285,9 @@ function notifyLive(deps: PublishDeps, site: SiteRecord): void {
  * A thrown check (network, 5xx, timeout) is 'unknown'; the caller keeps the pending record and retries later.
  */
 async function checkBound(deps: PublishDeps, transactionId: string, site: SiteRecord): Promise<'ok' | 'blocked' | 'unknown'> {
-  if (!(site.slug == null && site.ownerUserId) || !deps.boundElsewhere) return 'ok';
+  // A site with its own slug publishes to that slug. Any site without one (owned or not) must prove the Apple ID's site is not someone else's.
+  if (site.slug != null) return 'ok';
+  if (!deps.boundElsewhere) return 'ok'; // production always wires it (usePublishDeps)
   try {
     return (await deps.boundElsewhere(transactionId, site)) ? 'blocked' : 'ok';
   } catch {
@@ -315,7 +327,7 @@ export async function publishFlow(site: SiteRecord, deps: PublishDeps): Promise<
       paid = true;
       // Remember the purchase before anything else can fail; the id is looked up next.
       await deps.store.savePendingPublish({
-        transactionId: null, data, createdAt: Date.now(), baseVersion: (await deps.store.loadSite())?.serverVersion,
+        transactionId: null, data, createdAt: Date.now(), baseVersion: (await deps.store.loadSite())?.serverVersion, target: targetOf(site),
       });
       // Paid: no "publish your site" reminders while it goes live (not for
       // good: a purchase that can't be confirmed brings them back).
@@ -331,15 +343,15 @@ export async function publishFlow(site: SiteRecord, deps: PublishDeps): Promise<
     }
     if (guard === 'unknown') {
       // Could not check: fail closed. Keep the paid record (the retry runs the same check).
-      if (paid) await deps.store.savePendingPublish({ transactionId, data, createdAt: Date.now(), baseVersion: (await deps.store.loadSite())?.serverVersion });
-      return { kind: 'pending', message: UPDATING_MESSAGE } as const;
+      if (paid) await deps.store.savePendingPublish({ transactionId, data, createdAt: Date.now(), baseVersion: (await deps.store.loadSite())?.serverVersion, target: targetOf(site) });
+      return { kind: 'pending', message: paid ? UPDATING_MESSAGE : CHECK_FAILED_MESSAGE } as const;
     }
     // An admin edit must reach the barber before their publish can overwrite it.
     const synced = await deps.syncFromServer?.(transactionId).catch(() => null);
     if (synced?.kind === 'adopted') {
       return { kind: 'site-updated', message: UPDATED_ON_PUBLISH_MESSAGE + synced.message.slice(SYNC_NOTICE.length) } as const;
     }
-    const pending = { transactionId, data, createdAt: Date.now(), baseVersion: (await deps.store.loadSite())?.serverVersion };
+    const pending = { transactionId, data, createdAt: Date.now(), baseVersion: (await deps.store.loadSite())?.serverVersion, target: targetOf(site) };
     await deps.store.savePendingPublish(pending);
     return send(pending, deps, paid ? PENDING_MESSAGE : UPDATING_MESSAGE);
   });
@@ -375,15 +387,19 @@ export async function resumePendingPublish(deps: PublishDeps): Promise<PublishOu
       }
       await deps.store.savePendingPublish({ ...pending, transactionId });
     }
-    const cur = await deps.store.loadSite();
-    if (cur) {
-      const guard = await checkBound(deps, transactionId, cur);
-      if (guard === 'blocked') {
-        await deps.store.savePendingPublish(null);
-        return { kind: 'blocked', message: BOUND_ELSEWHERE_MESSAGE } as const;
-      }
-      if (guard === 'unknown') return { kind: 'pending', message: UPDATING_MESSAGE } as const;
+    // The check runs against the site this was paid for, not whatever is on the phone now (Restore may have swapped it).
+    // No remembered target (older record): the current site; none at all: fail closed.
+    const cur = await deps.store.loadSite().catch(() => null);
+    const site = pending.target
+      ? ({ ...(cur ?? {}), ...pending.target, data: pending.data } as SiteRecord)
+      : cur;
+    if (!site) return { kind: 'pending', message: UPDATING_MESSAGE } as const;
+    const guard = await checkBound(deps, transactionId, site);
+    if (guard === 'blocked') {
+      await deps.store.savePendingPublish(null);
+      return { kind: 'blocked', message: BOUND_ELSEWHERE_MESSAGE } as const;
     }
+    if (guard === 'unknown') return { kind: 'pending', message: UPDATING_MESSAGE } as const;
     return send({ transactionId, data: pending.data, baseVersion: pending.baseVersion }, deps, PENDING_MESSAGE);
   });
 }

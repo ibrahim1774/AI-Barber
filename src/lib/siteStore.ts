@@ -39,6 +39,11 @@ export interface PendingPublish {
   createdAt: number;
   /** The site version this data was based on; a resumed publish carries it, never a newer one. */
   baseVersion?: number;
+  /**
+   * The site this content was paid for (its identity when saved). The ownership check on a retry runs
+   * against this, never against whatever site is on the phone later (Restore can swap it).
+   */
+  target?: { draftId: string; slug?: string | null; deployedUrl?: string | null; ownerUserId?: string };
 }
 
 const SITE_KEY = 'site.v1';
