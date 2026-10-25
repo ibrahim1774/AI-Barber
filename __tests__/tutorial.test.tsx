@@ -7,7 +7,7 @@ import { startDraft } from '@/lib/flow';
 import { clearSite, saveSite } from '@/lib/siteStore';
 import { nextOverlay } from '@/lib/overlayFlags';
 import {
-  hasTourSeen, markTourSeen, requestTour, resetTourRequestForTests, takeTourRequest, tourFlagKey, TOUR_ORDER, TOURS,
+  hasTourSeen, markTourSeen, tourFlagKey, TOUR_ORDER, TOURS,
 } from '@/components/tutorial/tours';
 import { placeTip } from '@/components/tutorial/place';
 import { useTour, type TourController } from '@/components/tutorial/useTour';
@@ -41,17 +41,15 @@ describe('tour definitions', () => {
     }
   });
 
-  it('Settings lists the five tours in order, each with a label', () => {
+  it('The five tours are in order, each with a label', () => {
     expect(TOUR_ORDER.map((id) => TOURS[id].label)).toEqual([
       'Editing your site', 'Taking bookings', 'Selling products', 'Getting paid', 'Publishing',
     ]);
   });
 
-  it('the old launch guide is gone and Settings has a Tutorial section before Help', () => {
+  it('the old launch guide is gone and Settings has no Tutorial section', () => {
     expect(fs.existsSync(path.join(SRC, 'components/LaunchGuide.tsx'))).toBe(false);
-    const settings = read('app/(tabs)/settings.tsx');
-    expect(settings.indexOf('title="Tutorial"')).toBeGreaterThan(0);
-    expect(settings.indexOf('title="Tutorial"')).toBeLessThan(settings.indexOf('title="Help"'));
+    expect(read('app/(tabs)/settings/index.tsx')).not.toContain('title="Tutorial"');
   });
 });
 
@@ -93,16 +91,6 @@ describe('tour flags', () => {
   });
 });
 
-describe('replay requests', () => {
-  beforeEach(resetTourRequestForTests);
-  it('are taken once, by the right screen only', () => {
-    requestTour('publishing');
-    expect(takeTourRequest('bookings')).toBeNull();
-    expect(takeTourRequest('edit')).toBe('publishing');
-    expect(takeTourRequest('edit')).toBeNull();
-  });
-});
-
 describe('useTour', () => {
   let ctl: TourController;
   function Probe(props: { auto?: any; ready?: boolean; ignoreFlag?: boolean; screen?: any; onDone?: any }) {
@@ -117,7 +105,6 @@ describe('useTour', () => {
     return r;
   };
   beforeEach(async () => {
-    resetTourRequestForTests();
     await Storage.removeItem(tourFlagKey('bookings'));
     await Storage.removeItem(tourFlagKey('edit'));
   });
@@ -148,13 +135,6 @@ describe('useTour', () => {
     const r = await mount({ auto: 'bookings', ready: false });
     expect(ctl.tour).toBeNull();
     await act(async () => r.update(React.createElement(Probe, { auto: 'bookings', ready: true })));
-    expect(ctl.tour?.id).toBe('bookings');
-  });
-
-  it('a replay from Settings ignores the seen flag', async () => {
-    await markTourSeen('bookings');
-    requestTour('bookings');
-    await mount({ auto: 'bookings', ready: true });
     expect(ctl.tour?.id).toBe('bookings');
   });
 

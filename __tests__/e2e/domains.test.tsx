@@ -95,7 +95,7 @@ describe('other helpers', () => {
 
   it('no ownership fine print; and no monthly figure for the $39 yearly price anywhere in the domain code', () => {
     const root = path.join(__dirname, '../..');
-    for (const f of ['src/lib/domains/model.ts', 'src/app/domain.tsx', 'src/app/(tabs)/settings.tsx']) {
+    for (const f of ['src/lib/domains/model.ts', 'src/app/domain.tsx', 'src/app/(tabs)/settings/index.tsx']) {
       expect(fs.readFileSync(path.join(root, f), 'utf8')).not.toMatch(/\/mo\b|per month|a month|3\.25|3\.24/i);
     }
   });
@@ -482,7 +482,7 @@ describe('review fixes: helpers', () => {
   });
 
   it('the Settings custom-domain card shows the examples, not the registrant disclosure (that is fine print on the domain screen)', () => {
-    const src = fs.readFileSync(path.join(__dirname, '../../src/app/(tabs)/settings.tsx'), 'utf8');
+    const src = fs.readFileSync(path.join(__dirname, '../../src/app/(tabs)/settings/index.tsx'), 'utf8');
     expect(src).toMatch(/function DomainCard[\s\S]*DOMAIN_EXAMPLES_LINE/);
     expect(src).not.toMatch(/DOMAIN_DISCLOSURE/);
     const dom = fs.readFileSync(path.join(__dirname, '../../src/app/domain.tsx'), 'utf8');

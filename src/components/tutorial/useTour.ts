@@ -1,7 +1,6 @@
-import { useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { NavigationContext } from '@react-navigation/native';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  hasTourSeen, markTourSeen, takeTourRequest, TOURS, type Tour, type TourId, type TourScreen,
+  hasTourSeen, markTourSeen, TOURS, type Tour, type TourId, type TourScreen,
 } from '@/components/tutorial/tours';
 
 export interface TourController {
@@ -13,15 +12,13 @@ export interface TourController {
 
 /**
  * A screen's tours. `auto` opens that tour by itself once the screen is `ready`, unless its seen flag is set
- * (`ignoreFlag` for the Edit tour, whose first-site timing is decided elsewhere). A replay requested from Settings
- * opens when the screen is focused. Finishing or skipping sets the flag and calls `onDone`.
+ * (`ignoreFlag` for the Edit tour, whose first-site timing is decided elsewhere). Finishing or skipping sets the flag and calls `onDone`.
  */
 export function useTour(
   screen: TourScreen,
   opts: { auto?: TourId | null; ready?: boolean; ignoreFlag?: boolean; onDone?(id: TourId): void } = {},
 ): TourController {
   const { auto = null, ready = true, ignoreFlag = false, onDone } = opts;
-  const navigation = useContext(NavigationContext);
   const [active, setActive] = useState<TourId | null>(null);
   const [step, setStep] = useState(0);
   const autoStarted = useRef<TourId | null>(null);
@@ -32,16 +29,6 @@ export function useTour(
     setStep(0);
     setActive(id);
   }, []);
-
-  // A replay from Settings: on mount (the screen may be created by the navigation) and on each focus.
-  useEffect(() => {
-    const check = () => {
-      const id = takeTourRequest(screen);
-      if (id) start(id);
-    };
-    check();
-    return navigation ? navigation.addListener('focus', check) : undefined;
-  }, [navigation, screen, start]);
 
   useEffect(() => {
     if (!auto || !ready || active || autoStarted.current === auto) return;

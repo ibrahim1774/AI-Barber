@@ -24,8 +24,6 @@ import { loadSite, type SiteRecord } from '@/lib/siteStore';
 import { siteOffline, useSubscriptionStatus } from '@/lib/subscriptionStatus';
 import { tabBarStyle } from '@/lib/tabBar';
 import { useLinkActions } from '@/lib/useLinkActions';
-import { requestTour, TOUR_ROUTE, TOURS, TOUR_ORDER, type TourId } from '@/components/tutorial/tours';
-import { TutorialEntry } from '@/components/tutorial/TutorialEntry';
 import { websiteView } from '@/lib/website';
 
 const SUPPORT_EMAIL = 'support@davoxa.com';
@@ -171,19 +169,10 @@ export default function Settings() {
     }
   };
 
-  // Replays ignore the seen flag: the tour's own screen picks the request up when it is focused.
-  const replayTour = (id: TourId) => {
-    track('tutorial_replayed', { tour: id });
-    requestTour(id);
-    router.navigate(TOUR_ROUTE[TOURS[id].screen] as never);
-  };
-
   const version = `${Application.nativeApplicationVersion ?? '1.0.0'} (${Application.nativeBuildVersion ?? '1'})`;
 
   return (
     <Page title="Settings" onBack={standalone ? goBackOrHome : undefined}>
-      <TutorialEntry onPress={() => { track('tutorial_opened'); router.push('/tutorial' as never); }} />
-
       {site && <YourWebsite site={site} />}
 
       <Section title="Account">
@@ -211,15 +200,8 @@ export default function Settings() {
         <Row label="Manage subscription" onPress={manageSubscription} external />
       </Section>
 
-      {site && (
-        <Section title="Tutorial">
-          {TOUR_ORDER.map((id) => (
-            <Row key={id} label={TOURS[id].label} onPress={() => replayTour(id)} chevron />
-          ))}
-        </Section>
-      )}
-
       <Section title="Help">
+        <Row label="Learn how it works" onPress={() => { track('learn_opened'); router.push('/settings/learn' as never); }} chevron />
         <Row label="Privacy Policy" onPress={() => void WebBrowser.openBrowserAsync(PRIVACY_URL)} external />
         <Row label="Terms of Service" onPress={() => void WebBrowser.openBrowserAsync(TERMS_URL)} external />
         <Row label="Support" detail={SUPPORT_EMAIL} onPress={emailSupport} />

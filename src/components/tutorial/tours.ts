@@ -88,29 +88,6 @@ export async function markTourSeen(id: TourId): Promise<void> {
   }
 }
 
-// ---- replay from Settings ----------------------------------------------------
-
-let requested: TourId | null = null;
-
-/** Settings' replay: the tour's screen picks it up the next time it is focused (ignoring the seen flag). */
-export function requestTour(id: TourId): void {
-  requested = id;
-}
-
-/** The pending replay if it belongs to `screen`; clears it. */
-export function takeTourRequest(screen: TourScreen): TourId | null {
-  if (requested && TOURS[requested].screen === screen) {
-    const id = requested;
-    requested = null;
-    return id;
-  }
-  return null;
-}
-
-export function resetTourRequestForTests(): void {
-  requested = null;
-}
-
 /** The Edit tour starts only after account setup and a first generated site (spec: "after account setup"). */
 export function editTourReady(s: { overlay: string | null; hasSite: boolean; signedIn: boolean }): boolean {
   return s.overlay === 'guide' && s.hasSite && s.signedIn;

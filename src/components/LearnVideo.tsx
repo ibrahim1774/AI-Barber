@@ -1,6 +1,8 @@
 import { Component, useEffect, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, fonts } from '@/constants/theme';
+import type { LearnVideoSlug } from '@/lib/learnContent';
+import { LEARN_VIDEOS } from '@/lib/learnVideos';
 
 // The native module may be absent (an older build, a test): then every video is the placeholder.
 let VideoMod: typeof import('expo-video') | null = null;
@@ -12,21 +14,13 @@ try {
 
 const SLOW_RATE = 0.75;
 
-/** The video, or "Video coming soon" when there is no file or the player cannot start. */
-export function TutorialVideo({ source }: { source: number | undefined }) {
-  if (source == null || !VideoMod) return <Coming />;
+/** The video, or nothing at all when there is no bundled file or the player cannot start. */
+export function LearnVideo({ slug, source = LEARN_VIDEOS[slug] }: { slug: LearnVideoSlug; source?: number }) {
+  if (source == null || !VideoMod) return null;
   return (
-    <Guard fallback={<Coming />}>
+    <Guard fallback={null}>
       <Player source={source} />
     </Guard>
-  );
-}
-
-function Coming() {
-  return (
-    <View style={styles.box} accessibilityLabel="Video coming soon">
-      <Text style={styles.soon}>Video coming soon</Text>
-    </View>
   );
 }
 
@@ -85,7 +79,6 @@ const styles = StyleSheet.create({
     aspectRatio: 9 / 16, maxHeight: 460, alignSelf: 'center', width: '100%', borderRadius: 14, overflow: 'hidden',
     backgroundColor: colors.sheet, borderWidth: 1, borderColor: colors.hair, alignItems: 'center', justifyContent: 'center',
   },
-  soon: { fontFamily: fonts.bodySemi, fontSize: 15, color: colors.muted },
   playBadge: { backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 },
   playText: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.text },
   replay: { alignSelf: 'center', paddingVertical: 10 },
