@@ -207,8 +207,8 @@ describe('no leftover literals', () => {
     /^Reviews from Booksy$/,
     /^Real cuts from inside the shop — no stock photos\.$/,
     /^(Book online|Book|Shop|See all)$/,
-    /^Copyright (&copy;|©) \d{4} .* Built by Prime Barber\.$/,
-    /^© \d{4} · Built by Prime Barber$/,
+    /^Copyright (&copy;|©) \d{4} .*\. \.$/, // the generated copyright part; the credit is the footerCredit label
+    /^© \d{4} ·$/,
     /^[A-Z]$/, // review avatar initial
     /^\d{2}$/, // service numbering
     /^Barbershop$/,

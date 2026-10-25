@@ -576,7 +576,7 @@ export async function publishSite(
       const csd = current.siteData;
       // The links are normalised for this deploy only; the stored copy keeps what the owner saved.
       const siteBaseUrl = isMultiPage(csd) ? await publicBase() : null;
-      const rendered = renderPendingBundle({ ...current, siteData: withSubpageLinks(csd, !!subpages) }, { siteBaseUrl });
+      const rendered = renderPendingBundle({ ...current, siteData: withSubpageLinks(csd, !!subpages, { bookingsOn: subpages ? shop?.bookingsEnabled : undefined }) }, { siteBaseUrl });
       const html = rendered.pages[0].html;
       console.log(`[Publish] ${safe}: rendered ${rendered.pages.length} page${rendered.pages.length === 1 ? '' : 's'}, ${html.length} bytes of home (template=${csd.template || 'luxe'})${round ? ` (redeploy ${round}: the stored copy changed)` : ''}, deploying...`);
       const out = await deployRenderedSite({ siteId: safe, html, pages: rendered.pages, sitemap: rendered.sitemap, imageUrls: current.imageUrlMap || {}, subpages });

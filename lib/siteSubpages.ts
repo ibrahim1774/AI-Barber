@@ -147,13 +147,17 @@ export function hasAiBarberSiteLinks(sd: Links): boolean {
  *   (either form) is `/shop`;
  * - without them: a relative `/book` or `/shop` is dropped (it would be a dead button). Old
  *   absolute aibarber.org links stay (those pages still work).
+ * - with the pages but `opts.bookingsOn === false` (the shop has switched bookings off): the
+ *   site's own `/book` (either form) is dropped, so a deploy never ships a Book button that
+ *   leads to the paused page. `undefined` (unknown / old callers) changes nothing.
  * Another booking site's link, and a barber's own store link, are never touched.
  */
-export function withSubpageLinks<T extends Links>(sd: T, hasPages: boolean): T {
+export function withSubpageLinks<T extends Links>(sd: T, hasPages: boolean, opts?: { bookingsOn?: boolean }): T {
   const out = { ...sd };
   if (hasPages) {
     if (isAiBarberBookingLink(out.bookingUrl)) out.bookingUrl = '/book';
     if (isAiBarberShopLink(out.shopUrl)) out.shopUrl = '/shop';
+    if (opts?.bookingsOn === false && isSiteBookLink(out.bookingUrl)) delete out.bookingUrl;
   } else {
     if (isSiteBookLink(out.bookingUrl)) delete out.bookingUrl;
     if (isSiteShopLink(out.shopUrl)) delete out.shopUrl;
@@ -287,7 +291,7 @@ export async function resolvePublicBase(projectName: string, deps: Pick<SiteBase
 // Live wiring (service role)
 // ---------------------------------------------------------------------------
 
-export interface SiteShop { id: string; slug: string }
+export interface SiteShop { id: string; slug: string; /** ab_shops.bookings_enabled; absent when unknown. */ bookingsEnabled?: boolean }
 
 let sb: SupabaseClient | undefined;
 function db(): SupabaseClient {
@@ -307,10 +311,10 @@ export async function findShopForSite(siteSlug: string): Promise<SiteShop | null
   const { data: p, error } = await db().from('ios_purchases').select('original_transaction_id').eq('site_slug', siteSlug).maybeSingle();
   if (error) throw new Error(`ios_purchases lookup failed: ${error.message}`);
   if (!p?.original_transaction_id) return null;
-  const { data: s, error: e2 } = await db().from('ab_shops').select('id, slug').eq('ios_otid', p.original_transaction_id).maybeSingle();
+  const { data: s, error: e2 } = await db().from('ab_shops').select('id, slug, bookings_enabled').eq('ios_otid', p.original_transaction_id).maybeSingle();
   if (e2) throw new Error(`ab_shops lookup failed: ${e2.message}`);
   if (!s?.id || !isShopSlug(s.slug)) return null;
-  return { id: s.id, slug: s.slug };
+  return { id: s.id, slug: s.slug, bookingsEnabled: s.bookings_enabled === true };
 }
 
 export const liveSiteBaseDeps: SiteBaseDeps = {
