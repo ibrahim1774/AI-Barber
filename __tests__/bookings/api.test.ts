@@ -31,7 +31,7 @@ jest.mock('@/lib/supabase', () => {
 
 import {
   BookingApiError, addBooking, alternativesOf, blockTime, cancelBooking, friendlyBookingError, listAppointments,
-  markDone, markNoShow, markPaid, postPushToken, rescheduleBooking, toAppointment,
+  listCustomerAppointments, markDone, markNoShow, markPaid, postPushToken, rescheduleBooking, toAppointment,
 } from '@/lib/bookings/api';
 
 const fetchMock = jest.fn();
@@ -141,6 +141,35 @@ describe('supabase reads and updates', () => {
     expect(ops).toEqual(expect.arrayContaining([
       ['eq', 'shop_id', 's'], ['neq', 'status', 'cancelled'], ['gte', 'start_at', 'from'], ['lt', 'start_at', 'to'],
     ]));
+  });
+
+  it('listCustomerAppointments selects the customer columns for one shop', async () => {
+    mockResult = { data: [], error: null };
+    await listCustomerAppointments('shop-1');
+    const sel = mockCalls.find((c) => c.op === 'select')!;
+    expect(sel.table).toBe('ab_appointments');
+    expect(String(sel.args[0])).toEqual(expect.stringContaining('amount_refunded_cents'));
+    expect(String(sel.args[0])).toEqual(expect.stringContaining('cancelled_by'));
+    expect(String(sel.args[0])).toEqual(expect.stringContaining('created_at'));
+    const ops = mockCalls.map((c) => [c.op, ...c.args.slice(0, 2)]);
+    expect(ops).toEqual(expect.arrayContaining([['eq', 'shop_id', 'shop-1'], ['order', 'start_at', { ascending: true }], ['range', 0, 999]]));
+    expect(mockCalls.some((c) => c.op === 'neq')).toBe(false);
+    expect(mockCalls.some((c) => ['insert', 'update', 'delete'].includes(c.op))).toBe(false);
+  });
+
+  it('maps snake_case customer rows', async () => {
+    mockResult = {
+      data: [{
+        id: 'a1', start_at: 's', end_at: 'e', service_name: 'Cut', price_cents: 3000, member_id: 'm', customer_name: 'Jane',
+        customer_phone: '555', status: 'done', payment_status: 'paid', payment_method: 'cash', amount_paid_cents: 3000, source: 'online', created_at: 'c',
+      }],
+      error: null,
+    };
+    const [a] = await listCustomerAppointments('s');
+    expect(a).toMatchObject({ id: 'a1', start: 's', serviceName: 'Cut', name: 'Jane', phone: '555', amountPaidCents: 3000, createdAt: 'c' });
+    expect(a.amountRefundedCents).toBe(0);
+    expect(a.cancelledBy).toBeNull();
+    expect(a.email).toBeNull();
   });
 
   it('marks done, no-show and paid through the mark endpoint', async () => {

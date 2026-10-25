@@ -2,6 +2,7 @@ import { ApiError } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
 import { accessToken as sessionToken } from '@/lib/accessToken';
 import type { Appointment, TimeOff } from '@/lib/bookings/calendar';
+import type { CustomerAppt } from '@/lib/bookings/customers';
 
 /**
  * Typed client for the owner side of bookings: the /api/shop/* endpoints
@@ -193,6 +194,47 @@ export async function listAppointments(shopId: string, fromIso: string, toIso: s
     return (data ?? []) as any[];
   });
   return rows.map(toAppointment);
+}
+
+const CUSTOMER_COLUMNS =
+  'id, start_at, end_at, service_name, price_cents, member_id, customer_name, customer_phone, customer_email, ' +
+  'status, cancelled_by, payment_status, payment_method, amount_paid_cents, amount_refunded_cents, source, created_at';
+
+export function toCustomerAppt(r: any): CustomerAppt {
+  return {
+    id: r.id,
+    start: r.start_at,
+    end: r.end_at,
+    serviceName: r.service_name,
+    priceCents: r.price_cents ?? null,
+    memberId: r.member_id,
+    name: r.customer_name ?? null,
+    phone: r.customer_phone ?? null,
+    email: r.customer_email ?? null,
+    status: r.status,
+    cancelledBy: r.cancelled_by ?? null,
+    paymentStatus: r.payment_status ?? 'none',
+    paymentMethod: r.payment_method ?? null,
+    amountPaidCents: r.amount_paid_cents ?? 0,
+    amountRefundedCents: r.amount_refunded_cents ?? 0,
+    source: r.source ?? 'online',
+    createdAt: r.created_at,
+  };
+}
+
+/** Every appointment of the shop, all statuses, whole history (read-only; the Customers list groups these). */
+export async function listCustomerAppointments(shopId: string): Promise<CustomerAppt[]> {
+  const rows = await fetchAllPages(async (from, to) => {
+    const { data, error } = await (supabase.from('ab_appointments') as any)
+      .select(CUSTOMER_COLUMNS)
+      .eq('shop_id', shopId)
+      .order('start_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, to);
+    if (error) throw error;
+    return (data ?? []) as any[];
+  });
+  return rows.map(toCustomerAppt);
 }
 
 /** Time off of these barbers overlapping [fromIso, toIso). */
