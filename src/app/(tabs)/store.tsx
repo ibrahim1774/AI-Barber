@@ -7,6 +7,7 @@ import { Button } from '@/components/Button';
 import { PausedBanner } from '@/components/PausedBanner';
 import { UpgradeCard } from '@/components/UpgradeCard';
 import { ShareSheet } from '@/components/ShareSheet';
+import { CustomersPane } from '@/components/store/customers/CustomersPane';
 import { OrdersPane } from '@/components/store/OrdersPane';
 import { Segmented } from '@/components/store/Segmented';
 import { StoreHeader } from '@/components/store/StoreHeader';
@@ -22,10 +23,10 @@ import { useUpdateSitePrompt } from '@/lib/setupPrompt';
 import { countNewOrders, hasAnyOrders, loadStoreSettings } from '@/lib/store/data';
 
 type Phase = 'loading' | 'error' | 'no-store' | 'ready';
-type Tab = 'products' | 'orders';
+type Tab = 'products' | 'orders' | 'customers';
 
 /**
- * The Store tab: Products and Orders for the shop. Opens on Orders when a push
+ * The Store tab: Products, Orders and Customers for the shop. Opens on Orders when a push
  * routes here with ?tab=orders&orderId=. Read-only once the hosting has lapsed.
  * Tier gating comes through useStoreAccess. Order actions are never locked: orders already placed
  * stay fulfillable and refundable after a lapse or a downgrade.
@@ -183,6 +184,7 @@ export default function Store() {
           options={[
             { key: 'products', label: 'Products' },
             { key: 'orders', label: 'Orders', badge: newOrders },
+            { key: 'customers', label: 'Customers' },
           ]}
           value={tab}
           onChange={setTab}
@@ -194,6 +196,8 @@ export default function Store() {
             // The Shop button is offered once there is something to buy.
             onFirstProduct={() => { if (storeOpen) void sitePrompt.offer().catch(() => {}); }}
           />
+        ) : tab === 'customers' ? (
+          <CustomersPane />
         ) : (
           <OrdersPane
             shopId={shop.id}

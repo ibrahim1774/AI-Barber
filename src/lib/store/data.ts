@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { fetchAllPages } from '@/lib/bookings/api';
 
 /**
  * Supabase data layer for the Store (ab_products, ab_orders, ab_order_items and
@@ -231,4 +232,21 @@ export async function countNewOrders(shopId: string): Promise<number> {
     .eq('shop_id', shopId).eq('status', 'new').or(VISIBLE_ORDERS_FILTER);
   if (error) fail(error);
   return count ?? 0;
+}
+
+/**
+ * Every visible order of the shop (all pages, newest first) with its items, for the Customers tab.
+ * Same visibility rule as listOrders, so abandoned card holds never arrive.
+ */
+export async function listAllOrders(shopId: string): Promise<Order[]> {
+  const rows = await fetchAllPages(async (from, to) => {
+    const { data, error } = await supabase
+      .from('ab_orders').select('*').eq('shop_id', shopId).or(VISIBLE_ORDERS_FILTER)
+      .order('created_at', { ascending: false }).order('id', { ascending: true }).range(from, to);
+    if (error) fail(error);
+    return (data ?? []) as Record<string, any>[];
+  });
+  const items: Record<string, any>[] = [];
+  for (let i = 0; i < rows.length; i += 200) items.push(...(await itemsFor(rows.slice(i, i + 200).map((r) => r.id))));
+  return rows.map((r) => toOrder(r, items.filter((it) => it.order_id === r.id)));
 }
