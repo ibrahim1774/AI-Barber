@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
-  notify, runReminders, runDailySummary, shortWhen, dollars, liveReminderDeps, REMINDER_BUDGET_MS, SUMMARY_BUDGET_MS,
-  type NotifyContext, type NotifyDeps, type ReminderDeps, type DailySummaryDeps,
+  notify, runReminders, shortWhen, dollars, liveReminderDeps, REMINDER_BUDGET_MS,
+  type NotifyContext, type NotifyDeps, type ReminderDeps,
 } from '../../lib/bookings/notify.js';
 
 // Fri 2026-10-23 14:00 New York = 18:00Z
@@ -244,74 +244,5 @@ describe('liveReminderDeps claims (query shape)', () => {
     expect(calls).toContainEqual(['update', [{ reminder_sent_at: 'now' }]]);
     expect(calls).toContainEqual(['is', ['reminder_sent_at', null]]);
     expect(calls).toContainEqual(['eq', ['dedupe_key', 'reminder-claim:a1']]);
-  });
-});
-
-describe('runDailySummary', () => {
-  const shops = [
-    { id: 's-ny', name: 'NY Cuts', timezone: 'America/New_York', owner_id: 'o-ny' },
-    { id: 's-la', name: 'LA Cuts', timezone: 'America/Los_Angeles', owner_id: 'o-la' },
-    { id: 's-in', name: 'Delhi Cuts', timezone: 'Asia/Kolkata', owner_id: 'o-in' },
-  ];
-  function mkS(nowMs: number, counts: Record<string, number> = { 's-ny': 3, 's-la': 1, 's-in': 2 }) {
-    const claimed = new Set<string>();
-    const d: DailySummaryDeps & Record<string, any> = {
-      summaryShops: vi.fn(async () => shops),
-      countBookings: vi.fn(async (id: string) => counts[id] ?? 0),
-      claimSummary: vi.fn(async (id: string, date: string) => (claimed.has(id + date) ? false : (claimed.add(id + date), true))),
-      releaseSummary: vi.fn(async (id: string, date: string) => { claimed.delete(id + date); }),
-      push: vi.fn(async () => ({})),
-      now: () => nowMs,
-    };
-    return d;
-  }
-
-  it('pushes only shops where it is 8 AM local, with the local day bounds and date', async () => {
-    // 12:00Z = 8:00 New York (EDT), 5:00 LA, 17:30 Delhi
-    const d = mkS(Date.UTC(2026, 9, 21, 12, 0));
-    expect(await runDailySummary(d)).toEqual({ shops: 3, pushed: 1, deferred: 0 });
-    expect(d.countBookings).toHaveBeenCalledWith('s-ny', '2026-10-21T04:00:00.000Z', '2026-10-22T04:00:00.000Z');
-    expect(d.push).toHaveBeenCalledWith(['o-ny'], { title: 'NY Cuts', body: '3 bookings today', data: { kind: 'booking', date: '2026-10-21' } });
-  });
-
-  it('half-hour zones fire in their 8 o’clock hour; singular copy', async () => {
-    const d = mkS(Date.UTC(2026, 9, 21, 2, 30)); // 08:00 IST
-    await runDailySummary(d);
-    expect(d.push).toHaveBeenCalledWith(['o-in'], expect.objectContaining({ body: '2 bookings today', data: { kind: 'booking', date: '2026-10-21' } }));
-    const d2 = mkS(Date.UTC(2026, 9, 21, 15, 0)); // 08:00 LA
-    await runDailySummary(d2);
-    expect(d2.push).toHaveBeenCalledWith(['o-la'], expect.objectContaining({ body: '1 booking today' }));
-  });
-
-  it('dedupes a second run in the same hour; silent with zero bookings', async () => {
-    const d = mkS(Date.UTC(2026, 9, 21, 12, 0));
-    await runDailySummary(d);
-    expect(await runDailySummary(d)).toEqual({ shops: 3, pushed: 0, deferred: 0 });
-    const z = mkS(Date.UTC(2026, 9, 21, 12, 0), { 's-ny': 0 });
-    expect(await runDailySummary(z)).toEqual({ shops: 3, pushed: 0, deferred: 0 });
-    expect(z.claimSummary).not.toHaveBeenCalled();
-  });
-
-  it('a push that throws releases the claim so the next run in the hour retries', async () => {
-    const d = mkS(Date.UTC(2026, 9, 21, 12, 0));
-    d.push = vi.fn().mockRejectedValueOnce(new Error('expo')).mockResolvedValue({});
-    expect((await runDailySummary(d)).pushed).toBe(0);
-    expect(d.releaseSummary).toHaveBeenCalledWith('s-ny', '2026-10-21');
-    expect((await runDailySummary(d)).pushed).toBe(1);
-  });
-
-  it('stops starting shops once the time budget is spent', async () => {
-    let t = 0;
-    const d = mkS(Date.UTC(2026, 9, 21, 12, 0));
-    d.summaryShops = vi.fn(async () => { t = SUMMARY_BUDGET_MS + 1; return shops; });
-    expect(await runDailySummary(d, { clock: () => t })).toEqual({ shops: 3, pushed: 0, deferred: 3 });
-    expect(d.countBookings).not.toHaveBeenCalled();
-  });
-
-  it('DST: the local day on a fall-back day is 25 hours', async () => {
-    // 2026-11-01 is fall-back in New York; 08:00 EST = 13:00Z
-    const d = mkS(Date.UTC(2026, 10, 1, 13, 0));
-    await runDailySummary(d);
-    expect(d.countBookings).toHaveBeenCalledWith('s-ny', '2026-11-01T04:00:00.000Z', '2026-11-02T05:00:00.000Z');
   });
 });

@@ -325,7 +325,6 @@ export async function notify(event: NotifyEvent, deps?: NotifyDeps): Promise<voi
 export const CRON_MAX_DURATION_MS = 300_000;
 export const CRON_MARGIN_MS = 10_000;
 export const REMINDER_BUDGET_MS = CRON_MAX_DURATION_MS - CRON_MARGIN_MS - 40_000; // 250 s
-export const SUMMARY_BUDGET_MS = CRON_MAX_DURATION_MS - CRON_MARGIN_MS - 20_000; // 270 s
 /** A claim older than this whose reminder was never stamped as sent (run killed mid-send) is
  *  taken over by the next run. */
 export const REMINDER_CLAIM_STALE_MIN = 10;
@@ -396,60 +395,6 @@ export async function runReminders(
     }
   }
   return { due: ids.length, sent, failed, deferred };
-}
-
-export interface SummaryShop { id: string; name: string; timezone: string; owner_id: string }
-
-export interface DailySummaryDeps {
-  summaryShops(): Promise<SummaryShop[]>;
-  /** Live bookings (not cancelled, not unpaid card holds) starting in [from, to). */
-  countBookings(shopId: string, fromIso: string, toIso: string): Promise<number>;
-  /** ab_events insert with dedupe_key; false when this shop/date was already sent. */
-  claimSummary(shopId: string, date: string): Promise<boolean>;
-  /** Drop the claim (the push could not be attempted) so the next run in the hour retries. */
-  releaseSummary(shopId: string, date: string): Promise<void>;
-  push(userIds: string[], msg: Omit<PushMessage, 'to'>): Promise<unknown>;
-  now(): number;
-}
-
-export const SUMMARY_HOUR = 8;
-
-export async function runDailySummary(deps: DailySummaryDeps, opts: CronOpts = {}): Promise<{ shops: number; pushed: number; deferred: number }> {
-  const clock = opts.clock ?? Date.now;
-  const started = clock();
-  const budget = opts.budgetMs ?? SUMMARY_BUDGET_MS;
-  const shops = await deps.summaryShops();
-  let pushed = 0;
-  let deferred = 0;
-  for (let i = 0; i < shops.length; i++) {
-    if (clock() - started > budget) {
-      deferred = shops.length - i; // unclaimed; Vercel may re-run within the hour, or tomorrow
-      break;
-    }
-    const shop = shops[i];
-    let claimed: string | null = null;
-    try {
-      const local = DateTime.fromMillis(deps.now(), { zone: shop.timezone });
-      if (!local.isValid || local.hour !== SUMMARY_HOUR) continue;
-      const date = local.toISODate()!;
-      const dayStart = local.startOf('day');
-      const count = await deps.countBookings(shop.id, dayStart.toUTC().toISO()!, dayStart.plus({ days: 1 }).toUTC().toISO()!);
-      if (count <= 0) continue; // nothing booked: stay quiet
-      if (!(await deps.claimSummary(shop.id, date))) continue;
-      claimed = date;
-      await deps.push([shop.owner_id], {
-        title: shop.name,
-        body: `${count} booking${count === 1 ? '' : 's'} today`,
-        data: { kind: 'booking', date },
-      });
-      claimed = null;
-      pushed += 1;
-    } catch (e: any) {
-      console.error('[bookings/daily-summary] shop failed:', shop.id, e?.message || e);
-      if (claimed) await deps.releaseSummary(shop.id, claimed).catch(() => {});
-    }
-  }
-  return { shops: shops.length, pushed, deferred };
 }
 
 // ---------------------------------------------------------------------------
@@ -542,37 +487,5 @@ export function liveReminderDeps(db: SupabaseClient = serviceDb()): ReminderDeps
       const { error } = await db.from('ab_events').delete().eq('dedupe_key', `reminder-claim:${id}`);
       if (error) dbFail('releaseReminder', error);
     },
-  };
-}
-
-export function liveDailySummaryDeps(db: SupabaseClient = serviceDb()): DailySummaryDeps {
-  const store = pushTokenStore(db);
-  return {
-    async summaryShops() {
-      const { data, error } = await db.from('ab_shops').select('id, name, timezone, owner_id')
-        .eq('daily_summary', true).eq('bookings_enabled', true);
-      if (error) dbFail('summaryShops', error);
-      return (data ?? []) as SummaryShop[];
-    },
-    async countBookings(shopId, fromIso, toIso) {
-      const { data, error } = await db.from('ab_appointments').select('id, payment_method, payment_status')
-        .eq('shop_id', shopId).neq('status', 'cancelled').gte('start_at', fromIso).lt('start_at', toIso);
-      if (error) dbFail('countBookings', error);
-      return (data ?? []).filter((r: any) => !(r.payment_method === 'card' && r.payment_status === 'awaiting')).length;
-    },
-    async claimSummary(shopId, date) {
-      const { error } = await db.from('ab_events').insert({
-        shop_id: shopId, kind: 'daily_summary', dedupe_key: `daily:${shopId}:${date}`, payload: { date },
-      });
-      if (!error) return true;
-      if ((error as { code?: string }).code === '23505') return false;
-      dbFail('claimSummary', error);
-    },
-    async releaseSummary(shopId, date) {
-      const { error } = await db.from('ab_events').delete().eq('dedupe_key', `daily:${shopId}:${date}`);
-      if (error) dbFail('releaseSummary', error);
-    },
-    push: (userIds, msg) => pushToUsers(userIds, msg, store),
-    now: () => Date.now(),
   };
 }

@@ -46,7 +46,6 @@ import bookSlots from '../../api/book/slots.js';
 import bookDays from '../../api/book/days.js';
 import bookIcs from '../../api/book/ics.js';
 import bookReminders from '../../api/book/reminders.js';
-import bookDailySummary from '../../api/book/daily-summary.js';
 import storeOrders from '../../api/store/orders.js';
 import storeOrder from '../../api/store/order.js';
 import storeSent from '../../api/store/sent.js';
@@ -331,7 +330,7 @@ describe('authenticated endpoints: missing, malformed and forged auth', () => {
   });
 
   it('cron endpoints refuse without the secret', async () => {
-    for (const h of [iosSweep, bookReminders, bookDailySummary] as H[]) {
+    for (const h of [iosSweep, bookReminders] as H[]) {
       for (const headers of [{}, { authorization: 'Bearer nope' }, { 'user-agent': 'vercel-cron/1.0' }]) {
         expect((await hit(h, { method: 'GET', headers })).statusCode).toBe(401);
       }

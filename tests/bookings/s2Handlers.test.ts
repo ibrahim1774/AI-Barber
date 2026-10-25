@@ -4,11 +4,11 @@ import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const { runReminders, runDailySummary, stripeOnboard, stripeStatus } = vi.hoisted(() => ({
-  runReminders: vi.fn(), runDailySummary: vi.fn(), stripeOnboard: vi.fn(), stripeStatus: vi.fn(),
+const { runReminders, stripeOnboard, stripeStatus } = vi.hoisted(() => ({
+  runReminders: vi.fn(), stripeOnboard: vi.fn(), stripeStatus: vi.fn(),
 }));
 vi.mock('../../lib/bookings/notify.js', () => ({
-  runReminders, runDailySummary, REMINDER_BUDGET_MS: 250_000, liveReminderDeps: () => ({}), liveDailySummaryDeps: () => ({}),
+  runReminders, REMINDER_BUDGET_MS: 250_000, liveReminderDeps: () => ({}),
 }));
 vi.mock('../../lib/bookings/payments.js', async (orig) => ({
   ...(await orig<typeof import('../../lib/bookings/payments.js')>()),
@@ -33,7 +33,6 @@ vi.mock('../../lib/store/core.js', async (orig) => ({
 vi.mock('../../lib/store/live.js', () => ({ liveStoreDeps: () => ({ store: true }) }));
 import { handleWebhook } from '../../api/stripe/connect-webhook.js';
 import reminders from '../../api/book/reminders.js';
-import dailySummary from '../../api/book/daily-summary.js';
 import onboard from '../../api/shop/stripe/onboard.js';
 import status from '../../api/shop/stripe/status.js';
 import type { WebhookDeps } from '../../lib/bookings/payments.js';
@@ -192,20 +191,6 @@ describe('crons', () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ sent: 1, holds: { error: true } }));
     err.mockRestore();
   });
-
-  it('daily-summary: 401 unauthorized, 200 summary, 500 on failure', async () => {
-    const res = mkRes();
-    await dailySummary({ headers: {} }, res);
-    expect(res.status).toHaveBeenCalledWith(401);
-    runDailySummary.mockResolvedValue({ shops: 1, pushed: 1 });
-    const res2 = mkRes();
-    await dailySummary(cron, res2);
-    expect(res2.json).toHaveBeenCalledWith({ ok: true, shops: 1, pushed: 1 });
-    runDailySummary.mockRejectedValue(new Error('x'));
-    const res3 = mkRes();
-    await dailySummary(cron, res3);
-    expect(res3.status).toHaveBeenCalledWith(500);
-  });
 });
 
 describe('owner Stripe endpoints', () => {
@@ -235,11 +220,11 @@ describe('owner Stripe endpoints', () => {
 describe('vercel.json + stripe-return page', () => {
   const cfg = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'vercel.json'), 'utf8'));
 
-  it('crons for reminders (15 min) and daily summary (hourly)', () => {
+  it('cron for reminders (15 min), no daily summary', () => {
     expect(cfg.crons).toEqual(expect.arrayContaining([
       { path: '/api/book/reminders', schedule: '*/15 * * * *' },
-      { path: '/api/book/daily-summary', schedule: '0 * * * *' },
     ]));
+    expect(JSON.stringify(cfg.crons)).not.toContain('daily-summary');
   });
 
   it('/stripe-return rewrites come before the SPA catch-all', () => {
