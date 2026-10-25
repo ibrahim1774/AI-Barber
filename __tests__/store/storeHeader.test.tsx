@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, press, hasButton } from './render';
+import { render, press, hasButton, allText } from './render';
 
 jest.mock('@/constants/theme', () => ({
   colors: new Proxy({}, { get: () => '#000' }),
@@ -22,5 +22,18 @@ describe('StoreHeader', () => {
     const t = await render(<StoreHeader title="Shop" locked onShare={() => {}} onSetup={() => {}} />);
     expect(hasButton(t, 'Share')).toBe(true);
     expect(hasButton(t, 'Settings')).toBe(false);
+  });
+});
+
+describe('StoreHeader title', () => {
+  it('shows "Store", never the shop name', async () => {
+    const t = await render(<StoreHeader title="Jack's Barbershop" locked={false} onShare={() => {}} onSetup={() => {}} />);
+    expect(allText(t)).toContain('Store');
+    expect(allText(t).join(' ')).not.toContain("Jack's");
+  });
+  it('Bookings tab uses TabHeader and not the shop name', () => {
+    const src = require('fs').readFileSync(require('path').join(__dirname, '../../src/app/(tabs)/bookings.tsx'), 'utf8');
+    expect(src).toContain('<TabHeader title="Bookings">');
+    expect(src).not.toMatch(/accessibilityRole="header">\{shop\.name\}/);
   });
 });

@@ -96,7 +96,8 @@ describe('Store tab', () => {
   it('when ready shows Products by default', async () => {
     const r = await render();
     expect(texts(r)).toContain('products');
-    expect(texts(r)).toContain('Fade Lab');
+    expect(texts(r)).toContain('Store');
+    expect(texts(r)).not.toContain('Fade Lab');
     expect(mockOrdersPane).not.toHaveBeenCalled();
   });
 

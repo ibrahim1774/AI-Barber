@@ -76,7 +76,7 @@ describe('Bookings tab gating', () => {
     const tree = await render(<Bookings />);
     expect(hasText(tree, /Take bookings online/)).toBe(false);
     expect(hasText(tree, /paused/)).toBe(false);
-    expect(hasText(tree, /Fade Lab/)).toBe(true);
+    expect(hasText(tree, /^Bookings$/)).toBe(true);
     expect(mockCall).toHaveBeenCalledWith('GET', '/api/shop/plan');
   });
 
@@ -86,7 +86,7 @@ describe('Bookings tab gating', () => {
     expect(tree.root.findAll((n: any) => n.type === 'ActivityIndicator')).toHaveLength(0);
     mockCall.mockResolvedValue(planOf(true, true));
     await press(tree, 'Try again');
-    expect(hasText(tree, /Fade Lab/)).toBe(true);
+    expect(hasText(tree, /^Bookings$/)).toBe(true);
   });
 
   it('hosting only and no shop: the UpgradeCard, whose button opens bookings_upgrade', async () => {
@@ -133,7 +133,7 @@ describe('Bookings tab gating', () => {
     mockCall.mockResolvedValue(planOf(false, false, new Date(Date.now() - 29 * 86_400_000).toISOString()));
     const tree = await render(<Bookings />);
     expect(hasText(tree, /Take bookings online/)).toBe(false);
-    expect(hasText(tree, /Fade Lab/)).toBe(true);
+    expect(hasText(tree, /^Bookings$/)).toBe(true);
     expect(hasText(tree, /^FAB$/)).toBe(false);
   });
 });

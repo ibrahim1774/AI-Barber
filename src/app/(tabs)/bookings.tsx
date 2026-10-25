@@ -8,6 +8,7 @@ import { Button } from '@/components/Button';
 import { PausedBanner } from '@/components/PausedBanner';
 import { UpgradeCard } from '@/components/UpgradeCard';
 import { HeaderButton } from '@/components/HeaderButtons';
+import { TabHeader } from '@/components/TabHeader';
 import { ShareSheet } from '@/components/ShareSheet';
 import { AddBookingSheet } from '@/components/bookings/AddBookingSheet';
 import { AppointmentRow, TimeOffRow } from '@/components/bookings/AppointmentRow';
@@ -225,24 +226,21 @@ export default function Bookings() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <Text style={[styles.title, customer.gate === 'live' && !locked && { fontSize: 20 }]} numberOfLines={1} accessibilityRole="header">{shop.name}</Text>
-        <View style={styles.headerBtns}>
-          <HeaderButton title="Customers" onPress={() => router.push('/customers' as never)} accessibilityLabel="Customers" />
-          {customer.gate === 'live' && (
-            <HeaderButton title="Share" icon="share" tone="solid" onPress={() => setSharing(true)} accessibilityLabel="Share booking link" />
-          )}
-          {!locked && (
-            <HeaderButton
-              ref={setupRef}
-              title="Settings"
-              icon="gear"
-              onPress={() => router.push('/bookings-setup' as never)}
-              accessibilityLabel="Booking setup"
-            />
-          )}
-        </View>
-      </View>
+      <TabHeader title="Bookings">
+        <HeaderButton title="Customers" onPress={() => router.push('/customers' as never)} accessibilityLabel="Customers" />
+        {customer.gate === 'live' && (
+          <HeaderButton title="Share" icon="share" tone="solid" onPress={() => setSharing(true)} accessibilityLabel="Share booking link" />
+        )}
+        {!locked && (
+          <HeaderButton
+            ref={setupRef}
+            title="Settings"
+            icon="gear"
+            onPress={() => router.push('/bookings-setup' as never)}
+            accessibilityLabel="Booking setup"
+          />
+        )}
+      </TabHeader>
 
       {lapsed && (
         <Text style={styles.locked}>Your subscription has ended. Bookings are read-only until you resubscribe.</Text>
@@ -400,12 +398,6 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   flex: { flex: 1 },
   center: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12,
-    paddingHorizontal: 16, paddingTop: 8, paddingBottom: 14,
-  },
-  title: { flex: 1, fontFamily: fonts.heading, fontSize: 24, color: colors.heading },
-  headerBtns: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   locked: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.accent, paddingHorizontal: 16, paddingBottom: 10 },
   chips: { marginTop: 12 },
   list: { paddingHorizontal: 16, paddingTop: 18 },
