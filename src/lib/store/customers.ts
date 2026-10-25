@@ -19,6 +19,8 @@ export interface StoreCustomer {
   totalCents: number;
   /** Sum of amountPaid - amountRefunded per order, floored at 0 per order. */
   paidCents: number;
+  /** Still to be paid: per unsettled order, total minus paid, floored at 0. Settled and refunded orders owe nothing. */
+  owedCents: number;
   /** Orders whose payment is neither paid nor refunded. */
   unpaidOrders: number;
   orderIds: string[];
@@ -89,6 +91,7 @@ export function groupStoreCustomers(orders: Order[]): StoreCustomer[] {
       items: [...items].map(([name, quantity]) => ({ name, quantity })),
       totalCents: g.reduce((s, o) => s + o.totalCents, 0),
       paidCents: g.reduce((s, o) => s + Math.max(0, o.amountPaidCents - o.amountRefundedCents), 0),
+      owedCents: g.reduce((s, o) => s + (SETTLED.has(o.paymentStatus) ? 0 : Math.max(0, o.totalCents - o.amountPaidCents)), 0),
       unpaidOrders: g.filter((o) => !SETTLED.has(o.paymentStatus)).length,
       orderIds: g.map((o) => o.id),
     });

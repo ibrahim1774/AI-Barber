@@ -20,6 +20,7 @@ export function useStoreCustomers(): StoreCustomersData {
   const [customers, setCustomers] = useState<StoreCustomer[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const seq = useRef(0);
+  const shown = useRef<string | null>(null); // the shop whose buyers are on screen
 
   const refresh = useCallback(async () => {
     const mine = ++seq.current;
@@ -28,6 +29,7 @@ export function useStoreCustomers(): StoreCustomersData {
       if (mine !== seq.current) return;
       if (!s) {
         clearStoreCustomersCache();
+        shown.current = null;
         setCustomers([]);
         setOrders([]);
         setPhase('no-shop');
@@ -36,16 +38,25 @@ export function useStoreCustomers(): StoreCustomersData {
       // Cached rows are reused only once this account's own shop is known and matches; otherwise drop them.
       const c = storeCustomersCache;
       if (c && c.shopId === s.id) {
+        shown.current = s.id;
         setCustomers(c.customers);
         setOrders(c.orders);
         setPhase('ready');
       } else {
         clearStoreCustomersCache();
+        // Another account's (or shop's) buyers must not stay on screen, even if the reload below fails.
+        if (shown.current !== s.id) {
+          shown.current = null;
+          setCustomers([]);
+          setOrders([]);
+          setPhase('loading');
+        }
       }
       const rows = await listAllOrders(s.id);
       if (mine !== seq.current) return;
       const list = groupStoreCustomers(rows);
       setStoreCustomersCache({ shopId: s.id, customers: list, orders: rows });
+      shown.current = s.id;
       setCustomers(list);
       setOrders(rows);
       setPhase('ready');

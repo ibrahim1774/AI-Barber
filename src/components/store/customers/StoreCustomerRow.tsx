@@ -24,8 +24,7 @@ export function boughtText(items: StoreCustomer['items'], max = 3): string {
 /** One buyer: contact lines, what they bought, then the money facts. */
 export function StoreCustomerRow({ customer: c, onPress }: { customer: StoreCustomer; onPress(): void }) {
   const facts = [ordersText(c.orders), `Spent ${formatMoney(c.paidCents)}`, `Last: ${orderDate(c.lastAt)}`];
-  const owes = Math.max(0, c.totalCents - c.paidCents);
-  if (c.unpaidOrders > 0 && owes > 0) facts.push(`Owes ${formatMoney(owes)}`);
+  if (c.unpaidOrders > 0 && c.owedCents > 0) facts.push(`Owes ${formatMoney(c.owedCents)}`);
   return (
     <Pressable
       onPress={onPress}

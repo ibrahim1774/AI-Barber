@@ -22,6 +22,7 @@ export function useCustomers(): CustomersData {
   const [shop, setShop] = useState<Shop | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const seq = useRef(0);
+  const shown = useRef<string | null>(null); // the shop whose customers are on screen
 
   const refresh = useCallback(async () => {
     const mine = ++seq.current;
@@ -30,6 +31,7 @@ export function useCustomers(): CustomersData {
       if (mine !== seq.current) return;
       if (!s) {
         clearCustomersCache();
+        shown.current = null;
         setShop(null);
         setCustomers([]);
         setPhase('no-shop');
@@ -39,15 +41,24 @@ export function useCustomers(): CustomersData {
       const c = customersCache;
       if (c && c.shopId === s.id) {
         setShop(c.shop);
+        shown.current = s.id;
         setCustomers(c.customers);
         setPhase('ready');
       } else {
         clearCustomersCache();
+        // Another account's customers must not stay on screen, even if the reload below fails.
+        if (shown.current !== s.id) {
+          shown.current = null;
+          setShop(null);
+          setCustomers([]);
+          setPhase('loading');
+        }
       }
       const rows = await listCustomerAppointments(s.id);
       if (mine !== seq.current) return;
       const list = groupCustomers(rows, new Date().toISOString());
       setCustomersCache({ shopId: s.id, shop: s, customers: list });
+      shown.current = s.id;
       setShop(s);
       setCustomers(list);
       setPhase('ready');

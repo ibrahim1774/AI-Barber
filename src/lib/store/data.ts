@@ -189,10 +189,30 @@ export function toOrder(r: Record<string, any>, items: Record<string, any>[]): O
 }
 
 async function itemsFor(orderIds: string[]): Promise<Record<string, any>[]> {
-  if (orderIds.length === 0) return [];
-  const { data, error } = await supabase.from('ab_order_items').select('*').in('order_id', orderIds);
-  if (error) fail(error);
-  return (data ?? []) as Record<string, any>[];
+  const out: Record<string, any>[] = [];
+  // Small batches, each read in full pages: PostgREST cuts a response at max_rows (1000) without an error.
+  for (let i = 0; i < orderIds.length; i += 100) {
+    const batch = orderIds.slice(i, i + 100);
+    out.push(
+      ...(await fetchAllPages(async (from, to) => {
+        const { data, error } = await supabase
+          .from('ab_order_items').select('*').in('order_id', batch).order('id', { ascending: true }).range(from, to);
+        if (error) fail(error);
+        return (data ?? []) as Record<string, any>[];
+      })),
+    );
+  }
+  return out;
+}
+
+/** Items grouped by order id (one pass, not a filter per order). */
+function byOrder(items: Record<string, any>[]): Map<string, Record<string, any>[]> {
+  const m = new Map<string, Record<string, any>[]>();
+  for (const it of items) {
+    const arr = m.get(it.order_id);
+    if (arr) arr.push(it); else m.set(it.order_id, [it]);
+  }
+  return m;
 }
 
 /** Newest first; `before` is the createdAt of the last row already shown. */
@@ -205,7 +225,8 @@ export async function listOrders(shopId: string, opts: { limit?: number; before?
   if (error) fail(error);
   const rows = (data ?? []) as Record<string, any>[];
   const items = await itemsFor(rows.map((r) => r.id));
-  return rows.map((r) => toOrder(r, items.filter((i) => i.order_id === r.id)));
+  const grouped = byOrder(items);
+  return rows.map((r) => toOrder(r, grouped.get(r.id) ?? []));
 }
 
 /**
@@ -246,7 +267,6 @@ export async function listAllOrders(shopId: string): Promise<Order[]> {
     if (error) fail(error);
     return (data ?? []) as Record<string, any>[];
   });
-  const items: Record<string, any>[] = [];
-  for (let i = 0; i < rows.length; i += 200) items.push(...(await itemsFor(rows.slice(i, i + 200).map((r) => r.id))));
-  return rows.map((r) => toOrder(r, items.filter((it) => it.order_id === r.id)));
+  const grouped = byOrder(await itemsFor(rows.map((r) => r.id)));
+  return rows.map((r) => toOrder(r, grouped.get(r.id) ?? []));
 }
