@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { Alert } from 'react-native';
+import { takeEmptyAccountNotice } from '@/lib/auth';
 import { goBackOrHome, resetTo } from '@/lib/nav';
 import { useRestoreFlow } from '@/lib/restoreFlow';
 import { takePostAuthReturn } from '@/lib/setup/gate';
@@ -17,9 +18,21 @@ export function useAfterSignIn(
   const { restore } = useRestoreFlow();
   return useCallback(
     async ({ title = 'Signed in', message }: { title?: string; message?: string } = {}) => {
+      // A different account's site was taken off this phone and this account has none yet.
+      const empty = takeEmptyAccountNotice();
       // Sent here by the Bookings setup (it needs an account first): go back to it.
       if (takePostAuthReturn()) {
         leave();
+        return;
+      }
+      if (empty) {
+        resetTo('/start');
+        Alert.alert(
+          'No website in this account yet',
+          empty.email
+            ? `Build one and it will be saved to ${empty.email}.`
+            : 'Build one and it will be saved to this account.',
+        );
         return;
       }
       const site = await loadSite().catch(() => null);

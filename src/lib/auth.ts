@@ -2,7 +2,10 @@ import { useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { identifyUser, resetUser, track, trackRegistration } from '@/lib/analytics';
 import { api } from '@/lib/api';
-import { pullSiteFromAccount, syncIfSignedIn } from '@/lib/account';
+import {
+  clearSiteAfterSignOut, pullSiteFromAccount, pushSiteBeforeSignOut, switchAccountSite, syncIfSignedIn,
+} from '@/lib/account';
+import type { SwitchResult } from '@/lib/account';
 import { clearCustomersCache } from '@/lib/bookings/customersCache';
 import { isCodeComplete, isValidEmail, sanitizeCode } from '@/lib/recovery';
 import { supabase } from '@/lib/supabase';
@@ -141,18 +144,55 @@ async function afterSession(id: string | null | undefined): Promise<void> {
   userId = id ?? userId;
   if (id) {
     identifyUser(id);
-    // Capped: a stalled network must not hold a sign-in that already succeeded.
-    await withTimeout(pullSiteFromAccount(id), LOOKUP_TIMEOUT_MS).catch(() => null);
+    // A site on the phone that belongs to another account is swapped for this account's own first, and
+    // nothing is synced until it is: account A's site must never be shown to, or written under, account B.
+    let switched: SwitchResult;
+    try {
+      switched = await withTimeout(switchAccountSite(id), LOOKUP_TIMEOUT_MS);
+    } catch (e) {
+      console.warn('[auth] could not load the account site after sign-in:', e);
+      await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+      userId = null;
+      resetUser();
+      throw new Error(SWITCH_FAILED);
+    }
+    if (switched === 'cleared') {
+      const email = (await supabase.auth.getSession().catch(() => null))?.data.session?.user?.email ?? '';
+      emptyAccount = { email };
+    } else if (switched === 'same') {
+      // Capped: a stalled network must not hold a sign-in that already succeeded.
+      await withTimeout(pullSiteFromAccount(id), LOOKUP_TIMEOUT_MS).catch(() => null);
+    } else {
+      return; // 'replaced': the phone now holds a copy of the account's own row; nothing to push
+    }
   }
   await syncIfSignedIn();
 }
 
+const SWITCH_FAILED = "Couldn't load your account's website. Check your connection and sign in again.";
+
+let emptyAccount: { email: string } | null = null;
+
+/**
+ * Set when a sign-in swapped a different account's site off this phone and the new account has none:
+ * the screen says so (once) and goes to the start. The email is shown, never tracked.
+ */
+export function takeEmptyAccountNotice(): { email: string } | null {
+  const v = emptyAccount;
+  emptyAccount = null;
+  return v;
+}
+
 export async function signOut(): Promise<void> {
+  // The site goes into the account first; it leaves the phone only if that worked, so the next person to
+  // sign in here never sees it, and nothing unsaved is lost.
+  const pushed = await withTimeout(pushSiteBeforeSignOut(), LOOKUP_TIMEOUT_MS).catch(() => false);
   const { error } = await supabase.auth.signOut();
   // Offline: the refresh token can't be revoked, but this phone still signs out.
   if (error) await supabase.auth.signOut({ scope: 'local' });
   userId = null;
   clearCustomersCache();
+  if (pushed) await clearSiteAfterSignOut().catch((e) => console.warn('[auth] could not clear the site:', e));
   resetUser();
 }
 

@@ -26,6 +26,8 @@ export const IOS_SOURCE = 'ios';
  * pullSiteFromAccount when it was edited on the web or on another phone.
  */
 export async function syncSiteToSupabase(site: SiteRecord, userId: string): Promise<void> {
+  // Never write another account's site under this account's id.
+  if (site.ownerUserId && site.ownerUserId !== userId) throw new Error('site belongs to another account');
   const data = publishPayload(site.data); // no editor markers, no inline data: images
   const { error } = await supabase.from('sites').upsert(
     {
@@ -66,8 +68,19 @@ export async function syncIfSignedIn(site?: SiteRecord | null): Promise<void> {
     const record = site ?? (await siteStore.loadSite());
     if (!record) return;
     await syncSiteToSupabase(record, userId);
+    await stampOwner(record.draftId, userId);
   } catch (e) {
     console.warn('[account] site sync failed:', e);
+  }
+}
+
+/** Marks the local record (if it is still `draftId`) as belonging to `userId`. Best effort. */
+async function stampOwner(draftId: string, userId: string): Promise<void> {
+  try {
+    const cur = await siteStore.loadSite();
+    if (cur && cur.draftId === draftId && cur.ownerUserId !== userId) await siteStore.saveSite({ ...cur, ownerUserId: userId });
+  } catch (e) {
+    console.warn('[account] could not mark the site owner:', e);
   }
 }
 
@@ -104,6 +117,8 @@ function siteDataFrom(raw: WebsiteData & { source?: unknown }): WebsiteData {
 export async function pullSiteFromAccount(userId: string): Promise<PullResult> {
   try {
     const local = await siteStore.loadSite();
+    // Another account's site on this phone is never adopted into (afterSession swaps it on sign-in).
+    if (local?.ownerUserId && local.ownerUserId !== userId) return 'unchanged';
     const sites = supabase.from('sites');
     const { data: row, error } = local
       ? await sites.select(ROW_COLUMNS).eq('id', local.draftId).eq('user_id', userId).maybeSingle()
@@ -139,6 +154,7 @@ export async function pullSiteFromAccount(userId: string): Promise<PullResult> {
           inputs: { ...cur.inputs, ...inputsFrom(data) },
           deployedUrl: r.deployed_url ?? cur.deployedUrl,
           updatedAt: rowAt,
+          ownerUserId: userId,
         }
       : {
           draftId: r.id,
@@ -148,6 +164,7 @@ export async function pullSiteFromAccount(userId: string): Promise<PullResult> {
           slug: null,
           deployedUrl: r.deployed_url ?? null,
           transactionId: null,
+          ownerUserId: userId,
         };
     await siteStore.saveSite(next);
     emitSiteAdopted(next);
@@ -156,6 +173,92 @@ export async function pullSiteFromAccount(userId: string): Promise<PullResult> {
     console.warn('[account] loading the site from the account failed:', e);
     return null;
   }
+}
+
+export type SwitchResult = 'same' | 'replaced' | 'cleared';
+
+/**
+ * Sign-in to `userId` on a phone whose site belongs to a different account.
+ *
+ * - 'same': no site, a site built signed out (legacy, no owner), or this account's own: nothing changed.
+ * - 'replaced': this account's newest app-made `sites` row (else its newest web-made row, if it is plain
+ *   site data) becomes the local site, wholesale (new draft id, no slug or transaction).
+ * - 'cleared': the account has no site; the other account's site and pending publish are removed from the
+ *   phone. Their `sites` row on the server is never touched, and nothing is written for this account.
+ *
+ * Throws when the lookup fails, with the phone unchanged (the caller signs out again).
+ */
+export async function switchAccountSite(userId: string): Promise<SwitchResult> {
+  const local = await siteStore.loadSite();
+  if (!local || !local.ownerUserId || local.ownerUserId === userId) return 'same';
+
+  const newest = (appMade: boolean) => {
+    let q = supabase.from('sites').select(ROW_COLUMNS).eq('user_id', userId);
+    if (appMade) q = q.eq('site_data->>source', IOS_SOURCE);
+    return q.order('updated_at', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
+  };
+  let res = await newest(true);
+  if (res.error) throw res.error;
+  // No app-made site: any plain site this account has (made on aibarber.org).
+  if (!res.data) {
+    res = await newest(false);
+    if (res.error) throw res.error;
+  }
+  const r = res.data as SiteRow | null;
+  const found = r && isSiteData(r.site_data) && isPlainSiteData(r.site_data) ? r : null;
+
+  await clearOverlayFlags(local.draftId).catch(() => {});
+  await siteStore.savePendingPublish(null);
+  clearCustomersCache();
+  if (!found) {
+    await siteStore.clearSite();
+    return 'cleared';
+  }
+  const data = siteDataFrom(found.site_data as WebsiteData & { source?: unknown });
+  const rowAt = Date.parse(found.updated_at ?? '');
+  const now = Date.now();
+  const next: SiteRecord = {
+    draftId: found.id,
+    inputs: inputsFrom(data),
+    data,
+    updatedAt: Number.isNaN(rowAt) ? now : rowAt,
+    slug: null,
+    deployedUrl: found.deployed_url ?? null,
+    transactionId: null,
+    syncedAt: now,
+    ownerUserId: userId,
+  };
+  await siteStore.saveSite(next);
+  emitSiteAdopted(next);
+  return 'replaced';
+}
+
+/**
+ * Before signing out: pushes the local site to the signed-in account and says whether it is then safe to
+ * remove it from the phone (it is in the account, nothing unpublished is pending, and it is this account's).
+ * Never throws.
+ */
+export async function pushSiteBeforeSignOut(): Promise<boolean> {
+  try {
+    const { data } = await supabase.auth.getSession();
+    const userId = data.session?.user?.id;
+    const local = await siteStore.loadSite();
+    if (!local) return false;
+    if (!userId || (local.ownerUserId && local.ownerUserId !== userId)) return false;
+    if (await siteStore.loadPendingPublish()) return false;
+    await syncSiteToSupabase(local, userId);
+    return true;
+  } catch (e) {
+    console.warn('[account] final sync before sign out failed:', e);
+    return false;
+  }
+}
+
+/** Removes the local site after a sign-out that pushed it first (see pushSiteBeforeSignOut). */
+export async function clearSiteAfterSignOut(): Promise<void> {
+  const local = await siteStore.loadSite();
+  if (local) await clearOverlayFlags(local.draftId).catch(() => {});
+  await siteStore.clearSite();
 }
 
 let launchPull: Promise<PullResult> | null = null;
@@ -268,6 +371,13 @@ export async function restore(deps: RestoreDeps): Promise<Restored | null> {
         };
   // A pending publish is left alone: it is paid content for this same
   // subscription, and the launch retry still sends it to the bound site.
+  // A restored site belongs to the account signed in now, if any.
+  try {
+    const uid = (await supabase.auth.getSession()).data.session?.user?.id;
+    if (uid) record.ownerUserId = uid;
+  } catch {
+    /* signed out, or the session can't be read: left unowned */
+  }
   await deps.store.saveSite(record);
   // A restored site is paid and published: no more reminders (start, Settings
   // and sign-in all restore through here). Never affects the restore.

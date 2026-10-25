@@ -10,6 +10,11 @@ export interface SiteRecord {
   slug: string | null;
   deployedUrl: string | null;
   transactionId: string | null;
+  /**
+   * The signed-in account this record belongs to (set when it is synced to, adopted from or restored for
+   * one). Absent: built signed out. Never sent anywhere, never tracked.
+   */
+  ownerUserId?: string;
   /** The server's site version at the last publish / sync. Absent: an older server or record (no version info). */
   serverVersion?: number;
   editedBy?: 'owner' | 'admin';

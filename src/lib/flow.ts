@@ -28,6 +28,8 @@ export async function startDraft(result: ShopSite): Promise<SiteRecord> {
     slug: prev?.slug ?? null,
     deployedUrl: prev?.deployedUrl ?? null,
     transactionId: prev?.transactionId ?? null,
+    // Whose account the record is tied to survives a regenerate (see SiteRecord.ownerUserId).
+    ...(prev?.ownerUserId ? { ownerUserId: prev.ownerUserId } : {}),
   };
   // New content: the editor's prompts and launch guide show again for it.
   // Best effort — a failed clear must never lose the generated draft.

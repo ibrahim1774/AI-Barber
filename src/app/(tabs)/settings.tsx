@@ -111,6 +111,10 @@ export default function Settings() {
     setBusy('signout');
     try {
       await signOut();
+      // Sign-out takes this account's site off the phone: with none left, back to the start.
+      const left = await loadSite().catch(() => null);
+      setSite(left);
+      if (!left) resetTo('/start');
     } catch {
       Alert.alert('Sign out', 'We couldn’t sign you out. Try again.');
     } finally {
@@ -192,7 +196,10 @@ export default function Settings() {
           </>
         ) : (
           <>
-            <Row label="Sign in" onPress={() => router.push('/sign-in')} chevron />
+            <View style={styles.signInBox}>
+              <Button variant="solid" title="Sign in" onPress={() => router.push('/sign-in')} />
+              <Text style={styles.signInNote}>Use the email and password of your Prime Barber account.</Text>
+            </View>
             <Row label="Create account" onPress={() => router.push('/sign-up')} chevron />
           </>
         )}
@@ -436,6 +443,8 @@ const styles = StyleSheet.create({
   domainCard: { marginBottom: 28, marginTop: -12, backgroundColor: colors.sheet, borderRadius: 14, borderWidth: 1, borderColor: colors.hair, paddingTop: 12 },
   domainTop: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16 },
   domainText: { flex: 1 },
+  signInBox: { padding: 16, gap: 10 },
+  signInNote: { fontFamily: fonts.body, fontSize: 12, lineHeight: 17, color: colors.muted, textAlign: 'center' },
   domainButton: { paddingHorizontal: 14, minHeight: 40 },
   domainNote: { fontFamily: fonts.body, fontSize: 12, lineHeight: 17, color: colors.faint, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12 },
   dot: { width: 8, height: 8, borderRadius: 4 },
