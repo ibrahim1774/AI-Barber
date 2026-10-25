@@ -15,7 +15,7 @@ import { signOut, useSession } from '@/lib/auth';
 import { tierFromEntitlements, useEntitlements } from '@/lib/entitlements';
 import { goBackOrHome, resetTo } from '@/lib/nav';
 import { usePaywall } from '@/lib/paywall';
-import { DOMAIN_EXAMPLES_LABEL, DOMAIN_EXAMPLES_LINE, DOMAIN_PRICE_LINE } from '@/lib/domains/model';
+import { DOMAIN_EXAMPLES_LABEL, DOMAIN_EXAMPLES_LINE, DOMAIN_ROW_EXAMPLE, DOMAIN_ROW_TITLE } from '@/lib/domains/model';
 import { useDomainOffer } from '@/lib/domains/useDomainOffer';
 import { planLabel } from '@/lib/plan';
 import { requestPublish } from '@/lib/publishRequest';
@@ -337,7 +337,7 @@ function deleteError(e: unknown): string {
 }
 
 /**
- * Settings → right under "Your website": a compact custom-domain card. The offer ("Get your own .com — $39/year")
+ * Settings → right under "Your website": a compact custom-domain card. The offer ("Custom Domain", Example: jacksbarbershop.com)
  * with a button into the domain screen, or, once the site has a domain, that domain and its status.
  */
 function DomainCard() {
@@ -357,8 +357,15 @@ function DomainCard() {
     <View style={styles.domainCard}>
       <View style={styles.domainTop}>
         <View style={styles.domainText}>
-          <Text style={styles.rowLabel}>Custom domain</Text>
-          <Text style={styles.rowDetail} numberOfLines={2}>{known ? detail : DOMAIN_PRICE_LINE}</Text>
+          <Text style={styles.rowLabel}>{DOMAIN_ROW_TITLE}</Text>
+          {known && hasDomain ? (
+            <Text style={styles.rowDetail} numberOfLines={2}>{detail}</Text>
+          ) : (
+            <Text style={styles.rowDetail} numberOfLines={2}>
+              <Text style={{ color: colors.grey }}>Example: </Text>
+              <Text style={{ color: colors.accent, fontFamily: fonts.bodySemi }}>{DOMAIN_ROW_EXAMPLE}</Text>
+            </Text>
+          )}
         </View>
         <Button variant="ghost" title={hasDomain ? 'Manage' : 'Get yours'} onPress={open} style={styles.domainButton} />
       </View>

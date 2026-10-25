@@ -8,6 +8,10 @@ export const DOMAIN_PRODUCT_ID = 'com.ibrahim1774.aibarber.domain.yearly';
 export const DOMAIN_ENTITLEMENT = 'domain';
 export const DOMAIN_PLACEMENT = 'custom_domain';
 
+/** Settings row (no domain yet): the label and the example shown in amber after "Example: ". */
+export const DOMAIN_ROW_TITLE = 'Custom Domain';
+export const DOMAIN_ROW_EXAMPLE = 'jacksbarbershop.com';
+
 export const DOMAIN_PRICE_LINE = 'Get your own .com — $39/year';
 /** Shown only as muted fine print at the bottom of the domain screen, not in the main view. */
 export const DOMAIN_EXAMPLES_LABEL = 'Examples';
