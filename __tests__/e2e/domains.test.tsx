@@ -19,7 +19,7 @@ import { allText } from '../store/render';
 import { DOMAIN_PRODUCT, FakeServer, P, boot, draft, installFetch, kill, type World } from './harness';
 import { wipeDisk } from './mocks';
 import {
-  DOMAIN_DISCLOSURE, DOMAIN_EXAMPLES_LINE, DOMAIN_PRICE_LINE, claimOutcome, normalizeLabel, pickDomainTransactionId, rememberedClaim, retryLaterMessage,
+  DOMAIN_EXAMPLES_LINE, DOMAIN_PRICE_LINE, claimOutcome, normalizeLabel, pickDomainTransactionId, rememberedClaim, retryLaterMessage,
   settingsDetail, statusView,
 } from '@/lib/domains/model';
 import { CLAIM_TIMEOUT_MS } from '@/lib/domains/api';
@@ -93,8 +93,7 @@ describe('other helpers', () => {
     expect(pickDomainTransactionId([sub('1', P.storeMonthly), sub('2', DOMAIN_PRODUCT, false)])).toBeNull();
   });
 
-  it('the disclosure, word for word; and no monthly figure for the $39 yearly price anywhere in the domain code', () => {
-    expect(DOMAIN_DISCLOSURE).toBe("Registered by Prime Barber for your site. If you ever leave, contact support@davoxa.com and we'll transfer it to you.");
+  it('no ownership fine print; and no monthly figure for the $39 yearly price anywhere in the domain code', () => {
     const root = path.join(__dirname, '../..');
     for (const f of ['src/lib/domains/model.ts', 'src/app/domain.tsx', 'src/app/(tabs)/settings.tsx']) {
       expect(fs.readFileSync(path.join(root, f), 'utf8')).not.toMatch(/\/mo\b|per month|a month|3\.25|3\.24/i);
@@ -194,7 +193,7 @@ describe('the custom domain screen', () => {
     const tree = await openScreen();
     let t = texts(tree);
     expect(t).toContain(DOMAIN_PRICE_LINE);
-    expect(t).toContain(DOMAIN_DISCLOSURE);
+    expect(t).not.toContain("Registered by Prime Barber");
     expect(t).toContain('fadelab.com');
     expect(rowFor(tree, 'fadelab.com').props.accessibilityLabel).toBe('fadelab.com, Available');
     expect(rowFor(tree, 'fadelabbarber.com').props.accessibilityLabel).toBe('fadelabbarber.com, Taken');

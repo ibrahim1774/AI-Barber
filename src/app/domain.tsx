@@ -6,7 +6,7 @@ import { Page } from '@/components/Page';
 import { goBackOrHome } from '@/lib/nav';
 import { searchDomains } from '@/lib/domains/api';
 import {
-  DOMAIN_DISCLOSURE, DOMAIN_EXAMPLES_LABEL, DOMAIN_EXAMPLES_LINE, DOMAIN_PRICE_LINE, DOMAIN_SUPPORT_LINE, buyable, retryLaterMessage, statusView, type SearchResult,
+  DOMAIN_EXAMPLES_LABEL, DOMAIN_EXAMPLES_LINE, DOMAIN_PRICE_LINE, DOMAIN_SUPPORT_LINE, buyable, retryLaterMessage, statusView, type SearchResult,
 } from '@/lib/domains/model';
 import { useDomainFlow, type BuyResult } from '@/lib/domains/useDomainFlow';
 import { loadSite } from '@/lib/siteStore';
@@ -153,7 +153,6 @@ export default function Domain() {
           {(view.needsSupport || support) && <Text style={[st.p, st.gap]}>{DOMAIN_SUPPORT_LINE}</Text>}
           {!!message && <Text style={[st.error, st.gap]}>{message}</Text>}
         </View>
-        <Text style={st.disclosure}>{DOMAIN_DISCLOSURE}</Text>
       </Page>
     );
   }
@@ -212,7 +211,6 @@ export default function Domain() {
       )}
       {support && <Text style={[st.p, st.gap]}>{DOMAIN_SUPPORT_LINE}</Text>}
       {!!message && <Text style={[st.error, st.gap]}>{message}</Text>}
-      <Text style={st.disclosure}>{DOMAIN_DISCLOSURE}</Text>
     </Page>
   );
 }
