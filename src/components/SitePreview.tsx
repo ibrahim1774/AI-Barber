@@ -20,6 +20,8 @@ export interface SitePreviewProps {
   pillTourRef?: RefObject<View | null>;
   /** Paths of photos on this page that are still samples (they get a "replace with yours" prompt). */
   samplePaths?: string[];
+  /** True while a sheet covers the preview: the page's chips are hidden (a class toggle in the page). */
+  chipsHidden?: boolean;
 }
 
 /**
@@ -33,7 +35,7 @@ function sameRects(a: ImageRect[], b: ImageRect[]): boolean {
   return a.length === b.length && a.every((r, i) => r.path === b[i].path && r.x === b[i].x && r.y === b[i].y && r.w === b[i].w && r.h === b[i].h);
 }
 
-export default function SitePreview({ data, editable, shopProducts, page, onEditText, onEditImage, pillTourRef, samplePaths }: SitePreviewProps) {
+export default function SitePreview({ data, editable, shopProducts, page, onEditText, onEditImage, pillTourRef, samplePaths, chipsHidden }: SitePreviewProps) {
   const webRef = useRef<WebView>(null);
   const scrollY = useRef(0);
   // Where the page's "Change image" chips are on screen: only the Edit tour reads this.
@@ -66,6 +68,13 @@ export default function SitePreview({ data, editable, shopProducts, page, onEdit
   }, []);
   useEffect(() => { sendSamples(); }, [sampleKey, sendSamples]);
 
+  const hiddenRef = useRef(!!chipsHidden);
+  hiddenRef.current = !!chipsHidden;
+  const sendHidden = useCallback(() => {
+    webRef.current?.injectJavaScript(`window.__aibSetChipsHidden && window.__aibSetChipsHidden(${hiddenRef.current ? 'true' : 'false'}); true;`);
+  }, []);
+  useEffect(() => { sendHidden(); }, [chipsHidden, sendHidden]);
+
   const onMessage = useCallback(
     (e: WebViewMessageEvent) => {
       const m = parsePreviewMessage(e.nativeEvent.data, data, page, editPaths);
@@ -87,10 +96,11 @@ export default function SitePreview({ data, editable, shopProducts, page, onEdit
         case 'ready':
           webRef.current?.injectJavaScript(`window.__aibRestore && window.__aibRestore(${Math.round(scrollY.current)}); true;`);
           sendSamples();
+          sendHidden();
           return;
       }
     },
-    [editable, editPaths, data, page, onEditText, onEditImage, sendSamples],
+    [editable, editPaths, data, page, onEditText, onEditImage, sendSamples, sendHidden],
   );
 
   const onShouldStartLoadWithRequest = useCallback((req: ShouldStartLoadRequest) => shouldAllowPreviewRequest(req), []);

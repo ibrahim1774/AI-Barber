@@ -159,4 +159,10 @@ describe('bridge and tour', () => {
   test('the Edit tour keeps its photo step on edit.changeImage', () => {
     expect(TOURS.edit.steps.map((s) => s.target)).toEqual(['edit.publish', 'edit.sections', 'edit.pages', 'edit.text', 'edit.changeImage']);
   });
+
+  test('the script can hide every chip with one class', () => {
+    const js = EDITOR_JS as string;
+    expect(js).toContain('__aibSetChipsHidden');
+    expect(js).toContain('.aib-chips-off .aib-chip-host{display:none!important;}');
+  });
 });

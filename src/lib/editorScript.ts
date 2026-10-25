@@ -114,6 +114,7 @@ export const EDITOR_JS = String.raw`(function () {
     '.aib-chip-note{all:initial;display:block;box-sizing:border-box;max-width:100%;margin:0 0 4px 0;padding:2px 6px;border-radius:4px;background:rgba(0,0,0,0.55);color:#fff;font:600 11px/1.2 -apple-system,system-ui,sans-serif;pointer-events:none;-webkit-user-select:none;user-select:none;}' +
     '.aib-chip{all:initial;position:relative;display:inline-flex;align-items:center;box-sizing:border-box;padding:2px 6px;border-radius:4px;background:rgba(0,0,0,0.55);color:#fff;font:600 11px/1.2 -apple-system,system-ui,sans-serif;white-space:nowrap;cursor:pointer;pointer-events:auto;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;}' +
     '.aib-chip::before{content:"";position:absolute;top:-16px;right:-20px;bottom:-16px;left:-14px;}' +
+    '.aib-chips-off .aib-chip-host{display:none!important;}' +
     '.aib-chip svg{display:block!important;flex:none;width:11px!important;height:11px!important;margin:0 4px 0 0!important;}';
   try {
     var chipStyle = document.createElement('style');
@@ -211,6 +212,10 @@ export const EDITOR_JS = String.raw`(function () {
     var run = function () { syncFrame = 0; syncChips(); scheduleRects(); };
     syncFrame = window.requestAnimationFrame ? window.requestAnimationFrame(run) : setTimeout(run, 16);
   }
+  // A sheet covers the preview: hide the chips (a class on <html>, no layout work).
+  window.__aibSetChipsHidden = function (hidden) {
+    try { document.documentElement.classList[hidden ? 'add' : 'remove']('aib-chips-off'); } catch (e) {}
+  };
   window.__aibSetSamples = function (paths, note) {
     samples = paths && paths.length ? paths : [];
     sampleNote = typeof note === 'string' ? note : '';

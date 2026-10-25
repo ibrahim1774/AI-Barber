@@ -554,7 +554,7 @@ export default function Editor() {
       <View style={styles.body}>
         {/* The site's own background, so nothing else shows around the page. */}
         <View style={[styles.preview, { backgroundColor: previewBackground(data) }]}>
-          <SitePreview data={shown} editable page={page} shopProducts={shopProducts} onEditText={onPreviewText} onEditImage={onPreviewImage} pillTourRef={changeImageRef} samplePaths={sampleHeroPaths(shown, page)} />
+          <SitePreview data={shown} editable page={page} shopProducts={shopProducts} onEditText={onPreviewText} onEditImage={onPreviewImage} pillTourRef={changeImageRef} samplePaths={sampleHeroPaths(shown, page)} chipsHidden={sheet != null} />
           {/* The two floating controls, Design above Colour, hidden while the prompts / guide are up.
               Design is offered on a published site too: it only edits the draft (like Colour), and the
               change goes live on the next Publish. */}
