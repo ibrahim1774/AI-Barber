@@ -8,6 +8,7 @@ import { ServiceChecklist } from '@/components/ServiceChecklist';
 import { FlowError, FlowHelper, FlowInput, FlowTitle, PillButton } from '@/components/FlowParts';
 import { manualSite } from '@/lib/importer';
 import { MANUAL_FIELD_ORDER, manualInputs, validateManual, type ManualForm } from '@/lib/manualForm';
+import { scratchPicks } from '@/lib/scratchDefaults';
 import { servicesFromPicks, type ServicePicks } from '@/lib/serviceChecklist';
 import { startDraft } from '@/lib/flow';
 import { goBackOrHome } from '@/lib/nav';
@@ -17,7 +18,7 @@ import { goBackOrHome } from '@/lib/nav';
 export default function Manual() {
   const [form, setForm] = useState<ManualForm>({ shopName: '', address: '', phone: '', place: '' });
   const [colorTheme, setColorTheme] = useState(DEFAULT_SWATCH);
-  const [picks, setPicks] = useState<ServicePicks>({});
+  const [picks, setPicks] = useState<ServicePicks>(scratchPicks);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const refs = {

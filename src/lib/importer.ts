@@ -3,6 +3,7 @@ import { buildSiteFromScrape } from '@/web/lib/buildSiteFromScrape';
 import { extractFirstUrl, isSupportedBookingHost } from '@/web/lib/supportedBookingHost';
 import { generateContent } from '@/web/services/geminiService';
 import { BRAND_SWATCHES, DEFAULT_SWATCH } from '@/web/lib/brandSwatches';
+import { seedGallery } from '@/lib/scratchDefaults';
 import type { ListingMatch, ScrapePayload } from '@/lib/api';
 
 // Same rule as the web's themeForInputs(): only a known swatch is carried over.
@@ -65,14 +66,14 @@ export interface ManualInput {
   services?: { title: string; price?: string }[];
 }
 
-/** Writes what the scratch form collected onto the generated site: the street address and the "Barbershop in <place>" label. */
+/** Shapes the generated scratch site: the street address, the "Barbershop in <place>" label, and sample gallery photos (like an import, nothing invented about the shop). */
 export function shapeScratchSite(site: WebsiteData, input: ManualInput): WebsiteData {
   const place = (input.place ?? '').trim();
-  return {
+  return seedGallery({
     ...site,
     contact: { ...site.contact, address: input.address },
     ...(place ? { labels: { ...site.labels, pgPlace: place } } : {}),
-  };
+  });
 }
 
 /**

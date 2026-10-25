@@ -1,4 +1,11 @@
 import { checkBookingLink, toShopSite, manualSite } from '@/lib/importer';
+import { servicesFromPicks } from '@/lib/serviceChecklist';
+import { scratchPicks } from '@/lib/scratchDefaults';
+import { gallerySlots } from '@/lib/sections/gallery';
+import { stockPhotoPaths } from '@/lib/editor';
+import { importCounts } from '@/lib/importReview';
+import { eligiblePages } from '@/web/lib/render/pages';
+import { renderSite } from '@/lib/render';
 import { DEFAULT_SWATCH } from '@/web/lib/brandSwatches';
 
 const booksy = require('./fixtures/scrape-booksy.json');
@@ -71,5 +78,29 @@ describe('importer', () => {
     expect(r.inputs).toMatchObject({ shopName: 'Fade Lab', area: 'Austin, TX', phone: '(512) 555-0142' });
     const noPlace = await manualSite({ shopName: 'A', area: 'Austin, TX', address: 'Austin, TX', phone: '(512) 555-0142', colorTheme: DEFAULT_SWATCH });
     expect(noPlace.site.labels?.pgPlace).toBeUndefined();
+  });
+
+  const SCRATCH = { shopName: 'Fade Lab', area: 'Austin, TX', address: '512 Congress Ave, Austin, TX', phone: '(512) 555-0142', colorTheme: DEFAULT_SWATCH };
+
+  it('a scratch site mimics an import: sample gallery, ticked services, no reviews; unticking everything gives no services', async () => {
+    const r = await manualSite({ ...SCRATCH, services: servicesFromPicks(scratchPicks()) });
+    expect(r.site.services.map((s) => s.title)).toEqual(['Haircut', 'Beard trim', 'Haircut & beard']);
+    expect(gallerySlots(r.site).filter((i) => r.site.gallery[i]).length).toBe(6);
+    expect(stockPhotoPaths(r.site).length).toBeGreaterThanOrEqual(6);
+    expect(importCounts(r.site)).toMatchObject({ photos: 0, reviews: 0 });
+    expect(eligiblePages(r.site)).toEqual(expect.arrayContaining(['home', 'services']));
+    expect(eligiblePages(r.site)).not.toContain('reviews');
+    expect(eligiblePages(r.site)).not.toContain('gallery');
+    const none = await manualSite({ ...SCRATCH, services: undefined });
+    expect(none.site.services).toEqual([]);
+    expect(eligiblePages(none.site)).not.toContain('services');
+  });
+
+  it('the rendered scratch home page has a gallery and services and no reviews section', async () => {
+    const r = await manualSite({ ...SCRATCH, services: servicesFromPicks(scratchPicks()) });
+    const html = renderSite(r.site);
+    expect(html).toContain('{{gallery2}}');
+    expect(html).toContain('Haircut');
+    expect(html).not.toMatch(/Reviews from|Selected reviews/);
   });
 });

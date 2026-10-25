@@ -12,8 +12,6 @@ appId: com.ibrahim1774.aibarber
 - tapOn: "\\(512\\) 555-0142"
 - inputText: "5125550142"
 - takeScreenshot: 03_services_open
-- tapOn: "Haircut"
-- tapOn: "Beard trim"
 - tapOn: "Hot towel shave"
 - takeScreenshot: 04_services_ticked
 - scrollUntilVisible:

@@ -206,6 +206,8 @@ describe('start from scratch', () => {
       expect(t).toContain(s);
     }
     expect(t).not.toMatch(/AI ?Barber|Sign In/);
+    expect(t).toContain('3 ticked');
+    expect(t).toContain('Haircut & beard');
     expect(buttons(tree, 'Back')).toHaveLength(1);
     await press(tree, 'Back');
     expect(mockBack).toHaveBeenCalledTimes(1);

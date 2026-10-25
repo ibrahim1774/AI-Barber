@@ -83,11 +83,16 @@ describe('the typed path, end to end', () => {
     await act(async () => byLabel(tree, 'Mobile number').props.onChangeText('5125550142'));
   };
 
+  // The form starts with Haircut, Beard trim and Haircut & beard ticked.
+  const untick = async (tree: any, titles: string[]) => {
+    for (const t of titles) await act(async () => byLabel(tree, t).props.onPress());
+  };
+
   it('ticks two services with a price, generates, and the draft has exactly those', async () => {
     const tree = await render(<Manual />);
     await fillForm(tree);
+    await untick(tree, ['Beard trim', 'Haircut & beard']);
     await act(async () => byLabel(tree, 'Skin fade').props.onPress());
-    await act(async () => byLabel(tree, 'Haircut').props.onPress());
     await act(async () => byLabel(tree, 'Haircut price').props.onChangeText('30'));
     expect(allText(tree).join(' ')).toContain('2 ticked');
     const go = tree.root.findAll((n: any) => n.props?.accessibilityRole === 'button' && typeof n.props.onPress === 'function'
@@ -101,9 +106,10 @@ describe('the typed path, end to end', () => {
     expect(saved?.data.services.map((s) => [s.title, s.price || ''])).toEqual([['Haircut', '$30'], ['Skin fade', '']]);
   });
 
-  it('with nothing ticked: a site with no services', async () => {
+  it('with everything unticked: a site with no services', async () => {
     const tree = await render(<Manual />);
     await fillForm(tree);
+    await untick(tree, ['Haircut', 'Beard trim', 'Haircut & beard']);
     const go = tree.root.findAll((n: any) => n.props?.accessibilityRole === 'button' && typeof n.props.onPress === 'function'
       && allText({ root: n }).join('') === 'Build my website')[0];
     await act(async () => {
