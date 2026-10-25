@@ -229,6 +229,9 @@ export default function Bookings() {
       <View style={styles.header}>
         <Text style={styles.title} numberOfLines={1} accessibilityRole="header">{shop.name}</Text>
         <View style={styles.headerBtns}>
+          <Pressable onPress={() => router.push('/customers' as never)} hitSlop={10} accessibilityRole="button" accessibilityLabel="Customers">
+            <Text style={styles.customersBtn}>Customers</Text>
+          </Pressable>
           {customer.gate === 'live' && (
             <Pressable onPress={() => setSharing(true)} hitSlop={10} accessibilityRole="button" accessibilityLabel="Share booking link">
               <ShareIcon size={22} color={colors.text} />
@@ -410,6 +413,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16, paddingTop: 8, paddingBottom: 14,
   },
   title: { flex: 1, fontFamily: fonts.heading, fontSize: 24, color: colors.heading },
+  customersBtn: { fontFamily: fonts.bodySemi, fontSize: 14, color: colors.accent },
   headerBtns: { flexDirection: 'row', alignItems: 'center', gap: 18 },
   locked: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.accent, paddingHorizontal: 16, paddingBottom: 10 },
   chips: { marginTop: 12 },
