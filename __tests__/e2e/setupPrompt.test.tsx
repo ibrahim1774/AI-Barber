@@ -35,7 +35,7 @@ describe('setupPrompt: when it shows', () => {
     ['AI booking turned on, no Book button yet', { published: true, ents: ON, live: L(null), next: L(AI) }, { title: 'Add the Book button to your website?' }],
     ['old aibarber.org Book link live, /book next: the same button, no prompt', { published: true, ents: ON, live: L(OLD_AI), next: L(AI) }, null],
     ['old aibarber.org Shop link live, /shop next: the same button, no prompt', { published: true, ents: ON, live: L(OLD_AI, OLD_SHOP), next: L(AI, SHOP) }, null],
-    ['old Book link live, bookings off with an own link: back to own', { published: true, ents: ON, live: L(OLD_AI), next: L(OWN) }, { title: 'Point your Book button back to your own booking link?' }],
+    ['old Book link live, bookings off with an own link: back to own', { published: true, ents: ON, live: L(OLD_AI), next: L(OWN) }, { title: 'Point your Book button back to your own booking link?', message: 'Bookings are off, so your Book buttons use your booking link for now.' }],
     ['old Shop link live, shop closed', { published: true, ents: ON, live: L(OWN, OLD_SHOP), next: L(OWN) }, { title: 'Remove the Shop button from your website?' }],
     ['AI Book button already live', { published: true, ents: ON, live: L(AI), next: L(AI) }, null],
     ['own link chosen and live', { published: true, ents: ON, live: L(OWN), next: L(OWN) }, null],
@@ -44,9 +44,9 @@ describe('setupPrompt: when it shows', () => {
     ['both turned on', { published: true, ents: ON, live: L(OWN), next: L(AI, SHOP) }, { title: 'Add the Book and Shop buttons to your website?' }],
     ['store switched off, never live', { published: true, ents: ON, live: L(OWN), next: L(OWN) }, null],
     ['shop closed while live', { published: true, ents: ON, live: L(OWN, SHOP), next: L(OWN) }, { title: 'Remove the Shop button from your website?' }],
-    ['bookings off, no own link', { published: true, ents: ON, live: L(AI), next: L(null) }, { title: 'Remove the Book button from your website?' }],
-    ['bookings and shop both off', { published: true, ents: ON, live: L(AI, SHOP), next: L(null) }, { title: 'Remove the Book and Shop buttons from your website?' }],
-    ['bookings off with an own link', { published: true, ents: ON, live: L(AI), next: L(OWN) }, { title: 'Point your Book button back to your own booking link?' }],
+    ['bookings off, no own link', { published: true, ents: ON, live: L(AI), next: L(null) }, { title: 'Remove the Book button from your website?', message: 'Bookings are off, so your Book buttons are hidden for now.' }],
+    ['bookings and shop both off', { published: true, ents: ON, live: L(AI, SHOP), next: L(null) }, { title: 'Remove the Book and Shop buttons from your website?', message: 'Bookings are off, so your Book buttons are hidden for now.' }],
+    ['bookings off with an own link', { published: true, ents: ON, live: L(AI), next: L(OWN) }, { title: 'Point your Book button back to your own booking link?', message: 'Bookings are off, so your Book buttons use your booking link for now.' }],
     ['bookings on, shop closed', { published: true, ents: ON, live: L(OWN, SHOP), next: L(AI) }, { title: 'Add the Book button to your website?', message: 'Remove the Shop button from your website?' }],
   ];
   it.each(cases)('%s', (_n, input, want) => {

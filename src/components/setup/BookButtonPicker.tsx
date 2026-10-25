@@ -1,25 +1,27 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, fonts } from '@/constants/theme';
-import { Card, Note } from '@/components/setup/ui';
+import { Card, Note, Row } from '@/components/setup/ui';
 import { shortLink, type BookingChoice } from '@/lib/bookingChoice';
 
-export const AIBARBER_DETAIL = 'Built in: deposits, reminders, your calendar';
+export const AIBARBER_DETAIL = 'Your Prime Barber booking page with deposits and reminders.';
 export const DOUBLE_BOOKING_NOTE = "Turn off your old booking app so clients don't double-book.";
 export const NO_OWN_NOTE = 'Your Book button will use Prime Barber booking after you publish.';
 export const PUBLISH_NOTE = 'Publish your site to update your Book button.';
 
 /**
- * "Your Book button": keep the barber's own booking link or use AI Barber booking. A choice is shown
+ * "Your Book button": keep the barber's own booking link or use the built-in scheduler. A choice is shown
  * only when they have their own link; otherwise one line. Switching is one tap and reversible (the
  * own link is never lost).
  */
 export function BookButtonPicker({
-  own, choice, onChange,
+  own, choice, onChange, onEditLink,
 }: {
   own: string | null;
   choice: BookingChoice;
   onChange(c: BookingChoice): void;
+  /** Opens the same Book-button sheet the editor uses. */
+  onEditLink?(): void;
 }) {
   const [changed, setChanged] = useState(false);
   if (!own) {
@@ -36,8 +38,9 @@ export function BookButtonPicker({
   };
   return (
     <Card title="Your Book button">
-      <Option label="Keep my link" detail={shortLink(own)} selected={choice === 'own'} onPress={() => pick('own')} />
-      <Option label="Use Prime Barber booking" detail={AIBARBER_DETAIL} selected={choice === 'aibarber'} onPress={() => pick('aibarber')} />
+      <Option label="Booking link" detail={shortLink(own)} selected={choice === 'own'} onPress={() => pick('own')} />
+      <Option label="Built-in scheduler" detail={AIBARBER_DETAIL} selected={choice === 'aibarber'} onPress={() => pick('aibarber')} />
+      {onEditLink && <Row label="Edit link" detail="Button text and booking link" onPress={onEditLink} />}
       {choice === 'aibarber' && <Note tone="warn">{DOUBLE_BOOKING_NOTE}</Note>}
       {changed && <Note>{PUBLISH_NOTE}</Note>}
     </Card>

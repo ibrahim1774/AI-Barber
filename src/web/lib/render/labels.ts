@@ -126,6 +126,9 @@ export const LABELS = {
     template: 'luxe',
     max: 80,
   },
+  // The footer credit sits in every design's footer (single page and the shared multi-page footer). A blank value
+  // falls back to this default (t()), so it can be reworded but not removed.
+  footerCredit: { title: 'Footer credit', default: 'Built by Prime Barber', max: 60 },
 
   // ── Design 2 (prime) ──
   bookingNote: { title: 'Booking note', default: '', template: 'prime', max: LEGACY_MAX },
@@ -406,6 +409,8 @@ export function visiblePageLabelKeys(site: WebsiteData, page: PageKey, ctx?: Pag
   if (hasFilePages(set) && set.nav.length > 5) add('pgMore');
   if (hasFilePages(set) && page !== 'home') add('pgPages');
   if (template === 'luxe') add('footerLine');
+  // The shared footer's credit is printed by every design on every page.
+  add('footerCredit');
   // The header button of Prime and Euphoria sits on every page.
   if (template === 'prime' && primeBook(site)) add('primeNavBook');
   if (template === 'euphoria' && euNavBook(site)) add('euNavBook');

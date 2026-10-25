@@ -149,7 +149,7 @@ export function renderSiteBundle(rawData: WebsiteData, opts: RenderSiteOptions =
     ...set.files.filter((f) => f.key === 'services' && f.child).map((f) => ({ href: f.href, label: escapeAttr(printable(d.services?.[f.child!.index]?.title) || f.child!.title) })),
   ];
   const footer = footerHtml(template, {
-    name: shopShown, year: copyrightYear(), line: template === 'luxe' ? L('footerLine') : undefined,
+    name: shopShown, year: copyrightYear(), credit: L('footerCredit'), line: template === 'luxe' ? L('footerLine') : undefined,
     address: addressShown, phone, shownPhone: phone ? escapeAttr(displayPhone(phoneShown)) : '',
     pagesHeading: L('pgPages'), pages: footerPages,
   });

@@ -119,10 +119,14 @@ export function headerHtml(template: TemplateId, h: HeaderInput): string {
   return `<header class="ab-head"><div class="ab-head-in">${brand}${call}${cta}${h.nav}</div></header>`;
 }
 
+const DEFAULT_CREDIT = 'Built by Prime Barber';
+
 export interface FooterInput {
   /** Raw shop name. */
   name: string;
   year: number;
+  /** The footer credit label, already escaped. Absent = the default credit. */
+  credit?: string;
   /** Luxe: the footer line label, escaped. */
   line?: string;
   /** Raw address (multi-page footers). Escaped here. */
@@ -150,9 +154,9 @@ export function footerHtml(template: TemplateId, f: FooterInput): string {
     : '';
   const info = `${address}${phone}${pages}`;
   if (template === 'luxe') {
-    return `<footer class="ab-foot"><div class="ab-wrap"><div class="ab-foot-name">${name}</div>${f.line ? `<p class="ab-foot-line">${f.line}</p>` : ''}${info}<p class="ab-foot-copy">Copyright &copy; ${f.year} ${name}. Built by Prime Barber.</p></div></footer>`;
+    return `<footer class="ab-foot"><div class="ab-wrap"><div class="ab-foot-name">${name}</div>${f.line ? `<p class="ab-foot-line">${f.line}</p>` : ''}${info}<p class="ab-foot-copy">Copyright &copy; ${f.year} ${name}. ${f.credit ?? DEFAULT_CREDIT}.</p></div></footer>`;
   }
-  return `<footer class="ab-foot"><div class="ab-wrap"><div class="ab-foot-name">${name}</div>${info}<p class="ab-foot-copy">&copy; ${f.year} &middot; Built by Prime Barber</p></div></footer>`;
+  return `<footer class="ab-foot"><div class="ab-wrap"><div class="ab-foot-name">${name}</div>${info}<p class="ab-foot-copy">&copy; ${f.year} &middot; ${f.credit ?? DEFAULT_CREDIT}</p></div></footer>`;
 }
 
 // ── CSS ─────────────────────────────────────────────────────────────────────────────────────────

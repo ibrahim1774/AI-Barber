@@ -3,7 +3,15 @@ import { Alert, Text } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { Card, Note, Row, TextAction, ToggleRow } from '@/components/setup/ui';
 import { BookButtonPicker } from '@/components/setup/BookButtonPicker';
-import { bookingPrefs, withChoice, type BookingChoice } from '@/lib/bookingChoice';
+import { applyButtonChange } from '@/lib/buttonChange';
+import { ButtonSheet, type ButtonChange } from '@/components/ButtonSheet';
+import { track } from '@/lib/analytics';
+import { MAIN_BOOK_KEY } from '@/lib/ctaButtons';
+import { useLinkContext } from '@/lib/linkContext';
+import { defaultLabel, LABELS, type LabelKey } from '@/web/lib/render/labels';
+import { textValue } from '@/lib/editable';
+import { nicheOf } from '@/web/lib/render/honest';
+import { bookingPrefs, bookTargetStatus, withChoice, type BookingChoice } from '@/lib/bookingChoice';
 import { updateSiteRecord } from '@/lib/setup/siteSync';
 import { useUpdateSitePrompt } from '@/lib/setupPrompt';
 import { PublishForLink } from '@/components/PublishForLink';
@@ -32,6 +40,19 @@ export function SetupHub({
   useEffect(() => { listMembers(shop.id).then(setMembers).catch(() => {}); }, [shop.id]);
 
   const { own, choice } = bookingPrefs(site);
+  const [sheet, setSheet] = useState(false);
+  const linkCtx = useLinkContext(site.updatedAt);
+  const labelKey = MAIN_BOOK_KEY[site.data.template ?? 'luxe'] ?? 'bookButton';
+  const labelDef = (LABELS as Record<string, { title: string; max: number }>)[labelKey];
+
+  const saveButton = async (c: ButtonChange) => {
+    if (c.book) track('book_target_set', { target: c.book.choice === 'aibarber' ? 'scheduler' : 'link' });
+    const saved = await updateSiteRecord((r) => applyButtonChange(r, labelKey, c)).catch(() => null);
+    if (saved) {
+      onSiteChanged(saved);
+      void sitePrompt.offer().catch(() => {});
+    } else Alert.alert("Couldn't save", 'Try again.');
+  };
 
   const setEnabled = async (on: boolean) => {
     setBusy(true);
@@ -82,7 +103,19 @@ export function SetupHub({
           <PublishForLink kind="booking" source="setup_hub" align="left" />
         )}
       </Card>
-      <BookButtonPicker own={own} choice={choice} onChange={(c) => void setChoice(c)} />
+      <BookButtonPicker own={own} choice={choice} onChange={(c) => void setChoice(c)} onEditLink={() => setSheet(true)} />
+      <ButtonSheet
+        visible={sheet}
+        kind="book"
+        title={labelDef?.title ?? 'Book button'}
+        text={textValue(site.data, `labels.${labelKey}`)}
+        defaultText={labelDef ? defaultLabel(labelKey as LabelKey, nicheOf(site.data), site.data) : ''}
+        maxLength={labelDef?.max}
+        book={{ choice, own, status: bookTargetStatus(linkCtx, own), teamHasOwnLink: !!site.data.staff?.some((m) => !!m.bookingUrl?.trim()) }}
+        onSave={(c) => void saveButton(c)}
+        onClose={() => setSheet(false)}
+        onOpenSetup={() => setSheet(false)}
+      />
       <Card>
         <Row label="Services" detail="Prices, lengths, deposits" onPress={() => onOpen('services')} />
         <Row label="Barbers" detail={members.length > 1 ? `${members.length} people` : 'Just you'} onPress={() => onOpen('barbers')} />

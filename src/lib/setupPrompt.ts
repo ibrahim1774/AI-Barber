@@ -21,6 +21,8 @@ export type SitePrompt = { title: string; message?: string };
 
 export const UPDATE_SITE = 'Update my site';
 export const NOT_NOW = 'Not now';
+export const BOOKINGS_OFF_OWN = 'Bookings are off, so your Book buttons use your booking link for now.';
+export const BOOKINGS_OFF_HIDDEN = 'Bookings are off, so your Book buttons are hidden for now.';
 
 const sentence = (verb: 'Add' | 'Remove', which: string[]) => {
   const what = which.length > 1 ? `the ${which.join(' and ')} buttons` : `the ${which[0]} button`;
@@ -57,10 +59,12 @@ export function setupPrompt(input: {
   }
   if (next.shopUrl && live.shopUrl !== next.shopUrl) add.push('Shop');
   else if (live.shopUrl && !next.shopUrl) remove.push('Shop');
+  const reason = backToOwn ? BOOKINGS_OFF_OWN : remove.includes('Book') ? BOOKINGS_OFF_HIDDEN : null;
   const lines = [
     ...(add.length ? [sentence('Add', add)] : []),
     ...(remove.length ? [sentence('Remove', remove)] : []),
     ...(backToOwn ? ['Point your Book button back to your own booking link?'] : []),
+    ...(reason ? [reason] : []),
   ];
   if (!lines.length) return null;
   return lines.length === 1 ? { title: lines[0] } : { title: lines[0], message: lines.slice(1).join('\n') };

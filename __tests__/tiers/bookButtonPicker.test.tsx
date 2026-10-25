@@ -11,7 +11,7 @@ const radio = (tree: any, label: string) =>
 it('without an own link: one line, no choice', async () => {
   const tree = await render(<BookButtonPicker own={null} choice="aibarber" onChange={jest.fn()} />);
   expect(allText(tree)).toContain('Your Book button will use Prime Barber booking after you publish.');
-  expect(radio(tree, 'Keep my link')).toBeUndefined();
+  expect(radio(tree, 'Booking link')).toBeUndefined();
 });
 
 it('with an own link: two cards with the short link and detail', async () => {
@@ -30,11 +30,11 @@ it('choosing AI Barber calls back, warns about the old app and says to publish; 
   }
   const tree = await render(<Host />);
   const { act } = require('react-test-renderer');
-  await act(async () => radio(tree, 'Use Prime Barber booking').props.onPress());
+  await act(async () => radio(tree, 'Built-in scheduler').props.onPress());
   expect(onChange).toHaveBeenLastCalledWith('aibarber');
   expect(allText(tree)).toContain(DOUBLE_BOOKING_NOTE);
   expect(allText(tree)).toContain(PUBLISH_NOTE);
-  await act(async () => radio(tree, 'Keep my link').props.onPress());
+  await act(async () => radio(tree, 'Booking link').props.onPress());
   expect(onChange).toHaveBeenLastCalledWith('own');
   expect(allText(tree)).not.toContain(DOUBLE_BOOKING_NOTE);
 });
