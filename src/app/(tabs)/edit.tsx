@@ -9,7 +9,7 @@ import { onSiteAdopted } from '@/lib/siteEvents';
 import { track } from '@/lib/analytics';
 import { useEntitlements } from '@/lib/entitlements';
 import { hasEntitlement } from '@/lib/paywall';
-import { bookingPrefs, resolveLinks } from '@/lib/bookingChoice';
+import { bookingPrefs, bookTargetStatus, resolveLinks } from '@/lib/bookingChoice';
 import { syncOwnLink } from '@/lib/bookingChoice';
 import { useLinkContext } from '@/lib/linkContext';
 import { stripLapsedLinks } from '@/lib/tierLinks';
@@ -41,6 +41,12 @@ import { HeroPhotoSheet } from '@/components/HeroPhotoSheet';
 import { ColourButton } from '@/components/ColourButton';
 import { DesignSwitcher } from '@/components/DesignSwitcher';
 import { EditSheet } from '@/components/EditSheet';
+import { ButtonSheet, type ButtonChange } from '@/components/ButtonSheet';
+import { routeTap, type CtaKind } from '@/lib/ctaButtons';
+import { applyButtonChange } from '@/lib/buttonChange';
+import { useUpgrade } from '@/lib/tierAccess';
+import { LABELS, defaultLabel, type LabelKey } from '@/web/lib/render/labels';
+import { nicheOf } from '@/web/lib/render/honest';
 import { AllFieldsSheet, PhotosSheet } from '@/components/AllFieldsSheet';
 import { SectionsSheet } from '@/components/sections/SectionsSheet';
 import { ServicesSheet } from '@/components/sections/ServicesSheet';
@@ -63,7 +69,7 @@ import { useSession } from '@/lib/auth';
 import { PublishBar } from '@/components/PublishBar';
 import { LapsedCard } from '@/components/LapsedCard';
 
-type SheetKind = 'fields' | 'photos' | 'colour' | 'edit' | 'sections' | 'pages' | 'pageSections' | 'hero' | SectionKey;
+type SheetKind = 'fields' | 'photos' | 'colour' | 'edit' | 'button' | 'sections' | 'pages' | 'pageSections' | 'hero' | SectionKey;
 
 /**
  * The Edit tab: the site preview with tap-to-edit, the design switcher, and
@@ -132,6 +138,9 @@ export default function Editor() {
   // Kept after the edit sheet closes so its label/value don't blank mid-slide.
   const [edit, setEdit] = useState<{ path: string; fromList: boolean; fromPage?: boolean }>({ path: 'shopName', fromList: false });
   // The page hero photo being changed (services.<i>.imageUrl, extraPages.images.<key>).
+  // The call-to-action button being edited (kept after the sheet closes so its content doesn't blank mid-slide).
+  const [button, setButton] = useState<{ kind: CtaKind; labelKey: string }>({ kind: 'inSite', labelKey: 'bookButton' });
+  const upgrade = useUpgrade('bookings_upgrade');
   const [heroPath, setHeroPath] = useState('');
   const [uploading, setUploading] = useState(false);
   const uploadingRef = useRef(false);
@@ -407,9 +416,25 @@ export default function Editor() {
     setEdit({ path, fromList, fromPage });
     setSheet('edit');
   }, []);
-  const onPreviewText = useCallback((path: string) => {
-    if (!overlayRef.current) openEdit(path);
+  // A tap on a call-to-action button (or the All-fields booking link row) opens the button sheet: its text AND its
+  // link. Everything else is the plain text box.
+  const openTap = useCallback((path: string, fromList = false) => {
+    const route = routeTap(path, shownRef.current ?? {});
+    if (route.sheet === 'button') {
+      track('button_sheet_opened', { kind: route.kind });
+      setButton({ kind: route.kind, labelKey: route.labelKey });
+      setSheet('button');
+      return;
+    }
+    openEdit(path, fromList);
   }, [openEdit]);
+  const onPreviewText = useCallback((path: string) => {
+    if (!overlayRef.current) openTap(path);
+  }, [openTap]);
+  const saveButton = useCallback((labelKey: string, change: ButtonChange) => {
+    if (change.book) track('book_target_set', { target: change.book.choice === 'aibarber' ? 'scheduler' : 'link' });
+    commitRecord((r) => applyButtonChange(r, labelKey, change));
+  }, [commitRecord]);
   // A tap on a menu entry in the preview: show that page (never a real navigation). Book and Shop open their editor.
   const onPreviewNav = useCallback((href: string) => {
     if (overlayRef.current) return;
@@ -566,6 +591,9 @@ export default function Editor() {
     ? serviceRows(shown).find((r) => r.index === page.index)?.title ?? PAGE_TITLES.services
     : PAGE_TITLES[page.key];
   const editedCopyKey = copyKeyOfPath(edit.path);
+  const buttonPath = `labels.${button.labelKey}`;
+  const buttonDef = (LABELS as Record<string, { title: string; max: number }>)[button.labelKey];
+  const prefs = bookingPrefs({ data, inputs: site.inputs });
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -607,7 +635,7 @@ export default function Editor() {
         <AllFieldsSheet
           visible={sheet === 'fields'}
           data={data}
-          onPick={(path) => closeThen(() => openEdit(path, true))}
+          onPick={(path) => closeThen(() => openTap(path, true))}
           onClose={() => setSheet(null)}
           onDismiss={onSheetDismiss}
         />
@@ -721,6 +749,22 @@ export default function Editor() {
           onChange={commit}
           onClose={() => closeThen(() => setSheet('sections'))}
           onDismiss={onSheetDismiss}
+        />
+        <ButtonSheet
+          visible={sheet === 'button'}
+          kind={button.kind}
+          title={buttonDef?.title ?? 'Button'}
+          text={textValue(data, buttonPath)}
+          defaultText={buttonDef ? defaultLabel(button.labelKey as LabelKey, nicheOf(data), data) : ''}
+          maxLength={buttonDef?.max}
+          book={{ choice: prefs.choice, own: prefs.own, status: bookTargetStatus(linkCtx, prefs.own), teamHasOwnLink: !!data.staff?.some((m) => !!m.bookingUrl?.trim()) }}
+          phone={data.phone}
+          address={data.contact?.address}
+          onSave={(c) => saveButton(button.labelKey, c)}
+          onClose={() => setSheet(null)}
+          onDismiss={onSheetDismiss}
+          onOpenSetup={() => closeThen(() => router.push('/bookings-setup'))}
+          onSeePlans={() => closeThen(() => void upgrade.run())}
         />
         <EditSheet
           visible={sheet === 'edit'}

@@ -75,3 +75,19 @@ describe.each(['luxe', 'prime', 'euphoria'] as const)('completeness: %s', (templ
     if (multi) expect(seen.has('directions')).toBe(true);
   });
 });
+
+import { routeTap } from '@/lib/ctaButtons';
+describe('routeTap', () => {
+  it('buttons go to the button sheet, other text to the text box', () => {
+    expect(routeTap('labels.euNavBook', { template: 'euphoria' })).toEqual({ sheet: 'button', kind: 'book', labelKey: 'euNavBook' });
+    expect(routeTap('labels.callNow', {})).toMatchObject({ sheet: 'button', kind: 'call' });
+    expect(routeTap('hero.heading', {})).toEqual({ sheet: 'edit' });
+    expect(routeTap('phone', {})).toEqual({ sheet: 'edit' });
+  });
+  it("All fields' bookingUrl opens Book mode on the design's main Book button", () => {
+    expect(routeTap('bookingUrl', { template: 'luxe' })).toEqual({ sheet: 'button', kind: 'book', labelKey: 'bookButton' });
+    expect(routeTap('bookingUrl', { template: 'prime' })).toMatchObject({ labelKey: 'primeBookButton' });
+    expect(routeTap('bookingUrl', { template: 'euphoria' })).toMatchObject({ labelKey: 'euBookButton' });
+    for (const k of Object.values({ a: 'bookButton', b: 'primeBookButton', c: 'euBookButton' })) expect(ctaKindOf(`labels.${k}`)?.kind).toBe('book');
+  });
+});

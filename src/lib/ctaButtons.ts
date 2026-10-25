@@ -27,3 +27,18 @@ export function ctaKindOf(path: string): { kind: CtaKind; labelKey: string } | n
   if (!Object.prototype.hasOwnProperty.call(CTA_KINDS, labelKey)) return null;
   return { kind: CTA_KINDS[labelKey], labelKey };
 }
+
+/** The design's main Book button label: where the All-fields "Booking link" row lands. */
+export const MAIN_BOOK_KEY: Readonly<Record<string, string>> = { luxe: 'bookButton', prime: 'primeBookButton', euphoria: 'euBookButton' };
+
+export type TapRoute = { sheet: 'button'; kind: CtaKind; labelKey: string } | { sheet: 'edit' };
+
+/**
+ * Where a tap (or a row of "All fields") goes: a registered button opens the button sheet (text and link),
+ * the raw booking link row opens it in Book mode, everything else is the plain text box.
+ */
+export function routeTap(path: string, data: { template?: string }): TapRoute {
+  if (path === 'bookingUrl') return { sheet: 'button', kind: 'book', labelKey: MAIN_BOOK_KEY[data.template ?? 'luxe'] ?? 'bookButton' };
+  const c = ctaKindOf(path);
+  return c ? { sheet: 'button', kind: c.kind, labelKey: c.labelKey } : { sheet: 'edit' };
+}
