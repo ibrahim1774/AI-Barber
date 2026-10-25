@@ -68,17 +68,20 @@ export async function syncIfSignedIn(site?: SiteRecord | null): Promise<void> {
     const record = site ?? (await siteStore.loadSite());
     if (!record) return;
     await syncSiteToSupabase(record, userId);
-    await stampOwner(record.draftId, userId);
+    await stampOwner(record.draftId, userId, record.updatedAt);
   } catch (e) {
     console.warn('[account] site sync failed:', e);
   }
 }
 
 /** Marks the local record (if it is still `draftId`) as belonging to `userId`. Best effort. */
-async function stampOwner(draftId: string, userId: string): Promise<void> {
+async function stampOwner(draftId: string, userId: string, syncedUpdatedAt: number): Promise<void> {
   try {
     const cur = await siteStore.loadSite();
-    if (cur && cur.draftId === draftId && cur.ownerUserId !== userId) await siteStore.saveSite({ ...cur, ownerUserId: userId });
+    // accountSyncedAt is the updatedAt that was pushed, not the current one: an edit made during the push stays unsaved.
+    if (cur && cur.draftId === draftId && (cur.ownerUserId !== userId || cur.accountSyncedAt !== syncedUpdatedAt)) {
+      await siteStore.saveSite({ ...cur, ownerUserId: userId, accountSyncedAt: syncedUpdatedAt });
+    }
   } catch (e) {
     console.warn('[account] could not mark the site owner:', e);
   }
@@ -154,6 +157,7 @@ export async function pullSiteFromAccount(userId: string): Promise<PullResult> {
           inputs: { ...cur.inputs, ...inputsFrom(data) },
           deployedUrl: r.deployed_url ?? cur.deployedUrl,
           updatedAt: rowAt,
+          accountSyncedAt: rowAt,
           ownerUserId: userId,
         }
       : {
@@ -161,6 +165,7 @@ export async function pullSiteFromAccount(userId: string): Promise<PullResult> {
           inputs: inputsFrom(data),
           data,
           updatedAt: Number.isNaN(rowAt) ? Date.now() : rowAt,
+          accountSyncedAt: Number.isNaN(rowAt) ? Date.now() : rowAt,
           slug: null,
           deployedUrl: r.deployed_url ?? null,
           transactionId: null,
@@ -188,9 +193,15 @@ export type SwitchResult = 'same' | 'replaced' | 'cleared';
  *
  * Throws when the lookup fails, with the phone unchanged (the caller signs out again).
  */
-export async function switchAccountSite(userId: string): Promise<SwitchResult> {
+export const UNSAVED_OTHER_ACCOUNT =
+  "This phone has unsaved changes from another account. Sign in to that account first so they're saved, or delete the data on this phone in Settings.";
+
+export async function switchAccountSite(userId: string, isCurrent: () => boolean = () => true): Promise<SwitchResult> {
   const local = await siteStore.loadSite();
   if (!local || !local.ownerUserId || local.ownerUserId === userId) return 'same';
+  // The other account's edits or paid publish exist nowhere else: never wipe them for someone else's sign-in.
+  const pending = await siteStore.loadPendingPublish();
+  if (pending || !((local.accountSyncedAt ?? -1) >= local.updatedAt)) throw new Error(UNSAVED_OTHER_ACCOUNT);
 
   const newest = (appMade: boolean) => {
     let q = supabase.from('sites').select(ROW_COLUMNS).eq('user_id', userId);
@@ -206,7 +217,10 @@ export async function switchAccountSite(userId: string): Promise<SwitchResult> {
   }
   const r = res.data as SiteRow | null;
   const found = r && isSiteData(r.site_data) && isPlainSiteData(r.site_data) ? r : null;
+  // A sign-in that timed out (or was replaced) is signed out again: it must not write anything.
+  if (!isCurrent()) throw new Error('sign-in cancelled');
 
+  await cancelAllReminders({ forGood: false }).catch(() => {});
   await clearOverlayFlags(local.draftId).catch(() => {});
   await siteStore.savePendingPublish(null);
   clearCustomersCache();
@@ -222,6 +236,7 @@ export async function switchAccountSite(userId: string): Promise<SwitchResult> {
     inputs: inputsFrom(data),
     data,
     updatedAt: Number.isNaN(rowAt) ? now : rowAt,
+    accountSyncedAt: Number.isNaN(rowAt) ? now : rowAt,
     slug: null,
     deployedUrl: found.deployed_url ?? null,
     transactionId: null,
@@ -245,8 +260,13 @@ export async function pushSiteBeforeSignOut(): Promise<boolean> {
     const local = await siteStore.loadSite();
     if (!local) return false;
     if (!userId || (local.ownerUserId && local.ownerUserId !== userId)) return false;
-    if (await siteStore.loadPendingPublish()) return false;
-    await syncSiteToSupabase(local, userId);
+    // Sync first, so the account has the latest edits even when a paid publish is still pending.
+    // A newer web edit is taken in before the push, never overwritten by this phone's older copy.
+    await pullSiteFromAccount(userId);
+    const fresh = (await siteStore.loadSite()) ?? local;
+    await syncSiteToSupabase(fresh, userId);
+    await stampOwner(fresh.draftId, userId, fresh.updatedAt);
+    if (await siteStore.loadPendingPublish()) return false; // the pending publish stays on the phone
     return true;
   } catch (e) {
     console.warn('[account] final sync before sign out failed:', e);
@@ -258,6 +278,7 @@ export async function pushSiteBeforeSignOut(): Promise<boolean> {
 export async function clearSiteAfterSignOut(): Promise<void> {
   const local = await siteStore.loadSite();
   if (local) await clearOverlayFlags(local.draftId).catch(() => {});
+  await cancelAllReminders({ forGood: false }).catch(() => {});
   await siteStore.clearSite();
 }
 

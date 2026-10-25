@@ -28,6 +28,7 @@ const siteA = (extra: Partial<SiteRecord> = {}): SiteRecord => ({
   deployedUrl: 'https://a-cuts.aibarber.org',
   transactionId: 'tx-A',
   ownerUserId: A.id,
+  accountSyncedAt: 1000,
   ...extra,
 });
 
@@ -100,15 +101,13 @@ describe('account switching', () => {
     expect(await store.loadSite()).toBeNull();
   });
 
-  test("B has no site: A's local site and pending publish are cleared, nothing is written, A's row is untouched", async () => {
+  test("B has no site: A's synced local site is cleared, nothing is written, A's row is untouched", async () => {
     await store.saveSite(siteA());
-    await store.savePendingPublish({ transactionId: 'tx-A', data: siteA().data, createdAt: 5 });
     sb.rows = [{ ...rowB(), id: A_DRAFT, user_id: A.id }];
     signInAs(B);
     await signIn(B.email, 'pw1234');
 
     expect(await store.loadSite()).toBeNull();
-    expect(await store.loadPendingPublish()).toBeNull();
     expect(sb.upserts).toHaveLength(0);
     expect(takeEmptyAccountNotice()).toEqual({ email: B.email });
     expect(takeEmptyAccountNotice()).toBeNull(); // read once

@@ -442,6 +442,7 @@ describe('pullSiteFromAccount', () => {
       },
       data: { ...BOUND.siteData, shopName: 'Fade Factory Web', area: 'Queens, NY' },
       updatedAt: Date.parse('2026-10-19T00:00:00.000Z'),
+      accountSyncedAt: Date.parse('2026-10-19T00:00:00.000Z'),
       slug: null,
       deployedUrl: 'https://fade-factory.aibarber.org',
       transactionId: null,
@@ -664,7 +665,7 @@ describe('auth', () => {
       return { data: { user: USER, session }, error: null };
     });
     await expect(signIn('barber@example.com', 'secret1')).resolves.toBeUndefined();
-    expect(await store.loadSite()).toEqual({ ...site, ownerUserId: USER.id }); // stamped by the sync
+    expect(await store.loadSite()).toEqual({ ...site, ownerUserId: USER.id, accountSyncedAt: site.updatedAt }); // stamped by the sync
     expect(sb.upserts).toHaveLength(1);
   });
 

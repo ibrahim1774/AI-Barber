@@ -15,6 +15,11 @@ export interface SiteRecord {
    * one). Absent: built signed out. Never sent anywhere, never tracked.
    */
   ownerUserId?: string;
+  /**
+   * `updatedAt` as of the last time this record matched the owner's `sites` row (pushed to it, or adopted
+   * from it). Absent or older than `updatedAt`: the phone holds edits the account does not have yet.
+   */
+  accountSyncedAt?: number;
   /** The server's site version at the last publish / sync. Absent: an older server or record (no version info). */
   serverVersion?: number;
   editedBy?: 'owner' | 'admin';

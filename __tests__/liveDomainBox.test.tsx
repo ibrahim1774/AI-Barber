@@ -25,8 +25,9 @@ jest.mock('@/lib/siteStore', () => ({
 }));
 jest.mock('@/lib/useLinkActions', () => ({ useLinkActions: () => ({ open: jest.fn(), copy: jest.fn(), copied: false }) }));
 let mockHasDomain = false;
+let mockKnown = true;
 jest.mock('@/lib/domains/useDomainOffer', () => ({
-  useDomainOffer: () => ({ known: true, hasDomain: mockHasDomain, detail: '' }),
+  useDomainOffer: () => ({ known: mockKnown, hasDomain: mockHasDomain, detail: '' }),
 }));
 jest.mock('react-native-svg', () => ({ __esModule: true, default: () => null, Defs: () => null, LinearGradient: () => null, Rect: () => null, Stop: () => null }));
 
@@ -36,6 +37,7 @@ beforeEach(() => {
   mockPush.mockClear();
   mockLeave.mockClear();
   mockHasDomain = false;
+  mockKnown = true;
 });
 
 const flat = (n: any): string => (n.children ?? []).map((c: any) => (typeof c === 'string' ? c : flat(c))).join('');
@@ -65,4 +67,10 @@ it('Done is still there and leaves the live screen', async () => {
   expect(hasButton(tree, 'Done')).toBe(true);
   await press(tree, 'Done');
   expect(mockLeave).toHaveBeenCalled();
+});
+
+it('has no box while the domain status is not known (never push a second $39 domain)', async () => {
+  mockKnown = false;
+  const tree = await render(<Live />);
+  expect(allText(tree)).not.toContain('Buy a custom domain, $39/year');
 });

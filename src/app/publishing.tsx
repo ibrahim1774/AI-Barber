@@ -10,7 +10,7 @@ import { usePublishDeps } from '@/lib/paywall';
 import { publishBusy, publishFlow, type PublishDeps } from '@/lib/publish';
 import { loadSite } from '@/lib/siteStore';
 
-type Phase = 'paywall' | 'publishing' | 'pending' | 'inactive' | 'error' | 'updated';
+type Phase = 'paywall' | 'publishing' | 'pending' | 'inactive' | 'error' | 'updated' | 'blocked';
 type Pending = { message: string };
 
 const FAILED_MESSAGE =
@@ -71,6 +71,9 @@ export default function Publishing() {
           void takeNotice(); // this screen is the notice
           setPending({ message: out.message });
           setPhase('updated');
+        } else if (out.kind === 'blocked') {
+          setPending({ message: out.message });
+          setPhase('blocked');
         } else {
           setPhase('inactive');
         }
@@ -130,6 +133,17 @@ export default function Publishing() {
           message={pending.message}
         >
           <Button title="Review my site" onPress={back} style={styles.wide} />
+        </Result>
+      )}
+
+      {phase === 'blocked' && (
+        <Result
+          icon={<AlertCircleIcon size={40} color={colors.danger} />}
+          tint="rgba(239,68,68,0.2)"
+          title={<>Not <Text style={{ color: colors.danger }}>published</Text></>}
+          message={pending.message}
+        >
+          <Button title="Back to Editor" onPress={back} style={styles.wide} />
         </Result>
       )}
 

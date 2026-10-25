@@ -14,6 +14,7 @@ import { loadLinkContext } from '@/lib/linkContext';
 import { refreshTeamBeforePublish } from '@/lib/team';
 import { PLAN_ENTITLEMENT, getEntitlements, setEntitlementsFromStatus } from '@/lib/entitlements';
 import { refreshPlan, refreshPlanQuietly, setSharedPlan } from '@/lib/plan';
+import { boundMatches } from '@/lib/website';
 import { findTransactionId, pickLatestTransactionId, type PublishDeps } from '@/lib/publish';
 import { pickDomainTransactionId } from '@/lib/domains/model';
 import { syncRevenueCatPurchases } from '@/lib/revenuecat';
@@ -358,6 +359,10 @@ export function usePublishDeps(): PublishDeps {
       latestTransactionId,
       iosPublish: api.iosPublish,
       syncFromServer: syncNow,
+      boundElsewhere: async (transactionId, site) => {
+        const bound = await api.iosSite(transactionId);
+        return !!bound.siteId && !boundMatches(site, bound);
+      },
       linkContext: loadLinkContext,
       refreshTeam: refreshTeamBeforePublish,
       store: siteStore,

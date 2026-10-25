@@ -3,7 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 import { identifyUser, resetUser, track, trackRegistration } from '@/lib/analytics';
 import { api } from '@/lib/api';
 import {
-  clearSiteAfterSignOut, pullSiteFromAccount, pushSiteBeforeSignOut, switchAccountSite, syncIfSignedIn,
+  UNSAVED_OTHER_ACCOUNT, clearSiteAfterSignOut, pullSiteFromAccount, pushSiteBeforeSignOut, switchAccountSite, syncIfSignedIn,
 } from '@/lib/account';
 import type { SwitchResult } from '@/lib/account';
 import { clearCustomersCache } from '@/lib/bookings/customersCache';
@@ -121,9 +121,9 @@ export async function signUp(
   if (phone && data.user?.id) api.syncAuthPhone(data.user.id).catch(() => {});
   trackRegistration('email');
   if (!data.session) return { signedIn: false };
-  userId = data.session.user.id;
-  identifyUser(userId);
-  await syncIfSignedIn();
+  // Same as a sign-in: a site left on the phone by another account is swapped out first, never shown to,
+  // or silently failed to save for, the new account.
+  await afterSession(data.session.user.id);
   return { signedIn: true };
 }
 
@@ -140,21 +140,25 @@ export async function signIn(email: string, password: string): Promise<void> {
  * push the local site to the account. Pull first, so an older local copy
  * never overwrites a newer web edit.
  */
+let switchGen = 0;
+
 async function afterSession(id: string | null | undefined): Promise<void> {
   userId = id ?? userId;
   if (id) {
+    const gen = ++switchGen;
     identifyUser(id);
     // A site on the phone that belongs to another account is swapped for this account's own first, and
     // nothing is synced until it is: account A's site must never be shown to, or written under, account B.
     let switched: SwitchResult;
     try {
-      switched = await withTimeout(switchAccountSite(id), LOOKUP_TIMEOUT_MS);
+      switched = await withTimeout(switchAccountSite(id, () => gen === switchGen), LOOKUP_TIMEOUT_MS);
     } catch (e) {
       console.warn('[auth] could not load the account site after sign-in:', e);
+      switchGen++; // the lookup may still be running: it must not write anything now
       await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
       userId = null;
       resetUser();
-      throw new Error(SWITCH_FAILED);
+      throw new Error(e instanceof Error && e.message === UNSAVED_OTHER_ACCOUNT ? UNSAVED_OTHER_ACCOUNT : SWITCH_FAILED);
     }
     if (switched === 'cleared') {
       const email = (await supabase.auth.getSession().catch(() => null))?.data.session?.user?.email ?? '';
@@ -184,6 +188,7 @@ export function takeEmptyAccountNotice(): { email: string } | null {
 }
 
 export async function signOut(): Promise<void> {
+  switchGen++; // an unfinished sign-in switch must not write after this
   // The site goes into the account first; it leaves the phone only if that worked, so the next person to
   // sign in here never sees it, and nothing unsaved is lost.
   const pushed = await withTimeout(pushSiteBeforeSignOut(), LOOKUP_TIMEOUT_MS).catch(() => false);
@@ -279,7 +284,11 @@ export function newPasswordProblem(password: string, confirm: string): string | 
 }
 
 /** Exchanges the emailed code for a recovery session (signs the user in). */
-export async function verifyResetCode(email: string, code: string): Promise<void> {
+export async function verifyResetCode(
+  email: string,
+  code: string,
+  { deferSwitch = false }: { deferSwitch?: boolean } = {},
+): Promise<string | undefined> {
   let res: Awaited<ReturnType<typeof supabase.auth.verifyOtp>>;
   try {
     res = await supabase.auth.verifyOtp({ email: email.trim(), token: code, type: 'recovery' });
@@ -293,7 +302,13 @@ export async function verifyResetCode(email: string, code: string): Promise<void
   }
   track('password_reset_code_entered', { ok: true });
   // A verified code is a full sign-in, even if the new password is never saved.
-  await afterSession(res.data.session.user?.id);
+  const uid = res.data.session.user?.id;
+  if (deferSwitch) {
+    if (uid) identifyUser(uid);
+  } else {
+    await afterSession(uid);
+  }
+  return uid;
 }
 
 /**
@@ -332,9 +347,14 @@ export async function resetPasswordWithCode(
   if (!alreadyVerified && !isCodeComplete(code)) throw new Error(RESET_CODE_INCOMPLETE);
   const problem = newPasswordProblem(password, confirm);
   if (problem) throw new Error(problem);
+  // The account switch runs last: a failed switch signs out and would burn the one-time code before the
+  // password was set.
+  let uid: string | undefined;
   if (!alreadyVerified) {
-    await verifyResetCode(email, code);
+    uid = await verifyResetCode(email, code, { deferSwitch: true });
     onVerified?.();
   }
   await setNewPassword(password);
+  uid ??= (await supabase.auth.getSession().catch(() => null))?.data.session?.user?.id;
+  await afterSession(uid);
 }

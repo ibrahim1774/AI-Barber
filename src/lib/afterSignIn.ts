@@ -23,6 +23,12 @@ export function useAfterSignIn(
       // Sent here by the Bookings setup (it needs an account first): go back to it.
       if (takePostAuthReturn()) {
         leave();
+        if (empty) {
+          Alert.alert(
+            'No website in this account yet',
+            empty.email ? `Build one and it will be saved to ${empty.email}.` : 'Build one and it will be saved to this account.',
+          );
+        }
         return;
       }
       if (empty) {

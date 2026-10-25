@@ -28,7 +28,7 @@ export default function Live() {
   const [returnBack] = useState(takeReturnAfterLive);
   const [shopName, setShopName] = useState('');
   const { open, copy, copied } = useLinkActions(url, 'live');
-  const { hasDomain } = useDomainOffer(true);
+  const { known: domainKnown, hasDomain } = useDomainOffer(true);
   // A Bookings or Store plan bought on the publish paywall: the next step is its booking page.
   const ents = useEntitlements();
   const [bookingsOn, setBookingsOn] = useState(false);
@@ -88,7 +88,7 @@ export default function Live() {
           </Pressable>
         </View>
 
-        {!hasDomain && (
+        {domainKnown && !hasDomain && (
           <Pressable
             onPress={() => {
               track('domain_card_tapped', { screen: 'live', has_domain: false });

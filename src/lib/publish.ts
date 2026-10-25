@@ -49,6 +49,11 @@ export interface PublishDeps {
   store: typeof import('./siteStore');
   /** GET /api/ios/site → adopt a newer admin edit (adminSync.syncFromServer). Optional; never throws. */
   syncFromServer?(transactionId: string): Promise<SyncResult>;
+  /**
+   * True when `transactionId` is bound to a different live site than `site` (this Apple ID's site is
+   * someone else's here). Optional; a failure counts as false.
+   */
+  boundElsewhere?(transactionId: string, site: SiteRecord): Promise<boolean>;
   /** The signed-in Supabase user (older servers read it from the body). */
   userId(): string | null;
   /** The signed-in user's access token (refreshed when near expiry): the server links the purchase only from it. */
@@ -67,7 +72,12 @@ export type PublishOutcome =
   | { kind: 'pending'; message: string }
   | { kind: 'inactive' }
   /** An admin edit is newer: the server copy was adopted and nothing was published. Review, then publish again. */
-  | { kind: 'site-updated'; message: string };
+  | { kind: 'site-updated'; message: string }
+  /** Nothing was published: this phone's site would overwrite a different live site bound to the Apple ID. */
+  | { kind: 'blocked'; message: string };
+
+export const BOUND_ELSEWHERE_MESSAGE =
+  "This phone's Apple ID already runs a different website, so this one wasn't published and your live site is untouched. To use that website, tap Restore purchases. To publish this one, subscribe with another Apple ID.";
 
 /** Superwall can lag behind StoreKit right after a purchase: first try plus 3 retries, 1 s apart. */
 const TX_RETRIES = 3;
@@ -300,6 +310,11 @@ export async function publishFlow(site: SiteRecord, deps: PublishDeps): Promise<
     }
     const transactionId = await findTransactionId(deps.latestTransactionId);
     if (!transactionId) return { kind: 'pending', message: UNCONFIRMED_MESSAGE } as const;
+    // A site loaded from an account (no slug of its own) must never publish over the live site the Apple ID is bound to.
+    if (site.slug == null && site.ownerUserId && (await deps.boundElsewhere?.(transactionId, site).catch(() => false))) {
+      if (paid) await deps.store.savePendingPublish(null);
+      return { kind: 'blocked', message: BOUND_ELSEWHERE_MESSAGE } as const;
+    }
     // An admin edit must reach the barber before their publish can overwrite it.
     const synced = await deps.syncFromServer?.(transactionId).catch(() => null);
     if (synced?.kind === 'adopted') {
