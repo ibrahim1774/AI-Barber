@@ -113,3 +113,28 @@ describe('publishSite with the site subpages', () => {
     expect(out.ok).toBe(true);
   });
 });
+
+describe('publishSite bookings guard', () => {
+  const homeHtml = () => deployRenderedSite.mock.calls[0][0].html as string;
+  const run = async (bookingsEnabled?: boolean) => {
+    store.clear(); deployRenderedSite.mockClear();
+    await writePendingSite('fresh-cuts', pending(OLD));
+    const shop: any = { id: 'shop-1', slug: 'fresh' };
+    if (bookingsEnabled !== undefined) shop.bookingsEnabled = bookingsEnabled;
+    const out = await publishSite('fresh-cuts', { force: true, findShop: async () => shop, siteBase: baseDeps() });
+    expect(out.ok).toBe(true);
+    return { html: homeHtml(), subpages: deployRenderedSite.mock.calls[0][0].subpages };
+  };
+  it('bookings off: no /book button anywhere, rewrites unchanged', async () => {
+    const off = await run(false);
+    expect(off.html).not.toContain('href="/book"');
+    expect(off.subpages).toEqual({ mode: 'full', shopSlug: 'fresh' });
+  });
+  it('bookings on (or unknown) is byte-identical to today', async () => {
+    const on = await run(true);
+    const unknown = await run(undefined);
+    expect(on.html).toContain('href="/book"');
+    const strip = (h: string) => h.replace(/name="published-at" content="\d+"/, '');
+    expect(strip(on.html)).toBe(strip(unknown.html));
+  });
+});

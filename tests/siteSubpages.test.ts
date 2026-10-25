@@ -290,3 +290,21 @@ describe('refreshSiteBase', () => {
     expect(d.updateShop).not.toHaveBeenCalled();
   });
 });
+
+describe('withSubpageLinks bookings guard', () => {
+  it('drops /book when the shop has pages but bookings are off', () => {
+    expect(withSubpageLinks({ bookingUrl: '/book' }, true, { bookingsOn: false }).bookingUrl).toBeUndefined();
+    expect(withSubpageLinks({ bookingUrl: 'https://aibarber.org/book/fresh' }, true, { bookingsOn: false }).bookingUrl).toBeUndefined();
+  });
+  it('keeps /book when bookings are on, and when the flag is not given (old callers)', () => {
+    expect(withSubpageLinks({ bookingUrl: '/book' }, true, { bookingsOn: true }).bookingUrl).toBe('/book');
+    expect(withSubpageLinks({ bookingUrl: '/book' }, true).bookingUrl).toBe('/book');
+    expect(withSubpageLinks({ bookingUrl: '/book' }, true, { bookingsOn: undefined }).bookingUrl).toBe('/book');
+  });
+  it('never touches an external booking link', () => {
+    for (const on of [true, false]) expect(withSubpageLinks({ bookingUrl: 'https://booksy.com/x' }, true, { bookingsOn: on }).bookingUrl).toBe('https://booksy.com/x');
+  });
+  it('leaves shopUrl alone', () => {
+    expect(withSubpageLinks({ bookingUrl: '/book', shopUrl: '/shop' }, true, { bookingsOn: false }).shopUrl).toBe('/shop');
+  });
+});
