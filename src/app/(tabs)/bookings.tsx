@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Storage from 'expo-sqlite/kv-store';
-import { ActivityIndicator, PanResponder, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, PanResponder, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
 import { PausedBanner } from '@/components/PausedBanner';
 import { UpgradeCard } from '@/components/UpgradeCard';
-import { GearIcon } from '@/components/Icons';
+import { HeaderButton } from '@/components/HeaderButtons';
 import { ShareSheet } from '@/components/ShareSheet';
 import { AddBookingSheet } from '@/components/bookings/AddBookingSheet';
 import { AppointmentRow, TimeOffRow } from '@/components/bookings/AppointmentRow';
@@ -23,7 +23,6 @@ import { WeekView } from '@/components/bookings/WeekView';
 import { TutorialLayer } from '@/components/tutorial/TutorialLayer';
 import { useTutorialTarget } from '@/components/tutorial/registry';
 import { useTour } from '@/components/tutorial/useTour';
-import { ShareIcon } from '@/components/bookings/icons';
 import { DAYS_AHEAD, DAYS_BACK, useBookingsData } from '@/components/bookings/useBookingsData';
 import {
   addDays, addMonths, appointmentsForDay, bucketAppointments, closedWeekdays, countsByDay, dateFromPushData, dayHeading,
@@ -227,27 +226,20 @@ export default function Bookings() {
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <Text style={styles.title} numberOfLines={1} accessibilityRole="header">{shop.name}</Text>
+        <Text style={[styles.title, customer.gate === 'live' && !locked && { fontSize: 20 }]} numberOfLines={1} accessibilityRole="header">{shop.name}</Text>
         <View style={styles.headerBtns}>
-          <Pressable onPress={() => router.push('/customers' as never)} hitSlop={10} accessibilityRole="button" accessibilityLabel="Customers">
-            <Text style={styles.customersBtn}>Customers</Text>
-          </Pressable>
+          <HeaderButton title="Customers" onPress={() => router.push('/customers' as never)} accessibilityLabel="Customers" />
           {customer.gate === 'live' && (
-            <Pressable onPress={() => setSharing(true)} hitSlop={10} accessibilityRole="button" accessibilityLabel="Share booking link">
-              <ShareIcon size={22} color={colors.text} />
-            </Pressable>
+            <HeaderButton title="Share" icon="share" tone="solid" onPress={() => setSharing(true)} accessibilityLabel="Share booking link" />
           )}
           {!locked && (
-            <Pressable
+            <HeaderButton
               ref={setupRef}
-              collapsable={false}
+              title="Settings"
+              icon="gear"
               onPress={() => router.push('/bookings-setup' as never)}
-              hitSlop={10}
-              accessibilityRole="button"
               accessibilityLabel="Booking setup"
-            >
-              <GearIcon size={22} color={colors.text} />
-            </Pressable>
+            />
           )}
         </View>
       </View>
@@ -413,8 +405,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16, paddingTop: 8, paddingBottom: 14,
   },
   title: { flex: 1, fontFamily: fonts.heading, fontSize: 24, color: colors.heading },
-  customersBtn: { fontFamily: fonts.bodySemi, fontSize: 14, color: colors.accent },
-  headerBtns: { flexDirection: 'row', alignItems: 'center', gap: 18 },
+  headerBtns: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   locked: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.accent, paddingHorizontal: 16, paddingBottom: 10 },
   chips: { marginTop: 12 },
   list: { paddingHorizontal: 16, paddingTop: 18 },
