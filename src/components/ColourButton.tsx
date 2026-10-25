@@ -66,12 +66,12 @@ export function ColourButton({
 const styles = StyleSheet.create({
   card: {
     alignItems: 'center', paddingHorizontal: 10, paddingVertical: 2, borderRadius: 16,
-    backgroundColor: 'rgba(0,0,0,0.8)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
-    shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 15, shadowOffset: { width: 0, height: 10 },
+    backgroundColor: colors.overlayCard, borderWidth: 1, borderColor: colors.overlayGold,
+    shadowColor: '#000', shadowOpacity: 0.7, shadowRadius: 25, shadowOffset: { width: 0, height: 18 },
   },
   head: { minHeight: 44, minWidth: 44, flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'center' },
-  caption: { fontFamily: fonts.bodyBold, fontSize: 8, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.5)' },
-  dot: { width: 16, height: 16, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)' },
+  caption: { fontFamily: fonts.bodyBold, fontSize: 11, letterSpacing: 1.3, textTransform: 'uppercase', color: '#fff' },
+  dot: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: '#fff' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', width: 88, paddingBottom: 6 },
   cell: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   ring: { width: 32, height: 32, borderRadius: 16, padding: 4, borderWidth: 2, borderColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
