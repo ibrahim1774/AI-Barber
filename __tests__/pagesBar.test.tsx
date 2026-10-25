@@ -86,14 +86,14 @@ describe('floating design switcher', () => {
     expect(radio(tree, 'Design 2').props.accessibilityState.disabled).toBe(true);
   });
 
-  test('web look: DESIGN caption over two stacked 44pt buttons, active one gold', () => {
+  test('web look: DESIGN caption over two stacked compact buttons, active one gold', () => {
     let d: any;
     act(() => { d = create(<DesignSwitcher current="prime" onSelect={() => {}} />); });
     const flat = (st: any) => Object.assign({}, ...[st].flat(3).filter(Boolean));
     const texts = d.root.findAll((n: any) => n.type === 'Text').map((n: any) => n.props.children);
     expect(texts).toEqual(['Design', 'Design 1', 'Design 2']);
     const b2 = flat(radio(d, 'Design 2').props.style);
-    expect(b2.minHeight).toBeGreaterThanOrEqual(44);
+    expect(b2.minHeight).toBeGreaterThanOrEqual(31);
     expect(b2.backgroundColor).toBeDefined();
     expect(flat(radio(d, 'Design 1').props.style).backgroundColor).toBeUndefined();
   });

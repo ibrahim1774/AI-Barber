@@ -30,6 +30,7 @@ export function ColourButton({
         accessibilityHint="Change the colour of your site"
         accessibilityState={{ disabled: !!disabled, expanded: open }}
         disabled={disabled}
+        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
         onPress={() => setOpen((o) => !o)}
         style={({ pressed }) => [styles.head, pressed && { opacity: 0.6 }]}
       >
@@ -65,16 +66,16 @@ export function ColourButton({
 
 const styles = StyleSheet.create({
   card: {
-    alignItems: 'center', paddingHorizontal: 10, paddingVertical: 2, borderRadius: 16,
+    alignItems: 'center', paddingHorizontal: 7, paddingVertical: 1, borderRadius: 12,
     backgroundColor: colors.overlayCard, borderWidth: 1, borderColor: colors.overlayGold,
     shadowColor: '#000', shadowOpacity: 0.7, shadowRadius: 25, shadowOffset: { width: 0, height: 18 },
   },
-  head: { minHeight: 44, minWidth: 44, flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'center' },
-  caption: { fontFamily: fonts.bodyBold, fontSize: 11, letterSpacing: 1.3, textTransform: 'uppercase', color: '#fff' },
-  dot: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: '#fff' },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', width: 88, paddingBottom: 6 },
-  cell: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  ring: { width: 32, height: 32, borderRadius: 16, padding: 4, borderWidth: 2, borderColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
+  head: { minHeight: 31, minWidth: 31, flexDirection: 'row', alignItems: 'center', gap: 6, justifyContent: 'center' },
+  caption: { fontFamily: fonts.bodyBold, fontSize: 8, letterSpacing: 0.9, textTransform: 'uppercase', color: '#fff' },
+  dot: { width: 14, height: 14, borderRadius: 7, borderWidth: 2, borderColor: '#fff' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', width: 62, paddingBottom: 4 },
+  cell: { width: 31, height: 31, alignItems: 'center', justifyContent: 'center' },
+  ring: { width: 23, height: 23, borderRadius: 12, padding: 3, borderWidth: 2, borderColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
   ringOn: { borderColor: colors.overlayGold },
-  swatch: { width: 24, height: 24, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)' },
+  swatch: { width: 17, height: 17, borderRadius: 9, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)' },
 });

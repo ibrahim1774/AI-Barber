@@ -32,6 +32,7 @@ export function DesignSwitcher({
             accessibilityLabel={o.label}
             accessibilityState={{ selected: active, disabled: off, busy: !!busy }}
             disabled={off}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
             onPress={() => !active && onSelect(o.key)}
             style={[styles.btn, active && styles.btnOn]}
           >
@@ -46,14 +47,14 @@ export function DesignSwitcher({
 const styles = StyleSheet.create({
   // web: rounded-2xl p-3 gap-2, rgba(14,12,8,.94), 1px gold border, deep shadow
   card: {
-    gap: 8, padding: 12, borderRadius: 16, backgroundColor: colors.overlayCard, borderWidth: 1, borderColor: colors.overlayGold,
+    gap: 5, padding: 8, borderRadius: 12, backgroundColor: colors.overlayCard, borderWidth: 1, borderColor: colors.overlayGold,
     shadowColor: '#000', shadowOpacity: 0.7, shadowRadius: 25, shadowOffset: { width: 0, height: 18 },
   },
-  caption: { fontFamily: fonts.bodyBold, fontSize: 9, letterSpacing: 2.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.45)', textAlign: 'center', marginBottom: 2 },
+  caption: { fontFamily: fonts.bodyBold, fontSize: 7, letterSpacing: 1.8, textTransform: 'uppercase', color: 'rgba(255,255,255,0.45)', textAlign: 'center', marginBottom: 1 },
   btn: {
-    minHeight: 44, minWidth: 44, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', borderRadius: 6,
+    minHeight: 31, minWidth: 31, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center', borderRadius: 5,
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)',
   },
   btnOn: { backgroundColor: colors.overlayGold, borderColor: colors.overlayGold },
-  btnText: { fontFamily: fonts.bodyBold, fontSize: 11, letterSpacing: 1.3, textTransform: 'uppercase' },
+  btnText: { fontFamily: fonts.bodyBold, fontSize: 8, letterSpacing: 0.9, textTransform: 'uppercase' },
 });
