@@ -1,26 +1,19 @@
 appId: com.ibrahim1774.aibarber
 ---
-# Builds a site via the classic form (name + 3 services), finishing the area/phone card. Ends in the editor with the Edit tour's first step up.
+# Builds a site via the classic form (name, address, mobile + 3 services). Ends in the editor with the Edit tour's first step up.
 - tapOn: "Start from scratch"
-- tapOn: "The Gentlemen.*"
+- tapOn: "Jack's Barbershop"
 - inputText: "Jack's Barbershop"
-- tapOn: "Choose Your Colors.*"
-- tapOn: "Add your services.*"
+- tapOn: "512 Congress.*"
+- inputText: "Austin, TX"
+- tapOn: "\\(512\\) 555-0142"
+- inputText: "5125550142"
 - tapOn: "Haircut"
 - tapOn: "Beard trim"
 - tapOn: "Hot towel shave"
 - scrollUntilVisible:
-    element: "Build My Barbershop Website"
-- tapOn: "Build My Barbershop Website"
-- extendedWaitUntil:
-    visible: "Don't have"
-    timeout: 60000
-- tapOn: "Don't have"
-- tapOn: "Dallas, TX"
-- inputText: "Austin, TX"
-- tapOn: "\\(555\\) 123-4567"
-- inputText: "5125550142"
-- tapOn: "Finish generating"
+    element: "Build my website"
+- tapOn: "Build my website"
 - waitForAnimationToEnd
 - extendedWaitUntil:
     visible: "Tap Publish.*"

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, Ref } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text as RNText, TextInput, View, type TextInputProps } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { colors, fonts } from '@/constants/theme';
@@ -75,7 +75,7 @@ export function PillButton({
 /** The dark rounded input with a caps label above it and an optional trailing control (paste). */
 export function FlowInput({
   label, trailing, onChangeText, ...input
-}: { label: string; trailing?: ReactNode } & Omit<TextInputProps, 'style'>) {
+}: { label: string; trailing?: ReactNode; ref?: Ref<TextInput> } & Omit<TextInputProps, 'style'>) {
   return (
     <View style={styles.inputWrap}>
       <RNText maxFontSizeMultiplier={1.4} style={styles.label}>{label}</RNText>

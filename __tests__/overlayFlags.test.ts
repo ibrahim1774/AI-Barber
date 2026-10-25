@@ -31,6 +31,13 @@ describe('nextOverlay (once per draft)', () => {
     expect(await nextOverlay(r)).toBeNull();
   });
 
+  test('a scratch draft with area and phone skips the prompts; one without them still gets them', async () => {
+    const full = record(await site({ area: 'Austin, TX', phone: '(512) 555-0142' }));
+    expect(await nextOverlay(full)).toBe('guide');
+    expect(await nextOverlay(record(await site({ area: 'Austin, TX', phone: '' })))).toBe('prompts');
+    expect(await nextOverlay(record(await site({ area: '', phone: '(512) 555-0142' })))).toBe('prompts');
+  });
+
   test('a live site never gets the onboarding, with or without a slug', async () => {
     const d = await site();
     expect(await nextOverlay(record(d, { slug: 'fade', deployedUrl: 'https://fade.vercel.app' }))).toBeNull();

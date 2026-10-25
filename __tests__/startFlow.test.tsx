@@ -24,6 +24,7 @@ jest.mock('@/constants/theme', () => ({ ...require('./store/themeMock'), swatchL
 jest.mock('expo-clipboard', () => ({ getStringAsync: jest.fn(async () => '  https://booksy.com/en-us/dl/show-business/998736  ') }));
 
 import BookingLink from '@/app/booking-link';
+import Manual from '@/app/manual';
 import ImportReview from '@/app/import-review';
 import { importCounts } from '@/lib/importReview';
 import { toShopSite } from '@/lib/importer';
@@ -189,6 +190,53 @@ describe('screen 4: Here\'s what we found', () => {
     const tree = await render(<ImportReview />);
     expect(mockReplace).toHaveBeenCalledWith('/generating');
     expect(buttons(tree, 'Open my site')).toHaveLength(0);
+  });
+});
+
+describe('start from scratch', () => {
+  const fs = require('fs');
+  const fill = async (tree: any, v: Record<string, string>) => {
+    for (const [k, val] of Object.entries(v)) await act(async () => input(tree, k).props.onChangeText(val));
+  };
+
+  it('shows the four fields, a Build button and a back chevron; no old logo or Sign In', async () => {
+    const tree = await render(<Manual />);
+    const t = text(tree);
+    for (const s of ['Start from', 'scratch', 'Barbershop name', 'Address or city', 'Mobile number', 'Area you serve', 'Build my website']) {
+      expect(t).toContain(s);
+    }
+    expect(t).not.toMatch(/AI ?Barber|Sign In/);
+    expect(buttons(tree, 'Back')).toHaveLength(1);
+    await press(tree, 'Back');
+    expect(mockBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('an empty form shows the first error and starts nothing', async () => {
+    const tree = await render(<Manual />);
+    await press(tree, 'Build my website');
+    expect(text(tree)).toContain('Enter your barbershop name.');
+    expect(mockReplace).not.toHaveBeenCalled();
+    expect(await store.loadSite()).toBeNull();
+  });
+
+  it('a filled form builds the draft with the typed values and opens /generating', async () => {
+    const tree = await render(<Manual />);
+    await fill(tree, { 'Barbershop name': 'Fade Lab', 'Address or city': '512 Congress Ave, Austin, TX 78701', 'Mobile number': '5125550142', 'Area you serve': 'Downtown' });
+    await press(tree, 'Build my website');
+    await act(async () => { await new Promise((r) => setTimeout(r, 400)); });
+    expect(mockReplace).toHaveBeenCalledWith('/generating');
+    const rec = await store.loadSite();
+    expect(rec?.data.contact.address).toBe('512 Congress Ave, Austin, TX 78701');
+    expect(rec?.data.area).toBe('Austin, TX');
+    expect(rec?.data.phone).toBe('(512) 555-0142');
+    expect(rec?.data.labels?.pgPlace).toBe('Downtown');
+  });
+
+  it('the typed values never reach track()', () => {
+    for (const f of ['src/app/manual.tsx', 'src/lib/flow.ts']) {
+      const src = fs.readFileSync(require('path').join(__dirname, '..', f), 'utf8');
+      expect(src).not.toMatch(/track\([^)]*(phone|address|place)/);
+    }
   });
 });
 

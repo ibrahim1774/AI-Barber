@@ -5,7 +5,11 @@ appId: com.ibrahim1774.aibarber
 - takeScreenshot: o1_start
 - tapOn: "Start from scratch"
 - takeScreenshot: o2_manual
-- tapOn: "The Gentlemen.*"
+- tapOn: "Jack's Barbershop"
 - inputText: "Jack's Barbershop"
+- tapOn: "512 Congress.*"
+- inputText: "Austin, TX"
+- tapOn: "\\(512\\) 555-0142"
+- inputText: "5125550142"
 - scroll
 - takeScreenshot: o3_manual_scrolled

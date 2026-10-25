@@ -55,20 +55,36 @@ export function toShopSite(
   return { inputs: { ...built.inputs, importedFrom: source }, site: built.scraped };
 }
 
+export interface ManualInput {
+  shopName: string;
+  area: string;
+  address: string;
+  phone: string;
+  place?: string;
+  colorTheme: string;
+  services?: { title: string; price?: string }[];
+}
+
+/** Writes what the scratch form collected onto the generated site: the street address and the "Barbershop in <place>" label. */
+export function shapeScratchSite(site: WebsiteData, input: ManualInput): WebsiteData {
+  const place = (input.place ?? '').trim();
+  return {
+    ...site,
+    contact: { ...site.contact, address: input.address },
+    ...(place ? { labels: { ...site.labels, pgPlace: place } } : {}),
+  };
+}
+
 /**
- * The typed path: the shop name, a colour and the services the barber ticked (optional prices).
- * generateContent uses exactly those and invents nothing; none ticked → no Services section.
+ * The typed path: shop name, address, mobile, an optional service area, a colour and the services the barber ticked.
+ * generateContent uses exactly those and invents nothing; none ticked means no Services section.
  */
-export async function manualSite(
-  shopName: string,
-  brandColor: string = DEFAULT_SWATCH,
-  services?: { title: string; price?: string }[],
-): Promise<{ inputs: ShopInputs; site: WebsiteData }> {
+export async function manualSite(input: ManualInput): Promise<{ inputs: ShopInputs; site: WebsiteData }> {
   const inputs = {
-    shopName: shopName.trim(), area: '', phone: '', colorTheme: resolveTheme(brandColor),
-    ...(services?.length ? { services } : {}),
+    shopName: input.shopName.trim(), area: input.area, phone: input.phone, colorTheme: resolveTheme(input.colorTheme),
+    ...(input.services?.length ? { services: input.services } : {}),
   } as ShopInputs;
-  const site = await generateContent(inputs);
+  const site = shapeScratchSite(await generateContent(inputs), input);
   return { inputs, site };
 }
 

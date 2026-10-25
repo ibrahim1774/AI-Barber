@@ -39,7 +39,8 @@ export async function clearOverlayFlags(draftId: string): Promise<void> {
 export async function nextOverlay(site: SiteRecord): Promise<Overlay | null> {
   // A published site (or one live per the account, loaded without a slug) needs no onboarding.
   if (site.slug != null || site.deployedUrl) return null;
-  if (!site.inputs.importedFrom && !(await hasSeen('prompts', site.draftId))) return 'prompts';
+  // The scratch form collects area and phone itself; the prompts only ask when either is missing.
+  if (!site.inputs.importedFrom && !(site.data.area && site.data.phone) && !(await hasSeen('prompts', site.draftId))) return 'prompts';
   // The guide is the Edit tour; tours are per install, so a new or adopted draft does not bring it back.
   if (!(await hasSeen('guide', site.draftId)) && !(await hasTourSeen('edit'))) return 'guide';
   return null;

@@ -5,31 +5,21 @@ appId: com.ibrahim1774.aibarber
 - takeScreenshot: 01_start
 - tapOn: "Start from scratch"
 - takeScreenshot: 02_manual_form
-- tapOn: "The Gentlemen.*"
+- tapOn: "Jack's Barbershop"
 - inputText: "Jack's Barbershop"
-- tapOn: "Choose Your Colors.*"
-- tapOn: "Add your services.*"
+- tapOn: "512 Congress.*"
+- inputText: "Austin, TX"
+- tapOn: "\\(512\\) 555-0142"
+- inputText: "5125550142"
 - takeScreenshot: 03_services_open
 - tapOn: "Haircut"
 - tapOn: "Beard trim"
 - tapOn: "Hot towel shave"
 - takeScreenshot: 04_services_ticked
 - scrollUntilVisible:
-    element: "Build My Barbershop Website"
+    element: "Build my website"
 - takeScreenshot: 05_before_build
-- tapOn: "Build My Barbershop Website"
-- extendedWaitUntil:
-    visible: "Don't have"
-    timeout: 60000
-- takeScreenshot: 06_step1_booking_card
-- tapOn: "Don't have"
-- takeScreenshot: 07_final_details_card
-- tapOn: "Dallas, TX"
-- inputText: "Austin, TX"
-- tapOn: "\\(555\\) 123-4567"
-- inputText: "5125550142"
-- takeScreenshot: 08_details_filled
-- tapOn: "Finish generating"
+- tapOn: "Build my website"
 - extendedWaitUntil:
     visible: "PUBLISH"
     timeout: 20000

@@ -16,6 +16,8 @@ import { manualSite } from '@/lib/importer';
 import { SERVICE_CHOICES, servicesFromPicks, setPickPrice, tickedCount, togglePick } from '@/lib/serviceChecklist';
 import * as store from '@/lib/siteStore';
 
+const SCRATCH = { shopName: 'Fade Lab', area: 'Austin, TX', address: 'Austin, TX', phone: '(512) 555-0142', colorTheme: '#f4a100' };
+
 describe('checklist helpers', () => {
   it('the choices are the shared list, word for word', () => {
     expect(SERVICE_CHOICES).toEqual([
@@ -44,14 +46,14 @@ describe('checklist helpers', () => {
 
 describe('manualSite', () => {
   it('no ticks: no services, no invented email', async () => {
-    const { site, inputs } = await manualSite('Fade Lab');
+    const { site, inputs } = await manualSite(SCRATCH);
     expect(site.services).toEqual([]);
     expect(inputs.services).toBeUndefined();
     expect(site.contact?.email ?? '').toBe('');
   });
 
   it('ticked services exactly, with their prices', async () => {
-    const { site, inputs } = await manualSite('Fade Lab', undefined, [{ title: 'Haircut', price: '$25' }, { title: 'Kids cut' }]);
+    const { site, inputs } = await manualSite({ ...SCRATCH, services: [{ title: 'Haircut', price: '$25' }, { title: 'Kids cut' }] });
     expect(site.services.map((s) => [s.title, s.price || ''])).toEqual([['Haircut', '$25'], ['Kids cut', '']]);
     expect(site.services.every((s) => !s.description)).toBe(true);
     expect(inputs.services).toEqual([{ title: 'Haircut', price: '$25' }, { title: 'Kids cut' }]);
@@ -75,16 +77,21 @@ describe('the typed path, end to end', () => {
   const byLabel = (tree: any, label: string) =>
     tree.root.findAll((n: any) => n.props?.accessibilityLabel === label && (n.props.onPress || n.props.onChangeText))[0];
 
+  const fillForm = async (tree: any) => {
+    await act(async () => byLabel(tree, 'Barbershop name').props.onChangeText('Fade Lab'));
+    await act(async () => byLabel(tree, 'Address or city').props.onChangeText('Austin, TX'));
+    await act(async () => byLabel(tree, 'Mobile number').props.onChangeText('5125550142'));
+  };
+
   it('ticks two services with a price, generates, and the draft has exactly those', async () => {
     const tree = await render(<Manual />);
-    await act(async () => byLabel(tree, 'Barbershop Name').props.onChangeText('Fade Lab'));
-    await act(async () => byLabel(tree, 'Add your services (optional)').props.onPress());
+    await fillForm(tree);
     await act(async () => byLabel(tree, 'Skin fade').props.onPress());
     await act(async () => byLabel(tree, 'Haircut').props.onPress());
     await act(async () => byLabel(tree, 'Haircut price').props.onChangeText('30'));
     expect(allText(tree).join(' ')).toContain('2 ticked');
     const go = tree.root.findAll((n: any) => n.props?.accessibilityRole === 'button' && typeof n.props.onPress === 'function'
-      && allText({ root: n }).join('') === 'Build My Barbershop Website')[0];
+      && allText({ root: n }).join('') === 'Build my website')[0];
     await act(async () => {
       await go.props.onPress();
       await new Promise((r) => setTimeout(r, 400));
@@ -94,11 +101,11 @@ describe('the typed path, end to end', () => {
     expect(saved?.data.services.map((s) => [s.title, s.price || ''])).toEqual([['Haircut', '$30'], ['Skin fade', '']]);
   });
 
-  it('without opening the checklist: a site with no services', async () => {
+  it('with nothing ticked: a site with no services', async () => {
     const tree = await render(<Manual />);
-    await act(async () => byLabel(tree, 'Barbershop Name').props.onChangeText('Fade Lab'));
+    await fillForm(tree);
     const go = tree.root.findAll((n: any) => n.props?.accessibilityRole === 'button' && typeof n.props.onPress === 'function'
-      && allText({ root: n }).join('') === 'Build My Barbershop Website')[0];
+      && allText({ root: n }).join('') === 'Build my website')[0];
     await act(async () => {
       await go.props.onPress();
       await new Promise((r) => setTimeout(r, 400));

@@ -1,4 +1,5 @@
 import { checkBookingLink, toShopSite, manualSite } from '@/lib/importer';
+import { DEFAULT_SWATCH } from '@/web/lib/brandSwatches';
 
 const booksy = require('./fixtures/scrape-booksy.json');
 const gbp = require('./fixtures/import-business.json');
@@ -60,9 +61,15 @@ describe('importer', () => {
     expect(b.inputs.colorTheme).toBeUndefined();
   });
 
-  it('manualSite generates from the shop name', async () => {
-    const { inputs, site } = await manualSite('Fade Lab');
-    expect(inputs.shopName).toBe('Fade Lab');
-    expect(site.shopName).toBeTruthy();
+  it('manualSite writes the address, area, phone and the place label, and no reviews', async () => {
+    const r = await manualSite({ shopName: 'Fade Lab', area: 'Austin, TX', address: '512 Congress Ave, Austin, TX', phone: '(512) 555-0142', place: 'Downtown', colorTheme: DEFAULT_SWATCH });
+    expect(r.site.contact.address).toBe('512 Congress Ave, Austin, TX');
+    expect(r.site.area).toBe('Austin, TX');
+    expect(r.site.phone).toBe('(512) 555-0142');
+    expect(r.site.labels?.pgPlace).toBe('Downtown');
+    expect(r.site.reviews ?? []).toHaveLength(0);
+    expect(r.inputs).toMatchObject({ shopName: 'Fade Lab', area: 'Austin, TX', phone: '(512) 555-0142' });
+    const noPlace = await manualSite({ shopName: 'A', area: 'Austin, TX', address: 'Austin, TX', phone: '(512) 555-0142', colorTheme: DEFAULT_SWATCH });
+    expect(noPlace.site.labels?.pgPlace).toBeUndefined();
   });
 });
