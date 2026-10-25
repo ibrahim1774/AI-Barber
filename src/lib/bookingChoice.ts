@@ -110,6 +110,49 @@ export type LinkContext = {
   storeEnabled: boolean;
 };
 
+/** The one rule for "the built-in scheduler's /book page goes live": the plan, an open bookings switch and a linked purchase. */
+export function schedulerLive(ctx: LinkContext): boolean {
+  const { ents, shop } = ctx;
+  return !!(ents.bookings && shop && shop.bookingsEnabled && shop.purchaseLinked);
+}
+
+export type BookTargetStatus = {
+  /** 'live': /book would go out. 'unknown': the shop facts are not loaded yet (no warning). */
+  status: 'live' | 'bookings-off' | 'no-plan' | 'not-linked' | 'unknown';
+  /** What the Book buttons use instead while the scheduler is not live. */
+  fallback: 'link' | 'none';
+};
+
+/** Why the built-in scheduler would or would not be used, for the sheet's warning. Same predicate as resolveLinks. */
+export function bookTargetStatus(ctx: LinkContext | null, own: string | null): BookTargetStatus {
+  const fallback = own ? 'link' : 'none';
+  if (!ctx || !ctx.ents.known || !ctx.ents.hosting) return { status: 'unknown', fallback };
+  if (schedulerLive(ctx)) return { status: 'live', fallback };
+  if (!ctx.ents.bookings) return { status: 'no-plan', fallback };
+  if (!ctx.shop || !ctx.shop.purchaseLinked) return { status: 'not-linked', fallback };
+  return { status: 'bookings-off', fallback };
+}
+
+/**
+ * The record with the barber's own booking link set (or cleared with null). Leaves the choice alone: the
+ * Book link the site shows only changes when the choice is already 'own'. Goes through syncOwnLink-safe fields.
+ */
+export function setOwnLink(rec: SiteRecord, url: string | null): SiteRecord {
+  const choice = rec.inputs.bookingChoice ?? bookingPrefs(rec).choice;
+  const inputs = { ...rec.inputs };
+  const data = { ...rec.data };
+  if (url) {
+    inputs.ownBookingUrl = url;
+    delete inputs.ownBookingCleared;
+    if (choice === 'own') data.bookingUrl = url;
+  } else {
+    delete inputs.ownBookingUrl;
+    inputs.ownBookingCleared = true;
+    if (choice === 'own') delete data.bookingUrl;
+  }
+  return { ...rec, data, inputs };
+}
+
 /**
  * The website data to publish, with the Book and Shop links decided from the choice and the plan, never from
  * whatever the server stored last time. Book: AI Barber's link only when chosen AND the plan has bookings AND a shop
@@ -126,7 +169,7 @@ export function resolveLinks(
   const { own, choice } = bookingPrefs({ data, inputs: inputs ?? {} });
   const out: WebsiteData & { shopUrl?: string } = { ...data };
   // The site's own /book and /shop pages (the server serves them from the barber's domain and renders the homepage strips).
-  const book = choice === 'aibarber' && ents.bookings && shop && shop.bookingsEnabled && shop.purchaseLinked ? SITE_BOOK_PATH : own;
+  const book = choice === 'aibarber' && schedulerLive(ctx) ? SITE_BOOK_PATH : own;
   if (book) out.bookingUrl = book;
   else delete out.bookingUrl;
   if (ents.store && shop && shop.purchaseLinked && ctx.storeEnabled) out.shopUrl = SITE_SHOP_PATH;
