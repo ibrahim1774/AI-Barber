@@ -43,7 +43,10 @@ export interface PendingPublish {
    * The site this content was paid for (its identity when saved). The ownership check on a retry runs
    * against this, never against whatever site is on the phone later (Restore can swap it).
    */
-  target?: { draftId: string; slug?: string | null; deployedUrl?: string | null; ownerUserId?: string };
+  target?: { draftId: string; slug?: string | null; deployedUrl?: string | null; ownerUserId?: string;
+    /** At pay time nothing was bound to the transaction: a slug bound later is this publish's own. */
+    freshBind?: boolean;
+  };
 }
 
 const SITE_KEY = 'site.v1';

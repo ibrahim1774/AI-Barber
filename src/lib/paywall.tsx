@@ -365,10 +365,11 @@ export function usePublishDeps(): PublishDeps {
           bound = await api.iosSite(transactionId);
         } catch (e) {
           // A fresh subscription has no site yet: not bound, go ahead. Anything else throws (fail closed).
-          if (e instanceof ApiError && (e.status === 404 || e.code === 'no-site')) return false;
+          if (e instanceof ApiError && (e.status === 404 || e.code === 'no-site')) return 'none';
           throw e;
         }
-        return !!bound.siteId && !boundMatches(site, bound);
+        if (!bound.siteId) return 'none';
+        return !boundMatches(site, bound);
       },
       linkContext: loadLinkContext,
       refreshTeam: refreshTeamBeforePublish,

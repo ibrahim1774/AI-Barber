@@ -225,3 +225,41 @@ test('Restore while signed out still keeps the id of a never-owned draft', async
   const res = await restoreA();
   expect(res?.site.draftId).toBe(A_DRAFT);
 });
+
+describe('R1: a paid first publish is never dropped', () => {
+  const noAccountSite = () => siteA({ draftId: B_DRAFT, slug: null, transactionId: null, deployedUrl: undefined, ownerUserId: undefined });
+
+  test('first publish with no account: send fails after the server bound the slug, the retry still sends and keeps the record', async () => {
+    const site = noAccountSite();
+    await store.saveSite(site);
+    let bound = false; // the server binds the slug before the deploy fails
+    const boundElsewhere = jest.fn(async () => (bound ? true : ('none' as const))); // would block a naive "slug differs" check
+    const iosPublish = jest.fn()
+      .mockImplementationOnce(async () => { bound = true; throw new Error('502 publish-failed'); })
+      .mockImplementationOnce(async () => ({ siteId: 'cuts-xyz', deployedUrl: 'https://cuts-xyz.aibarber.org', slug: 'cuts-xyz' }));
+    const deps = bDeps({
+      hasEntitlement: async () => false, showPaywall: async () => 'purchased', userId: () => null as any,
+      iosPublish: iosPublish as any, boundElsewhere,
+    });
+    const first = await publishFlow(site, deps);
+    expect(first.kind).toBe('pending');
+    expect(iosPublish).toHaveBeenCalledTimes(1);
+    expect(await store.loadPendingPublish()).toMatchObject({ transactionId: 'tx-A', target: { freshBind: true } });
+    const retry = await resumePendingPublish(deps);
+    expect(retry?.kind).not.toBe('blocked');
+    expect(iosPublish).toHaveBeenCalledTimes(2);
+  });
+
+  test('cross-account overwrite is still blocked (a site was already bound before the pay)', async () => {
+    const site = noAccountSite();
+    await store.saveSite(site);
+    const iosPublish = jest.fn();
+    const out = await publishFlow(site, bDeps({
+      hasEntitlement: async () => false, showPaywall: async () => 'purchased',
+      iosPublish: iosPublish as any, boundElsewhere: async () => true,
+    }));
+    expect(out).toEqual({ kind: 'blocked', message: BOUND_ELSEWHERE_MESSAGE });
+    expect(iosPublish).not.toHaveBeenCalled();
+    expect(await store.loadPendingPublish()).toBeNull();
+  });
+});

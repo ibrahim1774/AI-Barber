@@ -56,7 +56,8 @@ export interface PublishDeps {
    * True when `transactionId` is bound to a different live site than `site` (this Apple ID's site is
    * someone else's here). Optional; a failure counts as false.
    */
-  boundElsewhere?(transactionId: string, site: SiteRecord): Promise<boolean>;
+  /** true: bound to a different site. 'none': nothing bound to this transaction yet (404). false: bound to this very site. */
+  boundElsewhere?(transactionId: string, site: SiteRecord): Promise<boolean | 'none'>;
   /** The signed-in Supabase user (older servers read it from the body). */
   userId(): string | null;
   /** The signed-in user's access token (refreshed when near expiry): the server links the purchase only from it. */
@@ -284,12 +285,13 @@ function notifyLive(deps: PublishDeps, site: SiteRecord): void {
  * Fails closed: only a clean "not bound elsewhere" answer lets a publish through.
  * A thrown check (network, 5xx, timeout) is 'unknown'; the caller keeps the pending record and retries later.
  */
-async function checkBound(deps: PublishDeps, transactionId: string, site: SiteRecord): Promise<'ok' | 'blocked' | 'unknown'> {
+async function checkBound(deps: PublishDeps, transactionId: string, site: SiteRecord): Promise<'ok' | 'fresh' | 'blocked' | 'unknown'> {
   // A site with its own slug publishes to that slug. Any site without one (owned or not) must prove the Apple ID's site is not someone else's.
   if (site.slug != null) return 'ok';
   if (!deps.boundElsewhere) return 'ok'; // production always wires it (usePublishDeps)
   try {
-    return (await deps.boundElsewhere(transactionId, site)) ? 'blocked' : 'ok';
+    const r = await deps.boundElsewhere(transactionId, site);
+    return r === 'none' ? 'fresh' : r ? 'blocked' : 'ok';
   } catch {
     return 'unknown';
   }
@@ -351,7 +353,12 @@ export async function publishFlow(site: SiteRecord, deps: PublishDeps): Promise<
     if (synced?.kind === 'adopted') {
       return { kind: 'site-updated', message: UPDATED_ON_PUBLISH_MESSAGE + synced.message.slice(SYNC_NOTICE.length) } as const;
     }
-    const pending = { transactionId, data, createdAt: Date.now(), baseVersion: (await deps.store.loadSite())?.serverVersion, target: targetOf(site) };
+    // 'fresh': nothing was bound at pay time, so any slug bound later by a failed send is this payer's own. Remember that for the retry.
+    const base = targetOf(site);
+    const pending = {
+      transactionId, data, createdAt: Date.now(), baseVersion: (await deps.store.loadSite())?.serverVersion,
+      target: base && guard === 'fresh' ? { ...base, freshBind: true } : base,
+    };
     await deps.store.savePendingPublish(pending);
     return send(pending, deps, paid ? PENDING_MESSAGE : UPDATING_MESSAGE);
   });
@@ -394,7 +401,8 @@ export async function resumePendingPublish(deps: PublishDeps): Promise<PublishOu
       ? ({ ...(cur ?? {}), ...pending.target, data: pending.data } as SiteRecord)
       : cur;
     if (!site) return { kind: 'pending', message: UPDATING_MESSAGE } as const;
-    const guard = await checkBound(deps, transactionId, site);
+    // A first publish that found nothing bound owns whatever slug its own failed send created: no block.
+    const guard = pending.target?.freshBind ? 'ok' : await checkBound(deps, transactionId, site);
     if (guard === 'blocked') {
       await deps.store.savePendingPublish(null);
       return { kind: 'blocked', message: BOUND_ELSEWHERE_MESSAGE } as const;
