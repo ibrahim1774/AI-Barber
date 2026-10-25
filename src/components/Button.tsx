@@ -14,8 +14,8 @@ export interface ButtonProps {
   title: string;
   onPress(): void;
   variant?: Variant;
-  /** primary only: 'sm' is the card's "Build my website" size. */
-  size?: 'md' | 'sm';
+  /** primary only: 'sm' is the card's "Build my website" size. 'lg' (ghost): taller, larger bold label. */
+  size?: 'md' | 'sm' | 'lg';
   /** pill only: 'light' sits on the white import card. */
   tone?: 'dark' | 'light';
   arrow?: boolean;
@@ -40,6 +40,7 @@ export function Button({
         v.box,
         variant === 'primary' && size === 'sm' && styles.primarySm,
         variant === 'pill' && tone === 'light' && styles.pillLight,
+        variant === 'ghost' && size === 'lg' && styles.ghostLg,
         (disabled || loading) && variant !== 'link' && { opacity: variant === 'primary' ? 0.5 : 0.6 },
         pressed && { transform: [{ scale: 0.985 }], opacity: 0.9 },
         style,
@@ -65,6 +66,7 @@ export function Button({
             v.text,
             variant === 'primary' && size === 'sm' && styles.primarySmText,
             variant === 'pill' && tone === 'light' && styles.pillLightText,
+            variant === 'ghost' && size === 'lg' && styles.ghostLgText,
             { color: textColor },
           ]}
           numberOfLines={variant === 'link' ? undefined : 1}
@@ -150,5 +152,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(11,14,20,0.28)', backgroundColor: 'transparent',
     paddingVertical: 10, paddingHorizontal: 24,
   },
+  ghostLg: { minHeight: 52, paddingVertical: 14 },
+  ghostLgText: { fontFamily: fonts.bodyBold, fontSize: 17, letterSpacing: 2 },
   pillLightText: { fontSize: 11, letterSpacing: 2.2 },
 });

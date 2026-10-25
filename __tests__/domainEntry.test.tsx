@@ -82,9 +82,9 @@ describe('Settings custom-domain card', () => {
   it('shows the offer under Your website with a button to the domain screen', async () => {
     const tree = await render(<Settings />);
     const t = allText(tree);
-    expect(t).toContain(DOMAIN_PRICE_LINE);
-    expect(t.indexOf('Your website')).toBeLessThan(t.indexOf('Custom domain'));
-    expect(t.indexOf('Custom domain')).toBeLessThan(t.indexOf('Share your site'));
+    expect(t).toContain('Example: jacksbarbershop.com');
+    expect(t.indexOf('Your website')).toBeLessThan(t.indexOf('Custom Domain'));
+    expect(t.indexOf('Custom Domain')).toBeLessThan(t.indexOf('Share your site'));
     await pressRow(tree, 'Get yours');
     expect(mockPush).toHaveBeenCalledWith('/domain');
   });

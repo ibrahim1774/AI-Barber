@@ -5,9 +5,11 @@ import { router } from 'expo-router';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
 import { ShareSheet } from '@/components/ShareSheet';
-import { CheckCircleIcon, CheckIcon, CloseIcon, CopyIcon } from '@/components/Icons';
+import { CheckCircleIcon, CheckIcon, ChevronRightIcon, CloseIcon, CopyIcon } from '@/components/Icons';
 import { track } from '@/lib/analytics';
 import { useSession } from '@/lib/auth';
+import { DOMAIN_ROW_EXAMPLE, DOMAIN_UPSELL_TITLE } from '@/lib/domains/model';
+import { useDomainOffer } from '@/lib/domains/useDomainOffer';
 import { useEntitlements } from '@/lib/entitlements';
 import { homeRoute, leaveLive, resetTo, takeReturnAfterLive } from '@/lib/nav';
 import { loadMyShop } from '@/lib/shop';
@@ -26,6 +28,7 @@ export default function Live() {
   const [returnBack] = useState(takeReturnAfterLive);
   const [shopName, setShopName] = useState('');
   const { open, copy, copied } = useLinkActions(url, 'live');
+  const { hasDomain } = useDomainOffer(true);
   // A Bookings or Store plan bought on the publish paywall: the next step is its booking page.
   const ents = useEntitlements();
   const [bookingsOn, setBookingsOn] = useState(false);
@@ -85,6 +88,26 @@ export default function Live() {
           </Pressable>
         </View>
 
+        {!hasDomain && (
+          <Pressable
+            onPress={() => {
+              track('domain_card_tapped', { screen: 'live', has_domain: false });
+              router.push('/domain');
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Buy a custom domain"
+            style={styles.domainBox}
+          >
+            <View style={styles.domainText}>
+              <Text style={styles.domainTitle}>{DOMAIN_UPSELL_TITLE}</Text>
+              <Text style={styles.domainLine}>
+                e.g. <Text style={styles.domainExample}>{DOMAIN_ROW_EXAMPLE}</Text>
+              </Text>
+            </View>
+            <ChevronRightIcon size={16} color={colors.faint} />
+          </Pressable>
+        )}
+
         <Button variant="solid" title="View your site" onPress={open} style={styles.wide} />
         <View style={styles.row}>
           <Button variant="ghost" title={copied ? 'Copied' : 'Copy link'} onPress={copy} style={styles.half} />
@@ -101,7 +124,7 @@ export default function Live() {
             style={[styles.wide, { marginTop: 12 }]}
           />
         )}
-        <Button variant="link" title="Done" onPress={done} style={styles.link} />
+        <Button variant="ghost" size="lg" title="Done" onPress={done} style={[styles.wide, styles.done]} />
 
         {ready && !session?.user && !saveDismissed && (
           <View style={styles.save}>
@@ -166,7 +189,15 @@ const styles = StyleSheet.create({
   wide: { alignSelf: 'stretch' },
   row: { flexDirection: 'row', gap: 12, alignSelf: 'stretch', marginTop: 12 },
   half: { flex: 1, paddingHorizontal: 12 },
-  link: { marginTop: 20 },
+  done: { marginTop: 20 },
+  domainBox: {
+    flexDirection: 'row', alignItems: 'center', gap: 12, alignSelf: 'stretch', padding: 12, marginTop: -16, marginBottom: 20,
+    borderWidth: 1, borderColor: colors.hair, borderRadius: 12,
+  },
+  domainText: { flex: 1, gap: 2 },
+  domainTitle: { fontFamily: fonts.bodySemi, fontSize: 14, color: '#fff' },
+  domainLine: { fontFamily: fonts.body, fontSize: 13, color: colors.grey },
+  domainExample: { fontFamily: fonts.bodySemi, color: colors.accent },
   // The web's post-deploy account prompt, as a dismissible card that never blocks.
   save: {
     alignSelf: 'stretch', marginTop: 32, padding: 20, paddingTop: 22, borderRadius: 8,

@@ -12,6 +12,9 @@ export const DOMAIN_PLACEMENT = 'custom_domain';
 export const DOMAIN_ROW_TITLE = 'Custom Domain';
 export const DOMAIN_ROW_EXAMPLE = 'jacksbarbershop.com';
 
+/** The compact upsell on the "Your site is live!" screen. */
+export const DOMAIN_UPSELL_TITLE = 'Buy a custom domain, $39/year';
+
 export const DOMAIN_PRICE_LINE = 'Get your own .com — $39/year';
 /** Shown only as muted fine print at the bottom of the domain screen, not in the main view. */
 export const DOMAIN_EXAMPLES_LABEL = 'Examples';

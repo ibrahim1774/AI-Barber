@@ -445,6 +445,7 @@ describe('pullSiteFromAccount', () => {
       slug: null,
       deployedUrl: 'https://fade-factory.aibarber.org',
       transactionId: null,
+      ownerUserId: USER.id,
     });
   });
 
@@ -663,7 +664,7 @@ describe('auth', () => {
       return { data: { user: USER, session }, error: null };
     });
     await expect(signIn('barber@example.com', 'secret1')).resolves.toBeUndefined();
-    expect(await store.loadSite()).toEqual(site);
+    expect(await store.loadSite()).toEqual({ ...site, ownerUserId: USER.id }); // stamped by the sync
     expect(sb.upserts).toHaveLength(1);
   });
 
