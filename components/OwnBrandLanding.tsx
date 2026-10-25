@@ -605,7 +605,7 @@ export const OwnBrandLanding: React.FC = () => {
       <footer style={{ padding: '44px 22px', borderTop: '1px solid var(--ob-line-soft)', textAlign: 'center' }}>
         <div className="ob-container">
           <div className="ob-serif" style={{ fontSize: 18, marginBottom: 8 }}>{DEMO_SHOP}</div>
-          <Eyebrow>Demo site · Built by AI Barber</Eyebrow>
+          <Eyebrow>Demo site · Built by Prime Barber</Eyebrow>
         </div>
       </footer>
 
