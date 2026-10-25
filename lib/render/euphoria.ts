@@ -460,7 +460,7 @@ ${EUPHORIA_SCOPED_CSS}${menuSet ? HEADER_CSS.euphoria + NAV_CSS.euphoria : ''}
   <footer style="padding:48px 24px;border-top:1px solid var(--eu-line-soft);text-align:center;">
     <div class="eu-container">
       <div class="eu-serif" style="font-size:18px;color:var(--eu-ink);margin-bottom:8px;">${safeName}</div>
-      <div class="eu-eyebrow">© ${copyrightYear()} · Built by Prime Barber</div>
+      <div class="eu-eyebrow">© ${copyrightYear()} · ${L('footerCredit')}</div>
     </div>
   </footer>
 
