@@ -77,7 +77,7 @@ export type PublishOutcome =
   | { kind: 'blocked'; message: string };
 
 export const BOUND_ELSEWHERE_MESSAGE =
-  "This phone's Apple ID already runs a different website, so this one wasn't published and your live site is untouched. To use that website, tap Restore purchases. To publish this one, subscribe with another Apple ID.";
+  "This phone's Apple ID already runs a different website, so this one wasn't published and your live site is untouched. To publish this one, subscribe with another Apple ID.";
 
 /** Superwall can lag behind StoreKit right after a purchase: first try plus 3 retries, 1 s apart. */
 const TX_RETRIES = 3;
@@ -270,6 +270,19 @@ function notifyLive(deps: PublishDeps, site: SiteRecord): void {
   }
 }
 
+/**
+ * Fails closed: only a clean "not bound elsewhere" answer lets a publish through.
+ * A thrown check (network, 5xx, timeout) is 'unknown'; the caller keeps the pending record and retries later.
+ */
+async function checkBound(deps: PublishDeps, transactionId: string, site: SiteRecord): Promise<'ok' | 'blocked' | 'unknown'> {
+  if (!(site.slug == null && site.ownerUserId) || !deps.boundElsewhere) return 'ok';
+  try {
+    return (await deps.boundElsewhere(transactionId, site)) ? 'blocked' : 'ok';
+  } catch {
+    return 'unknown';
+  }
+}
+
 // The launch retry and a Publish tap must never send at the same time.
 let queue: Promise<unknown> = Promise.resolve();
 let queued = 0;
@@ -311,9 +324,15 @@ export async function publishFlow(site: SiteRecord, deps: PublishDeps): Promise<
     const transactionId = await findTransactionId(deps.latestTransactionId);
     if (!transactionId) return { kind: 'pending', message: UNCONFIRMED_MESSAGE } as const;
     // A site loaded from an account (no slug of its own) must never publish over the live site the Apple ID is bound to.
-    if (site.slug == null && site.ownerUserId && (await deps.boundElsewhere?.(transactionId, site).catch(() => false))) {
+    const guard = await checkBound(deps, transactionId, site);
+    if (guard === 'blocked') {
       if (paid) await deps.store.savePendingPublish(null);
       return { kind: 'blocked', message: BOUND_ELSEWHERE_MESSAGE } as const;
+    }
+    if (guard === 'unknown') {
+      // Could not check: fail closed. Keep the paid record (the retry runs the same check).
+      if (paid) await deps.store.savePendingPublish({ transactionId, data, createdAt: Date.now(), baseVersion: (await deps.store.loadSite())?.serverVersion });
+      return { kind: 'pending', message: UPDATING_MESSAGE } as const;
     }
     // An admin edit must reach the barber before their publish can overwrite it.
     const synced = await deps.syncFromServer?.(transactionId).catch(() => null);
@@ -355,6 +374,15 @@ export async function resumePendingPublish(deps: PublishDeps): Promise<PublishOu
         return null;
       }
       await deps.store.savePendingPublish({ ...pending, transactionId });
+    }
+    const cur = await deps.store.loadSite();
+    if (cur) {
+      const guard = await checkBound(deps, transactionId, cur);
+      if (guard === 'blocked') {
+        await deps.store.savePendingPublish(null);
+        return { kind: 'blocked', message: BOUND_ELSEWHERE_MESSAGE } as const;
+      }
+      if (guard === 'unknown') return { kind: 'pending', message: UPDATING_MESSAGE } as const;
     }
     return send({ transactionId, data: pending.data, baseVersion: pending.baseVersion }, deps, PENDING_MESSAGE);
   });

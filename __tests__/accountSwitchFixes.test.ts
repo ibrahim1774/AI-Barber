@@ -1,9 +1,9 @@
 // Review fixes for E1/E2/F1: sign-up switch, unsaved edits, cancelled switch, reset ordering, publish guard.
 import * as store from '@/lib/siteStore';
 import type { SiteRecord } from '@/lib/siteStore';
-import { pushSiteBeforeSignOut, switchAccountSite, UNSAVED_OTHER_ACCOUNT } from '@/lib/account';
+import { restore, pushSiteBeforeSignOut, switchAccountSite, UNSAVED_OTHER_ACCOUNT } from '@/lib/account';
 import { resetPasswordWithCode, signIn, signUp, takeEmptyAccountNotice } from '@/lib/auth';
-import { BOUND_ELSEWHERE_MESSAGE, publishFlow, type PublishDeps } from '@/lib/publish';
+import { BOUND_ELSEWHERE_MESSAGE, publishFlow, resumePendingPublish, type PublishDeps } from '@/lib/publish';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { sb, supabase } = require('@/lib/supabase');
 
@@ -118,5 +118,59 @@ test("B's site (no slug) never publishes over the live site the Apple ID is boun
   };
   const out = await publishFlow(bSite, deps);
   expect(out).toEqual({ kind: 'blocked', message: BOUND_ELSEWHERE_MESSAGE });
+  expect(iosPublish).not.toHaveBeenCalled();
+});
+
+const bDeps = (over: Partial<PublishDeps>): PublishDeps => ({
+  hasEntitlement: async () => true,
+  showPaywall: async () => 'declined',
+  latestTransactionId: async () => 'tx-A',
+  iosPublish: jest.fn() as any,
+  store,
+  userId: () => B.id,
+  ...over,
+});
+const bSiteNoSlug = () => siteA({ draftId: B_DRAFT, slug: null, transactionId: null, deployedUrl: undefined, ownerUserId: B.id });
+
+test('the blocked message never points at Restore purchases', () => {
+  expect(BOUND_ELSEWHERE_MESSAGE).not.toMatch(/restore/i);
+});
+
+test("Restore while B is signed in never reuses B's draft id for A's site", async () => {
+  await store.saveSite(bSiteNoSlug());
+  sb.setSession({ access_token: 'b', user: B });
+  const res = await restore({
+    restorePurchases: async () => undefined,
+    latestTransactionId: async () => 'tx-A',
+    iosSite: (async () => ({ siteId: 'a-cuts', deployedUrl: 'https://a-cuts.aibarber.org', siteData: dataFor('A Cuts'), active: true })) as any,
+    store,
+  });
+  expect(res?.site.draftId).not.toBe(B_DRAFT);
+});
+
+test('the publish guard fails closed: a failed check sends nothing and keeps the paid record', async () => {
+  const iosPublish = jest.fn();
+  const out = await publishFlow(bSiteNoSlug(), bDeps({
+    hasEntitlement: async () => false,
+    showPaywall: async () => 'purchased',
+    iosPublish: iosPublish as any,
+    boundElsewhere: async () => { throw new Error('offline'); },
+  }));
+  expect(out.kind).toBe('pending');
+  expect(iosPublish).not.toHaveBeenCalled();
+  expect(await store.loadPendingPublish()).toMatchObject({ transactionId: 'tx-A' });
+});
+
+test('the launch retry runs the same check: blocked drops the record, an error keeps it, neither sends', async () => {
+  await store.saveSite(bSiteNoSlug());
+  const iosPublish = jest.fn();
+  const pend = { transactionId: 'tx-A', data: dataFor('B Fades'), createdAt: Date.now() };
+  await store.savePendingPublish(pend);
+  const err = await resumePendingPublish(bDeps({ iosPublish: iosPublish as any, boundElsewhere: async () => { throw new Error('5xx'); } }));
+  expect(err?.kind).toBe('pending');
+  expect(await store.loadPendingPublish()).not.toBeNull();
+  const blocked = await resumePendingPublish(bDeps({ iosPublish: iosPublish as any, boundElsewhere: async () => true }));
+  expect(blocked).toEqual({ kind: 'blocked', message: BOUND_ELSEWHERE_MESSAGE });
+  expect(await store.loadPendingPublish()).toBeNull();
   expect(iosPublish).not.toHaveBeenCalled();
 });

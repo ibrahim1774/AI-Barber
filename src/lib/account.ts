@@ -365,6 +365,14 @@ export async function restore(deps: RestoreDeps): Promise<Restored | null> {
   if (!sameSite && !bound.siteData) return null;
 
   const now = Date.now();
+  let uid: string | undefined;
+  try {
+    uid = (await supabase.auth.getSession()).data.session?.user?.id;
+  } catch {
+    /* signed out, or the session can't be read: left unowned */
+  }
+  // A signed-in account's own, different site must never be overwritten: the new site gets its own id.
+  const keepDraftId = !!local && !local.deployedUrl && !(local.ownerUserId && uid && local.ownerUserId === uid);
   const record: SiteRecord =
     sameSite && local
       ? {
@@ -379,7 +387,7 @@ export async function restore(deps: RestoreDeps): Promise<Restored | null> {
           ...(bound.siteData ? { liveLinks: linksOf(bound.siteData) } : {}),
         }
       : {
-          draftId: local && !local.deployedUrl ? local.draftId : randomUUID(),
+          draftId: keepDraftId && local ? local.draftId : randomUUID(),
           inputs: inputsFrom(bound.siteData!),
           data: bound.siteData!,
           updatedAt: now,
@@ -393,12 +401,7 @@ export async function restore(deps: RestoreDeps): Promise<Restored | null> {
   // A pending publish is left alone: it is paid content for this same
   // subscription, and the launch retry still sends it to the bound site.
   // A restored site belongs to the account signed in now, if any.
-  try {
-    const uid = (await supabase.auth.getSession()).data.session?.user?.id;
-    if (uid) record.ownerUserId = uid;
-  } catch {
-    /* signed out, or the session can't be read: left unowned */
-  }
+  if (uid) record.ownerUserId = uid;
   await deps.store.saveSite(record);
   // A restored site is paid and published: no more reminders (start, Settings
   // and sign-in all restore through here). Never affects the restore.

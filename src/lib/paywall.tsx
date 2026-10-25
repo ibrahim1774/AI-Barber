@@ -6,7 +6,7 @@ import { relinkShopPurchase } from '@/lib/setup/relink';
 import { syncNow } from '@/lib/adminSync';
 import { restore, syncIfSignedIn, type Restored } from '@/lib/account';
 import { appsFlyerUID, track, trackConversion } from '@/lib/analytics';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { currentUserId } from '@/lib/auth';
 import { accessToken } from '@/lib/accessToken';
 import { PaywallSettle, type PaywallResult } from '@/lib/paywallSettle';
@@ -360,7 +360,14 @@ export function usePublishDeps(): PublishDeps {
       iosPublish: api.iosPublish,
       syncFromServer: syncNow,
       boundElsewhere: async (transactionId, site) => {
-        const bound = await api.iosSite(transactionId);
+        let bound;
+        try {
+          bound = await api.iosSite(transactionId);
+        } catch (e) {
+          // A fresh subscription has no site yet: not bound, go ahead. Anything else throws (fail closed).
+          if (e instanceof ApiError && (e.status === 404 || e.code === 'no-site')) return false;
+          throw e;
+        }
         return !!bound.siteId && !boundMatches(site, bound);
       },
       linkContext: loadLinkContext,
