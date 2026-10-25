@@ -120,3 +120,34 @@ describe('filterCustomers', () => {
     expect(filterCustomers(list, '', 'paid').map((c) => c.name)).toEqual(['Zed', 'Jane', 'Amy']);
   });
 });
+
+describe('review fixes', () => {
+  it('digit search only matches phone digits, not emails or names containing digits', () => {
+    const list = groupCustomers([
+      row({ name: 'Mike', email: 'mike2@x.com' }),
+      row({ name: 'Bea', email: 'b@x.com', phone: '737-222-9999' }),
+    ], NOW);
+    expect(filterCustomers(list, 'mike2@x.com', 'recent').map((c) => c.name)).toEqual(['Mike']);
+    expect(filterCustomers(list, 'Room 222', 'recent')).toHaveLength(0);
+    expect(filterCustomers(list, '222-99', 'recent').map((c) => c.name)).toEqual(['Bea']);
+    expect(filterCustomers(list, '22', 'recent')).toHaveLength(0); // under 3 digits never matches phones
+  });
+
+  it('groups a large same-phone group quickly', () => {
+    const rows = Array.from({ length: 30000 }, () => row({ phone: '0000000000' }));
+    const t = Date.now();
+    const out = groupCustomers(rows, NOW);
+    expect(out).toHaveLength(1);
+    expect(out[0].bookings).toBe(30000);
+    expect(Date.now() - t).toBeLessThan(1500);
+  });
+
+  it('live unpaid card holds are not bookings or next booking', () => {
+    const hold = row({ email: 'h@x.com', status: 'booked', paymentStatus: 'awaiting', paymentMethod: 'card', amountPaidCents: 0, start: '2026-11-01T15:00:00.000Z' });
+    const real = row({ email: 'h@x.com', status: 'booked', start: '2026-11-05T15:00:00.000Z' });
+    const out = groupCustomers([hold, real], NOW);
+    expect(out[0].bookings).toBe(1);
+    expect(out[0].nextAt).toBe('2026-11-05T15:00:00.000Z');
+    expect(groupCustomers([hold], NOW)).toHaveLength(0);
+  });
+});

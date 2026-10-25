@@ -3,6 +3,7 @@ import type { ShopInputs, WebsiteData } from '@/web/types';
 import { adoptServerCopy, isNewerAdminEdit, isPlainSiteData, versionFields } from '@/lib/adminSync';
 import { resetUser, track } from '@/lib/analytics';
 import { api } from '@/lib/api';
+import { clearCustomersCache } from '@/lib/bookings/customersCache';
 import { clearOverlayFlags } from '@/lib/overlayFlags';
 import { findTransactionId, publishPayload } from '@/lib/publish';
 import { linksOf } from '@/lib/bookingChoice';
@@ -279,6 +280,7 @@ export async function restore(deps: RestoreDeps): Promise<Restored | null> {
  * per-draft flags. Published sites stay live (see the privacy page).
  */
 export async function deleteLocalData(): Promise<void> {
+  clearCustomersCache();
   const site = await siteStore.loadSite();
   // Both delete paths come through here. A payer (published, or paid and
   // publishing) gets no more reminders; an unpublished draft's "finish"
@@ -307,6 +309,7 @@ export async function deleteAccountAndData(): Promise<void> {
   } finally {
     // The account is gone whatever happens locally: no more reminders.
     await cancelAllReminders();
+    clearCustomersCache();
     // The event first, so it is still recorded against the deleted user; then PostHog forgets them.
     track('account_deleted');
     resetUser();

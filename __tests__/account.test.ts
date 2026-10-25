@@ -11,6 +11,7 @@ import {
 } from '@/lib/account';
 import { currentUserId, friendlyAuthError, signIn, signOut, signUp } from '@/lib/auth';
 import type { SiteRecord } from '@/lib/siteStore';
+import * as customersCache from '@/lib/bookings/customersCache';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { sb, supabase } = require('@/lib/supabase');
 
@@ -673,6 +674,13 @@ describe('auth', () => {
     const session = { access_token: 'a', user: USER };
     supabase.auth.signInWithPassword.mockResolvedValueOnce({ data: { user: USER, session }, error: null });
     await expect(signIn('barber@example.com', 'secret1')).resolves.toBeUndefined();
+  });
+
+  test('signOut and deleteLocalData clear the customers cache', async () => {
+    const spy = jest.spyOn(customersCache, 'clearCustomersCache');
+    await signOut();
+    await deleteLocalData();
+    expect(spy).toHaveBeenCalledTimes(2);
   });
 
   test('signOut resets PostHog', async () => {

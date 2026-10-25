@@ -51,10 +51,15 @@ export function isAbandonedHold(a: CustomerAppt): boolean {
   return a.status === 'cancelled' && a.cancelledBy === 'customer' && a.paymentMethod === 'card' && a.amountPaidCents === 0;
 }
 
+/** An unpaid card checkout still in progress (about 30 minutes): the slot is held, but it is not a booking yet. */
+export function isLiveHold(a: CustomerAppt): boolean {
+  return a.status === 'booked' && a.paymentMethod === 'card' && a.paymentStatus === 'awaiting' && a.amountPaidCents === 0;
+}
+
 const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 export function groupCustomers(rows: CustomerAppt[], nowIso: string): Customer[] {
-  const kept = rows.filter((r) => !isAbandonedHold(r) && (normalizeEmail(r.email) || normalizePhone(r.phone)));
+  const kept = rows.filter((r) => !isAbandonedHold(r) && !isLiveHold(r) && (normalizeEmail(r.email) || normalizePhone(r.phone)));
   const parent = kept.map((_, i) => i);
   const find = (i: number): number => {
     while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; }
@@ -74,7 +79,8 @@ export function groupCustomers(rows: CustomerAppt[], nowIso: string): Customer[]
   const groups = new Map<number, CustomerAppt[]>();
   kept.forEach((r, i) => {
     const g = find(i);
-    groups.set(g, [...(groups.get(g) ?? []), r]);
+    const arr = groups.get(g);
+    if (arr) arr.push(r); else groups.set(g, [r]);
   });
 
   const now = Date.parse(nowIso);
@@ -130,11 +136,12 @@ export type CustomerSort = 'recent' | 'bookings' | 'name' | 'paid';
 
 export function filterCustomers(list: Customer[], query: string, sort: CustomerSort): Customer[] {
   const q = query.trim().toLowerCase();
-  const qd = q.replace(/\D/g, '');
+  // Digits only match phones when the query itself looks like a phone number (never "mike2@x.com" or "Room 4").
+  const qd = /^[\d\s()+.-]+$/.test(q) ? q.replace(/\D/g, '') : '';
   const hit = (c: Customer) =>
     !q ||
     [c.name, ...c.otherNames, ...c.emails].some((s) => s.toLowerCase().includes(q)) ||
-    (qd.length > 0 && c.phones.some((p) => p.replace(/\D/g, '').includes(qd)));
+    (qd.length >= 3 && c.phones.some((p) => p.replace(/\D/g, '').includes(qd)));
   const recent = (a: Customer, b: Customer) => cmp(b.lastAt ?? '', a.lastAt ?? '');
   const res = list.filter(hit);
   switch (sort) {

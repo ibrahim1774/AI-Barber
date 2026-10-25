@@ -3,6 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 import { identifyUser, resetUser, track, trackRegistration } from '@/lib/analytics';
 import { api } from '@/lib/api';
 import { pullSiteFromAccount, syncIfSignedIn } from '@/lib/account';
+import { clearCustomersCache } from '@/lib/bookings/customersCache';
 import { isCodeComplete, isValidEmail, sanitizeCode } from '@/lib/recovery';
 import { supabase } from '@/lib/supabase';
 import { LOOKUP_TIMEOUT_MS, withTimeout } from '@/lib/timeout';
@@ -151,6 +152,7 @@ export async function signOut(): Promise<void> {
   // Offline: the refresh token can't be revoked, but this phone still signs out.
   if (error) await supabase.auth.signOut({ scope: 'local' });
   userId = null;
+  clearCustomersCache();
   resetUser();
 }
 
