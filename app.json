@@ -23,6 +23,13 @@
             "SKAdNetworkIdentifier": "n38lu8286q.skadnetwork"
           }
         ]
+      },
+      "privacyManifests": {
+        "NSPrivacyTracking": true,
+        "NSPrivacyTrackingDomains": [
+          "appsflyersdk.com",
+          "appsflyer-skadnetwork.com"
+        ]
       }
     },
     "plugins": [
@@ -40,7 +47,8 @@
         "expo-image-picker",
         {
           "photosPermission": "Prime Barber uses your photos so you can put your own shop and haircuts on your website.",
-          "cameraPermission": "Prime Barber uses your camera so you can photograph products for your shop."
+          "cameraPermission": "Prime Barber uses your camera so you can photograph products for your shop.",
+          "microphonePermission": false
         }
       ],
       [
