@@ -57,9 +57,11 @@ describe('Learn how it works (Settings)', () => {
 });
 
 describe('Settings entry', () => {
-  it('has a Learn how it works row in Help, and no Tutorial section', () => {
+  it('has the Learn card before Your website, no Help row, and no Tutorial section', () => {
     const src = read('src/app/(tabs)/settings/index.tsx');
-    expect(src).toContain('label="Learn how it works"');
+    expect(src.indexOf('<LearnEntry')).toBeGreaterThan(-1);
+    expect(src.indexOf('<LearnEntry')).toBeLessThan(src.indexOf('<YourWebsite'));
+    expect(src).not.toContain('label="Learn how it works"');
     expect(src).toContain("'/settings/learn'");
     expect(src).not.toContain('title="Tutorial"');
     expect(src).not.toContain('TutorialEntry');

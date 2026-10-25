@@ -1,5 +1,5 @@
 import React from 'react';
-import { allText, hasButton, press, render } from './store/render';
+import { allText, hasButton, press, pressRow, render } from './store/render';
 
 const mockPush = jest.fn();
 jest.mock('expo-router', () => {
@@ -64,5 +64,14 @@ describe('Settings account section', () => {
     });
     expect(mockSignOut).toHaveBeenCalledTimes(1);
     expect(mockResetTo).toHaveBeenCalledWith('/start');
+  });
+
+  it('Learn how it works is the first thing on Settings, even with no site, and appears once', async () => {
+    const t = await render(<Settings />);
+    const text = allText(t);
+    expect(text[0]).toBe('Learn how it works');
+    expect(text.filter((x) => x === 'Learn how it works')).toHaveLength(1);
+    await pressRow(t, 'Learn how it works');
+    expect(mockPush).toHaveBeenCalledWith('/settings/learn');
   });
 });

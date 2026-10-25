@@ -1,3 +1,4 @@
+import { LearnEntry } from '@/components/LearnEntry';
 import { useCallback, useEffect, useLayoutEffect, useState, type ReactNode } from 'react';
 import { ActionSheetIOS, ActivityIndicator, Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, useFocusEffect, useNavigation } from 'expo-router';
@@ -173,6 +174,7 @@ export default function Settings() {
 
   return (
     <Page title="Settings" onBack={standalone ? goBackOrHome : undefined}>
+      <LearnEntry onPress={() => { track('learn_opened'); router.push('/settings/learn' as never); }} />
       {site && <YourWebsite site={site} />}
 
       <Section title="Account">
@@ -201,7 +203,6 @@ export default function Settings() {
       </Section>
 
       <Section title="Help">
-        <Row label="Learn how it works" onPress={() => { track('learn_opened'); router.push('/settings/learn' as never); }} chevron />
         <Row label="Privacy Policy" onPress={() => void WebBrowser.openBrowserAsync(PRIVACY_URL)} external />
         <Row label="Terms of Service" onPress={() => void WebBrowser.openBrowserAsync(TERMS_URL)} external />
         <Row label="Support" detail={SUPPORT_EMAIL} onPress={emailSupport} />
