@@ -71,7 +71,7 @@ describe('subpage rewrites: the closed allow-list', () => {
       '/', '/index.html', '/admin', '/api/admin/sites', '/api/admin-overview', '/api/ios/publish', '/api/ios/site', '/api/ios/sweep',
       '/api/shop/setup', '/api/shop/plan', '/api/shop/appointments', '/api/shop/appointments/x/cancel', '/api/shop/orders/x/refund',
       '/api/shop/stripe/onboard', '/api/shop/push-token', '/api/shop/time-off', '/api/deploy-site', '/api/stripe-webhook',
-      '/api/stripe/connect-webhook', '/api/book/ics', '/api/book/reminders', '/api/book/daily-summary', '/api/publish-sweeper',
+      '/api/stripe/connect-webhook', '/api/book/ics', '/api/book/reminders', '/api/publish-sweeper',
       '/api/create-checkout-session', '/api/save-pending-site', '/api/upload-image', '/api/get-upload-urls', '/api/gemini',
       '/book/other-shop', '/shop/other-shop', '/book/manage', '/shop/manage', '/book/manage/a/b', '/book/manage/',
       '/stripe-return', '/privacy', '/assets/index.js', '/.well-known/x', '/api/book', '/api/store', '/_ab', '/_ab/', '/_ab/book.html',

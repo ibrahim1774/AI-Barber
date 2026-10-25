@@ -1,5 +1,5 @@
 // Shared cron auth gate (originally from api/publish-sweeper.ts). Used by every cron in
-// vercel.json: /api/publish-sweeper, /api/ios/sweep, /api/book/reminders, /api/book/daily-summary.
+// vercel.json: /api/publish-sweeper, /api/ios/sweep, /api/book/reminders.
 export function authorized(req: any): boolean {
   const secret = process.env.CRON_SECRET;
 
