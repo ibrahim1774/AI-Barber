@@ -262,4 +262,51 @@ describe('R1: a paid first publish is never dropped', () => {
     expect(iosPublish).not.toHaveBeenCalled();
     expect(await store.loadPendingPublish()).toBeNull();
   });
+
+  describe('R1b: a re-tap never drops the fresh-bind record', () => {
+    const setup = async (retapOver: Partial<PublishDeps>) => {
+      const site = noAccountSite();
+      await store.saveSite(site);
+      let bound = false;
+      const boundElsewhere = jest.fn(async () => (bound ? true : ('none' as const)));
+      const iosPublish = jest.fn()
+        .mockImplementationOnce(async () => { bound = true; throw new Error('502 publish-failed'); })
+        .mockImplementation(async () => ({ siteId: 'cuts-xyz', deployedUrl: 'https://cuts-xyz.aibarber.org', slug: 'cuts-xyz' }));
+      const base = { hasEntitlement: async () => false, showPaywall: async () => 'purchased' as const, userId: () => null as any, iosPublish: iosPublish as any, boundElsewhere };
+      expect((await publishFlow(site, bDeps(base))).kind).toBe('pending');
+      return { site, iosPublish, base, retap: () => publishFlow(site, bDeps({ ...base, ...retapOver })) };
+    };
+
+    test('re-tap while entitlement reads false (paywall says purchased): not blocked, record kept, send completes', async () => {
+      const { retap, iosPublish } = await setup({});
+      const out = await retap();
+      expect(out.kind).toBe('live');
+      expect(iosPublish).toHaveBeenCalledTimes(2);
+      expect(await store.loadPendingPublish()).toBeNull(); // cleared only on success
+    });
+
+    test('re-tap whose send fails again keeps the freshBind record', async () => {
+      const { retap, iosPublish } = await setup({});
+      iosPublish.mockReset();
+      iosPublish.mockRejectedValue(new Error('502'));
+      expect((await retap()).kind).toBe('pending');
+      expect(await store.loadPendingPublish()).toMatchObject({ target: { freshBind: true } });
+    });
+
+    test('re-tap with a failing ownership check does not need it: record vouches, send completes', async () => {
+      const { retap } = await setup({ boundElsewhere: async () => { throw new Error('5xx'); } });
+      expect((await retap()).kind).toBe('live');
+    });
+
+    test('re-tap when the transaction lookup fails keeps the record', async () => {
+      const { retap } = await setup({ latestTransactionId: async () => null });
+      expect((await retap()).kind).toBe('pending');
+      expect(await store.loadPendingPublish()).toMatchObject({ transactionId: 'tx-A', target: { freshBind: true } });
+    });
+
+    test('re-tap while entitled keeps the record and completes', async () => {
+      const { retap } = await setup({ hasEntitlement: async () => true });
+      expect((await retap()).kind).toBe('live');
+    });
+  });
 });

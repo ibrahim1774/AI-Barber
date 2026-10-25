@@ -322,6 +322,10 @@ export function publishBusy(): boolean {
 export async function publishFlow(site: SiteRecord, deps: PublishDeps): Promise<PublishOutcome> {
   return serial(async () => {
     const data = publishPayload(site.data);
+    // A saved first-publish record (its own failed send may have bound a slug) must survive this tap:
+    // it is only cleared on a confirmed success or a confirmed foreign owner, never by a re-tap.
+    const prior = await deps.store.loadPendingPublish().catch(() => null);
+    const carry = prior?.target?.freshBind && prior.target.draftId === site.draftId ? prior : null;
     let paid = false;
     if (!(await deps.hasEntitlement().catch(() => false))) {
       const result = await deps.showPaywall();
@@ -329,7 +333,8 @@ export async function publishFlow(site: SiteRecord, deps: PublishDeps): Promise<
       paid = true;
       // Remember the purchase before anything else can fail; the id is looked up next.
       await deps.store.savePendingPublish({
-        transactionId: null, data, createdAt: Date.now(), baseVersion: (await deps.store.loadSite())?.serverVersion, target: targetOf(site),
+        transactionId: carry?.transactionId ?? null, data, createdAt: Date.now(), baseVersion: (await deps.store.loadSite())?.serverVersion,
+        target: carry ? { ...targetOf(site)!, freshBind: true } : targetOf(site),
       });
       // Paid: no "publish your site" reminders while it goes live (not for
       // good: a purchase that can't be confirmed brings them back).
@@ -338,9 +343,12 @@ export async function publishFlow(site: SiteRecord, deps: PublishDeps): Promise<
     const transactionId = await findTransactionId(deps.latestTransactionId);
     if (!transactionId) return { kind: 'pending', message: UNCONFIRMED_MESSAGE } as const;
     // A site loaded from an account (no slug of its own) must never publish over the live site the Apple ID is bound to.
-    const guard = await checkBound(deps, transactionId, site);
+    // The saved fresh-bind record vouches for its own transaction's slug: no check, no block.
+    const owned = !!carry && (carry.transactionId == null || carry.transactionId === transactionId);
+    const guard = owned ? 'fresh' : await checkBound(deps, transactionId, site);
     if (guard === 'blocked') {
-      if (paid) await deps.store.savePendingPublish(null);
+      // Confirmed foreign owner for this transaction. A different transaction's fresh-bind record stays.
+      if (paid) await deps.store.savePendingPublish(carry ?? null);
       return { kind: 'blocked', message: BOUND_ELSEWHERE_MESSAGE } as const;
     }
     if (guard === 'unknown') {
