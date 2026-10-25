@@ -1,11 +1,11 @@
-import { useCallback, useMemo, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import type { ShouldStartLoadRequest } from 'react-native-webview/lib/WebViewTypes';
 import type { WebsiteData } from '@/web/types';
 import { EDITOR_JS, buildPreviewHtml, previewBackground, previewEditPaths, type PreviewPage, type PreviewProduct } from '@/lib/editable';
-import { parsePreviewMessage, shouldAllowPreviewRequest, type ImageRect } from '@/lib/previewBridge';
-import { ChangeImagePills } from '@/components/ChangeImagePills';
+import { parsePreviewMessage, shouldAllowPreviewRequest, tourPillPath, type ImageRect } from '@/lib/previewBridge';
+import { SAMPLE_HERO_NOTE } from '@/lib/pageHero';
 
 export interface SitePreviewProps {
   data: WebsiteData;
@@ -16,7 +16,7 @@ export interface SitePreviewProps {
   page?: PreviewPage | null;
   onEditText(path: string): void;
   onEditImage(path: string): void;
-  /** Registered with the tutorial on the tour's "Change image" pill. */
+  /** Registered with the tutorial on the tour's "Change image" chip (an invisible view over it; the chip itself is page DOM). */
   pillTourRef?: RefObject<View | null>;
   /** Paths of photos on this page that are still samples (they get a "replace with yours" prompt). */
   samplePaths?: string[];
@@ -36,7 +36,7 @@ function sameRects(a: ImageRect[], b: ImageRect[]): boolean {
 export default function SitePreview({ data, editable, shopProducts, page, onEditText, onEditImage, pillTourRef, samplePaths }: SitePreviewProps) {
   const webRef = useRef<WebView>(null);
   const scrollY = useRef(0);
-  // Where each photo is on screen (for the "Change image" pills), and whether the page is moving.
+  // Where the page's "Change image" chips are on screen: only the Edit tour reads this.
   const [rects, setRects] = useState<ImageRect[]>([]);
 
   // Memoised on data/editable: the templates stamp Date.now() into the HTML, so
@@ -57,6 +57,15 @@ export default function SitePreview({ data, editable, shopProducts, page, onEdit
   const bg = previewBackground(data);
   const style = useMemo(() => [styles.web, { backgroundColor: bg }], [bg]);
 
+  // Photos that are still samples: the page chip shows the "replace with yours" note over them.
+  const samples = useRef(samplePaths ?? []);
+  samples.current = samplePaths ?? [];
+  const sampleKey = (samplePaths ?? []).join('|');
+  const sendSamples = useCallback(() => {
+    webRef.current?.injectJavaScript(`window.__aibSetSamples && window.__aibSetSamples(${JSON.stringify(samples.current)}, ${JSON.stringify(SAMPLE_HERO_NOTE)}); true;`);
+  }, []);
+  useEffect(() => { sendSamples(); }, [sampleKey, sendSamples]);
+
   const onMessage = useCallback(
     (e: WebViewMessageEvent) => {
       const m = parsePreviewMessage(e.nativeEvent.data, data, page, editPaths);
@@ -75,17 +84,19 @@ export default function SitePreview({ data, editable, shopProducts, page, onEdit
           // Same photos in the same places: keep the current array so nothing re-renders (no blink).
           setRects((prev) => (sameRects(prev, m.items) ? prev : m.items));
           return;
-        case 'scrolling':
-          return;
         case 'ready':
           webRef.current?.injectJavaScript(`window.__aibRestore && window.__aibRestore(${Math.round(scrollY.current)}); true;`);
+          sendSamples();
           return;
       }
     },
-    [editable, editPaths, data, page, onEditText, onEditImage],
+    [editable, editPaths, data, page, onEditText, onEditImage, sendSamples],
   );
 
   const onShouldStartLoadWithRequest = useCallback((req: ShouldStartLoadRequest) => shouldAllowPreviewRequest(req), []);
+
+  const tourPath = tourPillPath(rects);
+  const tourChip = pillTourRef ? rects.find((r) => r.path === tourPath) : undefined;
 
   return (
     <View style={styles.fill}>
@@ -111,7 +122,9 @@ export default function SitePreview({ data, editable, shopProducts, page, onEdit
       dataDetectorTypes="none"
       allowsBackForwardNavigationGestures={false}
     />
-    {editable && <ChangeImagePills items={rects} hidden={false} onPress={onEditImage} tourRef={pillTourRef} samplePaths={samplePaths} />}
+    {editable && tourChip && (
+      <View ref={pillTourRef} collapsable={false} pointerEvents="none" style={{ position: 'absolute', left: tourChip.x, top: tourChip.y, width: tourChip.w, height: tourChip.h }} />
+    )}
     </View>
   );
 }

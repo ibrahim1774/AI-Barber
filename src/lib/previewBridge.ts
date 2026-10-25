@@ -7,11 +7,15 @@ export type PreviewMessage =
   | { type: 'image'; path: string }
   | { type: 'scrollY'; y: number }
   | { type: 'rects'; items: ImageRect[] }
-  | { type: 'scrolling' }
   | { type: 'ready' };
 
-/** Where a tappable photo is in the page, in WebView points (the visible part of it). */
+/** Where a photo's "Change image" chip is on screen, in WebView points (reported for the Edit tour only). */
 export interface ImageRect { path: string; x: number; y: number; w: number; h: number }
+
+/** Photo whose chip the Edit tour points at: the hero if it is on screen, else the first. */
+export function tourPillPath(items: ImageRect[]): string | null {
+  return (items.find((r) => r.path === 'hero.imageUrl') ?? items[0])?.path ?? null;
+}
 
 // 2,000 characters for every message but the photo rectangles, which carry one entry per visible photo.
 const MAX_MESSAGE = 2000;
@@ -58,8 +62,6 @@ export function parsePreviewMessage(raw: unknown, data: WebsiteData, page?: Prev
       }
       return { type: 'rects', items };
     }
-    case 'scrolling':
-      return { type: 'scrolling' };
     case 'ready':
       return { type: 'ready' };
     default:

@@ -190,8 +190,9 @@ describe('bridge', () => {
     expect(parsePreviewMessage(msg({ type: 'rects', items, pad: 'x'.repeat(9000) }), data)).toBeNull();
   });
 
-  test('scrolling and ready messages', () => {
-    expect(parsePreviewMessage(msg({ type: 'scrolling' }), fixtures[0].data)).toEqual({ type: 'scrolling' });
+  test('ready message; scrolling is no longer one', () => {
+    expect(parsePreviewMessage(msg({ type: 'ready' }), fixtures[0].data)).toEqual({ type: 'ready' });
+    expect(parsePreviewMessage(msg({ type: 'scrolling' }), fixtures[0].data)).toBeNull();
   });
 });
 

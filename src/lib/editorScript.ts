@@ -13,10 +13,11 @@
  *  - reports scrollY (after the native side has restored it) and posts 'ready'
  *    on load so the native side can restore the scroll position after a
  *    re-render reloads the document;
- *  - reports where each tappable photo ([data-edit-image]) is on screen
- *    ('rects', the visible part of it) after load, resize, layout change and
- *    when scrolling stops, and 'scrolling' when it starts, so the native
- *    "Change image" pills can sit on the photos and hide while they move.
+ *  - adds a real-DOM "Change image" chip (camera icon + text) bottom-left of every
+ *    [data-edit-image] photo, so it scrolls with the page natively; a tap posts
+ *    {type:'image', path}. Sample-photo notes arrive via window.__aibSetSamples.
+ *    Reports the chips' on-screen rectangles ('rects', settled, never while
+ *    scrolling) only so the Edit tour can point at the first chip.
  *
  * Plain ES5, ASCII-only source (no backslash escapes: Babel cooks \u escapes
  * even inside String.raw) — it is a string, not compiled.
@@ -78,6 +79,8 @@ export const EDITOR_JS = String.raw`(function () {
     e.preventDefault();
     e.stopPropagation();
     var el = e.target && e.target.nodeType === 1 ? e.target : e.target && e.target.parentElement;
+    var chipHost = closestAttr(el, 'data-aib-chip');
+    if (chipHost) { post({ type: 'image', path: chipHost.getAttribute('data-aib-chip') }); return; }
     var text = closestAttr(el, 'data-edit');
     if (text) { post({ type: 'edit', path: text.getAttribute('data-edit') }); return; }
     // A button or link whose text is editable: tapping anywhere on it edits that text (its padding, a
@@ -102,27 +105,132 @@ export const EDITOR_JS = String.raw`(function () {
     }
   }, true);
 
-  // Photo rectangles for the native "Change image" pills: the visible part of
-  // every [data-edit-image], in viewport points, small and capped.
+  // "Change image" chips: real DOM next to every [data-edit-image] photo, so they scroll with the page
+  // natively (no bridge, no lag). A photo is an <img> (cannot hold children), so the chip is its next sibling,
+  // absolutely positioned from the photo's box inside the same containing block; only layout changes
+  // (load, resize, font/CSS arrival) re-place it, never scrolling. Preview only: this script never ships.
+  var CHIP_CSS =
+    '.aib-chip-host{all:initial;position:absolute;z-index:2147483000;display:flex;flex-direction:column;align-items:flex-start;box-sizing:border-box;pointer-events:none;transform:translateY(-100%);}' +
+    '.aib-chip-note{all:initial;display:block;box-sizing:border-box;max-width:100%;margin:0 0 4px 0;padding:2px 6px;border-radius:4px;background:rgba(0,0,0,0.55);color:#fff;font:600 11px/1.2 -apple-system,system-ui,sans-serif;pointer-events:none;-webkit-user-select:none;user-select:none;}' +
+    '.aib-chip{all:initial;position:relative;display:inline-flex;align-items:center;box-sizing:border-box;padding:2px 6px;border-radius:4px;background:rgba(0,0,0,0.55);color:#fff;font:600 11px/1.2 -apple-system,system-ui,sans-serif;white-space:nowrap;cursor:pointer;pointer-events:auto;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;}' +
+    '.aib-chip::before{content:"";position:absolute;top:-16px;right:-20px;bottom:-16px;left:-14px;}' +
+    '.aib-chip svg{display:block!important;flex:none;width:11px!important;height:11px!important;margin:0 4px 0 0!important;}';
+  try {
+    var chipStyle = document.createElement('style');
+    chipStyle.textContent = CHIP_CSS;
+    (document.head || document.documentElement).appendChild(chipStyle);
+  } catch (e) {}
+  var CAMERA =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>';
+  var samples = [];
+  var sampleNote = '';
+  var chips = [];
+  var chipRO = null;
+  var syncFrame = 0;
+  var INSET = 6;
+
+  function makeChip(img, path) {
+    var host = document.createElement('div');
+    host.className = 'aib-chip-host';
+    host.setAttribute('data-aib-chip', path);
+    var chip = document.createElement('span');
+    chip.className = 'aib-chip';
+    chip.setAttribute('role', 'button');
+    chip.setAttribute('aria-label', 'Change image');
+    chip.innerHTML = CAMERA + '<span>Change image</span>';
+    host.appendChild(chip);
+    var ref = img.parentElement && img.parentElement.tagName === 'PICTURE' ? img.parentElement : img;
+    if (ref.parentNode) ref.parentNode.insertBefore(host, ref.nextSibling);
+    return { img: img, host: host, chip: chip, path: path, note: null };
+  }
+
+  function placeChip(c) {
+    var img = c.img;
+    var host = c.host;
+    var r = img.getBoundingClientRect();
+    if (!img.isConnected || r.width < 56 || r.height < 44 || window.getComputedStyle(img).display === 'none') {
+      host.style.setProperty('display', 'none', 'important');
+      return;
+    }
+    host.style.removeProperty('display');
+    var fixed = window.getComputedStyle(img).position === 'fixed';
+    var left = r.left + INSET;
+    var top = r.bottom - INSET;
+    if (fixed) {
+      host.style.setProperty('position', 'fixed', 'important');
+    } else {
+      host.style.removeProperty('position');
+      var op = host.offsetParent;
+      if (op && op !== document.body && op !== document.documentElement) {
+        var pr = op.getBoundingClientRect();
+        left = left - pr.left - op.clientLeft + op.scrollLeft;
+        top = top - pr.top - op.clientTop + op.scrollTop;
+      } else {
+        // No positioned ancestor: the initial containing block, measured from the document origin.
+        left += window.pageXOffset || 0;
+        top += window.pageYOffset || 0;
+      }
+    }
+    host.style.setProperty('left', Math.round(left) + 'px', 'important');
+    host.style.setProperty('top', Math.round(top) + 'px', 'important');
+    host.style.setProperty('max-width', Math.max(0, Math.round(r.width - INSET * 2)) + 'px', 'important');
+    var isSample = samples.indexOf(c.path) >= 0 && !!sampleNote;
+    if (isSample && !c.note) {
+      c.note = document.createElement('span');
+      c.note.className = 'aib-chip-note';
+      c.note.textContent = sampleNote;
+      host.insertBefore(c.note, c.chip);
+    } else if (isSample && c.note.textContent !== sampleNote) {
+      c.note.textContent = sampleNote;
+    } else if (!isSample && c.note) {
+      host.removeChild(c.note);
+      c.note = null;
+    }
+  }
+
+  function syncChips() {
+    try {
+      var els = document.querySelectorAll('[data-edit-image]');
+      for (var i = 0; i < els.length && i < 24; i++) {
+        var el = els[i];
+        var path = el.getAttribute('data-edit-image');
+        var c = null;
+        for (var k = 0; k < chips.length; k++) if (chips[k].img === el) c = chips[k];
+        if (!c) {
+          c = makeChip(el, path);
+          chips.push(c);
+          try { if (!chipRO && window.ResizeObserver) chipRO = new ResizeObserver(scheduleSync); if (chipRO) chipRO.observe(el); } catch (e) {}
+        }
+        placeChip(c);
+      }
+    } catch (e) {}
+  }
+  function scheduleSync() {
+    if (syncFrame) return;
+    var run = function () { syncFrame = 0; syncChips(); scheduleRects(); };
+    syncFrame = window.requestAnimationFrame ? window.requestAnimationFrame(run) : setTimeout(run, 16);
+  }
+  window.__aibSetSamples = function (paths, note) {
+    samples = paths && paths.length ? paths : [];
+    sampleNote = typeof note === 'string' ? note : '';
+    syncChips();
+  };
+
+  // Where the chips are on screen, for the Edit tour only (it points a spotlight at the first chip): the chips
+  // that are inside the viewport, in viewport points. Posted when things settle, never while scrolling.
   var rectTimer = null;
-  var moving = false;
-  var liveTimer = null;
   function postRects() {
     try {
       var vw = window.innerWidth || document.documentElement.clientWidth || 0;
       var vh = window.innerHeight || document.documentElement.clientHeight || 0;
-      var els = document.querySelectorAll('[data-edit-image]');
       var items = [];
-      for (var i = 0; i < els.length && items.length < 24; i++) {
-        var r = els[i].getBoundingClientRect();
-        var x1 = Math.max(0, r.left);
-        var y1 = Math.max(0, r.top);
-        var x2 = Math.min(vw, r.right);
-        var y2 = Math.min(vh, r.bottom);
-        if (x2 - x1 < 56 || y2 - y1 < 44) continue;
-        items.push({ path: els[i].getAttribute('data-edit-image'), x: Math.round(x1), y: Math.round(y1), w: Math.round(x2 - x1), h: Math.round(y2 - y1) });
+      for (var i = 0; i < chips.length && items.length < 24; i++) {
+        if (chips[i].host.style.display === 'none') continue;
+        var r = chips[i].chip.getBoundingClientRect();
+        if (r.width <= 0 || r.height <= 0 || r.left < 0 || r.top < 0 || r.right > vw || r.bottom > vh) continue;
+        items.push({ path: chips[i].path, x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) });
       }
-      moving = false;
       post({ type: 'rects', items: items });
     } catch (e) {}
   }
@@ -130,18 +238,15 @@ export const EDITOR_JS = String.raw`(function () {
     clearTimeout(rectTimer);
     rectTimer = setTimeout(postRects, 160);
   }
-  window.addEventListener('resize', scheduleRects);
-  document.addEventListener('load', scheduleRects, true);
-  try { if (window.ResizeObserver) new ResizeObserver(scheduleRects).observe(document.documentElement); } catch (e) {}
+  window.addEventListener('resize', scheduleSync);
+  document.addEventListener('load', scheduleSync, true);
+  try { if (window.ResizeObserver) new ResizeObserver(scheduleSync).observe(document.documentElement); } catch (e) {}
 
   // Scroll: report only after the native side restored the previous position,
   // so the fresh document's scrollY=0 never overwrites the saved value.
   var restored = false;
   var pending = false;
   window.addEventListener('scroll', function () {
-    if (!moving) { moving = true; post({ type: 'scrolling' }); }
-    // Keep the native pills following the photos while scrolling (throttled), so they never blink off.
-    if (!liveTimer) liveTimer = setTimeout(function () { liveTimer = null; postRects(); }, 60);
     scheduleRects();
     if (!restored || pending) return;
     pending = true;
@@ -162,13 +267,13 @@ export const EDITOR_JS = String.raw`(function () {
       if (tries < 8 && Math.abs((window.scrollY || 0) - y) > 2) { setTimeout(go, 100); return; }
       root.style.scrollBehavior = '';
       restored = true;
-      scheduleRects();
+      scheduleSync();
     }
     go();
   };
 
   // Tailwind CDN and web fonts move things after load: report again a little later.
-  function ready() { sweep(); post({ type: 'ready' }); scheduleRects(); setTimeout(postRects, 700); setTimeout(postRects, 2000); }
+  function ready() { sweep(); syncChips(); post({ type: 'ready' }); scheduleRects(); setTimeout(syncChips, 700); setTimeout(syncChips, 2000); setTimeout(postRects, 2200); }
   if (document.readyState === 'complete') ready();
   else window.addEventListener('load', ready);
 })();

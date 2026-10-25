@@ -7,7 +7,6 @@ import { PagesSheet } from '@/components/PagesSheet';
 import { PageSectionsSheet } from '@/components/PageSectionsSheet';
 import { HeroPhotoSheet } from '@/components/HeroPhotoSheet';
 import { EditSheet } from '@/components/EditSheet';
-import { ChangeImagePills } from '@/components/ChangeImagePills';
 import type { PageChips } from '@/lib/sitePages';
 import { shop } from './pagesV2Fixture';
 
@@ -171,14 +170,6 @@ describe('page hero photo', () => {
     let bare: any;
     act(() => { bare = create(<HeroPhotoSheet visible data={d} path="services.0.imageUrl" onPhone={onPhone} onGallery={onGallery} onSample={onSample} onClose={jest.fn()} />); });
     expect(texts(bare)).not.toContain('Use sample photo');
-  });
-
-  test('the sample prompt shows over a sample hero only', () => {
-    const items = [{ path: 'extraPages.images.first-visit', x: 0, y: 0, w: 300, h: 160 }, { path: 'gallery.2', x: 0, y: 200, w: 300, h: 160 }];
-    let tree: any;
-    act(() => { tree = create(<ChangeImagePills items={items} hidden={false} onPress={jest.fn()} samplePaths={['extraPages.images.first-visit']} />); });
-    expect(texts(tree).filter((x) => x.startsWith('Sample photo'))).toHaveLength(1);
-    expect(texts(tree).filter((x) => x === 'Change image')).toHaveLength(2);
   });
 });
 
