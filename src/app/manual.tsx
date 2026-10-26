@@ -30,7 +30,7 @@ export default function Manual() {
   const mounted = useRef(true);
   useEffect(() => () => { mounted.current = false; }, []);
 
-  const set = (k: keyof ManualForm) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const set = (k: keyof ManualForm) => (v: string) => { setError(null); setForm((f) => ({ ...f, [k]: v })); };
 
   const submit = async () => {
     if (busyRef.current) return;
@@ -67,6 +67,7 @@ export default function Manual() {
           label="Barbershop name"
           value={form.shopName}
           onChangeText={set('shopName')}
+          maxLength={80}
           placeholder="Jack's Barbershop"
           autoCapitalize="words"
           returnKeyType="next"
@@ -77,6 +78,7 @@ export default function Manual() {
           label="Address or city"
           value={form.address}
           onChangeText={set('address')}
+          maxLength={160}
           placeholder="512 Congress Ave, Austin, TX"
           autoCapitalize="words"
           textContentType="fullStreetAddress"
@@ -88,6 +90,7 @@ export default function Manual() {
           label="Mobile number"
           value={form.phone}
           onChangeText={set('phone')}
+          maxLength={30}
           placeholder="(512) 555-0142"
           keyboardType="phone-pad"
           textContentType="telephoneNumber"

@@ -15,12 +15,27 @@ export function validateManual(f: ManualForm): ManualFieldErrors {
   if (!f.address.trim()) e.address = 'Enter your address or city.';
   const phone = f.phone.trim();
   const digits = phone.replace(/[\s+().-]/g, '');
-  if (!phone || (/^\d+$/.test(digits) && !(digits.length === 10 || (digits.length === 11 && digits.startsWith('1'))))) {
+  if (!phone || phone.replace(/\D/g, '').length < 7 || (/^\d+$/.test(digits) && !(digits.length === 10 || (digits.length === 11 && digits.startsWith('1'))))) {
     e.phone = 'Enter a 10-digit mobile number.';
   }
   const place = f.place.trim();
   if (place && (/\d/.test(place) || Array.from(place).length > 60)) e.place = "Use the area's name, not an address.";
   return e;
+}
+
+/**
+ * "+1 (512) 555-0142", "1-512-555-0142", "512.555.0142" and "5125550142" all become
+ * "(512) 555-0142", so every design builds a valid tel: link. Other numbers stay as typed.
+ */
+export function normalizeManualPhone(raw: string): string {
+  const t = raw.trim();
+  const d = t.replace(/[\s+().-]/g, '');
+  if (/^\d+$/.test(d) && !/[^\d\s+().-]/.test(t)) {
+    const ten = d.length === 11 && d.startsWith('1') ? d.slice(1) : d;
+    // "+44 ..." style numbers keep their country code.
+    if (ten.length === 10 && !(t.startsWith('+') && !t.startsWith('+1'))) return formatPhone(ten);
+  }
+  return formatPhone(t);
 }
 
 export function manualInputs(
@@ -32,7 +47,7 @@ export function manualInputs(
     shopName: f.shopName.trim(),
     area: placeFromArea(address) || address,
     address,
-    phone: formatPhone(f.phone),
+    phone: normalizeManualPhone(f.phone),
     ...(place ? { place } : {}),
     colorTheme,
     ...(services?.length ? { services } : {}),

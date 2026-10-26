@@ -9,31 +9,33 @@ export interface HeaderButtonProps {
   icon?: 'share' | 'gear';
   /** solid = filled accent pill (Share); outline = hairline pill (Settings, Customers). */
   tone?: 'solid' | 'outline';
+  /** Share the row equally with sibling pills (flex 1, no icon, label shrinks to fit). */
+  fill?: boolean;
   onPress(): void;
   accessibilityLabel?: string;
 }
 
 /** A visible, labelled pill for the Store and Bookings headers. 32 pt tall. */
 export const HeaderButton = forwardRef<View, HeaderButtonProps>(function HeaderButton(
-  { title, icon, tone = 'outline', onPress, accessibilityLabel }, ref,
+  { title, icon, tone = 'outline', fill, onPress, accessibilityLabel }, ref,
 ) {
   const solid = tone === 'solid';
   // On a 375 pt phone three pills leave the shop name about 40 pt: drop the icons there.
-  const narrow = useWindowDimensions().width <= NARROW_WIDTH;
+  const narrow = useWindowDimensions().width <= NARROW_WIDTH || !!fill;
   const ink = solid ? colors.accentInk : colors.text;
   return (
     <Pressable
       ref={ref}
       collapsable={false}
       onPress={onPress}
-      hitSlop={6}
+      hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? title}
-      style={({ pressed }) => [styles.pill, narrow && styles.pillNarrow, solid ? styles.solid : styles.outline, pressed && { opacity: 0.8 }]}
+      style={({ pressed }) => [styles.pill, narrow && styles.pillNarrow, fill && styles.fill, solid ? styles.solid : styles.outline, pressed && { opacity: 0.8 }]}
     >
       {!narrow && icon === 'share' && <ShareIcon size={16} color={ink} />}
       {!narrow && icon === 'gear' && <GearIcon size={16} color={ink} />}
-      <Text style={[styles.text, { color: ink }]} numberOfLines={1} maxFontSizeMultiplier={1.4}>{title}</Text>
+      <Text style={[styles.text, { color: ink }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} maxFontSizeMultiplier={1.4}>{title}</Text>
     </Pressable>
   );
 });
@@ -42,6 +44,7 @@ export const HeaderButton = forwardRef<View, HeaderButtonProps>(function HeaderB
 export const NARROW_WIDTH = 380;
 
 const styles = StyleSheet.create({
+  fill: { flex: 1, minWidth: 0, justifyContent: 'center', paddingHorizontal: 6 },
   pillNarrow: { paddingHorizontal: 9 },
   pill: { height: 32, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, borderRadius: 16 },
   solid: { backgroundColor: colors.accent },
