@@ -378,3 +378,15 @@ describe('GET /api/shop/plan: purchase of another account carries the move-confi
     expect('hasLiveSite' in mine).toBe(false);
   });
 });
+
+describe('finishMove hook (M3)', () => {
+  it('GET and refresh run the finisher for the caller first; a throwing finisher never breaks them', async () => {
+    const { deps } = fakes();
+    const finishMove = vi.fn(async () => { throw new Error('x'); });
+    deps.finishMove = finishMove;
+    expect((await getPlan('Bearer noshop-jwt', deps)).status).toBe(200);
+    expect(finishMove).toHaveBeenCalledTimes(1);
+    await refreshPlan('Bearer noshop-jwt', { transactionId: '2000000123' }, deps);
+    expect(finishMove).toHaveBeenCalledTimes(2);
+  });
+});

@@ -18,13 +18,14 @@ const BUNDLE = 'com.ibrahim1774.aibarber';
 const proofFor = (jws: string) => {
   // jws string encodes the payload for the fake decoder: 'ok', 'stale', 'other-otid', 'other-bundle', 'other-env'
   const d = { originalTransactionId: OTID, transactionId: '1', productId: TX.productId, bundleId: BUNDLE, environment: 'Production', signedDate: NOW - 60_000 } as any;
-  if (jws === 'stale') d.signedDate = NOW - 11 * 60_000;
-  if (jws === 'future') d.signedDate = NOW + 11 * 60_000;
+  if (jws === 'stale') d.signedDate = NOW - 46 * 86_400_000;
+  if (jws === 'old-ok') d.signedDate = NOW - 44 * 86_400_000;
+  if (jws === 'future') d.signedDate = NOW + 6 * 60_000;
   if (jws === 'nodate') delete d.signedDate;
   if (jws === 'other-otid') d.originalTransactionId = '999';
   if (jws === 'other-bundle') d.bundleId = 'com.evil';
   if (jws === 'other-env') d.environment = 'Sandbox';
-  if (jws === 'edge') d.signedDate = NOW - 10 * 60_000;
+  if (jws === 'edge') d.signedDate = NOW - 45 * 86_400_000;
   return d;
 };
 const tokens: Record<string, string> = { ta: A, tb: B, to: O };
@@ -34,7 +35,15 @@ function setup(rows: any[], over: Partial<TransferDeps> & { tx?: VerifiedTx } = 
   const repo = supabasePurchases(db.client);
   const calls: string[] = [];
   const snap = () => ({ ...db.row(OTID) });
-  const state = { hasShop: false, failMove: false, shops: {} as Record<string, { id: string; ios_otid: string | null }> };
+  const store = new Map<string, any>();
+  const intents = {
+    async begin(i: any) { if (state.failBegin) throw new Error('db'); store.set(`${i.otid}:${i.to}`, { ...i }); calls.push(`intent:${i.otid}:from=${i.from === O ? 'O' : i.from}:owner=${snap().user_id}`); },
+    async find(otid: string, to: string) { return store.get(`${otid}:${to}`) ?? null; },
+    async pendingFor() { return []; }, async pendingFrom() { return []; },
+    async finish(otid: string, to: string) { store.delete(`${otid}:${to}`); calls.push('finish'); },
+    async cancel(otid: string, to: string) { store.delete(`${otid}:${to}`); calls.push('cancel'); },
+  };
+  const state = { hasShop: false, hasPayments: false, failBegin: false, failMove: false, shops: {} as Record<string, { id: string; ios_otid: string | null }> };
   const deps: TransferDeps = {
     verify: async () => over.tx ?? TX,
     repo,
@@ -42,11 +51,13 @@ function setup(rows: any[], over: Partial<TransferDeps> & { tx?: VerifiedTx } = 
     emailOf: async (id) => (id === O ? 'alice@gmail.com' : null),
     allow: async () => true,
     now: () => NOW,
-    hasShop: async () => state.hasShop,
+    shopSummary: async () => ({ hasShop: state.hasShop, hasPayments: state.hasPayments }),
+    intents,
     shopOf: async (u) => state.shops[u] ?? null,
-    moveBusiness: async (otid, caller, slug) => {
+    moveBusiness: async (otid, from, caller, slug) => {
       if (state.failMove) throw new Error('db');
-      calls.push(`move:${otid}:${caller === A ? 'A' : 'B'}:${slug}:owner=${snap().user_id}`);
+      calls.push(`move:${otid}:from=${from === O ? 'O' : from}:${caller === A ? 'A' : 'B'}:${slug}:owner=${snap().user_id}`);
+      return { paymentsReset: state.hasPayments };
     },
     decodeProof: async (env, jws) => {
       if (jws === 'bad-sig') throw new Error('VerificationException');
@@ -58,7 +69,7 @@ function setup(rows: any[], over: Partial<TransferDeps> & { tx?: VerifiedTx } = 
     ownerToken: (o, t) => `tok:${o}:${t}`,
     ...over,
   };
-  return { db, deps, calls, state };
+  return { db, deps, calls, state, store };
 }
 const call = (s: ReturnType<typeof setup>, body: unknown, token: string | null = 'ta') =>
   runTransfer(body, s.deps, { authorization: token ? `Bearer ${token}` : undefined });
@@ -152,19 +163,20 @@ describe('POST /api/ios/transfer', () => {
     expect(s.db.row(OTID)!.user_id).toBeNull();
   });
 
-  it('already linked to the caller: moved:false, idempotent; finishes the business move keyed on the otid', async () => {
+  it('already linked to the caller WITHOUT an intent row: moved:false and NOTHING is moved (H2), whoever owns the shop/site of this otid', async () => {
     const s = setup([{ ...base, user_id: A, ...liveSite }]);
     expect(await call(s, CONF)).toEqual({ status: 200, body: { moved: false, linked: true } });
+    expect(await call(s, { transactionId: '1' })).toEqual({ status: 200, body: { moved: false, linked: true } });
     expect(s.db.row(OTID)!.site_slug).toBe('fade-lab');
-    expect(s.calls).toEqual([`move:${OTID}:A:fade-lab:owner=${A}`]);
+    expect(s.calls).toEqual([]);
   });
 
   describe('linked to another account O', () => {
     it('no confirm: 409 confirm-required with masked hint, hasLiveSite, hasShop, url; WRITES NOTHING', async () => {
       const s = setup([{ ...base, user_id: O, ...liveSite }]);
-      s.state.hasShop = true;
+      s.state.hasShop = true; s.state.hasPayments = true;
       const r = await call(s, { transactionId: '1' });
-      expect(r).toEqual({ status: 409, body: { error: 'confirm-required', ownerHint: 'a***@gmail.com', hasLiveSite: true, hasShop: true, ownerToken: tok(O), siteUrl: 'https://fade-lab.vercel.app' } });
+      expect(r).toEqual({ status: 409, body: { error: 'confirm-required', ownerHint: 'a***@gmail.com', hasLiveSite: true, hasShop: true, hasPayments: true, ownerToken: tok(O), siteUrl: 'https://fade-lab.vercel.app' } });
       expect(s.calls).toEqual([]);
       expect(s.db.row(OTID)).toMatchObject({ user_id: O, site_slug: 'fade-lab', taken_down_at: null, removed_at: null });
       expect(s.db.log.filter((l) => l.payload && 'user_id' in l.payload)).toEqual([]);
@@ -181,7 +193,7 @@ describe('POST /api/ios/transfer', () => {
 
     it('no site, no shop: hasLiveSite false, hasShop false, no siteUrl; unknown email -> ownerHint null', async () => {
       const s = setup([{ ...base, user_id: O }], { emailOf: async () => null });
-      expect(await call(s, { transactionId: '1' })).toEqual({ status: 409, body: { error: 'confirm-required', ownerHint: null, hasLiveSite: false, hasShop: false, ownerToken: tok(O) } });
+      expect(await call(s, { transactionId: '1' })).toEqual({ status: 409, body: { error: 'confirm-required', ownerHint: null, hasLiveSite: false, hasShop: false, hasPayments: false, ownerToken: tok(O) } });
     });
 
     it('a taken-down or removed site is not live', async () => {
@@ -191,14 +203,36 @@ describe('POST /api/ios/transfer', () => {
       }
     });
 
-    it('confirm:true: CAS first, THEN the business moves; the live site stays live on the same slug; nothing offline', async () => {
+    it('confirm:true: intent recorded, THEN the CAS, THEN the business moves from O; the site stays live; nothing offline', async () => {
       const s = setup([{ ...base, user_id: O, ...liveSite }]);
       const log = vi.spyOn(console, 'log').mockImplementation(() => {});
-      expect(await call(s, CONF)).toEqual({ status: 200, body: { moved: true, linked: true } });
-      // moveBusiness ran when the purchase was already the caller's
-      expect(s.calls).toEqual([`move:${OTID}:A:fade-lab:owner=${A}`]);
+      expect(await call(s, CONF)).toEqual({ status: 200, body: { moved: true, linked: true, paymentsReset: false } });
+      // the intent was written while the purchase was still O's; moveBusiness ran when it was already the caller's
+      expect(s.calls).toEqual([`intent:${OTID}:from=O:owner=${O}`, `move:${OTID}:from=O:A:fade-lab:owner=${A}`, 'finish']);
       expect(s.db.row(OTID)).toMatchObject({ user_id: A, site_slug: 'fade-lab', published_at: liveSite.published_at, taken_down_at: null, removed_at: null });
       expect(log).toHaveBeenCalledWith(`ios-transfer otid=0123 from=aaaaaaaa to=bbbbbbbb`);
+    });
+
+    it('paymentsReset:true is reported when the shop held payment settings', async () => {
+      const s = setup([{ ...base, user_id: O, ...liveSite }]);
+      s.state.hasPayments = true;
+      expect((await call(s, CONF)).body).toEqual({ moved: true, linked: true, paymentsReset: true });
+    });
+
+    it('the slug is re-read AFTER the CAS (a publish that bound one meanwhile)', async () => {
+      const s = setup([{ ...base, user_id: O }]);
+      const real = s.deps.repo.transferUser!.bind(s.deps.repo);
+      s.deps.repo.transferUser = async (o, f, t) => { const r = await real(o, f, t); s.db.row(OTID)!.site_slug = 'late-slug'; return r; };
+      await call(s, CONF);
+      expect(s.calls).toContain(`move:${OTID}:from=O:A:late-slug:owner=${A}`);
+    });
+
+    it('an intent that cannot be recorded stops BEFORE the CAS (503, nothing moved)', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const s = setup([{ ...base, user_id: O, ...liveSite }]);
+      s.state.failBegin = true;
+      expect((await call(s, CONF)).status).toBe(503);
+      expect(s.db.row(OTID)!.user_id).toBe(O);
     });
 
     it('there is no takedown or deletion capability in the deps at all', async () => {
@@ -209,8 +243,8 @@ describe('POST /api/ios/transfer', () => {
 
     it('O has no site and no shop: still moves (slug null)', async () => {
       const s = setup([{ ...base, user_id: O }]);
-      expect(await call(s, CONF)).toEqual({ status: 200, body: { moved: true, linked: true } });
-      expect(s.calls).toEqual([`move:${OTID}:A:null:owner=${A}`]);
+      expect((await call(s, CONF)).status).toBe(200);
+      expect(s.calls).toContain(`move:${OTID}:from=O:A:null:owner=${A}`);
     });
 
     it('a removed site moves too (state is preserved, not cleared)', async () => {
@@ -239,15 +273,16 @@ describe('POST /api/ios/transfer', () => {
 
     it('a caller whose other purchase has no site (or a removed one) may take it', async () => {
       const s = setup([{ ...base, user_id: O, ...liveSite }, { ...base, original_transaction_id: '999', user_id: A }, { ...base, original_transaction_id: '998', user_id: A, site_slug: 'old', removed_at: '2026-10-01T00:00:00Z' }]);
-      expect((await call(s, CONF)).body).toEqual({ moved: true, linked: true });
+      expect((await call(s, CONF)).body).toMatchObject({ moved: true, linked: true });
     });
 
-    it('CAS lost (changed before the CAS): 409 purchase-changed and NOTHING else happens', async () => {
+    it('CAS lost (changed before the CAS): 409 purchase-changed, the intent is cancelled and NOTHING else happens', async () => {
       const s = setup([{ ...base, user_id: O, ...liveSite }]);
       const real = s.deps.repo.upsertVerified.bind(s.deps.repo);
       s.deps.repo.upsertVerified = async (tx, o) => { const r = await real(tx, o); s.db.row(OTID)!.user_id = B; return r; };
       expect(await call(s, CONF)).toEqual({ status: 409, body: { error: 'purchase-changed' } });
-      expect(s.calls).toEqual([]);
+      expect(s.calls).toEqual([`intent:${OTID}:from=O:owner=${B}`, 'cancel']);
+      expect(s.store.size).toBe(0);
       expect(s.db.row(OTID)).toMatchObject({ user_id: B, site_slug: 'fade-lab' });
     });
 
@@ -258,35 +293,69 @@ describe('POST /api/ios/transfer', () => {
       expect([ra, rb].filter((r) => r.status === 409 && (r.body as any).error === 'purchase-changed')).toHaveLength(1);
       const winner = ra.status === 200 ? A : B;
       expect(s.db.row(OTID)!.user_id).toBe(winner);
-      expect(s.calls).toEqual([`move:${OTID}:${winner === A ? 'A' : 'B'}:fade-lab:owner=${winner}`]);
+      expect(s.calls.filter((c) => c.startsWith('move:'))).toEqual([`move:${OTID}:from=O:${winner === A ? 'A' : 'B'}:fade-lab:owner=${winner}`]);
     });
 
-    it('a half-finished move: the business step fails after the CAS (503); the purchase is the caller\'s, nothing is undone', async () => {
+    it('a half-finished move: the business step fails after the CAS (503); the purchase is the caller\'s, the intent stays, nothing is undone', async () => {
       const err = vi.spyOn(console, 'error').mockImplementation(() => {});
       const s = setup([{ ...base, user_id: O, ...liveSite }]);
       s.state.failMove = true;
       expect(await call(s, CONF)).toEqual({ status: 503, body: { error: 'temporarily-unavailable' } });
       expect(s.db.row(OTID)).toMatchObject({ user_id: A, site_slug: 'fade-lab', published_at: liveSite.published_at });
+      expect(s.store.size).toBe(1);
       expect(err.mock.calls.some((c) => /ALERT/.test(String(c[0])))).toBe(true);
     });
 
-    it('RETRY completes a half-finished move (the already-yours branch), still no undo', async () => {
+    it('RETRY completes a half-finished move (intent exists), moves from the RECORDED owner, then closes the intent', async () => {
       vi.spyOn(console, 'error').mockImplementation(() => {});
       const s = setup([{ ...base, user_id: O, ...liveSite }]);
       s.state.failMove = true;
       await call(s, CONF);
-      expect(s.calls).toEqual([]);
-      s.state.failMove = false;
-      expect(await call(s, { transactionId: '1' })).toEqual({ status: 200, body: { moved: false, linked: true } });
-      expect(s.calls).toEqual([`move:${OTID}:A:fade-lab:owner=${A}`]);
+      s.state.failMove = false; s.state.hasPayments = true;
+      expect(await call(s, { transactionId: '1' })).toEqual({ status: 200, body: { moved: false, linked: true, paymentsReset: true } });
+      expect(s.calls.filter((c) => c.startsWith('move:'))).toEqual([`move:${OTID}:from=O:A:fade-lab:owner=${A}`]);
+      expect(s.store.size).toBe(0);
       expect(s.db.row(OTID)).toMatchObject({ user_id: A, site_slug: 'fade-lab' });
+      // a second retry has no intent any more: moves nothing
+      s.calls.length = 0;
+      await call(s, { transactionId: '1' });
+      expect(s.calls).toEqual([]);
     });
 
-    it('a retry whose business step fails again is 503 (never reports success)', async () => {
+    it('a retry whose business step fails again is 503 (never reports success) and keeps the intent', async () => {
       vi.spyOn(console, 'error').mockImplementation(() => {});
       const s = setup([{ ...base, user_id: A, ...liveSite }]);
+      s.store.set(`${OTID}:${A}`, { otid: OTID, from: O, to: A, slug: 'fade-lab' });
       s.state.failMove = true;
       expect((await call(s, { transactionId: '1' })).status).toBe(503);
+      expect(s.store.size).toBe(1);
+    });
+
+    it('L2: a purchase that lapsed after the CAS still lets the OWNER finish the move (data only), the answer stays 402', async () => {
+      const s = setup([{ ...base, user_id: A, ...liveSite }], { tx: { ...TX, expiresAt: NOW - 1000, status: 2 } });
+      s.store.set(`${OTID}:${A}`, { otid: OTID, from: O, to: A, slug: 'fade-lab' });
+      expect((await call(s, { transactionId: '1' })).status).toBe(402);
+      expect(s.calls).toEqual([`move:${OTID}:from=O:A:fade-lab:owner=${A}`, 'finish']);
+    });
+
+    it('L2 negative: an inactive purchase of ANOTHER account finishes nothing', async () => {
+      const s = setup([{ ...base, user_id: O, ...liveSite }], { tx: { ...TX, revoked: true } });
+      s.store.set(`${OTID}:${A}`, { otid: OTID, from: O, to: A, slug: 'fade-lab' });
+      expect((await call(s, CONF)).status).toBe(402);
+      expect(s.calls).toEqual([]);
+    });
+
+    it('H2: purchase is C\'s but the shop/site of this otid belongs to X and there is no intent row: a probe or a retry moves nothing', async () => {
+      const s = setup([{ ...base, user_id: A, ...liveSite }]);
+      for (let i = 0; i < 2; i++) { await call(s, { transactionId: '1' }); await call(s, CONF); }
+      expect(s.calls).toEqual([]);
+    });
+
+    it('H2: an intent for ANOTHER caller does not let this caller finish anything', async () => {
+      const s = setup([{ ...base, user_id: A, ...liveSite }]);
+      s.store.set(`${OTID}:${B}`, { otid: OTID, from: O, to: B, slug: 'fade-lab' });
+      await call(s, { transactionId: '1' });
+      expect(s.calls).toEqual([]);
     });
 
     it('owner changed between the probe and the confirm (stale ownerToken): 409 purchase-changed, nothing happens', async () => {
@@ -331,7 +400,15 @@ describe('POST /api/ios/transfer', () => {
 
     it('required and valid: moves', async () => {
       const s = setup([{ ...base, user_id: O, ...liveSite }], { requireProof: true });
-      expect(await call(s, withProof({ proof: 'ok' }))).toEqual({ status: 200, body: { moved: true, linked: true } });
+      expect(await call(s, withProof({ proof: 'ok' }))).toEqual({ status: 200, body: { moved: true, linked: true, paymentsReset: false } });
+    });
+
+    it('H1: a JWS signed weeks ago (44 days) is accepted, 45 days exactly is the edge, 46 days is refused', async () => {
+      for (const [proof, status] of [['old-ok', 200], ['edge', 200], ['stale', 403]] as const) {
+        vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const s = setup([{ ...base, user_id: O, ...liveSite }]);
+        expect((await call(s, withProof({ proof }))).status).toBe(status);
+      }
     });
 
     it('flag off, no proof: a bare transactionId still works', async () => {
@@ -360,7 +437,7 @@ describe('POST /api/ios/transfer', () => {
       expect(s.db.row(OTID)!.user_id).toBe(O);
     });
 
-    it('exactly 10 minutes old passes; the JWS is checked against Apple\'s answer for the transactionId (a proof for another purchase fails)', async () => {
+    it('exactly 45 days old passes (edge)', async () => {
       const s = setup([{ ...base, user_id: O, ...liveSite }]);
       expect((await call(s, withProof({ proof: 'edge' }))).status).toBe(200);
     });
@@ -382,9 +459,10 @@ describe('POST /api/ios/transfer', () => {
       expect(s.db.row(OTID)!.user_id).toBe(O);
     });
 
-    it('proof is checked after payment: an inactive purchase is still 402', async () => {
+    it('an inactive purchase with a valid proof is 402 (payment gates the move)', async () => {
       const s = setup([{ ...base, user_id: O }], { tx: { ...TX, revoked: true }, requireProof: true });
-      expect((await call(s, withProof())).status).toBe(402);
+      expect((await call(s, withProof({ proof: 'ok' }))).status).toBe(402);
+      expect(s.db.row(OTID)!.user_id).toBe(O);
     });
   });
 

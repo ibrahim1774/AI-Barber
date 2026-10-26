@@ -39,6 +39,8 @@ export interface PlanView {
 
 export interface PlanDeps {
   getUser: GetUser;
+  /** Finish this account's unfinished business move (moveIntent.ts). Best effort, never throws. */
+  finishMove?(userId: string): Promise<unknown>;
   shopByOwner(userId: string): Promise<Pick<ShopRow, 'id' | 'ios_otid'> | null>;
   /** The full ios_purchases row (expires_at included). */
   purchase(otid: string): Promise<PurchaseRow | null>;
@@ -118,6 +120,7 @@ export async function getPlan(auth: Auth, deps: PlanDeps): Promise<FlowResult> {
   const a = await authenticate(auth, deps.getUser);
   if (a.ok === false) return { status: a.status, body: a.body };
   const now = (deps.now ?? Date.now)();
+  if (deps.finishMove) await deps.finishMove(a.user.id).catch(() => {});
   const shop = await deps.shopByOwner(a.user.id);
   let view: PlanView;
   if (shop) {
@@ -157,6 +160,7 @@ export async function refreshPlan(auth: Auth, body: unknown, deps: PlanDeps): Pr
   const a = await authenticate(auth, deps.getUser);
   if (a.ok === false) return { status: a.status, body: a.body };
   const user = a.user;
+  if (deps.finishMove) await deps.finishMove(user.id).catch(() => {});
   const shopRow = await deps.shopByOwner(user.id);
   const raw = isObj(body) ? body.transactionId : undefined;
   const transactionId = typeof raw === 'string' ? raw.trim() : '';
@@ -282,6 +286,7 @@ export function livePlanDeps(): PlanDeps {
   const purchases = supabasePurchases(client);
   return {
     getUser: liveGetUser(client),
+    finishMove: async (u) => (await import('./transferLive.js')).liveFinishMoves(u),
     shopByOwner: (uid) => shops.shopByOwner(uid),
     purchase: (otid) => purchases.get(otid),
     purchasesOfUser: (uid) => purchases.ofUser!(uid),

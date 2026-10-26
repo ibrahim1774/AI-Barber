@@ -1,5 +1,5 @@
 // Live wiring for transfer.ts (Supabase, Apple, Vercel). Kept apart so transfer.ts stays pure.
-import { createHmac } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { makeRateLimiter, supabaseRateStore } from '../bookings/rateLimit.js';
 import { serviceClient } from '../bookings/repo.js';
@@ -8,6 +8,7 @@ import { liveBindingOwner, liveEmailOf } from './ownership.js';
 import { liveUserOf } from './publishFlow.js';
 import { siteRowIdsForSlug } from './removeSiteLive.js';
 import { supabasePurchases } from './purchases.js';
+import { finishPendingMoves, liveMoveIntents, type MoveResult } from './moveIntent.js';
 import type { TransferDeps } from './transfer.js';
 
 export const TRANSFER_LIMIT = 10; // moves (and probes) per account per window
@@ -23,44 +24,78 @@ function admin() {
   return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
 }
 
+const nonEmptyHandles = (h: unknown) => !!h && typeof h === 'object' && Object.values(h as Record<string, unknown>).some((v) => v != null && String(v).trim() !== '');
+
 /**
- * Moves the business of a purchase to `callerId`. Every step is idempotent and keyed on the otid / slug
- * (the previous owner is not needed), so a retry finishes what an earlier attempt did not. Never deletes.
- *  1. sites (account-level copy of the slug's site): user_id -> caller
- *  2. ab_shops (ios_otid = otid): owner_id -> caller. If the caller already owns another shop (one per
- *     owner) the shop is NOT moved; it is only detached from the purchase (ios_otid = null)
- *  3. ab_members: the shop's owner member user_id -> caller
- * Children of the shop (members, services, availability, time off, appointments, products, orders,
- * order items, events) follow the shop id and need no change. ab_push_tokens and ios_domains are untouched.
+ * Moves the business of a purchase from `from` to `callerId`. ONLY rows owned by `from` are re-pointed
+ * (never "whoever has this otid"): a shop or site of any other account is left alone. Every step is idempotent
+ * and keyed on the otid, so the finisher can run it any number of times. Never deletes.
+ *  1. ab_shops (ios_otid = otid, owner `from`) -> owner_id = caller, and its PAYMENT settings are cleared
+ *     (stripe_account_id, stripe_charges_enabled, manual_handles) after an ab_events audit row records the old values
+ *  2. the caller's own staff row in that shop is deactivated (user_id null) so the owner row can be re-pointed
+ *  3. ab_members: the shop's owner member user_id -> caller AND ics_token rotated (the old calendar feed dies)
+ *  4. sites: `from`'s rows for the slug (deployed_url host = slug) -> caller; plus `from`'s unpublished drafts
+ *     (deployed_url null) when `from` has no other purchase
+ * The shop's children follow the shop id. ab_push_tokens and ios_domains are untouched.
  */
-export async function liveMoveBusiness(otid: string, callerId: string, slug: string | null): Promise<void> {
+export async function liveMoveBusiness(otid: string, from: string, callerId: string, slug: string | null): Promise<MoveResult> {
   const db = admin();
-  if (slug) {
-    const { data, error } = await db.from('sites').select('id, deployed_url').neq('user_id', callerId)
-      .ilike('deployed_url', `%${slug}.vercel.app%`);
-    if (error) throw new Error(`sites lookup failed: ${error.message}`);
-    const ids = siteRowIdsForSlug(data ?? [], slug);
-    if (ids.length) {
-      const up = await db.from('sites').update({ user_id: callerId }).in('id', ids).neq('user_id', callerId);
-      if (up.error) throw new Error(`sites move failed: ${up.error.message}`);
-    }
-  }
-  const { data: shop, error: sErr } = await db.from('ab_shops').select('id, owner_id').eq('ios_otid', otid).maybeSingle();
+  let paymentsReset = false;
+  const { data: shop, error: sErr } = await db.from('ab_shops')
+    .select('id, owner_id, stripe_account_id, stripe_charges_enabled, manual_handles').eq('ios_otid', otid).maybeSingle();
   if (sErr) throw new Error(`ab_shops lookup failed: ${sErr.message}`);
-  if (!shop) return;
-  if ((shop as any).owner_id !== callerId) {
-    const { data: own, error: oErr } = await db.from('ab_shops').select('id').eq('owner_id', callerId).maybeSingle();
-    if (oErr) throw new Error(`ab_shops owner lookup failed: ${oErr.message}`);
-    if (own) {
-      const d = await db.from('ab_shops').update({ ios_otid: null }).eq('id', (shop as any).id).eq('ios_otid', otid);
-      if (d.error) throw new Error(`ab_shops detach failed: ${d.error.message}`);
-      return;
+  const sh = shop as any;
+  if (sh && (sh.owner_id === from || sh.owner_id === callerId)) {
+    const auditKey = `ios-transfer-payments:${otid}:${callerId}`;
+    if (sh.owner_id === from) {
+      const { data: own, error: oErr } = await db.from('ab_shops').select('id').eq('owner_id', callerId).maybeSingle();
+      if (oErr) throw new Error(`ab_shops owner lookup failed: ${oErr.message}`);
+      if (own) throw new Error('caller already owns another shop; business not moved');
+      const hadPayments = !!sh.stripe_account_id || nonEmptyHandles(sh.manual_handles);
+      if (hadPayments) {
+        const ins = await db.from('ab_events').insert({
+          shop_id: sh.id, kind: 'ios_transfer_payments_reset', dedupe_key: auditKey,
+          payload: { from, to: callerId, stripe_account_id: sh.stripe_account_id ?? null, stripe_charges_enabled: !!sh.stripe_charges_enabled, manual_handles: sh.manual_handles ?? {} },
+        });
+        if (ins.error && (ins.error as any).code !== '23505') throw new Error(`payments audit failed: ${ins.error.message}`);
+      }
+      paymentsReset = hadPayments;
+      // M4: free the (shop, user) slot of the caller's old staff row first.
+      const st = await db.from('ab_members').update({ active: false, user_id: null }).eq('shop_id', sh.id).eq('user_id', callerId).neq('role', 'owner');
+      if (st.error) throw new Error(`ab_members staff row failed: ${st.error.message}`);
+      const mv = await db.from('ab_shops')
+        .update({ owner_id: callerId, stripe_account_id: null, stripe_charges_enabled: false, manual_handles: {} })
+        .eq('id', sh.id).eq('owner_id', from);
+      if (mv.error) throw new Error(`ab_shops move failed: ${mv.error.message}`);
+    } else {
+      // Retry after the shop moved: remember whether payments were reset (audit row exists).
+      const { data: a, error: aErr } = await db.from('ab_events').select('id').eq('dedupe_key', auditKey).maybeSingle();
+      if (aErr) throw new Error(`payments audit lookup failed: ${aErr.message}`);
+      paymentsReset = !!a;
+      const st = await db.from('ab_members').update({ active: false, user_id: null }).eq('shop_id', sh.id).eq('user_id', callerId).neq('role', 'owner');
+      if (st.error) throw new Error(`ab_members staff row failed: ${st.error.message}`);
     }
-    const mv = await db.from('ab_shops').update({ owner_id: callerId }).eq('id', (shop as any).id).neq('owner_id', callerId);
-    if (mv.error) throw new Error(`ab_shops move failed: ${mv.error.message}`);
+    const mm = await db.from('ab_members')
+      .update({ user_id: callerId, ics_token: randomBytes(24).toString('base64url') })
+      .eq('shop_id', sh.id).eq('role', 'owner').eq('user_id', from);
+    if (mm.error) throw new Error(`ab_members move failed: ${mm.error.message}`);
   }
-  const mm = await db.from('ab_members').update({ user_id: callerId }).eq('shop_id', (shop as any).id).eq('role', 'owner').neq('user_id', callerId);
-  if (mm.error) throw new Error(`ab_members move failed: ${mm.error.message}`);
+
+  // Sites copy (after the shop, so the more valuable data never lags behind).
+  const { data: rows, error: rErr } = await db.from('sites').select('id, deployed_url').eq('user_id', from);
+  if (rErr) throw new Error(`sites lookup failed: ${rErr.message}`);
+  const ids = slug ? siteRowIdsForSlug(rows ?? [], slug) : [];
+  const drafts = (rows ?? []).filter((r: any) => r.deployed_url == null).map((r: any) => r.id as string);
+  if (drafts.length) {
+    const { data: others, error: pErr } = await db.from('ios_purchases').select('original_transaction_id').eq('user_id', from).limit(1);
+    if (pErr) throw new Error(`purchases lookup failed: ${pErr.message}`);
+    if (!(others ?? []).length) ids.push(...drafts);
+  }
+  if (ids.length) {
+    const up = await db.from('sites').update({ user_id: callerId }).in('id', ids).eq('user_id', from);
+    if (up.error) throw new Error(`sites move failed: ${up.error.message}`);
+  }
+  return { paymentsReset };
 }
 
 export function liveTransferDeps(): TransferDeps {
@@ -72,16 +107,18 @@ export function liveTransferDeps(): TransferDeps {
     bindingOwner: liveBindingOwner,
     allow: (callerId) => transferLimiter.allow(callerId, 'write'),
     now: () => Date.now(),
-    async hasShop(otid) {
-      const { data, error } = await admin().from('ab_shops').select('id').eq('ios_otid', otid).maybeSingle();
+    async shopSummary(otid) {
+      const { data, error } = await admin().from('ab_shops').select('id, stripe_account_id, manual_handles').eq('ios_otid', otid).maybeSingle();
       if (error) throw new Error(`ab_shops lookup failed: ${error.message}`);
-      return !!data;
+      const d = data as any;
+      return { hasShop: !!d, hasPayments: !!d && (!!d.stripe_account_id || nonEmptyHandles(d.manual_handles)) };
     },
     async shopOf(userId) {
       const { data, error } = await admin().from('ab_shops').select('id, ios_otid').eq('owner_id', userId).maybeSingle();
       if (error) throw new Error(`ab_shops lookup failed: ${error.message}`);
       return (data as any) ?? null;
     },
+    intents: liveMoveIntents(),
     moveBusiness: liveMoveBusiness,
     decodeProof: verifyDeviceTransaction,
     bundleId: process.env.APPLE_BUNDLE_ID || '',
@@ -92,4 +129,19 @@ export function liveTransferDeps(): TransferDeps {
       return createHmac('sha256', key).update(`ios-transfer-owner:${ownerId}:${otid}`).digest('hex').slice(0, 32);
     },
   };
+}
+
+/** Finishes this account's unfinished business moves (plan GET/refresh, publish, shop setup). Never throws. */
+export async function liveFinishMoves(userId: string) {
+  try {
+    const purchases = supabasePurchases();
+    return await finishPendingMoves(userId, {
+      intents: liveMoveIntents(),
+      purchase: async (otid) => purchases.get(otid),
+      moveBusiness: liveMoveBusiness,
+    });
+  } catch (e: any) {
+    console.error('[ios/move] finisher failed:', e?.message || e);
+    return { pending: true, paymentsReset: false, finished: 0 };
+  }
 }

@@ -383,6 +383,14 @@ describe('runIosPublish', () => {
     expect(f.repo.markPublished).toHaveBeenCalledWith(OTID, { userId: USER, slug: 'fade-lab' });
   });
 
+  it('M3: publish by the purchase owner first finishes an unfinished business move; a failing finisher never blocks the publish', async () => {
+    const f = withAuth(fakes({ existing: row({ user_id: USER, site_slug: 'fade-lab', published_at: '2026-10-01T00:00:00Z' }) }));
+    const finishMove = vi.fn(async () => { throw new Error('x'); });
+    (f.deps as any).finishMove = finishMove;
+    expect((await runIosPublish(input(), f.deps, { authorization: 'Bearer tok-user' })).status).toBe(200);
+    expect(finishMove).toHaveBeenCalledWith(USER);
+  });
+
   it('an invalid token still publishes under the compat flag; an auth outage or a failed link fails closed (503, nothing written)', async () => {
     const a = withAuth(fakes());
     expect((await runIosPublish(input(), a.deps, { authorization: 'Bearer nope' })).status).toBe(200);

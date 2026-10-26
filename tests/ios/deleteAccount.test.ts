@@ -142,3 +142,21 @@ describe('api/ios/delete-account handler', () => {
     expect(r.statusCode).toBe(401);
   });
 });
+
+describe('deleteAccount during a business move (M3)', () => {
+  it('refuses with 409 move-in-progress and deletes NOTHING while an unfinished move names the account as the previous owner', async () => {
+    const d = mkDeps({ moveInProgress: vi.fn(async () => true) });
+    const r = await deleteAccount('Bearer j', d);
+    expect(r).toEqual({ status: 409, body: { error: 'move-in-progress' } });
+    expect(d.listSites).not.toHaveBeenCalled();
+    expect(d.calls).toEqual([]);
+  });
+  it('proceeds when no move is in progress; a failing check fails closed (500, nothing deleted)', async () => {
+    const ok = mkDeps({ moveInProgress: vi.fn(async () => false) });
+    expect((await deleteAccount('Bearer j', ok)).status).toBe(200);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const bad = mkDeps({ moveInProgress: vi.fn(async () => { throw new Error('db'); }) });
+    expect((await deleteAccount('Bearer j', bad)).status).toBe(500);
+    expect(bad.calls).toEqual([]);
+  });
+});

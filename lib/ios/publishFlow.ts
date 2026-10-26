@@ -115,6 +115,8 @@ export interface PublishDeps {
    * publish, and as "not proven" for a site lookup (which never discloses a site without proof).
    */
   bindingOwner?(row: PurchaseRow): Promise<BindingOwner>;
+  /** Finish this account's unfinished business move (moveIntent.ts). Best effort. */
+  finishMove?(userId: string): Promise<unknown>;
   /** Dry render before storing (lib/publishSite.ts renderPending). Throws on unrenderable data. */
   render?(p: Pick<PendingSite, 'siteData' | 'imageUrlMap'>): SiteFile[];
   now(): number;
@@ -256,6 +258,8 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
     if (row.user_id) {
       if (authDown) return unavailable;
       if (!caller) return { status: 401, body: { error: 'unauthorized' } };
+      // An unfinished business move of this caller (intent row) is finished first; best effort, never blocks a publish.
+      if (caller === row.user_id && deps.finishMove) await deps.finishMove(caller).catch(() => {});
       if (caller !== row.user_id) {
         console.warn(`[ios/publish] ${otid}: linked to another account; refused`);
         return { status: 409, body: await otherAccountBody(deps.emailOf, row.user_id, row) };
@@ -557,6 +561,7 @@ export async function runIosSiteLookup(
 export function liveDeps(): PublishDeps {
   const repo = supabasePurchases();
   return {
+    finishMove: async (u) => (await import('./transferLive.js')).liveFinishMoves(u),
     // Lazy: defaultVerifier() throws when Apple env vars are missing, and that
     // must surface as a mapped 503, not an uncaught 500.
     verify: lazyDefaultVerifier(),

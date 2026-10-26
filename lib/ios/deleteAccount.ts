@@ -21,12 +21,14 @@ export interface DeleteAccountDeps {
   purge(site: RemovableSite): Promise<void>;
   deleteSites(userId: string): Promise<void>;
   deleteUser(userId: string): Promise<void>;
+  /** True while an unfinished business move names this account as the previous owner (its data is still being moved). */
+  moveInProgress?(userId: string): Promise<boolean>;
 }
 
 export async function deleteAccount(
   authorization: string | undefined,
   deps: DeleteAccountDeps,
-): Promise<{ status: 200 | 401 | 500; body: object }> {
+): Promise<{ status: 200 | 401 | 409 | 500; body: object }> {
   const m = typeof authorization === 'string' ? /^Bearer\s+(\S+)\s*$/i.exec(authorization) : null;
   if (!m) return { status: 401, body: { error: 'unauthorized' } };
 
@@ -37,6 +39,14 @@ export async function deleteAccount(
     user = null;
   }
   if (!user?.id) return { status: 401, body: { error: 'unauthorized' } };
+
+  // The business of this account is mid-move to another account: deleting now would cascade-delete it.
+  try {
+    if (deps.moveInProgress && (await deps.moveInProgress(user.id))) return { status: 409, body: { error: 'move-in-progress' } };
+  } catch (e: any) {
+    console.error('[ios/delete-account] move check failed:', e?.message || e);
+    return { status: 500, body: { error: 'delete-failed' } };
+  }
 
   try {
     const sites = await deps.listSites(user.id);
@@ -89,6 +99,12 @@ export function liveDeleteDeps(): DeleteAccountDeps {
     async deleteSites(userId) {
       const { error } = await admin.from('sites').delete().eq('user_id', userId);
       if (error) throw new Error(error.message);
+    },
+    async moveInProgress(userId) {
+      const { liveMoveIntents, moveInProgressFrom } = await import('./moveIntent.js');
+      const { supabasePurchases } = await import('./purchases.js');
+      const purchases = supabasePurchases();
+      return moveInProgressFrom(userId, liveMoveIntents(), (otid) => purchases.get(otid));
     },
     async deleteUser(userId) {
       const { error } = await admin.auth.admin.deleteUser(userId);

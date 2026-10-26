@@ -46,6 +46,8 @@ export interface PurchaseVerifier {
 
 export interface OwnerDeps extends FlowDeps {
   getUser: GetUser;
+  /** Finish this account's unfinished business move; `pending` = still unfinished (do not create a shop yet). */
+  finishMove?(userId: string): Promise<{ pending: boolean }>;
   purchases?: PurchaseVerifier;
   /** Per-user write limit on setup's Apple verify (shared with POST /api/shop/plan). Absent = none. */
   writeLimiter?: Pick<RateLimiter, 'allow'>;
@@ -190,6 +192,11 @@ export async function setupShop(authorization: string | string[] | undefined, bo
   const site = await repo.siteDeployedUrl(input.siteId, user.id);
   if (site === 'foreign') return invalid('siteId');
 
+  if (deps.finishMove) {
+    // A move that brought a business to this account must land first, or a second (empty) shop would split it.
+    const m = await deps.finishMove(user.id).catch(() => ({ pending: true }));
+    if (m.pending) return err(503, 'move-in-progress');
+  }
   let shop = await repo.shopByOwner(user.id);
   if (!shop) {
     const preferred = vercelLabel(site?.deployedUrl ?? null);

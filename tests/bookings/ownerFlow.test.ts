@@ -582,3 +582,27 @@ describe('POST /api/shop/setup', () => {
     expect(w.state.shops[0].ios_otid).toBe(OTID);
   });
 });
+
+describe('L1: setup waits for an unfinished business move', () => {
+  const NEW_USER = '22222222-2222-4222-8222-222222222222';
+  const body = { siteId: '33333333-3333-4333-8333-333333333333', name: 'Kings Cuts', timezone: 'America/Chicago', address: '9 Elm', phone: '555-0100', services: [{ name: 'Haircut', priceCents: 3500, durationMin: 30 }] };
+  const fresh = () => { const w = world(); w.users['new-jwt'] = { id: NEW_USER, email: 'k@example.com', fullName: 'K' }; return w; };
+
+  it('runs the finisher FIRST; while it is still pending no new shop is created (503 move-in-progress)', async () => {
+    const w = fresh();
+    const finishMove = vi.fn(async () => ({ pending: true }));
+    (w.deps as any).finishMove = finishMove;
+    const r = await setupShop('Bearer new-jwt', body, w.deps);
+    expect(finishMove).toHaveBeenCalledWith(NEW_USER);
+    expect(r).toEqual({ status: 503, body: { error: 'move-in-progress' } });
+    expect(w.state.shops.some((s) => s.owner_id === NEW_USER)).toBe(false);
+  });
+
+  it('a finisher that throws counts as pending; one that completes lets setup proceed', async () => {
+    const w = fresh();
+    (w.deps as any).finishMove = async () => { throw new Error('x'); };
+    expect((await setupShop('Bearer new-jwt', body, w.deps)).status).toBe(503);
+    (w.deps as any).finishMove = async () => ({ pending: false });
+    expect((await setupShop('Bearer new-jwt', body, w.deps)).status).toBe(200);
+  });
+});
