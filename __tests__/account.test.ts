@@ -7,11 +7,15 @@ import { hasSeen, markSeen } from '@/lib/overlayFlags';
 import { publishFlow, type PublishDeps } from '@/lib/publish';
 import {
   deleteAccountAndData, deleteLocalData, takeWebsiteOffline, onSiteAdopted, pullSiteFromAccount, pullSiteOnLaunch, resetLaunchPullForTests,
-  restore, syncIfSignedIn, syncSiteToSupabase, type RestoreDeps,
+  restore as restoreRaw, syncIfSignedIn, syncSiteToSupabase, type Restored, type RestoreDeps,
 } from '@/lib/account';
 import { currentUserId, friendlyAuthError, signIn, signOut, signUp } from '@/lib/auth';
 import type { SiteRecord } from '@/lib/siteStore';
 import * as customersCache from '@/lib/bookings/customersCache';
+
+/** restore() narrowed to a restored site: these tests are signed in with an active site to bring back. */
+const restore = async (d: RestoreDeps) => (await restoreRaw(d)) as Restored | null;
+
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { sb, supabase } = require('@/lib/supabase');
 
@@ -56,6 +60,7 @@ function restoreDeps(over: Partial<RestoreDeps> = {}): RestoreDeps {
     latestTransactionId: jest.fn(async () => 'tx-9'),
     iosSite: jest.fn(async () => BOUND) as unknown as RestoreDeps['iosSite'],
     store,
+    accessToken: async () => 'tok',
     ...over,
   };
 }
@@ -258,16 +263,18 @@ describe('delete', () => {
   });
 
   test('H1: with the site on screen the purchase is checked first and the bound slug is sent as expectedSlug', async () => {
+    sb.setSession({ access_token: 'access-123', user: USER });
     await store.saveSite(site);
     const lookup = mockBound();
     const off = jest.spyOn(api, 'takeSiteOffline').mockResolvedValue(undefined);
     await takeWebsiteOffline('tx-1', site);
     expect(lookup).toHaveBeenCalledWith('tx-1');
-    expect(off).toHaveBeenCalledWith('tx-1', undefined, 'fade-factory');
+    expect(off).toHaveBeenCalledWith('tx-1', 'access-123', 'fade-factory');
     expect(lookup.mock.invocationCallOrder[0]).toBeLessThan(off.mock.invocationCallOrder[0]);
   });
 
   test('H1: an Apple ID bound to a different site is refused: nothing removed, phone untouched', async () => {
+    sb.setSession({ access_token: 'access-123', user: USER });
     await store.saveSite(site);
     mockBound({ siteId: 'other-shop', deployedUrl: 'https://other-shop.aibarber.org' });
     const off = jest.spyOn(api, 'takeSiteOffline').mockResolvedValue(undefined);
@@ -277,6 +284,7 @@ describe('delete', () => {
   });
 
   test('H1: an adopted site (no slug, no transaction) matches by its live host; a different host is refused', async () => {
+    sb.setSession({ access_token: 'access-123', user: USER });
     const adopted = { ...site, slug: null, transactionId: null } as SiteRecord;
     await store.saveSite(adopted);
     mockBound({ siteId: 'a', deployedUrl: 'https://elsewhere.aibarber.org' });
@@ -289,6 +297,7 @@ describe('delete', () => {
   });
 
   test('H1: no-site or a network failure on the pre-check removes nothing', async () => {
+    sb.setSession({ access_token: 'access-123', user: USER });
     await store.saveSite(site);
     jest.spyOn(api, 'iosSite').mockRejectedValue(new ApiError(404, 'no-site', 'x'));
     const off = jest.spyOn(api, 'takeSiteOffline').mockResolvedValue(undefined);
@@ -471,7 +480,8 @@ describe('public.sites sync', () => {
       latestTransactionId: async () => 'tx-1',
       iosPublish: jest.fn(async () => LIVE),
       store,
-      userId: () => USER.id,
+      accessToken: async () => 'tok',
+      claimStart: jest.fn(async () => ({ ok: true as const, state: 'unclaimed' as const, claimExpiresAt: '2026-11-25T00:00:00.000Z' })),
       onLive,
     };
     jest.spyOn(console, 'warn').mockImplementation(() => {});
@@ -479,7 +489,7 @@ describe('public.sites sync', () => {
 
     expect(out).toEqual({ kind: 'live', url: LIVE.deployedUrl, republished: false });
     expect(onLive).toHaveBeenCalledWith(expect.objectContaining({ slug: 'fade-factory', deployedUrl: LIVE.deployedUrl }));
-    expect(deps.iosPublish).toHaveBeenCalledWith(expect.objectContaining({ userId: USER.id }));
+    expect(deps.iosPublish).toHaveBeenCalledWith(expect.objectContaining({ transactionId: 'tx-1' }), 'tok');
   });
 });
 

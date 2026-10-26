@@ -7,12 +7,14 @@ import { clearCustomersCache } from '@/lib/bookings/customersCache';
 import { clearEntitlements } from '@/lib/entitlements';
 import { resetSharedPlan } from '@/lib/plan';
 import { clearOverlayFlags } from '@/lib/overlayFlags';
+import { accessToken } from '@/lib/accessToken';
+import { SIGN_IN_TO_RESTORE_CODE } from '@/lib/claimCopy';
 import { findTransactionId, publishPayload, runSerial } from '@/lib/publish';
 import { linksOf } from '@/lib/bookingChoice';
 import { cancelAllReminders, cancelRemindersInBackground } from '@/lib/reminders';
 import { emitSiteAdopted, onSiteAdopted } from '@/lib/siteEvents';
 import * as siteStore from '@/lib/siteStore';
-import type { SiteRecord } from '@/lib/siteStore';
+import type { PendingPublish, SiteRecord } from '@/lib/siteStore';
 import { supabase } from '@/lib/supabase';
 import { boundMatches } from '@/lib/website';
 
@@ -67,6 +69,9 @@ export async function syncIfSignedIn(site?: SiteRecord | null): Promise<void> {
     const { data } = await supabase.auth.getSession();
     const userId = data.session?.user?.id;
     if (!userId) return;
+    // A paid claim in progress: the draft goes to the account only once the publish is confirmed (onLive), never
+    // into an account the server may still refuse (409), where it would then block the right one.
+    if (await hasLockedClaim()) return;
     const record = site ?? (await siteStore.loadSite());
     if (!record) return;
     await syncSiteToSupabase(record, userId);
@@ -74,6 +79,11 @@ export async function syncIfSignedIn(site?: SiteRecord | null): Promise<void> {
   } catch (e) {
     console.warn('[account] site sync failed:', e);
   }
+}
+
+/** True while a paid publish waits on its account step (unclaimed, claiming or refused): the locked /claim state. */
+export async function hasLockedClaim(): Promise<boolean> {
+  return (await siteStore.loadPendingPublish().catch(() => null))?.state != null;
 }
 
 /** Marks the local record (if it is still `draftId`) as belonging to `userId`. Best effort. */
@@ -264,6 +274,9 @@ export async function pushSiteBeforeSignOut(): Promise<boolean> {
     const local = await siteStore.loadSite();
     if (!local) return false;
     if (!userId || (local.ownerUserId && local.ownerUserId !== userId)) return false;
+    // A paid claim in progress leaves the phone as it is: nothing is pushed to (or stamped for) an account the
+    // server may refuse, and the draft stays for the next account.
+    if (await hasLockedClaim()) return false;
     // Sync first, so the account has the latest edits even when a paid publish is still pending.
     // A newer web edit is taken in before the push, never overwritten by this phone's older copy.
     await pullSiteFromAccount(userId);
@@ -321,6 +334,10 @@ export interface RestoreDeps {
   latestTransactionId(): Promise<string | null>;
   iosSite: typeof api.iosSite;
   store: typeof siteStore;
+  /** Signed out: POST claim-start tells paid-unclaimed from linked-elsewhere. */
+  claimStart?: typeof api.claimStart;
+  /** The signed-in account's token, null when signed out. */
+  accessToken?: () => Promise<string | null>;
 }
 
 function inputsFrom(d: WebsiteData): ShopInputs {
@@ -338,27 +355,53 @@ export interface Restored {
 }
 
 /**
- * Restore purchases → this Apple ID's active AI Barber transaction →
- * /api/ios/site → the site bound to it, saved as the one local site.
- *
- * - null: no active subscription (or the server kept no content for the site).
- * - Throws the ApiError from /api/ios/site otherwise: 404 `no-site` means
- *   subscribed but nothing published yet; network / 5xx mean try again.
- *
- * Restoring the site already on this phone (the same slug, or for a site
- * loaded from the account the same live link) keeps its local edits. Any
- * other local draft is replaced by the paid site, keeping the draft id (the
- * `sites` row and photo folder key); a different live site gets a new id, so
- * its account row is never overwritten with this one. A null deployedUrl is kept as null: the
- * server only lacks it if the last deploy's stamp failed, and the live URL
- * comes from Vercel's alias list, so it can't safely be rebuilt here.
+ * What Restore purchases leads to besides a restored site: the locked account step, or a publish into the account.
+ * Neither copies a site anywhere; the caller routes (restoreFlow).
  */
-export async function restore(deps: RestoreDeps): Promise<Restored | null> {
+export type RestoreOutcome = Restored | { claim: 'sign-up' } | { claim: 'publish' };
+
+/**
+ * Restore purchases → this Apple ID's active AI Barber transaction → what the ACCOUNT owns.
+ *
+ * - Signed in: /api/ios/site with the Bearer returns the site only when the purchase is linked to this account
+ *   (409 purchase-other-account otherwise: thrown, nothing is saved, no site is ever copied into another account).
+ *   404 no-site while unpublished content waits on this phone (a pending publish, or an unpublished draft that is
+ *   this account's) resolves to `{ claim: 'publish' }`: the caller publishes it with the Bearer, which links the
+ *   purchase to this account.
+ * - Signed out: nothing is requested from the site endpoint. claim-start says whether the purchase is unclaimed;
+ *   with content on the phone it becomes a pending 'unclaimed' publish and the answer is `{ claim: 'sign-up' }`
+ *   (the locked /claim step). Linked to an account: throws `sign-in-required`.
+ * - null: no active subscription.
+ *
+ * Restoring the site already on this phone (the same slug, or for a site loaded from the account the same live
+ * link) keeps its local edits. Any other local draft is replaced by the paid site, keeping the draft id (the
+ * `sites` row and photo folder key); a different live site gets a new id, so its account row is never
+ * overwritten with this one. A null deployedUrl is kept as null: the server only lacks it if the last deploy's
+ * stamp failed, and the live URL comes from Vercel's alias list, so it can't safely be rebuilt here.
+ */
+export async function restore(deps: RestoreDeps): Promise<RestoreOutcome | null> {
   await deps.restorePurchases();
   const transactionId = await findTransactionId(deps.latestTransactionId);
   if (!transactionId) return null;
 
-  const answer = await deps.iosSite(transactionId);
+  const token = await (deps.accessToken ?? accessToken)().catch(() => null);
+  if (!token) return restoreSignedOut(deps, transactionId);
+
+  let uid: string | undefined;
+  try {
+    uid = (await supabase.auth.getSession()).data.session?.user?.id;
+  } catch {
+    /* the session can't be read: left unowned */
+  }
+  let answer: Awaited<ReturnType<typeof api.iosSite>>;
+  try {
+    answer = await deps.iosSite(transactionId);
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404 && e.code === 'no-site' && (await claimableContent(deps.store, uid, transactionId))) {
+      return { claim: 'publish' };
+    }
+    throw e;
+  }
   // A garbled copy (not a plain object) counts as no content.
   const bound = isPlainSiteData(answer.siteData) ? answer : { ...answer, siteData: null };
   const local = await deps.store.loadSite();
@@ -369,12 +412,6 @@ export async function restore(deps: RestoreDeps): Promise<Restored | null> {
   if (!sameSite && !bound.siteData) return null;
 
   const now = Date.now();
-  let uid: string | undefined;
-  try {
-    uid = (await supabase.auth.getSession()).data.session?.user?.id;
-  } catch {
-    /* signed out, or the session can't be read: left unowned */
-  }
   // A signed-in account's own, different site must never be overwritten: the new site gets its own id.
   // Only a never-owned, unpublished draft keeps its id (photo folder key); anything an account owns gets a new row.
   const keepDraftId = !!local && !local.deployedUrl && !local.ownerUserId;
@@ -405,13 +442,53 @@ export async function restore(deps: RestoreDeps): Promise<Restored | null> {
         };
   // A pending publish is left alone: it is paid content for this same
   // subscription, and the launch retry still sends it to the bound site.
-  // A restored site belongs to the account signed in now, if any.
+  // A restored site belongs to the account signed in now.
   if (uid) record.ownerUserId = uid;
   await deps.store.saveSite(record);
   // A restored site is paid and published: no more reminders (start, Settings
   // and sign-in all restore through here). Never affects the restore.
   cancelRemindersInBackground();
   return { site: record, active: bound.active !== false };
+}
+
+/**
+ * Content this phone can publish into the signed-in account to claim a paid, unpublished subscription: a pending
+ * publish, else an unpublished draft that is not another account's (saved as a pending publish).
+ */
+async function claimableContent(store: typeof siteStore, uid: string | undefined, transactionId: string): Promise<boolean> {
+  const pending = await store.loadPendingPublish().catch(() => null);
+  if (pending) return pending.state !== 'conflict';
+  const local = await store.loadSite().catch(() => null);
+  if (!local || local.slug != null || (local.ownerUserId && local.ownerUserId !== uid)) return false;
+  await store.savePendingPublish({
+    transactionId, data: publishPayload(local.data), createdAt: Date.now(), baseVersion: local.serverVersion, state: 'claiming',
+  });
+  return true;
+}
+
+async function restoreSignedOut(deps: RestoreDeps, transactionId: string): Promise<RestoreOutcome | null> {
+  const claimStart = deps.claimStart ?? api.claimStart;
+  let hasSite = false;
+  try {
+    await claimStart(transactionId);
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 409 && e.code === 'purchase-has-site') hasSite = true;
+    else if (e instanceof ApiError && e.status === 409) throw new ApiError(401, SIGN_IN_TO_RESTORE_CODE, 'Sign in to restore.');
+    else throw e;
+  }
+  const pending = await deps.store.loadPendingPublish().catch(() => null);
+  const local = await deps.store.loadSite().catch(() => null);
+  const data = pending?.data ?? (local ? publishPayload(local.data) : null);
+  if (!data) {
+    // A legacy site lives under this Apple ID but nothing here can publish into an account: sign in to its owner.
+    if (hasSite) throw new ApiError(401, SIGN_IN_TO_RESTORE_CODE, 'Sign in to restore.');
+    throw new ApiError(404, 'no-site', 'No website yet.');
+  }
+  const { conflict: _drop, ...rest } = pending ?? {
+    transactionId, data, createdAt: Date.now(), baseVersion: local?.serverVersion,
+  } as PendingPublish;
+  await deps.store.savePendingPublish({ ...rest, transactionId: rest.transactionId ?? transactionId, state: 'unclaimed' });
+  return { claim: 'sign-up' };
 }
 
 /**
@@ -482,15 +559,6 @@ export async function takeWebsiteOffline(
   if (!tx) throw new ApiError(404, 'no-site', 'We couldn’t find your subscription. Restore purchases first.');
   // In the publish queue: a pending paid publish or launch retry finishes first, so it cannot land after the removal.
   return runSerial(async () => {
-    let expectedSlug: string | undefined;
-    if (site) {
-      // Same check publish makes: take down exactly the site on screen, never another one on this Apple ID.
-      const bound = await api.iosSite(tx); // throws no-site / network: nothing is removed
-      if (!boundMatches(site, bound)) {
-        throw new ApiError(409, 'site-mismatch', 'This Apple ID’s website is not the one shown on this phone.');
-      }
-      expectedSlug = bound.siteId;
-    }
     let token: string | undefined;
     let userId: string | undefined;
     try {
@@ -499,6 +567,22 @@ export async function takeWebsiteOffline(
       userId = session?.user?.id;
     } catch {
       token = undefined;
+    }
+    let expectedSlug: string | undefined;
+    if (site) {
+      if (token) {
+        // Same check publish makes: take down exactly the site on screen, never another one on this Apple ID.
+        const bound = await api.iosSite(tx); // Bearer sent by api; throws no-site / 409 / network: nothing is removed
+        if (!boundMatches(site, bound)) {
+          throw new ApiError(409, 'site-mismatch', 'This Apple ID’s website is not the one shown on this phone.');
+        }
+        expectedSlug = bound.siteId;
+      } else {
+        // Signed out the site lookup needs an account, so the phone's own slug is the check (the server answers
+        // 409 site-mismatch for any other site). A site with no slug of its own cannot be proven: nothing is removed.
+        if (!site.slug) throw new ApiError(409, 'site-mismatch', 'This Apple ID’s website is not the one shown on this phone.');
+        expectedSlug = site.slug;
+      }
     }
     await api.takeSiteOffline(tx, token, expectedSlug);
     // The server said yes: the site is offline. A local cleanup failure must not turn that into an error.

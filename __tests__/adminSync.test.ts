@@ -2,9 +2,13 @@ import * as store from '@/lib/siteStore';
 import type { SiteRecord } from '@/lib/siteStore';
 import { ApiError } from '@/lib/api';
 import { SYNC_NOTICE, withDiskVersion, UPDATED_ON_PUBLISH_MESSAGE, resetSyncState, syncFromServer, takeNotice } from '@/lib/adminSync';
-import { restore } from '@/lib/account';
+import { restore as restoreRaw, type Restored, type RestoreDeps } from '@/lib/account';
 import { onSiteAdopted } from '@/lib/siteEvents';
 import { publishFlow, resumePendingPublish, type PublishDeps } from '@/lib/publish';
+
+/** restore() narrowed to a restored site: these tests are signed in with an active site to bring back. */
+const restore = async (d: RestoreDeps) => (await restoreRaw(d)) as Restored | null;
+
 
 const data = (name: string) => ({
   shopName: name, area: 'Brooklyn', phone: '555',
@@ -92,7 +96,8 @@ function deps(over: Partial<PublishDeps> = {}): PublishDeps {
     latestTransactionId: async () => 'tx-1',
     iosPublish: jest.fn(async () => ({ siteId: 'fade', deployedUrl: 'https://fade.aibarber.org', republished: true, version: 4, editedBy: 'owner' as const, editedAt: 'now' })),
     store,
-    userId: () => null,
+    accessToken: async () => 'tok',
+    claimStart: jest.fn(async () => ({ ok: true as const, state: 'unclaimed' as const, claimExpiresAt: '2026-11-25T00:00:00.000Z' })),
     ...over,
   };
 }
@@ -232,6 +237,7 @@ test('restore() adopts a newer admin copy of the same site and marks the record 
     restorePurchases: async () => {},
     latestTransactionId: async () => 'tx-1',
     iosSite: (async () => server()) as any,
+    accessToken: async () => 'tok',
     store,
   } as any);
   expect(res!.site.data.shopName).toBe('Fade Lab');

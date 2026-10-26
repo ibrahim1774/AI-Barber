@@ -4,17 +4,15 @@ import { Alert, AppState } from 'react-native';
 
 import { relinkShopPurchase } from '@/lib/setup/relink';
 import { syncNow } from '@/lib/adminSync';
-import { restore, syncIfSignedIn, type Restored } from '@/lib/account';
+import { restore, syncIfSignedIn, type RestoreOutcome } from '@/lib/account';
 import { appsFlyerUID, track, trackConversion } from '@/lib/analytics';
-import { api, ApiError } from '@/lib/api';
-import { currentUserId } from '@/lib/auth';
+import { api } from '@/lib/api';
 import { accessToken } from '@/lib/accessToken';
 import { PaywallSettle, type PaywallResult } from '@/lib/paywallSettle';
 import { loadLinkContext } from '@/lib/linkContext';
 import { refreshTeamBeforePublish } from '@/lib/team';
 import { PLAN_ENTITLEMENT, getEntitlements, setEntitlementsFromStatus } from '@/lib/entitlements';
 import { refreshPlan, refreshPlanQuietly, setSharedPlan } from '@/lib/plan';
-import { boundMatches } from '@/lib/website';
 import { findTransactionId, pickLatestTransactionId, type PublishDeps } from '@/lib/publish';
 import { pickDomainTransactionId } from '@/lib/domains/model';
 import { syncRevenueCatPurchases } from '@/lib/revenuecat';
@@ -359,24 +357,11 @@ export function usePublishDeps(): PublishDeps {
       latestTransactionId,
       iosPublish: api.iosPublish,
       syncFromServer: syncNow,
-      boundElsewhere: async (transactionId, site) => {
-        let bound;
-        try {
-          bound = await api.iosSite(transactionId);
-        } catch (e) {
-          // A fresh subscription has no site yet: not bound, go ahead. Anything else throws (fail closed).
-          if (e instanceof ApiError && (e.status === 404 || e.code === 'no-site')) return 'none';
-          throw e;
-        }
-        if (!bound.siteId) return 'none';
-        return !boundMatches(site, bound);
-      },
       linkContext: loadLinkContext,
       refreshTeam: refreshTeamBeforePublish,
       store: siteStore,
-      // The site is bound to the Apple transaction; a signed-in user is linked to it too.
-      userId: currentUserId,
-      // The server links the purchase to the account only from a verified bearer.
+      claimStart: api.claimStart,
+      // Every publish carries the account's Bearer: the server links the purchase to it, and answers 401 without.
       accessToken,
       // Live proves the subscription is active (the editor unlocks), and
       // keeps the account's `sites` row (deployed_url, status) current.
@@ -418,12 +403,12 @@ export const SUPERWALL_OPTIONS = {
  * already shown its restoreFailed alert (SUPERWALL_OPTIONS). Throws the
  * /api/ios/site ApiError, or NO_KEY_MESSAGE without a Superwall key.
  */
-export function useRestorePurchases(): () => Promise<Restored | null> {
+export function useRestorePurchases(): () => Promise<RestoreOutcome | null> {
   // eslint-disable-next-line react-hooks/rules-of-hooks
   return superwallActive ? useSuperwallRestore() : noKeyRestore;
 }
 
-async function noKeyRestore(): Promise<Restored | null> {
+async function noKeyRestore(): Promise<RestoreOutcome | null> {
   track('restore_tapped', { paywall: 'off' });
   throw new Error(NO_KEY_MESSAGE);
 }
@@ -446,6 +431,7 @@ function useSuperwallRestore() {
         },
         latestTransactionId,
         iosSite: api.iosSite,
+        claimStart: api.claimStart,
         store: siteStore,
       }),
     [restorePurchases, latestTransactionId],

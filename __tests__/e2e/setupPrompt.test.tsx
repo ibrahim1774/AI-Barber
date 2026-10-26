@@ -159,6 +159,7 @@ describe('useUpdateSitePrompt', () => {
 
   it('a site published before live links were tracked: reads them from the server copy', async () => {
     await store.saveSite(site({ liveLinks: undefined }));
+    require('@/lib/supabase').sb.setSession({ access_token: 'tok-u1', user: { id: 'u1' } }); // /api/ios/site needs the account
     (global as any).fetch = jest.fn(async () => ({
       status: 200, ok: true,
       text: async () => JSON.stringify({ siteId: 'fade-lab', deployedUrl: 'https://fade-lab.aibarber.org', active: true, siteData: { shopName: 'Fade Lab', bookingUrl: AI } }),

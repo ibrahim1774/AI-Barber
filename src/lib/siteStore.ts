@@ -1,6 +1,7 @@
 import Storage from 'expo-sqlite/kv-store';
 import type { ShopInputs, WebsiteData } from '@/web/types';
 import type { BookingPrefs, LiveLinks } from '@/lib/bookingChoice';
+import type { Conflict } from '@/lib/claimCopy';
 
 export interface SiteRecord {
   draftId: string;
@@ -40,13 +41,20 @@ export interface PendingPublish {
   /** The site version this data was based on; a resumed publish carries it, never a newer one. */
   baseVersion?: number;
   /**
-   * The site this content was paid for (its identity when saved). The ownership check on a retry runs
-   * against this, never against whatever site is on the phone later (Restore can swap it).
+   * Where the paid publish stands on its way to an account (pay-then-sign-up). Absent: the payer was signed in
+   * (or this is an older record), so it is an ordinary retry.
+   * - 'unclaimed': paid, no account yet. The locked /claim step is shown until one signs up or in.
+   * - 'claiming': an account exists; the publish with its Bearer has not been confirmed.
+   * - 'conflict': the server refused (the purchase is another account's, or this account already has a site); see
+   *   `conflict`. Nothing is retried; the locked step offers a different account.
    */
-  target?: { draftId: string; slug?: string | null; deployedUrl?: string | null; ownerUserId?: string;
-    /** At pay time nothing was bound to the transaction: a slug bound later is this publish's own. */
-    freshBind?: boolean;
-  };
+  state?: 'unclaimed' | 'claiming' | 'conflict';
+  conflict?: Conflict;
+  /**
+   * The site this content was paid for (its identity when saved). A retry sends this content, never whatever
+   * site is on the phone later (Restore can swap it).
+   */
+  target?: { draftId: string; slug?: string | null; deployedUrl?: string | null; ownerUserId?: string };
 }
 
 const SITE_KEY = 'site.v1';

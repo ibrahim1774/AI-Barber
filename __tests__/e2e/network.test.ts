@@ -64,7 +64,8 @@ describe('first publish (paid this run), the publish request fails', () => {
   ])('%s: "payment went through" pending, kept for the relaunch, which finishes it', async (_n, fault) => {
     server.fail('/api/ios/publish', fault);
     const out = await publish(w);
-    expect(out).toEqual({ kind: 'pending', message: w.m.publish.PENDING_MESSAGE });
+    expect(out).toMatchObject({ kind: 'pending', message: w.m.publish.PENDING_MESSAGE });
+    expect((out as { offline?: boolean }).offline).toBe(fault.kind === 'offline' ? true : undefined);
     expect(await w.pending()).toMatchObject({ transactionId: 'tx-1' });
     expect((await w.site())?.slug).toBeNull();
     w = await kill(w);
@@ -82,7 +83,7 @@ describe('first publish (paid this run), the publish request fails', () => {
     expect(out).toBeNull();
     await jest.advanceTimersByTimeAsync(2_000);
     await p;
-    expect(out).toEqual({ kind: 'pending', message: w.m.publish.PENDING_MESSAGE });
+    expect(out).toMatchObject({ kind: 'pending', message: w.m.publish.PENDING_MESSAGE, offline: true });
     expect(await w.pending()).toMatchObject({ transactionId: 'tx-1' });
   });
 
@@ -103,7 +104,7 @@ describe('first publish (paid this run), the publish request fails', () => {
   it('a garbled 200 ({}) is not "live": the pending publish is kept, the record untouched, the relaunch finishes it', async () => {
     server.fail('/api/ios/publish', { kind: 'json', status: 200, body: {} });
     const out = await publish(w);
-    expect(out).toEqual({ kind: 'pending', message: w.m.publish.PENDING_MESSAGE });
+    expect(out).toMatchObject({ kind: 'pending', message: w.m.publish.PENDING_MESSAGE });
     expect(await w.pending()).toMatchObject({ transactionId: 'tx-1' });
     expect(await w.site()).toMatchObject({ slug: null, deployedUrl: null });
     w = await kill(w);

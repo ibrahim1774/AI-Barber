@@ -133,7 +133,7 @@ describe('the full journey, signed in', () => {
     w.unmount();
     jest.resetModules();
     wipeDisk();
-    w = await boot(server, { user: null });
+    w = await boot(server, { user: 'u1' }); // signed in as the owner: Restore returns the account's site
     const restored = await w.restore();
     expect(restored).toMatchObject({ active: true, site: { slug: 'fade-lab', transactionId: 'tx-5', serverVersion: server.sites.get('fade-lab')!.version } });
     expect((await w.site())?.data.bookingUrl).toBe(AI_BOOK);
@@ -199,31 +199,34 @@ describe('each of the six products bought at Publish', () => {
 });
 
 describe('signed out', () => {
-  it('a signed-out barber can buy and publish; the plan and account sync are skipped quietly', async () => {
+  it('a signed-out payer is sent to the account step: nothing is published, no shop or account sync happens', async () => {
     w = await boot(server, { user: null });
     await w.m.siteStore.saveSite(draft());
     w.willBuy(P.storeMonthly);
-    expect(await publish(w)).toMatchObject({ kind: 'live' });
+    expect(await publish(w)).toEqual({ kind: 'claim-required' });
     await drain();
-    // No shop can exist without an account: the own link is published, no shop link.
-    expect(lastSent().bookingUrl).toBe(BOOKSY);
-    expect(lastSent().shopUrl).toBeUndefined();
+    expect(server.count('/api/ios/claim-start')).toBe(1);
+    expect(server.calls.find((c) => c.path === '/api/ios/claim-start')?.headers?.Authorization).toBeUndefined();
+    expect(server.count('/api/ios/publish')).toBe(0);
+    expect(server.published).toHaveLength(0);
+    expect(await w.pending()).toMatchObject({ state: 'unclaimed', transactionId: 'tx-1' });
     expect(server.count('/api/shop/plan')).toBe(0); // ownerApi refuses without a token, never reaches the server
     expect(w.sb.upserts).toHaveLength(0);
     expect(w.m.plan.getSharedPlan()).toBeNull();
   });
 
-  it('signing in later and publishing again picks up the shop and the AI link', async () => {
+  it('after the account step the saved publish goes out with the Bearer and picks up the shop and the AI link', async () => {
     w = await boot(server, { user: null });
     await w.m.siteStore.saveSite(draft({ inputs: { ...draft().inputs, ownBookingUrl: BOOKSY, bookingChoice: 'aibarber' } }));
     w.willBuy(P.bookingsMonthly);
-    await publish(w);
-    expect(lastSent().bookingUrl).toBe(BOOKSY); // unknown context: the site's own link stays
+    expect(await publish(w)).toEqual({ kind: 'claim-required' });
     await w.superwallSync();
     server.sb.rows.push({ id: 'shop-1', owner_id: 'u1', slug: 'fade-lab', bookings_enabled: true, store_enabled: false, ios_otid: 'tx-1' });
     w.sb.setSession({ access_token: 'tok-u1', user: { id: 'u1' } });
-    await publish(w);
+    expect(await w.m.publish.resumePendingPublish(w.deps)).toMatchObject({ kind: 'live' });
     expect(lastSent().bookingUrl).toBe(AI_BOOK);
+    expect(server.calls.find((c) => c.path === '/api/ios/publish')?.headers?.Authorization).toBe('Bearer tok-u1');
+    expect(await w.pending()).toBeNull();
   });
 });
 

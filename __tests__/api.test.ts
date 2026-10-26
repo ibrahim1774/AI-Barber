@@ -1,8 +1,12 @@
 import { api, ApiError } from '@/lib/api';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { sb } = require('@/lib/supabase');
 
 const mockFetch = jest.fn();
 beforeEach(() => {
   mockFetch.mockReset();
+  sb.reset();
+  sb.setSession({ access_token: 'tok-1', user: { id: 'u1' } });
   (global as any).fetch = mockFetch;
 });
 
@@ -36,7 +40,7 @@ describe('api', () => {
 
   it('replaces a slug-style 4xx code with friendly copy but keeps the code', async () => {
     mockFetch.mockResolvedValue(res(400, { error: 'bad-request' }));
-    const err = await api.iosPublish({ transactionId: 't', siteData: {} as any }).catch((e) => e);
+    const err = await api.iosPublish({ transactionId: 't', siteData: {} as any }, 'tok').catch((e) => e);
     expect(err.code).toBe('bad-request');
     expect(err.message).toBe("Couldn't do that right now. Try again in a moment.");
     mockFetch.mockResolvedValue(res(429, { error: 'rate_limited' }));
@@ -82,10 +86,50 @@ describe('api', () => {
   it('iosPublish posts the body unchanged and returns server error codes', async () => {
     const body = { transactionId: 't', siteData: { hero: {} } as any };
     mockFetch.mockResolvedValueOnce(res(402, { error: 'subscription-inactive' }));
-    const err = await api.iosPublish(body).catch((e) => e);
+    const err = await api.iosPublish(body, 'tok-1').catch((e) => e);
     expect(err.status).toBe(402);
     expect(err.code).toBe('subscription-inactive');
     expect(JSON.parse(mockFetch.mock.calls[0][1].body)).toEqual(body);
+  });
+
+  it('iosPublish always sends the Bearer', async () => {
+    mockFetch.mockResolvedValueOnce(res(200, { siteId: 's', deployedUrl: 'u', republished: false }));
+    await api.iosPublish({ transactionId: 't', siteData: {} as any }, 'tok-9');
+    expect(mockFetch.mock.calls[0][1].headers).toMatchObject({ Authorization: 'Bearer tok-9' });
+  });
+
+  it('iosSite sends the signed-in Bearer on the request itself', async () => {
+    mockFetch.mockResolvedValue(res(200, { siteId: 's', deployedUrl: null, siteData: null, active: true }));
+    await api.iosSite('tx-1');
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe('https://www.aibarber.org/api/ios/site');
+    expect(init.headers).toMatchObject({ Authorization: 'Bearer tok-1' });
+  });
+
+  it('iosSite signed out never reaches the network: 401 auth-required', async () => {
+    sb.setSession(null);
+    const err = await api.iosSite('tx-1').catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err).toMatchObject({ status: 401, code: 'auth-required' });
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('iosSite keeps the 409 purchase-other-account hint in the error body', async () => {
+    mockFetch.mockResolvedValue(res(409, { error: 'purchase-other-account', hint: 'a***@gmail.com' }));
+    const err = await api.iosSite('tx-1').catch((e) => e);
+    expect(err).toMatchObject({ status: 409, code: 'purchase-other-account', body: { hint: 'a***@gmail.com' } });
+  });
+
+  it('claimStart and signup post their bodies; signup surfaces the server field and code', async () => {
+    mockFetch.mockResolvedValueOnce(res(200, { ok: true, state: 'unclaimed', claimExpiresAt: 'x' }));
+    await api.claimStart('tx-7');
+    expect(mockFetch.mock.calls[0][0]).toBe('https://www.aibarber.org/api/ios/claim-start');
+    expect(JSON.parse(mockFetch.mock.calls[0][1].body)).toEqual({ transactionId: 'tx-7' });
+    mockFetch.mockResolvedValueOnce(res(400, { error: 'bad-request', field: 'phone' }));
+    const bad = await api.signup({ name: 'A', email: 'a@b.co', phone: '1', password: 'x'.repeat(8) }).catch((e) => e);
+    expect(bad).toMatchObject({ status: 400, code: 'bad-request', body: { field: 'phone' } });
+    mockFetch.mockResolvedValueOnce(res(409, { error: 'email-exists' }));
+    expect(await api.signup({ name: 'A', email: 'a@b.co', phone: '+15550100199', password: 'x'.repeat(8) }).catch((e) => e)).toMatchObject({ status: 409, code: 'email-exists' });
   });
 
   it('iosSite returns the 404 no-site code', async () => {

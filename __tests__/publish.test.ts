@@ -35,7 +35,8 @@ function makeDeps(over: Partial<PublishDeps> = {}): PublishDeps {
     latestTransactionId: jest.fn(async () => 'tx-1'),
     iosPublish: jest.fn(async () => LIVE),
     store,
-    userId: () => null,
+    accessToken: async () => 'tok',
+    claimStart: jest.fn(async () => ({ ok: true as const, state: 'unclaimed' as const, claimExpiresAt: '2026-11-25T00:00:00.000Z' })),
     ...over,
   };
 }
@@ -106,7 +107,7 @@ test('retries a pending publish on launch', async () => {
   await store.savePendingPublish({ transactionId: 'tx-9', data: site.data, createdAt: Date.now() });
   const deps = makeDeps({ iosPublish: jest.fn(async () => ({ ...LIVE, republished: true })) });
   const out = await resumePendingPublish(deps);
-  expect(deps.iosPublish).toHaveBeenCalledWith({ transactionId: 'tx-9', siteData: site.data, userId: null });
+  expect(deps.iosPublish).toHaveBeenCalledWith({ transactionId: 'tx-9', siteData: site.data }, 'tok');
   expect(deps.showPaywall).not.toHaveBeenCalled();
   expect(out).toEqual({ kind: 'live', url: LIVE.deployedUrl, republished: true });
   expect(await store.loadPendingPublish()).toBeNull();
@@ -117,7 +118,7 @@ test('retries a pending publish on launch', async () => {
   // Still offline: the pending publish stays for the next launch.
   await store.savePendingPublish({ transactionId: 'tx-9', data: site.data, createdAt: Date.now() });
   const offline = makeDeps({ iosPublish: jest.fn(async () => { throw new ApiError(0, 'network', 'offline'); }) });
-  expect(await resumePendingPublish(offline)).toEqual({ kind: 'pending', message: PENDING_MESSAGE });
+  expect(await resumePendingPublish(offline)).toEqual({ kind: 'pending', message: PENDING_MESSAGE, offline: true });
   expect(await store.loadPendingPublish()).not.toBeNull();
 });
 
@@ -221,7 +222,7 @@ test.each([
   [0, 'network'],
 ])('%i %s keeps the pending publish and returns pending', async (status, code) => {
   const out = await publishFlow(site, makeDeps({ iosPublish: fail(status, code) }));
-  expect(out).toEqual({ kind: 'pending', message: PENDING_MESSAGE });
+  expect(out).toMatchObject({ kind: 'pending', message: PENDING_MESSAGE, ...(status === 0 ? { offline: true } : {}) });
   expect(await store.loadPendingPublish()).toMatchObject({ transactionId: 'tx-1' });
 });
 
@@ -241,7 +242,7 @@ test('an entitled republish that hits a 5xx says the site is still updating, nev
   expect(await publishFlow(site, deps)).toEqual({ kind: 'pending', message: UPDATING_MESSAGE });
   // No purchase this run: nothing saved before the transaction was found.
   const net = makeDeps({ hasEntitlement: jest.fn(async () => true), iosPublish: fail(0, 'network') });
-  expect(await publishFlow(site, net)).toEqual({ kind: 'pending', message: UPDATING_MESSAGE });
+  expect(await publishFlow(site, net)).toEqual({ kind: 'pending', message: UPDATING_MESSAGE, offline: true });
 });
 
 test('an entitled user with no transaction found is unconfirmed and saves nothing', async () => {
@@ -257,7 +258,7 @@ test('a null-id pending publish looks up the transaction on resume', async () =>
   await store.savePendingPublish({ transactionId: null, data: site.data, createdAt: Date.now() });
   const deps = makeDeps({ latestTransactionId: jest.fn(async () => 'tx-found'), iosPublish: fail(503, 'temporarily-unavailable') });
   expect(await resumePendingPublish(deps)).toMatchObject({ kind: 'pending' });
-  expect(deps.iosPublish).toHaveBeenCalledWith(expect.objectContaining({ transactionId: 'tx-found' }));
+  expect(deps.iosPublish).toHaveBeenCalledWith(expect.objectContaining({ transactionId: 'tx-found' }), 'tok');
   // The found id is kept on the record for the next try.
   expect(await store.loadPendingPublish()).toMatchObject({ transactionId: 'tx-found' });
 

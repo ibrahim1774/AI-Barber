@@ -45,6 +45,7 @@ jest.mock('@/lib/account', () => ({ syncIfSignedIn: jest.fn(async () => {}) }));
 jest.mock('@/lib/paywall', () => ({
   hasEntitlement: () => false,
   useRestorePurchases: () => mockRestore,
+  usePublishDeps: () => ({}),
   useLatestTransactionId: () => async () => null,
   useLatestDomainTransactionId: () => () => mockDomainTx(),
 }));
