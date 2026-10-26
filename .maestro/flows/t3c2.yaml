@@ -1,0 +1,19 @@
+appId: com.ibrahim1774.aibarber
+---
+# (T3 c cont.) service form open (Edit Haircut): set the price, save, check the list and the preview.
+- tapOn:
+    point: "60%,57%"   # price
+- inputText: "45"
+- tapOn: "SAVE"
+- waitForAnimationToEnd
+- takeScreenshot: t3_c2_services_after_price
+- tapOn: "DONE"
+- waitForAnimationToEnd
+- repeat:
+    times: 3
+    commands:
+      - swipe:
+          start: "50%,30%"
+          end: "50%,80%"
+      - waitForAnimationToEnd
+- takeScreenshot: t3_c3_preview_services

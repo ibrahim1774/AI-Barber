@@ -1,0 +1,37 @@
+appId: com.ibrahim1774.aibarber
+---
+# (T3 b) continues t3_editor (ALL FIELDS sheet open after the hero edit): scroll to the footer line rows.
+- repeat:
+    times: 8
+    commands:
+      - swipe:
+          start: "50%,85%"
+          end: "50%,25%"
+      - waitForAnimationToEnd
+- repeat:
+    times: 4
+    commands:
+      - swipe:
+          start: "50%,40%"
+          end: "50%,75%"
+      - waitForAnimationToEnd
+- takeScreenshot: t3_b0_fields_footer_area
+- tapOn:
+    point: "20%,71%"   # Footer line row
+- waitForAnimationToEnd
+- takeScreenshot: t3_b1_footer_sheet
+- eraseText: 90
+- inputText: "Open late every Friday"
+- tapOn: "SAVE"
+- waitForAnimationToEnd
+- tapOn:
+    point: "87%,20%"   # DONE (all fields)
+- waitForAnimationToEnd
+- repeat:
+    times: 9
+    commands:
+      - swipe:
+          start: "50%,60%"
+          end: "50%,20%"
+      - waitForAnimationToEnd
+- takeScreenshot: t3_b3_footer_in_preview

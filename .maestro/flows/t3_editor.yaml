@@ -1,0 +1,17 @@
+appId: com.ibrahim1774.aibarber
+---
+# (T3) Editor: hero text, footer text, service price, photos (replace/delete), Book + Call sheets (link validation).
+- runFlow: _launch.yaml
+- runFlow: _manual_site.yaml
+# --- A. hero heading
+- tapOn: "TEXT"
+- waitForAnimationToEnd
+- tapOn:
+    point: "20%,33%"   # Hero heading row
+- waitForAnimationToEnd
+- eraseText: 40
+- inputText: "Fade Masters"
+- takeScreenshot: t3_a1_hero_typed
+- tapOn: "SAVE"
+- waitForAnimationToEnd
+- takeScreenshot: t3_a2_after_save

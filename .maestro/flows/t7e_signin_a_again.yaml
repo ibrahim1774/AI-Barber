@@ -1,0 +1,23 @@
+appId: com.ibrahim1774.aibarber
+---
+# (T7 e) after B's deletion: sign in as A (QAPW): A's own site loads with the edited headline.
+- tapOn: "OK"
+- waitForAnimationToEnd
+- tapOn:
+    point: "78%,10%"   # SIGN IN
+- waitForAnimationToEnd
+- tapOn: "Email"
+- inputText: "qa@example.com"
+- tapOn: "PASSWORD.*"
+- inputText: ${QAPW}
+- tapOn:
+    point: "50%,37%"
+- tapOn:
+    text: "Not Now"
+    optional: true
+- extendedWaitUntil:
+    visible: "PUBLISH.*"
+    timeout: 20000
+- waitForAnimationToEnd
+- takeScreenshot: t7_e1_a_again
+- assertVisible: ".*ALPHA QA CUTS.*"

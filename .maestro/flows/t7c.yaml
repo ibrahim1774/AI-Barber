@@ -1,0 +1,8 @@
+appId: com.ibrahim1774.aibarber
+---
+- tapOn:
+    point: "78%,10%"   # ACCOUNT
+- waitForAnimationToEnd
+- takeScreenshot: t7_c1_b_account
+- scroll
+- takeScreenshot: t7_c2_b_account_scrolled

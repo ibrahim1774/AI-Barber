@@ -17,7 +17,8 @@ xcrun simctl install $D "$APP" || exit 3
 fi   # NORESET=1 keeps the installed app + stub state (fast iteration on a later step)
 xcrun simctl status_bar $D override --time 9:41 >/dev/null 2>&1
 rm -rf "$OUT"; mkdir -p "$OUT"
-/Users/ibrahim/.maestro/bin/maestro --device $D test --test-output-dir "$OUT" "$HERE/flows/$1.yaml"; rc=$?
+ENVARGS=(); [ -n "${QAPW:-}" ] && ENVARGS+=(-e "QAPW=$QAPW"); [ -n "${QAPW2:-}" ] && ENVARGS+=(-e "QAPW2=$QAPW2")
+/Users/ibrahim/.maestro/bin/maestro --device $D test "${ENVARGS[@]}" --test-output-dir "$OUT" "$HERE/flows/$1.yaml"; rc=$?
 # flatten: takeScreenshot output lands in <OUT>/<ts>/<flow>/takeScreenshot*/ ; copy the pngs to <OUT>/
 find "$OUT" -path '*takeScreenshot*' -name '*.png' -exec cp {} "$OUT/" \; 2>/dev/null
 curl -s localhost:8787/__e2e/log > "$OUT/stub-log.json"

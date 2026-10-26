@@ -1,0 +1,30 @@
+appId: com.ibrahim1774.aibarber
+---
+# (T3 h cont.) https link accepted + kept; then the Call button sheet.
+- tapOn:
+    point: "93%,73%"
+- eraseText: 100
+- inputText: "https://example.com/book-fades"
+- tapOn:
+    point: "30%,31%"
+- waitForAnimationToEnd
+- tapOn:
+    point: "87%,49%"   # SAVE
+- waitForAnimationToEnd
+- takeScreenshot: t3_h4_https_saved
+- tapOn:
+    point: "50%,35%"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: t3_h5_book_sheet_reopened
+- tapOn:
+    point: "30%,31%"
+- waitForAnimationToEnd
+- tapOn:
+    point: "50%,92%"   # CANCEL
+- waitForAnimationToEnd
+- tapOn:
+    point: "50%,28%"   # Call Now button
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: t3_h6_call_sheet

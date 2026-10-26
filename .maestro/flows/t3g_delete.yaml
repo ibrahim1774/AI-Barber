@@ -1,0 +1,15 @@
+appId: com.ibrahim1774.aibarber
+---
+# (T3 g) Gallery sheet open: tap a photo to see replace/remove actions.
+- tapOn:
+    point: "19%,74%"
+- waitForAnimationToEnd
+- takeScreenshot: t3_g0_photo_actions
+- tapOn: "Remove"
+- waitForAnimationToEnd
+- takeScreenshot: t3_g1_after_remove
+- tapOn:
+    text: "Remove"
+    optional: true   # a confirmation, if any
+- waitForAnimationToEnd
+- takeScreenshot: t3_g2_after_remove_confirm

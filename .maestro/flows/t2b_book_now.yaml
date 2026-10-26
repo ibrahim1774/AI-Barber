@@ -1,0 +1,21 @@
+appId: com.ibrahim1774.aibarber
+---
+# (T2b) Scratch site + bookings turned ON (setup wizard, 'Update my site' accepted): hero button becomes a Book button to the booking page; off = 'Call Now' (t2_scratch).
+- runFlow:
+    file: _signed_in.yaml
+    env: { TIER: bookings, LAPSE: "" }
+- runFlow:
+    file: _bookings_wizard.yaml
+    env: { PROMPT_TAP: "Update my site", PREFIX: "c_" }
+- tapOn:
+    point: "50%,22%"   # dim area above the sheet closes it
+- waitForAnimationToEnd
+- tapOn:
+    point: "13%,94%"   # Edit tab
+- waitForAnimationToEnd
+- takeScreenshot: c30_edit_bookings_on
+- tapOn:
+    point: "50%,29%"   # hero button
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: c31_button_sheet_bookings_on

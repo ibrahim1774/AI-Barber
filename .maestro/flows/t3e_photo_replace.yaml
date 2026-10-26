@@ -1,0 +1,7 @@
+appId: com.ibrahim1774.aibarber
+---
+# (T3 e) PHOTOS sheet open: tap Gallery 6 to see its actions.
+- tapOn:
+    point: "50%,85%"   # Gallery 6
+- waitForAnimationToEnd
+- takeScreenshot: t3_e0_photo_actions

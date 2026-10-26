@@ -1,0 +1,25 @@
+appId: com.ibrahim1774.aibarber
+---
+# (T7 b) account B (created through the stub's signup endpoint: the simulator's Strong Password cover view blocks typing a new password):
+# sign in as B with the throwaway password (QAPW2) and check B sees a clean start, not A's site.
+- runFlow: _launch.yaml
+- tapOn:
+    point: "78%,10%"   # SIGN IN
+- waitForAnimationToEnd
+- tapOn: "Email"
+- eraseText: 40
+- inputText: "e2e-b@example.com"
+- tapOn: "PASSWORD.*"
+- inputText: ${QAPW2}
+- tapOn:
+    point: "50%,37%"
+- waitForAnimationToEnd
+- takeScreenshot: t7_b5_b_signed_in_prompt
+- tapOn:
+    text: "Not now"
+    optional: true
+- tapOn:
+    text: "Not Now"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: t7_b6_b_home

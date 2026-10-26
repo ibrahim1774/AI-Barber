@@ -1,0 +1,14 @@
+appId: com.ibrahim1774.aibarber
+---
+# (T9 b) after t9_headers (a product sheet may be open): close it, shoot the Store header, then the Bookings header.
+- tapOn:
+    point: "50%,12%"   # dim area closes a sheet; harmless on the header
+- waitForAnimationToEnd
+- takeScreenshot: t9_store_header
+- tapOn:
+    point: "37%,94%"   # Bookings tab
+- waitForAnimationToEnd
+- tapOn:
+    text: "Skip tour"
+    optional: true
+- takeScreenshot: t9_bookings_header

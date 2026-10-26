@@ -1,0 +1,24 @@
+appId: com.ibrahim1774.aibarber
+---
+# (T9 c) second device (iPhone 16e): the signed-in session and the Store+Bookings data live in the stub from t9_headers, so just open the app.
+# Run: SIM=<udid> NORESET=1 .maestro/run-flow.sh t9c_small  (the app is installed with simctl first)
+# (the app is already open on the signed-in editor after the first launch; _launch.yaml expects the start screen)
+- tapOn:
+    text: "Skip tour"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: t9s_home
+- tapOn:
+    point: "37%,94%"   # Bookings tab
+- waitForAnimationToEnd
+- tapOn:
+    text: "Skip tour"
+    optional: true
+- takeScreenshot: t9s_bookings_header
+- tapOn:
+    point: "62%,94%"   # Store tab
+- waitForAnimationToEnd
+- tapOn:
+    text: "Skip tour"
+    optional: true
+- takeScreenshot: t9s_store_header

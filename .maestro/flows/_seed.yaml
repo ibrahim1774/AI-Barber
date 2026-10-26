@@ -13,7 +13,7 @@ appId: com.ibrahim1774.aibarber
       EMAIL: ${EMAIL}
       SITEBASE: ${SITEBASE}
       BOOKING_NAME: ${BOOKING_NAME}
-- openLink: exp+aibarber://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A8090
+- openLink: exp+aibarber://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A8091
 - tapOn:
     text: "Open"
     optional: true

@@ -1,16 +1,21 @@
 appId: com.ibrahim1774.aibarber
 ---
-# (T9) Store and Bookings headers: no overflow, three pills evenly spaced, no shop name top-left. Run on two simulators (SIM=<udid>, SHOTS prefix via env is not supported; copy names per device).
-- runFlow:
-    file: _signed_in.yaml
-    env: { TIER: store, LAPSE: "" }
+# (T9) Bookings and Store headers once set up: no overflow, three pills (Customers / Share / Settings) evenly spaced, no shop name top-left.
+# Run once per simulator: SIM=<udid> SHOTS=<dir> .maestro/run-flow.sh t9_headers ; screenshots are named t9_*
+- runFlow: _p1_shop_ready.yaml
 - tapOn:
     text: "Skip tour"
     optional: true
 - waitForAnimationToEnd
-- tapOn: "Bookings, tab.*"
-- waitForAnimationToEnd
 - takeScreenshot: t9_bookings
-- tapOn: "Store, tab.*"
+- runFlow:
+    file: _seed.yaml
+    env: { TIER: store, LAPSE: "", STRIPE: "", SIGNIN: "", SIGNOUT: "", EMAIL: "", SITEBASE: "", BOOKING_NAME: "" }
+- runFlow:
+    file: _store_setup.yaml
+    env: { PROMPT_TAP: "Not now", PREFIX: "s_" }
+- tapOn:
+    text: "Skip tour"
+    optional: true
 - waitForAnimationToEnd
 - takeScreenshot: t9_store

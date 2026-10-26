@@ -1,0 +1,18 @@
+appId: com.ibrahim1774.aibarber
+---
+# (T7 d) Delete throwaway account B (Settings > Delete account), then sign in as A again: A's own site with A's edited headline.
+- tapOn:
+    point: "50%,77%"   # Delete account (settings scrolled to the bottom)
+- waitForAnimationToEnd
+- takeScreenshot: t7_d1_delete_dialog
+- tapOn:
+    point: "50%,60%"   # Delete account (dialog button)
+- waitForAnimationToEnd:
+    timeout: 6000
+- takeScreenshot: t7_d2_after_delete
+- tapOn:
+    text: "Delete account"
+    optional: true   # a second confirmation, if the app asks
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: t7_d3_after_delete_confirm

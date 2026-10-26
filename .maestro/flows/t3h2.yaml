@@ -1,0 +1,31 @@
+appId: com.ibrahim1774.aibarber
+---
+# (T3 h) Book + Call button sheets on an imported (booking link) site: javascript:/data: rejected, https and phone accepted.
+# The floating dev gear sits over SAVE while the keyboard is up, so: type, dismiss the keyboard (tap a heading), tap SAVE (now lower).
+- tapOn:
+    point: "50%,35%"   # Book Appointment button
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: t3_h1_book_sheet
+- tapOn:
+    point: "93%,41%"
+- eraseText: 100
+- inputText: "javascript:alert(1)"
+- tapOn:
+    point: "30%,31%"
+- waitForAnimationToEnd
+- tapOn:
+    point: "87%,49%"   # SAVE (keyboard down)
+- waitForAnimationToEnd
+- takeScreenshot: t3_h2_javascript_rejected
+- tapOn:
+    point: "93%,70%"
+- eraseText: 100
+- inputText: "data:text/html,hello"
+- tapOn:
+    point: "30%,31%"
+- waitForAnimationToEnd
+- tapOn:
+    point: "87%,49%"
+- waitForAnimationToEnd
+- takeScreenshot: t3_h3_data_rejected

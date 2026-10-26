@@ -1,0 +1,30 @@
+appId: com.ibrahim1774.aibarber
+---
+# (T7 a) Account A (the QA account, seeded session): edit the hero headline, then sign out.
+- runFlow:
+    file: _signed_in.yaml
+    env: { TIER: website, LAPSE: "" }
+- tapOn:
+    text: "Skip tour"
+    optional: true
+- waitForAnimationToEnd
+- tapOn: "TEXT"
+- waitForAnimationToEnd
+- tapOn:
+    point: "20%,33%"   # Hero heading row
+- waitForAnimationToEnd
+- eraseText: 40
+- inputText: "Alpha QA Cuts"
+- tapOn: "SAVE"
+- waitForAnimationToEnd
+- tapOn:
+    point: "87%,20%"   # DONE (all fields)
+- waitForAnimationToEnd
+- takeScreenshot: t7_a1_headline_edited
+- tapOn:
+    point: "87%,94%"   # Settings tab
+- waitForAnimationToEnd
+- scroll
+- tapOn: "Sign out"
+- waitForAnimationToEnd
+- takeScreenshot: t7_a2_signed_out_start

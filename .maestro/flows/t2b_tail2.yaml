@@ -1,0 +1,12 @@
+appId: com.ibrahim1774.aibarber
+---
+# (T2b cont.) from the editor with bookings ON: open the Book button sheet and show where it points.
+- tapOn: "CANCEL"
+- waitForAnimationToEnd
+- tapOn:
+    point: "25%,33%"   # Book Appointment button
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: c32_book_sheet
+- scroll
+- takeScreenshot: c33_book_sheet_scrolled

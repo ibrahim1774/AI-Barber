@@ -1,0 +1,14 @@
+appId: com.ibrahim1774.aibarber
+---
+# (T3 f) after replacing Gallery 6: PHOTOS sheet shows it; then SECTIONS > Gallery to remove a photo.
+- tapOn: "PHOTOS"
+- waitForAnimationToEnd
+- takeScreenshot: t3_f0_photos_after_replace
+- tapOn:
+    point: "87%,42%"   # DONE
+- waitForAnimationToEnd
+- tapOn: "SECTIONS"
+- waitForAnimationToEnd
+- tapOn: "Gallery, .*"
+- waitForAnimationToEnd
+- takeScreenshot: t3_f1_gallery_sheet

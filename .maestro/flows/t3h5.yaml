@@ -1,0 +1,11 @@
+appId: com.ibrahim1774.aibarber
+---
+# (T3 h cont.) Call button sheet: junk/javascript rejected, a phone number accepted.
+- tapOn:
+    point: "50%,93%"   # CANCEL (Book sheet, keyboard down)
+- waitForAnimationToEnd
+- tapOn:
+    point: "50%,28%"   # Call Now button
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: t3_h6_call_sheet

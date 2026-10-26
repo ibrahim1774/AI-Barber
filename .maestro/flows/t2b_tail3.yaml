@@ -1,0 +1,12 @@
+appId: com.ibrahim1774.aibarber
+---
+# (T2b cont.) Design 2 with bookings ON: the hero + menu Book Now button.
+- tapOn: "CANCEL"
+- waitForAnimationToEnd
+- tapOn: "DESIGN 2"
+- waitForAnimationToEnd
+- takeScreenshot: c34_design2_hero
+- tapOn:
+    point: "91%,11%"
+- waitForAnimationToEnd
+- takeScreenshot: c35_design2_menu

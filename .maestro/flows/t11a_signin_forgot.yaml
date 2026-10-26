@@ -1,0 +1,77 @@
+appId: com.ibrahim1774.aibarber
+---
+# (T11 part a) Start screen -> SIGN IN opens the sign-in screen; wrong password -> clear error (no crash);
+# Forgot password: bad/empty email errors, an @example.com address moves to the code step, Back works, resend timer runs.
+# Needs QAPW (the stub's QA password) only for nothing here: the wrong password is a literal.
+- runFlow: _launch.yaml
+- takeScreenshot: a01_start
+- tapOn:
+    point: "78%,10%"   # SIGN IN pill (the right edge is covered by the dev-tools gear)
+- waitForAnimationToEnd
+- assertVisible: "Don’t have an account?"
+- takeScreenshot: a02_signin_opened
+- tapOn:
+    point: "6%,9%"   # < back
+- waitForAnimationToEnd
+- assertVisible: "USE MY BOOKING LINK.*"
+- takeScreenshot: a03_back_to_start
+- tapOn:
+    point: "78%,10%"
+- waitForAnimationToEnd
+# wrong password
+- tapOn: "Email"
+- inputText: "qa@example.com"
+- tapOn: "PASSWORD.*"
+- inputText: "definitely-wrong-1"
+- tapOn:
+    point: "50%,37%"
+- waitForAnimationToEnd
+- assertVisible: ".*don't match.*"
+- tapOn:
+    text: "Not Now"
+    optional: true
+- takeScreenshot: a04_wrong_password_error
+- assertVisible: "Forgot password.*"
+# forgot password, empty email
+- tapOn:
+    point: "83%,31%"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "Not Now"
+    timeout: 4000
+    optional: true
+- tapOn:
+    text: "Not Now"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: a05_forgot_prefilled
+- tapOn:
+    point: "40%,25%"
+- eraseText: 40
+- tapOn: "SEND CODE"
+- waitForAnimationToEnd
+- takeScreenshot: a06_forgot_empty_error
+- tapOn:
+    point: "40%,25%"
+- inputText: "not-an-email"
+- tapOn: "SEND CODE"
+- waitForAnimationToEnd
+- takeScreenshot: a07_forgot_invalid_error
+- tapOn:
+    point: "40%,25%"
+- eraseText: 40
+- inputText: "e2e-throwaway@example.com"
+- tapOn: "SEND CODE"
+- waitForAnimationToEnd
+- assertVisible: ".*we've emailed a 6-digit code.*"
+- takeScreenshot: a08_forgot_code_step
+- assertVisible: "Resend code in.*"
+- takeScreenshot: a09_resend_timer
+- tapOn: "Use a different email"
+- waitForAnimationToEnd
+- takeScreenshot: a10_different_email
+- tapOn:
+    point: "6%,9%"   # Back from forgot password
+- waitForAnimationToEnd
+- assertVisible: "Don’t have an account?"
+- takeScreenshot: a11_back_to_signin

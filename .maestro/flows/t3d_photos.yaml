@@ -1,0 +1,17 @@
+appId: com.ibrahim1774.aibarber
+---
+# (T3 d) services sheet open: close it, preview the new price, then open the PHOTOS sheet.
+- tapOn:
+    point: "87%,64%"   # DONE
+- waitForAnimationToEnd
+- repeat:
+    times: 6
+    commands:
+      - swipe:
+          start: "50%,30%"
+          end: "50%,85%"
+      - waitForAnimationToEnd
+- takeScreenshot: t3_d0_preview_top_area
+- tapOn: "PHOTOS"
+- waitForAnimationToEnd
+- takeScreenshot: t3_d1_photos_sheet

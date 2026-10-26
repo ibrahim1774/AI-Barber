@@ -1,0 +1,11 @@
+appId: com.ibrahim1774.aibarber
+---
+# (T3 c) continues t3b (preview at the footer): edit a service price in SECTIONS > Services.
+- tapOn: "SECTIONS"
+- waitForAnimationToEnd
+- tapOn: "Services, .*"
+- waitForAnimationToEnd
+- takeScreenshot: t3_c0_services_list
+- tapOn: "Edit Haircut"
+- waitForAnimationToEnd
+- takeScreenshot: t3_c1_service_form

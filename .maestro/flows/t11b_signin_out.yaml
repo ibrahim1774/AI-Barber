@@ -1,0 +1,52 @@
+appId: com.ibrahim1774.aibarber
+---
+# (T11 part b) Account site exists (seeded sign-in), sign out -> clean start screen, sign in by typing the QA password (QAPW env) -> own site loads.
+- runFlow:
+    file: _signed_in.yaml
+    env: { TIER: website, LAPSE: "" }
+- tapOn:
+    text: "Skip tour"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: b01_signed_in_site
+- tapOn:
+    point: "87%,94%"
+- waitForAnimationToEnd
+- scroll
+- tapOn: "Sign out"
+- waitForAnimationToEnd
+- takeScreenshot: b02_after_signout
+- tapOn:
+    point: "78%,10%"
+- waitForAnimationToEnd
+- tapOn: "Email"
+- inputText: "qa@example.com"
+- tapOn: "PASSWORD.*"
+- waitForAnimationToEnd
+- inputText: ${QAPW}
+- tapOn:
+    point: "50%,37%"
+- waitForAnimationToEnd
+# the simulator keyboard sometimes mangles typing into a secure field: retype up to twice if rejected
+- repeat:
+    times: 2
+    commands:
+      - runFlow:
+          when:
+            visible: ".*don't match.*"
+          commands:
+            - tapOn: "PASSWORD.*"
+            - eraseText: 30
+            - inputText: ${QAPW}
+            - tapOn:
+                point: "50%,43%"
+            - waitForAnimationToEnd
+- tapOn:
+    text: "Not Now"
+    optional: true
+- extendedWaitUntil:
+    visible: "PUBLISH.*"
+    timeout: 20000
+- waitForAnimationToEnd
+- takeScreenshot: b05_signed_in_again_site
+- assertVisible: ".*BARBERSHOP.*"

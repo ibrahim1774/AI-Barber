@@ -1,0 +1,14 @@
+appId: com.ibrahim1774.aibarber
+---
+# (T7 b) Second throwaway account B (QAPW2 env): sign up from the sign-in screen, see a clean start (not A's site).
+- tapOn:
+    point: "78%,10%"   # SIGN IN
+- waitForAnimationToEnd
+- tapOn: "Sign Up"
+- waitForAnimationToEnd
+- tapOn: "Email"
+- inputText: "e2e-b@example.com"
+- tapOn: "PASSWORD.*"
+- inputText: ${QAPW2}
+- waitForAnimationToEnd
+- takeScreenshot: t7_b1_signup_filled

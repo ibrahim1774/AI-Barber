@@ -1,0 +1,26 @@
+appId: com.ibrahim1774.aibarber
+---
+# (T7 b cont.) type B's password (the strong-password cover view hides the field, tap its row), create the account.
+- tapOn:
+    point: "40%,52%"
+- inputText: ${QAPW2}
+- waitForAnimationToEnd
+- tapOn:
+    text: "Use Strong Password"
+    optional: true
+- tapOn: "Please save the email.*"
+- waitForAnimationToEnd
+- takeScreenshot: t7_b2b_typed
+- tapOn:
+    point: "50%,59%"   # Create Account
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: t7_b3_after_signup
+- tapOn:
+    text: "Not Now"
+    optional: true
+- tapOn:
+    text: "Not now"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: t7_b4_b_home

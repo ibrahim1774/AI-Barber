@@ -1,0 +1,8 @@
+appId: com.ibrahim1774.aibarber
+---
+# (T3 e cont.) photo picker is up (the test image added with simctl addmedia is the newest, top-left): pick it.
+- tapOn:
+    point: "19%,39%"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: t3_e1_after_pick

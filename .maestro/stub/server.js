@@ -73,7 +73,7 @@ function filterRows(rows, q) {
     const m = /^(not\.)?(eq|neq|in|is|gt|gte|lt|lte)\.(.*)$/.exec(v); if (!m) continue;
     const [, not, op, val] = m;
     const test = (r) => {
-      const x = r[k];
+      const x = k.includes('->>') ? (r[k.split('->>')[0]] || {})[k.split('->>')[1]] : r[k];   // PostgREST json path: site_data->>source
       switch (op) {
         case 'eq': return String(x) === val; case 'neq': return String(x) !== val;
         case 'in': return val.replace(/^\(|\)$/g, '').split(',').map((s) => s.replace(/^"|"$/g, '')).includes(String(x));

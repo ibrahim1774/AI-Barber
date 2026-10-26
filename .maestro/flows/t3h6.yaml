@@ -1,0 +1,19 @@
+appId: com.ibrahim1774.aibarber
+---
+# (T3 h cont.) Call sheet open (number pad): too-short number rejected, a real number accepted and shown on the Call Now button.
+- tapOn:
+    point: "93%,48%"
+- eraseText: 30
+- inputText: "12"
+- tapOn:
+    point: "87%,43%"   # SAVE
+- waitForAnimationToEnd
+- takeScreenshot: t3_h7_call_short_rejected
+- tapOn:
+    point: "93%,48%"
+- eraseText: 30
+- inputText: "5125550188"
+- tapOn:
+    point: "87%,43%"
+- waitForAnimationToEnd
+- takeScreenshot: t3_h8_call_saved
