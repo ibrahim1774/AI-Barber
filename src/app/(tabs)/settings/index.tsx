@@ -1,6 +1,6 @@
 import { LearnEntry } from '@/components/LearnEntry';
 import { useCallback, useEffect, useLayoutEffect, useState, type ReactNode } from 'react';
-import { ActionSheetIOS, ActivityIndicator, Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActionSheetIOS, ActivityIndicator, Alert, Linking, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { router, useFocusEffect, useNavigation } from 'expo-router';
 import * as Application from 'expo-application';
 import * as WebBrowser from 'expo-web-browser';
@@ -19,6 +19,7 @@ import { useLatestTransactionId, usePaywall } from '@/lib/paywall';
 import { DOMAIN_EXAMPLES_LABEL, DOMAIN_EXAMPLES_LINE, DOMAIN_ROW_EXAMPLE, DOMAIN_ROW_TITLE } from '@/lib/domains/model';
 import { useDomainOffer } from '@/lib/domains/useDomainOffer';
 import { planLabel } from '@/lib/plan';
+import { remindersEnabled, setRemindersEnabled } from '@/lib/reminders';
 import { requestPublish } from '@/lib/publishRequest';
 import { useRestoreFlow } from '@/lib/restoreFlow';
 import { loadSite, type SiteRecord } from '@/lib/siteStore';
@@ -73,6 +74,28 @@ export default function Settings() {
 
   // A site loaded from the account while this tab is up.
   useEffect(() => onSiteAdopted((s) => setSite(s)), []);
+
+  // Publish reminders switch (App Store 4.5.4): null until read.
+  const [remindersOn, setRemindersOn] = useState<boolean | null>(null);
+  useEffect(() => {
+    let alive = true;
+    remindersEnabled().then((v) => alive && setRemindersOn(v), () => alive && setRemindersOn(true));
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const onRemindersToggle = async (next: boolean) => {
+    setRemindersOn(next);
+    track('reminders_switch', { on: next });
+    const r = await setRemindersEnabled(next);
+    if (r === 'denied') {
+      setRemindersOn(false);
+      Alert.alert('Notifications are off', 'Allow notifications for Prime Barber in the iPhone Settings app to get publish reminders.', [
+        { text: 'Not now', style: 'cancel' },
+        { text: 'Open Settings', onPress: () => void Linking.openSettings().catch(() => {}) },
+      ]);
+    }
+  };
 
   const standalone = site === null;
   // Hidden until the site is known, so Edit can't be tapped with no site.
@@ -236,6 +259,14 @@ export default function Settings() {
         <Row label="Plan" detail={planDetail} onPress={ents.known ? openPlan : undefined} chevron={ents.known} />
         <Row label="Restore purchases" onPress={() => void restore()} busy={restoring} />
         <Row label="Manage subscription" onPress={manageSubscription} external />
+      </Section>
+
+      <Section title="Notifications">
+        <Row
+          label="Publish reminders"
+          detail="Up to 3 reminders to publish your site"
+          toggle={remindersOn == null ? undefined : { value: remindersOn, onChange: (v) => void onRemindersToggle(v) }}
+        />
       </Section>
 
       <Section title="Help">
@@ -413,7 +444,7 @@ function Section({ title, children }: { title?: string; children: ReactNode }) {
 }
 
 function Row({
-  label, detail, onPress, busy, chevron, external, danger,
+  label, detail, onPress, busy, chevron, external, danger, toggle,
 }: {
   label: string;
   detail?: string;
@@ -422,6 +453,8 @@ function Row({
   chevron?: boolean;
   external?: boolean;
   danger?: boolean;
+  /** A switch instead of a chevron; the row itself is not pressable. */
+  toggle?: { value: boolean; onChange(v: boolean): void };
 }) {
   const body = (
     <>
@@ -433,7 +466,14 @@ function Row({
           </Text>
         )}
       </View>
-      {busy ? (
+      {toggle ? (
+        <Switch
+          value={toggle.value}
+          onValueChange={toggle.onChange}
+          accessibilityLabel={label}
+          trackColor={{ true: colors.accent }}
+        />
+      ) : busy ? (
         <ActivityIndicator size="small" color={danger ? colors.danger : colors.accent} />
       ) : external ? (
         <ExternalLinkIcon size={16} color={colors.faint} />

@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, allText, pressRow, render } from './store/render';
+import { act, allText, pressRow, render, toggle } from './store/render';
 
 const mockPush = jest.fn();
 jest.mock('expo-router', () => {
@@ -45,6 +45,12 @@ jest.mock('@/lib/paywall', () => ({ usePaywall: () => jest.fn(), useLatestTransa
 
 jest.mock('@/lib/domains/useDomainOffer', () => ({
   useDomainOffer: () => ({ known: true, hasDomain: false, detail: 'Get your own .com — $39/year' }),
+}));
+let mockRemindersOn = true;
+const mockSetReminders = jest.fn(async (on: boolean): Promise<string> => (on ? 'on' : 'off'));
+jest.mock('@/lib/reminders', () => ({
+  remindersEnabled: async () => mockRemindersOn,
+  setRemindersEnabled: (on: boolean) => mockSetReminders(on),
 }));
 import { Alert, Linking } from 'react-native';
 import Settings from '@/app/(tabs)/settings';
@@ -157,5 +163,39 @@ describe('Take my website offline', () => {
     await pressRow(tree, 'Take my website offline');
     expect(buttons()[0].text).toBe('Cancel');
     expect(mockTakeOffline).not.toHaveBeenCalled();
+  });
+});
+
+describe('Publish reminders switch', () => {
+  it('is on by default, switching off calls setRemindersEnabled(false)', async () => {
+    mockRemindersOn = true;
+    mockSetReminders.mockClear();
+    const tree = await render(<Settings />);
+    expect(allText(tree)).toContain('Publish reminders');
+    const sw = tree.root.findAll((n: any) => n.props?.accessibilityLabel === 'Publish reminders' && typeof n.props.onValueChange === 'function')[0];
+    expect(sw.props.value).toBe(true);
+    await toggle(tree, 'Publish reminders', false);
+    expect(mockSetReminders).toHaveBeenCalledWith(false);
+    const sw2 = tree.root.findAll((n: any) => n.props?.accessibilityLabel === 'Publish reminders' && typeof n.props.onValueChange === 'function')[0];
+    expect(sw2.props.value).toBe(false);
+  });
+
+  it('shows off when the user turned it off before', async () => {
+    mockRemindersOn = false;
+    const tree = await render(<Settings />);
+    const sw = tree.root.findAll((n: any) => n.props?.accessibilityLabel === 'Publish reminders' && typeof n.props.onValueChange === 'function')[0];
+    expect(sw.props.value).toBe(false);
+    mockRemindersOn = true;
+  });
+
+  it('switching on without notification permission flips back and offers iOS Settings', async () => {
+    mockRemindersOn = false;
+    mockSetReminders.mockResolvedValueOnce('denied');
+    const tree = await render(<Settings />);
+    await toggle(tree, 'Publish reminders', true);
+    const sw = tree.root.findAll((n: any) => n.props?.accessibilityLabel === 'Publish reminders' && typeof n.props.onValueChange === 'function')[0];
+    expect(sw.props.value).toBe(false);
+    expect(alertSpy.mock.calls[0][0]).toBe('Notifications are off');
+    mockRemindersOn = true;
   });
 });

@@ -1,4 +1,5 @@
 import { requireOptionalNativeModule } from 'expo';
+import { Alert } from 'react-native';
 import Storage from 'expo-sqlite/kv-store';
 import type * as NotificationsModule from 'expo-notifications';
 import { track } from '@/lib/analytics';
@@ -6,8 +7,10 @@ import { stripMarkers } from '@/lib/editable';
 import { loadPendingPublish, loadSite, type SiteRecord } from '@/lib/siteStore';
 
 /**
- * Publish reminders (Task 10b): local notifications at 10:00 and 18:00 until
- * the site is published. Barbers with an unpublished draft get the "finish"
+ * Publish reminders (Task 10b, cut for App Store 4.5.4): three local
+ * notifications at 10:00, on day 1, 3 and 7 after the first one was scheduled,
+ * until the site is published. The user can switch them off in Settings
+ * (Publish reminders) and is told so before the system prompt. Barbers with an unpublished draft get the "finish"
  * lines; those who never generated a site get the "start" lines. Local only:
  * no push token, no APNs registration. This is the only file that touches
  * expo-notifications, so a build without its native module (the current dev
@@ -27,16 +30,18 @@ export const FINISH_LINES = [
   '{Shop} is almost live ✂️ — publish your website in under a minute.',
   'Your barbershop website is ready. Tap to publish it and start getting bookings.',
   "Don't leave {Shop} offline — your site is one tap from live.",
-  "Clients are searching for barbers near you. Publish {Shop}'s website today.",
 ] as const;
 export const START_LINES = [
   'Build your barbershop website in 60 seconds — just paste your booking link.',
   'Your shop deserves a real website. Make yours now ✂️',
 ] as const;
 
-/** 10:00 and 18:00 local. 60 one-off reminders (30 days), under iOS's 64 pending. */
-const SLOT_HOURS = [10, 18] as const;
-const COUNT = 60;
+/** 10:00 local, on day 1, 3 and 7 after the anchor (the first time reminders were scheduled). */
+const SLOT_HOUR = 10;
+export const REMINDER_DAYS = [1, 3, 7] as const;
+export const REMINDER_COUNT = REMINDER_DAYS.length;
+/** Shown once, before the system notification prompt. */
+export const REMINDER_PRE_PERMISSION = 'We’ll remind you to publish your site. Turn off anytime in Settings.';
 const MIN_LEAD_MS = 60 * 60 * 1000;
 /** Keeps the longest line under 110 characters. */
 const MAX_SHOP_CHARS = 30;
@@ -44,6 +49,10 @@ const MAX_SHOP_CHARS = 30;
 const ASKED_KEY = 'reminders.asked.v1';
 /** Set on publish success and on delete: no reminders from then on. */
 const STOPPED_KEY = 'reminders.stopped.v1';
+/** Set when the user switches "Publish reminders" off in Settings. */
+const OFF_KEY = 'reminders.off.v1';
+/** Epoch ms of the first time reminders were scheduled: day 1/3/7 count from it, not from each refresh. */
+const ANCHOR_KEY = 'reminders.anchor.v1';
 
 type Notifications = typeof NotificationsModule;
 type NotificationResponse = NotificationsModule.NotificationResponse;
@@ -88,14 +97,12 @@ function fill(line: string, name: string | null): string {
   return line.replace(/^\{Shop\}/, 'Your shop').replaceAll('{Shop}', 'your shop');
 }
 
-/** Days since the epoch for a local calendar date, so the rotation doesn't restart on each refresh. */
-const dayNumber = (d: Date) => Math.round(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86_400_000);
-
 /**
- * The next 60 slots at 10:00 / 18:00 local that are at least an hour away
- * (a closer one is skipped), with rotating copy. Nothing once published.
+ * The reminders still ahead: 10:00 local on day 1, 3 and 7 after `anchor`
+ * (default `now`), skipping any less than an hour away or already past, with
+ * rotating copy. Nothing once published.
  */
-export function buildReminderSchedule(now: Date, site: SiteRecord | null): Reminder[] {
+export function buildReminderSchedule(now: Date, site: SiteRecord | null, anchor: Date = now): Reminder[] {
   // Published (a slug), or live per the account (a site loaded from it has a
   // URL but no slug): never "publish" reminders, also once it has lapsed.
   if (site && (site.slug != null || site.deployedUrl)) return [];
@@ -103,19 +110,16 @@ export function buildReminderSchedule(now: Date, site: SiteRecord | null): Remin
   const lines: readonly string[] = site ? FINISH_LINES : START_LINES;
   const name = site ? shopName(site) : null;
   const out: Reminder[] = [];
-  for (let day = 0; out.length < COUNT; day++) {
-    for (let s = 0; s < SLOT_HOURS.length && out.length < COUNT; s++) {
-      // Built from calendar fields (not +24 h) so DST changes keep 10:00 at 10:00.
-      const at = new Date(now.getFullYear(), now.getMonth(), now.getDate() + day, SLOT_HOURS[s], 0, 0, 0);
-      if (at.getTime() - now.getTime() < MIN_LEAD_MS) continue;
-      const slot = dayNumber(at) * SLOT_HOURS.length + s;
-      out.push({ at, title: REMINDER_TITLE, body: fill(lines[slot % lines.length], name), kind });
-    }
+  for (const [i, days] of REMINDER_DAYS.entries()) {
+    // Built from calendar fields (not +24 h) so DST changes keep 10:00 at 10:00.
+    const at = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate() + days, SLOT_HOUR, 0, 0, 0);
+    if (at.getTime() - now.getTime() < MIN_LEAD_MS) continue;
+    out.push({ at, title: REMINDER_TITLE, body: fill(lines[i % lines.length], name), kind });
   }
   return out;
 }
 
-/** Our notifications' identifiers: `reminder-0` … `reminder-59`. Only these are ever cancelled. */
+/** Our notifications' identifiers: `reminder-0` … `reminder-2`. Only these are ever cancelled. */
 const ID_PREFIX = 'reminder-';
 
 /** Cancels the pending reminders, leaving any other scheduled notification alone. */
@@ -137,7 +141,7 @@ function serial(fn: () => Promise<void>): Promise<void> {
 
 /**
  * At launch, on each return to the foreground, and after the permission
- * prompt: cancels and schedules the next 60 reminders. Only with permission,
+ * prompt: cancels and schedules the (up to 3) reminders still ahead. Only with permission,
  * for an unpublished user who hasn't paid; otherwise clears what is pending.
  * Never throws.
  */
@@ -164,12 +168,19 @@ export function refreshReminders(): Promise<void> {
   return serial(async () => {
     const N = notifications();
     if (!N) return;
-    const [site, pending, stopped] = await Promise.all([loadSite(), loadPendingPublish(), Storage.getItem(STOPPED_KEY)]);
+    const [site, pending, stopped, off, anchorRaw] = await Promise.all([
+      loadSite(), loadPendingPublish(), Storage.getItem(STOPPED_KEY), Storage.getItem(OFF_KEY), Storage.getItem(ANCHOR_KEY),
+    ]);
+    const now = new Date();
+    const stored = Number(anchorRaw);
+    const anchor = anchorRaw && Number.isFinite(stored) && stored > 0 && stored <= now.getTime() ? new Date(stored) : now;
     // Paid and publishing (pendingPublish): not "unpaid", but not stopped for good either.
-    const plan = stopped || pending ? [] : buildReminderSchedule(new Date(), site);
+    // Switched off in Settings: nothing, until it is switched back on.
+    const plan = stopped || off || pending ? [] : buildReminderSchedule(now, site, anchor);
     const granted = plan.length > 0 && (await N.getPermissionsAsync()).granted;
     await cancelPending(N);
     if (!granted) return;
+    if (anchor === now) await Storage.setItem(ANCHOR_KEY, String(now.getTime())).catch(() => {});
     for (const [i, r] of plan.entries()) {
       await N.scheduleNotificationAsync({
         identifier: `${ID_PREFIX}${i}`,
@@ -210,6 +221,63 @@ export function cancelRemindersInBackground(opts?: { forGood?: boolean }): void 
   }
 }
 
+/** True unless the user switched "Publish reminders" off in Settings. */
+export async function remindersEnabled(): Promise<boolean> {
+  return !(await Storage.getItem(OFF_KEY).catch(() => null));
+}
+
+export type SetRemindersResult = 'on' | 'off' | 'denied';
+
+/**
+ * The Settings switch. Off: remembered, and every pending reminder is cancelled. On: forgotten, and the
+ * reminders are scheduled again; if the system permission was never given it is asked for now (the user
+ * just asked for reminders), and 'denied' tells the caller to point at iOS Settings. Never throws.
+ */
+export async function setRemindersEnabled(on: boolean): Promise<SetRemindersResult> {
+  try {
+    if (!on) {
+      await Storage.setItem(OFF_KEY, '1');
+      await serial(async () => {
+        const N = notifications();
+        if (N) await cancelPending(N);
+      });
+      return 'off';
+    }
+    await Storage.removeItem(OFF_KEY);
+    const N = notifications();
+    if (N) {
+      let perm = await N.getPermissionsAsync();
+      if (!perm.granted && perm.status === 'undetermined') {
+        await Storage.setItem(ASKED_KEY, '1');
+        perm = await N.requestPermissionsAsync({ ios: { allowAlert: true, allowSound: true, allowBadge: false } });
+      }
+      if (!perm.granted) {
+        await refreshReminders();
+        return 'denied';
+      }
+    }
+    await refreshReminders();
+    return 'on';
+  } catch (e) {
+    console.warn('[reminders] could not change the reminders switch:', e);
+    return on ? 'denied' : 'off';
+  }
+}
+
+/** One line before the system prompt: what the reminders are and where to turn them off. Resolves when dismissed. */
+function explainReminders(): Promise<void> {
+  return new Promise((resolve) => {
+    try {
+      Alert.alert('Publish reminders', REMINDER_PRE_PERMISSION, [{ text: 'Continue', onPress: () => resolve() }], {
+        cancelable: false,
+        onDismiss: () => resolve(),
+      });
+    } catch {
+      resolve();
+    }
+  });
+}
+
 /**
  * Asks for notification permission the first time only (from LaunchPrompts,
  * on the first screen after launch); after a decline it never asks again.
@@ -224,9 +292,12 @@ export async function askReminderPermissionOnce(): Promise<boolean> {
   try {
     let perm = await N.getPermissionsAsync();
     if (!(await Storage.getItem(ASKED_KEY))) {
-      // Flag first: a crash mid-prompt still counts as asked.
+      // The one-line explanation first (a kill while it shows asks again next launch), then the flag:
+      // a crash mid-system-prompt still counts as asked.
+      const ask = !perm.granted && perm.status === 'undetermined';
+      if (ask) await explainReminders();
       await Storage.setItem(ASKED_KEY, '1');
-      if (!perm.granted && perm.status === 'undetermined') {
+      if (ask) {
         perm = await N.requestPermissionsAsync({ ios: { allowAlert: true, allowSound: true, allowBadge: false } });
       }
     }

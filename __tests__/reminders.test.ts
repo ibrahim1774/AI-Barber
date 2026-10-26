@@ -1,5 +1,6 @@
 // Publish reminders: local notifications twice a day until the site is published.
 // jest.config.js pins TZ to America/New_York, so the 30-day window really crosses a DST change.
+import { Alert } from 'react-native';
 import Storage from 'expo-sqlite/kv-store';
 import * as analytics from '@/lib/analytics';
 import * as store from '@/lib/siteStore';
@@ -8,7 +9,7 @@ import { api, ApiError } from '@/lib/api';
 import { deleteAccountAndData, deleteLocalData, restore, type RestoreDeps } from '@/lib/account';
 import {
   askReminderPermissionOnce, buildReminderSchedule, cancelAllReminders, FINISH_LINES, onReminderTap, refreshReminders,
-  routeForReminderTap, START_LINES, takeLaunchReminderTap,
+  REMINDER_PRE_PERMISSION, remindersEnabled, routeForReminderTap, setRemindersEnabled, START_LINES, takeLaunchReminderTap,
 } from '@/lib/reminders';
 import type { SiteRecord } from '@/lib/siteStore';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -53,36 +54,45 @@ const flush = () => new Promise((r) => setImmediate(r));
 
 // 2026-10-20 09:00 local: crosses the US DST change on Nov 1 within the 30 days.
 const NOW = new Date(2026, 9, 20, 9, 0, 0, 0);
+let alertSpy: jest.SpyInstance;
 
 beforeEach(async () => {
   nt.reset();
   await Storage.removeItem('reminders.asked.v1');
   await Storage.removeItem('reminders.stopped.v1');
+  await Storage.removeItem('reminders.off.v1');
+  await Storage.removeItem('reminders.anchor.v1');
   await store.clearSite();
   await store.savePendingPublish(null);
   jest.restoreAllMocks();
+  // The pre-permission line: pressing its only button continues to the system prompt.
+  alertSpy = jest.spyOn(Alert, 'alert').mockImplementation((_t, _m, btns) => btns?.[btns.length - 1]?.onPress?.());
 });
 
-test('schedule has two reminders a day for 30 days at 10:00 and 18:00 local', () => {
+test('schedule is three reminders at 10:00 local, on day 1, 3 and 7', () => {
   const plan = buildReminderSchedule(NOW, draft);
-  expect(plan).toHaveLength(60);
-  plan.forEach((r, i) => {
-    expect(r.at.getHours()).toBe(i % 2 === 0 ? 10 : 18);
-    expect(r.at.getMinutes()).toBe(0);
-    expect(r.at.getSeconds()).toBe(0);
-    const day = Math.floor(i / 2);
-    const expected = new Date(2026, 9, 20 + day);
-    expect([r.at.getFullYear(), r.at.getMonth(), r.at.getDate()]).toEqual([
-      expected.getFullYear(), expected.getMonth(), expected.getDate(),
-    ]);
+  expect(plan).toHaveLength(3);
+  expect(plan.map((r) => [r.at.getMonth(), r.at.getDate(), r.at.getHours(), r.at.getMinutes(), r.at.getSeconds()])).toEqual([
+    [9, 21, 10, 0, 0],
+    [9, 23, 10, 0, 0],
+    [9, 27, 10, 0, 0],
+  ]);
+  for (const r of plan) {
     expect(r.title).toBe('Prime Barber');
     expect(r.at.getTime()).toBeGreaterThan(NOW.getTime());
-  });
-  // The window crosses the end of US daylight time (Nov 1).
-  expect(plan[0].at.getTimezoneOffset()).not.toBe(plan[59].at.getTimezoneOffset());
-  // The last one is on day 30 (Nov 18 evening); under iOS's 64 pending limit.
-  expect(plan[59].at.getDate()).toBe(18);
-  expect(plan[59].at.getMonth()).toBe(10);
+  }
+});
+
+test('days count from the anchor, so a later refresh does not push them out; past ones are dropped', () => {
+  const anchor = NOW;
+  // Day 4 after the anchor: only day 7 is still ahead.
+  const later = buildReminderSchedule(new Date(2026, 9, 24, 9), draft, anchor);
+  expect(later.map((r) => r.at.getDate())).toEqual([27]);
+  // After day 7 nothing is left: no nagging for ever.
+  expect(buildReminderSchedule(new Date(2026, 9, 28, 9), draft, anchor)).toEqual([]);
+  // Day 7 crosses the end of US daylight time (Nov 1) when started on Oct 26: still 10:00.
+  const dst = buildReminderSchedule(new Date(2026, 9, 26, 9), draft);
+  expect(dst.map((r) => [r.at.getMonth(), r.at.getDate(), r.at.getHours()])).toEqual([[9, 27, 10], [9, 29, 10], [10, 2, 10]]);
 });
 
 test('no reminders once the site is published', async () => {
@@ -90,7 +100,7 @@ test('no reminders once the site is published', async () => {
   nt.status = 'granted';
   await store.saveSite(draft);
   await refreshReminders();
-  expect(nt.scheduled).toHaveLength(60);
+  expect(nt.scheduled).toHaveLength(3);
   await store.saveSite(published);
   await refreshReminders();
   expect(nt.scheduled).toHaveLength(0);
@@ -107,7 +117,7 @@ test('no reminders for a live site loaded from the account (URL, no slug), lapse
 
 test('start copy when there is no site, finish copy with the shop name when there is', () => {
   const start = buildReminderSchedule(NOW, null);
-  expect(start).toHaveLength(60);
+  expect(start).toHaveLength(3);
   for (const r of start) {
     expect(r.kind).toBe('start');
     expect(START_LINES).toContain(r.body);
@@ -125,7 +135,6 @@ test('start copy when there is no site, finish copy with the shop name when ther
       'Fade Factory is almost live ✂️ — publish your website in under a minute.',
       'Your barbershop website is ready. Tap to publish it and start getting bookings.',
       "Don't leave Fade Factory offline — your site is one tap from live.",
-      "Clients are searching for barbers near you. Publish Fade Factory's website today.",
     ]),
   );
 });
@@ -135,12 +144,12 @@ test('copy rotates and never repeats the same line twice in a row', () => {
     const plan = buildReminderSchedule(NOW, site);
     for (let i = 1; i < plan.length; i++) expect(plan[i].body).not.toBe(plan[i - 1].body);
   }
-  // Every finish line is used, and a refresh a day later doesn't restart at line 1.
+  // Every finish line is used once.
   const today = buildReminderSchedule(NOW, draft);
-  expect(new Set(today.slice(0, 4).map((r) => r.body)).size).toBe(4);
-  const tomorrow = buildReminderSchedule(new Date(2026, 9, 21, 9), draft);
-  expect(tomorrow[0].body).toBe(today[2].body);
-  expect(FINISH_LINES).toHaveLength(4);
+  expect(new Set(today.map((r) => r.body)).size).toBe(3);
+  expect(FINISH_LINES).toHaveLength(3);
+  // No promotional "clients are searching" copy.
+  expect([...FINISH_LINES, ...START_LINES].join(' ')).not.toMatch(/searching/i);
 });
 
 test('{Shop} falls back to the inputs, then to "Your shop"', () => {
@@ -152,22 +161,18 @@ test('{Shop} falls back to the inputs, then to "Your shop"', () => {
   expect(b).toContain('Your shop is almost live ✂️ — publish your website in under a minute.');
   // Mid-sentence the fallback is lower case.
   expect(b).toContain("Don't leave your shop offline — your site is one tap from live.");
-  expect(b).toContain("Clients are searching for barbers near you. Publish your shop's website today.");
   // A very long name is cut so every line stays under 110 characters.
   const long = { ...draft, data: { ...draft.data, shopName: 'X'.repeat(80) } } as SiteRecord;
   for (const r of buildReminderSchedule(NOW, long)) expect(r.body.length).toBeLessThan(110);
 });
 
-test('skips a slot less than an hour away', () => {
-  const plan = buildReminderSchedule(new Date(2026, 9, 20, 9, 30), draft);
-  expect(plan).toHaveLength(60);
-  expect(plan[0].at.getHours()).toBe(18);
-  expect(plan[0].at.getDate()).toBe(20);
+test('skips a reminder less than an hour away', () => {
+  const anchor = new Date(2026, 9, 20, 9, 0);
+  // 09:30 on day 1 is 30 minutes before the 10:00 reminder: skipped.
+  const plan = buildReminderSchedule(new Date(2026, 9, 21, 9, 30), draft, anchor);
+  expect(plan.map((r) => r.at.getDate())).toEqual([23, 27]);
   // Exactly an hour away still counts.
-  expect(buildReminderSchedule(new Date(2026, 9, 20, 17, 0), draft)[0].at.getHours()).toBe(18);
-  // After 18:00 the first reminder is tomorrow morning.
-  const late = buildReminderSchedule(new Date(2026, 9, 20, 21, 0), draft);
-  expect([late[0].at.getDate(), late[0].at.getHours()]).toEqual([21, 10]);
+  expect(buildReminderSchedule(new Date(2026, 9, 21, 9, 0), draft, anchor)).toHaveLength(3);
 });
 
 test('permission is asked once', async () => {
@@ -182,16 +187,83 @@ test('permission is asked once', async () => {
   expect(nt.scheduled).toHaveLength(0);
 });
 
+test('the system prompt is preceded by the one-line explanation, once', async () => {
+  nt.answer = 'granted';
+  const order: string[] = [];
+  alertSpy.mockImplementation((_t, _m, btns) => { order.push('line'); btns?.[btns.length - 1]?.onPress?.(); });
+  const req = jest.spyOn(require('expo-notifications'), 'requestPermissionsAsync');
+  req.mockImplementation(async () => { order.push('system'); return { granted: true, status: 'granted' } as never; });
+  await askReminderPermissionOnce();
+  expect(order).toEqual(['line', 'system']);
+  expect(alertSpy.mock.calls[0][1]).toBe("We\u2019ll remind you to publish your site. Turn off anytime in Settings.");
+  expect(REMINDER_PRE_PERMISSION).toBe(alertSpy.mock.calls[0][1]);
+  await askReminderPermissionOnce();
+  expect(alertSpy).toHaveBeenCalledTimes(1);
+});
+
+test('no explanation line when permission was already decided', async () => {
+  nt.status = 'granted';
+  await askReminderPermissionOnce();
+  expect(alertSpy).not.toHaveBeenCalled();
+});
+
+test('the anchor is set at the first schedule and kept, so days 1/3/7 do not slide', async () => {
+  nt.status = 'granted';
+  await refreshReminders();
+  const first = Number(await Storage.getItem('reminders.anchor.v1'));
+  expect(first).toBeGreaterThan(0);
+  await refreshReminders();
+  expect(Number(await Storage.getItem('reminders.anchor.v1'))).toBe(first);
+  // An anchor 5 days old: only day 7 is still ahead.
+  await Storage.setItem('reminders.anchor.v1', String(Date.now() - 5 * 86_400_000));
+  await refreshReminders();
+  expect(nt.scheduled).toHaveLength(1);
+});
+
+test('Publish reminders switch: off cancels and stays off; on schedules again', async () => {
+  nt.status = 'granted';
+  await store.saveSite(draft);
+  await refreshReminders();
+  expect(nt.scheduled).toHaveLength(3);
+  expect(await remindersEnabled()).toBe(true);
+  expect(await setRemindersEnabled(false)).toBe('off');
+  expect(nt.scheduled).toHaveLength(0);
+  expect(await remindersEnabled()).toBe(false);
+  // Launch / foreground refreshes respect it.
+  await refreshReminders();
+  expect(nt.scheduled).toHaveLength(0);
+  await askReminderPermissionOnce();
+  expect(nt.scheduled).toHaveLength(0);
+  expect(await setRemindersEnabled(true)).toBe('on');
+  expect(await remindersEnabled()).toBe(true);
+  expect(nt.scheduled).toHaveLength(3);
+});
+
+test('switching on with notifications denied asks the caller to point at iOS Settings', async () => {
+  nt.status = 'denied';
+  expect(await setRemindersEnabled(true)).toBe('denied');
+  expect(nt.scheduled).toHaveLength(0);
+});
+
+test('switching off leaves notifications that are not reminders alone', async () => {
+  nt.status = 'granted';
+  nt.scheduled.push({ identifier: 'other-1', content: { title: 'x' }, trigger: null });
+  await refreshReminders();
+  await setRemindersEnabled(false);
+  expect(nt.scheduled.map((r: any) => r.identifier)).toEqual(['other-1']);
+});
+
 test('a granted permission schedules at once, and later asks only refresh', async () => {
   const spy = jest.spyOn(analytics, 'track');
   expect(await askReminderPermissionOnce()).toBe(true);
   expect(nt.requests).toBe(1);
-  expect(nt.scheduled).toHaveLength(60);
+  expect(nt.scheduled).toHaveLength(3);
   expect(nt.scheduled[0].content.data).toEqual({ reminder: 'start' });
   // A one-off calendar trigger at the local wall-clock time (iOS months are 1-based).
   const first = buildReminderSchedule(new Date(), null)[0].at;
   expect(nt.scheduled[0].identifier).toBe('reminder-0');
-  expect(nt.scheduled[59].identifier).toBe('reminder-59');
+  expect(nt.scheduled[2].identifier).toBe('reminder-2');
+  expect(nt.scheduled[3]).toBeUndefined();
   expect(nt.scheduled[0].trigger).toEqual({
     type: 'calendar',
     year: first.getFullYear(),
@@ -202,12 +274,12 @@ test('a granted permission schedules at once, and later asks only refresh', asyn
     second: 0,
     repeats: false,
   });
-  expect(spy).toHaveBeenCalledWith('reminders_scheduled', { count: 60, kind: 'start' });
+  expect(spy).toHaveBeenCalledWith('reminders_scheduled', { count: 3, kind: 'start' });
   // Site generated: closing the LaunchGuide doesn't ask again but switches to finish copy.
   await store.saveSite(draft);
   expect(await askReminderPermissionOnce()).toBe(true);
   expect(nt.requests).toBe(1);
-  expect(nt.scheduled).toHaveLength(60);
+  expect(nt.scheduled).toHaveLength(3);
   expect(nt.scheduled.every((r: any) => r.content.data.reminder === 'finish')).toBe(true);
 });
 
@@ -215,7 +287,7 @@ test('publish success cancels reminders', async () => {
   nt.status = 'granted';
   await store.saveSite(draft);
   await refreshReminders();
-  expect(nt.scheduled).toHaveLength(60);
+  expect(nt.scheduled).toHaveLength(3);
   const out = await publishFlow(draft, publishDeps());
   expect(out.kind).toBe('live');
   await flush();
@@ -256,21 +328,21 @@ test('paid but not yet live: no "publish your site" reminders', async () => {
   // The pending publish dropped (unconfirmed): reminders come back.
   await store.savePendingPublish(null);
   await refreshReminders();
-  expect(nt.scheduled).toHaveLength(60);
+  expect(nt.scheduled).toHaveLength(3);
 });
 
 test('deleting an unpublished draft clears its reminders; start copy can follow', async () => {
   nt.status = 'granted';
   await store.saveSite(draft);
   await refreshReminders();
-  expect(nt.scheduled).toHaveLength(60);
+  expect(nt.scheduled).toHaveLength(3);
   await deleteLocalData();
   // The shop-name "finish" reminders are gone at once.
   expect(nt.scheduled).toHaveLength(0);
   expect(await store.loadSite()).toBeNull();
   // Unpaid, no site: the next foreground schedules the start copy.
   await refreshReminders();
-  expect(nt.scheduled).toHaveLength(60);
+  expect(nt.scheduled).toHaveLength(3);
   expect(nt.scheduled.every((r: any) => r.content.data.reminder === 'start')).toBe(true);
 });
 
@@ -278,7 +350,7 @@ test("deleting a payer's data cancels reminders for good", async () => {
   nt.status = 'granted';
   await store.saveSite({ ...draft, transactionId: 'tx-1' });
   await refreshReminders();
-  expect(nt.scheduled).toHaveLength(60);
+  expect(nt.scheduled).toHaveLength(3);
   await deleteLocalData();
   expect(nt.scheduled).toHaveLength(0);
   // No site now, but no "start" reminders either.
@@ -398,7 +470,7 @@ test('cancelling leaves notifications that are not reminders alone', async () =>
   await store.saveSite(draft);
   nt.scheduled.push({ identifier: 'other-1', content: { title: 'x' }, trigger: null });
   await refreshReminders();
-  expect(nt.scheduled).toHaveLength(61);
+  expect(nt.scheduled).toHaveLength(4);
   await cancelAllReminders();
   expect(nt.scheduled.map((r: any) => r.identifier)).toEqual(['other-1']);
 });
@@ -419,7 +491,7 @@ test('a restore cancels reminders for good', async () => {
   nt.status = 'granted';
   await store.saveSite(draft);
   await refreshReminders();
-  expect(nt.scheduled).toHaveLength(60);
+  expect(nt.scheduled).toHaveLength(3);
   const deps: RestoreDeps = {
     restorePurchases: jest.fn(async () => undefined),
     latestTransactionId: jest.fn(async () => 'tx-9'),
@@ -443,7 +515,7 @@ test('a purchase pauses reminders at once, even while the publish is still pendi
   nt.status = 'granted';
   await store.saveSite(draft);
   await refreshReminders();
-  expect(nt.scheduled).toHaveLength(60);
+  expect(nt.scheduled).toHaveLength(3);
   const out = await publishFlow(
     draft,
     publishDeps({
