@@ -24,7 +24,7 @@ describe('api/shop/plan', () => {
   it('GET passes the bearer header', async () => {
     const r = res();
     await handler({ method: 'GET', headers: { authorization: 'Bearer j' }, query: {} } as any, r);
-    expect(getPlan).toHaveBeenCalledWith('Bearer j', { marker: 'deps' });
+    expect(getPlan).toHaveBeenCalledWith('Bearer j', { marker: 'deps' }, { otid: undefined });
     expect(r.statusCode).toBe(200);
     expect(r.body).toEqual({ linked: false });
     expect(r.headers['Cache-Control']).toBe('no-store');

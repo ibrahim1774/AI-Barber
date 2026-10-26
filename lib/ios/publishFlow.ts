@@ -25,11 +25,12 @@ import {
   type VersionedPending,
 } from '../publishSite.js';
 import { VerifyFailure, isActive, lazyDefaultVerifier, type VerifiedTx } from './appleVerify.js';
-import { supabasePurchases, type PurchasesRepo } from './purchases.js';
+import { supabasePurchases, type PurchaseRow, type PurchasesRepo } from './purchases.js';
 import { createClient } from '@supabase/supabase-js';
 import { chooseSlug, makeIsTaken, urlServes, vercelProjectExists } from './slug.js';
 import { buildImageUrlMap, toPendingSiteData } from './pendingData.js';
 import { stripLapsedLinks } from './tiers.js';
+import { liveBindingOwner, liveEmailOf, otherAccountBody, type BindingOwner } from './ownership.js';
 import { MAX_BODY_BYTES, hasDataUrl, isObj, restoreImageUrls, validSiteData, validationProblem } from './siteShape.js';
 
 export { buildImageUrlMap, toPendingSiteData };
@@ -65,11 +66,13 @@ export type IosPublishResult =
       body: { siteId: string; deployedUrl: string; republished: boolean; version: number; editedBy: SiteEditor; editedAt: string };
     }
   | { status: 409; body: { error: 'site-updated'; site: IosSiteBody } }
-  | { status: 400 | 402 | 404 | 502 | 503; body: { error: string; reason?: string } };
+  | { status: 409; body: { error: 'purchase-other-account'; hint: string | null } }
+  | { status: 400 | 401 | 402 | 404 | 502 | 503; body: { error: string; reason?: string } };
 
 export type IosSiteLookupResult =
   | { status: 200; body: IosSiteBody }
-  | { status: 404 | 503; body: { error: string } };
+  | { status: 409; body: { error: 'purchase-other-account'; hint: string | null } }
+  | { status: 401 | 404 | 503; body: { error: string } };
 
 export interface PublishDeps {
   verify(transactionId: string): Promise<VerifiedTx>;
@@ -86,6 +89,14 @@ export interface PublishDeps {
    * outage). The only way a publish links the purchase to an account (e2e I6). Absent: no link.
    */
   userOf?(token: string): Promise<{ id: string } | null>;
+  /** The email behind an account id, for the masked hint of a 409 purchase-other-account. */
+  emailOf?(userId: string): Promise<string | null>;
+  /**
+   * Legacy / unlinked purchases (user_id null): which account owns the shop or site bound to the
+   * purchase (an id, 'ambiguous', or null when nothing is attached). Absent: treated as null for a
+   * publish, and as "not proven" for a site lookup (which never discloses a site without proof).
+   */
+  bindingOwner?(row: PurchaseRow): Promise<BindingOwner>;
   /** Dry render before storing (lib/publishSite.ts renderPending). Throws on unrenderable data. */
   render?(p: Pick<PendingSite, 'siteData' | 'imageUrlMap'>): SiteFile[];
   now(): number;
@@ -201,26 +212,56 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
   try {
     const row = await deps.repo.upsertVerified(tx, { checkedAt });
 
-    // Account link (e2e I6). The body's userId is never trusted: anyone with the transaction id
-    // could name any account and re-point the purchase, locking the real owner out of
-    // /api/shop/plan and /api/shop/setup (409 purchase-in-use). Only a verified Supabase bearer
-    // links, and only a purchase with no account yet (conditional in SQL); an existing owner is
-    // changed only by the relink rules in /api/shop/plan. Best effort: never blocks a paid publish.
+    // Account ownership (plan 2026-10-26, DECIDED: a subscription is never movable). The body's
+    // userId is never trusted; only a verified Supabase bearer identifies the caller.
+    //  - Purchase linked (user_id set): only that account may publish. No/invalid token: 401. Another
+    //    account (the same Apple ID under a second email): 409 purchase-other-account, nothing written.
+    //  - Purchase not linked yet: a signed-in caller links it (conditional in SQL, so of two racing
+    //    accounts exactly one wins; the loser gets the 409). A legacy row with a slug already bound
+    //    is linked only by the account that owns that shop/site. A publish with no account at all
+    //    keeps the old behaviour (fresh bind), the first signed-in publish or Restore links it later.
     const token = bearer(ctx.authorization);
-    if (token && deps.userOf && deps.repo.setUserIfUnlinked) {
+    let caller: string | null = null;
+    let authDown = false;
+    if (token && deps.userOf) {
       try {
         const user = await deps.userOf(token);
-        if (user?.id && UUID_RE.test(user.id)) {
-          const linked = await deps.repo.setUserIfUnlinked(otid, user.id);
-          if (!linked && row.user_id && row.user_id !== user.id) {
-            console.warn(`[ios/publish] ${otid}: already linked to another account; not re-pointed`);
-          }
-        }
+        if (user?.id && UUID_RE.test(user.id)) caller = user.id;
+      } catch (e: any) {
+        authDown = true;
+        console.warn(`[ios/publish] ${otid}: account lookup failed:`, e?.message || e);
+      }
+    }
+    if (!caller && typeof input.userId === 'string' && input.userId) {
+      console.log(`[ios/publish] ${otid}: body userId ignored (only a verified bearer links an account)`);
+    }
+    if (row.user_id) {
+      if (authDown) return unavailable;
+      if (!caller) return { status: 401, body: { error: 'unauthorized' } };
+      if (caller !== row.user_id) {
+        console.warn(`[ios/publish] ${otid}: linked to another account; refused`);
+        return { status: 409, body: await otherAccountBody(deps.emailOf, row.user_id) };
+      }
+    } else if (caller && deps.repo.setUserIfUnlinked) {
+      // A bound slug that already belongs to someone else's shop/site is theirs to claim, not this caller's.
+      const owner = row.site_slug && deps.bindingOwner ? await deps.bindingOwner(row) : null;
+      if (owner && owner !== caller) {
+        console.warn(`[ios/publish] ${otid}: the shop/site bound to this purchase belongs to another account; refused`);
+        return { status: 409, body: await otherAccountBody(deps.emailOf, owner === 'ambiguous' ? null : owner) };
+      }
+      let linked = false;
+      try {
+        linked = await deps.repo.setUserIfUnlinked(otid, caller);
       } catch (e: any) {
         console.warn(`[ios/publish] ${otid}: account link failed (ignored):`, e?.message || e);
+        linked = true; // best effort: a failing link never blocks a paid first publish
       }
-    } else if (typeof input.userId === 'string' && input.userId) {
-      console.log(`[ios/publish] ${otid}: body userId ignored (only a verified bearer links an account)`);
+      if (!linked) {
+        const again = await deps.repo.get(otid);
+        if (again?.user_id && again.user_id !== caller) {
+          return { status: 409, body: await otherAccountBody(deps.emailOf, again.user_id) };
+        }
+      }
     }
 
     // "republished" means the site was live before; any bound slug is force-deployed.
@@ -355,10 +396,29 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
   }
 }
 
+/**
+ * The site bound to a purchase, for Restore / sign-in on a new phone. The caller must be signed in
+ * (401 otherwise) and must be the account the purchase is linked to: a purchase linked to another
+ * account answers 409 purchase-other-account (masked hint only, no site data). A legacy unlinked
+ * purchase is linked to the caller only when the caller owns the shop/site bound to it (else 409).
+ */
 export async function runIosSiteLookup(
   transactionId: string,
-  deps: Pick<PublishDeps, 'verify' | 'repo' | 'readPending' | 'now'>,
+  deps: Pick<PublishDeps, 'verify' | 'repo' | 'readPending' | 'now'> & Partial<Pick<PublishDeps, 'userOf' | 'emailOf' | 'bindingOwner'>>,
+  ctx: IosPublishContext = {},
 ): Promise<IosSiteLookupResult> {
+  const token = bearer(ctx.authorization);
+  if (!token || !deps.userOf) return { status: 401, body: { error: 'unauthorized' } };
+  let caller: string | null = null;
+  try {
+    const user = await deps.userOf(token);
+    if (user?.id && UUID_RE.test(user.id)) caller = user.id;
+  } catch (e: any) {
+    console.error('[ios/site] account lookup failed:', e?.message || e);
+    return unavailable;
+  }
+  if (!caller) return { status: 401, body: { error: 'unauthorized' } };
+
   let tx: VerifiedTx;
   try {
     tx = await deps.verify(transactionId);
@@ -370,8 +430,24 @@ export async function runIosSiteLookup(
     return { status: 503, body: { error: 'apple-unavailable' } };
   }
   try {
-    const row = await deps.repo.get(tx.originalTransactionId);
-    if (!row?.site_slug) return { status: 404, body: { error: 'no-site' } };
+    let row = await deps.repo.get(tx.originalTransactionId);
+    if (!row) return { status: 404, body: { error: 'no-site' } };
+    if (!row.user_id) {
+      // Legacy purchase from before ownership: nothing to show or link when no site is bound.
+      if (!row.site_slug) return { status: 404, body: { error: 'no-site' } };
+      // No disclosure without proof: only the account that owns the shop/site bound to it may link it.
+      const owner = deps.bindingOwner ? await deps.bindingOwner(row) : null;
+      if (owner !== caller || !deps.repo.setUserIfUnlinked) {
+        return { status: 409, body: await otherAccountBody(deps.emailOf, owner && owner !== 'ambiguous' ? owner : null) };
+      }
+      if (!(await deps.repo.setUserIfUnlinked(row.original_transaction_id, caller))) {
+        row = (await deps.repo.get(row.original_transaction_id)) ?? row; // lost the race: re-decide below
+      } else {
+        row = { ...row, user_id: caller };
+      }
+    }
+    if (row.user_id !== caller) return { status: 409, body: await otherAccountBody(deps.emailOf, row.user_id) };
+    if (!row.site_slug) return { status: 404, body: { error: 'no-site' } };
     // The owner took this site offline (removed_at): to the app it is as if nothing is published, so
     // a new draft binds fresh and a publish (which clears removed_at) is not blocked as "elsewhere".
     if (row.removed_at) return { status: 404, body: { error: 'no-site' } };
@@ -407,6 +483,8 @@ export function liveDeps(): PublishDeps {
     readPending: readPendingSite,
     readPendingVersioned,
     userOf: liveUserOf,
+    emailOf: liveEmailOf,
+    bindingOwner: liveBindingOwner,
     now: () => Date.now(),
   };
 }

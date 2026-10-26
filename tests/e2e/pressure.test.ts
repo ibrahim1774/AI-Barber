@@ -13,7 +13,7 @@ vi.mock('../../lib/store/live.js', async (orig) => ({ ...(await orig<any>()), li
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { USER_A, httpReq, httpRes, normHtml, resetBoundaries, siteData, siteWorld, type SiteWorld } from './harness/world.js';
+import { USER_A, USER_B, httpReq, httpRes, normHtml, resetBoundaries, siteData, siteWorld, type SiteWorld } from './harness/world.js';
 import { BUNDLE, PRODUCTS } from './harness/apple.js';
 import { pendingOf } from './harness/gcs.js';
 import { vercel } from './harness/vercel.js';
@@ -186,14 +186,19 @@ describe('POST /api/ios/publish, /api/ios/site, /api/ios/apple-notification: mal
   });
 
   it('site lookup: bad input 400, unknown 404, no site yet 404, Apple down 503', async () => {
+    const AUTH = { authorization: 'Bearer jwt-a' };
     expect((await hit(iosSite, { body: {} })).statusCode).toBe(400);
     expect((await hit(iosSite, { body: { transactionId: 5 } })).statusCode).toBe(400);
     expect((await hit(iosSite, { bodyThrows: true })).statusCode).toBe(400);
-    expect((await hit(iosSite, { body: { transactionId: '999' } })).statusCode).toBe(404);
+    expect((await hit(iosSite, { body: { transactionId: '999' }, headers: AUTH })).statusCode).toBe(404);
     const p = w.apple.buy(PRODUCTS.storeMonthly);
-    expect((await hit(iosSite, { body: { transactionId: p.transactionId } })).body).toEqual({ error: 'no-site' });
+    expect((await hit(iosSite, { body: { transactionId: p.transactionId }, headers: AUTH })).body).toEqual({ error: 'no-site' });
+    // No token: 401 before Apple is asked.
+    const calls = w.apple.state.calls;
+    expect((await hit(iosSite, { body: { transactionId: p.transactionId } })).statusCode).toBe(401);
+    expect(w.apple.state.calls).toBe(calls);
     w.apple.state.down = true;
-    expect((await hit(iosSite, { body: { transactionId: p.transactionId } })).statusCode).toBe(503);
+    expect((await hit(iosSite, { body: { transactionId: p.transactionId }, headers: AUTH })).statusCode).toBe(503);
   });
 
   it('apple-notification: missing / forged / foreign-bundle / unknown-environment payloads never touch a purchase', async () => {
@@ -367,12 +372,12 @@ describe('rate limits', () => {
 
   it('M9 (fixed): the unauthenticated iOS lookups are rate limited per IP (60/min), before Apple is asked', async () => {
     const rs = [];
-    for (let i = 0; i < 100; i++) rs.push(await hit(iosSite, { body: { transactionId: String(900000 + i) }, headers: { 'x-real-ip': '203.0.113.50' } }));
+    for (let i = 0; i < 100; i++) rs.push(await hit(iosSite, { body: { transactionId: String(900000 + i) }, headers: { 'x-real-ip': '203.0.113.50', authorization: 'Bearer jwt-a' } }));
     expect(rs.slice(0, 60).every((r) => r.statusCode === 404)).toBe(true);
     expect(rs.slice(60).every((r) => r.statusCode === 429 && r.headers['retry-after'] === '60')).toBe(true);
     expect(w.apple.state.calls).toBe(120); // was 200: the 40 refused never reached Apple
     // Another address is unaffected.
-    expect((await hit(iosSite, { body: { transactionId: '1' }, headers: { 'x-real-ip': '203.0.113.51' } })).statusCode).toBe(404);
+    expect((await hit(iosSite, { body: { transactionId: '1' }, headers: { 'x-real-ip': '203.0.113.51', authorization: 'Bearer jwt-a' } })).statusCode).toBe(404);
   });
 
   it('M9 (fixed): publishes are limited per IP too (20/min), before Apple is asked', async () => {
@@ -383,7 +388,7 @@ describe('rate limits', () => {
   });
 
   it('setup: each bogus lookup asks Apple in both environments', async () => {
-    for (let i = 0; i < 10; i++) await hit(iosSite, { body: { transactionId: String(900000 + i) }, headers: { 'x-real-ip': '203.0.113.52' } });
+    for (let i = 0; i < 10; i++) await hit(iosSite, { body: { transactionId: String(900000 + i) }, headers: { 'x-real-ip': '203.0.113.52', authorization: 'Bearer jwt-a' } });
     expect(w.apple.state.calls).toBe(20);
   });
 });
@@ -394,6 +399,12 @@ describe('I6: POST /api/ios/publish links only through the Authorization header'
     const a = w.apple.buy(PRODUCTS.websiteMonthly);
     expect((await hit(iosPublish, { body: { transactionId: a.transactionId, siteData: siteData(), userId: randomUUID() } })).statusCode).toBe(200);
     expect(w.row(a.otid)!.user_id).toBeNull();
+    // A bound purchase whose shop/site belongs to B (legacy shape): A cannot claim it; once it is A's, A can.
+    w.shopOwners.set(a.otid, USER_B);
+    const denied = await hit(iosPublish, { body: { transactionId: a.transactionId, siteData: siteData(), baseVersion: 1 }, headers: { authorization: 'Bearer jwt-a' } });
+    expect(denied).toMatchObject({ statusCode: 409, body: { error: 'purchase-other-account' } });
+    expect(w.row(a.otid)!.user_id).toBeNull();
+    w.shopOwners.set(a.otid, USER_A);
     const r = await hit(iosPublish, { body: { transactionId: a.transactionId, siteData: siteData(), baseVersion: 1 }, headers: { authorization: 'Bearer jwt-a' } });
     expect(r.statusCode).toBe(200);
     expect(w.row(a.otid)!.user_id).toBe(USER_A);

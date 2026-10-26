@@ -90,8 +90,8 @@ describe.each(PLANS)('$name', (plan) => {
 
   it('site lookup returns the stored copy with real image URLs, version and active', async () => {
     const { transactionId } = w.apple.buy(plan.product);
-    await w.publish(transactionId);
-    const r = await w.lookup(transactionId);
+    await w.publish(transactionId, siteData(), {}, { authorization: 'Bearer jwt-a' });
+    const r = await w.lookup(transactionId, 'Bearer jwt-a');
     expect(r.status).toBe(200);
     const b = r.body as any;
     expect(b).toMatchObject({ siteId: 'fade-lab', deployedUrl: 'https://fade-lab.vercel.app', active: true, version: 1, editedBy: 'owner' });

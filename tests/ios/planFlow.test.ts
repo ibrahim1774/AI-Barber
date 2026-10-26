@@ -56,14 +56,14 @@ const NONE = { hosting: false, bookings: false, store: false };
 describe('planView', () => {
   it('an unlinked shop: linked false, tier null, nothing granted', () => {
     expect(planView({ ios_otid: null }, null, NOW)).toEqual({
-      linked: false, tier: null, entitlements: NONE, active: false, expiresAt: null, takenDownAt: null, revoked: false,
+      linked: false, tier: null, entitlements: NONE, active: false, expiresAt: null, takenDownAt: null, revoked: false, purchaseAccount: null,
     });
   });
 
   it('linked bookings.monthly → tier bookings, hosting + bookings', () => {
     expect(planView({ ios_otid: OTID }, purchaseRow(), NOW)).toEqual({
       linked: true, tier: 'bookings', entitlements: { hosting: true, bookings: true, store: false },
-      active: true, expiresAt: EXPIRES, takenDownAt: null, revoked: false,
+      active: true, expiresAt: EXPIRES, takenDownAt: null, revoked: false, purchaseAccount: null,
     });
   });
 
@@ -93,7 +93,7 @@ describe('planView', () => {
 
   it('linked but the purchase row is missing → tier null, inactive', () => {
     expect(planView({ ios_otid: OTID }, null, NOW)).toEqual({
-      linked: true, tier: null, entitlements: NONE, active: false, expiresAt: null, takenDownAt: null, revoked: false,
+      linked: true, tier: null, entitlements: NONE, active: false, expiresAt: null, takenDownAt: null, revoked: false, purchaseAccount: null,
     });
   });
 });
@@ -107,7 +107,7 @@ describe('GET /api/shop/plan', () => {
     expect(r.status).toBe(200);
     expect(r.body).toMatchObject({
       linked: false, tier: null, entitlements: { hosting: false, bookings: false, store: false },
-      active: false, expiresAt: null, takenDownAt: null, revoked: false,
+      active: false, expiresAt: null, takenDownAt: null, revoked: false, purchaseAccount: null,
     });
     expect(deps.purchase).not.toHaveBeenCalled();
   });
@@ -155,7 +155,7 @@ describe('POST /api/shop/plan', () => {
     expect(deps.upsertVerified).toHaveBeenCalledWith(vtx(), { checkedAt: NOW });
     expect(r).toEqual({ status: 200, body: {
       linked: true, tier: 'store', entitlements: { hosting: true, bookings: true, store: true },
-      active: true, expiresAt: EXPIRES, takenDownAt: null, revoked: false,
+      active: true, expiresAt: EXPIRES, takenDownAt: null, revoked: false, purchaseAccount: 'self',
     } });
     expect(deps.setShopOtid).not.toHaveBeenCalled(); // already linked to this purchase
     expect(deps.setUser).not.toHaveBeenCalled(); // already the caller's
@@ -182,7 +182,7 @@ describe('POST /api/shop/plan', () => {
 
   it('409 purchase-in-use when another user owns the purchase (nothing linked)', async () => {
     const { deps } = fakes({ otid: null, rows: { [OTID]: purchaseRow({ user_id: OTHER }) } });
-    expect(await refreshPlan(AUTH, { transactionId: '2000000555' }, deps)).toEqual({ status: 409, body: { error: 'purchase-in-use' } });
+    expect(await refreshPlan(AUTH, { transactionId: '2000000555' }, deps)).toEqual({ status: 409, body: { error: 'purchase-in-use', reason: 'purchase-other-account', hint: null } });
     expect(deps.setShopOtid).not.toHaveBeenCalled();
     expect(deps.setUser).not.toHaveBeenCalled();
   });
@@ -206,7 +206,7 @@ describe('POST /api/shop/plan', () => {
     expect(await refreshPlan(AUTH, { transactionId: '2000000555' }, taken.deps)).toEqual({ status: 409, body: { error: 'purchase-in-use' } });
     expect(taken.shop.ios_otid).toBe('2000000999');
     const owned = fakes({ otid: '2000000999', rows: { [OTID]: purchaseRow({ user_id: OTHER }) } });
-    expect(await refreshPlan(AUTH, { transactionId: '2000000555' }, owned.deps)).toEqual({ status: 409, body: { error: 'purchase-in-use' } });
+    expect(await refreshPlan(AUTH, { transactionId: '2000000555' }, owned.deps)).toEqual({ status: 409, body: { error: 'purchase-in-use', reason: 'purchase-other-account', hint: null } });
     expect(owned.deps.setShopOtid).not.toHaveBeenCalled();
   });
 

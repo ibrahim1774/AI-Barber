@@ -2,8 +2,10 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { clientIp, iosLimiter } from '../../lib/bookings/rateLimit.js';
 import { liveDeps, runIosSiteLookup } from '../../lib/ios/publishFlow.js';
 
-// POST { transactionId } from the iOS app → the site bound to that purchase:
-// { siteId, deployedUrl, siteData (real image URLs), active }.
+// POST { transactionId } + Authorization: Bearer <Supabase token> → the site bound to that purchase
+// (only when the purchase is linked to the caller): { siteId, deployedUrl, siteData, active, ... }.
+// 401 unauthorized without a valid token; 409 { error: 'purchase-other-account', hint } when the purchase
+// belongs to another account (no site data).
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -37,7 +39,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     const transactionId = body && typeof body.transactionId === 'string' ? body.transactionId.trim() : '';
     if (!transactionId) return res.status(400).json({ error: 'bad-request' });
-    const r = await runIosSiteLookup(transactionId, liveDeps());
+    const r = await runIosSiteLookup(transactionId, liveDeps(), { authorization: req.headers?.authorization });
     return res.status(r.status).json(r.body);
   } catch (e: any) {
     console.error('[ios/site] handler error:', e?.message || e);
@@ -51,6 +53,6 @@ function setCors(res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Methods', 'OPTIONS,POST');
   res.setHeader(
     'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version',
+    'Authorization, X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version',
   );
 }

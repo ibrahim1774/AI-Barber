@@ -113,7 +113,7 @@ describe('every site gate refuses a domain transaction', () => {
   });
 
   it('/api/ios/site → 404, no site returned', async () => {
-    const r = await runIosSiteLookup('dom-t1', { verify, repo, readPending: vi.fn(), now: () => NOW });
+    const r = await runIosSiteLookup('dom-t1', { verify, repo, readPending: vi.fn(), now: () => NOW, userOf: async () => ({ id: '3f2b8c1e-5d4a-4b6f-9e2d-1a2b3c4d5e6f' }) }, { authorization: 'Bearer t' });
     expect(r.status).toBe(404);
   });
 
