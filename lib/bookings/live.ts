@@ -59,6 +59,7 @@ export function liveDeps(): OwnerDeps {
     baseUrl: BOOKING_BASE_URL,
     limits: shopBookingLimiter(),
     getUser: liveGetUser(client),
+    finishMove: async (u) => (await import('../ios/transferLive.js')).liveFinishMoves(u),
     purchases: livePurchases(),
     writeLimiter: userLimiter,
     bindingOwner: liveBindingOwner,

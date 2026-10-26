@@ -327,11 +327,39 @@ describe('POST /api/shop/plan', () => {
     expect(deps.verify).not.toHaveBeenCalled();
   });
 
-  it('no auth → 401; no shop → 404 (Apple never asked)', async () => {
+  it('no auth → 401 (Apple never asked)', async () => {
     const { deps } = fakes();
     expect(await refreshPlan(undefined, { transactionId: '2000000555' }, deps)).toEqual({ status: 401, body: { error: 'unauthorized' } });
-    expect(await refreshPlan('Bearer noshop-jwt', { transactionId: '2000000555' }, deps)).toEqual({ status: 404, body: { error: 'no-shop' } });
     expect(deps.verify).not.toHaveBeenCalled();
+  });
+
+  describe('an account with no shop (the move-fix case: owns the purchase, shop comes later in setup)', () => {
+    const NOSHOP = 'Bearer noshop-jwt';
+    it('POST for a purchase already linked to the caller → 200 self, active, entitled, linked false (not 404)', async () => {
+      const { deps } = fakes({ rows: { [OTID]: purchaseRow({ user_id: OTHER, product_id: `${P}store.monthly`, site_slug: 'ios-test-jacks' }) } });
+      const r = await refreshPlan(NOSHOP, { transactionId: '2000000555' }, deps);
+      expect(r.status).toBe(200);
+      expect(r.body).toMatchObject({ purchaseAccount: 'self', active: true, linked: false, tier: 'store', entitlements: { hosting: true, bookings: true, store: true } });
+      expect(deps.setShopOtid).not.toHaveBeenCalled();
+    });
+    it('GET for the same state agrees with POST', async () => {
+      const { deps } = fakes();
+      deps.purchasesOfUser = vi.fn(async () => [purchaseRow({ user_id: OTHER, product_id: `${P}store.monthly` })]);
+      const r = await getPlan(NOSHOP, deps);
+      expect(r.body).toMatchObject({ purchaseAccount: 'self', active: true, linked: false, entitlements: { store: true } });
+    });
+    it('POST for an unlinked active purchase links it to the caller', async () => {
+      const { deps, rows } = fakes({ rows: { [OTID]: purchaseRow({ user_id: null, site_slug: null }) }, verified: vtx({ expiresAt: NOW + 86_400_000 }) });
+      const r = await refreshPlan(NOSHOP, { transactionId: '2000000555' }, deps);
+      expect(rows[OTID].user_id).toBe(OTHER);
+      expect(r.body).toMatchObject({ purchaseAccount: 'self', active: true, linked: false });
+    });
+    it('POST for a purchase linked to someone else → 409 purchase-in-use, nothing granted', async () => {
+      const { deps } = fakes({ rows: { [OTID]: purchaseRow({ user_id: USER }) } });
+      const r = await refreshPlan(NOSHOP, { transactionId: '2000000555' }, deps);
+      expect(r.status).toBe(409);
+      expect(r.body).toMatchObject({ error: 'purchase-in-use' });
+    });
   });
 });
 
@@ -348,5 +376,17 @@ describe('GET /api/shop/plan: purchase of another account carries the move-confi
     expect(mine.purchaseAccount).toBe('self');
     expect('ownerHint' in mine).toBe(false);
     expect('hasLiveSite' in mine).toBe(false);
+  });
+});
+
+describe('finishMove hook (M3)', () => {
+  it('GET and refresh run the finisher for the caller first; a throwing finisher never breaks them', async () => {
+    const { deps } = fakes();
+    const finishMove = vi.fn(async () => { throw new Error('x'); });
+    deps.finishMove = finishMove;
+    expect((await getPlan('Bearer noshop-jwt', deps)).status).toBe(200);
+    expect(finishMove).toHaveBeenCalledTimes(1);
+    await refreshPlan('Bearer noshop-jwt', { transactionId: '2000000123' }, deps);
+    expect(finishMove).toHaveBeenCalledTimes(2);
   });
 });

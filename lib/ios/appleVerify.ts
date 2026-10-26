@@ -8,6 +8,8 @@ export type IosEnv = 'Production' | 'Sandbox';
 export interface VerifiedTx {
   originalTransactionId: string;
   transactionId: string;
+  /** The LATEST transaction of the purchase per Apple's status check (the proof JWS must be this one). */
+  latestTransactionId?: string;
   productId: string;
   environment: IosEnv;
   /** From the purchase's LATEST transaction (Get All Subscription Statuses), not the id the app sent. */
@@ -59,6 +61,10 @@ export interface DecodedTransaction {
   expiresDate?: number; revocationDate?: number; purchaseDate?: number;
   /** True on the transaction a same-group upgrade replaced (it is not the current product). */
   isUpgraded?: boolean;
+  /** When Apple signed this JWS (ms). Used by the transfer proof (must be fresh). */
+  signedDate?: number;
+  /** 'Production' | 'Sandbox' as Apple wrote it into the signed payload. */
+  environment?: string;
 }
 export interface AppleDecode {
   (env: IosEnv, signed: string): Promise<DecodedTransaction>;
@@ -68,12 +74,14 @@ export interface AppleDecode {
 export function toDecodedTransaction(p: {
   bundleId?: string; productId?: string; originalTransactionId?: string; transactionId?: string;
   expiresDate?: number; revocationDate?: number; purchaseDate?: number; isUpgraded?: boolean;
+  signedDate?: number; environment?: string;
 }): DecodedTransaction {
   return {
     bundleId: p.bundleId as string, productId: p.productId as string,
     originalTransactionId: p.originalTransactionId as string, transactionId: p.transactionId as string,
     expiresDate: p.expiresDate, revocationDate: p.revocationDate, purchaseDate: p.purchaseDate,
     isUpgraded: p.isUpgraded === true,
+    signedDate: p.signedDate, environment: p.environment == null ? undefined : String(p.environment),
   };
 }
 
@@ -94,6 +102,10 @@ export interface AppleStatuses {
 }
 
 const ENVS: IosEnv[] = ['Production', 'Sandbox'];
+
+function qaActiveOtids(): Set<string> {
+  return new Set((process.env.IOS_QA_ACTIVE_OTIDS || '').split(',').map((x) => x.trim()).filter(Boolean));
+}
 
 const unavailable = () => new VerifyFailure('apple-unavailable');
 
@@ -163,6 +175,7 @@ export function makeVerifier(deps: { lookup: AppleLookup; decode: AppleDecode; s
       const out: VerifiedTx = {
         originalTransactionId: d.originalTransactionId,
         transactionId: d.transactionId,
+        latestTransactionId: latest.transactionId,
         productId: latest.productId,
         environment: env,
         expiresAt: latest.expiresDate ?? null,
@@ -170,6 +183,13 @@ export function makeVerifier(deps: { lookup: AppleLookup; decode: AppleDecode; s
         status: item.status,
         productPurchasedAt: latest.purchaseDate ?? null,
       };
+      // QA only: a Sandbox subscription renews every few minutes and then expires, which makes long manual tests
+      // impossible. Listed Sandbox purchases (env IOS_QA_ACTIVE_OTIDS, comma separated, default empty) stay active
+      // unless Apple revoked them. Production purchases and unlisted ids are never touched.
+      if (env === 'Sandbox' && !out.revoked && qaActiveOtids().has(out.originalTransactionId)) {
+        out.status = 1;
+        out.expiresAt = Math.max(out.expiresAt ?? 0, Date.now() + 24 * 60 * 60 * 1000);
+      }
       if (deps.includeRenewal) {
         let auto: boolean | null = null;
         if (item.signedRenewalInfo && deps.decodeRenewal) {
@@ -298,4 +318,9 @@ export function defaultVerifier(opts: VerifierOptions = {}) {
     lookup, decode, statuses, bundleId, decodeRenewal,
     products: opts.products, includeAccount: opts.includeAccount, includeRenewal: opts.includeRenewal,
   });
+}
+
+/** Verifies and decodes a transaction JWS the DEVICE sent (StoreKit 2 Transaction.jwsRepresentation) with the shared verifier. */
+export async function verifyDeviceTransaction(env: IosEnv, jws: string): Promise<DecodedTransaction> {
+  return toDecodedTransaction(await signedDataVerifierFor(env).verifyAndDecodeTransaction(jws));
 }

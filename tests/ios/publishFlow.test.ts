@@ -368,30 +368,27 @@ describe('runIosPublish', () => {
     expect(f.rows.get(OTID)!.user_id).toBe(USER);
   });
 
-  it('M1: a transfer that wins while the owner\'s publish is deploying: the site goes back offline and the publish answers 409 purchase-changed', async () => {
+  it('a move that lands while the old owner\'s publish is deploying: nothing goes offline, the publish answers 409 purchase-changed', async () => {
     const f = withAuth(fakes({
       existing: row({ user_id: USER, site_slug: 'fade-lab', published_at: '2026-10-01T00:00:00Z' }),
       outcome: (slug) => {
-        // the transfer's compare-and-set lands during the deploy
-        Object.assign(f.rows.get(OTID)!, { user_id: OTHER, site_slug: null, published_at: null });
+        // the transfer's compare-and-set lands during the deploy (the slug stays with the purchase)
+        Object.assign(f.rows.get(OTID)!, { user_id: OTHER });
         return { ok: true, siteId: slug, deployedUrl: `https://${slug}.vercel.app`, alreadyLive: false } as any;
       },
     }));
-    const deployOffline = vi.fn(async () => {});
-    f.deps.deployOffline = deployOffline;
     const r = await runIosPublish(input(), f.deps, { authorization: 'Bearer tok-user' });
     expect(r).toEqual({ status: 409, body: { error: 'purchase-changed' } });
-    expect(deployOffline).toHaveBeenCalledWith('fade-lab');
     // the stamps are conditional on the owner and slug (so they cannot land on the new owner's row)
     expect(f.repo.markPublished).toHaveBeenCalledWith(OTID, { userId: USER, slug: 'fade-lab' });
   });
 
-  it('M1: an unaffected publish does not deploy offline', async () => {
+  it('M3: publish by the purchase owner first finishes an unfinished business move; a failing finisher never blocks the publish', async () => {
     const f = withAuth(fakes({ existing: row({ user_id: USER, site_slug: 'fade-lab', published_at: '2026-10-01T00:00:00Z' }) }));
-    const deployOffline = vi.fn(async () => {});
-    f.deps.deployOffline = deployOffline;
+    const finishMove = vi.fn(async () => { throw new Error('x'); });
+    (f.deps as any).finishMove = finishMove;
     expect((await runIosPublish(input(), f.deps, { authorization: 'Bearer tok-user' })).status).toBe(200);
-    expect(deployOffline).not.toHaveBeenCalled();
+    expect(finishMove).toHaveBeenCalledWith(USER);
   });
 
   it('an invalid token still publishes under the compat flag; an auth outage or a failed link fails closed (503, nothing written)', async () => {

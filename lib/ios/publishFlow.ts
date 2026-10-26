@@ -30,7 +30,6 @@ import { createClient } from '@supabase/supabase-js';
 import { chooseSlug, makeIsTaken, urlServes, vercelProjectExists } from './slug.js';
 import { buildImageUrlMap, toPendingSiteData } from './pendingData.js';
 import { stripLapsedLinks } from './tiers.js';
-import { liveRemoveDeps } from './removeSiteLive.js';
 import { liveBindingOwner, liveEmailOf, otherAccountBody, type BindingOwner, type OtherAccountBody } from './ownership.js';
 import { MAX_BODY_BYTES, hasDataUrl, isObj, restoreImageUrls, validSiteData, validationProblem } from './siteShape.js';
 
@@ -116,8 +115,8 @@ export interface PublishDeps {
    * publish, and as "not proven" for a site lookup (which never discloses a site without proof).
    */
   bindingOwner?(row: PurchaseRow): Promise<BindingOwner>;
-  /** Offline page for a slug (the sweep's deploy). Used only to undo a publish that raced a subscription transfer. */
-  deployOffline?(slug: string): Promise<void>;
+  /** Finish this account's unfinished business move (moveIntent.ts). Best effort. */
+  finishMove?(userId: string): Promise<unknown>;
   /** Dry render before storing (lib/publishSite.ts renderPending). Throws on unrenderable data. */
   render?(p: Pick<PendingSite, 'siteData' | 'imageUrlMap'>): SiteFile[];
   now(): number;
@@ -259,6 +258,8 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
     if (row.user_id) {
       if (authDown) return unavailable;
       if (!caller) return { status: 401, body: { error: 'unauthorized' } };
+      // An unfinished business move of this caller (intent row) is finished first; best effort, never blocks a publish.
+      if (caller === row.user_id && deps.finishMove) await deps.finishMove(caller).catch(() => {});
       if (caller !== row.user_id) {
         console.warn(`[ios/publish] ${otid}: linked to another account; refused`);
         return { status: 409, body: await otherAccountBody(deps.emailOf, row.user_id, row) };
@@ -441,18 +442,13 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
       }
     }
 
-    // A subscription transfer that won the compare-and-set while this publish was deploying took the
-    // purchase (and the slug) away from the caller: this deploy brought the old owner's site back with no
-    // purchase row tracking it. Put the offline page back and answer purchase-changed.
-    if (caller && deps.deployOffline) {
+    // A subscription transfer that won the compare-and-set while this publish was deploying moved the
+    // whole business (purchase, slug, site copy) to another account: the site stays live and is theirs, so
+    // nothing is taken offline. This caller's publish is reported as superseded.
+    if (caller) {
       const after = await deps.repo.get(otid);
-      if (after && (after.user_id !== caller || after.site_slug !== slug)) {
-        console.warn(`[ios/publish] ${otid}: purchase moved during the publish; taking the site back offline`);
-        try {
-          await deps.deployOffline(slug);
-        } catch (e: any) {
-          console.error(`[ios/publish] ALERT ${slug}: purchase moved mid-publish AND the offline deploy failed:`, e?.message || e);
-        }
+      if (after && after.user_id !== caller) {
+        console.warn(`[ios/publish] ${otid}: purchase moved during the publish`);
         return { status: 409, body: { error: 'purchase-changed' } };
       }
     }
@@ -565,6 +561,7 @@ export async function runIosSiteLookup(
 export function liveDeps(): PublishDeps {
   const repo = supabasePurchases();
   return {
+    finishMove: async (u) => (await import('./transferLive.js')).liveFinishMoves(u),
     // Lazy: defaultVerifier() throws when Apple env vars are missing, and that
     // must surface as a mapped 503, not an uncaught 500.
     verify: lazyDefaultVerifier(),
@@ -587,7 +584,6 @@ export function liveDeps(): PublishDeps {
     userOf: liveUserOf,
     emailOf: liveEmailOf,
     bindingOwner: liveBindingOwner,
-    deployOffline: (slug) => liveRemoveDeps().deployOffline(slug),
     now: () => Date.now(),
   };
 }
