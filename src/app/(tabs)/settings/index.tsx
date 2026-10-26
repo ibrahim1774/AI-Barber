@@ -12,6 +12,7 @@ import { ShareSheet } from '@/components/ShareSheet';
 import { deleteAccountAndData, deleteLocalData, onSiteAdopted, takeWebsiteOffline } from '@/lib/account';
 import { track } from '@/lib/analytics';
 import { ApiError } from '@/lib/api';
+import { MOVE_IN_PROGRESS_MESSAGE } from '@/lib/claimCopy';
 import { signOut, useSession } from '@/lib/auth';
 import { tierFromEntitlements, useEntitlements } from '@/lib/entitlements';
 import { goBackOrHome, resetTo } from '@/lib/nav';
@@ -422,6 +423,7 @@ function YourWebsite({ site }: { site: SiteRecord }) {
 export function offlineError(e: unknown): string {
   if (e instanceof ApiError) {
     if (e.status === 0) return e.message;
+    if (e.code === 'move-in-progress') return MOVE_IN_PROGRESS_MESSAGE;
     if (e.code === 'not-owner') return 'This website belongs to a different account than the one you’re signed in to. Sign in to the right account, then try again.';
     if (e.status === 403) return 'This website belongs to an account. Sign in to that account, then try again.';
     if (e.code === 'site-mismatch') return 'This Apple ID’s subscription runs a different website than the one on this phone, so nothing was taken offline. Try Restore purchases.';

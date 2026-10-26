@@ -232,13 +232,13 @@ export const api = {
 
   /**
    * POST /api/ios/transfer: moves the Apple purchase to the signed-in account (Bearer required). Without `confirm` a
-   * purchase linked to another account answers 409 confirm-required (body.ownerHint, body.hasLiveSite, body.hasShop, body.ownerToken); with
+   * purchase linked to another account answers 409 confirm-required (body.ownerHint, body.hasLiveSite, body.hasShop, body.hasPayments, body.ownerToken); with
    * `confirm: true` AND that `ownerToken` echoed back the whole business (subscription, website, bookings, store) moves here.
    * `proof` is Apple's signed JWS for the current entitlement (storekit-proof); sent whenever the phone has one.
-   * Errors: 401, 400, 404, 402 subscription-inactive, 400/403 proof-required | proof-invalid,
+   * Errors: 401, 400, 404, 402 subscription-inactive, 400/403 proof-required | proof-invalid | move-in-progress,
    * 409 confirm-required | account-has-site | purchase-changed | purchase-other-account, 429, 503.
    */
-  async transfer(transactionId: string, confirm?: boolean, ownerToken?: string, proof?: string): Promise<{ moved: boolean; linked: boolean }> {
+  async transfer(transactionId: string, confirm?: boolean, ownerToken?: string, proof?: string): Promise<{ moved: boolean; linked: boolean; paymentsReset?: boolean }> {
     const token = await accessToken();
     if (!token) throw new ApiError(401, 'auth-required', 'Sign in to continue.');
     const body: Record<string, unknown> = confirm === true ? { transactionId, confirm: true, ownerToken } : { transactionId };

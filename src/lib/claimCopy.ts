@@ -7,10 +7,21 @@
 /** What a 409 on publish was about. Kept on the pending record so the locked step can show it after a relaunch. */
 export type Conflict =
   | { code: 'purchase-other-account'; hint?: string | null }
-  | { code: 'account-has-site'; slug?: string | null };
+  | { code: 'account-has-site'; slug?: string | null; reason?: 'site' | 'shop' | null };
 
 /** The label of the button that replaces the dead end. */
 export const MOVE_BUTTON_TITLE = 'Move subscription to this account';
+
+/** account-has-site with reason 'shop': the account owns a Bookings/Store shop (and no site), so it cannot take another business. */
+export const ACCOUNT_HAS_SHOP_MESSAGE = "This account already has its own Bookings or Store set up, so it can't take another business. Use a different account.";
+
+/** 503 (shop setup) / 409 (delete account) move-in-progress: a subscription move has not finished yet. */
+export const MOVE_IN_PROGRESS_MESSAGE =
+  'Your subscription move is still finishing. Open Bookings or Store, or tap Move subscription again, then try again in a moment.';
+
+/** After a move that cleared the shop's payment setup. */
+export const PAYMENTS_RESET_NOTICE =
+  'Your payment setup was reset in the move. Open Bookings or Store and reconnect your payments on this account.';
 
 /** Signed out, and the subscription belongs to an account (or a site): only that account can restore it. */
 export const SIGN_IN_TO_RESTORE_CODE = 'sign-in-required';
@@ -24,6 +35,7 @@ const TIED = 'A subscription is tied to the Apple ID, so only one account can us
 /** What a 409 from publish says, naming the masked owner or the live site. */
 export function conflictMessage(c: Conflict): string {
   if (c.code === 'account-has-site') {
+    if (c.reason === 'shop') return ACCOUNT_HAS_SHOP_MESSAGE;
     return `This account already runs a live website${c.slug ? ` (${c.slug})` : ''}. Each account has one website. Use a different account to publish this one.`;
   }
   return `This Apple ID's subscription belongs to another Prime Barber account${c.hint ? ` (${c.hint})` : ''}. ${TIED} Move it to this account, or sign in to that account to publish.`;

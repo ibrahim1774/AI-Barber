@@ -203,7 +203,7 @@ async function send(pending: PendingPublish, deps: PublishDeps, retryMessage: st
     if (e instanceof ApiError && e.status === 409 && (e.code === 'purchase-other-account' || e.code === 'account-has-site')) {
       const conflict: Conflict =
         e.code === 'account-has-site'
-          ? { code: 'account-has-site', slug: typeof e.body?.slug === 'string' ? e.body.slug : null }
+          ? { code: 'account-has-site', slug: typeof e.body?.slug === 'string' ? e.body.slug : null, reason: e.body?.reason === 'shop' ? 'shop' : 'site' }
           : { code: 'purchase-other-account', hint: typeof e.body?.hint === 'string' ? e.body.hint : null };
       track('publish_conflict', { code: e.code });
       // A paid claim stays locked on its account step; an ordinary publish just stops.

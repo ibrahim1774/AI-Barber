@@ -1,3 +1,4 @@
+import { MOVE_IN_PROGRESS_MESSAGE } from '@/lib/claimCopy';
 import { accessToken } from '@/lib/accessToken';
 import type { SiteRecord } from '@/lib/siteStore';
 import { websiteToSetupServices, type SetupService } from '@/lib/setup/servicesMap';
@@ -51,6 +52,7 @@ export async function call<T>(method: 'GET' | 'POST', path: string, body?: unkno
 }
 
 function friendly(status: number, code: string): string {
+  if (code === 'move-in-progress') return MOVE_IN_PROGRESS_MESSAGE;
   if (status === 401) return 'Your sign-in has expired. Sign in again.';
   if (code === 'store-paused') return 'Your Prime Barber plan needs to be active to sell online.';
   if (status === 423 || code === 'bookings-paused') return 'Your Prime Barber plan needs to be active to take bookings.';

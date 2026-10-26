@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import { api } from '@/lib/api';
+import { PAYMENTS_RESET_NOTICE } from '@/lib/claimCopy';
 import { MOVE_ERROR, MOVE_CONFIRM_CANCEL, MOVE_CONFIRM_OK, MOVE_CONFIRM_TITLE, moveConfirmMessage, moveSubscription, type MoveConfirmInfo, type MoveResult } from '@/lib/moveSubscription';
 import { useLatestTransactionId } from '@/lib/paywall';
 import { refreshPlanAfterTransfer } from '@/lib/plan';
@@ -28,6 +29,7 @@ export function useMoveSubscription(opts: { transactionId?: () => Promise<string
   const latest = useLatestTransactionId();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const busyRef = useRef(false);
   const optsRef = useRef(opts);
   optsRef.current = opts;
@@ -37,6 +39,7 @@ export function useMoveSubscription(opts: { transactionId?: () => Promise<string
     busyRef.current = true;
     setBusy(true);
     setError(null);
+    setNotice(null);
     try {
       const r = await moveSubscription({
         transfer: api.transfer,
@@ -58,6 +61,7 @@ export function useMoveSubscription(opts: { transactionId?: () => Promise<string
           setError(MOVE_ERROR.refresh);
           return r;
         }
+        if (r.paymentsReset) setNotice(PAYMENTS_RESET_NOTICE);
         await optsRef.current.onMoved?.();
       }
       return r;
@@ -67,5 +71,5 @@ export function useMoveSubscription(opts: { transactionId?: () => Promise<string
     }
   }, [latest]);
 
-  return { run, busy, error };
+  return { run, busy, error, notice };
 }
