@@ -14,6 +14,22 @@ const mockResetTo = jest.fn();
 jest.mock('@/lib/nav', () => ({ resetTo: (...a: unknown[]) => mockResetTo(...a), homeRoute: (s: unknown) => (s ? '/edit' : '/start') }));
 const mockRestore = jest.fn();
 jest.mock('@/lib/restoreFlow', () => ({ useRestoreFlow: () => ({ restore: (...a: unknown[]) => mockRestore(...a), busy: false }) }));
+// Counts how many times each Field mounts (and unmounts): typing must never remount an input (that drops focus and resets the keyboard).
+const mockMounts: Record<string, number> = {};
+const mockUnmounts: Record<string, number> = {};
+jest.mock('@/components/Field', () => {
+  const R = require('react');
+  const Real = jest.requireActual('@/components/Field').Field;
+  return {
+    Field: R.forwardRef((props: { label: string }, ref: unknown) => {
+      R.useEffect(() => {
+        mockMounts[props.label] = (mockMounts[props.label] ?? 0) + 1;
+        return () => { mockUnmounts[props.label] = (mockUnmounts[props.label] ?? 0) + 1; };
+      }, []);
+      return R.createElement(Real, { ...props, ref });
+    }),
+  };
+});
 let mockDeps: any;
 jest.mock('@/lib/paywall', () => ({ usePublishDeps: () => mockDeps, useLatestTransactionId: () => async () => 'tx-1' }));
 
@@ -36,7 +52,7 @@ const draft = { draftId: 'd1', inputs: { shopName: 'Fade Lab', phone: '(555) 010
 const LIVE = { siteId: 'fade', deployedUrl: 'https://fade.aibarber.org', republished: false };
 const A = { id: 'user-a', email: 'a@example.com' };
 
-const FIELDS = ['Full Name', 'Email', 'Phone Number', 'Password (min 8 characters)', 'Confirm Password'];
+const FIELDS = ['Full Name', 'Email', 'Phone Number', 'Password (min 8 characters)'];
 const inputs = (tree: any, label: string) =>
   tree.root.findAll((n: any) => n.type === 'TextInput' && n.props?.accessibilityLabel === label && typeof n.props.onChangeText === 'function');
 const textOf = (n: any): string => (n.children ?? []).map((c: any) => (typeof c === 'string' ? c : textOf(c))).join('');
@@ -52,7 +68,7 @@ const text = (tree: any) => allText(tree).join(' | ');
 async function fill(tree: any, over: Record<string, string> = {}) {
   const v: Record<string, string> = {
     'Full Name': 'Jo Barber', Email: 'jo@example.com', 'Phone Number': '5125550142',
-    'Password (min 8 characters)': 'hunter22!', 'Confirm Password': 'hunter22!', ...over,
+    'Password (min 8 characters)': 'hunter22!', ...over,
   };
   for (const [k, val] of Object.entries(v)) await typeIn(tree, k, val);
 }
@@ -81,12 +97,45 @@ beforeEach(async () => {
 });
 
 describe('the locked step', () => {
-  test('four required fields plus the confirmation, ALL empty: nothing from the site is prefilled', async () => {
+  test('four required fields (one password), ALL empty: nothing from the site is prefilled', async () => {
     const tree = await render(<Claim />);
     for (const f of FIELDS) expect(inputs(tree, f)).toHaveLength(1);
     for (const f of FIELDS) expect(valueOf(tree, f)).toBe('');
     // not marked optional
     expect(text(tree)).not.toMatch(/optional/i);
+  });
+
+  test('typing in any field never remounts an input (focus and the keyboard type survive every keystroke)', async () => {
+    for (const k of Object.keys(mockMounts)) delete mockMounts[k];
+    for (const k of Object.keys(mockUnmounts)) delete mockUnmounts[k];
+    const tree = await render(<Claim />);
+    for (const f of FIELDS) expect(mockMounts[f]).toBe(1);
+    for (const f of FIELDS) {
+      for (const v of ['a', 'a1', 'a12', 'a123']) await typeIn(tree, f, v);
+    }
+    // Errors appearing / clearing and a failed submit re-render the form too.
+    await press(tree, 'Create Account & Publish');
+    await typeIn(tree, 'Email', 'jo@example.com');
+    for (const f of FIELDS) expect(mockMounts[f]).toBe(1);
+    expect(Object.keys(mockUnmounts)).toHaveLength(0);
+  });
+
+  test('there is one password field: no Confirm Password input anywhere', async () => {
+    const tree = await render(<Claim />);
+    expect(tree.root.findAll((n: any) => n.type === 'TextInput' && n.props?.secureTextEntry)).toHaveLength(1);
+    expect(text(tree)).not.toMatch(/confirm password/i);
+  });
+
+  test('keyboard: the password hint is plain "password" (no Strong Password takeover) and the iOS scroll view adjusts its own insets', async () => {
+    const tree = await render(<Claim />);
+    const pw = inputs(tree, 'Password (min 8 characters)')[0];
+    expect(pw.props.textContentType).toBe('password');
+    expect(pw.props.textContentType).not.toBe('newPassword');
+    const scroll = tree.root.findAll((n: any) => n.props?.automaticallyAdjustKeyboardInsets === true);
+    expect(scroll.length).toBeGreaterThan(0);
+    // No JS-driven padding on iOS: it re-laid-out the form every time the keyboard changed type or height.
+    const kav = tree.root.findAll((n: any) => n.props?.behavior === 'padding');
+    expect(kav).toHaveLength(0);
   });
 
   test('the Android back button does nothing; the Back pill is the only exit and no close control exists', async () => {
@@ -124,7 +173,6 @@ describe('the locked step', () => {
     ['Email', 'jo@example', 'That email address doesn’t look right. Check it and try again.'],
     ['Phone Number', '12345', 'Enter a phone number with at least 7 digits.'],
     ['Password (min 8 characters)', 'short', 'Use at least 8 characters.'],
-    ['Confirm Password', 'different', 'The passwords don’t match.'],
   ])('%s %s -> inline "%s"', async (label, value, message) => {
     const tree = await render(<Claim />);
     await fill(tree, { [label]: value });

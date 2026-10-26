@@ -5,7 +5,7 @@ import { WAITING_MESSAGE, createClaimRunner, type ClaimDeps } from '@/lib/claim'
 import type { PublishOutcome } from '@/lib/publish';
 import type { ClaimValues } from '@/lib/claimValidation';
 
-const v: ClaimValues = { name: ' Jo Barber ', email: ' Jo@Example.com ', phone: '(512) 555-0142', password: 'hunter22!', confirm: 'hunter22!' };
+const v: ClaimValues = { name: ' Jo Barber ', email: ' Jo@Example.com ', phone: '(512) 555-0142', password: 'hunter22!' };
 const LIVE: PublishOutcome = { kind: 'live', url: 'https://x.aibarber.org', republished: false };
 const rej = (status: number, code: string, body?: unknown) => jest.fn(async () => { throw new ApiError(status, code, code, body); });
 
@@ -33,8 +33,8 @@ describe('sign up', () => {
 
   test('an invalid form sends nothing and returns every inline error', async () => {
     const { deps, runner } = setup();
-    const r = await runner.submit('signup', { ...v, name: '', phone: '12', confirm: 'nope' });
-    expect(r).toMatchObject({ kind: 'invalid', errors: { name: expect.any(String), phone: expect.any(String), confirm: expect.any(String) } });
+    const r = await runner.submit('signup', { ...v, name: '', phone: '12' });
+    expect(r).toMatchObject({ kind: 'invalid', errors: { name: expect.any(String), phone: expect.any(String) } });
     expect(deps.signup).not.toHaveBeenCalled();
     expect(deps.signIn).not.toHaveBeenCalled();
   });
@@ -100,7 +100,7 @@ describe('sign up', () => {
     const { deps, runner } = setup();
     deps.signIn.mockRejectedValueOnce(new Error(OFFLINE));
     await runner.submit('signup', v);
-    await runner.submit('signup', { ...v, password: 'another-pass1', confirm: 'another-pass1' });
+    await runner.submit('signup', { ...v, password: 'another-pass1' });
     expect(deps.signup).toHaveBeenCalledTimes(2);
   });
 
@@ -119,7 +119,7 @@ describe('sign up', () => {
 describe('sign in (the toggle inside the same locked step)', () => {
   test('signs in and publishes without creating an account', async () => {
     const { deps, runner } = setup();
-    expect(await runner.submit('signin', { ...v, name: '', phone: '', confirm: '' })).toEqual({ kind: 'live' });
+    expect(await runner.submit('signin', { ...v, name: '', phone: '' })).toEqual({ kind: 'live' });
     expect(deps.signup).not.toHaveBeenCalled();
     expect(deps.signIn).toHaveBeenCalledWith('Jo@Example.com', 'hunter22!');
   });

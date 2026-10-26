@@ -1,8 +1,11 @@
 import type { ReactNode } from 'react';
-import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fonts } from '@/constants/theme';
 import { ChevronLeftIcon } from '@/components/Icons';
+
+/** iOS adjusts the scroll insets natively (automaticallyAdjustKeyboardInsets); Android keeps the padding behaviour. */
+export const KEYBOARD_AVOIDING: 'padding' | undefined = Platform.OS === 'ios' ? undefined : 'padding';
 
 /**
  * The account screens' shell (Settings, sign in / up): #0d0d0d,
@@ -34,9 +37,12 @@ export function Page({
         </Text>
         <View style={[styles.side, styles.right]}>{right}</View>
       </View>
-      <KeyboardAvoidingView behavior="padding" style={styles.flex}>
+      {/* iOS: the scroll view moves its own insets with the keyboard (native, no JS relayout while the keyboard changes
+          type or height: a KeyboardAvoidingView re-laid-out the whole form each time and made it shake). */}
+      <KeyboardAvoidingView behavior={KEYBOARD_AVOIDING} style={styles.flex}>
         <ScrollView
           keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets
           contentContainerStyle={[styles.content, { paddingBottom: 32 + insets.bottom }]}
         >
           {children}

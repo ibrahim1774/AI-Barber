@@ -67,3 +67,26 @@ describe('SitePreview with the in-page chip', () => {
     expect(sent()).toHaveLength(1);
   });
 });
+
+describe('SitePreview does not reload the page on unrelated renders', () => {
+  test('a fresh but equal page object (the Edit tab builds one every render) keeps the same document', async () => {
+    const d = await shop({});
+    let tree: any;
+    const el = (page: any) => <SitePreview data={d} editable page={page} onEditText={jest.fn()} onEditImage={jest.fn()} />;
+    act(() => { tree = create(el({ key: 'home' })); });
+    const first = mockProps.source;
+    act(() => { tree.update(el({ key: 'home' })); });
+    act(() => { tree.update(el({ key: 'home' })); });
+    expect(mockProps.source).toBe(first);
+  });
+
+  test('a different page does rebuild the document', async () => {
+    const d = await shop({});
+    let tree: any;
+    const el = (page: any) => <SitePreview data={d} editable page={page} onEditText={jest.fn()} onEditImage={jest.fn()} />;
+    act(() => { tree = create(el({ key: 'home' })); });
+    const first = mockProps.source;
+    act(() => { tree.update(el({ key: 'services' })); });
+    expect(mockProps.source).not.toBe(first);
+  });
+});

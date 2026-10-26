@@ -1,17 +1,17 @@
 import {
-  CONFIRM_DIFFERENT, CONFIRM_REQUIRED, EMAIL_INVALID, EMAIL_REQUIRED, NAME_REQUIRED, PASSWORD_LONG, PASSWORD_REQUIRED, PASSWORD_SHORT,
+  EMAIL_INVALID, EMAIL_REQUIRED, NAME_REQUIRED, PASSWORD_LONG, PASSWORD_REQUIRED, PASSWORD_SHORT,
   PHONE_INVALID, cleanPhone, firstErrorField, normalizePhone, validateClaim, type ClaimValues,
 } from '@/lib/claimValidation';
 
-const good: ClaimValues = { name: 'Jo Barber', email: 'jo@example.com', phone: '(512) 555-0142', password: 'hunter22!', confirm: 'hunter22!' };
+const good: ClaimValues = { name: 'Jo Barber', email: 'jo@example.com', phone: '(512) 555-0142', password: 'hunter22!' };
 const bad = (over: Partial<ClaimValues>) => validateClaim('signup', { ...good, ...over });
 
-describe('sign up needs all four fields, the password twice', () => {
+describe('sign up needs all four fields, one password', () => {
   test('a complete form has no errors', () => {
     expect(validateClaim('signup', good)).toEqual({});
   });
   test('an empty form flags every required field at once, in on-screen order', () => {
-    const e = validateClaim('signup', { name: '', email: '', phone: '', password: '', confirm: '' });
+    const e = validateClaim('signup', { name: '', email: '', phone: '', password: '' });
     expect(e).toEqual({ name: NAME_REQUIRED, email: EMAIL_REQUIRED, phone: PHONE_INVALID, password: PASSWORD_REQUIRED });
     expect(firstErrorField(e)).toBe('name');
   });
@@ -23,26 +23,25 @@ describe('sign up needs all four fields, the password twice', () => {
     ['phone too short (6 digits)', { phone: '555-012' }, 'phone', PHONE_INVALID],
     ['phone with letters', { phone: '555-CALL-NOW' }, 'phone', PHONE_INVALID],
     ['phone 16 digits', { phone: '1234567890123456' }, 'phone', PHONE_INVALID],
-    ['password of 7', { password: '1234567', confirm: '1234567' }, 'password', PASSWORD_SHORT],
-    ['password of 73', { password: 'x'.repeat(73), confirm: 'x'.repeat(73) }, 'password', PASSWORD_LONG],
-    ['no confirmation', { confirm: '' }, 'confirm', CONFIRM_REQUIRED],
-    ['different confirmation', { confirm: 'hunter22?' }, 'confirm', CONFIRM_DIFFERENT],
+    ['password of 7', { password: '1234567' }, 'password', PASSWORD_SHORT],
+    ['password of 73', { password: 'x'.repeat(73) }, 'password', PASSWORD_LONG],
   ] as const)('%s', (_n, over, field, message) => {
     expect(bad(over)[field]).toBe(message);
   });
   test('boundaries: 7 digits, 8 and 72 characters are fine', () => {
     expect(bad({ phone: '5550142' })).toEqual({});
-    expect(bad({ password: '12345678', confirm: '12345678' })).toEqual({});
-    expect(bad({ password: 'x'.repeat(72), confirm: 'x'.repeat(72) })).toEqual({});
+    expect(bad({ password: '12345678' })).toEqual({});
+    expect(bad({ password: 'x'.repeat(72) })).toEqual({});
   });
-  test('a bad password does not also complain about the confirmation', () => {
-    expect(bad({ password: 'short', confirm: 'other' })).toEqual({ password: PASSWORD_SHORT });
+  test('there is no confirmation field: a lone password is all that is asked', () => {
+    expect(bad({ password: 'short' })).toEqual({ password: PASSWORD_SHORT });
+    expect(Object.keys(validateClaim('signup', { name: '', email: '', phone: '', password: '' }))).not.toContain('confirm');
   });
 });
 
 describe('sign in needs only email and password', () => {
-  test('name, phone and confirmation are never asked', () => {
-    expect(validateClaim('signin', { name: '', email: 'jo@example.com', phone: '', password: 'x', confirm: '' })).toEqual({});
+  test('name and phone are never asked', () => {
+    expect(validateClaim('signin', { name: '', email: 'jo@example.com', phone: '', password: 'x' })).toEqual({});
   });
   test('missing email or password is flagged', () => {
     expect(validateClaim('signin', { ...good, email: '', password: '' })).toEqual({ email: EMAIL_REQUIRED, password: PASSWORD_REQUIRED });

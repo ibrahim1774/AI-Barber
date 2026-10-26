@@ -5,7 +5,7 @@ export const CLAIM_MIN_PASSWORD = 8;
 export const CLAIM_MAX_PASSWORD = 72;
 
 export type ClaimMode = 'signup' | 'signin';
-export type ClaimField = 'name' | 'email' | 'phone' | 'password' | 'confirm';
+export type ClaimField = 'name' | 'email' | 'phone' | 'password';
 export type ClaimErrors = Partial<Record<ClaimField, string>>;
 
 export interface ClaimValues {
@@ -13,7 +13,6 @@ export interface ClaimValues {
   email: string;
   phone: string;
   password: string;
-  confirm: string;
 }
 
 /**
@@ -51,12 +50,10 @@ export const PHONE_INVALID = 'Enter a phone number with at least 7 digits.';
 export const PASSWORD_REQUIRED = 'Enter your password.';
 export const PASSWORD_SHORT = `Use at least ${CLAIM_MIN_PASSWORD} characters.`;
 export const PASSWORD_LONG = `Use ${CLAIM_MAX_PASSWORD} characters or fewer.`;
-export const CONFIRM_REQUIRED = 'Enter your password again.';
-export const CONFIRM_DIFFERENT = 'The passwords don’t match.';
 
 /**
  * Every problem with the account form at once (shown inline under each field), in on-screen order.
- * Sign up needs all four fields (name, email, phone, password + confirmation); sign in only email + password.
+ * Sign up needs all four fields (name, email, phone, password); sign in only email + password.
  * An empty object means the form is good to send.
  */
 export function validateClaim(mode: ClaimMode, v: ClaimValues): ClaimErrors {
@@ -70,14 +67,10 @@ export function validateClaim(mode: ClaimMode, v: ClaimValues): ClaimErrors {
   } else if (!v.password) e.password = PASSWORD_REQUIRED;
   else if (v.password.length < CLAIM_MIN_PASSWORD) e.password = PASSWORD_SHORT;
   else if (v.password.length > CLAIM_MAX_PASSWORD) e.password = PASSWORD_LONG;
-  if (mode === 'signup' && !e.password) {
-    if (!v.confirm) e.confirm = CONFIRM_REQUIRED;
-    else if (v.confirm !== v.password) e.confirm = CONFIRM_DIFFERENT;
-  }
   return e;
 }
 
 /** The first field with a problem, in on-screen order (where focus goes). */
 export function firstErrorField(e: ClaimErrors): ClaimField | null {
-  return (['name', 'email', 'phone', 'password', 'confirm'] as const).find((f) => e[f]) ?? null;
+  return (['name', 'email', 'phone', 'password'] as const).find((f) => e[f]) ?? null;
 }

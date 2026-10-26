@@ -36,7 +36,7 @@ const draft = { draftId: 'd1', inputs: { shopName: 'Fade Lab', phone: '(555) 010
 const LIVE = { siteId: 'fade', deployedUrl: 'https://fade.aibarber.org', republished: false };
 const A = { id: 'user-a', email: 'a@example.com' };
 
-const FIELDS = ['Full Name', 'Email', 'Phone Number', 'Password (min 8 characters)', 'Confirm Password'];
+const FIELDS = ['Full Name', 'Email', 'Phone Number', 'Password (min 8 characters)'];
 const inputs = (tree: any, label: string) =>
   tree.root.findAll((n: any) => n.type === 'TextInput' && n.props?.accessibilityLabel === label && typeof n.props.onChangeText === 'function');
 const textOf = (n: any): string => (n.children ?? []).map((c: any) => (typeof c === 'string' ? c : textOf(c))).join('');
@@ -52,7 +52,7 @@ const text = (tree: any) => allText(tree).join(' | ');
 async function fill(tree: any, over: Record<string, string> = {}) {
   const v: Record<string, string> = {
     'Full Name': 'Jo Barber', Email: 'jo@example.com', 'Phone Number': '5125550142',
-    'Password (min 8 characters)': 'hunter22!', 'Confirm Password': 'hunter22!', ...over,
+    'Password (min 8 characters)': 'hunter22!', ...over,
   };
   for (const [k, val] of Object.entries(v)) await typeIn(tree, k, val);
 }
