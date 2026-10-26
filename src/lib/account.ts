@@ -459,9 +459,11 @@ async function claimableContent(store: typeof siteStore, uid: string | undefined
   const pending = await store.loadPendingPublish().catch(() => null);
   if (pending) return pending.state !== 'conflict';
   const local = await store.loadSite().catch(() => null);
-  if (!local || local.slug != null || (local.ownerUserId && local.ownerUserId !== uid)) return false;
+  // A site pulled from the account is live (deployedUrl) even though it has no slug of its own: never republished here.
+  if (!local || local.slug != null || local.deployedUrl || (local.ownerUserId && local.ownerUserId !== uid)) return false;
+  // No state: an ordinary publish, so a 409 from the server stops with its words and never locks the app.
   await store.savePendingPublish({
-    transactionId, data: publishPayload(local.data), createdAt: Date.now(), baseVersion: local.serverVersion, state: 'claiming',
+    transactionId, data: publishPayload(local.data), createdAt: Date.now(), baseVersion: local.serverVersion,
   });
   return true;
 }

@@ -88,6 +88,18 @@ describe('signed out: pay -> claim-start -> unclaimed -> /claim', () => {
     expect(deps.showPaywall).not.toHaveBeenCalled();
   });
 
+  test('a paywall "restored" is not a payment: purchase-claimed clears the record it saved and never locks the app', async () => {
+    const deps = makeDeps({ showPaywall: jest.fn(async () => 'restored' as const), claimStart: err(409, 'purchase-claimed') as never });
+    expect(await publishFlow(site, deps)).toEqual({ kind: 'blocked', message: CLAIMED_SIGNED_OUT_MESSAGE });
+    expect(await store.loadPendingPublish()).toBeNull();
+    expect(deps.iosPublish).not.toHaveBeenCalled();
+  });
+
+  test('a paywall "purchased" with the same answer still reaches the account step (they paid)', async () => {
+    const deps = makeDeps({ claimStart: err(409, 'purchase-claimed') as never });
+    expect(await publishFlow(site, deps)).toEqual({ kind: 'claim-required' });
+  });
+
   test('entitled and the check cannot be made: nothing saved, say so; never a lock', async () => {
     const deps = makeDeps({ hasEntitlement: jest.fn(async () => true), claimStart: err(0, 'network') as never });
     expect(await publishFlow(site, deps)).toEqual({ kind: 'pending', message: CHECK_FAILED_MESSAGE, offline: true });
@@ -281,14 +293,31 @@ describe('Restore never copies a site into another account', () => {
     expect(await restore(base({ accessToken: async () => 't', iosSite: err(404, 'no-site') as never }))).toEqual({ claim: 'publish' });
   });
 
-  test('signed in, nothing pending, an unpublished draft of this account: becomes a claiming publish; another account\'s draft does not', async () => {
+  test('signed in, nothing pending, an unpublished draft of this account: becomes a publish; another account\'s draft does not', async () => {
     sb.setSession({ access_token: 't', user: { id: 'u-b' } });
     await store.saveSite({ ...site, ownerUserId: 'u-other' } as SiteRecord);
     await expect(restore(base({ accessToken: async () => 't', iosSite: err(404, 'no-site') as never }))).rejects.toMatchObject({ code: 'no-site' });
     expect(await store.loadPendingPublish()).toBeNull();
     await store.saveSite({ ...site, ownerUserId: 'u-b' } as SiteRecord);
     expect(await restore(base({ accessToken: async () => 't', iosSite: err(404, 'no-site') as never }))).toEqual({ claim: 'publish' });
-    expect(await store.loadPendingPublish()).toMatchObject({ transactionId: 'tx-9', state: 'claiming' });
+    expect(await store.loadPendingPublish()).toMatchObject({ transactionId: 'tx-9' });
+  });
+
+  test('a site pulled from the account (no slug, but live) is never republished by Restore: no claim, no record', async () => {
+    sb.setSession({ access_token: 't', user: { id: 'u-b' } });
+    await store.saveSite({ ...site, slug: null, deployedUrl: 'https://old-cuts.aibarber.org', ownerUserId: 'u-b' } as SiteRecord);
+    await expect(restore(base({ accessToken: async () => 't', iosSite: err(404, 'no-site') as never }))).rejects.toMatchObject({ code: 'no-site' });
+    expect(await store.loadPendingPublish()).toBeNull();
+  });
+
+  test('an unpublished draft claimed by Restore is an ordinary publish: a 409 stops with its words and does not lock', async () => {
+    sb.setSession({ access_token: 't', user: { id: 'u-b' } });
+    await store.saveSite({ ...site, ownerUserId: 'u-b' } as SiteRecord);
+    expect(await restore(base({ accessToken: async () => 't', iosSite: err(404, 'no-site') as never }))).toEqual({ claim: 'publish' });
+    expect((await store.loadPendingPublish())?.state).toBeUndefined();
+    const out = await resumePendingPublish(makeDeps({ ...signedIn, iosPublish: err(409, 'account-has-site', { slug: 'old-cuts' }) as never }));
+    expect(out).toMatchObject({ kind: 'blocked', message: expect.stringContaining('old-cuts') });
+    expect(await store.loadPendingPublish()).toBeNull();
   });
 
   test('signed out + paid-unclaimed: never asks the site endpoint; the pending publish is saved as unclaimed -> /claim', async () => {

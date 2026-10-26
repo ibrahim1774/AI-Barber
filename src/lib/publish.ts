@@ -333,10 +333,13 @@ export async function publishFlow(site: SiteRecord, deps: PublishDeps): Promise<
     const paidBefore = !!prior && (prior.state != null || prior.transactionId != null);
     const baseVersion = (await deps.store.loadSite().catch(() => null))?.serverVersion;
     let paid = false;
+    // A paywall "restored" is the Apple ID's earlier purchase, not a payment made now: it never locks the app.
+    let bought = false;
     if (!paidBefore && !(await deps.hasEntitlement().catch(() => false))) {
       const result = await deps.showPaywall();
       if (result === 'declined') return { kind: 'declined' } as const;
       paid = true;
+      bought = result === 'purchased';
       // Remember the purchase before anything else can fail; the id is looked up next.
       await deps.store.savePendingPublish({
         transactionId: null, data, createdAt: Date.now(), baseVersion, ...(token ? {} : { state: 'unclaimed' as const }),
@@ -368,7 +371,9 @@ export async function publishFlow(site: SiteRecord, deps: PublishDeps): Promise<
           // A legacy purchase that already has a site is claimed by signing up or in, like any other.
           const hasSite = e instanceof ApiError && e.status === 409 && e.code === 'purchase-has-site';
           // Not bought just now and the check failed: nothing was saved, nothing to claim. Say so; never lock the app.
-          if (!paid && !paidBefore && !hasSite) {
+          if (!bought && !paidBefore && !hasSite) {
+            // A paywall "restored" saved a record before this check: with nothing to claim it goes again.
+            if (paid) await deps.store.savePendingPublish(null);
             return claimed
               ? ({ kind: 'blocked', message: CLAIMED_SIGNED_OUT_MESSAGE } as const)
               : ({ kind: 'pending', message: CHECK_FAILED_MESSAGE, ...(e instanceof ApiError && e.status === 0 ? { offline: true } : {}) } as const);
