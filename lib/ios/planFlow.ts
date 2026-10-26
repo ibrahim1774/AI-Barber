@@ -106,14 +106,6 @@ export function planView(shop: Pick<ShopRow, 'ios_otid'>, row: PurchaseRow | nul
 const err = (status: number, error: string, extra: Record<string, unknown> = {}): FlowResult => ({ status, body: { error, ...extra } });
 const invalidTx = () => err(400, 'invalid', { field: 'transactionId' });
 
-async function owner(auth: Auth, deps: PlanDeps) {
-  const a = await authenticate(auth, deps.getUser);
-  if (a.ok === false) return { result: { status: a.status, body: a.body } as FlowResult };
-  const shop = await deps.shopByOwner(a.user.id);
-  if (!shop) return { result: err(404, 'no-shop') };
-  return { user: a.user, shop };
-}
-
 /**
  * GET /api/shop/plan. With a shop: the shop's purchase. With NO shop (a signed-in account still
  * setting up Bookings / Store): the caller's OWN purchase, i.e. the newest active ios_purchases row
@@ -160,10 +152,12 @@ export async function getPlan(auth: Auth, deps: PlanDeps): Promise<FlowResult> {
  * (the write limit), failing open.
  */
 export async function refreshPlan(auth: Auth, body: unknown, deps: PlanDeps): Promise<FlowResult> {
-  const o = await owner(auth, deps);
-  if (o.result) return o.result;
-  const { user } = o;
-  let shop = o.shop;
+  // A signed-in account with NO shop (still setting up Bookings / Store, or one that just moved a subscription here)
+  // is valid: it refreshes and links its own purchase; the shop is created later in setup.
+  const a = await authenticate(auth, deps.getUser);
+  if (a.ok === false) return { status: a.status, body: a.body };
+  const user = a.user;
+  const shopRow = await deps.shopByOwner(user.id);
   const raw = isObj(body) ? body.transactionId : undefined;
   const transactionId = typeof raw === 'string' ? raw.trim() : '';
   if (!/^\d{1,32}$/.test(transactionId)) return invalidTx();
@@ -198,6 +192,8 @@ export async function refreshPlan(auth: Auth, body: unknown, deps: PlanDeps): Pr
     const other = await otherAccountBody(deps.emailOf, row.user_id, row);
     return err(409, 'purchase-in-use', { reason: other.error, hint: other.hint, ownerHint: other.ownerHint, hasLiveSite: other.hasLiveSite });
   }
+  if (!shopRow) return refreshNoShop(user.id, tx, row, now(), deps);
+  let shop = shopRow;
   // An unlinked purchase whose slug/shop already belongs to another account is theirs, not this
   // caller's (the same Apple ID under a second email). Nothing attached yet: first signed-in claim wins.
   if (!row.user_id && row.site_slug && shop.ios_otid !== otid && deps.bindingOwner) {
@@ -242,6 +238,41 @@ export async function refreshPlan(auth: Auth, body: unknown, deps: PlanDeps): Pr
     }
   }
   return { status: 200, body: planView(shop, linkedRow, now(), user.id) };
+}
+
+/**
+ * POST for an account with no shop: the purchase is the caller's own when it is linked to them; an unlinked,
+ * active one is linked to them (unless its bound slug belongs to someone else's shop). Returns the same view GET
+ * gives a no-shop account (`linked` stays false: there is no shop to link).
+ */
+async function refreshNoShop(userId: string, tx: VerifiedTx, row: PurchaseRow, nowMs: number, deps: PlanDeps): Promise<FlowResult> {
+  let mine = row.user_id === userId ? row : null;
+  if (!mine && !row.user_id && isActive(tx, nowMs)) {
+    if (row.site_slug && deps.bindingOwner) {
+      const owner = await deps.bindingOwner(row);
+      if (owner && owner !== userId) {
+        const other = await otherAccountBody(deps.emailOf, owner === 'ambiguous' ? null : owner, row);
+        return err(409, 'purchase-in-use', { reason: other.error, hint: other.hint, ownerHint: other.ownerHint, hasLiveSite: other.hasLiveSite });
+      }
+    }
+    try {
+      if (await deps.setUserIfUnlinked(row.original_transaction_id, userId)) mine = { ...row, user_id: userId };
+      else {
+        const again = await deps.purchase(row.original_transaction_id);
+        if (again?.user_id && again.user_id !== userId) {
+          const other = await otherAccountBody(deps.emailOf, again.user_id, again);
+          return err(409, 'purchase-in-use', { reason: other.error, hint: other.hint, ownerHint: other.ownerHint, hasLiveSite: other.hasLiveSite });
+        }
+        if (again?.user_id === userId) mine = again;
+      }
+    } catch (e: any) {
+      console.error('[shop/plan] linking purchase to account failed:', e?.message || e);
+    }
+  }
+  const view = mine && purchaseLive(mine, nowMs)
+    ? { ...planView({ ios_otid: mine.original_transaction_id }, mine, nowMs, userId), linked: false }
+    : planView({ ios_otid: null }, null, nowMs, userId);
+  return { status: 200, body: view };
 }
 
 /** Real dependencies for api/shop/plan.ts (service-role Supabase, Apple). */
