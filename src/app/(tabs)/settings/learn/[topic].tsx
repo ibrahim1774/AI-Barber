@@ -1,12 +1,35 @@
 import { useEffect } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import { colors, fonts } from '@/constants/theme';
 import { BackButton } from '@/components/BackButton';
 import { ChevronRightIcon } from '@/components/Icons';
 import { Page } from '@/components/Page';
 import { track } from '@/lib/analytics';
+import { SUPPORT_URL } from '@/lib/policyLinks';
 import { nextInSection, topicFor } from '@/lib/learnContent';
+
+const LINK = /(https?:\/\/[^\s]*[^\s.,)]|[\w.+-]+@[\w-]+\.[\w.]*\w)/;
+
+/** Opens a link the way Settings does: web pages in the in-app browser, email addresses in the mail app. */
+const openLink = (part: string) => {
+  if (part.startsWith('http')) void WebBrowser.openBrowserAsync(part.endsWith('/support') ? SUPPORT_URL : part).catch(() => {});
+  else Linking.openURL(`mailto:${part}`).catch(() => Alert.alert('Support', `Email us at ${part}.`));
+};
+
+/** A step's words, with any web address or email address made tappable. */
+function StepText({ text }: { text: string }) {
+  return (
+    <Text style={styles.stepText}>
+      {text.split(LINK).map((part, i) =>
+        i % 2 === 1 ? (
+          <Text key={i} style={styles.link} accessibilityRole="link" onPress={() => openLink(part)}>{part}</Text>
+        ) : part,
+      )}
+    </Text>
+  );
+}
 
 /** One Learn topic: a short intro line and numbered steps. An unknown topic goes back to the list. */
 export default function LearnTopic() {
@@ -25,7 +48,7 @@ export default function LearnTopic() {
       {current.steps.map((step, i) => (
         <View key={i} style={styles.step}>
           <Text style={styles.num}>{i + 1}</Text>
-          <Text style={styles.stepText}>{step}</Text>
+          <StepText text={step} />
         </View>
       ))}
       {next && (
@@ -50,6 +73,7 @@ const styles = StyleSheet.create({
   step: { flexDirection: 'row', gap: 10, marginTop: 10 },
   num: { fontFamily: fonts.bodyBold, fontSize: 14, lineHeight: 20, color: colors.accent, width: 18 },
   stepText: { flex: 1, fontFamily: fonts.body, fontSize: 14, lineHeight: 20, color: colors.text },
+  link: { color: colors.accent, textDecorationLine: 'underline' },
   next: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, marginTop: 10 },
   nextText: { fontFamily: fonts.bodySemi, fontSize: 15, color: colors.accent },
 });

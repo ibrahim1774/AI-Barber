@@ -1,8 +1,11 @@
 import React from 'react';
 import fs from 'fs';
 import path from 'path';
+import { Linking } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { allText, press, pressRow, render } from './store/render';
 
+jest.mock('expo-web-browser', () => ({ openBrowserAsync: jest.fn(() => Promise.resolve()) }));
 const mockRouter = { push: jest.fn(), back: jest.fn(), replace: jest.fn() };
 let mockParams: { topic?: string } = {};
 jest.mock('expo-router', () => {
@@ -68,9 +71,9 @@ describe('Learn how it works: the list', () => {
     expect(allText(tree).join(' | ')).not.toContain(other);
   });
 
-  it('is compact: 12 to 16 topics, no subtitles, no video', async () => {
+  it('is compact: 12 to 24 topics, no subtitles, no video', async () => {
     expect(LEARN_TOPICS.length).toBeGreaterThanOrEqual(12);
-    expect(LEARN_TOPICS.length).toBeLessThanOrEqual(16);
+    expect(LEARN_TOPICS.length).toBeLessThanOrEqual(24);
     const tree = await render(<LearnList />);
     await press(tree, 'Bookings');
     expect(hasVideo(tree)).toBe(false);
@@ -96,18 +99,19 @@ describe('Learn content', () => {
     }
   });
 
-  it('every topic has a short intro and 3 to 8 written steps', () => {
+  it('every topic has a short intro and 6 to 12 small written steps', () => {
     for (const t of LEARN_TOPICS) {
       expect(t.detail.length).toBeGreaterThan(10);
       expect(t.detail.length).toBeLessThanOrEqual(110);
-      expect(t.steps.length).toBeGreaterThanOrEqual(3);
-      expect(t.steps.length).toBeLessThanOrEqual(8);
+      expect(t.steps.length).toBeGreaterThanOrEqual(6);
+      expect(t.steps.length).toBeLessThanOrEqual(12);
+      for (const step of t.steps) expect(step.length).toBeLessThanOrEqual(260);
     }
   });
 
   it('covers every feature: payment methods, how to get paid, and each section has topics', () => {
     const slugs = LEARN_TOPICS.map((t) => t.slug);
-    expect(slugs).toEqual(expect.arrayContaining(['payment-methods', 'get-paid', 'calendar', 'store', 'team', 'publish']));
+    expect(slugs).toEqual(expect.arrayContaining(['payment-methods', 'get-paid', 'calendar', 'store', 'store-shipping', 'store-payments', 'store-orders', 'team', 'publish', 'domain', 'services-hours', 'settings-plan', 'help']));
     const pm = LEARN_TOPICS.find((t) => t.slug === 'payment-methods')!.steps.join(' ');
     for (const label of ['Customers pay when they arrive', 'Save handles', 'Connect cards with Stripe']) expect(pm).toContain(label);
   });
@@ -117,6 +121,20 @@ describe('Learn content', () => {
     for (const label of ['Bookings tab', 'Set up bookings', 'Store tab', 'Settings tab', 'Publish', 'Add product', 'Mark paid', 'Add a barber']) {
       expect(all).toContain(label);
     }
+  });
+
+  it('splits the store into separate topics and ends the list with Get help', () => {
+    expect(topicsIn('store').map((t) => t.title)).toEqual(['Open your shop and add products', 'Pickup and shipping', 'Payments', 'Orders and customers']);
+    const last = LEARN_TOPICS[LEARN_TOPICS.length - 1];
+    expect(last.title).toBe('Get help');
+  });
+
+  it('matches current behaviour: Back and resume, Move subscription, no confirm field, no videos', () => {
+    const all = LEARN_TOPICS.flatMap((t) => t.steps).join(' ');
+    expect(all).toContain('Back to return to the editor');
+    expect(all).toContain('Move subscription to this account');
+    expect(all).toContain('Restore purchases');
+    expect(all).not.toMatch(/confirm (your )?password|video|watch/i);
   });
 
   it('has no placeholder text anywhere in the copy or the screens', () => {
@@ -182,6 +200,18 @@ describe('Learn how it works: a topic screen', () => {
       mockParams = { topic: list[list.length - 1].slug };
       expect(allText(await render(<LearnTopic />)).join(' ')).not.toMatch(/Next:/);
     }
+  });
+
+  it('Get help shows the support page and email as tappable links', async () => {
+    const open = jest.spyOn(Linking, 'openURL').mockResolvedValue(true as never);
+    mockParams = { topic: 'help' };
+    const tree = await render(<LearnTopic />);
+    const links = tree.root.findAll((n: any) => n.type === 'Text' && n.props?.accessibilityRole === 'link' && typeof n.props.onPress === 'function');
+    expect(links.map((l: any) => l.props.children)).toEqual(['https://www.aibarber.org/support', 'support@davoxa.com']);
+    links[0].props.onPress();
+    expect(WebBrowser.openBrowserAsync).toHaveBeenCalledWith('https://www.aibarber.org/support?app=1');
+    links[1].props.onPress();
+    expect(open).toHaveBeenCalledWith('mailto:support@davoxa.com');
   });
 
   it('an unknown topic falls back to the list', async () => {
