@@ -25,6 +25,7 @@ import { buildPageSet, canonicalBase, hasFilePages, isMultiPage, singlePageSet, 
 import { euphoriaRootStyle, generateEuphoriaHTMLWithPlaceholders } from './euphoria.js';
 import { generatePrimeHTMLWithPlaceholders, primeRootStyle } from './prime.js';
 import { safeHref } from './safeHref.js';
+import { telHref } from './telHref.js';
 import { SHELLS, escapeAttr, footerHtml, headerHtml, navItemsFor, navListHtml, type RenderCtx } from './shell.js';
 
 export interface RenderSiteOptions {
@@ -124,7 +125,6 @@ export function renderSiteBundle(rawData: WebsiteData, opts: RenderSiteOptions =
   const niche = nicheOf(d);
   const phone = plainText(d.phone);
   const L = (key: Parameters<typeof t>[1]) => t(d.labels, key, niche, d);
-  const digits = phone.replace(/\D/g, '');
   const bookingUrl = safeHref(d.bookingUrl);
   const shop = plainText(d.shopName);
   // What the header and footer PRINT keeps the editor's markers (markers.ts); decisions, titles and links use the plain values above.
@@ -137,7 +137,7 @@ export function renderSiteBundle(rawData: WebsiteData, opts: RenderSiteOptions =
     const nav = navListHtml(navItemsFor(template, set, d, file.key), L('pgMenu'), L('pgMore'));
     if (template === 'luxe') return headerHtml('luxe', { name: shopShown, phone, shownPhone: escapeAttr(displayPhone(phoneShown)), nav });
     if (template === 'prime') {
-      const href = bookingUrl || (digits ? `tel:+1${digits}` : '');
+      const href = bookingUrl || telHref(phone);
       return headerHtml('prime', { name: shopShown, cta: href ? { href, label: L('primeNavBook'), newTab: !!bookingUrl && !bookingUrl.startsWith('/') } : null, nav });
     }
     const href = bookingUrl || (/\d/.test(phone) ? `tel:${phone.replace(/\s+/g, '')}` : '');

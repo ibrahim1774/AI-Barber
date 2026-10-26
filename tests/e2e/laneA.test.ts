@@ -145,9 +145,8 @@ describe('A4 card-only checkout constants (Stripe test-mode contract)', () => {
 });
 
 describe('A5 custom domain name validation', () => {
-  // S3 (open): a trailing dot defeats the ".com" strip, so the search suggests freshcutscom.com. it.fails flips to red when fixed.
-  it.fails('S3: normalizeLabel("freshcuts.com.") should be "freshcuts" (lib/ios/domainNames.ts:24)', () => {
-    expect(normalizeLabel('freshcuts.com.')).toBe('freshcuts');
+  it.each(['freshcuts.com.', 'freshcuts.com..', 'https://www.freshcuts.com./', 'freshcuts.'])('S3: normalizeLabel(%j) is "freshcuts"', (q) => {
+    expect(normalizeLabel(q)).toBe('freshcuts');
   });
   const bad = ['', 'a.com', 'ab.com', '-ab.com', 'ab-.com', 'fresh cuts.com', 'fresh_cuts.com', 'FreshCuts.com', 'freshcuts.com.', 'freshcuts.COM',
     'freshcuts.net', 'freshcuts', '.com', 'www.freshcuts.com', 'sub.freshcuts.com', 'xn--caf-dma.com', 'ca--fe.com', 'café.com', 'bärber.com',
