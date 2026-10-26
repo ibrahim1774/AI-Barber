@@ -52,9 +52,18 @@ export default function SitePreview({ data, editable, shopProducts, page, onEdit
     shownPage.current = pageKey;
     scrollY.current = 0;
   }
-  const html = useMemo(() => buildPreviewHtml(data, editable, shopProducts, page), [data, editable, shopProducts, page]);
+  // Keyed on pageKey, not on the `page` object: the Edit tab builds a fresh { key: 'home' } on every render, and a new
+  // object here rebuilt the HTML (Date.now inside) and reloaded the WebView on every unrelated state change - the flash.
+  const pageRef = useRef(page);
+  pageRef.current = page;
+  const html = useMemo(
+    () => buildPreviewHtml(data, editable, shopProducts, pageRef.current),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [data, editable, shopProducts, pageKey],
+  );
   const source = useMemo(() => ({ html }), [html]);
-  const editPaths = useMemo(() => (editable ? previewEditPaths(data, page) : []), [data, editable, page]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const editPaths = useMemo(() => (editable ? previewEditPaths(data, pageRef.current) : []), [data, editable, pageKey]);
   // The site's own background behind the page. On iOS (Fabric) the WKWebView
   // is transparent, so this view is what the overscroll bounce, a reload and
   // any inset below the footer show: never a fixed or light colour.

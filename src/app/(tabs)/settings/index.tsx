@@ -100,8 +100,9 @@ export default function Settings() {
   };
 
   const standalone = site === null;
-  // Hidden until the site is known, so Edit can't be tapped with no site.
-  const tabBarHidden = site == null;
+  // Hidden only once it is KNOWN there is no site (Edit can't be tapped then). While loading (undefined) the bar stays
+  // as it is: hiding it until the read finished made the tab bar vanish and return on the first switch to Settings.
+  const tabBarHidden = site === null;
   useLayoutEffect(() => {
     navigation.setOptions({ tabBarStyle: tabBarStyle(tabBarHidden) });
   }, [navigation, tabBarHidden]);

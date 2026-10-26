@@ -21,7 +21,7 @@ const draft = { draftId: 'd1', inputs: { shopName: 'Fade' }, data, updatedAt: 1,
 const LIVE = { siteId: 'fade', deployedUrl: 'https://fade.aibarber.org', republished: false };
 const A = { id: 'user-a', email: 'a@example.com' };
 const B = { id: 'user-b', email: 'b@example.com' };
-const form = (email: string): ClaimValues => ({ name: 'Jo', email, phone: '5125550142', password: 'hunter22!', confirm: 'hunter22!' });
+const form = (email: string): ClaimValues => ({ name: 'Jo', email, phone: '5125550142', password: 'hunter22!' });
 
 /** supabase signInWithPassword that opens a session for whoever the email names. */
 function accounts() {

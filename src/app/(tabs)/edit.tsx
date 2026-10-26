@@ -217,7 +217,8 @@ export default function Editor() {
       // Back on a locked tab (from the paywall, Settings, the background): look again now.
       if (getSubscriptionStatus() === 'lapsed') recheckSubscriptionStatus(true);
       let alive = true;
-      loadMyShop().then((sh) => alive && setShop(sh)).catch(() => {});
+      // The same shop again keeps the state object: a new one re-rendered the editor on every tab focus.
+      loadMyShop().then((sh) => alive && setShop((prev) => (JSON.stringify(prev) === JSON.stringify(sh) ? prev : sh))).catch(() => {});
       // An admin edit made from the server is adopted in the background (the
       // onSiteAdopted subscriber below reloads the editor). Silent on any
       // failure, never blocks editing. A notice left from launch is shown here.

@@ -24,19 +24,22 @@ import { loadPendingPublish, loadSite, savePendingPublish } from '@/lib/siteStor
 import { supabase } from '@/lib/supabase';
 
 type Banner = { tone: 'error' | 'waiting'; message: string } | null;
-const EMPTY: ClaimValues = { name: '', email: '', phone: '', password: '', confirm: '' };
+const EMPTY: ClaimValues = { name: '', email: '', phone: '', password: '' };
 
 /**
  * The account step after payment (pay -> account -> live). REQUIRED and locked: no back chevron, no swipe back
  * (gestureEnabled false in _layout), the Android back button is swallowed, and it sits outside the tabs. A kill or a
  * relaunch while the purchase is paid-but-unclaimed comes straight back here (_layout's guard).
  *
- * Four required fields, all empty (nothing is prefilled): name, email, phone, password + confirmation. No email
+ * Four required fields, all empty (nothing is prefilled): name, email, phone, password (one field). No email
  * verification: the server creates the account confirmed and the app signs in with the same email + password.
  * "Already have an account? Sign in" swaps the form inside this same screen. With a session already (a relaunch, a
  * password reset) the pending publish is simply sent. Failures stay on the form, in words.
  */
 export default function Claim() {
+  // Why the password hint is plain 'password' (never 'newPassword'): on iOS a secure field marked newPassword next to a
+  // username field turns on Automatic Strong Password, which swaps the keyboard (letters -> numbers -> back to letters
+  // after one digit) and re-lays-out the form each time. Keychain still offers saved logins from 'password'.
   const deps = usePublishDeps();
   const depsRef = useRef(deps);
   depsRef.current = deps;
@@ -71,7 +74,7 @@ export default function Claim() {
   const busyRef = useRef(false);
   const refs: Record<ClaimField, React.RefObject<TextInput | null>> = {
     name: useRef<TextInput>(null), email: useRef<TextInput>(null), phone: useRef<TextInput>(null),
-    password: useRef<TextInput>(null), confirm: useRef<TextInput>(null),
+    password: useRef<TextInput>(null),
   };
 
   // Locked: the hardware back button does nothing here.
@@ -319,19 +322,11 @@ export default function Claim() {
         {signup && !!errors.phone && <FieldError text={errors.phone} />}
         <Field
           ref={refs.password} tone="form" label={signup ? 'Password (min 8 characters)' : 'Password'} value={values.password}
-          onChangeText={set('password')} secureTextEntry autoComplete={signup ? 'new-password' : 'current-password'}
-          textContentType={signup ? 'newPassword' : 'password'} returnKeyType={signup ? 'next' : 'go'} editable={!busy}
-          onSubmitEditing={() => (signup ? refs.confirm.current?.focus() : submit())}
+          onChangeText={set('password')} secureTextEntry autoComplete={signup ? 'password' : 'current-password'}
+          textContentType="password" returnKeyType="go" editable={!busy}
+          onSubmitEditing={submit}
         />
         {!!errors.password && <FieldError text={errors.password} />}
-        {signup && (
-          <Field
-            ref={refs.confirm} tone="form" label="Confirm Password" value={values.confirm} onChangeText={set('confirm')}
-            secureTextEntry autoComplete="new-password" textContentType="newPassword" returnKeyType="go" onSubmitEditing={submit}
-            editable={!busy}
-          />
-        )}
-        {signup && !!errors.confirm && <FieldError text={errors.confirm} />}
         {!signup && (
           <Pressable onPress={forgot} hitSlop={8} accessibilityRole="link" style={styles.forgotRow}>
             <Text style={styles.forgot}>Forgot password?</Text>
