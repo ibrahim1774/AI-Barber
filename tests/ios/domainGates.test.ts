@@ -123,7 +123,7 @@ describe('every site gate refuses a domain transaction', () => {
     const r = await refreshPlan('Bearer jwt', { transactionId: '2000000123' }, {
       getUser: async () => ({ id: 'u1', email: null, fullName: null }),
       shopByOwner: async () => ({ id: 'shop1', ios_otid: null }),
-      purchase: vi.fn(), verify, upsertVerified, setShopOtid, setUser: vi.fn(), now: () => NOW,
+      purchase: vi.fn(), verify, upsertVerified, setShopOtid, setUserIfUnlinked: vi.fn(async () => true), now: () => NOW,
     } as any);
     expect(r).toEqual({ status: 400, body: { error: 'invalid', field: 'transactionId' } });
     expect(setShopOtid).not.toHaveBeenCalled();
@@ -132,7 +132,7 @@ describe('every site gate refuses a domain transaction', () => {
 
   it('shop setup / bookings purchase verifier → throws before any ios_purchases row is written', async () => {
     const upsertVerified = vi.fn();
-    const pv = makePurchaseVerifier(async () => ({ verify, repo: { upsertVerified, setUser: vi.fn() } }));
+    const pv = makePurchaseVerifier(async () => ({ verify, repo: { upsertVerified, setUserIfUnlinked: vi.fn(async () => true) } }));
     await expect(pv.verify('dom-t1')).rejects.toMatchObject({ code: 'bad-product' });
     expect(upsertVerified).not.toHaveBeenCalled();
   });

@@ -37,12 +37,12 @@ export interface PurchasesRepo {
   bindSlug(otid: string, slug: string): Promise<boolean>;
   slugTaken(slug: string): Promise<boolean>;
   markPublished(otid: string): Promise<void>;
-  setUser(otid: string, userId: string): Promise<void>;
   /**
-   * Link the purchase to this account only while it has none (conditional in SQL): never
-   * re-points an existing owner. True when this call linked it. Optional for older fakes.
+   * THE ONLY writer of ios_purchases.user_id (besides the FK's ON DELETE SET NULL): a single
+   * conditional UPDATE ... WHERE user_id IS NULL, so it never re-points an existing owner and of two
+   * racing accounts exactly one gets true. False = already linked (to anyone, the caller included).
    */
-  setUserIfUnlinked?(otid: string, userId: string): Promise<boolean>;
+  setUserIfUnlinked(otid: string, userId: string): Promise<boolean>;
   applyNotification(n: {
     otid: string; productId: string; environment: IosEnv; expiresAt: number | null; revokedAt: number | null; type: string;
     /** REFUND_REVERSED: set revoked_at = null (wins over revokedAt). */
@@ -210,11 +210,6 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
     async markPublished(otid) {
       const { error } = await db().from(TABLE).update({ published_at: new Date().toISOString() }).eq('original_transaction_id', otid);
       if (error) fail('markPublished', error);
-    },
-
-    async setUser(otid, userId) {
-      const { error } = await db().from(TABLE).update({ user_id: userId }).eq('original_transaction_id', otid);
-      if (error) fail('setUser', error);
     },
 
     async setUserIfUnlinked(otid, userId) {

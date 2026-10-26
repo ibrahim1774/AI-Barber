@@ -58,7 +58,7 @@ export type BindingOwner = string | 'ambiguous' | null;
  * ios_otid is the purchase, else the one owning the sites row at the purchase's slug URL. Null when
  * nothing is attached yet (a no-account publish nobody has synced), 'ambiguous' for several owners.
  */
-export async function liveBindingOwner(row: PurchaseRow): Promise<BindingOwner> {
+export async function liveBindingOwner(row: Pick<PurchaseRow, 'original_transaction_id' | 'site_slug'>): Promise<BindingOwner> {
   const db = adminClient();
   const { data: shop, error } = await db.from('ab_shops').select('owner_id').eq('ios_otid', row.original_transaction_id).maybeSingle();
   if (error) throw new Error(`ab_shops ownership lookup failed: ${error.message}`);

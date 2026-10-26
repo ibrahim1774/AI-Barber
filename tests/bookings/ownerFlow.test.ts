@@ -447,7 +447,7 @@ describe('POST /api/shop/setup', () => {
 
     const w2 = fresh();
     const r2 = await setup(w2, { ...body, transactionId: '2000000555' }); // verifies to OTID, owned by OWNER_USER
-    expect(r2).toEqual({ status: 409, body: { error: 'purchase-in-use' } });
+    expect(r2).toEqual({ status: 409, body: { error: 'purchase-other-account', hint: null } });
     expect(w2.state.shops).toHaveLength(1);
   });
 
@@ -457,7 +457,7 @@ describe('POST /api/shop/setup', () => {
     w.state.purchases[NEW_OTID] = { user_id: null, product_id: 'com.ibrahim1774.aibarber.store.monthly', revoked_at: null, taken_down_at: null };
     (w.deps.purchases!.verify as any).mockResolvedValueOnce({ originalTransactionId: NEW_OTID });
     expect((await setup(w, { ...body, transactionId: '2000000555' })).status).toBe(200);
-    expect(w.deps.purchases!.setUser).toHaveBeenCalledWith(NEW_OTID, NEW_USER);
+    expect(w.deps.purchases!.linkUserIfUnlinked).toHaveBeenCalledWith(NEW_OTID, NEW_USER);
     expect(w.state.purchases[NEW_OTID].user_id).toBe(NEW_USER);
   });
 
@@ -466,7 +466,7 @@ describe('POST /api/shop/setup', () => {
     const NEW_OTID = '2000000778';
     w.state.purchases[NEW_OTID] = { user_id: null, product_id: 'com.ibrahim1774.aibarber.store.monthly', revoked_at: null, taken_down_at: null };
     (w.deps.purchases!.verify as any).mockResolvedValueOnce({ originalTransactionId: NEW_OTID });
-    (w.deps.purchases!.setUser as any).mockRejectedValueOnce(new Error('db down'));
+    (w.deps.purchases!.linkUserIfUnlinked as any).mockRejectedValueOnce(new Error('db down'));
     const err = vi.spyOn(console, 'error').mockImplementation(() => {});
     expect((await setup(w, { ...body, transactionId: '2000000555' })).status).toBe(200);
     expect(w.state.shops.some((sh: any) => sh.owner_id === NEW_USER)).toBe(true);
@@ -476,7 +476,69 @@ describe('POST /api/shop/setup', () => {
   it("does not re-attach a purchase that is already the caller's", async () => {
     const w = world();
     expect((await setupShop(AUTH, { ...body, transactionId: '2000000555' }, w.deps)).status).toBe(200);
-    expect(w.deps.purchases!.setUser).not.toHaveBeenCalled();
+    expect(w.state.purchases[OTID].user_id).toBe(OWNER_USER); // untouched
+  });
+
+  describe('ownership of the purchase (plan 2026-10-26: never movable)', () => {
+    const NEW_OTID = '2000000901';
+    const unlinked = (w: ReturnType<typeof fresh>, slug: string | null = null) => {
+      w.state.purchases[NEW_OTID] = { user_id: null, product_id: 'com.ibrahim1774.aibarber.store.monthly', revoked_at: null, taken_down_at: null, site_slug: slug } as any;
+      (w.deps.purchases!.verify as any).mockResolvedValue({ originalTransactionId: NEW_OTID });
+    };
+
+    it('an unlinked purchase bound to ANOTHER account\'s shop/site: 409, nothing created or linked', async () => {
+      const w = fresh();
+      unlinked(w, 'jacks-barbershop');
+      w.deps.bindingOwner = vi.fn(async () => OWNER_USER);
+      const shops = w.state.shops.length;
+      const r = await setup(w, { ...body, transactionId: '2000000555' });
+      expect(r).toEqual({ status: 409, body: { error: 'purchase-other-account', hint: null } });
+      expect(w.state.purchases[NEW_OTID].user_id).toBeNull();
+      expect(w.state.shops).toHaveLength(shops);
+      expect(w.deps.purchases!.linkUserIfUnlinked).not.toHaveBeenCalled();
+    });
+
+    it('an ambiguous binding is never claimed either', async () => {
+      const w = fresh();
+      unlinked(w, 'x');
+      w.deps.bindingOwner = vi.fn(async () => 'ambiguous' as const);
+      expect((await setup(w, { ...body, transactionId: '2000000555' })).status).toBe(409);
+      expect(w.state.purchases[NEW_OTID].user_id).toBeNull();
+    });
+
+    it('the caller owns the bound site: it links', async () => {
+      const w = fresh();
+      unlinked(w, 'mine');
+      w.deps.bindingOwner = vi.fn(async () => NEW_USER);
+      expect((await setup(w, { ...body, transactionId: '2000000555' })).status).toBe(200);
+      expect(w.state.purchases[NEW_OTID].user_id).toBe(NEW_USER);
+    });
+
+    it('the race: another account links between our read and our link. One winner; the loser gets 409 and no shop link is left', async () => {
+      const w = fresh();
+      unlinked(w);
+      (w.deps.purchases!.linkUserIfUnlinked as any).mockImplementationOnce(async () => { w.state.purchases[NEW_OTID].user_id = OWNER_USER; return false; });
+      const r = await setup(w, { ...body, transactionId: '2000000555' });
+      expect(r.status).toBe(409);
+      expect((r.body as any).error).toBe('purchase-other-account');
+      expect(w.state.purchases[NEW_OTID].user_id).toBe(OWNER_USER); // the winner is untouched
+      expect(w.state.shops.some((s: any) => s.ios_otid === NEW_OTID)).toBe(false);
+    });
+
+    it('a lost race to the SAME account is fine', async () => {
+      const w = fresh();
+      unlinked(w);
+      (w.deps.purchases!.linkUserIfUnlinked as any).mockImplementationOnce(async () => { w.state.purchases[NEW_OTID].user_id = NEW_USER; return false; });
+      expect((await setup(w, { ...body, transactionId: '2000000555' })).status).toBe(200);
+    });
+
+    it('a shop that is taken (409 purchase-in-use) leaves the purchase unlinked', async () => {
+      const w = fresh();
+      unlinked(w);
+      w.state.shops[0].ios_otid = NEW_OTID; // someone else\'s shop holds it
+      expect((await setup(w, { ...body, transactionId: '2000000555' })).status).toBe(409);
+      expect(w.state.purchases[NEW_OTID].user_id).toBeNull();
+    });
   });
 
   it('maps verifier failures', async () => {

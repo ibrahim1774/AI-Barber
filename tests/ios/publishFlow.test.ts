@@ -91,7 +91,7 @@ function fakes(o: FakeOpts = {}) {
     }),
     slugTaken: vi.fn(async () => false),
     markPublished: vi.fn(async (otid: string) => { rows.get(otid)!.published_at = new Date(NOW).toISOString(); }),
-    setUser: vi.fn(async (otid: string, userId: string) => { rows.get(otid)!.user_id = userId; }),
+    setUserIfUnlinked: vi.fn(async (otid: string, userId: string) => { const r = rows.get(otid); if (!r || r.user_id) return false; r.user_id = userId; return true; }),
     applyNotification: vi.fn(async () => {}),
     unpublishedBound: vi.fn(async () => []),
     takedownCandidates: vi.fn(async () => []),
@@ -348,7 +348,6 @@ describe('runIosPublish', () => {
     const f = withAuth(fakes());
     const r = await runIosPublish(input({ userId: USER }), f.deps);
     expect(r.status).toBe(200);
-    expect(f.repo.setUser).not.toHaveBeenCalled();
     expect(f.repo.setUserIfUnlinked).not.toHaveBeenCalled();
     expect(f.rows.get(OTID)!.user_id).toBeNull();
   });
@@ -367,7 +366,6 @@ describe('runIosPublish', () => {
     expect(f.deps.writePending).not.toHaveBeenCalled();
     expect(f.repo.bindSlug).not.toHaveBeenCalled();
     expect(f.rows.get(OTID)!.user_id).toBe(USER);
-    expect(f.repo.setUser).not.toHaveBeenCalled();
   });
 
   it('an invalid token, or a failing auth lookup or link, never blocks publishing', async () => {

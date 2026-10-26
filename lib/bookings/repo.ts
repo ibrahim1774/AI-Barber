@@ -297,7 +297,7 @@ export interface BookingRepo {
   // setup
   slugTaken(slug: string): Promise<boolean>;
   insertShop(row: NewShop): Promise<InsertShopResult>;
-  setShopOtid(shopId: string, otid: string): Promise<'ok' | 'taken'>;
+  setShopOtid(shopId: string, otid: string | null): Promise<'ok' | 'taken'>;
   insertMember(row: { shop_id: string; user_id: string; role: 'owner'; display_name: string; sort: number }): Promise<MemberRow>;
   /** Add a barber through the ab_add_member SQL function: locks the shop row, counts active members, refuses at the limit. */
   addMember(row: NewTeamMember): Promise<AddMemberResult>;

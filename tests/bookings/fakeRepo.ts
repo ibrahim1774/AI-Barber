@@ -145,7 +145,7 @@ export function fakeRepo(state: State, nowFn: () => number = Date.now): BookingR
       return { ok: true, row: clone(shop) };
     },
     async setShopOtid(shopId, otid) {
-      if (state.shops.some((s) => s.ios_otid === otid && s.id !== shopId)) return 'taken';
+      if (otid !== null && state.shops.some((s) => s.ios_otid === otid && s.id !== shopId)) return 'taken';
       state.shops.find((s) => s.id === shopId)!.ios_otid = otid;
       return 'ok';
     },
@@ -262,7 +262,7 @@ export function world(over: { shop?: Partial<ShopRow> } = {}) {
     getUser: async (jwt) => users[jwt] ?? null,
     purchases: {
       verify: vi.fn(async () => ({ originalTransactionId: OTID })),
-      setUser: vi.fn(async (otid: string, userId: string) => { if (state.purchases[otid]) state.purchases[otid].user_id = userId; }),
+      linkUserIfUnlinked: vi.fn(async (otid: string, userId: string) => { const p = state.purchases[otid]; if (!p || p.user_id) return false; p.user_id = userId; return true; }),
     },
     rand: (() => { let i = 0; return () => `x${String(i++).padStart(3, '0')}`; })(),
   };

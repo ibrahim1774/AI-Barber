@@ -242,7 +242,16 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
         console.warn(`[ios/publish] ${otid}: linked to another account; refused`);
         return { status: 409, body: await otherAccountBody(deps.emailOf, row.user_id) };
       }
-    } else if (caller && deps.repo.setUserIfUnlinked) {
+    } else if (!caller && row.site_slug && deps.bindingOwner) {
+      // Unlinked, no account on this request: a slug that already belongs to someone's shop/site is
+      // republished only by that account (a bare transactionId proves nothing). A true first publish
+      // (no slug, or nobody attached) still fresh-binds below.
+      const owner = await deps.bindingOwner(row);
+      if (owner) {
+        console.warn(`[ios/publish] ${otid}: bound slug belongs to an account, request has none; refused`);
+        return authDown ? unavailable : { status: 401, body: { error: 'unauthorized' } };
+      }
+    } else if (caller) {
       // A bound slug that already belongs to someone else's shop/site is theirs to claim, not this caller's.
       const owner = row.site_slug && deps.bindingOwner ? await deps.bindingOwner(row) : null;
       if (owner && owner !== caller) {
@@ -408,7 +417,11 @@ export async function runIosSiteLookup(
   ctx: IosPublishContext = {},
 ): Promise<IosSiteLookupResult> {
   const token = bearer(ctx.authorization);
-  if (!token || !deps.userOf) return { status: 401, body: { error: 'unauthorized' } };
+  // Compatibility for app builds that predate the bearer on this call (build 22 and earlier): no
+  // Authorization header at all answers a machine-readable 401 { error: 'auth-required' } BEFORE Apple
+  // is asked and with no site data, so a new app can tell "sign in / send the token" from an invalid or
+  // expired token ('unauthorized'). There is no unauthenticated read of site data, ever.
+  if (!token || !deps.userOf) return { status: 401, body: { error: 'auth-required' } };
   let caller: string | null = null;
   try {
     const user = await deps.userOf(token);
@@ -437,7 +450,7 @@ export async function runIosSiteLookup(
       if (!row.site_slug) return { status: 404, body: { error: 'no-site' } };
       // No disclosure without proof: only the account that owns the shop/site bound to it may link it.
       const owner = deps.bindingOwner ? await deps.bindingOwner(row) : null;
-      if (owner !== caller || !deps.repo.setUserIfUnlinked) {
+      if (owner !== caller) {
         return { status: 409, body: await otherAccountBody(deps.emailOf, owner && owner !== 'ambiguous' ? owner : null) };
       }
       if (!(await deps.repo.setUserIfUnlinked(row.original_transaction_id, caller))) {

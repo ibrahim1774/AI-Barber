@@ -341,7 +341,7 @@ describe('/api/shop/plan relink: only an active purchase takes over the link', (
 
     const theirs = w.apple.buy(PRODUCTS.storeMonthly);
     await w.repo.upsertVerified(await w.apple.verify(theirs.transactionId));
-    await w.repo.setUser(theirs.otid, randomUUID());
+    await w.repo.setUserIfUnlinked(theirs.otid, randomUUID());
     expect((await w.refreshPlan('Bearer owner-jwt', { transactionId: theirs.transactionId }, deps())).body).toEqual({ error: 'purchase-in-use', reason: 'purchase-other-account', hint: null });
     expect(shop.ios_otid).toBe(first.otid);
 

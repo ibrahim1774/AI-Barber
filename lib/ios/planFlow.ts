@@ -40,8 +40,9 @@ export interface PlanDeps {
   purchase(otid: string): Promise<PurchaseRow | null>;
   verify(transactionId: string): Promise<VerifiedTx>;
   upsertVerified(tx: VerifiedTx, opts?: { checkedAt?: number }): Promise<PurchaseRow>;
-  setShopOtid(shopId: string, otid: string): Promise<'ok' | 'taken'>;
-  setUser(otid: string, userId: string): Promise<void>;
+  setShopOtid(shopId: string, otid: string | null): Promise<'ok' | 'taken'>;
+  /** Atomic conditional link (WHERE user_id IS NULL): true = this call linked it; false = it was already linked. */
+  setUserIfUnlinked(otid: string, userId: string): Promise<boolean>;
   /** Masked-hint lookup for a 409 (account id -> email). Absent: hint null. */
   emailOf?(userId: string): Promise<string | null>;
   /** Unlinked purchase (no user_id): which account owns the shop/site bound to it (id, 'ambiguous', null). */
@@ -196,15 +197,27 @@ export async function refreshPlan(auth: Auth, body: unknown, deps: PlanDeps): Pr
     return { status: 200, body: planView(shop, current, now(), user.id) };
   }
   // The shop link first: when another shop already holds this purchase ('taken') nothing is linked.
-  if (shop.ios_otid !== otid) {
+  const before = shop.ios_otid;
+  if (before !== otid) {
     if ((await deps.setShopOtid(shop.id, otid)) === 'taken') return err(409, 'purchase-in-use');
     shop = { ...shop, ios_otid: otid };
   }
   let linkedRow = row;
   if (!row.user_id) {
     try {
-      await deps.setUser(otid, user.id);
-      linkedRow = { ...row, user_id: user.id };
+      if (await deps.setUserIfUnlinked(otid, user.id)) {
+        linkedRow = { ...row, user_id: user.id };
+      } else {
+        // Lost the race (a publish, Restore or setup linked it between our read and now): re-decide.
+        // Someone else's: 409, and the shop link is put back so nothing of theirs is left behind.
+        const again = await deps.purchase(otid);
+        if (again?.user_id && again.user_id !== user.id) {
+          if (before !== otid) await deps.setShopOtid(shop.id, before).catch((e: any) => console.error('[shop/plan] shop link revert failed:', e?.message || e));
+          const other = await otherAccountBody(deps.emailOf, again.user_id);
+          return err(409, 'purchase-in-use', { reason: other.error, hint: other.hint });
+        }
+        if (again) linkedRow = again;
+      }
     } catch (e: any) {
       // Best effort: the ios_otid unique index already stops a second shop on this purchase.
       console.error('[shop/plan] linking purchase to account failed:', e?.message || e);
@@ -226,7 +239,7 @@ export function livePlanDeps(): PlanDeps {
     verify: lazyDefaultVerifier(),
     upsertVerified: (tx, opts) => purchases.upsertVerified(tx, opts),
     setShopOtid: (id, otid) => shops.setShopOtid(id, otid),
-    setUser: (otid, uid) => purchases.setUser(otid, uid),
+    setUserIfUnlinked: (otid, uid) => purchases.setUserIfUnlinked(otid, uid),
     emailOf: liveEmailOf,
     bindingOwner: liveBindingOwner,
     now: Date.now,

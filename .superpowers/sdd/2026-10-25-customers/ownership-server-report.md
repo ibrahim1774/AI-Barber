@@ -42,3 +42,26 @@ New: tests/e2e/ownership.test.ts (20), tests/migration018.test.ts (3). Updated e
 5. Concurrency of two plan POSTs for one unlinked purchase: setUser is not conditional (existing); the shop ios_otid unique index is the guard. Could switch to setUserIfUnlinked.
 6. Old app builds (no bearer on /api/ios/site) now get 401 on Restore: ship the app update first or together.
 7. 018 step 3b guesses the owner from sites.deployed_url only for exact https://<slug>.vercel.app; custom-domain-only rows land in review query V2.
+
+
+# Review fix round (Opus review ownership-server-review.md: H1-H3, M1)
+
+## Single writer of ios_purchases.user_id
+`PurchasesRepo.setUserIfUnlinked(otid, uid)` is the ONLY writer (one `UPDATE ... SET user_id=$uid WHERE original_transaction_id=$otid AND user_id IS NULL`, true = this call linked it). The unconditional `setUser` is deleted from the repo, PlanDeps and the setup verifier (now `linkUserIfUnlinked`). A source-audit test (tests/e2e/ownership.test.ts) fails if any other lib/api code updates user_id on ios_purchases. Callers: publish, /api/ios/site (Restore), plan POST, shop setup. On 0 rows each re-reads the row: another owner = 409, same caller = fine.
+
+## Final endpoint contracts
+- POST /api/shop/setup {transactionId?...} (Bearer): verified purchase linked to another account -> 409 `{error:'purchase-other-account', hint}`. Unlinked + bindingOwner(row) is another account/ambiguous -> same 409, nothing created or linked. Order: ownership check, shop link (setShopOtid, 409 `purchase-in-use` if another shop holds it, purchase stays unlinked), then atomic link; if the link race is lost to another account the shop link is reverted and 409 `purchase-other-account`.
+- POST /api/shop/plan: lost link race -> 409 `{error:'purchase-in-use', reason:'purchase-other-account', hint}` and the shop link is reverted (old error string kept for old builds; key on `reason`).
+- POST /api/ios/publish: linked: owner only (401 no/invalid token, 409 other). Unlinked + bearer: bindingOwner check then atomic link (loser 409). NEW (M1) unlinked + NO bearer + slug already bound to an account's shop/site: 401 `unauthorized` (a true first publish with no slug/owner still fresh-binds).
+- POST /api/ios/site: Bearer required. No Authorization header at all: 401 `{error:'auth-required'}` (compat for old builds, before Apple is asked, no site data, no unauthenticated read ever). Present but bad/expired token: 401 `{error:'unauthorized'}`. Else 200 / 409 `purchase-other-account` / 404 as before.
+- POST /api/ios/take-offline: unchanged. A purchase linked to an account needs the owner's Bearer: no token 403 `sign-in-required`, wrong account 403 `not-owner`. Unlinked purchases still work with the bare transactionId (App Store 5.1.1(v)).
+
+## App call sites that must send `Authorization: Bearer <supabase access token>` (currently they do not)
+1. Restore: src/lib/account.ts ~361 (`iosSite`). Handle 401 `auth-required` (prompt sign-in), 401 `unauthorized` (refresh token), 409 `purchase-other-account`.
+2. Admin-edit sync: src/lib/adminSync.ts ~178 (`iosSite`, signed-in only; skip when signed out).
+3. Take-offline pre-check: src/lib/account.ts ~488 (`iosSite`), and the take-offline POST itself must send the Bearer when signed in (403 `sign-in-required` otherwise for linked purchases).
+4. api.ts `iosSite` (src/lib/api.ts ~208): add the header there once; all three callers go through it.
+Also: shop setup caller must handle 409 `purchase-other-account`; plan POST caller keys on `reason`.
+
+## Deploy note
+Old builds: Restore/admin sync/take-offline pre-check on a linked purchase show an error until updated (auth-required 401). Publish and take-offline POST keep working signed-in. Tests: 3788 pass; tsc identical to baseline (4809 pre-existing errors).

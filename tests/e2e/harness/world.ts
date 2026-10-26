@@ -148,7 +148,7 @@ export function siteWorld() {
     verify: (id) => apple.verify(id),
     upsertVerified: (tx, opts) => repo.upsertVerified(tx, opts),
     setShopOtid: async (_id, otid) => { shop.ios_otid = otid; return 'ok'; },
-    setUser: (otid, uid) => repo.setUser(otid, uid),
+    setUserIfUnlinked: (otid, uid) => repo.setUserIfUnlinked(otid, uid),
     now: clock.now,
     ...over,
   });

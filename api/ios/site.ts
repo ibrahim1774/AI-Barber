@@ -4,7 +4,8 @@ import { liveDeps, runIosSiteLookup } from '../../lib/ios/publishFlow.js';
 
 // POST { transactionId } + Authorization: Bearer <Supabase token> → the site bound to that purchase
 // (only when the purchase is linked to the caller): { siteId, deployedUrl, siteData, active, ... }.
-// 401 unauthorized without a valid token; 409 { error: 'purchase-other-account', hint } when the purchase
+// 401 { error: 'auth-required' } when there is no Authorization header at all (old app builds; no site data, Apple not asked);
+// 401 { error: 'unauthorized' } for a present but invalid/expired token; 409 { error: 'purchase-other-account', hint } when the purchase
 // belongs to another account (no site data).
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   setCors(res);

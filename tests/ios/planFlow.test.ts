@@ -40,12 +40,12 @@ function fakes(o: { otid?: string | null; rows?: Record<string, PurchaseRow>; ve
       rows[tx.originalTransactionId] = { ...prev, product_id: tx.productId, expires_at: tx.expiresAt == null ? null : new Date(tx.expiresAt).toISOString() };
       return { ...rows[tx.originalTransactionId] };
     }),
-    setShopOtid: vi.fn(async (_id: string, otid: string) => {
+    setShopOtid: vi.fn(async (_id: string, otid: string | null) => {
       if (o.taken) return 'taken' as const;
       shop.ios_otid = otid;
       return 'ok' as const;
     }),
-    setUser: vi.fn(async (otid: string, uid: string) => { rows[otid].user_id = uid; }),
+    setUserIfUnlinked: vi.fn(async (otid: string, uid: string) => { if (!rows[otid] || rows[otid].user_id) return false; rows[otid].user_id = uid; return true; }),
     now: () => NOW,
   };
   return { deps, shop, rows };
@@ -158,7 +158,7 @@ describe('POST /api/shop/plan', () => {
       active: true, expiresAt: EXPIRES, takenDownAt: null, revoked: false, purchaseAccount: 'self',
     } });
     expect(deps.setShopOtid).not.toHaveBeenCalled(); // already linked to this purchase
-    expect(deps.setUser).not.toHaveBeenCalled(); // already the caller's
+    expect(deps.setUserIfUnlinked).not.toHaveBeenCalled(); // already the caller's
   });
 
   it('links the otid when the shop has none, and attaches an account-less purchase', async () => {
@@ -167,14 +167,14 @@ describe('POST /api/shop/plan', () => {
     expect(r.status).toBe(200);
     expect(deps.setShopOtid).toHaveBeenCalledWith(SHOP, OTID);
     expect(shop.ios_otid).toBe(OTID);
-    expect(deps.setUser).toHaveBeenCalledWith(OTID, USER);
+    expect(deps.setUserIfUnlinked).toHaveBeenCalledWith(OTID, USER);
     expect(rows[OTID].user_id).toBe(USER);
     expect(r.body).toMatchObject({ linked: true, tier: 'store' });
   });
 
-  it('a failing setUser does not fail the refresh', async () => {
+  it('a failing setUserIfUnlinked does not fail the refresh', async () => {
     const { deps } = fakes({ otid: null, rows: {} });
-    (deps.setUser as any).mockRejectedValueOnce(new Error('db'));
+    (deps.setUserIfUnlinked as any).mockRejectedValueOnce(new Error('db'));
     const err = vi.spyOn(console, 'error').mockImplementation(() => {});
     expect((await refreshPlan(AUTH, { transactionId: '2000000555' }, deps)).status).toBe(200);
     err.mockRestore();
@@ -184,7 +184,7 @@ describe('POST /api/shop/plan', () => {
     const { deps } = fakes({ otid: null, rows: { [OTID]: purchaseRow({ user_id: OTHER }) } });
     expect(await refreshPlan(AUTH, { transactionId: '2000000555' }, deps)).toEqual({ status: 409, body: { error: 'purchase-in-use', reason: 'purchase-other-account', hint: null } });
     expect(deps.setShopOtid).not.toHaveBeenCalled();
-    expect(deps.setUser).not.toHaveBeenCalled();
+    expect(deps.setUserIfUnlinked).not.toHaveBeenCalled();
   });
 
   it('409 purchase-in-use when another shop is linked to it', async () => {
@@ -220,7 +220,7 @@ describe('POST /api/shop/plan', () => {
       const r = await refreshPlan(AUTH, { transactionId: '2000000555' }, deps);
       expect(r.status).toBe(200);
       expect(deps.setShopOtid).not.toHaveBeenCalled();
-      expect(deps.setUser).not.toHaveBeenCalled();
+      expect(deps.setUserIfUnlinked).not.toHaveBeenCalled();
       expect(shop.ios_otid).toBe('2000000999');
       expect(r.body).toMatchObject({ linked: true, tier: 'bookings', active: true });
       expect(deps.upsertVerified).toHaveBeenCalled(); // Apple's answer is still recorded

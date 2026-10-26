@@ -117,7 +117,11 @@ describe('unauthenticated', () => {
   it('site lookup: no token / invalid token / non-Bearer = 401 and Apple is not asked', async () => {
     const { transactionId } = await aBuys();
     const calls = w.apple.state.calls;
-    for (const auth of [undefined, '', 'Bearer', 'Bearer nope', 'Basic jwt-a']) {
+    // No bearer at all (old app builds): machine-readable 'auth-required'. A token that is present but bad: 'unauthorized'.
+    for (const auth of [undefined, '']) {
+      expect(await w.lookup(transactionId, auth as any)).toEqual({ status: 401, body: { error: 'auth-required' } });
+    }
+    for (const auth of ['Bearer', 'Bearer nope', 'Basic jwt-a']) {
       expect(await w.lookup(transactionId, auth as any)).toEqual({ status: 401, body: { error: 'unauthorized' } });
     }
     expect(w.apple.state.calls).toBe(calls);
@@ -260,5 +264,72 @@ describe('lapse, refund, revoke and renewal act on the linked account only', () 
     const r = await w.publish(transactionId, siteData({ shopName: 'Bobs' }), { baseVersion: 1 }, { authorization: B });
     expect(r.status).toBe(402); // inactive is decided by Apple first; B never gets past it either way
     expect(w.row(otid)!.user_id).toBe(USER_A);
+  });
+});
+
+
+describe('every writer of ios_purchases.user_id is one atomic conditional update (two accounts, one winner)', () => {
+  it('source audit: the only code that writes user_id on ios_purchases is setUserIfUnlinked (WHERE user_id IS NULL)', async () => {
+    const { readdirSync, readFileSync, statSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const files: string[] = [];
+    const walk = (d: string) => {
+      for (const n of readdirSync(d)) {
+        if (n === 'node_modules' || n.startsWith('.')) continue;
+        const f = join(d, n);
+        statSync(f).isDirectory() ? walk(f) : /\.ts$/.test(n) && files.push(f);
+      }
+    };
+    walk('lib'); walk('api');
+    const writers = files.filter((f) => /update\(\{[^}]*\buser_id\b/.test(readFileSync(f, 'utf8').replace(/\s+/g, ' ')) && /from\('ios_purchases'\)|TABLE = 'ios_purchases'/.test(readFileSync(f, 'utf8')));
+    expect(writers).toEqual([join('lib', 'ios', 'purchases.ts')]);
+    const src = readFileSync(join('lib', 'ios', 'purchases.ts'), 'utf8');
+    expect(src).toMatch(/update\(\{ user_id: userId \}\)\s*\.eq\('original_transaction_id', otid\)\.is\('user_id', null\)/);
+    expect((src.match(/update\(\{ user_id/g) ?? []).length).toBe(1);
+    expect(src).not.toMatch(/\bsetUser\(/);
+  });
+
+  it('publish vs publish on an unlinked purchase: one winner, the other 409, link never re-pointed', async () => {
+    const p = w.apple.buy(PRODUCTS.storeMonthly);
+    const [ra, rb] = await Promise.all([
+      w.publish(p.transactionId, siteData(), {}, { authorization: A }),
+      w.publish(p.transactionId, siteData(), {}, { authorization: B }),
+    ]);
+    const owner = w.row(p.otid)!.user_id;
+    expect([USER_A, USER_B]).toContain(owner);
+    const [win, lose] = owner === USER_A ? [ra, rb] : [rb, ra];
+    expect(win.status).toBe(200);
+    expect(lose.status).toBe(409);
+    expect((lose.body as any).error).toBe('purchase-other-account');
+    expect(w.row(p.otid)!.user_id).toBe(owner);
+  });
+
+  it('plan POST vs publish: a plan POST that loses never overwrites, and its shop link is put back', async () => {
+    const p = w.apple.buy(PRODUCTS.storeMonthly);
+    const shopB = { id: 'shop-b', ios_otid: null as string | null };
+    const real = w.repo.setUserIfUnlinked.bind(w.repo);
+    // A's publish links the purchase between B's read of the row and B's link.
+    const deps = w.planDeps(shopB, { id: USER_B }, {
+      setUserIfUnlinked: async (otid, uid) => { await real(otid, USER_A); return real(otid, uid); },
+    });
+    const r = await w.refreshPlan('Bearer owner-jwt', { transactionId: p.transactionId }, deps);
+    expect(r.status).toBe(409);
+    expect(w.row(p.otid)!.user_id).toBe(USER_A);
+    expect(shopB.ios_otid).toBeNull();
+  });
+
+  it('restore (lookup) vs publish: B cannot take a purchase A linked, whatever the order', async () => {
+    const { transactionId } = await aBuys();
+    expect((await w.lookup(transactionId, B)).status).toBe(409);
+    expect((await w.publish(transactionId, siteData(), {}, { authorization: B })).status).toBe(409);
+    expect(w.row((await w.apple.verify(transactionId)).originalTransactionId)!.user_id).toBe(USER_A);
+  });
+
+  it('M1: a publish with no account on an unlinked purchase whose slug belongs to an account is 401', async () => {
+    const p = w.apple.buy(PRODUCTS.storeMonthly);
+    expect((await w.publish(p.transactionId, siteData(), {}, {})).status).toBe(200); // true first publish: fresh bind
+    w.publishDeps.bindingOwner = async () => USER_A;
+    const r = await w.publish(p.transactionId, siteData(), {}, {});
+    expect(r).toEqual({ status: 401, body: { error: 'unauthorized' } });
   });
 });
