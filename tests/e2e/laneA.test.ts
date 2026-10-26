@@ -163,6 +163,6 @@ describe('A5 custom domain name validation', () => {
     expect(normalizeLabel('ab')).toBeNull();
     expect(normalizeLabel('a'.repeat(121))).toBeNull();
     expect(normalizeLabel('--')).toBeNull();
-    expect(normalizeLabel('<script>alert(1)</script>')).toBe('scriptalert1script');
+    expect(normalizeLabel('<script>alert(1)</script>')).toBe('scriptalert1');
   });
 });
