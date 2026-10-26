@@ -9,9 +9,9 @@ import { manualSite } from '@/lib/importer';
 import { MANUAL_FIELD_ORDER, manualInputs, validateManual, type ManualForm } from '@/lib/manualForm';
 import { scratchPicks } from '@/lib/scratchDefaults';
 import { servicesFromPicks } from '@/lib/serviceChecklist';
-import { startDraft } from '@/lib/flow';
+import { discardUnpublishedDraft, startDraft } from '@/lib/flow';
 import { useRevealAboveKeyboard } from '@/lib/keyboard';
-import { goBackOrHome } from '@/lib/nav';
+import { backToStart, confirmCancel } from '@/lib/nav';
 
 // Start from scratch: the same dark flow shell as the booking-link screen (back chevron top-left). The typed values go
 // only into the site record; none of them is tracked, logged or put in a route.
@@ -49,7 +49,8 @@ export default function Manual() {
       const result = await manualSite(manualInputs(form, colorTheme, servicesFromPicks(scratchPicks())));
       if (!mounted.current) return;
       await startDraft(result);
-      if (!mounted.current) return;
+      // Cancelled while saving: don't leave a half-built draft behind.
+      if (!mounted.current) { void discardUnpublishedDraft(); return; }
       router.replace('/generating');
     } catch (e: any) {
       if (!mounted.current) return;
@@ -59,8 +60,14 @@ export default function Manual() {
     }
   };
 
+  // While the site is being built: confirm; cancelling makes the pending build a no-op (it saves and navigates nowhere).
+  const back = () => {
+    if (!busyRef.current) { backToStart(); return; }
+    confirmCancel(() => { mounted.current = false; backToStart(); });
+  };
+
   return (
-    <Screen onBack={goBackOrHome} scrollRef={scrollRef} onScroll={onScroll}>
+    <Screen onBack={back} scrollRef={scrollRef} onScroll={onScroll}>
       <FlowTitle first="Start from" second="scratch" />
       <View style={styles.form}>
         <FlowInput

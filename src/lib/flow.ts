@@ -1,6 +1,6 @@
 import { randomUUID } from 'expo-crypto';
 import type { ShopInputs, WebsiteData } from '@/web/types';
-import { loadSite, saveSite, type SiteRecord } from '@/lib/siteStore';
+import { clearSite, loadSite, saveSite, type SiteRecord } from '@/lib/siteStore';
 import { track } from '@/lib/analytics';
 import { api } from '@/lib/api';
 import { listingSite, toShopSite } from '@/lib/importer';
@@ -17,6 +17,15 @@ type ShopSite = { inputs: ShopInputs; site: WebsiteData };
  * content republishes to the same site. A first site gets a new draftId.
  * The editor's once-per-draft overlay flags are reset for the new content.
  */
+/**
+ * Drops a draft that was never published, tied to an account or paid for (a cancelled build). A record with any of
+ * those is kept: cancelling a regenerate must never take a live site's record away.
+ */
+export async function discardUnpublishedDraft(): Promise<void> {
+  const rec = await loadSite().catch(() => null);
+  if (rec && !rec.slug && !rec.deployedUrl && !rec.transactionId && !rec.ownerUserId) await clearSite();
+}
+
 export async function startDraft(result: ShopSite): Promise<SiteRecord> {
   const prev = await loadSite();
   const record: SiteRecord = {

@@ -1,3 +1,4 @@
+import { Alert } from 'react-native';
 import { router, type Href } from 'expo-router';
 import { loadSite, type SiteRecord } from '@/lib/siteStore';
 
@@ -24,6 +25,22 @@ export function goBackOrHome(): void {
   void loadSite()
     .then((s) => resetTo(homeRoute(s)))
     .catch(() => resetTo('/start'));
+}
+
+/**
+ * Back from any screen of the start flow: always the start screen, even when the stack is empty
+ * (a replace chain, a cold start) or the option was reached through another option.
+ */
+export function backToStart(): void {
+  resetTo('/start');
+}
+
+/** "Cancel and go back?" while something is running; `onConfirm` only runs on the confirming button. */
+export function confirmCancel(onConfirm: () => void): void {
+  Alert.alert('Cancel and go back?', "Your website hasn't been built yet. Nothing has been charged.", [
+    { text: 'Keep going', style: 'cancel' },
+    { text: 'Cancel and go back', style: 'destructive', onPress: onConfirm },
+  ]);
 }
 
 // Set when "Update my site" (a Bookings or Store setup prompt) starts a publish: that publish's live screen

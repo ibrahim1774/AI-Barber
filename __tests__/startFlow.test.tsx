@@ -77,7 +77,7 @@ describe('screen 2: booking link', () => {
   it('the back chevron goes back; I don\'t have a link goes to the Google search (replacing, as before)', async () => {
     const tree = await render(<BookingLink />);
     await press(tree, 'Back');
-    expect(mockBack).toHaveBeenCalledTimes(1);
+    expect(mockReplace).toHaveBeenCalledWith('/start');
     await press(tree, "I don't have a link");
     expect(mockReplace).toHaveBeenCalledWith('/find-listing');
   });
@@ -178,7 +178,7 @@ describe('screen 4: Here\'s what we found', () => {
     await save(booksy);
     const tree = await render(<ImportReview />);
     await press(tree, 'Back');
-    expect(mockBack).toHaveBeenCalledTimes(1);
+    expect(mockReplace).toHaveBeenCalledWith('/start');
   });
 
   it('no draft: straight to the start screen (never an empty review); a typed draft is not reviewed, it goes on to /generating', async () => {
@@ -209,7 +209,7 @@ describe('start from scratch', () => {
     expect(tree.root.findAll((n: any) => typeof n.props?.onChangeText === 'function' && n.type === 'TextInput')).toHaveLength(3);
     expect(buttons(tree, 'Back')).toHaveLength(1);
     await press(tree, 'Back');
-    expect(mockBack).toHaveBeenCalledTimes(1);
+    expect(mockReplace).toHaveBeenCalledWith('/start');
   });
 
   it('an empty form shows the first error and starts nothing', async () => {

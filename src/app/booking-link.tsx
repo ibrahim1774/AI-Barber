@@ -11,14 +11,14 @@ import { ImportProgress, LINK_STEPS } from '@/components/ImportProgress';
 import { useImportRun } from '@/lib/useImportRun';
 import { checkBookingLink } from '@/lib/importer';
 import { importBooking } from '@/lib/flow';
-import { goBackOrHome } from '@/lib/nav';
+import { backToStart, confirmCancel } from '@/lib/nav';
 
 // Screen 2 of the start flow: paste the booking link; the import lands on "Here's what we found" (/import-review).
 // GbpImportPage.tsx 'link' branch → POST /api/import-scrape.
 export default function BookingLink() {
   const [url, setUrl] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const { busy, progress, slowHint, run } = useImportRun();
+  const { busy, progress, slowHint, run, cancel } = useImportRun();
 
   const submit = () => {
     if (busy) return;
@@ -42,8 +42,11 @@ export default function BookingLink() {
     }
   };
 
+  // Mid-import: ask first; cancelling drops the pending result so nothing is saved.
+  const back = () => (busy ? confirmCancel(() => { cancel(); backToStart(); }) : backToStart());
+
   return (
-    <Screen onBack={goBackOrHome} overlay={busy ? <ImportProgress steps={LINK_STEPS} progress={progress} slowHint={slowHint} /> : null}>
+    <Screen onBack={back} overlay={busy ? <ImportProgress steps={LINK_STEPS} progress={progress} slowHint={slowHint} /> : null}>
       <FlowTitle first="Paste your" second="booking link" />
       <View style={styles.form}>
         <FlowInput

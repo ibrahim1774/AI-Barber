@@ -13,7 +13,8 @@ it('every start-flow screen after Start passes onBack to its shell', () => {
 });
 
 it('the shells render the Back control top-left with the "Back" accessibility label', () => {
-  expect(read('components/Screen.tsx')).toMatch(/accessibilityLabel="Back"/);
+  expect(read('components/BackButton.tsx')).toMatch(/accessibilityLabel={label}/);
+  expect(read('components/Screen.tsx')).toMatch(/<BackButton onPress={onBack}/);
   expect(read('components/Page.tsx')).toMatch(/accessibilityLabel=\{backLabel\}/);
 });
 

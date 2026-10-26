@@ -10,7 +10,7 @@ import { act, allText, render } from '../store/render';
 
 jest.mock('@/constants/theme', () => require('../store/themeMock'));
 jest.mock('@/lib/nav', () => ({ resetTo: jest.fn() }));
-
+jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 import Generating from '@/app/generating';
 import { generateContent } from '@/web/services/geminiService';
 import { generatingSteps } from '@/lib/generatingSteps';
