@@ -29,7 +29,7 @@ import { pickAndUploadPhoto } from '@/lib/photos';
 import { takePublishRequest } from '@/lib/publishRequest';
 import { refreshReminders } from '@/lib/reminders';
 import { useRestoreFlow } from '@/lib/restoreFlow';
-import { loadSite, saveSite, type SiteRecord } from '@/lib/siteStore';
+import { loadPendingPublish, loadSite, saveSite, type SiteRecord } from '@/lib/siteStore';
 import {
   getSubscriptionStatus, isLocked, recheckSubscriptionStatus, useSubscriptionStatus,
 } from '@/lib/subscriptionStatus';
@@ -68,6 +68,7 @@ import { editTourReady } from '@/components/tutorial/tours';
 import { useSession } from '@/lib/auth';
 import { PublishBar } from '@/components/PublishBar';
 import { LapsedCard } from '@/components/LapsedCard';
+import { EditorBackBar, canGoBackToStart } from '@/components/EditorBackBar';
 
 type SheetKind = 'fields' | 'photos' | 'colour' | 'edit' | 'button' | 'sections' | 'pages' | 'pageSections' | 'hero' | SectionKey;
 
@@ -108,6 +109,13 @@ export default function Editor() {
   const siteRef = useRef<SiteRecord | null>(null);
   const [overlayState, setOverlay] = useState<Overlay | null>(null);
   const { session } = useSession();
+  // A paid publish waiting to finish: Back (which discards the draft) is hidden meanwhile. Unknown counts as pending.
+  const [pendingPaid, setPendingPaid] = useState(true);
+  useFocusEffect(useCallback(() => {
+    let alive = true;
+    loadPendingPublish().then((p) => alive && setPendingPaid(!!p), () => alive && setPendingPaid(true));
+    return () => { alive = false; };
+  }, []));
   // The Edit tour (the 'guide' overlay) waits for an account: until then it neither shows nor locks the editor.
   const overlay = visibleOverlay(overlayState, !!session);
   // The bookings shop, when there is one: then ab_services is the services source.
@@ -599,6 +607,7 @@ export default function Editor() {
     <View style={[styles.root, { paddingTop: insets.top }]}>
       {/* The prompts / guide cover this body; the tab bar is hidden meanwhile. */}
       <View style={styles.body}>
+        <EditorBackBar visible={overlay == null && sheet == null && !uploading && canGoBackToStart(site, pendingPaid, !!session)} />
         {/* The site's own background, so nothing else shows around the page. */}
         <View style={[styles.preview, { backgroundColor: previewBackground(data) }]}>
           <SitePreview data={shown} editable page={page} shopProducts={shopProducts} onEditText={onPreviewText} onEditImage={onPreviewImage} onNavigate={onPreviewNav} pillTourRef={changeImageRef} samplePaths={sampleHeroPaths(shown, page)} chipsHidden={sheet != null} />

@@ -47,7 +47,7 @@ const ents = (...ids: string[]) => act(() => setEntitlementsFromStatus({ status:
 const SHOP = { id: 's1', name: 'Fade Lab', slug: 'fade-lab', timezone: 'America/New_York', bookingsEnabled: true };
 const DAY = new Date().toISOString();
 const planOf = (hosting: boolean, bookings: boolean, expiresAt: string | null = null) => ({
-  linked: true, tier: null, entitlements: { hosting, bookings, store: false }, active: hosting, expiresAt, takenDownAt: null, revoked: false,
+  linked: true, tier: null, entitlements: { hosting, bookings, store: false }, active: hosting, expiresAt, takenDownAt: null, revoked: false, purchaseAccount: 'self',
 });
 
 beforeEach(() => {
@@ -114,10 +114,20 @@ describe('Bookings tab gating', () => {
 
   it('with Bookings: normal (Fab, gear, no banner)', async () => {
     ents('hosting', 'bookings');
+    setSharedPlan(planOf(true, true) as never); // this account owns the purchase
     const tree = await render(<Bookings />);
     expect(hasText(tree, /^FAB$/)).toBe(true);
     expect(tree.root.findAll((n: any) => n.props?.accessibilityLabel === 'Booking setup').length).toBeGreaterThan(0);
     expect(hasText(tree, /paused/)).toBe(false);
+  });
+
+  it("a second account on the same Apple ID (Superwall paid, purchase is another's): read-only, banner names the other account, no Fab or gear", async () => {
+    ents('hosting', 'bookings');
+    setSharedPlan({ ...(planOf(true, true) as any), purchaseAccount: 'other', purchaseHint: 'a***@gmail.com' });
+    const tree = await render(<Bookings />);
+    expect(hasText(tree, /This Apple ID's subscription belongs to another Prime Barber account \(a\*\*\*@gmail\.com\)/)).toBe(true);
+    expect(hasText(tree, /^FAB$/)).toBe(false);
+    expect(tree.root.findAll((n: any) => n.props?.accessibilityLabel === 'Booking setup')).toHaveLength(0);
   });
 
   it('hosting inactive for 31 days: only the UpgradeCard', async () => {

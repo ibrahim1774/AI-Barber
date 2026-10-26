@@ -23,7 +23,7 @@ jest.mock('@/lib/analytics', () => ({ track: jest.fn() }));
 import LearnList from '@/app/(tabs)/settings/learn/index';
 import LearnTopic from '@/app/(tabs)/settings/learn/[topic]';
 import { LearnVideo } from '@/components/LearnVideo';
-import { LEARN_TOPICS } from '@/lib/learnContent';
+import { LEARN_SECTIONS, LEARN_TOPICS, nextInSection, topicsIn } from '@/lib/learnContent';
 import { LEARN_VIDEOS } from '@/lib/learnVideos';
 import { mockSources } from '../test/mocks/video';
 
@@ -37,15 +37,29 @@ beforeEach(() => {
   mockParams = {};
 });
 
+const VIDEO_SLUGS = ['intro', 'editing', 'no-account', 'calendar', 'store', 'domain', 'notifications', 'team'] as const;
+const PLACEHOLDER = /coming soon|placeholder|lorem|tbd|todo/i;
+
 describe('Learn how it works: the list', () => {
-  it('lists the quick tour first, then the seven features, each with a one-line description', async () => {
-    const text = allText(await render(<LearnList />)).join(' | ');
-    expect(LEARN_TOPICS.map((t) => t.slug)).toEqual(['intro', 'editing', 'no-account', 'calendar', 'store', 'domain', 'notifications', 'team']);
-    expect(LEARN_TOPICS[0].title).toBe('Quick tour');
+  it('shows the four section headers in order, each with its topics and one-line descriptions', async () => {
+    const tree = await render(<LearnList />);
+    const text = allText(tree).join(' | ');
+    expect(LEARN_SECTIONS.map((x) => x.title)).toEqual([
+      'Your custom website', 'Bookings', 'Your store', 'Settings & what you can adjust',
+    ]);
+    let last = -1;
+    for (const sec of LEARN_SECTIONS) {
+      const at = text.indexOf(sec.title);
+      expect(at).toBeGreaterThan(last);
+      last = at;
+      expect(topicsIn(sec.id).length).toBeGreaterThan(0);
+    }
     for (const t of LEARN_TOPICS) {
       expect(text).toContain(t.title);
       expect(text).toContain(t.value);
     }
+    expect(tree.root.findAll((n: any) => n.props?.accessibilityRole === 'header').length).toBeGreaterThanOrEqual(LEARN_SECTIONS.length);
+    expect(LEARN_TOPICS[0].title).toBe('Quick tour');
   });
 
   it('mounts no video at all', async () => {
@@ -61,16 +75,67 @@ describe('Learn how it works: the list', () => {
   });
 });
 
+describe('Learn content', () => {
+  it('keeps the eight video slugs stable and unique', () => {
+    const withVideo = LEARN_TOPICS.filter((t) => t.video).map((t) => t.slug);
+    expect([...withVideo].sort()).toEqual([...VIDEO_SLUGS].sort());
+    for (const t of LEARN_TOPICS) expect(t.video === undefined || t.video === t.slug).toBe(true);
+    expect(new Set(LEARN_TOPICS.map((t) => t.slug)).size).toBe(LEARN_TOPICS.length);
+  });
+
+  it('every topic has 3 to 6 steps and a real description', () => {
+    for (const t of LEARN_TOPICS) {
+      expect(t.steps.length).toBeGreaterThanOrEqual(3);
+      expect(t.steps.length).toBeLessThanOrEqual(6);
+      expect(t.detail.length).toBeGreaterThan(10);
+    }
+  });
+
+  it('has no placeholder text anywhere in the copy or the screens', () => {
+    expect(JSON.stringify([LEARN_SECTIONS, LEARN_TOPICS])).not.toMatch(PLACEHOLDER);
+    for (const f of ['src/app/(tabs)/settings/learn/index.tsx', 'src/app/(tabs)/settings/learn/[topic].tsx']) {
+      expect(read(f)).not.toMatch(PLACEHOLDER);
+    }
+  });
+
+  it('copies the in-app card wording and invents no percentage', () => {
+    const text = LEARN_TOPICS.find((x) => x.slug === 'get-paid')!.steps.join(' ');
+    expect(text).toContain("Prime Barber doesn't move this money");
+    expect(text).toContain('Stripe charges its own processing fee on top');
+    expect(text).toContain('There is no monthly fee for cards');
+    expect(text).not.toMatch(/\d\s?%/);
+  });
+});
+
 describe('Learn how it works: a topic screen', () => {
-  it.each(LEARN_TOPICS.map((t) => t.slug))('%s plays its own clip with the title and explanation', async (slug) => {
+  it.each(LEARN_TOPICS.map((t) => t.slug))('%s resolves, shows title, description and numbered steps', async (slug) => {
     mockParams = { topic: slug };
     const tree = await render(<LearnTopic />);
     const t = LEARN_TOPICS.find((x) => x.slug === slug)!;
-    expect(mockSources).toEqual([LEARN_VIDEOS[slug]]);
-    expect(hasVideo(tree)).toBe(true);
+    expect(tree.root.findAll((n: any) => n.type === 'Redirect')).toHaveLength(0);
     const text = allText(tree).join(' | ');
     expect(text).toContain(t.title);
     expect(text).toContain(t.detail);
+    t.steps.forEach((step, i) => {
+      expect(text).toContain(step);
+      expect(allText(tree)).toContain(String(i + 1));
+    });
+    expect(text).not.toMatch(PLACEHOLDER);
+  });
+
+  it.each([...VIDEO_SLUGS])('%s still mounts its own clip', async (slug) => {
+    mockParams = { topic: slug };
+    const tree = await render(<LearnTopic />);
+    expect(mockSources).toEqual([LEARN_VIDEOS[slug]]);
+    expect(hasVideo(tree)).toBe(true);
+  });
+
+  it.each(LEARN_TOPICS.filter((t) => !t.video).map((t) => t.slug))('%s has steps only: no video, no player controls', async (slug) => {
+    mockParams = { topic: slug };
+    const tree = await render(<LearnTopic />);
+    expect(mockSources).toHaveLength(0);
+    expect(hasVideo(tree)).toBe(false);
+    expect(JSON.stringify(tree.toJSON())).not.toMatch(/Play video|Pause video|Replay|Sound/);
   });
 
   it('starts playing, muted, without looping, and the sound button unmutes', async () => {
@@ -149,13 +214,16 @@ describe('Learn how it works: a topic screen', () => {
     expect(mockRouter.back).toHaveBeenCalledTimes(1);
   });
 
-  it('offers the next topic, and none after the last', async () => {
+  it('offers the next topic within the section, and none after the last in a section', async () => {
     mockParams = { topic: 'intro' };
-    const first = await render(<LearnTopic />);
-    await press(first, 'Next: Edit your site any time');
+    await press(await render(<LearnTopic />), 'Next: Edit text and photos');
     expect(mockRouter.replace).toHaveBeenCalledWith('/settings/learn/editing');
-    mockParams = { topic: 'team' };
-    expect(allText(await render(<LearnTopic />)).join(' ')).not.toMatch(/Next:/);
+    for (const sec of LEARN_SECTIONS) {
+      const list = topicsIn(sec.id);
+      list.forEach((t, i) => expect(nextInSection(t)?.slug).toBe(list[i + 1]?.slug));
+      mockParams = { topic: list[list.length - 1].slug };
+      expect(allText(await render(<LearnTopic />)).join(' ')).not.toMatch(/Next:/);
+    }
   });
 
   it('an unknown topic falls back to the list and mounts no video', async () => {
@@ -172,10 +240,9 @@ describe('Learn videos', () => {
     expect(tree.toJSON()).toBeNull();
   });
 
-  it('every topic has a bundled how-to video, all registered and small', () => {
-    const slugs = LEARN_TOPICS.map((t) => t.slug);
-    expect(Object.keys(LEARN_VIDEOS).sort()).toEqual([...slugs].sort());
-    for (const s of slugs) {
+  it('exactly the eight clips are registered, bundled and small', () => {
+    expect(Object.keys(LEARN_VIDEOS).sort()).toEqual([...VIDEO_SLUGS].sort());
+    for (const s of VIDEO_SLUGS) {
       const file = path.join(ROOT, 'assets/tutorial', `${s}.mp4`);
       expect(fs.existsSync(file)).toBe(true);
       const size = fs.statSync(file).size;

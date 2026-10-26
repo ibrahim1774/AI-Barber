@@ -14,6 +14,8 @@ jest.mock('@/lib/linkContext', () => ({ loadLinkContext: () => mockCtx() }));
 import { ALERT_SAFETY_MS, resetSetupPromptForTests, setupPrompt, useUpdateSitePrompt, NOT_NOW, UPDATE_SITE } from '@/lib/setupPrompt';
 import * as store from '@/lib/siteStore';
 import { resetEntitlementsForTests, setEntitlementsFromStatus, getEntitlements } from '@/lib/entitlements';
+import { setSharedPlan } from '@/lib/plan';
+import { OWN_PLAN } from '../../test/ownPlan';
 import type { SiteRecord } from '@/lib/siteStore';
 
 const OWN = 'https://booksy.com/en-us/123_fade-lab';
@@ -77,6 +79,7 @@ describe('useUpdateSitePrompt', () => {
     mockPush.mockClear();
     resetSetupPromptForTests();
     resetEntitlementsForTests();
+    setSharedPlan({ ...OWN_PLAN }); // this account owns the purchase
     setEntitlementsFromStatus({ status: 'ACTIVE', entitlements: [{ id: 'hosting' }, { id: 'bookings' }] });
     mockCtx.mockReset().mockImplementation(async () => ctx());
     alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
@@ -159,6 +162,7 @@ describe('useUpdateSitePrompt', () => {
 
   it('a site published before live links were tracked: reads them from the server copy', async () => {
     await store.saveSite(site({ liveLinks: undefined }));
+    require('@/lib/supabase').sb.setSession({ access_token: 'tok-u1', user: { id: 'u1' } }); // /api/ios/site needs the account
     (global as any).fetch = jest.fn(async () => ({
       status: 200, ok: true,
       text: async () => JSON.stringify({ siteId: 'fade-lab', deployedUrl: 'https://fade-lab.aibarber.org', active: true, siteData: { shopName: 'Fade Lab', bookingUrl: AI } }),

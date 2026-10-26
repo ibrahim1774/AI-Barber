@@ -11,6 +11,13 @@ export type Plan = {
   expiresAt: string | null;
   takenDownAt: string | null;
   revoked: boolean;
+  /**
+   * Whose Apple purchase this is, from the server: 'self' (this account owns it), 'other' (another account on the same
+   * Apple ID does), or null (no purchase of this account's own, or an old server). Bookings and Store unlock only for 'self'.
+   */
+  purchaseAccount: 'self' | 'other' | null;
+  /** The server's masked email of the other account ("a***@gmail.com"), when it says one. */
+  purchaseHint: string | null;
   /** What the deployed server supports: `memberProfile` is true once migration 015 is live (title / booking_url columns, POST /api/shop/members). */
   capabilities: { memberProfile: boolean };
 };
@@ -25,14 +32,23 @@ export function normalizePlan(raw: unknown): Plan | null {
   if (!isObject(raw) || !isObject(raw.entitlements)) return null;
   const e = raw.entitlements;
   const str = (v: unknown) => (typeof v === 'string' ? v : null);
+  const takenDownAt = str(raw.takenDownAt);
+  const revoked = raw.revoked === true;
+  // Fail closed: a refunded / revoked purchase, or a site the server took down while the plan is not active,
+  // grants nothing even if the entitlement flags still say true.
+  const lapsed = revoked || (takenDownAt != null && raw.active !== true);
   return {
     linked: raw.linked === true,
     tier: raw.tier === 'website' || raw.tier === 'bookings' || raw.tier === 'store' ? raw.tier : null,
-    entitlements: { hosting: e.hosting === true, bookings: e.bookings === true, store: e.store === true },
+    entitlements: lapsed
+      ? { hosting: false, bookings: false, store: false }
+      : { hosting: e.hosting === true, bookings: e.bookings === true, store: e.store === true },
     active: raw.active === true,
     expiresAt: str(raw.expiresAt),
-    takenDownAt: str(raw.takenDownAt),
-    revoked: raw.revoked === true,
+    takenDownAt,
+    revoked,
+    purchaseAccount: raw.purchaseAccount === 'self' || raw.purchaseAccount === 'other' ? raw.purchaseAccount : null,
+    purchaseHint: str(raw.purchaseHint) ?? str(raw.hint),
     capabilities: { memberProfile: isObject(raw.capabilities) && raw.capabilities.memberProfile === true },
   };
 }
@@ -44,7 +60,21 @@ async function planCall(answer: Promise<unknown>): Promise<Plan> {
   return plan;
 }
 
-export const getPlan = (): Promise<Plan> => planCall(call<unknown>('GET', '/api/shop/plan'));
+/** A signed-in account with no shop yet: nothing is granted, and it is not an error. */
+export const UNLINKED_PLAN: Plan = {
+  linked: false, tier: null, entitlements: { hosting: false, bookings: false, store: false },
+  active: false, expiresAt: null, takenDownAt: null, revoked: false, purchaseAccount: null, purchaseHint: null, capabilities: { memberProfile: false },
+};
+
+export async function getPlan(): Promise<Plan> {
+  try {
+    return await planCall(call<unknown>('GET', '/api/shop/plan'));
+  } catch (e) {
+    // Only the server's 404 no-shop: a network or 5xx failure stays an error (retry card).
+    if (e instanceof OwnerApiError && e.status === 404 && e.code === 'no-shop') return { ...UNLINKED_PLAN };
+    throw e;
+  }
+}
 
 /** Right after an upgrade purchase: the server verifies it with Apple and returns the plan. */
 export const refreshPlan = (transactionId: string | null): Promise<Plan> =>
@@ -83,9 +113,10 @@ export const READ_ONLY_DAYS = 30;
  * (then they show the upgrade card). True while hosting is inactive and the
  * lapse is under 30 days old; a lapse with no date is treated as recent.
  */
-export function hostingReadOnlyOpen(plan: Pick<Plan, 'entitlements' | 'expiresAt'> | null, now: number = Date.now()): boolean {
+export function hostingReadOnlyOpen(plan: (Pick<Plan, 'entitlements' | 'expiresAt'> & { linked?: boolean }) | null, now: number = Date.now()): boolean {
   if (!plan) return true;
   if (plan.entitlements.hosting) return false;
+  if (plan.linked === false && !plan.expiresAt) return false; // never subscribed: nothing to view read-only, show the upgrade card
   if (!plan.expiresAt) return true;
   const ended = Date.parse(plan.expiresAt);
   if (Number.isNaN(ended)) return true;

@@ -1,4 +1,5 @@
 import type { WebsiteData } from '@/web/types';
+import { accessToken } from '@/lib/accessToken';
 
 // Response shape of /api/import-scrape and /api/import-business (copied from
 // AI-Barber components/GbpImportPage.tsx; the two routes deliberately mirror
@@ -191,26 +192,50 @@ export const api = {
     body: {
       transactionId: string;
       siteData: WebsiteData;
-      /** Kept for older servers; the server links the account only from the verified bearer. */
-      userId?: string | null;
       /** The site version this phone last saw; the server 409s `site-updated` if an admin edit is newer. */
       baseVersion?: number;
     },
-    /** The signed-in user's Supabase access token, sent as `Authorization: Bearer …`. */
-    accessToken?: string | null,
+    /** The signed-in user's Supabase access token, sent as `Authorization: Bearer …`. Required: the server links the purchase to the account from it and answers 401 without. */
+    accessToken: string,
   ): Promise<{ siteId: string; deployedUrl: string; republished: boolean } & ServerVersionInfo> {
     return post('/api/ios/publish', body, {
       timeoutMs: SCRAPE_TIMEOUT_MS, failMessage: 'Publish failed', slowMessage: 'Publishing is temporarily unavailable — try again shortly.',
-      ...(accessToken ? { headers: { Authorization: `Bearer ${accessToken}` } } : {}),
+      headers: { Authorization: `Bearer ${accessToken}` },
     });
   },
 
-  iosSite(
+  /**
+   * POST /api/ios/site. The ONLY place that calls it: the Bearer is fetched here, so no caller can forget it. Signed out
+   * (no usable token): 401 `auth-required` without a request. Errors: 401 auth-required | unauthorized, 404 no-site,
+   * 409 purchase-other-account (body.hint = masked email of the owner), 5xx / network.
+   */
+  async iosSite(
     transactionId: string,
   ): Promise<
     { siteId: string; deployedUrl: string | null; siteData: WebsiteData | null; active: boolean } & ServerVersionInfo
   > {
-    return post('/api/ios/site', { transactionId }, { failMessage: 'Could not load your site' });
+    const token = await accessToken();
+    if (!token) throw new ApiError(401, 'auth-required', 'Sign in to continue.');
+    return post('/api/ios/site', { transactionId }, {
+      failMessage: 'Could not load your site', headers: { Authorization: `Bearer ${token}` },
+    });
+  },
+
+  /**
+   * POST /api/ios/claim-start, right after a purchase and before any account: the server verifies it with Apple and
+   * starts the 30-day claim window. Bookkeeping only (the publish with a Bearer does the real link). Errors: 402
+   * subscription-inactive (refunded / revoked), 409 purchase-claimed | purchase-has-site, 429, 503.
+   */
+  claimStart(transactionId: string): Promise<{ ok: true; state: 'unclaimed' | 'claimed'; claimExpiresAt: string }> {
+    return post('/api/ios/claim-start', { transactionId }, { failMessage: 'Could not check your purchase' });
+  },
+
+  /**
+   * POST /api/ios/signup: the server creates the account already confirmed (no email link); the app then signs in with
+   * the same email + password. Errors: 400 bad-request (body.field) | weak-password, 409 email-exists | purchase-in-use, 402 inactive, 429 (signup-limit), 503. The verified transactionId is required.
+   */
+  signup(body: { name: string; email: string; phone: string; password: string; transactionId: string }): Promise<{ ok: true; email: string }> {
+    return post('/api/ios/signup', body, { failMessage: 'Could not create your account' });
   },
 
   /**

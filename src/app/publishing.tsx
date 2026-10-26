@@ -8,6 +8,7 @@ import { track } from '@/lib/analytics';
 import { takeNotice } from '@/lib/adminSync';
 import { usePublishDeps } from '@/lib/paywall';
 import { publishBusy, publishFlow, type PublishDeps } from '@/lib/publish';
+import { resetTo } from '@/lib/nav';
 import { loadSite } from '@/lib/siteStore';
 
 type Phase = 'paywall' | 'publishing' | 'pending' | 'inactive' | 'error' | 'updated' | 'blocked';
@@ -61,6 +62,9 @@ export default function Publishing() {
         const out = await publishFlow(site, shown);
         if (out.kind === 'live') {
           router.replace('/live');
+        } else if (out.kind === 'claim-required') {
+          // Paid, no account yet: the locked account step finishes the publish. Nothing was published.
+          resetTo('/claim');
         } else if (out.kind === 'declined') {
           track('paywall_declined');
           back();

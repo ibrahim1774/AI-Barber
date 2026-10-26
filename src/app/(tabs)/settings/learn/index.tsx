@@ -6,7 +6,7 @@ import { ChevronRightIcon } from '@/components/Icons';
 import { LearnTopicIcon } from '@/components/LearnIcons';
 import { Page } from '@/components/Page';
 import { track } from '@/lib/analytics';
-import { LEARN_TOPICS } from '@/lib/learnContent';
+import { LEARN_SECTIONS, topicsIn } from '@/lib/learnContent';
 
 /** Settings, Learn how it works: a list of topics. Each row opens that topic's own screen with its video; no video plays here. */
 export default function LearnList() {
@@ -15,29 +15,39 @@ export default function LearnList() {
   }, []);
   return (
     <Page title="Learn how it works" onBack={() => router.back()}>
-      {LEARN_TOPICS.map((t) => (
-        <Pressable
-          key={t.slug}
-          onPress={() => router.push(`/settings/learn/${t.slug}` as never)}
-          accessibilityRole="button"
-          accessibilityLabel={t.title}
-          style={({ pressed }) => [styles.row, pressed && styles.pressed]}
-        >
-          <View style={styles.icon}>
-            <LearnTopicIcon slug={t.slug} size={22} color={colors.accent} />
-          </View>
-          <View style={styles.text}>
-            <Text style={styles.title}>{t.title}</Text>
-            <Text style={styles.value}>{t.value}</Text>
-          </View>
-          <ChevronRightIcon size={16} color={colors.muted} />
-        </Pressable>
+      {LEARN_SECTIONS.map((sec) => (
+        <View key={sec.id} style={styles.section}>
+          <Text style={styles.header} accessibilityRole="header">{sec.title}</Text>
+          {topicsIn(sec.id).map((t) => (
+            <Pressable
+              key={t.slug}
+              onPress={() => router.push(`/settings/learn/${t.slug}` as never)}
+              accessibilityRole="button"
+              accessibilityLabel={t.title}
+              style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+            >
+              <View style={styles.icon}>
+                <LearnTopicIcon slug={t.slug} size={22} color={colors.accent} />
+              </View>
+              <View style={styles.text}>
+                <Text style={styles.title}>{t.title}</Text>
+                <Text style={styles.value}>{t.value}</Text>
+              </View>
+              <ChevronRightIcon size={16} color={colors.muted} />
+            </Pressable>
+          ))}
+        </View>
       ))}
     </Page>
   );
 }
 
 const styles = StyleSheet.create({
+  section: { marginBottom: 14 },
+  header: {
+    fontFamily: fonts.bodyBold, fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', color: colors.muted,
+    marginBottom: 8, marginLeft: 4, marginTop: 6,
+  },
   row: {
     flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 64, padding: 14, marginBottom: 10, borderRadius: 14,
     backgroundColor: colors.sheet, borderWidth: 1, borderColor: colors.hair,

@@ -102,7 +102,8 @@ async function send(r: (typeof rows)[number]): Promise<any> {
     }) as any,
     linkContext: async () => ctx,
     store,
-    userId: () => null,
+    accessToken: async () => 'tok',
+    claimStart: jest.fn(async () => ({ ok: true as const, state: 'unclaimed' as const, claimExpiresAt: '2026-11-25T00:00:00.000Z' })),
   };
   const out = await publishFlow(rec, deps);
   expect(out.kind).toBe('live');

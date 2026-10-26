@@ -6,12 +6,16 @@ import * as analytics from '@/lib/analytics';
 import * as store from '@/lib/siteStore';
 import { publishFlow, type PublishDeps } from '@/lib/publish';
 import { api, ApiError } from '@/lib/api';
-import { deleteAccountAndData, deleteLocalData, restore, type RestoreDeps } from '@/lib/account';
+import { deleteAccountAndData, deleteLocalData, restore as restoreRaw, type Restored, type RestoreDeps } from '@/lib/account';
 import {
   askReminderPermissionOnce, buildReminderSchedule, cancelAllReminders, FINISH_LINES, onReminderTap, refreshReminders,
   REMINDER_PRE_PERMISSION, remindersEnabled, routeForReminderTap, setRemindersEnabled, START_LINES, takeLaunchReminderTap,
 } from '@/lib/reminders';
 import type { SiteRecord } from '@/lib/siteStore';
+
+/** restore() narrowed to a restored site: these tests are signed in with an active site to bring back. */
+const restore = async (d: RestoreDeps) => (await restoreRaw(d)) as Restored | null;
+
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { nt } = require('expo-notifications');
 
@@ -44,7 +48,8 @@ function publishDeps(over: Partial<PublishDeps> = {}): PublishDeps {
     latestTransactionId: jest.fn(async () => 'tx-1'),
     iosPublish: jest.fn(async () => LIVE),
     store,
-    userId: () => null,
+    accessToken: async () => 'tok',
+    claimStart: jest.fn(async () => ({ ok: true as const, state: 'unclaimed' as const, claimExpiresAt: '2026-11-25T00:00:00.000Z' })),
     ...over,
   };
 }
@@ -511,6 +516,7 @@ test('a restore cancels reminders for good', async () => {
   await refreshReminders();
   expect(nt.scheduled).toHaveLength(3);
   const deps: RestoreDeps = {
+    accessToken: async () => 'tok',
     restorePurchases: jest.fn(async () => undefined),
     latestTransactionId: jest.fn(async () => 'tx-9'),
     iosSite: jest.fn(async () => ({

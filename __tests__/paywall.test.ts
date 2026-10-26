@@ -14,6 +14,7 @@ const {
 const { api } = require('@/lib/api');
 const analytics = require('@/lib/analytics');
 const siteStore = require('@/lib/siteStore');
+const { sb } = require('@/lib/supabase');
 const revenuecat = require('@/lib/revenuecat');
 // No @types/react-test-renderer in the project: the two calls used here.
 const { act, create } = require('react-test-renderer') as {
@@ -200,6 +201,7 @@ describe('RevenueCat sync (observer)', () => {
   });
 
   test('a restore that succeeds syncs; a failed one does not', async () => {
+    sb.setSession({ access_token: 'tok-1', user: { id: 'u1' } });
     const sync = jest.spyOn(revenuecat, 'syncRevenueCatPurchases');
     sw.subscriptions = [ACTIVE];
     jest.spyOn(api, 'iosSite').mockResolvedValue({ siteId: 's', deployedUrl: 'https://s.aibarber.org', siteData: { shopName: 'S' }, active: true });
@@ -213,6 +215,9 @@ describe('RevenueCat sync (observer)', () => {
 });
 
 describe('Restore purchases', () => {
+  // Restore reads the account's site: signed in.
+  beforeEach(() => sb.setSession({ access_token: 'tok-1', user: { id: 'u1' } }));
+
   const BOUND = {
     siteId: 'fade-factory',
     deployedUrl: 'https://fade-factory.aibarber.org',

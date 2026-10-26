@@ -15,15 +15,27 @@ appId: com.ibrahim1774.aibarber
 - assertVisible: "Learn how it works"
 - tapOn: "Learn how it works"
 - extendedWaitUntil: { visible: "Quick tour", timeout: 10000 }
+- assertVisible: "Your custom website"   # grouped sections with headers
 - assertNotVisible: "Pause video"   # the list shows no video
 - takeScreenshot: g2_learn_list
-- tapOn: "A booking calendar built in"
+- scrollUntilVisible:
+    element: "Your booking calendar"
+- tapOn: "Your booking calendar"
 - extendedWaitUntil: { visible: "Replay", timeout: 10000 }
 - assertVisible: "Back"
-- assertVisible: "Next: Sell your own products"
+- assertVisible: "Next: Customers book without an account"
 - takeScreenshot: g2_learn_topic
 - tapOn: "Back"
-- extendedWaitUntil: { visible: "Quick tour", timeout: 10000 }
+- extendedWaitUntil: { visible: "Your custom website", timeout: 10000 }
+- scrollUntilVisible:
+    element: "Pages"
+- tapOn: "Pages"       # a topic without a clip: steps only, no player
+- extendedWaitUntil: { visible: "Back", timeout: 10000 }
+- assertNotVisible: "Pause video"
+- assertVisible: "Next: Design and theme"
+- takeScreenshot: g2_learn_topic_steps_only
+- tapOn: "Back"
+- extendedWaitUntil: { visible: "Your custom website", timeout: 10000 }
 - tapOn: "Back"
 - scrollUntilVisible:
     element: "Publish reminders"

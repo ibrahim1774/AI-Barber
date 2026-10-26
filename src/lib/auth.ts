@@ -10,12 +10,13 @@ import { clearCustomersCache } from '@/lib/bookings/customersCache';
 import { clearEntitlements } from '@/lib/entitlements';
 import { resetSharedPlan } from '@/lib/plan';
 import { isCodeComplete, isValidEmail, sanitizeCode } from '@/lib/recovery';
-import { supabase } from '@/lib/supabase';
+import { nextSession, onInstallReset, readSession } from '@/lib/authSession';
+import { AUTH_STORAGE_KEY, authStorage, supabase } from '@/lib/supabase';
 import { LOOKUP_TIMEOUT_MS, withTimeout } from '@/lib/timeout';
 
 // Copy from the web's AuthModal where it has one; the rest is ours.
 export const PASSWORD_TOO_SHORT = 'Password must be at least 6 characters';
-const OFFLINE = "Couldn't reach Prime Barber — check your connection and try again.";
+export const OFFLINE = "Couldn't reach Prime Barber — check your connection and try again.";
 const ALREADY_REGISTERED = 'An account with this email already exists. Sign in instead.';
 const WRONG_PASSWORD = "That email and password don't match. Check them and try again, or tap Forgot password?";
 const NOT_CONFIRMED = 'Confirm your email first — open the link we sent you, then sign in.';
@@ -61,15 +62,32 @@ async function call<T extends { error: unknown }>(fn: () => Promise<T>): Promise
   return res;
 }
 
+// A reinstall's leftover Keychain session is cleared before anything reads it (authSession.ts); the in-memory
+// copies of the old account's data go with it.
+onInstallReset(() => {
+  clearCustomersCache();
+  resetSharedPlan();
+  clearEntitlements();
+});
+
 // The signed-in user for code outside React (publish deps).
 let userId: string | null = null;
-supabase.auth.onAuthStateChange((_event, session) => {
-  userId = session?.user?.id ?? null;
+supabase.auth.onAuthStateChange((event, session) => {
+  if (session) userId = session.user?.id ?? null;
+  else if (event === 'SIGNED_OUT') {
+    userId = null;
+    // The server rejected the refresh token (or this is our own sign-out): the old account's in-memory plan,
+    // entitlements and customers must not outlive the session. The site on the phone is kept (it may hold
+    // unsaved edits); only the explicit Sign out / account deletion removes it.
+    clearCustomersCache();
+    resetSharedPlan();
+    clearEntitlements();
+  }
+  // Any other event without a session (offline, token not refreshable yet) says nothing about being signed out.
 });
-supabase.auth
-  .getSession()
-  .then(({ data }) => {
-    userId = data.session?.user?.id ?? userId;
+readSession(supabase.auth, authStorage, AUTH_STORAGE_KEY)
+  .then((session) => {
+    userId = session?.user?.id ?? userId;
   })
   .catch(() => {});
 
@@ -82,12 +100,11 @@ export function useSession(): { session: Session | null; ready: boolean } {
   const [state, setState] = useState<{ session: Session | null; ready: boolean }>({ session: null, ready: false });
   useEffect(() => {
     let alive = true;
-    supabase.auth
-      .getSession()
-      .then(({ data }) => alive && setState({ session: data.session, ready: true }))
-      .catch(() => alive && setState({ session: null, ready: true }));
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (alive) setState({ session, ready: true });
+    readSession(supabase.auth, authStorage, AUTH_STORAGE_KEY)
+      .then((session) => alive && setState((s) => ({ session: session ?? s.session, ready: true })))
+      .catch(() => alive && setState((s) => ({ session: s.session, ready: true })));
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      if (alive) setState((s) => ({ session: nextSession(s.session, event, session), ready: true }));
     });
     return () => {
       alive = false;
