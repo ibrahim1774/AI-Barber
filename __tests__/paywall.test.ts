@@ -136,7 +136,7 @@ test('verify that never resolves settles declined after the timeout', async () =
 
 test('a paywall the user saw and closed is declined quietly, even if feature came first', async () => {
   const run = open(); // feature runs at once (a non-gated paywall)
-  sw.callbacks.onPresent?.({ name: 'AI Barber Publish' });
+  sw.callbacks.onPresent?.({ name: 'Prime Barber Publish' });
   sw.callbacks.onDismiss?.({ closeReason: 'manualClose' }, { type: 'declined' });
   await jest.advanceTimersByTimeAsync(5000);
   expect(run.current()).toBe('declined');

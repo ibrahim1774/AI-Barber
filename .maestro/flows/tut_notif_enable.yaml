@@ -8,8 +8,8 @@ appId: com.apple.Preferences
 - waitForAnimationToEnd
 - takeScreenshot: n1
 - scrollUntilVisible:
-    element: "AI Barber"
-- tapOn: "AI Barber"
+    element: "Prime Barber"
+- tapOn: "Prime Barber"
 - waitForAnimationToEnd
 - takeScreenshot: n2
 - tapOn: "Notifications"

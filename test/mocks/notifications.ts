@@ -29,7 +29,7 @@ export const nt = {
   tap(data: Record<string, unknown>, identifier = `tap-${nextId++}`): Response {
     const r: Response = {
       actionIdentifier: DEFAULT_ACTION_IDENTIFIER,
-      notification: { date: Date.now(), request: { identifier, content: { title: 'AI Barber', body: 'b', data }, trigger: null } },
+      notification: { date: Date.now(), request: { identifier, content: { title: 'Prime Barber', body: 'b', data }, trigger: null } },
     };
     this.lastResponse = r;
     for (const l of [...this.listeners]) l(r);
