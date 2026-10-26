@@ -1,5 +1,4 @@
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
-import type { LearnVideoSlug } from '@/lib/learnContent';
 
 type P = { size?: number; color: string };
 const Base = ({ size = 22, color, children }: P & { children: React.ReactNode }) => (
@@ -9,7 +8,7 @@ const Base = ({ size = 22, color, children }: P & { children: React.ReactNode })
 );
 
 /** One small line icon per Learn topic (lucide shapes). */
-export function LearnTopicIcon({ slug, size, color }: P & { slug: LearnVideoSlug }) {
+export function LearnTopicIcon({ slug, size, color }: P & { slug: string }) {
   switch (slug) {
     case 'intro': // play
       return <Base size={size} color={color}><Circle cx="12" cy="12" r="10" /><Path d="m10 8 6 4-6 4z" /></Base>;
@@ -27,5 +26,7 @@ export function LearnTopicIcon({ slug, size, color }: P & { slug: LearnVideoSlug
       return <Base size={size} color={color}><Path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><Path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></Base>;
     case 'team': // users
       return <Base size={size} color={color}><Path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><Circle cx="9" cy="7" r="4" /><Path d="M22 21v-2a4 4 0 0 0-3-3.87" /><Path d="M16 3.13a4 4 0 0 1 0 7.75" /></Base>;
+    default: // list
+      return <Base size={size} color={color}><Path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></Base>;
   }
 }
