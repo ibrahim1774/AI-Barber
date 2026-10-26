@@ -1,9 +1,132 @@
-{"raw":"/tmp/tut/raw/editing.mp4","out":"/tmp/tut/editing.mp4","w":576,"h":1252,
- "segments":[[83.5,85.5,1],[86,89.5,1.5],[91,96,2],[98.5,102,1.2],[104.5,109,1.2]],
- "overlays":[
-  {"t0":0,"t1":2,"text":"Tap any text on your site","arrow":[0.5,0.325,"up"]},
-  {"t0":2,"t1":4.3,"text":"Edit it right here"},
-  {"t0":4.3,"t1":6.8,"text":"Type your new wording"},
-  {"t0":6.8,"t1":9.7,"text":"Saved on your site","arrow":[0.5,0.325,"up"]},
-  {"t0":9.7,"t1":14,"text":"Swap any photo too","arrow":[0.5,0.58,"up"]}
- ]}
+{
+ "segments": [
+  [
+   83.7,
+   85.6,
+   1
+  ],
+  [
+   86.4,
+   89.5,
+   1.5
+  ],
+  [
+   91,
+   96,
+   2
+  ],
+  [
+   96.9,
+   98.4,
+   1
+  ],
+  [
+   98.6,
+   101.1,
+   1.25
+  ],
+  [
+   101.9,
+   103.6,
+   1.2
+  ],
+  [
+   104.2,
+   107.8,
+   1.2
+  ]
+ ],
+ "overlays": [
+  {
+   "seg": 0,
+   "a": 0,
+   "b": 1.9,
+   "text": "Tap any text on your site",
+   "arrow": [
+    0.5,
+    0.3,
+    "up"
+   ],
+   "ripple": true,
+   "off": 14
+  },
+  {
+   "seg": 1,
+   "a": 0,
+   "b": 2.1,
+   "text": "Edit it right here",
+   "arrow": [
+    0.5,
+    0.45,
+    "up"
+   ],
+   "off": 40
+  },
+  {
+   "seg": 2,
+   "a": 0,
+   "b": 2.5,
+   "text": "Type your new wording",
+   "arrow": [
+    0.5,
+    0.45,
+    "up"
+   ],
+   "off": 40
+  },
+  {
+   "seg": 3,
+   "a": 0,
+   "b": 1.5,
+   "text": "Tap Save",
+   "arrow": [
+    0.87,
+    0.38,
+    "down"
+   ],
+   "ripple": true,
+   "off": 28
+  },
+  {
+   "seg": 4,
+   "a": 0,
+   "b": 2.0,
+   "text": "Saved on your site",
+   "arrow": [
+    0.5,
+    0.3,
+    "up"
+   ],
+   "off": 14
+  },
+  {
+   "seg": 5,
+   "a": 0,
+   "b": 1.4,
+   "text": "Tap Photos",
+   "arrow": [
+    0.67,
+    0.883,
+    "down"
+   ],
+   "ripple": true,
+   "off": 28
+  },
+  {
+   "seg": 6,
+   "a": 0,
+   "b": 3.0,
+   "text": "Swap any photo too",
+   "arrow": [
+    0.5,
+    0.6,
+    "down"
+   ],
+   "off": 85
+  }
+ ],
+ "w": 576,
+ "h": 1252,
+ "raw": "/tmp/tut/raw/editing.mp4",
+ "out": "/tmp/pol/out/editing.mp4"
+}

@@ -1,1 +1,99 @@
-{"segments": [[14, 16.5, 1], [18, 21, 1], [24, 25.5, 1], [27, 30.5, 1]], "overlays": [{"rect": [0.07, 0.372, 0.78, 0.405], "color": [20, 20, 20], "label": "yourshop.link/jacks", "t0": 0, "t1": 2.5}, {"t0": 0, "t1": 2.5, "text": "Use your own web address", "arrow": [0.82, 0.585, "up"]}, {"t0": 2.5, "t1": 5.5, "text": "Get your own .com"}, {"t0": 5.5, "t1": 10.5, "text": "Type the name you want", "arrow": [0.3, 0.38, "up"]}], "raw": "/tmp/tut/raw/domain.mp4", "out": "/tmp/tut/domain.mp4", "w": 576, "h": 1252}
+{
+ "segments": [
+  [
+   11.4,
+   12.8,
+   1
+  ],
+  [
+   15.2,
+   17.6,
+   1
+  ],
+  [
+   18.5,
+   21,
+   1
+  ],
+  [
+   26.5,
+   29.5,
+   1
+  ]
+ ],
+ "overlays": [
+  {
+   "seg": 0,
+   "a": 0,
+   "b": 3.75,
+   "rect": [
+    0.07,
+    0.372,
+    0.78,
+    0.405
+   ],
+   "color": [
+    20,
+    20,
+    20
+   ],
+   "label": "yourshop.link/jacks"
+  },
+  {
+   "seg": 0,
+   "a": 0,
+   "b": 1.4,
+   "text": "Open Settings",
+   "arrow": [
+    0.875,
+    0.934,
+    "down"
+   ],
+   "ripple": true,
+   "off": 28
+  },
+  {
+   "seg": 1,
+   "a": 0,
+   "b": 2.4,
+   "text": "Tap Get yours",
+   "arrow": [
+    0.77,
+    0.54,
+    "up"
+   ],
+   "ripple": true,
+   "off": 30
+  },
+  {
+   "seg": 2,
+   "a": 0,
+   "b": 2.5,
+   "text": "Type the name you want",
+   "arrow": [
+    0.35,
+    0.343,
+    "up"
+   ],
+   "ripple": true,
+   "off": 30
+  },
+  {
+   "seg": 3,
+   "a": 0,
+   "b": 3,
+   "text": "Then tap Search",
+   "arrow": [
+    0.81,
+    0.343,
+    "up"
+   ],
+   "ripple": true,
+   "off": 28
+  }
+ ],
+ "w": 576,
+ "h": 1252,
+ "raw": "/tmp/tut/raw/domain.mp4",
+ "out": "/tmp/pol/out/domain.mp4"
+}

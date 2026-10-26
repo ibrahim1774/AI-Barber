@@ -1,1 +1,132 @@
-{"segments": [[13.5, 17, 1], [18, 19.5, 1], [24, 25.5, 1], [27, 28.5, 1], [30, 31.5, 1], [33, 37, 1]], "overlays": [{"t0": 0, "t1": 3.5, "text": "Sell your own products", "arrow": [0.25, 0.4, "up"]}, {"t0": 3.5, "t1": 8, "text": "Add a name and a price"}, {"t0": 8, "t1": 9.5, "text": "Then save"}, {"t0": 9.5, "t1": 13.5, "text": "It shows on your site", "arrow": [0.25, 0.76, "up"]}], "raw": "/tmp/tut/raw/store.mp4", "out": "/tmp/tut/store.mp4", "w": 576, "h": 1252}
+{
+ "segments": [
+  [
+   11.0,
+   12.5,
+   1
+  ],
+  [
+   14.4,
+   17.6,
+   1
+  ],
+  [
+   18.8,
+   20.3,
+   1
+  ],
+  [
+   23.5,
+   25.5,
+   1
+  ],
+  [
+   26.3,
+   28.3,
+   1
+  ],
+  [
+   31.0,
+   32.6,
+   1
+  ],
+  [
+   33,
+   35.8,
+   1
+  ]
+ ],
+ "overlays": [
+  {
+   "seg": 0,
+   "a": 0,
+   "b": 1.5,
+   "text": "Open the Store tab",
+   "arrow": [
+    0.625,
+    0.934,
+    "down"
+   ],
+   "ripple": true,
+   "off": 28
+  },
+  {
+   "seg": 1,
+   "a": 0,
+   "b": 2.6,
+   "text": "Tap Add product",
+   "arrow": [
+    0.26,
+    0.31,
+    "up"
+   ],
+   "ripple": true,
+   "off": 150
+  },
+  {
+   "seg": 2,
+   "a": 0,
+   "b": 1.5,
+   "text": "Add a photo",
+   "arrow": [
+    0.14,
+    0.235,
+    "left"
+   ],
+   "off": 45
+  },
+  {
+   "seg": 3,
+   "a": 0,
+   "b": 2,
+   "text": "Type a name",
+   "arrow": [
+    0.7,
+    0.34,
+    "down"
+   ],
+   "off": 28
+  },
+  {
+   "seg": 4,
+   "a": 0,
+   "b": 2,
+   "text": "Then a price",
+   "arrow": [
+    0.7,
+    0.42,
+    "down"
+   ],
+   "off": 28
+  },
+  {
+   "seg": 5,
+   "a": 0,
+   "b": 1.6,
+   "text": "Tap Save",
+   "arrow": [
+    0.5,
+    0.917,
+    "down"
+   ],
+   "ripple": true,
+   "off": 35
+  },
+  {
+   "seg": 6,
+   "a": 0,
+   "b": 2.8,
+   "text": "It shows on your site",
+   "arrow": [
+    0.25,
+    0.57,
+    "up"
+   ],
+   "off": 170
+  }
+ ],
+ "w": 576,
+ "h": 1252,
+ "raw": "/tmp/tut/raw/store.mp4",
+ "out": "/tmp/pol/out/store.mp4"
+}
