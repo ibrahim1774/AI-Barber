@@ -18,6 +18,7 @@ import {
 } from './honest.js';
 import { ratingLineCustom, t, type LabelKey } from './labels.js';
 import { hasFilePages } from './pages.js';
+import { telHref } from './telHref.js';
 import { HEADER_CSS, NAV_CSS, headerHtml, reportLinkHtml, navItemsFor, navListHtml, type RenderCtx } from './shell.js';
 
 // Policy: there is NO default. A shop's policy is a fact only the barber
@@ -228,7 +229,7 @@ export function generatePrimeHTMLWithPlaceholders(input: WebsiteData, ctx?: Rend
   const formattedPhone = escapeHtml((siteData.phone || '').replace(/\s+/g, ''));
   const phoneDigits = (siteData.phone || '').replace(/\D/g, '');
   // Book: the booking link, else a call. Neither → no booking buttons.
-  const bookHref = bookingUrl || (phoneDigits ? `tel:+1${phoneDigits}` : '');
+  const bookHref = bookingUrl || telHref(siteData.phone);
   // Small visible text comes from the label registry (labels.ts); t() escapes.
   const copy = nicheCopy(siteData);
   const niche = nicheOf(siteData);

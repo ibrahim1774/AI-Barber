@@ -464,6 +464,8 @@ describe('React previews and vendored sources carry none of the removed copy', (
       'lib/render/heroes.ts', 'lib/render/sections.ts', 'lib/pagesV2.ts',
       // Editable everywhere (2026-10-24): marker helpers + the data paths the preview makes tappable. Add to the app's sync-web.sh.
       'lib/render/markers.ts', 'lib/render/editPaths.ts',
+      // One phone -> tel: href (2026-10-26). Add to the app's sync-web.sh.
+      'lib/render/telHref.ts',
     ];
     const norm = (p: string) => p.replace(/\.(ts|js)$/, '');
     const set = new Set(VENDORED.map(norm));
