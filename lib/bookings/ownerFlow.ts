@@ -28,6 +28,7 @@ import {
   type FlowResult,
 } from './core.js';
 import { entitlementActive } from '../ios/lapse.js';
+import { otherAccountBody, type BindingOwner } from '../ios/ownership.js';
 import { chooseShopSlug, vercelLabel } from './slug.js';
 import type { RateLimiter } from './rateLimit.js';
 import type { AppointmentRow, MemberRow, NewAppointment, NewService, PaymentStatus, ShopRow } from './repo.js';
@@ -39,8 +40,8 @@ export interface VerifiedPurchase {
 /** lib/ios verifier + ios_purchases upsert; throws VerifyFailure-like errors with a `code`. */
 export interface PurchaseVerifier {
   verify(transactionId: string): Promise<VerifiedPurchase>;
-  /** Attach an account-less purchase (ios_purchases.user_id null) to the caller (spec §4). */
-  setUser(otid: string, userId: string): Promise<void>;
+  /** Atomically attach an account-less purchase (ios_purchases.user_id null) to the caller: true = this call linked it, false = already linked. */
+  linkUserIfUnlinked(otid: string, userId: string): Promise<boolean>;
 }
 
 export interface OwnerDeps extends FlowDeps {
@@ -49,6 +50,10 @@ export interface OwnerDeps extends FlowDeps {
   /** Per-user write limit on setup's Apple verify (shared with POST /api/shop/plan). Absent = none. */
   writeLimiter?: Pick<RateLimiter, 'allow'>;
   rand?: () => string;
+  /** Unlinked purchase: which account owns the shop/site bound to it (id, 'ambiguous', null). */
+  bindingOwner?(row: { original_transaction_id: string; site_slug: string | null }): Promise<BindingOwner>;
+  /** Masked-hint lookup for a 409 (account id -> email). Absent: hint null. */
+  emailOf?(userId: string): Promise<string | null>;
 }
 
 type Body = unknown;
@@ -161,14 +166,23 @@ export async function setupShop(authorization: string | string[] | undefined, bo
       return err(503, 'temporarily-unavailable');
     }
     const p = await repo.purchase(otid);
-    if (p?.user_id && p.user_id !== user.id) return err(409, 'purchase-in-use');
+    // A subscription is never movable (DECIDED 2026-10-26): linked to another account = 409, nothing written.
+    const refuse = async (ownerId: string | null) => {
+      const other = await otherAccountBody(deps.emailOf, ownerId);
+      return err(409, 'purchase-other-account', { hint: other.hint });
+    };
+    if (p?.user_id && p.user_id !== user.id) return refuse(p.user_id);
     if (p && !p.user_id) {
-      // Best effort: the ios_otid unique index already stops a second shop on this purchase.
+      // Unlinked: whoever owns the shop/site already bound to it is the only account that may claim it
+      // (the same Apple ID under a second email must not). Nothing attached yet: first claim wins.
+      let owner: BindingOwner = null;
       try {
-        await deps.purchases.setUser(otid, user.id);
+        owner = deps.bindingOwner ? await deps.bindingOwner({ original_transaction_id: otid, site_slug: p.site_slug }) : null;
       } catch (e: any) {
-        console.error('[shop/setup] linking purchase to account failed:', e?.message || e);
+        console.error('[shop/setup] ownership lookup failed:', e?.message || e);
+        return err(503, 'temporarily-unavailable');
       }
+      if (owner && owner !== user.id) return refuse(owner === 'ambiguous' ? null : owner);
     }
   }
 
@@ -211,10 +225,29 @@ export async function setupShop(authorization: string | string[] | undefined, bo
     await repo.insertServices(input.services.map((s, i) => ({ ...s, shop_id: shop!.id, sort: i })));
   }
 
-  if (otid && shop.ios_otid !== otid) {
-    const r = await repo.setShopOtid(shop.id, otid);
-    if (r === 'taken') return err(409, 'purchase-in-use');
-    shop = { ...shop, ios_otid: otid };
+  if (otid) {
+    const before = shop.ios_otid;
+    if (before !== otid) {
+      const r = await repo.setShopOtid(shop.id, otid);
+      if (r === 'taken') return err(409, 'purchase-in-use'); // shop link first: nothing is linked to the account then
+      shop = { ...shop, ios_otid: otid };
+    }
+    // Atomic link (UPDATE ... WHERE user_id IS NULL): of two racing accounts exactly one wins. The loser
+    // gets the 409 and its shop link is put back, so nothing of the other account's purchase is left behind.
+    let lostTo: string | null = null;
+    try {
+      if (!(await deps.purchases!.linkUserIfUnlinked(otid, user.id))) {
+        const again = await repo.purchase(otid);
+        if (again?.user_id && again.user_id !== user.id) lostTo = again.user_id;
+      }
+    } catch (e: any) {
+      console.error('[shop/setup] linking purchase to account failed:', e?.message || e); // best effort
+    }
+    if (lostTo) {
+      if (before !== otid) await repo.setShopOtid(shop.id, before).catch((e: any) => console.error('[shop/setup] shop link revert failed:', e?.message || e));
+      const other = await otherAccountBody(deps.emailOf, lostTo);
+      return err(409, 'purchase-other-account', { hint: other.hint });
+    }
   }
   return ok({ shop: ownerShopView(shop) });
 }

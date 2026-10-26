@@ -11,6 +11,7 @@ import { userLimiter, type RateLimiter } from '../bookings/rateLimit.js';
 import { VerifyFailure, isActive, lazyDefaultVerifier, type VerifiedTx } from './appleVerify.js';
 import { entitlementActive, purchaseLive } from './lapse.js';
 import { supabasePurchases, type PurchaseRow } from './purchases.js';
+import { liveBindingOwner, liveEmailOf, otherAccountBody, type BindingOwner } from './ownership.js';
 import { tierOf, type Tier } from './tiers.js';
 
 export interface PlanView {
@@ -24,6 +25,12 @@ export interface PlanView {
   expiresAt: string | null;
   takenDownAt: string | null;
   revoked: boolean;
+  /**
+   * Whose subscription the purchase is, from the caller's side: 'self' (linked to the caller),
+   * 'other' (linked to another account: the same Apple ID under a second email), null (no purchase
+   * known, or not linked yet). The purchase is the shop's, or the one named by GET ?otid=.
+   */
+  purchaseAccount: 'self' | 'other' | null;
 }
 
 export interface PlanDeps {
@@ -33,8 +40,15 @@ export interface PlanDeps {
   purchase(otid: string): Promise<PurchaseRow | null>;
   verify(transactionId: string): Promise<VerifiedTx>;
   upsertVerified(tx: VerifiedTx, opts?: { checkedAt?: number }): Promise<PurchaseRow>;
-  setShopOtid(shopId: string, otid: string): Promise<'ok' | 'taken'>;
-  setUser(otid: string, userId: string): Promise<void>;
+  setShopOtid(shopId: string, otid: string | null): Promise<'ok' | 'taken'>;
+  /** Atomic conditional link (WHERE user_id IS NULL): true = this call linked it; false = it was already linked. */
+  setUserIfUnlinked(otid: string, userId: string): Promise<boolean>;
+  /** The purchases linked to the caller (user_id = caller). Used only when the caller has no shop. Absent: none. */
+  purchasesOfUser?(userId: string): Promise<PurchaseRow[]>;
+  /** Masked-hint lookup for a 409 (account id -> email). Absent: hint null. */
+  emailOf?(userId: string): Promise<string | null>;
+  /** Unlinked purchase (no user_id): which account owns the shop/site bound to it (id, 'ambiguous', null). */
+  bindingOwner?(row: PurchaseRow): Promise<BindingOwner>;
   now?(): number;
   /** Is migration 015 (member title / booking_url, ab_add_member) applied? Adds `capabilities.memberProfile` to GET when present. */
   memberProfileLive?(): Promise<boolean>;
@@ -55,15 +69,22 @@ const isoOrNull = (v: string | null | undefined): string | null => {
  * (lib/ios/lapse.ts purchaseLive / entitlementActive at `now`), so the app never shows a plan
  * the gates refuse.
  */
-export function planView(shop: Pick<ShopRow, 'ios_otid'>, row: PurchaseRow | null, now: number): PlanView {
+const accountOf = (row: PurchaseRow | null, userId: string | undefined): PlanView['purchaseAccount'] =>
+  !row || !row.user_id || !userId ? null : row.user_id === userId ? 'self' : 'other';
+
+export function planView(shop: Pick<ShopRow, 'ios_otid'>, row: PurchaseRow | null, now: number, userId?: string): PlanView {
   const linked = !!shop.ios_otid;
-  if (!linked || !row) {
+  const purchaseAccount = accountOf(row, userId);
+  // H2: a purchase linked to ANOTHER account (the same Apple ID under a second email) grants this
+  // caller nothing, even when the shop points at it.
+  if (!linked || !row || purchaseAccount === 'other') {
     return {
       linked, tier: null, entitlements: { hosting: false, bookings: false, store: false },
-      active: false, expiresAt: null, takenDownAt: null, revoked: false,
+      active: false, expiresAt: null, takenDownAt: null, revoked: false, purchaseAccount,
     };
   }
   return {
+    purchaseAccount,
     linked,
     tier: tierOf(row.product_id),
     entitlements: {
@@ -89,12 +110,33 @@ async function owner(auth: Auth, deps: PlanDeps) {
   return { user: a.user, shop };
 }
 
-/** GET /api/shop/plan */
+/**
+ * GET /api/shop/plan. With a shop: the shop's purchase. With NO shop (a signed-in account still
+ * setting up Bookings / Store): the caller's OWN purchase, i.e. the newest active ios_purchases row
+ * with user_id = caller. Entitlements are granted only for a purchase linked to the caller
+ * (`purchaseAccount: 'self'`); a purchase linked to another account reads 'other' and grants nothing.
+ * There is no way to ask about a purchase by id (the old ?otid probe is gone: it revealed another
+ * purchase's link state).
+ */
 export async function getPlan(auth: Auth, deps: PlanDeps): Promise<FlowResult> {
-  const o = await owner(auth, deps);
-  if (o.result) return o.result;
-  const row = o.shop.ios_otid ? await deps.purchase(o.shop.ios_otid) : null;
-  const view = planView(o.shop, row, (deps.now ?? Date.now)());
+  const a = await authenticate(auth, deps.getUser);
+  if (a.ok === false) return { status: a.status, body: a.body };
+  const now = (deps.now ?? Date.now)();
+  const shop = await deps.shopByOwner(a.user.id);
+  let view: PlanView;
+  if (shop) {
+    const row = shop.ios_otid ? await deps.purchase(shop.ios_otid) : null;
+    view = planView(shop, row, now, a.user.id);
+  } else {
+    const own = deps.purchasesOfUser ? await deps.purchasesOfUser(a.user.id) : [];
+    const mine = own
+      .filter((r) => r.user_id === a.user.id && purchaseLive(r, now))
+      .sort((x, y) => (Date.parse(y.expires_at ?? '') || 0) - (Date.parse(x.expires_at ?? '') || 0))[0] ?? null;
+    // `linked` stays false: it means "the shop has a purchase", and there is no shop.
+    view = mine
+      ? { ...planView({ ios_otid: mine.original_transaction_id }, mine, now, a.user.id), linked: false }
+      : planView({ ios_otid: null }, null, now, a.user.id);
+  }
   if (!deps.memberProfileLive) return { status: 200, body: view };
   // A failed probe reads as "not live": the app then keeps website-only fields in site JSON.
   const memberProfile = await deps.memberProfileLive().catch(() => false);
@@ -142,27 +184,56 @@ export async function refreshPlan(auth: Auth, body: unknown, deps: PlanDeps): Pr
   const otid = tx.originalTransactionId;
   const row = await deps.upsertVerified(tx, { checkedAt });
 
-  if (row.user_id && row.user_id !== user.id) return err(409, 'purchase-in-use');
+  // A subscription is never movable (DECIDED 2026-10-26): linked to another account = 409, whatever
+  // Apple says. `error` stays 'purchase-in-use' for builds that know it; `reason` + `hint` are the new copy.
+  if (row.user_id && row.user_id !== user.id) {
+    const other = await otherAccountBody(deps.emailOf, row.user_id);
+    return err(409, 'purchase-in-use', { reason: other.error, hint: other.hint });
+  }
+  // An unlinked purchase whose slug/shop already belongs to another account is theirs, not this
+  // caller's (the same Apple ID under a second email). Nothing attached yet: first signed-in claim wins.
+  if (!row.user_id && row.site_slug && shop.ios_otid !== otid && deps.bindingOwner) {
+    const owner = await deps.bindingOwner(row);
+    if (owner && owner !== user.id) {
+      const other = await otherAccountBody(deps.emailOf, owner === 'ambiguous' ? null : owner);
+      return err(409, 'purchase-in-use', { reason: other.error, hint: other.hint });
+    }
+  }
   // Only a live purchase (Apple: active or billing grace) may take over the shop's link. An
   // expired, revoked or retrying one (an old Apple ID, a stale transaction) leaves the shop
   // exactly as it was, and the current plan comes back.
   if (!isActive(tx, now())) {
     const current = shop.ios_otid ? (shop.ios_otid === otid ? row : await deps.purchase(shop.ios_otid)) : null;
-    return { status: 200, body: planView(shop, current, now()) };
+    return { status: 200, body: planView(shop, current, now(), user.id) };
   }
+  // The shop link first: when another shop already holds this purchase ('taken') nothing is linked.
+  const before = shop.ios_otid;
+  if (before !== otid) {
+    if ((await deps.setShopOtid(shop.id, otid)) === 'taken') return err(409, 'purchase-in-use');
+    shop = { ...shop, ios_otid: otid };
+  }
+  let linkedRow = row;
   if (!row.user_id) {
     try {
-      await deps.setUser(otid, user.id);
+      if (await deps.setUserIfUnlinked(otid, user.id)) {
+        linkedRow = { ...row, user_id: user.id };
+      } else {
+        // Lost the race (a publish, Restore or setup linked it between our read and now): re-decide.
+        // Someone else's: 409, and the shop link is put back so nothing of theirs is left behind.
+        const again = await deps.purchase(otid);
+        if (again?.user_id && again.user_id !== user.id) {
+          if (before !== otid) await deps.setShopOtid(shop.id, before).catch((e: any) => console.error('[shop/plan] shop link revert failed:', e?.message || e));
+          const other = await otherAccountBody(deps.emailOf, again.user_id);
+          return err(409, 'purchase-in-use', { reason: other.error, hint: other.hint });
+        }
+        if (again) linkedRow = again;
+      }
     } catch (e: any) {
       // Best effort: the ios_otid unique index already stops a second shop on this purchase.
       console.error('[shop/plan] linking purchase to account failed:', e?.message || e);
     }
   }
-  if (shop.ios_otid !== otid) {
-    if ((await deps.setShopOtid(shop.id, otid)) === 'taken') return err(409, 'purchase-in-use');
-    shop = { ...shop, ios_otid: otid };
-  }
-  return { status: 200, body: planView(shop, row, now()) };
+  return { status: 200, body: planView(shop, linkedRow, now(), user.id) };
 }
 
 /** Real dependencies for api/shop/plan.ts (service-role Supabase, Apple). */
@@ -174,11 +245,14 @@ export function livePlanDeps(): PlanDeps {
     getUser: liveGetUser(client),
     shopByOwner: (uid) => shops.shopByOwner(uid),
     purchase: (otid) => purchases.get(otid),
+    purchasesOfUser: (uid) => purchases.ofUser!(uid),
     // Lazy: missing Apple env vars surface as a mapped 503, not a crash at wiring time.
     verify: lazyDefaultVerifier(),
     upsertVerified: (tx, opts) => purchases.upsertVerified(tx, opts),
     setShopOtid: (id, otid) => shops.setShopOtid(id, otid),
-    setUser: (otid, uid) => purchases.setUser(otid, uid),
+    setUserIfUnlinked: (otid, uid) => purchases.setUserIfUnlinked(otid, uid),
+    emailOf: liveEmailOf,
+    bindingOwner: liveBindingOwner,
     now: Date.now,
     memberProfileLive: () => shops.memberProfileLive(),
     limiter: userLimiter,

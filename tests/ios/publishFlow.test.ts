@@ -91,7 +91,7 @@ function fakes(o: FakeOpts = {}) {
     }),
     slugTaken: vi.fn(async () => false),
     markPublished: vi.fn(async (otid: string) => { rows.get(otid)!.published_at = new Date(NOW).toISOString(); }),
-    setUser: vi.fn(async (otid: string, userId: string) => { rows.get(otid)!.user_id = userId; }),
+    setUserIfUnlinked: vi.fn(async (otid: string, userId: string) => { const r = rows.get(otid); if (!r || r.user_id) return false; r.user_id = userId; return true; }),
     applyNotification: vi.fn(async () => {}),
     unpublishedBound: vi.fn(async () => []),
     takedownCandidates: vi.fn(async () => []),
@@ -116,6 +116,7 @@ function fakes(o: FakeOpts = {}) {
     publish: vi.fn(async (slug: string) =>
       o.outcome ? o.outcome(slug) : { ok: true, siteId: slug, deployedUrl: `https://${slug}.vercel.app`, alreadyLive: false }),
     readPending: vi.fn(async (slug: string) => pending.get(slug) ?? null),
+    userOf: vi.fn(async (t: string) => (t === 'tok-user' ? { id: USER } : null)),
     now: () => NOW,
   };
   return { deps, repo, rows, pending };
@@ -347,7 +348,6 @@ describe('runIosPublish', () => {
     const f = withAuth(fakes());
     const r = await runIosPublish(input({ userId: USER }), f.deps);
     expect(r.status).toBe(200);
-    expect(f.repo.setUser).not.toHaveBeenCalled();
     expect(f.repo.setUserIfUnlinked).not.toHaveBeenCalled();
     expect(f.rows.get(OTID)!.user_id).toBeNull();
   });
@@ -359,24 +359,27 @@ describe('runIosPublish', () => {
     expect(f.rows.get(OTID)!.user_id).toBe(USER);
   });
 
-  it('a verified bearer of another account never re-points a linked purchase', async () => {
+  it('a verified bearer of another account never re-points a linked purchase (409, nothing written)', async () => {
     const f = withAuth(fakes({ existing: row({ user_id: USER }) }));
     const r = await runIosPublish(input(), f.deps, { authorization: 'Bearer tok-other' });
-    expect(r.status).toBe(200);
+    expect(r).toEqual({ status: 409, body: { error: 'purchase-other-account', hint: null } });
+    expect(f.deps.writePending).not.toHaveBeenCalled();
+    expect(f.repo.bindSlug).not.toHaveBeenCalled();
     expect(f.rows.get(OTID)!.user_id).toBe(USER);
-    expect(f.repo.setUser).not.toHaveBeenCalled();
   });
 
-  it('an invalid token, or a failing auth lookup or link, never blocks publishing', async () => {
+  it('an invalid token still publishes under the compat flag; an auth outage or a failed link fails closed (503, nothing written)', async () => {
     const a = withAuth(fakes());
     expect((await runIosPublish(input(), a.deps, { authorization: 'Bearer nope' })).status).toBe(200);
     expect(a.rows.get(OTID)!.user_id).toBeNull();
     const b = withAuth(fakes());
     (b.deps.userOf as any).mockRejectedValueOnce(new Error('auth down'));
-    expect((await runIosPublish(input(), b.deps, { authorization: 'Bearer tok-user' })).status).toBe(200);
+    expect((await runIosPublish(input(), b.deps, { authorization: 'Bearer tok-user' })).status).toBe(503);
+    expect(b.deps.publish).not.toHaveBeenCalled();
     const c = withAuth(fakes());
     (c.repo.setUserIfUnlinked as any).mockRejectedValueOnce(new Error('fk violation'));
-    expect((await runIosPublish(input(), c.deps, { authorization: 'Bearer tok-user' })).status).toBe(200);
+    expect((await runIosPublish(input(), c.deps, { authorization: 'Bearer tok-user' })).status).toBe(503);
+    expect(c.deps.publish).not.toHaveBeenCalled();
   });
 
   it('repo errors surface as 503 temporarily-unavailable', async () => {
@@ -655,15 +658,17 @@ describe('toPendingSiteData', () => {
   });
 });
 
+const AS_USER = { authorization: 'Bearer tok-user' };
+
 describe('runIosSiteLookup', () => {
   it('site lookup returns siteData with real image URLs', async () => {
     const sd = site();
     const map = buildImageUrlMap(sd);
     const { deps } = fakes({
-      existing: row({ site_slug: 'fresh-cuts' }),
+      existing: row({ user_id: USER, site_slug: 'fresh-cuts' }),
       pending: { 'fresh-cuts': { siteId: 'fresh-cuts', siteData: toPendingSiteData(sd, map), imageUrlMap: map, deployedUrl: 'https://fresh-cuts.vercel.app' } },
     });
-    const r: any = await runIosSiteLookup('t-123', deps);
+    const r: any = await runIosSiteLookup('t-123', deps, AS_USER);
     expect(r.status).toBe(200);
     expect(r.body.siteId).toBe('fresh-cuts');
     expect(r.body.deployedUrl).toBe('https://fresh-cuts.vercel.app');
@@ -677,20 +682,68 @@ describe('runIosSiteLookup', () => {
   });
 
   it('site lookup for a transaction with no bound slug → 404 no-site', async () => {
-    const a = fakes({ existing: row({ site_slug: null }) });
-    expect(await runIosSiteLookup('t-123', a.deps)).toEqual({ status: 404, body: { error: 'no-site' } });
+    const a = fakes({ existing: row({ user_id: USER, site_slug: null }) });
+    expect(await runIosSiteLookup('t-123', a.deps, AS_USER)).toEqual({ status: 404, body: { error: 'no-site' } });
     const b = fakes({ existing: null });
-    expect(await runIosSiteLookup('t-123', b.deps)).toEqual({ status: 404, body: { error: 'no-site' } });
+    expect(await runIosSiteLookup('t-123', b.deps, AS_USER)).toEqual({ status: 404, body: { error: 'no-site' } });
   });
 
   it('site lookup for a site the owner took offline (removed_at) → 404 no-site, so a new site can be published', async () => {
-    const { deps } = fakes({ existing: row({ site_slug: 'fresh-cuts', removed_at: '2026-10-15T00:00:00Z', taken_down_at: '2026-10-15T00:00:00Z' }) });
-    expect(await runIosSiteLookup('t-123', deps)).toEqual({ status: 404, body: { error: 'no-site' } });
+    const { deps } = fakes({ existing: row({ user_id: USER, site_slug: 'fresh-cuts', removed_at: '2026-10-15T00:00:00Z', taken_down_at: '2026-10-15T00:00:00Z' }) });
+    expect(await runIosSiteLookup('t-123', deps, AS_USER)).toEqual({ status: 404, body: { error: 'no-site' } });
+  });
+
+  describe('H1: no Authorization header (build 22 and earlier)', () => {
+    it('no purchase row, or an unlinked row with no site -> 404 no-site with no data, Apple was asked', async () => {
+      for (const existing of [null, row({ user_id: null, site_slug: null })]) {
+        const { deps } = fakes({ existing });
+        for (const ctx of [{}, { authorization: undefined }, { authorization: '' }]) {
+          expect(await runIosSiteLookup('t-123', deps, ctx)).toEqual({ status: 404, body: { error: 'no-site' } });
+        }
+        expect(deps.verify).toHaveBeenCalled();
+        expect(deps.readPending).not.toHaveBeenCalled();
+      }
+    });
+
+    it('a linked row, or an unlinked row with a bound site -> 401 auth-required with no data', async () => {
+      for (const existing of [row({ user_id: USER, site_slug: 'fresh-cuts' }), row({ user_id: USER, site_slug: null }), row({ user_id: null, site_slug: 'fresh-cuts' })]) {
+        const { deps } = fakes({ existing });
+        expect(await runIosSiteLookup('t-123', deps, {})).toEqual({ status: 401, body: { error: 'auth-required' } });
+        expect(deps.readPending).not.toHaveBeenCalled();
+      }
+    });
+
+    it('Apple refusing (unknown / down) is 404 / 503, never a 401 loop', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const a = fakes({ verified: new VerifyFailure('not-found') });
+      expect((await runIosSiteLookup('t-123', a.deps, {})).status).toBe(404);
+      const b = fakes({ verified: new VerifyFailure('apple-unavailable') });
+      expect((await runIosSiteLookup('t-123', b.deps, {})).status).toBe(503);
+    });
+  });
+
+  describe('M2: Restore links an accountless legacy site', () => {
+    it('nobody attached (owner null): the signed-in caller is linked and gets the site', async () => {
+      const { deps } = fakes({ existing: row({ user_id: null, site_slug: 'fresh-cuts' }), pending: { 'fresh-cuts': { siteId: 'fresh-cuts', siteData: toPendingSiteData(site(), buildImageUrlMap(site())), imageUrlMap: buildImageUrlMap(site()), deployedUrl: 'https://x' } } });
+      (deps as any).bindingOwner = vi.fn(async () => null);
+      const r: any = await runIosSiteLookup('t-123', deps, AS_USER);
+      expect(r.status).toBe(200);
+      expect(deps.repo.setUserIfUnlinked).toHaveBeenCalledWith(OTID, USER);
+    });
+
+    it('another account owns the shop, or ownership is ambiguous: 409 and no link', async () => {
+      for (const owner of ['9f2b8c1e-5d4a-4b6f-9e2d-1a2b3c4d5e6f', 'ambiguous'] as const) {
+        const { deps } = fakes({ existing: row({ user_id: null, site_slug: 'fresh-cuts' }) });
+        (deps as any).bindingOwner = vi.fn(async () => owner);
+        expect((await runIosSiteLookup('t-123', deps, AS_USER)).status).toBe(409);
+        expect(deps.repo.setUserIfUnlinked).not.toHaveBeenCalled();
+      }
+    });
   });
 
   it('site lookup returns active:false for an expired subscription', async () => {
-    const { deps } = fakes({ verified: tx({ expiresAt: 1000 }), existing: row({ site_slug: 'fresh-cuts' }) });
-    const r: any = await runIosSiteLookup('t-123', deps);
+    const { deps } = fakes({ verified: tx({ expiresAt: 1000 }), existing: row({ user_id: USER, site_slug: 'fresh-cuts' }) });
+    const r: any = await runIosSiteLookup('t-123', deps, AS_USER);
     expect(r.status).toBe(200);
     expect(r.body.active).toBe(false);
     expect(r.body.siteData).toBeNull();
@@ -700,24 +753,24 @@ describe('runIosSiteLookup', () => {
   it('site lookup judges activity by the injected clock', async () => {
     // NOW - 1 is still in the future by the wall clock, but expired by deps.now().
     expect(NOW - 1).toBeGreaterThan(Date.now());
-    const { deps } = fakes({ verified: tx({ expiresAt: NOW - 1 }), existing: row({ site_slug: 'fresh-cuts' }) });
-    const r: any = await runIosSiteLookup('t-123', deps);
+    const { deps } = fakes({ verified: tx({ expiresAt: NOW - 1 }), existing: row({ user_id: USER, site_slug: 'fresh-cuts' }) });
+    const r: any = await runIosSiteLookup('t-123', deps, AS_USER);
     expect(r.body.active).toBe(false);
   });
 
   it('site lookup maps verify failures', async () => {
-    expect(await runIosSiteLookup('t', fakes({ verified: new VerifyFailure('not-found') }).deps))
+    expect(await runIosSiteLookup('t', fakes({ verified: new VerifyFailure('not-found') }).deps, AS_USER))
       .toEqual({ status: 404, body: { error: 'not-found' } });
-    expect(await runIosSiteLookup('t', fakes({ verified: new VerifyFailure('bad-product') }).deps))
+    expect(await runIosSiteLookup('t', fakes({ verified: new VerifyFailure('bad-product') }).deps, AS_USER))
       .toEqual({ status: 404, body: { error: 'bad-product' } });
-    expect(await runIosSiteLookup('t', fakes({ verified: new VerifyFailure('apple-unavailable') }).deps))
+    expect(await runIosSiteLookup('t', fakes({ verified: new VerifyFailure('apple-unavailable') }).deps, AS_USER))
       .toEqual({ status: 503, body: { error: 'apple-unavailable' } });
   });
 
   it('site lookup repo errors → 503', async () => {
-    const { deps, repo } = fakes({ existing: row({ site_slug: 'fresh-cuts' }) });
+    const { deps, repo } = fakes({ existing: row({ user_id: USER, site_slug: 'fresh-cuts' }) });
     (repo.get as any).mockRejectedValueOnce(new Error('db down'));
-    expect(await runIosSiteLookup('t-123', deps)).toEqual({ status: 503, body: { error: 'temporarily-unavailable' } });
+    expect(await runIosSiteLookup('t-123', deps, AS_USER)).toEqual({ status: 503, body: { error: 'temporarily-unavailable' } });
   });
 });
 
@@ -820,11 +873,11 @@ describe('site versions (admin edits never lost to the phone)', () => {
   });
 
   it('site lookup returns version, editedBy and editedAt (0 / null for an unversioned copy)', async () => {
-    const a = fakes({ existing: bound(), pending: { [SLUG]: stored({ version: 7, editedBy: 'admin', editedAt: '2026-10-21T10:00:00.000Z' }) } });
-    const r: any = await runIosSiteLookup('t-123', a.deps);
+    const a = fakes({ existing: { ...bound(), user_id: USER }, pending: { [SLUG]: stored({ version: 7, editedBy: 'admin', editedAt: '2026-10-21T10:00:00.000Z' }) } });
+    const r: any = await runIosSiteLookup('t-123', a.deps, AS_USER);
     expect(r.body).toMatchObject({ siteId: SLUG, version: 7, editedBy: 'admin', editedAt: '2026-10-21T10:00:00.000Z' });
-    const b = fakes({ existing: bound(), pending: { [SLUG]: stored() } });
-    const r2: any = await runIosSiteLookup('t-123', b.deps);
+    const b = fakes({ existing: { ...bound(), user_id: USER }, pending: { [SLUG]: stored() } });
+    const r2: any = await runIosSiteLookup('t-123', b.deps, AS_USER);
     expect(r2.body).toMatchObject({ version: 0, editedBy: null, editedAt: null });
   });
 });

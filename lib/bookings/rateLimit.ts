@@ -90,7 +90,7 @@ export interface RateLimiter {
 }
 
 /** Limiter scopes: a fixed, server-chosen namespace per limiter, never from the request. */
-export type RateScope = 'public' | 'ios' | 'deploy' | 'user';
+export type RateScope = 'public' | 'ios' | 'deploy' | 'user' | 'signup' | 'signupEmail';
 
 /**
  * Limiter keyed `${scope}:${kind}:${subject}`: reads count in `readStore` (default in memory),
@@ -136,6 +136,15 @@ export const userLimiter = makeRateLimiter(memoryStore(), Date.now, sharedStore,
 export const IOS_READ_LIMIT = 60;
 export const IOS_WRITE_LIMIT = 20;
 export const iosLimiter = makeRateLimiter(sharedStore, Date.now, sharedStore, { read: IOS_READ_LIMIT, write: IOS_WRITE_LIMIT }, 'ios');
+
+/**
+ * POST /api/ios/signup (account creation): per IP, and per email (subject = sha256 of the lowercased
+ * address, so no address is ever a limiter key). Writes are shared across instances.
+ */
+export const SIGNUP_IP_LIMIT = 10;
+export const SIGNUP_EMAIL_LIMIT = 4;
+export const signupIpLimiter = makeRateLimiter(sharedStore, Date.now, sharedStore, { read: SIGNUP_IP_LIMIT, write: SIGNUP_IP_LIMIT }, 'signup');
+export const signupEmailLimiter = makeRateLimiter(sharedStore, Date.now, sharedStore, { read: SIGNUP_EMAIL_LIMIT, write: SIGNUP_EMAIL_LIMIT }, 'signupEmail');
 
 /** Per-shop online-booking cap (core FlowLimits.shopBooking). Fails open, never throws. */
 export function shopBookingLimiter(store: RateLimitStore = sharedStore, now: () => number = Date.now) {

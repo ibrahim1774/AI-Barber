@@ -70,6 +70,13 @@ describe.each([
 });
 
 describe('api/ios/site', () => {
+  it('forwards the Authorization header to the lookup and allows it in CORS', async () => {
+    const r = res();
+    await siteHandler({ method: 'POST', headers: { authorization: 'Bearer abc' }, body: { transactionId: 't-1' } } as any, r);
+    expect(runIosSiteLookup).toHaveBeenCalledWith('t-1', expect.anything(), { authorization: 'Bearer abc' });
+    expect(r.headers['Access-Control-Allow-Headers']).toContain('Authorization');
+  });
+
   it('missing transactionId → 400 without lookup', async () => {
     const r = res();
     await siteHandler({ method: 'POST', body: {} } as any, r);

@@ -32,6 +32,11 @@ import { withTimeout } from './timeout.js';
 import { stripLapsedLinks } from './tiers.js';
 
 export interface IosSweepSummary {
+  /**
+   * Paid purchases nobody claimed with an account within 30 days (019 claim_expires_at). LOGGED only:
+   * no refund, no takedown (owner ruling 2026-10-26). Present only when there are some.
+   */
+  expiredUnclaimed?: string[];
   checked: number;
   published: string[];
   failed: string[];
@@ -145,6 +150,21 @@ export async function sweepIos(
     appleUnavailable: [], appleUnresolvable: [], appleUnavailableCount: 0, appleUnresolvableCount: 0,
     linksStripped: [], linksFailed: [],
   };
+
+  // Unclaimed purchases past their 30-day claim window: log only (never refund, never act). Best effort.
+  if (deps.repo.expiredUnclaimed) {
+    try {
+      const stale = await deps.repo.expiredUnclaimed(limit, now());
+      if (stale.length) {
+        out.expiredUnclaimed = stale.map((r) => r.original_transaction_id);
+        for (const r of stale) {
+          console.warn(`[Sweeper:iOS] EXPIRED UNCLAIMED purchase ${r.original_transaction_id} (${r.product_id}, ${r.environment}): paid, never claimed by an account; claim window ended ${r.claim_expires_at}; no action taken`);
+        }
+      }
+    } catch (e: any) {
+      console.warn('[Sweeper:iOS] expired-unclaimed scan failed (ignored):', e?.message || e);
+    }
+  }
 
   /**
    * Apple's verdict for this row: true active, false inactive, null couldn't ask

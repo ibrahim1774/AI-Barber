@@ -24,6 +24,11 @@ export interface PurchaseRow {
   product_purchased_at?: string | null;
   /** 014: set when a downgrade left Book/Shop links the plan no longer covers (the sweep strips them). */
   links_due_at?: string | null;
+  /**
+   * 019: when a paid-but-unclaimed purchase (claim-start: user_id null, no slug) stops being fresh.
+   * Only the sweep reads it, to LOG expired rows (no auto-refund, no takedown). Set once.
+   */
+  claim_expires_at?: string | null;
 }
 
 export interface PurchasesRepo {
@@ -37,12 +42,12 @@ export interface PurchasesRepo {
   bindSlug(otid: string, slug: string): Promise<boolean>;
   slugTaken(slug: string): Promise<boolean>;
   markPublished(otid: string): Promise<void>;
-  setUser(otid: string, userId: string): Promise<void>;
   /**
-   * Link the purchase to this account only while it has none (conditional in SQL): never
-   * re-points an existing owner. True when this call linked it. Optional for older fakes.
+   * THE ONLY writer of ios_purchases.user_id (besides the FK's ON DELETE SET NULL): a single
+   * conditional UPDATE ... WHERE user_id IS NULL, so it never re-points an existing owner and of two
+   * racing accounts exactly one gets true. False = already linked (to anyone, the caller included).
    */
-  setUserIfUnlinked?(otid: string, userId: string): Promise<boolean>;
+  setUserIfUnlinked(otid: string, userId: string): Promise<boolean>;
   applyNotification(n: {
     otid: string; productId: string; environment: IosEnv; expiresAt: number | null; revokedAt: number | null; type: string;
     /** REFUND_REVERSED: set revoked_at = null (wins over revokedAt). */
@@ -72,6 +77,17 @@ export interface PurchasesRepo {
   markLapseChecked(otid: string, at: number): Promise<void>;
   /** The purchase bound to this slug, if any. */
   findBySlug(slug: string): Promise<PurchaseRow | null>;
+  /**
+   * 019: stamp claim_expires_at on a still-unclaimed row (user_id null, no slug) that has none yet.
+   * Never extends an existing deadline (claim-start is idempotent per otid). True = this call set it.
+   */
+  setClaimExpiryIfUnset?(otid: string, at: number): Promise<boolean>;
+  /** The purchases linked to this account (user_id = userId), newest expiry first. Plan GET for a shop-less account. */
+  ofUser?(userId: string): Promise<PurchaseRow[]>;
+  /** Purchases linked to this account that hold a live (not removed) site: the one-site-per-account check. */
+  liveSitesOfUser?(userId: string): Promise<PurchaseRow[]>;
+  /** 019: unclaimed rows (no user, no slug, not revoked/removed) whose claim_expires_at has passed. */
+  expiredUnclaimed?(limit: number, now: number): Promise<PurchaseRow[]>;
   /** 014 (M1): stamp links_due_at (the product stopped covering Book/Shop links). Optional for older fakes. */
   markLinksDue?(otid: string, at: number): Promise<void>;
   /** 014 (M1): bound, published, live rows with links_due_at set, oldest first. */
@@ -212,16 +228,42 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
       if (error) fail('markPublished', error);
     },
 
-    async setUser(otid, userId) {
-      const { error } = await db().from(TABLE).update({ user_id: userId }).eq('original_transaction_id', otid);
-      if (error) fail('setUser', error);
-    },
-
     async setUserIfUnlinked(otid, userId) {
       const { data, error } = await db().from(TABLE).update({ user_id: userId })
         .eq('original_transaction_id', otid).is('user_id', null).select('original_transaction_id');
       if (error) fail('setUserIfUnlinked', error);
       return Array.isArray(data) && data.length > 0;
+    },
+
+    async setClaimExpiryIfUnset(otid, at) {
+      const { data, error } = await db().from(TABLE).update({ claim_expires_at: iso(at) })
+        .eq('original_transaction_id', otid).is('user_id', null).is('site_slug', null).is('claim_expires_at', null)
+        .select('original_transaction_id');
+      if (error) fail('setClaimExpiryIfUnset', error);
+      return Array.isArray(data) && data.length > 0;
+    },
+
+    async ofUser(userId) {
+      const { data, error } = await db().from(TABLE).select('*').eq('user_id', userId)
+        .order('expires_at', { ascending: false, nullsFirst: false }).limit(20);
+      if (error) fail('ofUser', error);
+      return (data as PurchaseRow[]) ?? [];
+    },
+
+    async liveSitesOfUser(userId) {
+      const { data, error } = await db().from(TABLE).select('*')
+        .eq('user_id', userId).not('site_slug', 'is', null).is('removed_at', null);
+      if (error) fail('liveSitesOfUser', error);
+      return (data as PurchaseRow[]) ?? [];
+    },
+
+    async expiredUnclaimed(limit, now) {
+      const { data, error } = await db().from(TABLE).select('*')
+        .is('user_id', null).is('site_slug', null).is('revoked_at', null).is('removed_at', null)
+        .not('claim_expires_at', 'is', null).lt('claim_expires_at', iso(now))
+        .order('claim_expires_at', { ascending: true }).limit(limit);
+      if (error) fail('expiredUnclaimed', error);
+      return (data as PurchaseRow[]) ?? [];
     },
 
     async markLinksDue(otid, at) {

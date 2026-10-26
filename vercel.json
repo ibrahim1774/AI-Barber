@@ -91,6 +91,9 @@
     "api/ios/delete-account.ts": {
       "maxDuration": 300
     },
+    "api/ios/claim-start.ts": {
+      "includeFiles": "lib/ios/certs/**"
+    },
     "api/ios/site.ts": {
       "includeFiles": "lib/ios/certs/**"
     },

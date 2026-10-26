@@ -2,6 +2,7 @@
 import { liveGetUser } from './auth.js';
 import { liveNotify, livePayments } from './deps.js';
 import type { OwnerDeps, PurchaseVerifier } from './ownerFlow.js';
+import { liveBindingOwner, liveEmailOf } from '../ios/ownership.js';
 import { userLimiter, shopBookingLimiter } from './rateLimit.js';
 import { serviceClient, supabaseBookingRepo } from './repo.js';
 import type { VerifiedTx } from '../ios/appleVerify.js';
@@ -12,7 +13,7 @@ export const BOOKING_BASE_URL = process.env.BOOKING_BASE_URL || 'https://www.aib
 /** What a purchase verify needs: the Apple verifier and the ios_purchases repo. */
 export interface PurchaseVerifierParts {
   verify(transactionId: string): Promise<VerifiedTx>;
-  repo: Pick<PurchasesRepo, 'upsertVerified' | 'setUser'>;
+  repo: Pick<PurchasesRepo, 'upsertVerified' | 'setUserIfUnlinked'>;
 }
 
 /**
@@ -31,9 +32,9 @@ export function makePurchaseVerifier(load: () => Promise<PurchaseVerifierParts>,
       await repo.upsertVerified(tx, { checkedAt });
       return { originalTransactionId: tx.originalTransactionId };
     },
-    async setUser(otid, userId) {
+    async linkUserIfUnlinked(otid, userId) {
       const { repo } = await load();
-      await repo.setUser(otid, userId);
+      return repo.setUserIfUnlinked(otid, userId);
     },
   };
 }
@@ -60,5 +61,7 @@ export function liveDeps(): OwnerDeps {
     getUser: liveGetUser(client),
     purchases: livePurchases(),
     writeLimiter: userLimiter,
+    bindingOwner: liveBindingOwner,
+    emailOf: liveEmailOf,
   };
 }
