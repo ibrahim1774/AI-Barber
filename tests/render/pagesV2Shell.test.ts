@@ -147,7 +147,7 @@ describe.each(TEMPLATES)('%s: the menu on real pages', (template) => {
 
 describe('footer', () => {
   it('without the new fields it is what it was', () => {
-    expect(footerHtml('prime', { name: 'A & B', year: 2026 })).toBe('<footer class="ab-foot"><div class="ab-wrap"><div class="ab-foot-name">A &amp; B</div><p class="ab-foot-copy">&copy; 2026 &middot; Built by Prime Barber</p></div></footer>');
+    expect(footerHtml('prime', { name: 'A & B', year: 2026 })).toBe('<footer class="ab-foot"><div class="ab-wrap"><div class="ab-foot-name">A &amp; B</div><p class="ab-foot-copy">&copy; 2026 &middot; Built by Prime Barber <a class="ab-report" style="color:inherit;text-decoration:underline;margin-left:.75em" rel="nofollow" href="mailto:support@davoxa.com?subject=Report%20{{siteSlug}}">Report this site</a></p></div></footer>');
   });
   it.each(TEMPLATES)('%s: nested pages print name, address, a tap-to-call phone and a list of every deployed page and service page', (template) => {
     const files = renderSite(shop({ template }), template);

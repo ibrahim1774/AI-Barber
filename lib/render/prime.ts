@@ -19,7 +19,7 @@ import {
 import { ratingLineCustom, t, type LabelKey } from './labels.js';
 import { hasFilePages } from './pages.js';
 import { telHref } from './telHref.js';
-import { HEADER_CSS, NAV_CSS, headerHtml, navItemsFor, navListHtml, type RenderCtx } from './shell.js';
+import { HEADER_CSS, NAV_CSS, headerHtml, reportLinkHtml, navItemsFor, navListHtml, type RenderCtx } from './shell.js';
 
 // Policy: there is NO default. A shop's policy is a fact only the barber
 // can state, so the "Please note" block renders only from barber-written
@@ -520,7 +520,7 @@ ${PRIME_SCOPED_CSS}${menuSet ? HEADER_CSS.prime + NAV_CSS.prime : ''}
   <footer style="padding:48px 6vw;border-top:1px solid var(--p-line-soft);text-align:center;">
     <div class="p-container">
       <div class="p-serif p-italic" style="font-size:18px;color:var(--p-brand);margin-bottom:8px;">${safeName}</div>
-      <div class="p-eyebrow" style="color:var(--p-ink-muted);">© ${copyrightYear()} · ${L('footerCredit')}</div>
+      <div class="p-eyebrow" style="color:var(--p-ink-muted);">© ${copyrightYear()} · ${L('footerCredit')} ${reportLinkHtml()}</div>
     </div>
   </footer>
 

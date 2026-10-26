@@ -16,7 +16,7 @@ import {
 } from './honest.js';
 import { t, type LabelKey } from './labels.js';
 import { hasFilePages } from './pages.js';
-import { HEADER_CSS, NAV_CSS, headerHtml, navItemsFor, navListHtml, type RenderCtx } from './shell.js';
+import { HEADER_CSS, NAV_CSS, headerHtml, reportLinkHtml, navItemsFor, navListHtml, type RenderCtx } from './shell.js';
 
 // Shared Euphoria CSS — scoped inside `.euphoria-root` so it can't leak into the Luxe flow.
 // Mirrors euphoria-build/styles.css custom properties + typography + section rhythm.
@@ -460,7 +460,7 @@ ${EUPHORIA_SCOPED_CSS}${menuSet ? HEADER_CSS.euphoria + NAV_CSS.euphoria : ''}
   <footer style="padding:48px 24px;border-top:1px solid var(--eu-line-soft);text-align:center;">
     <div class="eu-container">
       <div class="eu-serif" style="font-size:18px;color:var(--eu-ink);margin-bottom:8px;">${safeName}</div>
-      <div class="eu-eyebrow">© ${copyrightYear()} · ${L('footerCredit')}</div>
+      <div class="eu-eyebrow">© ${copyrightYear()} · ${L('footerCredit')} ${reportLinkHtml()}</div>
     </div>
   </footer>
 

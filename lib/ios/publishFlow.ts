@@ -12,6 +12,7 @@ import {
   publishSite,
   REQUEST_MAX_REDEPLOYS,
   renderPending,
+  bucket,
   readPendingSite,
   readPendingVersioned,
   writePendingSite,
@@ -327,8 +328,24 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
     // can land between that read and this deploy. Best effort: if it fails, the
     // sweep's restore pass redeploys the same content and clears it.
     if (force) {
-      await deps.repo.clearTakenDown(otid).catch((e) =>
-        console.error(`[ios/publish] ${slug}: live but clearTakenDown failed:`, e?.message || e));
+      // An owner who removed the site (removed_at, 017) and now publishes from the app on purpose
+      // brings it back with the content they just sent (the purchase and slug are still theirs). The
+      // clear is conditional on the stamp this publish saw, so a removal that landed while it ran
+      // keeps its mark, and then the site stays flagged taken down too.
+      let removedMeanwhile = false;
+      if (row.removed_at && deps.repo.clearRemoved) {
+        try {
+          await deps.repo.clearRemoved(otid, row.removed_at);
+          removedMeanwhile = !!(await deps.repo.get(otid))?.removed_at;
+        } catch (e: any) {
+          removedMeanwhile = true;
+          console.error(`[ios/publish] ${slug}: live but clearRemoved failed:`, e?.message || e);
+        }
+      }
+      if (!removedMeanwhile) {
+        await deps.repo.clearTakenDown(otid).catch((e) =>
+          console.error(`[ios/publish] ${slug}: live but clearTakenDown failed:`, e?.message || e));
+      }
     }
 
     return { status: 200, body: { siteId: slug, deployedUrl: outcome.deployedUrl, republished, version: pending.version, editedBy: 'owner', editedAt: pending.editedAt } };
@@ -355,6 +372,9 @@ export async function runIosSiteLookup(
   try {
     const row = await deps.repo.get(tx.originalTransactionId);
     if (!row?.site_slug) return { status: 404, body: { error: 'no-site' } };
+    // The owner took this site offline (removed_at): to the app it is as if nothing is published, so
+    // a new draft binds fresh and a publish (which clears removed_at) is not blocked as "elsewhere".
+    if (row.removed_at) return { status: 404, body: { error: 'no-site' } };
     const pending = await deps.readPending(row.site_slug);
     return { status: 200, body: siteBody(row.site_slug, pending, isActive(tx, deps.now())) };
   } catch (e) {
@@ -377,6 +397,8 @@ export function liveDeps(): PublishDeps {
       pendingExists: async (s) => (await readPendingSite(s)) !== null,
       repoTaken: (s) => repo.slugTaken(s),
       projectExists: vercelProjectExists,
+      // Authoritative like the others: a bucket error propagates (503).
+      prefixInUse: async (s) => (await bucket().getFiles({ prefix: `${s}/`, maxResults: 1 }))[0].length > 0,
       urlServes,
     }),
     writePending: writePendingSite,
@@ -390,7 +412,7 @@ export function liveDeps(): PublishDeps {
 }
 
 /** A Supabase access token's user (service role). Invalid / expired token: null; outage: throws. */
-async function liveUserOf(token: string): Promise<{ id: string } | null> {
+export async function liveUserOf(token: string): Promise<{ id: string } | null> {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set');

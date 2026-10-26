@@ -8,11 +8,19 @@ vi.mock('../../lib/ios/deleteAccount.js', async (orig) => {
 import { deleteAccount } from '../../lib/ios/deleteAccount.js';
 import handler from '../../api/ios/delete-account.js';
 
+const sitesList = [
+  { original_transaction_id: 't1', site_slug: 'fade-lab', environment: 'Production', published_at: 'x' },
+  { original_transaction_id: 't2', site_slug: 'second-cut', environment: 'Production', published_at: 'x' },
+];
+
 function mkDeps(over: any = {}) {
   const calls: string[] = [];
   return {
     calls,
     getUser: vi.fn(async (_jwt: string) => ({ id: 'u1' })),
+    listSites: vi.fn(async (_id: string) => sitesList),
+    takeDown: vi.fn(async (s: any) => { calls.push(`down:${s.site_slug}`); }),
+    purge: vi.fn(async (s: any) => { calls.push(`purge:${s.site_slug}`); }),
     deleteSites: vi.fn(async (_id: string) => { calls.push('sites'); }),
     deleteUser: vi.fn(async (_id: string) => { calls.push('user'); }),
     ...over,
@@ -51,6 +59,45 @@ describe('deleteAccount', () => {
     expect(d.getUser).toHaveBeenCalledWith('jwt123');
     expect(d.deleteSites).toHaveBeenCalledWith('u1');
     expect(d.deleteUser).toHaveBeenCalledWith('u1');
+    expect(d.calls).toEqual(['down:fade-lab', 'down:second-cut', 'purge:fade-lab', 'purge:second-cut', 'sites', 'user']);
+  });
+
+  it('ordering: every takedown happens before any content is purged, and both before the account is deleted', async () => {
+    const d = mkDeps();
+    await deleteAccount('Bearer jwt', d);
+    const firstPurge = d.calls.findIndex((c: string) => c.startsWith('purge:'));
+    const lastDown = d.calls.map((c: string) => c.startsWith('down:')).lastIndexOf(true);
+    expect(lastDown).toBeLessThan(firstPurge);
+    expect(d.calls.indexOf('user')).toBe(d.calls.length - 1);
+  });
+
+  it('a takedown fails → 500, NOTHING purged or deleted (account kept so the user can retry)', async () => {
+    const d = mkDeps({ takeDown: vi.fn(async (s: any) => { if (s.site_slug === 'second-cut') throw new Error('vercel'); }) });
+    const r = await deleteAccount('Bearer jwt', d);
+    expect(r).toEqual({ status: 500, body: { error: 'delete-failed' } });
+    expect(d.purge).not.toHaveBeenCalled();
+    expect(d.deleteSites).not.toHaveBeenCalled();
+    expect(d.deleteUser).not.toHaveBeenCalled();
+    expect(d.takeDown).toHaveBeenCalledTimes(2); // the other site was still taken down
+  });
+
+  it('a purge fails (content or domain) → 500, account not deleted', async () => {
+    const d = mkDeps({ purge: vi.fn(async () => { throw new Error('gcs'); }) });
+    const r = await deleteAccount('Bearer jwt', d);
+    expect(r).toEqual({ status: 500, body: { error: 'delete-failed' } });
+    expect(d.deleteUser).not.toHaveBeenCalled();
+  });
+
+  it('listSites fails → 500, nothing deleted', async () => {
+    const d = mkDeps({ listSites: vi.fn(async () => { throw new Error('db'); }) });
+    const r = await deleteAccount('Bearer jwt', d);
+    expect(r.status).toBe(500);
+    expect(d.deleteUser).not.toHaveBeenCalled();
+  });
+
+  it('an account with no site still deletes', async () => {
+    const d = mkDeps({ listSites: vi.fn(async () => []) });
+    expect((await deleteAccount('Bearer jwt', d)).status).toBe(200);
     expect(d.calls).toEqual(['sites', 'user']);
   });
 

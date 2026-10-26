@@ -14,6 +14,7 @@ import { Storage } from '@google-cloud/storage';
 import axios from 'axios';
 import { siteConfigFile, siteVercelConfig, SITE_CONFIG_FILE, type SiteSubpages } from './siteSubpages.js';
 import { stripMarkersText } from './render/markers.js';
+import { REPORT_SLUG_PLACEHOLDER } from './render/shell.js';
 import { assertSiteFilePath, type SiteFile } from './render/pages.js';
 
 export type { SiteFile };
@@ -260,11 +261,16 @@ export function swapImagePlaceholders(html: string, imageUrlMap: Record<string, 
  * The pages of a deploy, ready to write: placeholders swapped for the image URLs on EVERY page, and
  * any base64 image that slipped through removed (they belong in GCS and blow the payload limit).
  */
-export function finalizePages(pages: SiteFile[], imageUrlMap: Record<string, string>): SiteFile[] {
+export function finalizePages(pages: SiteFile[], imageUrlMap: Record<string, string>, siteSlug?: string): SiteFile[] {
+  // L4: the report-link slug placeholder is reserved; a client-supplied imageUrls.siteSlug must not fill it.
+  imageUrlMap = Object.fromEntries(Object.entries(imageUrlMap || {}).filter(([k]) => `{{${k}}}` !== REPORT_SLUG_PLACEHOLDER));
   const base64ImagePattern = /data:image\/[^;]+;base64,[A-Za-z0-9+/=]{100,}/g;
   return pages.map((p) => {
     // Last guard: no editor marker (markers.ts) in any shipped page, whatever rendered it.
     let html = stripMarkersText(swapImagePlaceholders(p.html, imageUrlMap));
+    // The footer's "Report this site" mailto subject (render/shell.ts reportLinkHtml). Encoded again,
+    // so whatever the slug holds can never leave the href.
+    if (siteSlug) html = html.split(REPORT_SLUG_PLACEHOLDER).join(encodeURIComponent(siteSlug));
     const left = html.match(/\{\{[^}]+\}\}/g);
     if (left && left.length > 0) console.warn(`[Deploy Site] Warning: ${left.length} placeholders not replaced on ${p.path}:`, left);
     const b64 = html.match(base64ImagePattern);
@@ -370,7 +376,7 @@ export async function deployRenderedSite(
 
   // Step 2: swap {{key}} placeholders for the resolved URLs on every page, and strip any base64
   // images that slipped through (they belong in GCS, and they blow the deployment payload limit).
-  const finalPages = finalizePages(inputPages, imageUrlMap);
+  const finalPages = finalizePages(inputPages, imageUrlMap, siteId);
   const cssContent = input.css || '/* No custom styles */';
 
   // Step 5: build the file set. Cache-Control on the HTML so a republish is

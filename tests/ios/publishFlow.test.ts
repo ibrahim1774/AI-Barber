@@ -98,6 +98,8 @@ function fakes(o: FakeOpts = {}) {
     restoreCandidates: vi.fn(async () => []),
     markTakenDown: vi.fn(async (otid: string, at: number) => { rows.get(otid)!.taken_down_at = new Date(at).toISOString(); }),
     clearTakenDown: vi.fn(async (otid: string) => { rows.get(otid)!.taken_down_at = null; }),
+    markRemoved: vi.fn(async (otid: string, at: number) => { const r = rows.get(otid)!; if (!r.removed_at) r.removed_at = new Date(at).toISOString(); }),
+    clearRemoved: vi.fn(async (otid: string, at: string) => { const r = rows.get(otid)!; if (r.removed_at === at) r.removed_at = null; }),
     markLapseChecked: vi.fn(async () => {}),
     findBySlug: vi.fn(async (slug: string) => [...rows.values()].find((r) => r.site_slug === slug) ?? null),
   };
@@ -527,6 +529,39 @@ describe('runIosPublish tiers (Phase 4)', () => {
   });
 });
 
+describe('runIosPublish after an owner removal (removed_at, review H1)', () => {
+  const removed = () => row({ site_slug: 'fresh-cuts-ab12', published_at: '2026-09-01T00:00:00Z', taken_down_at: '2026-10-15T00:00:00Z', removed_at: '2026-10-15T00:00:00Z' });
+
+  it('an explicit owner publish brings the site back: removed_at and taken_down_at cleared', async () => {
+    const { deps, repo, rows } = fakes({ existing: removed() });
+    const r = await runIosPublish(input(), deps);
+    expect(r.status).toBe(200);
+    expect(repo.clearRemoved).toHaveBeenCalledWith(OTID, '2026-10-15T00:00:00Z');
+    expect(rows.get(OTID)!.removed_at).toBeNull();
+    expect(rows.get(OTID)!.taken_down_at).toBeNull();
+  });
+
+  it('a removal that lands while the publish is in flight keeps its marks (L5)', async () => {
+    const { deps, repo, rows } = fakes({ existing: removed() });
+    (deps.publish as any).mockImplementationOnce(async (slug: string) => {
+      rows.get(OTID)!.removed_at = '2026-10-25T10:00:00Z'; // a newer removal, mid-publish
+      return { ok: true, siteId: slug, deployedUrl: 'https://x.vercel.app' };
+    });
+    const r = await runIosPublish(input(), deps);
+    expect(r.status).toBe(200);
+    expect(rows.get(OTID)!.removed_at).toBe('2026-10-25T10:00:00Z');
+    expect(repo.clearTakenDown).not.toHaveBeenCalled();
+  });
+
+  it('a failed publish leaves the removal in place', async () => {
+    const { deps, repo, rows } = fakes({ existing: removed(), outcome: (s) => ({ ok: false, siteId: s, reason: 'deploy-failed', error: 'x' }) });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect((await runIosPublish(input(), deps)).status).toBe(502);
+    expect(repo.clearRemoved).not.toHaveBeenCalled();
+    expect(rows.get(OTID)!.removed_at).toBe('2026-10-15T00:00:00Z');
+  });
+});
+
 describe('runIosPublish lapse takedown flag', () => {
   const takenDown = () => row({ site_slug: 'fresh-cuts-ab12', published_at: '2026-09-01T00:00:00Z', taken_down_at: '2026-10-15T00:00:00Z' });
 
@@ -646,6 +681,11 @@ describe('runIosSiteLookup', () => {
     expect(await runIosSiteLookup('t-123', a.deps)).toEqual({ status: 404, body: { error: 'no-site' } });
     const b = fakes({ existing: null });
     expect(await runIosSiteLookup('t-123', b.deps)).toEqual({ status: 404, body: { error: 'no-site' } });
+  });
+
+  it('site lookup for a site the owner took offline (removed_at) → 404 no-site, so a new site can be published', async () => {
+    const { deps } = fakes({ existing: row({ site_slug: 'fresh-cuts', removed_at: '2026-10-15T00:00:00Z', taken_down_at: '2026-10-15T00:00:00Z' }) });
+    expect(await runIosSiteLookup('t-123', deps)).toEqual({ status: 404, body: { error: 'no-site' } });
   });
 
   it('site lookup returns active:false for an expired subscription', async () => {

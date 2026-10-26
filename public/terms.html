@@ -27,7 +27,24 @@
   footer { margin-top:56px; padding-top:20px; border-top:1px solid var(--line); display:flex; flex-wrap:wrap; gap:8px 20px; font-size:14px; color:var(--muted); }
   footer a { color:var(--muted); }
   footer a:hover { color:var(--gold); }
+  .in-app .home-link, .in-app .web-only { display:none !important; }
 </style>
+<script>
+/* Opened from the iOS app (?app=1): no link to the web builder or the buy flow (App Store 3.1.1). */
+(function(){try{
+  if(!/[?&]app=1(?:&|$)/.test(location.search))return;
+  document.documentElement.className+=' in-app';
+  document.addEventListener('DOMContentLoaded',function(){
+    var a=document.querySelectorAll('a[href]');
+    for(var i=0;i<a.length;i++){
+      var h=a[i].getAttribute('href');
+      if(h==='/'||/^https?:\/\/(www\.)?aibarber\.org\/?$/.test(h)){
+        var s=document.createElement('span');s.className=a[i].className;s.innerHTML=a[i].innerHTML;a[i].parentNode.replaceChild(s,a[i]);
+      }else if(h==='/privacy'||h==='/terms'||h==='/support'){a[i].setAttribute('href',h+'?app=1');}
+    }
+  });
+}catch(e){}})();
+</script>
 </head>
 <body>
 <div class="wrap">
@@ -47,7 +64,8 @@
   <h2>Subscriptions</h2>
   <ul>
     <li><strong>In the iOS app,</strong> hosting is $19.99 per month or $191.99 per year (US prices; prices in other countries are shown in the App Store). Payment is charged to your Apple ID when you confirm the purchase. Your subscription renews automatically at the end of each period unless you cancel at least 24 hours before it ends. You can manage or cancel it in your Apple ID settings (Settings → your name → Subscriptions). Refunds are handled by Apple under Apple's policies.</li>
-    <li><strong>On aibarber.org,</strong> plans and prices are shown at checkout, and payments are processed by Stripe. Subscriptions renew automatically until you cancel. To cancel a web subscription, email <a href="mailto:support@davoxa.com">support@davoxa.com</a>.</li>
+    <li>When clients pay you by card, Prime Barber keeps 2% of each payment and Stripe charges its own processing fee.</li>
+    <li class="web-only"><strong>On aibarber.org,</strong> plans and prices are shown at checkout, and payments are processed by Stripe. Subscriptions renew automatically until you cancel. To cancel a web subscription, email <a href="mailto:support@davoxa.com">support@davoxa.com</a>.</li>
     <li><strong>One subscription covers one website.</strong> If you want more than one site, each needs its own subscription.</li>
   </ul>
   <p>We may change prices for future billing periods. If we do, you will be told before the new price applies, and you can cancel before it does.</p>
@@ -75,7 +93,7 @@
   <p>Prime Barber is provided "as is" and "as available". We work to keep it running, but we don't promise it will always be available, error-free or secure. We may add, change or remove features, and we may change these terms. If we change the terms, we will update the effective date above; using Prime Barber after a change means you accept the new terms.</p>
 
   <h2>Termination</h2>
-  <p>You can stop using Prime Barber at any time. You can cancel your subscription as described above and ask us to take your site down or delete your account (see our <a href="/privacy">Privacy Policy</a>). We may suspend or close your account, or take your site down, if you break these terms or if we have to for legal reasons. Cancelling does not by itself take your published site offline; email <a href="mailto:support@davoxa.com">support@davoxa.com</a> if you want it removed.</p>
+  <p>You can stop using Prime Barber at any time. You can cancel your subscription as described above and ask us to take your site down or delete your account (see our <a href="/privacy">Privacy Policy</a>). We may suspend or close your account, or take your site down, if you break these terms or if we have to for legal reasons. Cancelling does not by itself delete your published site. To remove it, use Delete account or Take my website offline in the app, or email <a href="mailto:support@davoxa.com">support@davoxa.com</a>.</p>
 
   <h2>Limitation of liability</h2>
   <p>To the fullest extent the law allows, Davoxa will not be liable for any indirect, incidental, special, consequential or punitive damages, or for lost profits, revenue, bookings or data, arising from your use of Prime Barber. Our total liability for any claim relating to Prime Barber is limited to the amount you paid us for Prime Barber in the 12 months before the claim. Some places don't allow these limits, so they may not all apply to you.</p>
@@ -90,7 +108,7 @@
   <p>Davoxa · <a href="mailto:support@davoxa.com">support@davoxa.com</a></p>
 
   <footer>
-    <a href="/">Home</a>
+    <a class="home-link" href="/">Home</a>
     <a href="/privacy">Privacy Policy</a>
     <a href="/terms">Terms of Service</a>
     <a href="/support">Support</a>

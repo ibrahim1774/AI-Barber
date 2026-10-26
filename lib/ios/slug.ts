@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { slugify } from '../publishSite.js';
+import { isReservedSlug } from './reservedSlugs.js';
 
 const SANDBOX_PREFIX = 'ios-test-';
 const MAX_SUFFIX_TRIES = 5;
@@ -27,10 +28,11 @@ export async function chooseSlug(
   const room = Math.min(MAX_BASE, MAX_SLUG - prefix.length);
   const base = slugify(shopName).substring(0, room).replace(/-+$/, '') || 'barbershop';
   const first = prefix + base;
-  if (!(await isTaken(first))) return first;
+  // A reserved base (bucket folder name, UUID) is treated as taken, so it only ever gets a suffixed slug.
+  if (!isReservedSlug(first) && !(await isTaken(first))) return first;
   for (let i = 0; i < MAX_SUFFIX_TRIES; i++) {
     const candidate = `${first}-${rand()}`;
-    if (!(await isTaken(candidate))) return candidate;
+    if (!isReservedSlug(candidate) && !(await isTaken(candidate))) return candidate;
   }
   throw new Error('slug-exhausted');
 }
@@ -41,9 +43,13 @@ export function makeIsTaken(deps: {
   /** Authoritative: a Vercel project with this name exists. Throws when it can't tell. */
   projectExists(slug: string): Promise<boolean>;
   urlServes(url: string): Promise<boolean>;
+  /** Optional: objects already exist under `<slug>/` in the bucket (another site's or draft's folder). */
+  prefixInUse?(slug: string): Promise<boolean>;
 }): (slug: string) => Promise<boolean> {
   return async (slug) =>
+    isReservedSlug(slug) ||
     (await deps.pendingExists(slug)) ||
+    (deps.prefixInUse ? await deps.prefixInUse(slug) : false) ||
     (await deps.repoTaken(slug)) ||
     (await deps.projectExists(slug)) ||
     (await deps.urlServes(`https://${slug}.vercel.app`));

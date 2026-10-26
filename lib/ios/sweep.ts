@@ -134,7 +134,10 @@ export async function sweepIos(
   const outOfTime = () => now() - start >= deadlineMs;
   const outOfLateTime = () => now() - start >= lateDeadlineMs;
 
-  const rows = await deps.repo.unpublishedBound(limit);
+  // A row the owner removed (removed_at, migration 017) is never published, restored or re-linked by
+  // the sweep, whatever the repo returned: the SQL filters it too, this is the second lock.
+  const notRemoved = (r: PurchaseRow) => r.removed_at == null;
+  const rows = (await deps.repo.unpublishedBound(limit)).filter(notRemoved);
   const out: IosSweepSummary = {
     checked: rows.length, published: [], failed: [], missing: [], deferred: [],
     skippedLapsed: [], restored: [], restoreFailed: [], notRestored: [],
@@ -211,7 +214,7 @@ export async function sweepIos(
 
   // Pass 2: restores. Fetched now, not up front, so a renewal that landed during pass 1 counts.
   // Once the budget is spent the remaining passes are not even queried; next sweep picks them up.
-  const restores = outOfLateTime() ? [] : await deps.repo.restoreCandidates(limit, now());
+  const restores = outOfLateTime() ? [] : (await deps.repo.restoreCandidates(limit, now())).filter(notRemoved);
   for (const row of restores) {
     const slug = row.site_slug as string;
     if (outOfLateTime()) {
@@ -307,7 +310,7 @@ export async function sweepIos(
   if (deps.repo.linksDue && deps.repo.clearLinksDue && deps.stripPending && !outOfLateTime()) {
     let due: PurchaseRow[] = [];
     try {
-      due = await deps.repo.linksDue(limit);
+      due = (await deps.repo.linksDue(limit)).filter(notRemoved);
     } catch (err: any) {
       // e.g. migration 014 not applied yet: skip the pass, nothing else depends on it.
       console.error('[Sweeper:iOS] link-strip candidates failed (pass skipped):', err?.message || err);
