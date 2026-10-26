@@ -1,0 +1,344 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AccessibilityInfo, AppState, BackHandler, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { router } from 'expo-router';
+import { colors, fonts } from '@/constants/theme';
+import { Button } from '@/components/Button';
+import { Field } from '@/components/Field';
+import { InfoIcon } from '@/components/Icons';
+import { Page } from '@/components/Page';
+import { accessToken } from '@/lib/accessToken';
+import { api } from '@/lib/api';
+import { signIn, signOut } from '@/lib/auth';
+import { createClaimRunner, type ClaimResult } from '@/lib/claim';
+import { conflictMessage } from '@/lib/claimCopy';
+import { reopenClaim } from '@/lib/claimGuard';
+import { firstErrorField, type ClaimErrors, type ClaimField, type ClaimMode, type ClaimValues } from '@/lib/claimValidation';
+import { homeRoute, resetTo } from '@/lib/nav';
+import { usePublishDeps } from '@/lib/paywall';
+import { resumePendingPublish } from '@/lib/publish';
+import { setPrefillEmail } from '@/lib/recovery';
+import { loadPendingPublish, loadSite } from '@/lib/siteStore';
+import { supabase } from '@/lib/supabase';
+
+type Banner = { tone: 'error' | 'waiting'; message: string } | null;
+const EMPTY: ClaimValues = { name: '', email: '', phone: '', password: '', confirm: '' };
+
+/**
+ * The account step after payment (pay -> account -> live). REQUIRED and locked: no back chevron, no swipe back
+ * (gestureEnabled false in _layout), the Android back button is swallowed, and it sits outside the tabs. A kill or a
+ * relaunch while the purchase is paid-but-unclaimed comes straight back here (_layout's guard).
+ *
+ * Four required fields, all empty (nothing is prefilled): name, email, phone, password + confirmation. No email
+ * verification: the server creates the account confirmed and the app signs in with the same email + password.
+ * "Already have an account? Sign in" swaps the form inside this same screen. With a session already (a relaunch, a
+ * password reset) the pending publish is simply sent. Failures stay on the form, in words.
+ */
+export default function Claim() {
+  const deps = usePublishDeps();
+  const depsRef = useRef(deps);
+  depsRef.current = deps;
+  const runner = useMemo(
+    () =>
+      createClaimRunner({
+        signup: api.signup,
+        signIn,
+        finish: () => resumePendingPublish(depsRef.current),
+        dropSession: async () => {
+          await supabase.auth.signOut({ scope: 'local' });
+        },
+      }),
+    [],
+  );
+
+  const [mode, setMode] = useState<ClaimMode>('signup');
+  const [values, setValues] = useState<ClaimValues>(EMPTY);
+  const [errors, setErrors] = useState<ClaimErrors>({});
+  const [banner, setBanner] = useState<Banner>(null);
+  const [existing, setExisting] = useState<string | null>(null);
+  const [blocked, setBlocked] = useState<string | null>(null);
+  const [inactive, setInactive] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
+  const [signedIn, setSignedIn] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
+  const refs: Record<ClaimField, React.RefObject<TextInput | null>> = {
+    name: useRef<TextInput>(null), email: useRef<TextInput>(null), phone: useRef<TextInput>(null),
+    password: useRef<TextInput>(null), confirm: useRef<TextInput>(null),
+  };
+
+  // Locked: the hardware back button does nothing here.
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => true);
+    return () => sub.remove();
+  }, []);
+
+  const set = (k: keyof ClaimValues) => (t: string) => {
+    setValues((v) => ({ ...v, [k]: t }));
+    setErrors((e) => (e[k] ? { ...e, [k]: undefined } : e));
+    if (k === 'email') setExisting(null);
+  };
+
+  const apply = useCallback((r: ClaimResult) => {
+    switch (r.kind) {
+      case 'live':
+        resetTo('/live');
+        return;
+      case 'moved-on':
+        void loadSite().then((s) => resetTo(homeRoute(s))).catch(() => resetTo('/start'));
+        return;
+      case 'invalid':
+        setErrors(r.errors);
+        refs[firstErrorField(r.errors) ?? 'name'].current?.focus();
+        return;
+      case 'field':
+        setErrors({ [r.field]: r.message });
+        refs[r.field].current?.focus();
+        return;
+      case 'email-exists':
+        setExisting(r.email);
+        setErrors({ email: 'An account with this email already exists.' });
+        return;
+      case 'waiting':
+        setBanner({ tone: 'waiting', message: r.message });
+        return;
+      case 'blocked':
+        setBlocked(r.message);
+        return;
+      case 'inactive':
+        setInactive(r.message);
+        return;
+      default:
+        setBanner({ tone: 'error', message: r.message });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const run = useCallback(
+    async (fn: () => Promise<ClaimResult | null>) => {
+      if (busyRef.current) return;
+      busyRef.current = true;
+      setBusy(true);
+      setBanner(null);
+      setErrors({});
+      try {
+        const r = await fn();
+        if (r) apply(r);
+      } finally {
+        busyRef.current = false;
+        setBusy(false);
+      }
+    },
+    [apply],
+  );
+
+  // On arrival: nothing to claim goes home; a refusal already on record shows it; a session sends the publish.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const pending = await loadPendingPublish().catch(() => null);
+      if (!alive) return;
+      if (!pending) {
+        const s = await loadSite().catch(() => null);
+        resetTo(homeRoute(s));
+        return;
+      }
+      if (pending.state === 'conflict' && pending.conflict) {
+        setBlocked(conflictMessage(pending.conflict));
+        setReady(true);
+        return;
+      }
+      const token = await accessToken();
+      if (!alive) return;
+      setSignedIn(!!token);
+      setReady(true);
+      if (token) void run(runner.finish);
+    })().catch(() => setReady(true));
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Back from the background while waiting for a connection: try again.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active' && signedIn && !busyRef.current && !blocked && !inactive) void run(runner.finish);
+    });
+    return () => sub.remove();
+  }, [signedIn, blocked, inactive, run, runner]);
+
+  useEffect(() => {
+    const message = banner?.message ?? blocked ?? Object.values(errors).find(Boolean);
+    if (message) AccessibilityInfo.announceForAccessibility(message);
+  }, [banner, blocked, errors]);
+
+  const submit = () => {
+    void run(async () => {
+      const r = await runner.submit(mode, values);
+      // Whether the account step got as far as a session decides what "Try again" retries.
+      setSignedIn(!!(await accessToken()));
+      return r;
+    });
+  };
+  const retry = () => (signedIn ? void run(runner.finish) : submit());
+
+  const switchMode = (next: ClaimMode, keepEmail = true) => {
+    setMode(next);
+    setErrors({});
+    setBanner(null);
+    setExisting(null);
+    setValues((v) => ({ ...EMPTY, email: keepEmail ? v.email : '' }));
+    setTimeout(() => (next === 'signin' ? refs.password : refs.name).current?.focus(), 50);
+  };
+
+  const useDifferentAccount = () => {
+    void run(async () => {
+      await signOut().catch(() => {});
+      await reopenClaim().catch(() => {});
+      setBlocked(null);
+      setSignedIn(false);
+      switchMode('signin', false);
+      return null;
+    });
+  };
+
+  const forgot = () => {
+    if (busyRef.current) return;
+    setPrefillEmail(values.email);
+    router.push('/forgot-password');
+  };
+
+  if (!ready) return <View style={styles.blank} />;
+
+  if (inactive) {
+    return (
+      <Page title="Subscription inactive">
+        <Text style={styles.title}>Not published</Text>
+        <Text style={styles.body}>{inactive}</Text>
+        <Button variant="solid" title="Back to the editor" onPress={() => void loadSite().then((s) => resetTo(homeRoute(s)))} style={styles.gap} />
+      </Page>
+    );
+  }
+
+  if (blocked) {
+    return (
+      <Page title="Choose an account">
+        <Text style={styles.title}>This account can’t publish it</Text>
+        <Text style={styles.body}>{blocked}</Text>
+        <Button variant="solid" title="Use a different account" onPress={useDifferentAccount} loading={busy} style={styles.gap} />
+      </Page>
+    );
+  }
+
+  const signup = mode === 'signup';
+  return (
+    <Page title={signup ? 'Create your account' : 'Sign in'}>
+      <View style={styles.notice}>
+        <InfoIcon size={16} color={colors.accent} />
+        <Text style={styles.noticeText}>
+          Your payment went through. {signup ? 'Create a free account' : 'Sign in'} to finish publishing your website — you’ll use it to sign back in anytime.
+        </Text>
+      </View>
+
+      <View style={styles.form}>
+        {signup && (
+          <Field
+            ref={refs.name} tone="form" label="Full Name" value={values.name} onChangeText={set('name')}
+            autoComplete="name" textContentType="name" returnKeyType="next" onSubmitEditing={() => refs.email.current?.focus()}
+            editable={!busy}
+          />
+        )}
+        {signup && !!errors.name && <FieldError text={errors.name} />}
+        <Field
+          ref={refs.email} tone="form" label="Email" value={values.email} onChangeText={set('email')}
+          autoCapitalize="none" autoCorrect={false} autoComplete="email" keyboardType="email-address" textContentType="username"
+          returnKeyType="next" onSubmitEditing={() => (signup ? refs.phone : refs.password).current?.focus()} editable={!busy}
+        />
+        {!!errors.email && <FieldError text={errors.email} />}
+        {existing != null && (
+          <Pressable onPress={() => switchMode('signin')} accessibilityRole="button" hitSlop={8}>
+            <Text style={[styles.switch, styles.switchLink]}>Sign in instead</Text>
+          </Pressable>
+        )}
+        {signup && (
+          <Field
+            ref={refs.phone} tone="form" label="Phone Number" value={values.phone} onChangeText={set('phone')}
+            keyboardType="phone-pad" autoComplete="tel" textContentType="telephoneNumber"
+            returnKeyType="next" onSubmitEditing={() => refs.password.current?.focus()} editable={!busy}
+          />
+        )}
+        {signup && !!errors.phone && <FieldError text={errors.phone} />}
+        <Field
+          ref={refs.password} tone="form" label={signup ? 'Password (min 8 characters)' : 'Password'} value={values.password}
+          onChangeText={set('password')} secureTextEntry autoComplete={signup ? 'new-password' : 'current-password'}
+          textContentType={signup ? 'newPassword' : 'password'} returnKeyType={signup ? 'next' : 'go'} editable={!busy}
+          onSubmitEditing={() => (signup ? refs.confirm.current?.focus() : submit())}
+        />
+        {!!errors.password && <FieldError text={errors.password} />}
+        {signup && (
+          <Field
+            ref={refs.confirm} tone="form" label="Confirm Password" value={values.confirm} onChangeText={set('confirm')}
+            secureTextEntry autoComplete="new-password" textContentType="newPassword" returnKeyType="go" onSubmitEditing={submit}
+            editable={!busy}
+          />
+        )}
+        {signup && !!errors.confirm && <FieldError text={errors.confirm} />}
+        {!signup && (
+          <Pressable onPress={forgot} hitSlop={8} accessibilityRole="link" style={styles.forgotRow}>
+            <Text style={styles.forgot}>Forgot password?</Text>
+          </Pressable>
+        )}
+        {!!banner && (
+          <Text style={[styles.error, banner.tone === 'waiting' && styles.waiting]} accessibilityLiveRegion="polite">
+            {banner.message}
+          </Text>
+        )}
+        {banner?.tone === 'waiting' ? (
+          <Button variant="solid" title="Try again" onPress={retry} loading={busy} />
+        ) : (
+          <Button
+            variant="solid"
+            title={busy ? (signup ? 'Creating Account...' : 'Signing In...') : signup ? 'Create Account & Publish' : 'Sign In & Publish'}
+            onPress={submit}
+            loading={busy}
+          />
+        )}
+      </View>
+
+      <View style={styles.switchRow}>
+        <Text style={styles.switch}>{signup ? 'Already have an account?' : 'New here?'}</Text>
+        <Pressable onPress={() => !busyRef.current && switchMode(signup ? 'signin' : 'signup')} accessibilityRole="link" hitSlop={8}>
+          <Text style={[styles.switch, styles.switchLink]}>{signup ? 'Sign in' : 'Create an account'}</Text>
+        </Pressable>
+      </View>
+    </Page>
+  );
+}
+
+function FieldError({ text }: { text: string }) {
+  return (
+    <Text style={styles.error} accessibilityLiveRegion="polite">
+      {text}
+    </Text>
+  );
+}
+
+const styles = StyleSheet.create({
+  blank: { flex: 1, backgroundColor: colors.bg },
+  notice: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: colors.hair,
+    backgroundColor: 'rgba(255,255,255,0.05)', paddingHorizontal: 12, paddingVertical: 10, marginBottom: 24,
+  },
+  noticeText: { flex: 1, fontFamily: fonts.bodyBold, fontSize: 12, lineHeight: 17, color: colors.text },
+  form: { gap: 16 },
+  error: { fontFamily: fonts.body, fontSize: 13, lineHeight: 19, color: '#f87171' },
+  waiting: { color: colors.accent },
+  forgotRow: { alignSelf: 'flex-end' },
+  forgot: { fontFamily: fonts.body, fontSize: 13, color: colors.grey, textDecorationLine: 'underline' },
+  switchRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 4, marginTop: 28 },
+  switch: { fontFamily: fonts.body, fontSize: 13, color: colors.muted },
+  switchLink: { color: colors.accent, fontFamily: fonts.bodySemi },
+  title: { fontFamily: fonts.heading, fontSize: 22, color: colors.heading, textAlign: 'center', marginTop: 24 },
+  body: { fontFamily: fonts.body, fontSize: 14, lineHeight: 21, color: colors.body, textAlign: 'center', marginTop: 12 },
+  gap: { marginTop: 28 },
+});

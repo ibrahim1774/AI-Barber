@@ -15,7 +15,7 @@ import { LOOKUP_TIMEOUT_MS, withTimeout } from '@/lib/timeout';
 
 // Copy from the web's AuthModal where it has one; the rest is ours.
 export const PASSWORD_TOO_SHORT = 'Password must be at least 6 characters';
-const OFFLINE = "Couldn't reach Prime Barber — check your connection and try again.";
+export const OFFLINE = "Couldn't reach Prime Barber — check your connection and try again.";
 const ALREADY_REGISTERED = 'An account with this email already exists. Sign in instead.';
 const WRONG_PASSWORD = "That email and password don't match. Check them and try again, or tap Forgot password?";
 const NOT_CONFIRMED = 'Confirm your email first — open the link we sent you, then sign in.';
