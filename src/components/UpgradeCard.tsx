@@ -8,11 +8,13 @@ import { otherAccountPlanMessage } from '@/lib/claimCopy';
 const COPY = {
   bookings: {
     title: 'Take bookings online',
+    intro: 'You need a plan to use Bookings. Choose one to unlock it.',
     bullets: ['Your own booking page', 'Clients pick a barber and time', 'Deposits and card payments'],
     button: 'See the Bookings plan',
   },
   store: {
     title: 'Sell from your website',
+    intro: 'You need a plan to use the Store. Choose one to unlock it.',
     bullets: ['Products with photos', 'Pickup or shipping', 'Card, Cash App and more'],
     button: 'See the Store plan',
   },
@@ -35,6 +37,7 @@ export function UpgradeCard({ kind, onUpgrade, busy }: { kind: 'bookings' | 'sto
   return (
     <View style={styles.card}>
       <Text style={styles.title} accessibilityRole="header">{c.title}</Text>
+      <Text style={styles.intro}>{c.intro}</Text>
       <View style={styles.bullets}>
         {c.bullets.map((b) => (
           <Text key={b} style={styles.bullet}>{`•  ${b}`}</Text>
@@ -51,6 +54,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: colors.hair, paddingHorizontal: 22, paddingVertical: 32,
   },
   title: { fontFamily: fonts.heading, fontSize: 22, lineHeight: 28, color: colors.heading, textAlign: 'center', marginBottom: 14 },
+  intro: { fontFamily: fonts.body, fontSize: 15, lineHeight: 22, color: colors.heading, textAlign: 'center', marginBottom: 16 },
   bullets: { alignSelf: 'stretch', gap: 8, marginBottom: 24 },
   bullet: { fontFamily: fonts.body, fontSize: 15, lineHeight: 22, color: colors.muted },
   btn: { alignSelf: 'stretch' },

@@ -62,3 +62,11 @@ describe.each(['bookings', 'store'] as const)('signed out, nothing paid: %s tab'
     expect(seen!.entitled).toBe(false);
   });
 });
+
+describe('the plan card says a plan is needed', () => {
+  it.each([['bookings', /You need a plan to use Bookings/], ['store', /You need a plan to use the Store/]] as const)('%s', async (kind, re) => {
+    const { UpgradeCard } = require('@/components/UpgradeCard');
+    const t = await render(<UpgradeCard kind={kind} onUpgrade={() => {}} />);
+    expect(JSON.stringify(t.toJSON())).toMatch(re);
+  });
+});
