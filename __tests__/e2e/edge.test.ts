@@ -69,7 +69,7 @@ describe('text that is long, emoji or right-to-left', () => {
     w.unmount();
     jest.resetModules();
     wipeDisk();
-    w = await boot(server, { user: null });
+    w = await boot(server, { user: 'u1' }); // Restore needs the owner's account
     const restored = await w.restore();
     expect(restored.site.data.shopName).toBe(RTL_NAME);
     expect(restored.site.inputs.shopName).toBe(RTL_NAME);
@@ -152,7 +152,7 @@ describe('malformed server copies', () => {
     w.unmount();
     jest.resetModules();
     wipeDisk();
-    w = await boot(server, { user: null });
+    w = await boot(server, { user: 'u1' }); // Restore needs the owner's account
     server.fail('/api/ios/site', { kind: 'json', status: 200, body: { siteId: 'fade-lab', deployedUrl: 'https://fade-lab.aibarber.org', active: true, siteData: 'oops' } });
     expect(await w.restore()).toBeNull();
     expect(await w.site()).toBeNull();

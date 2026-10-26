@@ -6,14 +6,14 @@ import { getPlan, hostingReadOnlyOpen, planLabel, refreshPlan } from '@/lib/plan
 const PLAN = {
   linked: true, tier: 'bookings', entitlements: { hosting: true, bookings: true, store: false },
   active: true, expiresAt: '2026-11-01T00:00:00Z', takenDownAt: null, revoked: false,
-  capabilities: { memberProfile: false },
+  purchaseAccount: 'self', capabilities: { memberProfile: false },
 };
 const respond = (status: number, body: unknown) =>
   ((global as any).fetch = jest.fn().mockResolvedValue({ status, text: async () => JSON.stringify(body) }));
 
 it('refreshPlan posts { transactionId } with the Bearer token', async () => {
   const f = respond(200, PLAN);
-  await expect(refreshPlan('tx-9')).resolves.toEqual(PLAN);
+  await expect(refreshPlan('tx-9')).resolves.toEqual({ ...PLAN, purchaseHint: null });
   const [url, init] = f.mock.calls[0];
   expect(url).toMatch(/\/api\/shop\/plan$/);
   expect(init.method).toBe('POST');
@@ -30,9 +30,17 @@ it('getPlan GETs with the Bearer token and no body', async () => {
   expect(init.body).toBeUndefined();
 });
 
-it('a 404 no-shop rejects with that code', async () => {
+it('a 404 no-shop is an unlinked plan with nothing granted, not an error', async () => {
   respond(404, { error: 'no-shop' });
-  await expect(getPlan()).rejects.toMatchObject({ status: 404, code: 'no-shop' });
+  const p = await getPlan();
+  expect(p).toMatchObject({ linked: false, tier: null, active: false, entitlements: { hosting: false, bookings: false, store: false } });
+});
+
+it('a 5xx or a network failure still rejects', async () => {
+  respond(500, { error: 'boom' });
+  await expect(getPlan()).rejects.toMatchObject({ status: 500 });
+  (global as any).fetch = jest.fn().mockRejectedValue(new Error('offline'));
+  await expect(getPlan()).rejects.toBeDefined();
 });
 
 describe('hostingReadOnlyOpen', () => {

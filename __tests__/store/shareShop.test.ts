@@ -25,10 +25,13 @@ jest.mock('@/components/Icons', () => ({ ChevronRightIcon: () => null }));
 
 import { ShareSheet } from '@/components/ShareSheet';
 import { setEntitlementsFromStatus } from '@/lib/entitlements';
+import { setSharedPlan } from '@/lib/plan';
+import { OWN_PLAN } from '../../test/ownPlan';
 
-beforeEach(() =>
-  setEntitlementsFromStatus({ status: 'ACTIVE', entitlements: [{ id: 'hosting' }, { id: 'bookings' }, { id: 'store' }] }),
-);
+beforeEach(() => {
+  setSharedPlan({ ...OWN_PLAN });
+  setEntitlementsFromStatus({ status: 'ACTIVE', entitlements: [{ id: 'hosting' }, { id: 'bookings' }, { id: 'store' }] });
+});
 
 describe('shop share kind', () => {
   it('the message holds the URL once', () => {

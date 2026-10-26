@@ -69,6 +69,8 @@ export const sb = {
 };
 
 export const supabaseConfigured = true;
+export const AUTH_STORAGE_KEY = 'sb-test-auth-token';
+export const authStorage = { getItem: async (_k: string): Promise<string | null> => null };
 
 export const supabase = {
   auth: {

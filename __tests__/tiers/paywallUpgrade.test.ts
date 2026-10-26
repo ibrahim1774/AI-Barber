@@ -5,7 +5,7 @@ import { Alert } from 'react-native';
 process.env.EXPO_PUBLIC_SUPERWALL_API_KEY = 'pk_test';
 const mockRefreshPlan = jest.fn(async (_id: string) => ({}));
 const mockSetShared = jest.fn();
-jest.mock('@/lib/plan', () => ({ refreshPlan: (id: string) => mockRefreshPlan(id), setSharedPlan: (p: unknown) => mockSetShared(p) }));
+jest.mock('@/lib/plan', () => ({ getSharedPlan: () => null, subscribePlan: () => () => {}, refreshPlan: (id: string) => mockRefreshPlan(id), setSharedPlan: (p: unknown) => mockSetShared(p) }));
 const mockRelink = jest.fn(async (_o: unknown) => false);
 jest.mock('@/lib/setup/relink', () => ({ relinkShopPurchase: (o: unknown) => mockRelink(o) }));
 /* eslint-disable @typescript-eslint/no-require-imports */

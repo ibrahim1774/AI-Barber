@@ -1,6 +1,8 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
+import { useEntitlements } from '@/lib/entitlements';
+import { otherAccountPlanMessage } from '@/lib/claimCopy';
 
 const COPY = {
   bookings: {
@@ -18,6 +20,16 @@ const COPY = {
 /** What a plan adds, with the button that opens its paywall. Never shows a price: the paywall does. */
 export function UpgradeCard({ kind, onUpgrade, busy }: { kind: 'bookings' | 'store'; onUpgrade(): void; busy?: boolean }) {
   const c = COPY[kind];
+  const ents = useEntitlements();
+  // Paid on this Apple ID, but by another account: buying again here would not help, so say whose it is.
+  if (ents.account === 'other') {
+    return (
+      <View style={styles.card}>
+        <Text style={styles.title} accessibilityRole="header">{c.title}</Text>
+        <Text style={styles.bullet}>{otherAccountPlanMessage(ents.hint)}</Text>
+      </View>
+    );
+  }
   return (
     <View style={styles.card}>
       <Text style={styles.title} accessibilityRole="header">{c.title}</Text>

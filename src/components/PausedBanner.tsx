@@ -1,6 +1,8 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
+import { useEntitlements } from '@/lib/entitlements';
+import { otherAccountPlanMessage } from '@/lib/claimCopy';
 
 export const PAUSED_COPY = {
   bookings: 'Your booking page is paused. Upgrade to Bookings to reopen it.',
@@ -9,6 +11,14 @@ export const PAUSED_COPY = {
 
 /** Shown above a read-only Bookings or Store tab whose page the plan no longer covers. */
 export function PausedBanner({ kind, onUpgrade, action = 'Upgrade' }: { kind: 'bookings' | 'store'; onUpgrade(): void; action?: string }) {
+  const ents = useEntitlements();
+  if (ents.account === 'other') {
+    return (
+      <View style={styles.banner} accessibilityRole="alert">
+        <Text style={styles.text}>{otherAccountPlanMessage(ents.hint)}</Text>
+      </View>
+    );
+  }
   return (
     <View style={styles.banner} accessibilityRole="alert">
       <Text style={styles.text}>{PAUSED_COPY[kind]}</Text>

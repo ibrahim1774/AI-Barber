@@ -1,11 +1,17 @@
 import {
-  entitlementsFrom, getEntitlements, resetEntitlementsForTests, setEntitlementsFromStatus, subscribeEntitlements,
+  clearEntitlements, entitlementsFrom, getEntitlements, resetEntitlementsForTests, setEntitlementsFromStatus, subscribeEntitlements,
   tierFromEntitlements, PLAN_ENTITLEMENT,
 } from '@/lib/entitlements';
 
 const active = (...ids: string[]) => ({ status: 'ACTIVE', entitlements: ids.map((id) => ({ id })) });
 
-beforeEach(resetEntitlementsForTests);
+import { setSharedPlan } from '@/lib/plan';
+import { OWN_PLAN } from '../../test/ownPlan';
+
+beforeEach(() => {
+  resetEntitlementsForTests();
+  setSharedPlan({ ...OWN_PLAN }); // this account owns the purchase: the mirror alone decides
+});
 
 describe('entitlementsFrom', () => {
   it('ACTIVE with [hosting] has no bookings or store', () => {
@@ -53,4 +59,14 @@ it('tierFromEntitlements: store > bookings > hosting > none', () => {
 
 it('maps each upgrade placement to its entitlement', () => {
   expect(PLAN_ENTITLEMENT).toEqual({ bookings_upgrade: 'bookings', store_upgrade: 'store' });
+});
+
+it('clearEntitlements re-applies Superwall\'s latest status instead of leaving the mirror unknown', () => {
+  resetEntitlementsForTests();
+  setEntitlementsFromStatus({ status: 'ACTIVE', entitlements: [{ id: 'hosting' }] });
+  clearEntitlements();
+  expect(getEntitlements()).toMatchObject({ known: true, hosting: true, bookings: false });
+  resetEntitlementsForTests();
+  clearEntitlements();
+  expect(getEntitlements().known).toBe(false);
 });

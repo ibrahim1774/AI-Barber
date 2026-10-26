@@ -86,6 +86,12 @@ export class FakeServer {
   calls: { path: string; method: string; body: any; headers?: Record<string, string> }[] = [];
   /** Every siteData the server accepted, in order. */
   published: any[] = [];
+  /** The account the Apple ID's purchase is linked to (set by the first publish with a Bearer, never moved). */
+  purchaseOwner: string | null = null;
+  /** Accounts /api/ios/signup created (emails). */
+  accounts = new Set<string>();
+  /** The masked owner shown in a 409 purchase-other-account. */
+  ownerHint = 'o***@gmail.com';
   /** The 409 carries the server copy (true) or only the error code (false). */
   conflictBody = true;
   sb: any = null;
@@ -222,9 +228,29 @@ export class FakeServer {
   private route(path: string, method: string, body: any, headers: Record<string, string>): { status: number; body: unknown } {
     const sub = (tx: string) => this.apple.find((s) => s.transactionId === tx) ?? null;
     switch (path) {
-      case '/api/ios/publish': {
+      case '/api/ios/claim-start': {
         const s = sub(body.transactionId);
         if (!s || !s.isActive || s.isRevoked) return { status: 402, body: { error: 'subscription-inactive' } };
+        if (this.purchaseOwner) return { status: 409, body: { error: 'purchase-claimed' } };
+        if (this.boundSiteId) return { status: 409, body: { error: 'purchase-has-site' } };
+        return { status: 200, body: { ok: true, state: 'unclaimed', claimExpiresAt: new Date(T0 + 30 * 86400_000).toISOString() } };
+      }
+      case '/api/ios/signup': {
+        const email = String(body.email ?? '').trim().toLowerCase();
+        if (this.accounts.has(email)) return { status: 409, body: { error: 'email-exists' } };
+        this.accounts.add(email);
+        return { status: 200, body: { ok: true, email } };
+      }
+      case '/api/ios/publish': {
+        const auth = headers.Authorization;
+        if (!auth) return { status: 401, body: { error: 'unauthorized' } };
+        const uid = auth.replace(/^Bearer tok-/, '');
+        const s = sub(body.transactionId);
+        if (!s || !s.isActive || s.isRevoked) return { status: 402, body: { error: 'subscription-inactive' } };
+        if (this.purchaseOwner && this.purchaseOwner !== uid) {
+          return { status: 409, body: { error: 'purchase-other-account', hint: this.ownerHint } };
+        }
+        this.purchaseOwner = uid;
         const existed = this.boundSiteId != null && this.sites.has(this.boundSiteId);
         if (!existed) {
           const slug = String(body.siteData?.shopName ?? 'shop').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'shop';
@@ -298,7 +324,12 @@ export class FakeServer {
         return { status: 200, body: { domain: row.domain, ...row.states[0] } };
       }
       case '/api/ios/site': {
+        const auth = headers.Authorization;
+        if (!auth) return { status: 401, body: { error: 'auth-required' } };
         const s = sub(body.transactionId);
+        if (this.purchaseOwner && this.purchaseOwner !== auth.replace(/^Bearer tok-/, '')) {
+          return { status: 409, body: { error: 'purchase-other-account', hint: this.ownerHint } };
+        }
         if (!s || !this.boundSiteId) return { status: 404, body: { error: 'no-site' } };
         const row = this.sites.get(this.boundSiteId)!;
         return { status: 200, body: { ...this.copy(row), active: s.isActive && !s.isRevoked } };
@@ -350,6 +381,9 @@ export class FakeServer {
       expiresAt: a ? null : last?.expirationDate ?? null,
       takenDownAt: null,
       revoked: !!last?.isRevoked,
+      // Whose purchase it is: another account that linked it -> 'other'; otherwise the caller's own.
+      purchaseAccount: this.purchaseOwner && this.purchaseOwner !== this.sb?.session?.user?.id ? 'other' : 'self',
+      ...(this.purchaseOwner && this.purchaseOwner !== this.sb?.session?.user?.id ? { purchaseHint: this.ownerHint } : {}),
     };
   }
 }

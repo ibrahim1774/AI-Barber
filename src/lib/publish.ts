@@ -6,7 +6,8 @@ import { stripMarkers } from '@/lib/editable';
 import { linksOf, linksToSend, type LinkContext } from '@/lib/bookingChoice';
 import { cancelRemindersInBackground } from '@/lib/reminders';
 import { emitSiteLive } from '@/lib/siteEvents';
-import type { SiteRecord } from '@/lib/siteStore';
+import type { PendingPublish, SiteRecord } from '@/lib/siteStore';
+import { CLAIMED_SIGNED_OUT_MESSAGE, conflictMessage, type Conflict } from '@/lib/claimCopy';
 import { LOOKUP_TIMEOUT_MS, withTimeout } from '@/lib/timeout';
 
 /**
@@ -35,7 +36,7 @@ export const UPDATING_MESSAGE = "Your website is still being updated. We'll fini
 /** An entitled republish whose ownership check failed: nothing is queued, so say to try again. */
 export const CHECK_FAILED_MESSAGE = "We couldn't check your site just now, so nothing was published. Please try again in a moment.";
 
-/** A pending publish older than this is dropped instead of retried. */
+/** A plain pending publish older than this is dropped instead of retried. A paid, unclaimed one (state set) never is. */
 const PENDING_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 export interface PublishDeps {
@@ -45,23 +46,20 @@ export interface PublishDeps {
   /** getCustomerInfo().subscriptions → pickLatestTransactionId */
   latestTransactionId(): Promise<string | null>;
   iosPublish: typeof api.iosPublish;
+  /** POST /api/ios/claim-start: bookkeeping right after a purchase, before any account. */
+  claimStart: typeof api.claimStart;
   /** The shop facts that decide the Book / Shop links on every publish. Without it, links the plan lacks are only stripped. */
   linkContext?(): Promise<LinkContext | null>;
   /** The site data with `staff` refreshed from ab_members (team profiles). Must not throw; capped like linkContext. */
   refreshTeam?(data: WebsiteData): Promise<WebsiteData>;
   store: typeof import('./siteStore');
-  /** GET /api/ios/site → adopt a newer admin edit (adminSync.syncFromServer). Optional; never throws. */
+  /** POST /api/ios/site (Bearer) → adopt a newer admin edit (adminSync.syncFromServer). Optional; never throws. */
   syncFromServer?(transactionId: string): Promise<SyncResult>;
   /**
-   * True when `transactionId` is bound to a different live site than `site` (this Apple ID's site is
-   * someone else's here). Optional; a failure counts as false.
+   * The signed-in user's access token (refreshed when near expiry), null when signed out. Every publish needs it:
+   * the server links the purchase to the account from it, so without one nothing is sent.
    */
-  /** true: bound to a different site. 'none': nothing bound to this transaction yet (404). false: bound to this very site. */
-  boundElsewhere?(transactionId: string, site: SiteRecord): Promise<boolean | 'none'>;
-  /** The signed-in Supabase user (older servers read it from the body). */
-  userId(): string | null;
-  /** The signed-in user's access token (refreshed when near expiry): the server links the purchase only from it. */
-  accessToken?(): Promise<string | null>;
+  accessToken(): Promise<string | null>;
   /**
    * After a publish is saved locally (publishFlow and the launch retry alike):
    * keeps the account's `sites` row current. Not awaited, and its failure
@@ -73,26 +71,19 @@ export interface PublishDeps {
 export type PublishOutcome =
   | { kind: 'live'; url: string; republished: boolean }
   | { kind: 'declined' }
-  | { kind: 'pending'; message: string }
+  /** Not live yet. `offline`: the request never reached the server (the locked step then says "waiting for connection"). */
+  | { kind: 'pending'; message: string; offline?: boolean }
   | { kind: 'inactive' }
   /** An admin edit is newer: the server copy was adopted and nothing was published. Review, then publish again. */
   | { kind: 'site-updated'; message: string }
-  /** Nothing was published: this phone's site would overwrite a different live site bound to the Apple ID. */
-  | { kind: 'blocked'; message: string };
-
-export const BOUND_ELSEWHERE_MESSAGE =
-  "This phone's Apple ID already runs a different website, so this one wasn't published and your live site is untouched. To publish this one, subscribe with another Apple ID.";
+  /** The server refused: the purchase is another account's, or this account already has a site. Nothing was published. */
+  | { kind: 'blocked'; message: string }
+  /** Paid but no usable session: the locked account step comes next (route /claim). Nothing was sent. */
+  | { kind: 'claim-required' };
 
 /** Superwall can lag behind StoreKit right after a purchase: first try plus 3 retries, 1 s apart. */
 const TX_RETRIES = 3;
 const TX_RETRY_MS = 1000;
-
-/** What a pending publish remembers about the site it was paid for. */
-function targetOf(site: SiteRecord | null): NonNullable<import('@/lib/siteStore').PendingPublish['target']> | undefined {
-  return site
-    ? { draftId: site.draftId, slug: site.slug ?? null, deployedUrl: site.deployedUrl ?? null, ownerUserId: site.ownerUserId }
-    : undefined;
-}
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -162,17 +153,16 @@ export function publishPayload(data: WebsiteData): WebsiteData {
 }
 
 /**
- * Sends the saved pending publish. The pending record is only cleared on a
- * final answer: live, inactive (402), or a malformed payload (400
- * bad-request, rethrown). Everything else — network, 5xx, 404 while Apple
- * catches up, other 4xx, a garbled 200 — keeps it for the next retry and
- * returns `pending` with `retryMessage`.
+ * Sends the saved pending publish with the account's Bearer (never without one: no token means no request and the
+ * locked account step). The pending record is only cleared on a final answer: live, inactive (402), a malformed
+ * payload (400 bad-request, rethrown) or, for an ordinary retry, a 409 refusal. A paid claim (state set) keeps its
+ * record through a 409 as state 'conflict'. Everything else — network, 5xx, 404 while Apple catches up, other 4xx,
+ * a garbled 200 — keeps it for the next retry and returns `pending` with `retryMessage`.
  */
-async function send(
-  pending: { transactionId: string; data: WebsiteData; baseVersion?: number },
-  deps: PublishDeps,
-  retryMessage: string,
-): Promise<PublishOutcome> {
+async function send(pending: PendingPublish, deps: PublishDeps, retryMessage: string): Promise<PublishOutcome> {
+  const token = await deps.accessToken().catch(() => null);
+  if (!token) return toClaim(deps, pending);
+  const transactionId = pending.transactionId!;
   let res: Awaited<ReturnType<PublishDeps['iosPublish']>>;
   // Capped like the admin sync: a stalled shop lookup is "unknown", never a stuck publish.
   const ctx = deps.linkContext ? await withTimeout(deps.linkContext(), SYNC_TIMEOUT_MS).catch(() => null) : null;
@@ -184,17 +174,14 @@ async function send(
   const fresh = deps.refreshTeam ? await withTimeout(deps.refreshTeam(pending.data), SYNC_TIMEOUT_MS).catch(() => pending.data) : pending.data;
   const siteData = linksToSend(fresh, rec?.inputs, ctx);
   try {
-    const token = deps.accessToken ? await deps.accessToken().catch(() => null) : null;
     res = await deps.iosPublish(
       {
-        transactionId: pending.transactionId,
+        transactionId,
         siteData,
-        userId: deps.userId(),
         // The version this data was based on, never the live record's (an admin edit may have landed since).
         ...(typeof pending.baseVersion === 'number' ? { baseVersion: pending.baseVersion } : {}),
       },
-      // Only when signed in (older callers and test doubles see the one-argument call).
-      ...(token ? [token] : []),
+      token,
     );
   } catch (e) {
     if (e instanceof ApiError && e.status === 409 && e.code === 'site-updated') {
@@ -204,7 +191,7 @@ async function send(
       let site = adopted?.site;
       // No usable copy in the 409: fetch it. If that fails too, this is an error, not a "review it" outcome.
       if (!site) {
-        const synced = await deps.syncFromServer?.(pending.transactionId).catch(() => null);
+        const synced = await deps.syncFromServer?.(transactionId).catch(() => null);
         if (synced?.kind === 'adopted') site = synced.site;
       }
       if (!site) throw e;
@@ -212,6 +199,22 @@ async function send(
       track('publish_site_updated');
       notifyLive(deps, site);
       return { kind: 'site-updated', message: adopted?.message ?? UPDATED_ON_PUBLISH_MESSAGE };
+    }
+    if (e instanceof ApiError && e.status === 409 && (e.code === 'purchase-other-account' || e.code === 'account-has-site')) {
+      const conflict: Conflict =
+        e.code === 'account-has-site'
+          ? { code: 'account-has-site', slug: typeof e.body?.slug === 'string' ? e.body.slug : null }
+          : { code: 'purchase-other-account', hint: typeof e.body?.hint === 'string' ? e.body.hint : null };
+      track('publish_conflict', { code: e.code });
+      // A paid claim stays locked on its account step; an ordinary publish just stops.
+      if (pending.state) await deps.store.savePendingPublish({ ...pending, state: 'conflict', conflict });
+      else await deps.store.savePendingPublish(null);
+      return { kind: 'blocked', message: conflictMessage(conflict) };
+    }
+    if (e instanceof ApiError && e.status === 401) {
+      // The server does not accept this session: back to the account step, record kept.
+      track('publish_unauthorized');
+      return toClaim(deps, pending);
     }
     if (e instanceof ApiError && e.status === 402) {
       await deps.store.savePendingPublish(null);
@@ -224,7 +227,7 @@ async function send(
       throw e;
     }
     track('publish_pending', { code: e instanceof ApiError ? e.code : 'unknown' });
-    return { kind: 'pending', message: retryMessage };
+    return { kind: 'pending', message: retryMessage, ...(e instanceof ApiError && e.status === 0 ? { offline: true } : {}) };
   }
   // A 200 without a usable answer (a proxy page parsed as JSON, an API change) is not live: keep the
   // pending publish for the retry instead of saving a record bound to nothing.
@@ -247,7 +250,7 @@ async function send(
       ...cur,
       slug: res.siteId,
       deployedUrl: res.deployedUrl,
-      transactionId: pending.transactionId,
+      transactionId,
       // Edits made while the request ran are not published.
       ...(newerOnDisk ? {} : { syncedAt: sentAt ?? cur.updatedAt, ...learned, liveLinks: linksOf(siteData) }),
     };
@@ -281,22 +284,6 @@ function notifyLive(deps: PublishDeps, site: SiteRecord): void {
   }
 }
 
-/**
- * Fails closed: only a clean "not bound elsewhere" answer lets a publish through.
- * A thrown check (network, 5xx, timeout) is 'unknown'; the caller keeps the pending record and retries later.
- */
-async function checkBound(deps: PublishDeps, transactionId: string, site: SiteRecord): Promise<'ok' | 'fresh' | 'blocked' | 'unknown'> {
-  // A site with its own slug publishes to that slug. Any site without one (owned or not) must prove the Apple ID's site is not someone else's.
-  if (site.slug != null) return 'ok';
-  if (!deps.boundElsewhere) return 'ok'; // production always wires it (usePublishDeps)
-  try {
-    const r = await deps.boundElsewhere(transactionId, site);
-    return r === 'none' ? 'fresh' : r ? 'blocked' : 'ok';
-  } catch {
-    return 'unknown';
-  }
-}
-
 // The launch retry and a Publish tap must never send at the same time.
 let queue: Promise<unknown> = Promise.resolve();
 let queued = 0;
@@ -317,81 +304,114 @@ export function publishBusy(): boolean {
   return queued > 0;
 }
 
+/** Paid and no usable session: keep the record as 'unclaimed' (the locked /claim step takes it from here). */
+async function toClaim(deps: PublishDeps, pending: PendingPublish): Promise<PublishOutcome> {
+  const { conflict: _drop, ...rest } = pending;
+  await deps.store.savePendingPublish({ ...rest, state: 'unclaimed' });
+  track('publish_claim_required');
+  return { kind: 'claim-required' };
+}
+
 /**
- * Pay (unless already entitled) → transaction id → save the pending publish →
- * POST /api/ios/publish. Only a found, active transaction for our products
- * proves payment; showPaywall's 'purchased' is itself verified (paywall.tsx).
- * The purchase conversion is tracked by SubscriptionSync from Superwall's own
- * events, not here.
+ * Pay (unless already entitled) → transaction id → account → publish.
+ *
+ * - Signed out: after the verified purchase, POST claim-start (bookkeeping; only a 402 stops here), save the
+ *   pending publish as 'unclaimed' and answer `claim-required`: the locked /claim step creates or signs in to an
+ *   account, then resumePendingPublish sends the publish with its Bearer. Nothing is ever published without one.
+ * - Signed in: the site data is sent with the Bearer right away; the server links the purchase to the account
+ *   and decides every conflict (409 purchase-other-account / account-has-site).
+ *
+ * Only a found, active transaction for our products proves payment; showPaywall's 'purchased' is itself verified
+ * (paywall.tsx). The purchase conversion is tracked by SubscriptionSync from Superwall's own events, not here.
  */
 export async function publishFlow(site: SiteRecord, deps: PublishDeps): Promise<PublishOutcome> {
   return serial(async () => {
     const data = publishPayload(site.data);
-    // A saved first-publish record (its own failed send may have bound a slug) must survive this tap:
-    // it is only cleared on a confirmed success or a confirmed foreign owner, never by a re-tap.
     const prior = await deps.store.loadPendingPublish().catch(() => null);
-    const carry = prior?.target?.freshBind && prior.target.draftId === site.draftId ? prior : null;
+    const token = await deps.accessToken().catch(() => null);
+    // A paid record from an earlier tap (or a launch) is never charged twice: no paywall, same transaction.
+    const paidBefore = !!prior && (prior.state != null || prior.transactionId != null);
+    const baseVersion = (await deps.store.loadSite().catch(() => null))?.serverVersion;
     let paid = false;
-    if (!(await deps.hasEntitlement().catch(() => false))) {
+    // A paywall "restored" is the Apple ID's earlier purchase, not a payment made now: it never locks the app.
+    let bought = false;
+    if (!paidBefore && !(await deps.hasEntitlement().catch(() => false))) {
       const result = await deps.showPaywall();
       if (result === 'declined') return { kind: 'declined' } as const;
       paid = true;
+      bought = result === 'purchased';
       // Remember the purchase before anything else can fail; the id is looked up next.
       await deps.store.savePendingPublish({
-        transactionId: carry?.transactionId ?? null, data, createdAt: Date.now(), baseVersion: (await deps.store.loadSite())?.serverVersion,
-        target: carry ? { ...targetOf(site)!, freshBind: true } : targetOf(site),
+        transactionId: null, data, createdAt: Date.now(), baseVersion, ...(token ? {} : { state: 'unclaimed' as const }),
       });
       // Paid: no "publish your site" reminders while it goes live (not for
       // good: a purchase that can't be confirmed brings them back).
       cancelRemindersInBackground({ forGood: false });
     }
-    const transactionId = await findTransactionId(deps.latestTransactionId);
+    const transactionId = (paidBefore ? prior!.transactionId : null) ?? (await findTransactionId(deps.latestTransactionId));
     if (!transactionId) return { kind: 'pending', message: UNCONFIRMED_MESSAGE } as const;
-    // A site loaded from an account (no slug of its own) must never publish over the live site the Apple ID is bound to.
-    // The saved fresh-bind record vouches for its own transaction's slug: no check, no block.
-    const owned = !!carry && (carry.transactionId == null || carry.transactionId === transactionId);
-    const guard = owned ? 'fresh' : await checkBound(deps, transactionId, site);
-    if (guard === 'blocked') {
-      // Confirmed foreign owner for this transaction. A different transaction's fresh-bind record stays.
-      if (paid) await deps.store.savePendingPublish(carry ?? null);
-      return { kind: 'blocked', message: BOUND_ELSEWHERE_MESSAGE } as const;
+    const base: PendingPublish = {
+      transactionId, data, createdAt: Date.now(), baseVersion,
+      ...(prior?.state && prior.state !== 'conflict' ? { state: prior.state } : {}),
+    };
+
+    if (!token) {
+      // No account yet. Only a 402 (refunded / revoked) is final; everything else still goes to the account step,
+      // because the publish with a Bearer is what really links the purchase.
+      if (prior?.state !== 'unclaimed') {
+        try {
+          await deps.claimStart(transactionId);
+        } catch (e) {
+          if (e instanceof ApiError && e.status === 402) {
+            await deps.store.savePendingPublish(null);
+            track('publish_inactive');
+            return { kind: 'inactive' } as const;
+          }
+          const claimed = e instanceof ApiError && e.status === 409 && e.code === 'purchase-claimed';
+          // A legacy purchase that already has a site is claimed by signing up or in, like any other.
+          const hasSite = e instanceof ApiError && e.status === 409 && e.code === 'purchase-has-site';
+          // Not bought just now and the check failed: nothing was saved, nothing to claim. Say so; never lock the app.
+          if (!bought && !paidBefore && !hasSite) {
+            // A paywall "restored" saved a record before this check: with nothing to claim it goes again.
+            if (paid) await deps.store.savePendingPublish(null);
+            return claimed
+              ? ({ kind: 'blocked', message: CLAIMED_SIGNED_OUT_MESSAGE } as const)
+              : ({ kind: 'pending', message: CHECK_FAILED_MESSAGE, ...(e instanceof ApiError && e.status === 0 ? { offline: true } : {}) } as const);
+          }
+        }
+      }
+      return toClaim(deps, { ...base, state: 'unclaimed' });
     }
-    if (guard === 'unknown') {
-      // Could not check: fail closed. Keep the paid record (the retry runs the same check).
-      if (paid) await deps.store.savePendingPublish({ transactionId, data, createdAt: Date.now(), baseVersion: (await deps.store.loadSite())?.serverVersion, target: targetOf(site) });
-      return { kind: 'pending', message: paid ? UPDATING_MESSAGE : CHECK_FAILED_MESSAGE } as const;
-    }
+
     // An admin edit must reach the barber before their publish can overwrite it.
     const synced = await deps.syncFromServer?.(transactionId).catch(() => null);
     if (synced?.kind === 'adopted') {
       return { kind: 'site-updated', message: UPDATED_ON_PUBLISH_MESSAGE + synced.message.slice(SYNC_NOTICE.length) } as const;
     }
-    // 'fresh': nothing was bound at pay time, so any slug bound later by a failed send is this payer's own. Remember that for the retry.
-    const base = targetOf(site);
-    const pending = {
-      transactionId, data, createdAt: Date.now(), baseVersion: (await deps.store.loadSite())?.serverVersion,
-      target: base && guard === 'fresh' ? { ...base, freshBind: true } : base,
-    };
+    // A paid claim keeps its lock until the publish is confirmed ('claiming'); an ordinary payer has no state.
+    const pending: PendingPublish = base.state ? { ...base, state: 'claiming' } : base;
     await deps.store.savePendingPublish(pending);
     return send(pending, deps, paid ? PENDING_MESSAGE : UPDATING_MESSAGE);
   });
 }
 
 /**
- * At launch and whenever the app comes back to the foreground: finishes a
- * publish that was paid for but never confirmed. A record saved before its
- * transaction id was found looks the id up first, and is dropped if there is
- * no active subscription.
+ * At launch, whenever the app comes back to the foreground, and when the locked step has an account: finishes a
+ * publish that was paid for but never confirmed. A record saved before its transaction id was found looks the id
+ * up first, and is dropped if there is no active subscription. Without a session it never publishes: it answers
+ * `claim-required`. A 'conflict' record is left for the locked step to show.
  */
 export async function resumePendingPublish(deps: PublishDeps): Promise<PublishOutcome | null> {
   return serial(async () => {
     const pending = await deps.store.loadPendingPublish();
     if (!pending) return null;
-    if (Date.now() - pending.createdAt > PENDING_MAX_AGE_MS) {
+    // A paid, unclaimed record is never aged out: that would be losing a payment.
+    if (!pending.state && Date.now() - pending.createdAt > PENDING_MAX_AGE_MS) {
       await deps.store.savePendingPublish(null);
       track('publish_pending_expired');
       return null;
     }
+    if (pending.state === 'conflict') return null;
     let transactionId = pending.transactionId;
     if (!transactionId) {
       try {
@@ -407,20 +427,11 @@ export async function resumePendingPublish(deps: PublishDeps): Promise<PublishOu
       }
       await deps.store.savePendingPublish({ ...pending, transactionId });
     }
-    // The check runs against the site this was paid for, not whatever is on the phone now (Restore may have swapped it).
-    // No remembered target (older record): the current site; none at all: fail closed.
-    const cur = await deps.store.loadSite().catch(() => null);
-    const site = pending.target
-      ? ({ ...(cur ?? {}), ...pending.target, data: pending.data } as SiteRecord)
-      : cur;
-    if (!site) return { kind: 'pending', message: UPDATING_MESSAGE } as const;
-    // A first publish that found nothing bound owns whatever slug its own failed send created: no block.
-    const guard = pending.target?.freshBind ? 'ok' : await checkBound(deps, transactionId, site);
-    if (guard === 'blocked') {
-      await deps.store.savePendingPublish(null);
-      return { kind: 'blocked', message: BOUND_ELSEWHERE_MESSAGE } as const;
-    }
-    if (guard === 'unknown') return { kind: 'pending', message: UPDATING_MESSAGE } as const;
-    return send({ transactionId, data: pending.data, baseVersion: pending.baseVersion }, deps, PENDING_MESSAGE);
+    const token = await deps.accessToken().catch(() => null);
+    if (!token) return toClaim(deps, { ...pending, transactionId });
+    // An account exists: the locked claim moves on to 'claiming' (still locked until the server confirms).
+    const next: PendingPublish = { ...pending, transactionId, ...(pending.state ? { state: 'claiming' as const } : {}) };
+    if (next.state !== pending.state) await deps.store.savePendingPublish(next);
+    return send(next, deps, PENDING_MESSAGE);
   });
 }

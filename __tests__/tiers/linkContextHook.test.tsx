@@ -13,6 +13,8 @@ jest.mock('@/lib/store/data', () => ({ ...jest.requireActual('@/lib/store/data')
 import { useLinkContext } from '@/lib/linkContext';
 import { resolveLinks } from '@/lib/bookingChoice';
 import { resetEntitlementsForTests, setEntitlementsFromStatus } from '@/lib/entitlements';
+import { setSharedPlan } from '@/lib/plan';
+import { OWN_PLAN } from '../../test/ownPlan';
 
 let latest: any;
 function Probe({ k }: { k: number }) {
@@ -25,6 +27,7 @@ import { loadLinkContext } from '@/lib/linkContext';
 beforeEach(() => {
   sb.setSession({ access_token: 't', user: { id: 'u' } });
   resetEntitlementsForTests();
+  setSharedPlan({ ...OWN_PLAN });
   setEntitlementsFromStatus({ status: 'ACTIVE', entitlements: [{ id: 'hosting' }, { id: 'bookings' }] });
   mockShop.mockReset();
 });

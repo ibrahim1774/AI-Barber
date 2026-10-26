@@ -29,6 +29,8 @@ import {
 import { emitSiteLive } from '@/lib/siteEvents';
 import { SHOP_PREVIEW_EDITOR_NOTE, SHOP_PREVIEW_PLACEHOLDER, buildPreviewHtml, stripMarkers, withShopPreview } from '@/lib/editable';
 import { resetEntitlementsForTests, setEntitlementsFromStatus, getEntitlements } from '@/lib/entitlements';
+import { setSharedPlan } from '@/lib/plan';
+import { OWN_PLAN } from '../../test/ownPlan';
 import { renderSite, forRender } from '@/lib/render';
 import { isAiBarberBookingUrl, isAiBarberShopUrl, toShop } from '@/lib/shop';
 import { stripLapsedLinks } from '@/lib/tierLinks';
@@ -53,6 +55,7 @@ describe('link forms', () => {
 
   it('publish resolution sends /book and /shop; a downgrade strips /book (or the old form) back to the own link', () => {
     resetEntitlementsForTests();
+    setSharedPlan({ ...OWN_PLAN }); // this account owns the purchase
     setEntitlementsFromStatus({ status: 'ACTIVE', entitlements: [{ id: 'hosting' }, { id: 'bookings' }, { id: 'store' }] });
     const ctx: LinkContext = { ents: getEntitlements(), shop: { slug: 'fade-lab', bookingsEnabled: true, purchaseLinked: true }, storeEnabled: true };
     const data = { shopName: 'Fade', bookingUrl: '/book' } as WebsiteData;
@@ -179,6 +182,7 @@ describe('customer links (share, QR, copy)', () => {
     resetPagesChecksForTests();
     mockShop.mockResolvedValue({ id: 's1', slug: 'fade-lab', bookingsEnabled: true, purchaseLinked: true, siteBaseUrl: BASE });
     resetEntitlementsForTests();
+    setSharedPlan({ ...OWN_PLAN }); // this account owns the purchase
     setEntitlementsFromStatus({ status: 'ACTIVE', entitlements: [{ id: 'hosting' }, { id: 'bookings' }, { id: 'store' }] });
     const tree = await render(<ShareSheet visible shopName="Fade Lab" links={[{ kind: 'website', url: BASE }]} source="live" onClose={() => {}} />);
     await act(async () => {
@@ -188,6 +192,21 @@ describe('customer links (share, QR, copy)', () => {
     expect(text).toContain('jacksbarbershop.com/book');
     expect(text).toContain('jacksbarbershop.com/shop');
     expect(text).not.toContain('aibarber.org');
+  });
+
+  it("a second account on the same Apple ID gets no booking or shop row in the Share sheet", async () => {
+    resetPagesChecksForTests();
+    mockShop.mockResolvedValue({ id: 's1', slug: 'fade-lab', bookingsEnabled: true, purchaseLinked: true, siteBaseUrl: BASE });
+    resetEntitlementsForTests();
+    setSharedPlan({ ...OWN_PLAN, purchaseAccount: 'other', purchaseHint: null });
+    setEntitlementsFromStatus({ status: 'ACTIVE', entitlements: [{ id: 'hosting' }, { id: 'bookings' }, { id: 'store' }] });
+    const tree = await render(<ShareSheet visible shopName="Fade Lab" links={[{ kind: 'website', url: BASE }]} source="live" onClose={() => {}} />);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+    const text = allText(tree).join(' | ');
+    expect(text).not.toContain('/book');
+    expect(text).not.toContain('/shop');
   });
 });
 

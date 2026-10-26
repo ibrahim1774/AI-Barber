@@ -30,12 +30,15 @@ jest.mock('@/lib/paywall', () => ({ usePaywall: () => mockPaywall, useLatestTran
 
 import Settings from '@/app/(tabs)/settings';
 import { resetEntitlementsForTests, setEntitlementsFromStatus } from '@/lib/entitlements';
+import { setSharedPlan } from '@/lib/plan';
+import { OWN_PLAN } from '../../test/ownPlan';
 
 const ents = (...ids: string[]) => act(() => setEntitlementsFromStatus({ status: 'ACTIVE', entitlements: ids.map((id) => ({ id })) }));
 let sheet: jest.SpyInstance;
 
 beforeEach(() => {
   resetEntitlementsForTests();
+  setSharedPlan({ ...OWN_PLAN }); // this account owns the purchase
   mockPaywall.mockClear();
   sheet = jest.spyOn(ActionSheetIOS, 'showActionSheetWithOptions').mockImplementation(() => {});
 });
@@ -74,6 +77,14 @@ describe('Settings Plan row', () => {
     await pressRow(tree, 'Plan');
     expect(sheet.mock.calls[1][0].options).toEqual(['Manage subscription', 'Cancel']);
   });
+});
+
+it("a second account on the same Apple ID: the Plan row shows the Website plan only, never Bookings or Store", async () => {
+  ents('hosting', 'bookings', 'store');
+  setSharedPlan({ ...OWN_PLAN, purchaseAccount: 'other', purchaseHint: 'a***@gmail.com' });
+  const tree = await render(<Settings />);
+  expect(allText(tree)).toContain('Website');
+  expect(allText(tree)).not.toContain('Store');
 });
 
 it('the Plan row shows … and does nothing until entitlements are known', async () => {
