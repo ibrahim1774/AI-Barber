@@ -43,6 +43,8 @@ export interface PlanDeps {
   setShopOtid(shopId: string, otid: string | null): Promise<'ok' | 'taken'>;
   /** Atomic conditional link (WHERE user_id IS NULL): true = this call linked it; false = it was already linked. */
   setUserIfUnlinked(otid: string, userId: string): Promise<boolean>;
+  /** The purchases linked to the caller (user_id = caller). Used only when the caller has no shop. Absent: none. */
+  purchasesOfUser?(userId: string): Promise<PurchaseRow[]>;
   /** Masked-hint lookup for a 409 (account id -> email). Absent: hint null. */
   emailOf?(userId: string): Promise<string | null>;
   /** Unlinked purchase (no user_id): which account owns the shop/site bound to it (id, 'ambiguous', null). */
@@ -73,7 +75,9 @@ const accountOf = (row: PurchaseRow | null, userId: string | undefined): PlanVie
 export function planView(shop: Pick<ShopRow, 'ios_otid'>, row: PurchaseRow | null, now: number, userId?: string): PlanView {
   const linked = !!shop.ios_otid;
   const purchaseAccount = accountOf(row, userId);
-  if (!linked || !row) {
+  // H2: a purchase linked to ANOTHER account (the same Apple ID under a second email) grants this
+  // caller nothing, even when the shop points at it.
+  if (!linked || !row || purchaseAccount === 'other') {
     return {
       linked, tier: null, entitlements: { hosting: false, bookings: false, store: false },
       active: false, expiresAt: null, takenDownAt: null, revoked: false, purchaseAccount,
@@ -107,26 +111,32 @@ async function owner(auth: Auth, deps: PlanDeps) {
 }
 
 /**
- * GET /api/shop/plan. Optional `otid` (the device's Apple originalTransactionId, digits only) lets a
- * shop-less or differently-linked account learn `purchaseAccount` for that purchase without Apple.
+ * GET /api/shop/plan. With a shop: the shop's purchase. With NO shop (a signed-in account still
+ * setting up Bookings / Store): the caller's OWN purchase, i.e. the newest active ios_purchases row
+ * with user_id = caller. Entitlements are granted only for a purchase linked to the caller
+ * (`purchaseAccount: 'self'`); a purchase linked to another account reads 'other' and grants nothing.
+ * There is no way to ask about a purchase by id (the old ?otid probe is gone: it revealed another
+ * purchase's link state).
  */
-export async function getPlan(auth: Auth, deps: PlanDeps, opts: { otid?: string } = {}): Promise<FlowResult> {
+export async function getPlan(auth: Auth, deps: PlanDeps): Promise<FlowResult> {
   const a = await authenticate(auth, deps.getUser);
   if (a.ok === false) return { status: a.status, body: a.body };
+  const now = (deps.now ?? Date.now)();
   const shop = await deps.shopByOwner(a.user.id);
-  // A signed-in account with no shop yet is not an error: nothing is granted, so the app shows its upgrade card.
-  const row = shop?.ios_otid ? await deps.purchase(shop.ios_otid) : null;
-  const asked = opts.otid && /^\d{1,32}$/.test(opts.otid) ? opts.otid : null;
-  const askedRow = asked && asked !== shop?.ios_otid ? await deps.purchase(asked) : null;
-  const view: PlanView = shop
-    ? planView(shop, row, (deps.now ?? Date.now)(), a.user.id)
-    : {
-        linked: false, tier: null, entitlements: { hosting: false, bookings: false, store: false },
-        active: false, expiresAt: null, takenDownAt: null, revoked: false, purchaseAccount: null,
-      };
-  // The device's own purchase decides the copy when it is not the shop's: another account's wins.
-  if (askedRow && accountOf(askedRow, a.user.id) === 'other') view.purchaseAccount = 'other';
-  else if (askedRow && !view.purchaseAccount) view.purchaseAccount = accountOf(askedRow, a.user.id);
+  let view: PlanView;
+  if (shop) {
+    const row = shop.ios_otid ? await deps.purchase(shop.ios_otid) : null;
+    view = planView(shop, row, now, a.user.id);
+  } else {
+    const own = deps.purchasesOfUser ? await deps.purchasesOfUser(a.user.id) : [];
+    const mine = own
+      .filter((r) => r.user_id === a.user.id && purchaseLive(r, now))
+      .sort((x, y) => (Date.parse(y.expires_at ?? '') || 0) - (Date.parse(x.expires_at ?? '') || 0))[0] ?? null;
+    // `linked` stays false: it means "the shop has a purchase", and there is no shop.
+    view = mine
+      ? { ...planView({ ios_otid: mine.original_transaction_id }, mine, now, a.user.id), linked: false }
+      : planView({ ios_otid: null }, null, now, a.user.id);
+  }
   if (!deps.memberProfileLive) return { status: 200, body: view };
   // A failed probe reads as "not live": the app then keeps website-only fields in site JSON.
   const memberProfile = await deps.memberProfileLive().catch(() => false);
@@ -235,6 +245,7 @@ export function livePlanDeps(): PlanDeps {
     getUser: liveGetUser(client),
     shopByOwner: (uid) => shops.shopByOwner(uid),
     purchase: (otid) => purchases.get(otid),
+    purchasesOfUser: (uid) => purchases.ofUser!(uid),
     // Lazy: missing Apple env vars surface as a mapped 503, not a crash at wiring time.
     verify: lazyDefaultVerifier(),
     upsertVerified: (tx, opts) => purchases.upsertVerified(tx, opts),

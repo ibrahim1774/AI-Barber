@@ -193,10 +193,9 @@ describe('POST /api/ios/publish, /api/ios/site, /api/ios/apple-notification: mal
     expect((await hit(iosSite, { body: { transactionId: '999' }, headers: AUTH })).statusCode).toBe(404);
     const p = w.apple.buy(PRODUCTS.storeMonthly);
     expect((await hit(iosSite, { body: { transactionId: p.transactionId }, headers: AUTH })).body).toEqual({ error: 'no-site' });
-    // No token: 401 before Apple is asked.
-    const calls = w.apple.state.calls;
-    expect((await hit(iosSite, { body: { transactionId: p.transactionId } })).statusCode).toBe(401);
-    expect(w.apple.state.calls).toBe(calls);
+    // No token and nothing bound to the purchase: 404 no-site (Apple is asked, no data returned).
+    const anon = await hit(iosSite, { body: { transactionId: p.transactionId } });
+    expect([anon.statusCode, anon.body]).toEqual([404, { error: 'no-site' }]);
     w.apple.state.down = true;
     expect((await hit(iosSite, { body: { transactionId: p.transactionId }, headers: AUTH })).statusCode).toBe(503);
   });

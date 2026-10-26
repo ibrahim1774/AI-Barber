@@ -1,13 +1,22 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { runSignup, normalizePhone, type SignupDeps } from '../../lib/ios/signup.js';
+import { runSignup, normalizePhone, MAX_SIGNUPS_PER_PURCHASE, type SignupDeps } from '../../lib/ios/signup.js';
+import { VerifyFailure, type VerifiedTx } from '../../lib/ios/appleVerify.js';
+import type { PurchaseRow } from '../../lib/ios/purchases.js';
 import { makeRateLimiter, memoryStore } from '../../lib/bookings/rateLimit.js';
 
-const good = { name: ' Sam  Cutter ', email: ' Sam@Example.COM ', phone: '(555) 010-0199', password: 'correct horse' };
+const NOW = 1_800_000_000_000;
+const TX: VerifiedTx = { originalTransactionId: '2000000123', transactionId: '2000000555', productId: 'com.ibrahim1774.aibarber.store.monthly', environment: 'Production', expiresAt: NOW + 86_400_000, revoked: false, status: 1, productPurchasedAt: NOW - 1000 };
+const row = (over: Partial<PurchaseRow> = {}): PurchaseRow => ({ original_transaction_id: '2000000123', product_id: TX.productId, environment: 'Production', site_slug: null, user_id: null, expires_at: null, revoked_at: null, last_notification: null, published_at: null, taken_down_at: null, lapse_checked_at: null, ...over });
+const good = { transactionId: '2000000555', name: ' Sam  Cutter ', email: ' Sam@Example.COM ', phone: '(555) 010-0199', password: 'correct horse' };
 
 function deps(over: Partial<SignupDeps> = {}) {
   const created: any[] = [];
   const d: SignupDeps = {
     allow: async () => true,
+    verify: async () => TX,
+    getPurchase: async () => null,
+    allowForPurchase: async () => true,
+    now: () => NOW,
     createUser: async (u) => { created.push(u); return { exists: false }; },
     ...over,
   };
@@ -91,10 +100,14 @@ describe('POST /api/ios/signup', () => {
     expect((await runSignup({ ...good, email: 'other@example.com' }, '1.1.1.1', d)).status).toBe(409);
   });
 
-  it('a limiter outage fails open; a Supabase outage is 503 without detail', async () => {
+  it('H3: a limiter outage fails CLOSED (503, nothing created); a Supabase outage is 503 without detail', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const down = deps({ allow: async () => { throw new Error('store down'); } });
-    expect((await runSignup(good, 'ip', down.d)).status).toBe(200);
+    expect(await runSignup(good, 'ip', down.d)).toEqual({ status: 503, body: { error: 'temporarily-unavailable' } });
+    expect(down.created).toHaveLength(0);
+    const capDown = deps({ allowForPurchase: async () => { throw new Error('store down'); } });
+    expect((await runSignup(good, 'ip', capDown.d)).status).toBe(503);
+    expect(capDown.created).toHaveLength(0);
     const r = await runSignup(good, 'ip', deps({ createUser: async () => { throw new Error('boom'); } }).d);
     expect(r).toEqual({ status: 503, body: { error: 'temporarily-unavailable' } });
   });
@@ -118,5 +131,62 @@ describe('liveSignupDeps (Supabase admin mapping)', () => {
     await expect(d.createUser(u)).rejects.toThrow();
     vi.doUnmock('@supabase/supabase-js');
     vi.unstubAllEnvs();
+  });
+
+  describe('H3: proof of payment', () => {
+    it('a missing / blank / oversized transactionId is 400 and Apple is never asked', async () => {
+      const verify = vi.fn(async () => TX);
+      const { d, created } = deps({ verify });
+      for (const transactionId of [undefined, '', '   ', 5, 'x'.repeat(65)]) {
+        expect(await runSignup({ ...good, transactionId: transactionId as any }, 'ip', d)).toEqual({ status: 400, body: { error: 'bad-request' } });
+      }
+      expect(verify).not.toHaveBeenCalled();
+      expect(created).toHaveLength(0);
+    });
+
+    it('Apple says unknown / wrong app / unavailable: 404 / 400 / 503, nothing created', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      for (const [code, status] of [['not-found', 404], ['bad-bundle', 400], ['bad-product', 400], ['apple-unavailable', 503]] as const) {
+        const { d, created } = deps({ verify: async () => { throw new VerifyFailure(code); } });
+        expect((await runSignup(good, 'ip', d)).status).toBe(status);
+        expect(created).toHaveLength(0);
+      }
+    });
+
+    it('an inactive (expired) or revoked purchase is 402 and creates nothing', async () => {
+      const expired = deps({ verify: async () => ({ ...TX, expiresAt: NOW - 1000, status: 2 }) });
+      expect(await runSignup(good, 'ip', expired.d)).toEqual({ status: 402, body: { error: 'subscription-inactive' } });
+      const revoked = deps({ verify: async () => ({ ...TX, revoked: true }) });
+      expect((await runSignup(good, 'ip', revoked.d)).status).toBe(402);
+      const stored = deps({ getPurchase: async () => row({ revoked_at: '2026-10-01T00:00:00Z' }) });
+      expect((await runSignup(good, 'ip', stored.d)).status).toBe(402);
+      expect(expired.created.length + revoked.created.length + stored.created.length).toBe(0);
+    });
+
+    it('a purchase already linked to an account, or bound to a legacy site, is 409 (same check as claim-start)', async () => {
+      const linked = deps({ getPurchase: async () => row({ user_id: '11111111-1111-4111-8111-111111111111' }) });
+      expect(await runSignup(good, 'ip', linked.d)).toEqual({ status: 409, body: { error: 'purchase-claimed' } });
+      const bound = deps({ getPurchase: async () => row({ site_slug: 'fade-lab' }) });
+      expect(await runSignup(good, 'ip', bound.d)).toEqual({ status: 409, body: { error: 'purchase-has-site' } });
+      expect(linked.created.length + bound.created.length).toBe(0);
+    });
+
+    it('an active unlinked purchase (row present or not yet recorded) creates the account', async () => {
+      expect((await runSignup(good, 'ip', deps({ getPurchase: async () => row() }).d)).status).toBe(200);
+      expect((await runSignup(good, 'ip', deps().d)).status).toBe(200);
+    });
+
+    it('the cap is keyed on originalTransactionId (not the transactionId sent) and is 3 per purchase', async () => {
+      expect(MAX_SIGNUPS_PER_PURCHASE).toBe(3);
+      const store = memoryStore();
+      const seen: string[] = [];
+      const allowForPurchase = async (otid: string) => { seen.push(otid); return store.hit(`tx:${otid}`, MAX_SIGNUPS_PER_PURCHASE, 1000, 1) as boolean; };
+      const { d, created } = deps({ allowForPurchase });
+      const statuses = [];
+      for (let i = 0; i < 5; i++) statuses.push((await runSignup({ ...good, email: `u${i}@example.com`, transactionId: `99${i}` }, 'ip', d)).status);
+      expect(statuses).toEqual([200, 200, 200, 429, 429]);
+      expect(new Set(seen)).toEqual(new Set([TX.originalTransactionId]));
+      expect(created).toHaveLength(3);
+    });
   });
 });

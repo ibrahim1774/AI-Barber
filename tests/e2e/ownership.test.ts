@@ -85,20 +85,17 @@ describe('A buys and links; B on the same Apple ID is refused', () => {
     expect(w.row(otid)!.user_id).toBe(USER_A);
   });
 
-  it('GET plan: purchaseAccount is self for A, other for B (by ?otid), null when unknown', async () => {
+  it('GET plan: self for A; B (no shop) sees nothing of A\'s purchase and there is no ?otid probe', async () => {
     const { otid } = await aBuys();
     const shopA = { id: 'shop-a', ios_otid: otid as string | null };
     const asA = await w.getPlan('Bearer owner-jwt', w.planDeps(shopA, { id: USER_A }));
     expect(asA.body).toMatchObject({ linked: true, purchaseAccount: 'self' });
     const shopB = { id: 'shop-b', ios_otid: null as string | null };
     const asB = await w.getPlan('Bearer owner-jwt', w.planDeps(shopB, { id: USER_B }));
-    expect(asB.body).toMatchObject({ linked: false, purchaseAccount: null });
-    const asBWithOtid = await w.getPlan('Bearer owner-jwt', w.planDeps(shopB, { id: USER_B }), { otid });
-    expect(asBWithOtid.body).toMatchObject({ linked: false, purchaseAccount: 'other', entitlements: { hosting: false, bookings: false, store: false } });
-    const asAWithOtid = await w.getPlan('Bearer owner-jwt', w.planDeps({ id: 'shop-a2', ios_otid: null }, { id: USER_A }), { otid });
-    expect(asAWithOtid.body).toMatchObject({ purchaseAccount: 'self' });
-    const unknown = await w.getPlan('Bearer owner-jwt', w.planDeps(shopB, { id: USER_B }), { otid: '424242' });
-    expect(unknown.body).toMatchObject({ purchaseAccount: null });
+    expect(asB.body).toMatchObject({ linked: false, purchaseAccount: null, entitlements: { hosting: false, bookings: false, store: false } });
+    // The shop of B points at A's purchase (stale link): nothing is granted, purchaseAccount is 'other'.
+    const stale = await w.getPlan('Bearer owner-jwt', w.planDeps({ id: 'shop-b2', ios_otid: otid }, { id: USER_B }));
+    expect(stale.body).toMatchObject({ purchaseAccount: 'other', active: false, entitlements: { hosting: false, bookings: false, store: false } });
   });
 
   it('A can still Restore and publish; a renewal under A keeps working (3.1.1)', async () => {
@@ -114,17 +111,18 @@ describe('A buys and links; B on the same Apple ID is refused', () => {
 });
 
 describe('unauthenticated', () => {
-  it('site lookup: no token / invalid token / non-Bearer = 401 and Apple is not asked', async () => {
+  it('site lookup: no token asks Apple and answers auth-required (linked) or no-site (nothing bound); bad tokens stay unauthorized', async () => {
     const { transactionId } = await aBuys();
     const calls = w.apple.state.calls;
-    // No bearer at all (old app builds): machine-readable 'auth-required'. A token that is present but bad: 'unauthorized'.
     for (const auth of [undefined, '']) {
       expect(await w.lookup(transactionId, auth as any)).toEqual({ status: 401, body: { error: 'auth-required' } });
     }
+    expect(w.apple.state.calls).toBeGreaterThan(calls);
+    const after = w.apple.state.calls;
     for (const auth of ['Bearer', 'Bearer nope', 'Basic jwt-a']) {
       expect(await w.lookup(transactionId, auth as any)).toEqual({ status: 401, body: { error: 'unauthorized' } });
     }
-    expect(w.apple.state.calls).toBe(calls);
+    expect(w.apple.state.calls).toBe(after);
   });
 
   it('publish to a linked purchase with no / invalid token is 401 (nothing written)', async () => {
@@ -172,10 +170,12 @@ describe('legacy unlinked purchases', () => {
     expect(w.row(otid)!.user_id).toBeNull();
   });
 
-  it('nothing proves ownership (no shop, no site row) => lookup is 409 with a null hint, never linked', async () => {
+  it('M2: a legacy accountless site (nobody attached) is linked by the first signed-in Restore, then B is refused', async () => {
     const { otid, transactionId } = await legacy();
-    expect(await w.lookup(transactionId, A)).toEqual({ status: 409, body: { error: 'purchase-other-account', hint: null } });
-    expect(w.row(otid)!.user_id).toBeNull();
+    const r = await w.lookup(transactionId, A);
+    expect(r.status).toBe(200);
+    expect(w.row(otid)!.user_id).toBe(USER_A);
+    expect((await w.lookup(transactionId, B)).status).toBe(409);
   });
 
   it('an unbound unlinked purchase has no site: 404 no-site, not linked by a lookup', async () => {

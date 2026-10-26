@@ -134,6 +134,44 @@ describe('GET /api/shop/plan', () => {
   });
 });
 
+describe('H2: GET plan for the caller\'s own purchase', () => {
+  const mineRow = (over: Partial<PurchaseRow> = {}) => purchaseRow({ original_transaction_id: '2000000777', user_id: OTHER, site_slug: null, ...over });
+  const NOSHOP = 'Bearer noshop-jwt'; // account OTHER, no shop
+
+  it('no shop: the newest active purchase linked to the caller grants its entitlements, purchaseAccount self, linked false', async () => {
+    const { deps } = fakes({ rows: {} });
+    deps.purchasesOfUser = vi.fn(async () => [
+      mineRow({ original_transaction_id: '1', product_id: `${P}hosting.monthly`, expires_at: '2029-12-01T00:00:00.000Z' }),
+      mineRow({ original_transaction_id: '2', product_id: `${P}store.monthly`, expires_at: '2030-06-01T00:00:00.000Z' }),
+    ]);
+    const r = await getPlan(NOSHOP, deps);
+    expect(r.body).toMatchObject({ linked: false, tier: 'store', active: true, purchaseAccount: 'self', entitlements: { hosting: true, bookings: true, store: true } });
+    expect(deps.purchasesOfUser).toHaveBeenCalledWith(OTHER);
+  });
+
+  it('no shop: revoked / lapsed purchases and rows linked to someone else grant nothing', async () => {
+    const { deps } = fakes({ rows: {} });
+    deps.purchasesOfUser = vi.fn(async () => [
+      mineRow({ revoked_at: '2026-10-01T00:00:00Z' }),
+      mineRow({ expires_at: '2026-01-01T00:00:00Z' }),
+      mineRow({ user_id: USER }), // never returned by the real query; defence in depth
+    ]);
+    expect((await getPlan(NOSHOP, deps)).body).toMatchObject({ linked: false, tier: null, purchaseAccount: null, active: false, entitlements: NONE });
+  });
+
+  it('a shop pointing at a purchase linked to ANOTHER account: other, nothing granted', async () => {
+    const { deps } = fakes({ rows: { [OTID]: purchaseRow({ user_id: OTHER }) } });
+    expect((await getPlan(AUTH, deps)).body).toMatchObject({ linked: true, purchaseAccount: 'other', active: false, entitlements: NONE });
+  });
+
+  it('the ?otid probe is gone: a third argument is ignored and no purchase is read by id', async () => {
+    const { deps } = fakes({ otid: null, rows: { '555': purchaseRow({ original_transaction_id: '555', user_id: OTHER }) } });
+    const r = await (getPlan as any)(AUTH, deps, { otid: '555' });
+    expect(r.body).toMatchObject({ purchaseAccount: null });
+    expect(deps.purchase).not.toHaveBeenCalled();
+  });
+});
+
 describe('GET /api/shop/plan capabilities (migration 015 flag)', () => {
   it('absent dep: body unchanged; present: capabilities.memberProfile mirrors the probe; a failing probe reads false', async () => {
     const { deps } = fakes();

@@ -76,17 +76,21 @@ export type IosSiteLookupResult =
   | { status: 401 | 404 | 503; body: { error: string } };
 
 /**
- * TEMPORARY COMPAT FLAG, REMOVE-AFTER-APP-SHIPS (pay-then-sign-up plan 2026-10-26). While true, a
- * publish with NO Bearer on an unlinked purchase keeps the old no-account fresh-bind so shipped app
- * builds keep working. The new app always sends a Bearer. Once the new app is live and old builds are
- * gone, set to false (or delete the branch): a publish without a Bearer is then 401 `unauthorized`
- * before anything is written, so the only way to go live is verified payment + account.
- * Tests drive the strict behaviour through PublishDeps.allowAccountlessPublish = false.
+ * TEMPORARY COMPAT SWITCH (pay-then-sign-up, review M1). Env var IOS_ALLOW_ACCOUNTLESS_PUBLISH
+ * ('1' or 'true'). DEFAULT OFF in code: a publish with NO Bearer is 401 `unauthorized` before anything
+ * is written, so the only way to go live is verified payment + account. It is meant to be ON in
+ * production DURING THE ROLLOUT (shipped builds up to 22 publish without a Bearer and would otherwise
+ * never go live), then turned OFF and redeployed once build 23 is forced. While ON, any client holding
+ * an active transactionId can go live with no account (payment is still verified).
+ * Tests override it per request through PublishDeps.allowAccountlessPublish.
  */
-export const ALLOW_ACCOUNTLESS_PUBLISH_UNTIL_APP_SHIPS = true;
+export function accountlessPublishAllowed(): boolean {
+  const v = (process.env.IOS_ALLOW_ACCOUNTLESS_PUBLISH || '').trim().toLowerCase();
+  return v === '1' || v === 'true';
+}
 
 export interface PublishDeps {
-  /** Overrides ALLOW_ACCOUNTLESS_PUBLISH_UNTIL_APP_SHIPS (tests, a future env switch). */
+  /** Overrides the IOS_ALLOW_ACCOUNTLESS_PUBLISH env var (tests). */
   allowAccountlessPublish?: boolean;
   verify(transactionId: string): Promise<VerifiedTx>;
   repo: PurchasesRepo;
@@ -259,7 +263,7 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
       // Unlinked and no verified account. Pay-then-sign-up: going live needs an account, so this is a
       // 401 before anything is written. (The compat flag keeps the old fresh-bind for shipped builds.)
       if (authDown) return unavailable;
-      if (!(deps.allowAccountlessPublish ?? ALLOW_ACCOUNTLESS_PUBLISH_UNTIL_APP_SHIPS)) {
+      if (!(deps.allowAccountlessPublish ?? accountlessPublishAllowed())) {
         return { status: 401, body: { error: 'unauthorized' } };
       }
       // COMPAT (REMOVE-AFTER-APP-SHIPS): a slug that already belongs to someone's shop/site is
@@ -437,6 +441,30 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
   }
 }
 
+async function anonymousSiteLookup(
+  transactionId: string,
+  deps: Pick<PublishDeps, 'verify' | 'repo'>,
+): Promise<IosSiteLookupResult> {
+  let tx: VerifiedTx;
+  try {
+    tx = await deps.verify(transactionId);
+  } catch (e) {
+    if (e instanceof VerifyFailure) {
+      return { status: e.code === 'apple-unavailable' ? 503 : 404, body: { error: e.code } };
+    }
+    console.error('[ios/site] verify threw unexpectedly:', (e as Error)?.message || e);
+    return { status: 503, body: { error: 'apple-unavailable' } };
+  }
+  try {
+    const row = await deps.repo.get(tx.originalTransactionId);
+    if (!row || (!row.user_id && !row.site_slug)) return { status: 404, body: { error: 'no-site' } };
+    return { status: 401, body: { error: 'auth-required' } };
+  } catch (e) {
+    console.error(`[ios/site] ${tx.originalTransactionId}: unexpected error:`, (e as Error)?.message || e);
+    return unavailable;
+  }
+}
+
 /**
  * The site bound to a purchase, for Restore / sign-in on a new phone. The caller must be signed in
  * (401 otherwise) and must be the account the purchase is linked to: a purchase linked to another
@@ -449,11 +477,13 @@ export async function runIosSiteLookup(
   ctx: IosPublishContext = {},
 ): Promise<IosSiteLookupResult> {
   const token = bearer(ctx.authorization);
-  // Compatibility for app builds that predate the bearer on this call (build 22 and earlier): no
-  // Authorization header at all answers a machine-readable 401 { error: 'auth-required' } BEFORE Apple
-  // is asked and with no site data, so a new app can tell "sign in / send the token" from an invalid or
-  // expired token ('unauthorized'). There is no unauthenticated read of site data, ever.
-  if (!token || !deps.userOf) return { status: 401, body: { error: 'auth-required' } };
+  // No Authorization header at all (build 22 and earlier, or a signed-out phone): there is no
+  // unauthenticated read of site data, ever. Apple is asked so the answer can still tell the
+  // phone whether it is blocked: no purchase row, or an unlinked row with no site -> 404 `no-site`
+  // (nothing is bound elsewhere, a first publish may proceed; no data at all); anything else -> 401
+  // `auth-required` (sign in / send the token). Build 22's checkBound maps 404 to "not bound" and 401
+  // to "unknown", so this is what lets its first publish through.
+  if (!token || !deps.userOf) return anonymousSiteLookup(transactionId, deps);
   let caller: string | null = null;
   try {
     const user = await deps.userOf(token);
@@ -481,8 +511,12 @@ export async function runIosSiteLookup(
       // Legacy purchase from before ownership: nothing to show or link when no site is bound.
       if (!row.site_slug) return { status: 404, body: { error: 'no-site' } };
       // No disclosure without proof: only the account that owns the shop/site bound to it may link it.
-      const owner = deps.bindingOwner ? await deps.bindingOwner(row) : null;
-      if (owner !== caller) {
+      // M2: a legacy accountless site (nothing attached, owner null) is linked by the first signed-in
+      // Restore, exactly as publish does (the atomic link below decides a race); an owner who is
+      // someone else, or 'ambiguous', is a 409.
+      if (!deps.bindingOwner) return { status: 409, body: await otherAccountBody(deps.emailOf, null) }; // not provable
+      const owner = await deps.bindingOwner(row);
+      if (owner && owner !== caller) {
         return { status: 409, body: await otherAccountBody(deps.emailOf, owner && owner !== 'ambiguous' ? owner : null) };
       }
       if (!(await deps.repo.setUserIfUnlinked(row.original_transaction_id, caller))) {

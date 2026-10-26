@@ -693,6 +693,54 @@ describe('runIosSiteLookup', () => {
     expect(await runIosSiteLookup('t-123', deps, AS_USER)).toEqual({ status: 404, body: { error: 'no-site' } });
   });
 
+  describe('H1: no Authorization header (build 22 and earlier)', () => {
+    it('no purchase row, or an unlinked row with no site -> 404 no-site with no data, Apple was asked', async () => {
+      for (const existing of [null, row({ user_id: null, site_slug: null })]) {
+        const { deps } = fakes({ existing });
+        for (const ctx of [{}, { authorization: undefined }, { authorization: '' }]) {
+          expect(await runIosSiteLookup('t-123', deps, ctx)).toEqual({ status: 404, body: { error: 'no-site' } });
+        }
+        expect(deps.verify).toHaveBeenCalled();
+        expect(deps.readPending).not.toHaveBeenCalled();
+      }
+    });
+
+    it('a linked row, or an unlinked row with a bound site -> 401 auth-required with no data', async () => {
+      for (const existing of [row({ user_id: USER, site_slug: 'fresh-cuts' }), row({ user_id: USER, site_slug: null }), row({ user_id: null, site_slug: 'fresh-cuts' })]) {
+        const { deps } = fakes({ existing });
+        expect(await runIosSiteLookup('t-123', deps, {})).toEqual({ status: 401, body: { error: 'auth-required' } });
+        expect(deps.readPending).not.toHaveBeenCalled();
+      }
+    });
+
+    it('Apple refusing (unknown / down) is 404 / 503, never a 401 loop', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const a = fakes({ verified: new VerifyFailure('not-found') });
+      expect((await runIosSiteLookup('t-123', a.deps, {})).status).toBe(404);
+      const b = fakes({ verified: new VerifyFailure('apple-unavailable') });
+      expect((await runIosSiteLookup('t-123', b.deps, {})).status).toBe(503);
+    });
+  });
+
+  describe('M2: Restore links an accountless legacy site', () => {
+    it('nobody attached (owner null): the signed-in caller is linked and gets the site', async () => {
+      const { deps } = fakes({ existing: row({ user_id: null, site_slug: 'fresh-cuts' }), pending: { 'fresh-cuts': { siteId: 'fresh-cuts', siteData: toPendingSiteData(site(), buildImageUrlMap(site())), imageUrlMap: buildImageUrlMap(site()), deployedUrl: 'https://x' } } });
+      (deps as any).bindingOwner = vi.fn(async () => null);
+      const r: any = await runIosSiteLookup('t-123', deps, AS_USER);
+      expect(r.status).toBe(200);
+      expect(deps.repo.setUserIfUnlinked).toHaveBeenCalledWith(OTID, USER);
+    });
+
+    it('another account owns the shop, or ownership is ambiguous: 409 and no link', async () => {
+      for (const owner of ['9f2b8c1e-5d4a-4b6f-9e2d-1a2b3c4d5e6f', 'ambiguous'] as const) {
+        const { deps } = fakes({ existing: row({ user_id: null, site_slug: 'fresh-cuts' }) });
+        (deps as any).bindingOwner = vi.fn(async () => owner);
+        expect((await runIosSiteLookup('t-123', deps, AS_USER)).status).toBe(409);
+        expect(deps.repo.setUserIfUnlinked).not.toHaveBeenCalled();
+      }
+    });
+  });
+
   it('site lookup returns active:false for an expired subscription', async () => {
     const { deps } = fakes({ verified: tx({ expiresAt: 1000 }), existing: row({ user_id: USER, site_slug: 'fresh-cuts' }) });
     const r: any = await runIosSiteLookup('t-123', deps, AS_USER);

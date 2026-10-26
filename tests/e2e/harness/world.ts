@@ -145,6 +145,7 @@ export function siteWorld() {
     getUser: async (jwt) => (jwt === 'owner-jwt' ? { id: user.id, email: 'o@example.com', fullName: null } : null),
     shopByOwner: async (uid) => (uid === user.id ? shop : null),
     purchase: (otid) => repo.get(otid),
+    purchasesOfUser: (uid) => repo.ofUser!(uid),
     verify: (id) => apple.verify(id),
     upsertVerified: (tx, opts) => repo.upsertVerified(tx, opts),
     setShopOtid: async (_id, otid) => { shop.ios_otid = otid; return 'ok'; },

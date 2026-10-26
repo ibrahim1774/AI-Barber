@@ -82,6 +82,8 @@ export interface PurchasesRepo {
    * Never extends an existing deadline (claim-start is idempotent per otid). True = this call set it.
    */
   setClaimExpiryIfUnset?(otid: string, at: number): Promise<boolean>;
+  /** The purchases linked to this account (user_id = userId), newest expiry first. Plan GET for a shop-less account. */
+  ofUser?(userId: string): Promise<PurchaseRow[]>;
   /** Purchases linked to this account that hold a live (not removed) site: the one-site-per-account check. */
   liveSitesOfUser?(userId: string): Promise<PurchaseRow[]>;
   /** 019: unclaimed rows (no user, no slug, not revoked/removed) whose claim_expires_at has passed. */
@@ -239,6 +241,13 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
         .select('original_transaction_id');
       if (error) fail('setClaimExpiryIfUnset', error);
       return Array.isArray(data) && data.length > 0;
+    },
+
+    async ofUser(userId) {
+      const { data, error } = await db().from(TABLE).select('*').eq('user_id', userId)
+        .order('expires_at', { ascending: false, nullsFirst: false }).limit(20);
+      if (error) fail('ofUser', error);
+      return (data as PurchaseRow[]) ?? [];
     },
 
     async liveSitesOfUser(userId) {

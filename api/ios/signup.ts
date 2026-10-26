@@ -1,17 +1,34 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createHash } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
-import { clientIp, signupEmailLimiter, signupIpLimiter } from '../../lib/bookings/rateLimit.js';
-import { runSignup, type SignupDeps } from '../../lib/ios/signup.js';
+import { clientIp, makeRateLimiter, supabaseRateStore, SIGNUP_EMAIL_LIMIT, SIGNUP_IP_LIMIT } from '../../lib/bookings/rateLimit.js';
+import { serviceClient } from '../../lib/bookings/repo.js';
+import { lazyDefaultVerifier } from '../../lib/ios/appleVerify.js';
+import { supabasePurchases } from '../../lib/ios/purchases.js';
+import { MAX_SIGNUPS_PER_PURCHASE, runSignup, type SignupDeps } from '../../lib/ios/signup.js';
 
-// POST { name, email, phone, password } -> 200 { ok, email } (then the app signs in with email +
-// password) | 400 bad-request{field} / weak-password | 409 email-exists | 429 | 503.
+// POST { transactionId, name, email, phone, password } -> 200 { ok, email } (then the app signs in with email +
+// password) | 400 bad-request{field} / weak-password | 409 email-exists / purchase-claimed / purchase-has-site | 402 subscription-inactive | 404 not-found | 429 | 503.
+// transactionId must verify with Apple, be active and unlinked; max 3 accounts per originalTransactionId per 24h.
+// The limiters use the STRICT shared store: when it errors the signup is refused (503), never allowed.
 // Creates the Supabase user already confirmed (admin API, service role). See lib/ios/signup.ts.
+const strictStore = supabaseRateStore(() => serviceClient()); // throws on error (no in-memory fallback): fail closed
+const strictIpLimiter = makeRateLimiter(strictStore, Date.now, strictStore, { read: SIGNUP_IP_LIMIT, write: SIGNUP_IP_LIMIT }, 'signup');
+const strictEmailLimiter = makeRateLimiter(strictStore, Date.now, strictStore, { read: SIGNUP_EMAIL_LIMIT, write: SIGNUP_EMAIL_LIMIT }, 'signupEmail');
+const PURCHASE_WINDOW_MS = 86_400_000;
+
 export function liveSignupDeps(): SignupDeps {
+  const repo = supabasePurchases();
+  const verify = lazyDefaultVerifier();
   return {
+    verify,
+    getPurchase: (otid) => repo.get(otid),
+    now: Date.now,
+    allowForPurchase: (otid) =>
+      Promise.resolve(strictStore.hit(`signupTx:${createHash('sha256').update(otid).digest('hex')}`, MAX_SIGNUPS_PER_PURCHASE, PURCHASE_WINDOW_MS, Date.now())),
     allow: async (ip, email) => {
       const key = createHash('sha256').update(email).digest('hex');
-      const [a, b] = await Promise.all([signupIpLimiter.allow(ip, 'write'), signupEmailLimiter.allow(key, 'write')]);
+      const [a, b] = await Promise.all([strictIpLimiter.allow(ip, 'write'), strictEmailLimiter.allow(key, 'write')]);
       return a && b;
     },
     createUser: async ({ email, password, metadata }) => {

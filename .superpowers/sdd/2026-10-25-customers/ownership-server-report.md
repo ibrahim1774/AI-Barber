@@ -109,3 +109,34 @@ One request does link -> bind slug -> write -> deploy. Order: Apple verify (402/
 ## Known limits
 - account-has-site counts only purchases linked to the account (ios_purchases.user_id with a slug and no removed_at), not web-created sites. Two simultaneous first claims by one account with two purchases could both pass the check (no DB uniqueness); rare, not guarded.
 - Tests: tests/e2e/payThenSignup.test.ts (21), tests/ios/signup.test.ts (11). vitest 3819 pass; tsc output identical to baseline (4813 lines).
+
+---
+# Pay-signup review fixes (H1, H2 server, H3, M1, M2, L3) - FINAL contracts, these supersede the sections above
+
+## POST /api/ios/site  {transactionId}
+- No Authorization header: Apple IS asked now (no data is ever returned). Purchase row absent, or unlinked with no site_slug -> `404 {error:'no-site'}` (build 22 reads this as "nothing bound", so its first publish proceeds). Any other row (linked to an account, or an unlinked row with a bound site) -> `401 {error:'auth-required'}`. Apple errors: 404 not-found / 400 bad-bundle, bad-product / 503 apple-unavailable.
+- Bad or expired Bearer: `401 {error:'unauthorized'}` (Apple not asked). Valid Bearer: 200 site / 409 `purchase-other-account` {hint} / 404 `no-site` as before.
+- Restore on a new phone (valid Bearer) with an unlinked legacy row whose site has NO owner attached (no shop/site owner found) now LINKS it to the caller and returns the site (same rule as publish). Owner is another account or ambiguous -> 409 (null hint when ambiguous).
+
+## GET /api/shop/plan  (Bearer; the ?otid= query is REMOVED and ignored)
+Body: `{ linked, tier, entitlements:{hosting,bookings,store}, active, expiresAt, takenDownAt, revoked, purchaseAccount:'self'|'other'|null, capabilities? }`.
+- Has a shop: the shop's purchase (`linked:true`). If that purchase is linked to ANOTHER account: `purchaseAccount:'other'`, `active:false`, all entitlements false.
+- NO shop: the caller's own purchase = newest-expiry ios_purchases row with user_id = caller that is live (not revoked, not taken down, not lapsed). `linked:false` (means "shop has a purchase"), but `tier`, `active`, `entitlements` are populated and `purchaseAccount:'self'`. None: all false, `purchaseAccount:null`. This unblocks bookings-setup/store-setup for a shop-less owner.
+- Entitlements are only ever granted for a purchase linked to the caller (or a legacy shop purchase with user_id null).
+- App rule: AND the Superwall mirror with `plan.purchaseAccount==='self' && plan.active`.
+
+## POST /api/ios/signup  body { transactionId, name, email, phone, password }  (no auth)  CHANGED
+- `transactionId` REQUIRED (string, <= 64). Missing -> 400 `{error:'bad-request'}` (no `field`).
+- Order: field validation -> per-IP/per-email limiter -> Apple verify -> purchase row checks -> per-purchase cap -> create.
+- Errors: 404 not-found, 400 bad-bundle/bad-product, 503 apple-unavailable (Apple); 402 `subscription-inactive` (expired, or revoked with `reason:'revoked'`); 409 `purchase-claimed` (purchase already linked to an account); 409 `purchase-has-site` (legacy site bound); 409 `email-exists`; 429 `rate-limited` (IP 10/min, email 4/min, or more than 3 signups per originalTransactionId per 24h; Retry-After 60 on the first two); 503 `temporarily-unavailable`.
+- Limiters FAIL CLOSED: if the shared limit store errors the answer is 503, never an account. Send the same transactionId claim-start used (the app has it in the pending record).
+- 200 `{ok:true,email}` as before.
+
+## POST /api/ios/publish compat switch
+`ALLOW_ACCOUNTLESS_PUBLISH_UNTIL_APP_SHIPS` const is gone. Env var `IOS_ALLOW_ACCOUNTLESS_PUBLISH` ('1' or 'true' = on). DEFAULT OFF in code. Set it to `1` in Vercel production for the rollout (build 22 and earlier publish without a Bearer), then remove it and redeploy after build 23 is forced. While on, anyone holding an active transactionId can go live with no account.
+
+## Not in this repo / not done
+- L1 (`claimLocked` fails open on a read error, claimGuard.ts:24) lives in the app, not the server: log the error there.
+- L2, L4 left as is (nothing is granted after H2 in L2; L4 retry is idempotent). M4 (non-atomic one-site check) accepted.
+- Tests use vitest `env: { IOS_ALLOW_ACCOUNTLESS_PUBLISH: '1' }` (vitest.config.ts) to mimic rollout; strict tests override per request. vitest 3835 pass; tsc: no errors in lib/ios, api/ios, api/shop, tests.
+- Rollout order unchanged: set the env var to 1 BEFORE deploying, or build 22 cannot publish.

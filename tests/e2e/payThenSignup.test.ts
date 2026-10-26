@@ -8,7 +8,7 @@ import { DAY, USER_A, USER_B, resetBoundaries, siteData, siteWorld, type SiteWor
 import { PRODUCTS } from './harness/apple.js';
 import { pendingOf } from './harness/gcs.js';
 import { CLAIM_WINDOW_MS, runClaimStart } from '../../lib/ios/claimStart.js';
-import { ALLOW_ACCOUNTLESS_PUBLISH_UNTIL_APP_SHIPS } from '../../lib/ios/publishFlow.js';
+import { accountlessPublishAllowed } from '../../lib/ios/publishFlow.js';
 
 let w: SiteWorld;
 const A = 'Bearer jwt-a';
@@ -200,8 +200,33 @@ describe('publish requires an account (strict contract)', () => {
 });
 
 describe('compat flag (old app builds)', () => {
-  it('is on by default and named so it is removed after the app ships', () => {
-    expect(ALLOW_ACCOUNTLESS_PUBLISH_UNTIL_APP_SHIPS).toBe(true);
+  it('is an env var (IOS_ALLOW_ACCOUNTLESS_PUBLISH), OFF in code when unset', () => {
+    const was = process.env.IOS_ALLOW_ACCOUNTLESS_PUBLISH;
+    try {
+      delete process.env.IOS_ALLOW_ACCOUNTLESS_PUBLISH;
+      expect(accountlessPublishAllowed()).toBe(false);
+      process.env.IOS_ALLOW_ACCOUNTLESS_PUBLISH = '0';
+      expect(accountlessPublishAllowed()).toBe(false);
+      process.env.IOS_ALLOW_ACCOUNTLESS_PUBLISH = '1';
+      expect(accountlessPublishAllowed()).toBe(true);
+      process.env.IOS_ALLOW_ACCOUNTLESS_PUBLISH = 'true';
+      expect(accountlessPublishAllowed()).toBe(true);
+    } finally {
+      if (was === undefined) delete process.env.IOS_ALLOW_ACCOUNTLESS_PUBLISH; else process.env.IOS_ALLOW_ACCOUNTLESS_PUBLISH = was;
+    }
+  });
+
+  it('M1: env unset (the code default) -> a publish with no Bearer is 401 and nothing is written', async () => {
+    const was = process.env.IOS_ALLOW_ACCOUNTLESS_PUBLISH;
+    try {
+      delete process.env.IOS_ALLOW_ACCOUNTLESS_PUBLISH;
+      w.publishDeps.allowAccountlessPublish = undefined;
+      const p = w.apple.buy(PRODUCTS.storeMonthly);
+      expect(await w.publish(p.transactionId, siteData())).toEqual({ status: 401, body: { error: 'unauthorized' } });
+      expect(w.row(p.otid)?.site_slug ?? null).toBeNull();
+    } finally {
+      if (was === undefined) delete process.env.IOS_ALLOW_ACCOUNTLESS_PUBLISH; else process.env.IOS_ALLOW_ACCOUNTLESS_PUBLISH = was;
+    }
   });
 
   it('with the flag on, a publish without a Bearer still fresh-binds as before', async () => {
