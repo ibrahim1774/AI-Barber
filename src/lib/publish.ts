@@ -216,6 +216,12 @@ async function send(pending: PendingPublish, deps: PublishDeps, retryMessage: st
       track('publish_unauthorized');
       return toClaim(deps, pending);
     }
+    if (e instanceof ApiError && e.status === 409 && e.code === 'purchase-changed') {
+      // A move took the purchase while this publish ran (the server put its offline page back). Not offline, so it
+      // is never auto-retried; the record stays and the next tap re-checks whose purchase it is.
+      track('publish_purchase_changed');
+      return { kind: 'pending', message: 'This subscription just changed accounts. Tap Publish to try again.' };
+    }
     if (e instanceof ApiError && e.status === 402) {
       await deps.store.savePendingPublish(null);
       track('publish_inactive');

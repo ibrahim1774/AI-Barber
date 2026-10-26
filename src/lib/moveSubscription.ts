@@ -15,7 +15,7 @@ export const MOVE_CONFIRM_OK = 'Move here';
 export const MOVE_ERROR = {
   accountHasSite:
     'This account already has a live website, and each account can have one. Use a different account to move this subscription.',
-  purchaseChanged: 'This subscription was just changed from another device. Check your account and try again.',
+  purchaseChanged: 'This subscription just changed accounts. Try again.',
   inactive: "This subscription has ended or was refunded, so it can't be moved. Subscribe again to publish.",
   offline: "Couldn't reach Prime Barber. Check your connection and try again.",
   noPurchase: "We couldn't find your subscription yet. Check your connection and try again in a moment.",
@@ -69,21 +69,29 @@ export async function moveSubscription(deps: MoveDeps): Promise<MoveResult> {
     id = null;
   }
   if (!id) return { kind: 'error', message: MOVE_ERROR.noPurchase };
-  try {
+  // At most two probes: if the owner changes under the user (purchase-changed), say so and probe again so the
+  // confirm names the new owner. A second change ends in the friendly line.
+  for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      await deps.transfer(id);
+      let token: string | undefined;
+      try {
+        await deps.transfer(id);
+        return { kind: 'moved', transactionId: id };
+      } catch (e) {
+        if (!(e instanceof ApiError && e.status === 409 && e.code === 'confirm-required')) throw e;
+        token = typeof e.body?.ownerToken === 'string' ? e.body.ownerToken : undefined;
+        const ok = await deps.confirm({
+          ownerHint: typeof e.body?.ownerHint === 'string' ? e.body.ownerHint : null,
+          hasLiveSite: e.body?.hasLiveSite === true,
+        });
+        if (!ok) return { kind: 'cancelled' };
+      }
+      await deps.transfer(id, true, token);
       return { kind: 'moved', transactionId: id };
     } catch (e) {
-      if (!(e instanceof ApiError && e.status === 409 && e.code === 'confirm-required')) throw e;
-      const ok = await deps.confirm({
-        ownerHint: typeof e.body?.ownerHint === 'string' ? e.body.ownerHint : null,
-        hasLiveSite: e.body?.hasLiveSite === true,
-      });
-      if (!ok) return { kind: 'cancelled' };
+      if (e instanceof ApiError && e.status === 409 && e.code === 'purchase-changed' && attempt === 0) continue;
+      return { kind: 'error', message: moveErrorMessage(e) };
     }
-    await deps.transfer(id, true);
-    return { kind: 'moved', transactionId: id };
-  } catch (e) {
-    return { kind: 'error', message: moveErrorMessage(e) };
   }
+  return { kind: 'error', message: MOVE_ERROR.purchaseChanged };
 }

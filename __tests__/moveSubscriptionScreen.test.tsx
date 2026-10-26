@@ -33,7 +33,7 @@ const data: any = { shopName: 'Fade Lab', area: 'Brooklyn', phone: '(555) 010-20
 const draft = { draftId: 'd1', inputs: { shopName: 'Fade Lab', phone: '(555) 010-2030' }, data, updatedAt: 1, slug: null, deployedUrl: null, transactionId: null } as unknown as SiteRecord;
 const LIVE = { siteId: 'fade', deployedUrl: 'https://fade.aibarber.org', republished: false };
 const text = (tree: any) => allText(tree).join(' | ');
-const confirmRequired = () => new ApiError(409, 'confirm-required', 'x', { ownerHint: 'a***@gmail.com', hasLiveSite: true });
+const confirmRequired = () => new ApiError(409, 'confirm-required', 'x', { ownerHint: 'a***@gmail.com', hasLiveSite: true, ownerToken: 'tok-1' });
 
 let iosPublish: jest.Mock;
 let transfer: jest.SpyInstance;
@@ -103,7 +103,7 @@ describe('claim screen: purchase belongs to another account', () => {
     const tree = await render(<Claim />);
     await press(tree, MOVE_BUTTON_TITLE);
     await tap(MOVE_CONFIRM_OK);
-    expect(transfer.mock.calls).toEqual([['tx-1'], ['tx-1', true]]);
+    expect(transfer.mock.calls).toEqual([['tx-1'], ['tx-1', true, 'tok-1']]);
     expect(mockPlanCall).toHaveBeenCalledWith('POST', '/api/shop/plan', { transactionId: 'tx-1' });
     expect(getSharedPlan()).toMatchObject({ purchaseAccount: 'self' });
     expect(mockRecheck).toHaveBeenCalled();
@@ -113,7 +113,6 @@ describe('claim screen: purchase belongs to another account', () => {
 
   test.each([
     ['account-has-site', new ApiError(409, 'account-has-site', 'x', { slug: 'old-cuts' }), MOVE_ERROR.accountHasSite],
-    ['purchase-changed', new ApiError(409, 'purchase-changed', 'x'), MOVE_ERROR.purchaseChanged],
     ['subscription-inactive', new ApiError(402, 'subscription-inactive', 'x'), MOVE_ERROR.inactive],
     ['offline', new ApiError(0, 'network', 'x'), MOVE_ERROR.offline],
   ])('%s: one sentence under the button, still locked, nothing published', async (_n, e, message) => {
@@ -150,7 +149,7 @@ describe('Bookings / Store lock (UpgradeCard)', () => {
     expect(hasButton(tree, 'See the Bookings plan')).toBe(false);
     await press(tree, MOVE_BUTTON_TITLE);
     await tap(MOVE_CONFIRM_OK);
-    expect(transfer).toHaveBeenLastCalledWith('tx-1', true);
+    expect(transfer).toHaveBeenLastCalledWith('tx-1', true, 'tok-1');
     expect(getSharedPlan()).toMatchObject({ purchaseAccount: 'self' });
   });
 });

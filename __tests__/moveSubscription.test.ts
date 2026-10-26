@@ -7,7 +7,7 @@ import { CLAIMED_SIGNED_OUT_MESSAGE, conflictMessage, otherAccountPlanMessage, r
 import { restoreMessage } from '@/lib/restoreFlow';
 
 const confirmRequired = (over: Record<string, unknown> = {}) =>
-  new ApiError(409, 'confirm-required', 'x', { error: 'confirm-required', ownerHint: 'a***@gmail.com', hasLiveSite: true, siteUrl: 'https://x.aibarber.org', ...over });
+  new ApiError(409, 'confirm-required', 'x', { error: 'confirm-required', ownerHint: 'a***@gmail.com', hasLiveSite: true, ownerToken: 'tok-1', siteUrl: 'https://x.aibarber.org', ...over });
 const err = (status: number, code: string, body: Record<string, unknown> = {}) => new ApiError(status, code, 'x', { error: code, ...body });
 
 type TestDeps = MoveDeps & { transfer: jest.Mock; confirm: jest.Mock };
@@ -25,7 +25,7 @@ describe('confirm-required, then Move here', () => {
     const d = deps();
     d.transfer.mockRejectedValueOnce(confirmRequired() as never);
     expect(await moveSubscription(d)).toEqual({ kind: 'moved', transactionId: 'tx-9' });
-    expect(d.transfer.mock.calls).toEqual([['tx-9'], ['tx-9', true]]);
+    expect(d.transfer.mock.calls).toEqual([['tx-9'], ['tx-9', true, 'tok-1']]);
     expect(d.confirm).toHaveBeenCalledWith({ ownerHint: 'a***@gmail.com', hasLiveSite: true });
   });
 
@@ -76,7 +76,6 @@ describe('success without a confirm', () => {
 describe('errors: one friendly sentence each', () => {
   const cases: [string, ApiError, string][] = [
     ['account-has-site', err(409, 'account-has-site', { slug: 'old-cuts' }), MOVE_ERROR.accountHasSite],
-    ['purchase-changed', err(409, 'purchase-changed'), MOVE_ERROR.purchaseChanged],
     ['subscription-inactive', err(402, 'subscription-inactive'), MOVE_ERROR.inactive],
     ['subscription-inactive (revoked)', err(402, 'subscription-inactive', { reason: 'revoked' }), MOVE_ERROR.inactive],
     ['offline', new ApiError(0, 'network', "Couldn't reach Prime Barber"), MOVE_ERROR.offline],
@@ -94,7 +93,28 @@ describe('errors: one friendly sentence each', () => {
     expect(d.confirm).not.toHaveBeenCalled();
   });
 
-  test.each(cases)('%s on the confirmed call', async (_n, e, message) => {
+  test('purchase-changed on the confirmed call: re-probes once and confirms again with the NEW owner token', async () => {
+    const d = deps();
+    d.transfer
+      .mockRejectedValueOnce(confirmRequired() as never)
+      .mockRejectedValueOnce(err(409, 'purchase-changed') as never)
+      .mockRejectedValueOnce(confirmRequired({ ownerHint: 'b***@x.com', ownerToken: 'tok-2' }) as never)
+      .mockResolvedValueOnce({ moved: true, linked: true });
+    expect(await moveSubscription(d)).toEqual({ kind: 'moved', transactionId: 'tx-9' });
+    expect(d.confirm).toHaveBeenNthCalledWith(2, { ownerHint: 'b***@x.com', hasLiveSite: true });
+    expect(d.transfer).toHaveBeenLastCalledWith('tx-9', true, 'tok-2');
+  });
+
+  test('purchase-changed twice: stops with the friendly line (no loop)', async () => {
+    const d = deps();
+    d.transfer.mockRejectedValue(confirmRequired() as never);
+    d.transfer.mockRejectedValueOnce(confirmRequired() as never).mockRejectedValueOnce(err(409, 'purchase-changed') as never)
+      .mockRejectedValueOnce(confirmRequired() as never).mockRejectedValueOnce(err(409, 'purchase-changed') as never);
+    expect(await moveSubscription(d)).toEqual({ kind: 'error', message: MOVE_ERROR.purchaseChanged });
+    expect(d.transfer).toHaveBeenCalledTimes(4);
+  });
+
+  test.each(cases.filter((c) => c[0] !== 'purchase-changed'))('%s on the confirmed call', async (_n, e, message) => {
     const d = deps();
     d.transfer.mockRejectedValueOnce(confirmRequired() as never).mockRejectedValueOnce(e as never);
     expect(await moveSubscription(d)).toEqual({ kind: 'error', message });
@@ -127,5 +147,19 @@ describe('the dead-end messages now say the subscription is tied to the Apple ID
     const e = new ApiError(409, 'purchase-other-account', 'x', { hint: 'a***@gmail.com', ownerHint: 'a***@gmail.com', hasLiveSite: true });
     expect(restoreMessage(e, false)).toMatchObject({ movable: true });
     expect(restoreMessage(new ApiError(402, 'subscription-inactive', 'x'), false)?.movable).toBeUndefined();
+  });
+});
+
+describe('api.transfer sends the owner token back', () => {
+  test('confirm:true carries ownerToken; the probe does not', async () => {
+    jest.resetModules();
+    jest.doMock('@/lib/accessToken', () => ({ accessToken: async () => 'bearer' }));
+    const { api } = require('@/lib/api');
+    const fetchMock = jest.fn(async () => ({ status: 200, ok: true, text: async () => '{"moved":true,"linked":true}' }));
+    (global as any).fetch = fetchMock;
+    await api.transfer('tx', undefined);
+    await api.transfer('tx', true, 'tok-1');
+    const bodies = (fetchMock.mock.calls as any[]).map((c) => JSON.parse(c[1].body));
+    expect(bodies).toEqual([{ transactionId: 'tx' }, { transactionId: 'tx', confirm: true, ownerToken: 'tok-1' }]);
   });
 });

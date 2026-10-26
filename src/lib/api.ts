@@ -232,14 +232,14 @@ export const api = {
 
   /**
    * POST /api/ios/transfer: moves the Apple purchase to the signed-in account (Bearer required). Without `confirm` a
-   * purchase linked to another account answers 409 confirm-required (body.ownerHint, body.hasLiveSite); with
-   * `confirm: true` the other account's site goes offline. Errors: 401, 400, 404, 402 subscription-inactive,
+   * purchase linked to another account answers 409 confirm-required (body.ownerHint, body.hasLiveSite, body.ownerToken); with
+   * `confirm: true` AND that `ownerToken` echoed back the other account's site goes offline. Errors: 401, 400, 404, 402 subscription-inactive,
    * 409 confirm-required | account-has-site | purchase-changed | purchase-other-account, 429, 503.
    */
-  async transfer(transactionId: string, confirm?: boolean): Promise<{ moved: boolean; linked: boolean }> {
+  async transfer(transactionId: string, confirm?: boolean, ownerToken?: string): Promise<{ moved: boolean; linked: boolean }> {
     const token = await accessToken();
     if (!token) throw new ApiError(401, 'auth-required', 'Sign in to continue.');
-    return post('/api/ios/transfer', confirm === true ? { transactionId, confirm: true } : { transactionId }, {
+    return post('/api/ios/transfer', confirm === true ? { transactionId, confirm: true, ownerToken } : { transactionId }, {
       failMessage: 'Could not move your subscription', headers: { Authorization: `Bearer ${token}` },
     });
   },

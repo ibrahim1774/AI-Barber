@@ -224,6 +224,14 @@ describe('claiming: signed in after the account step', () => {
     expect(iosPublish).toHaveBeenCalledTimes(1);
   });
 
+  test('409 purchase-changed on publish: a friendly retry line, not offline (no auto-loop), record kept', async () => {
+    await store.savePendingPublish(unclaimed());
+    const out = await resumePendingPublish(makeDeps({ ...signedIn, iosPublish: err(409, 'purchase-changed') as never }));
+    expect(out).toMatchObject({ kind: 'pending', message: expect.stringContaining('changed accounts') });
+    expect((out as { offline?: boolean }).offline).toBeUndefined();
+    expect(await store.loadPendingPublish()).not.toBeNull();
+  });
+
   test('409 account-has-site names the live site', async () => {
     await store.savePendingPublish(unclaimed());
     const out = await resumePendingPublish(makeDeps({ ...signedIn, iosPublish: err(409, 'account-has-site', { slug: 'old-cuts' }) as never }));
