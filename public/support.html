@@ -27,7 +27,24 @@
   footer { margin-top:56px; padding-top:20px; border-top:1px solid var(--line); display:flex; flex-wrap:wrap; gap:8px 20px; font-size:14px; color:var(--muted); }
   footer a { color:var(--muted); }
   footer a:hover { color:var(--gold); }
+  .in-app .home-link, .in-app .web-only { display:none !important; }
 </style>
+<script>
+/* Opened from the iOS app (?app=1): no link to the web builder or the buy flow (App Store 3.1.1). */
+(function(){try{
+  if(!/[?&]app=1(?:&|$)/.test(location.search))return;
+  document.documentElement.className+=' in-app';
+  document.addEventListener('DOMContentLoaded',function(){
+    var a=document.querySelectorAll('a[href]');
+    for(var i=0;i<a.length;i++){
+      var h=a[i].getAttribute('href');
+      if(h==='/'||/^https?:\/\/(www\.)?aibarber\.org\/?$/.test(h)){
+        var s=document.createElement('span');s.className=a[i].className;s.innerHTML=a[i].innerHTML;a[i].parentNode.replaceChild(s,a[i]);
+      }else if(h==='/privacy'||h==='/terms'||h==='/support'){a[i].setAttribute('href',h+'?app=1');}
+    }
+  });
+}catch(e){}})();
+</script>
 </head>
 <body>
 <div class="wrap">
@@ -48,15 +65,15 @@
   <h2>Cancel a subscription</h2>
   <ul>
     <li><strong>Bought in the app:</strong> on your iPhone, open <strong>Settings → your name (Apple ID) → Subscriptions → Prime Barber</strong> and tap Cancel Subscription. Apple handles app billing and refunds.</li>
-    <li><strong>Bought on aibarber.org:</strong> email <a href="mailto:support@davoxa.com">support@davoxa.com</a> from the email you used at checkout and we will cancel it.</li>
+    <li class="web-only"><strong>Bought on aibarber.org:</strong> email <a href="mailto:support@davoxa.com">support@davoxa.com</a> from the email you used at checkout and we will cancel it.</li>
   </ul>
-  <p>Cancelling stops future charges. It does not take your site offline by itself; ask us if you want it removed.</p>
+  <p>Cancelling stops future charges. It does not delete your site by itself; to remove it, use Delete account or Take my website offline in the app.</p>
 
   <h2>Delete your account</h2>
-  <p>In the app, go to <strong>Settings → Delete account</strong>. Or email <a href="mailto:support@davoxa.com">support@davoxa.com</a> from the address on your account and we will delete it within 30 days. If you also want your published site taken down, say so in your email. See the <a href="/privacy">Privacy Policy</a> for details.</p>
+  <p>In the app, go to <strong>Settings → Delete account</strong>. This deletes your account, takes your published website offline, deletes its content and photos and releases any custom domain. Your App Store subscription is not cancelled by this: cancel it in your Apple ID settings (see above). If you do not have an account, go to <strong>Settings → Take my website offline</strong>. You can also email <a href="mailto:support@davoxa.com">support@davoxa.com</a> from the address on your account and we will do it within 30 days. See the <a href="/privacy">Privacy Policy</a> for details.</p>
 
   <footer>
-    <a href="/">Home</a>
+    <a class="home-link" href="/">Home</a>
     <a href="/privacy">Privacy Policy</a>
     <a href="/terms">Terms of Service</a>
     <a href="/support">Support</a>

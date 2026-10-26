@@ -201,6 +201,7 @@ describe('no leftover literals', () => {
     /^"?(Great cut|Fine work)"?$/,
     /^(1 Main St, Austin, TX|hi@example\.com|\(512\) 555-0142|Austin, TX|\+? ?Barbershop in Austin, TX)$/i,
     /^(9:00 AM – 5:00 PM)$/,
+    /^Report this site$/,
     /^[★\s]+$/,
     /^[★\s]*4\.8( ·| from| stars across)?( 1,200 reviews)?$/,
     /^(4\.8|1,200|1,200 reviews|from 1,200 reviews|· 1,200 reviews|4\.8 stars across 1,200 reviews|★ 4\.8 · 1,200 reviews)$/,

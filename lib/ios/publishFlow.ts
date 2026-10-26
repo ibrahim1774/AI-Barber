@@ -390,7 +390,7 @@ export function liveDeps(): PublishDeps {
 }
 
 /** A Supabase access token's user (service role). Invalid / expired token: null; outage: throws. */
-async function liveUserOf(token: string): Promise<{ id: string } | null> {
+export async function liveUserOf(token: string): Promise<{ id: string } | null> {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set');

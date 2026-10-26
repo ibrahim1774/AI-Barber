@@ -17,7 +17,7 @@ import {
 } from './honest.js';
 import { ratingLineCustom, t, type LabelKey } from './labels.js';
 import { hasFilePages } from './pages.js';
-import { NAV_CSS, navItemsFor, navListHtml, type RenderCtx } from './shell.js';
+import { NAV_CSS, navItemsFor, reportLinkHtml, navListHtml, type RenderCtx } from './shell.js';
 
 // 24h → 12h with AM/PM. Idempotent: if the input already contains an
 // AM/PM marker, return it unchanged. Handles "09:00", "9:00", "9", "20:30".
@@ -522,7 +522,7 @@ ${showServices ? `        <a href="#services" class="text-[12px] font-montserrat
         ${lbl('footerLine')}
       </p>
       <div class="pt-8 border-t border-white/5 text-[#444444] text-[8px] uppercase tracking-[2px]">
-        Copyright &copy; ${copyrightYear()} ${esc(siteData.shopName)}. ${lbl('footerCredit')}.
+        Copyright &copy; ${copyrightYear()} ${esc(siteData.shopName)}. ${lbl('footerCredit')}. ${reportLinkHtml()}
       </div>
     </div>
   </footer>

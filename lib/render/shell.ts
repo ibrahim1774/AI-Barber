@@ -121,6 +121,23 @@ export function headerHtml(template: TemplateId, h: HeaderInput): string {
 
 const DEFAULT_CREDIT = 'Built by Prime Barber';
 
+/** Where reports about a published site go (App Store 1.2: a way to report user-generated content). */
+export const REPORT_EMAIL = 'support@davoxa.com';
+/**
+ * Replaced with the site's slug when the pages are deployed (lib/deploySite.ts finalizePages), so the
+ * mailto subject names the site. The slug is [a-z0-9-] only, and is URL-encoded again on the way in.
+ */
+export const REPORT_SLUG_PLACEHOLDER = '{{siteSlug}}';
+
+/**
+ * "Report this site" link printed next to the footer credit. A separate element after the credit, never
+ * inside it, so the editable footerCredit label (markers.ts) keeps wrapping only its own text. Fixed text,
+ * no user input in it.
+ */
+export function reportLinkHtml(): string {
+  return `<a class="ab-report" style="color:inherit;text-decoration:underline;margin-left:.75em" rel="nofollow" href="mailto:${REPORT_EMAIL}?subject=Report%20${REPORT_SLUG_PLACEHOLDER}">Report this site</a>`;
+}
+
 export interface FooterInput {
   /** Raw shop name. */
   name: string;
@@ -154,9 +171,9 @@ export function footerHtml(template: TemplateId, f: FooterInput): string {
     : '';
   const info = `${address}${phone}${pages}`;
   if (template === 'luxe') {
-    return `<footer class="ab-foot"><div class="ab-wrap"><div class="ab-foot-name">${name}</div>${f.line ? `<p class="ab-foot-line">${f.line}</p>` : ''}${info}<p class="ab-foot-copy">Copyright &copy; ${f.year} ${name}. ${f.credit ?? DEFAULT_CREDIT}.</p></div></footer>`;
+    return `<footer class="ab-foot"><div class="ab-wrap"><div class="ab-foot-name">${name}</div>${f.line ? `<p class="ab-foot-line">${f.line}</p>` : ''}${info}<p class="ab-foot-copy">Copyright &copy; ${f.year} ${name}. ${f.credit ?? DEFAULT_CREDIT}. ${reportLinkHtml()}</p></div></footer>`;
   }
-  return `<footer class="ab-foot"><div class="ab-wrap"><div class="ab-foot-name">${name}</div>${info}<p class="ab-foot-copy">&copy; ${f.year} &middot; ${f.credit ?? DEFAULT_CREDIT}</p></div></footer>`;
+  return `<footer class="ab-foot"><div class="ab-wrap"><div class="ab-foot-name">${name}</div>${info}<p class="ab-foot-copy">&copy; ${f.year} &middot; ${f.credit ?? DEFAULT_CREDIT} ${reportLinkHtml()}</p></div></footer>`;
 }
 
 // ── CSS ─────────────────────────────────────────────────────────────────────────────────────────

@@ -27,7 +27,24 @@
   footer { margin-top:56px; padding-top:20px; border-top:1px solid var(--line); display:flex; flex-wrap:wrap; gap:8px 20px; font-size:14px; color:var(--muted); }
   footer a { color:var(--muted); }
   footer a:hover { color:var(--gold); }
+  .in-app .home-link, .in-app .web-only { display:none !important; }
 </style>
+<script>
+/* Opened from the iOS app (?app=1): no link to the web builder or the buy flow (App Store 3.1.1). */
+(function(){try{
+  if(!/[?&]app=1(?:&|$)/.test(location.search))return;
+  document.documentElement.className+=' in-app';
+  document.addEventListener('DOMContentLoaded',function(){
+    var a=document.querySelectorAll('a[href]');
+    for(var i=0;i<a.length;i++){
+      var h=a[i].getAttribute('href');
+      if(h==='/'||/^https?:\/\/(www\.)?aibarber\.org\/?$/.test(h)){
+        var s=document.createElement('span');s.className=a[i].className;s.innerHTML=a[i].innerHTML;a[i].parentNode.replaceChild(s,a[i]);
+      }else if(h==='/privacy'||h==='/terms'||h==='/support'){a[i].setAttribute('href',h+'?app=1');}
+    }
+  });
+}catch(e){}})();
+</script>
 </head>
 <body>
 <div class="wrap">
@@ -48,6 +65,14 @@
     <li><strong>Device and usage information</strong>, such as pages and screens viewed, buttons tapped, device and browser type, approximate location from your IP address, and, where you allow it, advertising identifiers. See "Analytics and advertising" below.</li>
   </ul>
 
+  <h2>Your clients' information</h2>
+  <p>If you use Prime Barber's booking or store features, your clients (the people who book or order from your site) enter personal information on your site's booking and shop pages: their name, phone number, email address, the service or products they choose, the time they want, any notes they add, and, if they pay by card, a payment confirmation (we never see their card details).</p>
+  <ul>
+    <li><strong>Who sees it.</strong> You, the shop owner, and the staff you add, see it in the Prime Barber app. We hold it on your behalf and use it only to provide the booking and store service: to show it to you, run your bookings and orders, and process payments.</li>
+    <li><strong>How long we keep it.</strong> For as long as your site's booking or store features are on, so you keep your appointment and order history, and for as long as the law requires us to keep payment records. When you delete your account or your site, we delete it.</li>
+    <li><strong>Deletion requests.</strong> A client who wants their information removed can email <a href="mailto:support@davoxa.com">support@davoxa.com</a> or ask the shop. We will delete it within 30 days, unless we must keep a payment record.</li>
+  </ul>
+
   <h2>Why we use it</h2>
   <ul>
     <li>To generate your barbershop website, host it, and let you edit and republish it.</li>
@@ -57,7 +82,7 @@
   </ul>
   <h2>Where it lives</h2>
   <ul>
-    <li><strong>Supabase</strong> stores accounts and saved site data.</li>
+    <li><strong>Supabase</strong> stores accounts, saved site data and your clients' bookings and orders.</li>
     <li><strong>Google Cloud Storage</strong> stores uploaded and imported images and the files used to build your site.</li>
     <li><strong>Vercel</strong> hosts aibarber.org and the websites we publish for you. If you buy a custom domain through us, it is registered through Vercel.</li>
     <li>On the website, a draft of your site may also be saved in your own browser so you don't lose your work.</li>
@@ -72,23 +97,29 @@
   <ul>
     <li><strong>On aibarber.org:</strong> Meta Pixel and Meta Conversions API, TikTok Pixel and TikTok Events API, Microsoft Clarity (session recordings and heatmaps), and Triple Whale (marketing attribution). When you submit a form or make a purchase, we may share your email address or phone number with Meta and TikTok in hashed (scrambled) form so they can match the event to an ad.</li>
     <li><strong>On the websites we publish for you:</strong> Microsoft Clarity, so we can see how the sites perform.</li>
-    <li><strong>In the iOS app:</strong> PostHog (product analytics), AppsFlyer (install and ad attribution) and Superwall (to show plans and record subscription status). On iOS, the app asks for your permission before using your device's advertising identifier. If you decline, we do not use it.</li>
+    <li><strong>In the iOS app:</strong> PostHog (product analytics), AppsFlyer (install and ad attribution), Superwall (to show plans) and RevenueCat (to record subscription status). On iOS, the app asks for your permission before using your device's advertising identifier. If you decline, we do not use it.</li>
   </ul>
   <p>You can limit ad tracking in your device or browser settings, and you can use your browser's settings to block or clear cookies.</p>
 
-  <h2>Payments</h2>
+  <h2>Payments and messages</h2>
   <ul>
     <li><strong>In the iOS app,</strong> subscriptions are processed by Apple through your Apple ID.</li>
     <li><strong>On aibarber.org,</strong> payments are processed by Stripe.</li>
+    <li><strong>Card payments from your clients</strong> are processed by Stripe Connect. Stripe collects your payout and identity details when you set up payouts, and your clients' card details when they pay. We receive the payment confirmation, not the card details.</li>
+    <li><strong>Push notifications</strong> in the app (new bookings and orders, for example) are delivered through Expo's push service and Apple's Push Notification service, which receive your device's push token and the notification text.</li>
   </ul>
   <p>We never see or store your full card details. We receive a confirmation of the payment, your plan, and the email address you used at checkout.</p>
+
+  <h2>Who we share it with</h2>
+  <p>We share information only with the service providers named in this policy (hosting, storage, login, payments, push delivery, analytics and advertising measurement), and only what they need to do their job. Every service provider we share data with is bound by contract to protect it at least as well as this policy does and only to use it to provide services to us.</p>
 
   <h2>Keeping and deleting your information</h2>
   <p>We keep your information while your account or website is active, and as needed to meet legal, tax and accounting obligations.</p>
   <ul>
-    <li><strong>In the app,</strong> you can delete your account. This removes your login and the site records saved to your account.</li>
+    <li><strong>In the app,</strong> go to Settings and choose Delete account. We take your published website offline, delete its content and photos, release any custom domain, and delete your login and the records saved to your account. Your App Store subscription is separate: Apple keeps billing you until you cancel it in your Apple ID settings.</li>
     <li><strong>By email,</strong> write to <a href="mailto:support@davoxa.com">support@davoxa.com</a> from the email address on your account and ask us to delete your account and data. We will do so within 30 days.</li>
-    <li><strong>Published websites</strong> stay online until you ask us to take them down. Deleting your account or cancelling your subscription does not take your site offline by itself. To take a site down and remove its photos, email <a href="mailto:support@davoxa.com">support@davoxa.com</a> and tell us which site, and we will remove it within 30 days.</li>
+    <li><strong>Without an account,</strong> use Settings, then Take my website offline, in the app. We confirm your purchase with Apple and then take your site offline and delete its content and photos. You can also email <a href="mailto:support@davoxa.com">support@davoxa.com</a>.</li>
+    <li><strong>Cancelling your subscription</strong> does not delete your website by itself. If your subscription ends, we replace your site with an "unavailable" page and keep your content so you can come back; ask us if you want it deleted.</li>
   </ul>
   <p>Depending on where you live, you may have the right to access, correct or delete your personal information, or to object to how we use it. Email us and we will help.</p>
 
@@ -102,7 +133,7 @@
   <p>Davoxa · <a href="mailto:support@davoxa.com">support@davoxa.com</a></p>
 
   <footer>
-    <a href="/">Home</a>
+    <a class="home-link" href="/">Home</a>
     <a href="/privacy">Privacy Policy</a>
     <a href="/terms">Terms of Service</a>
     <a href="/support">Support</a>
