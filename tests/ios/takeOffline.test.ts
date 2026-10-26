@@ -117,4 +117,43 @@ describe('takeSiteOffline (no account, keyed by Apple transaction id)', () => {
     expect(r).toEqual({ status: 500, body: { error: 'remove-failed' } });
     expect(d.deleteContent).not.toHaveBeenCalled();
   });
+
+  describe('expectedSlug (the site shown on the phone)', () => {
+    it('a different slug than the one bound -> 409 site-mismatch, nothing removed', async () => {
+      const d = mk();
+      const r = await takeSiteOffline({ transactionId: 't', expectedSlug: 'other-site' }, d);
+      expect(r).toEqual({ status: 409, body: { error: 'site-mismatch' } });
+      expect(d.calls).toEqual([]);
+    });
+    it('the same slug (any case) removes it; absent expectedSlug still works; a non-string is a 400', async () => {
+      const d = mk();
+      expect((await takeSiteOffline({ transactionId: 't', expectedSlug: 'Fade-Lab' }, d)).status).toBe(200);
+      const e = mk();
+      expect((await takeSiteOffline({ transactionId: 't' }, e)).status).toBe(200);
+      const f = mk();
+      expect((await takeSiteOffline({ transactionId: 't', expectedSlug: 5 }, f)).status).toBe(400);
+      expect(f.calls).toEqual([]);
+    });
+  });
+
+  describe("the owner's account rows (H2)", () => {
+    it('a linked purchase also deletes that account\'s sites rows for the slug, after the removal', async () => {
+      const deleteAccountRows = vi.fn(async () => {});
+      const d = mk({ deleteAccountRows });
+      d.rows['orig-A'] = row({ user_id: 'u1' });
+      expect((await takeSiteOffline({ transactionId: 't' }, d, { authorization: 'Bearer tok-owner' })).status).toBe(200);
+      expect(deleteAccountRows).toHaveBeenCalledWith('u1', 'fade-lab');
+    });
+    it('an unlinked purchase has no account rows to delete', async () => {
+      const deleteAccountRows = vi.fn(async () => {});
+      const d = mk({ deleteAccountRows });
+      expect((await takeSiteOffline({ transactionId: 't' }, d)).status).toBe(200);
+      expect(deleteAccountRows).not.toHaveBeenCalled();
+    });
+    it('a failing row delete answers 500 so a retry finishes it', async () => {
+      const d = mk({ deleteAccountRows: vi.fn(async () => { throw new Error('db'); }) });
+      d.rows['orig-A'] = row({ user_id: 'u1' });
+      expect((await takeSiteOffline({ transactionId: 't' }, d, { authorization: 'Bearer tok-owner' })).status).toBe(500);
+    });
+  });
 });

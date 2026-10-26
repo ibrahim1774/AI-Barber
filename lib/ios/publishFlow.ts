@@ -372,6 +372,9 @@ export async function runIosSiteLookup(
   try {
     const row = await deps.repo.get(tx.originalTransactionId);
     if (!row?.site_slug) return { status: 404, body: { error: 'no-site' } };
+    // The owner took this site offline (removed_at): to the app it is as if nothing is published, so
+    // a new draft binds fresh and a publish (which clears removed_at) is not blocked as "elsewhere".
+    if (row.removed_at) return { status: 404, body: { error: 'no-site' } };
     const pending = await deps.readPending(row.site_slug);
     return { status: 200, body: siteBody(row.site_slug, pending, isActive(tx, deps.now())) };
   } catch (e) {

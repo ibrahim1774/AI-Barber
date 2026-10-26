@@ -17,11 +17,17 @@ export interface TakeOfflineDeps extends RemoveSiteDeps {
   repo: Pick<PurchasesRepo, 'get'>;
   /** The account behind a bearer token (null = invalid; throws on an outage). */
   userOf?(token: string): Promise<{ id: string } | null>;
+  /**
+   * Deletes the account's own `sites` rows (the app's copy, with its deployed_url) that belong to the
+   * removed slug, so a signed-in phone cannot reload the removed site on its next launch. Idempotent;
+   * throws on failure (the call answers 500 and a retry finishes the job).
+   */
+  deleteAccountRows?(userId: string, slug: string): Promise<void>;
 }
 
 export type TakeOfflineResult =
   | { status: 200; body: { removed: true } }
-  | { status: 400 | 401 | 403 | 404 | 500 | 503; body: { error: string } };
+  | { status: 400 | 401 | 403 | 404 | 409 | 500 | 503; body: { error: string } };
 
 const VERIFY_STATUS = { 'not-found': 404, 'bad-bundle': 400, 'bad-product': 400, 'apple-unavailable': 503 } as const;
 
@@ -33,6 +39,12 @@ const bearer = (h: unknown): string => {
 export async function takeSiteOffline(body: unknown, deps: TakeOfflineDeps, ctx: { authorization?: unknown } = {}): Promise<TakeOfflineResult> {
   const txId = (body as { transactionId?: unknown } | null)?.transactionId;
   if (typeof txId !== 'string' || !txId.trim() || txId.length > 64) return { status: 400, body: { error: 'bad-request' } };
+  // Optional: the slug the caller believes it is removing (the site shown on the phone). The site is
+  // still the one bound to the verified purchase; a different slug is refused, never removed.
+  const expected = (body as { expectedSlug?: unknown } | null)?.expectedSlug;
+  if (expected !== undefined && expected !== null && (typeof expected !== 'string' || !expected.trim() || expected.length > 100)) {
+    return { status: 400, body: { error: 'bad-request' } };
+  }
 
   let tx: VerifiedTx;
   try {
@@ -51,6 +63,10 @@ export async function takeSiteOffline(body: unknown, deps: TakeOfflineDeps, ctx:
   // Ids are separate per environment: a Sandbox transaction never removes a Production row (or the reverse).
   if (!row || !row.site_slug || row.environment !== tx.environment) return { status: 404, body: { error: 'no-site' } };
 
+  if (typeof expected === 'string' && expected.trim().toLowerCase() !== row.site_slug.toLowerCase()) {
+    return { status: 409, body: { error: 'site-mismatch' } };
+  }
+
   if (row.user_id) {
     const token = bearer(ctx.authorization);
     if (!token || !deps.userOf) return { status: 403, body: { error: 'sign-in-required' } };
@@ -65,6 +81,7 @@ export async function takeSiteOffline(body: unknown, deps: TakeOfflineDeps, ctx:
 
   try {
     await removeSite(row, deps);
+    if (row.user_id && deps.deleteAccountRows) await deps.deleteAccountRows(row.user_id, row.site_slug);
   } catch (e: any) {
     console.error('[ios/take-offline] failed:', e?.message || e);
     return { status: 500, body: { error: 'remove-failed' } };

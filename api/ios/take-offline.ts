@@ -4,6 +4,7 @@ import { lazyDefaultVerifier } from '../../lib/ios/appleVerify.js';
 import { supabasePurchases } from '../../lib/ios/purchases.js';
 import { liveRemoveDeps } from '../../lib/ios/removeSiteLive.js';
 import { liveUserOf } from '../../lib/ios/publishFlow.js';
+import { liveDeleteAccountRows } from '../../lib/ios/removeSiteLive.js';
 import { takeSiteOffline } from '../../lib/ios/takeOffline.js';
 
 // POST { transactionId } (+ optional Authorization: Bearer <token>, required only when the
@@ -46,7 +47,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     const r = await takeSiteOffline(
       body,
-      { ...liveRemoveDeps(), verify: lazyDefaultVerifier(), repo: supabasePurchases(), userOf: liveUserOf },
+      { ...liveRemoveDeps(), verify: lazyDefaultVerifier(), repo: supabasePurchases(), userOf: liveUserOf, deleteAccountRows: liveDeleteAccountRows },
       { authorization: req.headers?.authorization },
     );
     return res.status(r.status).json(r.body);

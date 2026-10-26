@@ -683,6 +683,11 @@ describe('runIosSiteLookup', () => {
     expect(await runIosSiteLookup('t-123', b.deps)).toEqual({ status: 404, body: { error: 'no-site' } });
   });
 
+  it('site lookup for a site the owner took offline (removed_at) → 404 no-site, so a new site can be published', async () => {
+    const { deps } = fakes({ existing: row({ site_slug: 'fresh-cuts', removed_at: '2026-10-15T00:00:00Z', taken_down_at: '2026-10-15T00:00:00Z' }) });
+    expect(await runIosSiteLookup('t-123', deps)).toEqual({ status: 404, body: { error: 'no-site' } });
+  });
+
   it('site lookup returns active:false for an expired subscription', async () => {
     const { deps } = fakes({ verified: tx({ expiresAt: 1000 }), existing: row({ site_slug: 'fresh-cuts' }) });
     const r: any = await runIosSiteLookup('t-123', deps);

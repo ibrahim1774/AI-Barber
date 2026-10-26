@@ -1,5 +1,6 @@
 // Live wiring for removeSite.ts (Supabase, Vercel, GCS). Kept apart so removeSite.ts, deleteAccount.ts
 // and takeOffline.ts stay pure and testable over injected deps.
+import { createClient } from '@supabase/supabase-js';
 import { deployRenderedSite } from '../deploySite.js';
 import { findShopForSite } from '../siteSubpages.js';
 import { bucket, readPendingSite, slugify } from '../publishSite.js';
@@ -163,4 +164,31 @@ export function liveRemoveDeps(): RemoveSiteDeps {
       await b.file(`pending-sites/${safe}.json`).delete({ ignoreNotFound: true });
     },
   };
+}
+
+/** The ids of `sites` rows whose live URL is this slug's site (`https://<slug>.<host>`), never any other. */
+export function siteRowIdsForSlug(rows: Array<{ id: unknown; deployed_url?: unknown }>, slug: string): string[] {
+  const want = slug.toLowerCase();
+  const ids: string[] = [];
+  for (const r of rows) {
+    if (typeof r.id !== 'string' || typeof r.deployed_url !== 'string') continue;
+    const m = /^(?:[a-z][a-z0-9+.-]*:\/\/)?([^/?#:]+)/i.exec(r.deployed_url.trim());
+    const host = m ? m[1].toLowerCase() : '';
+    if (host && host.split('.')[0] === want) ids.push(r.id);
+  }
+  return ids;
+}
+
+/** Deletes the owner's `sites` rows for a removed slug (take-offline), so the app cannot reload the site. */
+export async function liveDeleteAccountRows(userId: string, slug: string): Promise<void> {
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error('missing Supabase configuration');
+  const admin = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+  const { data, error } = await admin.from('sites').select('id, deployed_url').eq('user_id', userId);
+  if (error) throw new Error(error.message);
+  const ids = siteRowIdsForSlug(data ?? [], slug);
+  if (!ids.length) return;
+  const del = await admin.from('sites').delete().eq('user_id', userId).in('id', ids);
+  if (del.error) throw new Error(del.error.message);
 }
