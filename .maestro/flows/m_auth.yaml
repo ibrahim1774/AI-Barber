@@ -47,7 +47,7 @@ appId: com.ibrahim1774.aibarber
 - tapOn: "Email"
 - inputText: "qa@example.com"
 - takeScreenshot: 08a_signin_email_typed
-- tapOn: "PASSWORD"   # label of the secure field: focus only, nothing can be typed (simulator)
+- tapOn: "PASSWORD.*"   # label of the secure field: focus only, nothing can be typed (simulator)
 - waitForAnimationToEnd
 - takeScreenshot: 08b_signin_password_focused
 - tapOn:

@@ -19,7 +19,9 @@ appId: com.ibrahim1774.aibarber
 - tapOn: "Build my website"
 - waitForAnimationToEnd:
     timeout: 15000
+# the Edit tour waits for an account (editTourReady): with none, the editor shows no tour tip
 - extendedWaitUntil:
-    visible: "Skip tour"
+    visible: "PUBLISH"
     timeout: 30000
+- assertNotVisible: "Skip tour"
 - takeScreenshot: 01_tour_tip

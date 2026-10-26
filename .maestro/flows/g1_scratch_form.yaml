@@ -1,0 +1,30 @@
+appId: com.ibrahim1774.aibarber
+---
+# (g1) Back buttons on every start screen, then the Start-from-scratch form incl. the keypad Done bar.
+- runFlow: _launch.yaml
+- tapOn: "Use my booking link"
+- tapOn: "Back"
+- extendedWaitUntil: { visible: "Start from scratch", timeout: 10000 }
+- tapOn: "Find me on Google"
+- tapOn: "Back"
+- extendedWaitUntil: { visible: "Start from scratch", timeout: 10000 }
+- tapOn: "Start from scratch"
+- takeScreenshot: g1_form
+- tapOn: "Back"
+- extendedWaitUntil: { visible: "Start from scratch", timeout: 10000 }
+- tapOn: "Start from scratch"
+- tapOn: "Jack's Barbershop"
+- inputText: "Jack's Barbershop"
+- tapOn: "512 Congress.*"
+- inputText: "Austin, TX"
+- tapOn: "\\(512\\) 555-0142"
+- inputText: "5125550142"
+- assertVisible: "Done"          # the bar above the phone pad
+- takeScreenshot: g1_keypad_done
+- tapOn: "Done"
+- assertNotVisible: "Done"
+- scrollUntilVisible:
+    element: "Build my website"
+- takeScreenshot: g1_build_visible
+- tapOn: "Build my website"
+- extendedWaitUntil: { visible: "Tap Publish.*", timeout: 30000, optional: true }

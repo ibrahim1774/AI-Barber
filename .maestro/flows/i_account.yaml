@@ -18,5 +18,8 @@ appId: com.ibrahim1774.aibarber
 - waitForAnimationToEnd
 - scrollUntilVisible:
     element: "Delete account"
+- scrollUntilVisible:
+    element: "Sign in"
+    direction: UP
 - tapOn: "Sign in"
 - takeScreenshot: 04_signin_form

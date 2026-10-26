@@ -5,7 +5,7 @@ appId: com.ibrahim1774.aibarber
 - runFlow: _publish_site.yaml
 - tapOn: "Done"
 - takeScreenshot: 01_settings_top
-- tapOn: "Custom Domain.*"
+- tapOn: "Get yours"
 - waitForAnimationToEnd
 - takeScreenshot: 03_domain_screen
 - tapOn: "Search for a name"

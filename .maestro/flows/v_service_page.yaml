@@ -9,6 +9,13 @@ appId: com.ibrahim1774.aibarber
 - inputText: "booksy.com/en-us/12345_jacks-barbershop_barber-shop_austin"
 - pressKey: Enter
 - extendedWaitUntil:
+    visible: "OPEN MY SITE.*"   # the "Here's what we found" review step before the editor
+    timeout: 60000
+    optional: true
+- tapOn:
+    text: "OPEN MY SITE.*"
+    optional: true
+- extendedWaitUntil:
     visible: "PUBLISH"
     timeout: 60000
 - tapOn:
@@ -22,14 +29,26 @@ appId: com.ibrahim1774.aibarber
     timeout: 3000
 - takeScreenshot: 02_sheet
 - tapOn:
-    point: "86%,31%"   # Done
+    point: "87%,22%"   # Done
 - waitForAnimationToEnd:
     timeout: 2000
-- tapOn: "Show Services"
+- tapOn:
+    point: "87%,9%"   # hamburger, top-left corner (the dev Tools button floats over its centre)
+- runFlow:
+    when:
+      visible: "Go home"   # the dev menu opened instead (the floating Tools button sits over the hamburger): switch that button off, close, retry
+    commands:
+      - tapOn:
+          point: "86%,95%"
+      - tapOn:
+          point: "91%,47%"
+      - tapOn:
+          point: "87%,9%"
+- tapOn: "Services"
 - waitForAnimationToEnd:
     timeout: 5000
 - takeScreenshot: 03_services_page
-- tapOn: "Show Beard Trim"
+- tapOn: "Beard Trim"
 - waitForAnimationToEnd:
     timeout: 5000
 - takeScreenshot: 04_service_item_page
@@ -53,7 +72,9 @@ appId: com.ibrahim1774.aibarber
 - waitForAnimationToEnd:
     timeout: 4000
 - takeScreenshot: 07_after_save
-- tapOn: "Show Services"
+- tapOn:
+    point: "87%,9%"   # hamburger, top-left corner (the dev Tools button floats over its centre)
+- tapOn: "Services"
 - waitForAnimationToEnd:
     timeout: 4000
 - takeScreenshot: 08_services_after

@@ -12,3 +12,6 @@ appId: com.ibrahim1774.aibarber
 - runFlow:
     file: _bookings_wizard.yaml
     env: { PROMPT_TAP: "Not now", PREFIX: "w_" }
+- tapOn:
+    point: "50%,10%"   # close the booking detail sheet the wizard leaves open (it now covers the tab bar)
+- waitForAnimationToEnd

@@ -39,6 +39,10 @@ appId: com.ibrahim1774.aibarber
 - tapOn:
     point: "6%,9%"   # F5: Done returns to the Bookings setup hub; back out to the tabs
 - waitForAnimationToEnd
+- tapOn:
+    text: "Skip tour"
+    optional: true
+- waitForAnimationToEnd
 # ---- shop, buttons published ----
 - tapOn:
     point: "62%,94%"
@@ -52,6 +56,10 @@ appId: com.ibrahim1774.aibarber
 - waitForAnimationToEnd
 - tapOn:
     point: "6%,9%"   # F4: no prompt while the shop is empty; back to the Store tab and add a product
+- waitForAnimationToEnd
+- tapOn:
+    text: "Skip tour"
+    optional: true
 - waitForAnimationToEnd
 - tapOn: "Add product"
 - waitForAnimationToEnd

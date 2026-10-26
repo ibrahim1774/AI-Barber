@@ -25,3 +25,22 @@ appId: com.ibrahim1774.aibarber
     text: "Continue"
     optional: true
 - waitForAnimationToEnd
+- repeat:
+    times: 3
+    commands:
+      - runFlow:
+          when:
+            visible: "This is the.*"
+          commands:
+            - tapOn:
+                point: "50%,56%"
+            - tapOn:
+                point: "88%,55%"
+      - runFlow:
+          when:
+            visible: "Go home"   # the dev menu opened over the app after the reload; Go home would drop to the launcher
+          commands:
+            - tapOn:
+                point: "84%,92%"
+            - tapOn:
+                point: "90%,48%"

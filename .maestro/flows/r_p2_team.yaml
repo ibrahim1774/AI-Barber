@@ -18,12 +18,15 @@ appId: com.ibrahim1774.aibarber
 - tapOn: "Add a barber"
 - waitForAnimationToEnd
 - takeScreenshot: 03_sheet_step1_empty
-- tapOn: "e.g. Sam Fade"
+- tapOn:
+    point: "50%,77%"   # the Name field (placeholder text is not matched since the sheet redesign)
 - inputText: "Mike Fade"
-- tapOn: "Role"
+- tapOn:
+    point: "50%,50%"   # the Role field
 - inputText: "Fade specialist"
 - takeScreenshot: 04_sheet_step1_filled
-- tapOn: "Next"
+- tapOn:
+    point: "76%,56%"   # NEXT (the sheet rides above the keyboard)
 - waitForAnimationToEnd
 - takeScreenshot: 05_sheet_step2_services_hours
 - tapOn: "Beard Trim"
@@ -32,10 +35,12 @@ appId: com.ibrahim1774.aibarber
 - takeScreenshot: 06_sheet_step2_own_hours
 - scroll
 - takeScreenshot: 07_sheet_step2_scrolled
-- tapOn: "Next"
+- tapOn:
+    point: "76%,92%"
 - waitForAnimationToEnd
 - takeScreenshot: 08_sheet_step3_about_link
-- tapOn: "Add barber"
+- tapOn:
+    point: "76%,92%"   # ADD BARBER
 - waitForAnimationToEnd
 - extendedWaitUntil:
     visible: ".*MOCK PAYWALL.*"
@@ -50,11 +55,17 @@ appId: com.ibrahim1774.aibarber
     env: { MLIMIT: "plan", MREPORT: "", MPROFILE: "" }
 - tapOn: "Add a barber"
 - waitForAnimationToEnd
-- tapOn: "e.g. Sam Fade"
+- tapOn:
+    point: "50%,77%"   # the Name field (placeholder text is not matched since the sheet redesign)
 - inputText: "Mike Fade"
-- tapOn: "Next"
-- tapOn: "Next"
-- tapOn: "Add barber"
+- tapOn:
+    point: "76%,56%"   # NEXT above the keyboard
+- waitForAnimationToEnd
+- tapOn:
+    point: "76%,92%"   # NEXT on step 2
+- waitForAnimationToEnd
+- tapOn:
+    point: "76%,92%"   # ADD BARBER
 - waitForAnimationToEnd
 - takeScreenshot: 11_two_barbers
 # --- Bookings plan = 2 people: the third is stopped before the sheet opens

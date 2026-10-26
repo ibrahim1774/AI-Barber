@@ -11,8 +11,14 @@ appId: com.ibrahim1774.aibarber
     timeout: 120000
     optional: true
 - repeat:
-    times: 4
+    times: 8
     commands:
+      - runFlow:
+          when:
+            visible: "This is the.*"   # dev menu up; the app's notification pre-prompt (not in the a11y tree) may sit over it
+          commands:
+            - tapOn:
+                point: "50%,56%"
       - tapOn:
           text: "Ask App Not to Track"
           optional: true

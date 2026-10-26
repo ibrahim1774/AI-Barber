@@ -45,12 +45,13 @@ appId: com.ibrahim1774.aibarber
     point: "50%,60%"   # a day in the grid -> Day view on that date
 - waitForAnimationToEnd
 - takeScreenshot: 08_month_tap_day
-# Settings > Tutorial: replay the Edit tour
+# Settings > Learn how it works (the old per-tour replay rows were replaced by the videos page)
 - tapOn:
     point: "87%,94%"
 - waitForAnimationToEnd
-- scroll
-- takeScreenshot: 09_settings_tutorial_rows
-- tapOn: "Editing your site"
-- waitForAnimationToEnd
-- takeScreenshot: 10_replay_edit_tour
+- tapOn: "Learn how it works"
+- extendedWaitUntil: { visible: "Everything you need.*", timeout: 10000 }
+- takeScreenshot: 09_learn_page
+- scrollUntilVisible:
+    element: ".*booking calendar.*"
+    visibilityPercentage: 50

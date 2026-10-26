@@ -6,7 +6,7 @@ appId: com.ibrahim1774.aibarber
 - waitForAnimationToEnd
 - takeScreenshot: ${PREFIX}01_store_tab_unset
 - tapOn:
-    text: "Skip"
+    text: "Skip tour"
     optional: true
 - waitForAnimationToEnd
 - tapOn:
@@ -14,7 +14,7 @@ appId: com.ibrahim1774.aibarber
 - waitForAnimationToEnd
 - takeScreenshot: ${PREFIX}02_store_setup
 - tapOn:
-    text: "Skip"
+    text: "Skip tour"
     optional: true
 - waitForAnimationToEnd
 - tapOn: "Offer shipping"   # F6: the label flips the switch on ...
@@ -40,7 +40,7 @@ appId: com.ibrahim1774.aibarber
 - waitForAnimationToEnd
 - takeScreenshot: ${PREFIX}07_store_empty
 - tapOn:
-    text: "Skip"
+    text: "Skip tour"
     optional: true
 - waitForAnimationToEnd
 # ---- product 1: price edge cases, then a photo ----

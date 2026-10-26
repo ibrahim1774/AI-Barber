@@ -1,0 +1,18 @@
+appId: com.ibrahim1774.aibarber
+---
+# (g4) Editor: the site's hamburger menu in the preview opens and shows the pages; a menu entry opens that page;
+# tapping the hero button opens the Book button sheet.
+- runFlow: _launch.yaml
+- runFlow: _manual_site.yaml
+- takeScreenshot: g4_editor
+- tapOn: "Menu"
+- takeScreenshot: g4_menu_open
+- tapOn: "Services"   # the menu entry (aria text; CSS shows it in capitals)
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: g4_services_page
+- tapOn:
+    point: "50%,29%"   # hero button
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: g4_button_sheet

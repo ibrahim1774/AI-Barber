@@ -30,21 +30,27 @@ appId: com.ibrahim1774.aibarber
     element: "Continue"
 - tapOn: "Continue"
 - waitForAnimationToEnd
+- tapOn: "Finish"
+- waitForAnimationToEnd
+- tapOn: "Update my site"   # links only show once the Book button is published (link gate)
+- extendedWaitUntil:
+    visible: ".*live!.*"
+    timeout: 30000
+- tapOn: "Done"
+- waitForAnimationToEnd
+- tapOn:
+    point: "6%,9%"   # back out of the setup hub
+- waitForAnimationToEnd
+- tapOn:
+    text: "Skip tour"
+    optional: true
+- waitForAnimationToEnd
 - takeScreenshot: 01_share_step_site_base
 - tapOn: "Share booking link"
 - waitForAnimationToEnd
 - takeScreenshot: 02_share_sheet_site_base
 - tapOn:
     point: "50%,8%"
-- waitForAnimationToEnd
-- tapOn: "Finish"
-- waitForAnimationToEnd
-- tapOn:
-    text: "Not now"
-    optional: true
-- waitForAnimationToEnd
-- tapOn:
-    point: "6%,9%"   # back out of the setup hub
 - waitForAnimationToEnd
 - tapOn:
     point: "62%,94%"
@@ -63,7 +69,7 @@ appId: com.ibrahim1774.aibarber
 - waitForAnimationToEnd
 - takeScreenshot: 04_shop_open_site_base
 - tapOn:
-    point: "40%,87%"   # Share your shop link (text lookup is empty right after an alert)
+    point: "40%,79%"   # Share your shop link (text lookup is empty right after an alert)
 - waitForAnimationToEnd
 - takeScreenshot: 05_shop_share_sheet_site_base
 - tapOn: "Copy link"

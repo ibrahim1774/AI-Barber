@@ -1,0 +1,37 @@
+appId: com.ibrahim1774.aibarber
+---
+# (g2) Settings: 'Learn how it works' is the first card, opens the videos page, a video plays; reminders switch; dialogs CANCEL only.
+- runFlow:
+    file: _signed_in.yaml
+    env: { TIER: website, LAPSE: "" }
+- tapOn:
+    text: "Skip tour"
+    optional: true
+- waitForAnimationToEnd
+- tapOn:
+    point: "87%,94%"   # Settings tab
+- waitForAnimationToEnd
+- takeScreenshot: g2_settings_top
+- assertVisible: "Learn how it works"
+- tapOn: "Learn how it works"
+- extendedWaitUntil: { visible: "Everything you need.*", timeout: 10000 }
+- takeScreenshot: g2_learn
+- scroll
+- takeScreenshot: g2_learn_scrolled
+- tapOn: "Back"
+- scrollUntilVisible:
+    element: "Publish reminders"
+- tapOn:
+    text: "Publish reminders"
+- takeScreenshot: g2_reminders_toggled
+- scrollUntilVisible:
+    element: "Take my website offline"
+- tapOn: "Take my website offline"
+- takeScreenshot: g2_offline_dialog
+- tapOn: "Cancel"
+- scrollUntilVisible:
+    element: "Delete account"
+- tapOn: "Delete account"
+- takeScreenshot: g2_delete_dialog
+- tapOn: "Cancel"
+- assertVisible: "Delete account"

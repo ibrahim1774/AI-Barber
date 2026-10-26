@@ -17,6 +17,13 @@ appId: com.ibrahim1774.aibarber
 - pressKey: Enter
 - takeScreenshot: 04_importing
 - extendedWaitUntil:
+    visible: "OPEN MY SITE.*"   # the "Here's what we found" review step before the editor
+    timeout: 60000
+    optional: true
+- tapOn:
+    text: "OPEN MY SITE.*"
+    optional: true
+- extendedWaitUntil:
     visible: "PUBLISH"
     timeout: 60000
 - takeScreenshot: 05_editor_imported

@@ -1,7 +1,6 @@
 appId: com.ibrahim1774.aibarber
 ---
-# (l1) Share / copy the booking link when the server has stored no site base: expect the aibarber.org /book/<slug> page.
-# The clipboard after the run (clipboard.txt) must be that link.
+# (l1) No stored site base: links are gated (no Share pill, 'Publish your changes to get your booking link'); nothing copied.
 - runFlow:
     file: _signed_in.yaml
     env: { TIER: bookings, LAPSE: "" }
@@ -27,10 +26,23 @@ appId: com.ibrahim1774.aibarber
     element: "Continue"
 - tapOn: "Continue"
 - waitForAnimationToEnd
+- tapOn: "Finish"
+- waitForAnimationToEnd
+- tapOn: "Update my site"   # links only show once the Book button is published (link gate)
+- extendedWaitUntil:
+    visible: ".*live!.*"
+    timeout: 30000
+- tapOn: "Done"
+- waitForAnimationToEnd
+- tapOn:
+    point: "6%,9%"   # back out of the setup hub
+- waitForAnimationToEnd
+- tapOn:
+    text: "Skip tour"
+    optional: true
+- waitForAnimationToEnd
 - takeScreenshot: 01_share_step_fallback_base
-- tapOn: "Share booking link"
-- waitForAnimationToEnd
-- takeScreenshot: 02_share_sheet_fallback_base
-- tapOn: "Copy link"
-- waitForAnimationToEnd
-- takeScreenshot: 03_after_copy_fallback_base
+# Since the link gate, no stored site base means no link at all: the Share pill is hidden and the tab asks to publish.
+- assertVisible: "Publish your changes to get your booking link"
+- assertNotVisible: "Share booking link"
+- takeScreenshot: 02_gated_no_share_pill

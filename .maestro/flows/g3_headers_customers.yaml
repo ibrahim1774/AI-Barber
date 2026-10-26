@@ -1,0 +1,16 @@
+appId: com.ibrahim1774.aibarber
+---
+# (g3) Bookings and Store headers (Customers / Share / Settings pills), Customers screen, Back.
+- runFlow: _p1_shop_ready.yaml
+- takeScreenshot: g3_bookings_header
+- assertVisible: "Customers"
+- assertVisible: "Share"
+- assertVisible: "Settings"
+- tapOn: "Customers"
+- extendedWaitUntil: { visible: "Search customers|No customers yet", timeout: 10000 }
+- takeScreenshot: g3_customers
+- tapOn: "Back"
+- assertVisible: "Customers"
+- tapOn: "Settings"
+- extendedWaitUntil: { visible: "Account", timeout: 10000 }
+- takeScreenshot: g3_settings_from_pill
