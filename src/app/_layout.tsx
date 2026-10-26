@@ -12,6 +12,7 @@ import { claimLocked } from '@/lib/claimGuard';
 import { syncQuietly } from '@/lib/adminSync';
 import { initAttribution, POSTHOG_AUTOCAPTURE, posthog, screen } from '@/lib/analytics';
 import { LaunchPrompts } from '@/lib/launchPrompts';
+import { PlanSync } from '@/lib/planSync';
 import {
   SubscriptionStatusSync, SubscriptionSync, SUPERWALL_KEY, SUPERWALL_OPTIONS, superwallActive, useLatestDomainTransactionId,
   usePublishDeps,
@@ -173,6 +174,7 @@ export default function RootLayout() {
       options={SUPERWALL_OPTIONS}
       onConfigurationError={(e) => console.warn('Superwall configuration failed', e)}>
       <SubscriptionSync />
+      <PlanSync />
       <SubscriptionStatusSync />
       <ResumePublish />
       {app}

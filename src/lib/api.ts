@@ -232,9 +232,9 @@ export const api = {
 
   /**
    * POST /api/ios/signup: the server creates the account already confirmed (no email link); the app then signs in with
-   * the same email + password. Errors: 400 bad-request (body.field) | weak-password, 409 email-exists, 429, 503.
+   * the same email + password. Errors: 400 bad-request (body.field) | weak-password, 409 email-exists | purchase-in-use, 402 inactive, 429 (signup-limit), 503. The verified transactionId is required.
    */
-  signup(body: { name: string; email: string; phone: string; password: string }): Promise<{ ok: true; email: string }> {
+  signup(body: { name: string; email: string; phone: string; password: string; transactionId: string }): Promise<{ ok: true; email: string }> {
     return post('/api/ios/signup', body, { failMessage: 'Could not create your account' });
   },
 

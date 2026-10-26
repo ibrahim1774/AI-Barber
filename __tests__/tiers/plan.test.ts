@@ -6,14 +6,14 @@ import { getPlan, hostingReadOnlyOpen, planLabel, refreshPlan } from '@/lib/plan
 const PLAN = {
   linked: true, tier: 'bookings', entitlements: { hosting: true, bookings: true, store: false },
   active: true, expiresAt: '2026-11-01T00:00:00Z', takenDownAt: null, revoked: false,
-  capabilities: { memberProfile: false },
+  purchaseAccount: 'self', capabilities: { memberProfile: false },
 };
 const respond = (status: number, body: unknown) =>
   ((global as any).fetch = jest.fn().mockResolvedValue({ status, text: async () => JSON.stringify(body) }));
 
 it('refreshPlan posts { transactionId } with the Bearer token', async () => {
   const f = respond(200, PLAN);
-  await expect(refreshPlan('tx-9')).resolves.toEqual(PLAN);
+  await expect(refreshPlan('tx-9')).resolves.toEqual({ ...PLAN, purchaseHint: null });
   const [url, init] = f.mock.calls[0];
   expect(url).toMatch(/\/api\/shop\/plan$/);
   expect(init.method).toBe('POST');

@@ -11,6 +11,13 @@ export type Plan = {
   expiresAt: string | null;
   takenDownAt: string | null;
   revoked: boolean;
+  /**
+   * Whose Apple purchase this is, from the server: 'self' (this account owns it), 'other' (another account on the same
+   * Apple ID does), or null (no purchase of this account's own, or an old server). Bookings and Store unlock only for 'self'.
+   */
+  purchaseAccount: 'self' | 'other' | null;
+  /** The server's masked email of the other account ("a***@gmail.com"), when it says one. */
+  purchaseHint: string | null;
   /** What the deployed server supports: `memberProfile` is true once migration 015 is live (title / booking_url columns, POST /api/shop/members). */
   capabilities: { memberProfile: boolean };
 };
@@ -40,6 +47,8 @@ export function normalizePlan(raw: unknown): Plan | null {
     expiresAt: str(raw.expiresAt),
     takenDownAt,
     revoked,
+    purchaseAccount: raw.purchaseAccount === 'self' || raw.purchaseAccount === 'other' ? raw.purchaseAccount : null,
+    purchaseHint: str(raw.purchaseHint) ?? str(raw.hint),
     capabilities: { memberProfile: isObject(raw.capabilities) && raw.capabilities.memberProfile === true },
   };
 }
@@ -54,7 +63,7 @@ async function planCall(answer: Promise<unknown>): Promise<Plan> {
 /** A signed-in account with no shop yet: nothing is granted, and it is not an error. */
 export const UNLINKED_PLAN: Plan = {
   linked: false, tier: null, entitlements: { hosting: false, bookings: false, store: false },
-  active: false, expiresAt: null, takenDownAt: null, revoked: false, capabilities: { memberProfile: false },
+  active: false, expiresAt: null, takenDownAt: null, revoked: false, purchaseAccount: null, purchaseHint: null, capabilities: { memberProfile: false },
 };
 
 export async function getPlan(): Promise<Plan> {

@@ -32,3 +32,11 @@ export function restoreOtherAccountMessage(hint?: string | null): string {
 /** Restore signed out (or with a rejected session): sign in first. */
 export const RESTORE_SIGN_IN_MESSAGE =
   'Sign in to your Prime Barber account first, then tap Restore purchases. Your website is saved to your account.';
+
+/**
+ * Bookings / Store are locked: Superwall says paid, but the purchase belongs to another Prime Barber account on this
+ * Apple ID. `hint` is the server's masked email, when it sends one.
+ */
+export function otherAccountPlanMessage(hint?: string | null): string {
+  return `This Apple ID's subscription belongs to another Prime Barber account${hint ? ` (${hint})` : ''}. Sign in to that account to use Bookings and Store.`;
+}

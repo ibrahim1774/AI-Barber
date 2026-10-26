@@ -3,6 +3,7 @@ import { OFFLINE } from '@/lib/auth';
 import type { PublishOutcome } from '@/lib/publish';
 import type { ClaimField, ClaimMode, ClaimValues } from '@/lib/claimValidation';
 import { normalizePhone, validateClaim } from '@/lib/claimValidation';
+import { CLAIMED_SIGNED_OUT_MESSAGE } from '@/lib/claimCopy';
 import { trackRegistration } from '@/lib/analytics';
 
 /** What the locked account step shows while the request cannot reach the server. */
@@ -11,6 +12,9 @@ export const EMAIL_EXISTS_MESSAGE = 'An account with this email already exists.'
 export const RATE_LIMITED_MESSAGE = 'Too many tries. Wait a minute and try again.';
 export const SIGNUP_UNAVAILABLE_MESSAGE = 'We couldn’t create your account just now. Try again in a moment.';
 export const SESSION_EXPIRED_MESSAGE = 'Your sign-in expired. Sign in again to finish publishing.';
+export const SIGNUP_LIMIT_MESSAGE =
+  'Too many accounts have been created with this purchase. Sign in to the account you already made, or contact support@davoxa.com.';
+export const NO_PURCHASE_MESSAGE = "We couldn't find your purchase yet. Check your connection and try again in a moment.";
 export const INACTIVE_MESSAGE =
   "Your payment didn't go through, or it was refunded, so the website can't go live. Subscribe again from the editor to publish it.";
 
@@ -34,6 +38,8 @@ export type ClaimResult =
 
 export interface ClaimDeps {
   signup: typeof api.signup;
+  /** The verified purchase's transactionId the pending publish holds (the server's signup requires it). */
+  transactionId(): Promise<string | null>;
   /** auth.signIn: also pulls / switches the account's site. Throws an Error with a friendly message. */
   signIn(email: string, password: string): Promise<void>;
   /** resumePendingPublish with the real publish deps: sends the pending publish with the account's Bearer. */
@@ -96,8 +102,15 @@ export function createClaimRunner(deps: ClaimDeps) {
       if (created && created.email.toLowerCase() === email.toLowerCase() && created.password === v.password) {
         signInEmail = created.email;
       } else {
+        let transactionId: string | null = null;
         try {
-          const r = await deps.signup({ name: v.name.trim(), email, phone: normalizePhone(v.phone)!, password: v.password });
+          transactionId = await deps.transactionId();
+        } catch {
+          transactionId = null;
+        }
+        if (!transactionId) return { kind: 'waiting', message: NO_PURCHASE_MESSAGE, stage: 'account' };
+        try {
+          const r = await deps.signup({ name: v.name.trim(), email, phone: normalizePhone(v.phone)!, password: v.password, transactionId });
           created = { email: r.email || email, password: v.password };
           signInEmail = created.email;
           trackRegistration('email');
@@ -128,6 +141,13 @@ function signupFailure(e: unknown, email: string): ClaimResult {
   if (!(e instanceof ApiError)) return { kind: 'error', message: SIGNUP_UNAVAILABLE_MESSAGE };
   if (e.status === 0) return { kind: 'waiting', message: WAITING_MESSAGE, stage: 'account' };
   if (e.status === 409 && e.code === 'email-exists') return { kind: 'email-exists', email };
+  // The purchase is refunded / expired / revoked: no account is made for it.
+  if (e.status === 402) return { kind: 'inactive', message: INACTIVE_MESSAGE };
+  // The purchase already belongs to an account: only that account can finish it.
+  if (e.status === 409 && (e.code === 'purchase-in-use' || e.code === 'purchase-claimed' || e.code === 'purchase-other-account')) {
+    return { kind: 'blocked', message: CLAIMED_SIGNED_OUT_MESSAGE };
+  }
+  if (e.code === 'signup-limit' || e.code === 'signup-limit-reached') return { kind: 'error', message: SIGNUP_LIMIT_MESSAGE };
   if (e.status === 429) return { kind: 'error', message: RATE_LIMITED_MESSAGE };
   if (e.code === 'weak-password') return { kind: 'field', field: 'password', message: `Use at least ${e.body?.minLength ?? 8} characters.` };
   if (e.status === 400 && e.code === 'bad-request') {

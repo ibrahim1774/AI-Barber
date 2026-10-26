@@ -223,6 +223,7 @@ describe('signed out', () => {
     await w.superwallSync();
     server.sb.rows.push({ id: 'shop-1', owner_id: 'u1', slug: 'fade-lab', bookings_enabled: true, store_enabled: false, ios_otid: 'tx-1' });
     w.sb.setSession({ access_token: 'tok-u1', user: { id: 'u1' } });
+    w.m.plan.setSharedPlan(await w.m.plan.getPlan()); // the server says this account owns the Bookings purchase
     expect(await w.m.publish.resumePendingPublish(w.deps)).toMatchObject({ kind: 'live' });
     expect(lastSent().bookingUrl).toBe(AI_BOOK);
     expect(server.calls.find((c) => c.path === '/api/ios/publish')?.headers?.Authorization).toBe('Bearer tok-u1');
@@ -280,7 +281,10 @@ describe('app killed between steps', () => {
     void w.show('bookings_upgrade');
     await drain();
     w = await kill(w);
-    expect(w.m.entitlements.getEntitlements()).toMatchObject({ known: true, bookings: true });
+    // Superwall (the Apple ID) has Bookings; the server's plan could not be read, so the tab stays locked (fail closed)
+    // until it can say this account owns the purchase.
+    expect(w.m.entitlements.getSuperwallEntitlements()).toMatchObject({ known: true, bookings: true });
+    expect(w.m.entitlements.getEntitlements()).toMatchObject({ known: false, bookings: false });
   });
 });
 

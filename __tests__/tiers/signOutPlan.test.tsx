@@ -58,13 +58,15 @@ beforeEach(() => {
 });
 
 describe('sign-out and account switch', () => {
-  it('sign-out refills the entitlements from Superwall (Apple ID) so the tab is not stuck unknown', async () => {
+  it('sign-out keeps Superwall (Apple ID) but Store stays locked until the next account is checked: no error card, no unlock', async () => {
     act(() => setEntitlementsFromStatus(status('hosting', 'bookings', 'store')));
     await signOut();
-    expect(getEntitlements()).toMatchObject({ known: true, hosting: true, store: true });
+    mockCall.mockRejectedValue(new OwnerApiError(401, 'unauthorized', 'Sign in to continue.')); // signed out: no plan to ask for
+    expect(getEntitlements()).toMatchObject({ known: false, store: false });
     const tree = await render(<Store />);
+    await flush();
     expect(hasText(tree, /Couldn't load your plan/)).toBe(false);
-    expect(hasText(tree, /^products$/)).toBe(true);
+    expect(hasText(tree, /^products$/)).toBe(false);
   });
 
   it('an unentitled Apple ID with no shop sees the upgrade card, not the error', async () => {
@@ -87,7 +89,7 @@ describe('sign-out and account switch', () => {
     act(() => setEntitlementsFromStatus({ status: 'INACTIVE' }));
     setSharedPlan({
       linked: true, tier: 'store', entitlements: { hosting: true, bookings: true, store: true }, active: true,
-      expiresAt: null, takenDownAt: null, revoked: false, capabilities: { memberProfile: false },
+      expiresAt: null, takenDownAt: null, revoked: false, purchaseAccount: 'self', purchaseHint: null, capabilities: { memberProfile: false },
     });
     await signOut();
     expect(getSharedPlan()).toBeNull();

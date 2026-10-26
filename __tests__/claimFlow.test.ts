@@ -63,6 +63,7 @@ beforeEach(async () => {
 function runner(d: PublishDeps) {
   return createClaimRunner({
     signup: (async (b: { email: string }) => ({ ok: true, email: b.email })) as never,
+    transactionId: async () => 'tx-1',
     signIn,
     finish: () => resumePendingPublish(d),
     dropSession: async () => { await supabase.auth.signOut({ scope: 'local' }); },

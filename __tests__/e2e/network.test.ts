@@ -256,13 +256,13 @@ describe('the plan (GET /api/shop/plan) and the tier gate', () => {
     expect(b.get()).toMatchObject({ status: 'ready', entitled: true });
   });
 
-  it('Superwall unknown and signed out: the plan cannot be asked, error (not a spinner)', async () => {
+  it('Superwall unknown and signed out: the plan cannot be asked, locked (not a spinner, never unlocked)', async () => {
     server.buy(P.bookingsMonthly);
     server.pinnedStatus = 'UNKNOWN';
     w = await boot(server, { user: null });
     const b = await w.probe(() => w.m.tierAccess.useTierAccess('bookings'));
     await b.flush();
-    expect(b.get().status).toBe('error');
+    expect(b.get()).toMatchObject({ status: 'ready', entitled: false });
   });
 
   // Fixed (bug 4): a 200 whose body isn't JSON was stored as "no plan yet" and the tab stayed 'loading'.
@@ -290,7 +290,7 @@ describe('the plan (GET /api/shop/plan) and the tier gate', () => {
 
   it('a plan with wrong types is normalised (only true is true)', async () => {
     await superwallUnknown();
-    server.fail('/api/shop/plan', { kind: 'json', status: 200, body: { tier: 'gold', entitlements: { hosting: 'yes', bookings: 1, store: true }, expiresAt: 5 } });
+    server.fail('/api/shop/plan', { kind: 'json', status: 200, body: { tier: 'gold', entitlements: { hosting: 'yes', bookings: 1, store: true }, expiresAt: 5, active: true, purchaseAccount: 'self' } });
     const s = await w.probe(() => w.m.tierAccess.useTierAccess('store'));
     await s.flush();
     expect(s.get()).toMatchObject({ status: 'ready', entitled: true, hosting: false });
@@ -323,11 +323,13 @@ describe('the plan (GET /api/shop/plan) and the tier gate', () => {
     expect(old.get()).toMatchObject({ status: 'ready', entitled: false, expired: true });
   });
 
-  it('entitlements known false (lapsed) vs unknown: known never waits on Superwall; unknown waits for the plan', async () => {
+  it('Superwall says Store but the plan is not loaded: locked until the server confirms this account owns it', async () => {
     server.buy(P.storeMonthly);
     w = await boot(server, { user: 'u1' });
-    const known = await w.probe(() => w.m.tierAccess.useTierAccess('store'));
-    expect(known.get()).toMatchObject({ status: 'ready', entitled: true }); // no network needed
-    expect(server.count('/api/shop/plan')).toBe(0);
+    expect(w.m.entitlements.getEntitlements()).toMatchObject({ known: false, store: false }); // fail closed until the plan lands
+    const gate = await w.probe(() => w.m.tierAccess.useTierAccess('store'));
+    await gate.flush();
+    expect(gate.get()).toMatchObject({ status: 'ready', entitled: true });
+    expect(server.count('/api/shop/plan')).toBe(1);
   });
 });

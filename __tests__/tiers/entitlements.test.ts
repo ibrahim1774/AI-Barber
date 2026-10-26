@@ -5,7 +5,13 @@ import {
 
 const active = (...ids: string[]) => ({ status: 'ACTIVE', entitlements: ids.map((id) => ({ id })) });
 
-beforeEach(resetEntitlementsForTests);
+import { setSharedPlan } from '@/lib/plan';
+import { OWN_PLAN } from '../../test/ownPlan';
+
+beforeEach(() => {
+  resetEntitlementsForTests();
+  setSharedPlan({ ...OWN_PLAN }); // this account owns the purchase: the mirror alone decides
+});
 
 describe('entitlementsFrom', () => {
   it('ACTIVE with [hosting] has no bookings or store', () => {

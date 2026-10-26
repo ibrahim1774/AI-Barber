@@ -7,13 +7,13 @@ import { api } from '@/lib/api';
 import { deleteAccountAndData } from '@/lib/account';
 import { currentUserId, signOut } from '@/lib/auth';
 import { customersCache, setCustomersCache } from '@/lib/bookings/customersCache';
-import { clearEntitlements, getEntitlements, resetEntitlementsForTests, setEntitlementsFromStatus } from '@/lib/entitlements';
+import { clearEntitlements, getEntitlements, getSuperwallEntitlements, resetEntitlementsForTests, setEntitlementsFromStatus } from '@/lib/entitlements';
 import { getSharedPlan, setSharedPlan, UNLINKED_PLAN } from '@/lib/plan';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { sb, supabase } = require('@/lib/supabase');
 
 const A = { id: 'aaaaaaaa-2222-4333-8444-555555555555', email: 'a@example.com' };
-const PLAN = { ...UNLINKED_PLAN, linked: true, tier: 'store' as const, entitlements: { hosting: true, bookings: true, store: true }, active: true };
+const PLAN = { ...UNLINKED_PLAN, linked: true, purchaseAccount: 'self' as const, tier: 'store' as const, entitlements: { hosting: true, bookings: true, store: true }, active: true };
 
 function warm() {
   setCustomersCache({ shopId: 's1', shop: {} as any, customers: [] });
@@ -57,7 +57,9 @@ describe('what ends a session', () => {
     warm();
     await signOut();
     // Superwall still reports the Apple ID as subscribed; the old account's server plan does not survive.
-    expect(getEntitlements().hosting).toBe(true);
+    expect(getSuperwallEntitlements()).toMatchObject({ known: true, hosting: true, bookings: true, store: true });
+    // Bookings / Store stay locked (known: false) until the server's plan says the next account owns that purchase.
+    expect(getEntitlements().known).toBe(false);
     expect(getSharedPlan()).toBeNull();
   });
 

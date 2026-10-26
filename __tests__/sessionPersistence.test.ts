@@ -125,6 +125,31 @@ describe('session persistence', () => {
       expect(kvm.m.get('site.v1')).toBeDefined();
     });
 
+    it('M3: a signed-in build-22 user with no site and no pending record (only other app keys) is NOT signed out on update', async () => {
+      for (const withList of [true, false]) {
+        const kvm = mem(), kc = keychain(), net: Net = { mode: 'ok', calls: 0 };
+        kvm.m.set('reminders.asked.v1', '1');
+        kc.m.set(KEY, sessionJson());
+        const kv = withList ? { ...kvm.kv, getAllKeys: async () => [...kvm.m.keys()] } : kvm.kv;
+        const a = launch({ ...kvm, kv }, kc, net);
+        expect((await a.client.auth.getSession()).data.session?.user.id).toBe('u1');
+        expect(kvm.m.get(INSTALL_FLAG_KEY)).toBe('1');
+        expect(kvm.m.get('reminders.asked.v1')).toBe('1');
+      }
+    });
+
+    it('M3: a truly fresh install (no app keys, or only launch-written ones) with a Keychain session is cleared', async () => {
+      for (const withList of [true, false]) {
+        const kvm = mem(), kc = keychain();
+        kvm.m.set('reminders.anchor.v1', '123'); // written by launch code before the guard
+        kc.m.set(KEY, sessionJson());
+        const kv = withList ? { ...kvm.kv, getAllKeys: async () => [...kvm.m.keys()] } : kvm.kv;
+        const s = createAuthStorage({ kv, secure: kc.secure, storageKey: KEY });
+        expect(await s.getItem(KEY)).toBeNull();
+        expect(kvm.m.get(INSTALL_FLAG_KEY)).toBe('1');
+      }
+    });
+
     it('unreadable app storage is doubt, not a reinstall: the session is left alone', async () => {
       const kc = keychain();
       kc.m.set(KEY, sessionJson());

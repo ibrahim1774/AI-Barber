@@ -51,9 +51,9 @@ export function ShareSheet({ visible, shopName, links: given, source, onClose }:
     };
   }, [visible]);
   const withBooking: ShareLink[] =
-    bookingLink && !(ents.known && !ents.bookings) && !given.some((l) => l.kind === 'booking') ? [{ kind: 'booking', url: bookingLink }, ...given] : given;
+    bookingLink && ents.account !== 'unknown' && !(ents.known && !ents.bookings) && !given.some((l) => l.kind === 'booking') ? [{ kind: 'booking', url: bookingLink }, ...given] : given;
   const links: ShareLink[] =
-    storeLink && !(ents.known && !ents.store) && !withBooking.some((l) => l.kind === 'shop') ? [...withBooking, { kind: 'shop', url: storeLink }] : withBooking;
+    storeLink && ents.account !== 'unknown' && !(ents.known && !ents.store) && !withBooking.some((l) => l.kind === 'shop') ? [...withBooking, { kind: 'shop', url: storeLink }] : withBooking;
   // iOS can't present one Modal while another is still sliding away: the sheet
   // hides first and the QR opens from its onDismiss, and the reverse on Done.
   const [qrOpen, setQrOpen] = useState(false);

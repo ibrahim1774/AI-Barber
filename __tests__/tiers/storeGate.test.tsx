@@ -39,6 +39,9 @@ import Store from '@/app/(tabs)/store';
 import { setSharedPlan } from '@/lib/plan';
 import { resetEntitlementsForTests, setEntitlementsFromStatus } from '@/lib/entitlements';
 import { order } from '../store/fixtures';
+import { OWN_PLAN } from '../../test/ownPlan';
+
+const OWN_PLAN_B = { ...OWN_PLAN, entitlements: { hosting: true, bookings: true, store: false } };
 
 const ents = (...ids: string[]) => act(() => setEntitlementsFromStatus({ status: 'ACTIVE', entitlements: ids.map((id) => ({ id })) }));
 const hasText = (tree: any, re: RegExp) => allText(tree).some((t) => re.test(t));
@@ -53,6 +56,7 @@ beforeEach(() => {
 describe('Store tab gating', () => {
   it('Bookings plan with no orders: the store UpgradeCard, opening store_upgrade', async () => {
     ents('hosting', 'bookings');
+    setSharedPlan(OWN_PLAN_B);
     const tree = await render(<Store />);
     expect(hasText(tree, /Sell from your website/)).toBe(true);
     await press(tree, 'See the Store plan');
@@ -61,6 +65,7 @@ describe('Store tab gating', () => {
 
   it('Bookings plan with orders: orders listed with actions available, products read-only, banner shown', async () => {
     ents('hosting', 'bookings');
+    setSharedPlan(OWN_PLAN_B);
     mockOrders = [order()];
     const tree = await render(<Store />);
     expect(hasText(tree, /Your shop page is offline/)).toBe(true);
@@ -77,7 +82,16 @@ describe('Store tab gating', () => {
 
   const lapsedPlan = (daysAgo: number) => ({
     linked: true, tier: 'store' as const, entitlements: { hosting: false, bookings: false, store: false }, active: false,
-    expiresAt: new Date(Date.now() - daysAgo * 86400000).toISOString(), takenDownAt: null, revoked: false, capabilities: { memberProfile: false },
+    expiresAt: new Date(Date.now() - daysAgo * 86400000).toISOString(), takenDownAt: null, revoked: false, purchaseAccount: 'self' as const, purchaseHint: null, capabilities: { memberProfile: false },
+  });
+
+  it("a second account on the same Apple ID (Superwall paid, purchase is another's): locked, the banner names the other account", async () => {
+    ents('hosting', 'bookings', 'store');
+    setSharedPlan({ ...OWN_PLAN, purchaseAccount: 'other', purchaseHint: null });
+    mockOrders = [order()];
+    const tree = await render(<Store />);
+    expect(hasText(tree, /This Apple ID's subscription belongs to another Prime Barber account/)).toBe(true);
+    expect(hasText(tree, /^products-locked$/)).toBe(true);
   });
 
   it('lapsed 5 days, no orders: products stay visible read-only with the upgrade banner on top (like Bookings)', async () => {
@@ -99,6 +113,7 @@ describe('Store tab gating', () => {
 
   it('Store plan: normal', async () => {
     ents('hosting', 'bookings', 'store');
+    setSharedPlan({ ...OWN_PLAN });
     const tree = await render(<Store />);
     expect(hasText(tree, /^products$/)).toBe(true);
     expect(hasText(tree, /offline/)).toBe(false);

@@ -136,7 +136,7 @@ describe('the locked step', () => {
     const tree = await render(<Claim />);
     await fill(tree);
     await press(tree, 'Create Account & Publish');
-    expect(signup).toHaveBeenCalledWith({ name: 'Jo Barber', email: 'jo@example.com', phone: '+15125550142', password: 'hunter22!' });
+    expect(signup).toHaveBeenCalledWith({ name: 'Jo Barber', email: 'jo@example.com', phone: '+15125550142', password: 'hunter22!', transactionId: 'tx-1' });
     expect(iosPublish).toHaveBeenCalledWith(expect.objectContaining({ transactionId: 'tx-1' }), 'tok-jo@example.com');
     expect(mockResetTo).toHaveBeenCalledWith('/live');
   });

@@ -6,11 +6,13 @@ import { loadPendingPublish, savePendingPublish } from '@/lib/siteStore';
  * Whether the app must show the locked account step instead of anything else. A paid publish waits (any record
  * with a payer behind it) and either there is no session (nobody to publish for), or the server refused it
  * (state 'conflict': another account / an existing site, so only a different account can continue).
- * With a session and an unclaimed / claiming record the step resumes the publish by itself.
+ * With a session and an unclaimed / claiming record the step resumes the publish by itself, and a claiming record stays locked.
  */
 export function shouldLockToClaim(pending: PendingPublish | null, hasSession: boolean): boolean {
   if (!pending) return false;
-  return pending.state === 'conflict' || !hasSession;
+  // 'claiming' stays locked until the server confirms the publish (live clears the record) or says it cannot proceed
+  // (a refusal, a 402 or a bad request clears or marks it): the lock never lifts on a guess.
+  return pending.state === 'conflict' || pending.state === 'claiming' || !hasSession;
 }
 
 /** The same decision from the phone's disk and session. A read that fails says no lock (never trap on an error). */

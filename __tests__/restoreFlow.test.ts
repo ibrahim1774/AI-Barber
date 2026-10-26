@@ -54,7 +54,7 @@ const mockRelink = jest.fn(async (_o?: unknown) => false);
 jest.mock('@/lib/setup/relink', () => ({ relinkShopPurchase: (o: unknown) => mockRelink(o) }));
 
 const mockRefresh = jest.fn(async (_id?: unknown) => {});
-jest.mock('@/lib/plan', () => ({ refreshPlanQuietly: (id: unknown) => mockRefresh(id) }));
+jest.mock('@/lib/plan', () => ({ getSharedPlan: () => null, subscribePlan: () => () => {}, refreshPlanQuietly: (id: unknown) => mockRefresh(id) }));
 
 async function runRestoreFlow(opts?: { stay?: boolean }) {
   const React = require('react');

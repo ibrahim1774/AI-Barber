@@ -366,6 +366,7 @@ describe('publish decides the Book / Shop links from the choice', () => {
   afterEach(resetEntitlementsForTests);
 
   const run = async (ids: string[], extra: object = {}) => {
+    require('@/lib/plan').setSharedPlan({ ...require('../test/ownPlan').OWN_PLAN });
     setEntitlementsFromStatus({ status: 'ACTIVE', entitlements: ids.map((id) => ({ id })) });
     await store.saveSite(withPrefs);
     const ents = require('@/lib/entitlements').getEntitlements();
@@ -390,6 +391,7 @@ describe('publish decides the Book / Shop links from the choice', () => {
   });
 
   test('a failed shop lookup is unknown: the site keeps its links and only plan-lacking ones are stripped', async () => {
+    require('@/lib/plan').setSharedPlan({ ...require('../test/ownPlan').OWN_PLAN });
     setEntitlementsFromStatus({ status: 'ACTIVE', entitlements: [{ id: 'hosting' }, { id: 'bookings' }] });
     await store.saveSite(withPrefs);
     const deps = makeDeps({ hasEntitlement: jest.fn(async () => true), linkContext: async () => null });

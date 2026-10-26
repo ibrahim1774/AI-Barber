@@ -30,6 +30,8 @@ export type KeyValue = {
   getItem(k: string): Promise<string | null>;
   setItem(k: string, v: string): Promise<unknown>;
   removeItem(k: string): Promise<unknown>;
+  /** Every key in the app's storage (expo-sqlite kv-store has it). Optional: without it only the known keys are probed. */
+  getAllKeys?(): Promise<string[]>;
 };
 export type SecureLike = {
   getItemAsync(k: string): Promise<string | null>;
@@ -45,6 +47,11 @@ export function onInstallReset(fn: () => void): void {
 
 /** The app's own cached data (not the session): gone with a reinstall, cleared here if a stray copy is left. */
 const CACHE_KEYS = ['site.v1', 'pendingPublish.v1'];
+
+/** Written by launch code (reminders anchor, push token) that can run before this check: they prove nothing about an earlier run. */
+const LAUNCH_KEYS = [INSTALL_FLAG_KEY, 'reminders.anchor.v1', 'bookings.pushToken.v1'];
+/** Keys build 22 writes for a signed-in user's use of the app; probed when the store cannot list its keys. */
+const PROBE_KEYS = [...CACHE_KEYS, 'reminders.asked.v1', 'reminders.stopped.v1', 'reminders.off.v1', 'domainClaim.v1'];
 
 /**
  * First launch after an install: when the flag is missing and the app's storage holds nothing from an earlier
@@ -68,8 +75,13 @@ export async function runInstallGuard(deps: {
   if (flag) return 'existing';
   let carriedOver = false;
   try {
-    // Only the site and pending publish count: written by the user's own actions, never by launch code racing this check.
-    carriedOver = (await Promise.all(CACHE_KEYS.map((k) => kv.getItem(k)))).some((v) => v != null);
+    // ANY app key counts as carried over (a signed-in build-22 user may have no site and no pending record yet),
+    // except the few that launch code writes before this check. Only a store with no app keys at all is fresh.
+    if (kv.getAllKeys) {
+      carriedOver = (await kv.getAllKeys()).some((k) => !LAUNCH_KEYS.includes(k));
+    } else {
+      carriedOver = (await Promise.all(PROBE_KEYS.map((k) => kv.getItem(k)))).some((v) => v != null);
+    }
   } catch {
     return 'unknown';
   }

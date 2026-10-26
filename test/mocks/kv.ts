@@ -5,6 +5,7 @@ const Storage = {
   setItem: async (k: string, v: string): Promise<void> => {
     store.set(k, v);
   },
+  getAllKeys: async (): Promise<string[]> => [...store.keys()],
   removeItem: async (k: string): Promise<boolean> => store.delete(k),
 };
 export default Storage;

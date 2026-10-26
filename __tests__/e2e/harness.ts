@@ -381,6 +381,9 @@ export class FakeServer {
       expiresAt: a ? null : last?.expirationDate ?? null,
       takenDownAt: null,
       revoked: !!last?.isRevoked,
+      // Whose purchase it is: another account that linked it -> 'other'; otherwise the caller's own.
+      purchaseAccount: this.purchaseOwner && this.purchaseOwner !== this.sb?.session?.user?.id ? 'other' : 'self',
+      ...(this.purchaseOwner && this.purchaseOwner !== this.sb?.session?.user?.id ? { purchaseHint: this.ownerHint } : {}),
     };
   }
 }

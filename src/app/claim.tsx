@@ -41,6 +41,8 @@ export default function Claim() {
     () =>
       createClaimRunner({
         signup: api.signup,
+        // The verified purchase the pending publish holds (looked up when the record was saved before it was known).
+        transactionId: async () => (await loadPendingPublish())?.transactionId ?? (await depsRef.current.latestTransactionId()),
         signIn,
         finish: () => resumePendingPublish(depsRef.current),
         dropSession: async () => {

@@ -14,6 +14,8 @@ jest.mock('@/lib/linkContext', () => ({ loadLinkContext: () => mockCtx() }));
 import { ALERT_SAFETY_MS, resetSetupPromptForTests, setupPrompt, useUpdateSitePrompt, NOT_NOW, UPDATE_SITE } from '@/lib/setupPrompt';
 import * as store from '@/lib/siteStore';
 import { resetEntitlementsForTests, setEntitlementsFromStatus, getEntitlements } from '@/lib/entitlements';
+import { setSharedPlan } from '@/lib/plan';
+import { OWN_PLAN } from '../../test/ownPlan';
 import type { SiteRecord } from '@/lib/siteStore';
 
 const OWN = 'https://booksy.com/en-us/123_fade-lab';
@@ -77,6 +79,7 @@ describe('useUpdateSitePrompt', () => {
     mockPush.mockClear();
     resetSetupPromptForTests();
     resetEntitlementsForTests();
+    setSharedPlan({ ...OWN_PLAN }); // this account owns the purchase
     setEntitlementsFromStatus({ status: 'ACTIVE', entitlements: [{ id: 'hosting' }, { id: 'bookings' }] });
     mockCtx.mockReset().mockImplementation(async () => ctx());
     alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});

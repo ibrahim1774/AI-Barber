@@ -11,7 +11,7 @@ import { accessToken } from '@/lib/accessToken';
 import { PaywallSettle, type PaywallResult } from '@/lib/paywallSettle';
 import { loadLinkContext } from '@/lib/linkContext';
 import { refreshTeamBeforePublish } from '@/lib/team';
-import { PLAN_ENTITLEMENT, getEntitlements, setEntitlementsFromStatus } from '@/lib/entitlements';
+import { PLAN_ENTITLEMENT, getSuperwallEntitlements, setEntitlementsFromStatus } from '@/lib/entitlements';
 import { refreshPlan, refreshPlanQuietly, setSharedPlan } from '@/lib/plan';
 import { findTransactionId, pickLatestTransactionId, type PublishDeps } from '@/lib/publish';
 import { pickDomainTransactionId } from '@/lib/domains/model';
@@ -116,7 +116,7 @@ const isUpgrade = (p: Placement): p is 'bookings_upgrade' | 'store_upgrade' => p
 async function entitlementActive(target: 'bookings' | 'store', patient: boolean): Promise<boolean> {
   const end = Date.now() + UPGRADE_PATIENCE_MS;
   for (;;) {
-    if (getEntitlements()[target]) return true;
+    if (getSuperwallEntitlements()[target]) return true; // Superwall's own answer: the plan check comes after the purchase
     if (!patient || Date.now() >= end) return false;
     await new Promise((r) => setTimeout(r, UPGRADE_POLL_MS));
   }

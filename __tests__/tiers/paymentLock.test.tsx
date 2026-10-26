@@ -56,7 +56,7 @@ const planWith = (over: Partial<Plan> & { grants?: EntitlementId[] } = {}): any 
   const { grants: _g, ...rest } = over;
   return {
     linked: true, tier: null, entitlements: { hosting: grants.includes('hosting'), bookings: grants.includes('bookings'), store: grants.includes('store') },
-    active: grants.includes('hosting'), expiresAt: null, takenDownAt: null, revoked: false, capabilities: { memberProfile: false }, ...rest,
+    active: grants.includes('hosting'), expiresAt: null, takenDownAt: null, revoked: false, purchaseAccount: 'self', purchaseHint: null, capabilities: { memberProfile: false }, ...rest,
   };
 };
 
@@ -97,13 +97,13 @@ describe.each(['hosting', 'bookings', 'store'] as EntitlementId[])('tab lock: %s
   });
 
   it('paid unlocks', async () => {
-    act(() => setEntitlementsFromStatus(ids(...LADDER[need])));
+    act(() => { setSharedPlan(planWith({ grants: LADDER[need] as EntitlementId[] })); setEntitlementsFromStatus(ids(...LADDER[need])); });
     await mount(need);
     expect(latest).toMatchObject({ status: 'ready', entitled: true });
   });
 
   it('lapse / refund / revoke (Superwall goes inactive, server plan false) locks again', async () => {
-    act(() => setEntitlementsFromStatus(ids(...LADDER[need])));
+    act(() => { setSharedPlan(planWith({ grants: LADDER[need] as EntitlementId[] })); setEntitlementsFromStatus(ids(...LADDER[need])); });
     await mount(need);
     expect(latest.entitled).toBe(true);
     mockCall.mockResolvedValue(planWith({ expiresAt: new Date(Date.now() - 40 * 864e5).toISOString() }));
@@ -119,7 +119,7 @@ describe.each(['hosting', 'bookings', 'store'] as EntitlementId[])('tab lock: %s
     await mount(need);
     await flush();
     expect(latest.entitled).toBe(false);
-    act(() => setEntitlementsFromStatus(ids(...LADDER[need])));
+    act(() => { setSharedPlan(planWith({ grants: LADDER[need] as EntitlementId[] })); setEntitlementsFromStatus(ids(...LADDER[need])); });
     await flush();
     expect(latest.entitled).toBe(true);
   });

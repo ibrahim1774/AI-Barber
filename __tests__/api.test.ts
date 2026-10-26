@@ -126,10 +126,10 @@ describe('api', () => {
     expect(mockFetch.mock.calls[0][0]).toBe('https://www.aibarber.org/api/ios/claim-start');
     expect(JSON.parse(mockFetch.mock.calls[0][1].body)).toEqual({ transactionId: 'tx-7' });
     mockFetch.mockResolvedValueOnce(res(400, { error: 'bad-request', field: 'phone' }));
-    const bad = await api.signup({ name: 'A', email: 'a@b.co', phone: '1', password: 'x'.repeat(8) }).catch((e) => e);
+    const bad = await api.signup({ name: 'A', email: 'a@b.co', phone: '1', password: 'x'.repeat(8), transactionId: 'tx-7' }).catch((e) => e);
     expect(bad).toMatchObject({ status: 400, code: 'bad-request', body: { field: 'phone' } });
     mockFetch.mockResolvedValueOnce(res(409, { error: 'email-exists' }));
-    expect(await api.signup({ name: 'A', email: 'a@b.co', phone: '+15550100199', password: 'x'.repeat(8) }).catch((e) => e)).toMatchObject({ status: 409, code: 'email-exists' });
+    expect(await api.signup({ name: 'A', email: 'a@b.co', phone: '+15550100199', password: 'x'.repeat(8), transactionId: 'tx-7' }).catch((e) => e)).toMatchObject({ status: 409, code: 'email-exists' });
   });
 
   it('iosSite returns the 404 no-site code', async () => {

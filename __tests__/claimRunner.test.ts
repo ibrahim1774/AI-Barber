@@ -12,6 +12,7 @@ const rej = (status: number, code: string, body?: unknown) => jest.fn(async () =
 function setup(over: Partial<ClaimDeps> = {}) {
   const deps = {
     signup: jest.fn(async (b: { email: string }) => ({ ok: true as const, email: b.email.trim().toLowerCase() })),
+    transactionId: jest.fn(async () => 'tx-9'),
     signIn: jest.fn(async () => {}),
     finish: jest.fn(async (): Promise<PublishOutcome | null> => LIVE),
     dropSession: jest.fn(async () => {}),
@@ -24,7 +25,7 @@ describe('sign up', () => {
   test('creates the account (trimmed, E.164), signs in with the returned email, then publishes: live', async () => {
     const { deps, runner } = setup();
     expect(await runner.submit('signup', v)).toEqual({ kind: 'live' });
-    expect(deps.signup).toHaveBeenCalledWith({ name: 'Jo Barber', email: 'Jo@Example.com', phone: '+15125550142', password: 'hunter22!' });
+    expect(deps.signup).toHaveBeenCalledWith({ name: 'Jo Barber', email: 'Jo@Example.com', phone: '+15125550142', password: 'hunter22!', transactionId: 'tx-9' });
     expect(deps.signIn).toHaveBeenCalledWith('jo@example.com', 'hunter22!');
     expect(deps.signup.mock.invocationCallOrder[0]).toBeLessThan(deps.signIn.mock.invocationCallOrder[0]);
     expect(deps.signIn.mock.invocationCallOrder[0]).toBeLessThan(deps.finish.mock.invocationCallOrder[0]);
@@ -57,6 +58,24 @@ describe('sign up', () => {
     const { deps, runner } = setup({ signup: rej(status, code, body) as never });
     const r = await runner.submit('signup', v);
     expect(r).toMatchObject(expected);
+    expect(deps.finish).not.toHaveBeenCalled();
+  });
+
+  test('the sign-up sends the verified purchase transactionId; without one nothing is created (waiting)', async () => {
+    const none = setup({ transactionId: jest.fn(async () => null) as never });
+    expect(await none.runner.submit('signup', v)).toMatchObject({ kind: 'waiting', stage: 'account' });
+    expect(none.deps.signup).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    [402, 'subscription-inactive', undefined, { kind: 'inactive' }],
+    [409, 'purchase-in-use', undefined, { kind: 'blocked' }],
+    [409, 'purchase-claimed', undefined, { kind: 'blocked' }],
+    [429, 'signup-limit', undefined, { kind: 'error', message: expect.stringMatching(/Too many accounts/) }],
+  ])('signup %i %s: the purchase refusals are worded and stop before sign-in', async (status, code, body, expected) => {
+    const { deps, runner } = setup({ signup: rej(status, code, body) as never });
+    expect(await runner.submit('signup', v)).toMatchObject(expected);
+    expect(deps.signIn).not.toHaveBeenCalled();
     expect(deps.finish).not.toHaveBeenCalled();
   });
 
@@ -151,6 +170,7 @@ test('double tap: a second submit while one runs shares it, so the account is cr
   });
   const a = runner.submit('signup', v);
   const b = runner.submit('signup', v);
+  await Promise.resolve(); await Promise.resolve(); // the purchase id is read first
   release();
   expect(await a).toEqual({ kind: 'live' });
   expect(await b).toEqual({ kind: 'live' });

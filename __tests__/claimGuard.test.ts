@@ -24,7 +24,7 @@ describe('shouldLockToClaim', () => {
     ['claiming, no session', pend({ state: 'claiming' }), false, true],
     ['a plain pending (older build), no session', pend(), false, true],
     ['unclaimed, with a session: the publish resumes by itself', pend({ state: 'unclaimed' }), true, false],
-    ['claiming, with a session', pend({ state: 'claiming' }), true, false],
+    ['claiming, with a session (locked until the publish is confirmed)', pend({ state: 'claiming' }), true, true],
     ['a conflict stays locked even with a session', pend({ state: 'conflict' }), true, true],
   ] as const)('%s', (_n, p, session, locked) => {
     expect(shouldLockToClaim(p as PendingPublish | null, session)).toBe(locked);
