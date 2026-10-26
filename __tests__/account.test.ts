@@ -179,6 +179,7 @@ describe('delete', () => {
     await store.savePendingPublish({ transactionId: 'tx-1', data: site.data, createdAt: Date.now() });
     await markSeen('guide', DRAFT);
     sb.setSession({ access_token: 'access-123', user: USER });
+    jest.spyOn(api, 'takeSiteOffline').mockResolvedValue(undefined); // delete takes the site offline first (M2)
     const trackSpy = jest.spyOn(analytics, 'track');
     const resetSpy = jest.spyOn(analytics, 'resetUser');
 
@@ -204,6 +205,7 @@ describe('delete', () => {
   test('once the server has deleted the account, a local clean-up failure still tracks and resets', async () => {
     await store.saveSite(site);
     sb.setSession({ access_token: 'access-123', user: USER });
+    jest.spyOn(api, 'takeSiteOffline').mockResolvedValue(undefined); // delete takes the site offline first (M2)
     jest.spyOn(api, 'deleteAccount').mockResolvedValue(undefined);
     jest.spyOn(store, 'clearSite').mockRejectedValue(new Error('disk full'));
     const trackSpy = jest.spyOn(analytics, 'track');
@@ -218,6 +220,7 @@ describe('delete', () => {
   test('a failed delete keeps everything and stays signed in', async () => {
     await store.saveSite(site);
     sb.setSession({ access_token: 'access-123', user: USER });
+    jest.spyOn(api, 'takeSiteOffline').mockResolvedValue(undefined); // delete takes the site offline first (M2)
     jest.spyOn(api, 'deleteAccount').mockRejectedValue(new ApiError(500, 'delete-failed', 'Could not delete your account'));
 
     const resetSpy = jest.spyOn(analytics, 'resetUser');

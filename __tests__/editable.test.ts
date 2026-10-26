@@ -272,7 +272,7 @@ describe('images', () => {
     // Neutral alt text now (honest.ts photoAlt): the shop name + "photo", never "Barber Shop Atmosphere".
     expect(html).toContain(`src="${scraped.about.imageUrl}" data-edit-image="about.imageUrl" alt="${photoAlt(scraped)}"`);
     expect(html).not.toContain('data-edit-image="gallery.1"'); // luxe does not render gallery slot 1
-    expect(html).not.toMatch(/\{\{[a-zA-Z0-9]+\}\}/);
+    expect(html.replace(/\{\{siteSlug\}\}/g, '')).not.toMatch(/\{\{[a-zA-Z0-9]+\}\}/); // {{siteSlug}} is the report-link subject, filled at deploy
     expect(html).not.toContain(MARK);
     for (const p of html.match(/data-edit-image="([^"]+)"/g) || []) {
       expect(IMAGE_PATHS(scraped)).toContain(p.slice('data-edit-image="'.length, -1));

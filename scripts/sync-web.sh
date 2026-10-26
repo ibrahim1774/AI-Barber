@@ -16,6 +16,7 @@ FILES=(
   lib/render/prime.ts
   lib/render/euphoria.ts
   lib/render/safeHref.ts
+  lib/render/telHref.ts
   lib/buildSiteFromScrape.ts
   lib/booksyNiche.ts
   lib/brandSwatches.ts

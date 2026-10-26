@@ -40,7 +40,7 @@ describe('vendored web modules', () => {
         staff: [0, 1].map((i) => ({ name: `S${i}`, role: 'Barber', photo: u(`staff${i}`) })) as WebsiteData['staff'],
       };
       const out = withImages(renderSite(forRender(data)), data);
-      expect(out).not.toMatch(/\{\{[a-zA-Z0-9]+\}\}/);
+      expect(out.replace(/\{\{siteSlug\}\}/g, '')).not.toMatch(/\{\{[a-zA-Z0-9]+\}\}/); // {{siteSlug}} is the report-link subject, filled at deploy
       expect(out).toContain(u('hero'));
     }
   });

@@ -43,12 +43,12 @@ describe('A -> B -> A on one phone', () => {
     sb.setSession({ access_token: 't', user: A });
     await signOut();
     expect(await store.loadSite()).toBeNull();
-    expect(sb.upserts.some((u) => (u.row as any).user_id === A.id)).toBe(true);
+    expect(sb.upserts.some((u: any) => (u.row as any).user_id === A.id)).toBe(true);
     const aRow = sb.upserts.at(-1)!.row; sb.rows = [{ ...aRow }];
 
     signInAs(B); await signIn(B.email, 'pw1234');
     expect(await store.loadSite()).toBeNull();
-    expect(sb.upserts.every((u) => (u.row as any).user_id === A.id)).toBe(true); // nothing written for B
+    expect(sb.upserts.every((u: any) => (u.row as any).user_id === A.id)).toBe(true); // nothing written for B
 
     await store.saveSite(siteOf(B_DRAFT, B.id, 'B Fades', { updatedAt: 3000, accountSyncedAt: 3000 }));
     sb.setSession({ access_token: 't', user: B });

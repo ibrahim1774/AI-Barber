@@ -43,6 +43,7 @@ const ALLOWED: [RegExp, string][] = [
   [/^[★☆]+$|^[\d.]+\s*[★☆]/, 'star glyphs'],
   [/^[ -~]{0,2}$/, 'single glyphs and separators'],
   [/^(Copyright )?(©|&copy;)\s*\d{4}[\s.·]*$/, 'the generated copyright stem (year, shop name is editable); the credit after it is editable'],
+  [/^Report this site$/, 'the fixed "Report this site" footer mailto link (server reportLinkHtml): not the barber\'s wording'],
   [/^[“"]?Great cut[”"]?$|^Al Smith$|^Reviews from \w+$/, 'customer review quote, author and source: facts, not the barber\'s wording'],
 ];
 

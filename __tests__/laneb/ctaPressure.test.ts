@@ -99,15 +99,15 @@ describe('scheduler vs link saves as ONE record change', () => {
   });
 });
 
-// KNOWN BUG (LANE-B #1): Prime header builds `tel:+1${digits}`, so a phone stored with its country code is dialled wrong.
-it.failing('prime: "+1 (512) 555-0199" (accepted by the Call sheet, stored as typed) gives tel:+15125550199', async () => {
+// Fixed upstream (LANE-B #1): Prime header builds `tel:+1${digits}`, so a phone stored with its country code is dialled wrong.
+it('prime: "+1 (512) 555-0199" (accepted by the Call sheet, stored as typed) gives tel:+15125550199', async () => {
   const d: any = await shop({ template: 'prime', phone: '+1 (512) 555-0199' } as any); delete d.bookingUrl;
   const tels = hrefs(buildPreviewHtml(d, true, null, { key: 'home' } as any)).filter((h) => h.startsWith('tel:'));
   expect(tels.length).toBeGreaterThan(0);
   for (const h of tels) expect(h.replace(/\D/g, '')).toBe('15125550199');
 });
 
-it.failing('prime: a +44 number keeps its country code, not +1 (LANE-B #1)', async () => {
+it('prime: a +44 number keeps its country code, not +1 (LANE-B #1)', async () => {
   const d: any = await shop({ template: 'prime', phone: '+44 20 7946 0958' } as any); delete d.bookingUrl;
   for (const h of hrefs(buildPreviewHtml(d, true, null, { key: 'home' } as any)).filter((x) => x.startsWith('tel:'))) expect(h.replace(/\D/g, '')).toBe('442079460958');
 });
