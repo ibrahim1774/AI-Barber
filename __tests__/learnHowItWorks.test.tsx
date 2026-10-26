@@ -86,6 +86,59 @@ describe('Learn how it works: a topic screen', () => {
     expect(mockPlayer.replay).toHaveBeenCalled();
   });
 
+  describe('video tap controls', () => {
+    const setup = async () => {
+      mockParams = { topic: 'calendar' };
+      const m = require('../test/mocks/video');
+      Object.keys(m.mockHandlers).forEach((k) => delete m.mockHandlers[k]);
+      m.mockPlayer.play.mockClear();
+      m.mockPlayer.pause.mockClear();
+      m.mockPlayer.replay.mockClear();
+      const tree = await render(<LearnTopic />);
+      return { m, tree };
+    };
+    const act = require('react-test-renderer').act;
+    const byLabel = (tree: any, l: string) =>
+      tree.root.findAll((n: any) => n.props?.accessibilityLabel === l && typeof n.props.onPress === 'function');
+    const tap = async (tree: any, l: string) => {
+      const n = byLabel(tree, l);
+      if (!n.length) throw new Error(`No control labelled "${l}"`);
+      await act(async () => n[0].props.onPress());
+    };
+
+    it('a tap while playing pauses, then a tap plays again, and a play badge shows when paused', async () => {
+      const { m, tree } = await setup();
+      m.mockPlayer.play.mockClear();
+      await tap(tree, 'Pause video');
+      expect(m.mockPlayer.pause).toHaveBeenCalledTimes(1);
+      expect(allText(tree).join(' ')).toContain('Tap to play');
+      await tap(tree, 'Play video');
+      expect(m.mockPlayer.play).toHaveBeenCalledTimes(1);
+      expect(m.mockPlayer.replay).not.toHaveBeenCalled();
+    });
+
+    it('a tap after the video ended replays from the start', async () => {
+      const { m, tree } = await setup();
+      await act(async () => m.emit('playToEnd'));
+      expect(allText(tree).join(' ')).toContain('Tap to replay');
+      m.mockPlayer.play.mockClear();
+      await tap(tree, 'Replay video');
+      expect(m.mockPlayer.replay).toHaveBeenCalledTimes(1);
+      expect(m.mockPlayer.play).toHaveBeenCalled();
+    });
+
+    it('Play video, Pause video, Replay and Sound are separate controls reachable by label', async () => {
+      const { tree } = await setup();
+      const labels = tree.root
+        .findAll((n: any) => typeof n.props?.onPress === 'function' && n.props.accessibilityLabel)
+        .map((n: any) => n.props.accessibilityLabel);
+      expect(labels).toEqual(expect.arrayContaining(['Pause video', 'Replay', 'Sound off, turn on']));
+      await tap(tree, 'Pause video');
+      expect(byLabel(tree, 'Play video').length).toBeGreaterThan(0);
+      expect(byLabel(tree, 'Replay').length).toBeGreaterThan(0);
+    });
+  });
+
   it('has a visible Back (at least 44 pt) that returns to the list', async () => {
     mockParams = { topic: 'store' };
     const tree = await render(<LearnTopic />);

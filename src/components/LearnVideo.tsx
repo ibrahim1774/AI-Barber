@@ -44,15 +44,38 @@ function Player({ source }: { source: number }) {
   });
   const [playing, setPlaying] = useState(true);
   const [muted, setMuted] = useState(true);
+  const [ended, setEnded] = useState(false);
   useEffect(() => {
-    const sub = player.addListener('playingChange', ({ isPlaying }) => setPlaying(isPlaying));
-    return () => sub.remove();
+    const a = player.addListener('playingChange', ({ isPlaying }) => {
+      setPlaying(isPlaying);
+      if (isPlaying) setEnded(false);
+    });
+    const b = player.addListener('playToEnd', () => {
+      setEnded(true);
+      setPlaying(false);
+    });
+    return () => {
+      a.remove();
+      b.remove();
+    };
   }, [player]);
 
-  const toggle = () => (playing ? player.pause() : player.play());
   const replay = () => {
+    setEnded(false);
+    setPlaying(true);
     player.replay();
     player.play();
+  };
+  // One tap: ended -> restart from 0, playing -> pause, paused -> play.
+  const toggle = () => {
+    if (ended) replay();
+    else if (playing) {
+      setPlaying(false);
+      player.pause();
+    } else {
+      setPlaying(true);
+      player.play();
+    }
   };
   const toggleSound = () => {
     player.muted = !muted;
@@ -65,12 +88,12 @@ function Player({ source }: { source: number }) {
         onPress={toggle}
         style={styles.box}
         accessibilityRole="button"
-        accessibilityLabel={playing ? 'Pause video' : 'Play video'}
+        accessibilityLabel={playing ? 'Pause video' : ended ? 'Replay video' : 'Play video'}
       >
         <VideoView player={player} nativeControls={false} contentFit="contain" style={StyleSheet.absoluteFill} />
         {!playing && (
           <View style={styles.playBadge}>
-            <Text style={styles.playText}>Tap to play</Text>
+            <Text style={styles.playText}>{ended ? '\u21BB Tap to replay' : '\u25B6 Tap to play'}</Text>
           </View>
         )}
       </Pressable>
