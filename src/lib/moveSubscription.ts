@@ -22,6 +22,7 @@ export const MOVE_ERROR = {
   signIn: 'Sign in to this account first, then move the subscription.',
   rateLimited: 'Too many tries. Wait a minute and try again.',
   otherAccount: "This subscription's website belongs to another account. Sign in to that account to use it.",
+  refresh: "Your subscription moved, but we couldn't refresh your plan. Check your connection and tap again.",
   generic: "Couldn't move your subscription right now. Try again in a moment.",
 } as const;
 

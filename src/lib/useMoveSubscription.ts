@@ -1,9 +1,9 @@
 import { useCallback, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import { api } from '@/lib/api';
-import { MOVE_CONFIRM_CANCEL, MOVE_CONFIRM_OK, MOVE_CONFIRM_TITLE, moveConfirmMessage, moveSubscription, type MoveResult } from '@/lib/moveSubscription';
+import { MOVE_ERROR, MOVE_CONFIRM_CANCEL, MOVE_CONFIRM_OK, MOVE_CONFIRM_TITLE, moveConfirmMessage, moveSubscription, type MoveResult } from '@/lib/moveSubscription';
 import { useLatestTransactionId } from '@/lib/paywall';
-import { refreshPlanQuietly } from '@/lib/plan';
+import { refreshPlanAfterTransfer } from '@/lib/plan';
 import { recheckSubscriptionStatus } from '@/lib/subscriptionStatus';
 
 /** The confirm Alert as a promise: true only for "Move here". Cancel (default) and a dismiss both answer false. */
@@ -45,8 +45,19 @@ export function useMoveSubscription(opts: { transactionId?: () => Promise<string
       });
       if (r.kind === 'error') setError(r.message);
       if (r.kind === 'moved') {
-        await refreshPlanQuietly(r.transactionId);
+        // Moved, or already this account's: either way re-read the plan so the lock card goes away. If that fails,
+        // or the server still does not call the purchase ours, say so; never leave a button that did nothing.
+        let owned = false;
+        try {
+          owned = (await refreshPlanAfterTransfer(r.transactionId)).purchaseAccount === 'self';
+        } catch {
+          owned = false;
+        }
         recheckSubscriptionStatus(true);
+        if (!owned) {
+          setError(MOVE_ERROR.refresh);
+          return r;
+        }
         await optsRef.current.onMoved?.();
       }
       return r;
