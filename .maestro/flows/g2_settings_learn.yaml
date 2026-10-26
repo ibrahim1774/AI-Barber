@@ -1,6 +1,6 @@
 appId: com.ibrahim1774.aibarber
 ---
-# (g2) Settings: 'Learn how it works' is the first card, opens the videos page, a video plays; reminders switch; dialogs CANCEL only.
+# (g2) Settings: 'Learn how it works' is the first card, opens a LIST of topics (no video), a row opens that topic's video screen, Back returns; reminders switch; dialogs CANCEL only.
 - runFlow:
     file: _signed_in.yaml
     env: { TIER: website, LAPSE: "" }
@@ -14,10 +14,16 @@ appId: com.ibrahim1774.aibarber
 - takeScreenshot: g2_settings_top
 - assertVisible: "Learn how it works"
 - tapOn: "Learn how it works"
-- extendedWaitUntil: { visible: "Everything you need.*", timeout: 10000 }
-- takeScreenshot: g2_learn
-- scroll
-- takeScreenshot: g2_learn_scrolled
+- extendedWaitUntil: { visible: "Quick tour", timeout: 10000 }
+- assertNotVisible: "Pause video"   # the list shows no video
+- takeScreenshot: g2_learn_list
+- tapOn: "A booking calendar built in"
+- extendedWaitUntil: { visible: "Replay", timeout: 10000 }
+- assertVisible: "Back"
+- assertVisible: "Next: Sell your own products"
+- takeScreenshot: g2_learn_topic
+- tapOn: "Back"
+- extendedWaitUntil: { visible: "Quick tour", timeout: 10000 }
 - tapOn: "Back"
 - scrollUntilVisible:
     element: "Publish reminders"

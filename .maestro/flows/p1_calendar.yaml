@@ -50,7 +50,7 @@ appId: com.ibrahim1774.aibarber
     point: "87%,94%"
 - waitForAnimationToEnd
 - tapOn: "Learn how it works"
-- extendedWaitUntil: { visible: "Everything you need.*", timeout: 10000 }
+- extendedWaitUntil: { visible: "Quick tour", timeout: 10000 }
 - takeScreenshot: 09_learn_page
 - scrollUntilVisible:
     element: ".*booking calendar.*"
