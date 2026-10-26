@@ -1,0 +1,36 @@
+appId: com.ibrahim1774.aibarber
+---
+# (T1) Start screen: each of the three options shows a visible top-left Back that returns to start; cancel-while-building asks "Cancel and go back?".
+- runFlow: _launch.yaml
+- takeScreenshot: t1_start
+- tapOn: "Use my booking link"
+- assertVisible: "Back"
+- takeScreenshot: t1_booking_back
+- tapOn: "Back"
+- assertVisible: "Start from scratch"
+- tapOn: "Find me on Google"
+- assertVisible: "Back"
+- takeScreenshot: t1_google_back
+- tapOn: "Back"
+- assertVisible: "Start from scratch"
+- tapOn: "Start from scratch"
+- assertVisible: "Back"
+- takeScreenshot: t1_scratch_back
+- tapOn: "Back"
+- assertVisible: "Start from scratch"
+- runFlow:
+    file: _fault.yaml
+    env: { FPATH: "/api/import-scrape", FMODE: "hang", FTIMES: "", FCLEAR: "" }
+# generation in flight: booking-link path, Back right after Continue
+- tapOn: "Use my booking link"
+- tapOn: "booksy.com/your-shop"
+- inputText: "booksy.com/jacks-barbershop-austin"
+- tapOn: "CONTINUE.*"
+- tapOn: "Back"
+- assertVisible: "Cancel and go back?"
+- takeScreenshot: t1_cancel_dialog
+- tapOn: "Keep going"
+- tapOn: "Back"
+- tapOn: "Cancel and go back"
+- assertVisible: "Start from scratch"
+- takeScreenshot: t1_after_cancel

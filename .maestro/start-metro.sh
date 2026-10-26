@@ -8,4 +8,4 @@ export EXPO_PUBLIC_API_BASE=http://127.0.0.1:8787
 export EXPO_PUBLIC_SUPABASE_URL=http://127.0.0.1:8787
 export EXPO_PUBLIC_SUPABASE_ANON_KEY=stub-anon-key
 export EXPO_PUBLIC_SUPERWALL_API_KEY=e2e-standin-not-a-real-key   # only flips superwallActive; the real SDK is swapped out
-exec npx expo start --dev-client --port 8090 --clear
+exec npx expo start --dev-client --port ${METRO_PORT:-8090} --clear

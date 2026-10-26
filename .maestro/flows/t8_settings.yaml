@@ -1,0 +1,81 @@
+appId: com.ibrahim1774.aibarber
+---
+# (T8) Settings: Learn how it works is the top card; all 8 videos present and playing (two shots per video); destructive dialogs CANCEL only.
+- runFlow:
+    file: _signed_in.yaml
+    env: { TIER: website, LAPSE: "" }
+- tapOn:
+    text: "Skip tour"
+    optional: true
+- waitForAnimationToEnd
+- tapOn:
+    point: "87%,94%"
+- waitForAnimationToEnd
+- takeScreenshot: t8_settings_top
+- assertVisible: "Learn how it works"
+- tapOn: "Learn how it works"
+- extendedWaitUntil: { visible: "Everything you need.*", timeout: 10000 }
+- scrollUntilVisible:
+    element: "Everything you need.*"
+    direction: UP
+    optional: true
+- tapOn:
+    text: "Replay"
+    index: 0
+- extendedWaitUntil: { visible: "zzz-never", timeout: 1500, optional: true }
+- takeScreenshot: t8_intro_a
+- extendedWaitUntil: { visible: "zzz-never", timeout: 3000, optional: true }
+- extendedWaitUntil: { visible: "zzz-never", timeout: 2000, optional: true }
+- takeScreenshot: t8_intro_b
+# Tap-to-play on a finished video does nothing (recorded as a finding); Replay is what starts playback, so it is used for the motion check.
+- tapOn:
+    text: "Play video"
+    optional: true
+- takeScreenshot: t8_intro_tapplay
+- swipe:
+    start: 97%,80%
+    end: 97%,30%
+- takeScreenshot: t8_cards_1
+- swipe:
+    start: 97%,80%
+    end: 97%,30%
+- takeScreenshot: t8_cards_2
+- swipe:
+    start: 97%,80%
+    end: 97%,30%
+- takeScreenshot: t8_cards_3
+- swipe:
+    start: 97%,80%
+    end: 97%,30%
+- takeScreenshot: t8_cards_4
+- swipe:
+    start: 97%,80%
+    end: 97%,30%
+- takeScreenshot: t8_cards_5
+- swipe:
+    start: 97%,80%
+    end: 97%,30%
+- takeScreenshot: t8_cards_6
+- scrollUntilVisible:
+    element: "Everything you need.*"
+    direction: UP
+    speed: 90
+- tapOn:
+    text: "Replay"
+    index: 0
+- extendedWaitUntil: { visible: "zzz-never", timeout: 1500, optional: true }
+- takeScreenshot: t8_intro_r1
+- extendedWaitUntil: { visible: "zzz-never", timeout: 3000, optional: true }
+- takeScreenshot: t8_intro_r2
+- tapOn: "Back"
+- scrollUntilVisible:
+    element: "Take my website offline"
+- tapOn: "Take my website offline"
+- takeScreenshot: t8_offline_dialog
+- tapOn: "Cancel"
+- scrollUntilVisible:
+    element: "Delete account"
+- tapOn: "Delete account"
+- takeScreenshot: t8_delete_dialog
+- tapOn: "Cancel"
+- assertVisible: "Delete account"
