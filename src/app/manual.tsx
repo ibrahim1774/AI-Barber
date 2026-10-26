@@ -4,12 +4,11 @@ import { router } from 'expo-router';
 import { BRAND_SWATCHES, DEFAULT_SWATCH } from '@/web/lib/brandSwatches';
 import { swatchLabel } from '@/constants/theme';
 import { Screen } from '@/components/Screen';
-import { ServiceChecklist } from '@/components/ServiceChecklist';
 import { FlowError, FlowHelper, FlowInput, FlowTitle, PillButton } from '@/components/FlowParts';
 import { manualSite } from '@/lib/importer';
 import { MANUAL_FIELD_ORDER, manualInputs, validateManual, type ManualForm } from '@/lib/manualForm';
 import { scratchPicks } from '@/lib/scratchDefaults';
-import { servicesFromPicks, type ServicePicks } from '@/lib/serviceChecklist';
+import { servicesFromPicks } from '@/lib/serviceChecklist';
 import { startDraft } from '@/lib/flow';
 import { useRevealAboveKeyboard } from '@/lib/keyboard';
 import { goBackOrHome } from '@/lib/nav';
@@ -17,14 +16,12 @@ import { goBackOrHome } from '@/lib/nav';
 // Start from scratch: the same dark flow shell as the booking-link screen (back chevron top-left). The typed values go
 // only into the site record; none of them is tracked, logged or put in a route.
 export default function Manual() {
-  const [form, setForm] = useState<ManualForm>({ shopName: '', address: '', phone: '', place: '' });
+  const [form, setForm] = useState<ManualForm>({ shopName: '', place: '', phone: '' });
   const [colorTheme, setColorTheme] = useState(DEFAULT_SWATCH);
-  const [picks, setPicks] = useState<ServicePicks>(scratchPicks);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const refs = {
-    shopName: useRef<TextInput>(null), address: useRef<TextInput>(null),
-    phone: useRef<TextInput>(null), place: useRef<TextInput>(null),
+    shopName: useRef<TextInput>(null), place: useRef<TextInput>(null), phone: useRef<TextInput>(null),
   };
   // The keyboard's Go key bypasses the disabled button, so guard here too.
   const busyRef = useRef(false);
@@ -49,7 +46,7 @@ export default function Manual() {
     setBusy(true);
     setError(null);
     try {
-      const result = await manualSite(manualInputs(form, colorTheme, servicesFromPicks(picks)));
+      const result = await manualSite(manualInputs(form, colorTheme, servicesFromPicks(scratchPicks())));
       if (!mounted.current) return;
       await startDraft(result);
       if (!mounted.current) return;
@@ -75,23 +72,25 @@ export default function Manual() {
           placeholder="Jack's Barbershop"
           autoCapitalize="words"
           returnKeyType="next"
-          onSubmitEditing={() => refs.address.current?.focus()}
+          onSubmitEditing={() => refs.place.current?.focus()}
         />
-        <FlowInput
-          ref={refs.address}
-          label="Address or city"
-          value={form.address}
-          onChangeText={set('address')}
-          maxLength={160}
-          placeholder="512 Congress Ave, Austin, TX"
-          autoCapitalize="words"
-          textContentType="fullStreetAddress"
-          returnKeyType="next"
-          onSubmitEditing={() => refs.phone.current?.focus()}
-        />
+        <View>
+          <FlowInput
+            ref={refs.place}
+            label="Local service area"
+            value={form.place}
+            onChangeText={set('place')}
+            placeholder="Austin, TX"
+            autoCapitalize="words"
+            maxLength={60}
+            returnKeyType="next"
+            onSubmitEditing={() => refs.phone.current?.focus()}
+          />
+          <FlowHelper>{"Shown on your pages as 'Barbershop in <area>'."}</FlowHelper>
+        </View>
         <FlowInput
           ref={refs.phone}
-          label="Mobile number"
+          label="Phone number"
           value={form.phone}
           onChangeText={set('phone')}
           maxLength={30}
@@ -100,23 +99,9 @@ export default function Manual() {
           textContentType="telephoneNumber"
           autoCorrect={false}
           // The phone pad has no Return key (FlowInput adds a Done-only bar above it), so onSubmitEditing never fires from it; kept for a hardware keyboard.
-          returnKeyType="next"
-          onSubmitEditing={() => refs.place.current?.focus()}
+          returnKeyType="done"
+          onSubmitEditing={() => Keyboard.dismiss()}
         />
-        <View>
-          <FlowInput
-            ref={refs.place}
-            label="Area you serve"
-            value={form.place}
-            onChangeText={set('place')}
-            placeholder="Downtown Austin"
-            autoCapitalize="words"
-            maxLength={60}
-            returnKeyType="done"
-            onSubmitEditing={() => Keyboard.dismiss()}
-          />
-          <FlowHelper>{"Shown on your pages as 'Barbershop in <area>'. Leave blank to use your city."}</FlowHelper>
-        </View>
 
         <View style={styles.swatches}>
           {BRAND_SWATCHES.map((c) => {
@@ -136,7 +121,6 @@ export default function Manual() {
           })}
         </View>
 
-        <ServiceChecklist tone="dark" startOpen picks={picks} onChange={setPicks} />
         <FlowError message={error} />
       </View>
       <View ref={ctaRef} collapsable={false} style={styles.ctaWrap}>

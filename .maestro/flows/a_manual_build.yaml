@@ -1,18 +1,16 @@
 appId: com.ibrahim1774.aibarber
 ---
-# (a) Build a site by typing details, incl. services checklist and the stock-photo nudge.
+# (a) Build a site by typing details (three fields) and the stock-photo nudge.
 - runFlow: _launch.yaml
 - takeScreenshot: 01_start
 - tapOn: "Start from scratch"
 - takeScreenshot: 02_manual_form
 - tapOn: "Jack's Barbershop"
 - inputText: "Jack's Barbershop"
-- tapOn: "512 Congress.*"
+- tapOn: "Austin, TX"
 - inputText: "Austin, TX"
 - tapOn: "\\(512\\) 555-0142"
 - inputText: "5125550142"
-- takeScreenshot: 03_services_open
-- takeScreenshot: 04_services_ticked
 - tapOn:
     point: "50%,22%"
 - scrollUntilVisible:

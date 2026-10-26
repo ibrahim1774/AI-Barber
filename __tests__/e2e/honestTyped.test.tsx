@@ -1,5 +1,5 @@
 /**
- * Honest sites, typed path: the services checklist (tick + optional price) before generation.
+ * Honest sites, typed path: the services checklist helpers (tick + optional price) before generation.
  * Nothing ticked → no services at all; ticked → exactly those, in SERVICE_CHOICES order.
  */
 import React from 'react';
@@ -16,7 +16,7 @@ import { manualSite } from '@/lib/importer';
 import { SERVICE_CHOICES, servicesFromPicks, setPickPrice, tickedCount, togglePick } from '@/lib/serviceChecklist';
 import * as store from '@/lib/siteStore';
 
-const SCRATCH = { shopName: 'Fade Lab', area: 'Austin, TX', address: 'Austin, TX', phone: '(512) 555-0142', colorTheme: '#f4a100' };
+const SCRATCH = { shopName: 'Fade Lab', area: 'Austin, TX', address: '', phone: '(512) 555-0142', colorTheme: '#f4a100' };
 
 describe('checklist helpers', () => {
   it('the choices are the shared list, word for word', () => {
@@ -77,24 +77,11 @@ describe('the typed path, end to end', () => {
   const byLabel = (tree: any, label: string) =>
     tree.root.findAll((n: any) => n.props?.accessibilityLabel === label && (n.props.onPress || n.props.onChangeText))[0];
 
-  const fillForm = async (tree: any) => {
-    await act(async () => byLabel(tree, 'Barbershop name').props.onChangeText('Fade Lab'));
-    await act(async () => byLabel(tree, 'Address or city').props.onChangeText('Austin, TX'));
-    await act(async () => byLabel(tree, 'Mobile number').props.onChangeText('5125550142'));
-  };
-
-  // The form starts with Haircut, Beard trim and Haircut & beard ticked.
-  const untick = async (tree: any, titles: string[]) => {
-    for (const t of titles) await act(async () => byLabel(tree, t).props.onPress());
-  };
-
-  it('ticks two services with a price, generates, and the draft has exactly those', async () => {
+  it('three fields build a site with the sample services, a gallery and no reviews', async () => {
     const tree = await render(<Manual />);
-    await fillForm(tree);
-    await untick(tree, ['Beard trim', 'Haircut & beard']);
-    await act(async () => byLabel(tree, 'Skin fade').props.onPress());
-    await act(async () => byLabel(tree, 'Haircut price').props.onChangeText('30'));
-    expect(allText(tree).join(' ')).toContain('2 ticked');
+    await act(async () => byLabel(tree, 'Barbershop name').props.onChangeText('Fade Lab'));
+    await act(async () => byLabel(tree, 'Local service area').props.onChangeText('Austin, TX'));
+    await act(async () => byLabel(tree, 'Phone number').props.onChangeText('5125550142'));
     const go = tree.root.findAll((n: any) => n.props?.accessibilityRole === 'button' && typeof n.props.onPress === 'function'
       && allText({ root: n }).join('') === 'Build my website')[0];
     await act(async () => {
@@ -103,19 +90,9 @@ describe('the typed path, end to end', () => {
     });
     expect(mockReplace).toHaveBeenCalledWith('/generating');
     const saved = await store.loadSite();
-    expect(saved?.data.services.map((s) => [s.title, s.price || ''])).toEqual([['Haircut', '$30'], ['Skin fade', '']]);
-  });
-
-  it('with everything unticked: a site with no services', async () => {
-    const tree = await render(<Manual />);
-    await fillForm(tree);
-    await untick(tree, ['Haircut', 'Beard trim', 'Haircut & beard']);
-    const go = tree.root.findAll((n: any) => n.props?.accessibilityRole === 'button' && typeof n.props.onPress === 'function'
-      && allText({ root: n }).join('') === 'Build my website')[0];
-    await act(async () => {
-      await go.props.onPress();
-      await new Promise((r) => setTimeout(r, 400));
-    });
-    expect((await store.loadSite())?.data.services).toEqual([]);
+    expect(saved?.data.services.map((s) => s.title)).toEqual(['Haircut', 'Beard trim', 'Haircut & beard']);
+    expect(saved?.data.gallery.filter(Boolean).length).toBeGreaterThan(0);
+    expect(saved?.data.reviews ?? []).toHaveLength(0);
+    expect(saved?.data.labels?.pgPlace).toBe('Austin, TX');
   });
 });

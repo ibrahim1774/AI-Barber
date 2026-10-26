@@ -1,10 +1,10 @@
 appId: com.ibrahim1774.aibarber
 ---
-# Builds a site via the classic form (name, address, mobile + 3 services). Ends in the editor with the Edit tour's first step up.
+# Builds a site via the classic form (name, local service area, phone; sample services are added automatically). Ends in the editor with the Edit tour's first step up.
 - tapOn: "Start from scratch"
 - tapOn: "Jack's Barbershop"
 - inputText: "Jack's Barbershop"
-- tapOn: "512 Congress.*"
+- tapOn: "Austin, TX"
 - inputText: "Austin, TX"
 - tapOn: "\\(512\\) 555-0142"
 - inputText: "5125550142"

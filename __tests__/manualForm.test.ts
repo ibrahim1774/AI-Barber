@@ -1,20 +1,20 @@
 import { manualInputs, normalizeManualPhone, validateManual } from '@/lib/manualForm';
 
-it('requires name, address and phone; phone accepts 10 digits, 1+10 digits, and punctuated numbers', () => {
-  expect(validateManual({ shopName: '', address: '', phone: '', place: '' })).toEqual({ shopName: expect.any(String), address: expect.any(String), phone: expect.any(String) });
-  expect(validateManual({ shopName: 'A', address: 'Austin, TX', phone: '5125550142', place: '' })).toEqual({});
-  expect(validateManual({ shopName: 'A', address: 'Austin, TX', phone: '+1 (512) 555-0142', place: '' })).toEqual({});
-  expect(validateManual({ shopName: 'A', address: 'Austin, TX', phone: '15125550142', place: '' })).toEqual({});
-  expect(validateManual({ shopName: 'A', address: 'Austin, TX', phone: '+1 512 555 0142', place: '' })).toEqual({});
-  expect(validateManual({ shopName: 'A', address: 'Austin, TX', phone: '512555', place: '' })).toEqual({ phone: 'Enter a 10-digit mobile number.' });
-  expect(validateManual({ shopName: 'A', address: 'Austin, TX', phone: '5125550142', place: 'Suite 200' })).toEqual({ place: "Use the area's name, not an address." });
+it('requires name, local service area and phone; phone accepts 10 digits, 1+10 digits, and punctuated numbers', () => {
+  expect(validateManual({ shopName: '', place: '', phone: '' })).toEqual({ shopName: expect.any(String), place: expect.any(String), phone: expect.any(String) });
+  expect(validateManual({ shopName: 'A', place: 'Austin, TX', phone: '5125550142' })).toEqual({});
+  expect(validateManual({ shopName: 'A', place: 'Austin, TX', phone: '+1 (512) 555-0142' })).toEqual({});
+  expect(validateManual({ shopName: 'A', place: 'Austin, TX', phone: '15125550142' })).toEqual({});
+  expect(validateManual({ shopName: 'A', place: 'Austin, TX', phone: '+1 512 555 0142' })).toEqual({});
+  expect(validateManual({ shopName: 'A', place: 'Austin, TX', phone: '512555' })).toEqual({ phone: 'Enter a 10-digit mobile number.' });
+  expect(validateManual({ shopName: 'A', place: 'Suite 200', phone: '5125550142' })).toEqual({ place: expect.stringContaining('not an address') });
 });
 
-it('maps the form onto site inputs: city/state from the address, formatted phone, verbatim address', () => {
-  const i = manualInputs({ shopName: ' Fade Lab ', address: '512 Congress Ave, Austin, TX 78701', phone: '5125550142', place: ' Downtown ' }, '#f4a100');
-  expect(i).toMatchObject({ shopName: 'Fade Lab', area: 'Austin, TX', address: '512 Congress Ave, Austin, TX 78701', phone: '(512) 555-0142', place: 'Downtown' });
-  expect(manualInputs({ shopName: 'A', address: 'Austin', phone: '1', place: '' }, '#f4a100').area).toBe('Austin');
-  expect(manualInputs({ shopName: 'A', address: 'Austin', phone: '+1 512 555 0142', place: '' }, '#f4a100').phone).toBe('(512) 555-0142');
+it('maps the form onto site inputs: the service area is the area and the place label, no street address', () => {
+  const i = manualInputs({ shopName: ' Fade Lab ', place: ' Austin, TX ', phone: '5125550142' }, '#f4a100');
+  expect(i).toMatchObject({ shopName: 'Fade Lab', area: 'Austin, TX', address: '', phone: '(512) 555-0142', place: 'Austin, TX' });
+  expect(manualInputs({ shopName: 'A', place: 'Downtown Austin', phone: '+1 512 555 0142' }, '#f4a100').phone).toBe('(512) 555-0142');
+  expect(Object.keys(manualInputs({ shopName: 'A', place: 'Austin', phone: '1' }, '#f4a100')).sort()).toEqual(['address', 'area', 'colorTheme', 'phone', 'place', 'shopName']);
 });
 
 it('normalises every US phone shape to one that gives a valid tel: link', () => {
@@ -27,6 +27,6 @@ it('normalises every US phone shape to one that gives a valid tel: link', () => 
 });
 
 it('rejects phones with fewer than 7 digits (for example "-")', () => {
-  expect(validateManual({ shopName: 'A', address: 'Austin', phone: '-', place: '' }).phone).toBeDefined();
-  expect(validateManual({ shopName: 'A', address: 'Austin', phone: 'call me', place: '' }).phone).toBeDefined();
+  expect(validateManual({ shopName: 'A', place: 'Austin', phone: '-' }).phone).toBeDefined();
+  expect(validateManual({ shopName: 'A', place: 'Austin', phone: 'call me' }).phone).toBeDefined();
 });
