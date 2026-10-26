@@ -30,7 +30,7 @@ import { createClient } from '@supabase/supabase-js';
 import { chooseSlug, makeIsTaken, urlServes, vercelProjectExists } from './slug.js';
 import { buildImageUrlMap, toPendingSiteData } from './pendingData.js';
 import { stripLapsedLinks } from './tiers.js';
-import { liveBindingOwner, liveEmailOf, otherAccountBody, type BindingOwner } from './ownership.js';
+import { liveBindingOwner, liveEmailOf, otherAccountBody, type BindingOwner, type OtherAccountBody } from './ownership.js';
 import { MAX_BODY_BYTES, hasDataUrl, isObj, restoreImageUrls, validSiteData, validationProblem } from './siteShape.js';
 
 export { buildImageUrlMap, toPendingSiteData };
@@ -66,13 +66,13 @@ export type IosPublishResult =
       body: { siteId: string; deployedUrl: string; republished: boolean; version: number; editedBy: SiteEditor; editedAt: string };
     }
   | { status: 409; body: { error: 'site-updated'; site: IosSiteBody } }
-  | { status: 409; body: { error: 'purchase-other-account'; hint: string | null } }
+  | { status: 409; body: OtherAccountBody }
   | { status: 409; body: { error: 'account-has-site'; slug: string } }
   | { status: 400 | 401 | 402 | 404 | 502 | 503; body: { error: string; reason?: string } };
 
 export type IosSiteLookupResult =
   | { status: 200; body: IosSiteBody }
-  | { status: 409; body: { error: 'purchase-other-account'; hint: string | null } }
+  | { status: 409; body: OtherAccountBody }
   | { status: 401 | 404 | 503; body: { error: string } };
 
 /**
@@ -229,7 +229,7 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
   try {
     const row = await deps.repo.upsertVerified(tx, { checkedAt });
 
-    // Account ownership (plan 2026-10-26, DECIDED: a subscription is never movable). The body's
+    // Account ownership (plan 2026-10-26: a subscription moves only through /api/ios/transfer). The body's
     // userId is never trusted; only a verified Supabase bearer identifies the caller.
     //  - Purchase linked (user_id set): only that account may publish. No/invalid token: 401. Another
     //    account (the same Apple ID under a second email): 409 purchase-other-account, nothing written.
@@ -257,7 +257,7 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
       if (!caller) return { status: 401, body: { error: 'unauthorized' } };
       if (caller !== row.user_id) {
         console.warn(`[ios/publish] ${otid}: linked to another account; refused`);
-        return { status: 409, body: await otherAccountBody(deps.emailOf, row.user_id) };
+        return { status: 409, body: await otherAccountBody(deps.emailOf, row.user_id, row) };
       }
     } else if (!caller) {
       // Unlinked and no verified account. Pay-then-sign-up: going live needs an account, so this is a
@@ -283,7 +283,7 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
       const owner = row.site_slug && deps.bindingOwner ? await deps.bindingOwner(row) : null;
       if (owner && owner !== caller) {
         console.warn(`[ios/publish] ${otid}: the shop/site bound to this purchase belongs to another account; refused`);
-        return { status: 409, body: await otherAccountBody(deps.emailOf, owner === 'ambiguous' ? null : owner) };
+        return { status: 409, body: await otherAccountBody(deps.emailOf, owner === 'ambiguous' ? null : owner, row) };
       }
       // One site per account: an account that already holds a different live site cannot take a second.
       if (deps.repo.liveSitesOfUser) {
@@ -304,7 +304,7 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
       if (!linked) {
         const again = await deps.repo.get(otid);
         if (again?.user_id && again.user_id !== caller) {
-          return { status: 409, body: await otherAccountBody(deps.emailOf, again.user_id) };
+          return { status: 409, body: await otherAccountBody(deps.emailOf, again.user_id, again) };
         }
       }
     }
@@ -514,10 +514,10 @@ export async function runIosSiteLookup(
       // M2: a legacy accountless site (nothing attached, owner null) is linked by the first signed-in
       // Restore, exactly as publish does (the atomic link below decides a race); an owner who is
       // someone else, or 'ambiguous', is a 409.
-      if (!deps.bindingOwner) return { status: 409, body: await otherAccountBody(deps.emailOf, null) }; // not provable
+      if (!deps.bindingOwner) return { status: 409, body: await otherAccountBody(deps.emailOf, null, row) }; // not provable
       const owner = await deps.bindingOwner(row);
       if (owner && owner !== caller) {
-        return { status: 409, body: await otherAccountBody(deps.emailOf, owner && owner !== 'ambiguous' ? owner : null) };
+        return { status: 409, body: await otherAccountBody(deps.emailOf, owner && owner !== 'ambiguous' ? owner : null, row) };
       }
       if (!(await deps.repo.setUserIfUnlinked(row.original_transaction_id, caller))) {
         row = (await deps.repo.get(row.original_transaction_id)) ?? row; // lost the race: re-decide below
@@ -525,7 +525,7 @@ export async function runIosSiteLookup(
         row = { ...row, user_id: caller };
       }
     }
-    if (row.user_id !== caller) return { status: 409, body: await otherAccountBody(deps.emailOf, row.user_id) };
+    if (row.user_id !== caller) return { status: 409, body: await otherAccountBody(deps.emailOf, row.user_id, row) };
     if (!row.site_slug) return { status: 404, body: { error: 'no-site' } };
     // The owner took this site offline (removed_at): to the app it is as if nothing is published, so
     // a new draft binds fresh and a publish (which clears removed_at) is not blocked as "elsewhere".

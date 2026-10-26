@@ -84,6 +84,10 @@
       "maxDuration": 300,
       "includeFiles": "lib/ios/certs/**"
     },
+    "api/ios/transfer.ts": {
+      "maxDuration": 300,
+      "includeFiles": "lib/ios/certs/**"
+    },
     "api/ios/take-offline.ts": {
       "maxDuration": 300,
       "includeFiles": "lib/ios/certs/**"

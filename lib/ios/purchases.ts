@@ -48,6 +48,19 @@ export interface PurchasesRepo {
    * racing accounts exactly one gets true. False = already linked (to anyone, the caller included).
    */
   setUserIfUnlinked(otid: string, userId: string): Promise<boolean>;
+  /**
+   * Move a purchase between accounts (POST /api/ios/transfer): ONE conditional UPDATE
+   * `SET user_id = to WHERE original_transaction_id = otid AND user_id = from`. True = this call moved it;
+   * false = it is no longer linked to `from` (someone moved it first), nothing changed. Of two racing
+   * callers exactly one gets true. Also used to put the link back when the takedown that follows failed.
+   */
+  transferUser?(otid: string, fromUserId: string, toUserId: string): Promise<boolean>;
+  /**
+   * After a move whose previous site was taken offline: clear the slug, publish and takedown/removal
+   * stamps so the new owner publishes fresh. Conditional on the row still being the new owner's and on
+   * the slug being the one that was taken offline. Never deletes content. True = released.
+   */
+  releaseSiteAfterMove?(otid: string, slug: string, ownerId: string): Promise<boolean>;
   applyNotification(n: {
     otid: string; productId: string; environment: IosEnv; expiresAt: number | null; revokedAt: number | null; type: string;
     /** REFUND_REVERSED: set revoked_at = null (wins over revokedAt). */
@@ -232,6 +245,21 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
       const { data, error } = await db().from(TABLE).update({ user_id: userId })
         .eq('original_transaction_id', otid).is('user_id', null).select('original_transaction_id');
       if (error) fail('setUserIfUnlinked', error);
+      return Array.isArray(data) && data.length > 0;
+    },
+
+    async transferUser(otid, fromUserId, toUserId) {
+      const { data, error } = await db().from(TABLE).update({ user_id: toUserId })
+        .eq('original_transaction_id', otid).eq('user_id', fromUserId).select('original_transaction_id');
+      if (error) fail('transferUser', error);
+      return Array.isArray(data) && data.length > 0;
+    },
+
+    async releaseSiteAfterMove(otid, slug, ownerId) {
+      const { data, error } = await db().from(TABLE)
+        .update({ site_slug: null, published_at: null, taken_down_at: null, removed_at: null })
+        .eq('original_transaction_id', otid).eq('user_id', ownerId).eq('site_slug', slug).select('original_transaction_id');
+      if (error) fail('releaseSiteAfterMove', error);
       return Array.isArray(data) && data.length > 0;
     },
 

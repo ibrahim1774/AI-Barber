@@ -1,10 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 import type { PurchaseRow } from './purchases.js';
 
-// Apple ID vs account ownership (2026-10-26, DECIDED): a subscription is linked ONCE to the
-// account (ios_purchases.user_id) that made the first verified purchase or Restore, and is NEVER
-// movable afterwards: no transfer, no re-link, no release. A second email on the same Apple ID is
-// simply unpaid. These helpers are shared by /api/ios/site, /api/ios/publish and /api/shop/plan.
+// Apple ID vs account ownership (2026-10-26): a subscription is linked to the account
+// (ios_purchases.user_id) that made the first verified purchase or Restore. It follows the Apple ID:
+// another signed-in account may take it, but ONLY through POST /api/ios/transfer with an explicit
+// confirmation (lib/ios/transfer.ts). Everywhere else a purchase linked to another account is a
+// 409 purchase-other-account that carries ownerHint + hasLiveSite so the app can show that
+// confirmation. These helpers are shared by /api/ios/site, /api/ios/publish, /api/ios/transfer
+// and /api/shop/plan.
 
 /** First letter + domain: "alice@gmail.com" -> "a***@gmail.com". Null when it is not an email. */
 export function maskEmail(email: string | null | undefined): string | null {
@@ -15,16 +18,29 @@ export function maskEmail(email: string | null | undefined): string | null {
   return `${e[0].toLowerCase()}***@${e.slice(at + 1).toLowerCase()}`;
 }
 
+/** Is a site currently live on this purchase (bound, published, not taken down, not removed)? */
+export function hasLiveSite(row: Pick<PurchaseRow, 'site_slug' | 'published_at' | 'taken_down_at' | 'removed_at'> | null | undefined): boolean {
+  return !!row && !!row.site_slug && row.published_at != null && row.taken_down_at == null && row.removed_at == null;
+}
+
+/** The public URL of a purchase's site (same host rule as liveBindingOwner). */
+export const siteUrlOf = (slug: string): string => `https://${slug}.vercel.app`;
+
 export interface OtherAccountBody {
   error: 'purchase-other-account';
-  /** Masked email of the account that owns the purchase (a***@gmail.com), or null when unknown. */
+  /** Masked email of the account that owns the purchase (a***@gmail.com), or null when unknown. Kept for older builds; same value as ownerHint. */
   hint: string | null;
+  /** Same value as `hint`: the name the transfer flow uses. */
+  ownerHint: string | null;
+  /** The other account has a live site on this purchase (moving the purchase takes it offline). */
+  hasLiveSite: boolean;
 }
 
 /** The 409 body: never the other account's id, never its full email, never any site data. */
 export async function otherAccountBody(
   emailOf: ((userId: string) => Promise<string | null>) | undefined,
   ownerId: string | null,
+  row?: Parameters<typeof hasLiveSite>[0],
 ): Promise<OtherAccountBody> {
   let hint: string | null = null;
   if (ownerId && emailOf) {
@@ -34,7 +50,7 @@ export async function otherAccountBody(
       hint = null; // the hint is a courtesy: a failing lookup never changes the 409
     }
   }
-  return { error: 'purchase-other-account', hint };
+  return { error: 'purchase-other-account', hint, ownerHint: hint, hasLiveSite: hasLiveSite(row) };
 }
 
 function adminClient() {

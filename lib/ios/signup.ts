@@ -9,7 +9,7 @@
 // - rate limited per IP and per email (handler); weak passwords (< 8) and bad phones rejected here.
 // - an existing email answers 409 { error: 'email-exists' }; nothing else about existing accounts leaks.
 // - H3 (pay-then-sign-up review): the body must carry the purchase's transactionId. It is verified
-//   with Apple, must be active and not linked / bound to a site (the claim-start check), and each
+//   with Apple and must be active and not revoked (a purchase linked to another account is fine: it moves via /api/ios/transfer), and each
 //   originalTransactionId can create at most MAX_SIGNUPS_PER_PURCHASE accounts. The limiters fail
 //   CLOSED (503) so nobody gets an unproven confirmed account when the limit store is down.
 // - responses never carry a token, id, password, key or any user_metadata.
@@ -103,8 +103,10 @@ export async function runSignup(input: SignupInput | null, ip: string, deps: Sig
   try {
     const row = await deps.getPurchase(otid);
     if (row?.revoked_at) return { status: 402, body: { error: 'subscription-inactive', reason: 'revoked' } };
-    if (row?.user_id) return { status: 409, body: { error: 'purchase-claimed' } };
-    if (row?.site_slug) return { status: 409, body: { error: 'purchase-has-site' } };
+    // A purchase linked to ANOTHER account no longer blocks a new account (2026-10-26): the subscription
+    // follows the Apple ID and the block moved to publish and POST /api/ios/transfer. Only a legacy
+    // UNLINKED purchase that already has a site bound is still refused (it is someone's site).
+    if (row && !row.user_id && row.site_slug) return { status: 409, body: { error: 'purchase-has-site' } };
   } catch (e: any) {
     console.error(`[ios/signup] ${otid}: purchase read failed:`, e?.message || e);
     return { status: 503, body: { error: 'temporarily-unavailable' } };

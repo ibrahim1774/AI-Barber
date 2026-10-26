@@ -163,12 +163,13 @@ describe('liveSignupDeps (Supabase admin mapping)', () => {
       expect(expired.created.length + revoked.created.length + stored.created.length).toBe(0);
     });
 
-    it('a purchase already linked to an account, or bound to a legacy site, is 409 (same check as claim-start)', async () => {
-      const linked = deps({ getPurchase: async () => row({ user_id: '11111111-1111-4111-8111-111111111111' }) });
-      expect(await runSignup(good, 'ip', linked.d)).toEqual({ status: 409, body: { error: 'purchase-claimed' } });
+    it('a purchase linked to ANOTHER account no longer blocks the new account (it moves via /api/ios/transfer); a legacy unlinked purchase with a site is still 409', async () => {
+      const linked = deps({ getPurchase: async () => row({ user_id: '11111111-1111-4111-8111-111111111111', site_slug: 'fade-lab' }) });
+      expect(await runSignup(good, 'ip', linked.d)).toEqual({ status: 200, body: { ok: true, email: 'sam@example.com' } });
+      expect(linked.created).toHaveLength(1);
       const bound = deps({ getPurchase: async () => row({ site_slug: 'fade-lab' }) });
       expect(await runSignup(good, 'ip', bound.d)).toEqual({ status: 409, body: { error: 'purchase-has-site' } });
-      expect(linked.created.length + bound.created.length).toBe(0);
+      expect(bound.created).toHaveLength(0);
     });
 
     it('an active unlinked purchase (row present or not yet recorded) creates the account', async () => {

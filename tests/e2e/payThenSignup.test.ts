@@ -134,7 +134,7 @@ describe('publish requires an account (strict contract)', () => {
     await w.publish(p.transactionId, siteData(), {}, { authorization: A });
     const before = JSON.stringify(pendingOf('fade-lab'));
     const r = await w.publish(p.transactionId, siteData({ shopName: 'Bobs' }), { baseVersion: 1 }, { authorization: B });
-    expect(r).toEqual({ status: 409, body: { error: 'purchase-other-account', hint: 'a***@gmail.com' } });
+    expect(r).toEqual({ status: 409, body: { error: 'purchase-other-account', hint: 'a***@gmail.com', ownerHint: 'a***@gmail.com', hasLiveSite: true } });
     expect(JSON.stringify(pendingOf('fade-lab'))).toBe(before);
     expect(w.row(p.otid)!.user_id).toBe(USER_A);
   });

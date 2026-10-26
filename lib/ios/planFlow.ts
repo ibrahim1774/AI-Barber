@@ -31,6 +31,10 @@ export interface PlanView {
    * known, or not linked yet). The purchase is the shop's, or the one named by GET ?otid=.
    */
   purchaseAccount: 'self' | 'other' | null;
+  /** Only when purchaseAccount is 'other': masked email of the owning account (a***@gmail.com) or null, for the move confirmation. */
+  ownerHint?: string | null;
+  /** Only when purchaseAccount is 'other': the owning account has a live site on it (moving takes it offline). */
+  hasLiveSite?: boolean;
 }
 
 export interface PlanDeps {
@@ -127,6 +131,10 @@ export async function getPlan(auth: Auth, deps: PlanDeps): Promise<FlowResult> {
   if (shop) {
     const row = shop.ios_otid ? await deps.purchase(shop.ios_otid) : null;
     view = planView(shop, row, now, a.user.id);
+    if (view.purchaseAccount === 'other' && row) {
+      const other = await otherAccountBody(deps.emailOf, row.user_id, row);
+      view = { ...view, ownerHint: other.ownerHint, hasLiveSite: other.hasLiveSite };
+    }
   } else {
     const own = deps.purchasesOfUser ? await deps.purchasesOfUser(a.user.id) : [];
     const mine = own
@@ -184,19 +192,19 @@ export async function refreshPlan(auth: Auth, body: unknown, deps: PlanDeps): Pr
   const otid = tx.originalTransactionId;
   const row = await deps.upsertVerified(tx, { checkedAt });
 
-  // A subscription is never movable (DECIDED 2026-10-26): linked to another account = 409, whatever
+  // A purchase linked to another account is 409 here (it moves only through /api/ios/transfer), whatever
   // Apple says. `error` stays 'purchase-in-use' for builds that know it; `reason` + `hint` are the new copy.
   if (row.user_id && row.user_id !== user.id) {
-    const other = await otherAccountBody(deps.emailOf, row.user_id);
-    return err(409, 'purchase-in-use', { reason: other.error, hint: other.hint });
+    const other = await otherAccountBody(deps.emailOf, row.user_id, row);
+    return err(409, 'purchase-in-use', { reason: other.error, hint: other.hint, ownerHint: other.ownerHint, hasLiveSite: other.hasLiveSite });
   }
   // An unlinked purchase whose slug/shop already belongs to another account is theirs, not this
   // caller's (the same Apple ID under a second email). Nothing attached yet: first signed-in claim wins.
   if (!row.user_id && row.site_slug && shop.ios_otid !== otid && deps.bindingOwner) {
     const owner = await deps.bindingOwner(row);
     if (owner && owner !== user.id) {
-      const other = await otherAccountBody(deps.emailOf, owner === 'ambiguous' ? null : owner);
-      return err(409, 'purchase-in-use', { reason: other.error, hint: other.hint });
+      const other = await otherAccountBody(deps.emailOf, owner === 'ambiguous' ? null : owner, row);
+      return err(409, 'purchase-in-use', { reason: other.error, hint: other.hint, ownerHint: other.ownerHint, hasLiveSite: other.hasLiveSite });
     }
   }
   // Only a live purchase (Apple: active or billing grace) may take over the shop's link. An
@@ -223,8 +231,8 @@ export async function refreshPlan(auth: Auth, body: unknown, deps: PlanDeps): Pr
         const again = await deps.purchase(otid);
         if (again?.user_id && again.user_id !== user.id) {
           if (before !== otid) await deps.setShopOtid(shop.id, before).catch((e: any) => console.error('[shop/plan] shop link revert failed:', e?.message || e));
-          const other = await otherAccountBody(deps.emailOf, again.user_id);
-          return err(409, 'purchase-in-use', { reason: other.error, hint: other.hint });
+          const other = await otherAccountBody(deps.emailOf, again.user_id, again);
+          return err(409, 'purchase-in-use', { reason: other.error, hint: other.hint, ownerHint: other.ownerHint, hasLiveSite: other.hasLiveSite });
         }
         if (again) linkedRow = again;
       }

@@ -362,7 +362,7 @@ describe('runIosPublish', () => {
   it('a verified bearer of another account never re-points a linked purchase (409, nothing written)', async () => {
     const f = withAuth(fakes({ existing: row({ user_id: USER }) }));
     const r = await runIosPublish(input(), f.deps, { authorization: 'Bearer tok-other' });
-    expect(r).toEqual({ status: 409, body: { error: 'purchase-other-account', hint: null } });
+    expect(r).toEqual({ status: 409, body: { error: 'purchase-other-account', hint: null, ownerHint: null, hasLiveSite: false } });
     expect(f.deps.writePending).not.toHaveBeenCalled();
     expect(f.repo.bindSlug).not.toHaveBeenCalled();
     expect(f.rows.get(OTID)!.user_id).toBe(USER);
