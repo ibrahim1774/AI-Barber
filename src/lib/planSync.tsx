@@ -15,7 +15,8 @@ export function PlanSync() {
   const { session } = useSession();
   const uid = session?.user?.id ?? null;
   const [tries, setTries] = useState(0);
-  const need = !!uid && ents.account === 'unknown';
+  // 'other' is re-checked once too: a plan cached before a subscription move would otherwise lock the tabs for good.
+  const need = !!uid && (ents.account === 'unknown' || ents.account === 'other');
   useEffect(() => {
     if (!need) return;
     let alive = true;

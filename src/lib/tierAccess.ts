@@ -31,7 +31,8 @@ export function useTierAccess(need: EntitlementId): TierAccess {
   const [signedOut, setSignedOut] = useState(false);
   const [tries, setTries] = useState(0);
 
-  const needPlan = (!ents.known && settled) || (ents.known && !ents.hosting);
+  // 'other' refetches on mount: the cached plan may predate a move that made this account the owner.
+  const needPlan = (!ents.known && settled) || (ents.known && !ents.hosting) || ents.account === 'other';
   useEffect(() => {
     if (!needPlan) return;
     let alive = true;

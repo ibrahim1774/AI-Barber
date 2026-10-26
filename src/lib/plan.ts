@@ -93,6 +93,23 @@ export async function refreshPlanQuietly(transactionId: string | null | undefine
   }
 }
 
+/**
+ * After a transfer (moved or already yours): re-read the plan and publish it to the tabs. POST first (it verifies with
+ * Apple); if that fails for any reason (an older server answers 404 no-shop to an account with no shop), GET, which
+ * answers for a no-shop account too. Throws only when both fail.
+ */
+export async function refreshPlanAfterTransfer(transactionId: string | null | undefined): Promise<Plan> {
+  let plan: Plan;
+  try {
+    if (!transactionId) throw new Error('no transaction');
+    plan = await refreshPlan(transactionId);
+  } catch {
+    plan = await getPlan();
+  }
+  setSharedPlan(plan);
+  return plan;
+}
+
 export function planLabel(tier: Tier | null | undefined): string {
   switch (tier) {
     case 'website':
