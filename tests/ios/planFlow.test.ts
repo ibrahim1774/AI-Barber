@@ -99,11 +99,17 @@ describe('planView', () => {
 });
 
 describe('GET /api/shop/plan', () => {
-  it('401 without a valid token, 404 no-shop without a shop', async () => {
+  it('401 without a valid token; a signed-in user without a shop gets 200 unlinked (not 404)', async () => {
     const { deps } = fakes();
     expect(await getPlan(undefined, deps)).toEqual({ status: 401, body: { error: 'unauthorized' } });
     expect(await getPlan('Bearer nope', deps)).toEqual({ status: 401, body: { error: 'unauthorized' } });
-    expect(await getPlan('Bearer noshop-jwt', deps)).toEqual({ status: 404, body: { error: 'no-shop' } });
+    const r = await getPlan('Bearer noshop-jwt', deps);
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({
+      linked: false, tier: null, entitlements: { hosting: false, bookings: false, store: false },
+      active: false, expiresAt: null, takenDownAt: null, revoked: false,
+    });
+    expect(deps.purchase).not.toHaveBeenCalled();
   });
 
   it('an unlinked shop → linked false, tier null (no purchase read)', async () => {

@@ -91,10 +91,17 @@ async function owner(auth: Auth, deps: PlanDeps) {
 
 /** GET /api/shop/plan */
 export async function getPlan(auth: Auth, deps: PlanDeps): Promise<FlowResult> {
-  const o = await owner(auth, deps);
-  if (o.result) return o.result;
-  const row = o.shop.ios_otid ? await deps.purchase(o.shop.ios_otid) : null;
-  const view = planView(o.shop, row, (deps.now ?? Date.now)());
+  const a = await authenticate(auth, deps.getUser);
+  if (a.ok === false) return { status: a.status, body: a.body };
+  const shop = await deps.shopByOwner(a.user.id);
+  // A signed-in account with no shop yet is not an error: nothing is granted, so the app shows its upgrade card.
+  const row = shop?.ios_otid ? await deps.purchase(shop.ios_otid) : null;
+  const view = shop
+    ? planView(shop, row, (deps.now ?? Date.now)())
+    : {
+        linked: false, tier: null, entitlements: { hosting: false, bookings: false, store: false },
+        active: false, expiresAt: null, takenDownAt: null, revoked: false,
+      };
   if (!deps.memberProfileLive) return { status: 200, body: view };
   // A failed probe reads as "not live": the app then keeps website-only fields in site JSON.
   const memberProfile = await deps.memberProfileLive().catch(() => false);
