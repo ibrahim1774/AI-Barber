@@ -1,5 +1,5 @@
 import { LearnEntry } from '@/components/LearnEntry';
-import { useCallback, useEffect, useLayoutEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { ActionSheetIOS, ActivityIndicator, Alert, Linking, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { router, useFocusEffect, useNavigation } from 'expo-router';
 import * as Application from 'expo-application';
@@ -87,7 +87,10 @@ export default function Settings() {
     setRemindersOn(next);
     track('reminders_switch', { on: next });
     const r = await setRemindersEnabled(next);
-    if (r === 'denied') {
+    if (r === 'error') {
+      setRemindersOn(!next);
+      Alert.alert('Publish reminders', 'We couldn’t change this setting. Please try again.');
+    } else if (r === 'denied') {
       setRemindersOn(false);
       Alert.alert('Notifications are off', 'Allow notifications for Prime Barber in the iPhone Settings app to get publish reminders.', [
         { text: 'Not now', style: 'cancel' },
@@ -148,16 +151,50 @@ export default function Settings() {
     }
   };
 
+  // One destructive confirmation at a time. `busy` is only set once a button is pressed, so two fast taps on a
+  // row would stack two alerts (and run the action twice); this ref closes that gap synchronously.
+  const inflight = useRef(false);
+  const confirmOnce = (title: string, message: string, buttons: { text: string; style?: 'cancel' | 'destructive'; onPress?: () => void }[]) => {
+    if (busy || inflight.current) return;
+    inflight.current = true;
+    const release = () => {
+      inflight.current = false;
+    };
+    Alert.alert(
+      title,
+      message,
+      buttons.map((b) => ({
+        ...b,
+        onPress: () => {
+          // A destructive action keeps the guard until it finishes (runGuarded releases it); the rest release now.
+          if (b.style === 'destructive') b.onPress?.();
+          else {
+            release();
+            b.onPress?.();
+          }
+        },
+      })),
+      { cancelable: true, onDismiss: release },
+    );
+  };
+  const runGuarded = async (fn: () => Promise<void>) => {
+    inflight.current = true;
+    try {
+      await fn();
+    } finally {
+      inflight.current = false;
+    }
+  };
+
   const confirmDelete = () => {
-    if (busy) return;
     if (signedIn) {
-      Alert.alert('Delete account?', DELETE_ALERT_MESSAGE, [
+      confirmOnce('Delete account?', DELETE_ALERT_MESSAGE, [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Manage subscription', onPress: manageSubscription },
         { text: 'Delete account', style: 'destructive', onPress: () => void runDelete() },
       ]);
     } else {
-      Alert.alert(
+      confirmOnce(
         'Delete data on this phone?',
         `You’re not signed in, so there’s no account to delete here — to delete an account, sign in first.\n\n${LOCAL_DELETE_MESSAGE}`,
         [
@@ -173,60 +210,63 @@ export default function Settings() {
   const hasPublishedSite = !!site && (site.slug != null || !!site.deployedUrl);
 
   const confirmOffline = () => {
-    if (busy) return;
-    Alert.alert(OFFLINE_ALERT_TITLE, OFFLINE_ALERT_MESSAGE, [
+    confirmOnce(OFFLINE_ALERT_TITLE, OFFLINE_ALERT_MESSAGE, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Manage subscription', onPress: manageSubscription },
       { text: 'Take offline', style: 'destructive', onPress: () => void runOffline() },
     ]);
   };
 
-  const runOffline = async () => {
-    setBusy('offline');
-    try {
-      // The transaction the site was published with; else the Apple ID's newest plan.
-      const tx = site?.transactionId ?? (await latestTransactionId().catch(() => null));
-      await takeWebsiteOffline(tx);
-      resetTo('/start');
-      Alert.alert('Website offline', `Your website is offline and its photos are deleted. ${SUBSCRIPTION_CONTINUES}`, [
-        { text: 'OK', style: 'cancel' },
-        { text: 'Manage subscription', onPress: manageSubscription },
-      ]);
-    } catch (e) {
-      Alert.alert('Take my website offline', offlineError(e));
-    } finally {
-      setBusy(null);
-    }
-  };
+  const runOffline = () =>
+    runGuarded(async () => {
+      setBusy('offline');
+      try {
+        // The transaction the site was published with; else the Apple ID's newest plan. Either way the server
+        // purchase must be bound to THIS site (takeWebsiteOffline checks), or nothing is removed.
+        const tx = site?.transactionId ?? (await latestTransactionId().catch(() => null));
+        await takeWebsiteOffline(tx, site);
+        resetTo('/start');
+        Alert.alert('Website offline', `Your website is offline and its photos are deleted. ${SUBSCRIPTION_CONTINUES}`, [
+          { text: 'OK', style: 'cancel' },
+          { text: 'Manage subscription', onPress: manageSubscription },
+        ]);
+      } catch (e) {
+        Alert.alert('Take my website offline', offlineError(e));
+      } finally {
+        setBusy(null);
+      }
+    });
 
-  const runDelete = async () => {
-    setBusy('delete');
-    try {
-      await deleteAccountAndData();
-      resetTo('/start');
-      Alert.alert('Account deleted', `Your Prime Barber account and website have been deleted. ${SUBSCRIPTION_CONTINUES}`, [
-        { text: 'OK', style: 'cancel' },
-        { text: 'Manage subscription', onPress: manageSubscription },
-      ]);
-    } catch (e) {
-      Alert.alert('Delete account', deleteError(e));
-    } finally {
-      setBusy(null);
-    }
-  };
+  const runDelete = () =>
+    runGuarded(async () => {
+      setBusy('delete');
+      try {
+        await deleteAccountAndData();
+        resetTo('/start');
+        Alert.alert('Account deleted', `Your Prime Barber account and website have been deleted. ${SUBSCRIPTION_CONTINUES}`, [
+          { text: 'OK', style: 'cancel' },
+          { text: 'Manage subscription', onPress: manageSubscription },
+        ]);
+      } catch (e) {
+        Alert.alert('Delete account', deleteError(e));
+      } finally {
+        setBusy(null);
+      }
+    });
 
-  const runLocalDelete = async () => {
-    setBusy('delete');
-    try {
-      await deleteLocalData();
-      track('local_data_deleted');
-      resetTo('/start');
-    } catch {
-      Alert.alert('Delete data on this phone', 'Something went wrong. Please try again.');
-    } finally {
-      setBusy(null);
-    }
-  };
+  const runLocalDelete = () =>
+    runGuarded(async () => {
+      setBusy('delete');
+      try {
+        await deleteLocalData();
+        track('local_data_deleted');
+        resetTo('/start');
+      } catch {
+        Alert.alert('Delete data on this phone', 'Something went wrong. Please try again.');
+      } finally {
+        setBusy(null);
+      }
+    });
 
   const version = `${Application.nativeApplicationVersion ?? '1.0.0'} (${Application.nativeBuildVersion ?? '1'})`;
 
@@ -381,7 +421,10 @@ function YourWebsite({ site }: { site: SiteRecord }) {
 export function offlineError(e: unknown): string {
   if (e instanceof ApiError) {
     if (e.status === 0) return e.message;
+    if (e.code === 'not-owner') return 'This website belongs to a different account than the one you’re signed in to. Sign in to the right account, then try again.';
     if (e.status === 403) return 'This website belongs to an account. Sign in to that account, then try again.';
+    if (e.code === 'site-mismatch') return 'This Apple ID’s subscription runs a different website than the one on this phone, so nothing was taken offline. Try Restore purchases.';
+    if (e.code === 'remove-failed') return 'Your website may be only partly removed. Please try again.';
     if (e.code === 'no-site') return 'We couldn’t find a published website for this subscription. Try Restore purchases first.';
   }
   return `We couldn’t take your website offline right now. Try again, or email ${SUPPORT_EMAIL}.`;

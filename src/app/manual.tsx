@@ -99,7 +99,7 @@ export default function Manual() {
           keyboardType="phone-pad"
           textContentType="telephoneNumber"
           autoCorrect={false}
-          // The phone pad has no Return key (FlowInput adds a Done bar above it); Next-style hops still work from the bar.
+          // The phone pad has no Return key (FlowInput adds a Done-only bar above it), so onSubmitEditing never fires from it; kept for a hardware keyboard.
           returnKeyType="next"
           onSubmitEditing={() => refs.place.current?.focus()}
         />

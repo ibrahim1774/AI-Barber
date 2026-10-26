@@ -1,3 +1,4 @@
+import { useDoneBar } from '@/components/KeyboardDoneBar';
 import { useEffect, useRef, useState } from 'react';
 import { FormLabel } from '@/components/FormLabel';
 import {
@@ -29,6 +30,7 @@ type Step = 'booking' | 'areaphone' | 'done';
 const PULL_ESTIMATE_SECONDS = 20;
 
 export function HomePrompts({ onSubmitBookingLink, onFinish, onComplete, initialArea = '', initialPhone = '' }: HomePromptsProps) {
+  const doneBar = useDoneBar('phone-pad');
   const [step, setStep] = useState<Step>('booking');
   const [bookingUrl, setBookingUrl] = useState('');
   const [area, setArea] = useState(initialArea);
@@ -181,12 +183,13 @@ export function HomePrompts({ onSubmitBookingLink, onFinish, onComplete, initial
               onChangeText={setPhone}
               placeholder="(555) 123-4567"
               placeholderTextColor="rgba(255,255,255,0.35)"
-              keyboardType="phone-pad"
+              inputAccessoryViewID={doneBar.id} keyboardType="phone-pad"
               textContentType="telephoneNumber"
               accessibilityLabel="Phone number"
               selectionColor={colors.overlayGold}
               style={styles.input}
             />
+{doneBar.bar}
             <Pressable
               accessibilityRole="button"
               disabled={!area.trim() || !phone.trim()}

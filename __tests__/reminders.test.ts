@@ -245,6 +245,24 @@ test('switching on with notifications denied asks the caller to point at iOS Set
   expect(nt.scheduled).toHaveLength(0);
 });
 
+test('L3: denied on a switch-on leaves the switch off, so a relaunch agrees', async () => {
+  await setRemindersEnabled(false);
+  nt.status = 'denied';
+  expect(await setRemindersEnabled(true)).toBe('denied');
+  expect(await remindersEnabled()).toBe(false);
+});
+
+test('L3: a storage failure is an error, not "denied" or a silent "off"', async () => {
+  jest.spyOn(console, 'warn').mockImplementation(() => {});
+  const set = jest.spyOn(Storage, 'setItem').mockRejectedValueOnce(new Error('disk'));
+  expect(await setRemindersEnabled(false)).toBe('error');
+  set.mockRestore();
+  nt.status = 'granted';
+  const rm = jest.spyOn(Storage, 'removeItem').mockRejectedValueOnce(new Error('disk'));
+  expect(await setRemindersEnabled(true)).toBe('error');
+  rm.mockRestore();
+});
+
 test('switching off leaves notifications that are not reminders alone', async () => {
   nt.status = 'granted';
   nt.scheduled.push({ identifier: 'other-1', content: { title: 'x' }, trigger: null });

@@ -5,7 +5,7 @@ import { resetUser, track } from '@/lib/analytics';
 import { api, ApiError } from '@/lib/api';
 import { clearCustomersCache } from '@/lib/bookings/customersCache';
 import { clearOverlayFlags } from '@/lib/overlayFlags';
-import { findTransactionId, publishPayload } from '@/lib/publish';
+import { findTransactionId, publishPayload, runSerial } from '@/lib/publish';
 import { linksOf } from '@/lib/bookingChoice';
 import { cancelAllReminders, cancelRemindersInBackground } from '@/lib/reminders';
 import { emitSiteAdopted, onSiteAdopted } from '@/lib/siteEvents';
@@ -437,6 +437,17 @@ export async function deleteAccountAndData(): Promise<void> {
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
   if (!token) throw new Error('Sign in to delete your account.');
+  // The server only removes sites whose purchase is linked to this account. A site published signed out and
+  // never linked would stay live while the phone forgets it, so take it offline first by its own transaction.
+  const local = await siteStore.loadSite().catch(() => null);
+  if (local?.transactionId) {
+    try {
+      await api.takeSiteOffline(local.transactionId, token, local.slug);
+    } catch (e) {
+      // Nothing bound / someone else's / a different site: not ours to remove. Anything else: stop, nothing is cleared.
+      if (!(e instanceof ApiError && (e.status === 404 || e.status === 403 || e.status === 409))) throw e;
+    }
+  }
   await api.deleteAccount(token);
   try {
     // The user no longer exists on the server: only drop the local session.
@@ -458,16 +469,52 @@ export async function deleteAccountAndData(): Promise<void> {
  * photos. Only after the server says yes is the site cleared from this phone. A failure throws and
  * leaves everything as it was.
  */
-export async function takeWebsiteOffline(transactionId: string | null | undefined): Promise<void> {
+export async function takeWebsiteOffline(
+  transactionId: string | null | undefined,
+  /** The site shown on the phone. Given: the purchase must be bound to this very site, or nothing is removed. */
+  site?: Pick<SiteRecord, 'draftId' | 'slug' | 'deployedUrl'> | null,
+): Promise<void> {
   const tx = (transactionId ?? '').trim();
   if (!tx) throw new ApiError(404, 'no-site', 'We couldn’t find your subscription. Restore purchases first.');
-  let token: string | undefined;
-  try {
-    token = (await supabase.auth.getSession()).data.session?.access_token;
-  } catch {
-    token = undefined;
-  }
-  await api.takeSiteOffline(tx, token);
-  track('site_taken_offline');
-  await deleteLocalData();
+  // In the publish queue: a pending paid publish or launch retry finishes first, so it cannot land after the removal.
+  return runSerial(async () => {
+    let expectedSlug: string | undefined;
+    if (site) {
+      // Same check publish makes: take down exactly the site on screen, never another one on this Apple ID.
+      const bound = await api.iosSite(tx); // throws no-site / network: nothing is removed
+      if (!boundMatches(site, bound)) {
+        throw new ApiError(409, 'site-mismatch', 'This Apple ID’s website is not the one shown on this phone.');
+      }
+      expectedSlug = bound.siteId;
+    }
+    let token: string | undefined;
+    let userId: string | undefined;
+    try {
+      const session = (await supabase.auth.getSession()).data.session;
+      token = session?.access_token;
+      userId = session?.user?.id;
+    } catch {
+      token = undefined;
+    }
+    await api.takeSiteOffline(tx, token, expectedSlug);
+    // The server said yes: the site is offline. A local cleanup failure must not turn that into an error.
+    track('site_taken_offline');
+    if (site && userId) {
+      // The account's copy would otherwise be re-adopted on the next launch, as a "live" site.
+      try {
+        const { error } = await supabase.from('sites').delete().eq('id', site.draftId).eq('user_id', userId);
+        if (error) console.warn('[account] could not remove the account copy of the site:', error);
+      } catch (e) {
+        console.warn('[account] could not remove the account copy of the site:', e);
+      }
+    }
+    try {
+      await deleteLocalData();
+    } catch (e) {
+      console.warn('[account] site is offline but clearing this phone failed:', e);
+      // The essentials, one by one, so the phone returns to a fresh start and a new site can be published.
+      await siteStore.savePendingPublish(null).catch(() => {});
+      await siteStore.clearSite().catch(() => {});
+    }
+  });
 }

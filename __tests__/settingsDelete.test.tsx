@@ -19,13 +19,13 @@ jest.mock('@/components/Page', () => {
 });
 jest.mock('@/components/Icons', () => ({ ChevronRightIcon: () => null, ExternalLinkIcon: () => null }));
 jest.mock('@/components/ShareSheet', () => ({ ShareSheet: () => null }));
-const mockTakeOffline = jest.fn(async (_tx: unknown) => {});
+const mockTakeOffline = jest.fn(async (_tx: unknown, _site?: unknown) => {});
 const mockDeleteLocal = jest.fn(async () => {});
 const mockDeleteAccount = jest.fn(async () => {});
 jest.mock('@/lib/account', () => ({
   deleteAccountAndData: () => mockDeleteAccount(),
   deleteLocalData: () => mockDeleteLocal(),
-  takeWebsiteOffline: (tx: unknown) => mockTakeOffline(tx),
+  takeWebsiteOffline: (tx: unknown, site?: unknown) => mockTakeOffline(tx, site),
   onSiteAdopted: () => () => {},
 }));
 const mockSignOut = jest.fn(async () => {});
@@ -132,7 +132,7 @@ describe('Take my website offline', () => {
     expect(mockTakeOffline).not.toHaveBeenCalled(); // nothing before the confirm
     expect(buttons().map((b) => b.text)).toEqual(['Cancel', 'Manage subscription', 'Take offline']);
     await act(async () => { await buttons()[2].onPress!(); });
-    expect(mockTakeOffline).toHaveBeenCalledWith('tx-site');
+    expect(mockTakeOffline).toHaveBeenCalledWith('tx-site', published); // H1: the site on screen goes along for the check
     expect(mockResetTo).toHaveBeenCalledWith('/start');
     expect(alertSpy.mock.calls[alertSpy.mock.calls.length - 1][0]).toBe('Website offline');
   });
@@ -142,7 +142,7 @@ describe('Take my website offline', () => {
     const tree = await render(<Settings />);
     await pressRow(tree, 'Take my website offline');
     await act(async () => { await buttons()[2].onPress!(); });
-    expect(mockTakeOffline).toHaveBeenCalledWith('tx-latest');
+    expect(mockTakeOffline).toHaveBeenCalledWith('tx-latest', expect.objectContaining({ slug: 'fade' }));
   });
 
   it('a server refusal keeps the user where they are and explains', async () => {
@@ -155,6 +155,45 @@ describe('Take my website offline', () => {
     const last = alertSpy.mock.calls[alertSpy.mock.calls.length - 1];
     expect(last[0]).toBe('Take my website offline');
     expect(last[1]).toMatch(/Sign in to that account/);
+  });
+
+  it('L1: two quick taps open one confirmation, and the action runs once', async () => {
+    mockSite = published;
+    const tree = await render(<Settings />);
+    await pressRow(tree, 'Take my website offline');
+    await pressRow(tree, 'Take my website offline');
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    // Delete is guarded the same way (one alert while another confirmation is open).
+    await pressRow(tree, 'Delete account');
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    await act(async () => { await buttons()[2].onPress!(); });
+    expect(mockTakeOffline).toHaveBeenCalledTimes(1);
+    // Done: the next tap works again.
+    await pressRow(tree, 'Delete account');
+    expect(alertSpy.mock.calls[alertSpy.mock.calls.length - 1][0]).toMatch(/Delete/);
+  });
+
+  it('L1: cancelling releases the guard', async () => {
+    mockSite = published;
+    const tree = await render(<Settings />);
+    await pressRow(tree, 'Take my website offline');
+    act(() => { buttons()[0].onPress?.(); });
+    await pressRow(tree, 'Take my website offline');
+    expect(alertSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    [new ApiError(403, 'not-owner', 'x'), /different account/],
+    [new ApiError(403, 'sign-in-required', 'x'), /Sign in to that account/],
+    [new ApiError(409, 'site-mismatch', 'x'), /different website than the one on this phone/],
+    [new ApiError(500, 'remove-failed', 'x'), /partly removed/],
+  ])('L2: error copy for %#', async (err, re) => {
+    mockSite = published;
+    mockTakeOffline.mockRejectedValueOnce(err);
+    const tree = await render(<Settings />);
+    await pressRow(tree, 'Take my website offline');
+    await act(async () => { await buttons()[2].onPress!(); });
+    expect(alertSpy.mock.calls[alertSpy.mock.calls.length - 1][1]).toMatch(re);
   });
 
   it('Cancel does nothing', async () => {
@@ -185,6 +224,17 @@ describe('Publish reminders switch', () => {
     const tree = await render(<Settings />);
     const sw = tree.root.findAll((n: any) => n.props?.accessibilityLabel === 'Publish reminders' && typeof n.props.onValueChange === 'function')[0];
     expect(sw.props.value).toBe(false);
+    mockRemindersOn = true;
+  });
+
+  it('L3: a reminders setting that could not be saved flips the switch back and says so', async () => {
+    mockRemindersOn = false;
+    mockSetReminders.mockResolvedValueOnce('error');
+    const tree = await render(<Settings />);
+    await toggle(tree, 'Publish reminders', true);
+    const sw = tree.root.findAll((n: any) => n.props?.accessibilityLabel === 'Publish reminders' && typeof n.props.onValueChange === 'function')[0];
+    expect(sw.props.value).toBe(false);
+    expect(alertSpy.mock.calls[0][0]).toBe('Publish reminders');
     mockRemindersOn = true;
   });
 

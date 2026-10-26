@@ -121,6 +121,16 @@ describe('api', () => {
     expect(mockFetch.mock.calls[1][1].headers.Authorization).toBe('Bearer tok');
   });
 
+  it('takeSiteOffline sends expectedSlug when given (the server answers 409 on a mismatch)', async () => {
+    mockFetch.mockResolvedValue(res(200, { removed: true }));
+    await api.takeSiteOffline('tx-9', 'tok', 'fade');
+    expect(JSON.parse(mockFetch.mock.calls[0][1].body)).toEqual({ transactionId: 'tx-9', expectedSlug: 'fade' });
+    mockFetch.mockResolvedValue(res(409, { error: 'site-mismatch' }));
+    const err = await api.takeSiteOffline('tx-9', null, 'other').catch((e) => e);
+    expect(err.status).toBe(409);
+    expect(err.code).toBe('site-mismatch');
+  });
+
   it('takeSiteOffline surfaces 403 sign-in-required', async () => {
     mockFetch.mockResolvedValue(res(403, { error: 'sign-in-required' }));
     const err = await api.takeSiteOffline('tx-9').catch((e) => e);

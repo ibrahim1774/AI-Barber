@@ -1,3 +1,4 @@
+import { useDoneBar } from '@/components/KeyboardDoneBar';
 import { useRef, useState } from 'react';
 import { FormLabel } from '@/components/FormLabel';
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
@@ -32,6 +33,7 @@ type View_ = { kind: 'list' } | { kind: 'add' } | { kind: 'form'; form: Form };
 const PHOTO_FAIL = "Couldn't upload that photo. Check your connection and try again.";
 
 export function ServicesSheet({ visible, data, onChange, onClose, onDismiss, upload }: Props) {
+  const doneBar = useDoneBar('decimal-pad');
   const formScroll = useRef<ScrollView>(null);
   const fPrice = useRef<TextInput>(null);
   const f1 = useRef<TextInput>(null);
@@ -212,7 +214,7 @@ export function ServicesSheet({ visible, data, onChange, onClose, onDismiss, upl
               value={formatPrice(form.draft.price) != null ? form.draft.price.replace(/^\$\s*/, '') : form.draft.price}
               onChangeText={(t) => set({ price: t })}
               autoFocus={form.fresh && form.index != null}
-              keyboardType="decimal-pad"
+              inputAccessoryViewID={doneBar.id} keyboardType="decimal-pad"
               maxLength={textMaxLength('services.0.price')}
               accessibilityLabel="Price"
               selectionColor={colors.accent}
@@ -220,6 +222,7 @@ export function ServicesSheet({ visible, data, onChange, onClose, onDismiss, upl
               placeholderTextColor="rgba(255,255,255,0.3)"
               style={[styles.input, styles.priceInput]}
             />
+{doneBar.bar}
           </View>
           <Text style={styles.label}>Length</Text>
           <View style={styles.chips}>

@@ -307,6 +307,11 @@ function serial<T>(fn: () => Promise<T>): Promise<T> {
   return run;
 }
 
+/** Runs `fn` in the publish queue, so it never overlaps a publish or a launch retry. */
+export function runSerial<T>(fn: () => Promise<T>): Promise<T> {
+  return serial(fn);
+}
+
 /** True while a publish or retry is running, so a new one would wait its turn. */
 export function publishBusy(): boolean {
   return queued > 0;

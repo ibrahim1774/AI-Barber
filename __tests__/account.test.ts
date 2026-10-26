@@ -235,11 +235,14 @@ describe('delete', () => {
     expect(await store.loadSite()).toEqual(site);
   });
 
+  const mockBound = (over: Record<string, unknown> = {}) =>
+    jest.spyOn(api, 'iosSite').mockResolvedValue({ ...BOUND, ...over } as never);
+
   test('take offline calls the server with the transaction id (no bearer when signed out) then clears the phone', async () => {
     await store.saveSite(site);
     const off = jest.spyOn(api, 'takeSiteOffline').mockResolvedValue(undefined);
     await takeWebsiteOffline('tx-1');
-    expect(off).toHaveBeenCalledWith('tx-1', undefined);
+    expect(off).toHaveBeenCalledWith('tx-1', undefined, undefined);
     expect(await store.loadSite()).toBeNull();
   });
 
@@ -248,7 +251,92 @@ describe('delete', () => {
     sb.setSession({ access_token: 'access-123', user: USER });
     const off = jest.spyOn(api, 'takeSiteOffline').mockResolvedValue(undefined);
     await takeWebsiteOffline(' tx-1 ');
-    expect(off).toHaveBeenCalledWith('tx-1', 'access-123');
+    expect(off).toHaveBeenCalledWith('tx-1', 'access-123', undefined);
+  });
+
+  test('H1: with the site on screen the purchase is checked first and the bound slug is sent as expectedSlug', async () => {
+    await store.saveSite(site);
+    const lookup = mockBound();
+    const off = jest.spyOn(api, 'takeSiteOffline').mockResolvedValue(undefined);
+    await takeWebsiteOffline('tx-1', site);
+    expect(lookup).toHaveBeenCalledWith('tx-1');
+    expect(off).toHaveBeenCalledWith('tx-1', undefined, 'fade-factory');
+    expect(lookup.mock.invocationCallOrder[0]).toBeLessThan(off.mock.invocationCallOrder[0]);
+  });
+
+  test('H1: an Apple ID bound to a different site is refused: nothing removed, phone untouched', async () => {
+    await store.saveSite(site);
+    mockBound({ siteId: 'other-shop', deployedUrl: 'https://other-shop.aibarber.org' });
+    const off = jest.spyOn(api, 'takeSiteOffline').mockResolvedValue(undefined);
+    await expect(takeWebsiteOffline('tx-9', site)).rejects.toMatchObject({ status: 409, code: 'site-mismatch' });
+    expect(off).not.toHaveBeenCalled();
+    expect(await store.loadSite()).toEqual(site);
+  });
+
+  test('H1: an adopted site (no slug, no transaction) matches by its live host; a different host is refused', async () => {
+    const adopted = { ...site, slug: null, transactionId: null } as SiteRecord;
+    await store.saveSite(adopted);
+    mockBound({ siteId: 'a', deployedUrl: 'https://elsewhere.aibarber.org' });
+    const off = jest.spyOn(api, 'takeSiteOffline').mockResolvedValue(undefined);
+    await expect(takeWebsiteOffline('tx-9', adopted)).rejects.toMatchObject({ code: 'site-mismatch' });
+    expect(off).not.toHaveBeenCalled();
+    mockBound();
+    await takeWebsiteOffline('tx-9', adopted);
+    expect(off).toHaveBeenCalledTimes(1);
+  });
+
+  test('H1: no-site or a network failure on the pre-check removes nothing', async () => {
+    await store.saveSite(site);
+    jest.spyOn(api, 'iosSite').mockRejectedValue(new ApiError(404, 'no-site', 'x'));
+    const off = jest.spyOn(api, 'takeSiteOffline').mockResolvedValue(undefined);
+    await expect(takeWebsiteOffline('tx-1', site)).rejects.toMatchObject({ code: 'no-site' });
+    expect(off).not.toHaveBeenCalled();
+    expect(await store.loadSite()).toEqual(site);
+  });
+
+  test('H2: signed in, the account copy of the site is deleted so it is not re-adopted; then the phone is cleared', async () => {
+    await store.saveSite(site);
+    sb.setSession({ access_token: 'access-123', user: USER });
+    mockBound();
+    jest.spyOn(api, 'takeSiteOffline').mockResolvedValue(undefined);
+    await takeWebsiteOffline('tx-1', site);
+    expect(sb.deletes).toEqual([{ table: 'sites', filters: [['id', DRAFT], ['user_id', USER.id]] }]);
+    expect(await store.loadSite()).toBeNull();
+    expect(await store.loadPendingPublish()).toBeNull();
+  });
+
+  test('M3: the server said yes, then a cleanup failure (account row, local clear) still resolves', async () => {
+    await store.saveSite(site);
+    sb.setSession({ access_token: 'access-123', user: USER });
+    sb.deleteError = { message: 'rls' };
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    mockBound();
+    jest.spyOn(api, 'takeSiteOffline').mockResolvedValue(undefined);
+    jest.spyOn(store, 'clearSite').mockRejectedValueOnce(new Error('disk full'));
+    await expect(takeWebsiteOffline('tx-1', site)).resolves.toBeUndefined();
+  });
+
+  test('M1: take offline waits for a publish in flight', async () => {
+    await store.saveSite(site);
+    mockBound();
+    const order: string[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const { runSerial } = require('@/lib/publish');
+    const running = runSerial(async () => {
+      await gate;
+      order.push('publish-done');
+    });
+    jest.spyOn(api, 'takeSiteOffline').mockImplementation(async () => {
+      order.push('offline');
+    });
+    const off = takeWebsiteOffline('tx-1', site);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(order).toEqual([]); // still waiting
+    release();
+    await running;
+    await off;
+    expect(order).toEqual(['publish-done', 'offline']);
   });
 
   test('take offline that fails keeps the site on the phone; no transaction never calls the server', async () => {
@@ -259,6 +347,31 @@ describe('delete', () => {
     off.mockClear();
     await expect(takeWebsiteOffline(null)).rejects.toMatchObject({ code: 'no-site' });
     expect(off).not.toHaveBeenCalled();
+  });
+
+  test('M2: deleting the account first takes the phone\'s own site offline by its transaction (with the bearer)', async () => {
+    await store.saveSite(site);
+    sb.setSession({ access_token: 'access-123', user: USER });
+    const off = jest.spyOn(api, 'takeSiteOffline').mockResolvedValue(undefined);
+    const del = jest.spyOn(api, 'deleteAccount').mockResolvedValue(undefined);
+    await deleteAccountAndData();
+    expect(off).toHaveBeenCalledWith('tx-1', 'access-123', 'fade-factory');
+    expect(off.mock.invocationCallOrder[0]).toBeLessThan(del.mock.invocationCallOrder[0]);
+  });
+
+  test('M2: no-site / foreign / mismatch from that take-offline does not block the deletion; other errors do', async () => {
+    await store.saveSite(site);
+    sb.setSession({ access_token: 'access-123', user: USER });
+    const del = jest.spyOn(api, 'deleteAccount').mockResolvedValue(undefined);
+    const off = jest.spyOn(api, 'takeSiteOffline').mockRejectedValueOnce(new ApiError(404, 'no-site', 'x'));
+    await deleteAccountAndData();
+    expect(del).toHaveBeenCalledTimes(1);
+    await store.saveSite(site);
+    sb.setSession({ access_token: 'access-123', user: USER });
+    off.mockRejectedValueOnce(new ApiError(500, 'remove-failed', 'x'));
+    await expect(deleteAccountAndData()).rejects.toMatchObject({ code: 'remove-failed' });
+    expect(del).toHaveBeenCalledTimes(1);
+    expect(await store.loadSite()).toEqual(site);
   });
 
   test('signed-out local delete clears the site, pending publish and flags without calling the server', async () => {

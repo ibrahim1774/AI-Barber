@@ -1,3 +1,4 @@
+import { useDoneBar } from '@/components/KeyboardDoneBar';
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { colors, fonts } from '@/constants/theme';
@@ -61,6 +62,7 @@ export function schedulerWarning(status: BookTargetStatus): { text: string; acti
 
 /** One sheet for every call-to-action button: its text, and the link that button reads. */
 export function ButtonSheet(p: ButtonSheetProps) {
+  const doneBar = useDoneBar('phone-pad');
   const [text, setText] = useState(p.text);
   const [choice, setChoice] = useState<BookingChoice>(p.book?.choice ?? 'aibarber');
   const [link, setLink] = useState(p.book?.own ?? '');
@@ -178,13 +180,14 @@ export function ButtonSheet(p: ButtonSheetProps) {
             <TextInput
               value={phone}
               onChangeText={(v) => { setPhone(v); setError(null); }}
-              keyboardType="phone-pad"
+              inputAccessoryViewID={doneBar.id} keyboardType="phone-pad"
               autoCorrect={false}
               accessibilityLabel="Phone number"
               selectionColor={colors.accent}
               placeholderTextColor="rgba(255,255,255,0.3)"
               style={st.input}
             />
+{doneBar.bar}
             <Text style={st.note}>{CALL_NOTE}</Text>
           </>
         )}

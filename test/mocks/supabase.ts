@@ -10,6 +10,9 @@ export const sb = {
   session: null as Session,
   upserts: [] as { table: string; row: Record<string, unknown>; opts: unknown }[],
   upsertError: null as null | { message: string; code?: string },
+  /** Every delete, with its eq filters. */
+  deletes: [] as { table: string; filters: [string, unknown][] }[],
+  deleteError: null as null | { message: string },
   /** Rows a select can return (any table). */
   rows: [] as Record<string, any>[],
   /** Every select, with its filters (`eq`), order and limit, in call order. */
@@ -33,6 +36,8 @@ export const sb = {
     sb.session = null;
     sb.upserts = [];
     sb.upsertError = null;
+    sb.deletes = [];
+    sb.deleteError = null;
     sb.rows = [];
     sb.selects = [];
     sb.selectError = null;
@@ -82,6 +87,20 @@ export const supabase = {
     updateUser: jest.fn(),
   },
   from: (table: string) => ({
+    delete: () => {
+      const filters: [string, unknown][] = [];
+      const q: any = {
+        eq(col: string, v: unknown) {
+          filters.push([col, v]);
+          return q;
+        },
+        then(res: (v: unknown) => unknown) {
+          if (!sb.deleteError) sb.deletes.push({ table, filters });
+          return Promise.resolve({ data: null, error: sb.deleteError }).then(res);
+        },
+      };
+      return q;
+    },
     upsert: async (row: Record<string, unknown>, opts: unknown) => {
       if (sb.upsertError) return { data: null, error: sb.upsertError };
       sb.upserts.push({ table, row, opts });

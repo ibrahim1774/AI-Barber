@@ -226,41 +226,40 @@ export async function remindersEnabled(): Promise<boolean> {
   return !(await Storage.getItem(OFF_KEY).catch(() => null));
 }
 
-export type SetRemindersResult = 'on' | 'off' | 'denied';
+export type SetRemindersResult = 'on' | 'off' | 'denied' | 'error';
 
 /**
- * The Settings switch. Off: remembered, and every pending reminder is cancelled. On: forgotten, and the
- * reminders are scheduled again; if the system permission was never given it is asked for now (the user
- * just asked for reminders), and 'denied' tells the caller to point at iOS Settings. Never throws.
+ * The Settings switch. Off: remembered, and every pending reminder is cancelled. On: if the system permission was
+ * never given it is asked for now (after the same one-line explanation as at launch), and 'denied' tells the caller
+ * to point at iOS Settings; the switch stays off then, so a relaunch agrees with what the screen showed. 'error':
+ * the setting could not be saved or applied (nothing changed that the caller should show as done). Never throws.
  */
 export async function setRemindersEnabled(on: boolean): Promise<SetRemindersResult> {
   try {
     if (!on) {
-      await Storage.setItem(OFF_KEY, '1');
+      await Storage.setItem(OFF_KEY, '1'); // throws: not off, say so
       await serial(async () => {
         const N = notifications();
         if (N) await cancelPending(N);
       });
       return 'off';
     }
-    await Storage.removeItem(OFF_KEY);
     const N = notifications();
     if (N) {
       let perm = await N.getPermissionsAsync();
       if (!perm.granted && perm.status === 'undetermined') {
+        await explainReminders();
         await Storage.setItem(ASKED_KEY, '1');
         perm = await N.requestPermissionsAsync({ ios: { allowAlert: true, allowSound: true, allowBadge: false } });
       }
-      if (!perm.granted) {
-        await refreshReminders();
-        return 'denied';
-      }
+      if (!perm.granted) return 'denied'; // OFF_KEY is left as it was (off)
     }
+    await Storage.removeItem(OFF_KEY);
     await refreshReminders();
     return 'on';
   } catch (e) {
     console.warn('[reminders] could not change the reminders switch:', e);
-    return on ? 'denied' : 'off';
+    return 'error';
   }
 }
 

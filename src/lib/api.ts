@@ -224,10 +224,10 @@ export const api = {
   /**
    * POST /api/ios/take-offline: removes the site bound to this Apple transaction (no account needed). The bearer
    * is required by the server only when the purchase is linked to an account. Errors: 400 bad-request / verify
-   * codes, 403 sign-in-required | not-owner, 404 no-site, 500 remove-failed, 503 temporarily-unavailable.
+   * codes, 403 sign-in-required | not-owner, 404 no-site, 409 site-mismatch (expectedSlug is not the bound site), 500 remove-failed, 503 temporarily-unavailable.
    */
-  async takeSiteOffline(transactionId: string, accessToken?: string | null): Promise<void> {
-    await post('/api/ios/take-offline', { transactionId }, {
+  async takeSiteOffline(transactionId: string, accessToken?: string | null, expectedSlug?: string | null): Promise<void> {
+    await post('/api/ios/take-offline', expectedSlug ? { transactionId, expectedSlug } : { transactionId }, {
       timeoutMs: SCRAPE_TIMEOUT_MS,
       failMessage: 'Could not take your website offline',
       slowMessage: 'Taking your website offline is temporarily unavailable — try again shortly.',

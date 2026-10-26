@@ -1,3 +1,4 @@
+import { useDoneBar } from '@/components/KeyboardDoneBar';
 import { useEffect, useState, useRef } from 'react';
 import { FormLabel } from '@/components/FormLabel';
 import { ScrollView, StyleSheet, Text, TextInput } from 'react-native';
@@ -18,6 +19,7 @@ interface Props {
 }
 
 export function ContactSheet({ visible, data, onChange, onClose, onDismiss }: Props) {
+  const doneBar = useDoneBar('phone-pad');
   const f1 = useRef<TextInput>(null);
   const f2 = useRef<TextInput>(null);
   const f3 = useRef<TextInput>(null);
@@ -40,7 +42,8 @@ export function ContactSheet({ visible, data, onChange, onClose, onDismiss }: Pr
     <Sheet visible={visible} title="Contact" onClose={onClose} onDismiss={onDismiss} right={<SheetAction title="Save" primary onPress={save} />}>
       <ScrollView keyboardShouldPersistTaps="handled" style={styles.scroll}>
         <FormLabel input={f1} style={styles.label}>Phone</FormLabel>
-        <TextInput ref={f1} value={f.phone} onChangeText={(phone) => setF({ ...f, phone })} keyboardType="phone-pad" autoCorrect={false} accessibilityLabel="Phone" selectionColor={colors.accent} placeholderTextColor="rgba(255,255,255,0.3)" style={styles.input} />
+        <TextInput ref={f1} value={f.phone} onChangeText={(phone) => setF({ ...f, phone })} inputAccessoryViewID={doneBar.id} keyboardType="phone-pad" autoCorrect={false} accessibilityLabel="Phone" selectionColor={colors.accent} placeholderTextColor="rgba(255,255,255,0.3)" style={styles.input} />
+{doneBar.bar}
         <FormLabel input={f2} style={styles.label}>Address</FormLabel>
         <TextInput ref={f2} value={f.address} onChangeText={(address) => setF({ ...f, address })} accessibilityLabel="Address" selectionColor={colors.accent} placeholderTextColor="rgba(255,255,255,0.3)" style={styles.input} />
         <FormLabel input={f3} style={styles.label}>Email</FormLabel>
