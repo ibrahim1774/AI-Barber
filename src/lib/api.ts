@@ -221,7 +221,21 @@ export const api = {
     await post('/api/sync-auth-phone', { userId }, { failMessage: 'Could not save your phone number' });
   },
 
-  /** Deletes the signed-in user and their `sites` rows. Published sites stay up. */
+  /**
+   * POST /api/ios/take-offline: removes the site bound to this Apple transaction (no account needed). The bearer
+   * is required by the server only when the purchase is linked to an account. Errors: 400 bad-request / verify
+   * codes, 403 sign-in-required | not-owner, 404 no-site, 500 remove-failed, 503 temporarily-unavailable.
+   */
+  async takeSiteOffline(transactionId: string, accessToken?: string | null): Promise<void> {
+    await post('/api/ios/take-offline', { transactionId }, {
+      timeoutMs: SCRAPE_TIMEOUT_MS,
+      failMessage: 'Could not take your website offline',
+      slowMessage: 'Taking your website offline is temporarily unavailable — try again shortly.',
+      ...(accessToken ? { headers: { Authorization: `Bearer ${accessToken}` } } : {}),
+    });
+  },
+
+  /** Deletes the signed-in user, takes their published sites offline and deletes their content and photos. */
   async deleteAccount(accessToken: string): Promise<void> {
     await post('/api/ios/delete-account', {}, {
       headers: { Authorization: `Bearer ${accessToken}` },

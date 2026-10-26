@@ -43,7 +43,7 @@ jest.mock('@/lib/store/data', () => ({ loadStoreSettings: async () => ({ storeEn
 let mockDomainTx: string | null = null;
 const mockLatest = async () => mockDomainTx;
 const mockPaywall = jest.fn();
-jest.mock('@/lib/paywall', () => ({ usePaywall: () => mockPaywall, useLatestDomainTransactionId: () => mockLatest }));
+jest.mock('@/lib/paywall', () => ({ usePaywall: () => mockPaywall, useLatestDomainTransactionId: () => mockLatest, useLatestTransactionId: () => async () => null }));
 let mockClaim: any = null;
 let mockStatus: any = null;
 jest.mock('@/lib/domains/api', () => ({

@@ -26,7 +26,7 @@ jest.mock('@/lib/siteStore', () => ({ loadSite: async () => null }));
 jest.mock('@/lib/subscriptionStatus', () => ({ useSubscriptionStatus: () => 'active', isLocked: () => false }));
 jest.mock('@/lib/useLinkActions', () => ({ useLinkActions: () => ({ open: jest.fn(), copy: jest.fn(), copied: false }) }));
 const mockPaywall = jest.fn(async (_p: string) => 'declined');
-jest.mock('@/lib/paywall', () => ({ usePaywall: () => mockPaywall }));
+jest.mock('@/lib/paywall', () => ({ usePaywall: () => mockPaywall, useLatestTransactionId: () => async () => null }));
 
 import Settings from '@/app/(tabs)/settings';
 import { resetEntitlementsForTests, setEntitlementsFromStatus } from '@/lib/entitlements';

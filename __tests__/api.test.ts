@@ -110,6 +110,24 @@ describe('api', () => {
     expect(init.headers.Authorization).toBe('Bearer tok');
   });
 
+  it('takeSiteOffline posts the transaction id, with a bearer only when given', async () => {
+    mockFetch.mockResolvedValue(res(200, { removed: true }));
+    await expect(api.takeSiteOffline('tx-9')).resolves.toBeUndefined();
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe('https://www.aibarber.org/api/ios/take-offline');
+    expect(JSON.parse(init.body)).toEqual({ transactionId: 'tx-9' });
+    expect(init.headers.Authorization).toBeUndefined();
+    await api.takeSiteOffline('tx-9', 'tok');
+    expect(mockFetch.mock.calls[1][1].headers.Authorization).toBe('Bearer tok');
+  });
+
+  it('takeSiteOffline surfaces 403 sign-in-required', async () => {
+    mockFetch.mockResolvedValue(res(403, { error: 'sign-in-required' }));
+    const err = await api.takeSiteOffline('tx-9').catch((e) => e);
+    expect(err.status).toBe(403);
+    expect(err.code).toBe('sign-in-required');
+  });
+
   it('deleteAccount surfaces 401', async () => {
     mockFetch.mockResolvedValue(res(401, { error: 'unauthorized' }));
     const err = await api.deleteAccount('bad').catch((e) => e);

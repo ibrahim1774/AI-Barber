@@ -9,13 +9,13 @@ import { Button } from '@/components/Button';
 import { ChevronRightIcon, ExternalLinkIcon } from '@/components/Icons';
 import { Page } from '@/components/Page';
 import { ShareSheet } from '@/components/ShareSheet';
-import { deleteAccountAndData, deleteLocalData, onSiteAdopted } from '@/lib/account';
+import { deleteAccountAndData, deleteLocalData, onSiteAdopted, takeWebsiteOffline } from '@/lib/account';
 import { track } from '@/lib/analytics';
 import { ApiError } from '@/lib/api';
 import { signOut, useSession } from '@/lib/auth';
 import { tierFromEntitlements, useEntitlements } from '@/lib/entitlements';
 import { goBackOrHome, resetTo } from '@/lib/nav';
-import { usePaywall } from '@/lib/paywall';
+import { useLatestTransactionId, usePaywall } from '@/lib/paywall';
 import { DOMAIN_EXAMPLES_LABEL, DOMAIN_EXAMPLES_LINE, DOMAIN_ROW_EXAMPLE, DOMAIN_ROW_TITLE } from '@/lib/domains/model';
 import { useDomainOffer } from '@/lib/domains/useDomainOffer';
 import { planLabel } from '@/lib/plan';
@@ -24,6 +24,13 @@ import { useRestoreFlow } from '@/lib/restoreFlow';
 import { loadSite, type SiteRecord } from '@/lib/siteStore';
 import { siteOffline, useSubscriptionStatus } from '@/lib/subscriptionStatus';
 import { tabBarStyle } from '@/lib/tabBar';
+import {
+  DELETE_ALERT_MESSAGE,
+  LOCAL_DELETE_MESSAGE,
+  OFFLINE_ALERT_MESSAGE,
+  OFFLINE_ALERT_TITLE,
+  SUBSCRIPTION_CONTINUES,
+} from '@/lib/deleteCopy';
 import { useLinkActions } from '@/lib/useLinkActions';
 import { websiteView } from '@/lib/website';
 
@@ -32,12 +39,9 @@ const PRIVACY_URL = 'https://www.aibarber.org/privacy';
 const TERMS_URL = 'https://www.aibarber.org/terms';
 const SUBSCRIPTIONS_URL = 'itms-apps://apps.apple.com/account/subscriptions';
 
-// As the privacy page says: deleting never takes a published site offline.
-const SITE_STAYS_LIVE = `Your published website stays online until you email ${SUPPORT_EMAIL} and ask us to take it down.`;
-const SUBSCRIPTION_SEPARATE = 'Deleting doesn’t cancel your subscription — do that in Manage subscription.';
 const GREEN = '#22c55e';
 
-type Busy = 'delete' | 'signout' | null;
+type Busy = 'delete' | 'signout' | 'offline' | null;
 
 /**
  * The Settings tab ("Settings" on aibarber.org/support): Your website (the
@@ -79,6 +83,7 @@ export default function Settings() {
 
   const ents = useEntitlements();
   const paywall = usePaywall();
+  const latestTransactionId = useLatestTransactionId();
   const planDetail = ents.known ? planLabel(tierFromEntitlements(ents)) : '…';
 
   // Upgrades open their paywall; downgrades and cancelling happen in Apple's Manage subscription.
@@ -124,23 +129,51 @@ export default function Settings() {
   const confirmDelete = () => {
     if (busy) return;
     if (signedIn) {
-      Alert.alert(
-        'Delete account?',
-        `This permanently deletes your Prime Barber account and the site records saved to it, and removes your website from this phone. ${SITE_STAYS_LIVE}\n\n${SUBSCRIPTION_SEPARATE}`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Delete account', style: 'destructive', onPress: () => void runDelete() },
-        ],
-      );
+      Alert.alert('Delete account?', DELETE_ALERT_MESSAGE, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Manage subscription', onPress: manageSubscription },
+        { text: 'Delete account', style: 'destructive', onPress: () => void runDelete() },
+      ]);
     } else {
       Alert.alert(
         'Delete data on this phone?',
-        `You’re not signed in, so there’s no account to delete here — to delete an account, sign in first.\n\nThis removes your website and settings from this phone. ${SITE_STAYS_LIVE}\n\n${SUBSCRIPTION_SEPARATE}`,
+        `You’re not signed in, so there’s no account to delete here — to delete an account, sign in first.\n\n${LOCAL_DELETE_MESSAGE}`,
         [
           { text: 'Cancel', style: 'cancel' },
+          { text: 'Manage subscription', onPress: manageSubscription },
           { text: 'Delete data on this phone', style: 'destructive', onPress: () => void runLocalDelete() },
         ],
       );
+    }
+  };
+
+  // Published (or lapsed) site: it can be taken offline, with or without an account.
+  const hasPublishedSite = !!site && (site.slug != null || !!site.deployedUrl);
+
+  const confirmOffline = () => {
+    if (busy) return;
+    Alert.alert(OFFLINE_ALERT_TITLE, OFFLINE_ALERT_MESSAGE, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Manage subscription', onPress: manageSubscription },
+      { text: 'Take offline', style: 'destructive', onPress: () => void runOffline() },
+    ]);
+  };
+
+  const runOffline = async () => {
+    setBusy('offline');
+    try {
+      // The transaction the site was published with; else the Apple ID's newest plan.
+      const tx = site?.transactionId ?? (await latestTransactionId().catch(() => null));
+      await takeWebsiteOffline(tx);
+      resetTo('/start');
+      Alert.alert('Website offline', `Your website is offline and its photos are deleted. ${SUBSCRIPTION_CONTINUES}`, [
+        { text: 'OK', style: 'cancel' },
+        { text: 'Manage subscription', onPress: manageSubscription },
+      ]);
+    } catch (e) {
+      Alert.alert('Take my website offline', offlineError(e));
+    } finally {
+      setBusy(null);
     }
   };
 
@@ -149,7 +182,10 @@ export default function Settings() {
     try {
       await deleteAccountAndData();
       resetTo('/start');
-      Alert.alert('Account deleted', `Your Prime Barber account has been deleted. ${SITE_STAYS_LIVE}`);
+      Alert.alert('Account deleted', `Your Prime Barber account and website have been deleted. ${SUBSCRIPTION_CONTINUES}`, [
+        { text: 'OK', style: 'cancel' },
+        { text: 'Manage subscription', onPress: manageSubscription },
+      ]);
     } catch (e) {
       Alert.alert('Delete account', deleteError(e));
     } finally {
@@ -209,6 +245,7 @@ export default function Settings() {
       </Section>
 
       <Section>
+        {hasPublishedSite && <Row label="Take my website offline" onPress={confirmOffline} busy={busy === 'offline'} danger />}
         <Row label="Delete account" onPress={confirmDelete} busy={busy === 'delete'} danger />
       </Section>
 
@@ -309,6 +346,15 @@ function YourWebsite({ site }: { site: SiteRecord }) {
     )}
     </>
   );
+}
+
+export function offlineError(e: unknown): string {
+  if (e instanceof ApiError) {
+    if (e.status === 0) return e.message;
+    if (e.status === 403) return 'This website belongs to an account. Sign in to that account, then try again.';
+    if (e.code === 'no-site') return 'We couldn’t find a published website for this subscription. Try Restore purchases first.';
+  }
+  return `We couldn’t take your website offline right now. Try again, or email ${SUPPORT_EMAIL}.`;
 }
 
 function deleteError(e: unknown): string {

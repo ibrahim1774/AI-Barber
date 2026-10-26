@@ -6,7 +6,7 @@ import * as store from '@/lib/siteStore';
 import { hasSeen, markSeen } from '@/lib/overlayFlags';
 import { publishFlow, type PublishDeps } from '@/lib/publish';
 import {
-  deleteAccountAndData, deleteLocalData, onSiteAdopted, pullSiteFromAccount, pullSiteOnLaunch, resetLaunchPullForTests,
+  deleteAccountAndData, deleteLocalData, takeWebsiteOffline, onSiteAdopted, pullSiteFromAccount, pullSiteOnLaunch, resetLaunchPullForTests,
   restore, syncIfSignedIn, syncSiteToSupabase, type RestoreDeps,
 } from '@/lib/account';
 import { currentUserId, friendlyAuthError, signIn, signOut, signUp } from '@/lib/auth';
@@ -233,6 +233,32 @@ describe('delete', () => {
     await expect(deleteAccountAndData()).rejects.toThrow();
     expect(del).not.toHaveBeenCalled();
     expect(await store.loadSite()).toEqual(site);
+  });
+
+  test('take offline calls the server with the transaction id (no bearer when signed out) then clears the phone', async () => {
+    await store.saveSite(site);
+    const off = jest.spyOn(api, 'takeSiteOffline').mockResolvedValue(undefined);
+    await takeWebsiteOffline('tx-1');
+    expect(off).toHaveBeenCalledWith('tx-1', undefined);
+    expect(await store.loadSite()).toBeNull();
+  });
+
+  test('take offline sends the access token when signed in', async () => {
+    await store.saveSite(site);
+    sb.setSession({ access_token: 'access-123', user: USER });
+    const off = jest.spyOn(api, 'takeSiteOffline').mockResolvedValue(undefined);
+    await takeWebsiteOffline(' tx-1 ');
+    expect(off).toHaveBeenCalledWith('tx-1', 'access-123');
+  });
+
+  test('take offline that fails keeps the site on the phone; no transaction never calls the server', async () => {
+    await store.saveSite(site);
+    const off = jest.spyOn(api, 'takeSiteOffline').mockRejectedValue(new ApiError(500, 'remove-failed', 'x'));
+    await expect(takeWebsiteOffline('tx-1')).rejects.toMatchObject({ code: 'remove-failed' });
+    expect(await store.loadSite()).toEqual(site);
+    off.mockClear();
+    await expect(takeWebsiteOffline(null)).rejects.toMatchObject({ code: 'no-site' });
+    expect(off).not.toHaveBeenCalled();
   });
 
   test('signed-out local delete clears the site, pending publish and flags without calling the server', async () => {

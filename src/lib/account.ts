@@ -2,7 +2,7 @@ import { randomUUID } from 'expo-crypto';
 import type { ShopInputs, WebsiteData } from '@/web/types';
 import { adoptServerCopy, isNewerAdminEdit, isPlainSiteData, versionFields } from '@/lib/adminSync';
 import { resetUser, track } from '@/lib/analytics';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { clearCustomersCache } from '@/lib/bookings/customersCache';
 import { clearOverlayFlags } from '@/lib/overlayFlags';
 import { findTransactionId, publishPayload } from '@/lib/publish';
@@ -412,7 +412,8 @@ export async function restore(deps: RestoreDeps): Promise<Restored | null> {
 
 /**
  * "Delete data on this phone": the site, a pending publish and the editor's
- * per-draft flags. Published sites stay live (see the privacy page).
+ * per-draft flags. Phone only: a published site stays live until it is taken
+ * offline (takeWebsiteOffline).
  */
 export async function deleteLocalData(): Promise<void> {
   clearCustomersCache();
@@ -449,4 +450,24 @@ export async function deleteAccountAndData(): Promise<void> {
     track('account_deleted');
     resetUser();
   }
+}
+
+/**
+ * "Take my website offline" (App Store 5.1.1(v), no account needed): the server verifies the Apple
+ * transaction (the same proof publish uses), takes the bound site offline and deletes its copy and
+ * photos. Only after the server says yes is the site cleared from this phone. A failure throws and
+ * leaves everything as it was.
+ */
+export async function takeWebsiteOffline(transactionId: string | null | undefined): Promise<void> {
+  const tx = (transactionId ?? '').trim();
+  if (!tx) throw new ApiError(404, 'no-site', 'We couldn’t find your subscription. Restore purchases first.');
+  let token: string | undefined;
+  try {
+    token = (await supabase.auth.getSession()).data.session?.access_token;
+  } catch {
+    token = undefined;
+  }
+  await api.takeSiteOffline(tx, token);
+  track('site_taken_offline');
+  await deleteLocalData();
 }

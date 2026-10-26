@@ -32,7 +32,7 @@ jest.mock('@/lib/restoreFlow', () => ({ useRestoreFlow: () => ({ restore: jest.f
 jest.mock('@/lib/siteStore', () => ({ loadSite: async () => null }));
 jest.mock('@/lib/subscriptionStatus', () => ({ useSubscriptionStatus: () => 'active', isLocked: () => false }));
 jest.mock('@/lib/useLinkActions', () => ({ useLinkActions: () => ({ open: jest.fn(), copy: jest.fn(), copied: false }) }));
-jest.mock('@/lib/paywall', () => ({ usePaywall: () => jest.fn() }));
+jest.mock('@/lib/paywall', () => ({ usePaywall: () => jest.fn(), useLatestTransactionId: () => async () => null }));
 
 import Settings from '@/app/(tabs)/settings';
 

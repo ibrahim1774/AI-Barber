@@ -32,7 +32,7 @@ jest.mock('@/lib/siteStore', () => ({
 }));
 jest.mock('@/lib/subscriptionStatus', () => ({ useSubscriptionStatus: () => 'active', siteOffline: () => false }));
 jest.mock('@/lib/useLinkActions', () => ({ useLinkActions: () => ({ open: jest.fn(), copy: jest.fn(), copied: false }) }));
-jest.mock('@/lib/paywall', () => ({ usePaywall: () => jest.fn() }));
+jest.mock('@/lib/paywall', () => ({ usePaywall: () => jest.fn(), useLatestTransactionId: () => async () => null }));
 jest.mock('@/lib/domains/useDomainOffer', () => ({
   useDomainOffer: () => ({ known: true, hasDomain: false, detail: 'Get your own .com — $39/year' }),
 }));
