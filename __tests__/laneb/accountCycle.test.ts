@@ -125,14 +125,14 @@ describe('sign-out and switch clear what must not leak', () => {
     expect(custCache.storeCustomersCache).toBeNull();
   });
 
-  // KNOWN GAP (LANE-B #2): the shared plan (tier, entitlements, team cap) survives sign-out.
-  it.failing('the shared plan of A is gone after sign-out, so B never reads A\'s tier', async () => {
+  // LANE-B #2: the shared plan (tier, entitlements, team cap) is cleared on sign-out and account switch.
+  it('the shared plan of A is gone after sign-out, so B never reads A\'s tier', async () => {
     setSharedPlan({ tier: 'store', entitlements: { hosting: true, bookings: true, store: true } } as any);
     sb.setSession({ access_token: 't', user: A });
     await signOut();
     expect(getSharedPlan()).toBeNull();
   });
-  it.failing('the shared plan of A is gone after switching to B', async () => {
+  it('the shared plan of A is gone after switching to B', async () => {
     jest.spyOn(console, 'warn').mockImplementation(() => {});
     await store.saveSite(siteOf(A_DRAFT, A.id, 'A Cuts'));
     setSharedPlan({ tier: 'store', entitlements: { hosting: true, bookings: true, store: true } } as any);

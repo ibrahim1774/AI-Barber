@@ -4,6 +4,8 @@ import { adoptServerCopy, isNewerAdminEdit, isPlainSiteData, versionFields } fro
 import { resetUser, track } from '@/lib/analytics';
 import { api, ApiError } from '@/lib/api';
 import { clearCustomersCache } from '@/lib/bookings/customersCache';
+import { clearEntitlements } from '@/lib/entitlements';
+import { resetSharedPlan } from '@/lib/plan';
 import { clearOverlayFlags } from '@/lib/overlayFlags';
 import { findTransactionId, publishPayload, runSerial } from '@/lib/publish';
 import { linksOf } from '@/lib/bookingChoice';
@@ -224,6 +226,8 @@ export async function switchAccountSite(userId: string, isCurrent: () => boolean
   await clearOverlayFlags(local.draftId).catch(() => {});
   await siteStore.savePendingPublish(null);
   clearCustomersCache();
+  resetSharedPlan(); // the other account's tier, entitlements and team cap
+  clearEntitlements();
   if (!found) {
     await siteStore.clearSite();
     return 'cleared';

@@ -137,7 +137,7 @@ describe('the full journey, signed in', () => {
     const restored = await w.restore();
     expect(restored).toMatchObject({ active: true, site: { slug: 'fade-lab', transactionId: 'tx-5', serverVersion: server.sites.get('fade-lab')!.version } });
     expect((await w.site())?.data.bookingUrl).toBe(AI_BOOK);
-  });
+  }, 30000); // a long journey: under full parallel load the default 5 s is not enough
 });
 
 describe('the subscription status (editor lock) along the journey', () => {

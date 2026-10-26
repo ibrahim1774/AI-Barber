@@ -49,9 +49,13 @@ describe('products: price formats', () => {
     expect(draftToProduct({ ...ok, name: '  Pomade 💈  ' }).name).toBe('Pomade 💈');
     expect(validateDraft({ ...ok, name: '\n\t ' }).name).toBeTruthy();
   });
-  it('emoji counted by UTF-16: 41 flag emoji (82 units) is rejected consistently', () => {
-    // documents behavior: length is UTF-16 units, so 40 emoji fits the same as 80 chars
-    expect(validateDraft({ ...ok, name: '💈'.repeat(41) }).name).toBeTruthy();
+  it('the name limit counts characters, not UTF-16 units: 80 emoji fit, 81 do not', () => {
+    expect(validateDraft({ ...ok, name: '💈'.repeat(80) }).name).toBeUndefined();
+    expect(validateDraft({ ...ok, name: '💈'.repeat(81) }).name).toBeTruthy();
+  });
+  it('a comma-decimal price gets a hint about the dot', () => {
+    expect(validateDraft({ ...ok, price: '12,50' }).price).toMatch(/dot/);
+    expect(validateDraft({ ...ok, price: 'abc' }).price).not.toMatch(/dot/);
   });
   it('an empty draft shows every required error (empty state of the form)', () => {
     const e = validateDraft(emptyDraft());

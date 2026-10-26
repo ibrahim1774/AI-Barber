@@ -39,9 +39,9 @@ export function validateDraft(d: ProductDraft): DraftErrors {
   const e: DraftErrors = {};
   const name = d.name.trim();
   if (name.length < 1) e.name = 'Give your product a name.';
-  else if (name.length > MAX_NAME) e.name = `Keep the name to ${MAX_NAME} characters.`;
+  else if ([...name].length > MAX_NAME) e.name = `Keep the name to ${MAX_NAME} characters.`;
   const cents = parsePrice(d.price);
-  if (cents == null) e.price = 'Enter a price like 12 or 12.50.';
+  if (cents == null) e.price = /^\$?\s*\d+,\d{1,2}$/.test(d.price.trim()) ? 'Use a dot for cents, like 12.50.' : 'Enter a price like 12 or 12.50.';
   else if (cents < MIN_PRICE_CENTS) e.price = `The lowest price is ${formatPrice(MIN_PRICE_CENTS)} (card payments need at least that).`;
   else if (cents > MAX_PRICE_CENTS) e.price = `The highest price is ${formatPrice(MAX_PRICE_CENTS)}.`;
   if (d.description.trim().length > MAX_DESCRIPTION) e.description = `Keep the description to ${MAX_DESCRIPTION} characters.`;

@@ -64,7 +64,7 @@ describe('Book link rules matrix (sheet validator)', () => {
     expect(normalizeBookingLink('https://\u202ea.com/x').ok).toBe(false);
   });
   it('aibarber page links are refused from every spelling', () => {
-    for (const u of ['https://www.aibarber.org/book/x', 'https://aibarber.org/book/x', 'aibarber.org/book/x', '/book', '/book/x']) {
+    for (const u of ['https://www.aibarber.org/book/x', 'https://aibarber.org/book/x', 'aibarber.org/book/x', 'https://x.aibarber.org/book', 'https://fade-lab.aibarber.org/book/x', '/book', '/book/x']) {
       if (normalizeBookingLink(u).ok) throw new Error('accepted ' + u);
     }
   });

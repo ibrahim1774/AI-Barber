@@ -7,6 +7,8 @@ import {
 } from '@/lib/account';
 import type { SwitchResult } from '@/lib/account';
 import { clearCustomersCache } from '@/lib/bookings/customersCache';
+import { clearEntitlements } from '@/lib/entitlements';
+import { resetSharedPlan } from '@/lib/plan';
 import { isCodeComplete, isValidEmail, sanitizeCode } from '@/lib/recovery';
 import { supabase } from '@/lib/supabase';
 import { LOOKUP_TIMEOUT_MS, withTimeout } from '@/lib/timeout';
@@ -197,6 +199,8 @@ export async function signOut(): Promise<void> {
   if (error) await supabase.auth.signOut({ scope: 'local' });
   userId = null;
   clearCustomersCache();
+  resetSharedPlan(); // the next account must not read this one's tier, entitlements or team cap
+  clearEntitlements();
   if (pushed) await clearSiteAfterSignOut().catch((e) => console.warn('[auth] could not clear the site:', e));
   resetUser();
 }

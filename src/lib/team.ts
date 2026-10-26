@@ -1,7 +1,7 @@
 import type { TeamMember, WebsiteData, WeeklyHours } from '@/web/types';
 import { OwnerApiError, call } from '@/lib/setup/ownerApi';
 import { defaultWeek, minutesLabel, rowsToWeek, weekToRows, WEEKDAYS, type DayHours } from '@/lib/setup/availability';
-import { getSharedPlan, getPlan, setSharedPlan, type Tier } from '@/lib/plan';
+import { getSharedPlan, getPlan, getPlanEpoch, setSharedPlan, type Tier } from '@/lib/plan';
 import { updateSiteData } from '@/lib/setup/siteSync';
 import {
   countUpcoming, getMemberServiceIds, listAvailability, listMembers, listServices, loadMyShop, removeMember, saveAvailability,
@@ -73,8 +73,9 @@ export async function memberProfileLive(): Promise<boolean> {
   const shared = getSharedPlan();
   if (shared) return shared.capabilities.memberProfile;
   try {
+    const epoch = getPlanEpoch();
     const p = await getPlan();
-    setSharedPlan(p);
+    if (epoch === getPlanEpoch()) setSharedPlan(p);
     return p.capabilities.memberProfile;
   } catch {
     return false;

@@ -51,6 +51,13 @@ export function subscribeEntitlements(listener: () => void): () => void {
   };
 }
 
+/** Sign-out / account switch: the old account's tiers are not known for the next one (Superwall feeds them again). */
+export function clearEntitlements(): void {
+  if (!current.known) return;
+  current = UNKNOWN;
+  listeners.forEach((l) => l());
+}
+
 /** Test only. */
 export function resetEntitlementsForTests(): void {
   current = UNKNOWN;
