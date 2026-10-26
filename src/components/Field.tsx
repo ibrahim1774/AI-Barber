@@ -2,6 +2,7 @@ import { forwardRef, useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
 import { straightenQuotes } from '@/lib/sections/text';
 import { colors, fonts } from '@/constants/theme';
+import { useDoneBar } from '@/components/KeyboardDoneBar';
 
 export interface FieldProps extends Omit<TextInputProps, 'style' | 'placeholder'> {
   label: string;
@@ -20,6 +21,8 @@ export const Field = forwardRef<TextInput, FieldProps>(function Field(
   ref,
 ) {
   const [focused, setFocused] = useState(false);
+  // Number pads have no Return key: a Done bar above them dismisses the keyboard.
+  const done = useDoneBar(input.keyboardType);
   const inner = useRef<TextInput | null>(null);
   const setRef = useCallback((node: TextInput | null) => {
     inner.current = node;
@@ -42,6 +45,7 @@ export const Field = forwardRef<TextInput, FieldProps>(function Field(
       <View>
         <TextInput
           ref={setRef}
+          inputAccessoryViewID={done.id}
           {...input}
           value={value}
           onChangeText={onChangeText && !input.secureTextEntry ? (t) => onChangeText(straightenQuotes(t)) : onChangeText}
@@ -53,6 +57,7 @@ export const Field = forwardRef<TextInput, FieldProps>(function Field(
           onBlur={(e) => { setFocused(false); onBlur?.(e); }}
           style={card ? styles.cardInput : tone === 'form' ? styles.formInput : styles.darkInput}
         />
+        {done.bar}
         {card && !value && typeExamples && (
           <View pointerEvents="none" style={styles.typedWrap}>
             <Text numberOfLines={1} style={[styles.cardInput, styles.typed]}>

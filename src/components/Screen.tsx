@@ -35,6 +35,7 @@ export function Screen({
           onScroll={onScroll}
           scrollEventThrottle={16}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           contentContainerStyle={[styles.scroll, { paddingTop: insets.top }]}
         >
           {onBack ? (

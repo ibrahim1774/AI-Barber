@@ -4,6 +4,7 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { colors, fonts } from '@/constants/theme';
 import { ArrowRight } from '@/components/Icons';
 import { Text } from '@/components/Text';
+import { useDoneBar } from '@/components/KeyboardDoneBar';
 import { straightenQuotes } from '@/lib/sections/text';
 
 // The pieces of the screens after Start (booking link, Google, review): the same dark canvas, amber accent and
@@ -76,6 +77,8 @@ export function PillButton({
 export function FlowInput({
   label, trailing, onChangeText, ...input
 }: { label: string; trailing?: ReactNode; ref?: Ref<TextInput> } & Omit<TextInputProps, 'style'>) {
+  // Number pads have no Return key: a Done bar above them dismisses the keyboard.
+  const done = useDoneBar(input.keyboardType);
   return (
     <View style={styles.inputWrap}>
       <RNText maxFontSizeMultiplier={1.4} style={styles.label}>{label}</RNText>
@@ -84,10 +87,12 @@ export function FlowInput({
           accessibilityLabel={input.accessibilityLabel ?? label}
           placeholderTextColor="rgba(237,239,244,0.38)"
           selectionColor={colors.accent}
+          inputAccessoryViewID={done.id}
           {...input}
           onChangeText={onChangeText ? (t) => onChangeText(straightenQuotes(t)) : undefined}
           style={styles.input}
         />
+        {done.bar}
         {trailing}
       </View>
     </View>
