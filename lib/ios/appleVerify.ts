@@ -101,6 +101,10 @@ export interface AppleStatuses {
 
 const ENVS: IosEnv[] = ['Production', 'Sandbox'];
 
+function qaActiveOtids(): Set<string> {
+  return new Set((process.env.IOS_QA_ACTIVE_OTIDS || '').split(',').map((x) => x.trim()).filter(Boolean));
+}
+
 const unavailable = () => new VerifyFailure('apple-unavailable');
 
 export interface VerifierOptions {
@@ -176,6 +180,13 @@ export function makeVerifier(deps: { lookup: AppleLookup; decode: AppleDecode; s
         status: item.status,
         productPurchasedAt: latest.purchaseDate ?? null,
       };
+      // QA only: a Sandbox subscription renews every few minutes and then expires, which makes long manual tests
+      // impossible. Listed Sandbox purchases (env IOS_QA_ACTIVE_OTIDS, comma separated, default empty) stay active
+      // unless Apple revoked them. Production purchases and unlisted ids are never touched.
+      if (env === 'Sandbox' && !out.revoked && qaActiveOtids().has(out.originalTransactionId)) {
+        out.status = 1;
+        out.expiresAt = Math.max(out.expiresAt ?? 0, Date.now() + 24 * 60 * 60 * 1000);
+      }
       if (deps.includeRenewal) {
         let auto: boolean | null = null;
         if (item.signedRenewalInfo && deps.decodeRenewal) {

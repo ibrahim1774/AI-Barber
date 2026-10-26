@@ -285,3 +285,29 @@ describe('isActive', () => {
     expect(isActive({ ...base, expiresAt: 5000, status }, 1000)).toBe(false));
   it('revoked wins over status 1', () => expect(isActive({ ...base, status: 1, revoked: true }, 1000)).toBe(false));
 });
+
+describe('QA active override (IOS_QA_ACTIVE_OTIDS)', () => {
+  const expired = { status: 2 } as LatestOpts;
+  const expiredPayload = () => payload({ expiresDate: Date.now() - 60_000 });
+
+  it('is off by default: an expired Sandbox purchase stays expired', async () => {
+    const tx = await setup({ Production: 404, Sandbox: 200 }, expiredPayload(), expired).verify('t1');
+    expect(isActive(tx)).toBe(false);
+  });
+
+  it('keeps a listed Sandbox purchase active for 24h', async () => {
+    vi.stubEnv('IOS_QA_ACTIVE_OTIDS', 'zz, o1');
+    const tx = await setup({ Production: 404, Sandbox: 200 }, expiredPayload(), expired).verify('t1');
+    expect(isActive(tx)).toBe(true);
+    expect(tx.expiresAt!).toBeGreaterThan(Date.now() + 23 * 3_600_000);
+  });
+
+  it('never touches an unlisted id, a Production purchase, or a revoked one', async () => {
+    vi.stubEnv('IOS_QA_ACTIVE_OTIDS', 'other');
+    expect(isActive(await setup({ Production: 404, Sandbox: 200 }, expiredPayload(), expired).verify('t1'))).toBe(false);
+    vi.stubEnv('IOS_QA_ACTIVE_OTIDS', 'o1');
+    expect(isActive(await setup({ Production: 200 }, expiredPayload(), expired).verify('t1'))).toBe(false);
+    const revoked = await setup({ Production: 404, Sandbox: 200 }, payload({ revocationDate: Date.now() - 1000 }), { status: 5 }).verify('t1');
+    expect(isActive(revoked)).toBe(false);
+  });
+});
