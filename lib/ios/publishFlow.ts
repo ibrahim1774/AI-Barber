@@ -67,6 +67,7 @@ export type IosPublishResult =
     }
   | { status: 409; body: { error: 'site-updated'; site: IosSiteBody } }
   | { status: 409; body: { error: 'purchase-other-account'; hint: string | null } }
+  | { status: 409; body: { error: 'account-has-site'; slug: string } }
   | { status: 400 | 401 | 402 | 404 | 502 | 503; body: { error: string; reason?: string } };
 
 export type IosSiteLookupResult =
@@ -74,7 +75,19 @@ export type IosSiteLookupResult =
   | { status: 409; body: { error: 'purchase-other-account'; hint: string | null } }
   | { status: 401 | 404 | 503; body: { error: string } };
 
+/**
+ * TEMPORARY COMPAT FLAG, REMOVE-AFTER-APP-SHIPS (pay-then-sign-up plan 2026-10-26). While true, a
+ * publish with NO Bearer on an unlinked purchase keeps the old no-account fresh-bind so shipped app
+ * builds keep working. The new app always sends a Bearer. Once the new app is live and old builds are
+ * gone, set to false (or delete the branch): a publish without a Bearer is then 401 `unauthorized`
+ * before anything is written, so the only way to go live is verified payment + account.
+ * Tests drive the strict behaviour through PublishDeps.allowAccountlessPublish = false.
+ */
+export const ALLOW_ACCOUNTLESS_PUBLISH_UNTIL_APP_SHIPS = true;
+
 export interface PublishDeps {
+  /** Overrides ALLOW_ACCOUNTLESS_PUBLISH_UNTIL_APP_SHIPS (tests, a future env switch). */
+  allowAccountlessPublish?: boolean;
   verify(transactionId: string): Promise<VerifiedTx>;
   repo: PurchasesRepo;
   isTaken(slug: string): Promise<boolean>;
@@ -242,28 +255,47 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
         console.warn(`[ios/publish] ${otid}: linked to another account; refused`);
         return { status: 409, body: await otherAccountBody(deps.emailOf, row.user_id) };
       }
-    } else if (!caller && row.site_slug && deps.bindingOwner) {
-      // Unlinked, no account on this request: a slug that already belongs to someone's shop/site is
+    } else if (!caller) {
+      // Unlinked and no verified account. Pay-then-sign-up: going live needs an account, so this is a
+      // 401 before anything is written. (The compat flag keeps the old fresh-bind for shipped builds.)
+      if (authDown) return unavailable;
+      if (!(deps.allowAccountlessPublish ?? ALLOW_ACCOUNTLESS_PUBLISH_UNTIL_APP_SHIPS)) {
+        return { status: 401, body: { error: 'unauthorized' } };
+      }
+      // COMPAT (REMOVE-AFTER-APP-SHIPS): a slug that already belongs to someone's shop/site is
       // republished only by that account (a bare transactionId proves nothing). A true first publish
       // (no slug, or nobody attached) still fresh-binds below.
-      const owner = await deps.bindingOwner(row);
-      if (owner) {
-        console.warn(`[ios/publish] ${otid}: bound slug belongs to an account, request has none; refused`);
-        return authDown ? unavailable : { status: 401, body: { error: 'unauthorized' } };
+      if (row.site_slug && deps.bindingOwner) {
+        const owner = await deps.bindingOwner(row);
+        if (owner) {
+          console.warn(`[ios/publish] ${otid}: bound slug belongs to an account, request has none; refused`);
+          return { status: 401, body: { error: 'unauthorized' } };
+        }
       }
-    } else if (caller) {
+    } else {
+      // Unlinked + signed in: link -> bind -> write -> deploy, all in this request; every refusal below
+      // happens BEFORE the first write (the link itself is the first).
       // A bound slug that already belongs to someone else's shop/site is theirs to claim, not this caller's.
       const owner = row.site_slug && deps.bindingOwner ? await deps.bindingOwner(row) : null;
       if (owner && owner !== caller) {
         console.warn(`[ios/publish] ${otid}: the shop/site bound to this purchase belongs to another account; refused`);
         return { status: 409, body: await otherAccountBody(deps.emailOf, owner === 'ambiguous' ? null : owner) };
       }
+      // One site per account: an account that already holds a different live site cannot take a second.
+      if (deps.repo.liveSitesOfUser) {
+        const mine = (await deps.repo.liveSitesOfUser(caller)).find((r) => r.original_transaction_id !== otid && r.site_slug);
+        if (mine) {
+          console.warn(`[ios/publish] ${otid}: account already owns a different site; refused`);
+          return { status: 409, body: { error: 'account-has-site', slug: mine.site_slug as string } };
+        }
+      }
       let linked = false;
       try {
         linked = await deps.repo.setUserIfUnlinked(otid, caller);
       } catch (e: any) {
-        console.warn(`[ios/publish] ${otid}: account link failed (ignored):`, e?.message || e);
-        linked = true; // best effort: a failing link never blocks a paid first publish
+        // Fail closed: going live without the link would leave a paid site no account owns.
+        console.error(`[ios/publish] ${otid}: account link failed:`, e?.message || e);
+        return unavailable;
       }
       if (!linked) {
         const again = await deps.repo.get(otid);

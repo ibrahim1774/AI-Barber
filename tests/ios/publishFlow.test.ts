@@ -368,16 +368,18 @@ describe('runIosPublish', () => {
     expect(f.rows.get(OTID)!.user_id).toBe(USER);
   });
 
-  it('an invalid token, or a failing auth lookup or link, never blocks publishing', async () => {
+  it('an invalid token still publishes under the compat flag; an auth outage or a failed link fails closed (503, nothing written)', async () => {
     const a = withAuth(fakes());
     expect((await runIosPublish(input(), a.deps, { authorization: 'Bearer nope' })).status).toBe(200);
     expect(a.rows.get(OTID)!.user_id).toBeNull();
     const b = withAuth(fakes());
     (b.deps.userOf as any).mockRejectedValueOnce(new Error('auth down'));
-    expect((await runIosPublish(input(), b.deps, { authorization: 'Bearer tok-user' })).status).toBe(200);
+    expect((await runIosPublish(input(), b.deps, { authorization: 'Bearer tok-user' })).status).toBe(503);
+    expect(b.deps.publish).not.toHaveBeenCalled();
     const c = withAuth(fakes());
     (c.repo.setUserIfUnlinked as any).mockRejectedValueOnce(new Error('fk violation'));
-    expect((await runIosPublish(input(), c.deps, { authorization: 'Bearer tok-user' })).status).toBe(200);
+    expect((await runIosPublish(input(), c.deps, { authorization: 'Bearer tok-user' })).status).toBe(503);
+    expect(c.deps.publish).not.toHaveBeenCalled();
   });
 
   it('repo errors surface as 503 temporarily-unavailable', async () => {

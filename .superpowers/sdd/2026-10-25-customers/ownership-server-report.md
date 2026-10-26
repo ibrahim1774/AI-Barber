@@ -65,3 +65,47 @@ Also: shop setup caller must handle 409 `purchase-other-account`; plan POST call
 
 ## Deploy note
 Old builds: Restore/admin sync/take-offline pre-check on a linked purchase show an error until updated (auth-required 401). Publish and take-offline POST keep working signed-in. Tests: 3788 pass; tsc identical to baseline (4809 pre-existing errors).
+
+
+# Pay-then-sign-up server tasks 1+2 (plan 2026-10-26-pay-then-signup-flow) - contracts for the app builder
+
+Nothing applied: migration 019 is NOT applied; no live calls. Apply 019 BEFORE deploying (claim-start answers 503 while the column is missing). Deploy order per the plan: ship the app first, then the server.
+
+## Owner rulings implemented
+- Q1: deleting an account may free the purchase: `user_id` stays ON DELETE SET NULL, so a NEW account can claim it afterwards (tested). Between two LIVE accounts a purchase is still never movable (setUserIfUnlinked is the only writer).
+- Q2: unclaimed rows past `claim_expires_at` are only LOGGED by the sweep (`[Sweeper:iOS] EXPIRED UNCLAIMED purchase ...`, summary field `expiredUnclaimed: [otid]`, present only when non-empty). No refund, no takedown; such a row can still be claimed.
+- Q3: phone is required and validated server-side in /api/ios/signup.
+- Q4: no email verification: accounts are created confirmed by the server. No Supabase dashboard setting changed (shared project; web sign-up unaffected).
+
+## POST /api/ios/claim-start   body { transactionId }   (Authorization optional)
+Call right after the purchase, before any account. Verifies with Apple, upserts the row, stamps `claim_expires_at = now+30d` ONCE. Writes no slug, no content, no user.
+- 200 `{ ok:true, state:'unclaimed', claimExpiresAt:<ISO> }` (idempotent per originalTransactionId: a retry returns the same deadline, never extends).
+- 200 `{ ok:true, state:'claimed', claimExpiresAt }` only when the Bearer is the account that already owns it (retry-safe).
+- 402 `{ error:'subscription-inactive', reason?:'revoked' }`: refunded/revoked/expired. Phone clears its pending record.
+- 409 `{ error:'purchase-claimed' }` already linked to an account (nothing disclosed); 409 `{ error:'purchase-has-site' }` legacy purchase that already has a site (use Restore/publish with a Bearer).
+- 400 bad-request (missing/oversized transactionId; or Apple bad-bundle/bad-product), 404 not-found, 429 rate-limited (+Retry-After), 503 apple-unavailable / temporarily-unavailable (incl. column missing).
+
+## POST /api/ios/signup   body { name, email, phone, password }   (no auth)
+Creates the Supabase user via the admin API with `email_confirm:true`, `user_metadata { full_name, name, phone }`. Then the app signs in with `supabase.auth.signInWithPassword({ email, password })` (use the returned normalized `email`).
+- 200 `{ ok:true, email }` (lower-cased, trimmed). No token, id, password or metadata is ever returned.
+- 400 `{ error:'bad-request', field:'name'|'email'|'phone' }`: name 1-100 chars; email syntax <=254; phone digits with optional leading +, 7-15 digits (spaces - . ( ) stripped; stored normalized, e.g. `+15550100199`).
+- 400 `{ error:'weak-password', minLength:8 }` for < 8 or > 72 chars (bcrypt limit).
+- 409 `{ error:'email-exists' }`: the only account-existence signal. App: "Sign in instead", keep the email.
+- 429 `{ error:'rate-limited' }` (+Retry-After 60): 10/min per IP and 4/min per email (hashed key). Limiter failure fails open (logged).
+- 503 `{ error:'temporarily-unavailable' }`. Validation runs before the limiter and before any Supabase call.
+- Web sign-up note: the web app's own "confirm email" setting is untouched; only accounts created here skip it. If a DB trigger on auth.users creates profile rows, it fires for these users too (same as web).
+
+## POST /api/ios/publish (changed)   Authorization: Bearer <Supabase access token>
+One request does link -> bind slug -> write -> deploy. Order: Apple verify (402/400) -> ownership -> (first-time only) link -> slug bind -> compare-and-set write -> deploy.
+- Unlinked purchase + Bearer: refusals come BEFORE any write: 409 `{ error:'purchase-other-account', hint }` (slug bound to another account's shop/site, or lost the link race: exactly one of two racing accounts wins), 409 `{ error:'account-has-site', slug:'<the account's existing live site>' }` (the account already holds a different, not-removed site; sign out and use another account, or manage that site). Link failure is 503 (fails closed; nothing is published).
+- Linked purchase: owner only (401 unauthorized no/invalid token, 409 purchase-other-account for another account), unchanged. site-updated 409, removed_at, slug reservations, prefix-scoped deletion unchanged.
+- NO Bearer on an unlinked purchase: 401 `{ error:'unauthorized' }` before anything is written... EXCEPT while the compat flag is on (below). Auth outage with a Bearer: 503.
+- COMPAT FLAG (old app builds): `ALLOW_ACCOUNTLESS_PUBLISH_UNTIL_APP_SHIPS = true` in lib/ios/publishFlow.ts. While true, a publish with no valid Bearer on an unlinked purchase still fresh-binds with no account, exactly as before (REMOVE-AFTER-APP-SHIPS: set false / delete the branch once the new app is live). `PublishDeps.allowAccountlessPublish` overrides it (tests run the strict contract). So with the flag on, "401 without Bearer" is NOT yet enforced in production; the new app must still always send the Bearer.
+- Behaviour change for everyone: a Bearer that cannot be checked (auth outage) or a failed link write is now 503 instead of publishing unlinked.
+
+## Sweep
+`expiredUnclaimed` scan runs first, best effort, log only (see Q2).
+
+## Known limits
+- account-has-site counts only purchases linked to the account (ios_purchases.user_id with a slug and no removed_at), not web-created sites. Two simultaneous first claims by one account with two purchases could both pass the check (no DB uniqueness); rare, not guarded.
+- Tests: tests/e2e/payThenSignup.test.ts (21), tests/ios/signup.test.ts (11). vitest 3819 pass; tsc output identical to baseline (4813 lines).
