@@ -144,7 +144,7 @@ function signupFailure(e: unknown, email: string): ClaimResult {
   // The purchase is refunded / expired / revoked: no account is made for it.
   if (e.status === 402) return { kind: 'inactive', message: INACTIVE_MESSAGE };
   // The purchase already belongs to an account: only that account can finish it.
-  if (e.status === 409 && (e.code === 'purchase-in-use' || e.code === 'purchase-claimed' || e.code === 'purchase-other-account')) {
+  if (e.status === 409 && (e.code === 'purchase-in-use' || e.code === 'purchase-claimed' || e.code === 'purchase-has-site' || e.code === 'purchase-other-account')) {
     return { kind: 'blocked', message: CLAIMED_SIGNED_OUT_MESSAGE };
   }
   if (e.code === 'signup-limit' || e.code === 'signup-limit-reached') return { kind: 'error', message: SIGNUP_LIMIT_MESSAGE };
