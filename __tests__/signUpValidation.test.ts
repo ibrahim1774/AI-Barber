@@ -1,8 +1,17 @@
 import { validateSignUp } from '@/lib/signUpValidation';
 
 describe('validateSignUp (fields flagged in on-screen order)', () => {
-  it('all empty: phone first, with a specific message', () => {
-    expect(validateSignUp({ phone: '', email: '', password: '' })).toEqual({ field: 'phone', message: 'Enter your phone number.' });
+  it('all empty: the email is flagged first (the phone number is optional)', () => {
+    expect(validateSignUp({ phone: '', email: '', password: '' })).toEqual({ field: 'email', message: 'Enter your email address.' });
+  });
+  it('an empty phone is never an error', () => {
+    expect(validateSignUp({ phone: '', email: 'a@b.co', password: '123456' })).toBeNull();
+    expect(validateSignUp({ phone: '   ', email: 'a@b.co', password: '123456' })).toBeNull();
+    expect(validateSignUp({ email: 'a@b.co', password: '123456' })).toBeNull();
+  });
+  it('the sign-up screen labels the phone field optional', () => {
+    const src = require('fs').readFileSync(require('path').join(__dirname, '../src/app/sign-up.tsx'), 'utf8');
+    expect(src).toContain('label="Phone Number (optional)"');
   });
   it('phone ok, email empty', () => {
     expect(validateSignUp({ phone: '555', email: ' ', password: '' })).toEqual({ field: 'email', message: 'Enter your email address.' });

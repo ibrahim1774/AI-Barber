@@ -12,7 +12,7 @@ import { goBackOrHome } from '@/lib/nav';
 
 /**
  * The web's sign-up form (AuthModal.tsx): full name (optional), phone
- * (required), email, password (min 6). The local site is saved to the new
+ * (optional), email, password (min 6). The local site is saved to the new
  * account once it has a session.
  */
 export default function SignUp() {
@@ -38,7 +38,7 @@ export default function SignUp() {
     const problem = validateSignUp({ phone, email, password });
     if (problem) {
       setError(problem.message);
-      ({ phone: phoneInput, email: emailInput, password: passwordInput })[problem.field].current?.focus();
+      ({ email: emailInput, password: passwordInput })[problem.field].current?.focus();
       return;
     }
     busyRef.current = true;
@@ -90,7 +90,7 @@ export default function SignUp() {
         <Field
           ref={phoneInput}
           tone="form"
-          label="Phone Number"
+          label="Phone Number (optional)"
           value={phone}
           onChangeText={setPhone}
           keyboardType="phone-pad"
