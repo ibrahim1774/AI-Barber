@@ -286,7 +286,7 @@ describe('every writer of ios_purchases.user_id is one atomic conditional update
     const src = readFileSync(join('lib', 'ios', 'purchases.ts'), 'utf8');
     expect(src).toMatch(/update\(\{ user_id: userId \}\)\s*\.eq\('original_transaction_id', otid\)\.is\('user_id', null\)/);
     // The one other writer is transferUser (POST /api/ios/transfer): a compare-and-set on the CURRENT owner, never a blind write.
-    expect(src).toMatch(/update\(\{ user_id: toUserId, site_slug: null, published_at: null, taken_down_at: null, removed_at: null \}\)\s*\.eq\('original_transaction_id', otid\)\.eq\('user_id', fromUserId\)/);
+    expect(src).toMatch(/update\(\{ user_id: toUserId \}\)\s*\.eq\('original_transaction_id', otid\)\.eq\('user_id', fromUserId\)/);
     expect((src.match(/update\(\{ user_id/g) ?? []).length).toBe(2);
     expect(src).not.toMatch(/\bsetUser\(/);
   });

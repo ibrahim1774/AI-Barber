@@ -2,10 +2,12 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { runTransfer } from '../../lib/ios/transfer.js';
 import { liveTransferDeps } from '../../lib/ios/transferLive.js';
 
-// POST { transactionId, confirm? } with Authorization: Bearer <Supabase access token>.
-//   200 { moved, linked: true } | 409 confirm-required { ownerHint, hasLiveSite, siteUrl? } | 409 account-has-site { slug }
-//   | 409 purchase-changed | 402 subscription-inactive | 400 | 401 | 404 | 429 | 503.
-// Moves a subscription linked to another account to the caller, only with confirm:true. See lib/ios/transfer.ts.
+// POST { transactionId, confirm?, ownerToken?, proof? } with Authorization: Bearer <Supabase access token>.
+//   200 { moved, linked: true } | 409 confirm-required { ownerHint, hasLiveSite, hasShop, ownerToken, siteUrl? }
+//   | 409 account-has-site { slug, reason } | 409 purchase-changed | 402 subscription-inactive
+//   | 400 proof-required | 403 proof-invalid | 400 | 401 | 404 | 429 | 503.
+// Moves the WHOLE BUSINESS of a subscription linked to another account to the caller, only with confirm:true.
+// See lib/ios/transfer.ts.
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'OPTIONS,POST');

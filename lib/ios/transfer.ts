@@ -4,27 +4,25 @@
 // offline. Payment still gates everything: the move needs an active, Apple-verified, unrevoked transaction.
 // Nothing moves silently.
 //
+// REVISION 2 (2026-10-26): the WHOLE BUSINESS moves; nothing goes offline and nothing is deleted.
 // Order is the contract:
+//   proof of device (Apple-signed JWS, `proof`) when sent or when IOS_REQUIRE_TRANSFER_PROOF is on
 //   verify with Apple (active, not revoked)  ->  decide  ->  [confirm:true only]
 //   0. ownerToken (HMAC of the owner the user saw + otid) must match the CURRENT owner, else 409 purchase-changed
-//   1. caller already has a live site under a different purchase: 409 account-has-site, nothing changes
-//   2. ONE conditional UPDATE moves user_id O -> caller AND clears site_slug/published_at/taken_down_at/
-//      removed_at (zero rows = someone else moved it first: 409 purchase-changed). From here on the caller
-//      can never reach O's slug or stored copy, whatever fails next.
-//   3. only after that won: deployOffline(O's pre-read slug), the existing offline deploy the lapse sweep
-//      uses (idempotent). markRemoved/markTakenDown are NOT used: no purchase row references the slug any
-//      more, so neither the sweep nor an admin can redeploy it. No deletion; purge() is never called.
-//      If the deploy fails the move is reversed (compare-and-set on the exact fields) and the call is 503.
-//   4. detach O's shop (ab_shops.ios_otid = otid and owner <> caller). Also done on a retry by the new owner.
-// Custom domains: ios_domains is keyed by the purchase and is NOT touched. A moved subscription's custom
-// domain stays with the old site until support moves it.
+//   1. the caller already has a live site, or a shop of their own that is not this purchase's:
+//      409 account-has-site, nothing changes
+//   2. ONE conditional UPDATE moves ios_purchases.user_id O -> caller (zero rows = someone else moved it
+//      first: 409 purchase-changed). This CAS is the single gate; nothing else is written unless it wins.
+//   3. moveBusiness(otid, caller, slug): the `sites` rows of the slug, the ab_shops row (ios_otid = otid)
+//      and its owner member are re-pointed to the caller (children follow the shop id). The live site stays
+//      live on the same slug. Every step is idempotent and keyed on the otid, so the "already the caller's"
+//      branch (a retry) FINISHES whatever did not complete and never undoes anything.
+// ios_domains is keyed by the otid and stays. Push tokens are NOT moved (they belong to the device owner).
 // No PII in logs: last 4 of the otid and 8-char account id prefixes.
-import { VerifyFailure, isActive, type VerifiedTx } from './appleVerify.js';
+import { VerifyFailure, isActive, type DecodedTransaction, type IosEnv, type VerifiedTx } from './appleVerify.js';
 import type { PurchasesRepo } from './purchases.js';
-import type { RemoveSiteDeps } from './removeSite.js';
 import { timingSafeEqual } from 'node:crypto';
 import { hasLiveSite, otherAccountBody, siteUrlOf, type BindingOwner } from './ownership.js';
-import { isIndefiniteDeployError } from './sweep.js';
 
 export interface TransferDeps {
   verify(transactionId: string): Promise<VerifiedTx>;
@@ -37,22 +35,40 @@ export interface TransferDeps {
   bindingOwner?(row: import('./purchases.js').PurchaseRow): Promise<BindingOwner>;
   /** Per-caller write limit. Throws -> fail CLOSED (503). */
   allow(callerId: string): Promise<boolean>;
-  /** The existing offline deploy (liveRemoveDeps) and the clock. */
-  takedown: Pick<RemoveSiteDeps, 'deployOffline' | 'now'>;
-  /** Detach the OTHER accounts' shops from this purchase (ab_shops.ios_otid = otid AND owner_id <> callerId -> null). Throws on failure. */
-  detachShop(otid: string, callerId: string): Promise<void>;
+  /** Clock (ms). */
+  now(): number;
+  /** Does a shop (bookings/store) hang off this purchase? Shown in the confirmation. Absent: false. */
+  hasShop?(otid: string): Promise<boolean>;
+  /** The caller's own shop, if any (ab_shops has one row per owner). */
+  shopOf?(userId: string): Promise<{ id: string; ios_otid: string | null } | null>;
+  /**
+   * Move the business of this purchase to `callerId`. Idempotent, keyed on otid/slug (the previous owner
+   * is not needed): re-point the `sites` rows of `slug`, the ab_shops row whose ios_otid = otid and its
+   * owner member. Never deletes. Throws on failure (a retry finishes it).
+   */
+  moveBusiness(otid: string, callerId: string, slug: string | null): Promise<void>;
+  /** Proof of device: verify an Apple-signed transaction JWS (StoreKit 2 jwsRepresentation). Throws if the signature/bundle/environment is wrong. */
+  decodeProof(env: IosEnv, jws: string): Promise<DecodedTransaction>;
+  /** Expected bundle id (APPLE_BUNDLE_ID). */
+  bundleId: string;
+  /** IOS_REQUIRE_TRANSFER_PROOF. Default false. */
+  requireProof: boolean;
   /** Opaque token bound to (owner, otid): HMAC with a server secret. Deterministic. */
   ownerToken(ownerId: string, otid: string): string;
 }
 
 export type TransferResult =
   | { status: 200; body: { moved: boolean; linked: true } }
-  | { status: 409; body: { error: 'confirm-required'; ownerHint: string | null; hasLiveSite: boolean; ownerToken: string; siteUrl?: string } }
-  | { status: 409; body: { error: 'account-has-site'; slug: string } }
+  | { status: 409; body: { error: 'confirm-required'; ownerHint: string | null; hasLiveSite: boolean; hasShop: boolean; ownerToken: string; siteUrl?: string } }
+  | { status: 409; body: { error: 'account-has-site'; slug: string; reason: 'site' | 'shop' } }
   | { status: 409; body: { error: 'purchase-changed' } }
   | { status: 409; body: { error: 'purchase-other-account'; hint: string | null; ownerHint: string | null; hasLiveSite: boolean } }
   | { status: 402; body: { error: 'subscription-inactive'; reason?: 'revoked' } }
+  | { status: 400; body: { error: 'proof-required' } }
+  | { status: 403; body: { error: 'proof-invalid' } }
   | { status: 400 | 401 | 404 | 429 | 503; body: { error: string } };
+
+export const PROOF_MAX_AGE_MS = 10 * 60 * 1000;
 
 const VERIFY_STATUS = { 'not-found': 404, 'bad-bundle': 400, 'bad-product': 400, 'apple-unavailable': 503 } as const;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -78,7 +94,7 @@ export async function runTransfer(input: unknown, deps: TransferDeps, ctx: { aut
     return unavailable;
   }
 
-  const b = input && typeof input === 'object' ? (input as { transactionId?: unknown; confirm?: unknown; ownerToken?: unknown }) : {};
+  const b = input && typeof input === 'object' ? (input as { transactionId?: unknown; confirm?: unknown; ownerToken?: unknown; proof?: unknown }) : {};
   const transactionId = typeof b.transactionId === 'string' ? b.transactionId.trim() : '';
   if (!transactionId || transactionId.length > 64) return { status: 400, body: { error: 'bad-request' } };
   // Only a real boolean true confirms; "true", 1 and friends are a malformed request, never a yes.
@@ -86,6 +102,9 @@ export async function runTransfer(input: unknown, deps: TransferDeps, ctx: { aut
   const confirm = b.confirm === true;
   if (b.ownerToken !== undefined && b.ownerToken !== null && (typeof b.ownerToken !== 'string' || b.ownerToken.length > 200)) return { status: 400, body: { error: 'bad-request' } };
   const sentToken = typeof b.ownerToken === 'string' ? b.ownerToken : '';
+  if (b.proof !== undefined && b.proof !== null && typeof b.proof !== 'string') return { status: 400, body: { error: 'bad-request' } };
+  const proof = typeof b.proof === 'string' ? b.proof.trim() : '';
+  if (proof.length > 16_384) return { status: 403, body: { error: 'proof-invalid' } };
 
   // 2. Rate limit (per account), fail closed.
   try {
@@ -96,7 +115,7 @@ export async function runTransfer(input: unknown, deps: TransferDeps, ctx: { aut
   }
 
   // 3. Proof of payment, exactly as publish / claim-start.
-  const checkedAt = deps.takedown.now();
+  const checkedAt = deps.now();
   let tx: VerifiedTx;
   try {
     tx = await deps.verify(transactionId);
@@ -110,8 +129,33 @@ export async function runTransfer(input: unknown, deps: TransferDeps, ctx: { aut
 
   const otid = tx.originalTransactionId;
   const tag = `otid=${otid.slice(-4)}`;
+
+  // 3b. Proof that the DEVICE holds this entitlement: an Apple-signed transaction JWS. Required when
+  // IOS_REQUIRE_TRANSFER_PROOF is on; when off a bare transactionId still works, but a proof that IS sent
+  // must be valid. Checked before anything is read from or written to our tables.
+  if (!proof) {
+    if (deps.requireProof) return { status: 400, body: { error: 'proof-required' } };
+  } else {
+    try {
+      const d = await deps.decodeProof(tx.environment, proof);
+      const age = Math.abs(checkedAt - (d.signedDate ?? NaN));
+      const ok = d.originalTransactionId === otid && d.bundleId === deps.bundleId
+        && d.environment === tx.environment && Number.isFinite(age) && age <= PROOF_MAX_AGE_MS;
+      if (!ok) {
+        console.warn(`ios-transfer ${tag} proof rejected`);
+        return { status: 403, body: { error: 'proof-invalid' } };
+      }
+    } catch (e) {
+      if (e instanceof VerifyFailure && e.code === 'apple-unavailable') {
+        console.error('[ios/transfer] proof verifier unavailable:', e.message);
+        return unavailable;
+      }
+      console.warn(`ios-transfer ${tag} proof rejected`);
+      return { status: 403, body: { error: 'proof-invalid' } };
+    }
+  }
   const { repo } = deps;
-  if (!repo.moveUserAndRelease || !repo.revertMove || !repo.liveSitesOfUser) return unavailable;
+  if (!repo.transferUser || !repo.liveSitesOfUser) return unavailable;
   try {
     const row = await repo.upsertVerified(tx, { checkedAt });
     // A revocation recorded by Apple's notification that this active answer did not supersede.
@@ -119,12 +163,17 @@ export async function runTransfer(input: unknown, deps: TransferDeps, ctx: { aut
 
     // Already the caller's: idempotent.
     if (row.user_id === caller) {
-      // Finish a detach that failed on an earlier attempt (idempotent, never touches the caller's own shop).
-      await deps.detachShop(otid, caller);
+      // Finish whatever an earlier attempt left undone (idempotent, keyed on the otid, never undoes).
+      await deps.moveBusiness(otid, caller, row.site_slug);
       return { status: 200, body: { moved: false, linked: true } };
     }
 
     const mine = async () => (await repo.liveSitesOfUser!(caller)).find((r) => r.original_transaction_id !== otid && r.site_slug);
+    // The caller's own shop that is not this purchase's (one shop per account).
+    const ownShop = async () => {
+      const sh = deps.shopOf ? await deps.shopOf(caller) : null;
+      return !!sh && sh.ios_otid !== otid;
+    };
 
     // Unlinked: link it to the caller (the atomic setUserIfUnlinked decides a race).
     if (!row.user_id) {
@@ -136,7 +185,7 @@ export async function runTransfer(input: unknown, deps: TransferDeps, ctx: { aut
         }
       }
       const has = await mine();
-      if (has) return { status: 409, body: { error: 'account-has-site', slug: has.site_slug as string } };
+      if (has) return { status: 409, body: { error: 'account-has-site', slug: has.site_slug as string, reason: 'site' } };
       if (await repo.setUserIfUnlinked(otid, caller)) {
         console.log(`ios-transfer ${tag} from=none to=${short(caller)} (linked)`);
         return { status: 200, body: { moved: false, linked: true } };
@@ -154,7 +203,7 @@ export async function runTransfer(input: unknown, deps: TransferDeps, ctx: { aut
       const hint = (await otherAccountBody(deps.emailOf, ownerId, row)).ownerHint;
       return {
         status: 409,
-        body: { error: 'confirm-required', ownerHint: hint, hasLiveSite: live, ownerToken: deps.ownerToken(ownerId, otid), ...(live && row.site_slug ? { siteUrl: siteUrlOf(row.site_slug) } : {}) },
+        body: { error: 'confirm-required', ownerHint: hint, hasLiveSite: live, hasShop: deps.hasShop ? await deps.hasShop(otid) : false, ownerToken: deps.ownerToken(ownerId, otid), ...(live && row.site_slug ? { siteUrl: siteUrlOf(row.site_slug) } : {}) },
       };
     }
 
@@ -166,52 +215,22 @@ export async function runTransfer(input: unknown, deps: TransferDeps, ctx: { aut
       return { status: 409, body: { error: 'purchase-changed' } };
     }
 
-    // a. One site per account: a caller who already has a live site under a different purchase is refused.
+    // a. One business per account: a caller with a live site under another purchase, or a shop of their own, is refused.
     const has = await mine();
-    if (has) return { status: 409, body: { error: 'account-has-site', slug: has.site_slug as string } };
+    if (has) return { status: 409, body: { error: 'account-has-site', slug: has.site_slug as string, reason: 'site' } };
+    if (await ownShop()) return { status: 409, body: { error: 'account-has-site', slug: '', reason: 'shop' } };
 
-    // b. ONE conditional UPDATE: owner -> caller AND the previous site detached. Nothing else happens unless it wins.
-    const slug = row.site_slug;
-    if (!(await repo.moveUserAndRelease(otid, ownerId, caller, slug))) {
+    // b. THE gate: one conditional UPDATE. Nothing else happens unless it wins.
+    if (!(await repo.transferUser(otid, ownerId, caller))) {
       console.warn(`ios-transfer ${tag} lost the race: purchase changed`);
       return { status: 409, body: { error: 'purchase-changed' } };
     }
 
-    // c. Only now: O's site goes offline (the existing offline deploy; nothing is deleted).
-    if (slug && row.published_at != null && row.removed_at == null) {
-      let failure: any = null;
-      for (let attempt = 0; attempt < 2; attempt++) {
-        try {
-          await deps.takedown.deployOffline(slug);
-          failure = null;
-          break;
-        } catch (e: any) {
-          failure = e;
-        }
-      }
-      if (failure) {
-        console.error(`ios-transfer ${tag} offline deploy failed, reversing the move:`, failure?.message || failure);
-        // An unknown outcome (timeout) may have taken it down: flag it so the sweep restores an active site.
-        const prev = {
-          user_id: ownerId, site_slug: slug, published_at: row.published_at, removed_at: row.removed_at ?? null,
-          taken_down_at: isIndefiniteDeployError(failure) ? new Date(deps.takedown.now()).toISOString() : row.taken_down_at ?? null,
-        };
-        let reverted = false;
-        try {
-          reverted = await repo.revertMove(otid, caller, prev);
-        } catch (e: any) {
-          console.error(`ios-transfer ${tag}: reverse failed:`, e?.message || e);
-        }
-        if (!reverted) console.error(`ios-transfer ${tag} ALERT: moved, offline deploy failed AND the reverse failed; slug ${slug} may be live and untracked`);
-        return unavailable;
-      }
-    }
-
-    // d. O's shop no longer reads this purchase. A failure here is finished by a retry (already-the-caller's branch).
+    // c. The business follows. A failure is finished by the caller's retry (the "already yours" branch).
     try {
-      await deps.detachShop(otid, caller);
+      await deps.moveBusiness(otid, caller, row.site_slug);
     } catch (e: any) {
-      console.error(`ios-transfer ${tag} ALERT: moved but detaching the previous shop failed:`, e?.message || e);
+      console.error(`ios-transfer ${tag} ALERT: purchase moved but moving the business failed (a retry finishes it):`, e?.message || e);
       return unavailable;
     }
     console.log(`ios-transfer ${tag} from=${short(ownerId)} to=${short(caller)}`);

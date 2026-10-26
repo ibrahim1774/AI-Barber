@@ -31,11 +31,6 @@ export interface PurchaseRow {
   claim_expires_at?: string | null;
 }
 
-/** The ownership fields a transfer changes (restored by revertMove). */
-export interface MovePrev {
-  user_id: string; site_slug: string | null; published_at: string | null; taken_down_at: string | null; removed_at: string | null;
-}
-
 export interface PurchasesRepo {
   get(otid: string): Promise<PurchaseRow | null>;
   /**
@@ -56,17 +51,10 @@ export interface PurchasesRepo {
   setUserIfUnlinked(otid: string, userId: string): Promise<boolean>;
   /**
    * Move a purchase between accounts (POST /api/ios/transfer) in ONE conditional UPDATE:
-   * `SET user_id = to, site_slug = null, published_at = null, taken_down_at = null, removed_at = null
-   *  WHERE original_transaction_id = otid AND user_id = from AND site_slug = slug` (`IS NULL` when slug is null).
-   * Moving the owner and detaching the old site together means that whatever fails afterwards the new
-   * owner can never reach the previous owner's slug or stored copy. True = moved; false = changed first.
+   * `SET user_id = to WHERE original_transaction_id = otid AND user_id = from`. The slug, publish stamps
+   * and everything else stay (the whole business moves with the purchase). True = moved; false = changed first.
    */
-  moveUserAndRelease?(otid: string, fromUserId: string, toUserId: string, slug: string | null): Promise<boolean>;
-  /**
-   * Put a move back (the offline deploy that followed failed): restores `prev` only if the row is still the
-   * new owner's with no slug. True = restored.
-   */
-  revertMove?(otid: string, toUserId: string, prev: MovePrev): Promise<boolean>;
+  transferUser?(otid: string, fromUserId: string, toUserId: string): Promise<boolean>;
   applyNotification(n: {
     otid: string; productId: string; environment: IosEnv; expiresAt: number | null; revokedAt: number | null; type: string;
     /** REFUND_REVERSED: set revoked_at = null (wins over revokedAt). */
@@ -256,20 +244,10 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
       return Array.isArray(data) && data.length > 0;
     },
 
-    async moveUserAndRelease(otid, fromUserId, toUserId, slug) {
-      const q = db().from(TABLE)
-        .update({ user_id: toUserId, site_slug: null, published_at: null, taken_down_at: null, removed_at: null })
-        .eq('original_transaction_id', otid).eq('user_id', fromUserId);
-      const { data, error } = await (slug ? q.eq('site_slug', slug) : q.is('site_slug', null)).select('original_transaction_id');
-      if (error) fail('moveUserAndRelease', error);
-      return Array.isArray(data) && data.length > 0;
-    },
-
-    async revertMove(otid, toUserId, prev) {
-      const fields: Record<string, unknown> = { ...prev };
-      const { data, error } = await db().from(TABLE).update(fields)
-        .eq('original_transaction_id', otid).eq('user_id', toUserId).is('site_slug', null).select('original_transaction_id');
-      if (error) fail('revertMove', error);
+    async transferUser(otid, fromUserId, toUserId) {
+      const { data, error } = await db().from(TABLE).update({ user_id: toUserId })
+        .eq('original_transaction_id', otid).eq('user_id', fromUserId).select('original_transaction_id');
+      if (error) fail('transferUser', error);
       return Array.isArray(data) && data.length > 0;
     },
 

@@ -59,6 +59,10 @@ export interface DecodedTransaction {
   expiresDate?: number; revocationDate?: number; purchaseDate?: number;
   /** True on the transaction a same-group upgrade replaced (it is not the current product). */
   isUpgraded?: boolean;
+  /** When Apple signed this JWS (ms). Used by the transfer proof (must be fresh). */
+  signedDate?: number;
+  /** 'Production' | 'Sandbox' as Apple wrote it into the signed payload. */
+  environment?: string;
 }
 export interface AppleDecode {
   (env: IosEnv, signed: string): Promise<DecodedTransaction>;
@@ -68,12 +72,14 @@ export interface AppleDecode {
 export function toDecodedTransaction(p: {
   bundleId?: string; productId?: string; originalTransactionId?: string; transactionId?: string;
   expiresDate?: number; revocationDate?: number; purchaseDate?: number; isUpgraded?: boolean;
+  signedDate?: number; environment?: string;
 }): DecodedTransaction {
   return {
     bundleId: p.bundleId as string, productId: p.productId as string,
     originalTransactionId: p.originalTransactionId as string, transactionId: p.transactionId as string,
     expiresDate: p.expiresDate, revocationDate: p.revocationDate, purchaseDate: p.purchaseDate,
     isUpgraded: p.isUpgraded === true,
+    signedDate: p.signedDate, environment: p.environment == null ? undefined : String(p.environment),
   };
 }
 
@@ -298,4 +304,9 @@ export function defaultVerifier(opts: VerifierOptions = {}) {
     lookup, decode, statuses, bundleId, decodeRenewal,
     products: opts.products, includeAccount: opts.includeAccount, includeRenewal: opts.includeRenewal,
   });
+}
+
+/** Verifies and decodes a transaction JWS the DEVICE sent (StoreKit 2 Transaction.jwsRepresentation) with the shared verifier. */
+export async function verifyDeviceTransaction(env: IosEnv, jws: string): Promise<DecodedTransaction> {
+  return toDecodedTransaction(await signedDataVerifierFor(env).verifyAndDecodeTransaction(jws));
 }
