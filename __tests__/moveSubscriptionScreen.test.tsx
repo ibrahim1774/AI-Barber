@@ -35,7 +35,7 @@ const data: any = { shopName: 'Fade Lab', area: 'Brooklyn', phone: '(555) 010-20
 const draft = { draftId: 'd1', inputs: { shopName: 'Fade Lab', phone: '(555) 010-2030' }, data, updatedAt: 1, slug: null, deployedUrl: null, transactionId: null } as unknown as SiteRecord;
 const LIVE = { siteId: 'fade', deployedUrl: 'https://fade.aibarber.org', republished: false };
 const text = (tree: any) => allText(tree).join(' | ');
-const confirmRequired = () => new ApiError(409, 'confirm-required', 'x', { ownerHint: 'a***@gmail.com', hasLiveSite: true, ownerToken: 'tok-1' });
+const confirmRequired = () => new ApiError(409, 'confirm-required', 'x', { ownerHint: 'a***@gmail.com', hasLiveSite: true, hasShop: true, ownerToken: 'tok-1' });
 
 let iosPublish: jest.Mock;
 let transfer: jest.SpyInstance;
@@ -90,7 +90,7 @@ describe('claim screen: purchase belongs to another account', () => {
     await press(tree, MOVE_BUTTON_TITLE);
     const [title, body, buttons] = alertSpy.mock.calls[0];
     expect(title).toBe('Move this subscription?');
-    expect(body).toBe("This subscription is on another account (a***@gmail.com). Moving it here takes that account's website offline.");
+    expect(body).toBe('This subscription, your website, bookings and store are on another account (a***@gmail.com). Moving it here moves all of that to this account, and that account will be left empty.');
     expect(buttons.map((b: any) => b.text)).toEqual(['Cancel', 'Move here']);
     expect(buttons[0].style).toBe('cancel');
     await tap('Cancel');

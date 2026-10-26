@@ -1,13 +1,13 @@
 import { useCallback, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import { api } from '@/lib/api';
-import { MOVE_ERROR, MOVE_CONFIRM_CANCEL, MOVE_CONFIRM_OK, MOVE_CONFIRM_TITLE, moveConfirmMessage, moveSubscription, type MoveResult } from '@/lib/moveSubscription';
+import { MOVE_ERROR, MOVE_CONFIRM_CANCEL, MOVE_CONFIRM_OK, MOVE_CONFIRM_TITLE, moveConfirmMessage, moveSubscription, type MoveConfirmInfo, type MoveResult } from '@/lib/moveSubscription';
 import { useLatestTransactionId } from '@/lib/paywall';
 import { refreshPlanAfterTransfer } from '@/lib/plan';
 import { recheckSubscriptionStatus } from '@/lib/subscriptionStatus';
 
 /** The confirm Alert as a promise: true only for "Move here". Cancel (default) and a dismiss both answer false. */
-export const confirmMoveAlert = (info: { ownerHint: string | null; hasLiveSite: boolean }): Promise<boolean> =>
+export const confirmMoveAlert = (info: MoveConfirmInfo): Promise<boolean> =>
   new Promise((resolve) => {
     Alert.alert(
       MOVE_CONFIRM_TITLE,

@@ -7,7 +7,7 @@ import { CLAIMED_SIGNED_OUT_MESSAGE, conflictMessage, otherAccountPlanMessage, r
 import { restoreMessage } from '@/lib/restoreFlow';
 
 const confirmRequired = (over: Record<string, unknown> = {}) =>
-  new ApiError(409, 'confirm-required', 'x', { error: 'confirm-required', ownerHint: 'a***@gmail.com', hasLiveSite: true, ownerToken: 'tok-1', siteUrl: 'https://x.aibarber.org', ...over });
+  new ApiError(409, 'confirm-required', 'x', { error: 'confirm-required', ownerHint: 'a***@gmail.com', hasLiveSite: true, hasShop: true, ownerToken: 'tok-1', siteUrl: 'https://x.aibarber.org', ...over });
 const err = (status: number, code: string, body: Record<string, unknown> = {}) => new ApiError(status, code, 'x', { error: code, ...body });
 
 type TestDeps = MoveDeps & { transfer: jest.Mock; confirm: jest.Mock };
@@ -21,35 +21,81 @@ function deps(over: Partial<MoveDeps> = {}): TestDeps {
 }
 
 describe('confirm-required, then Move here', () => {
-  test('first call has no confirm, the second has confirm:true, and it succeeds', async () => {
+  test('first call has no confirm, the second has confirm:true, and it succeeds (no proof: old call shapes)', async () => {
     const d = deps();
     d.transfer.mockRejectedValueOnce(confirmRequired() as never);
     expect(await moveSubscription(d)).toEqual({ kind: 'moved', transactionId: 'tx-9' });
     expect(d.transfer.mock.calls).toEqual([['tx-9'], ['tx-9', true, 'tok-1']]);
-    expect(d.confirm).toHaveBeenCalledWith({ ownerHint: 'a***@gmail.com', hasLiveSite: true });
+    expect(d.confirm).toHaveBeenCalledWith({ ownerHint: 'a***@gmail.com', hasLiveSite: true, hasShop: true });
   });
 
-  test('the confirm text names the masked owner and the offline consequence', () => {
-    expect(moveConfirmMessage({ ownerHint: 'a***@gmail.com', hasLiveSite: true })).toBe(
-      "This subscription is on another account (a***@gmail.com). Moving it here takes that account's website offline.",
+  const M = (hasLiveSite: boolean, hasShop: boolean, ownerHint: string | null = 'a***@gmail.com') => moveConfirmMessage({ ownerHint, hasLiveSite, hasShop });
+  test('everything exists: the exact Revision 2 copy', () => {
+    expect(M(true, true)).toBe(
+      'This subscription, your website, bookings and store are on another account (a***@gmail.com). Moving it here moves all of that to this account, and that account will be left empty.',
     );
   });
-
-  test('no live site on the other account: the offline sentence is left out', () => {
-    const m = moveConfirmMessage({ ownerHint: 'a***@gmail.com', hasLiveSite: false });
-    expect(m).toBe('This subscription is on another account (a***@gmail.com).');
-    expect(m).not.toMatch(/offline/);
+  test('only the items that exist are named', () => {
+    expect(M(true, false)).toBe('This subscription and your website are on another account (a***@gmail.com). Moving it here moves all of that to this account, and that account will be left empty.');
+    expect(M(false, true)).toBe('This subscription, bookings and store are on another account (a***@gmail.com). Moving it here moves all of that to this account, and that account will be left empty.');
+    const none = M(false, false);
+    expect(none).toBe('This subscription is on another account (a***@gmail.com). Moving it here moves just the subscription to this account.');
+    expect(none).not.toMatch(/website|bookings|store|offline|empty/);
+    for (const m of [M(true, true), M(true, false), M(false, true), none]) expect(m).not.toMatch(/offline/);
   });
-
   test('no hint from the server: no empty parentheses', () => {
-    expect(moveConfirmMessage({ ownerHint: null, hasLiveSite: true })).not.toMatch(/\(/);
+    expect(M(true, true, null)).not.toMatch(/\(/);
   });
 
-  test('a missing hasLiveSite is treated as false (never claims a takedown it was not told about)', async () => {
+  test('a missing hasLiveSite / hasShop is treated as false (never claims what it was not told about)', async () => {
     const d = deps();
     d.transfer.mockRejectedValueOnce(err(409, 'confirm-required', { ownerHint: null }) as never);
     await moveSubscription(d);
-    expect(d.confirm).toHaveBeenCalledWith({ ownerHint: null, hasLiveSite: false });
+    expect(d.confirm).toHaveBeenCalledWith({ ownerHint: null, hasLiveSite: false, hasShop: false });
+  });
+});
+
+describe('Apple proof', () => {
+  const proof = { jws: 'eyJ.signed.jws', originalTransactionId: 'tx-9' };
+  test('sent with the probe and with the confirmed call', async () => {
+    const d = deps({ proof: jest.fn(async () => proof) });
+    d.transfer.mockRejectedValueOnce(confirmRequired() as never);
+    expect(await moveSubscription(d)).toEqual({ kind: 'moved', transactionId: 'tx-9' });
+    expect(d.transfer.mock.calls).toEqual([['tx-9', undefined, undefined, 'eyJ.signed.jws'], ['tx-9', true, 'tok-1', 'eyJ.signed.jws']]);
+    expect(d.proof).toHaveBeenCalledTimes(2);
+  });
+  test("the proof's originalTransactionId wins over a different pending id", async () => {
+    const d = deps({ proof: jest.fn(async () => ({ jws: 'j', originalTransactionId: 'tx-REAL' })) });
+    expect(await moveSubscription(d)).toEqual({ kind: 'moved', transactionId: 'tx-REAL' });
+    expect(d.transfer.mock.calls).toEqual([['tx-REAL', undefined, undefined, 'j']]);
+  });
+  test('null proof or a throwing reader: transfer still works without it', async () => {
+    const d1 = deps({ proof: jest.fn(async () => null) });
+    expect(await moveSubscription(d1)).toEqual({ kind: 'moved', transactionId: 'tx-9' });
+    expect(d1.transfer.mock.calls).toEqual([['tx-9']]);
+    const d2 = deps({ proof: jest.fn(async () => { throw new Error('boom'); }) });
+    expect(await moveSubscription(d2)).toEqual({ kind: 'moved', transactionId: 'tx-9' });
+    expect(d2.transfer.mock.calls).toEqual([['tx-9']]);
+  });
+  test('default reader is the native wrapper, which is null without the module (jest)', async () => {
+    const d = deps();
+    delete (d as Partial<MoveDeps>).proof;
+    await moveSubscription(d);
+    expect(d.transfer.mock.calls).toEqual([['tx-9']]);
+  });
+  test.each([['proof-required', 400], ['proof-invalid', 403], ['proof-invalid', 401]])('%s (%i): the Apple sentence', async (code, status) => {
+    const d = deps();
+    d.transfer.mockRejectedValueOnce(err(status, code) as never);
+    const r = await moveSubscription(d);
+    expect(r).toEqual({ kind: 'error', message: MOVE_ERROR.proof });
+    expect(MOVE_ERROR.proof).toBe(
+      "We couldn't confirm this subscription with Apple on this phone. Open Settings, tap your name, then Subscriptions to check it is active, then try again.",
+    );
+  });
+  test('proof-invalid on the confirmed call too', async () => {
+    const d = deps();
+    d.transfer.mockRejectedValueOnce(confirmRequired() as never).mockRejectedValueOnce(err(403, 'proof-invalid') as never);
+    expect(await moveSubscription(d)).toEqual({ kind: 'error', message: MOVE_ERROR.proof });
   });
 });
 
@@ -101,7 +147,7 @@ describe('errors: one friendly sentence each', () => {
       .mockRejectedValueOnce(confirmRequired({ ownerHint: 'b***@x.com', ownerToken: 'tok-2' }) as never)
       .mockResolvedValueOnce({ moved: true, linked: true });
     expect(await moveSubscription(d)).toEqual({ kind: 'moved', transactionId: 'tx-9' });
-    expect(d.confirm).toHaveBeenNthCalledWith(2, { ownerHint: 'b***@x.com', hasLiveSite: true });
+    expect(d.confirm).toHaveBeenNthCalledWith(2, { ownerHint: 'b***@x.com', hasLiveSite: true, hasShop: true });
     expect(d.transfer).toHaveBeenLastCalledWith('tx-9', true, 'tok-2');
   });
 
