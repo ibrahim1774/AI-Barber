@@ -199,3 +199,17 @@ describe('Publish reminders switch', () => {
     mockRemindersOn = true;
   });
 });
+
+describe('Privacy and Terms rows', () => {
+  it('open the policy pages with ?app=1', async () => {
+    const WebBrowser = require('expo-web-browser');
+    WebBrowser.openBrowserAsync.mockClear();
+    const tree = await render(<Settings />);
+    await pressRow(tree, 'Privacy Policy');
+    await pressRow(tree, 'Terms of Service');
+    expect(WebBrowser.openBrowserAsync.mock.calls.map((c: any[]) => c[0])).toEqual([
+      'https://www.aibarber.org/privacy?app=1',
+      'https://www.aibarber.org/terms?app=1',
+    ]);
+  });
+});

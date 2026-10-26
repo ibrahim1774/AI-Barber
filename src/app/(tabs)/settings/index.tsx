@@ -19,6 +19,7 @@ import { useLatestTransactionId, usePaywall } from '@/lib/paywall';
 import { DOMAIN_EXAMPLES_LABEL, DOMAIN_EXAMPLES_LINE, DOMAIN_ROW_EXAMPLE, DOMAIN_ROW_TITLE } from '@/lib/domains/model';
 import { useDomainOffer } from '@/lib/domains/useDomainOffer';
 import { planLabel } from '@/lib/plan';
+import { PRIVACY_URL, TERMS_URL } from '@/lib/policyLinks';
 import { remindersEnabled, setRemindersEnabled } from '@/lib/reminders';
 import { requestPublish } from '@/lib/publishRequest';
 import { useRestoreFlow } from '@/lib/restoreFlow';
@@ -36,8 +37,6 @@ import { useLinkActions } from '@/lib/useLinkActions';
 import { websiteView } from '@/lib/website';
 
 const SUPPORT_EMAIL = 'support@davoxa.com';
-const PRIVACY_URL = 'https://www.aibarber.org/privacy';
-const TERMS_URL = 'https://www.aibarber.org/terms';
 const SUBSCRIPTIONS_URL = 'itms-apps://apps.apple.com/account/subscriptions';
 
 const GREEN = '#22c55e';
