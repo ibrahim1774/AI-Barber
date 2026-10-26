@@ -18,7 +18,7 @@ export function LearnEntry({ onPress }: { onPress(): void }) {
             <Text style={styles.tagText}>New</Text>
           </View>
         </View>
-        <Text style={styles.sub}>Short videos on editing, bookings, your store and getting paid.</Text>
+        <Text style={styles.sub}>Step-by-step guides to editing, bookings, your store and getting paid.</Text>
       </View>
       <ChevronRightIcon size={16} color={colors.accent} />
     </Pressable>

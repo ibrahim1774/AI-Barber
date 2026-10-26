@@ -4,12 +4,11 @@ import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import { colors, fonts } from '@/constants/theme';
 import { BackButton } from '@/components/BackButton';
 import { ChevronRightIcon } from '@/components/Icons';
-import { LearnVideo } from '@/components/LearnVideo';
 import { Page } from '@/components/Page';
 import { track } from '@/lib/analytics';
 import { nextInSection, topicFor } from '@/lib/learnContent';
 
-/** One Learn topic: its video (only where a clip exists), the title and numbered steps. An unknown topic goes back to the list. */
+/** One Learn topic: a short intro line and numbered steps. An unknown topic goes back to the list. */
 export default function LearnTopic() {
   const { topic } = useLocalSearchParams<{ topic?: string }>();
   const current = topicFor(Array.isArray(topic) ? topic[0] : topic);
@@ -21,11 +20,6 @@ export default function LearnTopic() {
   return (
     <Page title={current.title}>
       <BackButton onPress={() => router.back()} />
-      {current.video && (
-        <View style={styles.video}>
-          <LearnVideo slug={current.video} />
-        </View>
-      )}
       <Text style={styles.title} accessibilityRole="header">{current.title}</Text>
       <Text style={styles.detail}>{current.detail}</Text>
       {current.steps.map((step, i) => (
@@ -51,12 +45,11 @@ export default function LearnTopic() {
 }
 
 const styles = StyleSheet.create({
-  video: { marginTop: 8 },
-  title: { fontFamily: fonts.heading, fontSize: 22, color: colors.heading, marginTop: 8 },
-  detail: { fontFamily: fonts.body, fontSize: 15, lineHeight: 22, color: colors.muted, marginTop: 8 },
-  step: { flexDirection: 'row', gap: 12, marginTop: 14 },
-  num: { fontFamily: fonts.bodyBold, fontSize: 15, lineHeight: 22, color: colors.accent, width: 18 },
-  stepText: { flex: 1, fontFamily: fonts.body, fontSize: 15, lineHeight: 22, color: colors.text },
-  next: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, marginTop: 16 },
+  title: { fontFamily: fonts.heading, fontSize: 20, color: colors.heading, marginTop: 4 },
+  detail: { fontFamily: fonts.body, fontSize: 14, lineHeight: 20, color: colors.muted, marginTop: 4 },
+  step: { flexDirection: 'row', gap: 10, marginTop: 10 },
+  num: { fontFamily: fonts.bodyBold, fontSize: 14, lineHeight: 20, color: colors.accent, width: 18 },
+  stepText: { flex: 1, fontFamily: fonts.body, fontSize: 14, lineHeight: 20, color: colors.text },
+  next: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, marginTop: 10 },
   nextText: { fontFamily: fonts.bodySemi, fontSize: 15, color: colors.accent },
 });

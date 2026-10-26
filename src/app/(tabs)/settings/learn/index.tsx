@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { colors, fonts } from '@/constants/theme';
@@ -6,55 +6,60 @@ import { ChevronRightIcon } from '@/components/Icons';
 import { LearnTopicIcon } from '@/components/LearnIcons';
 import { Page } from '@/components/Page';
 import { track } from '@/lib/analytics';
-import { LEARN_SECTIONS, topicsIn } from '@/lib/learnContent';
+import { LEARN_SECTIONS, topicsIn, type LearnSectionId } from '@/lib/learnContent';
 
-/** Settings, Learn how it works: a list of topics. Each row opens that topic's own screen with its video; no video plays here. */
+/** Settings, Learn how it works: four collapsed sections. Tapping a header opens that section (one at a time); each row opens its own screen. */
 export default function LearnList() {
+  const [open, setOpen] = useState<LearnSectionId | null>(null);
   useEffect(() => {
     track('learn_viewed');
   }, []);
   return (
     <Page title="Learn how it works" onBack={() => router.back()}>
-      {LEARN_SECTIONS.map((sec) => (
-        <View key={sec.id} style={styles.section}>
-          <Text style={styles.header} accessibilityRole="header">{sec.title}</Text>
-          {topicsIn(sec.id).map((t) => (
+      {LEARN_SECTIONS.map((sec) => {
+        const on = open === sec.id;
+        const topics = topicsIn(sec.id);
+        return (
+          <View key={sec.id} style={styles.section}>
             <Pressable
-              key={t.slug}
-              onPress={() => router.push(`/settings/learn/${t.slug}` as never)}
+              onPress={() => setOpen(on ? null : sec.id)}
               accessibilityRole="button"
-              accessibilityLabel={t.title}
-              style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+              accessibilityLabel={sec.title}
+              accessibilityState={{ expanded: on }}
+              style={({ pressed }) => [styles.header, on && styles.headerOn, pressed && styles.pressed]}
             >
-              <View style={styles.icon}>
-                <LearnTopicIcon slug={t.slug} size={22} color={colors.accent} />
+              <Text style={styles.headerText}>{sec.title}</Text>
+              <View style={on ? styles.chevOpen : undefined}>
+                <ChevronRightIcon size={16} color={colors.muted} />
               </View>
-              <View style={styles.text}>
-                <Text style={styles.title}>{t.title}</Text>
-                <Text style={styles.value}>{t.value}</Text>
-              </View>
-              <ChevronRightIcon size={16} color={colors.muted} />
             </Pressable>
-          ))}
-        </View>
-      ))}
+            {on && topics.map((t) => (
+              <Pressable
+                key={t.slug}
+                onPress={() => router.push(`/settings/learn/${t.slug}` as never)}
+                accessibilityRole="button"
+                accessibilityLabel={t.title}
+                style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+              >
+                <LearnTopicIcon slug={t.slug} size={16} color={colors.accent} />
+                <Text style={styles.title} numberOfLines={1}>{t.title}</Text>
+                <ChevronRightIcon size={14} color={colors.muted} />
+              </Pressable>
+            ))}
+          </View>
+        );
+      })}
     </Page>
   );
 }
 
 const styles = StyleSheet.create({
-  section: { marginBottom: 14 },
-  header: {
-    fontFamily: fonts.bodyBold, fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', color: colors.muted,
-    marginBottom: 8, marginLeft: 4, marginTop: 6,
-  },
-  row: {
-    flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 64, padding: 14, marginBottom: 10, borderRadius: 14,
-    backgroundColor: colors.sheet, borderWidth: 1, borderColor: colors.hair,
-  },
+  section: { marginBottom: 8, borderRadius: 12, backgroundColor: colors.sheet, borderWidth: 1, borderColor: colors.hair, overflow: 'hidden' },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 48, paddingHorizontal: 14 },
+  headerOn: { borderBottomWidth: 1, borderBottomColor: colors.hair },
+  headerText: { flex: 1, fontFamily: fonts.bodySemi, fontSize: 15, color: colors.text },
+  chevOpen: { transform: [{ rotate: '90deg' }] },
   pressed: { backgroundColor: 'rgba(255,255,255,0.04)' },
-  icon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg },
-  text: { flex: 1 },
-  title: { fontFamily: fonts.bodySemi, fontSize: 16, color: colors.text },
-  value: { fontFamily: fonts.body, fontSize: 13, lineHeight: 18, color: colors.muted, marginTop: 2 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44, paddingHorizontal: 14 },
+  title: { flex: 1, fontFamily: fonts.body, fontSize: 15, color: colors.text },
 });
