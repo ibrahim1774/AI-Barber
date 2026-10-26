@@ -90,6 +90,8 @@ export class FakeServer {
   purchaseOwner: string | null = null;
   /** Accounts /api/ios/signup created (emails). */
   accounts = new Set<string>();
+  /** Every completed /api/ios/transfer. */
+  transfers: { from: string; to: string }[] = [];
   /** The masked owner shown in a 409 purchase-other-account. */
   ownerHint = 'o***@gmail.com';
   /** The 409 carries the server copy (true) or only the error code (false). */
@@ -236,6 +238,8 @@ export class FakeServer {
         return { status: 200, body: { ok: true, state: 'unclaimed', claimExpiresAt: new Date(T0 + 30 * 86400_000).toISOString() } };
       }
       case '/api/ios/signup': {
+        const paid = sub(body.transactionId);
+        if (!paid || !paid.isActive || paid.isRevoked) return { status: 402, body: { error: 'subscription-inactive' } };
         const email = String(body.email ?? '').trim().toLowerCase();
         if (this.accounts.has(email)) return { status: 409, body: { error: 'email-exists' } };
         this.accounts.add(email);
@@ -333,6 +337,37 @@ export class FakeServer {
         if (!s || !this.boundSiteId) return { status: 404, body: { error: 'no-site' } };
         const row = this.sites.get(this.boundSiteId)!;
         return { status: 200, body: { ...this.copy(row), active: s.isActive && !s.isRevoked } };
+      }
+      case '/api/ios/transfer': {
+        const auth = headers.Authorization;
+        if (!auth) return { status: 401, body: { error: 'auth-required' } };
+        const uid = auth.replace(/^Bearer tok-/, '');
+        const s = sub(body.transactionId);
+        if (!s || !s.isActive || s.isRevoked) return { status: 402, body: { error: 'subscription-inactive' } };
+        if (!this.purchaseOwner || this.purchaseOwner === uid) {
+          this.purchaseOwner = uid;
+          return { status: 200, body: { moved: false, linked: true } };
+        }
+        const rows: any[] = this.sb?.rows ?? [];
+        if (rows.some((r) => r.user_id === uid || r.owner_id === uid)) return { status: 409, body: { error: 'account-has-site' } };
+        if (body.confirm !== true || body.ownerToken !== 'owner-token') {
+          return {
+            status: 409,
+            body: {
+              error: 'confirm-required', ownerHint: this.ownerHint, hasLiveSite: this.boundSiteId != null,
+              hasShop: rows.some((r) => r.owner_id === this.purchaseOwner), ownerToken: 'owner-token',
+            },
+          };
+        }
+        // The whole business moves: the subscription, the live site's account row and the shop.
+        const from = this.purchaseOwner;
+        this.purchaseOwner = uid;
+        for (const r of rows) {
+          if (r.user_id === from) r.user_id = uid;
+          if (r.owner_id === from) r.owner_id = uid;
+        }
+        this.transfers.push({ from, to: uid });
+        return { status: 200, body: { moved: true, linked: true } };
       }
       case '/api/shop/plan': {
         if (!headers.Authorization) return { status: 401, body: { error: 'unauthorized' } };
