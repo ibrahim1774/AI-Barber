@@ -38,9 +38,12 @@ function Player({ source }: { source: number }) {
   const { useVideoPlayer, VideoView } = VideoMod!;
   const player = useVideoPlayer(source, (p) => {
     p.loop = false;
+    p.muted = true; // starts silent (autoplay); the Sound button turns it on
     p.playbackRate = SLOW_RATE;
+    p.play();
   });
-  const [playing, setPlaying] = useState(false);
+  const [playing, setPlaying] = useState(true);
+  const [muted, setMuted] = useState(true);
   useEffect(() => {
     const sub = player.addListener('playingChange', ({ isPlaying }) => setPlaying(isPlaying));
     return () => sub.remove();
@@ -50,6 +53,10 @@ function Player({ source }: { source: number }) {
   const replay = () => {
     player.replay();
     player.play();
+  };
+  const toggleSound = () => {
+    player.muted = !muted;
+    setMuted(!muted);
   };
 
   return (
@@ -67,9 +74,20 @@ function Player({ source }: { source: number }) {
           </View>
         )}
       </Pressable>
-      <Pressable onPress={replay} hitSlop={8} accessibilityRole="button" accessibilityLabel="Replay" style={styles.replay}>
-        <Text style={styles.replayText}>Replay</Text>
-      </Pressable>
+      <View style={styles.controls}>
+        <Pressable onPress={replay} hitSlop={8} accessibilityRole="button" accessibilityLabel="Replay" style={styles.ctl}>
+          <Text style={styles.ctlText}>Replay</Text>
+        </Pressable>
+        <Pressable
+          onPress={toggleSound}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={muted ? 'Sound off, turn on' : 'Sound on, turn off'}
+          style={styles.ctl}
+        >
+          <Text style={styles.ctlText}>{muted ? 'Sound off' : 'Sound on'}</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -81,6 +99,7 @@ const styles = StyleSheet.create({
   },
   playBadge: { backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 },
   playText: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.text },
-  replay: { alignSelf: 'center', paddingVertical: 10 },
-  replayText: { fontFamily: fonts.bodySemi, fontSize: 14, color: colors.accent },
+  controls: { flexDirection: 'row', justifyContent: 'center', gap: 24 },
+  ctl: { minHeight: 44, justifyContent: 'center' },
+  ctlText: { fontFamily: fonts.bodySemi, fontSize: 14, color: colors.accent },
 });
