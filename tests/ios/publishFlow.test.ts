@@ -132,7 +132,7 @@ describe('runIosPublish', () => {
     expect(deps.verify).toHaveBeenCalledWith('t-123');
     expect(repo.bindSlug).toHaveBeenCalledWith(OTID, 'fresh-cuts');
     expect(deps.publish).toHaveBeenCalledWith('fresh-cuts', { force: false });
-    expect(repo.markPublished).toHaveBeenCalledWith(OTID);
+    expect(repo.markPublished).toHaveBeenCalledWith(OTID, undefined);
     expect(rows.get(OTID)!.site_slug).toBe('fresh-cuts');
     const p = pending.get('fresh-cuts')!;
     expect(p.siteId).toBe('fresh-cuts');
@@ -368,6 +368,32 @@ describe('runIosPublish', () => {
     expect(f.rows.get(OTID)!.user_id).toBe(USER);
   });
 
+  it('M1: a transfer that wins while the owner\'s publish is deploying: the site goes back offline and the publish answers 409 purchase-changed', async () => {
+    const f = withAuth(fakes({
+      existing: row({ user_id: USER, site_slug: 'fade-lab', published_at: '2026-10-01T00:00:00Z' }),
+      outcome: (slug) => {
+        // the transfer's compare-and-set lands during the deploy
+        Object.assign(f.rows.get(OTID)!, { user_id: OTHER, site_slug: null, published_at: null });
+        return { ok: true, siteId: slug, deployedUrl: `https://${slug}.vercel.app`, alreadyLive: false } as any;
+      },
+    }));
+    const deployOffline = vi.fn(async () => {});
+    f.deps.deployOffline = deployOffline;
+    const r = await runIosPublish(input(), f.deps, { authorization: 'Bearer tok-user' });
+    expect(r).toEqual({ status: 409, body: { error: 'purchase-changed' } });
+    expect(deployOffline).toHaveBeenCalledWith('fade-lab');
+    // the stamps are conditional on the owner and slug (so they cannot land on the new owner's row)
+    expect(f.repo.markPublished).toHaveBeenCalledWith(OTID, { userId: USER, slug: 'fade-lab' });
+  });
+
+  it('M1: an unaffected publish does not deploy offline', async () => {
+    const f = withAuth(fakes({ existing: row({ user_id: USER, site_slug: 'fade-lab', published_at: '2026-10-01T00:00:00Z' }) }));
+    const deployOffline = vi.fn(async () => {});
+    f.deps.deployOffline = deployOffline;
+    expect((await runIosPublish(input(), f.deps, { authorization: 'Bearer tok-user' })).status).toBe(200);
+    expect(deployOffline).not.toHaveBeenCalled();
+  });
+
   it('an invalid token still publishes under the compat flag; an auth outage or a failed link fails closed (503, nothing written)', async () => {
     const a = withAuth(fakes());
     expect((await runIosPublish(input(), a.deps, { authorization: 'Bearer nope' })).status).toBe(200);
@@ -573,7 +599,7 @@ describe('runIosPublish lapse takedown flag', () => {
     const r = await runIosPublish(input(), deps);
     expect(r.status).toBe(200);
     expect(deps.publish).toHaveBeenCalledWith('fresh-cuts-ab12', { force: true });
-    expect(repo.clearTakenDown).toHaveBeenCalledWith(OTID);
+    expect(repo.clearTakenDown).toHaveBeenCalledWith(OTID, undefined);
     expect(rows.get(OTID)!.taken_down_at).toBeNull();
   });
 

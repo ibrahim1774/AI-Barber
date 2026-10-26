@@ -6,17 +6,23 @@
 //
 // Order is the contract:
 //   verify with Apple (active, not revoked)  ->  decide  ->  [confirm:true only]
+//   0. ownerToken (HMAC of the owner the user saw + otid) must match the CURRENT owner, else 409 purchase-changed
 //   1. caller already has a live site under a different purchase: 409 account-has-site, nothing changes
-//   2. ATOMIC compare-and-set  user_id: O -> caller  (zero rows = someone else moved it: 409 purchase-changed)
-//   3. only after the CAS won: take O's site offline with the EXISTING takedown (removeSite.takeDown: the
-//      removed/taken-down stamps + the offline page; the same offline deploy the lapse sweep uses). No
-//      deletion: purge() is never called, O's stored copy, photos, account and login stay.
-//   4. detach O's shop from the purchase (ab_shops.ios_otid), clear the slug so the caller publishes fresh.
-// If step 3 fails the link is put back (CAS in reverse) and the stamps are undone, so a failed move leaves
-// O exactly as before (503, retry). No PII in logs: last 4 of the otid and 8-char account id prefixes.
+//   2. ONE conditional UPDATE moves user_id O -> caller AND clears site_slug/published_at/taken_down_at/
+//      removed_at (zero rows = someone else moved it first: 409 purchase-changed). From here on the caller
+//      can never reach O's slug or stored copy, whatever fails next.
+//   3. only after that won: deployOffline(O's pre-read slug), the existing offline deploy the lapse sweep
+//      uses (idempotent). markRemoved/markTakenDown are NOT used: no purchase row references the slug any
+//      more, so neither the sweep nor an admin can redeploy it. No deletion; purge() is never called.
+//      If the deploy fails the move is reversed (compare-and-set on the exact fields) and the call is 503.
+//   4. detach O's shop (ab_shops.ios_otid = otid and owner <> caller). Also done on a retry by the new owner.
+// Custom domains: ios_domains is keyed by the purchase and is NOT touched. A moved subscription's custom
+// domain stays with the old site until support moves it.
+// No PII in logs: last 4 of the otid and 8-char account id prefixes.
 import { VerifyFailure, isActive, type VerifiedTx } from './appleVerify.js';
 import type { PurchasesRepo } from './purchases.js';
-import { takeDown, type RemoveSiteDeps } from './removeSite.js';
+import type { RemoveSiteDeps } from './removeSite.js';
+import { timingSafeEqual } from 'node:crypto';
 import { hasLiveSite, otherAccountBody, siteUrlOf, type BindingOwner } from './ownership.js';
 import { isIndefiniteDeployError } from './sweep.js';
 
@@ -31,15 +37,17 @@ export interface TransferDeps {
   bindingOwner?(row: import('./purchases.js').PurchaseRow): Promise<BindingOwner>;
   /** Per-caller write limit. Throws -> fail CLOSED (503). */
   allow(callerId: string): Promise<boolean>;
-  /** The existing takedown pieces (liveRemoveDeps): markRemoved, markTakenDown, deployOffline. */
-  takedown: Pick<RemoveSiteDeps, 'markRemoved' | 'markTakenDown' | 'deployOffline' | 'now'>;
-  /** Detach every shop linked to this purchase (ab_shops.ios_otid = otid -> null). Throws on failure. */
-  detachShop(otid: string): Promise<void>;
+  /** The existing offline deploy (liveRemoveDeps) and the clock. */
+  takedown: Pick<RemoveSiteDeps, 'deployOffline' | 'now'>;
+  /** Detach the OTHER accounts' shops from this purchase (ab_shops.ios_otid = otid AND owner_id <> callerId -> null). Throws on failure. */
+  detachShop(otid: string, callerId: string): Promise<void>;
+  /** Opaque token bound to (owner, otid): HMAC with a server secret. Deterministic. */
+  ownerToken(ownerId: string, otid: string): string;
 }
 
 export type TransferResult =
   | { status: 200; body: { moved: boolean; linked: true } }
-  | { status: 409; body: { error: 'confirm-required'; ownerHint: string | null; hasLiveSite: boolean; siteUrl?: string } }
+  | { status: 409; body: { error: 'confirm-required'; ownerHint: string | null; hasLiveSite: boolean; ownerToken: string; siteUrl?: string } }
   | { status: 409; body: { error: 'account-has-site'; slug: string } }
   | { status: 409; body: { error: 'purchase-changed' } }
   | { status: 409; body: { error: 'purchase-other-account'; hint: string | null; ownerHint: string | null; hasLiveSite: boolean } }
@@ -70,12 +78,14 @@ export async function runTransfer(input: unknown, deps: TransferDeps, ctx: { aut
     return unavailable;
   }
 
-  const b = input && typeof input === 'object' ? (input as { transactionId?: unknown; confirm?: unknown }) : {};
+  const b = input && typeof input === 'object' ? (input as { transactionId?: unknown; confirm?: unknown; ownerToken?: unknown }) : {};
   const transactionId = typeof b.transactionId === 'string' ? b.transactionId.trim() : '';
   if (!transactionId || transactionId.length > 64) return { status: 400, body: { error: 'bad-request' } };
   // Only a real boolean true confirms; "true", 1 and friends are a malformed request, never a yes.
   if (b.confirm !== undefined && b.confirm !== null && typeof b.confirm !== 'boolean') return { status: 400, body: { error: 'bad-request' } };
   const confirm = b.confirm === true;
+  if (b.ownerToken !== undefined && b.ownerToken !== null && (typeof b.ownerToken !== 'string' || b.ownerToken.length > 200)) return { status: 400, body: { error: 'bad-request' } };
+  const sentToken = typeof b.ownerToken === 'string' ? b.ownerToken : '';
 
   // 2. Rate limit (per account), fail closed.
   try {
@@ -101,14 +111,18 @@ export async function runTransfer(input: unknown, deps: TransferDeps, ctx: { aut
   const otid = tx.originalTransactionId;
   const tag = `otid=${otid.slice(-4)}`;
   const { repo } = deps;
-  if (!repo.transferUser || !repo.releaseSiteAfterMove || !repo.liveSitesOfUser) return unavailable;
+  if (!repo.moveUserAndRelease || !repo.revertMove || !repo.liveSitesOfUser) return unavailable;
   try {
     const row = await repo.upsertVerified(tx, { checkedAt });
     // A revocation recorded by Apple's notification that this active answer did not supersede.
     if (row.revoked_at) return { status: 402, body: { error: 'subscription-inactive', reason: 'revoked' } };
 
     // Already the caller's: idempotent.
-    if (row.user_id === caller) return { status: 200, body: { moved: false, linked: true } };
+    if (row.user_id === caller) {
+      // Finish a detach that failed on an earlier attempt (idempotent, never touches the caller's own shop).
+      await deps.detachShop(otid, caller);
+      return { status: 200, body: { moved: false, linked: true } };
+    }
 
     const mine = async () => (await repo.liveSitesOfUser!(caller)).find((r) => r.original_transaction_id !== otid && r.site_slug);
 
@@ -140,43 +154,62 @@ export async function runTransfer(input: unknown, deps: TransferDeps, ctx: { aut
       const hint = (await otherAccountBody(deps.emailOf, ownerId, row)).ownerHint;
       return {
         status: 409,
-        body: { error: 'confirm-required', ownerHint: hint, hasLiveSite: live, ...(live && row.site_slug ? { siteUrl: siteUrlOf(row.site_slug) } : {}) },
+        body: { error: 'confirm-required', ownerHint: hint, hasLiveSite: live, ownerToken: deps.ownerToken(ownerId, otid), ...(live && row.site_slug ? { siteUrl: siteUrlOf(row.site_slug) } : {}) },
       };
+    }
+
+    // The confirmation must be for the owner the user was shown. Missing token: malformed; stale: purchase-changed.
+    if (!sentToken) return { status: 400, body: { error: 'bad-request' } };
+    const want = Buffer.from(deps.ownerToken(ownerId, otid));
+    const got = Buffer.from(sentToken);
+    if (want.length !== got.length || !timingSafeEqual(want, got)) {
+      return { status: 409, body: { error: 'purchase-changed' } };
     }
 
     // a. One site per account: a caller who already has a live site under a different purchase is refused.
     const has = await mine();
     if (has) return { status: 409, body: { error: 'account-has-site', slug: has.site_slug as string } };
 
-    // b. The atomic compare-and-set. Nothing else happens unless this wins.
-    if (!(await repo.transferUser(otid, ownerId, caller))) {
+    // b. ONE conditional UPDATE: owner -> caller AND the previous site detached. Nothing else happens unless it wins.
+    const slug = row.site_slug;
+    if (!(await repo.moveUserAndRelease(otid, ownerId, caller, slug))) {
       console.warn(`ios-transfer ${tag} lost the race: purchase changed`);
       return { status: 409, body: { error: 'purchase-changed' } };
     }
 
-    // c. Only now: O's site goes offline (existing takedown, no deletion), then the caller starts fresh.
-    const cur = (await repo.get(otid)) ?? row;
-    const slug = cur.site_slug;
-    if (slug && cur.published_at != null && cur.removed_at == null) {
-      const hadTakenDown = cur.taken_down_at != null;
-      try {
-        await takeDown({ original_transaction_id: otid, site_slug: slug, environment: cur.environment, published_at: cur.published_at }, deps.takedown);
-      } catch (e: any) {
-        console.error(`ios-transfer ${tag} takedown failed, putting the link back:`, e?.message || e);
-        await undoMove(deps, otid, ownerId, caller, { clearTakenDown: !hadTakenDown && !isIndefiniteDeployError(e) });
+    // c. Only now: O's site goes offline (the existing offline deploy; nothing is deleted).
+    if (slug && row.published_at != null && row.removed_at == null) {
+      let failure: any = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          await deps.takedown.deployOffline(slug);
+          failure = null;
+          break;
+        } catch (e: any) {
+          failure = e;
+        }
+      }
+      if (failure) {
+        console.error(`ios-transfer ${tag} offline deploy failed, reversing the move:`, failure?.message || failure);
+        // An unknown outcome (timeout) may have taken it down: flag it so the sweep restores an active site.
+        const prev = {
+          user_id: ownerId, site_slug: slug, published_at: row.published_at, removed_at: row.removed_at ?? null,
+          taken_down_at: isIndefiniteDeployError(failure) ? new Date(deps.takedown.now()).toISOString() : row.taken_down_at ?? null,
+        };
+        let reverted = false;
+        try {
+          reverted = await repo.revertMove(otid, caller, prev);
+        } catch (e: any) {
+          console.error(`ios-transfer ${tag}: reverse failed:`, e?.message || e);
+        }
+        if (!reverted) console.error(`ios-transfer ${tag} ALERT: moved, offline deploy failed AND the reverse failed; slug ${slug} may be live and untracked`);
         return unavailable;
       }
     }
-    if (slug) {
-      try {
-        await repo.releaseSiteAfterMove(otid, slug, caller);
-      } catch (e: any) {
-        console.error(`ios-transfer ${tag} ALERT: moved and offline but the slug release failed:`, e?.message || e);
-        return unavailable;
-      }
-    }
+
+    // d. O's shop no longer reads this purchase. A failure here is finished by a retry (already-the-caller's branch).
     try {
-      await deps.detachShop(otid);
+      await deps.detachShop(otid, caller);
     } catch (e: any) {
       console.error(`ios-transfer ${tag} ALERT: moved but detaching the previous shop failed:`, e?.message || e);
       return unavailable;
@@ -187,15 +220,4 @@ export async function runTransfer(input: unknown, deps: TransferDeps, ctx: { aut
     console.error(`[ios/transfer] ${tag}: unexpected error:`, (e as Error)?.message || e);
     return unavailable;
   }
-}
-
-/** A takedown that failed after the CAS: give the purchase back and undo the stamps so O is as before. */
-async function undoMove(deps: TransferDeps, otid: string, from: string, to: string, o: { clearTakenDown: boolean }): Promise<void> {
-  const log = (what: string) => (e: any) => console.error(`ios-transfer otid=${otid.slice(-4)} ALERT: undo ${what} failed:`, e?.message || e);
-  const { repo } = deps;
-  // Stamps first (while the row is still ours), then the link goes back.
-  const cur = await repo.get(otid).catch(() => null);
-  if (cur?.removed_at && repo.clearRemoved) await repo.clearRemoved(otid, cur.removed_at).catch(log('clearRemoved'));
-  if (o.clearTakenDown) await repo.clearTakenDown(otid).catch(log('clearTakenDown'));
-  await repo.transferUser!(otid, to, from).catch(log('transferUser'));
 }

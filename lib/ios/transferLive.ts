@@ -1,4 +1,5 @@
 // Live wiring for transfer.ts (Supabase, Apple, Vercel). Kept apart so transfer.ts stays pure.
+import { createHmac } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { makeRateLimiter, supabaseRateStore } from '../bookings/rateLimit.js';
 import { serviceClient } from '../bookings/repo.js';
@@ -24,14 +25,19 @@ export function liveTransferDeps(): TransferDeps {
     emailOf: liveEmailOf,
     bindingOwner: liveBindingOwner,
     allow: (callerId) => transferLimiter.allow(callerId, 'write'),
-    // The existing takedown pieces only: no releaseDomains / deleteContent (nothing is deleted).
-    takedown: { markRemoved: remove.markRemoved, markTakenDown: remove.markTakenDown, deployOffline: remove.deployOffline, now: remove.now },
-    async detachShop(otid) {
+    // Only the existing offline deploy: no markRemoved / releaseDomains / deleteContent (nothing is deleted).
+    takedown: { deployOffline: remove.deployOffline, now: remove.now },
+    ownerToken(ownerId, otid) {
+      const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (!key) throw new Error('SUPABASE_SERVICE_ROLE_KEY must be set');
+      return createHmac('sha256', key).update(`ios-transfer-owner:${ownerId}:${otid}`).digest('hex').slice(0, 32);
+    },
+    async detachShop(otid, callerId) {
       const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
       const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
       if (!url || !key) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set');
       const { error } = await createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
-        .from('ab_shops').update({ ios_otid: null }).eq('ios_otid', otid);
+        .from('ab_shops').update({ ios_otid: null }).eq('ios_otid', otid).neq('owner_id', callerId);
       if (error) throw new Error(`ab_shops detach failed: ${error.message}`);
     },
   };

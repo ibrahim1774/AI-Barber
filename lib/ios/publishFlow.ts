@@ -30,6 +30,7 @@ import { createClient } from '@supabase/supabase-js';
 import { chooseSlug, makeIsTaken, urlServes, vercelProjectExists } from './slug.js';
 import { buildImageUrlMap, toPendingSiteData } from './pendingData.js';
 import { stripLapsedLinks } from './tiers.js';
+import { liveRemoveDeps } from './removeSiteLive.js';
 import { liveBindingOwner, liveEmailOf, otherAccountBody, type BindingOwner, type OtherAccountBody } from './ownership.js';
 import { MAX_BODY_BYTES, hasDataUrl, isObj, restoreImageUrls, validSiteData, validationProblem } from './siteShape.js';
 
@@ -68,6 +69,7 @@ export type IosPublishResult =
   | { status: 409; body: { error: 'site-updated'; site: IosSiteBody } }
   | { status: 409; body: OtherAccountBody }
   | { status: 409; body: { error: 'account-has-site'; slug: string } }
+  | { status: 409; body: { error: 'purchase-changed' } }
   | { status: 400 | 401 | 402 | 404 | 502 | 503; body: { error: string; reason?: string } };
 
 export type IosSiteLookupResult =
@@ -114,6 +116,8 @@ export interface PublishDeps {
    * publish, and as "not proven" for a site lookup (which never discloses a site without proof).
    */
   bindingOwner?(row: PurchaseRow): Promise<BindingOwner>;
+  /** Offline page for a slug (the sweep's deploy). Used only to undo a publish that raced a subscription transfer. */
+  deployOffline?(slug: string): Promise<void>;
   /** Dry render before storing (lib/publishSite.ts renderPending). Throws on unrenderable data. */
   render?(p: Pick<PendingSite, 'siteData' | 'imageUrlMap'>): SiteFile[];
   now(): number;
@@ -405,7 +409,10 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
 
     // The site is live. If stamping fails, the sweeper reconciles it (its
     // publish is idempotent); a 503 here would only make the app redeploy.
-    await deps.repo.markPublished(otid).catch((e) =>
+    // Conditional on the caller still owning the purchase and slug: a transfer may have moved it while
+    // this publish was deploying (the re-read below then puts the site back offline).
+    const only = caller ? { userId: caller, slug } : undefined;
+    await deps.repo.markPublished(otid, only).catch((e) =>
       console.error(`[ios/publish] ${slug}: live but markPublished failed:`, e?.message || e));
 
     // A bound slug was just force-redeployed with real content, so it no longer
@@ -429,8 +436,24 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
         }
       }
       if (!removedMeanwhile) {
-        await deps.repo.clearTakenDown(otid).catch((e) =>
+        await deps.repo.clearTakenDown(otid, only).catch((e) =>
           console.error(`[ios/publish] ${slug}: live but clearTakenDown failed:`, e?.message || e));
+      }
+    }
+
+    // A subscription transfer that won the compare-and-set while this publish was deploying took the
+    // purchase (and the slug) away from the caller: this deploy brought the old owner's site back with no
+    // purchase row tracking it. Put the offline page back and answer purchase-changed.
+    if (caller && deps.deployOffline) {
+      const after = await deps.repo.get(otid);
+      if (after && (after.user_id !== caller || after.site_slug !== slug)) {
+        console.warn(`[ios/publish] ${otid}: purchase moved during the publish; taking the site back offline`);
+        try {
+          await deps.deployOffline(slug);
+        } catch (e: any) {
+          console.error(`[ios/publish] ALERT ${slug}: purchase moved mid-publish AND the offline deploy failed:`, e?.message || e);
+        }
+        return { status: 409, body: { error: 'purchase-changed' } };
       }
     }
 
@@ -564,6 +587,7 @@ export function liveDeps(): PublishDeps {
     userOf: liveUserOf,
     emailOf: liveEmailOf,
     bindingOwner: liveBindingOwner,
+    deployOffline: (slug) => liveRemoveDeps().deployOffline(slug),
     now: () => Date.now(),
   };
 }

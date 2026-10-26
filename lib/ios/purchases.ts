@@ -31,6 +31,11 @@ export interface PurchaseRow {
   claim_expires_at?: string | null;
 }
 
+/** The ownership fields a transfer changes (restored by revertMove). */
+export interface MovePrev {
+  user_id: string; site_slug: string | null; published_at: string | null; taken_down_at: string | null; removed_at: string | null;
+}
+
 export interface PurchasesRepo {
   get(otid: string): Promise<PurchaseRow | null>;
   /**
@@ -41,7 +46,8 @@ export interface PurchasesRepo {
   upsertVerified(tx: VerifiedTx, opts?: { checkedAt?: number }): Promise<PurchaseRow>;
   bindSlug(otid: string, slug: string): Promise<boolean>;
   slugTaken(slug: string): Promise<boolean>;
-  markPublished(otid: string): Promise<void>;
+  /** With `only`, the stamp is written only while the row still belongs to that account and slug (a transfer may have moved it). */
+  markPublished(otid: string, only?: { userId: string; slug: string }): Promise<void>;
   /**
    * THE ONLY writer of ios_purchases.user_id (besides the FK's ON DELETE SET NULL): a single
    * conditional UPDATE ... WHERE user_id IS NULL, so it never re-points an existing owner and of two
@@ -49,18 +55,18 @@ export interface PurchasesRepo {
    */
   setUserIfUnlinked(otid: string, userId: string): Promise<boolean>;
   /**
-   * Move a purchase between accounts (POST /api/ios/transfer): ONE conditional UPDATE
-   * `SET user_id = to WHERE original_transaction_id = otid AND user_id = from`. True = this call moved it;
-   * false = it is no longer linked to `from` (someone moved it first), nothing changed. Of two racing
-   * callers exactly one gets true. Also used to put the link back when the takedown that follows failed.
+   * Move a purchase between accounts (POST /api/ios/transfer) in ONE conditional UPDATE:
+   * `SET user_id = to, site_slug = null, published_at = null, taken_down_at = null, removed_at = null
+   *  WHERE original_transaction_id = otid AND user_id = from AND site_slug = slug` (`IS NULL` when slug is null).
+   * Moving the owner and detaching the old site together means that whatever fails afterwards the new
+   * owner can never reach the previous owner's slug or stored copy. True = moved; false = changed first.
    */
-  transferUser?(otid: string, fromUserId: string, toUserId: string): Promise<boolean>;
+  moveUserAndRelease?(otid: string, fromUserId: string, toUserId: string, slug: string | null): Promise<boolean>;
   /**
-   * After a move whose previous site was taken offline: clear the slug, publish and takedown/removal
-   * stamps so the new owner publishes fresh. Conditional on the row still being the new owner's and on
-   * the slug being the one that was taken offline. Never deletes content. True = released.
+   * Put a move back (the offline deploy that followed failed): restores `prev` only if the row is still the
+   * new owner's with no slug. True = restored.
    */
-  releaseSiteAfterMove?(otid: string, slug: string, ownerId: string): Promise<boolean>;
+  revertMove?(otid: string, toUserId: string, prev: MovePrev): Promise<boolean>;
   applyNotification(n: {
     otid: string; productId: string; environment: IosEnv; expiresAt: number | null; revokedAt: number | null; type: string;
     /** REFUND_REVERSED: set revoked_at = null (wins over revokedAt). */
@@ -81,7 +87,7 @@ export interface PurchasesRepo {
   /** Restore prefilter: taken down and (revoked, or active again per lapse.ts). Apple decides. */
   restoreCandidates(limit: number, now: number): Promise<PurchaseRow[]>;
   markTakenDown(otid: string, at: number): Promise<void>;
-  clearTakenDown(otid: string): Promise<void>;
+  clearTakenDown(otid: string, only?: { userId: string; slug: string }): Promise<void>;
   /** 017: stamp removed_at (owner-initiated removal; idempotent, keeps the first stamp). */
   markRemoved(otid: string, at: number): Promise<void>;
   /** 017: clear removed_at only if it still equals `removedAt` (a newer removal keeps its stamp). */
@@ -236,8 +242,10 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
       return Array.isArray(data) && data.length > 0;
     },
 
-    async markPublished(otid) {
-      const { error } = await db().from(TABLE).update({ published_at: new Date().toISOString() }).eq('original_transaction_id', otid);
+    async markPublished(otid, only) {
+      let q = db().from(TABLE).update({ published_at: new Date().toISOString() }).eq('original_transaction_id', otid);
+      if (only) q = q.eq('user_id', only.userId).eq('site_slug', only.slug);
+      const { error } = await q;
       if (error) fail('markPublished', error);
     },
 
@@ -248,18 +256,20 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
       return Array.isArray(data) && data.length > 0;
     },
 
-    async transferUser(otid, fromUserId, toUserId) {
-      const { data, error } = await db().from(TABLE).update({ user_id: toUserId })
-        .eq('original_transaction_id', otid).eq('user_id', fromUserId).select('original_transaction_id');
-      if (error) fail('transferUser', error);
+    async moveUserAndRelease(otid, fromUserId, toUserId, slug) {
+      const q = db().from(TABLE)
+        .update({ user_id: toUserId, site_slug: null, published_at: null, taken_down_at: null, removed_at: null })
+        .eq('original_transaction_id', otid).eq('user_id', fromUserId);
+      const { data, error } = await (slug ? q.eq('site_slug', slug) : q.is('site_slug', null)).select('original_transaction_id');
+      if (error) fail('moveUserAndRelease', error);
       return Array.isArray(data) && data.length > 0;
     },
 
-    async releaseSiteAfterMove(otid, slug, ownerId) {
-      const { data, error } = await db().from(TABLE)
-        .update({ site_slug: null, published_at: null, taken_down_at: null, removed_at: null })
-        .eq('original_transaction_id', otid).eq('user_id', ownerId).eq('site_slug', slug).select('original_transaction_id');
-      if (error) fail('releaseSiteAfterMove', error);
+    async revertMove(otid, toUserId, prev) {
+      const fields: Record<string, unknown> = { ...prev };
+      const { data, error } = await db().from(TABLE).update(fields)
+        .eq('original_transaction_id', otid).eq('user_id', toUserId).is('site_slug', null).select('original_transaction_id');
+      if (error) fail('revertMove', error);
       return Array.isArray(data) && data.length > 0;
     },
 
@@ -387,8 +397,10 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
       if (error) fail('markTakenDown', error);
     },
 
-    async clearTakenDown(otid) {
-      const { error } = await db().from(TABLE).update({ taken_down_at: null }).eq('original_transaction_id', otid);
+    async clearTakenDown(otid, only) {
+      let q = db().from(TABLE).update({ taken_down_at: null }).eq('original_transaction_id', otid);
+      if (only) q = q.eq('user_id', only.userId).eq('site_slug', only.slug);
+      const { error } = await q;
       if (error) fail('clearTakenDown', error);
     },
 
