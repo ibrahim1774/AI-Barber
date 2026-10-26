@@ -5,7 +5,7 @@ const { allow, takeSiteOffline } = vi.hoisted(() => ({ allow: vi.fn(), takeSiteO
 vi.mock('../../lib/bookings/rateLimit.js', () => ({ clientIp: () => '1.2.3.4', iosLimiter: { allow } }));
 vi.mock('../../lib/ios/appleVerify.js', () => ({ lazyDefaultVerifier: () => async () => ({}) }));
 vi.mock('../../lib/ios/purchases.js', () => ({ supabasePurchases: () => ({}) }));
-vi.mock('../../lib/ios/removeSiteLive.js', () => ({ liveRemoveDeps: () => ({}) }));
+vi.mock('../../lib/ios/removeSiteLive.js', () => ({ liveRemoveDeps: () => ({}), liveDeleteAccountRows: async () => {} }));
 vi.mock('../../lib/ios/publishFlow.js', () => ({ liveUserOf: async () => null }));
 vi.mock('../../lib/ios/takeOffline.js', () => ({ takeSiteOffline }));
 
