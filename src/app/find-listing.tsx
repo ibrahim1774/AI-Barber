@@ -13,7 +13,7 @@ import { useImportRun } from '@/lib/useImportRun';
 import { useRevealAboveKeyboard } from '@/lib/keyboard';
 import { api, type Candidate, type ListingMatch, type ScrapePayload } from '@/lib/api';
 import { fetchListing } from '@/lib/flow';
-import { goBackOrHome } from '@/lib/nav';
+import { backToStart, confirmCancel } from '@/lib/nav';
 import { listingMatch, listingSite } from '@/lib/importer';
 import { servicesFromPicks, type ServicePicks } from '@/lib/serviceChecklist';
 
@@ -41,7 +41,7 @@ export default function FindListing() {
   // older query is dropped instead of re-opening the list.
   const reqIdRef = useRef(0);
   const findBusyRef = useRef(false);
-  const { busy, progress, slowHint, run, fetchOnly } = useImportRun();
+  const { busy, progress, slowHint, run, fetchOnly, cancel } = useImportRun();
   // The listing found, waiting for "Is this you?"; then (confirmed) the services checklist.
   const [found, setFound] = useState<{ payload: ScrapePayload; match: ListingMatch } | null>(null);
   const [confirmed, setConfirmed] = useState(false);
@@ -152,11 +152,12 @@ export default function FindListing() {
   };
 
   // Back steps through the stages: services → "Is this you?" → search → the previous screen.
+  // While the listing is being fetched or built: confirm, then drop the pending result and leave for Start.
   const back = () => {
-    if (busy) return;
+    if (busy) { confirmCancel(() => { cancel(); backToStart(); }); return; }
     if (found && confirmed) { setConfirmed(false); return; }
     if (found) { notMine(); return; }
-    goBackOrHome();
+    backToStart();
   };
 
   // "Search again": a fresh search, the typed name cleared.

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useEntitlements, type EntitlementId } from '@/lib/entitlements';
 import { usePaywall, useSuperwallSettled } from '@/lib/paywall';
-import { getPlan, getSharedPlan, hostingReadOnlyOpen, setSharedPlan, subscribePlan } from '@/lib/plan';
+import { getPlan, getPlanEpoch, getSharedPlan, hostingReadOnlyOpen, setSharedPlan, subscribePlan } from '@/lib/plan';
 
 export type TierAccess = {
   /** loading: not yet decidable. error: Superwall never answered and the server didn't either. */
@@ -31,9 +31,10 @@ export function useTierAccess(need: EntitlementId): TierAccess {
   useEffect(() => {
     if (!needPlan) return;
     let alive = true;
+    const epoch = getPlanEpoch(); // a reply for an account that has since signed out is not for this one
     setFailed(false);
     getPlan()
-      .then((p) => alive && setSharedPlan(p))
+      .then((p) => alive && epoch === getPlanEpoch() && setSharedPlan(p))
       .catch(() => alive && setFailed(true));
     return () => {
       alive = false;

@@ -35,7 +35,7 @@ export function ImportProgress({ steps, progress, slowHint }: { steps: Step[]; p
   if (progress >= 100) stepIdx = steps.length - 1;
 
   return (
-    <View accessibilityViewIsModal style={[StyleSheet.absoluteFill, styles.root, { paddingTop: insets.top }]}>
+    <View style={[StyleSheet.absoluteFill, styles.root, { paddingTop: insets.top }]}>
       <View style={styles.track}>
         <View style={[styles.fill, { width: `${progress}%` }]} />
       </View>

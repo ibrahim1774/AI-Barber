@@ -35,7 +35,7 @@ describe('/manual keyboard handling', () => {
   it('the phone field points at a Done bar whose button dismisses the keyboard', async () => {
     const dismiss = jest.spyOn(Keyboard, 'dismiss').mockImplementation(() => {});
     const tree = await render(<Manual />);
-    const phone = inputByLabel(tree, 'Mobile number');
+    const phone = inputByLabel(tree, 'Phone number');
     expect(phone.props.keyboardType).toBe('phone-pad');
     const id = phone.props.inputAccessoryViewID;
     expect(typeof id).toBe('string');
@@ -48,16 +48,15 @@ describe('/manual keyboard handling', () => {
     dismiss.mockRestore();
   });
 
-  it('text fields get no Done bar; Return moves on (name -> address -> phone -> area) and the last one dismisses', async () => {
+  it('text fields get no Done bar; Return moves on (name -> area -> phone) and the last one dismisses', async () => {
     const dismiss = jest.spyOn(Keyboard, 'dismiss').mockImplementation(() => {});
     const tree = await render(<Manual />);
     expect(inputByLabel(tree, 'Barbershop name').props.inputAccessoryViewID).toBeUndefined();
     expect(inputByLabel(tree, 'Barbershop name').props.returnKeyType).toBe('next');
-    expect(inputByLabel(tree, 'Address or city').props.returnKeyType).toBe('next');
-    expect(inputByLabel(tree, 'Mobile number').props.returnKeyType).toBe('next');
-    const area = inputByLabel(tree, 'Area you serve');
-    expect(area.props.returnKeyType).toBe('done');
-    await act(async () => { area.props.onSubmitEditing(); });
+    expect(inputByLabel(tree, 'Local service area').props.returnKeyType).toBe('next');
+    const phone = inputByLabel(tree, 'Phone number');
+    expect(phone.props.returnKeyType).toBe('done');
+    await act(async () => { phone.props.onSubmitEditing(); });
     expect(dismiss).toHaveBeenCalledTimes(1);
     dismiss.mockRestore();
   });

@@ -5,7 +5,7 @@ import { colors, fonts } from '@/constants/theme';
 import { Screen } from '@/components/Screen';
 import { CheckIcon } from '@/components/Icons';
 import { FlowHelper, FlowTitle, PillButton } from '@/components/FlowParts';
-import { goBackOrHome } from '@/lib/nav';
+import { backToStart } from '@/lib/nav';
 import { loadSite } from '@/lib/siteStore';
 import { importCounts, type ImportCounts } from '@/lib/importReview';
 
@@ -48,7 +48,7 @@ export default function ImportReview() {
   const missing = rows.some((r) => r.count === 0);
 
   return (
-    <Screen onBack={goBackOrHome}>
+    <Screen onBack={backToStart}>
       <FlowTitle first="Here's what" second="we found" />
       {counts && (
         <>

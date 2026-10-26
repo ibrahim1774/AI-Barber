@@ -68,12 +68,12 @@ describe('importer', () => {
     expect(b.inputs.colorTheme).toBeUndefined();
   });
 
-  it('manualSite writes the address, area, phone and the place label, and no reviews', async () => {
-    const r = await manualSite({ shopName: 'Fade Lab', area: 'Austin, TX', address: '512 Congress Ave, Austin, TX', phone: '(512) 555-0142', place: 'Downtown', colorTheme: DEFAULT_SWATCH });
-    expect(r.site.contact.address).toBe('512 Congress Ave, Austin, TX');
+  it('manualSite writes the area, phone and the place label (no street address), and no reviews', async () => {
+    const r = await manualSite({ shopName: 'Fade Lab', area: 'Austin, TX', address: '', phone: '(512) 555-0142', place: 'Austin, TX', colorTheme: DEFAULT_SWATCH });
+    expect(r.site.contact.address).toBe('');
     expect(r.site.area).toBe('Austin, TX');
     expect(r.site.phone).toBe('(512) 555-0142');
-    expect(r.site.labels?.pgPlace).toBe('Downtown');
+    expect(r.site.labels?.pgPlace).toBe('Austin, TX');
     expect(r.site.reviews ?? []).toHaveLength(0);
     expect(r.inputs).toMatchObject({ shopName: 'Fade Lab', area: 'Austin, TX', phone: '(512) 555-0142' });
     const noPlace = await manualSite({ shopName: 'A', area: 'Austin, TX', address: 'Austin, TX', phone: '(512) 555-0142', colorTheme: DEFAULT_SWATCH });

@@ -94,6 +94,14 @@ export function hostingReadOnlyOpen(plan: Pick<Plan, 'entitlements' | 'expiresAt
 
 // The last plan the server reported, shared so a refresh after an upgrade reaches the tabs without Retry.
 let shared: Plan | null = null;
+// Bumped when the account changes: a plan request started before that must not land afterwards (it is the old account's).
+let planEpoch = 0;
+export const getPlanEpoch = (): number => planEpoch;
+/** Sign-out / account switch: forget the plan, and drop any plan still being fetched for the old account. */
+export function resetSharedPlan(): void {
+  planEpoch++;
+  setSharedPlan(null);
+}
 const planListeners = new Set<() => void>();
 export const getSharedPlan = (): Plan | null => shared;
 export function setSharedPlan(p: Plan | null): void {

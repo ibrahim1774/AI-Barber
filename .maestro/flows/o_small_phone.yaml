@@ -7,7 +7,7 @@ appId: com.ibrahim1774.aibarber
 - takeScreenshot: o2_manual
 - tapOn: "Jack's Barbershop"
 - inputText: "Jack's Barbershop"
-- tapOn: "512 Congress.*"
+- tapOn: "Austin, TX"
 - inputText: "Austin, TX"
 - tapOn: "\\(512\\) 555-0142"
 - inputText: "5125550142"

@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
-import { resetTo } from '@/lib/nav';
+import { backToStart, confirmCancel, resetTo } from '@/lib/nav';
+import { discardUnpublishedDraft } from '@/lib/flow';
+import { BackButton } from '@/components/BackButton';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fonts } from '@/constants/theme';
 import { ScissorsIcon } from '@/components/Icons';
 import { generatingSteps } from '@/lib/generatingSteps';
@@ -11,6 +14,8 @@ import { loadSite } from '@/lib/siteStore';
 const HOLD_MS = 3000;
 
 export default function Generating() {
+  const insets = useSafeAreaInsets();
+  const cancelled = useRef(false);
   const [progress, setProgress] = useState(0);
   const [messageIndex, setMessageIndex] = useState(0);
   const [steps, setSteps] = useState<string[]>(['Building your website']);
@@ -34,7 +39,7 @@ export default function Generating() {
       clearInterval(timer);
       setProgress(100);
       // Reset the stack so back / swipe from the tabs never returns to the importer.
-      go = setTimeout(() => resetTo('/edit'), 150);
+      go = setTimeout(() => { if (!cancelled.current) resetTo('/edit'); }, 150);
     }, HOLD_MS);
     return () => {
       clearInterval(timer);
@@ -44,8 +49,18 @@ export default function Generating() {
     };
   }, []);
 
+  // Cancel while the build holds: stop the timers (unmount does), drop an unpublished draft, back to Start.
+  const back = () =>
+    confirmCancel(() => {
+      cancelled.current = true;
+      void discardUnpublishedDraft().finally(() => backToStart());
+    });
+
   return (
     <View style={styles.root}>
+      <View style={[styles.backBar, { top: insets.top }]}>
+        <BackButton onPress={back} />
+      </View>
       <Bounce>
         <ScissorsIcon size={64} color={colors.accent} />
       </Bounce>
@@ -103,6 +118,7 @@ function Pulse({ children }: { children: React.ReactNode }) {
 }
 
 const styles = StyleSheet.create({
+  backBar: { position: 'absolute', left: 0, right: 0, paddingLeft: 8, zIndex: 10 },
   root: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
   title: {
     fontFamily: fonts.headingBlack, fontSize: 24, letterSpacing: 4, textTransform: 'uppercase', color: '#fff',

@@ -1,0 +1,17 @@
+appId: com.ibrahim1774.aibarber
+---
+# Every option shows a visible Back (chevron + "Back") that returns to the start screen.
+- runFlow: _launch.yaml
+- tapOn: "Use my booking link"
+- assertVisible: "Back"
+- tapOn: "Back"
+- assertVisible: "Start from scratch"
+- tapOn: "Find me on Google"
+- assertVisible: "Back"
+- tapOn: "Back"
+- assertVisible: "Start from scratch"
+- tapOn: "Start from scratch"
+- assertVisible: "Back"
+- assertVisible: "Local service area"
+- tapOn: "Back"
+- assertVisible: "Start from scratch"

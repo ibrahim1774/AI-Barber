@@ -5,7 +5,7 @@ import { router } from 'expo-router';
 import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
-import { ChevronLeftIcon } from '@/components/Icons';
+import { BackButton, BACK_BAR_HEIGHT } from '@/components/BackButton';
 import { useSession } from '@/lib/auth';
 
 /**
@@ -39,11 +39,8 @@ export function Screen({
           contentContainerStyle={[styles.scroll, { paddingTop: insets.top }]}
         >
           {onBack ? (
-            <View style={styles.flowHeader}>
-              <Pressable accessibilityRole="button" accessibilityLabel="Back" hitSlop={12} onPress={onBack} style={styles.backBtn}>
-                <ChevronLeftIcon size={22} color={colors.text} />
-              </Pressable>
-            </View>
+            // Room for the fixed Back bar below (it floats above the scroll and above the progress overlay).
+            <View style={{ height: BACK_BAR_HEIGHT }} />
           ) : (
           <View style={styles.header}>
             <View style={styles.brand}>
@@ -76,6 +73,12 @@ export function Screen({
         </ScrollView>
       </KeyboardAvoidingView>
       {overlay}
+      {/* After the overlay so a running import never hides it; outside the ScrollView so it never scrolls away. */}
+      {onBack ? (
+        <View pointerEvents="box-none" style={[styles.backBar, { top: insets.top }]}>
+          <BackButton onPress={onBack} />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -119,8 +122,7 @@ const styles = StyleSheet.create({
   brandText: {
     fontFamily: fonts.bodySemi, fontSize: 11, letterSpacing: 2.9, textTransform: 'uppercase', color: colors.text,
   },
-  flowHeader: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 },
-  backBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  backBar: { position: 'absolute', left: 0, right: 0, zIndex: 100, elevation: 100, paddingLeft: 8 },
   flowMain: { flex: 1, alignItems: 'center', paddingHorizontal: 24, paddingTop: 36 },
   main: {
     flex: 1, alignItems: 'center', justifyContent: 'center',

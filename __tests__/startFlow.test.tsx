@@ -77,7 +77,7 @@ describe('screen 2: booking link', () => {
   it('the back chevron goes back; I don\'t have a link goes to the Google search (replacing, as before)', async () => {
     const tree = await render(<BookingLink />);
     await press(tree, 'Back');
-    expect(mockBack).toHaveBeenCalledTimes(1);
+    expect(mockReplace).toHaveBeenCalledWith('/start');
     await press(tree, "I don't have a link");
     expect(mockReplace).toHaveBeenCalledWith('/find-listing');
   });
@@ -178,7 +178,7 @@ describe('screen 4: Here\'s what we found', () => {
     await save(booksy);
     const tree = await render(<ImportReview />);
     await press(tree, 'Back');
-    expect(mockBack).toHaveBeenCalledTimes(1);
+    expect(mockReplace).toHaveBeenCalledWith('/start');
   });
 
   it('no draft: straight to the start screen (never an empty review); a typed draft is not reviewed, it goes on to /generating', async () => {
@@ -199,18 +199,17 @@ describe('start from scratch', () => {
     for (const [k, val] of Object.entries(v)) await act(async () => input(tree, k).props.onChangeText(val));
   };
 
-  it('shows the four fields, a Build button and a back chevron; no old logo or Sign In', async () => {
+  it('shows exactly three fields, a Build button and a back chevron; no old logo or Sign In', async () => {
     const tree = await render(<Manual />);
     const t = text(tree);
-    for (const s of ['Start from', 'scratch', 'Barbershop name', 'Address or city', 'Mobile number', 'Area you serve', 'Build my website']) {
+    for (const s of ['Start from', 'scratch', 'Barbershop name', 'Local service area', 'Phone number', 'Build my website']) {
       expect(t).toContain(s);
     }
-    expect(t).not.toMatch(/AI ?Barber|Sign In/);
-    expect(t).toContain('3 ticked');
-    expect(t).toContain('Haircut & beard');
+    expect(t).not.toMatch(/AI ?Barber|Sign In|Address|services|ticked|Haircut/i);
+    expect(tree.root.findAll((n: any) => typeof n.props?.onChangeText === 'function' && n.type === 'TextInput')).toHaveLength(3);
     expect(buttons(tree, 'Back')).toHaveLength(1);
     await press(tree, 'Back');
-    expect(mockBack).toHaveBeenCalledTimes(1);
+    expect(mockReplace).toHaveBeenCalledWith('/start');
   });
 
   it('an empty form shows the first error and starts nothing', async () => {
@@ -223,15 +222,17 @@ describe('start from scratch', () => {
 
   it('a filled form builds the draft with the typed values and opens /generating', async () => {
     const tree = await render(<Manual />);
-    await fill(tree, { 'Barbershop name': 'Fade Lab', 'Address or city': '512 Congress Ave, Austin, TX 78701', 'Mobile number': '5125550142', 'Area you serve': 'Downtown' });
+    await fill(tree, { 'Barbershop name': 'Fade Lab', 'Local service area': 'Austin, TX', 'Phone number': '5125550142' });
     await press(tree, 'Build my website');
     await act(async () => { await new Promise((r) => setTimeout(r, 400)); });
     expect(mockReplace).toHaveBeenCalledWith('/generating');
     const rec = await store.loadSite();
-    expect(rec?.data.contact.address).toBe('512 Congress Ave, Austin, TX 78701');
+    expect(rec?.data.contact.address).toBe('');
     expect(rec?.data.area).toBe('Austin, TX');
+    expect(rec?.data.services.map((x) => x.title)).toEqual(['Haircut', 'Beard trim', 'Haircut & beard']);
+    expect(rec?.data.reviews ?? []).toHaveLength(0);
     expect(rec?.data.phone).toBe('(512) 555-0142');
-    expect(rec?.data.labels?.pgPlace).toBe('Downtown');
+    expect(rec?.data.labels?.pgPlace).toBe('Austin, TX');
   });
 
   it('the typed values never reach track()', () => {

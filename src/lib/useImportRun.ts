@@ -132,5 +132,16 @@ export function useImportRun() {
     else onFail(result.message);
   };
 
-  return { busy, progress, slowHint, run, fetchOnly };
+  /**
+   * Cancels the running import: the pending request's answer is ignored (nothing saved, no navigation, no error)
+   * and the screen is idle again. Safe to call when nothing runs.
+   */
+  const cancel = () => {
+    guardRef.current?.cancel();
+    busyRef.current = false;
+    setBusy(false);
+    setSlowHint(false);
+  };
+
+  return { busy, progress, slowHint, run, fetchOnly, cancel };
 }

@@ -96,7 +96,7 @@ export function bookingUrl(shop: Pick<Shop, 'slug'>): string {
  */
 export function isAiBarberBookingUrl(url?: string | null): boolean {
   if (!url) return false;
-  return isSiteBookLink(url) || /^(https?:\/\/)?(www\.)?aibarber\.org\/book(?=[/?#]|$)/i.test(url.trim());
+  return isSiteBookLink(url) || /^(https?:\/\/)?([a-z0-9-]+\.)*aibarber\.org\/book(?=[/?#]|$)/i.test(url.trim());
 }
 
 /** The same for the shop: the site's own `/shop` page, or the old aibarber.org/shop/{slug} form. */
