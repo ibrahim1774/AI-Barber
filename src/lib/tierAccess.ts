@@ -61,7 +61,8 @@ export function useTierAccess(need: EntitlementId): TierAccess {
   const other = ents.account === 'other' ? { hint: ents.hint ?? null } : null;
   if (ents.known) {
     // Hosting inactive: wait for the plan's date so a 30+ day lapse never flashes the read-only view.
-    if (!ents.hosting && plan == null && !failed) return { status: 'loading', entitled: false, expired: false, hosting: false, otherAccount: null, retry };
+    // Signed out (nobody has paid or signed in yet, e.g. a site just made from scratch): nothing to wait for, locked.
+    if (!ents.hosting && plan == null && !failed && !signedOut) return { status: 'loading', entitled: false, expired: false, hosting: false, otherAccount: null, retry };
     const expired = !ents.hosting && plan != null && !hostingReadOnlyOpen(plan);
     return { status: 'ready', entitled: ents[need], expired, hosting: ents.hosting, otherAccount: other, retry };
   }
