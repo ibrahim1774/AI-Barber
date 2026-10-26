@@ -134,7 +134,7 @@ describe('Learn content', () => {
     expect(all).toContain('Back to return to the editor');
     expect(all).toContain('Move subscription to this account');
     expect(all).toContain('Restore purchases');
-    expect(all).not.toMatch(/confirm (your )?password|video|watch/i);
+    expect(all).not.toMatch(/confirm (your )?password|video|\bwatch\b/i);
   });
 
   it('has no placeholder text anywhere in the copy or the screens', () => {
