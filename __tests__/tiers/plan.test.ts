@@ -30,9 +30,17 @@ it('getPlan GETs with the Bearer token and no body', async () => {
   expect(init.body).toBeUndefined();
 });
 
-it('a 404 no-shop rejects with that code', async () => {
+it('a 404 no-shop is an unlinked plan with nothing granted, not an error', async () => {
   respond(404, { error: 'no-shop' });
-  await expect(getPlan()).rejects.toMatchObject({ status: 404, code: 'no-shop' });
+  const p = await getPlan();
+  expect(p).toMatchObject({ linked: false, tier: null, active: false, entitlements: { hosting: false, bookings: false, store: false } });
+});
+
+it('a 5xx or a network failure still rejects', async () => {
+  respond(500, { error: 'boom' });
+  await expect(getPlan()).rejects.toMatchObject({ status: 500 });
+  (global as any).fetch = jest.fn().mockRejectedValue(new Error('offline'));
+  await expect(getPlan()).rejects.toBeDefined();
 });
 
 describe('hostingReadOnlyOpen', () => {

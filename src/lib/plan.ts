@@ -44,7 +44,21 @@ async function planCall(answer: Promise<unknown>): Promise<Plan> {
   return plan;
 }
 
-export const getPlan = (): Promise<Plan> => planCall(call<unknown>('GET', '/api/shop/plan'));
+/** A signed-in account with no shop yet: nothing is granted, and it is not an error. */
+export const UNLINKED_PLAN: Plan = {
+  linked: false, tier: null, entitlements: { hosting: false, bookings: false, store: false },
+  active: false, expiresAt: null, takenDownAt: null, revoked: false, capabilities: { memberProfile: false },
+};
+
+export async function getPlan(): Promise<Plan> {
+  try {
+    return await planCall(call<unknown>('GET', '/api/shop/plan'));
+  } catch (e) {
+    // Only the server's 404 no-shop: a network or 5xx failure stays an error (retry card).
+    if (e instanceof OwnerApiError && e.status === 404 && e.code === 'no-shop') return { ...UNLINKED_PLAN };
+    throw e;
+  }
+}
 
 /** Right after an upgrade purchase: the server verifies it with Apple and returns the plan. */
 export const refreshPlan = (transactionId: string | null): Promise<Plan> =>
@@ -83,9 +97,10 @@ export const READ_ONLY_DAYS = 30;
  * (then they show the upgrade card). True while hosting is inactive and the
  * lapse is under 30 days old; a lapse with no date is treated as recent.
  */
-export function hostingReadOnlyOpen(plan: Pick<Plan, 'entitlements' | 'expiresAt'> | null, now: number = Date.now()): boolean {
+export function hostingReadOnlyOpen(plan: (Pick<Plan, 'entitlements' | 'expiresAt'> & { linked?: boolean }) | null, now: number = Date.now()): boolean {
   if (!plan) return true;
   if (plan.entitlements.hosting) return false;
+  if (plan.linked === false && !plan.expiresAt) return false; // never subscribed: nothing to view read-only, show the upgrade card
   if (!plan.expiresAt) return true;
   const ended = Date.parse(plan.expiresAt);
   if (Number.isNaN(ended)) return true;

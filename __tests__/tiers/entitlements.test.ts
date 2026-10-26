@@ -1,5 +1,5 @@
 import {
-  entitlementsFrom, getEntitlements, resetEntitlementsForTests, setEntitlementsFromStatus, subscribeEntitlements,
+  clearEntitlements, entitlementsFrom, getEntitlements, resetEntitlementsForTests, setEntitlementsFromStatus, subscribeEntitlements,
   tierFromEntitlements, PLAN_ENTITLEMENT,
 } from '@/lib/entitlements';
 
@@ -53,4 +53,14 @@ it('tierFromEntitlements: store > bookings > hosting > none', () => {
 
 it('maps each upgrade placement to its entitlement', () => {
   expect(PLAN_ENTITLEMENT).toEqual({ bookings_upgrade: 'bookings', store_upgrade: 'store' });
+});
+
+it('clearEntitlements re-applies Superwall\'s latest status instead of leaving the mirror unknown', () => {
+  resetEntitlementsForTests();
+  setEntitlementsFromStatus({ status: 'ACTIVE', entitlements: [{ id: 'hosting' }] });
+  clearEntitlements();
+  expect(getEntitlements()).toMatchObject({ known: true, hosting: true, bookings: false });
+  resetEntitlementsForTests();
+  clearEntitlements();
+  expect(getEntitlements().known).toBe(false);
 });

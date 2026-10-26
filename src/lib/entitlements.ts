@@ -26,6 +26,9 @@ export function entitlementsFrom(status: StatusLike): Entitlements {
 }
 
 let current: Entitlements = UNKNOWN;
+// Superwall's latest status. It belongs to the Apple ID (the payment), not to the signed-in account, and it does
+// not change on sign-out, so clearEntitlements() refills the mirror from it.
+let lastStatus: StatusLike = null;
 const listeners = new Set<() => void>();
 
 const same = (a: Entitlements, b: Entitlements) =>
@@ -38,6 +41,7 @@ export function getEntitlements(): Entitlements {
 
 /** Feeds the mirror from Superwall's status. Notifies only on a real change. */
 export function setEntitlementsFromStatus(status: StatusLike): void {
+  lastStatus = status;
   const next = entitlementsFrom(status);
   if (same(current, next)) return;
   current = next;
@@ -53,14 +57,15 @@ export function subscribeEntitlements(listener: () => void): () => void {
 
 /** Sign-out / account switch: the old account's tiers are not known for the next one (Superwall feeds them again). */
 export function clearEntitlements(): void {
-  if (!current.known) return;
-  current = UNKNOWN;
-  listeners.forEach((l) => l());
+  // Reset, then re-apply what Superwall currently says for this Apple ID. Server-plan state is cleared separately
+  // (resetSharedPlan), so nothing of the old account's server plan survives.
+  setEntitlementsFromStatus(lastStatus);
 }
 
 /** Test only. */
 export function resetEntitlementsForTests(): void {
   current = UNKNOWN;
+  lastStatus = null;
   listeners.clear();
 }
 
