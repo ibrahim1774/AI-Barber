@@ -90,7 +90,7 @@ export interface RateLimiter {
 }
 
 /** Limiter scopes: a fixed, server-chosen namespace per limiter, never from the request. */
-export type RateScope = 'public' | 'ios' | 'deploy' | 'user' | 'signup' | 'signupEmail';
+export type RateScope = 'public' | 'ios' | 'deploy' | 'user' | 'signup' | 'signupEmail' | 'transfer';
 
 /**
  * Limiter keyed `${scope}:${kind}:${subject}`: reads count in `readStore` (default in memory),
