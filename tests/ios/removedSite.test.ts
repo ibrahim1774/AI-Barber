@@ -4,8 +4,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ---- in-memory GCS bucket ----
 const files = new Map<string, string>();
+const owners = new Map<string, string>();
 const fakeFile = (name: string) => ({
   name,
+  metadata: owners.has(name) ? { metadata: { siteId: owners.get(name) } } : {},
   exists: async () => [files.has(name)],
   download: async () => [Buffer.from(files.get(name) ?? '')],
   delete: async () => { files.delete(name); },
@@ -104,6 +106,44 @@ describe('C1: deletion never trusts client-supplied image URLs', () => {
   it('draftPhotosToDelete: only ios-drafts objects of our bucket that nobody else references', () => {
     const urls = [U('ios-drafts/d1/a.jpg'), U('ios-drafts/d1/b.jpg'), U('d1/c.jpg'), U('other/hero.jpg'), U('ios-drafts/d1/../../x.jpg'), 'https://evil.example/ios-drafts/d1/a.jpg', null];
     expect(draftPhotosToDelete(urls, 'ab-bucket', new Set(['ios-drafts/d1/b.jpg']))).toEqual(['ios-drafts/d1/a.jpg']);
+  });
+});
+
+describe('C1-R: a reserved or draft-shaped slug never deletes a shared folder', () => {
+  const UUID = '3f2b8c1e-9d4a-4b7e-8a61-0c5d2e7f9a10';
+  const seed = () => {
+    files.set('ios-drafts/d1/a.jpg', 'x'); files.set('ab-products/shop1/p.jpg', 'x'); files.set(`${UUID}/staff.jpg`, 'x');
+    files.set('b-cuts/hero.jpg', 'x');
+  };
+  it.each(['ios-drafts', 'ab-products', UUID, 'pending-sites', 'pending-sites-history', 'admin-republish-runs', 'IOS-DRAFTS', 'ios-drafts/'])(
+    'slug %j deletes no folder (only its own pending copy)', async (slug) => {
+      seed(); pending(slug.replace(/\/$/, ''), {});
+      shopId = null;
+      await liveRemoveDeps().deleteContent(slug);
+      expect([...files.keys()].filter((k) => !k.startsWith('pending-sites/')).sort())
+        .toEqual([`${UUID}/staff.jpg`, 'ab-products/shop1/p.jpg', 'b-cuts/hero.jpg', 'ios-drafts/d1/a.jpg']);
+    });
+  it('ownedPrefixes refuses reserved, UUID, lookalike and trailing-slash slugs', () => {
+    for (const s of ['ios-drafts', 'AB-PRODUCTS', 'ios_drafts', UUID, 'ios-drafts/', 'ｉｏｓ-ｄｒａｆｔｓ', 'pending-sites', '']) expect(ownedPrefixes(s, null)).toEqual([]);
+    expect(ownedPrefixes('ios-drafts', 'aaaaaaaa-1111')).toEqual(['ab-products/aaaaaaaa-1111/']);
+  });
+  it('underOwnedPrefix refuses a reserved prefix even when handed one', () => {
+    expect(underOwnedPrefix('ios-drafts/d1/a.jpg', ['ios-drafts/'])).toBe(false);
+    expect(underOwnedPrefix('ab-products/shop1/p.jpg', ['ab-products/'])).toBe(false);
+    expect(underOwnedPrefix(`${UUID}/staff.jpg`, [`${UUID}/`])).toBe(false);
+    expect(underOwnedPrefix('ab-products/shop1/p.jpg', ['ab-products/shop1/'])).toBe(true);
+  });
+  it('a non-canonical slug deletes no folder', async () => {
+    seed();
+    await liveRemoveDeps().deleteContent('B-Cuts');
+    expect(files.has('b-cuts/hero.jpg')).toBe(true);
+  });
+  it('an object stamped with another site as owner is skipped', async () => {
+    files.set('a-cuts/mine.jpg', 'x'); files.set('a-cuts/theirs.jpg', 'x');
+    owners.set('a-cuts/theirs.jpg', 'someone-else');
+    await liveRemoveDeps().deleteContent('a-cuts');
+    expect([...files.keys()]).toEqual(['a-cuts/theirs.jpg']);
+    owners.clear();
   });
 });
 

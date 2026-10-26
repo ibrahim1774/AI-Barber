@@ -12,6 +12,7 @@ import {
   publishSite,
   REQUEST_MAX_REDEPLOYS,
   renderPending,
+  bucket,
   readPendingSite,
   readPendingVersioned,
   writePendingSite,
@@ -393,6 +394,8 @@ export function liveDeps(): PublishDeps {
       pendingExists: async (s) => (await readPendingSite(s)) !== null,
       repoTaken: (s) => repo.slugTaken(s),
       projectExists: vercelProjectExists,
+      // Authoritative like the others: a bucket error propagates (503).
+      prefixInUse: async (s) => (await bucket().getFiles({ prefix: `${s}/`, maxResults: 1 }))[0].length > 0,
       urlServes,
     }),
     writePending: writePendingSite,

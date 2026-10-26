@@ -9,6 +9,7 @@ import { supabaseDomains, SITE_HOLDING_STATES } from './domainsRepo.js';
 import { liveVercelDomains } from './vercelDomains.js';
 import { projectFor } from './domainFlow.js';
 import type { RemoveSiteDeps } from './removeSite.js';
+import { isReservedSlug } from './reservedSlugs.js';
 
 /** The object path of one of OUR bucket's public URLs, else null (foreign hosts are never touched). */
 export function ourObjectPath(url: unknown, bucketName: string): string | null {
@@ -28,7 +29,12 @@ export function ourObjectPath(url: unknown, bucketName: string): string | null {
 // publish a site that points at user B's public photos, then remove their own site. Deletion is
 // therefore scoped to places the SERVER binds to this purchase, never to "whatever the copy says":
 //   1. everything under `<slug>/`          (the site's own upload folder; the slug is bound to the
-//                                           Apple-verified purchase and is what the removal is keyed by)
+//                                           Apple-verified purchase and is what the removal is keyed by).
+//                                           NEVER for a reserved slug (ios-drafts, ab-products, ... or a
+//                                           UUID-shaped draft folder): that folder is shared/anonymous, so
+//                                           the site goes offline but the folder is left alone. Objects
+//                                           whose recorded owner (metadata siteId) names another site are
+//                                           skipped too.
 //   2. everything under `ab-products/<shop id>/`  (the shop row linked to this purchase, from the DB)
 //   3. individual `ios-drafts/<draftId>/<file>` photos the stored copy (or its history) uses, ONLY when
 //      no other site's stored copy references the same object. A draft folder is anonymous, so this is
@@ -41,7 +47,7 @@ const DRAFT_FILE = /^ios-drafts\/([A-Za-z0-9][A-Za-z0-9_-]{0,99})\/([A-Za-z0-9][
 /** The prefixes whose objects belong to this purchase; empty when the slug is unusable. */
 export function ownedPrefixes(slug: string, shopId?: string | null): string[] {
   const out: string[] = [];
-  if (/^[a-z0-9][a-z0-9-]{0,99}$/.test(slug)) out.push(`${slug}/`);
+  if (/^[a-z0-9][a-z0-9-]{0,99}$/.test(slug) && !isReservedSlug(slug)) out.push(`${slug}/`);
   if (typeof shopId === 'string' && /^[A-Za-z0-9-]{8,64}$/.test(shopId)) out.push(`ab-products/${shopId}/`);
   return out;
 }
@@ -50,7 +56,9 @@ export function ownedPrefixes(slug: string, shopId?: string | null): string[] {
 export function underOwnedPrefix(key: string, prefixes: readonly string[]): boolean {
   if (!key || key.includes('..') || key.startsWith('/') || key.includes('//')) return false;
   if (/^(pending-sites|pending-sites-history|admin-republish-runs)(\/|$)/.test(key)) return false;
-  return prefixes.some((p) => p.endsWith('/') && key.startsWith(p) && key.length > p.length);
+  // Never a whole shared top-level folder or a draft-UUID folder, whatever the prefix list says.
+  const safePrefixes = prefixes.filter((p) => p.startsWith('ab-products/') ? p.split('/').length === 3 : !isReservedSlug(p.slice(0, -1)));
+  return safePrefixes.some((p) => p.endsWith('/') && key.startsWith(p) && key.length > p.length);
 }
 
 /** Draft photos from the copy's URLs that no other site references (the only URL-derived deletions). */
@@ -115,7 +123,8 @@ export function liveRemoveDeps(): RemoveSiteDeps {
       const b = bucket();
       const safe = slugify(slug);
       const shop = await findShopForSite(safe); // DB-bound to this purchase, never client supplied
-      const prefixes = ownedPrefixes(safe, shop?.id);
+      // Fail closed: a slug that is not already canonical is not the recorded one; delete no folder for it.
+      const prefixes = ownedPrefixes(safe === slug ? safe : '', shop?.id);
       const del = async (key: string) => {
         if (!underOwnedPrefix(key, prefixes) && !DRAFT_FILE.test(key)) return; // last lock
         await b.file(key).delete({ ignoreNotFound: true });
@@ -141,7 +150,12 @@ export function liveRemoveDeps(): RemoveSiteDeps {
       // 2. The purchase's own folders, whole.
       for (const prefix of prefixes) {
         const [objs] = await b.getFiles({ prefix });
-        for (const o of objs) await del(o.name);
+        for (const o of objs) {
+          // An object stamped with a different owner is never ours, whatever folder it sits in.
+          const owner = (o as any).metadata?.metadata?.siteId;
+          if (typeof owner === 'string' && owner && owner !== safe && !prefix.startsWith('ab-products/')) continue;
+          await del(o.name);
+        }
       }
 
       // 3. History, then the copy itself last (so a failure above is retried with the list intact).
