@@ -24,12 +24,12 @@ describe('confirm-required, then Move here', () => {
   test('first call has no confirm, the second has confirm:true, and it succeeds (no proof: old call shapes)', async () => {
     const d = deps();
     d.transfer.mockRejectedValueOnce(confirmRequired() as never);
-    expect(await moveSubscription(d)).toEqual({ kind: 'moved', transactionId: 'tx-9', paymentsReset: false });
+    expect(await moveSubscription(d)).toEqual({ kind: 'moved', transactionId: 'tx-9' });
     expect(d.transfer.mock.calls).toEqual([['tx-9'], ['tx-9', true, 'tok-1']]);
-    expect(d.confirm).toHaveBeenCalledWith({ ownerHint: 'a***@gmail.com', hasLiveSite: true, hasShop: true, hasPayments: false });
+    expect(d.confirm).toHaveBeenCalledWith({ ownerHint: 'a***@gmail.com', hasLiveSite: true, hasShop: true });
   });
 
-  const M = (hasLiveSite: boolean, hasShop: boolean, ownerHint: string | null = 'a***@gmail.com', hasPayments = false) => moveConfirmMessage({ ownerHint, hasLiveSite, hasShop, hasPayments });
+  const M = (hasLiveSite: boolean, hasShop: boolean, ownerHint: string | null = 'a***@gmail.com') => moveConfirmMessage({ ownerHint, hasLiveSite, hasShop });
   test('everything exists: the exact Revision 2 copy', () => {
     expect(M(true, true)).toBe(
       'This subscription, your website, bookings and store are on another account (a***@gmail.com). Moving it here moves all of that to this account, and that account will be left empty.',
@@ -51,32 +51,17 @@ describe('confirm-required, then Move here', () => {
     const d = deps();
     d.transfer.mockRejectedValueOnce(err(409, 'confirm-required', { ownerHint: null }) as never);
     await moveSubscription(d);
-    expect(d.confirm).toHaveBeenCalledWith({ ownerHint: null, hasLiveSite: false, hasShop: false, hasPayments: false });
+    expect(d.confirm).toHaveBeenCalledWith({ ownerHint: null, hasLiveSite: false, hasShop: false });
   });
 });
 
-describe('payments, in-progress, shop refusal', () => {
-  test('hasPayments appends the reset sentence; absent otherwise', () => {
-    const base = moveConfirmMessage({ ownerHint: 'a***@gmail.com', hasLiveSite: true, hasShop: true, hasPayments: false });
-    const withP = moveConfirmMessage({ ownerHint: 'a***@gmail.com', hasLiveSite: true, hasShop: true, hasPayments: true });
-    expect(withP).toBe(`${base} Your payment setup resets, so you will reconnect your payments on this account.`);
-    expect(base).not.toMatch(/payment/);
-  });
-  test('hasPayments from the 409 reaches the confirm', async () => {
+describe('in-progress, shop refusal', () => {
+  test('payments no longer reset: confirm copy never mentions it and results carry no paymentsReset', async () => {
+    expect(moveConfirmMessage({ ownerHint: 'a***@gmail.com', hasLiveSite: true, hasShop: true })).not.toMatch(/payment/);
     const d = deps();
-    d.transfer.mockRejectedValueOnce(confirmRequired({ hasPayments: true }) as never);
-    await moveSubscription(d);
-    expect(d.confirm).toHaveBeenCalledWith({ ownerHint: 'a***@gmail.com', hasLiveSite: true, hasShop: true, hasPayments: true });
-  });
-  test('paymentsReset flows to the result (confirmed call and finishing retry)', async () => {
-    const d = deps();
-    d.transfer.mockRejectedValueOnce(confirmRequired() as never).mockResolvedValueOnce({ moved: true, linked: true, paymentsReset: true });
-    expect(await moveSubscription(d)).toEqual({ kind: 'moved', transactionId: 'tx-9', paymentsReset: true });
-    const d2 = deps();
-    d2.transfer.mockResolvedValueOnce({ moved: false, linked: true, paymentsReset: true });
-    expect(await moveSubscription(d2)).toMatchObject({ kind: 'moved', paymentsReset: true });
-    const d3 = deps();
-    expect(await moveSubscription(d3)).toMatchObject({ paymentsReset: false });
+    d.transfer.mockRejectedValueOnce(confirmRequired({ hasPayments: true }) as never).mockResolvedValueOnce({ moved: true, linked: true });
+    expect(await moveSubscription(d)).toEqual({ kind: 'moved', transactionId: 'tx-9' });
+    expect(d.confirm).toHaveBeenCalledWith({ ownerHint: 'a***@gmail.com', hasLiveSite: true, hasShop: true });
   });
   test('move-in-progress (503 and 409) gets the finishing sentence', () => {
     const want = 'Your subscription move is still finishing. Open Bookings or Store, or tap Move subscription again, then try again in a moment.';
@@ -105,21 +90,21 @@ describe('Apple proof', () => {
   test('sent with the probe and with the confirmed call', async () => {
     const d = deps({ proof: jest.fn(async () => proof) });
     d.transfer.mockRejectedValueOnce(confirmRequired() as never);
-    expect(await moveSubscription(d)).toEqual({ kind: 'moved', transactionId: 'tx-9', paymentsReset: false });
+    expect(await moveSubscription(d)).toEqual({ kind: 'moved', transactionId: 'tx-9' });
     expect(d.transfer.mock.calls).toEqual([['tx-9', undefined, undefined, 'eyJ.signed.jws'], ['tx-9', true, 'tok-1', 'eyJ.signed.jws']]);
     expect(d.proof).toHaveBeenCalledTimes(2);
   });
   test("the proof's originalTransactionId wins over a different pending id", async () => {
     const d = deps({ proof: jest.fn(async () => ({ jws: 'j', originalTransactionId: 'tx-REAL' })) });
-    expect(await moveSubscription(d)).toEqual({ kind: 'moved', transactionId: 'tx-REAL', paymentsReset: false });
+    expect(await moveSubscription(d)).toEqual({ kind: 'moved', transactionId: 'tx-REAL' });
     expect(d.transfer.mock.calls).toEqual([['tx-REAL', undefined, undefined, 'j']]);
   });
   test('null proof or a throwing reader: transfer still works without it', async () => {
     const d1 = deps({ proof: jest.fn(async () => null) });
-    expect(await moveSubscription(d1)).toEqual({ kind: 'moved', transactionId: 'tx-9', paymentsReset: false });
+    expect(await moveSubscription(d1)).toEqual({ kind: 'moved', transactionId: 'tx-9' });
     expect(d1.transfer.mock.calls).toEqual([['tx-9']]);
     const d2 = deps({ proof: jest.fn(async () => { throw new Error('boom'); }) });
-    expect(await moveSubscription(d2)).toEqual({ kind: 'moved', transactionId: 'tx-9', paymentsReset: false });
+    expect(await moveSubscription(d2)).toEqual({ kind: 'moved', transactionId: 'tx-9' });
     expect(d2.transfer.mock.calls).toEqual([['tx-9']]);
   });
   test('default reader is the native wrapper, which is null without the module (jest)', async () => {
@@ -158,7 +143,7 @@ describe('success without a confirm', () => {
   test('an unlinked or already-mine purchase (moved:false) is a success and never asks', async () => {
     const d = deps();
     d.transfer.mockResolvedValueOnce({ moved: false, linked: true });
-    expect(await moveSubscription(d)).toEqual({ kind: 'moved', transactionId: 'tx-9', paymentsReset: false });
+    expect(await moveSubscription(d)).toEqual({ kind: 'moved', transactionId: 'tx-9' });
     expect(d.confirm).not.toHaveBeenCalled();
     expect(d.transfer).toHaveBeenCalledTimes(1);
   });
@@ -191,8 +176,8 @@ describe('errors: one friendly sentence each', () => {
       .mockRejectedValueOnce(err(409, 'purchase-changed') as never)
       .mockRejectedValueOnce(confirmRequired({ ownerHint: 'b***@x.com', ownerToken: 'tok-2' }) as never)
       .mockResolvedValueOnce({ moved: true, linked: true });
-    expect(await moveSubscription(d)).toEqual({ kind: 'moved', transactionId: 'tx-9', paymentsReset: false });
-    expect(d.confirm).toHaveBeenNthCalledWith(2, { ownerHint: 'b***@x.com', hasLiveSite: true, hasShop: true, hasPayments: false });
+    expect(await moveSubscription(d)).toEqual({ kind: 'moved', transactionId: 'tx-9' });
+    expect(d.confirm).toHaveBeenNthCalledWith(2, { ownerHint: 'b***@x.com', hasLiveSite: true, hasShop: true });
     expect(d.transfer).toHaveBeenLastCalledWith('tx-9', true, 'tok-2');
   });
 
@@ -252,5 +237,17 @@ describe('api.transfer sends the owner token back', () => {
     await api.transfer('tx', true, 'tok-1');
     const bodies = (fetchMock.mock.calls as any[]).map((c) => JSON.parse(c[1].body));
     expect(bodies).toEqual([{ transactionId: 'tx' }, { transactionId: 'tx', confirm: true, ownerToken: 'tok-1' }]);
+  });
+});
+
+describe('transaction id is a site product, never the domain', () => {
+  test('latest-id picker ignores the domain subscription; the engine sends the proof id', async () => {
+    const { pickLatestTransactionId, PRODUCT_IDS } = require('@/lib/publish');
+    expect(PRODUCT_IDS).not.toContain('com.ibrahim1774.aibarber.domain.yearly');
+    expect(PRODUCT_IDS).toHaveLength(6);
+    expect(pickLatestTransactionId([
+      { productId: 'com.ibrahim1774.aibarber.hosting.yearly', transactionId: 'site', purchaseDate: '2026-01-01T00:00:00Z', isActive: true },
+      { productId: 'com.ibrahim1774.aibarber.domain.yearly', transactionId: 'domain', purchaseDate: '2026-06-01T00:00:00Z', isActive: true },
+    ])).toBe('site');
   });
 });

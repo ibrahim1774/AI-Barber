@@ -19,10 +19,6 @@ export const ACCOUNT_HAS_SHOP_MESSAGE = "This account already has its own Bookin
 export const MOVE_IN_PROGRESS_MESSAGE =
   'Your subscription move is still finishing. Open Bookings or Store, or tap Move subscription again, then try again in a moment.';
 
-/** After a move that cleared the shop's payment setup. */
-export const PAYMENTS_RESET_NOTICE =
-  'Your payment setup was reset in the move. Open Bookings or Store and reconnect your payments on this account.';
-
 /** Signed out, and the subscription belongs to an account (or a site): only that account can restore it. */
 export const SIGN_IN_TO_RESTORE_CODE = 'sign-in-required';
 

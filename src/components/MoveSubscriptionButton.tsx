@@ -8,11 +8,10 @@ import { useMoveSubscription } from '@/lib/useMoveSubscription';
 export function MoveSubscriptionButton({
   transactionId, onMoved, style,
 }: { transactionId?: () => Promise<string | null>; onMoved?: () => void | Promise<void>; style?: StyleProp<ViewStyle> }) {
-  const { run, busy, error, notice } = useMoveSubscription({ transactionId, onMoved });
+  const { run, busy, error } = useMoveSubscription({ transactionId, onMoved });
   return (
     <View style={[styles.wrap, style]}>
       <Button variant="solid" title={MOVE_BUTTON_TITLE} onPress={() => void run()} loading={busy} />
-      {!!notice && <Text style={styles.notice} accessibilityLiveRegion="polite">{notice}</Text>}
       {!!error && <Text style={styles.error} accessibilityLiveRegion="polite">{error}</Text>}
     </View>
   );
@@ -20,6 +19,5 @@ export function MoveSubscriptionButton({
 
 const styles = StyleSheet.create({
   wrap: { alignSelf: 'stretch', gap: 10 },
-  notice: { fontFamily: fonts.body, fontSize: 13, lineHeight: 19, color: '#a3a3a3' },
   error: { fontFamily: fonts.body, fontSize: 13, lineHeight: 19, color: '#f87171' },
 });

@@ -33,25 +33,22 @@ export const MOVE_ERROR = {
   generic: "Couldn't move your subscription right now. Try again in a moment.",
 } as const;
 
-const PAYMENTS_RESET_SENTENCE = 'Your payment setup resets, so you will reconnect your payments on this account.';
-
-export type MoveConfirmInfo = { ownerHint: string | null; hasLiveSite: boolean; hasShop: boolean; hasPayments: boolean };
+export type MoveConfirmInfo = { ownerHint: string | null; hasLiveSite: boolean; hasShop: boolean };
 
 /**
  * The confirm Alert's body. Only the things that exist are named: the website (hasLiveSite), bookings and store
  * (hasShop). With neither, only the subscription moves.
  */
-export function moveConfirmMessage({ ownerHint, hasLiveSite, hasShop, hasPayments }: MoveConfirmInfo): string {
+export function moveConfirmMessage({ ownerHint, hasLiveSite, hasShop }: MoveConfirmInfo): string {
   const who = ownerHint ? `another account (${ownerHint})` : 'another account';
   if (!hasLiveSite && !hasShop) return `This subscription is on ${who}. Moving it here moves just the subscription to this account.`;
   const text = hasLiveSite && hasShop ? 'This subscription, your website, bookings and store'
     : hasLiveSite ? 'This subscription and your website' : 'This subscription, bookings and store';
-  const reset = hasPayments ? ` ${PAYMENTS_RESET_SENTENCE}` : '';
-  return `${text} are on ${who}. Moving it here moves all of that to this account, and that account will be left empty.${reset}`;
+  return `${text} are on ${who}. Moving it here moves all of that to this account, and that account will be left empty.`;
 }
 
 export type MoveResult =
-  | { kind: 'moved'; transactionId: string; paymentsReset: boolean }
+  | { kind: 'moved'; transactionId: string }
   /** The user said Cancel on the confirm: nothing changed. */
   | { kind: 'cancelled' }
   | { kind: 'error'; message: string };
@@ -100,7 +97,7 @@ export async function moveSubscription(deps: MoveDeps): Promise<MoveResult> {
   if (!id) return { kind: 'error', message: MOVE_ERROR.noPurchase };
   // The proof is read fresh before each transfer call (the server wants a recent signedDate, and the user may sit on
   // the confirm for a while). Its originalTransactionId wins over a stale pending/plan id.
-  const send = async (confirm: boolean, token?: string): Promise<{ paymentsReset?: boolean }> => {
+  const send = async (confirm: boolean, token?: string): Promise<unknown> => {
     const proof = await readProof(deps);
     const tx = proof && proof.originalTransactionId !== id ? proof.originalTransactionId : id!;
     id = tx;
@@ -115,7 +112,7 @@ export async function moveSubscription(deps: MoveDeps): Promise<MoveResult> {
       let token: string | undefined;
       try {
         const r = await send(false);
-        return { kind: 'moved', transactionId: id, paymentsReset: r.paymentsReset === true };
+        return { kind: 'moved', transactionId: id };
       } catch (e) {
         if (!(e instanceof ApiError && e.status === 409 && e.code === 'confirm-required')) throw e;
         token = typeof e.body?.ownerToken === 'string' ? e.body.ownerToken : undefined;
@@ -123,12 +120,11 @@ export async function moveSubscription(deps: MoveDeps): Promise<MoveResult> {
           ownerHint: typeof e.body?.ownerHint === 'string' ? e.body.ownerHint : null,
           hasLiveSite: e.body?.hasLiveSite === true,
           hasShop: e.body?.hasShop === true,
-          hasPayments: e.body?.hasPayments === true,
         });
         if (!ok) return { kind: 'cancelled' };
       }
       const r = await send(true, token);
-      return { kind: 'moved', transactionId: id, paymentsReset: r.paymentsReset === true };
+      return { kind: 'moved', transactionId: id };
     } catch (e) {
       if (e instanceof ApiError && e.status === 409 && e.code === 'purchase-changed' && attempt === 0) continue;
       return { kind: 'error', message: moveErrorMessage(e) };
