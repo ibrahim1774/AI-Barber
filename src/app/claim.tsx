@@ -4,21 +4,23 @@ import { router } from 'expo-router';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
 import { Field } from '@/components/Field';
+import { SupportLink } from '@/components/SupportLink';
 import { MoveSubscriptionButton } from '@/components/MoveSubscriptionButton';
-import { InfoIcon } from '@/components/Icons';
+import { ChevronLeftIcon, InfoIcon } from '@/components/Icons';
 import { Page } from '@/components/Page';
 import { accessToken } from '@/lib/accessToken';
 import { api } from '@/lib/api';
 import { signIn, signOut } from '@/lib/auth';
 import { createClaimRunner, type ClaimResult } from '@/lib/claim';
 import { conflictMessage } from '@/lib/claimCopy';
-import { reopenClaim, resumeAfterMove } from '@/lib/claimGuard';
+import { pauseClaim, reopenClaim, resumeAfterMove } from '@/lib/claimGuard';
 import { firstErrorField, type ClaimErrors, type ClaimField, type ClaimMode, type ClaimValues } from '@/lib/claimValidation';
 import { homeRoute, resetTo } from '@/lib/nav';
 import { usePublishDeps } from '@/lib/paywall';
 import { resumePendingPublish } from '@/lib/publish';
 import { setPrefillEmail } from '@/lib/recovery';
-import { loadPendingPublish, loadSite } from '@/lib/siteStore';
+import { useRestoreFlow } from '@/lib/restoreFlow';
+import { loadPendingPublish, loadSite, savePendingPublish } from '@/lib/siteStore';
 import { supabase } from '@/lib/supabase';
 
 type Banner = { tone: 'error' | 'waiting'; message: string } | null;
@@ -46,6 +48,7 @@ export default function Claim() {
         transactionId: async () => (await loadPendingPublish())?.transactionId ?? (await depsRef.current.latestTransactionId()),
         signIn,
         finish: () => resumePendingPublish(depsRef.current),
+        parkInactive: () => savePendingPublish(null),
         dropSession: async () => {
           await supabase.auth.signOut({ scope: 'local' });
         },
@@ -53,6 +56,7 @@ export default function Claim() {
     [],
   );
 
+  const { restore, busy: restoring } = useRestoreFlow({ stay: true });
   const [mode, setMode] = useState<ClaimMode>('signup');
   const [values, setValues] = useState<ClaimValues>(EMPTY);
   const [errors, setErrors] = useState<ClaimErrors>({});
@@ -224,6 +228,16 @@ export default function Claim() {
     router.push('/forgot-password');
   };
 
+  // Back to the editor without an account: the payment is kept (paused), Publish there returns to this step.
+  const backToEditor = () => {
+    if (busyRef.current) return;
+    void (async () => {
+      await pauseClaim().catch(() => {});
+      const s = await loadSite().catch(() => null);
+      resetTo(homeRoute(s));
+    })();
+  };
+
   if (!ready) return <View style={styles.blank} />;
 
   if (inactive) {
@@ -231,7 +245,8 @@ export default function Claim() {
       <Page title="Subscription inactive">
         <Text style={styles.title}>Not published</Text>
         <Text style={styles.body}>{inactive}</Text>
-        <Button variant="solid" title="Back to the editor" onPress={() => void loadSite().then((s) => resetTo(homeRoute(s)))} style={styles.gap} />
+        <Button variant="solid" title="Back to the editor" onPress={() => void savePendingPublish(null).catch(() => {}).then(() => loadSite()).then((s) => resetTo(homeRoute(s)))} style={styles.gap} />
+        <SupportLink />
       </Page>
     );
   }
@@ -249,6 +264,7 @@ export default function Claim() {
           />
         )}
         <Button variant={movable ? 'ghost' : 'solid'} title="Use a different account" onPress={useDifferentAccount} loading={busy} style={movable ? styles.gapSmall : styles.gap} />
+        <SupportLink />
       </Page>
     );
   }
@@ -256,6 +272,16 @@ export default function Claim() {
   const signup = mode === 'signup';
   return (
     <Page title={signup ? 'Create your account' : 'Sign in'}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Back"
+        hitSlop={{ top: 8, bottom: 8, left: 12, right: 24 }}
+        onPress={backToEditor}
+        style={styles.pill}
+      >
+        <ChevronLeftIcon size={20} color="#FFFFFF" />
+        <Text style={styles.pillText} maxFontSizeMultiplier={1.3}>Back</Text>
+      </Pressable>
       <View style={styles.notice}>
         <InfoIcon size={16} color={colors.accent} />
         <Text style={styles.noticeText}>
@@ -326,6 +352,10 @@ export default function Claim() {
             loading={busy}
           />
         )}
+        <SupportLink />
+        <Pressable onPress={() => void restore()} disabled={restoring || busy} accessibilityRole="link" hitSlop={8} style={styles.restoreRow}>
+          <Text style={styles.forgot}>Restore purchases</Text>
+        </Pressable>
       </View>
 
       <View style={styles.switchRow}>
@@ -348,6 +378,13 @@ function FieldError({ text }: { text: string }) {
 
 const styles = StyleSheet.create({
   blank: { flex: 1, backgroundColor: colors.bg },
+  pill: {
+    minHeight: 44, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 2, marginBottom: 12,
+    paddingLeft: 8, paddingRight: 16, borderRadius: 999, backgroundColor: 'rgba(0,0,0,0.65)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)',
+  },
+  pillText: { fontFamily: fonts.bodySemi, fontSize: 16, color: '#FFFFFF' },
+  restoreRow: { alignSelf: 'center', marginTop: 4 },
   notice: {
     flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: colors.hair,
     backgroundColor: 'rgba(255,255,255,0.05)', paddingHorizontal: 12, paddingVertical: 10, marginBottom: 24,

@@ -418,6 +418,8 @@ export async function resumePendingPublish(deps: PublishDeps): Promise<PublishOu
       return null;
     }
     if (pending.state === 'conflict') return null;
+    // Paused (the user went back to the editor): without an account nothing is sent and nothing re-locks the app.
+    if (pending.state === 'paused' && !(await deps.accessToken().catch(() => null))) return null;
     let transactionId = pending.transactionId;
     if (!transactionId) {
       try {

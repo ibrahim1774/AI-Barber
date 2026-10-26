@@ -45,10 +45,12 @@ export interface PendingPublish {
    * (or this is an older record), so it is an ordinary retry.
    * - 'unclaimed': paid, no account yet. The locked /claim step is shown until one signs up or in.
    * - 'claiming': an account exists; the publish with its Bearer has not been confirmed.
+   * - 'paused': paid, no account, and the user stepped back to the editor from the account step. Never locks;
+   *   Publish sends them straight back to the account step (no second payment).
    * - 'conflict': the server refused (the purchase is another account's, or this account already has a site); see
    *   `conflict`. Nothing is retried; the locked step offers a different account.
    */
-  state?: 'unclaimed' | 'claiming' | 'conflict';
+  state?: 'unclaimed' | 'claiming' | 'conflict' | 'paused';
   conflict?: Conflict;
   /**
    * The site this content was paid for (its identity when saved). A retry sends this content, never whatever

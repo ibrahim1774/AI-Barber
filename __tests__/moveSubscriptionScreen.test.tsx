@@ -9,6 +9,8 @@ jest.mock('@/constants/theme', () => require('./store/themeMock'));
 jest.mock('@/components/Icons', () => ({ InfoIcon: () => null, ChevronLeftIcon: () => null, ArrowRight: () => null }));
 const mockResetTo = jest.fn();
 jest.mock('@/lib/nav', () => ({ resetTo: (...a: unknown[]) => mockResetTo(...a), homeRoute: (s: unknown) => (s ? '/edit' : '/start') }));
+const mockRestore = jest.fn();
+jest.mock('@/lib/restoreFlow', () => ({ useRestoreFlow: () => ({ restore: (...a: unknown[]) => mockRestore(...a), busy: false }) }));
 let mockDeps: any;
 jest.mock('@/lib/paywall', () => ({ usePublishDeps: () => mockDeps, useLatestTransactionId: () => async () => 'tx-1' }));
 const mockRecheck = jest.fn();

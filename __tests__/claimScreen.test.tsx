@@ -12,6 +12,8 @@ jest.mock('@/constants/theme', () => require('./store/themeMock'));
 jest.mock('@/components/Icons', () => ({ InfoIcon: () => null, ChevronLeftIcon: () => null, ArrowRight: () => null }));
 const mockResetTo = jest.fn();
 jest.mock('@/lib/nav', () => ({ resetTo: (...a: unknown[]) => mockResetTo(...a), homeRoute: (s: unknown) => (s ? '/edit' : '/start') }));
+const mockRestore = jest.fn();
+jest.mock('@/lib/restoreFlow', () => ({ useRestoreFlow: () => ({ restore: (...a: unknown[]) => mockRestore(...a), busy: false }) }));
 let mockDeps: any;
 jest.mock('@/lib/paywall', () => ({ usePublishDeps: () => mockDeps, useLatestTransactionId: () => async () => 'tx-1' }));
 
@@ -87,16 +89,15 @@ describe('the locked step', () => {
     expect(text(tree)).not.toMatch(/optional/i);
   });
 
-  test('no back control, no close, and the Android back button does nothing', async () => {
+  test('the Android back button does nothing; the Back pill is the only exit and no close control exists', async () => {
     let handler: (() => boolean) | undefined;
     jest.spyOn(BackHandler, 'addEventListener').mockImplementation(((_e: string, h: () => boolean) => {
       handler = h;
       return { remove: jest.fn() };
     }) as never);
     const tree = await render(<Claim />);
-    expect(tree.root.findAll((n: any) => n.props?.accessibilityLabel === 'Back')).toHaveLength(0);
+    expect(tree.root.findAll((n: any) => n.props?.accessibilityLabel === 'Back' && typeof n.props.onPress === 'function')).toHaveLength(1);
     expect(tree.root.findAll((n: any) => n.props?.accessibilityLabel === 'Close' || n.props?.accessibilityLabel === 'Dismiss')).toHaveLength(0);
-    expect(hasButton(tree, 'Back')).toBe(false);
     expect(handler?.()).toBe(true); // true = handled: the system does not leave the screen
   });
 

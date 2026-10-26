@@ -46,6 +46,8 @@ export interface ClaimDeps {
   finish(): Promise<PublishOutcome | null>;
   /** Ends a session the server does not accept. */
   dropSession(): Promise<void>;
+  /** The server says the purchase is inactive (402): the pending record is dropped so nothing locks to /claim. */
+  parkInactive?(): Promise<void>;
 }
 
 /**
@@ -115,7 +117,9 @@ export function createClaimRunner(deps: ClaimDeps) {
           signInEmail = created.email;
           trackRegistration('email');
         } catch (e) {
-          return signupFailure(e, email);
+          const failure = signupFailure(e, email);
+          if (failure.kind === 'inactive') await deps.parkInactive?.().catch(() => {});
+          return failure;
         }
       }
     }

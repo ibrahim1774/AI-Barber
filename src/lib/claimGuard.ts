@@ -10,6 +10,8 @@ import { loadPendingPublish, savePendingPublish } from '@/lib/siteStore';
  */
 export function shouldLockToClaim(pending: PendingPublish | null, hasSession: boolean): boolean {
   if (!pending) return false;
+  // A paused claim (the user went back to the editor) never locks; the editor is free until Publish is tapped again.
+  if (pending.state === 'paused') return false;
   // 'claiming' stays locked until the server confirms the publish (live clears the record) or says it cannot proceed
   // (a refusal, a 402 or a bad request clears or marks it): the lock never lifts on a guess.
   return pending.state === 'conflict' || pending.state === 'claiming' || !hasSession;
@@ -33,6 +35,13 @@ export async function reopenClaim(): Promise<void> {
   if (!pending) return;
   const { conflict: _drop, ...rest } = pending;
   await savePendingPublish({ ...rest, state: 'unclaimed' });
+}
+
+/** "Back" from the account step: the payment and its transaction id are kept, the app is no longer locked. */
+export async function pauseClaim(): Promise<void> {
+  const pending = await loadPendingPublish();
+  if (!pending || pending.state === 'conflict') return;
+  await savePendingPublish({ ...pending, state: 'paused' });
 }
 
 /** After a successful move: the conflict is cleared and the record goes back to 'claiming', so the publish resumes. */
