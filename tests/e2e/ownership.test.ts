@@ -282,8 +282,7 @@ describe('every writer of ios_purchases.user_id is one atomic conditional update
     };
     walk('lib'); walk('api');
     const writers = files.filter((f) => /update\(\{[^}]*\buser_id\b/.test(readFileSync(f, 'utf8').replace(/\s+/g, ' ')) && /from\('ios_purchases'\)|TABLE = 'ios_purchases'/.test(readFileSync(f, 'utf8')));
-    // transferLive.ts only re-points sites / ab_members user_id (its ios_purchases use is a read); purchases.ts is the sole ios_purchases writer.
-    expect(writers.sort()).toEqual([join('lib', 'ios', 'purchases.ts'), join('lib', 'ios', 'transferLive.ts')]);
+    expect(writers).toEqual([join('lib', 'ios', 'purchases.ts')]);
     expect(readFileSync(join('lib', 'ios', 'transferLive.ts'), 'utf8')).not.toMatch(/from\('ios_purchases'\)\s*\.update/);
     const src = readFileSync(join('lib', 'ios', 'purchases.ts'), 'utf8');
     expect(src).toMatch(/update\(\{ user_id: userId \}\)\s*\.eq\('original_transaction_id', otid\)\.is\('user_id', null\)/);

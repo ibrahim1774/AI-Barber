@@ -76,7 +76,7 @@ beforeEach(() => {
 
 describe('liveMoveBusiness (per-table decisions)', () => {
   it('moves the shop, its owner member, then the slug\'s sites row; nothing else', async () => {
-    expect(await move()).toEqual({ paymentsReset: false });
+    await move();
     expect(tables.sites.find((r) => r.id === 's1')!.user_id).toBe(C);
     expect(tables.sites.find((r) => r.id === 's2')!.user_id).toBe(O);
     expect(tables.sites.find((r) => r.id === 's3')!.user_id).toBe(X);
@@ -114,29 +114,12 @@ describe('liveMoveBusiness (per-table decisions)', () => {
     expect(member('m1')!.ics_token).toBe(t);
   });
 
-  it('M2: Stripe account, charges flag and manual handles are cleared; the old values are audited once; paymentsReset true', async () => {
+  it('payments move WITH the shop: Stripe account, charges flag and manual handles are untouched, no audit row, no reset', async () => {
     Object.assign(shop1(), { stripe_account_id: 'acct_o', stripe_charges_enabled: true, manual_handles: { cashapp: '$o' } });
-    expect(await move()).toEqual({ paymentsReset: true });
-    expect(shop1()).toMatchObject({ owner_id: C, stripe_account_id: null, stripe_charges_enabled: false, manual_handles: {} });
-    const audit = tables.ab_events.filter((e) => e.kind === 'ios_transfer_payments_reset');
-    expect(audit).toHaveLength(1);
-    expect(audit[0]).toMatchObject({ shop_id: 'shop1', payload: { from: O, to: C, stripe_account_id: 'acct_o', stripe_charges_enabled: true, manual_handles: { cashapp: '$o' } } });
-    // retry: still reports the reset (from the audit row), does not audit again
-    expect(await move()).toEqual({ paymentsReset: true });
-    expect(tables.ab_events.filter((e) => e.kind === 'ios_transfer_payments_reset')).toHaveLength(1);
-  });
-
-  it('M2: the audit row is written BEFORE the shop is changed (a failure leaves the old values recoverable)', async () => {
-    Object.assign(shop1(), { stripe_account_id: 'acct_o' });
-    failOn = 'update:ab_shops';
-    await expect(move()).rejects.toThrow();
-    expect(tables.ab_events.some((e) => e.kind === 'ios_transfer_payments_reset')).toBe(true);
-    expect(shop1()).toMatchObject({ owner_id: O, stripe_account_id: 'acct_o' });
-  });
-
-  it('M2: only handles (no Stripe) also counts as payments', async () => {
-    Object.assign(shop1(), { manual_handles: { zelle: 'o@x.com' } });
-    expect((await move()).paymentsReset).toBe(true);
+    expect(await move()).toBeUndefined();
+    expect(shop1()).toMatchObject({ owner_id: C, stripe_account_id: 'acct_o', stripe_charges_enabled: true, manual_handles: { cashapp: '$o' } });
+    expect(tables.ab_events.filter((e) => e.kind === 'ios_transfer_payments_reset')).toEqual([]);
+    expect(writes.every((w) => !('stripe_account_id' in w.patch || 'manual_handles' in w.patch))).toBe(true);
   });
 
   it('M4: C is already a barber in O\'s shop: that row is deactivated (user_id null), the owner row moves, exactly one active member row for C', async () => {
@@ -183,14 +166,12 @@ describe('liveMoveBusiness (per-table decisions)', () => {
     expect(tables.sites.find((r) => r.id === 's1')!.user_id).toBe(C);
   });
 
-  it('unpublished draft (null deployed_url) moves when O has no other purchase; stays when O has another purchase', async () => {
+  it('L3: unpublished drafts (null deployed_url) and unrelated sites of the old owner STAY with the old owner', async () => {
     tables.sites.push({ id: 'd1', user_id: O, deployed_url: null });
     await move();
-    expect(tables.sites.find((r) => r.id === 'd1')!.user_id).toBe(C);
-    tables.sites.push({ id: 'd2', user_id: O, deployed_url: null });
-    tables.ios_purchases = [{ original_transaction_id: '999', user_id: O }];
-    await move();
-    expect(tables.sites.find((r) => r.id === 'd2')!.user_id).toBe(O);
+    expect(tables.sites.find((r) => r.id === 'd1')!.user_id).toBe(O);
+    expect(tables.sites.find((r) => r.id === 's2')!.user_id).toBe(O);
+    expect(tables.sites.find((r) => r.id === 's1')!.user_id).toBe(C);
   });
 
   it('no slug and no shop: nothing to move', async () => {
@@ -206,8 +187,7 @@ describe('liveMoveBusiness (per-table decisions)', () => {
     expect(member('m1')!.user_id).toBe(O);
   });
 
-  it.each(['select:sites', 'update:sites', 'select:ab_shops', 'update:ab_shops', 'update:ab_members', 'select:ios_purchases'])('a database error on %s throws (503, the finisher retries)', async (f) => {
-    tables.sites.push({ id: 'd1', user_id: O, deployed_url: null });
+  it.each(['select:sites', 'update:sites', 'select:ab_shops', 'update:ab_shops', 'update:ab_members'])('a database error on %s throws (503, the finisher retries)', async (f) => {
     failOn = f;
     await expect(move()).rejects.toThrow();
   });
@@ -274,13 +254,34 @@ describe('move intents and the finisher', () => {
     expect((await finishPendingMoves(C, { intents: liveMoveIntents(), purchase: purchase(C), moveBusiness: liveMoveBusiness })).pending).toBe(true);
   });
 
-  it('L1/M3: moveInProgressFrom is true only while the purchase has already left the old owner', async () => {
+  it('M3: moveInProgressFrom is true only while the purchase belongs to the destination', async () => {
     const it_ = liveMoveIntents();
     await it_.begin({ otid: OTID, from: O, to: C, slug: 'fade-lab' });
-    expect(await moveInProgressFrom(O, it_, purchase(O))).toBe(false); // the CAS never won: O may delete
+    expect(await moveInProgressFrom(O, it_, purchase(O))).toBe(false); // the CAS never won: O may delete, intent left alone
+    expect((await it_.pendingFrom(O)).length).toBe(1);
     expect(await moveInProgressFrom(O, it_, purchase(C))).toBe(true);
     expect(await moveInProgressFrom(X, it_, purchase(C))).toBe(false);
     await it_.finish(OTID, C);
     expect(await moveInProgressFrom(O, it_, purchase(C))).toBe(false);
+  });
+
+  it('L1: the destination deleted their account (purchase user_id null) or a third account holds it: the intent is cancelled and O can delete', async () => {
+    for (const holder of [null, X]) {
+      tables.ab_events = [];
+      const it_ = liveMoveIntents();
+      await it_.begin({ otid: OTID, from: O, to: C, slug: 'fade-lab' });
+      expect(await moveInProgressFrom(O, it_, purchase(holder))).toBe(false);
+      expect(await it_.pendingFrom(O)).toEqual([]);
+      expect(tables.ab_events[0].dedupe_key).toMatch(/^ios-transfer-cancelled:/);
+    }
+  });
+
+  it('L2: pendingForOtid lists unfinished intents of a purchase for any destination', async () => {
+    const it_ = liveMoveIntents();
+    await it_.begin({ otid: OTID, from: O, to: C, slug: 'a' });
+    await it_.begin({ otid: '999', from: O, to: C, slug: 'b' });
+    expect((await it_.pendingForOtid(OTID)).map((i) => i.to)).toEqual([C]);
+    await it_.finish(OTID, C);
+    expect(await it_.pendingForOtid(OTID)).toEqual([]);
   });
 });

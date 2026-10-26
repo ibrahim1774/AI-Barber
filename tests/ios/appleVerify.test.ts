@@ -48,7 +48,7 @@ describe('makeVerifier', () => {
     const { verify, lookup } = setup({ Production: 200 });
     const tx = await verify('t1');
     expect(tx).toEqual({
-      originalTransactionId: 'o1', transactionId: 't1', productId: PRODUCT,
+      originalTransactionId: 'o1', transactionId: 't1', latestTransactionId: expect.any(String), productId: PRODUCT,
       environment: 'Production', expiresAt: 2_000_000_000_000, revoked: false, status: 1, productPurchasedAt: null,
     });
     expect(lookup).toHaveBeenCalledTimes(1);

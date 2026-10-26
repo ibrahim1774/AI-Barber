@@ -9,7 +9,7 @@ const OTID = '2000000123';
 const O = 'aaaaaaaa-1111-4111-8111-111111111111';
 const A = 'bbbbbbbb-2222-4222-8222-222222222222';
 const B = 'cccccccc-3333-4333-8333-333333333333';
-const TX: VerifiedTx = { originalTransactionId: OTID, transactionId: '2000000555', productId: 'com.ibrahim1774.aibarber.store.monthly', environment: 'Production', expiresAt: NOW + 86_400_000, revoked: false, status: 1, productPurchasedAt: NOW - 1000 };
+const TX: VerifiedTx = { originalTransactionId: OTID, transactionId: '2000000555', latestTransactionId: '2000000555', productId: 'com.ibrahim1774.aibarber.store.monthly', environment: 'Production', expiresAt: NOW + 86_400_000, revoked: false, status: 1, productPurchasedAt: NOW - 1000 };
 const base = { original_transaction_id: OTID, product_id: TX.productId, environment: 'Production', site_slug: null, user_id: null, expires_at: null, revoked_at: null, last_notification: null, published_at: null, taken_down_at: null, lapse_checked_at: null, removed_at: null };
 const liveSite = { site_slug: 'fade-lab', published_at: '2026-10-01T00:00:00Z' };
 const tok = (owner: string) => `tok:${owner}:${OTID}`;
@@ -17,10 +17,11 @@ const CONF = { transactionId: '1', confirm: true, ownerToken: tok(O) };
 const BUNDLE = 'com.ibrahim1774.aibarber';
 const proofFor = (jws: string) => {
   // jws string encodes the payload for the fake decoder: 'ok', 'stale', 'other-otid', 'other-bundle', 'other-env'
-  const d = { originalTransactionId: OTID, transactionId: '1', productId: TX.productId, bundleId: BUNDLE, environment: 'Production', signedDate: NOW - 60_000 } as any;
+  const d = { originalTransactionId: OTID, transactionId: '2000000555', productId: TX.productId, bundleId: BUNDLE, environment: 'Production', signedDate: NOW - 60_000 } as any;
   if (jws === 'stale') d.signedDate = NOW - 46 * 86_400_000;
   if (jws === 'old-ok') d.signedDate = NOW - 44 * 86_400_000;
   if (jws === 'future') d.signedDate = NOW + 6 * 60_000;
+  if (jws === 'old-renewal') d.transactionId = '2000000111';
   if (jws === 'nodate') delete d.signedDate;
   if (jws === 'other-otid') d.originalTransactionId = '999';
   if (jws === 'other-bundle') d.bundleId = 'com.evil';
@@ -40,10 +41,11 @@ function setup(rows: any[], over: Partial<TransferDeps> & { tx?: VerifiedTx } = 
     async begin(i: any) { if (state.failBegin) throw new Error('db'); store.set(`${i.otid}:${i.to}`, { ...i }); calls.push(`intent:${i.otid}:from=${i.from === O ? 'O' : i.from}:owner=${snap().user_id}`); },
     async find(otid: string, to: string) { return store.get(`${otid}:${to}`) ?? null; },
     async pendingFor() { return []; }, async pendingFrom() { return []; },
+    async pendingForOtid(otid: string) { return [...store.values()].filter((i: any) => i.otid === otid); },
     async finish(otid: string, to: string) { store.delete(`${otid}:${to}`); calls.push('finish'); },
     async cancel(otid: string, to: string) { store.delete(`${otid}:${to}`); calls.push('cancel'); },
   };
-  const state = { hasShop: false, hasPayments: false, failBegin: false, failMove: false, shops: {} as Record<string, { id: string; ios_otid: string | null }> };
+  const state = { hasShop: false, failBegin: false, failMove: false, shops: {} as Record<string, { id: string; ios_otid: string | null }> };
   const deps: TransferDeps = {
     verify: async () => over.tx ?? TX,
     repo,
@@ -51,13 +53,12 @@ function setup(rows: any[], over: Partial<TransferDeps> & { tx?: VerifiedTx } = 
     emailOf: async (id) => (id === O ? 'alice@gmail.com' : null),
     allow: async () => true,
     now: () => NOW,
-    shopSummary: async () => ({ hasShop: state.hasShop, hasPayments: state.hasPayments }),
+    shopSummary: async () => ({ hasShop: state.hasShop }),
     intents,
     shopOf: async (u) => state.shops[u] ?? null,
     moveBusiness: async (otid, from, caller, slug) => {
       if (state.failMove) throw new Error('db');
       calls.push(`move:${otid}:from=${from === O ? 'O' : from}:${caller === A ? 'A' : 'B'}:${slug}:owner=${snap().user_id}`);
-      return { paymentsReset: state.hasPayments };
     },
     decodeProof: async (env, jws) => {
       if (jws === 'bad-sig') throw new Error('VerificationException');
@@ -174,9 +175,9 @@ describe('POST /api/ios/transfer', () => {
   describe('linked to another account O', () => {
     it('no confirm: 409 confirm-required with masked hint, hasLiveSite, hasShop, url; WRITES NOTHING', async () => {
       const s = setup([{ ...base, user_id: O, ...liveSite }]);
-      s.state.hasShop = true; s.state.hasPayments = true;
+      s.state.hasShop = true;
       const r = await call(s, { transactionId: '1' });
-      expect(r).toEqual({ status: 409, body: { error: 'confirm-required', ownerHint: 'a***@gmail.com', hasLiveSite: true, hasShop: true, hasPayments: true, ownerToken: tok(O), siteUrl: 'https://fade-lab.vercel.app' } });
+      expect(r).toEqual({ status: 409, body: { error: 'confirm-required', ownerHint: 'a***@gmail.com', hasLiveSite: true, hasShop: true, ownerToken: tok(O), siteUrl: 'https://fade-lab.vercel.app' } });
       expect(s.calls).toEqual([]);
       expect(s.db.row(OTID)).toMatchObject({ user_id: O, site_slug: 'fade-lab', taken_down_at: null, removed_at: null });
       expect(s.db.log.filter((l) => l.payload && 'user_id' in l.payload)).toEqual([]);
@@ -193,7 +194,7 @@ describe('POST /api/ios/transfer', () => {
 
     it('no site, no shop: hasLiveSite false, hasShop false, no siteUrl; unknown email -> ownerHint null', async () => {
       const s = setup([{ ...base, user_id: O }], { emailOf: async () => null });
-      expect(await call(s, { transactionId: '1' })).toEqual({ status: 409, body: { error: 'confirm-required', ownerHint: null, hasLiveSite: false, hasShop: false, hasPayments: false, ownerToken: tok(O) } });
+      expect(await call(s, { transactionId: '1' })).toEqual({ status: 409, body: { error: 'confirm-required', ownerHint: null, hasLiveSite: false, hasShop: false, ownerToken: tok(O) } });
     });
 
     it('a taken-down or removed site is not live', async () => {
@@ -206,17 +207,11 @@ describe('POST /api/ios/transfer', () => {
     it('confirm:true: intent recorded, THEN the CAS, THEN the business moves from O; the site stays live; nothing offline', async () => {
       const s = setup([{ ...base, user_id: O, ...liveSite }]);
       const log = vi.spyOn(console, 'log').mockImplementation(() => {});
-      expect(await call(s, CONF)).toEqual({ status: 200, body: { moved: true, linked: true, paymentsReset: false } });
+      expect(await call(s, CONF)).toEqual({ status: 200, body: { moved: true, linked: true } });
       // the intent was written while the purchase was still O's; moveBusiness ran when it was already the caller's
       expect(s.calls).toEqual([`intent:${OTID}:from=O:owner=${O}`, `move:${OTID}:from=O:A:fade-lab:owner=${A}`, 'finish']);
       expect(s.db.row(OTID)).toMatchObject({ user_id: A, site_slug: 'fade-lab', published_at: liveSite.published_at, taken_down_at: null, removed_at: null });
       expect(log).toHaveBeenCalledWith(`ios-transfer otid=0123 from=aaaaaaaa to=bbbbbbbb`);
-    });
-
-    it('paymentsReset:true is reported when the shop held payment settings', async () => {
-      const s = setup([{ ...base, user_id: O, ...liveSite }]);
-      s.state.hasPayments = true;
-      expect((await call(s, CONF)).body).toEqual({ moved: true, linked: true, paymentsReset: true });
     });
 
     it('the slug is re-read AFTER the CAS (a publish that bound one meanwhile)', async () => {
@@ -296,6 +291,44 @@ describe('POST /api/ios/transfer', () => {
       expect(s.calls.filter((c) => c.startsWith('move:'))).toEqual([`move:${OTID}:from=O:${winner === A ? 'A' : 'B'}:fade-lab:owner=${winner}`]);
     });
 
+    it('N3: a duplicate confirm that loses to the caller\'s OWN winning request does not cancel the winner\'s intent', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const s = setup([{ ...base, user_id: O, ...liveSite }]);
+      s.state.failMove = true; // the winner\'s business step fails after its CAS
+      const [r1, r2] = await Promise.all([call(s, CONF), call(s, CONF)]);
+      expect([r1.status, r2.status].sort()).toEqual([409, 503]);
+      expect(s.db.row(OTID)!.user_id).toBe(A);
+      expect(s.store.size).toBe(1); // the intent survives so a retry still finishes the move
+      s.state.failMove = false;
+      expect((await call(s, { transactionId: '1' })).status).toBe(200);
+      expect(s.calls.filter((c) => c.startsWith('move:'))).toEqual([`move:${OTID}:from=O:A:fade-lab:owner=${A}`]);
+    });
+
+    it('N3: when the purchase went to someone ELSE the lost-CAS caller\'s intent is cancelled', async () => {
+      const s = setup([{ ...base, user_id: O, ...liveSite }]);
+      const real = s.deps.repo.upsertVerified.bind(s.deps.repo);
+      s.deps.repo.upsertVerified = async (tx, o) => { const r = await real(tx, o); s.db.row(OTID)!.user_id = B; return r; };
+      await call(s, CONF);
+      expect(s.calls).toContain('cancel');
+      expect(s.store.size).toBe(0);
+    });
+
+    it('L2: while an unfinished move to account C exists, a move of the same purchase away from C is refused (409 move-in-progress), nothing written', async () => {
+      const s = setup([{ ...base, user_id: A, ...liveSite }]);
+      s.store.set(`${OTID}:${A}`, { otid: OTID, from: O, to: A, slug: 'fade-lab' });
+      const conf = { transactionId: '1', confirm: true, ownerToken: tok(A) };
+      expect(await call(s, conf, 'tb')).toEqual({ status: 409, body: { error: 'move-in-progress' } });
+      expect(s.db.row(OTID)!.user_id).toBe(A);
+      expect(s.store.get(`${OTID}:${A}`).from).toBe(O); // O is still recorded as the previous owner
+      expect(s.calls).toEqual([]);
+    });
+
+    it('confirm-required and success carry no payment fields any more', async () => {
+      const s = setup([{ ...base, user_id: O, ...liveSite }]);
+      expect(Object.keys((await call(s, { transactionId: '1' })).body).sort()).toEqual(['error', 'hasLiveSite', 'hasShop', 'ownerHint', 'ownerToken', 'siteUrl']);
+      expect((await call(s, CONF)).body).toEqual({ moved: true, linked: true });
+    });
+
     it('a half-finished move: the business step fails after the CAS (503); the purchase is the caller\'s, the intent stays, nothing is undone', async () => {
       const err = vi.spyOn(console, 'error').mockImplementation(() => {});
       const s = setup([{ ...base, user_id: O, ...liveSite }]);
@@ -311,8 +344,8 @@ describe('POST /api/ios/transfer', () => {
       const s = setup([{ ...base, user_id: O, ...liveSite }]);
       s.state.failMove = true;
       await call(s, CONF);
-      s.state.failMove = false; s.state.hasPayments = true;
-      expect(await call(s, { transactionId: '1' })).toEqual({ status: 200, body: { moved: false, linked: true, paymentsReset: true } });
+      s.state.failMove = false;
+      expect(await call(s, { transactionId: '1' })).toEqual({ status: 200, body: { moved: false, linked: true } });
       expect(s.calls.filter((c) => c.startsWith('move:'))).toEqual([`move:${OTID}:from=O:A:fade-lab:owner=${A}`]);
       expect(s.store.size).toBe(0);
       expect(s.db.row(OTID)).toMatchObject({ user_id: A, site_slug: 'fade-lab' });
@@ -400,7 +433,7 @@ describe('POST /api/ios/transfer', () => {
 
     it('required and valid: moves', async () => {
       const s = setup([{ ...base, user_id: O, ...liveSite }], { requireProof: true });
-      expect(await call(s, withProof({ proof: 'ok' }))).toEqual({ status: 200, body: { moved: true, linked: true, paymentsReset: false } });
+      expect(await call(s, withProof({ proof: 'ok' }))).toEqual({ status: 200, body: { moved: true, linked: true } });
     });
 
     it('H1: a JWS signed weeks ago (44 days) is accepted, 45 days exactly is the edge, 46 days is refused', async () => {
@@ -421,7 +454,7 @@ describe('POST /api/ios/transfer', () => {
       expect((await call(s, withProof({ proof: 'ok' }))).status).toBe(200);
     });
 
-    it.each(['bad-sig', 'stale', 'future', 'nodate', 'other-otid', 'other-bundle', 'other-env'])('flag off, a present-but-invalid proof (%s) is refused 403 proof-invalid, nothing written', async (proof) => {
+    it.each(['bad-sig', 'old-renewal', 'stale', 'future', 'nodate', 'other-otid', 'other-bundle', 'other-env'])('flag off, a present-but-invalid proof (%s) is refused 403 proof-invalid, nothing written', async (proof) => {
       vi.spyOn(console, 'warn').mockImplementation(() => {});
       const s = setup([{ ...base, user_id: O, ...liveSite }]);
       expect(await call(s, withProof({ proof }))).toEqual({ status: 403, body: { error: 'proof-invalid' } });
@@ -435,6 +468,17 @@ describe('POST /api/ios/transfer', () => {
       const s = setup([{ ...base, user_id: O, ...liveSite }], { requireProof: true });
       for (const proof of ['stale', 'other-otid', 'bad-sig']) expect((await call(s, withProof({ proof }))).status).toBe(403);
       expect(s.db.row(OTID)!.user_id).toBe(O);
+    });
+
+    it('N2: without a latest transaction id from Apple the JWS must at least be unexpired', async () => {
+      const noLatest = { ...TX, latestTransactionId: undefined };
+      const ok = setup([{ ...base, user_id: O, ...liveSite }], { tx: noLatest, decodeProof: async () => ({ ...proofFor('ok'), expiresDate: NOW + 1000 }) });
+      expect((await call(ok, withProof({ proof: 'ok' }))).status).toBe(200);
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      for (const expiresDate of [NOW - 1000, undefined]) {
+        const bad = setup([{ ...base, user_id: O, ...liveSite }], { tx: noLatest, decodeProof: async () => ({ ...proofFor('ok'), expiresDate }) });
+        expect((await call(bad, withProof({ proof: 'ok' }))).status).toBe(403);
+      }
     });
 
     it('exactly 45 days old passes (edge)', async () => {

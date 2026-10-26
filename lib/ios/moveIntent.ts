@@ -8,7 +8,6 @@
 import { createClient } from '@supabase/supabase-js';
 
 export interface MoveIntent { otid: string; from: string; to: string; slug: string | null; at?: number }
-export interface MoveResult { paymentsReset: boolean }
 
 export interface MoveIntents {
   /** Record (or refresh) the intent. Throws on failure. */
@@ -18,6 +17,8 @@ export interface MoveIntents {
   pendingFor(to: string): Promise<MoveIntent[]>;
   finish(otid: string, to: string): Promise<void>;
   cancel(otid: string, to: string): Promise<void>;
+  /** Unfinished intents for this purchase (any destination). */
+  pendingForOtid(otid: string): Promise<MoveIntent[]>;
   /** Unfinished intents naming this account as the previous owner. */
   pendingFrom(from: string): Promise<MoveIntent[]>;
 }
@@ -28,7 +29,7 @@ export interface FinisherDeps {
   intents: MoveIntents;
   /** Purchase row (user_id, site_slug) by otid. */
   purchase(otid: string): Promise<{ user_id: string | null; site_slug: string | null } | null>;
-  moveBusiness(otid: string, from: string, to: string, slug: string | null): Promise<MoveResult>;
+  moveBusiness(otid: string, from: string, to: string, slug: string | null): Promise<void>;
 }
 
 /**
@@ -36,14 +37,14 @@ export interface FinisherDeps {
  * theirs). Idempotent; never throws. `pending` = something is still unfinished (the caller should not
  * create a shop for this account yet). A stale intent (the purchase is not theirs) is cancelled.
  */
-export async function finishPendingMoves(userId: string, deps: FinisherDeps): Promise<{ pending: boolean; paymentsReset: boolean; finished: number }> {
-  let pending = false, paymentsReset = false, finished = 0;
+export async function finishPendingMoves(userId: string, deps: FinisherDeps): Promise<{ pending: boolean; finished: number }> {
+  let pending = false, finished = 0;
   let list: MoveIntent[];
   try {
     list = await deps.intents.pendingFor(userId);
   } catch (e: any) {
     console.error('[ios/move] intent lookup failed:', e?.message || e);
-    return { pending: true, paymentsReset, finished };
+    return { pending: true, finished };
   }
   for (const it of list) {
     const tag = `otid=${it.otid.slice(-4)}`;
@@ -55,9 +56,8 @@ export async function finishPendingMoves(userId: string, deps: FinisherDeps): Pr
         if (typeof it.at === 'number' && Date.now() - it.at > 10 * 60_000) await deps.intents.cancel(it.otid, userId);
         continue;
       }
-      const r = await deps.moveBusiness(it.otid, it.from, userId, row.site_slug ?? it.slug);
+      await deps.moveBusiness(it.otid, it.from, userId, row.site_slug ?? it.slug);
       await deps.intents.finish(it.otid, userId);
-      paymentsReset = paymentsReset || r.paymentsReset;
       finished++;
       console.log(`ios-transfer ${tag} finished to=${userId.slice(0, 8)}`);
     } catch (e: any) {
@@ -65,7 +65,7 @@ export async function finishPendingMoves(userId: string, deps: FinisherDeps): Pr
       console.error(`ios-transfer ${tag} finisher failed (will retry):`, e?.message || e);
     }
   }
-  return { pending, paymentsReset, finished };
+  return { pending, finished };
 }
 
 function admin() {
@@ -103,6 +103,11 @@ export function liveMoveIntents(): MoveIntents {
       if (error) throw new Error(`intent lookup failed: ${error.message}`);
       return (data ?? []).map(asIntent);
     },
+    async pendingForOtid(otid) {
+      const { data, error } = await admin().from('ab_events').select('payload').eq('kind', KIND).like('dedupe_key', `ios-transfer:${otid}:%`);
+      if (error) throw new Error(`intent lookup failed: ${error.message}`);
+      return (data ?? []).map(asIntent);
+    },
     async pendingFrom(from) {
       const { data, error } = await admin().from('ab_events').select('payload').eq('kind', KIND).like('dedupe_key', 'ios-transfer:%').eq('payload->>from', from);
       if (error) throw new Error(`intent lookup failed: ${error.message}`);
@@ -113,11 +118,19 @@ export function liveMoveIntents(): MoveIntents {
   };
 }
 
-/** True while an unfinished move names this account as the previous owner AND its purchase already left them. */
+/**
+ * True while an unfinished move names this account as the previous owner AND its purchase now belongs to the
+ * destination. If the purchase is gone from the destination (user_id null after the destination deleted their
+ * account, or a third account) the intent is dead: it is cancelled and does not block the old owner, who can
+ * always delete their account. A purchase still O's (the CAS has not won) is not pending either.
+ */
 export async function moveInProgressFrom(userId: string, intents: MoveIntents, purchase: FinisherDeps['purchase']): Promise<boolean> {
+  let blocked = false;
   for (const it of await intents.pendingFrom(userId)) {
     const row = await purchase(it.otid);
-    if (row && row.user_id !== userId) return true;
+    if (!row) continue;
+    if (row.user_id === it.to) { blocked = true; continue; }
+    if (row.user_id !== it.from) await intents.cancel(it.otid, it.to).catch(() => {});
   }
-  return false;
+  return blocked;
 }

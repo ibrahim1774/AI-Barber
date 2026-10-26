@@ -8,6 +8,8 @@ export type IosEnv = 'Production' | 'Sandbox';
 export interface VerifiedTx {
   originalTransactionId: string;
   transactionId: string;
+  /** The LATEST transaction of the purchase per Apple's status check (the proof JWS must be this one). */
+  latestTransactionId?: string;
   productId: string;
   environment: IosEnv;
   /** From the purchase's LATEST transaction (Get All Subscription Statuses), not the id the app sent. */
@@ -173,6 +175,7 @@ export function makeVerifier(deps: { lookup: AppleLookup; decode: AppleDecode; s
       const out: VerifiedTx = {
         originalTransactionId: d.originalTransactionId,
         transactionId: d.transactionId,
+        latestTransactionId: latest.transactionId,
         productId: latest.productId,
         environment: env,
         expiresAt: latest.expiresDate ?? null,

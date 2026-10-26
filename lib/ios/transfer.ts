@@ -23,7 +23,7 @@
 import { VerifyFailure, isActive, type DecodedTransaction, type IosEnv, type VerifiedTx } from './appleVerify.js';
 import type { PurchasesRepo } from './purchases.js';
 import { timingSafeEqual } from 'node:crypto';
-import type { MoveIntents, MoveResult } from './moveIntent.js';
+import type { MoveIntents } from './moveIntent.js';
 import { hasLiveSite, otherAccountBody, siteUrlOf, type BindingOwner } from './ownership.js';
 
 export interface TransferDeps {
@@ -40,7 +40,7 @@ export interface TransferDeps {
   /** Clock (ms). */
   now(): number;
   /** Does a shop hang off this purchase, and does it hold payment settings (a Stripe account or manual handles)? Shown in the confirmation. Absent: both false. */
-  shopSummary?(otid: string): Promise<{ hasShop: boolean; hasPayments: boolean }>;
+  shopSummary?(otid: string): Promise<{ hasShop: boolean }>;
   /** The caller's own shop, if any (ab_shops has one row per owner). */
   shopOf?(userId: string): Promise<{ id: string; ios_otid: string | null } | null>;
   /** Move intents (ab_events): recorded BEFORE the CAS; a retry finishes a move only when one exists. */
@@ -50,7 +50,7 @@ export interface TransferDeps {
    * its owner member first, then the sites copy), payments settings are cleared and audited, the owner calendar
    * token is rotated. Idempotent; never deletes. Throws on failure (a retry finishes it).
    */
-  moveBusiness(otid: string, from: string, to: string, slug: string | null): Promise<MoveResult>;
+  moveBusiness(otid: string, from: string, to: string, slug: string | null): Promise<void>;
   /** Proof of device: verify an Apple-signed transaction JWS (StoreKit 2 jwsRepresentation). Throws if the signature/bundle/environment is wrong. */
   decodeProof(env: IosEnv, jws: string): Promise<DecodedTransaction>;
   /** Expected bundle id (APPLE_BUNDLE_ID). */
@@ -62,10 +62,11 @@ export interface TransferDeps {
 }
 
 export type TransferResult =
-  | { status: 200; body: { moved: boolean; linked: true; paymentsReset?: boolean } }
-  | { status: 409; body: { error: 'confirm-required'; ownerHint: string | null; hasLiveSite: boolean; hasShop: boolean; hasPayments: boolean; ownerToken: string; siteUrl?: string } }
+  | { status: 200; body: { moved: boolean; linked: true } }
+  | { status: 409; body: { error: 'confirm-required'; ownerHint: string | null; hasLiveSite: boolean; hasShop: boolean; ownerToken: string; siteUrl?: string } }
   | { status: 409; body: { error: 'account-has-site'; slug: string; reason: 'site' | 'shop' } }
   | { status: 409; body: { error: 'purchase-changed' } }
+  | { status: 409; body: { error: 'move-in-progress' } }
   | { status: 409; body: { error: 'purchase-other-account'; hint: string | null; ownerHint: string | null; hasLiveSite: boolean } }
   | { status: 402; body: { error: 'subscription-inactive'; reason?: 'revoked' } }
   | { status: 400; body: { error: 'proof-required' } }
@@ -145,9 +146,13 @@ export async function runTransfer(input: unknown, deps: TransferDeps, ctx: { aut
   } else {
     try {
       const d = await deps.decodeProof(tx.environment, proof);
+      // N2: the JWS must be the purchase's LATEST transaction (Apple's status check), so an old renewal's JWS is useless.
+      const latestOk = (x: DecodedTransaction) => tx.latestTransactionId
+        ? x.transactionId === tx.latestTransactionId
+        : typeof x.expiresDate === 'number' && x.expiresDate > checkedAt;
       const age = checkedAt - (d.signedDate ?? NaN); // negative = signed in the future
       const ok = d.originalTransactionId === otid && d.bundleId === deps.bundleId
-        && d.environment === tx.environment && Number.isFinite(age) && age <= PROOF_MAX_AGE_MS && age >= -PROOF_FUTURE_SKEW_MS;
+        && d.environment === tx.environment && latestOk(d) && Number.isFinite(age) && age <= PROOF_MAX_AGE_MS && age >= -PROOF_FUTURE_SKEW_MS;
       if (!ok) {
         console.warn(`ios-transfer ${tag} proof rejected`);
         return { status: 403, body: { error: 'proof-invalid' } };
@@ -165,14 +170,14 @@ export async function runTransfer(input: unknown, deps: TransferDeps, ctx: { aut
   if (!repo.transferUser || !repo.liveSitesOfUser) return unavailable;
   // Finishes an unfinished move of THIS caller (an intent row exists and the CAS already won). Moves data only,
   // never entitlement, so it also runs for a purchase that has lapsed meanwhile. Null = nothing to finish.
-  const finishOwn = async (row: { user_id: string | null; site_slug: string | null }): Promise<MoveResult | null> => {
-    if (row.user_id !== caller) return null;
+  const finishOwn = async (row: { user_id: string | null; site_slug: string | null }): Promise<boolean> => {
+    if (row.user_id !== caller) return false;
     const intent = await deps.intents.find(otid, caller);
-    if (!intent) return null;
-    const r = await deps.moveBusiness(otid, intent.from, caller, row.site_slug ?? intent.slug);
+    if (!intent) return false;
+    await deps.moveBusiness(otid, intent.from, caller, row.site_slug ?? intent.slug);
     await deps.intents.finish(otid, caller);
     console.log(`ios-transfer ${tag} finished to=${short(caller)}`);
-    return r;
+    return true;
   };
 
   try {
@@ -194,14 +199,13 @@ export async function runTransfer(input: unknown, deps: TransferDeps, ctx: { aut
     if (row.user_id === caller) {
       // Finish an earlier attempt of THIS caller's move, only when its intent row exists (idempotent, never undoes).
       // Without an intent row nothing is touched, whoever owns the shop or site of this otid.
-      let r: MoveResult | null = null;
       try {
-        r = await finishOwn(row);
+        await finishOwn(row);
       } catch (e: any) {
         console.error(`ios-transfer ${tag} ALERT: finishing the move failed (a retry finishes it):`, e?.message || e);
         return unavailable;
       }
-      return { status: 200, body: { moved: false, linked: true, ...(r ? { paymentsReset: r.paymentsReset } : {}) } };
+      return { status: 200, body: { moved: false, linked: true } };
     }
 
     const mine = async () => (await repo.liveSitesOfUser!(caller)).find((r) => r.original_transaction_id !== otid && r.site_slug);
@@ -237,10 +241,10 @@ export async function runTransfer(input: unknown, deps: TransferDeps, ctx: { aut
       // Writes nothing (beyond Apple's refresh above). Tells the app what to say.
       const live = hasLiveSite(row);
       const hint = (await otherAccountBody(deps.emailOf, ownerId, row)).ownerHint;
-      const sum = deps.shopSummary ? await deps.shopSummary(otid) : { hasShop: false, hasPayments: false };
+      const sum = deps.shopSummary ? await deps.shopSummary(otid) : { hasShop: false };
       return {
         status: 409,
-        body: { error: 'confirm-required', ownerHint: hint, hasLiveSite: live, hasShop: sum.hasShop, hasPayments: sum.hasPayments, ownerToken: deps.ownerToken(ownerId, otid), ...(live && row.site_slug ? { siteUrl: siteUrlOf(row.site_slug) } : {}) },
+        body: { error: 'confirm-required', ownerHint: hint, hasLiveSite: live, hasShop: sum.hasShop, ownerToken: deps.ownerToken(ownerId, otid), ...(live && row.site_slug ? { siteUrl: siteUrlOf(row.site_slug) } : {}) },
       };
     }
 
@@ -257,28 +261,35 @@ export async function runTransfer(input: unknown, deps: TransferDeps, ctx: { aut
     if (has) return { status: 409, body: { error: 'account-has-site', slug: has.site_slug as string, reason: 'site' } };
     if (await ownShop()) return { status: 409, body: { error: 'account-has-site', slug: '', reason: 'shop' } };
 
+    // b0. An earlier move of this purchase to a DIFFERENT account whose business move is unfinished must be
+    // finished first (its `from` would otherwise be overwritten by this one).
+    const open = await deps.intents.pendingForOtid(otid);
+    if (open.some((i) => i.to !== caller && i.to === ownerId)) return { status: 409, body: { error: 'move-in-progress' } };
+
     // b. Record the intent (WHO the business moves from) BEFORE the gate, so a retry can finish it.
     await deps.intents.begin({ otid, from: ownerId, to: caller, slug: row.site_slug });
 
     // c. THE gate: one conditional UPDATE. Nothing else happens unless it wins.
     if (!(await repo.transferUser(otid, ownerId, caller))) {
       console.warn(`ios-transfer ${tag} lost the race: purchase changed`);
-      await deps.intents.cancel(otid, caller).catch(() => {});
+      // Cancel the intent only if this caller is NOT the one the purchase now belongs to: a duplicate confirm
+      // that lost to the caller's OWN winning request must not cancel the winner's intent.
+      const now = await repo.get(otid).catch(() => null);
+      if (now && now.user_id !== caller) await deps.intents.cancel(otid, caller).catch(() => {});
       return { status: 409, body: { error: 'purchase-changed' } };
     }
 
     // d. The business follows (rows owned by O only). The slug is re-read: a publish may have bound one meanwhile.
-    let result: MoveResult;
     try {
       const after = await repo.get(otid);
-      result = await deps.moveBusiness(otid, ownerId, caller, after?.site_slug ?? row.site_slug);
+      await deps.moveBusiness(otid, ownerId, caller, after?.site_slug ?? row.site_slug);
       await deps.intents.finish(otid, caller);
     } catch (e: any) {
       console.error(`ios-transfer ${tag} ALERT: purchase moved but moving the business failed (a retry finishes it):`, e?.message || e);
       return unavailable;
     }
     console.log(`ios-transfer ${tag} from=${short(ownerId)} to=${short(caller)}`);
-    return { status: 200, body: { moved: true, linked: true, paymentsReset: result.paymentsReset } };
+    return { status: 200, body: { moved: true, linked: true } };
   } catch (e) {
     console.error(`[ios/transfer] ${tag}: unexpected error:`, (e as Error)?.message || e);
     return unavailable;
