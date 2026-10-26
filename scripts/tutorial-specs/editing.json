@@ -1,0 +1,9 @@
+{"raw":"/tmp/tut/raw/editing.mp4","out":"/tmp/tut/editing.mp4","w":576,"h":1252,
+ "segments":[[83.5,85.5,1],[86,89.5,1.5],[91,96,2],[98.5,102,1.2],[104.5,109,1.2]],
+ "overlays":[
+  {"t0":0,"t1":2,"text":"Tap any text on your site","arrow":[0.5,0.325,"up"]},
+  {"t0":2,"t1":4.3,"text":"Edit it right here"},
+  {"t0":4.3,"t1":6.8,"text":"Type your new wording"},
+  {"t0":6.8,"t1":9.7,"text":"Saved on your site","arrow":[0.5,0.325,"up"]},
+  {"t0":9.7,"t1":14,"text":"Swap any photo too","arrow":[0.5,0.58,"up"]}
+ ]}

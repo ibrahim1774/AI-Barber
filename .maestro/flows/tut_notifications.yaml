@@ -1,0 +1,18 @@
+appId: com.ibrahim1774.aibarber
+---
+# Tutorial video "notifications": with the app closed, a booking, an order and a payment each arrive as a push.
+- tapOn:
+    point: "37%,94%"
+- runFlow: { file: _pause.yaml, env: { MS: "3000" } }
+- pressKey: home
+- runFlow: { file: _pause.yaml, env: { MS: "2500" } }
+- runFlow: { file: _push.yaml, env: { KIND: "booking" } }
+- runFlow: { file: _pause.yaml, env: { MS: "6500" } }
+- runFlow: { file: _push.yaml, env: { KIND: "booking" } }
+- runFlow: { file: _pause.yaml, env: { MS: "5500" } }
+- runFlow: { file: _push.yaml, env: { KIND: "order" } }
+- runFlow: { file: _pause.yaml, env: { MS: "5500" } }
+- runFlow: { file: _push.yaml, env: { KIND: "payment" } }
+- runFlow: { file: _pause.yaml, env: { MS: "5500" } }
+- launchApp:
+    appId: com.ibrahim1774.aibarber

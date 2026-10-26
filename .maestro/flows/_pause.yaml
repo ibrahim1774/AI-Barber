@@ -1,0 +1,7 @@
+appId: com.ibrahim1774.aibarber
+---
+# Holds still for ${MS} ms (a screen recording beat).
+- extendedWaitUntil:
+    visible: "NEVER_VISIBLE_ZZZ"
+    timeout: ${MS}
+    optional: true

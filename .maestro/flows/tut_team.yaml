@@ -1,0 +1,18 @@
+appId: com.ibrahim1774.aibarber
+---
+# Tutorial video "team": Settings, Your team, add a barber.
+- tapOn:
+    point: "87%,94%"
+- runFlow: { file: _pause.yaml, env: { MS: "2000" } }
+- tapOn: "Your team"
+- runFlow: { file: _pause.yaml, env: { MS: "2500" } }
+- tapOn: "Add a barber"
+- runFlow: { file: _pause.yaml, env: { MS: "1500" } }
+- tapOn: "e.g. Sam Fade"
+- inputText: "Sam Fade"
+- runFlow: { file: _pause.yaml, env: { MS: "1500" } }
+- tapOn:
+    text: "Cancel"
+    optional: true
+- tapOn:
+    point: "6%,9%"

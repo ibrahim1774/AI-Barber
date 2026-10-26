@@ -1,0 +1,15 @@
+appId: com.ibrahim1774.aibarber
+---
+# Tutorial video "editing": tap the tagline, retype it, save, then open Photos.
+- runFlow: tut_relaunch.yaml
+- runFlow: { file: _pause.yaml, env: { MS: "4500" } }
+- tapOn: "Fresh cuts.*|Sharp cuts.*"
+- runFlow: { file: _pause.yaml, env: { MS: "1200" } }
+- eraseText: 40
+- inputText: "Sharp cuts. Fresh fades."
+- runFlow: { file: _pause.yaml, env: { MS: "1200" } }
+- tapOn: "SAVE"
+- runFlow: { file: _pause.yaml, env: { MS: "1800" } }
+- tapOn: "PHOTOS"
+- runFlow: { file: _pause.yaml, env: { MS: "2500" } }
+- tapOn: "DONE"

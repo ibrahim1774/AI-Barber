@@ -15,5 +15,5 @@ export const LEARN_FEATURES: LearnFeature[] = [
   { slug: 'team', title: 'Your team', value: 'Add your barbers so each has their own schedule.' },
 ];
 
-/** Slugs of the clips that may sit in assets/tutorial/. 'intro' is shown first. */
-export type LearnVideoSlug = 'intro' | 'editing' | 'bookings' | 'store' | 'payments';
+/** Slugs of the clips that sit in assets/tutorial/: 'intro' is shown first, then one per feature above. */
+export type LearnVideoSlug = 'intro' | 'editing' | 'no-account' | 'calendar' | 'store' | 'domain' | 'notifications' | 'team';

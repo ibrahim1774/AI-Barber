@@ -1,0 +1,15 @@
+appId: com.ibrahim1774.aibarber
+---
+# Tutorial video "calendar": Day, Week and Month views of the built-in calendar.
+- tapOn:
+    point: "37%,94%"
+- tapOn: "Day view"
+- runFlow: { file: _pause.yaml, env: { MS: "6000" } }
+- runFlow: { file: _pause.yaml, env: { MS: "2000" } }
+- tapOn: "Week view"
+- runFlow: { file: _pause.yaml, env: { MS: "2500" } }
+- tapOn:
+    point: "80%,18%"
+- runFlow: { file: _pause.yaml, env: { MS: "2500" } }
+- tapOn: "Day view"
+- runFlow: { file: _pause.yaml, env: { MS: "2500" } }

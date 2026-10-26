@@ -1,0 +1,81 @@
+appId: com.ibrahim1774.aibarber
+---
+# (tutorial prep, trimmed: no Stripe, no screenshots) Bookings setup wizard on a signed-in account. env: PROMPT_TAP ("Update my site" | "Not now"), PREFIX
+- tapOn:
+    point: "37%,94%"   # Bookings tab
+- waitForAnimationToEnd
+- tapOn:
+    point: "50%,55%"   # SET UP BOOKINGS (text match hits the heading)
+- waitForAnimationToEnd
+# price + deposit on Haircut
+- tapOn: "Edit Haircut"
+- waitForAnimationToEnd
+- tapOn: "Price in dollars"
+- inputText: "30"
+- tapOn: "LENGTH"   # a numeric keypad has no Done key: tapping plain text dismisses it
+- scrollUntilVisible:
+    element: "Fixed .*"
+- tapOn: "Fixed .*"
+- scrollUntilVisible:
+    element: "10"
+- tapOn: "10"   # the deposit field (its placeholder)
+- inputText: "10"
+- tapOn: "ADVANCED: DEPOSIT"
+- scrollUntilVisible:
+    element: "Save"
+- tapOn: "Save"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element: "Continue"
+- tapOn: "Continue"
+- waitForAnimationToEnd
+- scroll
+- scrollUntilVisible:
+    element: "Continue"
+- tapOn: "Continue"
+- waitForAnimationToEnd
+- tapOn: "Add barbers"
+- waitForAnimationToEnd
+- tapOn: "Just me"
+- scrollUntilVisible:
+    element: "Continue"
+- tapOn: "Continue"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element: "Continue"
+- tapOn: "Continue"
+- waitForAnimationToEnd
+# the share button exists only once the site's pages are live (link gate); otherwise the Publish card is shown instead
+- runFlow:
+    when:
+      visible: "Share booking link"
+    commands:
+      - tapOn: "Share booking link"
+      - waitForAnimationToEnd
+      - tapOn:
+          point: "50%,8%"   # close the sheet
+      - waitForAnimationToEnd
+- tapOn: "Finish"
+- waitForAnimationToEnd
+- tapOn: "${PROMPT_TAP}"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: ".*live!.*"
+    timeout: 20000
+    optional: true
+- runFlow:
+    when:
+      visible: ".*live!.*"
+    commands:
+      - tapOn: "Done"
+- waitForAnimationToEnd
+- tapOn:
+    point: "6%,9%"   # back out of the setup hub (finishing leaves you on it)
+- waitForAnimationToEnd
+# the first open of Bookings runs its tour (views, + button, setup): look at step 2, then skip it
+- tapOn:
+    text: "Next"
+    optional: true
+- tapOn:
+    text: "Skip tour"
+    optional: true

@@ -1,0 +1,7 @@
+appId: com.ibrahim1774.aibarber
+---
+# Shows one demo push on the simulator. env: KIND (booking | order | payment). Needs stub/push-helper.js running.
+- runScript:
+    file: ../scripts/push.js
+    env:
+      KIND: ${KIND}

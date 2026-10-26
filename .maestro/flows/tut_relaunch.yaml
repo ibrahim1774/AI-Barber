@@ -1,0 +1,6 @@
+appId: com.ibrahim1774.aibarber
+---
+- runFlow:
+    file: _seed.yaml
+    env: { TIER: store, LAPSE: "", STRIPE: "", SIGNIN: "true", SIGNOUT: "", EMAIL: "", SITEBASE: "https://jacks.example.test", BOOKING_NAME: "" }
+- takeScreenshot: relaunch

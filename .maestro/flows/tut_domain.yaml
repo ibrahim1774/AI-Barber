@@ -1,0 +1,15 @@
+appId: com.ibrahim1774.aibarber
+---
+# Tutorial video "domain": Settings, Custom Domain, type the name you want (no search: the stub has no registrar).
+- tapOn:
+    point: "87%,94%"
+- runFlow: { file: _pause.yaml, env: { MS: "2500" } }
+- tapOn: "GET YOURS"
+- runFlow: { file: _pause.yaml, env: { MS: "2000" } }
+- tapOn:
+    point: "35%,34%"
+- eraseText: 60
+- inputText: "jacksbarbershop"
+- runFlow: { file: _pause.yaml, env: { MS: "2500" } }
+- tapOn:
+    point: "6%,9%"

@@ -1,0 +1,23 @@
+appId: com.apple.Preferences
+---
+- launchApp:
+    appId: com.apple.Preferences
+    stopApp: true
+- scroll
+- tapOn: "Apps"
+- waitForAnimationToEnd
+- takeScreenshot: n1
+- scrollUntilVisible:
+    element: "AI Barber"
+- tapOn: "AI Barber"
+- waitForAnimationToEnd
+- takeScreenshot: n2
+- tapOn: "Notifications"
+- waitForAnimationToEnd
+- takeScreenshot: n3
+- tapOn:
+    point: "84%,17%"
+- waitForAnimationToEnd
+- takeScreenshot: n4
+- launchApp:
+    appId: com.ibrahim1774.aibarber

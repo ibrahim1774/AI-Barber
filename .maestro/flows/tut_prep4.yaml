@@ -1,0 +1,30 @@
+appId: com.ibrahim1774.aibarber
+---
+- tapOn:
+    point: "69%,24%"
+- waitForAnimationToEnd
+- takeScreenshot: p4z
+- tapOn:
+    point: "50%,38%"
+- waitForAnimationToEnd
+- takeScreenshot: p4a
+- tapOn: "e.g. Matte pomade"
+- inputText: "Matte pomade"
+- tapOn: "Price in dollars"
+- inputText: "12.50"
+- tapOn: "Done"
+- tapOn: "Add photo"
+- waitForAnimationToEnd
+- tapOn: "Library"
+- extendedWaitUntil:
+    visible: ".*Select up to.*"
+    timeout: 15000
+- tapOn:
+    point: "16%,47%"
+- tapOn:
+    point: "90%,16%"
+- waitForAnimationToEnd
+- takeScreenshot: p4b
+- tapOn: "Save"
+- waitForAnimationToEnd
+- takeScreenshot: p4c

@@ -42,16 +42,33 @@ describe('Learn how it works (Settings)', () => {
     }
   });
 
-  it('with no bundled video the slot renders nothing and the page has no "coming soon"', async () => {
-    expect(Object.keys(LEARN_VIDEOS)).toEqual([]); // videos come later
+  it('a slot with no source renders nothing and the page has no "coming soon"', async () => {
     expect(allText(await render(<Learn />)).join(' ')).not.toMatch(/coming soon/i);
-    expect(await render(<LearnVideo slug="intro" />)).toBeTruthy();
-    const tree = await render(<LearnVideo slug="intro" />);
+    const tree = await render(<LearnVideo slug="intro" source={null as unknown as number} />);
     expect(tree.toJSON()).toBeNull();
   });
 
+  it('every feature has a bundled how-to video, plus the intro, all registered and small', () => {
+    const slugs = ['intro', ...LEARN_FEATURES.map((f) => f.slug)];
+    expect(Object.keys(LEARN_VIDEOS).sort()).toEqual([...slugs].sort());
+    for (const s of slugs) {
+      const file = path.join(ROOT, 'assets/tutorial', `${s}.mp4`);
+      expect(fs.existsSync(file)).toBe(true);
+      const size = fs.statSync(file).size;
+      expect(size).toBeGreaterThan(10_000);
+      expect(size).toBeLessThan(3 * 1024 * 1024);
+    }
+    expect(read('src/lib/learnVideos.ts')).not.toMatch(/^\s*\/\/\s*\w+.*require\(/m);
+  });
+
+  it('the page shows the intro first and a video under every feature card', async () => {
+    const tree = await render(<Learn />);
+    const labels = JSON.stringify(tree.toJSON());
+    expect((labels.match(/Play video/g) ?? []).length).toBe(1 + LEARN_FEATURES.length);
+  });
+
   it('LEARN_VIDEOS keys are known slugs', () => {
-    const slugs = ['intro', 'editing', 'bookings', 'store', 'payments'];
+    const slugs = ['intro', 'editing', 'no-account', 'calendar', 'store', 'domain', 'notifications', 'team'];
     for (const k of Object.keys(LEARN_VIDEOS)) expect(slugs).toContain(k);
   });
 });

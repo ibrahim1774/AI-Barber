@@ -1,0 +1,12 @@
+appId: com.ibrahim1774.aibarber
+---
+# Tutorial video "no-account": the Book now button on the site, then a customer's booking arrives with no account.
+- tapOn:
+    point: "12%,94%"
+- runFlow: { file: _pause.yaml, env: { MS: "2500" } }
+- runFlow:
+    file: _stub.yaml
+    env: { TIER: "", LAPSE: "", STRIPE: "", SIGNIN: "", SIGNOUT: "", EMAIL: "", SITEBASE: "", BOOKING_NAME: "Marcus T." }
+- tapOn:
+    point: "37%,94%"
+- runFlow: { file: _pause.yaml, env: { MS: "3500" } }

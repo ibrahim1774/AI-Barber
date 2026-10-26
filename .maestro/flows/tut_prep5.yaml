@@ -1,0 +1,8 @@
+appId: com.ibrahim1774.aibarber
+---
+- runFlow:
+    file: tut_wizard.yaml
+    env: { PROMPT_TAP: "Not now", PREFIX: "w_" }
+- runFlow:
+    file: _bookings_seed.yaml
+    env: { HOURS: "-30,-6,3,5,26,28,50,75,100,130" }

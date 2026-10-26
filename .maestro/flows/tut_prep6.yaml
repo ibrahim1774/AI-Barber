@@ -1,0 +1,28 @@
+appId: com.ibrahim1774.aibarber
+---
+- tapOn:
+    point: "62%,94%"
+- waitForAnimationToEnd
+- tapOn:
+    point: "50%,56%"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element: "Open my shop"
+- tapOn: "Open my shop"
+- waitForAnimationToEnd
+- runFlow:
+    when:
+      visible: "Store setup"
+    commands:
+      - tapOn:
+          point: "6%,9%"
+- waitForAnimationToEnd
+- tapOn:
+    point: "62%,94%"
+- waitForAnimationToEnd
+- takeScreenshot: g1
+- tapOn:
+    point: "69%,24%"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: g2

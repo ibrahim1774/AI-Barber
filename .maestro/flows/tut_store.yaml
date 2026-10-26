@@ -1,0 +1,16 @@
+appId: com.ibrahim1774.aibarber
+---
+# Tutorial video "store": the Store tab, then add a product with a price.
+- tapOn:
+    point: "62%,94%"
+- runFlow: { file: _pause.yaml, env: { MS: "2500" } }
+- tapOn: "Add product"
+- runFlow: { file: _pause.yaml, env: { MS: "1000" } }
+- tapOn: "e.g. Matte pomade"
+- inputText: "Beard balm"
+- tapOn: "Price in dollars"
+- inputText: "18"
+- tapOn: "Done"
+- runFlow: { file: _pause.yaml, env: { MS: "1200" } }
+- tapOn: "Save"
+- runFlow: { file: _pause.yaml, env: { MS: "2500" } }
