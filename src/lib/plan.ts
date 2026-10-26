@@ -25,14 +25,21 @@ export function normalizePlan(raw: unknown): Plan | null {
   if (!isObject(raw) || !isObject(raw.entitlements)) return null;
   const e = raw.entitlements;
   const str = (v: unknown) => (typeof v === 'string' ? v : null);
+  const takenDownAt = str(raw.takenDownAt);
+  const revoked = raw.revoked === true;
+  // Fail closed: a refunded / revoked purchase, or a site the server took down while the plan is not active,
+  // grants nothing even if the entitlement flags still say true.
+  const lapsed = revoked || (takenDownAt != null && raw.active !== true);
   return {
     linked: raw.linked === true,
     tier: raw.tier === 'website' || raw.tier === 'bookings' || raw.tier === 'store' ? raw.tier : null,
-    entitlements: { hosting: e.hosting === true, bookings: e.bookings === true, store: e.store === true },
+    entitlements: lapsed
+      ? { hosting: false, bookings: false, store: false }
+      : { hosting: e.hosting === true, bookings: e.bookings === true, store: e.store === true },
     active: raw.active === true,
     expiresAt: str(raw.expiresAt),
-    takenDownAt: str(raw.takenDownAt),
-    revoked: raw.revoked === true,
+    takenDownAt,
+    revoked,
     capabilities: { memberProfile: isObject(raw.capabilities) && raw.capabilities.memberProfile === true },
   };
 }
