@@ -7,6 +7,8 @@ import { SuperwallProvider } from 'expo-superwall';
 import { PostHogProvider } from 'posthog-react-native';
 import { fontAssets } from '@/constants/theme';
 import { onSiteAdopted, pullSiteOnLaunch } from '@/lib/account';
+import { ClaimGuard } from '@/components/ClaimGuard';
+import { claimLocked } from '@/lib/claimGuard';
 import { syncQuietly } from '@/lib/adminSync';
 import { initAttribution, POSTHOG_AUTOCAPTURE, posthog, screen } from '@/lib/analytics';
 import { LaunchPrompts } from '@/lib/launchPrompts';
@@ -121,6 +123,7 @@ export default function RootLayout() {
       <LaunchPrompts />
       {/* RevenueCat (observer of Superwall's purchases), once Superwall has settled. */}
       <RevenueCatStart />
+      <ClaimGuard />
       <Reminders />
       <AccountPull />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }}>
@@ -140,6 +143,8 @@ export default function RootLayout() {
           }}
         />
         <Stack.Screen name="live" options={{ animation: 'fade', gestureEnabled: false }} />
+        {/* The account step after payment: required and locked (no swipe back; the screen has no back control). */}
+        <Stack.Screen name="claim" options={{ gestureEnabled: false, animation: 'fade' }} />
         <Stack.Screen name="sign-in" />
         <Stack.Screen name="sign-up" />
       </Stack>
@@ -204,6 +209,11 @@ function ResumePublish() {
           return out;
         })
         .then((out) => {
+          // The server refused a paid claim, or the session is gone: the locked account step.
+          if (out?.kind === 'blocked' || out?.kind === 'claim-required') {
+            void claimLocked().then((locked) => locked && resetTo('/claim'));
+            return;
+          }
           // A user publish queued behind this retry navigates for itself.
           if (out?.kind !== 'live' || publishBusy()) return;
           if (router.canDismiss()) router.dismissAll();

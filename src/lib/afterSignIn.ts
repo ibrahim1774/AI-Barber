@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { Alert } from 'react-native';
+import { hasLockedClaim } from '@/lib/account';
 import { takeEmptyAccountNotice } from '@/lib/auth';
 import { goBackOrHome, resetTo } from '@/lib/nav';
 import { useRestoreFlow } from '@/lib/restoreFlow';
@@ -18,6 +19,11 @@ export function useAfterSignIn(
   const { restore } = useRestoreFlow();
   return useCallback(
     async ({ title = 'Signed in', message }: { title?: string; message?: string } = {}) => {
+      // A paid publish is waiting for this account (the locked step's "Forgot password?" lands here): back to it.
+      if (await hasLockedClaim()) {
+        resetTo('/claim');
+        return;
+      }
       // A different account's site was taken off this phone and this account has none yet.
       const empty = takeEmptyAccountNotice();
       // Sent here by the Bookings setup (it needs an account first): go back to it.

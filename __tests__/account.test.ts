@@ -262,6 +262,41 @@ describe('delete', () => {
     expect(off).toHaveBeenCalledWith('tx-1', 'access-123', undefined);
   });
 
+  test('signed out, the site lookup (it needs an account) is skipped: the phone\'s own slug is the check', async () => {
+    await store.saveSite(site);
+    const lookup = jest.spyOn(api, 'iosSite');
+    const off = jest.spyOn(api, 'takeSiteOffline').mockResolvedValue(undefined);
+    await takeWebsiteOffline('tx-1', site);
+    expect(lookup).not.toHaveBeenCalled();
+    expect(off).toHaveBeenCalledWith('tx-1', undefined, 'fade-factory');
+  });
+
+  test('signed out with a site that has no slug of its own: nothing can be proven, nothing is removed', async () => {
+    const adopted = { ...site, slug: null } as SiteRecord;
+    await store.saveSite(adopted);
+    const off = jest.spyOn(api, 'takeSiteOffline').mockResolvedValue(undefined);
+    await expect(takeWebsiteOffline('tx-1', adopted)).rejects.toMatchObject({ code: 'site-mismatch' });
+    expect(off).not.toHaveBeenCalled();
+    expect(await store.loadSite()).toEqual(adopted);
+  });
+
+  test('signed in, the pre-check and the take-offline request both carry the Bearer (fetch level)', async () => {
+    await store.saveSite(site);
+    sb.setSession({ access_token: 'access-123', user: USER });
+    const fetchMock = jest.fn(async (url: string) => ({
+      ok: true, status: 200,
+      text: async () => JSON.stringify(url.endsWith('/api/ios/site') ? BOUND : { ok: true }),
+    }));
+    (global as any).fetch = fetchMock;
+    await takeWebsiteOffline('tx-1', site);
+    const calls = fetchMock.mock.calls as unknown as [string, { headers: Record<string, string>; body: string }][];
+    const site1 = calls.find((c) => c[0].endsWith('/api/ios/site'))!;
+    const off1 = calls.find((c) => c[0].endsWith('/api/ios/take-offline'))!;
+    expect(site1[1].headers.Authorization).toBe('Bearer access-123');
+    expect(off1[1].headers.Authorization).toBe('Bearer access-123');
+    expect(JSON.parse(off1[1].body)).toEqual({ transactionId: 'tx-1', expectedSlug: 'fade-factory' });
+  });
+
   test('H1: with the site on screen the purchase is checked first and the bound slug is sent as expectedSlug', async () => {
     sb.setSession({ access_token: 'access-123', user: USER });
     await store.saveSite(site);
