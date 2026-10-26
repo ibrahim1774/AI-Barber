@@ -19,6 +19,7 @@ function mk(over: any = {}) {
       return { originalTransactionId: id === 'tx-B' ? 'orig-B' : 'orig-A', transactionId: id, productId: 'p', environment: 'Production', expiresAt: 0, revoked: false } as any;
     }),
     repo: { get: vi.fn(async (o: string) => rows[o] ?? null) },
+    markRemoved: vi.fn(async (o: string) => { calls.push(`removed:${o}`); }),
     markTakenDown: vi.fn(async (o: string) => { calls.push(`stamp:${o}`); }),
     deployOffline: vi.fn(async (s: string) => { calls.push(`offline:${s}`); }),
     releaseDomains: vi.fn(async (s: string) => { calls.push(`domain:${s}`); }),
@@ -35,6 +36,13 @@ describe('takeSiteOffline (no account, keyed by Apple transaction id)', () => {
       expect((await takeSiteOffline(b, d)).status).toBe(400);
     }
     expect(d.verify).not.toHaveBeenCalled();
+  });
+
+  it('a Sandbox transaction never removes a Production row (L1)', async () => {
+    const d = mk({ verify: vi.fn(async () => ({ originalTransactionId: 'orig-A', transactionId: 't', productId: 'p', environment: 'Sandbox', expiresAt: 0, revoked: false }) as any) });
+    const r = await takeSiteOffline({ transactionId: 't' }, d);
+    expect(r.status).toBe(404);
+    expect(d.calls).toEqual([]);
   });
 
   it('a transaction Apple does not know removes nothing (404)', async () => {
@@ -54,7 +62,7 @@ describe('takeSiteOffline (no account, keyed by Apple transaction id)', () => {
     const d = mk();
     const r = await takeSiteOffline({ transactionId: 'renewal-1', slug: 'someone-elses-site' }, d);
     expect(r).toEqual({ status: 200, body: { removed: true } });
-    expect(d.calls).toEqual(['stamp:orig-A', 'offline:fade-lab', 'domain:fade-lab', 'content:fade-lab']);
+    expect(d.calls).toEqual(['removed:orig-A', 'stamp:orig-A', 'offline:fade-lab', 'domain:fade-lab', 'content:fade-lab']);
   });
 
   it("another user's transaction id cannot touch this site: it only ever resolves to its own purchase", async () => {
@@ -87,7 +95,7 @@ describe('takeSiteOffline (no account, keyed by Apple transaction id)', () => {
       d.rows['orig-A'] = row({ user_id: 'u1' });
       const r = await takeSiteOffline({ transactionId: 't' }, d, { authorization: 'Bearer tok-owner' });
       expect(r.status).toBe(200);
-      expect(d.calls[1]).toBe('offline:fade-lab');
+      expect(d.calls[2]).toBe('offline:fade-lab');
     });
     it('token lookup outage -> 503, nothing removed', async () => {
       const d = mk({ userOf: vi.fn(async () => { throw new Error('auth down'); }) });

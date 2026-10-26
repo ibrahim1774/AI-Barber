@@ -48,7 +48,8 @@ export async function takeSiteOffline(body: unknown, deps: TakeOfflineDeps, ctx:
   } catch {
     return { status: 503, body: { error: 'temporarily-unavailable' } };
   }
-  if (!row || !row.site_slug) return { status: 404, body: { error: 'no-site' } };
+  // Ids are separate per environment: a Sandbox transaction never removes a Production row (or the reverse).
+  if (!row || !row.site_slug || row.environment !== tx.environment) return { status: 404, body: { error: 'no-site' } };
 
   if (row.user_id) {
     const token = bearer(ctx.authorization);

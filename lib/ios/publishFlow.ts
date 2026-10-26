@@ -327,8 +327,24 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
     // can land between that read and this deploy. Best effort: if it fails, the
     // sweep's restore pass redeploys the same content and clears it.
     if (force) {
-      await deps.repo.clearTakenDown(otid).catch((e) =>
-        console.error(`[ios/publish] ${slug}: live but clearTakenDown failed:`, e?.message || e));
+      // An owner who removed the site (removed_at, 017) and now publishes from the app on purpose
+      // brings it back with the content they just sent (the purchase and slug are still theirs). The
+      // clear is conditional on the stamp this publish saw, so a removal that landed while it ran
+      // keeps its mark, and then the site stays flagged taken down too.
+      let removedMeanwhile = false;
+      if (row.removed_at && deps.repo.clearRemoved) {
+        try {
+          await deps.repo.clearRemoved(otid, row.removed_at);
+          removedMeanwhile = !!(await deps.repo.get(otid))?.removed_at;
+        } catch (e: any) {
+          removedMeanwhile = true;
+          console.error(`[ios/publish] ${slug}: live but clearRemoved failed:`, e?.message || e);
+        }
+      }
+      if (!removedMeanwhile) {
+        await deps.repo.clearTakenDown(otid).catch((e) =>
+          console.error(`[ios/publish] ${slug}: live but clearTakenDown failed:`, e?.message || e));
+      }
     }
 
     return { status: 200, body: { siteId: slug, deployedUrl: outcome.deployedUrl, republished, version: pending.version, editedBy: 'owner', editedAt: pending.editedAt } };

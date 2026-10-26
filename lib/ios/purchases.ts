@@ -9,6 +9,12 @@ export interface PurchaseRow {
   last_notification: string | null; published_at: string | null;
   /** Set while the live site is replaced by the offline page (subscription lapsed). Content is kept. */
   taken_down_at: string | null;
+  /**
+   * 017: the owner removed the site (Delete account / Take my website offline). Unlike taken_down_at
+   * (also set by a lapse), no automatic path ever restores a row with this set; only an explicit owner
+   * publish clears it.
+   */
+  removed_at?: string | null;
   /** When the sweep last asked Apple about this row as a takedown/restore candidate. */
   lapse_checked_at: string | null;
   /**
@@ -58,6 +64,10 @@ export interface PurchasesRepo {
   restoreCandidates(limit: number, now: number): Promise<PurchaseRow[]>;
   markTakenDown(otid: string, at: number): Promise<void>;
   clearTakenDown(otid: string): Promise<void>;
+  /** 017: stamp removed_at (owner-initiated removal; idempotent, keeps the first stamp). */
+  markRemoved(otid: string, at: number): Promise<void>;
+  /** 017: clear removed_at only if it still equals `removedAt` (a newer removal keeps its stamp). */
+  clearRemoved(otid: string, removedAt: string): Promise<void>;
   /** Stamp lapse_checked_at (the sweep asked Apple about this row). */
   markLapseChecked(otid: string, at: number): Promise<void>;
   /** The purchase bound to this slug, if any. */
@@ -222,7 +232,7 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
     async linksDue(limit) {
       const { data, error } = await db().from(TABLE).select('*')
         .not('links_due_at', 'is', null).not('site_slug', 'is', null).not('published_at', 'is', null)
-        .is('taken_down_at', null).is('revoked_at', null)
+        .is('taken_down_at', null).is('revoked_at', null).is('removed_at', null)
         .order('links_due_at', { ascending: true }).limit(limit);
       if (error) fail('linksDue', error);
       return (data as PurchaseRow[]) ?? [];
@@ -264,7 +274,7 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
 
     async unpublishedBound(limit) {
       const { data, error } = await db().from(TABLE).select('*')
-        .not('site_slug', 'is', null).is('published_at', null).is('revoked_at', null)
+        .not('site_slug', 'is', null).is('published_at', null).is('revoked_at', null).is('removed_at', null)
         .order('verified_at', { ascending: true }).limit(limit);
       if (error) fail('unpublishedBound', error);
       return (data as PurchaseRow[]) ?? [];
@@ -293,13 +303,13 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
       // Revoked rows too: a refunded customer who resubscribes keeps the same
       // originalTransactionId, and Apple's answer (the sweep asks) clears it.
       const { data, error } = await db().from(TABLE).select('*')
-        .not('taken_down_at', 'is', null)
+        .not('taken_down_at', 'is', null).is('removed_at', null)
         .or(`revoked_at.not.is.null,expires_at.gt."${new Date(now).toISOString()}"`)
         .order('lapse_checked_at', { ascending: true, nullsFirst: true })
         .order('expires_at', { ascending: true }).limit(limit);
       if (error) fail('restoreCandidates', error);
       return ((data as PurchaseRow[]) ?? []).filter((r) =>
-        r.site_slug != null && r.taken_down_at != null && (r.revoked_at != null || isActiveRow(r, now)));
+        r.site_slug != null && r.taken_down_at != null && r.removed_at == null && (r.revoked_at != null || isActiveRow(r, now)));
     },
 
     async markTakenDown(otid, at) {
@@ -310,6 +320,16 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
     async clearTakenDown(otid) {
       const { error } = await db().from(TABLE).update({ taken_down_at: null }).eq('original_transaction_id', otid);
       if (error) fail('clearTakenDown', error);
+    },
+
+    async markRemoved(otid, at) {
+      const { error } = await db().from(TABLE).update({ removed_at: new Date(at).toISOString() }).eq('original_transaction_id', otid).is('removed_at', null);
+      if (error) fail('markRemoved', error);
+    },
+
+    async clearRemoved(otid, removedAt) {
+      const { error } = await db().from(TABLE).update({ removed_at: null }).eq('original_transaction_id', otid).eq('removed_at', removedAt);
+      if (error) fail('clearRemoved', error);
     },
 
     async markLapseChecked(otid, at) {

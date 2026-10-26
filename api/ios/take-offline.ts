@@ -16,11 +16,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'method-not-allowed' });
 
-  let allowed = true;
+  // Destructive route: when the limiter store is down the request is refused (fail closed), because
+  // every allowed call also triggers a Vercel deploy.
+  let allowed = false;
   try {
     allowed = await iosLimiter.allow(clientIp(req.headers as any), 'write');
   } catch (e: any) {
-    console.error('[ios/take-offline] rate limiter failed, allowing:', e?.message || e);
+    console.error('[ios/take-offline] rate limiter failed, refusing:', e?.message || e);
+    return res.status(503).json({ error: 'temporarily-unavailable' });
   }
   if (!allowed) {
     res.setHeader('Retry-After', '60');
@@ -54,7 +57,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 }
 
 function setCors(res: VercelResponse) {
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'OPTIONS,POST');
   res.setHeader(

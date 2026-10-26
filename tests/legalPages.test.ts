@@ -39,13 +39,13 @@ describe('policy pages (Apple audit rows 2, 4, 6, 8)', () => {
   })
   it('privacy: no longer says sites stay online after account deletion', () => {
     expect(privacy).not.toContain('Published websites</strong> stay online')
-    expect(privacy).toContain('take your published website offline, delete its content and photos')
+    expect(privacy).toContain('take your published app website offline, delete its stored content and the photos uploaded for it')
   })
   it('terms: card fee sentence', () => {
     expect(terms).toContain('When clients pay you by card, Prime Barber keeps 2% of each payment and Stripe charges its own processing fee.')
   })
   it('support: delete account matches the new behaviour', () => {
-    expect(support).toContain('takes your published website offline')
+    expect(support).toContain('takes your published app website offline')
     expect(support).toContain('Take my website offline')
   })
   it.each(['privacy', 'terms', 'support'])('%s: ?app=1 hides Home and web-builder/buy links', (n) => {

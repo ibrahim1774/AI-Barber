@@ -9,6 +9,7 @@ function mk(over: any = {}) {
   return {
     calls,
     now: () => 1000,
+    markRemoved: vi.fn(async (o: string, at: number) => { calls.push(`removed:${o}:${at}`); }),
     markTakenDown: vi.fn(async (o: string, at: number) => { calls.push(`stamp:${o}:${at}`); }),
     deployOffline: vi.fn(async (s: string) => { calls.push(`offline:${s}`); }),
     releaseDomains: vi.fn(async (s: string) => { calls.push(`domain:${s}`); }),
@@ -18,10 +19,10 @@ function mk(over: any = {}) {
 }
 
 describe('removeSite', () => {
-  it('order: stamp, offline page, release domain, delete content', async () => {
+  it('order: removed mark, stamp, offline page, release domain, delete content', async () => {
     const d = mk();
     await removeSite(site, d);
-    expect(d.calls).toEqual(['stamp:t1:1000', 'offline:fade-lab', 'domain:fade-lab', 'content:fade-lab']);
+    expect(d.calls).toEqual(['removed:t1:1000', 'stamp:t1:1000', 'offline:fade-lab', 'domain:fade-lab', 'content:fade-lab']);
   });
 
   it('a failed takedown stops everything after it (nothing deleted)', async () => {

@@ -1,0 +1,14 @@
+-- Apple audit (PR #261, review H1): an owner-initiated removal (Delete account / Take my website
+-- offline) must never be undone by the automatic paths. taken_down_at alone cannot say that: it is
+-- also what a lapsed subscription sets, and the lapse sweep restores those rows when Apple reports
+-- the subscription active again. removed_at is the separate, durable mark, stamped FIRST in the
+-- removal (before the offline deploy and before anything is deleted).
+--
+-- Excluded by the sweep (unpublished-bound, restore) and by admin republish. Cleared only by an
+-- explicit owner publish from the app for the same purchase (lib/ios/publishFlow.ts), and only if
+-- no newer removal landed while that publish ran.
+--
+-- Server-only (service role); ios_purchases has RLS with no client policies. APPLY THIS BEFORE
+-- deploying the code: the removal stamps removed_at and fails closed (500, nothing deleted) when
+-- the column is missing.
+alter table public.ios_purchases add column if not exists removed_at timestamptz;

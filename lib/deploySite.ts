@@ -262,6 +262,8 @@ export function swapImagePlaceholders(html: string, imageUrlMap: Record<string, 
  * any base64 image that slipped through removed (they belong in GCS and blow the payload limit).
  */
 export function finalizePages(pages: SiteFile[], imageUrlMap: Record<string, string>, siteSlug?: string): SiteFile[] {
+  // L4: the report-link slug placeholder is reserved; a client-supplied imageUrls.siteSlug must not fill it.
+  imageUrlMap = Object.fromEntries(Object.entries(imageUrlMap || {}).filter(([k]) => `{{${k}}}` !== REPORT_SLUG_PLACEHOLDER));
   const base64ImagePattern = /data:image\/[^;]+;base64,[A-Za-z0-9+/=]{100,}/g;
   return pages.map((p) => {
     // Last guard: no editor marker (markers.ts) in any shipped page, whatever rendered it.

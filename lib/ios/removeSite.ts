@@ -4,18 +4,24 @@
 //
 // Ordering is the contract, and every step is idempotent so a retry after a partial failure is
 // safe:
+//   0. removed   : stamp removed_at FIRST (migration 017). This is the durable "the owner removed
+//                  this" mark: the sweep's restore pass, pass 1 and admin republish all refuse it, so
+//                  a partly failed removal can never be undone by a still-billing subscription. Only
+//                  an explicit owner publish from the app clears it.
 //   1. takedown  : stamp taken_down_at (closes Bookings/Store gates, same flag the lapse sweep
 //                  uses), then replace the live site with the offline page.
 //   2. release   : detach any custom domain from the site's Vercel project.
 //   3. delete    : the stored copy and the photos.
 // A failure at any step throws and later steps do not run. The takedown comes first so the
 // public site is gone even if a later step fails. The lapse sweep cannot bring the site back:
-// its restore path needs the stored copy that step 3 deletes.
+// it skips every row with removed_at set, whether or not step 3 finished.
 import type { PurchaseRow } from './purchases.js';
 
 export type RemovableSite = Pick<PurchaseRow, 'original_transaction_id' | 'site_slug' | 'environment' | 'published_at'>;
 
 export interface RemoveSiteDeps {
+  /** Stamp ios_purchases.removed_at (idempotent; throws when it cannot, so nothing else runs). */
+  markRemoved(otid: string, at: number): Promise<void>;
   /** Stamp ios_purchases.taken_down_at (idempotent). */
   markTakenDown(otid: string, at: number): Promise<void>;
   /** Deploy the offline page to the slug's Vercel project (idempotent). Throws on any failure. */
@@ -28,8 +34,9 @@ export interface RemoveSiteDeps {
 }
 
 /** Step 1. Never deploys for a site that was never published (it would create a Vercel project). */
-export async function takeDown(site: RemovableSite, deps: Pick<RemoveSiteDeps, 'markTakenDown' | 'deployOffline' | 'now'>): Promise<void> {
+export async function takeDown(site: RemovableSite, deps: Pick<RemoveSiteDeps, 'markRemoved' | 'markTakenDown' | 'deployOffline' | 'now'>): Promise<void> {
   if (!site.site_slug) return;
+  await deps.markRemoved(site.original_transaction_id, deps.now());
   await deps.markTakenDown(site.original_transaction_id, deps.now());
   if (site.published_at != null) await deps.deployOffline(site.site_slug);
 }

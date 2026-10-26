@@ -17,16 +17,80 @@ export function ourObjectPath(url: unknown, bucketName: string): string | null {
   if (!url.startsWith(prefix)) return null;
   let path = url.slice(prefix.length).split(/[?#]/)[0];
   try { path = decodeURIComponent(path); } catch { return null; }
-  if (!path || path.includes('..') || path.startsWith('/')) return null;
+  if (!path || path.includes('..') || path.startsWith('/') || path.includes('//')) return null;
   // Never the server's own JSON, whatever a (user supplied) URL says.
   if (/^(pending-sites|pending-sites-history|admin-republish-runs)\//.test(path)) return null;
   return path;
 }
 
+// ---- What a removal may delete (App Store 5.1.1(v), review C1) -------------------------------
+// Image URLs in a stored copy come from the client, so a URL is NEVER proof of ownership: user A can
+// publish a site that points at user B's public photos, then remove their own site. Deletion is
+// therefore scoped to places the SERVER binds to this purchase, never to "whatever the copy says":
+//   1. everything under `<slug>/`          (the site's own upload folder; the slug is bound to the
+//                                           Apple-verified purchase and is what the removal is keyed by)
+//   2. everything under `ab-products/<shop id>/`  (the shop row linked to this purchase, from the DB)
+//   3. individual `ios-drafts/<draftId>/<file>` photos the stored copy (or its history) uses, ONLY when
+//      no other site's stored copy references the same object. A draft folder is anonymous, so this is
+//      a best-effort check, not proof; anything else (another site's folder, shared stock photos,
+//      foreign hosts, bare `<draftId>/` folders) is left alone. Orphans are for a bucket lifecycle rule.
+// Every key is re-validated against this allow-list immediately before it is deleted.
+
+const DRAFT_FILE = /^ios-drafts\/([A-Za-z0-9][A-Za-z0-9_-]{0,99})\/([A-Za-z0-9][A-Za-z0-9_-]{0,150}\.[A-Za-z0-9]{2,5})$/;
+
+/** The prefixes whose objects belong to this purchase; empty when the slug is unusable. */
+export function ownedPrefixes(slug: string, shopId?: string | null): string[] {
+  const out: string[] = [];
+  if (/^[a-z0-9][a-z0-9-]{0,99}$/.test(slug)) out.push(`${slug}/`);
+  if (typeof shopId === 'string' && /^[A-Za-z0-9-]{8,64}$/.test(shopId)) out.push(`ab-products/${shopId}/`);
+  return out;
+}
+
+/** True when `key` is a safe object key under one of the allowed prefixes. */
+export function underOwnedPrefix(key: string, prefixes: readonly string[]): boolean {
+  if (!key || key.includes('..') || key.startsWith('/') || key.includes('//')) return false;
+  if (/^(pending-sites|pending-sites-history|admin-republish-runs)(\/|$)/.test(key)) return false;
+  return prefixes.some((p) => p.endsWith('/') && key.startsWith(p) && key.length > p.length);
+}
+
+/** Draft photos from the copy's URLs that no other site references (the only URL-derived deletions). */
+export function draftPhotosToDelete(urls: Iterable<unknown>, bucketName: string, referencedElsewhere: ReadonlySet<string>): string[] {
+  const out = new Set<string>();
+  for (const u of urls) {
+    const p = ourObjectPath(u, bucketName);
+    if (p && DRAFT_FILE.test(p) && !referencedElsewhere.has(p)) out.add(p);
+  }
+  return [...out];
+}
+
+const urlsOf = (pending: any): unknown[] => (pending?.imageUrlMap && typeof pending.imageUrlMap === 'object' ? Object.values(pending.imageUrlMap) : []);
+
+/** Object paths every OTHER site's stored copy points at. Throws when a copy cannot be read (fail closed). */
+async function pathsReferencedByOthers(b: ReturnType<typeof bucket>, ownSlug: string): Promise<Set<string>> {
+  const [files] = await b.getFiles({ prefix: 'pending-sites/' });
+  const refs = new Set<string>();
+  const others = files.filter((f: any) => f.name !== `pending-sites/${ownSlug}.json` && f.name.endsWith('.json'));
+  for (let i = 0; i < others.length; i += 16) {
+    await Promise.all(others.slice(i, i + 16).map(async (f: any) => {
+      const [buf] = await f.download();
+      let parsed: any;
+      try { parsed = JSON.parse(buf.toString('utf-8')); } catch { return; } // unreadable JSON cannot reference anything
+      for (const u of urlsOf(parsed?.data ?? parsed)) {
+        const p = ourObjectPath(u, b.name);
+        if (p) refs.add(p);
+      }
+    }));
+  }
+  return refs;
+}
+
+const IN_FLIGHT: readonly string[] = ['reserved', 'buying', 'ordered'];
+
 export function liveRemoveDeps(): RemoveSiteDeps {
   const purchases = supabasePurchases();
   return {
     now: () => Date.now(),
+    markRemoved: (otid, at) => purchases.markRemoved(otid, at),
     markTakenDown: (otid, at) => purchases.markTakenDown(otid, at),
     async deployOffline(slug) {
       // Same page and same manage/order-link rule as the lapse sweep (api/ios/sweep.ts).
@@ -37,6 +101,9 @@ export function liveRemoveDeps(): RemoveSiteDeps {
       const repo = supabaseDomains();
       const row = await repo.holdingSite(slug);
       if (!row) return;
+      // A purchase still in flight (M6): detaching it could strand the order, and the registration
+      // may be ours. Refuse; the domain sweep resolves it and the removal is retried.
+      if (IN_FLIGHT.includes(row.state)) throw new Error(`custom domain purchase is in progress (${row.state}); retry the removal later`);
       if (!row.simulated) {
         const vercel = liveVercelDomains();
         if (!vercel) throw new Error('Vercel is not configured; cannot release the custom domain');
@@ -47,16 +114,37 @@ export function liveRemoveDeps(): RemoveSiteDeps {
     async deleteContent(slug) {
       const b = bucket();
       const safe = slugify(slug);
-      // Photos first (the list lives in the stored copy), then the copy itself, so a retry after a
-      // failure still finds the list. Missing objects are fine.
-      const pending = await readPendingSite(safe);
-      const paths = new Set<string>();
-      for (const u of Object.values(pending?.imageUrlMap ?? {})) {
-        const p = ourObjectPath(u, b.name);
-        if (p) paths.add(p);
-      }
-      for (const p of paths) await b.file(p).delete({ ignoreNotFound: true });
+      const shop = await findShopForSite(safe); // DB-bound to this purchase, never client supplied
+      const prefixes = ownedPrefixes(safe, shop?.id);
+      const del = async (key: string) => {
+        if (!underOwnedPrefix(key, prefixes) && !DRAFT_FILE.test(key)) return; // last lock
+        await b.file(key).delete({ ignoreNotFound: true });
+      };
+
+      // 1. Draft photos named by the stored copy and its history (read BEFORE they are deleted, so a
+      //    retry after a failure still finds the list). Only never-shared ios-drafts objects.
+      const urls: unknown[] = urlsOf(await readPendingSite(safe));
       const [history] = await b.getFiles({ prefix: `pending-sites-history/${safe}/` });
+      for (const f of history) {
+        try {
+          const [buf] = await f.download();
+          const parsed = JSON.parse(buf.toString('utf-8'));
+          urls.push(...urlsOf(parsed?.data ?? parsed));
+        } catch { /* an unreadable snapshot just has no list */ }
+      }
+      const candidates = draftPhotosToDelete(urls, b.name, new Set());
+      if (candidates.length) {
+        const elsewhere = await pathsReferencedByOthers(b, safe);
+        for (const key of draftPhotosToDelete(candidates.map((k) => `https://storage.googleapis.com/${b.name}/${k}`), b.name, elsewhere)) await del(key);
+      }
+
+      // 2. The purchase's own folders, whole.
+      for (const prefix of prefixes) {
+        const [objs] = await b.getFiles({ prefix });
+        for (const o of objs) await del(o.name);
+      }
+
+      // 3. History, then the copy itself last (so a failure above is retried with the list intact).
       for (const f of history) await f.delete({ ignoreNotFound: true });
       await b.file(`pending-sites/${safe}.json`).delete({ ignoreNotFound: true });
     },
