@@ -95,6 +95,10 @@ export function fakePurchasesDb(initial: Row[] = [], opts: FakeDbOptions = {}) {
       upsert: (p: Row, o: { ignoreDuplicates?: boolean } = {}) => { op = 'upsert'; payload = p; upsertOpts = o; return q; },
       eq: (c: string, v: unknown) => { described.push(`${c}=${v}`); filters.push((r) => r[c] === v); return q; },
       is: (c: string, v: unknown) => { described.push(`${c} is ${v}`); filters.push((r) => (r[c] ?? null) === v); return q; },
+      not: (c: string, op: string, v: unknown) => {
+        if (op !== 'is' || v !== null) throw new Error('fake db: only .not(col, "is", null) is supported');
+        described.push(`${c} is not null`); filters.push((r) => (r[c] ?? null) !== null); return q;
+      },
       lt: (c: string, v: unknown) => { described.push(`${c}<${v}`); filters.push((r) => r[c] != null && cmp(r[c], v) < 0); return q; },
       or: (e: string) => { described.push(`or(${e})`); filters.push(orFilter(e)); return q; },
       maybeSingle: () => { single = 'maybe'; return q; },

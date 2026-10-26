@@ -56,9 +56,9 @@ describe('A buys and links; B on the same Apple ID is refused', () => {
   it('B: site lookup is 409 purchase-other-account with the masked hint and NO site data', async () => {
     const { transactionId } = await aBuys();
     const r = await w.lookup(transactionId, B);
-    expect(r).toEqual({ status: 409, body: { error: 'purchase-other-account', hint: 'a***@gmail.com' } });
+    expect(r).toEqual({ status: 409, body: { error: 'purchase-other-account', hint: 'a***@gmail.com', ownerHint: 'a***@gmail.com', hasLiveSite: true } });
     const wire = JSON.stringify(r.body);
-    expect(wire).not.toMatch(/fade-lab|siteData|alice|gmail\.com.*gmail|Alice|deployedUrl/i);
+    expect(wire).not.toMatch(/fade-lab|siteData|alice|Alice|deployedUrl/i);
     expect(wire).not.toContain(USER_A);
   });
 
@@ -67,7 +67,7 @@ describe('A buys and links; B on the same Apple ID is refused', () => {
     const before = JSON.stringify(pendingOf('fade-lab'));
     const bSite = siteData({ shopName: 'Bobs Barbers' });
     const r = await w.publish(transactionId, bSite, { baseVersion: 1 }, { authorization: B });
-    expect(r).toEqual({ status: 409, body: { error: 'purchase-other-account', hint: 'a***@gmail.com' } });
+    expect(r).toEqual({ status: 409, body: { error: 'purchase-other-account', hint: 'a***@gmail.com', ownerHint: 'a***@gmail.com', hasLiveSite: true } });
     expect(JSON.stringify(pendingOf('fade-lab'))).toBe(before);
     expect(w.row(otid)!.user_id).toBe(USER_A);
     expect(w.row(otid)!.site_slug).toBe('fade-lab');
@@ -80,7 +80,7 @@ describe('A buys and links; B on the same Apple ID is refused', () => {
     const shop = { id: 'shop-b', ios_otid: null as string | null };
     const r = await w.refreshPlan('Bearer owner-jwt', { transactionId }, w.planDeps(shop, { id: USER_B }, { emailOf: async (id) => w.emails.get(id) ?? null }));
     expect(r.status).toBe(409);
-    expect(r.body).toEqual({ error: 'purchase-in-use', reason: 'purchase-other-account', hint: 'a***@gmail.com' });
+    expect(r.body).toEqual({ error: 'purchase-in-use', reason: 'purchase-other-account', hint: 'a***@gmail.com', ownerHint: 'a***@gmail.com', hasLiveSite: true });
     expect(shop.ios_otid).toBeNull();
     expect(w.row(otid)!.user_id).toBe(USER_A);
   });
@@ -166,7 +166,7 @@ describe('legacy unlinked purchases', () => {
     const { otid, transactionId } = await legacy();
     w.shopOwners.set(otid, USER_A);
     const r = await w.lookup(transactionId, B);
-    expect(r).toEqual({ status: 409, body: { error: 'purchase-other-account', hint: 'a***@gmail.com' } });
+    expect(r).toEqual({ status: 409, body: { error: 'purchase-other-account', hint: 'a***@gmail.com', ownerHint: 'a***@gmail.com', hasLiveSite: true } });
     expect(w.row(otid)!.user_id).toBeNull();
   });
 
@@ -205,7 +205,7 @@ describe('legacy unlinked purchases', () => {
   it('a lookup that finds the shop ownership ambiguous is 409 and links nobody', async () => {
     const { otid, transactionId } = await legacy();
     w.shopOwners.set(otid, 'ambiguous');
-    expect(await w.lookup(transactionId, A)).toEqual({ status: 409, body: { error: 'purchase-other-account', hint: null } });
+    expect(await w.lookup(transactionId, A)).toEqual({ status: 409, body: { error: 'purchase-other-account', hint: null, ownerHint: null, hasLiveSite: true } });
     expect(w.row(otid)!.user_id).toBeNull();
   });
 });
@@ -285,7 +285,9 @@ describe('every writer of ios_purchases.user_id is one atomic conditional update
     expect(writers).toEqual([join('lib', 'ios', 'purchases.ts')]);
     const src = readFileSync(join('lib', 'ios', 'purchases.ts'), 'utf8');
     expect(src).toMatch(/update\(\{ user_id: userId \}\)\s*\.eq\('original_transaction_id', otid\)\.is\('user_id', null\)/);
-    expect((src.match(/update\(\{ user_id/g) ?? []).length).toBe(1);
+    // The one other writer is transferUser (POST /api/ios/transfer): a compare-and-set on the CURRENT owner, never a blind write.
+    expect(src).toMatch(/update\(\{ user_id: toUserId, site_slug: null, published_at: null, taken_down_at: null, removed_at: null \}\)\s*\.eq\('original_transaction_id', otid\)\.eq\('user_id', fromUserId\)/);
+    expect((src.match(/update\(\{ user_id/g) ?? []).length).toBe(2);
     expect(src).not.toMatch(/\bsetUser\(/);
   });
 

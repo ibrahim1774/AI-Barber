@@ -8,7 +8,7 @@ import { supabasePurchases } from '../../lib/ios/purchases.js';
 import { MAX_SIGNUPS_PER_PURCHASE, runSignup, type SignupDeps } from '../../lib/ios/signup.js';
 
 // POST { transactionId, name, email, phone, password } -> 200 { ok, email } (then the app signs in with email +
-// password) | 400 bad-request{field} / weak-password | 409 email-exists / purchase-claimed / purchase-has-site | 402 subscription-inactive | 404 not-found | 429 | 503.
+// password) | 400 bad-request{field} / weak-password | 409 email-exists / purchase-has-site (a legacy unlinked purchase with a site; one linked to another account no longer blocks: it moves via /api/ios/transfer) | 402 subscription-inactive | 404 not-found | 429 | 503.
 // transactionId must verify with Apple, be active and unlinked; max 3 accounts per originalTransactionId per 24h.
 // The limiters use the STRICT shared store: when it errors the signup is refused (503), never allowed.
 // Creates the Supabase user already confirmed (admin API, service role). See lib/ios/signup.ts.

@@ -220,7 +220,7 @@ describe('POST /api/shop/plan', () => {
 
   it('409 purchase-in-use when another user owns the purchase (nothing linked)', async () => {
     const { deps } = fakes({ otid: null, rows: { [OTID]: purchaseRow({ user_id: OTHER }) } });
-    expect(await refreshPlan(AUTH, { transactionId: '2000000555' }, deps)).toEqual({ status: 409, body: { error: 'purchase-in-use', reason: 'purchase-other-account', hint: null } });
+    expect(await refreshPlan(AUTH, { transactionId: '2000000555' }, deps)).toEqual({ status: 409, body: { error: 'purchase-in-use', reason: 'purchase-other-account', hint: null, ownerHint: null, hasLiveSite: true } });
     expect(deps.setShopOtid).not.toHaveBeenCalled();
     expect(deps.setUserIfUnlinked).not.toHaveBeenCalled();
   });
@@ -244,7 +244,7 @@ describe('POST /api/shop/plan', () => {
     expect(await refreshPlan(AUTH, { transactionId: '2000000555' }, taken.deps)).toEqual({ status: 409, body: { error: 'purchase-in-use' } });
     expect(taken.shop.ios_otid).toBe('2000000999');
     const owned = fakes({ otid: '2000000999', rows: { [OTID]: purchaseRow({ user_id: OTHER }) } });
-    expect(await refreshPlan(AUTH, { transactionId: '2000000555' }, owned.deps)).toEqual({ status: 409, body: { error: 'purchase-in-use', reason: 'purchase-other-account', hint: null } });
+    expect(await refreshPlan(AUTH, { transactionId: '2000000555' }, owned.deps)).toEqual({ status: 409, body: { error: 'purchase-in-use', reason: 'purchase-other-account', hint: null, ownerHint: null, hasLiveSite: true } });
     expect(owned.deps.setShopOtid).not.toHaveBeenCalled();
   });
 
@@ -332,5 +332,21 @@ describe('POST /api/shop/plan', () => {
     expect(await refreshPlan(undefined, { transactionId: '2000000555' }, deps)).toEqual({ status: 401, body: { error: 'unauthorized' } });
     expect(await refreshPlan('Bearer noshop-jwt', { transactionId: '2000000555' }, deps)).toEqual({ status: 404, body: { error: 'no-shop' } });
     expect(deps.verify).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/shop/plan: purchase of another account carries the move-confirmation fields', () => {
+  it("purchaseAccount 'other' adds ownerHint (masked) and hasLiveSite; 'self' adds neither", async () => {
+    const other = fakes({ rows: { [OTID]: purchaseRow({ user_id: OTHER }) } });
+    other.deps.emailOf = async () => 'alice@gmail.com';
+    const r = await getPlan(AUTH, other.deps);
+    expect((r.body as any)).toMatchObject({ purchaseAccount: 'other', ownerHint: 'a***@gmail.com', hasLiveSite: true, active: false });
+    expect(JSON.stringify(r.body)).not.toMatch(/alice|2222/);
+    const down = fakes({ rows: { [OTID]: purchaseRow({ user_id: OTHER, taken_down_at: '2026-10-05T00:00:00Z' }) } });
+    expect(((await getPlan(AUTH, down.deps)).body as any).hasLiveSite).toBe(false);
+    const mine = (await getPlan(AUTH, fakes().deps)).body as any;
+    expect(mine.purchaseAccount).toBe('self');
+    expect('ownerHint' in mine).toBe(false);
+    expect('hasLiveSite' in mine).toBe(false);
   });
 });
