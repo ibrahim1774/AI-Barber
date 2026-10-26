@@ -6,9 +6,17 @@ appId: com.ibrahim1774.aibarber
 - waitForAnimationToEnd
 - takeScreenshot: ${PREFIX}01_store_tab_unset
 - tapOn:
+    text: "Skip"
+    optional: true
+- waitForAnimationToEnd
+- tapOn:
     point: "50%,56%"   # SET UP YOUR SHOP (text match hits the heading)
 - waitForAnimationToEnd
 - takeScreenshot: ${PREFIX}02_store_setup
+- tapOn:
+    text: "Skip"
+    optional: true
+- waitForAnimationToEnd
 - tapOn: "Offer shipping"   # F6: the label flips the switch on ...
 - waitForAnimationToEnd
 - scroll
@@ -31,6 +39,10 @@ appId: com.ibrahim1774.aibarber
     point: "62%,94%"   # Store tab
 - waitForAnimationToEnd
 - takeScreenshot: ${PREFIX}07_store_empty
+- tapOn:
+    text: "Skip"
+    optional: true
+- waitForAnimationToEnd
 # ---- product 1: price edge cases, then a photo ----
 - tapOn: "Add product"
 - waitForAnimationToEnd

@@ -12,8 +12,9 @@ appId: com.ibrahim1774.aibarber
 - tapOn: "\\(512\\) 555-0142"
 - inputText: "5125550142"
 - takeScreenshot: 03_services_open
-- tapOn: "Hot towel shave"
 - takeScreenshot: 04_services_ticked
+- tapOn:
+    point: "50%,22%"
 - scrollUntilVisible:
     element: "Build my website"
 - takeScreenshot: 05_before_build

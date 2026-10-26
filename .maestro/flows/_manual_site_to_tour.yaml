@@ -8,7 +8,8 @@ appId: com.ibrahim1774.aibarber
 - inputText: "Austin, TX"
 - tapOn: "\\(512\\) 555-0142"
 - inputText: "5125550142"
-- tapOn: "Hot towel shave"
+- tapOn:
+    point: "50%,22%"
 - scrollUntilVisible:
     element: "Build my website"
 - tapOn: "Build my website"

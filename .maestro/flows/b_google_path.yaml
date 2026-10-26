@@ -15,27 +15,29 @@ appId: com.ibrahim1774.aibarber
 - takeScreenshot: 03_candidates
 - tapOn: ".*123 Main St.*"
 - extendedWaitUntil:
-    visible: ".*Not my business.*"
+    visible: ".*Yes, that.s me.*"
     timeout: 20000
 - takeScreenshot: 04_is_this_you
-- tapOn: ".*Not my business.*"
+- tapOn: "Search again"
 - takeScreenshot: 05_after_not_my_business
-- tapOn: "FIND MY BUSINESS.*"
+- tapOn: "Your shop name and city"
+- inputText: "Jack's Barbershop Austin"
+- pressKey: Enter
 - extendedWaitUntil:
     visible: ".*Jackson.*"
     timeout: 20000
 - takeScreenshot: 05b_search_again
 - tapOn: ".*123 Main St.*"
 - extendedWaitUntil:
-    visible: ".*Not my business.*"
+    visible: ".*Yes, that.s me.*"
     timeout: 20000
 - tapOn: ".*Yes, that.s me.*"
 - takeScreenshot: 06_confirmed
 - tapOn: "Haircut"
 - scrollUntilVisible:
-    element: "BUILD MY WEBSITE.*"
+    element: "Build my website"
 - takeScreenshot: 06b_before_build
-- tapOn: "BUILD MY WEBSITE.*"
+- tapOn: "Build my website"
 - takeScreenshot: 07_building
 - extendedWaitUntil:
     visible: ".*Don.t have.*"

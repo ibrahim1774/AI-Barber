@@ -5,12 +5,12 @@ appId: com.ibrahim1774.aibarber
 - tapOn: "USE MY BOOKING LINK"
 - takeScreenshot: 01_booking_link_screen
 - tapOn:
-    point: "50%,54%"   # the field (tapping the label does not focus it)
+    point: "50%,33%"   # the field (tapping the label does not focus it)
 - inputText: "not a link"
 - pressKey: Enter
 - takeScreenshot: 02_bad_link_error
 - tapOn:
-    point: "50%,54%"   # the field (tapping the label does not focus it)
+    point: "50%,33%"   # the field (tapping the label does not focus it)
 - eraseText: 30
 - inputText: "booksy.com/en-us/12345_jacks-barbershop_barber-shop_austin"
 - takeScreenshot: 03_link_typed

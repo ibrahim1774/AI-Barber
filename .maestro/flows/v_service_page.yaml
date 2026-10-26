@@ -5,7 +5,7 @@ appId: com.ibrahim1774.aibarber
 - runFlow: _launch.yaml
 - tapOn: "USE MY BOOKING LINK"
 - tapOn:
-    point: "50%,54%"
+    point: "50%,33%"
 - inputText: "booksy.com/en-us/12345_jacks-barbershop_barber-shop_austin"
 - pressKey: Enter
 - extendedWaitUntil:
