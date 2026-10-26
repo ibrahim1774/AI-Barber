@@ -1,0 +1,14 @@
+appId: com.ibrahim1774.aibarber
+---
+# (T3) After Start from scratch + generate, the unpublished editor shows a top-left Back; it asks "Start over?" and Keep editing stays.
+# Needs the scratch flow to have reached the editor (see t2_scratch.yaml / _manual_site.yaml).
+- runFlow: _manual_site.yaml
+- assertVisible: "Back"
+- takeScreenshot: t3_editor_back
+- tapOn: "Back"
+- assertVisible: "Start over?"
+- tapOn: "Keep editing"
+- assertVisible: "PUBLISH.*"
+- tapOn: "Back"
+- tapOn: "Start over"
+- assertVisible: "Start from scratch"
