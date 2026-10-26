@@ -77,7 +77,7 @@ export type PublishOutcome =
   /** An admin edit is newer: the server copy was adopted and nothing was published. Review, then publish again. */
   | { kind: 'site-updated'; message: string }
   /** The server refused: the purchase is another account's, or this account already has a site. Nothing was published. */
-  | { kind: 'blocked'; message: string }
+  | { kind: 'blocked'; message: string; /** The purchase is another account's: "Move subscription to this account" can fix it. */ movable?: boolean }
   /** Paid but no usable session: the locked account step comes next (route /claim). Nothing was sent. */
   | { kind: 'claim-required' };
 
@@ -209,7 +209,7 @@ async function send(pending: PendingPublish, deps: PublishDeps, retryMessage: st
       // A paid claim stays locked on its account step; an ordinary publish just stops.
       if (pending.state) await deps.store.savePendingPublish({ ...pending, state: 'conflict', conflict });
       else await deps.store.savePendingPublish(null);
-      return { kind: 'blocked', message: conflictMessage(conflict) };
+      return { kind: 'blocked', message: conflictMessage(conflict), ...(conflict.code === 'purchase-other-account' ? { movable: true } : {}) };
     }
     if (e instanceof ApiError && e.status === 401) {
       // The server does not accept this session: back to the account step, record kept.

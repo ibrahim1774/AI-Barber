@@ -9,24 +9,29 @@ export type Conflict =
   | { code: 'purchase-other-account'; hint?: string | null }
   | { code: 'account-has-site'; slug?: string | null };
 
+/** The label of the button that replaces the dead end. */
+export const MOVE_BUTTON_TITLE = 'Move subscription to this account';
+
 /** Signed out, and the subscription belongs to an account (or a site): only that account can restore it. */
 export const SIGN_IN_TO_RESTORE_CODE = 'sign-in-required';
 
 /** Signed out, bought earlier, and the check says an account already owns this purchase. */
 export const CLAIMED_SIGNED_OUT_MESSAGE =
-  "This Apple ID's subscription already belongs to a Prime Barber account. Sign in to that account in Settings to publish.";
+  "This Apple ID's subscription already belongs to a Prime Barber account. A subscription is tied to the Apple ID, so only one account can use it at a time. Sign in to that account in Settings to publish.";
+
+const TIED = 'A subscription is tied to the Apple ID, so only one account can use it at a time.';
 
 /** What a 409 from publish says, naming the masked owner or the live site. */
 export function conflictMessage(c: Conflict): string {
   if (c.code === 'account-has-site') {
     return `This account already runs a live website${c.slug ? ` (${c.slug})` : ''}. Each account has one website. Use a different account to publish this one.`;
   }
-  return `This Apple ID's subscription belongs to another Prime Barber account${c.hint ? ` (${c.hint})` : ''}. Sign in to that account to publish, or subscribe with an Apple ID that has no account.`;
+  return `This Apple ID's subscription belongs to another Prime Barber account${c.hint ? ` (${c.hint})` : ''}. ${TIED} Move it to this account, or sign in to that account to publish.`;
 }
 
 /** What Restore says when the subscription is linked to another account: nothing was copied or changed. */
 export function restoreOtherAccountMessage(hint?: string | null): string {
-  return `This Apple ID's subscription belongs to another Prime Barber account${hint ? ` (${hint})` : ''}. Sign in to that account to restore it. Nothing on this account was changed.`;
+  return `This Apple ID's subscription belongs to another Prime Barber account${hint ? ` (${hint})` : ''}. ${TIED} Move it to this account, or sign in to that account to restore it. Nothing has changed yet.`;
 }
 
 /** Restore signed out (or with a rejected session): sign in first. */
@@ -38,5 +43,5 @@ export const RESTORE_SIGN_IN_MESSAGE =
  * Apple ID. `hint` is the server's masked email, when it sends one.
  */
 export function otherAccountPlanMessage(hint?: string | null): string {
-  return `This Apple ID's subscription belongs to another Prime Barber account${hint ? ` (${hint})` : ''}. Sign in to that account to use Bookings and Store.`;
+  return `This Apple ID's subscription belongs to another Prime Barber account${hint ? ` (${hint})` : ''}. ${TIED} Move it to this account, or sign in to that account to use Bookings and Store.`;
 }

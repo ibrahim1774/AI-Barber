@@ -231,6 +231,20 @@ export const api = {
   },
 
   /**
+   * POST /api/ios/transfer: moves the Apple purchase to the signed-in account (Bearer required). Without `confirm` a
+   * purchase linked to another account answers 409 confirm-required (body.ownerHint, body.hasLiveSite); with
+   * `confirm: true` the other account's site goes offline. Errors: 401, 400, 404, 402 subscription-inactive,
+   * 409 confirm-required | account-has-site | purchase-changed | purchase-other-account, 429, 503.
+   */
+  async transfer(transactionId: string, confirm?: boolean): Promise<{ moved: boolean; linked: boolean }> {
+    const token = await accessToken();
+    if (!token) throw new ApiError(401, 'auth-required', 'Sign in to continue.');
+    return post('/api/ios/transfer', confirm === true ? { transactionId, confirm: true } : { transactionId }, {
+      failMessage: 'Could not move your subscription', headers: { Authorization: `Bearer ${token}` },
+    });
+  },
+
+  /**
    * POST /api/ios/signup: the server creates the account already confirmed (no email link); the app then signs in with
    * the same email + password. Errors: 400 bad-request (body.field) | weak-password, 409 email-exists | purchase-in-use, 402 inactive, 429 (signup-limit), 503. The verified transactionId is required.
    */

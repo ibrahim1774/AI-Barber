@@ -32,7 +32,7 @@ jest.mock('@/lib/store/data', () => ({
   getOrder: async () => null,
 }));
 const mockPaywall = jest.fn(async (_p: string) => 'declined');
-jest.mock('@/lib/paywall', () => ({ usePaywall: () => mockPaywall, useSuperwallSettled: () => true }));
+jest.mock('@/lib/paywall', () => ({ usePaywall: () => mockPaywall, useLatestTransactionId: () => async () => null, useSuperwallSettled: () => true }));
 jest.mock('@/lib/setup/ownerApi', () => ({ call: jest.fn(async () => { throw new Error('offline'); }) }));
 
 import Store from '@/app/(tabs)/store';

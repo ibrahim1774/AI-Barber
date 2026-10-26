@@ -4,6 +4,7 @@ import { router } from 'expo-router';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
 import { Field } from '@/components/Field';
+import { MoveSubscriptionButton } from '@/components/MoveSubscriptionButton';
 import { InfoIcon } from '@/components/Icons';
 import { Page } from '@/components/Page';
 import { accessToken } from '@/lib/accessToken';
@@ -11,7 +12,7 @@ import { api } from '@/lib/api';
 import { signIn, signOut } from '@/lib/auth';
 import { createClaimRunner, type ClaimResult } from '@/lib/claim';
 import { conflictMessage } from '@/lib/claimCopy';
-import { reopenClaim } from '@/lib/claimGuard';
+import { reopenClaim, resumeAfterMove } from '@/lib/claimGuard';
 import { firstErrorField, type ClaimErrors, type ClaimField, type ClaimMode, type ClaimValues } from '@/lib/claimValidation';
 import { homeRoute, resetTo } from '@/lib/nav';
 import { usePublishDeps } from '@/lib/paywall';
@@ -58,6 +59,7 @@ export default function Claim() {
   const [banner, setBanner] = useState<Banner>(null);
   const [existing, setExisting] = useState<string | null>(null);
   const [blocked, setBlocked] = useState<string | null>(null);
+  const [movable, setMovable] = useState(false);
   const [inactive, setInactive] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [signedIn, setSignedIn] = useState(false);
@@ -105,6 +107,7 @@ export default function Claim() {
         return;
       case 'blocked':
         setBlocked(r.message);
+        setMovable(r.movable === true);
         return;
       case 'inactive':
         setInactive(r.message);
@@ -146,6 +149,7 @@ export default function Claim() {
       }
       if (pending.state === 'conflict' && pending.conflict) {
         setBlocked(conflictMessage(pending.conflict));
+        setMovable(pending.conflict.code === 'purchase-other-account');
         setReady(true);
         return;
       }
@@ -198,11 +202,21 @@ export default function Claim() {
       await signOut().catch(() => {});
       await reopenClaim().catch(() => {});
       setBlocked(null);
+      setMovable(false);
       setSignedIn(false);
       switchMode('signin', false);
       return null;
     });
   };
+
+  // The subscription now belongs to this account: clear the refusal and send the pending publish again.
+  const afterMove = useCallback(async () => {
+    await resumeAfterMove().catch(() => {});
+    setBlocked(null);
+    setMovable(false);
+    setSignedIn(true);
+    await run(runner.finish);
+  }, [run, runner]);
 
   const forgot = () => {
     if (busyRef.current) return;
@@ -227,7 +241,14 @@ export default function Claim() {
       <Page title="Choose an account">
         <Text style={styles.title}>This account can’t publish it</Text>
         <Text style={styles.body}>{blocked}</Text>
-        <Button variant="solid" title="Use a different account" onPress={useDifferentAccount} loading={busy} style={styles.gap} />
+        {movable && (
+          <MoveSubscriptionButton
+            transactionId={async () => (await loadPendingPublish())?.transactionId ?? null}
+            onMoved={afterMove}
+            style={styles.gap}
+          />
+        )}
+        <Button variant={movable ? 'ghost' : 'solid'} title="Use a different account" onPress={useDifferentAccount} loading={busy} style={movable ? styles.gapSmall : styles.gap} />
       </Page>
     );
   }
@@ -343,4 +364,5 @@ const styles = StyleSheet.create({
   title: { fontFamily: fonts.heading, fontSize: 22, color: colors.heading, textAlign: 'center', marginTop: 24 },
   body: { fontFamily: fonts.body, fontSize: 14, lineHeight: 21, color: colors.body, textAlign: 'center', marginTop: 12 },
   gap: { marginTop: 28 },
+  gapSmall: { marginTop: 14 },
 });

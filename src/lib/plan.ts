@@ -48,7 +48,7 @@ export function normalizePlan(raw: unknown): Plan | null {
     takenDownAt,
     revoked,
     purchaseAccount: raw.purchaseAccount === 'self' || raw.purchaseAccount === 'other' ? raw.purchaseAccount : null,
-    purchaseHint: str(raw.purchaseHint) ?? str(raw.hint),
+    purchaseHint: str(raw.purchaseHint) ?? str(raw.ownerHint) ?? str(raw.hint),
     capabilities: { memberProfile: isObject(raw.capabilities) && raw.capabilities.memberProfile === true },
   };
 }

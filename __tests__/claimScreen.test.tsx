@@ -13,7 +13,7 @@ jest.mock('@/components/Icons', () => ({ InfoIcon: () => null, ChevronLeftIcon: 
 const mockResetTo = jest.fn();
 jest.mock('@/lib/nav', () => ({ resetTo: (...a: unknown[]) => mockResetTo(...a), homeRoute: (s: unknown) => (s ? '/edit' : '/start') }));
 let mockDeps: any;
-jest.mock('@/lib/paywall', () => ({ usePublishDeps: () => mockDeps }));
+jest.mock('@/lib/paywall', () => ({ usePublishDeps: () => mockDeps, useLatestTransactionId: () => async () => 'tx-1' }));
 
 import Claim from '@/app/claim';
 import * as store from '@/lib/siteStore';

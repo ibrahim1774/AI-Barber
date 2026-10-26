@@ -2,6 +2,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
 import { useEntitlements } from '@/lib/entitlements';
+import { MoveSubscriptionButton } from '@/components/MoveSubscriptionButton';
 import { otherAccountPlanMessage } from '@/lib/claimCopy';
 
 export const PAUSED_COPY = {
@@ -16,6 +17,7 @@ export function PausedBanner({ kind, onUpgrade, action = 'Upgrade' }: { kind: 'b
     return (
       <View style={styles.banner} accessibilityRole="alert">
         <Text style={styles.text}>{otherAccountPlanMessage(ents.hint)}</Text>
+        <MoveSubscriptionButton />
       </View>
     );
   }

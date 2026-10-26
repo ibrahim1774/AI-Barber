@@ -1,10 +1,11 @@
 import { useCallback, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import { syncIfSignedIn, type Restored, type RestoreOutcome } from '@/lib/account';
-import { RESTORE_SIGN_IN_MESSAGE, restoreOtherAccountMessage, SIGN_IN_TO_RESTORE_CODE } from '@/lib/claimCopy';
+import { MOVE_BUTTON_TITLE, RESTORE_SIGN_IN_MESSAGE, restoreOtherAccountMessage, SIGN_IN_TO_RESTORE_CODE } from '@/lib/claimCopy';
 import { ApiError } from '@/lib/api';
 import { resetTo } from '@/lib/nav';
 import { hasEntitlement, useLatestDomainTransactionId, useLatestTransactionId, usePublishDeps, useRestorePurchases } from '@/lib/paywall';
+import { useMoveSubscription } from '@/lib/useMoveSubscription';
 import { refreshPlanQuietly } from '@/lib/plan';
 import { resumePendingPublish } from '@/lib/publish';
 import { relinkShopPurchase } from '@/lib/setup/relink';
@@ -26,13 +27,14 @@ export function restoreMessage(
   entitled: boolean,
   /** An active custom-domain subscription was found (Superwall then shows no failure alert of its own). */
   domainFound = false,
-): { title: string; message: string } | null {
-  const say = (message: string) => ({ title: TITLE, message });
+): { title: string; message: string; movable?: boolean } | null {
+  const say = (message: string, movable?: boolean) => ({ title: TITLE, message, ...(movable ? { movable: true } : {}) });
   if (outcome instanceof Error) {
     if (outcome instanceof ApiError) {
       // The subscription is another account's: say whose (masked), copy nothing, change nothing.
       if (outcome.status === 409 && outcome.code === 'purchase-other-account') {
-        return say(restoreOtherAccountMessage(typeof outcome.body?.hint === 'string' ? outcome.body.hint : null));
+        const hint = typeof outcome.body?.ownerHint === 'string' ? outcome.body.ownerHint : typeof outcome.body?.hint === 'string' ? outcome.body.hint : null;
+        return say(restoreOtherAccountMessage(hint), true);
       }
       if (outcome.code === SIGN_IN_TO_RESTORE_CODE || outcome.code === 'auth-required' || outcome.code === 'unauthorized') {
         return say(RESTORE_SIGN_IN_MESSAGE);
@@ -103,6 +105,11 @@ export function useRestoreFlow(opts: { stay?: boolean } = {}): { restore: () => 
   const publishDeps = usePublishDeps();
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
+  const restoreRef = useRef<() => Promise<void>>(async () => {});
+  // "Move subscription to this account" from the Restore alert; once moved, Restore runs again and finds it.
+  const mover = useMoveSubscription({ onMoved: () => restoreRef.current() });
+  const moverRef = useRef(mover);
+  moverRef.current = mover;
 
   const restore = useCallback(async () => {
     if (busyRef.current) return;
@@ -141,8 +148,22 @@ export function useRestoreFlow(opts: { stay?: boolean } = {}): { restore: () => 
     recheckSubscriptionStatus(true);
     const domainFound = outcome == null && !hasEntitlement() ? (await latestDomainTransactionId().catch(() => null)) != null : false;
     const msg = restoreMessage(outcome, hasEntitlement(), domainFound);
-    if (msg) Alert.alert(msg.title, msg.message);
+    if (msg?.movable) {
+      Alert.alert(msg.title, msg.message, [
+        { text: 'Not now', style: 'cancel' },
+        {
+          text: MOVE_BUTTON_TITLE,
+          onPress: () => {
+            void moverRef.current.run().then((r) => {
+              if (r?.kind === 'error') Alert.alert(TITLE, r.message);
+            });
+          },
+        },
+      ]);
+    } else if (msg) Alert.alert(msg.title, msg.message);
   }, [restorePurchases, latestTransactionId, latestDomainTransactionId, publishDeps, opts.stay]);
+
+  restoreRef.current = restore;
 
   return { restore, busy };
 }

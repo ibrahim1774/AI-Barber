@@ -35,7 +35,7 @@ jest.mock('@/lib/siteStore', () => ({ loadSite: async () => null }));
 jest.mock('@/lib/subscriptionStatus', () => ({ useSubscriptionStatus: () => 'active', isLocked: () => false }));
 const mockPaywall = jest.fn(async (_p: string) => 'declined');
 let mockSettled = true;
-jest.mock('@/lib/paywall', () => ({ usePaywall: () => mockPaywall, useSuperwallSettled: () => mockSettled }));
+jest.mock('@/lib/paywall', () => ({ usePaywall: () => mockPaywall, useLatestTransactionId: () => async () => null, useSuperwallSettled: () => mockSettled }));
 const mockCall = jest.fn();
 jest.mock('@/lib/setup/ownerApi', () => ({ call: (...a: unknown[]) => mockCall(...a) }));
 

@@ -2,6 +2,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
 import { useEntitlements } from '@/lib/entitlements';
+import { MoveSubscriptionButton } from '@/components/MoveSubscriptionButton';
 import { otherAccountPlanMessage } from '@/lib/claimCopy';
 
 const COPY = {
@@ -27,6 +28,7 @@ export function UpgradeCard({ kind, onUpgrade, busy }: { kind: 'bookings' | 'sto
       <View style={styles.card}>
         <Text style={styles.title} accessibilityRole="header">{c.title}</Text>
         <Text style={styles.bullet}>{otherAccountPlanMessage(ents.hint)}</Text>
+        <MoveSubscriptionButton style={styles.move} />
       </View>
     );
   }
@@ -52,4 +54,5 @@ const styles = StyleSheet.create({
   bullets: { alignSelf: 'stretch', gap: 8, marginBottom: 24 },
   bullet: { fontFamily: fonts.body, fontSize: 15, lineHeight: 22, color: colors.muted },
   btn: { alignSelf: 'stretch' },
+  move: { marginTop: 18 },
 });

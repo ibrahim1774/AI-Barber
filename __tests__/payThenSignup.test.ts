@@ -216,7 +216,7 @@ describe('claiming: signed in after the account step', () => {
     await store.savePendingPublish(unclaimed());
     const iosPublish = err(409, 'purchase-other-account', { hint: 'a***@gmail.com' });
     const out = await resumePendingPublish(makeDeps({ ...signedIn, iosPublish: iosPublish as never }));
-    expect(out).toEqual({ kind: 'blocked', message: conflictMessage({ code: 'purchase-other-account', hint: 'a***@gmail.com' }) });
+    expect(out).toEqual({ kind: 'blocked', movable: true, message: conflictMessage({ code: 'purchase-other-account', hint: 'a***@gmail.com' }) });
     expect((out as { message: string }).message).toContain('a***@gmail.com');
     expect(await store.loadPendingPublish()).toMatchObject({ state: 'conflict', conflict: { code: 'purchase-other-account', hint: 'a***@gmail.com' } });
     // The next launch does not retry it (the locked step shows the conflict and offers another account).

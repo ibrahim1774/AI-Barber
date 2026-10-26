@@ -87,7 +87,7 @@ test('the wrong account is refused (409), stays locked with the masked hint, and
   const d = deps();
   await publishFlow(draft, d);
   const r = await runner(d).submit('signin', form(B.email));
-  expect(r).toEqual({ kind: 'blocked', message: conflictMessage({ code: 'purchase-other-account', hint: 'a***@example.com' }) });
+  expect(r).toEqual({ kind: 'blocked', movable: true, message: conflictMessage({ code: 'purchase-other-account', hint: 'a***@example.com' }) });
   expect(await store.loadPendingPublish()).toMatchObject({ state: 'conflict', conflict: { hint: 'a***@example.com' } });
   expect(sb.upserts).toHaveLength(0); // the draft never went into B's account
   expect((await store.loadSite())?.ownerUserId).toBeUndefined(); // and was never stamped as B's

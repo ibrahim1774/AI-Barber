@@ -31,7 +31,7 @@ export type ClaimResult =
   /** The request could not reach the server; the session (if any) is kept and a retry finishes it. */
   | { kind: 'waiting'; message: string; stage: 'account' | 'publish' }
   /** The server refused the publish (409): the message names the masked owner or the live site. Stays locked. */
-  | { kind: 'blocked'; message: string }
+  | { kind: 'blocked'; message: string; movable?: boolean }
   | { kind: 'inactive'; message: string }
   /** Any other failure: the words to show; the form stays. */
   | { kind: 'error'; message: string };
@@ -78,7 +78,7 @@ export function createClaimRunner(deps: ClaimDeps) {
     switch (out.kind) {
       case 'live': return { kind: 'live' };
       case 'site-updated': return { kind: 'moved-on' };
-      case 'blocked': return { kind: 'blocked', message: out.message };
+      case 'blocked': return { kind: 'blocked', message: out.message, ...(out.movable ? { movable: true } : {}) };
       case 'inactive': return { kind: 'inactive', message: INACTIVE_MESSAGE };
       case 'pending':
         return out.offline

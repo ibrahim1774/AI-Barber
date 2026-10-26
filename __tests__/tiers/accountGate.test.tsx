@@ -16,6 +16,7 @@ jest.mock('@/lib/setup/ownerApi', () => {
 });
 jest.mock('@/lib/paywall', () => ({
   usePaywall: () => jest.fn(async () => 'declined'),
+  useLatestTransactionId: () => async () => null,
   useSuperwallSettled: () => true,
 }));
 let mockShop: any = null;

@@ -35,5 +35,13 @@ export async function reopenClaim(): Promise<void> {
   await savePendingPublish({ ...rest, state: 'unclaimed' });
 }
 
+/** After a successful move: the conflict is cleared and the record goes back to 'claiming', so the publish resumes. */
+export async function resumeAfterMove(): Promise<void> {
+  const pending = await loadPendingPublish();
+  if (!pending) return;
+  const { conflict: _drop, ...rest } = pending;
+  await savePendingPublish({ ...rest, state: 'claiming' });
+}
+
 /** Routes that may be open while the claim is locked: the publish overlay (it is the flow), the claim step, password reset. */
 export const CLAIM_ALLOWED_PATHS: readonly string[] = ['/claim', '/publishing', '/forgot-password', '/reset-password'];
