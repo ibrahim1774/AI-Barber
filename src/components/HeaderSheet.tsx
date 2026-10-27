@@ -77,6 +77,9 @@ export function HeaderSheet({
               ) : (
                 <Text style={styles.hint}>Show your logo in the header instead of your shop name. Logos work best on a plain background.</Text>
               )}
+              {logo && (logo.w / logo.h > 5 || logo.h / logo.w > 1.5) && (
+                <Text style={styles.hint}>{logo.w > logo.h ? 'Very wide logos are shrunk to fit the header, so they can look small.' : 'Tall logos are shrunk to the header height. A wider logo looks best.'}</Text>
+              )}
               {!!error && <Text style={styles.error} accessibilityRole="alert">{error}</Text>}
               <SheetAction primary title={logo ? 'Replace logo' : 'Add your logo'} onPress={onPickLogo} />
               {logo && <SheetAction title="Remove logo" onPress={onRemoveLogo} />}

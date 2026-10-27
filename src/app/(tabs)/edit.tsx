@@ -557,6 +557,8 @@ export default function Editor() {
     setServicesAdd(true);
     setSheet('services');
   }, [sheet]);
+  // The one way into the logo flow (Photos tile, Sections row): the header sheet on its Logo pane.
+  const openLogo = useCallback(() => closeThen(() => { setLogoError(null); setHeaderOnLogo(true); setSheet('header'); }), [closeThen]);
   const openSections = useCallback(() => {
     track('sections_opened');
     setSheet('sections');
@@ -727,7 +729,7 @@ export default function Editor() {
           visible={sheet === 'photos'}
           data={data}
           onPick={(path) => closeThen(() => pickPhoto(path))}
-          onLogo={LOGO_ENABLED ? () => closeThen(() => { setLogoError(null); setHeaderOnLogo(true); setSheet('header'); }) : undefined}
+          onLogo={LOGO_ENABLED ? openLogo : undefined}
           onClose={() => setSheet(null)}
           onDismiss={onSheetDismiss}
         />
@@ -781,6 +783,8 @@ export default function Editor() {
           visible={sheet === 'sections'}
           data={data}
           onOpen={openSection}
+          onLogo={LOGO_ENABLED ? openLogo : undefined}
+          previewUri={data.logo && logoPreview?.url === data.logo.url ? logoPreview.dataUri : null}
           onClose={() => setSheet(null)}
           onDismiss={onSheetDismiss}
         />

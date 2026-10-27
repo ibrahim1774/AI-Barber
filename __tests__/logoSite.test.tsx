@@ -158,3 +158,60 @@ describe('PhotosSheet Logo row', () => {
     expect(tree.root.findAll((n: any) => n.props?.accessibilityLabel === 'Change Logo')).toHaveLength(0);
   });
 });
+
+describe('Sections list Logo row', () => {
+  const { SectionsSheet } = require('@/components/sections/SectionsSheet');
+  const logoRow = (tree: any) => tree.root.findAll((n: any) => n.props?.accessibilityLabel?.startsWith?.('Logo,') && typeof n.props.onPress === 'function');
+
+  it('shows a Logo row that opens the logo flow; summary says Add without a logo', () => {
+    const onLogo = jest.fn();
+    let tree: any;
+    act(() => { tree = create(<SectionsSheet visible data={base} onOpen={jest.fn()} onLogo={onLogo} onClose={jest.fn()} />); });
+    const rows = logoRow(tree);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].props.accessibilityLabel).toBe('Logo, Add');
+    act(() => { rows[0].props.onPress(); });
+    expect(onLogo).toHaveBeenCalledTimes(1);
+  });
+
+  it('says Change or remove when a logo is set', () => {
+    let tree: any;
+    act(() => { tree = create(<SectionsSheet visible data={withLogo(base, LOGO)} onOpen={jest.fn()} onLogo={jest.fn()} onClose={jest.fn()} />); });
+    expect(logoRow(tree)[0].props.accessibilityLabel).toBe('Logo, Change or remove');
+  });
+
+  it('is absent when the flow is off (no onLogo)', () => {
+    let tree: any;
+    act(() => { tree = create(<SectionsSheet visible data={base} onOpen={jest.fn()} onClose={jest.fn()} />); });
+    expect(logoRow(tree)).toHaveLength(0);
+  });
+
+  it('edit.tsx passes onLogo only when LOGO_ENABLED, through the one logo opener', () => {
+    const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'src/app/(tabs)/edit.tsx'), 'utf8');
+    expect(src).toMatch(/<SectionsSheet[\s\S]*?onLogo=\{LOGO_ENABLED \? openLogo : undefined\}/);
+  });
+});
+
+describe('logo shapes are constrained in every design', () => {
+  const shapes: [string, number, number][] = [['wide', 600, 80], ['tall', 80, 600], ['square', 300, 300], ['tiny', 40, 40], ['sliver-limit', 4000, 200]];
+  for (const tpl of ['luxe', 'prime', 'euphoria'] as const) {
+    for (const [name, w, h] of shapes) {
+      it(`${tpl} ${name} ${w}x${h}: fixed height, capped width, contain, intrinsic w/h, escaped alt`, () => {
+        const t = { ...withLogo(base, { url: LOGO.url, w, h }), template: tpl, shopName: 'A"><b>x</b> & Co' };
+        const html = withImages(renderSite(forRender(t)), t);
+        const img = html.match(/<img src="https:[^"]*logo[^>]*>/)![0];
+        expect(img).toContain(`width="${w}" height="${h}"`);
+        expect(img).toMatch(/height:clamp\(\d+px,[\d.]+vw,\d+px\)/);
+        expect(img).toContain('width:auto');
+        expect(img).toContain('max-width:min(55vw,240px)');
+        expect(img).toContain('object-fit:contain');
+        expect(img).not.toContain('<b>');
+        expect(img).toMatch(/alt="[^"]*&quot;|alt="[^"]*&amp;/);
+      });
+    }
+  }
+  it('an absurd sliver (over 20:1) falls back to the shop name, no image', () => {
+    const t = withLogo(base, { url: LOGO.url, w: 4000, h: 100 });
+    expect(withImages(renderSite(forRender(t)), t)).not.toContain(LOGO.url);
+  });
+});
