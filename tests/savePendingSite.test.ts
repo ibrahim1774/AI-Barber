@@ -132,6 +132,20 @@ describe('api/save-pending-site: the shop logo', () => {
     expect(pending.statusCode).toBe(200);
   });
 
+  it('keeps headerShow "logo" / "name" (and the logo) as sent; any other value is dropped, not stored', async () => {
+    const logo = { url: logoUrl('web-shop'), w: 600, h: 200 };
+    const stored = () => JSON.parse(store.get('pending-sites/web-shop.json')!).data.siteData;
+    for (const v of ['logo', 'name']) {
+      expect((await call(body({ shopName: 'W', logo, headerShow: v }))).statusCode).toBe(200);
+      expect(stored()).toMatchObject({ headerShow: v, logo });
+    }
+    for (const v of ['both', 'x', 5, null]) {
+      expect((await call(body({ shopName: 'W', logo, headerShow: v }))).statusCode, String(v)).toBe(200);
+      expect('headerShow' in stored(), String(v)).toBe(false);
+      expect(stored().logo).toEqual(logo);
+    }
+  });
+
   it('refuses a foreign host, another site\'s folder, a non-png/jpeg, bad w/h and a stray map entry; nothing is stored', async () => {
     for (const [siteData, extra] of [
       [{ logo: { url: 'https://evil.example.com/web-shop/logo/a.png', w: 5, h: 5 } }, {}],

@@ -156,6 +156,10 @@ export async function savePendingSite(req: any, res: any, deps: SavePendingDeps)
     // pending shape, the 'uploaded' marker plus imageUrlMap.logo. A stray imageUrlMap.logo with no siteData.logo is refused too.
     const sdata = clean.siteData && typeof clean.siteData === 'object' ? (clean.siteData as Record<string, any>) : null;
     const umap = clean.imageUrlMap && typeof clean.imageUrlMap === 'object' ? (clean.imageUrlMap as Record<string, unknown>) : null;
+    // headerShow is 'logo' or 'name' (absent = logo and name); any other value is dropped, never stored. The logo is not touched.
+    if (sdata && 'headerShow' in sdata && sdata.headerShow !== 'logo' && sdata.headerShow !== 'name') {
+      clean.siteData = Object.fromEntries(Object.entries(sdata).filter(([k]) => k !== 'headerShow'));
+    }
     if (sdata?.logo != null || umap?.logo != null) {
       const l = sdata?.logo;
       const logo = l && typeof l === 'object' && !Array.isArray(l) ? { ...l, url: l.url === 'uploaded' ? umap?.logo : l.url } : l;

@@ -85,20 +85,76 @@ export function navListHtml(items: NavItem[], menu: string, more = 'More'): stri
   return `<nav class="ab-nav" aria-label="${menu}"><input type="checkbox" id="ab-nav-toggle" class="ab-nav-toggle" aria-label="${menu}"><label for="ab-nav-toggle" class="ab-burger" aria-hidden="true"><i></i></label><ul class="ab-nav-list">${lis}</ul></nav>`;
 }
 
-// The logo is fluid between a phone and a desktop height (luxe 40 to 56px, prime and euphoria 36 to 48px), never wider than
-// 55vw or 240px, and carries width/height so the header does not shift when it loads. One <=600px file, so no srcset.
-const LOGO_HEIGHT: Record<TemplateId, string> = { luxe: 'clamp(40px,7.3vw,56px)', prime: 'clamp(36px,6.25vw,48px)', euphoria: 'clamp(36px,6.25vw,48px)' };
+// Logo size per design and mode (docs/superpowers/plans/2026-10-27-batch-a-logo-font-fixes.md A3). Height is fluid between a
+// phone and a desktop (luxe 48 to 72px, prime and euphoria 44 to 64px) and max-width keeps room for the nav and Book button
+// (prime/euphoria carry one). 'logo' = the logo stands for the name; 'both' = logo and name side by side.
+// The <img> carries width/height so the header does not shift when it loads. One <=600px file, so no srcset.
+export const LOGO_SIZE: Record<TemplateId, Record<'logo' | 'both', { h: string; maxW: string }>> = {
+  luxe: { logo: { h: 'clamp(48px,12.3vw,72px)', maxW: 'min(60vw,320px)' }, both: { h: 'clamp(40px,10.3vw,60px)', maxW: 'min(24vw,140px)' } },
+  prime: { logo: { h: 'clamp(44px,11.3vw,64px)', maxW: 'min(52vw,300px)' }, both: { h: 'clamp(36px,9.2vw,52px)', maxW: 'min(22vw,120px)' } },
+  euphoria: { logo: { h: 'clamp(44px,11.3vw,64px)', maxW: 'min(52vw,300px)' }, both: { h: 'clamp(36px,9.2vw,52px)', maxW: 'min(22vw,120px)' } },
+};
 
-/** The header logo <img> ({{logo}} is swapped for the URL at deploy). `alt` is the already-escaped shop name. */
-export function logoImgHtml(template: TemplateId, logo: { w: number; h: number }, alt: string): string {
-  return `<img src="{{logo}}" alt="${alt}" width="${logo.w}" height="${logo.h}" fetchpriority="high" style="display:block;height:${LOGO_HEIGHT[template]};width:auto;max-width:min(55vw,240px);object-fit:contain">`;
+/**
+ * The header logo <img> ({{logo}} is swapped for the URL at deploy). `alt` is the already-escaped shop name.
+ * mode 'logo' (default): the logo stands for the name. mode 'both': it sits beside the name, so alt is empty (the name is not read
+ * twice), the size is the smaller 'both' one and the width is also capped at 30% of the brand area (the name keeps the rest).
+ */
+export function logoImgHtml(template: TemplateId, logo: { w: number; h: number }, alt: string, mode: 'logo' | 'both' = 'logo'): string {
+  const size = LOGO_SIZE[template][mode];
+  const maxW = mode === 'both' ? size.maxW.replace(/\)$/, ',30%)') : size.maxW;
+  return `<img src="{{logo}}"${mode === 'both' ? ' class="ab-logo-img"' : ''} alt="${mode === 'both' ? '' : alt}" width="${logo.w}" height="${logo.h}" fetchpriority="high" style="display:block;height:${size.h};width:auto;max-width:${maxW};object-fit:contain">`;
+}
+
+/** Logo and name side by side. The logo gives way first (down to 28px wide), the name wraps onto more lines and is never clipped. */
+const pairCss = (color: string, font: string, size: string, extra = ''): string =>
+  `.ab-brand.ab-pair{display:flex;align-items:center;gap:8px;min-width:0;flex:1 1 auto;white-space:normal;text-decoration:none;color:${color};${font}line-height:1.1}
+.ab-brand.ab-pair img{flex:0 1 auto;min-width:28px;max-width:30%}
+.ab-brand.ab-pair .ab-brand-name{min-width:0;flex:1 1 auto;overflow-wrap:break-word;line-height:1.1;font-size:${size};${extra}}
+`;
+export const PAIR_CSS: Record<TemplateId, string> = {
+  luxe: pairCss('#fff', "font-family:'Montserrat',sans-serif;font-weight:900;text-transform:uppercase;", 'clamp(13px,3.6vw,22px)', 'letter-spacing:1px;'),
+  prime: pairCss('var(--p-ink,#f0ece4)', "font-family:'Newsreader',Georgia,serif;", 'clamp(15px,4.2vw,22px)', 'letter-spacing:.04em;'),
+  euphoria: pairCss('var(--eu-ink,#f0ece4)', "font-family:'Newsreader',Georgia,serif;", 'clamp(15px,4.2vw,22px)', 'letter-spacing:.04em;'),
+};
+
+export interface BrandInput {
+  /** The header of a multi-page site (false) or one of the single-page inline headers (true). */
+  single: boolean;
+  /** headerBrand().mode. */
+  mode: 'both' | 'logo' | 'name';
+  /** headerBrand().logo: null = no usable logo, which is always name only. */
+  logo: { w: number; h: number } | null;
+  /** The shop name for the logo's alt (escaped, no editor markers). */
+  alt: string;
+  /** Where the brand links: '/' (multi-page) or '#top'. */
+  href: string;
+  /** The name as printed inside the pair (escaped, editor markers kept; luxe has its accent span in it). */
+  nameHtml: string;
+  /** Extra classes on the name span (single-page luxe font). */
+  nameClass?: string;
+  /** Today's whole name-only brand markup: returned untouched for name mode and for a site with no logo (goldens stay byte-identical). */
+  nameOnly: string;
+}
+
+/** The header brand for the multi-page header and the three single-page headers, in the three modes. */
+export function brandHtml(template: TemplateId, b: BrandInput): string {
+  if (!b.logo || b.mode === 'name') return b.nameOnly;
+  if (b.mode === 'logo') {
+    const img = logoImgHtml(template, b.logo, b.alt);
+    if (!b.single) return `<a class="ab-brand ab-logo" href="/" style="display:flex;align-items:center;line-height:0">${img}</a>`;
+    return template === 'luxe' ? img : `<a href="#top" style="display:flex;align-items:center;line-height:0;min-width:0;text-decoration:none;">${img}</a>`;
+  }
+  return `<style>${PAIR_CSS[template]}</style><a class="ab-brand ab-pair" href="${b.href}">${logoImgHtml(template, b.logo, b.alt, 'both')}<span class="ab-brand-name${b.nameClass ? ' ' + b.nameClass : ''}">${b.nameHtml}</span></a>`;
 }
 
 export interface HeaderInput {
   /** Raw shop name. */
   name: string;
-  /** The usable logo (renderableLogo): an image replaces the name. */
+  /** The usable logo (renderableLogo). With `mode` it decides how the brand prints; without, the logo replaces the name. */
   logo?: { w: number; h: number } | null;
+  /** headerBrand().mode: 'both' (logo and name), 'logo' or 'name'. Absent = 'logo' when there is a logo. */
+  mode?: 'both' | 'logo' | 'name';
   /** Raw phone as stored; a number with digits gets a call link (luxe). */
   phone?: string;
   /** The phone as printed (escaped). */
@@ -118,11 +174,9 @@ export function headerHtml(template: TemplateId, h: HeaderInput): string {
   // wrapper around each part, with the same id, so both words are tappable and open the one shop name.
   const [open, text, close] = unwrapMarked(name);
   const words = text.split(' ');
-  const brand = h.logo
-    ? `<a class="ab-brand ab-logo" href="/" style="display:flex;align-items:center;line-height:0">${logoImgHtml(template, h.logo, escapeAttr(unmarked(name)))}</a>`
-    : template === 'luxe'
-    ? `<a class="ab-brand" href="/">${escapeAttr(open + words[0] + close)}${words.length > 1 ? ` <span class="ab-accent">${escapeAttr(open + words.slice(1).join(' ') + close)}</span>` : ''}</a>`
-    : `<a class="ab-brand" href="/">${escapeAttr(name)}</a>`;
+  const accentName = `${escapeAttr(open + words[0] + close)}${words.length > 1 ? ` <span class="ab-accent">${escapeAttr(open + words.slice(1).join(' ') + close)}</span>` : ''}`;
+  const nameOnly = template === 'luxe' ? `<a class="ab-brand" href="/">${accentName}</a>` : `<a class="ab-brand" href="/">${escapeAttr(name)}</a>`;
+  const brand = brandHtml(template, { single: false, mode: h.mode ?? 'logo', logo: h.logo ?? null, alt: escapeAttr(unmarked(name)), href: '/', nameHtml: template === 'luxe' ? accentName : escapeAttr(name), nameOnly });
   const digits = String(h.phone ?? '').replace(/\s+/g, '');
   const call = template === 'luxe' && /\d/.test(String(h.phone ?? ''))
     ? `<a class="ab-call" href="tel:${escapeAttr(digits)}" aria-label="Call ${h.shownPhone ?? ''}">${PHONE_ICON}<span class="ab-call-text">${h.shownPhone ?? ''}</span></a>`

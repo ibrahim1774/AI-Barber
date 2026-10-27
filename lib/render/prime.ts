@@ -19,8 +19,8 @@ import {
 import { ratingLineCustom, t, type LabelKey } from './labels.js';
 import { hasFilePages } from './pages.js';
 import { telHref } from './telHref.js';
-import { HEADER_CSS, NAV_CSS, headerHtml, logoImgHtml, reportLinkHtml, navItemsFor, navListHtml, type RenderCtx } from './shell.js';
-import { renderableLogo } from './logo.js';
+import { HEADER_CSS, NAV_CSS, headerHtml, brandHtml, reportLinkHtml, navItemsFor, navListHtml, type RenderCtx } from './shell.js';
+import { headerBrand } from './logo.js';
 
 // Policy: there is NO default. A shop's policy is a fact only the barber
 // can state, so the "Please note" block renders only from barber-written
@@ -445,9 +445,9 @@ ${PRIME_SCOPED_CSS}${menuSet ? HEADER_CSS.prime + NAV_CSS.prime : ''}
   <div class="p-welcome"><span>${L('primeWelcome')}</span>${safeAreaShort ? `<span style="color:var(--p-ink-muted);">${safeAreaShort}</span>` : ''}${ratingChip}</div>
 
   <!-- Nav -->
-  ${menuSet ? headerHtml('prime', { name: siteData.shopName, logo: renderableLogo(siteData), cta: bookHref ? { href: bookHref, label: L('primeNavBook'), newTab: bookTarget !== '' } : null, nav: navListHtml(navItemsFor('prime', menuSet, siteData, 'home'), L('pgMenu'), L('pgMore')) }) : `<nav style="position:sticky;top:0;z-index:50;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--p-line-soft);">
+  ${menuSet ? headerHtml('prime', { name: siteData.shopName, ...headerBrand(siteData), cta: bookHref ? { href: bookHref, label: L('primeNavBook'), newTab: bookTarget !== '' } : null, nav: navListHtml(navItemsFor('prime', menuSet, siteData, 'home'), L('pgMenu'), L('pgMore')) }) : `<nav style="position:sticky;top:0;z-index:50;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--p-line-soft);">
     <div class="p-container" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 6vw;">
-      ${renderableLogo(siteData) ? `<a href="#top" style="display:flex;align-items:center;line-height:0;min-width:0;text-decoration:none;">${logoImgHtml('prime', renderableLogo(siteData)!, safeName)}</a>` : `<a href="#top" class="p-serif" style="text-decoration:none;color:var(--p-ink);font-size:clamp(16px,4.8vw,20px);letter-spacing:0.04em;line-height:1.1;overflow-wrap:anywhere;white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;min-width:0;">${safeName}</a>`}${shopUrl ? `
+      ${brandHtml('prime', { single: true, ...headerBrand(siteData), alt: safeName, href: '#top', nameHtml: safeName, nameOnly: `<a href="#top" class="p-serif" style="text-decoration:none;color:var(--p-ink);font-size:clamp(16px,4.8vw,20px);letter-spacing:0.04em;line-height:1.1;overflow-wrap:anywhere;white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;min-width:0;">${safeName}</a>` })}${shopUrl ? `
       <a href="${escapeHtml(shopUrl)}" class="p-eyebrow" style="text-decoration:none;flex-shrink:0;white-space:nowrap;">${L('primeNavShop')}</a>` : ''}
       ${bookHref ? `<a href="${escapeHtml(bookHref)}"${bookTarget} class="p-cta p-cta-solid" style="padding:10px 18px;font-size:10px;flex-shrink:0;">${L('primeNavBook')}</a>` : ''}
     </div>

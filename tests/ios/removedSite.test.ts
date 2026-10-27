@@ -96,6 +96,14 @@ describe('C1: deletion never trusts client-supplied image URLs', () => {
     expect([...files.keys()].sort()).toEqual(['b-cuts/logo/b2.png', 'ios-drafts/draftB/logo/b.png', 'ios-drafts/draftC/logo/c.png', 'pending-sites/b-cuts.json']);
   });
 
+  it('headerShow "name" keeps the logo stored but changes nothing for deletion: removal deletes the owner logo; another site\'s name-only logo is still a reference', async () => {
+    files.set('ios-drafts/draftA/logo/own.png', 'A'); files.set('ios-drafts/draftB/logo/b.png', 'B');
+    files.set('pending-sites/a-cuts.json', JSON.stringify({ data: { siteId: 'a-cuts', siteData: { headerShow: 'name', logo: { url: 'uploaded', w: 1, h: 1 } }, imageUrlMap: { logo: U('ios-drafts/draftA/logo/own.png'), gallery0: U('ios-drafts/draftB/logo/b.png') } } }));
+    files.set('pending-sites/b-cuts.json', JSON.stringify({ data: { siteId: 'b-cuts', siteData: { headerShow: 'name', logo: { url: U('ios-drafts/draftB/logo/b.png'), w: 1, h: 1 } } } }));
+    await liveRemoveDeps().deleteContent('a-cuts');
+    expect([...files.keys()].sort()).toEqual(['ios-drafts/draftB/logo/b.png', 'pending-sites/b-cuts.json']);
+  });
+
   it('a foreign-folder logo URL in the owner copy deletes nothing of the foreign owner', async () => {
     files.set('ios-drafts/victim/logo/v.png', 'V'); files.set('victim-shop/logo/v.png', 'V'); files.set('ios-drafts/mine/logo/m.png', 'M');
     files.set('ios-drafts/victim2/logo/v2.png', 'V2');
