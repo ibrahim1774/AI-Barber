@@ -5,8 +5,8 @@ import { LOGO_ENABLED } from '@/lib/logo';
 const src = fs.readFileSync(path.join(__dirname, '..', 'src/app/(tabs)/edit.tsx'), 'utf8');
 
 describe('logo feature is off by default (server header-logo change not yet deployed)', () => {
-  it('LOGO_ENABLED defaults to false', () => {
-    expect(LOGO_ENABLED).toBe(false);
+  it('LOGO_ENABLED is on', () => {
+    expect(LOGO_ENABLED).toBe(true);
   });
 
   it('every way into the Logo UI is behind LOGO_ENABLED', () => {

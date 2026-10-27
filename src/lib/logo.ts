@@ -6,7 +6,7 @@ import type { WebsiteData } from '@/web/types';
  * (get-upload-urls contentType/kind and the logo checks on publish) and src/web is re-synced to main
  * (`bash scripts/sync-web.sh`); an app that sends a logo to an older server fails the upload or gets a 400 on publish.
  */
-export const LOGO_ENABLED = false;
+export const LOGO_ENABLED = true;
 
 export type ShopLogo = NonNullable<WebsiteData['logo']>;
 
