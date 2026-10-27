@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useEntitlements, type EntitlementId } from '@/lib/entitlements';
 import { usePaywall, useSuperwallSettled } from '@/lib/paywall';
+import { currentUserId } from '@/lib/auth';
 import { getPlan, getPlanEpoch, getSharedPlan, hostingReadOnlyOpen, setSharedPlan, subscribePlan } from '@/lib/plan';
 
 export type TierAccess = {
@@ -43,7 +44,8 @@ export function useTierAccess(need: EntitlementId): TierAccess {
       .then((p) => alive && epoch === getPlanEpoch() && setSharedPlan(p))
       .catch((e) => {
         if (!alive) return;
-        if ((e as { status?: number; code?: string } | null)?.status === 401 && (e as { code?: string }).code === 'unauthorized') setSignedOut(true);
+        // 401 with nobody signed in is "not signed in" (locked). 401 while signed in is an expired/refused token: a retry, never "paused".
+        if ((e as { status?: number; code?: string } | null)?.status === 401 && (e as { code?: string }).code === 'unauthorized' && !currentUserId()) setSignedOut(true);
         else setFailed(true);
       });
     return () => {

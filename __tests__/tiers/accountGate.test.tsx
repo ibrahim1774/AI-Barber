@@ -26,7 +26,8 @@ jest.mock('expo-router', () => {
   const R = require('react');
   return { useFocusEffect: (cb: () => void) => R.useEffect(cb, []) };
 });
-jest.mock('@/lib/auth', () => ({ currentUserId: () => 'u-b', useSession: () => ({ session: { user: { id: 'u-b' } }, ready: true }) }));
+let mockUser: string | null = 'u-b';
+jest.mock('@/lib/auth', () => ({ currentUserId: () => mockUser, useSession: () => ({ session: { user: { id: 'u-b' } }, ready: true }) }));
 
 import { OwnerApiError } from '@/lib/setup/ownerApi';
 import { resetSharedPlan, setSharedPlan, type Plan } from '@/lib/plan';
@@ -52,6 +53,7 @@ const hasText = (tree: any, re: RegExp) => allText(tree).some((t) => re.test(t))
 const flush = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 
 beforeEach(() => {
+  mockUser = 'u-b';
   resetEntitlementsForTests();
   resetSharedPlan();
   mockCall.mockReset().mockRejectedValue(new OwnerApiError(0, 'network', 'offline'));
@@ -132,7 +134,17 @@ describe.each(['bookings', 'store'] as const)('%s gate (tab, setup screen: useTi
     expect(latest).toMatchObject({ status: 'ready', entitled: true });
   });
 
+  it('signed in but the server answers 401: a retry card, never "locked / paused"', async () => {
+    mockUser = 'u-b';
+    setEntitlementsFromStatus(ALL);
+    mockCall.mockRejectedValue(new OwnerApiError(401, 'unauthorized', 'expired'));
+    await render(<Probe />);
+    await flush();
+    expect(latest).toMatchObject({ status: 'error', entitled: false });
+  });
+
   it('signed out: locked, not a retry card', async () => {
+    mockUser = null;
     setEntitlementsFromStatus(ALL);
     mockCall.mockRejectedValue(new OwnerApiError(401, 'unauthorized', 'Sign in to continue.'));
     await render(<Probe />);
