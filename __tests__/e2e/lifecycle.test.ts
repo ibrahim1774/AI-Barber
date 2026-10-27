@@ -357,6 +357,8 @@ describe('the own Book link after a restore', () => {
   it('an account pull carrying the old Booksy link does not lift the clear', async () => {
     await restoredThenCleared();
     const rec = (await w.site())!;
+    // A synced record (the account's own stamp is known), then someone else writes the row.
+    await w.m.siteStore.saveSite({ ...rec, accountSyncedAt: rec.updatedAt, accountRowAt: rec.updatedAt });
     w.sb.rows.push({
       id: rec.draftId, user_id: 'u1', deployed_url: rec.deployedUrl,
       site_data: { ...rec.data, bookingUrl: BOOKSY, source: 'ios' },

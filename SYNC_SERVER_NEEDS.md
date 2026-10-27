@@ -12,4 +12,4 @@ Optional, if you want it cleaner later:
 2. Re-host Google-import photos to the bucket at import time (`gbpPlaces.ts:185-192` in the server repo), so gallery links cannot expire (H2 server side).
 
 Known limit: if the phone has unsynced edits and someone else also wrote the row, the phone's copy wins (it is pushed over the web edit). Nothing local is deleted when unsure.
-This is deliberate and bounded: it only happens when the phone made edits that had not reached the account yet, and This is deliberate and bounded: it only happens when the phone made edits that had not reached the account yet, and no device's clock is ever compared with another's. With no unsynced phone edits, the newer row (by server stamp) is always adopted, whoever wrote it.
+This is deliberate and bounded: it only happens when the phone made edits that had not reached the account yet, and no device's clock is ever compared with another's. With no unsynced phone edits, the newer row (by server stamp) is always adopted, whoever wrote it.

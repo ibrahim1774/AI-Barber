@@ -169,4 +169,29 @@ describe('round trip: edit, push, sign out, sign in', () => {
     await expect(pullSiteFromAccount(USER.id)).resolves.toBe('unchanged');
     expect((await store.loadSite())!.data.shopName).toBe('Local edit');
   });
+
+  test('phone clock 10 minutes fast: first-push INSERT is stamped by the server, so a later web edit is adopted and not overwritten', async () => {
+    sb.liveTable = true;
+    signedIn();
+    // Edited at phone time T0+10min (fast clock); the server's real time is T0.
+    const r = record({ updatedAt: T0 + 600_000, accountSyncedAt: undefined, ownerUserId: undefined });
+    await store.saveSite(r);
+    sb.serverNow = () => T0;
+    await syncIfSignedIn(r); // INSERT: the row must carry the server's T0, not the phone's T0+10min
+    expect(sb.rows[0].updated_at).toBe(new Date(T0).toISOString());
+    expect(sb.upserts[sb.upserts.length - 1].row).not.toHaveProperty('updated_at');
+    // A web edit at server time T0+3min.
+    const w = sb.rows[0];
+    sb.rows[0] = { ...w, site_data: { ...w.site_data, shopName: 'Web Edit' }, updated_at: new Date(T0 + 180_000).toISOString() };
+    await expect(pullSiteFromAccount(USER.id)).resolves.toBe('adopted');
+    expect((await store.loadSite())!.data.shopName).toBe('Web Edit');
+  });
+
+  test('a legacy record (synced, but no accountRowAt) keeps local even when the row looks newer', async () => {
+    sb.liveTable = false;
+    sb.rows = [{ id: DRAFT, user_id: USER.id, site_data: { ...baseData(), source: 'ios', shopName: 'Row' }, deployed_url: null, updated_at: new Date(T0 + 600_000).toISOString() }];
+    await store.saveSite(record({ accountSyncedAt: T0 }));
+    await expect(pullSiteFromAccount(USER.id)).resolves.toBe('unchanged');
+    expect((await store.loadSite())!.data.shopName).toBe('Fade Factory');
+  });
 });
