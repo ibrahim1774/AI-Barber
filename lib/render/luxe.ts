@@ -433,12 +433,12 @@ ${showServices ? `        <a href="#services" class="text-[12px] font-montserrat
     </div>
   </header>
 
-  <section id="home" class="relative h-[55vh] flex flex-col justify-center items-center overflow-hidden">
+  <section id="home" class="relative h-[55vh] flex flex-col justify-center items-center overflow-hidden${canCall ? ' ab-hdrgap-sec' : ''}">
     <div class="absolute inset-0 z-0">
       <img src="{{hero}}" alt="${altAttr}" class="w-full h-full object-cover">
       <div class="absolute inset-0 bg-black/40 bg-gradient-to-b from-black/30 via-transparent to-[#0d0d0d]"></div>
     </div>
-    <div class="relative z-10 text-center px-4 md:px-6 max-w-5xl pb-28 md:pb-32 pt-20 md:pt-0">
+    <div class="relative z-10 text-center px-4 md:px-6 max-w-5xl pb-28 md:pb-32 pt-20 md:pt-0${canCall ? ' ab-hdrgap-pad' : ''}">
       <p class="text-[#f4a100] font-montserrat font-bold text-[8px] md:text-sm tracking-[3px] md:tracking-[5px] uppercase mb-3 md:mb-6 opacity-90">
         ${esc(siteData.hero.tagline)}
       </p>
