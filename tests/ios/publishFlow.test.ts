@@ -956,7 +956,6 @@ describe('runIosPublish: the shop logo', () => {
       { url: 'https://storage.googleapis.com/other/ios-drafts/abc-123/logo/a.png', w: 5, h: 5 },
       { url: 'https://storage.googleapis.com/bkt/ios-drafts/abc-123/a.png', w: 5, h: 5 },
       { url: 'https://storage.googleapis.com/bkt/pending-sites/logo/a.png', w: 5, h: 5 },
-      { url: 'https://storage.googleapis.com/bkt/some-published-shop/logo/a.png', w: 5, h: 5 },
       { url: 'https://storage.googleapis.com/bkt/ios-drafts/abc-123/logo/a.svg', w: 5, h: 5 },
       { url: 'https://storage.googleapis.com/bkt/ios-drafts/abc-123/logo/a.png?x=1', w: 5, h: 5 },
       { url: LOGO, w: '5', h: 5 }, { url: LOGO, w: 0, h: 5 }, { url: LOGO, w: 100000, h: 5 }, { url: LOGO, w: 5 },
@@ -969,6 +968,15 @@ describe('runIosPublish: the shop logo', () => {
       expect(repo.upsertVerified).not.toHaveBeenCalled();
       expect(deps.writePending).not.toHaveBeenCalled();
     }
+  }));
+
+  it('a logo in a slug folder (e.g. admin-set) is refused with a specific reason, not the generic 400, before any write', async () => withBucket(async () => {
+    const { deps, repo } = fakes();
+    const logo = { url: 'https://storage.googleapis.com/bkt/some-published-shop/logo/a.png', w: 5, h: 5 };
+    expect(await runIosPublish(input({ siteData: site({ logo }) }), deps)).toEqual({ status: 400, body: { error: 'bad-request', reason: 'logo-folder' } });
+    expect(deps.verify).not.toHaveBeenCalled();
+    expect(repo.upsertVerified).not.toHaveBeenCalled();
+    expect(deps.writePending).not.toHaveBeenCalled();
   }));
 
   it('fails closed when the bucket is not configured', async () => {

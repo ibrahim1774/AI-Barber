@@ -141,6 +141,10 @@ describe('api/save-pending-site: the shop logo', () => {
       [{ logo: { url: 'uploaded', w: 5, h: 5 } }, { imageUrlMap: { logo: logoUrl('other-shop') } }],
       [{ logo: { url: 'uploaded', w: 5, h: 5 } }, {}],
       [{}, { imageUrlMap: { logo: logoUrl('web-shop') } }],
+      [{ logo: { url: logoUrl('web-shop'), w: 5, h: 5 } }, { imageUrlMap: { logo: 'https://evil.example.com/x.png' } }],
+      [{ logo: { url: logoUrl('web-shop'), w: 5, h: 5 } }, { imageUrlMap: { logo: logoUrl('other-shop') } }],
+      [{ logo: { url: logoUrl('web-shop'), w: 5, h: 5 } }, { imageUrlMap: { logo: logoUrl('ios-drafts/draft-9') } }],
+      [{ logo: { url: logoUrl('ios-drafts/draft-9'), w: 5, h: 5 } }, {}],
     ] as const) {
       store.clear();
       const r = await call(body({ shopName: 'W', ...siteData }, extra));

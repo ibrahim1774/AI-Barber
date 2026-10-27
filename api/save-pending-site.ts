@@ -159,7 +159,11 @@ export async function savePendingSite(req: any, res: any, deps: SavePendingDeps)
     if (sdata?.logo != null || umap?.logo != null) {
       const l = sdata?.logo;
       const logo = l && typeof l === 'object' && !Array.isArray(l) ? { ...l, url: l.url === 'uploaded' ? umap?.logo : l.url } : l;
-      const problem = logoProblem(logo, { bucketName, allowFolder: draftOwnFolder(safeSiteId) });
+      const rules = { bucketName, allowFolder: draftOwnFolder(safeSiteId) };
+      let problem = logoProblem(logo, rules);
+      // The pending shape renders from imageUrlMap.logo, so when the map names a logo it must pass the same rules even if
+      // the inline URL is valid (no external URL, no other site's folder).
+      if (!problem && umap?.logo != null && logo && typeof logo === 'object') problem = logoProblem({ ...(logo as object), url: umap.logo }, rules);
       if (problem) {
         console.warn(`[save-pending-site] ${req.method} ${safeSiteId} refused: ${problem}`);
         return res.status(400).json({ ok: false, error: 'Invalid logo' });

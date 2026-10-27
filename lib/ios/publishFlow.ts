@@ -210,6 +210,9 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
     const logo = logoProblem(sd.logo, { bucketName: configuredBucket(), allowFolder: isDraftLogoFolder });
     if (logo) {
       console.warn(`[ios/publish] refused before any write: ${logo}`);
+      // A logo that is otherwise valid but sits in a site (slug) folder, e.g. one set by an admin: say why, so the app can
+      // ask for a re-upload instead of showing a generic failure. `error` stays 'bad-request' for old app builds.
+      if (!logoProblem(sd.logo, { bucketName: configuredBucket() })) return { status: 400 as const, body: { error: 'bad-request', reason: 'logo-folder' } };
       return badRequest;
     }
   }

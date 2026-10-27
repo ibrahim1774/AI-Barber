@@ -82,6 +82,29 @@ describe('C1: deletion never trusts client-supplied image URLs', () => {
     expect([...files.keys()].sort()).toEqual(['a-cuts-evil/other.jpg', 'ab-products/other-shop-id-xx/p1.jpg']);
   });
 
+  it('deletes the owner logo (imageUrlMap.logo, siteData.logo.url, history) but never a logo of another owner or one another site references', async () => {
+    files.set('ios-drafts/draftA/logo/own.png', 'A'); files.set('ios-drafts/draftA/logo/inline.png', 'A'); files.set('ios-drafts/draftA/logo/old.png', 'A');
+    files.set('ios-drafts/draftB/logo/b.png', 'B'); files.set('ios-drafts/draftC/logo/c.png', 'C'); files.set('b-cuts/logo/b2.png', 'B'); files.set('a-cuts/logo/slug.png', 'A');
+    pending('b-cuts', { logo: U('ios-drafts/draftB/logo/b.png') });
+    files.set('pending-sites/a-cuts.json', JSON.stringify({ data: { siteId: 'a-cuts',
+      siteData: { logo: { url: U('ios-drafts/draftA/logo/inline.png'), w: 1, h: 1 } },
+      imageUrlMap: { logo: U('ios-drafts/draftA/logo/own.png'), gallery0: U('ios-drafts/draftB/logo/b.png'), gallery1: U('b-cuts/logo/b2.png'), gallery2: U('ios-drafts/draftC/logo/../../draftB/logo/b.png') } } }));
+    files.set('pending-sites-history/a-cuts/1.json', JSON.stringify({ data: { imageUrlMap: { logo: U('ios-drafts/draftA/logo/old.png') } } }));
+    await liveRemoveDeps().deleteContent('a-cuts');
+    // b.png: referenced by B's copy; b2.png: B's slug folder; c.png: never named (traversal URL refused). All stay.
+    expect([...files.keys()].sort()).toEqual(['b-cuts/logo/b2.png', 'ios-drafts/draftB/logo/b.png', 'ios-drafts/draftC/logo/c.png', 'pending-sites/b-cuts.json']);
+  });
+
+  it('a foreign-folder logo URL in the owner copy deletes nothing of the foreign owner', async () => {
+    files.set('ios-drafts/victim/logo/v.png', 'V'); files.set('victim-shop/logo/v.png', 'V'); files.set('ios-drafts/mine/logo/m.png', 'M');
+    pending('a-cuts', { logo: U('ios-drafts/victim/logo/v.png'), hero: U('victim-shop/logo/v.png') });
+    pending('victim-shop', { logo: U('ios-drafts/victim/logo/v.png') });
+    await liveRemoveDeps().deleteContent('a-cuts');
+    expect(files.has('ios-drafts/victim/logo/v.png')).toBe(true);
+    expect(files.has('victim-shop/logo/v.png')).toBe(true);
+    expect(files.has('ios-drafts/mine/logo/m.png')).toBe(true);
+  });
+
   it('is idempotent: a second run over the same state succeeds and changes nothing', async () => {
     files.set('a-cuts/hero-1.jpg', '1'); files.set('b-cuts/hero.jpg', 'B'); pending('a-cuts', {});
     const d = liveRemoveDeps();
