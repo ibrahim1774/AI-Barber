@@ -93,5 +93,5 @@ export type StoreNotifyEvent =
   | { kind: 'order_created'; orderId: string }   // card + awaiting: no-op (webhook sends it on payment)
   | { kind: 'order_ready'; orderId: string }
   | { kind: 'order_shipped'; orderId: string }
-  | { kind: 'order_cancelled'; orderId: string; refundedCents?: number }
+  | { kind: 'order_cancelled'; orderId: string; refundedCents?: number; /** The business closed its account (delete-account). */ closed?: boolean }
   | { kind: 'order_says_paid'; orderId: string; method: 'cashapp' | 'venmo' | 'zelle' | 'paypal' };

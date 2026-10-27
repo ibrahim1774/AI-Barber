@@ -27,7 +27,7 @@ export type ManualMethod = 'cashapp' | 'venmo' | 'zelle' | 'paypal';
 
 export type NotifyEvent =
   | { kind: 'booking_created'; appointmentId: string }
-  | { kind: 'booking_cancelled'; appointmentId: string; by: 'customer' | 'shop'; refundedCents?: number }
+  | { kind: 'booking_cancelled'; appointmentId: string; by: 'customer' | 'shop'; refundedCents?: number; /** The business closed its account (delete-account): different wording, no rebook link. */ closed?: boolean }
   | { kind: 'booking_rescheduled'; appointmentId: string; by?: 'customer' | 'shop' }
   | { kind: 'customer_says_paid'; appointmentId: string; method: ManualMethod; amountCents?: number }
   | { kind: 'reminder'; appointmentId: string };
@@ -180,15 +180,19 @@ export function confirmationEmail(ctx: NotifyContext, now: number): EmailMessage
   };
 }
 
-export function cancellationEmail(ctx: NotifyContext, by: 'customer' | 'shop', refundedCents: number, now: number = Date.now()): EmailMessage {
+export function cancellationEmail(ctx: NotifyContext, by: 'customer' | 'shop', refundedCents: number, now: number = Date.now(), closed = false): EmailMessage {
   const { appt, shop } = ctx;
   const paras = [
-    by === 'shop'
-      ? `${shop.name} had to cancel your appointment. Sorry about that.`
-      : 'Your appointment has been cancelled.',
+    closed
+      ? `${shop.name} has closed its account, so your appointment is cancelled. Sorry about that.`
+      : by === 'shop'
+        ? `${shop.name} had to cancel your appointment. Sorry about that.`
+        : 'Your appointment has been cancelled.',
   ];
   if (refundedCents > 0) paras.push(`A refund of ${dollars(refundedCents)} is on its way to your card. It can take 5–10 business days to show.`);
-  const rebook = shop.slug ? { label: 'Book another time', href: bookingPageUrl(shop.slug, shop) } : undefined;
+  else if (closed && appt.amount_paid_cents > 0) paras.push(`If you paid in advance, please reply to this email to ask ${shop.name} about your payment.`);
+  // A closed business has nothing to rebook.
+  const rebook = shop.slug && !closed ? { label: 'Book another time', href: bookingPageUrl(shop.slug, shop) } : undefined;
   return {
     to: appt.customer_email!,
     fromName: fromName(shop),
@@ -277,7 +281,7 @@ export async function notify(event: NotifyEvent, deps?: NotifyDeps): Promise<voi
           }));
         }
         const refunded = event.refundedCents ?? appt.amount_refunded_cents ?? 0;
-        jobs.push(emailCustomer(ctx, d, () => cancellationEmail(ctx, event.by, refunded, now)));
+        jobs.push(emailCustomer(ctx, d, () => cancellationEmail(ctx, event.by, refunded, now, event.closed === true)));
         break;
       }
       case 'booking_rescheduled': {
