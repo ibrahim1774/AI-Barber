@@ -184,7 +184,7 @@ exports[`euphoria shop link > is unchanged from main when shopUrl is absent 1`] 
   <!-- Nav -->
   <nav style="position:sticky;top:0;z-index:50;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--eu-line-soft);">
     <div class="eu-container" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 24px;">
-      <a href="#top" style="text-decoration:none;color:var(--eu-ink);font-family:'Newsreader',serif;font-size:20px;letter-spacing:0.04em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Fresh Cuts Barbershop</a>
+      <a href="#top" style="text-decoration:none;color:var(--eu-ink);font-family:'Newsreader',serif;font-size:clamp(16px,4.8vw,20px);letter-spacing:0.04em;line-height:1.1;overflow-wrap:anywhere;white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;min-width:0;">Fresh Cuts Barbershop</a>
       <a href="tel:(512)555-0100" class="eu-cta" style="padding:10px 18px;font-size:10px;flex-shrink:0;white-space:nowrap;">Book now</a>
     </div>
   </nav>
@@ -313,9 +313,10 @@ exports[`luxe shop link > is unchanged from main when shopUrl is absent 1`] = `
        section seam + a soft gold glow on accent buttons. Scoped tight
        so the upgrade doesn't bleed into elements that should stay flat. */
     .serif-accent { font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400; }
-    /* Header on a narrow phone: the number never wraps; under 380px the call link is the icon alone
+    /* Header on a narrow phone: the number never wraps; at 430px and under the call link is the icon alone
        (the full number stays in the hero button and the contact section). */
-    @media (max-width: 379px) { .ab-call-text { display: none; } .ab-call svg { width: 1.75rem; height: 1.75rem; } }
+    @media (max-width: 430px) { .ab-call-text { display: none; } .ab-call svg { width: 1.75rem; height: 1.75rem; } }
+    .ab-name { font-size: clamp(14px, 4.4vw, 18px); line-height: 1.1; overflow-wrap: anywhere; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
     section.py-12, section.py-16 {
       background-image: linear-gradient(180deg, rgba(255,255,255,0.025) 0%, transparent 35%, transparent 65%, rgba(0,0,0,0.4) 100%);
       background-blend-mode: overlay;
@@ -371,7 +372,7 @@ exports[`luxe shop link > is unchanged from main when shopUrl is absent 1`] = `
           <svg class="w-8 h-8 md:w-12 md:h-12 shrink-0 text-[#f4a100]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M6 6l12 12M6 18L18 6"></path>
           </svg>
-          <span class="font-montserrat font-black text-lg md:text-3xl lg:text-4xl tracking-[1px] md:tracking-[2px] uppercase whitespace-nowrap min-w-0 truncate">
+          <span class="ab-name font-montserrat font-black md:text-3xl lg:text-4xl tracking-[1px] md:tracking-[2px] uppercase min-w-0">
             Fresh <span class="text-[#f4a100]">Cuts Barbershop</span>
           </span>
         </div>
@@ -658,7 +659,7 @@ exports[`prime shop link > is unchanged from main when shopUrl is absent 1`] = `
   <!-- Nav -->
   <nav style="position:sticky;top:0;z-index:50;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--p-line-soft);">
     <div class="p-container" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 6vw;">
-      <a href="#top" class="p-serif" style="text-decoration:none;color:var(--p-ink);font-size:20px;letter-spacing:0.04em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Fresh Cuts Barbershop</a>
+      <a href="#top" class="p-serif" style="text-decoration:none;color:var(--p-ink);font-size:clamp(16px,4.8vw,20px);letter-spacing:0.04em;line-height:1.1;overflow-wrap:anywhere;white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;min-width:0;">Fresh Cuts Barbershop</a>
       <a href="tel:+15125550100" class="p-cta p-cta-solid" style="padding:10px 18px;font-size:10px;flex-shrink:0;">Book Now</a>
     </div>
   </nav>

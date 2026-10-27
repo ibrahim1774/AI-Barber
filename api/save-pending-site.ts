@@ -1,5 +1,6 @@
 import { Storage } from '@google-cloud/storage';
 import { supabasePurchases } from '../lib/ios/purchases.js';
+import { draftOwnFolder, logoProblem } from '../lib/logoUrl.js';
 import { isPreconditionFailed, readPendingSite, readPendingVersioned, slugify, type VersionedPending } from '../lib/publishSite.js';
 
 // Server-side persistence for the pendingSite payload that drives
@@ -150,6 +151,24 @@ export async function savePendingSite(req: any, res: any, deps: SavePendingDeps)
     }
     const clean: Record<string, unknown> = { ...data };
     for (const k of SERVER_ONLY_FIELDS) delete clean[k];
+    // A shop logo must be a png/jpeg this site uploaded to its own <site>/logo folder in our bucket (lib/logoUrl.ts).
+    // The stored copy is { siteId, siteData, imageUrlMap }: the logo is siteData.logo, with its URL either inline or, in the
+    // pending shape, the 'uploaded' marker plus imageUrlMap.logo. A stray imageUrlMap.logo with no siteData.logo is refused too.
+    const sdata = clean.siteData && typeof clean.siteData === 'object' ? (clean.siteData as Record<string, any>) : null;
+    const umap = clean.imageUrlMap && typeof clean.imageUrlMap === 'object' ? (clean.imageUrlMap as Record<string, unknown>) : null;
+    if (sdata?.logo != null || umap?.logo != null) {
+      const l = sdata?.logo;
+      const logo = l && typeof l === 'object' && !Array.isArray(l) ? { ...l, url: l.url === 'uploaded' ? umap?.logo : l.url } : l;
+      const rules = { bucketName, allowFolder: draftOwnFolder(safeSiteId) };
+      let problem = logoProblem(logo, rules);
+      // The pending shape renders from imageUrlMap.logo, so when the map names a logo it must pass the same rules even if
+      // the inline URL is valid (no external URL, no other site's folder).
+      if (!problem && umap?.logo != null && logo && typeof logo === 'object') problem = logoProblem({ ...(logo as object), url: umap.logo }, rules);
+      if (problem) {
+        console.warn(`[save-pending-site] ${req.method} ${safeSiteId} refused: ${problem}`);
+        return res.status(400).json({ ok: false, error: 'Invalid logo' });
+      }
+    }
 
     const payload = JSON.stringify({ siteId: safeSiteId, savedAt: Date.now(), data: clean });
     if (payload.length > 5 * 1024 * 1024) {

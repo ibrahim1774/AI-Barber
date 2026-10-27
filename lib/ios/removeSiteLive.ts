@@ -44,6 +44,9 @@ export function ourObjectPath(url: unknown, bucketName: string): string | null {
 // Every key is re-validated against this allow-list immediately before it is deleted.
 
 const DRAFT_FILE = /^ios-drafts\/([A-Za-z0-9][A-Za-z0-9_-]{0,99})\/([A-Za-z0-9][A-Za-z0-9_-]{0,150}\.[A-Za-z0-9]{2,5})$/;
+// A logo lives one level deeper: ios-drafts/<draftId>/logo/<file>.(png|jpg|jpeg). Same ownership posture as a draft photo.
+const DRAFT_LOGO = /^ios-drafts\/([A-Za-z0-9][A-Za-z0-9_-]{0,99})\/logo\/([A-Za-z0-9][A-Za-z0-9_-]{0,150}\.(?:png|jpe?g))$/i;
+const isDraftObject = (p: string): boolean => DRAFT_FILE.test(p) || DRAFT_LOGO.test(p);
 
 /** The prefixes whose objects belong to this purchase; empty when the slug is unusable. */
 export function ownedPrefixes(slug: string, shopId?: string | null): string[] {
@@ -67,12 +70,17 @@ export function draftPhotosToDelete(urls: Iterable<unknown>, bucketName: string,
   const out = new Set<string>();
   for (const u of urls) {
     const p = ourObjectPath(u, bucketName);
-    if (p && DRAFT_FILE.test(p) && !referencedElsewhere.has(p)) out.add(p);
+    if (p && isDraftObject(p) && !referencedElsewhere.has(p)) out.add(p);
   }
   return [...out];
 }
 
-const urlsOf = (pending: any): unknown[] => (pending?.imageUrlMap && typeof pending.imageUrlMap === 'object' ? Object.values(pending.imageUrlMap) : []);
+const urlsOf = (pending: any): unknown[] => {
+  const out: unknown[] = pending?.imageUrlMap && typeof pending.imageUrlMap === 'object' ? Object.values(pending.imageUrlMap) : [];
+  const inline = pending?.siteData?.logo?.url; // an inline logo URL (admin-set or not yet marker-ised) is as much a reference as the map's
+  if (typeof inline === 'string') out.push(inline);
+  return out;
+};
 
 /** Object paths every OTHER site's stored copy points at. Throws when a copy cannot be read (fail closed). */
 async function pathsReferencedByOthers(b: ReturnType<typeof bucket>, ownSlug: string): Promise<Set<string>> {
@@ -127,7 +135,7 @@ export function liveRemoveDeps(): RemoveSiteDeps {
       // Fail closed: a slug that is not already canonical is not the recorded one; delete no folder for it.
       const prefixes = ownedPrefixes(safe === slug ? safe : '', shop?.id);
       const del = async (key: string) => {
-        if (!underOwnedPrefix(key, prefixes) && !DRAFT_FILE.test(key)) return; // last lock
+        if (!underOwnedPrefix(key, prefixes) && !isDraftObject(key)) return; // last lock
         await b.file(key).delete({ ignoreNotFound: true });
       };
 

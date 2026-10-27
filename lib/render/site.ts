@@ -27,6 +27,7 @@ import { generatePrimeHTMLWithPlaceholders, primeRootStyle } from './prime.js';
 import { safeHref } from './safeHref.js';
 import { telHref } from './telHref.js';
 import { SHELLS, escapeAttr, footerHtml, headerHtml, navItemsFor, navListHtml, type RenderCtx } from './shell.js';
+import { renderableLogo } from './logo.js';
 
 export interface RenderSiteOptions {
   /** Placeholder key -> real URL. Absent: read from the data's own image fields. */
@@ -51,6 +52,7 @@ export function imageUrlMapOf(data: WebsiteData): Record<string, string> {
   const put = (key: string, url: unknown) => { if (typeof url === 'string' && url) map[key] = url; };
   put('hero', data.hero?.imageUrl);
   put('about', data.about?.imageUrl);
+  if (renderableLogo(data)) put('logo', data.logo!.url);
   (data.gallery || []).forEach((u, i) => put(`gallery${i}`, u));
   (data.craftImages || []).forEach((u, i) => put(`craft${i}`, u));
   (data.staff || []).forEach((s, i) => put(`staff${i}`, s?.photo));
@@ -81,6 +83,7 @@ export function forRender(sd: WebsiteData, map: Record<string, string>): Website
         ? { ...sd.extraPages!, images: Object.fromEntries(HERO_EXTRA_PAGES.filter((k) => map[`page-${k}`]).map((k) => [k, 'has-image'])) }
         : sd.extraPages,
     } : {}),
+    ...(sd.logo ? { logo: map['logo'] ? { ...sd.logo, url: 'has-image' } : undefined } : {}),
     hero: { ...sd.hero, imageUrl: map['hero'] ? 'has-image' : '' },
     about: { ...sd.about, imageUrl: map['about'] ? 'has-image' : '' },
     gallery: (sd.gallery || []).map((_: string, i: number) => (map[`gallery${i}`] ? 'has-image' : '')),
@@ -135,13 +138,13 @@ export function renderSiteBundle(rawData: WebsiteData, opts: RenderSiteOptions =
 
   const headerFor = (file: PageFile): string => {
     const nav = navListHtml(navItemsFor(template, set, d, file.key), L('pgMenu'), L('pgMore'));
-    if (template === 'luxe') return headerHtml('luxe', { name: shopShown, phone, shownPhone: escapeAttr(displayPhone(phoneShown)), nav });
+    if (template === 'luxe') return headerHtml('luxe', { name: shopShown, logo: renderableLogo(d), phone, shownPhone: escapeAttr(displayPhone(phoneShown)), nav });
     if (template === 'prime') {
       const href = bookingUrl || telHref(phone);
-      return headerHtml('prime', { name: shopShown, cta: href ? { href, label: L('primeNavBook'), newTab: !!bookingUrl && !bookingUrl.startsWith('/') } : null, nav });
+      return headerHtml('prime', { name: shopShown, logo: renderableLogo(d), cta: href ? { href, label: L('primeNavBook'), newTab: !!bookingUrl && !bookingUrl.startsWith('/') } : null, nav });
     }
     const href = bookingUrl || (/\d/.test(phone) ? `tel:${phone.replace(/\s+/g, '')}` : '');
-    return headerHtml('euphoria', { name: shopShown, cta: href ? { href, label: L('euNavBook'), newTab: !!bookingUrl && !bookingUrl.startsWith('/') } : null, nav });
+    return headerHtml('euphoria', { name: shopShown, logo: renderableLogo(d), cta: href ? { href, label: L('euNavBook'), newTab: !!bookingUrl && !bookingUrl.startsWith('/') } : null, nav });
   };
   // The footer lists every page that is a file in the set (top-level pages, then the service pages), nothing else.
   const footerPages = [

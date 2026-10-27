@@ -17,7 +17,8 @@
 // Pure, no DOM. Imports only other vendored modules.
 import type { TemplateId, WebsiteData } from '../../types';
 import { nicheOf } from './honest.js';
-import { unwrapMarked } from './markers.js';
+import { unwrapMarked, unmarked } from './markers.js';
+import { renderableLogo } from './logo.js';
 import { navLabelKey, t } from './labels.js';
 import { pageHref, plainText, type PageKey, type PageSet } from './pages.js';
 import { safeHref } from './safeHref.js';
@@ -84,9 +85,20 @@ export function navListHtml(items: NavItem[], menu: string, more = 'More'): stri
   return `<nav class="ab-nav" aria-label="${menu}"><input type="checkbox" id="ab-nav-toggle" class="ab-nav-toggle" aria-label="${menu}"><label for="ab-nav-toggle" class="ab-burger" aria-hidden="true"><i></i></label><ul class="ab-nav-list">${lis}</ul></nav>`;
 }
 
+// The logo is fluid between a phone and a desktop height (luxe 40 to 56px, prime and euphoria 36 to 48px), never wider than
+// 55vw or 240px, and carries width/height so the header does not shift when it loads. One <=600px file, so no srcset.
+const LOGO_HEIGHT: Record<TemplateId, string> = { luxe: 'clamp(40px,7.3vw,56px)', prime: 'clamp(36px,6.25vw,48px)', euphoria: 'clamp(36px,6.25vw,48px)' };
+
+/** The header logo <img> ({{logo}} is swapped for the URL at deploy). `alt` is the already-escaped shop name. */
+export function logoImgHtml(template: TemplateId, logo: { w: number; h: number }, alt: string): string {
+  return `<img src="{{logo}}" alt="${alt}" width="${logo.w}" height="${logo.h}" fetchpriority="high" style="display:block;height:${LOGO_HEIGHT[template]};width:auto;max-width:min(55vw,240px);object-fit:contain">`;
+}
+
 export interface HeaderInput {
   /** Raw shop name. */
   name: string;
+  /** The usable logo (renderableLogo): an image replaces the name. */
+  logo?: { w: number; h: number } | null;
   /** Raw phone as stored; a number with digits gets a call link (luxe). */
   phone?: string;
   /** The phone as printed (escaped). */
@@ -106,7 +118,9 @@ export function headerHtml(template: TemplateId, h: HeaderInput): string {
   // wrapper around each part, with the same id, so both words are tappable and open the one shop name.
   const [open, text, close] = unwrapMarked(name);
   const words = text.split(' ');
-  const brand = template === 'luxe'
+  const brand = h.logo
+    ? `<a class="ab-brand ab-logo" href="/" style="display:flex;align-items:center;line-height:0">${logoImgHtml(template, h.logo, escapeAttr(unmarked(name)))}</a>`
+    : template === 'luxe'
     ? `<a class="ab-brand" href="/">${escapeAttr(open + words[0] + close)}${words.length > 1 ? ` <span class="ab-accent">${escapeAttr(open + words.slice(1).join(' ') + close)}</span>` : ''}</a>`
     : `<a class="ab-brand" href="/">${escapeAttr(name)}</a>`;
   const digits = String(h.phone ?? '').replace(/\s+/g, '');
@@ -248,24 +262,24 @@ export const HEADER_CSS: Record<TemplateId, string> = {
   luxe: `
 .ab-head{position:sticky;top:0;z-index:50;background:rgba(13,13,13,.92);backdrop-filter:blur(8px);border-bottom:1px solid rgba(255,255,255,.08)}
 .ab-head-in{display:flex;align-items:center;gap:12px;max-width:1280px;margin:0 auto;padding:12px 16px}
-.ab-brand{font-weight:900;font-size:18px;letter-spacing:1px;text-transform:uppercase;text-decoration:none;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:0 1 auto}
+.ab-brand{font-weight:900;font-size:clamp(14px,4.4vw,18px);letter-spacing:1px;text-transform:uppercase;text-decoration:none;color:#fff;white-space:normal;overflow-wrap:anywhere;line-height:1.1;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;min-width:0;flex:0 1 auto}
 .ab-accent{color:var(--aib-accent,#f4a100)}
 .ab-call{display:flex;align-items:center;flex-shrink:0;gap:8px;color:var(--aib-accent,#f4a100);border-left:2px solid rgba(255,255,255,.2);padding-left:12px;text-decoration:none;font-weight:700;font-size:14px}
 .ab-call-text{white-space:nowrap}
-@media(max-width:379px){.ab-call-text{display:none}.ab-call svg{width:28px;height:28px}}
+@media(max-width:430px){.ab-call-text{display:none}.ab-call svg{width:28px;height:28px}}
 @media(min-width:768px){.ab-brand{font-size:26px}.ab-call{font-size:20px}}
 `,
   prime: `
 .ab-head{position:sticky;top:0;z-index:50;background:rgba(0,0,0,.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--p-line-soft,rgba(255,255,255,.08))}
 .ab-head-in{display:flex;align-items:center;gap:12px;max-width:1200px;margin:0 auto;padding:12px 6vw}
-.ab-brand{font-family:'Newsreader',Georgia,serif;font-size:20px;letter-spacing:.04em;text-decoration:none;color:var(--p-ink,#f0ece4);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto}
+.ab-brand{font-family:'Newsreader',Georgia,serif;font-size:clamp(16px,4.8vw,20px);letter-spacing:.04em;text-decoration:none;color:var(--p-ink,#f0ece4);white-space:normal;overflow-wrap:anywhere;line-height:1.1;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;min-width:0;flex:0 1 auto}
 .ab-cta{display:inline-flex;align-items:center;flex-shrink:0;white-space:nowrap;padding:10px 18px;font-family:'Inter',sans-serif;font-size:10px;font-weight:600;letter-spacing:.22em;text-transform:uppercase;text-decoration:none;background:var(--p-brand,#d4a64a);color:#1a1a1a;border:1px solid var(--p-brand,#d4a64a);border-radius:2px;margin-left:auto}
 .ab-cta+.ab-nav{margin-left:0}
 `,
   euphoria: `
 .ab-head{position:sticky;top:0;z-index:50;background:rgba(0,0,0,.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--eu-line-soft,rgba(255,255,255,.1))}
 .ab-head-in{display:flex;align-items:center;gap:12px;max-width:1200px;margin:0 auto;padding:14px 24px}
-.ab-brand{font-family:'Newsreader',Georgia,serif;font-size:20px;letter-spacing:.04em;text-decoration:none;color:var(--eu-ink,#f0ece4);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto}
+.ab-brand{font-family:'Newsreader',Georgia,serif;font-size:clamp(16px,4.8vw,20px);letter-spacing:.04em;text-decoration:none;color:var(--eu-ink,#f0ece4);white-space:normal;overflow-wrap:anywhere;line-height:1.1;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;min-width:0;flex:0 1 auto}
 .ab-cta{display:inline-flex;align-items:center;flex-shrink:0;white-space:nowrap;padding:10px 18px;font-family:'Inter',sans-serif;font-size:10px;font-weight:500;letter-spacing:.22em;text-transform:uppercase;text-decoration:none;background:var(--eu-brand,#d4a64a);color:#000;border:1px solid var(--eu-brand,#d4a64a);border-radius:2px;margin-left:auto}
 .ab-cta+.ab-nav{margin-left:0}
 `,

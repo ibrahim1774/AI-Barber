@@ -3,6 +3,7 @@
 // No imports on purpose beyond types: the admin CLI must not pull in the App Store library.
 import type { WebsiteData } from '../../types.js';
 import { hasPagesV2 as hasPageHeroes } from '../pagesV2.js';
+import { configuredBucket, logoProblem } from '../logoUrl.js';
 
 /** Largest publish body (or admin site) accepted, serialized. */
 export const MAX_BODY_BYTES = 3 * 1024 * 1024;
@@ -60,6 +61,7 @@ export function restoreImageUrls(sd: WebsiteData, map: Record<string, string>): 
     about: sd.about ? { ...sd.about, imageUrl: back(sd.about.imageUrl, 'about') } : sd.about,
     gallery: (sd.gallery || []).map((v, i) => back(v, `gallery${i}`)),
     craftImages: sd.craftImages ? sd.craftImages.map((v, i) => back(v, `craft${i}`)) : sd.craftImages,
+    ...(sd.logo && typeof sd.logo === 'object' ? { logo: { ...sd.logo, url: back(sd.logo.url, 'logo') as string } } : {}),
     staff: sd.staff ? sd.staff.map((s, i) => ({ ...s, photo: back(s.photo, `staff${i}`) })) : sd.staff,
     ...(hasPageHeroes(sd) ? pageHeroesBack(sd, back) : {}),
   };
@@ -78,6 +80,11 @@ export function validationProblem(sd: unknown): string | null {
   const desc = (sd.about as any).description;
   if (!Array.isArray(desc) || desc.some((d: unknown) => typeof d !== 'string')) return 'about.description must be a list of text paragraphs';
   if (hasDataUrl(sd)) return 'inline data: images are not allowed; upload the image and use its https URL';
+  // The shop logo: our bucket, <folder>/logo/<png|jpg|jpeg>, sane w and h. The publish adds the folder rule (it knows the draft).
+  if (sd.logo != null) {
+    const logo = logoProblem(sd.logo, { bucketName: configuredBucket() });
+    if (logo) return logo;
+  }
   if (jsonBytes(sd) > MAX_BODY_BYTES) return 'siteData is larger than 3 MB';
   return null;
 }

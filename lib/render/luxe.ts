@@ -17,7 +17,8 @@ import {
 } from './honest.js';
 import { ratingLineCustom, t, type LabelKey } from './labels.js';
 import { hasFilePages } from './pages.js';
-import { NAV_CSS, navItemsFor, reportLinkHtml, navListHtml, type RenderCtx } from './shell.js';
+import { NAV_CSS, logoImgHtml, navItemsFor, reportLinkHtml, navListHtml, type RenderCtx } from './shell.js';
+import { renderableLogo } from './logo.js';
 
 // 24h → 12h with AM/PM. Idempotent: if the input already contains an
 // AM/PM marker, return it unchanged. Handles "09:00", "9:00", "9", "20:30".
@@ -149,6 +150,7 @@ export function generateHTMLWithPlaceholders(input: WebsiteData, ctx?: RenderCtx
   const [nameOpen, nameText, nameClose] = unwrapMarked(siteData.shopName);
   const nameWords = nameText.split(' ');
   const nameFirst = esc(nameOpen + nameWords[0] + nameClose);
+  const headerLogo = renderableLogo(siteData);
   const nameRest = nameWords.length > 1 ? esc(nameOpen + nameWords.slice(1).join(' ') + nameClose) : '';
   // Picked theme — applied via .aib-themed CSS vars on <body> so the deployed
   // site matches the editor preview. Defaults to gold/black when unset.
@@ -382,9 +384,10 @@ export function generateHTMLWithPlaceholders(input: WebsiteData, ctx?: RenderCtx
        section seam + a soft gold glow on accent buttons. Scoped tight
        so the upgrade doesn't bleed into elements that should stay flat. */
     .serif-accent { font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400; }
-    /* Header on a narrow phone: the number never wraps; under 380px the call link is the icon alone
+    /* Header on a narrow phone: the number never wraps; at 430px and under the call link is the icon alone
        (the full number stays in the hero button and the contact section). */
-    @media (max-width: 379px) { .ab-call-text { display: none; } .ab-call svg { width: 1.75rem; height: 1.75rem; } }
+    @media (max-width: 430px) { .ab-call-text { display: none; } .ab-call svg { width: 1.75rem; height: 1.75rem; } }
+    .ab-name { font-size: clamp(14px, 4.4vw, 18px); line-height: 1.1; overflow-wrap: anywhere; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
     section.py-12, section.py-16 {
       background-image: linear-gradient(180deg, rgba(255,255,255,0.025) 0%, transparent 35%, transparent 65%, rgba(0,0,0,0.4) 100%);
       background-blend-mode: overlay;
@@ -407,12 +410,12 @@ export function generateHTMLWithPlaceholders(input: WebsiteData, ctx?: RenderCtx
     <div class="container mx-auto flex justify-between items-center px-4 md:px-6">
       <div class="flex items-center gap-3 md:gap-8 min-w-0">
         <div class="flex items-center gap-3 md:gap-5 min-w-0">
-          <svg class="w-8 h-8 md:w-12 md:h-12 shrink-0 text-[#f4a100]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          ${headerLogo ? logoImgHtml('luxe', headerLogo, esc(nameText)) : `<svg class="w-8 h-8 md:w-12 md:h-12 shrink-0 text-[#f4a100]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M6 6l12 12M6 18L18 6"></path>
           </svg>
-          <span class="font-montserrat font-black text-lg md:text-3xl lg:text-4xl tracking-[1px] md:tracking-[2px] uppercase whitespace-nowrap min-w-0 truncate">
+          <span class="ab-name font-montserrat font-black md:text-3xl lg:text-4xl tracking-[1px] md:tracking-[2px] uppercase min-w-0">
             ${nameFirst} <span class="text-[#f4a100]">${nameRest}</span>
-          </span>
+          </span>`}
         </div>
         ${canCall ? `<a href="tel:${formattedPhone}" aria-label="Call ${shownPhone}" class="ab-call flex items-center shrink-0 gap-2 md:gap-4 text-[#f4a100] border-l-2 border-white/20 pl-3 md:pl-8 hover:text-white transition-colors">
           <svg class="w-5 h-5 md:w-7 md:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
