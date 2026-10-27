@@ -9,11 +9,11 @@ const sum = (x: WebsiteData) => Object.fromEntries(sectionCards(x).map((c) => [c
 
 describe('sectionCards', () => {
   it('orders the six cards', () => {
-    expect(sectionCards(d()).map((c) => c.title)).toEqual(['Services', 'Team', 'Hours', 'Gallery', 'About', 'Contact']);
+    expect(sectionCards(d()).map((c) => c.title)).toEqual(['Services', 'Team', 'Working hours', 'Gallery', 'About', 'Contact']);
   });
   it('summarises empty', () => {
     expect(sum(d())).toEqual({
-      services: 'None yet', team: 'Not set', hours: 'Not set', gallery: '0 of 6 photos', about: 'Fresh Cuts', contact: '555-1234',
+      services: 'None yet', team: 'Not set', hours: 'Add', gallery: '0 of 6 photos', about: 'Fresh Cuts', contact: '555-1234',
     });
     expect(sum(d({ phone: '' })).contact).toBe('Not set');
   });
@@ -26,7 +26,7 @@ describe('sectionCards', () => {
     }));
     expect(x.services).toBe('1 service');
     expect(x.team).toBe('2 people');
-    expect(x.hours).toBe('Open 5 days');
+    expect(x.hours).toBe('Mon-Fri 9:00 AM - 5:00 PM');
     expect(x.gallery).toBe('5 of 6 photos'); // indices 2-7: c,'',e,f,g,h
     expect(sum(d({ services: [s, s, s] })).services).toBe('3 services');
   });

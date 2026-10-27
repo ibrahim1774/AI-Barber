@@ -1,6 +1,7 @@
 import { balanceGallery, gallerySlots } from '@/lib/sections/gallery';
 import { formatPhone } from '@/lib/phone';
 import type { WebsiteData } from '@/web/types';
+import { withDefaultHours } from '@/lib/sections/hours';
 import { buildSiteFromScrape } from '@/web/lib/buildSiteFromScrape';
 import { extractFirstUrl, isSupportedBookingHost } from '@/web/lib/supportedBookingHost';
 import { generateContent } from '@/web/services/geminiService';
@@ -82,7 +83,7 @@ export async function applyBookingLink(d: WebsiteData, link: string): Promise<We
       template: d.template === 'euphoria' ? 'euphoria' : 'luxe',
     });
     if (!built?.scraped?.shopName) return null;
-    return { ...built.scraped, colorTheme: d.colorTheme, ...keptPageChoices(d) };
+    return { ...withDefaultHours(built.scraped), colorTheme: d.colorTheme, ...keptPageChoices(d) };
   } catch (err) {
     console.warn('[home funnel] booking-link scrape failed:', err);
     return null;

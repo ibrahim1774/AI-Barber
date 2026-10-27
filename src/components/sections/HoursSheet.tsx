@@ -4,7 +4,7 @@ import type { WebsiteData } from '@/web/types';
 import { colors, fonts } from '@/constants/theme';
 import { track } from '@/lib/analytics';
 import { Sheet, SheetAction } from '@/components/EditSheet';
-import { TIME_OPTIONS, copyDayToOpenDays, editableHours, setDay, timeLabel } from '@/lib/sections/hours';
+import { TIME_OPTIONS, copyDayToOpenDays, editableHours, hasNoHours, setDay, timeLabel, withDefaultHours } from '@/lib/sections/hours';
 
 interface Props {
   visible: boolean;
@@ -22,7 +22,11 @@ export function HoursSheet({ visible, data, onChange, onClose, onDismiss }: Prop
   const [note, setNote] = useState('');
   const changed = useRef(false);
   useEffect(() => {
-    if (visible) { setPicking(null); setNote(''); changed.current = false; }
+    if (!visible) return;
+    setPicking(null); setNote(''); changed.current = false;
+    // A site with no hours opens on the 9-5 Monday-Saturday week; seed it so Done saves exactly what is shown.
+    if (hasNoHours(data)) { changed.current = true; onChange(withDefaultHours); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
   const rows = editableHours(data);
@@ -73,7 +77,7 @@ export function HoursSheet({ visible, data, onChange, onClose, onDismiss }: Prop
   }
 
   return (
-    <Sheet visible={visible} title="Hours" onClose={done} onDismiss={onDismiss} right={<SheetAction title="Done" primary onPress={done} />}>
+    <Sheet visible={visible} title="Working hours" onClose={done} onDismiss={onDismiss} right={<SheetAction title="Done" primary onPress={done} />}>
       <ScrollView style={styles.list}>
         {rows.map((r) => (
           <View key={r.day} style={styles.row}>

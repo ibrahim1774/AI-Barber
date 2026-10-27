@@ -1,3 +1,4 @@
+import { withDefaultHours } from '@/lib/sections/hours';
 import { randomUUID } from 'expo-crypto';
 import type { ShopInputs, WebsiteData } from '@/web/types';
 import { clearSite, loadSite, saveSite, type SiteRecord } from '@/lib/siteStore';
@@ -82,4 +83,15 @@ export async function importListing(
   services?: { title: string; price?: string }[],
 ): Promise<ShopSite> {
   return listingSite(await fetchListing(pick), services, brandColor);
+}
+
+/**
+ * A new site's hours start as the default week (Mon-Sat 9-5). Runs when the build screen opens, after the import
+ * review has shown what was really found, so the review never counts defaults. Hours that are already there are kept.
+ */
+export async function seedDefaultHours(): Promise<void> {
+  const rec = await loadSite();
+  if (!rec) return;
+  const data = withDefaultHours(rec.data);
+  if (data !== rec.data) await saveSite({ ...rec, data });
 }

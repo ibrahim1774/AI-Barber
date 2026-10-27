@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import { backToStart, confirmCancel, resetTo } from '@/lib/nav';
-import { discardUnpublishedDraft } from '@/lib/flow';
+import { discardUnpublishedDraft, seedDefaultHours } from '@/lib/flow';
 import { BackButton } from '@/components/BackButton';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fonts } from '@/constants/theme';
@@ -24,6 +24,7 @@ export default function Generating() {
     let alive = true;
     loadSite()
       .then((s) => alive && setSteps(generatingSteps(s)))
+      .then(() => seedDefaultHours())
       .catch(() => {});
     return () => {
       alive = false;

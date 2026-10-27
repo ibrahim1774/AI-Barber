@@ -7,12 +7,36 @@ type Hours = NonNullable<WebsiteData['hours']>;
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
+/** Monday to Saturday 9:00 AM to 5:00 PM, Sunday closed: where every new site's hours start. */
 export function defaultHours(): Hours {
   return DAYS.map((day) =>
-    day === 'Monday' || day === 'Sunday'
-      ? { day, open: '09:00', close: '18:00', closed: true }
-      : { day, open: '09:00', close: '18:00' },
+    day === 'Sunday'
+      ? { day, open: '09:00', close: '17:00', closed: true }
+      : { day, open: '09:00', close: '17:00' },
   );
+}
+
+/** True when the site has no hours rows at all. */
+export const hasNoHours = (d: WebsiteData): boolean => !d.hours || d.hours.length === 0;
+
+/** Seeds the default week when (and only when) the site has no hours; imported or edited hours are never touched. */
+export function withDefaultHours(d: WebsiteData): WebsiteData {
+  return hasNoHours(d) ? { ...d, hours: defaultHours() } : d;
+}
+
+/** Sections row subtitle: 'Add' with no hours, else 'Mon-Sat 9:00 AM - 5:00 PM' (or 'N days open' when the days differ). */
+export function hoursSummary(d: WebsiteData): string {
+  if (hasNoHours(d)) return 'Add';
+  const open = editableHours(d).filter((r) => !r.closed);
+  if (open.length === 0) return 'Closed every day';
+  const first = open[0];
+  const same = open.every((r) => r.open === first.open && r.close === first.close);
+  const idx = open.map((r) => DAYS.indexOf(r.day as (typeof DAYS)[number]));
+  const consecutive = idx.every((v, i) => i === 0 || v === idx[i - 1] + 1);
+  const short = (n: number) => DAYS[n].slice(0, 3);
+  const range = open.length === 1 ? short(idx[0]) : consecutive ? `${short(idx[0])}-${short(idx[idx.length - 1])}` : '';
+  if (same && range) return `${range} ${timeLabel(first.open)} - ${timeLabel(first.close)}`;
+  return `Open ${open.length} ${open.length === 1 ? 'day' : 'days'}`;
 }
 
 /** '06:00' to '22:00' in 30-minute steps. */
@@ -43,7 +67,7 @@ const rank = (name: string) => (dayIndex(name) < 0 ? DAYS.length : dayIndex(name
 
 /** Always 7 rows in DAYS order. Days the data lacks are closed. */
 export function editableHours(d: WebsiteData): HoursRow[] {
-  const existing = d.hours ?? [];
+  const existing = hasNoHours(d) ? defaultHours() : d.hours!;
   return DAYS.map((day, i) => {
     const row = existing.find((r) => dayIndex(r.day) === i);
     if (!row) return { day, open: '09:00', close: '18:00', closed: true };
