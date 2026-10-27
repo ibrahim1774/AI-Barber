@@ -85,13 +85,19 @@ export function navListHtml(items: NavItem[], menu: string, more = 'More'): stri
   return `<nav class="ab-nav" aria-label="${menu}"><input type="checkbox" id="ab-nav-toggle" class="ab-nav-toggle" aria-label="${menu}"><label for="ab-nav-toggle" class="ab-burger" aria-hidden="true"><i></i></label><ul class="ab-nav-list">${lis}</ul></nav>`;
 }
 
-// The logo is fluid between a phone and a desktop height (luxe 40 to 56px, prime and euphoria 36 to 48px), never wider than
-// 55vw or 240px, and carries width/height so the header does not shift when it loads. One <=600px file, so no srcset.
-const LOGO_HEIGHT: Record<TemplateId, string> = { luxe: 'clamp(40px,7.3vw,56px)', prime: 'clamp(36px,6.25vw,48px)', euphoria: 'clamp(36px,6.25vw,48px)' };
+// Logo size per design and mode (docs/superpowers/plans/2026-10-27-batch-a-logo-font-fixes.md A3). Height is fluid between a
+// phone and a desktop (luxe 48 to 72px, prime and euphoria 44 to 64px) and max-width keeps room for the nav and Book button
+// (prime/euphoria carry one). Only 'logo' (logo replaces the name) is used today; 'both' is reserved for logo + name.
+// The <img> carries width/height so the header does not shift when it loads. One <=600px file, so no srcset.
+export const LOGO_SIZE: Record<TemplateId, Record<'logo' | 'both', { h: string; maxW: string }>> = {
+  luxe: { logo: { h: 'clamp(48px,12.3vw,72px)', maxW: 'min(60vw,320px)' }, both: { h: 'clamp(40px,10.3vw,60px)', maxW: 'min(24vw,140px)' } },
+  prime: { logo: { h: 'clamp(44px,11.3vw,64px)', maxW: 'min(52vw,300px)' }, both: { h: 'clamp(36px,9.2vw,52px)', maxW: 'min(22vw,120px)' } },
+  euphoria: { logo: { h: 'clamp(44px,11.3vw,64px)', maxW: 'min(52vw,300px)' }, both: { h: 'clamp(36px,9.2vw,52px)', maxW: 'min(22vw,120px)' } },
+};
 
 /** The header logo <img> ({{logo}} is swapped for the URL at deploy). `alt` is the already-escaped shop name. */
 export function logoImgHtml(template: TemplateId, logo: { w: number; h: number }, alt: string): string {
-  return `<img src="{{logo}}" alt="${alt}" width="${logo.w}" height="${logo.h}" fetchpriority="high" style="display:block;height:${LOGO_HEIGHT[template]};width:auto;max-width:min(55vw,240px);object-fit:contain">`;
+  return `<img src="{{logo}}" alt="${alt}" width="${logo.w}" height="${logo.h}" fetchpriority="high" style="display:block;height:${LOGO_SIZE[template].logo.h};width:auto;max-width:${LOGO_SIZE[template].logo.maxW};object-fit:contain">`;
 }
 
 export interface HeaderInput {

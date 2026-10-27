@@ -30,7 +30,7 @@ describe.each(['luxe', 'prime', 'euphoria'] as const)('%s logo', (t) => {
       expect(m).toMatch(/height="200"/);
       expect(m).toContain('fetchpriority="high"');
       expect(m).toMatch(/object-fit:contain/);
-      expect(m).toMatch(/max-width:min\(55vw,240px\)/);
+      expect(m).toMatch(/max-width:min\((60vw,320px|52vw,300px)\)/);
       expect(home).toMatch(/<title>[^<]*Fresh Cuts/);
       expect(home.split('Fresh Cuts').length).toBeGreaterThan(2); // footer + meta still name the shop
       // the name is gone from the header region itself
@@ -75,5 +75,22 @@ describe('the pending shape (what publish stores and the deploy renders)', () =>
     const noMap = renderSiteBundle(d, { imageUrls: {} }).pages[0].html;
     expect(noMap).not.toContain('{{logo}}');
     expect(noMap).toContain('Fresh Cuts');
+  });
+});
+
+describe('logo size per design (logo-only mode)', () => {
+  const imgStyle = (t: string, multi: boolean, logo = { url: URL_, w: 600, h: 200 }) =>
+    /<img[^>]*src="\{\{logo\}\}"[^>]*style="([^"]*)"/.exec(render(site(t, multi, { logo }))[0].html)?.[1] ?? '';
+  const SIZES = { luxe: ['clamp(48px,12.3vw,72px)', 'min(60vw,320px)'], prime: ['clamp(44px,11.3vw,64px)', 'min(52vw,300px)'], euphoria: ['clamp(44px,11.3vw,64px)', 'min(52vw,300px)'] } as const;
+  for (const t of ['luxe', 'prime', 'euphoria'] as const) for (const multi of [true, false]) {
+    it(`${t} ${multi ? 'multi' : 'single'}: height ${SIZES[t][0]}, max-width ${SIZES[t][1]}`, () => {
+      const st = imgStyle(t, multi);
+      expect(st).toContain(`height:${SIZES[t][0]}`);
+      expect(st).toContain(`max-width:${SIZES[t][1]}`);
+      expect(st).toContain('width:auto');
+    });
+  }
+  it('a logo wider than 20:1 still falls back to the name', () => {
+    for (const t of ['luxe', 'prime', 'euphoria']) expect(render(site(t, true, { logo: { url: URL_, w: 2100, h: 100 } }))[0].html).not.toContain('{{logo}}');
   });
 });
