@@ -103,10 +103,12 @@ export async function runSignup(input: SignupInput | null, ip: string, deps: Sig
   try {
     const row = await deps.getPurchase(otid);
     if (row?.revoked_at) return { status: 402, body: { error: 'subscription-inactive', reason: 'revoked' } };
-    // A purchase linked to ANOTHER account no longer blocks a new account (2026-10-26): the subscription
-    // follows the Apple ID and the block moved to publish and POST /api/ios/transfer. Only a legacy
-    // UNLINKED purchase that already has a site bound is still refused (it is someone's site).
-    if (row && !row.user_id && row.site_slug) return { status: 409, body: { error: 'purchase-has-site' } };
+    // Nothing about the purchase row blocks a new account (2026-10-26). The subscription follows the Apple ID; a
+    // purchase linked to another account moves via /api/ios/transfer, and an UNLINKED purchase that still has a
+    // site (its account was deleted, or a legacy accountless site) is no different: the Apple-verified active
+    // holder may sign up. Signing up creates only an auth user, so nothing of the old site is touched here. The
+    // next publish decides ownership: it links the purchase to the caller unless a live shop/site still
+    // belongs to another account (409 purchase-other-account), so no one can take over someone's site this way.
   } catch (e: any) {
     console.error(`[ios/signup] ${otid}: purchase read failed:`, e?.message || e);
     return { status: 503, body: { error: 'temporarily-unavailable' } };

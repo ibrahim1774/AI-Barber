@@ -163,13 +163,28 @@ describe('liveSignupDeps (Supabase admin mapping)', () => {
       expect(expired.created.length + revoked.created.length + stored.created.length).toBe(0);
     });
 
-    it('a purchase linked to ANOTHER account no longer blocks the new account (it moves via /api/ios/transfer); a legacy unlinked purchase with a site is still 409', async () => {
+    it('a purchase linked to ANOTHER account no longer blocks the new account (it moves via /api/ios/transfer)', async () => {
       const linked = deps({ getPurchase: async () => row({ user_id: '11111111-1111-4111-8111-111111111111', site_slug: 'fade-lab' }) });
       expect(await runSignup(good, 'ip', linked.d)).toEqual({ status: 200, body: { ok: true, email: 'sam@example.com' } });
       expect(linked.created).toHaveLength(1);
-      const bound = deps({ getPurchase: async () => row({ site_slug: 'fade-lab' }) });
-      expect(await runSignup(good, 'ip', bound.d)).toEqual({ status: 409, body: { error: 'purchase-has-site' } });
-      expect(bound.created).toHaveLength(0);
+    });
+
+    it('an UNLINKED purchase that still has a site (its account was deleted) now signs up: the verified active holder owns it', async () => {
+      const bound = deps({ getPurchase: async () => row({ site_slug: 'fade-lab', published_at: '2026-10-01T00:00:00Z', taken_down_at: '2026-10-20T00:00:00Z' }) });
+      expect(await runSignup(good, 'ip', bound.d)).toEqual({ status: 200, body: { ok: true, email: 'sam@example.com' } });
+      expect(bound.created).toHaveLength(1);
+    });
+
+    it('an unlinked purchase with a site that is REVOKED is still 402, nothing created', async () => {
+      const revoked = deps({ getPurchase: async () => row({ site_slug: 'fade-lab', revoked_at: '2026-10-01T00:00:00Z' }) });
+      expect(await runSignup(good, 'ip', revoked.d)).toEqual({ status: 402, body: { error: 'subscription-inactive', reason: 'revoked' } });
+      expect(revoked.created).toHaveLength(0);
+    });
+
+    it('an unlinked purchase with a site still obeys the per-purchase cap (429, nothing created)', async () => {
+      const capped = deps({ getPurchase: async () => row({ site_slug: 'fade-lab' }), allowForPurchase: async () => false });
+      expect(await runSignup(good, 'ip', capped.d)).toEqual({ status: 429, body: { error: 'rate-limited' } });
+      expect(capped.created).toHaveLength(0);
     });
 
     it('an active unlinked purchase (row present or not yet recorded) creates the account', async () => {

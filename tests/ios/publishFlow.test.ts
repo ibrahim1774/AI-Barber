@@ -359,6 +359,27 @@ describe('runIosPublish', () => {
     expect(f.rows.get(OTID)!.user_id).toBe(USER);
   });
 
+  it('after a signup on an unlinked purchase whose old account was deleted (slug kept, site taken down, no shop/site rows): the new account is linked and the site is republished on the same slug', async () => {
+    const f = withAuth(fakes({ existing: row({ site_slug: 'fade-lab', published_at: '2026-10-01T00:00:00Z', taken_down_at: '2026-10-20T00:00:00Z', removed_at: '2026-10-20T00:00:00Z' }) }));
+    (f.deps as any).bindingOwner = vi.fn(async () => null); // ab_shops / sites rows went with the deleted account
+    const r = await runIosPublish(input(), f.deps, { authorization: 'Bearer tok-user' });
+    expect(r.status).toBe(200);
+    expect((r.body as any).siteId).toBe('fade-lab');
+    expect(f.rows.get(OTID)!.user_id).toBe(USER);
+    expect(f.rows.get(OTID)!.removed_at).toBeNull();
+    expect(f.rows.get(OTID)!.taken_down_at).toBeNull();
+    expect(f.repo.bindSlug).not.toHaveBeenCalled();
+  });
+
+  it('an unlinked purchase whose site still belongs to a live OTHER account is not taken over by a new signup (409, nothing written)', async () => {
+    const f = withAuth(fakes({ existing: row({ site_slug: 'fade-lab' }) }));
+    (f.deps as any).bindingOwner = vi.fn(async () => OTHER);
+    const r = await runIosPublish(input(), f.deps, { authorization: 'Bearer tok-user' });
+    expect(r.status).toBe(409);
+    expect(f.deps.writePending).not.toHaveBeenCalled();
+    expect(f.rows.get(OTID)!.user_id).toBeNull();
+  });
+
   it('a verified bearer of another account never re-points a linked purchase (409, nothing written)', async () => {
     const f = withAuth(fakes({ existing: row({ user_id: USER }) }));
     const r = await runIosPublish(input(), f.deps, { authorization: 'Bearer tok-other' });
