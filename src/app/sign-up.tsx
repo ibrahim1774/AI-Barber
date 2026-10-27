@@ -12,7 +12,7 @@ import { goBackOrHome } from '@/lib/nav';
 
 /**
  * The web's sign-up form (AuthModal.tsx): full name (optional), phone
- * (optional), email, password (min 6). The local site is saved to the new
+ * (optional), email, password (min 8). The local site is saved to the new
  * account once it has a session.
  */
 export default function SignUp() {
@@ -116,7 +116,7 @@ export default function SignUp() {
         <Field
           ref={passwordInput}
           tone="form"
-          label="Password (min 6 characters)"
+          label="Password (min 8 characters)"
           value={password}
           onChangeText={setPassword}
           secureTextEntry

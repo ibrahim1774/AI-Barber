@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Share, StyleSheet, Text, View } from 'react-native';
 import { colors, fonts } from '@/constants/theme';
 import { track } from '@/lib/analytics';
@@ -17,6 +17,7 @@ import { bookingPrefs, withChoice } from '@/lib/bookingChoice';
 import { useUpdateSitePrompt } from '@/lib/setupPrompt';
 import { PublishForLink } from '@/components/PublishForLink';
 import { useCustomerLinkState } from '@/lib/customerLinks';
+import { seedWeek } from '@/lib/setup/availability';
 import { withMirroredServices } from '@/lib/setup/servicesMap';
 import { updateSiteData, updateSiteRecord } from '@/lib/setup/siteSync';
 import {
@@ -51,6 +52,7 @@ export function Wizard({ shop, site, onShopChanged, onFinish }: Props) {
   const customerLinks = useCustomerLinkState(shop);
   const hoursSave = useRef<(() => Promise<boolean>) | null>(null);
   const step = currentStep(state);
+  const seed = useMemo(() => seedWeek(site.data), [site.data]);
 
   useEffect(() => {
     listMembers(shop.id).then((m) => setOwner(m.find((x) => x.role === 'owner') ?? m[0] ?? null)).catch(() => {});
@@ -114,8 +116,8 @@ export function Wizard({ shop, site, onShopChanged, onFinish }: Props) {
 
       {step === 'hours' && (
         <>
-          <Note>Default is Tuesday to Saturday, 9 AM to 6 PM. Change any day.</Note>
-          {owner ? <MemberHours memberId={owner.id} saveLabel="Save hours" autoSaveRef={hoursSave} /> : null}
+          <Note>Starts from your website's working hours. Change any day.</Note>
+          {owner ? <MemberHours memberId={owner.id} saveLabel="Save hours" autoSaveRef={hoursSave} seed={seed} /> : null}
         </>
       )}
 

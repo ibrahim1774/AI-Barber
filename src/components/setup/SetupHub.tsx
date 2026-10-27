@@ -15,7 +15,7 @@ import { bookingPrefs, bookTargetStatus, withChoice, type BookingChoice } from '
 import { updateSiteRecord } from '@/lib/setup/siteSync';
 import { useUpdateSitePrompt } from '@/lib/setupPrompt';
 import { PublishForLink } from '@/components/PublishForLink';
-import { PUBLISH_FOR_BOOKING_LINK, useCustomerLinkState } from '@/lib/customerLinks';
+import { useCustomerLinkState } from '@/lib/customerLinks';
 import { icsUrl, listMembers, updateShopSettings, type Member, type Shop } from '@/lib/shop';
 import type { SiteRecord } from '@/lib/siteStore';
 
@@ -92,7 +92,7 @@ export function SetupHub({
             !shop.bookingsEnabled
               ? 'Off: your booking page shows as paused.'
               : shop.purchaseLinked
-                ? link.live?.booking ?? (link.gate === 'publish' ? PUBLISH_FOR_BOOKING_LINK : ' ')
+                ? link.live?.booking ?? ' '
                 : PLAN_PENDING
           }
           value={shop.bookingsEnabled}

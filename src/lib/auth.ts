@@ -15,7 +15,7 @@ import { AUTH_STORAGE_KEY, authStorage, supabase } from '@/lib/supabase';
 import { LOOKUP_TIMEOUT_MS, withTimeout } from '@/lib/timeout';
 
 // Copy from the web's AuthModal where it has one; the rest is ours.
-export const PASSWORD_TOO_SHORT = 'Password must be at least 6 characters';
+export const PASSWORD_TOO_SHORT = 'Password must be at least 8 characters';
 export const OFFLINE = "Couldn't reach Prime Barber — check your connection and try again.";
 const ALREADY_REGISTERED = 'An account with this email already exists. Sign in instead.';
 const WRONG_PASSWORD = "That email and password don't match. Check them and try again, or tap Forgot password?";
@@ -43,7 +43,7 @@ export function friendlyAuthError(e: unknown): string {
   if (code === 'invalid_credentials' || /invalid login credentials/i.test(message)) return WRONG_PASSWORD;
   if (code === 'email_not_confirmed' || /email not confirmed/i.test(message)) return NOT_CONFIRMED;
   if (code === 'weak_password' || /password should/i.test(message)) {
-    return /6 characters/.test(message) ? PASSWORD_TOO_SHORT : WEAK_PASSWORD;
+    return /\d+ characters/.test(message) ? PASSWORD_TOO_SHORT : WEAK_PASSWORD;
   }
   if (code.startsWith('over_') || err.status === 429) return RATE_LIMITED;
   if (code === 'email_address_invalid' || /invalid email|unable to validate email/i.test(message)) return BAD_EMAIL;
@@ -229,7 +229,7 @@ export const RESET_FALLBACK = FALLBACK;
 export const RESET_WRONG_CODE = 'That code is wrong or has expired. Check the email or send a new code.';
 export const RESET_CODE_INCOMPLETE = 'Enter the code from the email.';
 export const PASSWORDS_DIFFER = "The passwords don't match.";
-export const MIN_PASSWORD = 6;
+export const MIN_PASSWORD = 8;
 
 type AuthErr = { code?: string; status?: number; name?: string; message?: string };
 

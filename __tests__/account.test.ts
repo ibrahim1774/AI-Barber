@@ -774,7 +774,7 @@ describe('auth', () => {
       data: { user: null, session: null },
       error: { code: 'weak_password', status: 422, message: 'Password should be at least 6 characters.' },
     });
-    await expect(signUp('a@b.co', '123', '', '7185550100')).rejects.toThrow('Password must be at least 6 characters');
+    await expect(signUp('a@b.co', '123', '', '7185550100')).rejects.toThrow('Password must be at least 8 characters');
   });
 
   test('signIn syncs the local site; a wrong password is friendly', async () => {

@@ -157,7 +157,7 @@ export function GetPaid({ shop, onChanged, firstCardRef }: { shop: Shop; onChang
 
       <Card title="Card payments">
         <Note>
-          Takes about 5 minutes. Customers pay by card or Apple Pay. {cardPayoutNote()}
+          {connected ? '' : 'Takes about 5 minutes. '}Customers pay by card or Apple Pay. {cardPayoutNote()}
         </Note>
         <Note>{cardFeeNote(fee)} There is no monthly fee for cards.</Note>
         {cardReady ? (

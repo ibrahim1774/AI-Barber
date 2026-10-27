@@ -33,3 +33,19 @@ it('shows Your Book button with the own link, and choosing AI Barber saves the c
   expect(saved.inputs).toMatchObject({ bookingChoice: 'aibarber', ownBookingUrl: 'https://booksy.com/fade-lab' });
   expect(saved.data.bookingUrl).toBe('/book'); // the site's own booking page
 });
+
+describe('publish-for-link line', () => {
+  it('shows "Publish your changes to get your booking link" once, not as the toggle subtitle and again above Publish', async () => {
+    jest.resetModules();
+    jest.doMock('@/lib/customerLinks', () => ({
+      ...jest.requireActual('@/lib/customerLinks'),
+      useCustomerLinkState: () => ({ gate: 'publish', live: null }),
+    }));
+    const { SetupHub: Hub } = require('@/components/setup/SetupHub');
+    const { render: r, allText: text } = require('../store/render');
+    const tree = await r(<Hub shop={SHOP} site={SITE} onOpen={() => {}} onShopChanged={() => {}} onSiteChanged={() => {}} />);
+    const lines: string[] = ([] as string[]).concat(text(tree));
+    expect(lines.filter((l) => l.includes('Publish your changes to get your booking link'))).toHaveLength(1);
+    jest.dontMock('@/lib/customerLinks');
+  });
+});

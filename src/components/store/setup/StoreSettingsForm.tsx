@@ -14,7 +14,7 @@ import {
 import { canOpenShop, formFromSettings, validateSettings, type SettingsForm } from '@/lib/store/settings';
 import { useUpdateSitePrompt } from '@/lib/setupPrompt';
 import { PublishForLink } from '@/components/PublishForLink';
-import { PUBLISH_FOR_SHOP_LINK, useCustomerLinkState } from '@/lib/customerLinks';
+import { useCustomerLinkState } from '@/lib/customerLinks';
 import { SITE_SHOP_PATH } from '@/web/lib/render/subpages';
 import type { WebsiteData } from '@/web/types';
 
@@ -168,7 +168,7 @@ export function StoreSettingsForm({ shop, onChanged }: { shop: Shop; onChanged?(
       <Card title={saved.storeEnabled ? 'Your shop is open' : 'Open your shop'}>
         <Note>
           {saved.storeEnabled
-            ? shop.purchaseLinked ? customerUrl ?? (linkState.gate === 'publish' ? PUBLISH_FOR_SHOP_LINK : ' ') : PLAN_PENDING
+            ? shop.purchaseLinked ? customerUrl ?? ' ' : PLAN_PENDING
             : 'Customers can browse and order once it is open. You can add products any time.'}
         </Note>
         <Button

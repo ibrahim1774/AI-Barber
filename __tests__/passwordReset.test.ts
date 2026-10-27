@@ -157,7 +157,7 @@ describe('the emailed code', () => {
       RESET_CODE_INCOMPLETE,
     );
     await expect(resetPasswordWithCode('barber@example.com', '123456', '12345', '12345')).rejects.toThrow(PASSWORD_TOO_SHORT);
-    await expect(resetPasswordWithCode('barber@example.com', '123456', '123456', '123457')).rejects.toThrow(PASSWORDS_DIFFER);
+    await expect(resetPasswordWithCode('barber@example.com', '123456', '12345678', '12345679')).rejects.toThrow(PASSWORDS_DIFFER);
     expect(supabase.auth.verifyOtp).not.toHaveBeenCalled();
     expect(supabase.auth.updateUser).not.toHaveBeenCalled();
   });
@@ -173,7 +173,7 @@ describe('the emailed code', () => {
       data: { user: null },
       error: { status: 422, code: 'weak_password', message: 'Password should be at least 8 characters.' },
     });
-    await expect(resetPasswordWithCode('barber@example.com', '123456', 'short1', 'short1')).rejects.toThrow(
+    await expect(resetPasswordWithCode('barber@example.com', '123456', 'password1', 'password1')).rejects.toThrow(
       'Password should be at least 8 characters.',
     );
     expect(identify).toHaveBeenCalledWith('user-half');
@@ -195,10 +195,10 @@ describe('the emailed code', () => {
     expect(supabase.auth.updateUser).toHaveBeenCalledTimes(2);
   });
 
-  it('newPasswordProblem: 6 characters minimum, both fields equal', () => {
-    expect(newPasswordProblem('12345', '12345')).toBe(PASSWORD_TOO_SHORT);
-    expect(newPasswordProblem('123456', '123457')).toBe(PASSWORDS_DIFFER);
-    expect(newPasswordProblem('123456', '123456')).toBeNull();
+  it('newPasswordProblem: 8 characters minimum, both fields equal', () => {
+    expect(newPasswordProblem('1234567', '1234567')).toBe(PASSWORD_TOO_SHORT);
+    expect(newPasswordProblem('12345678', '12345679')).toBe(PASSWORDS_DIFFER);
+    expect(newPasswordProblem('12345678', '12345678')).toBeNull();
   });
 
   it("setNewPassword surfaces the server's reason and doesn't track completion", async () => {

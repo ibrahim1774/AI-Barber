@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
@@ -42,24 +42,28 @@ export function HoursGrid({ week, onChange }: { week: DayHours[]; onChange(w: Da
 
 /** One barber's weekly hours, loaded from and saved to ab_availability. */
 export function MemberHours({
-  memberId, onSaved, saveLabel = 'Save hours', autoSaveRef,
+  memberId, onSaved, saveLabel = 'Save hours', autoSaveRef, seed,
 }: {
   memberId: string;
   onSaved?(): void;
   saveLabel?: string;
   /** Lets a parent (the wizard's Continue) save without a button press. */
   autoSaveRef?: { current: (() => Promise<boolean>) | null };
+  /** The week to start from when this barber has no saved hours (default: Mon-Sat 9-5). */
+  seed?: DayHours[];
 }) {
   const [week, setWeek] = useState<DayHours[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const seedRef = useRef(seed);
+  seedRef.current = seed;
 
   useEffect(() => {
     let alive = true;
     setWeek(null);
     listAvailability(memberId)
-      .then((rows) => alive && setWeek(rows.length ? rowsToWeek(rows) : defaultWeek()))
-      .catch(() => alive && setWeek(defaultWeek()));
+      .then((rows) => alive && setWeek(rows.length ? rowsToWeek(rows) : (seedRef.current ?? defaultWeek())))
+      .catch(() => alive && setWeek(seedRef.current ?? defaultWeek()));
     return () => { alive = false; };
   }, [memberId]);
 

@@ -1,4 +1,6 @@
 import type { AvailabilityRow } from '@/lib/shop';
+import type { WebsiteData } from '@/web/types';
+import { editableHours, hasNoHours } from '@/lib/sections/hours';
 
 export type DayHours = { open: boolean; startMin: number; endMin: number; breakStartMin: number | null; breakEndMin: number | null };
 
@@ -7,9 +9,31 @@ export const STEP_MIN = 30;
 
 const closedDay = (): DayHours => ({ open: false, startMin: 9 * 60, endMin: 18 * 60, breakStartMin: null, breakEndMin: null });
 
-/** Tue–Sat 9:00–18:00 (weekday 0 = Monday), matching /api/shop/setup. */
+/** Mon–Sat 9:00–17:00, Sunday closed (weekday 0 = Monday): the same default as the site's working hours (defaultHours). */
 export function defaultWeek(): DayHours[] {
-  return WEEKDAYS.map((_, i) => ({ ...closedDay(), open: i >= 1 && i <= 5 }));
+  return WEEKDAYS.map((_, i) => ({ ...closedDay(), endMin: 17 * 60, open: i <= 5 }));
+}
+
+const HHMM_MIN = /^([01]\d|2[0-3]):([0-5]\d)$/;
+const toMin = (s: string): number | null => {
+  const m = HHMM_MIN.exec(s);
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+};
+
+/**
+ * Where a barber with no saved availability starts: the site's working hours when it has any
+ * (a day with times we can't read, like 'By appointment', keeps the default times), else defaultWeek().
+ */
+export function seedWeek(site?: WebsiteData | null): DayHours[] {
+  if (!site || hasNoHours(site)) return defaultWeek();
+  const base = defaultWeek();
+  return editableHours(site).map((r, i) => {
+    if (r.closed) return { ...base[i], open: false };
+    const start = toMin(r.open);
+    const end = toMin(r.close);
+    if (start == null || end == null || end <= start) return { ...base[i], open: true };
+    return { ...base[i], open: true, startMin: start, endMin: end };
+  });
 }
 
 /** Rows (one per open day) to the 7-day grid. */

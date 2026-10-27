@@ -126,8 +126,8 @@ describe('edit with a shop: ab_members first, then the site', () => {
   it('weekly hours land in the site as open/close text with closed days flagged', () => {
     const w = weekToWeeklyHours(defaultWeek());
     expect(w).toHaveLength(7);
-    expect(w[0]).toEqual({ day: 'Monday', open: '', close: '', closed: true });
-    expect(w[1]).toEqual({ day: 'Tuesday', open: '9:00 AM', close: '6:00 PM' });
+    expect(w[0]).toEqual({ day: 'Monday', open: '9:00 AM', close: '5:00 PM' });
+    expect(w[6]).toEqual({ day: 'Sunday', open: '', close: '', closed: true });
   });
 });
 
@@ -290,7 +290,7 @@ describe('cards', () => {
     const cards = teamCards(views, [{ name: 'Booksy Bob', role: 'Barber' }], SERVICES, true);
     expect(cards.map((c: any) => c.name)).toEqual(['Jack', 'Sam', 'Ali', 'Booksy Bob']);
     expect(cards[0].title).toBe('Owner');
-    expect(cards[1].days).toEqual([false, true, true, true, true, true, false]); // default week: Tue-Sat
+    expect(cards[1].days).toEqual([true, true, true, true, true, true, false]); // default week: Mon-Sat
     expect(cards[1].chips).toEqual(['Fade', 'Beard', 'Shave']);
     expect(cards[1].more).toBe(1);
     expect(cards[2].chips).toEqual(['All services']);

@@ -30,6 +30,10 @@ describe('card payout and fee copy', () => {
     expect(s).toContain('cardFeeNote(fee)');
     expect(s).not.toMatch(/bank automatically/);
   });
+  it('"Takes about 5 minutes" is only for a shop that is not connected to Stripe yet', () => {
+    const s = src('src/components/setup/GetPaid.tsx');
+    expect(s).toMatch(/\{connected \? '' : 'Takes about 5 minutes\. '\}/);
+  });
   it.each(['get-paid', 'store-payments', 'payment-methods'])('learn topic %s has no automatic-payout claim', (slug) => {
     expect(topic(slug)).not.toMatch(/automatically/);
     expect(topic(slug)).not.toMatch(/AI Barber/);
