@@ -83,14 +83,18 @@ async function launch(session: { id: string; email: string } | null): Promise<Wo
     const b = from(table);
     if (table !== 'sites') return b;
     const upsert = b.upsert;
-    b.upsert = async (row: any, opts: unknown) => {
-      const r = await upsert(row, opts);
-      if (!r.error) {
-        const i = db.findIndex((x) => x.id === row.id);
-        if (i >= 0) db[i] = { ...row };
-        else db.push({ ...row });
-      }
-      return r;
+    b.upsert = (row: any, opts: unknown) => {
+      const run = async () => {
+        const r = await upsert(row, opts);
+        if (!r.error) {
+          const i = db.findIndex((x) => x.id === row.id);
+          if (i >= 0) db[i] = { ...row };
+          else db.push({ ...row });
+        }
+        return r;
+      };
+      // Awaitable, and chainable like the real builder (.select().maybeSingle()).
+      return { select: () => ({ maybeSingle: run }), then: (res: any, rej: any) => run().then(res, rej) };
     };
     return b;
   };

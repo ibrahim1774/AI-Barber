@@ -27,6 +27,10 @@ export const sb = {
   /** Makes selects resolve with this error (or throw it, when `selectThrows`). */
   selectError: null as null | { message: string; code?: string },
   selectThrows: false,
+  /** On: upserts really write sb.rows, with the prod updated_at trigger (server clock on every UPDATE). */
+  liveTable: false,
+  /** The server's clock for that trigger. */
+  serverNow: () => Date.now(),
   listeners: new Set<Listener>(),
   setSession(s: Session) {
     sb.session = s;
@@ -39,6 +43,8 @@ export const sb = {
     sb.deletes = [];
     sb.deleteError = null;
     sb.rows = [];
+    sb.liveTable = false;
+    sb.serverNow = () => Date.now();
     sb.selects = [];
     sb.selectError = null;
     sb.selectThrows = false;
@@ -103,10 +109,29 @@ export const supabase = {
       };
       return q;
     },
-    upsert: async (row: Record<string, unknown>, opts: unknown) => {
-      if (sb.upsertError) return { data: null, error: sb.upsertError };
-      sb.upserts.push({ table, row, opts });
-      return { data: null, error: null };
+    upsert: (row: Record<string, unknown>, opts: unknown) => {
+      const run = () => {
+        if (sb.upsertError) return { data: null as any, error: sb.upsertError };
+        sb.upserts.push({ table, row, opts });
+        let stored: Record<string, any> | null = null;
+        if (sb.liveTable) {
+          // Like prod: an INSERT keeps the client's updated_at, every UPDATE is stamped with the server's clock
+          // by the set_updated_at_sites trigger, whatever the client sent.
+          const i = sb.rows.findIndex((r) => r.id === row.id);
+          const merged = { ...(i >= 0 ? sb.rows[i] : {}), ...JSON.parse(JSON.stringify(row)) };
+          if (i >= 0) merged.updated_at = new Date(sb.serverNow()).toISOString();
+          if (i >= 0) sb.rows[i] = merged;
+          else sb.rows.push(merged);
+          stored = merged;
+        }
+        return { data: stored ? { updated_at: stored.updated_at } : null, error: null };
+      };
+      // Awaitable on its own (the app's old call shape) and chainable with .select().maybeSingle().
+      const q: any = {
+        select: () => ({ maybeSingle: async () => run() }),
+        then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) => Promise.resolve(run()).then(res, rej),
+      };
+      return q;
     },
     select: (columns: string) => {
       const q: (typeof sb.selects)[number] = { table, columns, filters: [] };

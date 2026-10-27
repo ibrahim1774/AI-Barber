@@ -29,11 +29,11 @@ export const IOS_SOURCE = 'ios';
  * bound to the Apple transaction; the account row is a copy, read back by
  * pullSiteFromAccount when it was edited on the web or on another phone.
  */
-export async function syncSiteToSupabase(site: SiteRecord, userId: string): Promise<void> {
+export async function syncSiteToSupabase(site: SiteRecord, userId: string): Promise<number | null> {
   // Never write another account's site under this account's id.
   if (site.ownerUserId && site.ownerUserId !== userId) throw new Error('site belongs to another account');
   const data = publishPayload(site.data); // no editor markers, no inline data: images
-  const { error } = await supabase.from('sites').upsert(
+  const { data: written, error } = await supabase.from('sites').upsert(
     {
       id: site.draftId,
       user_id: userId,
@@ -44,7 +44,9 @@ export async function syncSiteToSupabase(site: SiteRecord, userId: string): Prom
       brand_colour: '#f4a100',
       // `source` marks an app-made row, so a fresh install can find it again
       // (pullSiteFromAccount). It is stripped again when a row is adopted.
-      site_data: { ...data, source: IOS_SOURCE },
+      // `editedAt` is the phone's own revision (the local edit time) that this copy holds. The server never
+      // touches it, unlike `updated_at`, which a DB trigger overwrites with server time on every update.
+      site_data: { ...data, source: IOS_SOURCE, editedAt: editedAtOf(site) },
       deployed_url: site.deployedUrl,
       deployment_status: site.deployedUrl ? 'deployed' : 'draft',
       // custom_domain / domain_order_id are left out on purpose: the web
@@ -55,9 +57,14 @@ export async function syncSiteToSupabase(site: SiteRecord, userId: string): Prom
       updated_at: new Date(Number.isFinite(site.updatedAt) ? site.updatedAt : Date.now()).toISOString(),
     },
     { onConflict: 'id' },
-  );
+  ).select('updated_at').maybeSingle();
   if (error) throw error;
+  // The server's stamp for this write: the pull adopts a row only when it is stamped later than this.
+  const at = Date.parse((written as { updated_at?: string } | null)?.updated_at ?? '');
+  return Number.isNaN(at) ? null : at;
 }
+
+const editedAtOf = (site: SiteRecord) => (Number.isFinite(site.updatedAt) ? site.updatedAt : Date.now());
 
 /**
  * Pushes the local site (or `site`) to the signed-in account, if there is
@@ -74,8 +81,8 @@ export async function syncIfSignedIn(site?: SiteRecord | null): Promise<void> {
     if (await hasLockedClaim()) return;
     const record = site ?? (await siteStore.loadSite());
     if (!record) return;
-    await syncSiteToSupabase(record, userId);
-    await stampOwner(record.draftId, userId, record.updatedAt);
+    const rowAt = await syncSiteToSupabase(record, userId);
+    await stampOwner(record.draftId, userId, record.updatedAt, rowAt);
   } catch (e) {
     console.warn('[account] site sync failed:', e);
   }
@@ -87,12 +94,18 @@ export async function hasLockedClaim(): Promise<boolean> {
 }
 
 /** Marks the local record (if it is still `draftId`) as belonging to `userId`. Best effort. */
-async function stampOwner(draftId: string, userId: string, syncedUpdatedAt: number): Promise<void> {
+async function stampOwner(draftId: string, userId: string, syncedUpdatedAt: number, rowAt: number | null): Promise<void> {
   try {
     const cur = await siteStore.loadSite();
     // accountSyncedAt is the updatedAt that was pushed, not the current one: an edit made during the push stays unsaved.
-    if (cur && cur.draftId === draftId && (cur.ownerUserId !== userId || cur.accountSyncedAt !== syncedUpdatedAt)) {
-      await siteStore.saveSite({ ...cur, ownerUserId: userId, accountSyncedAt: syncedUpdatedAt });
+    if (
+      cur && cur.draftId === draftId &&
+      (cur.ownerUserId !== userId || cur.accountSyncedAt !== syncedUpdatedAt || (rowAt != null && cur.accountRowAt !== rowAt))
+    ) {
+      // accountRowAt: the row's own stamp for this push, so only a write made after it counts as news.
+      await siteStore.saveSite({
+        ...cur, ownerUserId: userId, accountSyncedAt: syncedUpdatedAt, ...(rowAt != null ? { accountRowAt: rowAt } : {}),
+      });
     }
   } catch (e) {
     console.warn('[account] could not mark the site owner:', e);
@@ -106,14 +119,39 @@ export type PullResult = 'adopted' | 'unchanged' | null;
 
 export { onSiteAdopted };
 
-function isSiteData(v: unknown): v is WebsiteData & { source?: unknown } {
+function isSiteData(v: unknown): v is WebsiteData & { source?: unknown; editedAt?: unknown } {
   return !!v && typeof v === 'object' && !Array.isArray(v);
 }
 
 /** The row's site data without the app's own `source` marker (never sent to /api/ios/publish). */
-function siteDataFrom(raw: WebsiteData & { source?: unknown }): WebsiteData {
-  const { source: _source, ...rest } = raw;
+function siteDataFrom(raw: WebsiteData & { source?: unknown; editedAt?: unknown }): WebsiteData {
+  const { source: _source, editedAt: _editedAt, ...rest } = raw;
   return rest as WebsiteData;
+}
+
+/** The phone's revision the row holds (`site_data.editedAt`), or null for a row written before it existed or by the web. */
+function rowEditedAt(raw: { editedAt?: unknown }): number | null {
+  return typeof raw.editedAt === 'number' && Number.isFinite(raw.editedAt) ? raw.editedAt : null;
+}
+
+/** An adopted copy's edit time: the row's stamp, but never in this phone's future (a later edit must still look newer). */
+function adoptedAt(rowAt: number): number {
+  return Number.isNaN(rowAt) ? Date.now() : Math.min(rowAt, Date.now());
+}
+
+/**
+ * Whether the account's row is news for this phone. Decided from fields the app controls, never from comparing
+ * the row's `updated_at` (server time, rewritten by a DB trigger on every update) with the phone's clock:
+ * - Edits the account does not have yet (accountSyncedAt behind updatedAt, or unknown): never replaced.
+ * - A row whose revision (editedAt) is older than this phone's copy: never adopted.
+ * - Known push stamp (accountRowAt): adopt only a row stamped later, i.e. written by someone else since.
+ * - Legacy record without that stamp: the old comparison, only as far as the checks above allow.
+ */
+function rowIsNews(local: SiteRecord, rowAt: number, editedAt: number | null): boolean {
+  if (Number.isNaN(rowAt)) return false;
+  if (!(local.accountSyncedAt !== undefined && local.accountSyncedAt >= local.updatedAt)) return false;
+  if (editedAt != null && editedAt < local.updatedAt) return false;
+  return local.accountRowAt != null ? rowAt > local.accountRowAt : rowAt > local.updatedAt;
 }
 
 /**
@@ -150,7 +188,7 @@ export async function pullSiteFromAccount(userId: string): Promise<PullResult> {
     const rowAt = Date.parse(r.updated_at ?? '');
     const data = siteDataFrom(r.site_data);
 
-    if (local && (Number.isNaN(rowAt) || !(rowAt > local.updatedAt))) return 'unchanged';
+    if (local && !rowIsNews(local, rowAt, rowEditedAt(r.site_data))) return 'unchanged';
 
     // Compare and swap: an edit (or another load) since the read wins.
     const cur = await siteStore.loadSite();
@@ -168,16 +206,18 @@ export async function pullSiteFromAccount(userId: string): Promise<PullResult> {
           data,
           inputs: { ...cur.inputs, ...inputsFrom(data) },
           deployedUrl: r.deployed_url ?? cur.deployedUrl,
-          updatedAt: rowAt,
-          accountSyncedAt: rowAt,
+          updatedAt: adoptedAt(rowAt),
+          accountSyncedAt: adoptedAt(rowAt),
+          ...(Number.isNaN(rowAt) ? {} : { accountRowAt: rowAt }),
           ownerUserId: userId,
         }
       : {
           draftId: r.id,
           inputs: inputsFrom(data),
           data,
-          updatedAt: Number.isNaN(rowAt) ? Date.now() : rowAt,
-          accountSyncedAt: Number.isNaN(rowAt) ? Date.now() : rowAt,
+          updatedAt: adoptedAt(rowAt),
+          accountSyncedAt: adoptedAt(rowAt),
+          ...(Number.isNaN(rowAt) ? {} : { accountRowAt: rowAt }),
           slug: null,
           deployedUrl: r.deployed_url ?? null,
           transactionId: null,
@@ -242,15 +282,16 @@ export async function switchAccountSite(userId: string, isCurrent: () => boolean
     await siteStore.clearSite();
     return 'cleared';
   }
-  const data = siteDataFrom(found.site_data as WebsiteData & { source?: unknown });
+  const data = siteDataFrom(found.site_data as WebsiteData & { source?: unknown; editedAt?: unknown });
   const rowAt = Date.parse(found.updated_at ?? '');
   const now = Date.now();
   const next: SiteRecord = {
     draftId: found.id,
     inputs: inputsFrom(data),
     data,
-    updatedAt: Number.isNaN(rowAt) ? now : rowAt,
-    accountSyncedAt: Number.isNaN(rowAt) ? now : rowAt,
+    updatedAt: adoptedAt(rowAt),
+    accountSyncedAt: adoptedAt(rowAt),
+    ...(Number.isNaN(rowAt) ? {} : { accountRowAt: rowAt }),
     slug: null,
     deployedUrl: found.deployed_url ?? null,
     transactionId: null,
@@ -281,8 +322,8 @@ export async function pushSiteBeforeSignOut(): Promise<boolean> {
     // A newer web edit is taken in before the push, never overwritten by this phone's older copy.
     await pullSiteFromAccount(userId);
     const fresh = (await siteStore.loadSite()) ?? local;
-    await syncSiteToSupabase(fresh, userId);
-    await stampOwner(fresh.draftId, userId, fresh.updatedAt);
+    const rowAt = await syncSiteToSupabase(fresh, userId);
+    await stampOwner(fresh.draftId, userId, fresh.updatedAt, rowAt);
     if (await siteStore.loadPendingPublish()) return false; // the pending publish stays on the phone
     return true;
   } catch (e) {

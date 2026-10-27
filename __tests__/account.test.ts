@@ -530,7 +530,8 @@ describe('public.sites sync', () => {
 
 describe('pullSiteFromAccount', () => {
   const T0 = Date.parse('2026-10-20T12:00:00.000Z');
-  const local = { ...site, updatedAt: T0 } as SiteRecord;
+  // Synced at T0: the account has everything this phone has (edits not in the account are never replaced).
+  const local = { ...site, updatedAt: T0, accountSyncedAt: T0 } as SiteRecord;
   const webData = { ...BOUND.siteData, shopName: 'Fade Factory Web', area: 'Queens, NY', source: 'ios' };
   const row = (over: Record<string, unknown> = {}) => ({
     id: DRAFT,
@@ -630,6 +631,7 @@ describe('pullSiteFromAccount', () => {
       data: { ...BOUND.siteData, shopName: 'Fade Factory Web', area: 'Queens, NY' },
       updatedAt: Date.parse('2026-10-19T00:00:00.000Z'),
       accountSyncedAt: Date.parse('2026-10-19T00:00:00.000Z'),
+      accountRowAt: Date.parse('2026-10-19T00:00:00.000Z'),
       slug: null,
       deployedUrl: 'https://fade-factory.aibarber.org',
       transactionId: null,
@@ -799,7 +801,7 @@ describe('auth', () => {
   });
 
   test('signIn adopts a newer web edit before pushing, so the push carries it', async () => {
-    await store.saveSite({ ...site, updatedAt: 1000 } as SiteRecord);
+    await store.saveSite({ ...site, updatedAt: 1000, accountSyncedAt: 1000 } as SiteRecord);
     sb.rows = [
       {
         id: DRAFT,

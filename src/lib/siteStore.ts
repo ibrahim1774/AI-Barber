@@ -21,6 +21,11 @@ export interface SiteRecord {
    * from it). Absent or older than `updatedAt`: the phone holds edits the account does not have yet.
    */
   accountSyncedAt?: number;
+  /**
+   * The server's own `updated_at` stamp on the row as of that push or adoption (server time, never compared with
+   * the phone's clock). A later stamp means someone else wrote the row since. Absent on older records.
+   */
+  accountRowAt?: number;
   /** The server's site version at the last publish / sync. Absent: an older server or record (no version info). */
   serverVersion?: number;
   editedBy?: 'owner' | 'admin';
