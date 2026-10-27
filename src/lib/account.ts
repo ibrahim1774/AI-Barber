@@ -50,9 +50,8 @@ export async function syncSiteToSupabase(site: SiteRecord, userId: string): Prom
       // custom_domain / domain_order_id are left out on purpose: the web
       // dashboard attaches a bought domain to this row, and a sync must not
       // wipe it (an insert leaves them null).
-      // The time of the last local edit, not of this push: then the row only
-      // looks newer than this phone's copy after an edit made elsewhere.
-      updated_at: new Date(Number.isFinite(site.updatedAt) ? site.updatedAt : Date.now()).toISOString(),
+      // updated_at is never sent: an INSERT gets the column default now() and an UPDATE the trigger's, both server
+      // time. A phone-clock value here would make the row look newer than a later web edit (fast phone clock).
     },
     { onConflict: 'id' },
   ).select('updated_at').maybeSingle();
@@ -140,12 +139,12 @@ function adoptedAt(rowAt: number): number {
  *   Known, bounded limit: if the web edited the row meanwhile, the phone's unsynced copy wins and is pushed over it.
  * - Known push stamp (accountRowAt, the server's stamp read back from this phone's own last upsert): adopt only a
  *   row stamped later, i.e. written by someone else since.
- * - Legacy record without that stamp: the old comparison, only as far as the check above allows.
+ * - Legacy record without that stamp: no reliable comparison exists (phone clock vs server stamp), so local is kept.
  */
 function rowIsNews(local: SiteRecord, rowAt: number): boolean {
   if (Number.isNaN(rowAt)) return false;
   if (!(local.accountSyncedAt !== undefined && local.accountSyncedAt >= local.updatedAt)) return false;
-  return local.accountRowAt != null ? rowAt > local.accountRowAt : rowAt > local.updatedAt;
+  return local.accountRowAt != null && rowAt > local.accountRowAt;
 }
 
 /**

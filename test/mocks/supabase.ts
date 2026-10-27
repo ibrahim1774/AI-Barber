@@ -115,11 +115,11 @@ export const supabase = {
         sb.upserts.push({ table, row, opts });
         let stored: Record<string, any> | null = null;
         if (sb.liveTable) {
-          // Like prod: an INSERT keeps the client's updated_at, every UPDATE is stamped with the server's clock
-          // by the set_updated_at_sites trigger, whatever the client sent.
+          // Like prod: an INSERT keeps a client-supplied updated_at, or gets the column default now() (server clock)
+          // when none is sent; every UPDATE is stamped with the server's clock by the set_updated_at_sites trigger.
           const i = sb.rows.findIndex((r) => r.id === row.id);
           const merged = { ...(i >= 0 ? sb.rows[i] : {}), ...JSON.parse(JSON.stringify(row)) };
-          if (i >= 0) merged.updated_at = new Date(sb.serverNow()).toISOString();
+          if (i >= 0 || merged.updated_at == null) merged.updated_at = new Date(sb.serverNow()).toISOString();
           if (i >= 0) sb.rows[i] = merged;
           else sb.rows.push(merged);
           stored = merged;

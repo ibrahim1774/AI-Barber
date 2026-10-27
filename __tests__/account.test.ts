@@ -449,7 +449,8 @@ describe('public.sites sync', () => {
       [
         // Not custom_domain / domain_order_id: the web dashboard attaches domains to these rows.
         'id', 'user_id', 'company_name', 'industry', 'service_area', 'phone', 'brand_colour', 'site_data',
-        'deployed_url', 'deployment_status', 'updated_at',
+        'deployed_url', 'deployment_status',
+        // No updated_at: the server stamps it (INSERT default now(), UPDATE trigger), never the phone's clock.
       ].sort(),
     );
     expect(row).toMatchObject({
@@ -463,8 +464,7 @@ describe('public.sites sync', () => {
       deployed_url: 'https://fade-factory.aibarber.org',
       deployment_status: 'deployed',
     });
-    // The last local edit's time, not the push's: the app's own copy never looks newer on the next pull.
-    expect(row.updated_at).toBe(new Date(site.updatedAt).toISOString());
+    expect(row).not.toHaveProperty('updated_at');
     // Clean data only: no editor markers, no inline data: images; marked as app-made.
     const sd = row.site_data as typeof data;
     expect(sd.hero.heading).toBe('Sharp');
@@ -531,7 +531,7 @@ describe('public.sites sync', () => {
 describe('pullSiteFromAccount', () => {
   const T0 = Date.parse('2026-10-20T12:00:00.000Z');
   // Synced at T0: the account has everything this phone has (edits not in the account are never replaced).
-  const local = { ...site, updatedAt: T0, accountSyncedAt: T0 } as SiteRecord;
+  const local = { ...site, updatedAt: T0, accountSyncedAt: T0, accountRowAt: T0 } as SiteRecord;
   const webData = { ...BOUND.siteData, shopName: 'Fade Factory Web', area: 'Queens, NY', source: 'ios' };
   const row = (over: Record<string, unknown> = {}) => ({
     id: DRAFT,
@@ -801,7 +801,7 @@ describe('auth', () => {
   });
 
   test('signIn adopts a newer web edit before pushing, so the push carries it', async () => {
-    await store.saveSite({ ...site, updatedAt: 1000, accountSyncedAt: 1000 } as SiteRecord);
+    await store.saveSite({ ...site, updatedAt: 1000, accountSyncedAt: 1000, accountRowAt: 1000 } as SiteRecord);
     sb.rows = [
       {
         id: DRAFT,
@@ -819,7 +819,8 @@ describe('auth', () => {
     await signIn('barber@example.com', 'secret1');
     expect((await store.loadSite())!.data.shopName).toBe('Edited On Web');
     expect(sb.upserts).toHaveLength(1);
-    expect(sb.upserts[0].row).toMatchObject({ company_name: 'Edited On Web', updated_at: new Date(5000).toISOString() });
+    expect(sb.upserts[0].row).toMatchObject({ company_name: 'Edited On Web' });
+    expect(sb.upserts[0].row).not.toHaveProperty('updated_at');
   });
 
   test('a stalled pull after sign-in is given up after the lookup timeout', async () => {
