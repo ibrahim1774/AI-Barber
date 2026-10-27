@@ -141,6 +141,8 @@ export default function Editor() {
   const overlayRef = useRef<Overlay | null>(null);
   overlayRef.current = overlay;
   const [sheet, setSheet] = useState<SheetKind | null>(null);
+  // The Services sheet was opened by the preview's "+ Add a service" button: it starts at the add view and closes to the preview.
+  const [servicesAdd, setServicesAdd] = useState(false);
   // The page of a multi-page site the preview shows. Never saved; Home when that page goes away.
   const [wantedPage, setWantedPage] = useState<PreviewPage | null>(null);
   // Kept after the edit sheet closes so its label/value don't blank mid-slide.
@@ -487,6 +489,12 @@ export default function Editor() {
     track('section_opened', { section: key });
     closeThen(() => setSheet(key));
   }, [closeThen]);
+  const onPreviewAddService = useCallback(() => {
+    if (sheet != null) return;
+    track('add_service_tapped');
+    setServicesAdd(true);
+    setSheet('services');
+  }, [sheet]);
   const openSections = useCallback(() => {
     track('sections_opened');
     setSheet('sections');
@@ -615,7 +623,7 @@ export default function Editor() {
         <EditorBackBar visible={overlay == null && sheet == null && !uploading && canGoBackToStart(site, pendingPaid, !!session)} />
         {/* The site's own background, so nothing else shows around the page. */}
         <View style={[styles.preview, { backgroundColor: previewBackground(data) }]}>
-          <SitePreview data={shown} editable page={page} shopProducts={shopProducts} onEditText={onPreviewText} onEditImage={onPreviewImage} onNavigate={onPreviewNav} pillTourRef={changeImageRef} samplePaths={sampleHeroPaths(shown, page)} chipsHidden={sheet != null} />
+          <SitePreview data={shown} editable page={page} shopProducts={shopProducts} onEditText={onPreviewText} onEditImage={onPreviewImage} onNavigate={onPreviewNav} onAddService={onPreviewAddService} pillTourRef={changeImageRef} samplePaths={sampleHeroPaths(shown, page)} chipsHidden={sheet != null} />
           {/* The two floating controls, Design above Colour, hidden while the prompts / guide are up.
               Design is offered on a published site too: it only edits the draft (like Colour), and the
               change goes live on the next Publish. */}
@@ -705,7 +713,7 @@ export default function Editor() {
             visible={sheet === 'services'}
             shop={shop}
             onServices={(list) => commit((d) => withMirroredServices(d, list))}
-            onClose={() => closeThen(() => setSheet('sections'))}
+            onClose={() => (servicesAdd ? closeThen(() => setServicesAdd(false)) : closeThen(() => setSheet('sections')))}
             onDismiss={onSheetDismiss}
             upload={uploadForSection}
           />
@@ -714,9 +722,10 @@ export default function Editor() {
             visible={sheet === 'services'}
             data={data}
             onChange={commit}
-            onClose={() => closeThen(() => setSheet('sections'))}
+            onClose={() => (servicesAdd ? closeThen(() => setServicesAdd(false)) : closeThen(() => setSheet('sections')))}
             onDismiss={onSheetDismiss}
             upload={uploadForSection}
+            startAdd={servicesAdd}
           />
         )}
         <HoursSheet

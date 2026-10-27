@@ -18,6 +18,8 @@ export interface SitePreviewProps {
   onEditImage(path: string): void;
   /** A tap on a site menu entry: the href is one of this site's own pages (validated by parsePreviewMessage). */
   onNavigate?(href: string): void;
+  /** The page's editor-only "+ Add a service" button was tapped. */
+  onAddService?(): void;
   /** Registered with the tutorial on the tour's "Change image" chip (an invisible view over it; the chip itself is page DOM). */
   pillTourRef?: RefObject<View | null>;
   /** Paths of photos on this page that are still samples (they get a "replace with yours" prompt). */
@@ -37,7 +39,7 @@ function sameRects(a: ImageRect[], b: ImageRect[]): boolean {
   return a.length === b.length && a.every((r, i) => r.path === b[i].path && r.x === b[i].x && r.y === b[i].y && r.w === b[i].w && r.h === b[i].h);
 }
 
-export default function SitePreview({ data, editable, shopProducts, page, onEditText, onEditImage, onNavigate, pillTourRef, samplePaths, chipsHidden }: SitePreviewProps) {
+export default function SitePreview({ data, editable, shopProducts, page, onEditText, onEditImage, onNavigate, onAddService, pillTourRef, samplePaths, chipsHidden }: SitePreviewProps) {
   const webRef = useRef<WebView>(null);
   const scrollY = useRef(0);
   // Where the page's "Change image" chips are on screen: only the Edit tour reads this.
@@ -100,6 +102,9 @@ export default function SitePreview({ data, editable, shopProducts, page, onEdit
         case 'nav':
           if (editable) onNavigate?.(m.href);
           return;
+        case 'addService':
+          if (editable) onAddService?.();
+          return;
         case 'scrollY':
           scrollY.current = m.y;
           return;
@@ -114,7 +119,7 @@ export default function SitePreview({ data, editable, shopProducts, page, onEdit
           return;
       }
     },
-    [editable, editPaths, data, page, onEditText, onEditImage, onNavigate, sendSamples, sendHidden],
+    [editable, editPaths, data, page, onEditText, onEditImage, onNavigate, onAddService, sendSamples, sendHidden],
   );
 
   const onShouldStartLoadWithRequest = useCallback((req: ShouldStartLoadRequest) => shouldAllowPreviewRequest(req), []);

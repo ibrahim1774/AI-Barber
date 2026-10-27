@@ -131,6 +131,8 @@ export const EDITOR_JS = String.raw`(function () {
     e.stopPropagation();
     var el = e.target && e.target.nodeType === 1 ? e.target : e.target && e.target.parentElement;
     if (longDone) { longDone = false; return; }
+    // Editor-only "+ Add a service" (injected by withAddService): opens the Services sheet at its add view.
+    if (closestAttr(el, 'data-ab-add-service')) { post({ type: 'addService' }); return; }
     // The burger: toggle the CSS checkbox the menu is built on.
     if (upTo(el, function (n) { return n.tagName === 'LABEL' && hasClass(n, 'ab-burger'); })) {
       var tg = document.getElementById('ab-nav-toggle');

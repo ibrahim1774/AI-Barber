@@ -31,3 +31,9 @@ test('a single editable text in a link still opens on the padding', () => {
   document.getElementById('b')!.click();
   expect(edits(posted)).toEqual([{ type: 'edit', path: 'labels.pgBookCta' }]);
 });
+
+test('the editor-only Add a service button posts addService and nothing else', () => {
+  const posted = run('<section id="services"><div data-ab-editor-only><button id="a" type="button" data-ab-add-service>+ Add a service</button></div></section>');
+  document.getElementById('a')!.click();
+  expect(posted.filter((m) => (m as { type: string }).type !== 'ready')).toEqual([{ type: 'addService' }]);
+});

@@ -31,6 +31,8 @@ const decode = (s: string) => s.replace(/&#39;|&apos;/g, "'").replace(/&quot;/g,
 
 /** Visible text left over once every tap target is removed. */
 export function uneditableText(html: string): string[] {
+  // The editor-only "+ Add a service" control (a tap target of its own, not the barber's wording).
+  html = html.replace(/<(div|section) data-ab-editor-only[^>]*>(?:<p[^>]*>[^<]*<\/p>)?<button[^>]*data-ab-add-service[^>]*>[^<]*<\/button><\/\1>/g, '');
   let h = html.replace(/<!--[\s\S]*?-->/g, '').replace(/<(script|style|svg|head|noscript)\b[\s\S]*?<\/\1>/gi, '');
   h = h.replace(/<span data-edit="[^"]*">[^<]*<\/span>/g, ' ');
   return decode(h.replace(/<[^>]*>/g, '\n')).split('\n').map((t) => t.replace(/\s+/g, ' ').trim()).filter(Boolean);
