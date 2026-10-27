@@ -74,6 +74,12 @@ function world(rows: any[], opts: { failCancelFor?: string[]; refundThrows?: boo
         .filter((r) => r.shop_id === shopId && r.status === 'cancelled' && r.cancelled_by === 'shop' && (r.cancelled_at ?? '') >= sinceIso && r.amount_paid_cents > 0)
         .sort((a, b) => (a.cancelled_at < b.cancelled_at ? -1 : a.cancelled_at > b.cancelled_at ? 1 : a.id < b.id ? -1 : 1))
         .slice(offset, offset + limit).map((r) => r.id),
+    // Every cancelled CARD booking of the shop still owing a refund (or marked stuck), whoever cancelled and whenever.
+    owingCardIds: async (shopId: string, limit: number, offset = 0) =>
+      [...db.values()]
+        .filter((r) => r.shop_id === shopId && r.status === 'cancelled' && r.payment_method === 'card' && (r.refund_due_cents > r.amount_refunded_cents || r.refund_stuck_at != null))
+        .sort((a, b) => (a.id < b.id ? -1 : 1))
+        .slice(offset, offset + limit).map((r) => r.id),
   };
   return { db, notified, refunds, stripeCalls, flow, queries, shop };
 }
@@ -250,6 +256,52 @@ describe('carried refunds from earlier attempts (finding 5)', () => {
     const got = await w.queries.recentCancelledIds('shop1', iso(START), 2, 0);
     const next = await w.queries.recentCancelledIds('shop1', iso(START), 2, 2);
     expect([...got, ...next]).toEqual(['a', 'b', 'c']);
+  });
+});
+
+describe('cancelled card bookings still owing money, whoever cancelled and whenever (round 2, finding 1)', () => {
+  const owingCard = (id: string, over: Record<string, any> = {}) =>
+    appt(id, { status: 'cancelled', cancelled_by: 'customer', cancelled_at: iso(NOW - 5 * 24 * H), payment_method: 'card', payment_status: 'paid',
+      amount_paid_cents: 3000, stripe_payment_intent_id: `pi_${id}`, refund_due_cents: 3000, amount_refunded_cents: 0, ...over });
+  const run = (w: ReturnType<typeof world>, e: ReturnType<typeof closureEnv>) => {
+    e.seen.set('closure:shop1', NOW - H); // the closure window starts long after these were cancelled
+    return closeShopForDeletion('u1', ports([bookingLane(w.flow, 'shop1', w.queries, e.env)], 'shop1', { env: e.env }));
+  };
+
+  it('a customer-cancelled card booking cancelled before the closure is retried and held, then let go with a record', async () => {
+    const w = world([owingCard('cust')], { refundThrows: true });
+    const e = closureEnv(NOW);
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await run(w, e)).toMatchObject({ ok: false, reason: 'refund-pending' });
+    expect(e.owed.size).toBe(0);
+    e.clock.now += SIX_H + 1000;
+    const r = await run(w, e);
+    err.mockRestore();
+    expect(r).toMatchObject({ ok: true, needsRefund: ['booking:cust'] });
+    expect([...e.owed.values()].map(owedFields)).toEqual([{ stripe_account_id: 'acct', payment_intent_id: 'pi_cust', owed_cents: 3000, row_id: 'cust' }]);
+  });
+
+  it('a shop-cancelled-before-closure card booking the sweep marked stuck is recorded at once', async () => {
+    const w = world([owingCard('stuck', { cancelled_by: 'shop', refund_stuck_at: iso(NOW - H) })], { refundThrows: true });
+    const e = closureEnv(NOW);
+    const r = await run(w, e);
+    expect(r).toMatchObject({ ok: true, needsRefund: ['booking:stuck'] });
+    expect([...e.owed.values()].map((x) => x.row_id)).toEqual(['stuck']);
+  });
+
+  it('a retry that succeeds refunds it and flags nothing', async () => {
+    const w = world([owingCard('cust')]);
+    const e = closureEnv(NOW);
+    const r = await run(w, e);
+    expect(r).toMatchObject({ ok: true, needsRefund: [] });
+    expect(w.db.get('cust').amount_refunded_cents).toBe(3000);
+  });
+
+  it('old manual-rail cancellations are not mis-flagged', async () => {
+    const w = world([appt('venmo', { status: 'cancelled', cancelled_by: 'shop', cancelled_at: iso(NOW - 5 * 24 * H), payment_method: 'venmo', payment_status: 'paid', amount_paid_cents: 2500 })]);
+    const e = closureEnv(NOW);
+    expect(await run(w, e)).toMatchObject({ ok: true, needsRefund: [] });
+    expect(e.owed.size).toBe(0);
   });
 });
 

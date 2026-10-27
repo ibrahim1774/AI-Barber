@@ -21,6 +21,7 @@ export function closureEnv(start: number) {
       owed.set(k, rec);
       return 'new';
     },
+    resolveOwed: async (rec: any) => { owed.delete(`${rec.row_kind}:${rec.row_id}`); },
   };
   return { clock, seen, owed, flags, env };
 }

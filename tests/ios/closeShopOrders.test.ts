@@ -129,6 +129,23 @@ describe('orders on account deletion', () => {
       expect(w.notified).toHaveLength(1);
     });
 
+    it('if the cancel loses its compare-and-set after the record was saved, the record is removed again (round 2, finding 3)', async () => {
+      const { w, e, o, done } = await setup();
+      w.order(o.id).refund_stuck_at = new Date(e.clock.now).toISOString();
+      const real = w.deps.repo.updateOrder.bind(w.deps.repo);
+      let lost = false;
+      w.deps.repo.updateOrder = (async (id: string, patch: any, g: any) => {
+        if (!lost && patch.status === 'cancelled') { lost = true; return { ok: false, reason: 'stale' }; } // the webhook / sweep got there first
+        return real(id, patch, g);
+      }) as any;
+      const r = await run(w, OWNER_USER, e);
+      done();
+      expect(lost).toBe(true);
+      expect(r).toMatchObject({ ok: false, reason: 'refund-pending' });
+      expect(w.notified).toEqual([]);
+      expect(e.owed.size).toBe(0);
+    });
+
     it('if the record cannot be saved nothing is cancelled and the call is retryable', async () => {
       const { w, e, o, done } = await setup();
       await run(w, OWNER_USER, e);

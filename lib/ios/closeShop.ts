@@ -41,6 +41,8 @@ export const GIVE_UP_MS = 6 * 3600_000;
 /** Page size and hard ceiling when re-reading earlier cancellations. */
 const CARRIED_PAGE = 100;
 const CARRIED_MAX = 2000;
+/** A closure_seen marker older than this belongs to an abandoned deletion: it is rewritten as new. */
+const MARKER_TTL_MS = 48 * 3600_000;
 
 /** One refund (or unfinished row) that is still owed after the shop is gone. No names, no emails. */
 export interface OwedRecord {
@@ -60,10 +62,12 @@ export interface LaneEnv {
   firstSeen(key: string): Promise<number>;
   /** Persist a refund owed so it outlives the shop. 'existing' = already saved. Throws when it cannot be saved. */
   recordOwed(rec: OwedRecord): Promise<'new' | 'existing'>;
+  /** Take back a record written for a row that turned out not to be owed after all (the cancel lost its compare-and-set). */
+  resolveOwed(rec: OwedRecord): Promise<void>;
 }
 
 /** No persistence: nothing ever times out. Used only where a lane is built without an env. */
-const NO_ENV: LaneEnv = { now: Date.now, firstSeen: async () => Date.now(), recordOwed: async () => 'new' };
+const NO_ENV: LaneEnv = { now: Date.now, firstSeen: async () => Date.now(), recordOwed: async () => 'new', resolveOwed: async () => {} };
 
 /** Hold the deletion until the sweep marked the row stuck or GIVE_UP_MS have passed since first seen. */
 async function giveUp(env: LaneEnv, key: string, stuck: boolean): Promise<boolean> {
@@ -207,6 +211,8 @@ export interface BookingQueries {
   upcomingIds(shopId: string, nowIso: string, limit: number): Promise<string[]>;
   /** Shop-cancelled, something paid, cancelled at/after sinceIso; ordered by (cancelled_at, id); paged. */
   recentCancelledIds(shopId: string, sinceIso: string, limit: number, offset?: number): Promise<string[]>;
+  /** Up to `max` cancelled CARD bookings of the shop still owing a refund (refund_due > refunded) or marked stuck: any date, any canceller. */
+  owingCardIds(shopId: string, max: number): Promise<string[]>;
 }
 
 const owedCents = (a: AppointmentRow) => Math.max(0, (a.amount_paid_cents ?? 0) - (a.amount_refunded_cents ?? 0));
@@ -247,13 +253,18 @@ export function bookingLane(flow: FlowDeps, shopId: string, q: BookingQueries, e
       return { cancelled: true, needsRefund: cents > 0 };
     },
     async carried(sinceIso) {
-      const all: string[] = [];
-      for (let offset = 0; offset < CARRIED_MAX; offset += CARRIED_PAGE) {
+      const all = new Set<string>();
+      for (let offset = 0; ; offset += CARRIED_PAGE) {
+        if (offset >= CARRIED_MAX) throw new Error('too many earlier cancellations to re-check in one call');
         const page = await q.recentCancelledIds(shopId, sinceIso, CARRIED_PAGE, offset);
-        all.push(...page);
-        if (page.length < CARRIED_PAGE) return all;
+        page.forEach((id) => all.add(id));
+        if (page.length < CARRIED_PAGE) break;
       }
-      throw new Error('too many earlier cancellations to re-check in one call');
+      // Owed card refunds regardless of date or who cancelled (card only, so manual-rail cancels are not mis-flagged).
+      const owing = await q.owingCardIds(shopId, CARRIED_MAX + 1);
+      if (owing.length > CARRIED_MAX) throw new Error('too many owed refunds to re-check in one call');
+      owing.forEach((id) => all.add(id));
+      return [...all];
     },
     async processCarried(id) {
       const appt = await flow.repo.appointmentById(id);
@@ -290,6 +301,22 @@ export function liveBookingQueries(): BookingQueries {
       ids(db.from('ab_appointments').select('id').eq('shop_id', shopId).eq('status', 'cancelled').eq('cancelled_by', 'shop')
         .gte('cancelled_at', sinceIso).gt('amount_paid_cents', 0)
         .order('cancelled_at').order('id').range(offset, offset + limit - 1)),
+    // PostgREST cannot compare two columns, so narrow in the database and compare refund_due vs refunded here.
+    owingCardIds: async (shopId, max) => {
+      const out: string[] = [];
+      for (let offset = 0; out.length < max; offset += CARRIED_PAGE) {
+        const { data, error } = await db.from('ab_appointments')
+          .select('id, refund_due_cents, amount_refunded_cents, refund_stuck_at')
+          .eq('shop_id', shopId).eq('status', 'cancelled').eq('payment_method', 'card')
+          .or('refund_due_cents.gt.0,refund_stuck_at.not.is.null')
+          .order('id').range(offset, offset + CARRIED_PAGE - 1);
+        if (error) throw new Error(`closure query failed: ${error.message ?? 'unknown'}`);
+        const rows = (data as Array<{ id: string; refund_due_cents: number; amount_refunded_cents: number; refund_stuck_at: string | null }>) ?? [];
+        for (const r of rows) if (r.refund_due_cents > r.amount_refunded_cents || r.refund_stuck_at != null) out.push(r.id);
+        if (rows.length < CARRIED_PAGE) break;
+      }
+      return out.slice(0, max);
+    },
   };
 }
 
@@ -321,17 +348,21 @@ export function orderLane(deps: StoreOwnerDeps, userId: string, shopId: string, 
    * nothing is cancelled), then cancel it and tell the customer the refund is owed and to contact the shop.
    */
   async function abandon(o: OrderRow, shop: { stripe_account_id: string | null }, cents: number, reason: string): Promise<LaneOutcome> {
-    await env.recordOwed({
+    const rec: OwedRecord = {
       row_kind: 'order', row_id: o.id, shop_id: shopId, stripe_account_id: shop.stripe_account_id ?? null,
       payment_intent_id: o.stripe_payment_intent_id ?? null, owed_cents: cents, reason,
-    });
+    };
+    await env.recordOwed(rec);
     const hold = isUnpaidCardHold(o);
     const upd = await deps.repo.updateOrder(
       o.id,
       hold ? expiredHoldPatch(deps.now()) : { status: 'cancelled', cancelled_by: 'shop', cancelled_at: new Date(deps.now()).toISOString() },
       hold ? LIVE_HOLD : { status: o.status },
     );
-    if (!upd.ok) return { cancelled: false, retryLater: true }; // changed under us (e.g. the webhook recorded it): look again next call
+    if (!upd.ok) {
+      await env.resolveOwed(rec); // not owed after all (or not yet): do not leave a stale 'owed' record the dedupe key would keep forever
+      return { cancelled: false, retryLater: true }; // changed under us (e.g. the webhook recorded it): look again next call
+    }
     await safeNotifyOrder(closing, { kind: 'order_cancelled', orderId: o.id, refundedCents: 0, owedCents: cents });
     return { cancelled: true, needsRefund: true };
   }
@@ -423,7 +454,8 @@ type Db = ReturnType<typeof serviceClient>;
 
 /**
  * The persistence behind LaneEnv, on ab_events (no migration):
- *  - firstSeen: a shop-scoped 'closure_seen' row (deleted with the shop), the app clock in its payload.
+ *  - firstSeen: a shop-scoped 'closure_seen' row (deleted with the shop), the app clock in its payload;
+ *    a marker older than MARKER_TTL_MS (an abandoned deletion) is rewritten with the current time.
  *  - recordOwed: a 'closure_refund_owed' row with shop_id NULL (nullable column, 005), so the shop's
  *    ON DELETE CASCADE cannot take it; dedupe_key makes a repeat a no-op.
  */
@@ -439,7 +471,13 @@ export function liveClosureEnv(db: Db, shopId: string, now: () => number = Date.
     async firstSeen(key) {
       const dk = `closure_seen:${shopId}:${key}`;
       const have = await read(dk);
-      if (have != null) return have;
+      if (have != null && now() - have < MARKER_TTL_MS) return have;
+      if (have != null) {
+        // Left over from an abandoned deletion: treat it as new and restart from this attempt.
+        const { error: werr } = await db.from('ab_events').update({ payload: { at: now(), key } }).eq('dedupe_key', dk);
+        if (werr) throw new Error(`closure marker write failed: ${werr.message ?? 'unknown'}`);
+        return now();
+      }
       const { error } = await db.from('ab_events')
         .upsert({ shop_id: shopId, kind: 'closure_seen', payload: { at: now(), key }, dedupe_key: dk }, { onConflict: 'dedupe_key', ignoreDuplicates: true });
       if (error) throw new Error(`closure marker write failed: ${error.message ?? 'unknown'}`);
@@ -455,6 +493,11 @@ export function liveClosureEnv(db: Db, shopId: string, now: () => number = Date.
         ).select('id');
       if (error) throw new Error(`recording the refund owed failed: ${error.message ?? 'unknown'}`);
       return Array.isArray(data) && data.length > 0 ? 'new' : 'existing';
+    },
+    async resolveOwed(rec) {
+      const { error } = await db.from('ab_events').delete()
+        .eq('dedupe_key', `closure_owed:${rec.row_kind}:${rec.row_id}`).eq('kind', 'closure_refund_owed');
+      if (error) throw new Error(`removing the refund-owed record failed: ${error.message ?? 'unknown'}`);
     },
   };
 }

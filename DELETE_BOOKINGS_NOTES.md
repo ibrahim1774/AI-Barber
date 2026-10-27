@@ -18,6 +18,13 @@
   dedupe_key `closure_owed:<booking|order>:<id>`, payload `{stripe_account_id, payment_intent_id, owed_cents, row_id,
   row_kind, shop_id, reason}` (no names or emails). If that insert fails the call is a retryable 500 and nothing is deleted.
   Find them with `select * from ab_events where kind='closure_refund_owed'`.
+  **Before paying anything out from a `closure_refund_owed` row, check the payment intent at Stripe first** (the row may be
+  stale: a webhook or the sweep can have settled the money after it was written). When an order's cancel loses its compare-and-set
+  after the record was written, the record is deleted again, but treat Stripe as the source of truth.
+- Earlier attempts' still-owed card refunds are re-checked every call for ANY cancelled card booking of the shop with
+  `refund_due_cents > amount_refunded_cents` or `refund_stuck_at` set, whoever cancelled and whenever (same 6 h / stuck give-up).
+- `closure_seen` markers (per-row refund timers and the `closure:<shop>` window start) expire after 48 h: an abandoned deletion
+  retried later starts a fresh 6 h clock and a fresh carried window.
 - Open store orders (status new or paid): cancelled through the owner order paths (paid card order: refund, which cancels at zero
   and emails; otherwise the owner cancel). Unpaid card holds are expired with no email.
 - A card order whose refund is let go (policy above) is still cancelled and the customer emailed BEFORE deletion: "we could not
