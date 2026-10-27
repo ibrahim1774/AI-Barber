@@ -1,3 +1,4 @@
+import { Alert } from 'react-native';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useEntitlements, type EntitlementId } from '@/lib/entitlements';
 import { usePaywall, usePublishDeps, useSuperwallSettled } from '@/lib/paywall';
@@ -85,6 +86,8 @@ export function useTierAccess(need: EntitlementId): TierAccess {
   return { status: failed ? 'error' : 'loading', entitled: false, expired: false, hosting: false, otherAccount: null, retry };
 }
 
+const PAID_NOT_FINISHED = 'Your payment went through. Open Settings > Publish to finish.';
+
 /**
  * Opens an upgrade paywall; `busy` while it is up. The entitlements update the tab when it succeeds.
  * A purchase made with nobody signed in (a site made from scratch) has no account to belong to: it takes the same
@@ -107,12 +110,16 @@ export function useUpgrade(placement: 'bookings_upgrade' | 'store_upgrade') {
       const result = await paywall(placement);
       if (result !== 'declined') {
         const d = depsRef.current;
-        if (!(await d.accessToken().catch(() => null))) {
+        // A failed token refresh of a signed-in user is unknown, not signed out: leave that user alone.
+        if (!(await d.accessToken().catch(() => null)) && !currentUserId()) {
           const site = await loadSite().catch(() => null);
-          // Already entitled (it was just bought): publishFlow skips the paywall and goes straight to claim-start.
           if (site) {
-            const out = await publishFlow(site, { ...d, hasEntitlement: async () => true });
+            // Just bought: publishFlow saves the paid record first, so a failing claim-start never loses it.
+            const out = await publishFlow(site, { ...d, purchasedNow: true });
             if (out.kind === 'claim-required') resetTo('/claim');
+            else Alert.alert('Payment received', PAID_NOT_FINISHED);
+          } else {
+            Alert.alert('Payment received', PAID_NOT_FINISHED);
           }
         }
       }

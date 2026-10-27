@@ -61,6 +61,11 @@ export interface PublishDeps {
    */
   accessToken(): Promise<string | null>;
   /**
+   * The caller just completed a verified purchase (an upgrade paywall that returned 'purchased'). Treated like a
+   * purchase made here: the paid record is saved before anything can fail, so a failing claim-start never loses it.
+   */
+  purchasedNow?: boolean;
+  /**
    * After a publish is saved locally (publishFlow and the launch retry alike):
    * keeps the account's `sites` row current. Not awaited, and its failure
    * never turns a live site into an error.
@@ -341,8 +346,8 @@ export async function publishFlow(site: SiteRecord, deps: PublishDeps): Promise<
     let paid = false;
     // A paywall "restored" is the Apple ID's earlier purchase, not a payment made now: it never locks the app.
     let bought = false;
-    if (!paidBefore && !(await deps.hasEntitlement().catch(() => false))) {
-      const result = await deps.showPaywall();
+    if (!paidBefore && (deps.purchasedNow || !(await deps.hasEntitlement().catch(() => false)))) {
+      const result = deps.purchasedNow ? 'purchased' : await deps.showPaywall();
       if (result === 'declined') return { kind: 'declined' } as const;
       paid = true;
       bought = result === 'purchased';
