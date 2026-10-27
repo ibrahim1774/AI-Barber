@@ -83,7 +83,7 @@ export type PublishOutcome =
   | { kind: 'live'; url: string; republished: boolean; /** The plan hint saved with a paid record (the claim path offers the upgrade). */ planHint?: PlanHint }
   | { kind: 'declined' }
   /** Not live yet. `offline`: the request never reached the server (the locked step then says "waiting for connection"). */
-  | { kind: 'pending'; message: string; offline?: boolean }
+  | { kind: 'pending'; message: string; offline?: boolean; /** A condition that clears by itself (server busy / still deploying, Apple catching up, a timeout): the locked step waits and retries on its own. */ transient?: boolean }
   | { kind: 'inactive' }
   /** An admin edit is newer: the server copy was adopted and nothing was published. Review, then publish again. */
   | { kind: 'site-updated'; message: string }
@@ -255,13 +255,13 @@ async function send(pending: PendingPublish, deps: PublishDeps, retryMessage: st
       throw e;
     }
     track('publish_pending', { code: e instanceof ApiError ? e.code : 'unknown' });
-    return { kind: 'pending', message: retryMessage, ...(e instanceof ApiError && e.status === 0 ? { offline: true } : {}) };
+    return { kind: 'pending', message: retryMessage, ...(e instanceof ApiError && e.status === 0 ? { offline: true } : {}), ...(isTransientFailure(e) ? { transient: true } : {}) };
   }
   // A 200 without a usable answer (a proxy page parsed as JSON, an API change) is not live: keep the
   // pending publish for the retry instead of saving a record bound to nothing.
   if (!isLiveAnswer(res)) {
     track('publish_pending', { code: 'bad-response' });
-    return { kind: 'pending', message: retryMessage };
+    return { kind: 'pending', message: retryMessage, transient: true };
   }
   const republished = res.republished === true;
   // Merge into the latest record: the editor may have saved since this started.
@@ -291,6 +291,17 @@ async function send(pending: PendingPublish, deps: PublishDeps, retryMessage: st
   cancelRemindersInBackground();
   if (saved) notifyLive(deps, saved);
   return { kind: 'live', url: res.deployedUrl, republished, ...(pending.planHint ? { planHint: pending.planHint } : {}) };
+}
+
+/**
+ * A publish failure that clears by itself: no answer or a timeout (the server may still be deploying), 404 while Apple
+ * has not caught up with a fresh purchase, 408/425/429, any 5xx (apple-unavailable, publish-failed while a deploy
+ * settles). Other 4xx are not: waiting would not change them.
+ */
+export function isTransientFailure(e: unknown): boolean {
+  if (!(e instanceof ApiError)) return true;
+  const s = e.status;
+  return s === 0 || s === 404 || s === 408 || s === 425 || s === 429 || s >= 500;
 }
 
 /** The publish answer names the live site: a non-empty string siteId and deployedUrl. */
@@ -450,7 +461,7 @@ export async function resumePendingPublish(deps: PublishDeps): Promise<PublishOu
         transactionId = await withTimeout(deps.latestTransactionId(), LOOKUP_TIMEOUT_MS);
       } catch {
         // Lookup failed or timed out (no Superwall config yet): keep the record, try again later.
-        return { kind: 'pending', message: UPDATING_MESSAGE } as const;
+        return { kind: 'pending', message: UPDATING_MESSAGE, transient: true } as const;
       }
       if (!transactionId) {
         await deps.store.savePendingPublish(null);

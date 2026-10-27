@@ -184,7 +184,7 @@ describe('claiming: signed in after the account step', () => {
   test('a failed send keeps the claim locked (claiming) for the retry; offline says so', async () => {
     await store.savePendingPublish(unclaimed());
     const down = makeDeps({ ...signedIn, iosPublish: err(0, 'network') as never });
-    expect(await resumePendingPublish(down)).toEqual({ kind: 'pending', message: PENDING_MESSAGE, offline: true });
+    expect(await resumePendingPublish(down)).toEqual({ kind: 'pending', message: PENDING_MESSAGE, offline: true, transient: true });
     expect(await store.loadPendingPublish()).toMatchObject({ state: 'claiming' });
     expect(await resumePendingPublish(makeDeps(signedIn))).toMatchObject({ kind: 'live' });
   });

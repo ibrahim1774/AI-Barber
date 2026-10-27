@@ -4,7 +4,7 @@ import type { SiteRecord } from '@/lib/siteStore';
 import { ApiError } from '@/lib/api';
 import { signIn, signOut } from '@/lib/auth';
 import { accessToken } from '@/lib/accessToken';
-import { createClaimRunner } from '@/lib/claim';
+import { createClaimRunner, waitConfig } from '@/lib/claim';
 import { conflictMessage } from '@/lib/claimCopy';
 import { reopenClaim } from '@/lib/claimGuard';
 import { publishFlow, resumePendingPublish, type PublishDeps } from '@/lib/publish';
@@ -121,6 +121,12 @@ test('an account that already has a site: 409 account-has-site names the slug an
   expect(r).toMatchObject({ kind: 'blocked', message: expect.stringContaining('old-cuts') });
   expect(await store.loadPendingPublish()).toMatchObject({ state: 'conflict', conflict: { code: 'account-has-site', slug: 'old-cuts' } });
 });
+
+// The automatic wait between publish retries runs on a virtual clock.
+const realWait = { ...waitConfig };
+let clock = 0;
+beforeEach(() => { clock = 0; waitConfig.now = () => clock; waitConfig.sleep = async (ms) => { clock += ms; }; });
+afterAll(() => Object.assign(waitConfig, realWait));
 
 test('offline publish after sign-in: waiting, the record is kept as claiming; the retry goes live', async () => {
   let offline = true;

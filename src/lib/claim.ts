@@ -19,6 +19,20 @@ export const NO_PURCHASE_MESSAGE = "We couldn't find your purchase yet. Check yo
 export const INACTIVE_MESSAGE =
   "Your payment didn't go through, or it was refunded, so the website can't go live. Subscribe again from the editor to publish it.";
 
+/** The account step's patience: it keeps retrying a transient publish for this long, backing off 2 s -> 10 s. */
+export const WAIT_BUDGET_MS = 3 * 60 * 1000;
+const BACKOFF_FIRST_MS = 2000;
+const BACKOFF_MAX_MS = 10_000;
+/** Overridable by tests; the screen uses these defaults. */
+export const waitConfig = {
+  budgetMs: WAIT_BUDGET_MS,
+  sleep: (ms: number) => new Promise<void>((r) => setTimeout(r, ms)),
+  now: () => Date.now(),
+};
+/** Said once the wait ran out: calm, nothing is lost, one button. */
+export const STILL_PUBLISHING_MESSAGE =
+  'Your site is still being published. This is taking longer than usual. Your payment is safe and your account is ready. Tap Try again in a moment.';
+
 /** How one submit of the account form ended. The form stays on screen for everything but `live` and `moved-on`. */
 export type ClaimResult =
   | { kind: 'live'; planHint?: PlanHint }
@@ -34,6 +48,8 @@ export type ClaimResult =
   /** The server refused the publish (409): the message names the masked owner or the live site. Stays locked. */
   | { kind: 'blocked'; message: string; movable?: boolean }
   | { kind: 'inactive'; message: string }
+  /** The publish was still not ready after the whole wait: the session and the pending publish are kept; "Try again" resumes. */
+  | { kind: 'stalled'; message: string }
   /** Any other failure: the words to show; the form stays. */
   | { kind: 'error'; message: string };
 
@@ -49,6 +65,8 @@ export interface ClaimDeps {
   dropSession(): Promise<void>;
   /** The server says the purchase is inactive (402): the pending record is dropped so nothing locks to /claim. */
   parkInactive?(): Promise<void>;
+  /** The account step is done (signed in): the screen switches from the form to "Publishing your site". */
+  onSession?(): void;
 }
 
 /**
@@ -60,9 +78,11 @@ export interface ClaimDeps {
 export function createClaimRunner(deps: ClaimDeps) {
   let inflight: Promise<ClaimResult> | null = null;
   let created: { email: string; password: string } | null = null;
+  let stopped = false;
 
   const once = (fn: () => Promise<ClaimResult>): Promise<ClaimResult> => {
     if (inflight) return inflight;
+    stopped = false;
     const p = fn().finally(() => {
       inflight = null;
     });
@@ -70,13 +90,32 @@ export function createClaimRunner(deps: ClaimDeps) {
     return p;
   };
 
+  /**
+   * Sends the pending publish and, while the answer is a transient one (still deploying, Apple catching up, server
+   * busy, a timeout), tries again by itself with a growing pause, for up to the wait budget. One attempt at a time
+   * (finish is serial and this whole run is deduplicated), so retries never overlap or publish twice.
+   */
   async function publish(): Promise<ClaimResult> {
-    let out: PublishOutcome | null;
-    try {
-      out = await deps.finish();
-    } catch {
-      return { kind: 'error', message: 'Something went wrong publishing your site. Please try again.' };
+    const started = waitConfig.now();
+    let delay = BACKOFF_FIRST_MS;
+    for (;;) {
+      let out: PublishOutcome | null;
+      try {
+        out = await deps.finish();
+      } catch {
+        return { kind: 'error', message: 'Something went wrong publishing your site. Please try again.' };
+      }
+      const transient = out?.kind === 'pending' && (out.transient === true || out.offline === true);
+      if (!transient) return settle(out);
+      if (stopped || waitConfig.now() - started + delay > waitConfig.budgetMs) {
+        return settle(out, true);
+      }
+      await waitConfig.sleep(delay);
+      delay = Math.min(delay * 2, BACKOFF_MAX_MS);
     }
+  }
+
+  async function settle(out: PublishOutcome | null, exhausted = false): Promise<ClaimResult> {
     if (!out) return { kind: 'moved-on' };
     switch (out.kind) {
       case 'live': return { kind: 'live', ...(out.planHint ? { planHint: out.planHint } : {}) };
@@ -84,9 +123,8 @@ export function createClaimRunner(deps: ClaimDeps) {
       case 'blocked': return { kind: 'blocked', message: out.message, ...(out.movable ? { movable: true } : {}) };
       case 'inactive': return { kind: 'inactive', message: INACTIVE_MESSAGE };
       case 'pending':
-        return out.offline
-          ? { kind: 'waiting', message: WAITING_MESSAGE, stage: 'publish' }
-          : { kind: 'error', message: out.message };
+        if (out.offline) return { kind: 'waiting', message: WAITING_MESSAGE, stage: 'publish' };
+        return exhausted || out.transient ? { kind: 'stalled', message: STILL_PUBLISHING_MESSAGE } : { kind: 'error', message: out.message };
       case 'claim-required':
         // The server refused the session: sign out of it so the form takes a fresh sign-in.
         await deps.dropSession().catch(() => {});
@@ -131,14 +169,17 @@ export function createClaimRunner(deps: ClaimDeps) {
       if (message === OFFLINE) return { kind: 'waiting', message: WAITING_MESSAGE, stage: 'account' };
       return { kind: 'error', message };
     }
+    deps.onSession?.();
     return publish();
   }
 
   return {
+    /** Stops waiting between retries (the screen went away). */
+    stop: () => { stopped = true; },
     /** Sign up or sign in, then publish. */
     submit: (mode: ClaimMode, v: ClaimValues) => once(() => account(mode, v)),
     /** Signed in already (a relaunch, a password reset, a retry after "waiting"): just send the pending publish. */
-    finish: () => once(publish),
+    finish: () => once(() => { deps.onSession?.(); return publish(); }),
   };
 }
 

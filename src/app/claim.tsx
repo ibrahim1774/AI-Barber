@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, AppState, BackHandler, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, AppState, BackHandler, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
@@ -49,6 +49,7 @@ export default function Claim() {
   const paywall = usePaywall();
   const paywallRef = useRef(paywall);
   paywallRef.current = paywall;
+  const setSignedInRef = useRef<(v: boolean) => void>(() => {});
   const runner = useMemo(
     () =>
       createClaimRunner({
@@ -58,6 +59,8 @@ export default function Claim() {
         signIn,
         finish: () => resumePendingPublish(depsRef.current),
         parkInactive: () => savePendingPublish(null),
+        // The account exists and is signed in: from here the form never comes back, only "Publishing your site".
+        onSession: () => setSignedInRef.current(true),
         dropSession: async () => {
           await supabase.auth.signOut({ scope: 'local' });
         },
@@ -78,10 +81,14 @@ export default function Claim() {
   const [signedIn, setSignedIn] = useState(false);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
+  setSignedInRef.current = setSignedIn;
   const refs: Record<ClaimField, React.RefObject<TextInput | null>> = {
     name: useRef<TextInput>(null), email: useRef<TextInput>(null), phone: useRef<TextInput>(null),
     password: useRef<TextInput>(null),
   };
+
+  // Leaving the screen ends the wait between retries.
+  useEffect(() => () => runner.stop(), [runner]);
 
   // Locked: the hardware back button does nothing here.
   useEffect(() => {
@@ -149,6 +156,8 @@ export default function Claim() {
       try {
         const r = await fn();
         if (r) apply(r);
+        // A session the server refused was signed out: the form is the way back in. Otherwise the session stays.
+        if (!r || (r.kind !== 'live' && r.kind !== 'moved-on')) setSignedIn(!!(await accessToken().catch(() => null)));
       } finally {
         busyRef.current = false;
         setBusy(false);
@@ -201,10 +210,7 @@ export default function Claim() {
 
   const submit = () => {
     void run(async () => {
-      const r = await runner.submit(mode, values);
-      // Whether the account step got as far as a session decides what "Try again" retries.
-      setSignedIn(!!(await accessToken()));
-      return r;
+      return runner.submit(mode, values);
     });
   };
   const retry = () => (signedIn ? void run(runner.finish) : submit());
@@ -282,6 +288,24 @@ export default function Claim() {
         )}
         <Button variant={movable ? 'ghost' : 'solid'} title="Use a different account" onPress={useDifferentAccount} loading={busy} style={movable ? styles.gapSmall : styles.gap} />
         <SupportLink />
+      </Page>
+    );
+  }
+
+  // An account is signed in and its publish is pending: never the form. Spinner while it runs, one calm Try again after.
+  if (signedIn) {
+    const note = banner?.message;
+    return (
+      <Page title="Publishing your site">
+        <View style={styles.hold}>
+          {!note && <ActivityIndicator color={colors.accent} size="large" />}
+          <Text style={styles.title}>{note ? 'Almost there' : 'Publishing your site…'}</Text>
+          <Text style={styles.body} accessibilityLiveRegion="polite">
+            {note ?? 'Your payment went through and your account is ready. We’re putting your website online. This can take a minute or two.'}
+          </Text>
+          {!!note && <Button variant="solid" title="Try again" onPress={retry} loading={busy} style={styles.gap} />}
+          {!!note && <SupportLink />}
+        </View>
       </Page>
     );
   }
@@ -409,6 +433,7 @@ const styles = StyleSheet.create({
   switchLink: { color: colors.accent, fontFamily: fonts.bodySemi },
   title: { fontFamily: fonts.heading, fontSize: 22, color: colors.heading, textAlign: 'center', marginTop: 24 },
   body: { fontFamily: fonts.body, fontSize: 14, lineHeight: 21, color: colors.body, textAlign: 'center', marginTop: 12 },
+  hold: { alignItems: 'center', gap: 4, paddingTop: 40 },
   gap: { marginTop: 28 },
   gapSmall: { marginTop: 14 },
 });
