@@ -1,3 +1,4 @@
+import { keepRemoved } from '@/lib/sections/gallery';
 import { randomUUID } from 'expo-crypto';
 import type { ShopInputs, WebsiteData } from '@/web/types';
 import { adoptServerCopy, isNewerAdminEdit, isPlainSiteData, versionFields } from '@/lib/adminSync';
@@ -179,7 +180,7 @@ export async function pullSiteFromAccount(userId: string): Promise<PullResult> {
     const r = row as SiteRow | null;
     if (!r || !isSiteData(r.site_data)) return 'unchanged';
     const rowAt = Date.parse(r.updated_at ?? '');
-    const data = siteDataFrom(r.site_data);
+    const data = keepRemoved(local?.data, siteDataFrom(r.site_data));
 
     if (local && !rowIsNews(local, rowAt)) return 'unchanged';
 

@@ -81,6 +81,9 @@ export function balanceGallery(d: WebsiteData): WebsiteData {
   const removed = galleryRemoved(d);
   const target = Math.max(0, GALLERY_TARGET - removed.length);
   if (gallery.filter(Boolean).length + removed.length < GALLERY_TARGET) return d;
+  // Only a site that still holds a sample photo is padded: one made entirely of the barber's own photos (a Google
+  // import, or a removal made before the marker existed or on the web editor) never gets samples added.
+  if (!gallery.some((u) => u && isStockImage(u))) return d;
   let rendered = renderedGallerySlots(d).length;
   let changed = false;
   if (rendered < target) {
@@ -98,10 +101,23 @@ export function balanceGallery(d: WebsiteData): WebsiteData {
   } else if (rendered > target) {
     const shownSlots = renderedGallerySlots(d);
     const order = d.template === 'euphoria' ? [0, 1, ...shownSlots.filter((i) => i > 1).reverse()] : [...shownSlots].reverse();
+    // A photo the barber picked from the sample set counts as a sample here and may be dropped; accepted.
     for (const i of order) {
       if (rendered <= target) break;
       if (gallery[i] && isStockImage(gallery[i])) { gallery[i] = ''; rendered--; changed = true; }
     }
   }
   return changed ? { ...d, gallery } : d;
+}
+
+/**
+ * A copy of the site that replaces local data wholesale (admin sync, a 409 at publish, the account row) with the
+ * local manual removals kept for slots that are still empty in it, so balanceGallery never refills them.
+ */
+export function keepRemoved(local: WebsiteData | undefined | null, adopted: WebsiteData): WebsiteData {
+  if (!local) return adopted;
+  const keep = galleryRemoved(local).filter((i) => !adopted.gallery?.[i]);
+  const merged = [...new Set([...galleryRemoved(adopted).filter((i) => !adopted.gallery?.[i]), ...keep])];
+  const same = merged.length === galleryRemoved(adopted).length && merged.every((i) => galleryRemoved(adopted).includes(i));
+  return same ? adopted : withRemoved(adopted, merged);
 }

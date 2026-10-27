@@ -1,3 +1,4 @@
+import { keepRemoved } from '@/lib/sections/gallery';
 import type { WebsiteData } from '@/web/types';
 import { api, type ServerVersionInfo } from '@/lib/api';
 import { emitSiteAdopted } from '@/lib/siteEvents';
@@ -69,7 +70,7 @@ function inputsFromData(cur: SiteRecord['inputs'], d: WebsiteData): SiteRecord['
  */
 export function adoptServerCopy(cur: SiteRecord, server: ServerSite): SiteRecord {
   const now = Date.now();
-  const data = server.siteData as WebsiteData;
+  const data = keepRemoved(cur.data, server.siteData as WebsiteData);
   const inputs = inputsFromData(cur.inputs, data);
   const link = typeof data.bookingUrl === 'string' ? data.bookingUrl.trim() : '';
   if (inputs.ownBookingCleared && link && !isAiBarberBookingUrl(link) && link !== (cur.data.bookingUrl?.trim() ?? '')) {

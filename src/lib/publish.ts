@@ -1,3 +1,4 @@
+import { balanceGallery } from '@/lib/sections/gallery';
 import type { WebsiteData } from '@/web/types';
 import { adoptAndSave, isPlainSiteData, SYNC_NOTICE, SYNC_TIMEOUT_MS, UPDATED_ON_PUBLISH_MESSAGE, versionFields, type ServerSite, type SyncResult } from '@/lib/adminSync';
 import { track } from '@/lib/analytics';
@@ -153,7 +154,8 @@ function clean(v: unknown): unknown {
 }
 
 export function publishPayload(data: WebsiteData): WebsiteData {
-  const c = clean(data) as WebsiteData;
+  // What the editor shows is what goes live: the gallery is balanced here too (pure, nothing is saved by opening the editor).
+  const c = clean(balanceGallery(data)) as WebsiteData;
   // headerShow only means something next to a logo (and only once the server honours it): never send it dangling.
   if (c.headerShow !== undefined && (!c.logo || !LOGO_BOTH_ENABLED)) delete c.headerShow;
   // Shapes the server requires; a missing one would be a 400.
