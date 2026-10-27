@@ -148,7 +148,7 @@ describe('Learn content', () => {
   it('copies the in-app card wording and invents no percentage', () => {
     const text = LEARN_TOPICS.find((x) => x.slug === 'get-paid')!.steps.join(' ');
     expect(text).toContain("Prime Barber doesn't move this money");
-    expect(text).toContain('Stripe charges its own processing fee on top');
+    expect(text).toContain('Stripe charges you its own processing fee');
     expect(text).toContain('There is no monthly fee for cards');
     expect(text).not.toMatch(/\d\s?%/);
   });

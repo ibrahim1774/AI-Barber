@@ -4,7 +4,7 @@ import { ActivityIndicator, Alert, AppState, Text, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { track } from '@/lib/analytics';
 import { Button } from '@/components/Button';
-import { METHODS, checkAllHandles, feeText, payWaysCount } from '@/lib/setup/handles';
+import { METHODS, cardFeeNote, cardPayoutNote, checkAllHandles, feeText, payWaysCount } from '@/lib/setup/handles';
 import { stripeOnboard, stripeStatus, type StripeStatus } from '@/lib/setup/ownerApi';
 import { updateShopSettings, type ManualMethod, type Shop } from '@/lib/shop';
 import { colors, fonts } from '@/constants/theme';
@@ -157,10 +157,9 @@ export function GetPaid({ shop, onChanged, firstCardRef }: { shop: Shop; onChang
 
       <Card title="Card payments">
         <Note>
-          Takes about 5 minutes. Customers pay by card or Apple Pay and the money goes to your bank automatically. Prime Barber
-          keeps {fee} of each card payment, and Stripe charges its own processing fee on top. There is no monthly fee for
-          cards.
+          Takes about 5 minutes. Customers pay by card or Apple Pay. {cardPayoutNote()}
         </Note>
+        <Note>{cardFeeNote(fee)} There is no monthly fee for cards.</Note>
         {cardReady ? (
           <Text style={{ color: '#22c55e', fontFamily: fonts.bodySemi, fontSize: 15 }}>Cards are on. Customers can pay by card when they book.</Text>
         ) : connected ? (

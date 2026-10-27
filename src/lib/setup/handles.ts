@@ -74,3 +74,13 @@ export function feeText(bps: number): string {
   const pct = bps / 100;
   return `${Number.isInteger(pct) ? pct : pct.toFixed(2).replace(/0$/, '')}%`;
 }
+
+/** Where card money goes. Payout timing and holds belong to the barber's own Stripe account. */
+export function cardPayoutNote(): string {
+  return 'Card payments go to your own Stripe account. Stripe sends payouts to your bank on the schedule you set in your Stripe Dashboard. Disputes and payout holds are handled there too.';
+}
+
+/** Fee facts for card payments. `fee` is feeText(platformFeeBps). */
+export function cardFeeNote(fee: string): string {
+  return `Prime Barber's fee is ${fee} of each card payment. Stripe charges you its own processing fee. A refund returns Prime Barber's fee proportionally, not Stripe's fee. A refund made directly in the Stripe Dashboard does not return Prime Barber's fee.`;
+}
