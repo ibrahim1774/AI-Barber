@@ -203,7 +203,9 @@ export const api = {
     /** The signed-in user's Supabase access token, sent as `Authorization: Bearer …`. Required: the server links the purchase to the account from it and answers 401 without. */
     accessToken: string,
   ): Promise<{ siteId: string; deployedUrl: string; republished: boolean } & ServerVersionInfo> {
-    return post('/api/ios/publish', body, {
+    // App-only bookkeeping (gallery slots removed by hand) stays on the phone and in the account row, never on the server.
+    const { galleryRemoved: _removed, ...siteData } = body.siteData as WebsiteData & { galleryRemoved?: unknown };
+    return post('/api/ios/publish', { ...body, siteData }, {
       timeoutMs: SCRAPE_TIMEOUT_MS, failMessage: 'Publish failed', slowMessage: 'Publishing is temporarily unavailable — try again shortly.',
       headers: { Authorization: `Bearer ${accessToken}` },
     });

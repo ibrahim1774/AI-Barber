@@ -1,4 +1,4 @@
-import { gallerySlots } from '@/lib/sections/gallery';
+import { balanceGallery, gallerySlots } from '@/lib/sections/gallery';
 import { formatPhone } from '@/lib/phone';
 import type { WebsiteData } from '@/web/types';
 import { buildSiteFromScrape } from '@/web/lib/buildSiteFromScrape';
@@ -20,13 +20,13 @@ import { nicheOf } from '@/web/lib/render/honest';
  * exist). There is no default policy any more (honest sites: barber-written
  * only), so none is seeded. A site's own policy / pull quote is kept.
  */
-export function switchDesign(d: WebsiteData, t: 'luxe' | 'prime'): WebsiteData {
-  if (t !== 'prime') return { ...d, template: t };
-  return {
+export function switchDesign(d: WebsiteData, t: 'luxe' | 'prime' | 'euphoria'): WebsiteData {
+  if (t !== 'prime') return balanceGallery({ ...d, template: t });
+  return balanceGallery({
     ...d,
     template: t,
     pullQuote: d.pullQuote ?? { ...DEFAULT_PULLQUOTE },
-  };
+  });
 }
 
 /**
@@ -231,6 +231,6 @@ export const STOCK_NUDGE = 'These are sample photos. Add your own so customers s
  * copy removed, no price repeated in a subtitle; see asPublished). The same object when nothing changes.
  */
 export function editorRecord<T extends { data: WebsiteData }>(r: T): T {
-  const data = asPublished(r.data);
+  const data = balanceGallery(asPublished(r.data));
   return data === r.data ? r : { ...r, data };
 }
