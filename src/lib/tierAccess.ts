@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useEntitlements, type EntitlementId } from '@/lib/entitlements';
-import { usePaywall, useSuperwallSettled } from '@/lib/paywall';
+import { usePaywall, usePublishDeps, useSuperwallSettled } from '@/lib/paywall';
+import { publishFlow } from '@/lib/publish';
+import { loadSite } from '@/lib/siteStore';
+import { resetTo } from '@/lib/nav';
 import { currentUserId } from '@/lib/auth';
 import { getPlan, getPlanEpoch, getSharedPlan, hostingReadOnlyOpen, setSharedPlan, subscribePlan } from '@/lib/plan';
 
@@ -82,9 +85,17 @@ export function useTierAccess(need: EntitlementId): TierAccess {
   return { status: failed ? 'error' : 'loading', entitled: false, expired: false, hosting: false, otherAccount: null, retry };
 }
 
-/** Opens an upgrade paywall; `busy` while it is up. The entitlements update the tab when it succeeds. */
+/**
+ * Opens an upgrade paywall; `busy` while it is up. The entitlements update the tab when it succeeds.
+ * A purchase made with nobody signed in (a site made from scratch) has no account to belong to: it takes the same
+ * path as Publish with an existing subscription (pending publish saved as 'unclaimed' with the latest transaction
+ * id, then the account step), so the site publishes and the tab unlocks once the account exists.
+ */
 export function useUpgrade(placement: 'bookings_upgrade' | 'store_upgrade') {
   const paywall = usePaywall();
+  const deps = usePublishDeps();
+  const depsRef = useRef(deps);
+  depsRef.current = deps;
   const [busy, setBusy] = useState(false);
   // A ref, not the state: a second press before the re-render must not open a second paywall.
   const busyRef = useRef(false);
@@ -93,7 +104,18 @@ export function useUpgrade(placement: 'bookings_upgrade' | 'store_upgrade') {
     busyRef.current = true;
     setBusy(true);
     try {
-      await paywall(placement);
+      const result = await paywall(placement);
+      if (result !== 'declined') {
+        const d = depsRef.current;
+        if (!(await d.accessToken().catch(() => null))) {
+          const site = await loadSite().catch(() => null);
+          // Already entitled (it was just bought): publishFlow skips the paywall and goes straight to claim-start.
+          if (site) {
+            const out = await publishFlow(site, { ...d, hasEntitlement: async () => true });
+            if (out.kind === 'claim-required') resetTo('/claim');
+          }
+        }
+      }
     } finally {
       busyRef.current = false;
       setBusy(false);
