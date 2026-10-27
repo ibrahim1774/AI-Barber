@@ -3,6 +3,8 @@ import { closeShopForDeletion, bookingLane, type Lane } from '../../lib/ios/clos
 import { deleteAccount } from '../../lib/ios/deleteAccount.js';
 import { cancellationEmail } from '../../lib/bookings/notify.js';
 import { orderCancelledEmail } from '../../lib/store/notify.js';
+import { refundAppointment as realRefundAppointment } from '../../lib/bookings/payments.js';
+import { closureEnv, owedFields, SIX_H } from './closureHarness.js';
 
 const NOW = Date.parse('2026-10-27T12:00:00Z');
 const H = 3600_000;
@@ -20,10 +22,11 @@ function appt(id: string, over: Record<string, any> = {}) {
   } as any;
 }
 
-function world(rows: any[], opts: { failCancelFor?: string[]; refundThrows?: boolean } = {}) {
+function world(rows: any[], opts: { failCancelFor?: string[]; refundThrows?: boolean; staleCancelFor?: string[] } = {}) {
   const db = new Map<string, any>(rows.map((r) => [r.id, r]));
   const notified: any[] = [];
   const refunds: any[] = [];
+  const stripeCalls: Array<{ headers: Record<string, string>; body: string }> = [];
   const shop = { id: 'shop1', name: 'Fade Lab', cancel_cutoff_min: 0, stripe_account_id: 'acct', stripe_charges_enabled: true };
   const repo: any = {
     appointmentById: async (id: string) => db.get(id) ?? null,
@@ -32,6 +35,7 @@ function world(rows: any[], opts: { failCancelFor?: string[]; refundThrows?: boo
     logEvent: async () => {},
     updateAppointment: async (id: string, patch: any, expect?: any) => {
       if (opts.failCancelFor?.includes(id) && patch.status === 'cancelled') throw new Error('db down');
+      if (opts.staleCancelFor?.includes(id) && patch.status === 'cancelled') return { ok: false, reason: 'stale' };
       const cur = db.get(id);
       if (!cur) return { ok: false, reason: 'stale' };
       if (typeof expect === 'string' && cur.status !== expect) return { ok: false, reason: 'stale' };
@@ -46,23 +50,36 @@ function world(rows: any[], opts: { failCancelFor?: string[]; refundThrows?: boo
   };
   const payments: any = {
     expireCheckoutSession: async () => true,
-    refundAppointment: vi.fn(async (_s: any, a: any, cents: number) => {
+    // The REAL refund call over a fake fetch, so the test sees the Stripe-Account header and the Idempotency-Key.
+    refundAppointment: vi.fn(async (s: any, a: any, cents: number, o: any) => {
       if (opts.refundThrows) throw new Error('stripe down');
+      const r = await realRefundAppointment(s, a, cents, {
+        ...o,
+        fetch: async (_url: string, init: any) => {
+          stripeCalls.push({ headers: init.headers, body: String(init.body) });
+          return { ok: true, status: 200, json: async () => ({ id: 're_1', status: 'succeeded', amount: cents }) } as any;
+        },
+      });
       refunds.push({ id: a.id, cents });
-      return { refundedCents: cents };
+      return r;
     }),
   };
   const flow: any = { repo, payments, notify: async (e: any) => { notified.push(e); }, now: () => NOW, baseUrl: 'https://x.test' };
   const queries = {
     upcomingIds: async (shopId: string, nowIso: string, limit: number) =>
       [...db.values()].filter((r) => r.shop_id === shopId && r.status === 'booked' && r.start_at > nowIso).slice(0, limit).map((r) => r.id),
-    recentCancelledIds: async (shopId: string, sinceIso: string, limit: number) =>
-      [...db.values()].filter((r) => r.shop_id === shopId && r.status === 'cancelled' && r.cancelled_by === 'shop' && (r.cancelled_at ?? '') >= sinceIso).slice(0, limit).map((r) => r.id),
+    // The live query: shop, cancelled by the shop, cancelled at/after the window start, something paid; ordered; paged.
+    recentCancelledIds: async (shopId: string, sinceIso: string, limit: number, offset = 0) =>
+      [...db.values()]
+        .filter((r) => r.shop_id === shopId && r.status === 'cancelled' && r.cancelled_by === 'shop' && (r.cancelled_at ?? '') >= sinceIso && r.amount_paid_cents > 0)
+        .sort((a, b) => (a.cancelled_at < b.cancelled_at ? -1 : a.cancelled_at > b.cancelled_at ? 1 : a.id < b.id ? -1 : 1))
+        .slice(offset, offset + limit).map((r) => r.id),
   };
-  return { db, notified, refunds, flow, queries, shop };
+  return { db, notified, refunds, stripeCalls, flow, queries, shop };
 }
 
-const ports = (lanes: Lane[], shopId: string | null = 'shop1') => ({ shopIdFor: async () => shopId, lanes: () => lanes, now: () => NOW });
+const ports = (lanes: Lane[], shopId: string | null = 'shop1', extra: Record<string, unknown> = {}) => ({ shopIdFor: async () => shopId, lanes: () => lanes, now: () => NOW, ...extra });
+process.env.STRIPE_CONNECT_SECRET_KEY ||= 'sk_test_fake_for_closure_tests';
 
 describe('closeShopForDeletion with the real booking cancel path', () => {
   it('cancels every upcoming booking as the shop, with the closed flag on the notification, and leaves past ones alone', async () => {
@@ -94,15 +111,76 @@ describe('closeShopForDeletion with the real booking cancel path', () => {
     expect(r).toMatchObject({ ok: true, bookingsCancelled: 1, needsRefund: [] });
   });
 
-  it('a failed card refund aborts (retry later); on the next call the refund is retried, and if it still fails it is flagged and the deletion may go on', async () => {
-    const w = world([appt('paid', { payment_method: 'card', payment_status: 'paid', amount_paid_cents: 3000, stripe_payment_intent_id: 'pi_1' })], { refundThrows: true });
-    const first = await closeShopForDeletion('u1', ports([bookingLane(w.flow, 'shop1', w.queries)]));
-    expect(first.ok).toBe(false);
-    expect(w.db.get('paid').status).toBe('cancelled');
-    w.notified.length = 0;
-    const second = await closeShopForDeletion('u1', ports([bookingLane(w.flow, 'shop1', w.queries)]));
-    expect(second).toMatchObject({ ok: true, needsRefund: ['booking:paid'] });
-    expect(w.notified).toEqual([]); // no second email
+  it('a paid card refund reaches Stripe on the connected account with the cancel idempotency key', async () => {
+    const w = world([appt('paid', { payment_method: 'card', payment_status: 'paid', amount_paid_cents: 3000, stripe_payment_intent_id: 'pi_1' })]);
+    await closeShopForDeletion('u1', ports([bookingLane(w.flow, 'shop1', w.queries)]));
+    expect(w.stripeCalls).toHaveLength(1);
+    expect(w.stripeCalls[0].headers['Stripe-Account']).toBe('acct');
+    expect(w.stripeCalls[0].headers['Idempotency-Key']).toBe('refund-cancel-paid-3000-0');
+    expect(w.stripeCalls[0].body).toContain('payment_intent=pi_1');
+  });
+
+  describe('a card refund that keeps failing (finding 1)', () => {
+    const failing = () => world([appt('paid', { payment_method: 'card', payment_status: 'paid', amount_paid_cents: 3000, stripe_payment_intent_id: 'pi_1', customer_name: 'Pat Q', customer_email: 'pat@example.test' })], { refundThrows: true });
+
+    it('two app retries seconds apart do NOT let the deletion proceed: still a retryable failure, nothing flagged or recorded', async () => {
+      const w = failing();
+      const e = closureEnv(NOW);
+      const lane = () => bookingLane(w.flow, 'shop1', w.queries, e.env);
+      const d = () => ports([lane()], 'shop1', { env: e.env, now: e.env.now });
+      expect((await closeShopForDeletion('u1', d())).ok).toBe(false);
+      e.clock.now += 5_000;
+      const second = await closeShopForDeletion('u1', d());
+      expect(second).toMatchObject({ ok: false, needsRefund: [] });
+      e.clock.now += 5_000;
+      expect((await closeShopForDeletion('u1', d())).ok).toBe(false);
+      expect(e.owed.size).toBe(0);
+      expect(w.db.get('paid').status).toBe('cancelled');
+      expect(w.notified).toHaveLength(1); // the cancel email went out once, never again
+    });
+
+    it('after 6 hours the deletion proceeds, the refund is flagged and persisted without PII', async () => {
+      const w = failing();
+      const e = closureEnv(NOW);
+      const d = () => ports([bookingLane(w.flow, 'shop1', w.queries, e.env)], 'shop1', { env: e.env, now: e.env.now });
+      expect((await closeShopForDeletion('u1', d())).ok).toBe(false);
+      e.clock.now += SIX_H - 1000;
+      expect((await closeShopForDeletion('u1', d())).ok).toBe(false);
+      e.clock.now += 2000;
+      const r = await closeShopForDeletion('u1', d());
+      expect(r).toMatchObject({ ok: true, needsRefund: ['booking:paid'] });
+      expect([...e.owed.values()].map(owedFields)).toEqual([{ stripe_account_id: 'acct', payment_intent_id: 'pi_1', owed_cents: 3000, row_id: 'paid' }]);
+      const stored = JSON.stringify([...e.owed.values()]);
+      expect(stored).not.toContain('pat@example.test');
+      expect(stored).not.toContain('Pat Q');
+      expect(w.notified).toHaveLength(1);
+    });
+
+    it('a refund the sweep already marked stuck proceeds at once and is persisted', async () => {
+      const w = failing();
+      const e = closureEnv(NOW);
+      const d = () => ports([bookingLane(w.flow, 'shop1', w.queries, e.env)], 'shop1', { env: e.env, now: e.env.now });
+      expect((await closeShopForDeletion('u1', d())).ok).toBe(false);
+      w.db.set('paid', { ...w.db.get('paid'), refund_stuck_at: iso(NOW + 1000) });
+      const r = await closeShopForDeletion('u1', d());
+      expect(r).toMatchObject({ ok: true, needsRefund: ['booking:paid'] });
+      expect(e.owed.size).toBe(1);
+    });
+
+    it('if the record cannot be saved the deletion is aborted (retryable), not lost', async () => {
+      const w = failing();
+      const e = closureEnv(NOW);
+      const d = () => ports([bookingLane(w.flow, 'shop1', w.queries, e.env)], 'shop1', { env: e.env, now: e.env.now });
+      await closeShopForDeletion('u1', d());
+      e.clock.now += SIX_H + 1;
+      e.flags.failRecord = true;
+      const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+      expect((await closeShopForDeletion('u1', d())).ok).toBe(false);
+      err.mockRestore();
+      e.flags.failRecord = false;
+      expect((await closeShopForDeletion('u1', d())).ok).toBe(true);
+      expect(e.owed.size).toBe(1);
+    });
   });
 
   it('a paid manual-rail booking (no money path) is cancelled and flagged as needing a refund, never refunded by us', async () => {
@@ -113,11 +191,96 @@ describe('closeShopForDeletion with the real booking cancel path', () => {
     expect(r).toMatchObject({ ok: true, needsRefund: ['booking:venmo'] });
   });
 
+  it('a booking that stays booked after a failed cancel claim is flagged, recorded, emailed and let go only after 6 hours', async () => {
+    const w = world([appt('stuck', { payment_method: 'card', payment_status: 'paid', amount_paid_cents: 3000, stripe_payment_intent_id: 'pi_9' })], { staleCancelFor: ['stuck'] });
+    const e = closureEnv(NOW);
+    const d = () => ports([bookingLane(w.flow, 'shop1', w.queries, e.env)], 'shop1', { env: e.env, now: e.env.now });
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect((await closeShopForDeletion('u1', d())).ok).toBe(false);
+    e.clock.now += 5_000;
+    expect((await closeShopForDeletion('u1', d())).ok).toBe(false);
+    expect(e.owed.size).toBe(0);
+    e.clock.now += SIX_H;
+    const r = await closeShopForDeletion('u1', d());
+    err.mockRestore();
+    expect(r).toMatchObject({ ok: true, notCancelled: ['booking:stuck'], needsRefund: ['booking:stuck'] });
+    expect([...e.owed.values()].map(owedFields)).toEqual([{ stripe_account_id: 'acct', payment_intent_id: 'pi_9', owed_cents: 3000, row_id: 'stuck' }]);
+    expect(w.notified.filter((n) => n.appointmentId === 'stuck' && n.closed === true)).toHaveLength(1);
+    await closeShopForDeletion('u1', d()); // a later retry never emails the same customer again
+    expect(w.notified.filter((n) => n.appointmentId === 'stuck' && n.closed === true)).toHaveLength(1);
+  });
+
   it('a failing cancel aborts: ok false, other bookings still cancelled, nothing is reported as done for the failing one', async () => {
     const w = world([appt('a1'), appt('a2'), appt('a3')], { failCancelFor: ['a2'] });
     const r = await closeShopForDeletion('u1', ports([bookingLane(w.flow, 'shop1', w.queries)]));
     expect(r.ok).toBe(false);
     expect(w.db.get('a2').status).toBe('booked');
+  });
+});
+
+describe('carried refunds from earlier attempts (finding 5)', () => {
+  const START = NOW - 2 * H;
+  const cancelledPaid = (id: string, at: number, over: Record<string, any> = {}) =>
+    appt(id, { status: 'cancelled', cancelled_by: 'shop', cancelled_at: iso(at), payment_method: 'venmo', payment_status: 'paid', amount_paid_cents: 2500, ...over });
+
+  it('pages past 40, so a closure with 45 owed bookings flags all 45', async () => {
+    const rows = Array.from({ length: 45 }, (_, i) => cancelledPaid(`c${String(i).padStart(2, '0')}`, START + 1000 + i));
+    const w = world(rows);
+    const e = closureEnv(NOW);
+    e.seen.set('closure:shop1', START);
+    const r = await closeShopForDeletion('u1', ports([bookingLane(w.flow, 'shop1', w.queries, e.env)], 'shop1', { env: e.env }));
+    expect(r.ok).toBe(true);
+    expect(r.needsRefund).toHaveLength(45);
+  });
+
+  it('only rows cancelled by this closure run: the owner\'s own earlier manual-rail cancels and unpaid rows are not flagged', async () => {
+    const w = world([
+      cancelledPaid('mine', START + 5000),
+      cancelledPaid('earlier-owner-cancel', START - 3 * H),
+      cancelledPaid('free', START + 6000, { amount_paid_cents: 0, payment_method: 'shop', payment_status: 'none' }),
+    ]);
+    const e = closureEnv(NOW);
+    e.seen.set('closure:shop1', START);
+    const r = await closeShopForDeletion('u1', ports([bookingLane(w.flow, 'shop1', w.queries, e.env)], 'shop1', { env: e.env }));
+    expect(r.needsRefund).toEqual(['booking:mine']);
+  });
+
+  it('is ordered deterministically (cancelled_at, then id)', async () => {
+    const w = world(['b', 'a', 'c'].map((id) => cancelledPaid(id, START + 1000)));
+    const got = await w.queries.recentCancelledIds('shop1', iso(START), 2, 0);
+    const next = await w.queries.recentCancelledIds('shop1', iso(START), 2, 2);
+    expect([...got, ...next]).toEqual(['a', 'b', 'c']);
+  });
+});
+
+describe('the shop is switched off first (finding 3)', () => {
+  it('pauses bookings and store BEFORE any ids are read, and an unpausable shop deletes nothing', async () => {
+    const order: string[] = [];
+    const lane: Lane = { label: 'booking', open: async () => { order.push('open'); return []; }, process: async () => ({ cancelled: true }) };
+    const r = await closeShopForDeletion('u1', ports([lane], 'shop1', { pauseShop: async (id: string) => { order.push(`pause:${id}`); } }));
+    expect(r.ok).toBe(true);
+    expect(order[0]).toBe('pause:shop1');
+    expect(order.slice(1).every((x) => x === 'open')).toBe(true);
+
+    const lane2 = { ...lane, open: vi.fn(async () => []) };
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const failed = await closeShopForDeletion('u1', ports([lane2], 'shop1', { pauseShop: async () => { throw new Error('db down'); } }));
+    err.mockRestore();
+    expect(failed.ok).toBe(false);
+    expect(lane2.open).not.toHaveBeenCalled();
+  });
+
+  it('re-reads the open ids once after the flags are off to catch stragglers, without redoing what it already handled', async () => {
+    let reads = 0;
+    const processed: string[] = [];
+    const lane: Lane = {
+      label: 'booking',
+      open: async () => (++reads === 1 ? ['a'] : ['a', 'late']),
+      process: async (id) => { processed.push(id); return { cancelled: true }; },
+    };
+    const r = await closeShopForDeletion('u1', ports([lane], 'shop1', { pauseShop: async () => {} }));
+    expect(r).toMatchObject({ ok: true, bookingsCancelled: 2 });
+    expect(processed).toEqual(['a', 'late']);
   });
 });
 
@@ -259,6 +422,14 @@ describe('closed-account emails', () => {
     expect(m.text).not.toMatch(/Book again/);
     expect(m.html).not.toMatch(/Book another time/);
   });
+  it('a paid booking with no automatic refund says plainly to contact the shop to confirm the refund', () => {
+    const paid = { ...ctx, appt: appt('p', { amount_paid_cents: 2500, payment_method: 'card' }) };
+    for (const m of [cancellationEmail(paid, 'shop', 0, NOW, true)]) {
+      expect(m.text).toContain('Contact Fade Lab to confirm your refund.');
+      expect(m.html).toContain('Contact Fade Lab to confirm your refund.');
+      expect(m.text).not.toMatch(/reply to/i);
+    }
+  });
   it('the normal shop cancel email is unchanged', () => {
     expect(cancellationEmail(ctx, 'shop', 0, NOW).text).toMatch(/had to cancel/);
   });
@@ -266,5 +437,12 @@ describe('closed-account emails', () => {
     const octx: any = { shop: ctx.shop, order: { id: 'o1', order_no: 7, total_cents: 1000, customer_email: 'c@example.test', customer_name: 'C', manage_token: 't' }, items: [] };
     const m = orderCancelledEmail(octx, 0, true);
     expect(m.text).toMatch(/closed its account/i);
+  });
+  it('order email: a refund we could not send says so and tells the customer to contact the shop', () => {
+    const octx: any = { shop: ctx.shop, order: { id: 'o1', order_no: 7, total_cents: 1000, amount_paid_cents: 1000, customer_email: 'c@example.test', customer_name: 'C', manage_token: 't' }, items: [] };
+    const m = orderCancelledEmail(octx, 0, true, 1000);
+    expect(m.text).toContain('Contact Fade Lab to confirm your refund.');
+    expect(m.text).toMatch(/\$10/);
+    expect(orderCancelledEmail(octx, 0, true).text).toContain('Contact Fade Lab to confirm your refund.');
   });
 });

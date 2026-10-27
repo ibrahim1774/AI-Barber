@@ -197,13 +197,14 @@ export function orderShippedEmail(ctx: OrderNotifyContext): EmailMessage {
     rows, [`Your order ${orderNo(o)} from ${shop.name} is on its way.`], button);
 }
 
-export function orderCancelledEmail(ctx: OrderNotifyContext, refundedCents: number, closed = false): EmailMessage {
+export function orderCancelledEmail(ctx: OrderNotifyContext, refundedCents: number, closed = false, owedCents = 0): EmailMessage {
   const { order: o, shop } = ctx;
   const paras = [closed
     ? `${shop.name} has closed its account, so your order ${orderNo(o)} is cancelled. Sorry about that.`
     : `Your order ${orderNo(o)} at ${shop.name} was cancelled.`];
   if (refundedCents > 0) paras.push(`A refund of ${dollars(refundedCents)} is on its way to your card. It can take 5–10 business days to show.`);
-  else if (closed && o.amount_paid_cents > 0) paras.push(`If you paid in advance, please reply to this email to ask ${shop.name} about your payment.`);
+  else if (closed && owedCents > 0) paras.push(`We could not send your refund of ${dollars(owedCents)} automatically. Contact ${shop.name} to confirm your refund.`);
+  else if (closed && o.amount_paid_cents > 0) paras.push(`Contact ${shop.name} to confirm your refund.`);
   const shopHref = shopPageUrl(shop, SITE_ORIGIN);
   const shopLink = shopHref && !closed ? { label: 'Visit the shop', href: shopHref } : undefined;
   return message(ctx, `Order ${orderNo(o)} was cancelled`, 'Order cancelled',
@@ -250,7 +251,7 @@ export async function notifyOrder(event: StoreNotifyEvent, deps?: OrderNotifyDep
         break;
       case 'order_cancelled': {
         const refunded = event.refundedCents ?? o.amount_refunded_cents ?? 0;
-        jobs.push(emailCustomer(ctx, d, () => orderCancelledEmail(ctx, refunded, event.closed === true)));
+        jobs.push(emailCustomer(ctx, d, () => orderCancelledEmail(ctx, refunded, event.closed === true, event.owedCents ?? 0)));
         break;
       }
       case 'order_says_paid':

@@ -190,7 +190,7 @@ export function cancellationEmail(ctx: NotifyContext, by: 'customer' | 'shop', r
         : 'Your appointment has been cancelled.',
   ];
   if (refundedCents > 0) paras.push(`A refund of ${dollars(refundedCents)} is on its way to your card. It can take 5–10 business days to show.`);
-  else if (closed && appt.amount_paid_cents > 0) paras.push(`If you paid in advance, please reply to this email to ask ${shop.name} about your payment.`);
+  else if (closed && appt.amount_paid_cents > 0) paras.push(`Contact ${shop.name} to confirm your refund.`);
   // A closed business has nothing to rebook.
   const rebook = shop.slug && !closed ? { label: 'Book another time', href: bookingPageUrl(shop.slug, shop) } : undefined;
   return {
