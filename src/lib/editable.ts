@@ -2,7 +2,7 @@ import type { TemplateId, WebsiteData } from '@/web/types';
 import { resolveAibTheme } from '@/web/lib/render/luxe';
 import { resolvePrimeTheme } from '@/web/lib/render/prime';
 import { resolveEuphoriaTheme } from '@/web/lib/render/euphoria';
-import { nicheOf, serviceMeta, teamOf, withoutLegacyCopy } from '@/web/lib/render/honest';
+import { hasServices, nicheOf, serviceMeta, teamOf, withoutLegacyCopy } from '@/web/lib/render/honest';
 import { LABELS, LABEL_KEYS, clampLabel, defaultLabel, isFigureFreeLabel, isLabelKey, visibleLabelKeys, visiblePageLabelKeys, type LabelDef, type LabelKey } from '@/web/lib/render/labels';
 import { buildPageSet, isMultiPage, pageFileFor, type PageKey, type PageSet } from '@/web/lib/render/pages';
 import { copyBlockInfo, copyDefault, copyHasWordings, isCopyKey, visibleCopyKeys } from '@/web/lib/render/guides';
@@ -544,6 +544,57 @@ export function withShopPreview(html: string, products: PreviewProduct[] | null 
     .replace(/(<div id="shop-preview-grid"[^>]*>)(<\/div>)/, (_m, open: string, close: string) => `${open}${cards}${close}${note}`);
 }
 
+export const ADD_SERVICE_LABEL = '+ Add a service';
+export const ADD_SERVICE_EMPTY_NOTE = 'Your services will show here';
+const ADD_SERVICE_ATTR = 'data-ab-add-service';
+
+// The button in each design's own button styling (luxe: its outlined amber button; prime/euphoria: their .p-cta / .eu-cta).
+function addServiceButton(t: TemplateId | undefined): string {
+  const base = `type="button" ${ADD_SERVICE_ATTR} aria-label="Add a service"`;
+  if (t === 'prime') return `<button ${base} class="p-cta" style="cursor:pointer;">${ADD_SERVICE_LABEL}</button>`;
+  if (t === 'euphoria') return `<button ${base} class="eu-cta" style="cursor:pointer;">${ADD_SERVICE_LABEL}</button>`;
+  return `<button ${base} class="inline-flex items-center border-2 border-[#f4a100] text-[#f4a100] bg-transparent px-8 py-3 font-montserrat font-black tracking-[2px] uppercase hover:bg-[#f4a100] hover:text-[#1a1a1a] transition-all duration-300 text-xs" style="cursor:pointer;">${ADD_SERVICE_LABEL}</button>`;
+}
+
+/**
+ * Editor-only "+ Add a service" control (the live site never has it: the renderer is untouched and this only runs
+ * for the editable preview). With a Services section it goes under the list, inside that section. With none (the
+ * barber ticked nothing) it is a small placeholder block at the services position, on Home only (a multi-page
+ * site has no services page then). No data-edit: a tap posts {type:'addService'}, handled in editorScript.
+ */
+export function withAddService(html: string, d: WebsiteData, page?: PreviewPage | null): string {
+  const button = addServiceButton(d.template);
+  // The Services page of a multi-page site (its list is the shell's .ab-sec / .ab-grid): the shell's own .ab-btn.
+  if (page?.key === 'services' && page.index === undefined) {
+    const sec = html.indexOf('<section class="ab-sec">');
+    const end = sec >= 0 ? html.indexOf('</section>', sec) : -1;
+    if (end < 0) return html;
+    const at = html.slice(end - 6, end) === '</div>' ? end - 6 : end;
+    const own = `<div data-ab-editor-only style="margin-top:28px;"><button type="button" ${ADD_SERVICE_ATTR} aria-label="Add a service" class="ab-btn" style="cursor:pointer;">${ADD_SERVICE_LABEL}</button></div>`;
+    return html.slice(0, at) + own + html.slice(at);
+  }
+  const start = html.indexOf('<section id="services"');
+  if (start >= 0) {
+    const end = html.indexOf('</section>', start);
+    if (end < 0) return html;
+    const wrap = `<div data-ab-editor-only style="text-align:center;margin:28px 0 8px;padding:0 24px;">${button}</div>`;
+    return html.slice(0, end) + wrap + html.slice(end);
+  }
+  if (hasServices(d) || (page && page.key !== 'home')) return html;
+  const hint = `<p style="margin:0 0 16px;font:13px/1.4 -apple-system,Helvetica,Arial,sans-serif;opacity:.6;">${ADD_SERVICE_EMPTY_NOTE}</p>`;
+  const t = d.template;
+  const block =
+    t === 'prime' ? `<section data-ab-editor-only class="p-section" style="text-align:center;padding-top:40px;padding-bottom:40px;">${hint}${button}</section>`
+    : t === 'euphoria' ? `<section data-ab-editor-only class="eu-section" style="background:var(--eu-bg-2);text-align:center;padding-top:56px;padding-bottom:56px;">${hint}${button}</section>`
+    : `<section data-ab-editor-only class="py-10 md:py-16 bg-[#0d0d0d] px-6 text-center">${hint}${button}</section>`;
+  const anchors = ['<section id="contact"', '<section class="eu-section" style="background:var(--eu-bg-2);">', '<footer'];
+  for (const a of anchors) {
+    const at = html.indexOf(a);
+    if (at >= 0) return html.slice(0, at) + block + html.slice(at);
+  }
+  return html;
+}
+
 export function buildPreviewHtml(raw: WebsiteData, editable: boolean, shopProducts?: PreviewProduct[] | null, page?: PreviewPage | null): string {
   // Markers go in only after the data is what the published page would render.
   const data = asPublished(raw);
@@ -553,7 +604,7 @@ export function buildPreviewHtml(raw: WebsiteData, editable: boolean, shopProduc
   if (!editable) return withPreviewBackground(withShopPreview(withImages(stripTracking(renderSite(forRender(data))), data), shopProducts), bg);
   const { marked, ids } = markData(data);
   return withPreviewBackground(
-    withShopPreview(withImages(tagImageSlots(prepareEditableHtml(stripTracking(renderSite(forRender(marked))), ids)), data), shopProducts),
+    withAddService(withShopPreview(withImages(tagImageSlots(prepareEditableHtml(stripTracking(renderSite(forRender(marked))), ids)), data), shopProducts), data),
     bg,
   );
 }
@@ -575,7 +626,8 @@ function buildPageHtml(data: WebsiteData, editable: boolean, shopProducts: Previ
   const html = (bundle.pages.find((f) => f.path === file.path) ?? bundle.pages[0]).html;
   const clean = stripTracking(html);
   const inner = editable ? tagSampleHero(tagImageSlots(prepareEditableHtml(clean, ids)), data, page) : clean;
-  return withPreviewBackground(withShopPreview(withImages(inner, data), shopProducts), bg);
+  const shown = withShopPreview(withImages(inner, data), shopProducts);
+  return withPreviewBackground(editable ? withAddService(shown, data, page) : shown, bg);
 }
 
 /**

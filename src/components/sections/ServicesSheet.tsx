@@ -1,5 +1,5 @@
 import { useDoneBar } from '@/components/KeyboardDoneBar';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FormLabel } from '@/components/FormLabel';
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import type { WebsiteData } from '@/web/types';
@@ -24,6 +24,8 @@ type Props = {
   onDismiss?(): void;
   /** Picks and uploads one photo through the editor's upload guard; null if cancelled or dropped. */
   upload(onPicked?: () => void): Promise<string | null>;
+  /** Open straight at the add view (the preview's "+ Add a service" button) instead of the list. */
+  startAdd?: boolean;
 };
 
 // index null: a service of the barber's own that is added when they save.
@@ -32,14 +34,15 @@ type View_ = { kind: 'list' } | { kind: 'add' } | { kind: 'form'; form: Form };
 
 const PHOTO_FAIL = "Couldn't upload that photo. Check your connection and try again.";
 
-export function ServicesSheet({ visible, data, onChange, onClose, onDismiss, upload }: Props) {
+export function ServicesSheet({ visible, data, onChange, onClose, onDismiss, upload, startAdd }: Props) {
   const doneBar = useDoneBar('decimal-pad');
   const formScroll = useRef<ScrollView>(null);
   const fPrice = useRef<TextInput>(null);
   const f1 = useRef<TextInput>(null);
   const f2 = useRef<TextInput>(null);
   const { height } = useWindowDimensions();
-  const [view, setView] = useState<View_>({ kind: 'list' });
+  const [view, setView] = useState<View_>(startAdd ? { kind: 'add' } : { kind: 'list' });
+  useEffect(() => { if (visible && startAdd) setView({ kind: 'add' }); }, [visible, startAdd]);
   const [picking, setPicking] = useState(false);
   const [uploading, setUploading] = useState(false);
   const afterDismiss = useRef<(() => void) | null>(null);
