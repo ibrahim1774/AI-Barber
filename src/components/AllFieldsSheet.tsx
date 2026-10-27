@@ -55,7 +55,7 @@ export function PhotosSheet({ visible, data, onPick, onLogo, onClose, onDismiss 
         {onLogo && (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Change Logo"
+            accessibilityLabel="Logo & name"
             onPress={onLogo}
             style={({ pressed }) => [styles.tile, pressed && styles.pressed]}
           >
@@ -66,7 +66,7 @@ export function PhotosSheet({ visible, data, onPick, onLogo, onClose, onDismiss 
                 <Text style={styles.plus}>+</Text>
               </View>
             )}
-            <Text style={styles.tileLabel} numberOfLines={1}>Logo</Text>
+            <Text style={styles.tileLabel} numberOfLines={1}>Logo & name</Text>
           </Pressable>
         )}
         {photoSlots(data).map((path) => {

@@ -2,6 +2,7 @@ import type { WebsiteData } from '@/web/types';
 import { adoptAndSave, isPlainSiteData, SYNC_NOTICE, SYNC_TIMEOUT_MS, UPDATED_ON_PUBLISH_MESSAGE, versionFields, type ServerSite, type SyncResult } from '@/lib/adminSync';
 import { track } from '@/lib/analytics';
 import { ApiError, isTimeoutError, type api } from '@/lib/api';
+import { LOGO_BOTH_ENABLED } from '@/lib/logo';
 import { stripMarkers } from '@/lib/editable';
 import { carriesBuiltInBook, linksOf, linksToSend, schedulerConfirmable, type LinkContext } from '@/lib/bookingChoice';
 import { cancelRemindersInBackground } from '@/lib/reminders';
@@ -153,6 +154,8 @@ function clean(v: unknown): unknown {
 
 export function publishPayload(data: WebsiteData): WebsiteData {
   const c = clean(data) as WebsiteData;
+  // headerShow only means something next to a logo (and only once the server honours it): never send it dangling.
+  if (c.headerShow !== undefined && (!c.logo || !LOGO_BOTH_ENABLED)) delete c.headerShow;
   // Shapes the server requires; a missing one would be a 400.
   return {
     ...c,

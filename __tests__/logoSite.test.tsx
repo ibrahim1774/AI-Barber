@@ -4,7 +4,7 @@ jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({
 import { generateContent } from '@/web/services/geminiService';
 import type { WebsiteData } from '@/web/types';
 import { renderSite, forRender, withImages } from '@/lib/render';
-import { withLogo, withoutLogo, withLogoPreview } from '@/lib/logo';
+import { withHeaderShow, withLogo, withoutLogo, withLogoPreview } from '@/lib/logo';
 import { publishPayload } from '@/lib/publish';
 import { buildPreviewHtml, previewEditPaths } from '@/lib/editable';
 import { HeaderSheet } from '@/components/HeaderSheet';
@@ -55,7 +55,8 @@ describe('preview', () => {
   });
 
   it('shows the logo image from the https URL, and from the data URI right after an upload', () => {
-    const d = withLogo(base, LOGO);
+    // Logo-only markup (alt = shop name); the default is now logo + name (see logoSheet.test.tsx).
+    const d = withHeaderShow(withLogo(base, LOGO), 'logo');
     for (const tpl of ['luxe', 'prime', 'euphoria'] as const) {
       const t = { ...d, template: tpl };
       expect(withImages(renderSite(forRender(t)), t)).toContain(`src="${LOGO.url}"`);
@@ -77,14 +78,14 @@ describe('preview', () => {
     const html = withImages(renderSite(forRender(base)), base);
     expect(html).not.toContain('fetchpriority="high"');
     expect(buildPreviewHtml(base, true)).not.toContain('fetchpriority="high"');
-    expect(buildPreviewHtml(withLogo(base, LOGO), true)).toContain(`src="${LOGO.url}" alt="Fresh Cuts" width="600" height="300" fetchpriority="high"`);
+    expect(buildPreviewHtml(withHeaderShow(withLogo(base, LOGO), 'logo'), true)).toContain(`src="${LOGO.url}" alt="Fresh Cuts" width="600" height="300" fetchpriority="high"`);
   });
 });
 
 function mountHeader(over: Record<string, unknown> = {}) {
   const props: any = {
     visible: true, data: base, uploading: false, error: null,
-    onEditName: jest.fn(), onPickLogo: jest.fn(), onRemoveLogo: jest.fn(), onClose: jest.fn(), ...over,
+    onShow: jest.fn(), onSaveName: jest.fn(), onPickLogo: jest.fn(), onRemoveLogo: jest.fn(), onClose: jest.fn(), ...over,
   };
   let tree: any;
   act(() => { tree = create(<HeaderSheet {...props} />); });
@@ -93,21 +94,12 @@ function mountHeader(over: Record<string, unknown> = {}) {
     const b = tree.root.find((n: any) => typeof n.props?.onPress === 'function' && n.findAll((c: any) => c.type === 'Text' && [].concat(c.props.children).join('') === title).length > 0);
     act(() => { b.props.onPress(); });
   };
-  const tab = (label: string) => {
-    const t = tree.root.find((n: any) => n.props?.accessibilityRole === 'tab' && n.props?.accessibilityLabel === label);
-    act(() => { t.props.onPress(); });
-  };
-  return { props, tree, texts, press, tab };
+  return { props, tree, texts, press };
 }
 
 describe('HeaderSheet states', () => {
-  it('none: opens on Name; the Logo tab offers Add your logo only', () => {
+  it('none: the one sheet shows the name box and offers Add your logo only (old Name|Logo tabs replaced by logoSheet.test.tsx)', () => {
     const m = mountHeader();
-    expect(m.texts()).toContain('Fresh Cuts');
-    expect(m.texts()).toContain('Edit shop name');
-    m.press('Edit shop name');
-    expect(m.props.onEditName).toHaveBeenCalled();
-    m.tab('Logo');
     expect(m.texts()).toContain('Add your logo');
     expect(m.texts()).not.toContain('Remove logo');
     m.press('Add your logo');
@@ -115,13 +107,13 @@ describe('HeaderSheet states', () => {
   });
 
   it('uploading: shows progress and no actions', () => {
-    const m = mountHeader({ uploading: true, startOn: 'logo' });
+    const m = mountHeader({ uploading: true });
     expect(m.texts()).toContain('Uploading logo…');
     expect(m.texts()).not.toContain('Add your logo');
   });
 
   it('error: shows the reason and keeps Add your logo for a retry (site unchanged)', () => {
-    const m = mountHeader({ startOn: 'logo', error: "Couldn't open that image" });
+    const m = mountHeader({ error: "Couldn't open that image" });
     expect(m.texts()).toContain("Couldn't open that image");
     expect(m.texts()).toContain('Add your logo');
     m.press('Add your logo');
@@ -140,7 +132,7 @@ describe('HeaderSheet states', () => {
   });
 
   it('removed: back to the name, Add your logo offered again', () => {
-    const m = mountHeader({ data: withoutLogo(withLogo(base, LOGO)), startOn: 'logo' });
+    const m = mountHeader({ data: withoutLogo(withLogo(base, LOGO)) });
     expect(m.texts()).toContain('Add your logo');
     expect(m.texts()).not.toContain('Remove logo');
   });
@@ -151,17 +143,17 @@ describe('PhotosSheet Logo row', () => {
     const onLogo = jest.fn();
     let tree: any;
     act(() => { tree = create(<PhotosSheet visible data={base} onPick={jest.fn()} onLogo={onLogo} onClose={jest.fn()} />); });
-    const tile = tree.root.find((n: any) => n.props?.accessibilityLabel === 'Change Logo' && typeof n.props.onPress === 'function');
+    const tile = tree.root.find((n: any) => n.props?.accessibilityLabel === 'Logo & name' && typeof n.props.onPress === 'function');
     act(() => { tile.props.onPress(); });
     expect(onLogo).toHaveBeenCalled();
     act(() => { tree.update(<PhotosSheet visible data={base} onPick={jest.fn()} onClose={jest.fn()} />); });
-    expect(tree.root.findAll((n: any) => n.props?.accessibilityLabel === 'Change Logo')).toHaveLength(0);
+    expect(tree.root.findAll((n: any) => n.props?.accessibilityLabel === 'Logo & name')).toHaveLength(0);
   });
 });
 
 describe('Sections list Logo row', () => {
   const { SectionsSheet } = require('@/components/sections/SectionsSheet');
-  const logoRow = (tree: any) => tree.root.findAll((n: any) => n.props?.accessibilityLabel?.startsWith?.('Logo,') && typeof n.props.onPress === 'function');
+  const logoRow = (tree: any) => tree.root.findAll((n: any) => n.props?.accessibilityLabel?.startsWith?.('Logo & name,') && typeof n.props.onPress === 'function');
 
   it('shows a Logo row that opens the logo flow; summary says Add without a logo', () => {
     const onLogo = jest.fn();
@@ -169,15 +161,15 @@ describe('Sections list Logo row', () => {
     act(() => { tree = create(<SectionsSheet visible data={base} onOpen={jest.fn()} onLogo={onLogo} onClose={jest.fn()} />); });
     const rows = logoRow(tree);
     expect(rows).toHaveLength(1);
-    expect(rows[0].props.accessibilityLabel).toBe('Logo, Add');
+    expect(rows[0].props.accessibilityLabel).toBe('Logo & name, Add');
     act(() => { rows[0].props.onPress(); });
     expect(onLogo).toHaveBeenCalledTimes(1);
   });
 
-  it('says Change or remove when a logo is set', () => {
+  it('says what the header shows (default Logo + name) when a logo is set', () => {
     let tree: any;
     act(() => { tree = create(<SectionsSheet visible data={withLogo(base, LOGO)} onOpen={jest.fn()} onLogo={jest.fn()} onClose={jest.fn()} />); });
-    expect(logoRow(tree)[0].props.accessibilityLabel).toBe('Logo, Change or remove');
+    expect(logoRow(tree)[0].props.accessibilityLabel).toBe('Logo & name, Logo + name');
   });
 
   it('is absent when the flow is off (no onLogo)', () => {
@@ -197,7 +189,7 @@ describe('logo shapes are constrained in every design', () => {
   for (const tpl of ['luxe', 'prime', 'euphoria'] as const) {
     for (const [name, w, h] of shapes) {
       it(`${tpl} ${name} ${w}x${h}: fixed height, capped width, contain, intrinsic w/h, escaped alt`, () => {
-        const t = { ...withLogo(base, { url: LOGO.url, w, h }), template: tpl, shopName: 'A"><b>x</b> & Co' };
+        const t = { ...withHeaderShow(withLogo(base, { url: LOGO.url, w, h }), 'logo'), template: tpl, shopName: 'A"><b>x</b> & Co' };
         const html = withImages(renderSite(forRender(t)), t);
         const img = html.match(/<img src="https:[^"]*logo[^>]*>/)![0];
         expect(img).toContain(`width="${w}" height="${h}"`);
@@ -212,7 +204,7 @@ describe('logo shapes are constrained in every design', () => {
     }
   }
   it('an absurd sliver (over 20:1) falls back to the shop name, no image', () => {
-    const t = withLogo(base, { url: LOGO.url, w: 4000, h: 100 });
+    const t = withHeaderShow(withLogo(base, { url: LOGO.url, w: 4000, h: 100 }), 'logo');
     expect(withImages(renderSite(forRender(t)), t)).not.toContain(LOGO.url);
   });
 });
@@ -234,6 +226,6 @@ describe('HeaderSheet contrast note', () => {
     expect(t).not.toContain('Parts of this logo may be hard to see');
   });
   it('no note while uploading or without a logo', () => {
-    expect(mountHeader({ contrast: 'low', startOn: 'logo' }).texts()).not.toContain('This logo may be hard to see on the header');
+    expect(mountHeader({ contrast: 'low' }).texts()).not.toContain('This logo may be hard to see on the header');
   });
 });

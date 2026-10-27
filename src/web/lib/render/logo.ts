@@ -21,3 +21,18 @@ export function renderableLogo(d: Pick<WebsiteData, 'logo'>): { w: number; h: nu
   if (!l || typeof l !== 'object' || typeof l.url !== 'string' || !l.url || !logoDimsOk(l.w, l.h)) return null;
   return { w: l.w as number, h: l.h as number };
 }
+
+export type HeaderMode = 'both' | 'logo' | 'name';
+
+/** `site.headerShow` when it is one of the two literals, else undefined (so anything else is dropped on save and means both). */
+export function cleanHeaderShow(v: unknown): 'logo' | 'name' | undefined {
+  return v === 'logo' || v === 'name' ? v : undefined;
+}
+
+/** What the header prints: no usable logo = the name; headerShow 'logo' / 'name' pick one; anything else = logo and name together. */
+export function headerBrand(d: Pick<WebsiteData, 'logo' | 'headerShow'>): { mode: HeaderMode; logo: { w: number; h: number } | null } {
+  const logo = renderableLogo(d);
+  if (!logo) return { mode: 'name', logo: null };
+  const show = cleanHeaderShow(d.headerShow);
+  return { mode: show ?? 'both', logo: show === 'name' ? null : logo };
+}

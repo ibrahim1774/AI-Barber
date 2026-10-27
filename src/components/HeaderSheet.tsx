@@ -1,24 +1,27 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { WebsiteData } from '@/web/types';
 import { colors, fonts } from '@/constants/theme';
 import { Sheet, SheetAction } from '@/components/EditSheet';
 import { contrastNote, type LogoVerdict } from '@/lib/logoContrast';
+import { LOGO_BOTH_ENABLED, headerShowOf, type HeaderShow } from '@/lib/logo';
 
-type Tab = 'name' | 'logo';
+const CHOICES: { key: HeaderShow; label: string }[] = [
+  { key: 'both', label: 'Logo + name' },
+  { key: 'logo', label: 'Logo only' },
+  { key: 'name', label: 'Name only' },
+];
 
 /**
- * The header of the site: its shop name, or a logo that replaces the name (the name stays in the footer, the page
- * title and as the logo's alt text). Name | Logo chooses which pane to work in; Remove logo brings the name back.
- * States of the Logo pane: none (Add your logo), uploading, error (nothing changed, try again), set (Replace, Remove).
+ * The one "Logo & name" screen: the logo (Add / Replace / Remove), the shop name edited in place, and what the header
+ * shows: Logo + name (default), Logo only or Name only. Name only keeps the uploaded logo, so switching back needs no
+ * new upload; Remove logo is the only delete. Every change goes to the site at once, so the preview updates live.
  */
 export function HeaderSheet({
-  visible, data, startOn, previewUri, contrast, uploading, error, onEditName, onPickLogo, onRemoveLogo, onClose, onDismiss,
+  visible, data, previewUri, contrast, uploading, error, onShow, onSaveName, onPickLogo, onRemoveLogo, onClose, onDismiss,
 }: {
   visible: boolean;
   data: WebsiteData;
-  /** The pane shown each time the sheet opens (default: Logo when a logo is set, else Name). */
-  startOn?: Tab;
   /** The just-uploaded logo as a data URI (shown at once); else the saved URL is shown. */
   previewUri?: string | null;
   /** How visible the just-uploaded logo is on the dark header (session only); a calm note shows when it may be hard to see. */
@@ -26,80 +29,110 @@ export function HeaderSheet({
   uploading: boolean;
   /** Why the last logo upload did not work (the site is unchanged). */
   error?: string | null;
-  onEditName(): void;
+  onShow(s: HeaderShow): void;
+  /** A non-empty shop name; an empty one is never sent. */
+  onSaveName(text: string): void;
   onPickLogo(): void;
   onRemoveLogo(): void;
   onClose(): void;
   onDismiss?(): void;
 }) {
   const logo = data.logo;
-  const [tab, setTab] = useState<Tab>(startOn ?? (logo ? 'logo' : 'name'));
+  const show = headerShowOf(data);
+  const [name, setName] = useState(data.shopName ?? '');
   useEffect(() => {
-    if (visible) setTab(startOn ?? (data.logo ? 'logo' : 'name'));
-    // Only when it opens: adding a logo while it is open must not flip the pane.
+    if (visible) setName(data.shopName ?? '');
+    // Only when it opens: typing must not be overwritten by the saved copy.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
-  const shown: Tab = tab;
+  const change = (t: string) => {
+    setName(t);
+    if (t.trim()) onSaveName(t);
+  };
+  // An empty name is refused: leaving the box shows the saved name again.
+  const settle = () => setName((cur) => (cur.trim() ? cur : data.shopName ?? ''));
   return (
-    <Sheet visible={visible} title="Header" onClose={onClose} onDismiss={onDismiss} right={<SheetAction title="Done" onPress={onClose} />}>
-      <View style={styles.seg} accessibilityRole="tablist">
-        {(['name', 'logo'] as const).map((t) => (
-          <Pressable
-            key={t}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: shown === t }}
-            accessibilityLabel={t === 'name' ? 'Name' : 'Logo'}
-            onPress={() => setTab(t)}
-            style={[styles.segItem, shown === t && styles.segOn]}
-          >
-            <Text style={[styles.segText, shown === t && styles.segTextOn]}>{t === 'name' ? 'Name' : 'Logo'}</Text>
-          </Pressable>
-        ))}
-      </View>
+    <Sheet visible={visible} title="Logo & name" onClose={onClose} onDismiss={onDismiss} right={<SheetAction title="Done" onPress={onClose} />}>
+      <View style={styles.pane}>
+        {uploading ? (
+          <View style={styles.busy} accessibilityLabel="Uploading logo">
+            <ActivityIndicator color={colors.accent} />
+            <Text style={styles.value}>Uploading logo…</Text>
+          </View>
+        ) : (
+          <>
+            {logo ? (
+              <View style={styles.preview}>
+                <Image source={{ uri: previewUri || logo.url }} style={styles.logoImg} resizeMode="contain" accessibilityLabel="Your logo" />
+              </View>
+            ) : (
+              <Text style={styles.hint}>Add your logo to show it in the header next to your shop name. Logos work best on a plain background.</Text>
+            )}
+            {logo && contrastNote(contrast) && <Text style={styles.hint}>{contrastNote(contrast)}</Text>}
+            {logo && (logo.w / logo.h > 5 || logo.h / logo.w > 1.5) && (
+              <Text style={styles.hint}>{logo.w > logo.h ? 'Very wide logos are shrunk to fit the header, so they can look small.' : 'Tall logos are shrunk to the header height. A wider logo looks best.'}</Text>
+            )}
+            {!!error && <Text style={styles.error} accessibilityRole="alert">{error}</Text>}
+            <SheetAction primary title={logo ? 'Replace logo' : 'Add your logo'} onPress={onPickLogo} />
+            {logo && <SheetAction title="Remove logo" onPress={onRemoveLogo} />}
+          </>
+        )}
 
-      {shown === 'name' ? (
-        <View style={styles.pane}>
-          <Text style={styles.label}>Shop name</Text>
-          <Text style={styles.value}>{data.shopName}</Text>
-          {logo && <Text style={styles.hint}>Your logo is showing in the header now. Remove it on the Logo tab to show this name again.</Text>}
-          <SheetAction primary title="Edit shop name" onPress={onEditName} />
-        </View>
-      ) : (
-        <View style={styles.pane}>
-          {uploading ? (
-            <View style={styles.busy} accessibilityLabel="Uploading logo">
-              <ActivityIndicator color={colors.accent} />
-              <Text style={styles.value}>Uploading logo…</Text>
+        <Text style={styles.label}>Shop name</Text>
+        <TextInput
+          value={name}
+          onChangeText={change}
+          onBlur={settle}
+          onSubmitEditing={settle}
+          maxLength={80}
+          returnKeyType="done"
+          autoCapitalize="words"
+          accessibilityLabel="Shop name"
+          selectionColor={colors.accent}
+          placeholderTextColor="rgba(255,255,255,0.3)"
+          style={styles.input}
+        />
+
+        {LOGO_BOTH_ENABLED && (
+          <>
+            <Text style={styles.label}>Show in the header</Text>
+            <View style={styles.seg} accessibilityRole="radiogroup">
+              {CHOICES.map((c) => {
+                const disabled = !logo && c.key !== 'name';
+                const selected = show === c.key;
+                return (
+                  <Pressable
+                    key={c.key}
+                    accessibilityRole="radio"
+                    accessibilityLabel={c.label}
+                    accessibilityState={{ selected, disabled }}
+                    disabled={disabled}
+                    onPress={() => { if (!disabled) onShow(c.key); }}
+                    style={[styles.segItem, selected && styles.segOn, disabled && styles.segOff]}
+                  >
+                    <Text style={[styles.segText, selected && styles.segTextOn]}>{c.label}</Text>
+                  </Pressable>
+                );
+              })}
             </View>
-          ) : (
-            <>
-              {logo ? (
-                <View style={styles.preview}>
-                  <Image source={{ uri: previewUri || logo.url }} style={styles.logoImg} resizeMode="contain" accessibilityLabel="Your logo" />
-                </View>
-              ) : (
-                <Text style={styles.hint}>Show your logo in the header instead of your shop name. Logos work best on a plain background.</Text>
-              )}
-              {logo && contrastNote(contrast) && <Text style={styles.hint}>{contrastNote(contrast)}</Text>}
-              {logo && (logo.w / logo.h > 5 || logo.h / logo.w > 1.5) && (
-                <Text style={styles.hint}>{logo.w > logo.h ? 'Very wide logos are shrunk to fit the header, so they can look small.' : 'Tall logos are shrunk to the header height. A wider logo looks best.'}</Text>
-              )}
-              {!!error && <Text style={styles.error} accessibilityRole="alert">{error}</Text>}
-              <SheetAction primary title={logo ? 'Replace logo' : 'Add your logo'} onPress={onPickLogo} />
-              {logo && <SheetAction title="Remove logo" onPress={onRemoveLogo} />}
-            </>
-          )}
-        </View>
-      )}
+            {!logo && <Text style={styles.hint}>Add a logo first</Text>}
+          </>
+        )}
+      </View>
     </Sheet>
   );
 }
 
 const styles = StyleSheet.create({
-  seg: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 10, padding: 3, marginBottom: 14 },
+  seg: { flexDirection: 'row', alignSelf: 'stretch', backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 10, padding: 3 },
+  segOff: { opacity: 0.35 },
+  input: {
+    alignSelf: 'stretch', fontFamily: fonts.body, fontSize: 16, color: '#fff', backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 10,
+  },
   segItem: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 8 },
   segOn: { backgroundColor: colors.accent },
-  segText: { fontFamily: fonts.bodySemi, fontSize: 14, color: 'rgba(255,255,255,0.7)' },
+  segText: { fontFamily: fonts.bodySemi, fontSize: 13, textAlign: 'center', color: 'rgba(255,255,255,0.7)' },
   segTextOn: { color: '#000' },
   pane: { gap: 10, alignItems: 'center', paddingBottom: 8 },
   label: {

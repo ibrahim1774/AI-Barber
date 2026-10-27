@@ -131,6 +131,9 @@ export interface WebsiteData {
   // Optional shop logo (the iOS app uploads a png/jpeg to <folder>/logo/). When set and valid it replaces the shop name
   // in the header (alt text = the name); the footer, <title> and SEO keep the name. Validated by lib/logoUrl.ts.
   logo?: { url: string; w: number; h: number };
+  // What the header shows when there is a logo: absent = the logo AND the shop name; 'logo' = the logo only; 'name' = the name only
+  // (the uploaded logo stays stored, so switching back needs no new upload). Any other value is dropped on save and renders as both.
+  headerShow?: 'logo' | 'name';
   // Optional shop bio — typically pulled from Booksy `description`.
   // Renderer shows it as a quote-styled paragraph in the About section
   // when present; older saved sites without it render exactly as before.

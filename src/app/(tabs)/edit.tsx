@@ -27,7 +27,7 @@ import { listProducts } from '@/lib/store/data';
 import { isSiteShopLink } from '@/web/lib/render/subpages';
 import { advanceOverlay, hasSeen, markSeen, nextOverlay, visibleOverlay, type Overlay } from '@/lib/overlayFlags';
 import { LogoError, pickAndUploadLogo, pickAndUploadPhoto } from '@/lib/photos';
-import { LOGO_ENABLED, withLogo, withLogoPreview, withoutLogo } from '@/lib/logo';
+import { LOGO_ENABLED, withHeaderShow, withLogo, withLogoPreview, withoutLogo } from '@/lib/logo';
 import type { LogoVerdict } from '@/lib/logoContrast';
 import { HeaderSheet } from '@/components/HeaderSheet';
 import { peekPublishHint, takePublishRequest, type PlanHint } from '@/lib/publishRequest';
@@ -89,8 +89,6 @@ export default function Editor() {
   const [logoPreview, setLogoPreview] = useState<{ url: string; dataUri: string; contrast: LogoVerdict | null } | null>(null);
   const [logoBusy, setLogoBusy] = useState(false);
   const [logoError, setLogoError] = useState<string | null>(null);
-  // The Photos sheet's Logo row opens the header sheet on its Logo pane.
-  const [headerOnLogo, setHeaderOnLogo] = useState(false);
   const ents = useEntitlements();
   // The preview drops Book / Shop links the plan no longer covers (as the publish will). Never saved over the barber's data.
   const siteData = site?.data;
@@ -491,7 +489,6 @@ export default function Editor() {
     // The header: its name, or a logo in its place.
     if (path === 'shopName' && LOGO_ENABLED) {
       setLogoError(null);
-      setHeaderOnLogo(false);
       setSheet('header');
       return;
     }
@@ -558,8 +555,8 @@ export default function Editor() {
     setServicesAdd(true);
     setSheet('services');
   }, [sheet]);
-  // The one way into the logo flow (Photos tile, Sections row): the header sheet on its Logo pane.
-  const openLogo = useCallback(() => closeThen(() => { setLogoError(null); setHeaderOnLogo(true); setSheet('header'); }), [closeThen]);
+  // The one way into the logo flow (Photos tile, Sections row; a tap on the header opens the same sheet): the Logo & name sheet.
+  const openLogo = useCallback(() => closeThen(() => { setLogoError(null); setSheet('header'); }), [closeThen]);
   const openSections = useCallback(() => {
     track('sections_opened');
     setSheet('sections');
@@ -737,12 +734,12 @@ export default function Editor() {
         <HeaderSheet
           visible={sheet === 'header'}
           data={data}
-          startOn={logoError || headerOnLogo ? 'logo' : undefined}
           previewUri={data.logo && logoPreview?.url === data.logo.url ? logoPreview.dataUri : null}
           contrast={data.logo && logoPreview?.url === data.logo.url ? logoPreview.contrast : null}
           uploading={logoBusy}
           error={logoError}
-          onEditName={() => closeThen(() => openEdit('shopName'))}
+          onShow={(s) => commit((d) => withHeaderShow(d, s))}
+          onSaveName={(t) => commit((d) => savePathValue(d, 'shopName', t))}
           onPickLogo={() => closeThen(() => void pickLogo())}
           onRemoveLogo={removeLogo}
           onClose={() => setSheet(null)}

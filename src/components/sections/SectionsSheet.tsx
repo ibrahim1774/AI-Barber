@@ -2,6 +2,7 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { WebsiteData } from '@/web/types';
 import { colors, fonts } from '@/constants/theme';
 import { Sheet, SheetAction } from '@/components/EditSheet';
+import { logoSummary } from '@/lib/logo';
 import { sectionCards, type SectionKey } from '@/lib/sections/list';
 
 /** The list of site sections; tapping a card opens that section's editor. */
@@ -36,13 +37,13 @@ export function SectionsSheet({
         {onLogo && (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={`Logo, ${data.logo ? 'Change or remove' : 'Add'}`}
+            accessibilityLabel={`Logo & name, ${logoSummary(data)}`}
             onPress={onLogo}
             style={({ pressed }) => [styles.card, pressed && { opacity: 0.6 }]}
           >
-            <Text style={styles.title}>Logo</Text>
+            <Text style={styles.title}>Logo & name</Text>
             <View style={styles.logoRight}>
-              <Text style={styles.summary} numberOfLines={1}>{data.logo ? 'Change or remove' : 'Add'}</Text>
+              <Text style={styles.summary} numberOfLines={1}>{logoSummary(data)}</Text>
               {data.logo?.url ? (
                 <Image source={{ uri: previewUri || data.logo.url }} style={styles.thumb} resizeMode="contain" />
               ) : (
