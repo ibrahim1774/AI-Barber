@@ -37,7 +37,8 @@ export const fonts = {
   bodySemi: family.medium,
   bodyBold: family.medium,
   bodyExtra: family.medium,
-  mono: 'Menlo',
+  // URLs and the progress percent use the app font too (one family everywhere).
+  mono: family.medium,
 } as const;
 
 export const fontAssets = {
