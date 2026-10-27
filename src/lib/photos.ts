@@ -1,6 +1,8 @@
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { api } from '@/lib/api';
+import { logoContrast, type LogoContrast } from '@/lib/logoContrast';
+import { decodePngBase64 } from '@/lib/logoPixels';
 
 const MAX_EDGE = 2048;
 const JPEG_QUALITY = 0.8;
@@ -96,6 +98,25 @@ export interface LogoUpload {
   h: number;
   /** The same image as a data URI, for the preview (the WebView cannot read file://). Never saved. */
   previewUri: string;
+  /** Whether the logo may be hard to see on the dark header; null when it could not be checked (never blocks). */
+  contrast: LogoContrast | null;
+}
+
+const CONTRAST_EDGE = 48;
+
+/** Counts the hard-to-see pixels on a 48 px copy. Any failure gives null: the check never fails an upload. */
+async function checkContrast(ref: Awaited<ReturnType<ReturnType<typeof ImageManipulator.manipulate>['renderAsync']>>): Promise<LogoContrast | null> {
+  try {
+    let r = ref;
+    if (Math.max(ref.width, ref.height) > CONTRAST_EDGE) {
+      r = await ImageManipulator.manipulate(r).resize(ref.width >= ref.height ? { width: CONTRAST_EDGE } : { height: CONTRAST_EDGE }).renderAsync();
+    }
+    const out = await r.saveAsync({ format: SaveFormat.PNG, base64: true });
+    if (!out.base64) return null;
+    return logoContrast(decodePngBase64(out.base64));
+  } catch {
+    return null;
+  }
 }
 
 function logoFilename(): string {
@@ -142,6 +163,7 @@ export async function uploadLogo(localUri: string, folder: string, deps: UploadD
   if (!enc.out.base64) throw new LogoError('decode', LOGO_DECODE_MESSAGE);
   const w = Math.round(enc.out.width);
   const h = Math.round(enc.out.height);
+  let uploaded: Omit<LogoUpload, 'contrast'>;
   try {
     const name = logoFilename();
     const [target] = await api.getUploadUrls(folder, [name], { contentType: 'image/png', kind: 'logo' });
@@ -152,10 +174,11 @@ export async function uploadLogo(localUri: string, folder: string, deps: UploadD
       body: enc.blob,
     });
     if (!resp.ok) throw new Error(`status ${resp.status}`);
-    return { url: target.publicUrl, w, h, previewUri: `data:image/png;base64,${enc.out.base64}` };
+    uploaded = { url: target.publicUrl, w, h, previewUri: `data:image/png;base64,${enc.out.base64}` };
   } catch {
     throw new LogoError('upload', LOGO_UPLOAD_MESSAGE);
   }
+  return { ...uploaded, contrast: await checkContrast(ref) };
 }
 
 /** Opens the photo library for a logo; null when cancelled. `onPicked` runs once a file is chosen (progress UI). */

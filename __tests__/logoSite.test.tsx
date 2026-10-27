@@ -215,3 +215,24 @@ describe('logo shapes are constrained in every design', () => {
     expect(withImages(renderSite(forRender(t)), t)).not.toContain(LOGO.url);
   });
 });
+
+describe('HeaderSheet contrast note', () => {
+  const set = (over: Record<string, unknown> = {}) => mountHeader({ data: withLogo(base, LOGO), previewUri: DATA_URI, ...over });
+  it('low: shows the calm note under the preview, and the actions still work', () => {
+    const m = set({ contrast: 'low' });
+    expect(m.texts()).toContain('This logo may be hard to see on the header');
+    m.press('Replace logo');
+    expect(m.props.onPickLogo).toHaveBeenCalled();
+  });
+  it('partly-low shows the softer note', () => {
+    expect(set({ contrast: 'partly-low' }).texts()).toContain('Parts of this logo may be hard to see');
+  });
+  it.each(['ok', 'unknown', null, undefined])('says nothing for %s', (c) => {
+    const t = set({ contrast: c }).texts();
+    expect(t).not.toContain('This logo may be hard to see on the header');
+    expect(t).not.toContain('Parts of this logo may be hard to see');
+  });
+  it('no note while uploading or without a logo', () => {
+    expect(mountHeader({ contrast: 'low', startOn: 'logo' }).texts()).not.toContain('This logo may be hard to see on the header');
+  });
+});

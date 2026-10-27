@@ -28,6 +28,7 @@ import { isSiteShopLink } from '@/web/lib/render/subpages';
 import { advanceOverlay, hasSeen, markSeen, nextOverlay, visibleOverlay, type Overlay } from '@/lib/overlayFlags';
 import { LogoError, pickAndUploadLogo, pickAndUploadPhoto } from '@/lib/photos';
 import { LOGO_ENABLED, withLogo, withLogoPreview, withoutLogo } from '@/lib/logo';
+import type { LogoVerdict } from '@/lib/logoContrast';
 import { HeaderSheet } from '@/components/HeaderSheet';
 import { peekPublishHint, takePublishRequest, type PlanHint } from '@/lib/publishRequest';
 import { refreshReminders } from '@/lib/reminders';
@@ -85,7 +86,7 @@ export default function Editor() {
   const navigation = useNavigation();
   const [site, setSite] = useState<SiteRecord | null>(null);
   // The logo just uploaded, as a data URI for the preview only (never saved). Error: the last upload failed, site unchanged.
-  const [logoPreview, setLogoPreview] = useState<{ url: string; dataUri: string } | null>(null);
+  const [logoPreview, setLogoPreview] = useState<{ url: string; dataUri: string; contrast: LogoVerdict | null } | null>(null);
   const [logoBusy, setLogoBusy] = useState(false);
   const [logoError, setLogoError] = useState<string | null>(null);
   // The Photos sheet's Logo row opens the header sheet on its Logo pane.
@@ -426,7 +427,7 @@ export default function Editor() {
         AccessibilityInfo.announceForAccessibility('Uploading logo');
       });
       if (up && mountedRef.current && siteRef.current?.draftId === cur.draftId) {
-        setLogoPreview({ url: up.url, dataUri: up.previewUri });
+        setLogoPreview({ url: up.url, dataUri: up.previewUri, contrast: up.contrast?.verdict ?? null });
         commit((d) => withLogo(d, { url: up.url, w: up.w, h: up.h }));
         AccessibilityInfo.announceForAccessibility('Logo updated');
         track('logo_set');
@@ -738,6 +739,7 @@ export default function Editor() {
           data={data}
           startOn={logoError || headerOnLogo ? 'logo' : undefined}
           previewUri={data.logo && logoPreview?.url === data.logo.url ? logoPreview.dataUri : null}
+          contrast={data.logo && logoPreview?.url === data.logo.url ? logoPreview.contrast : null}
           uploading={logoBusy}
           error={logoError}
           onEditName={() => closeThen(() => openEdit('shopName'))}
