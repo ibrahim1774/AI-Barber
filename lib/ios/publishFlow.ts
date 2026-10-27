@@ -25,6 +25,7 @@ import {
   type VersionedPending,
 } from '../publishSite.js';
 import { VerifyFailure, isActive, lazyDefaultVerifier, type VerifiedTx } from './appleVerify.js';
+import { supabaseDomains } from './domainsRepo.js';
 import { supabasePurchases, type PurchaseRow, type PurchasesRepo } from './purchases.js';
 import { createClient } from '@supabase/supabase-js';
 import { chooseSlug, makeIsTaken, urlServes, vercelProjectExists } from './slug.js';
@@ -118,6 +119,11 @@ export interface PublishDeps {
   bindingOwner?(row: PurchaseRow): Promise<BindingOwner>;
   /** Finish this account's unfinished business move (moveIntent.ts). Best effort. */
   finishMove?(userId: string): Promise<unknown>;
+  /**
+   * The owner just republished a removed site: lift the owner-removed mark on this slug's detached
+   * custom-domain rows, so the domain sweep may re-attach the still-paid domain. Best effort.
+   */
+  clearDomainRemoval?(slug: string): Promise<unknown>;
   /** Dry render before storing (lib/publishSite.ts renderPending). Throws on unrenderable data. */
   render?(p: Pick<PendingSite, 'siteData' | 'imageUrlMap'>): SiteFile[];
   now(): number;
@@ -449,6 +455,17 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
           console.error(`[ios/publish] ${slug}: live but clearRemoved failed:`, e?.message || e);
         }
       }
+      // Lift the paid domain's owner-removed mark on every successful bound publish while no removal
+      // is stamped (idempotent; only detached rows marked owner-removed for this slug), and only
+      // while the purchase is still the caller's (a Move may have won). A failure here is retried by
+      // the next publish, because removed_at is already null by then and the branch above is skipped.
+      if (!removedMeanwhile && deps.clearDomainRemoval) {
+        const now = await deps.repo.get(otid).catch(() => null);
+        if (now && !now.removed_at && (!caller || now.user_id === caller)) {
+          await deps.clearDomainRemoval(slug).catch((e: any) =>
+            console.error(`[ios/publish] ${slug}: live but clearDomainRemoval failed (the next publish retries):`, e?.message || e));
+        }
+      }
       if (!removedMeanwhile) {
         await deps.repo.clearTakenDown(otid, only).catch((e) =>
           console.error(`[ios/publish] ${slug}: live but clearTakenDown failed:`, e?.message || e));
@@ -597,6 +614,7 @@ export function liveDeps(): PublishDeps {
     userOf: liveUserOf,
     emailOf: liveEmailOf,
     bindingOwner: liveBindingOwner,
+    clearDomainRemoval: (slug) => supabaseDomains().clearOwnerRemoved(slug),
     now: () => Date.now(),
   };
 }
