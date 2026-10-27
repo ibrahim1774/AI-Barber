@@ -31,9 +31,9 @@ describe('start screen', () => {
   it('shows the new headline, subheadline and the three options; no stage chips, no old copy', async () => {
     const tree = await render(<Start />);
     const text = allText(tree).join(' | ');
-    expect(text).toContain('Barbers, run it all');
-    expect(text).toContain('one place.');
-    expect(text).toContain('A custom site, your own booking system & sell your own products.');
+    expect(text).toContain('Barbers: get a website, take bookings, and');
+    expect(text).toContain('sell your products.');
+    expect(text).toContain('Edit your text and photos anytime, keep track of every booking, and sell your own products with payments built in.');
     for (const [t, s] of [
       ['Use my booking link', 'Imports services, prices and photos'],
       ['Find me on Google', 'Imports photos, hours and phone'],

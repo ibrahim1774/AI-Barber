@@ -16,7 +16,7 @@ export default function Start() {
   const { restore, busy } = useRestoreFlow();
   // The permission itself is asked at launch (LaunchPrompts in _layout); this
   // only keeps the schedule current.
-  // The 84px push balances the removed chips on tall phones; short screens (SE) keep Restore above the fold.
+  // Content sits near the top on every screen size so the three options and Restore stay above the fold.
   const short = useWindowDimensions().height < 700;
   const go = (href: Href) => {
     void refreshReminders();
@@ -25,11 +25,11 @@ export default function Start() {
   return (
     <Screen>
       <Text variant="h1" style={[styles.h1, short && styles.h1Short]}>
-        {'Barbers, run it all\nfrom '}
-        <Text variant="h1" style={styles.gold}>one place.</Text>
+        {'Barbers: get a website, take bookings, and '}
+        <Text variant="h1" style={styles.gold}>sell your products.</Text>
       </Text>
       <Text variant="body" style={styles.sub} maxFontSizeMultiplier={1.4}>
-        A custom site, your own booking system & sell your own products.
+        Edit your text and photos anytime, keep track of every booking, and sell your own products with payments built in.
       </Text>
       <View style={styles.options}>
         <StartOption
@@ -63,10 +63,10 @@ export default function Start() {
 
 // The old headline was 30/37; the approved one is 0.88 of that.
 const styles = StyleSheet.create({
-  h1: { marginTop: 84, fontSize: 26.4, lineHeight: 32.5 },
-  h1Short: { marginTop: 16 },
+  h1: { marginTop: 12, fontSize: 26.4, lineHeight: 32.5 },
+  h1Short: { marginTop: 8 },
   gold: { color: colors.accent },
-  sub: { marginTop: 24, maxWidth: 512, color: '#FFFFFF' },
-  options: { marginTop: 32, alignSelf: 'stretch', gap: 14 },
+  sub: { marginTop: 16, maxWidth: 512, color: '#FFFFFF' },
+  options: { marginTop: 24, alignSelf: 'stretch', gap: 14 },
   restore: { marginTop: 28 },
 });
