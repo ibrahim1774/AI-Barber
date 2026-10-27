@@ -128,7 +128,11 @@ async function relaunch(): Promise<World> {
 const publish = async (world: World) => world.m.publish.publishFlow((await world.m.siteStore.loadSite())!, world.deps);
 
 function claimRunner(world: World) {
-  const { createClaimRunner } = require('@/lib/claim');
+  const { createClaimRunner, waitConfig } = require('@/lib/claim');
+  // The runner waits out transient/offline publish answers by itself; a virtual clock lets the 3 minutes pass at once.
+  let vclock = 0;
+  waitConfig.now = () => vclock;
+  waitConfig.sleep = async (ms: number) => { vclock += ms; };
   return createClaimRunner({
     signup: world.m.api.api.signup,
     transactionId: async () => (await world.m.siteStore.loadPendingPublish())?.transactionId ?? (await world.deps.latestTransactionId()),
@@ -715,16 +719,29 @@ describe.each(PLANS)('$name plan', (p) => {
       expect(server.published).toHaveLength(1);
     });
 
-    it('signed in but the publish request is offline: waiting (publish stage), session kept; Try again goes live', async () => {
+    it('signed in but the publish request is offline for the whole wait: it retries by itself, then waits (publish stage), session kept; Try again goes live', async () => {
       const world = await payToAccountStep(p);
       const runner = claimRunner(world);
-      server.fail('/api/ios/publish', { kind: 'offline' });
+      server.fail('/api/ios/publish', { kind: 'offline' }, 500);
       expect(await runner.submit('signup', FORM)).toMatchObject({ kind: 'waiting', stage: 'publish' });
+      // it kept trying by itself (2 s -> 10 s backoff over the 3 minute budget), never a manual tap
+      expect(server.count('/api/ios/publish')).toBeGreaterThan(5);
       expect(world.sb.session?.user.id).toBe(idFor(EMAIL));
       expect(await require('@/lib/claimGuard').claimLocked()).toBe(true);
+      (server as any).faults['/api/ios/publish'] = []; // back online
       expect(await runner.finish()).toEqual({ kind: 'live' });
       expect(await world.pending()).toBeNull();
       expect(server.count('/api/ios/signup')).toBe(1);
+    });
+
+    it('the connection comes back during the wait: no tap needed, it ends live and publishes once', async () => {
+      const world = await payToAccountStep(p);
+      const runner = claimRunner(world);
+      server.fail('/api/ios/publish', { kind: 'offline' }, 2);
+      expect(await runner.submit('signup', FORM)).toEqual({ kind: 'live' });
+      expect(server.count('/api/ios/signup')).toBe(1);
+      expect(server.published).toHaveLength(1);
+      expect(await world.pending()).toBeNull();
     });
 
     it('a plain sign-in offline throws the connection sentence (no crash, nothing changed); online it works', async () => {

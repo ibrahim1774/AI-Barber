@@ -15,7 +15,7 @@ jest.mock('@/lib/paywall', () => ({ usePaywall: () => jest.fn(async () => 'decli
 import Claim from '@/app/claim';
 import * as store from '@/lib/siteStore';
 import type { SiteRecord } from '@/lib/siteStore';
-import { ApiError, api } from '@/lib/api';
+import { ApiError, TIMEOUT_MESSAGE, api } from '@/lib/api';
 import { accessToken } from '@/lib/accessToken';
 import { STILL_PUBLISHING_MESSAGE, waitConfig } from '@/lib/claim';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -68,7 +68,7 @@ describe('transient publish answers are waited out on the publishing screen', ()
     ['503 apple-unavailable', () => new ApiError(503, 'apple-unavailable', 'x')],
     ['502 publish-failed while a deploy settles', () => new ApiError(502, 'publish-failed', 'x')],
     ['429 rate limited', () => new ApiError(429, 'rate-limited', 'x')],
-    ['a timeout (the server may still be deploying)', () => new ApiError(0, 'network', 'timeout')],
+    ['a timeout (the server may still be deploying)', () => new ApiError(0, 'network', TIMEOUT_MESSAGE)],
   ])('(a) %s then success: never the form, never red, ends live, one account', async (_n, mk) => {
     iosPublish.mockRejectedValueOnce(mk()).mockRejectedValueOnce(mk());
     const tree = await render(<Claim />);
@@ -112,6 +112,21 @@ describe('transient publish answers are waited out on the publishing screen', ()
     expect(signup).toHaveBeenCalledTimes(1);
     expect(mockDeps.showPaywall).not.toHaveBeenCalled();
     expect(mockResetTo).toHaveBeenCalledWith('/live');
+  });
+
+  test('(b2) leaving the screen during the wait: the late answer never navigates', async () => {
+    iosPublish.mockRejectedValueOnce(new ApiError(503, 'apple-unavailable', 'x'));
+    let wake!: () => void;
+    waitConfig.sleep = () => new Promise<void>((r) => { wake = r; });
+    const tree = await render(<Claim />);
+    await submit(tree);
+    expect(text(tree)).toContain('Publishing your site…');
+    // backgrounded, the layout resume already routed elsewhere, the screen unmounts; then the loop wakes
+    await act(async () => { tree.unmount(); });
+    iosPublish.mockResolvedValue({ ...LIVE });
+    await act(async () => { wake(); });
+    expect(iosPublish).toHaveBeenCalledTimes(1);
+    expect(mockResetTo).not.toHaveBeenCalled();
   });
 
   test('(c) signed in with a pending publish never renders the form, including while it waits', async () => {

@@ -1,5 +1,5 @@
 import * as store from '@/lib/siteStore';
-import { ApiError } from '@/lib/api';
+import { ApiError, TIMEOUT_MESSAGE } from '@/lib/api';
 import {
   PENDING_MESSAGE, PLAN_CHECK_MESSAGE, PRODUCT_IDS, UNCONFIRMED_MESSAGE, UPDATING_MESSAGE, pickLatestTransactionId, publishBusy,
   publishFlow, resumePendingPublish, type PublishDeps,
@@ -517,4 +517,11 @@ describe('team profiles: staff is refreshed from ab_members before it goes onlin
     expect(out.kind).toBe('live');
     expect((deps.iosPublish as jest.Mock).mock.calls[0][0].siteData.staff[0].name).toBe('Stale');
   });
+});
+
+test('a timeout (the request reached the server, which may still be deploying) is transient but not offline', async () => {
+  const out = await publishFlow(site, makeDeps({ iosPublish: jest.fn(async () => { throw new ApiError(0, 'network', TIMEOUT_MESSAGE); }) }));
+  expect(out).toMatchObject({ kind: 'pending', transient: true });
+  expect((out as { offline?: boolean }).offline).toBeUndefined();
+  expect(await store.loadPendingPublish()).toMatchObject({ transactionId: 'tx-1' });
 });

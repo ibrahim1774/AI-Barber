@@ -53,7 +53,7 @@ export const SCREENS: ScreenDef[] = [
   }, forbids: { S2a: /You need a plan/, S2b: /You need a plan/, S2c: /You need a plan/, S9a: /You need a plan/, S10: /You need a plan/ } },
   { id: 'settings', title: 'Settings tab', load: () => require('@/app/(tabs)/settings/index').default , expects: { S1: /Sign in/, S2a: /Sign in/, S4: /Live/, S5: /Live/, S6: /Live/, S8a: /Offline/, S8b: /Offline/, S8c: /Offline/, S9c: /Sign in/ }  },
   { id: 'learn', title: 'Learn', load: () => require('@/app/(tabs)/settings/learn/index').default },
-  { id: 'claim', title: 'Claim (account step)', load: () => require('@/app/claim').default, allowedWhenLocked: true , expects: { S3: /Create your account/, S7b: /Use a different account/, S9d: /Create your account/ }  },
+  { id: 'claim', title: 'Claim (account step)', load: () => require('@/app/claim').default, allowedWhenLocked: true , expects: { S3: /Create your account/, S7b: /Use a different account/, S9d: /Publishing your site[\s\S]*Waiting for connection[\s\S]*Try again/ }, forbids: { S9d: /Create your account|Create Account & Publish/ }  },
   { id: 'start', title: 'Start screen', load: () => require('@/app/start').default , expects: { '*': /Barbers: get a website, take bookings/ }  },
   { id: 'sign-in', title: 'Sign in', load: () => require('@/app/sign-in').default , expects: { '*': /Sign In/ }  },
   { id: 'publishing', title: 'Publishing overlay', load: () => require('@/app/publishing').default, needsSite: true, allowedWhenLocked: true,

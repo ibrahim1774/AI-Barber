@@ -57,6 +57,9 @@ export class ApiError extends Error {
   }
 }
 
+/** The request was sent but no answer came in time (not the same as having no connection). */
+export const isTimeoutError = (e: unknown): boolean => e instanceof ApiError && e.status === 0 && e.message === TIMEOUT_MESSAGE;
+
 /** Added by the admin-edits server; absent from an older one. */
 export interface ServerVersionInfo {
   version?: number;
@@ -71,7 +74,7 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 
 const SLOW_MESSAGE =
   'That took too long to answer. Tap the button once more — the second try is usually faster.';
-const TIMEOUT_MESSAGE =
+export const TIMEOUT_MESSAGE =
   'This is taking longer than it should. Tap the button once more — the second try is usually faster.';
 const OFFLINE_MESSAGE = "Couldn't reach Prime Barber — check your connection and try again.";
 

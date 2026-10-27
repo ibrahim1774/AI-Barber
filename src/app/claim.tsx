@@ -88,7 +88,14 @@ export default function Claim() {
   };
 
   // Leaving the screen ends the wait between retries.
-  useEffect(() => () => runner.stop(), [runner]);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      runner.stop();
+    };
+  }, [runner]);
 
   // Locked: the hardware back button does nothing here.
   useEffect(() => {
@@ -103,6 +110,8 @@ export default function Claim() {
   };
 
   const apply = useCallback((r: ClaimResult) => {
+    // A result that arrives after the screen went away (the app was backgrounded and routed on) must not navigate.
+    if (!mountedRef.current) return;
     switch (r.kind) {
       case 'live': {
         // Asked for Bookings / Store before paying, then quit at this step: offer that upgrade now (never after a paywall).
@@ -155,6 +164,7 @@ export default function Claim() {
       setErrors({});
       try {
         const r = await fn();
+        if (!mountedRef.current) return;
         if (r) apply(r);
         // A session the server refused was signed out: the form is the way back in. Otherwise the session stays.
         if (!r || (r.kind !== 'live' && r.kind !== 'moved-on')) setSignedIn(!!(await accessToken().catch(() => null)));

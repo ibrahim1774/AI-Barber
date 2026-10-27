@@ -83,7 +83,9 @@ describe('first publish (paid this run), the publish request fails', () => {
     expect(out).toBeNull();
     await jest.advanceTimersByTimeAsync(2_000);
     await p;
-    expect(out).toMatchObject({ kind: 'pending', message: w.m.publish.PENDING_MESSAGE, offline: true });
+    expect(out).toMatchObject({ kind: 'pending', message: w.m.publish.PENDING_MESSAGE, transient: true });
+    // a timeout is not "offline": the request reached a server that may still be deploying
+    expect((out as { offline?: boolean }).offline).toBeUndefined();
     expect(await w.pending()).toMatchObject({ transactionId: 'tx-1' });
   });
 

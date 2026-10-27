@@ -98,19 +98,22 @@ export function createClaimRunner(deps: ClaimDeps) {
   async function publish(): Promise<ClaimResult> {
     const started = waitConfig.now();
     let delay = BACKOFF_FIRST_MS;
+    // Once the screen is gone (stop), nothing more is sent or settled: a late answer must not steer navigation.
+    const gone: ClaimResult = { kind: 'stalled', message: STILL_PUBLISHING_MESSAGE };
     for (;;) {
       let out: PublishOutcome | null;
       try {
         out = await deps.finish();
       } catch {
-        return { kind: 'error', message: 'Something went wrong publishing your site. Please try again.' };
+        return stopped ? gone : { kind: 'error', message: 'Something went wrong publishing your site. Please try again.' };
       }
+      if (stopped) return gone;
       const transient = out?.kind === 'pending' && (out.transient === true || out.offline === true);
       if (!transient) return settle(out);
-      if (stopped || waitConfig.now() - started + delay > waitConfig.budgetMs) {
-        return settle(out, true);
-      }
+      // The budget is real elapsed time (attempts included, on the injected clock), not just the pauses.
+      if (waitConfig.now() - started + delay > waitConfig.budgetMs) return settle(out, true);
       await waitConfig.sleep(delay);
+      if (stopped) return gone;
       delay = Math.min(delay * 2, BACKOFF_MAX_MS);
     }
   }

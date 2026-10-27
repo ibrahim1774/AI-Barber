@@ -1,7 +1,7 @@
 import type { WebsiteData } from '@/web/types';
 import { adoptAndSave, isPlainSiteData, SYNC_NOTICE, SYNC_TIMEOUT_MS, UPDATED_ON_PUBLISH_MESSAGE, versionFields, type ServerSite, type SyncResult } from '@/lib/adminSync';
 import { track } from '@/lib/analytics';
-import { ApiError, type api } from '@/lib/api';
+import { ApiError, isTimeoutError, type api } from '@/lib/api';
 import { stripMarkers } from '@/lib/editable';
 import { carriesBuiltInBook, linksOf, linksToSend, schedulerConfirmable, type LinkContext } from '@/lib/bookingChoice';
 import { cancelRemindersInBackground } from '@/lib/reminders';
@@ -255,7 +255,7 @@ async function send(pending: PendingPublish, deps: PublishDeps, retryMessage: st
       throw e;
     }
     track('publish_pending', { code: e instanceof ApiError ? e.code : 'unknown' });
-    return { kind: 'pending', message: retryMessage, ...(e instanceof ApiError && e.status === 0 ? { offline: true } : {}), ...(isTransientFailure(e) ? { transient: true } : {}) };
+    return { kind: 'pending', message: retryMessage, ...(e instanceof ApiError && e.status === 0 && !isTimeoutError(e) ? { offline: true } : {}), ...(isTransientFailure(e) ? { transient: true } : {}) };
   }
   // A 200 without a usable answer (a proxy page parsed as JSON, an API change) is not live: keep the
   // pending publish for the retry instead of saving a record bound to nothing.

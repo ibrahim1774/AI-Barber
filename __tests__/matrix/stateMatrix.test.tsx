@@ -99,6 +99,11 @@ describe.each(SCREENS.map((s) => [s.title, s] as const))('%s', (_t, screen) => {
     }
     world = await boot(server, { user: st.user });
     world.sb.rows = db;
+    // The claim screen waits out transient publish answers by itself; a virtual clock lets the wait finish at once.
+    const wait = require('@/lib/claim').waitConfig;
+    let vclock = 0;
+    wait.now = () => vclock;
+    wait.sleep = async (ms: number) => { vclock += ms; };
     installEmptyTables(require('@/lib/supabase').supabase, world.sb, net);
     const act = screen.prime?.(world);
     const Screen = screen.load();

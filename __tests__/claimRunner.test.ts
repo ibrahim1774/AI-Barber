@@ -1,7 +1,7 @@
 // The account step's engine: sign up / sign in, then the pending publish with the new session.
-import { ApiError } from '@/lib/api';
+import { ApiError, TIMEOUT_MESSAGE } from '@/lib/api';
 import { OFFLINE } from '@/lib/auth';
-import { WAITING_MESSAGE, createClaimRunner, waitConfig, type ClaimDeps } from '@/lib/claim';
+import { STILL_PUBLISHING_MESSAGE, WAITING_MESSAGE, createClaimRunner, waitConfig, type ClaimDeps } from '@/lib/claim';
 import type { PublishOutcome } from '@/lib/publish';
 import type { ClaimValues } from '@/lib/claimValidation';
 
@@ -186,4 +186,43 @@ test('double tap: a second submit while one runs shares it, so the account is cr
   // and a later tap runs again
   expect(await runner.finish()).toEqual({ kind: 'live' });
   expect(deps.finish).toHaveBeenCalledTimes(2);
+});
+
+describe('the wait between publish retries', () => {
+  const transient = { kind: 'pending', message: 'x', transient: true } as const;
+
+  test('stop() during a sleep: no further finish() call, nothing for the screen to apply', async () => {
+    const finish = jest.fn().mockResolvedValueOnce(transient).mockResolvedValue({ kind: 'moved-on-never' });
+    const { runner } = setup({ finish: finish as never });
+    waitConfig.sleep = async (ms) => { clock += ms; runner.stop(); };
+    const r = await runner.submit('signup', v);
+    expect(finish).toHaveBeenCalledTimes(1);
+    expect(r).toMatchObject({ kind: 'stalled' });
+  });
+
+  test('stop() while an attempt is in flight: its late answer is dropped, not settled', async () => {
+    let release!: (o: PublishOutcome | null) => void;
+    const finish = jest.fn(() => new Promise<PublishOutcome | null>((r) => { release = r; }));
+    const { runner } = setup({ finish: finish as never });
+    const p = runner.submit('signup', v);
+    await new Promise((r) => setImmediate(r));
+    runner.stop();
+    release(null); // would be "moved-on"
+    expect(await p).toMatchObject({ kind: 'stalled' });
+  });
+
+  test('the budget counts real elapsed attempt time, not only the pauses', async () => {
+    const finish = jest.fn(async () => { clock += 60_000; return transient; });
+    const { runner } = setup({ finish: finish as never });
+    expect(await runner.submit('signup', v)).toEqual({ kind: 'stalled', message: STILL_PUBLISHING_MESSAGE });
+    // 60 s attempts + 2/4 s pauses: the third attempt ends at 186 s, past the budget, so no fourth starts
+    expect(finish).toHaveBeenCalledTimes(3);
+    expect(clock).toBe(186_000); // no fourth attempt started once the budget was spent
+  });
+
+  test('a timeout that outlasts the wait ends calm (stalled), not "Waiting for connection"', async () => {
+    const finish = jest.fn(async () => ({ kind: 'pending', message: 'x', transient: true }) as PublishOutcome);
+    const { runner } = setup({ finish: finish as never });
+    expect(await runner.submit('signup', v)).toEqual({ kind: 'stalled', message: STILL_PUBLISHING_MESSAGE });
+  });
 });
