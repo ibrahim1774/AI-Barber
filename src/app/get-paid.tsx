@@ -13,11 +13,12 @@ import { loadMyShop, type Shop } from '@/lib/shop';
 
 /** "How do you want to get paid?" Also where aibarber://get-paid (the Stripe return) lands. */
 export default function GetPaidScreen() {
-  const [shop, setShop] = useState<Shop | null | undefined>(undefined);
-  const load = useCallback(() => { loadMyShop().then(setShop).catch(() => setShop(null)); }, []);
+  // undefined: loading. null: no shop yet. 'error': the lookup failed (offline): a retry, never "set up bookings first".
+  const [shop, setShop] = useState<Shop | null | undefined | 'error'>(undefined);
+  const load = useCallback(() => { loadMyShop().then(setShop).catch(() => setShop('error')); }, []);
   useEffect(load, [load]);
   const cardsRef = useTutorialTarget('getpaid.cards');
-  const tour = useTour('getpaid', { auto: 'getpaid', ready: !!shop });
+  const tour = useTour('getpaid', { auto: 'getpaid', ready: !!shop && shop !== 'error' });
 
   return (
     <Page title="Get paid" onBack={goBackOrHome}>
@@ -30,7 +31,15 @@ export default function GetPaidScreen() {
           <Button title="Set up bookings" onPress={() => router.replace('/bookings-setup')} />
         </>
       )}
-      {shop && (
+      {shop === 'error' && (
+        <>
+          <Text style={{ fontFamily: fonts.body, fontSize: 15, lineHeight: 22, color: colors.body, marginBottom: 16 }}>
+            Couldn't load your shop. Check your connection and try again.
+          </Text>
+          <Button title="Try again" onPress={() => { setShop(undefined); load(); }} />
+        </>
+      )}
+      {shop && shop !== 'error' && (
         <View ref={cardsRef} collapsable={false}>
           <GetPaid shop={shop} onChanged={load} />
         </View>

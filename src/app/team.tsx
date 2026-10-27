@@ -40,8 +40,8 @@ export default function TeamScreen() {
   const load = useCallback(async () => {
     try {
       const site = await loadSite();
-      let shop: Shop | null = null;
-      try { shop = await loadMyShop(); } catch { shop = null; }
+      // A failed lookup is an error with a retry, never "no shop" (that would offer to set bookings up for a paying shop).
+      const shop: Shop | null = await loadMyShop();
       const profileLive = shop ? await memberProfileLive() : false;
       const fresh = await refreshSavedTeam(shop);
       setData({
@@ -54,7 +54,7 @@ export default function TeamScreen() {
       });
       setError('');
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't load your team.");
+      setError("Couldn't load your team. Check your connection and try again.");
     }
   }, []);
   useEffect(() => { void load(); }, [load]);
