@@ -118,7 +118,7 @@ export function schedulerLive(ctx: LinkContext): boolean {
 
 export type BookTargetStatus = {
   /** 'live': /book would go out. 'unknown': the shop facts are not loaded yet (no warning). */
-  status: 'live' | 'bookings-off' | 'no-plan' | 'not-linked' | 'unknown';
+  status: 'live' | 'bookings-off' | 'no-plan' | 'not-linked' | 'not-published' | 'unknown';
   /** What the Book buttons use instead while the scheduler is not live. */
   fallback: 'link' | 'none';
 };
@@ -126,7 +126,9 @@ export type BookTargetStatus = {
 /** Why the built-in scheduler would or would not be used, for the sheet's warning. Same predicate as resolveLinks. */
 export function bookTargetStatus(ctx: LinkContext | null, own: string | null): BookTargetStatus {
   const fallback = own ? 'link' : 'none';
-  if (!ctx || !ctx.ents.known || !ctx.ents.hosting) return { status: 'unknown', fallback };
+  if (!ctx || !ctx.ents.known) return { status: 'unknown', fallback };
+  // Known and no plan yet (not published): the preview shows /book, but a publish only keeps it once Bookings is set up.
+  if (!ctx.ents.hosting) return { status: 'not-published', fallback };
   if (schedulerLive(ctx)) return { status: 'live', fallback };
   if (!ctx.ents.bookings) return { status: 'no-plan', fallback };
   if (!ctx.shop || !ctx.shop.purchaseLinked) return { status: 'not-linked', fallback };

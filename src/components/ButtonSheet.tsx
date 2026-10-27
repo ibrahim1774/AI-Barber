@@ -53,6 +53,8 @@ export function schedulerWarning(status: BookTargetStatus): { text: string; acti
       return { text: `Bookings are off, so your Book buttons ${tail} for now. Turn on Take bookings in Setup.`, action: 'setup' };
     case 'no-plan':
       return { text: "Your plan doesn't include the built-in scheduler.", action: 'plans' };
+    case 'not-published':
+      return { text: 'Your Book button goes live once Bookings is set up.', action: null };
     case 'not-linked':
       return { text: PLAN_NOT_LINKED, action: null };
     default:

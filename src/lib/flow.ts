@@ -7,6 +7,7 @@ import { listingSite, toShopSite } from '@/lib/importer';
 import type { ScrapePayload } from '@/lib/api';
 import { clearOverlayFlags } from '@/lib/overlayFlags';
 import { withPagesByDefault } from '@/lib/sitePages';
+import { bookingPrefs, withChoice } from '@/lib/bookingChoice';
 
 type ShopSite = { inputs: ShopInputs; site: WebsiteData };
 
@@ -28,7 +29,7 @@ export async function discardUnpublishedDraft(): Promise<void> {
 
 export async function startDraft(result: ShopSite): Promise<SiteRecord> {
   const prev = await loadSite();
-  const record: SiteRecord = {
+  const generated: SiteRecord = {
     draftId: prev?.draftId ?? randomUUID(),
     inputs: result.inputs,
     // A newly generated site is multi-page from the start (an older site stays single-page until its first Pages save).
@@ -40,6 +41,9 @@ export async function startDraft(result: ShopSite): Promise<SiteRecord> {
     // Whose account the record is tied to survives a regenerate (see SiteRecord.ownerUserId).
     ...(prev?.ownerUserId ? { ownerUserId: prev.ownerUserId } : {}),
   };
+  // No booking link of their own (Google listing, start from scratch): the Book button is the built-in page from the
+  // start. A pasted booking link stays the default. Publish still drops /book until Bookings is live (resolveLinks).
+  const record = bookingPrefs(generated).own ? generated : withChoice(generated, 'aibarber');
   // New content: the editor's prompts and launch guide show again for it.
   // Best effort — a failed clear must never lose the generated draft.
   try {
