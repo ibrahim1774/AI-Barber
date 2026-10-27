@@ -40,7 +40,7 @@ import { ApiError, api } from '@/lib/api';
 import { accessToken } from '@/lib/accessToken';
 import { OFFLINE } from '@/lib/auth';
 import { conflictMessage } from '@/lib/claimCopy';
-import { WAITING_MESSAGE } from '@/lib/claim';
+import { WAITING_MESSAGE, waitConfig } from '@/lib/claim';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { sb, supabase } = require('@/lib/supabase');
 
@@ -76,8 +76,15 @@ async function fill(tree: any, over: Record<string, string> = {}) {
 let iosPublish: jest.Mock;
 let signup: jest.SpyInstance;
 
+const realWait = { ...waitConfig };
+afterEach(() => Object.assign(waitConfig, realWait));
+
 beforeEach(async () => {
   jest.restoreAllMocks();
+  // The automatic wait between publish retries runs on a virtual clock.
+  let clock = 0;
+  waitConfig.now = () => clock;
+  waitConfig.sleep = async (ms) => { clock += ms; };
   mockResetTo.mockClear();
   mockPush.mockClear();
   sb.reset();
@@ -260,14 +267,16 @@ describe('failures stay on the form', () => {
   });
 
   test('signed in but the publish is offline: waiting; Try again re-sends WITHOUT signing up again', async () => {
-    iosPublish.mockRejectedValueOnce(new ApiError(0, 'network', 'offline'));
+    iosPublish.mockRejectedValue(new ApiError(0, 'network', 'offline'));
     const tree = await render(<Claim />);
     await fill(tree);
     await press(tree, 'Create Account & Publish');
     expect(text(tree)).toContain(WAITING_MESSAGE);
+    const before = iosPublish.mock.calls.length;
+    iosPublish.mockResolvedValue(LIVE);
     await press(tree, 'Try again');
     expect(signup).toHaveBeenCalledTimes(1);
-    expect(iosPublish).toHaveBeenCalledTimes(2);
+    expect(iosPublish).toHaveBeenCalledTimes(before + 1);
     expect(mockResetTo).toHaveBeenCalledWith('/live');
   });
 

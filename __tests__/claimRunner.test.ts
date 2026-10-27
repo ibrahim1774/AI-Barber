@@ -1,13 +1,19 @@
 // The account step's engine: sign up / sign in, then the pending publish with the new session.
 import { ApiError } from '@/lib/api';
 import { OFFLINE } from '@/lib/auth';
-import { WAITING_MESSAGE, createClaimRunner, type ClaimDeps } from '@/lib/claim';
+import { WAITING_MESSAGE, createClaimRunner, waitConfig, type ClaimDeps } from '@/lib/claim';
 import type { PublishOutcome } from '@/lib/publish';
 import type { ClaimValues } from '@/lib/claimValidation';
 
 const v: ClaimValues = { name: ' Jo Barber ', email: ' Jo@Example.com ', phone: '(512) 555-0142', password: 'hunter22!' };
 const LIVE: PublishOutcome = { kind: 'live', url: 'https://x.aibarber.org', republished: false };
 const rej = (status: number, code: string, body?: unknown) => jest.fn(async () => { throw new ApiError(status, code, code, body); });
+
+// A virtual clock: sleeping only advances time, so the 3 minute wait runs instantly.
+const realWait = { ...waitConfig };
+let clock = 0;
+beforeEach(() => { clock = 0; waitConfig.now = () => clock; waitConfig.sleep = async (ms) => { clock += ms; }; });
+afterEach(() => Object.assign(waitConfig, realWait));
 
 function setup(over: Partial<ClaimDeps> = {}) {
   const deps = {
@@ -135,12 +141,13 @@ describe('after the account exists', () => {
     const { runner } = setup({ finish: jest.fn(async () => ({ kind: 'blocked', message: 'belongs to a***@gmail.com' })) as never });
     expect(await runner.submit('signup', v)).toEqual({ kind: 'blocked', message: 'belongs to a***@gmail.com' });
   });
-  test('offline during the publish: waiting; finish() retries it', async () => {
+  test('offline during the publish for the whole wait: waiting; finish() retries it', async () => {
     const finish = jest.fn()
-      .mockResolvedValueOnce({ kind: 'pending', message: 'x', offline: true })
-      .mockResolvedValueOnce(LIVE);
+      .mockResolvedValue({ kind: 'pending', message: 'x', offline: true });
+    finish.mockResolvedValueOnce({ kind: 'pending', message: 'x', offline: true });
     const { runner } = setup({ finish: finish as never });
     expect(await runner.submit('signup', v)).toEqual({ kind: 'waiting', message: WAITING_MESSAGE, stage: 'publish' });
+    finish.mockResolvedValue(LIVE);
     expect(await runner.finish()).toEqual({ kind: 'live' });
   });
   test('a server error (5xx) shows its words, not "waiting"', async () => {

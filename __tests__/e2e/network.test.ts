@@ -221,7 +221,7 @@ describe('the other network steps of a publish', () => {
     const p = w.m.publish.resumePendingPublish(w.deps).then((o) => (out = o));
     await jest.advanceTimersByTimeAsync(6_100);
     await p;
-    expect(out).toEqual({ kind: 'pending', message: w.m.publish.UPDATING_MESSAGE });
+    expect(out).toMatchObject({ kind: 'pending', message: w.m.publish.UPDATING_MESSAGE });
     expect(await w.pending()).toMatchObject({ transactionId: null });
   });
 });

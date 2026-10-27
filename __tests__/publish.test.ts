@@ -78,7 +78,7 @@ test('pending publish is saved before the API call', async () => {
   const out = await publishFlow(site, deps);
   expect(pendingAtCall).toMatchObject({ transactionId: 'tx-1', data: { shopName: 'Fade' } });
   // A 5xx keeps the pending publish for the launch retry.
-  expect(out).toEqual({ kind: 'pending', message: PENDING_MESSAGE });
+  expect(out).toMatchObject({ kind: 'pending', message: PENDING_MESSAGE });
   expect(await store.loadPendingPublish()).toMatchObject({ transactionId: 'tx-1' });
   expect((await store.loadSite())?.slug).toBeNull();
 });
@@ -96,7 +96,7 @@ test('waits for a lagging transaction id, then gives up as pending', async () =>
   const p2 = publishFlow(site, deps);
   await jest.advanceTimersByTimeAsync(5000);
   // Paid per the paywall but no transaction found: never "payment went through".
-  expect(await p2).toEqual({ kind: 'pending', message: UNCONFIRMED_MESSAGE });
+  expect(await p2).toMatchObject({ kind: 'pending', message: UNCONFIRMED_MESSAGE });
   expect(never).toHaveBeenCalledTimes(4); // first try + 3 retries, 1 s apart
   expect(deps.iosPublish).not.toHaveBeenCalled();
   // The purchase is remembered without an id, for the launch retry to look up.
@@ -118,7 +118,7 @@ test('retries a pending publish on launch', async () => {
   // Still offline: the pending publish stays for the next launch.
   await store.savePendingPublish({ transactionId: 'tx-9', data: site.data, createdAt: Date.now() });
   const offline = makeDeps({ iosPublish: jest.fn(async () => { throw new ApiError(0, 'network', 'offline'); }) });
-  expect(await resumePendingPublish(offline)).toEqual({ kind: 'pending', message: PENDING_MESSAGE, offline: true });
+  expect(await resumePendingPublish(offline)).toMatchObject({ kind: 'pending', message: PENDING_MESSAGE, offline: true });
   expect(await store.loadPendingPublish()).not.toBeNull();
 });
 
@@ -239,10 +239,10 @@ test('the pending record (with no id yet) is saved as soon as the purchase is ve
 
 test('an entitled republish that hits a 5xx says the site is still updating, never "payment went through"', async () => {
   const deps = makeDeps({ hasEntitlement: jest.fn(async () => true), iosPublish: fail(503, 'temporarily-unavailable') });
-  expect(await publishFlow(site, deps)).toEqual({ kind: 'pending', message: UPDATING_MESSAGE });
+  expect(await publishFlow(site, deps)).toMatchObject({ kind: 'pending', message: UPDATING_MESSAGE });
   // No purchase this run: nothing saved before the transaction was found.
   const net = makeDeps({ hasEntitlement: jest.fn(async () => true), iosPublish: fail(0, 'network') });
-  expect(await publishFlow(site, net)).toEqual({ kind: 'pending', message: UPDATING_MESSAGE, offline: true });
+  expect(await publishFlow(site, net)).toMatchObject({ kind: 'pending', message: UPDATING_MESSAGE, offline: true });
 });
 
 test('an entitled user with no transaction found is unconfirmed and saves nothing', async () => {
@@ -250,7 +250,7 @@ test('an entitled user with no transaction found is unconfirmed and saves nothin
   const deps = makeDeps({ hasEntitlement: jest.fn(async () => true), latestTransactionId: jest.fn(async () => null) });
   const p = publishFlow(site, deps);
   await jest.advanceTimersByTimeAsync(5000);
-  expect(await p).toEqual({ kind: 'pending', message: UNCONFIRMED_MESSAGE });
+  expect(await p).toMatchObject({ kind: 'pending', message: UNCONFIRMED_MESSAGE });
   expect(await store.loadPendingPublish()).toBeNull();
 });
 
@@ -279,7 +279,7 @@ test('a failed lookup keeps a null-id pending publish', async () => {
   await store.savePendingPublish({ transactionId: null, data: site.data, createdAt: Date.now() });
   const deps = makeDeps({ latestTransactionId: jest.fn(async () => { throw new Error('not configured'); }) });
   // Unverified at this point: never "payment went through".
-  expect(await resumePendingPublish(deps)).toEqual({ kind: 'pending', message: UPDATING_MESSAGE });
+  expect(await resumePendingPublish(deps)).toMatchObject({ kind: 'pending', message: UPDATING_MESSAGE });
   expect(await store.loadPendingPublish()).toMatchObject({ transactionId: null });
 });
 
@@ -293,7 +293,7 @@ test('resume lookup timeout keeps the null-id record', async () => {
   expect(out).toBe('unsettled');
   await jest.advanceTimersByTimeAsync(1);
   await p;
-  expect(out).toEqual({ kind: 'pending', message: UPDATING_MESSAGE });
+  expect(out).toMatchObject({ kind: 'pending', message: UPDATING_MESSAGE });
   expect(deps.iosPublish).not.toHaveBeenCalled();
   expect(await store.loadPendingPublish()).toMatchObject({ transactionId: null });
   // The queue is free again for the next publish.
@@ -439,7 +439,7 @@ describe('publish decides the Book / Shop links from the choice', () => {
         await store.savePendingPublish(null);
         const r = await go(publishedBare, ents as never, shop as never);
         expect(r.deps.iosPublish).not.toHaveBeenCalled();
-        expect(r.out).toEqual({ kind: 'pending', message: PLAN_CHECK_MESSAGE });
+        expect(r.out).toMatchObject({ kind: 'pending', message: PLAN_CHECK_MESSAGE });
         expect(await store.loadPendingPublish()).toMatchObject({ transactionId: 'tx-1' });
       }
     });
@@ -465,7 +465,7 @@ describe('publish decides the Book / Shop links from the choice', () => {
         const out = await publishFlow(publishedBare, deps);
         expect(reloadPlan).toHaveBeenCalledTimes(1);
         expect(deps.iosPublish).not.toHaveBeenCalled();
-        expect(out).toEqual({ kind: 'pending', message: PLAN_CHECK_MESSAGE });
+        expect(out).toMatchObject({ kind: 'pending', message: PLAN_CHECK_MESSAGE });
       }
     });
     test('a confirmable context never reloads the plan', async () => {
