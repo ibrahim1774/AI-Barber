@@ -40,7 +40,7 @@ import { GRACE_MS } from './lapse.js';
 import { withTimeout } from './timeout.js';
 import { candidateDomains, eligiblePrice, isComDomain, normalizeLabel } from './domainNames.js';
 import {
-  ATTACHED_STATES, DomainConflict, OWNED_STATES, SITE_HOLDING_STATES,
+  ATTACHED_STATES, DomainConflict, OWNED_STATES, OWNER_REMOVED, SITE_HOLDING_STATES,
   type DomainRow, type DomainSource, type DomainState, type DomainsRepo,
 } from './domainsRepo.js';
 import type { DomainNotification } from './notifications.js';
@@ -90,6 +90,12 @@ export interface DomainFlowDeps {
   /** … owns the shop linked (ab_shops.ios_otid, set by an authenticated, Apple-verified call) to this purchase. */
   shopOtidOf?(userId: string): Promise<string | null>;
   hooks: DomainHooks;
+  /**
+   * True when the site's owner removed it or deleted the account (ios_purchases.removed_at set).
+   * False when the site is live, or when there is no iOS purchase row for the slug (web sites).
+   * The sweep never re-attaches a detached domain to a removed site.
+   */
+  siteRemoved?(slug: string): Promise<boolean>;
   /** Shared rate limiter (lib/bookings/rateLimit.ts). Fails open. */
   limiter?: { allow(key: string, kind: 'read' | 'write'): Promise<boolean> };
   now(): number;
@@ -528,6 +534,9 @@ export async function step(row: DomainRow, deps: DomainFlowDeps, ctx: Ctx = {}):
         // Re-attach only when paid again AND Vercel confirms the registration is still ours.
         let s = ctx.payer;
         if (!s) {
+          // Sweep / resume (no explicit claim): never put a domain back on a site its owner removed.
+          if (row.failure_reason === OWNER_REMOVED) return { row, next: 'done' };
+          if (deps.siteRemoved && (await deps.siteRemoved(row.site_slug))) return { row, next: 'done' };
           if (!(ms(row.paid_until) > deps.now()) || row.revoked_at) return { row, next: 'done' };
           try {
             s = await askPayer(row, deps);
@@ -550,6 +559,7 @@ export async function step(row: DomainRow, deps: DomainFlowDeps, ctx: Ctx = {}):
           return await move(deps, row, ['detached'], {
             state: 'bought', detached_at: null, registration_expires_at: iso(owned.expiresAt),
             auto_renew: desiredAutoRenew('bought', s), auto_renew_synced: false, last_error: null,
+            failure_reason: null, // an explicit claim lifts the owner-removed mark
           });
         } catch (e) {
           if (!(e instanceof DomainConflict)) throw e;
@@ -674,6 +684,39 @@ async function leased<T>(otid: string, deps: Pick<DomainFlowDeps, 'repo' | 'now'
     return await fn();
   } finally {
     await deps.repo.releaseLease(otid, token).catch((e) => console.error(`[domains] ${otid}: releasing the lease failed:`, errMsg(e)));
+  }
+}
+
+// ─── owner removal (site removed / account deleted) ───
+
+const REMOVAL_IN_FLIGHT: readonly DomainState[] = ['reserved', 'buying', 'ordered'];
+
+/**
+ * The owner removed the site: take EVERY custom domain of the slug off its Vercel project (www
+ * first, then the apex, like a lapse; 'absent' is fine) and mark the row detached + owner-removed,
+ * so the domain sweep never re-attaches it. Idempotent; throws (nothing marked) when Vercel fails,
+ * so the removal is retried. Rows already detached by a lapse (or by the old apex-only release)
+ * are cleaned and marked too.
+ */
+export async function releaseDomainsForRemoval(
+  slug: string,
+  deps: Pick<DomainFlowDeps, 'repo' | 'vercel' | 'now'>,
+): Promise<void> {
+  for (const row of await deps.repo.forSite(slug)) {
+    // A purchase still in flight (M6): detaching it could strand the order, and the registration
+    // may be ours. Refuse; the domain sweep resolves it and the removal is retried.
+    if (REMOVAL_IN_FLIGHT.includes(row.state)) throw new Error(`custom domain purchase is in progress (${row.state}); retry the removal later`);
+    if (!row.simulated) {
+      if (!deps.vercel) throw new Error('Vercel is not configured; cannot release the custom domain');
+      const project = projectFor(slug);
+      await deps.vercel.removeProjectDomain(project, `www.${row.domain}`);
+      await deps.vercel.removeProjectDomain(project, row.domain);
+    }
+    if (row.state === 'detached' && row.failure_reason === OWNER_REMOVED) continue;
+    await deps.repo.update(row.original_transaction_id, [row.state], {
+      state: 'detached', failure_reason: OWNER_REMOVED,
+      detached_at: row.detached_at ?? iso(deps.now()),
+    });
   }
 }
 

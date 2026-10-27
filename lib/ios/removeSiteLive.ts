@@ -6,9 +6,9 @@ import { findShopForSite } from '../siteSubpages.js';
 import { bucket, readPendingSite, slugify } from '../publishSite.js';
 import { offlineHtml } from './offlinePage.js';
 import { supabasePurchases } from './purchases.js';
-import { supabaseDomains, SITE_HOLDING_STATES } from './domainsRepo.js';
+import { supabaseDomains } from './domainsRepo.js';
 import { liveVercelDomains } from './vercelDomains.js';
-import { projectFor } from './domainFlow.js';
+import { projectFor, releaseDomainsForRemoval } from './domainFlow.js';
 import type { RemoveSiteDeps } from './removeSite.js';
 import { isReservedSlug } from './reservedSlugs.js';
 
@@ -101,7 +101,6 @@ async function pathsReferencedByOthers(b: ReturnType<typeof bucket>, ownSlug: st
   return refs;
 }
 
-const IN_FLIGHT: readonly string[] = ['reserved', 'buying', 'ordered'];
 
 export function liveRemoveDeps(): RemoveSiteDeps {
   const purchases = supabasePurchases();
@@ -115,18 +114,7 @@ export function liveRemoveDeps(): RemoveSiteDeps {
       await deployRenderedSite({ siteId: slug, html: offlineHtml(), subpages: shop ? { mode: 'manage-only' } : null });
     },
     async releaseDomains(slug) {
-      const repo = supabaseDomains();
-      const row = await repo.holdingSite(slug);
-      if (!row) return;
-      // A purchase still in flight (M6): detaching it could strand the order, and the registration
-      // may be ours. Refuse; the domain sweep resolves it and the removal is retried.
-      if (IN_FLIGHT.includes(row.state)) throw new Error(`custom domain purchase is in progress (${row.state}); retry the removal later`);
-      if (!row.simulated) {
-        const vercel = liveVercelDomains();
-        if (!vercel) throw new Error('Vercel is not configured; cannot release the custom domain');
-        await vercel.removeProjectDomain(projectFor(slug), row.domain); // 'absent' is fine
-      }
-      await repo.update(row.original_transaction_id, SITE_HOLDING_STATES, { state: 'detached', detached_at: new Date().toISOString() });
+      await releaseDomainsForRemoval(slug, { repo: supabaseDomains(), vercel: liveVercelDomains(), now: () => Date.now() });
     },
     async deleteContent(slug) {
       const b = bucket();

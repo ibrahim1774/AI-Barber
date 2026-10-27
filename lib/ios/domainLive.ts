@@ -150,6 +150,7 @@ export function liveDomainDeps(): DomainFlowDeps {
     verifySite: lazyDefaultVerifier(),
     payer: makePayer(verifyDomain, stripeSubscription, Date.now),
     sitePurchase: (otid) => purchases.get(otid),
+    siteRemoved: async (slug) => (await purchases.findBySlug(slug))?.removed_at != null,
     getUser: liveGetUser(client),
     shopOtidOf: async (userId) => (await shops.shopByOwner(userId))?.ios_otid ?? null,
     hooks: makeDomainHooks({

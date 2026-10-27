@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   BASE_PENDING, RENEWAL_UNKNOWN, advance, applyDomainNotification, markTransferred, releaseStuckBuy, runDomainClaim, runDomainSearch, runDomainStatus,
-  statusBody, sweepDomains, type DomainFlowDeps,
+  releaseDomainsForRemoval, statusBody, sweepDomains, type DomainFlowDeps,
 } from '../../lib/ios/domainFlow.js';
 import { VerifyFailure, type VerifiedTx } from '../../lib/ios/appleVerify.js';
 import { DOMAIN_PRODUCT_ID } from '../../lib/ios/tiers.js';
@@ -1008,5 +1008,99 @@ describe('re-review 3: G1–G3', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     expect(await forceRenewOff('x.com', { vercel })).toBe(false);
     expect(await forceRenewOff('x.com', { vercel }, { longExpired: true })).toBe(true);
+  });
+});
+
+
+// ─── owner removed the site / deleted the account (plan B1 gap 2) ───
+
+describe('owner removal never lets the sweep re-attach the domain', () => {
+  const projectDomains = (w: ReturnType<typeof world>) => [...(w.reg.projects.get('fresh-cuts')?.keys() ?? [])].sort();
+  const liveWorld = async () => {
+    const w = world();
+    await w.claim(CLAIM);
+    expect(w.repo.rows.get('d-o1')!.state).toBe('live');
+    return w;
+  };
+  const remove = (w: ReturnType<typeof world>) =>
+    releaseDomainsForRemoval('fresh-cuts', { repo: w.repo, vercel: w.reg.api, now: w.deps.now });
+  const sweepWith = (w: ReturnType<typeof world>, removed: boolean) =>
+    sweepDomains({ ...w.deps, siteRemoved: async () => removed }, { deadline: w.deps.now() + 60_000 });
+
+  it('detaches www AND the apex, and marks the row owner-removed', async () => {
+    const w = await liveWorld();
+    expect(projectDomains(w)).toEqual(['freshcuts.com', 'www.freshcuts.com']);
+    await remove(w);
+    expect(projectDomains(w)).toEqual([]);
+    expect(w.repo.rows.get('d-o1')).toMatchObject({ state: 'detached', failure_reason: 'owner-removed' });
+  });
+
+  it('delete then sweep (paid, registration still ours) never re-attaches, even without the site check', async () => {
+    const w = await liveWorld();
+    await remove(w);
+    w.tick(2 * DAY);
+    await w.sweep();
+    await sweepWith(w, false); // the site looks fine: the mark alone protects
+    expect(w.repo.rows.get('d-o1')!.state).toBe('detached');
+    expect(projectDomains(w)).toEqual([]);
+  });
+
+  it('a legacy detached row (no mark, www still attached) is not re-attached while the site is removed', async () => {
+    const w = await liveWorld();
+    w.repo.rows.set('d-o1', { ...w.repo.rows.get('d-o1')!, state: 'detached', detached_at: new Date(w.deps.now()).toISOString() });
+    await sweepWith(w, true);
+    expect(w.repo.rows.get('d-o1')!.state).toBe('detached');
+    // and the removal cleans it up and marks it
+    await remove(w);
+    expect(projectDomains(w)).toEqual([]);
+    expect(w.repo.rows.get('d-o1')!.failure_reason).toBe('owner-removed');
+  });
+
+  it('retry is idempotent', async () => {
+    const w = await liveWorld();
+    await remove(w);
+    const first = { ...w.repo.rows.get('d-o1')! };
+    await remove(w);
+    expect(w.repo.rows.get('d-o1')).toEqual(first);
+  });
+
+  it('a Vercel failure marks nothing; the retry finishes', async () => {
+    const w = await liveWorld();
+    (w.reg.api.removeProjectDomain as any).mockRejectedValueOnce(new Error('vercel down'));
+    await expect(remove(w)).rejects.toThrow('vercel down');
+    expect(w.repo.rows.get('d-o1')!.state).toBe('live');
+    await remove(w);
+    expect(w.repo.rows.get('d-o1')).toMatchObject({ state: 'detached', failure_reason: 'owner-removed' });
+  });
+
+  it('a purchase in flight refuses the removal (retried later)', async () => {
+    const w = world();
+    w.repo.rows.set('x', blankRow({ original_transaction_id: 'x', site_slug: 'fresh-cuts', domain: 'freshcuts.com', state: 'buying' }));
+    await expect(remove(w)).rejects.toThrow(/in progress/);
+  });
+
+  it('legitimate: a plain lapse (site NOT removed) is still re-attached by the sweep after resubscribing', async () => {
+    const w = await liveWorld();
+    w.tick(370 * DAY);
+    w.domainSubs['100'].status = 2;
+    await w.notify('EXPIRED');
+    await sweepWith(w, false);
+    expect(w.repo.rows.get('d-o1')).toMatchObject({ state: 'detached', failure_reason: null });
+    w.domainSubs['100'].status = 1;
+    w.domainSubs['100'].expiresAt = w.deps.now() + 365 * DAY;
+    await w.notify('SUBSCRIBED', 'd-o1', 'RESUBSCRIBE');
+    await sweepWith(w, false);
+    expect(w.repo.rows.get('d-o1')!.state).toBe('live');
+  });
+
+  it('legitimate: after re-signup and republish, the explicit claim brings the domain back and lifts the mark', async () => {
+    const w = await liveWorld();
+    await remove(w);
+    await sweepWith(w, false);
+    expect(w.repo.rows.get('d-o1')!.state).toBe('detached');
+    expect(await w.claim(CLAIM)).toMatchObject({ status: 200, body: { state: 'live' } });
+    expect(w.repo.rows.get('d-o1')).toMatchObject({ state: 'live', failure_reason: null });
+    expect(w.reg.api.buy).toHaveBeenCalledTimes(1);
+    expect(projectDomains(w)).toEqual(['freshcuts.com', 'www.freshcuts.com']);
   });
 });

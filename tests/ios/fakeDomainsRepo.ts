@@ -1,7 +1,7 @@
 // In-memory ios_domains with the 012 constraints: primary key on the otid, the domain unique
 // among non-failed, non-simulated rows, the site slug unique among SITE_HOLDING_STATES rows.
 import {
-  ATTACHED_STATES, DomainConflict, OWNED_STATES, RESUMABLE_STATES, SITE_HOLDING_STATES,
+  ATTACHED_STATES, DomainConflict, OWNER_REMOVED, OWNED_STATES, RESUMABLE_STATES, SITE_HOLDING_STATES,
   type DomainRow, type DomainsRepo,
 } from '../../lib/ios/domainsRepo.js';
 
@@ -41,6 +41,9 @@ export function fakeDomainsRepo(seed: DomainRow[] = [], clock: () => number = Da
     async holdingSite(slug) {
       const r = [...rows.values()].find((x) => x.site_slug === slug && SITE_HOLDING_STATES.includes(x.state));
       return r ? copy(r) : null;
+    },
+    async forSite(slug) {
+      return [...rows.values()].filter((x) => x.site_slug === slug && x.state !== 'failed' && x.state !== 'transferred').map(copy);
     },
     async byDomain(domain) {
       const r = [...rows.values()].find((x) => x.domain === domain && x.state !== 'failed' && !x.simulated);
@@ -94,7 +97,7 @@ export function fakeDomainsRepo(seed: DomainRow[] = [], clock: () => number = Da
         .sort((a, b) => (a.payer_checked_at || '').localeCompare(b.payer_checked_at || '')).slice(0, limit).map(copy);
     },
     async reattachCandidates(limit, now) {
-      return [...rows.values()].filter((r) => r.state === 'detached' && r.revoked_at == null && r.paid_until != null && Date.parse(r.paid_until) > now)
+      return [...rows.values()].filter((r) => r.state === 'detached' && r.revoked_at == null && r.failure_reason !== OWNER_REMOVED && r.paid_until != null && Date.parse(r.paid_until) > now)
         .slice(0, limit).map(copy);
     },
     async payerStale(limit, before) {
