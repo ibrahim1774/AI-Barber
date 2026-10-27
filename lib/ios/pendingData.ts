@@ -4,6 +4,7 @@
 // so both write exactly the same thing.
 import type { WebsiteData } from '../../types.js';
 import { hasPagesV2 as hasV2 } from '../pagesV2.js';
+import { configuredBucket, logoProblem } from '../logoUrl.js';
 
 // The guide pages that have a hero photo (lib/render/heroes.ts HERO_EXTRA_PAGES); kept literal so this file imports nothing.
 const HERO_PAGES = ['first-visit', 'hair-care', 'beard-care'] as const;
@@ -17,6 +18,9 @@ export function buildImageUrlMap(sd: WebsiteData): Record<string, string> {
   (sd.gallery || []).forEach((u, i) => { if (isHttp(u)) map[`gallery${i}`] = u; });
   (sd.craftImages || []).forEach((u, i) => { if (isHttp(u)) map[`craft${i}`] = u; });
   (sd.staff || []).forEach((s, i) => { if (isHttp(s?.photo)) map[`staff${i}`] = s.photo; });
+  // The shop logo, only when it is one of ours (lib/logoUrl.ts): a value that fails the check never reaches the map, so
+  // every path that stores or renders a site (app publish, admin, web deploy gate) shows the shop name instead.
+  if (sd.logo && !logoProblem(sd.logo, { bucketName: configuredBucket() })) map.logo = sd.logo.url;
   // Page hero photos (pages v2): service<i> and page-<key>. Only for sites that carry extraPages; older sites keep their
   // service images blanked and gain no key.
   if (hasV2(sd)) {
@@ -43,6 +47,7 @@ export function toPendingSiteData(sd: WebsiteData, map: Record<string, string>):
       ...s,
       photo: map[`staff${i}`] ? 'uploaded' : (s?.photo?.startsWith?.('http') ? s.photo : ''),
     })),
+    ...(sd.logo ? { logo: map['logo'] ? { ...sd.logo, url: 'uploaded' } : undefined } : {}),
     ...(v2 ? { extraPages: pendingExtraPages(sd.extraPages as unknown as Record<string, unknown>, map) as unknown as WebsiteData['extraPages'] } : {}),
   };
 }

@@ -31,6 +31,7 @@ import { chooseSlug, makeIsTaken, urlServes, vercelProjectExists } from './slug.
 import { buildImageUrlMap, toPendingSiteData } from './pendingData.js';
 import { stripLapsedLinks } from './tiers.js';
 import { liveBindingOwner, liveEmailOf, otherAccountBody, type BindingOwner, type OtherAccountBody } from './ownership.js';
+import { isDraftLogoFolder, logoProblem, configuredBucket } from '../logoUrl.js';
 import { MAX_BODY_BYTES, hasDataUrl, isObj, restoreImageUrls, validSiteData, validationProblem } from './siteShape.js';
 
 export { buildImageUrlMap, toPendingSiteData };
@@ -202,6 +203,15 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
   if (problem) {
     console.warn(`[ios/publish] refused before any write: ${problem}`);
     return badRequest;
+  }
+  // A logo is also bound to an upload folder: the anonymous draft folder the app uploaded it to, never a published
+  // site's slug folder (validationProblem above already proved bucket, path shape, file type and size).
+  if (sd.logo != null) {
+    const logo = logoProblem(sd.logo, { bucketName: configuredBucket(), allowFolder: isDraftLogoFolder });
+    if (logo) {
+      console.warn(`[ios/publish] refused before any write: ${logo}`);
+      return badRequest;
+    }
   }
   try {
     (deps.render ?? renderPending)({ siteData: pendingData, imageUrlMap });

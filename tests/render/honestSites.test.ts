@@ -466,6 +466,8 @@ describe('React previews and vendored sources carry none of the removed copy', (
       'lib/render/markers.ts', 'lib/render/editPaths.ts',
       // One phone -> tel: href (2026-10-26). Add to the app's sync-web.sh.
       'lib/render/telHref.ts',
+      // Shop logo size rules (2026-10-27). Add to the app's sync-web.sh.
+      'lib/render/logo.ts',
     ];
     const norm = (p: string) => p.replace(/\.(ts|js)$/, '');
     const set = new Set(VENDORED.map(norm));

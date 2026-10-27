@@ -925,3 +925,75 @@ describe('site versions (admin edits never lost to the phone)', () => {
     expect(r2.body).toMatchObject({ version: 0, editedBy: null, editedAt: null });
   });
 });
+
+describe('runIosPublish: the shop logo', () => {
+  const LOGO = 'https://storage.googleapis.com/bkt/ios-drafts/abc-123/logo/1730000000000-ab12.png';
+  const withBucket = async (fn: () => Promise<void>) => {
+    const was = process.env.GCS_BUCKET_NAME;
+    process.env.GCS_BUCKET_NAME = 'bkt';
+    try { await fn(); } finally { if (was === undefined) delete process.env.GCS_BUCKET_NAME; else process.env.GCS_BUCKET_NAME = was; }
+  };
+  const bad = { status: 400, body: { error: 'bad-request' } };
+
+  it('a logo in this draft\'s logo folder publishes: pending copy holds the marker, the map holds the URL', async () => withBucket(async () => {
+    const { deps, pending } = fakes();
+    const r = await runIosPublish(input({ siteData: site({ logo: { url: LOGO, w: 600, h: 200 } }) }), deps);
+    expect(r.status).toBe(200);
+    const p = pending.get('fresh-cuts')!;
+    expect(p.imageUrlMap!.logo).toBe(LOGO);
+    expect(p.siteData.logo).toEqual({ url: 'uploaded', w: 600, h: 200 });
+  }));
+
+  it('a bare draft UUID folder is accepted too', async () => withBucket(async () => {
+    const { deps } = fakes();
+    const url = 'https://storage.googleapis.com/bkt/3f2b8c1e-5d4a-4b6f-9e2d-1a2b3c4d5e6f/logo/a.jpg';
+    expect((await runIosPublish(input({ siteData: site({ logo: { url, w: 100, h: 100 } }) }), deps)).status).toBe(200);
+  }));
+
+  it('refuses, before verify or any write: a foreign host, our bucket outside a logo folder, a published site\'s folder, a non-png/jpeg, bad w/h, a data: URL', async () => withBucket(async () => {
+    for (const logo of [
+      { url: 'https://evil.example.com/ios-drafts/abc-123/logo/a.png', w: 5, h: 5 },
+      { url: 'https://storage.googleapis.com/other/ios-drafts/abc-123/logo/a.png', w: 5, h: 5 },
+      { url: 'https://storage.googleapis.com/bkt/ios-drafts/abc-123/a.png', w: 5, h: 5 },
+      { url: 'https://storage.googleapis.com/bkt/pending-sites/logo/a.png', w: 5, h: 5 },
+      { url: 'https://storage.googleapis.com/bkt/some-published-shop/logo/a.png', w: 5, h: 5 },
+      { url: 'https://storage.googleapis.com/bkt/ios-drafts/abc-123/logo/a.svg', w: 5, h: 5 },
+      { url: 'https://storage.googleapis.com/bkt/ios-drafts/abc-123/logo/a.png?x=1', w: 5, h: 5 },
+      { url: LOGO, w: '5', h: 5 }, { url: LOGO, w: 0, h: 5 }, { url: LOGO, w: 100000, h: 5 }, { url: LOGO, w: 5 },
+      { url: 'data:image/png;base64,AAAA', w: 5, h: 5 },
+      'x', 7, [],
+    ]) {
+      const { deps, repo } = fakes();
+      expect(await runIosPublish(input({ siteData: site({ logo: logo as any }) }), deps), JSON.stringify(logo)).toEqual(bad);
+      expect(deps.verify).not.toHaveBeenCalled();
+      expect(repo.upsertVerified).not.toHaveBeenCalled();
+      expect(deps.writePending).not.toHaveBeenCalled();
+    }
+  }));
+
+  it('fails closed when the bucket is not configured', async () => {
+    const was = process.env.GCS_BUCKET_NAME;
+    delete process.env.GCS_BUCKET_NAME;
+    try {
+      const { deps } = fakes();
+      expect(await runIosPublish(input({ siteData: site({ logo: { url: LOGO, w: 5, h: 5 } }) }), deps)).toEqual(bad);
+    } finally { if (was !== undefined) process.env.GCS_BUCKET_NAME = was; }
+  });
+
+  it('the stored logo comes back to the app as a real URL (lookup restores it)', async () => withBucket(async () => {
+    const { deps } = fakes();
+    await runIosPublish(input({ siteData: site({ logo: { url: LOGO, w: 600, h: 200 } }) }), deps);
+    const stored = (deps.writePending as any).mock.calls[0][1] as PendingSite;
+    expect(toPendingSiteData(site({ logo: { url: LOGO, w: 600, h: 200 } }), buildImageUrlMap(site({ logo: { url: LOGO, w: 600, h: 200 } }))).logo?.url).toBe('uploaded');
+    const { restoreImageUrls } = await import('../../lib/ios/siteShape.js');
+    expect(restoreImageUrls(stored.siteData, stored.imageUrlMap || {}).logo).toEqual({ url: LOGO, w: 600, h: 200 });
+  }));
+
+  it('a site without a logo stores no logo key', async () => {
+    const { deps, pending } = fakes();
+    await runIosPublish(input(), deps);
+    const p = pending.get('fresh-cuts')!;
+    expect('logo' in p.siteData).toBe(false);
+    expect('logo' in (p.imageUrlMap || {})).toBe(false);
+  });
+});
