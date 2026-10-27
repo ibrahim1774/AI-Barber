@@ -28,7 +28,11 @@ import { loadSite, type SiteRecord } from '@/lib/siteStore';
 import { siteOffline, useSubscriptionStatus } from '@/lib/subscriptionStatus';
 import { tabBarStyle } from '@/lib/tabBar';
 import {
+  CANCEL_APPLE_SUBSCRIPTION,
+  CANCEL_APPLE_SUBSCRIPTION_URL,
   DELETE_ALERT_MESSAGE,
+  DELETE_ALERT_TITLE,
+  DELETE_SUCCESS_MESSAGE,
   LOCAL_DELETE_MESSAGE,
   OFFLINE_ALERT_MESSAGE,
   OFFLINE_ALERT_TITLE,
@@ -136,6 +140,13 @@ export default function Settings() {
     );
   };
 
+  const cancelAppleSubscription = () => {
+    track('cancel_apple_subscription_tapped');
+    Linking.openURL(CANCEL_APPLE_SUBSCRIPTION_URL).catch(() =>
+      Alert.alert(CANCEL_APPLE_SUBSCRIPTION, 'Open Settings → your name → Subscriptions on this iPhone.'),
+    );
+  };
+
   const emailSupport = () => {
     Linking.openURL(`mailto:${SUPPORT_EMAIL}`).catch(() => Alert.alert('Support', `Email us at ${SUPPORT_EMAIL}.`));
   };
@@ -193,10 +204,10 @@ export default function Settings() {
 
   const confirmDelete = () => {
     if (signedIn) {
-      confirmOnce('Delete account?', DELETE_ALERT_MESSAGE, [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Manage subscription', onPress: manageSubscription },
+      confirmOnce(DELETE_ALERT_TITLE, DELETE_ALERT_MESSAGE, [
+        { text: CANCEL_APPLE_SUBSCRIPTION, onPress: cancelAppleSubscription },
         { text: 'Delete account', style: 'destructive', onPress: () => void runDelete() },
+        { text: 'Keep my account', style: 'cancel' },
       ]);
     } else {
       confirmOnce(
@@ -248,9 +259,9 @@ export default function Settings() {
       try {
         await deleteAccountAndData();
         resetTo('/start');
-        Alert.alert('Account deleted', `Your Prime Barber account and website have been deleted. ${SUBSCRIPTION_CONTINUES}`, [
+        Alert.alert('Account deleted', DELETE_SUCCESS_MESSAGE, [
+          { text: CANCEL_APPLE_SUBSCRIPTION, onPress: cancelAppleSubscription },
           { text: 'OK', style: 'cancel' },
-          { text: 'Manage subscription', onPress: manageSubscription },
         ]);
       } catch (e) {
         Alert.alert('Delete account', deleteError(e));

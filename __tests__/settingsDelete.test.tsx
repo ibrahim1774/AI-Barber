@@ -73,33 +73,48 @@ beforeEach(() => {
 afterEach(() => jest.restoreAllMocks());
 
 describe('delete account copy', () => {
-  it('says the account, website and photos are deleted and the site goes offline; subscription continues; has a Manage subscription button', async () => {
-    expect(DELETE_ALERT_MESSAGE).toMatch(/account, your website and its photos are deleted/);
-    expect(DELETE_ALERT_MESSAGE).toMatch(/site goes offline/);
-    expect(DELETE_ALERT_MESSAGE).toMatch(/subscription continues until you cancel it in Manage subscription/);
-    expect(DELETE_ALERT_MESSAGE).not.toMatch(/email/i);
+  it('says plainly that Apple keeps charging, puts Cancel Apple subscription first, and never deletes from it', async () => {
+    expect(DELETE_ALERT_MESSAGE).toBe(
+      'Deleting your account does not cancel your Apple subscription. Apple keeps charging you until you cancel it yourself. Do that first: tap "Cancel Apple subscription" (if you also bought a custom domain, cancel that one too).\n\nDeleting removes your account, your website (it goes offline), its photos, your booking page, services, team and bookings. This can\'t be undone.',
+    );
     mockSession = { user: { email: 'b@example.com' } };
     const tree = await render(<Settings />);
     await pressRow(tree, 'Delete account');
+    expect(alertSpy.mock.calls[0][0]).toBe('Delete account?');
     expect(alertSpy.mock.calls[0][1]).toBe(DELETE_ALERT_MESSAGE);
-    expect(buttons().map((b) => b.text)).toEqual(['Cancel', 'Manage subscription', 'Delete account']);
+    expect(buttons().map((b) => b.text)).toEqual(['Cancel Apple subscription', 'Delete account', 'Keep my account']);
+    expect(buttons()[2]).toMatchObject({ style: 'cancel' });
+    expect(buttons()[1]).toMatchObject({ style: 'destructive' });
     const open = jest.spyOn(Linking, 'openURL').mockResolvedValue(true as never);
-    buttons()[1].onPress!();
-    expect(open).toHaveBeenCalledWith('itms-apps://apps.apple.com/account/subscriptions');
+    buttons()[0].onPress!();
+    expect(open).toHaveBeenCalledWith('https://apps.apple.com/account/subscriptions');
     expect(mockDeleteAccount).not.toHaveBeenCalled();
   });
 
-  it('confirming deletes the account and shows an Account deleted note with Manage subscription', async () => {
+  it('Delete account still deletes only when its own button is pressed (Keep my account does nothing)', async () => {
     mockSession = { user: { email: 'b@example.com' } };
     const tree = await render(<Settings />);
     await pressRow(tree, 'Delete account');
-    await act(async () => { await buttons()[2].onPress!(); });
+    buttons()[2].onPress?.();
+    expect(mockDeleteAccount).not.toHaveBeenCalled();
+    await pressRow(tree, 'Delete account');
+    await act(async () => { await buttons()[1].onPress!(); });
+    expect(mockDeleteAccount).toHaveBeenCalledTimes(1);
+  });
+
+  it('confirming deletes the account and shows the honest success note with Cancel Apple subscription first', async () => {
+    mockSession = { user: { email: 'b@example.com' } };
+    const tree = await render(<Settings />);
+    await pressRow(tree, 'Delete account');
+    await act(async () => { await buttons()[1].onPress!(); });
     expect(mockDeleteAccount).toHaveBeenCalledTimes(1);
     expect(mockResetTo).toHaveBeenCalledWith('/start');
     const last = alertSpy.mock.calls[alertSpy.mock.calls.length - 1];
-    expect(last[0]).toBe('Account deleted');
-    expect(last[1]).toMatch(/website have been deleted/);
-    expect(last[1]).not.toMatch(/stays online|email/i);
+    expect(last[1]).toBe('Your account and website are deleted. Your Apple subscription is still active and will keep renewing until you cancel it.');
+    expect(last[2].map((b: { text: string }) => b.text)).toEqual(['Cancel Apple subscription', 'OK']);
+    const open = jest.spyOn(Linking, 'openURL').mockResolvedValue(true as never);
+    last[2][0].onPress();
+    expect(open).toHaveBeenCalledWith('https://apps.apple.com/account/subscriptions');
   });
 
   it('Delete data on this phone (signed out) says it is phone-only and points at Take my website offline', async () => {
