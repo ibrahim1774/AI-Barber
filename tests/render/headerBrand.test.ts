@@ -53,7 +53,7 @@ describe.each(['luxe', 'prime', 'euphoria'] as const)('%s header brand', (t) => 
         expect(text(hdr)).toContain('Jax Barber Shop');
         // never clipped: no clamp, no overflow:hidden in the header markup or the pair CSS
         expect(hdr.replace(/<style>[\s\S]*?<\/style>/g, '')).not.toMatch(/line-clamp|overflow:\s*hidden/);
-        const css = /<style>([\s\S]*?)<\/style>/.exec(hdr)?.[1] ?? '';
+        const css = [...hdr.matchAll(/<style>([\s\S]*?)<\/style>/g)].map((m) => m[1]).find((c) => c.includes('.ab-pair')) ?? '';
         expect(css).toBe(PAIR_CSS[t]);
         expect(css).not.toMatch(/line-clamp|overflow:\s*hidden/);
         expect(css).toMatch(/\.ab-brand\.ab-pair img\{[^}]*min-width:28px[^}]*max-width:30%/);
