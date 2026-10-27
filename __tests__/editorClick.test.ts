@@ -37,3 +37,15 @@ test('the editor-only Add a service button posts addService and nothing else', (
   document.getElementById('a')!.click();
   expect(posted.filter((m) => (m as { type: string }).type !== 'ready')).toEqual([{ type: 'addService' }]);
 });
+
+test('a tap on the header logo asks to edit the shop name (the header sheet)', () => {
+  const posted = run('<header><a class="ab-brand ab-logo" href="/"><img id="l" src="x.png" alt="Fresh Cuts" fetchpriority="high"></a></header>');
+  document.getElementById('l')!.click();
+  expect(edits(posted)).toEqual([{ type: 'edit', path: 'shopName' }]);
+});
+
+test('a header image that is not the logo is left to the photo handling', () => {
+  const posted = run('<header><img id="l" src="x.png" alt="x"></header>');
+  document.getElementById('l')!.click();
+  expect(edits(posted)).toEqual([]);
+});

@@ -170,10 +170,12 @@ export const api = {
   async getUploadUrls(
     folder: string,
     filenames: string[],
+    /** Only the logo upload sets these; a photo request is byte-identical to before (the server defaults to jpeg). */
+    opts?: { contentType: 'image/png'; kind: 'logo' },
   ): Promise<{ filename: string; signedUrl: string; publicUrl: string }[]> {
     const out = await post<{ urls: { filename: string; signedUrl: string; publicUrl: string }[] }>(
       '/api/get-upload-urls',
-      { siteId: folder, filenames },
+      { siteId: folder, filenames, ...(opts ?? {}) },
     );
     return out.urls;
   },

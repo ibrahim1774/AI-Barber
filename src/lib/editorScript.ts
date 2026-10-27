@@ -162,6 +162,8 @@ export const EDITOR_JS = String.raw`(function () {
       try { var d2 = document.querySelector(alink.getAttribute('href')); if (d2 && d2.scrollIntoView) d2.scrollIntoView({ behavior: 'smooth' }); } catch (x2) {}
       return;
     }
+    // The logo replaces the shop name in the header: a tap on it (in the header or, for prime/euphoria, the nav bar) opens the header sheet (the name's editor).
+    if (el.tagName === 'IMG' && el.getAttribute('fetchpriority') === 'high' && upTo(el, function (n) { return n.tagName === 'HEADER' || n.tagName === 'NAV'; })) { post({ type: 'edit', path: 'shopName' }); return; }
     var chipHost = closestAttr(el, 'data-aib-chip');
     if (chipHost) { post({ type: 'image', path: chipHost.getAttribute('data-aib-chip') }); return; }
     var text = closestAttr(el, 'data-edit');

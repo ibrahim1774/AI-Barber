@@ -8,6 +8,11 @@ export const __calls: { resize: any[]; saveAsync: any[]; manipulate: any[] } = {
   manipulate: [],
 };
 let image = { width: 1000, height: 800 };
+let failRender: Error | null = null;
+/** Makes the next renders throw (an undecodable file). */
+export function __failRender(e: Error | null) {
+  failRender = e;
+}
 
 export function __setImage(size: { width: number; height: number }) {
   image = size;
@@ -17,6 +22,7 @@ export function __reset() {
   __calls.saveAsync = [];
   __calls.manipulate = [];
   image = { width: 1000, height: 800 };
+  failRender = null;
 }
 
 export const ImageManipulator = {
@@ -32,11 +38,14 @@ export const ImageManipulator = {
         return ctx;
       },
       async renderAsync() {
+        if (failRender) throw failRender;
         return {
           ...size,
           async saveAsync(opts: unknown) {
             __calls.saveAsync.push(opts);
-            return { uri: 'file:///tmp/manipulated.jpg', ...size };
+            const o = opts as { format?: string; base64?: boolean } | undefined;
+            const ext = o?.format === 'png' ? 'png' : 'jpg';
+            return { uri: `file:///tmp/manipulated.${ext}`, ...size, ...(o?.base64 ? { base64: 'QUJD' } : {}) };
           },
         };
       },

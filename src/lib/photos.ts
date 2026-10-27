@@ -69,3 +69,101 @@ export async function pickAndUploadPhoto(folder: string, onPicked?: () => void):
   onPicked?.();
   return uploadPhoto(res.assets[0].uri, folder);
 }
+
+// ---------------------------------------------------------------------------
+// Shop logo
+// ---------------------------------------------------------------------------
+
+export const LOGO_MAX_EDGE = 600;
+export const LOGO_FALLBACK_EDGE = 400;
+export const LOGO_MAX_BYTES = 300 * 1024;
+export const LOGO_DECODE_MESSAGE = "Couldn't open that image";
+export const LOGO_UPLOAD_MESSAGE = "Couldn't upload your logo. Check your connection and try again.";
+
+/** `decode`: the file could not be read as an image. `upload`: the server or network failed; the site is unchanged, retry. */
+export class LogoError extends Error {
+  constructor(public kind: 'decode' | 'upload', message: string) {
+    super(message);
+    this.name = 'LogoError';
+  }
+}
+
+export interface LogoUpload {
+  /** The public https URL of the uploaded PNG. */
+  url: string;
+  /** Pixel size of the uploaded PNG (whole numbers, as the server requires). */
+  w: number;
+  h: number;
+  /** The same image as a data URI, for the preview (the WebView cannot read file://). Never saved. */
+  previewUri: string;
+}
+
+function logoFilename(): string {
+  let r = '';
+  while (r.length < 6) r += Math.random().toString(36).slice(2);
+  return `${Date.now()}-${r.slice(0, 6)}.png`;
+}
+
+/**
+ * Shrinks a logo (long edge to at most 600 px, never enlarged, aspect kept), saves it as PNG (transparency kept) and
+ * uploads it with the signed PUT as image/png, kind 'logo'. A file over 300 KB is saved again at 400 px. Throws
+ * LogoError: 'decode' when the file cannot be read, 'upload' when anything after that fails (nothing was changed).
+ */
+export async function uploadLogo(localUri: string, folder: string, deps: UploadDeps = {}): Promise<LogoUpload> {
+  const doFetch = deps.fetchFn ?? fetch;
+
+  let ref: Awaited<ReturnType<ReturnType<typeof ImageManipulator.manipulate>['renderAsync']>>;
+  try {
+    ref = await ImageManipulator.manipulate(localUri).renderAsync();
+  } catch {
+    throw new LogoError('decode', LOGO_DECODE_MESSAGE);
+  }
+  if (!(ref.width > 0 && ref.height > 0)) throw new LogoError('decode', LOGO_DECODE_MESSAGE);
+
+  const encode = async (edge: number) => {
+    let r = ref;
+    if (Math.max(r.width, r.height) > edge) {
+      r = await ImageManipulator.manipulate(ref).resize(r.width >= r.height ? { width: edge } : { height: edge }).renderAsync();
+    }
+    const out = await r.saveAsync({ format: SaveFormat.PNG, base64: true });
+    const blob = await (await doFetch(out.uri)).blob();
+    return { out, blob: blob as Blob };
+  };
+
+  let enc: Awaited<ReturnType<typeof encode>>;
+  try {
+    enc = await encode(LOGO_MAX_EDGE);
+    if (((enc.blob as { size?: number }).size ?? 0) > LOGO_MAX_BYTES) enc = await encode(LOGO_FALLBACK_EDGE);
+  } catch {
+    throw new LogoError('decode', LOGO_DECODE_MESSAGE);
+  }
+
+  const w = Math.round(enc.out.width);
+  const h = Math.round(enc.out.height);
+  try {
+    const name = logoFilename();
+    const [target] = await api.getUploadUrls(folder, [name], { contentType: 'image/png', kind: 'logo' });
+    if (!target) throw new Error('no upload URL');
+    const resp = await doFetch(target.signedUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'image/png' },
+      body: enc.blob,
+    });
+    if (!resp.ok) throw new Error(`status ${resp.status}`);
+    return { url: target.publicUrl, w, h, previewUri: `data:image/png;base64,${enc.out.base64 ?? ''}` };
+  } catch {
+    throw new LogoError('upload', LOGO_UPLOAD_MESSAGE);
+  }
+}
+
+/** Opens the photo library for a logo; null when cancelled. `onPicked` runs once a file is chosen (progress UI). */
+export async function pickAndUploadLogo(folder: string, onPicked?: () => void): Promise<LogoUpload | null> {
+  const res = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ['images'],
+    allowsMultipleSelection: false,
+    base64: false,
+  });
+  if (res.canceled || !res.assets?.length) return null;
+  onPicked?.();
+  return uploadLogo(res.assets[0].uri, folder);
+}

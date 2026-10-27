@@ -48,10 +48,27 @@ export function AllFieldsSheet({ visible, data, onPick, onClose, onDismiss }: Li
   );
 }
 
-export function PhotosSheet({ visible, data, onPick, onClose, onDismiss }: ListSheetProps) {
+export function PhotosSheet({ visible, data, onPick, onLogo, onClose, onDismiss }: ListSheetProps & { onLogo?(): void }) {
   return (
     <Sheet visible={visible} title="Photos" onClose={onClose} onDismiss={onDismiss} right={<SheetAction title="Done" onPress={onClose} />}>
       <ScrollView style={styles.list} contentContainerStyle={styles.grid}>
+        {onLogo && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Change Logo"
+            onPress={onLogo}
+            style={({ pressed }) => [styles.tile, pressed && styles.pressed]}
+          >
+            {data.logo?.url ? (
+              <Image source={{ uri: data.logo.url }} style={styles.thumb} resizeMode="contain" />
+            ) : (
+              <View style={[styles.thumb, styles.placeholder]}>
+                <Text style={styles.plus}>+</Text>
+              </View>
+            )}
+            <Text style={styles.tileLabel} numberOfLines={1}>Logo</Text>
+          </Pressable>
+        )}
         {photoSlots(data).map((path) => {
           const url = getPath(data, path);
           const src = typeof url === 'string' && url ? url : null;

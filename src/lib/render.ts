@@ -3,6 +3,7 @@ import { generateHTMLWithPlaceholders } from '@/web/lib/render/luxe';
 import { generatePrimeHTMLWithPlaceholders } from '@/web/lib/render/prime';
 import { generateEuphoriaHTMLWithPlaceholders } from '@/web/lib/render/euphoria';
 import { imageUrlMapOf } from '@/web/lib/render/site';
+import { isLogoDataUri } from '@/lib/logo';
 
 /** Same template switch as the web's lib/publishSite.ts renderSite. */
 export function renderSite(siteData: WebsiteData): string {
@@ -52,5 +53,10 @@ export function safeImageUrl(url: string): string {
  */
 export function withImages(html: string, data: WebsiteData): string {
   const m = imageUrlMap(data);
-  return html.replace(/\{\{([a-zA-Z0-9-]+)\}\}/g, (whole, key: string) => (m[key] !== undefined ? safeImageUrl(m[key]) : whole));
+  return html.replace(/\{\{([a-zA-Z0-9-]+)\}\}/g, (whole, key: string) => {
+    if (m[key] === undefined) return whole;
+    // The just-uploaded logo is previewed as a PNG data URI (the one data: URL allowed, and only in the logo slot).
+    if (key === 'logo' && isLogoDataUri(m[key])) return m[key];
+    return safeImageUrl(m[key]);
+  });
 }

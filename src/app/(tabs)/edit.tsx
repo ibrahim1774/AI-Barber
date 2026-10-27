@@ -26,7 +26,9 @@ import type { PreviewProduct } from '@/lib/editable';
 import { listProducts } from '@/lib/store/data';
 import { isSiteShopLink } from '@/web/lib/render/subpages';
 import { advanceOverlay, hasSeen, markSeen, nextOverlay, visibleOverlay, type Overlay } from '@/lib/overlayFlags';
-import { pickAndUploadPhoto } from '@/lib/photos';
+import { LogoError, pickAndUploadLogo, pickAndUploadPhoto } from '@/lib/photos';
+import { LOGO_ENABLED, withLogo, withLogoPreview, withoutLogo } from '@/lib/logo';
+import { HeaderSheet } from '@/components/HeaderSheet';
 import { peekPublishHint, takePublishRequest, type PlanHint } from '@/lib/publishRequest';
 import { refreshReminders } from '@/lib/reminders';
 import { useRestoreFlow } from '@/lib/restoreFlow';
@@ -71,7 +73,7 @@ import { PublishBar } from '@/components/PublishBar';
 import { LapsedCard } from '@/components/LapsedCard';
 import { EditorBackBar, canGoBackToStart } from '@/components/EditorBackBar';
 
-type SheetKind = 'fields' | 'photos' | 'colour' | 'edit' | 'button' | 'sections' | 'pages' | 'pageSections' | 'hero' | SectionKey;
+type SheetKind = 'fields' | 'photos' | 'colour' | 'edit' | 'button' | 'sections' | 'pages' | 'pageSections' | 'hero' | 'header' | SectionKey;
 
 /**
  * The Edit tab: the site preview with tap-to-edit, the design switcher, and
@@ -82,6 +84,12 @@ export default function Editor() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const [site, setSite] = useState<SiteRecord | null>(null);
+  // The logo just uploaded, as a data URI for the preview only (never saved). Error: the last upload failed, site unchanged.
+  const [logoPreview, setLogoPreview] = useState<{ url: string; dataUri: string } | null>(null);
+  const [logoBusy, setLogoBusy] = useState(false);
+  const [logoError, setLogoError] = useState<string | null>(null);
+  // The Photos sheet's Logo row opens the header sheet on its Logo pane.
+  const [headerOnLogo, setHeaderOnLogo] = useState(false);
   const ents = useEntitlements();
   // The preview drops Book / Shop links the plan no longer covers (as the publish will). Never saved over the barber's data.
   const siteData = site?.data;
@@ -96,6 +104,8 @@ export default function Editor() {
         : null,
     [siteData, siteInputs, ents, linkCtx],
   );
+  // The preview shows a just-uploaded logo from its data URI (memoised: a new object would reload the WebView).
+  const previewShown = useMemo(() => (previewData ? withLogoPreview(previewData, logoPreview) : null), [previewData, logoPreview]);
   // The data the preview shows, for the menu callback (which must not re-create on every edit).
   const shownRef = useRef<WebsiteData | null>(null);
   shownRef.current = previewData ?? siteData ?? null;
@@ -153,6 +163,8 @@ export default function Editor() {
   const [button, setButton] = useState<{ kind: CtaKind; labelKey: string }>({ kind: 'inSite', labelKey: 'bookButton' });
   const upgrade = useUpgrade('bookings_upgrade');
   const [heroPath, setHeroPath] = useState('');
+  // The logo just uploaded, as a data URI for the preview only (never saved). Error: the last upload failed, site unchanged.
+
   const [uploading, setUploading] = useState(false);
   const uploadingRef = useRef(false);
   const mountedRef = useRef(true);
@@ -402,6 +414,48 @@ export default function Editor() {
     [commit],
   );
 
+  // Add / replace the header logo: library -> trimmed PNG -> upload -> site.logo. Any failure leaves the site as it was.
+  const pickLogo = useCallback(async () => {
+    const cur = siteRef.current;
+    if (!cur || uploadingRef.current) return;
+    uploadingRef.current = true;
+    setLogoError(null);
+    let failed: string | null = null;
+    try {
+      const up = await pickAndUploadLogo(`ios-drafts/${cur.draftId}`, () => {
+        setUploading(true);
+        setLogoBusy(true);
+        AccessibilityInfo.announceForAccessibility('Uploading logo');
+      });
+      if (up && mountedRef.current && siteRef.current?.draftId === cur.draftId) {
+        setLogoPreview({ url: up.url, dataUri: up.previewUri });
+        commit((d) => withLogo(d, { url: up.url, w: up.w, h: up.h }));
+        AccessibilityInfo.announceForAccessibility('Logo updated');
+        track('logo_set');
+      }
+    } catch (e) {
+      console.warn('[editor] logo upload failed:', e);
+      failed = e instanceof LogoError ? e.message : "Couldn't upload your logo. Check your connection and try again.";
+    } finally {
+      uploadingRef.current = false;
+      if (mountedRef.current) {
+        setUploading(false);
+        setLogoBusy(false);
+      }
+    }
+    // Back to the header sheet with the reason; the retry is one tap.
+    if (failed && mountedRef.current) {
+      setLogoError(failed);
+      setSheet('header');
+    }
+  }, [commit]);
+  const removeLogo = useCallback(() => {
+    commit((d) => withoutLogo(d));
+    setLogoPreview(null);
+    setLogoError(null);
+    track('logo_removed');
+  }, [commit]);
+
   // Section photo uploads (Services, Team, Gallery) go through the same guard
   // as pickPhoto: Publish and the tab bar wait, and a result for a screen that
   // went away or another draft is dropped (null).
@@ -435,6 +489,13 @@ export default function Editor() {
   // A tap on a call-to-action button (or the All-fields booking link row) opens the button sheet: its text AND its
   // link. Everything else is the plain text box.
   const openTap = useCallback((path: string, fromList = false) => {
+    // The header: its name, or a logo in its place.
+    if (path === 'shopName' && LOGO_ENABLED) {
+      setLogoError(null);
+      setHeaderOnLogo(false);
+      setSheet('header');
+      return;
+    }
     const route = routeTap(path, shownRef.current ?? {});
     if (route.sheet === 'button') {
       track('button_sheet_opened', { kind: route.kind });
@@ -608,7 +669,7 @@ export default function Editor() {
 
   const data = site.data;
   const editValue = textValue(data, edit.path);
-  const shown = previewData ?? data;
+  const shown = previewShown ?? data;
   const page = resolvePage(shown, wantedPage);
   const canEditPage = overlay == null && sectionPageFor(page) !== null;
   const pageTitle = page.index !== undefined && page.key === 'services'
@@ -639,7 +700,7 @@ export default function Editor() {
           {uploading && (
             <View style={styles.uploading} pointerEvents="none">
               <ActivityIndicator color={colors.accent} />
-              <Text style={styles.uploadingText}>Uploading photo…</Text>
+              <Text style={styles.uploadingText}>{logoBusy ? 'Uploading logo…' : 'Uploading photo…'}</Text>
             </View>
           )}
         </View>
@@ -668,6 +729,20 @@ export default function Editor() {
           visible={sheet === 'photos'}
           data={data}
           onPick={(path) => closeThen(() => pickPhoto(path))}
+          onLogo={LOGO_ENABLED ? () => closeThen(() => { setLogoError(null); setHeaderOnLogo(true); setSheet('header'); }) : undefined}
+          onClose={() => setSheet(null)}
+          onDismiss={onSheetDismiss}
+        />
+        <HeaderSheet
+          visible={sheet === 'header'}
+          data={data}
+          startOn={logoError || headerOnLogo ? 'logo' : undefined}
+          previewUri={data.logo && logoPreview?.url === data.logo.url ? logoPreview.dataUri : null}
+          uploading={logoBusy}
+          error={logoError}
+          onEditName={() => closeThen(() => openEdit('shopName'))}
+          onPickLogo={() => closeThen(() => void pickLogo())}
+          onRemoveLogo={removeLogo}
           onClose={() => setSheet(null)}
           onDismiss={onSheetDismiss}
         />
