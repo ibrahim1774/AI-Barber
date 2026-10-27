@@ -5,6 +5,7 @@
     "edit_text": { "v": 1, "bytes": 795784, "seconds": 25 },
     "edit_photos": { "v": 1, "bytes": 603435, "seconds": 21 },
     "sections": { "v": 1, "bytes": 761105, "seconds": 22 },
-    "pages": { "v": 1, "bytes": 489266, "seconds": 24 }
+    "pages": { "v": 1, "bytes": 489266, "seconds": 24 },
+    "buttons": { "v": 1, "bytes": 414312, "seconds": 15 }
   }
 }
