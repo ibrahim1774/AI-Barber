@@ -58,6 +58,10 @@ describe.each(DESIGNS)('start options, design %s', (template) => {
     expect(linksToSend(rec.data, rec.inputs, hostingOnly).bookingUrl).toBeUndefined();
     // Bookings bought but no shop yet (the first publish): still no /book.
     expect(linksToSend(rec.data, rec.inputs, { ...hostingOnly, ents: { ...hostingOnly.ents, bookings: true } }).bookingUrl).toBeUndefined();
+    // Lookup failed / signed out (ctx null), and entitlements unknown: fail closed, no /book.
+    expect(linksToSend(rec.data, rec.inputs, null).bookingUrl).toBeUndefined();
+    expect(linksToSend(rec.data, rec.inputs, { ...hostingOnly, ents: { known: false, hosting: false, bookings: false, store: false } }).bookingUrl).toBeUndefined();
+    expect(linksToSend(rec.data, rec.inputs, { ...hostingOnly, ents: { known: true, hosting: false, bookings: true, store: false } }).bookingUrl).toBeUndefined();
     // Live scheduler: kept.
     const live: LinkContext = { ents: { ...hostingOnly.ents, bookings: true }, shop: { slug: 's', purchaseLinked: true, bookingsEnabled: true }, storeEnabled: false };
     expect(linksToSend(rec.data, rec.inputs, live).bookingUrl).toBe('/book');

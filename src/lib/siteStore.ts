@@ -51,6 +51,8 @@ export interface PendingPublish {
    *   `conflict`. Nothing is retried; the locked step offers a different account.
    */
   state?: 'unclaimed' | 'claiming' | 'conflict' | 'paused';
+  /** The plan the person was looking at when they tapped Publish without a paywall; offered as an upgrade once it is live. */
+  planHint?: 'website' | 'bookings' | 'store';
   conflict?: Conflict;
   /**
    * The site this content was paid for (its identity when saved). A retry sends this content, never whatever

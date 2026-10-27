@@ -12,7 +12,7 @@ jest.mock('@/lib/nav', () => ({ resetTo: (...a: unknown[]) => mockResetTo(...a),
 const mockRestore = jest.fn();
 jest.mock('@/lib/restoreFlow', () => ({ useRestoreFlow: () => ({ restore: (...a: unknown[]) => mockRestore(...a), busy: false }) }));
 let mockDeps: any;
-jest.mock('@/lib/paywall', () => ({ usePublishDeps: () => mockDeps, useLatestTransactionId: () => async () => 'tx-1' }));
+jest.mock('@/lib/paywall', () => ({ usePaywall: () => async () => 'declined', usePublishDeps: () => mockDeps, useLatestTransactionId: () => async () => 'tx-1' }));
 const mockRecheck = jest.fn();
 jest.mock('@/lib/subscriptionStatus', () => ({ recheckSubscriptionStatus: (...a: unknown[]) => mockRecheck(...a) }));
 const mockPlanCall = jest.fn();

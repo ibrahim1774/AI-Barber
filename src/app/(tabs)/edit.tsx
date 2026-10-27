@@ -11,6 +11,7 @@ import { useEntitlements } from '@/lib/entitlements';
 import { hasEntitlement } from '@/lib/paywall';
 import { bookingPrefs, bookTargetStatus, resolveLinks } from '@/lib/bookingChoice';
 import { syncOwnLink } from '@/lib/bookingChoice';
+import { canOpenAddService, keepServicesAdd } from '@/lib/addServiceGuard';
 import { useLinkContext } from '@/lib/linkContext';
 import { stripLapsedLinks } from '@/lib/tierLinks';
 import { copyKeyOfPath, copyPathHasWordings, hoursEditorFor, pageForHref, previewBackground, textMaxLength, textValue, type PreviewPage } from '@/lib/editable';
@@ -485,12 +486,14 @@ export default function Editor() {
 
   // The Sections list: each card closes the list, then opens its editor
   // (every SectionKey is also a SheetKind).
+  // Whatever closes or replaces the Services sheet (the lapse close included) ends the add view.
+  useEffect(() => { setServicesAdd((a) => keepServicesAdd(a, sheet)); }, [sheet]);
   const openSection = useCallback((key: SectionKey) => {
     track('section_opened', { section: key });
     closeThen(() => setSheet(key));
   }, [closeThen]);
   const onPreviewAddService = useCallback(() => {
-    if (sheet != null) return;
+    if (!canOpenAddService(sheet, overlayRef.current)) return;
     track('add_service_tapped');
     setServicesAdd(true);
     setSheet('services');
@@ -716,6 +719,7 @@ export default function Editor() {
             onClose={() => (servicesAdd ? closeThen(() => setServicesAdd(false)) : closeThen(() => setSheet('sections')))}
             onDismiss={onSheetDismiss}
             upload={uploadForSection}
+            startAdd={servicesAdd}
           />
         ) : (
           <ServicesSheet

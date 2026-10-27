@@ -3,7 +3,7 @@ import { adoptAndSave, isPlainSiteData, SYNC_NOTICE, SYNC_TIMEOUT_MS, UPDATED_ON
 import { track } from '@/lib/analytics';
 import { ApiError, type api } from '@/lib/api';
 import { stripMarkers } from '@/lib/editable';
-import { linksOf, linksToSend, type LinkContext } from '@/lib/bookingChoice';
+import { carriesBuiltInBook, linksOf, linksToSend, schedulerConfirmable, type LinkContext } from '@/lib/bookingChoice';
 import { cancelRemindersInBackground } from '@/lib/reminders';
 import { emitSiteLive } from '@/lib/siteEvents';
 import type { PendingPublish, SiteRecord } from '@/lib/siteStore';
@@ -36,6 +36,9 @@ export const UPDATING_MESSAGE = "Your website is still being updated. We'll fini
 
 /** An entitled republish whose ownership check failed: nothing is queued, so say to try again. */
 export const CHECK_FAILED_MESSAGE = "We couldn't check your site just now, so nothing was published. Please try again in a moment.";
+
+/** A republish whose plan could not be checked: nothing is sent, so a live Book link never changes unseen. */
+export const PLAN_CHECK_MESSAGE = "Couldn't check your plan, try again in a moment.";
 
 /** A plain pending publish older than this is dropped instead of retried. A paid, unclaimed one (state set) never is. */
 const PENDING_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -75,7 +78,7 @@ export interface PublishDeps {
 }
 
 export type PublishOutcome =
-  | { kind: 'live'; url: string; republished: boolean }
+  | { kind: 'live'; url: string; republished: boolean; /** The plan hint saved with a paid record (the claim path offers the upgrade). */ planHint?: PlanHint }
   | { kind: 'declined' }
   /** Not live yet. `offline`: the request never reached the server (the locked step then says "waiting for connection"). */
   | { kind: 'pending'; message: string; offline?: boolean }
@@ -175,6 +178,10 @@ async function send(pending: PendingPublish, deps: PublishDeps, retryMessage: st
   // One load: its inputs decide the links, its updatedAt marks what this publish covers.
   const rec = await deps.store.loadSite().catch(() => null);
   const sentAt = rec?.updatedAt;
+  // An already-published site whose plan could not be checked: do not publish a changed Book link. Keep it pending.
+  if (rec?.deployedUrl && !schedulerConfirmable(ctx) && carriesBuiltInBook(pending.data)) {
+    return { kind: 'pending', message: PLAN_CHECK_MESSAGE };
+  }
   // Whenever the AI Barber link is dropped (plan, shop, unknown context), the barber's own link is used.
   // Team cards come from ab_members (source of truth): refresh them before they go online.
   const fresh = deps.refreshTeam ? await withTimeout(deps.refreshTeam(pending.data), SYNC_TIMEOUT_MS).catch(() => pending.data) : pending.data;
@@ -274,7 +281,7 @@ async function send(pending: PendingPublish, deps: PublishDeps, retryMessage: st
   // Live: no more publish reminders, for good. Never affects the outcome.
   cancelRemindersInBackground();
   if (saved) notifyLive(deps, saved);
-  return { kind: 'live', url: res.deployedUrl, republished };
+  return { kind: 'live', url: res.deployedUrl, republished, ...(pending.planHint ? { planHint: pending.planHint } : {}) };
 }
 
 /** The publish answer names the live site: a non-empty string siteId and deployedUrl. */
@@ -365,6 +372,8 @@ export async function publishFlow(site: SiteRecord, deps: PublishDeps, planHint?
     const base: PendingPublish = {
       transactionId, data, createdAt: Date.now(), baseVersion,
       ...(prior?.state && prior.state !== 'conflict' ? { state: prior.state } : {}),
+      // A hint from the paywall run is dropped (they chose a plan there); one from a paid-before tap is kept for the claim publish.
+      ...(!paid && (planHint ?? prior?.planHint) ? { planHint: (planHint ?? prior?.planHint)! } : {}),
     };
 
     if (!token) {

@@ -1,5 +1,6 @@
 import * as store from '@/lib/siteStore';
-import { publishFlow, type PublishDeps } from '@/lib/publish';
+import { publishFlow, resumePendingPublish, type PublishDeps } from '@/lib/publish';
+import { createClaimRunner } from '@/lib/claim';
 import { upgradeAfterPublish } from '@/lib/publishRequest';
 import type { SiteRecord } from '@/lib/siteStore';
 
@@ -78,5 +79,43 @@ describe('upgradeAfterPublish (entitlement lower than the plan asked for)', () =
     expect(upgradeAfterPublish('website', e(), false)).toBeNull();
     expect(upgradeAfterPublish(undefined, e(), false)).toBeNull();
     expect(upgradeAfterPublish('bookings', { ...e(), known: false }, false)).toBeNull();
+  });
+});
+
+describe('the plan hint survives Create account', () => {
+  const paid = { transactionId: 'tx-1', data: site.data, createdAt: Date.now(), state: 'unclaimed' } as any;
+
+  test('paidBefore: the new hint is saved with the pending publish', async () => {
+    await store.savePendingPublish(paid);
+    await publishFlow(site, deps(), 'bookings');
+    expect(await store.loadPendingPublish()).toMatchObject({ state: 'unclaimed', planHint: 'bookings' });
+  });
+
+  test('paidBefore without a new hint keeps the earlier one', async () => {
+    await store.savePendingPublish({ ...paid, planHint: 'store' });
+    await publishFlow(site, deps());
+    expect(await store.loadPendingPublish()).toMatchObject({ planHint: 'store' });
+  });
+
+  test('a hint chosen at the paywall this run is not stored (they picked a plan there)', async () => {
+    await publishFlow(site, deps(), 'bookings');
+    expect((await store.loadPendingPublish())?.planHint).toBeUndefined();
+  });
+
+  test('the claim publish going live reports the hint; a plain one does not', async () => {
+    await store.savePendingPublish({ ...paid, planHint: 'bookings' });
+    const out = await resumePendingPublish(deps({ accessToken: async () => 'tok' }));
+    expect(out).toMatchObject({ kind: 'live', planHint: 'bookings' });
+    await store.savePendingPublish(paid);
+    expect(await resumePendingPublish(deps({ accessToken: async () => 'tok' }))).not.toHaveProperty('planHint');
+  });
+
+  test('the claim runner passes the hint through on live', async () => {
+    const run = createClaimRunner({
+      signup: jest.fn(), transactionId: async () => 'tx-1', signIn: jest.fn(),
+      finish: async () => ({ kind: 'live', url: 'u', republished: false, planHint: 'store' }),
+      dropSession: async () => {},
+    } as any);
+    expect(await run.finish()).toEqual({ kind: 'live', planHint: 'store' });
   });
 });

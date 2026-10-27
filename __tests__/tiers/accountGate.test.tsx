@@ -214,7 +214,7 @@ describe('the other consumers (Edit preview, Live, Settings, ShareSheet, setup p
     expect((await loadLinkContext())?.ents).toMatchObject({ bookings: true, store: true });
   });
 
-  it('bookingChoice.linksToSend (publish, no shop facts) strips /book and /shop for another account, keeps them for the owner', () => {
+  it('bookingChoice.linksToSend (publish, no shop facts) strips /book and /shop for another account; for the owner /book fails closed and /shop stays', () => {
     const data: any = { shopName: 'F', bookingUrl: '/book', shopUrl: '/shop' };
     setEntitlementsFromStatus(ALL);
     setSharedPlan(OTHER);
@@ -222,7 +222,10 @@ describe('the other consumers (Edit preview, Live, Settings, ShareSheet, setup p
     expect(locked.bookingUrl).toBeUndefined();
     expect(locked.shopUrl).toBeUndefined();
     setSharedPlan(plan());
-    expect(linksToSend(data, undefined, null)).toMatchObject({ bookingUrl: '/book', shopUrl: '/shop' });
+    // The owner without shop facts: the built-in /book fails closed (a published site defers instead), /shop is kept.
+    const owner = linksToSend(data, undefined, null) as any;
+    expect(owner.bookingUrl).toBeUndefined();
+    expect(owner.shopUrl).toBe('/shop');
   });
 
   it('setupPrompt (setupPrompt.ts) offers nothing while the account is unknown or another\'s', () => {

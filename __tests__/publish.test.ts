@@ -1,7 +1,7 @@
 import * as store from '@/lib/siteStore';
 import { ApiError } from '@/lib/api';
 import {
-  PENDING_MESSAGE, PRODUCT_IDS, UNCONFIRMED_MESSAGE, UPDATING_MESSAGE, pickLatestTransactionId, publishBusy,
+  PENDING_MESSAGE, PLAN_CHECK_MESSAGE, PRODUCT_IDS, UNCONFIRMED_MESSAGE, UPDATING_MESSAGE, pickLatestTransactionId, publishBusy,
   publishFlow, resumePendingPublish, type PublishDeps,
 } from '@/lib/publish';
 import type { SiteRecord } from '@/lib/siteStore';
@@ -390,14 +390,65 @@ describe('publish decides the Book / Shop links from the choice', () => {
     expect((await run(['hosting', 'bookings', 'store'])).shopUrl).toBe('/shop');
   });
 
-  test('a failed shop lookup is unknown: the site keeps its links and only plan-lacking ones are stripped', async () => {
+  test('a failed shop lookup is unknown: /book is dropped for an unpublished site (own link, else none)', async () => {
     require('@/lib/plan').setSharedPlan({ ...require('../test/ownPlan').OWN_PLAN });
     setEntitlementsFromStatus({ status: 'ACTIVE', entitlements: [{ id: 'hosting' }, { id: 'bookings' }] });
     await store.saveSite(withPrefs);
     const deps = makeDeps({ hasEntitlement: jest.fn(async () => true), linkContext: async () => null });
     await publishFlow(withPrefs, deps);
-    const sent = (deps.iosPublish as jest.Mock).mock.calls[0][0].siteData;
-    expect(sent.bookingUrl).toBe(AI); // kept: bookings is entitled
+    expect((deps.iosPublish as jest.Mock).mock.calls[0][0].siteData.bookingUrl).toBe(OWN);
+    // No own link: none at all.
+    const bare = { ...withPrefs, inputs: { shopName: 'Fade', bookingChoice: 'aibarber' } } as unknown as SiteRecord;
+    await store.saveSite(bare);
+    const deps2 = makeDeps({ hasEntitlement: jest.fn(async () => true), linkContext: async () => null });
+    await publishFlow(bare, deps2);
+    expect((deps2.iosPublish as jest.Mock).mock.calls[0][0].siteData.bookingUrl).toBeUndefined();
+  });
+
+  describe('fail closed: /book only goes out with a confirmed live scheduler', () => {
+    const live = { slug: 's', purchaseLinked: true, bookingsEnabled: true };
+    const bare = { ...withPrefs, inputs: { shopName: 'Fade', bookingChoice: 'aibarber' } } as unknown as SiteRecord;
+    const publishedBare = { ...bare, slug: 'fade', deployedUrl: 'https://fade.aibarber.org' } as unknown as SiteRecord;
+    const go = async (rec: SiteRecord, ents: Record<string, boolean>, shop: object | null | 'null-ctx') => {
+      await store.saveSite(rec);
+      const deps = makeDeps({
+        hasEntitlement: jest.fn(async () => true),
+        linkContext: async () => (shop === 'null-ctx' ? null : { ents: { known: true, hosting: false, bookings: false, store: false, ...ents } as never, shop: shop as never, storeEnabled: false }),
+      });
+      const out = await publishFlow(rec, deps);
+      return { out, deps, sent: (deps.iosPublish as jest.Mock).mock.calls[0]?.[0]?.siteData };
+    };
+
+    test('entitlements unknown, unpublished: stripped', async () => {
+      expect((await go(bare, { known: false }, live)).sent.bookingUrl).toBeUndefined();
+    });
+    test('no hosting yet, unpublished: stripped', async () => {
+      expect((await go(bare, { hosting: false, bookings: true }, live)).sent.bookingUrl).toBeUndefined();
+    });
+    test('Website plan: stripped', async () => {
+      expect((await go(bare, { hosting: true }, live)).sent.bookingUrl).toBeUndefined();
+    });
+    test('Bookings plan without a shop: stripped', async () => {
+      expect((await go(bare, { hosting: true, bookings: true }, null)).sent.bookingUrl).toBeUndefined();
+    });
+    test('Bookings plan with a live scheduler keeps /book', async () => {
+      expect((await go(bare, { hosting: true, bookings: true }, live)).sent.bookingUrl).toBe(AI);
+    });
+    test('already published and the context is unknown: nothing is sent, friendly retry, record kept', async () => {
+      for (const [ents, shop] of [[{ hosting: true, bookings: true }, 'null-ctx'], [{ known: false }, live], [{ hosting: false }, live]] as const) {
+        await store.savePendingPublish(null);
+        const r = await go(publishedBare, ents as never, shop as never);
+        expect(r.deps.iosPublish).not.toHaveBeenCalled();
+        expect(r.out).toEqual({ kind: 'pending', message: PLAN_CHECK_MESSAGE });
+        expect(await store.loadPendingPublish()).toMatchObject({ transactionId: 'tx-1' });
+      }
+    });
+    test('already published, unknown context, but no built-in link in the data: still publishes', async () => {
+      const own = { ...publishedBare, data: { ...publishedBare.data, bookingUrl: OWN }, inputs: { shopName: 'Fade', ownBookingUrl: OWN, bookingChoice: 'own' } } as unknown as SiteRecord;
+      const r = await go(own, {}, 'null-ctx');
+      expect(r.out.kind).toBe('live');
+      expect(r.sent.bookingUrl).toBe(OWN);
+    });
   });
   test('loadLinkContext returns null (not "no shop") when the lookup throws', async () => {
     jest.resetModules();

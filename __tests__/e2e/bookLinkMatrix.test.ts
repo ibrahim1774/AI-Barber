@@ -8,9 +8,11 @@
  * bookings entitlement is active AND a shop exists AND bookingsEnabled AND
  * purchaseLinked; else the barber's own link; else no Book button. The Shop
  * link only with store + linked shop + store open. By design nothing is
- * decided while the entitlements are unknown or hosting isn't visibly active
- * (the server decides), and an unknown context keeps the site's links, only
- * dropping what the plan lacks; a dropped AI link falls back to the own link.
+ * decided while the entitlements are unknown or hosting isn't visibly active.
+ * Fail closed: when the context is unknown (shop lookup failed, signed out) or the
+ * entitlements are not confirmed, a site that is already published sends nothing
+ * if it carries the built-in /book (publish stays pending, friendly retry);
+ * everything else is sent as is, a plan-lacking AI link falling back to the own link.
  */
 import * as store from '@/lib/siteStore';
 import { publishFlow, type PublishDeps } from '@/lib/publish';
@@ -64,8 +66,10 @@ for (const choice of ['own', 'aibarber', 'unset'] as Choice[])
               rows.push({ choice, own, ents, ctx, enabled, linked, storeOpen });
 
 /** The expected Book / Shop links (spec + the documented "server decides" / "unknown keeps" rules). */
-function expected(r: (typeof rows)[number], data: SiteRecord['data']): { book?: string; shop?: string } {
+function expected(r: (typeof rows)[number], data: SiteRecord['data']): { book?: string; shop?: string; deferred?: boolean } {
   const e = getEntitlements();
+  // The test record is already published: an unconfirmed context holds back a changed (built-in) Book link.
+  if ((!e.known || !e.hosting || r.ctx === 'unknown') && data.bookingUrl === AI) return { deferred: true };
   if (!e.known || !e.hosting) return { book: data.bookingUrl, shop: (data as any).shopUrl };
   const effective = r.own ? (r.choice === 'unset' ? 'own' : r.choice) : 'aibarber';
   if (r.ctx === 'unknown') {
@@ -106,8 +110,7 @@ async function send(r: (typeof rows)[number]): Promise<any> {
     claimStart: jest.fn(async () => ({ ok: true as const, state: 'unclaimed' as const, claimExpiresAt: '2026-11-25T00:00:00.000Z' })),
   };
   const out = await publishFlow(rec, deps);
-  expect(out.kind).toBe('live');
-  return { sent, rec };
+  return { sent, rec, out };
 }
 
 const name = (r: (typeof rows)[number]) =>
@@ -118,8 +121,14 @@ beforeEach(() => resetEntitlementsForTests());
 describe('Book / Shop link matrix through publishFlow', () => {
   for (const r of rows) {
     it(name(r), async () => {
-      const { sent, rec } = await send(r);
+      const { sent, rec, out } = await send(r);
       const want = expected(r, rec.data);
+      if (want.deferred) {
+        expect(out.kind).toBe('pending');
+        expect(sent).toBeNull();
+        return;
+      }
+      expect(out.kind).toBe('live');
       expect(sent.bookingUrl).toBe(want.book);
       expect(sent.shopUrl).toBe(want.shop);
     });

@@ -14,13 +14,15 @@ type Props = {
   onDismiss?(): void;
   /** Picks and uploads one photo through the editor's upload guard; null if cancelled. */
   upload(onPicked?: () => void): Promise<string | null>;
+  /** Opened from the preview's "+ Add a service": start at the new-service form. */
+  startAdd?: boolean;
 };
 
 /**
  * The Edit tab's Services sheet once a shop exists. Replaces ServicesSheet,
  * which keeps the Phase 1 behaviour (WebsiteData only) when there is no shop.
  */
-export function BookingsServicesSheet({ visible, shop, onServices, onClose, onDismiss, upload }: Props) {
+export function BookingsServicesSheet({ visible, shop, onServices, onClose, onDismiss, upload, startAdd }: Props) {
   const { height } = useWindowDimensions();
   const [picking, setPicking] = useState(false);
   const afterDismiss = useRef<(() => void) | null>(null);
@@ -38,6 +40,9 @@ export function BookingsServicesSheet({ visible, shop, onServices, onClose, onDi
   // Services may have changed in Setup since the last time this was open.
   const { reload } = ed;
   useEffect(() => { if (visible) reload(); }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const { addOwn } = ed;
+  useEffect(() => { if (visible && startAdd) addOwn(); }, [visible, startAdd]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDismiss = () => {
     const next = afterDismiss.current;

@@ -1,6 +1,7 @@
 import { ApiError, type api } from '@/lib/api';
 import { OFFLINE } from '@/lib/auth';
 import type { PublishOutcome } from '@/lib/publish';
+import type { PlanHint } from '@/lib/publishRequest';
 import type { ClaimField, ClaimMode, ClaimValues } from '@/lib/claimValidation';
 import { normalizePhone, validateClaim } from '@/lib/claimValidation';
 import { CLAIMED_SIGNED_OUT_MESSAGE } from '@/lib/claimCopy';
@@ -20,7 +21,7 @@ export const INACTIVE_MESSAGE =
 
 /** How one submit of the account form ended. The form stays on screen for everything but `live` and `moved-on`. */
 export type ClaimResult =
-  | { kind: 'live' }
+  | { kind: 'live'; planHint?: PlanHint }
   /** Nothing left to publish, or an admin edit was adopted: leave for the editor. */
   | { kind: 'moved-on' }
   | { kind: 'invalid'; errors: Partial<Record<ClaimField, string>> }
@@ -78,7 +79,7 @@ export function createClaimRunner(deps: ClaimDeps) {
     }
     if (!out) return { kind: 'moved-on' };
     switch (out.kind) {
-      case 'live': return { kind: 'live' };
+      case 'live': return { kind: 'live', ...(out.planHint ? { planHint: out.planHint } : {}) };
       case 'site-updated': return { kind: 'moved-on' };
       case 'blocked': return { kind: 'blocked', message: out.message, ...(out.movable ? { movable: true } : {}) };
       case 'inactive': return { kind: 'inactive', message: INACTIVE_MESSAGE };

@@ -31,7 +31,7 @@ jest.mock('@/components/Field', () => {
   };
 });
 let mockDeps: any;
-jest.mock('@/lib/paywall', () => ({ usePublishDeps: () => mockDeps, useLatestTransactionId: () => async () => 'tx-1' }));
+jest.mock('@/lib/paywall', () => ({ usePaywall: () => async () => 'declined', usePublishDeps: () => mockDeps, useLatestTransactionId: () => async () => 'tx-1' }));
 
 import Claim from '@/app/claim';
 import * as store from '@/lib/siteStore';

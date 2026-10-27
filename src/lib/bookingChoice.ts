@@ -190,9 +190,25 @@ export function linksToSend(
   ctx: LinkContext | null,
 ): WebsiteData & { shopUrl?: string } {
   const own = bookingPrefs({ data, inputs: inputs ?? {} }).own;
-  return ctx
-    ? stripLapsedLinks(resolveLinks(data, inputs, ctx), ctx.ents, own)
-    : stripLapsedLinks(data, getEntitlements(), own);
+  if (ctx && schedulerConfirmable(ctx)) return stripLapsedLinks(resolveLinks(data, inputs, ctx), ctx.ents, own);
+  // Fail closed: the shop facts did not load, or the entitlements are unknown / hosting is not visible yet. A built-in
+  // /book is only published when the scheduler is confirmed live, so it is dropped (own link, else none) here.
+  const out = stripLapsedLinks(data, ctx ? ctx.ents : getEntitlements(), own);
+  if (!isAiBarberBookingUrl(out.bookingUrl)) return out;
+  const next: WebsiteData = { ...out };
+  if (own) next.bookingUrl = own;
+  else delete next.bookingUrl;
+  return next;
+}
+
+/** True when the shop facts and the entitlements are known well enough to decide the Book link. */
+export function schedulerConfirmable(ctx: LinkContext | null): boolean {
+  return !!ctx && ctx.ents.known && ctx.ents.hosting;
+}
+
+/** True when the data carries the built-in Book link, so an unknown context could change what goes live. */
+export function carriesBuiltInBook(data: WebsiteData): boolean {
+  return isAiBarberBookingUrl(data.bookingUrl);
 }
 
 /** The Book and Shop links a website shows (what was last published, or what a publish would send). */

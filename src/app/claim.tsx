@@ -16,7 +16,10 @@ import { conflictMessage } from '@/lib/claimCopy';
 import { pauseClaim, reopenClaim, resumeAfterMove } from '@/lib/claimGuard';
 import { firstErrorField, type ClaimErrors, type ClaimField, type ClaimMode, type ClaimValues } from '@/lib/claimValidation';
 import { homeRoute, resetTo } from '@/lib/nav';
-import { usePublishDeps } from '@/lib/paywall';
+import { usePaywall, usePublishDeps } from '@/lib/paywall';
+import { track } from '@/lib/analytics';
+import { getEntitlements } from '@/lib/entitlements';
+import { upgradeAfterPublish } from '@/lib/publishRequest';
 import { resumePendingPublish } from '@/lib/publish';
 import { setPrefillEmail } from '@/lib/recovery';
 import { useRestoreFlow } from '@/lib/restoreFlow';
@@ -43,6 +46,9 @@ export default function Claim() {
   const deps = usePublishDeps();
   const depsRef = useRef(deps);
   depsRef.current = deps;
+  const paywall = usePaywall();
+  const paywallRef = useRef(paywall);
+  paywallRef.current = paywall;
   const runner = useMemo(
     () =>
       createClaimRunner({
@@ -91,9 +97,17 @@ export default function Claim() {
 
   const apply = useCallback((r: ClaimResult) => {
     switch (r.kind) {
-      case 'live':
+      case 'live': {
+        // Asked for Bookings / Store before paying, then quit at this step: offer that upgrade now (never after a paywall).
+        const upgrade = upgradeAfterPublish(r.planHint, getEntitlements(), false);
+        if (upgrade) {
+          track('publish_plan_upgrade_offered', { placement: upgrade });
+          void Promise.resolve(paywallRef.current(upgrade)).catch(() => 'declined').finally(() => resetTo('/live'));
+          return;
+        }
         resetTo('/live');
         return;
+      }
       case 'moved-on':
         void loadSite().then((s) => resetTo(homeRoute(s))).catch(() => resetTo('/start'));
         return;
