@@ -14,6 +14,7 @@ import { refreshTeamBeforePublish } from '@/lib/team';
 import { PLAN_ENTITLEMENT, getSuperwallEntitlements, setEntitlementsFromStatus } from '@/lib/entitlements';
 import { refreshPlan, refreshPlanQuietly, setSharedPlan } from '@/lib/plan';
 import { findTransactionId, pickLatestTransactionId, type PublishDeps } from '@/lib/publish';
+import type { PlanHint } from '@/lib/publishRequest';
 import { pickDomainTransactionId } from '@/lib/domains/model';
 import { syncRevenueCatPurchases } from '@/lib/revenuecat';
 import * as siteStore from '@/lib/siteStore';
@@ -25,6 +26,14 @@ import {
 /** Placements configured in the Superwall dashboard (AI Barber campaign). */
 export type Placement = 'publish' | 'bookings_upgrade' | 'store_upgrade' | 'custom_domain';
 export type { PaywallResult };
+
+/** Placement params that go to Superwall (audience rules / paywall variants read them). Only the publish paywall takes a plan. */
+export type PlacementParams = { plan: PlanHint };
+
+/** The params registerPlacement gets for a placement and plan hint: `{ plan }` on 'publish' only, else none. */
+export function placementParams(placement: Placement, planHint?: PlanHint): PlacementParams | undefined {
+  return placement === 'publish' && planHint ? { plan: planHint } : undefined;
+}
 
 const PLAN_ENTITLEMENTS = ['hosting', 'bookings', 'store'];
 
@@ -237,7 +246,7 @@ export function usePaywall() {
 
 /** Without a key there is no provider and nothing to buy, so nothing can be published. */
 function useNoKeyPaywall() {
-  return useCallback(async (placement: Placement): Promise<PaywallResult> => {
+  return useCallback(async (placement: Placement, _planHint?: PlanHint): Promise<PaywallResult> => {
     track('placement_registered', { placement, paywall: 'off' });
     Alert.alert('Publishing unavailable', 'Subscriptions are not set up in this build.');
     return 'declined';
@@ -267,7 +276,7 @@ function useSuperwallPaywall() {
   });
 
   return useCallback(
-    (placement: Placement) =>
+    (placement: Placement, planHint?: PlanHint) =>
       new Promise<PaywallResult>((resolve) => {
         session.current?.supersede();
         // An upgrade is paid when its target entitlement is active (a transaction always exists for a
@@ -299,7 +308,8 @@ function useSuperwallPaywall() {
         );
         session.current = s;
         track('placement_registered', { placement });
-        registerPlacement({ placement, feature: () => s.feature() }).catch((e) => {
+        const params = placementParams(placement, planHint);
+        registerPlacement({ placement, ...(params ? { params } : {}), feature: () => s.feature() }).catch((e) => {
           console.warn('Superwall register failed', e);
           s.error();
         });
@@ -353,7 +363,7 @@ export function usePublishDeps(): PublishDeps {
   return useMemo(
     () => ({
       hasEntitlement: async () => entitled,
-      showPaywall: () => paywall('publish'),
+      showPaywall: (planHint) => paywall('publish', planHint),
       latestTransactionId,
       iosPublish: api.iosPublish,
       syncFromServer: syncNow,

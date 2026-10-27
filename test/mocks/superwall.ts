@@ -27,10 +27,13 @@ export const sw = {
   configured: true,
   /** useSuperwall().configurationError (read at render). */
   configError: null as string | null,
+  /** Every registerPlacement call's placement and params, in order. */
+  placements: [] as { placement: string; params?: Record<string, unknown> }[],
   /** The callbacks the last useSuperwallEvents() call registered (SubscriptionSync's). */
   events: {} as Record<string, ((...args: any[]) => void) | undefined>,
   reset() {
     sw.events = {};
+    sw.placements = [];
     sw.integrationAttributes = [];
     sw.configured = true;
     sw.status = 'UNKNOWN';
@@ -46,7 +49,8 @@ export const sw = {
 export function usePlacement(callbacks: Callbacks = {}) {
   sw.callbacks = callbacks;
   return {
-    registerPlacement: async ({ feature }: { placement: string; feature?: () => void }) => {
+    registerPlacement: async ({ placement, params, feature }: { placement: string; params?: Record<string, unknown>; feature?: () => void }) => {
+      sw.placements.push({ placement, params });
       await sw.register();
       feature?.();
     },
