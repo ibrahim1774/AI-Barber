@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, Text } from 'react-native';
+import type { Ref } from 'react';
+import { ActivityIndicator, Alert, AppState, Text, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { track } from '@/lib/analytics';
 import { Button } from '@/components/Button';
@@ -13,7 +14,7 @@ export const CARDS_NOT_SET_UP = "Card payments aren't set up yet.";
 export const GET_PAID_RETURN = 'aibarber://get-paid';
 
 /** Three cards: in the shop, Cash App / Venmo / Zelle / PayPal handles, card payments through Stripe. */
-export function GetPaid({ shop, onChanged }: { shop: Shop; onChanged(): void }) {
+export function GetPaid({ shop, onChanged, firstCardRef }: { shop: Shop; onChanged(): void; firstCardRef?: Ref<View> }) {
   const [inShop, setInShop] = useState(shop.payInShop);
   const [inputs, setInputs] = useState<Record<ManualMethod, string>>({
     cashapp: shop.manualHandles.cashapp ?? '', venmo: shop.manualHandles.venmo ?? '',
@@ -121,6 +122,7 @@ export function GetPaid({ shop, onChanged }: { shop: Shop; onChanged(): void }) 
 
   return (
     <>
+      <View ref={firstCardRef} collapsable={false}>
       <Card title="In the shop">
         <ToggleRow
           label="Customers pay when they arrive"
@@ -129,6 +131,7 @@ export function GetPaid({ shop, onChanged }: { shop: Shop; onChanged(): void }) 
           onValueChange={(v) => void saveInShop(v)}
         />
       </Card>
+      </View>
 
       <Card title="Cash App, Venmo, Zelle, PayPal">
         <Note>

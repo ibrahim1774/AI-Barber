@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { colors, fonts } from '@/constants/theme';
 import { measureTarget, type Rect } from '@/components/tutorial/registry';
 import type { TourController } from '@/components/tutorial/useTour';
-import { placeTip } from '@/components/tutorial/place';
+import { clampHole, placeTip, CARD_MIN } from '@/components/tutorial/place';
 
 const PAD = 6;
 const DIM = 'rgba(5,7,10,0.78)';
@@ -16,6 +17,8 @@ const DIM = 'rgba(5,7,10,0.78)';
 export function TutorialLayer({ controller }: { controller: TourController }) {
   const { tour, step, next, skip } = controller;
   const win = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const [cardH, setCardH] = useState(CARD_MIN);
   const [rect, setRect] = useState<Rect | null>(null);
   const [measured, setMeasured] = useState(false);
   const s = tour?.steps[step];
@@ -41,13 +44,15 @@ export function TutorialLayer({ controller }: { controller: TourController }) {
 
   if (!tour || !s) return null;
   const last = step + 1 >= tour.steps.length;
-  const hole = rect
+  const raw = rect
     ? {
         x: Math.max(0, rect.x - PAD), y: Math.max(0, rect.y - PAD),
         w: Math.min(win.width, rect.width + PAD * 2), h: rect.height + PAD * 2,
       }
     : null;
-  const tip = placeTip(hole, win.width, win.height);
+  // A target taller than the window is clipped to what is visible; one fully off screen counts as no target.
+  const hole = raw ? clampHole(raw, win.width, win.height, insets) : null;
+  const tip = placeTip(hole, win.width, win.height, insets, cardH);
 
   return (
     <Modal transparent visible animationType="fade" statusBarTranslucent onRequestClose={skip}>
@@ -66,15 +71,38 @@ export function TutorialLayer({ controller }: { controller: TourController }) {
         ) : (
           <View style={[styles.dim, StyleSheet.absoluteFill]} />
         )}
+        {/* Tapping the dim area ends the tour, so a stuck user always has a way out. */}
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={next}
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss tour"
+        />
+        <Pressable
+          onPress={skip}
+          hitSlop={10}
+          style={[styles.close, { top: insets.top + 8 }]}
+          accessibilityRole="button"
+          accessibilityLabel="Close tour"
+        >
+          <Text style={styles.closeText}>✕</Text>
+        </Pressable>
         {(measured || !s.target) && (
           <View
+            onLayout={(e) => {
+              const h = Math.round(e.nativeEvent.layout.height);
+              if (h > 0 && Math.abs(h - cardH) > 1) setCardH(h);
+            }}
             style={[
               styles.cardWrap,
-              tip.centred ? styles.centred : tip.above ? { bottom: win.height - tip.edge } : { top: tip.edge },
+              tip.centred
+                ? styles.centred
+                : tip.pinned ? { bottom: win.height - tip.edge }
+                : tip.above ? { bottom: win.height - tip.edge } : { top: tip.edge },
             ]}
             pointerEvents="box-none"
           >
-            {!tip.centred && !tip.above && hole && <Arrow x={hole.x + hole.w / 2} up />}
+            {!tip.centred && !tip.above && !tip.pinned && hole && <Arrow x={hole.x + hole.w / 2} up />}
             <View style={styles.card} accessibilityLiveRegion="polite">
               <Text style={styles.tip}>{s.tip}</Text>
               <View style={styles.foot}>
@@ -95,15 +123,10 @@ export function TutorialLayer({ controller }: { controller: TourController }) {
                 </View>
               </View>
             </View>
-            {!tip.centred && tip.above && hole && <Arrow x={hole.x + hole.w / 2} up={false} />}
+            {!tip.centred && tip.above && !tip.pinned && hole && <Arrow x={hole.x + hole.w / 2} up={false} />}
           </View>
         )}
         {/* Keep the controls reachable while the target is still being measured. */}
-        {!measured && s.target && (
-          <Pressable onPress={skip} style={styles.fallbackSkip} accessibilityRole="button" accessibilityLabel="Skip tour">
-            <Text style={styles.skip}>Skip</Text>
-          </Pressable>
-        )}
       </View>
     </Modal>
   );
@@ -142,7 +165,11 @@ const styles = StyleSheet.create({
   skip: { fontFamily: fonts.bodySemi, fontSize: 14, color: colors.muted },
   next: { backgroundColor: colors.accent, borderRadius: 999, paddingHorizontal: 20, paddingVertical: 9 },
   nextText: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.accentInk },
-  fallbackSkip: { position: 'absolute', top: 70, right: 24, padding: 10 },
+  close: {
+    position: 'absolute', right: 16, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(237,239,244,0.16)',
+  },
+  closeText: { fontFamily: fonts.bodyBold, fontSize: 15, color: colors.text },
   arrowBase: {
     position: 'absolute', width: 0, height: 0, borderLeftWidth: 10, borderRightWidth: 10,
     borderLeftColor: 'transparent', borderRightColor: 'transparent',

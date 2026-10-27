@@ -48,7 +48,7 @@ export const TOURS: Record<TourId, Tour> = {
   getpaid: {
     id: 'getpaid', screen: 'getpaid', label: 'Getting paid', auto: true,
     steps: [
-      { target: 'getpaid.cards', tip: 'Choose how clients pay you: in the shop, with a handle like Cash App, or by card through Stripe.' },
+      { target: 'getpaid.first', tip: 'Choose how clients pay you: in the shop, with a handle like Cash App, or by card through Stripe.' },
     ],
   },
   publishing: {

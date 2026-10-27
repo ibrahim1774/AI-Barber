@@ -9,7 +9,7 @@ import { nextOverlay } from '@/lib/overlayFlags';
 import {
   hasTourSeen, markTourSeen, tourFlagKey, TOUR_ORDER, TOURS,
 } from '@/components/tutorial/tours';
-import { placeTip } from '@/components/tutorial/place';
+import { clampHole, placeTip } from '@/components/tutorial/place';
 import { useTour, type TourController } from '@/components/tutorial/useTour';
 
 const { act, create } = require('react-test-renderer');
@@ -27,6 +27,12 @@ describe('tour definitions', () => {
   it('are short: the Edit tour at most 5 steps, the others at most 4', () => {
     for (const id of TOUR_ORDER) expect(TOURS[id].steps.length).toBeLessThanOrEqual(id === 'edit' ? 5 : 4);
     expect(TOURS.edit.steps[0].target).toBe('edit.publish'); // the old launch guide's Publish step comes first
+  });
+
+  it('the Get paid tour points at the first card only', () => {
+    expect(TOURS.getpaid.steps[0].target).toBe('getpaid.first');
+    expect(read('components/setup/GetPaid.tsx')).toContain('firstCardRef');
+    expect(read('app/get-paid.tsx')).toContain("useTutorialTarget('getpaid.first')");
   });
 
   it('every pointed-at target is registered by its screen', () => {
@@ -150,6 +156,32 @@ describe('placeTip', () => {
     expect(placeTip(null, 390, 844).centred).toBe(true);
     expect(placeTip({ x: 10, y: 100, w: 100, h: 40 }, 390, 844)).toMatchObject({ centred: false, above: false, edge: 154 });
     expect(placeTip({ x: 10, y: 760, w: 100, h: 40 }, 390, 844)).toMatchObject({ centred: false, above: true, edge: 746 });
+  });
+});
+
+describe('placeTip with safe areas', () => {
+  const insets = { top: 59, bottom: 34 };
+  it('a target taller than the screen pins the card inside the safe area', () => {
+    const p = placeTip({ x: 0, y: 114, w: 390, h: 900 }, 390, 844, insets, 150);
+    expect(p.pinned).toBe('bottom');
+    const bottom = p.edge;
+    expect(bottom).toBeLessThanOrEqual(844 - 34 - 8);
+    expect(bottom - 150).toBeGreaterThanOrEqual(59 + 8);
+  });
+  it('a target near the top with no room below never puts the card above', () => {
+    const p = placeTip({ x: 0, y: 70, w: 390, h: 700 }, 390, 844, insets, 150);
+    expect(p.above).toBe(false);
+    expect(p.pinned).toBe('bottom');
+  });
+});
+
+describe('clampHole', () => {
+  it('clips a hole bigger than the window to the visible area', () => {
+    expect(clampHole({ x: -10, y: 114, w: 420, h: 900 }, 390, 844, { top: 59, bottom: 34 }))
+      .toEqual({ x: 0, y: 114, w: 390, h: 696 });
+  });
+  it('returns null when nothing is visible', () => {
+    expect(clampHole({ x: 0, y: 900, w: 100, h: 50 }, 390, 844, { top: 59, bottom: 34 })).toBeNull();
   });
 });
 

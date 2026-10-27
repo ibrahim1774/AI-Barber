@@ -17,7 +17,8 @@ export default function GetPaidScreen() {
   const [shop, setShop] = useState<Shop | null | undefined | 'error'>(undefined);
   const load = useCallback(() => { loadMyShop().then(setShop).catch(() => setShop('error')); }, []);
   useEffect(load, [load]);
-  const cardsRef = useTutorialTarget('getpaid.cards');
+  const cardsRef = useTutorialTarget('getpaid.cards'); // kept registered so the old id never breaks
+  const firstCardRef = useTutorialTarget('getpaid.first');
   const tour = useTour('getpaid', { auto: 'getpaid', ready: !!shop && shop !== 'error' });
 
   return (
@@ -41,7 +42,7 @@ export default function GetPaidScreen() {
       )}
       {shop && shop !== 'error' && (
         <View ref={cardsRef} collapsable={false}>
-          <GetPaid shop={shop} onChanged={load} />
+          <GetPaid shop={shop} onChanged={load} firstCardRef={firstCardRef} />
         </View>
       )}
       <TutorialLayer controller={tour} />
