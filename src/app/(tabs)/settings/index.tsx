@@ -22,7 +22,7 @@ import { useDomainOffer } from '@/lib/domains/useDomainOffer';
 import { planLabel } from '@/lib/plan';
 import { PRIVACY_URL, TERMS_URL } from '@/lib/policyLinks';
 import { remindersEnabled, setRemindersEnabled } from '@/lib/reminders';
-import { requestPublish } from '@/lib/publishRequest';
+import { isUnpublished, requestPublish, type PlanHint } from '@/lib/publishRequest';
 import { useRestoreFlow } from '@/lib/restoreFlow';
 import { loadSite, type SiteRecord } from '@/lib/siteStore';
 import { siteOffline, useSubscriptionStatus } from '@/lib/subscriptionStatus';
@@ -117,8 +117,11 @@ export default function Settings() {
   const openPlan = () => {
     track('plan_row_tapped');
     const choices: { label: string; run(): void }[] = [];
-    if (!ents.bookings) choices.push({ label: 'Upgrade to Bookings', run: () => void paywall('bookings_upgrade') });
-    if (!ents.store) choices.push({ label: 'Upgrade to Store', run: () => void paywall('store_upgrade') });
+    // Before the website is published there is nothing to upgrade: the plan is picked on the one publish paywall.
+    const publishFirst = isUnpublished(site) && ents.account !== 'other';
+    const publishWith = (hint: PlanHint) => () => { track('settings_publish_tapped', { plan: hint }); requestPublish(hint); router.navigate('/edit'); };
+    if (!ents.bookings) choices.push({ label: 'Upgrade to Bookings', run: publishFirst ? publishWith('bookings') : () => void paywall('bookings_upgrade') });
+    if (!ents.store) choices.push({ label: 'Upgrade to Store', run: publishFirst ? publishWith('store') : () => void paywall('store_upgrade') });
     choices.push({ label: 'Manage subscription', run: manageSubscription });
     ActionSheetIOS.showActionSheetWithOptions(
       { title: 'Your plan', options: [...choices.map((c) => c.label), 'Cancel'], cancelButtonIndex: choices.length },

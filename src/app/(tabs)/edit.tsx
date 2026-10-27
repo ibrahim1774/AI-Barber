@@ -26,7 +26,7 @@ import { listProducts } from '@/lib/store/data';
 import { isSiteShopLink } from '@/web/lib/render/subpages';
 import { advanceOverlay, hasSeen, markSeen, nextOverlay, visibleOverlay, type Overlay } from '@/lib/overlayFlags';
 import { pickAndUploadPhoto } from '@/lib/photos';
-import { takePublishRequest } from '@/lib/publishRequest';
+import { peekPublishHint, takePublishRequest, type PlanHint } from '@/lib/publishRequest';
 import { refreshReminders } from '@/lib/reminders';
 import { useRestoreFlow } from '@/lib/restoreFlow';
 import { loadPendingPublish, loadSite, saveSite, type SiteRecord } from '@/lib/siteStore';
@@ -161,20 +161,24 @@ export default function Editor() {
   const publishing = useRef(false);
 
   // /publishing shows the paywall over the editor, then publishes.
-  const handlePublish = useCallback(() => {
+  const publishWith = useCallback((planHint?: PlanHint) => {
     if (publishing.current) return; // double tap
     publishing.current = true;
     // entitled: a subscriber's republish is not sent to AppsFlyer as a checkout.
     track('publish_tapped', { entitled: hasEntitlement() });
-    router.push('/publishing');
+    // The plan hint (from the Bookings / Store tab or the Plan row) goes to the publish paywall as its params.
+    if (planHint) router.push({ pathname: '/publishing', params: { plan: planHint } });
+    else router.push('/publishing');
   }, []);
+  const handlePublish = useCallback(() => publishWith(), [publishWith]);
 
   // Settings' "Publish" (unpublished site): run it here, once the editor is
   // ready, through the same handlePublish. Left for a later check otherwise.
   const runPublishRequest = useCallback(() => {
     if (!siteRef.current || uploadingRef.current || (overlayRef.current && !lockedRef.current)) return;
-    if (takePublishRequest()) handlePublish();
-  }, [handlePublish]);
+    const hint = peekPublishHint();
+    if (takePublishRequest()) publishWith(hint);
+  }, [publishWith]);
 
   // Load (or reload, for a different draft) the record. The overlay is
   // resolved before anything shows, so the editor is never interactive while

@@ -6,6 +6,7 @@ import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
 import { PausedBanner } from '@/components/PausedBanner';
 import { UpgradeCard } from '@/components/UpgradeCard';
+import { PublishFirstCard } from '@/components/PublishFirstCard';
 import { ShareSheet } from '@/components/ShareSheet';
 import { CustomersPane } from '@/components/store/customers/CustomersPane';
 import { OrdersPane } from '@/components/store/OrdersPane';
@@ -18,6 +19,8 @@ import { ProductsPane } from '@/components/store/products/ProductsPane';
 import { loadMyShop, type Shop } from '@/lib/shop';
 import { loadSite, type SiteRecord } from '@/lib/siteStore';
 import { isLocked, useSubscriptionStatus } from '@/lib/subscriptionStatus';
+import { useEntitlements } from '@/lib/entitlements';
+import { isUnpublished, requestPublish } from '@/lib/publishRequest';
 import { useOpenStoreUpgrade, useStoreAccess } from '@/lib/store/gate';
 import { useUpdateSitePrompt } from '@/lib/setupPrompt';
 import { countNewOrders, hasAnyOrders, loadStoreSettings } from '@/lib/store/data';
@@ -36,6 +39,7 @@ export default function Store() {
   const params = useLocalSearchParams<{ tab?: string; orderId?: string; n?: string }>();
   const status = useSubscriptionStatus();
   const access = useStoreAccess();
+  const ents = useEntitlements();
   const upgrade = useOpenStoreUpgrade();
   // Closing the shop or losing the plan never hides orders: they stay visible and actionable.
   const [anyOrders, setAnyOrders] = useState(false);
@@ -133,6 +137,21 @@ export default function Store() {
     return (
       <View style={[...shell, styles.center]}>
         <Card title="Couldn't load your store" body="Check your connection and try again." action="Try again" onAction={() => void load()} />
+      </View>
+    );
+  }
+
+  // Before the website is published there is nothing to upgrade: Publish opens the one publish paywall with this plan in front.
+  if (noPlan && isUnpublished(site) && !shop && ents.account !== 'other') {
+    return (
+      <View style={[...shell, styles.center]}>
+        <PublishFirstCard
+          kind="store"
+          onPublish={() => {
+            requestPublish('store');
+            router.navigate('/edit');
+          }}
+        />
       </View>
     );
   }

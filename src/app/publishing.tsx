@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { AccessibilityInfo, Animated, Easing, StyleSheet, Text, View } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
 import { AlertCircleIcon, RefreshIcon } from '@/components/Icons';
 import { track } from '@/lib/analytics';
 import { takeNotice } from '@/lib/adminSync';
-import { usePublishDeps } from '@/lib/paywall';
+import { usePaywall, usePublishDeps } from '@/lib/paywall';
+import { getEntitlements } from '@/lib/entitlements';
+import { isPlanHint, upgradeAfterPublish } from '@/lib/publishRequest';
 import { publishBusy, publishFlow, type PublishDeps } from '@/lib/publish';
 import { resetTo } from '@/lib/nav';
 import { loadSite } from '@/lib/siteStore';
@@ -24,6 +26,9 @@ const FAILED_MESSAGE =
  */
 export default function Publishing() {
   const deps = usePublishDeps();
+  const paywall = usePaywall();
+  const params = useLocalSearchParams<{ plan?: string }>();
+  const planHint = isPlanHint(params.plan) ? params.plan : undefined;
   const [phase, setPhase] = useState<Phase>('paywall');
   const [pending, setPending] = useState<Pending>({ message: '' });
   const running = useRef(false);
@@ -40,6 +45,7 @@ export default function Publishing() {
       // Waiting behind a launch retry: show the spinner, not a clear screen.
       setPhase(publishBusy() ? 'publishing' : 'paywall');
       // Show the publish overlay only once the user has access.
+      let paywallShown = false;
       const shown: PublishDeps = {
         ...deps,
         hasEntitlement: async () => {
@@ -47,8 +53,9 @@ export default function Publishing() {
           setPhase(ok ? 'publishing' : 'paywall');
           return ok;
         },
-        showPaywall: async () => {
-          const r = await deps.showPaywall();
+        showPaywall: async (hint) => {
+          paywallShown = true;
+          const r = await deps.showPaywall(hint);
           if (r !== 'declined') setPhase('publishing');
           return r;
         },
@@ -59,8 +66,14 @@ export default function Publishing() {
           back();
           return;
         }
-        const out = await publishFlow(site, shown);
+        const out = await publishFlow(site, shown, planHint);
         if (out.kind === 'live') {
+          // Asked for Bookings / Store but the publish skipped the paywall (an earlier, lower plan): offer that upgrade now.
+          const upgrade = upgradeAfterPublish(planHint, getEntitlements(), paywallShown);
+          if (upgrade) {
+            track('publish_plan_upgrade_offered', { placement: upgrade });
+            await paywall(upgrade).catch(() => 'declined');
+          }
           router.replace('/live');
         } else if (out.kind === 'claim-required') {
           // Paid, no account yet: the locked account step finishes the publish. Nothing was published.
@@ -88,7 +101,7 @@ export default function Publishing() {
         running.current = false;
       }
     },
-    [deps, back],
+    [deps, back, planHint, paywall],
   );
 
   useEffect(() => {

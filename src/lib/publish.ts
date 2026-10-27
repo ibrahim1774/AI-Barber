@@ -8,6 +8,7 @@ import { cancelRemindersInBackground } from '@/lib/reminders';
 import { emitSiteLive } from '@/lib/siteEvents';
 import type { PendingPublish, SiteRecord } from '@/lib/siteStore';
 import { CLAIMED_SIGNED_OUT_MESSAGE, conflictMessage, type Conflict } from '@/lib/claimCopy';
+import type { PlanHint } from '@/lib/publishRequest';
 import { LOOKUP_TIMEOUT_MS, withTimeout } from '@/lib/timeout';
 
 /**
@@ -41,8 +42,8 @@ const PENDING_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 export interface PublishDeps {
   hasEntitlement(): Promise<boolean>;
-  /** registerPlacement('publish', feature) */
-  showPaywall(): Promise<'purchased' | 'restored' | 'declined'>;
+  /** registerPlacement('publish', feature); the plan hint rides along as the placement's params. */
+  showPaywall(planHint?: PlanHint): Promise<'purchased' | 'restored' | 'declined'>;
   /** getCustomerInfo().subscriptions → pickLatestTransactionId */
   latestTransactionId(): Promise<string | null>;
   iosPublish: typeof api.iosPublish;
@@ -335,7 +336,7 @@ async function toClaim(deps: PublishDeps, pending: PendingPublish): Promise<Publ
  * Only a found, active transaction for our products proves payment; showPaywall's 'purchased' is itself verified
  * (paywall.tsx). The purchase conversion is tracked by SubscriptionSync from Superwall's own events, not here.
  */
-export async function publishFlow(site: SiteRecord, deps: PublishDeps): Promise<PublishOutcome> {
+export async function publishFlow(site: SiteRecord, deps: PublishDeps, planHint?: PlanHint): Promise<PublishOutcome> {
   return serial(async () => {
     const data = publishPayload(site.data);
     const prior = await deps.store.loadPendingPublish().catch(() => null);
@@ -347,7 +348,7 @@ export async function publishFlow(site: SiteRecord, deps: PublishDeps): Promise<
     // A paywall "restored" is the Apple ID's earlier purchase, not a payment made now: it never locks the app.
     let bought = false;
     if (!paidBefore && (deps.purchasedNow || !(await deps.hasEntitlement().catch(() => false)))) {
-      const result = deps.purchasedNow ? 'purchased' : await deps.showPaywall();
+      const result = deps.purchasedNow ? 'purchased' : await deps.showPaywall(planHint);
       if (result === 'declined') return { kind: 'declined' } as const;
       paid = true;
       bought = result === 'purchased';

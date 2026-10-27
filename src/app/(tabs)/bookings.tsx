@@ -7,6 +7,7 @@ import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
 import { PausedBanner } from '@/components/PausedBanner';
 import { UpgradeCard } from '@/components/UpgradeCard';
+import { PublishFirstCard } from '@/components/PublishFirstCard';
 import { HeaderButton } from '@/components/HeaderButtons';
 import { TabHeader } from '@/components/TabHeader';
 import { ShareSheet } from '@/components/ShareSheet';
@@ -35,6 +36,8 @@ import { useCustomerLinkState } from '@/lib/customerLinks';
 import { loadSite, type SiteRecord } from '@/lib/siteStore';
 import { isLocked, useSubscriptionStatus } from '@/lib/subscriptionStatus';
 import { useTierAccess, useUpgrade } from '@/lib/tierAccess';
+import { useEntitlements } from '@/lib/entitlements';
+import { isUnpublished, requestPublish } from '@/lib/publishRequest';
 
 const VIEW_KEY = 'bookings.view.v1';
 
@@ -58,6 +61,7 @@ export default function Bookings() {
   const status = useSubscriptionStatus();
   const tier = useTierAccess('bookings');
   const upgrade = useUpgrade('bookings_upgrade');
+  const ents = useEntitlements();
   const [site, setSite] = useState<SiteRecord | null>(null);
   const [barber, setBarber] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -185,6 +189,21 @@ export default function Bookings() {
     return (
       <View style={[styles.root, styles.center, { paddingTop: insets.top }]}>
         <ActivityIndicator color={colors.accent} />
+      </View>
+    );
+  }
+
+  // Before the website is published there is nothing to upgrade: Publish opens the one publish paywall with this plan in front.
+  if (paused && isUnpublished(site) && !tier.otherAccount && ents.account !== 'other') {
+    return (
+      <View style={[styles.root, styles.center, { paddingTop: insets.top }]}>
+        <PublishFirstCard
+          kind="bookings"
+          onPublish={() => {
+            requestPublish('bookings');
+            router.navigate('/edit');
+          }}
+        />
       </View>
     );
   }
