@@ -524,7 +524,7 @@ export async function cancelAppointment(
  * (never an increment). On failure the row stays pending; 'refund_failed' goes to ab_events
  * only for the first attempt (`logEvent`), retries just log to the console.
  */
-async function refundOwed(
+export async function refundOwed(
   deps: RefundSweepDeps,
   shop: ShopRow,
   row: AppointmentRow,

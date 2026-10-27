@@ -12,6 +12,7 @@ import { liveRemoveDeps } from './removeSiteLive.js';
 // Every step is idempotent, so a retry after a partial failure finishes the job. The lapse sweep
 // cannot bring a deleted site back: its restore path needs the stored copy, which step 2 deletes.
 import { purge, takeDown, type RemovableSite } from './removeSite.js';
+import { liveCloseShop, type ClosureResult } from './closeShop.js';
 
 export interface DeleteAccountDeps {
   getUser(jwt: string): Promise<{ id: string } | null>;
@@ -23,6 +24,11 @@ export interface DeleteAccountDeps {
   deleteUser(userId: string): Promise<void>;
   /** True while an unfinished business move names this account as the previous owner (its data is still being moved). */
   moveInProgress?(userId: string): Promise<boolean>;
+  /**
+   * Cancels the account's upcoming bookings and open orders (customers are emailed, card money refunded
+   * through the existing paths) BEFORE anything is taken down or deleted. { ok: false } = retry later.
+   */
+  closeShop?(userId: string): Promise<ClosureResult>;
 }
 
 export async function deleteAccount(
@@ -48,6 +54,19 @@ export async function deleteAccount(
     return { status: 500, body: { error: 'delete-failed' } };
   }
 
+  // Customers with upcoming bookings or open orders are cancelled and told first. If that cannot
+  // finish, nothing at all is taken down or deleted and the app retries.
+  let closure: ClosureResult | null = null;
+  if (deps.closeShop) {
+    try {
+      closure = await deps.closeShop(user.id);
+    } catch (e: any) {
+      console.error('[ios/delete-account] closing the shop failed:', e?.message || e);
+      return { status: 500, body: { error: 'delete-failed', retryable: true } };
+    }
+    if (!closure.ok) return { status: 500, body: { error: 'delete-failed', retryable: true } };
+  }
+
   try {
     const sites = await deps.listSites(user.id);
     // 1. Take every site down first; surface failures before anything is deleted.
@@ -69,6 +88,10 @@ export async function deleteAccount(
   } catch (e: any) {
     console.error('[ios/delete-account] failed:', e?.message || e);
     return { status: 500, body: { error: 'delete-failed' } };
+  }
+  if (closure && (closure.bookingsCancelled || closure.ordersCancelled || closure.needsRefund.length || closure.notCancelled.length)) {
+    const { ok: _ok, ...summary } = closure;
+    return { status: 200, body: { deleted: true, ...summary } };
   }
   return { status: 200, body: { deleted: true } };
 }
@@ -94,6 +117,7 @@ export function liveDeleteDeps(): DeleteAccountDeps {
       if (error) throw new Error(error.message);
       return (data ?? []) as RemovableSite[];
     },
+    closeShop: liveCloseShop(),
     takeDown: (site) => takeDown(site, remove),
     purge: (site) => purge(site, remove),
     async deleteSites(userId) {
