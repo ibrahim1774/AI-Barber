@@ -124,10 +124,41 @@ describe('round trip: edit, push, sign out, sign in', () => {
     await syncIfSignedIn();
     expect((await store.loadSite())!.accountSyncedAt).toBe(T0 + 500);
     // The web writes: new content, no app markers, a later server time.
+    // Like the real web editor, it writes back the site_data it loaded, so the phone's old editedAt stays in it.
     const w = sb.rows[0];
-    sb.rows[0] = { ...w, site_data: { ...publishPayload(baseData()), shopName: 'Edited On Web' }, updated_at: new Date(T0 + 90_000).toISOString() };
+    sb.rows[0] = { ...w, site_data: { ...w.site_data, shopName: 'Edited On Web' }, updated_at: new Date(T0 + 90_000).toISOString() };
     await expect(pullSiteFromAccount(USER.id)).resolves.toBe('adopted');
     expect((await store.loadSite())!.data.shopName).toBe('Edited On Web');
+  });
+
+  test('two web edits in a row are both adopted, even when the follow-up push failed and old markers remain', async () => {
+    await seedAccount(record());
+    const web = (name: string, at: number) => {
+      const w = sb.rows[0];
+      sb.rows[0] = { ...w, site_data: { ...w.site_data, shopName: name }, updated_at: new Date(at).toISOString() };
+    };
+    web('Web One', T0 + 90_000);
+    await expect(pullSiteFromAccount(USER.id)).resolves.toBe('adopted');
+    // The push after adopting failed: the phone keeps its adopted stamps. Web edit 2 still carries the old marker.
+    web('Web Two', T0 + 180_000);
+    await expect(pullSiteFromAccount(USER.id)).resolves.toBe('adopted');
+    expect((await store.loadSite())!.data.shopName).toBe('Web Two');
+  });
+
+  test('another phone with a slow clock: its newer edit is adopted and not overwritten on sign-out', async () => {
+    await seedAccount(record()); // phone B: edited and pushed at 12:00, no edits since
+    // Phone A (clock 5 minutes slow) edited at real 12:03 and pushed. The server stamps its own time.
+    const w = sb.rows[0];
+    sb.rows[0] = {
+      ...w, site_data: { ...w.site_data, shopName: 'From Phone A', editedAt: T0 - 120_000 },
+      updated_at: new Date(T0 + 180_000).toISOString(),
+    };
+    sb.serverNow = () => T0 + 240_000;
+    await signOut(); // pulls first, then pushes whatever the phone then holds
+    expect(sb.rows[0].site_data.shopName).toBe('From Phone A');
+    await signInAgain();
+    expect((await store.loadSite())!.data.shopName).toBe('From Phone A');
+    expect(sb.rows[0].site_data.shopName).toBe('From Phone A');
   });
 
   test('a legacy row and record (no revision fields) with an unsynced local edit keeps local', async () => {
