@@ -5,11 +5,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // ---- in-memory GCS bucket ----
 const files = new Map<string, string>();
 const owners = new Map<string, string>();
+const failDownloadOf = new Set<string>();
 const fakeFile = (name: string) => ({
   name,
   metadata: owners.has(name) ? { metadata: { siteId: owners.get(name) } } : {},
   exists: async () => [files.has(name)],
-  download: async () => [Buffer.from(files.get(name) ?? '')],
+  download: async () => { if (failDownloadOf.has(name)) throw new Error('gcs read failed'); return [Buffer.from(files.get(name) ?? '')]; },
   delete: async () => { files.delete(name); },
 });
 let shopId: string | null = null;
@@ -44,7 +45,7 @@ const U = (k: string) => `https://storage.googleapis.com/ab-bucket/${k}`;
 const pending = (slug: string, urls: Record<string, string>) =>
   files.set(`pending-sites/${slug}.json`, JSON.stringify({ data: { siteId: slug, imageUrlMap: urls } }));
 
-beforeEach(() => { files.clear(); shopId = null; domainRow = null; });
+beforeEach(() => { failDownloadOf.clear(); files.clear(); shopId = null; domainRow = null; });
 
 describe('C1: deletion never trusts client-supplied image URLs', () => {
   it("user A's copy pointing at user B's photos deletes none of B's objects", async () => {
@@ -97,12 +98,29 @@ describe('C1: deletion never trusts client-supplied image URLs', () => {
 
   it('a foreign-folder logo URL in the owner copy deletes nothing of the foreign owner', async () => {
     files.set('ios-drafts/victim/logo/v.png', 'V'); files.set('victim-shop/logo/v.png', 'V'); files.set('ios-drafts/mine/logo/m.png', 'M');
-    pending('a-cuts', { logo: U('ios-drafts/victim/logo/v.png'), hero: U('victim-shop/logo/v.png') });
+    files.set('ios-drafts/victim2/logo/v2.png', 'V2');
+    pending('a-cuts', { logo: U('ios-drafts/victim/logo/v.png'), hero: U('victim-shop/logo/v.png'), gallery0: U('ios-drafts/victim2/logo/v2.png') });
     pending('victim-shop', { logo: U('ios-drafts/victim/logo/v.png') });
+    // victim2's logo is referenced by the other site only through an inline siteData.logo.url
+    files.set('pending-sites/victim2-shop.json', JSON.stringify({ data: { siteData: { logo: { url: U('ios-drafts/victim2/logo/v2.png') } } } }));
     await liveRemoveDeps().deleteContent('a-cuts');
     expect(files.has('ios-drafts/victim/logo/v.png')).toBe(true);
+    expect(files.has('ios-drafts/victim2/logo/v2.png')).toBe(true);
     expect(files.has('victim-shop/logo/v.png')).toBe(true);
-    expect(files.has('ios-drafts/mine/logo/m.png')).toBe(true);
+    expect(files.has('pending-sites/a-cuts.json')).toBe(false);
+  });
+
+  it('fails closed: if the other-site reference lookup throws, no logo or photo is deleted and the removal rejects', async () => {
+    files.set('ios-drafts/draftA/logo/own.png', 'A'); files.set('ios-drafts/draftA/a1.jpg', 'A'); files.set('a-cuts/hero-1.jpg', 'A');
+    pending('a-cuts', { logo: U('ios-drafts/draftA/logo/own.png'), hero: U('ios-drafts/draftA/a1.jpg') });
+    pending('b-cuts', {});
+    failDownloadOf.add('pending-sites/b-cuts.json');
+    const before = [...files.keys()].sort();
+    await expect(liveRemoveDeps().deleteContent('a-cuts')).rejects.toThrow('gcs read failed');
+    expect([...files.keys()].sort()).toEqual(before);
+    failDownloadOf.clear(); // retry succeeds
+    await liveRemoveDeps().deleteContent('a-cuts');
+    expect([...files.keys()]).toEqual(['pending-sites/b-cuts.json']);
   });
 
   it('is idempotent: a second run over the same state succeeds and changes nothing', async () => {
