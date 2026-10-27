@@ -138,6 +138,8 @@ export async function uploadLogo(localUri: string, folder: string, deps: UploadD
     throw new LogoError('decode', LOGO_DECODE_MESSAGE);
   }
 
+  // No base64 means no preview image: treat it as a failed pick, not a blank logo.
+  if (!enc.out.base64) throw new LogoError('decode', LOGO_DECODE_MESSAGE);
   const w = Math.round(enc.out.width);
   const h = Math.round(enc.out.height);
   try {
@@ -150,7 +152,7 @@ export async function uploadLogo(localUri: string, folder: string, deps: UploadD
       body: enc.blob,
     });
     if (!resp.ok) throw new Error(`status ${resp.status}`);
-    return { url: target.publicUrl, w, h, previewUri: `data:image/png;base64,${enc.out.base64 ?? ''}` };
+    return { url: target.publicUrl, w, h, previewUri: `data:image/png;base64,${enc.out.base64}` };
   } catch {
     throw new LogoError('upload', LOGO_UPLOAD_MESSAGE);
   }

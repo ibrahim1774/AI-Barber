@@ -9,6 +9,11 @@ export const __calls: { resize: any[]; saveAsync: any[]; manipulate: any[] } = {
 };
 let image = { width: 1000, height: 800 };
 let failRender: Error | null = null;
+let omitBase64 = false;
+/** Makes saves return no base64 even when asked. */
+export function __omitBase64(v = true) {
+  omitBase64 = v;
+}
 /** Makes the next renders throw (an undecodable file). */
 export function __failRender(e: Error | null) {
   failRender = e;
@@ -23,6 +28,7 @@ export function __reset() {
   __calls.manipulate = [];
   image = { width: 1000, height: 800 };
   failRender = null;
+  omitBase64 = false;
 }
 
 export const ImageManipulator = {
@@ -45,7 +51,7 @@ export const ImageManipulator = {
             __calls.saveAsync.push(opts);
             const o = opts as { format?: string; base64?: boolean } | undefined;
             const ext = o?.format === 'png' ? 'png' : 'jpg';
-            return { uri: `file:///tmp/manipulated.${ext}`, ...size, ...(o?.base64 ? { base64: 'QUJD' } : {}) };
+            return { uri: `file:///tmp/manipulated.${ext}`, ...size, ...(o?.base64 && !omitBase64 ? { base64: 'QUJD' } : {}) };
           },
         };
       },

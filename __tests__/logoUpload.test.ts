@@ -130,3 +130,14 @@ describe('api.getUploadUrls body', () => {
     expect(bodies[1]).toEqual({ siteId: 'f', filenames: ['a.png'], contentType: 'image/png', kind: 'logo' });
   });
 });
+
+describe('uploadLogo without base64', () => {
+  it('a missing base64 is a pick failure with the friendly error, not a blank preview, and uploads nothing', async () => {
+    const fetchFn = fetchWith([1]);
+    m.__omitBase64();
+    const err = await uploadLogo('file:///x.jpg', FOLDER, { fetchFn: fetchFn as any }).catch((e) => e);
+    expect(err).toBeInstanceOf(LogoError);
+    expect(err.message).toBe(LOGO_DECODE_MESSAGE);
+    expect(api.getUploadUrls).not.toHaveBeenCalled();
+  });
+});

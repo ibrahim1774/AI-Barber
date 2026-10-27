@@ -1,10 +1,12 @@
 import type { WebsiteData } from '@/web/types';
 
 /**
- * Master switch for the logo feature. The server must be deployed first (get-upload-urls contentType/kind and the
- * logo checks on publish); an app that sends a logo to an older server gets a 400 on publish.
+ * Master switch for the logo feature, and the ONE place to flip it. While false, the Logo choice (Header sheet, Photos
+ * Logo tile) is hidden and nothing is uploaded. Flip to true only after the server header-logo change is deployed
+ * (get-upload-urls contentType/kind and the logo checks on publish) and src/web is re-synced to main
+ * (`bash scripts/sync-web.sh`); an app that sends a logo to an older server fails the upload or gets a 400 on publish.
  */
-export const LOGO_ENABLED = true;
+export const LOGO_ENABLED = false;
 
 export type ShopLogo = NonNullable<WebsiteData['logo']>;
 

@@ -158,13 +158,11 @@ export default function Editor() {
   const [wantedPage, setWantedPage] = useState<PreviewPage | null>(null);
   // Kept after the edit sheet closes so its label/value don't blank mid-slide.
   const [edit, setEdit] = useState<{ path: string; fromList: boolean; fromPage?: boolean }>({ path: 'shopName', fromList: false });
-  // The page hero photo being changed (services.<i>.imageUrl, extraPages.images.<key>).
   // The call-to-action button being edited (kept after the sheet closes so its content doesn't blank mid-slide).
   const [button, setButton] = useState<{ kind: CtaKind; labelKey: string }>({ kind: 'inSite', labelKey: 'bookButton' });
   const upgrade = useUpgrade('bookings_upgrade');
+  // The page hero photo being changed (services.<i>.imageUrl, extraPages.images.<key>).
   const [heroPath, setHeroPath] = useState('');
-  // The logo just uploaded, as a data URI for the preview only (never saved). Error: the last upload failed, site unchanged.
-
   const [uploading, setUploading] = useState(false);
   const uploadingRef = useRef(false);
   const mountedRef = useRef(true);
@@ -414,7 +412,7 @@ export default function Editor() {
     [commit],
   );
 
-  // Add / replace the header logo: library -> trimmed PNG -> upload -> site.logo. Any failure leaves the site as it was.
+  // Add / replace the header logo: library -> resized PNG -> upload -> site.logo. Any failure leaves the site as it was.
   const pickLogo = useCallback(async () => {
     const cur = siteRef.current;
     if (!cur || uploadingRef.current) return;
