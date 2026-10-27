@@ -404,6 +404,10 @@ function registrar(deps: DomainFlowDeps): VercelDomains {
 
 const simOwned = (deps: DomainFlowDeps) => ({ boughtAt: deps.now(), expiresAt: deps.now() + YEAR_MS, renew: false });
 
+const SITE_REMOVED_PENDING = 'site removed by its owner; not attached';
+const removedSite = async (row: DomainRow, deps: DomainFlowDeps): Promise<boolean> =>
+  !!deps.siteRemoved && (await deps.siteRemoved(row.site_slug));
+
 /** One step from the row's current state. Throws only on repo errors. */
 export async function step(row: DomainRow, deps: DomainFlowDeps, ctx: Ctx = {}): Promise<{ row: DomainRow; next: Next }> {
   const sim = row.simulated;
@@ -488,6 +492,10 @@ export async function step(row: DomainRow, deps: DomainFlowDeps, ctx: Ctx = {}):
       }
 
       case 'bought': {
+        // The owner removed the site (or deleted the account) while the purchase was in flight: the
+        // domain stays paid and bought, but is never put on the offline page. The removal detaches and
+        // marks it; a later republish by the owner lifts the mark and the sweep attaches it then.
+        if (await removedSite(row, deps)) return wait(deps, row, SITE_REMOVED_PENDING);
         if (!sim) {
           const v = registrar(deps);
           const project = projectFor(row.site_slug);
@@ -498,6 +506,7 @@ export async function step(row: DomainRow, deps: DomainFlowDeps, ctx: Ctx = {}):
       }
 
       case 'attached': {
+        if (await removedSite(row, deps)) return wait(deps, row, SITE_REMOVED_PENDING);
         // Sandbox: the address is not real, so the site keeps its vercel.app links.
         if (!sim) await deps.hooks.onDomainLinked(row.site_slug, row.domain);
         return move(deps, row, ['attached'], { state: 'live', linked_at: iso(deps.now()), dns_ready_at: null, last_error: null });
@@ -713,10 +722,13 @@ export async function releaseDomainsForRemoval(
       await deps.vercel.removeProjectDomain(project, row.domain);
     }
     if (row.state === 'detached' && row.failure_reason === OWNER_REMOVED) continue;
-    await deps.repo.update(row.original_transaction_id, [row.state], {
+    const marked = await deps.repo.update(row.original_transaction_id, [row.state], {
       state: 'detached', failure_reason: OWNER_REMOVED,
       detached_at: row.detached_at ?? iso(deps.now()),
     });
+    // No row matched: the sweep moved it meanwhile (it may have re-added the domain). Throw, so the
+    // removal is retried from the fresh state and detaches again; never treat it as done.
+    if (!marked) throw new Error(`custom domain ${row.domain} changed state during the removal; retry the removal`);
   }
 }
 

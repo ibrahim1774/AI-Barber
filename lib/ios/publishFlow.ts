@@ -25,6 +25,7 @@ import {
   type VersionedPending,
 } from '../publishSite.js';
 import { VerifyFailure, isActive, lazyDefaultVerifier, type VerifiedTx } from './appleVerify.js';
+import { supabaseDomains } from './domainsRepo.js';
 import { supabasePurchases, type PurchaseRow, type PurchasesRepo } from './purchases.js';
 import { createClient } from '@supabase/supabase-js';
 import { chooseSlug, makeIsTaken, urlServes, vercelProjectExists } from './slug.js';
@@ -118,6 +119,11 @@ export interface PublishDeps {
   bindingOwner?(row: PurchaseRow): Promise<BindingOwner>;
   /** Finish this account's unfinished business move (moveIntent.ts). Best effort. */
   finishMove?(userId: string): Promise<unknown>;
+  /**
+   * The owner just republished a removed site: lift the owner-removed mark on this slug's detached
+   * custom-domain rows, so the domain sweep may re-attach the still-paid domain. Best effort.
+   */
+  clearDomainRemoval?(slug: string): Promise<unknown>;
   /** Dry render before storing (lib/publishSite.ts renderPending). Throws on unrenderable data. */
   render?(p: Pick<PendingSite, 'siteData' | 'imageUrlMap'>): SiteFile[];
   now(): number;
@@ -444,6 +450,12 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
         try {
           await deps.repo.clearRemoved(otid, row.removed_at);
           removedMeanwhile = !!(await deps.repo.get(otid))?.removed_at;
+          // Same purchase, same slug, the owner's own publish, and no newer removal: the paid domain
+          // may come back. A failure here leaves the row marked (safe); the owner's next publish retries.
+          if (!removedMeanwhile && deps.clearDomainRemoval) {
+            await deps.clearDomainRemoval(slug).catch((e: any) =>
+              console.error(`[ios/publish] ${slug}: live but clearDomainRemoval failed:`, e?.message || e));
+          }
         } catch (e: any) {
           removedMeanwhile = true;
           console.error(`[ios/publish] ${slug}: live but clearRemoved failed:`, e?.message || e);
@@ -597,6 +609,7 @@ export function liveDeps(): PublishDeps {
     userOf: liveUserOf,
     emailOf: liveEmailOf,
     bindingOwner: liveBindingOwner,
+    clearDomainRemoval: (slug) => supabaseDomains().clearOwnerRemoved(slug),
     now: () => Date.now(),
   };
 }

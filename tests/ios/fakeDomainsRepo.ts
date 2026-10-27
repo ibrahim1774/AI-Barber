@@ -100,6 +100,9 @@ export function fakeDomainsRepo(seed: DomainRow[] = [], clock: () => number = Da
       return [...rows.values()].filter((r) => r.state === 'detached' && r.revoked_at == null && r.failure_reason !== OWNER_REMOVED && r.paid_until != null && Date.parse(r.paid_until) > now)
         .slice(0, limit).map(copy);
     },
+    async clearOwnerRemoved(slug) {
+      for (const [k, r] of rows) if (r.site_slug === slug && r.state === 'detached' && r.failure_reason === OWNER_REMOVED) rows.set(k, { ...r, failure_reason: null });
+    },
     async payerStale(limit, before) {
       return [...rows.values()].filter((r) => OWNED_STATES.includes(r.state) && (!r.payer_checked_at || Date.parse(r.payer_checked_at) < before))
         .sort((a, b) => (a.payer_checked_at || '').localeCompare(b.payer_checked_at || '')).slice(0, limit).map(copy);

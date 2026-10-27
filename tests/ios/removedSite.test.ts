@@ -31,7 +31,7 @@ vi.mock('../../lib/siteSubpages.js', () => ({ findShopForSite: async () => (shop
 vi.mock('../../lib/deploySite.js', () => ({ deployRenderedSite: vi.fn(async () => {}) }));
 vi.mock('../../lib/ios/domainsRepo.js', async (orig) => ({
   ...(await orig<any>()),
-  supabaseDomains: () => ({ forSite: async () => (domainRow ? [domainRow] : []), update: async () => {} }),
+  supabaseDomains: () => ({ forSite: async () => (domainRow ? [domainRow] : []), update: async () => ({}) }),
 }));
 vi.mock('../../lib/ios/vercelDomains.js', () => ({ liveVercelDomains: () => ({ removeProjectDomain: async () => 'ok' }) }));
 vi.mock('../../lib/ios/purchases.js', async (orig) => ({ ...(await orig<any>()), supabasePurchases: () => ({}) }));

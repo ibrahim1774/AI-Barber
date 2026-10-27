@@ -600,6 +600,30 @@ describe('runIosPublish after an owner removal (removed_at, review H1)', () => {
     expect(repo.clearTakenDown).not.toHaveBeenCalled();
   });
 
+  it('F6: an owner republish lifts the owner-removed mark on that slug\'s detached domain rows', async () => {
+    const { deps } = fakes({ existing: removed() });
+    const clearDomainRemoval = vi.fn(async () => {});
+    deps.clearDomainRemoval = clearDomainRemoval;
+    expect((await runIosPublish(input(), deps)).status).toBe(200);
+    expect(clearDomainRemoval).toHaveBeenCalledWith('fresh-cuts-ab12');
+  });
+
+  it('F6: no mark is lifted when a newer removal landed mid-publish, or the publish failed', async () => {
+    const a = fakes({ existing: removed() });
+    a.deps.clearDomainRemoval = vi.fn(async () => {});
+    (a.deps.publish as any).mockImplementationOnce(async (slug: string) => {
+      a.rows.get(OTID)!.removed_at = '2026-10-25T10:00:00Z';
+      return { ok: true, siteId: slug, deployedUrl: 'https://x.vercel.app' };
+    });
+    await runIosPublish(input(), a.deps);
+    expect(a.deps.clearDomainRemoval).not.toHaveBeenCalled();
+    const b = fakes({ existing: removed(), outcome: (s) => ({ ok: false, siteId: s, reason: 'deploy-failed', error: 'x' }) });
+    b.deps.clearDomainRemoval = vi.fn(async () => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await runIosPublish(input(), b.deps);
+    expect(b.deps.clearDomainRemoval).not.toHaveBeenCalled();
+  });
+
   it('a failed publish leaves the removal in place', async () => {
     const { deps, repo, rows } = fakes({ existing: removed(), outcome: (s) => ({ ok: false, siteId: s, reason: 'deploy-failed', error: 'x' }) });
     vi.spyOn(console, 'error').mockImplementation(() => {});

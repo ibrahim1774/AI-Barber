@@ -107,6 +107,11 @@ export interface DomainsRepo {
   lapseCandidates(limit: number, cutoff: number): Promise<DomainRow[]>;
   /** Detached rows paid again (paid_until > now, not revoked): re-attach candidates. */
   reattachCandidates(limit: number, now: number): Promise<DomainRow[]>;
+  /**
+   * The owner republished a removed site: lift the owner-removed mark on this slug's detached rows
+   * (state 'detached' AND failure_reason 'owner-removed' only), so the sweep may re-attach them.
+   */
+  clearOwnerRemoved(slug: string): Promise<void>;
   /** OWNED rows whose payer was last asked before `before` (or never). Oldest first. */
   payerStale(limit: number, before: number): Promise<DomainRow[]>;
   /** auto_renew_synced = false and OWNED. */
@@ -233,6 +238,12 @@ export function supabaseDomains(client?: SupabaseClient): DomainsRepo {
         .or(`failure_reason.is.null,failure_reason.neq.${OWNER_REMOVED}`).gt('paid_until', iso(now)).order('updated_at', { ascending: true }).limit(limit);
       if (error) fail('reattachCandidates', error);
       return rows(data);
+    },
+
+    async clearOwnerRemoved(slug) {
+      const { error } = await db().from(TABLE).update({ failure_reason: null, updated_at: new Date().toISOString() })
+        .eq('site_slug', slug).eq('state', 'detached').eq('failure_reason', OWNER_REMOVED);
+      if (error) fail('clearOwnerRemoved', error);
     },
 
     async payerStale(limit, before) {
