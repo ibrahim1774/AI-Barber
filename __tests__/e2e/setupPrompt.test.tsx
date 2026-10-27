@@ -11,7 +11,7 @@ jest.mock('expo-router', () => ({ router: { push: (...a: unknown[]) => mockPush(
 const mockCtx = jest.fn();
 jest.mock('@/lib/linkContext', () => ({ loadLinkContext: () => mockCtx() }));
 
-import { ALERT_SAFETY_MS, resetSetupPromptForTests, setupPrompt, useUpdateSitePrompt, NOT_NOW, UPDATE_SITE } from '@/lib/setupPrompt';
+import { ALERT_SAFETY_MS, resetSetupPromptForTests, setupPrompt, useUpdateSitePrompt, UPDATE_SITE } from '@/lib/setupPrompt';
 import * as store from '@/lib/siteStore';
 import { resetEntitlementsForTests, setEntitlementsFromStatus, getEntitlements } from '@/lib/entitlements';
 import { setSharedPlan } from '@/lib/plan';
@@ -101,9 +101,11 @@ describe('useUpdateSitePrompt', () => {
     });
     expect(out).toBe('prompted');
     expect(alert).toHaveBeenCalledWith('Add the Book button to your website?', undefined, [
-      expect.objectContaining({ text: NOT_NOW, style: 'cancel' }),
       expect.objectContaining({ text: UPDATE_SITE }),
-    ], expect.objectContaining({ cancelable: true }));
+    ], expect.objectContaining({ cancelable: false }));
+    const buttons = alert.mock.calls[0][2] as { text: string; style?: string }[];
+    expect(buttons).toHaveLength(1);
+    expect(buttons.some((b) => b.style === 'cancel')).toBe(false);
     press(UPDATE_SITE);
     press(UPDATE_SITE);
     api.update();
@@ -117,14 +119,17 @@ describe('useUpdateSitePrompt', () => {
     expect(mockPush).toHaveBeenCalledTimes(2);
   });
 
-  it('Not now does nothing', async () => {
+  it('the only answer is Update my site, which opens /publishing', async () => {
     await store.saveSite(site());
     await render(<Probe />);
     await act(async () => {
       await api.offer();
     });
-    press(NOT_NOW);
+    const buttons = alert.mock.calls[0][2] as { text: string }[];
+    expect(buttons.map((b) => b.text)).toEqual([UPDATE_SITE]);
     expect(mockPush).not.toHaveBeenCalled();
+    press(UPDATE_SITE);
+    expect(mockPush).toHaveBeenCalledWith('/publishing');
   });
 
   it('not published yet: no prompt (the caller keeps its "Publish to add…" note)', async () => {
@@ -221,19 +226,15 @@ describe('useUpdateSitePrompt', () => {
     expect(mockPush).toHaveBeenCalledTimes(1);
   });
 
-  it('an alert dismissed without a button (onDismiss) re-arms the queue', async () => {
+  it('the alert cannot be dismissed without a button (cancelable false, no onDismiss)', async () => {
     await store.saveSite(site());
     await render(<Probe />);
     await act(async () => {
       await api.offer();
     });
     const opts = alert.mock.calls[0][3];
-    expect(opts).toMatchObject({ cancelable: true });
-    opts.onDismiss();
-    await act(async () => {
-      await api.offer();
-    });
-    expect(alert).toHaveBeenCalledTimes(2);
+    expect(opts).toMatchObject({ cancelable: false });
+    expect(opts.onDismiss).toBeUndefined();
   });
 
   it('an alert that is never answered (never shown) stops blocking after the safety timeout', async () => {
@@ -273,16 +274,8 @@ describe('useUpdateSitePrompt', () => {
     });
   });
 
-  it('after Not now, the next change can ask again', async () => {
-    await store.saveSite(site());
-    await render(<Probe />);
-    await act(async () => {
-      await api.offer();
-    });
-    press(NOT_NOW);
-    await act(async () => {
-      await api.offer();
-    });
-    expect(alert).toHaveBeenCalledTimes(2);
+  it('setupPrompt.ts has no Not now button', () => {
+    const src = require('fs').readFileSync(require('path').join(__dirname, '../../src/lib/setupPrompt.ts'), 'utf8');
+    expect(src).not.toMatch(/Not now|NOT_NOW/);
   });
 });

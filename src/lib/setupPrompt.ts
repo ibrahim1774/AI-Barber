@@ -20,7 +20,6 @@ import { boundMatches } from '@/lib/website';
 export type SitePrompt = { title: string; message?: string };
 
 export const UPDATE_SITE = 'Update my site';
-export const NOT_NOW = 'Not now';
 export const BOOKINGS_OFF_OWN = 'Bookings are off, so your Book buttons use your booking link for now.';
 export const BOOKINGS_OFF_HIDDEN = 'Bookings are off, so your Book buttons are hidden for now.';
 
@@ -105,7 +104,7 @@ let alertOpen = false;
 let pushed = false;
 let safety: ReturnType<typeof setTimeout> | null = null;
 
-/** An alert that is never answered (never shown under another modal, dismissed by the system) re-arms after this. */
+/** An alert that is never answered (never shown under another modal, dropped by the system) re-arms after this. */
 export const ALERT_SAFETY_MS = 120_000;
 
 function closeAlert(): void {
@@ -175,12 +174,9 @@ async function check(source: 'bookings' | 'store'): Promise<OfferResult> {
   Alert.alert(
     prompt.title,
     prompt.message,
-    [
-      { text: NOT_NOW, style: 'cancel', onPress: closeAlert },
-      { text: UPDATE_SITE, onPress: () => updateSite(source) },
-    ],
-    // Dismissed without a button (tap outside / back on Android): the queue re-arms.
-    { cancelable: true, onDismiss: closeAlert },
+    // One answer only: the live site changes by publishing. Not dismissible (tap outside / back on Android).
+    [{ text: UPDATE_SITE, onPress: () => updateSite(source) }],
+    { cancelable: false },
   );
   return 'prompted';
 }
