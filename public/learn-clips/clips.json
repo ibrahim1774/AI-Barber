@@ -40,6 +40,11 @@
       "v": 1,
       "bytes": 562863,
       "seconds": 38
+    },
+    "services-hours": {
+      "v": 1,
+      "bytes": 395608,
+      "seconds": 19
     }
   }
 }
