@@ -41,6 +41,10 @@ export function BookingsServicesSheet({ visible, shop, onServices, onClose, onDi
   const { reload } = ed;
   useEffect(() => { if (visible) reload(); }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // A closed sheet is back at the list: a form left open (e.g. "+ Add a service" then Done) must not come back.
+  const { setView } = ed;
+  useEffect(() => { if (!visible) setView({ kind: 'list' }); }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const { addOwn } = ed;
   useEffect(() => { if (visible && startAdd) addOwn(); }, [visible, startAdd]); // eslint-disable-line react-hooks/exhaustive-deps
 

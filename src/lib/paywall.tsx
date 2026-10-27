@@ -12,7 +12,7 @@ import { PaywallSettle, type PaywallResult } from '@/lib/paywallSettle';
 import { loadLinkContext } from '@/lib/linkContext';
 import { refreshTeamBeforePublish } from '@/lib/team';
 import { PLAN_ENTITLEMENT, getSuperwallEntitlements, setEntitlementsFromStatus } from '@/lib/entitlements';
-import { refreshPlan, refreshPlanQuietly, setSharedPlan } from '@/lib/plan';
+import { getPlan, getPlanEpoch, refreshPlan, refreshPlanQuietly, setSharedPlan } from '@/lib/plan';
 import { findTransactionId, pickLatestTransactionId, type PublishDeps } from '@/lib/publish';
 import type { PlanHint } from '@/lib/publishRequest';
 import { pickDomainTransactionId } from '@/lib/domains/model';
@@ -368,6 +368,11 @@ export function usePublishDeps(): PublishDeps {
       iosPublish: api.iosPublish,
       syncFromServer: syncNow,
       linkContext: loadLinkContext,
+      reloadPlan: async () => {
+        const epoch = getPlanEpoch();
+        const p = await getPlan();
+        if (epoch === getPlanEpoch()) setSharedPlan(p);
+      },
       refreshTeam: refreshTeamBeforePublish,
       store: siteStore,
       claimStart: api.claimStart,

@@ -443,6 +443,41 @@ describe('publish decides the Book / Shop links from the choice', () => {
         expect(await store.loadPendingPublish()).toMatchObject({ transactionId: 'tx-1' });
       }
     });
+    test('already published, plan not loaded yet: the plan is reloaded once and the retry succeeds (no PLAN_CHECK)', async () => {
+      await store.saveSite(publishedBare);
+      let loaded = false;
+      const reloadPlan = jest.fn(async () => { loaded = true; });
+      const deps = makeDeps({
+        hasEntitlement: jest.fn(async () => true),
+        reloadPlan,
+        linkContext: async () => ({ ents: { known: loaded, hosting: loaded, bookings: loaded, store: false } as never, shop: live as never, storeEnabled: false }),
+      });
+      const out = await publishFlow(publishedBare, deps);
+      expect(reloadPlan).toHaveBeenCalledTimes(1);
+      expect(out.kind).toBe('live');
+      expect((deps.iosPublish as jest.Mock).mock.calls[0][0].siteData.bookingUrl).toBe(AI);
+    });
+    test('plan reload that does not help (or throws): still PLAN_CHECK, nothing sent, reloaded only once', async () => {
+      for (const reloadPlan of [jest.fn(async () => {}), jest.fn(async () => { throw new Error('offline'); })]) {
+        await store.savePendingPublish(null);
+        await store.saveSite(publishedBare);
+        const deps = makeDeps({ hasEntitlement: jest.fn(async () => true), reloadPlan, linkContext: async () => null });
+        const out = await publishFlow(publishedBare, deps);
+        expect(reloadPlan).toHaveBeenCalledTimes(1);
+        expect(deps.iosPublish).not.toHaveBeenCalled();
+        expect(out).toEqual({ kind: 'pending', message: PLAN_CHECK_MESSAGE });
+      }
+    });
+    test('a confirmable context never reloads the plan', async () => {
+      const reloadPlan = jest.fn(async () => {});
+      await store.saveSite(publishedBare);
+      const deps = makeDeps({
+        hasEntitlement: jest.fn(async () => true), reloadPlan,
+        linkContext: async () => ({ ents: { known: true, hosting: true, bookings: true, store: false } as never, shop: live as never, storeEnabled: false }),
+      });
+      await publishFlow(publishedBare, deps);
+      expect(reloadPlan).not.toHaveBeenCalled();
+    });
     test('already published, unknown context, but no built-in link in the data: still publishes', async () => {
       const own = { ...publishedBare, data: { ...publishedBare.data, bookingUrl: OWN }, inputs: { shopName: 'Fade', ownBookingUrl: OWN, bookingChoice: 'own' } } as unknown as SiteRecord;
       const r = await go(own, {}, 'null-ctx');

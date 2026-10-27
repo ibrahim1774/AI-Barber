@@ -2,8 +2,9 @@ import React from 'react';
 jest.mock('@/constants/theme', () => require('./store/themeMock'));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 const mockAddOwn = jest.fn();
+const mockSetView = jest.fn();
 jest.mock('@/components/setup/useServicesEditor', () => ({
-  useServicesEditor: () => ({ reload: jest.fn(), view: { kind: 'list' }, addOwn: mockAddOwn }),
+  useServicesEditor: () => ({ reload: jest.fn(), view: { kind: 'list' }, addOwn: mockAddOwn, setView: mockSetView }),
 }));
 jest.mock('@/components/setup/ServicesEditor', () => ({ ServicesEditorView: () => null }));
 import fs from 'fs';
@@ -38,7 +39,7 @@ describe('Add a service on a Bookings-shop site', () => {
   const mount = (startAdd?: boolean) => {
     act(() => { create(<BookingsServicesSheet visible shop={shop} onServices={jest.fn()} onClose={jest.fn()} upload={jest.fn()} startAdd={startAdd} />); });
   };
-  beforeEach(() => mockAddOwn.mockClear());
+  beforeEach(() => { mockAddOwn.mockClear(); mockSetView.mockClear(); });
   test('startAdd opens the shop\'s new-service form', () => {
     mount(true);
     expect(mockAddOwn).toHaveBeenCalledTimes(1);
@@ -46,5 +47,13 @@ describe('Add a service on a Bookings-shop site', () => {
   test('without startAdd the list shows', () => {
     mount(false);
     expect(mockAddOwn).not.toHaveBeenCalled();
+  });
+  test('closing the sheet resets it to the list, so it never reopens on a leftover New service form', () => {
+    const el = (visible: boolean) => <BookingsServicesSheet visible={visible} shop={shop} onServices={jest.fn()} onClose={jest.fn()} upload={jest.fn()} />;
+    let r: { update(e: unknown): void };
+    act(() => { r = create(el(true)); });
+    expect(mockSetView).not.toHaveBeenCalled();
+    act(() => { r.update(el(false)); });
+    expect(mockSetView).toHaveBeenCalledWith({ kind: 'list' });
   });
 });

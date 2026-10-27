@@ -54,6 +54,8 @@ export interface PublishDeps {
   claimStart: typeof api.claimStart;
   /** The shop facts that decide the Book / Shop links on every publish. Without it, links the plan lacks are only stripped. */
   linkContext?(): Promise<LinkContext | null>;
+  /** Re-reads the server plan into the shared plan (so entitlements are known). Capped, may throw; used once before a plan-check deferral. */
+  reloadPlan?(): Promise<void>;
   /** The site data with `staff` refreshed from ab_members (team profiles). Must not throw; capped like linkContext. */
   refreshTeam?(data: WebsiteData): Promise<WebsiteData>;
   store: typeof import('./siteStore');
@@ -174,11 +176,18 @@ async function send(pending: PendingPublish, deps: PublishDeps, retryMessage: st
   const transactionId = pending.transactionId!;
   let res: Awaited<ReturnType<PublishDeps['iosPublish']>>;
   // Capped like the admin sync: a stalled shop lookup is "unknown", never a stuck publish.
-  const ctx = deps.linkContext ? await withTimeout(deps.linkContext(), SYNC_TIMEOUT_MS).catch(() => null) : null;
+  let ctx = deps.linkContext ? await withTimeout(deps.linkContext(), SYNC_TIMEOUT_MS).catch(() => null) : null;
   // One load: its inputs decide the links, its updatedAt marks what this publish covers.
   const rec = await deps.store.loadSite().catch(() => null);
   const sentAt = rec?.updatedAt;
   // An already-published site whose plan could not be checked: do not publish a changed Book link. Keep it pending.
+  if (rec?.deployedUrl && !schedulerConfirmable(ctx) && carriesBuiltInBook(pending.data)) {
+    // Right after a sign-in the shared plan has not reloaded yet: reload it and check once more before giving up.
+    if (deps.reloadPlan && deps.linkContext) {
+      await withTimeout(deps.reloadPlan(), SYNC_TIMEOUT_MS).catch(() => {});
+      ctx = await withTimeout(deps.linkContext(), SYNC_TIMEOUT_MS).catch(() => null);
+    }
+  }
   if (rec?.deployedUrl && !schedulerConfirmable(ctx) && carriesBuiltInBook(pending.data)) {
     return { kind: 'pending', message: PLAN_CHECK_MESSAGE };
   }
