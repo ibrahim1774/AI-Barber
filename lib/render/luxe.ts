@@ -17,8 +17,8 @@ import {
 } from './honest.js';
 import { ratingLineCustom, t, type LabelKey } from './labels.js';
 import { hasFilePages } from './pages.js';
-import { NAV_CSS, logoImgHtml, navItemsFor, reportLinkHtml, navListHtml, type RenderCtx } from './shell.js';
-import { renderableLogo } from './logo.js';
+import { NAV_CSS, brandHtml, navItemsFor, reportLinkHtml, navListHtml, type RenderCtx } from './shell.js';
+import { headerBrand } from './logo.js';
 
 // 24h → 12h with AM/PM. Idempotent: if the input already contains an
 // AM/PM marker, return it unchanged. Handles "09:00", "9:00", "9", "20:30".
@@ -150,7 +150,7 @@ export function generateHTMLWithPlaceholders(input: WebsiteData, ctx?: RenderCtx
   const [nameOpen, nameText, nameClose] = unwrapMarked(siteData.shopName);
   const nameWords = nameText.split(' ');
   const nameFirst = esc(nameOpen + nameWords[0] + nameClose);
-  const headerLogo = renderableLogo(siteData);
+  const brand = headerBrand(siteData);
   const nameRest = nameWords.length > 1 ? esc(nameOpen + nameWords.slice(1).join(' ') + nameClose) : '';
   // Picked theme — applied via .aib-themed CSS vars on <body> so the deployed
   // site matches the editor preview. Defaults to gold/black when unset.
@@ -410,12 +410,12 @@ export function generateHTMLWithPlaceholders(input: WebsiteData, ctx?: RenderCtx
     <div class="container mx-auto flex justify-between items-center px-4 md:px-6">
       <div class="flex items-center gap-3 md:gap-8 min-w-0">
         <div class="flex items-center gap-3 md:gap-5 min-w-0">
-          ${headerLogo ? logoImgHtml('luxe', headerLogo, esc(nameText)) : `<svg class="w-8 h-8 md:w-12 md:h-12 shrink-0 text-[#f4a100]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          ${brandHtml('luxe', { single: true, mode: brand.mode, logo: brand.logo, alt: esc(nameText), href: '#top', nameHtml: `${nameFirst} <span class="text-[#f4a100]">${nameRest}</span>`, nameClass: 'font-montserrat', nameOnly: `<svg class="w-8 h-8 md:w-12 md:h-12 shrink-0 text-[#f4a100]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M6 6l12 12M6 18L18 6"></path>
           </svg>
           <span class="ab-name font-montserrat font-black md:text-3xl lg:text-4xl tracking-[1px] md:tracking-[2px] uppercase min-w-0">
             ${nameFirst} <span class="text-[#f4a100]">${nameRest}</span>
-          </span>`}
+          </span>` })}
         </div>
         ${canCall ? `<a href="tel:${formattedPhone}" aria-label="Call ${shownPhone}" class="ab-call flex items-center shrink-0 gap-2 md:gap-4 text-[#f4a100] border-l-2 border-white/20 pl-3 md:pl-8 hover:text-white transition-colors">
           <svg class="w-5 h-5 md:w-7 md:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -4,6 +4,7 @@
 import type { WebsiteData } from '../../types.js';
 import { hasPagesV2 as hasPageHeroes } from '../pagesV2.js';
 import { configuredBucket, logoProblem } from '../logoUrl.js';
+import { withoutBadHeaderShow } from './pendingData.js';
 
 /** Largest publish body (or admin site) accepted, serialized. */
 export const MAX_BODY_BYTES = 3 * 1024 * 1024;
@@ -56,7 +57,7 @@ function pageHeroesBack(sd: WebsiteData, back: (v: string | undefined, key: stri
 export function restoreImageUrls(sd: WebsiteData, map: Record<string, string>): WebsiteData {
   const back = (v: string | undefined, key: string) => (v === 'uploaded' ? map[key] || '' : v);
   return {
-    ...sd,
+    ...withoutBadHeaderShow(sd),
     hero: sd.hero ? { ...sd.hero, imageUrl: back(sd.hero.imageUrl, 'hero') } : sd.hero,
     about: sd.about ? { ...sd.about, imageUrl: back(sd.about.imageUrl, 'about') } : sd.about,
     gallery: (sd.gallery || []).map((v, i) => back(v, `gallery${i}`)),

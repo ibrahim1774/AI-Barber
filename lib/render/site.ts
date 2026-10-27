@@ -27,7 +27,7 @@ import { generatePrimeHTMLWithPlaceholders, primeRootStyle } from './prime.js';
 import { safeHref } from './safeHref.js';
 import { telHref } from './telHref.js';
 import { SHELLS, escapeAttr, footerHtml, headerHtml, navItemsFor, navListHtml, type RenderCtx } from './shell.js';
-import { renderableLogo } from './logo.js';
+import { renderableLogo, headerBrand } from './logo.js';
 
 export interface RenderSiteOptions {
   /** Placeholder key -> real URL. Absent: read from the data's own image fields. */
@@ -138,13 +138,13 @@ export function renderSiteBundle(rawData: WebsiteData, opts: RenderSiteOptions =
 
   const headerFor = (file: PageFile): string => {
     const nav = navListHtml(navItemsFor(template, set, d, file.key), L('pgMenu'), L('pgMore'));
-    if (template === 'luxe') return headerHtml('luxe', { name: shopShown, logo: renderableLogo(d), phone, shownPhone: escapeAttr(displayPhone(phoneShown)), nav });
+    if (template === 'luxe') return headerHtml('luxe', { name: shopShown, ...headerBrand(d), phone, shownPhone: escapeAttr(displayPhone(phoneShown)), nav });
     if (template === 'prime') {
       const href = bookingUrl || telHref(phone);
-      return headerHtml('prime', { name: shopShown, logo: renderableLogo(d), cta: href ? { href, label: L('primeNavBook'), newTab: !!bookingUrl && !bookingUrl.startsWith('/') } : null, nav });
+      return headerHtml('prime', { name: shopShown, ...headerBrand(d), cta: href ? { href, label: L('primeNavBook'), newTab: !!bookingUrl && !bookingUrl.startsWith('/') } : null, nav });
     }
     const href = bookingUrl || (/\d/.test(phone) ? `tel:${phone.replace(/\s+/g, '')}` : '');
-    return headerHtml('euphoria', { name: shopShown, logo: renderableLogo(d), cta: href ? { href, label: L('euNavBook'), newTab: !!bookingUrl && !bookingUrl.startsWith('/') } : null, nav });
+    return headerHtml('euphoria', { name: shopShown, ...headerBrand(d), cta: href ? { href, label: L('euNavBook'), newTab: !!bookingUrl && !bookingUrl.startsWith('/') } : null, nav });
   };
   // The footer lists every page that is a file in the set (top-level pages, then the service pages), nothing else.
   const footerPages = [

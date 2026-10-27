@@ -5,6 +5,7 @@
 import type { WebsiteData } from '../../types.js';
 import { hasPagesV2 as hasV2 } from '../pagesV2.js';
 import { configuredBucket, logoProblem } from '../logoUrl.js';
+import { cleanHeaderShow } from '../render/logo.js';
 
 // The guide pages that have a hero photo (lib/render/heroes.ts HERO_EXTRA_PAGES); kept literal so this file imports nothing.
 const HERO_PAGES = ['first-visit', 'hair-care', 'beard-care'] as const;
@@ -33,11 +34,18 @@ export function buildImageUrlMap(sd: WebsiteData): Record<string, string> {
   return map;
 }
 
+/** headerShow other than 'logo' / 'name' is dropped (it means both anyway); the logo itself is never touched here. */
+export function withoutBadHeaderShow<T extends object>(sd: T): T {
+  if (!('headerShow' in sd) || cleanHeaderShow((sd as { headerShow?: unknown }).headerShow)) return sd;
+  const { headerShow: _drop, ...rest } = sd as T & { headerShow?: unknown };
+  return rest as T;
+}
+
 /** Same transform as GeneratedWebsite.tsx preparePendingSite: 'uploaded' markers, service images cleared. */
 export function toPendingSiteData(sd: WebsiteData, map: Record<string, string>): WebsiteData {
   const v2 = hasV2(sd);
   return {
-    ...sd,
+    ...withoutBadHeaderShow(sd),
     hero: { ...sd.hero, imageUrl: map['hero'] ? 'uploaded' : '' },
     about: { ...sd.about, imageUrl: map['about'] ? 'uploaded' : '' },
     gallery: (sd.gallery || []).map((_, i) => (map[`gallery${i}`] ? 'uploaded' : '')),

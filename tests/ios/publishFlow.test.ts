@@ -944,6 +944,18 @@ describe('runIosPublish: the shop logo', () => {
     expect(p.siteData.logo).toEqual({ url: 'uploaded', w: 600, h: 200 });
   }));
 
+  it('headerShow "name" publishes with the logo kept (marker + map entry, nothing deleted); "logo" is kept; anything else is dropped', async () => withBucket(async () => {
+    for (const [v, kept] of [['name', true], ['logo', true], ['x', false], [5, false], ['both', false]] as const) {
+      const { deps, pending } = fakes();
+      const r = await runIosPublish(input({ siteData: site({ logo: { url: LOGO, w: 600, h: 200 }, headerShow: v } as any) }), deps);
+      expect(r.status, String(v)).toBe(200);
+      const p = pending.get('fresh-cuts')!;
+      expect(p.siteData.logo).toEqual({ url: 'uploaded', w: 600, h: 200 });
+      expect(p.imageUrlMap!.logo).toBe(LOGO);
+      expect((p.siteData as any).headerShow, String(v)).toBe(kept ? v : undefined);
+    }
+  }));
+
   it('a bare draft UUID folder is accepted too', async () => withBucket(async () => {
     const { deps } = fakes();
     const url = 'https://storage.googleapis.com/bkt/3f2b8c1e-5d4a-4b6f-9e2d-1a2b3c4d5e6f/logo/a.jpg';
