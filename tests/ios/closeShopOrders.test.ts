@@ -135,7 +135,11 @@ describe('orders on account deletion', () => {
       const real = w.deps.repo.updateOrder.bind(w.deps.repo);
       let lost = false;
       w.deps.repo.updateOrder = (async (id: string, patch: any, g: any) => {
-        if (!lost && patch.status === 'cancelled') { lost = true; return { ok: false, reason: 'stale' }; } // the webhook / sweep got there first
+        if (!lost && patch.status === 'cancelled') {
+          lost = true; // the webhook / sweep got there first: the refund went through and the order is settled
+          Object.assign(w.order(id), { status: 'cancelled', amount_refunded_cents: o.amount_paid_cents, refund_due_cents: o.amount_paid_cents });
+          return { ok: false, reason: 'stale' };
+        }
         return real(id, patch, g);
       }) as any;
       const r = await run(w, OWNER_USER, e);
@@ -144,6 +148,36 @@ describe('orders on account deletion', () => {
       expect(r).toMatchObject({ ok: false, reason: 'refund-pending' });
       expect(w.notified).toEqual([]);
       expect(e.owed.size).toBe(0);
+    });
+
+    it.each(['existing', 'new'] as const)('a lost compare-and-set never deletes a record that is still owed (round 3, finding 1; own save: %s)', async (own) => {
+      const { w, e, o, done } = await setup();
+      w.order(o.id).refund_stuck_at = new Date(e.clock.now).toISOString();
+      const real = w.deps.repo.updateOrder.bind(w.deps.repo);
+      let outerLost = false;
+      // Call A saved nothing new ('existing', B saved first); while A is between save and cancel, B cancels the order.
+      const realRecord = e.env.recordOwed;
+      let calls = 0;
+      e.env.recordOwed = async (rec: any) => {
+        calls++;
+        if (calls === 1) { const r = await realRecord(rec); return own === 'existing' ? 'existing' : r; } // B's record, seen by A (or A's own save)
+        return realRecord(rec);
+      };
+      w.deps.repo.updateOrder = (async (id: string, patch: any, g: any) => {
+        if (!outerLost && patch.status === 'cancelled') {
+          outerLost = true;
+          await real(id, patch, g); // B wins the compare-and-set
+          return { ok: false, reason: 'stale' }; // A loses it
+        }
+        return real(id, patch, g);
+      }) as any;
+      await run(w, OWNER_USER, e);
+      const again = await run(w, OWNER_USER, e); // the retry sees status cancelled
+      done();
+      expect(outerLost).toBe(true);
+      expect(w.order(o.id).status).toBe('cancelled');
+      expect(e.owed.size).toBe(1);
+      expect(again.ok).toBe(true);
     });
 
     it('if the record cannot be saved nothing is cancelled and the call is retryable', async () => {

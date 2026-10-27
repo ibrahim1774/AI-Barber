@@ -77,7 +77,7 @@ function world(rows: any[], opts: { failCancelFor?: string[]; refundThrows?: boo
     // Every cancelled CARD booking of the shop still owing a refund (or marked stuck), whoever cancelled and whenever.
     owingCardIds: async (shopId: string, limit: number, offset = 0) =>
       [...db.values()]
-        .filter((r) => r.shop_id === shopId && r.status === 'cancelled' && r.payment_method === 'card' && (r.refund_due_cents > r.amount_refunded_cents || r.refund_stuck_at != null))
+        .filter((r) => r.shop_id === shopId && r.status === 'cancelled' && r.payment_method === 'card' && r.refund_due_cents > r.amount_refunded_cents)
         .sort((a, b) => (a.id < b.id ? -1 : 1))
         .slice(offset, offset + limit).map((r) => r.id),
   };

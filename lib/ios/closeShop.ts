@@ -308,11 +308,11 @@ export function liveBookingQueries(): BookingQueries {
         const { data, error } = await db.from('ab_appointments')
           .select('id, refund_due_cents, amount_refunded_cents, refund_stuck_at')
           .eq('shop_id', shopId).eq('status', 'cancelled').eq('payment_method', 'card')
-          .or('refund_due_cents.gt.0,refund_stuck_at.not.is.null')
+          .or('refund_pending.eq.true,refund_stuck_at.not.is.null') // refund_pending (006) = due > refunded and not stuck; fully refunded rows are never scanned
           .order('id').range(offset, offset + CARRIED_PAGE - 1);
         if (error) throw new Error(`closure query failed: ${error.message ?? 'unknown'}`);
         const rows = (data as Array<{ id: string; refund_due_cents: number; amount_refunded_cents: number; refund_stuck_at: string | null }>) ?? [];
-        for (const r of rows) if (r.refund_due_cents > r.amount_refunded_cents || r.refund_stuck_at != null) out.push(r.id);
+        for (const r of rows) if (r.refund_due_cents > r.amount_refunded_cents) out.push(r.id); // exact check: a fully refunded row owes nothing, stuck or not
         if (rows.length < CARRIED_PAGE) break;
       }
       return out.slice(0, max);
@@ -352,7 +352,7 @@ export function orderLane(deps: StoreOwnerDeps, userId: string, shopId: string, 
       row_kind: 'order', row_id: o.id, shop_id: shopId, stripe_account_id: shop.stripe_account_id ?? null,
       payment_intent_id: o.stripe_payment_intent_id ?? null, owed_cents: cents, reason,
     };
-    await env.recordOwed(rec);
+    const saved = await env.recordOwed(rec);
     const hold = isUnpaidCardHold(o);
     const upd = await deps.repo.updateOrder(
       o.id,
@@ -360,7 +360,12 @@ export function orderLane(deps: StoreOwnerDeps, userId: string, shopId: string, 
       hold ? LIVE_HOLD : { status: o.status },
     );
     if (!upd.ok) {
-      await env.resolveOwed(rec); // not owed after all (or not yet): do not leave a stale 'owed' record the dedupe key would keep forever
+      // Take the record back only if THIS call wrote it AND the order now shows nothing owed (paid back). A record another
+      // call saved, or one for money still owed (someone else cancelled it), stays: Stripe is the source of truth for payouts.
+      if (saved === 'new') {
+        const fresh = await deps.repo.orderById(o.id);
+        if (fresh && !isUnpaidCardHold(fresh) && orderOwedCents(fresh) === 0) await env.resolveOwed(rec);
+      }
       return { cancelled: false, retryLater: true }; // changed under us (e.g. the webhook recorded it): look again next call
     }
     await safeNotifyOrder(closing, { kind: 'order_cancelled', orderId: o.id, refundedCents: 0, owedCents: cents });
