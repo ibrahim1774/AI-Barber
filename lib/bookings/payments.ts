@@ -648,6 +648,10 @@ export interface WebhookDeps {
   now(): number;
   /** Stripe's cumulative refunded cents on the payment's charge (paymentRefundedCents), asked when a payment is recorded (e2e I5). Absent: not asked. */
   refundedOnStripe?(shop: PayShop, paymentIntentId: string): Promise<number>;
+  /** True only for the first caller of a key (ab_events dedupe_key insert, same mechanism as the store's claimOnce). Absent: no dedupe. */
+  claimOnce?(key: string): Promise<boolean>;
+  /** Gives a claim back when its notification failed, so a redelivery can send it. */
+  releaseClaim?(key: string): Promise<void>;
 }
 
 export interface StripeEvent {
@@ -675,10 +679,36 @@ export async function handleConnectEvent(event: StripeEvent, deps: WebhookDeps, 
   const r = await dispatch(event, deps, orderDeps);
   await deps.recordEvent(event.id, event.type, event.account ?? null);
   for (const n of r.notify ?? []) {
+    // The booking confirmation goes out once (R-11): two concurrent deliveries of one completed
+    // event both pass the processed-event check, and the second used to re-send it. A claim that
+    // can't be checked (store error) sends anyway: a rare duplicate beats a lost confirmation.
+    // A send that fails gives its claim back, so a redelivery can still send it.
+    let claimKey: string | null = null;
+    if (n.kind === 'booking_created' && deps.claimOnce) {
+      const key = `booking_created:${n.appointmentId}`;
+      let first = true;
+      try {
+        first = await deps.claimOnce(key);
+      } catch (e: any) {
+        console.error('[stripe/connect-webhook] confirmation claim failed, sending anyway:', e?.message || e);
+      }
+      if (!first) continue;
+      claimKey = key;
+    }
+    const release = async () => {
+      if (!claimKey || !deps.releaseClaim) return;
+      try { await deps.releaseClaim(claimKey); } catch (e: any) {
+        console.error('[stripe/connect-webhook] claim release failed:', e?.message || e);
+      }
+    };
     try {
-      void deps.notify(n).catch((e: any) => console.error('[stripe/connect-webhook] notify failed:', e?.message || e));
+      void deps.notify(n).catch(async (e: any) => {
+        console.error('[stripe/connect-webhook] notify failed:', e?.message || e);
+        await release();
+      });
     } catch (e: any) {
       console.error('[stripe/connect-webhook] notify failed:', e?.message || e);
+      await release();
     }
   }
   for (const n of r.orderNotify ?? []) {
@@ -972,6 +1002,16 @@ export function liveWebhookDeps(db: SupabaseClient = serviceDb()): WebhookDeps {
     refund: (shop, appt, amount, idempotencyKey) => refundAppointment(shop, appt, amount, { idempotencyKey }),
     // After the response, kept alive by waitUntil. Dynamic import: notify.ts imports this module.
     notify: async (e) => { waitUntil(import('./notify.js').then((m) => m.notify(e))); },
+    async claimOnce(key) {
+      const { error } = await db.from('ab_events').insert({ kind: 'once', dedupe_key: key.slice(0, 200), payload: { key } });
+      if (!error) return true;
+      if ((error as { code?: string }).code === '23505') return false;
+      dbFail('claimOnce', error);
+    },
+    async releaseClaim(key) {
+      const { error } = await db.from('ab_events').delete().eq('dedupe_key', key.slice(0, 200)).eq('kind', 'once');
+      if (error) dbFail('releaseClaim', error);
+    },
     refundedOnStripe: (shop, pi) => paymentRefundedCents(shop, pi),
     now: () => Date.now(),
   };
