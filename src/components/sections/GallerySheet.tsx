@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { isStockImage } from '@/web/lib/stockImages';
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { WebsiteData } from '@/web/types';
@@ -60,7 +61,7 @@ export function GallerySheet({ visible, data, onChange, onClose, onDismiss, uplo
               onPress={() => tap(slot, url)}
               style={({ pressed }) => [styles.tile, pressed && { opacity: 0.7 }]}
             >
-              {url ? <Image source={{ uri: url }} style={styles.img} /> : <Text style={styles.add}>+ Add photo</Text>}
+              {url ? <TileImage url={url} /> : <Text style={styles.add}>+ Add photo</Text>}
               {!!url && isStockImage(url) && <Text style={styles.sample}>Sample</Text>}
             </Pressable>
           );
@@ -71,6 +72,13 @@ export function GallerySheet({ visible, data, onChange, onClose, onDismiss, uplo
       ) : null}
     </Sheet>
   );
+}
+
+/** A saved photo whose link no longer loads (a hotlinked import can expire) keeps its slot and says so, never an empty tile. */
+function TileImage({ url }: { url: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return <Text style={styles.add}>Photo unavailable. Tap to replace</Text>;
+  return <Image source={{ uri: url }} style={styles.img} onError={() => setFailed(true)} />;
 }
 
 const styles = StyleSheet.create({
