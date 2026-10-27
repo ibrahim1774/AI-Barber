@@ -9,6 +9,8 @@ import { Page } from '@/components/Page';
 import { track } from '@/lib/analytics';
 import { SUPPORT_URL } from '@/lib/policyLinks';
 import { nextInSection, topicFor } from '@/lib/learnContent';
+import { useLearnClips } from '@/lib/learnClips';
+import { LearnVideo } from '@/components/LearnVideo';
 
 const LINK = /(https?:\/\/[^\s]*[^\s.,)]|[\w.+-]+@[\w-]+\.[\w.]*\w)/;
 
@@ -35,6 +37,7 @@ function StepText({ text }: { text: string }) {
 export default function LearnTopic() {
   const { topic } = useLocalSearchParams<{ topic?: string }>();
   const current = topicFor(Array.isArray(topic) ? topic[0] : topic);
+  const clips = useLearnClips();
   useEffect(() => {
     if (current) track('learn_topic_viewed', { topic: current.slug });
   }, [current]);
@@ -45,6 +48,7 @@ export default function LearnTopic() {
       <BackButton onPress={() => router.back()} />
       <Text style={styles.title} accessibilityRole="header">{current.title}</Text>
       <Text style={styles.detail}>{current.detail}</Text>
+      {clips[current.slug] ? <LearnVideo uri={clips[current.slug].url} poster={clips[current.slug].poster} /> : null}
       {current.steps.map((step, i) => (
         <View key={i} style={styles.step}>
           <Text style={styles.num}>{i + 1}</Text>

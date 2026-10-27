@@ -33,6 +33,7 @@ const hasVideo = (tree: any) => tree.root.findAll((n: any) => n.type === 'VideoV
 
 beforeEach(() => {
   jest.clearAllMocks();
+  (global as any).fetch = jest.fn(() => Promise.reject(new Error('offline')));
   mockParams = {};
 });
 
@@ -152,11 +153,11 @@ describe('Learn content', () => {
     expect(text).not.toMatch(/\d\s?%/);
   });
 
-  it('no video files, components or references remain', () => {
-    for (const f of ['assets/tutorial', 'src/components/LearnVideo.tsx', 'src/lib/learnVideos.ts']) {
+  it('no bundled video files remain (clips are hosted and listed in a manifest)', () => {
+    for (const f of ['assets/tutorial', 'src/lib/learnVideos.ts']) {
       expect(fs.existsSync(path.join(ROOT, f))).toBe(false);
     }
-    for (const f of ['src/app/(tabs)/settings/learn/[topic].tsx', 'src/lib/learnContent.ts', 'src/components/LearnEntry.tsx']) {
+    for (const f of ['src/lib/learnContent.ts', 'src/components/LearnEntry.tsx']) {
       expect(read(f)).not.toMatch(/LearnVideo|learnVideos|expo-video|\.mp4|video/i);
     }
   });
