@@ -199,7 +199,7 @@ export const s = StyleSheet.create({
   toggleLabel: { fontFamily: fonts.bodySemi, fontSize: 15, color: colors.text },
   toggleDetail: { fontFamily: fonts.body, fontSize: 12, lineHeight: 17, color: colors.muted, marginTop: 2 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 52, paddingVertical: 6 },
-  chev: { fontSize: 22, color: colors.faint },
+  chev: { fontFamily: fonts.body, fontSize: 22, color: colors.faint },
   action: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.accent },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   stepBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.08)' },

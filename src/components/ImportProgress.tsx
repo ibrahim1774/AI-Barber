@@ -163,6 +163,6 @@ const styles = StyleSheet.create({
     width: 14, height: 14, borderRadius: 7, backgroundColor: colors.accent,
     alignItems: 'center', justifyContent: 'center',
   },
-  checkText: { fontSize: 9, fontWeight: '900', color: colors.accentInk, lineHeight: 11 },
+  checkText: { fontFamily: fonts.bodyBold, fontSize: 9, color: colors.accentInk, lineHeight: 11 },
   eta: { fontFamily: fonts.serifish, fontSize: 18.4, lineHeight: 26, letterSpacing: -0.2, color: colors.text, marginTop: 40 },
 });

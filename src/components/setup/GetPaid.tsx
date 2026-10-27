@@ -6,7 +6,7 @@ import { Button } from '@/components/Button';
 import { METHODS, checkAllHandles, feeText, payWaysCount } from '@/lib/setup/handles';
 import { stripeOnboard, stripeStatus, type StripeStatus } from '@/lib/setup/ownerApi';
 import { updateShopSettings, type ManualMethod, type Shop } from '@/lib/shop';
-import { colors } from '@/constants/theme';
+import { colors, fonts } from '@/constants/theme';
 import { Card, Input, Label, Note, ToggleRow } from '@/components/setup/ui';
 
 export const CARDS_NOT_SET_UP = "Card payments aren't set up yet.";
@@ -159,7 +159,7 @@ export function GetPaid({ shop, onChanged }: { shop: Shop; onChanged(): void }) 
           cards.
         </Note>
         {cardReady ? (
-          <Text style={{ color: '#22c55e', fontSize: 15, fontWeight: '600' }}>Cards are on. Customers can pay by card when they book.</Text>
+          <Text style={{ color: '#22c55e', fontFamily: fonts.bodySemi, fontSize: 15 }}>Cards are on. Customers can pay by card when they book.</Text>
         ) : connected ? (
           <Note tone="warn">Stripe still needs a few details before cards can be used. Finish setup to turn them on.</Note>
         ) : null}

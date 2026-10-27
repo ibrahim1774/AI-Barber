@@ -133,6 +133,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden', marginBottom: 16,
   },
   fill: { height: '100%', borderRadius: 3, backgroundColor: colors.accent },
-  percent: { fontFamily: fonts.mono, fontSize: 12, letterSpacing: 1.2, color: 'rgba(255,255,255,0.4)' },
+  percent: { fontFamily: fonts.mono, fontVariant: ['tabular-nums'], fontSize: 12, letterSpacing: 1.2, color: 'rgba(255,255,255,0.4)' },
   warningText: { marginTop: 24, paddingHorizontal: 8, fontFamily: fonts.body, fontSize: 12, letterSpacing: 0.3, color: colors.grey, textAlign: 'center' },
 });
