@@ -1,6 +1,5 @@
 import React from 'react';
-import { act as rtAct } from 'react-test-renderer';
-import { allText, render } from './store/render';
+import { act as rtAct, allText, render } from './store/render';
 
 const mockRouter = { push: jest.fn(), back: jest.fn(), replace: jest.fn() };
 let mockParams: { topic?: string } = {};
