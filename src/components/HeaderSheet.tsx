@@ -3,6 +3,7 @@ import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'rea
 import type { WebsiteData } from '@/web/types';
 import { colors, fonts } from '@/constants/theme';
 import { Sheet, SheetAction } from '@/components/EditSheet';
+import { contrastNote, type LogoVerdict } from '@/lib/logoContrast';
 
 type Tab = 'name' | 'logo';
 
@@ -12,7 +13,7 @@ type Tab = 'name' | 'logo';
  * States of the Logo pane: none (Add your logo), uploading, error (nothing changed, try again), set (Replace, Remove).
  */
 export function HeaderSheet({
-  visible, data, startOn, previewUri, uploading, error, onEditName, onPickLogo, onRemoveLogo, onClose, onDismiss,
+  visible, data, startOn, previewUri, contrast, uploading, error, onEditName, onPickLogo, onRemoveLogo, onClose, onDismiss,
 }: {
   visible: boolean;
   data: WebsiteData;
@@ -20,6 +21,8 @@ export function HeaderSheet({
   startOn?: Tab;
   /** The just-uploaded logo as a data URI (shown at once); else the saved URL is shown. */
   previewUri?: string | null;
+  /** How visible the just-uploaded logo is on the dark header (session only); a calm note shows when it may be hard to see. */
+  contrast?: LogoVerdict | null;
   uploading: boolean;
   /** Why the last logo upload did not work (the site is unchanged). */
   error?: string | null;
@@ -77,6 +80,7 @@ export function HeaderSheet({
               ) : (
                 <Text style={styles.hint}>Show your logo in the header instead of your shop name. Logos work best on a plain background.</Text>
               )}
+              {logo && contrastNote(contrast) && <Text style={styles.hint}>{contrastNote(contrast)}</Text>}
               {logo && (logo.w / logo.h > 5 || logo.h / logo.w > 1.5) && (
                 <Text style={styles.hint}>{logo.w > logo.h ? 'Very wide logos are shrunk to fit the header, so they can look small.' : 'Tall logos are shrunk to the header height. A wider logo looks best.'}</Text>
               )}

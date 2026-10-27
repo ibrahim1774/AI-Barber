@@ -10,6 +10,16 @@ export const __calls: { resize: any[]; saveAsync: any[]; manipulate: any[] } = {
 let image = { width: 1000, height: 800 };
 let failRender: Error | null = null;
 let omitBase64 = false;
+let saveBase64 = 'QUJD';
+let failEdge: number | null = null;
+/** The base64 every save returns (default "ABC", which is not a PNG). */
+export function __setSaveBase64(b: string) {
+  saveBase64 = b;
+}
+/** Makes a render fail when its long edge was resized to exactly this many px. */
+export function __failAtEdge(n: number | null) {
+  failEdge = n;
+}
 /** Makes saves return no base64 even when asked. */
 export function __omitBase64(v = true) {
   omitBase64 = v;
@@ -29,6 +39,8 @@ export function __reset() {
   image = { width: 1000, height: 800 };
   failRender = null;
   omitBase64 = false;
+  saveBase64 = 'QUJD';
+  failEdge = null;
 }
 
 export const ImageManipulator = {
@@ -45,13 +57,14 @@ export const ImageManipulator = {
       },
       async renderAsync() {
         if (failRender) throw failRender;
+        if (failEdge !== null && Math.max(size.width, size.height) === failEdge) throw new Error('render failed');
         return {
           ...size,
           async saveAsync(opts: unknown) {
             __calls.saveAsync.push(opts);
             const o = opts as { format?: string; base64?: boolean } | undefined;
             const ext = o?.format === 'png' ? 'png' : 'jpg';
-            return { uri: `file:///tmp/manipulated.${ext}`, ...size, ...(o?.base64 && !omitBase64 ? { base64: 'QUJD' } : {}) };
+            return { uri: `file:///tmp/manipulated.${ext}`, ...size, ...(o?.base64 && !omitBase64 ? { base64: saveBase64 } : {}) };
           },
         };
       },
