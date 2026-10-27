@@ -17,7 +17,7 @@ import {
 } from './honest.js';
 import { ratingLineCustom, t, type LabelKey } from './labels.js';
 import { hasFilePages } from './pages.js';
-import { NAV_CSS, brandHtml, navItemsFor, reportLinkHtml, navListHtml, type RenderCtx } from './shell.js';
+import { BRAND_PHONE_CSS, NAV_CSS, brandHtml, brandPhoneHtml, navItemsFor, reportLinkHtml, navListHtml, type RenderCtx } from './shell.js';
 import { headerBrand } from './logo.js';
 
 // 24h → 12h with AM/PM. Idempotent: if the input already contains an
@@ -409,14 +409,14 @@ export function generateHTMLWithPlaceholders(input: WebsiteData, ctx?: RenderCtx
   <header id="header" class="fixed top-0 left-0 w-full z-50 transition-all duration-300 bg-black/20 py-5 md:py-8">
     <div class="container mx-auto flex justify-between items-center px-4 md:px-6">
       <div class="flex items-center gap-3 md:gap-8 min-w-0">
-        <div class="flex items-center gap-3 md:gap-5 min-w-0">
+        ${canCall ? `<style>${BRAND_PHONE_CSS}</style><div class="ab-brandcol">` : ''}<div class="flex items-center gap-3 md:gap-5 min-w-0">
           ${brandHtml('luxe', { single: true, mode: brand.mode, logo: brand.logo, alt: esc(nameText), href: '#top', nameHtml: `${nameFirst} <span class="text-[#f4a100]">${nameRest}</span>`, nameClass: 'font-montserrat', nameOnly: `<svg class="w-8 h-8 md:w-12 md:h-12 shrink-0 text-[#f4a100]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M6 6l12 12M6 18L18 6"></path>
           </svg>
           <span class="ab-name font-montserrat font-black md:text-3xl lg:text-4xl tracking-[1px] md:tracking-[2px] uppercase min-w-0">
             ${nameFirst} <span class="text-[#f4a100]">${nameRest}</span>
           </span>` })}
-        </div>
+        </div>${canCall ? `${brandPhoneHtml(formattedPhone, shownPhone)}</div>` : ''}
         ${canCall ? `<a href="tel:${formattedPhone}" aria-label="Call ${shownPhone}" class="ab-call flex items-center shrink-0 gap-2 md:gap-4 text-[#f4a100] border-l-2 border-white/20 pl-3 md:pl-8 hover:text-white transition-colors">
           <svg class="w-5 h-5 md:w-7 md:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path>
