@@ -4,6 +4,7 @@
     "intro": { "v": 2, "bytes": 292363, "seconds": 20 },
     "edit_text": { "v": 1, "bytes": 795784, "seconds": 25 },
     "edit_photos": { "v": 1, "bytes": 603435, "seconds": 21 },
-    "sections": { "v": 1, "bytes": 761105, "seconds": 22 }
+    "sections": { "v": 1, "bytes": 761105, "seconds": 22 },
+    "pages": { "v": 1, "bytes": 489266, "seconds": 24 }
   }
 }
