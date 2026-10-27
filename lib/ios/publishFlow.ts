@@ -450,15 +450,20 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
         try {
           await deps.repo.clearRemoved(otid, row.removed_at);
           removedMeanwhile = !!(await deps.repo.get(otid))?.removed_at;
-          // Same purchase, same slug, the owner's own publish, and no newer removal: the paid domain
-          // may come back. A failure here leaves the row marked (safe); the owner's next publish retries.
-          if (!removedMeanwhile && deps.clearDomainRemoval) {
-            await deps.clearDomainRemoval(slug).catch((e: any) =>
-              console.error(`[ios/publish] ${slug}: live but clearDomainRemoval failed:`, e?.message || e));
-          }
         } catch (e: any) {
           removedMeanwhile = true;
           console.error(`[ios/publish] ${slug}: live but clearRemoved failed:`, e?.message || e);
+        }
+      }
+      // Lift the paid domain's owner-removed mark on every successful bound publish while no removal
+      // is stamped (idempotent; only detached rows marked owner-removed for this slug), and only
+      // while the purchase is still the caller's (a Move may have won). A failure here is retried by
+      // the next publish, because removed_at is already null by then and the branch above is skipped.
+      if (!removedMeanwhile && deps.clearDomainRemoval) {
+        const now = await deps.repo.get(otid).catch(() => null);
+        if (now && !now.removed_at && (!caller || now.user_id === caller)) {
+          await deps.clearDomainRemoval(slug).catch((e: any) =>
+            console.error(`[ios/publish] ${slug}: live but clearDomainRemoval failed (the next publish retries):`, e?.message || e));
         }
       }
       if (!removedMeanwhile) {

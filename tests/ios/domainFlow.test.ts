@@ -1176,6 +1176,37 @@ describe('removal races and the owner-removed mark (review F4, F5, F6)', () => {
     expect(projectDomains(w)).toEqual([]);
   });
 
+  it('R2-A: the site is removed between the check and addProjectDomain: the attach is undone, then the removal marks it', async () => {
+    const w = world();
+    seed(w, { state: 'bought' });
+    let removed = false;
+    const realAdd = w.reg.api.addProjectDomain.getMockImplementation?.() ?? (w.reg.api.addProjectDomain as any);
+    const orig = w.reg.api.addProjectDomain;
+    (w.reg.api as any).addProjectDomain = vi.fn(async (...a: any[]) => { removed = true; return (orig as any)(...a); });
+    void realAdd;
+    const deps: DomainFlowDeps = { ...w.deps, vercel: w.reg.api, siteRemoved: async () => removed };
+    const out = await advance(w.repo.rows.get('d-o1')!, deps, {});
+    expect(out.state).toBe('bought');
+    expect(projectDomains(w)).toEqual([]);
+    expect(w.hooks.onDomainLinked).not.toHaveBeenCalled();
+    await remove(w);
+    expect(w.repo.rows.get('d-o1')).toMatchObject({ state: 'detached', failure_reason: 'owner-removed' });
+    expect(projectDomains(w)).toEqual([]);
+  });
+
+  it('R2-A: the removal takes the row lease (refuses while the sweep holds it, runs after)', async () => {
+    const w = await (async () => { const x = world(); await x.claim(CLAIM); return x; })();
+    const token = await w.repo.acquireLease('d-o1', w.deps.now(), 60_000);
+    expect(token).toBeTruthy();
+    await expect(remove(w)).rejects.toThrow(/lease|in progress|retry/i);
+    expect(w.repo.rows.get('d-o1')!.state).toBe('live');
+    expect(projectDomains(w)).toEqual(['freshcuts.com', 'www.freshcuts.com']);
+    await w.repo.releaseLease('d-o1', token!);
+    await remove(w);
+    expect(w.repo.rows.get('d-o1')).toMatchObject({ state: 'detached', failure_reason: 'owner-removed' });
+    expect(w.repo.rows.get('d-o1')!.lease_until).toBeNull();
+  });
+
   it('non-vacuous: step() on a marked detached row with a paid payer and siteRemoved=false never attaches', async () => {
     const w = world();
     seed(w, { state: 'detached', failure_reason: 'owner-removed', detached_at: new Date(w.deps.now()).toISOString() });

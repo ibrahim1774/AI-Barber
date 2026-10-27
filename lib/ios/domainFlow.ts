@@ -501,6 +501,13 @@ export async function step(row: DomainRow, deps: DomainFlowDeps, ctx: Ctx = {}):
           const project = projectFor(row.site_slug);
           await v.addProjectDomain(project, row.domain);
           await v.addProjectDomain(project, `www.${row.domain}`, row.domain);
+          // The owner may have removed the site between the check above and the attach (the removal
+          // runs under this lease too, but stamps its mark before taking it). Undo the attach and stop.
+          if (await removedSite(row, deps)) {
+            await v.removeProjectDomain(project, `www.${row.domain}`);
+            await v.removeProjectDomain(project, row.domain);
+            return wait(deps, row, SITE_REMOVED_PENDING);
+          }
         }
         return move(deps, row, ['bought'], { state: 'attached', last_error: null });
       }
@@ -508,7 +515,15 @@ export async function step(row: DomainRow, deps: DomainFlowDeps, ctx: Ctx = {}):
       case 'attached': {
         if (await removedSite(row, deps)) return wait(deps, row, SITE_REMOVED_PENDING);
         // Sandbox: the address is not real, so the site keeps its vercel.app links.
-        if (!sim) await deps.hooks.onDomainLinked(row.site_slug, row.domain);
+        if (!sim) {
+          await deps.hooks.onDomainLinked(row.site_slug, row.domain);
+          // Removed while linking: point the site back at its vercel.app links and stay attached
+          // (the removal, which retries, detaches and marks the row).
+          if (await removedSite(row, deps)) {
+            await deps.hooks.onDomainUnlinked(row.site_slug);
+            return wait(deps, row, SITE_REMOVED_PENDING);
+          }
+        }
         return move(deps, row, ['attached'], { state: 'live', linked_at: iso(deps.now()), dns_ready_at: null, last_error: null });
       }
 
@@ -711,24 +726,32 @@ export async function releaseDomainsForRemoval(
   slug: string,
   deps: Pick<DomainFlowDeps, 'repo' | 'vercel' | 'now'>,
 ): Promise<void> {
-  for (const row of await deps.repo.forSite(slug)) {
-    // A purchase still in flight (M6): detaching it could strand the order, and the registration
-    // may be ours. Refuse; the domain sweep resolves it and the removal is retried.
-    if (REMOVAL_IN_FLIGHT.includes(row.state)) throw new Error(`custom domain purchase is in progress (${row.state}); retry the removal later`);
-    if (!row.simulated) {
-      if (!deps.vercel) throw new Error('Vercel is not configured; cannot release the custom domain');
-      const project = projectFor(slug);
-      await deps.vercel.removeProjectDomain(project, `www.${row.domain}`);
-      await deps.vercel.removeProjectDomain(project, row.domain);
-    }
-    if (row.state === 'detached' && row.failure_reason === OWNER_REMOVED) continue;
-    const marked = await deps.repo.update(row.original_transaction_id, [row.state], {
-      state: 'detached', failure_reason: OWNER_REMOVED,
-      detached_at: row.detached_at ?? iso(deps.now()),
+  for (const listed of await deps.repo.forSite(slug)) {
+    const otid = listed.original_transaction_id;
+    // Under the row's lease, the same one the sweep step holds: the two can never interleave (a
+    // sweep attach landing after the detach below). Held by the sweep: retry the removal later.
+    const done = await leased(otid, deps, async () => {
+      const row = (await deps.repo.get(otid)) ?? listed;
+      // A purchase still in flight (M6): detaching it could strand the order, and the registration
+      // may be ours. Refuse; the domain sweep resolves it and the removal is retried.
+      if (REMOVAL_IN_FLIGHT.includes(row.state)) throw new Error(`custom domain purchase is in progress (${row.state}); retry the removal later`);
+      if (!row.simulated) {
+        if (!deps.vercel) throw new Error('Vercel is not configured; cannot release the custom domain');
+        const project = projectFor(slug);
+        await deps.vercel.removeProjectDomain(project, `www.${row.domain}`);
+        await deps.vercel.removeProjectDomain(project, row.domain);
+      }
+      if (row.state === 'detached' && row.failure_reason === OWNER_REMOVED) return true;
+      const marked = await deps.repo.update(otid, [row.state], {
+        state: 'detached', failure_reason: OWNER_REMOVED,
+        detached_at: row.detached_at ?? iso(deps.now()),
+      });
+      // No row matched: the state moved meanwhile. Throw, so the removal is retried from the fresh
+      // state and detaches again; never treat it as done.
+      if (!marked) throw new Error(`custom domain ${row.domain} changed state during the removal; retry the removal`);
+      return true;
     });
-    // No row matched: the sweep moved it meanwhile (it may have re-added the domain). Throw, so the
-    // removal is retried from the fresh state and detaches again; never treat it as done.
-    if (!marked) throw new Error(`custom domain ${row.domain} changed state during the removal; retry the removal`);
+    if (done === null) throw new Error(`custom domain ${listed.domain} is being processed (lease held); retry the removal later`);
   }
 }
 

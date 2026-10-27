@@ -624,6 +624,33 @@ describe('runIosPublish after an owner removal (removed_at, review H1)', () => {
     expect(b.deps.clearDomainRemoval).not.toHaveBeenCalled();
   });
 
+  it('R2-B: a failed clearDomainRemoval is retried by the next publish (removed_at already null)', async () => {
+    const { deps } = fakes({ existing: removed() });
+    const clear = vi.fn().mockRejectedValueOnce(new Error('db blip')).mockResolvedValue(undefined);
+    deps.clearDomainRemoval = clear;
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect((await runIosPublish(input(), deps)).status).toBe(200);
+    expect(clear).toHaveBeenCalledTimes(1);
+    expect((await runIosPublish(input(), deps)).status).toBe(200);
+    expect(clear).toHaveBeenCalledTimes(2);
+  });
+
+  it('R2-LOW: a purchase moved mid-publish does not clear the domain mark', async () => {
+    const OTHER = '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d';
+    const f = fakes({
+      existing: row({ user_id: USER, site_slug: 'fresh-cuts-ab12', published_at: '2026-09-01T00:00:00Z', removed_at: '2026-10-15T00:00:00Z' }),
+      outcome: (slug) => {
+        Object.assign(f.rows.get(OTID)!, { user_id: OTHER });
+        return { ok: true, siteId: slug, deployedUrl: `https://${slug}.vercel.app`, alreadyLive: false } as any;
+      },
+    });
+    f.deps.userOf = vi.fn(async () => ({ id: USER }));
+    f.deps.clearDomainRemoval = vi.fn(async () => {});
+    const r = await runIosPublish(input(), f.deps, { authorization: 'Bearer tok-user' });
+    expect(r).toEqual({ status: 409, body: { error: 'purchase-changed' } });
+    expect(f.deps.clearDomainRemoval).not.toHaveBeenCalled();
+  });
+
   it('a failed publish leaves the removal in place', async () => {
     const { deps, repo, rows } = fakes({ existing: removed(), outcome: (s) => ({ ok: false, siteId: s, reason: 'deploy-failed', error: 'x' }) });
     vi.spyOn(console, 'error').mockImplementation(() => {});
