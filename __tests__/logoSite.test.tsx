@@ -203,7 +203,8 @@ describe('logo shapes are constrained in every design', () => {
         expect(img).toContain(`width="${w}" height="${h}"`);
         expect(img).toMatch(/height:clamp\(\d+px,[\d.]+vw,\d+px\)/);
         expect(img).toContain('width:auto');
-        expect(img).toContain('max-width:min(55vw,240px)');
+        expect(img).toContain(tpl === 'luxe' ? 'height:clamp(48px,12.3vw,72px)' : 'height:clamp(44px,11.3vw,64px)');
+        expect(img).toContain(tpl === 'luxe' ? 'max-width:min(60vw,320px)' : tpl === 'prime' ? 'max-width:min(52vw,300px)' : 'max-width:min(52vw,300px)');
         expect(img).toContain('object-fit:contain');
         expect(img).not.toContain('<b>');
         expect(img).toMatch(/alt="[^"]*&quot;|alt="[^"]*&amp;/);
