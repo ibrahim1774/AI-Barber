@@ -44,9 +44,7 @@ export async function syncSiteToSupabase(site: SiteRecord, userId: string): Prom
       brand_colour: '#f4a100',
       // `source` marks an app-made row, so a fresh install can find it again
       // (pullSiteFromAccount). It is stripped again when a row is adopted.
-      // `editedAt` is the phone's own revision (the local edit time) that this copy holds. The server never
-      // touches it, unlike `updated_at`, which a DB trigger overwrites with server time on every update.
-      site_data: { ...data, source: IOS_SOURCE, editedAt: editedAtOf(site) },
+      site_data: { ...data, source: IOS_SOURCE },
       deployed_url: site.deployedUrl,
       deployment_status: site.deployedUrl ? 'deployed' : 'draft',
       // custom_domain / domain_order_id are left out on purpose: the web
@@ -64,7 +62,6 @@ export async function syncSiteToSupabase(site: SiteRecord, userId: string): Prom
   return Number.isNaN(at) ? null : at;
 }
 
-const editedAtOf = (site: SiteRecord) => (Number.isFinite(site.updatedAt) ? site.updatedAt : Date.now());
 
 /**
  * Pushes the local site (or `site`) to the signed-in account, if there is
@@ -129,28 +126,25 @@ function siteDataFrom(raw: WebsiteData & { source?: unknown; editedAt?: unknown 
   return rest as WebsiteData;
 }
 
-/** The phone's revision the row holds (`site_data.editedAt`), or null for a row written before it existed or by the web. */
-function rowEditedAt(raw: { editedAt?: unknown }): number | null {
-  return typeof raw.editedAt === 'number' && Number.isFinite(raw.editedAt) ? raw.editedAt : null;
-}
-
 /** An adopted copy's edit time: the row's stamp, but never in this phone's future (a later edit must still look newer). */
 function adoptedAt(rowAt: number): number {
   return Number.isNaN(rowAt) ? Date.now() : Math.min(rowAt, Date.now());
 }
 
 /**
- * Whether the account's row is news for this phone. Decided from fields the app controls, never from comparing
- * the row's `updated_at` (server time, rewritten by a DB trigger on every update) with the phone's clock:
+ * Whether the account's row is news for this phone. Decided only from fields the app controls and server time
+ * against server time; clocks of different devices are never compared (a phone with a slow clock must not look
+ * older than one with a correct clock, and the web writes back whatever markers it loaded, so no marker inside
+ * the row can be trusted to say who wrote it):
  * - Edits the account does not have yet (accountSyncedAt behind updatedAt, or unknown): never replaced.
- * - A row whose revision (editedAt) is older than this phone's copy: never adopted.
- * - Known push stamp (accountRowAt): adopt only a row stamped later, i.e. written by someone else since.
- * - Legacy record without that stamp: the old comparison, only as far as the checks above allow.
+ *   Known, bounded limit: if the web edited the row meanwhile, the phone's unsynced copy wins and is pushed over it.
+ * - Known push stamp (accountRowAt, the server's stamp read back from this phone's own last upsert): adopt only a
+ *   row stamped later, i.e. written by someone else since.
+ * - Legacy record without that stamp: the old comparison, only as far as the check above allows.
  */
-function rowIsNews(local: SiteRecord, rowAt: number, editedAt: number | null): boolean {
+function rowIsNews(local: SiteRecord, rowAt: number): boolean {
   if (Number.isNaN(rowAt)) return false;
   if (!(local.accountSyncedAt !== undefined && local.accountSyncedAt >= local.updatedAt)) return false;
-  if (editedAt != null && editedAt < local.updatedAt) return false;
   return local.accountRowAt != null ? rowAt > local.accountRowAt : rowAt > local.updatedAt;
 }
 
@@ -188,7 +182,7 @@ export async function pullSiteFromAccount(userId: string): Promise<PullResult> {
     const rowAt = Date.parse(r.updated_at ?? '');
     const data = siteDataFrom(r.site_data);
 
-    if (local && !rowIsNews(local, rowAt, rowEditedAt(r.site_data))) return 'unchanged';
+    if (local && !rowIsNews(local, rowAt)) return 'unchanged';
 
     // Compare and swap: an edit (or another load) since the read wins.
     const cur = await siteStore.loadSite();
