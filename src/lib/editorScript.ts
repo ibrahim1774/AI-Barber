@@ -6,9 +6,9 @@
  * script:
  *  - sweeps any stray U+2063 marker out of text, attributes and the title
  *    (defensive; prepareEditableHtml should have removed them all);
- *  - outlines editable text and photos;
+ *  - outlines editable text (photos carry only their Change image chip);
  *  - makes the site menu work (burger, entry taps -> {type:'nav'}, long press -> edit the entry's label);
- *  - a tap on a service card ([data-ab-service]) posts {type:'service', index};
+ *  - a tap on a service card ([data-ab-service]) posts {type:'service', index}; on a working-hours row ([data-ab-hours]) {type:'hours'};
  *  - swallows every click and form submit (the preview is not a browser; the
  *    native onShouldStartLoadWithRequest blocks navigation as well) and posts
  *    {type:'edit'|'image', path} for taps on editable things;
@@ -61,7 +61,9 @@ export const EDITOR_JS = String.raw`(function () {
       '[data-edit]{outline:1px dashed rgba(212,166,74,0.75);outline-offset:3px;border-radius:2px;cursor:pointer;-webkit-tap-highlight-color:rgba(212,166,74,0.25);}' +
       '[data-ab-service]{outline:1px dashed rgba(212,166,74,0.75);outline-offset:-3px;border-radius:2px;cursor:pointer;-webkit-tap-highlight-color:rgba(212,166,74,0.25);}' +
       '[data-ab-service] [data-edit]{outline:none;}' +
-      '[data-edit-image]{outline:2px dashed rgba(212,166,74,0.75);outline-offset:-4px;cursor:pointer;}' +
+      '[data-ab-hours]{outline:1px dashed rgba(212,166,74,0.75);outline-offset:-3px;border-radius:2px;cursor:pointer;-webkit-tap-highlight-color:rgba(212,166,74,0.25);}' +
+      '[data-ab-hours] [data-edit]{outline:none;}' +
+      '[data-edit-image]{cursor:pointer;}' +
       'a,img{-webkit-touch-callout:none;}';
     (document.head || document.documentElement).appendChild(style);
   } catch (e) {}
@@ -183,6 +185,8 @@ export const EDITOR_JS = String.raw`(function () {
         if (si >= 0) { post({ type: 'service', index: si }); return; }
       }
     }
+    // The shop's working-hours rows (data-ab-hours, tagged by tagHoursRows): a tap on any day or time opens the Hours sheet.
+    if (closestAttr(el, 'data-ab-hours')) { post({ type: 'hours' }); return; }
     var text = closestAttr(el, 'data-edit');
     if (text) { post({ type: 'edit', path: text.getAttribute('data-edit') }); return; }
     // A button or link whose text is editable: tapping anywhere on it edits that text (its padding, a

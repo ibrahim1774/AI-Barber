@@ -22,6 +22,8 @@ export interface SitePreviewProps {
   onAddService?(): void;
   /** A service card was tapped: its position in data.services. */
   onService?(index: number): void;
+  /** The working-hours list was tapped. */
+  onHours?(): void;
   /** The editor-only "+ Add a button" control was tapped (the site has no Book button). */
   onAddButton?(): void;
   /** Registered with the tutorial on the tour's "Change image" chip (an invisible view over it; the chip itself is page DOM). */
@@ -43,7 +45,7 @@ function sameRects(a: ImageRect[], b: ImageRect[]): boolean {
   return a.length === b.length && a.every((r, i) => r.path === b[i].path && r.x === b[i].x && r.y === b[i].y && r.w === b[i].w && r.h === b[i].h);
 }
 
-export default function SitePreview({ data, editable, shopProducts, page, onEditText, onEditImage, onNavigate, onAddService, onService, onAddButton, pillTourRef, samplePaths, chipsHidden }: SitePreviewProps) {
+export default function SitePreview({ data, editable, shopProducts, page, onEditText, onEditImage, onNavigate, onAddService, onService, onHours, onAddButton, pillTourRef, samplePaths, chipsHidden }: SitePreviewProps) {
   const webRef = useRef<WebView>(null);
   const scrollY = useRef(0);
   // Where the page's "Change image" chips are on screen: only the Edit tour reads this.
@@ -109,6 +111,9 @@ export default function SitePreview({ data, editable, shopProducts, page, onEdit
         case 'service':
           if (editable) onService?.(m.index);
           return;
+        case 'hours':
+          if (editable) onHours?.();
+          return;
         case 'addService':
           if (editable) onAddService?.();
           return;
@@ -129,7 +134,7 @@ export default function SitePreview({ data, editable, shopProducts, page, onEdit
           return;
       }
     },
-    [editable, editPaths, data, page, onEditText, onEditImage, onNavigate, onAddService, onService, onAddButton, sendSamples, sendHidden],
+    [editable, editPaths, data, page, onEditText, onEditImage, onNavigate, onAddService, onService, onHours, onAddButton, sendSamples, sendHidden],
   );
 
   const onShouldStartLoadWithRequest = useCallback((req: ShouldStartLoadRequest) => shouldAllowPreviewRequest(req), []);

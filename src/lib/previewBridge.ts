@@ -9,6 +9,7 @@ export type PreviewMessage =
   | { type: 'image'; path: string }
   | { type: 'nav'; href: string }
   | { type: 'service'; index: number }
+  | { type: 'hours' }
   | { type: 'addService' }
   | { type: 'addButton' }
   | { type: 'scrollY'; y: number }
@@ -73,6 +74,9 @@ export function parsePreviewMessage(raw: unknown, data: WebsiteData, page?: Prev
       const prefix = `services.${i}.`;
       return (editPaths ?? previewEditPaths(data, page)).some((p) => p.startsWith(prefix)) ? { type: 'service', index: i } : null;
     }
+    case 'hours':
+      // The shop's working-hours list: only when this page prints shop hours (hours.<i>.*).
+      return (editPaths ?? previewEditPaths(data, page)).some((p) => p.startsWith('hours.')) ? { type: 'hours' } : null;
     case 'addService':
       return { type: 'addService' };
     case 'addButton':

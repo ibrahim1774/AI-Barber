@@ -157,6 +157,8 @@ export default function Editor() {
   const [servicesAdd, setServicesAdd] = useState(false);
   // ...or by a tap on a service card: it opens at that service (its index in the site's services).
   const [servicesFocus, setServicesFocus] = useState<number | null>(null);
+  // The Hours sheet was opened by a tap on the hours list in the preview: it closes back to the preview, not the Sections list.
+  const [hoursFromPreview, setHoursFromPreview] = useState(false);
   // The page of a multi-page site the preview shows. Never saved; Home when that page goes away.
   const [wantedPage, setWantedPage] = useState<PreviewPage | null>(null);
   // Kept after the edit sheet closes so its label/value don't blank mid-slide.
@@ -548,7 +550,7 @@ export default function Editor() {
   // The Sections list: each card closes the list, then opens its editor
   // (every SectionKey is also a SheetKind).
   // Whatever closes or replaces the Services sheet (the lapse close included) ends the add view.
-  useEffect(() => { setServicesAdd((a) => keepServicesAdd(a, sheet)); setServicesFocus((f) => keepServicesFocus(f, sheet)); }, [sheet]);
+  useEffect(() => { setServicesAdd((a) => keepServicesAdd(a, sheet)); setServicesFocus((f) => keepServicesFocus(f, sheet)); setHoursFromPreview((h) => h && sheet === 'hours'); }, [sheet]);
   const openSection = useCallback((key: SectionKey) => {
     track('section_opened', { section: key });
     closeThen(() => setSheet(key));
@@ -569,6 +571,13 @@ export default function Editor() {
     setServicesAdd(false);
     setServicesFocus(at);
     setSheet('services');
+  }, [sheet]);
+  // A tap on the working-hours list in the preview: the Hours sheet (not the inline text box).
+  const onPreviewHours = useCallback(() => {
+    if (!canOpenAddService(sheet, overlayRef.current)) return;
+    track('hours_tapped');
+    setHoursFromPreview(true);
+    setSheet('hours');
   }, [sheet]);
   const onPreviewAddService = useCallback(() => {
     if (!canOpenAddService(sheet, overlayRef.current)) return;
@@ -707,7 +716,7 @@ export default function Editor() {
         <EditorBackBar visible={overlay == null && sheet == null && !uploading && canGoBackToStart(site, pendingPaid, !!session)} />
         {/* The site's own background, so nothing else shows around the page. */}
         <View style={[styles.preview, { backgroundColor: previewBackground(data) }]}>
-          <SitePreview data={shown} editable page={page} shopProducts={shopProducts} onEditText={onPreviewText} onEditImage={onPreviewImage} onNavigate={onPreviewNav} onAddService={onPreviewAddService} onService={onPreviewService} onAddButton={onPreviewAddButton} pillTourRef={changeImageRef} samplePaths={sampleHeroPaths(shown, page)} chipsHidden={sheet != null} />
+          <SitePreview data={shown} editable page={page} shopProducts={shopProducts} onEditText={onPreviewText} onEditImage={onPreviewImage} onNavigate={onPreviewNav} onAddService={onPreviewAddService} onService={onPreviewService} onHours={onPreviewHours} onAddButton={onPreviewAddButton} pillTourRef={changeImageRef} samplePaths={sampleHeroPaths(shown, page)} chipsHidden={sheet != null} />
           {/* The two floating controls, Design above Colour, hidden while the prompts / guide are up.
               Design is offered on a published site too: it only edits the draft (like Colour), and the
               change goes live on the next Publish. */}
@@ -836,7 +845,7 @@ export default function Editor() {
           visible={sheet === 'hours'}
           data={data}
           onChange={commit}
-          onClose={() => closeThen(() => setSheet('sections'))}
+          onClose={() => (hoursFromPreview ? closeThen(() => setHoursFromPreview(false)) : closeThen(() => setSheet('sections')))}
           onDismiss={onSheetDismiss}
         />
         <TeamSheet

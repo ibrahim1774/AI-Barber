@@ -574,6 +574,34 @@ export function tagServiceCards(html: string): string {
   return out + html.slice(last);
 }
 
+export const HOURS_ROW_ATTR = 'data-ab-hours';
+
+// One day's row of the shop's hours in each design's own markup: luxe's row, Prime's <li>, and the multi-page shell's
+// .ab-row (Hours page, Location page; also the Team page's barber rows, told apart below by their data path).
+const HOURS_ROW_OPEN = /<(?:div class="(?:flex items-center justify-between px-5 md:px-8 py-3\.5 md:py-4|ab-row)"|li class="p-hours-row")/g;
+
+/**
+ * PREVIEW ONLY: tag each row of the SHOP's working hours with data-ab-hours, so a tap anywhere on the list (a day, a
+ * time, the row's padding) opens the Hours sheet instead of the text box. Run after prepareEditableHtml. A row is only
+ * tagged when its own text carries a hours.<i>.* path (a barber's staff.<i>.hours.<j>.* rows are left to the Team sheet,
+ * a row with no such text is left alone). The heading above the list keeps its inline editor. Not applied to published
+ * output.
+ */
+export function tagHoursRows(html: string): string {
+  let out = '';
+  let last = 0;
+  HOURS_ROW_OPEN.lastIndex = 0;
+  for (let m = HOURS_ROW_OPEN.exec(html); m; m = HOURS_ROW_OPEN.exec(html)) {
+    const end = m.index + m[0].length;
+    const closeAt = html.indexOf(m[0].startsWith('<li') ? '</li>' : '</div>', end);
+    const row = html.slice(end, closeAt < 0 ? html.length : closeAt);
+    if (!/data-edit="hours\.\d+\./.test(row)) continue;
+    out += html.slice(last, end) + ` ${HOURS_ROW_ATTR}="1"`;
+    last = end;
+  }
+  return out + html.slice(last);
+}
+
 export const ADD_SERVICE_LABEL = '+ Add a service';
 export const ADD_SERVICE_EMPTY_NOTE = 'Your services will show here';
 const ADD_SERVICE_ATTR = 'data-ab-add-service';
@@ -662,7 +690,7 @@ export function buildPreviewHtml(raw: WebsiteData, editable: boolean, shopProduc
   if (!editable) return withPreviewBackground(withShopPreview(withImages(stripTracking(renderSite(forRender(data))), data), shopProducts), bg);
   const { marked, ids } = markData(data);
   return withPreviewBackground(
-    withAddButton(withAddService(withShopPreview(withImages(tagImageSlots(tagServiceCards(prepareEditableHtml(stripTracking(renderSite(forRender(marked))), ids))), data), shopProducts), data), data),
+    withAddButton(withAddService(withShopPreview(withImages(tagImageSlots(tagHoursRows(tagServiceCards(prepareEditableHtml(stripTracking(renderSite(forRender(marked))), ids)))), data), shopProducts), data), data),
     bg,
   );
 }
@@ -683,7 +711,7 @@ function buildPageHtml(data: WebsiteData, editable: boolean, shopProducts: Previ
   const file = previewFileOf(bundle.set, page);
   const html = (bundle.pages.find((f) => f.path === file.path) ?? bundle.pages[0]).html;
   const clean = stripTracking(html);
-  const inner = editable ? tagSampleHero(tagImageSlots(tagServiceCards(prepareEditableHtml(clean, ids))), data, page) : clean;
+  const inner = editable ? tagSampleHero(tagImageSlots(tagHoursRows(tagServiceCards(prepareEditableHtml(clean, ids)))), data, page) : clean;
   const shown = withShopPreview(withImages(inner, data), shopProducts);
   return withPreviewBackground(editable ? withAddButton(withAddService(shown, data, page), data, page) : shown, bg);
 }
