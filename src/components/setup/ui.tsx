@@ -79,13 +79,14 @@ export const Input = forwardRef<TextInput, TextInputProps & { label: string; tit
   );
 });
 
-export function Chip({ label, selected, onPress }: { label: string; selected?: boolean; onPress(): void }) {
+export function Chip({ label, selected, onPress, disabled }: { label: string; selected?: boolean; onPress(): void; disabled?: boolean }) {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityState={{ selected: !!selected }}
+      accessibilityState={{ selected: !!selected, disabled: !!disabled }}
+      disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [s.chip, selected && s.chipOn, pressed && { opacity: 0.6 }]}
+      style={({ pressed }) => [s.chip, selected && s.chipOn, disabled && { opacity: 0.35 }, pressed && { opacity: 0.6 }]}
     >
       <Text style={[s.chipText, selected && { color: colors.buttonInk }]}>{label}</Text>
     </Pressable>

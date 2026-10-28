@@ -85,9 +85,11 @@ describe('service form', () => {
     expect(draftToPatch(emptyDraft('')).ok).toBe(false);
     expect(draftToPatch({ ...emptyDraft('A'), price: 'abc' }).ok).toBe(false);
     expect(draftToPatch({ ...emptyDraft('A'), price: '10', depositType: 'fixed', deposit: '20' }).ok).toBe(false);
-    expect(draftToPatch({ ...emptyDraft('A'), depositType: 'percent', deposit: '101' }).ok).toBe(false);
-    expect(draftToPatch({ ...emptyDraft('A'), price: '', depositType: 'percent', deposit: '25' })).toEqual({
-      ok: true, patch: expect.objectContaining({ priceCents: null, depositValue: 25 }),
+    expect(draftToPatch({ ...emptyDraft('A'), price: '10', depositType: 'percent', deposit: '101' }).ok).toBe(false);
+    // A deposit needs a price (deposit rule 2026-10-28).
+    expect(draftToPatch({ ...emptyDraft('A'), price: '', depositType: 'percent', deposit: '25' }).ok).toBe(false);
+    expect(draftToPatch({ ...emptyDraft('A'), price: '40', depositType: 'percent', deposit: '25' })).toEqual({
+      ok: true, patch: expect.objectContaining({ priceCents: 4000, depositValue: 25 }),
     });
   });
 });

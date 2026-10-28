@@ -50,10 +50,12 @@ export function draftToPatch(d: ServiceDraft): DraftResult {
     if (priceCents == null) return { ok: false, message: 'Enter the price as a number, like 30 or 25.50.' };
   }
   let depositValue: number | null = null;
+  // A deposit is a share of a price: without a price there is nothing to take it from, and the booking page would say "Price at shop".
+  if (d.depositType !== 'none' && priceCents == null) return { ok: false, message: 'Add a price to use a deposit. The deposit is taken out of it.' };
   if (d.depositType === 'fixed') {
     const c = parsePriceCents(d.deposit);
     if (c == null || c <= 0) return { ok: false, message: 'Enter the deposit amount in dollars.' };
-    if (priceCents != null && c > priceCents) return { ok: false, message: "The deposit can't be more than the price." };
+    if (priceCents != null && c > priceCents) return { ok: false, message: "The deposit can't be more than the price. Lower the deposit or raise the price." };
     depositValue = c;
   } else if (d.depositType === 'percent') {
     const p = Number(d.deposit.trim().replace(/%$/, ''));

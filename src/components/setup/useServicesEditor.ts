@@ -119,5 +119,8 @@ export function useServicesEditor(
 
   const reload = () => void refresh(false).catch(() => {});
 
-  return { reload, services, loading, busy, uploading, view, setView, openForm, addOwn, addFromLibrary, setDraft, save, remove, move, photo };
+  // Deposits are taken by card only. Same flag Get paid reads; the server also treats the deposit as 0 while card is off.
+  const cardReady = shop.stripeConnected && shop.stripeChargesEnabled;
+
+  return { cardReady, reload, services, loading, busy, uploading, view, setView, openForm, addOwn, addFromLibrary, setDraft, save, remove, move, photo };
 }

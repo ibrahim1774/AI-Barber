@@ -14,7 +14,10 @@ const DEPOSITS: { key: DepositType; label: string }[] = [
 ];
 
 /** The bookings-mode Services editor (list, add, form). State comes from useServicesEditor. */
-export function ServicesEditorView({ ed }: { ed: Ed }) {
+export const DEPOSIT_NEEDS_CARD = 'Deposits need card payments. Connect card payments to turn on a deposit.';
+export const DEPOSIT_PAUSED = 'Deposit paused until card payments are connected';
+
+export function ServicesEditorView({ ed, onGetPaid }: { ed: Ed; onGetPaid?(): void }) {
   const { view } = ed;
   if (ed.loading) return <ActivityIndicator color={colors.accent} style={{ marginVertical: 24 }} />;
 
@@ -43,7 +46,7 @@ export function ServicesEditorView({ ed }: { ed: Ed }) {
     return (
       <View style={{ gap: 6 }}>
         <Input title="Name" label="Name" value={d.name} onChangeText={(t) => ed.setDraft({ name: t })} placeholder="e.g. Skin fade" autoFocus={view.id == null} />
-        <Input title="Price" label="Price in dollars" value={d.price} onChangeText={(t) => ed.setDraft({ price: t })} keyboardType="decimal-pad" placeholder="30 (leave blank to ask)" />
+        <Input title="Price" label="Price in dollars" value={d.price} onChangeText={(t) => ed.setDraft({ price: t })} keyboardType="decimal-pad" placeholder={d.depositType !== 'none' ? '30 (needed for a deposit)' : '30 (leave blank to ask)'} />
         <Label>Length</Label>
         <Chips>
           {DURATIONS.map((m) => (
@@ -62,9 +65,20 @@ export function ServicesEditorView({ ed }: { ed: Ed }) {
         <Label>Advanced: deposit</Label>
         <Chips>
           {DEPOSITS.map((x) => (
-            <Chip key={x.key} label={x.label} selected={d.depositType === x.key} onPress={() => ed.setDraft({ depositType: x.key, deposit: '' })} />
+            <Chip
+              key={x.key} label={x.label} selected={d.depositType === x.key}
+              disabled={!ed.cardReady && x.key !== 'none'}
+              onPress={() => ed.setDraft({ depositType: x.key, deposit: '' })}
+            />
           ))}
         </Chips>
+        {!ed.cardReady && (
+          <>
+            <Note>{DEPOSIT_NEEDS_CARD}</Note>
+            {d.depositType !== 'none' && <Note tone="warn">{DEPOSIT_PAUSED}</Note>}
+            {onGetPaid && <TextAction title="Go to Get paid" onPress={onGetPaid} />}
+          </>
+        )}
         {d.depositType !== 'none' && (
           <Input
             label={d.depositType === 'fixed' ? 'Deposit in dollars' : 'Deposit percent'}
@@ -72,9 +86,10 @@ export function ServicesEditorView({ ed }: { ed: Ed }) {
             onChangeText={(t) => ed.setDraft({ deposit: t })}
             keyboardType="decimal-pad"
             placeholder={d.depositType === 'fixed' ? '10' : '25'}
+            editable={ed.cardReady}
           />
         )}
-        {d.depositType !== 'none' && <Note>Deposits are taken by card, so card payments must be connected.</Note>}
+        {d.depositType !== 'none' && <Note>A deposit needs a price above. It is taken out of the price when the customer books.</Note>}
         <View style={st.actions}>
           <Button title="Save" size="sm" onPress={() => void ed.save()} loading={ed.busy} style={{ flex: 1 }} />
           {existing && <TextAction title="Remove" danger onPress={() => ed.remove(existing)} />}
@@ -92,7 +107,7 @@ export function ServicesEditorView({ ed }: { ed: Ed }) {
           <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${sv.name}`} onPress={() => ed.openForm(sv)} style={st.rowMain}>
             <Text style={st.rowTitle} numberOfLines={1}>{sv.name}</Text>
             <Text style={st.rowMeta} numberOfLines={1}>
-              {[sv.priceCents != null ? centsToPrice(sv.priceCents) : 'Ask for price', durationLabel(sv.durationMin), !sv.bookable ? 'Not bookable' : '', !sv.showOnSite ? 'Hidden on site' : '']
+              {[sv.priceCents != null ? centsToPrice(sv.priceCents) : 'Ask for price', durationLabel(sv.durationMin), !sv.bookable ? 'Not bookable' : '', !sv.showOnSite ? 'Hidden on site' : '', sv.depositType !== 'none' && !ed.cardReady ? DEPOSIT_PAUSED : '']
                 .filter(Boolean).join('  ·  ')}
             </Text>
           </Pressable>
