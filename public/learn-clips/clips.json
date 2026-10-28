@@ -50,6 +50,11 @@
       "v": 1,
       "bytes": 627704,
       "seconds": 36
+    },
+    "store": {
+      "v": 1,
+      "bytes": 631486,
+      "seconds": 40
     }
   }
 }
