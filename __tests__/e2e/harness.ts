@@ -90,6 +90,10 @@ export class FakeServer {
   purchaseOwner: string | null = null;
   /** The plan's expiresAt while the subscription is still active (Apple's billing retry: the date passed, the plan is not over). */
   planExpiresAt: string | null = null;
+  /** The server still says `active` after the subscription lapsed on the device (its takedown has not run yet, or a renewal notice never arrived). */
+  planForceActive = false;
+  /** The server's takedown stamp (the sweep has taken the website offline). */
+  planTakenDownAt: string | null = null;
   /** Accounts /api/ios/signup created (emails). */
   accounts = new Set<string>();
   /** Every completed /api/ios/transfer. */
@@ -407,7 +411,8 @@ export class FakeServer {
   }
 
   plan() {
-    const a = this.activeSub();
+    const last0 = [...this.apple].sort((x, y) => Date.parse(y.purchaseDate) - Date.parse(x.purchaseDate))[0];
+    const a = this.activeSub() ?? (this.planForceActive ? last0 ?? null : null);
     const e = entsFor(a?.productId ?? '');
     const last = [...this.apple].sort((x, y) => Date.parse(y.purchaseDate) - Date.parse(x.purchaseDate))[0];
     return {
@@ -416,7 +421,7 @@ export class FakeServer {
       entitlements: { hosting: e.includes('hosting'), bookings: e.includes('bookings'), store: e.includes('store') },
       active: !!a,
       expiresAt: a ? this.planExpiresAt : last?.expirationDate ?? null,
-      takenDownAt: null,
+      takenDownAt: this.planTakenDownAt,
       revoked: !!last?.isRevoked,
       // Whose purchase it is: another account that linked it -> 'other'; otherwise the caller's own.
       purchaseAccount: this.purchaseOwner && this.purchaseOwner !== this.sb?.session?.user?.id ? 'other' : 'self',

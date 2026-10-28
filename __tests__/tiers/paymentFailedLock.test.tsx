@@ -1,6 +1,7 @@
 /**
  * PAYMENT-FAILED LOCK. paymentLockOf: which server plan / per-site status means "block" (the subscription ended or was
- * revoked), "retry" (Apple is still retrying the payment: a banner) or "none". Every uncertain answer is "none".
+ * revoked): "failed" (payment failed, not taken down yet), "offline" (taken down),
+ * "revoked", or "none". There are no banners. Every uncertain answer is "none".
  * PaymentBlock: the Apple button and "check again" (re-reads the plan and the per-site status).
  */
 import React from 'react';
@@ -21,10 +22,12 @@ jest.mock('@/lib/subscriptionStatus', () => ({
   ...jest.requireActual('@/lib/subscriptionStatus'),
   recheckSubscriptionStatus: (...a: unknown[]) => mockRecheck(...a),
 }));
+let mockPlan: unknown = null;
+jest.mock('@/lib/entitlements', () => ({ ...jest.requireActual('@/lib/entitlements'), useAccountPlan: () => mockPlan }));
 jest.mock('@/lib/paywall', () => ({ useLatestTransactionId: () => async () => 'tx-9' }));
 
-import { PaymentBanner, PaymentBlock } from '@/components/PaymentLock';
-import { paymentLockOf, RETRY_AFTER_MS } from '@/lib/paymentLock';
+import { PaymentBlock } from '@/components/PaymentLock';
+import { isInferredLapse, LATE_RENEWAL_SLACK_MS, paymentCopy, paymentLockOf } from '@/lib/paymentLock';
 
 const NOW = Date.parse('2026-10-28T12:00:00Z');
 const ago = (ms: number) => new Date(NOW - ms).toISOString();
@@ -41,12 +44,13 @@ describe('paymentLockOf', () => {
     ['active, no expiry', plan(), 'none'],
     ['active, renews in the future', plan({ expiresAt: new Date(NOW + 5 * H).toISOString() }), 'none'],
     ['active, expiry passed 10 minutes ago (late renewal notice)', plan({ expiresAt: ago(10 * 60_000) }), 'none'],
-    ['active, expiry passed 3 hours ago: Apple billing retry', plan({ expiresAt: ago(3 * H) }), 'retry'],
-    ['active, expiry passed 5 days ago: still in Apple billing grace', plan({ expiresAt: ago(5 * 24 * H) }), 'retry'],
-    ['ended 2 hours ago, not renewed', ended({ expiresAt: ago(2 * H) }), 'failed'],
-    ['ended 45 days ago', ended({ expiresAt: ago(45 * 24 * H) }), 'failed'],
-    ['the server took the site down', ended({ takenDownAt: ago(H), expiresAt: ago(2 * H) }), 'failed'],
-    ['taken down, no date', ended({ takenDownAt: ago(H) }), 'failed'],
+    ['active, expiry passed 3 hours ago: payment failed (after the re-read)', plan({ expiresAt: ago(3 * H) }), 'failed'],
+    ['active, expiry passed 5 days ago, not taken down yet', plan({ expiresAt: ago(5 * 24 * H) }), 'failed'],
+    ['not active, ended 2 hours ago, not taken down', ended({ expiresAt: ago(2 * H) }), 'failed'],
+    ['ended 2 days ago, not taken down', ended({ expiresAt: ago(48 * H) }), 'failed'],
+    ['ended 45 days ago, not taken down', ended({ expiresAt: ago(45 * 24 * H) }), 'failed'],
+    ['the server took the site down', ended({ takenDownAt: ago(H), expiresAt: ago(2 * H) }), 'offline'],
+    ['taken down, no date', ended({ takenDownAt: ago(H) }), 'offline'],
     ['revoked / refunded', ended({ revoked: true, expiresAt: ago(H) }), 'revoked'],
     ['revoked flag on a plan that still says active', plan({ revoked: true }), 'revoked'],
     ['no plan loaded yet', null, 'none'],
@@ -65,7 +69,7 @@ describe('paymentLockOf', () => {
   it("this iPhone's Superwall saying paid never blocks on an older server answer", () => {
     expect(paymentLockOf(ended({ expiresAt: ago(2 * H) }), site, 'unknown', NOW, true)).toBe('none');
     expect(paymentLockOf(ended({ revoked: true }), site, 'unknown', NOW, true)).toBe('none');
-    expect(paymentLockOf(plan({ expiresAt: ago(3 * H) }), site, 'unknown', NOW, true)).toBe('retry');
+    expect(paymentLockOf(plan({ expiresAt: ago(3 * H) }), site, 'unknown', NOW, true)).toBe('none');
   });
 
   it('the per-site check keeps its meaning: confirmed lapsed blocks, unknown / active never', () => {
@@ -76,13 +80,21 @@ describe('paymentLockOf', () => {
     expect(paymentLockOf(plan(), site, 'lapsed', NOW)).toBe('none'); // the server says paid
   });
 
-  it('retry waits the same hour the server waits', () => {
-    expect(RETRY_AFTER_MS).toBe(H);
+  it('the late-notice slack is an hour', () => {
+    expect(LATE_RENEWAL_SLACK_MS).toBe(H);
+  });
+
+  it('only "active but past expiry" is an inference that needs a plan re-read', () => {
+    expect(isInferredLapse(plan({ expiresAt: ago(3 * H) }), NOW)).toBe(true);
+    expect(isInferredLapse(plan({ expiresAt: ago(10 * 60_000) }), NOW)).toBe(false);
+    expect(isInferredLapse(ended({ expiresAt: ago(3 * H) }), NOW)).toBe(false);
+    expect(isInferredLapse(plan({ expiresAt: ago(3 * H), takenDownAt: ago(H) }), NOW)).toBe(false);
   });
 });
 
-describe('PaymentBlock / PaymentBanner', () => {
+describe("PaymentBlock", () => {
   beforeEach(() => {
+    mockPlan = null;
     mockOpen.mockClear();
     mockGetPlan.mockReset().mockResolvedValue(plan());
     mockRefresh.mockClear();
@@ -98,7 +110,7 @@ describe('PaymentBlock / PaymentBanner', () => {
     const onRestore = jest.fn();
     const t = await render(<PaymentBlock kind="failed" screen="edit" onRestore={onRestore} />);
     const all = texts(t);
-    expect(all).toEqual(expect.arrayContaining(['Payment failed', 'Please renew your payment to keep editing your site. Your subscription could not be renewed.', 'Update payment method', "I've renewed: check again", 'Restore purchases']));
+    expect(all).toEqual(expect.arrayContaining(['Payment failed', 'Please renew your payment to get access back. Your subscription could not be renewed.', 'Update payment method', "I've renewed: check again", 'Restore purchases']));
     await press(t, 'Update payment method');
     expect(mockOpen).toHaveBeenCalledTimes(1);
     await press(t, "I've renewed: check again");
@@ -117,10 +129,18 @@ describe('PaymentBlock / PaymentBanner', () => {
     expect(onBack).toHaveBeenCalled();
   });
 
-  it('banner: the notice and the same Apple button', async () => {
-    const t = await render(<PaymentBanner screen="bookings" />);
-    expect(texts(t)).toEqual(expect.arrayContaining(['Payment failed. Update your payment method to keep your site.', 'Update payment method']));
-    await press(t, 'Update payment method');
-    expect(mockOpen).toHaveBeenCalledTimes(1);
+  it('failed: no date, no "3 days", no banner', async () => {
+    const t = await render(<PaymentBlock kind="failed" screen="edit" />);
+    const all = texts(t).join(' ');
+    expect(all).not.toMatch(/3 days|until|renew by/i);
+    expect(paymentCopy('failed')).toEqual({ title: 'Payment failed', body: 'Please renew your payment to get access back. Your subscription could not be renewed.' });
+  });
+
+  it('offline: its own title and body, same buttons', async () => {
+    const t = await render(<PaymentBlock kind="offline" screen="edit" />);
+    expect(texts(t)).toEqual(expect.arrayContaining([
+      'Your website is offline', 'Your payment failed or your subscription ended. Renew to put your website back online.',
+      'Update payment method', "I've renewed: check again",
+    ]));
   });
 });

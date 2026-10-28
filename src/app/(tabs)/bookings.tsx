@@ -34,8 +34,8 @@ import {
 import { BOOKING_SHARE_KIND, memberName } from '@/lib/bookings/shop';
 import { useCustomerLinkState } from '@/lib/customerLinks';
 import { loadSite, type SiteRecord } from '@/lib/siteStore';
-import { PaymentBanner, PaymentBlock } from '@/components/PaymentLock';
-import { isBlocking, usePaymentLock } from '@/lib/paymentLock';
+import { PaymentBlock } from '@/components/PaymentLock';
+import { isBlocking, usePaymentLock, type BlockKind } from '@/lib/paymentLock';
 import { useTierAccess, useUpgrade } from '@/lib/tierAccess';
 import { useEntitlements } from '@/lib/entitlements';
 import { isUnpublished, requestPublish } from '@/lib/publishRequest';
@@ -103,7 +103,7 @@ export default function Bookings() {
     if (shop?.timezone) setTzGuess(shop.timezone);
   }, [shop?.timezone]);
   const today = todayKey(tz);
-  // Payment failed / subscription ended: the whole tab is blocked (see PaymentBlock). Apple's retry window is a banner.
+  // Payment failed / subscription ended: the whole tab is blocked (see PaymentBlock). No banners: every failed payment blocks.
   const paymentLock = usePaymentLock(site);
   const lapsed = isBlocking(paymentLock);
   // The plan not covering bookings (a Website plan) is read-only too; the server pauses the page.
@@ -174,7 +174,7 @@ export default function Bookings() {
   if (lapsed) {
     return (
       <View style={[styles.root, { paddingTop: insets.top }]}>
-        <PaymentBlock kind={paymentLock as 'failed' | 'revoked'} screen="bookings" />
+        <PaymentBlock kind={paymentLock as BlockKind} screen="bookings" />
       </View>
     );
   }
@@ -271,7 +271,6 @@ export default function Bookings() {
         )}
       </TabHeader>
 
-      {paymentLock === 'retry' && <PaymentBanner screen="bookings" />}
       {paused && <PausedBanner kind="bookings" onUpgrade={() => void upgrade.run()} />}
 
       <View ref={viewsRef} collapsable={false}>

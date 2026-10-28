@@ -5,8 +5,7 @@ import { Button } from '@/components/Button';
 import { AlertCircleIcon } from '@/components/Icons';
 import { openManageSubscription } from '@/lib/manageSubscription';
 import {
-  CHECK_AGAIN_BUTTON, isBlocking, PAYMENT_BANNER, PAYMENT_FAILED_BODY, PAYMENT_FAILED_TITLE, PAYMENT_REVOKED_BODY,
-  PAYMENT_REVOKED_TITLE, UPDATE_PAYMENT_BUTTON, usePaymentLock, type PaymentLock,
+  CHECK_AGAIN_BUTTON, isBlocking, paymentCopy, UPDATE_PAYMENT_BUTTON, usePaymentLock, type BlockKind, type PaymentLock,
 } from '@/lib/paymentLock';
 import { getPlan, getPlanEpoch, refreshPlanQuietly, setSharedPlan } from '@/lib/plan';
 import { useLatestTransactionId } from '@/lib/paywall';
@@ -49,7 +48,7 @@ const updatePayment = (screen: string) => () => {
 export function PaymentBlock({
   kind, screen, onRestore, restoring, onResubscribe, onBack,
 }: {
-  kind: 'failed' | 'revoked';
+  kind: BlockKind;
   screen: string;
   onRestore?(): void;
   restoring?: boolean;
@@ -60,7 +59,7 @@ export function PaymentBlock({
   useEffect(() => {
     track('subscription_lapsed_shown', { screen });
   }, [screen]);
-  const revoked = kind === 'revoked';
+  const { title, body } = paymentCopy(kind);
   return (
     <View style={styles.root} testID="payment-block">
       <View style={styles.card}>
@@ -68,28 +67,15 @@ export function PaymentBlock({
           <AlertCircleIcon size={36} color={colors.accent} />
         </View>
         <Text style={styles.title} accessibilityRole="header">
-          {revoked ? PAYMENT_REVOKED_TITLE : PAYMENT_FAILED_TITLE}
+          {title}
         </Text>
-        <Text style={styles.body}>{revoked ? PAYMENT_REVOKED_BODY : PAYMENT_FAILED_BODY}</Text>
+        <Text style={styles.body}>{body}</Text>
         <Button title={UPDATE_PAYMENT_BUTTON} onPress={updatePayment(screen)} style={styles.wide} />
         <Button variant="ghost" title={CHECK_AGAIN_BUTTON} onPress={() => void check()} loading={busy} style={[styles.wide, styles.gap]} />
         {onResubscribe && <Button variant="ghost" title="Subscribe again" onPress={onResubscribe} style={[styles.wide, styles.gap]} />}
         {onRestore && <Button variant="ghost" title="Restore purchases" onPress={onRestore} loading={restoring} style={[styles.wide, styles.gap]} />}
         {onBack && <Button variant="link" title="Back" onPress={onBack} style={styles.gap} />}
       </View>
-    </View>
-  );
-}
-
-/** The non-blocking notice while Apple is still retrying the payment: access stays, the same Apple button. */
-export function PaymentBanner({ screen }: { screen: string }) {
-  useEffect(() => {
-    track('payment_retry_banner_shown', { screen });
-  }, [screen]);
-  return (
-    <View style={styles.banner} accessibilityRole="alert" testID="payment-banner">
-      <Text style={styles.bannerText}>{PAYMENT_BANNER}</Text>
-      <Button title={UPDATE_PAYMENT_BUTTON} onPress={updatePayment(screen)} variant="ghost" style={styles.bannerBtn} />
     </View>
   );
 }
@@ -107,16 +93,11 @@ function useLocalLock(): PaymentLock {
   return usePaymentLock(site);
 }
 
-/** Wraps a pushed screen: the block in its place when payment failed, the banner above it during Apple's retry. */
+/** Wraps a pushed screen: the block in its place when payment failed. */
 export function PaymentGate({ screen, children }: { screen: string; children: ReactNode }) {
   const lock = useLocalLock();
-  if (isBlocking(lock)) return <PaymentBlock kind={lock as 'failed' | 'revoked'} screen={screen} onBack={goBackOrHome} />;
-  return (
-    <>
-      {lock === 'retry' && <PaymentBanner screen={screen} />}
-      {children}
-    </>
-  );
+  if (isBlocking(lock)) return <PaymentBlock kind={lock as BlockKind} screen={screen} onBack={goBackOrHome} />;
+  return <>{children}</>;
 }
 
 /** A pushed screen behind the payment gate. */
@@ -145,10 +126,4 @@ const styles = StyleSheet.create({
   body: { fontFamily: fonts.body, fontSize: 15, lineHeight: 22, color: colors.muted, textAlign: 'center', marginBottom: 28 },
   wide: { alignSelf: 'stretch' },
   gap: { marginTop: 12 },
-  banner: {
-    marginHorizontal: 16, marginTop: 8, marginBottom: 8, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: colors.hair,
-    backgroundColor: colors.sheet, gap: 10,
-  },
-  bannerText: { fontFamily: fonts.bodySemi, fontSize: 13, lineHeight: 19, color: colors.accent },
-  bannerBtn: { alignSelf: 'flex-start' },
 });

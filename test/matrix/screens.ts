@@ -14,7 +14,7 @@ export type ScreenDef = {
   title: string;
   /** Lazily required so each cell gets a fresh module registry (jest.resetModules). */
   load(): React.ComponentType<any>;
-  /** Behind the payment lock: blocked (or bannered) by it. 'settings' keeps its content and shows the Offline row + Apple button. */
+  /** Behind the payment lock: blocked by it (no banners, no grace period). 'settings' keeps its content and shows the Offline row + Apple button. */
   payment?: 'gated' | 'settings';
   /** Only reachable once a site record exists on the phone. */
   needsSite?: boolean;
@@ -53,7 +53,7 @@ export const SCREENS: ScreenDef[] = [
     S9a: /Publish your website to unlock the Store/, S9b: /Couldn't load your plan[\s\S]*Try again/, S10: /Publish your website to unlock the Store/,
     S11: /Couldn't load your plan[\s\S]*Try again/, S12: /Your plan does not include the Store/,
   }, forbids: { S2a: /You need a plan/, S2b: /You need a plan/, S2c: /You need a plan/, S9a: /You need a plan/, S10: /You need a plan/ } },
-  { id: 'settings', payment: 'settings', title: 'Settings tab', load: () => require('@/app/(tabs)/settings/index').default , expects: { S1: /Sign in/, S2a: /Sign in/, S4: /Live/, S5: /Live/, S6: /Live/, S8a: /Offline/, S8b: /Offline/, S8c: /Offline/, S9c: /Sign in/ }  },
+  { id: 'settings', payment: 'settings', title: 'Settings tab', load: () => require('@/app/(tabs)/settings/index').default , expects: { S1: /Sign in/, S2a: /Sign in/, S4: /Live/, S5: /Live/, S6: /Live/, S8a: /Offline · Renew to get access back/, S8b: /Offline/, S8c: /Offline/, S9c: /Sign in/ }  },
   { id: 'learn', title: 'Learn', load: () => require('@/app/(tabs)/settings/learn/index').default },
   { id: 'claim', title: 'Claim (account step)', load: () => require('@/app/claim').default, allowedWhenLocked: true , expects: { S3: /Create your account/, S7b: /Use a different account/, S9d: /Publishing your site[\s\S]*Waiting for connection[\s\S]*Try again/ }, forbids: { S9d: /Create your account|Create Account & Publish/ }  },
   { id: 'start', title: 'Start screen', load: () => require('@/app/start').default , expects: { '*': /Barbers: get a website, take bookings/ }  },

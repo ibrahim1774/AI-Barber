@@ -128,17 +128,22 @@ describe.each(SCREENS.map((s) => [s.title, s] as const))('%s', (_t, screen) => {
     // A screen that hands over to another one (a redirect, a closed paywall, a finished publish) has its way forward.
     const ok = verdict.spinners === 0 && !verdict.loading && (verdict.pressables > 0 || left);
     if (!ok) throw new Error(`NOT SETTLED ${JSON.stringify(verdict)} text=[${text.slice(0, 200)}]`);
-    // The payment lock (payment failed / revoked blocks, Apple's retry is a banner, everything else shows neither: active,
-    // loading, offline, a server error, another account's purchase, never purchased).
-    const lockText = /Payment failed|Subscription ended|Please renew your payment/;
+    // The payment lock: a failed payment, an offline website and a revoked subscription all BLOCK (no banner
+    // anywhere); everything else shows nothing: active, loading, offline, a server error, another account's purchase, never purchased.
+    const lockText = /Payment failed|Subscription ended|Please renew your payment|Your website is offline/;
+    if (/payment failed\. update your payment method/i.test(text)) throw new Error(`a payment banner must not exist: [${text.slice(0, 300)}]`);
     if (screen.payment && st.payment === 'block') {
+      const FAILED = /Payment failed[\s\S]*Please renew your payment to get access back\. Your subscription could not be renewed\.[\s\S]*Update payment method[\s\S]*check again/;
+      const OFFLINE = /Your website is offline[\s\S]*Your payment failed or your subscription ended\. Renew to put your website back online\.[\s\S]*Update payment method[\s\S]*check again/;
+      const REVOKED = /Subscription ended[\s\S]*refunded or cancelled[\s\S]*Update payment method[\s\S]*check again/;
       if (screen.payment === 'gated') {
-        const m = st.id === 'S14' ? /Subscription ended[\s\S]*refunded or cancelled[\s\S]*Update payment method[\s\S]*check again/ : /Payment failed[\s\S]*Please renew your payment to keep editing your site\. Your subscription could not be renewed\.[\s\S]*Update payment method[\s\S]*check again/;
-        if (!m.test(text)) throw new Error(`PAYMENT BLOCK missing in [${text.slice(0, 300)}]`);
+        const m = st.blockText === 'revoked' ? REVOKED : st.blockText === 'offline' ? OFFLINE : FAILED;
+        if (!m.test(text)) throw new Error(`PAYMENT BLOCK (${st.blockText}) missing in [${text.slice(0, 300)}]`);
         // Blocked: the screen's own content is gone.
         if (/Add service|Publish\b.*Pages|Set up bookings|Products \| Orders/.test(text)) throw new Error(`PAYMENT BLOCK must replace the content: [${text.slice(0, 300)}]`);
-      } else if (!/Offline[\s\S]*Update payment method/.test(text)) {
-        throw new Error(`PAYMENT: Settings must show Offline + Update payment method in [${text.slice(0, 300)}]`);
+      } else {
+        const m = /Offline · Renew to get access back[\s\S]*Update payment method/;
+        if (!m.test(text)) throw new Error(`PAYMENT: Settings must match ${m} in [${text.slice(0, 300)}]`);
       }
       const press = tree.root.findAll((n: any) => typeof n.props?.onPress === 'function' && /Update payment method/.test(textOf(n)));
       expect(press.length).toBeGreaterThan(0);
@@ -146,14 +151,7 @@ describe.each(SCREENS.map((s) => [s.title, s] as const))('%s', (_t, screen) => {
       expect(openURL).toHaveBeenCalledWith('itms-apps://apps.apple.com/account/subscriptions');
       return;
     }
-    if (screen.payment && st.payment === 'banner') {
-      if (!/Payment failed\. Update your payment method to keep your site\./.test(text)) throw new Error(`PAYMENT BANNER missing in [${text.slice(0, 300)}]`);
-      if (/Please renew your payment/.test(text)) throw new Error('a retry window must not block');
-      const press = tree.root.findAll((n: any) => typeof n.props?.onPress === 'function' && /Update payment method/.test(textOf(n)));
-      expect(press.length).toBeGreaterThan(0);
-      await world.act(async () => { await press[0].props.onPress(); });
-      expect(openURL).toHaveBeenCalledWith('itms-apps://apps.apple.com/account/subscriptions');
-    } else if (!st.payment && lockText.test(text)) {
+    if (!st.payment && lockText.test(text)) {
       throw new Error(`NO PAYMENT NOTICE expected in this state, got [${text.slice(0, 300)}]`);
     }
     const want = screen.expects?.[st.id] ?? screen.expects?.['*'];

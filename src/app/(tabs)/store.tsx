@@ -18,8 +18,8 @@ import { useTour } from '@/components/tutorial/useTour';
 import { ProductsPane } from '@/components/store/products/ProductsPane';
 import { loadMyShop, type Shop } from '@/lib/shop';
 import { loadSite, type SiteRecord } from '@/lib/siteStore';
-import { PaymentBanner, PaymentBlock } from '@/components/PaymentLock';
-import { isBlocking, usePaymentLock } from '@/lib/paymentLock';
+import { PaymentBlock } from '@/components/PaymentLock';
+import { isBlocking, usePaymentLock, type BlockKind } from '@/lib/paymentLock';
 import { useEntitlements } from '@/lib/entitlements';
 import { isUnpublished, requestPublish } from '@/lib/publishRequest';
 import { useOpenStoreUpgrade, useStoreAccess } from '@/lib/store/gate';
@@ -111,7 +111,7 @@ export default function Store() {
   );
 
   const noPlan = access.status === 'inactive';
-  // Payment failed / subscription ended: the whole tab is blocked (see PaymentBlock). Apple's retry window is a banner.
+  // Payment failed / subscription ended: the whole tab is blocked (see PaymentBlock). No banners: every failed payment blocks.
   const paymentLock = usePaymentLock(site);
   const lapsed = isBlocking(paymentLock);
   const tour = useTour('store', { auto: 'store', ready: phase === 'ready' && !!shop && access.status !== 'loading' && access.status !== 'error' });
@@ -122,7 +122,7 @@ export default function Store() {
   if (lapsed) {
     return (
       <View style={shell}>
-        <PaymentBlock kind={paymentLock as 'failed' | 'revoked'} screen="store" />
+        <PaymentBlock kind={paymentLock as BlockKind} screen="store" />
       </View>
     );
   }
@@ -201,7 +201,6 @@ export default function Store() {
       <View ref={headerRef} collapsable={false}>
         <StoreHeader title={shop.name} locked={locked} onShare={() => setSharing(true)} onSetup={() => router.push('/store-setup' as never)} />
       </View>
-      {paymentLock === 'retry' && <PaymentBanner screen="store" />}
       {noPlan && <PausedBanner kind="store" onUpgrade={upgrade.open} action="See plans" />}
       {!storeOpen && (
         <Text style={styles.locked}>Your shop is closed to customers. Open it in Store setup.</Text>

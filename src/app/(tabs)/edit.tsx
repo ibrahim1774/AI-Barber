@@ -70,8 +70,8 @@ import { useTutorialTarget } from '@/components/tutorial/registry';
 import { editTourReady } from '@/components/tutorial/tours';
 import { useSession } from '@/lib/auth';
 import { PublishBar } from '@/components/PublishBar';
-import { PaymentBanner, PaymentBlock } from '@/components/PaymentLock';
-import { isBlocking, usePaymentLock } from '@/lib/paymentLock';
+import { PaymentBlock } from '@/components/PaymentLock';
+import { isBlocking, usePaymentLock, type BlockKind } from '@/lib/paymentLock';
 import { EditorBackBar, canGoBackToStart } from '@/components/EditorBackBar';
 
 type SheetKind = 'fields' | 'photos' | 'colour' | 'edit' | 'button' | 'sections' | 'pages' | 'pageSections' | 'hero' | 'header' | SectionKey;
@@ -109,7 +109,7 @@ export default function Editor() {
   const shownRef = useRef<WebsiteData | null>(null);
   shownRef.current = previewData ?? siteData ?? null;
   // The account's own subscription could not be renewed (payment failed / ended / revoked): the editor is blocked.
-  // Apple's billing retry (still active) only shows a banner. Uncertain answers (loading, offline, error) never lock.
+  // A failed or ended payment blocks (no banner). Uncertain answers (loading, offline, error) never lock.
   const paymentLock = usePaymentLock(site);
   const locked = isBlocking(paymentLock);
   // For the callbacks below: a locked tab runs a publish request whatever the overlay.
@@ -669,7 +669,7 @@ export default function Editor() {
   if (locked) {
     return (
       <View style={[styles.root, { paddingTop: insets.top }]}>
-        <PaymentBlock kind={paymentLock as 'failed' | 'revoked'} screen="edit" onResubscribe={resubscribe} onRestore={() => void restore()} restoring={restoring} />
+        <PaymentBlock kind={paymentLock as BlockKind} screen="edit" onResubscribe={resubscribe} onRestore={() => void restore()} restoring={restoring} />
       </View>
     );
   }
@@ -690,7 +690,6 @@ export default function Editor() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
-      {paymentLock === 'retry' && overlay == null && <PaymentBanner screen="edit" />}
       {/* The prompts / guide cover this body; the tab bar is hidden meanwhile. */}
       <View style={styles.body}>
         <EditorBackBar visible={overlay == null && sheet == null && !uploading && canGoBackToStart(site, pendingPaid, !!session)} />

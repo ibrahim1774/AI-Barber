@@ -26,8 +26,7 @@ import { isUnpublished, requestPublish, type PlanHint } from '@/lib/publishReque
 import { useRestoreFlow } from '@/lib/restoreFlow';
 import { loadSite, type SiteRecord } from '@/lib/siteStore';
 import { siteOffline, useSubscriptionStatus } from '@/lib/subscriptionStatus';
-import { PaymentBanner } from '@/components/PaymentLock';
-import { isBlocking, PAYMENT_FAILED_BODY, PAYMENT_FAILED_TITLE, PAYMENT_REVOKED_BODY, PAYMENT_REVOKED_TITLE, UPDATE_PAYMENT_BUTTON, usePaymentLock } from '@/lib/paymentLock';
+import { isBlocking, paymentCopy, SETTINGS_OFFLINE_STATUS, UPDATE_PAYMENT_BUTTON, usePaymentLock, type BlockKind } from '@/lib/paymentLock';
 import { openManageSubscription } from '@/lib/manageSubscription';
 import { tabBarStyle } from '@/lib/tabBar';
 import {
@@ -377,7 +376,6 @@ function YourWebsite({ site }: { site: SiteRecord }) {
 
   return (
     <>
-    {paymentLock === 'retry' && <PaymentBanner screen="settings" />}
     <Section title="Your website">
       <View style={styles.site}>
         <Text style={styles.siteName} numberOfLines={2}>
@@ -386,7 +384,7 @@ function YourWebsite({ site }: { site: SiteRecord }) {
         <View style={styles.statusRow}>
           <View style={[styles.dot, { backgroundColor: view.live ? GREEN : view.offline ? colors.danger : colors.faint }]} />
           <Text style={[styles.status, view.live && { color: GREEN }, view.offline && { color: colors.danger }]}>
-            {view.status}
+            {isBlocking(paymentLock) ? SETTINGS_OFFLINE_STATUS : view.status}
           </Text>
         </View>
         {view.offline ? (
@@ -397,7 +395,7 @@ function YourWebsite({ site }: { site: SiteRecord }) {
             </Text>
             {/* The same words and Apple button as the blocked editor and tabs. */}
             {isBlocking(paymentLock) && (
-              <Text style={styles.offlineUrl}>{paymentLock === 'revoked' ? `${PAYMENT_REVOKED_TITLE}. ${PAYMENT_REVOKED_BODY}` : `${PAYMENT_FAILED_TITLE}. ${PAYMENT_FAILED_BODY}`}</Text>
+              <Text style={styles.offlineUrl}>{`${paymentCopy(paymentLock as BlockKind).title}. ${paymentCopy(paymentLock as BlockKind).body}`}</Text>
             )}
             <Button variant="solid" title={UPDATE_PAYMENT_BUTTON} onPress={() => { track('update_payment_tapped', { screen: 'settings' }); void openManageSubscription(); }} style={styles.publish} />
             <Button variant="ghost" title="Renew to put your site back" onPress={resubscribe} style={styles.publish} />
