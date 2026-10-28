@@ -89,3 +89,18 @@ export function servicesToWebsite(services: Service[], existing: ServiceItem[] =
 export function withMirroredServices(d: WebsiteData, services: Service[]): WebsiteData {
   return { ...d, services: servicesToWebsite(services, d.services) };
 }
+
+/**
+ * The ab_services row the site's service at `position` (an index into WebsiteData.services) mirrors. The site list is the
+ * show-on-site rows in sort order, so the same position in that order is the match; the title decides first when the
+ * lists have drifted apart (a rename in Setup, a reorder). null when neither finds it.
+ */
+export function serviceAtSitePosition(services: Service[], position: number, title?: string): Service | null {
+  const key = (t: string) => t.trim().toLowerCase();
+  const shown = services.filter((s) => s.showOnSite).slice().sort((a, b) => a.sort - b.sort);
+  const atPosition = shown[position] ?? null;
+  const wanted = title ? key(title) : '';
+  if (!wanted) return atPosition;
+  if (atPosition && key(atPosition.name) === wanted) return atPosition;
+  return shown.find((s) => key(s.name) === wanted) ?? services.find((s) => key(s.name) === wanted) ?? null;
+}

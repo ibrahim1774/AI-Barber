@@ -26,6 +26,8 @@ type Props = {
   upload(onPicked?: () => void): Promise<string | null>;
   /** Open straight at the add view (the preview's "+ Add a service" button) instead of the list. */
   startAdd?: boolean;
+  /** Open straight at this service's edit form (a tap on its card in the preview): its index in data.services. */
+  focusIndex?: number | null;
 };
 
 // index null: a service of the barber's own that is added when they save.
@@ -34,7 +36,7 @@ type View_ = { kind: 'list' } | { kind: 'add' } | { kind: 'form'; form: Form };
 
 const PHOTO_FAIL = "Couldn't upload that photo. Check your connection and try again.";
 
-export function ServicesSheet({ visible, data, onChange, onClose, onDismiss, upload, startAdd }: Props) {
+export function ServicesSheet({ visible, data, onChange, onClose, onDismiss, upload, startAdd, focusIndex }: Props) {
   const doneBar = useDoneBar('decimal-pad');
   const formScroll = useRef<ScrollView>(null);
   const fPrice = useRef<TextInput>(null);
@@ -64,6 +66,9 @@ export function ServicesSheet({ visible, data, onChange, onClose, onDismiss, upl
       },
     });
   };
+
+  // The form opens once per open; the list (with Add a service) is one Back away.
+  useEffect(() => { if (visible && focusIndex != null && !startAdd) openForm(focusIndex, false); }, [visible, focusIndex]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addFromLibrary = (title: string, duration: number, icon: Parameters<typeof newService>[2]) => {
     track('service_added', { source: 'library' });

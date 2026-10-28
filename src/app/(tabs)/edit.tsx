@@ -11,7 +11,7 @@ import { useEntitlements } from '@/lib/entitlements';
 import { hasEntitlement } from '@/lib/paywall';
 import { bookingPrefs, bookTargetStatus, linksToSend } from '@/lib/bookingChoice';
 import { syncOwnLink } from '@/lib/bookingChoice';
-import { canOpenAddService, keepServicesAdd } from '@/lib/addServiceGuard';
+import { canOpenAddService, keepServicesAdd, keepServicesFocus, serviceFocusFor } from '@/lib/addServiceGuard';
 import { useLinkContext } from '@/lib/linkContext';
 import { copyKeyOfPath, copyPathHasWordings, hoursEditorFor, pageForHref, previewBackground, textMaxLength, textValue, type PreviewPage } from '@/lib/editable';
 import { navLabelKey } from '@/web/lib/render/labels';
@@ -155,6 +155,8 @@ export default function Editor() {
   const [sheet, setSheet] = useState<SheetKind | null>(null);
   // The Services sheet was opened by the preview's "+ Add a service" button: it starts at the add view and closes to the preview.
   const [servicesAdd, setServicesAdd] = useState(false);
+  // ...or by a tap on a service card: it opens at that service (its index in the site's services).
+  const [servicesFocus, setServicesFocus] = useState<number | null>(null);
   // The page of a multi-page site the preview shows. Never saved; Home when that page goes away.
   const [wantedPage, setWantedPage] = useState<PreviewPage | null>(null);
   // Kept after the edit sheet closes so its label/value don't blank mid-slide.
@@ -546,7 +548,7 @@ export default function Editor() {
   // The Sections list: each card closes the list, then opens its editor
   // (every SectionKey is also a SheetKind).
   // Whatever closes or replaces the Services sheet (the lapse close included) ends the add view.
-  useEffect(() => { setServicesAdd((a) => keepServicesAdd(a, sheet)); }, [sheet]);
+  useEffect(() => { setServicesAdd((a) => keepServicesAdd(a, sheet)); setServicesFocus((f) => keepServicesFocus(f, sheet)); }, [sheet]);
   const openSection = useCallback((key: SectionKey) => {
     track('section_opened', { section: key });
     closeThen(() => setSheet(key));
@@ -557,6 +559,16 @@ export default function Editor() {
     track('add_button_tapped');
     setButton({ kind: 'book', labelKey: MAIN_BOOK_KEY[shownRef.current?.template ?? 'luxe'] ?? 'bookButton' });
     setSheet('button');
+  }, [sheet]);
+  // A tap on a service card in the preview: the Services sheet (the Bookings one when the site has a shop, where
+  // ab_services is the source) at that service, to edit, remove or add another.
+  const onPreviewService = useCallback((index: number) => {
+    const at = serviceFocusFor(sheet, overlayRef.current, shownRef.current?.services, index);
+    if (at == null) return;
+    track('service_card_tapped');
+    setServicesAdd(false);
+    setServicesFocus(at);
+    setSheet('services');
   }, [sheet]);
   const onPreviewAddService = useCallback(() => {
     if (!canOpenAddService(sheet, overlayRef.current)) return;
@@ -695,7 +707,7 @@ export default function Editor() {
         <EditorBackBar visible={overlay == null && sheet == null && !uploading && canGoBackToStart(site, pendingPaid, !!session)} />
         {/* The site's own background, so nothing else shows around the page. */}
         <View style={[styles.preview, { backgroundColor: previewBackground(data) }]}>
-          <SitePreview data={shown} editable page={page} shopProducts={shopProducts} onEditText={onPreviewText} onEditImage={onPreviewImage} onNavigate={onPreviewNav} onAddService={onPreviewAddService} onAddButton={onPreviewAddButton} pillTourRef={changeImageRef} samplePaths={sampleHeroPaths(shown, page)} chipsHidden={sheet != null} />
+          <SitePreview data={shown} editable page={page} shopProducts={shopProducts} onEditText={onPreviewText} onEditImage={onPreviewImage} onNavigate={onPreviewNav} onAddService={onPreviewAddService} onService={onPreviewService} onAddButton={onPreviewAddButton} pillTourRef={changeImageRef} samplePaths={sampleHeroPaths(shown, page)} chipsHidden={sheet != null} />
           {/* The two floating controls, Design above Colour, hidden while the prompts / guide are up.
               Design is offered on a published site too: it only edits the draft (like Colour), and the
               change goes live on the next Publish. */}
@@ -802,20 +814,22 @@ export default function Editor() {
             visible={sheet === 'services'}
             shop={shop}
             onServices={(list) => commit((d) => withMirroredServices(d, list))}
-            onClose={() => (servicesAdd ? closeThen(() => setServicesAdd(false)) : closeThen(() => setSheet('sections')))}
+            onClose={() => (servicesAdd || servicesFocus != null ? closeThen(() => { setServicesAdd(false); setServicesFocus(null); }) : closeThen(() => setSheet('sections')))}
             onDismiss={onSheetDismiss}
             upload={uploadForSection}
             startAdd={servicesAdd}
+            focus={servicesFocus != null ? { index: servicesFocus, title: shown.services?.[servicesFocus]?.title ?? '' } : null}
           />
         ) : (
           <ServicesSheet
             visible={sheet === 'services'}
             data={data}
             onChange={commit}
-            onClose={() => (servicesAdd ? closeThen(() => setServicesAdd(false)) : closeThen(() => setSheet('sections')))}
+            onClose={() => (servicesAdd || servicesFocus != null ? closeThen(() => { setServicesAdd(false); setServicesFocus(null); }) : closeThen(() => setSheet('sections')))}
             onDismiss={onSheetDismiss}
             upload={uploadForSection}
             startAdd={servicesAdd}
+            focusIndex={servicesFocus}
           />
         )}
         <HoursSheet

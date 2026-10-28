@@ -8,6 +8,7 @@
  *    (defensive; prepareEditableHtml should have removed them all);
  *  - outlines editable text and photos;
  *  - makes the site menu work (burger, entry taps -> {type:'nav'}, long press -> edit the entry's label);
+ *  - a tap on a service card ([data-ab-service]) posts {type:'service', index};
  *  - swallows every click and form submit (the preview is not a browser; the
  *    native onShouldStartLoadWithRequest blocks navigation as well) and posts
  *    {type:'edit'|'image', path} for taps on editable things;
@@ -58,6 +59,8 @@ export const EDITOR_JS = String.raw`(function () {
     var style = document.createElement('style');
     style.textContent =
       '[data-edit]{outline:1px dashed rgba(212,166,74,0.75);outline-offset:3px;border-radius:2px;cursor:pointer;-webkit-tap-highlight-color:rgba(212,166,74,0.25);}' +
+      '[data-ab-service]{outline:1px dashed rgba(212,166,74,0.75);outline-offset:-3px;border-radius:2px;cursor:pointer;-webkit-tap-highlight-color:rgba(212,166,74,0.25);}' +
+      '[data-ab-service] [data-edit]{outline:none;}' +
       '[data-edit-image]{outline:2px dashed rgba(212,166,74,0.75);outline-offset:-4px;cursor:pointer;}' +
       'a,img{-webkit-touch-callout:none;}';
     (document.head || document.documentElement).appendChild(style);
@@ -168,6 +171,18 @@ export const EDITOR_JS = String.raw`(function () {
     if (el.tagName === 'IMG' && el.getAttribute('fetchpriority') === 'high' && upTo(el, function (n) { return n.tagName === 'HEADER' || n.tagName === 'NAV'; })) { post({ type: 'edit', path: 'shopName' }); return; }
     var chipHost = closestAttr(el, 'data-aib-chip');
     if (chipHost) { post({ type: 'image', path: chipHost.getAttribute('data-aib-chip') }); return; }
+    // A service card (data-ab-service, tagged by tagServiceCards): a tap anywhere on it, its words included, opens the
+    // Services sheet at that service. A photo inside it, or a button/link with a label of its own, keeps its own handling.
+    var card = closestAttr(el, 'data-ab-service');
+    if (card && !closestAttr(el, 'data-edit-image')) {
+      var own = upTo(el, function (n) { return n === card || n.tagName === 'A' || n.tagName === 'BUTTON'; });
+      var ownEdit = own && own !== card && own.querySelector ? own.querySelector('[data-edit]') : null;
+      var ownPath = ownEdit ? ownEdit.getAttribute('data-edit') : '';
+      if (!ownEdit || ownPath.indexOf('services.') === 0) {
+        var si = parseInt(card.getAttribute('data-ab-service'), 10);
+        if (si >= 0) { post({ type: 'service', index: si }); return; }
+      }
+    }
     var text = closestAttr(el, 'data-edit');
     if (text) { post({ type: 'edit', path: text.getAttribute('data-edit') }); return; }
     // A button or link whose text is editable: tapping anywhere on it edits that text (its padding, a

@@ -544,6 +544,36 @@ export function withShopPreview(html: string, products: PreviewProduct[] | null 
     .replace(/(<div id="shop-preview-grid"[^>]*>)(<\/div>)/, (_m, open: string, close: string) => `${open}${cards}${close}${note}`);
 }
 
+export const SERVICE_CARD_ATTR = 'data-ab-service';
+
+// The opening tag of one service card in each design's own markup: luxe's Home card, Prime's and Euphoria's rows, and
+// the multi-page shell's Services-page card. A card is only tagged when its own text carries a services.<i>.* path.
+const SERVICE_CARD_OPEN = /<div class="(?:group border-2 border-\[#f4a100\][^"]*|p-svc-row|eu-service-row|ab-card)"/g;
+
+/**
+ * PREVIEW ONLY: tag each service card with data-ab-service="<index>" (the services[] position its text names), so a tap
+ * anywhere on the card, not only on its words, can open the Services sheet at that service. Run after
+ * prepareEditableHtml (the data-edit spans exist). The index is read from the card's first services.<i>.* path, never
+ * counted, so an item the renderer skips cannot shift the rest. A card ends at the next card or its section's end; one
+ * with no services.<i>.* text is left alone (the Team page's cards, an empty row). Not applied to published output.
+ */
+export function tagServiceCards(html: string): string {
+  const opens: { at: number; end: number }[] = [];
+  SERVICE_CARD_OPEN.lastIndex = 0;
+  for (let m = SERVICE_CARD_OPEN.exec(html); m; m = SERVICE_CARD_OPEN.exec(html)) opens.push({ at: m.index, end: m.index + m[0].length });
+  let out = '';
+  let last = 0;
+  opens.forEach((o, k) => {
+    const sectionEnd = html.indexOf('</section>', o.end);
+    const limit = Math.min(k + 1 < opens.length ? opens[k + 1].at : html.length, sectionEnd < 0 ? html.length : sectionEnd);
+    const first = /data-edit="services\.(\d+)\./.exec(html.slice(o.end, limit));
+    if (!first) return;
+    out += html.slice(last, o.end) + ` ${SERVICE_CARD_ATTR}="${first[1]}"`;
+    last = o.end;
+  });
+  return out + html.slice(last);
+}
+
 export const ADD_SERVICE_LABEL = '+ Add a service';
 export const ADD_SERVICE_EMPTY_NOTE = 'Your services will show here';
 const ADD_SERVICE_ATTR = 'data-ab-add-service';
@@ -632,7 +662,7 @@ export function buildPreviewHtml(raw: WebsiteData, editable: boolean, shopProduc
   if (!editable) return withPreviewBackground(withShopPreview(withImages(stripTracking(renderSite(forRender(data))), data), shopProducts), bg);
   const { marked, ids } = markData(data);
   return withPreviewBackground(
-    withAddButton(withAddService(withShopPreview(withImages(tagImageSlots(prepareEditableHtml(stripTracking(renderSite(forRender(marked))), ids)), data), shopProducts), data), data),
+    withAddButton(withAddService(withShopPreview(withImages(tagImageSlots(tagServiceCards(prepareEditableHtml(stripTracking(renderSite(forRender(marked))), ids))), data), shopProducts), data), data),
     bg,
   );
 }
@@ -653,7 +683,7 @@ function buildPageHtml(data: WebsiteData, editable: boolean, shopProducts: Previ
   const file = previewFileOf(bundle.set, page);
   const html = (bundle.pages.find((f) => f.path === file.path) ?? bundle.pages[0]).html;
   const clean = stripTracking(html);
-  const inner = editable ? tagSampleHero(tagImageSlots(prepareEditableHtml(clean, ids)), data, page) : clean;
+  const inner = editable ? tagSampleHero(tagImageSlots(tagServiceCards(prepareEditableHtml(clean, ids))), data, page) : clean;
   const shown = withShopPreview(withImages(inner, data), shopProducts);
   return withPreviewBackground(editable ? withAddButton(withAddService(shown, data, page), data, page) : shown, bg);
 }

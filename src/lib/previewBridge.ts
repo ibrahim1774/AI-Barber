@@ -8,6 +8,7 @@ export type PreviewMessage =
   | { type: 'edit'; path: string }
   | { type: 'image'; path: string }
   | { type: 'nav'; href: string }
+  | { type: 'service'; index: number }
   | { type: 'addService' }
   | { type: 'addButton' }
   | { type: 'scrollY'; y: number }
@@ -65,6 +66,13 @@ export function parsePreviewMessage(raw: unknown, data: WebsiteData, page?: Prev
       return typeof o.path === 'string' && IMAGE_PATHS(data, page).includes(o.path) ? { type: 'image', path: o.path } : null;
     case 'nav':
       return typeof o.href === 'string' && o.href.length <= MAX_HREF && pageHrefsFor(data).includes(o.href) ? { type: 'nav', href: o.href } : null;
+    case 'service': {
+      // A service card: the index of a service this page's text names (services.<i>.*), never a free number.
+      const i = o.index;
+      if (typeof i !== 'number' || !Number.isInteger(i) || i < 0) return null;
+      const prefix = `services.${i}.`;
+      return (editPaths ?? previewEditPaths(data, page)).some((p) => p.startsWith(prefix)) ? { type: 'service', index: i } : null;
+    }
     case 'addService':
       return { type: 'addService' };
     case 'addButton':

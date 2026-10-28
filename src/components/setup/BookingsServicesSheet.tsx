@@ -4,6 +4,7 @@ import type { Service, Shop } from '@/lib/shop';
 import { Sheet, SheetAction } from '@/components/EditSheet';
 import { router } from 'expo-router';
 import { ServicesEditorView } from '@/components/setup/ServicesEditor';
+import { serviceAtSitePosition } from '@/lib/setup/servicesMap';
 import { useServicesEditor } from '@/components/setup/useServicesEditor';
 
 type Props = {
@@ -17,13 +18,15 @@ type Props = {
   upload(onPicked?: () => void): Promise<string | null>;
   /** Opened from the preview's "+ Add a service": start at the new-service form. */
   startAdd?: boolean;
+  /** Opened from a service card in the preview: that service (its position in the site's list, and its title). */
+  focus?: { index: number; title: string } | null;
 };
 
 /**
  * The Edit tab's Services sheet once a shop exists. Replaces ServicesSheet,
  * which keeps the Phase 1 behaviour (WebsiteData only) when there is no shop.
  */
-export function BookingsServicesSheet({ visible, shop, onServices, onClose, onDismiss, upload, startAdd }: Props) {
+export function BookingsServicesSheet({ visible, shop, onServices, onClose, onDismiss, upload, startAdd, focus }: Props) {
   const { height } = useWindowDimensions();
   const [picking, setPicking] = useState(false);
   const afterDismiss = useRef<(() => void) | null>(null);
@@ -48,6 +51,18 @@ export function BookingsServicesSheet({ visible, shop, onServices, onClose, onDi
 
   const { addOwn } = ed;
   useEffect(() => { if (visible && startAdd) addOwn(); }, [visible, startAdd]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A card tapped in the preview opens that service's form. The list loads (and reloads) after the sheet opens, so
+  // wait for it; once per open. The site's list is the show-on-site rows, so the position is mapped, not reused.
+  const focused = useRef(false);
+  useEffect(() => { if (!visible) focused.current = false; }, [visible]);
+  const { openForm, loading, services } = ed;
+  useEffect(() => {
+    if (!visible || !focus || startAdd || focused.current || loading || services.length === 0) return;
+    focused.current = true;
+    const target = serviceAtSitePosition(services, focus.index, focus.title);
+    if (target) openForm(target);
+  }, [visible, focus, startAdd, loading, services]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDismiss = () => {
     const next = afterDismiss.current;
