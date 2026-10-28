@@ -60,6 +60,11 @@
       "v": 1,
       "bytes": 313354,
       "seconds": 25
+    },
+    "settings-account": {
+      "v": 1,
+      "bytes": 178722,
+      "seconds": 18
     }
   }
 }
