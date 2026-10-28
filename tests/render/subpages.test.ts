@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   SITE_BOOK_PATH, SITE_SHOP_PATH, SITE_CONFIG_PATH, isSiteBookLink, isSiteShopLink, isSiteSubpageLink,
-  bookStripServices, bookStripHtml, shopPreviewHtml, SHOP_PREVIEW_SCRIPT, type SectionSkin,
+  bookStripHtml, shopPreviewHtml, SHOP_PREVIEW_SCRIPT, type SectionSkin,
 } from '../../lib/render/subpages';
 import { safeHref } from '../../lib/render/safeHref';
 
@@ -33,7 +33,7 @@ describe('site subpage links', () => {
 });
 
 const skin: SectionSkin = {
-  section: 'S', inner: 'I', heading: 'H', list: 'L', item: 'IT', name: 'N', price: 'P', button: 'B',
+  section: 'S', inner: 'I', heading: 'H', button: 'B',
   grid: 'G', link: 'LK', css: '.ab-sp-card{color:red}',
 };
 const site = (over: Record<string, unknown> = {}) => ({
@@ -50,14 +50,6 @@ const site = (over: Record<string, unknown> = {}) => ({
 }) as any;
 
 describe('book strip', () => {
-  it('takes up to 3 named services with their price when set', () => {
-    expect(bookStripServices(site())).toEqual([
-      { name: 'Fade', price: '$30' },
-      { name: 'Beard <trim>', price: '' },
-      { name: 'Kids cut', price: '$20' },
-    ]);
-  });
-
   it('renders only when the Book button is the site /book page', () => {
     expect(bookStripHtml(site({ bookingUrl: 'https://booksy.com/x' }), skin)).toBe('');
     expect(bookStripHtml(site({ bookingUrl: 'https://www.aibarber.org/book/x' }), skin)).toBe('');
@@ -69,19 +61,16 @@ describe('book strip', () => {
     expect(html).not.toContain('target="_blank"');
   });
 
-  it('escapes service names and prices and never prints an empty price', () => {
-    const html = bookStripHtml(site(), skin);
-    expect(html).toContain('Beard &lt;trim&gt;');
-    expect(html).not.toContain('<trim>');
-    expect(html).not.toMatch(/class="P">\s*</);
-    expect(html.match(/class="IT"/g)).toHaveLength(3);
-  });
-
-  it('with no services shows the heading and the button only (no empty list)', () => {
-    const html = bookStripHtml(site({ services: [] }), skin);
-    expect(html).toContain('Book online');
-    expect(html).toContain('href="/book"');
-    expect(html).not.toContain('class="L"');
+  it('never lists service names or prices (the Services section already shows them), whatever services the site has', () => {
+    for (const services of [site().services, []]) {
+      const html = bookStripHtml(site({ services }), skin);
+      expect(html).toContain('Book online');
+      expect(html).toContain('href="/book"');
+      expect(html).not.toContain('<ul');
+      expect(html).not.toContain('Fade');
+      expect(html).not.toContain('Beard');
+      expect(html).not.toContain('$30');
+    }
   });
 });
 
