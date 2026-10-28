@@ -126,7 +126,7 @@ describe('marked labels in the preview', () => {
       expect(published).not.toContain('data-edit');
       // The editor-only "+ Add a service" control is not on the published page.
       const editable = buildPreviewHtml(data, true).replace(/<(div|section) data-ab-editor-only[^>]*>(?:<p[^>]*>[^<]*<\/p>)?<button[^>]*data-ab-add-service[^>]*>[^<]*<\/button><\/\1>/g, '');
-      const strip = (h: string) => h.replace(/<span data-edit="[^"]*">/g, '').replace(/<\/span>/g, '').replace(/ data-edit-image="[^"]*"/g, '').replace(/ data-ab-service="\d+"/g, '')
+      const strip = (h: string) => h.replace(/<span data-edit="[^"]*">/g, '').replace(/<\/span>/g, '').replace(/ data-edit-image="[^"]*"/g, '').replace(/ data-ab-service="\d+"/g, '').replace(/ data-ab-hours="1"/g, '')
         .replace(/name="published-at" content="\d+"/, '').replace(/<span[^>]*>/g, '');
       // The visible words are the same (spans stripped on both sides, per-publish stamp removed).
       expect(strip(editable).replace(/\s+/g, ' ')).toBe(strip(published).replace(/\s+/g, ' '));
