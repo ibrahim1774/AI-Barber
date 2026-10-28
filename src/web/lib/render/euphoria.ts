@@ -217,17 +217,10 @@ const EUPHORIA_SKIN: SectionSkin = {
   section: 'eu-section',
   inner: 'eu-container ab-sub',
   heading: 'eu-display',
-  list: 'ab-sub-list',
-  item: 'ab-sub-row',
-  name: 'eu-serif ab-sub-name',
-  price: 'ab-sub-price',
   button: 'eu-cta eu-cta-solid',
   grid: 'ab-sub-grid',
   link: 'eu-cta',
   css: '.ab-sub{text-align:center}.ab-sub .eu-display{font-size:clamp(32px,5vw,56px);margin:0 0 32px}'
-    + '.ab-sub-list{list-style:none;padding:0;max-width:640px;margin:0 auto 32px;text-align:left}'
-    + '.ab-sub-row{display:flex;justify-content:space-between;gap:16px;padding:14px 0;border-bottom:1px solid var(--eu-line-soft)}'
-    + '.ab-sub-name{font-size:20px;color:var(--eu-ink)}.ab-sub-price{color:var(--eu-brand);font-style:italic;white-space:nowrap}'
     + '.ab-sub-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin:0 auto 32px;max-width:880px;text-align:left}'
     + '@media(min-width:768px){.ab-sub-grid{grid-template-columns:repeat(4,1fr)}}'
     + '.ab-sp-card{display:flex;flex-direction:column;gap:6px;text-decoration:none;color:var(--eu-ink)}'

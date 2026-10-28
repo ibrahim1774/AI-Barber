@@ -199,16 +199,10 @@ const PRIME_SKIN: SectionSkin = {
   section: 'p-section',
   inner: 'p-container ab-sub',
   heading: 'p-display',
-  list: 'p-svc ab-sub-list',
-  item: 'p-svc-row',
-  name: 'p-serif p-italic ab-sub-name',
-  price: 'p-serif p-italic ab-sub-price',
   button: 'p-cta p-cta-solid',
   grid: 'ab-sub-grid',
   link: 'p-cta',
   css: '.ab-sub{text-align:center}.ab-sub .p-display{font-size:clamp(28px,5vw,46px);margin:0 0 28px}'
-    + '.ab-sub-list{max-width:640px;margin:0 auto 28px;text-align:left}.ab-sub-name{font-size:1.2rem;font-weight:600}'
-    + '.ab-sub-price{font-size:1.4rem;color:var(--p-brand-bright);white-space:nowrap}'
     + '.ab-sub-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin:0 auto 28px;max-width:880px;text-align:left}'
     + '@media(min-width:768px){.ab-sub-grid{grid-template-columns:repeat(4,1fr)}}'
     + '.ab-sp-card{display:flex;flex-direction:column;gap:6px;text-decoration:none;color:var(--p-ink)}'
