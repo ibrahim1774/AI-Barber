@@ -69,7 +69,7 @@ import { useTour } from '@/components/tutorial/useTour';
 import { useTutorialTarget } from '@/components/tutorial/registry';
 import { editTourReady } from '@/components/tutorial/tours';
 import { useSession } from '@/lib/auth';
-import { PRICE_REMINDER, needsPriceReminder } from '@/lib/samplePrices';
+import { PRICE_REMINDER, migrateSamplePrices, needsPriceReminder } from '@/lib/samplePrices';
 import { PublishBar } from '@/components/PublishBar';
 import { PaymentBlock } from '@/components/PaymentLock';
 import { isBlocking, usePaymentLock, type BlockKind } from '@/lib/paymentLock';
@@ -220,7 +220,11 @@ export default function Editor() {
   // the prompts / guide are still to come.
   const openRecord = useCallback(async (raw: SiteRecord, isAlive: () => boolean) => {
     // Shown and edited as the published page renders it (old invented copy removed).
-    const s = editorRecord(raw);
+    const done = migrateSamplePrices(raw);
+    // Saved once, so the flag (and the filled prices) stay and the account row gets them on the next sync.
+    const migrated = done === raw ? raw : { ...done, updatedAt: Date.now() };
+    if (migrated !== raw) saveSite(migrated).catch(() => {});
+    const s = editorRecord(migrated);
     const o = await nextOverlay(s);
     if (!isAlive()) return;
     siteRef.current = s;

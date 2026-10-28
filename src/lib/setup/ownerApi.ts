@@ -1,6 +1,7 @@
 import { MOVE_IN_PROGRESS_MESSAGE } from '@/lib/claimCopy';
 import { accessToken } from '@/lib/accessToken';
 import type { SiteRecord } from '@/lib/siteStore';
+import { isSamplePrice } from '@/lib/samplePrices';
 import { websiteToSetupServices, type SetupService } from '@/lib/setup/servicesMap';
 
 const base = () => process.env.EXPO_PUBLIC_API_BASE ?? 'https://www.aibarber.org';
@@ -86,6 +87,12 @@ export function deviceTimezone(): string {
   return 'America/New_York';
 }
 
+/** Example prices the migration filled on the website cards never reach the shop until the barber has reviewed the services. */
+function withoutExamplePrices(list: SetupService[], inputs: { samplePricesFilled?: boolean; pricesReviewed?: boolean }): SetupService[] {
+  if (!inputs.samplePricesFilled || inputs.pricesReviewed) return list;
+  return list.map((s) => (isSamplePrice(s.name, String((s.priceCents ?? 0) / 100)) ? { ...s, priceCents: null } : s));
+}
+
 /** POST /api/shop/setup body from the local site. */
 export function buildSetupBody(site: SiteRecord, timezone: string = deviceTimezone()): SetupBody {
   const d = site.data;
@@ -93,7 +100,7 @@ export function buildSetupBody(site: SiteRecord, timezone: string = deviceTimezo
     siteId: site.draftId,
     name: (d.shopName || site.inputs.shopName || 'My barbershop').trim(),
     timezone,
-    services: websiteToSetupServices(d.services ?? []),
+    services: withoutExamplePrices(websiteToSetupServices(d.services ?? []), site.inputs),
   };
   const address = d.contact?.address?.trim();
   if (address) body.address = address;

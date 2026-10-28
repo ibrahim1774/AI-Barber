@@ -27,9 +27,12 @@ export function hasSamplePrices(services: { title: string; price?: string }[] | 
   return !!services?.some((s) => isSamplePrice(s.title, s.price ?? ''));
 }
 
-/** Publish shows the "Check your prices" alert: sample prices still on the site, services never reviewed, not a booking-link import. */
-export function needsPriceReminder(rec: { data: { services?: { title: string; price?: string }[] }; inputs: { pricesReviewed?: boolean; importedFrom?: string } }): boolean {
-  return !rec.inputs.pricesReviewed && rec.inputs.importedFrom !== 'booking' && hasSamplePrices(rec.data.services);
+/**
+ * Publish shows the "Check your prices" alert: sample prices still on the site, services never reviewed. A booking-link
+ * import is exempt (its prices are the real ones) unless the sample-price migration filled blanks on it (`samplePricesFilled`).
+ */
+export function needsPriceReminder(rec: { data: { services?: { title: string; price?: string }[] }; inputs: { pricesReviewed?: boolean; importedFrom?: string; samplePricesFilled?: boolean } }): boolean {
+  return !rec.inputs.pricesReviewed && (rec.inputs.importedFrom !== 'booking' || !!rec.inputs.samplePricesFilled) && hasSamplePrices(rec.data.services);
 }
 
 export const PRICE_REMINDER = { title: 'Check your prices', body: 'Some services still show example prices. Make sure they match yours before customers see them.', button: 'Edit prices' };
@@ -40,4 +43,22 @@ export function withSamplePrices<T extends { title: string; price?: string }>(li
     const c = samplePriceCents(s.title);
     return c != null && !(s.price ?? '').trim() ? { ...s, price: `$${c / 100}` } : s;
   });
+}
+
+/**
+ * Once per site (`inputs.samplePricesApplied`), whatever the start option (booking-link import, a site made before sample
+ * prices existed): fills the sample price on standard-named services that have a blank price. Priced services (any text,
+ * "0" and "Free" included) are kept. `samplePricesFilled` is set only when something was filled: it is what keeps the
+ * Check-your-prices reminder on an import and keeps the sample prices out of the bookings shop (see buildSetupBody).
+ * The same object when the site was already migrated.
+ */
+export function migrateSamplePrices<T extends { data: { services?: { title: string; price?: string }[] }; inputs: { samplePricesApplied?: boolean; samplePricesFilled?: boolean } }>(rec: T): T {
+  if (rec.inputs.samplePricesApplied) return rec;
+  const filled = withSamplePrices(rec.data.services);
+  const changed = !!filled && filled.some((s, i) => s !== rec.data.services![i]);
+  return {
+    ...rec,
+    data: changed ? { ...rec.data, services: filled } : rec.data,
+    inputs: { ...rec.inputs, samplePricesApplied: true as const, ...(changed ? { samplePricesFilled: true as const } : {}) },
+  };
 }

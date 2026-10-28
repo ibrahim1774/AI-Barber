@@ -3,12 +3,13 @@ import fs from 'fs';
 import path from 'path';
 jest.mock('@/constants/theme', () => require('./store/themeMock'));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
-import { SAMPLE_PRICES, withSamplePrices, isSamplePrice, needsPriceReminder, hasSamplePrices } from '@/lib/samplePrices';
+import { SAMPLE_PRICES, migrateSamplePrices, withSamplePrices, isSamplePrice, needsPriceReminder, hasSamplePrices } from '@/lib/samplePrices';
 import { scratchPicks } from '@/lib/scratchDefaults';
 import { servicesFromPicks } from '@/lib/serviceChecklist';
 import { ServicesEditorView } from '@/components/setup/ServicesEditor';
 import { emptyDraft } from '@/lib/setup/serviceDraft';
 import { websiteToSetupServices } from '@/lib/setup/servicesMap';
+import { buildSetupBody } from '@/lib/setup/ownerApi';
 
 const { act, create: rawCreate } = require('react-test-renderer');
 const create = (el: any) => { let r: any; act(() => { r = rawCreate(el); }); return r; };
@@ -60,7 +61,8 @@ describe('publish reminder', () => {
   test('needed for untouched samples', () => expect(needsPriceReminder(rec())).toBe(true));
   test('not after review, not for booking-link imports, not when prices changed', () => {
     expect(needsPriceReminder(rec({ inputs: { pricesReviewed: true } }))).toBe(false);
-    expect(needsPriceReminder(rec({ inputs: { importedFrom: 'booking' } }))).toBe(false);
+    expect(needsPriceReminder(rec({ inputs: { importedFrom: 'booking' } }))).toBe(false); // real prices that happen to equal a sample
+    expect(needsPriceReminder(rec({ inputs: { importedFrom: 'booking', samplePricesFilled: true } }))).toBe(true);
     expect(needsPriceReminder(rec({ data: { services: [{ title: 'Haircut', price: '$28' }] } }))).toBe(false);
     expect(hasSamplePrices(undefined)).toBe(false);
   });
@@ -77,5 +79,56 @@ describe('publish reminder', () => {
     const a = src('src/lib/account.ts');
     expect(a).toContain('p.pricesReviewed = true');
     expect(a).toContain('inputs.pricesReviewed = true');
+  });
+});
+
+describe('sample-price migration (any site, once)', () => {
+  const svc = (title: string, price?: string) => ({ title, ...(price === undefined ? {} : { price }) });
+  const site = (services: any[], inputs: any = {}) => ({ draftId: 'd', data: { shopName: 'ASR Cuts', services }, inputs });
+  const prices = (r: any) => r.data.services.map((s: any) => s.price);
+
+  test('fills blank standard services on a booking-import site and flags it', () => {
+    const r: any = migrateSamplePrices(site([svc('Haircut'), svc('Beard Trim', ''), svc('Haircut and Beard', '  ')], { importedFrom: 'booking' }));
+    expect(prices(r)).toEqual(['$30', '$20', '$45']);
+    expect(r.inputs).toMatchObject({ samplePricesApplied: true, samplePricesFilled: true, importedFrom: 'booking' });
+  });
+  test('fills an old site made before build 40', () => {
+    expect(prices(migrateSamplePrices(site([svc('Haircut', undefined)]) as any))).toEqual(['$30']);
+  });
+  test('never overwrites a price, "0" and "Free" included', () => {
+    const r: any = migrateSamplePrices(site([svc('Haircut', '$28'), svc('Beard trim', '0'), svc('Haircut & beard', 'Free')]));
+    expect(prices(r)).toEqual(['$28', '0', 'Free']);
+    expect(r.inputs.samplePricesFilled).toBeUndefined();
+    expect(r.inputs.samplePricesApplied).toBe(true);
+  });
+  test('non-standard names are untouched', () => {
+    const r: any = migrateSamplePrices(site([svc('Hot towel shave'), svc('Kids cut', '')]));
+    expect(prices(r)).toEqual([undefined, '']);
+  });
+  test('once only: a price blanked later is not refilled; same object back', () => {
+    const first: any = migrateSamplePrices(site([svc('Haircut')]));
+    const blanked = { ...first, data: { ...first.data, services: [svc('Haircut', '')] } };
+    expect(migrateSamplePrices(blanked)).toBe(blanked);
+    expect(prices(migrateSamplePrices(blanked))).toEqual(['']);
+  });
+  test('reminder: shown for migrated import samples, not for an import with real prices', () => {
+    const mig: any = migrateSamplePrices(site([svc('Haircut')], { importedFrom: 'booking' }));
+    expect(needsPriceReminder(mig)).toBe(true);
+    expect(needsPriceReminder({ ...mig, inputs: { ...mig.inputs, pricesReviewed: true } })).toBe(false);
+    const real: any = migrateSamplePrices(site([svc('Haircut', '$30')], { importedFrom: 'booking' }));
+    expect(needsPriceReminder(real)).toBe(false);
+  });
+  test('shop setup body leaves migrated example prices out until reviewed; real ones and reviewed sites go through', () => {
+    const mig: any = migrateSamplePrices(site([svc('Haircut'), svc('Beard trim', '$22')], { importedFrom: 'booking' }));
+    expect(buildSetupBody(mig, 'UTC').services.map((s) => s.priceCents)).toEqual([null, 2200]);
+    const reviewed = { ...mig, inputs: { ...mig.inputs, pricesReviewed: true } };
+    expect(buildSetupBody(reviewed, 'UTC').services.map((s) => s.priceCents)).toEqual([3000, 2200]);
+    const fresh: any = site([svc('Haircut', '$30')]);
+    expect(buildSetupBody(fresh, 'UTC').services[0].priceCents).toBe(3000);
+  });
+  test('wired in the editor load path and synced with the account prefs', () => {
+    expect(src('src/app/(tabs)/edit.tsx')).toContain('migrateSamplePrices(raw)');
+    const a = src('src/lib/account.ts');
+    for (const k of ['samplePricesApplied', 'samplePricesFilled']) { expect(a).toContain(`p.${k} = true`); expect(a).toContain(`inputs.${k} = true`); }
   });
 });

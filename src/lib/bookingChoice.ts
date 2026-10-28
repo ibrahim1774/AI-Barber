@@ -22,6 +22,10 @@ export type BookingPrefs = {
   ownBookingCleared?: boolean;
   /** The barber has opened a Services editor (or the site came from their real listing): no example-price reminder at Publish. */
   pricesReviewed?: boolean;
+  /** The one-time sample-price migration has run on this site (a price the barber blanks later is not refilled). */
+  samplePricesApplied?: boolean;
+  /** ...and it filled at least one blank price: those prices are examples, kept off the bookings shop until reviewed. */
+  samplePricesFilled?: boolean;
 };
 
 const ownLinkOf = (url?: string | null): string | null => {
