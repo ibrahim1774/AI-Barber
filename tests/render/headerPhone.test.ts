@@ -1,5 +1,6 @@
-// Luxe header on a phone: the number prints as small secondary text under the brand (the call icon stays), as its own tel: link.
-// No stored number = no line. Prime and euphoria have no phone text in the header (their button is a Book link), so they are unchanged.
+// Luxe header on a phone: ONE row. The number sits directly next to the call icon inside the one tel: link (.ab-call), vertically
+// centred with the brand and the menu button; nothing is printed under the brand. No stored number = no call link.
+// Prime and euphoria have no phone text in the header (their button is a Book link), so they are unchanged.
 import { describe, expect, it } from 'vitest';
 import { renderSiteBundle } from '../../lib/render/site';
 import type { WebsiteData } from '../../types';
@@ -28,50 +29,55 @@ const CASES: [string, (d: WebsiteData) => string][] = [
 ];
 const multiOf = (n: string) => n.startsWith('multi');
 
-describe('luxe header phone text on a phone', () => {
+describe('luxe header phone on a phone: one row, number next to the icon', () => {
   for (const [name, get] of CASES) {
     const multi = multiOf(name);
-    it(`${name}: the number is a tel: link right under the brand, the icon call link stays`, () => {
-      const hdr = headerOf(get(site('luxe', multi)));
-      expect(hdr).toContain('<div class="ab-brandcol">');
-      const col = /<div class="ab-brandcol">([\s\S]*?<a class="ab-sub"[^>]*>[^<]*<\/a>)<\/div>/.exec(hdr)?.[1] ?? '';
-      expect(col).not.toBe('');
-      expect(col).toMatch(/<a class="ab-sub" href="tel:\(512\)555-0100">\(512\) 555-0100<\/a>$/);
-      // the brand is inside the same column, before the number, and the call icon link is outside it
-      expect(col.indexOf('Jax')).toBeGreaterThan(-1);
-      expect(col.indexOf('Jax')).toBeLessThan(col.indexOf('class="ab-sub"'));
-      expect(col).not.toContain('class="ab-call');
-      expect(hdr).toMatch(/class="ab-call[ "]/);
-      expect(hdr.split('href="tel:').length - 1).toBe(2);
-      // phone-only: hidden above 430px (where the call link prints the number itself), 44px tap area by padding
-      expect(hdr).toMatch(/\.ab-brandcol>\.ab-sub\{display:none;[^}]*font-size:12px;[^}]*font-variant-numeric:tabular-nums[^}]*padding:15px 0/);
-      expect(hdr).toMatch(/@media\(max-width:430px\)\{\.ab-brandcol>\.ab-sub\{display:block\}\}/);
+    it(`${name}: the icon and the number are one tel: link, nothing under the brand`, () => {
+      const html = get(site('luxe', multi));
+      const hdr = headerOf(html);
+      const call = /<a [^>]*class="ab-call[^"]*"[^>]*>[\s\S]*?<\/a>/.exec(hdr)?.[0] ?? '';
+      expect(call).toContain('<svg');
+      expect(call).toMatch(/<span class="ab-call-text[^"]*"[^>]*>\(512\) 555-0100<\/span>/);
+      expect(call).toMatch(/href="tel:\(512\)555-0100"/);
+      // exactly one tel: link in the header, and the old line under the brand is gone
+      expect(hdr.split('href="tel:').length - 1).toBe(1);
+      expect(hdr).not.toContain('ab-sub');
+      expect(hdr).not.toContain('ab-brandcol');
+      expect(html).not.toContain('ab-hdrgap');
+      // the number is shown at phone widths: nothing hides .ab-call-text any more
+      expect(html).not.toMatch(/\.ab-call-text\s*\{\s*display:\s*none/);
+      // and it keeps one line
+      expect(html).toMatch(/\.ab-call-text\s*\{[^}]*(white-space:\s*nowrap|font-variant-numeric)/);
+      expect(call).toMatch(/whitespace-nowrap|ab-call-text/);
     });
 
-    it(`${name}: no stored number prints no line and no extra markup`, () => {
+    it(`${name}: no stored number prints no call link`, () => {
       for (const phone of ['', '   ', 'call us']) {
         const hdr = headerOf(get(site('luxe', multi, { phone })));
-        expect(hdr).not.toContain('class="ab-sub"');
-        expect(hdr).not.toContain('ab-brandcol');
         expect(hdr).not.toContain('tel:');
+        expect(hdr).not.toContain('ab-call');
       }
     });
 
     it(`${name}: the number is escaped`, () => {
       const hdr = headerOf(get(site('luxe', multi, { phone: '(512) 555-0100 <b>"x"</b>' })));
       expect(hdr).not.toContain('<b>');
-      expect(hdr).toMatch(/<a class="ab-sub" href="tel:[^"<>]*">[^<]*&lt;b&gt;[^<]*<\/a>/);
     });
 
     for (const mode of [undefined, 'logo', 'name'] as const) {
-      it(`${name}: logo header mode ${mode ?? 'both'} keeps the number under the brand`, () => {
+      it(`${name}: logo header mode ${mode ?? 'both'} keeps the number next to the icon`, () => {
         const hdr = headerOf(get(site('luxe', multi, { logo: LOGO, ...(mode ? { headerShow: mode } : {}) })));
-        expect(hdr).toMatch(/<div class="ab-brandcol[ "]/);
-        expect(hdr).toContain('<a class="ab-sub" href="tel:(512)555-0100">(512) 555-0100</a>');
+        expect(hdr).toMatch(/<span class="ab-call-text[^"]*"[^>]*>\(512\) 555-0100<\/span>/);
         expect(hdr.indexOf('<img') === -1).toBe(mode === 'name');
-        expect(hdr.indexOf('class="ab-sub"')).toBeGreaterThan(hdr.indexOf(mode === 'name' ? 'Jax' : '<img'));
+        expect(hdr).not.toContain('ab-sub');
       });
     }
+
+    it(`${name}: phone rules shrink the call group at 430px and 360px`, () => {
+      const html = get(site('luxe', multi));
+      expect(html).toMatch(/@media\s*\(\s*max-width:\s*430px\s*\)/);
+      expect(html).toMatch(/@media\s*\(\s*max-width:\s*360px\s*\)/);
+    });
   }
 
   it('prime and euphoria headers have no phone text, so nothing changes for them', () => {
@@ -79,26 +85,18 @@ describe('luxe header phone text on a phone', () => {
       const html = pages(site(t, multi)).map((p) => p.html).join('');
       expect(html).not.toContain('class="ab-sub"');
       expect(html).not.toContain('ab-brandcol');
+      expect(html).not.toContain('ab-call');
     }
   });
 });
 
-// The fixed luxe header grows by the phone line on a phone, so the single-page hero (header is position:fixed) must start lower
-// at <=430px, only when that line is printed. Otherwise the tagline sits under the header.
-describe('luxe hero clears the taller header on a phone', () => {
+// #273 added hero padding for the second header line. The header is one row again, so the hero is as it was before.
+describe('luxe hero needs no extra padding for the header', () => {
   const home = (d: WebsiteData) => pages(d)[0].html;
-  it('a site with a number adds the <=430px hero rule and the classes it targets', () => {
-    const html = home(site('luxe', false));
-    expect(html).toMatch(/@media\(max-width:430px\)\{#home\.ab-hdrgap-sec\{height:auto;min-height:55vh\}#home \.ab-hdrgap-pad\{padding-top:7\.5rem\}\}/);
-    expect(html).toMatch(/<section id="home" class="[^"]*\bab-hdrgap-sec\b/);
-    expect(html).toMatch(/<div class="[^"]*\bab-hdrgap-pad\b[^"]*">\s*<p[^>]*>/);
-  });
-  it('a site without a number has no rule and no classes', () => {
-    const html = home(site('luxe', false, { phone: '' }));
-    expect(html).not.toContain('ab-hdrgap-pad');
-    expect(html).not.toContain('ab-hdrgap-sec');
-  });
-  it('prime and euphoria are unchanged', () => {
-    for (const t of ['prime', 'euphoria']) expect(home(site(t, false))).not.toContain('ab-hdrgap-pad');
+  it('no hero gap rule or classes, with or without a number', () => {
+    for (const phone of ['(512) 555-0100', '']) {
+      const html = home(site('luxe', false, { phone }));
+      expect(html).not.toContain('ab-hdrgap');
+    }
   });
 });

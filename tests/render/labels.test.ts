@@ -412,10 +412,8 @@ describe('phone number in the header', () => {
     expect(html).toContain('href="tel:5125550142"');
   });
 
-  // Widths in CSS px. Luxe is the only design with the number in the header.
-  const COMPACT_BELOW = 431;
-  const widths = { 320: true, 375: true, 430: true, 431: false, 768: false } as const;
-  it('luxe header: the number never wraps, and the compact button applies at 430px and under only', () => {
+  // Luxe is the only design with the number in the header.
+  it('luxe header: the number never wraps and stays next to the icon at every width', () => {
     const html = render.luxe(withTemplate('luxe', { phone: '(512) 555-0142', shopName: 'The Very Long Barbershop Name Co' }));
     const header = /<header id="header"[\s\S]*?<\/header>/.exec(html)![0];
     const phone = /<span class="ab-call-text[^"]*"[^>]*>[^<]*<\/span>/.exec(header)![0];
@@ -427,11 +425,9 @@ describe('phone number in the header', () => {
     expect(header).not.toMatch(/truncate|name[^>]*whitespace-nowrap/);
     // the whole header row is allowed to shrink and the call link is not
     expect(header).toContain('shrink-0');
-    const rule = /@media \(max-width: (\d+)px\) \{ \.ab-call-text \{ display: none; \}/.exec(html);
-    expect(rule).not.toBeNull();
-    const max = Number(rule![1]);
-    expect(max + 1).toBe(COMPACT_BELOW);
-    for (const [w, compact] of Object.entries(widths)) expect(Number(w) <= max, `${w}px`).toBe(compact);
+    // the number stays visible at every width (it sits next to the icon); the phone sizes only make it smaller
+    expect(html).not.toMatch(/\.ab-call-text\s*\{\s*display:\s*none/);
+    expect(html).toMatch(/@media \(max-width: 430px\)[^\n]*\.ab-call-text \{ font-size: 12px/);
   });
 
   it('luxe: the full number stays in the hero button and the contact section', () => {

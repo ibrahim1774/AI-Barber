@@ -165,19 +165,6 @@ export interface HeaderInput {
   nav: string;
 }
 
-/**
- * Luxe, phone widths (430px and under): the number as small secondary text under the brand, so the name keeps its full width
- * (the call link there is the icon alone). Printed inline only for a site that has a callable number, so a site without one is
- * byte-identical. The number is its own tel: link; padding makes a 44px tap target and negative margins cancel it, so the
- * header height grows by one 12px line only.
- */
-export const BRAND_PHONE_CSS = '.ab-brandcol{display:flex;flex-direction:column;align-items:flex-start;min-width:0;flex:0 1 auto}.ab-brandcol.ab-grow{flex:1 1 auto}.ab-brandcol>.ab-brand,.ab-brandcol>div{max-width:100%}.ab-brandcol>.ab-sub{display:none;position:relative;font-family:\'Montserrat\',sans-serif;font-size:12px;line-height:14px;font-weight:700;letter-spacing:.02em;font-variant-numeric:tabular-nums;white-space:nowrap;text-decoration:none;color:var(--aib-accent,#f4a100);padding:15px 0;margin:-9px 0 -15px}@media(max-width:430px){.ab-brandcol>.ab-sub{display:block}}@media(max-width:430px){#home.ab-hdrgap-sec{height:auto;min-height:55vh}#home .ab-hdrgap-pad{padding-top:7.5rem}}';
-
-/** The number under the brand (luxe). `href` and `text` are already escaped. */
-export function brandPhoneHtml(href: string, text: string): string {
-  return `<a class="ab-sub" href="tel:${href}">${text}</a>`;
-}
-
 const PHONE_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>';
 
 /** The header (brand, call link or button, menu) in a design's look. */
@@ -194,12 +181,10 @@ export function headerHtml(template: TemplateId, h: HeaderInput): string {
   const call = template === 'luxe' && /\d/.test(String(h.phone ?? ''))
     ? `<a class="ab-call" href="tel:${escapeAttr(digits)}" aria-label="Call ${h.shownPhone ?? ''}">${PHONE_ICON}<span class="ab-call-text">${h.shownPhone ?? ''}</span></a>`
     : '';
-  const sub = call ? brandPhoneHtml(escapeAttr(digits), h.shownPhone ?? '') : '';
-  const brandBlock = sub ? `<style>${BRAND_PHONE_CSS}</style><div class="ab-brandcol${brand.includes('ab-pair') ? ' ab-grow' : ''}">${brand}${sub}</div>` : brand;
   const cta = template !== 'luxe' && h.cta
     ? `<a class="ab-cta" href="${escapeAttr(h.cta.href)}"${h.cta.newTab ? ' target="_blank" rel="noopener noreferrer"' : ''}>${h.cta.label}</a>`
     : '';
-  return `<header class="ab-head"><div class="ab-head-in">${brandBlock}${call}${cta}${h.nav}</div></header>`;
+  return `<header class="ab-head"><div class="ab-head-in">${brand}${call}${cta}${h.nav}</div></header>`;
 }
 
 const DEFAULT_CREDIT = 'Built by Prime Barber';
@@ -334,8 +319,9 @@ export const HEADER_CSS: Record<TemplateId, string> = {
 .ab-brand{font-weight:900;font-size:clamp(14px,4.4vw,18px);letter-spacing:1px;text-transform:uppercase;text-decoration:none;color:#fff;white-space:normal;overflow-wrap:anywhere;line-height:1.1;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;min-width:0;flex:0 1 auto}
 .ab-accent{color:var(--aib-accent,#f4a100)}
 .ab-call{display:flex;align-items:center;flex-shrink:0;gap:8px;color:var(--aib-accent,#f4a100);border-left:2px solid rgba(255,255,255,.2);padding-left:12px;text-decoration:none;font-weight:700;font-size:14px}
-.ab-call-text{white-space:nowrap}
-@media(max-width:430px){.ab-call-text{display:none}.ab-call svg{width:28px;height:28px}}
+.ab-call-text{white-space:nowrap;font-variant-numeric:tabular-nums}
+@media(max-width:430px){.ab-head-in{gap:8px}.ab-call{gap:6px;padding-left:0;border-left:0;font-size:12px;letter-spacing:0}.ab-call svg{width:20px;height:20px}}
+@media(max-width:360px){.ab-call{font-size:11px}.ab-call svg{width:18px;height:18px}}
 @media(min-width:768px){.ab-brand{font-size:26px}.ab-call{font-size:20px}}
 `,
   prime: `

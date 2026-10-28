@@ -6,7 +6,6 @@
 // rules and the two homepage sections, shared by the three templates and vendored into the
 // iOS app (scripts/sync-web.sh), so it imports only from the vendored set.
 import type { WebsiteData } from '../../types';
-import { displayPrice } from './honest.js';
 
 /** The booking page on the barber's own site. */
 export const SITE_BOOK_PATH = '/book';
@@ -34,11 +33,6 @@ export interface SectionSkin {
   section: string;
   inner: string;
   heading: string;
-  /** Book strip: the services list, one row, its name and price. */
-  list: string;
-  item: string;
-  name: string;
-  price: string;
   /** Book strip: the Book button. */
   button: string;
   /** Shop preview: the product grid and the "See all" link. */
@@ -57,32 +51,20 @@ const esc = (v: unknown): string =>
 const cls = (c: string) => (c ? ` class="${esc(c)}"` : '');
 const style = (skin: SectionSkin) => (skin.css ? `<style>${skin.css.replace(/<\//g, '<\\/')}</style>` : '');
 
-/** Up to 3 services the site already shows (a title), with their price only when one is set. */
-export function bookStripServices(site: Pick<WebsiteData, 'services'>): { name: string; price: string }[] {
-  const list = Array.isArray(site.services) ? site.services : [];
-  return list
-    .filter((s) => typeof s?.title === 'string' && s.title.trim())
-    .slice(0, 3)
-    .map((s) => ({ name: s.title.trim(), price: displayPrice(typeof s.price === 'string' ? s.price : '') }));
-}
-
 /**
- * "Book online": up to 3 services and a Book button to /book. Only when the site's Book button
- * is the site's own booking page. With no services it is the heading and the button.
+ * "Book online": the heading and a Book button to /book. Only when the site's Book button is the
+ * site's own booking page (the data's bookingUrl is /book: the built-in scheduler; the app and the
+ * publish drop that link without the Bookings plan, so a site without it has no strip). No service
+ * list: the Services section already shows them, and the names here linked nowhere.
  */
 export function bookStripHtml(
-  site: Pick<WebsiteData, 'bookingUrl' | 'services'>,
+  site: Pick<WebsiteData, 'bookingUrl'>,
   skin: SectionSkin,
   /** The heading and button text as HTML-escaped text (the renderers pass t(labels, ...); labels.ts imports this module, so it is not read here). */
   words: { heading: string; button: string } = { heading: 'Book online', button: 'Book' },
 ): string {
   if (!isSiteBookLink(site.bookingUrl)) return '';
-  const services = bookStripServices(site);
-  const list = services.length
-    ? `<ul${cls(skin.list)}>${services.map((s) =>
-      `<li${cls(skin.item)}><span${cls(skin.name)}>${esc(s.name)}</span>${s.price ? `<span${cls(skin.price)}>${esc(s.price)}</span>` : ''}</li>`).join('')}</ul>`
-    : '';
-  return `<section id="book-online"${cls(skin.section)}>${style(skin)}<div${cls(skin.inner)}><h2${cls(skin.heading)}>${words.heading}</h2>${list}<a href="${SITE_BOOK_PATH}"${cls(skin.button)}>${words.button}</a></div></section>`;
+  return `<section id="book-online"${cls(skin.section)}>${style(skin)}<div${cls(skin.inner)}><h2${cls(skin.heading)}>${words.heading}</h2><a href="${SITE_BOOK_PATH}"${cls(skin.button)}>${words.button}</a></div></section>`;
 }
 
 /**

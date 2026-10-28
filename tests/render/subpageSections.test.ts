@@ -46,25 +46,16 @@ describe.each(Object.keys(renderers))('%s with the site /book page', (name) => {
     for (const a of links) expect(a).not.toContain('target="_blank"');
   });
 
-  it('shows the Book online strip with up to 3 services, escaped, prices only when set', () => {
+  it('shows the Book online strip: the heading and the Book button, no list of service names', () => {
     const strip = section(render(fixture({ bookingUrl: '/book' })), 'book-online');
-    expect(strip).toContain('Book online');
-    expect(strip).toContain('Fade');
-    expect(strip).toContain('$30');
-    expect(strip).toContain('Kids cut');
-    expect(strip).toContain('$20');
-    expect(strip).not.toContain('Shave');
-    expect(strip).toContain('Beard &lt;b&gt;trim&lt;/b&gt;');
-    expect(strip).not.toContain('<b>trim');
-    expect(strip).toContain('href="/book"');
-  });
-
-  it('with no services the strip is the heading and the Book button (no empty list)', () => {
-    const strip = section(render(fixture({ bookingUrl: '/book', services: [] })), 'book-online');
     expect(strip).toContain('Book online');
     expect(strip).toContain('href="/book"');
     expect(strip).not.toContain('<ul');
+    expect(strip).not.toContain('Fade');
+    expect(strip).not.toContain('Kids cut');
+    expect(strip).not.toContain('$30');
   });
+
 
   it('no strip for an external booking link, an old aibarber.org link, or none', () => {
     for (const bookingUrl of ['https://booksy.com/x', 'https://www.aibarber.org/book/fresh', undefined]) {
