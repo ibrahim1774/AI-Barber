@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ScrollView, useWindowDimensions } from 'react-native';
 import type { Service, Shop } from '@/lib/shop';
 import { Sheet, SheetAction } from '@/components/EditSheet';
+import { router } from 'expo-router';
 import { ServicesEditorView } from '@/components/setup/ServicesEditor';
 import { useServicesEditor } from '@/components/setup/useServicesEditor';
 
@@ -65,7 +66,7 @@ export function BookingsServicesSheet({ visible, shop, onServices, onClose, onDi
       right={<SheetAction title="Done" primary onPress={onClose} />}
     >
       <ScrollView style={{ maxHeight: Math.max(240, height * 0.85 - 150) }} keyboardShouldPersistTaps="handled">
-        <ServicesEditorView ed={ed} />
+        <ServicesEditorView ed={ed} onGetPaid={() => { onClose(); router.push('/get-paid'); }} />
       </ScrollView>
     </Sheet>
   );
