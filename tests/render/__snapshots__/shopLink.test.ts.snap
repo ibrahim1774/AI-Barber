@@ -185,7 +185,7 @@ exports[`euphoria shop link > is unchanged from main when shopUrl is absent 1`] 
   <nav style="position:sticky;top:0;z-index:50;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--eu-line-soft);">
     <div class="eu-container" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 24px;">
       <a href="#top" style="text-decoration:none;color:var(--eu-ink);font-family:'Newsreader',serif;font-size:clamp(16px,4.8vw,20px);letter-spacing:0.04em;line-height:1.1;overflow-wrap:anywhere;white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;min-width:0;">Fresh Cuts Barbershop</a>
-      <a href="tel:(512)555-0100" class="eu-cta" style="padding:10px 18px;font-size:10px;flex-shrink:0;white-space:nowrap;">Book now</a>
+      <a href="tel:(512)555-0100" class="eu-cta" style="padding:10px 18px;font-size:10px;flex-shrink:0;white-space:nowrap;">Call now</a>
     </div>
   </nav>
 
@@ -662,7 +662,7 @@ exports[`prime shop link > is unchanged from main when shopUrl is absent 1`] = `
   <nav style="position:sticky;top:0;z-index:50;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--p-line-soft);">
     <div class="p-container" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 6vw;">
       <a href="#top" class="p-serif" style="text-decoration:none;color:var(--p-ink);font-size:clamp(16px,4.8vw,20px);letter-spacing:0.04em;line-height:1.1;overflow-wrap:anywhere;white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;min-width:0;">Fresh Cuts Barbershop</a>
-      <a href="tel:+15125550100" class="p-cta p-cta-solid" style="padding:10px 18px;font-size:10px;flex-shrink:0;">Book Now</a>
+      <a href="tel:+15125550100" class="p-cta p-cta-solid" style="padding:10px 18px;font-size:10px;flex-shrink:0;">Call Now</a>
     </div>
   </nav>
 
@@ -675,7 +675,7 @@ exports[`prime shop link > is unchanged from main when shopUrl is absent 1`] = `
       <h1 class="p-display p-italic" style="font-size:clamp(2.2rem,5.5vw,4.6rem);margin:0 0 14px;color:var(--p-brand);">Sharp cuts</h1>
       <p class="p-serif p-italic" style="font-size:clamp(1rem,2.2vw,1.4rem);color:var(--p-ink-soft);max-width:640px;margin:0 auto 22px;">Walk-ins welcome</p>
       <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;">
-        <a href="tel:+15125550100" class="p-cta p-cta-solid">Book an Appointment</a>
+        <a href="tel:+15125550100" class="p-cta p-cta-solid">Call Now</a>
         <a href="#services" class="p-cta">View Services</a>
       </div>
       
@@ -727,12 +727,7 @@ exports[`prime shop link > is unchanged from main when shopUrl is absent 1`] = `
 </section>
 
   <!-- Booking strip -->
-  <section style="background:var(--p-cream);color:#1a1a1a;text-align:center;padding:64px 6vw;">
-    <div class="p-eyebrow" style="color:var(--p-brand-deep);margin-bottom:14px;">Take a Chair</div>
-    <h2 class="p-display" style="font-size:clamp(2rem,5vw,3rem);margin:0 0 16px;color:#1a1a1a;">Ready for <span class="p-italic">your next cut?</span></h2>
-    
-    <a href="tel:+15125550100" class="p-cta" style="background:#1a1a1a;color:var(--p-brand);border-color:#1a1a1a;">Book an Appointment</a>
-  </section>
+  
 
   <!-- Visit -->
   <section class="p-section" style="background:var(--p-bg-2);">

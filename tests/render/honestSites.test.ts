@@ -215,7 +215,7 @@ describe('prime — policy, walk-ins, stock-photo line', () => {
 
   it('has no walk-in line unless the barber wrote one', () => {
     expect(generatePrimeHTMLWithPlaceholders(bare())).not.toMatch(/walk-ins?/i);
-    const html = generatePrimeHTMLWithPlaceholders(bare({ labels: { bookingNote: 'Walk-ins welcome on Saturdays.' } }));
+    const html = generatePrimeHTMLWithPlaceholders(bare({ bookingUrl: 'https://booksy.com/x', labels: { bookingNote: 'Walk-ins welcome on Saturdays.' } }));
     expect(html).toContain('Walk-ins welcome on Saturdays.');
   });
 

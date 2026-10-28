@@ -281,12 +281,15 @@ describe('niche-aware body copy', () => {
     expect(nails).not.toContain('Meet Our Barbers');
   });
   it('prime booking strip and pull quote', () => {
-    expect(generatePrimeHTMLWithPlaceholders(bare())).toContain('your next cut?');
-    const lash = generatePrimeHTMLWithPlaceholders(bare({ niche: 'lashes' }));
+    const BOOK = { bookingUrl: 'https://booksy.com/x' };
+    expect(generatePrimeHTMLWithPlaceholders(bare(BOOK))).toContain('your next cut?');
+    // no booking link: no booking strip at all
+    expect(generatePrimeHTMLWithPlaceholders(bare())).not.toContain('your next cut?');
+    const lash = generatePrimeHTMLWithPlaceholders(bare({ niche: 'lashes', ...BOOK }));
     expect(lash).not.toMatch(/\bcut\b|chair/i);
     expect(lash).toContain('your next visit?');
     // a barber-written pull quote always wins
-    expect(generatePrimeHTMLWithPlaceholders(bare({ niche: 'lashes', pullQuote: { text: 'Lashes by Jo.' } }))).toContain('Lashes by Jo.');
+    expect(generatePrimeHTMLWithPlaceholders(bare({ niche: 'lashes', ...BOOK, pullQuote: { text: 'Lashes by Jo.' } }))).toContain('Lashes by Jo.');
   });
   it('the misleading "categories first" comment is gone', () => {
     expect(read('lib/buildSiteFromScrape.ts')).not.toContain('Google categories first');
