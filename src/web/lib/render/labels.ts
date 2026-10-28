@@ -83,8 +83,10 @@ const hasAddress = (s: WebsiteData) => has(s.contact?.address);
 // Some barber has an explicit service subset (so a service page can name who does it).
 const hasServiceTeam = (s: WebsiteData) => (Array.isArray(s.staff) ? s.staff : []).some((m) => Array.isArray(m?.serviceNames) && m.serviceNames.some((n) => has(n)) && Array.isArray(m?.serviceIds) && m.serviceIds.some((n) => has(n)));
 const showsRating = (s: WebsiteData) => aggregateToShow(s) !== null;
-const primeBook = (s: WebsiteData) => hasBook(s) || canCall(s);
-const euNavBook = (s: WebsiteData) => hasBook(s) || canCall(s);
+// A Book button needs a booking link. With only a phone the button says Call (honest: it dials).
+const primeBook = (s: WebsiteData) => hasBook(s);
+const euNavBook = (s: WebsiteData) => hasBook(s);
+const callOnly = (s: WebsiteData) => !hasBook(s) && canCall(s);
 
 const copy = (niche: BooksyNiche) => nicheCopy({ niche: niche.key });
 
@@ -131,11 +133,13 @@ export const LABELS = {
   footerCredit: { title: 'Footer credit', default: 'Built by Prime Barber', max: 60 },
 
   // ── Design 2 (prime) ──
-  bookingNote: { title: 'Booking note', default: '', template: 'prime', max: LEGACY_MAX },
+  bookingNote: { title: 'Booking note', default: '', template: 'prime', max: LEGACY_MAX, shows: hasBook },
   primeWelcome: { title: 'Welcome bar text', default: 'Welcome', template: 'prime', max: 30 },
   primeNavShop: { title: 'Menu: Shop', default: 'Shop', template: 'prime', max: 20, shows: hasShop },
   primeNavBook: { title: 'Menu: Book button', default: 'Book Now', template: 'prime', max: 24, shows: primeBook },
   primeHeroEyebrow: { title: 'Hero eyebrow', default: 'Welcome to', template: 'prime', max: 40 },
+  primeNavCall: { title: 'Menu: Call button', default: 'Call Now', template: 'prime', max: 24, shows: callOnly },
+  primeCallButton: { title: 'Call button text', default: 'Call Now', template: 'prime', max: 30, shows: callOnly },
   primeBookButton: { title: 'Book button text', default: 'Book an Appointment', template: 'prime', max: 30, shows: primeBook },
   primeViewServices: { title: 'View services button', default: 'View Services', template: 'prime', max: 30, shows: hasServices },
   primeAboutEyebrow: { title: 'About eyebrow', default: 'Our Story', template: 'prime', max: 40 },
@@ -152,9 +156,9 @@ export const LABELS = {
   primeReviewsAccent: { title: 'Reviews heading, accent part', default: 'are saying.', template: 'prime', max: 40, shows: hasReviews },
   primeStatRating: { title: 'Rating box label', default: 'Rating', template: 'prime', max: 20, plain: true, shows: showsRating },
   primeStatReviews: { title: 'Review count box label', default: 'Reviews', template: 'prime', max: 20, plain: true, shows: (s) => (aggregateToShow(s)?.count ?? 0) > 0 },
-  primeBookingEyebrow: { title: 'Booking strip eyebrow', default: (n) => copy(n).bookingEyebrow, template: 'prime', max: 40 },
-  primeBookingLead: { title: 'Booking strip heading, first part', default: 'Ready for', template: 'prime', max: 40 },
-  primeBookingNext: { title: 'Booking strip heading, accent part', default: (n) => copy(n).bookingNext, template: 'prime', max: 40 },
+  primeBookingEyebrow: { title: 'Booking strip eyebrow', default: (n) => copy(n).bookingEyebrow, template: 'prime', max: 40, shows: hasBook },
+  primeBookingLead: { title: 'Booking strip heading, first part', default: 'Ready for', template: 'prime', max: 40, shows: hasBook },
+  primeBookingNext: { title: 'Booking strip heading, accent part', default: (n) => copy(n).bookingNext, template: 'prime', max: 40, shows: hasBook },
   primeVisitEyebrow: { title: 'Visit eyebrow', default: (n) => copy(n).visitEyebrow, template: 'prime', max: 40 },
   primeVisitHeading: { title: 'Visit heading', default: 'Pay a visit.', template: 'prime', max: 60 },
   primeAddressLabel: { title: 'Address label', default: 'The Address', template: 'prime', max: 30, shows: hasAddress },
@@ -173,6 +177,7 @@ export const LABELS = {
   euTeamEyebrow: { title: 'Team eyebrow', default: 'The Team', template: 'euphoria', max: 40, shows: hasStaff },
   euTeamHeading: { title: 'Team heading', default: (n) => copy(n).teamHeading, template: 'euphoria', max: 60, shows: hasStaff },
   euNavShop: { title: 'Menu: Shop', default: 'Shop', template: 'euphoria', max: 20, shows: hasShop },
+  euNavCall: { title: 'Menu: Call button', default: 'Call now', template: 'euphoria', max: 24, shows: callOnly },
   euNavBook: { title: 'Menu: Book button', default: 'Book now', template: 'euphoria', max: 24, shows: euNavBook },
   euCall: { title: 'Call button text', default: 'Call', template: 'euphoria', max: 24, shows: canCall },
   euBookButton: { title: 'Book button text', default: 'Book Appointment', template: 'euphoria', max: 30, shows: hasBook },
@@ -412,8 +417,8 @@ export function visiblePageLabelKeys(site: WebsiteData, page: PageKey, ctx?: Pag
   // The shared footer's credit is printed by every design on every page.
   add('footerCredit');
   // The header button of Prime and Euphoria sits on every page.
-  if (template === 'prime' && primeBook(site)) add('primeNavBook');
-  if (template === 'euphoria' && euNavBook(site)) add('euNavBook');
+  if (template === 'prime') { if (primeBook(site)) add('primeNavBook'); else if (callOnly(site)) add('primeNavCall'); }
+  if (template === 'euphoria') { if (euNavBook(site)) add('euNavBook'); else if (callOnly(site)) add('euNavCall'); }
   // A site with other pages has the page menu instead of the single page's anchors: its entries are those of set.nav above.
   const SINGLE_PAGE_MENU: LabelKey[] = ['navHome', 'navServices', 'navContact', 'navShop', 'primeNavShop', 'euNavShop'];
   if (page === 'home') for (const k of visibleLabelKeys(site)) if (!(hasFilePages(set) && SINGLE_PAGE_MENU.includes(k))) add(k);

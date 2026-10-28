@@ -224,7 +224,9 @@ export function generatePrimeHTMLWithPlaceholders(input: WebsiteData, ctx?: Rend
   const formattedPhone = escapeHtml((siteData.phone || '').replace(/\s+/g, ''));
   const phoneDigits = (siteData.phone || '').replace(/\D/g, '');
   // Book: the booking link, else a call. Neither → no booking buttons.
-  const bookHref = bookingUrl || telHref(siteData.phone);
+  // A Book button needs a booking link; with only a phone the same slot is an honest Call button (tel: link, Call label).
+  const callHref = bookingUrl ? '' : telHref(siteData.phone);
+  const bookHref = bookingUrl || callHref;
   // Small visible text comes from the label registry (labels.ts); t() escapes.
   const copy = nicheCopy(siteData);
   const niche = nicheOf(siteData);
@@ -439,11 +441,11 @@ ${PRIME_SCOPED_CSS}${menuSet ? HEADER_CSS.prime + NAV_CSS.prime : ''}
   <div class="p-welcome"><span>${L('primeWelcome')}</span>${safeAreaShort ? `<span style="color:var(--p-ink-muted);">${safeAreaShort}</span>` : ''}${ratingChip}</div>
 
   <!-- Nav -->
-  ${menuSet ? headerHtml('prime', { name: siteData.shopName, ...headerBrand(siteData), cta: bookHref ? { href: bookHref, label: L('primeNavBook'), newTab: bookTarget !== '' } : null, nav: navListHtml(navItemsFor('prime', menuSet, siteData, 'home'), L('pgMenu'), L('pgMore')) }) : `<nav style="position:sticky;top:0;z-index:50;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--p-line-soft);">
+  ${menuSet ? headerHtml('prime', { name: siteData.shopName, ...headerBrand(siteData), cta: bookHref ? { href: bookHref, label: callHref ? L('primeNavCall') : L('primeNavBook'), newTab: bookTarget !== '' } : null, nav: navListHtml(navItemsFor('prime', menuSet, siteData, 'home'), L('pgMenu'), L('pgMore')) }) : `<nav style="position:sticky;top:0;z-index:50;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--p-line-soft);">
     <div class="p-container" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 6vw;">
       ${brandHtml('prime', { single: true, ...headerBrand(siteData), alt: safeName, href: '#top', nameHtml: safeName, nameOnly: `<a href="#top" class="p-serif" style="text-decoration:none;color:var(--p-ink);font-size:clamp(16px,4.8vw,20px);letter-spacing:0.04em;line-height:1.1;overflow-wrap:anywhere;white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;min-width:0;">${safeName}</a>` })}${shopUrl ? `
       <a href="${escapeHtml(shopUrl)}" class="p-eyebrow" style="text-decoration:none;flex-shrink:0;white-space:nowrap;">${L('primeNavShop')}</a>` : ''}
-      ${bookHref ? `<a href="${escapeHtml(bookHref)}"${bookTarget} class="p-cta p-cta-solid" style="padding:10px 18px;font-size:10px;flex-shrink:0;">${L('primeNavBook')}</a>` : ''}
+      ${bookHref ? `<a href="${escapeHtml(bookHref)}"${bookTarget} class="p-cta p-cta-solid" style="padding:10px 18px;font-size:10px;flex-shrink:0;">${callHref ? L('primeNavCall') : L('primeNavBook')}</a>` : ''}
     </div>
   </nav>`}
 
@@ -456,7 +458,7 @@ ${PRIME_SCOPED_CSS}${menuSet ? HEADER_CSS.prime + NAV_CSS.prime : ''}
       <h1 class="p-display p-italic" style="font-size:clamp(2.2rem,5.5vw,4.6rem);margin:0 0 14px;color:var(--p-brand);">${escapeHtml(siteData.hero.heading)}</h1>
       <p class="p-serif p-italic" style="font-size:clamp(1rem,2.2vw,1.4rem);color:var(--p-ink-soft);max-width:640px;margin:0 auto 22px;">${escapeHtml(siteData.hero.tagline)}</p>
       <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;">
-        ${bookHref ? `<a href="${escapeHtml(bookHref)}"${bookTarget} class="p-cta p-cta-solid">${L('primeBookButton')}</a>` : ''}
+        ${bookHref ? `<a href="${escapeHtml(bookHref)}"${bookTarget} class="p-cta p-cta-solid">${callHref ? L('primeCallButton') : L('primeBookButton')}</a>` : ''}
         ${showServices ? `<a href="#services" class="p-cta">${L('primeViewServices')}</a>` : ''}
       </div>
       ${agg ? `<div style="margin-top:28px;color:var(--p-ink-soft);font-size:13px;"><span style="color:var(--p-brand);">${'★'.repeat(Math.round(agg.rating))}</span> ${ratingCustom !== null ? escapeHtml(ratingCustom) : `${agg.rating.toFixed(1)}${agg.count > 0 ? ` · ${agg.count.toLocaleString()} reviews` : ''}`}</div>` : ''}
@@ -487,12 +489,12 @@ ${PRIME_SCOPED_CSS}${menuSet ? HEADER_CSS.prime + NAV_CSS.prime : ''}
   ${pullQuoteSection}${shopPreview}
 
   <!-- Booking strip -->
-  <section style="background:var(--p-cream);color:#1a1a1a;text-align:center;padding:64px 6vw;">
+  ${bookingUrl ? `<section style="background:var(--p-cream);color:#1a1a1a;text-align:center;padding:64px 6vw;">
     <div class="p-eyebrow" style="color:var(--p-brand-deep);margin-bottom:14px;">${L('primeBookingEyebrow')}</div>
     <h2 class="p-display" style="font-size:clamp(2rem,5vw,3rem);margin:0 0 16px;color:#1a1a1a;">${L('primeBookingLead')} <span class="p-italic">${L('primeBookingNext')}</span></h2>
     ${bookingNote ? `<p class="p-serif p-italic" style="color:#555;margin:0 0 28px;">${bookingNote}</p>` : ''}
-    ${bookHref ? `<a href="${escapeHtml(bookHref)}"${bookTarget} class="p-cta" style="background:#1a1a1a;color:var(--p-brand);border-color:#1a1a1a;">${L('primeBookButton')}</a>` : ''}
-  </section>
+    ${bookingUrl ? `<a href="${escapeHtml(bookHref)}"${bookTarget} class="p-cta" style="background:#1a1a1a;color:var(--p-brand);border-color:#1a1a1a;">${L('primeBookButton')}</a>` : ''}
+  </section>` : ''}
 
   <!-- Visit -->
   <section class="p-section" style="background:var(--p-bg-2);">
