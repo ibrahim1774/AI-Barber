@@ -171,7 +171,7 @@ export interface HeaderInput {
  * byte-identical. The number is its own tel: link; padding makes a 44px tap target and negative margins cancel it, so the
  * header height grows by one 12px line only.
  */
-export const BRAND_PHONE_CSS = '.ab-brandcol{display:flex;flex-direction:column;align-items:flex-start;min-width:0;flex:0 1 auto}.ab-brandcol.ab-grow{flex:1 1 auto}.ab-brandcol>.ab-brand,.ab-brandcol>div{max-width:100%}.ab-brandcol>.ab-sub{display:none;position:relative;font-family:\'Montserrat\',sans-serif;font-size:12px;line-height:14px;font-weight:700;letter-spacing:.02em;font-variant-numeric:tabular-nums;white-space:nowrap;text-decoration:none;color:var(--aib-accent,#f4a100);padding:15px 0;margin:-9px 0 -15px}@media(max-width:430px){.ab-brandcol>.ab-sub{display:block}}';
+export const BRAND_PHONE_CSS = '.ab-brandcol{display:flex;flex-direction:column;align-items:flex-start;min-width:0;flex:0 1 auto}.ab-brandcol.ab-grow{flex:1 1 auto}.ab-brandcol>.ab-brand,.ab-brandcol>div{max-width:100%}.ab-brandcol>.ab-sub{display:none;position:relative;font-family:\'Montserrat\',sans-serif;font-size:12px;line-height:14px;font-weight:700;letter-spacing:.02em;font-variant-numeric:tabular-nums;white-space:nowrap;text-decoration:none;color:var(--aib-accent,#f4a100);padding:15px 0;margin:-9px 0 -15px}@media(max-width:430px){.ab-brandcol>.ab-sub{display:block}}@media(max-width:430px){#home.ab-hdrgap-sec{height:auto;min-height:55vh}#home .ab-hdrgap-pad{padding-top:7.5rem}}';
 
 /** The number under the brand (luxe). `href` and `text` are already escaped. */
 export function brandPhoneHtml(href: string, text: string): string {

@@ -394,7 +394,7 @@ exports[`luxe team section > snapshot 1`] = `
   <header id="header" class="fixed top-0 left-0 w-full z-50 transition-all duration-300 bg-black/20 py-5 md:py-8">
     <div class="container mx-auto flex justify-between items-center px-4 md:px-6">
       <div class="flex items-center gap-3 md:gap-8 min-w-0">
-        <style>.ab-brandcol{display:flex;flex-direction:column;align-items:flex-start;min-width:0;flex:0 1 auto}.ab-brandcol.ab-grow{flex:1 1 auto}.ab-brandcol>.ab-brand,.ab-brandcol>div{max-width:100%}.ab-brandcol>.ab-sub{display:none;position:relative;font-family:'Montserrat',sans-serif;font-size:12px;line-height:14px;font-weight:700;letter-spacing:.02em;font-variant-numeric:tabular-nums;white-space:nowrap;text-decoration:none;color:var(--aib-accent,#f4a100);padding:15px 0;margin:-9px 0 -15px}@media(max-width:430px){.ab-brandcol>.ab-sub{display:block}}</style><div class="ab-brandcol"><div class="flex items-center gap-3 md:gap-5 min-w-0">
+        <style>.ab-brandcol{display:flex;flex-direction:column;align-items:flex-start;min-width:0;flex:0 1 auto}.ab-brandcol.ab-grow{flex:1 1 auto}.ab-brandcol>.ab-brand,.ab-brandcol>div{max-width:100%}.ab-brandcol>.ab-sub{display:none;position:relative;font-family:'Montserrat',sans-serif;font-size:12px;line-height:14px;font-weight:700;letter-spacing:.02em;font-variant-numeric:tabular-nums;white-space:nowrap;text-decoration:none;color:var(--aib-accent,#f4a100);padding:15px 0;margin:-9px 0 -15px}@media(max-width:430px){.ab-brandcol>.ab-sub{display:block}}@media(max-width:430px){#home.ab-hdrgap-sec{height:auto;min-height:55vh}#home .ab-hdrgap-pad{padding-top:7.5rem}}</style><div class="ab-brandcol"><div class="flex items-center gap-3 md:gap-5 min-w-0">
           <svg class="w-8 h-8 md:w-12 md:h-12 shrink-0 text-[#f4a100]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M6 6l12 12M6 18L18 6"></path>
           </svg>
@@ -417,12 +417,12 @@ exports[`luxe team section > snapshot 1`] = `
     </div>
   </header>
 
-  <section id="home" class="relative h-[55vh] flex flex-col justify-center items-center overflow-hidden">
+  <section id="home" class="relative h-[55vh] flex flex-col justify-center items-center overflow-hidden ab-hdrgap-sec">
     <div class="absolute inset-0 z-0">
       <img src="{{hero}}" alt="Fresh Cuts Barbershop photo" class="w-full h-full object-cover">
       <div class="absolute inset-0 bg-black/40 bg-gradient-to-b from-black/30 via-transparent to-[#0d0d0d]"></div>
     </div>
-    <div class="relative z-10 text-center px-4 md:px-6 max-w-5xl pb-28 md:pb-32 pt-20 md:pt-0">
+    <div class="relative z-10 text-center px-4 md:px-6 max-w-5xl pb-28 md:pb-32 pt-20 md:pt-0 ab-hdrgap-pad">
       <p class="text-[#f4a100] font-montserrat font-bold text-[8px] md:text-sm tracking-[3px] md:tracking-[5px] uppercase mb-3 md:mb-6 opacity-90">
         Walk-ins welcome
       </p>

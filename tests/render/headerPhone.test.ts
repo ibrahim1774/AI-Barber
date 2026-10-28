@@ -82,3 +82,23 @@ describe('luxe header phone text on a phone', () => {
     }
   });
 });
+
+// The fixed luxe header grows by the phone line on a phone, so the single-page hero (header is position:fixed) must start lower
+// at <=430px, only when that line is printed. Otherwise the tagline sits under the header.
+describe('luxe hero clears the taller header on a phone', () => {
+  const home = (d: WebsiteData) => pages(d)[0].html;
+  it('a site with a number adds the <=430px hero rule and the classes it targets', () => {
+    const html = home(site('luxe', false));
+    expect(html).toMatch(/@media\(max-width:430px\)\{#home\.ab-hdrgap-sec\{height:auto;min-height:55vh\}#home \.ab-hdrgap-pad\{padding-top:7\.5rem\}\}/);
+    expect(html).toMatch(/<section id="home" class="[^"]*\bab-hdrgap-sec\b/);
+    expect(html).toMatch(/<div class="[^"]*\bab-hdrgap-pad\b[^"]*">\s*<p[^>]*>/);
+  });
+  it('a site without a number has no rule and no classes', () => {
+    const html = home(site('luxe', false, { phone: '' }));
+    expect(html).not.toContain('ab-hdrgap-pad');
+    expect(html).not.toContain('ab-hdrgap-sec');
+  });
+  it('prime and euphoria are unchanged', () => {
+    for (const t of ['prime', 'euphoria']) expect(home(site(t, false))).not.toContain('ab-hdrgap-pad');
+  });
+});
