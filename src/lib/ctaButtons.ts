@@ -12,6 +12,8 @@ export const CTA_KINDS: Readonly<Record<string, CtaKind>> = {
   bookButton: 'book', primeNavBook: 'book', primeBookButton: 'book', primeBookOnlineLink: 'book',
   euNavBook: 'book', euBookButton: 'book', bookStripButton: 'book', pgBookCta: 'book', pgNavBook: 'book', teamBookWith: 'book',
   callNow: 'call', euCall: 'call', primePhoneLabel: 'call',
+  // The Call button printed in the Book button's place when there is no booking link: it opens the same chooser.
+  primeNavCall: 'book', primeCallButton: 'book', euNavCall: 'book',
   pgDirectionsCta: 'directions',
   shopButton: 'shop', euShopButton: 'shop', primeShopLink: 'shop', pgShopCta: 'shop', shopStripLink: 'shop',
   navShop: 'shop', primeNavShop: 'shop', euNavShop: 'shop',
@@ -30,6 +32,17 @@ export function ctaKindOf(path: string): { kind: CtaKind; labelKey: string } | n
 
 /** The design's main Book button label: where the All-fields "Booking link" row lands. */
 export const MAIN_BOOK_KEY: Readonly<Record<string, string>> = { luxe: 'bookButton', prime: 'primeBookButton', euphoria: 'euBookButton' };
+
+/** The label keys of the Call button that stands in for the Book button, per design (its text is edited from the chooser). */
+export const CALL_LABEL_KEYS: Readonly<Record<string, readonly string[]>> = {
+  luxe: ['callNow'], prime: ['primeNavCall', 'primeCallButton'], euphoria: ['euNavCall'],
+};
+
+/** The chooser edits the design's main Book label; a tap on its Call stand-in opens the same chooser. */
+export function chooserLabelKey(template: string | undefined, tapped: string): string {
+  const t = template ?? 'luxe';
+  return (CALL_LABEL_KEYS[t] ?? []).includes(tapped) && tapped !== 'callNow' ? (MAIN_BOOK_KEY[t] ?? 'bookButton') : tapped;
+}
 
 export type TapRoute = { sheet: 'button'; kind: CtaKind; labelKey: string } | { sheet: 'edit' };
 

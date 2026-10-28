@@ -45,7 +45,7 @@ import { ColourButton } from '@/components/ColourButton';
 import { DesignSwitcher } from '@/components/DesignSwitcher';
 import { EditSheet } from '@/components/EditSheet';
 import { ButtonSheet, type ButtonChange } from '@/components/ButtonSheet';
-import { routeTap, type CtaKind } from '@/lib/ctaButtons';
+import { CALL_LABEL_KEYS, MAIN_BOOK_KEY, chooserLabelKey, routeTap, type CtaKind } from '@/lib/ctaButtons';
 import { applyButtonChange } from '@/lib/buttonChange';
 import { useUpgrade } from '@/lib/tierAccess';
 import { LABELS, defaultLabel, type LabelKey } from '@/web/lib/render/labels';
@@ -494,7 +494,7 @@ export default function Editor() {
     const route = routeTap(path, shownRef.current ?? {});
     if (route.sheet === 'button') {
       track('button_sheet_opened', { kind: route.kind });
-      setButton({ kind: route.kind, labelKey: route.labelKey });
+      setButton({ kind: route.kind, labelKey: route.kind === 'book' ? chooserLabelKey(shownRef.current?.template, route.labelKey) : route.labelKey });
       setSheet('button');
       return;
     }
@@ -548,6 +548,13 @@ export default function Editor() {
     track('section_opened', { section: key });
     closeThen(() => setSheet(key));
   }, [closeThen]);
+  // The editor-only "+ Add a button" under the hero (the site has no Book button): the same chooser a Book button opens.
+  const onPreviewAddButton = useCallback(() => {
+    if (!canOpenAddService(sheet, overlayRef.current)) return;
+    track('add_button_tapped');
+    setButton({ kind: 'book', labelKey: MAIN_BOOK_KEY[shownRef.current?.template ?? 'luxe'] ?? 'bookButton' });
+    setSheet('button');
+  }, [sheet]);
   const onPreviewAddService = useCallback(() => {
     if (!canOpenAddService(sheet, overlayRef.current)) return;
     track('add_service_tapped');
@@ -676,6 +683,7 @@ export default function Editor() {
   const buttonPath = `labels.${button.labelKey}`;
   const buttonDef = (LABELS as Record<string, { title: string; max: number }>)[button.labelKey];
   const prefs = bookingPrefs({ data, inputs: site.inputs });
+  const callKey = CALL_LABEL_KEYS[data.template ?? 'luxe']?.[0];
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -684,7 +692,7 @@ export default function Editor() {
         <EditorBackBar visible={overlay == null && sheet == null && !uploading && canGoBackToStart(site, pendingPaid, !!session)} />
         {/* The site's own background, so nothing else shows around the page. */}
         <View style={[styles.preview, { backgroundColor: previewBackground(data) }]}>
-          <SitePreview data={shown} editable page={page} shopProducts={shopProducts} onEditText={onPreviewText} onEditImage={onPreviewImage} onNavigate={onPreviewNav} onAddService={onPreviewAddService} pillTourRef={changeImageRef} samplePaths={sampleHeroPaths(shown, page)} chipsHidden={sheet != null} />
+          <SitePreview data={shown} editable page={page} shopProducts={shopProducts} onEditText={onPreviewText} onEditImage={onPreviewImage} onNavigate={onPreviewNav} onAddService={onPreviewAddService} onAddButton={onPreviewAddButton} pillTourRef={changeImageRef} samplePaths={sampleHeroPaths(shown, page)} chipsHidden={sheet != null} />
           {/* The two floating controls, Design above Colour, hidden while the prompts / guide are up.
               Design is offered on a published site too: it only edits the draft (like Colour), and the
               change goes live on the next Publish. */}
@@ -859,7 +867,9 @@ export default function Editor() {
           text={textValue(data, buttonPath)}
           defaultText={buttonDef ? defaultLabel(button.labelKey as LabelKey, nicheOf(data), data) : ''}
           maxLength={buttonDef?.max}
-          book={{ choice: prefs.choice, own: prefs.own, status: bookTargetStatus(linkCtx, prefs.own), teamHasOwnLink: !!data.staff?.some((m) => !!m.bookingUrl?.trim()) }}
+          book={{ choice: prefs.choice, own: prefs.own, status: bookTargetStatus(linkCtx, prefs.own), teamHasOwnLink: !!data.staff?.some((m) => !!m.bookingUrl?.trim()), hasPlan: ents.known && ents.bookings }}
+          callText={callKey ? textValue(data, `labels.${callKey}`) : ''}
+          callDefault={callKey ? defaultLabel(callKey as LabelKey, nicheOf(data), data) : ''}
           phone={data.phone}
           address={data.contact?.address}
           onSave={(c) => saveButton(button.labelKey, c)}

@@ -9,6 +9,7 @@ export type PreviewMessage =
   | { type: 'image'; path: string }
   | { type: 'nav'; href: string }
   | { type: 'addService' }
+  | { type: 'addButton' }
   | { type: 'scrollY'; y: number }
   | { type: 'rects'; items: ImageRect[] }
   | { type: 'ready' };
@@ -66,6 +67,8 @@ export function parsePreviewMessage(raw: unknown, data: WebsiteData, page?: Prev
       return typeof o.href === 'string' && o.href.length <= MAX_HREF && pageHrefsFor(data).includes(o.href) ? { type: 'nav', href: o.href } : null;
     case 'addService':
       return { type: 'addService' };
+    case 'addButton':
+      return { type: 'addButton' };
     case 'scrollY':
       return typeof o.y === 'number' && Number.isFinite(o.y) ? { type: 'scrollY', y: Math.max(0, o.y) } : null;
     case 'rects': {

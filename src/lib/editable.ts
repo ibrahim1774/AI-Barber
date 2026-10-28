@@ -595,6 +595,34 @@ export function withAddService(html: string, d: WebsiteData, page?: PreviewPage 
   return html;
 }
 
+export const ADD_BUTTON_LABEL = '+ Add a button';
+const ADD_BUTTON_ATTR = 'data-ab-add-button';
+
+/**
+ * True when the site has no Book button to tap (no booking link in what the preview shows) and nothing else stands in
+ * for one: Prime and Euphoria print a Call button in that place when there is a phone, and that button opens the chooser.
+ */
+export function needsAddButton(d: WebsiteData): boolean {
+  if (typeof d.bookingUrl === 'string' && d.bookingUrl.trim()) return false;
+  const t = d.template || 'luxe';
+  return !(t !== 'luxe' && /\d/.test(d.phone || ''));
+}
+
+/**
+ * Editor-only "+ Add a button" control under the Home hero when the site has no Book button. The live site never has it
+ * (preview only). No data-edit: a tap posts {type:'addButton'} (editorScript), which opens the button chooser.
+ */
+export function withAddButton(html: string, d: WebsiteData, page?: PreviewPage | null): string {
+  if (!needsAddButton(d) || (page && page.key !== 'home')) return html;
+  const end = html.indexOf('</section>');
+  if (end < 0) return html;
+  const at = end + '</section>'.length;
+  const t = d.template;
+  const cls = t === 'prime' ? 'p-cta' : t === 'euphoria' ? 'eu-cta' : 'inline-flex items-center border-2 border-[#f4a100] text-[#f4a100] bg-transparent px-8 py-3 font-montserrat font-black tracking-[2px] uppercase text-xs';
+  const block = `<div data-ab-editor-only style="text-align:center;padding:20px 24px;"><button type="button" ${ADD_BUTTON_ATTR} aria-label="Add a button" class="${cls}" style="cursor:pointer;">${ADD_BUTTON_LABEL}</button></div>`;
+  return html.slice(0, at) + block + html.slice(at);
+}
+
 export function buildPreviewHtml(raw: WebsiteData, editable: boolean, shopProducts?: PreviewProduct[] | null, page?: PreviewPage | null): string {
   // Markers go in only after the data is what the published page would render.
   const data = asPublished(raw);
@@ -604,7 +632,7 @@ export function buildPreviewHtml(raw: WebsiteData, editable: boolean, shopProduc
   if (!editable) return withPreviewBackground(withShopPreview(withImages(stripTracking(renderSite(forRender(data))), data), shopProducts), bg);
   const { marked, ids } = markData(data);
   return withPreviewBackground(
-    withAddService(withShopPreview(withImages(tagImageSlots(prepareEditableHtml(stripTracking(renderSite(forRender(marked))), ids)), data), shopProducts), data),
+    withAddButton(withAddService(withShopPreview(withImages(tagImageSlots(prepareEditableHtml(stripTracking(renderSite(forRender(marked))), ids)), data), shopProducts), data), data),
     bg,
   );
 }
@@ -627,7 +655,7 @@ function buildPageHtml(data: WebsiteData, editable: boolean, shopProducts: Previ
   const clean = stripTracking(html);
   const inner = editable ? tagSampleHero(tagImageSlots(prepareEditableHtml(clean, ids)), data, page) : clean;
   const shown = withShopPreview(withImages(inner, data), shopProducts);
-  return withPreviewBackground(editable ? withAddService(shown, data, page) : shown, bg);
+  return withPreviewBackground(editable ? withAddButton(withAddService(shown, data, page), data, page) : shown, bg);
 }
 
 /**

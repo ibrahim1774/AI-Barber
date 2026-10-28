@@ -8,9 +8,10 @@ import type { SiteRecord } from '@/lib/siteStore';
 /**
  * The barber's Book button choice. App-only (kept in the site record's `inputs`, never sent as
  * website data): `ownBookingUrl` is their own Booksy / Square / etc. link and is never lost;
- * `bookingChoice` says which one the website uses.
+ * `bookingChoice` says which one the website uses; 'call' is no booking button (the phone number is the button,
+ * or nothing without one). The own link is remembered under every choice.
  */
-export type BookingChoice = 'own' | 'aibarber';
+export type BookingChoice = 'own' | 'aibarber' | 'call';
 export type BookingPrefs = {
   ownBookingUrl?: string;
   bookingChoice?: BookingChoice;
@@ -42,6 +43,7 @@ export function bookingPrefs(rec: { inputs: Partial<SiteRecord['inputs']>; data:
   const own = deriveOwn(rec);
   // A record from before the choice existed: an AI Barber link means AI Barber, an own link means keep it.
   const choice = rec.inputs.bookingChoice ?? (isAiBarberBookingUrl(rec.data.bookingUrl) ? 'aibarber' : own ? 'own' : 'aibarber');
+  if (choice === 'call') return { own: own || null, choice: 'call' };
   return { own: own || null, choice: own ? choice : 'aibarber' };
 }
 
@@ -64,7 +66,7 @@ export function withChoice(rec: SiteRecord, choice: BookingChoice, _shop?: Pick<
   const { own } = bookingPrefs(rec);
   const data = { ...rec.data };
   // AI Barber booking is the site's own /book page (served from the barber's domain).
-  const url = choice === 'aibarber' ? SITE_BOOK_PATH : own;
+  const url = choice === 'aibarber' ? SITE_BOOK_PATH : choice === 'own' ? own : null;
   if (url) data.bookingUrl = url;
   else delete data.bookingUrl;
   const inputs = { ...rec.inputs, bookingChoice: choice, ...(own ? { ownBookingUrl: own } : {}) };
@@ -79,6 +81,8 @@ export function syncOwnLink(prev: SiteRecord, next: SiteRecord): SiteRecord {
   const before = prev.data.bookingUrl?.trim() || '';
   const after = next.data.bookingUrl?.trim() || '';
   if (before === after || isAiBarberBookingUrl(after)) return next;
+  // The button was switched off on purpose (choice 'call'): the empty Book link is that choice, not a cleared own link.
+  if (!after && next.inputs.bookingChoice === 'call') return next;
   const inputs = { ...next.inputs };
   if (after) {
     inputs.ownBookingUrl = after;
@@ -171,7 +175,7 @@ export function resolveLinks(
   const { own, choice } = bookingPrefs({ data, inputs: inputs ?? {} });
   const out: WebsiteData & { shopUrl?: string } = { ...data };
   // The site's own /book and /shop pages (the server serves them from the barber's domain and renders the homepage strips).
-  const book = choice === 'aibarber' && schedulerLive(ctx) ? SITE_BOOK_PATH : own;
+  const book = choice === 'call' ? null : choice === 'aibarber' && schedulerLive(ctx) ? SITE_BOOK_PATH : own;
   if (book) out.bookingUrl = book;
   else delete out.bookingUrl;
   if (ents.store && shop && shop.purchaseLinked && ctx.storeEnabled) out.shopUrl = SITE_SHOP_PATH;

@@ -25,7 +25,7 @@ it('with an own link: two cards with the short link and detail', async () => {
 it('choosing AI Barber calls back, warns about the old app and says to publish; switching back is one tap', async () => {
   const onChange = jest.fn();
   function Host() {
-    const [c, setC] = React.useState<'own' | 'aibarber'>('own');
+    const [c, setC] = React.useState<'own' | 'aibarber' | 'call'>('own');
     return <BookButtonPicker own="https://booksy.com/x" choice={c} onChange={(v) => { onChange(v); setC(v); }} />;
   }
   const tree = await render(<Host />);
