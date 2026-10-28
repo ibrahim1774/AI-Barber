@@ -291,7 +291,7 @@ describe('sweep restore strips links with a read-modify-write of the stored copy
     const p = w.apple.buy(PRODUCTS.storeMonthly);
     await w.publish(p.transactionId, siteData({ shopUrl: AI_SHOP } as any));
     // Downgrade to Website at renewal, but the subscription lapses and the sweep takes it down.
-    w.clock.advance(31 * 86_400_000);
+    w.clock.advance(34 * 86_400_000);
     await w.notify(w.apple.notification('EXPIRED', p.otid));
     const s1 = await w.sweep();
     expect(s1.takenDown).toEqual(['fade-lab']);

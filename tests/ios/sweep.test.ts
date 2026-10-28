@@ -345,7 +345,7 @@ describe('sweepIos lapse takedown / restore (Apple decides)', () => {
 
   it('pass 1: an unpublished row that looks lapsed is published only if Apple says active', async () => {
     quiet();
-    const looksLapsed = (otid: string, slug: string) => ({ ...row(otid, slug), expires_at: iso(NOW - 2 * DAY) });
+    const looksLapsed = (otid: string, slug: string) => ({ ...row(otid, slug), expires_at: iso(NOW - 4 * DAY) });
     const { r, markPublished, markTakenDown } = repo([looksLapsed('o2', 'a'), looksLapsed('o4', 'g'), looksLapsed('oX', 'x'), row('oN', 'n')]);
     const publish = vi.fn(async (s: string) => ok(s));
     const deployOffline = vi.fn(async (_s: string) => {});

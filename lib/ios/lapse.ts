@@ -10,21 +10,33 @@ import type { PurchaseRow } from './purchases.js';
 import { grants, tierOf, type Entitlement } from './tiers.js';
 
 /**
- * How long after the stored expiry a row becomes a takedown candidate. Short on
- * purpose: Apple decides (billing grace keeps a site up), this only absorbs a
- * renewal notification that is a little late.
+ * The renewal window. App Store Connect Billing Grace Period is OFF for this app, so Apple
+ * calls a subscription inactive the moment it expires or a renewal payment fails. We give
+ * the owner 3 days of our own: the website, Bookings and Store stay LIVE for customers until
+ * expiresAt + LAPSE_CUSHION_MS, then the sweep (after asking Apple) takes the site down.
+ * Revoked / refunded is immediate (no cushion). The OWNER is locked out of editing and
+ * publishing for the whole window (publish asks Apple and answers 402 once it says inactive).
+ * Every "is the site live" decision reads this one constant.
  */
-export const GRACE_MS = 60 * 60 * 1000;
+export const LAPSE_CUSHION_MS = 3 * 24 * 60 * 60 * 1000;
+/** Old name, kept for compatibility. Same value. */
+export const GRACE_MS = LAPSE_CUSHION_MS;
+
+/** When a lapsed (expired, not revoked) purchase goes offline unless renewed; null without an expiry. */
+export function renewByMs(row: Pick<PurchaseRow, 'expires_at'>): number | null {
+  const exp = row.expires_at == null ? NaN : Date.parse(row.expires_at);
+  return Number.isFinite(exp) ? exp + LAPSE_CUSHION_MS : null;
+}
 
 type LapseFields = Pick<PurchaseRow, 'expires_at' | 'revoked_at'>;
 
 const expiryMs = (row: LapseFields): number => (row.expires_at == null ? NaN : Date.parse(row.expires_at));
 
-/** Takedown prefilter: revoked, or expired at least GRACE_MS ago. No expiry and no revocation is not lapsed. */
+/** Takedown prefilter: revoked, or expired at least LAPSE_CUSHION_MS ago. No expiry and no revocation is not lapsed. */
 export function isLapsed(row: LapseFields, now: number): boolean {
   if (row.revoked_at != null) return true;
   const exp = expiryMs(row);
-  return Number.isFinite(exp) && exp <= now - GRACE_MS;
+  return Number.isFinite(exp) && exp <= now - LAPSE_CUSHION_MS;
 }
 
 /** Restore prefilter: not revoked and expires in the future. */
@@ -58,7 +70,7 @@ export function sweepWatches(row: Partial<GateFields>): boolean {
  * the sweep watches, a whole-subscription lapse reaches here only through taken_down_at (the
  * sweep, Apple-confirmed), so billing grace and a renewing Sandbox purchase stay open. A
  * purchase the sweep never watches (unbound or unpublished) closes on the lapse prefilter
- * instead (expired at least GRACE_MS ago), so linking a purchase that is not the site's can't
+ * instead (expired at least LAPSE_CUSHION_MS ago), so linking a purchase that is not the site's can't
  * keep Bookings or the Store open after it ends.
  */
 export function purchaseLive(row: GateFields | null | undefined, now: number = Date.now()): boolean {

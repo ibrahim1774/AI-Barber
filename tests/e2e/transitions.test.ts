@@ -197,7 +197,7 @@ describe('lapse → sweep takedown → renewal restore', () => {
   async function lapsed(product: string = PRODUCTS.storeMonthly) {
     const p = w.apple.buy(product);
     await w.publish(p.transactionId, full);
-    w.clock.advance(31 * DAY);
+    w.clock.advance(34 * DAY);
     await w.notify(w.apple.notification('EXPIRED', p.otid));
     return p;
   }
@@ -215,6 +215,24 @@ describe('lapse → sweep takedown → renewal restore', () => {
     expect((await w.lookup(transactionId, 'Bearer jwt-a')).body).toMatchObject({ active: false, version: 1 });
     // A second sweep does nothing more.
     expect((await w.sweep()).takenDown).toEqual([]);
+  });
+
+  it('3-day renewal window: expired 2 d 23 h ago stays live for customers, publish 402; past 3 days the sweep takes it down; renewing in the window restores nothing to do', async () => {
+    const H = DAY / 24;
+    const p = w.apple.buy(PRODUCTS.storeMonthly);
+    await w.publish(p.transactionId, full);
+    w.clock.advance(30 * DAY + 71 * H); // 2 d 23 h past expiry, Apple says inactive (billing grace is OFF)
+    await w.notify(w.apple.notification('EXPIRED', p.otid));
+    const s1 = await w.sweep();
+    expect(s1.takenDown).toEqual([]);
+    expect(live()).not.toContain(OFFLINE);
+    expect(w.row(p.otid)!.taken_down_at).toBeNull();
+    expect(await gates(p.otid)).toEqual({ bookings: true, store: true });
+    expect((await w.publish(p.transactionId, full, { baseVersion: 1 })).body).toEqual({ error: 'subscription-inactive' });
+    w.clock.advance(2 * H); // 3 d 1 h past expiry
+    expect((await w.sweep()).takenDown).toEqual(['fade-lab']);
+    expect(live()).toContain(OFFLINE);
+    expect(await gates(p.otid)).toEqual({ bookings: false, store: false });
   });
 
   it('billing grace (Apple status 4) keeps the site up; billing retry (3) takes it down', async () => {
@@ -383,7 +401,7 @@ describe('Sandbox vs Production', () => {
   it('an inactive Sandbox purchase gets its gates closed but its website stays up (App Review), unless IOS_TAKEDOWN_SANDBOX', async () => {
     const { otid, transactionId } = w.apple.buy(PRODUCTS.storeMonthly, { env: 'Sandbox' });
     await w.publish(transactionId);
-    w.clock.advance(31 * DAY);
+    w.clock.advance(34 * DAY);
     const s = await w.sweep();
     expect(s.sandboxGatesClosed).toEqual(['ios-test-fade-lab']);
     expect(live('ios-test-fade-lab')).not.toContain(OFFLINE);
@@ -391,7 +409,7 @@ describe('Sandbox vs Production', () => {
     // With the switch on, the next takedown candidate is taken down for real.
     const two = w.apple.buy(PRODUCTS.storeMonthly, { env: 'Sandbox' });
     await w.publish(two.transactionId, siteData({ shopName: 'Other Shop' }));
-    w.clock.advance(31 * DAY);
+    w.clock.advance(34 * DAY);
     expect((await w.sweep({ takedownSandbox: true })).takenDown).toEqual(['ios-test-other-shop']);
   });
 

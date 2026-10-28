@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { VerifiedTx, IosEnv } from './appleVerify.js';
-import { GRACE_MS, isActiveRow, isLapsed } from './lapse.js';
+import { LAPSE_CUSHION_MS, isActiveRow, isLapsed } from './lapse.js';
 import { isActive } from './txStatus.js';
 
 export interface PurchaseRow {
@@ -343,7 +343,7 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
       // Oldest-checked first, so rows Apple keeps answering "active" or can't
       // resolve rotate to the back instead of starving real lapses.
       const includeSandbox = opts?.includeSandbox ?? true;
-      const cutoff = new Date(now - GRACE_MS).toISOString();
+      const cutoff = new Date(now - LAPSE_CUSHION_MS).toISOString();
       let q = db().from(TABLE).select('*')
         .not('site_slug', 'is', null).not('published_at', 'is', null).is('taken_down_at', null)
         .or(`revoked_at.not.is.null,expires_at.lte."${cutoff}"`);

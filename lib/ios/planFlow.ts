@@ -9,7 +9,7 @@ import { isObj, type FlowResult } from '../bookings/core.js';
 import { serviceClient, supabaseBookingRepo, type ShopRow } from '../bookings/repo.js';
 import { userLimiter, type RateLimiter } from '../bookings/rateLimit.js';
 import { VerifyFailure, isActive, lazyDefaultVerifier, type VerifiedTx } from './appleVerify.js';
-import { entitlementActive, purchaseLive } from './lapse.js';
+import { entitlementActive, purchaseLive, renewByMs } from './lapse.js';
 import { supabasePurchases, type PurchaseRow } from './purchases.js';
 import { liveBindingOwner, liveEmailOf, otherAccountBody, type BindingOwner } from './ownership.js';
 import { tierOf, type Tier } from './tiers.js';
@@ -25,6 +25,12 @@ export interface PlanView {
   expiresAt: string | null;
   takenDownAt: string | null;
   revoked: boolean;
+  /**
+   * ISO, expiresAt + the 3-day renewal window (lapse.ts). Only present while the subscription has
+   * expired (or its renewal payment failed), is not revoked and the site is not yet taken down:
+   * the site is still live for customers, the owner is locked until they renew. Absent otherwise.
+   */
+  renewBy?: string;
   /**
    * Whose subscription the purchase is, from the caller's side: 'self' (linked to the caller),
    * 'other' (linked to another account: the same Apple ID under a second email), null (no purchase
@@ -89,6 +95,9 @@ export function planView(shop: Pick<ShopRow, 'ios_otid'>, row: PurchaseRow | nul
       active: false, expiresAt: null, takenDownAt: null, revoked: false, purchaseAccount,
     };
   }
+  const by = renewByMs(row);
+  const exp = row.expires_at == null ? NaN : Date.parse(row.expires_at);
+  const inWindow = by != null && Number.isFinite(exp) && exp <= now && !row.revoked_at && !row.taken_down_at;
   return {
     purchaseAccount,
     linked,
@@ -102,6 +111,7 @@ export function planView(shop: Pick<ShopRow, 'ios_otid'>, row: PurchaseRow | nul
     expiresAt: isoOrNull(row.expires_at),
     takenDownAt: isoOrNull(row.taken_down_at),
     revoked: !!row.revoked_at,
+    ...(inWindow ? { renewBy: new Date(by!).toISOString() } : {}),
   };
 }
 

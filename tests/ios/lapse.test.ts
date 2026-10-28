@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { GRACE_MS, entitlementActive, isActiveRow, isLapsed, purchaseLive, sweepWatches } from '../../lib/ios/lapse.js';
+import { GRACE_MS, LAPSE_CUSHION_MS, renewByMs, entitlementActive, isActiveRow, isLapsed, purchaseLive, sweepWatches } from '../../lib/ios/lapse.js';
 import { offlineHtml } from '../../lib/ios/offlinePage.js';
 
 const NOW = 1_800_000_000_000;
@@ -10,7 +10,27 @@ const r = (expires: number | null, revoked: number | null = null) => ({
 });
 
 describe('isLapsed', () => {
-  it('prefilter grace is 1 hour', () => expect(GRACE_MS).toBe(3_600_000));
+  it('renewal window is 3 days', () => {
+    expect(LAPSE_CUSHION_MS).toBe(3 * 24 * 3_600_000);
+    expect(GRACE_MS).toBe(LAPSE_CUSHION_MS);
+  });
+  const H = 3_600_000;
+  it('59 minutes, 1 day and 2 days 23 h past expiry are not lapsed', () => {
+    for (const ms of [59 * 60_000, 24 * H, 71 * H]) expect(isLapsed(r(NOW - ms), NOW)).toBe(false);
+  });
+  it('3 days 1 h past expiry is lapsed', () => expect(isLapsed(r(NOW - 73 * H), NOW)).toBe(true));
+  it('revoked is lapsed at once (no window)', () => expect(isLapsed(r(NOW + 30 * 24 * H, NOW - 1), NOW)).toBe(true));
+  it('renewing inside the window clears it (future expiry)', () => {
+    expect(isLapsed(r(NOW - 71 * H), NOW)).toBe(false);
+    expect(isLapsed(r(NOW + 30 * 24 * H), NOW)).toBe(false);
+    expect(isActiveRow(r(NOW + 30 * 24 * H), NOW)).toBe(true);
+  });
+  it('an unwatched purchase stays live in the window and closes after it', () => {
+    const base = { product_id: 'com.ibrahim1774.aibarber.store.monthly', revoked_at: null, taken_down_at: null, site_slug: null, published_at: null };
+    expect(purchaseLive({ ...base, expires_at: iso(NOW - 71 * H) }, NOW)).toBe(true);
+    expect(purchaseLive({ ...base, expires_at: iso(NOW - 73 * H) }, NOW)).toBe(false);
+  });
+  it('renewByMs is expiry + 3 days', () => expect(renewByMs(r(NOW))).toBe(NOW + LAPSE_CUSHION_MS));
   it('exactly 1 h past expiry is lapsed', () => expect(isLapsed(r(NOW - GRACE_MS), NOW)).toBe(true));
   it('1 ms short of 1 h past expiry is not lapsed yet', () => expect(isLapsed(r(NOW - GRACE_MS + 1), NOW)).toBe(false));
   it('just expired (failed card, late renewal) is not lapsed yet', () => expect(isLapsed(r(NOW - 1000), NOW)).toBe(false));
@@ -112,7 +132,7 @@ describe('I2: purchases the sweep never takes down close the gates once lapsed',
     expect(entitlementActive(row, 'hosting', NOW)).toBe(false);
   });
 
-  it('unswept but not yet lapsed (inside the grace hour, or no expiry known) → open', () => {
+  it('unswept but not yet lapsed (inside the 3-day window, or no expiry known) → open', () => {
     expect(entitlementActive({ ...swept, site_slug: null, expires_at: iso(NOW - 1000) }, 'store', NOW)).toBe(true);
     expect(entitlementActive({ ...swept, site_slug: null, expires_at: iso(NOW + GRACE_MS) }, 'store', NOW)).toBe(true);
     expect(entitlementActive({ ...swept, site_slug: null, expires_at: null }, 'store', NOW)).toBe(true);

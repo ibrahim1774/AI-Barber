@@ -237,7 +237,7 @@ describe('concurrent link race', () => {
 describe('lapse, refund, revoke and renewal act on the linked account only', () => {
   it('lapse -> sweep takes the site down; B stays refused; renewal under A unlocks the same site', async () => {
     const { otid, transactionId } = await aBuys();
-    w.clock.advance(31 * DAY);
+    w.clock.advance(34 * DAY);
     await w.notify(w.apple.notification('EXPIRED', otid));
     const s = await w.sweep();
     expect(s.takenDown).toEqual(['fade-lab']);

@@ -36,7 +36,6 @@ import type { GetUser } from '../bookings/auth.js';
 import { authenticate } from '../bookings/auth.js';
 import { VerifyFailure, type VerifiedTx } from './appleVerify.js';
 import { isActive } from './txStatus.js';
-import { GRACE_MS } from './lapse.js';
 import { withTimeout } from './timeout.js';
 import { candidateDomains, eligiblePrice, isComDomain, normalizeLabel } from './domainNames.js';
 import {
@@ -233,6 +232,8 @@ export const LEASE_MS = 290_000;
 /** A claim call only STARTS steps this long (one slow republish still ends inside 300 s). */
 export const CLAIM_STEP_CUTOFF_MS = 140_000;
 /** The sweep re-asks every registered row's payer at least this often (renewal status drift). */
+/** Slack before a lapsed DOMAIN subscription is checked (separate from the site's 3-day renewal window in lapse.ts). */
+const DOMAIN_LAPSE_SLACK_MS = 60 * 60 * 1000;
 export const PAYER_REFRESH_MS = 12 * 3600_000;
 const YEAR_MS = 365 * 24 * 3600_000;
 const STALL_STATES: readonly DomainState[] = ['reserved', 'buying', 'ordered'];
@@ -1176,7 +1177,7 @@ export async function sweepDomains(
 
   // 1. Lapses: the paid period ended (payer confirms) → detach, under the row's lease.
   await pass('lapse', async () => {
-    for (const cand of await deps.repo.lapseCandidates(limit, deps.now() - GRACE_MS)) {
+    for (const cand of await deps.repo.lapseCandidates(limit, deps.now() - DOMAIN_LAPSE_SLACK_MS)) {
       if (outOfTime()) { out.deferred.push(cand.domain); continue; }
       const otid = cand.original_transaction_id;
       const r = await leased(otid, deps, async () => {

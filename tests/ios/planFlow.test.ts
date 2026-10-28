@@ -10,7 +10,7 @@ const OTHER = '22222222-2222-4222-8222-222222222222';
 const SHOP = '33333333-3333-4333-8333-333333333333';
 const OTID = '2000000123456789';
 const AUTH = 'Bearer owner-jwt';
-const EXPIRES = '2027-01-01T00:00:00.000Z';
+const EXPIRES = '2027-03-01T00:00:00.000Z';
 
 const purchaseRow = (over: Partial<PurchaseRow> = {}): PurchaseRow => ({
   original_transaction_id: OTID, product_id: `${P}bookings.monthly`, environment: 'Production',
@@ -84,6 +84,26 @@ describe('planView', () => {
   it('a revoked purchase → revoked true, active false, nothing granted', () => {
     const v = planView({ ios_otid: OTID }, purchaseRow({ revoked_at: '2026-10-01T00:00:00Z' }), NOW);
     expect(v).toMatchObject({ active: false, revoked: true, entitlements: NONE });
+  });
+
+  describe('renewBy (3-day renewal window)', () => {
+    const H = 3_600_000;
+    const at = (ms: number) => new Date(ms).toISOString();
+    const v = (over: Partial<PurchaseRow>) => planView({ ios_otid: OTID }, purchaseRow(over), NOW, USER);
+    it('absent while the subscription is current', () => expect(v({}).renewBy).toBeUndefined());
+    it('expired, not taken down, not revoked: expiresAt + 3 days; site still active for customers', () => {
+      const out = v({ expires_at: at(NOW - 5 * H) });
+      expect(out.renewBy).toBe(at(NOW - 5 * H + 72 * H));
+      expect(out.active).toBe(true);
+    });
+    it('2 days 23 h past expiry still has a renewBy and is active', () => {
+      const out = v({ expires_at: at(NOW - 71 * H) });
+      expect(out.renewBy).toBeDefined();
+      expect(out.active).toBe(true);
+    });
+    it('absent once taken down', () => expect(v({ expires_at: at(NOW - 80 * H), taken_down_at: at(NOW - H) }).renewBy).toBeUndefined());
+    it('absent when revoked (immediate, no window)', () => expect(v({ expires_at: at(NOW - H), revoked_at: at(NOW - H) }).renewBy).toBeUndefined());
+    it('renewal inside the window removes it', () => expect(v({ expires_at: at(NOW + 30 * 24 * H) }).renewBy).toBeUndefined());
   });
 
   it('I2: an unbound purchase past its expiry → inactive, nothing granted', () => {

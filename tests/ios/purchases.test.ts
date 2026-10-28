@@ -69,21 +69,21 @@ describe('supabasePurchases', () => {
     const DAY = 86_400_000;
     const iso = (ms: number) => new Date(ms).toISOString();
 
-    it('takedownCandidates: bound, published, not taken down, revoked or expired past the grace; re-checked in JS', async () => {
+    it('takedownCandidates: bound, published, not taken down, revoked or expired past the 3-day window; re-checked in JS', async () => {
       const rows = [
-        { original_transaction_id: 'expired', expires_at: iso(NOW - 2 * DAY), revoked_at: null },
+        { original_transaction_id: 'expired', expires_at: iso(NOW - 4 * DAY), revoked_at: null },
         { original_transaction_id: 'revoked', expires_at: iso(NOW + DAY), revoked_at: iso(NOW - DAY) },
-        { original_transaction_id: 'in-grace', expires_at: iso(NOW - 1000), revoked_at: null },
+        { original_transaction_id: 'in-window', expires_at: iso(NOW - 2 * DAY), revoked_at: null },
         { original_transaction_id: 'no-expiry', expires_at: null, revoked_at: null },
-        { original_transaction_id: 'unpublished', site_slug: 's5', published_at: null, taken_down_at: null, expires_at: iso(NOW - 2 * DAY), revoked_at: null },
-        { original_transaction_id: 'already-down', site_slug: 's6', published_at: iso(NOW - 9 * DAY), taken_down_at: iso(NOW - DAY), expires_at: iso(NOW - 2 * DAY), revoked_at: null },
+        { original_transaction_id: 'unpublished', site_slug: 's5', published_at: null, taken_down_at: null, expires_at: iso(NOW - 4 * DAY), revoked_at: null },
+        { original_transaction_id: 'already-down', site_slug: 's6', published_at: iso(NOW - 9 * DAY), taken_down_at: iso(NOW - DAY), expires_at: iso(NOW - 4 * DAY), revoked_at: null },
       ].map((r, i) => ({ site_slug: `s${i}`, published_at: iso(NOW - 9 * DAY), taken_down_at: null, ...r }));
       const { client, calls } = fakeClient({ data: rows, error: null });
       const out = await supabasePurchases(client).takedownCandidates(7, NOW);
       expect(out.map((r) => r.original_transaction_id)).toEqual(['expired', 'revoked']);
       expect(calls.filter((c) => c.method === 'not').map((c) => c.args)).toEqual([['site_slug', 'is', null], ['published_at', 'is', null]]);
       expect(calls.filter((c) => c.method === 'is').map((c) => c.args)).toEqual([['taken_down_at', null]]);
-      expect(find(calls, 'or')!.args).toEqual([`revoked_at.not.is.null,expires_at.lte."${iso(NOW - 3_600_000)}"`]);
+      expect(find(calls, 'or')!.args).toEqual([`revoked_at.not.is.null,expires_at.lte."${iso(NOW - 3 * DAY)}"`]);
       expect(find(calls, 'limit')!.args).toEqual([7]);
     });
 
@@ -128,8 +128,8 @@ describe('supabasePurchases', () => {
 
     it('takedownCandidates: oldest-checked first; Sandbox excluded unless includeSandbox', async () => {
       const rows = [
-        { original_transaction_id: 'prod', environment: 'Production', site_slug: 'p', published_at: iso(NOW - 9 * DAY), taken_down_at: null, expires_at: iso(NOW - 2 * DAY), revoked_at: null },
-        { original_transaction_id: 'sbx', environment: 'Sandbox', site_slug: 's', published_at: iso(NOW - 9 * DAY), taken_down_at: null, expires_at: iso(NOW - 2 * DAY), revoked_at: null },
+        { original_transaction_id: 'prod', environment: 'Production', site_slug: 'p', published_at: iso(NOW - 9 * DAY), taken_down_at: null, expires_at: iso(NOW - 4 * DAY), revoked_at: null },
+        { original_transaction_id: 'sbx', environment: 'Sandbox', site_slug: 's', published_at: iso(NOW - 9 * DAY), taken_down_at: null, expires_at: iso(NOW - 4 * DAY), revoked_at: null },
       ];
       const a = fakeClient({ data: rows, error: null });
       expect((await supabasePurchases(a.client).takedownCandidates(5, NOW, { includeSandbox: false })).map((r) => r.original_transaction_id)).toEqual(['prod']);
