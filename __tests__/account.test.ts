@@ -611,7 +611,13 @@ describe('pullSiteFromAccount', () => {
     ];
     await expect(pullSiteFromAccount(USER.id)).resolves.toBe('adopted');
 
+    // The published app site first (none here: these rows carry no deployment_status), then any app-made row.
     expect(sb.selects[0].filters).toEqual([
+      ['user_id', USER.id],
+      ['site_data->>source', 'ios'],
+      ['deployment_status', 'deployed'],
+    ]);
+    expect(sb.selects[1].filters).toEqual([
       ['user_id', USER.id],
       ['site_data->>source', 'ios'],
     ]);
@@ -716,10 +722,10 @@ describe('pullSiteFromAccount', () => {
 
     resetLaunchPullForTests();
     sb.setSession({ access_token: 'a', user: USER });
-    sb.rows = [row({ id: 'new-ios' })];
+    sb.rows = [row({ id: 'new-ios', deployment_status: 'deployed' })];
     await expect(pullSiteOnLaunch()).resolves.toBe('adopted');
     await expect(pullSiteOnLaunch()).resolves.toBe('adopted');
-    expect(sb.selects).toHaveLength(1);
+    expect(sb.selects).toHaveLength(1); // once per launch (the published row is found by the first read)
     resetLaunchPullForTests();
   });
 });

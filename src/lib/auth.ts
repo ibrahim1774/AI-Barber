@@ -7,6 +7,7 @@ import {
 } from '@/lib/account';
 import type { SwitchResult } from '@/lib/account';
 import { clearCustomersCache } from '@/lib/bookings/customersCache';
+import { unregisterPushToken } from '@/lib/bookings/pushStamp';
 import { clearEntitlements } from '@/lib/entitlements';
 import { resetSharedPlan } from '@/lib/plan';
 import { isCodeComplete, isValidEmail, sanitizeCode } from '@/lib/recovery';
@@ -211,6 +212,9 @@ export async function signOut(): Promise<void> {
   // The site goes into the account first; it leaves the phone only if that worked, so the next person to
   // sign in here never sees it, and nothing unsaved is lost.
   const pushed = await withTimeout(pushSiteBeforeSignOut(), LOOKUP_TIMEOUT_MS).catch(() => false);
+  // While the session still exists: this phone stops getting the account's booking / order pushes.
+  const leaving = (await supabase.auth.getSession().catch(() => null))?.data.session?.user?.id ?? null;
+  await withTimeout(unregisterPushToken(leaving), LOOKUP_TIMEOUT_MS).catch(() => {});
   const { error } = await supabase.auth.signOut();
   // Offline: the refresh token can't be revoked, but this phone still signs out.
   if (error) await supabase.auth.signOut({ scope: 'local' });

@@ -366,7 +366,8 @@ describe('publish decides the Book / Shop links from the choice', () => {
   afterEach(resetEntitlementsForTests);
 
   const run = async (ids: string[], extra: object = {}) => {
-    require('@/lib/plan').setSharedPlan({ ...require('../test/ownPlan').OWN_PLAN });
+    // The account owns the purchase; the tier is the one Superwall reports (the server grants nothing more here).
+    require('@/lib/plan').setSharedPlan({ ...require('../test/ownPlan').OWNERSHIP_ONLY_PLAN });
     setEntitlementsFromStatus({ status: 'ACTIVE', entitlements: ids.map((id) => ({ id })) });
     await store.saveSite(withPrefs);
     const ents = require('@/lib/entitlements').getEntitlements();

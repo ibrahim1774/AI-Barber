@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { getSharedPlan, subscribePlan, type Plan } from '@/lib/plan';
+import { getSharedPlan, setSharedPlan, subscribePlan, type Plan } from '@/lib/plan';
 
 /**
  * What the subscription grants. `known` is false until Superwall has reported a status, and while Bookings / Store
@@ -46,12 +46,28 @@ const same = (a: Entitlements, b: Entitlements) =>
   a.account === b.account && (a.hint ?? null) === (b.hint ?? null);
 
 /**
- * Pure: the Superwall mirror AND the server's plan. Superwall's status belongs to the Apple ID, so a second account
+ * Pure: the Superwall mirror and the server's plan. Superwall's status belongs to the Apple ID, so a second account
  * on the same Apple ID would see Bookings / Store as paid. They unlock only when the server says this account owns the
- * purchase and it is active (`purchaseAccount === 'self' && active`). Hosting is not gated (a site can be published
- * without an account). Signed out, or the plan not loaded yet, is `known: false`: locked, never unlocked on a guess.
+ * purchase and it is active (`purchaseAccount === 'self' && active`); that answer also grants the plan's own tiers when
+ * this iPhone's Superwall says nothing (another Apple ID, a renewal it has not seen). Hosting is not gated by Superwall
+ * alone (a site can be published without an account). Signed out, or the plan not loaded yet, is `known: false`
+ * whenever Superwall claims Bookings / Store: locked, never unlocked on a guess.
  */
-export function effectiveEntitlements(raw: Entitlements, plan: Pick<Plan, 'purchaseAccount' | 'purchaseHint' | 'active'> | null): Entitlements {
+export function effectiveEntitlements(
+  raw: Entitlements,
+  plan: (Pick<Plan, 'purchaseAccount' | 'purchaseHint' | 'active'> & { entitlements?: Plan['entitlements'] }) | null,
+): Entitlements {
+  // The server says this account's own Apple purchase is active: its tiers are granted even when this device's
+  // StoreKit / Superwall says otherwise (another Apple ID on this iPhone, a renewal Superwall has not seen yet, a lapse
+  // between Sandbox renewals). The server's own gates (publish, the booking page, the store) use this same answer, and
+  // normalizePlan already zeroes a revoked or taken-down plan. Superwall's word is kept on top (an upgrade bought a
+  // moment ago that the server has not read yet).
+  if (plan?.purchaseAccount === 'self' && plan.active && plan.entitlements) {
+    const e = plan.entitlements;
+    return {
+      known: true, hosting: raw.hosting || e.hosting, bookings: raw.bookings || e.bookings, store: raw.store || e.store, account: 'self',
+    };
+  }
   if (!raw.known) return raw;
   if (!raw.bookings && !raw.store) return raw; // nothing to gate: a Website plan or no plan
   if (!plan) return { ...UNKNOWN, account: 'unknown' };
@@ -79,11 +95,39 @@ export function getSuperwallEntitlements(): Entitlements {
   return mirror;
 }
 
+const swListeners = new Set<() => void>();
+
 /** Feeds the mirror from Superwall's status. Notifies only on a real change. */
 export function setEntitlementsFromStatus(status: StatusLike): void {
   lastStatus = status;
-  mirror = entitlementsFrom(status);
-  recompute();
+  const next = entitlementsFrom(status);
+  const changed = !same(mirror, next);
+  // This device just saw the plan stop or shrink (a lapse, a refund, a downgrade): a server plan cached before is no
+  // longer trusted until it is read again (PlanSync and the tabs re-read it at once). Nothing is granted on the old answer.
+  const stopped = mirror.known && next.known &&
+    ((mirror.hosting && !next.hosting) || (mirror.bookings && !next.bookings) || (mirror.store && !next.store));
+  mirror = next;
+  if (stopped && getSharedPlan()) setSharedPlan(null); // recomputes through subscribePlan
+  else recompute();
+  if (changed) swListeners.forEach((l) => l());
+}
+
+/**
+ * Superwall's own answer for this Apple ID, as a hook. It never unlocks anything by itself: the screens use it only to
+ * re-read the server's plan when the device says the plan stopped (a lapse, a refund), since a server plan cached as
+ * active would otherwise keep the tiers granted.
+ */
+export function useSuperwallEntitlements(): Entitlements {
+  return useSyncExternalStore(
+    (l) => {
+      swListeners.add(l);
+      return () => {
+        swListeners.delete(l);
+      };
+    },
+    getSuperwallEntitlements,
+    getSuperwallEntitlements,
+  );
 }
 
 export function subscribeEntitlements(listener: () => void): () => void {
@@ -106,6 +150,7 @@ export function resetEntitlementsForTests(): void {
   mirror = UNKNOWN;
   lastStatus = null;
   listeners.clear();
+  swListeners.clear();
 }
 
 export function useEntitlements(): Entitlements {

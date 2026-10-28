@@ -11,7 +11,7 @@ import { clearOverlayFlags } from '@/lib/overlayFlags';
 import { accessToken } from '@/lib/accessToken';
 import { SIGN_IN_TO_RESTORE_CODE } from '@/lib/claimCopy';
 import { findTransactionId, publishPayload, runSerial } from '@/lib/publish';
-import { linksOf } from '@/lib/bookingChoice';
+import { linksOf, type BookingChoice } from '@/lib/bookingChoice';
 import { cancelAllReminders, cancelRemindersInBackground } from '@/lib/reminders';
 import { emitSiteAdopted, onSiteAdopted } from '@/lib/siteEvents';
 import * as siteStore from '@/lib/siteStore';
@@ -45,7 +45,7 @@ export async function syncSiteToSupabase(site: SiteRecord, userId: string): Prom
       brand_colour: '#f4a100',
       // `source` marks an app-made row, so a fresh install can find it again
       // (pullSiteFromAccount). It is stripped again when a row is adopted.
-      site_data: { ...data, source: IOS_SOURCE },
+      site_data: { ...data, source: IOS_SOURCE, ...appPrefsField(site.inputs) },
       deployed_url: site.deployedUrl,
       deployment_status: site.deployedUrl ? 'deployed' : 'draft',
       // custom_domain / domain_order_id are left out on purpose: the web
@@ -62,6 +62,39 @@ export async function syncSiteToSupabase(site: SiteRecord, userId: string): Prom
   return Number.isNaN(at) ? null : at;
 }
 
+
+/** `site_data.iosPrefs` on rows the app writes: the Book-button choice and the barber's own link, which live only in the
+ * record's `inputs` (never in the website data), so another phone or a sign-in after sign-out gets them back. */
+export const IOS_PREFS = 'iosPrefs';
+type StoredPrefs = { bookingChoice?: BookingChoice; ownBookingUrl?: string; ownBookingCleared?: true };
+
+function appPrefsField(inputs: Partial<SiteRecord['inputs']>): { iosPrefs?: StoredPrefs } {
+  const p: StoredPrefs = {};
+  if (inputs.bookingChoice === 'own' || inputs.bookingChoice === 'aibarber' || inputs.bookingChoice === 'call') p.bookingChoice = inputs.bookingChoice;
+  if (typeof inputs.ownBookingUrl === 'string' && inputs.ownBookingUrl.trim()) p.ownBookingUrl = inputs.ownBookingUrl.trim();
+  if (inputs.ownBookingCleared) p.ownBookingCleared = true;
+  return Object.keys(p).length ? { [IOS_PREFS]: p } : {};
+}
+
+/**
+ * The record's `inputs` for a site adopted from an account row: the shop facts from its data, the stored Book prefs,
+ * else (a row written before they were stored) what the live site shows: a live site with no Book link has the Book
+ * button off ('call'), so a later publish never adds one the barber removed.
+ */
+function adoptedInputs(raw: Record<string, unknown>, data: WebsiteData, live: boolean): SiteRecord['inputs'] {
+  const inputs: SiteRecord['inputs'] = inputsFrom(data);
+  if (data.importedFrom === 'booking' || data.importedFrom === 'gbp') inputs.importedFrom = data.importedFrom;
+  const p = raw[IOS_PREFS];
+  if (p && typeof p === 'object' && !Array.isArray(p)) {
+    const q = p as Record<string, unknown>;
+    if (q.bookingChoice === 'own' || q.bookingChoice === 'aibarber' || q.bookingChoice === 'call') inputs.bookingChoice = q.bookingChoice;
+    if (typeof q.ownBookingUrl === 'string' && q.ownBookingUrl.trim()) inputs.ownBookingUrl = q.ownBookingUrl.trim();
+    if (q.ownBookingCleared === true) inputs.ownBookingCleared = true;
+  } else if (live && !(typeof data.bookingUrl === 'string' && data.bookingUrl.trim())) {
+    inputs.bookingChoice = 'call';
+  }
+  return inputs;
+}
 
 /**
  * Pushes the local site (or `site`) to the signed-in account, if there is
@@ -122,7 +155,7 @@ function isSiteData(v: unknown): v is WebsiteData & { source?: unknown; editedAt
 
 /** The row's site data without the app's own `source` marker (never sent to /api/ios/publish). */
 function siteDataFrom(raw: WebsiteData & { source?: unknown; editedAt?: unknown }): WebsiteData {
-  const { source: _source, editedAt: _editedAt, ...rest } = raw;
+  const { source: _source, editedAt: _editedAt, [IOS_PREFS]: _prefs, ...rest } = raw as typeof raw & { [IOS_PREFS]?: unknown };
   return rest as WebsiteData;
 }
 
@@ -167,15 +200,18 @@ export async function pullSiteFromAccount(userId: string): Promise<PullResult> {
     // Another account's site on this phone is never adopted into (afterSession swaps it on sign-in).
     if (local?.ownerUserId && local.ownerUserId !== userId) return 'unchanged';
     const sites = supabase.from('sites');
-    const { data: row, error } = local
+    // No local site: the account's published app site first, so a newer unpublished draft row (one built signed out,
+    // then saved into the account on sign-in) never hides the live site on the next sign-in or another phone.
+    const newestApp = (deployedOnly: boolean) => {
+      let q = sites.select(ROW_COLUMNS).eq('user_id', userId).eq('site_data->>source', IOS_SOURCE);
+      if (deployedOnly) q = q.eq('deployment_status', 'deployed');
+      return q.order('updated_at', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
+    };
+    let found = local
       ? await sites.select(ROW_COLUMNS).eq('id', local.draftId).eq('user_id', userId).maybeSingle()
-      : await sites
-          .select(ROW_COLUMNS)
-          .eq('user_id', userId)
-          .eq('site_data->>source', IOS_SOURCE)
-          .order('updated_at', { ascending: false, nullsFirst: false })
-          .limit(1)
-          .maybeSingle();
+      : await newestApp(true);
+    if (!local && !found.error && !found.data) found = await newestApp(false);
+    const { data: row, error } = found;
     if (error) throw error;
     const r = row as SiteRow | null;
     if (!r || !isSiteData(r.site_data)) return 'unchanged';
@@ -207,7 +243,7 @@ export async function pullSiteFromAccount(userId: string): Promise<PullResult> {
         }
       : {
           draftId: r.id,
-          inputs: inputsFrom(data),
+          inputs: adoptedInputs(r.site_data as unknown as Record<string, unknown>, data, !!r.deployed_url),
           data,
           updatedAt: adoptedAt(rowAt),
           accountSyncedAt: adoptedAt(rowAt),
@@ -223,6 +259,50 @@ export async function pullSiteFromAccount(userId: string): Promise<PullResult> {
   } catch (e) {
     console.warn('[account] loading the site from the account failed:', e);
     return null;
+  }
+}
+
+/**
+ * After a site was adopted from the account (sign-in, a second phone): the record has no slug or transaction of its own,
+ * so the admin sync, the setup prompt and the customer-link fallback cannot run. This finds them again, read-only: the
+ * Apple ID's active transaction, then /api/ios/site with the Bearer, which answers only when that purchase is linked to
+ * THIS account (409 otherwise: nothing is saved). Only the very site on the phone (same live host) is bound; its data,
+ * version and edit stamps are left alone, so the next admin sync still compares from scratch and never lets a publish
+ * pass over a newer admin edit. Never throws; true when the record was bound.
+ */
+export async function rebindAdoptedSite(deps: {
+  latestTransactionId(): Promise<string | null>;
+  iosSite?: typeof api.iosSite;
+  store?: Pick<typeof siteStore, 'loadSite' | 'saveSite'>;
+}): Promise<boolean> {
+  const store = deps.store ?? siteStore;
+  try {
+    const local = await store.loadSite();
+    if (!local || local.slug != null || local.transactionId != null || !local.deployedUrl) return false;
+    const uid = (await supabase.auth.getSession()).data.session?.user?.id;
+    if (!uid || local.ownerUserId !== uid) return false;
+    const transactionId = await deps.latestTransactionId().catch(() => null);
+    if (!transactionId) return false;
+    const bound = await (deps.iosSite ?? api.iosSite)(transactionId);
+    if (!boundMatches(local, bound)) return false;
+    // Compare and swap: an edit, a publish or another account since the read wins.
+    const cur = await store.loadSite();
+    if (!cur || cur.draftId !== local.draftId || cur.slug != null || cur.transactionId != null || cur.ownerUserId !== uid) return false;
+    const signedIn = (await supabase.auth.getSession()).data.session?.user?.id;
+    if (signedIn !== uid) return false;
+    const next: SiteRecord = {
+      ...cur,
+      slug: bound.siteId,
+      transactionId,
+      ...(isPlainSiteData(bound.siteData) ? { liveLinks: linksOf(bound.siteData) } : {}),
+    };
+    await store.saveSite(next);
+    // The open editor (and Settings) reload from it, so their next save can't write the old, unbound record back.
+    emitSiteAdopted(next);
+    return true;
+  } catch (e) {
+    console.warn('[account] could not bind the adopted site to its subscription:', e);
+    return false;
   }
 }
 
@@ -249,13 +329,19 @@ export async function switchAccountSite(userId: string, isCurrent: () => boolean
   const pending = await siteStore.loadPendingPublish();
   if (pending || !((local.accountSyncedAt ?? -1) >= local.updatedAt)) throw new Error(UNSAVED_OTHER_ACCOUNT);
 
-  const newest = (appMade: boolean) => {
+  const newest = (appMade: boolean, deployedOnly = false) => {
     let q = supabase.from('sites').select(ROW_COLUMNS).eq('user_id', userId);
     if (appMade) q = q.eq('site_data->>source', IOS_SOURCE);
+    if (deployedOnly) q = q.eq('deployment_status', 'deployed');
     return q.order('updated_at', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
   };
-  let res = await newest(true);
+  // The published app site first (an unpublished draft row must not hide it), then any app-made row.
+  let res = await newest(true, true);
   if (res.error) throw res.error;
+  if (!res.data) {
+    res = await newest(true);
+    if (res.error) throw res.error;
+  }
   // No app-made site: any plain site this account has (made on aibarber.org).
   if (!res.data) {
     res = await newest(false);
@@ -281,7 +367,7 @@ export async function switchAccountSite(userId: string, isCurrent: () => boolean
   const now = Date.now();
   const next: SiteRecord = {
     draftId: found.id,
-    inputs: inputsFrom(data),
+    inputs: adoptedInputs(found.site_data as unknown as Record<string, unknown>, data, !!found.deployed_url),
     data,
     updatedAt: adoptedAt(rowAt),
     accountSyncedAt: adoptedAt(rowAt),

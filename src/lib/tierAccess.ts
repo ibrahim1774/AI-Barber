@@ -1,11 +1,12 @@
 import { Alert } from 'react-native';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { useEntitlements, type EntitlementId } from '@/lib/entitlements';
+import { PLAN_ENTITLEMENT, useEntitlements, useSuperwallEntitlements, type EntitlementId } from '@/lib/entitlements';
 import { usePaywall, usePublishDeps, useSuperwallSettled } from '@/lib/paywall';
 import { publishFlow } from '@/lib/publish';
 import { loadSite } from '@/lib/siteStore';
 import { resetTo } from '@/lib/nav';
-import { currentUserId } from '@/lib/auth';
+import { currentUserId, useSession } from '@/lib/auth';
+import { withTimeout } from '@/lib/timeout';
 import { getPlan, getPlanEpoch, getSharedPlan, hostingReadOnlyOpen, setSharedPlan, subscribePlan } from '@/lib/plan';
 
 export type TierAccess = {
@@ -22,8 +23,9 @@ export type TierAccess = {
 };
 
 /**
- * Whether the plan covers `need`: Superwall's status AND the server's plan (the purchase must be this account's:
- * `purchaseAccount === 'self' && active`; useEntitlements already combines them). Signed out or the plan not loaded
+ * Whether the plan covers `need`, as useEntitlements combines it: the server's plan for this account
+ * (`purchaseAccount === 'self' && active` grants its tiers, whatever this iPhone's Superwall says), with Superwall's
+ * word added only for a purchase the server says is this account's. Signed out or the plan not loaded
  * is locked, never unlocked on Superwall alone. If Superwall never settles (offline launch, no key), the server's
  * plan decides; if that fails too the status is 'error' (a retry card), never an endless spinner and never unlocked.
  * The plan is also fetched when hosting is inactive, to date the lapse.
@@ -35,9 +37,20 @@ export function useTierAccess(need: EntitlementId): TierAccess {
   const [failed, setFailed] = useState(false);
   const [signedOut, setSignedOut] = useState(false);
   const [tries, setTries] = useState(0);
+  // A 401 while signed out locks the tab; the sign-in that follows must ask again (the other deps don't change).
+  const uid = useSession().session?.user?.id ?? null;
+  const askedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!signedOut || !uid || askedFor.current === uid) return; // once per signed-in account, never a loop
+    askedFor.current = uid;
+    setTries((n) => n + 1);
+  }, [signedOut, uid]);
 
   // 'other' refetches on mount: the cached plan may predate a move that made this account the owner.
-  const needPlan = (!ents.known && settled) || (ents.known && !ents.hosting) || ents.account === 'other';
+  // Superwall saying the plan stopped re-reads the server too: its answer decides (a lapse locks, the account's own
+  // active purchase on another Apple ID or a renewal Superwall missed keeps the tiers).
+  const sw = useSuperwallEntitlements();
+  const needPlan = (!ents.known && settled) || (ents.known && !ents.hosting) || ents.account === 'other' || (sw.known && !sw.hosting);
   useEffect(() => {
     if (!needPlan) return;
     let alive = true;
@@ -69,7 +82,8 @@ export function useTierAccess(need: EntitlementId): TierAccess {
     // Hosting inactive: wait for the plan's date so a 30+ day lapse never flashes the read-only view.
     // Signed out (nobody has paid or signed in yet, e.g. a site just made from scratch): nothing to wait for, locked.
     if (!ents.hosting && plan == null && !failed && !signedOut) return { status: 'loading', entitled: false, expired: false, hosting: false, otherAccount: null, retry };
-    const expired = !ents.hosting && plan != null && !hostingReadOnlyOpen(plan);
+    // Only a plan whose hosting has ended can be "expired"; hostingReadOnlyOpen is false for an active one too.
+    const expired = !ents.hosting && plan != null && !plan.entitlements.hosting && !hostingReadOnlyOpen(plan);
     return { status: 'ready', entitled: ents[need], expired, hosting: ents.hosting, otherAccount: other, retry };
   }
   if (!settled) return { status: 'loading', entitled: false, expired: false, hosting: false, otherAccount: null, retry };
@@ -84,6 +98,26 @@ export function useTierAccess(need: EntitlementId): TierAccess {
   // Signed out: nothing to unlock with (locked, no retry card). A network failure is a retry, never an unlock.
   if (signedOut) return { status: 'ready', entitled: false, expired: false, hosting: false, otherAccount: null, retry };
   return { status: failed ? 'error' : 'loading', entitled: false, expired: false, hosting: false, otherAccount: null, retry };
+}
+
+/**
+ * True when the signed-in account's own, active purchase (the server's plan) already includes the placement's tier:
+ * the fresh plan is published to the tabs and no paywall is needed. Never throws; signed out or any failure is false.
+ */
+const PLAN_CHECK_MS = 4_000;
+
+async function alreadyCovered(placement: 'bookings_upgrade' | 'store_upgrade', d: { accessToken(): Promise<string | null> }): Promise<boolean> {
+  try {
+    if (!(await d.accessToken().catch(() => null))) return false;
+    const epoch = getPlanEpoch();
+    // Short: a slow network falls through to the paywall instead of holding the button.
+    const p = await withTimeout(getPlan(), PLAN_CHECK_MS);
+    if (epoch !== getPlanEpoch()) return false;
+    setSharedPlan(p);
+    return p.purchaseAccount === 'self' && p.active && p.entitlements[PLAN_ENTITLEMENT[placement]];
+  } catch {
+    return false;
+  }
 }
 
 const PAID_NOT_FINISHED = 'Your payment went through. Open Settings > Publish to finish.';
@@ -107,6 +141,9 @@ export function useUpgrade(placement: 'bookings_upgrade' | 'store_upgrade') {
     busyRef.current = true;
     setBusy(true);
     try {
+      // Signed in: this account may already own a purchase that covers it (the tab was showing a stale or
+      // device-only answer). Then its link is restored from the server instead of selling the plan again.
+      if (await alreadyCovered(placement, depsRef.current)) return;
       const result = await paywall(placement);
       if (result !== 'declined') {
         const d = depsRef.current;

@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { Alert } from 'react-native';
-import { hasLockedClaim } from '@/lib/account';
+import { hasLockedClaim, rebindAdoptedSite } from '@/lib/account';
+import { useLatestTransactionId } from '@/lib/paywall';
 import { takeEmptyAccountNotice } from '@/lib/auth';
 import { goBackOrHome, resetTo } from '@/lib/nav';
 import { useRestoreFlow } from '@/lib/restoreFlow';
@@ -17,6 +18,7 @@ export function useAfterSignIn(
   leave: () => void = goBackOrHome,
 ): (opts?: { title?: string; message?: string }) => Promise<void> {
   const { restore } = useRestoreFlow();
+  const latestTransactionId = useLatestTransactionId();
   return useCallback(
     async ({ title = 'Signed in', message }: { title?: string; message?: string } = {}) => {
       // A paid publish is waiting for this account (the locked step's "Forgot password?" lands here): back to it.
@@ -50,6 +52,8 @@ export function useAfterSignIn(
       const site = await loadSite().catch(() => null);
       if (site) {
         resetTo('/edit');
+        // A site loaded from the account: find its subscription again (read-only, this account's purchase only).
+        void rebindAdoptedSite({ latestTransactionId });
         // A plain sign-in says nothing; a password reset confirms itself.
         if (message) Alert.alert(title, message);
         return;
@@ -66,6 +70,6 @@ export function useAfterSignIn(
         },
       ]);
     },
-    [leave, restore],
+    [leave, restore, latestTransactionId],
   );
 }

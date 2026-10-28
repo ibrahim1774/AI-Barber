@@ -130,6 +130,43 @@ describe('Bookings tab gating', () => {
     expect(tree.root.findAll((n: any) => n.props?.accessibilityLabel === 'Booking setup')).toHaveLength(0);
   });
 
+  // Build 36 (2026-10-28): signed out and back in, this iPhone's Superwall said INACTIVE (a Sandbox renewal gap; the same
+  // happens on a second iPhone with another Apple ID) while the server said this account's own purchase is active.
+  it("Superwall INACTIVE but the server says this account's own purchase is active with Bookings: the shop, never the UpgradeCard", async () => {
+    setEntitlementsFromStatus({ status: 'INACTIVE' });
+    mockCall.mockResolvedValue(planOf(true, true));
+    const tree = await render(<Bookings />);
+    expect(hasText(tree, /Take bookings online/)).toBe(false);
+    expect(hasText(tree, /paused/)).toBe(false);
+    expect(hasText(tree, /^FAB$/)).toBe(true);
+    expect(mockCall).toHaveBeenCalledWith('GET', '/api/shop/plan');
+    expect(mockCall.mock.calls.some((c) => String(c[1]).includes('publish'))).toBe(false); // nothing re-published
+    expect(mockPaywall).not.toHaveBeenCalled();
+  });
+
+  it("Superwall INACTIVE and the server's plan is another account's, or not active: still locked", async () => {
+    setEntitlementsFromStatus({ status: 'INACTIVE' });
+    mockCall.mockResolvedValue({ ...(planOf(true, true) as any), purchaseAccount: 'other' });
+    let tree = await render(<Bookings />);
+    expect(hasText(tree, /^FAB$/)).toBe(false);
+    setSharedPlan(null);
+    mockCall.mockResolvedValue(planOf(false, false, new Date(Date.now() - 2 * 86_400_000).toISOString()));
+    tree = await render(<Bookings />);
+    expect(hasText(tree, /^FAB$/)).toBe(false);
+  });
+
+  it("the UpgradeCard's button first re-reads the plan: an own active purchase that covers Bookings restores it, no paywall", async () => {
+    ents('hosting');
+    mockData = { ...mockData, phase: 'no-shop', shop: null };
+    const tree = await render(<Bookings />);
+    expect(hasText(tree, /Take bookings online/)).toBe(true);
+    mockCall.mockResolvedValue(planOf(true, true)); // the account's purchase now covers Bookings (Superwall has not caught up)
+    await press(tree, 'See the Bookings plan');
+    expect(mockPaywall).not.toHaveBeenCalled();
+    expect(hasText(tree, /Take bookings online/)).toBe(false);
+    expect(hasText(tree, /Set up bookings/)).toBe(true);
+  });
+
   it('hosting inactive for 31 days: only the UpgradeCard', async () => {
     setEntitlementsFromStatus({ status: 'INACTIVE' });
     mockCall.mockResolvedValue(planOf(false, false, new Date(Date.now() - 31 * 86_400_000).toISOString()));

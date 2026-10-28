@@ -7,6 +7,7 @@ import type * as NotificationsModule from 'expo-notifications';
 import { useSession } from '@/lib/auth';
 import { postPushToken } from '@/lib/bookings/api';
 import { loadMyShop } from '@/lib/bookings/shop';
+import { SENT_KEY, getSentThisRun, setSentThisRun } from '@/lib/bookings/pushStamp';
 
 /**
  * Booking and order pushes: registers this phone's Expo push token with the server and
@@ -39,8 +40,6 @@ export function easProjectId(): string | undefined {
   return extra?.eas?.projectId ?? (Constants as any).easConfig?.projectId;
 }
 
-const SENT_KEY = 'bookings.pushToken.v1';
-let sentThisRun: string | null = null;
 const handledTaps = new Set<string>();
 
 /**
@@ -57,13 +56,13 @@ export async function registerPushToken(userId: string): Promise<void> {
     const { data: token } = await N.getExpoPushTokenAsync({ projectId });
     if (!token) return;
     const stamp = `${userId}:${token}`;
-    if (sentThisRun === stamp) return;
+    if (getSentThisRun() === stamp) return;
     if ((await Storage.getItem(SENT_KEY)) === stamp) {
-      sentThisRun = stamp;
+      setSentThisRun(stamp);
       return;
     }
     await postPushToken(token);
-    sentThisRun = stamp;
+    setSentThisRun(stamp);
     await Storage.setItem(SENT_KEY, stamp);
   } catch (e) {
     console.warn('[bookings] push token registration failed', e);

@@ -59,7 +59,8 @@ describe('the full journey, signed in', () => {
     await drain();
     await w.superwallSync();
     expect(w.m.paywall.hasEntitlement()).toBe(true);
-    expect(w.m.entitlements.getEntitlements()).toEqual({ known: true, hosting: true, bookings: false, store: false });
+    // The server's plan says the purchase is this account's (account: 'self'); the Website plan grants hosting only.
+    expect(w.m.entitlements.getEntitlements()).toEqual({ known: true, hosting: true, bookings: false, store: false, account: 'self' });
     let rec = await w.site();
     expect(rec).toMatchObject({ slug: 'fade-lab', transactionId: 'tx-1', serverVersion: 1, editedBy: 'owner' });
     expect(await w.pending()).toBeNull();

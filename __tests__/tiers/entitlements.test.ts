@@ -6,11 +6,11 @@ import {
 const active = (...ids: string[]) => ({ status: 'ACTIVE', entitlements: ids.map((id) => ({ id })) });
 
 import { setSharedPlan } from '@/lib/plan';
-import { OWN_PLAN } from '../../test/ownPlan';
+import { OWNERSHIP_ONLY_PLAN } from '../../test/ownPlan';
 
 beforeEach(() => {
   resetEntitlementsForTests();
-  setSharedPlan({ ...OWN_PLAN }); // this account owns the purchase: the mirror alone decides
+  setSharedPlan({ ...OWNERSHIP_ONLY_PLAN }); // this account owns the purchase, the server grants nothing more: the mirror alone decides
 });
 
 describe('entitlementsFrom', () => {
@@ -32,6 +32,7 @@ describe('entitlementsFrom', () => {
 
 describe('the mirror', () => {
   it('starts unknown', () => {
+    setSharedPlan(null); // no server plan either (an own, active one is an answer of its own)
     expect(getEntitlements().known).toBe(false);
   });
   it('notifies subscribers on a change, not on a repeat', () => {
@@ -67,6 +68,7 @@ it('clearEntitlements re-applies Superwall\'s latest status instead of leaving t
   clearEntitlements();
   expect(getEntitlements()).toMatchObject({ known: true, hosting: true, bookings: false });
   resetEntitlementsForTests();
+  setSharedPlan(null);
   clearEntitlements();
   expect(getEntitlements().known).toBe(false);
 });

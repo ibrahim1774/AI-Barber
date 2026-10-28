@@ -31,14 +31,14 @@ jest.mock('@/lib/paywall', () => ({ usePaywall: () => mockPaywall, useLatestTran
 import Settings from '@/app/(tabs)/settings';
 import { resetEntitlementsForTests, setEntitlementsFromStatus } from '@/lib/entitlements';
 import { setSharedPlan } from '@/lib/plan';
-import { OWN_PLAN } from '../../test/ownPlan';
+import { OWN_PLAN, OWNERSHIP_ONLY_PLAN } from '../../test/ownPlan';
 
 const ents = (...ids: string[]) => act(() => setEntitlementsFromStatus({ status: 'ACTIVE', entitlements: ids.map((id) => ({ id })) }));
 let sheet: jest.SpyInstance;
 
 beforeEach(() => {
   resetEntitlementsForTests();
-  setSharedPlan({ ...OWN_PLAN }); // this account owns the purchase
+  setSharedPlan({ ...OWNERSHIP_ONLY_PLAN }); // this account owns the purchase; the tier comes from Superwall here
   mockPaywall.mockClear();
   sheet = jest.spyOn(ActionSheetIOS, 'showActionSheetWithOptions').mockImplementation(() => {});
 });
@@ -88,6 +88,7 @@ it("a second account on the same Apple ID: the Plan row shows the Website plan o
 });
 
 it('the Plan row shows … and does nothing until entitlements are known', async () => {
+  setSharedPlan(null); // neither Superwall nor the server has answered
   const tree = await render(<Settings />);
   expect(allText(tree)).toContain('…');
   await expect(pressRow(tree, 'Plan')).rejects.toThrow();
