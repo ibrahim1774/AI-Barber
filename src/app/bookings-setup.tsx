@@ -24,7 +24,7 @@ import { useTierAccess, useUpgrade } from '@/lib/tierAccess';
 import { pickAndUploadPhoto } from '@/lib/photos';
 import { buildSetupBody, shopSetup } from '@/lib/setup/ownerApi';
 import { setPostAuthReturn } from '@/lib/setup/gate';
-import { withMirroredServices } from '@/lib/setup/servicesMap';
+import { mirrorServices } from '@/lib/samplePrices';
 import { updateSiteData } from '@/lib/setup/siteSync';
 import { wizardDone } from '@/lib/setup/wizardFlag';
 import { listMembers, loadMyShop, type Member, type Service, type Shop } from '@/lib/shop';
@@ -211,7 +211,7 @@ function SubView({
 }
 
 function ServicesPane({ shop, site }: { shop: Shop; site: SiteRecord }) {
-  const mirror = useCallback((list: Service[]) => { void updateSiteData((d) => withMirroredServices(d, list)).catch(() => {}); }, []);
+  const mirror = useCallback((list: Service[]) => { void updateSiteData((d, r) => mirrorServices(d, list, r.inputs.samplePricesFilled)).catch(() => {}); }, []);
   const ed = useServicesEditor(shop, mirror, () => pickAndUploadPhoto(site.draftId));
   useEffect(() => { void Promise.resolve(updateSiteData((d) => d, (i) => (i.pricesReviewed ? i : { ...i, pricesReviewed: true }))).catch(() => {}); }, []);
   return (

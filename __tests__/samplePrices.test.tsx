@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 jest.mock('@/constants/theme', () => require('./store/themeMock'));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
-import { SAMPLE_PRICES, migrateSamplePrices, withSamplePrices, isSamplePrice, needsPriceReminder, hasSamplePrices } from '@/lib/samplePrices';
+import { SAMPLE_PRICES, migrateSamplePrices, mirrorServices, withSamplePrices, isSamplePrice, needsPriceReminder, hasSamplePrices } from '@/lib/samplePrices';
 import { scratchPicks } from '@/lib/scratchDefaults';
 import { servicesFromPicks } from '@/lib/serviceChecklist';
 import { ServicesEditorView } from '@/components/setup/ServicesEditor';
@@ -130,5 +130,34 @@ describe('sample-price migration (any site, once)', () => {
     expect(src('src/app/(tabs)/edit.tsx')).toContain('migrateSamplePrices(raw)');
     const a = src('src/lib/account.ts');
     for (const k of ['samplePricesApplied', 'samplePricesFilled']) { expect(a).toContain(`p.${k} = true`); expect(a).toContain(`inputs.${k} = true`); }
+  });
+});
+
+describe('shop owner: the mirror keeps migrated sample prices', () => {
+  const shopSvc = (name: string, priceCents: number | null, sort = 0): any => ({ id: name, name, priceCents, durationMin: 30, showOnSite: true, sort, description: null, photoUrl: null });
+  const d = (services: any[]): any => ({ shopName: 'x', services });
+  const price = (r: any) => r.services.map((s: any) => s.price);
+
+  test('null shop prices keep the sample through a save', () => {
+    const r = mirrorServices(d([{ title: 'Haircut', price: '$30' }, { title: 'Beard trim', price: '$20' }]), [shopSvc('Haircut', null), shopSvc('Beard trim', null, 1)], true);
+    expect(price(r)).toEqual(['$30', '$20']);
+  });
+  test('priced shop services win over samples', () => {
+    expect(price(mirrorServices(d([{ title: 'Haircut', price: '$30' }]), [shopSvc('Haircut', 3500)], true))).toEqual(['$35']);
+  });
+  test('cleared after the shop set a price stays blank (site holds that price, not the sample)', () => {
+    expect(price(mirrorServices(d([{ title: 'Haircut', price: '$25' }]), [shopSvc('Haircut', null)], true))).toEqual([undefined]);
+  });
+  test('not kept without the migration flag, or for non-standard names', () => {
+    expect(price(mirrorServices(d([{ title: 'Haircut', price: '$30' }]), [shopSvc('Haircut', null)], false))).toEqual([undefined]);
+    expect(price(mirrorServices(d([{ title: 'Kids cut', price: '$30' }]), [shopSvc('Kids cut', null)], true))).toEqual([undefined]);
+  });
+  test('editor load does not replace services with the shop list; all three mirror callers use mirrorServices', () => {
+    expect(src('src/app/(tabs)/edit.tsx')).toContain('mirrorServices(r.data, list, r.inputs.samplePricesFilled)');
+    for (const f of ['src/components/setup/Wizard.tsx', 'src/app/bookings-setup.tsx']) expect(src(f)).toContain('mirrorServices(d, list, r.inputs.samplePricesFilled)');
+  });
+  test('server body still excludes the samples', () => {
+    const mig: any = migrateSamplePrices({ draftId: 'd', data: { shopName: 'A', services: [{ title: 'Haircut' }] }, inputs: { importedFrom: 'booking' } } as any);
+    expect(buildSetupBody(mig, 'UTC').services[0].priceCents).toBeNull();
   });
 });

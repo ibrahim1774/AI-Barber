@@ -18,7 +18,7 @@ import { useUpdateSitePrompt } from '@/lib/setupPrompt';
 import { PublishForLink } from '@/components/PublishForLink';
 import { useCustomerLinkState } from '@/lib/customerLinks';
 import { seedWeek } from '@/lib/setup/availability';
-import { withMirroredServices } from '@/lib/setup/servicesMap';
+import { mirrorServices } from '@/lib/samplePrices';
 import { updateSiteData, updateSiteRecord } from '@/lib/setup/siteSync';
 import {
   STEPS, STEP_TITLES, back, currentStep, initialWizard, next, progressLabel, setSwitch, type WizardState,
@@ -59,7 +59,7 @@ export function Wizard({ shop, site, onShopChanged, onFinish }: Props) {
   }, [shop.id]);
 
   const mirror = useCallback(
-    (list: Service[]) => { void updateSiteData((d) => withMirroredServices(d, list)).catch(() => {}); },
+    (list: Service[]) => { void updateSiteData((d, r) => mirrorServices(d, list, r.inputs.samplePricesFilled)).catch(() => {}); },
     [],
   );
   const services = useServicesEditor(shop, mirror, () => pickAndUploadPhoto(site.draftId));

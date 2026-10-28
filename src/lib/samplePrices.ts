@@ -1,4 +1,6 @@
-import { parsePriceCents } from '@/lib/setup/servicesMap';
+import type { WebsiteData } from '@/web/types';
+import type { Service } from '@/lib/shop';
+import { parsePriceCents, withMirroredServices } from '@/lib/setup/servicesMap';
 
 /** Typical US sample prices (whole dollars) shown on starter services. Plain editable prices, never a flag in the data. */
 export const SAMPLE_PRICES: Readonly<Record<string, number>> = {
@@ -60,5 +62,25 @@ export function migrateSamplePrices<T extends { data: { services?: { title: stri
     ...rec,
     data: changed ? { ...rec.data, services: filled } : rec.data,
     inputs: { ...rec.inputs, samplePricesApplied: true as const, ...(changed ? { samplePricesFilled: true as const } : {}) },
+  };
+}
+
+/**
+ * withMirroredServices for a site whose example prices were filled by the migration (`keep` = inputs.samplePricesFilled):
+ * a mirrored service the shop has no price for keeps the site's price when that is still exactly its sample price.
+ * The shop is never written. A price the shop has wins; a price that was changed on the site (or set in the shop
+ * and then cleared: the site then holds that price, not the sample) is not brought back.
+ */
+export function mirrorServices(d: WebsiteData, list: Service[], keep?: boolean): WebsiteData {
+  const next = withMirroredServices(d, list);
+  if (!keep) return next;
+  const norm2 = (t: string) => norm(t);
+  const before = new Map((d.services ?? []).map((s) => [norm2(s.title), s.price ?? '']));
+  return {
+    ...next,
+    services: next.services?.map((s) => {
+      const was = before.get(norm2(s.title));
+      return s.price == null && was != null && isSamplePrice(s.title, was) ? { ...s, price: was } : s;
+    }),
   };
 }

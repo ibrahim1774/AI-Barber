@@ -55,7 +55,6 @@ import { SectionsSheet } from '@/components/sections/SectionsSheet';
 import { ServicesSheet } from '@/components/sections/ServicesSheet';
 import { BookingsServicesSheet } from '@/components/setup/BookingsServicesSheet';
 import { loadMyShop, type Shop } from '@/lib/shop';
-import { withMirroredServices } from '@/lib/setup/servicesMap';
 import { HoursSheet } from '@/components/sections/HoursSheet';
 import { TeamSheet } from '@/components/sections/TeamSheet';
 import { GallerySheet } from '@/components/sections/GallerySheet';
@@ -69,7 +68,7 @@ import { useTour } from '@/components/tutorial/useTour';
 import { useTutorialTarget } from '@/components/tutorial/registry';
 import { editTourReady } from '@/components/tutorial/tours';
 import { useSession } from '@/lib/auth';
-import { PRICE_REMINDER, migrateSamplePrices, needsPriceReminder } from '@/lib/samplePrices';
+import { PRICE_REMINDER, migrateSamplePrices, mirrorServices, needsPriceReminder } from '@/lib/samplePrices';
 import { PublishBar } from '@/components/PublishBar';
 import { PaymentBlock } from '@/components/PaymentLock';
 import { isBlocking, usePaymentLock, type BlockKind } from '@/lib/paymentLock';
@@ -849,7 +848,7 @@ export default function Editor() {
           <BookingsServicesSheet
             visible={sheet === 'services'}
             shop={shop}
-            onServices={(list) => commit((d) => withMirroredServices(d, list))}
+            onServices={(list) => commitRecord((r) => ({ ...r, data: mirrorServices(r.data, list, r.inputs.samplePricesFilled) }))}
             onClose={() => (servicesAdd || servicesFocus != null ? closeThen(() => { setServicesAdd(false); setServicesFocus(null); }) : closeThen(() => setSheet('sections')))}
             onDismiss={onSheetDismiss}
             upload={uploadForSection}
