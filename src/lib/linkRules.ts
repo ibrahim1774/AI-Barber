@@ -14,7 +14,7 @@ export const MAX_LINK = 2048;
 export const BOOKING_LINK_ERRORS: Record<Exclude<BookingLinkResult, { ok: true }>['reason'], string> = {
   empty: 'Enter a link that starts with https://',
   long: 'That link is too long.',
-  aibarber: "That's your Prime Barber page. Pick 'Built-in scheduler' instead.",
+  aibarber: "That's your Prime Barber page. Pick 'Built-in booking' instead.",
   scheme: 'Enter a link that starts with https://',
   http: 'Use the https:// link.',
   chars: 'Enter a link that starts with https://',

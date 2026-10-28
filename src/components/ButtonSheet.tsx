@@ -20,7 +20,7 @@ export const SHOP_NOTE = 'Manage your store in Store.';
 export const CHOOSER_HEADING = 'What should your button do?';
 export const CALL_OPTION = { label: 'Call my number', detail: 'Calls your phone number when a client taps it.' };
 export const LINK_OPTION = { label: 'Booking link', detail: 'Opens your own booking page, like Booksy or Square, where clients book.' };
-export const BUILTIN_OPTION = { label: 'Built-in scheduler', detail: 'Opens your Prime Barber booking page with deposits and reminders.' };
+export const BUILTIN_OPTION = { label: 'Built-in booking', detail: 'Opens your Prime Barber booking page with deposits and reminders.' };
 export const NEEDS_BOOKINGS_PLAN = 'Needs the Bookings plan';
 export const REMOVE_NOTE = 'Removes your Book button. Your phone number button stays while your site has a number.';
 

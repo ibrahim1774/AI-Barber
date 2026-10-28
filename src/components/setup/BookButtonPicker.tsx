@@ -39,7 +39,7 @@ export function BookButtonPicker({
   return (
     <Card title="Your Book button">
       <Option label="Booking link" detail={shortLink(own)} selected={choice === 'own'} onPress={() => pick('own')} />
-      <Option label="Built-in scheduler" detail={AIBARBER_DETAIL} selected={choice === 'aibarber'} onPress={() => pick('aibarber')} />
+      <Option label="Built-in booking" detail={AIBARBER_DETAIL} selected={choice === 'aibarber'} onPress={() => pick('aibarber')} />
       {onEditLink && <Row label="Edit link" detail="Button text and booking link" onPress={onEditLink} />}
       {choice === 'aibarber' && <Note tone="warn">{DOUBLE_BOOKING_NOTE}</Note>}
       {changed && <Note>{PUBLISH_NOTE}</Note>}

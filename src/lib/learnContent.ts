@@ -63,7 +63,7 @@ export const LEARN_TOPICS: LearnTopic[] = [
       'Tap the Edit tab.',
       'In the preview, tap the button you want to change.',
       'Change the Button text if you like.',
-      'On a Book button, choose Built-in scheduler to use your Prime Barber booking page.',
+      'On a Book button, choose Built-in booking to use your Prime Barber booking page.',
       'Or choose Booking link and type your own address.',
       'On a Call Now button, type the Phone number it should dial.',
       'Tap Save.',

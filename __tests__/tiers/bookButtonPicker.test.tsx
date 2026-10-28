@@ -30,7 +30,7 @@ it('choosing AI Barber calls back, warns about the old app and says to publish; 
   }
   const tree = await render(<Host />);
   const { act } = require('react-test-renderer');
-  await act(async () => radio(tree, 'Built-in scheduler').props.onPress());
+  await act(async () => radio(tree, 'Built-in booking').props.onPress());
   expect(onChange).toHaveBeenLastCalledWith('aibarber');
   expect(allText(tree)).toContain(DOUBLE_BOOKING_NOTE);
   expect(allText(tree)).toContain(PUBLISH_NOTE);

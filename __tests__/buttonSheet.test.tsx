@@ -30,7 +30,7 @@ describe('ButtonSheet', () => {
     const m = mount();
     expect(m.byLabel('Button text').props.value).toBe('Book now');
     expect(m.byLabel('Booking link').props.accessibilityState.selected).toBe(true);
-    expect(m.byLabel('Built-in scheduler').props.accessibilityState.selected).toBe(false);
+    expect(m.byLabel('Built-in booking').props.accessibilityState.selected).toBe(false);
     expect(m.texts()).toContain('Changes every Book button on your site.');
   });
 
@@ -71,14 +71,14 @@ describe('ButtonSheet', () => {
 
   test('choosing the scheduler saves the choice for every Book button', () => {
     const m = mount();
-    act(() => { m.byLabel('Built-in scheduler').props.onPress(); });
+    act(() => { m.byLabel('Built-in booking').props.onPress(); });
     m.press('Save');
     expect(m.props.onSave).toHaveBeenCalledWith({ text: 'Book now', book: { choice: 'aibarber' } });
   });
 
   test('scheduler chosen with bookings off warns and offers Open Setup', () => {
     const m = mount({ book: { ...base.book!, status: { status: 'bookings-off', fallback: 'link' } } });
-    act(() => { m.byLabel('Built-in scheduler').props.onPress(); });
+    act(() => { m.byLabel('Built-in booking').props.onPress(); });
     expect(m.texts().some((t: string) => t.startsWith('Bookings are off, so your Book buttons use your booking link'))).toBe(true);
     m.press('Open Setup');
     expect(m.props.onOpenSetup).toHaveBeenCalled();
@@ -101,7 +101,7 @@ describe('ButtonSheet', () => {
 
   test('Call mode validates the phone and has no scheduler option', () => {
     const m = mount({ kind: 'call', title: 'Call button text', text: 'Call', defaultText: 'Call', book: undefined, phone: '(512) 555-0142' });
-    expect(m.has('Built-in scheduler')).toBe(false);
+    expect(m.has('Built-in booking')).toBe(false);
     const field = m.byLabel('Phone number');
     act(() => { field.props.onChangeText('tel:5551'); });
     m.press('Save');
@@ -114,7 +114,7 @@ describe('ButtonSheet', () => {
 
   test('Directions mode edits the address', () => {
     const m = mount({ kind: 'directions', title: 'Directions button text', text: 'Get directions', defaultText: 'Get directions', book: undefined, address: '1 Main St' });
-    expect(m.has('Built-in scheduler')).toBe(false);
+    expect(m.has('Built-in booking')).toBe(false);
     act(() => { m.byLabel('Shop address').props.onChangeText('2 Oak Ave, Austin, TX'); });
     m.press('Save');
     expect(m.props.onSave).toHaveBeenCalledWith({ text: 'Get directions', address: '2 Oak Ave, Austin, TX' });

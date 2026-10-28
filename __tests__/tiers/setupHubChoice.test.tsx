@@ -27,7 +27,7 @@ it('shows Your Book button with the own link, and choosing AI Barber saves the c
   const tree = await render(<SetupHub shop={SHOP} site={SITE} onOpen={() => {}} onShopChanged={() => {}} onSiteChanged={onSiteChanged} />);
   expect(allText(tree)).toContain('Your Book button');
   expect(allText(tree)).toContain('booksy.com/fade-lab');
-  const o = tree.root.findAll((n: any) => n.props.accessibilityRole === 'radio' && n.props.accessibilityLabel === 'Built-in scheduler')[0];
+  const o = tree.root.findAll((n: any) => n.props.accessibilityRole === 'radio' && n.props.accessibilityLabel === 'Built-in booking')[0];
   await act(async () => o.props.onPress());
   const saved = onSiteChanged.mock.calls[0][0];
   expect(saved.inputs).toMatchObject({ bookingChoice: 'aibarber', ownBookingUrl: 'https://booksy.com/fade-lab' });

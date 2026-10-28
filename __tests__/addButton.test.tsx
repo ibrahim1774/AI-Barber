@@ -119,7 +119,7 @@ describe('the button chooser', () => {
     expect(t).toContain(CALL_OPTION.detail);
     expect(t).toContain(LINK_OPTION.detail);
     expect(t).toContain(NEEDS_BOOKINGS_PLAN);
-    const builtin = m.byLabel('Built-in scheduler');
+    const builtin = m.byLabel('Built-in booking');
     expect(builtin.props.accessibilityState.disabled).toBe(true);
     act(() => { builtin.props.onPress?.(); });
     expect(m.byLabel('Call my number').props.accessibilityState.selected).toBe(true);
@@ -128,7 +128,7 @@ describe('the button chooser', () => {
   test('with the Bookings plan the built-in option is enabled and saves the choice', () => {
     const m = mount({ book: { ...base.book!, hasPlan: true } });
     expect(m.texts()).not.toContain(NEEDS_BOOKINGS_PLAN);
-    act(() => { m.byLabel('Built-in scheduler').props.onPress(); });
+    act(() => { m.byLabel('Built-in booking').props.onPress(); });
     m.press('Save');
     expect(m.props.onSave).toHaveBeenCalledWith(expect.objectContaining({ book: { choice: 'aibarber' } }));
   });
