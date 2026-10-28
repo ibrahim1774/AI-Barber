@@ -30,7 +30,7 @@ test('bookings-off prompt names the reason, with and without an own link', () =>
 test('Setup picker has Edit link, which opens the shared Book sheet', async () => {
   const tree = await render(<SetupHub shop={SHOP} site={SITE} onOpen={() => {}} onShopChanged={() => {}} onSiteChanged={() => {}} />);
   expect(allText(tree)).toContain('Edit link');
-  expect(allText(tree)).not.toContain('Where Book buttons go');
+  expect(allText(tree)).not.toContain('What should your button do?');
   await pressRow(tree, 'Edit link');
-  expect(allText(tree)).toContain('Where Book buttons go');
+  expect(allText(tree)).toContain('What should your button do?');
 });
