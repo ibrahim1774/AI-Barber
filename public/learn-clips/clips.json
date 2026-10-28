@@ -55,6 +55,11 @@
       "v": 1,
       "bytes": 631486,
       "seconds": 40
+    },
+    "store-shipping": {
+      "v": 1,
+      "bytes": 313354,
+      "seconds": 25
     }
   }
 }
