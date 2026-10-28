@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DateTime } from 'luxon';
 import {
   buildIcs, cashAppLink, formatTime, formatWhen, manualAmountCents, manualLink, monthGrid, nextStep, onAccent,
-  parseRoute, parseCheckout, shouldKeepPolling, resolveIds, paypalLink, payOptions, prevStep, progress, safeAccent, shiftMonth, barberFromSearch, preferredFor, todayKey, tokenFromManageUrl, venmoLink, dateKey, eligibleMembers,
+  parseRoute, parseCheckout, shouldKeepPolling, resolveIds, paypalLink, payOptions, prevStep, progress, safeAccent, shiftMonth, barberFromSearch, preferredFor, priceWithDeposit, serviceLabel, shownDeposit, cancelNote, todayKey, tokenFromManageUrl, venmoLink, dateKey, eligibleMembers,
 } from '../../src/book/logic';
 
 describe('shop-timezone formatting', () => {
@@ -240,4 +240,28 @@ describe('?barber= preselect', () => {
     expect(preferredFor(A, members, 'svc2')).toBe(A);
     expect(preferredFor('any', members, 'svc1')).toBe('any');
   });
+});
+
+describe('price and deposit line', () => {
+  const svc = (priceCents: number | null, depositCents: number) => ({ id: 's', name: 'Cut', priceCents, durationMin: 30, description: null, photoUrl: null, depositCents });
+  it('price and deposit when card is on', () => {
+    expect(priceWithDeposit(svc(3000, 1000))).toBe('$30 · $10 deposit due now');
+    expect(serviceLabel(svc(3000, 1000))).toBe('$30 · 30 min · $10 deposit');
+  });
+  it('"Price at shop" only when there is no price', () => {
+    expect(priceWithDeposit(svc(null, 0))).toBe('Price at shop');
+    expect(priceWithDeposit(svc(null, 1000))).toBe('Price at shop · $10 deposit due now');
+    expect(priceWithDeposit(svc(3000, 0))).toBe('$30');
+  });
+  it('no deposit is implied when card is off, even if one were sent', () => {
+    expect(priceWithDeposit(svc(3000, 1000), false)).toBe('$30');
+    expect(serviceLabel(svc(3000, 1000), false)).toBe('$30 · 30 min');
+    expect(shownDeposit(svc(3000, 1000), false)).toBe(0);
+  });
+});
+
+describe('cancel dialog note', () => {
+  it('refund line when a refund is due', () => expect(cancelNote(2500, 2500)).toBe("You'll be refunded $25."));
+  it('"No payment will be refunded." only when a payment was captured', () => expect(cancelNote(0, 1000)).toBe('No payment will be refunded.'));
+  it('nothing paid: no refund line at all', () => expect(cancelNote(0, 0)).toBeNull());
 });

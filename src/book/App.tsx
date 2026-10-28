@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ApiError, type Api } from './api';
 import { DayPicker, TimePicker } from './pickers';
 import {
-  bookingErrorMessage, buildIcs, NO_WAY_TO_PAY, directionsUrl, rescheduleErrorMessage, sentErrorMessage, eligibleMembers, barberFromSearch, preferredFor, formatMoney, formatWhen, manualAmountCents, manualLink, manualMethods,
+  bookingErrorMessage, buildIcs, NO_WAY_TO_PAY, directionsUrl, rescheduleErrorMessage, sentErrorMessage, eligibleMembers, barberFromSearch, preferredFor, formatMoney, formatWhen, priceWithDeposit, shownDeposit, cancelNote, manualAmountCents, manualLink, manualMethods,
   METHOD_LABEL, nextStep, parseRoute, payOptions, prevStep, progress, serviceLabel, telUrl,
   tokenFromManageUrl, type Step, formatDay, parseCheckout, shouldKeepPolling, resolveIds, CHECKOUT_POLL_MS, type CheckoutReturn,
 } from './logic';
@@ -158,7 +158,7 @@ function Flow({ api, d, search = '' }: { api: Api; d: Loaded; search?: string })
             setMemberId(who);
             setStep(who !== 'any' || e.length <= 1 ? 'day' : 'barber');
           }}>
-            <span className="grow"><div className="t">{s.name}</div><div className="m">{serviceLabel(s)}</div>{s.description && <div className="m">{s.description}</div>}</span>
+            <span className="grow"><div className="t">{s.name}</div><div className="m">{serviceLabel(s, shop.pay.card)}</div>{s.description && <div className="m">{s.description}</div>}</span>
             <span aria-hidden>›</span>
           </button>
         ))}
@@ -182,7 +182,7 @@ function Flow({ api, d, search = '' }: { api: Api; d: Loaded; search?: string })
       </>}
       {step === 'details' && service && slot && <>
         <h2>Your details</h2>
-        <Summary service={service} slot={slot} tz={tz} members={members} memberId={memberId} />
+        <Summary service={service} slot={slot} tz={tz} members={members} memberId={memberId} cardOn={shop.pay.card} />
         {options.length > 0 && <DetailsForm cust={cust} setCust={setCust} busy={busy}
           submitLabel={ctx.payOptionCount > 1 ? 'Continue' : options[0] === 'card' ? 'Continue to payment' : 'Book'}
           onSubmit={() => { ctx.payOptionCount > 1 ? go('payment') : submit(options[0], options[0] === 'manual' ? mm[0] : undefined); }} />}
@@ -190,9 +190,9 @@ function Flow({ api, d, search = '' }: { api: Api; d: Loaded; search?: string })
       </>}
       {step === 'payment' && service && slot && <>
         <h2>How would you like to pay?</h2>
-        <Summary service={service} slot={slot} tz={tz} members={members} memberId={memberId} />
+        <Summary service={service} slot={slot} tz={tz} members={members} memberId={memberId} cardOn={shop.pay.card} />
         {options.includes('shop') && <button className="row" disabled={busy} onClick={() => submit('shop')}><span className="grow"><div className="t">Pay in shop</div><div className="m">Settle up at your appointment</div></span></button>}
-        {options.includes('card') && <button className="row" disabled={busy} onClick={() => submit('card')}><span className="grow"><div className="t">Pay online by card</div><div className="m">{service.depositCents > 0 ? `${formatMoney(service.depositCents)} deposit` : 'Card or Apple Pay'}, secure checkout</div></span></button>}
+        {options.includes('card') && <button className="row" disabled={busy} onClick={() => submit('card')}><span className="grow"><div className="t">Pay online by card</div><div className="m">{shownDeposit(service, shop.pay.card) > 0 ? `${formatMoney(service.depositCents)} deposit` : 'Card or Apple Pay'}, secure checkout</div></span></button>}
         {options.includes('manual') && manualMethods(shop.pay.manual).map((m) => <button key={m} className="row" disabled={busy} onClick={() => submit('manual', m)}><span className="grow"><div className="t">{METHOD_LABEL[m]}</div><div className="m">Book now, then send payment</div></span></button>)}
         {busy && <Spinner />}
         {altsBlock}
@@ -202,11 +202,11 @@ function Flow({ api, d, search = '' }: { api: Api; d: Loaded; search?: string })
   );
 }
 
-function Summary({ service, slot, tz, members, memberId }: { service: Service; slot: Slot; tz: string; members: Member[]; memberId: string }) {
+function Summary({ service, slot, tz, members, memberId, cardOn }: { service: Service; slot: Slot; tz: string; members: Member[]; memberId: string; cardOn: boolean }) {
   const m = members.find((x) => x.id === (memberId === 'any' ? slot.memberId : memberId));
   return (
     <div className="summary">
-      <div><span>Service</span><span>{service.name} · {formatMoney(service.priceCents) || 'Price at shop'}</span></div>
+      <div><span>Service</span><span>{service.name} · {priceWithDeposit(service, cardOn)}</span></div>
       <div><span>When</span><span>{formatWhen(slot.start, tz)}</span></div>
       {m && <div><span>Barber</span><span>{m.name}</span></div>}
     </div>
@@ -358,7 +358,7 @@ function ManagePage({ api, token, checkout }: { api: Api; token: string; checkou
           {!data.canCancel && !data.canReschedule && <p className="note">It's too close to your appointment to change it online.{a.shop.phone && <> Please <a href={telUrl(a.shop.phone)} style={{ color: 'var(--accent)' }}>call the shop</a>.</>}</p>}
         </>}
       </> : null}
-      {mode === 'cancel' && <CancelConfirm api={api} token={token} refundCents={data.refundCentsIfCancelled}
+      {mode === 'cancel' && <CancelConfirm api={api} token={token} refundCents={data.refundCentsIfCancelled} paidCents={data.appointment.amountPaidCents}
         onBack={() => setMode('view')} onDone={() => { setRefund(data.refundCentsIfCancelled); setMode('cancelled'); }}
         onTooLate={() => { setMode('view'); load(); }} />}
       {mode === 'reschedule' && <Reschedule api={api} token={token} data={data} onBack={() => setMode('view')} onDone={() => { setMode('view'); load(); }} />}
@@ -366,15 +366,15 @@ function ManagePage({ api, token, checkout }: { api: Api; token: string; checkou
   );
 }
 
-function CancelConfirm({ api, token, refundCents, onBack, onDone, onTooLate }: {
-  api: Api; token: string; refundCents: number; onBack: () => void; onDone: () => void; onTooLate: () => void;
+function CancelConfirm({ api, token, refundCents, paidCents, onBack, onDone, onTooLate }: {
+  api: Api; token: string; refundCents: number; paidCents: number; onBack: () => void; onDone: () => void; onTooLate: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   return (
     <div>
       <h2>Cancel this booking?</h2>
-      <p className="note">{refundCents > 0 ? `You'll be refunded ${formatMoney(refundCents)}.` : 'No payment will be refunded.'}</p>
+      {cancelNote(refundCents, paidCents) && <p className="note">{cancelNote(refundCents, paidCents)}</p>}
       {err && <p className="err" role="alert">{err}</p>}
       <button className="btn danger" disabled={busy} onClick={async () => {
         setBusy(true); setErr(null);
