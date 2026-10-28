@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "clips": {
+    "intro": {
+      "v": 2,
+      "bytes": 292363,
+      "seconds": 20
+    },
+    "edit_text": {
+      "v": 1,
+      "bytes": 795784,
+      "seconds": 25
+    },
+    "edit_photos": {
+      "v": 1,
+      "bytes": 603435,
+      "seconds": 21
+    },
+    "sections": {
+      "v": 1,
+      "bytes": 761105,
+      "seconds": 22
+    },
+    "pages": {
+      "v": 1,
+      "bytes": 489266,
+      "seconds": 24
+    },
+    "buttons": {
+      "v": 1,
+      "bytes": 414312,
+      "seconds": 15
+    },
+    "bookings-setup": {
+      "v": 1,
+      "bytes": 472760,
+      "seconds": 27
+    },
+    "calendar": {
+      "v": 1,
+      "bytes": 562863,
+      "seconds": 38
+    },
+    "services-hours": {
+      "v": 1,
+      "bytes": 395608,
+      "seconds": 19
+    },
+    "team": {
+      "v": 1,
+      "bytes": 627704,
+      "seconds": 36
+    },
+    "store": {
+      "v": 1,
+      "bytes": 631486,
+      "seconds": 40
+    },
+    "store-shipping": {
+      "v": 1,
+      "bytes": 313354,
+      "seconds": 25
+    },
+    "settings-account": {
+      "v": 1,
+      "bytes": 178722,
+      "seconds": 18
+    },
+    "settings-adjust": {
+      "v": 1,
+      "bytes": 428351,
+      "seconds": 24
+    }
+  }
+}
