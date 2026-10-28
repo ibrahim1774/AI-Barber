@@ -68,6 +68,44 @@ describe.each(DESIGNS)('start options, design %s', (template) => {
   });
 });
 
+// The editor preview shows what a publish would send (linksToSend): the built-in /book (hero, header and contact Book
+// buttons, the Book online section) only with a live Bookings scheduler. Before any plan none of it shows, for all
+// three start options; a pasted own booking link keeps its button.
+describe.each(DESIGNS)('preview before any Bookings plan, design %s', (template) => {
+  const NONE: LinkContext = { ents: { known: true, hosting: false, bookings: false, store: false }, shop: null, storeEnabled: false };
+  const unknown: LinkContext = { ents: { known: false, hosting: false, bookings: false, store: false }, shop: null, storeEnabled: false };
+  const hostingOnly: LinkContext = { ents: { known: true, hosting: true, bookings: false, store: false }, shop: null, storeEnabled: false };
+  test.each(['google', 'scratch'] as Opt[])('option %s: no /book, no Book online section', async (opt) => {
+    const rec = await startDraft(await generate(opt, template));
+    for (const ctx of [null, NONE, unknown, hostingOnly]) {
+      const shown = linksToSend(rec.data, rec.inputs, ctx);
+      expect(shown.bookingUrl).toBeUndefined();
+      const html = renderSite(shown);
+      expect(html).not.toContain('href="/book"');
+      expect(html).not.toContain('id="book-online"');
+      expect(html).not.toContain('Book Appointment');
+    }
+  });
+
+  test('option link: keeps its own link, no built-in section', async () => {
+    const rec = await startDraft(await generate('link', template));
+    const shown = linksToSend(rec.data, rec.inputs, NONE);
+    expect(shown.bookingUrl).toBe(OWN);
+    const html = renderSite(shown);
+    expect(html).toContain(`href="${OWN}"`);
+    expect(html).not.toContain('id="book-online"');
+  });
+
+  test.each(['google', 'scratch'] as Opt[])('option %s: with a live scheduler the Book online section shows (heading and button, no service list)', async (opt) => {
+    const rec = await startDraft(await generate(opt, template));
+    const live: LinkContext = { ents: { known: true, hosting: true, bookings: true, store: false }, shop: { slug: 's', purchaseLinked: true, bookingsEnabled: true }, storeEnabled: false };
+    const html = renderSite(linksToSend(rec.data, rec.inputs, live));
+    const strip = /<section id="book-online".*?<\/section>/s.exec(html)?.[0] ?? '';
+    expect(strip).toContain('href="/book"');
+    expect(strip).not.toContain('<li');
+  });
+});
+
 describe('honest preview status before any plan (A1)', () => {
   const pre: LinkContext = { ents: { known: true, hosting: false, bookings: false, store: false }, shop: null, storeEnabled: false };
   test('not published: status says the Book button goes live once Bookings is set up', () => {

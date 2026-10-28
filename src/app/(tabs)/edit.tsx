@@ -9,11 +9,10 @@ import { onSiteAdopted } from '@/lib/siteEvents';
 import { track } from '@/lib/analytics';
 import { useEntitlements } from '@/lib/entitlements';
 import { hasEntitlement } from '@/lib/paywall';
-import { bookingPrefs, bookTargetStatus, resolveLinks } from '@/lib/bookingChoice';
+import { bookingPrefs, bookTargetStatus, linksToSend } from '@/lib/bookingChoice';
 import { syncOwnLink } from '@/lib/bookingChoice';
 import { canOpenAddService, keepServicesAdd } from '@/lib/addServiceGuard';
 import { useLinkContext } from '@/lib/linkContext';
-import { stripLapsedLinks } from '@/lib/tierLinks';
 import { copyKeyOfPath, copyPathHasWordings, hoursEditorFor, pageForHref, previewBackground, textMaxLength, textValue, type PreviewPage } from '@/lib/editable';
 import { navLabelKey } from '@/web/lib/render/labels';
 import { PAGE_TITLES, resolvePage, serviceRows, withPageChange, type PagesChange } from '@/lib/sitePages';
@@ -97,9 +96,9 @@ export default function Editor() {
   const previewData = useMemo(
     () =>
       siteData
-        ? linkCtx
-          ? resolveLinks(siteData, siteInputs, linkCtx)
-          : stripLapsedLinks(siteData, ents, bookingPrefs({ data: siteData, inputs: siteInputs ?? {} }).own)
+        // The same decision a publish makes (linksToSend): the built-in /book (hero, header, contact buttons, the Book
+        // online section) only with a live Bookings scheduler; before any plan the preview has none of it.
+        ? linksToSend(siteData, siteInputs, linkCtx)
         : null,
     [siteData, siteInputs, ents, linkCtx],
   );
