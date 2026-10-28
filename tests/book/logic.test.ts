@@ -97,7 +97,7 @@ describe('step state machine', () => {
     expect(payOptions(all, { priceCents: 50, depositCents: 0 })).toEqual(['shop', 'card', 'manual']);
     // The deposit is what's charged when there is one.
     expect(payOptions(all, { priceCents: 3000, depositCents: 40 })).toEqual(['shop', 'manual']);
-    expect(payOptions(all, { priceCents: null, depositCents: 500 })).toEqual(['shop', 'card', 'manual']);
+    expect(payOptions(all, { priceCents: null, depositCents: 500 })).toEqual(['shop', 'manual']); // a deposit needs a price
     // No service picked yet: card stays.
     expect(payOptions(all, null)).toEqual(['shop', 'card', 'manual']);
     // Card-only shop + ask-priced service: nothing to offer (the page asks them to call).
@@ -250,13 +250,20 @@ describe('price and deposit line', () => {
   });
   it('"Price at shop" only when there is no price', () => {
     expect(priceWithDeposit(svc(null, 0))).toBe('Price at shop');
-    expect(priceWithDeposit(svc(null, 1000))).toBe('Price at shop · $10 deposit due now');
+    expect(priceWithDeposit(svc(null, 1000))).toBe('Price at shop'); // a deposit needs a price
     expect(priceWithDeposit(svc(3000, 0))).toBe('$30');
   });
   it('no deposit is implied when card is off, even if one were sent', () => {
     expect(priceWithDeposit(svc(3000, 1000), false)).toBe('$30');
     expect(serviceLabel(svc(3000, 1000), false)).toBe('$30 · 30 min');
     expect(shownDeposit(svc(3000, 1000), false)).toBe(0);
+  });
+  it('a stale deposit above the price never prints nonsense', () => {
+    expect(priceWithDeposit(svc(600, 1000))).toBe('$6 · $6 deposit due now');
+    expect(shownDeposit(svc(600, 1000))).toBe(600);
+    expect(shownDeposit(svc(null, 1000))).toBe(0);
+    expect(manualAmountCents(600, 1000)).toBe(600);
+    expect(manualAmountCents(null, 1000)).toBeNull();
   });
 });
 

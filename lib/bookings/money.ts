@@ -14,7 +14,7 @@ export function platformFeeCents(amountCents: number, bps: number): number {
 /**
  * Deposit due at booking.
  * - 'none' -> 0
- * - 'fixed' -> min(value, price); the fixed value when the price is null ("ask")
+ * - 'fixed' -> min(value, price); 0 when the price is null ("ask"): a deposit is taken out of a price
  * - 'percent' -> round(price * value / 100), capped at the price; 0 when the price is null
  */
 export function depositCents(priceCents: number | null, type: DepositType, value: number | null): number {
@@ -22,7 +22,7 @@ export function depositCents(priceCents: number | null, type: DepositType, value
   const price = priceCents == null ? null : nonNegInt(priceCents);
   switch (type) {
     case 'fixed':
-      return price == null ? v : Math.min(v, price);
+      return price == null ? 0 : Math.min(v, price);
     case 'percent':
       return price == null ? 0 : Math.min(price, Math.round((price * v) / 100));
     default:

@@ -192,7 +192,7 @@ function Flow({ api, d, search = '' }: { api: Api; d: Loaded; search?: string })
         <h2>How would you like to pay?</h2>
         <Summary service={service} slot={slot} tz={tz} members={members} memberId={memberId} cardOn={shop.pay.card} />
         {options.includes('shop') && <button className="row" disabled={busy} onClick={() => submit('shop')}><span className="grow"><div className="t">Pay in shop</div><div className="m">Settle up at your appointment</div></span></button>}
-        {options.includes('card') && <button className="row" disabled={busy} onClick={() => submit('card')}><span className="grow"><div className="t">Pay online by card</div><div className="m">{shownDeposit(service, shop.pay.card) > 0 ? `${formatMoney(service.depositCents)} deposit` : 'Card or Apple Pay'}, secure checkout</div></span></button>}
+        {options.includes('card') && <button className="row" disabled={busy} onClick={() => submit('card')}><span className="grow"><div className="t">Pay online by card</div><div className="m">{shownDeposit(service, shop.pay.card) > 0 ? `${formatMoney(shownDeposit(service, shop.pay.card))} deposit` : 'Card or Apple Pay'}, secure checkout</div></span></button>}
         {options.includes('manual') && manualMethods(shop.pay.manual).map((m) => <button key={m} className="row" disabled={busy} onClick={() => submit('manual', m)}><span className="grow"><div className="t">{METHOD_LABEL[m]}</div><div className="m">Book now, then send payment</div></span></button>)}
         {busy && <Spinner />}
         {altsBlock}
