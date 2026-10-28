@@ -27,10 +27,12 @@ describe('depositCents', () => {
     expect(depositCents(3500, 'none', 1000)).toBe(0);
   });
 
-  it("'fixed' is min(value, price), or the value when the price is null", () => {
+  it("'fixed' is min(value, price), and 0 when the price is null or 0", () => {
     expect(depositCents(3500, 'fixed', 1000)).toBe(1000);
     expect(depositCents(800, 'fixed', 1000)).toBe(800);
-    expect(depositCents(null, 'fixed', 1000)).toBe(1000);
+    expect(depositCents(null, 'fixed', 1000)).toBe(0);
+    expect(depositCents(0, 'fixed', 1000)).toBe(0);
+    expect(depositCents(2500, 'fixed', 9999)).toBe(2500); // stale deposit above a lowered price clamps to the price
   });
 
   it("'percent' rounds price * value / 100", () => {

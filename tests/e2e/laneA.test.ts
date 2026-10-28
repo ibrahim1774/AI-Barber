@@ -120,7 +120,7 @@ describe('A3 money math tables', () => {
   it('deposit: none / fixed capped at price / percent rounding / ask-price', () => {
     expect(depositCents(3000, 'none', 50)).toBe(0);
     expect(depositCents(3000, 'fixed', 5000)).toBe(3000);
-    expect(depositCents(null, 'fixed', 500)).toBe(500);
+    expect(depositCents(null, 'fixed', 500)).toBe(0);
     expect(depositCents(3333, 'percent', 50)).toBe(1667);
     expect(depositCents(1, 'percent', 50)).toBe(1);
     expect(depositCents(null, 'percent', 50)).toBe(0);
