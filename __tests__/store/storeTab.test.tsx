@@ -31,6 +31,10 @@ let mockShop: any = null;
 jest.mock('@/lib/shop', () => ({ loadMyShop: async () => mockShop }));
 let mockSite: any = null;
 jest.mock('@/lib/siteStore', () => ({ loadSite: async () => mockSite }));
+jest.mock('@/components/PaymentLock', () => {
+  const { Text } = require('react-native');
+  return { PaymentBlock: () => <Text>payment-block</Text>, PaymentBanner: () => <Text>payment-banner</Text> };
+});
 let mockStatus = 'active';
 jest.mock('@/lib/subscriptionStatus', () => ({
   useSubscriptionStatus: () => mockStatus,
@@ -115,13 +119,13 @@ describe('Store tab', () => {
     expect(mockOrdersPane).toHaveBeenCalled();
   });
 
-  it('locked hides the gear and passes locked down', async () => {
+  it('a lapsed published site: the payment block replaces the whole tab (no gear, no products)', async () => {
     mockSite = { deployedUrl: 'https://x.vercel.app' };
     mockStatus = 'lapsed';
     const r = await render();
+    expect(texts(r)).toContain('payment-block');
     expect(byLabel(r, 'Store setup')).toHaveLength(0);
-    expect(byLabel(r, 'Share shop link').length).toBeGreaterThan(0);
-    expect(texts(r)).toContain('products-locked');
+    expect(texts(r)).not.toContain('products-locked');
   });
 
   it('unlocked shows the gear and it opens /store-setup', async () => {

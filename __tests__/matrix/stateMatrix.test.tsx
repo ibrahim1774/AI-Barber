@@ -10,7 +10,7 @@
  * The "slow" state holds the plan answer first (loading is allowed then), releases it, and asserts the same.
  */
 import React from 'react';
-import { Alert } from 'react-native';
+import { Alert, Linking } from 'react-native';
 import { FakeServer, boot, installFetch, type World } from '../e2e/harness';
 import { wipeDisk } from '../e2e/mocks';
 import { SCREENS, unreachableReason } from '../../test/matrix/screens';
@@ -44,6 +44,7 @@ jest.mock('expo-clipboard', () => ({ setStringAsync: jest.fn() }), { virtual: tr
 const FLUSHES = 6;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+let openURL: jest.SpyInstance;
 let server: FakeServer;
 let world: World | null = null;
 const trees: any[] = [];
@@ -53,6 +54,7 @@ beforeEach(() => {
   jest.resetModules();
   wipeDisk();
   jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true as never);
   jest.spyOn(console, 'warn').mockImplementation(() => {});
   jest.spyOn(console, 'error').mockImplementation(() => {});
 });
@@ -126,6 +128,34 @@ describe.each(SCREENS.map((s) => [s.title, s] as const))('%s', (_t, screen) => {
     // A screen that hands over to another one (a redirect, a closed paywall, a finished publish) has its way forward.
     const ok = verdict.spinners === 0 && !verdict.loading && (verdict.pressables > 0 || left);
     if (!ok) throw new Error(`NOT SETTLED ${JSON.stringify(verdict)} text=[${text.slice(0, 200)}]`);
+    // The payment lock (payment failed / revoked blocks, Apple's retry is a banner, everything else shows neither: active,
+    // loading, offline, a server error, another account's purchase, never purchased).
+    const lockText = /Payment failed|Subscription ended|Please renew your payment/;
+    if (screen.payment && st.payment === 'block') {
+      if (screen.payment === 'gated') {
+        const m = st.id === 'S14' ? /Subscription ended[\s\S]*refunded or cancelled[\s\S]*Update payment method[\s\S]*check again/ : /Payment failed[\s\S]*Please renew your payment to keep editing your site\. Your subscription could not be renewed\.[\s\S]*Update payment method[\s\S]*check again/;
+        if (!m.test(text)) throw new Error(`PAYMENT BLOCK missing in [${text.slice(0, 300)}]`);
+        // Blocked: the screen's own content is gone.
+        if (/Add service|Publish\b.*Pages|Set up bookings|Products \| Orders/.test(text)) throw new Error(`PAYMENT BLOCK must replace the content: [${text.slice(0, 300)}]`);
+      } else if (!/Offline[\s\S]*Update payment method/.test(text)) {
+        throw new Error(`PAYMENT: Settings must show Offline + Update payment method in [${text.slice(0, 300)}]`);
+      }
+      const press = tree.root.findAll((n: any) => typeof n.props?.onPress === 'function' && /Update payment method/.test(textOf(n)));
+      expect(press.length).toBeGreaterThan(0);
+      await world.act(async () => { await press[0].props.onPress(); });
+      expect(openURL).toHaveBeenCalledWith('itms-apps://apps.apple.com/account/subscriptions');
+      return;
+    }
+    if (screen.payment && st.payment === 'banner') {
+      if (!/Payment failed\. Update your payment method to keep your site\./.test(text)) throw new Error(`PAYMENT BANNER missing in [${text.slice(0, 300)}]`);
+      if (/Please renew your payment/.test(text)) throw new Error('a retry window must not block');
+      const press = tree.root.findAll((n: any) => typeof n.props?.onPress === 'function' && /Update payment method/.test(textOf(n)));
+      expect(press.length).toBeGreaterThan(0);
+      await world.act(async () => { await press[0].props.onPress(); });
+      expect(openURL).toHaveBeenCalledWith('itms-apps://apps.apple.com/account/subscriptions');
+    } else if (!st.payment && lockText.test(text)) {
+      throw new Error(`NO PAYMENT NOTICE expected in this state, got [${text.slice(0, 300)}]`);
+    }
     const want = screen.expects?.[st.id] ?? screen.expects?.['*'];
     if (want && !want.test(text)) throw new Error(`WRONG CONTENT: expected ${want} in [${text.slice(0, 300)}]`);
     const nope = screen.forbids?.[st.id] ?? screen.forbids?.['*'];

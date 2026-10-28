@@ -18,7 +18,8 @@ import { useTour } from '@/components/tutorial/useTour';
 import { ProductsPane } from '@/components/store/products/ProductsPane';
 import { loadMyShop, type Shop } from '@/lib/shop';
 import { loadSite, type SiteRecord } from '@/lib/siteStore';
-import { isLocked, useSubscriptionStatus } from '@/lib/subscriptionStatus';
+import { PaymentBanner, PaymentBlock } from '@/components/PaymentLock';
+import { isBlocking, usePaymentLock } from '@/lib/paymentLock';
 import { useEntitlements } from '@/lib/entitlements';
 import { isUnpublished, requestPublish } from '@/lib/publishRequest';
 import { useOpenStoreUpgrade, useStoreAccess } from '@/lib/store/gate';
@@ -37,7 +38,6 @@ type Tab = 'products' | 'orders' | 'customers';
 export default function Store() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ tab?: string; orderId?: string; n?: string }>();
-  const status = useSubscriptionStatus();
   const access = useStoreAccess();
   const ents = useEntitlements();
   const upgrade = useOpenStoreUpgrade();
@@ -111,11 +111,21 @@ export default function Store() {
   );
 
   const noPlan = access.status === 'inactive';
-  const lapsed = isLocked(site, status);
+  // Payment failed / subscription ended: the whole tab is blocked (see PaymentBlock). Apple's retry window is a banner.
+  const paymentLock = usePaymentLock(site);
+  const lapsed = isBlocking(paymentLock);
   const tour = useTour('store', { auto: 'store', ready: phase === 'ready' && !!shop && access.status !== 'loading' && access.status !== 'error' });
   // Products are view-only without the Store plan or after a lapse. Orders never are.
   const locked = lapsed || noPlan;
   const shell = [styles.root, { paddingTop: insets.top }];
+
+  if (lapsed) {
+    return (
+      <View style={shell}>
+        <PaymentBlock kind={paymentLock as 'failed' | 'revoked'} screen="store" />
+      </View>
+    );
+  }
 
   if (access.status === 'error') {
     return (
@@ -191,10 +201,8 @@ export default function Store() {
       <View ref={headerRef} collapsable={false}>
         <StoreHeader title={shop.name} locked={locked} onShare={() => setSharing(true)} onSetup={() => router.push('/store-setup' as never)} />
       </View>
-      {lapsed && (
-        <Text style={styles.locked}>Your subscription has ended. Your store is read-only until you resubscribe.</Text>
-      )}
-      {noPlan && (!lapsed || !access.hosting) && <PausedBanner kind="store" onUpgrade={upgrade.open} action="See plans" />}
+      {paymentLock === 'retry' && <PaymentBanner screen="store" />}
+      {noPlan && <PausedBanner kind="store" onUpgrade={upgrade.open} action="See plans" />}
       {!storeOpen && (
         <Text style={styles.locked}>Your shop is closed to customers. Open it in Store setup.</Text>
       )}

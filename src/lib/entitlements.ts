@@ -96,6 +96,17 @@ function recompute(): void {
 }
 subscribePlan(recompute);
 
+/** The cached server plan when it belongs to the signed-in account (never another account's, never after sign-out). */
+export function getAccountPlan(): Plan | null {
+  const plan = getSharedPlan();
+  return plan && (!planUser || planUser === currentUserId()) ? plan : null;
+}
+
+/** The server plan for this account, as a hook. Used only to tell a failed payment from an active plan. */
+export function useAccountPlan(): Plan | null {
+  return useSyncExternalStore(subscribePlan, getAccountPlan, getAccountPlan);
+}
+
 /** The entitlements the screens use: Superwall AND the server's plan (see effectiveEntitlements). SubscriptionSync feeds the mirror. */
 export function getEntitlements(): Entitlements {
   return current;

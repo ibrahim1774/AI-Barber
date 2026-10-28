@@ -34,7 +34,7 @@ import { refreshReminders } from '@/lib/reminders';
 import { useRestoreFlow } from '@/lib/restoreFlow';
 import { loadPendingPublish, loadSite, saveSite, type SiteRecord } from '@/lib/siteStore';
 import {
-  getSubscriptionStatus, isLocked, recheckSubscriptionStatus, useSubscriptionStatus,
+  getSubscriptionStatus, recheckSubscriptionStatus,
 } from '@/lib/subscriptionStatus';
 import { tabBarStyle } from '@/lib/tabBar';
 import SitePreview from '@/components/SitePreview';
@@ -70,15 +70,16 @@ import { useTutorialTarget } from '@/components/tutorial/registry';
 import { editTourReady } from '@/components/tutorial/tours';
 import { useSession } from '@/lib/auth';
 import { PublishBar } from '@/components/PublishBar';
-import { LapsedCard } from '@/components/LapsedCard';
+import { PaymentBanner, PaymentBlock } from '@/components/PaymentLock';
+import { isBlocking, usePaymentLock } from '@/lib/paymentLock';
 import { EditorBackBar, canGoBackToStart } from '@/components/EditorBackBar';
 
 type SheetKind = 'fields' | 'photos' | 'colour' | 'edit' | 'button' | 'sections' | 'pages' | 'pageSections' | 'hero' | 'header' | SectionKey;
 
 /**
  * The Edit tab: the site preview with tap-to-edit, the design switcher, and
- * the tool bar with Publish. A published site whose subscription has lapsed
- * gets the LapsedCard instead (Resubscribe, Restore purchases).
+ * the tool bar with Publish. A published site whose payment failed or whose subscription
+ * ended gets the PaymentBlock instead (Update payment method, check again, Restore purchases).
  */
 export default function Editor() {
   const insets = useSafeAreaInsets();
@@ -107,8 +108,10 @@ export default function Editor() {
   // The data the preview shows, for the menu callback (which must not re-create on every edit).
   const shownRef = useRef<WebsiteData | null>(null);
   shownRef.current = previewData ?? siteData ?? null;
-  const subscription = useSubscriptionStatus();
-  const locked = isLocked(site, subscription);
+  // The account's own subscription could not be renewed (payment failed / ended / revoked): the editor is blocked.
+  // Apple's billing retry (still active) only shows a banner. Uncertain answers (loading, offline, error) never lock.
+  const paymentLock = usePaymentLock(site);
+  const locked = isBlocking(paymentLock);
   // For the callbacks below: a locked tab runs a publish request whatever the overlay.
   const lockedRef = useRef(false);
   lockedRef.current = locked;
@@ -666,7 +669,7 @@ export default function Editor() {
   if (locked) {
     return (
       <View style={[styles.root, { paddingTop: insets.top }]}>
-        <LapsedCard onResubscribe={resubscribe} onRestore={() => void restore()} restoring={restoring} />
+        <PaymentBlock kind={paymentLock as 'failed' | 'revoked'} screen="edit" onResubscribe={resubscribe} onRestore={() => void restore()} restoring={restoring} />
       </View>
     );
   }
@@ -687,6 +690,7 @@ export default function Editor() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
+      {paymentLock === 'retry' && overlay == null && <PaymentBanner screen="edit" />}
       {/* The prompts / guide cover this body; the tab bar is hidden meanwhile. */}
       <View style={styles.body}>
         <EditorBackBar visible={overlay == null && sheet == null && !uploading && canGoBackToStart(site, pendingPaid, !!session)} />

@@ -29,6 +29,7 @@ import { updateSiteData } from '@/lib/setup/siteSync';
 import { wizardDone } from '@/lib/setup/wizardFlag';
 import { listMembers, loadMyShop, type Member, type Service, type Shop } from '@/lib/shop';
 import { loadSite, type SiteRecord } from '@/lib/siteStore';
+import { withPaymentGate } from '@/components/PaymentLock';
 
 type Phase =
   | { kind: 'loading' }
@@ -46,7 +47,7 @@ const TITLES: Record<Sub, string> = {
  * Account gate first (Bookings need a free account), then POST /api/shop/setup, then the
  * first-run wizard (once) or the setup hub.
  */
-export default function BookingsSetup() {
+function BookingsSetup() {
   const { session, ready } = useSession();
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' });
   const [sub, setSub] = useState<Sub>('hub');
@@ -251,3 +252,5 @@ const st = StyleSheet.create({
   p: { fontFamily: fonts.body, fontSize: 15, lineHeight: 22, color: colors.body },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
 });
+
+export default withPaymentGate(BookingsSetup, 'bookings-setup');

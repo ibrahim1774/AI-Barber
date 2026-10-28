@@ -17,6 +17,7 @@ import {
 import { capForTier } from '@/lib/team';
 import { getSharedPlan } from '@/lib/plan';
 import { useTeamLimits } from '@/lib/useTeamLimits';
+import { withPaymentGate } from '@/components/PaymentLock';
 
 type Loaded = {
   shop: Shop | null;
@@ -31,7 +32,7 @@ type Loaded = {
  * The Team screen: swipeable barber cards and the "Add a barber" sheet. With a shop, ab_members is the source
  * of truth and the site's team cards are refreshed from it on open; without one it edits the website's team.
  */
-export default function TeamScreen() {
+function TeamScreen() {
   const [data, setData] = useState<Loaded | null>(null);
   const [error, setError] = useState('');
   const [sheet, setSheet] = useState<{ card: TeamCard | null } | null>(null);
@@ -141,3 +142,5 @@ const st = StyleSheet.create({
   lead: { fontFamily: fonts.body, fontSize: 14, lineHeight: 21, color: colors.body, marginBottom: 18 },
   addRow: { marginTop: 22, marginBottom: 12 },
 });
+
+export default withPaymentGate(TeamScreen, 'team');

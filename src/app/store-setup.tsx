@@ -17,6 +17,7 @@ import { buildSetupBody, shopSetup } from '@/lib/setup/ownerApi';
 import { registerPushForShop, relinkShopPurchase } from '@/lib/setup/relink';
 import { loadMyShop, type Shop } from '@/lib/shop';
 import { loadSite } from '@/lib/siteStore';
+import { withPaymentGate } from '@/components/PaymentLock';
 
 type Phase =
   | { kind: 'loading' }
@@ -29,7 +30,7 @@ type Phase =
  * Store setup. Account gate first (the store needs a free account), then the shop row via
  * POST /api/shop/setup with no services (the bookings setup seeds those later), then the settings.
  */
-export default function StoreSetup() {
+function StoreSetup() {
   const { session, ready } = useSession();
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' });
   const signedIn = !!session;
@@ -133,3 +134,5 @@ const st = StyleSheet.create({
   h: { fontFamily: fonts.heading, fontSize: 24, color: colors.heading },
   p: { fontFamily: fonts.body, fontSize: 15, lineHeight: 22, color: colors.body },
 });
+
+export default withPaymentGate(StoreSetup, 'store-setup');

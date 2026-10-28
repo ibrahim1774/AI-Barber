@@ -29,6 +29,8 @@ export type StateDef = {
   hasSite: boolean;
   /** Prepares the world before launch. */
   prepare(c: Ctx): void;
+  /** What the payment lock must do on the gated screens: 'block' (payment failed / revoked) or 'banner' (Apple is still retrying). Omitted: neither. */
+  payment?: 'block' | 'banner';
   /** Plan endpoint answers slowly: held until `release()`, then success. The cell asserts the settled screen after the release. */
   slowPlan?: boolean;
 };
@@ -126,9 +128,9 @@ export const STATES: StateDef[] = [
       });
     },
   },
-  { id: 'S8a', hasSite: true, title: 'lapsed Bookings plan, ended 2 hours ago (read-only window)', user: UID, prepare: (c) => signedInWithPlan(P.bookingsMonthly, { shop: 'bookings', lapseMs: 2 * 3600_000 })(c) },
-  { id: 'S8b', hasSite: true, title: 'lapsed Bookings plan, ended 45 days ago', user: UID, prepare: (c) => signedInWithPlan(P.bookingsMonthly, { shop: 'bookings', lapseMs: 45 * DAY })(c) },
-  { id: 'S8c', hasSite: true, title: 'lapsed Website plan, ended 45 days ago', user: UID, prepare: (c) => signedInWithPlan(P.websiteMonthly, { lapseMs: 45 * DAY })(c) },
+  { id: 'S8a', hasSite: true, payment: 'block', title: 'lapsed Bookings plan, ended 2 hours ago (payment failed)', user: UID, prepare: (c) => signedInWithPlan(P.bookingsMonthly, { shop: 'bookings', lapseMs: 2 * 3600_000 })(c) },
+  { id: 'S8b', hasSite: true, payment: 'block', title: 'lapsed Bookings plan, ended 45 days ago', user: UID, prepare: (c) => signedInWithPlan(P.bookingsMonthly, { shop: 'bookings', lapseMs: 45 * DAY })(c) },
+  { id: 'S8c', hasSite: true, payment: 'block', title: 'lapsed Website plan, ended 45 days ago', user: UID, prepare: (c) => signedInWithPlan(P.websiteMonthly, { lapseMs: 45 * DAY })(c) },
   {
     id: 'S9a', hasSite: true, title: 'offline at launch, never paid, signed out', user: null,
     prepare: (c) => { c.net.offline = true; write('site.v1', savedDraft('booking')); },
@@ -160,6 +162,14 @@ export const STATES: StateDef[] = [
       signedInWithPlan(P.bookingsMonthly, { shop: 'bookings' })(c);
       c.server.fail('/api/shop/plan', { kind: 'json', status: 401, body: { error: 'unauthorized' } }, 50);
     },
+  },
+  {
+    id: 'S13', hasSite: true, payment: 'banner', title: 'Store plan, payment failed but Apple is still retrying (active, expiry passed 3 hours ago)', user: UID,
+    prepare: (c) => { signedInWithPlan(P.storeMonthly, { shop: 'store' })(c); c.server.planExpiresAt = new Date(Date.now() - 3 * 3600_000).toISOString(); },
+  },
+  {
+    id: 'S14', hasSite: true, payment: 'block', title: 'Bookings plan refunded / revoked by Apple', user: UID,
+    prepare: (c) => { signedInWithPlan(P.bookingsMonthly, { shop: 'bookings', lapseMs: 3 * 3600_000 })(c); c.server.apple.forEach((s) => { s.isRevoked = true; }); },
   },
   { id: 'S12', hasSite: true, title: 'signed in, Bookings plan, plan endpoint slow then success', user: UID, prepare: signedInWithPlan(P.bookingsMonthly, { shop: 'bookings' }), slowPlan: true },
 ];

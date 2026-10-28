@@ -34,7 +34,8 @@ import {
 import { BOOKING_SHARE_KIND, memberName } from '@/lib/bookings/shop';
 import { useCustomerLinkState } from '@/lib/customerLinks';
 import { loadSite, type SiteRecord } from '@/lib/siteStore';
-import { isLocked, useSubscriptionStatus } from '@/lib/subscriptionStatus';
+import { PaymentBanner, PaymentBlock } from '@/components/PaymentLock';
+import { isBlocking, usePaymentLock } from '@/lib/paymentLock';
 import { useTierAccess, useUpgrade } from '@/lib/tierAccess';
 import { useEntitlements } from '@/lib/entitlements';
 import { isUnpublished, requestPublish } from '@/lib/publishRequest';
@@ -58,7 +59,6 @@ export default function Bookings() {
     [view, selected, tzGuess],
   );
   const { phase, shop, members, services, appts, timeOff, availability, refresh } = useBookingsData(visible);
-  const status = useSubscriptionStatus();
   const tier = useTierAccess('bookings');
   const upgrade = useUpgrade('bookings_upgrade');
   const ents = useEntitlements();
@@ -103,7 +103,9 @@ export default function Bookings() {
     if (shop?.timezone) setTzGuess(shop.timezone);
   }, [shop?.timezone]);
   const today = todayKey(tz);
-  const lapsed = isLocked(site, status);
+  // Payment failed / subscription ended: the whole tab is blocked (see PaymentBlock). Apple's retry window is a banner.
+  const paymentLock = usePaymentLock(site);
+  const lapsed = isBlocking(paymentLock);
   // The plan not covering bookings (a Website plan) is read-only too; the server pauses the page.
   const paused = tier.status === 'ready' && !tier.entitled;
   const locked = lapsed || paused;
@@ -168,6 +170,14 @@ export default function Bookings() {
     await refresh();
     setPulling(false);
   };
+
+  if (lapsed) {
+    return (
+      <View style={[styles.root, { paddingTop: insets.top }]}>
+        <PaymentBlock kind={paymentLock as 'failed' | 'revoked'} screen="bookings" />
+      </View>
+    );
+  }
 
   if (tier.status === 'error') {
     return (
@@ -261,10 +271,8 @@ export default function Bookings() {
         )}
       </TabHeader>
 
-      {lapsed && (
-        <Text style={styles.locked}>Your subscription has ended. Bookings are read-only until you resubscribe.</Text>
-      )}
-      {paused && !lapsed && <PausedBanner kind="bookings" onUpgrade={() => void upgrade.run()} />}
+      {paymentLock === 'retry' && <PaymentBanner screen="bookings" />}
+      {paused && <PausedBanner kind="bookings" onUpgrade={() => void upgrade.run()} />}
 
       <View ref={viewsRef} collapsable={false}>
         <ViewSwitch value={view} onChange={chooseView} />

@@ -8,6 +8,7 @@ import { CustomerRow } from '@/components/bookings/CustomerRow';
 import { useCustomers } from '@/components/bookings/useCustomers';
 import { filterCustomers, type CustomerSort } from '@/lib/bookings/customers';
 import { goBackOrHome } from '@/lib/nav';
+import { withPaymentGate } from '@/components/PaymentLock';
 
 const SORTS: { value: CustomerSort; label: string }[] = [
   { value: 'recent', label: 'Recent' },
@@ -17,7 +18,7 @@ const SORTS: { value: CustomerSort; label: string }[] = [
 ];
 
 /** Everyone who booked, derived from the shop's appointments. Read-only. */
-export default function CustomersScreen() {
+function CustomersScreen() {
   const insets = useSafeAreaInsets();
   const { phase, shop, customers, refresh } = useCustomers();
   const [query, setQuery] = useState('');
@@ -142,3 +143,5 @@ const styles = StyleSheet.create({
   emptyTitle: { fontFamily: fonts.heading, fontSize: 20, color: colors.heading, textAlign: 'center' },
   empty: { fontFamily: fonts.body, fontSize: 15, lineHeight: 22, color: colors.muted, textAlign: 'center', paddingHorizontal: 24, marginTop: 24 },
 });
+
+export default withPaymentGate(CustomersScreen, 'customers');

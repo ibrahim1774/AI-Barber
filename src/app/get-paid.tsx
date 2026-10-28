@@ -10,9 +10,10 @@ import { useTutorialTarget } from '@/components/tutorial/registry';
 import { useTour } from '@/components/tutorial/useTour';
 import { goBackOrHome } from '@/lib/nav';
 import { loadMyShop, type Shop } from '@/lib/shop';
+import { withPaymentGate } from '@/components/PaymentLock';
 
 /** "How do you want to get paid?" Also where aibarber://get-paid (the Stripe return) lands. */
-export default function GetPaidScreen() {
+function GetPaidScreen() {
   // undefined: loading. null: no shop yet. 'error': the lookup failed (offline): a retry, never "set up bookings first".
   const [shop, setShop] = useState<Shop | null | undefined | 'error'>(undefined);
   const load = useCallback(() => { loadMyShop().then(setShop).catch(() => setShop('error')); }, []);
@@ -49,3 +50,5 @@ export default function GetPaidScreen() {
     </Page>
   );
 }
+
+export default withPaymentGate(GetPaidScreen, 'get-paid');

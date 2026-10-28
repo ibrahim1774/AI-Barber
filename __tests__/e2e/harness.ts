@@ -88,6 +88,8 @@ export class FakeServer {
   published: any[] = [];
   /** The account the Apple ID's purchase is linked to (set by the first publish with a Bearer, never moved). */
   purchaseOwner: string | null = null;
+  /** The plan's expiresAt while the subscription is still active (Apple's billing retry: the date passed, the plan is not over). */
+  planExpiresAt: string | null = null;
   /** Accounts /api/ios/signup created (emails). */
   accounts = new Set<string>();
   /** Every completed /api/ios/transfer. */
@@ -413,7 +415,7 @@ export class FakeServer {
       tier: tierFor(a?.productId ?? ''),
       entitlements: { hosting: e.includes('hosting'), bookings: e.includes('bookings'), store: e.includes('store') },
       active: !!a,
-      expiresAt: a ? null : last?.expirationDate ?? null,
+      expiresAt: a ? this.planExpiresAt : last?.expirationDate ?? null,
       takenDownAt: null,
       revoked: !!last?.isRevoked,
       // Whose purchase it is: another account that linked it -> 'other'; otherwise the caller's own.

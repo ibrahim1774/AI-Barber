@@ -14,6 +14,8 @@ export type ScreenDef = {
   title: string;
   /** Lazily required so each cell gets a fresh module registry (jest.resetModules). */
   load(): React.ComponentType<any>;
+  /** Behind the payment lock: blocked (or bannered) by it. 'settings' keeps its content and shows the Offline row + Apple button. */
+  payment?: 'gated' | 'settings';
   /** Only reachable once a site record exists on the phone. */
   needsSite?: boolean;
   /** Still open while the app is locked to the account step (ClaimGuard's CLAIM_ALLOWED_PATHS). */
@@ -36,22 +38,22 @@ export type ScreenDef = {
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 export const SCREENS: ScreenDef[] = [
-  { id: 'edit', title: 'Edit tab', load: () => require('@/app/(tabs)/edit').default, needsSite: true },
-  { id: 'bookings', title: 'Bookings tab', load: () => require('@/app/(tabs)/bookings').default, needsSite: true , expects: {
+  { id: 'edit', payment: 'gated', title: 'Edit tab', load: () => require('@/app/(tabs)/edit').default, needsSite: true },
+  { id: 'bookings', payment: 'gated', title: 'Bookings tab', load: () => require('@/app/(tabs)/bookings').default, needsSite: true , expects: {
     S2a: /Publish your website to unlock Bookings/, S2b: /Publish your website to unlock Bookings/, S2c: /Publish your website to unlock Bookings/,
     S4: /Your Website plan does not include Bookings/, S5: /^Bookings \|/, S6: /^Bookings \|/, S7: /another Prime Barber account/,
     S8a: /Your booking page is paused/, S8b: /You need a plan to use Bookings/, S8c: /You need a plan to use Bookings/,
     S9a: /Publish your website to unlock Bookings/, S9b: /Couldn't load your plan[\s\S]*Try again/, S10: /Publish your website to unlock Bookings/,
     S11: /Couldn't load your plan[\s\S]*Try again/, S12: /^Bookings \|/,
   }, forbids: { S11: /paused|Upgrade|You need a plan/, S2a: /You need a plan/, S2b: /You need a plan/, S2c: /You need a plan/, S9a: /You need a plan/, S10: /You need a plan/ } },
-  { id: 'store', title: 'Store tab', load: () => require('@/app/(tabs)/store').default, needsSite: true , expects: {
+  { id: 'store', payment: 'gated', title: 'Store tab', load: () => require('@/app/(tabs)/store').default, needsSite: true , expects: {
     S2a: /Publish your website to unlock the Store/, S2b: /Publish your website to unlock the Store/, S2c: /Publish your website to unlock the Store/,
     S4: /Your plan does not include the Store/, S5: /Your plan does not include the Store/, S6: /^Store \|/, S7: /another Prime Barber account/,
     S8a: /You need a plan to use the Store/, S8b: /You need a plan to use the Store/, S8c: /You need a plan to use the Store/,
     S9a: /Publish your website to unlock the Store/, S9b: /Couldn't load your plan[\s\S]*Try again/, S10: /Publish your website to unlock the Store/,
     S11: /Couldn't load your plan[\s\S]*Try again/, S12: /Your plan does not include the Store/,
   }, forbids: { S2a: /You need a plan/, S2b: /You need a plan/, S2c: /You need a plan/, S9a: /You need a plan/, S10: /You need a plan/ } },
-  { id: 'settings', title: 'Settings tab', load: () => require('@/app/(tabs)/settings/index').default , expects: { S1: /Sign in/, S2a: /Sign in/, S4: /Live/, S5: /Live/, S6: /Live/, S8a: /Offline/, S8b: /Offline/, S8c: /Offline/, S9c: /Sign in/ }  },
+  { id: 'settings', payment: 'settings', title: 'Settings tab', load: () => require('@/app/(tabs)/settings/index').default , expects: { S1: /Sign in/, S2a: /Sign in/, S4: /Live/, S5: /Live/, S6: /Live/, S8a: /Offline/, S8b: /Offline/, S8c: /Offline/, S9c: /Sign in/ }  },
   { id: 'learn', title: 'Learn', load: () => require('@/app/(tabs)/settings/learn/index').default },
   { id: 'claim', title: 'Claim (account step)', load: () => require('@/app/claim').default, allowedWhenLocked: true , expects: { S3: /Create your account/, S7b: /Use a different account/, S9d: /Publishing your site[\s\S]*Waiting for connection[\s\S]*Try again/ }, forbids: { S9d: /Create your account|Create Account & Publish/ }  },
   { id: 'start', title: 'Start screen', load: () => require('@/app/start').default , expects: { '*': /Barbers: get a website, take bookings/ }  },
@@ -60,12 +62,12 @@ export const SCREENS: ScreenDef[] = [
     // Not entitled: the native paywall opens over the clear overlay and is closed without buying; entitled: it publishes.
     prime: (world) => world.willDecline() },
   { id: 'live', title: 'Live screen', load: () => require('@/app/live').default, needsSite: true },
-  { id: 'bookings-setup', title: 'Bookings setup', load: () => require('@/app/bookings-setup').default, needsSite: true , expects: { S2a: /You need a plan/, S5: /Set up bookings/, S7: /another Prime Barber account/, S9b: /Try again/ }  },
-  { id: 'store-setup', title: 'Store setup', load: () => require('@/app/store-setup').default, needsSite: true , expects: { S2a: /You need a plan/, S6: /Store setup/, S7: /another Prime Barber account/, S9b: /Try again/ }  },
-  { id: 'customers', title: 'Customers', load: () => require('@/app/customers/index').default, needsSite: true , expects: { S5: /No customers yet/, S6: /No customers yet/, S4: /Set up Bookings/, S9b: /Couldn't load customers/ }  },
-  { id: 'team', title: 'Team', load: () => require('@/app/team').default, needsSite: true, expects: { S9b: /Couldn't load your team[\s\S]*Try again/ }, forbids: { S9b: /Set up bookings/i } },
+  { id: 'bookings-setup', payment: 'gated', title: 'Bookings setup', load: () => require('@/app/bookings-setup').default, needsSite: true , expects: { S2a: /You need a plan/, S5: /Set up bookings/, S7: /another Prime Barber account/, S9b: /Try again/ }  },
+  { id: 'store-setup', payment: 'gated', title: 'Store setup', load: () => require('@/app/store-setup').default, needsSite: true , expects: { S2a: /You need a plan/, S6: /Store setup/, S7: /another Prime Barber account/, S9b: /Try again/ }  },
+  { id: 'customers', payment: 'gated', title: 'Customers', load: () => require('@/app/customers/index').default, needsSite: true , expects: { S5: /No customers yet/, S6: /No customers yet/, S4: /Set up Bookings/, S9b: /Couldn't load customers/ }  },
+  { id: 'team', payment: 'gated', title: 'Team', load: () => require('@/app/team').default, needsSite: true, expects: { S9b: /Couldn't load your team[\s\S]*Try again/ }, forbids: { S9b: /Set up bookings/i } },
   { id: 'domain', title: 'Domain', load: () => require('@/app/domain').default, needsSite: true },
-  { id: 'get-paid', title: 'Get paid', load: () => require('@/app/get-paid').default, needsSite: true , expects: { S5: /In the shop/, S6: /In the shop/, S2a: /Set up bookings first/, S9b: /Couldn't load your shop[\s\S]*Try again/ },
+  { id: 'get-paid', payment: 'gated', title: 'Get paid', load: () => require('@/app/get-paid').default, needsSite: true , expects: { S5: /In the shop/, S6: /In the shop/, S2a: /Set up bookings first/, S9b: /Couldn't load your shop[\s\S]*Try again/ },
     // A paying user whose shop lookup only failed must not be told to set bookings up from scratch.
     forbids: { S9b: /Set up bookings first/, S5: /Set up bookings first/, S6: /Set up bookings first/ }  },
 ];

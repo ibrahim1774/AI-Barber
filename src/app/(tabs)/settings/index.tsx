@@ -26,6 +26,9 @@ import { isUnpublished, requestPublish, type PlanHint } from '@/lib/publishReque
 import { useRestoreFlow } from '@/lib/restoreFlow';
 import { loadSite, type SiteRecord } from '@/lib/siteStore';
 import { siteOffline, useSubscriptionStatus } from '@/lib/subscriptionStatus';
+import { PaymentBanner } from '@/components/PaymentLock';
+import { isBlocking, PAYMENT_FAILED_BODY, PAYMENT_FAILED_TITLE, PAYMENT_REVOKED_BODY, PAYMENT_REVOKED_TITLE, UPDATE_PAYMENT_BUTTON, usePaymentLock } from '@/lib/paymentLock';
+import { openManageSubscription } from '@/lib/manageSubscription';
 import { tabBarStyle } from '@/lib/tabBar';
 import {
   CANCEL_APPLE_SUBSCRIPTION,
@@ -42,7 +45,6 @@ import { useLinkActions } from '@/lib/useLinkActions';
 import { websiteView } from '@/lib/website';
 
 const SUPPORT_EMAIL = 'support@davoxa.com';
-const SUBSCRIPTIONS_URL = 'itms-apps://apps.apple.com/account/subscriptions';
 
 const GREEN = '#22c55e';
 
@@ -135,9 +137,7 @@ export default function Settings() {
 
   const manageSubscription = () => {
     track('manage_subscription_tapped');
-    Linking.openURL(SUBSCRIPTIONS_URL).catch(() =>
-      Alert.alert('Manage subscription', 'Open Settings → your name → Subscriptions on this iPhone.'),
-    );
+    void openManageSubscription();
   };
 
   const cancelAppleSubscription = () => {
@@ -347,7 +347,9 @@ export default function Settings() {
  */
 function YourWebsite({ site }: { site: SiteRecord }) {
   const ents = useEntitlements();
-  const lapsed = siteOffline(site, useSubscriptionStatus(), ents);
+  const paymentLock = usePaymentLock(site);
+  // Offline = the existing pill rule, or a failed / revoked payment (the same lock the editor and tabs use).
+  const lapsed = siteOffline(site, useSubscriptionStatus(), ents) || isBlocking(paymentLock);
   const view = websiteView(site, lapsed);
   const { open, copy, copied } = useLinkActions(view.url, 'settings');
   const [shareOpen, setShareOpen] = useState(false);
@@ -375,6 +377,7 @@ function YourWebsite({ site }: { site: SiteRecord }) {
 
   return (
     <>
+    {paymentLock === 'retry' && <PaymentBanner screen="settings" />}
     <Section title="Your website">
       <View style={styles.site}>
         <Text style={styles.siteName} numberOfLines={2}>
@@ -392,7 +395,12 @@ function YourWebsite({ site }: { site: SiteRecord }) {
             <Text style={styles.offlineUrl} numberOfLines={1}>
               {view.host}
             </Text>
-            <Button variant="solid" title="Renew to put your site back" onPress={resubscribe} style={styles.publish} />
+            {/* The same words and Apple button as the blocked editor and tabs. */}
+            {isBlocking(paymentLock) && (
+              <Text style={styles.offlineUrl}>{paymentLock === 'revoked' ? `${PAYMENT_REVOKED_TITLE}. ${PAYMENT_REVOKED_BODY}` : `${PAYMENT_FAILED_TITLE}. ${PAYMENT_FAILED_BODY}`}</Text>
+            )}
+            <Button variant="solid" title={UPDATE_PAYMENT_BUTTON} onPress={() => { track('update_payment_tapped', { screen: 'settings' }); void openManageSubscription(); }} style={styles.publish} />
+            <Button variant="ghost" title="Renew to put your site back" onPress={resubscribe} style={styles.publish} />
           </>
         ) : view.live ? (
           <>
