@@ -18,6 +18,7 @@
 // origin check, only THECUT_BASIC below needs updating.
 
 import { finalize } from './util.js';
+import { normalizePrice } from '../scrapeNormalize.js';
 import type { PlatformAdapter, ScrapedShop } from './types.js';
 import { ScrapeError } from './types.js';
 
@@ -127,7 +128,7 @@ export const theCutAdapter: PlatformAdapter = {
       ? b.services
           .map((s: any) => ({
             title: String(s?.name || '').trim(),
-            price: s?.price != null && s?.price !== '' ? `$${s.price}` : undefined,
+            price: normalizePrice(s?.price) || undefined,
             duration: s?.duration ? `${s.duration} min` : undefined,
             description: s?.description ? String(s.description).trim() : undefined,
           }))

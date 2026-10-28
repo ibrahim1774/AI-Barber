@@ -1,5 +1,6 @@
 // Shared helpers used by every platform adapter.
 import type { ScrapedShop } from './types.js';
+import { currencySymbol, normalizeDuration, normalizeHours, normalizePrice, priceFromBounds } from '../scrapeNormalize.js';
 
 // A review's star rating as a whole number 1-5, or undefined when the
 // source didn't give a readable one. Never defaulted: a review with no
@@ -113,29 +114,20 @@ export function ldToScrapedShop(ld: any): Partial<ScrapedShop> {
   // We pull title + price + duration + description; renderers use what
   // they have and skip the rest.
   const services: { title: string; price?: string; duration?: string; description?: string }[] = [];
-  const fmtDuration = (iso: string): string => {
-    // ISO 8601 duration → "30 min" / "1 hr 15 min"
-    const m = String(iso).match(/PT(?:(\d+)H)?(?:(\d+)M)?/);
-    if (!m) return '';
-    const hrs = parseInt(m[1] || '0', 10);
-    const mins = parseInt(m[2] || '0', 10);
-    if (hrs && mins) return `${hrs} hr ${mins} min`;
-    if (hrs) return `${hrs} hr`;
-    if (mins) return `${mins} min`;
-    return '';
-  };
   const collectOffer = (o: any) => {
     const item = o?.itemOffered || {};
     const name = item.name || o?.name || (typeof o === 'string' ? o : '');
-    const price = o?.price
-      ? `$${o.price}`
-      : o?.priceSpecification?.price
-        ? `$${o.priceSpecification.price}`
-        : item?.offers?.price
-          ? `$${item.offers.price}`
-          : '';
+    // The offer can sit on the entry, its priceSpecification or the item's own `offers` (an object or a list); it can be a
+    // single `price` or an AggregateOffer's low/high. Every form lands in one display text; no number means ''.
+    const itemOffers = Array.isArray(item?.offers) ? item.offers[0] : item?.offers;
+    const spec = o?.priceSpecification ?? itemOffers?.priceSpecification;
+    const src = [o, spec, itemOffers].find((x) => x && (x.price != null || x.lowPrice != null || x.minPrice != null)) ?? {};
+    const sym = currencySymbol(src.priceCurrency ?? o?.priceCurrency ?? spec?.priceCurrency ?? itemOffers?.priceCurrency);
+    const price = src.price != null && src.price !== ''
+      ? normalizePrice(src.price, sym)
+      : priceFromBounds(src.lowPrice ?? src.minPrice, src.highPrice ?? src.maxPrice, sym);
     const duration =
-      fmtDuration(item?.estimatedDuration || o?.estimatedDuration || item?.duration || o?.duration || '') || '';
+      normalizeDuration(item?.estimatedDuration || o?.estimatedDuration || item?.duration || o?.duration || '') || '';
     const description = String(item?.description || o?.description || '').slice(0, 240);
     if (name) services.push({ title: String(name).slice(0, 80), price, duration, description });
   };
@@ -253,10 +245,14 @@ export function finalize(
     address: shop.address,
     phone: shop.phone || '',
     description: shop.description || '',
-    hours: shop.hours || [],
+    hours: normalizeHours(shop.hours),
     aggregateRating: shop.aggregateRating,
     staff: dedupeBy(shop.staff || [], (s) => s.name.toLowerCase()).slice(0, staffCap),
-    services: dedupeBy(shop.services || [], (s) => s.title.toLowerCase()).slice(0, serviceCap),
+    services: dedupeBy(shop.services || [], (s) => s.title.toLowerCase()).slice(0, serviceCap).map((s) => ({
+      ...s,
+      price: normalizePrice(s.price) || undefined,
+      duration: normalizeDuration(s.duration) || undefined,
+    })),
     photos: dedupeBy(shop.photos || [], (p) => p.replace(/\?.*$/, '')).slice(0, photoCap),
     reviews: dedupeBy(shop.reviews || [], (r) => r.comment.slice(0, 80)).slice(0, reviewCap),
   };

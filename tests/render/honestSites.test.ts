@@ -468,6 +468,8 @@ describe('React previews and vendored sources carry none of the removed copy', (
       'lib/render/telHref.ts',
       // Shop logo size rules (2026-10-27). Add to the app's sync-web.sh.
       'lib/render/logo.ts',
+      // Scraped price / duration / hours normalizers (2026-10-28). Add to the app's sync-web.sh.
+      'lib/scrapeNormalize.ts',
     ];
     const norm = (p: string) => p.replace(/\.(ts|js)$/, '');
     const set = new Set(VENDORED.map(norm));
