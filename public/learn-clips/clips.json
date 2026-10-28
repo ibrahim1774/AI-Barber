@@ -65,6 +65,11 @@
       "v": 1,
       "bytes": 178722,
       "seconds": 18
+    },
+    "settings-adjust": {
+      "v": 1,
+      "bytes": 428351,
+      "seconds": 24
     }
   }
 }
