@@ -193,14 +193,14 @@ export default function Bookings() {
     );
   }
 
-  // Before the website is published there is nothing to upgrade: Publish opens the one publish paywall with this plan in front.
+  // Before the website is published there is nothing to upgrade: the plan is chosen on the card, then the one publish path (and its paywall) runs with it.
   if (paused && isUnpublished(site) && !tier.otherAccount && ents.account !== 'other') {
     return (
       <View style={[styles.root, styles.center, { paddingTop: insets.top }]}>
         <PublishFirstCard
           kind="bookings"
-          onPublish={() => {
-            requestPublish('bookings');
+          onPublish={(plan) => {
+            requestPublish(plan);
             router.navigate('/edit');
           }}
         />
