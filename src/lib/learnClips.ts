@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import Storage from 'expo-sqlite/kv-store';
 
 /** Where the Learn clips live. The slug is the file name: <BASE>/<slug>.mp4 and <BASE>/<slug>.jpg (poster). */
-export const LEARN_CLIP_BASE = (process.env.EXPO_PUBLIC_LEARN_CLIP_BASE || 'https://aibarber.org/learn-clips').replace(/\/+$/, '');
+export const LEARN_CLIP_BASE = (process.env.EXPO_PUBLIC_LEARN_CLIP_BASE || 'https://www.aibarber.org/learn-clips').replace(/\/+$/, '');
 export const CLIPS_CACHE_KEY = 'learn_clips_manifest_v1';
 const TIMEOUT_MS = 3000;
 const SLUG = /^[a-z0-9][a-z0-9-]*$/;

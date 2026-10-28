@@ -25,7 +25,7 @@ import { LEARN_TOPICS } from '@/lib/learnContent';
 import { CLIPS_CACHE_KEY, fetchClips, getLearnClips, parseManifest, resetLearnClips } from '@/lib/learnClips';
 import { LearnVideo } from '@/components/LearnVideo';
 
-const BASE = 'https://aibarber.org/learn-clips';
+const BASE = 'https://www.aibarber.org/learn-clips';
 const vid = require('../test/mocks/video');
 const MANIFEST = { version: 1, clips: { intro: { v: 2, bytes: 1200000, seconds: 28 } } };
 const okResponse = (body: unknown) => ({ ok: true, status: 200, json: async () => body }) as unknown as Response;
