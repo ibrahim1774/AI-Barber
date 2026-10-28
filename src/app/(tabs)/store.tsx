@@ -141,14 +141,14 @@ export default function Store() {
     );
   }
 
-  // Before the website is published there is nothing to upgrade: the plan is chosen on the card, then the one publish path (and its paywall) runs with it.
+  // Before the website is published there is nothing to upgrade: Publish opens the one publish paywall with this plan in front.
   if (noPlan && isUnpublished(site) && !shop && ents.account !== 'other') {
     return (
       <View style={[...shell, styles.center]}>
         <PublishFirstCard
           kind="store"
-          onPublish={(plan) => {
-            requestPublish(plan);
+          onPublish={() => {
+            requestPublish('store');
             router.navigate('/edit');
           }}
         />

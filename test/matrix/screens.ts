@@ -38,17 +38,17 @@ export type ScreenDef = {
 export const SCREENS: ScreenDef[] = [
   { id: 'edit', title: 'Edit tab', load: () => require('@/app/(tabs)/edit').default, needsSite: true },
   { id: 'bookings', title: 'Bookings tab', load: () => require('@/app/(tabs)/bookings').default, needsSite: true , expects: {
-    S2a: /Choose your plan/, S2b: /Choose your plan/, S2c: /Choose your plan/,
+    S2a: /Publish your website to unlock Bookings/, S2b: /Publish your website to unlock Bookings/, S2c: /Publish your website to unlock Bookings/,
     S4: /Your Website plan does not include Bookings/, S5: /^Bookings \|/, S6: /^Bookings \|/, S7: /another Prime Barber account/,
     S8a: /Your booking page is paused/, S8b: /You need a plan to use Bookings/, S8c: /You need a plan to use Bookings/,
-    S9a: /Choose your plan/, S9b: /Couldn't load your plan[\s\S]*Try again/, S10: /Choose your plan/,
+    S9a: /Publish your website to unlock Bookings/, S9b: /Couldn't load your plan[\s\S]*Try again/, S10: /Publish your website to unlock Bookings/,
     S11: /Couldn't load your plan[\s\S]*Try again/, S12: /^Bookings \|/,
   }, forbids: { S11: /paused|Upgrade|You need a plan/, S2a: /You need a plan/, S2b: /You need a plan/, S2c: /You need a plan/, S9a: /You need a plan/, S10: /You need a plan/ } },
   { id: 'store', title: 'Store tab', load: () => require('@/app/(tabs)/store').default, needsSite: true , expects: {
-    S2a: /Choose your plan/, S2b: /Choose your plan/, S2c: /Choose your plan/,
+    S2a: /Publish your website to unlock the Store/, S2b: /Publish your website to unlock the Store/, S2c: /Publish your website to unlock the Store/,
     S4: /Your plan does not include the Store/, S5: /Your plan does not include the Store/, S6: /^Store \|/, S7: /another Prime Barber account/,
     S8a: /You need a plan to use the Store/, S8b: /You need a plan to use the Store/, S8c: /You need a plan to use the Store/,
-    S9a: /Choose your plan/, S9b: /Couldn't load your plan[\s\S]*Try again/, S10: /Choose your plan/,
+    S9a: /Publish your website to unlock the Store/, S9b: /Couldn't load your plan[\s\S]*Try again/, S10: /Publish your website to unlock the Store/,
     S11: /Couldn't load your plan[\s\S]*Try again/, S12: /Your plan does not include the Store/,
   }, forbids: { S2a: /You need a plan/, S2b: /You need a plan/, S2c: /You need a plan/, S9a: /You need a plan/, S10: /You need a plan/ } },
   { id: 'settings', title: 'Settings tab', load: () => require('@/app/(tabs)/settings/index').default , expects: { S1: /Sign in/, S2a: /Sign in/, S4: /Live/, S5: /Live/, S6: /Live/, S8a: /Offline/, S8b: /Offline/, S8c: /Offline/, S9c: /Sign in/ }  },

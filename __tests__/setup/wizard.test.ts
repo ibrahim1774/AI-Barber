@@ -1,4 +1,4 @@
-import { STEPS, back, currentStep, initialWizard, next, progressLabel, setSwitch, skip } from '@/lib/setup/wizard';
+import { STEPS, back, currentStep, initialWizard, next, progressLabel, setSwitch } from '@/lib/setup/wizard';
 
 describe('wizard state', () => {
   it('starts on services; the Book-button switch needs opting in when another link exists', () => {
@@ -15,21 +15,13 @@ describe('wizard state', () => {
       if (!s.done) seen.push(currentStep(s));
     }
     expect(seen).toEqual([...STEPS]);
-    expect(s.skipped).toEqual([]);
   });
-  it('remembers skipped steps and clears them when later completed', () => {
-    let s = skip(initialWizard(false));
-    expect(s.skipped).toEqual(['services']);
+  it('has no way to skip a step: only Continue moves forward, Back returns', () => {
+    expect(require('@/lib/setup/wizard').skip).toBeUndefined();
+    let s = next(initialWizard(false));
+    expect(currentStep(s)).toBe('hours');
     s = back(s);
     expect(currentStep(s)).toBe('services');
-    s = next(s);
-    expect(s.skipped).toEqual([]);
-  });
-  it('can be skipped to the end', () => {
-    let s = initialWizard(false);
-    for (let i = 0; i < STEPS.length; i++) s = skip(s);
-    expect(s.done).toBe(true);
-    expect(s.skipped).toEqual([...STEPS]);
   });
   it('does not go back before the first step', () => {
     expect(back(initialWizard(false)).index).toBe(0);

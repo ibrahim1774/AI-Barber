@@ -114,7 +114,7 @@ export const LEARN_TOPICS: LearnTopic[] = [
       'Tap the Bookings tab.',
       'Tap Set up bookings. If you are asked, tap Create account first.',
       'Follow the first-run steps: Services, Hours, team, Get paid and your booking link.',
-      'Tap Continue on each step, or Skip this step if you want to come back later.',
+      'Tap Continue on each step, or Back to return to the one before. Add at least one service on the first step.',
       'Tap Finish at the end.',
       'Change anything later: in the Bookings tab tap Settings at the top. It is also in the Settings tab under Bookings setup.',
       'Check that Take bookings is on at the top of the setup list.',

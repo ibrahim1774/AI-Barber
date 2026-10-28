@@ -9,7 +9,7 @@ import { ArrowRight } from '@/components/Icons';
 
 // HomeBookingPrompts.tsx, shown on top of the editor after a name-only site
 // generates. Step 1: booking link → [Generate] scrapes + rebuilds and finishes
-// (skips step 2); [Don't have] → step 2. A failed scrape falls to step 2 with a
+// (finishes without step 2); [Don't have] → step 2. A failed scrape falls to step 2 with a
 // note. Step 2: service area + phone → [Finish generating].
 // Not ported: the per-keystroke live preview (each data change reloads the
 // WebView here, so the site updates once on Finish instead).
@@ -107,7 +107,7 @@ export function HomePrompts({ onSubmitBookingLink, onFinish, onComplete, initial
           <View>
             <Text style={styles.title} accessibilityRole="header">Add your booking link</Text>
             <Text style={styles.sub}>
-              {"Paste your Booksy, Fresha, or Squareup link and we'll build from your real services, photos & reviews. No link? Skip it."}
+              {"Paste your Booksy, Fresha, or Squareup link and we'll build from your real services, photos & reviews. No link? Tap Don't have."}
             </Text>
             <TextInput
               value={bookingUrl}

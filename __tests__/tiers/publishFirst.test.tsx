@@ -82,15 +82,15 @@ beforeEach(() => {
 });
 
 describe.each([
-  ['Bookings', Bookings, /Bookings opens as soon as your website is live/, /Take bookings online/, 'bookings', 'bookings_upgrade'],
-  ['Store', Store, /The Store opens as soon as your website is live/, /Sell from your website/, 'store', 'store_upgrade'],
+  ['Bookings', Bookings, /Publish your website to unlock Bookings/, /Take bookings online/, 'bookings', 'bookings_upgrade'],
+  ['Store', Store, /Publish your website to unlock the Store/, /Sell from your website/, 'store', 'store_upgrade'],
 ] as const)('%s tab', (_n, Tab, publishCard, upgradeCard, hint, placement) => {
   it('signed out, site not published: a Publish card whose button runs the one publish path with the plan hint', async () => {
     ents('');
     const tree = await render(<Tab />);
     expect(hasText(tree, publishCard)).toBe(true);
     expect(hasText(tree, upgradeCard)).toBe(false);
-    await press(tree, hint === 'bookings' ? 'Continue with Bookings' : 'Continue with Store');
+    await press(tree, 'Publish');
     expect(peekPublishHint()).toBe(hint);
     expect(takePublishRequest()).toBe(true);
     expect(mockNavigate).toHaveBeenCalledWith('/edit');
@@ -101,7 +101,7 @@ describe.each([
     ents('hosting');
     const tree = await render(<Tab />);
     expect(hasText(tree, publishCard)).toBe(true);
-    await press(tree, hint === 'bookings' ? 'Continue with Bookings' : 'Continue with Store');
+    await press(tree, 'Publish');
     expect(mockPaywall).not.toHaveBeenCalled();
     expect(peekPublishHint()).toBe(hint);
   });
@@ -126,28 +126,7 @@ describe.each([
   });
 });
 
-describe('plan chooser card (unpublished)', () => {
-  it('lists Website, Bookings and Store with the tab\'s plan preselected and no price', async () => {
-    ents('');
-    const tree = await render(<Bookings />);
-    const radios = tree.root.findAll((n: any) => n.props?.accessibilityRole === 'radio' && typeof n.props.onPress === 'function');
-    expect(radios.map((r: any) => [r.props.accessibilityLabel, r.props.accessibilityState.selected])).toEqual([
-      ['Website plan', false], ['Bookings plan', true], ['Store plan', false],
-    ]);
-    expect(hasText(tree, /\$\d/)).toBe(false);
-  });
-
-  it('choosing another plan on the card sends that plan to the publish path', async () => {
-    ents('');
-    const tree = await render(<Bookings />);
-    const store = tree.root.findAll((n: any) => n.props?.accessibilityLabel === 'Store plan' && typeof n.props.onPress === 'function')[0];
-    await act(async () => { store.props.onPress(); });
-    await press(tree, 'Continue with Store');
-    expect(peekPublishHint()).toBe('store');
-    expect(mockNavigate).toHaveBeenCalledWith('/edit');
-    expect(mockPaywall).not.toHaveBeenCalled();
-  });
-
+describe('Website-plan owner upgrade wording', () => {
   it('a Website-plan owner on a published site sees the upgrade wording, not "you need a plan"', async () => {
     mockSite = LIVE;
     ents('hosting');

@@ -21,7 +21,7 @@ import { seedWeek } from '@/lib/setup/availability';
 import { withMirroredServices } from '@/lib/setup/servicesMap';
 import { updateSiteData, updateSiteRecord } from '@/lib/setup/siteSync';
 import {
-  STEPS, STEP_TITLES, back, currentStep, initialWizard, next, progressLabel, setSwitch, skip, type WizardState,
+  STEPS, STEP_TITLES, back, currentStep, initialWizard, next, progressLabel, setSwitch, type WizardState,
 } from '@/lib/setup/wizard';
 import { PLAN_PENDING } from '@/components/setup/SetupHub';
 import { registerPushForShop } from '@/lib/setup/relink';
@@ -40,7 +40,7 @@ type Props = {
   onFinish(): void;
 };
 
-/** First-run setup: services, hours, who takes bookings, how you get paid, share. Every step skippable. */
+/** First-run setup: services, hours, who takes bookings, how you get paid, share. No step can be skipped: Continue completes it, Back goes to the previous one (the team step is optional only in that "Just me" is a valid answer). */
 export function Wizard({ shop, site, onShopChanged, onFinish }: Props) {
   const { own } = bookingPrefs(site);
   const [state, setState] = useState<WizardState>(() => initialWizard(own != null));
@@ -72,7 +72,7 @@ export function Wizard({ shop, site, onShopChanged, onFinish }: Props) {
       const saved = await updateSiteRecord((r) => withChoice(r, state.switchBookButton || !bookingPrefs(r).own ? 'aibarber' : 'own', shop));
       await markWizardDone(shop.id);
       void registerPushForShop();
-      track('bookings_setup_done', { skipped: state.skipped.length, switched_book_button: state.switchBookButton });
+      track('bookings_setup_done', { switched_book_button: state.switchBookButton });
       // A live site: offer to add the Book button now. Not published yet: the next Publish adds it.
       const asked = await sitePrompt.offer().catch(() => 'no-change' as const);
       if (asked === 'unpublished' && saved && bookingPrefs(saved).choice === 'aibarber') Alert.alert(WIZARD_PUBLISH_TITLE, WIZARD_PUBLISH_BODY);
@@ -84,9 +84,12 @@ export function Wizard({ shop, site, onShopChanged, onFinish }: Props) {
     }
   };
 
-  const advance = async (kind: 'next' | 'skip') => {
-    if (kind === 'next' && step === 'hours' && hoursSave.current && !(await hoursSave.current())) return;
-    const n = kind === 'next' ? next(state) : skip(state);
+  // Bookings need at least one service to book: Continue waits for one (add it on this step).
+  const needsService = step === 'services' && (services.loading || (services.services?.length ?? 0) === 0);
+
+  const advance = async () => {
+    if (step === 'hours' && hoursSave.current && !(await hoursSave.current())) return;
+    const n = next(state);
     if (n.done) {
       void finish();
       return;
@@ -102,7 +105,7 @@ export function Wizard({ shop, site, onShopChanged, onFinish }: Props) {
 
       {step === 'services' && (
         <>
-          <Note>Tap a service to set its price. These are the services customers can book.</Note>
+          <Note>Tap a service to set its price. These are the services customers can book. Add at least one to continue.</Note>
           <View style={{ height: 8 }} />
           <ServicesEditorView ed={services} />
           <View style={{ height: 16 }} />
@@ -171,12 +174,12 @@ export function Wizard({ shop, site, onShopChanged, onFinish }: Props) {
       <View style={st.nav}>
         <Button
           title={step === STEPS[STEPS.length - 1] ? 'Finish' : 'Continue'}
-          onPress={() => void advance('next')}
+          onPress={() => void advance()}
           loading={finishing}
+          disabled={needsService}
         />
         <View style={st.navRow}>
           {state.index > 0 ? <TextAction title="Back" onPress={() => setState(back)} /> : <View />}
-          {step !== 'share' && <TextAction title="Skip this step" onPress={() => void advance('skip')} />}
         </View>
       </View>
     </View>

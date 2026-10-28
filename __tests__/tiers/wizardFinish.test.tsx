@@ -8,7 +8,7 @@ jest.mock('@/components/setup/Barbers', () => ({ Barbers: () => null }));
 jest.mock('@/components/setup/GetPaid', () => ({ GetPaid: () => null }));
 jest.mock('@/components/setup/HoursGrid', () => ({ MemberHours: () => null }));
 jest.mock('@/components/setup/ServicesEditor', () => ({ ServicesEditorView: () => null }));
-jest.mock('@/components/setup/useServicesEditor', () => ({ useServicesEditor: () => ({}) }));
+jest.mock('@/components/setup/useServicesEditor', () => ({ useServicesEditor: () => ({ services: [{ id: 'sv1' }], loading: false }) }));
 jest.mock('@/lib/photos', () => ({ pickAndUploadPhoto: jest.fn() }));
 jest.mock('@/lib/setup/relink', () => ({ registerPushForShop: jest.fn(async () => {}) }));
 jest.mock('@/lib/setup/wizardFlag', () => ({ markWizardDone: jest.fn(async () => {}) }));
@@ -47,4 +47,15 @@ it('finishing with AI Barber booking prompts to publish', async () => {
   const { alert, onFinish } = await finish();
   expect(alert).toHaveBeenCalledWith(WIZARD_PUBLISH_TITLE, WIZARD_PUBLISH_BODY);
   expect(onFinish).toHaveBeenCalled();
+});
+
+it('no step offers Skip; Back appears after the first step', async () => {
+  mockRecord.mockImplementation(async (fn: any) => fn(SITE));
+  const tree = await render(<Wizard shop={SHOP} site={SITE} onShopChanged={() => {}} onFinish={() => {}} />);
+  const texts = () => tree.root.findAll((n: any) => n.type === 'Text').map((n: any) => [].concat(n.props.children).join(''));
+  for (let i = 0; i < 5; i++) {
+    expect(texts().some((t: string) => /skip/i.test(t))).toBe(false);
+    if (i < 4) await press(tree, 'Continue');
+  }
+  expect(texts()).toContain('Back');
 });
