@@ -11,12 +11,14 @@ const COPY = {
     intro: 'You need a plan to use Bookings. Choose one to unlock it.',
     bullets: ['Your own booking page', 'Clients pick a barber and time', 'Deposits and card payments'],
     button: 'See the Bookings plan',
+    upgradeIntro: 'Your Website plan does not include Bookings. Upgrade to the Bookings plan to unlock it; the next screen shows the new price.',
   },
   store: {
     title: 'Sell from your website',
     intro: 'You need a plan to use the Store. Choose one to unlock it.',
     bullets: ['Products with photos', 'Pickup or shipping', 'Card, Cash App and more'],
     button: 'See the Store plan',
+    upgradeIntro: 'Your plan does not include the Store. Upgrade to the Store plan to unlock it; the next screen shows the new price.',
   },
 } as const;
 
@@ -37,7 +39,7 @@ export function UpgradeCard({ kind, onUpgrade, busy }: { kind: 'bookings' | 'sto
   return (
     <View style={styles.card}>
       <Text style={styles.title} accessibilityRole="header">{c.title}</Text>
-      <Text style={styles.intro}>{c.intro}</Text>
+      <Text style={styles.intro}>{ents.hosting ? c.upgradeIntro : c.intro}</Text>
       <View style={styles.bullets}>
         {c.bullets.map((b) => (
           <Text key={b} style={styles.bullet}>{`•  ${b}`}</Text>
