@@ -290,8 +290,29 @@ export function telUrl(phone: string): string {
   return `tel:${phone.replace(/[^\d+]/g, '')}`;
 }
 
-export function serviceLabel(s: Service): string {
-  return [formatMoney(s.priceCents), `${s.durationMin} min`].filter(Boolean).join(' · ');
+/**
+ * A deposit is only ever shown when card payments are on. The API already reports 0 while card is off
+ * (lib/bookings/core.ts effectiveDeposit); `cardOn` makes the page agree even if it were ever not.
+ */
+export function shownDeposit(s: Pick<Service, 'depositCents'>, cardOn = true): number {
+  return cardOn && s.depositCents > 0 ? s.depositCents : 0;
+}
+
+export function serviceLabel(s: Service, cardOn = true): string {
+  const dep = shownDeposit(s, cardOn);
+  return [formatMoney(s.priceCents), `${s.durationMin} min`, dep ? `${formatMoney(dep)} deposit` : ''].filter(Boolean).join(' · ');
+}
+
+/** Price (or "Price at shop" only when there is no price) plus the deposit due now, e.g. "$30 · $10 deposit due now". */
+export function priceWithDeposit(s: Pick<Service, 'priceCents' | 'depositCents'>, cardOn = true): string {
+  const dep = shownDeposit(s, cardOn);
+  return [formatMoney(s.priceCents) || 'Price at shop', dep ? `${formatMoney(dep)} deposit due now` : ''].filter(Boolean).join(' · ');
+}
+
+/** The line under "Cancel this booking?". A refund line only when money was taken: "No payment will be refunded." is for a captured payment the shop keeps. */
+export function cancelNote(refundCents: number, amountPaidCents: number): string | null {
+  if (refundCents > 0) return `You'll be refunded ${formatMoney(refundCents)}.`;
+  return amountPaidCents > 0 ? 'No payment will be refunded.' : null;
 }
 
 /* ---------- card checkout return (?checkout=) ---------- */

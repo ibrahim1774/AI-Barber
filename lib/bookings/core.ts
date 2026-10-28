@@ -247,8 +247,19 @@ export function priceFor(cat: Catalog, service: ServiceRow, memberId: string): n
   return o != null ? o : service.price_cents;
 }
 
+/** The deposit as the service is configured, ignoring whether the shop can collect it. Use effectiveDeposit for anything a customer sees or pays. */
 export const serviceDeposit = (service: ServiceRow, price: number | null) =>
   depositCents(price, service.deposit_type, service.deposit_value);
+
+/**
+ * Deposits are taken by card only. While card payments are off (Stripe not connected or charges
+ * not enabled) the stored deposit is kept on the service (it resumes when card connects) but is
+ * EXPLICITLY 0 for everything the public side does: the service list, the booking response and
+ * the amount a manual payment should cover. Otherwise the page would show or imply a deposit
+ * that is never collected, and the booking would be taken with no deposit and no notice.
+ */
+export const effectiveDeposit = (shop: ShopRow, service: ServiceRow, price: number | null) =>
+  cardEnabled(shop) ? serviceDeposit(service, price) : 0;
 
 /** Each member's availability, time off and busy times overlapping [fromMs, toMs). */
 export async function loadSchedules(
