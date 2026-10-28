@@ -10,6 +10,7 @@ import {
 } from '@/lib/domains/model';
 import { useDomainFlow, type BuyResult } from '@/lib/domains/useDomainFlow';
 import { loadSite } from '@/lib/siteStore';
+import { withPaymentGate } from '@/components/PaymentLock';
 
 export const POLL_MS = 5000;
 /** While the secure connection is still being set up (live, SSL pending): slower, and not for ever. */
@@ -30,7 +31,7 @@ const MESSAGES: Partial<Record<BuyResult['kind'], string>> = {
  * paywall, or straight to the claim with an unused paid slot), then follow it: Registering → Linking →
  * "Live in a few minutes" → Live.
  */
-export default function Domain() {
+function Domain() {
   const flow = useDomainFlow();
   const [q, setQ] = useState('');
   const [results, setResults] = useState<SearchResult[] | null>(null);
@@ -251,3 +252,5 @@ const st = StyleSheet.create({
   // Fine print at the very bottom (registrant info). Small and muted on purpose.
   disclosure: { fontFamily: fonts.body, fontSize: 11, lineHeight: 15, color: colors.faint, marginTop: 36, textAlign: 'center' },
 });
+
+export default withPaymentGate(Domain, 'domain');

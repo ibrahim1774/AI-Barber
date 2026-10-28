@@ -9,9 +9,10 @@ import { formatMoney, telUrl } from '@/lib/bookings/calendar';
 import { goBackOrHome } from '@/lib/nav';
 import { formatPhone } from '@/lib/phone';
 import { itemsSummary, paymentLabel } from '@/lib/store/orderActions';
+import { withPaymentGate } from '@/components/PaymentLock';
 
 /** One customer's contact details and orders. Read-only: orders are handled from the Orders tab. */
-export default function StoreCustomerDetail() {
+function StoreCustomerDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { phase, customers, orders } = useStoreCustomers();
   const c = customers.find((x) => x.id === id);
@@ -112,3 +113,5 @@ const st = StyleSheet.create({
   status: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.chipText },
   histSub: { fontFamily: fonts.body, fontSize: 13, color: colors.body },
 });
+
+export default withPaymentGate(StoreCustomerDetail, 'store-customer');

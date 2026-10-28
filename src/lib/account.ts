@@ -7,6 +7,7 @@ import { api, ApiError } from '@/lib/api';
 import { clearCustomersCache } from '@/lib/bookings/customersCache';
 import { clearEntitlements } from '@/lib/entitlements';
 import { resetSharedPlan } from '@/lib/plan';
+import { resetSubscriptionStatus } from '@/lib/subscriptionStatus';
 import { clearOverlayFlags } from '@/lib/overlayFlags';
 import { accessToken } from '@/lib/accessToken';
 import { SIGN_IN_TO_RESTORE_CODE } from '@/lib/claimCopy';
@@ -358,6 +359,7 @@ export async function switchAccountSite(userId: string, isCurrent: () => boolean
   await siteStore.savePendingPublish(null);
   clearCustomersCache();
   resetSharedPlan(); // the other account's tier, entitlements and team cap
+  resetSubscriptionStatus(); // and its per-site 'lapsed'
   clearEntitlements();
   if (!found) {
     await siteStore.clearSite();

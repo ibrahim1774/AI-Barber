@@ -10,6 +10,7 @@ import { clearCustomersCache } from '@/lib/bookings/customersCache';
 import { unregisterPushToken } from '@/lib/bookings/pushStamp';
 import { clearEntitlements } from '@/lib/entitlements';
 import { resetSharedPlan } from '@/lib/plan';
+import { resetSubscriptionStatus } from '@/lib/subscriptionStatus';
 import { isCodeComplete, isValidEmail, sanitizeCode } from '@/lib/recovery';
 import { nextSession, onInstallReset, readSession } from '@/lib/authSession';
 import { AUTH_STORAGE_KEY, authStorage, supabase } from '@/lib/supabase';
@@ -68,6 +69,7 @@ async function call<T extends { error: unknown }>(fn: () => Promise<T>): Promise
 onInstallReset(() => {
   clearCustomersCache();
   resetSharedPlan();
+  resetSubscriptionStatus();
   clearEntitlements();
 });
 
@@ -82,6 +84,7 @@ supabase.auth.onAuthStateChange((event, session) => {
     // unsaved edits); only the explicit Sign out / account deletion removes it.
     clearCustomersCache();
     resetSharedPlan();
+    resetSubscriptionStatus();
     clearEntitlements();
   }
   // Any other event without a session (offline, token not refreshable yet) says nothing about being signed out.
@@ -221,6 +224,7 @@ export async function signOut(): Promise<void> {
   userId = null;
   clearCustomersCache();
   resetSharedPlan(); // the next account must not read this one's tier, entitlements or team cap
+  resetSubscriptionStatus();
   clearEntitlements();
   if (pushed) await clearSiteAfterSignOut().catch((e) => console.warn('[auth] could not clear the site:', e));
   resetUser();

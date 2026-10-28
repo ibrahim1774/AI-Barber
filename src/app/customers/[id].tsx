@@ -11,11 +11,12 @@ import type { CustomerAppt } from '@/lib/bookings/customers';
 import { goBackOrHome } from '@/lib/nav';
 import { formatPhone } from '@/lib/phone';
 import { listMembers, memberName } from '@/lib/bookings/shop';
+import { withPaymentGate } from '@/components/PaymentLock';
 
 const STATUS: Record<CustomerAppt['status'], string> = { booked: 'Booked', done: 'Done', no_show: 'No-show', cancelled: 'Cancelled' };
 
 /** One customer's contact details, booking facts and history. Read-only: bookings are changed from the calendar. */
-export default function CustomerDetail() {
+function CustomerDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { phase, shop, customers } = useCustomers();
   const [barbers, setBarbers] = useState<Record<string, string>>({});
@@ -126,3 +127,5 @@ const st = StyleSheet.create({
   statusBad: { color: '#f87171' },
   histSub: { fontFamily: fonts.body, fontSize: 13, color: colors.body },
 });
+
+export default withPaymentGate(CustomerDetail, 'customer');

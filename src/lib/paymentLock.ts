@@ -58,7 +58,7 @@ export function paymentLockOf(
     if (plan.active) return 'none'; // the server says paid: a stale per-site 'lapsed' does not outrank it
   }
   // Another account's purchase (the Move card), no purchase, or no plan yet: only the per-site confirmation counts.
-  if (status === 'lapsed' && plan?.purchaseAccount !== 'other') return 'failed';
+  if (status === 'lapsed' && plan?.purchaseAccount !== 'other' && !deviceActive) return 'failed';
   return 'none';
 }
 

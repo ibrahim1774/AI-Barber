@@ -99,7 +99,8 @@ subscribePlan(recompute);
 /** The cached server plan when it belongs to the signed-in account (never another account's, never after sign-out). */
 export function getAccountPlan(): Plan | null {
   const plan = getSharedPlan();
-  return plan && (!planUser || planUser === currentUserId()) ? plan : null;
+  // A plan cached while nobody was signed in (planUser null) belongs to no account: never used for the lock decision.
+  return plan && planUser && planUser === currentUserId() ? plan : null;
 }
 
 /** The server plan for this account, as a hook. Used only to tell a failed payment from an active plan. */

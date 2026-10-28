@@ -210,6 +210,15 @@ export function recheckSubscriptionStatus(force = true): void {
   runner?.(force);
 }
 
+/** Sign-out / account switch: the next account must not inherit this one's status; a check still running is dropped. */
+export function resetSubscriptionStatus(): void {
+  generation++;
+  lastDefinitiveAt = null;
+  if (status === 'unknown') return;
+  status = 'unknown';
+  listeners.forEach((l) => l());
+}
+
 /** Test only. */
 export function resetSubscriptionStatusForTests(): void {
   status = 'unknown';
