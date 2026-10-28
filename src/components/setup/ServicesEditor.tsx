@@ -2,6 +2,7 @@ import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'rea
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
 import { DURATIONS, SERVICE_LIBRARY, durationLabel } from '@/lib/sections/services';
+import { EXAMPLE_PRICE_NOTE, isSamplePrice } from '@/lib/samplePrices';
 import { centsToPrice } from '@/lib/setup/servicesMap';
 import type { DepositType } from '@/lib/shop';
 import type { ServicesEditor as Ed } from '@/components/setup/useServicesEditor';
@@ -17,8 +18,14 @@ const DEPOSITS: { key: DepositType; label: string }[] = [
 export const DEPOSIT_NEEDS_CARD = 'Deposits need card payments. Connect card payments to turn on a deposit.';
 export const DEPOSIT_PAUSED = 'Deposit paused until card payments are connected';
 
-export function ServicesEditorView({ ed, onGetPaid }: { ed: Ed; onGetPaid?(): void }) {
+/**
+ * variant 'booking' (default): every field, deposit included (Bookings setup and settings).
+ * variant 'website': only what the site shows (name, price, length, description, photo, show on website); no deposit,
+ * bookable or any other booking field. Saving it leaves those columns of the row untouched.
+ */
+export function ServicesEditorView({ ed, onGetPaid, variant = 'booking' }: { ed: Ed; onGetPaid?(): void; variant?: 'website' | 'booking' }) {
   const { view } = ed;
+  const web = variant === 'website';
   if (ed.loading) return <ActivityIndicator color={colors.accent} style={{ marginVertical: 24 }} />;
 
   if (view.kind === 'add') {
@@ -46,7 +53,8 @@ export function ServicesEditorView({ ed, onGetPaid }: { ed: Ed; onGetPaid?(): vo
     return (
       <View style={{ gap: 6 }}>
         <Input title="Name" label="Name" value={d.name} onChangeText={(t) => ed.setDraft({ name: t })} placeholder="e.g. Skin fade" autoFocus={view.id == null} />
-        <Input title="Price" label="Price in dollars" value={d.price} onChangeText={(t) => ed.setDraft({ price: t })} keyboardType="decimal-pad" placeholder={d.depositType !== 'none' ? '30 (needed for a deposit)' : '30 (leave blank to ask)'} />
+        <Input title="Price" label="Price in dollars" value={d.price} onChangeText={(t) => ed.setDraft({ price: t })} keyboardType="decimal-pad" placeholder={!web && d.depositType !== 'none' ? '30 (needed for a deposit)' : '30 (leave blank to ask)'} />
+        {isSamplePrice(d.name, d.price) && <Note>{EXAMPLE_PRICE_NOTE}</Note>}
         <Label>Length</Label>
         <Chips>
           {DURATIONS.map((m) => (
@@ -60,8 +68,10 @@ export function ServicesEditorView({ ed, onGetPaid }: { ed: Ed; onGetPaid?(): vo
           <TextAction title={d.photoUrl ? 'Change' : 'Add photo'} onPress={() => void ed.photo()} disabled={ed.uploading} />
           {ed.uploading && <ActivityIndicator color={colors.accent} />}
         </View>
-        <ToggleRow label="Bookable" detail="Customers can book it online" value={d.bookable} onValueChange={(v) => ed.setDraft({ bookable: v })} />
+        {!web && <ToggleRow label="Bookable" detail="Customers can book it online" value={d.bookable} onValueChange={(v) => ed.setDraft({ bookable: v })} />}
         <ToggleRow label="Show on website" detail="Listed in your site's Services section" value={d.showOnSite} onValueChange={(v) => ed.setDraft({ showOnSite: v })} />
+        {!web && (
+          <>
         <Label>Advanced: deposit</Label>
         <Chips>
           {DEPOSITS.map((x) => (
@@ -90,6 +100,8 @@ export function ServicesEditorView({ ed, onGetPaid }: { ed: Ed; onGetPaid?(): vo
           />
         )}
         {d.depositType !== 'none' && <Note>A deposit needs a price above. It is taken out of the price when the customer books.</Note>}
+          </>
+        )}
         <View style={st.actions}>
           <Button title="Save" size="sm" onPress={() => void ed.save()} loading={ed.busy} style={{ flex: 1 }} />
           {existing && <TextAction title="Remove" danger onPress={() => ed.remove(existing)} />}
@@ -107,7 +119,7 @@ export function ServicesEditorView({ ed, onGetPaid }: { ed: Ed; onGetPaid?(): vo
           <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${sv.name}`} onPress={() => ed.openForm(sv)} style={st.rowMain}>
             <Text style={st.rowTitle} numberOfLines={1}>{sv.name}</Text>
             <Text style={st.rowMeta} numberOfLines={1}>
-              {[sv.priceCents != null ? centsToPrice(sv.priceCents) : 'Ask for price', durationLabel(sv.durationMin), !sv.bookable ? 'Not bookable' : '', !sv.showOnSite ? 'Hidden on site' : '', sv.depositType !== 'none' && !ed.cardReady ? DEPOSIT_PAUSED : '']
+              {[sv.priceCents != null ? centsToPrice(sv.priceCents) : 'Ask for price', durationLabel(sv.durationMin), !web && !sv.bookable ? 'Not bookable' : '', !sv.showOnSite ? 'Hidden on site' : '', !web && sv.depositType !== 'none' && !ed.cardReady ? DEPOSIT_PAUSED : '']
                 .filter(Boolean).join('  ·  ')}
             </Text>
           </Pressable>

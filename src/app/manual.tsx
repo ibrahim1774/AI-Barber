@@ -9,6 +9,7 @@ import { manualSite } from '@/lib/importer';
 import { MANUAL_FIELD_ORDER, manualInputs, validateManual, type ManualForm } from '@/lib/manualForm';
 import { scratchPicks } from '@/lib/scratchDefaults';
 import { servicesFromPicks } from '@/lib/serviceChecklist';
+import { withSamplePrices } from '@/lib/samplePrices';
 import { discardUnpublishedDraft, startDraft } from '@/lib/flow';
 import { useRevealAboveKeyboard } from '@/lib/keyboard';
 import { backToStart, confirmCancel } from '@/lib/nav';
@@ -46,7 +47,7 @@ export default function Manual() {
     setBusy(true);
     setError(null);
     try {
-      const result = await manualSite(manualInputs(form, colorTheme, servicesFromPicks(scratchPicks())));
+      const result = await manualSite(manualInputs(form, colorTheme, withSamplePrices(servicesFromPicks(scratchPicks()))));
       if (!mounted.current) return;
       await startDraft(result);
       // Cancelled while saving: don't leave a half-built draft behind.

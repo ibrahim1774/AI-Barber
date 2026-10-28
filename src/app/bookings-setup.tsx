@@ -213,6 +213,7 @@ function SubView({
 function ServicesPane({ shop, site }: { shop: Shop; site: SiteRecord }) {
   const mirror = useCallback((list: Service[]) => { void updateSiteData((d) => withMirroredServices(d, list)).catch(() => {}); }, []);
   const ed = useServicesEditor(shop, mirror, () => pickAndUploadPhoto(site.draftId));
+  useEffect(() => { void Promise.resolve(updateSiteData((d) => d, (i) => (i.pricesReviewed ? i : { ...i, pricesReviewed: true }))).catch(() => {}); }, []);
   return (
     <>
       <ServicesEditorView ed={ed} />

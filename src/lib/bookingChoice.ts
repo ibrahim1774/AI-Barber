@@ -20,6 +20,8 @@ export type BookingPrefs = {
    * site data or the import's / restore's `inputs.bookingUrl`, so a cleared link never comes back.
    */
   ownBookingCleared?: boolean;
+  /** The barber has opened a Services editor (or the site came from their real listing): no example-price reminder at Publish. */
+  pricesReviewed?: boolean;
 };
 
 const ownLinkOf = (url?: string | null): string | null => {

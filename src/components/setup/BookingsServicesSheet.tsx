@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { ScrollView, useWindowDimensions } from 'react-native';
 import type { Service, Shop } from '@/lib/shop';
 import { Sheet, SheetAction } from '@/components/EditSheet';
-import { router } from 'expo-router';
 import { ServicesEditorView } from '@/components/setup/ServicesEditor';
 import { serviceAtSitePosition } from '@/lib/setup/servicesMap';
 import { useServicesEditor } from '@/components/setup/useServicesEditor';
@@ -40,7 +39,7 @@ export function BookingsServicesSheet({ visible, shop, onServices, onClose, onDi
       setPicking(true);
     });
 
-  const ed = useServicesEditor(shop, onServices, pickPhoto);
+  const ed = useServicesEditor(shop, onServices, pickPhoto, 'website');
   // Services may have changed in Setup since the last time this was open.
   const { reload } = ed;
   useEffect(() => { if (visible) reload(); }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -81,7 +80,7 @@ export function BookingsServicesSheet({ visible, shop, onServices, onClose, onDi
       right={<SheetAction title="Done" primary onPress={onClose} />}
     >
       <ScrollView style={{ maxHeight: Math.max(240, height * 0.85 - 150) }} keyboardShouldPersistTaps="handled">
-        <ServicesEditorView ed={ed} onGetPaid={() => { onClose(); router.push('/get-paid'); }} />
+        <ServicesEditorView ed={ed} variant="website" />
       </ScrollView>
     </Sheet>
   );

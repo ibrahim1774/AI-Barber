@@ -19,6 +19,7 @@ export function useServicesEditor(
   shop: Shop,
   onServices: (services: Service[]) => void,
   pickPhoto: () => Promise<string | null>,
+  variant: 'website' | 'booking' = 'booking',
 ) {
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,7 +71,7 @@ export function useServicesEditor(
   const save = () =>
     guard(async () => {
       if (view.kind !== 'form') return;
-      const r = draftToPatch(view.draft);
+      const r = draftToPatch(view.draft, variant === 'website' ? { website: true, existing: services.find((x) => x.id === view.id) } : undefined);
       if (!r.ok) {
         Alert.alert(r.message);
         return;
@@ -122,5 +123,5 @@ export function useServicesEditor(
   // Deposits are taken by card only. Same flag Get paid reads; the server also treats the deposit as 0 while card is off.
   const cardReady = shop.stripeConnected && shop.stripeChargesEnabled;
 
-  return { cardReady, reload, services, loading, busy, uploading, view, setView, openForm, addOwn, addFromLibrary, setDraft, save, remove, move, photo };
+  return { variant, cardReady, reload, services, loading, busy, uploading, view, setView, openForm, addOwn, addFromLibrary, setDraft, save, remove, move, photo };
 }

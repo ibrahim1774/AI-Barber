@@ -69,6 +69,7 @@ import { useTour } from '@/components/tutorial/useTour';
 import { useTutorialTarget } from '@/components/tutorial/registry';
 import { editTourReady } from '@/components/tutorial/tours';
 import { useSession } from '@/lib/auth';
+import { PRICE_REMINDER, needsPriceReminder } from '@/lib/samplePrices';
 import { PublishBar } from '@/components/PublishBar';
 import { PaymentBlock } from '@/components/PaymentLock';
 import { isBlocking, usePaymentLock, type BlockKind } from '@/lib/paymentLock';
@@ -181,6 +182,16 @@ export default function Editor() {
   // /publishing shows the paywall over the editor, then publishes.
   const publishWith = useCallback((planHint?: PlanHint) => {
     if (publishing.current) return; // double tap
+    // Example prices still on the site and never reviewed: one alert, one button that opens the Services sheet.
+    // Opening the sheet sets the flag, so the next Publish goes through.
+    const rec = siteRef.current;
+    if (rec && needsPriceReminder(rec)) {
+      Alert.alert(PRICE_REMINDER.title, PRICE_REMINDER.body, [{
+        text: PRICE_REMINDER.button,
+        onPress: () => { setServicesAdd(false); setServicesFocus(null); setSheet('services'); },
+      }], { cancelable: false });
+      return;
+    }
     publishing.current = true;
     // entitled: a subscriber's republish is not sent to AppsFlyer as a checkout.
     track('publish_tapped', { entitled: hasEntitlement() });
@@ -189,6 +200,12 @@ export default function Editor() {
     else router.push('/publishing');
   }, []);
   const handlePublish = useCallback(() => publishWith(), [publishWith]);
+  // Opening the Services editor (sheet, preview tap, + Add a service) is the review: no example-price alert after it.
+  useEffect(() => {
+    if (sheet === 'services' && siteRef.current && !siteRef.current.inputs.pricesReviewed) {
+      commitRecord((r) => ({ ...r, inputs: { ...r.inputs, pricesReviewed: true } }));
+    }
+  }, [sheet]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Settings' "Publish" (unpublished site): run it here, once the editor is
   // ready, through the same handlePublish. Left for a later check otherwise.
@@ -259,6 +276,12 @@ export default function Editor() {
         ) {
           // The publish result, including what the live site now shows (the setup screens' prompt reads it).
           const next = { ...cur, slug: s.slug, deployedUrl: s.deployedUrl, transactionId: s.transactionId, liveLinks: s.liveLinks };
+          siteRef.current = next;
+          setSite(next);
+        }
+        // Reviewed in a setup screen (Bookings setup Services step): keep that here so the next save doesn't drop it.
+        if (s.inputs.pricesReviewed && !siteRef.current!.inputs.pricesReviewed) {
+          const next = { ...siteRef.current!, inputs: { ...siteRef.current!.inputs, pricesReviewed: true as const } };
           siteRef.current = next;
           setSite(next);
         }

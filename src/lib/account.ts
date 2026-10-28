@@ -67,13 +67,14 @@ export async function syncSiteToSupabase(site: SiteRecord, userId: string): Prom
 /** `site_data.iosPrefs` on rows the app writes: the Book-button choice and the barber's own link, which live only in the
  * record's `inputs` (never in the website data), so another phone or a sign-in after sign-out gets them back. */
 export const IOS_PREFS = 'iosPrefs';
-type StoredPrefs = { bookingChoice?: BookingChoice; ownBookingUrl?: string; ownBookingCleared?: true };
+type StoredPrefs = { bookingChoice?: BookingChoice; ownBookingUrl?: string; ownBookingCleared?: true; pricesReviewed?: true };
 
 function appPrefsField(inputs: Partial<SiteRecord['inputs']>): { iosPrefs?: StoredPrefs } {
   const p: StoredPrefs = {};
   if (inputs.bookingChoice === 'own' || inputs.bookingChoice === 'aibarber' || inputs.bookingChoice === 'call') p.bookingChoice = inputs.bookingChoice;
   if (typeof inputs.ownBookingUrl === 'string' && inputs.ownBookingUrl.trim()) p.ownBookingUrl = inputs.ownBookingUrl.trim();
   if (inputs.ownBookingCleared) p.ownBookingCleared = true;
+  if (inputs.pricesReviewed) p.pricesReviewed = true;
   return Object.keys(p).length ? { [IOS_PREFS]: p } : {};
 }
 
@@ -91,6 +92,7 @@ function adoptedInputs(raw: Record<string, unknown>, data: WebsiteData, live: bo
     if (q.bookingChoice === 'own' || q.bookingChoice === 'aibarber' || q.bookingChoice === 'call') inputs.bookingChoice = q.bookingChoice;
     if (typeof q.ownBookingUrl === 'string' && q.ownBookingUrl.trim()) inputs.ownBookingUrl = q.ownBookingUrl.trim();
     if (q.ownBookingCleared === true) inputs.ownBookingCleared = true;
+    if (q.pricesReviewed === true) inputs.pricesReviewed = true;
   } else if (live && !(typeof data.bookingUrl === 'string' && data.bookingUrl.trim())) {
     inputs.bookingChoice = 'call';
   }

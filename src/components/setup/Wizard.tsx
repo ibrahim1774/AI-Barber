@@ -63,6 +63,10 @@ export function Wizard({ shop, site, onShopChanged, onFinish }: Props) {
     [],
   );
   const services = useServicesEditor(shop, mirror, () => pickAndUploadPhoto(site.draftId));
+  // The Services step is where the example prices get confirmed: no Publish reminder after it.
+  useEffect(() => {
+    if (step === 'services') void Promise.resolve(updateSiteData((d) => d, (i) => (i.pricesReviewed ? i : { ...i, pricesReviewed: true }))).catch(() => {});
+  }, [step]);
 
   const finish = async () => {
     if (finishing) return;
