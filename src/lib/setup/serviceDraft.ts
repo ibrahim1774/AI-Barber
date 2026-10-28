@@ -42,10 +42,10 @@ export type DraftResult = { ok: true; patch: Partial<Service> } | { ok: false; m
 /**
  * Validates the form and turns it into the columns to save.
  * `website`: the homepage editor's variant. It never writes bookable or the deposit columns (the row keeps what Bookings
- * set), and checks the new price against the stored deposit of `existing` instead of the draft's deposit controls.
+ * set). It does not check the price against any stored deposit (deposit rules live in the booking variant only).
  */
-export function draftToPatch(d: ServiceDraft, opts?: { website?: boolean; existing?: Service | null }): DraftResult {
-  if (opts?.website) return websitePatch(d, opts.existing ?? null);
+export function draftToPatch(d: ServiceDraft, opts?: { website?: boolean }): DraftResult {
+  if (opts?.website) return websitePatch(d);
   const name = d.name.trim().replace(/\s+/g, ' ');
   if (!name) return { ok: false, message: 'Give this service a name.' };
   const typed = d.price.trim();
@@ -76,7 +76,7 @@ export function draftToPatch(d: ServiceDraft, opts?: { website?: boolean; existi
   };
 }
 
-function websitePatch(d: ServiceDraft, existing: Service | null): DraftResult {
+function websitePatch(d: ServiceDraft): DraftResult {
   const name = d.name.trim().replace(/\s+/g, ' ');
   if (!name) return { ok: false, message: 'Give this service a name.' };
   const typed = d.price.trim();
@@ -85,15 +85,19 @@ function websitePatch(d: ServiceDraft, existing: Service | null): DraftResult {
     priceCents = parsePriceCents(typed);
     if (priceCents == null) return { ok: false, message: 'Enter the price as a number, like 30 or 25.50.' };
   }
-  // The stored booking settings (set in Bookings) stay valid: they need a price, and a fixed amount can't exceed it.
-  if (existing && existing.depositType !== 'none') {
-    if (priceCents == null) return { ok: false, message: 'This service needs a price for online booking. Add one, or change its booking settings in Bookings.' };
-    if (existing.depositType === 'fixed' && existing.depositValue != null && existing.depositValue > priceCents) {
-      return { ok: false, message: "That price is lower than this service's booking settings allow. Raise it, or change them in Bookings." };
-    }
-  }
+  // The homepage editor never reads or enforces deposits: any price is fine, deposit columns are not in the patch.
   return {
     ok: true,
     patch: { name, priceCents, durationMin: d.durationMin, description: d.description.trim(), photoUrl: d.photoUrl, showOnSite: d.showOnSite },
   };
+}
+
+export const DEPOSIT_OVER_PRICE = 'The deposit is higher than the price. Lower the deposit or raise the price.';
+
+/** Warning for a stored service whose fixed deposit now exceeds its price, or that has a deposit but no price (a website edit can cause it). */
+export function depositProblem(s: Pick<Service, 'priceCents' | 'depositType' | 'depositValue'>): string | null {
+  if (s.depositType === 'none') return null;
+  if (s.priceCents == null) return DEPOSIT_OVER_PRICE;
+  if (s.depositType === 'fixed' && s.depositValue != null && s.depositValue > s.priceCents) return DEPOSIT_OVER_PRICE;
+  return null;
 }

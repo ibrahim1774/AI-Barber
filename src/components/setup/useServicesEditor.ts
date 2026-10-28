@@ -71,7 +71,7 @@ export function useServicesEditor(
   const save = () =>
     guard(async () => {
       if (view.kind !== 'form') return;
-      const r = draftToPatch(view.draft, variant === 'website' ? { website: true, existing: services.find((x) => x.id === view.id) } : undefined);
+      const r = draftToPatch(view.draft, variant === 'website' ? { website: true } : undefined);
       if (!r.ok) {
         Alert.alert(r.message);
         return;

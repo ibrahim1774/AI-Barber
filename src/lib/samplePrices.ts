@@ -7,7 +7,6 @@ export const SAMPLE_PRICES: Readonly<Record<string, number>> = {
   'haircut & beard': 45,
 };
 
-export const EXAMPLE_PRICE_NOTE = 'Example price. Change it to yours.';
 
 const norm = (name: string) => name.trim().toLowerCase().replace(/\s+/g, ' ').replace(/\s*(&|\+|\band\b)\s*/g, ' & ');
 

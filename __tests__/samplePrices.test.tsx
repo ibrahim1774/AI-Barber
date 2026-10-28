@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 jest.mock('@/constants/theme', () => require('./store/themeMock'));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
-import { SAMPLE_PRICES, EXAMPLE_PRICE_NOTE, withSamplePrices, isSamplePrice, needsPriceReminder, hasSamplePrices } from '@/lib/samplePrices';
+import { SAMPLE_PRICES, withSamplePrices, isSamplePrice, needsPriceReminder, hasSamplePrices } from '@/lib/samplePrices';
 import { scratchPicks } from '@/lib/scratchDefaults';
 import { servicesFromPicks } from '@/lib/serviceChecklist';
 import { ServicesEditorView } from '@/components/setup/ServicesEditor';
@@ -42,17 +42,15 @@ describe('sample prices', () => {
   });
 });
 
-describe('example line', () => {
-  const view = (name: string, price: string) => ({ kind: 'form', id: 's1', draft: { ...emptyDraft(name, 30), price } });
+describe('example line is gone', () => {
   const ed = (v: any) => ({ cardReady: true, loading: false, view: v, services: [], busy: false, uploading: false, setView: jest.fn(), setDraft: jest.fn() });
-  const has = (variant: any, name: string, price: string) => JSON.stringify(create(<ServicesEditorView ed={ed(view(name, price)) as any} variant={variant} />).toJSON()).includes(EXAMPLE_PRICE_NOTE);
-  test('shown in both variants when the price equals the sample for the name', () => {
-    expect(has('website', 'Haircut', '30')).toBe(true);
-    expect(has('booking', 'Beard trim', '20')).toBe(true);
-  });
-  test('hidden when changed, or for a non-sample name', () => {
-    expect(has('website', 'Haircut', '32')).toBe(false);
-    expect(has('website', 'Skin fade', '30')).toBe(false);
+  const text = (variant: any) => JSON.stringify(create(<ServicesEditorView ed={ed({ kind: 'form', id: 's1', draft: { ...emptyDraft('Haircut', 30), price: '30' } }) as any} variant={variant} />).toJSON());
+  test('no example note in either variant, even at the sample price', () => {
+    for (const v of ['website', 'booking']) {
+      expect(text(v)).not.toContain('Example price');
+      expect(text(v)).not.toContain('Change it to yours');
+    }
+    expect(isSamplePrice('Haircut', '30')).toBe(true);
     expect(isSamplePrice('Haircut', '')).toBe(false);
   });
 });

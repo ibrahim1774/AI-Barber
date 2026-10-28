@@ -2,7 +2,7 @@ import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'rea
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
 import { DURATIONS, SERVICE_LIBRARY, durationLabel } from '@/lib/sections/services';
-import { EXAMPLE_PRICE_NOTE, isSamplePrice } from '@/lib/samplePrices';
+import { depositProblem } from '@/lib/setup/serviceDraft';
 import { centsToPrice } from '@/lib/setup/servicesMap';
 import type { DepositType } from '@/lib/shop';
 import type { ServicesEditor as Ed } from '@/components/setup/useServicesEditor';
@@ -54,7 +54,6 @@ export function ServicesEditorView({ ed, onGetPaid, variant = 'booking' }: { ed:
       <View style={{ gap: 6 }}>
         <Input title="Name" label="Name" value={d.name} onChangeText={(t) => ed.setDraft({ name: t })} placeholder="e.g. Skin fade" autoFocus={view.id == null} />
         <Input title="Price" label="Price in dollars" value={d.price} onChangeText={(t) => ed.setDraft({ price: t })} keyboardType="decimal-pad" placeholder={!web && d.depositType !== 'none' ? '30 (needed for a deposit)' : '30 (leave blank to ask)'} />
-        {isSamplePrice(d.name, d.price) && <Note>{EXAMPLE_PRICE_NOTE}</Note>}
         <Label>Length</Label>
         <Chips>
           {DURATIONS.map((m) => (
@@ -68,6 +67,7 @@ export function ServicesEditorView({ ed, onGetPaid, variant = 'booking' }: { ed:
           <TextAction title={d.photoUrl ? 'Change' : 'Add photo'} onPress={() => void ed.photo()} disabled={ed.uploading} />
           {ed.uploading && <ActivityIndicator color={colors.accent} />}
         </View>
+        {!web && existing && depositProblem(existing) && <Note tone="warn">{depositProblem(existing)}</Note>}
         {!web && <ToggleRow label="Bookable" detail="Customers can book it online" value={d.bookable} onValueChange={(v) => ed.setDraft({ bookable: v })} />}
         <ToggleRow label="Show on website" detail="Listed in your site's Services section" value={d.showOnSite} onValueChange={(v) => ed.setDraft({ showOnSite: v })} />
         {!web && (
@@ -122,6 +122,7 @@ export function ServicesEditorView({ ed, onGetPaid, variant = 'booking' }: { ed:
               {[sv.priceCents != null ? centsToPrice(sv.priceCents) : 'Ask for price', durationLabel(sv.durationMin), !web && !sv.bookable ? 'Not bookable' : '', !sv.showOnSite ? 'Hidden on site' : '', !web && sv.depositType !== 'none' && !ed.cardReady ? DEPOSIT_PAUSED : '']
                 .filter(Boolean).join('  ·  ')}
             </Text>
+            {!web && !!depositProblem(sv) && <Text style={st.rowWarn}>{depositProblem(sv)}</Text>}
           </Pressable>
           <Move label={`Move ${sv.name} up`} glyph="↑" disabled={i === 0 || ed.busy} onPress={() => void ed.move(i, -1)} />
           <Move label={`Move ${sv.name} down`} glyph="↓" disabled={i === ed.services.length - 1 || ed.busy} onPress={() => void ed.move(i, 1)} />
@@ -151,6 +152,7 @@ const st = StyleSheet.create({
   rowMain: { flex: 1, paddingHorizontal: 14, paddingVertical: 12 },
   rowTitle: { fontFamily: fonts.bodyBold, fontSize: 15, color: '#fff' },
   rowMeta: { fontFamily: fonts.body, fontSize: 12, color: 'rgba(255,255,255,0.55)', marginTop: 2 },
+  rowWarn: { fontFamily: fonts.body, fontSize: 12, color: '#f5b84a', marginTop: 3 },
   move: { width: 36, height: 44, alignItems: 'center', justifyContent: 'center' },
   moveText: { fontFamily: fonts.bodyBold, fontSize: 18, color: colors.accent },
   photoRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },

@@ -42,7 +42,7 @@ describe('ServicesEditorView variants', () => {
 describe('website save keeps the booking fields', () => {
   const existing: any = svc();
   test('patch has no bookable / deposit keys', () => {
-    const r: any = draftToPatch({ ...serviceToDraft(existing), name: 'Skin fade', price: '35' }, { website: true, existing });
+    const r: any = draftToPatch({ ...serviceToDraft(existing), name: 'Skin fade', price: '35' }, { website: true });
     expect(r.ok).toBe(true);
     expect(r.patch).toEqual({ name: 'Skin fade', priceCents: 3500, durationMin: 30, description: '', photoUrl: null, showOnSite: true });
     for (const k of ['bookable', 'depositType', 'depositValue']) expect(k in r.patch).toBe(false);
@@ -54,7 +54,7 @@ describe('website save keeps the booking fields', () => {
     jest.doMock('@/lib/supabase', () => ({ supabase: { from: () => ({ update }) } }));
     jest.isolateModules(() => {
       const shop = require('@/lib/shop');
-      const r: any = draftToPatch(serviceToDraft(existing), { website: true, existing });
+      const r: any = draftToPatch(serviceToDraft(existing), { website: true });
       return shop.updateService('s1', r.patch).then(() => {
         const row = (update.mock.calls[0] as any[])[0];
         expect(Object.keys(row).sort()).toEqual(['description', 'duration_min', 'name', 'photo_url', 'price_cents', 'show_on_site']);
@@ -67,9 +67,34 @@ describe('website save keeps the booking fields', () => {
     expect(r.patch.depositType).toBe('fixed');
     expect(r.patch.depositValue).toBe(1000);
   });
-  test('blank or too-low price is refused when the stored booking settings need it', () => {
-    expect(draftToPatch({ ...serviceToDraft(existing), price: '' }, { website: true, existing }).ok).toBe(false);
-    expect(draftToPatch({ ...serviceToDraft(existing), price: '5' }, { website: true, existing }).ok).toBe(false);
-    expect(draftToPatch({ ...serviceToDraft(svc({ depositType: 'none', depositValue: null }) as any), price: '' }, { website: true, existing: svc({ depositType: 'none' }) as any }).ok).toBe(true);
+  test('website variant saves any price, blank or below the stored deposit, with the deposit untouched and no alert text', () => {
+    for (const price of ['', '5', '0', '999']) {
+      const r: any = draftToPatch({ ...serviceToDraft(existing), price }, { website: true });
+      expect(r.ok).toBe(true);
+      expect('message' in r).toBe(false);
+      for (const k of ['depositType', 'depositValue', 'bookable']) expect(k in r.patch).toBe(false);
+    }
+    expect((draftToPatch({ ...serviceToDraft(existing), price: '' }, { website: true }) as any).patch.priceCents).toBeNull();
+    expect((draftToPatch({ ...serviceToDraft(existing), price: '5' }, { website: true }) as any).patch.priceCents).toBe(500);
   });
+  test('booking variant still refuses a blank price or a deposit above the price', () => {
+    expect(draftToPatch({ ...serviceToDraft(existing), price: '' }).ok).toBe(false);
+    expect(draftToPatch({ ...serviceToDraft(existing), price: '5' }).ok).toBe(false);
+  });
+});
+
+describe('booking variant warns about a stored deposit that no longer fits', () => {
+  const W = 'The deposit is higher than the price. Lower the deposit or raise the price.';
+  test('list row and form show it for deposit > price and for no price', () => {
+    for (const o of [{ priceCents: 500 }, { priceCents: null }]) {
+      expect(all(create(<ServicesEditorView ed={ed({ services: [svc(o)] }) as any} />))).toContain(W);
+      expect(all(create(<ServicesEditorView ed={ed({ services: [svc(o)], view: form() }) as any} />))).toContain(W);
+    }
+  });
+  test('no warning when it fits, for percent deposits, or in the website variant', () => {
+    expect(all(create(<ServicesEditorView ed={ed() as any} />))).not.toContain(W);
+    expect(all(create(<ServicesEditorView ed={ed({ services: [svc({ depositType: 'percent', depositValue: 50, priceCents: 500 })] }) as any} />))).not.toContain(W);
+    expect(all(create(<ServicesEditorView ed={ed({ services: [svc({ priceCents: 500 })] }) as any} variant="website" />))).not.toContain('higher than the price');
+  });
+
 });
