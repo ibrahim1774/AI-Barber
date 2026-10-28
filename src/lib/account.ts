@@ -286,10 +286,11 @@ export async function rebindAdoptedSite(deps: {
     const bound = await (deps.iosSite ?? api.iosSite)(transactionId);
     if (!boundMatches(local, bound)) return false;
     // Compare and swap: an edit, a publish or another account since the read wins.
-    const cur = await store.loadSite();
-    if (!cur || cur.draftId !== local.draftId || cur.slug != null || cur.transactionId != null || cur.ownerUserId !== uid) return false;
+    // Session check first: no await between reading `cur` and saving it (an editor save in that gap would be overwritten).
     const signedIn = (await supabase.auth.getSession()).data.session?.user?.id;
     if (signedIn !== uid) return false;
+    const cur = await store.loadSite();
+    if (!cur || cur.draftId !== local.draftId || cur.slug != null || cur.transactionId != null || cur.ownerUserId !== uid) return false;
     const next: SiteRecord = {
       ...cur,
       slug: bound.siteId,

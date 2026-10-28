@@ -86,8 +86,10 @@ export const refreshPlan = (transactionId: string | null): Promise<Plan> =>
  */
 export async function refreshPlanQuietly(transactionId: string | null | undefined): Promise<void> {
   if (!transactionId) return;
+  const epoch = getPlanEpoch(); // a reply that lands after sign-out or an account switch is not for this account
   try {
-    setSharedPlan(await refreshPlan(transactionId));
+    const plan = await refreshPlan(transactionId);
+    if (epoch === getPlanEpoch()) setSharedPlan(plan);
   } catch {
     // the next load tries again
   }
@@ -99,6 +101,7 @@ export async function refreshPlanQuietly(transactionId: string | null | undefine
  * answers for a no-shop account too. Throws only when both fail.
  */
 export async function refreshPlanAfterTransfer(transactionId: string | null | undefined): Promise<Plan> {
+  const epoch = getPlanEpoch();
   let plan: Plan;
   try {
     if (!transactionId) throw new Error('no transaction');
@@ -106,7 +109,7 @@ export async function refreshPlanAfterTransfer(transactionId: string | null | un
   } catch {
     plan = await getPlan();
   }
-  setSharedPlan(plan);
+  if (epoch === getPlanEpoch()) setSharedPlan(plan);
   return plan;
 }
 

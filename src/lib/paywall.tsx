@@ -322,8 +322,11 @@ function useSuperwallPaywall() {
 function afterUpgrade(latestTransactionId: () => Promise<string | null>): void {
   void relinkShopPurchase({ latestTransactionId });
   (async () => {
+    const epoch = getPlanEpoch();
     const id = await latestTransactionId();
-    if (id) setSharedPlan(await refreshPlan(id));
+    if (!id) return;
+    const plan = await refreshPlan(id);
+    if (epoch === getPlanEpoch()) setSharedPlan(plan);
   })().catch((e) => console.warn('[paywall] plan refresh failed:', e));
 }
 

@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { currentUserId } from '@/lib/auth';
 import { getSharedPlan, setSharedPlan, subscribePlan, type Plan } from '@/lib/plan';
 
 /**
@@ -77,8 +78,18 @@ export function effectiveEntitlements(
   return { ...raw, bookings: false, store: false, account: 'other', hint: plan.purchaseHint };
 }
 
+// The account the cached server plan was read for (null when read before the session was known). A plan never applies
+// to a different account, or to a phone that has since signed out.
+let lastPlan: Plan | null = null;
+let planUser: string | null = null;
 function recompute(): void {
-  const next = effectiveEntitlements(mirror, getSharedPlan());
+  const plan = getSharedPlan();
+  if (plan !== lastPlan) {
+    lastPlan = plan;
+    planUser = plan ? currentUserId() : null;
+  }
+  const forThisAccount = plan && (!planUser || planUser === currentUserId()) ? plan : null;
+  const next = effectiveEntitlements(mirror, forThisAccount);
   if (same(current, next)) return;
   current = next;
   listeners.forEach((l) => l());
@@ -149,6 +160,8 @@ export function resetEntitlementsForTests(): void {
   current = UNKNOWN;
   mirror = UNKNOWN;
   lastStatus = null;
+  lastPlan = null;
+  planUser = null;
   listeners.clear();
   swListeners.clear();
 }

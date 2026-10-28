@@ -20,7 +20,7 @@ jest.mock('@/components/Page', () => {
 jest.mock('@/components/Icons', () => ({ ChevronRightIcon: () => null, ExternalLinkIcon: () => null }));
 jest.mock('@/components/ShareSheet', () => ({ ShareSheet: () => null }));
 jest.mock('@/lib/account', () => ({ deleteAccountAndData: jest.fn(), deleteLocalData: jest.fn(), onSiteAdopted: () => () => {} }));
-jest.mock('@/lib/auth', () => ({ signOut: jest.fn(), useSession: () => ({ session: null, ready: true }) }));
+jest.mock('@/lib/auth', () => ({ signOut: jest.fn(), currentUserId: () => null, useSession: () => ({ session: null, ready: true }) }));
 jest.mock('@/lib/restoreFlow', () => ({ useRestoreFlow: () => ({ restore: jest.fn(), busy: false }) }));
 jest.mock('@/lib/siteStore', () => ({ loadSite: async () => null }));
 jest.mock('@/lib/subscriptionStatus', () => ({ useSubscriptionStatus: () => 'active', isLocked: () => false }));
