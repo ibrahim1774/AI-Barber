@@ -107,7 +107,7 @@ export function HomePrompts({ onSubmitBookingLink, onFinish, onComplete, initial
           <View>
             <Text style={styles.title} accessibilityRole="header">Add your booking link</Text>
             <Text style={styles.sub}>
-              {"Paste your Booksy, Fresha, or Squareup link and we'll build from your real services, photos & reviews. No link? Tap Don't have."}
+              {"Paste your Booksy, Fresha, Square, Squire, GlossGenius, Acuity or other booking link and we'll build from your real services, photos & reviews. No link? Tap Don't have."}
             </Text>
             <TextInput
               value={bookingUrl}

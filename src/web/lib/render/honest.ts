@@ -187,6 +187,9 @@ export const PLATFORM_LABELS: Record<string, string> = {
   vagaro: 'Vagaro',
   goldie: 'Goldie',
   setmore: 'Setmore',
+  squire: 'Squire',
+  glossgenius: 'GlossGenius',
+  acuity: 'Acuity',
 };
 
 export function platformLabel(id?: string | null): string | undefined {
@@ -204,6 +207,9 @@ const HOST_LABELS: { re: RegExp; label: string }[] = [
   { re: /(^|\.)vagaro\.com$/i, label: 'Vagaro' },
   { re: /(^|\.)heygoldie\.com$/i, label: 'Goldie' },
   { re: /(^|\.)setmore\.com$/i, label: 'Setmore' },
+  { re: /(^|\.)getsquire\.com$/i, label: 'Squire' },
+  { re: /(^|\.)glossgenius\.com$/i, label: 'GlossGenius' },
+  { re: /(^|\.)(acuityscheduling\.com|as\.me)$/i, label: 'Acuity' },
 ];
 
 function labelFromBookingUrl(url?: string): string | undefined {

@@ -110,7 +110,8 @@ export function normalizeHours(rows: unknown): HoursRowLike[] {
     if (!day) continue;
     const open = toHHMM(r.open);
     const close = toHHMM(r.close);
-    if (r.closed || (!open && !close)) out.push({ day, open: open || '', close: close || '', closed: true });
+    // Opening and closing at the same minute (providers print a closed day as 00:00-00:00) is a closed day, not a 24 h one.
+    if (r.closed || (!open && !close) || (open && open === close)) out.push({ day, open: open === close ? '' : open || '', close: open === close ? '' : close || '', closed: true });
     else out.push({ day, open, close });
   }
   return out.some((r) => !r.closed) ? out : [];

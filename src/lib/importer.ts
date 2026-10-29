@@ -18,7 +18,7 @@ export function checkBookingLink(text: string): { ok: true; url: string } | { ok
     return {
       ok: false,
       message: text.trim()
-        ? "That doesn't look like a valid link. Paste the full booking link from Booksy, theCut, Fresha, Square, Vagaro or StyleSeat."
+        ? "That doesn't look like a valid link. Paste the full booking link from Booksy, theCut, Fresha, Square, Vagaro, StyleSeat, Squire, GlossGenius or Acuity."
         : 'Paste your booking link to continue.',
     };
   }
@@ -26,7 +26,7 @@ export function checkBookingLink(text: string): { ok: true; url: string } | { ok
     return {
       ok: false,
       message:
-        "That link isn't Booksy / theCut / Fresha / Square / Vagaro / StyleSeat. Tap “I don't have a link” below and we'll find you on Google instead.",
+        "That link isn't Booksy / theCut / Fresha / Square / Vagaro / StyleSeat / Squire / GlossGenius / Acuity. Tap “I don't have a link” below and we'll find you on Google instead.",
     };
   }
   return { ok: true, url: normalized };

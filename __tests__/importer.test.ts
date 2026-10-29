@@ -25,7 +25,7 @@ describe('importer', () => {
 
   it('text that is not a link says so, instead of reading as empty', () => {
     const r = checkBookingLink('not a link');
-    expect(r).toEqual({ ok: false, message: "That doesn't look like a valid link. Paste the full booking link from Booksy, theCut, Fresha, Square, Vagaro or StyleSeat." });
+    expect(r).toEqual({ ok: false, message: "That doesn't look like a valid link. Paste the full booking link from Booksy, theCut, Fresha, Square, Vagaro, StyleSeat, Squire, GlossGenius or Acuity." });
   });
 
   it('extracts a supported URL out of a share sentence', () => {
@@ -102,5 +102,56 @@ describe('importer', () => {
     expect(html).toContain('{{gallery2}}');
     expect(html).toContain('Haircut');
     expect(html).not.toMatch(/Reviews from|Selected reviews/);
+  });
+});
+
+describe('booking-link providers added in w-fix49 (Squire, GlossGenius, Acuity)', () => {
+  it.each([
+    'https://getsquire.com/booking/book/some-shop',
+    'https://drthebarber.glossgenius.com/',
+    'https://app.acuityscheduling.com/schedule.php?owner=123',
+    'https://leobarbershop.as.me/',
+    'Book me here: drthebarber.glossgenius.com thanks',
+  ])('accepts %s (no longer sent to Find me on Google)', (text) => {
+    const r = checkBookingLink(text);
+    expect(r.ok).toBe(true);
+  });
+
+  it('Calendly is still not a supported host', () => {
+    expect(checkBookingLink('https://calendly.com/someone/30min').ok).toBe(false);
+  });
+
+  it('the start-screen messages list the new providers', () => {
+    const bad = checkBookingLink('https://example.com/x');
+    const invalid = checkBookingLink('not a link');
+    for (const r of [bad, invalid]) {
+      expect(r.ok).toBe(false);
+      if (!r.ok) for (const name of ['Squire', 'GlossGenius', 'Acuity']) expect(r.message).toContain(name);
+    }
+  });
+
+  it('scraped and Google-enriched hours land in site.hours as HH:MM rows; a GlossGenius closed day (00:00-00:00) is closed', () => {
+    const r = toShopSite(
+      {
+        shopName: 'DR The Barber',
+        photos: ['https://static.glossgenius.com/public/salon/x/website_cover_image/a.jpeg'],
+        hours: [
+          { day: 'Monday', open: '00:00', close: '00:00' },
+          { day: 'Tuesday', open: '09:00', close: '17:00' },
+          { day: 'Wednesday', open: '9:00 AM', close: '6:30 PM' },
+        ],
+        enriched: { hours: 'google' },
+        _platform: 'glossgenius',
+      } as any,
+      'https://drthebarber.glossgenius.com',
+      'booking',
+    );
+    expect(r.site.hours).toEqual([
+      { day: 'Monday', open: '', close: '', closed: true },
+      { day: 'Tuesday', open: '09:00', close: '17:00' },
+      { day: 'Wednesday', open: '09:00', close: '18:30' },
+    ]);
+    expect(r.site.hero.imageUrl).toMatch(/^https:\/\//);
+    expect(r.site.importedFrom).toBe('booking');
   });
 });
