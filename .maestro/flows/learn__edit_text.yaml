@@ -1,0 +1,15 @@
+appId: com.ibrahim1774.aibarber
+---
+- runFlow: { file: learn__pause.yaml, env: { MS: "1500" } }
+- tapOn: { point: "49%,88%" }
+- runFlow: { file: learn__pause.yaml, env: { MS: "1800" } }
+- tapOn: { point: "35%,40%" }
+- runFlow: { file: learn__pause.yaml, env: { MS: "1800" } }
+- eraseText: 25
+- runFlow: { file: learn__pause.yaml, env: { MS: "800" } }
+- inputText: "Sharp cuts. Fresh fades."
+- runFlow: { file: learn__pause.yaml, env: { MS: "1000" } }
+- tapOn: { point: "87%,38%" }
+- runFlow: { file: learn__pause.yaml, env: { MS: "1800" } }
+- tapOn: { point: "87%,20%" }
+- runFlow: { file: learn__pause.yaml, env: { MS: "1800" } }

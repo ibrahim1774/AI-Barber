@@ -1,0 +1,19 @@
+appId: com.ibrahim1774.aibarber
+---
+# Builds + publishes the demo site (website tier, stand-in paywall), then seeds the plan tier and a signed-in
+# session in the stub and reloads the app. env: TIER (website|bookings|store), LAPSE (days or "")
+- runFlow: learn__launch.yaml
+- runFlow: learn__publish_site.yaml
+- tapOn: "Done"
+- runFlow:
+    file: learn__seed.yaml
+    env:
+      TIER: ${TIER}
+      LAPSE: ${LAPSE}
+      STRIPE: ""
+      SIGNIN: "true"
+      SIGNOUT: ""
+      EMAIL: ""
+      SITEBASE: ""
+      BOOKING_NAME: ""
+- waitForAnimationToEnd

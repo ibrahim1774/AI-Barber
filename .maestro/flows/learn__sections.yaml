@@ -1,0 +1,12 @@
+appId: com.ibrahim1774.aibarber
+---
+- runFlow: { file: learn__pause.yaml, env: { MS: "1500" } }
+- tapOn: { point: "29%,88%" }
+- runFlow: { file: learn__pause.yaml, env: { MS: "1800" } }
+- tapOn: { point: "50%,51%" }
+- runFlow: { file: learn__pause.yaml, env: { MS: "1800" } }
+- runFlow: { file: learn__pause.yaml, env: { MS: "1500" } }
+- tapOn: { point: "87%,63%" }
+- runFlow: { file: learn__pause.yaml, env: { MS: "1800" } }
+- tapOn: { point: "50%,93%" }
+- runFlow: { file: learn__pause.yaml, env: { MS: "1800" } }

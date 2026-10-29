@@ -11,6 +11,9 @@ appId: com.ibrahim1774.aibarber
 - tapOn: "Next"
 - waitForAnimationToEnd
 - takeScreenshot: 02_edit_tour_sections
+- tapOn:
+    text: "Got it"
+    optional: true
 - tapOn: "Skip tour"
 - tapOn: "PUBLISH"
 - extendedWaitUntil:

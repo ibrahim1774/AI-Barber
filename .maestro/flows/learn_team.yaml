@@ -1,0 +1,27 @@
+appId: com.ibrahim1774.aibarber
+---
+# Learn clip: Team (add a barber in the bookings setup, step 3). Starts on the Bookings tab with the unset card.
+# Point taps and text entry only (fixed name Sam, role Barber). Never taps Connect, Finish or Remove.
+- runFlow: { file: learn__pause.yaml, env: { MS: "1500" } }
+- tapOn: { point: "50%,54%" }     # Set up bookings (step 1)
+- runFlow: { file: learn__pause.yaml, env: { MS: "1500" } }
+- tapOn: { point: "50%,72%" }     # Continue (step 2 hours)
+- runFlow: { file: learn__pause.yaml, env: { MS: "1500" } }
+- swipe: { start: "50%,80%", end: "50%,30%", duration: 700 }
+- runFlow: { file: learn__pause.yaml, env: { MS: "1500" } }
+- tapOn: { point: "50%,86%" }     # Continue (step 3 who takes bookings)
+- runFlow: { file: learn__pause.yaml, env: { MS: "1500" } }
+- tapOn: { point: "37%,23%" }     # Add barbers
+- runFlow: { file: learn__pause.yaml, env: { MS: "1500" } }
+- tapOn: { point: "50%,37%" }     # Add a barber
+- runFlow: { file: learn__pause.yaml, env: { MS: "1500" } }
+- tapOn: { point: "50%,42%" }     # Name
+- inputText: "Sam"
+- runFlow: { file: learn__pause.yaml, env: { MS: "1500" } }
+- tapOn: { point: "50%,51%" }     # Role
+- inputText: "Barber"
+- tapOn: { point: "50%,29%" }     # plain text: closes the keyboard
+- runFlow: { file: learn__pause.yaml, env: { MS: "1500" } }
+- tapOn: { point: "50%,90%" }     # Add barber
+- runFlow: { file: learn__pause.yaml, env: { MS: "1500" } }
+- runFlow: { file: learn__pause.yaml, env: { MS: "1500" } }

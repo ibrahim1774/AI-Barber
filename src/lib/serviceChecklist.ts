@@ -22,3 +22,6 @@ export function servicesFromPicks(picks: ServicePicks): { title: string; price?:
   const list = checklistToServices(picks);
   return list.length ? list : undefined;
 }
+
+/** The services a Google-listing site starts with: titles only, no prices, all editable in the editor. */
+export const GOOGLE_DEFAULT_SERVICES: { title: string }[] = ['Haircut', 'Skin fade', 'Beard trim', 'Line up', 'Kids cut'].map((title) => ({ title }));

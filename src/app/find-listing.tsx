@@ -8,14 +8,13 @@ import { Button } from '@/components/Button';
 import { ArrowRight } from '@/components/Icons';
 import { FlowError, FlowHelper, FlowInput, FlowTitle, PillButton } from '@/components/FlowParts';
 import { ImportProgress, LISTING_STEPS } from '@/components/ImportProgress';
-import { ServiceChecklist } from '@/components/ServiceChecklist';
 import { useImportRun } from '@/lib/useImportRun';
 import { useRevealAboveKeyboard } from '@/lib/keyboard';
 import { api, type Candidate, type ListingMatch, type ScrapePayload } from '@/lib/api';
 import { fetchListing } from '@/lib/flow';
 import { backToStart, confirmCancel } from '@/lib/nav';
 import { listingMatch, listingSite } from '@/lib/importer';
-import { servicesFromPicks, type ServicePicks } from '@/lib/serviceChecklist';
+import { GOOGLE_DEFAULT_SERVICES } from '@/lib/serviceChecklist';
 
 type Suggestion = { placeId: string; main: string; secondary: string };
 
@@ -42,10 +41,8 @@ export default function FindListing() {
   const reqIdRef = useRef(0);
   const findBusyRef = useRef(false);
   const { busy, progress, slowHint, run, fetchOnly, cancel } = useImportRun();
-  // The listing found, waiting for "Is this you?"; then (confirmed) the services checklist.
+  // The listing found, waiting for "Is this you?".
   const [found, setFound] = useState<{ payload: ScrapePayload; match: ListingMatch } | null>(null);
-  const [confirmed, setConfirmed] = useState(false);
-  const [picks, setPicks] = useState<ServicePicks>({});
 
   const reveal = useRevealAboveKeyboard([suggestions, candidates, bizName.trim().length > 0, error]);
 
@@ -88,24 +85,21 @@ export default function FindListing() {
       (payload) => {
         setCandidates(null);
         setFound({ payload, match: listingMatch(payload) });
-        setConfirmed(false);
-        setPicks({});
       },
       (msg) => setError(msg),
     );
 
   const notMine = () => {
     setFound(null);
-    setConfirmed(false);
     setError(null);
   };
 
   // Prices that could not be pulled stay blank (no sample prices on the Google start).
-  // Build only after "Yes, that's me", with the ticked services.
+  // Build only after "Yes, that's me", with the five starter services (titles only; the editor changes them).
   const build = () => {
-    if (!found || !confirmed) return;
+    if (!found) return;
     const payload = found.payload;
-    void run(async () => listingSite(payload, servicesFromPicks(picks), DEFAULT_SWATCH), (msg) => setError(msg), '/import-review');
+    void run(async () => listingSite(payload, GOOGLE_DEFAULT_SERVICES, DEFAULT_SWATCH), (msg) => setError(msg), '/import-review');
   };
 
   // Import by exact NAME + ADDRESS (newer 'Eg…' place ids don't resolve).
@@ -152,11 +146,10 @@ export default function FindListing() {
     runImport({ placeId });
   };
 
-  // Back steps through the stages: services → "Is this you?" → search → the previous screen.
+  // Back steps through the stages: "Is this you?" → search → the previous screen.
   // While the listing is being fetched or built: confirm, then drop the pending result and leave for Start.
   const back = () => {
     if (busy) { confirmCancel(() => { cancel(); backToStart(); }); return; }
-    if (found && confirmed) { setConfirmed(false); return; }
     if (found) { notMine(); return; }
     backToStart();
   };
@@ -178,27 +171,15 @@ export default function FindListing() {
     >
       {found ? (
         <>
-          <FlowTitle inline first={confirmed ? 'Your' : 'Is this'} second={confirmed ? 'services' : 'you?'} />
+          <FlowTitle inline first="Is this" second="you?" />
           <View style={styles.stage}>
             <MatchCard match={found.match} />
-            {!confirmed ? (
-              <>
-                <FlowHelper>Photos, hours and phone come along.</FlowHelper>
-                <View style={styles.yesNo}>
-                  <PillButton primary title="Yes, that's me" onPress={() => setConfirmed(true)} style={styles.half} />
-                  <PillButton title="Not mine" onPress={notMine} style={styles.half} />
-                </View>
-                <Button variant="link" title="Search again" onPress={searchAgain} style={styles.escape} />
-              </>
-            ) : (
-              <>
-                <View style={styles.checklist}>
-                  <ServiceChecklist tone="dark" picks={picks} onChange={setPicks} startOpen />
-                </View>
-                <PillButton primary arrow title="Build my website" loading={busy} onPress={build} style={styles.cta} />
-                <Button variant="link" title="Not my business" onPress={notMine} style={styles.escape} />
-              </>
-            )}
+            <FlowHelper>Photos, hours and phone come along.</FlowHelper>
+            <View style={styles.yesNo}>
+              <PillButton primary title="Yes, that's me" loading={busy} onPress={build} style={styles.half} />
+              <PillButton title="Not mine" onPress={notMine} style={styles.half} />
+            </View>
+            <Button variant="link" title="Search again" onPress={searchAgain} style={styles.escape} />
             <FlowError message={error} />
           </View>
         </>
@@ -358,7 +339,6 @@ const styles = StyleSheet.create({
   escape: { marginTop: 22 },
   yesNo: { marginTop: 22, flexDirection: 'row', gap: 12 },
   half: { flex: 1, paddingHorizontal: 12 },
-  checklist: { marginTop: 18 },
   match: {
     flexDirection: 'row', gap: 14, alignItems: 'center', padding: 14, borderRadius: 22, borderWidth: 1,
     borderColor: colors.ghostBorder, backgroundColor: colors.ghostBg,

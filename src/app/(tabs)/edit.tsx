@@ -63,6 +63,7 @@ import { ReviewsSheet } from '@/components/sections/ReviewsSheet';
 import { ContactSheet } from '@/components/sections/ContactSheet';
 import type { SectionKey } from '@/lib/sections/list';
 import { HomePrompts } from '@/components/HomePrompts';
+import { SiteReadyNotice } from '@/components/SiteReadyNotice';
 import { TutorialLayer } from '@/components/tutorial/TutorialLayer';
 import { useTour } from '@/components/tutorial/useTour';
 import { useTutorialTarget } from '@/components/tutorial/registry';
@@ -120,6 +121,9 @@ export default function Editor() {
   // change on top of whatever was edited meanwhile, never on a stale copy.
   const siteRef = useRef<SiteRecord | null>(null);
   const previewAliveCheck = useRef<(() => void) | null>(null);
+  // "You can edit the text, photos, services and prices": once per generated, unpublished site, after the name prompts.
+  const [welcome, setWelcome] = useState(false);
+  const welcomeChecked = useRef<string | null>(null);
   const [overlayState, setOverlay] = useState<Overlay | null>(null);
   const { session } = useSession();
   // A paid publish waiting to finish: Back (which discards the draft) is hidden meanwhile. Unknown counts as pending.
@@ -219,6 +223,7 @@ export default function Editor() {
     if (!isAlive()) return;
     siteRef.current = s;
     overlayRef.current = o;
+    welcomeChecked.current = null; // a freshly generated draft is looked at again (its flag was cleared)
     setOverlay(o);
     setSite(s);
     runPublishRequest();
@@ -671,6 +676,19 @@ export default function Editor() {
     [commitRecord],
   );
 
+  useEffect(() => {
+    const cur = siteRef.current;
+    if (!site || !cur || overlay === 'prompts' || cur.slug != null || cur.deployedUrl) return;
+    if (welcomeChecked.current === cur.draftId) return;
+    welcomeChecked.current = cur.draftId;
+    hasSeen('welcome', cur.draftId).then((seen) => { if (!seen && mountedRef.current) setWelcome(true); });
+  }, [site, overlay]);
+  const closeWelcome = useCallback(() => {
+    setWelcome(false);
+    const cur = siteRef.current;
+    if (cur) markSeen('welcome', cur.draftId).catch((e) => console.warn('[editor] could not save the welcome flag:', e));
+  }, []);
+
   // Each overlay's flag is written when it finishes; the next step is decided
   // in memory, so a failed write can't bring the same overlay straight back.
   const finishOverlay = useCallback(async (kind: Overlay) => {
@@ -695,7 +713,7 @@ export default function Editor() {
   const tour = useTour('edit', {
     auto: overlay === 'guide' ? 'edit' : null,
     ignoreFlag: true,
-    ready: editTourReady({ overlay, hasSite: !!site, signedIn: !!session }),
+    ready: editTourReady({ overlay, hasSite: !!site, signedIn: !!session }) && !welcome,
     onDone: (id) => {
       if (id === 'edit' && overlayRef.current === 'guide') onGuideClose();
     },
@@ -949,6 +967,7 @@ export default function Editor() {
           />
         )}
         <TutorialLayer controller={tour} />
+        <SiteReadyNotice visible={welcome} onClose={closeWelcome} />
       </View>
     </View>
   );

@@ -1,0 +1,17 @@
+appId: com.ibrahim1774.aibarber
+---
+# Learn clip: Pickup and shipping. Starts on the Store tab (products list). Point taps only.
+# Pickup and shipping switches are flipped on and off again and never saved (no Save tap, no Open or Close my shop, no Get paid).
+- runFlow: { file: learn__pause.yaml, env: { MS: "2000" } }
+- tapOn: { point: "77%,9%" }      # Settings (store setup)
+- runFlow: { file: learn__pause.yaml, env: { MS: "2000" } }
+- tapOn: { point: "84%,21%" }     # Offer pickup off
+- runFlow: { file: learn__pause.yaml, env: { MS: "2000" } }
+- tapOn: { point: "84%,21%" }     # Offer pickup on again
+- runFlow: { file: learn__pause.yaml, env: { MS: "2000" } }
+- tapOn: { point: "84%,45%" }     # Offer shipping on (flat rate and ships within appear)
+- runFlow: { file: learn__pause.yaml, env: { MS: "3000" } }
+- tapOn: { point: "84%,45%" }     # Offer shipping off again
+- runFlow: { file: learn__pause.yaml, env: { MS: "2000" } }
+- tapOn: { point: "7%,9%" }       # back to Store products
+- runFlow: { file: learn__pause.yaml, env: { MS: "2000" } }

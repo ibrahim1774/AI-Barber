@@ -4,6 +4,9 @@ appId: com.ibrahim1774.aibarber
 # Run once per simulator: SIM=<udid> SHOTS=<dir> .maestro/run-flow.sh t9_headers ; screenshots are named t9_*
 - runFlow: _p1_shop_ready.yaml
 - tapOn:
+    text: "Got it"
+    optional: true
+- tapOn:
     text: "Skip tour"
     optional: true
 - waitForAnimationToEnd
@@ -14,6 +17,9 @@ appId: com.ibrahim1774.aibarber
 - runFlow:
     file: _store_setup.yaml
     env: { PROMPT_TAP: "Not now", PREFIX: "s_" }
+- tapOn:
+    text: "Got it"
+    optional: true
 - tapOn:
     text: "Skip tour"
     optional: true

@@ -1,0 +1,21 @@
+appId: com.ibrahim1774.aibarber
+---
+# Learn clip: Calendar and online booking. Starts on the Bookings tab, Day view with two bookings. Point taps only.
+# Never taps Mark paid, Done, No-show, Reschedule or Cancel booking; closes sheets by tapping the backdrop.
+- runFlow: { file: learn__pause.yaml, env: { MS: "2500" } }
+- tapOn: { point: "50%,14%" }     # Week
+- runFlow: { file: learn__pause.yaml, env: { MS: "3000" } }
+- tapOn: { point: "80%,14%" }     # Month
+- runFlow: { file: learn__pause.yaml, env: { MS: "3000" } }
+- tapOn: { point: "20%,14%" }     # Day
+- runFlow: { file: learn__pause.yaml, env: { MS: "3000" } }
+- tapOn: { point: "50%,33%" }     # first booking (opens its sheet)
+- runFlow: { file: learn__pause.yaml, env: { MS: "3000" } }
+- tapOn: { point: "50%,20%" }     # backdrop: close the booking
+- runFlow: { file: learn__pause.yaml, env: { MS: "3000" } }
+- tapOn: { point: "88%,85%" }     # + button
+- runFlow: { file: learn__pause.yaml, env: { MS: "3000" } }
+- tapOn: { point: "50%,51%" }     # Block time
+- runFlow: { file: learn__pause.yaml, env: { MS: "3000" } }
+- tapOn: { point: "50%,20%" }     # backdrop: close without saving
+- runFlow: { file: learn__pause.yaml, env: { MS: "2500" } }

@@ -121,6 +121,9 @@ appId: com.ibrahim1774.aibarber
     optional: true
 - takeScreenshot: ${PREFIX}21b_tour_add_button
 - tapOn:
+    text: "Got it"
+    optional: true
+- tapOn:
     text: "Skip tour"
     optional: true
 # a customer books through the (stub) booking page; the Bookings tab shows it on the next focus

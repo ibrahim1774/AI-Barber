@@ -6,11 +6,13 @@ import { hasTourSeen } from '@/components/tutorial/tours';
 // live in kv as `prompts.v1.<draftId>` / `guide.v1.<draftId>`.
 
 export type Overlay = 'prompts' | 'guide';
+/** The "your website is ready" notice is not an overlay (it never locks the editor's state); it keeps a flag the same way. */
+export type FlagKind = Overlay | 'welcome';
 
-const flagKey = (kind: Overlay, draftId: string) => `${kind}.v1.${draftId}`;
+const flagKey = (kind: FlagKind, draftId: string) => `${kind}.v1.${draftId}`;
 
 /** False when unset or unreadable (an unreadable flag shows the overlay again). */
-export async function hasSeen(kind: Overlay, draftId: string): Promise<boolean> {
+export async function hasSeen(kind: FlagKind, draftId: string): Promise<boolean> {
   try {
     return (await Storage.getItem(flagKey(kind, draftId))) === '1';
   } catch {
@@ -18,7 +20,7 @@ export async function hasSeen(kind: Overlay, draftId: string): Promise<boolean> 
   }
 }
 
-export async function markSeen(kind: Overlay, draftId: string): Promise<void> {
+export async function markSeen(kind: FlagKind, draftId: string): Promise<void> {
   await Storage.setItem(flagKey(kind, draftId), '1');
 }
 
@@ -27,7 +29,7 @@ export async function markSeen(kind: Overlay, draftId: string): Promise<void> {
  * draftId across re-imports (one site per install), so it resets the flags.
  */
 export async function clearOverlayFlags(draftId: string): Promise<void> {
-  await Promise.all([Storage.removeItem(flagKey('prompts', draftId)), Storage.removeItem(flagKey('guide', draftId))]);
+  await Promise.all([Storage.removeItem(flagKey('prompts', draftId)), Storage.removeItem(flagKey('guide', draftId)), Storage.removeItem(flagKey('welcome', draftId))]);
 }
 
 /**

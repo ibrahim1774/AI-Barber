@@ -18,6 +18,9 @@ appId: com.ibrahim1774.aibarber
     visible: "PUBLISH"
     timeout: 60000
 - tapOn:
+    text: "Got it"
+    optional: true
+- tapOn:
     text: "Skip tour"
     optional: true
 - waitForAnimationToEnd

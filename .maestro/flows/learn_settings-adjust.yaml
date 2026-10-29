@@ -1,0 +1,13 @@
+appId: com.ibrahim1774.aibarber
+---
+# Learn clip: What you can adjust. Starts on the Settings tab at the top. Scrolls only: no row is tapped.
+# Never reaches or taps Take my website offline, Delete account, Sign out, Manage subscription or Restore purchases.
+- runFlow: { file: learn__pause.yaml, env: { MS: "3500" } }
+- swipe: { start: "50%,72%", end: "50%,50%", duration: 1200 }
+- runFlow: { file: learn__pause.yaml, env: { MS: "3500" } }
+- swipe: { start: "50%,72%", end: "50%,50%", duration: 1200 }
+- runFlow: { file: learn__pause.yaml, env: { MS: "3500" } }
+- swipe: { start: "50%,50%", end: "50%,72%", duration: 1200 }
+- runFlow: { file: learn__pause.yaml, env: { MS: "3500" } }
+- swipe: { start: "50%,50%", end: "50%,72%", duration: 1200 }
+- runFlow: { file: learn__pause.yaml, env: { MS: "3000" } }

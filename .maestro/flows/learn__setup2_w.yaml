@@ -1,0 +1,16 @@
+appId: com.ibrahim1774.aibarber
+---
+# App already launched and prompts dismissed. Builds + publishes the demo site (stub), seeds website tier, reloads.
+- runFlow: learn__publish_site.yaml
+- tapOn: "Done"
+- runFlow:
+    file: learn__seed.yaml
+    env: { TIER: website, LAPSE: "", STRIPE: "", SIGNIN: "true", SIGNOUT: "", EMAIL: "", SITEBASE: "", BOOKING_NAME: "" }
+- waitForAnimationToEnd
+- tapOn:
+    text: "Got it"
+    optional: true
+- tapOn:
+    text: "Skip tour"
+    optional: true
+- waitForAnimationToEnd

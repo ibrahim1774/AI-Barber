@@ -165,32 +165,20 @@ describe('the Google path, end to end', () => {
     expect(await store.loadSite()).toBeNull();
   });
 
-  it('Yes → the checklist → Build: the draft has exactly the ticked services', async () => {
+  it('Yes builds straight away: the draft has the five starter services, titles only, no prices', async () => {
     const tree = await toConfirm();
     await press(tree, "Yes, that's me");
-    expect(allText(tree).join(' ')).toContain('Add your services (optional)');
-    await act(async () => byLabel(tree, 'Haircut').props.onPress());
-    await act(async () => byLabel(tree, 'Haircut price').props.onChangeText('25'));
-    await act(async () => byLabel(tree, 'Line up').props.onPress());
-    await press(tree, 'Build my website');
     await act(async () => {
       await new Promise((r) => setTimeout(r, 300));
     });
+    expect(allText(tree).join(' ')).not.toContain('Add your services');
     expect(mockReplace).toHaveBeenCalledWith('/import-review');
     expect(mockReplace).not.toHaveBeenCalledWith('/generating');
     const saved = await store.loadSite();
-    expect(saved?.data.services.map((s) => [s.title, s.price])).toEqual([['Haircut', '$25'], ['Line up', '']]);
+    expect(saved?.data.services.map((s) => [s.title, s.price])).toEqual([
+      ['Haircut', ''], ['Skin fade', ''], ['Beard trim', ''], ['Line up', ''], ['Kids cut', ''],
+    ]);
     expect(saved?.data.reviewsSource).toBe('Google');
     expect(calls.filter((c) => c === '/api/import-business')).toHaveLength(1);
-  });
-
-  it('Yes and Build with nothing ticked: a site with no Services', async () => {
-    const tree = await toConfirm();
-    await press(tree, "Yes, that's me");
-    await press(tree, 'Build my website');
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 300));
-    });
-    expect((await store.loadSite())?.data.services).toEqual([]);
   });
 });

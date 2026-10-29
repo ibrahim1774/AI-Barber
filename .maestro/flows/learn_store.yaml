@@ -1,0 +1,30 @@
+appId: com.ibrahim1774.aibarber
+---
+# Learn clip: Open your shop and add products. Starts on the Edit tab (demo site). Point taps and fixed text only.
+# Never taps Share, Publish, Get paid, Connect or any money control. Product is fake: "Beard balm", 18.
+- runFlow: { file: learn__pause.yaml, env: { MS: "2000" } }
+- tapOn: { point: "62%,94%" }     # Store tab
+- runFlow: { file: learn__pause.yaml, env: { MS: "2000" } }
+- tapOn: { point: "50%,54%" }     # Set up your shop
+- runFlow: { file: learn__pause.yaml, env: { MS: "2000" } }
+- tapOn: { point: "50%,75%" }     # Open my shop (pickup is on)
+- runFlow: { file: learn__pause.yaml, env: { MS: "2000" } }
+- tapOn: { point: "50%,56%" }     # OK on "Your shop is open"
+- runFlow: { file: learn__pause.yaml, env: { MS: "2000" } }
+- tapOn: { point: "7%,9%" }       # back to Store tab
+- runFlow: { file: learn__pause.yaml, env: { MS: "2000" } }
+- tapOn: { point: "68%,24%" }     # Skip the Store tip
+- runFlow: { file: learn__pause.yaml, env: { MS: "2000" } }
+- tapOn: { point: "50%,38%" }     # + Add product
+- runFlow: { file: learn__pause.yaml, env: { MS: "2000" } }
+- tapOn: { point: "50%,34%" }     # Name
+- inputText: "Beard balm"
+- runFlow: { file: learn__pause.yaml, env: { MS: "2000" } }
+- tapOn: { point: "50%,42%" }     # Price
+- inputText: "18"
+- runFlow: { file: learn__pause.yaml, env: { MS: "2000" } }
+- tapOn: { point: "91%,65%" }     # Done (number pad)
+- runFlow: { file: learn__pause.yaml, env: { MS: "2000" } }
+- tapOn: { point: "50%,91%" }     # Save
+- runFlow: { file: learn__pause.yaml, env: { MS: "2000" } }
+- runFlow: { file: learn__pause.yaml, env: { MS: "2000" } }

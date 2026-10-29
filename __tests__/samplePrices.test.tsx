@@ -34,7 +34,7 @@ describe('sample prices', () => {
   test('wiring: scratch uses it; the Google start and the booking-link import do not', () => {
     expect(src('src/app/manual.tsx')).toContain('withSamplePrices(servicesFromPicks(scratchPicks()))');
     expect(src('src/app/find-listing.tsx')).not.toContain('withSamplePrices');
-    expect(src('src/app/find-listing.tsx')).toContain('listingSite(payload, servicesFromPicks(picks)');
+    expect(src('src/app/find-listing.tsx')).toContain('listingSite(payload, GOOGLE_DEFAULT_SERVICES');
     for (const f of fs.readdirSync(path.join(__dirname, '../src/app')).filter((x) => /booking-link|import/.test(x))) {
       expect(src(`src/app/${f}`)).not.toContain('withSamplePrices');
     }

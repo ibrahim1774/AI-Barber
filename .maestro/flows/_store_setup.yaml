@@ -6,6 +6,9 @@ appId: com.ibrahim1774.aibarber
 - waitForAnimationToEnd
 - takeScreenshot: ${PREFIX}01_store_tab_unset
 - tapOn:
+    text: "Got it"
+    optional: true
+- tapOn:
     text: "Skip tour"
     optional: true
 - waitForAnimationToEnd
@@ -13,6 +16,9 @@ appId: com.ibrahim1774.aibarber
     point: "50%,56%"   # SET UP YOUR SHOP (text match hits the heading)
 - waitForAnimationToEnd
 - takeScreenshot: ${PREFIX}02_store_setup
+- tapOn:
+    text: "Got it"
+    optional: true
 - tapOn:
     text: "Skip tour"
     optional: true
@@ -39,6 +45,9 @@ appId: com.ibrahim1774.aibarber
     point: "62%,94%"   # Store tab
 - waitForAnimationToEnd
 - takeScreenshot: ${PREFIX}07_store_empty
+- tapOn:
+    text: "Got it"
+    optional: true
 - tapOn:
     text: "Skip tour"
     optional: true

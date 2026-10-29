@@ -4,6 +4,9 @@ appId: com.ibrahim1774.aibarber
 # Run: SIM=<udid> NORESET=1 .maestro/run-flow.sh t9c_small  (the app is installed with simctl first)
 # (the app is already open on the signed-in editor after the first launch; _launch.yaml expects the start screen)
 - tapOn:
+    text: "Got it"
+    optional: true
+- tapOn:
     text: "Skip tour"
     optional: true
 - waitForAnimationToEnd
@@ -12,12 +15,18 @@ appId: com.ibrahim1774.aibarber
     point: "37%,94%"   # Bookings tab
 - waitForAnimationToEnd
 - tapOn:
+    text: "Got it"
+    optional: true
+- tapOn:
     text: "Skip tour"
     optional: true
 - takeScreenshot: t9s_bookings_header
 - tapOn:
     point: "62%,94%"   # Store tab
 - waitForAnimationToEnd
+- tapOn:
+    text: "Got it"
+    optional: true
 - tapOn:
     text: "Skip tour"
     optional: true

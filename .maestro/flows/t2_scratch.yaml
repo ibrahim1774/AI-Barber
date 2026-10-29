@@ -28,6 +28,9 @@ appId: com.ibrahim1774.aibarber
     timeout: 40000
     optional: true
 - tapOn:
+    text: "Got it"
+    optional: true
+- tapOn:
     text: "Skip tour"
     optional: true
 - waitForAnimationToEnd

@@ -9,6 +9,9 @@ appId: com.ibrahim1774.aibarber
     point: "37%,94%"   # Bookings tab
 - waitForAnimationToEnd
 - tapOn:
+    text: "Got it"
+    optional: true
+- tapOn:
     text: "Skip tour"
     optional: true
 - takeScreenshot: t9_bookings_header

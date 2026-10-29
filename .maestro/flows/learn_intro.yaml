@@ -1,0 +1,12 @@
+appId: com.ibrahim1774.aibarber
+---
+# Learn clip: Quick tour. Starts on Edit (website tier, signed in as the stub user). Point taps only (hierarchy queries stall on the preview).
+- runFlow: { file: learn__pause.yaml, env: { MS: "2500" } }
+- tapOn: { point: "37%,94%" }   # Bookings
+- runFlow: { file: learn__pause.yaml, env: { MS: "3000" } }
+- tapOn: { point: "62%,94%" }   # Store
+- runFlow: { file: learn__pause.yaml, env: { MS: "3000" } }
+- tapOn: { point: "87%,94%" }   # Settings
+- runFlow: { file: learn__pause.yaml, env: { MS: "3000" } }
+- tapOn: { point: "13%,94%" }   # Edit
+- runFlow: { file: learn__pause.yaml, env: { MS: "3000" } }

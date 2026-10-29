@@ -1,0 +1,13 @@
+appId: com.ibrahim1774.aibarber
+---
+# Learn clips setup (website tier, demo site published, signed in as the stub user). Not recorded.
+- runFlow:
+    file: learn__signed_in.yaml
+    env: { TIER: website, LAPSE: "" }
+- tapOn:
+    text: "Got it"
+    optional: true
+- tapOn:
+    text: "Skip tour"
+    optional: true
+- waitForAnimationToEnd

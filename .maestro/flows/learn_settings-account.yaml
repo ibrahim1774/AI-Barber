@@ -1,0 +1,8 @@
+appId: com.ibrahim1774.aibarber
+---
+# Learn clip: Your account. Starts on the Settings tab. Point taps only. Shows the signed-in email; never taps Sign out, Plan, Restore purchases or Manage subscription.
+- runFlow: { file: learn__pause.yaml, env: { MS: "6000" } }
+- tapOn: { point: "50%,18%" }     # Learn how it works card (opens the Learn list)
+- runFlow: { file: learn__pause.yaml, env: { MS: "6000" } }
+- tapOn: { point: "7%,9%" }       # back to Settings
+- runFlow: { file: learn__pause.yaml, env: { MS: "5000" } }

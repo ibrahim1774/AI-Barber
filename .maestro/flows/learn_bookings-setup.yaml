@@ -1,0 +1,16 @@
+appId: com.ibrahim1774.aibarber
+---
+# Learn clip: Set up bookings (wizard steps 1-4). Starts on the Bookings tab with the unset card. Point taps only.
+# Stops on step 4 (how you get paid) and never taps Connect cards with Stripe.
+- runFlow: { file: learn__pause.yaml, env: { MS: "2500" } }
+- tapOn: { point: "50%,54%" }     # Set up bookings
+- runFlow: { file: learn__pause.yaml, env: { MS: "3000" } }
+- tapOn: { point: "50%,72%" }     # Continue (step 1 services)
+- runFlow: { file: learn__pause.yaml, env: { MS: "3000" } }
+- swipe: { start: "50%,80%", end: "50%,30%", duration: 700 }   # scroll hours to reach Continue
+- runFlow: { file: learn__pause.yaml, env: { MS: "2000" } }
+- tapOn: { point: "50%,86%" }     # Continue (step 2 hours)
+- runFlow: { file: learn__pause.yaml, env: { MS: "3000" } }
+- tapOn: { point: "50%,35%" }     # Continue (step 3 who takes bookings)
+- runFlow: { file: learn__pause.yaml, env: { MS: "3000" } }
+- runFlow: { file: learn__pause.yaml, env: { MS: "2000" } }
