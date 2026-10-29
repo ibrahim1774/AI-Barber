@@ -194,12 +194,18 @@ export function ldToScrapedShop(ld: any): Partial<ScrapedShop> {
 
 // Apify Web Scraper invoker. Returns whatever the inline pageFunction
 // returns as the first dataset item, or null on any failure.
+//
+// COST: every call here is ONE paid Apify run (headless Chromium + Apify proxy, one page). It is the only place
+// the scrapers spend Apify money; adapters call it at most once per import and only when the plain-HTTP data was
+// thin (see needsPhotoEnrichment). Tests and development never call it (the tests stub fetch).
 export async function runApifyWebScraper(opts: {
   url: string;
   pageFunction: string;
   token: string;
   timeoutSec?: number;
+  label?: string;
 }): Promise<any | null> {
+  console.log(`[Apify] web-scraper run (${opts.label || 'unlabelled'}) ${opts.url}`);
   const body = {
     startUrls: [{ url: opts.url }],
     pageFunction: opts.pageFunction,
@@ -253,9 +259,25 @@ export function finalize(
       price: normalizePrice(s.price) || undefined,
       duration: normalizeDuration(s.duration) || undefined,
     })),
-    photos: dedupeBy(shop.photos || [], (p) => p.replace(/\?.*$/, '')).slice(0, photoCap),
+    photos: dedupeBy(cleanPhotoUrls(shop.photos), (p) => p.replace(/\?.*$/, '')).slice(0, photoCap),
     reviews: dedupeBy(shop.reviews || [], (r) => r.comment.slice(0, 80)).slice(0, reviewCap),
   };
+}
+
+// Photo URLs the sites can hotlink: https only (a protocol-relative "//cdn…" becomes https), no data: URIs, no
+// SVG/GIF (logos, spinners), nothing absurdly long. Applied to every provider's photos in finalize.
+export function cleanPhotoUrls(list: unknown): string[] {
+  if (!Array.isArray(list)) return [];
+  const out: string[] = [];
+  for (const raw of list) {
+    if (typeof raw !== 'string') continue;
+    let u = raw.trim();
+    if (u.startsWith('//')) u = `https:${u}`;
+    if (!/^https:\/\/[^\s]+$/i.test(u) || u.length > 1500) continue;
+    if (/\.(svg|gif)(\?|#|$)/i.test(u)) continue;
+    out.push(u);
+  }
+  return out;
 }
 
 function dedupeBy<T>(arr: T[], key: (t: T) => string): T[] {
@@ -268,4 +290,167 @@ function dedupeBy<T>(arr: T[], key: (t: T) => string): T[] {
     out.push(item);
   }
   return out;
+}
+
+// ── Shared HTML helpers (used by the Vagaro / Squire / GlossGenius / Acuity adapters) ───────────────────────────
+
+export function decodeEntities(s: string): string {
+  return s
+    .replace(/&amp;/g, '&')
+    .replace(/&#0*39;/g, "'")
+    .replace(/&#x27;/gi, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&#0*34;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ');
+}
+
+// Read a <meta property|name="key" content="…"> value. Scopes the search to a single <meta> tag (so a missing key
+// never lets the content capture run across tags), uses a backref to the opening quote so apostrophes inside the
+// value (Dan's) don't truncate it, and handles either attribute order.
+export function metaContent(html: string, key: string): string {
+  const k = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const keyRe = new RegExp(`(?:property|name)=("|')${k}\\1`, 'i');
+  const tags = html.match(/<meta\b[^>]*>/gi) || [];
+  for (const tag of tags) {
+    if (!keyRe.test(tag)) continue;
+    const m = tag.match(/\bcontent=("|')([\s\S]*?)\1/i);
+    if (m) return decodeEntities(m[2]).trim();
+  }
+  return '';
+}
+
+// "+19122552067" / "9122552067" -> "(912) 255-2067"; anything else is kept as written.
+export function formatUsPhone(raw: unknown): string {
+  const d = String(raw || '').replace(/\D/g, '');
+  if (d.length === 10) return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
+  if (d.length === 11 && d[0] === '1') return `(${d.slice(1, 4)}) ${d.slice(4, 7)}-${d.slice(7)}`;
+  return String(raw || '').trim();
+}
+
+// The Next.js page state (<script id="__NEXT_DATA__">), or null.
+export function parseNextData(html: string): any | null {
+  const m = html.match(/<script[^>]*id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i);
+  if (!m) return null;
+  try {
+    return JSON.parse(m[1]);
+  } catch {
+    return null;
+  }
+}
+
+// `var NAME = {...};` inline-script state (Acuity ships its whole business as one). String-aware brace matching,
+// so a "}" inside a service description cannot end the object early. Null when absent or unparsable.
+export function extractJsonAssignment(html: string, name: string): any | null {
+  const at = html.search(new RegExp(`\\b(?:var|let|const)\\s+${name}\\s*=\\s*[{[]`));
+  if (at < 0) return null;
+  const start = html.slice(at).search(/[{[]/) + at;
+  const open = html[start];
+  const close = open === '{' ? '}' : ']';
+  let depth = 0;
+  let inStr = false;
+  for (let i = start; i < html.length; i++) {
+    const c = html[i];
+    if (inStr) {
+      if (c === '\\') i++;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') inStr = true;
+    else if (c === open) depth++;
+    else if (c === close && --depth === 0) {
+      try {
+        return JSON.parse(html.slice(start, i + 1));
+      } catch {
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
+// Like fetchHtml but returns a refusal (403 / bot check) instead of throwing, so an adapter can choose what to do.
+export async function fetchHtmlLoose(
+  url: string,
+  timeoutMs = 12_000,
+): Promise<{ status: number; html: string; finalUrl: string }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const resp = await fetch(url, {
+      headers: { 'User-Agent': BROWSER_UA, Accept: 'text/html,application/xhtml+xml', 'Accept-Language': 'en-US,en;q=0.9' },
+      redirect: 'follow',
+      signal: controller.signal,
+    });
+    return { status: resp.status, html: await resp.text(), finalUrl: resp.url || url };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ── Photo enrichment through the EXISTING Apify actor (apify/web-scraper) ───────────────────────────────────────
+//
+// Same actor and call as the Booksy / Fresha / Square enrichment (runApifyWebScraper), now also used for the
+// providers whose plain HTTP data carries fewer than PHOTO_ENRICH_BELOW photos. It renders the page in a real
+// browser, so it can read a gallery that a client-rendered page draws after load. One run per import, at most,
+// and only with a token. Set APIFY_PHOTO_ENRICH=off to switch the new providers' photo runs off without a deploy.
+export const PHOTO_ENRICH_BELOW = 6;
+
+export function needsPhotoEnrichment(photoCount: number): boolean {
+  return photoCount < PHOTO_ENRICH_BELOW && process.env.APIFY_PHOTO_ENRICH !== 'off';
+}
+
+// Page function for apify/web-scraper: the page's own <img> photos. `cdnPattern` (a RegExp source) limits the host
+// when the provider's CDN is known; empty means any https host that is not an ad/analytics/map/payment domain.
+// Skips logos, icons, avatars, sprites, tiny images, and anything inside the header, nav, footer or a "similar /
+// nearby / recommended" block (those are OTHER businesses). `settleMs` waits for lazy galleries.
+export function galleryPageFunction(cdnPattern = '', settleMs = 2000, withHtml = false): string {
+  return `
+async function pageFunction(context) {
+  const { page } = context;
+  // Bot-check pages ("Security Check" / "Just a moment") get up to ~24 s to clear before the page is read.
+  for (let i = 0; i < 12 && /Security Check|Just a moment/i.test(await page.title()); i++) await new Promise(r => setTimeout(r, 2000));
+  await page.waitForLoadState?.('networkidle').catch(() => {});
+  await new Promise(r => setTimeout(r, ${Math.round(settleMs)}));
+  return await page.evaluate(() => {
+    const cdn = ${JSON.stringify(cdnPattern)} ? new RegExp(${JSON.stringify(cdnPattern)}, 'i') : null;
+    const junkHost = /google|gstatic|facebook|fbcdn|doubleclick|analytics|gravatar|stripe|apple\\.com|maps|mapbox|openstreetmap|recaptcha|segment|hotjar|intercom/i;
+    const junkName = /logo|icon|avatar|sprite|placeholder|favicon|emoji|badge|flag|pixel|spinner|profile-pic|default/i;
+    const other = '[class*="similar" i],[class*="nearby" i],[class*="recommend" i],[class*="related" i],[class*="suggest" i],[class*="explore" i]';
+    const urls = [];
+    const og = document.querySelector('meta[property="og:image"]')?.content;
+    if (og) urls.push(og);
+    for (const img of Array.from(document.querySelectorAll('img'))) {
+      if (img.closest('header,nav,footer,aside,' + other)) continue;
+      const src = (img.currentSrc || img.src || '').trim();
+      if (!/^https:/i.test(src) || junkName.test(src) || junkHost.test(src)) continue;
+      if (cdn && !cdn.test(src)) continue;
+      const w = img.naturalWidth || img.width || 0;
+      if (w && w < 200) continue;
+      urls.push(src.split('#')[0]);
+    }
+    return { photos: Array.from(new Set(urls)).slice(0, 25) };
+  }).then(async (r) => ${withHtml ? '({ ...r, html: await page.content() })' : 'r'});
+}
+`.trim();
+}
+
+// One Apify run that returns the page's gallery photos, or [] (no token, switched off, run failed). The caller
+// merges the result AFTER the provider's own photos; finalize() dedupes, keeps https only and caps the count.
+export async function apifyGalleryPhotos(opts: {
+  url: string;
+  token?: string;
+  label: string;
+  cdnPattern?: string;
+}): Promise<string[]> {
+  if (!opts.token) return [];
+  const data = await runApifyWebScraper({
+    url: opts.url,
+    pageFunction: galleryPageFunction(opts.cdnPattern || ''),
+    token: opts.token,
+    label: opts.label,
+  });
+  return cleanPhotoUrls(data?.photos);
 }
