@@ -88,8 +88,9 @@ export function deviceTimezone(): string {
 }
 
 /** Example prices the migration filled on the website cards never reach the shop until the barber has reviewed the services. */
-function withoutExamplePrices(list: SetupService[], inputs: { samplePricesFilled?: boolean; pricesReviewed?: boolean }): SetupService[] {
-  if (!inputs.samplePricesFilled || inputs.pricesReviewed) return list;
+function withoutExamplePrices(list: SetupService[], inputs: { samplePricesFilled?: boolean; pricesReviewed?: boolean; importedFrom?: string }): SetupService[] {
+  // A Google-start site holds no samples (an earlier build's fills are kept as the barber's prices).
+  if (!inputs.samplePricesFilled || inputs.pricesReviewed || inputs.importedFrom === 'gbp') return list;
   return list.map((s) => (isSamplePrice(s.name, String((s.priceCents ?? 0) / 100)) ? { ...s, priceCents: null } : s));
 }
 

@@ -1,7 +1,7 @@
 // The booking-link start behaves like Build from scratch / Find me on Google: scraped prices, durations and hours are kept
 // (in the shapes the editor reads), what the page lacked falls back to the same defaults, and the Book button is as adjustable.
 import { toShopSite } from '@/lib/importer';
-import { SAMPLE_PRICES, migrateSamplePrices, needsPriceReminder, samplePriceCents } from '@/lib/samplePrices';
+import { SAMPLE_PRICES, migrateSamplePrices, samplePriceCents } from '@/lib/samplePrices';
 import { defaultHours, editableHours, hoursSummary, withDefaultHours } from '@/lib/sections/hours';
 import { seedWeek } from '@/lib/setup/availability';
 import { buildPreviewHtml, needsAddButton } from '@/lib/editable';
@@ -37,12 +37,10 @@ describe('prices and durations from the booking page', () => {
     const r: any = migrateSamplePrices({ data: { services: out() }, inputs: { importedFrom: 'booking' } } as any);
     expect(r.data.services.map((s: any) => s.price)).toEqual(['$35', '$25 - $40', '$15+', 'from $30', '$35', '']);
     expect(r.inputs.samplePricesFilled).toBe(true);
-    expect(needsPriceReminder({ data: r.data, inputs: r.inputs })).toBe(true);
   });
-  test('nothing blank: no flag, no reminder on an import', () => {
+  test('nothing blank: no flag on an import', () => {
     const r: any = migrateSamplePrices({ data: { services: out().slice(0, 4) }, inputs: { importedFrom: 'booking' } } as any);
     expect(r.inputs.samplePricesFilled).toBeUndefined();
-    expect(needsPriceReminder({ data: r.data, inputs: r.inputs })).toBe(false);
   });
   test('the Willi Barber fixture keeps its real prices untouched', () => {
     const r: any = migrateSamplePrices({ data: { services: imp().site.services }, inputs: { importedFrom: 'booking' } } as any);

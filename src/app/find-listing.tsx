@@ -16,7 +16,6 @@ import { fetchListing } from '@/lib/flow';
 import { backToStart, confirmCancel } from '@/lib/nav';
 import { listingMatch, listingSite } from '@/lib/importer';
 import { servicesFromPicks, type ServicePicks } from '@/lib/serviceChecklist';
-import { withSamplePrices } from '@/lib/samplePrices';
 
 type Suggestion = { placeId: string; main: string; secondary: string };
 
@@ -101,11 +100,12 @@ export default function FindListing() {
     setError(null);
   };
 
+  // Prices that could not be pulled stay blank (no sample prices on the Google start).
   // Build only after "Yes, that's me", with the ticked services.
   const build = () => {
     if (!found || !confirmed) return;
     const payload = found.payload;
-    void run(async () => listingSite(payload, withSamplePrices(servicesFromPicks(picks)), DEFAULT_SWATCH), (msg) => setError(msg), '/import-review');
+    void run(async () => listingSite(payload, servicesFromPicks(picks), DEFAULT_SWATCH), (msg) => setError(msg), '/import-review');
   };
 
   // Import by exact NAME + ADDRESS (newer 'Eg…' place ids don't resolve).
