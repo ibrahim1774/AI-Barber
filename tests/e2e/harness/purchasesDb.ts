@@ -4,6 +4,9 @@
 // product_id, the UNIQUE site_slug index (003: 23505 on a second purchase binding the same slug),
 // order + limit, single / maybeSingle. Extends tests/ios/fakePurchasesDb.ts with what the e2e
 // flows reach (it lacks not/order/limit and the unique index).
+// or() filters (nested and/or groups included) evaluate exactly like the unit fake's.
+import { orFilter } from '../../ios/fakePurchasesDb.js';
+
 type Row = Record<string, any>;
 type Filter = (r: Row) => boolean;
 
@@ -12,28 +15,6 @@ function cmp(a: unknown, b: unknown): number {
   const x = ts(a), y = ts(b);
   if (Number.isFinite(x) && Number.isFinite(y)) return x - y;
   return String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0;
-}
-
-function orFilter(expr: string): Filter {
-  const parts = expr.split(',').map((p) => {
-    const m = /^([a-z_]+)\.(not\.is|is|lte|lt|gte|gt|eq)\.(.+)$/.exec(p);
-    if (!m) throw new Error(`fake db: unsupported or() part ${p}`);
-    const [, col, op, raw] = m;
-    const val = raw.replace(/^"|"$/g, '');
-    return (r: Row) => {
-      const v = r[col] ?? null;
-      switch (op) {
-        case 'is': return val === 'null' ? v === null : String(v) === val;
-        case 'not.is': return val === 'null' ? v !== null : String(v) !== val;
-        case 'lte': return v !== null && cmp(v, val) <= 0;
-        case 'lt': return v !== null && cmp(v, val) < 0;
-        case 'gte': return v !== null && cmp(v, val) >= 0;
-        case 'gt': return v !== null && cmp(v, val) > 0;
-        default: return String(v) === val;
-      }
-    };
-  });
-  return (r) => parts.some((f) => f(r));
 }
 
 export interface PurchasesDb {

@@ -9,6 +9,8 @@ type Filter = (r: Row) => boolean;
 export interface FakeDbOptions {
   /** Called after each read resolves (before the caller's next step). */
   onRead?: (rows: Map<string, Row>) => void;
+  /** Awaited after each update is applied, before the caller continues (interleave a writer between two statements). */
+  afterUpdate?: (rows: Map<string, Row>, payload: Row) => void | Promise<void>;
   /** Make the next read fail with this message. */
   readError?: string;
 }
@@ -20,9 +22,38 @@ function cmp(a: unknown, b: unknown): number {
   return String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0;
 }
 
-function orFilter(expr: string): Filter {
-  const parts = expr.split(',').map((p) => {
-    const m = /^([a-z_]+)\.(not\.is|is|lte|lt|gte|gt|eq)\.(.+)$/.exec(p);
+/** Split on commas outside parentheses and double quotes (PostgREST logic trees). */
+function splitTop(expr: string): string[] {
+  const out: string[] = [];
+  let depth = 0, quoted = false, cur = '';
+  for (const ch of expr) {
+    if (ch === '"') quoted = !quoted;
+    else if (!quoted && ch === '(') depth++;
+    else if (!quoted && ch === ')') depth--;
+    if (ch === ',' && depth === 0 && !quoted) {
+      out.push(cur);
+      cur = '';
+    } else cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+
+/** One PostgREST condition, or a nested and(...) / or(...) group. */
+function condition(p: string): Filter {
+  const group = /^(and|or)\((.*)\)$/.exec(p);
+  if (group) {
+    const subs = splitTop(group[2]).map(condition);
+    return group[1] === 'and' ? (r) => subs.every((f) => f(r)) : (r) => subs.some((f) => f(r));
+  }
+  return orFilter(p);
+}
+
+/** A PostgREST or() expression (with nested and(...) / or(...) groups) as a row predicate. Shared with the e2e harness. */
+export function orFilter(expr: string): Filter {
+  const parts = splitTop(expr).map((p) => {
+    if (/^(and|or)\(/.test(p)) return condition(p);
+    const m = /^([a-z_]+)\.(not\.is|is|lte|lt|gte|gt|neq|eq)\.(.+)$/.exec(p);
     if (!m) throw new Error(`fake db: unsupported or() part ${p}`);
     const [, col, op, raw] = m;
     const val = raw.replace(/^"|"$/g, '');
@@ -35,6 +66,7 @@ function orFilter(expr: string): Filter {
         case 'lt': return v !== null && cmp(v, val) < 0;
         case 'gte': return v !== null && cmp(v, val) >= 0;
         case 'gt': return v !== null && cmp(v, val) > 0;
+        case 'neq': return v !== null && String(v) !== val; // SQL: NULL <> x is not true
         default: return String(v) === val;
       }
     };
@@ -100,10 +132,14 @@ export function fakePurchasesDb(initial: Row[] = [], opts: FakeDbOptions = {}) {
         described.push(`${c} is not null`); filters.push((r) => (r[c] ?? null) !== null); return q;
       },
       lt: (c: string, v: unknown) => { described.push(`${c}<${v}`); filters.push((r) => r[c] != null && cmp(r[c], v) < 0); return q; },
+      neq: (c: string, v: unknown) => { described.push(`${c}!=${v}`); filters.push((r) => r[c] != null && r[c] !== v); return q; },
       or: (e: string) => { described.push(`or(${e})`); filters.push(orFilter(e)); return q; },
       maybeSingle: () => { single = 'maybe'; return q; },
       single: () => { single = 'one'; return q; },
-      then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) => Promise.resolve().then(run).then(res, rej),
+      then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) => Promise.resolve().then(run).then(async (out) => {
+        if (op === 'update') await opts.afterUpdate?.(rows, payload!);
+        return out;
+      }).then(res, rej),
     };
     return q;
   }

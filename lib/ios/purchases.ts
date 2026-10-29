@@ -110,6 +110,36 @@ function fail(op: string, error: { message?: string } | null): never {
   throw new Error(`ios_purchases ${op} failed: ${error?.message ?? 'unknown'}`);
 }
 
+/**
+ * The PostgREST or() filter guarding an expires_at write (evaluated in SQL under the row lock).
+ *
+ * Undated (no purchase date): forward only, so a stale verify or a retried older notification
+ * can't put an older expiry back over a renewal.
+ *
+ * Dated: the expiry belongs to the NEWEST transaction (by purchase date), like product_id.
+ * - Same or newer transaction than the stored product's: forward only (a renewal, a re-verify).
+ *   This is the only rule expiryGuard returns (it is the expires_at-only update).
+ * - A newer transaction for a DIFFERENT product may also move it backwards: an upgrade is
+ *   immediate and starts a new period, so hosting.yearly with 11 months left -> store.monthly
+ *   expires in 1 month (Apple refunds the rest pro rata). Forward-only kept the yearly date, so a
+ *   cancelled upgrade stayed live (site up, Bookings / Store open) until the old yearly date.
+ *   The same product only moves forward (an IOS_QA_ACTIVE_OTIDS row keeps its stretched expiry).
+ *   writeRow runs this branch as ONE update of expires_at + product_id + product_purchased_at, so
+ *   no stale older writer can slip between an expiry move and the product move.
+ * - An OLDER transaction than the stored product's never writes it, even a later date (the old
+ *   yearly transaction retried after the upgrade must not put the yearly date back).
+ * - A row stored undated (before 010, or seeded undated) keeps the forward-only rule.
+ */
+export function expiryGuard(at: string, dated: { purchasedAt: string; productId: string } | null): string {
+  if (!dated) return `expires_at.is.null,expires_at.lt."${at}"`;
+  const forward = `or(expires_at.is.null,expires_at.lt."${at}")`;
+  const p = `"${dated.purchasedAt}"`;
+  return [
+    `and(product_purchased_at.is.null,${forward})`,
+    `and(product_purchased_at.lte.${p},${forward})`,
+  ].join(',');
+}
+
 /** What the never-backwards rules read before writing. */
 const STORED_COLS = 'original_transaction_id';
 
@@ -153,13 +183,31 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
     if (error) fail(op, error);
     let row = data as PurchaseRow;
     if (expiresAt != null) {
-      // expires_at never moves backwards either: guarded the same way, so a stale verify or a
-      // retried older notification can't put an older expiry back over a renewal.
+      // expires_at follows the newest transaction: never backwards on a renewal or a stale verify,
+      // but an upgrade to a shorter period (yearly -> a higher monthly) moves it back.
       const at = iso(expiresAt) as string;
+      if (dated) {
+        // A newer transaction for a DIFFERENT product: ONE statement moves expiry and product
+        // together (evaluated under the row lock), so a stale older writer can't land between
+        // them. Once the row holds the newer purchase date, no older writer passes any branch.
+        const purchasedAt = iso(product.purchasedAt as number) as string;
+        const { data: upgraded, error: upErr } = await db().from(TABLE)
+          .update({ expires_at: at, product_id: product.productId, product_purchased_at: purchasedAt })
+          .eq('original_transaction_id', otid)
+          .lt('product_purchased_at', purchasedAt)
+          .neq('product_id', product.productId)
+          .select();
+        if (upErr) fail(op, upErr);
+        if (Array.isArray(upgraded) && upgraded.length > 0) return upgraded[0] as PurchaseRow;
+      }
       const { data: moved, error: expErr } = await db().from(TABLE)
         .update({ expires_at: at })
         .eq('original_transaction_id', otid)
-        .or(`expires_at.is.null,expires_at.lt."${at}"`)
+        .or(product.isUpgraded
+          // The transaction an upgrade replaced carries the OLD period's end (the rest of a yearly
+          // plan Apple refunded): it only fills an empty expiry, never overrides one.
+          ? 'expires_at.is.null'
+          : expiryGuard(at, dated ? { purchasedAt: iso(product.purchasedAt as number) as string, productId: product.productId } : null))
         .select();
       if (expErr) fail(op, expErr);
       if (Array.isArray(moved) && moved.length > 0) row = moved[0] as PurchaseRow;

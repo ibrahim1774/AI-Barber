@@ -89,6 +89,27 @@ describe('upgrade Website → Bookings → Store (same subscription group)', () 
     expect(r.body).toMatchObject({ linked: true, tier: 'store', active: true, entitlements: { hosting: true, bookings: true, store: true } });
     expect(await gates(otid)).toEqual({ bookings: true, store: true });
   });
+
+  it('fix48: Website YEARLY → Store MONTHLY then cancelled: the row carries the monthly end and the sweep takes it down a month later, not at the old yearly date', async () => {
+    const { otid, transactionId } = w.apple.buy(PRODUCTS.websiteYearly);
+    await w.publish(transactionId, full);
+    const yearlyEnd = Date.parse(w.row(otid)!.expires_at!);
+    w.clock.advance(30 * DAY);
+    const websiteTx = w.apple.latest(otid);
+    const up = w.apple.upgrade(otid, PRODUCTS.storeMonthly);
+    await w.notify(w.apple.notification('DID_CHANGE_RENEWAL_PREF', otid));
+    expect(w.row(otid)).toMatchObject({ product_id: PRODUCTS.storeMonthly, expires_at: new Date(up.expiresDate).toISOString() });
+    expect(Date.parse(w.row(otid)!.expires_at!)).toBeLessThan(yearlyEnd);
+    // The replaced yearly transaction's notification arriving late never puts the yearly date back.
+    await w.notify(w.apple.notification('DID_RENEW', otid, { tx: websiteTx }));
+    expect(w.row(otid)!.expires_at).toBe(new Date(up.expiresDate).toISOString());
+
+    // The owner cancels; the monthly runs out.
+    w.clock.advance(31 * DAY);
+    await w.notify(w.apple.notification('EXPIRED', otid));
+    expect((await w.sweep()).takenDown).toEqual(['fade-lab']);
+    expect(await gates(otid)).toEqual({ bookings: false, store: false });
+  });
 });
 
 // ---------------------------------------------------------------------------
