@@ -38,7 +38,7 @@ describe('upsertVerified', () => {
   it('an existing row is only UPDATEd (no upsert, no product sent back)', async () => {
     const db = fakePurchasesDb([stored({ product_id: `${P}store.monthly`, product_purchased_at: iso(T0 + DAY) })]);
     await supabasePurchases(db.client).upsertVerified(vtx({ productPurchasedAt: T0 }));
-    expect(db.log.map((w) => w.op)).toEqual(['update', 'update', 'update']); // fields, guarded expiry, guarded product
+    expect(db.log.map((w) => w.op)).toEqual(['update', 'update', 'update', 'update']); // fields, upgrade (expiry+product), guarded expiry, guarded product
     expect(Object.keys(db.log[0].payload!)).not.toContain('product_id');
     expect(db.row('o1')!.product_id).toBe(`${P}store.monthly`);
   });
@@ -94,7 +94,7 @@ describe('upsertVerified', () => {
     it('N1: the expiry write is guarded in SQL (is null or older than the new value)', async () => {
       const db = fakePurchasesDb([stored()]);
       await supabasePurchases(db.client).upsertVerified(vtx({ expiresAt: STORED + DAY }));
-      const w = db.log.find((l) => l.payload && 'expires_at' in l.payload)!;
+      const w = db.log.find((l) => l.payload && Object.keys(l.payload).join() === 'expires_at')!;
       expect(w.payload).toEqual({ expires_at: iso(STORED + DAY) });
       expect(w.filters).toContain(`or(${expiryGuard(iso(STORED + DAY), { purchasedAt: iso(T0), productId: `${P}hosting.monthly` })})`);
     });
@@ -148,6 +148,24 @@ describe('upsertVerified', () => {
       });
       await supabasePurchases(db.client).upsertVerified(vtx({ productId: `${P}hosting.yearly`, productPurchasedAt: T0, expiresAt: T0 + 400 * DAY }));
       expect(db.row('o1')).toMatchObject({ product_id: `${P}store.monthly`, expires_at: iso(T0 + 60 * DAY) });
+    });
+
+    it('fix48 race: a stale older-yearly verify arriving right after the upgrade\'s expiry move cannot restore the yearly expiry', async () => {
+      let fired = false;
+      let staleRepo: ReturnType<typeof supabasePurchases>;
+      const db = fakePurchasesDb([YEARLY], {
+        // Fires after the first update that carries expires_at: with the old two-statement code that is
+        // between the expiry move and the product move; now the upgrade is one statement, so it is after both.
+        afterUpdate: async (_rows, payload) => {
+          if (fired || !('expires_at' in payload)) return;
+          fired = true;
+          await staleRepo.upsertVerified(vtx({ productId: `${P}hosting.yearly`, productPurchasedAt: T0, expiresAt: T0 + 400 * DAY }));
+        },
+      });
+      staleRepo = supabasePurchases(db.client);
+      await staleRepo.upsertVerified(vtx(UP));
+      expect(fired).toBe(true);
+      expect(db.row('o1')).toMatchObject({ product_id: `${P}store.monthly`, expires_at: iso(T0 + 60 * DAY), product_purchased_at: iso(T0 + 30 * DAY) });
     });
 
     it('a cancelled upgrade lapses on the NEW expiry (takedown prefilter), not the old yearly date', async () => {

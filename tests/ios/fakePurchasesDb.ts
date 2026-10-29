@@ -9,6 +9,8 @@ type Filter = (r: Row) => boolean;
 export interface FakeDbOptions {
   /** Called after each read resolves (before the caller's next step). */
   onRead?: (rows: Map<string, Row>) => void;
+  /** Awaited after each update is applied, before the caller continues (interleave a writer between two statements). */
+  afterUpdate?: (rows: Map<string, Row>, payload: Row) => void | Promise<void>;
   /** Make the next read fail with this message. */
   readError?: string;
 }
@@ -130,10 +132,14 @@ export function fakePurchasesDb(initial: Row[] = [], opts: FakeDbOptions = {}) {
         described.push(`${c} is not null`); filters.push((r) => (r[c] ?? null) !== null); return q;
       },
       lt: (c: string, v: unknown) => { described.push(`${c}<${v}`); filters.push((r) => r[c] != null && cmp(r[c], v) < 0); return q; },
+      neq: (c: string, v: unknown) => { described.push(`${c}!=${v}`); filters.push((r) => r[c] != null && r[c] !== v); return q; },
       or: (e: string) => { described.push(`or(${e})`); filters.push(orFilter(e)); return q; },
       maybeSingle: () => { single = 'maybe'; return q; },
       single: () => { single = 'one'; return q; },
-      then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) => Promise.resolve().then(run).then(res, rej),
+      then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) => Promise.resolve().then(run).then(async (out) => {
+        if (op === 'update') await opts.afterUpdate?.(rows, payload!);
+        return out;
+      }).then(res, rej),
     };
     return q;
   }
