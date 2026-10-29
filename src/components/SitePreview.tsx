@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject, type RefObject } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import type { ShouldStartLoadRequest } from 'react-native-webview/lib/WebViewTypes';
@@ -32,7 +32,14 @@ export interface SitePreviewProps {
   samplePaths?: string[];
   /** True while a sheet covers the preview: the page's chips are hidden (a class toggle in the page). */
   chipsHidden?: boolean;
+  /** Filled with a function that checks the page is still alive (the Edit tab calls it when it regains focus). */
+  aliveCheckRef?: MutableRefObject<(() => void) | null>;
 }
+
+// iOS can end the WebView's process while the tab is in the background (memory); the page then stays blank.
+// The check posts this back from the page: no answer in time means the process is gone and the WebView is rebuilt.
+const PONG = '{"type":"pong"}';
+const ALIVE_WAIT_MS = 3000;
 
 /**
  * The barber's real site (the web's own template) in a WebView. In editable
@@ -45,8 +52,28 @@ function sameRects(a: ImageRect[], b: ImageRect[]): boolean {
   return a.length === b.length && a.every((r, i) => r.path === b[i].path && r.x === b[i].x && r.y === b[i].y && r.w === b[i].w && r.h === b[i].h);
 }
 
-export default function SitePreview({ data, editable, shopProducts, page, onEditText, onEditImage, onNavigate, onAddService, onService, onHours, onAddButton, pillTourRef, samplePaths, chipsHidden }: SitePreviewProps) {
+export default function SitePreview({ data, editable, shopProducts, page, onEditText, onEditImage, onNavigate, onAddService, onService, onHours, onAddButton, pillTourRef, samplePaths, chipsHidden, aliveCheckRef }: SitePreviewProps) {
   const webRef = useRef<WebView>(null);
+  // Bumping the epoch rebuilds the WebView from the same saved data; the page's 'ready' restores the scroll position.
+  const [epoch, setEpoch] = useState(0);
+  const readyOnce = useRef(false);
+  const loading = useRef(false);
+  const pongTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rebuild = useCallback(() => {
+    if (pongTimer.current) clearTimeout(pongTimer.current);
+    pongTimer.current = null;
+    readyOnce.current = false;
+    loading.current = false;
+    setEpoch((n) => n + 1);
+  }, []);
+  const checkAlive = useCallback(() => {
+    // A page that never finished loading, or is loading now, has nothing to answer with yet.
+    if (!readyOnce.current || loading.current || pongTimer.current) return;
+    webRef.current?.injectJavaScript('try { window.ReactNativeWebView.postMessage(\'' + PONG + '\'); } catch (e) {} true;');
+    pongTimer.current = setTimeout(() => { pongTimer.current = null; rebuild(); }, ALIVE_WAIT_MS);
+  }, [rebuild]);
+  if (aliveCheckRef) aliveCheckRef.current = checkAlive;
+  useEffect(() => () => { if (pongTimer.current) clearTimeout(pongTimer.current); }, []);
   const scrollY = useRef(0);
   // Where the page's "Change image" chips are on screen: only the Edit tour reads this.
   const [rects, setRects] = useState<ImageRect[]>([]);
@@ -96,6 +123,11 @@ export default function SitePreview({ data, editable, shopProducts, page, onEdit
 
   const onMessage = useCallback(
     (e: WebViewMessageEvent) => {
+      if (e.nativeEvent.data === PONG) {
+        if (pongTimer.current) clearTimeout(pongTimer.current);
+        pongTimer.current = null;
+        return;
+      }
       const m = parsePreviewMessage(e.nativeEvent.data, data, page, editPaths);
       if (!m) return;
       switch (m.type) {
@@ -128,6 +160,7 @@ export default function SitePreview({ data, editable, shopProducts, page, onEdit
           setRects((prev) => (sameRects(prev, m.items) ? prev : m.items));
           return;
         case 'ready':
+          readyOnce.current = true;
           webRef.current?.injectJavaScript(`window.__aibRestore && window.__aibRestore(${Math.round(scrollY.current)}); true;`);
           sendSamples();
           sendHidden();
@@ -145,7 +178,12 @@ export default function SitePreview({ data, editable, shopProducts, page, onEdit
   return (
     <View style={styles.fill}>
     <WebView
+      key={epoch}
       ref={webRef}
+      onLoadStart={() => { loading.current = true; }}
+      onLoadEnd={() => { loading.current = false; }}
+      onContentProcessDidTerminate={rebuild}
+      onRenderProcessGone={rebuild}
       style={style}
       source={source}
       // No automatic insets (safe area, keyboard): the preview sits between the

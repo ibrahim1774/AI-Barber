@@ -119,6 +119,7 @@ export default function Editor() {
   // The latest record, so slow work (a photo upload, a scrape) applies its
   // change on top of whatever was edited meanwhile, never on a stale copy.
   const siteRef = useRef<SiteRecord | null>(null);
+  const previewAliveCheck = useRef<(() => void) | null>(null);
   const [overlayState, setOverlay] = useState<Overlay | null>(null);
   const { session } = useSession();
   // A paid publish waiting to finish: Back (which discards the draft) is hidden meanwhile. Unknown counts as pending.
@@ -246,6 +247,8 @@ export default function Editor() {
   useFocusEffect(
     useCallback(() => {
       publishing.current = false;
+      // Back on the tab: if iOS ended the preview's process meanwhile, it is rebuilt from the saved site.
+      previewAliveCheck.current?.();
       // Back on a locked tab (from the paywall, Settings, the background): look again now.
       if (getSubscriptionStatus() === 'lapsed') recheckSubscriptionStatus(true);
       let alive = true;
@@ -732,7 +735,7 @@ export default function Editor() {
         <EditorBackBar visible={overlay == null && sheet == null && !uploading && canGoBackToStart(site, pendingPaid, !!session)} />
         {/* The site's own background, so nothing else shows around the page. */}
         <View style={[styles.preview, { backgroundColor: previewBackground(data) }]}>
-          <SitePreview data={shown} editable page={page} shopProducts={shopProducts} onEditText={onPreviewText} onEditImage={onPreviewImage} onNavigate={onPreviewNav} onAddService={onPreviewAddService} onService={onPreviewService} onHours={onPreviewHours} onAddButton={onPreviewAddButton} pillTourRef={changeImageRef} samplePaths={sampleHeroPaths(shown, page)} chipsHidden={sheet != null} />
+          <SitePreview data={shown} editable page={page} shopProducts={shopProducts} onEditText={onPreviewText} onEditImage={onPreviewImage} onNavigate={onPreviewNav} onAddService={onPreviewAddService} onService={onPreviewService} onHours={onPreviewHours} onAddButton={onPreviewAddButton} pillTourRef={changeImageRef} samplePaths={sampleHeroPaths(shown, page)} chipsHidden={sheet != null} aliveCheckRef={previewAliveCheck} />
           {/* The two floating controls, Design above Colour, hidden while the prompts / guide are up.
               Design is offered on a published site too: it only edits the draft (like Colour), and the
               change goes live on the next Publish. */}
