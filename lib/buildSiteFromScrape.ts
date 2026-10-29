@@ -90,7 +90,7 @@ export function deriveShopNameFromUrl(url: string): string {
     const sub = host.split('.')[0];
     const common = new Set([
       'www', 'booksy', 'app', 'book', 'thecut', 'fresha', 'vagaro', 'squareup',
-      'getsquire', 'square', 'styleseat', 'heygoldie', 'widget', 'my', 'm',
+      'getsquire', 'square', 'styleseat', 'heygoldie', 'widget', 'my', 'm', 'acuityscheduling',
     ]);
     if (sub && !common.has(sub.toLowerCase()) && /[a-z]/i.test(sub)) return titleCase(sub);
 

@@ -449,3 +449,61 @@ export async function findCandidatesViaPlaces(
     }));
   return candidates.length ? candidates : null;
 }
+
+// ── Cross-source enrichment lookup (lib/scrapers/enrich.ts) ─────────
+//
+// ONE Text Search request (no Details call, no photo/review fields, so no photo-media requests) that fills in
+// what a booking page lacked: phone, opening hours, rating, address. Up to 3 candidates come back so the caller
+// can refuse an ambiguous match. COST: one Places API (New) Text Search with the phone + opening-hours fields
+// (Enterprise-tier fields) per import, and only when the booking page was missing one of those. Returns null on
+// any failure / timeout / no results; never throws.
+export interface PlaceEnrichCandidate {
+  name: string;
+  address: string;
+  phone: string;
+  rating?: number;
+  ratingCount?: number;
+  hours: { day: string; hours: string; closed?: boolean }[];
+}
+
+const ENRICH_FIELDS = [
+  'places.id',
+  'places.displayName',
+  'places.formattedAddress',
+  'places.nationalPhoneNumber',
+  'places.regularOpeningHours.weekdayDescriptions',
+  'places.rating',
+  'places.userRatingCount',
+].join(',');
+
+export async function searchPlacesForEnrichment(query: string, key: string): Promise<PlaceEnrichCandidate[] | null> {
+  if (!key || !query.trim()) return null;
+  try {
+    const r = await placesFetch('/places:searchText', {
+      method: 'POST',
+      key,
+      fieldMask: ENRICH_FIELDS,
+      body: JSON.stringify({ textQuery: query, maxResultCount: 3 }),
+    });
+    if (!r.ok) {
+      console.warn('[Enrich Places] searchText failed', r.status);
+      return null;
+    }
+    const d: any = await r.json().catch(() => null);
+    const out = ((d?.places || []) as any[])
+      .filter((p) => p?.displayName?.text)
+      .slice(0, 3)
+      .map((p) => ({
+        name: String(p.displayName.text),
+        address: String(p.formattedAddress || ''),
+        phone: String(p.nationalPhoneNumber || ''),
+        rating: typeof p.rating === 'number' ? p.rating : undefined,
+        ratingCount: typeof p.userRatingCount === 'number' ? p.userRatingCount : undefined,
+        hours: hoursFromWeekdayDescriptions(p.regularOpeningHours?.weekdayDescriptions),
+      }));
+    return out.length ? out : null;
+  } catch (e: any) {
+    console.warn('[Enrich Places] request error:', e?.message || e);
+    return null;
+  }
+}

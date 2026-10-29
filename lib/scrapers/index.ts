@@ -10,6 +10,10 @@ import { vagaroAdapter } from './vagaro.js';
 import { theCutAdapter } from './thecut.js';
 import { goldieAdapter } from './goldie.js';
 import { setmoreAdapter } from './setmore.js';
+import { glossGeniusAdapter } from './glossgenius.js';
+import { squireAdapter } from './squire.js';
+import { acuityAdapter } from './acuity.js';
+import { enrichFromGoogle } from './enrich.js';
 
 const ADAPTERS: PlatformAdapter[] = [
   booksyAdapter,
@@ -20,26 +24,17 @@ const ADAPTERS: PlatformAdapter[] = [
   theCutAdapter,
   goldieAdapter,
   setmoreAdapter,
+  glossGeniusAdapter,
+  squireAdapter,
+  acuityAdapter,
 ];
 
 // Platforms we recognise but can't autofill from. These return a
 // specific message instead of trying-and-failing.
 const UNSUPPORTED: { host: RegExp; reason: string }[] = [
   {
-    host: /(^|\.)getsquire\.com$/i,
-    reason: "Squire keeps shop info inside their app, not on the public web. Use the regular generator and paste your Squire link as your booking link.",
-  },
-  {
-    host: /(^|\.)glossgenius\.com$/i,
-    reason: "GlossGenius doesn't expose enough info on their public pages for us to autofill. Use the regular generator and paste your link as your booking link.",
-  },
-  {
     host: /(^|\.)calendly\.com$/i,
     reason: "Calendly links are just a scheduling widget — there's no shop name, photos, or services to pull. Use the regular generator and paste your Calendly link as your booking link.",
-  },
-  {
-    host: /(^|\.)acuityscheduling\.com$/i,
-    reason: "Acuity links are just a scheduling widget — there's no shop info to pull. Use the regular generator and paste your Acuity link as your booking link.",
   },
 ];
 
@@ -71,11 +66,13 @@ export async function scrapeBookingUrl(rawUrl: string, opts: ScrapeOptions): Pro
   if (unsupportedReason) throw new ScrapeError(unsupportedReason);
   if (!adapter) {
     throw new ScrapeError(
-      "We don't recognise that booking site yet. Supported: Booksy, theCut, Fresha, StyleSeat, Square Appointments, Vagaro, Goldie, Setmore.",
+      "We don't recognise that booking site yet. Supported: Booksy, theCut, Fresha, StyleSeat, Square Appointments, Vagaro, Goldie, Setmore, Squire, GlossGenius, Acuity.",
     );
   }
 
-  const shop = await adapter.scrape(url, opts);
+  const scraped = await adapter.scrape(url, opts);
+  // Fill ONLY what the booking page lacked (hours, phone, address, rating) from the Google listing; never throws.
+  const shop = await enrichFromGoogle(scraped, opts.placeLookup ?? null);
   return { platform: adapter.id, shop };
 }
 

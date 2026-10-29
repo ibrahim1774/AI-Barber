@@ -26,6 +26,9 @@ export interface ScrapedShop {
     category?: string;
   }[];
   photos: string[];
+  // Fields filled from the business's Google listing because the booking page had none (lib/scrapers/enrich.ts).
+  // Absent when nothing was filled. Booking-page data is never overridden.
+  enriched?: Partial<Record<'hours' | 'phone' | 'address' | 'area' | 'aggregateRating', 'google'>>;
   // `rating` is absent when the star count could not be read (never defaulted).
   reviews: { author: string; rating?: number; comment: string; date?: string }[];
 }
@@ -34,6 +37,9 @@ export interface ScrapeOptions {
   apifyToken?: string;
   // Optional test event code for Apify Events Manager debug
   apifyTestEventCode?: string;
+  // Cross-source enrichment (lib/scrapers/enrich.ts): one Google Places lookup for fields the page lacked. Absent
+  // = no enrichment (tests, no key configured).
+  placeLookup?: import('./enrich.js').PlaceLookup | null;
 }
 
 export interface PlatformAdapter {

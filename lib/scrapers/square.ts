@@ -256,7 +256,7 @@ export const squareAdapter: PlatformAdapter = {
           "Couldn't read that Square booking link. Make sure it's the public booking URL the merchant uses (app.squareup.com/appointments/... or book.squareup.com/appointments/...) and that the booking page loads in an incognito browser without sign-in.",
         );
       }
-      const data = await runApifyWebScraper({ url, pageFunction: APIFY_PAGE_FUNCTION, token: opts.apifyToken, timeoutSec: 150 });
+      const data = await runApifyWebScraper({ url, pageFunction: APIFY_PAGE_FUNCTION, token: opts.apifyToken, timeoutSec: 150, label: 'square' });
       if (data?.shopName) {
         const addr: string = data.addr || '';
         const parts = addr.split(',').map((s: string) => s.trim()).filter(Boolean);
