@@ -318,15 +318,42 @@ function useSuperwallPaywall() {
   );
 }
 
+/**
+ * Waits before each retry of the post-upgrade plan read (fix48). A dropped connection right after paying used to leave
+ * the server's copy (owner writes such as walk-ins, the cached plan) on the old tier until Apple's notification or a
+ * relaunch. The tab itself never waited on it: Superwall's word unlocks it (entitlements.ts).
+ */
+export const UPGRADE_REFRESH_RETRY_MS = [3_000, 10_000, 30_000] as const;
+
+/**
+ * Worth asking again: offline / timeout (status 0) or a server error. A 4xx answer is final, 429 included: the per-user
+ * write limit (10/min) is shared with /api/shop/setup, which the setup wizard sends right after the upgrade, and a
+ * refused call still counts, so retrying inside the window would only starve the wizard.
+ */
+const retryable = (e: unknown): boolean => {
+  const status = (e as { status?: unknown } | null)?.status;
+  return typeof status !== 'number' || status === 0 || status >= 500;
+};
+
 /** After an upgrade purchase: link the shop to it (quietly), then have the server read the new plan. */
 function afterUpgrade(latestTransactionId: () => Promise<string | null>): void {
   void relinkShopPurchase({ latestTransactionId });
   (async () => {
     const epoch = getPlanEpoch();
-    const id = await latestTransactionId();
+    // StoreKit can take a moment to list the new transaction: look again before giving up.
+    const id = await findTransactionId(latestTransactionId);
     if (!id) return;
-    const plan = await refreshPlan(id);
-    if (epoch === getPlanEpoch()) setSharedPlan(plan);
+    for (let attempt = 0; ; attempt++) {
+      if (epoch !== getPlanEpoch()) return; // signed out or switched account meanwhile
+      try {
+        const plan = await refreshPlan(id);
+        if (epoch === getPlanEpoch()) setSharedPlan(plan);
+        return;
+      } catch (e) {
+        if (!retryable(e) || attempt >= UPGRADE_REFRESH_RETRY_MS.length) throw e;
+        await new Promise((r) => setTimeout(r, UPGRADE_REFRESH_RETRY_MS[attempt]));
+      }
+    }
   })().catch((e) => console.warn('[paywall] plan refresh failed:', e));
 }
 

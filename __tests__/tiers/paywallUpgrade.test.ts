@@ -136,6 +136,66 @@ describe('a purchased or restored dismiss is verified against the target entitle
   });
 });
 
+describe('fix48: the plan read after a paid upgrade survives a dropped connection', () => {
+  const paid = async () => {
+    ents('hosting');
+    sw.subscriptions = [SUB(PRODUCT_IDS[2])];
+    const run = open('bookings_upgrade');
+    ents('hosting', 'bookings');
+    await jest.advanceTimersByTimeAsync(600);
+    expect(run.current()).toBe('purchased');
+    await jest.advanceTimersByTimeAsync(0);
+  };
+  const fail = (status: number) => Object.assign(new Error('x'), { status });
+
+  it('offline, then a 503, then it lands: retried and the fresh plan is published', async () => {
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    mockRefreshPlan
+      .mockRejectedValueOnce(fail(0))
+      .mockRejectedValueOnce(fail(503))
+      .mockResolvedValueOnce({ tier: 'bookings' });
+    await paid();
+    expect(mockRefreshPlan).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(3_000);
+    expect(mockRefreshPlan).toHaveBeenCalledTimes(2);
+    await jest.advanceTimersByTimeAsync(10_000);
+    expect(mockRefreshPlan).toHaveBeenCalledTimes(3);
+    expect(mockSetShared).toHaveBeenCalledWith({ tier: 'bookings' });
+  });
+
+  it.each([409, 429])('a final 4xx answer (%i) is not retried (429: the write limit is shared with setup)', async (status) => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    mockRefreshPlan.mockRejectedValueOnce(fail(status));
+    await paid();
+    await jest.advanceTimersByTimeAsync(60_000);
+    expect(mockRefreshPlan).toHaveBeenCalledTimes(1);
+    expect(mockSetShared).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith('[paywall] plan refresh failed:', expect.anything());
+  });
+
+  it('gives up after three retries (Apple\'s notification and the next launch still bring the plan)', async () => {
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    mockRefreshPlan.mockRejectedValue(fail(0));
+    await paid();
+    await jest.advanceTimersByTimeAsync(120_000);
+    expect(mockRefreshPlan).toHaveBeenCalledTimes(4);
+    mockRefreshPlan.mockReset();
+    mockRefreshPlan.mockImplementation(async () => ({}));
+  });
+
+  it('the new transaction not listed yet: looked up again instead of skipping the refresh', async () => {
+    ents('hosting');
+    sw.subscriptions = [];
+    const run = open('bookings_upgrade');
+    ents('hosting', 'bookings');
+    await jest.advanceTimersByTimeAsync(600);
+    expect(run.current()).toBe('purchased');
+    sw.subscriptions = [SUB(PRODUCT_IDS[2])];
+    await jest.advanceTimersByTimeAsync(1_000);
+    expect(mockRefreshPlan).toHaveBeenCalledWith('tx-1');
+  });
+});
+
 describe('store_upgrade', () => {
   it('waits for the store entitlement, not bookings', async () => {
     ents('hosting', 'bookings');
