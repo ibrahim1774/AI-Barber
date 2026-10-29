@@ -16,16 +16,16 @@ const create = (el: any) => { let r: any; act(() => { r = rawCreate(el); }); ret
 const src = (p: string) => fs.readFileSync(path.join(__dirname, '..', p), 'utf8');
 
 describe('sample prices', () => {
-  test('constant map', () => expect(SAMPLE_PRICES).toEqual({ 'haircut': 30, 'beard trim': 20, 'haircut & beard': 45 }));
+  test('the three starter prices are unchanged', () => expect(SAMPLE_PRICES).toMatchObject({ 'haircut': 30, 'beard trim': 20, 'haircut & beard': 45 }));
   test('scratch start gets $30 / $20 / $45 as plain "$N" strings', () => {
     expect(withSamplePrices(servicesFromPicks(scratchPicks()))).toEqual([
       { title: 'Haircut', price: '$30' }, { title: 'Beard trim', price: '$20' }, { title: 'Haircut & beard', price: '$45' },
     ]);
   });
-  test('Google picks: unpriced standard names get one, typed prices and other names are untouched', () => {
+  test('Google picks: unpriced listed names get one, typed prices are untouched', () => {
     const picks = { 'Haircut': { on: true, price: '35' }, 'Beard trim': { on: true }, 'Skin fade': { on: true }, 'Haircut & beard': { on: true } };
     expect(withSamplePrices(servicesFromPicks(picks))).toEqual([
-      { title: 'Haircut', price: '$35' }, { title: 'Skin fade' }, { title: 'Beard trim', price: '$20' }, { title: 'Haircut & beard', price: '$45' },
+      { title: 'Haircut', price: '$35' }, { title: 'Skin fade', price: '$35' }, { title: 'Beard trim', price: '$20' }, { title: 'Haircut & beard', price: '$45' },
     ]);
   });
   test('name matching is normalized', () => {
@@ -102,7 +102,7 @@ describe('sample-price migration (any site, once)', () => {
     expect(r.inputs.samplePricesApplied).toBe(true);
   });
   test('non-standard names are untouched', () => {
-    const r: any = migrateSamplePrices(site([svc('Hot towel shave'), svc('Kids cut', '')]));
+    const r: any = migrateSamplePrices(site([svc('Hair color'), svc('Beard sculpt', '')]));
     expect(prices(r)).toEqual([undefined, '']);
   });
   test('once only: a price blanked later is not refilled; same object back', () => {

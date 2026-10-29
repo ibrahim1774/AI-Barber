@@ -22,6 +22,12 @@ export const CALL_OPTION = { label: 'Call my number', detail: 'Calls your phone 
 export const LINK_OPTION = { label: 'Booking link', detail: 'Opens your own booking page, like Booksy or Square, where clients book.' };
 export const BUILTIN_OPTION = { label: 'Built-in booking', detail: 'Opens your Prime Barber booking page with deposits and reminders.' };
 export const NEEDS_BOOKINGS_PLAN = 'Needs the Bookings plan';
+export const PLAN_INFO = {
+  title: 'Built-in booking needs the Bookings plan',
+  body: 'Built-in booking lets clients book, pick a barber and pay a deposit on your own page. It is part of the Bookings plan, a monthly subscription. You will see the price before you pay.',
+  primary: 'See the Bookings plan',
+  close: 'Close',
+};
 export const REMOVE_NOTE = 'Removes your Book button. Your phone number button stays while your site has a number.';
 
 /** What the sheet hands back on Save. `book.url`: a validated https link, null = clear it, undefined = leave it. */
@@ -83,6 +89,8 @@ export function ButtonSheet(p: ButtonSheetProps) {
   const [phone, setPhone] = useState(p.phone ?? '');
   const [address, setAddress] = useState(p.address ?? '');
   const [error, setError] = useState<string | null>(null);
+  // Built-in booking tapped without the Bookings plan: the explanation shows, the choice is not applied.
+  const [planInfo, setPlanInfo] = useState(false);
   useEffect(() => {
     if (!p.visible) return;
     setText(p.text);
@@ -92,6 +100,7 @@ export function ButtonSheet(p: ButtonSheetProps) {
     setPhone(p.phone ?? '');
     setAddress(p.address ?? '');
     setError(null);
+    setPlanInfo(false);
     // Reset only when the sheet opens or shows another button.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.visible, p.kind, p.title]);
@@ -230,10 +239,16 @@ export function ButtonSheet(p: ButtonSheetProps) {
               label={BUILTIN_OPTION.label}
               detail={planOk ? BUILTIN_OPTION.detail : NEEDS_BOOKINGS_PLAN}
               selected={choice === 'aibarber'}
-              disabled={!planOk}
-              onPress={() => { setChoice('aibarber'); setError(null); }}
+              onPress={() => { setError(null); if (planOk) { setPlanInfo(false); setChoice('aibarber'); } else setPlanInfo(true); }}
             />
-            {!planOk && p.onSeePlans && <SheetAction title="See plans" onPress={p.onSeePlans} />}
+            {!planOk && planInfo && (
+              <View accessibilityLiveRegion="polite">
+                <Text style={st.heading}>{PLAN_INFO.title}</Text>
+                <Text style={st.note}>{PLAN_INFO.body}</Text>
+                {p.onSeePlans && <SheetAction title={PLAN_INFO.primary} primary onPress={p.onSeePlans} />}
+                <SheetAction title={PLAN_INFO.close} onPress={() => setPlanInfo(false)} />
+              </View>
+            )}
             {choice === 'aibarber' && (
               <>
                 <Text style={st.heading}>Button text</Text>

@@ -53,7 +53,9 @@ export function toShopSite(
   });
   // Success marker: the lead fires only for a site generated from a booking
   // link or a Google listing.
-  return { inputs: { ...built.inputs, importedFrom: source }, site: built.scraped };
+  // Photos stay exactly what the page had (honest sites: no sample photos on an import; the editor offers Add photos).
+  const site = built.scraped;
+  return { inputs: { ...built.inputs, importedFrom: source }, site };
 }
 
 export interface ManualInput {

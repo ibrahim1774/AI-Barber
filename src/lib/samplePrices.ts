@@ -2,15 +2,36 @@ import type { WebsiteData } from '@/web/types';
 import type { Service } from '@/lib/shop';
 import { parsePriceCents, withMirroredServices } from '@/lib/setup/servicesMap';
 
-/** Typical US sample prices (whole dollars) shown on starter services. Plain editable prices, never a flag in the data. */
+/**
+ * Typical US example prices (whole dollars) filled on a service that has no price: the one list every start option
+ * and the once-per-site migration read. Plain editable values, never a flag in the data. Keys are the normalized
+ * service name (lower case, "&" for and/+, no apostrophes or hyphens; see `norm`); a name not listed here stays blank.
+ */
 export const SAMPLE_PRICES: Readonly<Record<string, number>> = {
   'haircut': 30,
   'beard trim': 20,
   'haircut & beard': 45,
+  'kids haircut': 25,
+  'kids cut': 25,
+  'boys haircut': 25,
+  'boys cut': 25,
+  'fade': 35,
+  'skin fade': 35,
+  'line up': 15,
+  'lineup': 15,
+  'edge up': 15,
+  'beard line up': 15,
+  'beard lineup': 15,
+  'shave': 25,
+  'hot towel shave': 30,
+  'haircut & shave': 50,
+  'eyebrows': 10,
+  'senior cut': 25,
+  'senior haircut': 25,
 };
 
-
-const norm = (name: string) => name.trim().toLowerCase().replace(/\s+/g, ' ').replace(/\s*(&|\+|\band\b)\s*/g, ' & ');
+const norm = (name: string) =>
+  name.trim().toLowerCase().replace(/['\u2019]/g, '').replace(/[-\u2013]/g, ' ').replace(/\s+/g, ' ').replace(/\s*(&|\+|\band\b)\s*/g, ' & ');
 
 /** The sample price in cents for a service name, or null when it has none. */
 export function samplePriceCents(name: string): number | null {

@@ -2,11 +2,12 @@
 import React from 'react';
 jest.mock('@/constants/theme', () => require('./store/themeMock'));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
-import { ButtonSheet, NEEDS_BOOKINGS_PLAN, CALL_OPTION, LINK_OPTION, type ButtonSheetProps } from '@/components/ButtonSheet';
+import { ButtonSheet, NEEDS_BOOKINGS_PLAN, PLAN_INFO, CALL_OPTION, LINK_OPTION, type ButtonSheetProps } from '@/components/ButtonSheet';
 import { bookingPrefs, linksToSend, resolveLinks, syncOwnLink, withChoice, type LinkContext } from '@/lib/bookingChoice';
 import { applyButtonChange } from '@/lib/buttonChange';
 import { buildPreviewHtml, needsAddButton, withAddButton } from '@/lib/editable';
 import { chooserLabelKey, ctaKindOf, routeTap } from '@/lib/ctaButtons';
+import { bookingsPlanRoute } from '@/lib/publishRequest';
 import { parsePreviewMessage } from '@/lib/previewBridge';
 import { generateContent } from '@/web/services/geminiService';
 import type { SiteRecord } from '@/lib/siteStore';
@@ -113,16 +114,57 @@ function mount(over: Partial<ButtonSheetProps> = {}) {
 }
 
 describe('the button chooser', () => {
-  test('three options each with one plain sentence; built-in is disabled with "Needs the Bookings plan" without the plan', () => {
+  test('three options each with one plain sentence; built-in says "Needs the Bookings plan" without the plan but is tappable', () => {
     const m = mount();
     const t = m.texts();
     expect(t).toContain(CALL_OPTION.detail);
     expect(t).toContain(LINK_OPTION.detail);
     expect(t).toContain(NEEDS_BOOKINGS_PLAN);
-    const builtin = m.byLabel('Built-in booking');
-    expect(builtin.props.accessibilityState.disabled).toBe(true);
-    act(() => { builtin.props.onPress?.(); });
-    expect(m.byLabel('Call my number').props.accessibilityState.selected).toBe(true);
+    expect(m.byLabel('Built-in booking').props.accessibilityState.disabled).toBe(false);
+  });
+
+  test('no plan: tapping Built-in booking explains the plan, does not apply the choice, and Save keeps the old one', () => {
+    const m = mount({ book: { ...base.book!, choice: 'own', own: OWN, hasPlan: false } });
+    expect(m.texts()).not.toContain(PLAN_INFO.title);
+    act(() => { m.byLabel('Built-in booking').props.onPress(); });
+    const t = m.texts();
+    expect(t).toContain(PLAN_INFO.title);
+    expect(t).toContain(PLAN_INFO.body);
+    expect(PLAN_INFO.title).toBe('Built-in booking needs the Bookings plan');
+    expect(PLAN_INFO.primary).toBe('See the Bookings plan');
+    expect(m.byLabel('Booking link').props.accessibilityState.selected).toBe(true);
+    expect(m.byLabel('Built-in booking').props.accessibilityState.selected).toBe(false);
+    m.press('Save');
+    expect(m.props.onSave).toHaveBeenCalledWith(expect.objectContaining({ book: { choice: 'own' } }));
+  });
+
+  test('the primary action opens the plan flow; Close only dismisses the explanation', () => {
+    const m = mount({ book: { ...base.book!, choice: 'own', own: OWN, hasPlan: false } });
+    act(() => { m.byLabel('Built-in booking').props.onPress(); });
+    m.press(PLAN_INFO.close);
+    expect(m.texts()).not.toContain(PLAN_INFO.title);
+    expect(m.props.onSeePlans).not.toHaveBeenCalled();
+    expect(m.props.onClose).not.toHaveBeenCalled();
+    act(() => { m.byLabel('Built-in booking').props.onPress(); });
+    m.press(PLAN_INFO.primary);
+    expect(m.props.onSeePlans).toHaveBeenCalledTimes(1);
+    expect(m.props.onSave).not.toHaveBeenCalled();
+  });
+
+  test('where "See the Bookings plan" goes: Publish for a site never published, the bookings paywall otherwise', () => {
+    expect(bookingsPlanRoute({ slug: null, deployedUrl: null }, { account: 'none' })).toBe('publish');
+    expect(bookingsPlanRoute({ slug: 's', deployedUrl: 'https://x' }, { account: 'mine' })).toBe('paywall');
+    expect(bookingsPlanRoute({ slug: null, deployedUrl: null }, { account: 'other' })).toBe('paywall');
+  });
+
+  test('the same from every entry point: a booking-link, Google and scratch site (the sheet only sees the plan)', () => {
+    for (const choice of ['own', 'aibarber', 'call'] as const) {
+      const m = mount({ book: { ...base.book!, choice, own: choice === 'own' ? OWN : null, hasPlan: false } });
+      act(() => { m.byLabel('Built-in booking').props.onPress(); });
+      expect(m.texts()).toContain(PLAN_INFO.title);
+      m.press(PLAN_INFO.primary);
+      expect(m.props.onSeePlans).toHaveBeenCalledTimes(1);
+    }
   });
 
   test('with the Bookings plan the built-in option is enabled and saves the choice', () => {

@@ -29,7 +29,7 @@ import { LogoError, pickAndUploadLogo, pickAndUploadPhoto } from '@/lib/photos';
 import { LOGO_ENABLED, withHeaderShow, withLogo, withLogoPreview, withoutLogo } from '@/lib/logo';
 import type { LogoVerdict } from '@/lib/logoContrast';
 import { HeaderSheet } from '@/components/HeaderSheet';
-import { peekPublishHint, takePublishRequest, type PlanHint } from '@/lib/publishRequest';
+import { bookingsPlanRoute, peekPublishHint, takePublishRequest, type PlanHint } from '@/lib/publishRequest';
 import { refreshReminders } from '@/lib/reminders';
 import { useRestoreFlow } from '@/lib/restoreFlow';
 import { loadPendingPublish, loadSite, saveSite, type SiteRecord } from '@/lib/siteStore';
@@ -928,7 +928,7 @@ export default function Editor() {
           onClose={() => setSheet(null)}
           onDismiss={onSheetDismiss}
           onOpenSetup={() => closeThen(() => router.push('/bookings-setup'))}
-          onSeePlans={() => closeThen(() => void upgrade.run())}
+          onSeePlans={() => closeThen(() => (bookingsPlanRoute(siteRef.current, ents) === 'publish' ? publishWith('bookings') : void upgrade.run()))}
         />
         <EditSheet
           visible={sheet === 'edit'}

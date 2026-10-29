@@ -9,6 +9,7 @@
 import type { WebsiteData, ShopInputs } from '../types';
 import { detectBooksyNiche } from './booksyNiche';
 import { platformLabel } from './render/honest';
+import { normalizeDuration, normalizeHours, normalizePrice } from './scrapeNormalize';
 
 const SERVICE_ICONS = ['scissors', 'razor', 'mustache', 'face', 'sparkles'] as const;
 
@@ -175,19 +176,23 @@ export function buildSiteFromScrape(data: ScrapeResponse, fallbackUrl: string, o
       imageUrl: data.photos?.[1] || data.photos?.[0] || '',
     },
     services: (data.services || []).slice(0, 12).map((s: any, i: number) => {
+      // Price and duration in one display form whatever the provider sent ("30", "$30.00", "30min", ISO): a price the
+      // page really had is never lost, and one it did not have stays '' (the app then fills its example price).
+      const duration = normalizeDuration(s.duration);
       return {
         title: s.title,
         // Duration (or category) only: the price has its own field and
         // shows once.
-        subtitle: s.duration || s.category || '',
+        subtitle: duration || s.category || '',
         // The booking page's own description, verbatim, or nothing. The
         // scraped price shows as the price.
         description: s.description || '',
         icon: SERVICE_ICONS[i % SERVICE_ICONS.length],
         imageUrl: '',
-        duration: s.duration || '',
+        duration,
         category: s.category || '',
-        price: s.price || '',
+        // A Google import's prices were typed by the barber: kept exactly as typed.
+        price: data._platform === 'gbp' ? (s.price || '') : normalizePrice(s.price),
       };
     }),
     gallery: [
@@ -209,7 +214,8 @@ export function buildSiteFromScrape(data: ScrapeResponse, fallbackUrl: string, o
     ...(data._platform ? { importedFrom: data._platform === 'gbp' ? 'gbp' as const : 'booking' as const } : {}),
     bio,
     aggregateRating: data.aggregateRating,
-    hours: data.hours || [],
+    // 24-hour HH:MM rows, the shape the Hours editor and the bookings wizard read; [] when the page had none.
+    hours: normalizeHours(data.hours),
     staff: (data.staff || []).slice(0, 12),
     contact: {
       address: data.address || area,

@@ -36,6 +36,15 @@ export function isUnpublished(site: { slug?: string | null; deployedUrl?: string
   return !!site && !site.slug && !site.deployedUrl;
 }
 
+/**
+ * Where "See the Bookings plan" goes (the button chooser's explanation, same rule as Settings' Plan row): a site that has never
+ * gone live picks the plan on the one Publish paywall ('publish', hint 'bookings'); a published one opens the existing
+ * bookings_upgrade paywall ('paywall').
+ */
+export function bookingsPlanRoute(site: { slug?: string | null; deployedUrl?: string | null } | null | undefined, ents: { account?: string }): 'publish' | 'paywall' {
+  return isUnpublished(site) && ents.account !== 'other' ? 'publish' : 'paywall';
+}
+
 const NEEDS: Record<Exclude<PlanHint, 'website'>, { id: EntitlementId; placement: 'bookings_upgrade' | 'store_upgrade' }> = {
   bookings: { id: 'bookings', placement: 'bookings_upgrade' },
   store: { id: 'store', placement: 'store_upgrade' },
