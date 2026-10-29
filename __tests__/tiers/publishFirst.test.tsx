@@ -144,7 +144,7 @@ describe('Settings Plan row', () => {
 
   it.each([['Upgrade to Bookings', 'bookings'], ['Upgrade to Store', 'store']] as const)(
     'unpublished: "%s" runs the publish path with the %s hint', async (label, hint) => {
-      ents('');
+      ents('hosting'); // a plan exists but the site isn't published yet (with no plan there is no Plan row at all)
       const tree = await render(<Settings />);
       await pressRow(tree, 'Plan');
       const [config, pick] = sheet.mock.calls[0];

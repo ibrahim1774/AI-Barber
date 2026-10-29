@@ -87,10 +87,23 @@ it("a second account on the same Apple ID: the Plan row shows the Website plan o
   expect(allText(tree)).not.toContain('Store');
 });
 
-it('the Plan row shows … and does nothing until entitlements are known', async () => {
+it('no Plan row (and no "…") until entitlements are known; Restore purchases and Manage subscription stay', async () => {
   setSharedPlan(null); // neither Superwall nor the server has answered
   const tree = await render(<Settings />);
-  expect(allText(tree)).toContain('…');
+  expect(allText(tree)).not.toContain('…');
   await expect(pressRow(tree, 'Plan')).rejects.toThrow();
+  expect(allText(tree)).toContain('Restore purchases');
+  expect(allText(tree)).toContain('Manage subscription');
+  expect(allText(tree)).not.toContain('Create account');
   expect(sheet).not.toHaveBeenCalled();
+});
+
+it('known but no plan (never subscribed): no Plan row, no "None", Restore purchases still there', async () => {
+  ents(); // entitlements known, none granted
+  const tree = await render(<Settings />);
+  await expect(pressRow(tree, 'Plan')).rejects.toThrow();
+  expect(allText(tree)).not.toContain('None');
+  expect(allText(tree)).toContain('Subscription');
+  expect(allText(tree)).toContain('Restore purchases');
+  expect(allText(tree)).toContain('Manage subscription');
 });
