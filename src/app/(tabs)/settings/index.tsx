@@ -116,7 +116,8 @@ export default function Settings() {
   const ents = useEntitlements();
   const paywall = usePaywall();
   const latestTransactionId = useLatestTransactionId();
-  const planDetail = ents.known ? planLabel(tierFromEntitlements(ents)) : '…';
+  // The Plan row only exists once the account has a plan; before that (signed out, never subscribed, still loading) there is nothing to show.
+  const planTier = ents.known ? tierFromEntitlements(ents) : null;
 
   // Upgrades open their paywall; downgrades and cancelling happen in Apple's Manage subscription.
   const openPlan = () => {
@@ -304,13 +305,12 @@ export default function Settings() {
               <Button variant="solid" title="Sign in" onPress={() => router.push('/sign-in')} />
               <Text style={styles.signInNote}>Use the email and password of your Prime Barber account.</Text>
             </View>
-            <Row label="Create account" onPress={() => router.push('/sign-up')} chevron />
           </>
         )}
       </Section>
 
       <Section title="Subscription">
-        <Row label="Plan" detail={planDetail} onPress={ents.known ? openPlan : undefined} chevron={ents.known} />
+        {planTier && <Row label="Plan" detail={planLabel(planTier)} onPress={openPlan} chevron />}
         <Row label="Restore purchases" onPress={() => void restore()} busy={restoring} />
         <Row label="Manage subscription" onPress={manageSubscription} external />
       </Section>

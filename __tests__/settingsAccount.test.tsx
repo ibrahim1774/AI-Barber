@@ -48,6 +48,10 @@ describe('Settings account section', () => {
     const tree = await render(<Settings />);
     expect(hasButton(tree, 'Sign in')).toBe(true);
     expect(allText(tree).join(' ')).toMatch(/email and password/i);
+    // Accounts are made at Publish, after paying: no "Create account" and no "Plan" row before that.
+    expect(allText(tree)).not.toContain('Create account');
+    expect(allText(tree)).not.toContain('Plan');
+    expect(allText(tree)).toContain('Restore purchases');
     await press(tree, 'Sign in');
     expect(mockPush).toHaveBeenCalledWith('/sign-in');
   });
