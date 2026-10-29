@@ -179,7 +179,7 @@ describe('the Google path, end to end', () => {
     expect(mockReplace).toHaveBeenCalledWith('/import-review');
     expect(mockReplace).not.toHaveBeenCalledWith('/generating');
     const saved = await store.loadSite();
-    expect(saved?.data.services.map((s) => [s.title, s.price])).toEqual([['Haircut', '$25'], ['Line up', '$15']]);
+    expect(saved?.data.services.map((s) => [s.title, s.price])).toEqual([['Haircut', '$25'], ['Line up', '']]);
     expect(saved?.data.reviewsSource).toBe('Google');
     expect(calls.filter((c) => c === '/api/import-business')).toHaveLength(1);
   });

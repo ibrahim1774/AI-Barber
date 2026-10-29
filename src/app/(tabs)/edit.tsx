@@ -68,7 +68,7 @@ import { useTour } from '@/components/tutorial/useTour';
 import { useTutorialTarget } from '@/components/tutorial/registry';
 import { editTourReady } from '@/components/tutorial/tours';
 import { useSession } from '@/lib/auth';
-import { PRICE_REMINDER, migrateSamplePrices, mirrorServices, needsPriceReminder } from '@/lib/samplePrices';
+import { migrateSamplePrices, mirrorServices } from '@/lib/samplePrices';
 import { PublishBar } from '@/components/PublishBar';
 import { PaymentBlock } from '@/components/PaymentLock';
 import { isBlocking, usePaymentLock, type BlockKind } from '@/lib/paymentLock';
@@ -181,16 +181,6 @@ export default function Editor() {
   // /publishing shows the paywall over the editor, then publishes.
   const publishWith = useCallback((planHint?: PlanHint) => {
     if (publishing.current) return; // double tap
-    // Example prices still on the site and never reviewed: one alert, one button that opens the Services sheet.
-    // Opening the sheet sets the flag, so the next Publish goes through.
-    const rec = siteRef.current;
-    if (rec && needsPriceReminder(rec)) {
-      Alert.alert(PRICE_REMINDER.title, PRICE_REMINDER.body, [{
-        text: PRICE_REMINDER.button,
-        onPress: () => { setServicesAdd(false); setServicesFocus(null); setSheet('services'); },
-      }], { cancelable: false });
-      return;
-    }
     publishing.current = true;
     // entitled: a subscriber's republish is not sent to AppsFlyer as a checkout.
     track('publish_tapped', { entitled: hasEntitlement() });

@@ -45,21 +45,6 @@ export function isSamplePrice(name: string, price: string): boolean {
   return s != null && parsePriceCents(price) === s;
 }
 
-/** True when any service still shows exactly its sample price. */
-export function hasSamplePrices(services: { title: string; price?: string }[] | undefined): boolean {
-  return !!services?.some((s) => isSamplePrice(s.title, s.price ?? ''));
-}
-
-/**
- * Publish shows the "Check your prices" alert: sample prices still on the site, services never reviewed. A booking-link
- * import is exempt (its prices are the real ones) unless the sample-price migration filled blanks on it (`samplePricesFilled`).
- */
-export function needsPriceReminder(rec: { data: { services?: { title: string; price?: string }[] }; inputs: { pricesReviewed?: boolean; importedFrom?: string; samplePricesFilled?: boolean } }): boolean {
-  return !rec.inputs.pricesReviewed && (rec.inputs.importedFrom !== 'booking' || !!rec.inputs.samplePricesFilled) && hasSamplePrices(rec.data.services);
-}
-
-export const PRICE_REMINDER = { title: 'Check your prices', body: 'Some services still show example prices. Make sure they match yours before customers see them.', button: 'Edit prices' };
-
 /** Fills the sample price on standard-named services that have none; anything already priced is untouched. */
 export function withSamplePrices<T extends { title: string; price?: string }>(list: T[] | undefined): T[] | undefined {
   return list?.map((s) => {
@@ -72,11 +57,13 @@ export function withSamplePrices<T extends { title: string; price?: string }>(li
  * Once per site (`inputs.samplePricesApplied`), whatever the start option (booking-link import, a site made before sample
  * prices existed): fills the sample price on standard-named services that have a blank price. Priced services (any text,
  * "0" and "Free" included) are kept. `samplePricesFilled` is set only when something was filled: it is what keeps the
- * Check-your-prices reminder on an import and keeps the sample prices out of the bookings shop (see buildSetupBody).
- * The same object when the site was already migrated.
+ * shop-setup guard and mirror keep-rule on an import and keeps the sample prices out of the bookings shop (see buildSetupBody).
+ * The same object when the site was already migrated or started from a Google listing (`importedFrom: 'gbp'`).
  */
-export function migrateSamplePrices<T extends { data: { services?: { title: string; price?: string }[] }; inputs: { samplePricesApplied?: boolean; samplePricesFilled?: boolean } }>(rec: T): T {
+export function migrateSamplePrices<T extends { data: { services?: { title: string; price?: string }[] }; inputs: { samplePricesApplied?: boolean; samplePricesFilled?: boolean; importedFrom?: string } }>(rec: T): T {
   if (rec.inputs.samplePricesApplied) return rec;
+  // A Google-listing site never gets sample prices (blank stays blank); a flag from an earlier build is left as is.
+  if (rec.inputs.importedFrom === 'gbp') return rec;
   const filled = withSamplePrices(rec.data.services);
   const changed = !!filled && filled.some((s, i) => s !== rec.data.services![i]);
   return {

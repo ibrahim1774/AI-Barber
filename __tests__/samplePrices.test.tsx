@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 jest.mock('@/constants/theme', () => require('./store/themeMock'));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
-import { SAMPLE_PRICES, migrateSamplePrices, mirrorServices, withSamplePrices, isSamplePrice, needsPriceReminder, hasSamplePrices } from '@/lib/samplePrices';
+import { SAMPLE_PRICES, migrateSamplePrices, mirrorServices, withSamplePrices, isSamplePrice } from '@/lib/samplePrices';
 import { scratchPicks } from '@/lib/scratchDefaults';
 import { servicesFromPicks } from '@/lib/serviceChecklist';
 import { ServicesEditorView } from '@/components/setup/ServicesEditor';
@@ -22,18 +22,19 @@ describe('sample prices', () => {
       { title: 'Haircut', price: '$30' }, { title: 'Beard trim', price: '$20' }, { title: 'Haircut & beard', price: '$45' },
     ]);
   });
-  test('Google picks: unpriced listed names get one, typed prices are untouched', () => {
+  test('Google picks: no sample prices, only what the barber typed is kept', () => {
     const picks = { 'Haircut': { on: true, price: '35' }, 'Beard trim': { on: true }, 'Skin fade': { on: true }, 'Haircut & beard': { on: true } };
-    expect(withSamplePrices(servicesFromPicks(picks))).toEqual([
-      { title: 'Haircut', price: '$35' }, { title: 'Skin fade', price: '$35' }, { title: 'Beard trim', price: '$20' }, { title: 'Haircut & beard', price: '$45' },
+    expect(servicesFromPicks(picks)).toEqual([
+      { title: 'Haircut', price: '$35' }, { title: 'Skin fade' }, { title: 'Beard trim' }, { title: 'Haircut & beard' },
     ]);
   });
   test('name matching is normalized', () => {
     expect(withSamplePrices([{ title: ' haircut  AND beard ' }])).toEqual([{ title: ' haircut  AND beard ', price: '$45' }]);
   });
-  test('wiring: scratch + Google use it, the booking-link import does not', () => {
+  test('wiring: scratch uses it; the Google start and the booking-link import do not', () => {
     expect(src('src/app/manual.tsx')).toContain('withSamplePrices(servicesFromPicks(scratchPicks()))');
-    expect(src('src/app/find-listing.tsx')).toContain('withSamplePrices(servicesFromPicks(picks))');
+    expect(src('src/app/find-listing.tsx')).not.toContain('withSamplePrices');
+    expect(src('src/app/find-listing.tsx')).toContain('listingSite(payload, servicesFromPicks(picks)');
     for (const f of fs.readdirSync(path.join(__dirname, '../src/app')).filter((x) => /booking-link|import/.test(x))) {
       expect(src(`src/app/${f}`)).not.toContain('withSamplePrices');
     }
@@ -56,24 +57,15 @@ describe('example line is gone', () => {
   });
 });
 
-describe('publish reminder', () => {
-  const rec = (o: any = {}) => ({ data: { services: [{ title: 'Haircut', price: '$30' }] }, inputs: {}, ...o });
-  test('needed for untouched samples', () => expect(needsPriceReminder(rec())).toBe(true));
-  test('not after review, not for booking-link imports, not when prices changed', () => {
-    expect(needsPriceReminder(rec({ inputs: { pricesReviewed: true } }))).toBe(false);
-    expect(needsPriceReminder(rec({ inputs: { importedFrom: 'booking' } }))).toBe(false); // real prices that happen to equal a sample
-    expect(needsPriceReminder(rec({ inputs: { importedFrom: 'booking', samplePricesFilled: true } }))).toBe(true);
-    expect(needsPriceReminder(rec({ data: { services: [{ title: 'Haircut', price: '$28' }] } }))).toBe(false);
-    expect(hasSamplePrices(undefined)).toBe(false);
-  });
-  test('Find-me-on-Google sites still get it', () => expect(needsPriceReminder(rec({ inputs: { importedFrom: 'gbp' } }))).toBe(true));
-  test('edit tab: alert before the paywall push, one button, opens Services; opening sets the flag', () => {
+describe('publish: no price reminder', () => {
+  test('the Check-your-prices alert is gone; Publish goes straight to the paywall', () => {
     const e = src('src/app/(tabs)/edit.tsx');
-    const i = e.indexOf('needsPriceReminder(rec)');
-    expect(i).toBeGreaterThan(0);
-    expect(i).toBeLessThan(e.indexOf("router.push('/publishing')"));
-    expect(e).toMatch(/Alert\.alert\(PRICE_REMINDER\.title, PRICE_REMINDER\.body, \[\{\s*text: PRICE_REMINDER\.button,[\s\S]*?setSheet\('services'\)[\s\S]*?\}\], \{ cancelable: false \}\)/);
-    expect(e).toMatch(/sheet === 'services' && siteRef\.current && !siteRef\.current\.inputs\.pricesReviewed[\s\S]*?pricesReviewed: true/);
+    expect(e).not.toContain('PRICE_REMINDER');
+    expect(e).not.toContain('needsPriceReminder');
+    expect(src('src/lib/samplePrices.ts')).not.toContain('needsPriceReminder');
+  });
+  test('opening Services still sets pricesReviewed (the shop-setup guard reads it)', () => {
+    expect(src('src/app/(tabs)/edit.tsx')).toMatch(/sheet === 'services' && siteRef\.current && !siteRef\.current\.inputs\.pricesReviewed[\s\S]*?pricesReviewed: true/);
   });
   test('flag syncs with the account prefs', () => {
     const a = src('src/lib/account.ts');
@@ -91,6 +83,15 @@ describe('sample-price migration (any site, once)', () => {
     const r: any = migrateSamplePrices(site([svc('Haircut'), svc('Beard Trim', ''), svc('Haircut and Beard', '  ')], { importedFrom: 'booking' }));
     expect(prices(r)).toEqual(['$30', '$20', '$45']);
     expect(r.inputs).toMatchObject({ samplePricesApplied: true, samplePricesFilled: true, importedFrom: 'booking' });
+  });
+  test('skips a Google-start site: blanks stay blank, no flag set, an earlier fill is kept', () => {
+    const g = site([svc('Haircut'), svc('Line up', '')], { importedFrom: 'gbp' });
+    expect(migrateSamplePrices(g)).toBe(g);
+    const old = site([svc('Haircut', '$30')], { importedFrom: 'gbp', samplePricesApplied: true, samplePricesFilled: true });
+    expect(migrateSamplePrices(old)).toBe(old);
+    expect(prices(old)).toEqual(['$30']);
+    expect(buildSetupBody(old as any, 'UTC').services[0].priceCents).toBe(3000); // not stripped from the shop
+    expect(buildSetupBody(site([svc('Haircut')], { importedFrom: 'gbp' }) as any, 'UTC').services[0].priceCents).toBeNull();
   });
   test('fills an old site made before build 40', () => {
     expect(prices(migrateSamplePrices(site([svc('Haircut', undefined)]) as any))).toEqual(['$30']);
@@ -110,13 +111,6 @@ describe('sample-price migration (any site, once)', () => {
     const blanked = { ...first, data: { ...first.data, services: [svc('Haircut', '')] } };
     expect(migrateSamplePrices(blanked)).toBe(blanked);
     expect(prices(migrateSamplePrices(blanked))).toEqual(['']);
-  });
-  test('reminder: shown for migrated import samples, not for an import with real prices', () => {
-    const mig: any = migrateSamplePrices(site([svc('Haircut')], { importedFrom: 'booking' }));
-    expect(needsPriceReminder(mig)).toBe(true);
-    expect(needsPriceReminder({ ...mig, inputs: { ...mig.inputs, pricesReviewed: true } })).toBe(false);
-    const real: any = migrateSamplePrices(site([svc('Haircut', '$30')], { importedFrom: 'booking' }));
-    expect(needsPriceReminder(real)).toBe(false);
   });
   test('shop setup body leaves migrated example prices out until reviewed; real ones and reviewed sites go through', () => {
     const mig: any = migrateSamplePrices(site([svc('Haircut'), svc('Beard trim', '$22')], { importedFrom: 'booking' }));
