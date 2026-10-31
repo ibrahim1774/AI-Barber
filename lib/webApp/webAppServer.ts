@@ -48,3 +48,17 @@ export const webAppCheckoutOn = () => process.env.WEB_APP_CHECKOUT === '1';
 /** Gate for every web-entitlement code path (publish, lapse job, webhook slug handling). Off = old behaviour. */
 export const webAppEntitlementsOn = () => process.env.WEB_APP_ENTITLEMENTS === '1';
 export const APP_ORIGIN = () => process.env.WEB_APP_ORIGIN || 'https://www.aibarber.org';
+
+/** CORS for the web-app endpoints: only our own app origins (staging serves the app from another host). True when the request was a preflight and is already answered. */
+export function webAppCors(req: any, res: any): boolean {
+  const origin = String(req.headers?.origin ?? '');
+  const allowed = new Set([APP_ORIGIN(), 'https://www.aibarber.org', 'https://aibarber.org', 'https://prime-barber-app.vercel.app']);
+  if (allowed.has(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+  }
+  if (req.method === 'OPTIONS') { res.status(204).end(); return true; }
+  return false;
+}

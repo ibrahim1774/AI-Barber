@@ -1,9 +1,10 @@
 // GET + Bearer <supabase jwt> -> the caller's web-app subscription: { entitled, tier, interval, status, subscriptionId }.
 // Read-only; the answer comes from web_app_entitlements for this deployment's Stripe mode.
 import { isEntitledStatus, keyMode } from '../../lib/webApp/stripeCore.js';
-import { callerFrom, sbRest, webAppCheckoutOn } from '../../lib/webApp/webAppServer.js';
+import { callerFrom, sbRest, webAppCheckoutOn, webAppCors } from '../../lib/webApp/webAppServer.js';
 
 export default async function handler(req: any, res: any) {
+  if (webAppCors(req, res)) return;
   if (!webAppCheckoutOn()) return res.status(404).json({ error: 'not_found' });
   if (req.method !== 'GET') return res.status(405).json({ error: 'method_not_allowed' });
   const mode = keyMode(process.env.STRIPE_WEBAPP_SECRET_KEY);
