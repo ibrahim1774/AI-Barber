@@ -7,6 +7,7 @@ import { depositCents, refundOnCancel } from './money.js';
 import { refundKey, type Notify, type Payments } from './deps.js';
 import { REFUND_5XX_EVENT, alreadyRefundedBeforeRetry, isStripe5xx, withRefundAttempt } from './payments.js';
 import { entitlementActive } from '../ios/lapse.js';
+import { gateRow } from '../webApp/entitlementGate.js';
 import {
   MANUAL_METHODS,
   type AppointmentRow,
@@ -172,8 +173,7 @@ export async function bookingsFollowUpOpen(repo: BookingRepo, shop: ShopRow): Pr
   // e2e P2: not bookings_enabled. A customer who already booked (and may already have paid)
   // can still say "I've sent it" after the owner switches the page off, the same rule as a
   // downgrade; only a full lapse (revoked, taken down, past expiry) refuses it.
-  if (!shop.ios_otid) return false;
-  return entitlementActive(await repo.purchase(shop.ios_otid), 'hosting');
+  return entitlementActive(await gateRow(repo, shop), 'hosting');
 }
 
 async function bookingsGate(repo: BookingRepo, shop: ShopRow, ent: 'bookings' | 'hosting'): Promise<boolean> {
@@ -182,9 +182,8 @@ async function bookingsGate(repo: BookingRepo, shop: ShopRow, ent: 'bookings' | 
     console.error(`[bookings] shop ${shop.id} has an invalid timezone '${shop.timezone}'; treating as paused`);
     return false;
   }
-  if (!shop.ios_otid) return false;
   // Phase 4: and the plan includes `ent` (bookings: the Bookings or Store tier).
-  return entitlementActive(await repo.purchase(shop.ios_otid), ent);
+  return entitlementActive(await gateRow(repo, shop), ent);
 }
 
 /**
@@ -193,9 +192,8 @@ async function bookingsGate(repo: BookingRepo, shop: ShopRow, ent: 'bookings' | 
  * bookings_enabled (an owner may fill the calendar before opening the page). Cancel and mark
  * are never gated, so existing bookings can always be finished or refunded.
  */
-export async function ownerBookingsAllowed(repo: Pick<BookingRepo, 'purchase'>, shop: Pick<ShopRow, 'ios_otid'>): Promise<boolean> {
-  if (!shop.ios_otid) return false;
-  return entitlementActive(await repo.purchase(shop.ios_otid), 'bookings');
+export async function ownerBookingsAllowed(repo: Pick<BookingRepo, 'purchase' | 'webEntitlementOf'>, shop: Pick<ShopRow, 'ios_otid' | 'owner_id'>): Promise<boolean> {
+  return entitlementActive(await gateRow(repo, shop), 'bookings');
 }
 
 // ---------------------------------------------------------------------------

@@ -4,6 +4,7 @@ import type { GetUser } from '../bookings/auth.js';
 import { isObj, isUuid, iso, text, type FlowResult } from '../bookings/core.js';
 import { MANUAL_METHODS } from '../bookings/repo.js';
 import { entitlementActive } from '../ios/lapse.js';
+import { gateRow } from '../webApp/entitlementGate.js';
 import { orderRefundKey, type CheckoutCloseResult, type NotifyOrder, type StorePayments } from './deps.js';
 import { REFUND_5XX_EVENT, alreadyRefundedBeforeRetry, isStripe5xx, withRefundAttempt } from '../bookings/payments.js';
 import type { OrderGuard, StoreRepo } from './repo.js';
@@ -43,7 +44,7 @@ export const MAX_PHOTOS = 5;
 // ---------------------------------------------------------------------------
 // Store gate (Phase 3: store_enabled + a live iOS purchase; Phase 4: on the Store tier)
 // ---------------------------------------------------------------------------
-export async function storeOpen(repo: Pick<StoreRepo, 'purchase'>, shop: ShopStoreRow): Promise<boolean> {
+export async function storeOpen(repo: Pick<StoreRepo, 'purchase' | 'webEntitlementOf'>, shop: ShopStoreRow): Promise<boolean> {
   // Live, and the plan includes the store. Owner order actions are never gated.
   return storeGate(repo, shop, 'store');
 }
@@ -53,17 +54,15 @@ export async function storeOpen(repo: Pick<StoreRepo, 'purchase'>, shop: ShopSto
  * survives a downgrade, so a customer who already paid is never stuck; only a full lapse
  * (revoked, taken down, or an unswept purchase past expiry) refuses it.
  */
-export async function storeFollowUpOpen(repo: Pick<StoreRepo, 'purchase'>, shop: ShopStoreRow): Promise<boolean> {
+export async function storeFollowUpOpen(repo: Pick<StoreRepo, 'purchase' | 'webEntitlementOf'>, shop: ShopStoreRow): Promise<boolean> {
   // e2e P2: not store_enabled either (the owner switching the store off is the same as a
   // downgrade for an order that already exists).
-  if (!shop.ios_otid) return false;
-  return entitlementActive(await repo.purchase(shop.ios_otid), 'hosting');
+  return entitlementActive(await gateRow(repo, shop), 'hosting');
 }
 
-async function storeGate(repo: Pick<StoreRepo, 'purchase'>, shop: ShopStoreRow, ent: 'store' | 'hosting'): Promise<boolean> {
+async function storeGate(repo: Pick<StoreRepo, 'purchase' | 'webEntitlementOf'>, shop: ShopStoreRow, ent: 'store' | 'hosting'): Promise<boolean> {
   if (!shop.store_enabled) return false;
-  if (!shop.ios_otid) return false;
-  return entitlementActive(await repo.purchase(shop.ios_otid), ent);
+  return entitlementActive(await gateRow(repo, shop), ent);
 }
 
 /** One predicate for the page (GET /shop) and the server (POST /orders). */

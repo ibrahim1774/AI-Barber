@@ -1,8 +1,8 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as ptr from 'path-to-regexp-updated';
 import {
   AIBARBER_ORIGIN, SITE_CONFIG_FILE, siteVercelConfig, subpageRewrites, siteConfigFile, withSubpageLinks, hasAiBarberSiteLinks,
-  pickPublicBase, siteLookOf, refreshSiteBase, isShopSlug, SUBPAGE_ASSET_FILE,
+  pickPublicBase, siteLookOf, refreshSiteBase, isShopSlug, SUBPAGE_ASSET_FILE, findShopForSiteWith,
 } from '../lib/siteSubpages';
 
 // Vercel's own matcher: path-to-regexp 6 (the "-updated" alias Vercel bundles) with the options of
@@ -306,5 +306,53 @@ describe('withSubpageLinks bookings guard', () => {
   });
   it('leaves shopUrl alone', () => {
     expect(withSubpageLinks({ bookingUrl: '/book', shopUrl: '/shop' }, true, { bookingsOn: false }).shopUrl).toBe('/shop');
+  });
+});
+
+describe('findShopForSiteWith', () => {
+  const fake = (tables: Record<string, any[]>) => {
+    const asked: string[] = [];
+    const client = {
+      from(t: string) {
+        asked.push(t);
+        const f: [string, unknown][] = [];
+        const q: any = {
+          select: () => q,
+          eq: (c: string, v: unknown) => { f.push([c, v]); return q; },
+          maybeSingle: async () => ({ data: (tables[t] ?? []).find((r) => f.every(([c, v]) => r[c] === v)) ?? null, error: null }),
+        };
+        return q;
+      },
+    } as any;
+    return { client, asked };
+  };
+  const tables = () => ({
+    ios_purchases: [{ site_slug: 'ios-site', original_transaction_id: 'o1' }],
+    ab_shops: [
+      { id: 'sh1', slug: 'ios-shop', ios_otid: 'o1', owner_id: 'uI', bookings_enabled: true },
+      { id: 'sh2', slug: 'web-shop', ios_otid: null, owner_id: 'uW', bookings_enabled: false },
+    ],
+    web_app_sites: [{ slug: 'web-site', user_id: 'uW' }],
+  });
+  afterEach(() => { vi.unstubAllEnvs(); });
+
+  it('iOS branch first and unchanged, flag or not', async () => {
+    vi.stubEnv('WEB_APP_ENTITLEMENTS', '1');
+    const { client, asked } = fake(tables());
+    expect(await findShopForSiteWith(client, 'ios-site')).toEqual({ id: 'sh1', slug: 'ios-shop', bookingsEnabled: true });
+    expect(asked).not.toContain('web_app_sites');
+  });
+  it('flag off: a web site finds nothing and web_app_sites is not read', async () => {
+    const { client, asked } = fake(tables());
+    expect(await findShopForSiteWith(client, 'web-site')).toBeNull();
+    expect(asked).not.toContain('web_app_sites');
+  });
+  it('flag on: web site slug -> owner shop; unknown slug and no shop -> null', async () => {
+    vi.stubEnv('WEB_APP_ENTITLEMENTS', '1');
+    const t = tables();
+    expect(await findShopForSiteWith(fake(t).client, 'web-site')).toEqual({ id: 'sh2', slug: 'web-shop', bookingsEnabled: false });
+    expect(await findShopForSiteWith(fake(t).client, 'nope')).toBeNull();
+    t.ab_shops = [];
+    expect(await findShopForSiteWith(fake(t).client, 'web-site')).toBeNull();
   });
 });
