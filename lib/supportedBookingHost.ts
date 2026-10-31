@@ -16,6 +16,10 @@ const SUPPORTED_HOST_PATTERNS: RegExp[] = [
   /(^|\.)vagaro\.com$/i,
   /(^|\.)heygoldie\.com$/i,
   /(^|\.)setmore\.com$/i,
+  /(^|\.)getsquire\.com$/i,
+  /(^|\.)glossgenius\.com$/i,
+  /(^|\.)acuityscheduling\.com$/i,
+  /(^|\.)as\.me$/i,
 ];
 
 export function isSupportedBookingHost(url: string | null | undefined): boolean {
@@ -47,7 +51,8 @@ export function extractFirstUrl(text: string | null | undefined): string | null 
   const explicit = trimmed.match(/https?:\/\/[^\s<>"'\]]+/i);
   if (explicit) return explicit[0];
 
-  const knownBare = trimmed.match(/(?:[\w-]+\.)+(?:booksy|fresha|styleseat|squareup|square|vagaro|thecut|heygoldie|setmore)\.(?:com|site|co)(?:\/[^\s<>"'\]]*)?/i);
+  const knownBare = trimmed.match(/(?:[\w-]+\.)+(?:booksy|fresha|styleseat|squareup|square|vagaro|thecut|heygoldie|setmore|getsquire|glossgenius|acuityscheduling)\.(?:com|site|co)(?:\/[^\s<>"'\]]*)?/i)
+    || trimmed.match(/(?:[\w-]+\.)+as\.me(?:\/[^\s<>"'\]]*)?/i);
   if (knownBare) return `https://${knownBare[0]}`;
 
   const genericBare = trimmed.match(/(?:[\w-]+\.)+[a-z]{2,}(?:\/[^\s<>"'\]]*)?/i);

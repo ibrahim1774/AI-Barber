@@ -1,11 +1,16 @@
 import { Storage } from '@google-cloud/storage';
 import { imageFilename, imageFolder } from '../lib/uploadTarget.js';
+import { LOGO_FILE, isLogoContentType, logoFolderFor } from '../lib/logoUrl.js';
 
 // Signed PUT URLs for image uploads (the iOS app): POST { siteId: folder, filenames } -> { urls }.
 // Unauthenticated, and the bucket also holds the server's own JSON, so the folder and names are
 // restricted to image paths (lib/uploadTarget.ts), and a name that already exists is refused
 // (409): a signed URL must never overwrite a live site's image. The shipped app does not send
 // an x-goog-if-generation-match header, so the URL itself cannot carry that precondition.
+//
+// Body: { siteId, filenames, contentType?, kind? }. contentType is image/jpeg (the default, so shipped apps keep
+// working) or image/png. kind: 'logo' writes under `<siteId>/logo/` instead and takes only .png/.jpg/.jpeg names whose
+// extension matches the contentType (lib/logoUrl.ts): the logo folder is the only place a saved site may point a logo at.
 const MAX_FILES = 20;
 
 // Initialize with your existing environment variables
@@ -31,13 +36,26 @@ export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).end();
 
   try {
-    const { siteId, filenames } = req.body || {};
-    const folder = imageFolder(siteId);
+    const { siteId, filenames, contentType: rawType, kind } = req.body || {};
+    const contentType = rawType === undefined || rawType === null ? 'image/jpeg' : rawType;
+    if (!isLogoContentType(contentType)) {
+      return res.status(400).json({ error: 'Unsupported contentType' });
+    }
+    if (kind !== undefined && kind !== null && kind !== 'logo') {
+      return res.status(400).json({ error: 'Unsupported kind' });
+    }
+    const isLogo = kind === 'logo';
+    const folder = isLogo ? logoFolderFor(siteId) : imageFolder(siteId);
     if (!folder || !Array.isArray(filenames) || filenames.length === 0 || filenames.length > MAX_FILES) {
       return res.status(400).json({ error: 'Invalid siteId or filenames' });
     }
     const names = filenames.map(imageFilename);
     if (names.some((n) => !n)) {
+      return res.status(400).json({ error: 'Invalid siteId or filenames' });
+    }
+    // A logo file is a png or jpeg named for what it is (the signed PUT only accepts that content type).
+    const wantExt = contentType === 'image/png' ? /\.png$/i : /\.jpe?g$/i;
+    if (isLogo && names.some((n) => !LOGO_FILE.test(n as string) || !wantExt.test(n as string))) {
       return res.status(400).json({ error: 'Invalid siteId or filenames' });
     }
 
@@ -80,7 +98,7 @@ export default async function handler(req: any, res: any) {
         version: 'v4',
         action: 'write',
         expires: Date.now() + 15 * 60 * 1000, // Valid for 15 minutes
-        contentType: 'image/jpeg', // Matches the AI output format
+        contentType, // image/jpeg unless the client asked for image/png
       });
 
       // Construct public URL

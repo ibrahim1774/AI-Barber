@@ -111,17 +111,18 @@ export interface AdminSitesDeps {
 
 // ─── shared helpers ───
 
-export type SiteStatus = 'live' | 'revoked' | 'taken-down' | 'unpublished' | 'expired';
+export type SiteStatus = 'live' | 'revoked' | 'removed' | 'taken-down' | 'unpublished' | 'expired';
 
 function statusOf(row: PurchaseRow, now: number): SiteStatus {
   if (row.revoked_at) return 'revoked';
+  if (row.removed_at) return 'removed';
   if (row.taken_down_at) return 'taken-down';
   if (!row.published_at) return 'unpublished';
   if (row.expires_at && Date.parse(row.expires_at) <= now) return 'expired';
   return 'live';
 }
 
-export type OfflineReason = 'revoked' | 'taken-down' | 'expired';
+export type OfflineReason = 'revoked' | 'removed' | 'taken-down' | 'expired';
 
 /**
  * Never deploy content for these: the live site is the offline page, the purchase was
@@ -130,6 +131,8 @@ export type OfflineReason = 'revoked' | 'taken-down' | 'expired';
  */
 function offlineReason(row: PurchaseRow, deps: Pick<AdminSitesDeps, 'takedownSandbox' | 'now'>): OfflineReason | null {
   if (row.revoked_at) return 'revoked';
+  // The owner removed the site (Delete account / Take my website offline): never redeployed by an admin or the sweep.
+  if (row.removed_at) return 'removed';
   if (row.taken_down_at && !(row.environment === 'Sandbox' && deps.takedownSandbox !== true)) return 'taken-down';
   if (row.expires_at && Date.parse(row.expires_at) <= deps.now()) return 'expired';
   return null;

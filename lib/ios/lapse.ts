@@ -4,8 +4,9 @@
 // 4 billing grace count as active). These rules only decide which rows are
 // worth asking about, so the sweep doesn't call Apple for every row.
 //
-// Rows only ever move forward: expires_at never moves backwards (see
-// purchases.ts), so a renewal or resubscribe makes a row active again by itself.
+// expires_at only moves forward for the same product (see purchases.ts), so a renewal or
+// resubscribe makes a row active again by itself; only a newer transaction for a DIFFERENT
+// product (an upgrade to a shorter period) may move it back.
 import type { PurchaseRow } from './purchases.js';
 import { grants, tierOf, type Entitlement } from './tiers.js';
 

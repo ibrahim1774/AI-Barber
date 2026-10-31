@@ -326,6 +326,7 @@ describe('handleConnectEvent', () => {
   /** A stateful single-row model of ab_appointments with the live deps' conditional semantics. */
   function mkDeps(initial: WebhookAppointment | null = base, over: Partial<WebhookDeps> = {}) {
     const seen = new Set<string>();
+    const claims = new Set<string>();
     const state = { row: initial ? { ...initial } : null as WebhookAppointment | null };
     const deps: WebhookDeps & { state: typeof state } = {
       state,
@@ -360,6 +361,8 @@ describe('handleConnectEvent', () => {
       disconnectAccount: vi.fn(async () => true),
       refund: vi.fn(async (_s, _a, amt: number) => ({ refundedCents: amt })),
       notify: vi.fn(async () => {}),
+      claimOnce: vi.fn(async (k: string) => { if (claims.has(k)) return false; claims.add(k); return true; }),
+      releaseClaim: vi.fn(async (k: string) => { claims.delete(k); }),
       now: () => Date.UTC(2026, 9, 21, 12),
       ...over,
     };
@@ -394,6 +397,43 @@ describe('handleConnectEvent', () => {
     await expect(handleConnectEvent(completed(), deps)).rejects.toThrow('killed');
     expect(deps.notify).not.toHaveBeenCalled();
     expect(await handleConnectEvent(completed(), deps)).toBe('noop:already-recorded');
+    expect(deps.notify).toHaveBeenCalledTimes(1);
+  });
+
+  it('two concurrent deliveries of one completed event notify once (R-11)', async () => {
+    const deps = mkDeps(base, { recordEvent: vi.fn(async () => { await new Promise((r) => setTimeout(r, 5)); }) });
+    deps.eventProcessed = vi.fn(async () => false);
+    const [a, b] = await Promise.all([handleConnectEvent(completed(), deps), handleConnectEvent(completed(), deps)]);
+    expect([a, b].sort()).toEqual(['noop:already-recorded', 'paid:paid']);
+    expect(deps.notify).toHaveBeenCalledTimes(1);
+    expect(deps.notify).toHaveBeenCalledWith({ kind: 'booking_created', appointmentId: 'appt-1' });
+  });
+
+  it('a replay of an already-processed event notifies nobody', async () => {
+    const deps = mkDeps();
+    await handleConnectEvent(completed(), deps);
+    expect(await handleConnectEvent(completed(), deps)).toBe('duplicate');
+    expect(deps.notify).toHaveBeenCalledTimes(1);
+  });
+
+  it('a send that fails releases the claim, so the retry still sends exactly one', async () => {
+    const notify = vi.fn().mockRejectedValueOnce(new Error('smtp')).mockResolvedValue(undefined);
+    const deps = mkDeps(base, { notify, recordEvent: vi.fn().mockRejectedValueOnce(new Error('killed')).mockResolvedValue(undefined) });
+    // first delivery: work done, record fails -> no notify yet; second: send throws; third: sends.
+    await expect(handleConnectEvent(completed(), deps)).rejects.toThrow('killed');
+    expect(await handleConnectEvent(completed(), deps)).toBe('noop:already-recorded');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(deps.releaseClaim).toHaveBeenCalledWith('booking_created:appt-1');
+    deps.eventProcessed = vi.fn(async () => false);
+    expect(await handleConnectEvent(completed(), deps)).toBe('noop:already-recorded');
+    expect(notify).toHaveBeenCalledTimes(2);
+    expect(await handleConnectEvent(completed(), deps)).toBe('noop:already-recorded');
+    expect(notify).toHaveBeenCalledTimes(2);
+  });
+
+  it('a claim store error still sends the confirmation', async () => {
+    const deps = mkDeps(base, { claimOnce: vi.fn(async () => { throw new Error('db'); }) });
+    expect(await handleConnectEvent(completed(), deps)).toBe('paid:paid');
     expect(deps.notify).toHaveBeenCalledTimes(1);
   });
 

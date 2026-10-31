@@ -91,13 +91,15 @@ function fakes(o: FakeOpts = {}) {
     }),
     slugTaken: vi.fn(async () => false),
     markPublished: vi.fn(async (otid: string) => { rows.get(otid)!.published_at = new Date(NOW).toISOString(); }),
-    setUser: vi.fn(async (otid: string, userId: string) => { rows.get(otid)!.user_id = userId; }),
+    setUserIfUnlinked: vi.fn(async (otid: string, userId: string) => { const r = rows.get(otid); if (!r || r.user_id) return false; r.user_id = userId; return true; }),
     applyNotification: vi.fn(async () => {}),
     unpublishedBound: vi.fn(async () => []),
     takedownCandidates: vi.fn(async () => []),
     restoreCandidates: vi.fn(async () => []),
     markTakenDown: vi.fn(async (otid: string, at: number) => { rows.get(otid)!.taken_down_at = new Date(at).toISOString(); }),
     clearTakenDown: vi.fn(async (otid: string) => { rows.get(otid)!.taken_down_at = null; }),
+    markRemoved: vi.fn(async (otid: string, at: number) => { const r = rows.get(otid)!; if (!r.removed_at) r.removed_at = new Date(at).toISOString(); }),
+    clearRemoved: vi.fn(async (otid: string, at: string) => { const r = rows.get(otid)!; if (r.removed_at === at) r.removed_at = null; }),
     markLapseChecked: vi.fn(async () => {}),
     findBySlug: vi.fn(async (slug: string) => [...rows.values()].find((r) => r.site_slug === slug) ?? null),
   };
@@ -114,6 +116,7 @@ function fakes(o: FakeOpts = {}) {
     publish: vi.fn(async (slug: string) =>
       o.outcome ? o.outcome(slug) : { ok: true, siteId: slug, deployedUrl: `https://${slug}.vercel.app`, alreadyLive: false }),
     readPending: vi.fn(async (slug: string) => pending.get(slug) ?? null),
+    userOf: vi.fn(async (t: string) => (t === 'tok-user' ? { id: USER } : null)),
     now: () => NOW,
   };
   return { deps, repo, rows, pending };
@@ -129,7 +132,7 @@ describe('runIosPublish', () => {
     expect(deps.verify).toHaveBeenCalledWith('t-123');
     expect(repo.bindSlug).toHaveBeenCalledWith(OTID, 'fresh-cuts');
     expect(deps.publish).toHaveBeenCalledWith('fresh-cuts', { force: false });
-    expect(repo.markPublished).toHaveBeenCalledWith(OTID);
+    expect(repo.markPublished).toHaveBeenCalledWith(OTID, undefined);
     expect(rows.get(OTID)!.site_slug).toBe('fresh-cuts');
     const p = pending.get('fresh-cuts')!;
     expect(p.siteId).toBe('fresh-cuts');
@@ -345,7 +348,6 @@ describe('runIosPublish', () => {
     const f = withAuth(fakes());
     const r = await runIosPublish(input({ userId: USER }), f.deps);
     expect(r.status).toBe(200);
-    expect(f.repo.setUser).not.toHaveBeenCalled();
     expect(f.repo.setUserIfUnlinked).not.toHaveBeenCalled();
     expect(f.rows.get(OTID)!.user_id).toBeNull();
   });
@@ -357,24 +359,71 @@ describe('runIosPublish', () => {
     expect(f.rows.get(OTID)!.user_id).toBe(USER);
   });
 
-  it('a verified bearer of another account never re-points a linked purchase', async () => {
-    const f = withAuth(fakes({ existing: row({ user_id: USER }) }));
-    const r = await runIosPublish(input(), f.deps, { authorization: 'Bearer tok-other' });
+  it('after a signup on an unlinked purchase whose old account was deleted (slug kept, site taken down, no shop/site rows): the new account is linked and the site is republished on the same slug', async () => {
+    const f = withAuth(fakes({ existing: row({ site_slug: 'fade-lab', published_at: '2026-10-01T00:00:00Z', taken_down_at: '2026-10-20T00:00:00Z', removed_at: '2026-10-20T00:00:00Z' }) }));
+    (f.deps as any).bindingOwner = vi.fn(async () => null); // ab_shops / sites rows went with the deleted account
+    const r = await runIosPublish(input(), f.deps, { authorization: 'Bearer tok-user' });
     expect(r.status).toBe(200);
+    expect((r.body as any).siteId).toBe('fade-lab');
     expect(f.rows.get(OTID)!.user_id).toBe(USER);
-    expect(f.repo.setUser).not.toHaveBeenCalled();
+    expect(f.rows.get(OTID)!.removed_at).toBeNull();
+    expect(f.rows.get(OTID)!.taken_down_at).toBeNull();
+    expect(f.repo.bindSlug).not.toHaveBeenCalled();
   });
 
-  it('an invalid token, or a failing auth lookup or link, never blocks publishing', async () => {
+  it('an unlinked purchase whose site still belongs to a live OTHER account is not taken over by a new signup (409, nothing written)', async () => {
+    const f = withAuth(fakes({ existing: row({ site_slug: 'fade-lab' }) }));
+    (f.deps as any).bindingOwner = vi.fn(async () => OTHER);
+    const r = await runIosPublish(input(), f.deps, { authorization: 'Bearer tok-user' });
+    expect(r.status).toBe(409);
+    expect(f.deps.writePending).not.toHaveBeenCalled();
+    expect(f.rows.get(OTID)!.user_id).toBeNull();
+  });
+
+  it('a verified bearer of another account never re-points a linked purchase (409, nothing written)', async () => {
+    const f = withAuth(fakes({ existing: row({ user_id: USER }) }));
+    const r = await runIosPublish(input(), f.deps, { authorization: 'Bearer tok-other' });
+    expect(r).toEqual({ status: 409, body: { error: 'purchase-other-account', hint: null, ownerHint: null, hasLiveSite: false } });
+    expect(f.deps.writePending).not.toHaveBeenCalled();
+    expect(f.repo.bindSlug).not.toHaveBeenCalled();
+    expect(f.rows.get(OTID)!.user_id).toBe(USER);
+  });
+
+  it('a move that lands while the old owner\'s publish is deploying: nothing goes offline, the publish answers 409 purchase-changed', async () => {
+    const f = withAuth(fakes({
+      existing: row({ user_id: USER, site_slug: 'fade-lab', published_at: '2026-10-01T00:00:00Z' }),
+      outcome: (slug) => {
+        // the transfer's compare-and-set lands during the deploy (the slug stays with the purchase)
+        Object.assign(f.rows.get(OTID)!, { user_id: OTHER });
+        return { ok: true, siteId: slug, deployedUrl: `https://${slug}.vercel.app`, alreadyLive: false } as any;
+      },
+    }));
+    const r = await runIosPublish(input(), f.deps, { authorization: 'Bearer tok-user' });
+    expect(r).toEqual({ status: 409, body: { error: 'purchase-changed' } });
+    // the stamps are conditional on the owner and slug (so they cannot land on the new owner's row)
+    expect(f.repo.markPublished).toHaveBeenCalledWith(OTID, { userId: USER, slug: 'fade-lab' });
+  });
+
+  it('M3: publish by the purchase owner first finishes an unfinished business move; a failing finisher never blocks the publish', async () => {
+    const f = withAuth(fakes({ existing: row({ user_id: USER, site_slug: 'fade-lab', published_at: '2026-10-01T00:00:00Z' }) }));
+    const finishMove = vi.fn(async () => { throw new Error('x'); });
+    (f.deps as any).finishMove = finishMove;
+    expect((await runIosPublish(input(), f.deps, { authorization: 'Bearer tok-user' })).status).toBe(200);
+    expect(finishMove).toHaveBeenCalledWith(USER);
+  });
+
+  it('an invalid token still publishes under the compat flag; an auth outage or a failed link fails closed (503, nothing written)', async () => {
     const a = withAuth(fakes());
     expect((await runIosPublish(input(), a.deps, { authorization: 'Bearer nope' })).status).toBe(200);
     expect(a.rows.get(OTID)!.user_id).toBeNull();
     const b = withAuth(fakes());
     (b.deps.userOf as any).mockRejectedValueOnce(new Error('auth down'));
-    expect((await runIosPublish(input(), b.deps, { authorization: 'Bearer tok-user' })).status).toBe(200);
+    expect((await runIosPublish(input(), b.deps, { authorization: 'Bearer tok-user' })).status).toBe(503);
+    expect(b.deps.publish).not.toHaveBeenCalled();
     const c = withAuth(fakes());
     (c.repo.setUserIfUnlinked as any).mockRejectedValueOnce(new Error('fk violation'));
-    expect((await runIosPublish(input(), c.deps, { authorization: 'Bearer tok-user' })).status).toBe(200);
+    expect((await runIosPublish(input(), c.deps, { authorization: 'Bearer tok-user' })).status).toBe(503);
+    expect(c.deps.publish).not.toHaveBeenCalled();
   });
 
   it('repo errors surface as 503 temporarily-unavailable', async () => {
@@ -527,6 +576,90 @@ describe('runIosPublish tiers (Phase 4)', () => {
   });
 });
 
+describe('runIosPublish after an owner removal (removed_at, review H1)', () => {
+  const removed = () => row({ site_slug: 'fresh-cuts-ab12', published_at: '2026-09-01T00:00:00Z', taken_down_at: '2026-10-15T00:00:00Z', removed_at: '2026-10-15T00:00:00Z' });
+
+  it('an explicit owner publish brings the site back: removed_at and taken_down_at cleared', async () => {
+    const { deps, repo, rows } = fakes({ existing: removed() });
+    const r = await runIosPublish(input(), deps);
+    expect(r.status).toBe(200);
+    expect(repo.clearRemoved).toHaveBeenCalledWith(OTID, '2026-10-15T00:00:00Z');
+    expect(rows.get(OTID)!.removed_at).toBeNull();
+    expect(rows.get(OTID)!.taken_down_at).toBeNull();
+  });
+
+  it('a removal that lands while the publish is in flight keeps its marks (L5)', async () => {
+    const { deps, repo, rows } = fakes({ existing: removed() });
+    (deps.publish as any).mockImplementationOnce(async (slug: string) => {
+      rows.get(OTID)!.removed_at = '2026-10-25T10:00:00Z'; // a newer removal, mid-publish
+      return { ok: true, siteId: slug, deployedUrl: 'https://x.vercel.app' };
+    });
+    const r = await runIosPublish(input(), deps);
+    expect(r.status).toBe(200);
+    expect(rows.get(OTID)!.removed_at).toBe('2026-10-25T10:00:00Z');
+    expect(repo.clearTakenDown).not.toHaveBeenCalled();
+  });
+
+  it('F6: an owner republish lifts the owner-removed mark on that slug\'s detached domain rows', async () => {
+    const { deps } = fakes({ existing: removed() });
+    const clearDomainRemoval = vi.fn(async () => {});
+    deps.clearDomainRemoval = clearDomainRemoval;
+    expect((await runIosPublish(input(), deps)).status).toBe(200);
+    expect(clearDomainRemoval).toHaveBeenCalledWith('fresh-cuts-ab12');
+  });
+
+  it('F6: no mark is lifted when a newer removal landed mid-publish, or the publish failed', async () => {
+    const a = fakes({ existing: removed() });
+    a.deps.clearDomainRemoval = vi.fn(async () => {});
+    (a.deps.publish as any).mockImplementationOnce(async (slug: string) => {
+      a.rows.get(OTID)!.removed_at = '2026-10-25T10:00:00Z';
+      return { ok: true, siteId: slug, deployedUrl: 'https://x.vercel.app' };
+    });
+    await runIosPublish(input(), a.deps);
+    expect(a.deps.clearDomainRemoval).not.toHaveBeenCalled();
+    const b = fakes({ existing: removed(), outcome: (s) => ({ ok: false, siteId: s, reason: 'deploy-failed', error: 'x' }) });
+    b.deps.clearDomainRemoval = vi.fn(async () => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await runIosPublish(input(), b.deps);
+    expect(b.deps.clearDomainRemoval).not.toHaveBeenCalled();
+  });
+
+  it('R2-B: a failed clearDomainRemoval is retried by the next publish (removed_at already null)', async () => {
+    const { deps } = fakes({ existing: removed() });
+    const clear = vi.fn().mockRejectedValueOnce(new Error('db blip')).mockResolvedValue(undefined);
+    deps.clearDomainRemoval = clear;
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect((await runIosPublish(input(), deps)).status).toBe(200);
+    expect(clear).toHaveBeenCalledTimes(1);
+    expect((await runIosPublish(input(), deps)).status).toBe(200);
+    expect(clear).toHaveBeenCalledTimes(2);
+  });
+
+  it('R2-LOW: a purchase moved mid-publish does not clear the domain mark', async () => {
+    const OTHER = '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d';
+    const f = fakes({
+      existing: row({ user_id: USER, site_slug: 'fresh-cuts-ab12', published_at: '2026-09-01T00:00:00Z', removed_at: '2026-10-15T00:00:00Z' }),
+      outcome: (slug) => {
+        Object.assign(f.rows.get(OTID)!, { user_id: OTHER });
+        return { ok: true, siteId: slug, deployedUrl: `https://${slug}.vercel.app`, alreadyLive: false } as any;
+      },
+    });
+    f.deps.userOf = vi.fn(async () => ({ id: USER }));
+    f.deps.clearDomainRemoval = vi.fn(async () => {});
+    const r = await runIosPublish(input(), f.deps, { authorization: 'Bearer tok-user' });
+    expect(r).toEqual({ status: 409, body: { error: 'purchase-changed' } });
+    expect(f.deps.clearDomainRemoval).not.toHaveBeenCalled();
+  });
+
+  it('a failed publish leaves the removal in place', async () => {
+    const { deps, repo, rows } = fakes({ existing: removed(), outcome: (s) => ({ ok: false, siteId: s, reason: 'deploy-failed', error: 'x' }) });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect((await runIosPublish(input(), deps)).status).toBe(502);
+    expect(repo.clearRemoved).not.toHaveBeenCalled();
+    expect(rows.get(OTID)!.removed_at).toBe('2026-10-15T00:00:00Z');
+  });
+});
+
 describe('runIosPublish lapse takedown flag', () => {
   const takenDown = () => row({ site_slug: 'fresh-cuts-ab12', published_at: '2026-09-01T00:00:00Z', taken_down_at: '2026-10-15T00:00:00Z' });
 
@@ -535,7 +668,7 @@ describe('runIosPublish lapse takedown flag', () => {
     const r = await runIosPublish(input(), deps);
     expect(r.status).toBe(200);
     expect(deps.publish).toHaveBeenCalledWith('fresh-cuts-ab12', { force: true });
-    expect(repo.clearTakenDown).toHaveBeenCalledWith(OTID);
+    expect(repo.clearTakenDown).toHaveBeenCalledWith(OTID, undefined);
     expect(rows.get(OTID)!.taken_down_at).toBeNull();
   });
 
@@ -620,15 +753,17 @@ describe('toPendingSiteData', () => {
   });
 });
 
+const AS_USER = { authorization: 'Bearer tok-user' };
+
 describe('runIosSiteLookup', () => {
   it('site lookup returns siteData with real image URLs', async () => {
     const sd = site();
     const map = buildImageUrlMap(sd);
     const { deps } = fakes({
-      existing: row({ site_slug: 'fresh-cuts' }),
+      existing: row({ user_id: USER, site_slug: 'fresh-cuts' }),
       pending: { 'fresh-cuts': { siteId: 'fresh-cuts', siteData: toPendingSiteData(sd, map), imageUrlMap: map, deployedUrl: 'https://fresh-cuts.vercel.app' } },
     });
-    const r: any = await runIosSiteLookup('t-123', deps);
+    const r: any = await runIosSiteLookup('t-123', deps, AS_USER);
     expect(r.status).toBe(200);
     expect(r.body.siteId).toBe('fresh-cuts');
     expect(r.body.deployedUrl).toBe('https://fresh-cuts.vercel.app');
@@ -642,15 +777,68 @@ describe('runIosSiteLookup', () => {
   });
 
   it('site lookup for a transaction with no bound slug → 404 no-site', async () => {
-    const a = fakes({ existing: row({ site_slug: null }) });
-    expect(await runIosSiteLookup('t-123', a.deps)).toEqual({ status: 404, body: { error: 'no-site' } });
+    const a = fakes({ existing: row({ user_id: USER, site_slug: null }) });
+    expect(await runIosSiteLookup('t-123', a.deps, AS_USER)).toEqual({ status: 404, body: { error: 'no-site' } });
     const b = fakes({ existing: null });
-    expect(await runIosSiteLookup('t-123', b.deps)).toEqual({ status: 404, body: { error: 'no-site' } });
+    expect(await runIosSiteLookup('t-123', b.deps, AS_USER)).toEqual({ status: 404, body: { error: 'no-site' } });
+  });
+
+  it('site lookup for a site the owner took offline (removed_at) → 404 no-site, so a new site can be published', async () => {
+    const { deps } = fakes({ existing: row({ user_id: USER, site_slug: 'fresh-cuts', removed_at: '2026-10-15T00:00:00Z', taken_down_at: '2026-10-15T00:00:00Z' }) });
+    expect(await runIosSiteLookup('t-123', deps, AS_USER)).toEqual({ status: 404, body: { error: 'no-site' } });
+  });
+
+  describe('H1: no Authorization header (build 22 and earlier)', () => {
+    it('no purchase row, or an unlinked row with no site -> 404 no-site with no data, Apple was asked', async () => {
+      for (const existing of [null, row({ user_id: null, site_slug: null })]) {
+        const { deps } = fakes({ existing });
+        for (const ctx of [{}, { authorization: undefined }, { authorization: '' }]) {
+          expect(await runIosSiteLookup('t-123', deps, ctx)).toEqual({ status: 404, body: { error: 'no-site' } });
+        }
+        expect(deps.verify).toHaveBeenCalled();
+        expect(deps.readPending).not.toHaveBeenCalled();
+      }
+    });
+
+    it('a linked row, or an unlinked row with a bound site -> 401 auth-required with no data', async () => {
+      for (const existing of [row({ user_id: USER, site_slug: 'fresh-cuts' }), row({ user_id: USER, site_slug: null }), row({ user_id: null, site_slug: 'fresh-cuts' })]) {
+        const { deps } = fakes({ existing });
+        expect(await runIosSiteLookup('t-123', deps, {})).toEqual({ status: 401, body: { error: 'auth-required' } });
+        expect(deps.readPending).not.toHaveBeenCalled();
+      }
+    });
+
+    it('Apple refusing (unknown / down) is 404 / 503, never a 401 loop', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const a = fakes({ verified: new VerifyFailure('not-found') });
+      expect((await runIosSiteLookup('t-123', a.deps, {})).status).toBe(404);
+      const b = fakes({ verified: new VerifyFailure('apple-unavailable') });
+      expect((await runIosSiteLookup('t-123', b.deps, {})).status).toBe(503);
+    });
+  });
+
+  describe('M2: Restore links an accountless legacy site', () => {
+    it('nobody attached (owner null): the signed-in caller is linked and gets the site', async () => {
+      const { deps } = fakes({ existing: row({ user_id: null, site_slug: 'fresh-cuts' }), pending: { 'fresh-cuts': { siteId: 'fresh-cuts', siteData: toPendingSiteData(site(), buildImageUrlMap(site())), imageUrlMap: buildImageUrlMap(site()), deployedUrl: 'https://x' } } });
+      (deps as any).bindingOwner = vi.fn(async () => null);
+      const r: any = await runIosSiteLookup('t-123', deps, AS_USER);
+      expect(r.status).toBe(200);
+      expect(deps.repo.setUserIfUnlinked).toHaveBeenCalledWith(OTID, USER);
+    });
+
+    it('another account owns the shop, or ownership is ambiguous: 409 and no link', async () => {
+      for (const owner of ['9f2b8c1e-5d4a-4b6f-9e2d-1a2b3c4d5e6f', 'ambiguous'] as const) {
+        const { deps } = fakes({ existing: row({ user_id: null, site_slug: 'fresh-cuts' }) });
+        (deps as any).bindingOwner = vi.fn(async () => owner);
+        expect((await runIosSiteLookup('t-123', deps, AS_USER)).status).toBe(409);
+        expect(deps.repo.setUserIfUnlinked).not.toHaveBeenCalled();
+      }
+    });
   });
 
   it('site lookup returns active:false for an expired subscription', async () => {
-    const { deps } = fakes({ verified: tx({ expiresAt: 1000 }), existing: row({ site_slug: 'fresh-cuts' }) });
-    const r: any = await runIosSiteLookup('t-123', deps);
+    const { deps } = fakes({ verified: tx({ expiresAt: 1000 }), existing: row({ user_id: USER, site_slug: 'fresh-cuts' }) });
+    const r: any = await runIosSiteLookup('t-123', deps, AS_USER);
     expect(r.status).toBe(200);
     expect(r.body.active).toBe(false);
     expect(r.body.siteData).toBeNull();
@@ -660,24 +848,24 @@ describe('runIosSiteLookup', () => {
   it('site lookup judges activity by the injected clock', async () => {
     // NOW - 1 is still in the future by the wall clock, but expired by deps.now().
     expect(NOW - 1).toBeGreaterThan(Date.now());
-    const { deps } = fakes({ verified: tx({ expiresAt: NOW - 1 }), existing: row({ site_slug: 'fresh-cuts' }) });
-    const r: any = await runIosSiteLookup('t-123', deps);
+    const { deps } = fakes({ verified: tx({ expiresAt: NOW - 1 }), existing: row({ user_id: USER, site_slug: 'fresh-cuts' }) });
+    const r: any = await runIosSiteLookup('t-123', deps, AS_USER);
     expect(r.body.active).toBe(false);
   });
 
   it('site lookup maps verify failures', async () => {
-    expect(await runIosSiteLookup('t', fakes({ verified: new VerifyFailure('not-found') }).deps))
+    expect(await runIosSiteLookup('t', fakes({ verified: new VerifyFailure('not-found') }).deps, AS_USER))
       .toEqual({ status: 404, body: { error: 'not-found' } });
-    expect(await runIosSiteLookup('t', fakes({ verified: new VerifyFailure('bad-product') }).deps))
+    expect(await runIosSiteLookup('t', fakes({ verified: new VerifyFailure('bad-product') }).deps, AS_USER))
       .toEqual({ status: 404, body: { error: 'bad-product' } });
-    expect(await runIosSiteLookup('t', fakes({ verified: new VerifyFailure('apple-unavailable') }).deps))
+    expect(await runIosSiteLookup('t', fakes({ verified: new VerifyFailure('apple-unavailable') }).deps, AS_USER))
       .toEqual({ status: 503, body: { error: 'apple-unavailable' } });
   });
 
   it('site lookup repo errors → 503', async () => {
-    const { deps, repo } = fakes({ existing: row({ site_slug: 'fresh-cuts' }) });
+    const { deps, repo } = fakes({ existing: row({ user_id: USER, site_slug: 'fresh-cuts' }) });
     (repo.get as any).mockRejectedValueOnce(new Error('db down'));
-    expect(await runIosSiteLookup('t-123', deps)).toEqual({ status: 503, body: { error: 'temporarily-unavailable' } });
+    expect(await runIosSiteLookup('t-123', deps, AS_USER)).toEqual({ status: 503, body: { error: 'temporarily-unavailable' } });
   });
 });
 
@@ -780,11 +968,103 @@ describe('site versions (admin edits never lost to the phone)', () => {
   });
 
   it('site lookup returns version, editedBy and editedAt (0 / null for an unversioned copy)', async () => {
-    const a = fakes({ existing: bound(), pending: { [SLUG]: stored({ version: 7, editedBy: 'admin', editedAt: '2026-10-21T10:00:00.000Z' }) } });
-    const r: any = await runIosSiteLookup('t-123', a.deps);
+    const a = fakes({ existing: { ...bound(), user_id: USER }, pending: { [SLUG]: stored({ version: 7, editedBy: 'admin', editedAt: '2026-10-21T10:00:00.000Z' }) } });
+    const r: any = await runIosSiteLookup('t-123', a.deps, AS_USER);
     expect(r.body).toMatchObject({ siteId: SLUG, version: 7, editedBy: 'admin', editedAt: '2026-10-21T10:00:00.000Z' });
-    const b = fakes({ existing: bound(), pending: { [SLUG]: stored() } });
-    const r2: any = await runIosSiteLookup('t-123', b.deps);
+    const b = fakes({ existing: { ...bound(), user_id: USER }, pending: { [SLUG]: stored() } });
+    const r2: any = await runIosSiteLookup('t-123', b.deps, AS_USER);
     expect(r2.body).toMatchObject({ version: 0, editedBy: null, editedAt: null });
+  });
+});
+
+describe('runIosPublish: the shop logo', () => {
+  const LOGO = 'https://storage.googleapis.com/bkt/ios-drafts/abc-123/logo/1730000000000-ab12.png';
+  const withBucket = async (fn: () => Promise<void>) => {
+    const was = process.env.GCS_BUCKET_NAME;
+    process.env.GCS_BUCKET_NAME = 'bkt';
+    try { await fn(); } finally { if (was === undefined) delete process.env.GCS_BUCKET_NAME; else process.env.GCS_BUCKET_NAME = was; }
+  };
+  const bad = { status: 400, body: { error: 'bad-request' } };
+
+  it('a logo in this draft\'s logo folder publishes: pending copy holds the marker, the map holds the URL', async () => withBucket(async () => {
+    const { deps, pending } = fakes();
+    const r = await runIosPublish(input({ siteData: site({ logo: { url: LOGO, w: 600, h: 200 } }) }), deps);
+    expect(r.status).toBe(200);
+    const p = pending.get('fresh-cuts')!;
+    expect(p.imageUrlMap!.logo).toBe(LOGO);
+    expect(p.siteData.logo).toEqual({ url: 'uploaded', w: 600, h: 200 });
+  }));
+
+  it('headerShow "name" publishes with the logo kept (marker + map entry, nothing deleted); "logo" is kept; anything else is dropped', async () => withBucket(async () => {
+    for (const [v, kept] of [['name', true], ['logo', true], ['x', false], [5, false], ['both', false]] as const) {
+      const { deps, pending } = fakes();
+      const r = await runIosPublish(input({ siteData: site({ logo: { url: LOGO, w: 600, h: 200 }, headerShow: v } as any) }), deps);
+      expect(r.status, String(v)).toBe(200);
+      const p = pending.get('fresh-cuts')!;
+      expect(p.siteData.logo).toEqual({ url: 'uploaded', w: 600, h: 200 });
+      expect(p.imageUrlMap!.logo).toBe(LOGO);
+      expect((p.siteData as any).headerShow, String(v)).toBe(kept ? v : undefined);
+    }
+  }));
+
+  it('a bare draft UUID folder is accepted too', async () => withBucket(async () => {
+    const { deps } = fakes();
+    const url = 'https://storage.googleapis.com/bkt/3f2b8c1e-5d4a-4b6f-9e2d-1a2b3c4d5e6f/logo/a.jpg';
+    expect((await runIosPublish(input({ siteData: site({ logo: { url, w: 100, h: 100 } }) }), deps)).status).toBe(200);
+  }));
+
+  it('refuses, before verify or any write: a foreign host, our bucket outside a logo folder, a published site\'s folder, a non-png/jpeg, bad w/h, a data: URL', async () => withBucket(async () => {
+    for (const logo of [
+      { url: 'https://evil.example.com/ios-drafts/abc-123/logo/a.png', w: 5, h: 5 },
+      { url: 'https://storage.googleapis.com/other/ios-drafts/abc-123/logo/a.png', w: 5, h: 5 },
+      { url: 'https://storage.googleapis.com/bkt/ios-drafts/abc-123/a.png', w: 5, h: 5 },
+      { url: 'https://storage.googleapis.com/bkt/pending-sites/logo/a.png', w: 5, h: 5 },
+      { url: 'https://storage.googleapis.com/bkt/ios-drafts/abc-123/logo/a.svg', w: 5, h: 5 },
+      { url: 'https://storage.googleapis.com/bkt/ios-drafts/abc-123/logo/a.png?x=1', w: 5, h: 5 },
+      { url: LOGO, w: '5', h: 5 }, { url: LOGO, w: 0, h: 5 }, { url: LOGO, w: 100000, h: 5 }, { url: LOGO, w: 5 },
+      { url: 'data:image/png;base64,AAAA', w: 5, h: 5 },
+      'x', 7, [],
+    ]) {
+      const { deps, repo } = fakes();
+      expect(await runIosPublish(input({ siteData: site({ logo: logo as any }) }), deps), JSON.stringify(logo)).toEqual(bad);
+      expect(deps.verify).not.toHaveBeenCalled();
+      expect(repo.upsertVerified).not.toHaveBeenCalled();
+      expect(deps.writePending).not.toHaveBeenCalled();
+    }
+  }));
+
+  it('a logo in a slug folder (e.g. admin-set) is refused with a specific reason, not the generic 400, before any write', async () => withBucket(async () => {
+    const { deps, repo } = fakes();
+    const logo = { url: 'https://storage.googleapis.com/bkt/some-published-shop/logo/a.png', w: 5, h: 5 };
+    expect(await runIosPublish(input({ siteData: site({ logo }) }), deps)).toEqual({ status: 400, body: { error: 'bad-request', reason: 'logo-folder' } });
+    expect(deps.verify).not.toHaveBeenCalled();
+    expect(repo.upsertVerified).not.toHaveBeenCalled();
+    expect(deps.writePending).not.toHaveBeenCalled();
+  }));
+
+  it('fails closed when the bucket is not configured', async () => {
+    const was = process.env.GCS_BUCKET_NAME;
+    delete process.env.GCS_BUCKET_NAME;
+    try {
+      const { deps } = fakes();
+      expect(await runIosPublish(input({ siteData: site({ logo: { url: LOGO, w: 5, h: 5 } }) }), deps)).toEqual(bad);
+    } finally { if (was !== undefined) process.env.GCS_BUCKET_NAME = was; }
+  });
+
+  it('the stored logo comes back to the app as a real URL (lookup restores it)', async () => withBucket(async () => {
+    const { deps } = fakes();
+    await runIosPublish(input({ siteData: site({ logo: { url: LOGO, w: 600, h: 200 } }) }), deps);
+    const stored = (deps.writePending as any).mock.calls[0][1] as PendingSite;
+    expect(toPendingSiteData(site({ logo: { url: LOGO, w: 600, h: 200 } }), buildImageUrlMap(site({ logo: { url: LOGO, w: 600, h: 200 } }))).logo?.url).toBe('uploaded');
+    const { restoreImageUrls } = await import('../../lib/ios/siteShape.js');
+    expect(restoreImageUrls(stored.siteData, stored.imageUrlMap || {}).logo).toEqual({ url: LOGO, w: 600, h: 200 });
+  }));
+
+  it('a site without a logo stores no logo key', async () => {
+    const { deps, pending } = fakes();
+    await runIosPublish(input(), deps);
+    const p = pending.get('fresh-cuts')!;
+    expect('logo' in p.siteData).toBe(false);
+    expect('logo' in (p.imageUrlMap || {})).toBe(false);
   });
 });

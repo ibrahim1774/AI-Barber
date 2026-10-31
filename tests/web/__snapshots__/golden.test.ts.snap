@@ -1,0 +1,3610 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`golden: lapse prefilters > isLapsed and isActiveRow 1`] = `
+[
+  {
+    "active": false,
+    "lapsed": false,
+    "r": {
+      "expires_at": null,
+      "revoked_at": null,
+    },
+  },
+  {
+    "active": false,
+    "lapsed": true,
+    "r": {
+      "expires_at": "2026-06-10T00:00:00.000Z",
+      "revoked_at": null,
+    },
+  },
+  {
+    "active": false,
+    "lapsed": false,
+    "r": {
+      "expires_at": "2026-06-15T11:30:00.000Z",
+      "revoked_at": null,
+    },
+  },
+  {
+    "active": true,
+    "lapsed": false,
+    "r": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+    },
+  },
+  {
+    "active": false,
+    "lapsed": true,
+    "r": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": "2026-06-10T00:00:00.000Z",
+    },
+  },
+  {
+    "active": false,
+    "lapsed": true,
+    "r": {
+      "expires_at": null,
+      "revoked_at": "2026-06-10T00:00:00.000Z",
+    },
+  },
+  {
+    "active": false,
+    "lapsed": false,
+    "r": {
+      "expires_at": "not a date",
+      "revoked_at": null,
+    },
+  },
+]
+`;
+
+exports[`golden: purchase gates > sweepWatches, purchaseLive and entitlementActive over the full matrix 1`] = `
+[
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      true,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.hosting.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-10T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.hosting.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      true,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-15T11:30:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.hosting.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      true,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": null,
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.hosting.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": "2026-06-10T00:00:00.000Z",
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.hosting.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": "2026-06-10T00:00:00.000Z",
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.hosting.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.hosting.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-10T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.hosting.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-15T11:30:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.hosting.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": null,
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.hosting.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": "2026-06-10T00:00:00.000Z",
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.hosting.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": "2026-06-10T00:00:00.000Z",
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.hosting.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.hosting.monthly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-10T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.hosting.monthly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-15T11:30:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.hosting.monthly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": null,
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.hosting.monthly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": "2026-06-10T00:00:00.000Z",
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.hosting.monthly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": "2026-06-10T00:00:00.000Z",
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.hosting.monthly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      true,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.hosting.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-10T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.hosting.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      true,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-15T11:30:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.hosting.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      true,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": null,
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.hosting.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": "2026-06-10T00:00:00.000Z",
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.hosting.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": "2026-06-10T00:00:00.000Z",
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.hosting.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.hosting.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-10T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.hosting.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-15T11:30:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.hosting.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": null,
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.hosting.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": "2026-06-10T00:00:00.000Z",
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.hosting.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": "2026-06-10T00:00:00.000Z",
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.hosting.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.hosting.yearly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-10T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.hosting.yearly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-15T11:30:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.hosting.yearly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": null,
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.hosting.yearly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": "2026-06-10T00:00:00.000Z",
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.hosting.yearly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": "2026-06-10T00:00:00.000Z",
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.hosting.yearly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      true,
+      true,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.bookings.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-10T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.bookings.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      true,
+      true,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-15T11:30:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.bookings.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      true,
+      true,
+      false,
+    ],
+    "l": {
+      "expires_at": null,
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.bookings.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": "2026-06-10T00:00:00.000Z",
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.bookings.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": "2026-06-10T00:00:00.000Z",
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.bookings.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      true,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.bookings.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-10T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.bookings.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      true,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-15T11:30:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.bookings.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      true,
+      false,
+    ],
+    "l": {
+      "expires_at": null,
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.bookings.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": "2026-06-10T00:00:00.000Z",
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.bookings.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": "2026-06-10T00:00:00.000Z",
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.bookings.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      true,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.bookings.monthly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      true,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-10T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.bookings.monthly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      true,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-15T11:30:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.bookings.monthly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      true,
+      false,
+    ],
+    "l": {
+      "expires_at": null,
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.bookings.monthly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": "2026-06-10T00:00:00.000Z",
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.bookings.monthly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": "2026-06-10T00:00:00.000Z",
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.bookings.monthly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      true,
+      true,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.bookings.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-10T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.bookings.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      true,
+      true,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-15T11:30:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.bookings.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      true,
+      true,
+      false,
+    ],
+    "l": {
+      "expires_at": null,
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.bookings.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": "2026-06-10T00:00:00.000Z",
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.bookings.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": "2026-06-10T00:00:00.000Z",
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.bookings.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      true,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.bookings.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-10T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.bookings.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      true,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-15T11:30:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.bookings.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      true,
+      false,
+    ],
+    "l": {
+      "expires_at": null,
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.bookings.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": "2026-06-10T00:00:00.000Z",
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.bookings.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": "2026-06-10T00:00:00.000Z",
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.bookings.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      true,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.bookings.yearly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      true,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-10T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.bookings.yearly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      true,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-15T11:30:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.bookings.yearly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      true,
+      false,
+    ],
+    "l": {
+      "expires_at": null,
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.bookings.yearly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": "2026-06-10T00:00:00.000Z",
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.bookings.yearly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": "2026-06-10T00:00:00.000Z",
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.bookings.yearly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      true,
+      true,
+      true,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.store.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-10T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.store.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      true,
+      true,
+      true,
+    ],
+    "l": {
+      "expires_at": "2026-06-15T11:30:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.store.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      true,
+      true,
+      true,
+    ],
+    "l": {
+      "expires_at": null,
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.store.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": "2026-06-10T00:00:00.000Z",
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.store.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": "2026-06-10T00:00:00.000Z",
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.store.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      true,
+      true,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.store.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-10T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.store.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      true,
+      true,
+    ],
+    "l": {
+      "expires_at": "2026-06-15T11:30:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.store.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      true,
+      true,
+    ],
+    "l": {
+      "expires_at": null,
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.store.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": "2026-06-10T00:00:00.000Z",
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.store.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": "2026-06-10T00:00:00.000Z",
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.store.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      true,
+      true,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.store.monthly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      true,
+      true,
+    ],
+    "l": {
+      "expires_at": "2026-06-10T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.store.monthly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      true,
+      true,
+    ],
+    "l": {
+      "expires_at": "2026-06-15T11:30:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.store.monthly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      true,
+      true,
+    ],
+    "l": {
+      "expires_at": null,
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.store.monthly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": "2026-06-10T00:00:00.000Z",
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.store.monthly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": "2026-06-10T00:00:00.000Z",
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.store.monthly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      true,
+      true,
+      true,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.store.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-10T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.store.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      true,
+      true,
+      true,
+    ],
+    "l": {
+      "expires_at": "2026-06-15T11:30:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.store.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      true,
+      true,
+      true,
+    ],
+    "l": {
+      "expires_at": null,
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.store.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": "2026-06-10T00:00:00.000Z",
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.store.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": "2026-06-10T00:00:00.000Z",
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.store.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      true,
+      true,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.store.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-10T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.store.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      true,
+      true,
+    ],
+    "l": {
+      "expires_at": "2026-06-15T11:30:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.store.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      true,
+      true,
+    ],
+    "l": {
+      "expires_at": null,
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.store.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": "2026-06-10T00:00:00.000Z",
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.store.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": "2026-06-10T00:00:00.000Z",
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.store.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      true,
+      true,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.store.yearly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      true,
+      true,
+    ],
+    "l": {
+      "expires_at": "2026-06-10T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.store.yearly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      true,
+      true,
+    ],
+    "l": {
+      "expires_at": "2026-06-15T11:30:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.store.yearly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      true,
+      true,
+      true,
+    ],
+    "l": {
+      "expires_at": null,
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": true,
+    "product_id": "com.ibrahim1774.aibarber.store.yearly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": "2026-06-10T00:00:00.000Z",
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.store.yearly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": "2026-06-10T00:00:00.000Z",
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.store.yearly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.domain.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-10T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.domain.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-15T11:30:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.domain.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": null,
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.domain.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": "2026-06-10T00:00:00.000Z",
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.domain.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": "2026-06-10T00:00:00.000Z",
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.domain.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.domain.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-10T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.domain.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-15T11:30:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.domain.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": null,
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.domain.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": "2026-06-10T00:00:00.000Z",
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.domain.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": "2026-06-10T00:00:00.000Z",
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.domain.yearly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.domain.yearly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-10T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.domain.yearly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-15T11:30:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.domain.yearly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": null,
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.domain.yearly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": "2026-06-10T00:00:00.000Z",
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.domain.yearly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": "2026-06-10T00:00:00.000Z",
+    },
+    "live": false,
+    "product_id": "com.ibrahim1774.aibarber.domain.yearly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": null,
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-10T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": null,
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-15T11:30:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": null,
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": null,
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": null,
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": "2026-06-10T00:00:00.000Z",
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": null,
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": "2026-06-10T00:00:00.000Z",
+    },
+    "live": false,
+    "product_id": null,
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": null,
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-10T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": null,
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-15T11:30:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": null,
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": null,
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": null,
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": "2026-06-10T00:00:00.000Z",
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": null,
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": "2026-06-10T00:00:00.000Z",
+    },
+    "live": false,
+    "product_id": null,
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": null,
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-10T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": null,
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-15T11:30:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": null,
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": null,
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": null,
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": "2026-06-10T00:00:00.000Z",
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": null,
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": "2026-06-10T00:00:00.000Z",
+    },
+    "live": false,
+    "product_id": null,
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.other.app.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-10T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.other.app.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-15T11:30:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.other.app.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": null,
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.other.app.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": "2026-06-10T00:00:00.000Z",
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.other.app.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": "2026-06-10T00:00:00.000Z",
+    },
+    "live": false,
+    "product_id": "com.other.app.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.other.app.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-10T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.other.app.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-15T11:30:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.other.app.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": null,
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.other.app.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": "2026-06-10T00:00:00.000Z",
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.other.app.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": "2026-06-10T00:00:00.000Z",
+    },
+    "live": false,
+    "product_id": "com.other.app.monthly",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.other.app.monthly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-10T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.other.app.monthly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-15T11:30:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.other.app.monthly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": null,
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.other.app.monthly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": "2026-06-10T00:00:00.000Z",
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "com.other.app.monthly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": "2026-06-10T00:00:00.000Z",
+    },
+    "live": false,
+    "product_id": "com.other.app.monthly",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "stripe:sub_123",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-10T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "stripe:sub_123",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-15T11:30:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "stripe:sub_123",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": null,
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "stripe:sub_123",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": "2026-06-10T00:00:00.000Z",
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "stripe:sub_123",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": null,
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": "2026-06-10T00:00:00.000Z",
+    },
+    "live": false,
+    "product_id": "stripe:sub_123",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "stripe:sub_123",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-10T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "stripe:sub_123",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-15T11:30:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "stripe:sub_123",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": null,
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "stripe:sub_123",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": "2026-06-10T00:00:00.000Z",
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "stripe:sub_123",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": null,
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": "2026-06-10T00:00:00.000Z",
+    },
+    "live": false,
+    "product_id": "stripe:sub_123",
+    "watches": false,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "stripe:sub_123",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-10T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "stripe:sub_123",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-06-15T11:30:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "stripe:sub_123",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": null,
+      "revoked_at": null,
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "stripe:sub_123",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": "2026-06-10T00:00:00.000Z",
+      "taken_down_at": null,
+    },
+    "live": false,
+    "product_id": "stripe:sub_123",
+    "watches": true,
+  },
+  {
+    "b": {
+      "published_at": "2026-06-10T00:00:00.000Z",
+      "site_slug": "shop-a",
+    },
+    "ent": [
+      false,
+      false,
+      false,
+    ],
+    "l": {
+      "expires_at": "2026-07-15T00:00:00.000Z",
+      "revoked_at": null,
+      "taken_down_at": "2026-06-10T00:00:00.000Z",
+    },
+    "live": false,
+    "product_id": "stripe:sub_123",
+    "watches": true,
+  },
+]
+`;
+
+exports[`golden: tiers > product id to tier and entitlements 1`] = `
+[
+  {
+    "ents": [
+      "hosting",
+    ],
+    "grants": [
+      true,
+      false,
+      false,
+    ],
+    "p": "com.ibrahim1774.aibarber.hosting.monthly",
+    "tier": "website",
+  },
+  {
+    "ents": [
+      "hosting",
+    ],
+    "grants": [
+      true,
+      false,
+      false,
+    ],
+    "p": "com.ibrahim1774.aibarber.hosting.yearly",
+    "tier": "website",
+  },
+  {
+    "ents": [
+      "bookings",
+      "hosting",
+    ],
+    "grants": [
+      true,
+      true,
+      false,
+    ],
+    "p": "com.ibrahim1774.aibarber.bookings.monthly",
+    "tier": "bookings",
+  },
+  {
+    "ents": [
+      "bookings",
+      "hosting",
+    ],
+    "grants": [
+      true,
+      true,
+      false,
+    ],
+    "p": "com.ibrahim1774.aibarber.bookings.yearly",
+    "tier": "bookings",
+  },
+  {
+    "ents": [
+      "bookings",
+      "hosting",
+      "store",
+    ],
+    "grants": [
+      true,
+      true,
+      true,
+    ],
+    "p": "com.ibrahim1774.aibarber.store.monthly",
+    "tier": "store",
+  },
+  {
+    "ents": [
+      "bookings",
+      "hosting",
+      "store",
+    ],
+    "grants": [
+      true,
+      true,
+      true,
+    ],
+    "p": "com.ibrahim1774.aibarber.store.yearly",
+    "tier": "store",
+  },
+  {
+    "ents": [],
+    "grants": [
+      false,
+      false,
+      false,
+    ],
+    "p": "com.ibrahim1774.aibarber.domain.yearly",
+    "tier": null,
+  },
+  {
+    "ents": [],
+    "grants": [
+      false,
+      false,
+      false,
+    ],
+    "p": null,
+    "tier": null,
+  },
+  {
+    "ents": [],
+    "grants": [
+      false,
+      false,
+      false,
+    ],
+    "p": "com.other.app.monthly",
+    "tier": null,
+  },
+  {
+    "ents": [],
+    "grants": [
+      false,
+      false,
+      false,
+    ],
+    "p": "stripe:sub_123",
+    "tier": null,
+  },
+]
+`;

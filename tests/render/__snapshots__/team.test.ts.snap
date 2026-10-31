@@ -184,7 +184,7 @@ exports[`euphoria team section > snapshot 1`] = `
   <!-- Nav -->
   <nav style="position:sticky;top:0;z-index:50;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--eu-line-soft);">
     <div class="eu-container" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 24px;">
-      <a href="#top" style="text-decoration:none;color:var(--eu-ink);font-family:'Newsreader',serif;font-size:20px;letter-spacing:0.04em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Fresh Cuts Barbershop</a>
+      <a href="#top" style="text-decoration:none;color:var(--eu-ink);font-family:'Newsreader',serif;font-size:clamp(16px,4.8vw,20px);letter-spacing:0.04em;line-height:1.1;overflow-wrap:anywhere;white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;min-width:0;">Fresh Cuts Barbershop</a>
       <a href="/book" class="eu-cta" style="padding:10px 18px;font-size:10px;flex-shrink:0;white-space:nowrap;">Book now</a>
     </div>
   </nav>
@@ -241,7 +241,7 @@ exports[`euphoria team section > snapshot 1`] = `
         
       </div>
     </div>
-  </section><section id="book-online" class="eu-section"><style>.ab-sub{text-align:center}.ab-sub .eu-display{font-size:clamp(32px,5vw,56px);margin:0 0 32px}.ab-sub-list{list-style:none;padding:0;max-width:640px;margin:0 auto 32px;text-align:left}.ab-sub-row{display:flex;justify-content:space-between;gap:16px;padding:14px 0;border-bottom:1px solid var(--eu-line-soft)}.ab-sub-name{font-size:20px;color:var(--eu-ink)}.ab-sub-price{color:var(--eu-brand);font-style:italic;white-space:nowrap}.ab-sub-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin:0 auto 32px;max-width:880px;text-align:left}@media(min-width:768px){.ab-sub-grid{grid-template-columns:repeat(4,1fr)}}.ab-sp-card{display:flex;flex-direction:column;gap:6px;text-decoration:none;color:var(--eu-ink)}.ab-sp-img{width:100%;aspect-ratio:1/1;object-fit:cover;background:var(--eu-bg-3)}.ab-sp-name{font-family:'Newsreader',Georgia,serif;font-size:18px}.ab-sp-price{color:var(--eu-brand)}</style><div class="eu-container ab-sub"><h2 class="eu-display">Book online</h2><ul class="ab-sub-list"><li class="ab-sub-row"><span class="eu-serif ab-sub-name">Haircut</span></li></ul><a href="/book" class="eu-cta eu-cta-solid">Book</a></div></section>
+  </section><section id="book-online" class="eu-section"><style>.ab-sub{text-align:center}.ab-sub .eu-display{font-size:clamp(32px,5vw,56px);margin:0 0 32px}.ab-sub-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin:0 auto 32px;max-width:880px;text-align:left}@media(min-width:768px){.ab-sub-grid{grid-template-columns:repeat(4,1fr)}}.ab-sp-card{display:flex;flex-direction:column;gap:6px;text-decoration:none;color:var(--eu-ink)}.ab-sp-img{width:100%;aspect-ratio:1/1;object-fit:cover;background:var(--eu-bg-3)}.ab-sp-name{font-family:'Newsreader',Georgia,serif;font-size:18px}.ab-sp-price{color:var(--eu-brand)}</style><div class="eu-container ab-sub"><h2 class="eu-display">Book online</h2><a href="/book" class="eu-cta eu-cta-solid">Book</a></div></section>
 
   <!-- Team -->
   <section id="team" class="eu-section" style="padding-top:64px;padding-bottom:96px;">
@@ -298,7 +298,7 @@ exports[`euphoria team section > snapshot 1`] = `
   <footer style="padding:48px 24px;border-top:1px solid var(--eu-line-soft);text-align:center;">
     <div class="eu-container">
       <div class="eu-serif" style="font-size:18px;color:var(--eu-ink);margin-bottom:8px;">Fresh Cuts Barbershop</div>
-      <div class="eu-eyebrow">© 2026 · Built by Prime Barber</div>
+      <div class="eu-eyebrow">© 2026 · Built by Prime Barber <a class="ab-report" style="color:inherit;text-decoration:underline;margin-left:.75em" rel="nofollow" href="mailto:support@davoxa.com?subject=Report%20{{siteSlug}}">Report this site</a></div>
     </div>
   </footer>
 
@@ -339,9 +339,12 @@ exports[`luxe team section > snapshot 1`] = `
        section seam + a soft gold glow on accent buttons. Scoped tight
        so the upgrade doesn't bleed into elements that should stay flat. */
     .serif-accent { font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400; }
-    /* Header on a narrow phone: the number never wraps; under 380px the call link is the icon alone
-       (the full number stays in the hero button and the contact section). */
-    @media (max-width: 379px) { .ab-call-text { display: none; } .ab-call svg { width: 1.75rem; height: 1.75rem; } }
+    /* Header on a narrow phone: one row, the number right next to the call icon in one call link, never wrapping;
+       the name gives way first (it wraps to two lines). */
+    .ab-call-text { font-variant-numeric: tabular-nums; }
+    @media (max-width: 430px) { header#header .container { gap: 8px; } header#header .ab-call { gap: 6px; padding-left: 0; border-left: 0; } header#header .ab-call svg { width: 1.25rem; height: 1.25rem; } header#header .ab-call-text { font-size: 12px; letter-spacing: 0; } }
+    @media (max-width: 360px) { header#header .ab-call-text { font-size: 11px; } header#header .ab-call svg { width: 1.1rem; height: 1.1rem; } }
+    .ab-name { font-size: clamp(14px, 4.4vw, 18px); line-height: 1.1; overflow-wrap: anywhere; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
     section.py-12, section.py-16 {
       background-image: linear-gradient(180deg, rgba(255,255,255,0.025) 0%, transparent 35%, transparent 65%, rgba(0,0,0,0.4) 100%);
       background-blend-mode: overlay;
@@ -392,12 +395,12 @@ exports[`luxe team section > snapshot 1`] = `
 <body class="aib-themed bg-[#0d0d0d] text-white overflow-x-hidden" style="--aib-bg:rgb(13 13 13);--aib-bg-rgb:13 13 13;--aib-text:rgb(255 255 255);--aib-text-rgb:255 255 255;--aib-accent:#f4a100;--aib-accent-hover:#ffb43a;">
   <header id="header" class="fixed top-0 left-0 w-full z-50 transition-all duration-300 bg-black/20 py-5 md:py-8">
     <div class="container mx-auto flex justify-between items-center px-4 md:px-6">
-      <div class="flex items-center gap-3 md:gap-8 min-w-0">
-        <div class="flex items-center gap-3 md:gap-5 min-w-0">
-          <svg class="w-8 h-8 md:w-12 md:h-12 shrink-0 text-[#f4a100]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <div class="flex items-center gap-2 min-[431px]:gap-3 md:gap-8 min-w-0">
+        <div class="flex items-center gap-2 min-[431px]:gap-3 md:gap-5 min-w-0">
+          <svg class="w-6 h-6 min-[431px]:w-8 min-[431px]:h-8 md:w-12 md:h-12 shrink-0 text-[#f4a100]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M6 6l12 12M6 18L18 6"></path>
           </svg>
-          <span class="font-montserrat font-black text-lg md:text-3xl lg:text-4xl tracking-[1px] md:tracking-[2px] uppercase whitespace-nowrap min-w-0 truncate">
+          <span class="ab-name font-montserrat font-black md:text-3xl lg:text-4xl tracking-[1px] md:tracking-[2px] uppercase min-w-0">
             Fresh <span class="text-[#f4a100]">Cuts Barbershop</span>
           </span>
         </div>
@@ -474,7 +477,7 @@ exports[`luxe team section > snapshot 1`] = `
         
       </div>
     </div>
-  </section><section id="book-online" class="py-12 md:py-24 bg-[#0d0d0d] px-6 border-y border-white/5"><style>.ab-sp-card{display:flex;flex-direction:column;gap:6px;text-decoration:none;color:inherit}.ab-sp-img{width:100%;aspect-ratio:1/1;object-fit:cover;background:#1a1a1a}.ab-sp-name{font-family:'Montserrat',sans-serif;font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:1px;color:#fff}.ab-sp-price{font-family:'Montserrat',sans-serif;font-weight:900;color:var(--aib-accent,#f4a100)}</style><div class="container mx-auto max-w-5xl text-center"><h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px] mb-8">Book online</h2><ul class="max-w-xl mx-auto mb-8 divide-y divide-white/10 text-left"><li class="flex items-center justify-between gap-4 py-3"><span class="font-montserrat font-bold text-white uppercase tracking-[1px] text-sm md:text-base">Haircut</span></li></ul><a href="/book" class="inline-flex items-center gap-3 bg-[#f4a100] text-[#1a1a1a] px-8 py-4 md:px-12 md:py-5 font-montserrat font-black tracking-[2px] uppercase hover:bg-white transition-all duration-300 shadow-lg text-xs md:text-sm">Book</a></div></section>
+  </section><section id="book-online" class="py-12 md:py-24 bg-[#0d0d0d] px-6 border-y border-white/5"><style>.ab-sp-card{display:flex;flex-direction:column;gap:6px;text-decoration:none;color:inherit}.ab-sp-img{width:100%;aspect-ratio:1/1;object-fit:cover;background:#1a1a1a}.ab-sp-name{font-family:'Montserrat',sans-serif;font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:1px;color:#fff}.ab-sp-price{font-family:'Montserrat',sans-serif;font-weight:900;color:var(--aib-accent,#f4a100)}</style><div class="container mx-auto max-w-5xl text-center"><h2 class="text-2xl md:text-4xl font-montserrat font-black text-white uppercase tracking-[2px] mb-8">Book online</h2><a href="/book" class="inline-flex items-center gap-3 bg-[#f4a100] text-[#1a1a1a] px-8 py-4 md:px-12 md:py-5 font-montserrat font-black tracking-[2px] uppercase hover:bg-white transition-all duration-300 shadow-lg text-xs md:text-sm">Book</a></div></section>
 
   
 
@@ -558,7 +561,7 @@ exports[`luxe team section > snapshot 1`] = `
         Barbershop in Austin, TX
       </p>
       <div class="pt-8 border-t border-white/5 text-[#444444] text-[8px] uppercase tracking-[2px]">
-        Copyright &copy; 2026 Fresh Cuts Barbershop. Built by Prime Barber.
+        Copyright &copy; 2026 Fresh Cuts Barbershop. Built by Prime Barber. <a class="ab-report" style="color:inherit;text-decoration:underline;margin-left:.75em" rel="nofollow" href="mailto:support@davoxa.com?subject=Report%20{{siteSlug}}">Report this site</a>
       </div>
     </div>
   </footer>
@@ -714,7 +717,7 @@ exports[`prime team section > snapshot 1`] = `
   <!-- Nav -->
   <nav style="position:sticky;top:0;z-index:50;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--p-line-soft);">
     <div class="p-container" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 6vw;">
-      <a href="#top" class="p-serif" style="text-decoration:none;color:var(--p-ink);font-size:20px;letter-spacing:0.04em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Fresh Cuts Barbershop</a>
+      <a href="#top" class="p-serif" style="text-decoration:none;color:var(--p-ink);font-size:clamp(16px,4.8vw,20px);letter-spacing:0.04em;line-height:1.1;overflow-wrap:anywhere;white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;min-width:0;">Fresh Cuts Barbershop</a>
       <a href="/book" class="p-cta p-cta-solid" style="padding:10px 18px;font-size:10px;flex-shrink:0;">Book Now</a>
     </div>
   </nav>
@@ -765,7 +768,7 @@ exports[`prime team section > snapshot 1`] = `
         </div>
     </div>
   </div>
-</section><section id="book-online" class="p-section"><style>.ab-sub{text-align:center}.ab-sub .p-display{font-size:clamp(28px,5vw,46px);margin:0 0 28px}.ab-sub-list{max-width:640px;margin:0 auto 28px;text-align:left}.ab-sub-name{font-size:1.2rem;font-weight:600}.ab-sub-price{font-size:1.4rem;color:var(--p-brand-bright);white-space:nowrap}.ab-sub-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin:0 auto 28px;max-width:880px;text-align:left}@media(min-width:768px){.ab-sub-grid{grid-template-columns:repeat(4,1fr)}}.ab-sp-card{display:flex;flex-direction:column;gap:6px;text-decoration:none;color:var(--p-ink)}.ab-sp-img{width:100%;aspect-ratio:1/1;object-fit:cover;background:var(--p-bg-3)}.ab-sp-name{font-family:'Newsreader',Georgia,serif;font-style:italic;font-size:1.05rem}.ab-sp-price{color:var(--p-brand-bright)}</style><div class="p-container ab-sub"><h2 class="p-display">Book online</h2><ul class="p-svc ab-sub-list"><li class="p-svc-row"><span class="p-serif p-italic ab-sub-name">Haircut</span></li></ul><a href="/book" class="p-cta p-cta-solid">Book</a></div></section>
+</section><section id="book-online" class="p-section"><style>.ab-sub{text-align:center}.ab-sub .p-display{font-size:clamp(28px,5vw,46px);margin:0 0 28px}.ab-sub-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin:0 auto 28px;max-width:880px;text-align:left}@media(min-width:768px){.ab-sub-grid{grid-template-columns:repeat(4,1fr)}}.ab-sp-card{display:flex;flex-direction:column;gap:6px;text-decoration:none;color:var(--p-ink)}.ab-sp-img{width:100%;aspect-ratio:1/1;object-fit:cover;background:var(--p-bg-3)}.ab-sp-name{font-family:'Newsreader',Georgia,serif;font-style:italic;font-size:1.05rem}.ab-sp-price{color:var(--p-brand-bright)}</style><div class="p-container ab-sub"><h2 class="p-display">Book online</h2><a href="/book" class="p-cta p-cta-solid">Book</a></div></section>
 
   
 
@@ -832,7 +835,7 @@ exports[`prime team section > snapshot 1`] = `
   <footer style="padding:48px 6vw;border-top:1px solid var(--p-line-soft);text-align:center;">
     <div class="p-container">
       <div class="p-serif p-italic" style="font-size:18px;color:var(--p-brand);margin-bottom:8px;">Fresh Cuts Barbershop</div>
-      <div class="p-eyebrow" style="color:var(--p-ink-muted);">© 2026 · Built by Prime Barber</div>
+      <div class="p-eyebrow" style="color:var(--p-ink-muted);">© 2026 · Built by Prime Barber <a class="ab-report" style="color:inherit;text-decoration:underline;margin-left:.75em" rel="nofollow" href="mailto:support@davoxa.com?subject=Report%20{{siteSlug}}">Report this site</a></div>
     </div>
   </footer>
 

@@ -85,6 +85,7 @@ export function siteWorld() {
   const repo = supabasePurchases(db.client);
   const audits: AuditEvent[] = [];
   const emails = new Map<string, string>();
+  const shopOwners = new Map<string, string>();
 
   const publishDeps: PublishDeps = {
     verify: (id) => apple.verify(id),
@@ -101,6 +102,9 @@ export function siteWorld() {
     readPendingVersioned,
     // Supabase auth for the publish bearer (I6): jwt-a / jwt-b are two app accounts.
     userOf: async (t) => (({ 'jwt-a': { id: USER_A }, 'jwt-b': { id: USER_B } }) as Record<string, { id: string }>)[t] ?? null,
+    emailOf: async (id) => emails.get(id) ?? null,
+    // Legacy (unlinked) purchases: who owns the shop/site bound to the otid. Tests set `shopOwners`.
+    bindingOwner: async (row) => shopOwners.get(row.original_transaction_id) ?? null,
     now: clock.now,
   };
 
@@ -141,19 +145,20 @@ export function siteWorld() {
     getUser: async (jwt) => (jwt === 'owner-jwt' ? { id: user.id, email: 'o@example.com', fullName: null } : null),
     shopByOwner: async (uid) => (uid === user.id ? shop : null),
     purchase: (otid) => repo.get(otid),
+    purchasesOfUser: (uid) => repo.ofUser!(uid),
     verify: (id) => apple.verify(id),
     upsertVerified: (tx, opts) => repo.upsertVerified(tx, opts),
     setShopOtid: async (_id, otid) => { shop.ios_otid = otid; return 'ok'; },
-    setUser: (otid, uid) => repo.setUser(otid, uid),
+    setUserIfUnlinked: (otid, uid) => repo.setUserIfUnlinked(otid, uid),
     now: clock.now,
     ...over,
   });
 
   return {
-    clock, apple, db, repo, audits, emails, adminTokens, publishDeps,
+    clock, apple, db, repo, audits, emails, shopOwners, adminTokens, publishDeps,
     publish: (transactionId: string, sd: WebsiteData = siteData(), extra: Record<string, unknown> = {}, ctx: { authorization?: string } = {}) =>
       runIosPublish({ transactionId, siteData: sd, ...extra } as any, publishDeps, ctx),
-    lookup: (transactionId: string) => runIosSiteLookup(transactionId, publishDeps),
+    lookup: (transactionId: string, authorization?: string) => runIosSiteLookup(transactionId, publishDeps, { authorization }),
     notify: (signedPayload: string) =>
       handleAppleNotification(signedPayload, {
         decodeNotification: apple.decodeNotification, decodeTransaction: apple.decode, repo, bundleId: BUNDLE, now: clock.now,

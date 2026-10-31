@@ -17,7 +17,8 @@
 // Fragility note: if theCut rotates the client credential or adds an
 // origin check, only THECUT_BASIC below needs updating.
 
-import { finalize } from './util.js';
+import { finalize, apifyGalleryPhotos, needsPhotoEnrichment } from './util.js';
+import { normalizePrice } from '../scrapeNormalize.js';
 import type { PlatformAdapter, ScrapedShop } from './types.js';
 import { ScrapeError } from './types.js';
 
@@ -81,7 +82,7 @@ export const theCutAdapter: PlatformAdapter = {
   // Covers book./app./search./www. and bare thecut.co.
   hostMatchers: [/(^|\.)thecut\.co$/i],
 
-  async scrape(url, _opts) {
+  async scrape(url, opts) {
     const id = extractBarberId(url);
     if (!id) {
       throw new ScrapeError(
@@ -127,7 +128,7 @@ export const theCutAdapter: PlatformAdapter = {
       ? b.services
           .map((s: any) => ({
             title: String(s?.name || '').trim(),
-            price: s?.price != null && s?.price !== '' ? `$${s.price}` : undefined,
+            price: normalizePrice(s?.price) || undefined,
             duration: s?.duration ? `${s.duration} min` : undefined,
             description: s?.description ? String(s.description).trim() : undefined,
           }))
@@ -157,6 +158,12 @@ export const theCutAdapter: PlatformAdapter = {
       reviews: [],
     };
 
+    // The API gives only the profile picture. With fewer than a handful of photos, the shared Apify gallery step
+    // (one run, only with a token) reads the rendered booking page. UNVERIFIED against the live page.
+    if (needsPhotoEnrichment(shop.photos.length)) {
+      const pageUrl = /^https?:\/\//i.test(url.trim()) ? url.trim() : `https://${url.trim()}`;
+      shop.photos.push(...(await apifyGalleryPhotos({ url: pageUrl, token: opts.apifyToken, label: 'thecut' })));
+    }
     return finalize(shop, { services: 24 });
   },
 };

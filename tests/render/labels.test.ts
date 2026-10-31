@@ -201,6 +201,7 @@ describe('no leftover literals', () => {
     /^"?(Great cut|Fine work)"?$/,
     /^(1 Main St, Austin, TX|hi@example\.com|\(512\) 555-0142|Austin, TX|\+? ?Barbershop in Austin, TX)$/i,
     /^(9:00 AM – 5:00 PM)$/,
+    /^Report this site$/,
     /^[★\s]+$/,
     /^[★\s]*4\.8( ·| from| stars across)?( 1,200 reviews)?$/,
     /^(4\.8|1,200|1,200 reviews|from 1,200 reviews|· 1,200 reviews|4\.8 stars across 1,200 reviews|★ 4\.8 · 1,200 reviews)$/,
@@ -318,7 +319,8 @@ describe('rating line', () => {
       const shown = render[template](withTemplate(template));
       const hidden = render[template](withTemplate(template, { display: { rating: 'hide' } }));
       expect(shown, template).toContain('4.8');
-      expect(hidden, template).not.toContain('4.8');
+      // CSS font sizes such as clamp(16px,4.8vw,20px) are not the rating
+      expect(hidden.replace(/clamp\([^)]*\)/g, ''), template).not.toContain('4.8');
       expect(hidden, template).not.toContain('1,200');
       // the reviews themselves stay
       expect(hidden, template).toContain('Great cut');
@@ -410,25 +412,22 @@ describe('phone number in the header', () => {
     expect(html).toContain('href="tel:5125550142"');
   });
 
-  // Widths in CSS px. Luxe is the only design with the number in the header.
-  const COMPACT_BELOW = 380;
-  const widths = { 320: true, 375: true, 430: false } as const;
-  it('luxe header: the number never wraps, and the compact button applies under 380px only', () => {
+  // Luxe is the only design with the number in the header.
+  it('luxe header: the number never wraps and stays next to the icon at every width', () => {
     const html = render.luxe(withTemplate('luxe', { phone: '(512) 555-0142', shopName: 'The Very Long Barbershop Name Co' }));
     const header = /<header id="header"[\s\S]*?<\/header>/.exec(html)![0];
     const phone = /<span class="ab-call-text[^"]*"[^>]*>[^<]*<\/span>/.exec(header)![0];
     expect(phone).toContain('whitespace-nowrap');
     expect(header).not.toContain('whitespace-normal');
     expect(header).toContain('aria-label="Call (512) 555-0142"');
-    // the shop name shrinks (ellipsis) instead of pushing the number off
-    expect(header).toMatch(/uppercase whitespace-nowrap min-w-0 truncate/);
+    // the shop name wraps to at most two lines (never an ellipsis) instead of pushing the number off
+    expect(header).toMatch(/class="ab-name [^"]*uppercase min-w-0"/);
+    expect(header).not.toMatch(/truncate|name[^>]*whitespace-nowrap/);
     // the whole header row is allowed to shrink and the call link is not
     expect(header).toContain('shrink-0');
-    const rule = /@media \(max-width: (\d+)px\) \{ \.ab-call-text \{ display: none; \}/.exec(html);
-    expect(rule).not.toBeNull();
-    const max = Number(rule![1]);
-    expect(max + 1).toBe(COMPACT_BELOW);
-    for (const [w, compact] of Object.entries(widths)) expect(Number(w) <= max, `${w}px`).toBe(compact);
+    // the number stays visible at every width (it sits next to the icon); the phone sizes only make it smaller
+    expect(html).not.toMatch(/\.ab-call-text\s*\{\s*display:\s*none/);
+    expect(html).toMatch(/@media \(max-width: 430px\)[^\n]*\.ab-call-text \{ font-size: 12px/);
   });
 
   it('luxe: the full number stays in the hero button and the contact section', () => {
@@ -437,13 +436,13 @@ describe('phone number in the header', () => {
     expect(html.split('(512) 555-0142').length - 1).toBeGreaterThanOrEqual(3);
   });
 
-  it('prime and euphoria nav: the name shrinks with an ellipsis, the buttons never wrap or shrink', () => {
+  it('prime and euphoria nav: the name wraps to two lines (no ellipsis), the buttons never wrap or shrink', () => {
     for (const template of ['prime', 'euphoria'] as TemplateId[]) {
       const html = render[template](withTemplate(template, { shopName: 'The Very Long Barbershop Name Co' }));
       const nav = /<nav style[\s\S]*?<\/nav>/.exec(html)![0];
-      expect(nav, template).toContain('min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap');
+      expect(nav, template).toContain('white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;min-width:0;');
+      expect(nav, template).not.toContain('text-overflow:ellipsis');
       expect(nav, template).toContain('gap:12px');
-      expect(nav, template).not.toContain('white-space:normal');
       const buttons = nav.match(/<a [^>]*class="(?:p-cta|eu-cta)[^>]*>/g) ?? [];
       expect(buttons.length, template).toBeGreaterThan(0);
       for (const b of buttons) expect(b, template).toContain('flex-shrink:0');

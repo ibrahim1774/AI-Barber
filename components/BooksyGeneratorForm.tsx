@@ -57,7 +57,7 @@ const PLACEHOLDER_SAMPLES = [
   'vagaro.com/mikesbarbershop',
 ];
 const PLACEHOLDER_STATIC =
-  'Booksy, theCut, Fresha, Square, StyleSeat, Vagaro, Goldie or Setmore link';
+  'Booksy, theCut, Fresha, Square, StyleSeat, Vagaro, Goldie, Setmore, Squire, GlossGenius or Acuity link';
 
 function useTypingPlaceholder(): string {
   const [text, setText] = useState('');
@@ -310,7 +310,7 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn, tem
               style={{ fontFamily: 'Georgia, "Times New Roman", serif', animationDelay: '0.48s' }}
             >
               {customDesign
-                ? 'Works with Booksy, theCut, Fresha, StyleSeat, Square, Vagaro, Goldie and Setmore — paste your link and we build your custom site around your real services, photos, hours and reviews.'
+                ? 'Works with Booksy, theCut, Fresha, StyleSeat, Square, Vagaro, Goldie, Setmore, Squire, GlossGenius and Acuity — paste your link and we build your custom site around your real services, photos, hours and reviews.'
                 : 'Paste your Booksy, Fresha, Square, Vagaro, StyleSeat or Setmore link — we\u2019ll pull your services, photos, hours, and reviews automatically.'}
             </p>
           </div>
@@ -353,7 +353,7 @@ export const BooksyGeneratorForm: React.FC<Props> = ({ onGenerate, onSignIn, tem
                   onChange={(e) => setUrl(e.target.value)}
                 />
                 <p className="text-white/40 text-[9px] md:text-[10px] mt-1">
-                  Booksy, theCut, Fresha, Square, StyleSeat, Vagaro, Goldie &amp; Setmore all work — short links too.
+                  Booksy, theCut, Fresha, Square, StyleSeat, Vagaro, Goldie, Setmore, Squire, GlossGenius &amp; Acuity all work — short links too.
                 </p>
               </div>
 

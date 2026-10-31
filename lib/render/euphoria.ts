@@ -16,7 +16,8 @@ import {
 } from './honest.js';
 import { t, type LabelKey } from './labels.js';
 import { hasFilePages } from './pages.js';
-import { HEADER_CSS, NAV_CSS, headerHtml, navItemsFor, navListHtml, type RenderCtx } from './shell.js';
+import { HEADER_CSS, NAV_CSS, headerHtml, brandHtml, reportLinkHtml, navItemsFor, navListHtml, type RenderCtx } from './shell.js';
+import { headerBrand } from './logo.js';
 
 // Shared Euphoria CSS — scoped inside `.euphoria-root` so it can't leak into the Luxe flow.
 // Mirrors euphoria-build/styles.css custom properties + typography + section rhythm.
@@ -216,17 +217,10 @@ const EUPHORIA_SKIN: SectionSkin = {
   section: 'eu-section',
   inner: 'eu-container ab-sub',
   heading: 'eu-display',
-  list: 'ab-sub-list',
-  item: 'ab-sub-row',
-  name: 'eu-serif ab-sub-name',
-  price: 'ab-sub-price',
   button: 'eu-cta eu-cta-solid',
   grid: 'ab-sub-grid',
   link: 'eu-cta',
   css: '.ab-sub{text-align:center}.ab-sub .eu-display{font-size:clamp(32px,5vw,56px);margin:0 0 32px}'
-    + '.ab-sub-list{list-style:none;padding:0;max-width:640px;margin:0 auto 32px;text-align:left}'
-    + '.ab-sub-row{display:flex;justify-content:space-between;gap:16px;padding:14px 0;border-bottom:1px solid var(--eu-line-soft)}'
-    + '.ab-sub-name{font-size:20px;color:var(--eu-ink)}.ab-sub-price{color:var(--eu-brand);font-style:italic;white-space:nowrap}'
     + '.ab-sub-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin:0 auto 32px;max-width:880px;text-align:left}'
     + '@media(min-width:768px){.ab-sub-grid{grid-template-columns:repeat(4,1fr)}}'
     + '.ab-sp-card{display:flex;flex-direction:column;gap:6px;text-decoration:none;color:var(--eu-ink)}'
@@ -388,11 +382,11 @@ ${EUPHORIA_SCOPED_CSS}${menuSet ? HEADER_CSS.euphoria + NAV_CSS.euphoria : ''}
 <div class="euphoria-root"${rootStyle ? ` style="${rootStyle}"` : ''}>
 
   <!-- Nav -->
-  ${menuSet ? headerHtml('euphoria', { name: siteData.shopName, cta: bookingUrl || canCall ? { href: bookingUrl || `tel:${(siteData.phone || '').replace(/\s+/g, '')}`, label: L('euNavBook'), newTab: bookTarget !== '' } : null, nav: navListHtml(navItemsFor('euphoria', menuSet, siteData, 'home'), L('pgMenu'), L('pgMore')) }) : `<nav style="position:sticky;top:0;z-index:50;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--eu-line-soft);">
+  ${menuSet ? headerHtml('euphoria', { name: siteData.shopName, ...headerBrand(siteData), cta: bookingUrl || canCall ? { href: bookingUrl || `tel:${(siteData.phone || '').replace(/\s+/g, '')}`, label: bookingUrl ? L('euNavBook') : L('euNavCall'), newTab: bookTarget !== '' } : null, nav: navListHtml(navItemsFor('euphoria', menuSet, siteData, 'home'), L('pgMenu'), L('pgMore')) }) : `<nav style="position:sticky;top:0;z-index:50;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--eu-line-soft);">
     <div class="eu-container" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 24px;">
-      <a href="#top" style="text-decoration:none;color:var(--eu-ink);font-family:'Newsreader',serif;font-size:20px;letter-spacing:0.04em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${safeName}</a>${shopUrl ? `
+      ${brandHtml('euphoria', { single: true, ...headerBrand(siteData), alt: safeName, href: '#top', nameHtml: safeName, nameOnly: `<a href="#top" style="text-decoration:none;color:var(--eu-ink);font-family:'Newsreader',serif;font-size:clamp(16px,4.8vw,20px);letter-spacing:0.04em;line-height:1.1;overflow-wrap:anywhere;white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;min-width:0;">${safeName}</a>` })}${shopUrl ? `
       <a href="${escapeHtml(shopUrl)}" style="text-decoration:none;color:var(--eu-ink-soft);font-size:11px;letter-spacing:0.28em;text-transform:uppercase;flex-shrink:0;white-space:nowrap;">${L('euNavShop')}</a>` : ''}
-      ${navBookHref ? `<a href="${navBookHref}"${bookTarget} class="eu-cta" style="padding:10px 18px;font-size:10px;flex-shrink:0;white-space:nowrap;">${L('euNavBook')}</a>` : ''}
+      ${navBookHref ? `<a href="${navBookHref}"${bookTarget} class="eu-cta" style="padding:10px 18px;font-size:10px;flex-shrink:0;white-space:nowrap;">${bookingUrl ? L('euNavBook') : L('euNavCall')}</a>` : ''}
     </div>
   </nav>`}
 
@@ -460,7 +454,7 @@ ${EUPHORIA_SCOPED_CSS}${menuSet ? HEADER_CSS.euphoria + NAV_CSS.euphoria : ''}
   <footer style="padding:48px 24px;border-top:1px solid var(--eu-line-soft);text-align:center;">
     <div class="eu-container">
       <div class="eu-serif" style="font-size:18px;color:var(--eu-ink);margin-bottom:8px;">${safeName}</div>
-      <div class="eu-eyebrow">© ${copyrightYear()} · ${L('footerCredit')}</div>
+      <div class="eu-eyebrow">© ${copyrightYear()} · ${L('footerCredit')} ${reportLinkHtml()}</div>
     </div>
   </footer>
 

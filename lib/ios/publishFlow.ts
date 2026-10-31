@@ -12,6 +12,7 @@ import {
   publishSite,
   REQUEST_MAX_REDEPLOYS,
   renderPending,
+  bucket,
   readPendingSite,
   readPendingVersioned,
   writePendingSite,
@@ -24,11 +25,14 @@ import {
   type VersionedPending,
 } from '../publishSite.js';
 import { VerifyFailure, isActive, lazyDefaultVerifier, type VerifiedTx } from './appleVerify.js';
-import { supabasePurchases, type PurchasesRepo } from './purchases.js';
+import { supabaseDomains } from './domainsRepo.js';
+import { supabasePurchases, type PurchaseRow, type PurchasesRepo } from './purchases.js';
 import { createClient } from '@supabase/supabase-js';
 import { chooseSlug, makeIsTaken, urlServes, vercelProjectExists } from './slug.js';
 import { buildImageUrlMap, toPendingSiteData } from './pendingData.js';
 import { stripLapsedLinks } from './tiers.js';
+import { liveBindingOwner, liveEmailOf, otherAccountBody, type BindingOwner, type OtherAccountBody } from './ownership.js';
+import { isDraftLogoFolder, logoProblem, configuredBucket } from '../logoUrl.js';
 import { MAX_BODY_BYTES, hasDataUrl, isObj, restoreImageUrls, validSiteData, validationProblem } from './siteShape.js';
 
 export { buildImageUrlMap, toPendingSiteData };
@@ -64,13 +68,33 @@ export type IosPublishResult =
       body: { siteId: string; deployedUrl: string; republished: boolean; version: number; editedBy: SiteEditor; editedAt: string };
     }
   | { status: 409; body: { error: 'site-updated'; site: IosSiteBody } }
-  | { status: 400 | 402 | 404 | 502 | 503; body: { error: string; reason?: string } };
+  | { status: 409; body: OtherAccountBody }
+  | { status: 409; body: { error: 'account-has-site'; slug: string } }
+  | { status: 409; body: { error: 'purchase-changed' } }
+  | { status: 400 | 401 | 402 | 404 | 502 | 503; body: { error: string; reason?: string } };
 
 export type IosSiteLookupResult =
   | { status: 200; body: IosSiteBody }
-  | { status: 404 | 503; body: { error: string } };
+  | { status: 409; body: OtherAccountBody }
+  | { status: 401 | 404 | 503; body: { error: string } };
+
+/**
+ * TEMPORARY COMPAT SWITCH (pay-then-sign-up, review M1). Env var IOS_ALLOW_ACCOUNTLESS_PUBLISH
+ * ('1' or 'true'). DEFAULT OFF in code: a publish with NO Bearer is 401 `unauthorized` before anything
+ * is written, so the only way to go live is verified payment + account. It is meant to be ON in
+ * production DURING THE ROLLOUT (shipped builds up to 22 publish without a Bearer and would otherwise
+ * never go live), then turned OFF and redeployed once build 23 is forced. While ON, any client holding
+ * an active transactionId can go live with no account (payment is still verified).
+ * Tests override it per request through PublishDeps.allowAccountlessPublish.
+ */
+export function accountlessPublishAllowed(): boolean {
+  const v = (process.env.IOS_ALLOW_ACCOUNTLESS_PUBLISH || '').trim().toLowerCase();
+  return v === '1' || v === 'true';
+}
 
 export interface PublishDeps {
+  /** Overrides the IOS_ALLOW_ACCOUNTLESS_PUBLISH env var (tests). */
+  allowAccountlessPublish?: boolean;
   verify(transactionId: string): Promise<VerifiedTx>;
   repo: PurchasesRepo;
   isTaken(slug: string): Promise<boolean>;
@@ -85,6 +109,21 @@ export interface PublishDeps {
    * outage). The only way a publish links the purchase to an account (e2e I6). Absent: no link.
    */
   userOf?(token: string): Promise<{ id: string } | null>;
+  /** The email behind an account id, for the masked hint of a 409 purchase-other-account. */
+  emailOf?(userId: string): Promise<string | null>;
+  /**
+   * Legacy / unlinked purchases (user_id null): which account owns the shop or site bound to the
+   * purchase (an id, 'ambiguous', or null when nothing is attached). Absent: treated as null for a
+   * publish, and as "not proven" for a site lookup (which never discloses a site without proof).
+   */
+  bindingOwner?(row: PurchaseRow): Promise<BindingOwner>;
+  /** Finish this account's unfinished business move (moveIntent.ts). Best effort. */
+  finishMove?(userId: string): Promise<unknown>;
+  /**
+   * The owner just republished a removed site: lift the owner-removed mark on this slug's detached
+   * custom-domain rows, so the domain sweep may re-attach the still-paid domain. Best effort.
+   */
+  clearDomainRemoval?(slug: string): Promise<unknown>;
   /** Dry render before storing (lib/publishSite.ts renderPending). Throws on unrenderable data. */
   render?(p: Pick<PendingSite, 'siteData' | 'imageUrlMap'>): SiteFile[];
   now(): number;
@@ -171,6 +210,18 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
     console.warn(`[ios/publish] refused before any write: ${problem}`);
     return badRequest;
   }
+  // A logo is also bound to an upload folder: the anonymous draft folder the app uploaded it to, never a published
+  // site's slug folder (validationProblem above already proved bucket, path shape, file type and size).
+  if (sd.logo != null) {
+    const logo = logoProblem(sd.logo, { bucketName: configuredBucket(), allowFolder: isDraftLogoFolder });
+    if (logo) {
+      console.warn(`[ios/publish] refused before any write: ${logo}`);
+      // A logo that is otherwise valid but sits in a site (slug) folder, e.g. one set by an admin: say why, so the app can
+      // ask for a re-upload instead of showing a generic failure. `error` stays 'bad-request' for old app builds.
+      if (!logoProblem(sd.logo, { bucketName: configuredBucket() })) return { status: 400 as const, body: { error: 'bad-request', reason: 'logo-folder' } };
+      return badRequest;
+    }
+  }
   try {
     (deps.render ?? renderPending)({ siteData: pendingData, imageUrlMap });
   } catch (e) {
@@ -200,26 +251,86 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
   try {
     const row = await deps.repo.upsertVerified(tx, { checkedAt });
 
-    // Account link (e2e I6). The body's userId is never trusted: anyone with the transaction id
-    // could name any account and re-point the purchase, locking the real owner out of
-    // /api/shop/plan and /api/shop/setup (409 purchase-in-use). Only a verified Supabase bearer
-    // links, and only a purchase with no account yet (conditional in SQL); an existing owner is
-    // changed only by the relink rules in /api/shop/plan. Best effort: never blocks a paid publish.
+    // Account ownership (plan 2026-10-26: a subscription moves only through /api/ios/transfer). The body's
+    // userId is never trusted; only a verified Supabase bearer identifies the caller.
+    //  - Purchase linked (user_id set): only that account may publish. No/invalid token: 401. Another
+    //    account (the same Apple ID under a second email): 409 purchase-other-account, nothing written.
+    //  - Purchase not linked yet: a signed-in caller links it (conditional in SQL, so of two racing
+    //    accounts exactly one wins; the loser gets the 409). A legacy row with a slug already bound
+    //    is linked only by the account that owns that shop/site. A publish with no account at all
+    //    keeps the old behaviour (fresh bind), the first signed-in publish or Restore links it later.
     const token = bearer(ctx.authorization);
-    if (token && deps.userOf && deps.repo.setUserIfUnlinked) {
+    let caller: string | null = null;
+    let authDown = false;
+    if (token && deps.userOf) {
       try {
         const user = await deps.userOf(token);
-        if (user?.id && UUID_RE.test(user.id)) {
-          const linked = await deps.repo.setUserIfUnlinked(otid, user.id);
-          if (!linked && row.user_id && row.user_id !== user.id) {
-            console.warn(`[ios/publish] ${otid}: already linked to another account; not re-pointed`);
-          }
-        }
+        if (user?.id && UUID_RE.test(user.id)) caller = user.id;
       } catch (e: any) {
-        console.warn(`[ios/publish] ${otid}: account link failed (ignored):`, e?.message || e);
+        authDown = true;
+        console.warn(`[ios/publish] ${otid}: account lookup failed:`, e?.message || e);
       }
-    } else if (typeof input.userId === 'string' && input.userId) {
+    }
+    if (!caller && typeof input.userId === 'string' && input.userId) {
       console.log(`[ios/publish] ${otid}: body userId ignored (only a verified bearer links an account)`);
+    }
+    if (row.user_id) {
+      if (authDown) return unavailable;
+      if (!caller) return { status: 401, body: { error: 'unauthorized' } };
+      // An unfinished business move of this caller (intent row) is finished first; best effort, never blocks a publish.
+      if (caller === row.user_id && deps.finishMove) await deps.finishMove(caller).catch(() => {});
+      if (caller !== row.user_id) {
+        console.warn(`[ios/publish] ${otid}: linked to another account; refused`);
+        return { status: 409, body: await otherAccountBody(deps.emailOf, row.user_id, row) };
+      }
+    } else if (!caller) {
+      // Unlinked and no verified account. Pay-then-sign-up: going live needs an account, so this is a
+      // 401 before anything is written. (The compat flag keeps the old fresh-bind for shipped builds.)
+      if (authDown) return unavailable;
+      if (!(deps.allowAccountlessPublish ?? accountlessPublishAllowed())) {
+        return { status: 401, body: { error: 'unauthorized' } };
+      }
+      // COMPAT (REMOVE-AFTER-APP-SHIPS): a slug that already belongs to someone's shop/site is
+      // republished only by that account (a bare transactionId proves nothing). A true first publish
+      // (no slug, or nobody attached) still fresh-binds below.
+      if (row.site_slug && deps.bindingOwner) {
+        const owner = await deps.bindingOwner(row);
+        if (owner) {
+          console.warn(`[ios/publish] ${otid}: bound slug belongs to an account, request has none; refused`);
+          return { status: 401, body: { error: 'unauthorized' } };
+        }
+      }
+    } else {
+      // Unlinked + signed in: link -> bind -> write -> deploy, all in this request; every refusal below
+      // happens BEFORE the first write (the link itself is the first).
+      // A bound slug that already belongs to someone else's shop/site is theirs to claim, not this caller's.
+      const owner = row.site_slug && deps.bindingOwner ? await deps.bindingOwner(row) : null;
+      if (owner && owner !== caller) {
+        console.warn(`[ios/publish] ${otid}: the shop/site bound to this purchase belongs to another account; refused`);
+        return { status: 409, body: await otherAccountBody(deps.emailOf, owner === 'ambiguous' ? null : owner, row) };
+      }
+      // One site per account: an account that already holds a different live site cannot take a second.
+      if (deps.repo.liveSitesOfUser) {
+        const mine = (await deps.repo.liveSitesOfUser(caller)).find((r) => r.original_transaction_id !== otid && r.site_slug);
+        if (mine) {
+          console.warn(`[ios/publish] ${otid}: account already owns a different site; refused`);
+          return { status: 409, body: { error: 'account-has-site', slug: mine.site_slug as string } };
+        }
+      }
+      let linked = false;
+      try {
+        linked = await deps.repo.setUserIfUnlinked(otid, caller);
+      } catch (e: any) {
+        // Fail closed: going live without the link would leave a paid site no account owns.
+        console.error(`[ios/publish] ${otid}: account link failed:`, e?.message || e);
+        return unavailable;
+      }
+      if (!linked) {
+        const again = await deps.repo.get(otid);
+        if (again?.user_id && again.user_id !== caller) {
+          return { status: 409, body: await otherAccountBody(deps.emailOf, again.user_id, again) };
+        }
+      }
     }
 
     // "republished" means the site was live before; any bound slug is force-deployed.
@@ -318,7 +429,10 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
 
     // The site is live. If stamping fails, the sweeper reconciles it (its
     // publish is idempotent); a 503 here would only make the app redeploy.
-    await deps.repo.markPublished(otid).catch((e) =>
+    // Conditional on the caller still owning the purchase and slug: a transfer may have moved it while
+    // this publish was deploying (the re-read below then puts the site back offline).
+    const only = caller ? { userId: caller, slug } : undefined;
+    await deps.repo.markPublished(otid, only).catch((e) =>
       console.error(`[ios/publish] ${slug}: live but markPublished failed:`, e?.message || e));
 
     // A bound slug was just force-redeployed with real content, so it no longer
@@ -327,8 +441,46 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
     // can land between that read and this deploy. Best effort: if it fails, the
     // sweep's restore pass redeploys the same content and clears it.
     if (force) {
-      await deps.repo.clearTakenDown(otid).catch((e) =>
-        console.error(`[ios/publish] ${slug}: live but clearTakenDown failed:`, e?.message || e));
+      // An owner who removed the site (removed_at, 017) and now publishes from the app on purpose
+      // brings it back with the content they just sent (the purchase and slug are still theirs). The
+      // clear is conditional on the stamp this publish saw, so a removal that landed while it ran
+      // keeps its mark, and then the site stays flagged taken down too.
+      let removedMeanwhile = false;
+      if (row.removed_at && deps.repo.clearRemoved) {
+        try {
+          await deps.repo.clearRemoved(otid, row.removed_at);
+          removedMeanwhile = !!(await deps.repo.get(otid))?.removed_at;
+        } catch (e: any) {
+          removedMeanwhile = true;
+          console.error(`[ios/publish] ${slug}: live but clearRemoved failed:`, e?.message || e);
+        }
+      }
+      // Lift the paid domain's owner-removed mark on every successful bound publish while no removal
+      // is stamped (idempotent; only detached rows marked owner-removed for this slug), and only
+      // while the purchase is still the caller's (a Move may have won). A failure here is retried by
+      // the next publish, because removed_at is already null by then and the branch above is skipped.
+      if (!removedMeanwhile && deps.clearDomainRemoval) {
+        const now = await deps.repo.get(otid).catch(() => null);
+        if (now && !now.removed_at && (!caller || now.user_id === caller)) {
+          await deps.clearDomainRemoval(slug).catch((e: any) =>
+            console.error(`[ios/publish] ${slug}: live but clearDomainRemoval failed (the next publish retries):`, e?.message || e));
+        }
+      }
+      if (!removedMeanwhile) {
+        await deps.repo.clearTakenDown(otid, only).catch((e) =>
+          console.error(`[ios/publish] ${slug}: live but clearTakenDown failed:`, e?.message || e));
+      }
+    }
+
+    // A subscription transfer that won the compare-and-set while this publish was deploying moved the
+    // whole business (purchase, slug, site copy) to another account: the site stays live and is theirs, so
+    // nothing is taken offline. This caller's publish is reported as superseded.
+    if (caller) {
+      const after = await deps.repo.get(otid);
+      if (after && after.user_id !== caller) {
+        console.warn(`[ios/publish] ${otid}: purchase moved during the publish`);
+        return { status: 409, body: { error: 'purchase-changed' } };
+      }
     }
 
     return { status: 200, body: { siteId: slug, deployedUrl: outcome.deployedUrl, republished, version: pending.version, editedBy: 'owner', editedAt: pending.editedAt } };
@@ -338,9 +490,9 @@ export async function runIosPublish(input: IosPublishInput, deps: PublishDeps, c
   }
 }
 
-export async function runIosSiteLookup(
+async function anonymousSiteLookup(
   transactionId: string,
-  deps: Pick<PublishDeps, 'verify' | 'repo' | 'readPending' | 'now'>,
+  deps: Pick<PublishDeps, 'verify' | 'repo'>,
 ): Promise<IosSiteLookupResult> {
   let tx: VerifiedTx;
   try {
@@ -354,7 +506,79 @@ export async function runIosSiteLookup(
   }
   try {
     const row = await deps.repo.get(tx.originalTransactionId);
-    if (!row?.site_slug) return { status: 404, body: { error: 'no-site' } };
+    if (!row || (!row.user_id && !row.site_slug)) return { status: 404, body: { error: 'no-site' } };
+    return { status: 401, body: { error: 'auth-required' } };
+  } catch (e) {
+    console.error(`[ios/site] ${tx.originalTransactionId}: unexpected error:`, (e as Error)?.message || e);
+    return unavailable;
+  }
+}
+
+/**
+ * The site bound to a purchase, for Restore / sign-in on a new phone. The caller must be signed in
+ * (401 otherwise) and must be the account the purchase is linked to: a purchase linked to another
+ * account answers 409 purchase-other-account (masked hint only, no site data). A legacy unlinked
+ * purchase is linked to the caller only when the caller owns the shop/site bound to it (else 409).
+ */
+export async function runIosSiteLookup(
+  transactionId: string,
+  deps: Pick<PublishDeps, 'verify' | 'repo' | 'readPending' | 'now'> & Partial<Pick<PublishDeps, 'userOf' | 'emailOf' | 'bindingOwner'>>,
+  ctx: IosPublishContext = {},
+): Promise<IosSiteLookupResult> {
+  const token = bearer(ctx.authorization);
+  // No Authorization header at all (build 22 and earlier, or a signed-out phone): there is no
+  // unauthenticated read of site data, ever. Apple is asked so the answer can still tell the
+  // phone whether it is blocked: no purchase row, or an unlinked row with no site -> 404 `no-site`
+  // (nothing is bound elsewhere, a first publish may proceed; no data at all); anything else -> 401
+  // `auth-required` (sign in / send the token). Build 22's checkBound maps 404 to "not bound" and 401
+  // to "unknown", so this is what lets its first publish through.
+  if (!token || !deps.userOf) return anonymousSiteLookup(transactionId, deps);
+  let caller: string | null = null;
+  try {
+    const user = await deps.userOf(token);
+    if (user?.id && UUID_RE.test(user.id)) caller = user.id;
+  } catch (e: any) {
+    console.error('[ios/site] account lookup failed:', e?.message || e);
+    return unavailable;
+  }
+  if (!caller) return { status: 401, body: { error: 'unauthorized' } };
+
+  let tx: VerifiedTx;
+  try {
+    tx = await deps.verify(transactionId);
+  } catch (e) {
+    if (e instanceof VerifyFailure) {
+      return { status: e.code === 'apple-unavailable' ? 503 : 404, body: { error: e.code } };
+    }
+    console.error('[ios/site] verify threw unexpectedly:', (e as Error)?.message || e);
+    return { status: 503, body: { error: 'apple-unavailable' } };
+  }
+  try {
+    let row = await deps.repo.get(tx.originalTransactionId);
+    if (!row) return { status: 404, body: { error: 'no-site' } };
+    if (!row.user_id) {
+      // Legacy purchase from before ownership: nothing to show or link when no site is bound.
+      if (!row.site_slug) return { status: 404, body: { error: 'no-site' } };
+      // No disclosure without proof: only the account that owns the shop/site bound to it may link it.
+      // M2: a legacy accountless site (nothing attached, owner null) is linked by the first signed-in
+      // Restore, exactly as publish does (the atomic link below decides a race); an owner who is
+      // someone else, or 'ambiguous', is a 409.
+      if (!deps.bindingOwner) return { status: 409, body: await otherAccountBody(deps.emailOf, null, row) }; // not provable
+      const owner = await deps.bindingOwner(row);
+      if (owner && owner !== caller) {
+        return { status: 409, body: await otherAccountBody(deps.emailOf, owner && owner !== 'ambiguous' ? owner : null, row) };
+      }
+      if (!(await deps.repo.setUserIfUnlinked(row.original_transaction_id, caller))) {
+        row = (await deps.repo.get(row.original_transaction_id)) ?? row; // lost the race: re-decide below
+      } else {
+        row = { ...row, user_id: caller };
+      }
+    }
+    if (row.user_id !== caller) return { status: 409, body: await otherAccountBody(deps.emailOf, row.user_id, row) };
+    if (!row.site_slug) return { status: 404, body: { error: 'no-site' } };
+    // The owner took this site offline (removed_at): to the app it is as if nothing is published, so
+    // a new draft binds fresh and a publish (which clears removed_at) is not blocked as "elsewhere".
+    if (row.removed_at) return { status: 404, body: { error: 'no-site' } };
     const pending = await deps.readPending(row.site_slug);
     return { status: 200, body: siteBody(row.site_slug, pending, isActive(tx, deps.now())) };
   } catch (e) {
@@ -367,6 +591,7 @@ export async function runIosSiteLookup(
 export function liveDeps(): PublishDeps {
   const repo = supabasePurchases();
   return {
+    finishMove: async (u) => (await import('./transferLive.js')).liveFinishMoves(u),
     // Lazy: defaultVerifier() throws when Apple env vars are missing, and that
     // must surface as a mapped 503, not an uncaught 500.
     verify: lazyDefaultVerifier(),
@@ -377,6 +602,8 @@ export function liveDeps(): PublishDeps {
       pendingExists: async (s) => (await readPendingSite(s)) !== null,
       repoTaken: (s) => repo.slugTaken(s),
       projectExists: vercelProjectExists,
+      // Authoritative like the others: a bucket error propagates (503).
+      prefixInUse: async (s) => (await bucket().getFiles({ prefix: `${s}/`, maxResults: 1 }))[0].length > 0,
       urlServes,
     }),
     writePending: writePendingSite,
@@ -385,12 +612,15 @@ export function liveDeps(): PublishDeps {
     readPending: readPendingSite,
     readPendingVersioned,
     userOf: liveUserOf,
+    emailOf: liveEmailOf,
+    bindingOwner: liveBindingOwner,
+    clearDomainRemoval: (slug) => supabaseDomains().clearOwnerRemoved(slug),
     now: () => Date.now(),
   };
 }
 
 /** A Supabase access token's user (service role). Invalid / expired token: null; outage: throws. */
-async function liveUserOf(token: string): Promise<{ id: string } | null> {
+export async function liveUserOf(token: string): Promise<{ id: string } | null> {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set');

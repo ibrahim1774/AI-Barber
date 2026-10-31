@@ -32,6 +32,11 @@ import { withTimeout } from './timeout.js';
 import { stripLapsedLinks } from './tiers.js';
 
 export interface IosSweepSummary {
+  /**
+   * Paid purchases nobody claimed with an account within 30 days (019 claim_expires_at). LOGGED only:
+   * no refund, no takedown (owner ruling 2026-10-26). Present only when there are some.
+   */
+  expiredUnclaimed?: string[];
   checked: number;
   published: string[];
   failed: string[];
@@ -134,7 +139,10 @@ export async function sweepIos(
   const outOfTime = () => now() - start >= deadlineMs;
   const outOfLateTime = () => now() - start >= lateDeadlineMs;
 
-  const rows = await deps.repo.unpublishedBound(limit);
+  // A row the owner removed (removed_at, migration 017) is never published, restored or re-linked by
+  // the sweep, whatever the repo returned: the SQL filters it too, this is the second lock.
+  const notRemoved = (r: PurchaseRow) => r.removed_at == null;
+  const rows = (await deps.repo.unpublishedBound(limit)).filter(notRemoved);
   const out: IosSweepSummary = {
     checked: rows.length, published: [], failed: [], missing: [], deferred: [],
     skippedLapsed: [], restored: [], restoreFailed: [], notRestored: [],
@@ -142,6 +150,21 @@ export async function sweepIos(
     appleUnavailable: [], appleUnresolvable: [], appleUnavailableCount: 0, appleUnresolvableCount: 0,
     linksStripped: [], linksFailed: [],
   };
+
+  // Unclaimed purchases past their 30-day claim window: log only (never refund, never act). Best effort.
+  if (deps.repo.expiredUnclaimed) {
+    try {
+      const stale = await deps.repo.expiredUnclaimed(limit, now());
+      if (stale.length) {
+        out.expiredUnclaimed = stale.map((r) => r.original_transaction_id);
+        for (const r of stale) {
+          console.warn(`[Sweeper:iOS] EXPIRED UNCLAIMED purchase ${r.original_transaction_id} (${r.product_id}, ${r.environment}): paid, never claimed by an account; claim window ended ${r.claim_expires_at}; no action taken`);
+        }
+      }
+    } catch (e: any) {
+      console.warn('[Sweeper:iOS] expired-unclaimed scan failed (ignored):', e?.message || e);
+    }
+  }
 
   /**
    * Apple's verdict for this row: true active, false inactive, null couldn't ask
@@ -211,7 +234,7 @@ export async function sweepIos(
 
   // Pass 2: restores. Fetched now, not up front, so a renewal that landed during pass 1 counts.
   // Once the budget is spent the remaining passes are not even queried; next sweep picks them up.
-  const restores = outOfLateTime() ? [] : await deps.repo.restoreCandidates(limit, now());
+  const restores = outOfLateTime() ? [] : (await deps.repo.restoreCandidates(limit, now())).filter(notRemoved);
   for (const row of restores) {
     const slug = row.site_slug as string;
     if (outOfLateTime()) {
@@ -307,7 +330,7 @@ export async function sweepIos(
   if (deps.repo.linksDue && deps.repo.clearLinksDue && deps.stripPending && !outOfLateTime()) {
     let due: PurchaseRow[] = [];
     try {
-      due = await deps.repo.linksDue(limit);
+      due = (await deps.repo.linksDue(limit)).filter(notRemoved);
     } catch (err: any) {
       // e.g. migration 014 not applied yet: skip the pass, nothing else depends on it.
       console.error('[Sweeper:iOS] link-strip candidates failed (pass skipped):', err?.message || err);

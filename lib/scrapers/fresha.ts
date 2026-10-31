@@ -61,7 +61,7 @@ export const freshaAdapter: PlatformAdapter = {
     // Fresha JSON-LD ships 1 photo and 0 reviews. Enrich when token set.
     const needsEnrichment = shop.photos.length < 6 || shop.reviews.length < 6;
     if (opts.apifyToken && needsEnrichment) {
-      const apify = await runApifyWebScraper({ url, pageFunction: APIFY_PAGE_FUNCTION, token: opts.apifyToken });
+      const apify = await runApifyWebScraper({ url, pageFunction: APIFY_PAGE_FUNCTION, token: opts.apifyToken, label: 'fresha' });
       if (apify) {
         if (apify.photos?.length) shop.photos = [...shop.photos, ...apify.photos];
         if (apify.reviews?.length) shop.reviews = apify.reviews;

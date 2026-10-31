@@ -3,7 +3,8 @@ import { endpoint, readBody, setCors } from '../../lib/bookings/http.js';
 import { getPlan, livePlanDeps, refreshPlan } from '../../lib/ios/planFlow.js';
 
 // Owner only (Authorization: Bearer <Supabase access token>).
-// GET -> the shop's plan: { linked, tier, entitlements, active, expiresAt, takenDownAt, revoked }.
+// GET -> the plan (the shop's purchase, or with no shop the caller's own newest active purchase): { linked, tier, entitlements, active, expiresAt,
+// takenDownAt, revoked, purchaseAccount: 'self'|'other'|null }.
 // POST { transactionId } -> right after a purchase or upgrade: verify with Apple (the latest
 // product), record it, link (or relink) the shop to it when Apple says it is active (409
 // purchase-in-use under setup's rules), then the GET body. Per-user write limit (429).

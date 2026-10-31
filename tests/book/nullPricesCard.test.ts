@@ -23,7 +23,7 @@ describe('shop with null prices and card enabled', () => {
   });
   it('card is offered once a charge of 50 cents or more exists (price or deposit)', () => {
     expect(payOptions(d.shop.pay, { priceCents: 50, depositCents: 0 })).toEqual(['shop', 'card']);
-    expect(payOptions(d.shop.pay, { priceCents: null, depositCents: 500 })).toEqual(['shop', 'card']);
+    expect(payOptions(d.shop.pay, { priceCents: null, depositCents: 500 })).toEqual(['shop']); // a deposit needs a price
     expect(payOptions(d.shop.pay, { priceCents: 49, depositCents: 0 })).toEqual(['shop']);
     expect(cardChargeCents({ priceCents: null, depositCents: 0 })).toBe(0);
   });

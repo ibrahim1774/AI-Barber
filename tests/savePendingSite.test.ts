@@ -120,3 +120,50 @@ describe('api/save-pending-site', () => {
     expect(deleted).toEqual(['pending-sites/web-shop.json']);
   });
 });
+
+describe('api/save-pending-site: the shop logo', () => {
+  const logoUrl = (folder: string, file = 'a1.png') => `https://storage.googleapis.com/b/${folder}/logo/${file}`;
+  const body = (siteData: any, extra: any = {}) => ({ method: 'POST', body: { siteId: 'web-shop', data: { siteId: 'web-shop', siteData, ...extra } } });
+
+  it('stores a logo in this site\'s own logo folder (inline URL, or the pending shape with the map)', async () => {
+    const inline = await call(body({ shopName: 'W', logo: { url: logoUrl('web-shop'), w: 600, h: 200 } }));
+    expect(inline.statusCode).toBe(200);
+    const pending = await call(body({ shopName: 'W', logo: { url: 'uploaded', w: 600, h: 200 } }, { imageUrlMap: { logo: logoUrl('web-shop') } }));
+    expect(pending.statusCode).toBe(200);
+  });
+
+  it('keeps headerShow "logo" / "name" (and the logo) as sent; any other value is dropped, not stored', async () => {
+    const logo = { url: logoUrl('web-shop'), w: 600, h: 200 };
+    const stored = () => JSON.parse(store.get('pending-sites/web-shop.json')!).data.siteData;
+    for (const v of ['logo', 'name']) {
+      expect((await call(body({ shopName: 'W', logo, headerShow: v }))).statusCode).toBe(200);
+      expect(stored()).toMatchObject({ headerShow: v, logo });
+    }
+    for (const v of ['both', 'x', 5, null]) {
+      expect((await call(body({ shopName: 'W', logo, headerShow: v }))).statusCode, String(v)).toBe(200);
+      expect('headerShow' in stored(), String(v)).toBe(false);
+      expect(stored().logo).toEqual(logo);
+    }
+  });
+
+  it('refuses a foreign host, another site\'s folder, a non-png/jpeg, bad w/h and a stray map entry; nothing is stored', async () => {
+    for (const [siteData, extra] of [
+      [{ logo: { url: 'https://evil.example.com/web-shop/logo/a.png', w: 5, h: 5 } }, {}],
+      [{ logo: { url: logoUrl('other-shop'), w: 5, h: 5 } }, {}],
+      [{ logo: { url: logoUrl('web-shop', 'a.svg'), w: 5, h: 5 } }, {}],
+      [{ logo: { url: logoUrl('web-shop'), w: '5', h: 5 } }, {}],
+      [{ logo: { url: 'uploaded', w: 5, h: 5 } }, { imageUrlMap: { logo: logoUrl('other-shop') } }],
+      [{ logo: { url: 'uploaded', w: 5, h: 5 } }, {}],
+      [{}, { imageUrlMap: { logo: logoUrl('web-shop') } }],
+      [{ logo: { url: logoUrl('web-shop'), w: 5, h: 5 } }, { imageUrlMap: { logo: 'https://evil.example.com/x.png' } }],
+      [{ logo: { url: logoUrl('web-shop'), w: 5, h: 5 } }, { imageUrlMap: { logo: logoUrl('other-shop') } }],
+      [{ logo: { url: logoUrl('web-shop'), w: 5, h: 5 } }, { imageUrlMap: { logo: logoUrl('ios-drafts/draft-9') } }],
+      [{ logo: { url: logoUrl('ios-drafts/draft-9'), w: 5, h: 5 } }, {}],
+    ] as const) {
+      store.clear();
+      const r = await call(body({ shopName: 'W', ...siteData }, extra));
+      expect(r.statusCode, JSON.stringify(siteData)).toBe(400);
+      expect(store.size).toBe(0);
+    }
+  });
+});

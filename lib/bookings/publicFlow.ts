@@ -37,7 +37,7 @@ import {
   publicRules,
   refundIfCancelled,
   safeNotify,
-  serviceDeposit,
+  effectiveDeposit,
   text,
   validEmail,
   validZone,
@@ -100,7 +100,7 @@ export async function getShop(params: Params, deps: FlowDeps): Promise<FlowResul
       durationMin: s.duration_min,
       description: s.description ?? null,
       photoUrl: s.photo_url ?? null,
-      depositCents: serviceDeposit(s, s.price_cents),
+      depositCents: effectiveDeposit(shop, s, s.price_cents),
     })),
     members: members.map((m) => {
       const ids = services.filter((s) => offers(cat, s.id, m.id)).map((s) => s.id);
@@ -243,7 +243,7 @@ export async function createAppointment(body: unknown, deps: FlowDeps): Promise<
 
   for (const m of free) {
     const price = priceFor(cat, service, m.id);
-    const deposit = serviceDeposit(service, price);
+    const deposit = effectiveDeposit(shop, service, price);
     let chargeCents = 0;
     if (pay === 'card') {
       chargeCents = deposit > 0 ? deposit : price ?? 0;
@@ -525,7 +525,7 @@ export async function postSent(body: unknown, deps: FlowDeps): Promise<FlowResul
   const service = upd.row.service_id
     ? (await deps.repo.services(shop.id)).find((s) => s.id === upd.row.service_id) ?? null
     : null;
-  const deposit = service ? serviceDeposit(service, upd.row.price_cents) : 0;
+  const deposit = service ? effectiveDeposit(shop, service, upd.row.price_cents) : 0;
   const amountCents = deposit > 0 ? deposit : upd.row.price_cents ?? undefined;
   await safeNotify(deps, { kind: 'customer_says_paid', appointmentId: upd.row.id, method, amountCents });
   return ok({});

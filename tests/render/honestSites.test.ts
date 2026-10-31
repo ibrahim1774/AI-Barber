@@ -215,7 +215,7 @@ describe('prime — policy, walk-ins, stock-photo line', () => {
 
   it('has no walk-in line unless the barber wrote one', () => {
     expect(generatePrimeHTMLWithPlaceholders(bare())).not.toMatch(/walk-ins?/i);
-    const html = generatePrimeHTMLWithPlaceholders(bare({ labels: { bookingNote: 'Walk-ins welcome on Saturdays.' } }));
+    const html = generatePrimeHTMLWithPlaceholders(bare({ bookingUrl: 'https://booksy.com/x', labels: { bookingNote: 'Walk-ins welcome on Saturdays.' } }));
     expect(html).toContain('Walk-ins welcome on Saturdays.');
   });
 
@@ -464,6 +464,12 @@ describe('React previews and vendored sources carry none of the removed copy', (
       'lib/render/heroes.ts', 'lib/render/sections.ts', 'lib/pagesV2.ts',
       // Editable everywhere (2026-10-24): marker helpers + the data paths the preview makes tappable. Add to the app's sync-web.sh.
       'lib/render/markers.ts', 'lib/render/editPaths.ts',
+      // One phone -> tel: href (2026-10-26). Add to the app's sync-web.sh.
+      'lib/render/telHref.ts',
+      // Shop logo size rules (2026-10-27). Add to the app's sync-web.sh.
+      'lib/render/logo.ts',
+      // Scraped price / duration / hours normalizers (2026-10-28). Add to the app's sync-web.sh.
+      'lib/scrapeNormalize.ts',
     ];
     const norm = (p: string) => p.replace(/\.(ts|js)$/, '');
     const set = new Set(VENDORED.map(norm));

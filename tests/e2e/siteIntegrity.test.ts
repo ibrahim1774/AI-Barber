@@ -44,17 +44,21 @@ describe('account link: a publish body re-points ios_purchases.user_id', () => {
     const r = await w.refreshPlan('Bearer owner-jwt', { transactionId }, w.planDeps(shop, { id: USER_A }));
     expect(r.status).toBe(200);
     expect(w.row(otid)!.user_id).toBe(USER_A);
+    // Linked to A: an anonymous publish is 401, a body userId does not help, B's bearer is 409.
     const p = await w.publish(transactionId, siteData(), { userId: USER_B, baseVersion: 1 });
-    expect(p.status).toBe(200);
+    expect(p.status).toBe(401);
     expect(w.row(otid)!.user_id).toBe(USER_A);
-    const signedInB = await w.publish(transactionId, siteData(), { baseVersion: 2 }, { authorization: 'Bearer jwt-b' });
-    expect(signedInB.status).toBe(200);
+    const signedInB = await w.publish(transactionId, siteData(), { baseVersion: 1 }, { authorization: 'Bearer jwt-b' });
+    expect(signedInB.status).toBe(409);
     expect(w.row(otid)!.user_id).toBe(USER_A);
+    const signedInA = await w.publish(transactionId, siteData(), { baseVersion: 1 }, { authorization: 'Bearer jwt-a' });
+    expect(signedInA.status).toBe(200);
   });
 
   it('I6: a verified bearer links a purchase that has no account yet', async () => {
     const { otid, transactionId } = await published();
     expect(w.row(otid)!.user_id).toBeNull();
+    w.shopOwners.set(otid, USER_A); // legacy: the bound slug already belongs to A's shop
     await w.publish(transactionId, siteData(), { userId: USER_B, baseVersion: 1 }, { authorization: 'Bearer jwt-a' });
     expect(w.row(otid)!.user_id).toBe(USER_A);
   });
@@ -63,7 +67,7 @@ describe('account link: a publish body re-points ios_purchases.user_id', () => {
     const { transactionId } = await published();
     const shop = { id: 'shop-a', ios_otid: null as string | null };
     await w.refreshPlan('Bearer owner-jwt', { transactionId }, w.planDeps(shop, { id: USER_A }));
-    await w.publish(transactionId, siteData(), { userId: USER_B, baseVersion: 1 });
+    await w.publish(transactionId, siteData(), { userId: USER_B, baseVersion: 1 }); // 401: linked to A
     const again = await w.refreshPlan('Bearer owner-jwt', { transactionId }, w.planDeps(shop, { id: USER_A }));
     expect(again.status).toBe(200);
   });

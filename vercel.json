@@ -46,11 +46,37 @@
       "destination": "/_ab/shop.html"
     },
     {
+      "source": "/app",
+      "destination": "https://prime-barber-web.vercel.app/app/"
+    },
+    {
+      "source": "/app/:path*",
+      "destination": "https://prime-barber-web.vercel.app/app/:path*"
+    },
+    {
       "source": "/((?!api/|_ab/).*)",
       "destination": "/index.html"
     }
   ],
   "headers": [
+    {
+      "source": "/app",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex"
+        }
+      ]
+    },
+    {
+      "source": "/app/(.*)",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex"
+        }
+      ]
+    },
     {
       "source": "/_ab/assets/(.*)",
       "headers": [
@@ -77,11 +103,29 @@
     {
       "path": "/api/ios/domain-sweep",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/web-app/lapse",
+      "schedule": "*/10 * * * *"
     }
   ],
   "functions": {
     "api/ios/publish.ts": {
       "maxDuration": 300,
+      "includeFiles": "lib/ios/certs/**"
+    },
+    "api/ios/transfer.ts": {
+      "maxDuration": 300,
+      "includeFiles": "lib/ios/certs/**"
+    },
+    "api/ios/take-offline.ts": {
+      "maxDuration": 300,
+      "includeFiles": "lib/ios/certs/**"
+    },
+    "api/ios/delete-account.ts": {
+      "maxDuration": 300
+    },
+    "api/ios/claim-start.ts": {
       "includeFiles": "lib/ios/certs/**"
     },
     "api/ios/site.ts": {
@@ -126,6 +170,18 @@
       "includeFiles": "lib/ios/certs/**"
     },
     "api/deploy-site.ts": {
+      "maxDuration": 300
+    },
+    "api/web-app/publish.ts": {
+      "maxDuration": 300
+    },
+    "api/web-app/take-offline.ts": {
+      "maxDuration": 300
+    },
+    "api/web-app/delete-account.ts": {
+      "maxDuration": 300
+    },
+    "api/web-app/lapse.ts": {
       "maxDuration": 300
     }
   }

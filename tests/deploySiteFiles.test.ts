@@ -163,3 +163,11 @@ describe('deployRenderedSite', () => {
     await expect(deployRenderedSite({ siteId: 'x', html: '' })).rejects.toThrow(/html/);
   });
 });
+
+describe('finalizePages: the report-link slug placeholder is reserved (review L4)', () => {
+  it('a client-supplied imageUrls.siteSlug cannot replace {{siteSlug}}', () => {
+    const out = finalizePages([{ path: 'index.html', html: '<a href="mailto:x?subject={{siteSlug}}">r</a>' }], { siteSlug: 'EVIL' }, 'real-slug');
+    expect(out[0].html).toContain('subject=real-slug');
+    expect(out[0].html).not.toContain('EVIL');
+  });
+});

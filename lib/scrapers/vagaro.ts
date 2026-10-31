@@ -14,39 +14,12 @@
 //   og:image       → profile/cover image (a 340×340 thumbnail)
 //
 // Services, hours and reviews come back empty; the generator/renderer
-// fills or omits them.
+// fills or omits them. Photos: og:image, plus the Apify gallery step when
+// there are fewer than 6 (token only).
 
-import { fetchHtml, finalize } from './util.js';
+import { fetchHtml, finalize, metaContent, apifyGalleryPhotos, needsPhotoEnrichment } from './util.js';
 import type { PlatformAdapter, ScrapedShop } from './types.js';
 import { ScrapeError } from './types.js';
-
-function decodeEntities(s: string): string {
-  return s
-    .replace(/&amp;/g, '&')
-    .replace(/&#0*39;/g, "'")
-    .replace(/&apos;/g, "'")
-    .replace(/&quot;/g, '"')
-    .replace(/&#0*34;/g, '"')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>');
-}
-
-// Read a <meta property|name="key" content="…"> value. Scopes the
-// search to a single <meta> tag (so a missing key never lets the
-// content capture run across tags and grab garbage), uses a backref to
-// the opening quote so apostrophes inside the value (Dan's) don't
-// truncate it, and handles either attribute order.
-function metaContent(html: string, key: string): string {
-  const k = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const keyRe = new RegExp(`(?:property|name)=("|')${k}\\1`, 'i');
-  const tags = html.match(/<meta\b[^>]*>/gi) || [];
-  for (const tag of tags) {
-    if (!keyRe.test(tag)) continue;
-    const m = tag.match(/\bcontent=("|')([\s\S]*?)\1/i);
-    if (m) return decodeEntities(m[2]).trim();
-  }
-  return '';
-}
 
 function titleCase(s: string): string {
   return s.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()).trim();
@@ -70,7 +43,7 @@ export const vagaroAdapter: PlatformAdapter = {
   displayName: 'Vagaro',
   hostMatchers: [/(^|\.)vagaro\.com$/i],
 
-  async scrape(url, _opts) {
+  async scrape(url, opts) {
     let html: string;
     try {
       ({ html } = await fetchHtml(/^https?:\/\//i.test(url) ? url : `https://${url}`));
@@ -108,6 +81,11 @@ export const vagaroAdapter: PlatformAdapter = {
       photos: img && /^https?:\/\//i.test(img) ? [img] : [],
       reviews: [],
     };
+    // og:image is one 340x340 thumbnail. The gallery is drawn client-side, so with fewer than a handful of photos
+    // the shared Apify gallery step (one run, only with a token) reads the rendered page.
+    if (needsPhotoEnrichment(shop.photos.length)) {
+      shop.photos.push(...(await apifyGalleryPhotos({ url, token: opts.apifyToken, label: 'vagaro' })));
+    }
     return finalize(shop);
   },
 };

@@ -159,7 +159,7 @@ describe('POST /api/shop/setup with any of the six products', () => {
         w.state.purchases[tx.originalTransactionId] = { user_id: null, product_id: tx.productId, revoked_at: null, taken_down_at: null };
         return {} as any;
       }),
-      setUser: vi.fn(async (otid: string, userId: string) => { w.state.purchases[otid].user_id = userId; }),
+      setUserIfUnlinked: vi.fn(async (otid: string, userId: string) => { const p = w.state.purchases[otid]; if (!p || p.user_id) return false; p.user_id = userId; return true; }),
     };
     return { purchases: makePurchaseVerifier(async () => ({ verify, repo }), () => 1000), repo, upserts };
   }

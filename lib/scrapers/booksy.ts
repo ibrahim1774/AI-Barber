@@ -195,7 +195,7 @@ export const booksyAdapter: PlatformAdapter = {
       shop.reviews.length < 6 ||
       (shop.staff?.length || 0) === 0;
     if (opts.apifyToken && needsEnrichment) {
-      const apify = await runApifyWebScraper({ url, pageFunction: APIFY_PAGE_FUNCTION, token: opts.apifyToken });
+      const apify = await runApifyWebScraper({ url, pageFunction: APIFY_PAGE_FUNCTION, token: opts.apifyToken, label: 'booksy' });
       if (apify) {
         // Services: prefer Apify (richer — has duration + category) when it returned anything.
         if (apify.services?.length) shop.services = apify.services;

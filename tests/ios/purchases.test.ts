@@ -54,7 +54,7 @@ describe('supabasePurchases', () => {
     const rows = await supabasePurchases(client).unpublishedBound(5);
     expect(rows).toHaveLength(1);
     expect(find(calls, 'not')!.args).toEqual(['site_slug', 'is', null]);
-    expect(calls.filter((c) => c.method === 'is').map((c) => c.args)).toEqual([['published_at', null], ['revoked_at', null]]);
+    expect(calls.filter((c) => c.method === 'is').map((c) => c.args)).toEqual([['published_at', null], ['revoked_at', null], ['removed_at', null]]);
     expect(find(calls, 'order')!.args).toEqual(['verified_at', { ascending: true }]);
     expect(find(calls, 'limit')!.args).toEqual([5]);
   });
@@ -102,6 +102,28 @@ describe('supabasePurchases', () => {
         ['lapse_checked_at', { ascending: true, nullsFirst: true }], ['expires_at', { ascending: true }],
       ]);
       expect(find(calls, 'limit')!.args).toEqual([3]);
+    });
+
+    it('restoreCandidates never returns an owner-removed row (SQL filter + JS re-check)', async () => {
+      const rows = [
+        { original_transaction_id: 'gone', site_slug: 'g', expires_at: iso(NOW + DAY), revoked_at: null, taken_down_at: iso(NOW - DAY), removed_at: iso(NOW - DAY) },
+        { original_transaction_id: 'lapsed', site_slug: 'l', expires_at: iso(NOW + DAY), revoked_at: null, taken_down_at: iso(NOW - DAY), removed_at: null },
+      ];
+      const { client, calls } = fakeClient({ data: rows, error: null });
+      const out = await supabasePurchases(client).restoreCandidates(3, NOW);
+      expect(out.map((r) => r.original_transaction_id)).toEqual(['lapsed']);
+      expect(find(calls, 'is')!.args).toEqual(['removed_at', null]);
+    });
+
+    it('markRemoved keeps the first stamp; clearRemoved only clears the stamp it was given', async () => {
+      const a = fakeClient();
+      await supabasePurchases(a.client).markRemoved('o1', NOW);
+      expect(find(a.calls, 'update')!.args).toEqual([{ removed_at: iso(NOW) }]);
+      expect(find(a.calls, 'is')!.args).toEqual(['removed_at', null]);
+      const b = fakeClient();
+      await supabasePurchases(b.client).clearRemoved('o1', iso(NOW));
+      expect(find(b.calls, 'update')!.args).toEqual([{ removed_at: null }]);
+      expect(b.calls.filter((c) => c.method === 'eq').map((c) => c.args)).toEqual([['original_transaction_id', 'o1'], ['removed_at', iso(NOW)]]);
     });
 
     it('takedownCandidates: oldest-checked first; Sandbox excluded unless includeSandbox', async () => {

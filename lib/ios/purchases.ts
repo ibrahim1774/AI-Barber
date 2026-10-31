@@ -9,6 +9,12 @@ export interface PurchaseRow {
   last_notification: string | null; published_at: string | null;
   /** Set while the live site is replaced by the offline page (subscription lapsed). Content is kept. */
   taken_down_at: string | null;
+  /**
+   * 017: the owner removed the site (Delete account / Take my website offline). Unlike taken_down_at
+   * (also set by a lapse), no automatic path ever restores a row with this set; only an explicit owner
+   * publish clears it.
+   */
+  removed_at?: string | null;
   /** When the sweep last asked Apple about this row as a takedown/restore candidate. */
   lapse_checked_at: string | null;
   /**
@@ -18,6 +24,11 @@ export interface PurchaseRow {
   product_purchased_at?: string | null;
   /** 014: set when a downgrade left Book/Shop links the plan no longer covers (the sweep strips them). */
   links_due_at?: string | null;
+  /**
+   * 019: when a paid-but-unclaimed purchase (claim-start: user_id null, no slug) stops being fresh.
+   * Only the sweep reads it, to LOG expired rows (no auto-refund, no takedown). Set once.
+   */
+  claim_expires_at?: string | null;
 }
 
 export interface PurchasesRepo {
@@ -30,13 +41,20 @@ export interface PurchasesRepo {
   upsertVerified(tx: VerifiedTx, opts?: { checkedAt?: number }): Promise<PurchaseRow>;
   bindSlug(otid: string, slug: string): Promise<boolean>;
   slugTaken(slug: string): Promise<boolean>;
-  markPublished(otid: string): Promise<void>;
-  setUser(otid: string, userId: string): Promise<void>;
+  /** With `only`, the stamp is written only while the row still belongs to that account and slug (a transfer may have moved it). */
+  markPublished(otid: string, only?: { userId: string; slug: string }): Promise<void>;
   /**
-   * Link the purchase to this account only while it has none (conditional in SQL): never
-   * re-points an existing owner. True when this call linked it. Optional for older fakes.
+   * THE ONLY writer of ios_purchases.user_id (besides the FK's ON DELETE SET NULL): a single
+   * conditional UPDATE ... WHERE user_id IS NULL, so it never re-points an existing owner and of two
+   * racing accounts exactly one gets true. False = already linked (to anyone, the caller included).
    */
-  setUserIfUnlinked?(otid: string, userId: string): Promise<boolean>;
+  setUserIfUnlinked(otid: string, userId: string): Promise<boolean>;
+  /**
+   * Move a purchase between accounts (POST /api/ios/transfer) in ONE conditional UPDATE:
+   * `SET user_id = to WHERE original_transaction_id = otid AND user_id = from`. The slug, publish stamps
+   * and everything else stay (the whole business moves with the purchase). True = moved; false = changed first.
+   */
+  transferUser?(otid: string, fromUserId: string, toUserId: string): Promise<boolean>;
   applyNotification(n: {
     otid: string; productId: string; environment: IosEnv; expiresAt: number | null; revokedAt: number | null; type: string;
     /** REFUND_REVERSED: set revoked_at = null (wins over revokedAt). */
@@ -57,11 +75,26 @@ export interface PurchasesRepo {
   /** Restore prefilter: taken down and (revoked, or active again per lapse.ts). Apple decides. */
   restoreCandidates(limit: number, now: number): Promise<PurchaseRow[]>;
   markTakenDown(otid: string, at: number): Promise<void>;
-  clearTakenDown(otid: string): Promise<void>;
+  clearTakenDown(otid: string, only?: { userId: string; slug: string }): Promise<void>;
+  /** 017: stamp removed_at (owner-initiated removal; idempotent, keeps the first stamp). */
+  markRemoved(otid: string, at: number): Promise<void>;
+  /** 017: clear removed_at only if it still equals `removedAt` (a newer removal keeps its stamp). */
+  clearRemoved(otid: string, removedAt: string): Promise<void>;
   /** Stamp lapse_checked_at (the sweep asked Apple about this row). */
   markLapseChecked(otid: string, at: number): Promise<void>;
   /** The purchase bound to this slug, if any. */
   findBySlug(slug: string): Promise<PurchaseRow | null>;
+  /**
+   * 019: stamp claim_expires_at on a still-unclaimed row (user_id null, no slug) that has none yet.
+   * Never extends an existing deadline (claim-start is idempotent per otid). True = this call set it.
+   */
+  setClaimExpiryIfUnset?(otid: string, at: number): Promise<boolean>;
+  /** The purchases linked to this account (user_id = userId), newest expiry first. Plan GET for a shop-less account. */
+  ofUser?(userId: string): Promise<PurchaseRow[]>;
+  /** Purchases linked to this account that hold a live (not removed) site: the one-site-per-account check. */
+  liveSitesOfUser?(userId: string): Promise<PurchaseRow[]>;
+  /** 019: unclaimed rows (no user, no slug, not revoked/removed) whose claim_expires_at has passed. */
+  expiredUnclaimed?(limit: number, now: number): Promise<PurchaseRow[]>;
   /** 014 (M1): stamp links_due_at (the product stopped covering Book/Shop links). Optional for older fakes. */
   markLinksDue?(otid: string, at: number): Promise<void>;
   /** 014 (M1): bound, published, live rows with links_due_at set, oldest first. */
@@ -75,6 +108,36 @@ const iso = (ms: number | null) => (ms == null ? null : new Date(ms).toISOString
 
 function fail(op: string, error: { message?: string } | null): never {
   throw new Error(`ios_purchases ${op} failed: ${error?.message ?? 'unknown'}`);
+}
+
+/**
+ * The PostgREST or() filter guarding an expires_at write (evaluated in SQL under the row lock).
+ *
+ * Undated (no purchase date): forward only, so a stale verify or a retried older notification
+ * can't put an older expiry back over a renewal.
+ *
+ * Dated: the expiry belongs to the NEWEST transaction (by purchase date), like product_id.
+ * - Same or newer transaction than the stored product's: forward only (a renewal, a re-verify).
+ *   This is the only rule expiryGuard returns (it is the expires_at-only update).
+ * - A newer transaction for a DIFFERENT product may also move it backwards: an upgrade is
+ *   immediate and starts a new period, so hosting.yearly with 11 months left -> store.monthly
+ *   expires in 1 month (Apple refunds the rest pro rata). Forward-only kept the yearly date, so a
+ *   cancelled upgrade stayed live (site up, Bookings / Store open) until the old yearly date.
+ *   The same product only moves forward (an IOS_QA_ACTIVE_OTIDS row keeps its stretched expiry).
+ *   writeRow runs this branch as ONE update of expires_at + product_id + product_purchased_at, so
+ *   no stale older writer can slip between an expiry move and the product move.
+ * - An OLDER transaction than the stored product's never writes it, even a later date (the old
+ *   yearly transaction retried after the upgrade must not put the yearly date back).
+ * - A row stored undated (before 010, or seeded undated) keeps the forward-only rule.
+ */
+export function expiryGuard(at: string, dated: { purchasedAt: string; productId: string } | null): string {
+  if (!dated) return `expires_at.is.null,expires_at.lt."${at}"`;
+  const forward = `or(expires_at.is.null,expires_at.lt."${at}")`;
+  const p = `"${dated.purchasedAt}"`;
+  return [
+    `and(product_purchased_at.is.null,${forward})`,
+    `and(product_purchased_at.lte.${p},${forward})`,
+  ].join(',');
 }
 
 /** What the never-backwards rules read before writing. */
@@ -120,13 +183,31 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
     if (error) fail(op, error);
     let row = data as PurchaseRow;
     if (expiresAt != null) {
-      // expires_at never moves backwards either: guarded the same way, so a stale verify or a
-      // retried older notification can't put an older expiry back over a renewal.
+      // expires_at follows the newest transaction: never backwards on a renewal or a stale verify,
+      // but an upgrade to a shorter period (yearly -> a higher monthly) moves it back.
       const at = iso(expiresAt) as string;
+      if (dated) {
+        // A newer transaction for a DIFFERENT product: ONE statement moves expiry and product
+        // together (evaluated under the row lock), so a stale older writer can't land between
+        // them. Once the row holds the newer purchase date, no older writer passes any branch.
+        const purchasedAt = iso(product.purchasedAt as number) as string;
+        const { data: upgraded, error: upErr } = await db().from(TABLE)
+          .update({ expires_at: at, product_id: product.productId, product_purchased_at: purchasedAt })
+          .eq('original_transaction_id', otid)
+          .lt('product_purchased_at', purchasedAt)
+          .neq('product_id', product.productId)
+          .select();
+        if (upErr) fail(op, upErr);
+        if (Array.isArray(upgraded) && upgraded.length > 0) return upgraded[0] as PurchaseRow;
+      }
       const { data: moved, error: expErr } = await db().from(TABLE)
         .update({ expires_at: at })
         .eq('original_transaction_id', otid)
-        .or(`expires_at.is.null,expires_at.lt."${at}"`)
+        .or(product.isUpgraded
+          // The transaction an upgrade replaced carries the OLD period's end (the rest of a yearly
+          // plan Apple refunded): it only fills an empty expiry, never overrides one.
+          ? 'expires_at.is.null'
+          : expiryGuard(at, dated ? { purchasedAt: iso(product.purchasedAt as number) as string, productId: product.productId } : null))
         .select();
       if (expErr) fail(op, expErr);
       if (Array.isArray(moved) && moved.length > 0) row = moved[0] as PurchaseRow;
@@ -197,14 +278,11 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
       return Array.isArray(data) && data.length > 0;
     },
 
-    async markPublished(otid) {
-      const { error } = await db().from(TABLE).update({ published_at: new Date().toISOString() }).eq('original_transaction_id', otid);
+    async markPublished(otid, only) {
+      let q = db().from(TABLE).update({ published_at: new Date().toISOString() }).eq('original_transaction_id', otid);
+      if (only) q = q.eq('user_id', only.userId).eq('site_slug', only.slug);
+      const { error } = await q;
       if (error) fail('markPublished', error);
-    },
-
-    async setUser(otid, userId) {
-      const { error } = await db().from(TABLE).update({ user_id: userId }).eq('original_transaction_id', otid);
-      if (error) fail('setUser', error);
     },
 
     async setUserIfUnlinked(otid, userId) {
@@ -212,6 +290,44 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
         .eq('original_transaction_id', otid).is('user_id', null).select('original_transaction_id');
       if (error) fail('setUserIfUnlinked', error);
       return Array.isArray(data) && data.length > 0;
+    },
+
+    async transferUser(otid, fromUserId, toUserId) {
+      const { data, error } = await db().from(TABLE).update({ user_id: toUserId })
+        .eq('original_transaction_id', otid).eq('user_id', fromUserId).select('original_transaction_id');
+      if (error) fail('transferUser', error);
+      return Array.isArray(data) && data.length > 0;
+    },
+
+    async setClaimExpiryIfUnset(otid, at) {
+      const { data, error } = await db().from(TABLE).update({ claim_expires_at: iso(at) })
+        .eq('original_transaction_id', otid).is('user_id', null).is('site_slug', null).is('claim_expires_at', null)
+        .select('original_transaction_id');
+      if (error) fail('setClaimExpiryIfUnset', error);
+      return Array.isArray(data) && data.length > 0;
+    },
+
+    async ofUser(userId) {
+      const { data, error } = await db().from(TABLE).select('*').eq('user_id', userId)
+        .order('expires_at', { ascending: false, nullsFirst: false }).limit(20);
+      if (error) fail('ofUser', error);
+      return (data as PurchaseRow[]) ?? [];
+    },
+
+    async liveSitesOfUser(userId) {
+      const { data, error } = await db().from(TABLE).select('*')
+        .eq('user_id', userId).not('site_slug', 'is', null).is('removed_at', null);
+      if (error) fail('liveSitesOfUser', error);
+      return (data as PurchaseRow[]) ?? [];
+    },
+
+    async expiredUnclaimed(limit, now) {
+      const { data, error } = await db().from(TABLE).select('*')
+        .is('user_id', null).is('site_slug', null).is('revoked_at', null).is('removed_at', null)
+        .not('claim_expires_at', 'is', null).lt('claim_expires_at', iso(now))
+        .order('claim_expires_at', { ascending: true }).limit(limit);
+      if (error) fail('expiredUnclaimed', error);
+      return (data as PurchaseRow[]) ?? [];
     },
 
     async markLinksDue(otid, at) {
@@ -222,7 +338,7 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
     async linksDue(limit) {
       const { data, error } = await db().from(TABLE).select('*')
         .not('links_due_at', 'is', null).not('site_slug', 'is', null).not('published_at', 'is', null)
-        .is('taken_down_at', null).is('revoked_at', null)
+        .is('taken_down_at', null).is('revoked_at', null).is('removed_at', null)
         .order('links_due_at', { ascending: true }).limit(limit);
       if (error) fail('linksDue', error);
       return (data as PurchaseRow[]) ?? [];
@@ -264,7 +380,7 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
 
     async unpublishedBound(limit) {
       const { data, error } = await db().from(TABLE).select('*')
-        .not('site_slug', 'is', null).is('published_at', null).is('revoked_at', null)
+        .not('site_slug', 'is', null).is('published_at', null).is('revoked_at', null).is('removed_at', null)
         .order('verified_at', { ascending: true }).limit(limit);
       if (error) fail('unpublishedBound', error);
       return (data as PurchaseRow[]) ?? [];
@@ -293,13 +409,13 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
       // Revoked rows too: a refunded customer who resubscribes keeps the same
       // originalTransactionId, and Apple's answer (the sweep asks) clears it.
       const { data, error } = await db().from(TABLE).select('*')
-        .not('taken_down_at', 'is', null)
+        .not('taken_down_at', 'is', null).is('removed_at', null)
         .or(`revoked_at.not.is.null,expires_at.gt."${new Date(now).toISOString()}"`)
         .order('lapse_checked_at', { ascending: true, nullsFirst: true })
         .order('expires_at', { ascending: true }).limit(limit);
       if (error) fail('restoreCandidates', error);
       return ((data as PurchaseRow[]) ?? []).filter((r) =>
-        r.site_slug != null && r.taken_down_at != null && (r.revoked_at != null || isActiveRow(r, now)));
+        r.site_slug != null && r.taken_down_at != null && r.removed_at == null && (r.revoked_at != null || isActiveRow(r, now)));
     },
 
     async markTakenDown(otid, at) {
@@ -307,9 +423,21 @@ export function supabasePurchases(client?: SupabaseClient): PurchasesRepo {
       if (error) fail('markTakenDown', error);
     },
 
-    async clearTakenDown(otid) {
-      const { error } = await db().from(TABLE).update({ taken_down_at: null }).eq('original_transaction_id', otid);
+    async clearTakenDown(otid, only) {
+      let q = db().from(TABLE).update({ taken_down_at: null }).eq('original_transaction_id', otid);
+      if (only) q = q.eq('user_id', only.userId).eq('site_slug', only.slug);
+      const { error } = await q;
       if (error) fail('clearTakenDown', error);
+    },
+
+    async markRemoved(otid, at) {
+      const { error } = await db().from(TABLE).update({ removed_at: new Date(at).toISOString() }).eq('original_transaction_id', otid).is('removed_at', null);
+      if (error) fail('markRemoved', error);
+    },
+
+    async clearRemoved(otid, removedAt) {
+      const { error } = await db().from(TABLE).update({ removed_at: null }).eq('original_transaction_id', otid).eq('removed_at', removedAt);
+      if (error) fail('clearRemoved', error);
     },
 
     async markLapseChecked(otid, at) {

@@ -19,6 +19,12 @@ export const RESUMABLE_STATES: readonly DomainState[] = ['reserved', 'buying', '
 export const OWNED_STATES: readonly DomainState[] = ['bought', 'attached', 'live', 'detaching', 'unlinking', 'detached'];
 /** Attached to the site and paid for: a subscription that ended moves these to detaching. */
 export const ATTACHED_STATES: readonly DomainState[] = ['bought', 'attached', 'live'];
+/**
+ * Marker (in the free-text failure_reason, which no detached row uses and nothing else rewrites)
+ * for a row detached because the OWNER removed the site or deleted the account. The domain sweep
+ * never re-attaches it; only an explicit claim (the owner, paying and signed in) does.
+ */
+export const OWNER_REMOVED = 'owner-removed';
 
 export interface DomainRow {
   /** Apple originalTransactionId, or `stripe:<subscription id>` for a website purchase. */
@@ -71,6 +77,8 @@ export interface DomainsRepo {
   get(otid: string): Promise<DomainRow | null>;
   /** The row holding this site's slot (SITE_HOLDING_STATES), if any. */
   holdingSite(slug: string): Promise<DomainRow | null>;
+  /** Every non-failed, non-transferred row of this site (any state), for owner removal. */
+  forSite(slug: string): Promise<DomainRow[]>;
   /** The real (non-simulated), non-failed row holding this domain name, if any. */
   byDomain(domain: string): Promise<DomainRow | null>;
   /** Insert a reserved row. 'conflict' when the otid, the domain or the site slot is already taken. */
@@ -99,6 +107,11 @@ export interface DomainsRepo {
   lapseCandidates(limit: number, cutoff: number): Promise<DomainRow[]>;
   /** Detached rows paid again (paid_until > now, not revoked): re-attach candidates. */
   reattachCandidates(limit: number, now: number): Promise<DomainRow[]>;
+  /**
+   * The owner republished a removed site: lift the owner-removed mark on this slug's detached rows
+   * (state 'detached' AND failure_reason 'owner-removed' only), so the sweep may re-attach them.
+   */
+  clearOwnerRemoved(slug: string): Promise<void>;
   /** OWNED rows whose payer was last asked before `before` (or never). Oldest first. */
   payerStale(limit: number, before: number): Promise<DomainRow[]>;
   /** auto_renew_synced = false and OWNED. */
@@ -141,6 +154,12 @@ export function supabaseDomains(client?: SupabaseClient): DomainsRepo {
       const { data, error } = await db().from(TABLE).select('*').eq('site_slug', slug).in('state', SITE_HOLDING_STATES as string[]).limit(1);
       if (error) fail('holdingSite', error);
       return Array.isArray(data) && data[0] ? num(data[0]) : null;
+    },
+
+    async forSite(slug) {
+      const { data, error } = await db().from(TABLE).select('*').eq('site_slug', slug).not('state', 'in', '(failed,transferred)');
+      if (error) fail('forSite', error);
+      return rows(data);
     },
 
     async byDomain(domain) {
@@ -216,9 +235,15 @@ export function supabaseDomains(client?: SupabaseClient): DomainsRepo {
 
     async reattachCandidates(limit, now) {
       const { data, error } = await db().from(TABLE).select('*').eq('state', 'detached').is('revoked_at', null)
-        .gt('paid_until', iso(now)).order('updated_at', { ascending: true }).limit(limit);
+        .or(`failure_reason.is.null,failure_reason.neq.${OWNER_REMOVED}`).gt('paid_until', iso(now)).order('updated_at', { ascending: true }).limit(limit);
       if (error) fail('reattachCandidates', error);
       return rows(data);
+    },
+
+    async clearOwnerRemoved(slug) {
+      const { error } = await db().from(TABLE).update({ failure_reason: null, updated_at: new Date().toISOString() })
+        .eq('site_slug', slug).eq('state', 'detached').eq('failure_reason', OWNER_REMOVED);
+      if (error) fail('clearOwnerRemoved', error);
     },
 
     async payerStale(limit, before) {

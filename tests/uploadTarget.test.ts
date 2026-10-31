@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vites
 const { saved, exists, signed } = vi.hoisted(() => ({
   saved: vi.fn(async (_path: string, _buf: unknown, _opts: any) => {}),
   exists: vi.fn(async (_path: string) => false),
-  signed: vi.fn(async (_path: string) => 'https://signed.example/put'),
+  signed: vi.fn(async (_path: string, _o?: any) => 'https://signed.example/put'),
 }));
 vi.mock('@google-cloud/storage', () => ({
   Storage: class {
@@ -15,7 +15,7 @@ vi.mock('@google-cloud/storage', () => ({
         file: (path: string) => ({
           save: (buf: unknown, opts: any) => saved(path, buf, opts),
           exists: async () => [await exists(path)],
-          getSignedUrl: async () => [await signed(path)],
+          getSignedUrl: async (o: any) => [await signed(path, o)],
         }),
       };
     }
@@ -128,5 +128,61 @@ describe('api/get-upload-urls', () => {
     await getUploadUrls({ method: 'POST', body: { siteId: 'fresh-cuts', filenames: ['hero-1.jpg'] } }, res);
     expect(res.status).toHaveBeenCalledWith(409);
     expect(signed).not.toHaveBeenCalled();
+  });
+});
+
+describe('api/get-upload-urls: contentType and the logo folder', () => {
+  beforeEach(() => { exists.mockReset().mockResolvedValue(false); signed.mockClear(); });
+  const ask = async (body: any) => { const res = mkRes(); await getUploadUrls({ method: 'POST', body }, res); return res; };
+
+  it('with no contentType the URL is signed for image/jpeg, as before (shipped apps)', async () => {
+    const res = await ask({ siteId: 'ios-drafts/abc-123', filenames: ['1730000000000-ab12cd.jpg'] });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(signed).toHaveBeenCalledWith('ios-drafts/abc-123/1730000000000-ab12cd.jpg', expect.objectContaining({ contentType: 'image/jpeg' }));
+  });
+
+  it('image/png is signed as png; any other contentType is refused (400), nothing signed', async () => {
+    const ok = await ask({ siteId: 'ios-drafts/abc-123', filenames: ['a1.png'], contentType: 'image/png' });
+    expect(ok.status).toHaveBeenCalledWith(200);
+    expect(signed).toHaveBeenCalledWith('ios-drafts/abc-123/a1.png', expect.objectContaining({ contentType: 'image/png' }));
+    signed.mockClear();
+    for (const contentType of ['image/svg+xml', 'text/html', 'application/json', 'image/gif', 'image/webp', 'image/png; charset=utf-8', 7, '']) {
+      const res = await ask({ siteId: 'ios-drafts/abc-123', filenames: ['a1.png'], contentType });
+      expect(res.status, String(contentType)).toHaveBeenCalledWith(400);
+    }
+    expect(signed).not.toHaveBeenCalled();
+  });
+
+  it("kind 'logo' writes under <siteId>/logo/ and returns that public URL", async () => {
+    const res = await ask({ siteId: 'ios-drafts/abc-123', filenames: ['1730000000000-ab12.png'], contentType: 'image/png', kind: 'logo' });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(signed).toHaveBeenCalledWith('ios-drafts/abc-123/logo/1730000000000-ab12.png', expect.objectContaining({ contentType: 'image/png' }));
+    expect(res.json).toHaveBeenCalledWith({ urls: [{
+      filename: '1730000000000-ab12.png', signedUrl: 'https://signed.example/put',
+      publicUrl: 'https://storage.googleapis.com/bkt/ios-drafts/abc-123/logo/1730000000000-ab12.png',
+    }] });
+  });
+
+  it('a logo upload takes only png/jpeg names that match the contentType, and still never reaches the server\'s folders', async () => {
+    for (const body of [
+      { siteId: 'ios-drafts/abc-123', filenames: ['a.svg'], contentType: 'image/png', kind: 'logo' },
+      { siteId: 'ios-drafts/abc-123', filenames: ['a.webp'], contentType: 'image/png', kind: 'logo' },
+      { siteId: 'ios-drafts/abc-123', filenames: ['a.jpg'], contentType: 'image/png', kind: 'logo' }, // name and type disagree
+      { siteId: 'ios-drafts/abc-123', filenames: ['a.png'], contentType: 'image/jpeg', kind: 'logo' },
+      { siteId: 'pending-sites', filenames: ['a.png'], contentType: 'image/png', kind: 'logo' },
+      { siteId: '../x', filenames: ['a.png'], contentType: 'image/png', kind: 'logo' },
+      { siteId: 'ios-drafts/abc-123', filenames: ['../a.png'], contentType: 'image/png', kind: 'logo' },
+      { siteId: 'ios-drafts/abc-123', filenames: ['a.png'], contentType: 'image/png', kind: 'photos' },
+    ]) {
+      const res = await ask(body);
+      expect(res.status, JSON.stringify(body)).toHaveBeenCalledWith(400);
+    }
+    expect(signed).not.toHaveBeenCalled();
+  });
+
+  it('a jpeg logo is allowed with a .jpg or .jpeg name; an existing logo file is never replaced (409)', async () => {
+    expect((await ask({ siteId: 'fresh-cuts', filenames: ['l1.jpeg'], contentType: 'image/jpeg', kind: 'logo' })).status).toHaveBeenCalledWith(200);
+    exists.mockResolvedValue(true);
+    expect((await ask({ siteId: 'fresh-cuts', filenames: ['l1.jpg'], contentType: 'image/jpeg', kind: 'logo' })).status).toHaveBeenCalledWith(409);
   });
 });

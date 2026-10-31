@@ -21,7 +21,7 @@ export function isComDomain(domain: unknown): domain is string {
 export function normalizeLabel(q: unknown): string | null {
   if (typeof q !== 'string' || q.length > 120) return null;
   let s = q.trim().toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '');
-  s = s.replace(/^[a-z]+:\/\//, '').replace(/^www\./, '').replace(/[/?#].*$/, '').replace(/\.com$/, '');
+  s = s.replace(/^[a-z]+:\/\//, '').replace(/^www\./, '').replace(/[/?#].*$/, '').replace(/\.+$/, '').replace(/\.com$/, '');
   s = s.replace(/&/g, 'and').replace(/[^a-z0-9-]+/g, '').replace(/-{2,}/g, '-').replace(/^-+|-+$/g, '');
   s = s.slice(0, 63).replace(/-+$/, '');
   if (s.length < 3 || !isComDomain(`${s}.com`)) return null;

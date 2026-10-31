@@ -16,7 +16,7 @@
 // sit behind an OAuth-gated endpoint (401), so those come back empty and
 // the generator/renderer fills or omits them.
 
-import { finalize } from './util.js';
+import { finalize, apifyGalleryPhotos, needsPhotoEnrichment } from './util.js';
 import type { PlatformAdapter, ScrapedShop } from './types.js';
 import { ScrapeError } from './types.js';
 
@@ -56,7 +56,7 @@ export const styleseatAdapter: PlatformAdapter = {
   displayName: 'StyleSeat',
   hostMatchers: [/(^|\.)styleseat\.com$/i],
 
-  async scrape(url, _opts) {
+  async scrape(url, opts) {
     const username = extractUsername(url);
     if (!username) {
       throw new ScrapeError(
@@ -114,6 +114,12 @@ export const styleseatAdapter: PlatformAdapter = {
       photos: [],
       reviews: [],
     };
+    // No photo from the API, so this is the one provider where the gallery comes ONLY from the Apify step (one run,
+    // only with a token): the rendered profile page's own images. UNVERIFIED against the live page.
+    if (needsPhotoEnrichment(shop.photos.length)) {
+      const pageUrl = /^https?:\/\//i.test(url.trim()) ? url.trim() : `https://${url.trim()}`;
+      shop.photos.push(...(await apifyGalleryPhotos({ url: pageUrl, token: opts.apifyToken, label: 'styleseat' })));
+    }
     return finalize(shop);
   },
 };

@@ -6,6 +6,7 @@
 // Domain-level (createOrder reports `existing` instead of a Postgres error; updateOrder reports
 // 'stale' when its compare-and-set misses) so the flows are testable with an in-memory fake.
 import { withSiteCols } from '../siteColumns.js';
+import { fetchWebEntitlementOf } from '../webApp/entitlementGate.js';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { serviceClient, type PaymentStatus, type PurchaseGateRow } from '../bookings/repo.js';
 import type { OrderItemRow, OrderPaymentMethod, OrderRow, OrderStatus, ProductRow, ShopStoreRow } from './types.js';
@@ -71,6 +72,8 @@ export interface StoreRepo {
   shopByOwner(userId: string): Promise<ShopStoreRow | null>;
   /** ios_purchases row behind the store gate (null when there is none). */
   purchase(otid: string): Promise<PurchaseGateRow | null>;
+  /** WEB_APP_ENTITLEMENTS only: the owner's web (Stripe) subscription as a gate row, for a shop with no iOS link. */
+  webEntitlementOf?(userId: string): Promise<PurchaseGateRow | null>;
 
   /** Every product of the shop (active or not) in sort, then created_at, order. */
   products(shopId: string): Promise<ProductRow[]>;
@@ -137,6 +140,7 @@ export function supabaseStoreRepo(client?: SupabaseClient): StoreRepo {
     purchase: (otid) =>
       one('purchase', db().from('ios_purchases').select('user_id, product_id, revoked_at, taken_down_at, expires_at, site_slug, published_at, environment')
         .eq('original_transaction_id', otid).maybeSingle()),
+    webEntitlementOf: (userId) => fetchWebEntitlementOf(db(), userId),
 
     products: (shopId) =>
       many('products', db().from('ab_products').select(PRODUCT_COLS).eq('shop_id', shopId).order('sort').order('created_at')),

@@ -140,7 +140,8 @@ export async function gatedWebDeploy(
     if (auth.actor === 'checkout' && renderable(siteData)) {
       const sent = isObj(deployInput.imageUrls) ? deployInput.imageUrls : {};
       const imageUrlMap: Record<string, string> = { ...buildImageUrlMap(siteData) };
-      for (const [k, v] of Object.entries(sent)) if (typeof v === 'string' && /^https?:\/\//.test(v)) imageUrlMap[k] = v;
+      // `logo` only ever comes from siteData.logo (checked where sites are saved), never from the browser's extra map.
+      for (const [k, v] of Object.entries(sent)) if (k !== 'logo' && typeof v === 'string' && /^https?:\/\//.test(v)) imageUrlMap[k] = v;
       fresh = {
         siteId: slug,
         siteData: toPendingSiteData(siteData, imageUrlMap),

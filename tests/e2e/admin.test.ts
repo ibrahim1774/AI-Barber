@@ -44,7 +44,7 @@ async function app(product: string = PRODUCTS.storeMonthly, sd = siteData()) {
 describe('edit / replace / rollback through the handler', () => {
   it('find and get: by shop name, slug, email and transaction id; siteData has real image URLs', async () => {
     const { otid } = await app();
-    await w.repo.setUser(otid, 'u1');
+    await w.repo.setUserIfUnlinked(otid, 'u1');
     w.emails.set('u1', 'mike@example.com');
     for (const q of ['fade', 'FADE-LAB', 'mike@', otid]) {
       const r = await call({ method: 'GET', query: { q } });

@@ -625,8 +625,9 @@ describe('POST /api/book/sent', () => {
   });
 
   it('the push amount is the deposit when the service has one, else the price (matches the page)', async () => {
-    const amountFor = async (svc: Record<string, unknown>, override?: number) => {
-      const w = world({ shop: handles });
+    const amountFor = async (svc: Record<string, unknown>, override?: number, cardOn = true) => {
+      // Deposits exist only while card payments are on (effectiveDeposit), so these shops also have card.
+      const w = world({ shop: cardOn ? { ...handles, stripe_account_id: 'acct_1', stripe_charges_enabled: true } : handles });
       Object.assign(w.state.services[0], svc);
       if (override != null) w.state.links.push({ service_id: w.ids.cut, member_id: w.ids.mike, price_override_cents: override });
       const r = await book(w, { pay: 'manual', method: 'cashapp', memberId: w.ids.mike });
@@ -643,8 +644,10 @@ describe('POST /api/book/sent', () => {
     expect(await amountFor({ deposit_type: 'percent', deposit_value: 50 }, 4000)).toBe(2000); // member price
     expect(await amountFor({ deposit_type: 'none', deposit_value: null })).toBe(3000);
     // "Ask" price: a fixed deposit is still asked for; with no deposit there is no amount.
-    expect(await amountFor({ price_cents: null, deposit_type: 'fixed', deposit_value: 800 })).toBe(800);
+    expect(await amountFor({ price_cents: null, deposit_type: 'fixed', deposit_value: 800 })).toBeUndefined(); // no price: the stale deposit is 0
     expect(await amountFor({ price_cents: null, deposit_type: 'none', deposit_value: null })).toBeUndefined();
+    // Card off: the stored deposit is ignored, the customer is asked for the price.
+    expect(await amountFor({ deposit_type: 'fixed', deposit_value: 1000 }, undefined, false)).toBe(3000);
   });
 
   it('the push amount falls back to the price when the service was removed', async () => {
@@ -788,5 +791,61 @@ describe('GET /api/book/ics', () => {
     expect(body).toContain('SUMMARY:Haircut · Sam Lee');
     expect(body).toContain('UID:');
     expect((await getIcs({ t: 'z'.repeat(40) }, w.deps)).status).toBe(404);
+  });
+});
+
+describe('deposits need card payments (effectiveDeposit)', () => {
+  const cardShop = { stripe_account_id: 'acct_1', stripe_charges_enabled: true };
+  const withDeposit = (w: ReturnType<typeof world>) => Object.assign(w.state.services[0], { deposit_type: 'fixed', deposit_value: 1000 });
+
+  it('card off: the service list reports deposit 0 and the booking is taken with deposit 0 (stored value kept)', async () => {
+    const w = world();
+    withDeposit(w);
+    const list = (await getShop({ slug: 'fresh-cuts' }, w.deps)).body as any;
+    expect(list.shop.pay.card).toBe(false);
+    expect(list.services[0].depositCents).toBe(0);
+    const r = await book(w);
+    expect(r.status).toBe(201);
+    expect((r.body as any).appointment.depositCents).toBe(0);
+    expect(w.state.services[0]).toMatchObject({ deposit_type: 'fixed', deposit_value: 1000 });
+  });
+
+  it('card off + stripe account but charges not enabled is still off', async () => {
+    const w = world({ shop: { stripe_account_id: 'acct_1', stripe_charges_enabled: false } });
+    withDeposit(w);
+    expect(((await getShop({ slug: 'fresh-cuts' }, w.deps)).body as any).services[0].depositCents).toBe(0);
+  });
+
+  it('card on: the deposit is reported and charged', async () => {
+    const w = world({ shop: cardShop });
+    withDeposit(w);
+    expect(((await getShop({ slug: 'fresh-cuts' }, w.deps)).body as any).services[0].depositCents).toBe(1000);
+    const r = await book(w, { pay: 'card' });
+    expect((r.body as any).appointment.depositCents).toBe(1000);
+    expect(w.payments.createCardCheckout.mock.calls[0][2]).toBe(1000);
+  });
+
+  it('a fixed deposit above the price clamps to the price (list, booking, card charge)', async () => {
+    const w = world({ shop: cardShop });
+    Object.assign(w.state.services[0], { price_cents: 600, deposit_type: 'fixed', deposit_value: 1000 });
+    expect(((await getShop({ slug: 'fresh-cuts' }, w.deps)).body as any).services[0].depositCents).toBe(600);
+    const r = await book(w, { pay: 'card' });
+    expect((r.body as any).appointment.depositCents).toBe(600);
+    expect(w.payments.createCardCheckout.mock.calls[0][2]).toBe(600);
+  });
+
+  it('a deposit on a service with no price is 0 (never invented from the stored value)', async () => {
+    const w = world({ shop: cardShop });
+    Object.assign(w.state.services[0], { price_cents: null, deposit_type: 'fixed', deposit_value: 1000 });
+    expect(((await getShop({ slug: 'fresh-cuts' }, w.deps)).body as any).services[0].depositCents).toBe(0);
+    const r = await book(w);
+    expect(r.status).toBe(201);
+    expect((r.body as any).appointment.depositCents).toBe(0);
+  });
+
+  it('percent deposits are unaffected', async () => {
+    const w = world({ shop: cardShop });
+    Object.assign(w.state.services[0], { price_cents: 4000, deposit_type: 'percent', deposit_value: 25 });
+    expect(((await getShop({ slug: 'fresh-cuts' }, w.deps)).body as any).services[0].depositCents).toBe(1000);
   });
 });

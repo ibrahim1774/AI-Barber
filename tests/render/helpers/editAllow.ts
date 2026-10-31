@@ -9,6 +9,7 @@ const reviewTexts = (d: WebsiteData): Set<string> => {
 };
 export const ALLOW: Allowed[] = [
   { name: 'copyright', why: 'The copyright year is generated (the shop name inside the line, and the "Built by Prime Barber" credit, are editable labels).', test: (t) => /^(Copyright )?(&copy;|©)\s*\d{4}\b/.test(t) },
+  { name: 'report link', why: 'The footer "Report this site" link is a fixed safety/abuse-report control (App Store 1.2), not the barber\'s wording; the credit beside it stays an editable label.', test: (t) => t === 'Report this site' },
   { name: 'review text', why: 'Reviews are quotes from clients: hidden, never edited (types.ts, honest.ts reviewKey).', test: (t, d) => reviewTexts(d).has(t) },
   { name: 'rating figures', why: 'The rating and review count are scraped facts; only their wording is editable, from the app\'s own rating control (labels.ratingLine, tap:false).', test: (t, d) => { const a = d.aggregateRating; return !!a && (new RegExp(`^(\\u2605\\s*)?${a.rating.toFixed(1)}\\b`).test(t) || t === `from ${a.count} reviews` || t === String(a.count)); } },
   { name: 'review source', why: '"Reviews from Google" names where the reviews came from (reviewsSourceLabel): a sourced fact, not the barber\'s wording.', test: (t) => /^(Selected reviews|Reviews)( from .+)?$/.test(t) && /from/.test(t) },
