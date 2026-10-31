@@ -58,9 +58,11 @@ export default async function handler(req: any, res: any) {
         try {
           const to = await emailFor(row.user_id, row.stripe_customer_id);
           if (to) await sendMail(to, welcomeEmail({ email: to, siteUrl: siteUrlOf(row.site_slug), tier: row.tier }));
-        } catch (e) {
+        } catch (e: any) {
+          // Best effort: release the claim so a later event retries, but never fail the webhook over an email
+          // (Stripe would retry for days and could disable the endpoint, stopping entitlement updates).
+          console.error('[web-app webhook welcome email]', e?.message || e);
           await sbRest(`web_app_entitlements?stripe_subscription_id=eq.${encodeURIComponent(row.stripe_subscription_id)}`, { method: 'PATCH', body: { welcome_sent_at: null } }).catch(() => {});
-          throw e;
         }
       }
     }
@@ -84,7 +86,8 @@ async function handleFailedPayment(event: any, mode: 'live' | 'test', res: any) 
     if (to) await sendMail(to, failedPaymentEmail({ email: to, siteUrl: siteUrlOf(row.site_slug), tier: row.tier }));
     return res.status(200).json({ ok: true });
   } catch (e: any) {
+    // Best effort, like the welcome email: an email problem must not make Stripe retry and disable this endpoint.
     console.error('[web-app webhook payment_failed]', e.message);
-    return res.status(500).json({ error: 'email_failed' });
+    return res.status(200).json({ ok: false, emailed: false });
   }
 }

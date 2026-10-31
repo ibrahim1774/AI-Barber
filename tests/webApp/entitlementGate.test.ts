@@ -74,6 +74,8 @@ function fakeDb(tables: Record<string, any[]>) {
       const q: any = {
         select: () => q,
         eq: (c: string, v: unknown) => { filters.push([c, v]); return q; },
+        order: () => q,
+        limit: () => q,
         then: (res: any) => res({ data: tables[name].filter((r) => filters.every(([c, v]) => r[c] === v)), error: null }),
         maybeSingle: async () => ({ data: tables[name].find((r) => filters.every(([c, v]) => r[c] === v)) ?? null, error: null }),
       };

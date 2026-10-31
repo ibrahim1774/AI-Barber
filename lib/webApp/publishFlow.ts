@@ -163,7 +163,15 @@ export async function runWebPublish(
           if ((e as Error)?.message === 'slug-exhausted') return { status: 503, body: { error: 'slug-exhausted' } };
           throw e;
         }
-        await deps.sites.insertIfAbsent({ slug: candidate, stripe_subscription_id: ent.stripe_subscription_id, user_id: caller.id, environment: deps.environment });
+        try {
+          await deps.sites.insertIfAbsent({ slug: candidate, stripe_subscription_id: ent.stripe_subscription_id, user_id: caller.id, environment: deps.environment });
+        } catch (e) {
+          // A concurrent first publish by this same user bound a slug first (one live slug per user and mode,
+          // migration 022): use theirs rather than creating a second site on one plan.
+          const mine = await deps.sites.byUser(caller.id, deps.environment);
+          if (mine) { bound = mine.slug; break; }
+          throw e;
+        }
         const row = await deps.sites.get(candidate);
         if (row && row.user_id === caller.id) { bound = candidate; freshBind = true; }
         else console.warn(`[web-app/publish] ${candidate} was bound by another account meanwhile${attempt === 0 ? '; choosing again' : ''}`);
@@ -195,8 +203,11 @@ export async function runWebPublish(
 
     // 6. Write the copy (compare-and-set), honouring admin versions like iOS.
     const io = { readPending: deps.readPending, writePending: deps.writePending, readPendingVersioned: deps.readPendingVersioned };
-    type Refusal = { status: 409; body: { error: 'site-updated'; site: WebSiteBody } };
+    type Refusal = { status: 409; body: { error: 'site-updated'; site: WebSiteBody } | { error: 'slug-owned' } };
     const cas = await casPending<Refusal | null>(slug, io, (previous) => {
+      // A slug we just bound must have no copy yet: one already there belongs to someone else (e.g. an iOS
+      // publish that picked the same name in the gap). Never overwrite it.
+      if (freshBind && previous !== null) return { stop: { status: 409, body: { error: 'slug-owned' } } };
       if (wasBound) {
         const lastAdmin = adminVersionOf(previous);
         if (baseVersion == null) {
@@ -216,7 +227,10 @@ export async function runWebPublish(
       if (previous?.deployedUrl) next.deployedUrl = previous.deployedUrl;
       return { write: next, result: null };
     }, PUBLISH_CAS_ATTEMPTS);
-    if (cas.result) return cas.result;
+    if (cas.result) {
+      if (freshBind && (cas.result.body as { error?: string }).error === 'slug-owned') await deps.sites.releaseUnpublished(slug).catch(() => {});
+      return cas.result;
+    }
     if (!cas.written) {
       return { status: 409, body: { error: 'site-updated', site: siteBody(slug, await deps.readPending(slug), true) } };
     }

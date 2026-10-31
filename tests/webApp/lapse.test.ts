@@ -7,13 +7,14 @@ const row = (over: Partial<WebSiteRow> = {}): WebSiteRow => ({
   published_at: '2026-10-01T00:00:00Z', taken_down_at: null, removed_at: null, ...over,
 });
 
-function fakes(o: { up?: WebSiteRow[]; down?: WebSiteRow[]; ios?: string[]; entitled?: string[]; status?: string | Error; deployErr?: any; publishOk?: boolean } = {}) {
+function fakes(o: { up?: WebSiteRow[]; down?: WebSiteRow[]; ios?: string[]; entitled?: string[]; status?: string | Error; customerActive?: boolean; deployErr?: any; publishOk?: boolean } = {}) {
   const deps: WebSweepDeps = {
     takedownCandidates: vi.fn(async () => o.up ?? []),
     restoreCandidates: vi.fn(async () => o.down ?? []),
     iosOwnsSlug: vi.fn(async (s) => (o.ios ?? []).includes(s)),
     hasEntitledRow: vi.fn(async (u) => (o.entitled ?? []).includes(u)),
     subscriptionStatus: vi.fn(async () => { if (o.status instanceof Error) throw o.status; return o.status ?? 'canceled'; }),
+    customerHasActive: vi.fn(async () => o.customerActive ?? false),
     stampChecked: vi.fn(async () => {}),
     markTakenDown: vi.fn(async () => {}),
     clearTakenDown: vi.fn(async () => {}),
@@ -95,5 +96,19 @@ describe('sweepWebApp', () => {
     const d = fakes({ up: [row({ removed_at: 'x' }), row({ slug: 's2', published_at: null })] });
     await sweepWebApp(d);
     expect(d.deployOffline).not.toHaveBeenCalled();
+  });
+
+  it('keeps a site up when the customer has a newer active subscription (late webhook)', async () => {
+    const d = fakes({ up: [row()], customerActive: true });
+    const r = await sweepWebApp(d);
+    expect(r.stillActive).toEqual(['s1']);
+    expect(d.markTakenDown).not.toHaveBeenCalled();
+    expect(d.deployOffline).not.toHaveBeenCalled();
+  });
+
+  it('stamps every visited row, skipped ones included, so the oldest-checked order rotates', async () => {
+    const d = fakes({ up: [row({ slug: 'a' }), row({ slug: 'b', user_id: 'u2' })], ios: ['a'], entitled: ['u2'] });
+    await sweepWebApp(d);
+    expect((d.stampChecked as any).mock.calls.map((c: any[]) => c[0]).sort()).toEqual(['a', 'b']);
   });
 });

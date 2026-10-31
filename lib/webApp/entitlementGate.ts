@@ -57,7 +57,7 @@ export async function fetchWebEntitlementOf(db: SupabaseClient, userId: string):
   if (error) throw new Error(`web_app_entitlements lookup failed: ${error.message}`);
   const row = pickWebRow((data ?? []) as WebEntitlementRecord[], mode);
   if (!row) return null;
-  const { data: site, error: e2 } = await db.from('web_app_sites').select('taken_down_at').eq('stripe_subscription_id', row.stripe_subscription_id).maybeSingle();
+  const { data: site, error: e2 } = await db.from('web_app_sites').select('taken_down_at').eq('stripe_subscription_id', row.stripe_subscription_id).order('created_at', { ascending: false }).limit(1).maybeSingle();
   if (e2) throw new Error(`web_app_sites lookup failed: ${e2.message}`);
   return synthPurchaseRow(row, (site as { taken_down_at: string | null } | null) ?? null);
 }

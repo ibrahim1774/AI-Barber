@@ -19,6 +19,8 @@ export interface WebSweepDeps {
   hasEntitledRow(userId: string): Promise<boolean>;
   /** The subscription's current Stripe status; throws on an error. */
   subscriptionStatus(subscriptionId: string): Promise<string>;
+  /** Is any tagged subscription of this site's Stripe customer entitled right now (a re-subscribe whose webhook is late)? Throws on an error. */
+  customerHasActive(subscriptionId: string): Promise<boolean>;
   stampChecked(slug: string): Promise<void>;
   markTakenDown(slug: string): Promise<void>;
   clearTakenDown(slug: string): Promise<void>;
@@ -51,6 +53,8 @@ export async function sweepWebApp(deps: WebSweepDeps, opts: { limit?: number; de
   const restores = (await deps.restoreCandidates(limit)).filter((r) => r.published_at && !r.removed_at && r.taken_down_at);
   for (const row of restores) {
     if (outOfTime()) { out.deferred.push(row.slug); continue; }
+    // Stamp every visited row so the oldest-checked ordering rotates (more than `limit` rows must not starve).
+    await deps.stampChecked(row.slug).catch(() => {});
     try {
       if (await deps.iosOwnsSlug(row.slug)) { out.skipped.push(row.slug); continue; }
       if (!(await deps.hasEntitledRow(row.user_id))) continue;
@@ -67,19 +71,20 @@ export async function sweepWebApp(deps: WebSweepDeps, opts: { limit?: number; de
   out.checked = rows.length;
   for (const row of rows) {
     if (outOfTime()) { out.deferred.push(row.slug); continue; }
+    await deps.stampChecked(row.slug).catch(() => {});
     try {
       if (await deps.iosOwnsSlug(row.slug)) { out.skipped.push(row.slug); continue; }
       if (await deps.hasEntitledRow(row.user_id)) { out.stillActive.push(row.slug); continue; }
       let status: string;
       try {
         status = await deps.subscriptionStatus(row.stripe_subscription_id);
+        // The old subscription ended: a newer one for the same customer (webhook still on its way) keeps the site up.
+        if (!isEntitledStatus(status) && (await deps.customerHasActive(row.stripe_subscription_id))) { out.stillActive.push(row.slug); continue; }
       } catch (e: any) {
         console.warn(`[Sweeper:web] Stripe lookup failed for ${row.slug}; no action:`, e?.message || e);
-        await deps.stampChecked(row.slug).catch(() => {});
         out.stripeUnavailable.push(row.slug);
         continue;
       }
-      await deps.stampChecked(row.slug).catch(() => {});
       if (isEntitledStatus(status)) { out.stillActive.push(row.slug); continue; }
       // Stamp first: a death mid-deploy leaves the flag set, so a later re-subscribe is restored.
       await deps.markTakenDown(row.slug);
@@ -122,7 +127,18 @@ export async function liveWebSweepDeps(): Promise<WebSweepDeps> {
     restoreCandidates: async (limit) => (await sbRest(`web_app_sites?environment=eq.${env}&published_at=not.is.null&removed_at=is.null&taken_down_at=not.is.null&select=${COLS}&order=lapse_checked_at.asc.nullsfirst&limit=${limit}`)) ?? [],
     iosOwnsSlug: async (slug) => ((await sbRest(`ios_purchases?site_slug=eq.${enc(slug)}&select=original_transaction_id&limit=1`)) ?? []).length > 0,
     hasEntitledRow: async (uid) => ((await sbRest(`web_app_entitlements?user_id=eq.${enc(uid)}&environment=eq.${env}&status=in.(active,trialing,past_due)&select=stripe_subscription_id&limit=1`)) ?? []).length > 0,
-    subscriptionStatus: async (id) => String((await stripeCall(`subscriptions/${enc(id)}`, null, 'GET')).status),
+    subscriptionStatus: async (id) => {
+      const st = (await stripeCall(`subscriptions/${enc(id)}`, null, 'GET')).status;
+      if (typeof st !== 'string' || !st) throw new Error('stripe returned no status');
+      return st;
+    },
+    customerHasActive: async (id) => {
+      const sub = await stripeCall(`subscriptions/${enc(id)}`, null, 'GET');
+      const customer = typeof sub.customer === 'string' ? sub.customer : sub.customer?.id;
+      if (!customer) throw new Error('stripe returned no customer');
+      const list = await stripeCall(`subscriptions?customer=${enc(customer)}&status=all&limit=20`, null, 'GET');
+      return (list?.data ?? []).some((x: any) => x?.metadata?.app === 'aibarber-app' && isEntitledStatus(String(x.status)));
+    },
     stampChecked: (slug) => patch(slug, { lapse_checked_at: new Date().toISOString() }).then(() => {}),
     markTakenDown: (slug) => patch(slug, { taken_down_at: new Date().toISOString() }).then(() => {}),
     clearTakenDown: (slug) => patch(slug, { taken_down_at: null }).then(() => {}),
