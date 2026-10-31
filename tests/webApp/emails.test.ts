@@ -10,6 +10,18 @@ describe('web app emails', () => {
     expect(m.html.toLowerCase()).not.toMatch(/password:/);
     expect(m.text).toContain('We never email passwords');
   });
+  it('welcome says what they signed up for (website hosting) from AIBarber', () => {
+    const m = welcomeEmail({ email: 'a@b.co', siteUrl: null, tier: 'website' }, O);
+    expect(m.subject).toMatch(/signed up for website hosting with AIBarber/);
+    expect(m.html).toContain('website hosting');
+  });
+  it('failed payment warns they will lose access to the site and shows the site', () => {
+    const m = failedPaymentEmail({ email: 'a@b.co', siteUrl: 'https://joes.vercel.app', tier: 'website' }, O);
+    expect(m.subject).toMatch(/lose access to your site/i);
+    expect(m.html).toContain('https://joes.vercel.app');
+    expect(m.text).toMatch(/lose access to your site/i);
+    expect(m.html).toContain(signInLink(O));
+  });
   it('failed payment email says so and links to sign-in', () => {
     const m = failedPaymentEmail({ email: 'a@b.co', siteUrl: null, tier: 'store' }, O);
     expect(m.subject).toMatch(/failed/i);
