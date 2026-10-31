@@ -46,13 +46,20 @@ const useStore = () => React.useSyncExternalStore(subscribe, () => state);
 
 function SuperwallProvider({ children }) { return children; }
 
+// The placement callbacks of the paywall that is showing; the plan screen reports its closing through dismissWebPaywall.
+let showing = null;
+function dismissWebPaywall() {
+  const c = showing; showing = null;
+  c && c.onDismiss && c.onDismiss({ name: 'web', closeReason: 'manualClose' }, { type: 'declined' });
+}
+
 function usePlacement(cbs) {
   const registerPlacement = React.useCallback(async (p) => {
     try { window.__webPaywall = { placement: p.placement, params: p.params || null }; } catch (e) {}
+    showing = cbs || null;
     cbs && cbs.onPresent && cbs.onPresent({ name: 'web' });
     router.push('/web-paywall');
-    // The plan screen leaves for Stripe; the caller learns the outcome by re-reading the subscription on return.
-    cbs && cbs.onDismiss && cbs.onDismiss({ name: 'web', closeReason: 'manualClose' }, { type: 'declined' });
+    // The plan screen either leaves for Stripe (the page unloads; the paid state is re-read on return) or is closed (dismissWebPaywall).
   }, [cbs]);
   return { registerPlacement, state: { status: 'idle' } };
 }
@@ -73,4 +80,4 @@ function useUser() {
   }), [s]);
 }
 
-module.exports = { SuperwallProvider, usePlacement, useSuperwall, useSuperwallEvents: () => {}, useUser, __refreshWebSubscription: refresh };
+module.exports = { SuperwallProvider, usePlacement, useSuperwall, useSuperwallEvents: () => {}, useUser, __refreshWebSubscription: refresh, __dismissWebPaywall: dismissWebPaywall };

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,6 +21,8 @@ const BASE = process.env.EXPO_PUBLIC_API_BASE ?? 'https://www.aibarber.org';
 
 export default function WebPaywall() {
   const insets = useSafeAreaInsets();
+  // Closing the screen (Not now / back) tells the publish flow the paywall was declined.
+  useEffect(() => () => { (require('expo-superwall') as { __dismissWebPaywall?: () => void }).__dismissWebPaywall?.(); }, []);
   const [tier, setTier] = useState<Tier>('website');
   const [interval, setIntervalValue] = useState<Interval>('month');
   const [busy, setBusy] = useState(false);
