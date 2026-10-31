@@ -5,22 +5,12 @@
 import { keyMode, rowFromSubscription, verifyStripeSignature } from '../../lib/webApp/stripeCore.js';
 import { readRawBody, sbRest, stripeCall, webAppEntitlementsOn } from '../../lib/webApp/webAppServer.js';
 import { sendMail, welcomeEmail } from '../../lib/webApp/emails.js';
-import { resetDunning, sendFailedPaymentIfDue } from '../../lib/webApp/dunning.js';
+import { contactFor, resetDunning, sendFailedPaymentIfDue } from '../../lib/webApp/dunning.js';
 
 export const config = { api: { bodyParser: false } };
 
 const SUB_EVENTS = new Set(['customer.subscription.created', 'customer.subscription.updated', 'customer.subscription.deleted']);
 const siteUrlOf = (slug: string | null) => (slug ? `https://${slug}.vercel.app` : null);
-
-/** The account email: the Supabase user's, else the Stripe customer's. */
-async function emailFor(userId: string | null, customerId: string): Promise<string | null> {
-  if (userId) {
-    const r = await fetch(`${process.env.SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(userId)}`, { headers: { apikey: process.env.SUPABASE_SERVICE_ROLE_KEY as string, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}` } });
-    if (r.ok) { const u: any = await r.json().catch(() => null); if (u?.email) return u.email; }
-  }
-  const c = await stripeCall(`customers/${encodeURIComponent(customerId)}`, null, 'GET').catch(() => null);
-  return c?.email ?? null;
-}
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
@@ -63,8 +53,8 @@ export default async function handler(req: any, res: any) {
       const claimed = await sbRest(`web_app_entitlements?stripe_subscription_id=eq.${encodeURIComponent(row.stripe_subscription_id)}&welcome_sent_at=is.null`, { method: 'PATCH', body: { welcome_sent_at: new Date().toISOString() }, prefer: 'return=representation' });
       if (claimed?.length) {
         try {
-          const to = await emailFor(row.user_id, row.stripe_customer_id);
-          if (to) await sendMail(to, welcomeEmail({ email: to, siteUrl: siteUrlOf(row.site_slug), tier: row.tier }));
+          const { email: to, firstName } = await contactFor(row.user_id, row.stripe_customer_id);
+          if (to) await sendMail(to, welcomeEmail({ email: to, firstName, siteUrl: siteUrlOf(row.site_slug), tier: row.tier }));
         } catch (e: any) {
           // Best effort: release the claim so a later event retries, but never fail the webhook over an email
           // (Stripe would retry for days and could disable the endpoint, stopping entitlement updates).

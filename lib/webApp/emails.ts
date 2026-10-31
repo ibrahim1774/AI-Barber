@@ -16,6 +16,14 @@ export interface Mail { subject: string; html: string; text: string }
 const TIER_NAME: Record<string, string> = { website: 'Website', bookings: 'Bookings', store: 'Store' };
 /** What the plan includes, in a few words. */
 const WHAT: Record<string, string> = { website: 'website hosting', bookings: 'website hosting + bookings', store: 'website hosting + bookings + store' };
+/** Plan names used in subjects, kept short. */
+const PLAN: Record<string, string> = { website: 'barber site hosting', bookings: 'barber booking + site plan', store: 'barber store + booking + site plan' };
+const firstOf = (n?: string | null) => (n || '').trim().split(/\s+/)[0];
+/** "Jack, your barber site hosting payment failed" (name dropped when unknown). */
+const personal = (n: string | null | undefined, rest: (plan: string) => string, tier: string) => {
+  const f = firstOf(n); const t = rest(PLAN[tier] ?? 'barber site hosting');
+  return f ? `${f}, ${t}` : t.charAt(0).toUpperCase() + t.slice(1);
+};
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
 export const signInLink = (origin: string) => `${origin}/app/sign-in`;
 export const resetLink = (origin: string) => `${origin}/app/forgot-password`;
@@ -37,7 +45,7 @@ interface Layout {
 
 function render(l: Layout): Mail {
   const factRows = l.facts
-    .map(([k, v, h]) => `<tr><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#8b919e;font-size:13px;width:84px;vertical-align:top">${esc(k)}</td><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#f4f5f8;font-size:15px;font-weight:600;word-break:break-all">${h ?? esc(v)}</td></tr>`)
+    .map(([k, v, h]) => `<tr><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#8b919e;font-size:13px;width:64px;vertical-align:top">${esc(k)}</td><td style="padding:10px 0;border-top:1px solid #2a2a2a;color:#f4f5f8;font-size:15px;font-weight:600;white-space:nowrap">${h ?? esc(v)}</td></tr>`)
     .join('');
   const html = `<!doctype html><html><body style="margin:0;padding:0;background:#f3f1ec">
 <div style="display:none;max-height:0;overflow:hidden;opacity:0">${esc(l.preheader)}</div>
@@ -72,6 +80,7 @@ export function welcomeEmail(i: EmailInput, origin = APP_ORIGIN()): Mail {
   const what = WHAT[i.tier] ?? 'AIBarber';
   return render({
     preheader: `Your ${what} plan is active.`,
+    subject: personal(i.firstName, (plan) => `you signed up for ${plan}`, i.tier),
     headline: `You signed up for ${what}`,
     lead: 'Your plan is active. Sign in to edit your site and manage your plan.',
     facts: facts(i),
@@ -81,12 +90,10 @@ export function welcomeEmail(i: EmailInput, origin = APP_ORIGIN()): Mail {
 }
 
 export function failedPaymentEmail(i: EmailInput, origin = APP_ORIGIN()): Mail {
-  const first = (i.firstName || '').trim().split(/\s+/)[0];
   const reminder = (i.reminder ?? 0) > 0;
-  const base = first ? `${first}, your barber shop website hosting` : 'Your barber shop website hosting';
   const href = i.updateUrl || signInLink(origin);
   return render({
-    subject: `${reminder ? 'Reminder: ' : ''}${base} is about to go offline`,
+    subject: (reminder ? 'Reminder: ' : '') + personal(i.firstName, (plan) => `your ${plan} payment failed`, i.tier),
     preheader: 'Your payment failed. Update your payment method to keep your site online.',
     headline: reminder ? 'Your site is still at risk' : 'Your payment failed',
     lead: `We couldn't charge your card for your barber website hosting. <b style="color:#fff">Update your payment method now or you're about to lose your site</b>: it will go offline and customers won't be able to find or book you.`,

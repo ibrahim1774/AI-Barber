@@ -38,7 +38,13 @@ async function updateUrlFor(sub: any, eventInvoiceUrl?: string | null): Promise<
   const inv = typeof sub.latest_invoice === 'string' ? sub.latest_invoice : sub.latest_invoice?.id;
   if (!inv) return null;
   const i = await stripeCall(`invoices/${enc(inv)}`, null, 'GET').catch(() => null);
-  return i?.hosted_invoice_url ?? null;
+  if (i?.hosted_invoice_url) return i.hosted_invoice_url;
+  // No hosted invoice: this customer's own billing portal session (card update) instead.
+  const customer = typeof sub.customer === 'string' ? sub.customer : sub.customer?.id;
+  const cfg = process.env.STRIPE_WEBAPP_PORTAL_CONFIG;
+  if (!customer) return null;
+  const ps = await stripeCall('billing_portal/sessions', { customer, ...(cfg ? { configuration: cfg } : {}) }).catch(() => null);
+  return ps?.url ?? null;
 }
 
 /**
