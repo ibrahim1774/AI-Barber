@@ -281,7 +281,7 @@ export const api = {
    * codes, 403 sign-in-required | not-owner, 404 no-site, 409 site-mismatch (expectedSlug is not the bound site), 500 remove-failed, 503 temporarily-unavailable.
    */
   async takeSiteOffline(transactionId: string, accessToken?: string | null, expectedSlug?: string | null): Promise<void> {
-    await post('/api/ios/take-offline', expectedSlug ? { transactionId, expectedSlug } : { transactionId }, {
+    await post(transactionId.startsWith('web:') ? '/api/web-app/take-offline' : '/api/ios/take-offline', transactionId.startsWith('web:') ? {} : expectedSlug ? { transactionId, expectedSlug } : { transactionId }, {
       timeoutMs: SCRAPE_TIMEOUT_MS,
       failMessage: 'Could not take your website offline',
       slowMessage: 'Taking your website offline is temporarily unavailable — try again shortly.',
@@ -291,7 +291,7 @@ export const api = {
 
   /** Deletes the signed-in user, takes their published sites offline and deletes their content and photos. */
   async deleteAccount(accessToken: string): Promise<void> {
-    await post('/api/ios/delete-account', {}, {
+    await post(Platform.OS === 'web' ? '/api/web-app/delete-account' : '/api/ios/delete-account', {}, {
       headers: { Authorization: `Bearer ${accessToken}` },
       failMessage: 'Could not delete your account',
     });
