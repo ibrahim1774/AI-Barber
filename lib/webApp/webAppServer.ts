@@ -45,4 +45,6 @@ export async function readRawBody(req: any): Promise<string> {
 }
 
 export const webAppCheckoutOn = () => process.env.WEB_APP_CHECKOUT === '1';
+/** Gate for every web-entitlement code path (publish, lapse job, webhook slug handling). Off = old behaviour. */
+export const webAppEntitlementsOn = () => process.env.WEB_APP_ENTITLEMENTS === '1';
 export const APP_ORIGIN = () => process.env.WEB_APP_ORIGIN || 'https://www.aibarber.org';

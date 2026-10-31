@@ -3,7 +3,7 @@
 // never from the event body, so late or replayed events can't bring back a canceled subscription.
 // Events without metadata.app = 'aibarber-app' are acknowledged and ignored.
 import { keyMode, rowFromSubscription, verifyStripeSignature } from '../../lib/webApp/stripeCore.js';
-import { readRawBody, sbRest, stripeCall } from '../../lib/webApp/webAppServer.js';
+import { readRawBody, sbRest, stripeCall, webAppEntitlementsOn } from '../../lib/webApp/webAppServer.js';
 import { failedPaymentEmail, sendMail, welcomeEmail } from '../../lib/webApp/emails.js';
 
 export const config = { api: { bodyParser: false } };
@@ -46,7 +46,10 @@ export default async function handler(req: any, res: any) {
     catch { sub = { ...evSub, status: 'canceled' }; } // gone from Stripe: treat as ended
     const row = rowFromSubscription(sub, mode === 'live', process.env, sub.status === 'canceled');
     if (!row) return res.status(200).json({ ignored: true });
-    await sbRest('web_app_entitlements?on_conflict=stripe_subscription_id', { method: 'POST', body: { ...row, updated_at: new Date().toISOString() }, prefer: 'resolution=merge-duplicates,return=minimal' });
+    // Flag on: a null slug is left out of the upsert so a binding already stored on the row is never erased.
+    const upsertBody: Record<string, unknown> = { ...row, updated_at: new Date().toISOString() };
+    if (webAppEntitlementsOn() && upsertBody.site_slug == null) delete upsertBody.site_slug;
+    await sbRest('web_app_entitlements?on_conflict=stripe_subscription_id', { method: 'POST', body: upsertBody, prefer: 'resolution=merge-duplicates,return=minimal' });
     // Welcome email: once per subscription. The claim (welcome_sent_at is null -> now) is atomic, so two
     // deliveries can't both send; a failed send releases the claim and 500s so Stripe retries.
     if (row.status === 'active' || row.status === 'trialing') {

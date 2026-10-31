@@ -55,4 +55,10 @@ describe('vercel.json', () => {
   it('admin site edits get 300 s: republish-all batches deploy several sites per call', () => {
     expect(cfg.functions['api/admin/sites.ts'].maxDuration).toBe(300);
   });
+
+  it('the web-app publish and its lapse cron get 300 s; the cron runs every 10 minutes', () => {
+    expect(cfg.functions['api/web-app/publish.ts'].maxDuration).toBe(300);
+    expect(cfg.functions['api/web-app/lapse.ts'].maxDuration).toBe(300);
+    expect(cfg.crons).toContainEqual({ path: '/api/web-app/lapse', schedule: '*/10 * * * *' });
+  });
 });
