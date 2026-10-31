@@ -56,24 +56,32 @@ export interface EntitlementRow {
   cancel_at_period_end: boolean;
 }
 
-/** The row for a subscription event, or null when it is not ours (no tag, unknown price) so other flows are never touched. */
+/** Which Stripe mode a secret key belongs to. */
+export const keyMode = (key: string | undefined): 'live' | 'test' | null => (key?.startsWith('sk_live_') ? 'live' : key?.startsWith('sk_test_') || key?.startsWith('rk_test_') ? 'test' : key?.startsWith('rk_live_') ? 'live' : null);
+
+/**
+ * The row for a (freshly fetched) subscription, or null when it is not ours (no tag) so other flows are
+ * never touched. A tagged subscription on an unknown price is still stored, as status 'invalid_price'
+ * (not entitled), so a price switch or env change can never leave an old row paid forever.
+ */
 export function rowFromSubscription(sub: any, livemode: boolean, env: Record<string, string | undefined>, deleted = false): EntitlementRow | null {
-  if (!sub || sub.metadata?.app !== WEB_APP_TAG) return null;
+  if (!sub || sub.metadata?.app !== WEB_APP_TAG || typeof sub.id !== 'string') return null;
   const item = sub.items?.data?.[0];
   const priceId = item?.price?.id;
   const match = priceId ? tierForPriceId(priceId, env) : null;
-  if (!match || typeof sub.id !== 'string') return null;
   const customer = typeof sub.customer === 'string' ? sub.customer : sub.customer?.id;
   if (!customer) return null;
   const end = item?.current_period_end ?? sub.current_period_end;
+  const metaTier = isTier(sub.metadata?.tier) ? sub.metadata.tier : 'website';
+  const rawInterval = item?.price?.recurring?.interval;
   return {
     stripe_subscription_id: sub.id,
     stripe_customer_id: customer,
     user_id: sub.metadata?.user_id || null,
     site_slug: sub.metadata?.site_slug || null,
-    tier: match.tier,
-    billing_interval: match.interval,
-    status: deleted ? 'canceled' : String(sub.status),
+    tier: match ? match.tier : metaTier,
+    billing_interval: match ? match.interval : (isInterval(rawInterval) ? rawInterval : 'month'),
+    status: deleted ? 'canceled' : match ? String(sub.status) : 'invalid_price',
     environment: livemode ? 'live' : 'test',
     current_period_end: typeof end === 'number' ? new Date(end * 1000).toISOString() : null,
     cancel_at_period_end: !!sub.cancel_at_period_end,

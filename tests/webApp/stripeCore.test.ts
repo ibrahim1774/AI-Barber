@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import crypto from 'crypto';
-import { PRICES, isEntitledStatus, priceIdFor, rowFromSubscription, tierForPriceId, verifyStripeSignature } from '../../lib/webApp/stripeCore';
+import { PRICES, isEntitledStatus, keyMode, priceIdFor, rowFromSubscription, tierForPriceId, verifyStripeSignature } from '../../lib/webApp/stripeCore';
 
 const env = { STRIPE_WEBAPP_PRICE_WEBSITE_MONTH: 'p_wm', STRIPE_WEBAPP_PRICE_BOOKINGS_YEAR: 'p_by' };
 const sign = (raw: string, secret: string, t: number) => `t=${t},v1=${crypto.createHmac('sha256', secret).update(`${t}.${raw}`).digest('hex')}`;
@@ -28,9 +28,18 @@ describe('web app stripe core', () => {
     expect(rowFromSubscription(sub(), false, env)).toMatchObject({ stripe_subscription_id: 'sub_1', stripe_customer_id: 'cus_1', user_id: 'u1', site_slug: 'joes', tier: 'bookings', billing_interval: 'year', status: 'active', environment: 'test' });
     expect(rowFromSubscription(sub({ metadata: {} }), true, env)).toBeNull();
     expect(rowFromSubscription(sub({ metadata: { app: 'other' } }), true, env)).toBeNull();
-    expect(rowFromSubscription(sub({ items: { data: [{ price: { id: 'nope' } }] } }), true, env)).toBeNull();
     expect(rowFromSubscription(sub(), true, env, true)?.status).toBe('canceled');
+    // unknown price: stored but not entitled, so access can still end
+    const bad = rowFromSubscription(sub({ items: { data: [{ price: { id: 'nope', recurring: { interval: 'year' } } }] } }), true, env);
+    expect(bad).toMatchObject({ status: 'invalid_price', billing_interval: 'year' });
+    expect(isEntitledStatus(bad!.status)).toBe(false);
     expect(rowFromSubscription(sub(), true, env)?.environment).toBe('live');
+  });
+  it('reads the stripe mode from the key', () => {
+    expect(keyMode('sk_live_x')).toBe('live');
+    expect(keyMode('sk_test_x')).toBe('test');
+    expect(keyMode('rk_test_x')).toBe('test');
+    expect(keyMode(undefined)).toBeNull();
   });
   it('treats past_due as still entitled, canceled as not', () => {
     expect(['active', 'trialing', 'past_due'].every(isEntitledStatus)).toBe(true);
