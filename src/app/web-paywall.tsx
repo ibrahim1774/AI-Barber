@@ -23,7 +23,11 @@ export default function WebPaywall() {
   const insets = useSafeAreaInsets();
   // Closing the screen (Not now / back) tells the publish flow the paywall was declined.
   useEffect(() => () => { (require('expo-superwall') as { __dismissWebPaywall?: () => void }).__dismissWebPaywall?.(); }, []);
-  const [tier, setTier] = useState<Tier>('website');
+  // Opened from a locked Bookings or Store tab: start on that plan.
+  const [tier, setTier] = useState<Tier>(() => {
+    const placement = (typeof window !== 'undefined' ? (window as unknown as { __webPaywall?: { placement?: string } }).__webPaywall?.placement : '') ?? '';
+    return placement === 'store_upgrade' ? 'store' : placement === 'bookings_upgrade' ? 'bookings' : 'website';
+  });
   const [interval, setIntervalValue] = useState<Interval>('month');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
