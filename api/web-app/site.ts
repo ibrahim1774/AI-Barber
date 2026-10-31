@@ -1,5 +1,6 @@
 // POST + Authorization: Bearer <supabase jwt> -> the caller's web-app site (the web twin of /api/ios/site). 404 unless WEB_APP_ENTITLEMENTS=1.
 import { liveWebPublishDeps, runWebSiteLookup } from '../../lib/webApp/publishFlow.js';
+import { isEntitledStatus } from '../../lib/webApp/stripeCore.js';
 import { sbRest, webAppCors, webAppEntitlementsOn } from '../../lib/webApp/webAppServer.js';
 
 export default async function handler(req: any, res: any) {
@@ -10,8 +11,11 @@ export default async function handler(req: any, res: any) {
     const deps = liveWebPublishDeps();
     const r = await runWebSiteLookup({
       environment: deps.environment, userOf: deps.userOf, sites: deps.sites, readPending: deps.readPending,
-      // The newest subscription of this mode (entitled or not): its status decides `active`.
-      subscriptionOf: async (uid) => (await sbRest(`web_app_entitlements?user_id=eq.${encodeURIComponent(uid)}&environment=eq.${deps.environment}&select=status&order=updated_at.desc&limit=1`))?.[0] ?? null,
+      // Any entitled subscription of this mode counts (an older canceled one must not hide a newer active one); else the newest.
+      subscriptionOf: async (uid) => {
+        const rows: Array<{ status: string }> = (await sbRest(`web_app_entitlements?user_id=eq.${encodeURIComponent(uid)}&environment=eq.${deps.environment}&select=status&order=updated_at.desc`)) ?? [];
+        return rows.find((r) => isEntitledStatus(r.status)) ?? rows[0] ?? null;
+      },
     }, { authorization: req.headers?.authorization });
     res.setHeader('Cache-Control', 'no-store');
     return res.status(r.status).json(r.body);
