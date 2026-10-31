@@ -26,6 +26,15 @@ export async function cancelWebSubscriptions(userId: string, cancel: (subId: str
   return done;
 }
 
+/** Take the user's web sites offline and delete their stored copy, keeping the account and the subscription ("Take my website offline"). */
+export async function removeWebSitesOf(userId: string): Promise<number> {
+  const deps = liveWebDeleteDeps();
+  const sites = (await deps.listSites(userId)).filter(isWebSite);
+  for (const s of sites) await deps.takeDown(s);
+  for (const s of sites) await deps.purge(s);
+  return sites.length;
+}
+
 export function liveWebDeleteDeps(): DeleteAccountDeps {
   const base = liveDeleteDeps();
   const remove = liveRemoveDeps();

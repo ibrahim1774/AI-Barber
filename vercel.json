@@ -175,6 +175,9 @@
     "api/web-app/publish.ts": {
       "maxDuration": 300
     },
+    "api/web-app/take-offline.ts": {
+      "maxDuration": 300
+    },
     "api/web-app/delete-account.ts": {
       "maxDuration": 300
     },
