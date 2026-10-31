@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import type { WebsiteData } from '@/web/types';
 import { accessToken } from '@/lib/accessToken';
 
@@ -205,7 +206,7 @@ export const api = {
   ): Promise<{ siteId: string; deployedUrl: string; republished: boolean } & ServerVersionInfo> {
     // App-only bookkeeping (gallery slots removed by hand) stays on the phone and in the account row, never on the server.
     const { galleryRemoved: _removed, ...siteData } = body.siteData as WebsiteData & { galleryRemoved?: unknown };
-    return post('/api/ios/publish', { ...body, siteData }, {
+    return post(Platform.OS === 'web' ? '/api/web-app/publish' : '/api/ios/publish', { ...body, siteData }, {
       timeoutMs: SCRAPE_TIMEOUT_MS, failMessage: 'Publish failed', slowMessage: 'Publishing is temporarily unavailable — try again shortly.',
       headers: { Authorization: `Bearer ${accessToken}` },
     });
