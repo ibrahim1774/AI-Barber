@@ -26,7 +26,7 @@ export default async function handler(req: any, res: any) {
       if (own?.length) slug = siteSlug;
     }
     // Reuse this user's Stripe customer; otherwise create one (tagged) so the portal and webhook can always find it.
-    let customer: string | undefined = rows[0]?.stripe_customer_id;
+    let customer: string | undefined = (rows.find((r) => isEntitledStatus(r.status)) ?? rows[0])?.stripe_customer_id;
     if (!customer) {
       const c = await stripeCall('customers', { ...(caller.email ? { email: caller.email } : {}), 'metadata[app]': WEB_APP_TAG, 'metadata[user_id]': caller.id });
       customer = c.id as string;
