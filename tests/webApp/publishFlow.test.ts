@@ -166,3 +166,25 @@ describe('runWebPublish', () => {
     expect(purchasesWrite).not.toHaveBeenCalled();
   });
 });
+
+import { runWebSiteLookup } from '../../lib/webApp/publishFlow.js';
+describe('runWebSiteLookup', () => {
+  const base = (over: any = {}) => ({
+    environment: 'test' as const,
+    userOf: async () => ({ id: 'u1' }),
+    sites: { byUser: async () => ({ slug: 's', stripe_subscription_id: 'sub', user_id: 'u1', environment: 'test', published_at: 'x', taken_down_at: null, removed_at: null }) } as any,
+    readPending: async () => null,
+    subscriptionOf: async () => ({ status: 'active' }),
+    ...over,
+  });
+  it('401 without a valid caller, 404 with no site', async () => {
+    expect((await runWebSiteLookup(base({ userOf: async () => null }), { authorization: 'Bearer x' })).status).toBe(401);
+    expect((await runWebSiteLookup(base({ sites: { byUser: async () => null } }), { authorization: 'Bearer x' })).status).toBe(404);
+  });
+  it('active only while the subscription is entitled and the site is up', async () => {
+    const ok: any = await runWebSiteLookup(base(), { authorization: 'Bearer x' });
+    expect(ok.status).toBe(200); expect(ok.body.active).toBe(true);
+    expect(((await runWebSiteLookup(base({ subscriptionOf: async () => ({ status: 'canceled' }) }), { authorization: 'Bearer x' })) as any).body.active).toBe(false);
+    expect(((await runWebSiteLookup(base({ sites: { byUser: async () => ({ slug: 's', taken_down_at: 't', removed_at: null }) } }), { authorization: 'Bearer x' })) as any).body.active).toBe(false);
+  });
+});

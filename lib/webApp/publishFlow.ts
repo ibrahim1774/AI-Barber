@@ -82,7 +82,7 @@ export const PUBLISH_CAS_ATTEMPTS = 12;
 const badRequest = { status: 400, body: { error: 'bad-request' } };
 const unavailable = { status: 503, body: { error: 'temporarily-unavailable' } };
 
-function siteBody(slug: string, pending: PendingSite | null, active: boolean): WebSiteBody {
+export function siteBody(slug: string, pending: PendingSite | null, active: boolean): WebSiteBody {
   return {
     siteId: slug,
     deployedUrl: pending?.deployedUrl || null,
@@ -315,4 +315,28 @@ export function liveWebPublishDeps(): WebPublishDeps {
     rememberSlug: async (subId, slug) => { await stripeCall(`subscriptions/${enc(subId)}`, { 'metadata[site_slug]': slug }); },
     now: () => Date.now(),
   };
+}
+
+/**
+ * The caller's web-app site (the web twin of /api/ios/site): { siteId, deployedUrl, siteData, active, version... }.
+ * 404 no-site when nothing is bound (or it was removed); `active` is false once the subscription is not entitled
+ * or the lapse job took the site down. Same body shape as the iOS lookup so the app's status and restore code runs unchanged.
+ */
+export async function runWebSiteLookup(
+  deps: Pick<WebPublishDeps, 'environment' | 'userOf' | 'sites' | 'readPending'> & { subscriptionOf(userId: string): Promise<{ status: string } | null> },
+  ctx: { authorization?: unknown },
+): Promise<WebPublishResult> {
+  let caller: { id: string } | null;
+  try { caller = await deps.userOf(ctx.authorization); } catch { return { status: 503, body: { error: 'temporarily-unavailable' } }; }
+  if (!caller) return { status: 401, body: { error: ctx.authorization ? 'unauthorized' : 'auth-required' } };
+  try {
+    const site = await deps.sites.byUser(caller.id, deps.environment);
+    if (!site || site.removed_at) return { status: 404, body: { error: 'no-site' } };
+    const sub = await deps.subscriptionOf(caller.id);
+    const active = !!sub && isEntitledStatus(sub.status) && !site.taken_down_at;
+    return { status: 200, body: siteBody(site.slug, await deps.readPending(site.slug), active) };
+  } catch (e) {
+    console.error('[web-app/site] lookup failed:', (e as Error)?.message || e);
+    return { status: 503, body: { error: 'temporarily-unavailable' } };
+  }
 }
