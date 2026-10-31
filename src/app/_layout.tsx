@@ -1,3 +1,4 @@
+import '@/lib/webAutosave';
 import '@/lib/webAlert';
 import { useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';

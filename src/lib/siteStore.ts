@@ -82,7 +82,16 @@ async function readJson<T>(key: string): Promise<T | null> {
 
 /** One site per install (one site per subscription). */
 export const loadSite = () => readJson<SiteRecord>(SITE_KEY);
-export const saveSite = (r: SiteRecord) => Storage.setItem(SITE_KEY, JSON.stringify(r));
+const savedListeners = new Set<(r: SiteRecord) => void>();
+/** Called after every local save of the site (the web's autosave listens; nothing else does). Returns the unsubscribe. */
+export function onSiteSaved(cb: (r: SiteRecord) => void): () => void {
+  savedListeners.add(cb);
+  return () => { savedListeners.delete(cb); };
+}
+export const saveSite = async (r: SiteRecord): Promise<void> => {
+  await Storage.setItem(SITE_KEY, JSON.stringify(r));
+  savedListeners.forEach((cb) => { try { cb(r); } catch { /* a listener never breaks a save */ } });
+};
 export async function clearSite(): Promise<void> {
   await Storage.removeItem(SITE_KEY);
 }

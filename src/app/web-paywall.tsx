@@ -12,9 +12,9 @@ type Tier = 'website' | 'bookings' | 'store';
 type Interval = 'month' | 'year';
 
 const PLANS: { tier: Tier; name: string; month: string; year: string; bullets: string[] }[] = [
-  { tier: 'website', name: 'Website', month: '$19.99/month', year: '$191.99/year', bullets: ['Your own custom website, hosted for you', 'Edit your services, text and photos anytime', 'Live in about a minute, no coding'] },
-  { tier: 'bookings', name: 'Bookings', month: '$24.99/month', year: '$239.99/year', bullets: ['Everything in Website', 'Your own booking scheduler built in', 'Clients book online, you manage every appointment'] },
-  { tier: 'store', name: 'Store', month: '$39.99/month', year: '$379.99/year', bullets: ['Everything in Bookings', 'Add and sell your own products', 'Your own online store with payments built in'] },
+  { tier: 'website', name: 'Website', month: '$19.99', year: '$191.99', bullets: ['Your own custom website, hosted for you', 'Edit your services, text and photos anytime', 'Live in about a minute, no coding'] },
+  { tier: 'bookings', name: 'Bookings', month: '$24.99', year: '$239.99', bullets: ['Everything in Website', 'Your own booking scheduler built in', 'Clients book online, you manage every appointment'] },
+  { tier: 'store', name: 'Store', month: '$39.99', year: '$379.99', bullets: ['Everything in Bookings', 'Add and sell your own products', 'Your own online store with payments built in'] },
 ];
 
 const BASE = process.env.EXPO_PUBLIC_API_BASE ?? 'https://www.aibarber.org';
@@ -69,7 +69,7 @@ export default function WebPaywall() {
       {PLANS.map((p) => (
         <Pressable key={p.tier} accessibilityRole="button" onPress={() => setTier(p.tier)} style={[styles.card, tier === p.tier && styles.cardOn]}>
           <Text style={styles.name}>{p.name}</Text>
-          <Text style={styles.price}>{interval === 'month' ? p.month : p.year}</Text>
+          <Text style={styles.price}>{interval === 'month' ? p.month : p.year}  <Text style={styles.cycle}>{interval === 'month' ? 'Monthly plan' : 'Yearly plan'}</Text></Text>
           {p.bullets.map((b) => (
             <View key={b} style={styles.bulletRow}>
               <Text style={styles.check}>✓</Text>
@@ -99,6 +99,7 @@ const styles = StyleSheet.create({
   cardOn: { borderColor: colors.accent, borderWidth: 2 },
   name: { color: colors.heading, fontFamily: fonts.heading, fontSize: 18 },
   price: { color: colors.accent, fontFamily: fonts.bodyMedium, fontSize: 16, marginTop: 4 },
+  cycle: { color: colors.body, fontFamily: fonts.body, fontSize: 12 },
   bulletRow: { flexDirection: 'row', marginTop: 6, paddingRight: 8 },
   check: { color: colors.accent, fontFamily: fonts.bodyMedium, fontSize: 13, width: 18 },
   bullet: { color: colors.text, fontFamily: fonts.body, fontSize: 13, flex: 1, lineHeight: 18 },
