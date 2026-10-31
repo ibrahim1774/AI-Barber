@@ -5,6 +5,7 @@ import { router } from 'expo-router';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
 import { ShareSheet } from '@/components/ShareSheet';
+import { AddToHome } from '@/components/AddToHome';
 import { CheckCircleIcon, CheckIcon, ChevronRightIcon, CloseIcon, CopyIcon } from '@/components/Icons';
 import { track } from '@/lib/analytics';
 import { useSession } from '@/lib/auth';
@@ -124,6 +125,7 @@ export default function Live() {
             style={[styles.wide, { marginTop: 12 }]}
           />
         )}
+        <AddToHome />
         <Button variant="ghost" size="lg" title="Done" onPress={done} style={[styles.wide, styles.done]} />
 
         {ready && !session?.user && !saveDismissed && (

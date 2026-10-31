@@ -11,4 +11,5 @@ grep -rl "assets/node_modules" . | xargs sed -i '' 's#assets/node_modules#assets
 f=$(ls _expo/static/js/web/entry-*.js)
 n="_expo/static/js/web/entry-$(date +%s).js"
 mv "$f" "$n" && sed -i '' "s#$f#$n#" index.html
+sed -i '' 's#</head>#<link rel="manifest" href="/app/manifest.webmanifest"><link rel="apple-touch-icon" href="/app/icons/apple-touch-icon.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Prime Barber"><meta name="theme-color" content="\#0d0d0d"></head>#' index.html
 echo "staged in $OUT/app"
