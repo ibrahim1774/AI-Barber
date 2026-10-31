@@ -2,7 +2,7 @@
 // or { url } to the billing portal when the user already has a paid plan (no double billing).
 // Off (404) unless WEB_APP_CHECKOUT=1. Everything created is tagged metadata.app = 'aibarber-app'.
 import { WEB_APP_TAG, isEntitledStatus, isInterval, isTier, keyMode, priceIdFor } from '../../lib/webApp/stripeCore.js';
-import { APP_ORIGIN, callerFrom, sbRest, stripeCall, webAppCheckoutOn } from '../../lib/webApp/server.js';
+import { APP_ORIGIN, callerFrom, sbRest, stripeCall, webAppCheckoutOn } from '../../lib/webApp/webAppServer.js';
 
 export default async function handler(req: any, res: any) {
   if (!webAppCheckoutOn()) return res.status(404).json({ error: 'not_found' });

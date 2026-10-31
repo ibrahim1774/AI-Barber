@@ -3,7 +3,7 @@
 // never from the event body, so late or replayed events can't bring back a canceled subscription.
 // Events without metadata.app = 'aibarber-app' are acknowledged and ignored.
 import { keyMode, rowFromSubscription, verifyStripeSignature } from '../../lib/webApp/stripeCore.js';
-import { readRawBody, sbRest, stripeCall } from '../../lib/webApp/server.js';
+import { readRawBody, sbRest, stripeCall } from '../../lib/webApp/webAppServer.js';
 
 export const config = { api: { bodyParser: false } };
 

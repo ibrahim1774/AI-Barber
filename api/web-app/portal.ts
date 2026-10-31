@@ -1,7 +1,7 @@
 // POST + Bearer <supabase jwt> -> { url } to the Stripe billing portal for the caller's own customer.
 // Uses a portal configuration made for the web app (STRIPE_WEBAPP_PORTAL_CONFIG: only the six web-app prices).
 import { keyMode } from '../../lib/webApp/stripeCore.js';
-import { callerFrom, sbRest, stripeCall, APP_ORIGIN, webAppCheckoutOn } from '../../lib/webApp/server.js';
+import { callerFrom, sbRest, stripeCall, APP_ORIGIN, webAppCheckoutOn } from '../../lib/webApp/webAppServer.js';
 
 export default async function handler(req: any, res: any) {
   if (!webAppCheckoutOn()) return res.status(404).json({ error: 'not_found' });
