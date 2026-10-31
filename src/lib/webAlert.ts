@@ -5,7 +5,7 @@ import { Alert, Platform } from 'react-native';
 // confirm where OK runs the first non-cancel button and Cancel runs the cancel button.
 if (Platform.OS === 'web' && typeof window !== 'undefined') {
   type Btn = { text?: string; style?: 'default' | 'cancel' | 'destructive'; onPress?: (value?: string) => void };
-  Alert.alert = (title: string, message?: string, buttons?: Btn[]) => {
+  (Alert as { alert: unknown }).alert = (title: string, message?: string, buttons?: Btn[]) => {
     const text = [title, message].filter(Boolean).join('\n\n');
     const list = buttons ?? [];
     const actions = list.filter((b) => b.style !== 'cancel');
