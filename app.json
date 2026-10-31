@@ -1,5 +1,6 @@
 {
   "expo": {
+    "web": { "output": "single", "bundler": "metro" },
     "name": "Prime Barber",
     "slug": "aibarber",
     "version": "1.0.0",
@@ -84,6 +85,7 @@
     ],
     "experiments": {
       "typedRoutes": true,
+      "baseUrl": "/app",
       "reactCompiler": true
     },
     "extra": {
