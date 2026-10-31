@@ -11,7 +11,7 @@ export async function stripeCall(path: string, body: Record<string, string> | nu
     body: body ? new URLSearchParams(body).toString() : undefined,
   });
   const j: any = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j?.error?.message || `stripe ${r.status}`);
+  if (!r.ok) throw Object.assign(new Error(j?.error?.message || `stripe ${r.status}`), { status: r.status });
   return j;
 }
 

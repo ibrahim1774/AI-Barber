@@ -163,8 +163,9 @@ export async function runWebPublish(
           if ((e as Error)?.message === 'slug-exhausted') return { status: 503, body: { error: 'slug-exhausted' } };
           throw e;
         }
+        let inserted = false;
         try {
-          await deps.sites.insertIfAbsent({ slug: candidate, stripe_subscription_id: ent.stripe_subscription_id, user_id: caller.id, environment: deps.environment });
+          inserted = await deps.sites.insertIfAbsent({ slug: candidate, stripe_subscription_id: ent.stripe_subscription_id, user_id: caller.id, environment: deps.environment });
         } catch (e) {
           // A concurrent first publish by this same user bound a slug first (one live slug per user and mode,
           // migration 022): use theirs rather than creating a second site on one plan.
@@ -173,7 +174,9 @@ export async function runWebPublish(
           throw e;
         }
         const row = await deps.sites.get(candidate);
-        if (row && row.user_id === caller.id) { bound = candidate; freshBind = true; }
+        // Fresh only when THIS request inserted the row. A row of the same user that was already there (a simultaneous
+        // publish) is shared, never released or treated as a brand-new slug.
+        if (row && row.user_id === caller.id) { bound = candidate; freshBind = inserted; }
         else console.warn(`[web-app/publish] ${candidate} was bound by another account meanwhile${attempt === 0 ? '; choosing again' : ''}`);
       }
       if (!bound) return { status: 503, body: { error: 'slug-bind-failed' } };

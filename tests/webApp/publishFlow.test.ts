@@ -168,6 +168,20 @@ describe('runWebPublish', () => {
 });
 
 import { runWebSiteLookup } from '../../lib/webApp/publishFlow.js';
+describe('simultaneous first publishes by one account', () => {
+  it('the second request shares the first one\'s binding: it is not "fresh", never releases it, and publishes', async () => {
+    const { deps } = fakes({ sites: [bound({ published_at: null })], owners: [ownerRow()], pending: { 'fresh-cuts': { siteId: 'fresh-cuts', existingSiteId: null, siteData: site(), imageUrlMap: {}, timestamp: 1, version: 1, editedBy: 'owner' } as any } });
+    // The binding did not exist when this request started (the other request inserts it a moment later).
+    (deps.sites.byUser as any).mockResolvedValueOnce(null);
+    (deps.isTaken as any).mockResolvedValue(false);
+    const r: any = await runWebPublish({ siteData: site() }, deps, { authorization: AUTH });
+    expect(r.status).toBe(200);
+    expect(r.body.siteId).toBe('fresh-cuts');
+    expect(deps.sites.releaseUnpublished).not.toHaveBeenCalled();
+    expect(deps._sites.has('fresh-cuts')).toBe(true);
+  });
+});
+
 describe('runWebSiteLookup', () => {
   const base = (over: any = {}) => ({
     environment: 'test' as const,

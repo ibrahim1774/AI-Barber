@@ -43,7 +43,12 @@ export default async function handler(req: any, res: any) {
   try {
     let sub: any;
     try { sub = await stripeCall(`subscriptions/${encodeURIComponent(evSub.id)}`, null, 'GET'); }
-    catch { sub = { ...evSub, status: 'canceled' }; } // gone from Stripe: treat as ended
+    catch (e: any) {
+      // Unknown to Stripe: nothing to store. Any other failure (outage, timeout) must NOT be read as "ended":
+      // answer 500 so Stripe retries the event later.
+      if (e?.status === 404) return res.status(200).json({ ignored: true });
+      throw e;
+    }
     const row = rowFromSubscription(sub, mode === 'live', process.env, sub.status === 'canceled');
     if (!row) return res.status(200).json({ ignored: true });
     // Flag on: a null slug is left out of the upsert so a binding already stored on the row is never erased.
