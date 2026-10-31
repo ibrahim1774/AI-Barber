@@ -52,8 +52,17 @@ export async function sendFailedPaymentIfDue(subId: string, mode: 'live' | 'test
   if (!row) return false;
   const stamp = new Date(now).toISOString();
   const cutoff = new Date(now - REMIND_EVERY_MS).toISOString();
-  const before = (await sbRest(`web_app_entitlements?stripe_subscription_id=eq.${enc(subId)}&select=dunning_last_sent_at,dunning_count&limit=1`))?.[0];
-  if (!before) return false; // the subscription row isn't stored yet: the cron picks it up later
+  const read = async () => (await sbRest(`web_app_entitlements?stripe_subscription_id=eq.${enc(subId)}&select=dunning_last_sent_at,dunning_count&limit=1`))?.[0];
+  let before = await read();
+  if (!before) {
+    // The failed-payment event can beat the subscription event: store the row from Stripe's current state (same
+    // content the subscription webhook writes), then carry on.
+    const body: Record<string, unknown> = { ...row, updated_at: stamp };
+    if (body.site_slug == null) delete body.site_slug;
+    await sbRest('web_app_entitlements?on_conflict=stripe_subscription_id', { method: 'POST', body, prefer: 'resolution=merge-duplicates,return=minimal' });
+    before = await read();
+    if (!before) return false;
+  }
   const count = Number(before.dunning_count ?? 0);
   if (count >= MAX_REMINDERS) return false;
   const claimed = await sbRest(
