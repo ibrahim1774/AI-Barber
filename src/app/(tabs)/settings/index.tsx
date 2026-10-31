@@ -31,6 +31,7 @@ import { openManageSubscription } from '@/lib/manageSubscription';
 import { tabBarStyle } from '@/lib/tabBar';
 import {
   CANCEL_APPLE_SUBSCRIPTION,
+  SHOW_CANCEL_APPLE,
   CANCEL_APPLE_SUBSCRIPTION_URL,
   DELETE_ALERT_MESSAGE,
   DELETE_ALERT_TITLE,
@@ -205,7 +206,7 @@ export default function Settings() {
   const confirmDelete = () => {
     if (signedIn) {
       confirmOnce(DELETE_ALERT_TITLE, DELETE_ALERT_MESSAGE, [
-        { text: CANCEL_APPLE_SUBSCRIPTION, onPress: cancelAppleSubscription },
+        ...(SHOW_CANCEL_APPLE ? [{ text: CANCEL_APPLE_SUBSCRIPTION, onPress: cancelAppleSubscription }] : []),
         { text: 'Delete account', style: 'destructive', onPress: () => void runDelete() },
         { text: 'Keep my account', style: 'cancel' },
       ]);
@@ -260,8 +261,8 @@ export default function Settings() {
         await deleteAccountAndData();
         resetTo('/start');
         Alert.alert('Account deleted', DELETE_SUCCESS_MESSAGE, [
-          { text: CANCEL_APPLE_SUBSCRIPTION, onPress: cancelAppleSubscription },
-          { text: 'OK', style: 'cancel' },
+          ...(SHOW_CANCEL_APPLE ? [{ text: CANCEL_APPLE_SUBSCRIPTION, onPress: cancelAppleSubscription }] : []),
+          { text: 'OK', style: 'cancel' as const },
         ]);
       } catch (e) {
         Alert.alert('Delete account', deleteError(e));
