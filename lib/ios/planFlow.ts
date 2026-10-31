@@ -13,6 +13,7 @@ import { entitlementActive, purchaseLive } from './lapse.js';
 import { supabasePurchases, type PurchaseRow } from './purchases.js';
 import { liveBindingOwner, liveEmailOf, otherAccountBody, type BindingOwner } from './ownership.js';
 import { tierOf, type Tier } from './tiers.js';
+import { webAppEntitlementsOn } from '../webApp/entitlementGate.js';
 
 export interface PlanView {
   /** The shop has a purchase linked (ab_shops.ios_otid). */
@@ -51,6 +52,8 @@ export interface PlanDeps {
   setUserIfUnlinked(otid: string, userId: string): Promise<boolean>;
   /** The purchases linked to the caller (user_id = caller). Used only when the caller has no shop. Absent: none. */
   purchasesOfUser?(userId: string): Promise<PurchaseRow[]>;
+  /** WEB_APP_ENTITLEMENTS only: the caller's web (Stripe) subscription as a gate row. Used when no iOS purchase applies. */
+  webEntitlementOf?(userId: string): Promise<PurchaseRow | null>;
   /** Masked-hint lookup for a 409 (account id -> email). Absent: hint null. */
   emailOf?(userId: string): Promise<string | null>;
   /** Unlinked purchase (no user_id): which account owns the shop/site bound to it (id, 'ambiguous', null). */
@@ -125,7 +128,11 @@ export async function getPlan(auth: Auth, deps: PlanDeps): Promise<FlowResult> {
   let view: PlanView;
   if (shop) {
     const row = shop.ios_otid ? await deps.purchase(shop.ios_otid) : null;
-    view = planView(shop, row, now, a.user.id);
+    // Web (Stripe) subscriber: only a shop with no iOS link, flag on. `linked` stays false (no ios_otid).
+    const web = !shop.ios_otid && webAppEntitlementsOn() && deps.webEntitlementOf ? await deps.webEntitlementOf(a.user.id) : null;
+    view = web
+      ? { ...planView({ ios_otid: web.original_transaction_id }, web, now, a.user.id), linked: false }
+      : planView(shop, row, now, a.user.id);
     if (view.purchaseAccount === 'other' && row) {
       const other = await otherAccountBody(deps.emailOf, row.user_id, row);
       view = { ...view, ownerHint: other.ownerHint, hasLiveSite: other.hasLiveSite };
@@ -135,9 +142,11 @@ export async function getPlan(auth: Auth, deps: PlanDeps): Promise<FlowResult> {
     const mine = own
       .filter((r) => r.user_id === a.user.id && purchaseLive(r, now))
       .sort((x, y) => (Date.parse(y.expires_at ?? '') || 0) - (Date.parse(x.expires_at ?? '') || 0))[0] ?? null;
+    const web = !mine && webAppEntitlementsOn() && deps.webEntitlementOf ? await deps.webEntitlementOf(a.user.id) : null;
+    const found = mine ?? web;
     // `linked` stays false: it means "the shop has a purchase", and there is no shop.
-    view = mine
-      ? { ...planView({ ios_otid: mine.original_transaction_id }, mine, now, a.user.id), linked: false }
+    view = found
+      ? { ...planView({ ios_otid: found.original_transaction_id }, found, now, a.user.id), linked: false }
       : planView({ ios_otid: null }, null, now, a.user.id);
   }
   if (!deps.memberProfileLive) return { status: 200, body: view };
@@ -290,6 +299,7 @@ export function livePlanDeps(): PlanDeps {
     shopByOwner: (uid) => shops.shopByOwner(uid),
     purchase: (otid) => purchases.get(otid),
     purchasesOfUser: (uid) => purchases.ofUser!(uid),
+    webEntitlementOf: (uid) => shops.webEntitlementOf!(uid),
     // Lazy: missing Apple env vars surface as a mapped 503, not a crash at wiring time.
     verify: lazyDefaultVerifier(),
     upsertVerified: (tx, opts) => purchases.upsertVerified(tx, opts),

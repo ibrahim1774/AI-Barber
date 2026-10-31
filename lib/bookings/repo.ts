@@ -7,6 +7,7 @@
 // Postgres error) so the flows are testable with an in-memory fake.
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { withSiteCols } from '../siteColumns.js';
+import { fetchWebEntitlementOf } from '../webApp/entitlementGate.js';
 
 export type ManualHandles = { cashapp?: string; venmo?: string; zelle?: string; paypal?: string };
 export type ManualMethod = keyof ManualHandles;
@@ -245,6 +246,8 @@ export interface BookingRepo {
   shopById(id: string): Promise<ShopRow | null>;
   /** ios_purchases row behind the bookings gate (null when there is none). */
   purchase(otid: string): Promise<PurchaseGateRow | null>;
+  /** WEB_APP_ENTITLEMENTS only: the owner's web (Stripe) subscription as a gate row, for a shop with no iOS link. */
+  webEntitlementOf?(userId: string): Promise<PurchaseGateRow | null>;
 
   services(shopId: string): Promise<ServiceRow[]>;
   members(shopId: string): Promise<MemberRow[]>;
@@ -358,6 +361,7 @@ export function supabaseBookingRepo(client?: SupabaseClient): BookingRepo {
     purchase: (otid) =>
       one('purchase', db().from('ios_purchases').select('user_id, product_id, revoked_at, taken_down_at, expires_at, site_slug, published_at, environment')
         .eq('original_transaction_id', otid).maybeSingle()),
+    webEntitlementOf: (userId) => fetchWebEntitlementOf(db(), userId),
 
     services: (shopId) =>
       many('services', db().from('ab_services').select(SERVICE_COLS).eq('shop_id', shopId).order('sort').order('created_at')),

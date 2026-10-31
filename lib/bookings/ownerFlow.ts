@@ -28,6 +28,7 @@ import {
   type FlowResult,
 } from './core.js';
 import { entitlementActive } from '../ios/lapse.js';
+import { gateRow } from '../webApp/entitlementGate.js';
 import { otherAccountBody, type BindingOwner } from '../ios/ownership.js';
 import { chooseShopSlug, vercelLabel } from './slug.js';
 import type { RateLimiter } from './rateLimit.js';
@@ -551,7 +552,7 @@ export async function addTeamMember(authorization: string | string[] | undefined
   if (o.ok === false) return { status: o.status, body: o.body };
   const { shop, user } = o;
   // Same gate as the bookings flows: the linked purchase is live and its product grants the tier.
-  const purchase = shop.ios_otid ? await deps.repo.purchase(shop.ios_otid) : null;
+  const purchase = await gateRow(deps.repo, shop);
   const limit = entitlementActive(purchase, 'store') ? MEMBER_LIMITS.store : entitlementActive(purchase, 'bookings') ? MEMBER_LIMITS.bookings : 0;
   if (!limit) return err(403, 'members-need-bookings');
 

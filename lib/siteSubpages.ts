@@ -308,10 +308,27 @@ function db(): SupabaseClient {
  * a shop, or a shop without a valid booking slug. Throws on a lookup error.
  */
 export async function findShopForSite(siteSlug: string): Promise<SiteShop | null> {
-  const { data: p, error } = await db().from('ios_purchases').select('original_transaction_id').eq('site_slug', siteSlug).maybeSingle();
+  return findShopForSiteWith(db(), siteSlug);
+}
+
+/** findShopForSite on a given client. With WEB_APP_ENTITLEMENTS=1 and no iOS purchase on the slug: the web_app_sites owner's shop. */
+export async function findShopForSiteWith(client: SupabaseClient, siteSlug: string): Promise<SiteShop | null> {
+  const { data: p, error } = await client.from('ios_purchases').select('original_transaction_id').eq('site_slug', siteSlug).maybeSingle();
   if (error) throw new Error(`ios_purchases lookup failed: ${error.message}`);
-  if (!p?.original_transaction_id) return null;
-  const { data: s, error: e2 } = await db().from('ab_shops').select('id, slug, bookings_enabled').eq('ios_otid', p.original_transaction_id).maybeSingle();
+  if (!p?.original_transaction_id) return webAppShopForSite(client, siteSlug);
+  const { data: s, error: e2 } = await client.from('ab_shops').select('id, slug, bookings_enabled').eq('ios_otid', p.original_transaction_id).maybeSingle();
+  if (e2) throw new Error(`ab_shops lookup failed: ${e2.message}`);
+  if (!s?.id || !isShopSlug(s.slug)) return null;
+  return { id: s.id, slug: s.slug, bookingsEnabled: s.bookings_enabled === true };
+}
+
+/** A web app site (web_app_sites.slug) -> its owner's shop (ab_shops.owner_id). Null when the flag is off. */
+async function webAppShopForSite(client: SupabaseClient, siteSlug: string): Promise<SiteShop | null> {
+  if (process.env.WEB_APP_ENTITLEMENTS !== '1') return null;
+  const { data: w, error } = await client.from('web_app_sites').select('user_id').eq('slug', siteSlug).maybeSingle();
+  if (error) throw new Error(`web_app_sites lookup failed: ${error.message}`);
+  if (!w?.user_id) return null;
+  const { data: s, error: e2 } = await client.from('ab_shops').select('id, slug, bookings_enabled').eq('owner_id', w.user_id).maybeSingle();
   if (e2) throw new Error(`ab_shops lookup failed: ${e2.message}`);
   if (!s?.id || !isShopSlug(s.slug)) return null;
   return { id: s.id, slug: s.slug, bookingsEnabled: s.bookings_enabled === true };
