@@ -1,3 +1,4 @@
+import '@/lib/webAlert';
 import { useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { router, Stack, usePathname, useRootNavigationState } from 'expo-router';
