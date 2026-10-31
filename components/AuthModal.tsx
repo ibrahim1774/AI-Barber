@@ -53,6 +53,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMo
     }
   };
 
+  const forgotControl = resetSent
+    ? <span className="text-emerald-400">Reset link sent — check your email.</span>
+    : <button type="button" onClick={handleForgotPassword} className="text-[#888] hover:text-white underline transition-colors">Forgot password?</button>;
+
   // Sync mode to props whenever the modal opens or the caller's
   // intent changes. Without this, mode is locked to whatever it was
   // at first mount (typically 'signup') because useState only reads
@@ -250,17 +254,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMo
           </button>
         </form>
 
+        {/* Sign-in-only (the home page's Sign in button): no sign-up toggle, but a forgotten password still needs a way out. */}
+        {signInOnly && mode === 'signin' && (
+          <p className="text-center text-[#666] text-xs mt-6">{forgotControl}</p>
+        )}
+
         {/* Toggle link (hidden in signInOnly mode) */}
         {!signInOnly && (
           <p className="text-center text-[#666] text-xs mt-6">
             {mode === 'signin' ? (
               <>
                 Don't have an account?{' '}<button onClick={switchMode} className="text-[#f4a100] hover:text-white transition-colors">Sign Up</button>
-                <span className="block mt-2">
-                  {resetSent
-                    ? <span className="text-emerald-400">Reset link sent — check your email.</span>
-                    : <button type="button" onClick={handleForgotPassword} className="text-[#888] hover:text-white underline transition-colors">Forgot password?</button>}
-                </span>
+                <span className="block mt-2">{forgotControl}</span>
               </>
             ) : (
               <>Already have an account?{' '}<button onClick={switchMode} className="text-[#f4a100] hover:text-white transition-colors">Sign In</button></>
