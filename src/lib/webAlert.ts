@@ -15,7 +15,9 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
       list[0]?.onPress?.();
       return;
     }
-    if (window.confirm(text)) actions[0]?.onPress?.();
+    // OK runs the destructive action when there is one (Delete, Take offline), else the first non-cancel button.
+    const ok = actions.find((b) => b.style === 'destructive') ?? actions[0];
+    if (window.confirm(text)) ok?.onPress?.();
     else cancel?.onPress?.();
   };
 }
