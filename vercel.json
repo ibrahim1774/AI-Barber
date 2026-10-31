@@ -47,11 +47,11 @@
     },
     {
       "source": "/app",
-      "destination": "https://prime-barber-app.vercel.app/app/"
+      "destination": "https://prime-barber-web.vercel.app/app/"
     },
     {
       "source": "/app/:path*",
-      "destination": "https://prime-barber-app.vercel.app/app/:path*"
+      "destination": "https://prime-barber-web.vercel.app/app/:path*"
     },
     {
       "source": "/((?!api/|_ab/).*)",

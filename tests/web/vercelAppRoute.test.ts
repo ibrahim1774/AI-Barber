@@ -12,8 +12,8 @@ const idx = (src: string) => cfg.rewrites.findIndex((r) => r.source === src);
 
 describe('vercel.json /app route', () => {
   it('forwards /app and /app/* to the web app project, and nothing wider', () => {
-    expect(cfg.rewrites[idx('/app')].destination).toBe('https://prime-barber-app.vercel.app/app/');
-    expect(cfg.rewrites[idx('/app/:path*')].destination).toBe('https://prime-barber-app.vercel.app/app/:path*');
+    expect(cfg.rewrites[idx('/app')].destination).toBe('https://prime-barber-web.vercel.app/app/');
+    expect(cfg.rewrites[idx('/app/:path*')].destination).toBe('https://prime-barber-web.vercel.app/app/:path*');
     expect(cfg.rewrites.filter((r) => /\/app/.test(r.source)).map((r) => r.source)).toEqual(['/app', '/app/:path*']);
   });
   it('sits above the marketing catch-all and below the existing routes', () => {
