@@ -11,10 +11,10 @@ import { supabase } from '@/lib/supabase';
 type Tier = 'website' | 'bookings' | 'store';
 type Interval = 'month' | 'year';
 
-const PLANS: { tier: Tier; name: string; blurb: string; month: string; year: string }[] = [
-  { tier: 'website', name: 'Website', blurb: 'Your site, hosted, edit anytime', month: '$19.99/month', year: '$191.99/year' },
-  { tier: 'bookings', name: 'Bookings', blurb: 'Website + online booking for your clients', month: '$24.99/month', year: '$239.99/year' },
-  { tier: 'store', name: 'Store', blurb: 'Bookings + sell products with payments', month: '$39.99/month', year: '$379.99/year' },
+const PLANS: { tier: Tier; name: string; month: string; year: string; bullets: string[] }[] = [
+  { tier: 'website', name: 'Website', month: '$19.99/month', year: '$191.99/year', bullets: ['Your own custom website, hosted for you', 'Edit your services, text and photos anytime', 'Live in about a minute, no coding'] },
+  { tier: 'bookings', name: 'Bookings', month: '$24.99/month', year: '$239.99/year', bullets: ['Everything in Website', 'Your own booking scheduler built in', 'Clients book online, you manage every appointment'] },
+  { tier: 'store', name: 'Store', month: '$39.99/month', year: '$379.99/year', bullets: ['Everything in Bookings', 'Add and sell your own products', 'Your own online store with payments built in'] },
 ];
 
 const BASE = process.env.EXPO_PUBLIC_API_BASE ?? 'https://www.aibarber.org';
@@ -66,7 +66,12 @@ export default function WebPaywall() {
         <Pressable key={p.tier} accessibilityRole="button" onPress={() => setTier(p.tier)} style={[styles.card, tier === p.tier && styles.cardOn]}>
           <Text style={styles.name}>{p.name}</Text>
           <Text style={styles.price}>{interval === 'month' ? p.month : p.year}</Text>
-          <Text style={styles.blurb}>{p.blurb}</Text>
+          {p.bullets.map((b) => (
+            <View key={b} style={styles.bulletRow}>
+              <Text style={styles.check}>✓</Text>
+              <Text style={styles.bullet}>{b}</Text>
+            </View>
+          ))}
         </Pressable>
       ))}
       {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -90,7 +95,9 @@ const styles = StyleSheet.create({
   cardOn: { borderColor: colors.accent, borderWidth: 2 },
   name: { color: colors.heading, fontFamily: fonts.heading, fontSize: 18 },
   price: { color: colors.accent, fontFamily: fonts.bodyMedium, fontSize: 16, marginTop: 4 },
-  blurb: { color: colors.body, fontFamily: fonts.body, fontSize: 13, marginTop: 4 },
+  bulletRow: { flexDirection: 'row', marginTop: 6, paddingRight: 8 },
+  check: { color: colors.accent, fontFamily: fonts.bodyMedium, fontSize: 13, width: 18 },
+  bullet: { color: colors.text, fontFamily: fonts.body, fontSize: 13, flex: 1, lineHeight: 18 },
   error: { color: colors.danger, fontFamily: fonts.body, fontSize: 13, textAlign: 'center', marginBottom: 8 },
   cta: { marginTop: 12 },
 });
