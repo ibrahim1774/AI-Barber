@@ -46,11 +46,37 @@
       "destination": "/_ab/shop.html"
     },
     {
+      "source": "/app",
+      "destination": "https://prime-barber-app.vercel.app/app/"
+    },
+    {
+      "source": "/app/:path*",
+      "destination": "https://prime-barber-app.vercel.app/app/:path*"
+    },
+    {
       "source": "/((?!api/|_ab/).*)",
       "destination": "/index.html"
     }
   ],
   "headers": [
+    {
+      "source": "/app",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex"
+        }
+      ]
+    },
+    {
+      "source": "/app/(.*)",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex"
+        }
+      ]
+    },
     {
       "source": "/_ab/assets/(.*)",
       "headers": [
