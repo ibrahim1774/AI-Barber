@@ -2,7 +2,15 @@
 // address, a sign-in link and a reset-password link. Table layout + inline CSS so it renders in every mail client.
 import { APP_ORIGIN } from './webAppServer.js';
 
-export interface EmailInput { email: string; siteUrl: string | null; tier: string }
+export interface EmailInput {
+  email: string; siteUrl: string | null; tier: string;
+  /** Account holder's first name, when known (used in the failed-payment subject). */
+  firstName?: string | null;
+  /** Stripe-hosted page where this customer fixes the payment (hosted invoice). Falls back to sign-in. */
+  updateUrl?: string | null;
+  /** 0 = the first notice; 1+ = a follow-up reminder. */
+  reminder?: number;
+}
 export interface Mail { subject: string; html: string; text: string }
 
 const TIER_NAME: Record<string, string> = { website: 'Website', bookings: 'Bookings', store: 'Store' };
@@ -16,6 +24,7 @@ const AMBER = '#f4a100';
 const INK = '#0d0d0d';
 
 interface Layout {
+  subject?: string;
   preheader: string;
   headline: string;
   lead: string;
@@ -48,10 +57,10 @@ ${l.note ? `<tr><td style="padding:14px 28px 0 28px;font-size:13px;line-height:1
     ...(l.note ? ['', l.note.replace(/<[^>]+>/g, '')] : []),
     '', `Forgot your password? ${resetLink(l.origin)}`, 'We never email passwords.',
   ].join('\n');
-  return { subject: l.headline, html, text };
+  return { subject: l.subject ?? l.headline, html, text };
 }
 
-function facts(i: EmailInput): Layout['facts'] {
+function facts(i: EmailInput, bare = false): Layout['facts'] {
   const f: Layout['facts'] = [];
   if (i.siteUrl) f.push(['Site', i.siteUrl, `<a href="${esc(i.siteUrl)}" style="color:${AMBER};text-decoration:none">${esc(i.siteUrl.replace(/^https?:\/\//, ''))}</a>`]);
   f.push(['Plan', TIER_NAME[i.tier] ?? i.tier]);
@@ -72,13 +81,18 @@ export function welcomeEmail(i: EmailInput, origin = APP_ORIGIN()): Mail {
 }
 
 export function failedPaymentEmail(i: EmailInput, origin = APP_ORIGIN()): Mail {
+  const first = (i.firstName || '').trim().split(/\s+/)[0];
+  const reminder = (i.reminder ?? 0) > 0;
+  const base = first ? `${first}, your barber shop website hosting` : 'Your barber shop website hosting';
+  const href = i.updateUrl || signInLink(origin);
   return render({
-    preheader: 'Update your card to keep your site online.',
-    headline: "Payment failed: you'll lose access to your site",
-    lead: `We couldn't charge your card. <b style="color:#fff">Update it now</b> or your site goes offline.`,
-    facts: facts(i),
-    cta: { label: 'Update my card', href: signInLink(origin) },
-    note: 'Sign in, open Settings, then Manage plan. We retry your card for a few days.',
+    subject: `${reminder ? 'Reminder: ' : ''}${base} is about to go offline`,
+    preheader: 'Your payment failed. Update your payment method to keep your site online.',
+    headline: reminder ? 'Your site is still at risk' : 'Your payment failed',
+    lead: `We couldn't charge your card for your barber website hosting. <b style="color:#fff">Update your payment method now or you're about to lose your site</b>: it will go offline and customers won't be able to find or book you.`,
+    facts: facts(i, true),
+    cta: { label: 'Update payment method', href },
+    note: `You can also <a href="${signInLink(origin)}" style="color:#c9ccd4">sign in</a> and open Settings, then Manage plan. We keep retrying your card for about two weeks, and we'll remind you every 2 days until it's fixed.`,
     origin,
   });
 }

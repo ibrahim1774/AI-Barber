@@ -4,7 +4,8 @@
 // Events without metadata.app = 'aibarber-app' are acknowledged and ignored.
 import { keyMode, rowFromSubscription, verifyStripeSignature } from '../../lib/webApp/stripeCore.js';
 import { readRawBody, sbRest, stripeCall, webAppEntitlementsOn } from '../../lib/webApp/webAppServer.js';
-import { failedPaymentEmail, sendMail, welcomeEmail } from '../../lib/webApp/emails.js';
+import { sendMail, welcomeEmail } from '../../lib/webApp/emails.js';
+import { resetDunning, sendFailedPaymentIfDue } from '../../lib/webApp/dunning.js';
 
 export const config = { api: { bodyParser: false } };
 
@@ -55,6 +56,7 @@ export default async function handler(req: any, res: any) {
     const upsertBody: Record<string, unknown> = { ...row, updated_at: new Date().toISOString() };
     if (webAppEntitlementsOn() && upsertBody.site_slug == null) delete upsertBody.site_slug;
     await sbRest('web_app_entitlements?on_conflict=stripe_subscription_id', { method: 'POST', body: upsertBody, prefer: 'resolution=merge-duplicates,return=minimal' });
+    if (row.status === 'active' || row.status === 'trialing') await resetDunning(row.stripe_subscription_id);
     // Welcome email: once per subscription. The claim (welcome_sent_at is null -> now) is atomic, so two
     // deliveries can't both send; a failed send releases the claim and 500s so Stripe retries.
     if (row.status === 'active' || row.status === 'trialing') {
@@ -78,17 +80,16 @@ export default async function handler(req: any, res: any) {
   }
 }
 
-/** A failed renewal: email the owner every time (each Stripe retry attempt is its own event). Our subscriptions only. */
+/** A failed renewal: email the owner at once, then (via the cron) every 2 days while it stays past_due. Our subscriptions only. */
 async function handleFailedPayment(event: any, mode: 'live' | 'test', res: any) {
   if ((mode === 'live') !== !!event.livemode) return res.status(200).json({ ignored: true });
-  const subId = event.data?.object?.subscription;
+  const inv = event.data?.object;
+  const subId = inv?.subscription;
   if (typeof subId !== 'string') return res.status(200).json({ ignored: true });
   try {
     const sub = await stripeCall(`subscriptions/${encodeURIComponent(subId)}`, null, 'GET');
-    const row = rowFromSubscription(sub, mode === 'live', process.env);
-    if (!row) return res.status(200).json({ ignored: true });
-    const to = await emailFor(row.user_id, row.stripe_customer_id);
-    if (to) await sendMail(to, failedPaymentEmail({ email: to, siteUrl: siteUrlOf(row.site_slug), tier: row.tier }));
+    if (sub?.metadata?.app !== 'aibarber-app') return res.status(200).json({ ignored: true });
+    await sendFailedPaymentIfDue(subId, mode, typeof inv?.hosted_invoice_url === 'string' ? inv.hosted_invoice_url : null);
     return res.status(200).json({ ok: true });
   } catch (e: any) {
     // Best effort, like the welcome email: an email problem must not make Stripe retry and disable this endpoint.
