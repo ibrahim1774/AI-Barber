@@ -18,7 +18,17 @@ export class OwnerApiError extends Error {
 
 const OFFLINE = "Couldn't reach Prime Barber. Check your connection and try again.";
 
-export async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
+/** Web: the subscription id ('web:sub_…') is ours, not an Apple transaction id; the server derives the web plan from the signed-in account. */
+function withoutWebTransaction(body: unknown): unknown {
+  if (body && typeof body === 'object' && typeof (body as { transactionId?: unknown }).transactionId === 'string' && (body as { transactionId: string }).transactionId.startsWith('web:')) {
+    const { transactionId: _drop, ...rest } = body as Record<string, unknown>;
+    return rest;
+  }
+  return body;
+}
+
+export async function call<T>(method: 'GET' | 'POST', path: string, rawBody?: unknown): Promise<T> {
+  const body = withoutWebTransaction(rawBody);
   const token = await accessToken();
   if (!token) throw new OwnerApiError(401, 'unauthorized', 'Sign in to continue.');
   const ctrl = new AbortController();

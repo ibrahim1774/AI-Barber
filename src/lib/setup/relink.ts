@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { currentUserId } from '@/lib/auth';
 import { findTransactionId } from '@/lib/publish';
 import { buildSetupBody, shopSetup } from '@/lib/setup/ownerApi';
@@ -22,6 +23,8 @@ export type RelinkOptions = {
 
 /** True when the shop was just linked. Never throws; says nothing on failure (the next load tries again). */
 export function relinkShopPurchase(opts: RelinkOptions): Promise<boolean> {
+  // Web: the server finds the plan from the account (no Apple purchase to link).
+  if (Platform.OS === 'web') return Promise.resolve(false);
   if (running) return running;
   running = run(opts)
     .catch(() => false)

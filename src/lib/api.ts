@@ -224,7 +224,8 @@ export const api = {
   > {
     const token = await accessToken();
     if (!token) throw new ApiError(401, 'auth-required', 'Sign in to continue.');
-    return post('/api/ios/site', { transactionId }, {
+    // Web: the site of this account's Stripe plan (same body shape as the iOS lookup).
+    return post(transactionId.startsWith('web:') ? '/api/web-app/site' : '/api/ios/site', transactionId.startsWith('web:') ? {} : { transactionId }, {
       failMessage: 'Could not load your site', headers: { Authorization: `Bearer ${token}` },
     });
   },
@@ -235,6 +236,8 @@ export const api = {
    * subscription-inactive (refunded / revoked), 409 purchase-claimed | purchase-has-site, 429, 503.
    */
   claimStart(transactionId: string): Promise<{ ok: true; state: 'unclaimed' | 'claimed'; claimExpiresAt: string }> {
+    // Web: there is always an account before paying, so nothing to claim.
+    if (transactionId.startsWith('web:')) return Promise.resolve({ ok: true, state: 'claimed', claimExpiresAt: new Date().toISOString() });
     return post('/api/ios/claim-start', { transactionId }, { failMessage: 'Could not check your purchase' });
   },
 

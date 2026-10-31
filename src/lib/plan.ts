@@ -78,7 +78,7 @@ export async function getPlan(): Promise<Plan> {
 
 /** Right after an upgrade purchase: the server verifies it with Apple and returns the plan. */
 export const refreshPlan = (transactionId: string | null): Promise<Plan> =>
-  planCall(call<unknown>('POST', '/api/shop/plan', { transactionId }));
+  transactionId?.startsWith('web:') ? getPlan() : planCall(call<unknown>('POST', '/api/shop/plan', { transactionId }));
 
 /**
  * Asks the server to re-read the plan for this transaction, which also relinks a shop stuck on an older,
