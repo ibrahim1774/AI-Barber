@@ -411,12 +411,13 @@ export async function createStandardAccount(
   return acct.id as string;
 }
 
-export async function createAccountLink(shopId: string, accountId: string, opts: StripeOpts = {}): Promise<string> {
+/** `webBase`: a web-app owner (www.aibarber.org/app) comes back to the web app instead of the iOS hand-off page. */
+export async function createAccountLink(shopId: string, accountId: string, opts: StripeOpts = {}, webBase?: string | null): Promise<string> {
   const link = await stripeRequest('POST', '/account_links', {
     account: accountId,
     type: 'account_onboarding',
-    refresh_url: stripeReturnUrl(shopId, 'refresh'),
-    return_url: stripeReturnUrl(shopId, 'return'),
+    refresh_url: webBase ? `${webBase}/app/?stripe=refresh` : stripeReturnUrl(shopId, 'refresh'),
+    return_url: webBase ? `${webBase}/app/?stripe=return` : stripeReturnUrl(shopId, 'return'),
   }, { fetch: opts.fetch });
   if (!link?.url) throw new StripeApiError('account link has no url', 502);
   return link.url as string;
@@ -455,6 +456,8 @@ export interface OwnerStripeDeps {
   /** Durable audit row in ab_events (shop_id set). */
   audit(shopId: string, kind: string, payload: Record<string, unknown>): Promise<void>;
   stripe?: StripeOpts;
+  /** Web-app owners only (flag on + a web subscription): the origin to return to after onboarding; null for everyone else. */
+  webReturnBase?(userId: string): Promise<string | null>;
 }
 
 type Reply = { status: number; body: object };
@@ -481,11 +484,12 @@ export async function stripeOnboard(authorization: string | string[] | undefined
   const r = await ownerShop(authorization, deps);
   if ('status' in r) return r;
   const { user, shop } = r;
+  const webBase = await deps.webReturnBase?.(user.id).catch(() => null);
   try {
     let accountId = shop.stripe_account_id;
     if (accountId) {
       try {
-        return { status: 200, body: { url: await createAccountLink(shop.id, accountId, deps.stripe) } };
+        return { status: 200, body: { url: await createAccountLink(shop.id, accountId, deps.stripe, webBase) } };
       } catch (e) {
         // 403/404 = this key can't see the stored account: revoked access OR a wrong/mixed-up key.
         // Never clear from here (only the verified deauthorized webhook clears). Tell the owner to
@@ -506,7 +510,7 @@ export async function stripeOnboard(authorization: string | string[] | undefined
     }
     const created = await createStandardAccount(shop, user.email, deps.stripe);
     accountId = await deps.saveAccountId(shop.id, created);
-    const url = await createAccountLink(shop.id, accountId, deps.stripe);
+    const url = await createAccountLink(shop.id, accountId, deps.stripe, webBase);
     return { status: 200, body: { url } };
   } catch (e: any) {
     console.error('[shop/stripe/onboard] failed:', e?.message || e);
@@ -553,6 +557,12 @@ export function liveOwnerStripeDeps(db: SupabaseClient = serviceDb()): OwnerStri
       const { data, error } = await db.from('ab_shops').select('*').eq('owner_id', userId).maybeSingle();
       if (error) dbFail('shopForOwner', error);
       return (data as OwnerShopRow) ?? null;
+    },
+    async webReturnBase(userId) {
+      if (process.env.WEB_APP_ENTITLEMENTS !== '1') return null;
+      // A shop with an iOS link keeps the iOS return page; only web-subscription owners go back to the web app.
+      const { data } = await db.from('web_app_entitlements').select('stripe_subscription_id').eq('user_id', userId).limit(1);
+      return data?.length ? (process.env.WEB_APP_ORIGIN || 'https://www.aibarber.org') : null;
     },
     async saveAccountId(shopId, accountId) {
       const { data, error } = await db.from('ab_shops').update({ stripe_account_id: accountId })
