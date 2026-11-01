@@ -13,7 +13,7 @@ export interface EmailInput {
 }
 export interface Mail { subject: string; html: string; text: string }
 
-const TIER_NAME: Record<string, string> = { website: 'Website', bookings: 'Bookings', store: 'Store' };
+const TIER_NAME: Record<string, string> = { website: 'Custom site', bookings: 'Custom site + booking', store: 'Custom site, booking + your own store' };
 /** What the plan includes, in a few words. */
 const WHAT: Record<string, string> = { website: 'website hosting', bookings: 'website hosting + bookings', store: 'website hosting + bookings + store' };
 /** Plan names used in subjects, kept short. */
@@ -77,12 +77,14 @@ function facts(i: EmailInput, bare = false): Layout['facts'] {
 }
 
 export function welcomeEmail(i: EmailInput, origin = APP_ORIGIN()): Mail {
-  const what = WHAT[i.tier] ?? 'AIBarber';
+  const plan = TIER_NAME[i.tier] ?? 'AI Barber';
+  const first = firstOf(i.firstName);
   return render({
-    preheader: `Your ${what} plan is active.`,
-    subject: personal(i.firstName, (plan) => `you signed up for ${plan}`, i.tier),
-    headline: `You signed up for ${what}`,
-    lead: 'Your plan is active. Sign in to edit your site and manage your plan.',
+    // Short and the same for every plan so a phone preview never cuts it off; the plan is named in the body.
+    subject: `${first ? `Congrats ${first}! ` : 'Congrats! '}Signed Up For Your AI Barber Website Plan`,
+    preheader: `Your plan: ${plan}.`,
+    headline: "You're signed up",
+    lead: `Your plan is active: <b style="color:#fff">${esc(plan)}</b>. Sign in to edit your site and manage your plan.`,
     facts: facts(i),
     cta: { label: 'Sign in', href: signInLink(origin) },
     origin,

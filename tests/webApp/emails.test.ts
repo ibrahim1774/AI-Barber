@@ -6,14 +6,17 @@ const site = 'https://joes.vercel.app';
 describe('web app emails', () => {
   it('welcome: short subject saying what they signed up for, with site, account, sign-in and reset links, no password', () => {
     const m = welcomeEmail({ email: 'a@b.co', siteUrl: site, tier: 'website' }, O);
-    expect(m.subject).toBe('You signed up for barber site hosting');
+    expect(m.subject).toBe('Congrats! Signed Up For Your AI Barber Website Plan');
+    expect(m.text).toContain('Custom site');
     for (const part of [site, 'a@b.co', signInLink(O), resetLink(O)]) { expect(m.html).toContain(part); expect(m.text).toContain(part); }
     expect(m.text).toContain('We never email passwords');
     expect(m.html.toLowerCase()).not.toMatch(/password:/);
   });
-  it('welcome names the plan contents', () => {
-    expect(welcomeEmail({ email: 'a@b.co', firstName: 'Jack', siteUrl: null, tier: 'bookings' }, O).subject).toBe('Jack, you signed up for barber booking + site plan');
-    expect(welcomeEmail({ email: 'a@b.co', siteUrl: null, tier: 'store' }, O).subject).toMatch(/store/);
+  it('welcome: personal fixed subject; the body names the plan', () => {
+    const m = welcomeEmail({ email: 'a@b.co', firstName: 'Jake Lee', siteUrl: null, tier: 'bookings' }, O);
+    expect(m.subject).toBe('Congrats Jake! Signed Up For Your AI Barber Website Plan');
+    expect(m.text).toContain('Custom site + booking');
+    expect(welcomeEmail({ email: 'a@b.co', siteUrl: null, tier: 'store' }, O).text).toContain('Custom site, booking + your own store');
   });
   it('failed payment: first name + barber hosting subject, bare URL, Stripe update button, sign-in link', () => {
     const m = failedPaymentEmail({ email: 'a@b.co', firstName: 'Jack Smith', siteUrl: site, tier: 'website', updateUrl: 'https://invoice.stripe.com/i/x' }, O);
