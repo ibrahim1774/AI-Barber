@@ -11,6 +11,7 @@ import {
   removeService, serviceRowMeta, updateService, type ServiceDraft,
 } from '@/lib/sections/services';
 import { cleanText } from '@/lib/sections/text';
+import { MAX_SERVICE_NAME } from '@/lib/setup/serviceDraft';
 import { Button } from '@/components/Button';
 import { useKeyboardHeight, sheetBodyMaxHeight } from '@/lib/keyboard';
 import { Sheet, SheetAction } from '@/components/EditSheet';
@@ -33,6 +34,16 @@ type Props = {
 // index null: a service of the barber's own that is added when they save.
 type Form = { index: number | null; fresh: boolean; draft: ServiceDraft };
 type View_ = { kind: 'list' } | { kind: 'add' } | { kind: 'form'; form: Form };
+
+/** Inline problems with the form (same rules as the Bookings editor: name 1-80, price not negative). */
+function formProblems(d: ServiceDraft): { title?: string; price?: string } {
+  const e: { title?: string; price?: string } = {};
+  const n = cleanText(d.title);
+  if (!n) e.title = 'Give this service a name.';
+  else if (n.length > MAX_SERVICE_NAME) e.title = `Keep the name to ${MAX_SERVICE_NAME} characters or fewer (now ${n.length}).`;
+  if (/^\s*-/.test(d.price)) e.price = "The price can't be negative.";
+  return e;
+}
 
 const PHOTO_FAIL = "Couldn't upload that photo. Check your connection and try again.";
 
@@ -83,10 +94,7 @@ export function ServicesSheet({ visible, data, onChange, onClose, onDismiss, upl
   };
 
   const save = (form: Form) => {
-    if (!cleanText(form.draft.title)) {
-      Alert.alert('Give this service a name');
-      return;
-    }
+    if (Object.keys(formProblems(form.draft)).length) return;
     if (form.index == null) {
       track('service_added', { source: 'custom' });
       const at = services.length;
@@ -197,6 +205,7 @@ export function ServicesSheet({ visible, data, onChange, onClose, onDismiss, upl
     const { form } = view;
     const set = (patch: Partial<ServiceDraft>) =>
       setView({ kind: 'form', form: { ...form, draft: { ...form.draft, ...patch } } });
+    const problems = formProblems(form.draft);
     title = form.index == null ? 'New service' : 'Edit service';
     right = <SheetAction title="Back" onPress={() => setView({ kind: 'list' })} />;
     body = (
@@ -213,6 +222,7 @@ export function ServicesSheet({ visible, data, onChange, onClose, onDismiss, upl
             placeholderTextColor="rgba(255,255,255,0.3)"
             style={styles.input}
           />
+          {!!problems.title && <Text style={styles.error} accessibilityLiveRegion="polite">{problems.title}</Text>}
           <FormLabel input={fPrice} style={styles.label}>Price</FormLabel>
           <View style={styles.priceRow}>
             {/* Imported text like "From $25" is shown as it is, without the $ prefix. */}
@@ -232,6 +242,7 @@ export function ServicesSheet({ visible, data, onChange, onClose, onDismiss, upl
             />
 {doneBar.bar}
           </View>
+          {!!problems.price && <Text style={styles.error} accessibilityLiveRegion="polite">{problems.price}</Text>}
           <Text style={styles.label}>Length</Text>
           <View style={styles.chips}>
             {DURATIONS.map((m) => (
@@ -262,7 +273,7 @@ export function ServicesSheet({ visible, data, onChange, onClose, onDismiss, upl
           </View>
         </ScrollView>
         <View style={styles.formActions}>
-          <Button title="Save" onPress={() => save(form)} size="sm" style={{ flex: 1 }} />
+          <Button title="Save" onPress={() => save(form)} size="sm" disabled={Object.keys(problems).length > 0} style={{ flex: 1 }} />
           {form.index != null && <SheetAction title="Delete" onPress={() => remove(form)} />}
         </View>
       </>
@@ -306,6 +317,7 @@ function Move({ label, glyph, disabled, onPress }: { label: string; glyph: strin
 }
 
 const styles = StyleSheet.create({
+  error: { fontFamily: fonts.body, fontSize: 13, color: '#f87171', marginTop: 4 },
   empty: { fontFamily: fonts.body, fontSize: 14, color: 'rgba(255,255,255,0.55)', paddingVertical: 12 },
   row: {
     flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8,

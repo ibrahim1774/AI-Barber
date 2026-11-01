@@ -32,8 +32,8 @@ export type SetupService = {
 const MAX_SERVICES = 50;
 const MAX_NAME = 80;
 const MAX_DESCRIPTION = 500;
-const MIN_DURATION = 5;
-const MAX_DURATION = 600;
+export const MIN_DURATION = 5;
+export const MAX_DURATION = 600;
 const MAX_PHOTO_URL = 1000;
 
 /** The site's services as the body of POST /api/shop/setup `services`. */

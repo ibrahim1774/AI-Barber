@@ -1,5 +1,7 @@
 import type { DepositType, Service } from '@/lib/shop';
-import { centsToPrice, parsePriceCents } from '@/lib/setup/servicesMap';
+import { MAX_DURATION, MIN_DURATION, centsToPrice, parsePriceCents } from '@/lib/setup/servicesMap';
+
+export const MAX_SERVICE_NAME = 80;
 
 export type ServiceDraft = {
   name: string;
@@ -37,6 +39,40 @@ export function serviceToDraft(s: Service): ServiceDraft {
   };
 }
 
+export type DraftErrors = { name?: string; price?: string; duration?: string; deposit?: string };
+
+/**
+ * Field-by-field problems with a draft, for inline messages and a blocked Save. Pure: it only rejects input
+ * draftToPatch would also refuse or the database would reject (name 1-80 chars, length 5-600 min, price >= 0, deposit).
+ */
+export function draftErrors(d: ServiceDraft, opts?: { website?: boolean }): DraftErrors {
+  const e: DraftErrors = {};
+  const name = d.name.trim().replace(/\s+/g, ' ');
+  if (!name) e.name = 'Give this service a name.';
+  else if (name.length > MAX_SERVICE_NAME) e.name = `Keep the name to ${MAX_SERVICE_NAME} characters or fewer (now ${name.length}).`;
+  if (!Number.isInteger(d.durationMin) || d.durationMin < MIN_DURATION || d.durationMin > MAX_DURATION) {
+    e.duration = `Length must be from ${MIN_DURATION} to ${MAX_DURATION} minutes.`;
+  }
+  const typed = d.price.trim();
+  let priceCents: number | null = null;
+  if (typed) {
+    priceCents = parsePriceCents(typed);
+    if (priceCents == null) e.price = /^-/.test(typed) ? 'The price can\'t be negative.' : 'Enter the price as a number, like 30 or 25.50.';
+  }
+  if (!opts?.website) {
+    if (d.depositType !== 'none' && priceCents == null && !e.price) e.deposit = 'Add a price to use a deposit. The deposit is taken out of it.';
+    else if (d.depositType === 'fixed') {
+      const c = parsePriceCents(d.deposit);
+      if (c == null || c <= 0) e.deposit = 'Enter the deposit amount in dollars.';
+      else if (priceCents != null && c > priceCents) e.deposit = "The deposit can't be more than the price. Lower the deposit or raise the price.";
+    } else if (d.depositType === 'percent') {
+      const p = Number(d.deposit.trim().replace(/%$/, ''));
+      if (!d.deposit.trim() || !Number.isInteger(p) || p < 1 || p > 100) e.deposit = 'Enter a deposit percentage from 1 to 100.';
+    }
+  }
+  return e;
+}
+
 export type DraftResult = { ok: true; patch: Partial<Service> } | { ok: false; message: string };
 
 /**
@@ -45,6 +81,9 @@ export type DraftResult = { ok: true; patch: Partial<Service> } | { ok: false; m
  * set). It does not check the price against any stored deposit (deposit rules live in the booking variant only).
  */
 export function draftToPatch(d: ServiceDraft, opts?: { website?: boolean }): DraftResult {
+  const errs = draftErrors(d, opts);
+  const first = errs.name ?? errs.duration ?? errs.price ?? errs.deposit;
+  if (first) return { ok: false, message: first };
   if (opts?.website) return websitePatch(d);
   const name = d.name.trim().replace(/\s+/g, ' ');
   if (!name) return { ok: false, message: 'Give this service a name.' };

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActionSheetIOS, ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActionSheetIOS, ActivityIndicator, Alert, Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
 import { Sheet } from '@/components/EditSheet';
@@ -62,7 +62,9 @@ export function ProductForm({ visible, shopId, product, onClose, onSubmit, onDel
     }
   };
 
-  const chooseSource = () =>
+  const chooseSource = () => {
+    // Browser: there is no Camera / Library choice to make, the file picker offers both (and a webcam on some devices).
+    if (Platform.OS === 'web') return void addPhotos('library');
     ActionSheetIOS.showActionSheetWithOptions(
       { options: ['Camera', 'Library', 'Cancel'], cancelButtonIndex: 2 },
       (i) => {
@@ -70,6 +72,7 @@ export function ProductForm({ visible, shopId, product, onClose, onSubmit, onDel
         if (i === 1) void addPhotos('library');
       },
     );
+  };
 
   const photoMenu = (i: number) => {
     const options = i > 0 ? ['Make cover', 'Remove', 'Cancel'] : ['Remove', 'Cancel'];

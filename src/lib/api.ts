@@ -69,6 +69,7 @@ export interface ServerVersionInfo {
 }
 
 const base = () => process.env.EXPO_PUBLIC_API_BASE ?? 'https://www.aibarber.org';
+export const API_BASE = base;
 
 const SCRAPE_TIMEOUT_MS = 100_000;
 const DEFAULT_TIMEOUT_MS = 30_000;

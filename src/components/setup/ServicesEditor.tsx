@@ -2,7 +2,7 @@ import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'rea
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
 import { DURATIONS, SERVICE_LIBRARY, durationLabel } from '@/lib/sections/services';
-import { depositProblem } from '@/lib/setup/serviceDraft';
+import { depositProblem, draftErrors } from '@/lib/setup/serviceDraft';
 import { centsToPrice } from '@/lib/setup/servicesMap';
 import type { DepositType } from '@/lib/shop';
 import type { ServicesEditor as Ed } from '@/components/setup/useServicesEditor';
@@ -50,16 +50,21 @@ export function ServicesEditorView({ ed, onGetPaid, variant = 'booking' }: { ed:
   if (view.kind === 'form') {
     const d = view.draft;
     const existing = ed.services.find((x) => x.id === view.id);
+    const errs = draftErrors(d, web ? { website: true } : undefined);
+    const invalid = Object.keys(errs).length > 0;
     return (
       <View style={{ gap: 6 }}>
         <Input title="Name" label="Name" value={d.name} onChangeText={(t) => ed.setDraft({ name: t })} placeholder="e.g. Skin fade" autoFocus={view.id == null} />
+        {!!errs.name && <Note tone="error">{errs.name}</Note>}
         <Input title="Price" label="Price in dollars" value={d.price} onChangeText={(t) => ed.setDraft({ price: t })} keyboardType="decimal-pad" placeholder={!web && d.depositType !== 'none' ? '30 (needed for a deposit)' : '30 (leave blank to ask)'} />
+        {!!errs.price && <Note tone="error">{errs.price}</Note>}
         <Label>Length</Label>
         <Chips>
           {DURATIONS.map((m) => (
             <Chip key={m} label={durationLabel(m)} selected={d.durationMin === m} onPress={() => ed.setDraft({ durationMin: m })} />
           ))}
         </Chips>
+        {!!errs.duration && <Note tone="error">{errs.duration}</Note>}
         <Input title="Description (optional)" label="Description" value={d.description} onChangeText={(t) => ed.setDraft({ description: t })} multiline />
         <Label>Photo (optional)</Label>
         <View style={st.photoRow}>
@@ -99,11 +104,12 @@ export function ServicesEditorView({ ed, onGetPaid, variant = 'booking' }: { ed:
             editable={ed.cardReady}
           />
         )}
+        {!!errs.deposit && d.depositType !== 'none' && <Note tone="error">{errs.deposit}</Note>}
         {d.depositType !== 'none' && <Note>A deposit needs a price above. It is taken out of the price when the customer books.</Note>}
           </>
         )}
         <View style={st.actions}>
-          <Button title="Save" size="sm" onPress={() => void ed.save()} loading={ed.busy} style={{ flex: 1 }} />
+          <Button title="Save" size="sm" onPress={() => void ed.save()} loading={ed.busy} disabled={invalid} style={{ flex: 1 }} />
           {existing && <TextAction title="Remove" danger onPress={() => ed.remove(existing)} />}
           <TextAction title="Cancel" onPress={() => ed.setView({ kind: 'list' })} />
         </View>

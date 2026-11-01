@@ -14,6 +14,7 @@ const WEB_SHIMS = {
   'expo-tracking-transparency': 'tracking.js',
   'expo-notifications': 'notifications.js',
   'react-native-webview': 'webview.js',
+  'react-native': 'react-native.js',
 };
 const upstream = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, name, platform) => {

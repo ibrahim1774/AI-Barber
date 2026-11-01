@@ -1,6 +1,8 @@
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
-import { api } from '@/lib/api';
+import { Platform } from 'react-native';
+import { api, API_BASE } from '@/lib/api';
+import { accessToken } from '@/lib/accessToken';
 import { logoContrast, type LogoContrast } from '@/lib/logoContrast';
 import { decodePngBase64 } from '@/lib/logoPixels';
 
@@ -9,6 +11,47 @@ const JPEG_QUALITY = 0.8;
 
 export interface UploadDeps {
   fetchFn?: typeof fetch;
+}
+
+const RELAY_MAX_BYTES = 3_500_000;
+
+/** Web only: re-encodes a picture through a canvas (long edge <= maxEdge) at the given JPEG quality. */
+async function webRecompress(blob: Blob, maxEdge: number, quality: number): Promise<Blob> {
+  const bmp = await createImageBitmap(blob);
+  const k = Math.min(1, maxEdge / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(bmp.width * k));
+  c.height = Math.max(1, Math.round(bmp.height * k));
+  c.getContext('2d')!.drawImage(bmp, 0, 0, c.width, c.height);
+  return new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('encode'))), 'image/jpeg', quality));
+}
+
+/**
+ * Sends the bytes to the signed storage URL. Browsers can't PUT to the bucket directly (no CORS), so on web the
+ * upload goes through the server relay (same API base as the other calls, signed in with the user's token); a photo
+ * is first shrunk to fit the relay's 4 MB limit. Native keeps the plain signed PUT.
+ */
+async function putSigned(signedUrl: string, blob: Blob, contentType: 'image/jpeg' | 'image/png', doFetch: typeof fetch): Promise<Response> {
+  if (Platform.OS !== 'web') {
+    return doFetch(signedUrl, { method: 'PUT', headers: { 'Content-Type': contentType }, body: blob });
+  }
+  let body = blob;
+  if (contentType === 'image/jpeg') {
+    let edge = 2000;
+    let q = 0.85;
+    body = await webRecompress(blob, edge, q);
+    while (body.size > RELAY_MAX_BYTES && q > 0.3) {
+      q -= 0.1;
+      if (q < 0.55) edge = 1600;
+      body = await webRecompress(blob, edge, q);
+    }
+  }
+  const token = await accessToken();
+  return doFetch(`${API_BASE()}/api/web-app/upload-proxy?u=${encodeURIComponent(signedUrl)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': contentType, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body,
+  });
 }
 
 function filename(): string {
@@ -45,11 +88,7 @@ export async function uploadPhoto(
 
   try {
     const blob = await (await doFetch(out.uri)).blob();
-    const resp = await doFetch(target.signedUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'image/jpeg' },
-      body: blob,
-    });
+    const resp = await putSigned(target.signedUrl, blob, 'image/jpeg', doFetch);
     if (!resp.ok) throw new Error(`status ${resp.status}`);
   } catch (e: any) {
     throw new Error(`Photo upload failed (${e?.message ?? 'network'}). Check your connection and try again.`);
@@ -168,11 +207,7 @@ export async function uploadLogo(localUri: string, folder: string, deps: UploadD
     const name = logoFilename();
     const [target] = await api.getUploadUrls(folder, [name], { contentType: 'image/png', kind: 'logo' });
     if (!target) throw new Error('no upload URL');
-    const resp = await doFetch(target.signedUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'image/png' },
-      body: enc.blob,
-    });
+    const resp = await putSigned(target.signedUrl, enc.blob as Blob, 'image/png', doFetch);
     if (!resp.ok) throw new Error(`status ${resp.status}`);
     uploaded = { url: target.publicUrl, w, h, previewUri: `data:image/png;base64,${enc.out.base64}` };
   } catch {
