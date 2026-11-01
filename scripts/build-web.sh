@@ -3,7 +3,7 @@
 # Vercel drops folders named node_modules and edge-caches hashed bundles, so rename both.
 set -e
 OUT=${1:-/Users/ibrahim/prime-barber-app}
-rm -rf dist && npx expo export --clear --platform web --output-dir dist
+rm -rf dist && EXPO_WEB_EXPORT=1 npx expo export --clear --platform web --output-dir dist
 rm -rf "$OUT/app" && mkdir -p "$OUT/app" && cp -R dist/. "$OUT/app/"
 cd "$OUT/app"
 mv assets/node_modules assets/nm

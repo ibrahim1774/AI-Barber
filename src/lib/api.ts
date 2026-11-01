@@ -226,7 +226,7 @@ export const api = {
     const token = await accessToken();
     if (!token) throw new ApiError(401, 'auth-required', 'Sign in to continue.');
     // Web: the site of this account's Stripe plan (same body shape as the iOS lookup).
-    return post(transactionId.startsWith('web:') ? '/api/web-app/site' : '/api/ios/site', transactionId.startsWith('web:') ? {} : { transactionId }, {
+    return post(transactionId?.startsWith('web:') ? '/api/web-app/site' : '/api/ios/site', transactionId?.startsWith('web:') ? {} : { transactionId }, {
       failMessage: 'Could not load your site', headers: { Authorization: `Bearer ${token}` },
     });
   },
@@ -238,7 +238,7 @@ export const api = {
    */
   claimStart(transactionId: string): Promise<{ ok: true; state: 'unclaimed' | 'claimed'; claimExpiresAt: string }> {
     // Web: there is always an account before paying, so nothing to claim.
-    if (transactionId.startsWith('web:')) return Promise.resolve({ ok: true, state: 'claimed', claimExpiresAt: new Date().toISOString() });
+    if (transactionId?.startsWith('web:')) return Promise.resolve({ ok: true, state: 'claimed', claimExpiresAt: new Date().toISOString() });
     return post('/api/ios/claim-start', { transactionId }, { failMessage: 'Could not check your purchase' });
   },
 
@@ -282,7 +282,7 @@ export const api = {
    * codes, 403 sign-in-required | not-owner, 404 no-site, 409 site-mismatch (expectedSlug is not the bound site), 500 remove-failed, 503 temporarily-unavailable.
    */
   async takeSiteOffline(transactionId: string, accessToken?: string | null, expectedSlug?: string | null): Promise<void> {
-    await post(transactionId.startsWith('web:') ? '/api/web-app/take-offline' : '/api/ios/take-offline', transactionId.startsWith('web:') ? {} : expectedSlug ? { transactionId, expectedSlug } : { transactionId }, {
+    await post(transactionId?.startsWith('web:') ? '/api/web-app/take-offline' : '/api/ios/take-offline', transactionId?.startsWith('web:') ? {} : expectedSlug ? { transactionId, expectedSlug } : { transactionId }, {
       timeoutMs: SCRAPE_TIMEOUT_MS,
       failMessage: 'Could not take your website offline',
       slowMessage: 'Taking your website offline is temporarily unavailable — try again shortly.',

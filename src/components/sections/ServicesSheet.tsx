@@ -36,9 +36,10 @@ type Props = {
 type Form = { index: number | null; fresh: boolean; draft: ServiceDraft };
 type View_ = { kind: 'list' } | { kind: 'add' } | { kind: 'form'; form: Form };
 
-/** Inline problems with the form (same rules as the Bookings editor: name 1-80, price not negative). */
-function formProblems(d: ServiceDraft): { title?: string; price?: string } {
+/** Web only: inline problems with the form (same rules as the Bookings editor: name 1-80, price not negative). The phone app has none (Alert on Save). */
+export function formProblems(d: ServiceDraft): { title?: string; price?: string } {
   const e: { title?: string; price?: string } = {};
+  if (Platform.OS !== 'web') return e;
   const n = cleanText(d.title);
   if (!n) e.title = 'Give this service a name.';
   else if (n.length > MAX_SERVICE_NAME) e.title = `Keep the name to ${MAX_SERVICE_NAME} characters or fewer (now ${n.length}).`;
@@ -96,7 +97,12 @@ export function ServicesSheet({ visible, data, onChange, onClose, onDismiss, upl
   };
 
   const save = (form: Form) => {
-    if (Object.keys(formProblems(form.draft)).length) return;
+    if (Platform.OS === 'web') {
+      if (Object.keys(formProblems(form.draft)).length) return;
+    } else if (!cleanText(form.draft.title)) {
+      Alert.alert('Give this service a name');
+      return;
+    }
     if (form.index == null) {
       track('service_added', { source: 'custom' });
       const at = services.length;

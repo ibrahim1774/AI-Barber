@@ -1,4 +1,5 @@
 import { LearnEntry } from '@/components/LearnEntry';
+import { TipsRow } from '@/components/TipsRow';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { ActionSheetIOS, ActivityIndicator, Alert, Linking, Platform, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { router, useFocusEffect, useNavigation } from 'expo-router';
@@ -323,6 +324,8 @@ export default function Settings() {
           toggle={remindersOn == null ? undefined : { value: remindersOn, onChange: (v) => void onRemindersToggle(v) }}
         />
       </Section>
+
+      <TipsRow />
 
       <Section title="Help">
         <Row label="Privacy Policy" onPress={() => void WebBrowser.openBrowserAsync(PRIVACY_URL)} external />

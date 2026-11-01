@@ -35,3 +35,12 @@ export function appStoreNotice(appStore: unknown): string | null {
   if (appStore === 'linked') return APP_STORE_LAPSED_MESSAGE;
   return null;
 }
+
+/** Only a Stripe-hosted https page (Checkout or the billing portal) may be navigated to from a server answer. */
+export function isStripeUrl(u: unknown): u is string {
+  if (typeof u !== 'string') return false;
+  try {
+    const url = new URL(u);
+    return url.protocol === 'https:' && (url.hostname === 'checkout.stripe.com' || url.hostname === 'billing.stripe.com');
+  } catch { return false; }
+}

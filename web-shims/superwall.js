@@ -4,32 +4,50 @@
 const React = require('react');
 const { router } = require('expo-router');
 const { supabase } = require('../src/lib/supabase');
-const { setWebPlanActive } = require('../src/lib/webPlan');
+const { setWebPlanActive, markWebPlanSettled, useWebPlanCheckFailed } = require('../src/lib/webPlan');
+const { Text, Pressable, View } = require('react-native');
 
 const BASE = process.env.EXPO_PUBLIC_API_BASE || 'https://www.aibarber.org';
 const PRODUCT = { website: 'hosting', bookings: 'bookings', store: 'store' };
 const ENTS = { website: ['hosting'], bookings: ['hosting', 'bookings'], store: ['hosting', 'bookings', 'store'] };
 
-let state = { status: { status: 'INACTIVE' }, subs: [] };
+// UNKNOWN until /me answers: the app shows neither the paywall nor locked tabs on a guess.
+let state = { status: { status: 'UNKNOWN' }, subs: [] };
 const listeners = new Set();
 const set = (s) => { state = s; listeners.forEach((l) => l()); };
 const subscribe = (l) => { listeners.add(l); return () => listeners.delete(l); };
 
+// Each call gets a number; only the newest call may apply its answer (a /me started for a previous account must not
+// land after sign-out / sign-in).
+let seq = 0;
+let retryTimer = null;
+let retryN = 0;
+const RETRY_MS = [2000, 5000, 15000, 30000];
+function scheduleRetry() {
+  if (retryTimer) return;
+  const wait = RETRY_MS[Math.min(retryN, RETRY_MS.length - 1)]; retryN++;
+  retryTimer = setTimeout(() => { retryTimer = null; refresh(); }, wait);
+}
 async function refresh() {
+  const mine = ++seq;
   try {
     const { data } = await supabase.auth.getSession();
+    if (mine !== seq) return;
     const token = data && data.session && data.session.access_token;
-    if (!token) { setWebPlanActive(false); return set({ status: { status: 'INACTIVE' }, subs: [] }); }
+    if (!token) { retryN = 0; setWebPlanActive(false); return set({ status: { status: 'INACTIVE' }, subs: [] }); }
     const r = await fetch(BASE + '/api/web-app/me', { headers: { Authorization: 'Bearer ' + token } });
-    if (!r.ok) return;
+    if (mine !== seq) return;
+    if (!r.ok) { markWebPlanSettled({ failed: true }); scheduleRetry(); return; } // stay as we were (UNKNOWN at first)
     const me = await r.json();
+    if (mine !== seq) return;
+    retryN = 0;
     setWebPlanActive(!!(me.entitled && ENTS[me.tier]));
     if (!me.entitled || !ENTS[me.tier]) return set({ status: { status: 'INACTIVE' }, subs: [] });
     set({
       status: { status: 'ACTIVE', entitlements: ENTS[me.tier].map((id) => ({ id })) },
       subs: [{ productId: 'com.ibrahim1774.aibarber.' + PRODUCT[me.tier] + '.' + (me.interval === 'year' ? 'yearly' : 'monthly'), transactionId: 'web:' + me.subscriptionId, isActive: true, isRevoked: false, purchaseDate: new Date().toISOString() }],
     });
-  } catch (e) { /* offline: keep the last state */ }
+  } catch (e) { if (mine === seq) { markWebPlanSettled({ failed: true }); scheduleRetry(); } } // offline: keep the last state, retry with backoff
 }
 
 // Coming back from Stripe (?paid=1) the webhook may lag a moment: ask a few times.
@@ -46,7 +64,16 @@ if (typeof window !== 'undefined') {
 
 const useStore = () => React.useSyncExternalStore(subscribe, () => state);
 
-function SuperwallProvider({ children }) { return children; }
+// A neutral note while the plan check keeps failing (the app keeps its last known state; it retries by itself).
+function PlanCheckNotice() {
+  const failed = useWebPlanCheckFailed();
+  if (!failed) return null;
+  return React.createElement(View, { accessibilityRole: 'alert', style: { position: 'fixed', left: 12, right: 12, bottom: 12, zIndex: 50, padding: 12, borderRadius: 12, backgroundColor: '#1c1c1c', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 } },
+    React.createElement(Text, { style: { color: '#fff', fontSize: 13, flex: 1 } }, "Couldn't check your plan. Retrying…"),
+    React.createElement(Pressable, { accessibilityRole: 'button', onPress: () => refresh() }, React.createElement(Text, { style: { color: '#fff', fontSize: 13, fontWeight: '600' } }, 'Try now')));
+}
+
+function SuperwallProvider({ children }) { return React.createElement(React.Fragment, null, children, React.createElement(PlanCheckNotice)); }
 
 // The placement callbacks of the paywall that is showing; the plan screen reports its closing through dismissWebPaywall.
 let showing = null;
@@ -82,4 +109,4 @@ function useUser() {
   }), [s]);
 }
 
-module.exports = { SuperwallProvider, usePlacement, useSuperwall, useSuperwallEvents: () => {}, useUser, __refreshWebSubscription: refresh, __dismissWebPaywall: dismissWebPaywall };
+module.exports = { __state: () => state, SuperwallProvider, usePlacement, useSuperwall, useSuperwallEvents: () => {}, useUser, __refreshWebSubscription: refresh, __dismissWebPaywall: dismissWebPaywall };

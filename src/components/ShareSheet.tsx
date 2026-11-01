@@ -10,6 +10,7 @@ import { useEntitlements } from '@/lib/entitlements';
 import { resolveLiveLinks } from '@/lib/customerLinks';
 import { useDomainOffer } from '@/lib/domains/useDomainOffer';
 import { loadMyShop } from '@/lib/shop';
+import { useWebPlanActive } from '@/lib/webPlan';
 import { loadSite } from '@/lib/siteStore';
 import { loadStoreSettings } from '@/lib/store/data';
 import { displayHost, pickLink, shareLabel, shareMessage, type ShareKind, type ShareLink } from '@/lib/share';
@@ -30,6 +31,7 @@ export function ShareSheet({ visible, shopName, links: given, source, onClose }:
   const [storeLink, setStoreLink] = useState<string | null>(null);
   // The Booking row needs the Bookings plan and the Shop row the Store plan (the server closes those pages without them).
   const ents = useEntitlements();
+  const webPlanOn = useWebPlanActive(); // web: re-read the shop links when the plan turns on (always false on the phone)
   useEffect(() => {
     if (!visible) return;
     let alive = true;
@@ -49,7 +51,7 @@ export function ShareSheet({ visible, shopName, links: given, source, onClose }:
     return () => {
       alive = false;
     };
-  }, [visible]);
+  }, [visible, webPlanOn]);
   const withBooking: ShareLink[] =
     bookingLink && ents.account !== 'unknown' && !(ents.known && !ents.bookings) && !given.some((l) => l.kind === 'booking') ? [{ kind: 'booking', url: bookingLink }, ...given] : given;
   const links: ShareLink[] =

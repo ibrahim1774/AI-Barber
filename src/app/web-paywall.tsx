@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { router } from 'expo-router';
+import { Redirect, router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
 import { supabase } from '@/lib/supabase';
-import { appStoreNotice, checkoutFailure, CHECKOUT_RETRY_MESSAGE, PROCESSING_MESSAGE } from '@/lib/webBilling';
+import { appStoreNotice, isStripeUrl, checkoutFailure, CHECKOUT_RETRY_MESSAGE, PROCESSING_MESSAGE } from '@/lib/webBilling';
 
 // The web app's plan screen (the iOS app shows Superwall's paywall here). Same plans and prices as iOS;
 // Continue opens Stripe Checkout, and Stripe returns to /app/edit once paid.
@@ -20,7 +20,14 @@ const PLANS: { tier: Tier; name: string; month: string; year: string; bullets: s
 
 const BASE = process.env.EXPO_PUBLIC_API_BASE ?? 'https://www.aibarber.org';
 
-export default function WebPaywall() {
+// The plan screen is for the browser only. As a route it also exists in the phone app (aibarber://web-paywall): there it
+// shows nothing, never lists Stripe prices and never calls checkout.
+export default function WebPaywallRoute() {
+  if (Platform.OS !== 'web') return <Redirect href="/" />;
+  return <WebPaywall />;
+}
+
+function WebPaywall() {
   const insets = useSafeAreaInsets();
   // Closing the screen (Not now / back) tells the publish flow the paywall was declined.
   useEffect(() => () => { (require('expo-superwall') as { __dismissWebPaywall?: () => void }).__dismissWebPaywall?.(); }, []);
@@ -46,7 +53,9 @@ export default function WebPaywall() {
   }
 
   useEffect(() => {
-    readMe().then((me) => { const n = me ? appStoreNotice(me.appStore) : null; if (n) setAppStore(n); }).catch(() => {});
+    let alive = true;
+    readMe().then((me) => { const n = me ? appStoreNotice(me.appStore) : null; if (alive && n) setAppStore(n); }).catch(() => {});
+    return () => { alive = false; };
   }, []);
 
   async function checkAgain() {
@@ -58,6 +67,8 @@ export default function WebPaywall() {
       const n = appStoreNotice(me.appStore);
       if (n) { setAppStore(n); setProcessing(false); return; }
       if (me.entitled) { if (Platform.OS === 'web') window.location.assign('/app/edit?paid=1'); return; }
+      // Not paid yet: say so, and bring "Continue to checkout" back (an abandoned session must not be a dead end).
+      setProcessing(false);
       setError(PROCESSING_MESSAGE);
     } catch {
       setError("Couldn't check your account right now. Try again in a moment.");
@@ -80,14 +91,14 @@ export default function WebPaywall() {
         if (f.kind === 'portal') {
           const p = await fetch(`${BASE}/api/web-app/portal`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
           const pb = await p.json().catch(() => ({}));
-          if (pb.url) { if (Platform.OS === 'web') window.location.assign(pb.url); return; }
+          if (isStripeUrl(pb.url)) { window.location.assign(pb.url); return; }
           setError(CHECKOUT_RETRY_MESSAGE);
         } else if (f.kind === 'app-store') setAppStore(f.message);
         else { setProcessing(f.kind === 'processing'); setError(f.message); }
         return;
       }
-      if (!r.ok || !body.url) throw new Error('checkout');
-      if (Platform.OS === 'web') window.location.assign(body.url);
+      if (!r.ok || !isStripeUrl(body.url)) throw new Error('checkout');
+      window.location.assign(body.url);
     } catch {
       setError(CHECKOUT_RETRY_MESSAGE);
     } finally {

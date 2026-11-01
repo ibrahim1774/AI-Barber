@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { useWebPlanActive } from '@/lib/webPlan';
+import { ActivityIndicator, Platform, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
@@ -113,6 +114,12 @@ function BookingsSetup() {
       // keep the shop we have
     }
   }, []);
+
+  // Web: the plan turning on (after the payment webhook, or a slow first check) re-reads the shop so its link state updates.
+  const webPlanOn = useWebPlanActive();
+  useEffect(() => {
+    if (Platform.OS === 'web' && webPlanOn) void reloadShop();
+  }, [webPlanOn, reloadShop]);
 
   const goGate = (to: '/sign-up' | '/sign-in') => {
     setPostAuthReturn('/bookings-setup');

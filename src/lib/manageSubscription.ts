@@ -1,3 +1,4 @@
+import { isStripeUrl } from '@/lib/webBilling';
 import { Alert, Linking, Platform } from 'react-native';
 import { supabase } from '@/lib/supabase';
 
@@ -34,7 +35,7 @@ async function openStripePortal(): Promise<void> {
     const base = process.env.EXPO_PUBLIC_API_BASE ?? 'https://www.aibarber.org';
     const r = await fetch(`${base}/api/web-app/portal`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
     const body = await r.json().catch(() => ({}));
-    if (!r.ok || !body.url) throw new Error('portal');
+    if (!r.ok || !isStripeUrl(body.url)) throw new Error('portal');
     window.location.assign(body.url);
   } catch {
     Alert.alert('Manage subscription', "We couldn't open your billing page. Check your connection and try again.");

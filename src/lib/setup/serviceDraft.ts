@@ -48,8 +48,9 @@ export function serviceToDraft(s: Service): ServiceDraft {
 export type DraftErrors = { name?: string; price?: string; duration?: string; deposit?: string };
 
 /**
- * Field-by-field problems with a draft, for inline messages and a blocked Save. Pure: it only rejects input
- * draftToPatch would also refuse or the database would reject (name 1-80 chars, length 5-600 min, price >= 0, deposit).
+ * Field-by-field problems with a draft, for inline messages and a blocked Save. Pure. WEB ONLY in use: the
+ * browser form shows these inline and blocks Save; the phone app does not call it (draftToPatch keeps its own checks there).
+ * Limits: name 1-80 chars, length 5-600 min, price >= 0, deposit. These are app rules, not database constraints.
  */
 export function draftErrors(d: ServiceDraft, opts?: { website?: boolean }): DraftErrors {
   const e: DraftErrors = {};
@@ -88,9 +89,11 @@ export type DraftResult = { ok: true; patch: Partial<Service> } | { ok: false; m
  * set). It does not check the price against any stored deposit (deposit rules live in the booking variant only).
  */
 export function draftToPatch(d: ServiceDraft, opts?: { website?: boolean }): DraftResult {
-  const errs = draftErrors(d, opts);
-  const first = errs.name ?? errs.duration ?? errs.price ?? errs.deposit;
-  if (first) return { ok: false, message: first };
+  if (Platform.OS === 'web') {
+    const errs = draftErrors(d, opts);
+    const first = errs.name ?? errs.duration ?? errs.price ?? errs.deposit;
+    if (first) return { ok: false, message: first };
+  }
   if (opts?.website) return websitePatch(d);
   const name = d.name.trim().replace(/\s+/g, ' ');
   if (!name) return { ok: false, message: 'Give this service a name.' };

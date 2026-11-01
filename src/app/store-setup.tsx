@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { useWebPlanActive } from '@/lib/webPlan';
+import { ActivityIndicator, Platform, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
@@ -84,6 +85,13 @@ function StoreSetup() {
 
   // Leaving the gate without signing in must not send a later sign-in back here.
   useEffect(() => () => setPostAuthReturn(null), []);
+
+  // Web: the plan turning on re-reads the shop so its link state updates without a reload.
+  const webPlanOn = useWebPlanActive();
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !webPlanOn) return;
+    void loadMyShop().then((fresh) => { if (fresh) setPhase((p) => (p.kind === 'ready' ? { kind: 'ready', shop: fresh } : p)); }).catch(() => {});
+  }, [webPlanOn]);
 
   const goGate = (to: '/sign-up' | '/sign-in') => {
     setPostAuthReturn('/store-setup');

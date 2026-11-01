@@ -31,6 +31,7 @@ export function GetPaid({ shop, onChanged, firstCardRef, stripeReturn }: { shop:
   const [checking, setChecking] = useState(false);
   const [cardNote, setCardNote] = useState<string | null>(null);
   // Coming back from Stripe (web) counts as having opened it, so the status is read even before the shop row shows an account.
+  const inflight = useRef(false);
   const opening = useRef(Platform.OS === 'web' && !!stripeReturn);
   // Web only: the time until which the status is re-read every few seconds (set when Stripe is opened or returned from).
   const watchUntil = useRef(stripeReturn && Platform.OS === 'web' ? Date.now() + STRIPE_POLL_WINDOW_MS : 0);
@@ -41,6 +42,8 @@ export function GetPaid({ shop, onChanged, firstCardRef, stripeReturn }: { shop:
 
   const refreshStatus = useCallback(async () => {
     if (!shop.stripeConnected && !status?.connected && !opening.current) return;
+    // Web: the timer, tab focus and visibility can overlap; one status read at a time, so a slow answer never lands out of order.
+    if (Platform.OS === 'web') { if (inflight.current) return; inflight.current = true; }
     setChecking(true);
     try {
       const st = await stripeStatus();
@@ -49,6 +52,7 @@ export function GetPaid({ shop, onChanged, firstCardRef, stripeReturn }: { shop:
     } catch {
       // keep what we know; the card shows the last state
     } finally {
+      inflight.current = false;
       setChecking(false);
     }
   }, [shop.stripeConnected, shop.stripeChargesEnabled, status?.connected, onChanged]);

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Platform } from 'react-native';
 import {
   hasTourSeen, markTourSeen, TOURS, type Tour, type TourId, type TourScreen,
 } from '@/components/tutorial/tours';
@@ -18,7 +19,9 @@ export function useTour(
   screen: TourScreen,
   opts: { auto?: TourId | null; ready?: boolean; ignoreFlag?: boolean; onDone?(id: TourId): void } = {},
 ): TourController {
-  const { auto = null, ready = true, ignoreFlag = false, onDone } = opts;
+  // Web: the coach marks never open by themselves (the overlay blocks the first tap in the browser). The phone is unchanged.
+  const { auto: wanted = null, ready = true, ignoreFlag = false, onDone } = opts;
+  const auto = Platform.OS === 'web' ? null : wanted;
   const [active, setActive] = useState<TourId | null>(null);
   const [step, setStep] = useState(0);
   const autoStarted = useRef<TourId | null>(null);

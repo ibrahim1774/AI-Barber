@@ -1,4 +1,4 @@
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
 import { DURATIONS, SERVICE_LIBRARY, durationLabel } from '@/lib/sections/services';
@@ -50,7 +50,8 @@ export function ServicesEditorView({ ed, onGetPaid, variant = 'booking' }: { ed:
   if (view.kind === 'form') {
     const d = view.draft;
     const existing = ed.services.find((x) => x.id === view.id);
-    const errs = draftErrors(d, web ? { website: true } : undefined);
+    // Inline errors and the blocked Save are web only; the phone app keeps its Alert on Save.
+    const errs = Platform.OS === 'web' ? draftErrors(d, web ? { website: true } : undefined) : {};
     const invalid = Object.keys(errs).length > 0;
     return (
       <View style={{ gap: 6 }}>
