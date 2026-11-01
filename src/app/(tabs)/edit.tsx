@@ -125,6 +125,8 @@ export default function Editor() {
   const previewAliveCheck = useRef<(() => void) | null>(null);
   // "You can edit the text, photos, services and prices": once per generated, unpublished site, after the name prompts.
   const [welcome, setWelcome] = useState(false);
+  // Web: whether the "Got it" welcome check has answered, so the coach tour never starts underneath the welcome popup.
+  const [welcomeKnown, setWelcomeKnown] = useState(false);
   const welcomeChecked = useRef<string | null>(null);
   const [overlayState, setOverlay] = useState<Overlay | null>(null);
   const { session } = useSession();
@@ -225,7 +227,7 @@ export default function Editor() {
     if (!isAlive()) return;
     siteRef.current = s;
     overlayRef.current = o;
-    welcomeChecked.current = null; // a freshly generated draft is looked at again (its flag was cleared)
+    welcomeChecked.current = null; setWelcomeKnown(false); // a freshly generated draft is looked at again (its flag was cleared)
     setOverlay(o);
     setSite(s);
     runPublishRequest();
@@ -680,10 +682,11 @@ export default function Editor() {
 
   useEffect(() => {
     const cur = siteRef.current;
-    if (!site || !cur || overlay === 'prompts' || cur.slug != null || cur.deployedUrl) return;
+    if (!site || !cur || overlay === 'prompts') return;
+    if (cur.slug != null || cur.deployedUrl) { setWelcomeKnown(true); return; }
     if (welcomeChecked.current === cur.draftId) return;
     welcomeChecked.current = cur.draftId;
-    hasSeen('welcome', cur.draftId).then((seen) => { if (!seen && mountedRef.current) setWelcome(true); });
+    hasSeen('welcome', cur.draftId).then((seen) => { if (!seen && mountedRef.current) setWelcome(true); if (mountedRef.current) setWelcomeKnown(true); });
   }, [site, overlay]);
   const closeWelcome = useCallback(() => {
     setWelcome(false);
@@ -715,7 +718,7 @@ export default function Editor() {
   const tour = useTour('edit', {
     auto: overlay === 'guide' ? 'edit' : null,
     ignoreFlag: true,
-    ready: editTourReady({ overlay, hasSite: !!site, signedIn: !!session }) && !welcome,
+    ready: editTourReady({ overlay, hasSite: !!site, signedIn: !!session }) && !welcome && (Platform.OS !== 'web' || welcomeKnown),
     onDone: (id) => {
       if (id === 'edit' && overlayRef.current === 'guide') onGuideClose();
     },
