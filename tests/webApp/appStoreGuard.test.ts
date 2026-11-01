@@ -26,8 +26,11 @@ describe('appStoreStateFrom', () => {
     expect(appStoreStateFrom({ ios_otid: 'otid1' }, expired, [], 'live', NOW)).toBe('linked');
     expect(appStoreStateFrom({ ios_otid: 'otid1' }, p(), [], 'live', NOW)).toBe('active');
   });
-  it('a linked Sandbox purchase does not block in live mode', () => {
-    expect(appStoreStateFrom({ ios_otid: 'o' }, p({ environment: 'Sandbox', expires_at: new Date(NOW - 30 * day).toISOString() }), [], 'live', NOW)).toBeNull();
+  it('any ios_otid that is not a counted live purchase blocks (linked): Sandbox in live mode, a missing row, a live Sandbox purchase', () => {
+    expect(appStoreStateFrom({ ios_otid: 'o' }, p({ environment: 'Sandbox' }), [], 'live', NOW)).toBe('linked');
+    expect(appStoreStateFrom({ ios_otid: 'o' }, p({ environment: 'Sandbox', expires_at: new Date(NOW - 30 * day).toISOString() }), [], 'live', NOW)).toBe('linked');
+    expect(appStoreStateFrom({ ios_otid: 'o' }, null, [], 'live', NOW)).toBe('linked');
+    expect(appStoreStateFrom({ ios_otid: 'o' }, p({ environment: 'Sandbox' }), [], 'test', NOW)).toBe('active');
   });
   it('no shop and no purchases is null; a shop without ios_otid is null', () => {
     expect(appStoreStateFrom(null, null, [], 'live', NOW)).toBeNull();

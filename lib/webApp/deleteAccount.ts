@@ -7,17 +7,17 @@
 import { liveDeleteDeps, type DeleteAccountDeps } from '../ios/deleteAccount.js';
 import { liveRemoveDeps } from '../ios/removeSiteLive.js';
 import { purge, takeDown, type RemovableSite, type RemoveSiteDeps } from '../ios/removeSite.js';
-import { isEntitledStatus, keyMode } from './stripeCore.js';
+import { WEB_APP_TAG, isEntitledStatus, keyMode } from './stripeCore.js';
 import { sbRest, stripeCall } from './webAppServer.js';
 
 const WEB = 'web:';
 const enc = encodeURIComponent;
 export const isWebSite = (s: Pick<RemovableSite, 'original_transaction_id'>) => String(s.original_transaction_id).startsWith(WEB);
 
-type EntRow = { stripe_subscription_id: string; status: string; environment: 'live' | 'test' };
+type EntRow = { stripe_subscription_id: string; stripe_customer_id?: string | null; status: string; environment: 'live' | 'test' };
 
-/** Stripe says the subscription is gone / already ended: a retried delete counts that as done. Matches on error code/status, not message text. */
-const alreadyGone = (e: any) => e?.status === 404 || e?.code === 'resource_missing' || e?.code === 'subscription_already_canceled';
+/** Stripe says the subscription does not exist any more. A retried delete counts that as done. */
+const missing = (e: any) => e?.status === 404 || e?.code === 'resource_missing';
 
 /**
  * Which of the user's entitled web subscriptions this deployment may cancel (its own Stripe mode only).
@@ -25,25 +25,51 @@ const alreadyGone = (e: any) => e?.status === 404 || e?.code === 'resource_missi
  *  - a TEST row under a live key: skip (test money; the live key cannot touch it)
  *  - a LIVE row under a test key (a staging delete on the shared DB): THROW 'live-subscription-elsewhere' so the delete is refused
  *    and live billing is never orphaned. Nothing has been cancelled when this throws.
+ * Also lists the tagged subscriptions of the stored Stripe customer(s) in this mode, so one that was paid but whose webhook has
+ * not landed (no row yet) is cancelled too.
  */
-export async function planWebCancellations(userId: string): Promise<string[]> {
+export async function planWebCancellations(userId: string, listForCustomer: (customerId: string) => Promise<any[]> = defaultList): Promise<string[]> {
   const mode = keyMode(process.env.STRIPE_WEBAPP_SECRET_KEY);
   if (!mode) throw new Error('STRIPE_WEBAPP_SECRET_KEY missing or unrecognised');
-  const rows: EntRow[] = (await sbRest(`web_app_entitlements?user_id=eq.${enc(userId)}&select=stripe_subscription_id,status,environment`)) ?? [];
+  const rows: EntRow[] = (await sbRest(`web_app_entitlements?user_id=eq.${enc(userId)}&select=stripe_subscription_id,stripe_customer_id,status,environment`)) ?? [];
   const entitled = rows.filter((r) => isEntitledStatus(r.status));
   if (mode === 'test' && entitled.some((r) => r.environment === 'live')) throw new Error('live-subscription-elsewhere');
   const skipped = entitled.filter((r) => r.environment !== mode);
   if (skipped.length) console.warn(`[web-app delete] leaving ${skipped.length} ${skipped[0].environment}-mode subscription(s) alone under a ${mode} key`);
-  return entitled.filter((r) => r.environment === mode).map((r) => r.stripe_subscription_id);
+  const ids = new Set(entitled.filter((r) => r.environment === mode).map((r) => r.stripe_subscription_id));
+  const stored: Array<{ stripe_customer_id: string }> = (await sbRest(`web_app_customers?user_id=eq.${enc(userId)}&environment=eq.${mode}&select=stripe_customer_id`)) ?? [];
+  const customers = new Set([...stored.map((c) => c.stripe_customer_id), ...rows.filter((r) => r.environment === mode).map((r) => r.stripe_customer_id)].filter((c): c is string => !!c));
+  for (const c of customers) {
+    for (const sub of await listForCustomer(c)) {
+      if (sub?.metadata?.app === WEB_APP_TAG && typeof sub.id === 'string' && (isEntitledStatus(String(sub.status)) || sub.status === 'unpaid' || sub.status === 'paused' || sub.status === 'incomplete')) ids.add(sub.id);
+    }
+  }
+  return [...ids];
+}
+
+async function defaultList(customerId: string): Promise<any[]> {
+  return (await stripeCall(`subscriptions?customer=${enc(customerId)}&status=all&limit=20`, null, 'GET'))?.data ?? [];
 }
 
 /** Cancel every still-paying web subscription of the user in THIS deployment's Stripe mode. Throws when one cannot be canceled. */
-export async function cancelWebSubscriptions(userId: string, cancel: (subId: string) => Promise<void> = (id) => stripeCall(`subscriptions/${enc(id)}`, null, 'DELETE').then(() => {})): Promise<string[]> {
-  const ids = await planWebCancellations(userId); // refusal happens here, before anything is cancelled
+export async function cancelWebSubscriptions(
+  userId: string,
+  cancel: (subId: string) => Promise<void> = (id) => stripeCall(`subscriptions/${enc(id)}`, null, 'DELETE').then(() => {}),
+  statusOf: (subId: string) => Promise<string> = async (id) => String((await stripeCall(`subscriptions/${enc(id)}`, null, 'GET')).status),
+  listForCustomer?: (customerId: string) => Promise<any[]>,
+): Promise<string[]> {
+  const ids = await planWebCancellations(userId, listForCustomer); // refusal happens here, before anything is cancelled
   const done: string[] = [];
   for (const id of ids) {
     try { await cancel(id); }
-    catch (e: any) { if (!alreadyGone(e)) throw e; }
+    catch (e: any) {
+      if (!missing(e)) {
+        // Any other error: ask Stripe. Already canceled counts as done (no reliance on a particular error code).
+        let st: string | null = null;
+        try { st = await statusOf(id); } catch (e2: any) { if (!missing(e2)) throw e; }
+        if (st !== null && st !== 'canceled') throw e;
+      }
+    }
     done.push(id);
   }
   return done;

@@ -204,11 +204,11 @@ describe('runWebSiteLookup', () => {
 });
 
 describe('runWebPublish: App Store subscribers', () => {
-  it('a non-entitled caller with an App Store state gets 409 app-store-account, nothing written', async () => {
+  it('a non-entitled caller with an App Store state gets 403 app-store-account, nothing written', async () => {
     const { deps } = fakes({ ent: null });
     deps.appStoreState = vi.fn(async () => 'active' as const);
     const r = await runWebPublish({ siteData: site() }, deps, { authorization: AUTH });
-    expect(r).toEqual({ status: 409, body: { error: 'app-store-account' } });
+    expect(r).toEqual({ status: 403, body: { error: 'app-store-account' } });
     expect(deps.writePending).not.toHaveBeenCalled();
     expect(deps._sites.size).toBe(0);
   });

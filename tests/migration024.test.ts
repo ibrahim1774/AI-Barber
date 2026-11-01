@@ -16,7 +16,7 @@ describe('024_web_app_dedupe.sql', () => {
   });
 
   it('adds the bookkeeping columns as nullable, idempotent additions', () => {
-    for (const c of ['dup_of text', 'dup_alerted_at timestamptz', 'dup_refunded_at timestamptz', 'ios_overlap_notified_at timestamptz']) {
+    for (const c of ['dup_of text', 'dup_alerted_at timestamptz', 'dup_refunded_at timestamptz', 'ios_overlap_notified_at timestamptz', 'ios_overlap_checked_at timestamptz']) {
       expect(code).toMatch(new RegExp(`alter table public\\.web_app_entitlements add column if not exists ${c};`, 'i'));
     }
   });

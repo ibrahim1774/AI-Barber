@@ -1,6 +1,7 @@
 // POST { tier, interval, siteSlug? } + Bearer <supabase jwt> -> { url } for a Stripe Checkout subscription,
 // 409 already_subscribed (manage in the portal) | payment_processing | checkout_in_progress | ios_subscription_active | ios_linked_lapsed; 503 try_again.
-// Off (404) unless WEB_APP_CHECKOUT=1. Everything created is tagged metadata.app = 'aibarber-app'.
+// Off (404) unless WEB_APP_CHECKOUT=1. DEPLOY GATE: migration 024 (web_app_customers) must be applied first; until then this
+// fails closed with 502 before any Stripe session is created. Everything created is tagged metadata.app = 'aibarber-app'.
 import { WEB_APP_TAG, isEntitledStatus, isInterval, isTier, keyMode, priceIdFor } from '../../lib/webApp/stripeCore.js';
 import { appStoreStateOf, type AppStoreState } from '../../lib/webApp/appStoreGuard.js';
 import { APP_ORIGIN, callerFrom, sbRest, stripeCall, webAppCheckoutOn, webAppCors } from '../../lib/webApp/webAppServer.js';
@@ -38,13 +39,13 @@ export default async function handler(req: any, res: any) {
     // Stripe is the authority on "already paying" (the webhook may not have landed yet).
     const subs = await stripeCall(`subscriptions?customer=${encodeURIComponent(customer)}&status=all&limit=20`, null, 'GET');
     const ours: any[] = (subs?.data ?? []).filter((x: any) => x?.metadata?.app === WEB_APP_TAG);
-    if (ours.some((x) => isEntitledStatus(String(x.status)))) return res.status(409).json({ error: 'already_subscribed' });
+    if (ours.some((x) => isEntitledStatus(String(x.status)) || x.status === 'unpaid' || x.status === 'paused')) return res.status(409).json({ error: 'already_subscribed' });
     if (ours.some((x) => x.status === 'incomplete')) return res.status(409).json({ error: 'payment_processing' });
 
     const meta = { app: WEB_APP_TAG, user_id: caller.id, site_slug: slug, tier, interval };
     const nowMs = Date.now();
     const window = Math.floor(nowMs / 600_000);
-    // Parameters must be identical for an idempotent replay, so expiry derives from the 10-minute window (30-40 min ahead).
+    // Parameters must be identical for an idempotent replay, so expiry derives from the 10-minute window (32-42 min ahead; Stripe's minimum is 30).
     const sessionBody = {
       mode: 'subscription',
       customer,
@@ -53,15 +54,20 @@ export default async function handler(req: any, res: any) {
       client_reference_id: caller.id,
       success_url: `${APP_ORIGIN()}/app/edit?paid=1`,
       cancel_url: `${APP_ORIGIN()}/app/edit?paid=0`,
-      expires_at: String((window + 1) * 600 + 1800),
+      expires_at: String((window + 1) * 600 + 1800 + 120),
       ...Object.fromEntries(Object.entries(meta).flatMap(([k, v]) => [[`metadata[${k}]`, v], [`subscription_data[metadata][${k}]`, v]])),
     };
     const key = `aibarber-app:cs:${caller.id}:${tier}:${interval}:${window}`;
+    // Stripe replays the FIRST response for a repeated key, so that response can be stale: always read the session's real status.
+    const createOrReplay = async (k: string) => {
+      const made = await stripeCall('checkout/sessions', sessionBody, 'POST', { idempotencyKey: k });
+      return stripeCall(`checkout/sessions/${encodeURIComponent(made.id)}`, null, 'GET');
+    };
     let session: any;
     try {
-      session = await stripeCall('checkout/sessions', sessionBody, 'POST', { idempotencyKey: key });
+      session = await createOrReplay(key);
       // A replay of a session that a newer click already expired: make a fresh one (a rare, non-replayed call).
-      if (session?.status === 'expired') session = await stripeCall('checkout/sessions', sessionBody, 'POST', { idempotencyKey: `${key}:r${nowMs}` });
+      if (session?.status === 'expired') session = await createOrReplay(`${key}:r${nowMs}`);
     } catch (e: any) {
       if (e?.type === 'idempotency_error' || e?.code === 'idempotency_key_in_use') return res.status(409).json({ error: 'checkout_in_progress' });
       throw e;

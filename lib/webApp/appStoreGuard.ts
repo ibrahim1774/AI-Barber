@@ -15,7 +15,7 @@ function counts(row: IosPurchaseRow, mode: 'live' | 'test'): boolean {
  * Pure decision. `shop` is the caller's ab_shops row, `shopPurchase` the purchase its ios_otid points at,
  * `ownPurchases` every ios_purchases row whose user_id is the caller.
  *  - 'active': some counted purchase is live right now.
- *  - 'linked': the shop is tied to a counted iOS purchase that has lapsed (a web payment would not reopen its gates).
+ *  - 'linked': the shop has an ios_otid that is not a counted live purchase (lapsed, missing, Sandbox in live): a web payment would not reopen its gates.
  */
 export function appStoreStateFrom(
   shop: { ios_otid: string | null } | null,
@@ -25,7 +25,9 @@ export function appStoreStateFrom(
   now: number,
 ): AppStoreState {
   if (ownPurchases.some((p) => counts(p, mode) && purchaseLive(p, now))) return 'active';
-  if (shop?.ios_otid && shopPurchase && counts(shopPurchase, mode)) return purchaseLive(shopPurchase, now) ? 'active' : 'linked';
+  // The gates follow the iOS purchase whenever ios_otid is set (the web plan is never consulted), so ANY link that is not a
+  // counted, live purchase (lapsed, missing row, Sandbox under a live key) must block a web payment that could never open them.
+  if (shop?.ios_otid) return shopPurchase && counts(shopPurchase, mode) && purchaseLive(shopPurchase, now) ? 'active' : 'linked';
   return null;
 }
 

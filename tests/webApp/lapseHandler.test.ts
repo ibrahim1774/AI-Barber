@@ -17,6 +17,15 @@ beforeEach(() => { sweepWebApp.mockClear(); vi.stubEnv('WEB_APP_ENTITLEMENTS', '
 afterEach(() => vi.unstubAllEnvs());
 
 describe('/api/web-app/lapse auth', () => {
+  it('flag off: 200 skipped exactly as before, with or without a secret, and nothing runs', async () => {
+    vi.stubEnv('WEB_APP_ENTITLEMENTS', '');
+    for (const sec of ['', 's3cret']) {
+      vi.stubEnv('CRON_SECRET', sec);
+      const r = await call({});
+      expect(r.code).toBe(200); expect(r.body).toEqual({ skipped: true });
+    }
+    expect(sweepWebApp).not.toHaveBeenCalled();
+  });
   it('503 without a secret, even with the vercel-cron user agent; the sweep never runs', async () => {
     vi.stubEnv('CRON_SECRET', '');
     const r = await call({ 'user-agent': 'vercel-cron/1.0' });

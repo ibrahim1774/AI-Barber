@@ -1,5 +1,7 @@
 -- 024: web app "paid twice" protection + iOS overlap bookkeeping. Additive only (new table, new nullable columns).
 -- Do not apply until the owner says so.
+-- DEPLOY GATE: apply this BEFORE deploying code with WEB_APP_CHECKOUT=1 / WEB_APP_ENTITLEMENTS=1. Checkout reads web_app_customers and
+-- fails closed (502, no Stripe session) while the table is missing.
 
 -- One Stripe customer per user and Stripe mode for the web app (checkout reuses it before any webhook lands).
 create table if not exists public.web_app_customers (
@@ -17,3 +19,4 @@ alter table public.web_app_entitlements add column if not exists dup_of text;
 alter table public.web_app_entitlements add column if not exists dup_alerted_at timestamptz;
 alter table public.web_app_entitlements add column if not exists dup_refunded_at timestamptz;
 alter table public.web_app_entitlements add column if not exists ios_overlap_notified_at timestamptz;
+alter table public.web_app_entitlements add column if not exists ios_overlap_checked_at timestamptz;

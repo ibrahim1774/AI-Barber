@@ -56,6 +56,32 @@ describe('web delete-account helpers', () => {
     expect(await cancelWebSubscriptions('u1', async () => { throw Object.assign(new Error('gone'), { status: 400, code: 'resource_missing' }); })).toEqual(['sub_a']);
     await expect(cancelWebSubscriptions('u1', async () => { throw Object.assign(new Error('boom'), { status: 500 }); })).rejects.toThrow('boom');
   });
+  it('S4: also cancels a tagged entitled subscription that has no row yet (listed from the stored customer), same mode only', async () => {
+    set([row('sub_live', 'active', 'live')]);
+    rows[0].stripe_customer_id = 'cus_1';
+    const list = vi.fn(async () => [
+      { id: 'sub_live', status: 'active', metadata: { app: 'aibarber-app' } },
+      { id: 'sub_unrecorded', status: 'active', metadata: { app: 'aibarber-app' } },
+      { id: 'sub_old', status: 'canceled', metadata: { app: 'aibarber-app' } },
+      { id: 'sub_other_flow', status: 'active', metadata: {} },
+    ]);
+    const cancel = vi.fn(async () => {});
+    expect(await cancelWebSubscriptions('u1', cancel, undefined, list)).toEqual(['sub_live', 'sub_unrecorded']);
+    expect(list).toHaveBeenCalledWith('cus_1');
+  });
+  it('S4: a test key still refuses before listing or cancelling anything when a live row is entitled', async () => {
+    vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x');
+    set([row('sub_live', 'active', 'live')]);
+    const list = vi.fn(async () => []); const cancel = vi.fn(async () => {});
+    await expect(cancelWebSubscriptions('u1', cancel, undefined, list)).rejects.toThrow('live-subscription-elsewhere');
+    expect(cancel).not.toHaveBeenCalled();
+  });
+  it('S4: a cancel error with any code is fine when Stripe says the subscription is already canceled', async () => {
+    set([row('sub_a', 'active', 'live')]);
+    const boom = async () => { throw Object.assign(new Error('whatever'), { status: 400, code: 'something_unexpected' }); };
+    expect(await cancelWebSubscriptions('u1', boom, async () => 'canceled', async () => [])).toEqual(['sub_a']);
+    await expect(cancelWebSubscriptions('u1', boom, async () => 'active', async () => [])).rejects.toThrow('whatever');
+  });
   it('an unknown key mode throws', async () => {
     vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', '');
     set([row('sub_a', 'active', 'live')]);

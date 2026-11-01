@@ -13,6 +13,7 @@ vi.mock('../../lib/webApp/webAppServer.js', () => ({
   sbRest: async (path: string, init: any = {}) => {
     sb.calls.push({ path, ...init });
     if (path.startsWith('web_app_entitlements')) return sb.ents;
+    if (path.startsWith('web_app_customers') && (globalThis as any).__failCustomers) throw new Error('supabase 404');
     if (path.startsWith('web_app_customers') && (init.method ?? 'GET') === 'GET') return sb.customers.slice(0, 1);
     if (path.startsWith('web_app_customers')) { if (!sb.customers.length) sb.customers.push(init.body); return null; }
     if (path.startsWith('site_owners')) return [];
@@ -29,26 +30,28 @@ const res = () => { const r: any = { code: 0, body: null }; r.status = (c: numbe
 const req = (body: any = { tier: 'website', interval: 'month' }) => ({ method: 'POST', headers: { authorization: 'Bearer t' }, body });
 const run = async (b?: any) => { const r = res(); await handler(req(b), r); return r; };
 
-let subs: any[]; let open: any[]; let sessionOverride: any;
+let subs: any[]; let open: any[]; let real: Record<string, any>; let nextId: string[];
 beforeEach(() => {
   vi.stubEnv('WEB_APP_CHECKOUT', '1');
   vi.stubEnv('STRIPE_WEBAPP_SECRET_KEY', 'sk_test_x');
   vi.stubEnv('STRIPE_WEBAPP_PRICE_WEBSITE_MONTH', 'price_w_m');
   stripe.calls = []; sb.calls = []; sb.customers = []; sb.ents = []; guard.state = null; guard.err = null;
-  subs = []; open = []; sessionOverride = null;
+  subs = []; open = []; real = {}; nextId = ['cs_new'];
   const keyed = new Map<string, any>();
   stripe.handler = (path: string, body: any, method: string, opts: any) => {
     if (path === 'customers') { const k = opts.idempotencyKey; if (!keyed.has(k)) keyed.set(k, { id: `cus_${keyed.size + 1}` }); return keyed.get(k); }
     if (path.startsWith('subscriptions?')) return { data: subs };
     if (path.startsWith('checkout/sessions?')) return { data: open };
-    if (path === 'checkout/sessions') { return sessionOverride ?? { id: 'cs_new', status: 'open', url: 'https://stripe.test/pay' }; }
+    // Stripe replays the FIRST response for a repeated key: the create response always says 'open'. Real state is only visible via GET.
+    if (path === 'checkout/sessions') { const id = nextId.shift() ?? `cs_${Math.random()}`; real[id] ??= { id, status: 'open', url: `https://stripe.test/${id}` }; return { id, status: 'open', url: `https://stripe.test/${id}` }; }
+    if (path.startsWith('checkout/sessions/') && method === 'GET') return real[path.split('/')[2]];
     if (path.endsWith('/expire')) return {};
     throw new Error(`unexpected ${path}`);
   };
 });
 afterEach(() => vi.unstubAllEnvs());
 
-const created = () => stripe.calls.filter((c) => c.path === 'checkout/sessions');
+const created = () => stripe.calls.filter((c) => c.path === 'checkout/sessions' && c.method === 'POST');
 
 describe('POST /api/web-app/checkout', () => {
   it('flag off: 404', async () => {
@@ -59,7 +62,7 @@ describe('POST /api/web-app/checkout', () => {
   it('first click: customer created once with an idempotency key, stored, then a session is created', async () => {
     const r = await run();
     expect(r.code).toBe(200);
-    expect(r.body).toEqual({ url: 'https://stripe.test/pay' });
+    expect(r.body).toEqual({ url: 'https://stripe.test/cs_new' });
     const cust = stripe.calls.filter((c) => c.path === 'customers');
     expect(cust).toHaveLength(1);
     expect(cust[0].opts.idempotencyKey).toBe('aibarber-app:cust:u1:test');
@@ -136,25 +139,45 @@ describe('POST /api/web-app/checkout', () => {
     const c = created()[0];
     const exp = Number(c.body.expires_at);
     expect(exp).toBeGreaterThanOrEqual(Math.floor(now / 1000) + 1800);
-    expect(exp).toBeLessThanOrEqual(Math.floor(now / 1000) + 2400 + 1);
+    expect(exp).toBeGreaterThanOrEqual(Math.floor(now / 1000) + 1800 + 120);
+    expect(exp).toBeLessThanOrEqual(Math.floor(now / 1000) + 2400 + 120 + 1);
     expect(c.opts.idempotencyKey).toMatch(/^aibarber-app:cs:u1:website:month:\d+$/);
     expect(c.body['metadata[interval]']).toBe('month');
     expect(c.body['subscription_data[metadata][app]']).toBe('aibarber-app');
   });
 
-  it('a replay that returns a completed session: 409 payment_processing, never a second URL', async () => {
-    sessionOverride = { id: 'cs_new', status: 'complete', url: null };
+  it('a replayed create (Stripe returns the stale first response) whose real status is complete: 409 payment_processing, never a second URL', async () => {
+    real.cs_new = { id: 'cs_new', status: 'complete', url: null };
     const r = await run();
     expect(r.code).toBe(409); expect(r.body.error).toBe('payment_processing');
   });
 
-  it('a replay of a session a newer click expired: a fresh session is created', async () => {
-    let n = 0;
-    const h = stripe.handler;
-    stripe.handler = (p: string, ...rest: any[]) => (p === 'checkout/sessions' ? (n++ === 0 ? { id: 'cs_dead', status: 'expired', url: null } : { id: 'cs_fresh', status: 'open', url: 'https://stripe.test/fresh' }) : h(p, ...rest));
+  it('a replay whose real status is expired: a fresh session is created with a :r key', async () => {
+    real.cs_new = { id: 'cs_new', status: 'expired', url: null };
+    nextId = ['cs_new', 'cs_fresh'];
     const r = await run();
-    expect(r.body).toEqual({ url: 'https://stripe.test/fresh' });
+    expect(r.body).toEqual({ url: 'https://stripe.test/cs_fresh' });
     expect(created()[1].opts.idempotencyKey).toMatch(/:r\d+$/);
+  });
+
+  it('unpaid and paused tagged subscriptions block checkout', async () => {
+    for (const status of ['unpaid', 'paused']) {
+      subs = [{ id: 's', status, metadata: { app: 'aibarber-app' } }];
+      const r = await run();
+      expect(r.code).toBe(409); expect(r.body.error).toBe('already_subscribed');
+    }
+    expect(created()).toHaveLength(0);
+  });
+
+  it('migration 024 missing (web_app_customers unreadable): 502 and no Stripe session or customer is created', async () => {
+    const orig = sb.customers;
+    (globalThis as any).__failCustomers = true;
+    const r = await run();
+    delete (globalThis as any).__failCustomers;
+    expect(r.code).toBe(502);
+    expect(created()).toHaveLength(0);
+    expect(stripe.calls.some((c) => c.path === 'customers')).toBe(false);
+    expect(sb.customers).toBe(orig);
   });
 
   it('an idempotency_error: 409 checkout_in_progress', async () => {

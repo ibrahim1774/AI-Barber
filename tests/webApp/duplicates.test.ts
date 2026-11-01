@@ -3,7 +3,7 @@ import { pickKeeper, classify, handleDuplicates, sweepDuplicates, type DupDeps, 
 
 const NOW = Date.parse('2026-11-01T00:00:00Z');
 const sec = (ms: number) => Math.floor(ms / 1000);
-const sub = (id: string, over: Partial<DupSub> = {}): DupSub => ({ id, customer: 'cus_1', created: sec(NOW - 86400_000), status: 'active', tier: 'website', amount: 1999, cancelAtPeriodEnd: false, ...over });
+const sub = (id: string, over: Partial<DupSub> = {}): DupSub => ({ id, customer: 'cus_1', created: sec(NOW - 86400_000), status: 'active', tier: 'website', interval: 'month', amount: 1999, cancelAtPeriodEnd: false, ...over });
 
 function fakes(o: { subs?: DupSub[]; refund?: boolean; claim?: boolean; invoices?: { paidInvoices: number; paymentIntent: string | null } | null; cancelErr?: boolean; refundErr?: boolean; alertErr?: boolean } = {}) {
   const log: string[] = [];
@@ -32,6 +32,17 @@ describe('pickKeeper', () => {
     const x = sub('sub_x', { created: 5 }); const y = sub('sub_y', { created: 5 });
     expect(pickKeeper([y, x]).id).toBe('sub_x');
     expect(pickKeeper([x, y]).id).toBe('sub_x');
+  });
+});
+
+describe('classify (B1)', () => {
+  const inv = { paidInvoices: 1, paymentIntent: 'pi' };
+  it('alert only when the keeper is not active, or tier/interval differ', () => {
+    const k = sub('k', { created: sec(NOW - 9 * 86400_000) });
+    expect(classify({ ...k, status: 'past_due' }, sub('d'), inv, NOW)).toBe('alert_only');
+    expect(classify({ ...k, status: 'trialing' }, sub('d'), inv, NOW)).toBe('alert_only');
+    expect(classify(k, sub('d', { tier: 'store' }), inv, NOW)).toBe('alert_only');
+    expect(classify(k, sub('d', { interval: 'year' }), inv, NOW)).toBe('alert_only');
   });
 });
 
@@ -65,7 +76,13 @@ describe('handleDuplicates', () => {
     expect(deps.claim).toHaveBeenCalledWith('sub_b', 'sub_a');
     expect(deps.alert).toHaveBeenCalledTimes(1);
     expect(deps.invoiceInfo).not.toHaveBeenCalled();
+    expect((deps.alert as any).mock.calls[0][1].join('\n')).toMatch(/automatic refund is off/);
     expect(deps.cancel).not.toHaveBeenCalled(); expect(deps.refund).not.toHaveBeenCalled(); expect(deps.mailCustomer).not.toHaveBeenCalled();
+  });
+
+  it('the keeper is the oldest ACTIVE one, not an older past_due one (B1)', () => {
+    expect(pickKeeper([sub('old', { created: 1, status: 'past_due' }), sub('new', { created: 9, status: 'active' })]).id).toBe('new');
+    expect(pickKeeper([sub('old', { created: 1, status: 'past_due' }), sub('new', { created: 9, status: 'trialing' })]).id).toBe('old');
   });
 
   it('refund flag on and refundable: alert, then cancel, then refund, stamped, customer mailed; keeper untouched', async () => {
@@ -84,6 +101,28 @@ describe('handleDuplicates', () => {
     const r = await handleDuplicates('u1', deps);
     expect(r).toMatchObject({ alerted: 1, refunded: 0 });
     expect(deps.cancel).not.toHaveBeenCalled(); expect(deps.refund).not.toHaveBeenCalled();
+    expect((deps.alert as any).mock.calls[0][1].join('\n')).toMatch(/alert only because the kept subscription is set to cancel/);
+  });
+
+  it('a higher-tier second subscription is never refunded, and the alert says why (S7)', async () => {
+    const s = two(); s[0].tier = 'store';
+    const { deps } = fakes({ subs: s, refund: true });
+    await handleDuplicates('u1', deps);
+    expect(deps.cancel).not.toHaveBeenCalled();
+    expect((deps.alert as any).mock.calls[0][1].join('\n')).toMatch(/different plan/);
+  });
+
+  it('a failed invoice lookup is retried once, then reported in the single alert (S7)', async () => {
+    const { deps } = fakes({ subs: two(), refund: true });
+    (deps.invoiceInfo as any).mockRejectedValueOnce(new Error('x'));
+    await handleDuplicates('u1', deps);
+    expect(deps.invoiceInfo).toHaveBeenCalledTimes(2);
+    expect(deps.refund).toHaveBeenCalled();
+    const f = fakes({ subs: two(), refund: true });
+    (f.deps.invoiceInfo as any).mockRejectedValue(new Error('x'));
+    await handleDuplicates('u1', f.deps);
+    expect(f.deps.cancel).not.toHaveBeenCalled();
+    expect((f.deps.alert as any).mock.calls[0][1].join('\n')).toMatch(/invoice lookup failed/);
   });
 
   it('a cancel failure causes no refund and the alert names a manual action', async () => {

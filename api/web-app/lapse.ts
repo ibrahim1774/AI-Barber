@@ -10,6 +10,8 @@ import { webAppCheckoutOn, webAppEntitlementsOn } from '../../lib/webApp/webAppS
 export const config = { maxDuration: 300 };
 
 export default async function handler(req: any, res: any) {
+  // Flag first: with WEB_APP_ENTITLEMENTS off this answers exactly as before, secret or not.
+  if (!webAppEntitlementsOn()) return res.status(200).json({ skipped: true });
   // Web-app cron: the Bearer secret is required (no user-agent fallback). Fails closed when it is not configured.
   const auth = authorizedStrict(req);
   if (auth === 'no-secret') {
@@ -17,7 +19,6 @@ export default async function handler(req: any, res: any) {
     return res.status(503).json({ error: 'cron-secret-missing' });
   }
   if (auth === 'denied') return res.status(401).json({ error: 'Not authorized' });
-  if (!webAppEntitlementsOn()) return res.status(200).json({ skipped: true });
   try {
     const summary = await sweepWebApp(await liveWebSweepDeps());
     const dunning = await sweepDunning().catch((e: any) => { console.error('[web-app dunning]', e?.message || e); return null; });

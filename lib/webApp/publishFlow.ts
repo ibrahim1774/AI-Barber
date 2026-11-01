@@ -3,7 +3,7 @@
 // response shapes mirror POST /api/ios/publish so the web app can reuse the iOS app's screens:
 //   200 { siteId, deployedUrl, republished, version, editedBy, editedAt }
 //   409 { error:'site-updated', site }   400 bad-request   401 unauthorized
-//   402 subscription-inactive | 409 app-store-account (not web-entitled but an App Store subscriber)            502 publish-failed   503 temporarily-unavailable | slug-exhausted | slug-bind-failed
+//   402 subscription-inactive | 403 app-store-account (not web-entitled but an App Store subscriber)            502 publish-failed   503 temporarily-unavailable | slug-exhausted | slug-bind-failed
 //   409 { error:'slug-owned' }           (the slug belongs to another account / an older checkout)
 import type { WebsiteData } from '../../types.js';
 import type { SiteFile } from '../render/pages.js';
@@ -147,7 +147,7 @@ export async function runWebPublish(
       if (deps.appStoreState) {
         let st: AppStoreState = null;
         try { st = await deps.appStoreState(caller.id); } catch { st = null; }
-        if (st) return { status: 409, body: { error: 'app-store-account' } };
+        if (st) return { status: 403, body: { error: 'app-store-account' } };
       }
       return { status: 402, body: { error: 'subscription-inactive' } };
     }

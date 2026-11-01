@@ -17,27 +17,40 @@ export interface DupSub {
   created: number;
   status: string;
   tier: string;
+  interval: string;
   /** Minor units of the first item's price, when known. */
   amount: number | null;
   cancelAtPeriodEnd: boolean;
 }
 export interface InvoiceInfo { paidInvoices: number; paymentIntent: string | null }
 
-/** Oldest Stripe `created` wins (it holds the site binding and the longest history); id breaks ties. Order-independent. */
-export function pickKeeper<T extends { id: string; created: number }>(subs: T[]): T {
-  return [...subs].sort((a, b) => a.created - b.created || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))[0];
+/**
+ * The subscription to keep. `active` ones first (a past_due/trialing keeper may be about to fail, and the paying duplicate
+ * would then be the one refunded), oldest Stripe `created` within the group, id as the tiebreak. Order-independent.
+ */
+export function pickKeeper<T extends { id: string; created: number; status?: string }>(subs: T[]): T {
+  const active = subs.filter((s) => s.status === 'active');
+  const pool = active.length ? active : subs;
+  return [...pool].sort((a, b) => a.created - b.created || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))[0];
 }
 
 /**
- * 'refundable' only when ALL hold: the duplicate is <= 7 days old, it has exactly one paid invoice (with a payment
- * intent to refund), and the keeper is not set to cancel at period end (then the customer may really be replacing it).
+ * Why a duplicate may (or may not) be refunded. 'refundable' only when ALL hold: the keeper is `active`; the keeper and the
+ * duplicate have the same tier and interval (a deliberate higher-tier purchase is never refunded); the duplicate is <= 7 days
+ * old; it has exactly one paid invoice (with a payment intent); and the keeper is not set to cancel at period end.
  */
-export function classify(keeper: DupSub, dup: DupSub, invoices: InvoiceInfo | null, nowMs: number): 'refundable' | 'alert_only' {
-  if (nowMs - dup.created * 1000 > DUP_REFUND_WINDOW_MS) return 'alert_only';
-  if (keeper.cancelAtPeriodEnd) return 'alert_only';
-  if (!invoices || invoices.paidInvoices !== 1 || !invoices.paymentIntent) return 'alert_only';
-  return 'refundable';
+export function explain(keeper: DupSub, dup: DupSub, invoices: InvoiceInfo | null, nowMs: number): { verdict: 'refundable' | 'alert_only'; reason: string } {
+  const no = (reason: string) => ({ verdict: 'alert_only' as const, reason });
+  if (keeper.status !== 'active') return no(`the kept subscription is ${keeper.status}, not active`);
+  if (keeper.tier !== dup.tier || keeper.interval !== dup.interval) return no(`different plan (${keeper.tier}/${keeper.interval} vs ${dup.tier}/${dup.interval}); may be a deliberate purchase`);
+  if (nowMs - dup.created * 1000 > DUP_REFUND_WINDOW_MS) return no('the duplicate is older than 7 days');
+  if (keeper.cancelAtPeriodEnd) return no('the kept subscription is set to cancel at period end');
+  if (!invoices) return no('the invoice lookup failed');
+  if (invoices.paidInvoices !== 1) return no(`the duplicate has ${invoices.paidInvoices} paid invoices (need exactly 1)`);
+  if (!invoices.paymentIntent) return no('the paid invoice has no payment intent');
+  return { verdict: 'refundable', reason: 'matches every refund rule' };
 }
+export const classify = (keeper: DupSub, dup: DupSub, invoices: InvoiceInfo | null, nowMs: number) => explain(keeper, dup, invoices, nowMs).verdict;
 
 export interface DupDeps {
   refundEnabled(): boolean;
@@ -67,9 +80,21 @@ export async function handleDuplicates(userId: string, deps: DupDeps): Promise<D
   const describe = (s: DupSub) => `${s.id} (${s.tier}, ${s.amount != null ? `${(s.amount / 100).toFixed(2)}` : '?'}, created ${new Date(s.created * 1000).toISOString()}, ${s.status})`;
   for (const dup of dups) {
     if (!(await deps.claim(dup.id, keeper.id))) continue; // another runner (or an earlier run) already handled it
-    const base = [`user: ${userId}`, `kept (oldest): ${describe(keeper)}`, `duplicate: ${describe(dup)}`, `https://dashboard.stripe.com/subscriptions/${dup.id}`];
+    const base = [`user: ${userId}`, `kept: ${describe(keeper)}`, `duplicate: ${describe(dup)}`, `https://dashboard.stripe.com/subscriptions/${dup.id}`];
+    // Decide BEFORE alerting so the alert states the real outcome.
+    let invoices: InvoiceInfo | null = null;
+    let outcome: { verdict: 'refundable' | 'alert_only'; reason: string };
+    if (!deps.refundEnabled()) {
+      outcome = { verdict: 'alert_only', reason: 'automatic refund is off (WEB_APP_DUP_REFUND is not 1)' };
+    } else {
+      for (let i = 0; i < 2 && !invoices; i++) {
+        try { invoices = await deps.invoiceInfo(dup.id); } catch (e: any) { console.error('[web-app dup] invoice lookup failed:', e?.message || e); }
+      }
+      outcome = explain(keeper, dup, invoices, deps.now());
+    }
+    const refundNow = outcome.verdict === 'refundable';
     try {
-      await deps.alert('AI Barber web: customer is paying twice', [...base, '', deps.refundEnabled() ? 'WEB_APP_DUP_REFUND is on: refund will be attempted if the duplicate qualifies.' : 'No automatic action taken (WEB_APP_DUP_REFUND is off). Decide whether to cancel and refund the duplicate.']);
+      await deps.alert('AI Barber web: customer is paying twice', [...base, '', refundNow ? 'OUTCOME: cancelling the duplicate and refunding its one payment now (a follow-up email reports any failure).' : `OUTCOME: no automatic action; alert only because ${outcome.reason}. Decide whether to cancel and refund the duplicate.`]);
       out.alerted++;
     } catch (e: any) {
       // Could not tell the owner: free the claim so the next run retries, and move no money this time.
@@ -78,10 +103,7 @@ export async function handleDuplicates(userId: string, deps: DupDeps): Promise<D
       out.errors++;
       continue;
     }
-    if (!deps.refundEnabled()) continue;
-    let invoices: InvoiceInfo | null = null;
-    try { invoices = await deps.invoiceInfo(dup.id); } catch (e: any) { console.error('[web-app dup] invoice lookup failed:', e?.message || e); }
-    if (classify(keeper, dup, invoices, deps.now()) !== 'refundable') continue;
+    if (!refundNow) continue;
     // Cancel FIRST so a failed cancel never refunds a subscription that is still live.
     try { await deps.cancel(dup.id); }
     catch (e: any) {
@@ -107,7 +129,7 @@ function toDupSub(sub: any, mode: 'live' | 'test'): DupSub | null {
   const row = rowFromSubscription(sub, mode === 'live', process.env);
   if (!row || !isEntitledStatus(String(sub.status))) return null;
   return {
-    id: sub.id, customer: row.stripe_customer_id, created: Number(sub.created) || 0, status: String(sub.status), tier: row.tier,
+    id: sub.id, customer: row.stripe_customer_id, created: Number(sub.created) || 0, status: String(sub.status), tier: row.tier, interval: row.billing_interval,
     amount: typeof sub.items?.data?.[0]?.price?.unit_amount === 'number' ? sub.items.data[0].price.unit_amount : null,
     cancelAtPeriodEnd: !!sub.cancel_at_period_end,
   };
@@ -144,7 +166,7 @@ export function liveDupDeps(mode: 'live' | 'test'): DupDeps {
     },
     claim: async (dupId, keeperId) => ((await patch(dupId, { dup_alerted_at: new Date().toISOString(), dup_of: keeperId }, '&dup_alerted_at=is.null')) ?? []).length > 0,
     releaseClaim: async (dupId) => { await patch(dupId, { dup_alerted_at: null, dup_of: null }); },
-    cancel: async (dupId) => { await stripeCall(`subscriptions/${enc(dupId)}`, { prorate: 'false' }, 'DELETE', { idempotencyKey: `aibarber-app:dup-cancel:${dupId}` }); },
+    cancel: async (dupId) => { await stripeCall(`subscriptions/${enc(dupId)}`, null, 'DELETE', { idempotencyKey: `aibarber-app:dup-cancel:${dupId}` }); },
     refund: async (dupId, pi) => { await stripeCall('refunds', { payment_intent: pi, reason: 'duplicate', 'metadata[app]': WEB_APP_TAG, 'metadata[subscription]': dupId }, 'POST', { idempotencyKey: `aibarber-app:dup-refund:${dupId}` }); },
     stampRefunded: async (dupId) => { await patch(dupId, { dup_refunded_at: new Date().toISOString() }); },
     alert: alertOwner,
