@@ -85,6 +85,12 @@ function dismissWebPaywall() {
 function usePlacement(cbs) {
   const registerPlacement = React.useCallback(async (p) => {
     try { window.__webPaywall = { placement: p.placement, params: p.params || null }; } catch (e) {}
+    // No web checkout for custom domains yet (the plan screen would sell the wrong product).
+    if (p.placement === 'custom_domain') {
+      try { window.alert('Custom domains are coming to the web app.'); } catch (e) {}
+      cbs && cbs.onDismiss && cbs.onDismiss({ name: 'web', closeReason: 'manualClose' }, { type: 'declined' });
+      return;
+    }
     showing = cbs || null;
     cbs && cbs.onPresent && cbs.onPresent({ name: 'web' });
     router.push('/web-paywall');
