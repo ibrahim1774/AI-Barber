@@ -11,6 +11,7 @@ import { emitSiteLive } from '@/lib/siteEvents';
 import type { PendingPublish, SiteRecord } from '@/lib/siteStore';
 import { CLAIMED_SIGNED_OUT_MESSAGE, conflictMessage, type Conflict } from '@/lib/claimCopy';
 import type { PlanHint } from '@/lib/publishRequest';
+import { APP_STORE_PUBLISH_MESSAGE } from '@/lib/webBilling';
 import { LOOKUP_TIMEOUT_MS, withTimeout } from '@/lib/timeout';
 
 /**
@@ -248,6 +249,13 @@ async function send(pending: PendingPublish, deps: PublishDeps, retryMessage: st
       // is never auto-retried; the record stays and the next tap re-checks whose purchase it is.
       track('publish_purchase_changed');
       return { kind: 'pending', message: 'This subscription just changed accounts. Tap Publish to try again.' };
+    }
+    if (e instanceof ApiError && e.status === 403 && e.code === 'app-store-account') {
+      // The account pays through the App Store: a final answer, never "try again" and never auto-retried (not transient).
+      // An ordinary publish just stops (record cleared, so the next launch does not resend it); a paid claim keeps its record.
+      if (!pending.state) await deps.store.savePendingPublish(null);
+      track('publish_app_store_account');
+      return { kind: 'blocked', message: APP_STORE_PUBLISH_MESSAGE };
     }
     if (e instanceof ApiError && e.status === 402) {
       await deps.store.savePendingPublish(null);

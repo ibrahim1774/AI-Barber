@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
 import { supabase } from '@/lib/supabase';
+import { appStoreNotice, checkoutFailure, CHECKOUT_RETRY_MESSAGE, PROCESSING_MESSAGE } from '@/lib/webBilling';
 
 // The web app's plan screen (the iOS app shows Superwall's paywall here). Same plans and prices as iOS;
 // Continue opens Stripe Checkout, and Stripe returns to /app/edit once paid.
@@ -31,6 +32,39 @@ export default function WebPaywall() {
   const [interval, setIntervalValue] = useState<Interval>('month');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // Set when the server says a payment is still settling: shows "Check again" (re-reads /me, never the portal).
+  const [processing, setProcessing] = useState(false);
+  // Set when the account already pays through the App Store: replaces the pay buttons.
+  const [appStore, setAppStore] = useState('');
+
+  async function readMe(): Promise<{ entitled?: boolean; appStore?: unknown } | null> {
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (!token) return null;
+    const r = await fetch(`${BASE}/api/web-app/me`, { headers: { Authorization: `Bearer ${token}` } });
+    return r.ok ? await r.json().catch(() => null) : null;
+  }
+
+  useEffect(() => {
+    readMe().then((me) => { const n = me ? appStoreNotice(me.appStore) : null; if (n) setAppStore(n); }).catch(() => {});
+  }, []);
+
+  async function checkAgain() {
+    setBusy(true);
+    setError('');
+    try {
+      const me = await readMe();
+      if (!me) { setError("Couldn't check your account right now. Try again in a moment."); return; }
+      const n = appStoreNotice(me.appStore);
+      if (n) { setAppStore(n); setProcessing(false); return; }
+      if (me.entitled) { if (Platform.OS === 'web') window.location.assign('/app/edit?paid=1'); return; }
+      setError(PROCESSING_MESSAGE);
+    } catch {
+      setError("Couldn't check your account right now. Try again in a moment.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function go() {
     setBusy(true);
@@ -41,15 +75,21 @@ export default function WebPaywall() {
       if (!token) { router.replace('/sign-in' as never); return; }
       const r = await fetch(`${BASE}/api/web-app/checkout`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ tier, interval }) });
       const body = await r.json().catch(() => ({}));
-      if (r.status === 409) {
-        const p = await fetch(`${BASE}/api/web-app/portal`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
-        const pb = await p.json().catch(() => ({}));
-        if (pb.url) { if (Platform.OS === 'web') window.location.assign(pb.url); return; }
+      if (!r.ok) {
+        const f = checkoutFailure(r.status, body?.error);
+        if (f.kind === 'portal') {
+          const p = await fetch(`${BASE}/api/web-app/portal`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+          const pb = await p.json().catch(() => ({}));
+          if (pb.url) { if (Platform.OS === 'web') window.location.assign(pb.url); return; }
+          setError(CHECKOUT_RETRY_MESSAGE);
+        } else if (f.kind === 'app-store') setAppStore(f.message);
+        else { setProcessing(f.kind === 'processing'); setError(f.message); }
+        return;
       }
       if (!r.ok || !body.url) throw new Error('checkout');
       if (Platform.OS === 'web') window.location.assign(body.url);
     } catch {
-      setError("We couldn't open checkout. Check your connection and try again.");
+      setError(CHECKOUT_RETRY_MESSAGE);
     } finally {
       setBusy(false);
     }
@@ -78,8 +118,13 @@ export default function WebPaywall() {
           ))}
         </Pressable>
       ))}
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      <Button variant="solid" title={busy ? 'Opening checkout…' : 'Continue to checkout'} onPress={go} disabled={busy} style={styles.cta} />
+      {appStore ? <Text accessibilityRole="alert" style={styles.notice}>{appStore}</Text> : null}
+      {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
+      {appStore ? null : processing ? (
+        <Button variant="solid" title={busy ? 'Checking…' : 'Check again'} onPress={checkAgain} disabled={busy} style={styles.cta} />
+      ) : (
+        <Button variant="solid" title={busy ? 'Opening checkout…' : 'Continue to checkout'} onPress={go} disabled={busy} style={styles.cta} />
+      )}
       <Button variant="ghost" title="Not now" onPress={() => router.back()} style={styles.cta} />
     </ScrollView>
   );
@@ -104,5 +149,6 @@ const styles = StyleSheet.create({
   check: { color: colors.accent, fontFamily: fonts.bodyMedium, fontSize: 13, width: 18 },
   bullet: { color: colors.text, fontFamily: fonts.body, fontSize: 13, flex: 1, lineHeight: 18 },
   error: { color: colors.danger, fontFamily: fonts.body, fontSize: 13, textAlign: 'center', marginBottom: 8 },
+  notice: { color: colors.heading, fontFamily: fonts.body, fontSize: 14, lineHeight: 20, textAlign: 'center', marginBottom: 12, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: colors.ghostBorder, backgroundColor: colors.ghostBg },
   cta: { marginTop: 12 },
 });
