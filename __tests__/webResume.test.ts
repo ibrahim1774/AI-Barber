@@ -98,3 +98,13 @@ describe('flushWebAutosave', () => {
     expect(Date.now() - t).toBeLessThan(1000);
   });
 });
+
+describe('forgot-password web wording', () => {
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'src/app/forgot-password.tsx'), 'utf8');
+  it('web-only code hint and "Send a new code", phone wording kept', () => {
+    expect(src).toContain('Use the 6-digit code from the email. Ignore the link in it.');
+    expect(src).toMatch(/Platform\.OS === 'web' && !isVerified && <Text style=\{styles\.body\}>\{WEB_CODE_HINT\}/);
+    expect(src).toContain("'Send a new code'");
+    expect(src).toContain("'Resend code'");
+  });
+});

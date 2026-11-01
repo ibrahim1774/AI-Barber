@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AccessibilityInfo, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 import { colors, fonts } from '@/constants/theme';
 import { Button } from '@/components/Button';
 import { Field } from '@/components/Field';
 import { Page } from '@/components/Page';
 import { useAfterSignIn } from '@/lib/afterSignIn';
-import { requestPasswordReset, resetPasswordWithCode } from '@/lib/auth';
+import { requestPasswordReset, resetPasswordWithCode, RESET_WRONG_CODE } from '@/lib/auth';
 import { goBackOrHome, resetTo } from '@/lib/nav';
 import { CODE_MAX, cooldownLeft, sanitizeCode, takePrefillEmail } from '@/lib/recovery';
 
@@ -15,6 +15,9 @@ import { CODE_MAX, cooldownLeft, sanitizeCode, takePrefillEmail } from '@/lib/re
  * so no session token ever travels in a URL. The confirmation is the same
  * whether or not the account exists; Resend waits 60 s between emails.
  */
+const WEB_CODE_HINT = 'Use the 6-digit code from the email. Ignore the link in it.';
+const WEB_WRONG_CODE = 'That code is wrong or has expired. Tap Send a new code below, then use the newest email.';
+
 export default function ForgotPassword() {
   const [email, setEmail] = useState(takePrefillEmail);
   const [error, setError] = useState('');
@@ -118,6 +121,8 @@ export default function ForgotPassword() {
               onSubmitEditing={() => passwordInput.current?.focus()}
             />
           )}
+          {/* Web: the email also carries a link, which is not the way in here. */}
+          {Platform.OS === 'web' && !isVerified && <Text style={styles.body}>{WEB_CODE_HINT}</Text>}
           <Field
             ref={passwordInput}
             tone="form"
@@ -144,14 +149,14 @@ export default function ForgotPassword() {
           />
           {!!error && (
             <Text style={styles.error} accessibilityLiveRegion="polite">
-              {error}
+              {Platform.OS === 'web' && error === RESET_WRONG_CODE ? WEB_WRONG_CODE : error}
             </Text>
           )}
           <Button variant="solid" title={busy ? 'Resetting...' : 'Reset password'} onPress={() => void reset()} loading={busy} />
           {!isVerified && (
             <Button
               variant="ghost"
-              title={left > 0 ? `Resend code in ${left}s` : 'Resend code'}
+              title={left > 0 ? `${Platform.OS === 'web' ? 'Send a new code' : 'Resend code'} in ${left}s` : Platform.OS === 'web' ? 'Send a new code' : 'Resend code'}
               onPress={() => void send(sent.to)}
               disabled={left > 0 || busy}
             />
