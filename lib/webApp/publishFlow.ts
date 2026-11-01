@@ -3,7 +3,7 @@
 // response shapes mirror POST /api/ios/publish so the web app can reuse the iOS app's screens:
 //   200 { siteId, deployedUrl, republished, version, editedBy, editedAt }
 //   409 { error:'site-updated', site }   400 bad-request   401 unauthorized
-//   402 subscription-inactive            502 publish-failed   503 temporarily-unavailable | slug-exhausted | slug-bind-failed
+//   402 subscription-inactive | 409 app-store-account (not web-entitled but an App Store subscriber)            502 publish-failed   503 temporarily-unavailable | slug-exhausted | slug-bind-failed
 //   409 { error:'slug-owned' }           (the slug belongs to another account / an older checkout)
 import type { WebsiteData } from '../../types.js';
 import type { SiteFile } from '../render/pages.js';
@@ -20,6 +20,7 @@ import { supabasePurchases } from '../ios/purchases.js';
 import { normEmail, supabaseSiteOwners, type SiteOwnerRow, type SiteOwnerStore } from '../siteOwners.js';
 import { isEntitledStatus, keyMode, type EntitlementRow, type Interval, type Tier } from './stripeCore.js';
 import { callerFrom, sbRest, stripeCall } from './webAppServer.js';
+import { appStoreStateOf, type AppStoreState } from './appStoreGuard.js';
 
 export { webAppEntitlementsOn } from './webAppServer.js';
 
@@ -43,6 +44,8 @@ export interface WebPublishDeps {
   userOf(authorization: unknown): Promise<{ id: string; email: string | null } | null>;
   /** The user's newest ENTITLED web subscription in this environment, or null. */
   entitlementOf(userId: string): Promise<EntitlementRow | null>;
+  /** Read-only: is this (not web-entitled) caller an App Store subscriber? Only asked when the caller is not entitled; an error falls back to 402. */
+  appStoreState?(userId: string): Promise<AppStoreState>;
   sites: {
     /** The user's bound site in this environment (newest), or null. */
     byUser(userId: string, env: 'live' | 'test'): Promise<WebSiteRow | null>;
@@ -140,6 +143,12 @@ export async function runWebPublish(
     // 2. A paid web subscription in this environment.
     const ent = await deps.entitlementOf(caller.id);
     if (!ent || !isEntitledStatus(ent.status) || ent.environment !== deps.environment) {
+      // An App Store subscriber has nothing to pay for here: say so (409) instead of the generic 402.
+      if (deps.appStoreState) {
+        let st: AppStoreState = null;
+        try { st = await deps.appStoreState(caller.id); } catch { st = null; }
+        if (st) return { status: 409, body: { error: 'app-store-account' } };
+      }
       return { status: 402, body: { error: 'subscription-inactive' } };
     }
     // 3. Tier links.
@@ -308,6 +317,7 @@ export function liveWebPublishDeps(): WebPublishDeps {
     environment,
     userOf: callerFrom,
     entitlementOf: (uid) => liveEntitlementOf(uid, environment),
+    appStoreState: (uid) => appStoreStateOf(uid, environment),
     sites,
     owners,
     isTaken: async (s) => (await iosTaken(s)) || !!(await owners.get(s)) || !!(await sites.get(s)),

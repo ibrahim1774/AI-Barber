@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { sweepWebApp, type WebSweepDeps } from '../../lib/webApp/lapse.js';
+import { sweepWebApp, sweepIosOverlap, type IosOverlapDeps, type OverlapRow, type WebSweepDeps } from '../../lib/webApp/lapse.js';
 import type { WebSiteRow } from '../../lib/webApp/publishFlow.js';
 
 const row = (over: Partial<WebSiteRow> = {}): WebSiteRow => ({
@@ -110,5 +110,45 @@ describe('sweepWebApp', () => {
     const d = fakes({ up: [row({ slug: 'a' }), row({ slug: 'b', user_id: 'u2' })], ios: ['a'], entitled: ['u2'] });
     await sweepWebApp(d);
     expect((d.stampChecked as any).mock.calls.map((c: any[]) => c[0]).sort()).toEqual(['a', 'b']);
+  });
+});
+
+describe('sweepIosOverlap (alert only)', () => {
+  const orow = (id = 'sub_1', uid: string | null = 'u1'): OverlapRow => ({ stripe_subscription_id: id, stripe_customer_id: 'cus_1', user_id: uid, tier: 'website', site_slug: 'fresh' });
+  function ofakes(o: { rows?: OverlapRow[]; state?: any; lookupErr?: boolean; mailErr?: boolean } = {}) {
+    const claimed = new Set<string>();
+    const deps: IosOverlapDeps = {
+      candidates: vi.fn(async () => (o.rows ?? [orow()]).filter((r) => !claimed.has(r.stripe_subscription_id))),
+      appStoreState: vi.fn(async () => { if (o.lookupErr) throw new Error('supabase 500'); return o.state === undefined ? 'active' : o.state; }),
+      claim: vi.fn(async (id) => { if (claimed.has(id)) return false; claimed.add(id); return true; }),
+      release: vi.fn(async (id) => { claimed.delete(id); }),
+      mailCustomer: vi.fn(async () => { if (o.mailErr) throw new Error('resend 500'); }),
+      mailOwner: vi.fn(async () => {}),
+    };
+    return deps;
+  }
+  it('an overlap is emailed once (customer and owner), a second run sends nothing', async () => {
+    const d = ofakes();
+    expect((await sweepIosOverlap(d)).notified).toEqual(['sub_1']);
+    expect(d.mailCustomer).toHaveBeenCalledTimes(1); expect(d.mailOwner).toHaveBeenCalledTimes(1);
+    expect((await sweepIosOverlap(d)).notified).toEqual([]);
+    expect(d.mailCustomer).toHaveBeenCalledTimes(1);
+  });
+  it('no App Store state (for example a Sandbox purchase under a live key): nothing is claimed or sent', async () => {
+    const d = ofakes({ state: null });
+    await sweepIosOverlap(d);
+    expect(d.claim).not.toHaveBeenCalled(); expect(d.mailCustomer).not.toHaveBeenCalled();
+  });
+  it('a mail failure releases the claim so the next run retries', async () => {
+    const d = ofakes({ mailErr: true });
+    const r = await sweepIosOverlap(d);
+    expect(r.mailFailed).toEqual(['sub_1']);
+    expect(d.release).toHaveBeenCalledWith('sub_1');
+    expect(d.mailOwner).not.toHaveBeenCalled();
+  });
+  it('a lookup error skips that user without throwing the sweep', async () => {
+    const d = ofakes({ lookupErr: true, rows: [orow('sub_1'), orow('sub_2', 'u2')] });
+    const r = await sweepIosOverlap(d);
+    expect(r.lookupFailed).toBe(2); expect(r.notified).toEqual([]);
   });
 });

@@ -7,6 +7,9 @@ import { isIndefiniteDeployError } from '../ios/sweep.js';
 import { isEntitledStatus, keyMode } from './stripeCore.js';
 import { sbRest, stripeCall } from './webAppServer.js';
 import type { WebSiteRow } from './publishFlow.js';
+import { appStoreStateOf, type AppStoreState } from './appStoreGuard.js';
+import { alertOwner, iosOverlapEmail, sendMail } from './emails.js';
+import { contactFor } from './dunning.js';
 
 export interface WebSweepDeps {
   /** Published, not removed, not taken down, in this environment; least recently checked first. */
@@ -148,5 +151,60 @@ export async function liveWebSweepDeps(): Promise<WebSweepDeps> {
     },
     publish: (slug, opts) => publishSite(slug, opts),
     now: () => Date.now(),
+  };
+}
+
+// ---- web subscriber who later bought on iOS: ALERT ONLY, once per subscription ----
+export interface OverlapRow { stripe_subscription_id: string; stripe_customer_id: string; user_id: string | null; tier: string; site_slug: string | null }
+export interface IosOverlapDeps {
+  /** Entitled rows in this mode that were never notified; at most `limit`. */
+  candidates(limit: number): Promise<OverlapRow[]>;
+  appStoreState(userId: string): Promise<AppStoreState>;
+  /** Atomic once-only claim (ios_overlap_notified_at is null -> now). */
+  claim(subId: string): Promise<boolean>;
+  release(subId: string): Promise<void>;
+  mailCustomer(row: OverlapRow): Promise<void>;
+  mailOwner(row: OverlapRow, state: AppStoreState): Promise<void>;
+}
+export interface IosOverlapSummary { checked: number; notified: string[]; lookupFailed: number; mailFailed: string[] }
+
+/** Never cancels or refunds anything. A mail failure releases the claim so the next run retries. */
+export async function sweepIosOverlap(deps: IosOverlapDeps, limit = 50): Promise<IosOverlapSummary> {
+  const out: IosOverlapSummary = { checked: 0, notified: [], lookupFailed: 0, mailFailed: [] };
+  const rows = await deps.candidates(limit);
+  for (const row of rows) {
+    if (!row.user_id) continue;
+    out.checked++;
+    let state: AppStoreState;
+    try { state = await deps.appStoreState(row.user_id); }
+    catch (e: any) { console.warn('[web-app ios-overlap] lookup failed; skipping:', e?.message || e); out.lookupFailed++; continue; }
+    if (!state) continue;
+    if (!(await deps.claim(row.stripe_subscription_id).catch(() => false))) continue;
+    try {
+      await deps.mailCustomer(row);
+      await deps.mailOwner(row, state);
+      out.notified.push(row.stripe_subscription_id);
+    } catch (e: any) {
+      console.error('[web-app ios-overlap] mail failed; releasing the claim:', e?.message || e);
+      await deps.release(row.stripe_subscription_id).catch(() => {});
+      out.mailFailed.push(row.stripe_subscription_id);
+    }
+  }
+  return out;
+}
+
+export function liveIosOverlapDeps(mode: 'live' | 'test'): IosOverlapDeps {
+  const patch = (subId: string, body: Record<string, unknown>, filter = '') => sbRest(`web_app_entitlements?stripe_subscription_id=eq.${enc(subId)}${filter}`, { method: 'PATCH', body, prefer: 'return=representation' });
+  return {
+    candidates: async (limit) => (await sbRest(`web_app_entitlements?environment=eq.${mode}&status=in.(active,trialing,past_due)&ios_overlap_notified_at=is.null&select=stripe_subscription_id,stripe_customer_id,user_id,tier,site_slug&limit=${limit}`)) ?? [],
+    appStoreState: (uid) => appStoreStateOf(uid, mode),
+    claim: async (id) => ((await patch(id, { ios_overlap_notified_at: new Date().toISOString() }, '&ios_overlap_notified_at=is.null')) ?? []).length > 0,
+    release: async (id) => { await patch(id, { ios_overlap_notified_at: null }); },
+    async mailCustomer(row) {
+      const { email, firstName } = await contactFor(row.user_id, row.stripe_customer_id);
+      if (!email) throw new Error('no email address');
+      await sendMail(email, iosOverlapEmail({ email, firstName, siteUrl: row.site_slug ? `https://${row.site_slug}.vercel.app` : null, tier: row.tier }));
+    },
+    mailOwner: (row, state) => alertOwner('AI Barber web: subscriber also pays through the App Store', [`user: ${row.user_id}`, `web subscription: ${row.stripe_subscription_id} (${row.tier})`, `site: ${row.site_slug ?? '(none)'}`, `App Store state: ${state}`, 'The customer was emailed; nothing was cancelled or refunded.']),
   };
 }

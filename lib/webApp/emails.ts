@@ -116,3 +116,48 @@ export async function sendMail(to: string, mail: Mail): Promise<void> {
   });
   if (!r.ok) throw new Error(`resend ${r.status}`);
 }
+
+/** Customer was charged twice and the second charge was refunded (only sent when WEB_APP_DUP_REFUND=1 acted). */
+export function duplicateRefundEmail(i: EmailInput, origin = APP_ORIGIN()): Mail {
+  const plan = TIER_NAME[i.tier] ?? 'AI Barber';
+  return render({
+    subject: 'We refunded a duplicate AI Barber charge',
+    preheader: 'You were charged twice. We refunded the second charge.',
+    headline: 'We refunded a duplicate charge',
+    lead: `You were charged twice for AI Barber, so we cancelled the second subscription and refunded it. Your plan stays active: <b style="color:#fff">${esc(plan)}</b>.`,
+    facts: facts(i),
+    cta: { label: 'Sign in', href: signInLink(origin) },
+    note: 'To change your plan, sign in and open Settings, then Manage plan.',
+    origin,
+  });
+}
+
+/** A web subscriber who also bought through the App Store now pays twice. We only tell them; we never cancel for them. */
+export function iosOverlapEmail(i: EmailInput, origin = APP_ORIGIN()): Mail {
+  const site = i.siteUrl ? i.siteUrl.replace(/^https?:\/\//, '') : null;
+  return render({
+    subject: 'You now pay for AI Barber twice',
+    preheader: 'You have an App Store plan and a web plan. Cancel the web plan to stop paying twice.',
+    headline: 'You now pay for AI Barber twice',
+    lead: 'You have an AI Barber plan through the App Store and one on the web. Your shop now runs on your App Store plan, so the web plan no longer adds anything. To stop paying twice, cancel your web plan: sign in, open Settings, then Manage plan.',
+    facts: facts(i),
+    cta: { label: 'Manage web plan', href: signInLink(origin) },
+    note: site ? `Note: your web site address ${esc(site)} goes offline when the web plan ends.` : undefined,
+    origin,
+  });
+}
+
+/** Plain operator alert. */
+export function alertMail(subject: string, lines: string[]): Mail {
+  return { subject, text: lines.join('\n'), html: `<pre style="font-family:ui-monospace,Menlo,monospace;font-size:13px;white-space:pre-wrap">${esc(lines.join('\n'))}</pre>` };
+}
+
+/**
+ * Email the operator at WEB_APP_ALERT_EMAIL (no default address). Unset: log instead and resolve.
+ * A mail failure throws, so the caller can choose to retry later.
+ */
+export async function alertOwner(subject: string, lines: string[]): Promise<void> {
+  const to = process.env.WEB_APP_ALERT_EMAIL;
+  if (!to) { console.error(`[web-app] ALERT ${subject}\n${lines.join('\n')}`); return; }
+  await sendMail(to, alertMail(subject, lines));
+}

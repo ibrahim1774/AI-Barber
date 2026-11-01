@@ -2,9 +2,10 @@
 // into web_app_entitlements. The row is built from the subscription's CURRENT state fetched from Stripe,
 // never from the event body, so late or replayed events can't bring back a canceled subscription.
 // Events without metadata.app = 'aibarber-app' are acknowledged and ignored.
-import { keyMode, rowFromSubscription, verifyStripeSignature } from '../../lib/webApp/stripeCore.js';
-import { readRawBody, sbRest, stripeCall, webAppEntitlementsOn } from '../../lib/webApp/webAppServer.js';
+import { isEntitledStatus, keyMode, rowFromSubscription, verifyStripeSignature } from '../../lib/webApp/stripeCore.js';
+import { readRawBody, sbRest, stripeCall, webAppCheckoutOn, webAppEntitlementsOn } from '../../lib/webApp/webAppServer.js';
 import { sendMail, welcomeEmail } from '../../lib/webApp/emails.js';
+import { handleDuplicates, liveDupDeps } from '../../lib/webApp/duplicates.js';
 import { contactFor, resetDunning, sendFailedPaymentIfDue } from '../../lib/webApp/dunning.js';
 
 export const config = { api: { bodyParser: false } };
@@ -62,6 +63,12 @@ export default async function handler(req: any, res: any) {
           await sbRest(`web_app_entitlements?stripe_subscription_id=eq.${encodeURIComponent(row.stripe_subscription_id)}`, { method: 'PATCH', body: { welcome_sent_at: null } }).catch(() => {});
         }
       }
+    }
+    // Safety net for "paid twice" (fast path; the lapse cron is the backstop). NEVER changes the response: an
+    // alert/refund problem must not make Stripe retry for days and disable this endpoint.
+    if (webAppCheckoutOn() && row.user_id && isEntitledStatus(row.status)) {
+      try { await handleDuplicates(row.user_id, liveDupDeps(mode)); }
+      catch (e: any) { console.error('[web-app webhook dup check]', e?.message || e); }
     }
     return res.status(200).json({ ok: true });
   } catch (e: any) {

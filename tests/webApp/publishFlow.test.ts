@@ -202,3 +202,28 @@ describe('runWebSiteLookup', () => {
     expect(((await runWebSiteLookup(base({ sites: { byUser: async () => ({ slug: 's', taken_down_at: 't', removed_at: null }) } }), { authorization: 'Bearer x' })) as any).body.active).toBe(false);
   });
 });
+
+describe('runWebPublish: App Store subscribers', () => {
+  it('a non-entitled caller with an App Store state gets 409 app-store-account, nothing written', async () => {
+    const { deps } = fakes({ ent: null });
+    deps.appStoreState = vi.fn(async () => 'active' as const);
+    const r = await runWebPublish({ siteData: site() }, deps, { authorization: AUTH });
+    expect(r).toEqual({ status: 409, body: { error: 'app-store-account' } });
+    expect(deps.writePending).not.toHaveBeenCalled();
+    expect(deps._sites.size).toBe(0);
+  });
+  it('a non-entitled caller with no App Store state still gets 402; a lookup error also falls back to 402', async () => {
+    for (const fn of [async () => null, async () => { throw new Error('boom'); }]) {
+      const { deps } = fakes({ ent: null });
+      deps.appStoreState = vi.fn(fn as any);
+      expect((await runWebPublish({ siteData: site() }, deps, { authorization: AUTH })).status).toBe(402);
+    }
+  });
+  it('an entitled caller is unaffected and the App Store dependency is never called', async () => {
+    const { deps } = fakes();
+    deps.appStoreState = vi.fn(async () => 'active' as const);
+    const r = await runWebPublish({ siteData: site() }, deps, { authorization: AUTH });
+    expect(r.status).toBe(200);
+    expect(deps.appStoreState).not.toHaveBeenCalled();
+  });
+});

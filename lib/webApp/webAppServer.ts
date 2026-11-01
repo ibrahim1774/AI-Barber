@@ -2,16 +2,16 @@
 const STRIPE_API_VERSION = '2024-06-20';
 const SB = () => ({ url: process.env.SUPABASE_URL as string, key: process.env.SUPABASE_SERVICE_ROLE_KEY as string });
 
-export async function stripeCall(path: string, body: Record<string, string> | null, method = 'POST'): Promise<any> {
+export async function stripeCall(path: string, body: Record<string, string> | null, method = 'POST', opts: { idempotencyKey?: string } = {}): Promise<any> {
   const key = process.env.STRIPE_WEBAPP_SECRET_KEY;
   if (!key) throw new Error('STRIPE_WEBAPP_SECRET_KEY missing');
   const r = await fetch(`https://api.stripe.com/v1/${path}`, {
     method,
-    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/x-www-form-urlencoded', 'Stripe-Version': STRIPE_API_VERSION },
+    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/x-www-form-urlencoded', 'Stripe-Version': STRIPE_API_VERSION, ...(opts.idempotencyKey ? { 'Idempotency-Key': opts.idempotencyKey } : {}) },
     body: body ? new URLSearchParams(body).toString() : undefined,
   });
   const j: any = await r.json().catch(() => ({}));
-  if (!r.ok) throw Object.assign(new Error(j?.error?.message || `stripe ${r.status}`), { status: r.status });
+  if (!r.ok) throw Object.assign(new Error(j?.error?.message || `stripe ${r.status}`), { status: r.status, code: j?.error?.code as string | undefined, type: j?.error?.type as string | undefined });
   return j;
 }
 

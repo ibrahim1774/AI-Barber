@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'crypto';
 // Shared cron auth gate (originally from api/publish-sweeper.ts). Used by every cron in
 // vercel.json: /api/publish-sweeper, /api/ios/sweep, /api/book/reminders.
 export function authorized(req: any): boolean {
@@ -20,4 +21,16 @@ export function authorized(req: any): boolean {
   // and with a secret set only the Bearer header (which Vercel sends) may run it.
   const ua = String(req.headers['user-agent'] || '');
   return ua.startsWith('vercel-cron/');
+}
+
+/**
+ * Web-app crons (/api/web-app/lapse): the Bearer secret is REQUIRED. There is no user-agent fallback, ever.
+ * `authorized()` above is deliberately untouched so the iOS crons behave exactly as before.
+ */
+export function authorizedStrict(req: any): 'ok' | 'denied' | 'no-secret' {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) return 'no-secret';
+  const a = Buffer.from(String(req.headers?.authorization || ''));
+  const b = Buffer.from(`Bearer ${secret}`);
+  return a.length === b.length && timingSafeEqual(a, b) ? 'ok' : 'denied';
 }

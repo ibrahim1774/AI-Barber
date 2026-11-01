@@ -1,7 +1,8 @@
 // POST { tier, interval, siteSlug? } + Bearer <supabase jwt> -> { url } for a Stripe Checkout subscription,
-// or { url } to the billing portal when the user already has a paid plan (no double billing).
+// 409 already_subscribed (manage in the portal) | payment_processing | checkout_in_progress | ios_subscription_active | ios_linked_lapsed; 503 try_again.
 // Off (404) unless WEB_APP_CHECKOUT=1. Everything created is tagged metadata.app = 'aibarber-app'.
 import { WEB_APP_TAG, isEntitledStatus, isInterval, isTier, keyMode, priceIdFor } from '../../lib/webApp/stripeCore.js';
+import { appStoreStateOf, type AppStoreState } from '../../lib/webApp/appStoreGuard.js';
 import { APP_ORIGIN, callerFrom, sbRest, stripeCall, webAppCheckoutOn, webAppCors } from '../../lib/webApp/webAppServer.js';
 
 export default async function handler(req: any, res: any) {
@@ -19,20 +20,32 @@ export default async function handler(req: any, res: any) {
     const uid = encodeURIComponent(caller.id);
     const rows: any[] = (await sbRest(`web_app_entitlements?user_id=eq.${uid}&environment=eq.${mode}&select=stripe_customer_id,status&order=created_at.desc`)) ?? [];
     if (rows.some((r) => isEntitledStatus(r.status))) return res.status(409).json({ error: 'already_subscribed' }); // manage it in the portal
+    // App Store guard (read-only). Fail closed: while we cannot tell, take no payment.
+    let appStore: AppStoreState;
+    try { appStore = await appStoreStateOf(caller.id, mode); }
+    catch (e: any) { console.error('[web-app checkout] app store lookup failed:', e?.message || e); return res.status(503).json({ error: 'try_again' }); }
+    if (appStore === 'active') return res.status(409).json({ error: 'ios_subscription_active' });
+    if (appStore === 'linked') return res.status(409).json({ error: 'ios_linked_lapsed' });
+
     // Only a site this user owns can be attached to the subscription.
     let slug = '';
     if (typeof siteSlug === 'string' && /^[a-z0-9-]{1,63}$/.test(siteSlug)) {
       const own = await sbRest(`site_owners?slug=eq.${encodeURIComponent(siteSlug)}&user_id=eq.${uid}&select=slug&limit=1`);
       if (own?.length) slug = siteSlug;
     }
-    // Reuse this user's Stripe customer; otherwise create one (tagged) so the portal and webhook can always find it.
-    let customer: string | undefined = (rows.find((r) => isEntitledStatus(r.status)) ?? rows[0])?.stripe_customer_id;
-    if (!customer) {
-      const c = await stripeCall('customers', { ...(caller.email ? { email: caller.email } : {}), 'metadata[app]': WEB_APP_TAG, 'metadata[user_id]': caller.id });
-      customer = c.id as string;
-    }
-    const meta = { app: WEB_APP_TAG, user_id: caller.id, site_slug: slug, tier };
-    const session = await stripeCall('checkout/sessions', {
+    // One Stripe customer per user and mode, known BEFORE any webhook lands.
+    const customer = await customerFor(caller.id, mode, caller.email, uid, rows);
+    // Stripe is the authority on "already paying" (the webhook may not have landed yet).
+    const subs = await stripeCall(`subscriptions?customer=${encodeURIComponent(customer)}&status=all&limit=20`, null, 'GET');
+    const ours: any[] = (subs?.data ?? []).filter((x: any) => x?.metadata?.app === WEB_APP_TAG);
+    if (ours.some((x) => isEntitledStatus(String(x.status)))) return res.status(409).json({ error: 'already_subscribed' });
+    if (ours.some((x) => x.status === 'incomplete')) return res.status(409).json({ error: 'payment_processing' });
+
+    const meta = { app: WEB_APP_TAG, user_id: caller.id, site_slug: slug, tier, interval };
+    const nowMs = Date.now();
+    const window = Math.floor(nowMs / 600_000);
+    // Parameters must be identical for an idempotent replay, so expiry derives from the 10-minute window (30-40 min ahead).
+    const sessionBody = {
       mode: 'subscription',
       customer,
       'line_items[0][price]': price,
@@ -40,11 +53,43 @@ export default async function handler(req: any, res: any) {
       client_reference_id: caller.id,
       success_url: `${APP_ORIGIN()}/app/edit?paid=1`,
       cancel_url: `${APP_ORIGIN()}/app/edit?paid=0`,
+      expires_at: String((window + 1) * 600 + 1800),
       ...Object.fromEntries(Object.entries(meta).flatMap(([k, v]) => [[`metadata[${k}]`, v], [`subscription_data[metadata][${k}]`, v]])),
-    });
+    };
+    const key = `aibarber-app:cs:${caller.id}:${tier}:${interval}:${window}`;
+    let session: any;
+    try {
+      session = await stripeCall('checkout/sessions', sessionBody, 'POST', { idempotencyKey: key });
+      // A replay of a session that a newer click already expired: make a fresh one (a rare, non-replayed call).
+      if (session?.status === 'expired') session = await stripeCall('checkout/sessions', sessionBody, 'POST', { idempotencyKey: `${key}:r${nowMs}` });
+    } catch (e: any) {
+      if (e?.type === 'idempotency_error' || e?.code === 'idempotency_key_in_use') return res.status(409).json({ error: 'checkout_in_progress' });
+      throw e;
+    }
+    // Paid already, or no payable URL: never hand out a second payable page.
+    if (session?.status !== 'open' || !session?.url) return res.status(409).json({ error: 'payment_processing' });
+    // At most one payable Checkout tab: expire every OTHER open session of ours (best effort).
+    try {
+      const open = await stripeCall(`checkout/sessions?customer=${encodeURIComponent(customer)}&status=open&limit=10`, null, 'GET');
+      for (const o of open?.data ?? []) {
+        if (o?.id === session.id || o?.metadata?.app !== WEB_APP_TAG) continue;
+        await stripeCall(`checkout/sessions/${encodeURIComponent(o.id)}/expire`, {}, 'POST').catch((e: any) => console.error('[web-app checkout] expire failed:', e?.message || e));
+      }
+    } catch (e: any) { console.error('[web-app checkout] open-session cleanup failed:', e?.message || e); }
     return res.status(200).json({ url: session.url });
   } catch (e: any) {
     console.error('[web-app checkout]', e.message);
     return res.status(502).json({ error: 'checkout_failed' });
   }
+}
+
+/** The user's one Stripe customer in this mode: the stored one, else one from an older entitlement row, else create it (idempotently) and store it. */
+async function customerFor(userId: string, mode: 'live' | 'test', email: string | null, uid: string, entRows: any[]): Promise<string> {
+  const read = async (): Promise<string | undefined> => (await sbRest(`web_app_customers?user_id=eq.${uid}&environment=eq.${mode}&select=stripe_customer_id&limit=1`))?.[0]?.stripe_customer_id;
+  const stored = await read();
+  if (stored) return stored;
+  const legacy: string | undefined = (entRows.find((r) => isEntitledStatus(r.status)) ?? entRows[0])?.stripe_customer_id;
+  const id: string = legacy ?? (await stripeCall('customers', { ...(email ? { email } : {}), 'metadata[app]': WEB_APP_TAG, 'metadata[user_id]': userId }, 'POST', { idempotencyKey: `aibarber-app:cust:${userId}:${mode}` })).id;
+  await sbRest('web_app_customers?on_conflict=user_id,environment', { method: 'POST', body: { user_id: userId, environment: mode, stripe_customer_id: id }, prefer: 'resolution=ignore-duplicates,return=minimal' });
+  return (await read()) ?? id; // a lost race converges on whichever row won
 }

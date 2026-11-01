@@ -21,3 +21,25 @@ describe('cron auth', () => {
     expect(authorized({ headers: { ...ua, authorization: 'Bearer s3cret' } })).toBe(true);
   });
 });
+
+import { authorizedStrict } from '../lib/cronAuth.js';
+
+describe('authorizedStrict (web-app crons)', () => {
+  afterEach(() => vi.unstubAllEnvs());
+  it('secret unset: even the vercel-cron user agent is refused', () => {
+    vi.stubEnv('CRON_SECRET', '');
+    expect(authorizedStrict({ headers: ua })).toBe('no-secret');
+  });
+  it('secret set: no header, wrong bearer and different-length header are denied without throwing', () => {
+    vi.stubEnv('CRON_SECRET', 's3cret');
+    expect(authorizedStrict({ headers: {} })).toBe('denied');
+    expect(authorizedStrict({ headers: ua })).toBe('denied');
+    expect(authorizedStrict({ headers: { authorization: 'Bearer wrong' } })).toBe('denied');
+    expect(authorizedStrict({ headers: { authorization: 'Bearer s3cret-and-more' } })).toBe('denied');
+    expect(authorizedStrict({})).toBe('denied');
+  });
+  it('the right bearer is ok', () => {
+    vi.stubEnv('CRON_SECRET', 's3cret');
+    expect(authorizedStrict({ headers: { authorization: 'Bearer s3cret' } })).toBe('ok');
+  });
+});
